@@ -1,5 +1,10 @@
 {
   "plugins": {
+    "load": {
+      "paths": [
+        "/home/node/.openclaw/npm/projects/zalouser/node_modules/@openclaw/zalouser"
+      ]
+    },
     "entries": {
       "zalouser": {
         "enabled": true
@@ -9,7 +14,11 @@
   "channels": {
     "zalouser": {
       "enabled": true,
-      "groupPolicy": "disabled"
+      "groupPolicy": "disabled",
+      "dmPolicy": "open",
+      "allowFrom": [
+        "*"
+      ]
     }
   },
   "models": {

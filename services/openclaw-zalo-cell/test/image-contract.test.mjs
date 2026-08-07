@@ -79,6 +79,26 @@ async function loadScript(relativePath) {
   return import(pathToFileURL(join(cellRoot, relativePath)).href);
 }
 
+// Mirrors @openclaw/fs-safe safePathSegmentHashed, the derivation OpenClaw uses
+// to name a managed npm plugin project directory. Kept here so the contract test
+// states the host rule we build against rather than a directory name copied from
+// a container someone happened to look inside.
+function safePathSegmentHashed(input) {
+  const trimmed = input.trim();
+  const base = trimmed
+    .replaceAll(/[\\/]/g, "-")
+    .replaceAll(/[^a-zA-Z0-9._-]/g, "-")
+    .replaceAll(/-+/g, "-")
+    .replaceAll(/^-+/g, "")
+    .replaceAll(/-+$/g, "");
+  const normalized = base.length > 0 ? base : "skill";
+  const safe = normalized === "." || normalized === ".." ? "skill" : normalized;
+  const hash = createHash("sha256").update(trimmed).digest("hex").slice(0, 10);
+  if (safe !== trimmed) return `${safe.length > 50 ? safe.slice(0, 50) : safe}-${hash}`;
+  if (safe.length > 60) return `${safe.slice(0, 50)}-${hash}`;
+  return safe;
+}
+
 function localGitPath() {
   const locator = process.platform === "win32" ? "where.exe" : "which";
   return execFileSync(locator, ["git"], { encoding: "utf8" }).split(/\r?\n/u).find(Boolean);
@@ -750,6 +770,65 @@ test("runtime config pins a dedicated toolless customer AI provider without secr
     raw,
     /organization(?:Id)?|account(?:Id)?|phone|password|cookie|imei|9router|router9|ai\.chillhome\.io\.vn|sk-[a-z0-9]/i,
   );
+});
+
+test("runtime config load-paths the vendored fork, the only way OpenClaw ever sees it", async () => {
+  const installer = await readCell("scripts/install-vendored-zalouser.sh");
+  const project = /^project=(\S+)$/m.exec(installer)?.[1];
+  assert.equal(project, "/home/node/.openclaw/npm/projects/zalouser");
+
+  // OpenClaw resolves a managed npm plugin project at
+  // projects/<safePathSegmentHashed(packageName)>, and discovers those projects
+  // from install records it wrote itself - never by scanning the directory. The
+  // vendored installer writes projects/zalouser, a name that derivation only
+  // produces for a package literally called "zalouser", so the fork is invisible
+  // to every managed-npm code path. Left unclaimed, the gateway treats the
+  // configured "zalouser" plugin as missing and installs @openclaw/zalouser from
+  // the public registry instead - the stock build, which has no bridge dispatch.
+  // A config load path is what claims the fork before that repair can fire.
+  assert.equal(safePathSegmentHashed("@openclaw/zalouser"), "openclaw-zalouser-23f4f34fca");
+  assert.notEqual(safePathSegmentHashed("@openclaw/zalouser"), "zalouser");
+
+  const config = JSON.parse(await readCell("config/openclaw.json.tmpl"));
+  assert.deepEqual(config.plugins.load.paths, [
+    `${project}/node_modules/@openclaw/zalouser`,
+  ]);
+});
+
+test("runtime config accepts inbound DMs instead of dropping every one", async () => {
+  const config = JSON.parse(await readCell("config/openclaw.json.tmpl"));
+  const channel = config.channels.zalouser;
+
+  // OpenClaw drops every DM when dmPolicy is "open" while allowFrom omits "*",
+  // and "pairing" (the default) drops every sender the owner has not paired.
+  // Customers write in unpaired, so the channel has to be open AND wildcarded.
+  assert.equal(channel.dmPolicy, "open");
+  assert.deepEqual(channel.allowFrom, ["*"]);
+  assert.ok(
+    !(channel.dmPolicy === "open" && !(channel.allowFrom ?? []).includes("*")),
+    "dmPolicy=open without a \"*\" allowFrom entry silently drops every DM",
+  );
+});
+
+test("entrypoint refuses to start the gateway unless the fork is the plugin on disk", async () => {
+  const entrypoint = await readCell("scripts/entrypoint.sh");
+  const config = JSON.parse(await readCell("config/openclaw.json.tmpl"));
+  const loadPath = config.plugins.load.paths[0];
+
+  assert.ok(
+    entrypoint.includes(`plugin_root=\${OPENCLAW_ZALOUSER_PLUGIN_ROOT:-${loadPath}}`),
+    "entrypoint must guard the exact path the config load-paths",
+  );
+  // The stock package parses, loads and answers messages; it just never hands
+  // anything to the bridge. Absent this assertion the difference is invisible
+  // until someone asks why the CRM inbox is empty.
+  assert.match(entrypoint, /commitAndDispatchInbound/);
+  assert.match(entrypoint, /@openclaw\/zalouser/);
+
+  const guardOffset = entrypoint.indexOf("commitAndDispatchInbound");
+  const launchOffset = entrypoint.indexOf('"$@" &');
+  assert.ok(guardOffset >= 0 && launchOffset >= 0);
+  assert.ok(guardOffset < launchOffset, "the guard must run before the gateway starts");
 });
 
 test("build evidence schema is closed at every object level", async () => {

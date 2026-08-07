@@ -121,6 +121,44 @@ wait_for_child() {
   done
 }
 
+# OpenClaw only ever finds a managed npm plugin under the directory name it
+# derives itself from the package name, and only through install records it
+# wrote. The vendored fork lives under a name that derivation never produces, so
+# it is claimed by plugins.load.paths in the config template - and verified here.
+# Without this the gateway treats "zalouser" as missing and repairs it by
+# installing the stock package from the public registry: it loads, it answers
+# messages, and it drops every one of them because it has no bridge dispatch.
+# Fail closed, before the traps that would rewrite session material.
+plugin_root=${OPENCLAW_ZALOUSER_PLUGIN_ROOT:-/home/node/.openclaw/npm/projects/zalouser/node_modules/@openclaw/zalouser}
+node -e '
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const root = process.argv[1];
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  } catch (error) {
+    console.error(`zalouser plugin is unreadable at ${root}: ${error.message}`);
+    process.exit(1);
+  }
+  if (manifest.name !== "@openclaw/zalouser") {
+    console.error(`zalouser plugin at ${root} is "${manifest.name}", not @openclaw/zalouser`);
+    process.exit(1);
+  }
+  const apiPath = path.join(root, "dist", "behavior-contract-api.js");
+  let api;
+  try {
+    api = fs.readFileSync(apiPath, "utf8");
+  } catch (error) {
+    console.error(`zalouser bridge contract is unreadable at ${apiPath}: ${error.message}`);
+    process.exit(1);
+  }
+  if (!api.includes("commitAndDispatchInbound")) {
+    console.error(`zalouser plugin at ${root} is the stock upstream build: it has no commitAndDispatchInbound, so inbound messages never reach the bridge`);
+    process.exit(1);
+  }
+' "$plugin_root"
+
 trap 'shutdown TERM' TERM
 trap 'shutdown INT' INT
 trap cleanup EXIT
