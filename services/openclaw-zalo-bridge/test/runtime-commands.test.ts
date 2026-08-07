@@ -121,6 +121,8 @@ function createHeartbeat(options: {
   runtime: ReturnType<typeof runtime>["client"];
   invoke: (method: string, params: unknown) => Promise<unknown>;
   qrEncryptionKey?: Uint8Array;
+  /** Advancing clock, for the tests that need a deadline to actually pass. */
+  now?: () => number;
 }) {
   return createRuntimeCommandHeartbeat({
     runtime: options.runtime,
@@ -135,7 +137,7 @@ function createHeartbeat(options: {
     spool: options.spool,
     channelAccountId: CHANNEL_ACCOUNT_ID,
     commandClaimToken: CLAIM_TOKEN,
-    now: () => NOW,
+    now: options.now ?? (() => NOW),
     ...(options.qrEncryptionKey === undefined ? {} : { qrEncryptionKey: options.qrEncryptionKey }),
   });
 }
@@ -447,6 +449,61 @@ describe("durable runtime command heartbeat", () => {
     expect(overlaps).toBe(0);
     // An unscanned code must be re-armed, not sealed on the first empty answer.
     expect(waitCalls).toBeGreaterThan(1);
+  });
+
+  // The scan window must outlive the countdown the cockpit shows.
+  //
+  // `effectDeadlineAt` is frozen at `least(lease_expires_at, envelope exp)` and the
+  // bridge may only lease a command for 60s, while the challenge - and the cockpit
+  // countdown the owner is looking at - runs 120s. Bounding the wait by the effect
+  // deadline discarded every scan in the second half of that countdown: measured on
+  // production, a scan at t=59s was sealed QR_EXPIRED_UNSCANNED one second later.
+  it("keeps waiting for a scan past the command effect deadline", async () => {
+    const payload = {
+      version: 1,
+      challengeId: "dddd6000-0000-4000-8000-000000000002",
+      browserNonceHash: "a".repeat(64),
+    };
+    const qrDataUrl = `data:image/png;base64,${Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64")}`;
+    // The fixture's deadline is NOW + 45s. A wait that outlives it must not be sealed.
+    const harness = runtime([
+      heartbeat({ commands: [command("QR_LOGIN", payload)] }),
+      heartbeat({ commands: [command("QR_LOGIN", payload, "STARTED")] }),
+      publishResult(payload.challengeId),
+      connectionResult(),
+    ]);
+    const { spool } = openSpool();
+    // Real time, so the deadline can actually pass. Each wait burns 20s, so the owner
+    // scans on round 4 - at t=60s, well past the fixture's 45s effect deadline and
+    // squarely inside the 120s the cockpit was counting down.
+    let clock = NOW;
+    let waits = 0;
+    const invoke = vi.fn(async (method: string) => {
+      if (method === "web.login.start") return { message: "scan", qrDataUrl, connected: false };
+      if (method === "web.login.wait") {
+        waits += 1;
+        clock += 20_000;
+        return { connected: waits >= 4, message: waits >= 4 ? "Login successful." : "pending" };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+    const consumer = createHeartbeat({
+      spool,
+      runtime: harness.client,
+      invoke,
+      qrEncryptionKey: Buffer.alloc(32, 7),
+      now: () => clock,
+    });
+
+    await consumer.pulse();
+    // The wait loop runs in the background; let it finish rather than cutting it off.
+    await consumer.settle();
+    consumer.stop();
+
+    const snapshot = spool.runtimeCommandSnapshot(COMMAND_ID);
+    expect(waits).toBeGreaterThan(2);
+    expect(snapshot?.sealedReason).toBe("QR_LOGIN_CONFIRMED");
+    expect(harness.bodies.map((entry) => entry.path)).toContain("/v1/qr/result");
   });
 
   // Renewing a QR command the server has already finished with is fatal, not wasteful.

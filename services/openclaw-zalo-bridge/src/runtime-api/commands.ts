@@ -33,6 +33,17 @@ const QR_START_TIMEOUT_MS = 30_000;
 const QR_WAIT_TIMEOUT_MS = 20_000;
 /** Floor between re-arms, so an instantly-answered wait cannot become a busy loop. */
 const QR_WAIT_MIN_INTERVAL_MS = 1_000;
+/**
+ * How long to keep waiting for a scan, measured from entering LOGIN_WAITING.
+ *
+ * Must cover the countdown the cockpit shows the owner, which is the challenge's own
+ * 120s life. 150s leaves margin for the seconds between the challenge being issued
+ * and the command reaching this stage, so the last second of the visible countdown is
+ * still honoured. A superseding "Lấy mã mới" ends the wait earlier via `loginEpoch`,
+ * and the provider retiring the attempt ends it earlier still, so this bound is only
+ * ever reached when nobody scanned at all.
+ */
+const QR_SCAN_WINDOW_MS = 150_000;
 const MAX_COMMAND_BATCH = 8;
 
 const sleep = (ms: number): Promise<void> =>
@@ -533,9 +544,23 @@ export function createRuntimeCommandHeartbeat(options: {
     const payload = snapshot.payload as QrLoginCommand["payload"];
     const task = (async () => {
       const epoch = loginEpoch;
-      const deadline = snapshot.effectDeadlineAt === null
-        ? NaN
-        : Date.parse(snapshot.effectDeadlineAt);
+      // NOT `effectDeadlineAt`, which is the wrong clock for this phase.
+      //
+      // The server freezes `effect_deadline_at` at `least(lease_expires_at, envelope
+      // exp)` when the command turns STARTED, and the bridge may only lease a command
+      // for 60s (`commandLeaseSeconds` is bounded 5..60 at both the Edge contract and
+      // the SQL). But the challenge lives 120s and the cockpit counts down 120s - so
+      // bounding the scan window by the effect deadline threw away every scan made in
+      // the second half of the countdown the owner was looking at. Measured: a scan at
+      // t=59s was sealed QR_EXPIRED_UNSCANNED one second later.
+      //
+      // That deadline governs producing the EFFECT (the QR), and it is already
+      // enforced where it belongs, at START_AUTHORIZED. Waiting for a scan is after
+      // the effect. `openclaw_finalize_account_connection_v1` agrees: it never reads
+      // `effect_deadline_at` or the command lease, and its only challenge-time
+      // condition is `challenge.expires_at > challenge.consumed_at` - consumed before
+      // expiry, not confirmed before expiry. So a late-confirmed scan still finalizes.
+      const deadline = now() + QR_SCAN_WINDOW_MS;
       const seal = (): void => {
         // Nobody scanned inside the window, Zalo retired the code, or a newer code
         // replaced it. The command is finished either way, and leaving it in
@@ -554,7 +579,7 @@ export function createRuntimeCommandHeartbeat(options: {
         // A newer QR_LOGIN has taken the account. Stop re-arming so the start behind
         // the gate is served immediately instead of after this code's full lifetime.
         if (epoch !== loginEpoch) { seal(); return; }
-        if (!Number.isFinite(deadline) || deadline - now() <= 0) { seal(); return; }
+        if (deadline - now() <= 0) { seal(); return; }
         const startedAt = now();
         waited = await withLoginGate(() => options.cellRpc.invoke("web.login.wait", {
           accountId: options.channelAccountId,
