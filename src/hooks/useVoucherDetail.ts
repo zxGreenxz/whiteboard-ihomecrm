@@ -10,6 +10,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { jsonArray } from '@/lib/jsonValue';
 import type {
   IncomeExpenseItem,
   IncomeExpenseWithRelations,
@@ -129,7 +130,7 @@ export const useVoucherWithBatch = (voucherId?: string) => {
       if (!voucherId) return { voucher: null, batch: null };
 
       // 1. Phiếu chính
-      const { data: vRow, error } = await (supabase as any)
+      const { data: vRow, error } = await supabase
         .from('income_expenses')
         .select(VOUCHER_SELECT)
         .eq('id', voucherId)
@@ -142,7 +143,7 @@ export const useVoucherWithBatch = (voucherId?: string) => {
       const voucher = mapVoucherRow(vRow, mainItems);
 
       // 2. Phiếu này có thuộc đợt (phiếu tổng) nào không?
-      const { data: link } = await (supabase as any)
+      const { data: link } = await supabase
         .from('income_expense_batch_items')
         .select('batch_id')
         .eq('income_expense_id', voucherId)
@@ -151,7 +152,7 @@ export const useVoucherWithBatch = (voucherId?: string) => {
       if (!batchId) return { voucher, batch: null };
 
       // 3. Đợt + các phiếu con
-      const { data: bRow } = await (supabase as any)
+      const { data: bRow } = await supabase
         .from('income_expense_batches')
         .select('*')
         .eq('id', batchId)
@@ -159,14 +160,14 @@ export const useVoucherWithBatch = (voucherId?: string) => {
         .maybeSingle();
       if (!bRow) return { voucher, batch: null };
 
-      const { data: links } = await (supabase as any)
+      const { data: links } = await supabase
         .from('income_expense_batch_items')
         .select('income_expense_id')
         .eq('batch_id', batchId);
       const siblingIds = ((links ?? []) as any[]).map((l) => l.income_expense_id);
       if (siblingIds.length === 0) return { voucher, batch: null };
 
-      const { data: siblingRows } = await (supabase as any)
+      const { data: siblingRows } = await supabase
         .from('income_expenses')
         .select(VOUCHER_SELECT)
         .in('id', siblingIds)
@@ -192,9 +193,20 @@ export const useVoucherWithBatch = (voucherId?: string) => {
         id: bRow.id,
         user_id: bRow.user_id,
         name: bRow.name,
-        type: bRow.type,
+        // Cột `type` trong DB là text tự do; kiểu ở FE là union hai giá trị. Ép
+        // thẳng sẽ nuốt mọi giá trị lạ (viết hoa khác, chuỗi rỗng, giá trị mới
+        // thêm ở migration sau) và đẩy nó vào UI như thể hợp lệ. Kiểm tại đây và
+        // ngã về EXPENSE — phiếu chi là mặc định AN TOÀN: hiển thị nhầm một
+        // khoản thu thành chi thì người dùng thấy ngay, còn ngược lại thì một
+        // khoản chi lạ trông như tiền vào.
+        type: bRow.type === "INCOME" ? "INCOME" : "EXPENSE",
         payer_name: bRow.payer_name,
-        attachments: bRow.attachments ?? [],
+        // `attachments` là cột jsonb ⇒ kiểu sinh ra là Json, không phải string[].
+        // Lọc lấy đúng phần tử chuỗi thay vì khẳng định suông: một phần tử rác
+        // trong mảng sẽ thành `undefined` ở chỗ render và vỡ ở nơi khác.
+        attachments: jsonArray({ a: bRow.attachments }, "a").filter(
+          (x): x is string => typeof x === "string",
+        ),
         notes: bRow.notes,
         created_at: bRow.created_at,
         voucher_date: first.voucher_date,

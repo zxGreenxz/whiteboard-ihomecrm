@@ -63,7 +63,7 @@ export const useUnhandedVouchers = (sourceAccountId?: string) => {
       // âm thầm khi bàn giao tiền mặt (fail-open trên tiền — bug cap-1000).
       const data = await fetchAllRows<UnhandedVoucher>(
         (from, to) =>
-          (supabase as any)
+          supabase
             .from('income_expenses')
             .select('id, code, name, type, total_amount, voucher_date, room:rooms(name), building:buildings(name)')
             .eq('account_id', accountId)
@@ -101,7 +101,7 @@ export const useCashHandoverList = () => {
     queryFn: async (): Promise<CashHandover[]> => {
       // Select đúng cột UI dùng (CashHandover/HandoverItemLite) thay '*' —
       // bỏ các cột transfer_*/updated_at không ai đọc, nhẹ payload poll.
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('cash_handovers')
         .select(
           'id, code, giver_id, receiver_id, giver_name, receiver_name, total_amount, gross_amount, expense_amount, voucher_count, status, cancel_requested_by, cancel_reason, cancel_requested_at, created_at, confirmed_at, cancelled_at, from_account_id, to_account_id, note, items:cash_handover_items(voucher_id, amount, voucher_code, voucher_date, room_name, building_name, voucher_type)',

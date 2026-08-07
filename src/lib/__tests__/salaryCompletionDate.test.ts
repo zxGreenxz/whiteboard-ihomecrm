@@ -17,14 +17,36 @@ const MIG_DIR = join(process.cwd(), "supabase", "migrations");
  */
 const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, "");
 
+/**
+ * Đọc + bóc comment TOÀN BỘ migration đúng MỘT lần cho cả file test.
+ *
+ * Trước đây `liveDefinitionOf` quét lại từ đầu ở MỖI lời gọi: 627 file × ~8 ca
+ * test = hơn 5.000 lượt đọc đĩa. Nó chạy được khi repo còn ít migration, rồi
+ * lặng lẽ chạm trần: đo 07/08/2026 một ca mất 9.595 ms trong khi timeout mặc
+ * định của vitest là 5.000 ms — test ĐỎ vì HẾT GIỜ, không phải vì bất biến bị
+ * vi phạm. Kiểu đỏ đó tệ hơn đỏ thật: nó dạy người ta rằng file test này "hay
+ * lỗi vặt", và lần bất biến hỏng thật cũng sẽ bị bỏ qua.
+ *
+ * Nới timeout thì che triệu chứng; đệm lại thì bỏ hẳn nguyên nhân, và số
+ * migration còn tăng tiếp.
+ */
+let corpusCache: { file: string; sql: string }[] | null = null;
+function migrationCorpus(): { file: string; sql: string }[] {
+  if (!corpusCache) {
+    corpusCache = readdirSync(MIG_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => ({ file: f, sql: stripComments(readFileSync(join(MIG_DIR, f), "utf8")) }));
+  }
+  return corpusCache;
+}
+
 /** Định nghĩa SỐNG của một hàm = lần CREATE cuối cùng theo thứ tự timestamp. */
 function liveDefinitionOf(fnName: string): { file: string; sql: string } {
-  const files = readdirSync(MIG_DIR).filter((f) => f.endsWith(".sql")).sort();
   const re = new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`, "i");
   let hit: { file: string; sql: string } | null = null;
-  for (const f of files) {
-    const sql = stripComments(readFileSync(join(MIG_DIR, f), "utf8"));
-    if (re.test(sql)) hit = { file: f, sql };
+  for (const m of migrationCorpus()) {
+    if (re.test(m.sql)) hit = m;
   }
   if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của public.${fnName}`);
   return hit;

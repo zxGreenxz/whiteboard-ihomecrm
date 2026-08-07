@@ -83,6 +83,20 @@ gaps:
       Bật PITR khi quy mô tiền/rủi ro đủ lớn để 100 USD/tháng là rẻ; hoặc rà lại sau 6 tháng
       xem RPO 24 giờ còn chấp nhận được không.
 
+  - id: contract-type-handwritten-drift
+    where: src/hooks/useContracts.ts (2 chỗ `as unknown as ContractWithRelations`)
+    expires_at: 2026-11-30
+    why: >
+      ContractWithRelations là kiểu VIẾT TAY, không khớp hình dạng thật DB trả: một số cột
+      nullable ở DB được khai không-null, và quan hệ lồng biểu diễn khác. Ratchet any-cast đã
+      về 0 (07/08/2026) và hai chỗ còn lại là khẳng định HẸP, khác hẳn `(supabase as any)` cũ:
+      chuỗi select nay là hằng LITERAL nên tên bảng/cột được kiểm kiểu thật, chỉ hình dạng
+      cuối cùng là lời khai. Phần chưa che: nếu DB đổi một cột thành nullable, hai chỗ này
+      không đỏ.
+    exit_condition: >
+      Hoà giải ContractWithRelations với kiểu sinh từ types.ts — hoặc bỏ hẳn kiểu viết tay và
+      dùng kiểu suy ra từ select. Là một lượt riêng vì đụng nhiều consumer của kiểu đó.
+
 # ĐÃ ĐÓNG 06/08/2026 — claude-agents-md-still-full.
 # CLAUDE.md 211 -> 62 dòng, AGENTS.md 146 -> 43, chỉ còn phần đặc thù agent
 # (trailer commit, cách gọi công cụ browser) + pointer về Contract.

@@ -38,8 +38,31 @@ export const SUPABASE_PAGE = 1000;
  * @returns mảng đầy đủ, hoặc `null` nếu query lỗi (caller PHẢI xử lý null như lỗi).
  * @throws RangeError nếu pageSize/hardCap không hợp lệ; Error nếu chạm hardCap.
  */
+/**
+ * Query phân trang: nhận (from, to), trả về một thứ `await` được có `data`/`error`.
+ *
+ * `data: unknown` là CỐ Ý. Trước đây tham số này khai
+ * `PromiseLike<{ data: T[] | null; error: unknown }>`, tức đòi builder PostgREST
+ * phải trả về ĐÚNG kiểu viết tay mà caller mong. Builder không bao giờ làm vậy —
+ * nó trả kiểu SINH TỪ DB, và với select có quan hệ lồng thì hình dạng còn khác
+ * nữa. Hệ quả: mọi call site phải ép `(supabase as any)` để đi qua, và cái ép đó
+ * tắt kiểm tra cho TOÀN BỘ lời gọi — tên bảng gõ sai, cột không tồn tại, đều
+ * biên dịch sạch. Đo 07/08/2026: 22 chỗ ép như vậy còn lại trong code tiền.
+ *
+ * Nới `data` thành `unknown` đảo ngược đánh đổi: builder vào được mà không cần
+ * ép, nên TÊN BẢNG VÀ DANH SÁCH CỘT được kiểm lại; còn `T` chỉ còn chi phối kiểu
+ * TRẢ VỀ — một khẳng định của caller, nhưng là khẳng định có tên và nhìn thấy
+ * được tại chỗ, không phải một dấu `any` nuốt cả câu lệnh.
+ *
+ * Cùng khuôn với CustomerCreditRpcInvoker trong src/lib/customerCreditRpc.ts.
+ */
+export type PagedQueryBuilder = (
+  from: number,
+  to: number,
+) => PromiseLike<{ data: unknown; error: unknown }>;
+
 export async function fetchAllRows<T = any>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  build: PagedQueryBuilder,
   opts: { pageSize?: number; hardCap?: number; label?: string } = {},
 ): Promise<T[] | null> {
   const page = opts.pageSize ?? SUPABASE_PAGE;

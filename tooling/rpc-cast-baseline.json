@@ -1,10 +1,5 @@
 {
-  "$comment": "Ratchet any-cast client Supabase. Con số CHỈ ĐƯỢC GIẢM. Thêm cast mới ⇒ CI đỏ. Sinh bởi scripts/check-rpc-cast-ratchet.mjs. — CHỐT LẠI 07/08/2026, và con số TĂNG 0 → 22 KHÔNG phải vì code tệ đi mà vì PHÉP ĐO rộng ra: mẫu dò cũ chỉ bắt lời gọi .rpc, trong khi repo còn 90 chỗ ép (supabase as any) rồi gọi .from(...) — cùng một cast, cùng một hậu quả (tên bảng gõ sai vẫn biên dịch sạch), chỉ khác tên phương thức. Phần lớn 90 chỗ đó viết XUỐNG DÒNG giữa cast và .from nên cả grep theo dòng cũng không thấy; gate báo 0 suốt thời gian đó. Trong cùng lượt đã GỠ 68 chỗ và typecheck baseline không đổi (26 fingerprint) — gỡ cast TypeScript không thể đổi hành vi lúc chạy, rủi ro duy nhất là lỗi biên dịch và trình biên dịch đã im. 22 chỗ còn lại nằm ở 4 file mà cast đang CHE MỘT SAI LỆCH KIỂU CÓ THẬT: kiểu viết tay (UnhandedVoucher, ContractWithRelations) khác kiểu sinh từ DB, và Json cần kiểm tra lúc chạy chứ không phải khẳng định suông. Gỡ mù ở đó là nói dối trình biên dịch chứ không phải sửa — phải xử từng chỗ có suy xét, kèm test.",
-  "total": 22,
-  "perFile": {
-    "src/hooks/useCashHandovers.ts": 2,
-    "src/hooks/useCommissionVoucher.ts": 3,
-    "src/hooks/useContracts.ts": 12,
-    "src/hooks/useVoucherDetail.ts": 5
-  }
+  "$comment": "Ratchet any-cast client Supabase. Con số CHỈ ĐƯỢC GIẢM. Thêm cast mới ⇒ CI đỏ. Sinh bởi scripts/check-rpc-cast-ratchet.mjs. — VỀ 0 ngày 07/08/2026. Chặng cuối (22 chỗ ở 4 file code tiền) KHÔNG gỡ mù được: chúng che sai lệch kiểu CÓ THẬT. Sửa ở GỐC thay vì từng chỗ: (a) fetchAllRows nhận PagedQueryBuilder với data:unknown, nên builder PostgREST vào được mà không cần ép — tên bảng và danh sách cột được kiểm lại, còn T chỉ chi phối kiểu trả về; (b) chuỗi select của useContractsPaged tách thành HAI HẰNG LITERAL, vì supabase-js chỉ suy kiểu được từ chuỗi literal — chuỗi dựng động cho ra GenericStringError[], đúng thứ buộc phải ép trước đây; (c) cột jsonb (commission_tiers, attachments) kiểm TỪNG PHẦN TỬ lúc chạy rồi mới khẳng định, không khẳng định suông. Hai chỗ còn lại ở useContracts vẫn là  — nhưng hẹp và có kiểm soát, vì select đã được kiểm kiểu; nợ hoà giải kiểu viết tay ghi ở known-gaps: contract-type-handwritten-drift.",
+  "total": 0,
+  "perFile": {}
 }

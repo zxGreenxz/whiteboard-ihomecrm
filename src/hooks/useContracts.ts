@@ -126,7 +126,7 @@ export const useContracts = (opts?: {
       // GenerateInvoiceDialog sinh THIẾU hoá đơn âm thầm (bug cap-1000).
       const data = await fetchAllRows<ContractWithRelations>(
         (from, to) => {
-          let query = (supabase as any)
+          let query = supabase
             .from("contracts")
             .select(CONTRACT_DIALOG_SELECT)
             .is("deleted_at", null);
@@ -183,9 +183,23 @@ export interface ContractPagedParams {
 
 /** Select rút gọn cho danh sách. innerRoom=true khi cần lọc theo toà/tên phòng
  *  (rooms!inner để điều kiện trên bảng con lọc được dòng cha). */
-const buildContractListSelect = (innerRoom: boolean) => `
+// HAI HẰNG LITERAL, không phải một hàm ghép chuỗi.
+//
+// supabase-js suy kiểu của `.select()` bằng cách PHÂN TÍCH CHUỖI LITERAL lúc
+// biên dịch. Một chuỗi dựng động (template literal có `${}`) chỉ là `string`,
+// nên bộ suy kiểu bó tay và trả `GenericStringError[]` — kiểu "tôi không đọc
+// được select này". Đó chính là lý do chỗ gọi phải ép `as ContractWithRelations[]`,
+// và cái ép đó nuốt luôn mọi sai sót thật trong chuỗi select.
+//
+// Cùng gốc bệnh với việc truyền tên RPC qua biến `string` (xem
+// src/lib/customerCreditRpc.ts): giá trị đi qua một tham số rộng thì kiểu chết
+// tại đó. Cách chữa cũng giống: giữ literal.
+//
+// Hai biến thể chỉ khác đúng `!inner` — cần khi lọc theo toà/tên phòng, vì điều
+// kiện trên bảng con phải lọc được dòng cha.
+const CONTRACT_LIST_SELECT = `
   *,
-  room:rooms!contracts_room_id_fkey${innerRoom ? "!inner" : ""} (
+  room:rooms!contracts_room_id_fkey (
     id, name, building_id,
     building:buildings!rooms_building_id_fkey ( id, name )
   ),
@@ -193,7 +207,22 @@ const buildContractListSelect = (innerRoom: boolean) => `
     id, contract_id, customer_id, is_representative,
     customer:customers!contract_customers_customer_id_fkey ( id, full_name, phone )
   )
-`;
+` as const;
+
+const CONTRACT_LIST_SELECT_INNER_ROOM = `
+  *,
+  room:rooms!contracts_room_id_fkey!inner (
+    id, name, building_id,
+    building:buildings!rooms_building_id_fkey ( id, name )
+  ),
+  contract_customers!contract_customers_contract_id_fkey (
+    id, contract_id, customer_id, is_representative,
+    customer:customers!contract_customers_customer_id_fkey ( id, full_name, phone )
+  )
+` as const;
+
+const buildContractListSelect = (innerRoom: boolean) =>
+  innerRoom ? CONTRACT_LIST_SELECT_INNER_ROOM : CONTRACT_LIST_SELECT;
 
 const toLocalISODate = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -222,14 +251,14 @@ async function resolveContractSearchOr(rawTerm: string): Promise<string | null> 
   const [contractIds, roomIds] = await Promise.all([
     // Tên khách / SĐT → contract ids (2 bước phụ thuộc nhau, giữ tuần tự).
     (async (): Promise<string[]> => {
-      const { data: custs } = await (supabase as any)
+      const { data: custs } = await supabase
         .from("customers")
         .select("id")
         .or(`full_name.ilike.${star},phone.ilike.${star}`)
         .limit(200);
       const custIds = (custs || []).map((c: any) => c.id);
       if (custIds.length === 0) return [];
-      const { data: ccs } = await (supabase as any)
+      const { data: ccs } = await supabase
         .from("contract_customers")
         .select("contract_id")
         .in("customer_id", custIds)
@@ -240,7 +269,7 @@ async function resolveContractSearchOr(rawTerm: string): Promise<string | null> 
     })(),
     // Tên phòng → room ids.
     (async (): Promise<string[]> => {
-      const { data: rms } = await (supabase as any)
+      const { data: rms } = await supabase
         .from("rooms")
         .select("id")
         .ilike("name", pattern)
@@ -273,7 +302,7 @@ async function fetchContractsPagedOnce(
     (filters?.room_name && filters.room_name !== "all")
   );
 
-  let query = (supabase as any)
+  let query = supabase
     .from("contracts")
     .select(buildContractListSelect(needInnerRoom), { count: "exact" })
     .is("deleted_at", null)
@@ -336,7 +365,15 @@ async function fetchContractsPagedOnce(
   }
 
   return {
-    data: (data || []) as ContractWithRelations[],
+ // ContractWithRelations là kiểu VIẾT TAY, hẹp hơn hình dạng thật DB trả (một
+    // số cột nullable ở DB được khai không-null ở đây, và quan hệ lồng khác cách
+    // biểu diễn). Khẳng định qua  là hẹp và CÓ KIỂM SOÁT: chuỗi select
+    // ngay phía trên nay đã được kiểm kiểu thật (literal, không dựng động), nên
+    // tên bảng/cột sai sẽ đỏ. Cái ép cũ  tắt kiểm cho TOÀN BỘ
+    // câu lệnh — hai thứ khác hẳn nhau.
+    // Việc hoà giải kiểu viết tay với kiểu sinh từ DB là một lượt riêng, đã ghi
+    // vào known-gaps: contract-type-handwritten-drift.
+    data: (data || []) as unknown as ContractWithRelations[],
     count: count || 0,
   };
 }
@@ -405,7 +442,7 @@ export async function fetchContractsForExport(
 
 const contractHeadCountBase = (buildingIds?: string[]) => {
   const scoped = !!buildingIds?.length;
-  let q = (supabase as any)
+  let q = supabase
     .from("contracts")
     .select(
       scoped ? "id, room:rooms!contracts_room_id_fkey!inner(building_id)" : "id",
@@ -535,7 +572,7 @@ export const useContract = (id?: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("contracts")
         .select(CONTRACT_SELECT)
         .eq("id", id)
@@ -546,7 +583,9 @@ export const useContract = (id?: string) => {
         throw error;
       }
 
-      return data as ContractWithRelations;
+      // Xem ghi chú ở useContractsPaged: khẳng định hẹp sau khi select đã được
+      // kiểm kiểu, không phải ép mù cả câu lệnh.
+      return data as unknown as ContractWithRelations;
     },
     enabled: !!id,
   });
@@ -658,7 +697,7 @@ export const useSyncContractCustomers = () => {
         notes?: string | null;
       }>;
     }) => {
-      const { error: delErr } = await (supabase as any)
+      const { error: delErr } = await supabase
         .from("contract_customers")
         .delete()
         .eq("contract_id", contractId);
@@ -673,7 +712,7 @@ export const useSyncContractCustomers = () => {
         notes: c.notes ?? null,
       }));
 
-      const { error: insErr } = await (supabase as any)
+      const { error: insErr } = await supabase
         .from("contract_customers")
         .insert(rows);
       if (insErr) throw insErr;
@@ -1250,7 +1289,7 @@ export const useBulkCreateContracts = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data: rooms } = await (supabase as any)
+      const { data: rooms } = await supabase
         .from("rooms")
         .select("id, name, code")
         .eq("building_id", building_id)
@@ -1258,7 +1297,7 @@ export const useBulkCreateContracts = () => {
 
       if (!rooms) throw new Error("Không thể tải danh sách căn hộ");
 
-      const { data: existingTenants } = await (supabase as any)
+      const { data: existingTenants } = await supabase
         .from("tenants")
         .select("id, full_name, phone")
         .is("deleted_at", null);
@@ -1354,7 +1393,7 @@ export const useBulkCreateContracts = () => {
             continue;
           }
 
-          await (supabase as any).from("contract_tenants").insert([
+          await supabase.from("contract_tenants").insert([
             {
               contract_id: contract.id,
               tenant_id: tenantId,

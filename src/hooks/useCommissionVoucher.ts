@@ -3,6 +3,7 @@ import { differenceInMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { CommissionTier } from "@/types/building";
+import { isJsonObject, jsonArray } from "@/lib/jsonValue";
 
 // =============================================
 // Utils
@@ -79,7 +80,7 @@ export const useCommissionPrefill = (contractId: string | null) => {
     queryFn: async (): Promise<CommissionPrefillData | null> => {
       if (!contractId) return null;
 
-      const { data: contract, error } = await (supabase as any)
+      const { data: contract, error } = await supabase
         .from("contracts")
         .select(
           `id, contract_number, signed_date, start_date, end_date, rent_price,
@@ -101,8 +102,25 @@ export const useCommissionPrefill = (contractId: string | null) => {
       }
 
       const months = calcContractMonths(contract.start_date, contract.end_date);
-      const tiers = (contract.room?.building?.commission_tiers ??
-        []) as CommissionTier[];
+      // `commission_tiers` là cột jsonb ⇒ kiểu sinh ra là Json, không phải
+      // CommissionTier[]. Ép thẳng là nói dối trình biên dịch ở chỗ TÍNH TIỀN
+      // HOA HỒNG: một bậc thiếu `rate_percent` sẽ thành undefined trong phép
+      // nhân và cho ra NaN, hoặc tệ hơn — findMatchingTier chọn nhầm bậc và ra
+      // một con số trông hợp lý nhưng sai.
+      //
+      // Kiểm từng phần tử thay vì khẳng định. Bậc không đủ ba trường số bị LOẠI,
+      // không phải sửa chữa: một bậc hoa hồng méo là dữ liệu cần người xem, và
+      // đoán hộ nó là cách biến lỗi nhập liệu thành lỗi chi tiền.
+      const tiers = jsonArray({ t: contract.room?.building?.commission_tiers }, "t").filter(
+        (x) =>
+          isJsonObject(x) &&
+          typeof x.min_months === "number" &&
+          typeof x.max_months === "number" &&
+          typeof x.rate_percent === "number",
+        // `as unknown as` ở đây KHÁC hẳn cái ép cũ: mọi phần tử còn lại đã được
+        // kiểm đủ ba trường số ngay phía trên, nên khẳng định này có bằng chứng
+        // lúc chạy đứng sau. Cái ép cũ không kiểm gì cả.
+      ) as unknown as CommissionTier[];
       const matched = findMatchingTier(months, tiers);
 
       const rep =
@@ -114,7 +132,7 @@ export const useCommissionPrefill = (contractId: string | null) => {
       let defaultAccountId: string | null = null;
       const buildingName = contract.room?.building?.name as string | undefined;
       if (buildingName) {
-        const { data: accounts } = await (supabase as any)
+        const { data: accounts } = await supabase
           .from("accounts")
           .select("id, name, is_default")
           .ilike("name", buildingName)
@@ -248,7 +266,7 @@ export const useExistingCommissionVouchers = (contractId: string | null) => {
     queryKey: ["existing-commission-vouchers", contractId],
     enabled: !!contractId,
     queryFn: async (): Promise<ExistingCommissionVoucher[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("income_expenses")
         .select("id, code, commission_kind, total_amount, approval_status")
         .eq("contract_id", contractId)
