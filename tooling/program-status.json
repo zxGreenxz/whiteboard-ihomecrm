@@ -19,6 +19,22 @@
   ],
   "done": [
     {
+      "item": "✅ Lane migrate:forward TỰ CHẠY ĐƯỢC — biên nhận backup thay cho token con người",
+      "evidence": "Chủ dự án yêu cầu tự động hoàn toàn. Token cũ gộp HAI thứ khác hẳn nhau: 'có người dừng lại nhìn' và 'có điểm khôi phục nếu hỏng'. Với PITR tắt, chỉ thứ hai quyết định thiệt hại — và con người gõ token chưa bao giờ tạo ra bản dump đó. Luật mới cưỡng chế đúng thứ đo được, và ở một chiều CHẶT HƠN: trước đây token + --khong-backup là qua, nay đường tự động KHÔNG THỂ bỏ backup. Đã apply thật 20260807140000_ie_guard_handover_scope qua lane: backup 144s/24,2MB/567 bảng · giấy phép bien-nhan-backup 64283433567f5238 · provenance nay xếp catalog-proven. Thứ THẬT SỰ mất: không còn ai xem lại NỘI DUNG migration — ba lớp còn lại kiểm xuất xứ, không kiểm ý định."
+    },
+    {
+      "item": "✅ NGUYÊN NHÂN GỐC của việc đi vòng qua lane: cửa chính không mở được",
+      "evidence": "Lane quét `END;` đứng một mình và coi là kết thúc transaction — nhưng thân hàm plpgsql cũng kết thúc đúng như vậy, và KHÁC với BEGIN (comment cũ đã lường trước vì plpgsql BEGIN không có chấm phẩy), plpgsql END thì CÓ. Đo: 3/4 migration sau cutoff bị TỪ CHỐI SAI, tức lane không nuốt nổi migration nào định nghĩa hàm plpgsql — gần như mọi migration của repo. Một cửa chặn từ chối nhầm việc hợp lệ sẽ LUÔN bị đi vòng, và mọi luật viết thêm về nó vô nghĩa cho tới khi nó mở được. Bản vá che dollar-quote vào từ phiên song song; đã thêm 7 test giữ cho nó không quay lại (vùng đó trước có ĐÚNG MỘT test, không ca nào chạm plpgsql)."
+    },
+    {
+      "item": "✅ Bốn cửa chặn mới quanh đường ghi production",
+      "evidence": "(a) check-management-api-writes: phân loại 34 caller /database/query thành 17 write · 12 read · 4 passthrough · 1 lane; caller GHI mới ⇒ đỏ. Không cấm cả endpoint vì 20 gate đang canh production dùng nó. (b) apply-sql.mjs + apply-migration.mjs nay đòi promotion token — đường tắt không được RẺ HƠN đường chính. (c) check-migration-ledger-frozen: 351 file xếp `ledger-applied` dựa trên một bảng không ai canh; băm cả `statements` vì sửa nội dung mà giữ version là viết lại lịch sử mà đếm dòng không thấy. (d) check-forward-migration-idempotent: 4/4 migration sau cutoff chạy lại được lần hai — trước đó idempotency chỉ là LỜI KHAI."
+    },
+    {
+      "item": "✅ Gate độ tươi tài liệu Copilot — 21/25 trang không có con dấu còn hiệu lực",
+      "evidence": "9 trang đã bị SỬA sau ngày đóng dấu (dạng nguy hiểm nhất vì manifest vẫn trông như 'đã review' — 08-thu-chi-so-quy.md đóng dấu 20/07, sửa 06/08), 12 trang chưa từng review. Copilot trả lời câu hỏi nghiệp vụ TỪ những trang này: SOP tiền và sổ quỹ, hợp đồng, thanh lý. Một tài liệu sai không dừng ở chỗ sai — nó được đọc to lên bằng giọng của hệ thống. Ratchet 21 nợ, nhưng ngưỡng 180 ngày đỏ THẬT kể cả với mục trong baseline."
+    },
+    {
       "item": "✅ Đợt 4 lát 3 (chủ dự án mở khoá OpenClaw 07/08): sidebar + launcher SINH TỪ registry",
       "evidence": "Lát 1–2 dựng registry làm nguồn ĐỐI CHIẾU; lát này đổi chiều phụ thuộc. Đối chiếu chỉ phát hiện lệch SAU KHI lệch đã nằm trong mã nguồn và chỉ khi test được chạy; sinh từ nguồn thì lệch không dựng lên được. Lát này BỊT một lỗ và MỞ một lỗ vô hình hơn: contract test cũ nay so registry với chính nó. Phép kiểm thật dời sang scripts/check-capability-surfaces.mjs (đọc mã nguồn, bắt khai tay lại, route JSX lệch, trang permission picker biến mất). Bundle: chunk chứa Sidebar 53,52 → 53,42 kB, index-DXGpyPle.js GIỮ NGUYÊN hash ⇒ không eager import regression. Đột biến 8/8."
     },

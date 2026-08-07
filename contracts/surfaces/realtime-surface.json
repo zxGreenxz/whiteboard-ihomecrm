@@ -14,99 +14,77 @@
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "buildings": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "cash_handovers": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "contract_terminations": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "contract_transfers": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "contracts": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "customers": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "income_expense_items": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "income_expenses": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "invoices": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "jobs": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "network_command_events": {
       "published": true,
@@ -230,18 +208,14 @@
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "rooms": {
       "published": true,
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": [
-        "src/hooks/useRealtimeDataSync.ts"
-      ]
+      "otherListeners": []
     },
     "zalo_accounts": {
       "published": true,
