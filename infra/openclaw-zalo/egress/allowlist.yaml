@@ -33,6 +33,66 @@ destinations:
   - host: tt-profile-wpa.chat.zalo.me
     port: 443
     purpose: Zalo profile transport
+  # The inbound listener's WebSocket pool, from `zpw_ws` in the login response.
+  #
+  # The WHOLE pool is declared, not just the members seen so far. zca-js rotates
+  # endpoints on close (`rotateEndpoint`), so listing only the observed ws1/ws4/ws12
+  # buys a listener that works now and dies whenever it rotates onto an undeclared
+  # one - an intermittent failure, which is the most expensive kind here.
+  #
+  # Wildcards are forbidden by construction in this allowlist, so a numbered pool has
+  # to be enumerated. These were invisible until two fixes landed together: routing
+  # provider sockets through the broker (`ws` ignores proxy env vars, so the listener
+  # was failing DNS directly and dying in ~50ms as "[object Object]"), and making the
+  # broker name the host it refuses.
+  - host: ws1-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws2-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws3-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws4-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws5-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws6-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws7-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws8-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws9-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws10-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws11-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws12-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws13-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws14-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws15-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
+  - host: ws16-msg.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime websocket pool
   - host: openclaw.chillhome.io.vn
     port: 443
     purpose: OpenClaw control endpoint
