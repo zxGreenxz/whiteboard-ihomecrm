@@ -47,7 +47,13 @@ export interface ConnectDependencies {
 
 export type ConnectAuthorization =
   | { ok: true; destination: PinnedDestination }
-  | { ok: false; statusCode: 400 | 403 | 502; reason: string };
+  // `host` is carried so a denial can name what was refused. Allowed connects
+  // already log their host, so a denied one discloses nothing new - and without it
+  // an operator cannot tell a missing allowlist entry from a broken dependency.
+  // Measured cost of the omission: a blocked `jr.zaloapp.com` silently broke every
+  // Zalo login for days, presenting as "quét mã không hoạt động" with no trace in
+  // any log on any tier.
+  | { ok: false; statusCode: 400 | 403 | 502; reason: string; host?: string };
 
 export interface ConnectProxyOptions extends ConnectDependencies {
   dialPinnedTarget?: DialPinnedTarget;
@@ -98,6 +104,7 @@ export async function authorizeConnect(
       ok: false,
       statusCode: 403,
       reason: destinationVerdict.denial ?? "DESTINATION_FORBIDDEN",
+      host: target.host,
     };
   }
 
@@ -105,10 +112,10 @@ export async function authorizeConnect(
   try {
     addresses = await (dependencies.resolveHost ?? systemResolveHost)(target.host);
   } catch {
-    return { ok: false, statusCode: 502, reason: "DNS_FAILURE" };
+    return { ok: false, statusCode: 502, reason: "DNS_FAILURE", host: target.host };
   }
   if (addresses.some(({ address, family }) => isIP(address) !== family)) {
-    return { ok: false, statusCode: 403, reason: "INVALID" };
+    return { ok: false, statusCode: 403, reason: "INVALID", host: target.host };
   }
 
   const resolution = resolveAndPin(
@@ -168,6 +175,7 @@ export function createConnectProxy(options: ConnectProxyOptions): Server {
           level: "warn",
           event: "connect_denied",
           reason: authorization.reason,
+          ...(authorization.host === undefined ? {} : { host: authorization.host }),
         });
         writeConnectFailure(clientSocket, authorization.statusCode);
         return;

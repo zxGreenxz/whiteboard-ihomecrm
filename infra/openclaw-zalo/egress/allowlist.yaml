@@ -21,6 +21,18 @@ destinations:
   - host: wpa.chat.zalo.me
     port: 443
     purpose: Zalo websocket transport
+  # Measured, not guessed. A full QR login was captured through an enumerating proxy:
+  # `jr.zaloapp.com` is contacted between GotLoginInfo and checkSession, i.e. exactly
+  # where the session is established. With it blocked, `checkSession` returns nothing
+  # and zca-js throws "Cannot get session, login failed" - which surfaced to the owner
+  # as "quét mã không hoạt động" after Zalo had already confirmed the login on their
+  # phone. The broker's denial log omitted the host, so nothing anywhere named it.
+  - host: jr.zaloapp.com
+    port: 443
+    purpose: Zalo login session establishment
+  - host: tt-profile-wpa.chat.zalo.me
+    port: 443
+    purpose: Zalo profile transport
   - host: openclaw.chillhome.io.vn
     port: 443
     purpose: OpenClaw control endpoint
