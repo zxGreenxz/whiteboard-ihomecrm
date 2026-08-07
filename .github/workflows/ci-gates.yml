@@ -122,6 +122,12 @@ jobs:
           node scripts/check-ts-suppressions.mjs
           node scripts/check-graph-hygiene.mjs
 
+      # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +
+      # biên dịch 247 file), tốn hàng chục giây — trong khi cả khối trên chạy dưới
+      # một giây. Gộp vào sẽ làm mất tín hiệu "khối gate tĩnh nhanh".
+      - name: Đảo strict — vùng đã sạch không được bẩn lại
+        run: node scripts/check-strict-islands.mjs
+
       # Độ mới graph — CỐ Ý KHÔNG CHẶN. Plan kiến trúc (dòng 119, 2271) đã chốt
       # UA freshness không phải required check: graph 4 MB commit vào repo, refresh
       # là cả một PR, nên đỏ CI mỗi khi nó cũ sẽ khiến người ta tắt gate đi. Chế độ
