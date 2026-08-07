@@ -2,14 +2,10 @@
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
   "updatedAt": "2026-08-07",
   "currentWave": "5-6",
-  "waveTitle": "Công cụ tri thức + biên kiểu đã đóng — chương trình còn 3 mục bị CHỦ DỰ ÁN hoãn",
+  "waveTitle": "Đã soi toàn bộ plan: 365 deliverable · 187 xong · 24 bỏ có chủ ý · 154 còn lại (sổ ở tooling/plan-remaining.json)",
+  "$soSachViecConLai": "tooling/plan-remaining.json — sinh từ một lượt soi 14 agent (1,53 triệu token) đối chiếu TỪNG deliverable của plan 3210 dòng vào repo thật, kèm một vòng phản biện cố chứng minh ngược mỗi kết luận 'chưa làm'. GIỮ FILE ĐÓ. Trước khi nó tồn tại, câu 'đã xong plan chưa' không ai trả lời được mà không đọc lại 3210 dòng, và chính vì vậy nó được trả lời sai nhiều lần.",
   "$trangThai": "Đợt 0,1,2,3 xong. Đợt 4 xong TRỪ lát 3 (chủ dự án hoãn: lát đó đụng 2 dòng OpenClaw trong Sidebar/launcherTiles, mà OpenClaw đang được chính chủ code). Đợt 5 xong (ratchet cast về 0). Đợt 6 xong phần README + docs. Ba mục bị hoãn có CHỦ Ý, không phải bỏ quên — xem mảng `hoanCoChuY`.",
   "hoanCoChuY": [
-    {
-      "item": "Đợt 4 lát 3: nối Sidebar + launcherTiles vào capability registry",
-      "quyetDinh": "Chủ dự án hoãn 07/08/2026",
-      "vi": "Lát này phải sửa 2 dòng OpenClaw trong Sidebar.tsx và launcherTiles.ts. Chủ dự án đang code chính phần OpenClaw nên mọi thay đổi ở đó sẽ đụng nhau. Rủi ro kỹ thuật của lát này vốn thấp nhất chương trình — hoãn vì lý do phối hợp, không vì lý do kỹ thuật."
-    },
     {
       "item": "Apply migration thật lên production",
       "quyetDinh": "Chủ dự án hoãn 07/08/2026 (\"không gấp\")",
@@ -22,6 +18,30 @@
     }
   ],
   "done": [
+    {
+      "item": "✅ Đợt 4 lát 3 (chủ dự án mở khoá OpenClaw 07/08): sidebar + launcher SINH TỪ registry",
+      "evidence": "Lát 1–2 dựng registry làm nguồn ĐỐI CHIẾU; lát này đổi chiều phụ thuộc. Đối chiếu chỉ phát hiện lệch SAU KHI lệch đã nằm trong mã nguồn và chỉ khi test được chạy; sinh từ nguồn thì lệch không dựng lên được. Lát này BỊT một lỗ và MỞ một lỗ vô hình hơn: contract test cũ nay so registry với chính nó. Phép kiểm thật dời sang scripts/check-capability-surfaces.mjs (đọc mã nguồn, bắt khai tay lại, route JSX lệch, trang permission picker biến mất). Bundle: chunk chứa Sidebar 53,52 → 53,42 kB, index-DXGpyPle.js GIỮ NGUYÊN hash ⇒ không eager import regression. Đột biến 8/8."
+    },
+    {
+      "item": "✅ Ba bề mặt 'hợp đồng chỉ là một chuỗi' — rpc · edge · realtime, sinh từ HAI nguồn",
+      "evidence": "contracts/surfaces/{rpc,edge-function,realtime}-surface.json + 3 generator + 3 checker. 230 RPC được gọi / 1063 hàm catalog · 13 thư mục Edge / 11 ĐANG CHẠY · 30 bảng publish / 13 hub nghe. PHÁT HIỆN: network-watchdog và openclaw-watchdog CÓ mã nguồn nhưng KHÔNG tồn tại trên server — thư mục trong repo không có nghĩa là hàm đang chạy; 5 hàm verify_jwt=false tức ai trên Internet cũng gọi được. Bộ dò sai HAI lần trước khi đúng, cả hai đều là mẫu 'chỉ phủ một biến thể': bắt nhầm options.rpc() của bridge OpenClaw, và mù với dạng shorthand {table} lặp qua hằng khiến nó báo 12 bảng NC/OpenClaw là 'không ai nghe'. Đột biến 13/13."
+    },
+    {
+      "item": "✅ Quét secret toàn lịch sử thành CỬA CHẶN + nhánh production hết vô hình",
+      "evidence": "gitleaks 8.30.1 trên 1776 commit / 64,22 MB: 2194 finding → 0. Hạ theo hai bước có thứ tự: .gitleaks.toml miễn trừ theo HÌNH DẠNG GIÁ TRỊ (digest hex, anon JWT nhận diện bằng payload role — ghim cả BA biến thể base64, service_role KHÔNG miễn trừ) → còn 17; .gitleaksignore ghim từng fingerprint kèm lý do đã mở đọc → 0. Không nới regex cho 17 cái đó im vì nới sẽ câm luôn secret THẬT rơi vào cùng chỗ. Nhánh `production` trước đây KHÔNG được ci-gates.yml theo dõi — đúng nhánh Vercel phát hành lại là nhánh duy nhất không ai canh. Đột biến 8/8."
+    },
+    {
+      "item": "✅ Preflight credential local + hợp đồng TÊN credential",
+      "evidence": "Plan §12 và Verification Đợt 0b đòi, chưa từng tồn tại. Không có preflight thì agent chỉ phát hiện thiếu token ở GIỮA CHỪNG, đúng lúc đường vòng trở nên hấp dẫn nhất. Đột biến 7/7, và ca đắt nhất không phải 'có bắt thiếu không' mà là 'có RÒ GIÁ TRỊ không': rút 7 bí mật thật ra khỏi kho rồi đối chiếu TOÀN BỘ đầu ra ở mọi nhánh — 0 lần xuất hiện."
+    },
+    {
+      "item": "✅ 8 trang tài liệu plan đòi mà chưa từng có (docs/decisions, docs/operations, docs/engineering)",
+      "evidence": "4 ADR + MIGRATION_STRATEGY + DATA_ENVIRONMENTS + he-thong/24-platform-delivery + operations/incident-response. Đủ frontmatter §11, mỗi trang có ít nhất một dòng 'CHƯA KIỂM CHỨNG'. Mỗi trang được người thứ hai soi lại 34–61 khẳng định, và vòng soi bắt được lỗi thật: ADR-0001 BỊA 'plan đặt đây thành stop gate'; ADR-0002 giải thích sai vì sao phải chạy schema.sql hai lượt (không phải thứ tự khai, mà vì check_function_bodies=false cho lượt một chạy lọt); DATA_ENVIRONMENTS đếm 5 thay vì 6 chỗ và bỏ sót rằng org TEST cũng được GHI."
+    },
+    {
+      "item": "✅ Realtime descriptor tách theo miền, hub 377 → 168 dòng",
+      "evidence": "src/hooks/realtime/{finance,contracts,operations,types,index}.ts. Tách một mảng thành ba file tạo ra cách hỏng MỚI — quên nối một miền vào index — và hậu quả trùng khít lớp lỗi cả hệ realtime sinh ra để chống. Nên index.ts đối chiếu tập descriptor với REALTIME_SYNC_TABLES (thiếu/thừa/trùng). Sửa một test so mảng THEO THỨ TỰ đăng ký — thứ tự không phải tính chất hành vi, nó chỉ tạo ra cách làm vỡ test mà không mất gì. Đột biến 4/4."
+    },
     {
       "item": "✅ Đợt 6: 246 đảo strict được khoá — ratchet chỉ đi một chiều",
       "evidence": "Contract §13 ghi 'bật strict mode' là rule ĐÃ BỎ vì sai; đo lại 07/08 cho biết vì sao: 246/337 file .ts đã sạch, 91 file còn lỗi, bật toàn cục là 91 file đỏ ngay rồi lại phải tắt. Đo bằng cách chạy tsc RIÊNG từng file (lỗi của A kéo qua import sẽ đổ nhầm cho B nếu gộp), rồi biên dịch cả 246 cùng lúc để xác nhận. Ratchet là TẬP TÊN FILE chứ không phải số đếm. ĐỘT BIẾN PHÁT HIỆN LỖ TRONG BẢN NHÁP: thêm tham số không kiểu vào một đảo mà gate vẫn xanh, vì tsconfig.app.json đặt TƯỜNG MINH noImplicitAny:false và giá trị tường minh của cha thắng mặc-định-suy-từ-strict của con. Nay khai tường minh 9 cờ + gate hỏi tsc kết quả HỢP NHẤT qua --showConfig. 8/8 đột biến."
@@ -189,10 +209,10 @@
   ],
   "blockers": [],
   "next": [
-    "Refresh graph UA trong PR RIÊNG (đang cũ 488 commit, thiếu 18 subsystem gồm toàn bộ Network Center + OpenClaw) — xem known-gaps#ua-graph-stale",
-    "Hoà giải ContractWithRelations với kiểu sinh từ types.ts để bỏ 2 khẳng định hẹp cuối cùng — known-gaps#contract-type-handwritten-drift",
-    "Mở rộng strict islands: mỗi lần dọn xong một module thì THÊM vào tsconfig.strict-islands.json (ratchet chỉ đi một chiều)",
-    "Khi chủ dự án báo xong OpenClaw: làm Đợt 4 lát 3"
+    "ĐỌC tooling/plan-remaining.json TRƯỚC — 154 mục còn lại đã được soi và xếp theo lát, kèm 'còn phải làm gì' cho từng mục. Đừng soi lại plan từ đầu.",
+    "Bốn mục đáng làm trước theo mức giảm rủi ro: (1) src/lib/contracts/{errors,envelopes} + luật wrapper không nuốt lỗi thành [] hoặc toast chung — code tiền; (2) tách App.tsx sang src/app/providers + routes/index; (3) refresh graph UA trong PR RIÊNG (known-gaps#ua-graph-stale); (4) gộp step CI thành 3 job đặt tên contract-gates/schema-gates/docs-freshness.",
+    "Hoà giải ContractWithRelations với kiểu sinh từ types.ts — known-gaps#contract-type-handwritten-drift",
+    "Mở rộng strict islands: mỗi lần dọn xong một module thì THÊM vào tsconfig.strict-islands.json (ratchet chỉ đi một chiều)"
   ],
   "knownDirtyFiles": [
     {

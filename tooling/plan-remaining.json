@@ -1,0 +1,1263 @@
+{
+  "$comment": "SỔ VIỆC CÒN LẠI của plan kiến trúc/agent. Sinh từ một lượt soi 14 agent (1,53 triệu token, 665 lượt gọi công cụ) đối chiếu TỪNG deliverable của plan 3210 dòng vào repo thật, có một vòng PHẢN BIỆN cố chứng minh ngược mỗi kết luận 'chưa làm'. Giữ file này để phiên sau không phải soi lại từ đầu. Mục nào làm xong thì XOÁ khỏi đây và ghi vào program-status.json — đừng để hai sổ cùng nói về một việc.",
+  "auditedAt": "2026-08-07",
+  "auditedAtCommit": "43a5564e",
+  "method": "workflow soi-plan-con-thieu (7 lát × [soi → phản biện])",
+  "totals": {
+    "deliverablesInPlan": 365,
+    "done": 150,
+    "intentionallyDropped": 24,
+    "missingAtAuditTime": 191,
+    "completedAfterAudit": 37,
+    "stillMissing": 154
+  },
+  "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
+  "items": {
+    "dot-0-1": [
+      {
+        "deliverable": "Đợt 0a #5 — Tạo branch `production` tại SHA đang chạy + đổi Vercel Production Branch + rà scope env var và 2 cron `/api/salary-v5-cron` + diễn tập rollback + ghi runbook",
+        "planRef": "mục 44, dòng 2703",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chạy `npm run check:external-controls` kèm VERCEL_TOKEN để `vercelProductionBranch` thành verified; bổ sung phần liệt kê env var (redacted) vào chính script đó; diễn tập rollback một lần thật và commit evidence (deployment id trước/sau + thời gian)."
+      },
+      {
+        "deliverable": "Đợt 0b — Giữ `CLAUDE.local.md` tại root + xác nhận `.gitignore` + credential-name contract + local redacted preflight",
+        "planRef": "mục 44, dòng 2721",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Viết `scripts/check-local-agent-credentials.mjs`: đọc `CLAUDE.local.md`, in TÊN field thiếu/hết hạn chứ không in value, exit != 0 khi thiếu; thêm npm alias và chạy tại máy agent (local-only, không vào CI cloud)."
+      },
+      {
+        "deliverable": "Đợt 0b — Thêm `check-agent-contract.mjs` và job `contract-gates`",
+        "planRef": "mục 44, dòng 2723",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Tách step \"Contract gates\" thành job riêng tên `contract-gates`, HOẶC đăng ký chủ ý gộp vào `tooling/known-gaps.yaml` (hiện chưa có mục nào cho việc này) để deliverable không treo lơ lửng."
+      },
+      {
+        "deliverable": "Đợt 1a — Focused current docs (3 trang): migration truth, Network Center, OpenClaw",
+        "planRef": "mục 45, dòng 2759",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Tạo trang migration truth riêng (docs/engineering/MIGRATION_STRATEGY.md); thêm luật vào docs checker chặn câu mô tả legacy migration là replayable; chạy `node scripts/check-doc-counts.mjs --fix` (gate đang đỏ) và đưa cả con số '33 nhóm trùng'/'625 file' trong Contract §5 vào phạm vi gate đó."
+      },
+      {
+        "deliverable": "Đợt 1b — Generator/checker đối chiếu ledger rows live, 33 nhóm duplicate + collision legacy `016_`/`017_`, catalog production và rollout evidence",
+        "planRef": "mục 45, dòng 2776",
+        "status": "MOT_PHAN",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Ghi cả DANH SÁCH nhóm version trùng (không chỉ số đếm) vào manifest; thêm nguồn evidence từ rollout receipt (Network Center / accounting / finance-v2) vào generator, hoặc ghi rõ trong `$comment` vì sao nguồn đó bị loại."
+      },
+      {
+        "deliverable": "Đợt 1b — Review theo batch + sampling + risk-directed (§0.7), `reviewedBy` ghi `batch:<id>`",
+        "planRef": "mục 45, dòng 2778",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Hoặc thêm `reviewedBy: \"batch:<id>\"` cho từng entry trỏ về review record, hoặc sửa policy/plan để ghi rõ đã thay bằng `reviewModel` cấp manifest + `migration-unknown-review.json`; và tạo hồ sơ kết quả random sample n≈30 cho bucket catalog-proven (hiện chỉ khai ý định)."
+      }
+    ],
+    "dot-2-3": [
+      {
+        "deliverable": "Đợt 2 — Thêm required jobs, gộp thành 3 nhóm `contract-gates` / `schema-gates` / `docs-freshness`",
+        "planRef": "§46, dòng 2804",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chốt dứt điểm: đổi tên/tách 3 job theo plan, hoặc ghi vào Contract rằng đã CỐ Ý gộp khác và vì sao. Nối scripts/check-docs.mjs vào nhóm docs. Bật required check theo tên job khi có GitHub Pro."
+      },
+      {
+        "deliverable": "Đợt 2 — Path classifier thay cho filter `20260729*`",
+        "planRef": "§46, dòng 2805",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Viết script phân loại đường dẫn (đọc tooling/risk-map.json) trả tier + tập gate cho tập file thay đổi, cho workflow dùng thay vì liệt kê glob tay."
+      },
+      {
+        "deliverable": "Đợt 2 — Evidence retention cho artifact CI",
+        "planRef": "§46, dòng 2805",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Chọn gate cần lưu evidence (reconcile-money, security-gates, generated-types-drift) rồi thêm upload-artifact + retention-days ở ci-gates.yml."
+      },
+      {
+        "deliverable": "Đợt 2 — npm alias cho 4 script gate còn thiếu + làm rõ `reconcile-money` v1/v2",
+        "planRef": "§46, dòng 2807",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm alias gate:reconcile-money-v2 và ghi vào PROJECT_CONTRACT §5: v1 = legacy APPROVED-cash, v2 = posting-aware, dùng cái nào khi nào, cutover khi nào (roadmap đã có lý lẽ, chỉ cần nâng lên Contract)."
+      },
+      {
+        "deliverable": "Đợt 2 — `scripts/check-external-controls.mjs`: gh api + vercel env ls + project settings → JSON redacted, chạy lại ĐỊNH KỲ",
+        "planRef": "§46, dòng 2808",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm phần đọc env var (Production/Preview/Development) + deployment SHA đang chạy; đăng ký chạy định kỳ (workflow schedule: hoặc scheduled task) và commit evidence mỗi lần."
+      },
+      {
+        "deliverable": "Đợt 2 — Thêm dòng Edge Function deploy vào bảng gate §27",
+        "planRef": "§46, dòng 2809 (bảng §27 dòng 2149-2164)",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm 2 dòng vào bảng gate Contract (Edge Function deploy: reviewed SHA + digest vào evidence store, preflight project/org, cấm deploy từ working tree bẩn; và Web promotion), rồi thêm invariant tương ứng vào check-agent-contract và kiểm bằng đột biến."
+      },
+      {
+        "deliverable": "Đợt 2 — PR template + `tooling/risk-map.json` + risk classifier",
+        "planRef": "§46, dòng 2810",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết scripts/check-risk-classifier.mjs: nhận danh sách file đổi → trả tier + tập gate bắt buộc; nối vào CI để PR đụng tier money/authorization/migration bị đòi đúng gate."
+      },
+      {
+        "deliverable": "Đợt 2 (Verification) — Chạy từng workflow checker và test path classifier trên 5 loại thay đổi (UI, migration, Edge Function, Network Center, OpenClaw)",
+        "planRef": "§46, dòng 2815",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Sau khi có classifier: dựng bộ ca kiểm 5 loại thay đổi và khẳng định nó chọn đúng tập workflow/gate."
+      },
+      {
+        "deliverable": "Đợt 2 (Verification/Stop gate) — API evidence chứng minh Vercel production branch, scope env var và deployment SHA đang chạy",
+        "planRef": "§46, dòng 2816 + Stop gate dòng 2818",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Nạp VERCEL_TOKEN (có trong CLAUDE.local.md) + GH_TOKEN, chạy `node scripts/check-external-controls.mjs --write`, commit evidence; bổ sung env-var scope và deployment SHA vào báo cáo."
+      },
+      {
+        "deliverable": "Đợt 2 (Verification) — Dry-run chứng minh promotion bị chặn khi có gate đỏ (kể cả gate `continue-on-error` bị nhận nhầm là xanh) + rollback đã diễn tập",
+        "planRef": "§46, dòng 2817 và Acceptance dòng 2824-2826",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết script promote (đọc kết luận gate, coi continue-on-error là ĐỎ, chỉ fast-forward khi tất cả xanh, ghi evidence SHA+gate+fingerprint), dry-run cả hai chiều; diễn tập rollback thật một lần rồi commit evidence."
+      },
+      {
+        "deliverable": "Đợt 3 — Deterministic restore + partition fixture/lifecycle riêng",
+        "planRef": "§47, dòng 2837",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm bước fixture partition vào diễn tập (gọi ensure_raw_partitions rồi khẳng định partition dựng đúng) và một gate lifecycle/retention cho bảng phân mảnh, tách khỏi baseline."
+      },
+      {
+        "deliverable": "Đợt 3 — Evidence store ghi statement bytes, normalized digest, actor, reviewed SHA và catalog fingerprint trước/sau",
+        "planRef": "§47, dòng 2840",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Bổ sung vào evidence: bytes câu lệnh đã gửi (hoặc đường dẫn bản lưu), digest chuẩn hoá, actor, git rev-parse HEAD làm reviewed SHA, và tự gọi capture-production-catalog trước/sau để có fingerprint hai đầu."
+      },
+      {
+        "deliverable": "Đợt 3 — Migration CI restore baseline, apply toàn bộ forward lane, chạy security/schema/type/caller gates",
+        "planRef": "§47, dòng 2841",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Dựng job CI: PG 17.6 → roles.sql + schema.sql hai lượt → apply mọi file > cutoff → chạy bộ gate security/schema/type/caller trên DB vừa dựng. Tái dùng cách resolve PG binary của network-center-validation.yml:310-322."
+      },
+      {
+        "deliverable": "Đợt 3 (Verification) — Restore trên PostgreSQL 17.6 disposable rồi chạy 12/12 view invoker, RLS role-real, definer ACL/search_path, stable-fn locks và domain harness",
+        "planRef": "§47, dòng 2845",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Cho các gate nhận connection string đích, rồi nối vào cuối diễn tập: restore xong phải chạy đủ view-invoker / RLS role thật / definer ACL+search_path / stable-fn locks / domain harness và fail nếu bất kỳ cái nào đỏ."
+      },
+      {
+        "deliverable": "Đợt 3 (Verification) — Apply forward migrations HAI LẦN theo policy để chứng minh deterministic/idempotency",
+        "planRef": "§47, dòng 2846",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Sau khi có job CI restore baseline: apply toàn lane hai lượt trên DB tạm, khẳng định lượt 2 không đổi catalog fingerprint. Thêm test cho apply-reviewed-migration.mjs."
+      },
+      {
+        "deliverable": "Đợt 3 (Verification) — Generate canonical types từ restored schema VÀ production snapshot, cả hai diff rỗng với `types.ts` đã commit",
+        "planRef": "§47, dòng 2847",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Mở rộng nhánh local: dựng DB từ supabase/baseline/schema.sql (+ forward lane) rồi gen:types + types:normalize trỏ vào đó, diff với types.ts đã commit — lúc đó hai diff rỗng mới là bằng chứng đầy đủ."
+      },
+      {
+        "deliverable": "Đợt 3 (Verification) — Kiểm historical `supabase_migrations.schema_migrations` không bị backfill/rewrite",
+        "planRef": "§47, dòng 2848",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm phép kiểm chạy có credential (ngoài CI tĩnh): đọc lại ledger, khẳng định số dòng + max version + digest tập (version,name) khớp ảnh chụp trong provenance manifest; lệch thì đỏ."
+      }
+    ],
+    "dot-4-registry": [
+      {
+        "deliverable": "Registry typed mức page/product surface (route, nav, launcher, permission, feature flag, owner, risk, docs)",
+        "planRef": "§48 dòng 2871",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm `owner` vào types.ts:12-43 và điền cho 2 capability, HOẶC ghi vào types.ts lý do bỏ (áp cùng lý do §0.6 đã bỏ owner khỏi known-gaps.yaml: repo một người). Hiện chưa có dòng nào ghi quyết định này nên lần sau sẽ bị coi là bỏ quên."
+      },
+      {
+        "deliverable": "Selectors / contract tests thay các danh sách route/nav/permission chép tay",
+        "planRef": "§48 dòng 2872",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Danh sách route và permission picker vẫn chép tay — xem 2 dòng 'Route existence' và 'Permission picker visibility'. Vấn đề tên file selectors.ts xem dòng P1.2 riêng."
+      },
+      {
+        "deliverable": "Tách route groups theo capability theo từng PR nhỏ, giữ lazy loading + error boundary",
+        "planRef": "§48 dòng 2874",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Tách nốt cụm public (plan P1.2 dòng 650 đặt tên routes/public.tsx) và cụm chat/openclaw."
+      },
+      {
+        "deliverable": "Verification: typecheck:baseline + build + Playwright headless cho navigation/permission theo role",
+        "planRef": "§48 dòng 2881",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Viết 1 spec headless duyệt sidebar + launcher cho 3 role fleet (CHUNHA/KETOAN/QUANLY) đối chiếu registry; và chạy lại bộ e2e SAU khi commit lát 3 (lát 3 vẫn ở working tree, chưa ai chạy e2e trên nó)."
+      },
+      {
+        "deliverable": "Verification: bundle / lazy-route comparison không tạo eager import regression",
+        "planRef": "§48 dòng 2882",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm bước so sánh output `vite build` (danh sách chunk + tên entry) trước/sau các PR tách route, HOẶC ghi vào tooling/known-gaps.yaml kèm expires_at."
+      },
+      {
+        "deliverable": "Acceptance Đợt 4: một page surface khai một lần, các consumer được sinh/kiểm từ registry",
+        "planRef": "§48 dòng 2887",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Xem 11 dòng 'output phải dẫn xuất hoặc kiểm từ registry' bên dưới — còn 4 mục trắng và 2 mục nửa."
+      },
+      {
+        "deliverable": "Acceptance Đợt 4: App.tsx chỉ còn trách nhiệm composition/routing",
+        "planRef": "§48 dòng 2888",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Đưa QueryClient → providers/QueryProvider.tsx, RealtimeDataSync+NotificationsRealtime → providers/RealtimeProviders.tsx, public route → routes/public.tsx, DeferredCopilotLauncher → module riêng."
+      },
+      {
+        "deliverable": "Acceptance Đợt 4: route/nav/permission drift KHÔNG THỂ merge",
+        "planRef": "§48 dòng 2890",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Bổ sung vào gate phép so quyền của route guard với capability.permission (hiện chỉ OpenClaw được so, qua openclawNavigation.test.ts)."
+      },
+      {
+        "deliverable": "CapabilityDefinition đủ trường theo interface plan (aliases, group, e2e, exemption, docs.userDoc, docs.visibility, surfaces.copilotNavigation, release.mode/allowed)",
+        "planRef": "§7 dòng 1196-1233",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Bổ sung trường theo nhu cầu consumer còn thiếu (aliases cho redirect, e2e cho smoke path, exemption cho acceptance §7 dòng 1269, copilotNavigation cho whitelist). Nếu cố ý thu hẹp thì ghi lý do vào types.ts như đã làm cho permissionPage (types.ts:7-10)."
+      },
+      {
+        "deliverable": "Output dẫn xuất/kiểm từ registry: Permission gate của route",
+        "planRef": "§7 dòng 1256",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Mở rộng phép so guard↔registry sang Network Center (và thành luật chung trong gate), thay vì chỉ có án lệ riêng cho OpenClaw."
+      },
+      {
+        "deliverable": "Output dẫn xuất/kiểm từ registry: Permission picker visibility",
+        "planRef": "§7 dòng 1259",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": true,
+        "remaining": "Sinh UNSHIPPED_PAGE_KEYS từ CAPABILITIES (lọc !release.enabled → permission.module). Vá luôn chỗ lệch Network Center."
+      },
+      {
+        "deliverable": "Output dẫn xuất/kiểm từ registry: Copilot route whitelist",
+        "planRef": "§7 dòng 1261",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": true,
+        "remaining": "Thêm surfaces.copilotNavigation vào CapabilityDefinition, sinh HIDDEN_PREFIXES từ registry, và quyết định OpenClaw có ẩn nút Copilot không."
+      },
+      {
+        "deliverable": "Output dẫn xuất/kiểm từ registry: User docs path",
+        "planRef": "§7 dòng 1262",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm docs.userDoc + docs.visibility và checker đối chiếu với sidebar của docs-site."
+      },
+      {
+        "deliverable": "Output dẫn xuất/kiểm từ registry: E2E smoke path",
+        "planRef": "§7 dòng 1264",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": true,
+        "remaining": "Thêm trường e2e vào registry + khẳng định trong check-capability-surfaces.mjs rằng file spec tồn tại cho mọi capability không có exemption."
+      },
+      {
+        "deliverable": "Output dẫn xuất/kiểm từ registry: CODEOWNER / risk tier",
+        "planRef": "§7 dòng 1265 (đối chiếu §0.6 dòng 111: CODEOWNERS đã CẮT, thay bằng tooling/risk-map.json)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm checker đối chiếu capability.risk với tier của path chứa page tương ứng trong risk-map.json, HOẶC ghi rõ hai thứ đo hai chiều khác nhau (capability đo bề mặt sản phẩm, risk-map đo file) và không cần nối."
+      },
+      {
+        "deliverable": "Acceptance §7: route production không thể thiếu nav/docs nếu không có exemption tường minh",
+        "planRef": "§7 dòng 1269",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Việc mở rộng registry ra route thường (§7 dòng 1250 nói làm sau khi selectors/test ổn định) + thêm exemption. Chưa bắt đầu."
+      },
+      {
+        "deliverable": "Acceptance §7: nav item không thể trỏ route không tồn tại",
+        "planRef": "§7 dòng 1270",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết test duyệt TOÀN BỘ navigationGroups + LAUNCHER_SECTIONS, so href với collectAllRoutes() của scripts/check-route-guards.mjs."
+      },
+      {
+        "deliverable": "Acceptance §7: route, sidebar và launcher không thể dùng permission khác nhau",
+        "planRef": "§7 dòng 1271",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Bổ sung vế route cho Network Center — xem dòng 'Permission gate của route'."
+      },
+      {
+        "deliverable": "Acceptance §7: alias/redirect không sinh thêm nav item hoặc permission page trùng",
+        "planRef": "§7 dòng 1274",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm aliases vào CapabilityDefinition + khẳng định 'alias không xuất hiện ở nav/launcher/permission page'."
+      },
+      {
+        "deliverable": "Acceptance §7: capability contextual phải có selector/test riêng, không encode business bằng boolean tĩnh",
+        "planRef": "§7 dòng 1279",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chỉ cần khi mở rộng ra route thường (ví dụ mục có selfHref ở Sidebar.tsx — đúng dạng contextual). Hiện chưa chạm."
+      },
+      {
+        "deliverable": "Acceptance §7: test không còn phải dùng regex source cho quan hệ biểu diễn được bằng data",
+        "planRef": "§7 dòng 1280",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Chuyển runtime.test.ts:41-48 sang collectAllRoutes() (hoặc sang coRoute() của gate); rà businessPerformanceNavigation.test.ts."
+      },
+      {
+        "deliverable": "P1.1 — Capability Registry dùng chung để dập drift 4 nơi (route/sidebar/launcher/permission picker)",
+        "planRef": "P1.1 dòng 587-618, câu 'Đề xuất' dòng 617",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Sinh UNSHIPPED_PAGE_KEYS từ registry (nơi thứ 4), và commit lát 3."
+      },
+      {
+        "deliverable": "P1.1 hiệu chỉnh 05/08 (§0.2/C10) — inventory 86 test readFileSync + chuyển 3 file nav sang data-driven TRONG CÙNG PR tách App.tsx",
+        "planRef": "P1.1 dòng 609-613",
+        "status": "MOT_PHAN",
+        "size": "L",
+        "touchesOpenClaw": true,
+        "remaining": "Tạo inventory 87 file; chuyển nốt runtime.test.ts + businessPerformanceNavigation.test.ts CÙNG PR lát 3."
+      },
+      {
+        "deliverable": "P1.2 — di chuyển App.tsx sang src/app/App.tsx",
+        "planRef": "P1.2 dòng 641-642",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Di chuyển + cập nhật import ở main.tsx, ở 3 test đang readSource('src/App.tsx'), và ở scripts/check-capability-surfaces.mjs:97."
+      },
+      {
+        "deliverable": "P1.2 — src/app/providers/AppProviders.tsx",
+        "planRef": "P1.2 dòng 643-644",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Tách cây provider ra component riêng."
+      },
+      {
+        "deliverable": "P1.2 — src/app/providers/QueryProvider.tsx",
+        "planRef": "P1.2 dòng 645",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Tách QueryClient + config ra module riêng (cũng gỡ được một trạng thái module-scope nữa khỏi App.tsx)."
+      },
+      {
+        "deliverable": "P1.2 — src/app/providers/RealtimeProviders.tsx",
+        "planRef": "P1.2 dòng 647",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Gom 2 mount realtime vào một provider."
+      },
+      {
+        "deliverable": "P1.2 — src/app/routes/index.tsx (cây route tổng)",
+        "planRef": "P1.2 dòng 649",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Tạo routes/index.tsx gom cây route để App.tsx chỉ còn compose provider."
+      },
+      {
+        "deliverable": "P1.2 — src/app/routes/public.tsx",
+        "planRef": "P1.2 dòng 650",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Tách 10 route công khai (/register /login /forgot-password /reset-password /c/:code /r/:token /phongtrong /quayso*) thành cụm riêng — khối JSX lớn nhất còn lại trong App.tsx."
+      },
+      {
+        "deliverable": "P1.2 — src/app/capabilities/selectors.ts",
+        "planRef": "P1.2 dòng 660",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Chốt một quyết định: đổi tên surfaceAdapters.ts → selectors.ts, hoặc ghi vào surfaceAdapters.ts rằng nó THAY vai selectors.ts của plan. Và dùng hoặc bỏ enabledCapabilities()."
+      },
+      {
+        "deliverable": "P1.2 — 'src/App.tsx cuối cùng chỉ nên compose providers và route tree'",
+        "planRef": "P1.2 dòng 670",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Xem 6 dòng P1.2 CHUA_LAM ở trên — tất cả cùng phục vụ mục tiêu này."
+      },
+      {
+        "deliverable": "P1.3 — test hành vi StrictMode / HMR",
+        "planRef": "P1.3 dòng 691",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Hoặc ghi vào tooling/known-gaps.yaml kèm expires_at, hoặc thêm jsdom + @testing-library riêng cho file này để dựng <StrictMode><AuthCacheSync/></StrictMode>."
+      },
+      {
+        "deliverable": "Sổ trạng thái tooling/program-status.json phản ánh đúng thực tế lát của tôi",
+        "planRef": "tooling/program-status.json dòng 6-13, 195",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": true,
+        "remaining": "Bỏ mục lát 3 khỏi hoanCoChuY và khỏi next[] dòng 195; sửa $trangThai; ghi lại các khoảng trống Đợt 4 còn thật (4 consumer + bundle + e2e role + trường registry) và khoảng trống P1.2."
+      }
+    ],
+    "dot-5-contracts": [
+      {
+        "deliverable": "Đợt 5 – D1: Wrapper typed cho RPC/Edge high-risk tại domain hiện hữu (ưu tiên finance/accounting, OpenClaw, Network Center)",
+        "planRef": "mục 49, dòng 2903",
+        "status": "MOT_PHAN",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Viết wrapper typed theo khuôn recordInvoiceCollectionV5 cho nhóm còn lại: invoice update/approve/unapprove (useInvoices), period fees (usePeriodFees 9 chỗ), cash handover (useCashHandovers 5 chỗ), thu chi status (statusMutations 12 chỗ); và một wrapper cho 4 call site Edge."
+      },
+      {
+        "deliverable": "Đợt 5 – D2: Generated contracts/surfaces/* cho RPC, Edge, realtime và capability (không tạo src/contracts song song)",
+        "planRef": "mục 49, dòng 2904",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Tạo contracts/surfaces/ + generator và checker đi kèm trong cùng PR cho rpc / edge-function / realtime."
+      },
+      {
+        "deliverable": "Đợt 5 – D3: Realtime descriptor theo domain + orchestrator useRealtimeDataSync mỏng",
+        "planRef": "mục 49, dòng 2905",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Tách SYNC_TABLES + BUSINESS_PERFORMANCE_INVALIDATION_RULES thành descriptor theo domain, hub chỉ compose."
+      },
+      {
+        "deliverable": "Đợt 5 – D4: Strict-island configs (strictNullChecks trước, rồi noImplicitAny / noUncheckedIndexedAccess theo contract core)",
+        "planRef": "mục 49, dòng 2906",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Bật noUncheckedIndexedAccess cho vùng contract core của app (hiện chỉ có ở 6 package Node); đưa src/lib/openclaw-zalo/* + src/hooks/openclaw-zalo/* vào island sau khi dọn."
+      },
+      {
+        "deliverable": "Đợt 5 – V1: Contract test so server catalog / Edge schema với wrapper + surface manifest",
+        "planRef": "mục 49, dòng 2911",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Viết contract test đọc catalog RPC sống (pg_proc, như check-permission-catalog đã làm cho quyền) + schema Edge rồi so với surface manifest và wrapper."
+      },
+      {
+        "deliverable": "Đợt 5 – V2: Gate chặn caller high-risk gọi raw RPC slug / Edge slug ngoài allowlist",
+        "planRef": "mục 49, dòng 2912; mục 9 dòng 1390",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm checker + allowlist raw-call theo file/risk, bắt cả 4 pattern (kể cả `.rpc(\"slug\" as any)`) và allowlist cho functions.invoke."
+      },
+      {
+        "deliverable": "Đợt 5 – V3: Realtime test kiểm publication, invalidation/query ownership và cross-tenant",
+        "planRef": "mục 49, dòng 2913",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm ca cross-tenant cho hub realtime (event của org khác không được invalidate cache org hiện tại)."
+      },
+      {
+        "deliverable": "Mục 9 – src/lib/contracts/{errors.ts, envelopes.ts} (taxonomy lỗi + envelope dùng chung)",
+        "planRef": "mục 9, dòng 1367-1369",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Tạo src/lib/contracts/errors.ts + envelopes.ts gom phần THẬT SỰ dùng chung, tái dùng POSTGRES_CODE_MAP của friendlyError.ts và khuôn classify* của openclaw-zalo."
+      },
+      {
+        "deliverable": "Mục 9 – Đóng nốt nửa còn lại của 4 arg-builder (contractCreateRpc, customerCreditRpc, incomeExpenseCreateRpc, paymentRecordRpc)",
+        "planRef": "mục 9, dòng 1351",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Hoặc để incomeExpenseCreateRpc.ts tự thực hiện lời gọi rồi chuyển mutations.ts:72 sang dùng nó, hoặc xoá file chết này; cập nhật lại plan vì tiền đề 'caller vẫn tự gọi .rpc() qua any-cast' đã sai với 3 file kia."
+      },
+      {
+        "deliverable": "Mục 9 – Nguyên tắc: không gọi supabase.rpc('string') trực tiếp trong component",
+        "planRef": "mục 9, dòng 1384",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": true,
+        "remaining": "Chuyển 7-8 call site component/page sang hook/wrapper rồi thêm ESLint no-restricted-syntax hoặc checker chặn `.rpc` trong src/components + src/pages."
+      },
+      {
+        "deliverable": "Mục 9 – Error mapping phân biệt permission / validation / concurrency / conflict / internal invariant",
+        "planRef": "mục 9, dòng 1387",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Nâng thành union kiểu dùng chung đủ 5 nhóm theo khuôn classifyPublishFailure của openclaw-zalo, phủ cả domain tiền CRM, rồi để friendlyError chỉ render từ taxonomy đó."
+      },
+      {
+        "deliverable": "Mục 9 – Wrapper không được biến lỗi thành [], {} hoặc toast chung",
+        "planRef": "mục 9, dòng 1388",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Cưỡng chế bằng lint/checker (cấm catch → return [] / {} trong module wrapper) và mở rộng khuôn test 'rejects.toBe(error)' sang các wrapper finance sắp viết."
+      },
+      {
+        "deliverable": "P1.8 – Query key được export từ chính domain, không chép string nhiều nơi",
+        "planRef": "P1.8, dòng 925",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Export query key từ hook domain (invoices/contracts/finance) theo khuôn network-center/queryKeys.ts, để descriptor tham chiếu và bỏ chuỗi chép tay trong hub."
+      },
+      {
+        "deliverable": "P1.4 – Tạo 4 config strict island: tsconfig.strict-{core,finance,openclaw,network-center}.json",
+        "planRef": "P1.4 đề xuất 3, dòng 719-726",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Quyết định giữ 1 config cho src/ (rồi sửa plan) hay tách; nếu cần bật noUncheckedIndexedAccess riêng cho contract core thì buộc phải tách ít nhất 2 config."
+      },
+      {
+        "deliverable": "P1.4 – Mọi module MỚI phải strict",
+        "planRef": "P1.4 đề xuất 4, dòng 728",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm bước: file .ts/.tsx mới theo git diff so với base mà không nằm trong include ⇒ đỏ."
+      },
+      {
+        "deliverable": "P1.4 / mục 33 Đợt 2 – Mỗi đợt xoá một nhóm fingerprint rồi chạy --write (generated drift, contracts/deposits, invoice/finance, customer/building, test fixtures)",
+        "planRef": "P1.4 đề xuất 5, dòng 729; mục 33 dòng 2357-2365",
+        "status": "MOT_PHAN",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Quét lần lượt 5 nhóm; rẻ nhất là RoomDetailDialog.tsx (18/67 nằm trong MỘT file) rồi tới 3 trang detail (15) và test fixtures (15)."
+      },
+      {
+        "deliverable": "Mục 33 Đợt 3 – strictNullChecks: true cho toàn app",
+        "planRef": "mục 33, dòng 2369",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Phụ thuộc Đợt 2 (dọn 91 file còn lỗi); mục tiêu cuối, chưa đến lượt."
+      },
+      {
+        "deliverable": "Mục 33 Đợt 3 – noImplicitAny: true cho toàn app",
+        "planRef": "mục 33, dòng 2370",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Phụ thuộc Đợt 2; chưa đến lượt."
+      },
+      {
+        "deliverable": "Mục 33 Đợt 3 – noUncheckedIndexedAccess cho core contract",
+        "planRef": "mục 33, dòng 2371",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Cần dựng vùng contract core (mục 9) và tách config trước, rồi bật cờ cho riêng vùng đó theo khuôn đã dùng ở infra/network-center-worker."
+      },
+      {
+        "deliverable": "Mục 33 Đợt 3 – Bỏ allowJs ở vùng TypeScript nếu không cần",
+        "planRef": "mục 33, dòng 2372",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Xoá allowJs khỏi tsconfig.json và cân nhắc dọn luôn 4 cờ false thừa ở root vì file này không compile gì."
+      },
+      {
+        "deliverable": "Mục 33 Đợt 3 / P1.4 – Xoá hẳn ts-baseline.json khi fingerprint về 0",
+        "planRef": "mục 33, dòng 2373; P1.4 dòng 730",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Đích cuối sau Đợt 2 + Đợt 3; chưa đến lượt."
+      }
+    ],
+    "dot-6-docs": [
+      {
+        "deliverable": "Đợt 6 — hoàn thiện current docs + runtime/test/deployment/security/data-environment docs + generated inventories",
+        "planRef": "mục 50, dòng 2935",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết docs/engineering/MIGRATION_STRATEGY.md và DATA_ENVIRONMENTS.md (2 file còn lại trong bộ 3 mà §0.6 giữ). Bổ sung generated inventory dạng .md cho repository-map / rpc-surface / capability-matrix."
+      },
+      {
+        "deliverable": "Đợt 6 — frontmatter / freshness / Copilot manifest chỉ ingest tài liệu current đã review",
+        "planRef": "mục 50, dòng 2936",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thi hành điều kiện 'reviewed chưa quá hạn' và 'source path còn tồn tại' ở đường nạp thật (registry.ts), không chỉ cảnh báo trong checker; điền ngày review cho 12 doc còn null."
+      },
+      {
+        "deliverable": "Đợt 6 — GitNexus exact pin + script analyze/impact/detect-change + staleness check",
+        "planRef": "mục 50, dòng 2937",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm npm alias + tài liệu cho `impact`/`detect_changes` trong repo (không phụ thuộc skill sinh ra bị gitignore). Reindex: chỉ mục đang cũ so với HEAD 5a91d687."
+      },
+      {
+        "deliverable": "Đợt 6 — refresh graph UA 2.9.4 (outputLanguage vi) có coverage Network Center, OpenClaw và migration sau 29/07/2026",
+        "planRef": "mục 50, dòng 2938",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chạy lại /understand trên HEAD hiện tại trong PR RIÊNG (luật #6), ghi toolVersion ĐO ĐƯỢC (đổi toolVersionSource 'attested' -> 'measured'), rồi `npm run gate:graph-freshness -- --nhiem-vu architecture` phải exit 0."
+      },
+      {
+        "deliverable": "Đợt 6 — graph secret/PII scan, artifact ownership, manual refresh policy; LFS chỉ khi kích thước yêu cầu",
+        "planRef": "mục 50, dòng 2939",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Viết bước quét secret/PII trên .ua/knowledge-graph.json + fingerprints.json (gitleaks hoặc tương đương) và nối vào gate trước khi commit graph mới."
+      },
+      {
+        "deliverable": "Đợt 6 verification — `node scripts/check-docs.mjs` và `node scripts/check-doc-freshness.mjs` xanh",
+        "planRef": "mục 50, dòng 2943",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết scripts/check-doc-freshness.mjs; nối cả check-docs.mjs lẫn nó vào job docs-freshness trong CI."
+      },
+      {
+        "deliverable": "docs/incidents/YYYY-MM-DD-incident-slug.md",
+        "planRef": "mục 10, dòng 1437-1438",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Tạo thư mục + template incident; hoặc ghi rõ là chưa có sự cố nào cần hồ sơ."
+      },
+      {
+        "deliverable": "docs/generated/ — repository-map.md, database-inventory.md, rpc-surface.md, capability-matrix.md",
+        "planRef": "mục 10, dòng 1440-1444",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Sinh repository-map, rpc-surface (cần tạo contracts/surfaces/rpc-surface.json trước), capability-matrix (registry đã có ở src/app/capabilities/registry.ts) và bản .md của database-inventory."
+      },
+      {
+        "deliverable": "docs/plans, docs/audits, docs/archive",
+        "planRef": "mục 10, dòng 1446-1448",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Chỉ còn việc hình thức: hoặc tạo docs/archive/ và chuyển hồ sơ, hoặc ghi một câu chốt trong docs/README.md rằng refactor-2026-07/ thay vai docs/archive (hiện đã ngụ ý nhưng chưa nói thẳng)."
+      },
+      {
+        "deliverable": "Frontmatter chuẩn cho current docs (status/reviewed/last_verified_commit/source_paths/copilot_ingest/risk)",
+        "planRef": "mục 11, dòng 1454-1470",
+        "status": "MOT_PHAN",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Chốt một trong hai: (a) thêm YAML frontmatter cho current docs (bỏ field owner theo §0.6 dòng 120) + checker schema; hoặc (b) tuyên bố manifest tập trung docs/he-thong/manifest.json + frontmatter user-docs sẵn có là phương án thay thế và sửa plan. Dù chọn gì vẫn thiếu last_verified_commit và source_paths."
+      },
+      {
+        "deliverable": "Luật Copilot ingest (4 điều kiện cho phép + 6 loại cấm)",
+        "planRef": "mục 11, dòng 1483-1500",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thi hành 2 điều kiện còn thiếu ('reviewed chưa quá hạn', 'source path còn tồn tại') ở runtime + thêm test chứng minh doc quá hạn/thiếu source path bị loại."
+      },
+      {
+        "deliverable": "CLAUDE.local.md làm local credential vault bắt buộc (7 điều contract)",
+        "planRef": "mục 12, dòng 1524-1560",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Xem 2 dòng dưới (local-credential-contract.json + check-local-agent-credentials.mjs)."
+      },
+      {
+        "deliverable": "CLAUDE.md rút còn adapter (pointer Contract + skill/hook + cách gọi GitNexus + tool riêng + trailer)",
+        "planRef": "mục 12, dòng 1573-1581",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm mục cách gọi GitNexus qua scripts/run-pinned-gitnexus.mjs + gate:graph-freshness, và mục skill/hook."
+      },
+      {
+        "deliverable": "AGENTS.md rút còn adapter (pointer Contract + cách Codex dùng MCP + cách tạo draft PR + giới hạn tool)",
+        "planRef": "mục 12, dòng 1583-1590",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm mục MCP (codex mcp add gitnexus qua wrapper pin) và quy trình mở draft PR."
+      },
+      {
+        "deliverable": "GitNexus §14 — đăng ký MCP một lần trên máy (claude mcp add gitnexus / codex mcp add)",
+        "planRef": "PHẦN IV §14, dòng 1673-1690",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Chạy `claude mcp add gitnexus -- node scripts/run-pinned-gitnexus.mjs mcp` (và bản Codex), hoặc commit .mcp.json ở repo để cả hai agent dùng chung — commit .mcp.json là cách duy nhất không phụ thuộc đường dẫn máy."
+      },
+      {
+        "deliverable": "GitNexus §16 — workflow trước/sau khi sửa (status → reindex → context → impact → manifest → doc → plan; rồi detect_changes → so test → gate)",
+        "planRef": "PHẦN IV §16, dòng 1743-1762",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Viết checklist 2 chiều (trước/sau) vào Contract §12 hoặc adapter, kèm lệnh cụ thể qua wrapper — không dựa vào skill sinh ra vì nó bị gitignore."
+      },
+      {
+        "deliverable": "GitNexus §16 — prompt bắt buộc trong agent contract về blast radius (migrations/RPC string/Edge slug/table-view-function/queue/flag/permission)",
+        "planRef": "PHẦN IV §16, dòng 1764-1776",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Chèn nguyên đoạn prompt 7 gạch đầu dòng vào PROJECT_CONTRACT §12 và cho check-agent-contract.mjs ghim nó lại (giống cách nó đang ghim cặp ['CLAUDE.local.md','credential vault'] ở dòng 197)."
+      },
+      {
+        "deliverable": "UA §19 — phạm vi phân tích + danh sách loại trừ (vendor, runtime state, data dump, secret/env)",
+        "planRef": "PHẦN V §19, dòng 1824-1862",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Bỏ comment các pattern vendor/runtime-state/data-dump trước lần refresh tới, rồi ghi lại scope trong manifest."
+      },
+      {
+        "deliverable": "UA §20 — quyết định commit graph: phân biệt shareable artifact vs incremental runtime state, có secret/PII scan trước",
+        "planRef": "PHẦN V §20, dòng 1864-1904",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chạy + tự động hoá secret/PII scan trước mỗi lần commit graph; chốt rõ fingerprints.json là artifact chia sẻ hay runtime state."
+      },
+      {
+        "deliverable": "UA §22 — workflow (onboarding: /understand + /understand-onboard + /understand-domain; thay đổi lớn: /understand-diff, không thay GitNexus impact)",
+        "planRef": "PHẦN V §22, dòng 1928-1959",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Ghi quy trình UA (lệnh nào, khi nào, ai review đối chiếu current docs) vào Contract §12 hoặc CLAUDE.md."
+      },
+      {
+        "deliverable": "P2.2 — sidebar user docs phải được kiểm với Capability Registry (docsVisibility/docsPath, CI báo capability có route mà không có user docs)",
+        "planRef": "P2.2, dòng 1019-1031",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm field docsPath/docsVisibility vào CapabilityDefinition và mở rộng check-capability-surfaces.mjs (hoặc check-docs.mjs) đối chiếu registry với docs-site/.vitepress/sidebar.mts; viết user docs cho Network Center + OpenClaw hoặc khai docsVisibility: hidden."
+      },
+      {
+        "deliverable": "P2.3 — check-docs.mjs thêm freshness + source ownership (frontmatter schema, reviewed, last verified commit, source paths, stale threshold, current docs không trỏ file đã xoá, Copilot ingest manifest)",
+        "planRef": "P2.3, dòng 1033-1054",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Bổ sung kiểm frontmatter/source_paths vào check-docs.mjs (hoặc file check-doc-freshness.mjs mới) và nối check-docs.mjs vào CI — phụ thuộc quyết định mục 11."
+      },
+      {
+        "deliverable": "P2.5 — thống nhất pin action SHA + Deno exact, bỏ path filter theo ngày, guard 'no db push' đọc YAML, cập nhật comment/evidence của supabase-migrate.yml",
+        "planRef": "P2.5, dòng 1063-1099",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Cập nhật comment/evidence trong supabase-migrate.yml theo catalog + forward-only lane hiện tại; nâng node-version '20' lên đúng 24.18.0 như ci-gates.yml; (tuỳ chọn) thêm change classifier theo object/manifest."
+      },
+      {
+        "deliverable": "§38 — cập nhật docs/CODEBASE_STRUCTURE.md (services, infra, .e2e-fleet, docs-site, OpenClaw stack, NC worker, api/cron, Capability Registry, contract manifests, baseline/forward migrations, runtime matrix)",
+        "planRef": "mục 38, dòng 2476-2490",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Bổ sung 10 khoản còn thiếu và sửa mục Route/gate cho khớp src/app/routes/."
+      },
+      {
+        "deliverable": "§38 — cập nhật docs/DATABASE_SCHEMA.md (bỏ số chép tay, ghi legacy replay broken, link migration strategy, phân biệt baseline/forward/live catalog, thêm cụm schema OpenClaw + Network Center)",
+        "planRef": "mục 38, dòng 2492-2499",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm 2 cụm schema (Network Center partition ngày + retention, OpenClaw) và mục baseline/forward lane; đổi link sang MIGRATION_STRATEGY.md khi file đó ra đời."
+      },
+      {
+        "deliverable": "§38 — docs/he-thong/00-tong-quan.md cập nhật diagram (Vercel, Supabase, Cloudflare/R2, OpenClaw, Network Center, TEST/DEMO/THẬT, docs/Copilot)",
+        "planRef": "mục 38, dòng 2508-2517",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Vẽ lại diagram đủ 7 khối và thêm 2 dòng domain 22/23; sửa câu Supabase Storage; cập nhật Route sang src/app/routes/."
+      },
+      {
+        "deliverable": "§38 — docs/he-thong/99-quy-trinh-tong.md thêm Network Center lifecycle, OpenClaw consent/connection/draft/send/operations/rollout, deployment + feature flag, production evidence",
+        "planRef": "mục 38, dòng 2519-2526",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm 4 mục theo plan; nội dung nguồn đã có sẵn ở 22-network-center.md, 23-openclaw-zalo.md và 11 runbook trong docs/openclaw-zalo/runbooks/."
+      },
+      {
+        "deliverable": "§38 — supabase/README.md thay phần replay bằng migration strategy thật",
+        "planRef": "mục 38, dòng 2528-2530",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Viết lại mục 'Quy tắc migration' theo forward-only lane hiện hành (migrate:forward + 4 lớp chặn + IHOMECRM_PROMOTION_TOKEN + backup bắt buộc) thay vì chỉ apply-sql.mjs."
+      }
+    ],
+    "file-map": [
+      {
+        "deliverable": "supabase/baseline/normalization.md",
+        "planRef": "§51 dòng 3006",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Đổi tên/tách phần chuẩn hoá ra normalization.md, hoặc sửa plan để công nhận README.md là chỗ đúng."
+      },
+      {
+        "deliverable": "src/app/providers/AppProviders.tsx",
+        "planRef": "§51 dòng 3011",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Tách cụm provider (QueryClient, Tooltip, Toaster, ErrorBoundary, AuthCacheSync, RealtimeDataSync) khỏi App.tsx sang src/app/providers/AppProviders.tsx."
+      },
+      {
+        "deliverable": "src/app/routes/index.tsx",
+        "planRef": "§51 dòng 3012",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Nếu vẫn muốn một barrel index.tsx thì gom 9 cụm lại; hiện App.tsx import lẻ từng cụm."
+      },
+      {
+        "deliverable": "scripts/check-doc-freshness.mjs",
+        "planRef": "§51 dòng 3027",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Không còn khoảng trống chức năng đáng kể; nếu muốn đúng tên plan thì gom các script lại hoặc sửa plan cho khớp thực tế."
+      },
+      {
+        "deliverable": "scripts/generate-repository-inventory.mjs",
+        "planRef": "§51 dòng 3028",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Cần cho §0.2/C10 (86 file test dùng readFileSync đọc source) — chưa có công cụ liệt kê chúng."
+      },
+      {
+        "deliverable": "scripts/list-forward-migrations.mjs",
+        "planRef": "§51 dòng 3034",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Viết lệnh liệt kê migration sau cutoff chưa apply (đọc provenance + ledger)."
+      },
+      {
+        "deliverable": "scripts/check-forward-migrations.mjs",
+        "planRef": "§51 dòng 3036",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Không còn khoảng trống lớn; cân nhắc sửa plan cho khớp tên thật thay vì thêm script thứ ba."
+      },
+      {
+        "deliverable": "vercel.json (neo governance deploy/cron/env khi flip production branch)",
+        "planRef": "§52 dòng 3063",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm neo governance (comment/khoá) về Production Branch = production và đối chiếu env Vercel."
+      },
+      {
+        "deliverable": "supabase/migrations-archive/README.md (cập nhật khi provenance phủ 15 file)",
+        "planRef": "§52 dòng 3064",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Cập nhật README archive: trỏ về supabase/migration-provenance.json và đính chính mốc ledger cũ (ledger thật 20260727095000 theo migration-policy.json#knownLimits)."
+      },
+      {
+        "deliverable": "docs/README.md (sửa lớn)",
+        "planRef": "§52 dòng 3075",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm lối vào docs/engineering/PROJECT_CONTRACT.md, sửa '00–21' thành '00–23', bổ sung nhóm tooling/ và (khi có) docs/decisions/."
+      },
+      {
+        "deliverable": "docs/he-thong/00-tong-quan.md (sửa lớn)",
+        "planRef": "§52 dòng 3079",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Bổ sung Network Center + OpenClaw Zalo vào bản đồ tổng quan."
+      },
+      {
+        "deliverable": "docs/he-thong/99-quy-trinh-tong.md (sửa lớn)",
+        "planRef": "§52 dòng 3080",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Bổ sung luồng Network Center và OpenClaw Zalo vào quy trình tổng."
+      },
+      {
+        "deliverable": ".github/workflows/supabase-migrate.yml (sửa lớn)",
+        "planRef": "§52 dòng 3085",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Sửa mốc ledger trong header trỏ về provenance manifest; thêm bước check-migration-provenance.mjs vào workflow này."
+      }
+    ],
+    "backlog-ci": [
+      {
+        "deliverable": "Gộp 8 job §31 thành 3 job contract-gates / schema-gates / docs-freshness",
+        "planRef": "Mục 31 mở đầu (dòng 2266-2274) + §0.6 dòng 118",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Ghi quyết định lệch plan vào tooling/program-status.json hoặc PROJECT_CONTRACT (hiện chưa có chỗ nào ghi nhận), hoặc đổi tên/tách 3 job đúng plan."
+      },
+      {
+        "deliverable": "Job gate `agent-contract-gates`",
+        "planRef": "Mục 31 (dòng 2276-2286)",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm 2 phép kiểm còn thiếu: (1) AI_RULES.md không được khai rule độc lập ngoài Contract; (2) section GitNexus chỉ được sửa trong marker cho phép."
+      },
+      {
+        "deliverable": "Job gate `capability-contract-gates` (route/nav/launcher/permission/docs, flag nhất quán, no orphan route)",
+        "planRef": "Mục 31 (dòng 2288-2295)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Commit phần đang nằm trong working tree (2 file untracked + 4 file modified). Mở registry ra toàn bộ page surface thay vì dừng ở 2 capability."
+      },
+      {
+        "deliverable": "Job gate `docs-current-gates` (frontmatter, freshness, manifest, source paths, Copilot ingest, generated docs drift)",
+        "planRef": "Mục 31 (dòng 2297-2306)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết gate frontmatter (tái dùng schema docs/huong-dan-su-dung/ theo §0.2/C13) + gate source paths cho docs/he-thong/*.md."
+      },
+      {
+        "deliverable": "Job gate `migration-forward-gates` (dựng baseline + forward migrations, provenance/digest/cutoff, legacy bất biến)",
+        "planRef": "Mục 31 (dòng 2312-2314)",
+        "status": "MOT_PHAN",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm job CI dựng baseline rồi apply forward migrations, hoặc khai known-gap giải thích vì sao cố ý để ngoài CI (cần credential DB)."
+      },
+      {
+        "deliverable": "Job gate `knowledge-freshness-gates` (UA metadata/coverage, tool pin, graph secret scan, cấm graph đè Project Contract)",
+        "planRef": "Mục 31 (dòng 2320-2322)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm secret/PII scan trên artifact .ua/ trước khi commit graph — đây là phép kiểm DUY NHẤT còn thiếu của mục này."
+      },
+      {
+        "deliverable": "Job gate `known-gap-gates` — fail khi exemption quá hạn",
+        "planRef": "Mục 31 (dòng 2324-2326)",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Bật --strict trên CI, hoặc ghi lý do lệch plan (chống 'gia hạn hình thức') vào PROJECT_CONTRACT/program-status thay vì để trong comment script."
+      },
+      {
+        "deliverable": "§32: Giữ Node 22 đến khi package engine thay đổi",
+        "planRef": "Mục 32 (dòng 2331)",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Chốt một quyết định: nâng engines cho khớp 24.18.0, hoặc hạ CI về 22. Ghi lý do vào Contract."
+      },
+      {
+        "deliverable": "§32: Mọi migration đổi đều chạy classifier",
+        "planRef": "Mục 32 (dòng 2333)",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết risk classifier: đọc diff → tra tooling/risk-map.json → in tier + danh sách gate bắt buộc; nối vào path filter supabase/migrations/** ở CI."
+      },
+      {
+        "deliverable": "§32: Worker test Windows-only phải tách job Windows hoặc port cross-platform",
+        "planRef": "Mục 32 (dòng 2335)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Tách job runs-on: windows-latest cho 2 file test (deploymentAssets.test.ts, deploymentPowerShellReconciliation.test.ts), hoặc port cross-platform. Hạn 31/10/2026."
+      },
+      {
+        "deliverable": "§32: Pin SHA + runtime cho supabase-migrate.yml",
+        "planRef": "Mục 32 (dòng 2337)",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Pin exact patch cho workflow này (hoặc thống nhất về cùng phiên bản với ci-gates) + thêm bước verify runtime như ci-gates."
+      },
+      {
+        "deliverable": "§32: Cập nhật comment ledger theo provenance manifest thay vì hardcode mốc cũ",
+        "planRef": "Mục 32 (dòng 2338)",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Sửa comment trỏ về supabase/migration-provenance.json (ledgerMaxVersion) thay vì chép số; hoặc thêm bước in số đó ra log."
+      },
+      {
+        "deliverable": "§32: Thêm npm alias cho 4 script gate + làm rõ reconcile-money vs reconcile-money-v2 cái nào canonical",
+        "planRef": "Mục 32 (dòng 2342, mới 05/08)",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Chốt và ghi ra một chỗ có thẩm quyền: sau Finance V2 thì v2 canonical hay chưa; thêm alias cho v2 hoặc gỡ bản cũ; cập nhật risk-map tier money."
+      },
+      {
+        "deliverable": "tooling/test-matrix.json — platform test manifest",
+        "planRef": "Mục 34 (dòng 2377-2399)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Bổ sung scope/timeout/environment cho từng suite, và blockedBy+expiry cho 2 suite openclaw-sql và e2e-fleet đang chạy ngoài CI vô thời hạn."
+      },
+      {
+        "deliverable": "CI kiểm test manifest (5 phép kiểm: mồ côi, blocked có lý do+expiry, runner đúng, package test không bị root Vitest quét nhầm, no skipped security suite)",
+        "planRef": "Mục 34 (dòng 2401-2410)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm 3 phép kiểm còn thiếu; ưu tiên phép đối chiếu excludes ↔ cờ --exclude thật trong ci-gates.yml vì hiện chỉ là lời hứa trong comment."
+      },
+      {
+        "deliverable": "§35: Chuẩn hoá 6 luật mutation testing policy",
+        "planRef": "Mục 35 (dòng 2411-2423)",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Viết đủ 6 luật vào Contract, và sửa PR template cho khớp luật 'chỉ high-risk' thay vì bắt buộc đại trà."
+      },
+      {
+        "deliverable": "§35: Helper mutation dùng chung thay vì mỗi subsystem tự viết shell riêng",
+        "planRef": "Mục 35 (dòng 2425)",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết helper: nhận file + phép biến đổi, chứng minh sha256 file đổi, chạy suite chỉ định, đòi test đúng tên phải ĐỎ, rồi khôi phục digest gốc và xác nhận."
+      },
+      {
+        "deliverable": "P0-0c: Đổi Vercel Production Branch main → production + diễn tập rollback + rà env/2 cron salary",
+        "planRef": "Mục 41 (dòng 2641)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chạy lại check-external-controls.mjs với VERCEL_TOKEN để status thành verified; ghi bằng chứng diễn tập rollback và kết quả rà env + 2 cron salary."
+      },
+      {
+        "deliverable": "P0-0e: Rule promotion token ngoài vault cho mọi write production qua Management API",
+        "planRef": "Mục 41 (dòng 2643)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết checker cưỡng chế: mọi script ghi production qua Management API phải đi qua cùng một cửa promotion token; hoặc khai known-gap cho 9 script apply-* còn lại."
+      },
+      {
+        "deliverable": "P0-1: Mô hình auto-promote-on-green + PROJECT_CONTRACT + 3 file rule thành adapter + CLAUDE.local.md làm vault",
+        "planRef": "Mục 42 dòng 2645 (P0 mục 1)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm trigger CI cho nhánh production + job báo động khi có push thẳng vào production; xác nhận promotion chỉ chạy khi gate xanh."
+      },
+      {
+        "deliverable": "P0-7: Đưa agent/provenance/typegen/view-invoker/definer-search_path/release guard thành required checks",
+        "planRef": "Mục 41 (dòng 2651)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chạy check-external-controls.mjs với GH_TOKEN để lấy bằng chứng, hoặc khai known-gap rằng required check không khả thi ở tier Free kèm biện pháp thay thế."
+      },
+      {
+        "deliverable": "P0-8: Pin workflow/action/runtime gồm Node 22 và Deno 2.9.4 ở cả 3 workflow",
+        "planRef": "Mục 41 (dòng 2652)",
+        "status": "MOT_PHAN",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Thống nhất phiên bản Node, hoặc ghi quyết định đổi 22 → 24.18.0 vào Contract/program-status (hiện chỉ có con số trong matrix, không có lý do)."
+      },
+      {
+        "deliverable": "P0-9: Bật Vercel release control với API evidence chạy lại định kỳ",
+        "planRef": "Mục 41 (dòng 2653)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm workflow `on: schedule` chạy check-external-controls định kỳ với VERCEL_TOKEN + GH_TOKEN, commit lại evidence JSON."
+      },
+      {
+        "deliverable": "P1-11: Capability Registry mức page/product surface (route, sidebar, launcher, permission, flag, docs)",
+        "planRef": "Mục 42 (dòng 2658)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": true,
+        "remaining": "Commit lát 3 (8 file đang dở trong working tree) và cập nhật tooling/program-status.json — sổ đang ghi sai là 'hoãn'. Sau đó mở registry ra toàn bộ page surface, không dừng ở 2 capability."
+      },
+      {
+        "deliverable": "P1-14: Tách realtime descriptors/invalidation theo domain + orchestrator mỏng + contract test publication/query ownership",
+        "planRef": "Mục 42 (dòng 2661)",
+        "status": "MOT_PHAN",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Tách descriptor + invalidation theo domain, giữ một orchestrator mỏng. Cân nhắc cho gate realtime chạy cả trên PR (hiện chỉ chạy trên main có PAT)."
+      },
+      {
+        "deliverable": "P1-16: Runtime, package, test và known-gap manifests machine-readable, mọi exemption có expiry",
+        "planRef": "Mục 42 (dòng 2663)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Bật cưỡng chế expiry (xem dòng known-gap-gates). tooling/packages.json để P2 theo §0.6."
+      },
+      {
+        "deliverable": "P1-17: Frontmatter/freshness/Copilot manifest + generated inventory cho current docs",
+        "planRef": "Mục 42 (dòng 2664)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm frontmatter chuẩn cho docs/he-thong/*.md + gate kiểm schema (tái dùng schema docs/huong-dan-su-dung/); cân nhắc generate-repository-inventory.mjs."
+      },
+      {
+        "deliverable": "P1-18: PR template + risk classifier + tooling/risk-map.json (bỏ CODEOWNERS; SECURITY.md/CONTRIBUTING.md xuống stub)",
+        "planRef": "Mục 42 (dòng 2665)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết risk classifier: đọc diff → tra tooling/risk-map.json → in tier + danh sách gate bắt buộc; nối vào PR/CI. Đây là mảnh DUY NHẤT còn thiếu của P1-18."
+      },
+      {
+        "deliverable": "P1-20: Trích ADR/invariant/incident quan trọng khỏi commit body sang tài liệu bền vững",
+        "planRef": "Mục 42 (dòng 2667)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết docs/engineering/MIGRATION_STRATEGY.md + DATA_ENVIRONMENTS.md; trích 2 án lệ lặp nhiều nhất ('bộ lọc chỉ phủ một biến thể', 'gate xanh mà không kiểm gì') thành tài liệu bền vững."
+      },
+      {
+        "deliverable": "P2-21: Incremental src/features migration khi capability đang đổi có ownership rõ",
+        "planRef": "Mục 43 (dòng 2671)",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Chưa cần làm — chỉ khởi động khi có capability đang sửa và ownership đủ rõ."
+      },
+      {
+        "deliverable": "P2-22: Tối ưu query key ownership + chuẩn hoá error taxonomy theo domain",
+        "planRef": "Mục 43 (dòng 2672)",
+        "status": "MOT_PHAN",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chuẩn hoá query key cho các domain tiền/hợp đồng/hoá đơn; mở rộng friendlyError thành taxonomy đầy đủ theo domain."
+      },
+      {
+        "deliverable": "P2-23: Graph/docs release automation sau khi refresh deterministic + secret/PII scan ổn định",
+        "planRef": "Mục 43 (dòng 2673)",
+        "status": "CHUA_LAM",
+        "size": "L",
+        "touchesOpenClaw": false,
+        "remaining": "Trước hết làm secret/PII scan + refresh graph deterministic; automation là bước sau. P2."
+      },
+      {
+        "deliverable": "P2-24: Bundle inventory regression + dependency/license audit",
+        "planRef": "Mục 43 (dòng 2674)",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Thêm bundle inventory sinh sau build + ratchet kích thước; thêm dependency/license audit. P2."
+      },
+      {
+        "deliverable": "P2-25: Production branch riêng (phần còn lại ở P2: staging parity nâng cao + preview-vs-production diff tự động)",
+        "planRef": "Mục 43 (dòng 2675)",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Chưa cần — P2, và nên đợi bằng chứng external-controls thành verified trước."
+      },
+      {
+        "deliverable": "P2-26: Git LFS cho UA graph nếu artifact vượt ngưỡng thực tế",
+        "planRef": "Mục 43 (dòng 2676)",
+        "status": "CHUA_LAM",
+        "size": "S",
+        "touchesOpenClaw": false,
+        "remaining": "Chưa cần — điều kiện kích hoạt (artifact vượt ngưỡng) chưa đạt."
+      },
+      {
+        "deliverable": "P2-27: Tự động hoá mutation helper cho invariant high-risk",
+        "planRef": "Mục 43 (dòng 2677) — trùng §35 dòng 2425",
+        "status": "CHUA_LAM",
+        "size": "M",
+        "touchesOpenClaw": false,
+        "remaining": "Viết helper dùng chung (trùng việc với dòng §35 helper — làm một lần cho cả hai). P2 theo plan nhưng chi phí thấp và nhiều gate đang phụ thuộc thủ tục thủ công này."
+      }
+    ]
+  }
+}
