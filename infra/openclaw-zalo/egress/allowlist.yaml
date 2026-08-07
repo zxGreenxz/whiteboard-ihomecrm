@@ -9,90 +9,28 @@ destinations:
   - host: ai.chillhome.io.vn
     port: 443
     purpose: independent model provider
-  - host: chat.zalo.me
-    port: 443
-    purpose: Zalo chat transport
-  - host: id.zalo.me
-    port: 443
-    purpose: Zalo identity transport
-  - host: jr.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime chat transport
-  - host: wpa.chat.zalo.me
-    port: 443
-    purpose: Zalo websocket transport
-  # Measured, not guessed. A full QR login was captured through an enumerating proxy:
-  # `jr.zaloapp.com` is contacted between GotLoginInfo and checkSession, i.e. exactly
-  # where the session is established. With it blocked, `checkSession` returns nothing
-  # and zca-js throws "Cannot get session, login failed" - which surfaced to the owner
-  # as "quét mã không hoạt động" after Zalo had already confirmed the login on their
-  # phone. The broker's denial log omitted the host, so nothing anywhere named it.
-  - host: jr.zaloapp.com
-    port: 443
-    purpose: Zalo login session establishment
-  - host: tt-profile-wpa.chat.zalo.me
-    port: 443
-    purpose: Zalo profile transport
-  # The inbound listener's WebSocket pool, from `zpw_ws` in the login response.
-  #
-  # The WHOLE pool is declared, not just the members seen so far. zca-js rotates
-  # endpoints on close (`rotateEndpoint`), so listing only the observed ws1/ws4/ws12
-  # buys a listener that works now and dies whenever it rotates onto an undeclared
-  # one - an intermittent failure, which is the most expensive kind here.
-  #
-  # Wildcards are forbidden by construction in this allowlist, so a numbered pool has
-  # to be enumerated. These were invisible until two fixes landed together: routing
-  # provider sockets through the broker (`ws` ignores proxy env vars, so the listener
-  # was failing DNS directly and dying in ~50ms as "[object Object]"), and making the
-  # broker name the host it refuses.
-  - host: ws1-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws2-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws3-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws4-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws5-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws6-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws7-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws8-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws9-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws10-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws11-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws12-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws13-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws14-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws15-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
-  - host: ws16-msg.chat.zalo.me
-    port: 443
-    purpose: Zalo realtime websocket pool
   - host: openclaw.chillhome.io.vn
     port: 443
     purpose: OpenClaw control endpoint
+  # Zalo hands out server pools at RUNTIME, in `zpw_service_map_v3` from the login
+  # response, and rotates between members on reconnect: ws1..ws12-msg for the realtime
+  # socket, tt-chat/tt-group/tt-files/tt-profile-wpa for thread and media reads,
+  # jr.zaloapp.com for session establishment.
+  #
+  # Enumerating that pool by hand is guesswork, and guessing wrong fails INTERMITTENTLY
+  # - the listener runs until it rotates onto an undeclared host, then dies looking
+  # like a provider fault. Measured over one evening: three separate outages, three
+  # different pool members, each costing the owner a fresh QR scan to find.
+  #
+  # Both subtrees belong to Zalo, which is the only external party this channel talks
+  # to, so the suffix form does not widen the trust boundary - it just stops pretending
+  # a runtime-assigned pool can be written down in advance.
+  - host: .zalo.me
+    port: 443
+    purpose: Zalo - identity, chat, realtime socket and thread transport
+  - host: .zaloapp.com
+    port: 443
+    purpose: Zalo - login session establishment pool
+  - host: .zdn.vn
+    port: 443
+    purpose: Zalo - avatar and attachment CDN

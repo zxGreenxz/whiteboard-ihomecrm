@@ -3,8 +3,23 @@
  *
  * The cell, bridge, and maintenance containers have no direct Internet route.
  * Every outbound connection crosses this broker, and the broker only knows the
- * exact FQDN/port pairs written in `allowlist.yaml`. Runtime discovery and
- * wildcards are forbidden by construction: there is no syntax to express them.
+ * FQDN/port pairs written in `allowlist.yaml`.
+ *
+ * Two forms, both explicit. `chat.zalo.me` matches that host and nothing else.
+ * `.chat.zalo.me` - written with a LEADING DOT - matches that domain and its
+ * subdomains. Glob wildcards remain forbidden: there is still no syntax for `*`,
+ * and a suffix entry can only ever widen along DNS label boundaries.
+ *
+ * The suffix form exists because providers hand out server pools at runtime. Zalo's
+ * login response carries a `zpw_service_map_v3` naming hosts like `ws12-msg`,
+ * `tt-chat1-wpa` and `jr.zaloapp.com`, rotating between them on reconnect. Enumerating
+ * that pool is guesswork, and guessing wrong does not fail loudly - it produces an
+ * intermittent outage that looks like a provider fault. Measured over one evening:
+ * three separate incidents, each a different member of the same pool, each costing a
+ * fresh QR scan to diagnose.
+ *
+ * Use it ONLY for a domain whose whole subtree is the same trust boundary as the host
+ * you already allow. It is a deliberate widening, so keep the subtree small.
  */
 
 export interface AllowlistEntry {
@@ -54,7 +69,11 @@ export function parseAllowlist(entries: readonly unknown[]): AllowlistEntry[] {
     const purpose = entry.purpose;
 
     if (host.includes("*")) throw new Error(`wildcard host is forbidden: ${host}`);
-    if (!isCanonicalFqdn(host)) throw new Error(`invalid allowlist host: ${host}`);
+    // A leading dot marks the suffix form. Everything after it must still be a
+    // canonical FQDN, so `.zalo.me` is accepted and `..zalo.me` or `.me` is not.
+    const fqdn = host.startsWith(".") ? host.slice(1) : host;
+    if (fqdn.split(".").length < 2) throw new Error(`allowlist suffix is too broad: ${host}`);
+    if (!isCanonicalFqdn(fqdn)) throw new Error(`invalid allowlist host: ${host}`);
     if (IPV4_LITERAL.test(host) || host.includes(":")) {
       throw new Error(`IP literal is forbidden in the allowlist: ${host}`);
     }
@@ -101,8 +120,13 @@ export function evaluateDestination(
   }
   if (!isCanonicalFqdn(normalized)) return { allowed: false, denial: "MALFORMED_HOST" };
 
-  // Exact match only. A subdomain of an allowlisted host is not implied.
-  const hostMatches = allowlist.filter((entry) => entry.host === normalized);
+  // Exact entries match themselves. A suffix entry (`.example.com`) matches the domain
+  // and its subdomains, and only along label boundaries - `notexample.com` never
+  // matches `.example.com`.
+  const hostMatches = allowlist.filter((entry) =>
+    entry.host.startsWith(".")
+      ? normalized === entry.host.slice(1) || normalized.endsWith(entry.host)
+      : entry.host === normalized);
   if (hostMatches.length === 0) return { allowed: false, denial: "HOST_NOT_ALLOWED" };
 
   const entry = hostMatches.find((candidate) => candidate.port === port);

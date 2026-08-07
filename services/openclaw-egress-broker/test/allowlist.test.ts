@@ -14,6 +14,44 @@ const ALLOWLIST: AllowlistEntry[] = parseAllowlist([
   { host: "chat.zalo.me", port: 443, purpose: "zalo" },
 ]);
 
+const SUFFIX_ALLOWLIST: AllowlistEntry[] = parseAllowlist([
+  { host: ".chat.zalo.me", port: 443, purpose: "zalo pool" },
+]);
+
+// Providers hand out server pools at runtime and rotate between members. Writing them
+// down in advance is guesswork that fails INTERMITTENTLY - three outages in one
+// evening, three different pool members. The suffix form exists for exactly that, and
+// must widen along DNS label boundaries only.
+describe("Suffix entries", () => {
+  it("matches the domain itself and its subdomains", () => {
+    for (const host of ["chat.zalo.me", "ws12-msg.chat.zalo.me", "tt-chat1-wpa.chat.zalo.me"]) {
+      expect(evaluateDestination(host, 443, SUFFIX_ALLOWLIST).allowed, host).toBe(true);
+    }
+  });
+
+  it("never matches across a label boundary", () => {
+    // The whole point: `.chat.zalo.me` must not be satisfiable by a lookalike domain
+    // an attacker can register.
+    for (const host of ["evilchat.zalo.me", "chat.zalo.me.evil.com", "notchat.zalo.me"]) {
+      expect(evaluateDestination(host, 443, SUFFIX_ALLOWLIST).allowed, host).toBe(false);
+    }
+  });
+
+  it("still enforces the port", () => {
+    expect(evaluateDestination("ws1-msg.chat.zalo.me", 80, SUFFIX_ALLOWLIST).denial)
+      .toBe("PORT_NOT_ALLOWED");
+  });
+
+  it("refuses a suffix broad enough to cover a public suffix", () => {
+    expect(() => parseAllowlist([{ host: ".me", port: 443, purpose: "x" }])).toThrow();
+  });
+
+  it("still refuses glob wildcards, which stay unrepresentable", () => {
+    expect(() => parseAllowlist([{ host: "*.chat.zalo.me", port: 443, purpose: "x" }]))
+      .toThrow(/wildcard/i);
+  });
+});
+
 describe("Allowlist parsing", () => {
   it("accepts exact reviewed FQDN and port entries", () => {
     expect(ALLOWLIST).toHaveLength(4);
