@@ -1,0 +1,18 @@
+{
+  "file": "supabase/migrations/20260807163000_ie_types_org_boundary.sql",
+  "sha256": "ff46da27e6811f750434313c8f6e94d9718dee04d9f911c641b8a3177d1b0b9c",
+  "appliedAt": "2026-08-07T09:07:00.000Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "appliedBy": "agent (Claude Code)",
+  "promotionToken": false,
+  "backupTaken": false,
+  "note": "GHI NGOÀI Ý MUỐN — KHÔNG phải một lần apply hợp lệ. Lệnh chạy là `npm run migrate:forward <file>` KHÔNG kèm --apply, tức đường DRY-RUN. buildTransaction khi đó bọc BEGIN…ROLLBACK quanh nội dung file, nhưng file tự mở BEGIN;…COMMIT; (đúng nhà style). Postgres không có transaction lồng: BEGIN thứ hai chỉ cảnh báo rồi bị bỏ qua, COMMIT bên trong đóng luôn transaction NGOÀI, ROLLBACK cuối thành no-op. Hệ quả: dry-run ghi thật, đi vòng qua cả cửa promotion token lẫn cửa backup. Không có bản dump nào trước thời điểm này. Lỗ đã vá cùng ngày (scripts/apply-reviewed-migration.mjs + scripts/__tests__/apply-reviewed-migration.test.mjs); đã chứng minh dry-run rollback thật bằng cách so OID policy (399249 trước và sau) và OID create_cash_handover (110973 trước và sau) qua hai lần dry-run lại.",
+  "verification": [
+    "Trước policy (đo bằng DROP trong transaction rollback, vai nathan df8d1df5): 214 hạng mục nhìn thấy, 124 thuộc tổ chức khác.",
+    "Sau policy: 90 hạng mục nhìn thấy, 0 thuộc tổ chức khác.",
+    "E2E .e2e-fleet/specs/ie-create.spec.ts trên https://ptcrm.vercel.app: 2/2 pass, cả hai vai đi đường CANONICAL (200)."
+  ],
+  "rollback": "DROP POLICY IF EXISTS income_expense_types_org_boundary ON public.income_expense_types;"
+}
