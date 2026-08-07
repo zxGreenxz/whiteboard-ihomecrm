@@ -156,8 +156,19 @@ sẽ đẩy nhầm nhánh cũ); kiểm trước bằng `git merge-base --is-ance
 
 Đây là ranh giới **khác** với deploy web. Deploy web sai thì rollback được; migration sai thì không.
 
-- Mọi write production qua Management API / apply migration **phải có promotion token nhập tại thời
-  điểm chạy**. KHÔNG dùng thẳng PAT sẵn trong `CLAUDE.local.md` cho đường ghi production.
+- Mọi write production qua Management API / apply migration **phải có giấy phép**. KHÔNG dùng thẳng
+  PAT sẵn trong `CLAUDE.local.md` cho đường ghi production.
+  **Đổi 07/08/2026 theo yêu cầu chủ dự án — lane tự chạy được, không cần người gõ token mỗi lần:**
+  - *Biên nhận backup* (mặc định): `npm run migrate:forward … --apply` tự chạy backup, tự kiểm bản
+    dump đủ tư cách làm đường lùi (không phải chỉ-schema, không bỏ dữ liệu bảng nào, ≥450 bảng có
+    dữ liệu), rồi tự phát biên nhận buộc migration vào đúng bản dump đó.
+  - *`IHOMECRM_PROMOTION_TOKEN`*: **bắt buộc** khi dùng `--khong-backup`. Đường tự động và đường bỏ
+    backup KHÔNG dùng chung được.
+
+  Vì sao đổi được: token cũ gộp "có người dừng lại nhìn" với "có điểm khôi phục nếu hỏng". Với PITR
+  TẮT, chỉ thứ hai quyết định thiệt hại — và con người gõ token chưa bao giờ tạo ra bản dump đó.
+  Thứ THẬT SỰ mất: không còn ai xem lại **nội dung** migration trước khi nó chạm production; ba lớp
+  còn lại kiểm xuất xứ, không kiểm ý định.
 - Preflight bắt buộc: đúng project/org/environment, working tree sạch, reviewed SHA.
 - Ghi evidence: statement bytes, normalized digest, catalog fingerprint trước/sau, actor.
 - Fail closed khi provenance state / reviewed SHA / precondition catalog lạ.
@@ -199,7 +210,8 @@ vào git. Kèm manifest `.json` có sha256, thời lượng và gợi ý restore
   khi merge. Không sửa file lịch sử đã deploy.
 - Luật cutoff và forward-only nằm ở `supabase/migration-policy.json`; trạng thái từng file ở
   `supabase/migration-provenance.json` (sinh bằng máy). Apply qua `npm run migrate:forward` —
-  dry-run là mặc định, `--apply` đòi promotion token. Gate: `npm run gate:migration-provenance`.
+  dry-run là mặc định, `--apply` đòi giấy phép (biên nhận backup tự phát, hoặc promotion token khi
+  `--khong-backup`). Gate: `npm run gate:migration-provenance`.
 - **Legacy history KHÔNG replay được** — đừng tin `supabase db push` hay `supabase start`:
   625 file có 33 nhóm trùng version (69 file) + bộ legacy `001_`–`033_` còn collision nội bộ
   (`016_` ×4, `017_` ×2); ledger `supabase_migrations.schema_migrations` đã tụt lại sau production.
@@ -431,7 +443,8 @@ hidden retry cho thao tác không idempotent.
 ## 11. Những gì agent KHÔNG được tự làm
 
 1. Promote production khi còn gate đỏ (kể cả gate `continue-on-error` bị nhận nhầm là xanh).
-2. Ghi database production bằng PAT sẵn trong vault, không có promotion token.
+2. Ghi database production bằng PAT sẵn trong vault, KHÔNG đi qua `npm run migrate:forward` — tức
+   không có backup làm đường lùi và không có gì ghi lại lần ghi đó dựa trên cái gì.
 3. `git add -A` / `git add .`.
 4. Sửa hay đổi tên migration đã deploy; replay `migrations-archive/`.
 5. Redirect `npm run gen:types >` vào bất kỳ file nào.

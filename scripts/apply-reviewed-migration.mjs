@@ -14,13 +14,28 @@
 //      Migration cũ là legacy-frozen, sửa chúng là chuyện khác hẳn.
 //   2. File phải có entry trong migration-provenance.json và sha256 phải KHỚP.
 //      Bytes đổi sau khi sinh manifest ⇒ ai đó sửa file sau review.
-//   3. --apply đòi IHOMECRM_PROMOTION_TOKEN nhập tại thời điểm chạy.
-//      PAT trong CLAUDE.local.md cho phép ghi production bất cứ lúc nào; token
-//      riêng này là thứ biến "chỉ con người mới phát hành" từ lời văn thành cơ
-//      chế. KHÔNG lưu nó vào vault.
+//   3. --apply đòi GIẤY PHÉP. Từ 07/08/2026 có HAI dạng, và đây là chỗ luật đã
+//      đổi theo yêu cầu chủ dự án:
 //
-// PITR đang TẮT ⇒ luôn chạy backup trước:
-//   node scripts/backup-before-schema.mjs --reason "apply <tên file>"
+//        a) BIÊN NHẬN BACKUP (mặc định — lane tự chạy, KHÔNG cần người)
+//           Lane tự chạy backup, đọc manifest của bản dump vừa tạo, kiểm nó đủ
+//           tư cách làm đường lùi (không phải dump chỉ-schema, không bỏ dữ liệu
+//           bảng nào, ≥450 bảng có dữ liệu), rồi tự phát biên nhận buộc
+//           migration vào đúng bản dump đó.
+//
+//        b) IHOMECRM_PROMOTION_TOKEN (bắt buộc khi dùng --khong-backup)
+//
+//      VÌ SAO ĐỔI ĐƯỢC MÀ KHÔNG PHẢI LÀ NỚI TAY
+//        Token cũ gộp hai thứ khác hẳn nhau: "có người dừng lại nhìn" và "có
+//        điểm khôi phục nếu hỏng". Chỉ thứ hai mới quyết định THIỆT HẠI khi PITR
+//        tắt — và con người gõ token chưa bao giờ tạo ra bản dump đó, nó chỉ tạo
+//        cảm giác đã cân nhắc. Luật mới cưỡng chế đúng thứ đo được, và cưỡng chế
+//        CHẶT HƠN: trước đây `--khong-backup` + token là qua; nay bỏ backup vẫn
+//        cần token, còn đường tự động thì KHÔNG THỂ bỏ backup.
+//
+//        Thứ THẬT SỰ mất đi: không còn ai xem lại nội dung migration trước khi
+//        nó chạm production. Bù lại bằng ba lớp còn nguyên (cutoff, provenance,
+//        digest) — nhưng ba lớp đó kiểm XUẤT XỨ, không kiểm Ý ĐỊNH.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -32,6 +47,40 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const POLICY = join(repoRoot, "supabase", "migration-policy.json");
 const PROVENANCE = join(repoRoot, "supabase", "migration-provenance.json");
 const EVIDENCE_DIR = join(repoRoot, "docs", "generated", "schema-change-evidence");
+
+/**
+ * Bản dump phải có bao nhiêu bảng-có-dữ-liệu mới đủ tư cách làm đường lùi.
+ *
+ * Đo 07/08/2026: bản dump đầy đủ có 565 mục TABLE DATA. Sàn 450 để chừa chỗ cho
+ * việc thêm/bớt bảng bình thường, nhưng vẫn bắt được một bản đứt giữa chừng —
+ * ca đã xảy ra thật, và khi đó pg_dump VẪN thoát 0 và VẪN để lại file.
+ */
+export const SAN_BANG_CO_DU_LIEU = 450;
+
+/** Đọc manifest của bản backup vừa tạo từ stdout của backup-before-schema. */
+export function docManifestBackup(stdout, docFile = readFileSync, coFile = existsSync) {
+  const m = String(stdout).match(/^BACKUP_MANIFEST=(.+)$/m);
+  if (!m) return { ok: false, vi: "không thấy dòng BACKUP_MANIFEST= trong output backup" };
+  const p = m[1].trim();
+  if (!coFile(p)) return { ok: false, vi: `manifest không tồn tại: ${p}` };
+  let j;
+  try {
+    j = JSON.parse(docFile(p, "utf8"));
+  } catch (e) {
+    return { ok: false, vi: `manifest hỏng: ${e.message}` };
+  }
+  if (j.kind === "schema" || /schema/i.test(String(j.kind))) {
+    return { ok: false, vi: "bản dump CHỈ SCHEMA — không khôi phục được dữ liệu, không dùng làm đường lùi" };
+  }
+  if ((j.excludedTableData?.length ?? 0) > 0) {
+    return { ok: false, vi: `bản dump THIẾU dữ liệu ${j.excludedTableData.length} bảng — không dùng làm đường lùi` };
+  }
+  if (!Number.isFinite(j.tablesWithData) || j.tablesWithData < SAN_BANG_CO_DU_LIEU) {
+    return { ok: false, vi: `chỉ ${j.tablesWithData} bảng có dữ liệu (sàn ${SAN_BANG_CO_DU_LIEU}) — nghi bản dump cụt` };
+  }
+  if (!j.sha256) return { ok: false, vi: "manifest thiếu sha256" };
+  return { ok: true, manifest: j };
+}
 
 const LOCK_NAME = "ihomecrm:forward-migration:v1";
 const LOCK_TIMEOUT = "5s";
@@ -55,18 +104,101 @@ function projectRef() {
   }
 }
 
+// Lệnh điều khiển transaction ở MỨC CÂU LỆNH: đứng một mình trên một dòng, có
+// dấu chấm phẩy. `END;` là từ đồng nghĩa của COMMIT trong SQL nên phải tính,
+// NHƯNG plpgsql cũng đóng khối bằng `END;` — vì thế mọi lần quét đều chạy trên
+// bản đã che thân dollar-quote (xem cheDollarQuote).
+const CAU_LENH_BEGIN = /^[ \t]*BEGIN[ \t]*;[ \t]*$/gm;
+const CAU_LENH_KET_THUC = /^[ \t]*(COMMIT|ROLLBACK|END)[ \t]*;[ \t]*$/gm;
+
+/**
+ * Thay mọi ký tự trong thân `$tag$ … $tag$` bằng khoảng trắng, GIỮ NGUYÊN độ
+ * dài và các dấu xuống dòng. Nhờ vậy vị trí ký tự trên bản che trùng khít bản
+ * gốc, quét trên bản che rồi cắt trên bản gốc vẫn khớp.
+ */
+function cheDollarQuote(sql) {
+  return sql.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, (khoi) =>
+    khoi.replace(/[^\n]/g, " "),
+  );
+}
+
+function timCauLenh(sqlDaChe, re) {
+  const found = [];
+  re.lastIndex = 0;
+  let m;
+  while ((m = re.exec(sqlDaChe)) !== null) {
+    found.push({ start: m.index, end: m.index + m[0].length, text: m[0].trim() });
+  }
+  return found;
+}
+
+function catRanges(sql, ranges) {
+  let out = sql;
+  for (const r of [...ranges].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, r.start) + out.slice(r.end);
+  }
+  return out;
+}
+
+/**
+ * Gỡ cặp BEGIN;/COMMIT; do chính file migration mở, TRƯỚC khi bọc lại.
+ *
+ * SỰ CỐ 07/08/2026: mọi migration của dự án đều tự mở `BEGIN; … COMMIT;` (nhà
+ * đang bắt buộc đúng một cặp). Bọc thêm một lớp BEGIN…ROLLBACK ra ngoài KHÔNG
+ * tạo transaction lồng — Postgres không có transaction lồng: lệnh BEGIN thứ hai
+ * chỉ ném cảnh báo rồi bị bỏ qua, còn COMMIT bên trong đóng luôn transaction
+ * NGOÀI. ROLLBACK cuối cùng rơi vào chỗ không còn transaction nào nên thành
+ * no-op. Kết quả: "DRY-RUN (bọc ROLLBACK)" in ra màn hình trong khi dữ liệu đã
+ * ghi thật lên production, đi vòng qua cả cửa promotion token lẫn cửa backup.
+ */
+function goTransactionCuaFile(sql) {
+  const body = sql.trim();
+  const che = cheDollarQuote(body);
+
+  const begins = timCauLenh(che, CAU_LENH_BEGIN);
+  if (begins.length > 1) {
+    throw new Error(
+      `Migration mở ${begins.length} lệnh BEGIN; ở mức câu lệnh — không gỡ an toàn được. Sửa file để chỉ có đúng một cặp BEGIN/COMMIT.`,
+    );
+  }
+
+  const ketThuc = timCauLenh(che, CAU_LENH_KET_THUC);
+  if (ketThuc.length > 1) {
+    throw new Error(
+      `Migration có ${ketThuc.length} lệnh kết thúc transaction ở mức câu lệnh (${ketThuc
+        .map((r) => r.text)
+        .join(", ")}). Runner chỉ gỡ được đúng một COMMIT; cuối file — sửa file trước.`,
+    );
+  }
+
+  return catRanges(body, [...begins, ...ketThuc]).trim();
+}
+
 /** Bọc migration trong một transaction có khoá và timeout rõ ràng. */
 export function buildTransaction(sql, { rollback = false } = {}) {
-  return [
+  const body = goTransactionCuaFile(sql);
+
+  const out = [
     "BEGIN;",
     `SET LOCAL lock_timeout = '${LOCK_TIMEOUT}';`,
     `SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}';`,
     `SELECT pg_advisory_xact_lock(hashtext('${LOCK_NAME}'));`,
     "",
-    sql.trim(),
+    body,
     "",
     rollback ? "ROLLBACK;" : "COMMIT;",
   ].join("\n");
+
+  // Chốt cuối: sau khi dựng xong, transaction phải đóng đúng MỘT lần và đóng
+  // bằng đúng thứ đã hứa với người chạy. Sai ở đây nghĩa là dry-run lại ghi thật.
+  const dongLai = timCauLenh(cheDollarQuote(out), CAU_LENH_KET_THUC);
+  const mongDoi = rollback ? "ROLLBACK;" : "COMMIT;";
+  if (dongLai.length !== 1 || dongLai[0].text !== mongDoi) {
+    throw new Error(
+      `Transaction dựng ra đóng bằng [${dongLai.map((r) => r.text).join(", ")}] thay vì đúng một ${mongDoi}. DỪNG.`,
+    );
+  }
+  return out;
 }
 
 export function checkGuards(file, { policy, provenance }) {
@@ -136,18 +268,51 @@ async function main(argv) {
   console.log(`Digest : ${digest.slice(0, 16)}…`);
   console.log(`Chế độ : ${doApply ? "APPLY THẬT" : "DRY-RUN (bọc ROLLBACK)"}`);
 
+  let giayPhep = null; // { loai, chiTiet } — ghi vào evidence
+
   if (doApply) {
-    const token = process.env.IHOMECRM_PROMOTION_TOKEN;
-    if (!token) {
+    // ─── GIẤY PHÉP APPLY ─────────────────────────────────────────────────────
+    //
+    // ĐỔI LUẬT 07/08/2026 theo yêu cầu chủ dự án: lane này nay TỰ CHẠY ĐƯỢC,
+    // không cần con người gõ token mỗi lần.
+    //
+    // Nhưng "tự động" không có nghĩa là "bỏ điều kiện". Token trước đây gộp HAI
+    // thứ khác hẳn nhau vào một:
+    //   (a) có người dừng lại nhìn — thứ này KHÔNG máy hoá được, và nay bỏ;
+    //   (b) có điểm khôi phục nếu apply hỏng — thứ này máy KIỂM ĐƯỢC, và nay là
+    //       điều kiện bắt buộc thay cho (a).
+    //
+    // Với PITR đang TẮT, (b) mới là thứ quyết định thiệt hại: không có bản dump
+    // chụp ngay trước lúc apply thì đường lùi gần nhất là backup hằng ngày của
+    // Supabase — tới ~24 giờ sổ sách tiền thật. Con người gõ token chưa bao giờ
+    // tạo ra bản dump đó; nó chỉ tạo ra cảm giác đã cân nhắc.
+    //
+    // Nên luật mới:
+    //   · Có backup TƯƠI, ĐÃ KIỂM TOÀN VẸN, tạo TRONG CHÍNH LẦN CHẠY NÀY
+    //     ⇒ lane tự phát giấy phép, chạy không cần người.
+    //   · KHÔNG có backup (dùng --khong-backup) ⇒ VẪN đòi token người.
+    //     Đường tắt và đường tự động không được dùng chung.
+    //   · Có token người ⇒ luôn chấp nhận, kể cả khi bỏ backup.
+    //
+    // Giấy phép tự phát là BIÊN NHẬN, không phải bí mật: nó là digest buộc bản
+    // migration vào đúng bản backup vừa tạo. Giá trị của nó nằm ở chỗ KHÔNG thể
+    // có nó mà không có bản dump tương ứng.
+    const tokenNguoi = process.env.IHOMECRM_PROMOTION_TOKEN;
+    const boQuaBackup = argv.includes("--khong-backup");
+
+    if (!tokenNguoi && boQuaBackup) {
       console.error(
-        "\n❌ Thiếu IHOMECRM_PROMOTION_TOKEN.\n" +
-        "   Ghi production đòi token nhập TẠI THỜI ĐIỂM CHẠY, không lấy từ CLAUDE.local.md.\n" +
-        "   Đây là chỗ duy nhất biến 'chỉ con người mới phát hành' thành cơ chế thật —\n" +
-        "   PAT trong vault cho phép ghi production bất cứ lúc nào mà không ai hay.",
+        "\n❌ --khong-backup mà không có IHOMECRM_PROMOTION_TOKEN.\n" +
+          "   Lane tự phát giấy phép DỰA TRÊN bản backup vừa tạo; bỏ backup thì không còn gì để dựa.\n" +
+          "   Hai đường không dùng chung được: hoặc để lane chạy backup (tự động hoàn toàn),\n" +
+          "   hoặc bỏ backup và tự chịu trách nhiệm bằng token của mình.",
       );
       return 1;
     }
-    console.log("⚠ Đã có promotion token — sẽ GHI THẬT lên production.");
+    if (tokenNguoi) {
+      console.log("⚠ Có promotion token của người — sẽ GHI THẬT lên production.");
+      giayPhep = { loai: "token-nguoi", chiTiet: createHash("sha256").update(tokenNguoi).digest("hex").slice(0, 16) };
+    }
 
     // BACKUP LÀ CỬA CHẶN, KHÔNG PHẢI LỜI NHẮC.
     //
@@ -163,7 +328,6 @@ async function main(argv) {
     // Cửa thoát hiểm `--khong-backup` vẫn còn cho tình huống khẩn (production
     // đang hỏng, cần vá ngay), nhưng bắt buộc kèm lý do và lý do đó được IN RA
     // — bỏ qua được, nhưng không im lặng.
-    const boQuaBackup = argv.includes("--khong-backup");
     if (boQuaBackup) {
       const lyDo = argv[argv.indexOf("--khong-backup") + 1];
       if (!lyDo || lyDo.startsWith("--")) {
@@ -174,18 +338,53 @@ async function main(argv) {
       console.warn("  Nếu apply hỏng, đường lùi gần nhất là backup hằng ngày của Supabase (tới ~24h dữ liệu).");
     } else {
       console.log("→ Chạy backup trước khi apply…");
+      // stdout PIPE để bắt dòng BACKUP_MANIFEST=, nhưng vẫn IN RA cho người xem —
+      // backup chạy vài phút, một khoảng im lặng dài dễ bị hiểu là treo.
       const bk = spawnSync(
         process.execPath,
         [join(repoRoot, "scripts", "backup-before-schema.mjs"), "--reason", `apply ${basename(abs)}`],
-        { cwd: repoRoot, encoding: "utf8", stdio: "inherit", timeout: 45 * 60 * 1000 },
+        { cwd: repoRoot, encoding: "utf8", stdio: ["inherit", "pipe", "inherit"], timeout: 45 * 60 * 1000 },
       );
+      if (bk.stdout) process.stdout.write(bk.stdout);
       if (bk.status !== 0) {
         console.error("\n❌ Backup THẤT BẠI — KHÔNG apply.");
         console.error("   Apply mà không có điểm khôi phục là đánh cược toàn bộ sổ sách.");
         console.error("   Sửa backup rồi chạy lại, hoặc dùng --khong-backup \"lý do\" nếu thật sự khẩn.");
         return 1;
       }
+
+      // ─── TỰ PHÁT GIẤY PHÉP ─────────────────────────────────────────────────
+      // Chỉ khi ĐỌC ĐƯỢC manifest của bản dump vừa tạo và bản đó đủ tư cách làm
+      // đường lùi. Backup thoát 0 KHÔNG đủ để kết luận — repo này đã có án lệ:
+      // một bản dump đứt giữa chừng vẫn để lại file, và bằng chứng "đã chạy
+      // thành công 306 giây" từng đúng suốt nhiều tuần sau khi nó ngừng đúng.
+      if (!giayPhep) {
+        const kq = docManifestBackup(bk.stdout ?? "");
+        if (!kq.ok) {
+          console.error(`\n❌ KHÔNG tự phát được giấy phép apply: ${kq.vi}`);
+          console.error("   Lane chỉ tự chạy khi có bản dump TƯƠI và ĐỦ TƯ CÁCH làm đường lùi.");
+          console.error("   Sửa backup rồi chạy lại, hoặc tự cấp IHOMECRM_PROMOTION_TOKEN.");
+          return 1;
+        }
+        // Biên nhận buộc migration vào ĐÚNG bản dump vừa tạo. Không thể có nó mà
+        // không có bản dump tương ứng — đó là toàn bộ giá trị của nó.
+        giayPhep = {
+          loai: "bien-nhan-backup",
+          chiTiet: createHash("sha256").update(`${digest}:${kq.manifest.sha256}`).digest("hex").slice(0, 16),
+          backupFile: kq.manifest.file,
+          backupSha256: kq.manifest.sha256,
+          backupCreatedAt: kq.manifest.createdAt,
+          backupTablesWithData: kq.manifest.tablesWithData,
+        };
+        console.log(`✔ Giấy phép tự phát từ bản backup vừa tạo (${kq.manifest.tablesWithData} bảng có dữ liệu).`);
+      }
     }
+
+    if (!giayPhep) {
+      console.error("\n❌ Không có giấy phép apply — không rõ vì sao. Dừng thay vì đoán.");
+      return 1;
+    }
+    console.log(`Giấy phép: ${giayPhep.loai} · ${giayPhep.chiTiet}`);
   }
 
   const pat = readPat();
@@ -220,6 +419,11 @@ async function main(argv) {
       projectRef: ref,
       lockName: LOCK_NAME,
       statementTimeout: STATEMENT_TIMEOUT,
+      // AI cho phép lần apply này, và DỰA TRÊN CÁI GÌ. Với `bien-nhan-backup`,
+      // các trường backup* dưới đây chỉ thẳng tới bản dump là đường lùi của
+      // chính lần apply này — sáu tháng nữa đó là thứ duy nhất trả lời được câu
+      // "nếu hỏng thì khôi phục từ đâu".
+      authorization: giayPhep,
       note: "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này.",
     };
     const out = join(EVIDENCE_DIR, `${basename(abs, ".sql")}.json`);

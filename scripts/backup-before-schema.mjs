@@ -348,6 +348,10 @@ function main(argv) {
   console.log(`✅ Xong sau ${manifest.durationSeconds}s — ${mb} MB`);
   console.log(`   sha256: ${sha256.slice(0, 16)}…`);
   console.log(`   manifest: ${outFile}.json`);
+  // Dòng MÁY ĐỌC ĐƯỢC, cố ý có tiền tố cố định. apply-reviewed-migration.mjs bắt
+  // dòng này để neo giấy phép apply vào ĐÚNG bản backup vừa tạo — không phải một
+  // bản nào đó nằm sẵn trong thư mục từ tuần trước.
+  console.log(`BACKUP_MANIFEST=${outFile}.json`);
   if (args.schemaOnly) {
     console.log("⚠ Đây là dump CHỈ SCHEMA — không khôi phục được dữ liệu. Đừng coi là đường lùi.");
   }
