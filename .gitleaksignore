@@ -1,0 +1,56 @@
+# BASELINE QUÉT SECRET — mỗi dòng là MỘT finding đã xác minh tay là dương tính giả.
+#
+# VÌ SAO DÙNG FINGERPRINT CHỨ KHÔNG NỚI ALLOWLIST TRONG .gitleaks.toml
+#   Nới regex/đường dẫn để 17 finding này im sẽ đồng thời làm câm mọi secret
+#   THẬT rơi vào cùng chỗ sau này. Fingerprint ghim chặt vào (file, commit,
+#   rule, dòng): một secret mới ở ngay dòng bên cạnh vẫn kêu.
+#
+# Đã xác minh 07/08/2026 bằng gitleaks 8.30.1 trên 1776 commit / 64,22 MB.
+# Quét trần: 2194 finding → sau .gitleaks.toml: 17 → sau file này: 0.
+#
+# THÊM DÒNG VÀO ĐÂY LÀ MỘT QUYẾT ĐỊNH, KHÔNG PHẢI THAO TÁC DỌN DẸP.
+#   Phải đọc giá trị thật, kết luận vì sao nó không phải secret, rồi ghi lý do.
+#   Nếu là secret thật: ROTATE TRƯỚC, rồi mới nói chuyện xoá khỏi lịch sử.
+
+# .e2e-fleet/specs/contract-create-linked-deposit.spec.ts — `sbRpc(auth, 'ie_compat_cancel_v2')` — đối số là TÊN RPC, không phải khoá.
+d373102f1a4e5e9df27558293f3a56968628f09b:.e2e-fleet/specs/contract-create-linked-deposit.spec.ts:generic-api-key:346
+
+# .e2e-fleet/specs/income-cancel-permission-matrix.spec.ts — Như trên: đối số thứ hai của sbRpc là tên RPC.
+3ba88c93ada0793b3e45214bb2d3259eb7157a54:.e2e-fleet/specs/income-cancel-permission-matrix.spec.ts:generic-api-key:200
+
+# .e2e-fleet/specs/income-voucher-cancel.spec.ts — Như trên: authKt/authChu là biến phiên đăng nhập, đối số sau là tên RPC.
+722f57408973dbb54973a24ee01a385855543451:.e2e-fleet/specs/income-voucher-cancel.spec.ts:generic-api-key:258
+722f57408973dbb54973a24ee01a385855543451:.e2e-fleet/specs/income-voucher-cancel.spec.ts:generic-api-key:268
+
+# .e2e-fleet/specs/income-voucher-move-cashbook.spec.ts — Như trên: đối số thứ hai của sbRpc là tên RPC.
+17b3d14af5b7957d1c11ffa64010b1fd97995cbe:.e2e-fleet/specs/income-voucher-move-cashbook.spec.ts:generic-api-key:215
+
+# crawler.ps1 — File đã bị XOÁ; JWT trong đó là anon key publishable (role=anon), chỉ còn trong lịch sử.
+860f1e6a00a9b37fee30afee7df1726683d0f123:crawler.ps1:jwt:1
+
+# infra/network-center-worker/deploy/activate-release.sh — Biểu thức chính quy khớp TÊN thư mục release `.release-<sha1>.<rand>`.
+10fef12c139bd070f9e77cb8b49fcd2ef77f11cf:infra/network-center-worker/deploy/activate-release.sh:generic-api-key:806
+
+# infra/network-center-worker/test/routerOsSyntax.test.ts — Chuỗi cú pháp RouterOS trong test, không phải khoá.
+78d956c704afacdc4b926f2de0abd52c20d747f3:infra/network-center-worker/test/routerOsSyntax.test.ts:generic-api-key:76
+
+# scripts/__tests__/openclaw-sql-harness.test.mjs — Token và JWT GIẢ dựng trong harness để kiểm chính đường từ chối token sai.
+7bd87bcfdbc3c1958c93029808c88d6acc520b17:scripts/__tests__/openclaw-sql-harness.test.mjs:generic-api-key:107
+7bd87bcfdbc3c1958c93029808c88d6acc520b17:scripts/__tests__/openclaw-sql-harness.test.mjs:generic-api-key:116
+7bd87bcfdbc3c1958c93029808c88d6acc520b17:scripts/__tests__/openclaw-sql-harness.test.mjs:jwt:130
+7bd87bcfdbc3c1958c93029808c88d6acc520b17:scripts/__tests__/openclaw-sql-harness.test.mjs:jwt:131
+
+# scripts/__tests__/production-openclaw-smoke.test.mjs — accessToken giả trong test khói; giá trị thật lấy từ env lúc chạy.
+9b772313f972936c15f17daf2dd10fe53065a404:scripts/__tests__/production-openclaw-smoke.test.mjs:generic-api-key:115
+
+# scripts/audit-finance-v2-rollout.mjs — `"cashbook.access.v2"` là KHOÁ QUYỀN, không phải khoá bí mật.
+4e39b39f6a05f166b9cdad7bd99633a035d54044:scripts/audit-finance-v2-rollout.mjs:generic-api-key:20
+
+# split_crawler.ps1 — File đã bị XOÁ; như trên.
+860f1e6a00a9b37fee30afee7df1726683d0f123:split_crawler.ps1:jwt:2
+
+# src/components/my-day/RoutePlannerSheet.tsx — `ROUTE_PLAN_KEY = "v5_route_plan"` là khoá localStorage.
+e0c6426f1ab8ef480e62ceaba3219b2351ab74f0:src/components/my-day/RoutePlannerSheet.tsx:generic-api-key:59
+
+# supabase/migrations/20260727090000_openclaw_maintenance_jobs.sql — Tên khoá cấu hình trong SQL, không có giá trị đi kèm.
+d20c7b93a5c46ebb1547339c6935a516f42a9904:supabase/migrations/20260727090000_openclaw_maintenance_jobs.sql:generic-api-key:4186

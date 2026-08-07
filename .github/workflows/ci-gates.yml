@@ -30,6 +30,10 @@ on:
   push:
     branches:
       - main
+      # `production` là nhánh Vercel phát hành. Trước đây nó KHÔNG được theo dõi,
+      # nên một push thẳng vào đó không kích hoạt gate nào — đúng nhánh nguy hiểm
+      # nhất lại là nhánh duy nhất không ai canh.
+      - production
       - 'release/*'
 
 permissions:
@@ -691,3 +695,72 @@ jobs:
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/test-cross-tenant.mjs
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Quét secret TOÀN LỊCH SỬ.
+  #
+  # Đợt 0a #3 của plan đòi việc này. Nó ĐÃ được chạy một lần (số liệu ghi ở
+  # tooling/program-status.json) nhưng không để lại artifact và không có cơ chế
+  # chạy lại — tức là một lần kiểm, không phải một cửa chặn. Bằng chứng chứng
+  # minh nó SẠCH LÚC ĐÓ không chứng minh nó SẠCH BÂY GIỜ; đây đúng là kiểu hỏng
+  # đã cắn hai lần trong ngày 07/08 (backup đứt âm thầm, baseline chưa từng
+  # restore thật).
+  #
+  # Cài binary pin theo VERSION + SHA256 thay vì dùng gitleaks-action: action v2
+  # đòi GITLEAKS_LICENSE cho tổ chức, và một cửa chặn phụ thuộc giấy phép bên thứ
+  # ba là một cửa chặn sẽ tắt vào ngày không ai muốn.
+  # ─────────────────────────────────────────────────────────────────────────
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # BẮT BUỘC: quét toàn lịch sử. Checkout nông chỉ thấy một commit, và
+          # gitleaks sẽ báo "no leaks found" — xanh rỗng, đúng thứ tệ nhất.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Cài gitleaks (pin version + sha256)
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks version
+
+      - name: Chốt chặn xanh-rỗng — phải thật sự có lịch sử để quét
+        run: |
+          set -euo pipefail
+          COMMITS=$(git rev-list --count HEAD)
+          echo "Lịch sử: $COMMITS commit"
+          if [ "$COMMITS" -lt 500 ]; then
+            echo "::error::Chỉ thấy $COMMITS commit (sàn 500). Checkout nông ⇒ 'no leaks found' là vô nghĩa."
+            exit 1
+          fi
+
+      - name: Quét toàn lịch sử
+        run: /tmp/gitleaks git --redact --no-banner --config .gitleaks.toml .
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Nhánh `production` là thứ Vercel phát hành. Push thẳng vào đó = phát hành mã
+  # chưa từng qua CI của main. Branch protection KHÔNG bật được (repo private
+  # trên GitHub Free — đo ở docs/generated/external-controls.json), nên cửa chặn
+  # khả thi duy nhất là kêu SAU push. Kêu sau vẫn hơn không biết.
+  # ─────────────────────────────────────────────────────────────────────────
+  production-promotion:
+    if: github.ref == 'refs/heads/production' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Lấy về cả main để so
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - name: Mọi commit đang phát hành đều đã qua main
+        run: node scripts/check-production-promotion.mjs

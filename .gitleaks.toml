@@ -1,0 +1,92 @@
+# Cấu hình quét secret cho toàn lịch sử git.
+#
+# VÌ SAO CẦN FILE NÀY
+#   Quét trần trên repo này ra 2194 finding (đo 07/08/2026, gitleaks 8.30.1, 1776
+#   commit / 64 MB). Một cửa chặn đỏ 2194 dòng thì không ai đọc, và trong vài ngày
+#   nó sẽ bị tắt. Nhiệm vụ của file này là hạ tiếng ồn xuống mức người ta CÒN ĐỌC,
+#   mà không giấu đi thứ thật.
+#
+# NGUYÊN TẮC KHI THÊM MỘT MỤC MIỄN TRỪ
+#   Ưu tiên miễn trừ theo HÌNH DẠNG GIÁ TRỊ (digest hex, khoá publishable), không
+#   theo ĐƯỜNG DẪN. Miễn trừ cả một thư mục sẽ giấu luôn secret thật rơi vào đó.
+#   Mỗi mục phải nói VÌ SAO nó không phải secret, không chỉ nói nó ở đâu.
+#
+#   Chạy: gitleaks git --redact --config .gitleaks.toml .
+
+[extend]
+useDefault = true
+
+[[rules]]
+# Ghi đè rule mặc định để gắn allowlist riêng cho nó — generic-api-key chiếm
+# 2188/2194 finding và gần như toàn bộ là digest.
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(?:key|api|token|secret|client|passwd|password|auth|access)(?:[0-9a-z\-_\t .]{0,20})(?:[\s|']|[\s|"]){0,3}(?:=|>|:{1,3}=|\|\||:|<=|=>|:=|\?=|,)(?:'|\"|\s|=|\x60){0,5}([0-9a-z\-_.=]{10,150})(?:['|\"|\n|\r|\s|\x60|;|\\]|$)'''
+keywords = ["key", "api", "token", "secret", "client", "passwd", "password", "auth", "access"]
+
+  [rules.allowlist]
+  regexTarget = "match"
+  regexes = [
+    # Digest hex thuần: 32 (md5), 40 (sha1), 64 (sha256). Repo này dùng digest ở
+    # KHẮP NƠI — manifest provenance migration, rollout manifest Network Center
+    # (141 dòng dạng `…:authenticated:<hex>`), image lock, golden vector. Một
+    # chuỗi hex không entropy-thấp vẫn là bản tóm tắt, không phải bí mật: biết nó
+    # không cho ai quyền gì.
+    '''(?i)[:=]\s*"?[0-9a-f]{32}"?\s*$''',
+    '''(?i)[:=]\s*"?[0-9a-f]{40}"?\s*$''',
+    '''(?i)[:=]\s*"?[0-9a-f]{64}"?\s*$''',
+    '''(?i):[0-9a-f]{32,64}"''',
+    '''(?i)sha(256|512)-[A-Za-z0-9+/=]{20,}''',
+  ]
+
+[allowlist]
+description = "Miễn trừ toàn cục — mỗi mục kèm lý do nó KHÔNG phải secret"
+
+paths = [
+  # Bản crawl tài liệu người dùng. Đây là VĂN BẢN TIẾNG VIỆT về nghiệp vụ, không
+  # có credential nào; gitleaks bắt vì trong câu có chữ "mật khẩu"/"khoá" đứng
+  # cạnh một chuỗi. 1384 + 310 finding đến từ đây, tức 77 % tiếng ồn.
+  '''^space_content_utf8\.json$''',
+  '''^resident-docs-offline\.md$''',
+  '''^resident-docs/''',
+  '''^docs-site/''',
+  '''^hopdong\.html$''',
+  '''^real_page\.html$''',
+  '''^sample_page\.html$''',
+
+  # File tài liệu kiến trúc/audit: chứa TÊN biến credential và ví dụ minh hoạ,
+  # không chứa giá trị. Giá trị thật nằm ở CLAUDE.local.md và file đó bị gitignore.
+  '''^docs/.*\.md$''',
+]
+
+regexes = [
+  # anon key của Supabase là PUBLISHABLE theo thiết kế — nó nằm trong bundle
+  # JavaScript gửi tới MỌI trình duyệt, nên có nó trong repo không thêm rủi ro nào.
+  #
+  # Nhận diện bằng PAYLOAD chứ không bằng đường dẫn: chỉ miễn trừ JWT mà phần
+  # payload chứa `"role":"anon"`. service_role KHÔNG được miễn trừ — đó mới là
+  # secret thật, và đúng thứ phải kêu nếu lỡ lọt vào repo.
+  #
+  # Ba biến thể dưới đây là ba cách `"role":"anon"` được mã hoá base64 tuỳ vị trí
+  # bắt đầu lệch 0/1/2 byte. Chỉ ghim một biến thể là mù với hai cái còn lại —
+  # đúng mẫu "bộ lọc chỉ phủ một biến thể" đã lặp nhiều lần trong repo này.
+  '''eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]*(InJvbGUiOiJhbm9uIg|Jyb2xlIjoiYW5vbiI|icm9sZSI6ImFub24i)[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+''',
+
+  # Định danh nghiệp vụ, không phải bí mật: tên RPC, khoá quyền, khoá
+  # localStorage, tên cột. Đặc điểm chung là CHỮ THƯỜNG + gạch dưới/chấm, entropy
+  # thấp, và biết chúng không cho ai quyền gì (`ie_compat_cancel_v2`,
+  # `cashbook.access.v2`, `v5_route_plan`). Một credential thật không bao giờ có
+  # hình dạng này.
+  '''["'][a-z][a-z0-9]*([_.][a-z0-9]+)+["']''',
+
+  # Giá trị GIẢ hiển nhiên dùng để test chính cơ chế che secret. Ví dụ thật trong
+  # repo: `const secret = "sbp_0123456789abcdef0123456789abcdef01234567"` ở
+  # scripts/__tests__/openclaw-host-isolation.test.mjs. Nếu bắt đỏ ở đây thì test
+  # kiểm tra việc che secret lại chính là thứ làm cửa chặn secret kêu.
+  '''0123456789abcdef''',
+  '''(?i)(dummy|fake|example|placeholder|xxxx+|test-token|not-a-real)''',
+]
+
+# KHÔNG miễn trừ: .env (dù chỉ chứa VITE_* publishable) — để mỗi lần nó đổi vẫn
+# có người nhìn. Cũng KHÔNG miễn trừ scripts/, services/, infra/, src/,
+# supabase/: đó là những nơi một secret thật sẽ rơi vào.
