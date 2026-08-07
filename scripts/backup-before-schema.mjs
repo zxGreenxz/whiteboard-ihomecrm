@@ -30,6 +30,41 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const POOLER_HOST = "aws-1-ap-southeast-1.pooler.supabase.com";
 const POOLER_PORT = 5432; // session mode — pg_dump KHÔNG chạy được ở transaction mode (6543)
 
+/**
+ * Bảng chỉ chứa dữ liệu PHÙ DU — bỏ phần DỮ LIỆU, vẫn giữ nguyên CẤU TRÚC.
+ *
+ * Lý do: bản dump này là đường lùi cho thao tác đổi schema, và thứ cần lùi là
+ * SỔ SÁCH. Ba bảng dưới đây chiếm ~48 MB trong 197 MB dữ liệu public (đo
+ * 07/08/2026) nhưng không có giá trị khôi phục: nonce dùng một lần rồi bỏ, lệnh
+ * runtime đã thi hành xong, nhật ký chạy cron. Bỏ chúng cắt gần một phần tư
+ * lượng phải kéo qua mạng — mà đường truyền chính là chỗ bản dump hay chết.
+ *
+ * `--exclude-table-data` (KHÔNG phải `--exclude-table`): cấu trúc bảng vẫn nằm
+ * trong bản dump, nên restore vẫn dựng đủ schema, chỉ là bảng rỗng.
+ *
+ * MẶC ĐỊNH KHÔNG BỎ — phải tự bật bằng `--bo-phu-du`.
+ *
+ * Tôi thêm danh sách này với giả thuyết "ít dữ liệu hơn ⇒ dump nhanh hơn", rồi
+ * đo và thấy nó SAI. Bốn lần chạy cùng ngày:
+ *   đầy đủ, không keepalive : 306s ✅ · 344s ❌ (đứt)
+ *   đầy đủ, có keepalive    : 332s ✅ 22.9 MB
+ *   bỏ 48 MB, có keepalive  : 405s ✅ 20.9 MB   ← CHẬM HƠN
+ * Chênh lệch nằm trong dao động đường truyền. Bằng chứng dứt điểm: dump CHỈ
+ * SCHEMA — không một dòng dữ liệu — vẫn mất 175 giây. Nút thắt là độ trễ theo
+ * từng object, không phải số byte.
+ *
+ * Nên đánh đổi này KHÔNG đáng mặc định: nó không mua được thời gian, mà bán đi
+ * tính đầy đủ. Giữ lại làm tuỳ chọn cho lúc đường truyền thật sự tệ.
+ *
+ * Khi bật, phần bỏ đi được in ra mỗi lần chạy và ghi vào manifest — một bản dump
+ * thiếu dữ liệu mà người khôi phục không biết còn tệ hơn không có bản dump.
+ */
+const BANG_PHU_DU = [
+  "public.openclaw_service_nonces",   // 23 MB — nonce dùng một lần, tự sinh lại
+  "public.openclaw_runtime_commands", // 18 MB — lệnh runtime đã thi hành
+  "cron.job_run_details",             // 7.7 MB — nhật ký chạy cron
+];
+
 const PG_DUMP_CANDIDATES = [
   "C:/Program Files/PostgreSQL/17/bin/pg_dump.exe",
   "C:/Program Files/PostgreSQL/18/bin/pg_dump.exe",
@@ -64,11 +99,12 @@ export function readPoolerPassword(localMd) {
 }
 
 function parseArgs(argv) {
-  const args = { reason: null, out: null, schemaOnly: false };
+  const args = { reason: null, out: null, schemaOnly: false, boPhuDu: false };
   for (let i = 2; i < argv.length; i += 1) {
     if (argv[i] === "--reason") args.reason = argv[i + 1] ?? null;
     if (argv[i] === "--out") args.out = argv[i + 1] ?? null;
     if (argv[i] === "--schema-only") args.schemaOnly = true;
+    if (argv[i] === "--bo-phu-du") args.boPhuDu = true;
   }
   return args;
 }
@@ -124,17 +160,34 @@ function main(argv) {
   console.log(`  lý do: ${args.reason}`);
   console.log(`  chế độ: ${kind}${args.schemaOnly ? " (KHÔNG có dữ liệu — không dùng làm đường lùi)" : ""}`);
 
+  // TCP KEEPALIVE — thiếu cái này thì bản dump ĐỨT GIỮA CHỪNG.
+  //
+  // pg_dump kéo bảng lớn thì có những quãng dài không trao đổi gói nào; pooler
+  // của Supabase coi kết nối im lặng là đã chết và đóng lại, cho ra đúng lỗi
+  // "SSL connection has been closed unexpectedly".
+  //
+  // Đo 07/08/2026: bản chạy 06/08 mất 306 giây và VỪA ĐỦ thành công; bản chạy
+  // 07/08 chết ở giây 344, đúng khi đang kéo public.invoice_audit_log (47 MB,
+  // bảng lớn nhất database). Không phải sự cố ngẫu nhiên — nó vốn sát ngưỡng,
+  // dữ liệu lớn thêm là vượt. Đường truyền VN → AWS Singapore, 277 MB dữ liệu
+  // thật (bản dump nén còn 22 MB).
+  //
+  // keepalives_idle=30: cứ 30 giây gửi một gói giữ nhịp khi đường im lặng.
+  const uri =
+    `postgresql://${encodeURIComponent(user)}@${POOLER_HOST}:${POOLER_PORT}/postgres` +
+    `?keepalives=1&keepalives_idle=30&keepalives_interval=10&keepalives_count=6`;
+
   const dumpArgs = [
-    "-h", POOLER_HOST,
-    "-p", String(POOLER_PORT),
-    "-U", user,
-    "-d", "postgres",
+    "-d", uri,
     "--format=custom",   // nén sẵn, pg_restore chọn được từng phần
     "--no-owner",
     "--no-acl",
     "-f", outFile,
   ];
   if (args.schemaOnly) dumpArgs.push("--schema-only");
+  if (args.boPhuDu) {
+    for (const t of BANG_PHU_DU) dumpArgs.push("--exclude-table-data", t);
+  }
 
   const started = Date.now();
   let result;
@@ -165,6 +218,43 @@ function main(argv) {
     return 1;
   }
 
+  // ĐỌC LẠI BẢN DUMP — pg_dump thoát 0 KHÔNG có nghĩa bản dump dùng được.
+  //
+  // Đây là phép kiểm quan trọng nhất trong file này. Hôm nay lỗi còn ồn ào
+  // ("SSL connection has been closed unexpectedly", exit khác 0), nhưng một bản
+  // dump cụt vì lý do khác — đĩa đầy giữa chừng, tiến trình bị kill — có thể để
+  // lại file trông bình thường. Lúc đó anh có một file 20 MB nằm trong thư mục
+  // backup, tin rằng mình có đường lùi, và chỉ phát hiện nó rỗng ruột đúng lúc
+  // đang cần khôi phục. Đó là kiểu hỏng đắt nhất.
+  //
+  // `pg_restore --list` đọc mục lục bản dump. File cụt thì lệnh này lỗi; file
+  // đủ thì đếm được số mục TABLE DATA.
+  const pgRestore = pgDump.replace(/pg_dump(\.exe)?$/i, (m) => m.replace("dump", "restore"));
+  const liet = spawnSync(pgRestore, ["--list", outFile], { encoding: "utf8" });
+  if (liet.error || liet.status !== 0) {
+    console.error("❌ Bản dump KHÔNG đọc lại được — file cụt hoặc hỏng. Đã xoá.");
+    if (liet.stderr) console.error(String(liet.stderr).slice(0, 600));
+    rmSync(outFile, { force: true });
+    return 1;
+  }
+  const soBangCoDuLieu = (String(liet.stdout).match(/^\d+;.*TABLE DATA /gm) ?? []).length;
+
+  // Sàn chống bản dump CỤT.
+  //
+  // Đo trên bản dump đầy đủ ngày 06/08: 565 mục TABLE DATA. (Con số này KHÁC
+  // "số bảng có dữ liệu" trong catalog — pg_dump sinh một mục cho mỗi bảng nó
+  // dump, kể cả bảng rỗng, và phủ nhiều schema hơn. Tôi đã đặt nhầm sàn 150
+  // theo con số catalog trước khi đo bản dump thật.)
+  // Bỏ 3 bảng phù du ⇒ còn ~562. Đặt 450 để còn chỗ gỡ bảng thật, nhưng vẫn bắt
+  // ca dump chết giữa chừng — hôm nay nó chết khi mới qua vài chục bảng.
+  const TOI_THIEU_BANG_DU_LIEU = 450;
+  if (!args.schemaOnly && soBangCoDuLieu < TOI_THIEU_BANG_DU_LIEU) {
+    console.error(`❌ Bản dump chỉ có ${soBangCoDuLieu} bảng dữ liệu (sàn ${TOI_THIEU_BANG_DU_LIEU}) — nghi CỤT. Đã xoá.`);
+    console.error("   pg_dump thoát 0 không đủ để kết luận bản dump dùng được.");
+    rmSync(outFile, { force: true });
+    return 1;
+  }
+
   const sha256 = createHash("sha256").update(readFileSync(outFile)).digest("hex");
   const manifest = {
     file: outFile,
@@ -175,6 +265,15 @@ function main(argv) {
     durationSeconds: Math.round((Date.now() - started) / 1000),
     bytes: stat.size,
     sha256,
+    // Đã ĐỌC LẠI bản dump bằng `pg_restore --list`, không chỉ tin mã thoát của
+    // pg_dump. Con số này là bằng chứng bản dump không cụt.
+    tablesWithData: soBangCoDuLieu,
+    // KHAI RÕ phần dữ liệu KHÔNG có trong bản dump. Người khôi phục phải đọc
+    // được điều này TRƯỚC khi tin bản dump là đầy đủ.
+    excludedTableData: args.boPhuDu ? BANG_PHU_DU : [],
+    excludedWhy: !args.boPhuDu
+      ? "Bản dump ĐẦY ĐỦ — không bỏ dữ liệu bảng nào."
+      : "Dữ liệu phù du (nonce dùng một lần, lệnh runtime đã thi hành, nhật ký cron). CẤU TRÚC bảng vẫn có trong bản dump, chỉ thiếu DỮ LIỆU. Bỏ cờ --bo-phu-du để có bản đầy đủ.",
     pgDump: String(spawnSync(pgDump, ["--version"], { encoding: "utf8" }).stdout ?? "").trim(),
     restoreHint:
       "pg_restore --no-owner --no-acl -d <target> " + outFile +
