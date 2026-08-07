@@ -7,6 +7,20 @@ import { readFileSync } from 'node:fs';
 const file = process.argv[2];
 if (!file) { console.error('Usage: node scripts/apply-sql.mjs <file.sql>'); process.exit(1); }
 
+// ĐƯỜNG THÔ — bỏ qua cutoff, provenance, digest VÀ BACKUP.
+//
+// Đường chính `npm run migrate:forward <file> -- --apply` tự chạy backup, tự kiểm
+// bản dump đủ tư cách làm đường lùi, tự phát giấy phép, rồi ghi evidence — không
+// cần token. Script này không có gì trong số đó để dựa vào, nên nó phải dựa vào
+// một con người. Đường tắt không được rẻ hơn đường chính, nếu không nó sẽ luôn
+// được chọn (đã xảy ra 07/08/2026, và khi ấy PITR đang tắt).
+if (!process.env.IHOMECRM_PROMOTION_TOKEN) {
+  console.error('❌ Thiếu IHOMECRM_PROMOTION_TOKEN.');
+  console.error('   Script này POST thẳng SQL: không cutoff, không provenance, không digest, KHÔNG BACKUP.');
+  console.error('   Dùng đường chính: npm run migrate:forward <file> -- --apply');
+  process.exit(1);
+}
+
 let pat = process.env.SUPABASE_PAT;
 if (!pat) {
   try {

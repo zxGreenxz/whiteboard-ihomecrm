@@ -81,7 +81,8 @@
     "gate:realtime-surface": "node scripts/check-realtime-surface.mjs",
     "preflight:credentials": "node scripts/check-local-agent-credentials.mjs",
     "gate:production-promotion": "node scripts/check-production-promotion.mjs",
-    "gate:error-swallow": "node scripts/check-error-swallow-ratchet.mjs"
+    "gate:error-swallow": "node scripts/check-error-swallow-ratchet.mjs",
+    "gate:management-api-writes": "node scripts/check-management-api-writes.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

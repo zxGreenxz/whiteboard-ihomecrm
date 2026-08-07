@@ -1,0 +1,177 @@
+{
+  "$comment": "Danh sách script được phép GHI production qua Management API. Gate: scripts/check-management-api-writes.mjs. Vì sao cần: 07/08/2026 một migration được POST thẳng tới /database/query, bỏ qua toàn bộ lane migrate:forward — không cutoff, không provenance, không digest, KHÔNG BACKUP; với PITR tắt thì đường lùi là ~24 giờ sổ sách. Luật cấm đã có trong Contract từ trước nhưng chỉ là chữ. THÊM DÒNG VÀO ĐÂY LÀ MỘT QUYẾT ĐỊNH: phải ghi `why` nói rõ vì sao script này cần ghi và vì sao không đi qua lane được.",
+  "updatedAt": "2026-08-07",
+  "lane": "scripts/apply-reviewed-migration.mjs",
+  "callers": [
+    {
+      "file": "scripts/__tests__/openclaw-sql-harness.test.mjs",
+      "loai": "write",
+      "why": "Harness SQL của OpenClaw, chạy trên database dùng-một-lần."
+    },
+    {
+      "file": "scripts/apply-accounting-rollout.mjs",
+      "loai": "write",
+      "why": "Rollout kế toán theo từng bước có advisory lock + digest. Là ông tổ của lane hiện tại; giữ vì rollout đó có thứ tự riêng lane chưa mô hình hoá."
+    },
+    {
+      "file": "scripts/apply-migration.mjs",
+      "loai": "write",
+      "why": "Như apply-sql.mjs, cùng chốt token. Nợ: hợp nhất hai script này về một."
+    },
+    {
+      "file": "scripts/apply-reviewed-migration.mjs",
+      "loai": "lane",
+      "why": "LANE CHÍNH THỨC. Đường DUY NHẤT được đổi schema production."
+    },
+    {
+      "file": "scripts/apply-sql.mjs",
+      "loai": "write",
+      "why": "Đường thô: apply một file SQL bất kỳ. Bỏ qua cutoff/provenance/digest. GIỮ cho tình huống khẩn, nhưng đã thêm chốt IHOMECRM_PROMOTION_TOKEN — bỏ qua lane thì phải có người ký."
+    },
+    {
+      "file": "scripts/backfill-deposit-vouchers.mjs",
+      "loai": "write",
+      "why": "Backfill dữ liệu một lần (DML, không đổi schema). Chạy tay, có dry-run."
+    },
+    {
+      "file": "scripts/capture-production-catalog.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/check-approver-provenance.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/check-definer-acl.mjs",
+      "loai": "write",
+      "why": "CHỈ ĐỌC catalog. Bị xếp `write` vì SQL của nó trích văn bản định nghĩa hàm (có chữ CREATE)."
+    },
+    {
+      "file": "scripts/check-ie-guard-gates.mjs",
+      "loai": "write",
+      "why": "CHỈ ĐỌC catalog thu chi. Như trên."
+    },
+    {
+      "file": "scripts/check-permission-catalog.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/check-realtime-descriptors.mjs",
+      "loai": "write",
+      "why": "CHỈ ĐỌC pg_publication_tables. Bị xếp `write` vì thông báo lỗi có in câu hướng dẫn `ALTER PUBLICATION …` cho người sửa."
+    },
+    {
+      "file": "scripts/check-salary-completion-date.mjs",
+      "loai": "write",
+      "why": "CHỈ ĐỌC catalog lương. Như trên."
+    },
+    {
+      "file": "scripts/check-stable-fn-locks.mjs",
+      "loai": "write",
+      "why": "CHỈ ĐỌC catalog. Như trên."
+    },
+    {
+      "file": "scripts/check-view-invoker.mjs",
+      "loai": "write",
+      "why": "CHỈ ĐỌC catalog. Như trên — comment và SQL có chữ `create view`."
+    },
+    {
+      "file": "scripts/clone-org/lib.mjs",
+      "loai": "write",
+      "why": "Bộ nhân bản org TEST. Ghi vào org TEST (cccc…), có cửa chặn rò rỉ riêng ở snapshot.mjs."
+    },
+    {
+      "file": "scripts/docs-demo/lib.mjs",
+      "loai": "read",
+      "why": "Dựng dữ liệu minh hoạ cho tài liệu, chỉ org DEMO."
+    },
+    {
+      "file": "scripts/docs-demo/run-sql.mjs",
+      "loai": "passthrough",
+      "why": "Chạy SQL cho bộ docs-demo. Passthrough nhưng phạm vi là org DEMO."
+    },
+    {
+      "file": "scripts/doi-chieu-nabubu-hienthu.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/doi-chieu-thu-tien.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/doi-chieu-tm-hiepthu.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/generate-migration-provenance.mjs",
+      "loai": "passthrough",
+      "why": "Đọc ledger + catalog để sinh manifest provenance. Không ghi."
+    },
+    {
+      "file": "scripts/generate-rpc-surface.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/network-center-rollout-common.mjs",
+      "loai": "read",
+      "why": "Rollout Network Center theo bậc, có cửa chặn riêng."
+    },
+    {
+      "file": "scripts/query-sql.mjs",
+      "loai": "passthrough",
+      "why": "Công cụ TRA CỨU tay. Passthrough theo thiết kế — dùng để đọc, nhưng không có gì chặn ghi."
+    },
+    {
+      "file": "scripts/reconcile-money.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/seed-zalo-demo.mjs",
+      "loai": "write",
+      "why": "Seed dữ liệu DEMO. Chỉ ghi vào org DEMO — không chạm org THẬT."
+    },
+    {
+      "file": "scripts/test-accounting-chain.mjs",
+      "loai": "passthrough",
+      "why": "Kịch bản kiểm chuỗi bút toán trên DEMO, tự dọn."
+    },
+    {
+      "file": "scripts/test-business-performance-authz.mjs",
+      "loai": "write",
+      "why": "Kiểm phân quyền báo cáo, dựng fixture trên DEMO."
+    },
+    {
+      "file": "scripts/test-occupancy-v2.mjs",
+      "loai": "write",
+      "why": "Kiểm lấp đầy, fixture trên DEMO."
+    },
+    {
+      "file": "scripts/test-openclaw-migrations.mjs",
+      "loai": "write",
+      "why": "Kiểm migration OpenClaw trên database dùng-một-lần."
+    },
+    {
+      "file": "scripts/test-v5-route-phase12.mjs",
+      "loai": "write",
+      "why": "Kiểm lộ trình V5, fixture trên DEMO."
+    },
+    {
+      "file": "scripts/test-v5-streak-recompute-alias.mjs",
+      "loai": "read",
+      "why": "Kiểm alias recompute chuỗi ngày, đọc là chính."
+    },
+    {
+      "file": "scripts/v5-calendar-parity.mjs",
+      "loai": "read",
+      "why": "chỉ đọc catalog"
+    }
+  ]
+}
