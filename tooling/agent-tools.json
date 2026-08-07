@@ -22,6 +22,6 @@
     "version": "2.9.4",
     "commit": "25442837f1087d1d39e5bfcb6aeda3c315f3da5b",
     "outputLanguage": "vi",
-    "versionNote": "Pin theo plan kiến trúc §18. LƯU Ý: artifact trong .ua/ KHÔNG tự ghi version công cụ (meta.json:version = 1.0.0 là SCHEMA version, lặp y hệt ở cả ba file). Nên con số 2.9.4 là KHAI BÁO, không phải đo được từ artifact — tooling/graph-manifests/ua.json ghi rõ điều đó ở trường toolVersionSource."
+    "versionNote": "Pin theo plan kiến trúc §18, và từ 07/08/2026 đã ĐO ĐƯỢC chứ không còn là khai báo: 2.9.4 đọc trực tiếp từ trường `version` của package.json trong plugin (@understand-anything/skill) đã chạy lần dựng lại graph a58460af — trùng khớp con số pin. tooling/graph-manifests/ua.json ghi toolVersionSource: \"measured\" kèm cách đo. VẪN CÒN ĐÚNG và đừng bỏ câu này: artifact trong .ua/ KHÔNG tự ghi version công cụ ở đâu cả (meta.json:version = 1.0.0 là SCHEMA version, lặp y hệt ở cả ba file), nên ai muốn kiểm lại phải đọc package.json của plugin — không đọc được từ artifact."
   }
 }
