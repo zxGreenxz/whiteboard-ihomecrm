@@ -182,6 +182,36 @@ if [ -f "$customer_ai_key_file" ]; then
   export OPENCLAW_ZALO_CUSTOMER_AI_API_KEY
 fi
 
+# The load path makes OpenClaw load the fork, but OpenClaw only trusts a plugin
+# it holds an install record for. With no record the startup convergence treats
+# the configured plugin as missing and installs @openclaw/zalouser from the
+# public registry; the egress broker denies that by design, and the gateway then
+# refuses to report ready. A record recovered from the managed npm tree is worse:
+# it is typed "npm" and chased for updates over the same blocked route on every
+# boot. Claiming the fork through OpenClaw's own linker records a "path" install,
+# the one source no update path follows. Idempotent by design.
+claim_state=$(node -e '
+  const path = require("node:path");
+  const { DatabaseSync } = require("node:sqlite");
+  try {
+    const db = new DatabaseSync(path.join(process.argv[1], "state", "openclaw.sqlite"), { readOnly: true });
+    for (const row of db.prepare("select install_records_json from installed_plugin_index").all()) {
+      const record = JSON.parse(row.install_records_json ?? "{}").zalouser;
+      if (record && record.source !== "npm") {
+        process.stdout.write("claimed");
+        process.exit(0);
+      }
+    }
+  } catch {}
+  process.stdout.write("unclaimed");
+' "$state_dir")
+if [ "$claim_state" = unclaimed ]; then
+  node openclaw.mjs plugins install --link "$plugin_root" >&2 || {
+    echo "could not claim the vendored zalouser fork as a linked plugin install" >&2
+    exit 1
+  }
+fi
+
 if [ "$#" -eq 0 ]; then
   set -- node openclaw.mjs gateway
 fi

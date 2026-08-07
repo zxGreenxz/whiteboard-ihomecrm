@@ -42,15 +42,15 @@
       "path": "config/openclaw.json.tmpl",
       "type": "blob",
       "mode": "100644",
-      "size": 1832,
-      "sha256": "ca34ce17e83cb1f88f3389b7f6aa17c700b73ee6d1cf9377df839e85a4a94e81"
+      "size": 1844,
+      "sha256": "8a519df8a5b3ed8da059414d6cacce3204a77d6d0d3d7129af4eff6a6fa885af"
     },
     {
       "path": "scripts/entrypoint.sh",
       "type": "blob",
       "mode": "100755",
-      "size": 6478,
-      "sha256": "ec3148fbe6ee85c0bb376bffccaa1efe7bd08a9da91d49f41f0a43f24cf1e658"
+      "size": 7912,
+      "sha256": "ed20ac3fe1f437bda730b4dae2e9ded1f9b9ba7d9eb28e262fb62a2304f44aa3"
     },
     {
       "path": "scripts/install-vendored-zalouser.sh",

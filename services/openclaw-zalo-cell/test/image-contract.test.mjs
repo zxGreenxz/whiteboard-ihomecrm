@@ -760,11 +760,14 @@ test("runtime config pins a dedicated toolless customer AI provider without secr
     primary: "ihome-customer-ai/${OPENCLAW_ZALO_CUSTOMER_AI_MODEL}",
     fallbacks: [],
   });
+  // No exec.mode here: OpenClaw rejects the whole config with "tools.exec.mode
+  // cannot be combined with tools.exec.security or tools.exec.ask", and this
+  // assertion used to pin the combination that made the gateway refuse to boot.
   assert.deepEqual(agent.tools, {
     allow: [],
     deny: ["*"],
     elevated: { enabled: false },
-    exec: { mode: "deny", security: "deny", ask: "off" },
+    exec: { security: "deny", ask: "off" },
   });
   assert.doesNotMatch(
     raw,
@@ -790,9 +793,39 @@ test("runtime config load-paths the vendored fork, the only way OpenClaw ever se
   assert.notEqual(safePathSegmentHashed("@openclaw/zalouser"), "zalouser");
 
   const config = JSON.parse(await readCell("config/openclaw.json.tmpl"));
-  assert.deepEqual(config.plugins.load.paths, [
-    `${project}/node_modules/@openclaw/zalouser`,
-  ]);
+  const loadPath = `${project}/node_modules/@openclaw/zalouser`;
+  assert.deepEqual(config.plugins.load.paths, [loadPath]);
+});
+
+test("entrypoint claims the fork as a linked install before the gateway hunts npm", async () => {
+  const entrypoint = await readCell("scripts/entrypoint.sh");
+  const launchOffset = entrypoint.indexOf('"$@" &');
+
+  // The load path makes the fork load, but OpenClaw still only trusts plugins
+  // it holds an install record for. With no record the startup convergence
+  // treats the configured plugin as missing and installs @openclaw/zalouser
+  // from the public registry; the egress broker denies that by design and the
+  // gateway then refuses to report ready, so the cell crash-loops. A record
+  // recovered from the managed npm tree is worse: it is typed "npm" and gets
+  // chased for updates over the same blocked route on every boot. Claiming the
+  // fork through OpenClaw's own linker records a "path" install, the one source
+  // no update path follows.
+  const claimOffset = entrypoint.indexOf('plugins install --link "$plugin_root"');
+  assert.ok(claimOffset >= 0, "entrypoint must link-install the vendored fork");
+  assert.ok(claimOffset < launchOffset, "the claim must run before the gateway starts");
+  // Idempotent: only when the record is absent or has been re-typed to npm.
+  assert.match(entrypoint, /installed_plugin_index/);
+});
+
+test("runtime config declares the gateway mode the gateway refuses to start without", async () => {
+  const config = JSON.parse(await readCell("config/openclaw.json.tmpl"));
+
+  // "Gateway start blocked: existing config is missing gateway.mode. Treat this
+  // as suspicious or clobbered config." The cell survived without it only
+  // because its volume was seeded once, in July, from a template that still had
+  // it; every config written from this template since would crash-loop on the
+  // first boot of a fresh volume.
+  assert.deepEqual(config.gateway, { mode: "local" });
 });
 
 test("runtime config accepts inbound DMs instead of dropping every one", async () => {
