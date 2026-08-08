@@ -75,6 +75,41 @@ if (pending.length > 0) {
 }
 GATEWAY_LINK
 
+# The fork binds every bridge call to one CRM account and refuses a readiness
+# request from any other with "readiness request does not match the cell
+# binding". A channel account under a different name therefore starts, is
+# refused, and auto-restarts with growing backoff until it gives up - while the
+# cell stays healthy and the account row says CONNECTED. It cost a long hunt
+# once: a provider left over from before the account binding was rendered kept
+# calling itself "default" and no probe here noticed.
+compose exec -T -e OPENCLAW_EXPECTED_ACCOUNT_ID="$(sed -n 's/^OPENCLAW_ACCOUNT_ID=//p' "$runtime_env")" cell node - <<'CHANNEL_BINDING'
+const { execFileSync } = require("node:child_process");
+
+const expected = process.env.OPENCLAW_EXPECTED_ACCOUNT_ID ?? "";
+if (!/^[0-9a-f-]{36}$/.test(expected)) {
+  console.error("expected Zalo account id is missing from the runtime metadata");
+  process.exit(1);
+}
+const output = execFileSync("node", ["openclaw.mjs", "channels", "status", "--json"], {
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "ignore"],
+});
+const status = JSON.parse(output.slice(output.indexOf("{")));
+const accounts = status.channelAccounts?.zalouser ?? [];
+// Not being logged in yet is fine - this is about identity, not readiness.
+const strangers = accounts.filter((account) => account?.accountId !== expected);
+if (strangers.length > 0) {
+  const names = strangers.map((account) => account?.accountId ?? "unknown").join(", ");
+  console.error(`the Zalo channel has accounts the cell is not bound to (${names}); every inbound commit from them is refused`);
+  process.exit(1);
+}
+const bound = accounts.find((account) => account?.accountId === expected);
+if (bound?.running === true && bound.lastError) {
+  console.error(`the bound Zalo account is running with an error: ${bound.lastError}`);
+  process.exit(1);
+}
+CHANNEL_BINDING
+
 if [ "$session_encryption" -eq 1 ]; then
   compose exec -T cell sh -s -- "$cell_id" <<'CELL_SMOKE'
 set -eu

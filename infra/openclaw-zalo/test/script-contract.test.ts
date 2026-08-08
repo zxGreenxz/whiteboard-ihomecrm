@@ -996,6 +996,89 @@ describe("Task 19 host and lifecycle scripts", () => {
     expect(result.stderr).toContain("never requested Gateway pairing");
   });
 
+  // The fork refuses a readiness request from any account but the bound one, so a
+  // stray channel account silently costs every inbound message.
+  async function runChannelBindingCheck(options: {
+    accounts: unknown[];
+    expected: string;
+  }) {
+    const directory = await mkdtemp(join(tmpdir(), "openclaw-binding-"));
+    try {
+      const smoke = await text("infra/openclaw-zalo/scripts/smoke-cell.sh");
+      const start = smoke.indexOf("<<'CHANNEL_BINDING'\n");
+      const end = smoke.indexOf("\nCHANNEL_BINDING\n", start);
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      await writeFile(
+        join(directory, "check.cjs"),
+        smoke.slice(start + "<<'CHANNEL_BINDING'\n".length, end + 1),
+        "utf8",
+      );
+      await writeFile(
+        join(directory, "openclaw.mjs"),
+        [
+          `import fs from "node:fs";`,
+          `import path from "node:path";`,
+          `const status = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "status.json"), "utf8"));`,
+          `process.stdout.write(JSON.stringify(status));`,
+        ].join("\n"),
+        "utf8",
+      );
+      await writeFile(
+        join(directory, "status.json"),
+        JSON.stringify({ channelAccounts: { zalouser: options.accounts } }),
+        "utf8",
+      );
+      return spawnSync(process.execPath, [join(directory, "check.cjs")], {
+        cwd: directory,
+        encoding: "utf8",
+        env: { ...process.env, OPENCLAW_EXPECTED_ACCOUNT_ID: options.expected },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  const boundAccount = "aaaa1000-0000-4000-8000-000000000001";
+
+  it("passes when the only Zalo account is the one the cell is bound to", async () => {
+    const result = await runChannelBindingCheck({
+      expected: boundAccount,
+      accounts: [{ accountId: boundAccount, running: true, lastError: null }],
+    });
+    expect(result.status).toBe(0);
+  });
+
+  it("accepts an account that has not logged in yet - this is about identity, not readiness", async () => {
+    const result = await runChannelBindingCheck({
+      expected: boundAccount,
+      accounts: [{ accountId: boundAccount, running: false, lastError: "not configured" }],
+    });
+    expect(result.status).toBe(0);
+  });
+
+  it("fails on a stray channel account, whose every inbound commit the fork refuses", async () => {
+    const result = await runChannelBindingCheck({
+      expected: boundAccount,
+      accounts: [{ accountId: "default", running: true, lastError: null }],
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("not bound to");
+  });
+
+  it("fails when the bound account is running with an error instead of receiving", async () => {
+    const result = await runChannelBindingCheck({
+      expected: boundAccount,
+      accounts: [{
+        accountId: boundAccount,
+        running: true,
+        lastError: "readiness request does not match the cell binding",
+      }],
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("running with an error");
+  });
+
   it("pairs before the smoke test and proves the channel there", async () => {
     const deploy = await text("infra/openclaw-zalo/scripts/deploy-cell.sh");
     const pairIndex = deploy.indexOf("pair-bridge-device.sh");
