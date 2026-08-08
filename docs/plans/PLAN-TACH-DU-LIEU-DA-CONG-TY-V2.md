@@ -109,7 +109,42 @@ có thể đang quá thận trọng. `profiles` là lỗi DỮ LIỆU: 7 dòng s
 `ai_copilot_settings` (1 dòng, khoá chính boolean) là câu hỏi MÔ HÌNH — bảng này
 thuộc về ai? Chọn sai thì Copilot mất cấu hình.
 
-**3. 17 giây trên màn hình thanh toán — chẩn đoán đã xong.**
+**3. 17 giây trên màn hình thanh toán — ĐÃ XONG 08/08 chiều, đã apply prod.**
+Migration `20260808070000_cat_rls_long_man_thanh_toan.sql`. Đo trên production
+thật SAU khi apply, 7 vai người dùng suy từ `organization_memberships`, ms
+collections/allocations — số dòng nhìn thấy khớp CHÍNH XÁC giá trị trước khi đổi
+ở cả 7 vai:
+
+| Vai | Trước | Sau | Dòng (không đổi) |
+|---|---|---|---|
+| bosshuy (thật) | 11.648 / 14.821 | **608 / 365** | 188 / 193 |
+| nathan (thật) | 10.743 / 11.628 | **668 / 382** | 155 / 163 |
+| joey (thật) | 6.777 / 6.831 | **305 / 361** | 96 / 99 |
+| super admin | 311 / 775 | **146 / 67** | 251 / 262 |
+| test.nathan (cccc) | 11.095 / 9.886 | **653 / 665** | 14 / 16 |
+| demo.chunha (dddd) | 547 / 386 | **331 / 378** | 3 / 5 |
+| demo.ketoan (dddd) | 968 / 903 | **363 / 216** | 3 / 5 |
+
+Hai điều bắt được, cả hai đều thành lỗi thật nếu làm ẩu — chi tiết trong đầu file
+migration:
+
+- **Quyền EXECUTE trong policy kiểm theo NGƯỜI GỌI, không theo chủ bảng.** Đặt
+  hàm ở `public` rồi `REVOKE … FROM authenticated` theo đúng khuyến nghị F3 thì
+  policy chết `42501`. Phải đặt ở `app_private`: hàm giữ EXECUTE mặc định cho
+  PUBLIC, còn gọi thẳng bị chặn vì thiếu USAGE trên schema. **F3 mục 2 cần sửa
+  lại theo đây** — "revoke rồi vẫn dùng được trong policy" là sai với hàm ở
+  `public`.
+- **Cắt RLS lồng làm NỚI QUYỀN nếu làm thẳng tay.** Super admin thấy thêm đúng
+  3 collections / 5 allocations, vì `sandbox_org_ids()` chỉ chứa `cccc` còn org
+  Demo `dddd` được giấu bởi `invoices_hide_demo_admin` lọc theo NGƯỜI DÙNG — và
+  policy đó chỉ có trên `invoices`. Đã dựng lại thành hai policy
+  `*_hide_demo_admin` tường minh trên chính hai bảng thanh toán.
+
+Dư địa còn lại: sàn ~350ms là 51 lần gọi `can_v3` để dựng tập toà nhà. Hạ tiếp
+được thì phải đụng vào chính chuỗi `can_access_building → can_v3`, việc đó ảnh
+hưởng hàng chục bảng nên tách ra khỏi phạm vi này.
+
+Chẩn đoán gốc, giữ lại để tra cứu:
 `invoice_payment_allocations` chỉ có 235 dòng mà mất 17s;
 `invoice_payment_collections` 14s. Nguyên nhân là **RLS lồng RLS**: policy
 `SELECT` của bảng thứ nhất là `EXISTS (SELECT 1 FROM invoice_payment_collections …)`
