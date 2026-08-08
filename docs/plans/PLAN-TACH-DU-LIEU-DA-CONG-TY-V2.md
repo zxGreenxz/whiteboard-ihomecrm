@@ -11,11 +11,21 @@ Bảy migration đã lên production, mỗi cái qua backup thật, dry-run th�
 phép đo trước/sau bằng vai người dùng thật. Ba commit: `9519cd98`, `3f0b33bc`,
 `efb6ad57`.
 
-> **PHIÊN 08/08 CHIỀU đã đóng cả 5 việc trong mục "CÒN LẠI".** Số chốt mới:
-> biên giới **300** relation · miễn trừ **4** · rò còn **2** (đều là bảng dùng
-> chung có chủ ý) · hai tổ chức Test/Demo **đã xoá** · màn thanh toán **14,8s →
-> 0,37s** · hai test OpenClaw **xanh**. Sáu commit: `19bb16d3`, `0d65ca5b`,
-> `61598490`, `29096106`, `18359bf9`, `0efabefd`.
+> **PHIÊN 08/08 CHIỀU–TỐI đã đóng cả 5 việc trong mục "CÒN LẠI", cộng GĐ7 và
+> GĐ-R.** Số chốt mới: biên giới **300** relation · miễn trừ **4** · rò còn **2**
+> (đều là bảng dùng chung có chủ ý) · hai tổ chức Test/Demo **đã xoá** · màn
+> thanh toán **14,8s → 0,37s** · điểm mù 12 bảng thiếu cột org **đã đóng** · số
+> điện thoại khách **đã bỏ** khỏi bề mặt công khai · rate-limit **đã chạy**
+> (60 mã sai/10 phút/IP, trả 429).
+>
+> Mười commit: `19bb16d3`, `0d65ca5b`, `61598490`, `29096106`, `18359bf9`,
+> `0efabefd`, `0ce5396c`, `bc99510b`, `bdbc3247`, `c65a3ca0`.
+>
+> **CÒN ĐÚNG MỘT VIỆC CẦN NGƯỜI QUYẾT:** xoay 334 mã công khai lên ≥16 ký tự
+> (GĐ0 mục 6a(i)) — thứ duy nhất thực sự ĐÓNG lỗ, nhưng làm chết mọi QR đã in và
+> đã gửi cho khách. Hai việc còn lại (GĐ9 frontend, hai bảng miễn trừ AI) chỉ có
+> nghĩa khi có công ty thứ hai.
+>
 > Chi tiết từng việc nằm ngay trong mục tương ứng bên dưới.
 
 | Chỉ số | Đầu phiên | Chốt phiên |
