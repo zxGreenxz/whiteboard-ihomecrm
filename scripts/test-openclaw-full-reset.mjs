@@ -16,8 +16,8 @@ import { buildMinimalChildEnvironment } from "./gen-supabase-types.mjs";
 import { redactSensitiveText } from "./test-openclaw-sql.mjs";
 
 export const FULL_RESET_MANIFEST_DOMAIN = "ihome-openclaw-full-reset-plan-v1";
-export const FULL_RESET_EXPECTED_FILE_COUNT = 498;
-export const FULL_RESET_EXPECTED_DUPLICATE_VERSION_GROUPS = 18;
+export const FULL_RESET_PROVENANCE_MANIFEST = "supabase/migration-provenance.json";
+export const FULL_RESET_MIGRATION_PREFIX = "supabase/migrations/";
 export const SUPABASE_CLI_VERSION = "2.109.1";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -297,18 +297,71 @@ export function runPinnedSupabaseCli(
   });
 }
 
-function assertFrozenPlan(plan) {
-  if (plan.entries.length !== FULL_RESET_EXPECTED_FILE_COUNT) {
+export function deriveFrozenPlanExpectations(manifest) {
+  const entries = manifest?.entries;
+  if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error(
-      `Full-reset migration cardinality drifted: ${plan.entries.length}.`,
+      `${FULL_RESET_PROVENANCE_MANIFEST} carries no reviewed migration entries.`,
+    );
+  }
+  const versionCounts = new Map();
+  let fileCount = 0;
+  for (const entry of entries) {
+    const entryPath = entry?.path;
+    if (typeof entryPath !== "string" || entryPath.length === 0) {
+      throw new Error(
+        `${FULL_RESET_PROVENANCE_MANIFEST} has an entry without a path.`,
+      );
+    }
+    if (!entryPath.startsWith(FULL_RESET_MIGRATION_PREFIX)) continue;
+    const file = entryPath.slice(FULL_RESET_MIGRATION_PREFIX.length);
+    if (!MIGRATION_FILE_PATTERN.test(file)) continue;
+    fileCount += 1;
+    const version = file.slice(0, file.indexOf("_"));
+    versionCounts.set(version, (versionCounts.get(version) ?? 0) + 1);
+  }
+  if (fileCount === 0) {
+    throw new Error(
+      `${FULL_RESET_PROVENANCE_MANIFEST} lists no ${FULL_RESET_MIGRATION_PREFIX} entries.`,
+    );
+  }
+  let duplicateVersionGroups = 0;
+  for (const count of versionCounts.values()) {
+    if (count > 1) duplicateVersionGroups += 1;
+  }
+  return { fileCount, duplicateVersionGroups };
+}
+
+export async function readFrozenPlanExpectations({ manifestPath } = {}) {
+  const resolved = manifestPath
+    ?? join(repositoryRoot, ...FULL_RESET_PROVENANCE_MANIFEST.split("/"));
+  let parsed;
+  try {
+    parsed = JSON.parse(await readFile(resolved, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `Cannot read ${FULL_RESET_PROVENANCE_MANIFEST}: ${String(error?.message ?? error)}`,
+    );
+  }
+  return deriveFrozenPlanExpectations(parsed);
+}
+
+function assertFrozenPlan(plan, expectations) {
+  if (plan.entries.length !== expectations.fileCount) {
+    throw new Error(
+      `Full-reset migration cardinality drifted: plan has ${plan.entries.length} file(s) `
+      + `but ${FULL_RESET_PROVENANCE_MANIFEST} records ${expectations.fileCount}. `
+      + "Regenerate the reviewed manifest with `npm run provenance:generate`.",
     );
   }
   if (
-    plan.duplicateOriginalVersionGroups !==
-    FULL_RESET_EXPECTED_DUPLICATE_VERSION_GROUPS
+    plan.duplicateOriginalVersionGroups !== expectations.duplicateVersionGroups
   ) {
     throw new Error(
-      "Full-reset duplicate-version group cardinality drifted.",
+      "Full-reset duplicate-version group cardinality drifted: plan has "
+      + `${plan.duplicateOriginalVersionGroups} group(s) but `
+      + `${FULL_RESET_PROVENANCE_MANIFEST} records `
+      + `${expectations.duplicateVersionGroups}.`,
     );
   }
 }
@@ -542,7 +595,7 @@ export async function runFullResetHarness({
   const loadInputs = dependencies.loadInputs ?? loadRepositoryMigrationInputs;
   if (options.mode === "plan-only") {
     const plan = buildFullResetPlan(await loadInputs());
-    assertFrozenPlan(plan);
+    assertFrozenPlan(plan, await readFrozenPlanExpectations());
     return {
       mode: options.mode,
       summary: `PASS OpenClaw full-reset plan: ${plan.entries.length}-file chain`,
@@ -560,7 +613,7 @@ export async function runFullResetHarness({
   let result;
   let shouldStop = false;
   try {
-    assertFrozenPlan(prepared.plan);
+    assertFrozenPlan(prepared.plan, await readFrozenPlanExpectations());
     const version = await runCli(["--version"], {
       cwd: prepared.root,
       environment,

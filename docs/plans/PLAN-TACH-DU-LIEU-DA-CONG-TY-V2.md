@@ -43,11 +43,54 @@ phép đo trước/sau bằng vai người dùng thật. Ba commit: `9519cd98`, 
   chúng được vá trước trong cùng transaction.
 - **GĐ7** — dọn 35 tham chiếu chéo, sau đó phép chứng minh tách rời trả về
   **TÁCH RỜI HOÀN TOÀN** (0 đường FK vi phạm).
+  **ĐÍNH CHÍNH 08/08 chiều — kết luận này KHÔNG còn đúng.** Chạy lại chính phép
+  đo đó thấy **1 đường vi phạm**: `material_usage_items.material_id -> materials`.
+  Chi tiết ở mục "CÒN LẠI" việc 1. Bài học: kết quả của phép đo này chỉ có giá
+  trị tại thời điểm đo, phải chạy lại NGAY TRƯỚC transaction xoá.
+
+### Ba lệnh kiểm chứng — đường dẫn thật, chạy được ngay
+
+```bash
+node scripts/build-org-boundary-inventory.mjs --check
+node scripts/measure-org-leak.mjs
+node scripts/query-sql.mjs scripts/org-split-prepared/01-chung-minh-tach-roi.sql
+node scripts/query-sql.mjs scripts/org-split-prepared/02-pham-vi-xoa-hai-org.sql
+```
+
+Hai file SQL cuối trước nằm trong scratchpad tạm của phiên cũ — thư mục đó theo
+session và phiên sau không có đường nào tìm ra. Nay đã nằm trong repo tại
+[`scripts/org-split-prepared/`](../../scripts/org-split-prepared/).
 
 ### CÒN LẠI — theo thứ tự đáng làm trước
 
-**1. Xoá hai công ty Test/Demo — chờ một câu trả lời.**
-Điều kiện tiên quyết đã xong. Vướng duy nhất: ~60 bảng có guard bất biến
+**1. Xoá hai công ty Test/Demo — CHƯA đủ điều kiện tiên quyết (đo lại 08/08 chiều).**
+
+Phạm vi hiện tại (`02-pham-vi-xoa-hai-org.sql`): **172 bảng dính**, **27.634 dòng
+Test** + **136.790 dòng Demo** = 164.424 dòng. Bốn bảng nặng nhất đều là log
+máy sinh của Demo: `network_interface_samples` 57.704, `openclaw_service_nonces`
+34.811, `openclaw_health_events` 16.191, `network_device_samples` 7.213.
+
+**Chặn cứng — phải vá trước:** `01-chung-minh-tach-roi.sql` trả về 1 đường vi phạm:
+
+| Dòng | Thuộc org | Trỏ tới | Của org |
+|---|---|---|---|
+| `material_usage_items` `5657131d-caae-4d27-be2a-e2b2ba993385` | aaaa (thật) | `materials` `948c2493…` "Pin 3A" | **cccc (Test)** |
+
+Cha của nó — `material_usages` `MU-20260801-0001` "thay pin remote máy lạnh cho
+202-1392qt" — thuộc org aaaa. Tồn tại một bản "Pin 3A" SONG SINH thuộc đúng org
+aaaa (`3ced8ddd-4000-4eb6-b677-28c834127ae5`, cùng code/unit/mô tả/`avg_unit_cost`
+13175, cùng `created_at`), nhưng đã bị xoá mềm ngày 04/08 — tức lúc phát sinh lần
+dùng vật tư (01/08) nó vẫn còn sống. `updated_at` của cả ba dòng đều đúng
+`2026-08-08T02:06:25.952123+00:00` — dấu vết của chính lần điền `organization_id`
+ở GĐ6: lần đó gắn nhãn aaaa cho dòng con theo cha, mà để nguyên `material_id`
+trỏ sang vật tư của Test.
+
+Cách vá (một migration forward, KHÔNG cần tắt guard — `material_usage_items` chỉ
+có trigger tính lại `trg_mui_recompute`, không có guard bất biến nào): trỏ lại
+`material_id` sang bản aaaa `3ced8ddd…`. `unit_cost_at_usage` = 13175 khớp cả hai
+bản nên không đổi tiền.
+
+Sau khi vá, vướng còn lại đúng như đã ghi: ~60 bảng có guard bất biến
 (append-only / immutable / retention / freeze tài chính) chặn cả `DELETE` lẫn
 `UPDATE`, và chúng gắn theo BẢNG chứ không theo công ty — tắt là tắt luôn cho sổ
 sách công ty thật trong vài giây đó.
@@ -79,9 +122,20 @@ Lời giải đã có tiền lệ ngay trong dự án: `building_of_invoice` /
 cắt RLS lồng. Bảng thanh toán chưa được chuyển sang cách đó.
 Đây cùng họ với các cảnh báo `[perf] CHẬM …` đầy trong console.
 
-**4. Hai test OpenClaw đỏ.** `FULL_RESET_EXPECTED_FILE_COUNT = 498` đóng băng từ
-31/07, nay có 638 file migration. Đỏ từ trước phiên này (631 ≠ 498); các
-migration của phiên làm con số lệch thêm chứ không gây ra lỗi.
+**4. Hai test OpenClaw đỏ — ĐÃ XONG 08/08 chiều.**
+`FULL_RESET_EXPECTED_FILE_COUNT = 498` / `..._DUPLICATE_VERSION_GROUPS = 18` đóng
+băng từ 31/07, nay có 640 file. Không bump tay hai con số — làm vậy thì migration
+sau lại đỏ tiếp. Thay bằng giá trị **dẫn xuất từ `supabase/migration-provenance.json`**
+(`deriveFrozenPlanExpectations` / `readFrozenPlanExpectations` trong
+`scripts/test-openclaw-full-reset.mjs`): bộ gác nay hỏi "kế hoạch reset có khớp
+manifest ĐÃ ĐƯỢC DUYỆT không", chứ không hỏi "có đúng 498 file không". Manifest
+vốn đã bị `gate:migration-provenance` gác sha256 từng file và chạy blocking trong
+CI, nên phép so này vẫn là phép so thật chứ không tự soi mình.
+Bằng chứng: `node scripts/test-openclaw-full-reset.mjs --plan-only` →
+`PASS OpenClaw full-reset plan: 640-file chain`; `openclaw-full-reset-harness.test.mjs`
+→ 15/15 xanh (trước đó 7/13 đỏ). Test dò trôi số vẫn còn: dựng kế hoạch thiếu
+đúng một file thì bộ gác vẫn phải đỏ.
+CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần Docker.
 
 **5. Các giai đoạn kiến trúc còn lại.** GĐ7 (12 bảng không có cột
 `organization_id` — thêm cột hay chặn qua cha), GĐ9 (frontend chưa có khái niệm

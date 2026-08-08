@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-08T02:08:08.775Z",
+  "generatedAt": "2026-08-08T11:29:25.126Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
-    "unknown": 71,
+    "unknown": 72,
     "catalog-proven": 218,
     "superseded": 15
   },
@@ -7440,6 +7440,18 @@
       "name": "gd7_don_tham_chieu_cheo",
       "scheme": "timestamp14",
       "sha256": "fddc96f73529530ac41e5cd64b0ba6aac6cce73a93c5dedaf68c7e8a3739a239",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808060000_gd7b_material_usage_item_tro_lai_vat_tu_cua_minh.sql",
+      "version": "20260808060000",
+      "name": "gd7b_material_usage_item_tro_lai_vat_tu_cua_minh",
+      "scheme": "timestamp14",
+      "sha256": "6e45c7b1aeac2b4edd2cb8d4387748b8b5adb934bde6ca07adb8b8988ad1ada9",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
