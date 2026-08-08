@@ -63,7 +63,50 @@ session và phiên sau không có đường nào tìm ra. Nay đã nằm trong r
 
 ### CÒN LẠI — theo thứ tự đáng làm trước
 
-**1. Xoá hai công ty Test/Demo — CHƯA đủ điều kiện tiên quyết (đo lại 08/08 chiều).**
+**1. Xoá hai công ty Test/Demo — ĐÃ XONG 08/08 chiều, đã apply prod.**
+`20260808080000_xoa_hai_to_chuc_test_demo.sql`. Xoá **165.548 dòng / 174 bảng
+trong 18 giây**. Xác minh sau khi xoá: `02-pham-vi-xoa-hai-org.sql` →
+`so_bang_dinh = 0`; `01-chung-minh-tach-roi.sql` → `(TACH ROI HOAN TOAN)`.
+
+Ba điều mục này từng ghi SAI, đã sửa bằng số đo (chi tiết trong đầu file
+migration và trong commit `61598490`):
+
+- "~60 bảng có guard bất biến" → thật ra toàn schema chỉ có **5 trigger
+  `tgenabled='A'`**, và chỉ **3** chặn DELETE (2 + 6 + 407 dòng). Phần còn lại bị
+  vô hiệu bởi `SET LOCAL session_replication_role='replica'`, chạy được với role
+  `postgres` không superuser.
+- "Rủi ro không loại bỏ được: tiến trình khác sẽ ghi được thứ bình thường bị
+  chặn" → **không tồn tại**. GUC theo transaction nên session khác không được
+  nới; ba lệnh `ALTER TABLE … DISABLE TRIGGER` giữ khoá `SHARE ROW EXCLUSIVE`
+  nên session khác ĐỢI chứ không lọt. Thứ thật sự xảy ra là ứng dụng đứng hình
+  vài giây.
+- "Điều kiện tiên quyết đã xong" → hết đúng sau khi GĐ6 sinh tham chiếu chéo
+  mới. Nên transaction xoá tự đo lại tại chỗ.
+
+Hai khuyết tật chỉ lộ ra nhờ diễn tập: `room_price_history` để lại 12 dòng mồ côi
+(12 bảng không có cột `organization_id`, và ở chế độ replica thì `ON DELETE
+CASCADE` cũng không chạy); và **deadlock ba lần liên tiếp** với runtime OpenClaw
+— `lock_timeout` không cứu được, phải đoạt `organizations` rồi
+`openclaw_runtime_cells` ngay đầu transaction để ép thứ tự khoá.
+
+> **HỆ QUẢ CHƯA AI LƯỜNG — `scripts/measure-org-leak.mjs` nay KHÔNG chạy được.**
+> Prod chỉ còn MỘT tổ chức có người dùng, nên "rò chéo tổ chức" thành khái niệm
+> không đo được. Bộ đo fail-closed đúng cách (exit 3 = "số đo không đáng tin"),
+> nhưng gate `Không rò dữ liệu xuyên tổ chức` trong `ci-gates.yml` là gate CHẶN
+> trên `main` → sẽ đỏ ở lần push main tiếp theo.
+> Cách chữa đã chọn: cho bộ đo TỰ DỰNG một tổ chức + người dùng tổng hợp bên
+> trong `BEGIN…ROLLBACK` thay vì phụ thuộc vào org sandbox có sẵn trong
+> production. Đó là phép thử MẠNH HƠN — một tổ chức vừa sinh ra phải thấy đúng 0
+> dòng ở mọi bảng — và nó gỡ luôn sự phụ thuộc vào dữ liệu rác nằm trong prod.
+
+Ghi chú: `auth.users` của các tài khoản `test.*` / `demo.*` KHÔNG bị đụng tới
+(ngoài schema `public`). Membership của họ đã mất theo org, nên hiện là tài khoản
+không thuộc tổ chức nào — xoá hay giữ là quyết định riêng.
+
+---
+
+**Bản ghi cũ của mục này, giữ để đối chiếu:**
+CHƯA đủ điều kiện tiên quyết (đo lại 08/08 chiều).
 
 Phạm vi hiện tại (`02-pham-vi-xoa-hai-org.sql`): **172 bảng dính**, **27.634 dòng
 Test** + **136.790 dòng Demo** = 164.424 dòng. Bốn bảng nặng nhất đều là log
