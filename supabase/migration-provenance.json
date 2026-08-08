@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-08T16:37:18.951Z",
+  "generatedAt": "2026-08-08T16:52:58.695Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
-    "unknown": 74,
+    "unknown": 76,
     "catalog-proven": 220,
     "superseded": 15
   },
@@ -7504,6 +7504,30 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.get_public_latest_invoice_by_contract"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808110000_spike_request_headers_gdr.sql",
+      "version": "20260808110000",
+      "name": "spike_request_headers_gdr",
+      "scheme": "timestamp14",
+      "sha256": "5d2176750020cc77f6e883cc75ab3a22bd031897831332b260fcd3b815e94cec",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.zz_spike_request_headers"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808120000_go_spike_request_headers.sql",
+      "version": "20260808120000",
+      "name": "go_spike_request_headers",
+      "scheme": "timestamp14",
+      "sha256": "8156fd6426faf4d25e4be2f2232558d5ca3613038e677d06566682736353c003",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
       ]
     },
     {

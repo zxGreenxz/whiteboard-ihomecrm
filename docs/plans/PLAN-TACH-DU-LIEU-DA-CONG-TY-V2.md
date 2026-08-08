@@ -304,7 +304,35 @@ CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần D
   `20260808080000` bằng bước 3a (xoá theo cha, dừng nếu dòng bắc cầu sang tổ chức
   khác). Bảng nào sau này treo vào dữ liệu theo tổ chức mà không có cột org thì
   cùng lớp vấn đề đó.
-- **GĐ-R (rate-limit) — CÒN NGUYÊN.** Vẫn cần một lớp server đứng trước PostgREST.
+- **GĐ-R (rate-limit) — ĐÃ ĐO XONG ĐIỀU KIỆN TIÊN QUYẾT, ĐÃ CHỌN THIẾT KẾ A.**
+  Không cần "một lớp server đứng trước PostgREST" như mục này từng viết.
+
+  Spike `20260808110000` (đã gỡ ngay bằng `20260808120000`) trả lời cả hai vế mà
+  kế hoạch đòi phải chứng minh trước khi chọn:
+
+  1. **`request.headers` CÓ phơi** — 25 khoá, gồm `x-forwarded-for`,
+     `cf-connecting-ip`, `cf-ray`, `cf-worker`, `cdn-loop`, `sb-request-id`.
+  2. **Hop CUỐI của XFF là đáng tin.** Gửi XFF giả rồi xem DB nhận gì: gửi
+     `9.9.9.9` → DB thấy `"9.9.9.9,113.177.142.96"`; không gửi gì → DB thấy đúng
+     `"113.177.142.96"`. Hạ tầng luôn nối IP thật vào cuối; phần đầu do client
+     tự đặt nên dùng nó để đếm là **limiter giả**.
+  3. **`cf-connecting-ip` không giả được** — cố giả thì **HTTP 403 từ chính
+     Cloudflare**, request không tới được database.
+
+  **Điều này lật mục 1(b) của GĐ-R**, vốn ghi "Cloudflare chỉ đứng trước
+  chillhome.io.vn, không trước supabase.co". Sai — Cloudflare CÓ đứng trước
+  `supabase.co`. Mục 1(a) (Vercel không nhìn thấy request) thì vẫn đúng.
+
+  **Chọn Thiết kế A (thuần DB), loại Thiết kế B (edge function)** — và không
+  phải vì A ít việc hơn. Điểm yếu cốt lõi của B là kẻ tấn công cứ POST thẳng
+  `/rest/v1/rpc` là đi vòng qua limiter, nên B **bắt buộc** kèm REVOKE khỏi anon
+  + sửa client + sửa allow-list + sửa edge-function-surface. A không có đường
+  vòng nào, vì bộ đếm nằm BÊN TRONG chính hàm mà anon gọi.
+
+  Điểm phải nhớ khi thi hành A: đếm theo `cf-connecting-ip` thì mọi khách sau
+  cùng một NAT/4G-gateway dùng chung quota. Ngưỡng phải rộng tay, và phải đếm
+  theo **mã SAI** chứ không phải mọi lượt gọi — người xem hoá đơn của chính mình
+  gọi đúng mã, kẻ dò thì gọi sai liên tục.
 - **Hai bảng miễn trừ còn lại** (`ai_providers`, `ai_copilot_settings`, hạn
   30/11): câu hỏi MÔ HÌNH chưa ai trả lời — bảng cấu hình AI thuộc về hệ thống
   hay thuộc về từng công ty? Chỉ trả lời được khi có công ty thứ hai.
