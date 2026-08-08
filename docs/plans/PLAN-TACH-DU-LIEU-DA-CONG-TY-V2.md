@@ -263,15 +263,47 @@ CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần D
 - **GĐ9 (frontend chưa có `OrganizationContext`) — HẠ ƯU TIÊN.** Prod nay chỉ còn
   MỘT tổ chức, nên "tổ chức hiện tại" không có gì để chuyển đổi. Việc này chỉ
   thành cấp thiết khi có công ty thứ hai thật.
-- **GĐ7 (12 bảng không có cột `organization_id`) — CÒN, và nay biết đích xác
-  bảng nào nguy hiểm.** Bài diễn tập xoá tổ chức lộ ra rằng trong 12 bảng đó chỉ
-  `room_price_history` thực sự treo vào dữ liệu theo tổ chức (nó để lại 12 dòng
-  mồ côi khi cha bị xoá). Danh sách đủ 12:
-  `authorization_migration_exceptions`, `income_expense_type_reference_repair_audit`,
-  `legacy_owner_allowlist`, `lucky_event_teams`, `network_outbox_deliveries`,
-  `network_worker_credentials`, `network_worker_heartbeats`, `network_workers`,
-  `organizations`, `permission_definitions`, `push_send_log`, `room_price_history`.
-  `organizations` thì hiển nhiên không cần cột đó.
+- **GĐ7 (12 bảng không có cột `organization_id`) — ĐÃ ĐO XONG, KHÔNG CÓ RÒ; điểm
+  mù của bộ đo đã đóng.**
+
+  Câu hỏi cũ của GĐ7 là "thêm cột hay chặn qua cha". Đo ra thì câu hỏi đó đặt
+  sai: **không bảng nào trong 12 bảng đang rò**, nên chưa cần thêm cột cho bảng
+  nào cả. Đo bằng nhân vật tổ chức-vừa-sinh-ra — với bảng không có cột org thì
+  không có gì để lọc, nên mọi dòng nó đọc được đều là của người khác, ngưỡng đúng
+  là 0:
+
+  | Bảng | Dòng thật | Tổ chức vừa sinh thấy |
+  |---|---|---|
+  | `permission_definitions` | 231 | 0 |
+  | `lucky_event_teams` | 12 | 0 |
+  | `room_price_history` | 4 | 0 |
+  | `authorization_migration_exceptions` | 3 | 0 |
+  | `organizations` | 2 | 0 |
+  | `legacy_owner_allowlist` | 0 | 0 |
+  | `push_send_log` | 108 | **từ chối quyền** |
+  | `income_expense_type_reference_repair_audit` | 15 | **từ chối quyền** |
+  | `network_workers` | 2 | **từ chối quyền** |
+  | `network_worker_credentials` | 1 | **từ chối quyền** |
+  | `network_worker_heartbeats` | 0 | **từ chối quyền** |
+  | `network_outbox_deliveries` | 0 | **từ chối quyền** |
+
+  **Nhưng trước 08/08 chiều thì đây là sạch KHÔNG AI CANH.** `measure-org-leak.mjs`
+  dò bảng THEO cột `organization_id`, nên 12 bảng này chưa từng được quét lần nào;
+  gate inventory xếp chúng vào `NO_ORG_COLUMN` và coi là "có chỗ đứng" — đúng về
+  sổ sách, nhưng *có chỗ đứng* không phải *đã đo*. Nay bộ đo quét cả 12, và
+  "chưa đo được" đi lối riêng (thoát mã 3) chứ không bị đọc thành "sạch".
+
+  Chứng minh bộ đo không kiểm chính nó:
+  [`04-p6-bo-do-co-keu-khong.sql`](../../scripts/org-split-prepared/04-p6-bo-do-co-keu-khong.sql)
+  dựng một bảng rò thật trong `BEGIN…ROLLBACK` → bắt đúng nó, không bắt nhầm bảng
+  nào khác.
+
+  Việc CÒN LẠI của GĐ7 không phải rò mà là **toàn vẹn tham chiếu**: bài diễn tập
+  xoá tổ chức cho thấy `room_price_history` để lại 12 dòng mồ côi khi cha bị xoá,
+  vì nó không có cột org nên vòng xoá bỏ qua. Đã xử trong
+  `20260808080000` bằng bước 3a (xoá theo cha, dừng nếu dòng bắc cầu sang tổ chức
+  khác). Bảng nào sau này treo vào dữ liệu theo tổ chức mà không có cột org thì
+  cùng lớp vấn đề đó.
 - **GĐ-R (rate-limit) — CÒN NGUYÊN.** Vẫn cần một lớp server đứng trước PostgREST.
 - **Hai bảng miễn trừ còn lại** (`ai_providers`, `ai_copilot_settings`, hạn
   30/11): câu hỏi MÔ HÌNH chưa ai trả lời — bảng cấu hình AI thuộc về hệ thống

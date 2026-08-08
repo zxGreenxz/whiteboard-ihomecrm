@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { kiemChotChongAoGiac, xepNhomTheoSoDo, MA_THOAT_CHOT_HONG } from "../measure-org-leak.mjs";
+import {
+  kiemChotChongAoGiac,
+  phanLoaiBangKhongCotOrg,
+  xepNhomTheoSoDo,
+  MA_THOAT_CHOT_HONG,
+} from "../measure-org-leak.mjs";
 
 // Bộ đo này chỉ có giá trị nếu nó KHÔNG BAO GIỜ nói dối theo hướng an toàn.
 //
@@ -169,5 +174,59 @@ describe("kiemChotChongAoGiac — nhân vật tổng hợp (tổ chức vừa si
     const r = kiemChotChongAoGiac(that);
     expect(r.dat).toBe(false);
     expect(r.loi.join(" ")).toMatch(/MÙ/);
+  });
+});
+
+// ─── Điểm mù: 12 bảng KHÔNG có cột organization_id ──────────────────────────
+//
+// Bộ đo dò bảng THEO cột organization_id, nên 12 bảng không có cột đó chưa từng
+// được quét lần nào. Gate inventory xếp chúng vào NO_ORG_COLUMN và coi là "có
+// chỗ đứng" — đúng về sổ sách, nhưng "có chỗ đứng" không phải "đã đo".
+//
+// Với bảng không có cột org thì không có gì để lọc. Phép thử sạch hơn nhiều, và
+// chỉ nhân vật TỔNG HỢP làm được: một tổ chức vừa sinh ra không sở hữu dòng nào,
+// nên mọi dòng nó đọc được ở đây đều là của người khác. Ngưỡng đúng là 0.
+describe("phanLoaiBangKhongCotOrg — ba lối rẽ, chỉ hai lối là ổn", () => {
+  it("không cấp quyền đọc là an toàn NHẤT, không phải lỗi đo", () => {
+    const r = phanLoaiBangKhongCotOrg([{ bang: "push_send_log", tong: 0, tu_choi: true }]);
+    expect(r.tuChoi).toBe(1);
+    expect(r.ro).toHaveLength(0);
+    expect(r.chuaDo).toHaveLength(0);
+  });
+
+  it("có quyền đọc nhưng RLS chặn sạch là an toàn", () => {
+    const r = phanLoaiBangKhongCotOrg([{ bang: "permission_definitions", tong: 0, tu_choi: false }]);
+    expect(r.ro).toHaveLength(0);
+    expect(r.chuaDo).toHaveLength(0);
+  });
+
+  it("tổ chức vừa sinh ra đọc được dòng nào cũng là RÒ", () => {
+    const r = phanLoaiBangKhongCotOrg([{ bang: "zz_thu", tong: 2, tu_choi: false }]);
+    expect(r.ro.map((b) => b.bang)).toEqual(["zz_thu"]);
+  });
+
+  it("CHƯA ĐO ĐƯỢC không được đọc thành SẠCH", () => {
+    // Hồi quy của chính lỗi trong bản đầu đoạn mã này: nó viết
+    // `Number(b.tong ?? 0) > 0`, biến null thành 0 và nuốt trọn trường hợp đếm
+    // hỏng — đúng kiểu nói dối theo hướng an toàn mà cả bộ đo sinh ra để chống.
+    const r = phanLoaiBangKhongCotOrg([{ bang: "bang_loi", tong: null, tu_choi: false }]);
+    expect(r.ro).toHaveLength(0);
+    expect(r.chuaDo.map((b) => b.bang)).toEqual(["bang_loi"]);
+  });
+
+  it("đếm đủ cả ba loại trong một lượt", () => {
+    const r = phanLoaiBangKhongCotOrg([
+      { bang: "a", tong: 0, tu_choi: true },
+      { bang: "b", tong: 0, tu_choi: false },
+      { bang: "c", tong: 7, tu_choi: false },
+      { bang: "d", tong: null, tu_choi: false },
+    ]);
+    expect({ tong: r.tong, tuChoi: r.tuChoi, ro: r.ro.length, chuaDo: r.chuaDo.length })
+      .toEqual({ tong: 4, tuChoi: 1, ro: 1, chuaDo: 1 });
+  });
+
+  it("danh sách rỗng hay thiếu không làm nổ", () => {
+    expect(phanLoaiBangKhongCotOrg([]).tong).toBe(0);
+    expect(phanLoaiBangKhongCotOrg(undefined).tong).toBe(0);
   });
 });

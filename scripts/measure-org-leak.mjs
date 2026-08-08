@@ -193,6 +193,104 @@ SELECT
 ROLLBACK;`;
 }
 
+/**
+ * Quét những bảng KHÔNG có cột organization_id, bằng vai tổng hợp.
+ *
+ * ĐIỂM MÙ ĐÃ TỒN TẠI TỪ ĐẦU: bộ đo này dò bảng theo cột organization_id, nên 12
+ * bảng không có cột đó chưa từng được quét lần nào. Gate
+ * build-org-boundary-inventory xếp chúng vào nhóm NO_ORG_COLUMN và coi là "có
+ * chỗ đứng" — đúng về mặt sổ sách, nhưng "có chỗ đứng" không phải "đã đo".
+ *
+ * Với bảng không có cột org thì không có khái niệm "dòng của tổ chức khác" để
+ * lọc. Nhưng có một phép thử sạch hơn nhiều, và chỉ nhân vật TỔNG HỢP mới làm
+ * được: một tổ chức VỪA SINH RA không sở hữu dòng nào ở đâu cả, nên MỌI dòng nó
+ * đọc được ở những bảng này đều là dữ liệu của người khác. Ngưỡng đúng là 0.
+ *
+ * Đo 08/08/2026 lần đầu: cả 12 bảng đều đạt — 6 bảng RLS chặn về 0, 6 bảng
+ * không cấp SELECT cho authenticated nên báo thẳng permission denied. Sạch, thật,
+ * nhưng trước hôm nay là sạch KHÔNG AI CANH.
+ */
+function sqlDoBangKhongCotOrg(loBang) {
+  return `BEGIN;
+SET LOCAL statement_timeout = '900s';
+INSERT INTO auth.users (id) VALUES ('${UID_TONG_HOP}');
+INSERT INTO public.organizations (id, slug, name)
+VALUES ('${ORG_TONG_HOP}', 'zz-do-ro-tong-hop', 'ZZ tổ chức tổng hợp để đo rò');
+INSERT INTO public.organization_memberships (organization_id, user_id, member_type, status)
+VALUES ('${ORG_TONG_HOP}', '${UID_TONG_HOP}', 'STAFF', 'ACTIVE');
+
+CREATE TEMP TABLE _kq(bang text, tong bigint, tu_choi boolean);
+GRANT INSERT, SELECT ON _kq TO PUBLIC;
+
+CREATE FUNCTION pg_temp._quet0() RETURNS void LANGUAGE plpgsql AS $quet$
+DECLARE b text; v bigint;
+BEGIN
+  FOREACH b IN ARRAY ARRAY[${loBang.map((t) => `'${t}'`).join(',')}] LOOP
+    BEGIN
+      EXECUTE format('SELECT count(*) FROM public.%I', b) INTO v;
+      INSERT INTO _kq VALUES (b, v, false);
+    EXCEPTION WHEN insufficient_privilege THEN
+      -- Không cấp quyền đọc là dạng AN TOÀN NHẤT, không phải lỗi đo.
+      INSERT INTO _kq VALUES (b, 0, true);
+    WHEN OTHERS THEN
+      INSERT INTO _kq VALUES (b, NULL, false);
+    END;
+  END LOOP;
+END $quet$;
+
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"${UID_TONG_HOP}","role":"authenticated"}';
+SELECT pg_temp._quet0();
+
+SELECT
+  (SELECT current_user)::text                                       AS current_user,
+  (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user)  AS rolbypassrls,
+  (SELECT auth.uid())::text                                         AS auth_uid,
+  (SELECT array_to_string(public.my_org_ids(), ','))                AS my_orgs,
+  (SELECT coalesce(json_agg(json_build_object('bang',bang,'tong',tong,'tu_choi',tu_choi)),'[]'::json)
+     FROM _kq)                                                      AS bang;
+ROLLBACK;`;
+}
+
+/**
+ * Phân loại kết quả quét bảng không có cột organization_id.
+ *
+ * Tách thành hàm thuần để test được cả ba lối rẽ mà không chạm production —
+ * nhất là lối thứ ba, thứ mà bản đầu của chính đoạn mã này làm SAI.
+ *
+ * BA LỐI RẼ, và chỉ một lối là "ổn":
+ *   tu_choi = true  → KHÔNG cấp SELECT cho authenticated. An toàn nhất.
+ *   tong = 0        → có quyền đọc nhưng RLS chặn sạch. An toàn.
+ *   tong > 0        → RÒ. Tổ chức vừa sinh ra không sở hữu gì, nên mọi dòng nó
+ *                     đọc được ở đây đều là của người khác.
+ *   tong = null     → CHƯA ĐO ĐƯỢC (một lỗi ngoài dự kiến trong lúc đếm).
+ *
+ * Bản đầu viết `Number(b.tong ?? 0) > 0`, biến null thành 0 và đọc "chưa đo
+ * được" thành "sạch" — đúng cái kiểu nói dối theo hướng an toàn mà cả bộ đo này
+ * sinh ra để chống. Nay null đi lối riêng và làm gate đỏ bằng mã 3, khác hẳn mã
+ * 1 của "đo xong, có rò".
+ */
+export function phanLoaiBangKhongCotOrg(rows) {
+  const ro = [];
+  const chuaDo = [];
+  let tuChoi = 0;
+  for (const b of rows ?? []) {
+    if (b?.tu_choi === true) { tuChoi += 1; continue; }
+    if (b?.tong === null || b?.tong === undefined) { chuaDo.push(b); continue; }
+    if (Number(b.tong) > 0) ro.push(b);
+  }
+  return { ro, chuaDo, tuChoi, tong: (rows ?? []).length };
+}
+
+const SQL_BANG_KHONG_COT_ORG = `
+  SELECT c.relname AS ten
+    FROM pg_class c
+   WHERE c.relnamespace = 'public'::regnamespace
+     AND c.relkind IN ('r','p') AND NOT c.relispartition
+     AND NOT EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
+                      AND a.attname = 'organization_id' AND a.attnum > 0 AND NOT a.attisdropped)
+   ORDER BY c.relname`;
+
 function sqlDoiChungAm() {
   return `BEGIN;
 SET LOCAL ROLE authenticated;
@@ -286,6 +384,48 @@ async function main(argv) {
     }
     doDuoc.push({ nhanVat: nv, bang });
     console.log(`✔ ${nv.email} (org ${nv.org.slice(0, 4)}…): 4/4 chốt đạt ở cả ${cacLo.length} lô, quét ${bang.length} bảng`);
+  }
+
+  // ─── Điểm mù cũ: 12 bảng KHÔNG có cột organization_id chưa từng được quét ───
+  const bangKhongCotOrg = (await runSql(SQL_BANG_KHONG_COT_ORG, { pat, ref })).map((r) => r.ten);
+  const doDuocKhongOrg = [];
+  for (const lo of chiaLo(bangKhongCotOrg, SO_BANG_MOI_LO)) {
+    const [kq] = await runSql(sqlDoBangKhongCotOrg(lo), { pat, ref });
+    const chot = kiemChotChongAoGiac({
+      tongHop: true,
+      my_orgs: kq.my_orgs,
+      current_user: kq.current_user,
+      rolbypassrls: kq.rolbypassrls,
+      auth_uid: kq.auth_uid,
+      uid_mong_doi: UID_TONG_HOP,
+      doi_chung_duong_tong: 0,
+      doi_chung_duong_ngoai: 0,
+      doi_chung_am: doiChungAm,
+    });
+    if (!chot.dat) {
+      console.error('❌ Chốt chống ảo giác HỎNG khi quét bảng không có cột organization_id:');
+      for (const l of chot.loi) console.error(`   - ${l}`);
+      return MA_THOAT_CHOT_HONG;
+    }
+    doDuocKhongOrg.push(...kq.bang);
+  }
+  const kq0 = phanLoaiBangKhongCotOrg(doDuocKhongOrg);
+  console.log(
+    `✔ bảng KHÔNG có cột organization_id: quét ${kq0.tong}, `
+    + `${kq0.tuChoi} không cấp quyền đọc, `
+    + `${kq0.ro.length} để tổ chức vừa sinh ra đọc được dòng`,
+  );
+  if (kq0.chuaDo.length > 0) {
+    console.error('\n❌ Không đếm được ở bảng không có cột organization_id — số đo KHÔNG đầy đủ:');
+    for (const b of kq0.chuaDo) console.error(`   ? ${b.bang}`);
+    console.error('   "Chưa đo được" không phải "sạch". KHÔNG ghi baseline.');
+    return MA_THOAT_CHOT_HONG;
+  }
+  if (kq0.ro.length > 0) {
+    console.error('\n❌ Tổ chức VỪA SINH RA đọc được dòng ở bảng không có cột organization_id.');
+    console.error('   Bảng không có cột org thì không có gì để lọc — mọi dòng nó thấy đều là của người khác:');
+    for (const b of kq0.ro) console.error(`   ✗ ${b.bang} — ${b.tong} dòng`);
+    return 1;
   }
 
   // Gộp: một bảng rò nếu BẤT KỲ nhân vật nào thấy dòng của tổ chức khác.
