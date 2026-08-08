@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-08T13:07:49.176Z",
+  "generatedAt": "2026-08-08T16:37:18.951Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
     "unknown": 74,
-    "catalog-proven": 219,
+    "catalog-proven": 220,
     "superseded": 15
   },
   "duplicateVersions": 40,
@@ -7493,6 +7493,17 @@
       "evidence": [],
       "missingObjects": [
         "function:pg_temp._dem"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808100000_bo_sdt_khoi_payload_cong_khai.sql",
+      "version": "20260808100000",
+      "name": "bo_sdt_khoi_payload_cong_khai",
+      "scheme": "timestamp14",
+      "sha256": "ee6ce0e77688401244d8dc33dc05084a800103852cac4e6733d4eb8d1042c8e5",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.get_public_latest_invoice_by_contract"
       ]
     },
     {

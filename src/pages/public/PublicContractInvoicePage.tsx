@@ -47,7 +47,10 @@ type PublicPayload = {
   invoice: PublicInvoice | null;
   room: { id: string; name: string; code: string | null } | null;
   building: { id: string; name: string } | null;
-  customer?: { full_name: string; phone: string | null } | null;
+  // Số điện thoại đã bị bỏ khỏi payload ở 20260808100000: bề mặt này anon gọi
+  // được chỉ bằng một mã hợp đồng 6 ký tự, nên mọi trường ở đây là dữ liệu công
+  // khai với bất kỳ ai đoán trúng mã.
+  customer?: { full_name: string } | null;
 };
 
 const formatCurrency = (n: number | null | undefined) =>
@@ -243,18 +246,10 @@ export default function PublicContractInvoicePage() {
           <CardContent>
             <div className="grid grid-cols-2 gap-3 text-sm">
               {customer?.full_name && (
-                <>
-                  <div>
-                    <div className="text-gray-500 text-xs">Khách hàng</div>
-                    <div className="font-medium">{customer.full_name}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500 text-xs">Số điện thoại</div>
-                    <div className="font-medium">
-                      {customer.phone || 'N/A'}
-                    </div>
-                  </div>
-                </>
+                <div>
+                  <div className="text-gray-500 text-xs">Khách hàng</div>
+                  <div className="font-medium">{customer.full_name}</div>
+                </div>
               )}
               <div>
                 <div className="text-pink-600 text-xs">Căn hộ</div>
