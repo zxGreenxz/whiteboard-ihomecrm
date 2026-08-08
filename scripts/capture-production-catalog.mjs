@@ -43,7 +43,10 @@ export function readProjectRef() {
   return 'tryymsxyyckgbrmmvozx';
 }
 
-async function runSql(sql, { pat, ref }) {
+// Export để các công cụ chỉ-đọc khác (vd build-org-boundary-inventory.mjs) dùng
+// chung đúng một đường gọi Management API, thay vì mỗi script tự dựng fetch riêng
+// rồi mỗi nơi xử lý lỗi một kiểu.
+export async function runSql(sql, { pat, ref }) {
   const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },

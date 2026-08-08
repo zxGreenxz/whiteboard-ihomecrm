@@ -25,8 +25,64 @@ export interface IncomeExpenseType {
   // Cờ "hạng mục đặc biệt": bật → cho phép ẩn các dòng thuộc hạng mục này khỏi
   // danh sách báo cáo Phân bổ lợi nhuận (tuỳ chọn FE, KHÔNG đụng RLS/số tổng).
   hide_in_report: boolean;
+  // NULL trên dữ liệu cũ chưa backfill; row mới do trigger trg_autofill_org gắn.
+  organization_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Lọc hạng mục về đúng tổ chức của user TRƯỚC khi dedup theo tên.
+ *
+ * Án lệ 07/08/2026: RLS select trên income_expense_types chỉ check capability
+ * toàn cục (can_access_org_entity không so organization_id) nên client thấy
+ * hạng mục của MỌI org. Hai org seed cùng lúc đều có "Vệ Sinh Phòng"
+ * (created_at giống hệt) → dedup bốc ngẫu nhiên id của org khác →
+ * create_income_expense_v1 từ chối 42501 "Loại hạng mục 1 không thuộc tổ
+ * chức hoặc sai chiều thu/chi", lỗi chập chờn theo thứ tự DB trả về.
+ *
+ * myOrgIds rỗng (rpc my_org_ids lỗi/chưa có) → không lọc để khỏi trắng
+ * dropdown; dedup ưu tiên ownership vẫn chạy như cũ.
+ */
+export function selectIeTypeRowsForOrgs(
+  rows: IncomeExpenseType[],
+  currentUserId: string | null,
+  myOrgIds: string[],
+): IncomeExpenseType[] {
+  const scoped = myOrgIds.length
+    ? rows.filter(
+        (r) => r.organization_id == null || myOrgIds.includes(r.organization_id),
+      )
+    : rows;
+
+  const ownershipRank = (r: IncomeExpenseType) =>
+    currentUserId && r.user_id === currentUserId ? 0 : 1;
+  const sorted = [...scoped].sort((a, b) => {
+    const diff = ownershipRank(a) - ownershipRank(b);
+    if (diff !== 0) return diff;
+    return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+  });
+
+  const seen = new Map<string, IncomeExpenseType>();
+  for (const row of sorted) {
+    const key = `${row.type}::${row.name.trim().toLowerCase()}`;
+    if (!seen.has(key)) seen.set(key, row);
+  }
+
+  return Array.from(seen.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, "vi", { sensitivity: "base" })
+  );
+}
+
+// my_org_ids() là SECURITY DEFINER đã grant authenticated (xem useMyOrgIds ở
+// useNotificationSettings.ts). Lỗi → [] và selectIeTypeRowsForOrgs bỏ lọc.
+async function fetchMyOrgIds(): Promise<string[]> {
+  const { data, error } = await supabase.rpc("my_org_ids");
+  if (error) {
+    console.error("useIncomeExpenseTypes my_org_ids error:", error);
+    return [];
+  }
+  return Array.isArray(data) ? (data as string[]).filter(Boolean) : [];
 }
 
 // --- Query Hooks ---
@@ -47,7 +103,10 @@ export const useIncomeExpenseTypes = (
       // DB canonical theo (organization, type, normalized name). Giữ dedup
       // client-side trong giai đoạn rollout để phiên đang mở trước migration
       // không nháy dòng trùng; đây không còn là nguồn bảo đảm tính duy nhất.
-      const user = await getSessionUser();
+      const [user, myOrgIds] = await Promise.all([
+        getSessionUser(),
+        fetchMyOrgIds(),
+      ]);
       const currentUserId = user?.id ?? null;
 
       let query = supabase
@@ -67,24 +126,7 @@ export const useIncomeExpenseTypes = (
       }
 
       const rows = (data ?? []) as unknown as IncomeExpenseType[];
-
-      const ownershipRank = (r: IncomeExpenseType) =>
-        currentUserId && r.user_id === currentUserId ? 0 : 1;
-      const sorted = [...rows].sort((a, b) => {
-        const diff = ownershipRank(a) - ownershipRank(b);
-        if (diff !== 0) return diff;
-        return (a.created_at ?? "").localeCompare(b.created_at ?? "");
-      });
-
-      const seen = new Map<string, IncomeExpenseType>();
-      for (const row of sorted) {
-        const key = `${row.type}::${row.name.trim().toLowerCase()}`;
-        if (!seen.has(key)) seen.set(key, row);
-      }
-
-      return Array.from(seen.values()).sort((a, b) =>
-        a.name.localeCompare(b.name, "vi", { sensitivity: "base" })
-      );
+      return selectIeTypeRowsForOrgs(rows, currentUserId, myOrgIds);
     },
   });
 };
@@ -101,10 +143,12 @@ export const useIncomeExpenseTypeCategories = (
     queryKey: ["income-expense-type-categories", filterType],
     queryFn: async (): Promise<string[]> => {
       // Categories cũng dùng chung — không filter theo user_id (xem hook
-      // useIncomeExpenseTypes phía trên).
+      // useIncomeExpenseTypes phía trên), nhưng phải lọc org vì RLS đang cho
+      // thấy cross-org (cùng án lệ 07/08/2026 ở selectIeTypeRowsForOrgs).
+      const myOrgIds = await fetchMyOrgIds();
       let query = supabase
         .from("income_expense_types" as any)
-        .select("category")
+        .select("category, organization_id")
         .not("category", "is", null);
 
       if (filterType) {
@@ -118,7 +162,17 @@ export const useIncomeExpenseTypeCategories = (
       }
 
       const set = new Set<string>();
-      for (const row of (data ?? []) as unknown as Array<{ category: string | null }>) {
+      for (const row of (data ?? []) as unknown as Array<{
+        category: string | null;
+        organization_id: string | null;
+      }>) {
+        if (
+          myOrgIds.length &&
+          row.organization_id != null &&
+          !myOrgIds.includes(row.organization_id)
+        ) {
+          continue;
+        }
         const c = (row.category ?? "").trim();
         if (c) set.add(c);
       }

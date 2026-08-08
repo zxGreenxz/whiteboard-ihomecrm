@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-07T09:33:54.610Z",
+  "generatedAt": "2026-08-08T01:24:18.208Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
-    "unknown": 65,
-    "catalog-proven": 214,
+    "unknown": 69,
+    "catalog-proven": 218,
     "superseded": 15
   },
   "duplicateVersions": 40,
@@ -6058,13 +6058,10 @@
       "name": "notification_config_tables_rpc",
       "scheme": "timestamp14",
       "sha256": "99f9888880620d5b4cd8b760587275edb8939f02f7ab55bd1a9be635d3bbbabc",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:table:app_private.notification_org_config",
-        "catalog:table:public.notification_preferences",
-        "catalog:function:app_private.notification_events_normalize_v1",
-        "catalog:function:app_private.notification_prefs_normalize_v1",
-        "catalog:policy:public.notification_preferences.np_own"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "policy:public.notification_preferences.np_org_boundary"
       ]
     },
     {
@@ -7330,6 +7327,99 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:policy:public.income_expense_types.income_expense_types_org_boundary"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260807180000_openclaw_disconnect_recovery.sql",
+      "version": "20260807180000",
+      "name": "openclaw_disconnect_recovery",
+      "scheme": "timestamp14",
+      "sha256": "b9763e7cf7614bdccd1117ccefe78945320d79aacba4225c3197ab2cdd575507",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.openclaw_media_revocation_gateway_enabled_v1",
+        "catalog:function:app_private.openclaw_try_finalize_disconnect_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260807183000_gd0_bit_be_mat_an_danh.sql",
+      "version": "20260807183000",
+      "name": "gd0_bit_be_mat_an_danh",
+      "scheme": "timestamp14",
+      "sha256": "b058f8380420b8aa50aa9859a0d7cf3527571c4239f6c420da056b62a10240b1",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260807190000_openclaw_begin_qr_without_gateway.sql",
+      "version": "20260807190000",
+      "name": "openclaw_begin_qr_without_gateway",
+      "scheme": "timestamp14",
+      "sha256": "57af4da72fd199cccb64343d6c0c987d6128238e6b565464c212fa3adbca82da",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.openclaw_begin_qr_login_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260807190050_gd1_so_mien_tru_org_boundary.sql",
+      "version": "20260807190050",
+      "name": "gd1_so_mien_tru_org_boundary",
+      "scheme": "timestamp14",
+      "sha256": "dd5e693ccc5faa4155ba44474d8becaf0ee8e5b8b6b95197b7e455b30810aded",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.org_boundary_exemptions"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260807190100_gd1_doi_ten_np_org_boundary.sql",
+      "version": "20260807190100",
+      "name": "gd1_doi_ten_np_org_boundary",
+      "scheme": "timestamp14",
+      "sha256": "c30d7f87d1c11e41a7de5f244f5a9e8591b921b21d98ffd53f6daa5a8ec1ea7c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808010000_gd3_rao_bang_an_toan.sql",
+      "version": "20260808010000",
+      "name": "gd3_rao_bang_an_toan",
+      "scheme": "timestamp14",
+      "sha256": "6938688c0be95b31553cec18d1d5e9a0d52a3db39b346dde5104679e02e1c6c3",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:policy:public.account_shared_users.account_shared_users_org_boundary"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808020000_gd4_rao_bang_dang_ro.sql",
+      "version": "20260808020000",
+      "name": "gd4_rao_bang_dang_ro",
+      "scheme": "timestamp14",
+      "sha256": "901fdc3b5b93c546763b5a49f9fe285aeae0f2c370911c2ed4240443951dfb27",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:policy:public.asset_movements.asset_movements_org_boundary"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808030000_gd5_event_trigger_org_boundary.sql",
+      "version": "20260808030000",
+      "name": "gd5_event_trigger_org_boundary",
+      "scheme": "timestamp14",
+      "sha256": "674a2ee667e0aa2a8e826ec71c74f8b8c90355a556f99ab891bfe1df9f36bce2",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.zz_thu_bien_gioi",
+        "table:public.zz_thu_khong_org"
       ]
     },
     {

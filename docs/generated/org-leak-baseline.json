@@ -1,0 +1,6714 @@
+{
+  "note": "Sinh bằng máy — node scripts/measure-org-leak.mjs --write. Đo bằng vai người dùng thật, chỉ đọc, mọi truy vấn bọc ROLLBACK.",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "capturedAt": "2026-08-07T18:00:47.754Z",
+  "catalogFingerprint": "d40723ebc7c10cb7791af1ce8239787b0cae331a54a9d4eb7e3443426957dbdb",
+  "nhanVat": [
+    {
+      "org": "aaaa0000-0000-4000-8000-000000000001",
+      "email": "bosshuy@username.ihomecrm.local"
+    },
+    {
+      "org": "cccc0000-0000-4000-8000-000000000001",
+      "email": "test.bosshuy@username.ihomecrm.local"
+    },
+    {
+      "org": "dddd0000-0000-4000-8000-000000000001",
+      "email": "demo.chunha@username.ihomecrm.local"
+    }
+  ],
+  "counts": {
+    "A_RONG": 2,
+    "LIVE_LEAK": 5
+  },
+  "rows": [
+    {
+      "table_name": "account_shared_users",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "accounting_integrity_exceptions",
+      "visible_foreign": 0,
+      "ground_truth_total": 18,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 18,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "accounting_repair_audit",
+      "visible_foreign": 0,
+      "ground_truth_total": 8,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 8,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "accounts",
+      "visible_foreign": 0,
+      "ground_truth_total": 391,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 391,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "ai_chat_messages",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "ai_chat_threads",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "ai_copilot_entitlements",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "ai_copilot_settings",
+      "visible_foreign": 1,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 1
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 1
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "LIVE_LEAK",
+      "assigned_phase": "GĐ4"
+    },
+    {
+      "table_name": "ai_providers",
+      "visible_foreign": 10,
+      "ground_truth_total": 10,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 10,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 10,
+          "ngoai": 10
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 10,
+          "ngoai": 10
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "LIVE_LEAK",
+      "assigned_phase": "GĐ4"
+    },
+    {
+      "table_name": "ai_usage_logs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "ai_write_audit",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "approval_decisions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "approval_request_step_candidates",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "approval_request_steps",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "approval_requests",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "approval_rule_sets",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "approval_rule_steps",
+      "visible_foreign": 0,
+      "ground_truth_total": 2,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "approval_rules",
+      "visible_foreign": 0,
+      "ground_truth_total": 3,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "approval_step_approvers",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "area_buildings",
+      "visible_foreign": 0,
+      "ground_truth_total": 33,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 33,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 33,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "areas",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "asset_categories",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "asset_handovers",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "asset_maintenance",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "asset_movements",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "asset_warehouses",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "assets",
+      "visible_foreign": 0,
+      "ground_truth_total": 585,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 585,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 585,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "authorization_audit_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "authorization_scopes",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "auto_debt_config",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "building_fee_accounts",
+      "visible_foreign": 0,
+      "ground_truth_total": 91,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 91,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 91,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 24,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "building_services",
+      "visible_foreign": 0,
+      "ground_truth_total": 172,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 172,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 156,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 8,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "building_shareholders",
+      "visible_foreign": 0,
+      "ground_truth_total": 13,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "building_utility_accounts",
+      "visible_foreign": 0,
+      "ground_truth_total": 25,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 25,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 25,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "buildings",
+      "visible_foreign": 0,
+      "ground_truth_total": 13,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "cash_handover_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 21,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 21,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 21,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "cash_handovers",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "cashbook_possession_bindings",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "cashbook_reconciliations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "code_sequences",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "contract_customers",
+      "visible_foreign": 0,
+      "ground_truth_total": 389,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 389,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 379,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 12,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "contract_deposit_links",
+      "visible_foreign": 0,
+      "ground_truth_total": 6,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 6,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 5,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "contract_extensions",
+      "visible_foreign": 0,
+      "ground_truth_total": 20,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 20,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "contract_services",
+      "visible_foreign": 0,
+      "ground_truth_total": 89,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 87,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 89,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "contract_tenants",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "contract_terminations",
+      "visible_foreign": 0,
+      "ground_truth_total": 21,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 21,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 18,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 9,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "contract_transfers",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "contracts",
+      "visible_foreign": 0,
+      "ground_truth_total": 239,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 239,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 233,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 22,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "cron_runs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "ct01_declarations",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "customer_credit_applications",
+      "visible_foreign": 0,
+      "ground_truth_total": 33,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 33,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 33,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "customer_credit_lots",
+      "visible_foreign": 0,
+      "ground_truth_total": 35,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 35,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 34,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "customers",
+      "visible_foreign": 0,
+      "ground_truth_total": 521,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 521,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 507,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 21,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "demo_reset_log",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "demo_reset_tables",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "departments",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "deposits",
+      "visible_foreign": 0,
+      "ground_truth_total": 2,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "document_templates",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "excess_amounts",
+      "visible_foreign": 0,
+      "ground_truth_total": 72,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 72,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 70,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "expenses",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_contract_month_snapshots",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_evidence_objects",
+      "visible_foreign": 0,
+      "ground_truth_total": 173,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 173,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_evidence_system_sources",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_invoice_component_allocations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_invoice_component_manifests",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_invoice_components",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_month_snapshot_runs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_reporting_role_assignments",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "finance_room_month_snapshots",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "floors",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "hotlines",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_audit_log",
+      "visible_foreign": 0,
+      "ground_truth_total": 365,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 65,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 365,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_batch_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 201,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 201,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 201,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_batches",
+      "visible_foreign": 0,
+      "ground_truth_total": 35,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 35,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 35,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 1964,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1964,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1770,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 462,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_posting_evidence",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_posting_lines",
+      "visible_foreign": 0,
+      "ground_truth_total": 466,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 35,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 35,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 466,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_postings",
+      "visible_foreign": 0,
+      "ground_truth_total": 465,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 35,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 35,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 465,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_recognition_adjustments",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_templates",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_type_merge_audit",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expense_types",
+      "visible_foreign": 0,
+      "ground_truth_total": 90,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 90,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 88,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 41,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "income_expenses",
+      "visible_foreign": 0,
+      "ground_truth_total": 1885,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1885,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1692,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 471,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "inspection_photos",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "inspection_sessions",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "invoice_audit_log",
+      "visible_foreign": 0,
+      "ground_truth_total": 17455,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 17455,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 4,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1216,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "invoice_generation_settings",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "invoice_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 3080,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 3080,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 3058,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 60,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "invoice_payment_allocations",
+      "visible_foreign": 0,
+      "ground_truth_total": 184,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 184,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 20,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 5,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "invoice_payment_collections",
+      "visible_foreign": 0,
+      "ground_truth_total": 179,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 179,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 16,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "invoice_payment_tenders",
+      "visible_foreign": 0,
+      "ground_truth_total": 179,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 179,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 16,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "invoices",
+      "visible_foreign": 0,
+      "ground_truth_total": 818,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 818,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 809,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 33,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "issue_categories",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "issue_comments",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "issue_phase_history",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "issue_status_history",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "issues",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "job_groups",
+      "visible_foreign": 0,
+      "ground_truth_total": 2,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "job_types",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "jobs",
+      "visible_foreign": 0,
+      "ground_truth_total": 162,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 162,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 155,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "lead_activities",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "leads",
+      "visible_foreign": 0,
+      "ground_truth_total": 5,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 5,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "legacy_owner_organization_map",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "lucky_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "manager_salary_config",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "material_adjustment_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "material_adjustments",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "material_categories",
+      "visible_foreign": 0,
+      "ground_truth_total": 6,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 6,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 6,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "material_purchase_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 29,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 29,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 29,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "material_purchases",
+      "visible_foreign": 0,
+      "ground_truth_total": 29,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 29,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 29,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "material_usage_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 74,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 56,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 74,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 19,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "material_usages",
+      "visible_foreign": 0,
+      "ground_truth_total": 62,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 48,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 62,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 15,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "materials",
+      "visible_foreign": 0,
+      "ground_truth_total": 30,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 30,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 30,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "member_override_scopes",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "member_permission_overrides",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "meter_readings",
+      "visible_foreign": 0,
+      "ground_truth_total": 907,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 907,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 905,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 14,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "meters",
+      "visible_foreign": 0,
+      "ground_truth_total": 189,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 189,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 189,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 38,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_audit_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_client_current",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_client_links",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_client_sessions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_command_attempts",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_command_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 69,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 69,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_command_observations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_commands",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_config_snapshots",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_desired_state_versions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_device_connections",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_device_current",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_device_leases",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_device_samples",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_devices",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_incident_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_incidents",
+      "visible_foreign": 0,
+      "ground_truth_total": 15,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 15,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_interface_current",
+      "visible_foreign": 0,
+      "ground_truth_total": 8,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 8,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_interface_samples",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_interfaces",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_maintenance_windows",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_managed_resources",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_metric_hourly",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_org_mutation_gates",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_outbox_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_site_settings",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_sla_daily",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_worker_assignments",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "network_worker_building_status",
+      "visible_foreign": 0,
+      "ground_truth_total": 2,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "notification_logs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "notification_preferences",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "notification_templates",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "notifications",
+      "visible_foreign": 0,
+      "ground_truth_total": 32,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 28,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 4,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 32,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_account_connections",
+      "visible_foreign": 0,
+      "ground_truth_total": 4,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 4,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "B_KHONG_CAP_QUYEN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_accounts",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "B_KHONG_CAP_QUYEN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_ai_drafts",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_audit_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_audit_gateway_tickets",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_audit_roots",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_audit_signing_configs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_automation_versions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_automations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_campaign_runs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_campaigns",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_capacity_controls",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_cell_rebinds",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_client_operations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_consents",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_contacts",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_control_states",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_conversation_members",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_conversations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_crm_event_occurrences",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_crm_event_subscription_snapshots",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_crm_event_subscriptions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_dead_letters",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_delivery_attempts",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_generation_revocations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_health_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 9926,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 9926,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "B_KHONG_CAP_QUYEN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_inbound_automation_decisions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_inbound_collisions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_inbound_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_inbound_provider_identities",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_knowledge_chunks",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_knowledge_sources",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_knowledge_versions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_maintenance_credentials",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_maintenance_leases",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_maintenance_principals",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_maintenance_work_attempts",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_maintenance_work_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_media_upload_tickets",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_message_media",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_messages",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_outbound_authorizations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_outbox",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_policies",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_policy_versions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_qr_challenges",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_delete_authorizations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_delete_ticket_lineage",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_delete_tickets",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_evidence_seals",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_gateway_configs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_hold_clocks",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_hold_scopes",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_holds",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_policies",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_retention_tombstones",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_rollout_checkpoints",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_rollout_observations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_rollout_runs",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "B_KHONG_CAP_QUYEN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_runtime_cells",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "B_KHONG_CAP_QUYEN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_runtime_commands",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_runtime_credentials",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_runtime_leases",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_sales_group_allowlists",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_sales_groups",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_schedule_occurrences",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_schedule_snapshots",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_schedules",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_send_work_attempts",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_send_work_items",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_service_nonces",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_smoke_cleanup_proofs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_smoke_observations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_smoke_runs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_suppressions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_takeovers",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_targets",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_unknown_resolutions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "openclaw_watchdog_envelope_nonces",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "organization_invitations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "organization_invoice_settings",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "organization_memberships",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "organization_roles",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "organization_timezones",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "payments",
+      "visible_foreign": 0,
+      "ground_truth_total": 909,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 909,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 741,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 21,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "personal_transactions",
+      "visible_foreign": 0,
+      "ground_truth_total": 3,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "phase_transitions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profiles",
+      "visible_foreign": 7,
+      "ground_truth_total": 7,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 4,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 5,
+          "ngoai": 1
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 7,
+          "ngoai": 7
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "LIVE_LEAK",
+      "assigned_phase": "GĐ4"
+    },
+    {
+      "table_name": "profit_allocations",
+      "visible_foreign": 0,
+      "ground_truth_total": 13,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_close_revisions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_close_runs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_manager_allocations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_manager_salaries",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_manager_salary_buildings",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_managers",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_monthly",
+      "visible_foreign": 0,
+      "ground_truth_total": 13,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_payout_exceptions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_payout_reservations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "profit_unallocated_decisions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "public_room_events",
+      "visible_foreign": 0,
+      "ground_truth_total": 11169,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 11169,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3032,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "public_room_settings",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "public_room_share_tokens",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "push_subscriptions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "role_binding_scopes",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "role_bindings",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "role_permissions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "roles",
+      "visible_foreign": 5,
+      "ground_truth_total": 7,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 5,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 5,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 7,
+          "ngoai": 5
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "LIVE_LEAK",
+      "assigned_phase": "GĐ4"
+    },
+    {
+      "table_name": "room_pass_listings",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "room_reservation_holds",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "rooms",
+      "visible_foreign": 0,
+      "ground_truth_total": 204,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 204,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 204,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 19,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_adjustments",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_attendance_day",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_award_errors",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_bonus_rules",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_cash_authorizations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_earning_consumptions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_holidays",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_monthly",
+      "visible_foreign": 0,
+      "ground_truth_total": 4,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 4,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_settlement_bundles",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_settlement_tranches",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_streak_state",
+      "visible_foreign": 0,
+      "ground_truth_total": 2,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "salary_work_ledger_snapshot",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "scheduled_jobs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "service_quota_tiers",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "service_quotas",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "services",
+      "visible_foreign": 0,
+      "ground_truth_total": 4,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 4,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "settings",
+      "visible_foreign": 4,
+      "ground_truth_total": 8,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 5,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 5,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 8,
+          "ngoai": 4
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "LIVE_LEAK",
+      "assigned_phase": "GĐ4"
+    },
+    {
+      "table_name": "shareholders",
+      "visible_foreign": 0,
+      "ground_truth_total": 2,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "signature_templates",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "sla_configs",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "special_fee_claims",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "staff_assignments",
+      "visible_foreign": 0,
+      "ground_truth_total": 13,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "subscription_plans",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "super_admins",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "suppliers",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "task_flows",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "task_phases",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "task_types",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "team_members",
+      "visible_foreign": 0,
+      "ground_truth_total": 4,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 4,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 4,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "teams",
+      "visible_foreign": 0,
+      "ground_truth_total": 1,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "tenants",
+      "visible_foreign": 0,
+      "ground_truth_total": 9,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 9,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "termination_move_out_authorizations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "termination_move_out_settlement_lines",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": false,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "termination_refund_obligations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "user_roles",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "user_subscriptions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "vehicles",
+      "visible_foreign": 0,
+      "ground_truth_total": 231,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 231,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 219,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 13,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "zalo_accounts",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "zalo_automations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "zalo_conversations",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "zalo_labels",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "zalo_message_templates",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "zalo_messages",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "zalo_send_queue",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "test.bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    }
+  ]
+}
