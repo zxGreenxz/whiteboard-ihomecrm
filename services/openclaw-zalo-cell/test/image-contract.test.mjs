@@ -797,6 +797,59 @@ test("runtime config load-paths the vendored fork, the only way OpenClaw ever se
   assert.deepEqual(config.plugins.load.paths, [loadPath]);
 });
 
+test("image owns the session roots so a fresh volume is writable by the runtime user", async () => {
+  const dockerfile = await readCell("Dockerfile");
+
+  // Docker seeds a brand-new named volume from the image directory, ownership
+  // included. Without these the ciphertext volume is created root-owned and the
+  // cell dies on "mkdir: cannot create directory '/var/lib/openclaw-session/
+  // zalouser': Permission denied" - measured the first time the volume was
+  // recreated. The base image ships /home/node/.openclaw as root-owned 0700.
+  for (const directory of ["/home/node/.openclaw", "/home/node/.npm", "/var/lib/openclaw-session"]) {
+    assert.ok(
+      new RegExp(`chown node:node[^\\n]*${directory}(\\s|$)`).test(dockerfile),
+      `${directory} must be handed to the runtime user in the image`,
+    );
+  }
+});
+
+test("entrypoint creates the ciphertext directory the crypto daemon refuses to create", async () => {
+  const entrypoint = await readCell("scripts/entrypoint.sh");
+
+  // Measured on the running cell: persist failed with PARENT_DIRECTORY_MISSING
+  // ("Every parent of a session file must be a pre-existing directory"), reported
+  // only as the sanitized INTERNAL_ERROR. /var/lib/openclaw-session/zalouser did
+  // not exist and nothing created it, so no session was ever saved and every
+  // restart cost the owner a QR scan. One mkdir fixed it: persist returned ok.
+  // Both sides need it: persist writes the ciphertext subdirectory, restore writes
+  // the plaintext one, and each fails the same way when its parent is absent.
+  assert.match(entrypoint, /session_ciphertext_dir=\$persistent_root\/\$\(dirname "\$session_path"\)/);
+  assert.match(entrypoint, /session_plaintext_dir=\$plaintext_root\/\$\(dirname "\$session_path"\)/);
+  assert.match(entrypoint, /mkdir -p "\$session_ciphertext_dir" "\$session_plaintext_dir"/);
+  assert.match(
+    entrypoint,
+    /chmod 700 "\$persistent_root" "\$session_ciphertext_dir" "\$session_plaintext_dir"/,
+  );
+
+  // They must exist before anything tries to restore or persist through them.
+  const makeOffset = entrypoint.indexOf('mkdir -p "$session_ciphertext_dir"');
+  assert.ok(makeOffset >= 0);
+  assert.ok(makeOffset < entrypoint.indexOf("session_restore()"));
+});
+
+test("entrypoint keeps the plaintext session when the encrypted persist fails", async () => {
+  const entrypoint = await readCell("scripts/entrypoint.sh");
+
+  // The old cleanup ran `rm -f` unconditionally, so a failed persist destroyed
+  // the only copy and said nothing. Deleting is now conditional on saving.
+  assert.match(entrypoint, /if session_persist; then\n {4}rm -f "\$plaintext_root\/\$session_path"/);
+  assert.match(entrypoint, /SESSION NOT SAVED/);
+  assert.doesNotMatch(
+    entrypoint,
+    /session_persist \|\| status=\$\?\n {2}cleanup_internal_runs\n {2}rm -f/,
+  );
+});
+
 test("entrypoint names the channel account after the CRM account the cell is bound to", async () => {
   const entrypoint = await readCell("scripts/entrypoint.sh");
   const launchOffset = entrypoint.indexOf('"$@" &');

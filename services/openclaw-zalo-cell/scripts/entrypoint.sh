@@ -29,6 +29,22 @@ esac
 mkdir -p "$state_dir" "$plaintext_root" "$internal_runs_dir" "$(dirname "$config_path")"
 chmod 700 "$plaintext_root" "$internal_runs_dir"
 
+# BOTH session directories have to exist before the crypto daemon will touch
+# them: it refuses to create parents ("Every parent of a session file must be a
+# pre-existing directory"), so a missing directory fails with
+# PARENT_DIRECTORY_MISSING - reported only as the sanitized INTERNAL_ERROR.
+#
+# Only the two roots were created, never the per-channel subdirectory under them.
+# Persist therefore failed on every shutdown and cleanup() deleted the plaintext
+# regardless, which is the whole reason a restart cost the owner a fresh QR scan;
+# restore then failed the same way on the plaintext side. The hand-written
+# recovery recipe people passed around carried this same mkdir as a manual step,
+# which is why restoring by hand worked while the cell could never do it itself.
+session_ciphertext_dir=$persistent_root/$(dirname "$session_path")
+session_plaintext_dir=$plaintext_root/$(dirname "$session_path")
+mkdir -p "$session_ciphertext_dir" "$session_plaintext_dir"
+chmod 700 "$persistent_root" "$session_ciphertext_dir" "$session_plaintext_dir"
+
 # Internal transcripts are a supported transient OpenClaw lifecycle artifact.
 # Remove only direct regular JSONL files in the owned directory; never follow links.
 cleanup_internal_runs() {
@@ -100,9 +116,15 @@ shutdown() {
 cleanup() {
   status=$?
   trap - EXIT
-  session_persist || status=$?
+  # Say it out loud when the session could not be saved. This failure was silent
+  # for weeks: the only symptom was the owner being asked to scan a QR again.
+  if session_persist; then
+    rm -f "$plaintext_root/$session_path"
+  else
+    status=$?
+    echo "SESSION NOT SAVED: encrypted persist failed; keeping the plaintext session so it is not destroyed on top of the failure" >&2
+  fi
   cleanup_internal_runs
-  rm -f "$plaintext_root/zalouser/credentials.json"
   exit "$status"
 }
 

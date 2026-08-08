@@ -22,6 +22,6 @@ COPY --chown=node:node session-crypto/dist/crypto.js /opt/openclaw-cell/session-
 COPY --chown=node:node session-crypto/dist/daemon.js /opt/openclaw-cell/session-crypto/dist/daemon.js
 COPY --chown=node:node config/openclaw.json.tmpl /opt/openclaw-cell/openclaw.json.tmpl
 USER root
-RUN mkdir -p /home/node/.openclaw /home/node/.npm  && chown node:node /home/node/.openclaw /home/node/.npm  && chmod 0700 /home/node/.openclaw /home/node/.npm
+RUN mkdir -p /home/node/.openclaw /home/node/.npm /var/lib/openclaw-session  && chown node:node /home/node/.openclaw /home/node/.npm /var/lib/openclaw-session  && chmod 0700 /home/node/.openclaw /home/node/.npm /var/lib/openclaw-session
 USER node
 COPY --chmod=0555 --chown=node:node scripts/entrypoint.sh /opt/openclaw-cell/entrypoint.sh

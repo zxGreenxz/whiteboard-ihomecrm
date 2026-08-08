@@ -35,8 +35,8 @@
       "path": "Dockerfile",
       "type": "blob",
       "mode": "100644",
-      "size": 2215,
-      "sha256": "8e9daeef73dd38177b02e5f1618fff93ff39a695f6de51c5736ca5a9a7352789"
+      "size": 2293,
+      "sha256": "1f98036ec308e97032d83c0d219a88e7002454ace3845d5f08443ee9e78a37a3"
     },
     {
       "path": "config/openclaw.json.tmpl",
@@ -49,8 +49,8 @@
       "path": "scripts/entrypoint.sh",
       "type": "blob",
       "mode": "100755",
-      "size": 9225,
-      "sha256": "8e3cd8c8efba587db48f68a6d6264ca80efb345666ac38c1993dc31f6d0707db"
+      "size": 10583,
+      "sha256": "145e832e728e77d4fc8583e010e3898f211194f4e887df358eb5dd53bd635f1f"
     },
     {
       "path": "scripts/install-vendored-zalouser.sh",
