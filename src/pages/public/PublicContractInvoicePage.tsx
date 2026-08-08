@@ -97,6 +97,13 @@ const statusLabel = (s: string) => {
  *  (Zalo/Messenger trên iOS) lock này có thể deadlock sau khi webview bị
  *  suspend/restore → request treo vĩnh viễn, khách kẹt ở "Đang tải hoá đơn...".
  *  Trang này không cần session nên bỏ hẳn tầng auth. */
+class RateLimitedError extends Error {
+  constructor() {
+    super('rate_limited');
+    this.name = 'RateLimitedError';
+  }
+}
+
 async function fetchPublicInvoice(code: string): Promise<PublicPayload | null> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/get_public_latest_invoice_by_code`;
   const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
@@ -115,6 +122,11 @@ async function fetchPublicInvoice(code: string): Promise<PublicPayload | null> {
       body: JSON.stringify({ p_code: code }),
       signal: controller.signal,
     });
+    // 429 = bị giới hạn tốc độ (20260808130000/140000: quá 60 mã SAI trong 10
+    // phút từ cùng một IP). Phải phân biệt với lỗi mạng: thử lại KHÔNG giúp gì,
+    // và màn "mất kết nối" báo sai chuyện đang xảy ra. Nhiều khách chung một
+    // NAT/4G có thể dính chung hạn mức nên thông điệp phải nói rõ "thử lại sau".
+    if (res.status === 429) throw new RateLimitedError();
     if (!res.ok) throw new Error(`RPC ${res.status}`);
     return (await res.json()) as PublicPayload | null;
   } finally {
@@ -128,14 +140,38 @@ export default function PublicContractInvoicePage() {
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['public-contract-invoice', code],
     enabled: !!code,
-    retry: 2,
+    // Thử lại khi bị giới hạn tốc độ chỉ làm khách chờ lâu hơn — hạn mức tính
+    // theo cửa sổ 10 phút, ba lần gọi cách nhau vài giây không thể qua được.
+    retry: (soLan, err) => !(err instanceof RateLimitedError) && soLan < 2,
     queryFn: () => fetchPublicInvoice(code!),
   });
+  const biGioiHan = error instanceof RateLimitedError;
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="text-gray-500">Đang tải hoá đơn...</div>
+      </div>
+    );
+  }
+
+  // Bị giới hạn tốc độ ≠ lỗi mạng. Hiện màn riêng, KHÔNG có nút thử lại: hạn
+  // mức tính theo cửa sổ 10 phút nên bấm thêm chỉ làm khách tưởng máy hỏng.
+  if (biGioiHan) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="pt-6 text-center space-y-3">
+            <WifiOff className="h-10 w-10 text-amber-500 mx-auto" />
+            <div className="font-medium">Tạm thời chưa xem được</div>
+            <p className="text-sm text-gray-600">
+              Đường truyền của bạn vừa có quá nhiều lượt tra cứu bằng mã không
+              đúng. Đây là biện pháp bảo vệ thông tin khách thuê. Vui lòng chờ
+              khoảng 10 phút rồi mở lại liên kết, hoặc dùng mạng khác (4G thay
+              vì Wi-Fi) nếu cần xem ngay.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }

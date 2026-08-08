@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-08T16:52:58.695Z",
+  "generatedAt": "2026-08-08T17:13:05.578Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
     "unknown": 76,
-    "catalog-proven": 220,
+    "catalog-proven": 222,
     "superseded": 15
   },
   "duplicateVersions": 40,
@@ -7528,6 +7528,31 @@
       "evidence": [],
       "missingObjects": [
         "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808130000_gdr_rate_limit_ma_cong_khai.sql",
+      "version": "20260808130000",
+      "name": "gdr_rate_limit_ma_cong_khai",
+      "scheme": "timestamp14",
+      "sha256": "daf99f78d6d997aa2d4dca247ca00ea5fbfb9f755ca0d4b38b52727900297c59",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.public_code_probe",
+        "catalog:function:app_private.ip_dang_tin",
+        "catalog:function:public.get_public_latest_invoice_by_code",
+        "catalog:index:app_private.public_code_probe_cua_so_idx"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808140000_gdr_tra_ve_429_thay_vi_500.sql",
+      "version": "20260808140000",
+      "name": "gdr_tra_ve_429_thay_vi_500",
+      "scheme": "timestamp14",
+      "sha256": "a7cd88c3bea2bf6e2b6addd5e9d52c30f3c27d07cb27ae9af96e435e988464ef",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.get_public_latest_invoice_by_code"
       ]
     },
     {

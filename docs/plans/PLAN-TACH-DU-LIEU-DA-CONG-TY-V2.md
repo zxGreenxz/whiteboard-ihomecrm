@@ -304,8 +304,51 @@ CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần D
   `20260808080000` bằng bước 3a (xoá theo cha, dừng nếu dòng bắc cầu sang tổ chức
   khác). Bảng nào sau này treo vào dữ liệu theo tổ chức mà không có cột org thì
   cùng lớp vấn đề đó.
-- **GĐ-R (rate-limit) — ĐÃ ĐO XONG ĐIỀU KIỆN TIÊN QUYẾT, ĐÃ CHỌN THIẾT KẾ A.**
+- **GĐ0 mục 6a(i) — XOAY 334 MÃ CÔNG KHAI LÊN ≥16 KÝ TỰ: CHƯA LÀM, VÀ ĐANG CHỜ
+  MỘT QUYẾT ĐỊNH KINH DOANH.** Đây là việc còn lại DUY NHẤT thực sự đóng được lỗ.
+
+  Đo 08/08: cả 334 hợp đồng vẫn mang `public_code` **6 ký tự**, không có `CHECK`
+  độ dài, không có cột ân hạn, hàm chưa lọc `revoked`. Bảng chữ cái 57 ký tự ⇒
+  57⁶ = 34.296.447.249 tổ hợp trên 334 mã sống ⇒ trung bình ~103 triệu lần thử
+  cho một lần trúng; trúng thì lấy được họ tên khách, hoá đơn, phòng, toà nhà.
+
+  Kế hoạch từng lập luận "sau khi GĐ0 xoay mã lên ≥16 ký tự thì brute-force bất
+  khả thi, nên rate-limit tụt xuống hàng phòng thủ chiều sâu". **Tiền đề đó sai**
+  vì việc xoay chưa từng chạy. Nay đã có rate-limit đỡ, nhưng rate-limit theo IP
+  không chống được kẻ có nhiều IP.
+
+  Vì sao chưa làm: xoay mã **làm chết mọi QR đã in và đã gửi cho khách**. Phải
+  kèm `old_public_code` + `old_code_expires_at` và nhánh resolve chấp nhận mã cũ
+  tới hạn. Chọn độ dài cửa sổ ân hạn, và chấp nhận việc phải phát lại QR cho
+  khách, là quyết định kinh doanh chứ không phải kỹ thuật.
+
+- **GĐ-R (rate-limit) — ĐÃ THI HÀNH XONG, đã apply prod.**
+  `20260808130000` (bộ đếm) + `20260808140000` (trả 429 thay vì 500).
   Không cần "một lớp server đứng trước PostgREST" như mục này từng viết.
+
+  Đo trên production qua đúng đường HTTP anon: **59–60 lượt dò mã sai lọt, chặn
+  từ lượt kế tiếp với HTTP 429 `rate_limited`**, và mã ĐÚNG cũng bị chặn ở IP đã
+  vượt ngưỡng — đó chính là bằng chứng ngưỡng được kiểm TRƯỚC khi tra cứu. IP
+  khác dùng được ngay.
+
+  Ba quyết định thiết kế, mỗi cái có lý do đo được:
+  1. **Chỉ đếm mã SAI.** Người xem hoá đơn của mình luôn gọi đúng mã (mã tới từ
+     QR/link); kẻ dò thì gọi sai gần như 100%. Đếm mọi lượt gọi sẽ phạt người
+     thật mà không thêm được gì.
+  2. **Kiểm ngưỡng TRƯỚC khi tra cứu.** Đảo thứ tự là thủng đúng một lần mỗi cửa
+     sổ — và một lần là đủ để lấy dữ liệu một khách.
+  3. **Không có IP tin cậy thì không chặn.** Đường gọi nội bộ (job, migration)
+     không có `request.headers`; chặn lúc đó là tự bắn vào chân mà chẳng chặn
+     được ai, vì anon chỉ vào được qua PostgREST và qua đó thì luôn có
+     `cf-connecting-ip`.
+
+  Ngưỡng **60 mã sai / 10 phút / IP** — rộng tay có chủ ý vì khách sau cùng một
+  NAT/4G dùng chung IP. Với kẻ dò: 8.640 lượt/ngày ⇒ ~103 triệu lần thử cần
+  **~32 năm** cho một lần trúng, từ một IP.
+
+  **Điều phải nói thẳng:** kẻ có nhiều IP (botnet, proxy xoay vòng) chia nhỏ hạn
+  mức ra là đi tiếp được. Rate-limit nâng CHI PHÍ tấn công chứ **không đóng lỗ**.
+  Thứ đóng lỗ là xoay mã lên ≥16 ký tự — xem mục dưới.
 
   Spike `20260808110000` (đã gỡ ngay bằng `20260808120000`) trả lời cả hai vế mà
   kế hoạch đòi phải chứng minh trước khi chọn:
