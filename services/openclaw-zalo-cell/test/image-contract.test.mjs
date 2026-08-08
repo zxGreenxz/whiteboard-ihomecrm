@@ -472,18 +472,26 @@ test("stock behavior control installs the authenticated upstream ZaloUser offlin
   assert.doesNotMatch(installer, /curl|wget|https:\/\//i);
 });
 
-test("runtime delta evidence count matches every final-image COPY layer", async () => {
+test("runtime delta evidence count matches every final-image layer, COPY and RUN alike", async () => {
   const dockerfile = await readCell("Dockerfile");
   const runtimeStage = dockerfile.slice(dockerfile.indexOf(`FROM ${BASE_IMAGE} AS runtime`));
+  // Count what actually produces a filesystem layer. Counting only COPY left the
+  // gate demanding 6 while the Dockerfile emitted 7 (the mkdir/chown RUN that
+  // hands the state roots to the runtime user), so a correctly built image was
+  // rejected by its own verifier. Measured: base 26 layers, cell image 33.
   const runtimeCopyCount = (runtimeStage.match(/^COPY\s+/gm) ?? []).length;
+  const runtimeRunCount = (runtimeStage.match(/^RUN\s+/gm) ?? []).length;
+  const runtimeLayerCount = runtimeCopyCount + runtimeRunCount;
   const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
   const verifier = await readCell("scripts/verify-image-lock.mjs");
 
   assert.equal(runtimeCopyCount, 6);
+  assert.equal(runtimeRunCount, 1);
+  assert.equal(runtimeLayerCount, 7);
   const rootfsSchema = schema.$defs.rootfsEvidence;
-  assert.equal(rootfsSchema.properties.delta_layer_count.const, runtimeCopyCount);
-  assert.equal(rootfsSchema.properties.layers.minItems, runtimeCopyCount);
-  assert.equal(rootfsSchema.properties.layers.maxItems, runtimeCopyCount);
+  assert.equal(rootfsSchema.properties.delta_layer_count.const, runtimeLayerCount);
+  assert.equal(rootfsSchema.properties.layers.minItems, runtimeLayerCount);
+  assert.equal(rootfsSchema.properties.layers.maxItems, runtimeLayerCount);
   assert.ok(rootfsSchema.required.includes("entrypoint_path"));
   assert.ok(rootfsSchema.required.includes("entrypoint_record"));
   assert.equal(
@@ -508,7 +516,7 @@ test("runtime delta evidence count matches every final-image COPY layer", async 
   );
   assert.match(
     verifier,
-    new RegExp(`const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = ${runtimeCopyCount};`),
+    new RegExp(`const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = ${runtimeLayerCount};`),
   );
   assert.match(
     verifier,
@@ -4180,7 +4188,9 @@ test("runtime delta requires the exact installed fork, session closure, and conf
   assert.equal(delta.records.length, records.length);
   assert.match(delta.records_sha256, /^[0-9a-f]{64}$/);
   const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
-  const layerEvidence = Array.from({ length: 6 }, (_, index) => ({
+  // Seven: six COPY plus the mkdir/chown RUN. base_layer_count 26 + 7 = the 33
+  // layers the built cell image actually reports.
+  const layerEvidence = Array.from({ length: 7 }, (_, index) => ({
     digest: `sha256:${String(index).repeat(64)}`,
     diff_id: `sha256:${String(index + 1).repeat(64)}`,
     record_count: 1,

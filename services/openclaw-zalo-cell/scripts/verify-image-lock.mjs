@@ -102,7 +102,7 @@ const BASE_AMD64_LAYER_DIGESTS = [
   "sha256:2bb3393a0fd03b10971fc965d40276d6fe7e067679a5c86d1962bb1546347d88",
   "sha256:b597d7a31e9105eccc87e346b2823a4ffc8cb878229294368feaec452875414f",
 ];
-const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = 6;
+const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = 7;
 // BuildKit `rewrite-timestamp` chỉ KÉO LÙI các mtime mới hơn SOURCE_DATE_EPOCH.
 // Thư mục tổ tiên đến từ BASE_IMAGE mà build không ghi vào (không tạo/xoá entry
 // con trực tiếp) giữ nguyên mtime đã nướng sẵn trong base digest, nên chúng

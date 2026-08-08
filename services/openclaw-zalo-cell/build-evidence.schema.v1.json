@@ -620,7 +620,7 @@
         "architecture": { "type": "string", "const": "amd64" },
         "os": { "type": "string", "const": "linux" },
         "base_layer_count": { "type": "integer" },
-        "delta_layer_count": { "type": "integer", "const": 6 },
+        "delta_layer_count": { "type": "integer", "const": 7 },
         "diff_ids": {
           "type": "array",
           "minItems": 1,
@@ -628,8 +628,8 @@
         },
         "layers": {
           "type": "array",
-          "minItems": 6,
-          "maxItems": 6,
+          "minItems": 7,
+          "maxItems": 7,
           "items": { "$ref": "#/$defs/rootfsLayerEvidence" }
         },
         "config_path": { "type": "string", "const": "opt/openclaw-cell/openclaw.json.tmpl" },
