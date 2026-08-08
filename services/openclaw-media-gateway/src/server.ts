@@ -5,6 +5,11 @@
 import { randomUUID, webcrypto } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import {
+  signDeleteReceipt,
+  verifyDeleteAuthorization,
+  verifyDeleteTicket,
+} from "./retention.js";
 import type { ObjectStore } from "./storage.js";
 import {
   decodeTicket,
@@ -70,12 +75,41 @@ export function createGatewayHandler(dependencies: GatewayDependencies) {
         return;
       }
       if (request.method === "DELETE") {
-        // Retention deletes are authorized by the control plane and carried out
-        // by the maintenance runner against this route. That path is not built
-        // yet, and it is answered distinctly rather than as "method not allowed"
-        // so a retention run fails as an unimplemented capability instead of
-        // looking like a gateway that never accepted deletes by design.
-        writeError(response, 501, "RETENTION_DELETE_NOT_IMPLEMENTED");
+        const ticketHeader = request.headers["x-openclaw-media-ticket"];
+        const authorizationHeader = request.headers["x-openclaw-delete-authorization"];
+        if (typeof ticketHeader !== "string" || ticketHeader.length === 0) {
+          writeError(response, 401, "TICKET_MISSING");
+          return;
+        }
+        if (typeof authorizationHeader !== "string" || authorizationHeader.length === 0) {
+          // A ticket on its own must never delete anything.
+          writeError(response, 401, "AUTHORIZATION_MISSING");
+          return;
+        }
+        const now = clock();
+        const ticket = await verifyDeleteTicket({
+          ticket: decodeTicket(ticketHeader),
+          ticketPublicKeyEs256: dependencies.ticketPublicKeyEs256,
+          ticketKeyGeneration: dependencies.ticketKeyGeneration,
+          receiptKeyGeneration: dependencies.receiptKeyGeneration,
+          now,
+        });
+        const authorizationJti = await verifyDeleteAuthorization({
+          authorization: decodeTicket(authorizationHeader),
+          ticket,
+          ticketPublicKeyEs256: dependencies.ticketPublicKeyEs256,
+          now,
+        });
+        const deleted = await dependencies.store.delete(ticket.objectKey);
+        const receipt = await signDeleteReceipt({
+          ticket,
+          authorizationJti,
+          objectStatus: deleted.status,
+          objectVersionOrEtag: deleted.objectVersionOrEtag,
+          completedAt: clock(),
+          receiptSigningKey: dependencies.receiptSigningKey,
+        });
+        writeJson(response, 200, receipt);
         return;
       }
       if (request.method !== "PUT") {

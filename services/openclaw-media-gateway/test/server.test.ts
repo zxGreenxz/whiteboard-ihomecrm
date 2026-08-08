@@ -162,10 +162,24 @@ describe("media gateway HTTP surface", () => {
     expect(read.status).toBe(405);
   });
 
-  it("says plainly that retention delete is not built yet, instead of denying it as a method", async () => {
-    const { port } = await harness();
-    const deletion = await fetch(`http://127.0.0.1:${port}/v1/object`, { method: "DELETE" });
-    expect(deletion.status).toBe(501);
-    expect(await deletion.json()).toEqual({ error: { code: "RETENTION_DELETE_NOT_IMPLEMENTED" } });
+  it("deletes nothing without both a delete ticket and its authorization", async () => {
+    const { port, ticketHeader, put, root } = await harness();
+    await put(await ticketHeader(), PNG);
+
+    const bare = await fetch(`http://127.0.0.1:${port}/v1/object`, { method: "DELETE" });
+    expect(bare.status).toBe(401);
+    expect(await bare.json()).toEqual({ error: { code: "TICKET_MISSING" } });
+
+    // A delete ticket on its own must never destroy an object: the second
+    // signature is what proves the grace period was checked for this exact one.
+    const ticketOnly = await fetch(`http://127.0.0.1:${port}/v1/object`, {
+      method: "DELETE",
+      headers: { "x-openclaw-media-ticket": await ticketHeader() },
+    });
+    expect(ticketOnly.status).toBe(401);
+    expect(await ticketOnly.json()).toEqual({ error: { code: "AUTHORIZATION_MISSING" } });
+
+    const stored = await readFile(join(root, OBJECT_KEY));
+    expect(new Uint8Array(stored)).toEqual(PNG);
   });
 });

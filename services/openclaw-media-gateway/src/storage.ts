@@ -13,8 +13,15 @@ export interface StoredObject {
   reused: boolean;
 }
 
+export interface DeletedObject {
+  /** NOT_FOUND is a success: a retention delete that finds nothing is complete. */
+  status: "DELETED" | "NOT_FOUND";
+  objectVersionOrEtag: string | null;
+}
+
 export interface ObjectStore {
   put(objectKey: string, bytes: Uint8Array, sha256: string): Promise<StoredObject>;
+  delete(objectKey: string): Promise<DeletedObject>;
 }
 
 export class FilesystemObjectStore implements ObjectStore {
@@ -56,5 +63,18 @@ export class FilesystemObjectStore implements ObjectStore {
       throw error;
     }
     return { objectVersionOrEtag: sha256, reused: false };
+  }
+
+  async delete(objectKey: string): Promise<DeletedObject> {
+    const path = this.#pathFor(objectKey);
+    const existing = await stat(path).catch(() => null);
+    if (existing === null) return { status: "NOT_FOUND", objectVersionOrEtag: null };
+    if (!existing.isFile()) throw new Error("object key does not name a regular object");
+    // The version is read before the unlink so the receipt names what was
+    // destroyed; afterwards there is nothing left to identify.
+    const current = await readFile(path);
+    const digest = createHash("sha256").update(current).digest("hex");
+    await rm(path, { force: true });
+    return { status: "DELETED", objectVersionOrEtag: digest };
   }
 }
