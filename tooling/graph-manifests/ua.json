@@ -4,22 +4,38 @@
   "graph": "ua",
   "artifactDir": ".ua",
 
-  "baseCommit": "d0ffb0453e9336546d6d51579a4772c8d6e283f4",
-  "analyzedAt": "2026-07-29T14:02:16.449Z",
-  "analyzedFiles": 2120,
+  "baseCommit": "ca31186ec2edfc9a346ee5abe8195c4bd0630bf8",
+  "analyzedAt": "2026-08-07T16:56:44.829Z",
+  "analyzedFiles": 3042,
 
   "scope": {
-    "description": "Toàn repo tại d0ffb045 trừ các mẫu trong .ua/.understandignore. KHÔNG bao gồm Network Center và OpenClaw: 7 thư mục services/* và infra/* của hai hệ đó tồn tại trên đĩa nhưng graph có 0 node nguồn cho chúng (đo 07/08/2026). Cũng thiếu 118 migration mới hơn.",
-    "excludesFrom": ".ua/.understandignore"
+    "description": "Toàn repo tại ca31186e trừ các mẫu trong .ua/.understandignore (lần này chỉ loại 8 file, đều là secret/env). Dựng lại TOÀN BỘ, không tăng dần. Khác hẳn bản trước ở ba điểm đã đo: (1) Network Center và OpenClaw giờ CÓ mặt — 364 node cho hệ OpenClaw Zalo và 88 cho Network Center, so với 0 ở bản d0ffb045; (2) đủ cả 886 file supabase/migrations, không thiếu 118 migration như trước; (3) 5.976 cạnh `imports` phủ 1.353 file. Tổng 7.800 node · 17.919 cạnh · 13 tầng · 16 bước tour, phủ 3.042/3.042 file được quét.",
+    "excludesFrom": ".ua/.understandignore",
+    "coverageEvidence": {
+      "filesScanned": 3042,
+      "fileLevelNodes": 3373,
+      "filesWithFileLevelNode": 3042,
+      "importEdges": 5976,
+      "importEdgesExpectedFromImportMap": 5976,
+      "danglingEdgesAfterMerge": 0,
+      "duplicateNodeIds": 0,
+      "validatorIssues": 0
+    }
   },
 
   "toolVersion": "2.9.4",
-  "toolVersionSource": "attested",
-  "toolVersionNote": "KHAI BÁO, không đo được. Artifact trong .ua/ không ghi version công cụ ở đâu cả — trường `version: \"1.0.0\"` trong cả ba file là SCHEMA version, không phải version của UA. Con số 2.9.4 lấy từ pin ở plan kiến trúc §18 và tooling/agent-tools.json. Lần refresh graph tới BẮT BUỘC ghi version thật đo được, và đổi toolVersionSource thành \"measured\".",
+  "toolVersionSource": "measured",
+  "toolVersionNote": "ĐO ĐƯỢC, không còn là lời khai. Đọc trực tiếp trường `version` của C:/Users/Nguyen Tam/.understand-anything-plugin/package.json (name: @understand-anything/skill) — chính bản plugin đã chạy lần dựng này. Trùng khớp con số 2.9.4 mà bản manifest trước khai theo pin ở plan kiến trúc §18, nên khoản nợ 'lần refresh tới BẮT BUỘC ghi version thật đo được' đã trả. Lưu ý vẫn còn: artifact trong .ua/ không tự ghi version ở đâu cả — trường `version: \"1.0.0\"` trong cả ba file là SCHEMA version. Ai muốn kiểm lại phải đọc package.json của plugin, không đọc được từ artifact.",
 
   "configDigest": {
     ".ua/config.json": "git:bf23efcb9a6caea2bf2347cdb5cfb2d32e09af1a",
     ".ua/.understandignore": "git:21d6e97c7b21c09c1e6111cb4127d08207bb5b97"
   },
-  "configDigestNote": "git blob OID, KHÔNG phải sha256 nội dung worktree. Trên Windows worktree có thể là CRLF trong khi blob là LF, nên sha256 worktree sẽ lệch một cách vô nghĩa và gate sẽ đỏ giả. Blob OID là thứ git thật sự lưu."
+  "configDigestNote": "git blob OID, KHÔNG phải sha256 nội dung worktree. Trên Windows worktree có thể là CRLF trong khi blob là LF, nên sha256 worktree sẽ lệch một cách vô nghĩa và gate sẽ đỏ giả. Blob OID là thứ git thật sự lưu. Lần này cả hai file cấu hình đều KHÔNG đổi so với bản d0ffb045 — digest giữ nguyên là đúng, không phải quên cập nhật.",
+
+  "knownGaps": [
+    "92 cạnh `calls` (0,5% tổng cạnh) bị merge script bỏ vì trỏ tới hàm ngắn được export mà bộ lọc significance của file-analyzer không tạo node — vd formatVnd, monthToStartDate, remainingOf. Luật của công cụ nói hàm được export thì LUÔN tạo node bất kể độ dài; nhiều agent đọc thành điều kiện AND với ngưỡng 10 dòng.",
+    "importMap của công cụ bỏ sót 4 dạng cú pháp: `export … from` (re-export), `export default <Identifier>;` cuối file, `React.lazy(() => import(...))`, và import trong .mts/.vue. Các agent đã bù bằng cạnh `depends_on` nên quan hệ không mất, nhưng chúng không nằm trong con số 5.976.",
+    "scan-project.mjs index .webp nhưng KHÔNG index .png — 2 ảnh trong docs/huong-dan-su-dung không có node."
+  ]
 }
