@@ -41,6 +41,8 @@ const message = (
   textContent: null,
   providerSenderId: null,
   senderName: null,
+  providerEventType: null,
+  media: [],
   ...overrides,
 });
 
@@ -157,17 +159,60 @@ describe("conversation thread", () => {
     expect(html).not.toContain('data-openclaw-sender="m2"');
   });
 
-  it("shows a photo as a link, not as a wall of CDN query string", () => {
+  it("shows a photo as a photo, and never leaks the CRM page to Zalo", () => {
+    const url = "https://photo-stal-21.zdn.vn/gr/jpg/1d70/abc.jpg";
     const html = render(createElement(ConversationThread, {
       messages: [
         message("m1", "2026-08-03T10:00:01.000Z", {
-          textContent: "https://photo-stal-21.zdn.vn/gr/jpg/1d70/abc.jpg",
+          // Zalo puts the CDN link in the body of a photo message.
+          textContent: url,
           senderName: "Huy",
+          providerEventType: "chat.photo",
+          media: [{ kind: "image", url, thumb: url, title: null }],
         }),
       ],
       loading: false, mediaUnavailable: false,
     }));
-    expect(html).toContain("Ảnh đính kèm");
+    expect(html).toContain('data-openclaw-media-kind="image"');
+    // Without this Zalo learns which CRM page the viewer had open.
+    expect(html.toLowerCase()).toContain('referrerpolicy="no-referrer"');
+    // The URL is already the picture; printing it as text too is noise.
+    expect(html).not.toContain(`break-words">${url}`);
+  });
+
+  it("plays a video inline with a poster and fetches only metadata up front", () => {
+    const html = render(createElement(ConversationThread, {
+      messages: [
+        message("m1", "2026-08-03T10:00:01.000Z", {
+          senderName: "Nguyễn Trúc Ly",
+          providerEventType: "chat.video.msg",
+          media: [{
+            kind: "video",
+            url: "https://video.zdn.vn/v/clip.mp4",
+            thumb: "https://photo.zdn.vn/poster.jpg",
+            title: null,
+          }],
+        }),
+      ],
+      loading: false, mediaUnavailable: false,
+    }));
+    expect(html).toContain('data-openclaw-media-kind="video"');
+    expect(html).toContain('preload="metadata"');
+    expect(html).toContain('poster="https://photo.zdn.vn/poster.jpg"');
+  });
+
+  it("renders a voice message as audio that does not preload", () => {
+    const html = render(createElement(ConversationThread, {
+      messages: [
+        message("m1", "2026-08-03T10:00:01.000Z", {
+          providerEventType: "chat.voice",
+          media: [{ kind: "audio", url: "https://voice.zdn.vn/a.aac", thumb: null, title: null }],
+        }),
+      ],
+      loading: false, mediaUnavailable: false,
+    }));
+    expect(html).toContain('data-openclaw-media-kind="audio"');
+    expect(html).toContain('preload="none"');
   });
 
   it("falls back to the sender id when the name is not known yet", () => {

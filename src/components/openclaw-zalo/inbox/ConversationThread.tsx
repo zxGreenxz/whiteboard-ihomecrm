@@ -1,5 +1,5 @@
 import { threadEvents } from "@/lib/openclaw-zalo/inboxView";
-import type { OpenClawMessage } from "@/lib/openclaw-zalo/types";
+import type { OpenClawMessage, OpenClawMessageMedia } from "@/lib/openclaw-zalo/types";
 
 interface ConversationThreadProps {
   messages: readonly OpenClawMessage[];
@@ -10,6 +10,80 @@ interface ConversationThreadProps {
 
 /** Zalo sends photos as a bare CDN link in the message body. */
 const MEDIA_LINK = /^https:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp)(?:\?[^\s]*)?$/iu;
+
+/**
+ * Media renders straight from the Zalo CDN, with no referrer.
+ *
+ * `no-referrer` matters: without it the browser tells Zalo which CRM page the
+ * viewer had open. Photos load lazily and videos only fetch metadata until
+ * played, so opening a busy sales group does not pull megabytes per bubble.
+ */
+function MessageMedia({ media }: { media: readonly OpenClawMessageMedia[] }) {
+  if (media.length === 0) return null;
+  return (
+    <div data-openclaw-media="1" className="mt-1 grid gap-2">
+      {media.map((item, index) => {
+        if (item.kind === "video") {
+          return (
+            <video
+              key={`${item.url}-${index}`}
+              data-openclaw-media-kind="video"
+              controls
+              preload="metadata"
+              {...(item.thumb ? { poster: item.thumb } : {})}
+              src={item.url}
+              className="max-h-80 w-full rounded-lg bg-black"
+            />
+          );
+        }
+        if (item.kind === "audio") {
+          return (
+            <audio
+              key={`${item.url}-${index}`}
+              data-openclaw-media-kind="audio"
+              controls
+              preload="none"
+              src={item.url}
+              className="w-full"
+            />
+          );
+        }
+        if (item.kind === "file") {
+          return (
+            <a
+              key={`${item.url}-${index}`}
+              data-openclaw-media-kind="file"
+              href={item.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm font-bold underline"
+            >
+              {item.title ?? "Tệp đính kèm"}
+            </a>
+          );
+        }
+        return (
+          <a
+            key={`${item.url}-${index}`}
+            data-openclaw-media-kind="image"
+            href={item.url}
+            target="_blank"
+            rel="noreferrer"
+            className="block"
+          >
+            <img
+              src={item.thumb ?? item.url}
+              alt={item.title ?? "Hình ảnh"}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              className="max-h-80 rounded-lg object-cover"
+            />
+          </a>
+        );
+      })}
+    </div>
+  );
+}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/u).filter(Boolean);
@@ -98,20 +172,15 @@ export default function ConversationThread({
                         : "rounded-bl-sm border border-[#e2e8ee] bg-white text-[#12222e]"
                     }`}
                   >
-                    {text.length === 0 ? (
-                      <span className="italic opacity-70">[{event.eventKind}]</span>
-                    ) : isMediaLink ? (
-                      <a
-                        href={text}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`underline ${outbound ? "text-white" : "text-[#0f766e]"}`}
-                      >
-                        Ảnh đính kèm
-                      </a>
-                    ) : (
+                    {/* A photo message carries the CDN link as its body; the media block
+                        below already shows it, so repeating the URL as text is noise. */}
+                    {text.length > 0 && !(isMediaLink && event.media.length > 0) && (
                       <span className="whitespace-pre-wrap break-words">{text}</span>
                     )}
+                    {text.length === 0 && event.media.length === 0 && (
+                      <span className="italic opacity-70">[{event.eventKind}]</span>
+                    )}
+                    <MessageMedia media={event.media} />
                   </div>
                   <p className="mt-0.5 font-mono text-[11px] text-[#8296a5]">
                     {clockTime(event.receivedAt)}

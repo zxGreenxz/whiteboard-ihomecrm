@@ -17,6 +17,11 @@ const message = (id: string, receivedAt: string): OpenClawMessage => ({
   providerTimestamp: null,
   receivedAt,
   createdAt: receivedAt,
+  textContent: null,
+  providerSenderId: null,
+  senderName: null,
+  providerEventType: null,
+  media: [],
 });
 
 const conversation = (id: string, lastReceivedAt: string): OpenClawConversation => ({
@@ -28,6 +33,9 @@ const conversation = (id: string, lastReceivedAt: string): OpenClawConversation 
   lastReceivedAt,
   lastMessageId: null,
   version: 1,
+  targetKind: "PEER",
+  displayName: null,
+  lastMessagePreview: null,
 });
 
 describe("thread ordering", () => {

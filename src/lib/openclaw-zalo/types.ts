@@ -131,6 +131,21 @@ export interface OpenClawMessage {
   providerSenderId: string | null;
   /** Sender name captured from the Zalo envelope; null before it is known. */
   senderName: string | null;
+  providerEventType: string | null;
+  media: readonly OpenClawMessageMedia[];
+}
+
+export interface OpenClawMessageMedia {
+  kind: "image" | "video" | "audio" | "file";
+  /**
+   * Zalo CDN link straight from the envelope. The browser fetches the bytes, the
+   * way Zalo Web itself does; it lives exactly as long as Zalo keeps the link.
+   * When the media gateway exists this becomes a gateway URL and nothing here
+   * changes.
+   */
+  url: string;
+  thumb: string | null;
+  title: string | null;
 }
 
 export interface OpenClawPage<T> {
