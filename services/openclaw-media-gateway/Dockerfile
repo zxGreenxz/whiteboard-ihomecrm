@@ -4,9 +4,13 @@ WORKDIR /app
 COPY package.json ./
 COPY tsconfig.json ./
 COPY src ./src
-# No dependencies: the gateway is Node's own crypto, http and fs. `npm ci` is
-# omitted deliberately so the build cannot pull anything at image time.
-RUN npx --yes typescript@5.8.3 tsc -p tsconfig.json
+# The gateway has no runtime dependencies at all - it is Node's own crypto, http
+# and fs - so nothing is installed into the runtime image. The compiler is the
+# single build-stage tool and is pinned; it never reaches the stage below.
+# They are installed into the project rather than run through `npx`, because
+# tsc resolves `types: ["node"]` against ./node_modules/@types and npx stages
+# packages somewhere else entirely.
+RUN npm install --no-save --no-audit --no-fund typescript@5.8.3 @types/node@22.16.5 \n    && ./node_modules/.bin/tsc -p tsconfig.json
 
 FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runtime
 
