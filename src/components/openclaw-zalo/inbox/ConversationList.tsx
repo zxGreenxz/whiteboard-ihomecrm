@@ -49,15 +49,33 @@ export default function ConversationList({
                 onClick={() => onSelect(conversation.conversationId)}
                 aria-current={selected ? "true" : undefined}
                 data-openclaw-conversation={conversation.conversationId}
-                className={`flex min-h-11 w-full items-center justify-between gap-2 border-b border-[#e2e8ee] px-4 py-3 text-left text-sm ${
-                  selected ? "bg-[#dfeee9] font-bold" : "bg-white"
+                className={`flex min-h-11 w-full items-start justify-between gap-2 border-b border-[#e2e8ee] px-4 py-3 text-left text-sm ${
+                  selected ? "bg-[#dfeee9]" : "bg-white"
                 }`}
               >
-                <span className="min-w-0 truncate">{conversation.targetId}</span>
+                <span className="flex min-w-0 flex-col">
+                  <span
+                    data-openclaw-conversation-name={conversation.conversationId}
+                    className={`min-w-0 truncate ${selected ? "font-bold" : "font-semibold"}`}
+                  >
+                    {/* No invented titles: an unnamed group with no members seen yet keeps its id. */}
+                    {conversation.displayName ?? conversation.targetId}
+                  </span>
+                  {conversation.targetKind === "SALES_GROUP" && (
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-[#8296a5]">
+                      Nhóm
+                    </span>
+                  )}
+                  {conversation.lastMessagePreview && (
+                    <span className="mt-0.5 min-w-0 truncate text-xs text-[#607585]">
+                      {conversation.lastMessagePreview}
+                    </span>
+                  )}
+                </span>
                 {conversation.unreadCount > 0 && (
                   <span
                     data-openclaw-unread={conversation.conversationId}
-                    className="shrink-0 border border-[#0f766e] px-2 text-xs font-extrabold text-[#0f766e]"
+                    className="mt-0.5 shrink-0 rounded-full bg-[#0f766e] px-2 py-0.5 text-xs font-extrabold text-white"
                   >
                     {conversation.unreadCount}
                   </span>

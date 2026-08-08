@@ -8,7 +8,11 @@ import ConversationThread from "../inbox/ConversationThread";
 import AiDraftPanel from "../inbox/AiDraftPanel";
 import type { OpenClawConversation, OpenClawMessage } from "@/lib/openclaw-zalo/types";
 
-const conversation = (id: string, unread = 0): OpenClawConversation => ({
+const conversation = (
+  id: string,
+  unread = 0,
+  overrides: Partial<OpenClawConversation> = {},
+): OpenClawConversation => ({
   conversationId: id,
   targetId: `khach-${id}`,
   status: "OPEN",
@@ -17,15 +21,27 @@ const conversation = (id: string, unread = 0): OpenClawConversation => ({
   lastReceivedAt: "2026-08-03T10:00:00.000Z",
   lastMessageId: null,
   version: 1,
+  targetKind: "PEER",
+  displayName: null,
+  lastMessagePreview: null,
+  ...overrides,
 });
 
-const message = (id: string, receivedAt: string): OpenClawMessage => ({
+const message = (
+  id: string,
+  receivedAt: string,
+  overrides: Partial<OpenClawMessage> = {},
+): OpenClawMessage => ({
   messageId: id,
   direction: "INBOUND",
   eventKind: "TEXT",
   providerTimestamp: null,
   receivedAt,
   createdAt: receivedAt,
+  textContent: null,
+  providerSenderId: null,
+  senderName: null,
+  ...overrides,
 });
 
 const noop = vi.fn();
@@ -110,14 +126,60 @@ describe("conversation thread", () => {
       .toBeLessThan(html.indexOf('data-openclaw-message="m2"'));
   });
 
-  it("never renders message text, because the RPC never returns any", () => {
-    // openclaw_list_messages_v1 returns id/direction/eventKind/timestamps only.
-    // A body here would be a field that does not exist in the contract.
+  it("renders what was said and who said it", () => {
+    // The inbox exists to be read. Both fields come from openclaw_list_messages_v1;
+    // before it returned them this screen was a column of "KHÁCH GỬI · MESSAGE".
     const html = render(createElement(ConversationThread, {
-      messages: [message("m1", "2026-08-03T10:00:01.000Z")],
+      messages: [
+        message("m1", "2026-08-03T10:00:01.000Z", {
+          textContent: "Còn phòng trống không anh?",
+          senderName: "Nguyễn Hữu Chinh",
+        }),
+      ],
       loading: false, mediaUnavailable: false,
     }));
-    expect(html).toContain("Chỉ hiển thị siêu dữ liệu sự kiện");
+    expect(html).toContain("Còn phòng trống không anh?");
+    expect(html).toContain("Nguyễn Hữu Chinh");
+  });
+
+  it("puts outbound on the right without a sender name, inbound on the left with one", () => {
+    const html = render(createElement(ConversationThread, {
+      messages: [
+        message("m1", "2026-08-03T10:00:01.000Z", { textContent: "Chào shop", senderName: "Hiển" }),
+        message("m2", "2026-08-03T10:00:02.000Z", {
+          direction: "OUTBOUND", textContent: "Dạ còn ạ", senderName: null,
+        }),
+      ],
+      loading: false, mediaUnavailable: false,
+    }));
+    expect(html).toContain("flex-row-reverse");
+    expect(html).toContain('data-openclaw-sender="m1"');
+    expect(html).not.toContain('data-openclaw-sender="m2"');
+  });
+
+  it("shows a photo as a link, not as a wall of CDN query string", () => {
+    const html = render(createElement(ConversationThread, {
+      messages: [
+        message("m1", "2026-08-03T10:00:01.000Z", {
+          textContent: "https://photo-stal-21.zdn.vn/gr/jpg/1d70/abc.jpg",
+          senderName: "Huy",
+        }),
+      ],
+      loading: false, mediaUnavailable: false,
+    }));
+    expect(html).toContain("Ảnh đính kèm");
+  });
+
+  it("falls back to the sender id when the name is not known yet", () => {
+    const html = render(createElement(ConversationThread, {
+      messages: [
+        message("m1", "2026-08-03T10:00:01.000Z", {
+          textContent: "xin chào", senderName: null, providerSenderId: "4707896128788663158",
+        }),
+      ],
+      loading: false, mediaUnavailable: false,
+    }));
+    expect(html).toContain("4707896128788663158");
   });
 
   it("says so when a media object could not be resolved", () => {

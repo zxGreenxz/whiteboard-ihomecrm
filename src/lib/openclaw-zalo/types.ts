@@ -110,6 +110,14 @@ export interface OpenClawConversation {
   lastReceivedAt: string;
   lastMessageId: string | null;
   version: number;
+  /** "PEER" or "SALES_GROUP"; null when the target row is missing. */
+  targetKind: string | null;
+  /**
+   * Contact or group name. Null for a group Zalo never named and whose members
+   * have not spoken yet - the list falls back to the id rather than invent one.
+   */
+  displayName: string | null;
+  lastMessagePreview: string | null;
 }
 
 export interface OpenClawMessage {
@@ -119,6 +127,10 @@ export interface OpenClawMessage {
   providerTimestamp: string | null;
   receivedAt: string;
   createdAt: string;
+  textContent: string | null;
+  providerSenderId: string | null;
+  /** Sender name captured from the Zalo envelope; null before it is known. */
+  senderName: string | null;
 }
 
 export interface OpenClawPage<T> {
