@@ -69,6 +69,15 @@ export function createGatewayHandler(dependencies: GatewayDependencies) {
         writeError(response, 404, "NOT_FOUND");
         return;
       }
+      if (request.method === "DELETE") {
+        // Retention deletes are authorized by the control plane and carried out
+        // by the maintenance runner against this route. That path is not built
+        // yet, and it is answered distinctly rather than as "method not allowed"
+        // so a retention run fails as an unimplemented capability instead of
+        // looking like a gateway that never accepted deletes by design.
+        writeError(response, 501, "RETENTION_DELETE_NOT_IMPLEMENTED");
+        return;
+      }
       if (request.method !== "PUT") {
         response.setHeader("allow", "PUT");
         writeError(response, 405, "METHOD_NOT_ALLOWED");

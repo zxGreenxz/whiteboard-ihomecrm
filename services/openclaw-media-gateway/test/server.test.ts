@@ -160,7 +160,12 @@ describe("media gateway HTTP surface", () => {
     expect(listing.status).toBe(404);
     const read = await fetch(`http://127.0.0.1:${port}/v1/object`, { method: "GET" });
     expect(read.status).toBe(405);
+  });
+
+  it("says plainly that retention delete is not built yet, instead of denying it as a method", async () => {
+    const { port } = await harness();
     const deletion = await fetch(`http://127.0.0.1:${port}/v1/object`, { method: "DELETE" });
-    expect(deletion.status).toBe(405);
+    expect(deletion.status).toBe(501);
+    expect(await deletion.json()).toEqual({ error: { code: "RETENTION_DELETE_NOT_IMPLEMENTED" } });
   });
 });
