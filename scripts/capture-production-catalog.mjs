@@ -46,18 +46,29 @@ export function readProjectRef() {
 // Export để các công cụ chỉ-đọc khác (vd build-org-boundary-inventory.mjs) dùng
 // chung đúng một đường gọi Management API, thay vì mỗi script tự dựng fetch riêng
 // rồi mỗi nơi xử lý lỗi một kiểu.
-export async function runSql(sql, { pat, ref }) {
-  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: sql }),
-  });
-  const text = await res.text();
-  if (!res.ok) {
+export async function runSql(sql, { pat, ref }, { soLanThu = 3 } = {}) {
+  let loiCuoi;
+  for (let lan = 1; lan <= soLanThu; lan += 1) {
+    const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: sql }),
+    });
+    const text = await res.text();
+    if (res.ok) return JSON.parse(text);
+
     // Không in body nguyên vẹn: response lỗi có thể vọng lại câu SQL.
-    throw new Error(`Management API ${res.status} khi truy vấn catalog`);
+    loiCuoi = new Error(`Management API ${res.status} khi truy vấn catalog`);
+
+    // 4xx là lỗi của câu SQL — thử lại chỉ tốn thời gian. 5xx là cổng chập
+    // (đo được 502 và 524 nhiều lần trong ngày 08/08), và công cụ nào chia nhỏ
+    // thành hàng chục request sẽ gặp chúng thường xuyên. Bỏ cuộc ở lần đầu
+    // biến một trục trặc mạng thoáng qua thành "không đo được", mà với bộ đo
+    // chống rò thì "không đo được" phải là báo động, không phải chuyện thường.
+    if (res.status < 500 || lan === soLanThu) throw loiCuoi;
+    await new Promise((r) => { setTimeout(r, 3000 * lan); });
   }
-  return JSON.parse(text);
+  throw loiCuoi;
 }
 
 const QUERIES = {

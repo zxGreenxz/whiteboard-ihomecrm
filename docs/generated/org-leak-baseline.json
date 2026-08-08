@@ -1,7 +1,7 @@
 {
   "note": "Sinh bằng máy — node scripts/measure-org-leak.mjs --write. Đo bằng vai người dùng thật, chỉ đọc, mọi truy vấn bọc ROLLBACK.",
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "capturedAt": "2026-08-07T18:00:47.754Z",
+  "capturedAt": "2026-08-08T02:43:02.320Z",
   "catalogFingerprint": "d40723ebc7c10cb7791af1ce8239787b0cae331a54a9d4eb7e3443426957dbdb",
   "nhanVat": [
     {
@@ -707,10 +707,10 @@
     {
       "table_name": "building_services",
       "visible_foreign": 0,
-      "ground_truth_total": 172,
+      "ground_truth_total": 156,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 172,
+          "tong": 156,
           "ngoai": 0
         },
         "test.bosshuy@username.ihomecrm.local": {
@@ -2445,18 +2445,18 @@
     {
       "table_name": "material_usage_items",
       "visible_foreign": 0,
-      "ground_truth_total": 74,
+      "ground_truth_total": 56,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 56,
           "ngoai": 0
         },
         "test.bosshuy@username.ihomecrm.local": {
-          "tong": 74,
+          "tong": 55,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 19,
+          "tong": 0,
           "ngoai": 0
         }
       },
@@ -2467,18 +2467,18 @@
     {
       "table_name": "material_usages",
       "visible_foreign": 0,
-      "ground_truth_total": 62,
+      "ground_truth_total": 48,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 48,
           "ngoai": 0
         },
         "test.bosshuy@username.ihomecrm.local": {
-          "tong": 62,
+          "tong": 47,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 15,
+          "tong": 0,
           "ngoai": 0
         }
       },
@@ -3303,18 +3303,18 @@
     {
       "table_name": "notifications",
       "visible_foreign": 0,
-      "ground_truth_total": 32,
+      "ground_truth_total": 34,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 28,
+          "tong": 29,
           "ngoai": 0
         },
         "test.bosshuy@username.ihomecrm.local": {
-          "tong": 4,
+          "tong": 5,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 32,
+          "tong": 34,
           "ngoai": 0
         }
       },
@@ -3325,7 +3325,7 @@
     {
       "table_name": "openclaw_account_connections",
       "visible_foreign": 0,
-      "ground_truth_total": 4,
+      "ground_truth_total": 5,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
@@ -3336,7 +3336,7 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 4,
+          "tong": 5,
           "ngoai": 0
         }
       },
@@ -3655,7 +3655,7 @@
     {
       "table_name": "openclaw_contacts",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 6,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
@@ -3666,12 +3666,12 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 6,
           "ngoai": 0
         }
       },
       "authenticated_can_select": false,
-      "group": "A_RONG",
+      "group": "B_KHONG_CAP_QUYEN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -3721,7 +3721,7 @@
     {
       "table_name": "openclaw_conversations",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 20,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
@@ -3732,12 +3732,12 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 20,
           "ngoai": 0
         }
       },
       "authenticated_can_select": false,
-      "group": "A_RONG",
+      "group": "B_KHONG_CAP_QUYEN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -3875,7 +3875,7 @@
     {
       "table_name": "openclaw_health_events",
       "visible_foreign": 0,
-      "ground_truth_total": 9926,
+      "ground_truth_total": 13060,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
@@ -3886,7 +3886,7 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 9926,
+          "tong": 13060,
           "ngoai": 0
         }
       },
@@ -4183,7 +4183,7 @@
     {
       "table_name": "openclaw_message_media",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 279,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
@@ -4194,18 +4194,18 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 279,
           "ngoai": 0
         }
       },
       "authenticated_can_select": false,
-      "group": "A_RONG",
+      "group": "B_KHONG_CAP_QUYEN",
       "assigned_phase": "GĐ3"
     },
     {
       "table_name": "openclaw_messages",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 351,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
@@ -4216,12 +4216,12 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 351,
           "ngoai": 0
         }
       },
       "authenticated_can_select": false,
-      "group": "A_RONG",
+      "group": "B_KHONG_CAP_QUYEN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -4733,7 +4733,7 @@
     {
       "table_name": "openclaw_sales_groups",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 14,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
@@ -4744,12 +4744,12 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 14,
           "ngoai": 0
         }
       },
       "authenticated_can_select": false,
-      "group": "A_RONG",
+      "group": "B_KHONG_CAP_QUYEN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -4997,7 +4997,7 @@
     {
       "table_name": "openclaw_targets",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 20,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
@@ -5008,12 +5008,12 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 20,
           "ngoai": 0
         }
       },
       "authenticated_can_select": false,
-      "group": "A_RONG",
+      "group": "B_KHONG_CAP_QUYEN",
       "assigned_phase": "GĐ3"
     },
     {

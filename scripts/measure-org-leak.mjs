@@ -80,29 +80,48 @@ export function xepNhomTheoSoDo(b) {
   return { group: 'C_DA_KIN', assigned_phase: 'GĐ3' };
 }
 
-/** Một chuyến đo cho một nhân vật: chốt + toàn bộ bảng, trong một transaction. */
-function sqlDoMotVai(uid, org) {
+/**
+ * Số bảng quét trong MỘT request.
+ *
+ * Không phải để chiều Postgres mà để chiều cổng HTTP: Management API đứng sau
+ * Cloudflare và trả 524 khi request vượt khoảng 100 giây. Quét cả 304 bảng một
+ * lần từng chạy được, cho tới khi đo ra invoice_payment_allocations và
+ * _collections mất 14–18 GIÂY MỖI BẢNG — hai bảng đó một mình đã ăn hết ngân
+ * sách. Chia lô giữ mỗi request an toàn dưới ngưỡng, đổi lại nhiều vòng gọi hơn.
+ */
+const SO_BANG_MOI_LO = 40;
+
+function chiaLo(mang, n) {
+  const ra = [];
+  for (let i = 0; i < mang.length; i += n) ra.push(mang.slice(i, i + n));
+  return ra;
+}
+
+/** Một chuyến đo cho một nhân vật, MỘT LÔ bảng, trong một transaction. */
+function sqlDoMotVai(uid, org, loBang) {
+  // Quét 304 bảng bằng vai người dùng thật mất vài phút, vì RLS được đánh giá
+  // cho từng bảng. Riêng invoice_payment_allocations và _collections mất 14–18
+  // GIÂY MỖI BẢNG — đo được đó là vấn đề CÓ SẴN của chuỗi can_access_building /
+  // can_v3 trong policy RBAC của chúng, không phải do biên giới tổ chức: gỡ
+  // policy biên giới ra vẫn 17,07s so với 18,08s khi có (chênh 5%).
+  // Mặc định 120s của lane không đủ, và bỏ cuộc giữa chừng thì bộ đo im lặng
+  // đúng lúc cần nói.
   return `BEGIN;
+SET LOCAL statement_timeout = '900s';
 CREATE TEMP TABLE _kq(bang text, tong bigint, ngoai bigint);
 GRANT INSERT, SELECT ON _kq TO PUBLIC;
 
 CREATE FUNCTION pg_temp._quet(p_org uuid) RETURNS void LANGUAGE plpgsql AS $quet$
-DECLARE r record; v_tong bigint; v_ngoai bigint;
+DECLARE b text; v_tong bigint; v_ngoai bigint;
 BEGIN
-  FOR r IN SELECT c.relname FROM pg_class c
-            JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname='organization_id'
-                                AND a.attnum>0 AND NOT a.attisdropped
-           WHERE c.relnamespace='public'::regnamespace
-             AND c.relkind IN ('r','p') AND NOT c.relispartition
-           ORDER BY c.relname
-  LOOP
+  FOREACH b IN ARRAY ARRAY[${loBang.map((t) => `'${t}'`).join(',')}] LOOP
     BEGIN
       EXECUTE format(
         'SELECT count(*), count(*) FILTER (WHERE organization_id IS NOT NULL AND organization_id <> %L) FROM public.%I',
-        p_org, r.relname) INTO v_tong, v_ngoai;
-      INSERT INTO _kq VALUES (r.relname, v_tong, v_ngoai);
+        p_org, b) INTO v_tong, v_ngoai;
+      INSERT INTO _kq VALUES (b, v_tong, v_ngoai);
     EXCEPTION WHEN OTHERS THEN
-      INSERT INTO _kq VALUES (r.relname, NULL, NULL);
+      INSERT INTO _kq VALUES (b, NULL, NULL);
     END;
   END LOOP;
 END $quet$;
@@ -162,26 +181,47 @@ async function main(argv) {
   const [am] = await runSql(sqlDoiChungAm(), { pat, ref });
   const doiChungAm = Number(am?.tong ?? -1);
 
+  // Danh sách bảng lấy MỘT LẦN, rồi chia lô — mỗi lô một request.
+  const tatCaBang = (await runSql(
+    `SELECT c.relname AS ten FROM pg_class c
+       JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'organization_id'
+                          AND a.attnum > 0 AND NOT a.attisdropped
+      WHERE c.relnamespace = 'public'::regnamespace
+        AND c.relkind IN ('r','p') AND NOT c.relispartition
+      ORDER BY c.relname`,
+    { pat, ref },
+  )).map((r) => r.ten);
+  const cacLo = chiaLo(tatCaBang, SO_BANG_MOI_LO);
+
   const doDuoc = [];
   for (const nv of nhanVat) {
-    const [kq] = await runSql(sqlDoMotVai(nv.uid, nv.org), { pat, ref });
-    const chot = kiemChotChongAoGiac({
-      current_user: kq.current_user,
-      rolbypassrls: kq.rolbypassrls,
-      auth_uid: kq.auth_uid,
-      uid_mong_doi: nv.uid,
-      doi_chung_duong_tong: Number(kq.doi_chung_duong_tong ?? 0),
-      doi_chung_duong_ngoai: Number(kq.doi_chung_duong_ngoai ?? 0),
-      doi_chung_am: doiChungAm,
-    });
-    if (!chot.dat) {
-      console.error(`❌ Chốt chống ảo giác HỎNG với vai ${nv.email}:`);
-      for (const l of chot.loi) console.error(`   - ${l}`);
-      console.error('   KHÔNG ghi baseline. Số đo lúc này không đáng tin.');
-      return MA_THOAT_CHOT_HONG;
+    const bang = [];
+    let chotCuoi = null;
+    for (const lo of cacLo) {
+      // Bảng đối chứng đi kèm MỌI lô: bốn chốt phải đạt trong CHÍNH phiên đo ra
+      // số, không phải trong một phiên khác cùng vai. Chia lô mà chỉ kiểm chốt ở
+      // lô đầu thì các lô sau không có gì bảo đảm.
+      const loKemDoiChung = lo.includes(BANG_DOI_CHUNG) ? lo : [...lo, BANG_DOI_CHUNG];
+      const [kq] = await runSql(sqlDoMotVai(nv.uid, nv.org, loKemDoiChung), { pat, ref });
+      chotCuoi = kiemChotChongAoGiac({
+        current_user: kq.current_user,
+        rolbypassrls: kq.rolbypassrls,
+        auth_uid: kq.auth_uid,
+        uid_mong_doi: nv.uid,
+        doi_chung_duong_tong: Number(kq.doi_chung_duong_tong ?? 0),
+        doi_chung_duong_ngoai: Number(kq.doi_chung_duong_ngoai ?? 0),
+        doi_chung_am: doiChungAm,
+      });
+      if (!chotCuoi.dat) {
+        console.error(`❌ Chốt chống ảo giác HỎNG với vai ${nv.email}:`);
+        for (const l of chotCuoi.loi) console.error(`   - ${l}`);
+        console.error('   KHÔNG ghi baseline. Số đo lúc này không đáng tin.');
+        return MA_THOAT_CHOT_HONG;
+      }
+      bang.push(...kq.bang.filter((b) => lo.includes(b.bang)));
     }
-    doDuoc.push({ nhanVat: nv, bang: kq.bang });
-    console.log(`✔ ${nv.email} (org ${nv.org.slice(0, 4)}…): 4/4 chốt đạt, quét ${kq.bang.length} bảng`);
+    doDuoc.push({ nhanVat: nv, bang });
+    console.log(`✔ ${nv.email} (org ${nv.org.slice(0, 4)}…): 4/4 chốt đạt ở cả ${cacLo.length} lô, quét ${bang.length} bảng`);
   }
 
   // Gộp: một bảng rò nếu BẤT KỲ nhân vật nào thấy dòng của tổ chức khác.
@@ -222,12 +262,34 @@ async function main(argv) {
 
   const canXet = rows.filter((r) => !daCoBoundary.has(r.table_name));
   const dem = canXet.reduce((m, r) => ({ ...m, [r.group]: (m[r.group] ?? 0) + 1 }), {});
-  const roThat = canXet.filter((r) => r.group === 'LIVE_LEAK');
+
+  // Tách rò ĐÃ KHAI khỏi rò CHƯA AI BIẾT.
+  //
+  // Một gate đỏ ngay từ ngày đầu sẽ bị tắt trong một tuần, và khi ấy rò THẬT
+  // cũng không ai thấy. Năm bảng đang rò hiện nay đều nằm trong sổ miễn trừ với
+  // lý do đo được và một HẠN — chúng đã được nhìn thấy và được hẹn ngày xử lý.
+  // Cái phải làm CI đỏ là bảng rò mà KHÔNG ai khai, tức thứ vừa mới xuất hiện.
+  //
+  // Miễn trừ quá hạn không lọt qua đây: gate build-org-boundary-inventory --check
+  // đỏ khi expires_at đã qua. Hai gate canh hai chuyện khác nhau.
+  let mienTru = [];
+  try {
+    mienTru = await runSql('SELECT table_name FROM app_private.org_boundary_exemptions', { pat, ref });
+  } catch {
+    console.error('⚠ Không đọc được sổ miễn trừ — coi như RỖNG, tức mọi rò đều tính là chưa khai.');
+  }
+  const daKhai = new Set(mienTru.map((r) => r.table_name));
+  const roThat = canXet.filter((r) => r.group === 'LIVE_LEAK' && !daKhai.has(r.table_name));
+  const roDaKhai = canXet.filter((r) => r.group === 'LIVE_LEAK' && daKhai.has(r.table_name));
 
   console.log('');
   console.log(`Bảng chưa có biên giới: ${canXet.length} · ${Object.entries(dem).sort().map(([k, v]) => `${k}=${v}`).join(' · ')}`);
+  if (roDaKhai.length) {
+    console.log(`Rò ĐÃ KHAI trong sổ miễn trừ (${roDaKhai.length}, có hạn — không làm CI đỏ ở đây): ${roDaKhai.map((r) => `${r.table_name}(${r.visible_foreign})`).join(', ')}`);
+  }
   if (roThat.length) {
-    console.log(`ĐANG RÒ THẬT (${roThat.length}): ${roThat.map((r) => `${r.table_name}(${r.visible_foreign})`).join(', ')}`);
+    console.log(`❌ RÒ CHƯA AI KHAI (${roThat.length}): ${roThat.map((r) => `${r.table_name}(${r.visible_foreign})`).join(', ')}`);
+    console.log('   Hoặc rào bảng đó, hoặc khai vào app_private.org_boundary_exemptions kèm lý do đo được và hạn.');
   }
 
   if (ghi) {
