@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-08T12:49:13.461Z",
+  "generatedAt": "2026-08-08T13:07:49.176Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
-    "unknown": 73,
+    "unknown": 74,
     "catalog-proven": 219,
     "superseded": 15
   },
@@ -7481,6 +7481,18 @@
       "evidence": [],
       "missingObjects": [
         "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260808090000_don_profiles_ma_va_rao_ba_bang_mien_tru.sql",
+      "version": "20260808090000",
+      "name": "don_profiles_ma_va_rao_ba_bang_mien_tru",
+      "scheme": "timestamp14",
+      "sha256": "e75c65cc847e91cc6d2aea76b824d6a63a10602c04a108837cc825867ba11e94",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:pg_temp._dem"
       ]
     },
     {

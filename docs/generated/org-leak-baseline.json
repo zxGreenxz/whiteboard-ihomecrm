@@ -1,7 +1,7 @@
 {
   "note": "Sinh bằng máy — node scripts/measure-org-leak.mjs --write. Đo bằng vai người dùng thật, chỉ đọc, mọi truy vấn bọc ROLLBACK.",
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "capturedAt": "2026-08-08T12:55:55.516Z",
+  "capturedAt": "2026-08-08T13:06:46.316Z",
   "catalogFingerprint": "d40723ebc7c10cb7791af1ce8239787b0cae331a54a9d4eb7e3443426957dbdb",
   "nhanVat": [
     {
@@ -15,8 +15,7 @@
   ],
   "counts": {
     "A_RONG": 2,
-    "LIVE_LEAK": 3,
-    "C_DA_KIN": 2
+    "LIVE_LEAK": 2
   },
   "rows": [
     {
@@ -2002,10 +2001,10 @@
     {
       "table_name": "material_usage_items",
       "visible_foreign": 0,
-      "ground_truth_total": 57,
+      "ground_truth_total": 56,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 57,
+          "tong": 56,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -2020,10 +2019,10 @@
     {
       "table_name": "material_usages",
       "visible_foreign": 0,
-      "ground_truth_total": 49,
+      "ground_truth_total": 48,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 49,
+          "tong": 48,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -4287,7 +4286,7 @@
     },
     {
       "table_name": "profiles",
-      "visible_foreign": 1,
+      "visible_foreign": 0,
       "ground_truth_total": 4,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
@@ -4295,13 +4294,13 @@
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 2,
-          "ngoai": 1
+          "tong": 1,
+          "ngoai": 0
         }
       },
       "authenticated_can_select": true,
-      "group": "LIVE_LEAK",
-      "assigned_phase": "GĐ4"
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
     },
     {
       "table_name": "profit_allocations",
