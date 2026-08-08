@@ -5,56 +5,89 @@
 > được sửa theo chỉ vì review nói vậy, và không finding nào bị bỏ qua chỉ vì bản 1 viết vậy.
 > Mọi kết luận dưới đây đều đo được, mọi thử nghiệm ghi đều bọc `BEGIN … ROLLBACK`.
 
-## TIẾN ĐỘ THỰC TẾ — cập nhật 08/08/2026
+## TIẾN ĐỘ THỰC TẾ — chốt phiên 08/08/2026
 
-GĐ0 đến GĐ5 **đã thi hành xong và đã lên production**, mỗi bước qua backup thật, dry-run thật,
-và một phép đo trước/sau bằng vai người dùng thật.
+Bảy migration đã lên production, mỗi cái qua backup thật, dry-run thật, và một
+phép đo trước/sau bằng vai người dùng thật. Ba commit: `9519cd98`, `3f0b33bc`,
+`efb6ad57`.
 
-| Chỉ số | Trước | Sau |
+| Chỉ số | Đầu phiên | Chốt phiên |
 |---|---|---|
-| Bảng có cột `organization_id` mà có biên giới | 32/304 | **297/304** |
-| Bảng thiếu biên giới mà không ai biết lý do | 272 | **0** |
-| Bảng đang rò sang tổ chức khác | 19 | **5** (đều trong sổ miễn trừ, có hạn) |
-| Hàm SECURITY DEFINER rò PII cho người chưa đăng nhập | 1 | **0** |
-| Cơ chế chặn bảng MỚI thiếu biên giới | không có | event trigger, đã bắn thật trên prod |
+| Bảng có biên giới tổ chức | 32/304 | **297/304** |
+| Bảng thiếu biên giới mà không rõ lý do | 272 | **0** |
+| Bảng đang rò sang công ty khác | 19 | **5** (đều trong sổ miễn trừ, hạn 30/11) |
+| Hàm rò PII cho người chưa đăng nhập | 1 | **0** |
+| Dòng `organization_id` mồ côi | 4.189 | **3.480** |
+| Tham chiếu chéo từ công ty thật sang Test/Demo | 35 | **0** |
+| Cơ chế chặn bảng MỚI thiếu biên giới | không có | event trigger, đã bắn thật |
+| Gate CI chống tái phát | 0 | 2 (inventory + đo rò) |
 
-Bằng chứng cho từng bước:
+### Bằng chứng từng bước
 
-- **GĐ0** — `get_public_latest_invoice_by_contract` gọi bằng anon key: HTTP 200 kèm họ tên và SĐT
-  khách thuê → **HTTP 401**. Đường chia sẻ hợp lệ `get_public_latest_invoice_by_code` vẫn chạy.
-- **GĐ3** — 251 bảng, đo trước/sau trong cùng transaction: nathan 18.207 → 18.207 dòng,
-  demo.chunha 2.887 → 2.887. Không ai mất một dòng nào.
-- **GĐ4** — 14 bảng đang rò, đo hai mệnh đề cùng lúc trên ba tổ chức: dòng của tổ chức khác
-  8.551 / 224 / 192 → **0**, dòng của chính mình 5→5, 8.324→8.324, 219→219 **không đổi**.
-  Chỉ đo "hết rò chưa" là chưa đủ — khoá sạch mọi người cũng cho ra 0.
-- **GĐ5** — tạo bảng mới trên prod trong transaction rollback: policy tự xuất hiện, đúng
-  `RESTRICTIVE` / `FOR ALL`, RLS tự bật; `ALTER TABLE` thêm cột cũng được bắt; bảng không có cột
-  org thì không bị đụng.
+- **GĐ0** — `get_public_latest_invoice_by_contract` gọi bằng anon key: HTTP 200
+  kèm họ tên và SĐT khách thuê → **HTTP 401**. Đường chia sẻ hợp lệ `by_code`
+  vẫn chạy. Lỗ này từng được vá đúng ở `20260530000003` rồi bị
+  `20260601000000_remove_tax_fields.sql` chép đè một dòng `GRANT` — mở lại hơn
+  hai tháng mà gate ACL không hé một tiếng, vì hàm nằm sẵn trong allowlist.
+- **GĐ3** — 251 bảng: nathan 18.207 → 18.207 dòng, demo.chunha 2.887 → 2.887.
+  Không ai mất một dòng nào.
+- **GĐ4** — 14 bảng đang rò, đo HAI mệnh đề cùng lúc trên ba tổ chức: dòng của
+  tổ chức khác 8.551 / 224 / 192 → **0**, dòng của chính mình 5→5, 8.324→8.324,
+  219→219 **không đổi**. Chỉ đo "hết rò chưa" là chưa đủ — khoá sạch mọi người
+  cũng cho ra 0.
+- **GĐ5** — tạo bảng mới trên prod trong transaction rollback: policy tự xuất
+  hiện, đúng `RESTRICTIVE` / `FOR ALL`, RLS tự bật; `ALTER TABLE` thêm cột cũng
+  được bắt; bảng không có cột org thì không bị đụng.
+- **GĐ6** — điền 709 dòng. 386 trong số đó (`inspection_photos` 335,
+  `cash_handover_items` 32, `material_usage_items` 19) chỉ vá được vì cha của
+  chúng được vá trước trong cùng transaction.
+- **GĐ7** — dọn 35 tham chiếu chéo, sau đó phép chứng minh tách rời trả về
+  **TÁCH RỜI HOÀN TOÀN** (0 đường FK vi phạm).
 
-### CẦN NGƯỜI QUYẾT ĐỊNH — 5 bảng miễn trừ còn rò
+### CÒN LẠI — theo thứ tự đáng làm trước
 
-Đo được rằng chúng **không cùng một loại vấn đề**, nên không có một cách vá chung:
+**1. Xoá hai công ty Test/Demo — chờ một câu trả lời.**
+Điều kiện tiên quyết đã xong. Vướng duy nhất: ~60 bảng có guard bất biến
+(append-only / immutable / retention / freeze tài chính) chặn cả `DELETE` lẫn
+`UPDATE`, và chúng gắn theo BẢNG chứ không theo công ty — tắt là tắt luôn cho sổ
+sách công ty thật trong vài giây đó.
+Phương án đề xuất, trọn trong một transaction: backup → tắt trigger → xoá → bật
+lại → kiểm toàn vẹn khoá ngoại → **chỉ commit khi sạch**.
+Rủi ro không loại bỏ được: trong cửa sổ vài giây đó, tiến trình khác ghi vào
+database sẽ ghi được thứ bình thường bị chặn.
+Cùng câu trả lời này gỡ nốt 345 dòng `invoice_audit_log` và làm 3.032 dòng
+`public_room_events` hết đa nghĩa.
 
-| Bảng | Số đo | Bản chất | Đề xuất |
-|---|---|---|---|
-| `profiles` | 15 dòng, **7 sai nhãn**, trong đó **6 sửa được** | lỗi DỮ LIỆU, không phải thiếu policy | backfill `organization_id` cho 6 dòng theo membership ACTIVE của chính chủ; 1 dòng còn lại chủ không có membership nào, cần xử lý riêng |
-| `roles` | 12 dòng / **3 tổ chức**, 0 NULL | dữ liệu THEO tổ chức thật | có thể rào bình thường — demo.chunha sẽ còn 2 vai thay vì 7, và **đó là đúng**. Miễn trừ hiện tại có thể đang quá thận trọng |
-| `settings` | 13 dòng / 3 tổ chức, **2 NULL** | theo tổ chức, còn 2 dòng chưa gắn nhãn | gắn nhãn 2 dòng NULL rồi rào |
-| `ai_providers` | 10 dòng / **1 tổ chức** | thực chất là bảng DÙNG CHUNG bị gắn nhầm cột org | quyết định mô hình: bỏ cột org (global thật) hay nhân bản theo tổ chức |
-| `ai_copilot_settings` | 1 dòng, khoá chính là `id boolean` | singleton toàn hệ | như trên |
+**2. Năm bảng miễn trừ còn rò (hạn 30/11) — ba loại vấn đề khác nhau.**
+`roles` (12 dòng / 3 tổ chức) và `settings` (13 / 3, còn 2 chưa gắn nhãn) là dữ
+liệu THEO tổ chức thật — nhiều khả năng rào được bình thường, miễn trừ hiện tại
+có thể đang quá thận trọng. `profiles` là lỗi DỮ LIỆU: 7 dòng sai nhãn, 6 sửa
+được theo membership của chính chủ. `ai_providers` (10 dòng / 1 tổ chức) và
+`ai_copilot_settings` (1 dòng, khoá chính boolean) là câu hỏi MÔ HÌNH — bảng này
+thuộc về ai? Chọn sai thì Copilot mất cấu hình.
 
-Ba việc đầu là sửa dữ liệu và làm được ngay. Hai việc cuối là **quyết định mô hình dữ liệu**
-(bảng này thuộc về ai?) — không nên để công cụ tự quyết, vì chọn sai thì Copilot mất cấu hình.
+**3. 17 giây trên màn hình thanh toán — chẩn đoán đã xong.**
+`invoice_payment_allocations` chỉ có 235 dòng mà mất 17s;
+`invoice_payment_collections` 14s. Nguyên nhân là **RLS lồng RLS**: policy
+`SELECT` của bảng thứ nhất là `EXISTS (SELECT 1 FROM invoice_payment_collections …)`
+— chạy cho TỪNG dòng — mà bảng thứ hai lại có policy đắt của riêng nó, bên trong
+gọi chuỗi `can_access_building` → `can_v3`.
+**KHÔNG phải do biên giới tổ chức**: gỡ policy biên giới ra vẫn 17,07s so với
+18,08s khi có (chênh 5%). Ghi lại để không ai đổ tội nhầm.
+Lời giải đã có tiền lệ ngay trong dự án: `building_of_invoice` /
+`building_of_contract` là hàm `SECURITY DEFINER` dùng bên trong policy chính để
+cắt RLS lồng. Bảng thanh toán chưa được chuyển sang cách đó.
+Đây cùng họ với các cảnh báo `[perf] CHẬM …` đầy trong console.
 
-### Các giai đoạn còn lại cần quyết định của chủ dự án
+**4. Hai test OpenClaw đỏ.** `FULL_RESET_EXPECTED_FILE_COUNT = 498` đóng băng từ
+31/07, nay có 638 file migration. Đỏ từ trước phiên này (631 ≠ 498); các
+migration của phiên làm con số lệch thêm chứ không gây ra lỗi.
 
-- **GĐ7** — 12 bảng không có cột `organization_id`: thêm cột hay chặn qua bảng cha? Mỗi hướng một đánh đổi.
-- **GĐ9** — frontend chưa có khái niệm "tổ chức hiện tại" (không có `OrganizationContext` nào).
-  Đây là việc kiến trúc, không phải việc vá.
-- **GĐ10** — Test/Demo đang nằm CHUNG database với công ty thật. Tách hẳn hay giữ chung và rào chặt
-  là quyết định hạ tầng kèm chi phí.
-- **GĐ-R** — rate-limit bề mặt công khai: frontend gọi thẳng PostgREST nên phải có một server
-  surface đứng trước đã.
+**5. Các giai đoạn kiến trúc còn lại.** GĐ7 (12 bảng không có cột
+`organization_id` — thêm cột hay chặn qua cha), GĐ9 (frontend chưa có khái niệm
+"tổ chức hiện tại", không có `OrganizationContext` nào), GĐ10 (Test/Demo chung
+database — quyết định hạ tầng), GĐ-R (rate-limit cần một lớp server đứng trước
+PostgREST).
 
 ---
 
