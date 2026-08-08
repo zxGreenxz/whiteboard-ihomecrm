@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe("reviewed patch series", () => {
-  it("applies the exact four patches to the immutable source snapshot", () => {
+  it("applies the exact five patches to the immutable source snapshot", () => {
     const series = readFileSync(resolve(vendorRoot, "patches/series"), "utf8")
       .split(/\r?\n/)
       .filter(Boolean);
@@ -37,6 +37,7 @@ describe("reviewed patch series", () => {
       "0002-private-bridge-send-rpc.patch",
       "0003-close-bypasses-and-classify-control.patch",
       "0004-declare-web-login-gateway-methods.patch",
+      "0005-route-zalo-sockets-through-egress-proxy.patch",
     ]);
     const preparedRoot = mkdtempSync(resolve(tmpdir(), "ihome-zalouser-patches-"));
     temporaryRoots.push(preparedRoot);
@@ -150,11 +151,11 @@ describe("portable artifact compression", () => {
     const artifactSha256 = createHash("sha256").update(artifact).digest("hex");
 
     expect(artifact[9]).toBe(3);
-    expect(artifactSha256).toBe("3db159b14394dc142704453460b3f51cf5df3843544545d87d5ba9e99db0fb45");
+    expect(artifactSha256).toBe("40fbb233962b4bf0c8126681266bb7d23489a4678b55dce7b1e27cdf545c19ee");
     expect(fork.artifactSha256).toBe(artifactSha256);
     expect(fork.builtTgzSha256).toBe(artifactSha256);
     expect(createHash("sha256").update(forkBytes).digest("hex")).toBe(
-      "c80be1785d076987af8bba0933bc8aabf073803d90f301da30d7b0305b5e48b4",
+      "55f2ff7cfc6c76ea818d517d65657a9368da115587d58cef774fd320c8c16afa",
     );
   });
 });

@@ -76,6 +76,7 @@ export function copyOverlay(vendorRoot, preparedRoot) {
     "behavior-contract.ts",
     "canonical-send.ts",
     "control-traffic.ts",
+    "egress-agent.ts",
     "inbound-listener.ts",
     "outbound-rpc.ts",
     "protocol.ts",

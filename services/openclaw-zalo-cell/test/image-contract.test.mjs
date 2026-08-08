@@ -797,6 +797,23 @@ test("runtime config load-paths the vendored fork, the only way OpenClaw ever se
   assert.deepEqual(config.plugins.load.paths, [loadPath]);
 });
 
+test("entrypoint names the channel account after the CRM account the cell is bound to", async () => {
+  const entrypoint = await readCell("scripts/entrypoint.sh");
+  const launchOffset = entrypoint.indexOf('"$@" &');
+
+  // The fork rejects a readiness request whose account id is not the bound one:
+  // "readiness request does not match the cell binding". OpenClaw calls an
+  // unconfigured account "default", so without this the channel starts and exits
+  // on every boot and no message ever reaches the bridge.
+  const renderOffset = entrypoint.indexOf("channel.defaultAccount = accountId");
+  assert.ok(renderOffset >= 0, "entrypoint must bind the channel account to the CRM account id");
+  assert.ok(renderOffset < launchOffset, "the account must be bound before the gateway starts");
+  assert.match(entrypoint, /OPENCLAW_ZALO_ACCOUNT_ID:\?/);
+  // The saved Zalo login lives at the "default" profile path; renaming the
+  // account must not send the plugin looking for credentials-<uuid>.json.
+  assert.match(entrypoint, /profile: "default"/);
+});
+
 test("entrypoint claims the fork as a linked install before the gateway hunts npm", async () => {
   const entrypoint = await readCell("scripts/entrypoint.sh");
   const launchOffset = entrypoint.indexOf('"$@" &');

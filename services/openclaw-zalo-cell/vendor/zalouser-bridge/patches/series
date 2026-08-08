@@ -2,3 +2,4 @@
 0002-private-bridge-send-rpc.patch
 0003-close-bypasses-and-classify-control.patch
 0004-declare-web-login-gateway-methods.patch
+0005-route-zalo-sockets-through-egress-proxy.patch

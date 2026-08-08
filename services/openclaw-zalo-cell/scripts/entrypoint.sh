@@ -173,6 +173,28 @@ if [ ! -f "$config_path" ]; then
   chmod 600 "$config_path"
 fi
 
+# The fork binds every bridge call to one CRM account and rejects a readiness
+# request whose account id differs: "readiness request does not match the cell
+# binding". OpenClaw names an unconfigured channel account "default", which never
+# equals the account UUID, so the channel starts and exits on every boot. The id
+# is per-cell identity, not template text, so it is rendered here. `profile`
+# stays "default" so the saved Zalo login keeps its existing credentials path.
+node -e '
+  const fs = require("node:fs");
+  const [configPath, accountId] = process.argv.slice(1);
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const channel = config.channels?.zalouser;
+  if (!channel) throw new Error("config is missing channels.zalouser");
+  const existing = channel.accounts?.[accountId];
+  if (channel.defaultAccount === accountId && existing?.enabled === true) process.exit(0);
+  channel.defaultAccount = accountId;
+  channel.accounts = { [accountId]: { enabled: true, profile: "default" } };
+  const temporary = `${configPath}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(config, null, 2), { mode: 0o600 });
+  JSON.parse(fs.readFileSync(temporary, "utf8"));
+  fs.renameSync(temporary, configPath);
+' "$config_path" "${OPENCLAW_ZALO_ACCOUNT_ID:?OPENCLAW_ZALO_ACCOUNT_ID is required}"
+
 if [ -f "$customer_ai_key_file" ]; then
   OPENCLAW_ZALO_CUSTOMER_AI_API_KEY=$(tr -d '\r\n' <"$customer_ai_key_file")
   [ -n "$OPENCLAW_ZALO_CUSTOMER_AI_API_KEY" ] || {
