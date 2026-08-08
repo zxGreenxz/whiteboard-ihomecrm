@@ -108,3 +108,66 @@ describe("xepNhomTheoSoDo — gán giai đoạn từ số đo, không từ phỏ
     expect(r.assigned_phase).toBe(null);
   });
 });
+
+// ─── Nhân vật TỔNG HỢP ──────────────────────────────────────────────────────
+//
+// Bộ đo từng đòi HAI tổ chức có người dùng thật, và hai tổ chức đó là Test/Demo
+// — dữ liệu rác nằm trong production. Xoá chúng (20260808080000) là bộ đo chết
+// ngay với "Cần ít nhất 2 tổ chức". Nó fail-closed đúng, nhưng một gate an ninh
+// CHẶN mà đứng được nhờ rác trong prod thì đó là khuyết tật thiết kế.
+//
+// Nay bộ đo tự dựng tổ chức thứ hai trong chính BEGIN…ROLLBACK của nó. Với nhân
+// vật đó, luật đối chứng dương phải LẬT: thấy 0 dòng là ĐÚNG, không phải mù.
+// Nhưng lật xong thì mất chốt chống-mù, nên phải có chốt thay thế —
+// my_org_ids() phải trả đúng tổ chức vừa dựng.
+describe("kiemChotChongAoGiac — nhân vật tổng hợp (tổ chức vừa sinh ra)", () => {
+  const ORG_TONG_HOP = "99990000-0000-4000-8000-000000000099";
+  const dat = {
+    tongHop: true,
+    my_orgs: ORG_TONG_HOP,
+    current_user: "authenticated",
+    rolbypassrls: false,
+    auth_uid: "99999999-0000-4000-8000-000000000099",
+    uid_mong_doi: "99999999-0000-4000-8000-000000000099",
+    doi_chung_duong_tong: 0,
+    doi_chung_duong_ngoai: 0,
+    doi_chung_am: 0,
+  };
+
+  it("qua khi tổ chức vừa sinh ra thấy đúng 0 dòng", () => {
+    expect(kiemChotChongAoGiac(dat).dat).toBe(true);
+  });
+
+  it("KHÔNG áp luật 'đối chứng dương phải > 0' cho nhân vật tổng hợp", () => {
+    // Đây là hồi quy của chính khuyết tật vừa sửa: luật cũ đọc 0 dòng thành
+    // 'bài đo đang MÙ' và sẽ giết nhân vật tổng hợp ngay từ lô đầu.
+    const r = kiemChotChongAoGiac(dat);
+    expect(r.loi.join(" ")).not.toMatch(/MÙ/);
+  });
+
+  it("đỏ khi my_org_ids() không trả về tổ chức vừa dựng — số 0 lúc đó là số 0 của sự mù", () => {
+    const r = kiemChotChongAoGiac({ ...dat, my_orgs: "" });
+    expect(r.dat).toBe(false);
+    expect(r.loi.join(" ")).toMatch(/bối cảnh không thành hình/);
+  });
+
+  it("đỏ khi tổ chức vừa sinh ra đã thấy dòng ở bảng mốc", () => {
+    const r = kiemChotChongAoGiac({ ...dat, doi_chung_duong_tong: 3 });
+    expect(r.dat).toBe(false);
+    expect(r.loi.join(" ")).toMatch(/VỪA SINH RA đã thấy 3 dòng/);
+  });
+
+  it("vẫn giữ nguyên ba chốt kia cho nhân vật tổng hợp", () => {
+    expect(kiemChotChongAoGiac({ ...dat, current_user: "postgres" }).dat).toBe(false);
+    expect(kiemChotChongAoGiac({ ...dat, rolbypassrls: true }).dat).toBe(false);
+    expect(kiemChotChongAoGiac({ ...dat, auth_uid: "khac" }).dat).toBe(false);
+    expect(kiemChotChongAoGiac({ ...dat, doi_chung_am: 5 }).dat).toBe(false);
+  });
+
+  it("nhân vật THẬT vẫn phải thấy dòng của mình — hai vế không được rút xuống một", () => {
+    const that = { ...dat, tongHop: false, my_orgs: "aaaa", doi_chung_duong_tong: 0 };
+    const r = kiemChotChongAoGiac(that);
+    expect(r.dat).toBe(false);
+    expect(r.loi.join(" ")).toMatch(/MÙ/);
+  });
+});

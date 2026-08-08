@@ -36,6 +36,27 @@ export const MA_THOAT_CHOT_HONG = 3;
 const UID_MO_COI = '11111111-2222-4333-8444-555555555555';
 const BANG_DOI_CHUNG = 'income_expense_types';
 
+// ─── NHÂN VẬT TỔNG HỢP ──────────────────────────────────────────────────────
+//
+// Trước 08/08/2026 bộ đo này đòi ÍT NHẤT HAI tổ chức có người dùng thật, vì "rò
+// chéo tổ chức" cần một tổ chức thứ hai để rò SANG. Hai tổ chức đó là Test và
+// Demo — dữ liệu rác nằm trong production.
+//
+// Rồi hai tổ chức đó bị xoá (20260808080000), và bộ đo lập tức chết với
+// "Cần ít nhất 2 tổ chức". Nó fail-closed đúng — thoát mã 3 chứ không báo "0 rò"
+// giả — nhưng một gate an ninh CHẶN mà đứng được là nhờ rác trong prod thì đó là
+// khuyết tật thiết kế, không phải tai nạn.
+//
+// Cách chữa: bộ đo TỰ DỰNG tổ chức thứ hai bên trong chính transaction
+// BEGIN…ROLLBACK mà nó vẫn dùng. Không để lại gì, không phụ thuộc vào ai.
+//
+// Và phép thử này MẠNH HƠN bản cũ. Trước đây câu hỏi là "tổ chức B có thấy dòng
+// của A không" — B có dữ liệu riêng nên số 0 có thể đến từ may mắn. Nay câu hỏi
+// là "một tổ chức VỪA SINH RA, chưa có một dòng nào, thấy được những gì" —
+// đáp án đúng là KHÔNG GÌ CẢ, và mọi dòng nó thấy đều là rò, không cần diễn giải.
+const UID_TONG_HOP = '99999999-0000-4000-8000-000000000099';
+const ORG_TONG_HOP = '99990000-0000-4000-8000-000000000099';
+
 /** Bốn chốt. Thuần tuý để test được từng cái mà không chạm production. */
 export function kiemChotChongAoGiac(d) {
   const loi = [];
@@ -48,11 +69,29 @@ export function kiemChotChongAoGiac(d) {
   if (d.auth_uid !== d.uid_mong_doi) {
     loi.push(`auth.uid() trả '${d.auth_uid}' nhưng đang định giả lập '${d.uid_mong_doi}' — SET LOCAL không ăn.`);
   }
-  if (!(d.doi_chung_duong_tong > 0)) {
-    loi.push(`Đối chứng dương (${BANG_DOI_CHUNG}) thấy 0 dòng — bài đo đang MÙ chứ không phải sạch.`);
-  }
-  if (d.doi_chung_duong_ngoai > 0) {
-    loi.push(`Đối chứng dương lại thấy ${d.doi_chung_duong_ngoai} dòng của tổ chức khác — bảng mốc phải sạch.`);
+  if (d.tongHop) {
+    // Nhân vật tổng hợp KHÔNG có dòng nào của mình, nên "đối chứng dương > 0"
+    // không áp dụng được — với nó, thấy 0 dòng ở bảng đã rào là ĐÚNG chứ không
+    // phải mù.
+    //
+    // Nhưng bỏ chốt chống-mù thì phải thay bằng chốt khác, nếu không một truy
+    // vấn hỏng âm thầm sẽ cho ra 0 và bị đọc thành "sạch". Chốt thay thế:
+    // my_org_ids() phải trả ĐÚNG tổ chức vừa dựng. Nó chứng minh phiên đang
+    // sống, đang nhìn qua RLS, và bối cảnh tổ chức có thật — thứ mà một truy vấn
+    // hỏng không thể giả được.
+    if (d.my_orgs !== ORG_TONG_HOP) {
+      loi.push(`my_org_ids() trả '${d.my_orgs}' chứ không phải tổ chức tổng hợp vừa dựng — bối cảnh không thành hình, số 0 đo ra là số 0 của sự mù.`);
+    }
+    if (d.doi_chung_duong_tong > 0) {
+      loi.push(`Tổ chức VỪA SINH RA đã thấy ${d.doi_chung_duong_tong} dòng ở ${BANG_DOI_CHUNG} — bảng mốc đang rò.`);
+    }
+  } else {
+    if (!(d.doi_chung_duong_tong > 0)) {
+      loi.push(`Đối chứng dương (${BANG_DOI_CHUNG}) thấy 0 dòng — bài đo đang MÙ chứ không phải sạch.`);
+    }
+    if (d.doi_chung_duong_ngoai > 0) {
+      loi.push(`Đối chứng dương lại thấy ${d.doi_chung_duong_ngoai} dòng của tổ chức khác — bảng mốc phải sạch.`);
+    }
   }
   if (d.doi_chung_am > 0) {
     loi.push(`Đối chứng âm: người mồ côi vẫn thấy ${d.doi_chung_am} dòng — RLS không có hiệu lực.`);
@@ -98,7 +137,7 @@ function chiaLo(mang, n) {
 }
 
 /** Một chuyến đo cho một nhân vật, MỘT LÔ bảng, trong một transaction. */
-function sqlDoMotVai(uid, org, loBang) {
+function sqlDoMotVai(uid, org, loBang, tongHop = false) {
   // Quét 304 bảng bằng vai người dùng thật mất vài phút, vì RLS được đánh giá
   // cho từng bảng. Riêng invoice_payment_allocations và _collections mất 14–18
   // GIÂY MỖI BẢNG — đo được đó là vấn đề CÓ SẴN của chuỗi can_access_building /
@@ -106,8 +145,20 @@ function sqlDoMotVai(uid, org, loBang) {
   // policy biên giới ra vẫn 17,07s so với 18,08s khi có (chênh 5%).
   // Mặc định 120s của lane không đủ, và bỏ cuộc giữa chừng thì bộ đo im lặng
   // đúng lúc cần nói.
+  // Dựng tổ chức thứ hai NGAY TRONG transaction này, trước khi hạ vai xuống
+  // authenticated. Cả ba dòng biến mất theo ROLLBACK ở cuối — production không
+  // bao giờ nhìn thấy chúng ngoài khoảng thời gian của chính phép đo.
+  const dungTongHop = tongHop ? `
+INSERT INTO auth.users (id) VALUES ('${UID_TONG_HOP}');
+INSERT INTO public.organizations (id, slug, name)
+VALUES ('${ORG_TONG_HOP}', 'zz-do-ro-tong-hop', 'ZZ tổ chức tổng hợp để đo rò');
+INSERT INTO public.organization_memberships (organization_id, user_id, member_type, status)
+VALUES ('${ORG_TONG_HOP}', '${UID_TONG_HOP}', 'STAFF', 'ACTIVE');
+` : '';
+
   return `BEGIN;
 SET LOCAL statement_timeout = '900s';
+${dungTongHop}
 CREATE TEMP TABLE _kq(bang text, tong bigint, ngoai bigint);
 GRANT INSERT, SELECT ON _kq TO PUBLIC;
 
@@ -134,6 +185,7 @@ SELECT
   (SELECT current_user)::text                                                        AS current_user,
   (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user)                   AS rolbypassrls,
   (SELECT auth.uid())::text                                                          AS auth_uid,
+  (SELECT array_to_string(public.my_org_ids(), ','))                                 AS my_orgs,
   (SELECT tong  FROM _kq WHERE bang = '${BANG_DOI_CHUNG}')                           AS doi_chung_duong_tong,
   (SELECT ngoai FROM _kq WHERE bang = '${BANG_DOI_CHUNG}')                           AS doi_chung_duong_ngoai,
   (SELECT coalesce(json_agg(json_build_object('bang',bang,'tong',tong,'ngoai',ngoai)),'[]'::json)
@@ -172,11 +224,21 @@ async function main(argv) {
   if (!pat) { console.error('❌ Không tìm thấy PAT'); return MA_THOAT_CHOT_HONG; }
   const ref = readProjectRef();
 
-  const nhanVat = chonNhanVat(await runSql(SQL_NHAN_VAT, { pat, ref }));
-  if (nhanVat.length < 2) {
-    console.error('❌ Cần ít nhất 2 tổ chức có người dùng thường để đo rò chéo.');
+  // MỘT tổ chức thật là đủ: nó giữ vế "người thật vẫn thấy dữ liệu của mình"
+  // (đối chứng dương). Vế "không ai thấy dữ liệu của người khác" do nhân vật
+  // TỔNG HỢP đảm nhiệm, và nhân vật đó luôn có mặt vì bộ đo tự dựng ra nó.
+  //
+  // Phải giữ ĐỦ HAI VẾ. Chỉ hỏi "hết rò chưa" là chưa đủ — khoá sạch mọi người
+  // cũng cho ra 0.
+  const nhanVatThat = chonNhanVat(await runSql(SQL_NHAN_VAT, { pat, ref }));
+  if (nhanVatThat.length < 1) {
+    console.error('❌ Không có tổ chức nào có người dùng thường — không giữ được vế "người thật vẫn thấy dữ liệu của mình".');
     return MA_THOAT_CHOT_HONG;
   }
+  const nhanVat = [
+    ...nhanVatThat,
+    { uid: UID_TONG_HOP, org: ORG_TONG_HOP, email: '(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)', tongHop: true },
+  ];
 
   const [am] = await runSql(sqlDoiChungAm(), { pat, ref });
   const doiChungAm = Number(am?.tong ?? -1);
@@ -202,8 +264,10 @@ async function main(argv) {
       // số, không phải trong một phiên khác cùng vai. Chia lô mà chỉ kiểm chốt ở
       // lô đầu thì các lô sau không có gì bảo đảm.
       const loKemDoiChung = lo.includes(BANG_DOI_CHUNG) ? lo : [...lo, BANG_DOI_CHUNG];
-      const [kq] = await runSql(sqlDoMotVai(nv.uid, nv.org, loKemDoiChung), { pat, ref });
+      const [kq] = await runSql(sqlDoMotVai(nv.uid, nv.org, loKemDoiChung, nv.tongHop), { pat, ref });
       chotCuoi = kiemChotChongAoGiac({
+        tongHop: nv.tongHop === true,
+        my_orgs: kq.my_orgs,
         current_user: kq.current_user,
         rolbypassrls: kq.rolbypassrls,
         auth_uid: kq.auth_uid,
