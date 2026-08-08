@@ -1,0 +1,79 @@
+# The media gateway is its own stack, not a service inside the cell composition.
+# The cell stack publishes no host port by contract and talks outbound only; this
+# one has to be reachable from the internet over TLS, so mixing them would either
+# break that contract or hide a published port inside it.
+#
+# It still publishes only on loopback: the TLS front door proxies to it, and
+# nothing binds a public interface directly.
+
+name: openclaw-media-gateway
+
+services:
+  media-gateway:
+    image: "ihome/openclaw-media-gateway:${OPENCLAW_MEDIA_GATEWAY_TAG:?media gateway tag required}"
+    user: "1000:1000"
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      OPENCLAW_MEDIA_HOST: 0.0.0.0
+      OPENCLAW_MEDIA_PORT: "8080"
+      OPENCLAW_MEDIA_STORAGE_ROOT: /var/lib/openclaw-media/objects
+      OPENCLAW_MEDIA_TICKET_PUBLIC_KEY_FILE: /run/secrets/openclaw_media_ticket_public_key
+      OPENCLAW_MEDIA_RECEIPT_PRIVATE_KEY_FILE: /run/secrets/openclaw_media_receipt_private_key
+      # Both generations are the control plane's, read from
+      # openclaw_retention_gateway_configs; a gateway that disagrees refuses the
+      # upload before storing rather than minting a receipt nobody will accept.
+      OPENCLAW_MEDIA_TICKET_KEY_GENERATION: "${OPENCLAW_MEDIA_TICKET_KEY_GENERATION:?ticket key generation required}"
+      OPENCLAW_MEDIA_RECEIPT_KEY_GENERATION: "${OPENCLAW_MEDIA_RECEIPT_KEY_GENERATION:?receipt key generation required}"
+      OPENCLAW_MEDIA_MAX_CONTENT_LENGTH: "${OPENCLAW_MEDIA_MAX_CONTENT_LENGTH:-5242880}"
+    # Secrets are declared rather than bind-mounted: a 0400 file owned by the
+    # rootless runner on the host is unreadable inside the container, whose uid is
+    # a mapped subuid. Compose stages the file and chowns it to the container uid.
+    secrets:
+      - source: openclaw_media_ticket_public_key
+        target: openclaw_media_ticket_public_key
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: openclaw_media_receipt_private_key
+        target: openclaw_media_receipt_private_key
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+    volumes:
+      - type: volume
+        source: media-objects
+        target: /var/lib/openclaw-media/objects
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      # Loopback only. The TLS front door is the sole public path in.
+      - "127.0.0.1:${OPENCLAW_MEDIA_LOOPBACK_PORT:-8081}:8080"
+    mem_limit: 384m
+    cpus: 0.4
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  openclaw_media_ticket_public_key:
+    file: "/srv/openclaw-runtime/secrets/media-gateway/openclaw_media_ticket_public_key"
+  openclaw_media_receipt_private_key:
+    file: "/srv/openclaw-runtime/secrets/media-gateway/openclaw_media_receipt_private_key"
+
+volumes:
+  media-objects:
+    labels:
+      ihome.openclaw.kind: media-objects
