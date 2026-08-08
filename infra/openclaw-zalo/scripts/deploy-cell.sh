@@ -504,6 +504,10 @@ fi
 mutation_started=1
 compose up -d --no-build --remove-orphans --wait
 "$script_dir/verify-isolation.sh" --runtime-env "$runtime_env" --session-encryption
+# A cell with a fresh state volume knows no devices, so the bridge cannot reach
+# it until its pairing is approved. Runs before the smoke test, which now proves
+# the channel it establishes.
+"$script_dir/pair-bridge-device.sh" --runtime-env "$runtime_env"
 "$script_dir/smoke-cell.sh" --runtime-env "$runtime_env"
 "$script_dir/snapshot-host-baseline.sh" --runtime-env "$runtime_env" \
   --output "$baseline_dir/post-deploy.json"

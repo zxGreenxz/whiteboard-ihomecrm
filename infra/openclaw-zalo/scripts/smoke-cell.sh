@@ -42,6 +42,39 @@ compose exec -T cell node -e \
 compose exec -T bridge node -e \
   "fetch('http://127.0.0.1:8080/readyz',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
 
+# The two probes above pass while the link between the containers is dead: the
+# cell answers /healthz on its own loopback, and /readyz reports the Zalo channel
+# rather than the Gateway socket - and it is allowed to answer 503 here anyway.
+# An unpaired bridge therefore looked exactly like a working deploy while every
+# runtime command, QR login included, was acknowledged and silently never run.
+#
+# `lastSeenAtMs` is only written once a device actually completes a connect, so
+# it distinguishes a real channel from a device that was merely approved.
+compose exec -T cell node - <<'GATEWAY_LINK'
+const { execFileSync } = require("node:child_process");
+
+const output = execFileSync("node", ["openclaw.mjs", "devices", "list", "--json"], {
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "ignore"],
+});
+const devices = JSON.parse(output.slice(output.indexOf("{")));
+const paired = Array.isArray(devices.paired) ? devices.paired : [];
+const connected = paired.filter((device) =>
+  device?.clientMode === "backend" &&
+  Array.isArray(device?.scopes) && device.scopes.includes("operator.admin") &&
+  Number.isFinite(device?.lastSeenAtMs)
+);
+if (connected.length === 0) {
+  console.error("no bridge device has connected to the Gateway; the cell cannot receive runtime commands");
+  process.exit(1);
+}
+const pending = Array.isArray(devices.pending) ? devices.pending : [];
+if (pending.length > 0) {
+  console.error(`Gateway has ${pending.length} unapproved pairing request(s); the bridge channel is not established`);
+  process.exit(1);
+}
+GATEWAY_LINK
+
 if [ "$session_encryption" -eq 1 ]; then
   compose exec -T cell sh -s -- "$cell_id" <<'CELL_SMOKE'
 set -eu

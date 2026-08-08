@@ -16,6 +16,7 @@ const scripts = [
   "deploy-cell.sh",
   "verify-isolation.sh",
   "smoke-cell.sh",
+  "pair-bridge-device.sh",
   "rollback-cell.sh",
   "snapshot-host-baseline.sh",
   "rotate-secrets.sh",
@@ -888,6 +889,123 @@ describe("Task 19 host and lifecycle scripts", () => {
     expect(slice).toContain("MemoryMax=2800M");
     expect(slice).toContain("MemorySwapMax=2G");
     expect(slice).toContain("TasksMax=512");
+  });
+
+  // A cell with a fresh state volume knows no devices, so the bridge is refused
+  // with NOT_PAIRED and the socket closes 1008 while both containers still look
+  // healthy. Every runtime command is then accepted and never executed. The
+  // pairing decision is exercised for real below: the shipped heredoc is lifted
+  // out of the script and run against a stub `openclaw.mjs`.
+  function pairingProgram(source: string) {
+    const start = source.indexOf("<<'PAIR'\n");
+    const end = source.indexOf("\nPAIR\n", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    return source.slice(start + "<<'PAIR'\n".length, end + 1);
+  }
+
+  async function runPairing(options: {
+    inventories: unknown[];
+    expected: string;
+  }) {
+    const directory = await mkdtemp(join(tmpdir(), "openclaw-pairing-"));
+    try {
+      const program = pairingProgram(await text("infra/openclaw-zalo/scripts/pair-bridge-device.sh"));
+      await writeFile(join(directory, "pairing.cjs"), program, "utf8");
+      // Answers `devices list` from a queue and records every `devices approve`.
+      await writeFile(
+        join(directory, "openclaw.mjs"),
+        [
+          `import fs from "node:fs";`,
+          `import path from "node:path";`,
+          `const statePath = path.join(import.meta.dirname, "state.json");`,
+          `const state = JSON.parse(fs.readFileSync(statePath, "utf8"));`,
+          `const argv = process.argv.slice(2);`,
+          `if (argv[1] === "list") {`,
+          `  const next = state.inventories.length > 1 ? state.inventories.shift() : state.inventories[0];`,
+          `  fs.writeFileSync(statePath, JSON.stringify(state));`,
+          `  process.stdout.write(JSON.stringify(next));`,
+          `} else if (argv[1] === "approve") {`,
+          `  state.approved.push(argv[2]);`,
+          `  fs.writeFileSync(statePath, JSON.stringify(state));`,
+          `} else { process.exit(64); }`,
+        ].join("\n"),
+        "utf8",
+      );
+      await writeFile(
+        join(directory, "state.json"),
+        JSON.stringify({ inventories: options.inventories, approved: [] }),
+        "utf8",
+      );
+      const result = spawnSync(process.execPath, [join(directory, "pairing.cjs")], {
+        cwd: directory,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          OPENCLAW_EXPECTED_BRIDGE_DEVICE_ID: options.expected,
+          OPENCLAW_PAIRING_TIMEOUT_MS: "1500",
+        },
+      });
+      const state = JSON.parse(await readFile(join(directory, "state.json"), "utf8"));
+      return { ...result, approved: state.approved as string[] };
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  const bridgeDevice = "b".repeat(64);
+  const foreignDevice = "f".repeat(64);
+
+  it("approves the bridge pairing request the deploy is waiting on", async () => {
+    const result = await runPairing({
+      expected: bridgeDevice,
+      inventories: [
+        { pending: [{ requestId: "request-1", deviceId: bridgeDevice }], paired: [] },
+        { pending: [], paired: [{ deviceId: bridgeDevice }] },
+      ],
+    });
+    expect(result.status).toBe(0);
+    expect(result.approved).toEqual(["request-1"]);
+  });
+
+  it("is idempotent once the bridge device is already paired", async () => {
+    const result = await runPairing({
+      expected: bridgeDevice,
+      inventories: [{ pending: [], paired: [{ deviceId: bridgeDevice }] }],
+    });
+    expect(result.status).toBe(0);
+    expect(result.approved).toEqual([]);
+  });
+
+  it("refuses to approve a device it cannot attribute to this stack's bridge", async () => {
+    const result = await runPairing({
+      expected: bridgeDevice,
+      inventories: [{ pending: [{ requestId: "request-2", deviceId: foreignDevice }], paired: [] }],
+    });
+    expect(result.status).toBe(1);
+    expect(result.approved).toEqual([]);
+    expect(result.stderr).toContain("refusing to pair");
+  });
+
+  it("fails loudly when the bridge never asks to pair, instead of deploying a dead channel", async () => {
+    const result = await runPairing({
+      expected: bridgeDevice,
+      inventories: [{ pending: [], paired: [] }],
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("never requested Gateway pairing");
+  });
+
+  it("pairs before the smoke test and proves the channel there", async () => {
+    const deploy = await text("infra/openclaw-zalo/scripts/deploy-cell.sh");
+    const pairIndex = deploy.indexOf("pair-bridge-device.sh");
+    const smokeIndex = deploy.indexOf(`smoke-cell.sh" --runtime-env`);
+    expect(pairIndex).toBeGreaterThan(-1);
+    expect(smokeIndex).toBeGreaterThan(pairIndex);
+
+    const smoke = await text("infra/openclaw-zalo/scripts/smoke-cell.sh");
+    expect(smoke).toContain("lastSeenAtMs");
+    expect(smoke).toContain("unapproved pairing request");
   });
 
   it("records only the dedicated rootless/OpenClaw baseline plus a content-free authenticated model probe", async () => {
