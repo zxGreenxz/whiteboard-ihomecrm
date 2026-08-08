@@ -11,6 +11,13 @@ Bảy migration đã lên production, mỗi cái qua backup thật, dry-run th�
 phép đo trước/sau bằng vai người dùng thật. Ba commit: `9519cd98`, `3f0b33bc`,
 `efb6ad57`.
 
+> **PHIÊN 08/08 CHIỀU đã đóng cả 5 việc trong mục "CÒN LẠI".** Số chốt mới:
+> biên giới **300** relation · miễn trừ **4** · rò còn **2** (đều là bảng dùng
+> chung có chủ ý) · hai tổ chức Test/Demo **đã xoá** · màn thanh toán **14,8s →
+> 0,37s** · hai test OpenClaw **xanh**. Sáu commit: `19bb16d3`, `0d65ca5b`,
+> `61598490`, `29096106`, `18359bf9`, `0efabefd`.
+> Chi tiết từng việc nằm ngay trong mục tương ứng bên dưới.
+
 | Chỉ số | Đầu phiên | Chốt phiên |
 |---|---|---|
 | Bảng có biên giới tổ chức | 32/304 | **297/304** |
@@ -144,7 +151,41 @@ database sẽ ghi được thứ bình thường bị chặn.
 Cùng câu trả lời này gỡ nốt 345 dòng `invoice_audit_log` và làm 3.032 dòng
 `public_room_events` hết đa nghĩa.
 
-**2. Năm bảng miễn trừ còn rò (hạn 30/11) — ba loại vấn đề khác nhau.**
+**2. Năm bảng miễn trừ — ĐÃ XONG 08/08 chiều, đã apply prod.**
+`20260808090000_don_profiles_ma_va_rao_ba_bang_mien_tru.sql`.
+
+Đo lại bằng bộ đo mới (nhân vật "tổ chức vừa sinh ra"), rồi xử theo đúng ba loại
+vấn đề mà mục này đã phân:
+
+| Bảng | người thật | tổ chức vừa sinh | Xử lý |
+|---|---|---|---|
+| `roles` | 5 / 0 | **0 / 0** | Rào. Miễn trừ đúng là đã quá thận trọng |
+| `settings` | 5 / 0 | **0 / 0** | Vá 1 dòng org NULL rồi rào |
+| `profiles` | 4 / 0 | 2 / **1** | Dọn 7 dòng ma rồi rào |
+| `ai_providers` | 10 / 0 | 10 / **10** | GIỮ miễn trừ — dùng chung toàn hệ |
+| `ai_copilot_settings` | 1 / 0 | 1 / **1** | GIỮ miễn trừ — như trên |
+
+Phỏng đoán "`roles`/`settings` có thể đang được miễn trừ quá thận trọng" của mục
+này là **đúng**, và nay đo được chứ không còn là phỏng đoán.
+
+`profiles` nặng hơn mô tả cũ: không phải 7 dòng sai nhãn cần sửa theo membership,
+mà là **7 người ma trong danh sách nhân sự của công ty thật** — 6 tài khoản
+`demo.*` cộng một lượt đăng ký ế từ 26/04, tất cả mang `organization_id = aaaa`
+mà không có membership nào, 0 việc / 0 hoá đơn / 0 hợp đồng. Đã xoá 7 dòng
+`profiles` (KHÔNG đụng `auth.users`) rồi mới rào được.
+
+Không đặt `NULL` để "gỡ nhãn sai": công thức biên giới có nhánh
+`organization_id IS NULL`, nên đặt NULL biến chúng từ "thuộc nhầm một công ty"
+thành "thuộc về tất cả" — tệ hơn hẳn.
+
+Sau khi apply: `measure-org-leak` exit 0, rò đã khai còn **2**;
+`build-org-boundary-inventory --check` exit 0, **316 relation · có biên giới 300
+(từ 297) · miễn trừ 4 (từ 7) · không có cột org 12**.
+
+---
+
+**Bản ghi cũ của mục này, giữ để đối chiếu:**
+Năm bảng miễn trừ còn rò (hạn 30/11) — ba loại vấn đề khác nhau.
 `roles` (12 dòng / 3 tổ chức) và `settings` (13 / 3, còn 2 chưa gắn nhãn) là dữ
 liệu THEO tổ chức thật — nhiều khả năng rào được bình thường, miễn trừ hiện tại
 có thể đang quá thận trọng. `profiles` là lỗi DỮ LIỆU: 7 dòng sai nhãn, 6 sửa
@@ -215,11 +256,26 @@ Bằng chứng: `node scripts/test-openclaw-full-reset.mjs --plan-only` →
 đúng một file thì bộ gác vẫn phải đỏ.
 CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần Docker.
 
-**5. Các giai đoạn kiến trúc còn lại.** GĐ7 (12 bảng không có cột
-`organization_id` — thêm cột hay chặn qua cha), GĐ9 (frontend chưa có khái niệm
-"tổ chức hiện tại", không có `OrganizationContext` nào), GĐ10 (Test/Demo chung
-database — quyết định hạ tầng), GĐ-R (rate-limit cần một lớp server đứng trước
-PostgREST).
+**5. Các giai đoạn kiến trúc còn lại — bức tranh đã đổi sau phiên 08/08 chiều.**
+
+- **GĐ10 (Test/Demo chung database) — KHÔNG CÒN.** Hai tổ chức đã bị xoá, câu hỏi
+  hạ tầng tự tan.
+- **GĐ9 (frontend chưa có `OrganizationContext`) — HẠ ƯU TIÊN.** Prod nay chỉ còn
+  MỘT tổ chức, nên "tổ chức hiện tại" không có gì để chuyển đổi. Việc này chỉ
+  thành cấp thiết khi có công ty thứ hai thật.
+- **GĐ7 (12 bảng không có cột `organization_id`) — CÒN, và nay biết đích xác
+  bảng nào nguy hiểm.** Bài diễn tập xoá tổ chức lộ ra rằng trong 12 bảng đó chỉ
+  `room_price_history` thực sự treo vào dữ liệu theo tổ chức (nó để lại 12 dòng
+  mồ côi khi cha bị xoá). Danh sách đủ 12:
+  `authorization_migration_exceptions`, `income_expense_type_reference_repair_audit`,
+  `legacy_owner_allowlist`, `lucky_event_teams`, `network_outbox_deliveries`,
+  `network_worker_credentials`, `network_worker_heartbeats`, `network_workers`,
+  `organizations`, `permission_definitions`, `push_send_log`, `room_price_history`.
+  `organizations` thì hiển nhiên không cần cột đó.
+- **GĐ-R (rate-limit) — CÒN NGUYÊN.** Vẫn cần một lớp server đứng trước PostgREST.
+- **Hai bảng miễn trừ còn lại** (`ai_providers`, `ai_copilot_settings`, hạn
+  30/11): câu hỏi MÔ HÌNH chưa ai trả lời — bảng cấu hình AI thuộc về hệ thống
+  hay thuộc về từng công ty? Chỉ trả lời được khi có công ty thứ hai.
 
 ---
 
