@@ -33,7 +33,7 @@ services:
     environment:
       <<: *proxy-environment
       OPENCLAW_CELL_ID: "${OPENCLAW_CELL_ID}"
-      OPENCLAW_CONFIG_PATH: /run/openclaw/openclaw.json
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
       OPENCLAW_STATE_DIR: /home/node/.openclaw
       OPENCLAW_SESSION_PLAINTEXT_ROOT: /home/node/.openclaw/credentials
       OPENCLAW_SESSION_CIPHERTEXT_ROOT: /var/lib/openclaw-session
@@ -51,6 +51,7 @@ services:
       OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL: "${OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL:?model base url required}"
       OPENCLAW_ZALO_CUSTOMER_AI_MODEL: "${OPENCLAW_ZALO_CUSTOMER_AI_MODEL:?model id required}"
       OPENCLAW_CUSTOMER_AI_KEY_FILE: /run/secrets/openclaw_customer_ai_key
+      OPENCLAW_GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN:?gateway token required}"
     secrets:
       - source: openclaw_session_key
         target: openclaw_session_key
@@ -69,6 +70,9 @@ services:
         mode: 0400
     volumes:
       - type: volume
+        source: cell-state
+        target: /home/node/.openclaw
+      - type: volume
         source: session-ciphertext
         target: /var/lib/openclaw-session
         volume:
@@ -79,6 +83,7 @@ services:
       - /home/node/.openclaw/agents:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=256m
       - /home/node/.openclaw/internal-agent-runs:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=64m
       - /run/openclaw:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=16m
+      - /home/node/.npm:rw,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=256m
     networks:
       application:
         aliases: [cell]
@@ -95,6 +100,7 @@ services:
     environment:
       <<: *proxy-environment
       OPENCLAW_BRIDGE_HOST: 0.0.0.0
+      OPENCLAW_COMMAND_CLAIM_TOKEN: "${OPENCLAW_COMMAND_CLAIM_TOKEN:-}"
       OPENCLAW_BRIDGE_PORT: "8080"
       OPENCLAW_ORGANIZATION_ID: "${OPENCLAW_ORGANIZATION_ID:?organization id required}"
       OPENCLAW_ACCOUNT_ID: "${OPENCLAW_ACCOUNT_ID:?account id required}"
@@ -244,6 +250,10 @@ networks:
       ihome.openclaw.scope: "${OPENCLAW_CELL_ID}"
 
 volumes:
+  cell-state:
+    labels:
+      ihome.openclaw.kind: cell-state
+      ihome.openclaw.scope: "${OPENCLAW_CELL_ID}"
   session-ciphertext:
     labels:
       ihome.openclaw.kind: encrypted-session-backing

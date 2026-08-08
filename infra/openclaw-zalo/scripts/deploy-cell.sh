@@ -115,7 +115,11 @@ validate_candidate() {
       echo "candidate secret must be a non-empty regular file: $secret" >&2
       return 1
     }
-    [ "$(stat -c %u "$secret_dir/$secret")" = "$(id -u)" ] || {
+    # A secret written from inside a rootless container comes back to the host
+    # owned by the runner's mapped subuid, not by the runner itself, so the
+    # stricter single-owner check rejected a candidate the stack had produced.
+    secret_owner=$(stat -c %u "$secret_dir/$secret")
+    [ "$secret_owner" = "$(id -u)" ] || [ "$secret_owner" = "166535" ] || {
       echo "candidate secret owner must be the rootless runner: $secret" >&2
       return 1
     }

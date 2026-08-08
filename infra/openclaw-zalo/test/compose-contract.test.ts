@@ -93,7 +93,21 @@ describe("Task 19 rootless composition", () => {
       "openclaw.mjs",
       "gateway",
     ]);
+    // `cell-state` holds the Gateway's own store: the approved device pairings and
+    // the install record that claims the vendored fork. Without it both are lost on
+    // every recreate, and the cell comes back refusing the bridge with NOT_PAIRED
+    // while still answering /healthz - a stack that looks deployed and executes no
+    // runtime command. It is deliberately NOT `nocopy`: the image ships the fork
+    // under this path and the volume has to be seeded from it. The flip side is that
+    // an existing volume then masks later image updates to that tree, which is how a
+    // stock plugin once survived a rebuild; the entrypoint's fork check fails closed
+    // on exactly that, so the hazard is caught rather than silently loaded.
     expect(cell.volumes).toEqual([
+      {
+        type: "volume",
+        source: "cell-state",
+        target: "/home/node/.openclaw",
+      },
       {
         type: "volume",
         source: "session-ciphertext",
@@ -133,8 +147,14 @@ describe("Task 19 rootless composition", () => {
     expect(Object.keys(compose.volumes).sort()).toEqual([
       "bridge-spool",
       "bridge-temp",
+      "cell-state",
       "session-ciphertext",
     ]);
+    // The session plaintext still never reaches a volume: its directory is mounted
+    // tmpfs on top of `cell-state`, which the test above pins.
+    expect(compose.services.cell.tmpfs).toEqual(expect.arrayContaining([
+      "/home/node/.openclaw/credentials:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=32m",
+    ]));
     expect(compose.services.bridge.volumes).toEqual([
       expect.objectContaining({ source: "bridge-spool", target: "/var/lib/openclaw-bridge/spool" }),
       expect.objectContaining({ source: "bridge-temp", target: "/var/lib/openclaw-bridge/temp" }),
@@ -177,13 +197,23 @@ describe("Task 19 rootless composition", () => {
       "tryymsxyyckgbrmmvozx.supabase.co",
       "openclaw-media.chillhome.io.vn",
       "ai.chillhome.io.vn",
-      "chat.zalo.me",
+      ".zalo.me",
     ]));
+    // Zalo hands the listener a rotating message host (ws3/ws4/ws5-msg...), so an
+    // exact-FQDN entry admits the socket only until the next rotation and then kills
+    // the session on a name that no layer logs. Suffix entries are therefore allowed
+    // for these parent domains and nothing else - still a closed set, still no
+    // wildcard character, still no IP literal, still 443 only.
+    const suffixParents = new Set([".zalo.me", ".zaloapp.com", ".zdn.vn"]);
     for (const entry of allowlist.destinations) {
       expect(Object.keys(entry).sort()).toEqual(["host", "port", "purpose"]);
-      expect(entry.host).toMatch(/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])$/);
+      if (entry.host.startsWith(".")) {
+        expect(suffixParents).toContain(entry.host);
+      } else {
+        expect(entry.host).toMatch(/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])$/);
+      }
       expect(entry.host).not.toContain("*");
-      expect(entry.host).not.toMatch(/^\d+(?:\.\d+){3}$/);
+      expect(entry.host).not.toMatch(/^\.?\d+(?:\.\d+){3}$/);
       expect(entry.port).toBe(443);
       expect(entry.purpose).toMatch(/\S/);
     }
