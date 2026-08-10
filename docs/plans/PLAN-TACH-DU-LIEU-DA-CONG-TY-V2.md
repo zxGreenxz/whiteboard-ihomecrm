@@ -21,10 +21,12 @@ phép đo trước/sau bằng vai người dùng thật. Ba commit: `9519cd98`, 
 > Mười commit: `19bb16d3`, `0d65ca5b`, `61598490`, `29096106`, `18359bf9`,
 > `0efabefd`, `0ce5396c`, `bc99510b`, `bdbc3247`, `c65a3ca0`.
 >
-> **CÒN ĐÚNG MỘT VIỆC CẦN NGƯỜI QUYẾT:** xoay 334 mã công khai lên ≥16 ký tự
-> (GĐ0 mục 6a(i)) — thứ duy nhất thực sự ĐÓNG lỗ, nhưng làm chết mọi QR đã in và
-> đã gửi cho khách. Hai việc còn lại (GĐ9 frontend, hai bảng miễn trừ AI) chỉ có
-> nghĩa khi có công ty thứ hai.
+> **KHÔNG CÒN VIỆC NÀO CHỜ QUYẾT ĐỊNH.** Việc cuối — xoay 334 mã công khai lên
+> ≥16 ký tự (GĐ0 mục 6a(i)) — đã được chủ dự án cân nhắc và **quyết KHÔNG làm**
+> ngày 09/08/2026, chấp nhận rủi ro tồn đọng và lấy rate-limit làm biện pháp
+> giảm nhẹ. Đừng đề xuất lại; chi tiết ở mục tương ứng bên dưới.
+> Hai việc còn lại (GĐ9 frontend, hai bảng miễn trừ AI) chỉ có nghĩa khi có công
+> ty thứ hai.
 >
 > Chi tiết từng việc nằm ngay trong mục tương ứng bên dưới.
 
@@ -314,8 +316,25 @@ CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần D
   `20260808080000` bằng bước 3a (xoá theo cha, dừng nếu dòng bắc cầu sang tổ chức
   khác). Bảng nào sau này treo vào dữ liệu theo tổ chức mà không có cột org thì
   cùng lớp vấn đề đó.
-- **GĐ0 mục 6a(i) — XOAY 334 MÃ CÔNG KHAI LÊN ≥16 KÝ TỰ: CHƯA LÀM, VÀ ĐANG CHỜ
-  MỘT QUYẾT ĐỊNH KINH DOANH.** Đây là việc còn lại DUY NHẤT thực sự đóng được lỗ.
+- **GĐ0 mục 6a(i) — XOAY 334 MÃ CÔNG KHAI LÊN ≥16 KÝ TỰ: CHỦ DỰ ÁN ĐÃ QUYẾT
+  KHÔNG LÀM (09/08/2026). ĐỪNG ĐỀ XUẤT LẠI.**
+
+  Đây là việc duy nhất thực sự ĐÓNG được lỗ, và nó đã được cân nhắc rồi bỏ qua
+  một cách có ý thức — không phải bị bỏ sót. Lý do đánh đổi: xoay mã làm chết
+  mọi QR đã in và mọi link đã gửi cho khách, kể cả khi có cửa sổ ân hạn. Rủi ro
+  còn lại được chấp nhận, và rate-limit ở GĐ-R là biện pháp giảm nhẹ đã chọn.
+
+  **Rủi ro tồn đọng, ghi lại để không ai quên nó tồn tại:** 57⁶ = 34.296.447.249
+  tổ hợp trên 334 mã sống ⇒ ~103 triệu lần thử cho một lần trúng; trúng thì lấy
+  được họ tên khách, hoá đơn, phòng, toà nhà (số điện thoại đã bỏ ở
+  `20260808100000`). Rate-limit đẩy chi phí lên ~32 năm **từ MỘT IP**, nhưng kẻ
+  có nhiều IP chia nhỏ hạn mức ra là đi tiếp được.
+
+  Nếu sau này muốn làm lại thì cần: `old_public_code` + `old_code_expires_at`,
+  nhánh resolve chấp nhận mã cũ tới hạn, `CHECK (length(public_code) >= 16)`, và
+  một đợt phát lại QR cho khách.
+
+  *Phần dưới đây là bối cảnh lúc chưa quyết, giữ để đối chiếu:*
 
   Đo 08/08: cả 334 hợp đồng vẫn mang `public_code` **6 ký tự**, không có `CHECK`
   độ dài, không có cột ân hạn, hàm chưa lọc `revoked`. Bảng chữ cái 57 ký tự ⇒
