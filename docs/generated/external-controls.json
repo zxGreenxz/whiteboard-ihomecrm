@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-08-06T00:36:37.266Z",
+  "checkedAt": "2026-08-11T05:46:44.210Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubBranchProtection": {
@@ -8,8 +8,30 @@
       "note": "Không có GH_TOKEN/GITHUB_TOKEN và `gh` chưa đăng nhập."
     },
     "vercelProductionBranch": {
-      "status": "unverified",
-      "note": "Không có VERCEL_TOKEN. Đây là kiểm soát cứng DUY NHẤT khả thi ở tier GitHub Free, nên chưa xác minh được nghĩa là chưa yên tâm."
+      "status": "failed",
+      "projects": [
+        {
+          "name": "ptcrm-docs",
+          "repo": "zxGreenxz/whiteboard-ihomecrm",
+          "productionBranch": "main"
+        },
+        {
+          "name": "ihomecrm",
+          "repo": "zxGreenxz/whiteboard-ihomecrm",
+          "productionBranch": "production"
+        },
+        {
+          "name": "ihome-market",
+          "repo": "zxGreenxz/ihome-market",
+          "productionBranch": "main"
+        },
+        {
+          "name": "n2store",
+          "repo": "zxGreenxz/github-html-starter",
+          "productionBranch": "main"
+        }
+      ],
+      "note": "1/2 project của zxGreenxz/whiteboard-ihomecrm deploy production từ nhánh KHÔNG PHẢI \"production\": ptcrm-docs→main. Mọi push vào nhánh đó là một lần phát hành thẳng ra sản phẩm. NGOÀI PHẠM VI (repo khác, không tính vào kết luận): ihome-market[zxGreenxz/ihome-market]→main, n2store[zxGreenxz/github-html-starter]→main."
     },
     "productionBranchExists": {
       "status": "present",
@@ -17,7 +39,7 @@
     }
   },
   "localHead": {
-    "head": "ac4c8a59f4449506b6788b0a7f5a98129b09e4a0",
+    "head": "b8f7bc479b30ad063f711b03ec467b0de08838fa",
     "branch": "main",
     "hasProductionBranch": true
   }

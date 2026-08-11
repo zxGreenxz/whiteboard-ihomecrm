@@ -118,6 +118,9 @@ async function vercelProductionBranch() {
   const body = await res.json();
   const projects = (body.projects ?? []).map((p) => ({
     name: p.name,
+    // Cần repo để khoanh phạm vi: một tài khoản Vercel phục vụ nhiều repo, và
+    // repo này chỉ chịu trách nhiệm cho project deploy từ chính nó.
+    repo: p.link?.org && p.link?.repo ? `${p.link.org}/${p.link.repo}` : null,
     productionBranch: p.link?.productionBranch ?? null,
   }));
 
@@ -144,18 +147,49 @@ export function danhGiaVercel(projects) {
   // GitHub Free". Vì 'checked' được xếp vào ✅ và phần tổng kết chỉ đếm
   // 'unverified'/'absent', thế giới nơi control bị tắt cho ra báo cáo SẠCH HƠN
   // thế giới hiện tại.
-  const sai = projects.filter((p) => (p.productionBranch ?? 'main') !== NHANH_PHAT_HANH);
+  // CHỈ phán trên project deploy TỪ REPO NÀY.
+  //
+  // Bản đầu phán trên MỌI project của tài khoản Vercel, và đo thật 08/08/2026 cho
+  // ra 'failed' vì `ihome-market` (repo zxGreenxz/ihome-market) và `n2store`
+  // (repo github-html-starter) deploy từ `main`. Hai project đó KHÔNG thuộc hợp
+  // đồng của repo này — repo này không quyết định được cấu hình của chúng, và
+  // không sửa được bằng bất kỳ commit nào ở đây.
+  //
+  // Một gate đỏ vì thứ nằm ngoài tầm với sẽ bị bỏ qua, rồi lần nó đỏ vì lý do
+  // THẬT cũng không ai nhìn. Nên: project của repo này ⇒ phán; project khác ⇒ ghi
+  // nhận để người đọc thấy toàn cảnh, không tính vào kết luận.
+  const cuaRepoNay = projects.filter((p) => p.repo === REPO);
+  const ngoaiPhamVi = projects.filter((p) => p.repo !== REPO);
+
+  if (cuaRepoNay.length === 0) {
+    return {
+      status: UNVERIFIED,
+      projects,
+      note: `Không project Vercel nào liên kết với ${REPO}. Token có thể sai team/scope — không có gì để đối chiếu thì không kiểm được.`,
+    };
+  }
+
+  const sai = cuaRepoNay.filter((p) => (p.productionBranch ?? 'main') !== NHANH_PHAT_HANH);
+  const ghiChuNgoai = ngoaiPhamVi.length
+    ? ` NGOÀI PHẠM VI (repo khác, không tính vào kết luận): ${ngoaiPhamVi.map((p) => `${p.name}[${p.repo}]→${p.productionBranch ?? 'main'}`).join(', ')}.`
+    : '';
+
   if (sai.length > 0) {
     return {
       status: 'failed',
       projects,
       note:
-        `${sai.length} project deploy production từ nhánh KHÔNG PHẢI "${NHANH_PHAT_HANH}": ` +
+        `${sai.length}/${cuaRepoNay.length} project của ${REPO} deploy production từ nhánh KHÔNG PHẢI "${NHANH_PHAT_HANH}": ` +
         `${sai.map((p) => `${p.name}→${p.productionBranch ?? 'main (mặc định)'}`).join(', ')}. ` +
-        'Mọi push vào nhánh đó là một lần phát hành thẳng ra sản phẩm.',
+        'Mọi push vào nhánh đó là một lần phát hành thẳng ra sản phẩm.' +
+        ghiChuNgoai,
     };
   }
-  return { status: 'checked', projects };
+  return {
+    status: 'checked',
+    projects,
+    note: `${cuaRepoNay.length} project của ${REPO} đều deploy production từ "${NHANH_PHAT_HANH}".` + ghiChuNgoai,
+  };
 }
 
 function localRepoState() {

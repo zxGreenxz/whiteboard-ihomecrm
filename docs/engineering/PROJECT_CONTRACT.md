@@ -68,9 +68,23 @@ không phải người:
 - Gate `continue-on-error` **không bao giờ** được tính là xanh khi quyết định promote.
 - Không bao giờ để `push main` trực tiếp thành production deploy.
 
-> ✅ **Đã flip 2026-08-06.** Vercel project `ihomecrm` (domain `chillhome.io.vn` + `ptcrm.vercel.app`)
-> có Branch Tracking = **`production`**. Từ đây **push `main` chỉ tạo Preview**; production chỉ đổi khi
-> có commit lên nhánh `production`.
+> ✅ **Đã flip 2026-08-06, và XÁC MINH BẰNG API 2026-08-08.** Vercel project `ihomecrm` (domain
+> `chillhome.io.vn` + `ptcrm.vercel.app`) có Branch Tracking = **`production`**. Với project đó,
+> push `main` chỉ tạo Preview; production chỉ đổi khi có commit lên nhánh `production`.
+> Bằng chứng máy đọc: [`docs/generated/external-controls.json`](../generated/external-controls.json)
+> — trước 08/08 trường này là `unverified` vì chưa ai nạp `VERCEL_TOKEN`.
+>
+> ⚠ **Nhưng repo này có HAI project Vercel, không phải một.** Cùng lần đo trên:
+>
+> | Project | Deploy từ | |
+> |---|---|---|
+> | `ihomecrm` (app) | `production` | ✅ đúng hợp đồng |
+> | `ptcrm-docs` (VitePress, `docs-site/`) | **`main`** | ⚠ mỗi push `main` là một lần phát hành docs |
+>
+> Nên câu "push `main` chỉ tạo Preview" **đúng với app, KHÔNG đúng với docs**. Bản trước của mục này
+> viết như thể chỉ có một project — sai vì thiếu, và không có gì làm nó sai ra tiếng cho tới khi gọi
+> API thật. `gate:external-controls` hiện **đỏ** vì đúng lý do đó, và nó nên đỏ cho tới khi có người
+> quyết: hoặc đổi `ptcrm-docs` sang `production`, hoặc khai đây là ngoại lệ có chủ đích.
 >
 > Promote: `git push origin origin/main:production` **sau khi** gate xanh.
 > Rollback: promote lại deployment trước trên Vercel, hoặc đẩy `production` về SHA cũ.
