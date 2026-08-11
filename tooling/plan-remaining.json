@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 68
+    "stillMissing": 67
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -463,10 +463,12 @@
       {
         "deliverable": "§38 — docs/he-thong/99-quy-trinh-tong.md thêm Network Center lifecycle, OpenClaw consent/connection/draft/send/operations/rollout, deployment + feature flag, production evidence",
         "planRef": "mục 38, dòng 2519-2526",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm 4 mục theo plan; nội dung nguồn đã có sẵn ở 22-network-center.md, 23-openclaw-zalo.md và 11 runbook trong docs/openclaw-zalo/runbooks/."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Them 3.10 Network Center (rollout OFF/READ_ONLY/EXECUTE theo tung toa, 4 thao tac danh sach dong, worker ngoai Vercel, partition/retention rieng), 3.11 OpenClaw (4 trang thai ket noi + rui ro phien, configured vs effective, outbox 7 trang thai, 11 ly do tu choi THEO THU TU CO DINH, rollout 11 bac), 3.12 Dua thay doi len production (bang 4 duong + bay tung duong, feature flag theo don vi, bang chung production chay dinh ky). Cap nhat mermaid: them 2 hop ha tang kem cau giai thich vi sao chung thuoc quy trinh tong. Noi dung lay tu 22/23/24-*.md, khong tu bia. Gate docs-views/doc-freshness/doc-counts deu xanh."
       }
     ],
     "file-map": [
