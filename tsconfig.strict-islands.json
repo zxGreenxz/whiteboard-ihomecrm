@@ -175,7 +175,6 @@
     "src/lib/handover.ts",
     "src/lib/ieTypesCache.ts",
     "src/lib/imageCompress.ts",
-    "src/lib/incomeExpenseCreateRpc.ts",
     "src/lib/incomeExpensePostingValidation.ts",
     "src/lib/incomeExpenseQuickInput.ts",
     "src/lib/incomeExpenseTypeErrors.ts",

@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 67
+    "stillMissing": 66
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -337,10 +337,12 @@
       {
         "deliverable": "Mục 9 – Đóng nốt nửa còn lại của 4 arg-builder (contractCreateRpc, customerCreditRpc, incomeExpenseCreateRpc, paymentRecordRpc)",
         "planRef": "mục 9, dòng 1351",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Hoặc để incomeExpenseCreateRpc.ts tự thực hiện lời gọi rồi chuyển mutations.ts:72 sang dùng nó, hoặc xoá file chết này; cập nhật lại plan vì tiền đề 'caller vẫn tự gọi .rpc() qua any-cast' đã sai với 3 file kia."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "TIEN DE CUA PLAN SAI: plan viet \"caller van tu goi .rpc() qua any-cast\". Do that: 3/4 builder (contractCreateRpc, customerCreditRpc, paymentRecordRpc) DA co caller that + test rieng, khong any-cast. File thu tu incomeExpenseCreateRpc.ts la MA CHET: 0 importer, 0 test, 86 dong. Bat bien duy nhat no giu (khong ho tro phieu lap) da duoc isCanonicalCreateEligible o mutations.ts ep dung ba dieu kien y het, va con dinh tuyen sang compat thay vi nem. Xoa file + go khoi tsconfig.strict-islands.json, strict-islands-baseline.json, risk-map.json. Gate: strict-islands 245/245 xanh, tsc khong con tham chieu treo, 92 test duong tien xanh, agent-contract xanh."
       },
       {
         "deliverable": "Mục 9 – Nguyên tắc: không gọi supabase.rpc('string') trực tiếp trong component",

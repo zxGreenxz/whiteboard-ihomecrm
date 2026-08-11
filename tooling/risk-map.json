@@ -27,7 +27,6 @@
         "src/lib/contractCreateRpc.ts",
         "src/lib/paymentRecordRpc.ts",
         "src/lib/customerCreditRpc.ts",
-        "src/lib/incomeExpenseCreateRpc.ts",
         "api/salary-v5-cron.js"
       ]
     },
