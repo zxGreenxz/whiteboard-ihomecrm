@@ -2,6 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import type { Json } from "@/integrations/supabase/types";
+
+// Cột `variables` là jsonb. Khai `Record<string, unknown>[]` không gán được vào
+// `Json` vì `unknown` không phải giá trị JSON — và trước 11/08/2026 chỗ này lọt
+// qua chỉ nhờ supabase-js cũ không kiểm. `Record<string, Json>[]` mô tả đúng
+// thứ thật sự lưu được, và `DEFAULT_TEMPLATE_VARIABLES` vẫn khớp.
 
 export type TemplateCategory =
   | "CONTRACT_NEW"
@@ -29,7 +35,7 @@ export interface DocumentTemplate {
   category: TemplateCategory;
   type?: TemplateType;
   content?: string;
-  variables?: Record<string, unknown>[] | null;
+  variables?: Record<string, Json>[] | null;
   description?: string;
   file_url: string;
   file_name: string;
@@ -283,7 +289,7 @@ export const useCreateDocumentTemplate = () => {
       file: File;
       is_default: boolean;
       type?: TemplateType;
-      variables?: Record<string, unknown>[] | null;
+      variables?: Record<string, Json>[] | null;
       content?: string;
     }) => {
       const user = await getSessionUser();
@@ -393,7 +399,7 @@ export const useUpdateDocumentTemplate = () => {
       file?: File;
       is_default?: boolean;
       type?: TemplateType;
-      variables?: Record<string, unknown>[] | null;
+      variables?: Record<string, Json>[] | null;
       content?: string;
     }) => {
       const user = await getSessionUser();

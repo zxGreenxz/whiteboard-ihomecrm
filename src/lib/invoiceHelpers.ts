@@ -502,7 +502,8 @@ export interface ContractForInvoice {
   id: string;
   contract_number: string;
   tenant_id: string;
-  room_id: string | null;  rent_price: number;
+  room_id: string | null;
+  rent_price: number;
   start_date: string;
   end_date: string;
   start_billing_date: string | null;
@@ -581,262 +582,28 @@ export async function saveInvoiceSettings(
   if (error) throw error;
 }
 
-/**
- * Get active contracts for invoice generation
- */
-export async function getActiveContractsForInvoicing(
-  userId: string,
-  buildingId?: string
-): Promise<ContractForInvoice[]> {
-  let query = supabase
-    .from('contracts')
-    .select(`
-      *,
-      tenant:tenants!contracts_tenant_id_fkey (
-        id, full_name, phone
-      ),
-      room:rooms!contracts_room_id_fkey (
-        id, name, building_id,
-        building:buildings!rooms_building_id_fkey (
-          id, name
-        )
-      ),
-      contract_services (
-        service_id, unit_price, initial_reading,
-        service:services!contract_services_service_id_fkey (
-          id, name, type, unit
-        )
-      )
-    `)
-    .eq('user_id', userId)
-    .in('status', ['ACTIVE'])
-    .is('deleted_at', null);
+// ĐÃ XOÁ 11/08/2026 — đường sinh hoá đơn PHÍA CLIENT.
+//
+// Năm hàm `getActiveContractsForInvoicing` · `getMeterReadingsForPeriod` ·
+// `generateInvoiceItems` · `generateInvoiceForContract` · `bulkGenerateInvoices`
+// nằm ở đây và KHÔNG file nào import. Chúng cũng không thể chạy được:
+//   - insert vào `invoices` với `billing_period_from` / `billing_period_to` /
+//     `issued_date` — ba cột KHÔNG TỒN TẠI trong schema;
+//   - bỏ trống `billing_month` và `organization_id` — hai cột NOT NULL;
+//   - insert vào `invoice_items` với `item_type`, trong khi cột tên `type` và
+//     là enum bắt buộc;
+//   - đọc `meter_readings.service_type`, cột cũng không tồn tại.
+// Tức mọi lượt gọi chết ngay ở PGRST204, không phải sai lệch một trường.
+//
+// Hoá đơn thật sự được sinh PHÍA SERVER bằng SQL (`generate_invoices_for_building`
+// và các RPC trong supabase/migrations); `src/` không có một câu insert nào vào
+// bảng `invoices`.
+//
+// Nó nằm im được lâu vì `ts-baseline.json` miễn trừ file này. supabase-js
+// 2.112 thêm `RejectExcessProperties` nên tên cột sai thành lỗi biên dịch —
+// đó là thứ phơi khối mã này ra.
 
-  const { data, error } = await query;
 
-  if (error) throw error;
-  return (data || []) as ContractForInvoice[];
-}
-
-/**
- * Get meter readings for a contract in a specific period
- */
-export async function getMeterReadingsForPeriod(
-  contractId: string,
-  periodFrom: Date,
-  periodTo: Date
-): Promise<Array<{
-  service_type: string;
-  previous_reading: number;
-  current_reading: number;
-  consumption: number;
-}>> {
-  const { data, error } = await supabase
-    .from('meter_readings')
-    .select('*')
-    .eq('contract_id', contractId)
-    .gte('reading_date', format(periodFrom, 'yyyy-MM-dd'))
-    .lte('reading_date', format(periodTo, 'yyyy-MM-dd'));
-
-  if (error) return [];
-
-  return (data || []).map(reading => ({
-    service_type: reading.service_type || '',
-    previous_reading: reading.previous_reading || 0,
-    current_reading: reading.current_reading,
-    consumption: reading.consumption || 0,
-  }));
-}
-
-/**
- * Generate invoice items for a contract
- */
-export function generateInvoiceItems(
-  contract: ContractForInvoice,
-  meterReadings: Array<{
-    service_type: string;
-    consumption: number;
-  }>,
-  periodFrom: Date,
-  periodTo: Date
-): GeneratedInvoiceItem[] {
-  const items: GeneratedInvoiceItem[] = [];
-
-  // Add rent
-  items.push({
-    item_type: 'RENT',
-    description: `Tiền thuê căn hộ tháng ${format(periodFrom, 'MM/yyyy')}`,
-    quantity: 1,
-    unit_price: contract.rent_price,
-    amount: contract.rent_price,
-  });
-
-  // Add services
-  if (contract.contract_services) {
-    for (const cs of contract.contract_services) {
-      if (!cs.service) continue;
-
-      if (cs.service.type === 'METER_READING') {
-        // Find meter reading for this service
-        const reading = meterReadings.find(r =>
-          r.service_type.toLowerCase().includes(cs.service!.name.toLowerCase().includes('điện') ? 'electricity' : 'water')
-        );
-
-        if (reading && reading.consumption > 0) {
-          items.push({
-            item_type: cs.service.name.toUpperCase().includes('ĐIỆN') ? 'ELECTRICITY' : 'WATER',
-            description: `${cs.service.name}: ${reading.consumption} ${cs.service.unit}`,
-            quantity: reading.consumption,
-            unit_price: cs.unit_price,
-            amount: reading.consumption * cs.unit_price,
-          });
-        }
-      } else if (cs.service.type === 'FIXED') {
-        items.push({
-          item_type: cs.service.name.toUpperCase().replace(/\s+/g, '_'),
-          description: cs.service.name,
-          quantity: 1,
-          unit_price: cs.unit_price,
-          amount: cs.unit_price,
-        });
-      }
-    }
-  }
-
-  return items;
-}
-
-/**
- * Generate a single invoice for a contract
- */
-export async function generateInvoiceForContract(
-  userId: string,
-  contract: ContractForInvoice,
-  billingPeriod: { from: Date; to: Date },
-  settings: InvoiceGenerationSettings
-): Promise<string> {
-  // Get meter readings
-  const meterReadings = await getMeterReadingsForPeriod(
-    contract.id,
-    billingPeriod.from,
-    billingPeriod.to
-  );
-
-  // Generate invoice items
-  const items = generateInvoiceItems(
-    contract,
-    meterReadings,
-    billingPeriod.from,
-    billingPeriod.to
-  );
-
-  // Calculate subtotal
-  const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-
-  // Nợ cũ (luôn tính, bỏ qua source < ngưỡng làm tròn)
-  const { total: previousDebtAmount, sources: previousDebtSources } =
-    await computePreviousDebt(contract.id);
-
-  // Calculate total (làm tròn phần lẻ: <900đ → xuống, ≥900đ → lên bội số 1000)
-  const { roundInvoiceTotal } = await import('@/lib/invoiceUtils');
-  const totalAmount = roundInvoiceTotal(subtotal + previousDebtAmount);
-
-  // Generate invoice number using proper sequential generation
-  let invoiceNumber = await autoGenerateInvoiceNumber(userId);
-
-  // Fallback to default format if auto-generation is disabled or fails
-  if (!invoiceNumber) {
-    const seq = await supabase
-      .from('invoices')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId);
-    const count = (seq.count || 0) + 1;
-    invoiceNumber = `INV${format(new Date(), 'yyyyMM')}${String(count).padStart(4, '0')}`;
-  }
-
-  // Calculate due date
-  const issuedDate = new Date();
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + settings.due_days);
-
-  // Create invoice
-  const { data: invoice, error: invoiceError } = await supabase
-    .from('invoices')
-    .insert({
-      user_id: userId,
-      invoice_number: invoiceNumber,
-      contract_id: contract.id,
-      room_id: contract.room_id,
-      building_id: contract.room?.building_id,
-      billing_period_from: format(billingPeriod.from, 'yyyy-MM-dd'),
-      billing_period_to: format(billingPeriod.to, 'yyyy-MM-dd'),
-      subtotal,
-      previous_debt: previousDebtAmount,
-      previous_debt_sources: previousDebtSources as any,
-      discount_amount: 0,
-      total_amount: totalAmount,
-      paid_amount: 0,
-      status: settings.auto_approve ? 'APPROVED' : 'DRAFT',
-      issued_date: format(issuedDate, 'yyyy-MM-dd'),
-      due_date: format(dueDate, 'yyyy-MM-dd'),
-    })
-    .select()
-    .single();
-
-  if (invoiceError) throw invoiceError;
-
-  // Create invoice items
-  const invoiceItems = items.map(item => ({
-    invoice_id: invoice.id,
-    ...item,
-  }));
-
-  const { error: itemsError } = await supabase
-    .from('invoice_items')
-    .insert(invoiceItems);
-
-  if (itemsError) throw itemsError;
-
-  return invoice.id;
-}
-
-/**
- * Bulk generate invoices for all active contracts
- */
-export async function bulkGenerateInvoices(
-  userId: string,
-  billingMonth: Date,
-  buildingId?: string
-): Promise<{ success: number; failed: number; errors: string[] }> {
-  const settings = await getInvoiceSettings(userId);
-  if (!settings) {
-    throw new Error('Vui lòng cấu hình cài đặt tạo hóa đơn trước');
-  }
-
-  const contracts = await getActiveContractsForInvoicing(userId, buildingId);
-
-  const billingPeriod = {
-    from: startOfMonth(billingMonth),
-    to: endOfMonth(billingMonth),
-  };
-
-  let success = 0;
-  let failed = 0;
-  const errors: string[] = [];
-
-  for (const contract of contracts) {
-    try {
-      await generateInvoiceForContract(userId, contract, billingPeriod, settings);
-      success++;
-    } catch (error: any) {
-      failed++;
-      errors.push(`${contract.contract_number}: ${error.message}`);
-    }
-  }
-
-  return { success, failed, errors };
-}
-
-// NOTE: autoCreateInvoiceForContract has been consolidated into contractHelpers.ts
-// to avoid duplication. Use the version from contractHelpers.ts instead.
+// NOTE (cũ, đã sai): "autoCreateInvoiceForContract đã hợp nhất vào contractHelpers.ts".
+// File đó không còn tồn tại — xem khối giải thích phía trên.
 

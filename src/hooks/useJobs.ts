@@ -4,6 +4,15 @@ import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
 import { TaskFilters, JobWithRelations, OPEN_JOB_STATUSES } from "@/types/jobs";
+import type { Database } from "@/integrations/supabase/types";
+
+/**
+ * Patch của `useUpdateJob`. Trước 11/08/2026 chỗ này là `Record<string, any>` —
+ * tức MỌI tên khoá đều hợp lệ với TypeScript, kể cả tên cột không tồn tại.
+ * `.update()` không lọc khoá lạ, nên một tên sai làm hỏng CẢ câu lệnh
+ * (PGRST204), không phải bỏ qua một trường.
+ */
+type JobPatch = Database['public']['Tables']['jobs']['Update'];
 
 /** 'YYYY-MM-DD' → ngày kế tiếp, để dựng cận trên nửa mở [start, next). */
 const nextDayISO = (d: string): string => {
@@ -205,7 +214,7 @@ export const useUpdateJob = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, any> }) => {
+    mutationFn: async ({ id, patch }: { id: string; patch: JobPatch }) => {
       const { data, error } = await supabase
         .from("jobs")
         .update(patch)

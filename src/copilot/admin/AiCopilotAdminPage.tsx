@@ -233,9 +233,14 @@ function EntitlementsTab() {
 
   const toggle = useMutation({
     mutationFn: async (p: { user_id: string; field: 'chat_enabled' | 'ui_control_enabled'; value: boolean }) => {
+      // Khoá tính toán `{ [p.field]: … }` bị TypeScript nới thành `string`, nên
+      // supabase-js không còn kiểm được tên cột. Viết tường minh hai nhánh để
+      // cột sai là lỗi biên dịch chứ không phải PGRST204 lúc chạy.
+      const patch =
+        p.field === 'chat_enabled' ? { chat_enabled: p.value } : { ui_control_enabled: p.value };
       const { error } = await supabase
         .from('ai_copilot_entitlements')
-        .update({ [p.field]: p.value })
+        .update(patch)
         .eq('user_id', p.user_id);
       if (error) throw error;
     },
