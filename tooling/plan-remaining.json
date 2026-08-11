@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 47
+    "stillMissing": 44
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -191,10 +191,12 @@
       {
         "deliverable": "CapabilityDefinition đủ trường theo interface plan (aliases, group, e2e, exemption, docs.userDoc, docs.visibility, surfaces.copilotNavigation, release.mode/allowed)",
         "planRef": "§7 dòng 1196-1233",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Bổ sung trường theo nhu cầu consumer còn thiếu (aliases cho redirect, e2e cho smoke path, exemption cho acceptance §7 dòng 1269, copilotNavigation cho whitelist). Nếu cố ý thu hẹp thì ghi lý do vào types.ts như đã làm cho permissionPage (types.ts:7-10)."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Them 3 truong theo NHU CAU CO THAT: docs.userDoc (string|null + userDocMienTruVi bat buoc khi null), docs.visibility (public|internal), aliases. KHONG them group/exemption vi khong co consumer nao doi — cung ly do da bo owner. visibility CO Y khong suy tu userDoc==null: suy nhu vay thi mot trang bi xoa nham se tu dong ha capability xuong internal ma khong ai thay."
       },
       {
         "deliverable": "Output dẫn xuất/kiểm từ registry: Permission gate của route",
@@ -223,10 +225,12 @@
       {
         "deliverable": "Output dẫn xuất/kiểm từ registry: User docs path",
         "planRef": "§7 dòng 1262",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm docs.userDoc + docs.visibility và checker đối chiếu với sidebar của docs-site."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "scripts/check-capability-docs.mjs + noi ci-gates + alias. Luat: visibility public => BAT BUOC co userDoc, file ton tai, VA nam trong sidebar docs-site (thieu ve cuoi thi trang van build nhung khong ai tim ra). internal => userDoc null duoc nhung phai kem ly do. Do that: ca 2 capability deu internal — network-center la be mat quan tri ha tang, openclaw-zalo chua toi bac COMPLETE. BAY DA GHI: docs-site CO trang chat-zalo nhung do la Chat Zalo CU (18-zalo-chat.md), tro no vao openclaw se dan nguoi doc toi huong dan cua tinh nang khac — sai con te hon de trong."
       },
       {
         "deliverable": "Output dẫn xuất/kiểm từ registry: CODEOWNER / risk tier",
@@ -257,10 +261,12 @@
       {
         "deliverable": "Acceptance §7: alias/redirect không sinh thêm nav item hoặc permission page trùng",
         "planRef": "§7 dòng 1274",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm aliases vào CapabilityDefinition + khẳng định 'alias không xuất hiện ở nav/launcher/permission page'."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Luat (2) cua check-capability-docs: alias KHONG duoc xuat hien o Sidebar.tsx / launcherTiles.ts / permissionPages.ts. Do 11/08: khong capability nao khai alias — gate van cai san de cai bay khong bao gio mo ra duoc; viet sau (luc da co alias) nghia la lan dau tien luon khong duoc canh. Gate NOI THANG rang luat nay hom nay chua kiem gi. Dot bien 6/6, gom ca ca them alias trung route da co."
       },
       {
         "deliverable": "Acceptance §7: capability contextual phải có selector/test riêng, không encode business bằng boolean tĩnh",

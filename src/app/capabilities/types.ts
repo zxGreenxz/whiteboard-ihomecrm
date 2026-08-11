@@ -37,7 +37,47 @@ export interface CapabilityDefinition {
     permissionPage: string;
   };
 
-  docs: { systemDoc: string };
+  docs: {
+    /** Tài liệu hệ thống (docs/he-thong/) — Copilot đọc, luôn phải có. */
+    systemDoc: string;
+
+    /**
+     * Trang hướng dẫn NGƯỜI DÙNG trong docs-site.
+     *
+     * `null` = chưa có, và PHẢI kèm `userDocMienTruVi`. Cùng khuôn với `e2e.spec`:
+     * một trường bỏ trống mà im lặng thì sau vài tháng không ai phân biệt được
+     * "đã cân nhắc và bỏ" với "quên".
+     */
+    userDoc: string | null;
+    userDocMienTruVi?: string;
+
+    /**
+     * Capability này có phải bề mặt dành cho NGƯỜI DÙNG CUỐI không.
+     *
+     * Đây là chỗ luật có răng: `public` thì BẮT BUỘC có `userDoc`, và trang đó
+     * phải nằm trong sidebar của docs-site — không thì nó tồn tại mà không ai
+     * tìm ra. `internal` là bề mặt quản trị/hạ tầng, không hứa gì với người dùng.
+     *
+     * Cố ý KHÔNG suy ra từ `userDoc == null`: suy như vậy thì một trang bị xoá
+     * nhầm sẽ tự động hạ capability xuống `internal` mà không ai thấy.
+     */
+    visibility: "public" | "internal";
+  };
+
+  /**
+   * Đường dẫn CŨ còn trỏ tới capability này (redirect).
+   *
+   * VÌ SAO KHAI DÙ HIỆN ĐANG RỖNG (đo 11/08/2026: không capability nào có alias)
+   *   Khác với `owner` — thứ đã cố ý bỏ vì sẽ không bao giờ có răng — trường này
+   *   có một luật cưỡng chế được NGAY KHI có dữ liệu đầu tiên: alias KHÔNG được
+   *   xuất hiện ở nav, launcher hay permission picker (acceptance §7). Thêm một
+   *   alias mà quên luật đó thì sinh ra hai mục menu cùng trỏ một trang, hoặc hai
+   *   dòng quyền cho cùng một bề mặt.
+   *
+   *   Khai trước + gate sẵn thì cái bẫy đó không bao giờ mở ra được. Khai sau,
+   *   lúc đã có alias, nghĩa là lần đầu tiên luôn không được canh.
+   */
+  aliases?: readonly string[];
 
   /**
    * Đường tới spec E2E khói của capability, tính từ gốc repo.

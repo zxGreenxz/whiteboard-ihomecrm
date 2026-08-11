@@ -26,7 +26,16 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
       mobileLauncher: true,
       permissionPage: "/network-center",
     },
-    docs: { systemDoc: "docs/he-thong/22-network-center.md" },
+    docs: {
+      systemDoc: "docs/he-thong/22-network-center.md",
+      // Bề mặt QUẢN TRỊ hạ tầng: chỉ chủ tổ chức và người được giao mới thấy, và
+      // bốn thao tác của nó chạm router thật. Hướng dẫn của nó là runbook vận
+      // hành (docs/he-thong/22-*.md), không phải trang cho người thuê nhà.
+      userDoc: null,
+      userDocMienTruVi:
+        "Bề mặt quản trị hạ tầng, sau cờ build-time mặc định TẮT. Người dùng cuối không truy cập được nên một trang trong docs-site sẽ hứa thứ họ không mở được.",
+      visibility: "internal",
+    },
     e2e: { spec: ".e2e-fleet/specs/network-center.spec.ts" },
     risk: "infrastructure",
   },
@@ -41,7 +50,16 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
       mobileLauncher: true,
       permissionPage: "/openclaw-zalo",
     },
-    docs: { systemDoc: "docs/he-thong/23-openclaw-zalo.md" },
+    docs: {
+      systemDoc: "docs/he-thong/23-openclaw-zalo.md",
+      // LƯU Ý dễ nhầm: docs-site CÓ trang "chat-zalo" nhưng đó là Chat Zalo CŨ
+      // (docs/he-thong/18-zalo-chat.md), một hệ khác. Trỏ nó vào đây sẽ dẫn người
+      // đọc tới hướng dẫn của tính năng khác — sai còn tệ hơn để trống.
+      userDoc: null,
+      userDocMienTruVi:
+        "Rollout 11 bậc chưa tới bậc COMPLETE và cờ build-time mặc định TẮT. Trang hướng dẫn viết bây giờ sẽ mô tả một luồng còn đang đổi.",
+      visibility: "internal",
+    },
     e2e: { spec: ".e2e-fleet/specs/openclaw-zalo.spec.ts" },
     risk: "security",
   },
