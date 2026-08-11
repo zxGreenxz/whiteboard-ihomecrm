@@ -9,7 +9,15 @@
 // =============================================
 
 export type CustomerType = 'INDIVIDUAL' | 'ORGANIZATION';
+/** Khớp enum `id_type` trong DB — xem `Database['public']['Enums']['id_type']`. */
+export type IdType = 'CCCD' | 'CMND' | 'PASSPORT' | 'OTHER';
+/**
+ * BẪY TÊN: đây là enum `customer_status_v2` của DB (cột `status_v2`), KHÔNG
+ * phải cột `status`. Bảng `customers` mang cả hai cột với hai enum khác nhau.
+ */
 export type CustomerStatus = 'RENTING' | 'MOVED_OUT' | 'WALK_IN';
+/** Enum `customer_status` của DB — cột `status` (cũ, vẫn còn và vẫn được ghi). */
+export type CustomerStatusV1 = 'PROSPECT' | 'ACTIVE' | 'INACTIVE' | 'BLACKLIST';
 export type StatFilterType = 'ALL' | 'INDIVIDUAL' | 'ORGANIZATION' | 'FOREIGN';
 
 // =============================================
@@ -106,9 +114,21 @@ export interface CustomerFormData {
   email?: string;
   date_of_birth?: string;
   gender?: string;
+  // Cột `customers.id_type` CÓ THẬT trong DB (enum), chỉ thiếu ở kiểu viết tay
+  // này — nên `CreateCustomerDialog` gửi nó xuống mà TypeScript kêu. Cùng vết
+  // với `emergency_contact_*` đã vá trước đó: kiểu tay tụt lại sau schema.
+  id_type?: IdType;
   id_number?: string;
   id_issue_date?: string;
   id_issue_place?: string;
+  // Bốn trường dưới đây CÓ THẬT trong bảng `customers` và `CreateCustomerDialog`
+  // vẫn gửi chúng xuống — chỉ kiểu viết tay này là thiếu. Đã có ở interface
+  // `Customer` phía trên từ lô trước, nhưng lô đó bỏ sót `CustomerFormData`,
+  // mà chính kiểu này mới là thứ đường ghi đi qua.
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relationship?: string;
+  status?: CustomerStatusV1;
   is_foreign: boolean;
   province?: string;
   district?: string;
