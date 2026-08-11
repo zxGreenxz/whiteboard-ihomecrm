@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1594,
+    "sourceCallSites": 1608,
     "catalogFunctions": 1064,
     "schemas": [
       "public",
@@ -9,13 +9,13 @@
     ]
   },
   "counts": {
-    "calledRpcs": 230,
+    "calledRpcs": 238,
     "byRisk": {
-      "normal": 150,
+      "normal": 158,
       "financial": 74,
       "security": 6
     },
-    "securityDefiner": 214
+    "securityDefiner": 222
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1373,6 +1373,26 @@
       ],
       "risk": "normal"
     },
+    "fa_monthly_pnl": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(month date, building_id uuid, building_name text, is_virtual boolean, revenue numeric, expense numeric, net numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useFinancialAnalysis.ts"
+      ],
+      "risk": "normal"
+    },
     "fa_monthly_pnl_accrual": {
       "definitions": [
         {
@@ -1389,6 +1409,7 @@
         }
       ],
       "callers": [
+        "src/hooks/useFinancialAnalysis.ts",
         "src/hooks/useProfitVerification.ts",
         "src/hooks/useShareholderProfit.ts"
       ],
@@ -1421,6 +1442,46 @@
           "schema": "public",
           "args": "p_building_ids uuid[] DEFAULT NULL::uuid[]",
           "returns": "TABLE(building_id uuid, building_name text, total_rooms integer, rooms_available integer, rooms_occupied integer, rooms_reserved integer, rooms_maintenance integer, rooms_unavailable integer, vacancy_loss_month numeric, active_contracts bigint, avg_rent numeric, deposit_held numeric, receivable_total numeric, aging_not_due numeric, aging_1_30 numeric, aging_31_60 numeric, aging_61_90 numeric, aging_over_90 numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useFinancialAnalysis.ts"
+      ],
+      "risk": "normal"
+    },
+    "fa_type_breakdown": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(month date, side text, type_id uuid, type_name text, category text, total_amount numeric, voucher_count bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useFinancialAnalysis.ts"
+      ],
+      "risk": "normal"
+    },
+    "fa_type_breakdown_accrual": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(month date, side text, type_id uuid, type_name text, category text, total_amount numeric, voucher_count bigint)",
           "volatility": "STABLE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
@@ -1942,6 +2003,26 @@
       ],
       "callers": [
         "src/hooks/useNotificationSettings.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_my_organizations": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/contexts/OrganizationContext.tsx"
       ],
       "risk": "normal"
     },
@@ -2860,6 +2941,7 @@
         }
       ],
       "callers": [
+        "src/hooks/useIncomeExpenseTypes.ts",
         "src/hooks/useNotificationSettings.ts"
       ],
       "risk": "normal"
@@ -3294,6 +3376,86 @@
       ],
       "callers": [
         "src/hooks/useTerminationRefund.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_close_preview_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_period_month date, p_building_ids uuid[] DEFAULT NULL::uuid[], p_adjustments jsonb DEFAULT '[]'::jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_close_scopes_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_close_state_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_period_month date",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_reset_checked_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_period_month date, p_reason text, p_idempotency_key text, p_expected_state_hash text, p_expected_snapshot_ids uuid[]",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderProfit.ts"
       ],
       "risk": "normal"
     },

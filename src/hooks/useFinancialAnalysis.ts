@@ -83,7 +83,20 @@ export const useFaMonthlyPnl = (
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
-        () => supabase.rpc(accrual ? "fa_monthly_pnl_accrual" : "fa_monthly_pnl", { p_start_date: batBuoc(start, 'start'), p_end_date: batBuoc(end, 'end'), p_building_ids: normIds(buildingIds) }),
+        // Hai lời gọi tên VIẾT THẲNG thay cho một ternary trên tên hàm. Ternary
+        // giấu tên khỏi ba gate canh biên RPC (`check-rpc-surface`,
+        // `check-rpc-arg-names`, `check-rpc-layer`) vì cả ba tìm chuỗi viết thẳng
+        // trong văn bản — xem `scripts/check-rpc-name-literal.mjs`.
+        () => {
+          const args = {
+            p_start_date: batBuoc(start, 'start'),
+            p_end_date: batBuoc(end, 'end'),
+            p_building_ids: normIds(buildingIds),
+          };
+          return accrual
+            ? supabase.rpc("fa_monthly_pnl_accrual", args)
+            : supabase.rpc("fa_monthly_pnl", args);
+        },
         "Không thể tải P&L theo tháng",
         (r): FaMonthlyPnlRow => ({
           month: String(r.month),
@@ -110,7 +123,16 @@ export const useFaTypeBreakdown = (
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
-        () => supabase.rpc(accrual ? "fa_type_breakdown_accrual" : "fa_type_breakdown", { p_start_date: batBuoc(start, 'start'), p_end_date: batBuoc(end, 'end'), p_building_ids: normIds(buildingIds) }),
+        () => {
+          const args = {
+            p_start_date: batBuoc(start, 'start'),
+            p_end_date: batBuoc(end, 'end'),
+            p_building_ids: normIds(buildingIds),
+          };
+          return accrual
+            ? supabase.rpc("fa_type_breakdown_accrual", args)
+            : supabase.rpc("fa_type_breakdown", args);
+        },
         "Không thể tải cơ cấu thu chi",
         (r): FaTypeBreakdownRow => ({
           month: String(r.month),

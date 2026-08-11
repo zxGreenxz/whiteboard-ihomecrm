@@ -402,6 +402,17 @@ export const useManagerSalaryPayouts = () => {
 
 // --- Canonical V2 close workflow. All calculations and writes stay server-side. ---
 
+/**
+ * Tên sáu RPC chốt lợi nhuận, giữ lại để đọc thành nhóm.
+ *
+ * NHƯNG CHỖ GỌI PHẢI VIẾT THẲNG TÊN. Ba gate canh biên RPC
+ * (`check-rpc-surface`, `check-rpc-arg-names`, `check-rpc-layer`) tìm tên bằng
+ * chuỗi viết thẳng trong văn bản, nên `supabase.rpc(PROFIT_CLOSE_RPC.state, …)`
+ * vô hình với cả ba — và năm RPC này là ĐƯỜNG TIỀN. Đo 12/08/2026 trước khi sửa:
+ * chúng không hề có mặt trong `contracts/surfaces/rpc-surface.json`.
+ *
+ * `scripts/check-rpc-name-literal.mjs` canh để chuyện đó không tái diễn.
+ */
 export const PROFIT_CLOSE_RPC = {
   scopes: "profit_close_scopes_v2",
   state: "profit_close_state_v2",
@@ -471,7 +482,7 @@ export const useProfitCloseOrganizations = () => {
   return useQuery({
     queryKey: ["profit-close-scopes"],
     queryFn: async (): Promise<ProfitCloseOrganizationScope[]> => {
-      const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.scopes);
+      const { data, error } = await supabase.rpc("profit_close_scopes_v2");
       if (error) throw error;
       const rows = jsonArray(data, "organizations");
       return rows.map((row: any) => ({
@@ -544,7 +555,7 @@ export const useProfitCloseState = (
     queryKey: ["profit-close-state", organizationId, periodMonth],
     enabled: !!organizationId && !!periodMonth,
     queryFn: async (): Promise<ProfitCloseState> => {
-      const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.state, {
+      const { data, error } = await supabase.rpc("profit_close_state_v2", {
         p_organization_id: batBuoc(organizationId, 'organizationId'),
         p_period_month: batBuoc(periodMonth, 'periodMonth'),
       });
@@ -717,7 +728,7 @@ export const useProfitClosePreview = (
       !!periodMonth &&
       (buildingIds === null || buildingIds.length > 0),
     queryFn: async (): Promise<ProfitClosePreview> => {
-      const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.preview, {
+      const { data, error } = await supabase.rpc("profit_close_preview_v2", {
         p_organization_id: batBuoc(organizationId, 'organizationId'),
         p_period_month: batBuoc(periodMonth, 'periodMonth'),
         p_building_ids: buildingIds ?? undefined,
@@ -890,7 +901,7 @@ export const useResetProfitPeriod = () => {
       if (input.reason.trim().length < 8 || input.reason.trim().length > 1000) {
         throw new Error("Lý do đặt lại phải có 8–1000 ký tự");
       }
-      const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.reset, {
+      const { data, error } = await supabase.rpc("profit_reset_checked_v2", {
         p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,
         p_reason: input.reason.trim(),
