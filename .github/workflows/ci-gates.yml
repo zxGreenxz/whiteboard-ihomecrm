@@ -616,14 +616,6 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-permission-catalog.mjs
 
-      # Bảng hub realtime lắng nghe mà KHÔNG nằm trong publication
-      # `supabase_realtime` = subscribe câm: Supabase không đẩy sự kiện nào,
-      # không lỗi, không cảnh báo, giao diện chỉ lặng lẽ ngừng tự cập nhật.
-      # Án lệ: contract_terminations/contract_transfers từng vắng ở cả hai nơi.
-      - name: Bảng realtime hub lắng nghe đều được publish
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-realtime-descriptors.mjs
 
       # Ledger supabase_migrations phải ĐỨNG YÊN: forward-only lane cố ý không
       # backfill nó, nên mọi thay đổi nghĩa là ai đó đã dùng đường khác. Quan
@@ -841,6 +833,44 @@ jobs:
   # phải bỏ sót: nó cần binary gitleaks, mà binary đó đã được tải trong job
   # `security-gates`. Tải lần thứ hai vừa lãng phí vừa dễ lệch version — chú
   # thích tại chỗ đó đã cân nhắc và kết luận vậy từ trước. Ở đây chỉ ghi con trỏ.
+  # ─────────────────────────────────────────────────────────────────────────
+  # Hợp đồng realtime: bảng hub lắng nghe phải nằm trong publication thật.
+  #
+  # VÌ SAO TÁCH RA KHỎI `security-gates` (11/08/2026)
+  #   Bước này trước nằm trong security-gates, mà job đó có
+  #   `if: github.ref == refs/heads/main && (push || workflow_dispatch)`. Nghĩa là
+  #   trên PULL REQUEST nó KHÔNG BAO GIỜ chạy — phép kiểm chỉ nói cho ta biết sau
+  #   khi thay đổi đã vào main. Với một lỗi IM LẶNG (subscribe câm: Supabase không
+  #   đẩy sự kiện, không lỗi, không cảnh báo, giao diện chỉ ngừng tự cập nhật) thì
+  #   biết sau khi merge gần như là không biết.
+  #
+  #   Đây cũng không phải phép kiểm BẢO MẬT — nó là hợp đồng đúng/sai. Nằm trong
+  #   security-gates chỉ vì ở đó sẵn có PAT.
+  #
+  # THIẾU PAT ⇒ ĐỎ, không phải bỏ qua
+  #   Repo này private và mọi PR đến từ nhánh trong CÙNG repo, nên secret luôn có.
+  #   Không có PAT nghĩa là secret bị gỡ hoặc hết hạn — đó là chuyện phải biết,
+  #   không phải điều kiện bình thường để im lặng cho qua. Script tự thoát 3.
+  realtime-contract-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+
+      - name: Cài phụ thuộc
+        run: npm ci
+
+      - name: Bảng realtime hub lắng nghe đều được publish
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-realtime-descriptors.mjs
+
   knowledge-freshness-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 10

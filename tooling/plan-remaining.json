@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 53
+    "stillMissing": 52
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -649,10 +649,12 @@
       {
         "deliverable": "P1-14: Tách realtime descriptors/invalidation theo domain + orchestrator mỏng + contract test publication/query ownership",
         "planRef": "Mục 42 (dòng 2661)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "L",
         "touchesOpenClaw": false,
-        "remaining": "Tách descriptor + invalidation theo domain, giữ một orchestrator mỏng. Cân nhắc cho gate realtime chạy cả trên PR (hiện chỉ chạy trên main có PAT)."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "(a) Tach descriptor theo mien DA XONG tu truoc: 3 file mien (contracts/finance/operations) + index gom + types, hub 168 dong. Ghim ranh gioi bang 6 test do duoc: hub KHONG nhac ten bang nghiep vu nao, KHONG chua query key (tru business-performance — ngoai le KHAI TUONG MINH vi hub gom nhieu bang vao mot luot lam moi bao cao), va duoi 260 dong. Ranh gioi nay truoc do khong co gi cuong che: them mot if(entry.table===...) vao hub la cach sua nhanh nhat khi voi, va sau vai lan descriptor thanh NUA nguon su that — loai te nhat. (b) Gate realtime tren PR: check-realtime-descriptors truoc nam trong security-gates, ma job do co if github.ref==main && (push||dispatch) — tuc tren PULL REQUEST no KHONG BAO GIO chay. Voi mot loi IM LANG (subscribe cam) thi biet sau khi merge gan nhu la khong biet. Tach thanh job realtime-contract-gates KHONG rang buoc ref => chay ca PR lan push. Thieu PAT van exit 3 (repo private, PR den tu nhanh cung repo nen secret luon co; thieu PAT nghia la secret bi go/het han — phai biet)."
       },
       {
         "deliverable": "P1-16: Runtime, package, test và known-gap manifests machine-readable, mọi exemption có expiry",
