@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-11T01:47:32.689Z",
+  "generatedAt": "2026-08-11T02:04:31.122Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
-    "unknown": 78,
-    "catalog-proven": 222,
+    "unknown": 77,
+    "catalog-proven": 224,
     "superseded": 15
   },
   "duplicateVersions": 40,
@@ -7573,10 +7573,20 @@
       "name": "dong_nhanh_null_org_va_so_khai_toan_he",
       "scheme": "timestamp14",
       "sha256": "a0f3545efcb2d606a1be5fef245413611cf0be8a0c5147b813f9bb6acb3cd0c8",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.org_null_is_global"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:app_private.org_null_is_global"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260809030000_gd9_rpc_to_chuc_cua_toi.sql",
+      "version": "20260809030000",
+      "name": "gd9_rpc_to_chuc_cua_toi",
+      "scheme": "timestamp14",
+      "sha256": "a63e5a4f79732712d6b76622c685c6df0f257e5af0a44689711c1b5ca5302b84",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.get_my_organizations"
       ]
     },
     {

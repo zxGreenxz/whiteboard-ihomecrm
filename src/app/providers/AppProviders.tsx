@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 import { NotificationsRealtime } from "@/hooks/useNotifications";
+import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import { AuthCacheSync } from "./AuthCacheSync";
 import { QueryProvider } from "./QueryProvider";
 
@@ -44,7 +45,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
               mỗi thông báo của một người sẽ đánh thức tất cả. Kênh này lọc
               user_id=eq.<uid> ngay ở server. */}
           <NotificationsRealtime />
-          {children}
+          {/* Khái niệm "tổ chức hiện tại" (GĐ9). Nằm TRONG QueryProvider vì nó
+              dùng useQuery, và trong ErrorBoundary vì RPC hỏng thì chỉ mất phần
+              hiển thị tổ chức chứ không được hạ cả cây. Đặt sau các listener để
+              chúng không phải chờ một lần gọi mạng nữa mới đăng ký được. */}
+          <OrganizationProvider>{children}</OrganizationProvider>
         </ErrorBoundary>
       </TooltipProvider>
     </QueryProvider>
