@@ -1,8 +1,27 @@
 # Baseline schema — cách khôi phục
 
-> **Đã diễn tập thật ngày 07/08/2026** trên một Supabase project trắng
-> (PostgreSQL 17.6, cùng bản chính với production). Kết quả cuối:
-> **bảng 439/439 · view 14/14 · policy 1193/1193 · trigger 493/493.**
+> **ĐÍNH CHÍNH 11/08/2026 — đọc kỹ hai con số dưới đây, chúng nói hai chuyện khác nhau.**
+>
+> **Đã CHỤP:** bảng 439 · view 14 · policy 1193 · trigger 493
+> (`manifest.json → counts`, chụp 06/08/2026 từ production).
+>
+> **Đã RESTORE THỬ:** bảng 303 · hàm 948 · policy 803, trên **PostgreSQL TRẦN**
+> (`manifest.json → restoreDrill`, 06/08/2026), 817 lỗi — tất cả do target thiếu
+> schema `auth`/`extensions` và các role do migration trước tạo. Điểm quan trọng
+> nhất ĐÃ đạt: **0 partition runtime rò rỉ** vào baseline.
+>
+> **CHƯA có bản ghi nào** về một lần restore vào Supabase project THẬT. Chính
+> `manifest.restoreDrill.whyNotVerifiedYet` nói vậy: cần tạo project mới, tốn
+> quota/chi phí.
+>
+> Bản README trước ghi *"đã diễn tập thật ngày 07/08 trên Supabase project trắng,
+> kết quả 439/439 · 14/14 · 1193/1193 · 493/493"*. Bốn con số đó là **số ĐÃ CHỤP**
+> chép nguyên từ `counts`, không phải kết quả restore — và không có bản ghi nào
+> của lần diễn tập 07/08 để đối chiếu. Đây là loại sai đắt nhất trong tài liệu khôi
+> phục: nó làm người đọc tin đường lùi đã được chứng minh.
+>
+> `npm run gate:baseline-doc` nay đối chiếu từng con số ở đây với đúng trường trong
+> manifest, nên hai bên không thể lệch lần nữa.
 
 Baseline này là đường dựng lại môi trường **thay cho** việc replay 640 file
 migration (vốn không chạy được). Nó chứa **schema, không chứa dữ liệu**.

@@ -111,5 +111,13 @@ scripts/.backfill-deposit-plan.json
 .ua/diff-overlay.json
 .clone-org-snapshots/
 
-# Baseline schema draft — chưa verify, không dùng để restore (xem manifest.json)
+# Baseline schema dump — KHÔNG commit (nhiều MB, sinh lại được).
+#
+# Chú thích cũ ở đây ghi "chưa verify, không dùng để restore", mâu thuẫn với
+# supabase/baseline/README.md. Bản ghi đúng nằm ở manifest.json:
+# đã restore thử trên PostgreSQL TRẦN (303 bảng, 817 lỗi đều do target thiếu
+# schema auth/extensions), CHƯA restore vào Supabase project thật.
+#
+# Sinh lại: node scripts/capture-schema-baseline.mjs (cần SUPABASE_PAT).
+# Fresh clone KHÔNG có file này — xem known-gap baseline-schema-khong-trong-repo.
 supabase/baseline/schema.sql

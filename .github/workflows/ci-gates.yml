@@ -127,6 +127,7 @@ jobs:
           node scripts/check-capability-surfaces.mjs
           node scripts/check-route-permission-drift.mjs
           node scripts/check-capability-docs.mjs
+          node scripts/check-baseline-doc.mjs
           node scripts/check-route-guards.mjs
           node scripts/check-test-matrix.mjs
           node scripts/check-workflow-paths.mjs
