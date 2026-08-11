@@ -1,4 +1,23 @@
 {
+  "$comment": [
+    "File này KHÔNG compile gì: `files: []` + chỉ trỏ sang hai project con.",
+    "Nó tồn tại để (a) khai project references cho tsc --build, và (b) cho editor",
+    "phân giải alias `@/*` khi mở một file chưa thuộc project nào.",
+    "",
+    "ĐÃ XOÁ 08/08/2026 — allowJs, noImplicitAny:false, noUnusedLocals:false,",
+    "noUnusedParameters:false, strictNullChecks:false. Cả năm đều TRƠ với việc biên",
+    "dịch: tsconfig.app.json không extends file này, nó tự khai cờ của mình, và",
+    "`tsc -p tsconfig.app.json --showConfig` xác nhận allowJs không có mặt.",
+    "",
+    "Nhưng trơ không có nghĩa là vô hại. Cờ `false` khai TƯỜNG MINH ở cha là một",
+    "cái bẫy đã sập thật trong repo này: `strict: true` ở project con KHÔNG thắng",
+    "được `noImplicitAny: false` khai tường minh ở cha — con kế thừa cờ hẹp hơn và",
+    "im lặng. Ngày nào có người cho một tsconfig extends file này, năm cờ đó sẽ âm",
+    "thầm nới lỏng đúng thứ họ tưởng vừa siết. Xoá đi thì cái bẫy không còn chỗ đặt.",
+    "",
+    "Cờ THẬT của app nằm ở tsconfig.app.json. Đảo strict ở tsconfig.strict-islands.json",
+    "(extends app, không extends file này)."
+  ],
   "files": [],
   "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }],
   "compilerOptions": {
@@ -6,11 +25,6 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "noImplicitAny": false,
-    "noUnusedParameters": false,
-    "skipLibCheck": true,
-    "allowJs": true,
-    "noUnusedLocals": false,
-    "strictNullChecks": false
+    "skipLibCheck": true
   }
 }
