@@ -21,6 +21,26 @@ const runtimeSpies = vi.hoisted(() => {
   };
 });
 
+/**
+ * Hình dạng TỐI THIỂU của kết quả react-query mà `useNetworkCenter` đọc tới.
+ * Khai tường minh vì object literal toàn `undefined`/`null` không có ngữ cảnh
+ * kiểu thì mọi trường đều rơi về `any` ngầm.
+ */
+type QueryStub = {
+  data: unknown;
+  error: unknown;
+  isError: boolean;
+  isLoading: boolean;
+  isSuccess: boolean;
+  refetch: () => Promise<void>;
+};
+
+type InfiniteQueryStub = QueryStub & {
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => Promise<void>;
+};
+
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
   return {
@@ -42,7 +62,7 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: (options: {
     enabled?: boolean;
     queryFn?: () => unknown;
-  }) => {
+  }): QueryStub => {
     runtimeSpies.queryOptions.push(options);
     if (options.enabled) {
       try {
@@ -67,7 +87,7 @@ vi.mock("@tanstack/react-query", () => ({
   useInfiniteQuery: (options: {
     enabled?: boolean;
     queryFn?: () => unknown;
-  }) => {
+  }): InfiniteQueryStub => {
     runtimeSpies.queryOptions.push(options);
     if (options.enabled) {
       try {

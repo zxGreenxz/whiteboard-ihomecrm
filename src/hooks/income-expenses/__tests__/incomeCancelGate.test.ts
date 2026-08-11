@@ -79,7 +79,11 @@ describe("incomeCancelGate", () => {
   it("chưa có câu trả lời (đang tải / phiếu tổ chức khác) thì KHÔNG mờ nút", () => {
     // Reader cố ý bỏ qua im lặng phiếu ngoài tổ chức. Mờ nút lúc mạng chậm là
     // chặn oan người có quyền; writer mới là chốt chặn cuối.
-    for (const r of [undefined, null]) {
+    const missingAnswers: Array<IncomeCancelEligibility | null | undefined> = [
+      undefined,
+      null,
+    ];
+    for (const r of missingAnswers) {
       const gate = incomeCancelGate(r);
       expect(gate.canCancel).toBe(true);
       expect(gate.reason).toBeNull();

@@ -129,7 +129,7 @@ function contractCustomerArb(isRep: boolean): fc.Arbitrary<ContractCustomer> {
     customer_id: uuidArb,
     full_name: fc.constantFrom('Nguyen Van A', 'Tran Thi B', 'Le Van C', 'Pham Thi D', 'Hoang Van E'),
     phone: fc.constantFrom('0901234567', '0912345678', '0923456789', '0934567890', '0945678901'),
-  }).map(({ id, contract_id, customer_id, full_name, phone }) => ({
+  }).map(({ id, contract_id, customer_id, full_name, phone }): ContractCustomer => ({
     id,
     contract_id,
     customer_id,
@@ -156,7 +156,7 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
     start_date: dateStringArb(),
     end_date: dateStringArb(),
     repCustomer: contractCustomerArb(true),
-  }).map(({ id, status, contract_number, room_id, building_id, building_type, room_name, start_date, end_date, repCustomer }) => ({
+  }).map(({ id, status, contract_number, room_id, building_id, building_type, room_name, start_date, end_date, repCustomer }): ContractWithRelations => ({
     id,
     user_id: '00000000-0000-0000-0000-000000000000',
     room_id,

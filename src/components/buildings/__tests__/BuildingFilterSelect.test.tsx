@@ -11,7 +11,7 @@ vi.mock("@/hooks/useBuildings", () => ({
 }));
 
 vi.mock("@/components/ui/searchable-select", () => ({
-  SearchableSelect: () => null,
+  SearchableSelect: (): null => null,
 }));
 
 import { BuildingFilterSelect } from "../BuildingFilterSelect";

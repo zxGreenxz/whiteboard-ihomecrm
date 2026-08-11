@@ -20,6 +20,31 @@ const spies = vi.hoisted(() => ({
   }>,
 }));
 
+/**
+ * Hình dạng TỐI THIỂU của kết quả react-query mà `useNetworkCenter` đọc tới.
+ * Khai tường minh vì object literal toàn `undefined`/`null` không có ngữ cảnh
+ * kiểu thì mọi trường đều rơi về `any` ngầm.
+ */
+type QueryStub = {
+  data: unknown;
+  error: unknown;
+  hasNextPage: boolean;
+  isError: boolean;
+  isFetchingNextPage: boolean;
+  isLoading: boolean;
+  isSuccess: boolean;
+  fetchNextPage: () => Promise<void>;
+  refetch: () => Promise<void>;
+};
+
+/** Đúng những cột `useNetworkCenter` đọc từ `useBuildings` (xem `physicalBuildings`). */
+type BuildingRowStub = {
+  id: string;
+  name: string;
+  rooms_count?: number | null;
+  organization_id?: string | null;
+};
+
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
   return {
@@ -35,7 +60,7 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("@tanstack/react-query", () => {
-  const capture = (options: Record<string, unknown>) => {
+  const capture = (options: Record<string, unknown>): QueryStub => {
     spies.queryOptions.push(options);
     return {
       data: undefined,
@@ -68,7 +93,10 @@ vi.mock("@/lib/network-center/runtime", async (importOriginal) => {
 });
 
 vi.mock("@/hooks/useBuildings", () => ({
-  useBuildings: () => ({ data: [], isLoading: false }),
+  useBuildings: (): { data: BuildingRowStub[]; isLoading: boolean } => ({
+    data: [],
+    isLoading: false,
+  }),
 }));
 
 vi.mock("@/hooks/useMyPermissions", () => ({

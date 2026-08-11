@@ -3,6 +3,7 @@ import {
   ownCashAccountId,
   resolveAccountIdForMethod,
   resolveTmAccountId,
+  type BuildingAccountDefaults,
   type CashAccountLite,
 } from '../cashAccount';
 
@@ -83,13 +84,21 @@ describe('resolveAccountIdForMethod (TM/TK/TT)', () => {
       ...ACCOUNTS,
       { id: 'b-102', name: '102LVT', user_id: TAM, is_default: false },
     ];
-    const bld = { name: '102LVT', default_account_id_tk: null, default_account_id_tt: null };
+    const bld: BuildingAccountDefaults = {
+      name: '102LVT',
+      default_account_id_tk: null,
+      default_account_id_tt: null,
+    };
     expect(resolveAccountIdForMethod('TK', accts, JOEY, bld)).toBe('b-102');
     expect(resolveAccountIdForMethod('TT', accts, JOEY, bld)).toBe('b-102');
   });
 
   it('không có gì để fallback → ""', () => {
-    const bld = { name: 'TòaLạ', default_account_id_tk: null, default_account_id_tt: null };
+    const bld: BuildingAccountDefaults = {
+      name: 'TòaLạ',
+      default_account_id_tk: null,
+      default_account_id_tt: null,
+    };
     expect(resolveAccountIdForMethod('TK', ACCOUNTS, JOEY, bld)).toBe('');
     expect(resolveAccountIdForMethod('TT', ACCOUNTS, JOEY, null)).toBe('');
   });

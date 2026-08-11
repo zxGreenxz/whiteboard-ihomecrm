@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { incomeExpenseFormSchema } from '../incomeExpenseValidation';
+import {
+  incomeExpenseFormSchema,
+  type IncomeExpenseFormValues,
+} from '../incomeExpenseValidation';
 
 /**
  * Feature: thu-chi-reimplementation, Property 6: Zod validation round-trip
@@ -101,7 +104,7 @@ describe('Property 6: Zod validation round-trip', () => {
  */
 
 /** Helper: build a valid base form object for mutation */
-function makeValidBase() {
+function makeValidBase(): IncomeExpenseFormValues {
   return {
     type: 'INCOME' as const,
     name: 'Test voucher',
@@ -112,7 +115,9 @@ function makeValidBase() {
     payer_name: 'Nguyen Van A',
     account_id: '00000000-0000-0000-0000-000000000003',
     voucher_date: '2024-01-15',
-    notes: null,
+    // `notes` KHÔNG tồn tại trong `incomeExpenseFormSchema` (chỉ có ở
+    // `incomeExpenseBatchFormSchema`) — fixture cũ dựng một trường mà mã sản
+    // xuất không hề nhìn thấy, zod lặng lẽ vứt đi.
     business_result_accounting: false,
     attachments: [],
     items: [
@@ -154,7 +159,7 @@ describe('Property 7: Zod validation rejects invalid input', () => {
       fc.property(
         fc.constant(null),
         () => {
-          const input = { ...makeValidBase(), items: [] };
+          const input: IncomeExpenseFormValues = { ...makeValidBase(), items: [] };
           const result = incomeExpenseFormSchema.safeParse(input);
           expect(result.success).toBe(false);
         },
@@ -168,7 +173,7 @@ describe('Property 7: Zod validation rejects invalid input', () => {
 
     fc.assert(
       fc.property(badQuantityArb, (qty) => {
-        const input = {
+        const input: IncomeExpenseFormValues = {
           ...makeValidBase(),
           items: [
             {
@@ -176,6 +181,11 @@ describe('Property 7: Zod validation rejects invalid input', () => {
               description: null,
               quantity: qty,
               unit_price: 100,
+              // `start_date`/`end_date` là trường BẮT BUỘC của `itemSchema`; thiếu
+              // chúng thì phiếu hỏng vì lý do khác, không phải vì `quantity` — test
+              // sẽ xanh mà không hề chứng minh điều nó tuyên bố.
+              start_date: '2024-01-15',
+              end_date: '2024-01-15',
             },
           ],
         };
@@ -191,7 +201,7 @@ describe('Property 7: Zod validation rejects invalid input', () => {
 
     fc.assert(
       fc.property(badPriceArb, (price) => {
-        const input = {
+        const input: IncomeExpenseFormValues = {
           ...makeValidBase(),
           items: [
             {
@@ -199,6 +209,10 @@ describe('Property 7: Zod validation rejects invalid input', () => {
               description: null,
               quantity: 1,
               unit_price: price,
+              // Xem ghi chú ở test `quantity < 1`: thiếu ngày thì phiếu hỏng vì
+              // ngày, không phải vì `unit_price`.
+              start_date: '2024-01-15',
+              end_date: '2024-01-15',
             },
           ],
         };
@@ -214,7 +228,7 @@ describe('Property 7: Zod validation rejects invalid input', () => {
       fc.property(
         fc.constant(null),
         () => {
-          const input = {
+          const input: IncomeExpenseFormValues = {
             ...makeValidBase(),
             items: [
               {
@@ -222,6 +236,10 @@ describe('Property 7: Zod validation rejects invalid input', () => {
                 description: null,
                 quantity: 1,
                 unit_price: 100,
+                // Xem ghi chú ở test `quantity < 1`: thiếu ngày thì phiếu hỏng vì
+                // ngày, không phải vì `income_expense_type_id` rỗng.
+                start_date: '2024-01-15',
+                end_date: '2024-01-15',
               },
             ],
           };

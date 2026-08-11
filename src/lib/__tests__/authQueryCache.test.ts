@@ -47,7 +47,7 @@ function addPendingMutation(
     client,
     {
       mutationKey,
-      mutationFn: async () => undefined,
+      mutationFn: async (): Promise<void> => undefined,
     },
     {
       context: undefined,
@@ -77,7 +77,7 @@ describe("syncAuthQueryCache", () => {
     client.setQueryData(["auth", "profile"], "profile-a");
     client.getMutationCache().build(client, {
       mutationKey: ["save-report"],
-      mutationFn: async () => undefined,
+      mutationFn: async (): Promise<void> => undefined,
     });
 
     const dashboardObserver = new QueryObserver(client, {
@@ -333,7 +333,7 @@ describe("syncAuthQueryCache", () => {
     client.setQueryData(["dashboard"], "bootstrap-data");
     client.getMutationCache().build(client, {
       mutationKey: ["bootstrap-mutation"],
-      mutationFn: async () => undefined,
+      mutationFn: async (): Promise<void> => undefined,
     });
 
     syncAuthQueryCache(client, "INITIAL_SESSION", sessionA, null);
@@ -357,7 +357,7 @@ describe("syncAuthQueryCache", () => {
     client.setQueryData(["dashboard"], "bootstrap-data");
     client.getMutationCache().build(client, {
       mutationKey: ["bootstrap-mutation"],
-      mutationFn: async () => undefined,
+      mutationFn: async (): Promise<void> => undefined,
     });
     const dashboardObserver = new QueryObserver(client, {
       queryKey: ["dashboard"],

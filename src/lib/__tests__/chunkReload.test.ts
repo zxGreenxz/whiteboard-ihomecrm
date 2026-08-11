@@ -68,7 +68,7 @@ function stubSessionStorage(opts: { throwOnWrite?: boolean; seed?: Record<string
       if (opts.throwOnWrite) throw new Error('QuotaExceeded (privacy mode)');
       m.set(k, v);
     },
-    removeItem: (k: string) => void m.delete(k),
+    removeItem: (k: string): void => void m.delete(k),
     clear: () => m.clear(),
   };
 }

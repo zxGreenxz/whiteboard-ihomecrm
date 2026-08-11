@@ -8,6 +8,7 @@ import {
   normalizeUnallocatedDisposition,
   resolveProfitCloseOrganizationId,
   validateProfitCloseDrafts,
+  type ProfitCloseDraft,
   type ProfitCloseDraftMap,
 } from "@/lib/profitClose";
 
@@ -107,7 +108,7 @@ describe("profit close adjustment validation", () => {
   });
 
   it("requires an overall reason only for reclose", () => {
-    const drafts = {
+    const drafts: ProfitCloseDraftMap = {
       b1: {
         adjustmentAmount: 0,
         adjustmentReason: "",
@@ -168,12 +169,12 @@ describe("profit close adjustment validation", () => {
   });
 
   it("blocks a material residual without disposition and a valid reason", () => {
-    const base = {
+    const base: ProfitCloseDraft = {
       adjustmentAmount: 0,
       adjustmentReason: "",
       unallocatedDisposition: null,
       unallocatedDispositionReason: "",
-    } as const;
+    };
     expect(
       validateProfitCloseDrafts(["b1"], { b1: base }, {
         reclose: false,

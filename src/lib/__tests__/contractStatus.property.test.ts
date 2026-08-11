@@ -42,7 +42,7 @@ function contractArb(): fc.Arbitrary<Contract> {
     status: contractStatusArb,
     end_date: dateOffsetArb(-365, 365),
     expected_move_out_date: expectedMoveOutArb,
-  }).map(({ status, end_date, expected_move_out_date }) => ({
+  }).map(({ status, end_date, expected_move_out_date }): Contract => ({
     id: '00000000-0000-0000-0000-000000000000',
     user_id: '00000000-0000-0000-0000-000000000000',
     room_id: null,

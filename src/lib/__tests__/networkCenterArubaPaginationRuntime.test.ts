@@ -9,12 +9,39 @@ const spies = vi.hoisted(() => ({
   listArubaPage: vi.fn(async () => ({ items: [], nextCursor: null })),
 }));
 
+/**
+ * Hình dạng TỐI THIỂU của kết quả react-query mà `useNetworkCenter` đọc tới.
+ * Khai tường minh vì object literal toàn `undefined`/`null` không có ngữ cảnh
+ * kiểu thì mọi trường đều rơi về `any` ngầm.
+ */
+type QueryStub = {
+  data: unknown;
+  error: unknown;
+  isError: boolean;
+  isLoading: boolean;
+  isSuccess: boolean;
+  refetch: () => Promise<void>;
+  /** Mock trả lại chính options nhận được để test soi cờ gate. */
+  enabled?: boolean;
+};
+
+type InfiniteQueryStub = {
+  data: unknown;
+  error: unknown;
+  isError: boolean;
+  isLoading: boolean;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => Promise<void>;
+  refetch: () => Promise<void>;
+};
+
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
   return {
     ...actual,
     useCallback: <T>(callback: T) => callback,
-    useEffect: () => undefined,
+    useEffect: (): void => undefined,
     useMemo: <T>(factory: () => T) => factory(),
     useRef: <T>(initialValue: T) => ({ current: initialValue }),
     useState: <T>(initialValue: T) => [initialValue, vi.fn()] as const,
@@ -23,7 +50,7 @@ vi.mock("react", async (importOriginal) => {
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn(async () => undefined) }),
-  useQuery: (options: { enabled?: boolean }) => ({
+  useQuery: (options: { enabled?: boolean }): QueryStub => ({
     data: undefined,
     error: null,
     isError: false,
@@ -36,7 +63,7 @@ vi.mock("@tanstack/react-query", () => ({
     enabled?: boolean;
     queryKey?: readonly unknown[];
     maxPages?: number;
-  }) => {
+  }): InfiniteQueryStub => {
     spies.infiniteOptions.push(options);
     return {
       data: undefined,

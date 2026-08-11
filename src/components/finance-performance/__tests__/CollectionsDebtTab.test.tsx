@@ -59,7 +59,17 @@ const zeroReceivableSnapshot: BusinessPerformanceSnapshotRow = {
   aging_over_90: 0,
 };
 
-function query(data: BusinessPerformanceSnapshotRow[]) {
+interface MockedQueryResult<T> {
+  data: T[];
+  error: unknown;
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
+function query(
+  data: BusinessPerformanceSnapshotRow[],
+): MockedQueryResult<BusinessPerformanceSnapshotRow> {
   return {
     data,
     error: null,
@@ -69,7 +79,7 @@ function query(data: BusinessPerformanceSnapshotRow[]) {
   };
 }
 
-function dataQuery<T>(data: T[]) {
+function dataQuery<T>(data: T[]): MockedQueryResult<T> {
   return {
     data,
     error: null,

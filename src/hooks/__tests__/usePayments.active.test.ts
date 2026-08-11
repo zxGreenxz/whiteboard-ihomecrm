@@ -71,11 +71,14 @@ beforeEach(() => {
 
 describe("active payment queries", () => {
   it("paginates the full list and excludes reversed payments", async () => {
-    const activeRows = Array.from({ length: 1001 }, (_, index) => ({
-      id: `active-${index}`,
-      payment_date: "2026-07-01",
-      reversed_at: null,
-    }));
+    const activeRows = Array.from(
+      { length: 1001 },
+      (_, index): Record<string, unknown> => ({
+        id: `active-${index}`,
+        payment_date: "2026-07-01",
+        reversed_at: null,
+      }),
+    );
     const builder = makeQueryBuilder([
       ...activeRows,
       { id: "reversed", reversed_at: "2026-07-21T00:00:00Z" },

@@ -298,7 +298,7 @@ vi.mock("@/hooks/useBuildings", () => ({
       ],
       isLoading: false,
       isError: false,
-      error: null,
+      error: null as unknown,
       refetch: vi.fn(),
     };
   },
@@ -318,7 +318,7 @@ vi.mock("@/hooks/useIsAdmin", () => ({
 vi.mock("@/hooks/useMyPermissions", () => ({
   useMyPermissions: () => {
     harness.legacyAuthorizationCalls += 1;
-    return { data: [], isLoading: false, isError: false };
+    return { data: [] as unknown[], isLoading: false, isError: false };
   },
 }));
 

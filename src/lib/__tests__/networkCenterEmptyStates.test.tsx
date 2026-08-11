@@ -43,8 +43,8 @@ function controllerStub(fleet: NetworkBuilding[]): NetworkCenterController {
     isDemo: false,
     canExecute: false,
     executeDisabledMessage: "Tài khoản chỉ có quyền xem.",
-    acknowledgeIncident: async () => undefined,
-    updateSettings: async () => undefined,
+    acknowledgeIncident: async (): Promise<void> => undefined,
+    updateSettings: async (): Promise<void> => undefined,
   } as unknown as NetworkCenterController;
 }
 

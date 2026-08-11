@@ -43,6 +43,14 @@ const authorizedBuildings = [
   { id: BUILDING_A_ID, name: "Tòa A" },
 ] as const;
 
+interface MockedQueryResult<T> {
+  data: T;
+  error: unknown;
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
 vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
   useBusinessPerformancePnl: () => ({
     data: hookState.rows,
@@ -51,14 +59,18 @@ vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
     isError: hookState.isError,
     refetch: hookState.refetch,
   }),
-  useBusinessPerformanceReportingRoles: () => ({
+  useBusinessPerformanceReportingRoles: (): MockedQueryResult<
+    BusinessPerformanceReportingRoleRow[]
+  > => ({
     data: hookState.roles,
     error: null,
     isLoading: false,
     isError: false,
     refetch: hookState.gatedRefetch,
   }),
-  useBusinessPerformanceBreakEven: () => ({
+  useBusinessPerformanceBreakEven: (): MockedQueryResult<
+    BusinessPerformanceBreakEvenRow[]
+  > => ({
     data: hookState.breakEven,
     error: null,
     isLoading: false,

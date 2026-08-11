@@ -9,6 +9,7 @@ import {
   flexCancelBlockText,
   flexCancelGate,
   type FlexCancelBlockCode,
+  type FlexCancelEligibility,
 } from "../flexMutations";
 
 const ALL_CODES: FlexCancelBlockCode[] = [
@@ -50,7 +51,11 @@ describe("FLEX_CANCEL_BLOCK_TEXT", () => {
 describe("flexCancelGate", () => {
   it("chưa có câu trả lời (đang tải / server bỏ qua id) thì KHÔNG mờ nút", () => {
     // Mờ nút lúc mạng chậm là chặn oan người có quyền.
-    for (const row of [undefined, null]) {
+    const missingAnswers: Array<FlexCancelEligibility | null | undefined> = [
+      undefined,
+      null,
+    ];
+    for (const row of missingAnswers) {
       const gate = flexCancelGate(row);
       expect(gate.canCancel).toBe(true);
       expect(gate.useFlexWriter).toBe(false);

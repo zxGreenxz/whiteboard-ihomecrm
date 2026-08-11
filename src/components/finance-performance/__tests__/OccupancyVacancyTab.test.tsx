@@ -3,6 +3,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BusinessPerformanceInventoryHistoryRow } from "@/hooks/reports/useBusinessPerformanceGatedData";
+import type { BusinessPerformanceFilters } from "@/lib/businessPerformance";
 
 const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
@@ -12,13 +13,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("recharts", () => ({
-  CartesianGrid: () => null,
-  Line: () => null,
-  LineChart: () => null,
-  ResponsiveContainer: () => null,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
+  CartesianGrid: (): null => null,
+  Line: (): null => null,
+  LineChart: (): null => null,
+  ResponsiveContainer: (): null => null,
+  Tooltip: (): null => null,
+  XAxis: (): null => null,
+  YAxis: (): null => null,
 }));
 
 vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
@@ -30,7 +31,7 @@ vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
 
 import { OccupancyVacancyTab } from "../OccupancyVacancyTab";
 
-const filters = {
+const filters: BusinessPerformanceFilters = {
   month: "2026-02",
   periodStart: "2026-02-01",
   periodEnd: "2026-02-28",
@@ -44,7 +45,15 @@ const filters = {
   organizationId: "organization-a",
 };
 
-function query(data: unknown) {
+interface MockedQueryResult {
+  data: unknown;
+  error: unknown;
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
+function query(data: unknown): MockedQueryResult {
   return {
     data,
     error: null,
@@ -54,7 +63,7 @@ function query(data: unknown) {
   };
 }
 
-function cachedError(data: unknown, error: Error) {
+function cachedError(data: unknown, error: Error): MockedQueryResult {
   return {
     ...query(data),
     isError: true,

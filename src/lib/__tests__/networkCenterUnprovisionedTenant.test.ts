@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
+import type {
+  NetworkCenterBuildingDto,
+  NetworkCenterFleetItemDto,
+} from "@/lib/network-center/dto";
 import { parseNetworkCenterBuilding } from "@/lib/network-center/dto";
 import { SupabaseNetworkCenterRepository } from "@/lib/network-center/supabaseRepository";
 
@@ -20,7 +24,19 @@ const PROVISIONED_BUILDING_ID = "59c6fc2c-2369-4ec8-b253-1ac64abb2f45";
 const DENIED_BUILDING_ID = "1eae0e82-9c58-4dba-aeb4-13ade8e1a146";
 const ROUTER_ID = "f375a073-3e7f-4b17-9e4f-b1d63298a64d";
 
-function unprovisionedBuildingPayload(buildingId = UNPROVISIONED_BUILDING_ID) {
+/**
+ * Hình dạng WIRE (đầu vào của `buildingSchema`), không phải hình dạng đã parse:
+ * toà chưa provisioning trả về `settings` là object TOÀN NULL chứ không phải
+ * `null`. `NetworkCenterBuildingDto` là kiểu ĐẦU RA (đã transform về `null`),
+ * nên phải nới đúng một trường `settings` để mô tả đầu vào.
+ */
+type BuildingSettingsDto = NonNullable<NetworkCenterBuildingDto["settings"]>;
+type BuildingSettingsWire = { [K in keyof BuildingSettingsDto]: BuildingSettingsDto[K] | null };
+type BuildingWirePayload = Omit<NetworkCenterBuildingDto, "settings"> & {
+  settings: BuildingSettingsWire;
+};
+
+function unprovisionedBuildingPayload(buildingId = UNPROVISIONED_BUILDING_ID): BuildingWirePayload {
   return {
     router: null,
     settings: {
@@ -42,7 +58,7 @@ function unprovisionedBuildingPayload(buildingId = UNPROVISIONED_BUILDING_ID) {
   };
 }
 
-function provisionedBuildingPayload(buildingId = PROVISIONED_BUILDING_ID) {
+function provisionedBuildingPayload(buildingId = PROVISIONED_BUILDING_ID): BuildingWirePayload {
   return {
     ...unprovisionedBuildingPayload(buildingId),
     buildingName: "Toà đã cấu hình",
@@ -78,7 +94,7 @@ function provisionedBuildingPayload(buildingId = PROVISIONED_BUILDING_ID) {
   };
 }
 
-function fleetItem(overrides: Record<string, unknown>) {
+function fleetItem(overrides: Partial<NetworkCenterFleetItemDto>): NetworkCenterFleetItemDto {
   return {
     routerId: null,
     reachable: false,
@@ -109,7 +125,7 @@ function fleetItem(overrides: Record<string, unknown>) {
   };
 }
 
-const EMPTY_PAGE = { items: [], nextCursor: null };
+const EMPTY_PAGE: { items: unknown[]; nextCursor: null } = { items: [], nextCursor: null };
 
 type RpcResult = {
   data: unknown;

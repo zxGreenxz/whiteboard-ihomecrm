@@ -100,7 +100,7 @@ describe('buildChatContext', () => {
 
 describe('rowsToMessages (dựng lại conversation)', () => {
   it('map đúng role/content/tool_calls/tool_call_id theo thứ tự rows', () => {
-    const rows = [
+    const rows: Parameters<typeof rowsToMessages>[0] = [
       { role: 'user', content: 'hỏi', tool_calls: null, tool_call_id: null },
       {
         role: 'assistant', content: null,
@@ -110,7 +110,7 @@ describe('rowsToMessages (dựng lại conversation)', () => {
       { role: 'tool', content: 'kq', tool_calls: null, tool_call_id: 'c1' },
       { role: 'assistant', content: 'đáp', tool_calls: null, tool_call_id: null },
     ];
-    const msgs = rowsToMessages(rows as any);
+    const msgs = rowsToMessages(rows);
     expect(msgs).toHaveLength(4);
     expect(msgs[1].tool_calls?.[0].id).toBe('c1');
     expect(msgs[2].tool_call_id).toBe('c1');

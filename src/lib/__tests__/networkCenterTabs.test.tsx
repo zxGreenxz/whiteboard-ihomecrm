@@ -13,6 +13,8 @@ import { IncidentsTab } from "@/components/network-center/tabs/IncidentsTab";
 import { InterfacesTab } from "@/components/network-center/tabs/InterfacesTab";
 import { OverviewTab } from "@/components/network-center/tabs/OverviewTab";
 import { TopologyTab } from "@/components/network-center/tabs/TopologyTab";
+import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
+import type { ConfigDiff } from "@/lib/network-center/contracts";
 import { DemoNetworkCenterRepository } from "@/lib/network-center/demoRepository";
 
 const actor = { id: "user-1", label: "Nguyễn An" };
@@ -89,9 +91,9 @@ describe("network center audit and change details", () => {
       canExecute: true,
       isDemo: true,
       executeDisabledMessage: "",
-      compareRevisions: () => ({ fromRevisionId: "a", toRevisionId: "b", changeCount: 0, lines: [] }),
-      captureConfiguration: () => undefined,
-    } as any;
+      compareRevisions: (): ConfigDiff => ({ fromRevisionId: "a", toRevisionId: "b", changeCount: 0, lines: [] }),
+      captureConfiguration: (): void => undefined,
+    } as unknown as NetworkCenterController;
     const tables = [
       renderToStaticMarkup(<StaticRouter location="/network-center"><FleetTable fleet={[site]} /></StaticRouter>),
       renderToStaticMarkup(<InterfacesTab site={site} />),
@@ -149,8 +151,8 @@ describe("network center audit and change details", () => {
       fleet,
       canExecute: true,
       executeDisabledMessage: "",
-      acknowledgeIncident: () => undefined,
-    } as any;
+      acknowledgeIncident: (): void => undefined,
+    } as unknown as NetworkCenterController;
 
     const html = renderToStaticMarkup(<StaticRouter location="/network-center"><FleetOverview controller={controller} /></StaticRouter>);
 
@@ -178,10 +180,10 @@ describe("network center audit and change details", () => {
     const controller = {
       canExecute: true,
       executeDisabledMessage: "",
-      acknowledgeIncident: () => undefined,
-      createMaintenance: () => undefined,
-      cancelMaintenance: () => undefined,
-    } as any;
+      acknowledgeIncident: (): void => undefined,
+      createMaintenance: (): void => undefined,
+      cancelMaintenance: (): void => undefined,
+    } as unknown as NetworkCenterController;
 
     const html = renderToStaticMarkup(<IncidentsTab site={site} controller={controller} />);
 
@@ -195,11 +197,11 @@ describe("network center audit and change details", () => {
       canExecute: true,
       isDemo: true,
       executeDisabledMessage: "",
-      compareRevisions: () => ({ fromRevisionId: "a", toRevisionId: "b", changeCount: 0, lines: [] }),
-      captureConfiguration: () => undefined,
-      executeAction: () => undefined,
-      createMaintenance: () => undefined,
-    } as any;
+      compareRevisions: (): ConfigDiff => ({ fromRevisionId: "a", toRevisionId: "b", changeCount: 0, lines: [] }),
+      captureConfiguration: (): void => undefined,
+      executeAction: (): void => undefined,
+      createMaintenance: (): void => undefined,
+    } as unknown as NetworkCenterController;
     const overview = renderToStaticMarkup(<OverviewTab site={site} controller={controller} />);
     const incidents = renderToStaticMarkup(<IncidentsTab site={site} controller={controller} />);
     const backups = renderToStaticMarkup(<BackupsTab site={site} controller={controller} />);

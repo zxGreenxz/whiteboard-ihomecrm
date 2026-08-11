@@ -10,6 +10,12 @@ import type {
   NetworkJob,
   NetworkSettings,
 } from "@/lib/network-center/contracts";
+import type {
+  NetworkCenterBuildingDto,
+  NetworkCenterClientPageDto,
+  NetworkCenterFleetDto,
+  NetworkCenterFleetItemDto,
+} from "@/lib/network-center/dto";
 import { networkCenterQueryKeys } from "@/lib/network-center/queryKeys";
 import {
   NetworkCenterRepositoryError,
@@ -74,41 +80,41 @@ function uuidFor(index: number): string {
   return `90000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 }
 
-function fleetResponse(overrides: Record<string, unknown> = {}) {
-  return {
-    items: [{
-      buildingId: BUILDING_ID,
-      buildingName: "Tòa Demo",
-      rolloutState: "OFF",
-      roomsCount: 24,
-      routerId: ROUTER_ID,
-      routerIdentity: "MikroTik — Tòa Demo",
-      routerModel: null,
-      targetFirmware: null,
-      lifecycleStatus: "UNPROVISIONED",
-      reachable: false,
-      healthStatus: "UNKNOWN",
-      lastSeenAt: null,
-      routerosVersion: null,
-      cpuPercent: null,
-      memoryUsedBytes: null,
-      memoryTotalBytes: null,
-      pppoeState: null,
-      connectionCount: null,
-      arubaCount: 101,
-      openIncidents: 1,
-      activeClients: 1,
-      lastBackupAt: null,
-      uptimePercent: null,
-      mttrSeconds: null,
-      maintenanceActive: false,
-      ...overrides,
-    }],
+function fleetResponse(overrides: Record<string, unknown> = {}): NetworkCenterFleetDto {
+  const item: NetworkCenterFleetItemDto = {
+    buildingId: BUILDING_ID,
+    buildingName: "Tòa Demo",
+    rolloutState: "OFF",
+    roomsCount: 24,
+    routerId: ROUTER_ID,
+    routerIdentity: "MikroTik — Tòa Demo",
+    routerModel: null,
+    targetFirmware: null,
+    lifecycleStatus: "UNPROVISIONED",
+    reachable: false,
+    healthStatus: "UNKNOWN",
+    lastSeenAt: null,
+    routerosVersion: null,
+    cpuPercent: null,
+    memoryUsedBytes: null,
+    memoryTotalBytes: null,
+    pppoeState: null,
+    connectionCount: null,
+    arubaCount: 101,
+    openIncidents: 1,
+    activeClients: 1,
+    lastBackupAt: null,
+    uptimePercent: null,
+    mttrSeconds: null,
+    maintenanceActive: false,
   };
+  // `overrides` cố tình giữ kiểu lỏng: có test bơm giá trị SAI hợp đồng
+  // (`rolloutState: "UNKNOWN"`, hoặc xoá hẳn trường) để kiểm tra fail-closed.
+  return { items: [{ ...item, ...overrides }] };
 }
 
-function buildingResponse(overrides: Record<string, unknown> = {}) {
-  return {
+function buildingResponse(overrides: Record<string, unknown> = {}): NetworkCenterBuildingDto {
+  const building: NetworkCenterBuildingDto = {
     buildingId: BUILDING_ID,
     buildingName: "Tòa Demo",
     rolloutState: "OFF",
@@ -168,8 +174,8 @@ function buildingResponse(overrides: Record<string, unknown> = {}) {
       changesPaused: false,
       version: 7,
     },
-    ...overrides,
   };
+  return { ...building, ...overrides };
 }
 
 function arubaItem(index: number) {
@@ -580,25 +586,28 @@ describe("Network Center Supabase repository boundary", () => {
     expect(Object.prototype.hasOwnProperty.call(thrown, "cause")).toBe(false);
     expect(String((thrown as Error).message)).not.toContain("do-not-leak");
 
-    const oversizedClients = Array.from({ length: 101 }, (_, index) => ({
-      id: uuidFor(index + 200),
-      hostname: null,
-      address: null,
-      macAddress: null,
-      sessionType: "UNKNOWN",
-      connectionType: "UNKNOWN",
-      roomHint: null,
-      customerName: null,
-      roomId: null,
-      contractId: null,
-      customerId: null,
-      rxBps: null,
-      txBps: null,
-      randomizedMac: false,
-      sessionIdentity: `session-${index}`,
-      lastSeenAt: NOW,
-      expiresAt: "2026-07-28T12:10:00.000Z",
-    }));
+    const oversizedClients = Array.from(
+      { length: 101 },
+      (_, index): NetworkCenterClientPageDto["items"][number] => ({
+        id: uuidFor(index + 200),
+        hostname: null,
+        address: null,
+        macAddress: null,
+        sessionType: "UNKNOWN",
+        connectionType: "UNKNOWN",
+        roomHint: null,
+        customerName: null,
+        roomId: null,
+        contractId: null,
+        customerId: null,
+        rxBps: null,
+        txBps: null,
+        randomizedMac: false,
+        sessionIdentity: `session-${index}`,
+        lastSeenAt: NOW,
+        expiresAt: "2026-07-28T12:10:00.000Z",
+      }),
+    );
     const oversizedHarness = createRpcHarness({ clientItems: oversizedClients });
     const oversizedRepository = new RepositoryConstructor(oversizedHarness.rpc);
     const fleet = await oversizedRepository.listFleet();

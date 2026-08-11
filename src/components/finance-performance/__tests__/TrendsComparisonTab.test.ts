@@ -19,12 +19,12 @@ const { capturedChartData, capturedChartProps, capturedLineProps, queryState } =
 
 vi.mock("recharts", () => {
   const Passthrough = ({ children }: { children?: ReactNode }) => children ?? null;
-  const Empty = () => null;
+  const Empty = (): null => null;
 
   return {
     CartesianGrid: Empty,
     Legend: ({ content }: { content?: ReactNode }) => content ?? null,
-    Line: (props: Record<string, unknown>) => {
+    Line: (props: Record<string, unknown>): null => {
       capturedLineProps.push(props);
       return null;
     },
