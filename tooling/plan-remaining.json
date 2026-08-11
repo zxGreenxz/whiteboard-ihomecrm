@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 43
+    "stillMissing": 41
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -307,10 +307,12 @@
       {
         "deliverable": "P1.3 — test hành vi StrictMode / HMR",
         "planRef": "P1.3 dòng 691",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Hoặc ghi vào tooling/known-gaps.yaml kèm expires_at, hoặc thêm jsdom + @testing-library riêng cho file này để dựng <StrictMode><AuthCacheSync/></StrictMode>."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Chon nhanh MO PHONG vong doi thay vi them jsdom + @testing-library. Ly do do duoc: component AuthCacheSync co dung 4 dong than, va dung DOM de render no chi chung minh React goi effect -> cleanup -> effect — bao dam cua chinh React, khong phai tinh chat cua ma trong repo. Thu THAT SU co the sai la ham cleanup co nha subscription khong, va cai do kiem truc tiep duoc bang cach goi dung chuoi mount->unmount->mount tren ham thuan. subscribeAuthCacheSync von DA duoc tach ra khoi component chinh vi ly do nay. Doi lai neu them jsdom: 3 dependency moi + mot environment vitest rieng + moi test cham di, ma khong mua duoc tinh chat nao moi. 4 test moi, gom mot ca DOI CHUNG (quen cleanup => conSong()=2, chung minh phep do khong luon tra 1) va mot ca ghim hien trang: ham huy CHUA idempotent."
       }
     ],
     "dot-5-contracts": [
@@ -473,10 +475,12 @@
       {
         "deliverable": "P2.2 — sidebar user docs phải được kiểm với Capability Registry (docsVisibility/docsPath, CI báo capability có route mà không có user docs)",
         "planRef": "P2.2, dòng 1019-1031",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm field docsPath/docsVisibility vào CapabilityDefinition và mở rộng check-capability-surfaces.mjs (hoặc check-docs.mjs) đối chiếu registry với docs-site/.vitepress/sidebar.mts; viết user docs cho Network Center + OpenClaw hoặc khai docsVisibility: hidden."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Da lam o lo 54: docs.userDoc (= docsPath) + docs.visibility (= docsVisibility) trong CapabilityDefinition, va scripts/check-capability-docs.mjs doi chieu voi docs-site/.vitepress/sidebar.mts. Luat: visibility public => BAT BUOC co userDoc, file ton tai, VA nam trong sidebar (thieu ve cuoi thi trang van build nhung khong ai tim ra). Dot bien 6/6."
       },
       {
         "deliverable": "P2.5 — thống nhất pin action SHA + Deno exact, bỏ path filter theo ngày, guard 'no db push' đọc YAML, cập nhật comment/evidence của supabase-migrate.yml",
