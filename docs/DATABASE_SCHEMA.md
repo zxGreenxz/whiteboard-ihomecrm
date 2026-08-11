@@ -51,6 +51,50 @@ Không dùng các con số inventory như API ổn định. Khi cần số mới
 - **Tài chính:** invoices/items/payments, `income_expenses` + items/types/templates, accounts/cashbooks, handover/reconciliation và profit/salary tables.
 - **AI Copilot:** provider/settings/entitlements/usage/conversation/message tables và `ai_write_audit`.
 - **Zalo:** accounts/conversations/messages/send queue/labels/templates/automations.
+- **Network Center** (`network_*`, **33 bảng**): thiết bị và phiên (`network_devices`,
+  `network_device_current`, `network_device_leases`, `network_client_sessions`), vòng đời lệnh
+  (`network_commands`, `network_command_attempts`, `network_command_events`,
+  `network_command_observations`), trạng thái mong muốn (`network_desired_state_versions`,
+  `network_config_snapshots`, `network_managed_resources`), sự cố (`network_incidents`,
+  `network_incident_events`, `network_maintenance_windows`), và **đo lường dạng chuỗi thời gian**
+  (`network_device_samples`, `network_interface_samples`, `network_metric_hourly`).
+- **OpenClaw Zalo** (`openclaw_*`, **79 bảng**): cầu nối chat Zalo ↔ CRM. Cụm lớn nhất trong repo
+  tính theo số bảng, gồm catalog vai trò, chủ thể bảo mật, inbox, automation, policy/knowledge,
+  delivery + audit chain, access policy, allowlist realtime, và maintenance/retention chạy bằng
+  `pg_cron`.
+
+> **Hai cụm trên từng KHÔNG có mặt trong tài liệu này.** Đo 08/08/2026: `DATABASE_SCHEMA.md` nhắc
+> "OpenClaw" đúng **0 lần** trong khi migration định nghĩa 79 bảng `openclaw_*`. Một tài liệu tự nhận
+> mô tả schema mà mù hẳn hai hệ con thì tệ hơn không có: người đọc tin là đã đủ. Cùng khoảng trống
+> ấy tồn tại trong graph tri thức cho tới lần dựng lại 07/08 (Network Center và OpenClaw có 0 node).
+
+### Partition theo ngày — đọc trước khi sinh types
+
+`network_device_samples` / `network_interface_samples` sinh **child partition theo NGÀY**. Hệ quả cụ
+thể, đã cắn thật:
+
+- `types.ts` phình ~96 dòng mỗi ngày nếu để nguyên typegen thô, và job drift đỏ mỗi lần maintenance
+  chạy — trong khi API logic không đổi một chữ.
+- Nên có hai tầng: **raw live typegen** và **canonical generated types**.
+  `npm run types:normalize` bỏ đúng các partition khớp policy và chỉ chúng; `npm run types:check`
+  là gate. Chi tiết ở Contract §6 "Canonical vs raw: partition ngày".
+
+Retention/lifecycle của các bảng phân vùng do job maintenance quản; đừng xoá partition bằng tay.
+
+### Baseline và forward-only lane
+
+Lịch sử legacy **không replay được** (trùng version + collision `001_`–`033_`), nên schema mới không
+dựng bằng `supabase db push`:
+
+- **Dựng lại**: `supabase/baseline/` (`roles.sql` trước, rồi `schema.sql` **hai lượt**) — xem
+  [README baseline](../supabase/baseline/README.md) để biết vì sao hai lượt.
+- **Thay đổi mới**: forward-only lane `npm run migrate:forward` với backup bắt buộc và evidence —
+  xem [supabase/README.md](../supabase/README.md).
+- **Trạng thái apply**: `npm run migrations:list-forward` · bằng chứng ở
+  [`supabase/migration-provenance.json`](../supabase/migration-provenance.json).
+
+Đừng dùng `max(ledger)` làm trạng thái schema: repo apply qua Management API nên nhiều thay đổi có
+thật mà không sinh dòng ledger (`migration-policy.json#knownLimits`).
 
 ## RLS và writer
 
