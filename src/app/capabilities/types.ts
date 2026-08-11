@@ -39,5 +39,24 @@ export interface CapabilityDefinition {
 
   docs: { systemDoc: string };
 
+  /**
+   * Đường tới spec E2E khói của capability, tính từ gốc repo.
+   *
+   * VÌ SAO KHAI Ở ĐÂY thay vì để người ta nhớ viết test
+   *   Một capability có route, có nav, có quyền, có tài liệu — và không ai đi hết
+   *   một lần qua giao diện. Khi đó mọi phép kiểm đều là kiểm TỪNG MẢNH: route tồn
+   *   tại, guard đúng, permission có trong picker. Ba cái xanh vẫn có thể ra một
+   *   trang trắng, vì không cái nào mở trình duyệt.
+   *
+   *   Khai ở registry thì `check-capability-surfaces` khẳng định được FILE CÓ THẬT.
+   *   Nó không chứng minh test chạy xanh — chỉ chứng minh capability không lặng lẽ
+   *   ra đời mà không có đường khói nào.
+   *
+   * `null` = CỐ Ý chưa có, và phải kèm `e2eMienTruVi` nói rõ vì sao. Không cho để
+   * trống mà im lặng: một trường bỏ trống thì sau vài tháng không ai phân biệt được
+   * "đã cân nhắc và bỏ" với "quên".
+   */
+  e2e: { spec: string | null; mienTruVi?: string };
+
   risk: "normal" | "financial" | "security" | "infrastructure";
 }

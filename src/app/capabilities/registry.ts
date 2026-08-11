@@ -27,6 +27,7 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
       permissionPage: "/network-center",
     },
     docs: { systemDoc: "docs/he-thong/22-network-center.md" },
+    e2e: { spec: ".e2e-fleet/specs/network-center.spec.ts" },
     risk: "infrastructure",
   },
   {
@@ -41,6 +42,7 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
       permissionPage: "/openclaw-zalo",
     },
     docs: { systemDoc: "docs/he-thong/23-openclaw-zalo.md" },
+    e2e: { spec: ".e2e-fleet/specs/openclaw-zalo.spec.ts" },
     risk: "security",
   },
 ];

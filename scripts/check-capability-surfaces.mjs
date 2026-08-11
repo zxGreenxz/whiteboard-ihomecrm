@@ -65,6 +65,12 @@ export function bocRegistry(nguon) {
       action: k.match(/action:\s*"([^"]+)"/)?.[1] ?? null,
       permissionPage: k.match(/permissionPage:\s*"([^"]+)"/)?.[1] ?? null,
       systemDoc: k.match(/systemDoc:\s*"([^"]+)"/)?.[1] ?? null,
+      e2eSpec: k.match(/e2e:\s*\{\s*spec:\s*"([^"]+)"/)?.[1] ?? null,
+      // Miễn trừ phải TƯỜNG MINH (`spec: null`), không phải "thiếu trường".
+      // Thiếu trường và cố ý bỏ là hai chuyện; gộp lại thì sau vài tháng không ai
+      // phân biệt được "đã cân nhắc" với "quên".
+      e2eMienTru: /e2e:\s*\{\s*spec:\s*null/.test(k),
+      e2eMienTruVi: k.match(/mienTruVi:\s*"([^"]+)"/)?.[1] ?? null,
     });
   }
   return ra;
@@ -163,6 +169,33 @@ function main() {
   for (const c of caps) {
     if (c.systemDoc && !existsSync(join(repoRoot, c.systemDoc))) {
       viPham.push(`Capability ${c.id} trỏ tới tài liệu không tồn tại: ${c.systemDoc}`);
+    }
+  }
+
+  // (4b) Mỗi capability phải có ĐƯỜNG KHÓI E2E — hoặc miễn trừ tường minh kèm lý do.
+  //
+  // Ba phép kiểm ở trên đều kiểm TỪNG MẢNH: route tồn tại, quyền có trong picker,
+  // tài liệu có thật. Cả ba xanh vẫn có thể ra một trang trắng, vì không phép nào
+  // mở trình duyệt. Trường `e2e` không chứng minh test CHẠY XANH — nó chỉ chặn
+  // việc một capability ra đời mà không có đường khói nào, tức không ai từng đi
+  // hết một lượt qua giao diện của nó.
+  for (const c of caps) {
+    if (c.e2eSpec) {
+      if (!existsSync(join(repoRoot, c.e2eSpec))) {
+        viPham.push(`Capability ${c.id} trỏ tới spec E2E không tồn tại: ${c.e2eSpec}`);
+      }
+    } else if (c.e2eMienTru) {
+      if (!c.e2eMienTruVi) {
+        viPham.push(
+          `Capability ${c.id} khai e2e.spec = null nhưng KHÔNG có mienTruVi. ` +
+            `Miễn trừ không kèm lý do thì lần sau không ai biết đó là quyết định hay là quên.`,
+        );
+      }
+    } else {
+      viPham.push(
+        `Capability ${c.id} thiếu trường e2e. Khai \`e2e: { spec: "..." }\`, ` +
+          `hoặc \`e2e: { spec: null, mienTruVi: "<lý do>" }\` nếu cố ý chưa có.`,
+      );
     }
   }
 
