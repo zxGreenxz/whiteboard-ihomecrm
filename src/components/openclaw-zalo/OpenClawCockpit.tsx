@@ -125,6 +125,20 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
                 <h1 className="mt-1 text-2xl font-black tracking-[-0.035em] sm:text-3xl">{section.title}</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[#526777]">{section.description}</p>
               </div>
+              {/* The connection dialog was reachable ONLY from the disconnected
+                  boundary, so a connected account had no route to it - and the
+                  disconnect action inside it could never be opened by anyone.
+                  Disconnecting is exactly the thing you need while connected. */}
+              {can("manage_connections") && account.connectionState === "CONNECTED" && (
+                <button
+                  type="button"
+                  data-openclaw-action="manage-connection"
+                  onClick={() => setConnectionOpen(true)}
+                  className="ml-auto shrink-0 border border-[#aebdc8] bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[#0f766e] hover:bg-[#f1f7f5]"
+                >
+                  Quản lý kết nối
+                </button>
+              )}
             </header>
 
             <OpenClawSectionBody

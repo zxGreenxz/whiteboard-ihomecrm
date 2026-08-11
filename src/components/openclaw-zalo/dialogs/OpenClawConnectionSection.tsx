@@ -101,11 +101,28 @@ export default function OpenClawConnectionSection({
   // opaque 404 it uses for an expired or revoked code. The account moving to
   // CONNECTED is the one unambiguous signal, and the poll's catch refetches it.
   const connected = account?.connectionState === "CONNECTED";
+  // Fires on the TRANSITION into CONNECTED, once, and never again while it holds.
+  //
+  // It used to run on every render that saw a connected account, because
+  // `onConnected` is an inline arrow in the cockpit and so has a new identity each
+  // render. The callback invalidates the whole OpenClaw cache, which refetches,
+  // which re-renders, which hands the effect a new identity - a loop that only
+  // begins once an account is actually CONNECTED, which is why it survived until
+  // the first real login. It also closed the connection dialog on every pass, so
+  // the dialog could not be opened at all: it shut in the same tick it opened.
+  const reportedConnected = useRef(false);
+  const onConnectedRef = useRef(onConnected);
+  onConnectedRef.current = onConnected;
   useEffect(() => {
-    if (!connected) return;
+    if (!connected) {
+      reportedConnected.current = false;
+      return;
+    }
+    if (reportedConnected.current) return;
+    reportedConnected.current = true;
     clear();
-    onConnected?.();
-  }, [clear, connected, onConnected]);
+    onConnectedRef.current?.();
+  }, [clear, connected]);
 
   useEffect(() => {
     if (challenge === null || account === null) return undefined;

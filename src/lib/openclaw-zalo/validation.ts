@@ -75,15 +75,32 @@ export const overviewResponseSchema = z.object({
   deadLetterCount: z.number().int().nonnegative(),
 }).strict();
 
+// These schemas are `.strict()`, so a field the server starts returning is a
+// hard parse failure, not extra data quietly ignored. That is deliberate - it
+// catches a drifting contract - but it means this file has to move in the same
+// commit as the RPC. It did not: the migration that added the name, the kind and
+// the preview shipped without them here, so every conversation page threw, the
+// list stayed empty, and the inbox showed "Đang tải hội thoại…" forever while
+// every request returned 200 and nothing appeared in the console.
 export const conversationSchema = z.object({
   conversationId: idSchema,
   targetId: idSchema,
+  targetKind: z.enum(["PEER", "SALES_GROUP"]),
+  displayName: z.string().nullable(),
   status: z.string(),
   assignedMembershipId: idSchema.nullable(),
   unreadCount: z.number().int().nonnegative(),
   lastReceivedAt: timestampSchema,
   lastMessageId: idSchema.nullable(),
+  lastMessagePreview: z.string().nullable(),
   version: z.number().int().nonnegative(),
+}).strict();
+
+export const messageMediaSchema = z.object({
+  kind: z.enum(["image", "video", "audio", "file"]),
+  url: z.string(),
+  thumb: z.string().nullable(),
+  title: z.string().nullable(),
 }).strict();
 
 export const messageSchema = z.object({
@@ -93,6 +110,11 @@ export const messageSchema = z.object({
   providerTimestamp: timestampSchema.nullable(),
   receivedAt: timestampSchema,
   createdAt: timestampSchema,
+  textContent: z.string().nullable(),
+  providerSenderId: z.string().nullable(),
+  senderName: z.string().nullable(),
+  providerEventType: z.string().nullable(),
+  media: z.array(messageMediaSchema),
 }).strict();
 
 export function pageSchema<T extends z.ZodTypeAny>(item: T) {

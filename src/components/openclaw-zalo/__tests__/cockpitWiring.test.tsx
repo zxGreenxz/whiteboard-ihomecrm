@@ -1,5 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -149,6 +152,10 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({
   useOpenClawCreateSendIntent: () => idleMutation,
   useOpenClawAcknowledgeDisclosure: () => idleMutation,
   useOpenClawSetControlState: () => idleMutation,
+  // The connection dialog gained a disconnect action; a mock that omits an
+  // export the component calls fails the whole file on a missing-export error
+  // rather than on anything these tests are about.
+  useOpenClawDisconnectAccount: () => idleMutation,
 }));
 
 vi.mock("@/lib/openclaw-zalo/qrClient", () => ({
@@ -256,6 +263,32 @@ describe("cockpit wiring", () => {
     // renders the inbox for "inbox" and the placeholder for anything else.
     const html = render();
     expect(html).toContain("Hộp thư");
+  });
+
+  it("gives a connected operator a route to the connection dialog", () => {
+    // The dialog was reachable ONLY from the disconnected boundary, so a connected
+    // account had no route to it and the disconnect action inside could never be
+    // opened by anyone. Disconnecting is precisely a connected-account action.
+    expect(render()).toContain('data-openclaw-action="manage-connection"');
+
+    harness.permissions = new Set(["view"]);
+    expect(render()).not.toContain('data-openclaw-action="manage-connection"');
+  });
+
+  it("reports a connection once, not on every render", async () => {
+    // `onConnected` invalidates the whole OpenClaw cache. Firing it per render -
+    // which an inline arrow prop guarantees - refetched everything, re-rendered,
+    // and fired again: a permanent request storm that began only once an account
+    // was really CONNECTED, and slammed the connection dialog shut in the same
+    // tick it opened. Measured before the fix: 38 calls per query per 10s; after: 0.
+    const source = await readFile(
+      resolve(dirname(fileURLToPath(import.meta.url)), "../dialogs/OpenClawConnectionSection.tsx"),
+      "utf8",
+    );
+    expect(source).toContain("onConnectedRef");
+    expect(source).toContain("reportedConnected");
+    // The identity of an inline callback must never gate this effect again.
+    expect(source).not.toContain("[clear, connected, onConnected]");
   });
 
   it("does not render the connection dialog until it is opened", () => {

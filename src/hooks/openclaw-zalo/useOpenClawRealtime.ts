@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { acceptRealtimeEvent, type RealtimeDedupeState } from "@/lib/openclaw-zalo/state-machine";
 import type { OpenClawRealtimeEvent } from "@/lib/openclaw-zalo/types";
@@ -47,6 +47,81 @@ export function createOpenClawRealtimeEvent(
   };
 }
 
+/**
+ * A row change refreshes the part of the cockpit it can actually affect.
+ *
+ * Invalidating the whole scope on every event made one inbound message reload
+ * the bootstrap, the overview and the takeover list too - none of which a
+ * message changes - so an account syncing its history turned every insert into
+ * a full cockpit refetch.
+ */
+export const OPENCLAW_REALTIME_TABLE_SCOPES = {
+  openclaw_accounts: "connection",
+  openclaw_account_connections: "connection",
+  openclaw_runtime_cells: "connection",
+  openclaw_conversations: "inbox",
+  openclaw_conversation_members: "inbox",
+  openclaw_messages: "inbox",
+  openclaw_message_media: "inbox",
+} as const satisfies Record<(typeof OPENCLAW_REALTIME_TABLES)[number], "connection" | "inbox">;
+
+export function openClawRealtimeInvalidationKeys(
+  table: string,
+  organizationId: string,
+  accountId: string,
+): QueryKey[] {
+  const scope = OPENCLAW_REALTIME_TABLE_SCOPES[table as keyof typeof OPENCLAW_REALTIME_TABLE_SCOPES];
+  if (scope === "connection") {
+    return [
+      openClawQueryKeys.bootstrap(organizationId, accountId),
+      openClawQueryKeys.overview(organizationId, accountId),
+    ];
+  }
+  if (scope === "inbox") {
+    return [
+      openClawQueryKeys.conversationsRoot(organizationId, accountId),
+      openClawQueryKeys.messagesRoot(organizationId, accountId),
+    ];
+  }
+  // An unmapped table is refreshed conservatively rather than ignored.
+  return [openClawQueryKeys.scope(organizationId, accountId)];
+}
+
+/** Quiet-period wait before a burst of row changes is applied. */
+export const OPENCLAW_REALTIME_DEBOUNCE_MS = 750;
+/**
+ * Ceiling on how long a *sustained* stream may keep postponing the refresh.
+ *
+ * A plain debounce never fires while events keep arriving. A Zalo account
+ * syncing its history emits them continuously, so the conversation list was
+ * cancelled and restarted about ten times a second and never finished loading -
+ * the inbox sat on "Đang tải hội thoại…" indefinitely while every request
+ * returned 200. The ceiling guarantees the data lands even under a firehose.
+ */
+export const OPENCLAW_REALTIME_MAX_WAIT_MS = 4_000;
+
+export interface RealtimeFlushSchedule {
+  /** Delay to arm the timer with, in milliseconds. */
+  delayMs: number;
+  /** When the current burst started waiting; carried to the next event. */
+  queuedSince: number;
+}
+
+/**
+ * Trailing debounce with a maximum wait. Pure so the ceiling is testable without
+ * a browser, a socket, or real time passing.
+ */
+export function scheduleRealtimeFlush(
+  now: number,
+  queuedSince: number | null,
+  debounceMs: number = OPENCLAW_REALTIME_DEBOUNCE_MS,
+  maxWaitMs: number = OPENCLAW_REALTIME_MAX_WAIT_MS,
+): RealtimeFlushSchedule {
+  const since = queuedSince ?? now;
+  const remainingBeforeCeiling = Math.max(0, maxWaitMs - (now - since));
+  return { delayMs: Math.min(debounceMs, remainingBeforeCeiling), queuedSince: since };
+}
+
 export function shouldInvalidateOpenClawRealtime(
   state: RealtimeDedupeState,
   event: OpenClawRealtimeEvent,
@@ -70,6 +145,8 @@ export function useOpenClawRealtime(
     let cancelled = false;
     let dedupeState: RealtimeDedupeState = { seen: new Set() };
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    // When the burst started, per table, so a sustained stream still flushes.
+    const queuedSince = new Map<string, number>();
 
     let channel: ReturnType<typeof supabase.channel> | null = null;
     const start = async () => {
@@ -88,10 +165,15 @@ export function useOpenClawRealtime(
             if (!decision.accepted) return;
             const previousTimer = timers.get(table);
             if (previousTimer) clearTimeout(previousTimer);
+            const schedule = scheduleRealtimeFlush(Date.now(), queuedSince.get(table) ?? null);
+            queuedSince.set(table, schedule.queuedSince);
             timers.set(table, setTimeout(() => {
               timers.delete(table);
-              void queryClient.invalidateQueries({ queryKey: openClawQueryKeys.scope(organizationId, accountId) });
-            }, 100));
+              queuedSince.delete(table);
+              for (const queryKey of openClawRealtimeInvalidationKeys(table, organizationId, accountId)) {
+                void queryClient.invalidateQueries({ queryKey });
+              }
+            }, schedule.delayMs));
           },
         );
       }

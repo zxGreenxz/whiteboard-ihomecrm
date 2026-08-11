@@ -88,6 +88,15 @@ export interface QrGateState {
   canRequestQr: boolean;
   blockedBy: QrBlockedBy | null;
   disclosure: DisclosureState;
+  /**
+   * Carried out of the gate because disconnecting is gated by the same
+   * permission but NOT by the QR preconditions: an account that is already
+   * connected cannot request a QR and is exactly the one an operator needs to
+   * disconnect. The dialog read `gate.canManageConnections` before this field
+   * existed, so it was `undefined` at runtime and the disconnect action was
+   * never wired up - the button did nothing, for everyone.
+   */
+  canManageConnections: boolean;
 }
 
 /**
@@ -128,7 +137,12 @@ export function qrGateState(input: QrGateInput): QrGateState {
           : disclosure.acknowledged
             ? null
             : "DISCLOSURE";
-  return { canRequestQr: blockedBy === null, blockedBy, disclosure };
+  return {
+    canRequestQr: blockedBy === null,
+    blockedBy,
+    disclosure,
+    canManageConnections: input.canManageConnections,
+  };
 }
 
 /**
