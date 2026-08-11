@@ -196,6 +196,13 @@ jobs:
       - name: Build (vite build — bắt lỗi build-time không lộ ở tsc/eslint)
         run: npm run build
 
+      # Kiểm ngay sau build, khi dist/ còn nguyên. 99 trang khai lazy(); chỉ cần
+      # MỘT chỗ import thẳng một trang là nó bị gộp vào chunk entry và người dùng
+      # tải thêm vài trăm KB ở lần mở đầu. Không có gì hỏng — build xanh, test
+      # xanh, giao diện đúng — nên không ai phát hiện trừ khi có phép đo này.
+      - name: Bundle không có hồi quy eager-import
+        run: node scripts/generate-bundle-inventory.mjs
+
       # Keep root discovery inside root-owned suites. Node-only packages run in
       # openclaw-package-gates, so Bridge node:sqlite tests are never collected here.
       # scripts/__tests__/network-center-*.test.mjs dùng API `node:test`, KHÔNG

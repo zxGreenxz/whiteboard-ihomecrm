@@ -97,6 +97,7 @@
     "gate:capability-surfaces": "node scripts/check-capability-surfaces.mjs",
     "gate:route-permission-drift": "node scripts/check-route-permission-drift.mjs",
     "gate:capability-docs": "node scripts/check-capability-docs.mjs",
+    "gate:bundle": "node scripts/generate-bundle-inventory.mjs",
     "surface:rpc": "node scripts/generate-rpc-surface.mjs",
     "surface:edge": "node scripts/generate-edge-surface.mjs",
     "surface:realtime": "node scripts/generate-realtime-surface.mjs",

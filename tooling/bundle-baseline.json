@@ -1,0 +1,51 @@
+{
+  "$comment": "Sinh bởi scripts/generate-bundle-inventory.mjs sau `npm run build`. Ngưỡng là RATCHET: chỉ được giảm. Tăng ngưỡng là một quyết định, phải ghi lý do trong commit.",
+  "soChunk": 469,
+  "soTrangLazy": 99,
+  "bytesEntry": 750904,
+  "bytesTong": 7988067,
+  "top10": [
+    {
+      "ten": "index",
+      "bytes": 448115
+    },
+    {
+      "ten": "xlsx",
+      "bytes": 429487
+    },
+    {
+      "ten": "generateCategoricalChart",
+      "bytes": 349487
+    },
+    {
+      "ten": "index",
+      "bytes": 221099
+    },
+    {
+      "ten": "docxtemplater",
+      "bytes": 190585
+    },
+    {
+      "ten": "ProfitHubPage",
+      "bytes": 185309
+    },
+    {
+      "ten": "ThanhToan",
+      "bytes": 178955
+    },
+    {
+      "ten": "vendor",
+      "bytes": 177309
+    },
+    {
+      "ten": "vendor",
+      "bytes": 164335
+    },
+    {
+      "ten": "vendor",
+      "bytes": 149145
+    }
+  ],
+  "nguongEntryBytes": 750904,
+  "nguongTongBytes": 7988067
+}

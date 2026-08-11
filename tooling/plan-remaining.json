@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 44
+    "stillMissing": 43
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -155,10 +155,12 @@
       {
         "deliverable": "Verification: bundle / lazy-route comparison không tạo eager import regression",
         "planRef": "§48 dòng 2882",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm bước so sánh output `vite build` (danh sách chunk + tên entry) trước/sau các PR tách route, HOẶC ghi vào tooling/known-gaps.yaml kèm expires_at."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "scripts/generate-bundle-inventory.mjs + tooling/bundle-baseline.json + alias gate:bundle, noi NGAY SAU buoc build trong ci-gates (luc dist/ con nguyen). Phep kiem: moi trang khai lazy() phai co CHUNK RIENG trong dist/assets, va chunk entry khong duoc phinh qua nguong (bien 5% vi build khong tat dinh tuyet doi). Do that: 469 chunk, entry 733 kB, tong 7.62 MB, 99/99 trang lazy co chunk. Dot bien tren dist THAT: doi ten chunk ProfitHubPage di => exit 1."
       },
       {
         "deliverable": "Acceptance Đợt 4: một page surface khai một lần, các consumer được sinh/kiểm từ registry",
@@ -719,10 +721,11 @@
       {
         "deliverable": "P2-24: Bundle inventory regression + dependency/license audit",
         "planRef": "Mục 43 (dòng 2674)",
-        "status": "CHUA_LAM",
+        "status": "MOT_PHAN",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm bundle inventory sinh sau build + ratchet kích thước; thêm dependency/license audit. P2."
+        "remaining": "Con lai: dependency/license audit. Phan bundle inventory + ratchet kich thuoc DA XONG (xem dot-4-registry, scripts/generate-bundle-inventory.mjs). Audit license chua lam vi no can chot chinh sach truoc — giay phep nao chap nhan duoc — va do la quyet dinh cua chu du an, khong phai mac dinh ky thuat.",
+        "evidence": "Nua bundle inventory: 469 chunk, entry 733 kB, ratchet nguong entry + kiem 99/99 trang lazy co chunk rieng."
       },
       {
         "deliverable": "P2-25: Production branch riêng (phần còn lại ở P2: staging parity nâng cao + preview-vs-production diff tự động)",
