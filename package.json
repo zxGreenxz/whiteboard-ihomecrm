@@ -30,6 +30,7 @@
     "gate:copilot-docs": "node scripts/check-copilot-docs-manifest.mjs",
     "gate:no-auto-apply": "node scripts/check-no-auto-apply.mjs",
     "gate:agent-contract": "node scripts/check-agent-contract.mjs",
+    "risk:classify": "node scripts/check-risk-classifier.mjs",
     "gate:runtime-matrix": "node scripts/check-runtime-matrix.mjs",
     "gate:local-credentials": "node scripts/check-local-agent-credentials.mjs",
     "gate:known-gaps": "node scripts/check-known-gaps.mjs",

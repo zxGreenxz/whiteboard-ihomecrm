@@ -162,6 +162,12 @@ jobs:
       - name: Module mới phải strict ngay từ đầu
         run: node scripts/check-new-modules-strict.mjs
 
+      # BAO CAO, khong phai cua chan: in tier rui ro + gate bat buoc cua PR nay.
+      # No KHONG kiem duoc ban da chay cac gate do hay chua — khong co dau vet nao
+      # trong repo de doc. Muc dich la de nguoi review thay ngay minh dang nhin gi.
+      - name: Phan loai rui ro thay doi (bao cao)
+        run: node scripts/check-risk-classifier.mjs
+
       # Độ mới graph — CỐ Ý KHÔNG CHẶN. Plan kiến trúc (dòng 119, 2271) đã chốt
       # UA freshness không phải required check: graph 4 MB commit vào repo, refresh
       # là cả một PR, nên đỏ CI mỗi khi nó cũ sẽ khiến người ta tắt gate đi. Chế độ
