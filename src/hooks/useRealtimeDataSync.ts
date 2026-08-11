@@ -48,6 +48,30 @@ import {
 
 const DEBOUNCE_MS = 800;
 
+// TRẦN CHỜ — thứ mà debounce 800ms ở trên KHÔNG có, và thiếu nó thì lời hứa
+// "gộp cơn bão về 1 lần invalidate" ở đầu file chỉ đúng SAU KHI bão tan.
+//
+// DEBOUNCE_MS là trailing-edge thuần: mỗi event clearTimeout rồi đặt lại. Một
+// đợt bulk bắn event dày hơn 1 lần/800ms (sinh hoá đơn hàng loạt, import thu
+// chi — đúng những việc mà chú thích đầu file lấy làm ví dụ) đẩy lùi flush VÔ
+// HẠN. Trong suốt đợt đó giao diện đứng số mà không có tín hiệu nào: không lỗi,
+// không cảnh báo, người dùng chỉ thấy màn hình không đổi.
+//
+// MAX_WAIT_MS là mốc muộn nhất tính từ event ĐẦU TIÊN của cụm. Chọn 3×: đủ xa
+// để vẫn gộp được một cụm bình thường (một thao tác người dùng hiếm khi kéo quá
+// 2,4 giây), đủ gần để một đợt bulk vẫn nhả tin về màn hình vài lần thay vì im
+// bặt tới lúc xong.
+const MAX_WAIT_MS = DEBOUNCE_MS * 3;
+
+/**
+ * Thời gian còn được phép chờ: bình thường là trọn DEBOUNCE_MS, nhưng không bao
+ * giờ vượt quá mốc trần tính từ event đầu cụm. Trả về 0 khi đã quá hạn — timer
+ * 0ms vẫn chạy bất đồng bộ nên thứ tự vẫn đúng.
+ */
+function delayConTrongTran(mocDauCum: number, bayGio: number): number {
+  return Math.max(0, Math.min(DEBOUNCE_MS, mocDauCum + MAX_WAIT_MS - bayGio));
+}
+
 function matchesBusinessPerformanceRule(
   queryKey: readonly unknown[],
   rules: readonly BusinessPerformanceInvalidationRule[],
@@ -110,26 +134,37 @@ export function useRealtimeDataSync() {
     if (!userId || hubActive) return;
     hubActive = true;
 
-    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    // Kèm mốc event ĐẦU của cụm để áp MAX_WAIT_MS. Giữ chung một Map thay vì
+    // hai: một thứ phải dọn ở cleanup thay vì hai thứ phải nhớ.
+    const timers = new Map<
+      string,
+      { timer: ReturnType<typeof setTimeout>; mocDauCum: number }
+    >();
     const pendingBusinessPerformanceTables = new Set<SyncTable>();
     let businessPerformanceTimer: ReturnType<typeof setTimeout> | undefined;
+    let businessPerformanceMocDauCum = 0;
     let channel = supabase.channel(`crm-data-sync-${userId}`);
     for (const entry of SYNC_TABLES) {
       channel = channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: entry.table },
         () => {
+          const bayGio = Date.now();
+
           if (getBusinessPerformanceRules(entry.table)) {
             pendingBusinessPerformanceTables.add(entry.table);
             if (businessPerformanceTimer) {
               clearTimeout(businessPerformanceTimer);
+            } else {
+              // Không có timer đang chờ ⇒ đây là event đầu của cụm mới.
+              businessPerformanceMocDauCum = bayGio;
             }
             businessPerformanceTimer = setTimeout(() => {
               businessPerformanceTimer = undefined;
               const pendingTables = new Set(pendingBusinessPerformanceTables);
               pendingBusinessPerformanceTables.clear();
               flushBusinessPerformance(qc, pendingTables);
-            }, DEBOUNCE_MS);
+            }, delayConTrongTran(businessPerformanceMocDauCum, bayGio));
           }
 
           const hasTableScopedWork =
@@ -138,22 +173,40 @@ export function useRealtimeDataSync() {
           if (!hasTableScopedWork) return;
 
           const prev = timers.get(entry.table);
-          if (prev) clearTimeout(prev);
-          timers.set(
-            entry.table,
-            setTimeout(() => {
+          if (prev) clearTimeout(prev.timer);
+          const mocDauCum = prev ? prev.mocDauCum : bayGio;
+          timers.set(entry.table, {
+            mocDauCum,
+            timer: setTimeout(() => {
               timers.delete(entry.table);
               flushEntry(qc, entry);
-            }, DEBOUNCE_MS),
-          );
+            }, delayConTrongTran(mocDauCum, bayGio)),
+          });
         },
       );
     }
-    channel.subscribe();
+    // Cờ phân biệt "ta chủ động dọn" với "kênh chết". CLOSED bắn ở CẢ HAI
+    // trường hợp, nên thiếu cờ này thì mỗi lần unmount lại sinh một dòng cảnh
+    // báo giả — và một cảnh báo kêu cả lúc bình thường thì không ai đọc nữa.
+    let dangTuDon = false;
+
+    // Trước đây là `channel.subscribe()` trần: CHANNEL_ERROR / TIMED_OUT /
+    // CLOSED đều trôi qua không dấu vết, nên mất đồng bộ realtime là mất IM
+    // LẶNG — giao diện chỉ đơn giản ngừng tự cập nhật, không ai biết để bấm F5.
+    channel.subscribe((status, err) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        console.warn(`[realtime] hub ${status}`, err?.message ?? "");
+        return;
+      }
+      if (status === "CLOSED" && !dangTuDon) {
+        console.warn("[realtime] hub CLOSED ngoài ý muốn — mất đồng bộ tại chỗ");
+      }
+    });
 
     return () => {
+      dangTuDon = true;
       hubActive = false;
-      timers.forEach((t) => clearTimeout(t));
+      timers.forEach((t) => clearTimeout(t.timer));
       if (businessPerformanceTimer) clearTimeout(businessPerformanceTimer);
       pendingBusinessPerformanceTables.clear();
       supabase.removeChannel(channel);

@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -68,26 +69,78 @@ async function resolveCustomerIdsByLocation(filters: {
 // Requirements: 1.1, 1.5, 1.6, 1.9
 // =============================================
 
+/**
+ * Nguồn sự thật DUY NHẤT cho query key của danh sách khách.
+ *
+ * VÌ SAO LÀ HÀM CHỨ KHÔNG PHẢI MẢNG CHÉP TAY Ở TỪNG CHỖ
+ *   Ngoài `useCustomers`, còn `useSeedCustomerIntoPickerCache` phải trỏ vào ĐÚNG
+ *   ô cache của picker. Hai bản chép tay của cùng một key sẽ trôi khỏi nhau, và
+ *   khi trôi thì `setQueryData` ghi vào một ô KHÔNG AI ĐỌC — không lỗi, không
+ *   cảnh báo, chỉ là khách vừa tạo không hiện ra. Đúng lớp lỗi im lặng mà cả hệ
+ *   realtime của repo này sinh ra để chống.
+ *
+ * Phần tử `"no-loc"` CHỈ được thêm khi bật `skipLocationEnrichment`. Cố ý không
+ * thêm phần tử thứ 4 vô điều kiện: làm vậy sẽ đổi key của cả ba consumer còn
+ * lại, và `placeholderData: keepPreviousData` mất dữ liệu cũ để giữ ⇒ bảng khách
+ * hàng nháy "Đang tải" một lần sau khi deploy, đổi lấy con số không.
+ *
+ * Gốc key vẫn là `["customers"]` nên hub realtime (src/hooks/realtime/operations.ts)
+ * invalidate theo prefix vẫn phủ hết — tạo root mới mới là thứ rơi ra ngoài hub.
+ */
+export const customersQueryKey = (
+  filters?: CustomerFilters,
+  pagination?: { page: number; pageSize: number },
+  skipLocationEnrichment?: boolean,
+): readonly unknown[] =>
+  skipLocationEnrichment
+    ? ["customers", filters, pagination, "no-loc"]
+    : ["customers", filters, pagination];
+
+/** Ô cache của picker khách trong màn hợp đồng — xem `useSeedCustomerIntoPickerCache`. */
+export const CUSTOMER_PICKER_QUERY_KEY = customersQueryKey(
+  undefined,
+  undefined,
+  true,
+);
+
 export const useCustomers = (
   filters?: CustomerFilters,
   pagination?: { page: number; pageSize: number },
   // options.enabled: dialog mounted-sẵn (vd CustomerSelectionDialog trong form
   // HĐ) gate fetch khi đóng — tránh kéo cả bảng customers + chuỗi enrichment
   // mỗi lần tải trang. Default true.
-  options?: { enabled?: boolean }
+  //
+  // options.skipLocationEnrichment: bỏ hẳn chuỗi contract_customers → contracts
+  // → rooms → buildings ở dưới. Picker HĐ chỉ hiện tên/SĐT/CCCD nên chuỗi đó là
+  // thuần lãng phí: ở ~500 khách nó là 7 request nối tiếp sau request chính.
+  // Cờ này ĐỔI HÌNH DẠNG DỮ LIỆU TRẢ VỀ nên phải nằm trong query key, khác hẳn
+  // `enabled` (chỉ chặn fetch). Hai consumer chung một key mà khác hình dạng thì
+  // ai mount trước quyết định — và bên còn lại đọc thiếu trường mà không biết.
+  options?: { enabled?: boolean; skipLocationEnrichment?: boolean }
 ) => {
   return useQuery({
     enabled: options?.enabled ?? true,
     // Giữ trang cũ khi đổi filter/search/trang để bảng không nhảy về "Đang tải".
     placeholderData: keepPreviousData,
-    queryKey: ["customers", filters, pagination],
+    queryKey: customersQueryKey(
+      filters,
+      pagination,
+      options?.skipLocationEnrichment,
+    ),
     queryFn: async (): Promise<PaginatedData<Customer>> => {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
+      // count:'exact' bắt PostgREST chạy THÊM một nhánh đếm, quét lại toàn bộ
+      // dòng khớp dưới cùng bộ predicate RLS và chạy lại InitPlan — đo được
+      // ~2,2× trên chính query này. Chỉ trả giá đó khi thật sự có người phân
+      // trang. Dùng LẠI ĐÚNG điều kiện của .range() bên dưới, không viết lại,
+      // để count và range không bao giờ lệch nhau.
+      const wantsPage = !!(pagination?.page && pagination?.pageSize);
+
       let query = (supabase
         .from("customers")
-        .select("*", { count: "exact" }) as any)
+        .select("*", wantsPage ? { count: "exact" } : undefined) as any)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -128,7 +181,7 @@ export const useCustomers = (
       }
 
       // Apply pagination
-      if (pagination?.page && pagination?.pageSize) {
+      if (wantsPage) {
         const offset = (pagination.page - 1) * pagination.pageSize;
         query = query.range(offset, offset + pagination.pageSize - 1);
       }
@@ -145,7 +198,7 @@ export const useCustomers = (
       // Done as a follow-up query because PostgREST embed paths get
       // unwieldy through contract_customers. Cũng kèm building.id để FE
       // dùng check building scope (ẩn nút Sửa/Xoá khi không quản lý tòa).
-      if (customers.length > 0) {
+      if (!options?.skipLocationEnrichment && customers.length > 0) {
         const ids = customers.map((c) => c.id);
         const CHUNK = 80;
         const map = new Map<
@@ -188,10 +241,59 @@ export const useCustomers = (
 
       return {
         data: customers,
-        count: count || 0,
+        // postgrest-js chỉ đọc Content-Range khi request đã xin count, nên không
+        // xin ⇒ `count === null`. Trả `customers.length` thay vì 0: một consumer
+        // lỡ đọc `count` sẽ thấy "có bấy nhiêu khách" chứ không thấy "không có
+        // khách nào" — sai lệch thì có, nhưng không phải sai lệch câm lặng biến
+        // dữ liệu thành rỗng. `??` chứ không phải `||`: khi CÓ xin count thì
+        // số 0 là số thật, phải giữ.
+        count: count ?? customers.length,
       };
     },
   });
+};
+
+/**
+ * Chèn khách vừa tạo vào đầu danh sách của picker — hàm THUẦN để test được.
+ *
+ * Query của picker sắp `created_at desc` (xem `.order` ở trên) nên khách mới
+ * nhất đứng ĐẦU ⇒ `unshift`, không phải `push`.
+ *
+ * Idempotent theo `id`: một `invalidateQueries` hoặc một event realtime có thể
+ * đã kịp mang khách đó về trước khi hàm này chạy. Chèn lần hai sẽ tạo hàng trùng
+ * và đẩy `count` lệch.
+ */
+export function insertCustomerIntoPickerCache(
+  prev: PaginatedData<Customer> | undefined,
+  customer: Customer,
+): PaginatedData<Customer> {
+  const base = prev ?? { data: [], count: 0 };
+  if (base.data.some((c) => c.id === customer.id)) return base;
+  return { data: [customer, ...base.data], count: base.count + 1 };
+}
+
+/**
+ * Đưa khách canonical do server vừa trả vào thẳng cache picker.
+ *
+ * ĐÂY LÀ ĐIỂM CỦA CẢ ĐỢT SỬA: server đã trả về khách rồi, nhưng đường cũ vứt nó
+ * đi rồi bắt server đọc lại toàn bộ danh sách. Cùng một tab không cần đi vòng
+ * qua mạng để biết thứ chính nó vừa tạo.
+ *
+ * Ghi vào ĐÚNG một ô cache. KHÔNG dùng `setQueriesData({ queryKey: ["customers"] })`:
+ * nó khớp cả `["customers", id]` của `useCustomer` (hình dạng khác hẳn) lẫn mọi
+ * key có filter/pagination — chèn vào đó là chèn sai bộ lọc và vỡ kích thước trang.
+ */
+export const useSeedCustomerIntoPickerCache = () => {
+  const queryClient = useQueryClient();
+  return useCallback(
+    (customer: Customer) => {
+      queryClient.setQueryData<PaginatedData<Customer>>(
+        CUSTOMER_PICKER_QUERY_KEY,
+        (prev) => insertCustomerIntoPickerCache(prev, customer),
+      );
+    },
+    [queryClient],
+  );
 };
 
 // =============================================
@@ -245,10 +347,13 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
       const { data, error } = await supabase.rpc(
         "get_customer_stats",
         {
-          p_status: filters?.status ?? null,
-          p_search: filters?.search?.trim() || null,
-          p_building_id: filters?.building_id ?? null,
-          p_room_id: filters?.room_id ?? null,
+          // Cả 4 tham số đều `DEFAULT NULL` ở server (xem rpc-surface.json), nên
+          // bỏ khoá khỏi payload = truyền NULL. Dùng `undefined` để khớp kiểu
+          // `p_x?: T` mà bộ sinh Supabase tạo cho tham số CÓ DEFAULT.
+          p_status: filters?.status ?? undefined,
+          p_search: filters?.search?.trim() || undefined,
+          p_building_id: filters?.building_id ?? undefined,
+          p_room_id: filters?.room_id ?? undefined,
         },
       );
       if (error) {
@@ -270,6 +375,22 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
 // useCreateCustomer - Insert mutation
 // Requirements: 2.10, 2.12
 // =============================================
+
+/**
+ * Kết quả tạo khách.
+ *
+ * Là một OBJECT chứ không phải `Customer` trần vì việc tạo khách gồm HAI thao
+ * tác không nằm trong cùng transaction: insert `customers` rồi insert `vehicles`.
+ * Cái thứ hai hỏng thì kết quả không phải "thành công" cũng không phải "thất
+ * bại" — nó là hỏng một phần, và kiểu trả về phải nói được điều đó. Trước đây
+ * lỗi ở bước hai bị nuốt hoàn toàn: người dùng đọc "TẠO thành công" trong khi
+ * xe không được lưu.
+ */
+export interface CreateCustomerResult {
+  customer: Customer;
+  /** Có giá trị ⇒ khách ĐÃ tạo, phương tiện kèm theo CHƯA lưu được. */
+  vehicleError?: { message?: string; code?: string } | null;
+}
 
 export const useCreateCustomer = () => {
   const queryClient = useQueryClient();
@@ -305,15 +426,42 @@ export const useCreateCustomer = () => {
           license_plate: v.license_plate,
         }));
 
-        await supabase.from("vehicles").insert(vehicleInserts as any);
+        const { error: vehicleError } = await supabase
+          .from("vehicles")
+          .insert(vehicleInserts as any);
+
+        // KHÔNG có transaction bao ngoài: khách đã INSERT xong ở trên. Lỗi ở
+        // đây là hỏng MỘT PHẦN, và đó là lý do không `throw`:
+        //   throw ⇒ onSuccess không chạy ⇒ mất cả ba invalidateQueries dưới đây
+        //   ⇒ khách vừa tạo KHÔNG hiện trong danh sách, và người dùng đọc toast
+        //   "có lỗi, vui lòng thử lại" rồi tạo lại ⇒ khách trùng.
+        // Vì vậy báo sự thật qua kết quả trả về, đừng reject.
+        if (vehicleError) {
+          console.error(
+            "Tạo khách thành công nhưng insert vehicles lỗi:",
+            vehicleError,
+          );
+          return {
+            customer: data as unknown as Customer,
+            vehicleError,
+          } satisfies CreateCustomerResult;
+        }
       }
 
-      return data as unknown as Customer;
+      return { customer: data as unknown as Customer } satisfies CreateCustomerResult;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      if (result.vehicleError) {
+        // Trước đây chỗ này luôn báo "TẠO thành công" kể cả khi phần xe hỏng.
+        toast.error(
+          `Đã tạo khách "${result.customer.full_name ?? ""}" nhưng CHƯA lưu được phương tiện. ` +
+            `Vào Sửa khách hàng để thêm xe — đừng tạo lại khách.`,
+        );
+        return;
+      }
       toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error: any) => {

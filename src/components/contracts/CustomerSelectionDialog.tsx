@@ -11,8 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, Loader2, Plus } from "lucide-react";
-import { useCustomers } from "@/hooks/useCustomers";
+import {
+  useCustomers,
+  useSeedCustomerIntoPickerCache,
+} from "@/hooks/useCustomers";
 import { CreateCustomerDialog } from "@/components/customers/CreateCustomerDialog";
+import type { Customer } from "@/types/customer";
 
 export interface CustomerBasic {
   id: string;
@@ -42,10 +46,19 @@ export function CustomerSelectionDialog({
   // enabled: open — dialog này mounted sẵn bên trong ContractFormDialog (cũng
   // mounted sẵn), trước đây kéo CẢ BẢNG customers + chuỗi enrichment mỗi lần
   // tải trang /contracts dù chưa ai mở form.
+  //
+  // skipLocationEnrichment: màn này chỉ hiện tên / SĐT / CCCD (xem phần render
+  // và handleConfirm bên dưới) nên chuỗi contract_customers → contracts → rooms
+  // → buildings là thuần lãng phí — ở ~500 khách nó là 7 request nối tiếp sau
+  // request chính. Cờ đặt Ở ĐÂY chứ không nhận qua prop: component này mount ở
+  // hai nơi (ContractFormDialog, TransferContractDialog), và hai nơi truyền hai
+  // giá trị khác nhau sẽ thành hai hình dạng dữ liệu trong CÙNG một ô cache.
   const { data: customerData, isLoading } = useCustomers(undefined, undefined, {
     enabled: open,
+    skipLocationEnrichment: true,
   });
   const customers = customerData?.data ?? [];
+  const seedCustomerIntoPickerCache = useSeedCustomerIntoPickerCache();
 
   // Seed checked state + known ids each time the dialog opens. The parent
   // controls `open` directly (no DialogTrigger), and Radix does NOT fire
@@ -90,6 +103,22 @@ export function CustomerSelectionDialog({
         c.id_number?.toLowerCase().includes(term)
     );
   }, [customers, searchTerm]);
+
+  // Khách vừa tạo: server đã trả về entity đầy đủ, nên chèn thẳng vào cache và
+  // tích sẵn — không chờ vòng invalidate → tải lại cả danh sách → enrichment.
+  //
+  // Tích TƯỜNG MINH theo id thay vì dựa vào effect "id lạ" ở trên, vì effect đó
+  // có cửa `known.size > 0`: ở một tổ chức chưa có khách nào, khách đầu tiên rơi
+  // đúng vào nhánh bị bỏ qua rồi bị đánh dấu "đã biết" — mất luôn cơ hội tích.
+  // `knownIdsRef.add` để hai cơ chế không đá nhau (tránh tích hai lần).
+  const handleCustomerCreated = (customer: Customer) => {
+    seedCustomerIntoPickerCache(customer);
+    knownIdsRef.current.add(customer.id);
+    setCheckedIds((prev) => new Set(prev).add(customer.id));
+    // Khách mới hiếm khi khớp từ khoá đang gõ — xoá ô tìm để nó không bị lọc mất
+    // ngay khi vừa xuất hiện.
+    setSearchTerm("");
+  };
 
   const toggleCustomer = (id: string) => {
     setCheckedIds((prev) => {
@@ -197,6 +226,7 @@ export function CustomerSelectionDialog({
         <CreateCustomerDialog
           open={createOpen}
           onOpenChange={setCreateOpen}
+          onCreated={handleCustomerCreated}
         />
       </DialogContent>
     </Dialog>

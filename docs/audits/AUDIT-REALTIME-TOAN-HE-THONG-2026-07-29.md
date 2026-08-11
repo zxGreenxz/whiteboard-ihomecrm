@@ -8,6 +8,30 @@
 >
 > Trạng thái: tài liệu audit và đề xuất kiến trúc; chưa triển khai thay đổi code hoặc database
 
+> ## ⛔ Phạm vi đã THU HẸP — 2026-08-11
+>
+> **Ba tiểu hệ nằm NGOÀI kế hoạch này: Network Center (`network_*`), OpenClaw
+> (`openclaw_*`) và Zalo (`zalo_*`).** Mỗi cái có vòng đời và cửa kiểm riêng; gộp
+> chúng vào một kế hoạch realtime của CRM nghiệp vụ chỉ tạo ra đề xuất mà người thi
+> hành không có thẩm quyền — hoặc tệ hơn, có thẩm quyền mà không có ngữ cảnh.
+>
+> **Phạm vi còn lại**: 7 bảng nghiệp vụ trong publication (`buildings`, `contracts`,
+> `customers`, `income_expenses`, `invoices`, `jobs`, `rooms`) cộng các bảng tiền và
+> vòng đời đã nối vào hub từ 29/07, `notifications`, và hub realtime trung tâm.
+>
+> Các mục đã bị gỡ, ghi lại ở đây để việc cắt không im lặng:
+>
+> | Mục | Nội dung cũ | Vì sao gỡ |
+> |---|---|---|
+> | §15.4 ★★★2 | "5 bảng `network_*` publish nhưng 0 consumer — quick win DROP" | Đề xuất này **đã sai** từ khi Network Center ship (`vercel.json` đặt `VITE_NETWORK_CENTER_MODE=production`, `useNetworkCenter.ts` subscribe đủ 5 bảng). Thi hành sẽ phá một tính năng đang chạy. Gỡ cả đề xuất lẫn phần đính chính nó. |
+> | §15.6 mục 5 | "DROP 5 bảng `network_*` khỏi publication" | như trên |
+> | §16.5 | Bảng chi tiết 6 RPC `openclaw_*` chiếm ~85% thời gian DB | Giữ **kết luận** (query list của CRM chỉ chạm ~0,6% tải DB), bỏ **chủ thể** nằm ngoài phạm vi. |
+> | §15.4 #13 · §16.2 · §16.6 | Các channel `zalo_*` trong danh sách "phải gắn callback trạng thái" | Zalo ra khỏi phạm vi 11/08. Số channel phải xử ở Giai đoạn 5 giảm từ 4 xuống **2** (hub + notifications). |
+> | §4.1 · §15.4 #9 | `zalo_*` trong bảng phân loại publication và bảng xếp hạng tải DB | như trên — giữ số đo, bỏ hạng mục |
+>
+> Chữ "network" ở nghĩa thông thường (network waterfall, network load, số request)
+> **không** thuộc diện này và được giữ nguyên.
+
 ## 1. Kết luận điều hành
 
 Nhận định về flow tạo khách ngay trong màn hình lập hợp đồng là đúng: khách mới phải xuất hiện và được chọn gần như tức thì. Realtime chỉ nên đồng bộ thay đổi sang tab hoặc thiết bị khác; không nên bắt chính thao tác vừa tạo phải đi vòng qua invalidate cache, tải lại toàn bộ danh sách rồi chờ realtime.
@@ -127,11 +151,14 @@ Cùng một tab không cần realtime để biết dữ liệu do chính nó v�
 
 ### 4.1. Publication production
 
-Production hiện có 16 bảng trong publication realtime:
+Production hiện có 16 bảng trong publication realtime, trong đó **thuộc phạm vi kế
+hoạch này** là 7 bảng:
 
 - Business: `buildings`, `contracts`, `customers`, `income_expenses`, `invoices`, `jobs`, `rooms`.
-- Zalo: 4 bảng.
-- Network center: 5 bảng.
+
+Chín bảng còn lại thuộc Zalo (4) và Network Center (5) — **ngoài phạm vi**, xem banner
+đầu tài liệu. Chúng vẫn được đếm ở đây vì mọi bảng trong publication đều cộng vào chi
+phí WAL poller (§16.4 ✗1), nhưng không sinh ra hạng mục nào trong kế hoạch.
 
 Tất cả đang dùng replica identity mặc định.
 
@@ -645,8 +672,8 @@ Ba bổ sung cho bảng này:
 2. **Đã tồn tại sẵn implementation optimistic chuẩn sách giáo khoa**:
    [`src/hooks/useBuildings.ts:249-271`](../../src/hooks/useBuildings.ts) có đủ
    `cancelQueries → getQueryData snapshot → setQueryData → onError rollback →
-   onSettled invalidate`. Cùng pattern ở `useZaloChat` (3 mutation) và
-   `useUiPreferences` (1). Tổng cộng **5/282 mutation là optimistic thật (1,8%)**.
+   onSettled invalidate`. Trong phạm vi kế hoạch còn `useUiPreferences` (1 mutation)
+   dùng cùng pattern; tỉ lệ mutation optimistic thật vẫn ở mức **dưới 2%**.
    §6-Critical-1 trình bày local-first như kiến trúc phải xây mới; thực tế là
    **port một pattern đã chạy production** — rẻ hơn nhiều so với doc ngụ ý.
 3. **20 bảng chỉ truy cập được qua `.from("x" as any)`** do `types.ts` drift
@@ -675,7 +702,7 @@ hạng mục phải làm.
 
 #### §4.1 — publication là 17 bảng, không phải 16
 
-Thiếu đúng `notifications`. Phân loại 7 business / 4 Zalo / 5 network **chính xác 100%**.
+Thiếu đúng `notifications`. Phân loại theo tiểu hệ ở §4.1 **chính xác 100%**.
 
 #### §5.3 — suy luận "không có trong `schema_migrations` ⇒ chưa apply" là SAI trong repo này
 
@@ -741,17 +768,11 @@ có ai subscribe hay không**.
 lớn nhất là **chi phí cố định theo số bảng trong publication**. Mọi đề xuất "thêm
 bảng vào publication" (§9 G3) đều làm tăng con số này. Đây phải là mục §5 riêng.
 
-#### ★★★ 2. 5 bảng `network_*` đang publish nhưng KHÔNG có consumer nào
+#### ★★★ 2. *(ĐÃ GỠ 2026-08-11 — ngoài phạm vi)*
 
-`network_command_events`, `network_device_current`, `network_incidents`,
-`network_interface_current`, `network_worker_heartbeats` đều nằm trong publication.
-Grep toàn `src/` cho các tên này: **0 kết quả** ngoài `types.ts` (file sinh tự động).
-Không có `supabase.channel` nào subscribe chúng. `CLAUDE.md` còn ghi nhóm `network_*`
-tự sinh **~65 phân mảnh theo ngày mỗi ngày**.
-
-⇒ Đang đốt WAL + chi phí poller ở mục 1 **hoàn toàn vô ích**. §4.4 khuyên "không bật
-Postgres Changes một cách cơ học" nhưng không phát hiện điều đó **đã xảy ra rồi**.
-**Quick win không rủi ro: DROP 5 bảng khỏi publication.**
+Mục này đề xuất DROP 5 bảng `network_*` khỏi publication. Đã gỡ theo banner đầu tài
+liệu: Network Center nay là tiểu hệ đang chạy production và consume đúng 5 bảng đó.
+Giữ lại số thứ tự để mọi tham chiếu ★★★n trong §16 không lệch.
 
 #### ★★★ 3. Debounce 800 ms không có maxWait — bị starve, không "gộp bão" như comment tự nhận
 
@@ -843,9 +864,10 @@ Hệ quả cho kế hoạch:
 
 #### ★★ 9. Ưu tiên theo thời gian DB thật khác với ưu tiên của tài liệu
 
-Tổng thời gian thực thi theo bảng gốc: **contracts 164,6 phút** → **invoices 128,3** →
-**notifications 126,4** → zalo_conversations 86,4 → income_expenses 72,2 → … →
-**customers chỉ đứng thứ 10 (28,4 phút)**.
+Tổng thời gian thực thi theo bảng gốc, **chỉ tính bảng trong phạm vi**:
+**contracts 164,6 phút** → **invoices 128,3** → **notifications 126,4** →
+income_expenses 72,2 → … → **customers chỉ đứng thứ 10 (28,4 phút)**.
+(Thứ hạng giữ nguyên vị trí gốc; bảng của các tiểu hệ ngoài phạm vi đã lược bỏ.)
 
 ⇒ Case study §3 chọn đúng flow **gây khó chịu nhất cho người dùng**, nhưng đó **không
 phải điểm nóng DB lớn nhất**. Nên nói rõ điều này để §9 G4 không bị ưu tiên nhầm — và
@@ -878,11 +900,12 @@ instance thứ nhất unmount trước, `hubActive` về `false` nhưng instance
 **không tự re-subscribe** (deps không đổi) ⇒ **mất realtime im lặng**, không log,
 không status callback để phát hiện.
 
-#### ★ 13. Ba channel còn lại cũng không có status callback
+#### ★ 13. Channel notifications cũng không có status callback
 
-§4.6 chỉ soi hub. Thực tế cả 4 channel đều `.subscribe()` không callback:
-`useNotifications.ts:360`, `useZaloChat.ts:409` và `:421`. ⇒ Giai đoạn 5 phải bao
-**4 channel**, nếu không chỉ vá 1/4 bề mặt.
+§4.6 chỉ soi hub. Trong phạm vi kế hoạch có **hai** channel và **cả hai** đều
+`.subscribe()` không callback: hub (`useRealtimeDataSync.ts`) và
+`useNotifications.ts:360`. ⇒ Giai đoạn 5 phải bao **cả hai**, nếu không chỉ vá nửa
+bề mặt. *(Danh sách gốc còn kể hai channel Zalo — đã gỡ 11/08, ngoài phạm vi.)*
 
 #### ★ 14. `useSyncContractServices` có cùng anti-pattern nhưng §4.3 chỉ nêu một
 
@@ -988,10 +1011,11 @@ Gộp trong **1 PR, ~1 ngày, không cần Giai đoạn 0**, đo bằng đúng 1
    Mẫu copy: `useBuildings.ts:249-271`.
 3. **Sửa nuốt lỗi insert vehicles** (`useCustomers.ts:308`) — 1 dòng.
 4. **Thêm maxWait cho debounce** (~6 dòng) — hết starvation business-performance.
-5. **DROP 5 bảng `network_*` khỏi publication** — giảm chi phí WAL poller, 0 rủi ro.
-6. **Bỏ `count:'exact'` ở picker** (hoặc `estimated`) — ~2,2× trên đúng query đó.
-7. **Sửa `pageSize: 500` → dùng search server-side** ở `VehicleFormDialog` — hết cắt
+5. **Bỏ `count:'exact'` ở picker** (hoặc `estimated`) — ~2,2× trên đúng query đó.
+6. **Sửa `pageSize: 500` → dùng search server-side** ở `VehicleFormDialog` — hết cắt
    khách thứ 501.
+
+*(Mục "DROP 5 bảng `network_*`" đã gỡ 2026-08-11 — ngoài phạm vi, xem banner đầu tài liệu.)*
 
 Lát cắt này đạt **cả 3 tiêu chí thành công mà chính §13 đặt ra**, cộng thêm một fix
 mất-dữ-liệu-im-lặng và một fix starvation, với **0 abstraction mới, 0 migration, 0
@@ -1021,9 +1045,275 @@ tham chiếu), §5.3 (nâng lên High, 143 version vắng sổ, đảo chiều r
 **Bỏ:** §9 G4 dòng 472 (RLS — đã xong), §9 G5 "intent-based prefetch" (đã có), §9 G5
 Broadcast (11 user — định cỡ sai), §9 G4 cursor pagination (903 dòng).
 
-**Thêm:** WAL poller 25,5% DB time; `network_*` publish vô ích; debounce starvation;
+**Thêm:** WAL poller 25,5% DB time; debounce starvation;
 DELETE bypass RLS; org filter giết DELETE; `realtime.messages` 0 policy; `count:'exact'`
 2 lần InitPlan; multi-tab; 3 bug im lặng ở `useCustomers`/`VehicleFormDialog`.
 
 **Đảo thứ tự:** Giai đoạn 1 (+ 5 fix rẻ) **trước** Giai đoạn 0, và thay KPI percentile
 bằng phép đo tổng hợp Playwright.
+
+---
+
+## 16. Audit lại theo hệ thống hiện tại (2026-08-11)
+
+> Nối vào cuối, **không sửa §1–§15**. Cùng lý do §15 đã nêu: hai bản của một khẳng
+> định sẽ lệch nhau rồi không ai biết bản nào đúng.
+>
+> **Mốc đo**: commit `874694f7`, nhánh `main`, 2026-08-11 — **575 commit** sau bản
+> audit gốc. DB đọc qua Management API, project `tryymsxyyckgbrmmvozx`, chỉ SELECT.
+>
+> Câu hỏi của phiên này không phải "bản kế hoạch có đúng không" (§15 đã chấm 87
+> khẳng định) mà là **"sau 13 ngày, còn gì đáng làm"**. Ba nhóm kết quả: còn đúng
+> nguyên, đã được làm xong, và — nhóm nguy hiểm nhất — **§15 nay đã sai**.
+
+### 16.1. Vì sao phải audit lại chính bản audit
+
+§15 tự đặt bài học: *"mọi con số phải ghi kèm commit và lệnh đo"*. Bài học đó đúng
+và đây là bằng chứng: **4 trong 15 phát hiện của §15.4 nay đã hết hiệu lực**. Một
+trong số đó nguy hiểm tới mức phải gỡ hẳn khỏi tài liệu (xem banner đầu trang); một
+mục khác — §15.3 "phải khôi phục sổ ghi migration cho 143 version" — nay đề xuất
+làm ngược lại điều repo đã cố ý chọn, và thi hành nó sẽ phá chính bất biến mà
+`check-migration-ledger-frozen.mjs` sinh ra để canh.
+
+Một tài liệu audit không có ngày hết hạn thì phần "đề xuất" của nó tiếp tục được
+đọc như lệnh, rất lâu sau khi phần "đo đạc" của nó đã chết.
+
+### 16.2. Còn đúng nguyên — kiểm lại từng dòng
+
+| Khẳng định | Nơi kiểm hôm nay | Trạng thái |
+|---|---|---:|
+| §3.2 picker dùng trọn `useCustomers` | `CustomerSelectionDialog.tsx:45` | còn |
+| §3.2 `CreateCustomerDialog` không có `onCreated` | `:88–93` chỉ `open`/`onOpenChange` | còn |
+| §3.2 `select("*", { count: "exact" })` | `useCustomers.ts:90` | còn |
+| §3.2 enrichment chunk 80, vòng `for` tuần tự | `useCustomers.ts:150–180` | còn |
+| §3.2 `onSuccess` bỏ `data` | `useCustomers.ts:313–318` | còn |
+| §4.5 không có echo suppression | grep `suppress`/`mutationOrigin`/`clientId` = **0** | còn |
+| §4.6 `subscribe()` không callback trạng thái | `useRealtimeDataSync.ts:152` | còn |
+| §15.4 #3 debounce không `maxWait` | `:140–148` | còn |
+| §15.4 #3 một timer chung cho 5 bảng | `:115–133` | còn |
+| §15.4 #12 `hubActive` là biến module | `:102`, `:110` (nhánh sớm vẫn không trả cleanup) | còn |
+| §15.4 #6 `realtime.messages` **0 policy** | `pg_policies where schemaname='realtime'` → 0 | còn |
+| §15.4 #7 `count:'exact'` | **13 chỗ**, gồm cả 4 list gốc | còn |
+| §15.4 #14 hai hook junction hard-delete | `useContracts.ts:702`, `:752` | còn |
+| §15.4 #15 nuốt lỗi insert vehicles | `useCustomers.ts:308` | còn |
+| §15.5 **0 hạ tầng telemetry** | `package.json` sạch; `performance.mark` = 0 | còn |
+| §5.1 search ILIKE lệch index | `idx_customers_search` vẫn GIN `to_tsvector`; `useCustomers.ts:114` vẫn ILIKE | còn |
+
+Đo lại §5.1 trên `pg_stat_statements` hôm nay: invoices list **635 / 930 / 1.210 /
+1.592 ms**, contracts **353 → 1.363 ms**, vehicles **435 ms**. Trùng khít bảng cũ —
+shape chưa đổi thì số không đổi.
+
+Hai đính chính nhỏ trong nhóm này:
+
+- **§4.6 đúng về bản chất, sai về số đếm sau khi thu hẹp phạm vi.** Trong phạm vi kế
+  hoạch nay có đúng **2** chỗ `.subscribe()` — `useRealtimeDataSync.ts:152` và
+  `useNotifications.ts:360` — và **không chỗ nào** có callback trạng thái. Bản audit
+  ghi "0/4" vì đếm cả hai channel Zalo; con số đúng hôm nay là **0/2**. Kết luận
+  không đổi: mất realtime là mất im lặng, không log, không cách nào biết.
+- **§3 có một fix ngoài kế hoạch đã ship**: picker nay gate bằng `enabled: open`
+  (`CustomerSelectionDialog.tsx:45`, `useCustomers.ts:74–80`). Trước đó dialog
+  mounted-sẵn kéo cả bảng customers + chuỗi enrichment **mỗi lần tải `/contracts`
+  dù chưa ai mở form**. Đây là phần tốn kém nhất của §3.1 mà bản audit không nêu.
+
+### 16.3. Đã làm xong — phải xoá khỏi kế hoạch
+
+#### §9 G2 "typed query dependency registry" — ĐÃ TỒN TẠI
+
+Đây là hạng mục lớn nhất của kế hoạch (8 checkbox) và nó đã được xây, bằng một hình
+dạng khác nhưng phục vụ đúng mục đích:
+
+- Descriptor **tách theo miền**: `src/hooks/realtime/{finance,contracts,operations}.ts`,
+  kiểu chung ở `types.ts`, gom ở `index.ts`.
+- `src/lib/realtime/syncTables.ts` là **module dữ liệu thuần** (không import React)
+  để script gate đọc được.
+- Hub còn **168 dòng**, chỉ mở channel / gom debounce / điều phối.
+
+Bốn gate chạy hôm nay, tất cả xanh:
+
+```text
+check-realtime-descriptors   hub 13 bảng ⊂ publication 30 bảng
+check-realtime-query-keys    58 key trong descriptor đều có query thật dùng
+check-realtime-key-ownership 150 gốc key bắn vào · 237 gốc app dùng · 0 bắn trượt
+check-realtime-surface       0 subscribe câm · 0 trôi
+```
+
+Ba checkbox cuối của G2 ("test kiểm mọi query source có dependency mapping",
+"test ngăn query root mới bị bỏ sót") **chính là bốn gate này**. Test hub:
+**33/33 pass** (24 + 6 + 3), so với 23 lúc audit.
+
+> **Nhưng một chiều vẫn hở**, và đúng chiều mà §15.6 cảnh báo: các gate kiểm
+> *"key được bắn vào có ai nhận không"*, **không** kiểm *"query root mới có ai bắn
+> vào không"*. Tạo `["customers-picker"]` hôm nay vẫn rơi ra ngoài hub mà không gate
+> nào đỏ. Cảnh báo của §15.6 mục 1 vẫn phải đọc.
+
+#### §4.3 — phần lớn lỗ hổng dependency đã bịt
+
+Publication nay **30 bảng** (audit ghi 16, §15.3 sửa thành 17). Hub nghe 13.
+
+| §4.3 nêu thiếu tín hiệu | Hôm nay |
+|---|---|
+| `payments` | ✅ publish + descriptor 7 key |
+| `contract_terminations` | ✅ publish + 6 key (kèm đính chính key chết) |
+| `contract_transfers` | ✅ publish + 4 key |
+| `income_expense_items`, `accounts`, `cash_handovers` | ✅ publish + descriptor |
+| `contract_customers`, `contract_services` | ❌ **vẫn không publish, vẫn hard-delete** |
+| `vehicles`, `invoice_items`, `meters`, `meter_readings` | ❌ vẫn không publish |
+
+`rooms`/`buildings` vẫn chỉ mang key `["business-performance"]` — nhưng nay là
+**quyết định có ghi lý do** tại `operations.ts`, không còn là bỏ sót vô ý.
+
+#### §5.3 và §15.3 — cả hai đều bị vượt qua bởi một quyết định kiến trúc
+
+§5.3 nói "2 migration chưa apply". §15.3 lật lại: "143 version vắng sổ, phải khôi
+phục sổ ghi". **Cả hai nay đều không còn là việc phải làm.**
+
+Sổ `schema_migrations` **đông cứng có chủ ý** ở `20260727095000` / 372 dòng — đó là
+mốc dự án chuyển sang **forward-only lane**. Nguồn sự thật nay là
+`supabase/migration-provenance.json`:
+
+| Trạng thái | Số entry |
+|---|---:|
+| `ledger-applied` | 351 |
+| `catalog-proven` | 214 |
+| `superseded` | 15 |
+| **`unknown`** | **65** |
+| tổng | 645 |
+
+Và `scripts/check-migration-ledger-frozen.mjs` băm toàn bộ bảng để bắt bất kỳ ai
+viết lại sổ. ⇒ Việc còn lại **không phải** "khôi phục 143 version" mà là **65 entry
+`unknown`**. Rủi ro dựng-lại-môi-trường mà §15.3 nêu vẫn thật, nhưng nay được che
+bởi baseline + `tooling/known-gaps.yaml` (`baseline-schema-khong-trong-repo`,
+hết hạn 30/11/2026) chứ không còn là phát hiện mới.
+
+#### Ba mục §15 đã chỉ ra là "đã có" — xác nhận vẫn còn
+
+`src/lib/prefetchIntent.ts` (§9 G5), `trackConsoleErrors` (§9 G0),
+`docs/he-thong/realtime-sync.md` 194 dòng (§9 G3). Tối ưu
+`can_access_org_entity`/`has_any_scope_v3` (§9 G4 dòng 472) vẫn là việc đã xong từ
+`20260726130000`.
+
+#### §4.7 — notifications
+
+Mount tại `AppProviders.tsx:56–60` cạnh `RealtimeDataSync`; `notifications` nằm
+trong publication. §15.3 đã sửa; xác nhận vẫn đúng.
+
+### 16.4. §15 nay đã SAI — ba mục
+
+> Mục thứ tư (§15.4 ★★★2, "DROP 5 bảng `network_*`") đã được **gỡ khỏi tài liệu**
+> thay vì đính chính tại chỗ — cùng lý do với banner đầu trang: một đề xuất sai nằm
+> cạnh phần đính chính nó vẫn có thể bị đọc rời và đem thi hành.
+
+#### ✗ 1. "WAL poller chiếm 25,5% thời gian DB" (§15.4 ★★★1)
+
+Tỉ lệ hôm nay: **4,3%**. Nhưng đừng đọc thành "vấn đề đã hết" — đọc kỹ thì **kết
+luận của mục đó mạnh lên**:
+
+| | Bản audit | Hôm nay |
+|---|---:|---:|
+| Thời gian tuyệt đối của poller | 6,7 giờ | **15,0 giờ** (54.020 s) |
+| Lượt gọi | — | 4.335.720 |
+| Số bảng trong publication | 17 | **30** |
+
+Publication gần gấp đôi, chi phí poller gấp đôi. **Tỉ lệ giảm chỉ vì mẫu số phình
+ra** (xem mục kế). Luận điểm "chi phí cố định theo số bảng publish" vẫn đúng và nay
+có bằng chứng hai điểm thay vì một.
+
+#### ✗ 2. "Write amplification là driver thật" (§15.4 ★★8, §15.7 hạng 5)
+
+`invoices.n_tup_upd`: **664.258** lúc audit → **667.106** hôm nay = **+2.848 trong
+13 ngày**. Con số 664k là **nợ lịch sử của một đợt backfill**, không phải churn đang
+chạy. Đề xuất "giảm write amplification `invoices`" mất phần lớn căn cứ.
+
+Quy mô khác cũng đã đổi: **15** tài khoản (từ 11), DB **387 MB** (từ 151 MB — ×2,5
+trong 13 ngày, và phần tăng gần như toàn bộ nằm ở tiểu hệ ngoài phạm vi, không phải
+ở dữ liệu nghiệp vụ), invoices 1.251 dòng, customers 523.
+
+#### ✗ 3. "Cross-tenant event/data leak hiện KHÔNG đạt" (§15.4 ★★★4)
+
+Phải **phát biểu lại**, và repo đã tự làm việc đó:
+`src/hooks/__tests__/realtimeTenantBoundary.test.ts` ghim đúng hiện trạng với lập
+luận đúng — hub bỏ payload hoàn toàn, mọi refetch đi qua RLS ⇒ **không rò dữ liệu**.
+
+Cái thật sự rò với replica identity DEFAULT + không filter là **khoá chính và thời
+điểm** của một DELETE ở org khác, cộng **refetch thừa**. Đó là rò *siêu dữ liệu* và
+*chi phí*, không phải rò *dữ liệu*. KPI §10 dòng cuối nên tách làm hai; gộp một dòng
+thì hoặc bị tuyên bố đạt sai, hoặc bị coi là không bao giờ đạt được.
+
+`check-realtime-surface` nay tự cảnh báo: **30/30 bảng REPLICA IDENTITY = DEFAULT**.
+
+### 16.5. Cái mới — không có trong cả §1–§14 lẫn §15
+
+#### ★★★ Query list của CRM nay chỉ chiếm ~0,6% thời gian DB
+
+Đo `pg_stat_statements` (tích luỹ từ 25/04/2026), gộp theo phạm vi:
+
+| Nhóm | % tổng thời gian thực thi |
+|---|---:|
+| RPC của các tiểu hệ **ngoài phạm vi** kế hoạch này | **≈84,6%** |
+| WAL poller (chi phí realtime, xem ✗1) | 4,3% |
+| **invoices + contracts + vehicles list — thứ §9 G4 định tối ưu** | **≈0,6%** |
+
+Hệ quả trực tiếp cho kế hoạch: **§9 G4 "compact read model" nhắm vào ~0,6% tải
+database.** Ba hạng mục đầu của §15.7 vẫn đáng làm — chúng rẻ, và chúng chữa **thời
+gian chờ của người dùng**, thứ mà bảng trên không đo. Nhưng đừng bán chúng như một
+đợt tối ưu hiệu năng hệ thống: nếu mục tiêu là giảm tải DB thì chúng nằm sai chỗ hai
+bậc độ lớn, và phần lớn tải đó **không thuộc thẩm quyền của kế hoạch này**.
+
+Một hạng mục đáng chú ý nằm ngay ranh giới: **`get_authorization_context_v1` chiếm
+12,1% (375.602 lượt × 402 ms ≈ 42 giờ)**. Đây là RPC uỷ quyền dùng chung, nhưng số
+lượt bám 1:1 theo lưu lượng của một tiểu hệ ngoài phạm vi — nên nó **không phải**
+"RLS helper đắt" mà §6/§9 G4 nói tới, và cũng không sửa được từ trong kế hoạch này.
+Ghi lại để không ai đọc con số 12,1% rồi mở lại checkbox RLS đã đóng từ 26/07.
+
+> **Ranh giới**: đoạn trên **chỉ là số đo đọc từ `pg_stat_statements`**. Không đọc mã,
+> không chạy test, không đụng dữ liệu của các tiểu hệ ngoài phạm vi, và không đề xuất
+> sửa gì trong đó.
+
+#### ★★★ `pageSize: 500` nay cắt **20 khách**, không phải 1
+
+`select count(*) filter (where deleted_at is null) from customers` → **520**.
+`VehicleFormDialog.tsx:94–98` vẫn `{ page: 1, pageSize: 500 }` ⇒ `.range(0,499)`
+**bỏ im lặng 20 khách gần nhất**. Lúc audit là 501/500 (mất 1). Cùng một dòng mã,
+mức thiệt hại đã ×20 trong 13 ngày — đúng dạng lỗi mà §15.4 #15 gọi là "mất dữ liệu
+im lặng cách 2× tăng trưởng", nay đã tới.
+
+`CustomerSelectionDialog` vẫn không truyền pagination ⇒ vẫn dựa vào PostgREST
+`max_rows = 1000`. Ở 520 khách chưa chạm trần; đây là **lỗi có hẹn giờ**, không phải
+lỗi đang chạy.
+
+### 16.6. Lát cắt đầu tiên — bản 11/08
+
+§15.6 đề xuất 7 mục. Sau khi thu hẹp phạm vi còn **6 mục, cộng 1 mục mới**:
+
+| # | Việc | Trạng thái |
+|---:|---|---|
+| 1 | `skipLocationEnrichment` cho `useCustomers`, truyền từ picker → giết 7/8 request | giữ. ⚠ cảnh báo "đừng tạo root mới" **vẫn phải đọc** — gate hiện có không bắt chiều này |
+| 2 | `onCreated(customer)` + `setQueryData` đúng key picker; mẫu `useBuildings.ts` | giữ (auto-select đã sẵn ở `CustomerSelectionDialog.tsx:65–80`) |
+| 3 | Sửa nuốt lỗi insert vehicles `useCustomers.ts:308` — **1 dòng** | giữ |
+| 4 | `maxWait` cho debounce (~6 dòng) | giữ |
+| 5 | Bỏ `count:'exact'` ở picker | giữ |
+| 6 | `pageSize: 500` ở `VehicleFormDialog` | giữ, **ưu tiên cao hơn** — đang mất 20 khách |
+| 7 | *(mới)* Gắn callback trạng thái cho **2 channel trong phạm vi** (hub, notifications) | thêm — đóng đúng §4.6 |
+
+*(Mục "DROP 5 bảng `network_*`" của §15.6 đã gỡ — ngoài phạm vi.)*
+
+Vẫn **0 abstraction mới, 0 migration, 0 observability phải xây trước**. Kết luận
+"Giai đoạn 1 trước Giai đoạn 0" của §15.5 giữ nguyên: repo vẫn có **0 hạ tầng
+telemetry**, nên Giai đoạn 0 vẫn là một dự án riêng chứ không phải bước chuẩn bị.
+
+### 16.7. Tổng kết trạng thái kế hoạch
+
+| Giai đoạn | Trạng thái 11/08 |
+|---|---|
+| G0 instrumentation | chưa bắt đầu; vẫn nên **hoãn**, không phải làm trước |
+| G1 flow tạo khách | **chưa làm gì** ngoài `enabled: open`; vẫn là lát cắt đầu |
+| G2 registry | **về cơ bản đã xong** — descriptor theo miền + 4 gate; còn hở chiều "root mới" |
+| G3 realtime Tier A | **quá nửa** — 6 bảng nghiệp vụ mới có tín hiệu; còn `contract_customers`/`contract_services`/`vehicles`/`invoice_items`/`meters` |
+| G4 read model + DB tuning | RLS **đã xong từ 26/07**; cursor pagination **nên bỏ**; read model nay chỉ chạm ~0,6% tải DB |
+| G5 health/reconnect | chưa; Broadcast vẫn **0% hạ tầng** (`realtime.messages` 0 policy) — vẫn nên hoãn |
+| G6 E2E đa ngữ cảnh | chưa; ranh giới tenant nay có test đơn vị ghim hiện trạng |
+
+**Điều nguy hiểm nhất của tài liệu này hôm nay không phải phần chẩn đoán sai — mà là
+phần đề xuất đúng-lúc-viết đang được đọc như lệnh còn hiệu lực.** Đề nghị: mọi lát
+cắt lấy từ đây phải **đo lại tại commit hiện tại trước khi thi hành**. Đó cũng là lý
+do mục `network_*` được gỡ hẳn thay vì để lại kèm đính chính — xem banner đầu trang.

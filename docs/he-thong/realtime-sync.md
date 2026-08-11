@@ -51,7 +51,7 @@ sequenceDiagram
     A->>DB: UPDATE/INSERT/DELETE 1 bảng nghiệp vụ
     Note over A: mutation.onSuccess<br/>invalidate key CỦA MÌNH (tức thì)
     DB-->>B: postgres_changes (tín hiệu; payload bị bỏ qua)
-    Note over B: hub gộp debounce 800ms/bảng
+    Note over B: hub gộp debounce 800ms/bảng (trần chờ 2400ms)
     B->>B: invalidateQueries(các key của bảng đó)
     B->>B: prefetchDomain (nếu tab visible)
     Note over B: query ĐANG MỞ refetch tại chỗ<br/>(giữ data cũ, không nháy "Đang tải")
@@ -65,8 +65,12 @@ sequenceDiagram
   phải liệt kê tường minh. **Đây chính là loại lỗi đã gặp.**
 - **Chỉ refetch query đang mounted**; query không mở chỉ bị đánh dấu stale ⇒ thêm nhiều key
   vào danh sách gần như **miễn phí**.
-- **Debounce 800ms/bảng**: thao tác bulk (sinh HĐ hàng loạt, import thu chi) bắn 1 event/dòng
-  → gộp về 1 lần invalidate.
+- **Debounce 800ms/bảng, TRẦN CHỜ 2400ms**: thao tác bulk (sinh HĐ hàng loạt, import thu chi)
+  bắn 1 event/dòng → gộp về 1 lần invalidate.
+  Trần chờ là vế thứ hai và nó không thừa: debounce ở đây là trailing-edge thuần, nên một đợt
+  bắn dày hơn 1 event/800ms sẽ đẩy lùi flush **vô hạn** — đúng kịch bản bulk mà debounce sinh
+  ra để phục vụ. `MAX_WAIT_MS = DEBOUNCE_MS × 3` là mốc muộn nhất tính từ event **đầu** của cụm,
+  nên trong một cơn bão màn hình vẫn được cập nhật vài lần thay vì đứng số tới lúc bão tan.
 - **Re-prefetch** trang đầu của domain (`prefetchDomain`) chỉ khi `document.visibilityState
   === "visible"` — tab nền để staleTime tự lo.
 - **Event không phải ranh giới phân quyền**: hub bỏ payload và chỉ invalidate cache. Dữ liệu mới
@@ -157,12 +161,20 @@ Nếu tương lai muốn cho live, cân nhắc kỹ chi phí (xem đợt tối �
 
 | Lớp | Ai hưởng | Khi nào |
 |---|---|---|
-| `mutation.onSuccess` invalidate | **client thao tác** | tức thì, không đợi realtime |
+| `setQueryData` từ kết quả mutation | **client thao tác** | ngay lập tức, không chạm mạng |
+| `mutation.onSuccess` invalidate | **client thao tác** | tức thì, nhưng vẫn phải đi một vòng refetch |
 | hub `SYNC_TABLES` invalidate | **mọi client** (kể cả thao tác, có 800ms trễ) | qua postgres_changes |
 
 Nguyên tắc: **mutation lo tức thì cho client hiện tại; hub lo cross-client.** Khi thêm mutation
 đụng bảng nghiệp vụ, invalidate đủ key liên quan trong `onSuccess`; đồng thời đảm bảo hub cũng
 phủ các key đó cho client khác.
+
+Lớp trên cùng là phần hay bị bỏ quên: server đã **trả về entity canonical** trong response của
+mutation, nên với chính tab vừa ghi thì `invalidate → refetch` là đi vòng qua mạng để lấy lại thứ
+mình vừa cầm trên tay. Mẫu đang chạy: `useSeedCustomerIntoPickerCache` (`src/hooks/useCustomers.ts`)
+chèn khách vừa tạo thẳng vào ô cache của picker hợp đồng. Hai điều kiện để làm đúng — key phải lấy
+từ **factory dùng chung** (`customersQueryKey`, không chép tay, vì ghi nhầm ô là hỏng im lặng), và
+phép chèn phải **idempotent theo id** (invalidate hoặc realtime có thể đã mang bản ghi đó về trước).
 
 Ví dụ chuẩn: `usePayUtilityBill.onSuccess` invalidate `utility-payments` (đóng tiền cập nhật
 ngay). Đối xứng, 07/07 bổ sung `["utility-payments"]` vào `useCancelIncomeExpense` +

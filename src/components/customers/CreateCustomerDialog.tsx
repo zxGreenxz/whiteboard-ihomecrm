@@ -32,6 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useCreateCustomer } from "@/hooks/useCustomers";
+import type { Customer } from "@/types/customer";
 import ImageUploadZone from "@/components/customers/ImageUploadZone";
 import CustomerVehiclesSection from "@/components/customers/CustomerVehiclesSection";
 
@@ -88,9 +89,17 @@ type CustomerFormValues = z.infer<typeof customerSchema>;
 interface CreateCustomerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Nhận khách canonical do server vừa trả, NGAY khi tạo xong.
+   *
+   * Có để nơi mở dialog dùng được kết quả mà không phải chờ một vòng
+   * invalidate → refetch của cả danh sách. Optional: ba nơi mở dialog này chỉ
+   * có một nơi cần (picker trong màn hợp đồng).
+   */
+  onCreated?: (customer: Customer) => void;
 }
 
-export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialogProps) {
+export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCustomerDialogProps) {
   const createCustomer = useCreateCustomer();
   const [customerType, setCustomerType] = useState<"INDIVIDUAL" | "ORGANIZATION">("INDIVIDUAL");
 
@@ -137,7 +146,7 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
 
   const onSubmit = async (data: CustomerFormValues) => {
     try {
-      await createCustomer.mutateAsync({
+      const created = await createCustomer.mutateAsync({
         customer_type: data.customer_type || null,
         full_name: data.full_name,
         phone: data.phone,
@@ -186,6 +195,10 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
           })),
       });
       form.reset();
+      // Gọi TRƯỚC onOpenChange: đóng dialog có thể unmount cả cây (picker mở
+      // dialog này bên trong chính nó), và phải nằm TRONG khối try vì `catch`
+      // dưới đây nuốt lỗi — ném ra ngoài là mất tăm.
+      if (created?.customer) onCreated?.(created.customer);
       onOpenChange(false);
     } catch (error) {
       // Error is handled by the mutation

@@ -52,6 +52,23 @@ const VEHICLE_TYPE_OPTIONS = [
   { value: 'OTHER', label: 'Khác' },
 ] as const;
 
+/**
+ * Số khách nạp cho ô chọn "Khách hàng". Ô này lọc CLIENT-SIDE (SearchableSelect
+ * dùng cmdk), nên khách không nằm trong tập nạp về thì gõ đúng tên cũng không
+ * tìm ra.
+ *
+ * Trước đây là 500 và tổ chức thật đã có 520 khách chưa xoá: `.range(0, 499)`
+ * bỏ IM LẶNG 20 người gần nhất — không lỗi, không cảnh báo, chỉ là người dùng
+ * không tìm thấy khách vừa tạo rồi tưởng mình nhớ nhầm.
+ *
+ * 1000 là trần `max_rows` của PostgREST: xin hơn cũng không được trả thêm. Nên
+ * con số này KHÔNG phải cách sửa triệt để, nó chỉ dời ngưỡng. Thứ thật sự sửa
+ * là `customersTruncated` bên dưới: khi tập nạp về không còn đủ, ô chọn phải
+ * NÓI RA thay vì cắt lặng lẽ. Đường đi tiếp là tìm kiếm phía server (cần
+ * SearchableSelect báo được từ khoá đang gõ ra ngoài) — việc riêng, không gộp.
+ */
+const CUSTOMER_OPTIONS_PAGE_SIZE = 1000;
+
 export default function VehicleFormDialog({
   open,
   onOpenChange,
@@ -95,9 +112,13 @@ export default function VehicleFormDialog({
     locationFilterActive
       ? { building_id: selectedBuildingId, room_id: selectedRoomId }
       : undefined,
-    { page: 1, pageSize: 500 },
+    { page: 1, pageSize: CUSTOMER_OPTIONS_PAGE_SIZE },
   );
   const customers = customersData?.data ?? [];
+  // `count` là tổng số khách KHỚP, không phải số dòng đã tải về. Lệch nhau ⇒
+  // trang đầu không chứa hết và ô chọn đang thiếu người. Xem hằng ở đầu file.
+  const customersTotal = customersData?.count ?? 0;
+  const customersTruncated = customersTotal > customers.length;
 
   // Khách đang chọn có thể nằm ngoài danh sách đã lọc (vd sửa xe cũ, hoặc khách
   // không có HĐ ở toà/phòng này) — nạp riêng để trigger vẫn hiện đúng tên.
@@ -131,9 +152,21 @@ export default function VehicleFormDialog({
         disabled: true,
       });
     }
+    // Danh sách bị cắt: nói ra. Im lặng ở đây nghĩa là người dùng gõ đúng tên
+    // một khách CÓ THẬT mà không thấy gì, rồi kết luận sai là khách chưa được
+    // tạo — và tạo thêm một bản trùng. `disabled` nên cmdk không cho chọn.
+    if (customersTruncated) {
+      opts.push({
+        value: '__truncated__',
+        label: `Chỉ hiện ${customers.length}/${customersTotal} khách — hãy lọc theo toà/phòng để thu hẹp`,
+        disabled: true,
+      });
+    }
     return opts;
   }, [
     customers,
+    customersTotal,
+    customersTruncated,
     selectedCustomer,
     selectedInList,
     locationFilterActive,

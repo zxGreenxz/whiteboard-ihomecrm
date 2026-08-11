@@ -342,6 +342,10 @@ export function useNotificationsRealtime() {
   useEffect(() => {
     if (!uid) return;
 
+    // Xem chú thích cùng tên ở useRealtimeDataSync: CLOSED bắn cả khi ta chủ
+    // động dọn, nên không có cờ này thì cảnh báo kêu cả lúc bình thường.
+    let dangTuDon = false;
+
     const channel = supabase
       .channel(`notif-${uid}`)
       .on(
@@ -357,9 +361,18 @@ export function useNotificationsRealtime() {
           queryClient.invalidateQueries({ queryKey: ['notifications'] });
         },
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`[realtime] notif ${status}`, err?.message ?? '');
+          return;
+        }
+        if (status === 'CLOSED' && !dangTuDon) {
+          console.warn('[realtime] notif CLOSED ngoài ý muốn — chuông ngừng cập nhật');
+        }
+      });
 
     return () => {
+      dangTuDon = true;
       supabase.removeChannel(channel);
     };
   }, [uid, queryClient]);

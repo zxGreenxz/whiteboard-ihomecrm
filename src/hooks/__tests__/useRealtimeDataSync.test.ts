@@ -498,6 +498,61 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(invalidatedRoots()).toEqual(["business-performance"]);
   });
 
+  // ── TRẦN CHỜ (MAX_WAIT_MS) ────────────────────────────────────────────────
+  // Ca ngay trên ("debounces a same-table burst") ghim vế THỨ NHẤT của debounce:
+  // cụm thưa thì gộp. Hai ca dưới đây ghim vế THỨ HAI, vốn trước đây không có:
+  // cụm DÀY thì vẫn phải nhả. Thiếu chúng thì xoá `delayConTrongTran` khỏi hub
+  // vẫn xanh 33/33 — nghĩa là bản vá này không có gì canh.
+  it("flushes at the max-wait ceiling when a burst never idles", () => {
+    useRealtimeDataSync();
+    const handler = getRealtimeHandler("customers");
+
+    // Mỗi 400ms một event: khoảng cách luôn NGẮN HƠN 800ms nên trailing-edge
+    // thuần sẽ đẩy lùi flush mãi mãi. 6 event = 2400ms = đúng trần.
+    for (let i = 0; i < 6; i += 1) {
+      handler();
+      vi.advanceTimersByTime(400);
+    }
+
+    expect(harness.invalidateQueries).toHaveBeenCalled();
+    expect(invalidatedRoots()).toContain("customers");
+  });
+
+  it("keeps coalescing inside the ceiling — one flush, not one per event", () => {
+    useRealtimeDataSync();
+    const handler = getRealtimeHandler("customers");
+
+    // 4 event trong 1200ms (dưới trần 2400ms) rồi để yên cho debounce chốt.
+    for (let i = 0; i < 4; i += 1) {
+      handler();
+      vi.advanceTimersByTime(400);
+    }
+    vi.advanceTimersByTime(800);
+
+    // Entry "customers" có 2 key (["customers"], ["customer-stats"]) ⇒ một lần
+    // flush là đúng 2 lời gọi invalidateQueries. Nhiều hơn nghĩa là đã flush
+    // nhiều lần, tức trần chờ đã ăn mất tác dụng gộp.
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts a fresh ceiling for the next burst after a flush", () => {
+    useRealtimeDataSync();
+    const handler = getRealtimeHandler("customers");
+
+    handler();
+    vi.advanceTimersByTime(800);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+
+    // Cụm thứ hai phải được hưởng trọn 800ms debounce của riêng nó. Nếu mốc
+    // đầu cụm không được đặt lại, cụm này sẽ bị tính là đã quá hạn và flush
+    // ngay lập tức — gộp bão hỏng từ cụm thứ hai trở đi.
+    handler();
+    vi.advanceTimersByTime(799);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(4);
+  });
+
   it("cancels pending invalidation during cleanup", () => {
     useRealtimeDataSync();
     getRealtimeHandler("rooms")();

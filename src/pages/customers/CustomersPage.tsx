@@ -198,11 +198,14 @@ function CustomersDesktopPage() {
         });
 
         // Download & upload ID card images from column L URLs
-        if (row.id_image_urls && row.id_image_urls.length > 0 && created?.id) {
+        // `created` nay là CreateCustomerResult (khách + lỗi phần xe nếu có);
+        // đường nhập Excel không gửi xe nên chỉ cần lấy `.customer`.
+        const createdId = created?.customer?.id;
+        if (row.id_image_urls && row.id_image_urls.length > 0 && createdId) {
           try {
-            const idImages = await uploadIdImagesFromUrls(created.id, row.id_image_urls);
+            const idImages = await uploadIdImagesFromUrls(createdId, row.id_image_urls);
             const sb = supabase as any;
-            await sb.from('customers').update({ id_images: idImages }).eq('id', created.id);
+            await sb.from('customers').update({ id_images: idImages }).eq('id', createdId);
           } catch {
             // Non-fatal: customer was created, images just didn't upload
           }
