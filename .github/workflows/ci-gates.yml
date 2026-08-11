@@ -666,6 +666,12 @@ jobs:
           node scripts/check-rpc-surface.mjs
           node scripts/check-edge-surface.mjs
           node scripts/check-realtime-surface.mjs
+          # Lớp sâu hơn ba cái trên: chúng canh RPC có TỒN TẠI, cái này canh TÊN
+          # THAM SỐ. PostgREST phân giải hàm bằng tham số có tên, nên sai một tên
+          # là cả lời gọi hỏng với PGRST202 "không tìm thấy hàm" — thông báo đó
+          # dẫn người sửa đi tìm migration thiếu thay vì nhìn vào tên tham số.
+          # Đọc manifest đã sinh, KHÔNG tự gọi mạng.
+          node scripts/check-rpc-arg-names.mjs
 
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.

@@ -347,10 +347,11 @@
       {
         "deliverable": "Đợt 5 – V1: Contract test so server catalog / Edge schema với wrapper + surface manifest",
         "planRef": "mục 49, dòng 2911",
-        "status": "CHUA_LAM",
+        "status": "MOT_PHAN",
         "size": "L",
         "touchesOpenClaw": false,
-        "remaining": "Viết contract test đọc catalog RPC sống (pg_proc, như check-permission-catalog đã làm cho quyền) + schema Edge rồi so với surface manifest và wrapper."
+        "remaining": "Viết contract test đọc catalog RPC sống (pg_proc, như check-permission-catalog đã làm cho quyền) + schema Edge rồi so với surface manifest và wrapper.",
+        "evidence": " | Lo 69: PHAN RPC XONG. scripts/check-rpc-arg-names.mjs + 17 dot bien. check-rpc-surface canh RPC co TON TAI; no khong nhin ten tham so. Nhung PostgREST phan giai ham bang THAM SO CO TEN nen sai mot ten khong phai thieu mot truong — Postgres khong tim ra overload nao khop va tra PGRST202 \"khong tim thay ham\", tuc ca loi goi hong, va thong bao do dan nguoi sua di tim migration thieu thay vi nhin ten tham so. Kiem HAI CHIEU: ten thua, va thieu tham so BAT BUOC (phan biet duoc vi pg_get_function_arguments in nguyen chu DEFAULT — 90/230 dinh nghia co). Ham nap chong chi can khop IT NHAT MOT overload, dung cach Postgres phan giai. Do 11/08/2026: 186 loi goi doc duoc, 0 sai — ma dang sach, gate de giu sach. BAI HOC: ban dau tien bao 7 loi GIA tren ma hoan toan dung, do bo do thung ba cho — chu thich chen giua hai khoa (useSpecialFeeBatch), viet tat { p } (luckyDrawApi), va spread { ...baseParams(f) } (usePublicRoomsAnalytics). Spread gio tra null = KHONG DO DUOC chu khong phai vi pham. Gate in ro 7 truyen bien + 7 spread + 38 khong tham so moi luot: phu 186/238, khong duoc doc \"0 vi pham\" thanh \"da phu het\". NHAN TIEN: check-rpc-surface DANG DO tren main tu truoc lo nay — manifest sinh lan cuoi o 354489b6, sau do useIncomeExpenseTypes.ts thoi goi my_org_ids ma khong ai sinh lai. Da sinh lai. Catalog live cung tang 1063 -> 1064 ham, khong quy trach nhiem duoc vi khong co snapshot catalog day du nao duoc commit (viec cua gate:migration-provenance, dang do, cho user quyet)."
       },
       {
         "deliverable": "Đợt 5 – V2: Gate chặn caller high-risk gọi raw RPC slug / Edge slug ngoài allowlist",
@@ -726,7 +727,8 @@
         "status": "MOT_PHAN",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Chuẩn hoá query key cho các domain tiền/hợp đồng/hoá đơn; mở rộng friendlyError thành taxonomy đầy đủ theo domain."
+        "remaining": "Chuẩn hoá query key cho các domain tiền/hợp đồng/hoá đơn; mở rộng friendlyError thành taxonomy đầy đủ theo domain.",
+        "evidence": " | Lo 69: bien RPC nay gio co gate ten tham so, xem dot-5-contracts V1."
       },
       {
         "deliverable": "P2-23: Graph/docs release automation sau khi refresh deterministic + secret/PII scan ổn định",
