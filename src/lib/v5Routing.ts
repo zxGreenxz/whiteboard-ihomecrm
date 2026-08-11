@@ -50,9 +50,21 @@ export function isActiveRouteCandidate(stop: V5RouteStop): boolean {
   return !stop.checked_today && bucket >= 0 && bucket <= 2;
 }
 
-export function hasRouteCoordinates(
-  value: Pick<V5RouteStop, "latitude" | "longitude"> | RouteCoordinates | null | undefined,
-): value is RouteCoordinates {
+/**
+ * Type guard GIỮ NGUYÊN kiểu đầu vào.
+ *
+ * Bản cũ khai `value is RouteCoordinates`, nên `stops.filter(hasRouteCoordinates)`
+ * thu hẹp `T[]` xuống `RouteCoordinates[]` và ĐÁNH RƠI `T`. Hệ quả lan ra cả
+ * module: `result.push(stop)` với `result: T[]` báo lỗi, `sort` mất kiểu phần
+ * tử, hàm trả `T[]` không khớp. Tám lỗi `strictNullChecks` của file này đều là
+ * một gốc đó chứ không phải tám chỗ khác nhau.
+ *
+ * `value is T & RouteCoordinates` giao kiểu gốc với ràng buộc toạ độ: sau khi
+ * lọc, phần tử vẫn là `T` và toạ độ đã chắc chắn không null.
+ */
+export function hasRouteCoordinates<
+  T extends Pick<V5RouteStop, "latitude" | "longitude"> | RouteCoordinates,
+>(value: T | null | undefined): value is T & RouteCoordinates {
   return !!value && isValidLatLng(value.latitude, value.longitude);
 }
 
@@ -266,7 +278,19 @@ export function applySavedRouteOrder<T extends V5RouteStop>(
   return reconcileRouteOrder(stops, saved.building_ids, saved.mode);
 }
 
-type MapsPlace = Partial<RouteCoordinates> & { label?: string | null };
+/**
+ * Nơi có thể dựng link Google Maps: hoặc có toạ độ, hoặc có nhãn để tìm.
+ *
+ * KHÔNG dùng `Partial<RouteCoordinates>`: nó cho `number | undefined`, trong khi
+ * điểm dừng thật (`V5RouteStop`) mang `number | null` — bảng DB để null khi chưa
+ * có GPS. Khai bằng `Partial` nghĩa là mô tả một hình dạng không tồn tại trong
+ * dữ liệu, và mọi lời gọi truyền stop thật đều phải ép kiểu để lọt qua.
+ */
+type MapsPlace = {
+  latitude?: number | null;
+  longitude?: number | null;
+  label?: string | null;
+};
 
 function mapsCoordinates(place: RouteCoordinates): string {
   const latitude = Number(place.latitude.toFixed(6));
@@ -349,11 +373,13 @@ export function findPreviousRouteCoordinates<T extends V5RouteStop>(
   currentPosition?: RouteCoordinates | null,
 ): RouteCoordinates | null {
   for (let previous = index - 1; previous >= 0; previous -= 1) {
-    if (hasRouteCoordinates(route[previous])) {
-      return {
-        latitude: route[previous].latitude,
-        longitude: route[previous].longitude,
-      };
+    // Buộc vào một `const` trước khi kiểm: TypeScript KHÔNG giữ được thu hẹp kiểu
+    // qua `route[previous]` khi `previous` là biến thay đổi trong vòng lặp, nên
+    // `route[previous].latitude` sau đó vẫn là `number | null`. Đây không phải
+    // lỗi của guard mà là giới hạn của phân tích luồng trên truy cập chỉ số.
+    const truoc = route[previous];
+    if (hasRouteCoordinates(truoc)) {
+      return { latitude: truoc.latitude, longitude: truoc.longitude };
     }
   }
   return currentPosition && hasRouteCoordinates(currentPosition) ? currentPosition : null;
