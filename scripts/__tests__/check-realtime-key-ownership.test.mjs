@@ -25,6 +25,14 @@ test('ĐỘT BIẾN: queryKey qua HẰNG trong cùng file — chỗ gate này t�
   assert.ok(gocQueryKeyDangDung([s]).has('financial-analysis'));
 });
 
+test('ĐỘT BIẾN: key dựng bằng useMemo rồi truyền viết tắt', () => {
+  // Nguyên mẫu: QuaySoPage.tsx. Không bắt dạng này thì gate báo màn quay số
+  // đang ghi cache vào khoảng không, trong khi nó chạy đúng.
+  const s = `const queryKey = useMemo(() => ['quayso', a, b] as const, [a, b]);
+    useQuery({ queryKey, queryFn });`;
+  assert.ok(gocQueryKeyDangDung([s]).has('quayso'));
+});
+
 test('hằng khoá `as const` dùng qua spread', () => {
   assert.ok(gocQueryKeyDangDung([`export const KHOA = ['ie-threshold'] as const;`]).has('ie-threshold'));
 });
@@ -49,6 +57,24 @@ test('ĐỘT BIẾN: dạng lặp `for (const key of [[…],[…]])` — nơi ba
     }`;
   const r = gocKeyBiBanVao([['b.ts', s]]);
   assert.deepEqual([...r.keys()].sort(), ['cash-book', 'voucher-detail']);
+});
+
+test('ĐỘT BIẾN: hằng mảng cấp module rồi lặp — dạng lô 71 bỏ sót', () => {
+  // Nguyên mẫu: incomeVoucherCancel.ts, annotateMutations.ts.
+  const s = `const INVALIDATE_KEYS = [["income-expenses"], ["voucher-cancellation"]] as const;
+    export function x() {
+      for (const key of INVALIDATE_KEYS) {
+        queryClient.invalidateQueries({ queryKey: key as unknown as string[] });
+      }
+    }`;
+  const r = gocKeyBiBanVao([['e.ts', s]]);
+  assert.deepEqual([...r.keys()].sort(), ['income-expenses', 'voucher-cancellation']);
+});
+
+test('hằng mảng cấp module KHÔNG được lặp để invalidate thì bỏ qua', () => {
+  const s = `const COT = [["ten"], ["tuoi"]] as const;
+    for (const c of COT) { render(c); }`;
+  assert.equal(gocKeyBiBanVao([['f.ts', s]]).size, 0);
 });
 
 test('mảng-của-mảng KHÔNG dẫn tới invalidateQueries thì bỏ qua', () => {

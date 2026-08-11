@@ -19,6 +19,17 @@
 //   bốn ca "test kiểm bản chép thay vì kiểm code thật", mà một bản chép nằm
 //   trong gate là cách chắc chắn nhất để gate xanh trong khi mã đã đổi.
 //
+// BA DẠNG BẮN ĐƯỢC PHỦ
+//   (a) viết thẳng      `invalidateQueries({ queryKey: ["income-expenses"] })`
+//   (b) lặp mảng tại chỗ `for (const k of [["a"],["b"]]) …({ queryKey: k })`
+//   (c) hằng mảng cấp module rồi lặp:
+//         const INVALIDATE_KEYS = [["a"], ["b"]] as const;
+//         for (const key of INVALIDATE_KEYS) …({ queryKey: key })
+//
+//   Dạng (c) bị bỏ sót ở bản đầu (lô 71) và đã ghi rõ khoảng trống đó trong
+//   commit thay vì để người đọc tưởng gate đã kín. Lô 72 bịt lại: `incomeVoucherCancel`
+//   và `annotateMutations` dùng đúng dạng này.
+//
 // CHIỀU NGƯỢC LẠI THÌ KHÔNG KIỂM
 //   "Query nào đọc bảng X mà hub không bắn vào" mới là câu hỏi đắt hơn, nhưng nó
 //   cần biết mỗi query đọc bảng nào — thông tin không có trong query key. Gate
@@ -84,23 +95,27 @@ export function gocQueryKeyDangDung(vanBanTheoFile) {
 
     // (4) const KHOA_X = ['ten'] as const → dùng qua spread ở nơi khác
     for (const m of s.matchAll(/=\s*\[\s*['"]([^'"]+)['"]\s*\]\s*as const/g)) ra.add(m[1]);
+
+    // (5) key dựng sẵn rồi truyền viết tắt:
+    //       const queryKey = useMemo(() => ['quayso', a, b] as const, […]);
+    //       useQuery({ queryKey, queryFn })
+    //     Nguyên mẫu: QuaySoPage.tsx. Không bắt dạng này thì gate báo màn quay số
+    //     đang ghi cache vào khoảng không, trong khi nó chạy đúng.
+    for (const m of s.matchAll(/queryKey\s*=\s*(?:useMemo\(\s*\(\)\s*=>\s*)?\[\s*['"]([^'"]+)['"]/g)) {
+      ra.add(m[1]);
+    }
   }
   return ra;
 }
 
 /**
- * Gốc key mà mã BẮN VÀO bằng `invalidateQueries`, ở hai dạng có thật trong repo:
+ * Gốc key mà mã BẮN VÀO bằng `invalidateQueries`, ở ba dạng có thật trong repo
+ * (xem đầu file). Dạng (b) và (c) là chỗ key chết thật sự nằm — chỉ bắt dạng (a)
+ * thì gate báo "0 vi phạm" trên đúng những file có lỗi, tức tệ hơn không có gate.
  *
- *   (a) viết thẳng — `invalidateQueries({ queryKey: ["income-expenses"] })`
- *   (b) lặp qua danh sách — `for (const key of [["a"], ["b"]]) invalidate…({ queryKey: key })`
- *
- * Dạng (b) là chỗ ba key chết thật sự nằm (`flexMutations`, `incomeVoucherCancel`,
- * `annotateMutations`). Chỉ bắt dạng (a) thì gate báo "0 vi phạm" trên đúng những
- * file có lỗi — tức tệ hơn không có gate.
- *
- * Nhận dạng (b) một cách CHẶT: phải đúng idiom `for (const X of [ … ])` và trong
+ * Nhận dạng (b)/(c) một cách CHẶT: phải đúng idiom `for (const X of …)` và trong
  * thân vòng lặp phải có `queryKey: X`. Bắt mọi mảng-của-mảng sẽ dính đủ thứ dữ
- * liệu không liên quan.
+ * liệu không liên quan và biến gate thành máy kêu oan.
  */
 export function gocKeyBiBanVao(vanBanTheoFile) {
   const ra = new Map();
@@ -110,9 +125,13 @@ export function gocKeyBiBanVao(vanBanTheoFile) {
   };
   for (const [ten, noiDung] of vanBanTheoFile) {
     const s = boChuThichJs(noiDung);
-    for (const m of s.matchAll(/invalidateQueries\(\s*\{\s*queryKey:\s*\[\s*['"]([^'"]+)['"]/g)) {
-      them(m[1], ten);
-    }
+    // Cả HỌ API nhắm theo key, không riêng `invalidateQueries`: `refetchQueries`,
+    // `resetQueries`, `removeQueries`, `cancelQueries` cũng im lặng khi key không
+    // khớp ai. Riêng `setQueryData` còn tệ hơn một bậc — ghi vào một key không ai
+    // đọc thì dữ liệu nằm lại trong cache mãi mãi mà màn hình không thấy gì.
+    const HO_API = /(?:invalidate|refetch|reset|remove|cancel)Queries\(\s*\{\s*queryKey:\s*\[\s*['"]([^'"]+)['"]/g;
+    for (const m of s.matchAll(HO_API)) them(m[1], ten);
+    for (const m of s.matchAll(/setQueryData\(\s*\[\s*['"]([^'"]+)['"]/g)) them(m[1], ten);
     for (const m of s.matchAll(/for\s*\(\s*const\s+([A-Za-z_$][\w$]*)\s+of\s+\[/g)) {
       const bien = m[1];
       let sau = 0;
@@ -131,6 +150,34 @@ export function gocKeyBiBanVao(vanBanTheoFile) {
       if (het < 0) continue;
       const than = s.slice(het, het + 400);
       if (!new RegExp(`queryKey:\\s*${bien}\\b`).test(than)) continue;
+      for (const k of s.slice(i, het).matchAll(/\[\s*['"]([^'"]+)['"]/g)) them(k[1], ten);
+    }
+
+    // (c) hằng mảng khai ở cấp module rồi lặp ở chỗ khác:
+    //       const INVALIDATE_KEYS = [["a"], ["b"]] as const;
+    //       for (const key of INVALIDATE_KEYS) invalidateQueries({ queryKey: key })
+    //     Đây là dạng `incomeVoucherCancel` và `annotateMutations` dùng. Lô 71
+    //     bỏ sót nó và đã nói rõ trong commit; lô 72 bịt lại.
+    for (const m of s.matchAll(/for\s*\(\s*const\s+([A-Za-z_$][\w$]*)\s+of\s+([A-Z][A-Z0-9_]*)\s*\)/g)) {
+      const [, bien, hangTen] = m;
+      const than = s.slice(m.index, m.index + 400);
+      if (!new RegExp(`queryKey:\\s*${bien}\\b`).test(than)) continue;
+      const khai = new RegExp(`\\bconst\\s+${hangTen}\\s*=\\s*\\[`).exec(s);
+      if (!khai) continue;
+      let sau = 0;
+      const i = khai.index + khai[0].length - 1;
+      let het = -1;
+      for (let j = i; j < s.length; j += 1) {
+        if (s[j] === '[') sau += 1;
+        else if (s[j] === ']') {
+          sau -= 1;
+          if (sau === 0) {
+            het = j;
+            break;
+          }
+        }
+      }
+      if (het < 0) continue;
       for (const k of s.slice(i, het).matchAll(/\[\s*['"]([^'"]+)['"]/g)) them(k[1], ten);
     }
   }
