@@ -79,9 +79,9 @@
     },
     {
       "path": ".github/workflows/supabase-migrate.yml",
-      "node": "20.20.2",
+      "node": "24.18.0",
       "deno": null,
-      "note": "Pin exact 11/08/2026 (truoc la major troi noi '20'). Chi chay validator tinh nen khong can runtime cao — NHUNG Node 20 (Iron) da ra ban cuoi 24/03/2026 va het vong doi: xem known-gap supabase-migrate-node-20-eol."
+      "note": "Nang tu 20.20.2 len 24.18.0 ngay 11/08/2026 vi CO BANG CHUNG: 2/3 script cua job nay da chay tren 24.18.0 trong ci-gates hang ngay, script thu ba chi dung node:crypto/fs/path/url. Dong luon known-gap supabase-migrate-node-20-eol thay vi gia han. KHONG phai luat thong nhat version — network-center van o 22 vi worker khai >=20 <23."
     },
     {
       "path": ".github/workflows/external-controls.yml",

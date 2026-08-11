@@ -150,6 +150,17 @@ function main() {
     }
   }
 
+  // Cùng luật cho Deno. Tiền tố `v` là tuỳ chọn vì setup-deno nhận cả hai dạng và
+  // repo đang dùng lẫn lộn (`v2.9.4` ở ci-gates, `2.9.4` ở network-center) — ép
+  // một dạng chỉ tạo ra một lần sửa vô nghĩa, còn thứ THẬT SỰ quan trọng là đủ ba
+  // số. `2.x` hay `2` sẽ trôi y hệt Node.
+  for (const wf of matrix.workflows) {
+    if (wf.deno === null || wf.deno === undefined) continue;
+    if (!/^v?\d+\.\d+\.\d+$/.test(String(wf.deno))) {
+      problems.push(`${wf.path}: deno "${wf.deno}" chưa pin exact X.Y.Z.`);
+    }
+  }
+
   // ── Chiều 3b: mọi entry workflow trong matrix phải khớp file thật ──
   for (const wf of matrix.workflows) {
     let actual;

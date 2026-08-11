@@ -27,11 +27,20 @@ name: Supabase Migration Validation
 on:
   push:
     branches: [main, master]
+    # Bộ lọc này phải liệt kê MỌI script workflow thực sự chạy. Thiếu một cái thì
+    # sửa đúng script đó KHÔNG kích hoạt lại workflow dùng nó — một checker bị làm
+    # hỏng sẽ nằm im tới lần có ai đó tình cờ đụng migration.
+    #
+    # Đo 11/08/2026: hai script `check-no-auto-apply` và `check-migration-provenance`
+    # đang được chạy ở dưới nhưng KHÔNG có trong danh sách này. Bổ sung.
     paths:
       - 'supabase/migrations/**'
+      - 'supabase/migration-provenance.json'
       - 'scripts/apply-accounting-rollout.mjs'
       - 'scripts/validate-accounting-migrations.mjs'
       - 'scripts/audit-accounting-rollout.mjs'
+      - 'scripts/check-no-auto-apply.mjs'
+      - 'scripts/check-migration-provenance.mjs'
       - '.github/workflows/supabase-migrate.yml'
   workflow_dispatch: {}
 
@@ -41,23 +50,29 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      # Pin exact, không phải major trôi nổi.
+      # Pin exact, và cùng version với ci-gates.
       #
-      # `'20'` cho ra runtime khác nhau tuỳ ngày chạy mà không commit nào ghi lại,
-      # nên một lỗi chỉ xuất hiện ở patch mới sẽ trông như "CI tự dưng đỏ". Con số
-      # 20.20.2 đúng bằng thứ mà `'20'` phân giải ra hôm pin (24/03/2026) — pin ở
-      # đây KHÔNG đổi hành vi, chỉ làm nó đứng yên và nhìn thấy được.
+      # Đường đi của quyết định này, ghi lại vì nó là ví dụ về "đo trước khi đổi":
+      #   - Ban đầu `'20'` — major trôi nổi, runtime đổi theo ngày chạy mà không
+      #     commit nào ghi lại. Pin exact thành 20.20.2 (đúng thứ `'20'` đang phân
+      #     giải ra), không đổi hành vi.
+      #   - Nhưng Node 20 (Iron) ra bản cuối 24/03/2026 rồi hết vòng đời: đứng yên
+      #     trên một runtime không ai vá là khoảng trống khác. Lúc đó chưa nâng
+      #     major vì chưa có đo, chỉ đăng ký known-gap.
+      #   - Đo 11/08/2026: HAI trong ba script ở dưới (`check-no-auto-apply`,
+      #     `check-migration-provenance`) ĐÃ chạy trên Node 24.18.0 trong ci-gates
+      #     hàng ngày. Script thứ ba chỉ dùng node:crypto/fs/path/url. Có bằng
+      #     chứng thì nâng, và khoảng trống đóng luôn thay vì gia hạn.
       #
-      # LƯU Ý: Node 20 (Iron) đã ra bản cuối 24/03/2026 và hết vòng đời — sẽ không
-      # có bản vá bảo mật nào nữa. Đăng ký ở tooling/known-gaps.yaml
-      # (`supabase-migrate-node-20-eol`) để việc nâng major là một quyết định có
-      # hạn, chứ không phải thứ trôi đi trong im lặng.
+      # Đây KHÔNG phải "thống nhất version cho gọn" — án lệ 05/08/2026 đã cho thấy
+      # làm vậy sẽ phá các ràng buộc engines rời nhau. network-center vẫn ở Node 22
+      # vì worker khai '>=20 <23'. Ở đây trùng 24.18.0 vì đo được là trùng ĐƯỢC.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20.20.2'
+          node-version: '24.18.0'
 
       - name: Verify exact Node runtime
-        run: node -e "if(process.version!=='v20.20.2'){console.error('Expected exact Node v20.20.2, got '+process.version);process.exit(1)}"
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact Node v24.18.0, got '+process.version);process.exit(1)}"
 
       - name: Static validation — CHỈ bộ accounting rollout (14 file), KHÔNG phủ migration mới
         run: node scripts/validate-accounting-migrations.mjs

@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 69
+    "stillMissing": 68
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -443,10 +443,12 @@
       {
         "deliverable": "P2.5 — thống nhất pin action SHA + Deno exact, bỏ path filter theo ngày, guard 'no db push' đọc YAML, cập nhật comment/evidence của supabase-migrate.yml",
         "planRef": "P2.5, dòng 1063-1099",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Cập nhật comment/evidence trong supabase-migrate.yml theo catalog + forward-only lane hiện tại; nâng node-version '20' lên đúng 24.18.0 như ci-gates.yml; (tuỳ chọn) thêm change classifier theo object/manifest."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "4 khoan: (1) pin SHA action — da du tu truoc, kiem lai 0 dong uses: thieu SHA 40 ky tu. (2) Deno exact — ca hai da exact (v2.9.4 / 2.9.4); them chieu kiem trong gate:runtime-matrix cam deno troi noi, dot bien 2/2. (3) path filter theo NGAY — da bo tu truoc (supabase/migrations/20260729* -> supabase/migrations/**), con ghi ly do tai cho. (4) node 20 -> 24.18.0 CO BANG CHUNG: 2/3 script cua job da chay tren 24.18.0 trong ci-gates, script thu ba chi dung stdlib; dong luon known-gap supabase-migrate-node-20-eol. Guard no-db-push da doc YAML tu truoc. THEM: gate:workflow-paths moi — moi script job chay phai nam trong paths cua CHINH trigger do; no bat ngay 2 ca that (supabase-migrate thieu 2 script, network-center thieu 1), va dot bien bat duoc chinh no mu khi lay HOP push+pull_request."
       },
       {
         "deliverable": "§38 — cập nhật docs/CODEBASE_STRUCTURE.md (services, infra, .e2e-fleet, docs-site, OpenClaw stack, NC worker, api/cron, Capability Registry, contract manifests, baseline/forward migrations, runtime matrix)",

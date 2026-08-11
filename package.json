@@ -36,6 +36,7 @@
     "gate:local-credentials": "node scripts/check-local-agent-credentials.mjs",
     "gate:known-gaps": "node scripts/check-known-gaps.mjs",
     "gate:test-matrix": "node scripts/check-test-matrix.mjs",
+    "gate:workflow-paths": "node scripts/check-workflow-paths.mjs",
     "migrations:list-forward": "node scripts/list-forward-migrations.mjs",
     "gate:migration-provenance": "node scripts/check-migration-provenance.mjs",
     "gate:rpc-in-view": "node scripts/check-rpc-in-view-ratchet.mjs",
