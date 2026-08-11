@@ -163,6 +163,27 @@ node scripts/check-known-gaps.mjs --strict   # exit 1 khi quá hạn (dùng khi 
 Quá hạn thì **đóng nó hoặc gia hạn kèm lý do mới** — xoá dòng cho yên là cách biến một quyết định có
 thời hạn thành một khoảng trống vĩnh viễn không ai nhớ.
 
+#### Vì sao CI chỉ cảnh báo, không fail khi quá hạn
+
+Plan gốc đòi bật `--strict` trên CI. **Cố ý không làm**, và lý do phải nằm ở đây chứ không phải chỉ
+trong comment của script:
+
+> Một gate đỏ **vì ngày tháng** sẽ bị gia hạn theo nghi thức hoặc bị tắt. Cả hai kết cục đều làm mất
+> tín hiệu — và mất theo cách tệ hơn trạng thái ban đầu, vì sau đó không ai nhìn nữa.
+
+Cơ chế chống mục nát thật không phải màu đỏ của CI, mà là **ba điều kiện dưới đây**:
+
+1. **Số đo trong `why` phải đúng lúc đọc.** Một gap ghi "cũ 488 commit / 18 tiểu hệ vắng" trong khi
+   thực tế là "25 commit / 1 tiểu hệ" thì không còn là cảnh báo — nó là nhiễu. Cập nhật số đo là một
+   phần của việc gia hạn, không phải việc phụ. (Đã xảy ra thật với `ua-graph-stale`, sửa 08/08/2026.)
+2. **Gia hạn phải viết lý do MỚI**, không phải dời ngày. Nếu lý do mới trùng lý do cũ thì đó là dấu
+   hiệu chưa ai làm gì — hãy ghi thẳng điều đó thay vì dời ngày cho đẹp.
+3. **`exit_condition` phải chạy được**, tức là một lệnh có thể gõ và xem exit code, không phải một
+   câu mô tả. Điều kiện không kiểm được thì gap không bao giờ đóng.
+
+Rà định kỳ bằng `node scripts/check-known-gaps.mjs --strict` — đó là chỗ màu đỏ có ích, vì lúc đó
+người chạy đang CHỦ ĐỘNG rà chứ không bị chặn giữa một PR không liên quan.
+
 ### Tier rủi ro
 
 `tooling/risk-map.json` map đường dẫn → tier (`money`, `authorization`, `migration`, `infrastructure`,

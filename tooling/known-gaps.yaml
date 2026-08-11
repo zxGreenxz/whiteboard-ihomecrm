@@ -102,28 +102,34 @@ gaps:
       ba step thành ba job và đặt chúng làm required check — lúc ấy tên job mới có tác dụng.
 
   - id: ua-graph-stale
-    where: .ua/ (knowledge-graph.json, fingerprints.json, meta.json) — baseCommit d0ffb045, 29/07/2026
+    where: .ua/ (knowledge-graph.json, fingerprints.json, meta.json) — baseCommit ca31186e, 07/08/2026
     expires_at: 2026-09-30
     why: >
-      Graph UA committed một lần duy nhất rồi không refresh: nay CŨ 488 commit / 1.345 file
-      lệch / thiếu 118 migration, và có 18 subsystem KHÔNG có node nào — gồm TRỌN VẸN
-      Network Center lẫn OpenClaw, tức hai hệ phức tạp nhất repo lại là hai hệ graph mù
-      hoàn toàn. Đăng ký 07/08/2026 vì luật #2 (chủ dự án bổ sung) đặt UA ở mức CẢNH BÁO
-      mặc định, nên mức lệch này KHÔNG làm đỏ CI — đúng thiết kế, nhưng cảnh báo không có
-      ngày hết hạn thì thành tiếng ồn nền rồi không ai đọc nữa.
-      ĐÃ ĐƯỢC CHE: scripts/check-graph-freshness.mjs in đủ bốn con số mỗi lần chạy;
-      `--nhiem-vu onboarding|architecture|domain-review|generated-docs` là HARD nên bốn
-      loại việc thực sự dựa vào graph sẽ bị chặn thay vì đọc dữ liệu 488 commit trước.
-      Trần hard-code trong script (200/500/30) bảo đảm không ai nới policy cho mức lệch
-      hiện tại đi qua.
-      CHƯA ĐƯỢC CHE: manifest ghi toolVersion 2.9.4 với toolVersionSource "attested" —
-      artifact KHÔNG tự ghi version, con số đó lấy từ pin của plan §18 chứ không phải đọc
-      ra từ graph. Nếu graph thật ra sinh bởi bản khác thì không cách nào biết cho tới lần
-      refresh tới.
+      CẬP NHẬT 08/08/2026 — hai trong ba điều kiện đóng ĐÃ ĐẠT, con số cũ trong mục này đã
+      sai hoàn toàn nên viết lại. Giữ số cũ ở đây thì chính sổ này thành thứ nó sinh ra để
+      chặn: một cảnh báo không còn đúng thì không ai đọc nữa.
+
+      ĐÃ LÀM (commit a58460af + b654ed9d, merge vào main qua PR riêng theo luật #6):
+      dựng lại TOÀN BỘ graph tại ca31186e — 3.042/3.042 file có node, 7.800 node,
+      17.919 cạnh, 5.976/5.976 cạnh imports khớp importMap tất định, 0 node trùng,
+      0 cạnh treo, 0 issue từ validator. Network Center và OpenClaw hết mù: 88 và 364 node,
+      trước là 0 và 0. Manifest đổi toolVersionSource "attested" → "measured" (đọc thẳng
+      package.json của plugin đã chạy), tức khoản nợ "CHƯA ĐƯỢC CHE" của bản ghi cũ đã trả.
+
+      SỐ ĐO HIỆN TẠI (đo 08/08/2026, thay cho "488 commit / 18 subsystem" đã lỗi thời):
+      cũ 25 commit · 1 tiểu hệ vắng mặt — `services/openclaw-media-gateway`. Dịch vụ này
+      RA ĐỜI SAU lần refresh, nên đây là trôi bình thường của một repo đang phát triển,
+      KHÔNG phải khoảng trống thiết kế như 18 tiểu hệ trước đây.
+
+      VÌ SAO GAP CHƯA ĐÓNG: policy đặt maxMissingSubsystems = 0, nên đúng một tiểu hệ vắng
+      cũng đủ làm `--nhiem-vu architecture` exit 1. Ngưỡng 0 là CỐ Ý và không nên nới:
+      một hệ con vắng mặt hoàn toàn là loại mù nguy hiểm nhất — graph không báo rằng nó mù.
     exit_condition: >
-      Refresh UA trong PR RIÊNG (luật #6 — không kèm vào PR tính năng), manifest mới ghi
-      toolVersion đọc THẬT từ công cụ thay vì attested, và
-      `npm run gate:graph-freshness -- --nhiem-vu architecture` exit 0.
+      `npm run gate:graph-freshness -- --nhiem-vu architecture` exit 0. Hai điều kiện kia
+      (refresh trong PR riêng theo luật #6; manifest ghi toolVersion đo THẬT thay vì
+      attested) đã đạt 08/08/2026 — xem tooling/graph-manifests/ua.json.
+      Thực tế: cần một lần refresh nữa sau khi services/openclaw-media-gateway ổn định.
+      ĐỪNG refresh sau mỗi service mới — mỗi lần là một PR riêng 8 MB; gom lại theo đợt.
 
   - id: contract-type-handwritten-drift
     where: src/hooks/useContracts.ts (2 chỗ `as unknown as ContractWithRelations`)
