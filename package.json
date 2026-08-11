@@ -31,6 +31,7 @@
     "gate:no-auto-apply": "node scripts/check-no-auto-apply.mjs",
     "gate:agent-contract": "node scripts/check-agent-contract.mjs",
     "gate:runtime-matrix": "node scripts/check-runtime-matrix.mjs",
+    "gate:local-credentials": "node scripts/check-local-agent-credentials.mjs",
     "gate:known-gaps": "node scripts/check-known-gaps.mjs",
     "gate:test-matrix": "node scripts/check-test-matrix.mjs",
     "migrations:list-forward": "node scripts/list-forward-migrations.mjs",

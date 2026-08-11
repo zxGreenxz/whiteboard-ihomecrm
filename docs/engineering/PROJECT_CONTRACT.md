@@ -530,6 +530,23 @@ Gate bắt cả hai chiều: file trên đĩa thiếu entry, và entry trỏ fil
 - Thiếu/hết hạn credential ⇒ **fail closed**, báo đúng tên capability bị chặn; không bịa secret giả,
   không lưu tạm vào file tracked.
 
+**Bản có thẩm quyền là máy đọc được, không phải đoạn văn trên.**
+[`tooling/local-credential-contract.json`](../../tooling/local-credential-contract.json) khai **7
+điều** cùng danh sách credential bắt buộc; `npm run gate:local-credentials` kiểm trước khi chạy việc
+cần secret.
+
+```bash
+npm run gate:local-credentials    # đủ credential chưa — CHỈ in TÊN field thiếu, không in giá trị
+```
+
+Đoạn văn trên là bản tóm cho người đọc và **cố ý không chép đủ 7 điều** — chép ra hai nơi là cách
+chúng lệch nhau. Hai điều dễ quên nhất, đều nằm trong file JSON:
+
+- **Ghi production luôn cần promotion token NHẬP LÚC CHẠY**, không lấy từ kho. Kho là để *đọc* dữ
+  liệu và chạy việc thường; nó cố ý **không** đủ quyền để một lần chạy nhầm ghi được vào production.
+- **Thêm credential mới thì thêm entry vào file JSON CÙNG LÚC.** Không có entry thì lần sau không ai
+  biết nó phải có, và preflight sẽ báo "đủ" trong khi thiếu — xanh rỗng.
+
 ---
 
 ## 10. Quy trình mặc định khi làm xong một thay đổi
