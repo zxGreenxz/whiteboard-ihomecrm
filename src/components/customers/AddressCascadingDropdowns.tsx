@@ -8,9 +8,13 @@ import {
 } from '@/components/ui/select';
 
 interface AddressCascadingDropdownsProps {
-  provinceValue?: string;
-  districtValue?: string;
-  wardValue?: string;
+  // Nhận cả `null`: ba giá trị này đến thẳng từ bản ghi `customers`, nơi cột
+  // chưa chọn là `null` chứ không phải `undefined`. Ép người gọi viết
+  // `?? undefined` chỉ để vừa kiểu là bẻ dữ liệu cho vừa cái kiểu, và chỗ nào
+  // quên thì lỗi lại chui vào baseline.
+  provinceValue?: string | null;
+  districtValue?: string | null;
+  wardValue?: string | null;
   onProvinceChange: (value: string) => void;
   onDistrictChange: (value: string) => void;
   onWardChange: (value: string) => void;

@@ -52,7 +52,10 @@ export const useProvinces = () => {
 // useDistricts - Load districts for a province
 // =============================================
 
-export const useDistricts = (provinceCode?: string) => {
+// Nhận cả `null`: mã tỉnh/huyện đến từ bản ghi khách hàng, nơi "chưa chọn" là
+// `null`. Thân hàm đã có `if (!provinceCode) return []` nên `null` chạy y hệt
+// `undefined` — kiểu chỉ đang mô tả hẹp hơn thực tế.
+export const useDistricts = (provinceCode?: string | null) => {
   const { data, isLoading } = useQuery({
     queryKey: ["address", "districts", provinceCode],
     queryFn: async (): Promise<District[]> => {
@@ -78,7 +81,7 @@ export const useDistricts = (provinceCode?: string) => {
 // useWards - Load wards for a district
 // =============================================
 
-export const useWards = (districtCode?: string) => {
+export const useWards = (districtCode?: string | null) => {
   const { data, isLoading } = useQuery({
     queryKey: ["address", "wards", districtCode],
     queryFn: async (): Promise<Ward[]> => {

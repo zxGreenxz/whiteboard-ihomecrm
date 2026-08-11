@@ -424,10 +424,11 @@
       {
         "deliverable": "Mục 33 Đợt 3 – strictNullChecks: true cho toàn app",
         "planRef": "mục 33, dòng 2369",
-        "status": "CHUA_LAM",
+        "status": "MOT_PHAN",
         "size": "L",
         "touchesOpenClaw": false,
-        "remaining": "DO DUOC 11/08/2026 (truoc do chi ghi \"91 file\"): bat strictNullChecks tren toan app => 378 loi / 88 file. Bat FULL strict => 381 loi / 90 file, tuc noImplicitAny + cac co con lai gan nhu MIEN PHI, chi them 2 file. Dung co that cua dao (them noImplicitOverride, useUnknownInCatchVariables) => 91 file. Nghia la nen bat CA CUM mot lan chu khong tung co mot, va khoi luong that la ~91 file chu khong phai mot con so mo ho."
+        "remaining": "DO DUOC 11/08/2026 (truoc do chi ghi \"91 file\"): bat strictNullChecks tren toan app => 378 loi / 88 file. Bat FULL strict => 381 loi / 90 file, tuc noImplicitAny + cac co con lai gan nhu MIEN PHI, chi them 2 file. Dung co that cua dao (them noImplicitOverride, useUnknownInCatchVariables) => 91 file. Nghia la nen bat CA CUM mot lan chu khong tung co mot, va khoi luong that la ~91 file chu khong phai mot con so mo ho.",
+        "evidence": " Lo 76: bat dau di tru that. Do duoc bang scripts/do-strict-null.mjs (CONG CU DO, khong phai gate, khong nam trong CI): 360 loi tren 80 file. Mau ap dao: 176/360 la X|null khong gan duoc vao X|undefined — goc chung la kieu VIET TAY khai field?: string (tuc |undefined) trong khi DB tra |null. Lat dau tien xu CustomerFormData: 35 truong tuy chon nay nhan ca null, keo theo AddressCascadingDropdowns va useDistricts/useWards. Ket qua 360 -> 331 loi / 80 -> 79 file, 0 loi moi. Cach chua la sua KIEU cho khop DB chu KHONG rac ?? undefined o cho goi: cai sau la be du lieu cho vua mot cai kieu sai, va no nhan ban theo so cho goi. Kiem: typecheck:baseline khong doi (chi con loi OpenClaw phien khac), 128 test khach hang xanh, build xanh."
       },
       {
         "deliverable": "Mục 33 Đợt 3 – noImplicitAny: true cho toàn app",

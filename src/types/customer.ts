@@ -106,56 +106,70 @@ export interface CustomerStats {
 // Form Data
 // =============================================
 
-/** Form data shape for react-hook-form (create/edit customer) */
+/**
+ * Form data shape for react-hook-form (create/edit customer).
+ *
+ * VÌ SAO MỌI TRƯỜNG TUỲ CHỌN ĐỀU NHẬN `| null` (11/08/2026)
+ *   Bảng `customers` trả `null` cho mọi cột nullable, và `CreateCustomerDialog`
+ *   đổ THẲNG bản ghi DB vào `reset()`. Khai `?: string` nghĩa là
+ *   `string | undefined` — mô tả SAI thứ thật sự chạy qua kiểu này. Đo được:
+ *   29 lỗi `Type 'string | null' is not assignable to type 'string | undefined'`
+ *   ở đúng một lời gọi `reset()`, và cùng mẫu đó chiếm 176/360 lỗi của cả app
+ *   khi bật `strictNullChecks`.
+ *
+ *   Cách chữa KHÔNG phải rắc `?? undefined` ở 29 chỗ gọi: đó là bẻ dữ liệu cho
+ *   vừa một cái kiểu sai. react-hook-form nhận `null` bình thường (ô nhập vốn
+ *   đã dùng `field.value ?? ''`), nên `| null` mới là mô tả đúng.
+ */
 export interface CustomerFormData {
   customer_type: CustomerType;
   full_name: string;
   phone: string;
-  email?: string;
-  date_of_birth?: string;
-  gender?: string;
+  email?: string | null;
+  date_of_birth?: string | null;
+  gender?: string | null;
   // Cột `customers.id_type` CÓ THẬT trong DB (enum), chỉ thiếu ở kiểu viết tay
   // này — nên `CreateCustomerDialog` gửi nó xuống mà TypeScript kêu. Cùng vết
   // với `emergency_contact_*` đã vá trước đó: kiểu tay tụt lại sau schema.
-  id_type?: IdType;
-  id_number?: string;
-  id_issue_date?: string;
-  id_issue_place?: string;
+  id_type?: IdType | null;
+  id_number?: string | null;
+  id_issue_date?: string | null;
+  id_issue_place?: string | null;
   // Bốn trường dưới đây CÓ THẬT trong bảng `customers` và `CreateCustomerDialog`
   // vẫn gửi chúng xuống — chỉ kiểu viết tay này là thiếu. Đã có ở interface
   // `Customer` phía trên từ lô trước, nhưng lô đó bỏ sót `CustomerFormData`,
   // mà chính kiểu này mới là thứ đường ghi đi qua.
-  emergency_contact_name?: string;
-  emergency_contact_phone?: string;
-  emergency_contact_relationship?: string;
-  status?: CustomerStatusV1;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
+  status?: CustomerStatusV1 | null;
   is_foreign: boolean;
-  province?: string;
-  district?: string;
-  ward?: string;
-  detailed_address?: string;
-  current_residence?: string;
-  permanent_address?: string;
-  bank_account_number?: string;
-  bank_name?: string;
-  occupation?: string;
-  workplace?: string;
-  contact_person?: string;
-  contact_person_phone?: string;
-  advisor?: string;
-  advisor_phone?: string;
-  fingerprint_code?: string;
-  customer_group?: string;
-  notes?: string;
-  avatar_url?: string;
-  id_images?: Record<string, string>;
+  province?: string | null;
+  district?: string | null;
+  ward?: string | null;
+  detailed_address?: string | null;
+  current_residence?: string | null;
+  permanent_address?: string | null;
+  bank_account_number?: string | null;
+  bank_name?: string | null;
+  occupation?: string | null;
+  workplace?: string | null;
+  contact_person?: string | null;
+  contact_person_phone?: string | null;
+  advisor?: string | null;
+  advisor_phone?: string | null;
+  fingerprint_code?: string | null;
+  customer_group?: string | null;
+  notes?: string | null;
+  avatar_url?: string | null;
+  id_images?: Record<string, string> | null;
   // Organization
-  company_name?: string;
-  representative?: string;
-  business_registration_url?: string;
-  headquarters_address?: string;
+  company_name?: string | null;
+  representative?: string | null;
+  business_registration_url?: string | null;
+  headquarters_address?: string | null;
   // Inline vehicles
-  vehicles?: InlineVehicle[];
+  vehicles?: InlineVehicle[] | null;
 }
 
 export interface InlineVehicle {
