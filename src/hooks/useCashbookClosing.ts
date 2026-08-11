@@ -134,7 +134,7 @@ export const useCashbookBalanceAsOf = (
     queryFn: async (): Promise<number | null> => {
       const { data, error } = await supabase.rpc("cashbook_balance_as_of_v1", {
         p_cashbook: cashbookId,
-        p_as_of: asOf ?? null,
+        p_as_of: asOf ?? undefined,
       });
       if (error) throw new Error(error.message);
       return data === null || data === undefined ? null : Number(data);
@@ -180,7 +180,7 @@ export const useCashbookClosings = (cashbookId?: string | null) =>
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<{ pending: PendingClosure[]; closures: ConfirmedClosure[] }> => {
       const { data, error } = await supabase.rpc("list_cashbook_closings_v1", {
-        p_cashbook: cashbookId ?? null,
+        p_cashbook: cashbookId ?? undefined,
       });
       if (error) throw new Error(error.message);
       return (data ?? { pending: [], closures: [] }) as unknown as {
@@ -224,7 +224,7 @@ export const useProposeCashbookClosing = () => {
         p_cashbook: input.cashbookId,
         p_counted_balance: input.countedBalance,
         p_confirmer: input.confirmerUserId,
-        p_note: input.note ?? null,
+        p_note: input.note ?? undefined,
       });
       if (error) throw new Error(error.message);
       return data as { request_id: string; difference: number };

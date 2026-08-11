@@ -30,7 +30,7 @@ export function useHeldDepositSummary(
     queryKey: ['deposit-dashboard', 'held-summary', buildingIds ?? [], threshold],
     queryFn: async (): Promise<HeldDepositBuildingAgg[]> => {
       const { data, error } = await supabase.rpc('get_held_deposit_summary', {
-        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
         p_threshold: threshold,
       });
       if (error) throw error;
@@ -125,7 +125,7 @@ export function useRefundForfeitSummary(buildingIds?: string[]) {
     queryKey: ['deposit-dashboard', 'refund-forfeit-summary', buildingIds ?? []],
     queryFn: async (): Promise<RefundForfeitServerSummary> => {
       const { data, error } = await supabase.rpc('get_refund_forfeit_summary', {
-        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
       });
       if (error) throw error;
       const d = (data ?? {}) as any;

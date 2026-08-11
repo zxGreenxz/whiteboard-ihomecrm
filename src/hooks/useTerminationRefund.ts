@@ -81,9 +81,9 @@ export const useCreateRefundVoucher = () => {
     }) => {
       const { data, error } = await supabase.rpc('create_termination_refund_voucher_v1', {
           p_obligation_id: a.obligationId,
-          p_account_id: a.accountId ?? null,
+          p_account_id: a.accountId ?? undefined,
           p_force: a.force ?? false,
-          p_force_reason: a.forceReason ?? null,
+          p_force_reason: a.forceReason ?? undefined,
         });
       if (error) throw new Error(error.message);
       return data as { voucherId: string; code: string; amount: number; alreadyCreated?: boolean };

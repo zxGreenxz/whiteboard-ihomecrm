@@ -254,8 +254,8 @@ export const useCancelIncomeExpense = () => {
         const flex = await supabase.rpc("cancel_income_expense_flex_v1", {
           p_voucher: id,
           p_reason: reason.trim(),
-          p_expected_approval_version: null,
-          p_expected_posting_version: null,
+          p_expected_approval_version: undefined,
+          p_expected_posting_version: undefined,
         });
         if (!flex.error) return false;
         const flexMsg = flex.error.message ?? "";
@@ -388,7 +388,7 @@ export const useCancelIncomeExpense = () => {
       await supabase.rpc("log_income_expense_action", {
         p_id: id,
         p_action: "CANCELLED_NOTE",
-        p_note: null,
+        p_note: undefined,
       });
       return false;
     },

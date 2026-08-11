@@ -77,7 +77,7 @@ export const useDecideApproval = () => {
       const { data, error } = await supabase.rpc("decide_financial_request_v2", {
         p_request_id: input.requestId,
         p_decision: input.decision,
-        p_reason: input.reason ?? null,
+        p_reason: input.reason ?? undefined,
       });
       if (error) {
         toast.error(error.message || "Không thể xử lý yêu cầu duyệt");
@@ -103,7 +103,7 @@ export const useWithdrawApproval = () => {
     mutationFn: async (input: { requestId: string; reason?: string | null }) => {
       const { data, error } = await supabase.rpc("withdraw_financial_request_v1", {
         p_request_id: input.requestId,
-        p_reason: input.reason ?? null,
+        p_reason: input.reason ?? undefined,
       });
       if (error) {
         toast.error(error.message || "Không thể thu hồi yêu cầu");

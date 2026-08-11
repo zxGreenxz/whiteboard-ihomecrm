@@ -29,9 +29,9 @@ export const useRenewContract = () => {
       const { data, error } = await supabase.rpc("renew_contract", {
         p_contract_id: params.contractId,
         p_new_end_date: params.newEndDate,
-        p_new_rent_price: params.newRentPrice ?? null,
-        p_new_deposit: params.newDeposit ?? null,
-        p_notes: params.notes ?? null,
+        p_new_rent_price: params.newRentPrice ?? undefined,
+        p_new_deposit: params.newDeposit ?? undefined,
+        p_notes: params.notes ?? undefined,
       });
 
       if (error) throw error;

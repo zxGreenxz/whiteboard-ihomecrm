@@ -197,8 +197,8 @@ export const useSaveUtilityMeter = () => {
         p_id: args.id ?? null,
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
-        p_provider_code: args.code || null,
-        p_account_holder: args.holder || null,
+        p_provider_code: args.code || undefined,
+        p_account_holder: args.holder || undefined,
       });
       if (error) throw new Error(error.message);
       return data as string; // id
@@ -216,8 +216,8 @@ export const useAddUtilityMeter = () => {
         p_id: null,
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
-        p_provider_code: null,
-        p_account_holder: null,
+        p_provider_code: undefined,
+        p_account_holder: undefined,
       });
       if (error) throw new Error(error.message);
       return data as string;
@@ -259,12 +259,12 @@ export const usePayUtilityBill = () => {
         p_utility_type: TYPE_DB[args.type],
         p_amount: args.amount,
         p_period_month: args.billingMonth,
-        p_voucher_date: args.voucherDate ?? null,
-        p_provider_code: args.code || null,
-        p_account_holder: args.holder || null,
-        p_account_id: args.accountId ?? null,
+        p_voucher_date: args.voucherDate ?? undefined,
+        p_provider_code: args.code || undefined,
+        p_account_holder: args.holder || undefined,
+        p_account_id: args.accountId ?? undefined,
         p_attachments: args.attachments && args.attachments.length ? args.attachments : null,
-        p_utility_account_id: args.utilityAccountId ?? null,
+        p_utility_account_id: args.utilityAccountId ?? undefined,
       });
       if (error) throw new Error(error.message);
       return data as { voucher_id: string; code: string; total_amount: number; account_id: string };

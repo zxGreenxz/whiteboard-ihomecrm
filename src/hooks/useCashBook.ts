@@ -108,8 +108,8 @@ export const useCashFlowByDay = (
       const { data, error } = await supabase.rpc("cashflow_by_day", {
         p_start: start_date,
         p_end: end_date,
-        p_building_id: buildingId ?? null,
-        p_account_id: accountId ?? null,
+        p_building_id: buildingId ?? undefined,
+        p_account_id: accountId ?? undefined,
       });
       if (error) throw error;
 

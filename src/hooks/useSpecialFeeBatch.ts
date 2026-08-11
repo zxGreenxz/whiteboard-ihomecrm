@@ -83,7 +83,7 @@ export const useGenerateSpecialFees = () => {
         // liền nhau dùng chung một khoá mà lượt sau (cố ý) vẫn tạo được khoá mới.
         p_idempotency_key:
           `sf-${a.period}-${a.buildingIds.length}-${Math.floor(Date.now() / 60000)}`,
-        p_account_id: a.accountId ?? null,
+        p_account_id: a.accountId ?? undefined,
       });
       if (error) throw new Error(error.message);
       const d = data as any;

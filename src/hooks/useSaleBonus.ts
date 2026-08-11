@@ -76,10 +76,10 @@ export const useCreateSaleBonusFromDeposit = () => {
       const { data, error } = await supabase.rpc('create_sale_bonus_from_deposit_v1', {
         p_deposit_voucher_id: a.depositVoucherId,
         p_amount: a.amount,
-        p_recipient: a.recipient ?? null,
-        p_account_number: a.accountNumber ?? null,
-        p_bank: a.bank ?? null,
-        p_voucher_date: null,
+        p_recipient: a.recipient ?? undefined,
+        p_account_number: a.accountNumber ?? undefined,
+        p_bank: a.bank ?? undefined,
+        p_voucher_date: undefined,
       });
       if (error) throw new Error(error.message);
       return data as { voucherId: string; code: string; amount: number; note: string };

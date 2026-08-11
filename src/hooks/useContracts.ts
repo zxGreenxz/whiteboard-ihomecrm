@@ -1171,7 +1171,7 @@ export const useApproveTermination = () => {
       // đối không ghi thay tiền.
       const canonical = await supabase.rpc("approve_contract_termination_v1", {
         p_termination_id: data.termination_id,
-        p_note: data.notes ?? null,
+        p_note: data.notes ?? undefined,
       });
       if (canonical.error) {
         const err = canonical.error as { code?: string | null; message?: string | null };
@@ -1222,7 +1222,7 @@ export const useRejectTermination = () => {
       // Canonical reject (mirror legacy: về DRAFT + prefix lý do), fallback cũ.
       const canonical = await supabase.rpc("reject_contract_termination_v1", {
         p_termination_id: data.termination_id,
-        p_reason: data.rejection_reason ?? null,
+        p_reason: data.rejection_reason ?? undefined,
       });
       if (!canonical.error) return { success: true };
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;

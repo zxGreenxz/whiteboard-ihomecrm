@@ -77,7 +77,7 @@ const dashboardSummaryQuery = (buildingId?: string | null) => ({
   queryKey: ["dashboard-summary", buildingId ?? null] as const,
   queryFn: async (): Promise<DashboardSummary> => {
     const { data, error } = await supabase.rpc("get_dashboard_summary", {
-      p_building_id: buildingId ?? null,
+      p_building_id: buildingId ?? undefined,
     });
     if (error) throw error;
     return data as unknown as DashboardSummary;

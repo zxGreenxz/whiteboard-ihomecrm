@@ -80,7 +80,7 @@ export function useUpsertPassListing() {
         p_contact_phone: input.contactPhone ?? null,
         p_sale_policy: input.salePolicy ?? null,
         p_pass_price: input.passPrice ?? null,
-        p_avail_date: input.availDate ?? null,
+        p_avail_date: input.availDate ?? undefined,
         p_active: input.active ?? true,
         p_contact_manager: input.contactManager ?? false,
       });

@@ -143,7 +143,7 @@ export const useCreateHandover = () => {
       const { data, error } = await supabase.rpc('create_cash_handover', {
         p_receiver_id: args.receiverId,
         p_voucher_ids: args.voucherIds,
-        p_note: args.note ?? null,
+        p_note: args.note ?? undefined,
       });
       // Ném NGUYÊN error (PostgrestError có .code) — new Error(error.message)
       // làm rơi code, friendlyError hết nhận diện được 55000/42501.
@@ -167,7 +167,7 @@ export const useConfirmHandover = () => {
     mutationFn: async (args: { handoverId: string; toAccountId?: string | null }) => {
       const { data, error } = await supabase.rpc('confirm_cash_handover', {
         p_handover_id: args.handoverId,
-        p_to_account_id: args.toAccountId ?? null,
+        p_to_account_id: args.toAccountId ?? undefined,
       });
       if (error) throw error;
       return data as { id: string; code: string };

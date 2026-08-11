@@ -343,7 +343,7 @@ export const useUpsertOrganizationRole = () => {
           p_name: v.name ?? null,
           p_permissions: v.permissions ?? null,
           p_expected_version: v.expectedVersion ?? null,
-          p_reason: v.reason ?? null,
+          p_reason: v.reason ?? undefined,
         },
       )),
     onSuccess: (r) => {

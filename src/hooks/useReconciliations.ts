@@ -35,8 +35,8 @@ export const useProposeReconciliation = () => {
         p_account_id: args.accountId,
         p_as_of: args.asOf,
         p_counted_balance: args.countedBalance,
-        p_counterparty_id: args.counterpartyId ?? null,
-        p_note: args.note ?? null,
+        p_counterparty_id: args.counterpartyId ?? undefined,
+        p_note: args.note ?? undefined,
       });
       if (error) throw new Error(error.message);
       return data as { id: string; status: string; system_balance: number; diff: number };

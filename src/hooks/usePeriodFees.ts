@@ -271,10 +271,10 @@ export const usePayPeriodFee = () => {
         p_amount: args.amount,
         p_period_start: args.periodStart,
         p_period_end: args.periodEnd,
-        p_voucher_date: args.voucherDate ?? null,
-        p_provider_code: args.providerCode || null,
-        p_account_holder: args.accountHolder || null,
-        p_account_id: args.accountId ?? null,
+        p_voucher_date: args.voucherDate ?? undefined,
+        p_provider_code: args.providerCode || undefined,
+        p_account_holder: args.accountHolder || undefined,
+        p_account_id: args.accountId ?? undefined,
         p_attachments: args.attachments && args.attachments.length ? args.attachments : null,
         p_force: args.force ?? false,
       });
@@ -350,12 +350,12 @@ export const useUpdatePeriodFee = () => {
     }) => {
       const { error } = await supabase.rpc('update_period_fee', {
         p_voucher_id: args.voucherId,
-        p_account_id: args.accountId ?? null,
+        p_account_id: args.accountId ?? undefined,
         p_attachments: args.attachments ?? null,
-        p_amount: args.amount ?? null,
-        p_period_start: args.periodStart ?? null,
-        p_period_end: args.periodEnd ?? null,
-        p_notes: args.notes ?? null,
+        p_amount: args.amount ?? undefined,
+        p_period_start: args.periodStart ?? undefined,
+        p_period_end: args.periodEnd ?? undefined,
+        p_notes: args.notes ?? undefined,
       });
       if (error) throw new Error(error.message);
     },
@@ -444,11 +444,11 @@ export const useUpsertFeeAccount = () => {
       const { data, error } = await supabase.rpc('upsert_building_fee_account', {
         p_building_id: args.buildingId,
         p_fee_category: args.feeCategory,
-        p_provider_code: args.providerCode ?? null,
-        p_account_holder: args.accountHolder ?? null,
-        p_default_amount: args.defaultAmount ?? null,
-        p_default_account_id: args.defaultAccountId ?? null,
-        p_not_applicable: args.notApplicable ?? null,
+        p_provider_code: args.providerCode ?? undefined,
+        p_account_holder: args.accountHolder ?? undefined,
+        p_default_amount: args.defaultAmount ?? undefined,
+        p_default_account_id: args.defaultAccountId ?? undefined,
+        p_not_applicable: args.notApplicable ?? undefined,
       });
       if (error) throw new Error(error.message);
       return data as string;

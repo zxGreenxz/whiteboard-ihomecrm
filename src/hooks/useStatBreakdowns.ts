@@ -35,14 +35,14 @@ export const useChangeBreakdown = (
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
       const { data, error } = await supabase.rpc('get_change_breakdown_v2', {
-        p_building_id: filters?.building_id ?? null,
-        p_room_id: filters?.room_id ?? null,
-        p_status: filters?.status ?? null,
-        p_start_date: filters?.start_date ?? null,
-        p_end_date: filters?.end_date ?? null,
-        p_billing_month: filters?.billing_month ?? null,
-        p_payment_status: filters?.payment_status ?? null,
-        p_building_ids: filters?.building_ids?.length ? filters.building_ids : null,
+        p_building_id: filters?.building_id ?? undefined,
+        p_room_id: filters?.room_id ?? undefined,
+        p_status: filters?.status ?? undefined,
+        p_start_date: filters?.start_date ?? undefined,
+        p_end_date: filters?.end_date ?? undefined,
+        p_billing_month: filters?.billing_month ?? undefined,
+        p_payment_status: filters?.payment_status ?? undefined,
+        p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
       });
       if (error) throw error;
       return ((data ?? []) as any[]).map((r) => ({
@@ -96,12 +96,12 @@ export const useDepositBreakdown = (
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
       const { data, error } = await supabase.rpc('get_deposit_breakdown_v2', {
-        p_building_id: filters?.building_id ?? null,
-        p_room_id: filters?.room_id ?? null,
-        p_start_date: filters?.start_date ?? null,
-        p_end_date: filters?.end_date ?? null,
-        p_billing_month: filters?.billing_month ?? null,
-        p_building_ids: filters?.building_ids?.length ? filters.building_ids : null,
+        p_building_id: filters?.building_id ?? undefined,
+        p_room_id: filters?.room_id ?? undefined,
+        p_start_date: filters?.start_date ?? undefined,
+        p_end_date: filters?.end_date ?? undefined,
+        p_billing_month: filters?.billing_month ?? undefined,
+        p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
       });
       if (error) throw error;
       return ((data ?? []) as any[]).map((r) => ({

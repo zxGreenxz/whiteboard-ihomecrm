@@ -239,8 +239,8 @@ export const luckyAdminApi = {
       p_event: p.eventId,
       p_name: p.name,
       p_deals: p.deals ?? 1,
-      p_top_rank: p.topRank ?? null,
-      p_top_prize: p.topPrize ?? null,
+      p_top_rank: p.topRank ?? undefined,
+      p_top_prize: p.topPrize ?? undefined,
       p_in_wheel: p.inWheel ?? true,
     })),
   updateTeam: (

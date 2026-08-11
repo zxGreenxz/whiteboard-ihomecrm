@@ -1298,11 +1298,11 @@ export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
         p_building_id: filters?.building_id ?? null,
         p_room_id: filters?.room_id ?? null,
         p_status: filters?.status ?? null,
-        p_start_date: filters?.start_date ?? null,
-        p_end_date: filters?.end_date ?? null,
-        p_billing_month: filters?.billing_month ?? null,
-        p_payment_status: filters?.payment_status ?? null,
-        p_building_ids: filters?.building_ids?.length ? filters.building_ids : null,
+        p_start_date: filters?.start_date ?? undefined,
+        p_end_date: filters?.end_date ?? undefined,
+        p_billing_month: filters?.billing_month ?? undefined,
+        p_payment_status: filters?.payment_status ?? undefined,
+        p_building_ids: filters?.building_ids?.length ? filters.building_ids : undefined,
       });
 
       if (error) throw error;

@@ -178,9 +178,9 @@ export const useCreateAccount = () => {
         p_account_number: null,
         p_quick_default_building_id: values.quick_default_building_id ?? null,
         p_idempotency_key: crypto.randomUUID(),
-        p_description: values.description ?? null,
+        p_description: values.description ?? undefined,
         p_is_default: values.is_default ?? false,
-        p_owner_user_id: values.user_id || null,
+        p_owner_user_id: values.user_id || undefined,
       });
       if (!canonical.error) return canonical.data;
       toast.error(canonical.error.message || "Không thể tạo sổ quỹ");

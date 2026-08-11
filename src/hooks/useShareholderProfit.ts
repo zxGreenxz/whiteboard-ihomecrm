@@ -192,7 +192,7 @@ export const useMonthlyBuildingProfit = (
       const { data, error } = await supabase.rpc("fa_monthly_pnl_accrual", {
         p_start_date: start,
         p_end_date: end,
-        p_building_ids: buildingId ? [buildingId] : null,
+        p_building_ids: buildingId ? [buildingId] : undefined,
       });
       if (error) {
         toast.error("Không thể tính lợi nhuận theo nhà");

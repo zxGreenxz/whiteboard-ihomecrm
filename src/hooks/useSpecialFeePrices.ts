@@ -41,7 +41,7 @@ export const useSpecialFeePrices = (buildingIds?: string[], month?: string) => {
     queryFn: async (): Promise<SpecialFeePrice[]> => {
       const { data, error } = await supabase.rpc('get_special_fee_prices_v1', {
         p_building_ids: key,
-        p_month: month ?? null,
+        p_month: month ?? undefined,
       });
       if (error) throw new Error(error.message);
       return ((data ?? []) as any[]).map((r) => ({
@@ -93,8 +93,8 @@ export const useSetSpecialFeePrice = () => {
         p_building_id: a.buildingId,
         p_fee_category: a.feeCategory,
         p_amount: a.amount,
-        p_effective_from_month: a.effectiveFromMonth ?? null,
-        p_note: a.note ?? null,
+        p_effective_from_month: a.effectiveFromMonth ?? undefined,
+        p_note: a.note ?? undefined,
       });
       if (error) throw new Error(error.message);
       return data as { effectiveFrom: string; note: string };

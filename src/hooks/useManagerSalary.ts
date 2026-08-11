@@ -855,8 +855,8 @@ export const useSalaryPayout = () => {
         p_voucher_date: input.voucher_date,
         p_note: input.note ?? null,
         p_idempotency_key: `sal-pay-${input.staffId.slice(0, 8)}-${input.periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
-        p_rent_invoice_id: input.rentInvoice?.invoiceId ?? null,
-        p_rent_amount: input.rentInvoice ? num(input.rentInvoice.amount) : null,
+        p_rent_invoice_id: input.rentInvoice?.invoiceId ?? undefined,
+        p_rent_amount: input.rentInvoice ? num(input.rentInvoice.amount) : undefined,
       });
       if (!canonical.error) return canonical.data;
       if (!isCanonicalFallbackSignal(canonical.error)) {

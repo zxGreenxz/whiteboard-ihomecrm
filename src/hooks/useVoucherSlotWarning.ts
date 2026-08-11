@@ -57,7 +57,7 @@ export const useVoucherSlotWarning = (a: Args) => {
         p_start: a.start,
         p_end: a.end,
         p_type: a.type,
-        p_exclude_id: a.excludeId ?? null,
+        p_exclude_id: a.excludeId ?? undefined,
       });
       if (error) throw new Error(error.message);
       return ((data ?? []) as any[]).map((r) => ({

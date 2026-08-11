@@ -116,7 +116,7 @@ export function useOverpaymentSummary(buildingIds?: string[]) {
     queryKey: ["reports", "overpayment", "summary", buildingIds ?? []],
     queryFn: async (): Promise<{ total: number; count: number }> => {
       const { data, error } = await supabase.rpc("get_overpayment_summary", {
-        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
       });
       if (error) throw error;
       const d = (data ?? {}) as any;
@@ -176,8 +176,8 @@ export function useDepositsReportSummary(status?: string, buildingIds?: string[]
     queryKey: ["reports", "deposits", "summary", status ?? null, buildingIds ?? []],
     queryFn: async (): Promise<{ total: number; count: number; holdingTotal: number; inInvoiceTotal: number }> => {
       const { data, error } = await supabase.rpc("get_deposits_report_summary", {
-        p_status: status && status !== "all" ? status : null,
-        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+        p_status: status && status !== "all" ? status : undefined,
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
       });
       if (error) throw error;
       const d = (data ?? {}) as any;

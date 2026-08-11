@@ -191,7 +191,7 @@ export const useReservationDepositSummary = (buildingIds?: string[]) => {
     queryKey: ['reservation-deposits', 'summary', buildingIds ?? []],
     queryFn: async (): Promise<ReservationDepositSummary> => {
       const { data, error } = await supabase.rpc('get_reservation_deposit_summary', {
-        p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
+        p_building_ids: buildingIds && buildingIds.length ? buildingIds : undefined,
       });
       if (error) throw error;
       const d = (data ?? {}) as any;
