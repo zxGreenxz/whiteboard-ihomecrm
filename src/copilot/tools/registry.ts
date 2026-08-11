@@ -90,14 +90,50 @@ export interface DocTopic {
 }
 
 /**
+ * Dấu review còn hiệu lực không?
+ *
+ * `reviewed` KHÔNG khai ⇒ coi là còn dùng được. Đây là lựa chọn có chủ đích, không
+ * phải lỗ hổng: 12 trong 25 tài liệu Copilot đang đọc chưa từng ghi ngày review
+ * (đo 11/08/2026), và loại hết chúng ở runtime sẽ cắt hơn một nửa kiến thức của
+ * Copilot trong im lặng. Món nợ đó được khai tường minh ở `unreviewedDebt` trong
+ * manifest và có gate canh cho nó chỉ được teo đi.
+ *
+ * Ngày KHÔNG parse được cũng coi là còn hiệu lực: một chuỗi hỏng là lỗi dữ liệu,
+ * và biến lỗi dữ liệu thành "im lặng bỏ tài liệu" là kiểu hỏng khó thấy nhất.
+ * Gate manifest bắt chuỗi hỏng, đó mới là chỗ của nó.
+ */
+export function dauReviewConHieuLuc(
+  reviewed: string | null | undefined,
+  staleAfterDays: number | undefined,
+  now: number,
+): boolean {
+  if (!reviewed || !staleAfterDays) return true;
+  const moc = new Date(reviewed).getTime();
+  if (Number.isNaN(moc)) return true;
+  return (now - moc) / 86_400_000 <= staleAfterDays;
+}
+
+/**
  * Chủ đề tài liệu Copilot được phép đọc, đã lọc theo manifest VÀ quyền của phiên.
  *
  * `perms === undefined` (chưa load) ⇒ chỉ trả tài liệu không gắn quyền — fail
  * closed, giống assertPerm.
+ *
+ * Lọc thêm theo dấu review QUÁ HẠN. Đây là chỗ luật đó có răng thật: gate CI chỉ
+ * cảnh báo (cố ý — xem chú thích trong check-copilot-docs-manifest.mjs: một gate
+ * đỏ vì ngày tháng sẽ bị bump cho xong), còn ở đây tài liệu quá hạn thôi được nạp
+ * và người dùng thấy Copilot mất kiến thức đó. Phản hồi ấy khó lờ hơn một dòng
+ * cảnh báo trong log CI.
+ *
+ * Đo 11/08/2026: 0 tài liệu quá hạn, nên bật luật này KHÔNG đổi hành vi hôm nay —
+ * nó chỉ chặn từ nay về sau.
  */
-export function listDocTopics(perms?: PermissionsMap): DocTopic[] {
+export function listDocTopics(perms?: PermissionsMap, now: number = Date.now()): DocTopic[] {
   const allowed = new Map(
-    DOCS_MANIFEST.entries.filter((e) => e.copilotIngest).map((e) => [e.file, e]),
+    DOCS_MANIFEST.entries
+      .filter((e) => e.copilotIngest)
+      .filter((e) => dauReviewConHieuLuc(e.reviewed, DOCS_MANIFEST.staleAfterDays, now))
+      .map((e) => [e.file, e]),
   );
   return Object.keys(DOC_MODULES)
     .map((path) => ({ path, file: path.replace(/^.*\//, '') }))

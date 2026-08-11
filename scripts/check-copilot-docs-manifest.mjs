@@ -12,7 +12,7 @@
 //
 // Không cần credential, không đọc database.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -129,11 +129,81 @@ function main() {
     console.warn(`⚠ ${stale.length} tài liệu quá hạn review ${manifest.staleAfterDays} ngày:`);
     for (const s of stale) console.warn(`   - ${s.file} (${s.ageDays} ngày)`);
   }
-  const unreviewed = ingested.filter((e) => !e.reviewed);
+  // ── Nợ review: chỉ được teo ────────────────────────────────────────────────
+  //
+  // 12/25 tài liệu Copilot đọc chưa từng ghi ngày review (đo 11/08/2026). Loại
+  // hết ở runtime sẽ cắt hơn nửa kiến thức Copilot trong im lặng, nên chúng được
+  // khai thành NỢ có tên. Phần cưỡng chế nằm ở hai chiều dưới đây — cùng khuôn
+  // với mọi ratchet khác trong repo: so TẬP TÊN, không so số đếm. So số đếm cho
+  // phép xoá một cái rồi thêm một cái khác trong cùng lát mà không ai thấy.
+  const debt = manifest.unreviewedDebt;
+  const unreviewed = ingested.filter((e) => !e.reviewed).map((e) => e.file);
+  const loi = [];
+
+  if (!debt || !Array.isArray(debt.files)) {
+    loi.push('manifest thiếu `unreviewedDebt.files` — không có ratchet thì nợ review là vô hạn.');
+  } else {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(debt.expiresAt ?? ''))) {
+      loi.push('`unreviewedDebt.expiresAt` phải là ngày YYYY-MM-DD.');
+    } else if (debt.expiresAt < homNay()) {
+      loi.push(
+        `nợ review HẾT HẠN ${debt.expiresAt} (hôm nay ${homNay()}) — review thật rồi ghi ngày, ` +
+        'hoặc gia hạn có lý do. Xoá tên khỏi danh sách KHÔNG phải cách đóng.',
+      );
+    }
+    const trongNo = new Set(debt.files);
+
+    // Chiều 1: ingest mà không có `reviewed` và không nằm trong nợ ⇒ nợ mới.
+    for (const f of unreviewed) {
+      if (!trongNo.has(f)) {
+        loi.push(
+          `${f}: được Copilot đọc nhưng chưa từng ghi \`reviewed\`, và không nằm trong unreviewedDebt.\n` +
+          '      → ghi ngày review thật. Đừng thêm vào danh sách nợ: nó chỉ để chốt hiện trạng, không để mở rộng.',
+        );
+      }
+    }
+
+    // Chiều 2: nằm trong nợ nhưng THỰC RA đã có `reviewed` ⇒ sổ nợ nói dối.
+    // Không bỏ qua được: một danh sách nợ ghi thừa sẽ khiến người ta tưởng còn
+    // việc phải làm ở chỗ đã xong, và tệ hơn, nó che một chỗ nợ thật mới xuất hiện.
+    const conNo = new Set(unreviewed);
+    for (const f of debt.files) {
+      if (!conNo.has(f)) {
+        loi.push(`${f}: nằm trong unreviewedDebt nhưng đã có \`reviewed\` (hoặc không còn được ingest) — gỡ khỏi danh sách.`);
+      }
+    }
+  }
+
+  // ── sourcePaths: thi hành KHI CÓ, và bắt buộc với mục thêm mới ─────────────
+  //
+  // Nói thẳng hiện trạng: KHÔNG entry nào khai `sourcePaths` (đo 11/08/2026), nên
+  // điều kiện "source path còn tồn tại" của luật ingest chưa có dữ liệu để thi
+  // hành. Bịa đường dẫn cho 29 tài liệu là đoán, và một manifest đoán còn tệ hơn
+  // manifest trống. Phần làm được ngay: mọi đường dẫn ĐÃ khai phải tồn tại thật.
+  for (const e of manifest.entries) {
+    for (const p of e.sourcePaths ?? []) {
+      if (!existsSync(join(repoRoot, p))) {
+        loi.push(`${e.file}: sourcePaths trỏ \`${p}\` nhưng file đó không tồn tại.`);
+      }
+    }
+  }
+
+  if (loi.length > 0) {
+    console.error(`\n❌ ${loi.length} vi phạm luật Copilot ingest:\n`);
+    for (const l of loi) console.error(`  - ${l}`);
+    process.exitCode = 1;
+    return;
+  }
+
   if (unreviewed.length > 0) {
-    console.warn(`⚠ ${unreviewed.length} tài liệu được Copilot đọc nhưng chưa từng ghi ngày review.`);
+    console.warn(
+      `⚠ ${unreviewed.length} tài liệu Copilot đọc chưa từng ghi ngày review — đã khai nợ, ` +
+      `hạn ${debt.expiresAt}.`,
+    );
   }
 }
+
+const homNay = () => new Date().toISOString().slice(0, 10);
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main();

@@ -2,71 +2,178 @@
   "$comment": "Allowlist tài liệu AI Copilot được phép đọc. TRƯỚC file này, tool huong_dan glob mù toàn bộ docs/he-thong/*.md — nghĩa là mọi file .md ai đó thả vào đây đều tự động thành nguồn tư vấn nghiệp vụ cho người dùng thật, kể cả writeup hiệu năng nội bộ hay bản đồ bảo trì realtime. Gate: node scripts/check-copilot-docs-manifest.mjs (file mới BẮT BUỘC khai ở đây, không mặc định lọt vào).",
   "schemaVersion": 1,
   "staleAfterDays": 180,
+  "unreviewedDebt": {
+    "$comment": "Tài liệu Copilot ĐANG đọc mà chưa từng ghi ngày review. Runtime vẫn nạp chúng — loại hết sẽ cắt hơn nửa kiến thức Copilot trong im lặng. Danh sách này CHỈ ĐƯỢC TEO: thêm một tài liệu ingest mới mà không có `reviewed` sẽ bị gate chặn. Đóng một mục = review thật rồi ghi ngày, KHÔNG phải xoá tên khỏi đây.",
+    "expiresAt": "2026-12-31",
+    "files": [
+      "02-co-cau-toa-nha-phong-dich-vu.md",
+      "03-khach-hang-lead-ho-so.md",
+      "04-coc-giu-cho.md",
+      "05-hop-dong.md",
+      "06-cong-to-chi-so.md",
+      "09-kho-vat-tu.md",
+      "10-tai-san.md",
+      "11-cong-viec-su-co.md",
+      "13-bao-cao-dashboard-thong-bao.md",
+      "14-cai-dat-danh-muc-tai-lieu.md",
+      "16-thanh-ly-hop-dong.md",
+      "19-sop-tien-va-so-quy.md"
+    ]
+  },
   "entries": [
-    { "file": "00-tong-quan.md", "copilotIngest": true, "reviewed": "2026-07-20" },
-    { "file": "01-phan-quyen-nhan-su.md", "copilotIngest": true, "reviewed": "2026-07-20" },
-    { "file": "02-co-cau-toa-nha-phong-dich-vu.md", "copilotIngest": true, "reviewed": null },
-    { "file": "03-khach-hang-lead-ho-so.md", "copilotIngest": true, "reviewed": null },
-    { "file": "04-coc-giu-cho.md", "copilotIngest": true, "reviewed": null },
-    { "file": "05-hop-dong.md", "copilotIngest": true, "reviewed": null },
-    { "file": "06-cong-to-chi-so.md", "copilotIngest": true, "reviewed": null },
-    { "file": "07-hoa-don-thanh-toan.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    {
+      "file": "00-tong-quan.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20"
+    },
+    {
+      "file": "01-phan-quyen-nhan-su.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20"
+    },
+    {
+      "file": "02-co-cau-toa-nha-phong-dich-vu.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "03-khach-hang-lead-ho-so.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "04-coc-giu-cho.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "05-hop-dong.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "06-cong-to-chi-so.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "07-hoa-don-thanh-toan.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20"
+    },
     {
       "file": "08-thu-chi-so-quy.md",
       "copilotIngest": true,
       "reviewed": "2026-07-20",
-      "requiredPermission": { "module": "income_expenses", "action": "view" },
+      "requiredPermission": {
+        "module": "income_expenses",
+        "action": "view"
+      },
       "why": "mô tả quy trình sổ quỹ và writer tiền"
     },
-    { "file": "09-kho-vat-tu.md", "copilotIngest": true, "reviewed": null },
-    { "file": "10-tai-san.md", "copilotIngest": true, "reviewed": null },
-    { "file": "11-cong-viec-su-co.md", "copilotIngest": true, "reviewed": null },
+    {
+      "file": "09-kho-vat-tu.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "10-tai-san.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "11-cong-viec-su-co.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
     {
       "file": "12-co-dong-loi-nhuan.md",
       "copilotIngest": true,
       "reviewed": "2026-07-20",
-      "requiredPermission": { "module": "shareholder_profit", "action": "view" },
+      "requiredPermission": {
+        "module": "shareholder_profit",
+        "action": "view"
+      },
       "why": "cơ chế chia lợi nhuận cổ đông"
     },
-    { "file": "13-bao-cao-dashboard-thong-bao.md", "copilotIngest": true, "reviewed": null },
-    { "file": "14-cai-dat-danh-muc-tai-lieu.md", "copilotIngest": true, "reviewed": null },
-    { "file": "15-kenh-cong-khai-sale-thu-tien.md", "copilotIngest": true, "reviewed": "2026-07-20" },
-    { "file": "16-thanh-ly-hop-dong.md", "copilotIngest": true, "reviewed": null },
+    {
+      "file": "13-bao-cao-dashboard-thong-bao.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "14-cai-dat-danh-muc-tai-lieu.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
+    {
+      "file": "15-kenh-cong-khai-sale-thu-tien.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20"
+    },
+    {
+      "file": "16-thanh-ly-hop-dong.md",
+      "copilotIngest": true,
+      "reviewed": null
+    },
     {
       "file": "17-luong-thuong.md",
       "copilotIngest": true,
       "reviewed": "2026-07-20",
-      "requiredPermission": { "module": "salary", "action": "view" },
+      "requiredPermission": {
+        "module": "salary",
+        "action": "view"
+      },
       "why": "công thức lương/thưởng nhân sự"
     },
-    { "file": "18-zalo-chat.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    {
+      "file": "18-zalo-chat.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20"
+    },
     {
       "file": "19-sop-tien-va-so-quy.md",
       "copilotIngest": true,
       "reviewed": null,
-      "requiredPermission": { "module": "income_expenses", "action": "view" },
+      "requiredPermission": {
+        "module": "income_expenses",
+        "action": "view"
+      },
       "why": "SOP tiền mặt"
     },
     {
       "file": "20-phe-duyet-tai-chinh.md",
       "copilotIngest": true,
       "reviewed": "2026-07-20",
-      "requiredPermission": { "module": "income_expenses", "action": "view" },
+      "requiredPermission": {
+        "module": "income_expenses",
+        "action": "view"
+      },
       "why": "ngưỡng và luồng phê duyệt tài chính"
     },
-    { "file": "21-ai-copilot.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    {
+      "file": "21-ai-copilot.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20"
+    },
     {
       "file": "22-network-center.md",
       "copilotIngest": true,
       "reviewed": "2026-08-06",
-      "requiredPermission": { "module": "network_center", "action": "view" },
+      "requiredPermission": {
+        "module": "network_center",
+        "action": "view"
+      },
       "why": "hạ tầng mạng nội bộ: fleet router, WireGuard, thao tác từ xa"
     },
     {
       "file": "23-openclaw-zalo.md",
       "copilotIngest": true,
       "reviewed": "2026-08-06",
-      "requiredPermission": { "module": "openclaw_zalo", "action": "view" },
+      "requiredPermission": {
+        "module": "openclaw_zalo",
+        "action": "view"
+      },
       "why": "tính năng chưa bật production; mô tả cả cơ chế bảo mật phiên và đường ra mạng"
     },
     {
@@ -74,8 +181,11 @@
       "copilotIngest": false,
       "why": "quy trình phát hành hạ tầng (CI gate, promote, deploy Edge, cron) — dành cho người vận hành/lập trình viên, trả nguyên văn cho người dùng cuối là vô nghĩa và lộ bề mặt vận hành"
     },
-    { "file": "99-quy-trinh-tong.md", "copilotIngest": true, "reviewed": "2026-07-20" },
-
+    {
+      "file": "99-quy-trinh-tong.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20"
+    },
     {
       "file": "README.md",
       "copilotIngest": false,

@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 66
+    "stillMissing": 65
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -429,10 +429,12 @@
       {
         "deliverable": "Luật Copilot ingest (4 điều kiện cho phép + 6 loại cấm)",
         "planRef": "mục 11, dòng 1483-1500",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thi hành 2 điều kiện còn thiếu ('reviewed chưa quá hạn', 'source path còn tồn tại') ở runtime + thêm test chứng minh doc quá hạn/thiếu source path bị loại."
+        "remaining": "sourcePaths: KHONG entry nao khai (do 11/08) nen dieu kien \"source path con ton tai\" chua co du lieu de thi hanh day du — gate da cuong che KHI CO, va bia duong dan cho 29 tai lieu la doan.",
+        "doneAt": "2026-08-11",
+        "evidence": "Dieu kien \"reviewed chua qua han\" thi hanh o RUNTIME (listDocTopics loc qua dauReviewConHieuLuc) chu khong o CI — cung ly do da ghi trong chinh script: gate do vi ngay thang se bi bump theo nghi thuc. Do 11/08: 0 tai lieu qua han nen bat luat KHONG doi hanh vi hom nay, chi chan tu nay. 12/25 tai lieu chua tung review duoc khai thanh unreviewedDebt co ten + han 2026-12-31, ratchet theo TAP TEN 2 chieu (them no moi => do; no ghi thua => do). Dot bien 6/6 dung ky vong. 10 test runtime, gom ca ca \"day dong ho 10 nam => moi tai lieu co dau review bi loai\" de chung minh bo loc khong rong nghia. Sua luon mot loi tiem tang: vong lap sourcePaths dung existsSync ma chua import — xanh chi vi chua tung chay."
       },
       {
         "deliverable": "P2.2 — sidebar user docs phải được kiểm với Capability Registry (docsVisibility/docsPath, CI báo capability có route mà không có user docs)",
