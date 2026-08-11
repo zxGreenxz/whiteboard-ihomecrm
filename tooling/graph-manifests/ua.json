@@ -34,6 +34,25 @@
     ".ua/.understandignore": "git:9cdb86df3b342b5f6b88bfb0922c4bf3f10db23b"
   },
   "configDigestNote": "git blob OID, KHÔNG phải sha256 nội dung worktree. Trên Windows worktree có thể là CRLF trong khi blob là LF, nên sha256 worktree sẽ lệch một cách vô nghĩa và gate sẽ đỏ giả. Blob OID là thứ git thật sự lưu. Gate tính bằng `git hash-object <path>` trên WORKTREE (không phải `HEAD:<path>`), nên sửa file cấu hình mà quên cập nhật đây là đỏ NGAY, chưa cần commit. Đã kiểm chứng sống 08/08/2026: bật nhóm mẫu vendor/runtime-state/data-dump trong .understandignore ⇒ gate đỏ đúng chỗ, ghi rõ cả hai OID. `.ua/config.json` vẫn nguyên từ bản d0ffb045; `.ua/.understandignore` đổi ngày 08/08 (xem scope.exclusionsPendingNextRefresh).",
+  "artifactVsRuntimeState": {
+    "$note": "Trả lời câu hỏi của plan PHẦN V §20: file nào trong .ua/ là ARTIFACT CHIA SẺ (đáng commit, người khác dùng lại được) và file nào là TRẠNG THÁI CHẠY (dựng lại được, không nên commit). Đo 08/08/2026, không suy đoán.",
+    "shareableArtifact": {
+      "files": ["knowledge-graph.json", "meta.json", "config.json", ".understandignore"],
+      "vi": "Nội dung do LLM sinh ra từ mã nguồn tại một commit, không phụ thuộc máy dựng. Người khác clone về đọc được ngay và dùng đúng nghĩa. Đây là thứ đáng nằm trong git."
+    },
+    "runtimeState": {
+      "files": [".ua/intermediate/", ".ua/tmp/", ".ua/.trash-*/", ".gitnexus/**"],
+      "vi": "Dựng lại được từ mã nguồn, và LỚN. Đo: .gitnexus/ chiếm 508 MB với 0 file tracked (đúng — nó là parse cache, `graph:analyze` dựng lại toàn bộ); .ua/ chiếm 53 MB trên đĩa nhưng chỉ 5 file được commit."
+    },
+    "fingerprintsJson": {
+      "phanLoai": "ARTIFACT ĐƯỢC COMMIT, NHƯNG KHÔNG DI ĐỘNG GIỮA HỆ ĐIỀU HÀNH",
+      "doDuoc": "Trong 197 file đang là CRLF trên đĩa Windows: 127 file có contentHash khớp BYTES THÔ (kể cả \\r\\n), 5 khớp bản chuẩn hoá LF, 65 không khớp cái nào (đã đổi từ lúc dựng — graph cũ 38 commit lúc đo).",
+      "heQua": "fingerprints.json băm bytes worktree, nên CÙNG MỘT COMMIT cho hash khác nhau giữa Windows (CRLF, core.autocrlf=true) và Linux (LF). CI dựng lại fingerprints từ cùng commit sẽ thấy gần như MỌI file 'đã đổi' và phân loại là STRUCTURAL — đúng cách hỏng mà Phase 7 của skill cảnh báo (leo thang FULL_UPDATE mỗi commit).",
+      "quyetDinh": "VẪN COMMIT — gate:graph-hygiene đối chiếu baseCommit qua cả ba nguồn và cần file này; bỏ đi là mất một phép kiểm thật. Nhưng KHÔNG được coi nó là bằng chứng di động: đừng so fingerprints dựng trên máy khác OS với bản đã commit rồi kết luận mã đã đổi. Muốn biết mã đổi gì thì dùng git, không dùng file này.",
+      "muonSuaTanGoc": "Chuẩn hoá CRLF→LF trước khi băm trong build-fingerprints.mjs (thuộc plugin ngoài repo), hoặc thêm `*.json text eol=lf` cho .ua/ vào .gitattributes. Cả hai đều là thay đổi ngoài phạm vi lát này."
+    }
+  },
+
   "knownGaps": [
     "92 cạnh `calls` (0,5% tổng cạnh) bị merge script bỏ vì trỏ tới hàm ngắn được export mà bộ lọc significance của file-analyzer không tạo node — vd formatVnd, monthToStartDate, remainingOf. Luật của công cụ nói hàm được export thì LUÔN tạo node bất kể độ dài; nhiều agent đọc thành điều kiện AND với ngưỡng 10 dòng.",
     "importMap của công cụ bỏ sót 4 dạng cú pháp: `export … from` (re-export), `export default <Identifier>;` cuối file, `React.lazy(() => import(...))`, và import trong .mts/.vue. Các agent đã bù bằng cạnh `depends_on` nên quan hệ không mất, nhưng chúng không nằm trong con số 5.976.",

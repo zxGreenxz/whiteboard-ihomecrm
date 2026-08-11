@@ -637,6 +637,34 @@ graph không chứng minh object nào đang deploy.
 6. **Không auto-commit graph.** Refresh đi PR riêng, hoặc commit riêng trong architecture PR
    liên quan.
 
+#### Cái gì đáng commit, cái gì không
+
+Không phải mọi thứ graph sinh ra đều là artifact. Đo 08/08/2026:
+
+| | Kích thước | Tracked | Loại |
+|---|---:|---:|---|
+| `.gitnexus/` | **508 MB** | **0 file** | trạng thái chạy — `graph:analyze` dựng lại toàn bộ |
+| `.ua/` | 53 MB trên đĩa | **5 file** | phần còn lại là `intermediate/`, `tmp/`, `.trash-*` — đã gitignore |
+
+**`fingerprints.json` là trường hợp ranh giới, và câu trả lời quan trọng:** nó **được commit nhưng
+KHÔNG di động giữa hệ điều hành**. Đo trên 197 file đang là CRLF: **127 file có `contentHash` khớp
+bytes thô kể cả `\r\n`**. Nghĩa là cùng một commit cho fingerprints khác nhau giữa Windows và Linux.
+
+Hệ quả phải nhớ: **đừng so fingerprints dựng trên máy khác OS với bản đã commit rồi kết luận mã đã
+đổi** — nó sẽ báo gần như mọi file đều đổi. Muốn biết mã đổi gì thì dùng `git`, không dùng file này.
+Vẫn giữ commit vì `gate:graph-hygiene` đối chiếu `baseCommit` qua cả ba nguồn và cần nó.
+
+Chi tiết và cách sửa tận gốc: `tooling/graph-manifests/ua.json → artifactVsRuntimeState`.
+
+**Trước khi commit graph mới, bắt buộc:**
+
+```bash
+npm run gate:graph-secrets    # secret + PII trên artifact (cần binary gitleaks)
+```
+
+Gate này đã nối vào job `secret-scan` của `ci-gates.yml`, nên PR refresh không merge được nếu artifact
+mang secret hay PII. Chạy tay vẫn nên, nhưng cưỡng chế nằm ở CI — *nhớ chạy* không phải một phép kiểm.
+
 ### Hỏi bán kính ảnh hưởng trước khi sửa (plan §16)
 
 GitNexus đăng ký sẵn làm MCP server ở `.mcp.json` — theo **dự án**, không theo máy, nên ai clone
