@@ -85,10 +85,9 @@ export const useMoveIncomeVoucherCashbook = () => {
       for (const key of [
         ["income-expenses"],
         ["accounts-with-balance"],
-        ["cash-book"],
         ["cash-book-summary"],
         ["cash-flow-by-day"],
-        ["voucher-detail"],
+        ["voucher-with-batch"],
         ["voucher-change-log"],
         ["financial-analysis"],
       ]) {

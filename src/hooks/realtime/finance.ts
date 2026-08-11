@@ -41,7 +41,6 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["utility-payments"], // "Đóng điện nước" — trạng thái đã đóng
       ["utility-accounts"],
       ["accounts-with-balance"], // số dư sổ quỹ
-      ["cash-book"],
       ["cash-book-summary"],
       ["cash-flow-by-day"],
       ["handover-vouchers"], // bàn giao tiền
@@ -60,7 +59,6 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["financial-analysis"],
       ["monthly-building-profit"],
       ["income-expense-batches"],
-      ["voucher-detail"],
       ["voucher-cancellation"],
       ["voucher-change-log"],
       ["ie-history"],
@@ -92,7 +90,6 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
     keys: [
       ["income-expenses"],
       ["voucher-with-batch"],
-      ["voucher-detail"],
       ["accounts-with-balance"],
       ["cash-book-summary"],
       ["financial-analysis"],

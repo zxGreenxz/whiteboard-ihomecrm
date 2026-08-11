@@ -676,6 +676,10 @@ jobs:
           # hook/lib thì hai gate trên có ít điểm phải soi hơn, và quyền sở hữu
           # query key nằm cùng chỗ với lời gọi.
           node scripts/check-rpc-layer.mjs
+          # Tầng KEY của realtime: check-realtime-descriptors chặn ba nguồn ở tầng
+          # BẢNG (publication ↔ hub ↔ descriptor), không gì chặn tầng key.
+          # `invalidateQueries` khớp theo prefix và IM LẶNG khi không khớp ai.
+          node scripts/check-realtime-key-ownership.mjs
 
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.

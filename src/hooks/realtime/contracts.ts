@@ -37,7 +37,6 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
     table: "contract_terminations",
     keys: [
       ["deposit-dashboard"],
-      ["refund-forfeit-summary"],
       // Ba key THẬT mà màn thanh lý dùng, thay cho ["contract-terminations"] chết:
       ["contract-termination-info"], // useContractDetailData
       ["pending-terminations"], // useContracts — hàng chờ duyệt

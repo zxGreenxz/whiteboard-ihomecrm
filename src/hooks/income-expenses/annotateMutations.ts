@@ -22,7 +22,12 @@ export interface AnnotateIncomeExpenseInput {
 const INVALIDATE_KEYS = [
   ["income-expenses"],
   ["income-expense-batches"],
-  ["voucher-detail"],
+  // Tên key của màn chi tiết phiếu là `voucher-with-batch` (xem useVoucherDetail).
+  // Trước 11/08/2026 mọi nơi ở đây bắn vào `voucher-detail` — một key KHÔNG query
+  // nào dùng, nên `invalidateQueries` im lặng không khớp ai và màn chi tiết giữ
+  // dữ liệu cũ sau khi sửa. Chỉ hub realtime bắn đúng key, nên lỗi bị che sau
+  // 800ms debounce của hub và trông như "hơi chậm" thay vì "không cập nhật".
+  ["voucher-with-batch"],
   ["ie-history"],
   ["utility-payments"],
   ["period-fee-status"],
