@@ -447,8 +447,39 @@ ném "SyntaxError: Invalid or unexpected token" ngay khi một test import nó �
 nói file hợp lệ. Lỗi không chỉ vào đâu cả: không số dòng, không stack, chỉ "0 test".
 `.gitattributes` đã ép `*.mjs text eol=lf` — đừng gỡ.
 
-**GOTCHA mutation test:** phải chứng minh file **thực sự đổi** và chỉ rõ test nào đỏ; không chỉ tin
-exit code; phải hoàn nguyên digest gốc.
+### Kiểm bằng đột biến — sáu luật
+
+Dùng helper chung, **đừng viết shell riêng cho mỗi gate**:
+
+```bash
+node scripts/dot-bien.mjs --file <path> --tim "<neo>" --thay "<thay thế>" \
+  --suite "<lệnh chạy gate/test>" --mong-doi-chua "<chuỗi phải có trong output đỏ>"
+```
+
+**1. Chứng minh file ĐÃ ĐỔI trước khi chạy suite — bằng sha256, không bằng niềm tin vào neo.**
+Đây là luật quan trọng nhất và là luật hay bị bỏ nhất. Neo không khớp ⇒ file không đổi ⇒ suite vẫn
+xanh ⇒ người chạy đọc thành *"gate không bắt được"* rồi đi sửa gate. **Gate không sai; phép thử
+sai.** Đã dính 6 lần trong một phiên (07–08/08/2026): neo sai, `$` trong chuỗi thay thế bị
+`String.replace` hiểu là escape, CRLF làm neo kết thúc bằng `\n` không khớp, file đã nằm sẵn trong
+baseline, regex khớp tiếng Việt thất bại. Lần gần nhất suýt dẫn tới kết luận "bản vá vừa rồi làm gate
+mù" — sai hoàn toàn.
+
+**2. Ba lối thoát, đừng gộp hai cái đầu.** `3` = không kiểm được (neo hỏng, không khôi phục được) ·
+`1` = **gate mù** (file đổi thật mà suite vẫn xanh) · `0` = đạt. "Không kiểm được" và "kiểm rồi thấy
+hỏng" là hai tin khác nhau; gộp lại là mất đúng thông tin cần nhất.
+
+**3. Đỏ chưa đủ — phải đỏ ĐÚNG LÝ DO.** Dùng `--mong-doi-chua` để đòi output chứa thông điệp của
+chính phép kiểm đó. Một suite đỏ vì lỗi cú pháp không chứng minh gì về invariant đang xét.
+
+**4. Khôi phục là bắt buộc, và chạy trong `finally`.** Helper xác nhận sha256 quay về đúng bản gốc.
+Một phép thử làm bẩn cây làm việc rồi thoát giữa chừng còn tệ hơn không thử.
+
+**5. Chỉ bắt buộc cho invariant HIGH-RISK**, không phải đại trà: tiền, phân quyền, ranh giới tổ chức,
+lịch sử migration, và mọi gate có thể "xanh rỗng". Bắt đột biến cho mọi thay đổi sẽ biến nó thành
+nghi thức, và nghi thức thì người ta làm cho xong.
+
+**6. Ghi bằng chứng vào commit message**: neo, digest trước/sau, exit code kỳ vọng và thực tế. Một
+câu "đã chạy đột biến" không kèm số đo thì không kiểm lại được.
 
 ### E2E — mặc định chạy ẨN (headless)
 
