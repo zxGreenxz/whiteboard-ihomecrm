@@ -12,6 +12,7 @@
 // =============================================
 
 import { useMemo } from 'react';
+import { rpcNullable } from "@/lib/rpcNullable";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { monthToStartDate, monthToEndDate } from '@/lib/monthPeriod';
@@ -194,7 +195,7 @@ export const useSaveUtilityMeter = () => {
   return useMutation({
     mutationFn: async (args: { id?: string | null; buildingId: string; type: UtilType; code: string; holder: string }) => {
       const { data, error } = await supabase.rpc('save_utility_account', {
-        p_id: args.id ?? null,
+        p_id: rpcNullable(args.id ?? null),
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
         p_provider_code: args.code || undefined,
@@ -213,7 +214,7 @@ export const useAddUtilityMeter = () => {
   return useMutation({
     mutationFn: async (args: { buildingId: string; type: UtilType }) => {
       const { data, error } = await supabase.rpc('save_utility_account', {
-        p_id: null,
+        p_id: rpcNullable(null),
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
         p_provider_code: undefined,

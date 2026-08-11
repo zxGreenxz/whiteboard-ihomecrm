@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
@@ -689,7 +690,7 @@ export const useLockSalaryMonth = () => {
       });
       const canonical = await supabase.rpc("lock_salary_month_v1", {
         p_period_month: periodMonth,
-        p_managers: canonicalManagers,
+        p_managers: rpcNullable(canonicalManagers),
         p_idempotency_key: `sal-lock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
       });
       if (!canonical.error) return;
@@ -853,7 +854,7 @@ export const useSalaryPayout = () => {
         p_take_home: input.amount,
         p_account_id: input.account_id,
         p_voucher_date: input.voucher_date,
-        p_note: input.note ?? null,
+        p_note: rpcNullable(input.note ?? null),
         p_idempotency_key: `sal-pay-${input.staffId.slice(0, 8)}-${input.periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
         p_rent_invoice_id: input.rentInvoice?.invoiceId ?? undefined,
         p_rent_amount: input.rentInvoice ? num(input.rentInvoice.amount) : undefined,

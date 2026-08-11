@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { rpcNullable } from "@/lib/rpcNullable";
 
 import { supabase } from '@/integrations/supabase/client';
 
@@ -27,7 +28,7 @@ export function useSetIeAutoApproveThreshold() {
   const qc = useQueryClient();
   return async (nguong: number | null): Promise<void> => {
     const { error } = await supabase.rpc('set_ie_auto_approve_threshold_v1', {
-      p_threshold: nguong,
+      p_threshold: rpcNullable(nguong),
     });
     if (error) throw new Error(error.message);
     await qc.invalidateQueries({ queryKey: [...KHOA_NGUONG_TU_DUYET] });

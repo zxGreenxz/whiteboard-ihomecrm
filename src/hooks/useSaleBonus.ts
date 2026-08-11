@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from '@/integrations/supabase/client';
 
 /**
@@ -37,7 +38,7 @@ export const useSaleBonusStatus = (contractId?: string | null, enabled = true) =
     enabled: !!contractId && enabled,
     queryFn: async (): Promise<SaleBonusStatus> => {
       const { data, error } = await supabase.rpc('sale_bonus_status_v1', {
-        p_contract_id: contractId,
+        p_contract_id: rpcNullable(contractId),
       });
       if (error) throw new Error(error.message);
       const d = (data ?? {}) as any;

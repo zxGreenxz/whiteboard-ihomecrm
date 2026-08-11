@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from '@/integrations/supabase/client';
 
 export type ObligationStatus = 'OK' | 'VUOT_COC_THAT' | 'CHUA_TUNG_VAO_KET';
@@ -35,7 +36,7 @@ export const useRefundPreview = (terminationId: string | null) =>
     staleTime: 15_000,
     queryFn: async (): Promise<RefundPreview> => {
       const { data, error } = await supabase.rpc('preview_termination_refund_v1', {
-        p_termination_id: terminationId,
+        p_termination_id: rpcNullable(terminationId),
       });
       if (error) throw new Error(error.message);
       const d = data as any;

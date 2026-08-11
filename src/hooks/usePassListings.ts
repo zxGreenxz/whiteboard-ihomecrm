@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
@@ -74,12 +75,12 @@ export function useUpsertPassListing() {
   return useMutation({
     mutationFn: async (input: UpsertPassListingInput) => {
       const { data, error } = await supabase.rpc("upsert_room_pass_listing", {
-        p_id: input.id ?? null,
+        p_id: rpcNullable(input.id ?? null),
         p_room_id: input.roomId,
-        p_contact_name: input.contactName ?? null,
-        p_contact_phone: input.contactPhone ?? null,
-        p_sale_policy: input.salePolicy ?? null,
-        p_pass_price: input.passPrice ?? null,
+        p_contact_name: rpcNullable(input.contactName ?? null),
+        p_contact_phone: rpcNullable(input.contactPhone ?? null),
+        p_sale_policy: rpcNullable(input.salePolicy ?? null),
+        p_pass_price: rpcNullable(input.passPrice ?? null),
         p_avail_date: input.availDate ?? undefined,
         p_active: input.active ?? true,
         p_contact_manager: input.contactManager ?? false,

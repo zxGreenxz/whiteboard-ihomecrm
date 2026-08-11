@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -190,8 +191,8 @@ export const useMonthlyBuildingProfit = (
     enabled: !!start && !!end,
     queryFn: async (): Promise<MonthlyBuildingProfit[]> => {
       const { data, error } = await supabase.rpc("fa_monthly_pnl_accrual", {
-        p_start_date: start,
-        p_end_date: end,
+        p_start_date: rpcNullable(start),
+        p_end_date: rpcNullable(end),
         p_building_ids: buildingId ? [buildingId] : undefined,
       });
       if (error) {

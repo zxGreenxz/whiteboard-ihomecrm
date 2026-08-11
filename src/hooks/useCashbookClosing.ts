@@ -10,6 +10,7 @@
 // đã khoá" mà src/lib/cashbookClosing.ts đã dịch sẵn từ Đợt 3.
 
 import { useEffect, useRef } from "react";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -115,7 +116,7 @@ export const useClosingBlockers = (cashbookId: string | null | undefined) =>
     staleTime: 0,
     queryFn: async (): Promise<ClosingBlocker[]> => {
       const { data, error } = await supabase.rpc("cashbook_closing_blockers_v1", {
-        p_cashbook: cashbookId,
+        p_cashbook: rpcNullable(cashbookId),
       });
       if (error) throw new Error(error.message);
       return (data ?? []) as ClosingBlocker[];
@@ -133,7 +134,7 @@ export const useCashbookBalanceAsOf = (
     staleTime: 0,
     queryFn: async (): Promise<number | null> => {
       const { data, error } = await supabase.rpc("cashbook_balance_as_of_v1", {
-        p_cashbook: cashbookId,
+        p_cashbook: rpcNullable(cashbookId),
         p_as_of: asOf ?? undefined,
       });
       if (error) throw new Error(error.message);
@@ -202,7 +203,7 @@ export const useCashbookCloseConfirmers = (cashbookId: string | null | undefined
     staleTime: 60_000,
     queryFn: async (): Promise<Array<{ user_id: string; full_name: string | null }>> => {
       const { data, error } = await supabase.rpc("cashbook_close_confirmers_v1", {
-        p_cashbook: cashbookId,
+        p_cashbook: rpcNullable(cashbookId),
       });
       if (error) throw new Error(error.message);
       return (data ?? []) as Array<{ user_id: string; full_name: string | null }>;

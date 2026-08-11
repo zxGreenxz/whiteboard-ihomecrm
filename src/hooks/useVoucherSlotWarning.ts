@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from '@/integrations/supabase/client';
 
 export interface VoucherSlotHit {
@@ -52,10 +53,10 @@ export const useVoucherSlotWarning = (a: Args) => {
     staleTime: 15_000,
     queryFn: async (): Promise<VoucherSlotHit[]> => {
       const { data, error } = await supabase.rpc('get_voucher_slot_warning_v1', {
-        p_building_id: a.buildingId,
+        p_building_id: rpcNullable(a.buildingId),
         p_type_ids: typeIds,
-        p_start: a.start,
-        p_end: a.end,
+        p_start: rpcNullable(a.start),
+        p_end: rpcNullable(a.end),
         p_type: a.type,
         p_exclude_id: a.excludeId ?? undefined,
       });

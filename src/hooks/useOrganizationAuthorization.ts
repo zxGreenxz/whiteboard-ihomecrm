@@ -7,6 +7,7 @@
 // trong đúng tổ chức của người gọi.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { rpcNullable } from "@/lib/rpcNullable";
 import type { PostgrestError } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -342,7 +343,7 @@ export const useUpsertOrganizationRole = () => {
           p_role_id: v.roleId ?? null,
           p_name: v.name ?? null,
           p_permissions: v.permissions ?? null,
-          p_expected_version: v.expectedVersion ?? null,
+          p_expected_version: rpcNullable(v.expectedVersion ?? null),
           p_reason: v.reason ?? undefined,
         },
       )),

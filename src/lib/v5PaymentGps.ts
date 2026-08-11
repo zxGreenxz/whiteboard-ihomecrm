@@ -3,6 +3,7 @@
 // (server đã log salary_award_errors ở record_payment_gps khi cần).
 // Nếu toà chưa check hôm nay → server tạo thông báo TREO; FE chỉ toast nhắc nhẹ.
 import { supabase } from "@/integrations/supabase/client";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { toast } from "sonner";
 import { v5Copy } from "@/lib/v5Copy";
 
@@ -29,8 +30,8 @@ export async function captureGpsAndRecord(voucherIds: string[]): Promise<void> {
       try {
         const { data } = await supabase.rpc("record_payment_gps", {
           p_income_expense_id: id,
-          p_lat: lat,
-          p_lng: lng,
+          p_lat: rpcNullable(lat),
+          p_lng: rpcNullable(lng),
         });
         const action = (data as any)?.action as string | undefined;
         if (action === "pending_check" && !pendingNotified) {
