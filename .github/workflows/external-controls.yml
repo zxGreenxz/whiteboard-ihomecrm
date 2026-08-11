@@ -58,6 +58,41 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/check-external-controls.mjs
 
+      # BẰNG CHỨNG ĐI LÊN ARTIFACT, KHÔNG COMMIT NGƯỢC VÀO MAIN.
+      #
+      # Plan đề xuất "commit lại evidence JSON" mỗi lượt chạy. Không làm vậy, vì
+      # ba lý do đo được:
+      #
+      #   1. Nó mâu thuẫn với chính mô hình phát hành của repo: main là nhánh mà
+      #      mọi commit đều đã qua gate và có người xem. Một bot đẩy commit vào đó
+      #      hằng đêm phá đúng tính chất ấy.
+      #   2. `contents: write` cho một job có VERCEL_TOKEN và GH_TOKEN là mở rộng
+      #      quyền cho một job vốn chỉ cần ĐỌC.
+      #   3. Evidence đổi mỗi ngày (timestamp, deployment id) nên lịch sử git sẽ
+      #      đầy commit không ai đọc — và khi nhiễu đủ nhiều thì thay đổi THẬT
+      #      trong đó cũng chìm theo.
+      #
+      # Artifact giữ được 90 ngày, đủ để truy ngược, mà không đụng lịch sử. Bản
+      # trong repo cập nhật khi có người chạy tay và xem qua.
+      - name: Lưu bằng chứng thành artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: external-controls-${{ github.run_id }}
+          path: docs/generated/external-controls.json
+          retention-days: 90
+
+      # Control ngoài repo vừa ĐỔI mà không commit nào gây ra — đúng thứ workflow
+      # này sinh ra để bắt, nên nó ĐỎ chứ không phải một dòng ::warning::.
+      #
+      # Bỏ qua `checkedAt` và SHA deployment: cái đầu đổi mỗi lượt chạy, cái sau
+      # đổi mỗi lần phát hành. Nếu tính cả hai thì job đỏ thường trực, và một job
+      # đỏ thường trực là job người ta ngừng đọc — lúc đó control có bị tắt thật
+      # cũng không ai thấy.
+      - name: Kiểm soát ngoài repo có đổi so với bản đã commit không
+        if: always()
+        run: node scripts/check-external-controls.mjs --so-ban-commit
+
       # Hạn của known-gaps thuộc đúng loại control ở workflow này: KHÔNG commit nào
       # làm một ngày hết hạn trôi qua. Chạy theo push thì hoặc không bao giờ bắt
       # được, hoặc bắt được vào đúng PR của một người chẳng liên quan.

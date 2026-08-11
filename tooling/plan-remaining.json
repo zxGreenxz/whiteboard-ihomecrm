@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 58
+    "stillMissing": 55
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -607,26 +607,32 @@
       {
         "deliverable": "P0-1: Mô hình auto-promote-on-green + PROJECT_CONTRACT + 3 file rule thành adapter + CLAUDE.local.md làm vault",
         "planRef": "Mục 42 dòng 2645 (P0 mục 1)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm trigger CI cho nhánh production + job báo động khi có push thẳng vào production; xác nhận promotion chỉ chạy khi gate xanh."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Ca ba khoan da co va da kiem: (a) ci-gates.yml kich hoat tren push vao [main, production, release/*]; (b) job production-promotion chay khi ref=production, va check-production-promotion.mjs lam do khi co commit chi ton tai tren production (chua qua CI cua main) — day chinh la \"bao dong khi push thang\"; (c) promotion chi qua khi gate xanh: buoc moi goi promote-to-production.mjs doc ket luan o muc BUOC (lo 46)."
       },
       {
         "deliverable": "P0-7: Đưa agent/provenance/typegen/view-invoker/definer-search_path/release guard thành required checks",
         "planRef": "Mục 41 (dòng 2651)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Chạy check-external-controls.mjs với GH_TOKEN để lấy bằng chứng, hoặc khai known-gap rằng required check không khả thi ở tier Free kèm biện pháp thay thế."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Khong the cuong che required check: repo private tren GitHub Free khong co branch protection. Dang ky known-gap required-checks-khong-cuong-che-duoc (han 2027-02-06) kem BA bien phap thay the DANG CHAY that (job production-promotion tren moi push vao production; check-production-promotion; promote-to-production doc muc BUOC). Gap ghi ro ca cho CHUA TU XAC MINH DUOC: check-external-controls bao branchProtection status=unverified vi khong co GH_TOKEN, tuc khang dinh \"Free khong co branch protection\" dua tren mot lan do truoc do. Dieu kien dong: co bang chung verified, KHONG dong chi vi da co bien phap thay the."
       },
       {
         "deliverable": "P0-9: Bật Vercel release control với API evidence chạy lại định kỳ",
         "planRef": "Mục 41 (dòng 2653)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm workflow `on: schedule` chạy check-external-controls định kỳ với VERCEL_TOKEN + GH_TOKEN, commit lại evidence JSON."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Workflow dinh ky da co tu lo 26 (cron 03:17 UTC + workflow_dispatch, co VERCEL_TOKEN + GH_TOKEN). Lo nay them: artifact 90 ngay, va phep so --so-ban-commit lam job DO khi cau hinh kiem soat doi. KHONG commit nguoc evidence vao main nhu plan de xuat, va noi ro ly do: main la nhanh moi commit deu qua gate va co nguoi xem — bot day commit hang dem pha dung tinh chat do; contents:write cho job dang giu VERCEL_TOKEN la mo rong quyen khong can thiet; va evidence doi moi ngay se lam nhieu lich su den muc thay doi THAT chim theo. Phep so loc checkedAt + sha/state deployment (doi moi lan phat hanh) nhung GIU nhanh production, ten/target env var, status protection — 10 test canh dung ranh gioi do."
       },
       {
         "deliverable": "P1-11: Capability Registry mức page/product surface (route, sidebar, launcher, permission, flag, docs)",

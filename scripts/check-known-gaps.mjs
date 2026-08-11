@@ -75,10 +75,30 @@ const KHONG_GATING = [
   { re: /^\s*set\s+\+e\b/, ten: 'set +e (tắt fail-fast)' },
 ];
 
+/**
+ * Dòng chỉ chứa CHÚ THÍCH — không phải mã chạy.
+ *
+ * `#` ở đầu dòng là comment trong cả YAML lẫn shell (kể cả bên trong khối `run:`),
+ * nên một luật là đủ cho cả hai.
+ *
+ * Vì sao cần: bản đầu quét văn bản thô, nên một chú thích GIẢI THÍCH rằng ở đây
+ * KHÔNG dùng `::warning::` lại bị đọc thành một chỗ đang dùng `::warning::` — gate
+ * đòi đăng ký khoảng trống cho một quyết định ngược hẳn với thứ nó vừa đọc. Đo
+ * 11/08/2026 tại external-controls.yml:86.
+ *
+ * Cùng lớp lỗi đã ghi ở check-copilot-docs-manifest.mjs (so chuỗi con trên toàn
+ * văn file) và check-realtime-query-keys.mjs. Ba chỗ, một luật: gate phải đọc MÃ,
+ * không đọc văn kể lại về mã.
+ */
+export function laDongChuThich(dong) {
+  return /^\s*#/.test(dong);
+}
+
 export function timChoKhongGating(noiDung) {
   const dong = noiDung.split(/\r?\n/);
   const ra = [];
   for (let i = 0; i < dong.length; i += 1) {
+    if (laDongChuThich(dong[i])) continue;
     const khop = KHONG_GATING.find((k) => k.re.test(dong[i]) && !k.boQua?.(dong[i]));
     if (!khop) continue;
     const truoc = dong.slice(Math.max(0, i - 3), i).join('\n');

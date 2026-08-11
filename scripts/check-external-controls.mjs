@@ -282,6 +282,47 @@ function localRepoState() {
   };
 }
 
+/**
+ * Bỏ những trường đổi theo LƯỢT CHẠY hoặc theo LẦN PHÁT HÀNH, giữ lại phần mô tả
+ * CẤU HÌNH KIỂM SOÁT.
+ *
+ * `checkedAt` đổi mỗi lượt; SHA/state của deployment đổi mỗi lần deploy. Tính cả
+ * hai vào phép so thì job định kỳ đỏ thường trực — và một job đỏ thường trực là
+ * job người ta ngừng đọc, lúc đó control có bị tắt thật cũng không ai thấy.
+ *
+ * Thứ CÒN LẠI mới là điều đáng canh: nhánh production của từng project, tên/target
+ * env var, trạng thái branch protection. Không commit nào làm chúng đổi, nên chúng
+ * đổi nghĩa là có người bấm vào dashboard.
+ */
+export function locPhanOnDinh(report) {
+  const c = JSON.parse(JSON.stringify(report ?? {}));
+  delete c.checkedAt;
+  const dep = c.controls?.vercelEnvAndDeployment?.productionDeployment;
+  if (dep) {
+    delete dep.sha;
+    delete dep.state;
+    delete dep.ancestorOfMain;
+  }
+  // `note` là văn xuôi sinh kèm số liệu deployment nên nó cũng trôi; phần kết luận
+  // đã nằm ở `status`, vốn được giữ lại.
+  if (c.controls) for (const k of Object.keys(c.controls)) delete c.controls[k].note;
+  return c;
+}
+
+/** So bản vừa đo với bản đã commit. Trả danh sách khoá lệch (rỗng = không đổi). */
+export function lechSoVoiCommit(vuaDo, daCommit) {
+  const a = JSON.stringify(locPhanOnDinh(vuaDo), null, 1);
+  const b = JSON.stringify(locPhanOnDinh(daCommit), null, 1);
+  if (a === b) return [];
+  const da = a.split('\n');
+  const db = b.split('\n');
+  const out = [];
+  for (let i = 0; i < Math.max(da.length, db.length); i++) {
+    if (da[i] !== db[i]) out.push(`dòng ${i + 1}: đã commit ${JSON.stringify(db[i] ?? '')} → vừa đo ${JSON.stringify(da[i] ?? '')}`);
+  }
+  return out;
+}
+
 async function main(argv) {
   const args = new Set(argv.slice(2));
 
@@ -336,6 +377,29 @@ async function main(argv) {
     mkdirSync(dirname(OUT), { recursive: true });
     writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
     console.log(`\n✅ Đã ghi ${OUT.replace(repoRoot, '.')}`);
+  }
+
+  // So với bản đã commit. Chỉ có nghĩa ở lượt chạy ĐỊNH KỲ: không commit nào làm
+  // một cài đặt trên dashboard đổi, nên bản đã commit là mốc duy nhất để biết ai
+  // đó vừa bấm gì.
+  if (args.has('--so-ban-commit')) {
+    let daCommit;
+    try {
+      daCommit = JSON.parse(readFileSync(OUT, 'utf8'));
+    } catch (error) {
+      console.error(`\n❌ KHÔNG SO ĐƯỢC: không đọc được bản đã commit (${error.message}).`);
+      return 3;
+    }
+    const lech = lechSoVoiCommit(report, daCommit);
+    if (lech.length > 0) {
+      console.error(`\n❌ Kiểm soát ngoài repo đã ĐỔI so với bản đã commit (${lech.length} chỗ):\n`);
+      for (const l of lech.slice(0, 20)) console.error(`  - ${l}`);
+      if (lech.length > 20) console.error(`  … còn ${lech.length - 20}`);
+      console.error('\n  Không commit nào làm những cài đặt này đổi — nghĩa là có người bấm vào dashboard.');
+      console.error('  Xem kỹ từng dòng, rồi chạy `--write` và commit nếu đó là thay đổi có chủ đích.');
+      return 1;
+    }
+    console.log('\n✅ Cấu hình kiểm soát không đổi so với bản đã commit.');
   }
 
   // Control ĐANG TẮT thì exit 1, khác hẳn "chưa xác minh được".

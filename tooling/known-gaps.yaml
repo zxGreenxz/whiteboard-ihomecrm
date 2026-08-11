@@ -43,6 +43,32 @@ gaps:
       Dựng fixture inventory đúng định dạng hiện hành cho 20 ca, rồi bỏ `|| { echo ... }` để
       bước này gating thật.
 
+  - id: required-checks-khong-cuong-che-duoc
+    where: GitHub repository settings (branch protection cho `main` và `production`)
+    expires_at: 2027-02-06
+    why: >
+      Repo private trên GitHub Free KHÔNG có branch protection, nên không thể đặt gate nào
+      thành "required check". Nghĩa là mọi cửa chặn của repo này đều kêu SAU KHI push, không
+      chặn được lúc push. Đây là giới hạn của gói dịch vụ, không phải thiếu sót thiết kế.
+
+      BIỆN PHÁP THAY THẾ ĐANG CHẠY (11/08/2026), và nó có thật chứ không phải lời hứa:
+      (1) job `production-promotion` chạy trên MỌI push vào nhánh `production`;
+      (2) `scripts/check-production-promotion.mjs` — commit chỉ tồn tại trên production
+          (chưa từng qua CI của main) làm job đỏ;
+      (3) `scripts/promote-to-production.mjs` — đọc kết luận CI ở mức BƯỚC, nên một bước
+          fail bị `continue-on-error` nuốt (job vẫn success, trang Checks vẫn xanh) vẫn bị
+          chặn; thiếu token thì exit 3 chứ không phải xanh.
+      Kêu sau vẫn hơn không biết: nó biến một sự kiện vô hình thành một dòng đỏ có người đọc.
+
+      CHƯA TỰ XÁC MINH ĐƯỢC: `check-external-controls.mjs` báo branchProtection
+      `status: unverified` vì máy chạy không có GH_TOKEN. Tức khẳng định "Free không có
+      branch protection" hiện dựa trên một lần đo trước đó, chưa có bằng chứng chạy lại.
+    exit_condition: >
+      Nâng gói (Team/Pro) hoặc chuyển repo sang public ⇒ bật branch protection với required
+      checks cho main và production, rồi chạy `check-external-controls.mjs` KÈM GH_TOKEN để
+      `githubBranchProtection` chuyển từ `unverified` sang `verified`. Đóng mục này khi
+      bằng chứng đó tồn tại — KHÔNG đóng chỉ vì đã có biện pháp thay thế.
+
   - id: pitr-disabled-accepted-risk
     where: Supabase project tryymsxyyckgbrmmvozx
     expires_at: 2027-02-06
