@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 54
+    "stillMissing": 53
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -533,10 +533,12 @@
       {
         "deliverable": "Job gate `knowledge-freshness-gates` (UA metadata/coverage, tool pin, graph secret scan, cấm graph đè Project Contract)",
         "planRef": "Mục 31 (dòng 2320-2322)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "CÒN: gộp các bước graph rải rác thành MỘT job đặt tên `knowledge-freshness-gates`, và phép kiểm 'cấm graph đè Project Contract'. ĐÃ XONG 08/08: secret/PII scan trên artifact .ua/ (scripts/check-graph-secrets.mjs, nối vào job secret-scan của ci-gates.yml)."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "(a) Tach job knowledge-freshness-gates gom check-graph-hygiene + check-graph-freshness (truoc do rai o 3 buoc cua 2 job). KHONG gom check-graph-secrets — no can binary gitleaks da tai o security-gates; tai lan hai vua lang phi vua de lech version, chu thich tai cho da can nhac tu truoc. (b) Phep kiem cam graph de Project Contract: commitAllowlist co docs/ ma Contract nam o docs/engineering/ — mot PR refresh graph HOP LE van sua duoc chinh ban luat quy dinh graph, va no lot vi diff la hang MB JSON sinh bang may. Them CAM_TUYET_DOI thang allowlist, bao rieng. Do 4 ca, ca graph+CONTRACT chung minh viPham KHONG bat duoc."
       },
       {
         "deliverable": "§32: Mọi migration đổi đều chạy classifier",
@@ -720,6 +722,11 @@
       "ngay": "2026-08-11",
       "ten": "gate doc MA, khong doc van ke lai ve ma",
       "moTa": "Ra soat 44 gate quet van ban. Bon gate da dinh cung mot loi: check-copilot-docs-manifest (BAO THIEU — xanh du xoa sach code loc, vi comment co san chuoi can tim), check-realtime-query-keys, check-known-gaps, check-workflow-paths (ba cai sau bao thua). Dung scripts/lib/bo-chu-thich.mjs dung chung + 13 test, ghi luat vao Contract §8 kem bang bon ca, ghim vao MUST_MENTION cua gate:agent-contract."
+    },
+    {
+      "ngay": "2026-08-11",
+      "ten": "8 file test node:test bi giao cho vitest",
+      "moTa": "Phat hien khi chay thu test cua graph: 8 file scripts/__tests__/*.test.mjs dung API node:test bi matrix xep vao suite VITEST va CI khong loai tru. Hau qua kep — buoc Vitest cua quality-gates DO (8 failed), VA khong lenh nao chay chung: 106 assertion ton tai ma chua tung duoc thi hanh. Chuyen sang node-native, them 8 --exclude + mot buoc node --test vao ci-gates. Chay lan dau lo ra 4 assertion do that (fixture danhGiaVercel thieu truong repo, cu so voi thay doi loc theo repo o lo 26) — sua fixture, them 2 ca ghim pham vi. Them phep kiem runner vao gate:test-matrix: file import node:test khong duoc giao cho vitest va nguoc lai; dot bien 2 chieu."
     }
   ]
 }

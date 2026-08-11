@@ -247,6 +247,50 @@ function main(argv) {
 
   const { bySuite, orphans } = assignSuites(files, matrix.suites);
 
+  // ── Runner khai phải CHẠY NỔI file đó ─────────────────────────────────────
+  //
+  // Matrix khai "file này do suite X chạy". Cho tới 11/08/2026 không gì kiểm rằng
+  // runner của X đọc nổi file — và tám file `scripts/__tests__/*.test.mjs` dùng
+  // API `node:test` bị xếp vào suite VITEST. Hậu quả kép:
+  //   - bước Vitest của quality-gates ĐỎ ("No test suite found" / SyntaxError)
+  //   - và KHÔNG lệnh nào chạy chúng: 106 assertion tồn tại mà chưa từng thi hành
+  // Tệ hơn không có test, vì nhìn vào thư mục thì thấy "đã có test".
+  //
+  // Phép kiểm rẻ và dứt khoát: file import `node:test` thì suite nhận nó không
+  // được là vitest, và ngược lại.
+  const loiRunner = [];
+  for (const [id, list] of bySuite) {
+    const suite = matrix.suites.find((s) => s.id === id);
+    const laVitest = String(suite.runner).startsWith('vitest');
+    const laNode = suite.runner === 'node --test';
+    if (!laVitest && !laNode) continue;
+    for (const f of list) {
+      let src = '';
+      try {
+        src = readFileSync(join(repoRoot, f), 'utf8');
+      } catch {
+        continue;
+      }
+      const dungNodeTest = /from\s+['"]node:test['"]/.test(src);
+      const dungVitest = /from\s+['"]vitest['"]/.test(src);
+      if (laVitest && dungNodeTest && !dungVitest) {
+        loiRunner.push(`${f}: dùng \`node:test\` nhưng suite \`${id}\` chạy bằng Vitest — Vitest không đọc nổi nó.`);
+      }
+      if (laNode && dungVitest) {
+        loiRunner.push(`${f}: dùng \`vitest\` nhưng suite \`${id}\` chạy bằng \`node --test\`.`);
+      }
+    }
+  }
+
+  if (loiRunner.length > 0) {
+    console.error(`❌ ${loiRunner.length} file được giao cho runner KHÔNG chạy nổi nó:\n`);
+    for (const l of loiRunner) console.error(`  - ${l}`);
+    console.error('\n  Matrix khai một đằng, runner đọc một nẻo: bước CI đỏ vì lý do không');
+    console.error('  liên quan tới chất lượng code, VÀ file test đó không được ai chạy.');
+    process.exitCode = 1;
+    return;
+  }
+
   if (argv.includes('--list')) {
     for (const [id, list] of bySuite) {
       const suite = matrix.suites.find((s) => s.id === id);

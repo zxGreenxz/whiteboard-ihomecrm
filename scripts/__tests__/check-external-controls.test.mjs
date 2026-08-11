@@ -59,31 +59,55 @@ describe("interpretProtection — HTTP 200 không có nghĩa là đang bảo v�
 });
 
 describe("danhGiaVercel — production branch bị gạt về main phải ĐỎ", () => {
+  // danhGiaVercel CHỈ phán trên project deploy TỪ REPO NÀY (đổi 11/08/2026, lô 26):
+  // tài khoản Vercel còn ihome-market và n2store thuộc repo khác, và repo này không
+  // sửa được cấu hình của chúng bằng bất kỳ commit nào. Fixture thiếu `repo` sẽ bị
+  // lọc hết ⇒ 0 project trong phạm vi ⇒ `unverified`, không phải `failed`.
+  const REPO = "zxGreenxz/whiteboard-ihomecrm";
   it("production branch = main ⇒ failed", () => {
     // Kịch bản thật: ai đó vào dashboard Vercel gạt production branch từ
     // 'production' về 'main' ⇒ mọi push vào main lại là một lần phát hành.
-    const r = danhGiaVercel([{ name: "ihomecrm", productionBranch: "main" }]);
+    const r = danhGiaVercel([{ name: "ihomecrm", repo: REPO, productionBranch: "main" }]);
     assert.equal(r.status, "failed");
   });
 
   it("productionBranch null (mặc định = main) ⇒ failed", () => {
-    assert.equal(danhGiaVercel([{ name: "ihomecrm", productionBranch: null }]).status, "failed");
+    assert.equal(danhGiaVercel([{ name: "ihomecrm", repo: REPO, productionBranch: null }]).status, "failed");
   });
 
   it("production branch đúng ⇒ checked", () => {
     assert.equal(
-      danhGiaVercel([{ name: "ihomecrm", productionBranch: "production" }]).status,
+      danhGiaVercel([{ name: "ihomecrm", repo: REPO, productionBranch: "production" }]).status,
       "checked",
     );
   });
 
   it("một project sai trong nhiều project ⇒ failed", () => {
     const r = danhGiaVercel([
-      { name: "a", productionBranch: "production" },
-      { name: "b", productionBranch: "main" },
+      { name: "a", repo: REPO, productionBranch: "production" },
+      { name: "b", repo: REPO, productionBranch: "main" },
     ]);
     assert.equal(r.status, "failed");
     assert.match(r.note, /b→main/);
+  });
+
+  it("project của repo KHÁC không kéo kết luận — ngoài phạm vi thì ngoài phạm vi", () => {
+    // Trước lô 26 hàm này phán trên MỌI project của tài khoản, và đo thật 08/08/2026
+    // cho ra 'failed' vì hai project thuộc repo khác deploy từ main. Một gate đỏ vì
+    // thứ nó không sửa được sẽ bị bỏ qua.
+    const r = danhGiaVercel([
+      { name: "ihomecrm", repo: REPO, productionBranch: "production" },
+      { name: "ihome-market", repo: "zxGreenxz/ihome-market", productionBranch: "main" },
+    ]);
+    assert.equal(r.status, "checked");
+  });
+
+  it("KHÔNG project nào thuộc repo này ⇒ unverified, KHÔNG phải checked", () => {
+    // Lọc quá tay cũng phải ồn ào: không còn gì để đối chiếu thì không kết luận được.
+    assert.equal(
+      danhGiaVercel([{ name: "khac", repo: "ai-do/khac", productionBranch: "main" }]).status,
+      UNVERIFIED,
+    );
   });
 
   it("0 project ⇒ unverified, KHÔNG phải checked (token sai team cũng trả 200)", () => {

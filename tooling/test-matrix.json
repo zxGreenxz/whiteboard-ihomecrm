@@ -20,18 +20,26 @@
         "scripts/__tests__/**/*.test.ts"
       ],
       "excludes": [
-        "services/**",
-        "infra/**",
-        ".tmp-openclaw-host/**",
         ".e2e-fleet/**",
+        ".tmp-openclaw-host/**",
+        "infra/**",
+        "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
+        "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/backup-luu-tru.test.mjs",
+        "scripts/__tests__/check-agent-contract.test.mjs",
+        "scripts/__tests__/check-external-controls.test.mjs",
+        "scripts/__tests__/check-graph-governance.test.mjs",
+        "scripts/__tests__/check-migration-provenance.test.mjs",
+        "scripts/__tests__/check-no-auto-apply.test.mjs",
         "scripts/__tests__/network-center-*.test.mjs",
-        "src/lib/__tests__/openclawZaloMigrations.test.ts",
-        "scripts/__tests__/openclaw-sql-harness.test.mjs",
-        "scripts/__tests__/openclaw-concurrency-harness.test.mjs",
         "scripts/__tests__/openclaw-browser-dml-matrix.test.mjs",
         "scripts/__tests__/openclaw-composite-fk-indexes.test.mjs",
+        "scripts/__tests__/openclaw-concurrency-harness.test.mjs",
+        "scripts/__tests__/openclaw-full-reset-harness.test.mjs",
         "scripts/__tests__/openclaw-schema-drift-harness.test.mjs",
-        "scripts/__tests__/openclaw-full-reset-harness.test.mjs"
+        "scripts/__tests__/openclaw-sql-harness.test.mjs",
+        "services/**",
+        "src/lib/__tests__/openclawZaloMigrations.test.ts"
       ],
       "note": "`excludes` PHẢI khớp TỪNG cờ --exclude của bước \"Vitest (root-owned app and script suites)\" trong ci-gates.yml — gate:test-matrix nay đối chiếu hai chiều, không còn là lời hứa trong chú thích. Trước 11/08/2026 mục này khai 8/12 cờ: 4 cờ services/infra/.tmp-openclaw-host/.e2e-fleet nằm trong CI mà không có ở đây, nên matrix mô tả sai phạm vi suite lớn nhất repo.",
       "note2": "Các file network-center-* dùng `node:test`, Vitest gặp là fail 'No test suite found' — chúng thuộc suite node-native. Các harness SQL OpenClaw nặng thuộc suite openclaw-sql.",
@@ -226,8 +234,16 @@
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
-        "services/openclaw-zalo-cell/test/**/*.test.mjs",
-        "scripts/__tests__/network-center-*.test.mjs"
+        "scripts/__tests__/apply-reviewed-migration-authorization.test.mjs",
+        "scripts/__tests__/apply-reviewed-migration-transaction.test.mjs",
+        "scripts/__tests__/backup-luu-tru.test.mjs",
+        "scripts/__tests__/check-agent-contract.test.mjs",
+        "scripts/__tests__/check-external-controls.test.mjs",
+        "scripts/__tests__/check-graph-governance.test.mjs",
+        "scripts/__tests__/check-migration-provenance.test.mjs",
+        "scripts/__tests__/check-no-auto-apply.test.mjs",
+        "scripts/__tests__/network-center-*.test.mjs",
+        "services/openclaw-zalo-cell/test/**/*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",
@@ -235,10 +251,19 @@
         {
           "workflow": ".github/workflows/ci-gates.yml",
           "job": "openclaw-cell-image-contract"
+        },
+        {
+          "workflow": ".github/workflows/network-center-validation.yml",
+          "job": "validate"
+        },
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
         }
       ],
       "environment": "ci",
-      "timeoutMinutes": 20
+      "timeoutMinutes": 20,
+      "note3": "Tám file scripts/__tests__/*.test.mjs dùng `node:test` bị matrix xếp cho suite VITEST tới 11/08/2026. Vitest không chạy nổi chúng (\"No test suite found\" / SyntaxError) nên bước Vitest của quality-gates ĐỎ, và không lệnh nào khác chạy chúng — tức 8 file test tồn tại mà chưa từng được thi hành trong CI."
     }
   ],
   "ignore": [

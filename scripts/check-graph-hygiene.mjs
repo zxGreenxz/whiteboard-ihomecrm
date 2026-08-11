@@ -46,12 +46,38 @@ function git(args) {
   return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 }
 
+/**
+ * File mà một commit refresh graph KHÔNG BAO GIỜ được đụng, kể cả khi allowlist
+ * cho phép thư mục chứa nó.
+ *
+ * VÌ SAO — "graph đè Project Contract" là chuyện có thật, không phải giả thuyết
+ *   `commitAllowlist` có `docs/`, và PROJECT_CONTRACT.md nằm ở
+ *   `docs/engineering/`. Nghĩa là một PR refresh graph hoàn toàn hợp lệ theo luật
+ *   #6 vẫn có thể sửa CHÍNH BẢN LUẬT quy định graph được dùng thế nào — và nó sẽ
+ *   lọt qua, vì diff của một PR refresh là 8 MB JSON sinh bằng máy nên không ai
+ *   đọc từng dòng.
+ *
+ *   Đây đúng là kiểu thay đổi phải đi một mình để có người xem: sửa Contract là
+ *   sửa thứ đứng TRÊN graph trong thứ tự ưu tiên (`precedence` của policy).
+ *
+ * Danh sách này thắng allowlist, không phải bổ sung cho nó.
+ */
+export const CAM_TUYET_DOI = [
+  "docs/engineering/PROJECT_CONTRACT.md",
+  "CLAUDE.md",
+  "AGENTS.md",
+  "AI_RULES.md",
+];
+
 /** Commit đụng graph thì mọi file CÒN LẠI phải nằm trong allowlist. */
 export function phanLoaiCommit(files, allowlist, graphPaths) {
   const laGraph = (f) => graphPaths.some((g) => f.startsWith(g));
-  if (!files.some(laGraph)) return { xet: false, viPham: [] };
+  if (!files.some(laGraph)) return { xet: false, viPham: [], deLenLuat: [] };
   const viPham = files.filter((f) => !allowlist.some((a) => f.startsWith(a)));
-  return { xet: true, viPham };
+  // Xét TRƯỚC allowlist và báo riêng: "đụng file ngoài phạm vi" và "sửa chính bản
+  // luật quy định graph" là hai vi phạm khác hẳn nhau về mức độ.
+  const deLenLuat = files.filter((f) => CAM_TUYET_DOI.includes(f));
+  return { xet: true, viPham, deLenLuat };
 }
 
 /**
@@ -171,7 +197,15 @@ function main() {
   for (const sha of shas) {
     const files = git(["diff-tree", "--no-commit-id", "--name-only", "-r", sha])
       .split("\n").map((s) => s.trim()).filter(Boolean);
-    const { viPham } = phanLoaiCommit(files, commitAllowlist, graphPaths);
+    const { viPham, deLenLuat } = phanLoaiCommit(files, commitAllowlist, graphPaths);
+    if (deLenLuat.length > 0) {
+      van.push(
+        `commit ${sha.slice(0, 8)} vừa đổi graph vừa sửa ${deLenLuat.join(", ")} — ` +
+        "graph KHÔNG được đè bản luật quy định chính nó. Contract đứng TRÊN graph trong " +
+        "`precedence`, và diff của một PR refresh là hàng MB JSON sinh bằng máy nên không " +
+        "ai đọc ra thay đổi luật lẫn trong đó.",
+      );
+    }
     if (viPham.length > 0) {
       van.push(
         `commit ${sha.slice(0, 8)} vừa đổi graph vừa đổi ${viPham.length} file khác ` +

@@ -147,13 +147,12 @@ jobs:
           node scripts/check-promote-readiness.mjs
           node scripts/check-migration-test-liveness.mjs
 
-      - name: docs-freshness (Copilot manifest · số đếm tài liệu · vệ sinh graph)
+      - name: docs-freshness (Copilot manifest · số đếm tài liệu)
         run: |
           node scripts/check-copilot-docs-manifest.mjs
           node scripts/check-doc-counts.mjs
           node scripts/check-doc-freshness.mjs
           node scripts/generate-docs-views.mjs --check
-          node scripts/check-graph-hygiene.mjs
 
       # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +
       # biên dịch 247 file), tốn hàng chục giây — trong khi cả khối trên chạy dưới
@@ -172,14 +171,6 @@ jobs:
       - name: Phan loai rui ro thay doi (bao cao)
         run: node scripts/check-risk-classifier.mjs
 
-      # Độ mới graph — CỐ Ý KHÔNG CHẶN. Plan kiến trúc (dòng 119, 2271) đã chốt
-      # UA freshness không phải required check: graph 4 MB commit vào repo, refresh
-      # là cả một PR, nên đỏ CI mỗi khi nó cũ sẽ khiến người ta tắt gate đi. Chế độ
-      # mặc định (không cờ --nhiem-vu) in đủ số đo rồi thoát 0 khi graph cũ; nó CHỈ
-      # đỏ khi artifact hỏng hoặc không tự nhất quán — tức "không kết luận được".
-      # Cửa chặn cứng nằm ở máy dev, theo nhiệm vụ (xem Contract §12 luật #1, #2).
-      - name: Graph freshness (báo cáo — chỉ đỏ khi artifact hỏng)
-        run: node scripts/check-graph-freshness.mjs
 
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         run: npm run typecheck:baseline
@@ -211,6 +202,21 @@ jobs:
       # đo được 06/08/2026. Job này khi đó đỏ vì lý do chẳng liên quan gì tới
       # chất lượng code, và một CI đỏ thường trực là thứ khiến người ta ngừng
       # đọc kết quả CI.
+      # Tám file này dùng API `node:test`, KHÔNG phải Vitest. Trước 11/08/2026
+      # matrix xếp chúng vào suite Vitest và CI không loại trừ — nên bước Vitest
+      # ĐỎ vì chúng, và đồng thời KHÔNG lệnh nào chạy chúng. Tám file test tồn tại
+      # trong repo mà chưa từng được thi hành: tệ hơn không có test, vì nhìn vào
+      # thư mục thì thấy "đã có test".
+      - name: node --test (script test dùng node:test)
+        run: node --test scripts/__tests__/apply-reviewed-migration-authorization.test.mjs \
+          scripts/__tests__/apply-reviewed-migration-transaction.test.mjs \
+          scripts/__tests__/backup-luu-tru.test.mjs \
+          scripts/__tests__/check-agent-contract.test.mjs \
+          scripts/__tests__/check-external-controls.test.mjs \
+          scripts/__tests__/check-graph-governance.test.mjs \
+          scripts/__tests__/check-migration-provenance.test.mjs \
+          scripts/__tests__/check-no-auto-apply.test.mjs
+
       - name: Vitest (root-owned app and script suites)
         run: >
           npx vitest run src scripts/__tests__
@@ -226,6 +232,14 @@ jobs:
           --exclude 'scripts/__tests__/openclaw-composite-fk-indexes.test.mjs'
           --exclude 'scripts/__tests__/openclaw-schema-drift-harness.test.mjs'
           --exclude 'scripts/__tests__/openclaw-full-reset-harness.test.mjs'
+          --exclude 'scripts/__tests__/apply-reviewed-migration-authorization.test.mjs'
+          --exclude 'scripts/__tests__/apply-reviewed-migration-transaction.test.mjs'
+          --exclude 'scripts/__tests__/backup-luu-tru.test.mjs'
+          --exclude 'scripts/__tests__/check-agent-contract.test.mjs'
+          --exclude 'scripts/__tests__/check-external-controls.test.mjs'
+          --exclude 'scripts/__tests__/check-graph-governance.test.mjs'
+          --exclude 'scripts/__tests__/check-migration-provenance.test.mjs'
+          --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
 
       # Runner này chạy UTC còn dữ liệu và người dùng ở UTC+7, nên một lỗi ngày
       # tháng có thể XANH ở đây và SAI trên máy người dùng — hoặc ngược lại. Bước
@@ -817,6 +831,50 @@ jobs:
           GITLEAKS_BIN: /tmp/gitleaks
         run: node scripts/check-graph-secrets.mjs
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Ba cửa chặn về TRI THỨC (graph UA/GitNexus) gom về một chỗ có tên.
+  #
+  # Trước 11/08/2026 chúng nằm rải ở ba bước của hai job khác nhau, nên không
+  # đọc được "phần tri thức có xanh không" mà phải đi tìm từng bước một.
+  #
+  # KHÔNG gom `check-graph-secrets.mjs` vào đây, và đó là quyết định chứ không
+  # phải bỏ sót: nó cần binary gitleaks, mà binary đó đã được tải trong job
+  # `security-gates`. Tải lần thứ hai vừa lãng phí vừa dễ lệch version — chú
+  # thích tại chỗ đó đã cân nhắc và kết luận vậy từ trước. Ở đây chỉ ghi con trỏ.
+  knowledge-freshness-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # check-graph-hygiene duyệt TOÀN LỊCH SỬ các commit đụng .ua/ để cưỡng
+          # chế luật "refresh graph đi PR riêng" (Contract §12 luật #6), và
+          # check-graph-freshness đo độ lệch từ baseCommit. Checkout nông làm cả
+          # hai thành "không kiểm được" (exit 3), không phải "đạt".
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+
+      - name: Cài phụ thuộc
+        run: npm ci
+
+      # Vệ sinh graph — CHẶN. Ba phép kiểm: manifest khớp artifact, refresh đi PR
+      # riêng, và graph KHÔNG được đè bản luật quy định chính nó (Contract,
+      # CLAUDE.md, AGENTS.md, AI_RULES.md).
+      - name: Vệ sinh graph (manifest · PR riêng · không đè Contract)
+        run: node scripts/check-graph-hygiene.mjs
+
+      # Độ mới graph — CỐ Ý KHÔNG CHẶN. Plan kiến trúc (dòng 119, 2271) đã chốt UA
+      # freshness không phải required check: graph 4 MB commit vào repo, refresh là
+      # cả một PR, nên đỏ CI mỗi khi nó cũ sẽ khiến người ta tắt gate đi. Chế độ mặc
+      # định (không cờ --nhiem-vu) in đủ số đo rồi thoát 0 khi graph cũ; nó CHỈ đỏ
+      # khi artifact hỏng hoặc không tự nhất quán — tức "không kết luận được".
+      # Cửa chặn cứng nằm ở máy dev, theo nhiệm vụ (Contract §12 luật #1, #2).
+      - name: Độ mới graph (báo cáo — chỉ đỏ khi artifact hỏng)
+        run: node scripts/check-graph-freshness.mjs
   # ─────────────────────────────────────────────────────────────────────────
   # Nhánh `production` là thứ Vercel phát hành. Push thẳng vào đó = phát hành mã
   # chưa từng qua CI của main. Branch protection KHÔNG bật được (repo private
