@@ -84,6 +84,7 @@
     "gate:graph-freshness": "node scripts/check-graph-freshness.mjs",
     "gate:graph-secrets": "node scripts/check-graph-secrets.mjs",
     "gate:realtime-descriptors": "node scripts/check-realtime-descriptors.mjs",
+    "gate:new-modules-strict": "node scripts/check-new-modules-strict.mjs",
     "gate:strict-islands": "node scripts/check-strict-islands.mjs",
     "gate:capability-surfaces": "node scripts/check-capability-surfaces.mjs",
     "surface:rpc": "node scripts/generate-rpc-surface.mjs",

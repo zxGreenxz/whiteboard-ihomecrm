@@ -157,6 +157,11 @@ jobs:
       - name: Đảo strict — vùng đã sạch không được bẩn lại
         run: node scripts/check-strict-islands.mjs
 
+      # Chặn NỢ MỚI — khác gate trên, vốn canh nợ CŨ không bẩn lại.
+      # Cần lịch sử git (diff với merge-base), nên job này phải checkout fetch-depth: 0.
+      - name: Module mới phải strict ngay từ đầu
+        run: node scripts/check-new-modules-strict.mjs
+
       # Độ mới graph — CỐ Ý KHÔNG CHẶN. Plan kiến trúc (dòng 119, 2271) đã chốt
       # UA freshness không phải required check: graph 4 MB commit vào repo, refresh
       # là cả một PR, nên đỏ CI mỗi khi nó cũ sẽ khiến người ta tắt gate đi. Chế độ
