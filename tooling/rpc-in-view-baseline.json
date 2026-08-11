@@ -1,0 +1,14 @@
+{
+  "$comment": "Ratchet cho scripts/check-rpc-in-view-ratchet.mjs. Vân tay là `<file>::<tên RPC>`, KHÔNG phải số đếm — đếm thì xoá một chỗ rồi thêm chỗ khác trong cùng file sẽ đi lọt. Danh sách này CHỈ ĐƯỢC NGẮN ĐI. Mỗi mục là một nợ: chuyển call site sang hook/wrapper typed rồi chạy --write.",
+  "soFileQuet": 628,
+  "vanTay": [
+    "src/components/openclaw-zalo/OpenClawRouteGuard.tsx::get_authorization_context_v1",
+    "src/components/tasks/TaskCompleteDialog.tsx::v5_tick_from_job",
+    "src/pages/auth/AcceptInvitation.tsx::accept_organization_invitation_v1",
+    "src/pages/finance/ManagerSalaryPage.tsx::get_salary_v5_config",
+    "src/pages/finance/MySalaryPage.tsx::get_salary_v5_config",
+    "src/pages/phong-trong/usePhongTrong.ts::get_public_available_rooms",
+    "src/pages/settings/GeneralSettingsPage.tsx::get_ie_auto_approve_threshold_v1",
+    "src/pages/settings/GeneralSettingsPage.tsx::set_ie_auto_approve_threshold_v1"
+  ]
+}

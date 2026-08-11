@@ -131,6 +131,7 @@ jobs:
           node scripts/check-unknown-review.mjs
           node scripts/check-ts-suppressions.mjs
           node scripts/check-rpc-cast-ratchet.mjs
+          node scripts/check-rpc-in-view-ratchet.mjs
           node scripts/check-error-swallow-ratchet.mjs
 
       - name: schema-gates (provenance migration · canonical types · đường ghi production)

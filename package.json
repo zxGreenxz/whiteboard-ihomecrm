@@ -35,6 +35,7 @@
     "gate:test-matrix": "node scripts/check-test-matrix.mjs",
     "migrations:list-forward": "node scripts/list-forward-migrations.mjs",
     "gate:migration-provenance": "node scripts/check-migration-provenance.mjs",
+    "gate:rpc-in-view": "node scripts/check-rpc-in-view-ratchet.mjs",
     "gate:rpc-cast": "node scripts/check-rpc-cast-ratchet.mjs",
     "rpc:removable": "node scripts/find-removable-rpc-casts.mjs",
     "provenance:generate": "node scripts/generate-migration-provenance.mjs --write",
