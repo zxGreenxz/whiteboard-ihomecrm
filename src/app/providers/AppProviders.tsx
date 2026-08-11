@@ -25,6 +25,20 @@ import { QueryProvider } from "./QueryProvider";
  *   Router thuộc về phần ĐIỀU HƯỚNG, và test render một màn lẻ thường muốn dựng
  *   provider mà tự cấp `MemoryRouter` của mình. Gộp vào đây sẽ buộc mọi test phải
  *   nhận cả BrowserRouter thật.
+ *
+ * VÌ SAO KHÔNG TÁCH RIÊNG `RealtimeProviders.tsx` — quyết định 08/08/2026
+ *   Plan liệt kê một file riêng cho nhóm realtime. Cố ý KHÔNG tách, và ghi ở đây
+ *   để lần sau không ai coi đó là việc bỏ quên:
+ *
+ *   Hiện có ĐÚNG HAI listener (`RealtimeDataSync`, `NotificationsRealtime`), và cả
+ *   hai bị ràng buộc bởi chính hợp đồng thứ tự lồng nhau ở trên — chúng phải nằm
+ *   trong `QueryProvider` và trong `ErrorBoundary`. Tách ra file khác không gỡ được
+ *   ràng buộc đó; nó chỉ chuyển ràng buộc sang một chỗ mà người đọc AppProviders
+ *   không còn nhìn thấy. Đổi một file 52 dòng đọc hết trong một màn hình lấy hai
+ *   file phải đọc chéo là lỗ, không phải lãi.
+ *
+ *   ĐIỀU KIỆN ĐỔI Ý: khi có listener realtime THỨ BA. Lúc đó nhóm đủ lớn để tên
+ *   file mang thông tin, và việc đọc chéo mới trả đủ giá.
  */
 export function AppProviders({ children }: { children: ReactNode }) {
   return (

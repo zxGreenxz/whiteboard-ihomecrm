@@ -75,6 +75,15 @@ không phải người:
 > Promote: `git push origin origin/main:production` **sau khi** gate xanh.
 > Rollback: promote lại deployment trước trên Vercel, hoặc đẩy `production` về SHA cũ.
 >
+> **Neo governance này KHÔNG đặt được vào `vercel.json`, và đừng thử.** Plan liệt kê `vercel.json`
+> là chỗ neo deploy/cron/env; đo 08/08/2026 thì không làm được vì hai lý do độc lập: (a) JSON thuần
+> không có comment, (b) Vercel **không** nhận production branch như một khoá của `vercel.json` —
+> đó là setting trên dashboard. Nhét khoá lạ vào file đó là đánh cược cấu hình deploy để đổi lấy
+> một dòng chú thích. Neo thật nằm ở đây, và trạng thái kiểm chứng nằm ở
+> [`docs/generated/external-controls.json`](../generated/external-controls.json) →
+> `controls.vercelProductionBranch` (hiện `unverified` vì chưa nạp `VERCEL_TOKEN` — đó là kiểm soát
+> cứng DUY NHẤT của repo này, nên "unverified" là một khoảng trống có thật, không phải chi tiết nhỏ).
+>
 > Vẫn giữ bốn bước dưới đây cho thay đổi **chạm runtime** (`src/`, `api/`, `vite.config.ts`,
 > dependencies) — chúng rẻ và bắt được lỗi mà preview không bắt:
 >
