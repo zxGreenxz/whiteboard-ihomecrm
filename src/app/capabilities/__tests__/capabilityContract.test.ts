@@ -105,6 +105,18 @@ describe("capability registry ↔ bề mặt thật (cờ BẬT)", () => {
     expect(actions).toContain(capability.permission.action);
   });
 
+  it.each(cases)("%s: trang quyền của capability xuất hiện ĐÚNG MỘT LẦN trong picker", (_id, capability) => {
+    // Ánh xạ nhiều-nhiều trong permissionPages là HỢP LỆ và không bị cấm ở đây:
+    // đo 11/08/2026 thấy route `/` phục vụ hai module (core + ai-copilot), và key
+    // `customers` phục vụ cả /leads lẫn /customers. Đó là thiết kế, không phải lỗi.
+    //
+    // Nhưng với trang quyền mà một CAPABILITY trỏ tới thì hai entry là mơ hồ: giao
+    // diện phân quyền hiện hai dòng cho cùng một bề mặt, và không ai biết cấp dòng
+    // nào thì mở được trang. Đây cũng chính là cái bẫy §7 mô tả cho alias.
+    const trung = ALL_PAGES.filter((p) => p.route === capability.surfaces.permissionPage);
+    expect(trung.length, `${capability.surfaces.permissionPage} có ${trung.length} entry`).toBe(1);
+  });
+
   it("không capability nào trùng route hoặc trùng id", () => {
     const routes = CAPABILITIES.map((c) => c.primaryRoute);
     const ids = CAPABILITIES.map((c) => c.id);

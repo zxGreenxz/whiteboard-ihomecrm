@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 37
+    "stillMissing": 36
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -131,10 +131,12 @@
       {
         "deliverable": "Selectors / contract tests thay các danh sách route/nav/permission chép tay",
         "planRef": "§48 dòng 2872",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Danh sách route và permission picker vẫn chép tay — xem 2 dòng 'Route existence' và 'Permission picker visibility'. Vấn đề tên file selectors.ts xem dòng P1.2 riêng."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "So NHAM \"khai tay\" thanh \"khong duoc kiem\". Do 11/08: ca hai deu DA duoc contract test doi chieu hai chieu — capabilityContract.test.ts so page.key voi capability.permission.module VA doi action gac route co mat trong features cua trang do; route thi khong he chep tay, check-capability-surfaces doc 12 nguon route tu src/app/routes/. permissionPages.ts van la file khai tay theo THIET KE (742 dong, phuc vu authorization muc thao tac; registry co y khong so huu no). THEM MOT CHIEU CHUA AI CANH: trang quyen ma mot capability tro toi phai xuat hien DUNG MOT LAN. Do truoc khi dung luat de khong cam nham: anh xa nhieu-nhieu trong permissionPages LA HOP LE (route / phuc vu core + ai-copilot; key customers phuc vu /leads va /customers) nen luat chi ap cho trang cua capability. Dot bien: nhan doi entry /network-center => test do."
       },
       {
         "deliverable": "Tách route groups theo capability theo từng PR nhỏ, giữ lazy loading + error boundary",
