@@ -65,6 +65,24 @@ const demTracked = (re) =>
     .filter((p) => p && re.test(p)).length;
 
 /**
+ * Nhóm migration TRÙNG SỐ VERSION, đếm từ TÊN FILE trên đĩa.
+ *
+ * Đếm từ đĩa chứ không từ manifest là có chủ đích ở đây: con số này tồn tại để
+ * giải thích vì sao `supabase db push` không replay được, và cái chặn `db push`
+ * chính là tên file trùng — không phải một entry trong manifest.
+ */
+const demTrungVersion = () => {
+  const dem = new Map();
+  for (const e of readdirSync(join(repoRoot, "supabase", "migrations"), { withFileTypes: true })) {
+    if (!e.isFile() || !/\.sql$/i.test(e.name)) continue;
+    const v = /^(\d+)/.exec(e.name)?.[1];
+    if (v) dem.set(v, (dem.get(v) ?? 0) + 1);
+  }
+  const trung = [...dem.values()].filter((n) => n > 1);
+  return { soNhom: trung.length, soFile: trung.reduce((a, n) => a + n, 0) };
+};
+
+/**
  * Mỗi mục là một con số tài liệu ĐANG khẳng định, kèm cách đếm ra sự thật.
  *
  * Cố ý khai tường minh từng chỗ thay vì dò mọi con số trong docs: dò mù sẽ đầy
@@ -132,6 +150,44 @@ export const CLAIMS = [
     re: /(một lệnh: )(\d{1,3})( suite, mỗi suite một runner)/,
     dem: () => JSON.parse(readFileSync(join(repoRoot, "tooling/test-matrix.json"), "utf8")).suites.length,
     moTa: "số suite trong tooling/test-matrix.json",
+  },
+
+  // ── PROJECT_CONTRACT.md §1 và §5 ──────────────────────────────────────────
+  //
+  // Ba con số thêm 11/08/2026, và cả ba ĐANG SAI lúc thêm: Contract ghi "625
+  // migration" và "625 file có 33 nhóm trùng version (69 file)" trong khi thực tế
+  // là 633 / 36 / 77.
+  //
+  // Chỗ chúng nằm mới là điều đáng nói: ngay trong LUẬT migration của Contract —
+  // nơi người ta đọc để quyết định có tin manifest hay không, và để hiểu vì sao
+  // legacy history không replay được. Một con số sai ở đó làm hỏng chính lập luận
+  // mà nó được đưa ra để chống đỡ. Đúng án lệ "371 migration" nằm trong ba tài
+  // liệu suốt nhiều tuần, lặp lại ở tầng cao hơn.
+  {
+    file: "docs/engineering/PROJECT_CONTRACT.md",
+    // "Supabase PostgreSQL 17.6: 633 migration, ~1000 hàm SECURITY DEFINER"
+    re: /(17\.6: )(\d{3,4})( migration)/,
+    dem: () => demSql("supabase/migrations"),
+    moTa: "số migration ở Contract §1",
+  },
+  {
+    file: "docs/engineering/PROJECT_CONTRACT.md",
+    // "633 file có 36 nhóm trùng version (77 file)"
+    re: /(\n\s*)(\d{3,4})( file có \d{1,3} nhóm trùng version)/,
+    dem: () => demSql("supabase/migrations"),
+    moTa: "số file migration ở Contract §5",
+  },
+  {
+    file: "docs/engineering/PROJECT_CONTRACT.md",
+    re: /( file có )(\d{1,3})( nhóm trùng version)/,
+    dem: () => demTrungVersion().soNhom,
+    moTa: "số nhóm version trùng ở Contract §5",
+  },
+  {
+    file: "docs/engineering/PROJECT_CONTRACT.md",
+    re: /( nhóm trùng version \()(\d{1,3})( file\))/,
+    dem: () => demTrungVersion().soFile,
+    moTa: "số file dính version trùng ở Contract §5",
   },
 
   // ── migration-policy.json ────────────────────────────────────────────────

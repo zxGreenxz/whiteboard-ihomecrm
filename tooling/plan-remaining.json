@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 63
+    "stillMissing": 62
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -25,10 +25,12 @@
       {
         "deliverable": "Đợt 1a — Focused current docs (3 trang): migration truth, Network Center, OpenClaw",
         "planRef": "mục 45, dòng 2759",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Tạo trang migration truth riêng (docs/engineering/MIGRATION_STRATEGY.md); thêm luật vào docs checker chặn câu mô tả legacy migration là replayable; chạy `node scripts/check-doc-counts.mjs --fix` (gate đang đỏ) và đưa cả con số '33 nhóm trùng'/'625 file' trong Contract §5 vào phạm vi gate đó."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "So ghi \"gate doc-counts dang do\" da CU: gate xanh tu truoc lat nay. docs/engineering/MIGRATION_STRATEGY.md da ton tai (21KB). Phan THAT SU con thieu, va no la loi that: Contract ghi \"625 migration\" (§1) va \"625 file co 33 nhom trung version (69 file)\" (§5) trong khi thuc te la 633/36/77 — ba con so sai nam ngay trong LUAT migration, cho nguoi ta doc de quyet dinh co tin manifest hay khong. Sua + dua ca 4 con so vao gate:doc-counts (13 -> 17), them bo dem demTrungVersion doc TU TEN FILE tren dia (vi chinh ten file trung moi la thu chan db push). Ghim 3 muc vao MUST_MENTION cua gate:agent-contract de luat \"KHONG replay duoc\" khong bi rut mat: no khong gan voi script nao nen mat di se khong gi do len. Dot bien 5/5."
       },
       {
         "deliverable": "Đợt 1b — Generator/checker đối chiếu ledger rows live, 33 nhóm duplicate + collision legacy `016_`/`017_`, catalog production và rollout evidence",

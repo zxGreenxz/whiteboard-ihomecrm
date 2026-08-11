@@ -213,6 +213,13 @@ function main() {
     ['FLEET_PASS', 'mật khẩu E2E không nằm trong repo'],
     ['headless', 'E2E mặc định chạy ẩn'],
     ['2.9.4', 'phiên bản Deno đã xác minh'],
+    // Ba mục dưới thêm 11/08/2026. Luật "legacy history KHÔNG replay được" là
+    // thứ ngăn người ta gõ `supabase db push` rồi phá schema production, nhưng
+    // nó không gắn với script nào — rút Contract quá tay là nó biến mất và không
+    // gì đỏ lên. Cùng lớp rủi ro với mục "bán kính ảnh hưởng" ở trên.
+    ['KHÔNG replay được', 'legacy history không dựng lại được từ đầu'],
+    ['migrations-archive', 'thư mục TUYỆT ĐỐI không replay'],
+    ['trùng version', 'lý do kỹ thuật khiến db push không chạy nổi'],
     ['deno.lock', 'khoá version npm specifier của edge function'],
     ['gen:types', 'quy trình regen types (không redirect)'],
     ['types:normalize', 'bỏ partition ngày sau khi regen'],
