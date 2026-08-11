@@ -50,6 +50,12 @@
 - [audits/README.md](audits/README.md) — audit snapshot 03/07 và 08/07.
 - [refactor-2026-07/README.md](refactor-2026-07/README.md) — hồ sơ phase, risk register và bằng chứng refactor.
 
+> **Không có `docs/archive/`, và đó là quyết định chứ không phải thiếu sót.** Plan kiến trúc liệt kê
+> một thư mục `docs/archive`; vai trò đó do `refactor-2026-07/` đảm nhiệm — nó CHÍNH LÀ kho hồ sơ
+> lịch sử, chỉ khác là tên nói rõ hồ sơ của đợt nào thay vì gộp mọi thứ vào một cái thùng không niên
+> đại. Tạo thêm `archive/` sẽ cho hai chỗ cùng nghĩa "đồ cũ", và thứ nằm ở đâu sẽ tuỳ người cất.
+> Đợt sau cần lưu trữ thì tạo `refactor-<năm>-<tháng>/` mới, đừng gom vào `archive/`.
+
 ## Phân loại vòng đời
 
 | Loại | Ý nghĩa | Ví dụ |

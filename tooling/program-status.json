@@ -1,16 +1,11 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
-  "updatedAt": "2026-08-07",
+  "updatedAt": "2026-08-08",
   "currentWave": "5-6",
-  "waveTitle": "Đã soi toàn bộ plan: 365 deliverable · 187 xong · 24 bỏ có chủ ý · 154 còn lại (sổ ở tooling/plan-remaining.json)",
+  "waveTitle": "Đã soi toàn bộ plan: 365 deliverable · còn 106 mục (sổ ở tooling/plan-remaining.json, cập nhật sau MỖI lô)",
   "$soSachViecConLai": "tooling/plan-remaining.json — sinh từ một lượt soi 14 agent (1,53 triệu token) đối chiếu TỪNG deliverable của plan 3210 dòng vào repo thật, kèm một vòng phản biện cố chứng minh ngược mỗi kết luận 'chưa làm'. GIỮ FILE ĐÓ. Trước khi nó tồn tại, câu 'đã xong plan chưa' không ai trả lời được mà không đọc lại 3210 dòng, và chính vì vậy nó được trả lời sai nhiều lần.",
-  "$trangThai": "Đợt 0,1,2,3 xong. Đợt 4 xong TRỪ lát 3 (chủ dự án hoãn: lát đó đụng 2 dòng OpenClaw trong Sidebar/launcherTiles, mà OpenClaw đang được chính chủ code). Đợt 5 xong (ratchet cast về 0). Đợt 6 xong phần README + docs. Ba mục bị hoãn có CHỦ Ý, không phải bỏ quên — xem mảng `hoanCoChuY`.",
+  "$trangThai": "Đợt 0,1,2,3 xong. Đợt 4 xong TRỪ lát 3. Đợt 5 xong (ratchet cast về 0). Đợt 6: GitNexus cài xong (pin 1.6.9 verified, index thật, MCP theo dự án qua .mcp.json) và graph UA đã DỰNG LẠI TOÀN BỘ (a58460af, merge vào main: 3.042/3.042 file, 7.800 node, NC 88 + OpenClaw 364 node — trước là 0 và 0). Còn 106 mục, phần lớn là công trình lớn: dot-4-registry (registry typed page/surface) và backlog-ci (gộp job gate có tên). LƯU Ý VỀ LÁT 3: lý do hoãn cũ (\"OpenClaw đang được chính chủ code\") ĐÃ HẾT HIỆU LỰC — chủ dự án gỡ lệnh cấm ngày 07/08 (\"làm luôn các phần dính tới openclaw\"). Lát 3 giờ chỉ là việc chưa làm, không phải việc bị chặn.",
   "hoanCoChuY": [
-    {
-      "item": "Apply migration thật lên production",
-      "quyetDinh": "Chủ dự án hoãn 07/08/2026 (\"không gấp\")",
-      "vi": "Không có migration nào đang chờ apply. Đường apply đã có đủ 4 lớp chặn + backup bắt buộc + đã dry-run thật trên production (ROLLBACK). Chạy apply lúc này chỉ để diễn tập; không có gì hỏng nếu chưa chạy."
-    },
     {
       "item": "Bật PITR",
       "quyetDinh": "Chủ dự án bỏ hẳn 06/08/2026",
@@ -18,6 +13,35 @@
     }
   ],
   "done": [
+    {
+      "item": "✅ Apply migration thật lên production QUA LANE — mục này từng nằm ở hoanCoChuY, nay đã làm",
+      "evidence": "20260807140000_ie_guard_handover_scope.sql apply qua npm run migrate:forward (commit 266947de + biên nhận docs/generated/schema-change-evidence/). npm run migrations:list-forward xác nhận state \"đã apply (có bằng chứng)\". Gỡ khỏi hoanCoChuY 08/08/2026 — lý do hoãn cũ (\"không có migration nào đang chờ apply\") đã hết đúng.",
+      "lyDoHoanCu": "Chủ dự án hoãn 07/08/2026 (\"không gấp\")"
+    },
+    {
+      "item": "✅ Graph UA dựng lại TOÀN BỘ — hết 18 tiểu hệ vắng mặt",
+      "evidence": "a58460af + b654ed9d (PR riêng theo Contract §12 luật #6, đã merge). 3.042/3.042 file có node · 7.800 node · 17.919 cạnh · 5.976/5.976 cạnh imports khớp importMap tất định · 0 node trùng · 0 cạnh treo · 0 issue validator. OpenClaw 364 node và Network Center 88 node, trước đó là 0 và 0. gate:graph-freshness: STALE 533 commit/18 tiểu hệ → 25 commit/1 tiểu hệ."
+    },
+    {
+      "item": "✅ Quét secret + PII trên artifact graph thành GATE, thôi trông vào việc nhớ chạy tay",
+      "evidence": "60a9f001 — scripts/check-graph-secrets.mjs + 18 test đột biến + nối vào job secret-scan của ci-gates.yml. Phát hiện khi viết: gitleaks KHÔNG bắt PII (trả \"no leaks\" trên .ua/), và quét thô cho 11 dương tính giả (10 chữ số nằm trong contentHash sha256) — nên gate bóc trường văn bản do người viết (27.318 trường) thay vì quét byte."
+    },
+    {
+      "item": "✅ Bẫy GitNexus registry toàn cục — wrapper tự ép --repo",
+      "evidence": "60a9f001 — impact/detect-changes chết vì máy có hai clone cùng tên. Nguy hơn cái chết: nếu chỉ còn một mục nhưng của clone khác thì lệnh chạy trót lọt và trả kết quả repo khác mà không báo. Wrapper ép --repo cho 10 subcommand truy vấn."
+    },
+    {
+      "item": "✅ scripts/list-forward-migrations.mjs — phơi chiều lệch mà vòng lặp theo file không thấy",
+      "evidence": "ab9ea0a4 + 13 test. Bắt cả \"có sổ, KHÔNG có file\" — loại lệch mà việc duyệt file trên đĩa rồi tra sổ không bao giờ thấy vì không có file để duyệt. Đang có thật trên main: 20260807163000_ie_types_org_boundary.sql."
+    },
+    {
+      "item": "✅ Ba Node version là CỐ Ý — ghi vào Contract kèm cái bẫy đã sập",
+      "evidence": "d599a035. Tôi thử thống nhất về 22.20.0; gate:runtime-matrix bắt được ngay và đã hoàn tác toàn bộ. ci-gates 24.18.0 bị ép bởi openclaw-zalo-bridge (>=24.18.0 <25), network-center 22 bị ép bởi network-center-worker (>=20 <23) — HAI KHOẢNG RỜI NHAU. Cũng thêm services/openclaw-media-gateway vào runtime-matrix (package mới làm gate đỏ trên main)."
+    },
+    {
+      "item": "✅ known-gaps chống mục nát bằng ba điều kiện, không bằng màu đỏ CI",
+      "evidence": "14776698. Cố ý KHÔNG bật --strict: gate đỏ vì ngày tháng sẽ bị gia hạn theo nghi thức rồi mất tín hiệu. Thay bằng ba điều kiện ghi ở Contract §3, và áp dụng ngay cho ua-graph-stale (số đo cũ 488 commit/18 tiểu hệ → thật 25/1)."
+    },
     {
       "item": "✅ Lane migrate:forward TỰ CHẠY ĐƯỢC — biên nhận backup thay cho token con người",
       "evidence": "Chủ dự án yêu cầu tự động hoàn toàn. Token cũ gộp HAI thứ khác hẳn nhau: 'có người dừng lại nhìn' và 'có điểm khôi phục nếu hỏng'. Với PITR tắt, chỉ thứ hai quyết định thiệt hại — và con người gõ token chưa bao giờ tạo ra bản dump đó. Luật mới cưỡng chế đúng thứ đo được, và ở một chiều CHẶT HƠN: trước đây token + --khong-backup là qua, nay đường tự động KHÔNG THỂ bỏ backup. Đã apply thật 20260807140000_ie_guard_handover_scope qua lane: backup 144s/24,2MB/567 bảng · giấy phép bien-nhan-backup 64283433567f5238 · provenance nay xếp catalog-proven. Thứ THẬT SỰ mất: không còn ai xem lại NỘI DUNG migration — ba lớp còn lại kiểm xuất xứ, không kiểm ý định."
@@ -225,8 +249,9 @@
   ],
   "blockers": [],
   "next": [
-    "ĐỌC tooling/plan-remaining.json TRƯỚC — 154 mục còn lại đã được soi và xếp theo lát, kèm 'còn phải làm gì' cho từng mục. Đừng soi lại plan từ đầu.",
-    "Bốn mục đáng làm trước theo mức giảm rủi ro: (1) src/lib/contracts/{errors,envelopes} + luật wrapper không nuốt lỗi thành [] hoặc toast chung — code tiền; (2) tách App.tsx sang src/app/providers + routes/index; (3) refresh graph UA trong PR RIÊNG (known-gaps#ua-graph-stale); (4) gộp step CI thành 3 job đặt tên contract-gates/schema-gates/docs-freshness.",
+    "ĐỌC tooling/plan-remaining.json TRƯỚC — 106 mục còn lại đã được soi và xếp theo lát, kèm \"còn phải làm gì\" cho từng mục. Đừng soi lại plan từ đầu.",
+    "HAI CÂU HỎI ĐANG CHỜ NGƯỜI QUYẾT, không tự làm: (a) file supabase/migrations/20260807163000_ie_types_org_boundary.sql có entry provenance + biên nhận trên main nhưng FILE chỉ tồn tại ở commit 9519cd98 thuộc nhánh refresh-ua-graph chưa merge — tức production đã đổi schema theo một file main không mô tả; (b) do đó gate:migration-provenance ĐANG ĐỎ trên main. Cách dọn nhanh (generate-migration-provenance.mjs --write) sẽ XOÁ entry mồ côi, tức xoá bằng chứng — đừng chạy.",
+    "Nhóm còn nặng nhất: dot-4-registry (27 mục — registry typed mức page/product surface, selectors thay danh sách chép tay) và backlog-ci (28 mục — gộp các bước gate rải rác thành job có tên). Cả hai là công trình, nên chốt phạm vi với chủ dự án trước khi mở.",
     "Hoà giải ContractWithRelations với kiểu sinh từ types.ts — known-gaps#contract-type-handwritten-drift",
     "Mở rộng strict islands: mỗi lần dọn xong một module thì THÊM vào tsconfig.strict-islands.json (ratchet chỉ đi một chiều)"
   ],

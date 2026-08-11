@@ -71,3 +71,24 @@ node scripts/dien-tap-khoi-phuc-baseline.mjs --dich "<connection-string>"
 ```
 
 Script từ chối chạy nếu đích trùng project production.
+
+---
+
+## "Chuẩn hoá" KHÔNG thuộc về đây — đừng tạo `normalization.md`
+
+Plan kiến trúc liệt kê một file `supabase/baseline/normalization.md`. **Cố ý không tạo**, và ghi lại
+lý do ở đây để lần sau không ai tạo nó rồi tưởng là đang bù một khoảng trống.
+
+"Chuẩn hoá" trong repo này chỉ có một nghĩa: **bỏ child partition theo ngày ra khỏi `types.ts`** —
+Network Center sinh partition mỗi ngày, để nguyên thì file phình ~96 dòng/ngày và job drift đỏ trong
+khi API logic không đổi một chữ. Đó là chuyện của **generated types**, không phải của baseline
+schema. Baseline lo việc khôi phục; hai thứ không liên quan nhau.
+
+Nó đã được ghi ở hai chỗ, và cả hai đều là chỗ người ta thật sự tìm tới:
+
+- `docs/engineering/PROJECT_CONTRACT.md` §6 → "Canonical vs raw: partition ngày"
+- header của `scripts/normalize-supabase-types.mjs` (lệnh: `npm run types:normalize` / `types:check`)
+
+Thêm một file thứ ba nói cùng một luật là tạo ra chính vấn đề mà `CLAUDE.md` mở đầu bằng cảnh báo:
+**hai bản sẽ lệch nhau, rồi không ai biết bản nào đúng.** Đã xảy ra thật trong repo này với lệnh
+`gen:types` kèm dấu redirect — sai suốt nhiều tháng vì chép ra nhiều nơi.
