@@ -18,6 +18,44 @@ CLAUDE.local.md
 .ua/
 .understand-anything/
 
+# --- Vendor / runtime state / data dump (plan PHẦN V §19) ---
+#
+# ĐO ĐƯỢC 08/08/2026 trước khi bật: các mẫu này gần như THỪA — `vendor/` có 172
+# file trên đĩa nhưng 0 file lọt vào scan, vì default của công cụ + .gitignore đã
+# chặn sẵn. Cả nhóm chỉ khớp ĐÚNG MỘT file thật trong scan 3.042 file:
+# `supabase/.temp/cli-latest`.
+#
+# Vẫn khai tường minh, vì "đang bị loại" khác "được quy định là loại": hiện chúng
+# lọt lưới nhờ .gitignore, nên ai sửa .gitignore là chúng vào graph mà không ai
+# thấy. Graph 8 MB thì không ai review bằng mắt để bắt lại.
+#
+# CÓ HIỆU LỰC TỪ LẦN REFRESH TỚI. Artifact hiện tại dựng tại ca31186e KHÔNG có
+# các mẫu này — xem tooling/graph-manifests/ua.json → scope.
+
+# vendor: mã bên thứ ba, không phải kiến trúc của mình
+services/openclaw-zalo-cell/vendor/
+
+# runtime state: sinh ra lúc chạy, đổi liên tục, mô tả nó là mô tả một khoảnh khắc
+services/openclaw-zalo-cell/.state/
+services/openclaw-zalo-cell/.release/
+services/openclaw-zalo-bridge/.data/
+services/openclaw-zalo-bridge/coverage/
+supabase/.temp/
+test-results/
+.e2e-fleet/test-results/
+.e2e-fleet/playwright-report/
+.playwright-mcp/
+infra/openclaw-zalo/rendered/
+infra/openclaw-media-gateway/.wrangler/
+
+# data dump: dữ liệu, không phải mã. Nguy hiểm gấp đôi vì có thể chứa PII thật.
+data excel/
+dataexcel/
+.backups/
+draft/
+crawl-resident/
+.scratch/
+
 # --- From .gitignore (uncomment to exclude) ---
 
 # logs

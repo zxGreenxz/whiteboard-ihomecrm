@@ -3,14 +3,18 @@
   "schemaVersion": 1,
   "graph": "ua",
   "artifactDir": ".ua",
-
   "baseCommit": "ca31186ec2edfc9a346ee5abe8195c4bd0630bf8",
   "analyzedAt": "2026-08-07T16:56:44.829Z",
   "analyzedFiles": 3042,
-
   "scope": {
     "description": "Toàn repo tại ca31186e trừ các mẫu trong .ua/.understandignore (lần này chỉ loại 8 file, đều là secret/env). Dựng lại TOÀN BỘ, không tăng dần. Khác hẳn bản trước ở ba điểm đã đo: (1) Network Center và OpenClaw giờ CÓ mặt — 364 node cho hệ OpenClaw Zalo và 88 cho Network Center, so với 0 ở bản d0ffb045; (2) đủ cả 886 file supabase/migrations, không thiếu 118 migration như trước; (3) 5.976 cạnh `imports` phủ 1.353 file. Tổng 7.800 node · 17.919 cạnh · 13 tầng · 16 bước tour, phủ 3.042/3.042 file được quét.",
     "excludesFrom": ".ua/.understandignore",
+    "exclusionsPendingNextRefresh": {
+      "$note": "Ngày 08/08/2026 đã khai tường minh nhóm vendor / runtime-state / data-dump vào .ua/.understandignore (plan PHẦN V §19). CHÚNG CHƯA ÁP DỤNG cho artifact này — artifact dựng tại ca31186e, TRƯỚC khi các mẫu đó được bật. Ghi ở đây thay vì sửa `description` để manifest không khai một phạm vi mà artifact không có: đó đúng là kiểu nói dối mà gate hygiene sinh ra để bắt.",
+      "measuredImpact": "Đo trước khi bật: nhóm này khớp ĐÚNG 1 file trong scan 3.042 file (`supabase/.temp/cli-latest`). `vendor/` có 172 file trên đĩa nhưng 0 file lọt vào scan — default của công cụ + .gitignore đã chặn sẵn.",
+      "whyStillDeclared": "\"Đang bị loại\" khác \"được quy định là loại\". Hiện chúng lọt lưới NHỜ .gitignore, nên một thay đổi .gitignore sẽ đưa chúng vào graph mà không ai thấy — và graph 8 MB thì không ai review bằng mắt để bắt lại.",
+      "expectedDeltaNextRefresh": "analyzedFiles giảm khoảng 1 (3042 → ~3041). Giảm nhiều hơn đáng kể ⇒ một mẫu bắt rộng hơn dự tính, phải dừng lại xem."
+    },
     "coverageEvidence": {
       "filesScanned": 3042,
       "fileLevelNodes": 3373,
@@ -22,17 +26,14 @@
       "validatorIssues": 0
     }
   },
-
   "toolVersion": "2.9.4",
   "toolVersionSource": "measured",
   "toolVersionNote": "ĐO ĐƯỢC, không còn là lời khai. Đọc trực tiếp trường `version` của C:/Users/Nguyen Tam/.understand-anything-plugin/package.json (name: @understand-anything/skill) — chính bản plugin đã chạy lần dựng này. Trùng khớp con số 2.9.4 mà bản manifest trước khai theo pin ở plan kiến trúc §18, nên khoản nợ 'lần refresh tới BẮT BUỘC ghi version thật đo được' đã trả. Lưu ý vẫn còn: artifact trong .ua/ không tự ghi version ở đâu cả — trường `version: \"1.0.0\"` trong cả ba file là SCHEMA version. Ai muốn kiểm lại phải đọc package.json của plugin, không đọc được từ artifact.",
-
   "configDigest": {
     ".ua/config.json": "git:bf23efcb9a6caea2bf2347cdb5cfb2d32e09af1a",
-    ".ua/.understandignore": "git:21d6e97c7b21c09c1e6111cb4127d08207bb5b97"
+    ".ua/.understandignore": "git:9cdb86df3b342b5f6b88bfb0922c4bf3f10db23b"
   },
-  "configDigestNote": "git blob OID, KHÔNG phải sha256 nội dung worktree. Trên Windows worktree có thể là CRLF trong khi blob là LF, nên sha256 worktree sẽ lệch một cách vô nghĩa và gate sẽ đỏ giả. Blob OID là thứ git thật sự lưu. Lần này cả hai file cấu hình đều KHÔNG đổi so với bản d0ffb045 — digest giữ nguyên là đúng, không phải quên cập nhật.",
-
+  "configDigestNote": "git blob OID, KHÔNG phải sha256 nội dung worktree. Trên Windows worktree có thể là CRLF trong khi blob là LF, nên sha256 worktree sẽ lệch một cách vô nghĩa và gate sẽ đỏ giả. Blob OID là thứ git thật sự lưu. Gate tính bằng `git hash-object <path>` trên WORKTREE (không phải `HEAD:<path>`), nên sửa file cấu hình mà quên cập nhật đây là đỏ NGAY, chưa cần commit. Đã kiểm chứng sống 08/08/2026: bật nhóm mẫu vendor/runtime-state/data-dump trong .understandignore ⇒ gate đỏ đúng chỗ, ghi rõ cả hai OID. `.ua/config.json` vẫn nguyên từ bản d0ffb045; `.ua/.understandignore` đổi ngày 08/08 (xem scope.exclusionsPendingNextRefresh).",
   "knownGaps": [
     "92 cạnh `calls` (0,5% tổng cạnh) bị merge script bỏ vì trỏ tới hàm ngắn được export mà bộ lọc significance của file-analyzer không tạo node — vd formatVnd, monthToStartDate, remainingOf. Luật của công cụ nói hàm được export thì LUÔN tạo node bất kể độ dài; nhiều agent đọc thành điều kiện AND với ngưỡng 10 dòng.",
     "importMap của công cụ bỏ sót 4 dạng cú pháp: `export … from` (re-export), `export default <Identifier>;` cuối file, `React.lazy(() => import(...))`, và import trong .mts/.vue. Các agent đã bù bằng cạnh `depends_on` nên quan hệ không mất, nhưng chúng không nằm trong con số 5.976.",
