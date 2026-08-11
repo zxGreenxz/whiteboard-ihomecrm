@@ -1,15 +1,15 @@
 {
   "$comment": "SỔ VIỆC CÒN LẠI của plan kiến trúc/agent. Sinh từ một lượt soi 14 agent (1,53 triệu token, 665 lượt gọi công cụ) đối chiếu TỪNG deliverable của plan 3210 dòng vào repo thật, có một vòng PHẢN BIỆN cố chứng minh ngược mỗi kết luận 'chưa làm'. Giữ file này để phiên sau không phải soi lại từ đầu. Mục nào làm xong thì XOÁ khỏi đây và ghi vào program-status.json — đừng để hai sổ cùng nói về một việc.",
   "auditedAt": "2026-08-08",
-  "auditedAtCommit": "283a72c9af40465919d98542bb6c085942e58dfe",
+  "auditedAtCommit": "d1710d8fe587466fff16d7344cea21c8ce8f2ab6",
   "method": "workflow soi-plan-con-thieu (7 lát × [soi → phản biện])",
   "totals": {
     "deliverablesInPlan": 365,
     "done": 150,
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
-    "completedAfterAudit": 78,
-    "stillMissing": 113
+    "completedAfterAudit": 80,
+    "stillMissing": 111
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -625,14 +625,6 @@
         "remaining": "Cần cho §0.2/C10 (86 file test dùng readFileSync đọc source) — chưa có công cụ liệt kê chúng."
       },
       {
-        "deliverable": "scripts/list-forward-migrations.mjs",
-        "planRef": "§51 dòng 3034",
-        "status": "CHUA_LAM",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Viết lệnh liệt kê migration sau cutoff chưa apply (đọc provenance + ledger)."
-      },
-      {
         "deliverable": "scripts/check-forward-migrations.mjs",
         "planRef": "§51 dòng 3036",
         "status": "MOT_PHAN",
@@ -647,14 +639,6 @@
         "size": "S",
         "touchesOpenClaw": false,
         "remaining": "Thêm neo governance (comment/khoá) về Production Branch = production và đối chiếu env Vercel."
-      },
-      {
-        "deliverable": "supabase/migrations-archive/README.md (cập nhật khi provenance phủ 15 file)",
-        "planRef": "§52 dòng 3064",
-        "status": "CHUA_LAM",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Cập nhật README archive: trỏ về supabase/migration-provenance.json và đính chính mốc ledger cũ (ledger thật 20260727095000 theo migration-policy.json#knownLimits)."
       },
       {
         "deliverable": "docs/README.md (sửa lớn)",
@@ -932,5 +916,5 @@
       }
     ]
   },
-  "$capNhat": "08/08/2026 lô 3: đóng 3 mục tài liệu công cụ tri thức. (§19) Khai tường minh nhóm vendor/runtime-state/data-dump vào .ua/.understandignore — ĐO TRƯỚC KHI BẬT: chỉ khớp 1 file thật trong scan 3042 (vendor có 172 file trên đĩa nhưng 0 lọt scan, default+gitignore đã chặn); vẫn khai vì \"đang bị loại\" khác \"được quy định là loại\". Ghi vào manifest.scope.exclusionsPendingNextRefresh chứ KHÔNG sửa description, để manifest không khai phạm vi mà artifact chưa có. (§22) Bảng lệnh-nào-cho-việc-nào trong CLAUDE.md, nói rõ /understand-diff KHÔNG thay graph:impact. (CLAUDE.md) Mục Skill và hook. 08/08/2026 lô 2: đóng 2 mục — (a) 7 alias gate còn thiếu (gate:reconcile-money-v2 + 6 script check-* mồ côi; đã quét lại: KHÔNG còn script gate nào không có alias) và mục Contract §5 phân biệt reconcile-money v1 (APPROVED=cash, 3 nguồn, bắt lệch QUYỀN) với v2 (posting-aware, bắt lệch HẠCH TOÁN) kèm điều kiện cutover; (b) 2 dòng Edge Function deploy vào bảng gate Contract §5 kèm lý do — deploy edge KHÔNG đi qua lane nào, đích deploy đến từ supabase/.temp không commit. 08/08/2026: đóng 2 mục có bằng chứng kiểm được — refresh graph UA (commit a58460af: 3042/3042 file, gate:graph-freshness FRESH, toolVersionSource measured) và secret/PII scan artifact graph (scripts/check-graph-secrets.mjs + 18 test đột biến + nối vào ci-gates.yml). Sửa remaining của 3 mục làm dở thay vì xoá — bỏ nhầm một mục chưa xong là làm sổ nói dối. 07/08/2026 phiên chiều: bỏ 32 mục đã làm xong, mỗi mục có commit hoặc file làm bằng chứng. Còn 122. Sổ này lạc hậu thì chính nó thành thứ nó sinh ra để ngăn — cập nhật sau MỖI lô, không gom lại cuối ngày. ĐÃ TRẢ LẠI 3 mục bị mẫu khớp xoá nhầm (RealtimeProviders.tsx, docs/incidents/, bản .md của docs/generated) — chúng chưa làm hoặc mới một phần, và bỏ nhầm một mục chưa làm là làm sổ nói dối theo hướng lạc quan."
+  "$capNhat": "08/08/2026 lô 4: scripts/list-forward-migrations.mjs (+13 test, alias migrations:list-forward) và đính chính README migrations-archive. Script phơi HAI chiều lệch: có-file-không-sổ (lùi được) và CÓ-SỔ-KHÔNG-CÓ-FILE (production đổi schema theo file repo không còn mô tả). Chiều thứ hai đang có thật trên main: 20260807163000_ie_types_org_boundary.sql — entry commit ở 266947de trên main, file chỉ tồn tại ở commit 9519cd98 thuộc nhánh refresh-ua-graph CHƯA merge. README archive từng ghi ledger \"đứng từ Feb 2026\", số thật là 20260727095000/372 dòng. 08/08/2026 lô 3: đóng 3 mục tài liệu công cụ tri thức. (§19) Khai tường minh nhóm vendor/runtime-state/data-dump vào .ua/.understandignore — ĐO TRƯỚC KHI BẬT: chỉ khớp 1 file thật trong scan 3042 (vendor có 172 file trên đĩa nhưng 0 lọt scan, default+gitignore đã chặn); vẫn khai vì \"đang bị loại\" khác \"được quy định là loại\". Ghi vào manifest.scope.exclusionsPendingNextRefresh chứ KHÔNG sửa description, để manifest không khai phạm vi mà artifact chưa có. (§22) Bảng lệnh-nào-cho-việc-nào trong CLAUDE.md, nói rõ /understand-diff KHÔNG thay graph:impact. (CLAUDE.md) Mục Skill và hook. 08/08/2026 lô 2: đóng 2 mục — (a) 7 alias gate còn thiếu (gate:reconcile-money-v2 + 6 script check-* mồ côi; đã quét lại: KHÔNG còn script gate nào không có alias) và mục Contract §5 phân biệt reconcile-money v1 (APPROVED=cash, 3 nguồn, bắt lệch QUYỀN) với v2 (posting-aware, bắt lệch HẠCH TOÁN) kèm điều kiện cutover; (b) 2 dòng Edge Function deploy vào bảng gate Contract §5 kèm lý do — deploy edge KHÔNG đi qua lane nào, đích deploy đến từ supabase/.temp không commit. 08/08/2026: đóng 2 mục có bằng chứng kiểm được — refresh graph UA (commit a58460af: 3042/3042 file, gate:graph-freshness FRESH, toolVersionSource measured) và secret/PII scan artifact graph (scripts/check-graph-secrets.mjs + 18 test đột biến + nối vào ci-gates.yml). Sửa remaining của 3 mục làm dở thay vì xoá — bỏ nhầm một mục chưa xong là làm sổ nói dối. 07/08/2026 phiên chiều: bỏ 32 mục đã làm xong, mỗi mục có commit hoặc file làm bằng chứng. Còn 122. Sổ này lạc hậu thì chính nó thành thứ nó sinh ra để ngăn — cập nhật sau MỖI lô, không gom lại cuối ngày. ĐÃ TRẢ LẠI 3 mục bị mẫu khớp xoá nhầm (RealtimeProviders.tsx, docs/incidents/, bản .md của docs/generated) — chúng chưa làm hoặc mới một phần, và bỏ nhầm một mục chưa làm là làm sổ nói dối theo hướng lạc quan."
 }
