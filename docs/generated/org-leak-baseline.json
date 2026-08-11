@@ -1,7 +1,7 @@
 {
   "note": "Sinh bằng máy — node scripts/measure-org-leak.mjs --write. Đo bằng vai người dùng thật, chỉ đọc, mọi truy vấn bọc ROLLBACK.",
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "capturedAt": "2026-08-08T16:20:39.596Z",
+  "capturedAt": "2026-08-11T01:38:59.472Z",
   "catalogFingerprint": "d40723ebc7c10cb7791af1ce8239787b0cae331a54a9d4eb7e3443426957dbdb",
   "nhanVat": [
     {
@@ -14,8 +14,7 @@
     }
   ],
   "counts": {
-    "A_RONG": 2,
-    "LIVE_LEAK": 2
+    "A_RONG": 2
   },
   "rows": [
     {
@@ -146,7 +145,7 @@
     },
     {
       "table_name": "ai_copilot_settings",
-      "visible_foreign": 1,
+      "visible_foreign": 0,
       "ground_truth_total": 1,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
@@ -155,16 +154,16 @@
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 1,
-          "ngoai": 1
+          "ngoai": 0
         }
       },
       "authenticated_can_select": true,
-      "group": "LIVE_LEAK",
-      "assigned_phase": "GĐ4"
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
     },
     {
       "table_name": "ai_providers",
-      "visible_foreign": 10,
+      "visible_foreign": 0,
       "ground_truth_total": 10,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
@@ -173,12 +172,12 @@
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 10,
-          "ngoai": 10
+          "ngoai": 0
         }
       },
       "authenticated_can_select": true,
-      "group": "LIVE_LEAK",
-      "assigned_phase": "GĐ4"
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
     },
     {
       "table_name": "ai_usage_logs",
@@ -777,10 +776,10 @@
     {
       "table_name": "contract_extensions",
       "visible_foreign": 0,
-      "ground_truth_total": 20,
+      "ground_truth_total": 42,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 20,
+          "tong": 42,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -831,10 +830,10 @@
     {
       "table_name": "contract_terminations",
       "visible_foreign": 0,
-      "ground_truth_total": 22,
+      "ground_truth_total": 23,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 22,
+          "tong": 23,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1299,10 +1298,10 @@
     {
       "table_name": "income_expense_audit_log",
       "visible_foreign": 0,
-      "ground_truth_total": 68,
+      "ground_truth_total": 69,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 68,
+          "tong": 69,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1353,10 +1352,10 @@
     {
       "table_name": "income_expense_items",
       "visible_foreign": 0,
-      "ground_truth_total": 1978,
+      "ground_truth_total": 2020,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 1978,
+          "tong": 2020,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1479,10 +1478,10 @@
     {
       "table_name": "income_expense_types",
       "visible_foreign": 0,
-      "ground_truth_total": 90,
+      "ground_truth_total": 91,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 90,
+          "tong": 91,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1497,10 +1496,10 @@
     {
       "table_name": "income_expenses",
       "visible_foreign": 0,
-      "ground_truth_total": 1899,
+      "ground_truth_total": 1941,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 1899,
+          "tong": 1941,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1551,10 +1550,10 @@
     {
       "table_name": "invoice_audit_log",
       "visible_foreign": 0,
-      "ground_truth_total": 17505,
+      "ground_truth_total": 17613,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 17505,
+          "tong": 17613,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1587,10 +1586,10 @@
     {
       "table_name": "invoice_items",
       "visible_foreign": 0,
-      "ground_truth_total": 3081,
+      "ground_truth_total": 3082,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 3081,
+          "tong": 3082,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1605,10 +1604,10 @@
     {
       "table_name": "invoice_payment_allocations",
       "visible_foreign": 0,
-      "ground_truth_total": 193,
+      "ground_truth_total": 216,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 193,
+          "tong": 216,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1623,10 +1622,10 @@
     {
       "table_name": "invoice_payment_collections",
       "visible_foreign": 0,
-      "ground_truth_total": 188,
+      "ground_truth_total": 211,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 188,
+          "tong": 211,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1641,10 +1640,10 @@
     {
       "table_name": "invoice_payment_tenders",
       "visible_foreign": 0,
-      "ground_truth_total": 188,
+      "ground_truth_total": 211,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 188,
+          "tong": 211,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1659,10 +1658,10 @@
     {
       "table_name": "invoices",
       "visible_foreign": 0,
-      "ground_truth_total": 819,
+      "ground_truth_total": 820,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 819,
+          "tong": 820,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1803,10 +1802,10 @@
     {
       "table_name": "jobs",
       "visible_foreign": 0,
-      "ground_truth_total": 164,
+      "ground_truth_total": 167,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 164,
+          "tong": 167,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -2001,10 +2000,10 @@
     {
       "table_name": "material_usage_items",
       "visible_foreign": 0,
-      "ground_truth_total": 56,
+      "ground_truth_total": 57,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 56,
+          "tong": 57,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -2019,10 +2018,10 @@
     {
       "table_name": "material_usages",
       "visible_foreign": 0,
-      "ground_truth_total": 48,
+      "ground_truth_total": 49,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 48,
+          "tong": 49,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -2703,10 +2702,10 @@
     {
       "table_name": "notifications",
       "visible_foreign": 0,
-      "ground_truth_total": 29,
+      "ground_truth_total": 31,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 29,
+          "tong": 31,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -4233,10 +4232,10 @@
     {
       "table_name": "payments",
       "visible_foreign": 0,
-      "ground_truth_total": 921,
+      "ground_truth_total": 945,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 921,
+          "tong": 945,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -4503,10 +4502,10 @@
     {
       "table_name": "public_room_events",
       "visible_foreign": 0,
-      "ground_truth_total": 11191,
+      "ground_truth_total": 11255,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 11191,
+          "tong": 11255,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
