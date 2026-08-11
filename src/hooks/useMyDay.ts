@@ -4,7 +4,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { batBuoc } from "@/lib/queryGuard";
 
-const rpc = supabase.rpc.bind(supabase) as (fn: string, args?: Record<string, unknown>) => any;
+// Bọc bằng ARROW chứ không `.bind()`: dưới `strict`, `.bind()` bắt trình biên dịch
+// duyệt hết ~640 overload của `supabase.rpc` và nó bỏ cuộc với TS2589
+// ("type instantiation is excessively deep"). Arrow wrapper cho cùng kết quả lúc
+// chạy mà không đụng chuỗi overload. Cùng cách chữa đã dùng ở
+// `src/lib/network-center/supabaseRepository.ts`.
+type GoiRpc = (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+const rpc: GoiRpc = (fn, args) => (supabase.rpc as unknown as GoiRpc)(fn, args);
 
 export interface MyDaySummary {
   today: { date: string; status: string; tick_source: string | null };

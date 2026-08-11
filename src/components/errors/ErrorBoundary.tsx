@@ -24,7 +24,7 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
+  public override state: State = {
     hasError: false,
     error: null,
     errorInfo: null,
@@ -43,7 +43,7 @@ class ErrorBoundary extends Component<Props, State> {
     };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Chunk lazy 404/poisoned sau deploy mới (Vite emit bare import() cho chunk
     // không có dep nên không qua vite:preloadError) → bust cache độc + reload lấy
     // bản mới. Truyền `error` để rút URL chunk hỏng mà bust đúng entry.
@@ -66,7 +66,7 @@ class ErrorBoundary extends Component<Props, State> {
     window.location.href = "/";
   };
 
-  public render() {
+  public override render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;

@@ -48,7 +48,16 @@ export type NetworkCenterRpcCall = (
   args?: Record<string, unknown>,
 ) => Promise<NetworkCenterRpcResult>;
 
-const boundSupabaseRpc = supabase.rpc.bind(supabase) as unknown as NetworkCenterRpcCall;
+/**
+ * Gọi qua một hàm bọc thay vì `supabase.rpc.bind(supabase)`.
+ *
+ * `.bind` buộc TypeScript khởi tạo lại TOÀN BỘ chồng overload của `rpc` (hơn 640
+ * tên hàm trong kiểu sinh từ DB) và dưới `strict` thì tsc bỏ cuộc với
+ * `TS2589: Type instantiation is excessively deep`. Bọc bằng arrow thì phép ép
+ * kiểu xảy ra MỘT lần trên `supabase.rpc`, không đi qua `bind`.
+ */
+const boundSupabaseRpc: NetworkCenterRpcCall = (name, args) =>
+  (supabase.rpc as unknown as NetworkCenterRpcCall)(name, args);
 
 const defaultRpc: NetworkCenterRpcCall = async (name, args) => {
   const result = await boundSupabaseRpc(name, args);

@@ -5,6 +5,11 @@ import {
 } from "@/lib/businessPerformance";
 
 const mocks = vi.hoisted(() => ({
+  // Cố ý KHÔNG khai kiểu tham số cho `vi.fn` ở đây. Đã thử
+  // `vi.fn<(name: string, params?: Record<string, unknown>) => unknown>()` và nó
+  // ĐỔI 2 lỗi thành 4: tham số hàm là contravariant, nên vừa chặn
+  // `mockImplementation` nhận hình dạng params cụ thể, vừa không khớp chỗ đọc.
+  // Mock RPC vốn nhận payload đủ hình dạng; chỗ ĐỌC mới là nơi biết mình mong gì.
   rpc: vi.fn(),
   useQuery: vi.fn((options: unknown) => options),
   authUser: { id: "user-a" } as { id: string } | null,
@@ -380,12 +385,14 @@ describe("business performance data hooks", () => {
     const rows = await options.queryFn();
 
     expect(mocks.rpc).toHaveBeenCalledTimes(2);
-    const batches = mocks.rpc.mock.calls.map(
-      ([functionName, params]: [string, { p_building_ids: string[] }]) => {
-        expect(functionName).toBe("business_performance_pnl_v1");
-        return params.p_building_ids;
-      },
-    );
+    // Ép kiểu ở CHỖ ĐỌC, không ở chữ ký mock: `mock.calls` là `any[][]`, mà
+    // `any[]` KHÔNG gán được vào tuple `[string, T]` (dài bao nhiêu không biết).
+    // Chỗ đọc mới là nơi biết mình mong hình dạng gì, nên xác nhận ở đây.
+    const batches = mocks.rpc.mock.calls.map((call) => {
+      const [functionName, params] = call as [string, { p_building_ids: string[] }];
+      expect(functionName).toBe("business_performance_pnl_v1");
+      return params.p_building_ids;
+    });
     expect(batches.map((batch) => batch.length)).toEqual([50, 35]);
     expect(batches.every((batch) => batch.length * 13 <= 650)).toBe(true);
     expect(batches.flat()).toEqual(buildingIds);
@@ -1912,11 +1919,11 @@ describe("business performance data hooks", () => {
       });
       expect(mocks.rpc).toHaveBeenCalledTimes(2);
       expect(
-        mocks.rpc.mock.calls.map(
-          ([functionName, params]: [
-            string,
-            { p_building_ids: string[]; p_start_date: string; p_end_date: string },
-          ]) => {
+        mocks.rpc.mock.calls.map((call) => {
+            const [functionName, params] = call as [
+              string,
+              { p_building_ids: string[]; p_start_date: string; p_end_date: string },
+            ];
             expect(functionName).toBe(
               "business_performance_occupancy_monthly_v1",
             );
@@ -1926,8 +1933,7 @@ describe("business performance data hooks", () => {
               p_end_date: "2026-07-01",
             });
             return params.p_building_ids.length;
-          },
-        ),
+        }),
       ).toEqual([50, 35]);
       expect(rows).toHaveLength(12);
       expect(rows[0]).toEqual({
