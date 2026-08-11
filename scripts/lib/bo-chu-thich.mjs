@@ -45,6 +45,31 @@ export function boChuThichJs(vanBan) {
     .join('\n');
 }
 
+/**
+ * Dành riêng cho JSX/TSX: bỏ `//` đầu dòng và khối `{/* … *​/}`, KHÔNG bỏ khối
+ * `/* … *​/` trần.
+ *
+ * VÌ SAO PHẢI CÓ BẢN RIÊNG — `boChuThichJs` xoá mất dữ liệu ở đây
+ *   File route chứa `path="/network-center/*"`. Chuỗi đó có `/*` bên trong, và bộ
+ *   bỏ khối trần coi nó là dấu MỞ comment rồi nuốt tới `*​/` gần nhất — thường nằm
+ *   ở một file khác sau khi nối. Đo 11/08/2026: sau khi bỏ comment, chính dòng
+ *   route đang cần tìm biến mất, và gate báo "không tìm thấy route".
+ *
+ *   Đây đúng là giới hạn mà header file này đã khai ("KHÔNG hiểu chuỗi ký tự"),
+ *   nhưng hậu quả ở đây không phải mất một dòng hiếm gặp — nó xoá đúng thứ đang
+ *   được tìm, và kết quả là một kết luận SAI chứ không phải thiếu.
+ *
+ *   `{/* … *​/}` thì an toàn: dạng đó chỉ xuất hiện như chú thích JSX, không nằm
+ *   trong chuỗi đường dẫn.
+ */
+export function boChuThichJsx(vanBan) {
+  return vanBan
+    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+    .split(/\r?\n/)
+    .filter((d) => !/^\s*(\/\/|\*)/.test(d))
+    .join('\n');
+}
+
 /** Bỏ `--` đầu dòng và mọi khối `/* … *​/` — dạng chú thích của SQL. */
 export function boChuThichSql(vanBan) {
   return vanBan

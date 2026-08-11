@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 49
+    "stillMissing": 47
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -171,18 +171,22 @@
       {
         "deliverable": "Acceptance Đợt 4: App.tsx chỉ còn trách nhiệm composition/routing",
         "planRef": "§48 dòng 2888",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Đưa QueryClient → providers/QueryProvider.tsx, RealtimeDataSync+NotificationsRealtime → providers/RealtimeProviders.tsx, public route → routes/public.tsx, DeferredCopilotLauncher → module riêng."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "So ghi CU: viec nay da xong tu truoc. Do lai 11/08: App.tsx con 71 dong (tung 373), chi dung AppProviders + BrowserRouter + AppRoutes + nut Copilot hoan. QueryClient da o src/app/providers/QueryProvider.tsx; RealtimeDataSync va NotificationsRealtime da o AppProviders.tsx. Khong con viec gi de lam."
       },
       {
         "deliverable": "Acceptance Đợt 4: route/nav/permission drift KHÔNG THỂ merge",
         "planRef": "§48 dòng 2890",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Bổ sung vào gate phép so quyền của route guard với capability.permission (hiện chỉ OpenClaw được so, qua openclawNavigation.test.ts)."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "scripts/check-route-permission-drift.mjs + 11 test + alias + noi ci-gates. Route guard la noi THU TU doc capability.permission va la noi duy nhat con khai tay; lech o day te hon ba noi kia vi trang MO DUOC bang cach go thang URL, khong trieu chung. Xu CA HAI kieu guard: RequirePermission doc thang, guard rieng (OpenClawRouteGuard) phai truy vao file cua no — khong truy duoc thi exit 3, khong phai xanh. Bon trang thai tach bach: truc-tiep / guard-rieng / khong-thay-guard (vi pham) / khong-thay-route (khong do duoc)."
       },
       {
         "deliverable": "CapabilityDefinition đủ trường theo interface plan (aliases, group, e2e, exemption, docs.userDoc, docs.visibility, surfaces.copilotNavigation, release.mode/allowed)",
@@ -735,6 +739,11 @@
       "ngay": "2026-08-11",
       "ten": "8 file test node:test bi giao cho vitest",
       "moTa": "Phat hien khi chay thu test cua graph: 8 file scripts/__tests__/*.test.mjs dung API node:test bi matrix xep vao suite VITEST va CI khong loai tru. Hau qua kep — buoc Vitest cua quality-gates DO (8 failed), VA khong lenh nao chay chung: 106 assertion ton tai ma chua tung duoc thi hanh. Chuyen sang node-native, them 8 --exclude + mot buoc node --test vao ci-gates. Chay lan dau lo ra 4 assertion do that (fixture danhGiaVercel thieu truong repo, cu so voi thay doi loc theo repo o lo 26) — sua fixture, them 2 ca ghim pham vi. Them phep kiem runner vao gate:test-matrix: file import node:test khong duoc giao cho vitest va nguoc lai; dot bien 2 chieu."
+    },
+    {
+      "ngay": "2026-08-11",
+      "ten": "boChuThichJs nuot mat du lieu tren file JSX co route glob",
+      "moTa": "Gate route moi bao \"khong tim thay route /network-center\" — sai. Nguyen nhan: chuoi path=\"/network-center/*\" chua /*, bo bo comment KHOI TRAN coi do la dau mo comment roi nuot toi */ gan nhat (thuong o file khac sau khi noi). Day dung la gioi han helper da tu khai (khong hieu chuoi ky tu), nhung hau qua khong phai mat mot dong hiem gap — no xoa dung thu dang tim va cho ra ket luan SAI. Them boChuThichJsx: bo {/* */} va // dau dong, KHONG bo /* */ tran. 3 test moi ghim, gom ca ca tai hien loi cu."
     }
   ]
 }

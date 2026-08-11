@@ -125,6 +125,7 @@ jobs:
           node scripts/check-runtime-matrix.mjs
           node scripts/check-known-gaps.mjs
           node scripts/check-capability-surfaces.mjs
+          node scripts/check-route-permission-drift.mjs
           node scripts/check-route-guards.mjs
           node scripts/check-test-matrix.mjs
           node scripts/check-workflow-paths.mjs

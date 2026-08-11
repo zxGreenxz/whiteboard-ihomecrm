@@ -95,6 +95,7 @@
     "gate:new-modules-strict": "node scripts/check-new-modules-strict.mjs",
     "gate:strict-islands": "node scripts/check-strict-islands.mjs",
     "gate:capability-surfaces": "node scripts/check-capability-surfaces.mjs",
+    "gate:route-permission-drift": "node scripts/check-route-permission-drift.mjs",
     "surface:rpc": "node scripts/generate-rpc-surface.mjs",
     "surface:edge": "node scripts/generate-edge-surface.mjs",
     "surface:realtime": "node scripts/generate-realtime-surface.mjs",
