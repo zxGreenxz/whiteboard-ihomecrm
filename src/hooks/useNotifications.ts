@@ -382,7 +382,7 @@ export function useNotificationsRealtime() {
  * Bọc hook trên thành component rỗng để mount cạnh `<RealtimeDataSync />` trong
  * `src/App.tsx` (cùng khuôn với hub). Đặt TRONG QueryClientProvider.
  */
-export function NotificationsRealtime() {
+export function NotificationsRealtime(): null {
   useNotificationsRealtime();
   return null;
 }

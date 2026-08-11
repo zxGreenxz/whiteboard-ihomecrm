@@ -7,6 +7,7 @@ import {
   computeFirstBillingMonth,
   normalizeFirstBillingPeriod,
   validateFirstBillingPeriod,
+  type FirstInvoiceBuilderInput,
 } from '../firstInvoiceBuilder';
 
 // Quy tắc: billing_month = THÁNG DƯƠNG LỊCH phủ TRỌN muộn nhất trong [from,to];
@@ -153,7 +154,7 @@ describe('first invoice amount builder', () => {
   });
 
   it('caps discount at revenue and never consumes the deposit amount', () => {
-    const input = {
+    const input: FirstInvoiceBuilderInput = {
       rent_price: 1_000_000,
       total_deposit: 4_000_000,
       deposit_paid: 0,

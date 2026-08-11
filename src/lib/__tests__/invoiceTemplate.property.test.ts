@@ -205,7 +205,7 @@ describe('Feature: invoice-reimplementation, Property 17: Template engine render
   it('empty FEES array should produce empty output for the loop block', () => {
     fc.assert(
       fc.property(templateDataArb, (data) => {
-        const dataWithNoFees = { ...data, FEES: [] };
+        const dataWithNoFees: InvoiceTemplateData = { ...data, FEES: [] };
         const template = 'Before{#FEES}<row>{name}</row>{/FEES}After';
         const result = renderInvoiceTemplate(template, dataWithNoFees);
 

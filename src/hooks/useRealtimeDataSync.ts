@@ -215,7 +215,7 @@ export function useRealtimeDataSync() {
 }
 
 /** Component tiện mount trong App — hook cần nằm dưới QueryClientProvider. */
-export function RealtimeDataSync() {
+export function RealtimeDataSync(): null {
   useRealtimeDataSync();
   return null;
 }

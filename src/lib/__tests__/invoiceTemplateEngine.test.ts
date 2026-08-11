@@ -155,7 +155,7 @@ describe('renderInvoiceTemplate', () => {
 
   it('renders empty FEES loop as empty string', () => {
     const template = '<table>{#FEES}<tr>{name}</tr>{/FEES}</table>';
-    const data = { ...baseData, FEES: [] };
+    const data: InvoiceTemplateData = { ...baseData, FEES: [] };
     const result = renderInvoiceTemplate(template, data);
     expect(result).toBe('<table></table>');
   });

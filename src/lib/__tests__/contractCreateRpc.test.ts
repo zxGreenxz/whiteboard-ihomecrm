@@ -8,6 +8,7 @@ import {
   prepareContractCreateRequest,
   type ContractCreatePayload,
   type ContractCreateRpcInvoker,
+  type CreateContractV2Response,
 } from "../contractCreateRpc";
 
 const KEY = "contract-create-00000001";
@@ -305,7 +306,10 @@ describe("create_contract_v2 existing deposit lifecycle", () => {
 
 describe("createContractV2", () => {
   it("uses exactly one canonical RPC and returns its response", async () => {
-    const response = {
+    const response: Pick<
+      CreateContractV2Response,
+      "invoice" | "deposit_paid" | "deposit_shortfall"
+    > & { contract: Pick<CreateContractV2Response["contract"], "id"> } = {
       contract: { id: "66666666-6666-4666-8666-666666666666" },
       invoice: null,
       deposit_paid: 1_000_000,

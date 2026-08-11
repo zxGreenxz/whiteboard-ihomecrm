@@ -16,6 +16,7 @@ import {
   buildInvoiceItems,
   buildInvoiceFormData,
   type ExcelRowData,
+  type RawContract,
   type SubmitContext,
 } from "@/lib/excelInvoiceRows";
 import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
@@ -197,7 +198,7 @@ describe("buildPreviousDebtByContract — nợ cũ + carry-over", () => {
 });
 
 describe("buildExcelRows — ghép contract-room-meter + promo/credit/nợ", () => {
-  const contract = {
+  const contract: RawContract = {
     id: "c1", rent_price: 3000000, room_id: "r1",
     discounts: { months: 2, amount_per_month: 200000 },
     room: { id: "r1", name: "101", building_id: "b1" },

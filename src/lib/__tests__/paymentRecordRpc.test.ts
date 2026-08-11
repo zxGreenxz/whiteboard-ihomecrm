@@ -7,6 +7,7 @@ import {
   recordInvoiceCollectionV5,
   reverseInvoicePaymentBySource,
   type CollectionRpcInvoker,
+  type InvoiceCollectionTenderInput,
   type RecordInvoiceCollectionInput,
   type ReversePaymentRpcInvoker,
 } from "../paymentRecordRpc";
@@ -166,7 +167,7 @@ describe("collection planning", () => {
     const plan = planInvoiceCollection({
       ...COLLECTION_INPUT,
       overpay_action: "CREDIT",
-      tenders: COLLECTION_INPUT.tenders.map((tender) => ({
+      tenders: COLLECTION_INPUT.tenders.map((tender): InvoiceCollectionTenderInput => ({
         ...tender,
         change_account_id: null,
       })),

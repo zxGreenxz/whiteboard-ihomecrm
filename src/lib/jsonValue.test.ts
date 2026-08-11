@@ -41,7 +41,8 @@ describe("jsonProp", () => {
   });
 
   it("trả undefined thay vì ném khi value không phải object", () => {
-    for (const v of [null, undefined, 42, "x", true, []]) {
+    const nonObjects: unknown[] = [null, undefined, 42, "x", true, []];
+    for (const v of nonObjects) {
       expect(jsonProp(v, "bất_kỳ")).toBeUndefined();
     }
   });

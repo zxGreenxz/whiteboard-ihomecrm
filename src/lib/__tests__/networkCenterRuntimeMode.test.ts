@@ -12,6 +12,7 @@ import { StaticRouter } from "react-router-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { PermissionsMap } from "@/hooks/useMyPermissions";
+import type { BusinessPerformanceOrganization } from "@/lib/businessPerformance";
 
 vi.mock("@/lib/network-center/runtime", async (importOriginal) => {
   const actual = await importOriginal<
@@ -35,14 +36,18 @@ vi.mock("@/hooks/useMyPermissions", () => ({
   }),
 }));
 
-vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
-  useBusinessPerformanceOrganizations: () => ({
-    data: [],
-    isSuccess: true,
-    isLoading: false,
-    isError: false,
-  }),
-}));
+vi.mock("@/hooks/reports/useBusinessPerformance", () => {
+  const organizations: BusinessPerformanceOrganization[] = [];
+
+  return {
+    useBusinessPerformanceOrganizations: () => ({
+      data: organizations,
+      isSuccess: true,
+      isLoading: false,
+      isError: false,
+    }),
+  };
+});
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ data: { id: "user-a", email: "user@example.com" } }),
