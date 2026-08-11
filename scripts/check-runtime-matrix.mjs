@@ -131,6 +131,25 @@ function main() {
     }
   }
 
+  // ── Chiều 3c: workflow không được dùng major Node trôi nổi ──
+  //
+  // `node-version: '20'` cho ra runtime khác nhau tuỳ ngày chạy mà không commit
+  // nào ghi lại. Hệ quả thực tế: một lỗi chỉ xuất hiện ở patch mới trông như
+  // "CI tự dưng đỏ" và người ta đi tìm ở chỗ vừa sửa — sai chỗ hoàn toàn.
+  //
+  // Đây KHÔNG phải luật thống nhất version: mỗi workflow giữ major của nó
+  // (network-center cố ý ở 22 vì worker khai '>=20 <23'). Chỉ đòi con số exact.
+  for (const wf of matrix.workflows) {
+    if (wf.node === null) continue;
+    if (!/^\d+\.\d+\.\d+$/.test(String(wf.node))) {
+      problems.push(
+        `${wf.path}: node "${wf.node}" là major/minor trôi nổi, phải pin exact X.Y.Z.\n` +
+        '      → giữ NGUYÊN major (đừng "thống nhất" version — các ràng buộc engines là rời nhau),\n' +
+        '        chỉ ghi rõ patch mà nó đang phân giải ra hôm nay.',
+      );
+    }
+  }
+
   // ── Chiều 3b: mọi entry workflow trong matrix phải khớp file thật ──
   for (const wf of matrix.workflows) {
     let actual;

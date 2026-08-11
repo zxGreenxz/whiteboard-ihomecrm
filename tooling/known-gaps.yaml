@@ -43,6 +43,24 @@ gaps:
       Dựng fixture inventory đúng định dạng hiện hành cho 20 ca, rồi bỏ `|| { echo ... }` để
       bước này gating thật.
 
+  - id: supabase-migrate-node-20-eol
+    where: .github/workflows/supabase-migrate.yml (bước setup-node)
+    expires_at: 2026-11-30
+    why: >
+      Node 20 (Iron) ra bản cuối v20.20.2 ngày 24/03/2026 rồi hết vòng đời — sẽ không còn
+      bản vá bảo mật nào. Workflow này đã pin exact 20.20.2 (11/08/2026) nên nó KHÔNG còn
+      trôi nổi nữa, nhưng "đứng yên trên một runtime không ai vá" là một khoảng trống khác,
+      và nó không tự nhắc.
+      Chưa nâng major ngay vì đây là thay đổi runtime thật, còn workflow này chỉ chạy ba
+      script validator tĩnh — đổi major phải là một quyết định có đo, không phải tiện tay.
+      Án lệ 05/08/2026: một lần "thống nhất version cho gọn" đã phá các ràng buộc engines
+      rời nhau và phải revert toàn bộ.
+    exit_condition: >
+      Chạy ba script (validate-accounting-migrations, check-no-auto-apply,
+      check-migration-provenance) trên Node 22 exact, xanh, rồi đổi pin + cập nhật
+      tooling/runtime-matrix.json. Hoặc gộp job này vào ci-gates (Node 24.18.0) nếu không
+      còn lý do tách riêng.
+
   - id: deployment-assets-windows-only
     where: >
       infra/network-center-worker/test/deploymentAssets.test.ts và
