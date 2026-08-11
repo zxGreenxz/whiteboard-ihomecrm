@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   kiemChotChongAoGiac,
   phanLoaiBangKhongCotOrg,
+  phanLoaiDongNull,
   xepNhomTheoSoDo,
   MA_THOAT_CHOT_HONG,
 } from "../measure-org-leak.mjs";
@@ -228,5 +229,54 @@ describe("phanLoaiBangKhongCotOrg — ba lối rẽ, chỉ hai lối là ổn", 
   it("danh sách rỗng hay thiếu không làm nổ", () => {
     expect(phanLoaiBangKhongCotOrg([]).tong).toBe(0);
     expect(phanLoaiBangKhongCotOrg(undefined).tong).toBe(0);
+  });
+});
+
+// ─── Điểm mù thứ hai: dòng organization_id NULL ─────────────────────────────
+//
+// Công thức biên giới có nhánh `organization_id IS NULL` ⇒ dòng NULL AI CŨNG
+// THẤY. Nhưng bộ đo định nghĩa "dòng của tổ chức khác" là
+// `IS NOT NULL AND <> org mình`, nên dòng NULL bị loại khỏi phép đếm THEO ĐÚNG
+// ĐỊNH NGHĨA — lộ cho tất cả mà chưa từng bị tính là rò. Đo lần đầu 09/08/2026:
+// 3.621 dòng trên 15 bảng, trong đó 345 dòng nhật ký kiểm toán hoá đơn.
+//
+// Luật KHÔNG phải "cấm NULL" — với dữ liệu toàn hệ thì NULL là nhãn đúng. Luật
+// là "NULL phải được KHAI".
+describe("phanLoaiDongNull — NULL phải được khai, không phải bị cấm", () => {
+  it("bảng đã khai thì không làm đỏ", () => {
+    const r = phanLoaiDongNull([{ bang: "ai_providers", so_dong_null: 10, da_khai: true }]);
+    expect(r.chuaKhai).toHaveLength(0);
+    expect(r.daKhai.map((b) => b.bang)).toEqual(["ai_providers"]);
+    expect(r.tongChuaKhai).toBe(0);
+  });
+
+  it("bảng CHƯA khai mà có dòng NULL thì phải đỏ", () => {
+    const r = phanLoaiDongNull([{ bang: "invoice_audit_log", so_dong_null: 345, da_khai: false }]);
+    expect(r.chuaKhai.map((b) => b.bang)).toEqual(["invoice_audit_log"]);
+    expect(r.tongChuaKhai).toBe(345);
+  });
+
+  it("0 dòng NULL thì không tính, dù đã khai hay chưa", () => {
+    const r = phanLoaiDongNull([
+      { bang: "a", so_dong_null: 0, da_khai: false },
+      { bang: "b", so_dong_null: 0, da_khai: true },
+    ]);
+    expect(r.chuaKhai).toHaveLength(0);
+    expect(r.daKhai).toHaveLength(0);
+  });
+
+  it("cộng đúng tổng qua nhiều bảng chưa khai", () => {
+    const r = phanLoaiDongNull([
+      { bang: "x", so_dong_null: 3084, da_khai: false },
+      { bang: "y", so_dong_null: 345, da_khai: false },
+      { bang: "z", so_dong_null: 81, da_khai: true },
+    ]);
+    expect(r.tongChuaKhai).toBe(3429);
+    expect(r.daKhai).toHaveLength(1);
+  });
+
+  it("danh sách rỗng hay thiếu không làm nổ", () => {
+    expect(phanLoaiDongNull([]).tongChuaKhai).toBe(0);
+    expect(phanLoaiDongNull(undefined).tongChuaKhai).toBe(0);
   });
 });

@@ -253,6 +253,73 @@ ROLLBACK;`;
 }
 
 /**
+ * Phân loại dòng có organization_id IS NULL.
+ *
+ * ĐIỂM MÙ THỨ HAI, cùng họ với điểm mù thứ nhất nhưng khó thấy hơn. Công thức
+ * biên giới đang chạy trên 302 bảng là:
+ *     organization_id IS NULL OR is_super_admin() OR organization_id IN my_org_ids()
+ * Nhánh đầu nghĩa là dòng NULL thì AI CŨNG THẤY.
+ *
+ * Còn bộ đo này định nghĩa "dòng của tổ chức khác" là
+ *     organization_id IS NOT NULL AND organization_id <> org-của-mình
+ * nên dòng NULL bị loại khỏi phép đếm THEO ĐÚNG ĐỊNH NGHĨA — chúng lộ cho tất
+ * cả mà chưa từng bị tính là rò lần nào. Đo 09/08/2026 lần đầu: 3.621 dòng trên
+ * 15 bảng, trong đó 345 dòng nhật ký kiểm toán hoá đơn.
+ *
+ * NULL không phải lúc nào cũng sai: với dữ liệu TOÀN HỆ (danh mục nhà cung cấp
+ * LLM, cấu hình singleton, nhật ký cron) thì NULL là nhãn ĐÚNG. Nên luật không
+ * phải "cấm NULL" mà là "NULL phải được KHAI": bảng nào có dòng NULL mà không có
+ * dòng trong app_private.org_null_is_global thì đỏ.
+ */
+export function phanLoaiDongNull(rows) {
+  const chuaKhai = [];
+  const daKhai = [];
+  for (const r of rows ?? []) {
+    const n = Number(r?.so_dong_null ?? 0);
+    if (!(n > 0)) continue;
+    (r?.da_khai ? daKhai : chuaKhai).push({ bang: r.bang, so_dong_null: n });
+  }
+  return {
+    chuaKhai,
+    daKhai,
+    tongChuaKhai: chuaKhai.reduce((t, b) => t + b.so_dong_null, 0),
+  };
+}
+
+/**
+ * Đếm dòng NULL bằng quyền quản trị, KHÔNG giả lập vai.
+ *
+ * Cố ý khác mọi phép đo khác trong file này. Dòng NULL lộ cho mọi tổ chức theo
+ * ĐỊNH NGHĨA của công thức biên giới, nên không cần hỏi "vai X có thấy không" —
+ * câu trả lời luôn là có. Thứ cần biết là sự thật nền: có bao nhiêu dòng như vậy
+ * và ở bảng nào.
+ */
+const SQL_DEM_DONG_NULL = `
+DO $$
+DECLARE r record; v bigint;
+BEGIN
+  CREATE TEMP TABLE _null_org(bang text, so_dong_null bigint, da_khai boolean) ON COMMIT DROP;
+  FOR r IN
+    SELECT c.relname
+      FROM pg_class c
+      JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'organization_id'
+                         AND a.attnum > 0 AND NOT a.attisdropped AND NOT a.attnotnull
+     WHERE c.relnamespace = 'public'::regnamespace
+       AND c.relkind IN ('r','p') AND NOT c.relispartition
+     ORDER BY c.relname
+  LOOP
+    EXECUTE format('SELECT count(*) FROM public.%I WHERE organization_id IS NULL', r.relname) INTO v;
+    IF v > 0 THEN
+      INSERT INTO _null_org
+      SELECT r.relname, v,
+             EXISTS (SELECT 1 FROM app_private.org_null_is_global g WHERE g.table_name = r.relname);
+    END IF;
+  END LOOP;
+END $$;
+SELECT coalesce(json_agg(json_build_object('bang', bang, 'so_dong_null', so_dong_null, 'da_khai', da_khai)
+                         ORDER BY so_dong_null DESC), '[]'::json) AS bang FROM _null_org;`;
+
+/**
  * Phân loại kết quả quét bảng không có cột organization_id.
  *
  * Tách thành hàm thuần để test được cả ba lối rẽ mà không chạm production —
@@ -425,6 +492,23 @@ async function main(argv) {
     console.error('\n❌ Tổ chức VỪA SINH RA đọc được dòng ở bảng không có cột organization_id.');
     console.error('   Bảng không có cột org thì không có gì để lọc — mọi dòng nó thấy đều là của người khác:');
     for (const b of kq0.ro) console.error(`   ✗ ${b.bang} — ${b.tong} dòng`);
+    return 1;
+  }
+
+  // ─── Điểm mù thứ hai: dòng organization_id NULL lộ cho MỌI tổ chức ────────
+  const nullRows = (await runSql(SQL_DEM_DONG_NULL, { pat, ref })).at(-1)?.bang ?? [];
+  const kqNull = phanLoaiDongNull(nullRows);
+  console.log(
+    `✔ dòng organization_id NULL: ${kqNull.daKhai.length} bảng đã khai là toàn hệ`
+    + `${kqNull.daKhai.length ? ' (' + kqNull.daKhai.map((b) => `${b.bang}:${b.so_dong_null}`).join(', ') + ')' : ''}`
+    + `, ${kqNull.chuaKhai.length} bảng CHƯA khai`,
+  );
+  if (kqNull.chuaKhai.length > 0) {
+    console.error(`\n❌ ${kqNull.tongChuaKhai} dòng organization_id NULL ở bảng CHƯA KHAI.`);
+    console.error('   Công thức biên giới có nhánh `organization_id IS NULL` — những dòng này');
+    console.error('   hiển thị cho MỌI tổ chức. Hoặc điền nhãn đúng cho chúng, hoặc khai vào');
+    console.error('   app_private.org_null_is_global nếu đó thật sự là dữ liệu toàn hệ:');
+    for (const b of kqNull.chuaKhai) console.error(`   ✗ ${b.bang} — ${b.so_dong_null} dòng`);
     return 1;
   }
 
