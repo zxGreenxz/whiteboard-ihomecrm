@@ -53,6 +53,44 @@ function dauTrang(nguon) {
   ].join("\n");
 }
 
+/**
+ * Bản người-đọc của docs/generated/repository-inventory.json.
+ *
+ * Con số quan trọng nhất ở đây là `khongPhanLoaiDuoc`, và nó phải nằm NGAY đầu
+ * chứ không nằm cuối bảng: bộ kiểm kê không dùng AST nên có phần nó mù, và một
+ * bản .md chỉ khoe những gì đếm được sẽ đọc thành "đã phủ hết".
+ */
+export function dungRepositoryInventory(m) {
+  const loai = Object.entries(m.theoLoai ?? {}).sort((a, b) => b[1].soFile - a[1].soFile);
+  return [
+    dauTrang(["docs/generated/repository-inventory.json"]),
+    "# Kiểm kê: test nào đọc MÃ NGUỒN thay vì import nó",
+    "",
+    "Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó không kiểm hành vi —",
+    "nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành",
+    "vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.",
+    "",
+    `- **${m.tongSoFileTest}** file test, **${m.soFileDocBangFs}** file đọc file bằng fs (${m.tongLoiGoi} lời gọi)`,
+    `- **${m.khongPhanLoaiDuoc}** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.`,
+    "  Đây là giới hạn của phép đo, không phải \"không có gì\". Bộ kiểm kê không dùng AST",
+    "  (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.",
+    "",
+    "## Theo loại file được đọc",
+    "",
+    bang(
+      ["Loại", "Số file", "Vì sao đáng/không đáng lo"],
+      loai.map(([ten, v]) => [ten, v.soFile, v.moTa]),
+    ),
+    "",
+    `## ${(m.testDocMaNguon ?? []).length} file đọc MÃ NGUỒN`,
+    "",
+    "Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.",
+    "",
+    ...(m.testDocMaNguon ?? []).map((f) => `- \`${f}\``),
+    "",
+  ].join("\n");
+}
+
 export function dungRpcSurface(m) {
   const rpcs = Object.entries(m.rpcs);
   const theoRuiRo = {};
@@ -210,6 +248,7 @@ function main() {
 
   const ra = {
     "rpc-surface.md": dungRpcSurface(doc(canCo[0])),
+    "repository-inventory.md": dungRepositoryInventory(doc("docs/generated/repository-inventory.json")),
     "capability-matrix.md": dungCapabilityMatrix(
       readFileSync(join(repoRoot, "src/app/capabilities/registry.ts"), "utf8"),
       doc(canCo[1]),

@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 41
+    "stillMissing": 40
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -449,10 +449,12 @@
       {
         "deliverable": "Đợt 6 — hoàn thiện current docs + runtime/test/deployment/security/data-environment docs + generated inventories",
         "planRef": "mục 50, dòng 2935",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Viết docs/engineering/MIGRATION_STRATEGY.md và DATA_ENVIRONMENTS.md (2 file còn lại trong bộ 3 mà §0.6 giữ). Bổ sung generated inventory dạng .md cho repository-map / rpc-surface / capability-matrix."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "So ghi CU o hai phan ba: docs/engineering/MIGRATION_STRATEGY.md va DATA_ENVIRONMENTS.md DA TON TAI (cung PROJECT_CONTRACT.md la du bo 3 ma §0.6 giu). Phan that su thieu la generated inventory dang .md cho repository-map: JSON co tu lo 31 nhung khong co ban nguoi doc. Them dungRepositoryInventory vao generate-docs-views (sinh tu chinh JSON nen khong the lech), va dat con so khongPhanLoaiDuoc NGAY DAU chu khong cuoi bang — mot ban .md chi khoe nhung gi dem duoc se doc thanh \"da phu het\". Sinh lai JSON (cu tu lo 31: 464 file test, nay 479). Them con so vao gate:doc-counts (17 -> 18): ban .md sinh tu JSON nen ve ly khong lech, nhung ca hai CUNG CU la kieu lech ma phep so .md<->JSON khong thay. Dot bien: doi so -> exit 1."
       },
       {
         "deliverable": "Frontmatter chuẩn cho current docs (status/reviewed/last_verified_commit/source_paths/copilot_ingest/risk)",

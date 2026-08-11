@@ -1,29 +1,29 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 464,
-  "soFileDocBangFs": 149,
-  "tongLoiGoi": 396,
-  "khongPhanLoaiDuoc": 221,
+  "tongSoFileTest": 479,
+  "soFileDocBangFs": 158,
+  "tongLoiGoi": 415,
+  "khongPhanLoaiDuoc": 228,
   "theoLoai": {
     "tai-lieu": {
       "soFile": 8,
       "moTa": "Đọc tài liệu/asset."
     },
     "manifest": {
-      "soFile": 23,
+      "soFile": 28,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "powershell": {
-      "soFile": 2,
+      "soFile": 3,
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 32,
+      "soFile": 34,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 38,
+      "soFile": 39,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -33,6 +33,7 @@
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
     "scripts/__tests__/deploy-openclaw-edge-bundle.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
+    "scripts/__tests__/generate-repository-inventory.test.mjs",
     "scripts/__tests__/network-center-worker-release-readback.test.mjs",
     "scripts/__tests__/network-center-worker-scope-verifier.test.mjs",
     "scripts/__tests__/openclaw-host-isolation.test.mjs",
@@ -49,6 +50,7 @@
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
     "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",
+    "src/hooks/__tests__/realtimeTenantBoundary.test.ts",
     "src/hooks/__tests__/useManagerSalaryOrganizationScope.test.ts",
     "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
     "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
@@ -130,6 +132,17 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 3
+    },
+    {
+      "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
+      "soGoi": 10,
+      "loai": {
+        "ma-nguon": 3,
+        "powershell": 1,
+        "manifest": 1,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/prepare-overlay.test.ts",
@@ -403,6 +416,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/check-raw-rpc-callers.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -626,6 +647,28 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/check-workflow-paths.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/evidence-store.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/external-controls-drift.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/network-center-admin-control-plane.test.mjs",
       "soGoi": 1,
       "loai": {},
@@ -678,10 +721,24 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/provenance-bien-nhan.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "services/openclaw-zalo-bridge/test/upstream-contract.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/app/capabilities/__tests__/riskMapCoverage.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
@@ -726,6 +783,20 @@
       "soGoi": 1,
       "loai": {
         "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/hooks/__tests__/realtimeOrchestratorThin.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/hooks/__tests__/realtimeTenantBoundary.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
     },

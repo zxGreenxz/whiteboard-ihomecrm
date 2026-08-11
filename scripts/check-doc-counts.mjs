@@ -59,10 +59,10 @@ const demSql = (dir) => {
  * tạm và file chưa add: đếm chúng sẽ ra một con số không ai khác tái lập được, mà
  * tái lập được mới là điểm của cả gate này.
  */
-const demTracked = (re) =>
+const demTracked = (re, boQua = []) =>
   execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" })
     .split("\n")
-    .filter((p) => p && re.test(p)).length;
+    .filter((p) => p && re.test(p) && !boQua.some((x) => x.test(p))).length;
 
 /**
  * Nhóm migration TRÙNG SỐ VERSION, đếm từ TÊN FILE trên đĩa.
@@ -188,6 +188,21 @@ export const CLAIMS = [
     re: /( nhóm trùng version \()(\d{1,3})( file\))/,
     dem: () => demTrungVersion().soFile,
     moTa: "số file dính version trùng ở Contract §5",
+  },
+
+  // ── docs/generated/repository-inventory.md ────────────────────────────────
+  //
+  // Bản .md này SINH RA từ JSON nên về lý thì không lệch được. Nhưng `--check`
+  // của generate-docs-views chỉ chạy khi ai đó nhớ chạy nó, còn gate này chạy mọi
+  // lúc — và con số "file test" là thứ trôi mỗi khi thêm một file test. Canh ở
+  // đây bắt được trường hợp bản .md đã cũ so với repo, kể cả khi nó vẫn khớp JSON
+  // (tức cả JSON lẫn .md cùng cũ — kiểu lệch mà phép so .md↔JSON không thấy).
+  {
+    file: "docs/generated/repository-inventory.md",
+    // "- **479** file test, **150** file đọc file bằng fs"
+    re: /(\*\*)(\d{3,4})(\*\* file test)/,
+    dem: () => demTracked(/\.(test|spec)\.(ts|tsx|mjs|js|cjs)$/, [/node_modules/, /zalouser-bridge[\\/]upstream[\\/]/]),
+    moTa: "số file test trong bản kiểm kê repo",
   },
 
   // ── migration-policy.json ────────────────────────────────────────────────
