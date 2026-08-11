@@ -1389,6 +1389,7 @@
         }
       ],
       "callers": [
+        "src/copilot/tools/registry.ts",
         "src/hooks/useFinancialAnalysis.ts"
       ],
       "risk": "normal"
@@ -1409,6 +1410,7 @@
         }
       ],
       "callers": [
+        "src/copilot/tools/registry.ts",
         "src/hooks/useFinancialAnalysis.ts",
         "src/hooks/useProfitVerification.ts",
         "src/hooks/useShareholderProfit.ts"

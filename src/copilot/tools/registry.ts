@@ -300,12 +300,17 @@ export function buildRegistry(): DomainTool[] {
         const [y, m] = args.thang.split('-').map(Number);
         const start = `${args.thang}-01`;
         const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); // ngày cuối tháng
-        const fn = args.accrual ? 'fa_monthly_pnl_accrual' : 'fa_monthly_pnl';
-        const { data, error } = await supabase.rpc(fn, {
-          p_start_date: start,
-          p_end_date: end,
-          p_building_ids: null,
-        });
+        // Hai lời gọi tên VIẾT THẲNG thay cho một biến `fn`: ba gate canh biên
+        // RPC tìm tên bằng chuỗi viết thẳng, nên gói tên vào biến là giấu lời
+        // gọi khỏi cả ba (xem `scripts/check-rpc-name-literal.mjs`).
+        //
+        // `p_building_ids` bỏ hẳn khoá: chữ ký live ghi `DEFAULT NULL::uuid[]`
+        // nên vắng mặt cho ra đúng NULL như cũ, và khớp kiểu `?: string[]` mà bộ
+        // sinh Supabase viết cho tham số có DEFAULT.
+        const thamSo = { p_start_date: start, p_end_date: end };
+        const { data, error } = args.accrual
+          ? await supabase.rpc('fa_monthly_pnl_accrual', thamSo)
+          : await supabase.rpc('fa_monthly_pnl', thamSo);
         if (error) throw new Error(`Lỗi tải P&L: ${error.message}`);
         const rows = (data ?? []) as any[];
         if (!rows.length) return `Không có dữ liệu KQKD tháng ${args.thang}.`;

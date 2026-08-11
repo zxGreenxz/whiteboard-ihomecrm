@@ -1,7 +1,6 @@
 {
   "$comment": "Vân tay <file>::<biểu thức> của những lời gọi .rpc() có tên KHÔNG viết thẳng — tức vô hình với ba gate RPC. Khoá theo TẬP, không theo số đếm: đếm số thì gỡ một chỗ mù và thêm một chỗ mù khác sẽ hoà, trong khi vùng không được canh đã dịch đi. Xem đầu scripts/check-rpc-name-literal.mjs.",
   "choMu": [
-    "src/copilot/tools/registry.ts::fn",
     "src/hooks/openclaw-zalo/openClawRpc.ts::name",
     "src/hooks/openclaw-zalo/openClawRpc.ts::name",
     "src/hooks/useBulkRecordPayment.ts::fn",
