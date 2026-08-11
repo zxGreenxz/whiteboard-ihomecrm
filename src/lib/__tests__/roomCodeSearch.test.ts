@@ -98,7 +98,7 @@ describe("resolveSearch", () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 1000, max: 1_000_000_000 }),
-        fc.oneof(fc.constant(undefined), fc.constant<string[]>([]), fc.constant(["x"])),
+        fc.oneof(fc.constant(undefined), fc.constant<string[]>([]), fc.constant<string[]>(["x"])),
         (n, lookup) => {
           const r = resolveSearch(String(n), lookup);
           expect(r.mode).toBe("amount");

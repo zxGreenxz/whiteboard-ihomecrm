@@ -67,7 +67,10 @@ function InspSessionCard({ s }: { s: InspectionSessionRow }) {
   const [open, setOpen] = useState(false);
   const photos = useV5SessionPhotos(s.id, open);
   const stat = STATUS_META[s.status] ?? { label: s.status, cls: "bg-slate-100 text-slate-600" };
-  const hasFails = Array.isArray(s.fail_reasons) && s.fail_reasons.length > 0;
+  // Buộc vào const: `Array.isArray(s.fail_reasons)` thu hẹp được ngay tại chỗ, nhưng
+  // kết quả cất vào biến boolean thì TS không mang thu hẹp đó xuống chỗ gọi .join().
+  const failReasons = Array.isArray(s.fail_reasons) ? s.fail_reasons : [];
+  const hasFails = failReasons.length > 0;
   return (
     <div className="rounded-xl border p-3">
       <button className="flex w-full items-start justify-between gap-2 text-left" onClick={() => setOpen((o) => !o)}>
@@ -94,7 +97,7 @@ function InspSessionCard({ s }: { s: InspectionSessionRow }) {
               <span className="text-muted-foreground">Ghi chú:</span> {s.condition_note}
             </div>
           )}
-          {hasFails && <div className="mt-1 text-xs text-red-600">Lỗi: {s.fail_reasons.join(", ")}</div>}
+          {hasFails && <div className="mt-1 text-xs text-red-600">Lỗi: {failReasons.join(", ")}</div>}
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">{open ? "▲" : "▼"}</span>
       </button>
@@ -113,7 +116,7 @@ function InspSessionCard({ s }: { s: InspectionSessionRow }) {
           )}
           <div className="mt-2 text-[11px] text-muted-foreground">
             Tình trạng ghi nhận: {s.condition_note || "—"}
-            {hasFails ? ` · Lỗi: ${s.fail_reasons.join(", ")}` : ""}
+            {hasFails ? ` · Lỗi: ${failReasons.join(", ")}` : ""}
           </div>
         </div>
       )}

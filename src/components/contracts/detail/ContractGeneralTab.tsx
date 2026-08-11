@@ -49,7 +49,10 @@ const getStatusBadge = (status: string) => {
   );
 };
 
-const getPaymentCycleLabel = (cycle: string) => {
+// `contract.payment_cycle` là nullable trong DB (HĐ nháp có thể chưa chọn chu kỳ),
+// nên tham số phải nhận cả null thay vì ép người gọi bẻ dữ liệu.
+const getPaymentCycleLabel = (cycle: string | null) => {
+  if (!cycle) return 'N/A';
   const labels: Record<string, string> = {
     MONTHLY: 'Hàng tháng',
     QUARTERLY: 'Hàng quý',
@@ -60,10 +63,11 @@ const getPaymentCycleLabel = (cycle: string) => {
 };
 
 const getLocationDisplay = (contract: ContractWithRelations) => {
-  if (contract.room) {
-    return `${contract.room.name} - ${contract.room.building.name}`;
-  }
-  return 'N/A';
+  const room = contract.room;
+  if (!room) return 'N/A';
+  // Quan hệ `building` được khai `| null` — join có thể không trả về (toà đã xoá,
+  // hoặc query nạp room mà không nạp building). Thiếu toà thì vẫn hiện tên phòng.
+  return room.building ? `${room.name} - ${room.building.name}` : room.name;
 };
 
 interface ContractGeneralTabProps {

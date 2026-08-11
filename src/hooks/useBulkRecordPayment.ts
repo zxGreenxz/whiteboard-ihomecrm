@@ -8,6 +8,7 @@ import { useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
+import { rpcNullable } from '@/lib/rpcNullable';
 import { useToast } from '@/hooks/use-toast';
 import {
   deriveInvoiceDepositDue,
@@ -249,7 +250,13 @@ export const useBulkRecordPayment = () => {
           }
 
           const result = await recordInvoiceCollectionV5(
-            (fn, args) => supabase.rpc(fn, args),
+            // Xem chú thích cùng chỗ ở useInvoicePayments.ts: hai tham số này
+            // bắt buộc nhưng nhận NULL, bộ sinh không diễn đạt được.
+            (fn, args) => supabase.rpc(fn, {
+              ...args,
+              p_notes: rpcNullable(args.p_notes),
+              p_receipt_image_url: rpcNullable(args.p_receipt_image_url),
+            }),
             attempt.request,
             attempt.idempotencyKey,
           );

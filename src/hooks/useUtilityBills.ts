@@ -519,7 +519,7 @@ export const useUtilityChart = (
           const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
             // Tám tham số của `get_invoice_statistics_v2` đều `DEFAULT NULL`,
             // nên bỏ khoá = truyền null. Chỉ giữ hai cái thật sự lọc.
-            p_building_id: buildingId,
+            p_building_id: buildingId ?? undefined,
             p_billing_month: ym,
           });
           if (error) return { elecBill: 0, waterBill: 0 };

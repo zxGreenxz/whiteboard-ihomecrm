@@ -107,7 +107,10 @@ function roomNo(r: RpcRoom, fallback: number): number {
   return digits ? Number(digits) : fallback;
 }
 /** "2026-06-30" -> "30/06" (đúng định dạng availDate của UI). */
-function fmtAvail(d: string | null): string | null {
+// Nhận cả `undefined`: `pass_avail_date` là trường TUỲ CHỌN của RpcRoom (RPC cũ
+// không trả), nên kiểu thật ở chỗ gọi là `string | null | undefined`. Thân hàm đã
+// chặn mọi giá trị falsy sẵn rồi — chỉ chữ ký là hẹp hơn dữ liệu.
+function fmtAvail(d: string | null | undefined): string | null {
   if (!d) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
   return m ? `${m[3]}/${m[2]}` : d;

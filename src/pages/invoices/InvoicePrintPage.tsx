@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { batBuoc } from "@/lib/queryGuard";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
 
@@ -25,7 +26,7 @@ const useInvoiceForPrint = (id: string | undefined) =>
           payments ( id, amount, payment_date, payment_method )
         `
         )
-        .eq("id", id)
+        .eq("id", batBuoc(id, "id"))
         .single() as any);
       if (error) {
         console.error(error);

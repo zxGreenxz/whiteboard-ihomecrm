@@ -30,7 +30,8 @@ export function useCreatePublicRoomToken() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (label?: string | null) => {
-      const { data, error } = await supabase.rpc("create_public_room_token", { p_label: label ?? null });
+      // `p_label text DEFAULT NULL` → bỏ hẳn khoá thay vì truyền null.
+      const { data, error } = await supabase.rpc("create_public_room_token", { p_label: label ?? undefined });
       if (error) throw error;
       return data as PublicRoomToken;
     },

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { CommissionTier } from "@/types/building";
 import { isJsonObject, jsonArray } from "@/lib/jsonValue";
+import { batBuoc } from "@/lib/queryGuard";
 
 // =============================================
 // Utils
@@ -269,7 +270,7 @@ export const useExistingCommissionVouchers = (contractId: string | null) => {
       const { data, error } = await supabase
         .from("income_expenses")
         .select("id, code, commission_kind, total_amount, approval_status")
-        .eq("contract_id", contractId)
+        .eq("contract_id", batBuoc(contractId, "contractId"))
         .in("commission_kind", ["broker", "sale"])
         .is("deleted_at", null)
         .neq("approval_status", "CANCELLED");

@@ -16,10 +16,13 @@ export interface Profile {
   avatar_url: string | null;
   company_name: string | null;
   address: string | null;
-  default_payment_due_days: number;
-  timezone: string;
-  language: string;
-  subscription_plan: string;
+  // Bốn cột dưới đây NULLABLE trong DB (`public.profiles`), không có DEFAULT ở
+  // tầng bảng: hàng tạo trước khi thêm cột vẫn để trống. Kiểu viết tay trước đây
+  // hẹp hơn DB nên `select('*')` không gán được — nới cho khớp nguồn thật.
+  default_payment_due_days: number | null;
+  timezone: string | null;
+  language: string | null;
+  subscription_plan: string | null;
   subscription_expires_at: string | null;
   created_at: string;
   updated_at: string;

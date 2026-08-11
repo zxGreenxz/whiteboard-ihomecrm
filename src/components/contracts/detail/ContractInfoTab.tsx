@@ -67,7 +67,9 @@ export function ContractInfoTab({
           <KV label="Ngày bắt đầu" value={fmtDate(contract.start_date)} />
           <KV label="Ngày kết thúc" value={fmtDate(contract.end_date)} />
           <KV label="Giá thuê" value={`${fmtNum(contract.rent_price || 0)} ₫`} accent="var(--brand-600)" />
-          <KV label="Chu kỳ thanh toán" value={CYCLE[contract.payment_cycle] ?? contract.payment_cycle} />
+          {/* payment_cycle của DB là nullable — HĐ nháp có thể chưa chọn chu kỳ.
+              Thiếu thì hiện '—' như mọi ô rỗng khác trong tab này (xem fmtDate). */}
+          <KV label="Chu kỳ thanh toán" value={contract.payment_cycle ? CYCLE[contract.payment_cycle] ?? contract.payment_cycle : '—'} />
         </div>
         <div className="cd-prog">
           <div className="cd-prog-h"><span>Tiến độ hợp đồng</span><span className="cd-prog-pct">{progress}%</span></div>

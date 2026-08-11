@@ -22,7 +22,7 @@ describe("network center repository lifecycle", () => {
       { id: "building-a", name: "Tòa A đổi tên", roomsCount: 11 },
     ]);
 
-    expect((await repository.getBuilding("building-a"))?.settings.pollingSeconds).toBe(120);
+    expect((await repository.getBuilding("building-a"))?.settings?.pollingSeconds).toBe(120);
     expect((await repository.getBuilding("building-a"))?.buildingName).toBe("Tòa A đổi tên");
   });
 
@@ -90,7 +90,7 @@ describe("network center repository lifecycle", () => {
     expect(updated.incidents.find((candidate) => candidate.id === incident.id)?.status).toBe("acknowledged");
     expect(updated.maintenance).not.toBeNull();
     expect(updated.revisions[0].source).toBe("manual");
-    expect(updated.settings.pollingSeconds).toBe(120);
+    expect(updated.settings?.pollingSeconds).toBe(120);
     expect(updated.audit.some((record) => record.actorId === actor.id)).toBe(true);
   });
 

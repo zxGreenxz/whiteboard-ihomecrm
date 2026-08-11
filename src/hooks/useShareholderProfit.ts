@@ -724,7 +724,11 @@ export const useProfitClosePreview = (
         p_adjustments: previewAdjustments,
       });
       if (error) throw error;
-      return normalizeProfitClosePreview(data, organizationId, batBuoc(periodMonth, 'periodMonth'));
+      return normalizeProfitClosePreview(
+        data,
+        batBuoc(organizationId, 'organizationId'),
+        batBuoc(periodMonth, 'periodMonth'),
+      );
     },
   });
 

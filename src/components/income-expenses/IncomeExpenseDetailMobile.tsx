@@ -16,6 +16,7 @@ import {
 import { useState } from "react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { batBuoc } from "@/lib/queryGuard";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { formatPeriod } from "@/lib/monthPeriod";
@@ -106,7 +107,7 @@ export function IncomeExpenseDetailMobile({
       const { data, error } = await supabase
         .from("invoices")
         .select("id, invoice_number, billing_month")
-        .eq("id", invoiceId)
+        .eq("id", batBuoc(invoiceId, "invoice_id"))
         .maybeSingle();
       if (error) throw error;
       return data ?? null;

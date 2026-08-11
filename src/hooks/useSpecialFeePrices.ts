@@ -40,7 +40,8 @@ export const useSpecialFeePrices = (buildingIds?: string[], month?: string) => {
     queryKey: ['special-fee-prices', key, month ?? null],
     queryFn: async (): Promise<SpecialFeePrice[]> => {
       const { data, error } = await supabase.rpc('get_special_fee_prices_v1', {
-        p_building_ids: key,
+        // `p_building_ids uuid[] DEFAULT NULL` → bỏ hẳn khoá thay vì truyền null.
+        p_building_ids: key ?? undefined,
         p_month: month ?? undefined,
       });
       if (error) throw new Error(error.message);

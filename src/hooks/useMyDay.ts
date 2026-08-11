@@ -2,6 +2,7 @@
 // Mọi con số từ server (get_my_day_summary / v5_daily_missions_self) — KHÔNG hardcode.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { batBuoc } from "@/lib/queryGuard";
 
 const rpc = supabase.rpc.bind(supabase) as (fn: string, args?: Record<string, unknown>) => any;
 
@@ -192,8 +193,8 @@ export function useMyOpenInspections(today?: string, userId?: string) {
       const { data, error } = await supabase
         .from("inspection_sessions")
         .select("id, building_id, type, status, photos_count, buildings(name)")
-        .eq("user_id", userId)
-        .eq("session_date", today)
+        .eq("user_id", batBuoc(userId, "userId"))
+        .eq("session_date", batBuoc(today, "today"))
         .in("status", ["open", "presence"])
         .order("updated_at", { ascending: false });
       if (error) throw error;

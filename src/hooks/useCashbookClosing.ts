@@ -11,6 +11,7 @@
 
 import { useEffect, useRef } from "react";
 import { rpcNullable } from "@/lib/rpcNullable";
+import { batBuoc } from "@/lib/queryGuard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -163,7 +164,10 @@ export const useCashbookMonthlyClosingStatus = (
     queryFn: async (): Promise<MonthlyClosingStatus[]> => {
       const { data, error } = await supabase.rpc(
         "cashbook_closing_monthly_status_v1",
-        { p_organization_id: organizationId, p_month: month },
+        {
+          p_organization_id: batBuoc(organizationId, "organizationId"),
+          p_month: batBuoc(month, "month"),
+        },
       );
       if (error) throw new Error(error.message);
       return (data ?? []) as MonthlyClosingStatus[];

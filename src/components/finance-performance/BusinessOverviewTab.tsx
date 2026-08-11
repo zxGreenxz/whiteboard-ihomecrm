@@ -390,7 +390,12 @@ function ComparisonDelta({
   invert?: boolean;
 }) {
   const absoluteDelta = calculateComparisonAbsoluteDelta(current, base);
-  if (absoluteDelta == null) {
+  // Hai vế `current`/`base` là THỪA về mặt logic — `calculateComparisonAbsoluteDelta`
+  // đã trả null đúng trong các trường hợp đó. Nhưng kết luận ấy đi vòng qua giá trị
+  // trả về của hàm nên TS không mang thu hẹp về lại `current`, trong khi <DeltaBadge>
+  // bên dưới đòi `number`. Kiểm thẳng trên biến là cách giữ đúng bất biến mà không
+  // phải khẳng định suông.
+  if (absoluteDelta == null || current == null || base == null) {
     return <span className="text-xs text-muted-foreground">Không đủ cơ sở</span>;
   }
 

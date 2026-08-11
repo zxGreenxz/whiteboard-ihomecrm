@@ -225,7 +225,12 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isError, token]);
 
-  if (token && isLoading && !(data && data.length)) {
+  // Chỉ còn `isLoading`: vế `!(data && data.length)` cũ là THỪA, không phải rút gọn cho gọn.
+  // React Query v5 khai `isLoading: true` DUY NHẤT ở nhánh QueryObserverLoadingResult, mà nhánh
+  // đó có `data: undefined` (xem @tanstack/query-core). Nói cách khác `isLoading` = `isPending &&
+  // isFetching`, nên khi đã có dữ liệu và đang refetch nền thì `isLoading` vốn đã là false —
+  // đúng thứ mà vế kia định bảo vệ. Giữ lại thì TS thu hẹp `data` xuống `never` và báo lỗi.
+  if (token && isLoading) {
     return (
       <div id="stage"><div className="app"><div className="empty" style={{ marginTop: 80 }}>
         <div className="e-ic">⏳</div><p>Đang tải danh sách phòng…</p>

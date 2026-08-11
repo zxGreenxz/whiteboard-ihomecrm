@@ -5,6 +5,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
+import { rpcNullable } from '@/lib/rpcNullable';
 import { useToast } from '@/hooks/use-toast';
 import {
   planInvoiceCollection,
@@ -40,7 +41,15 @@ export const useRecordPaymentRPC = () => {
       const idempotencyKey = data.idempotency_key ?? `collect-${crypto.randomUUID()}`;
 
       return recordInvoiceCollectionV5(
-        (fn, args) => supabase.rpc(fn, args),
+        // `p_notes`/`p_receipt_image_url` KHÔNG có DEFAULT (DDL migration
+        // 20260802230000) nên bộ sinh khai `string` bắt buộc, trong khi thân hàm
+        // xử lý NULL tường minh (`NULLIF(btrim(p_notes), '')`). Đúng khoảng trống
+        // mà `rpcNullable` đặt tên — payload gửi đi không đổi một byte.
+        (fn, args) => supabase.rpc(fn, {
+          ...args,
+          p_notes: rpcNullable(args.p_notes),
+          p_receipt_image_url: rpcNullable(args.p_receipt_image_url),
+        }),
         collectionInput,
         idempotencyKey,
       );
@@ -106,7 +115,7 @@ export const useRecordRefundRPC = () => {
         {
           p_invoice_id: data.invoice_id,
           p_amount: data.amount,
-          p_reason: data.notes ?? null,
+          p_reason: data.notes ?? undefined,
           p_idempotency_key: `refund-${crypto.randomUUID()}`,
         },
       );

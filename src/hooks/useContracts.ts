@@ -471,7 +471,7 @@ export const contractStatsQuery = (buildingIds?: string[]) => ({
       const { data, error } = await supabase.rpc(
         "get_contract_stats",
         {
-          p_building_ids: buildingIds?.length ? buildingIds : null,
+          p_building_ids: buildingIds?.length ? buildingIds : undefined,
           p_today: today,
           p_in30: in30,
         },

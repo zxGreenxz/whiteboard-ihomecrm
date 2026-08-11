@@ -65,7 +65,8 @@ export const useIncomeExpenseFormRooms = (
     enabled: !!bid || !!opts?.allWhenEmpty,
     queryFn: async () => {
       const { data, error } = await supabase.rpc("ie_form_rooms", {
-        _building_id: bid ?? null,
+        // `_building_id uuid DEFAULT NULL` → bỏ hẳn khoá thay vì truyền null.
+        _building_id: bid ?? undefined,
       });
       if (error) {
         console.error("ie_form_rooms error:", error);

@@ -21,6 +21,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { batBuoc } from "@/lib/queryGuard";
 import { toast } from "sonner";
 
 /* ────────────────────────────── Kiểu dữ liệu ───────────────────────────── */
@@ -302,7 +303,9 @@ export function useMyNotificationPreferences(organizationId: string | null) {
     queryFn: async (): Promise<MyNotificationPreferences> => {
       const { data, error } = await supabase.rpc(
         "get_my_notification_preferences_v1",
-        { p_organization_id: organizationId },
+        // `p_organization_id uuid` KHÔNG có DEFAULT — `enabled: !!organizationId`
+        // ở trên đã bảo đảm có giá trị, `batBuoc` giữ đúng bất biến đó.
+        { p_organization_id: batBuoc(organizationId, "organizationId") },
       );
       if (error) {
         warnUnavailable("get_my_notification_preferences_v1", error.message);

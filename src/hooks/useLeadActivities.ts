@@ -18,15 +18,24 @@ export interface LeadActivity {
   created_at: string;
 }
 
+/**
+ * Bốn trường văn bản nhận cả `null` vì bảng `lead_activities` khai chúng
+ * `?: string | null` (xem `Database['public']['Tables']['lead_activities']['Insert']`),
+ * và `LeadActivityTimeline` đổ thẳng giá trị từ bản ghi xuống đây.
+ *
+ * Khai `?: string` là mô tả hẹp hơn thứ thật sự chạy qua kiểu này. Cách chữa
+ * KHÔNG phải rắc `|| undefined` ở chỗ gọi — đó là bẻ dữ liệu cho vừa một cái
+ * kiểu sai, và nó nhân bản theo số chỗ gọi.
+ */
 export interface CreateLeadActivityData {
   lead_id: string;
   activity_type: LeadActivityType;
-  description?: string;
+  description?: string | null;
   old_value?: Record<string, any>;
   new_value?: Record<string, any>;
-  scheduled_at?: string;
-  completed_at?: string;
-  notes?: string;
+  scheduled_at?: string | null;
+  completed_at?: string | null;
+  notes?: string | null;
 }
 
 // Fetch activities for a lead

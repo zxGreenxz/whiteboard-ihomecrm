@@ -136,7 +136,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         trendRes,
       ] = await Promise.all([
         (supabase.from("profiles").select("id, full_name") as any).in("id", staffIds),
-        supabase.rpc("salary_work_ledger", { p_period_month: periodMonth, p_staff_id: null }),
+        supabase.rpc("salary_work_ledger", { p_period_month: periodMonth, p_staff_id: undefined }),
         (supabase.from("salary_monthly").select("*") as any).eq("period_month", periodMonth).in("staff_id", staffIds),
         (supabase.from("shareholders").select("id, auth_user_id") as any).in("auth_user_id", staffIds),
         (supabase.from("profit_monthly").select("status, period_month") as any).eq("period_month", periodMonth),
@@ -684,7 +684,8 @@ export const useLockSalaryMonth = () => {
           take_home: c.takehome,
           paid: m.paid,
           commission_voucher_ids: (m.commissionItems || [])
-            .map((x) => x.voucherId).filter(Boolean),
+            .map((x) => x.voucherId)
+            .filter((id): id is string => !!id),
           ledger: m.ledger,
         };
       });

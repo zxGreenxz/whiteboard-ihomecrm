@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import { supabase } from "@/integrations/supabase/client";
+import { batBuoc } from "@/lib/queryGuard";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIncomeExpenseHistory } from "@/hooks/useIncomeExpenses";
@@ -120,7 +121,7 @@ export function IncomeExpenseDetailDialog({
       const { data, error } = await supabase
         .from("invoices")
         .select("id, invoice_number, billing_month")
-        .eq("id", invoiceId)
+        .eq("id", batBuoc(invoiceId, "invoice_id"))
         .maybeSingle();
       if (error) throw error;
       return data ?? null;

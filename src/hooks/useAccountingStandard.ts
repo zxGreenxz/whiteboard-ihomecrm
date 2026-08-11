@@ -49,7 +49,7 @@ export const useSetAccountingStandard = () => {
         {
           p_organization_id: input.organizationId,
           p_strict: input.strict,
-          p_reason: input.reason ?? null,
+          p_reason: input.reason ?? undefined,
         },
       );
       if (error) throw new Error(error.message);
