@@ -134,7 +134,10 @@ function contractCustomerArb(isRep: boolean): fc.Arbitrary<ContractCustomer> {
     contract_id,
     customer_id,
     is_representative: isRep,
-    customer: { id: customer_id, full_name, phone, id_number: null },
+    // `notes` là trường BẮT BUỘC của `ContractCustomer`; arbitrary bỏ quên nên
+    // property test sinh ra hình dạng khác thứ mã sản xuất nhìn thấy.
+    notes: null,
+    customer: { id: customer_id, full_name, phone, email: null, id_number: null },
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   }));
@@ -164,6 +167,11 @@ function contractWithRelationsArb(): fc.Arbitrary<ContractWithRelations> {
     end_date,
     actual_end_date: null,
     expected_move_out_date: null,
+    // `public_code` (NOT NULL trong DB) và `end_billing_date` được thêm vào
+    // kiểu `Contract` nhưng fixture của property test không theo — nên test
+    // đang khẳng định về một hình dạng KHÁC hình dạng mã sản xuất nhìn thấy.
+    public_code: 'ABC123',
+    end_billing_date: null,
     rent_price: 0,
     total_deposit: 0,
     deposit_paid: null,

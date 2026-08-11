@@ -53,6 +53,11 @@ function contractArb(): fc.Arbitrary<Contract> {
     end_date,
     actual_end_date: null,
     expected_move_out_date,
+    // `public_code` (NOT NULL trong DB) và `end_billing_date` được thêm vào
+    // kiểu `Contract` nhưng fixture của property test không theo — nên test
+    // đang khẳng định về một hình dạng KHÁC hình dạng mã sản xuất nhìn thấy.
+    public_code: 'ABC123',
+    end_billing_date: null,
     rent_price: 0,
     total_deposit: 0,
     deposit_paid: null,
@@ -257,6 +262,11 @@ function makeContract(overrides: Partial<Contract>): Contract {
     end_date: '2025-01-01',
     actual_end_date: null,
     expected_move_out_date: null,
+    // `public_code` (NOT NULL trong DB) và `end_billing_date` được thêm vào
+    // kiểu `Contract` nhưng fixture của property test không theo — nên test
+    // đang khẳng định về một hình dạng KHÁC hình dạng mã sản xuất nhìn thấy.
+    public_code: 'ABC123',
+    end_billing_date: null,
     rent_price: 0,
     total_deposit: 0,
     deposit_paid: null,
