@@ -1,6 +1,20 @@
 #!/usr/bin/env node
 // Liệt kê migration SAU cutoff và trạng thái apply của từng file.
 //
+// TÊN TRONG PLAN KHÁC TÊN THẬT — đọc kỹ trước khi viết script mới
+//
+//   Plan §51 gọi phần việc này là `scripts/check-forward-migrations.mjs`. KHÔNG có
+//   file tên đó, và không nên tạo: chức năng ấy đã nằm trọn ở BỐN script, mỗi cái
+//   một câu hỏi khác nhau, tất cả đều đang xanh (đo 11/08/2026):
+//
+//     list-forward-migrations.mjs        file ↔ sổ ↔ ledger có lệch không, lệch chiều nào
+//     check-forward-migration-idempotent chạy lại một migration có an toàn không
+//     check-migration-ledger-frozen      ledger có bị sửa ngoài làn forward không
+//     check-migration-test-liveness      test ghim định nghĩa lỗi thời có phình ra không
+//
+//   Viết thêm script thứ năm trùng tên plan chỉ tạo ra nguồn thứ hai cho cùng một
+//   câu hỏi — đúng kiểu lệch mà cả file này được lập ra để bắt.
+//
 // VÌ SAO CẦN (plan file-map)
 //   Câu hỏi "còn migration nào chưa apply?" hiện phải trả lời bằng cách mở ba file
 //   rồi đối chiếu bằng mắt: supabase/migrations/ trên đĩa, supabase/migration-

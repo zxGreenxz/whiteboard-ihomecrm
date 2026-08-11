@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 71
+    "stillMissing": 69
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -451,10 +451,12 @@
       {
         "deliverable": "§38 — cập nhật docs/CODEBASE_STRUCTURE.md (services, infra, .e2e-fleet, docs-site, OpenClaw stack, NC worker, api/cron, Capability Registry, contract manifests, baseline/forward migrations, runtime matrix)",
         "planRef": "mục 38, dòng 2476-2490",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Bổ sung 10 khoản còn thiếu và sửa mục Route/gate cho khớp src/app/routes/."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Them muc \"Ngoai src/ — bon cay ma co vong doi rieng\" (services 5 pkg, infra 5 pkg, .e2e-fleet 44 spec, contracts 13 file), muc Migration baseline+lan forward voi bang 4 lenh, muc So sach may doc duoc (tooling/), va phan Kiem thu noi test-matrix + inventory:repo. SUA LOI THAT: dong \"Route/gate: src/App.tsx\" da loi thoi — App.tsx co 0 dong path=, route nam o src/app/routes/ (11 file). Them 4 con so vao gate:doc-counts (9 -> 13), dot bien 4/4 doi so deu ra exit 1."
       },
       {
         "deliverable": "§38 — docs/he-thong/99-quy-trinh-tong.md thêm Network Center lifecycle, OpenClaw consent/connection/draft/send/operations/rollout, deployment + feature flag, production evidence",
@@ -479,10 +481,12 @@
       {
         "deliverable": "scripts/check-forward-migrations.mjs",
         "planRef": "§51 dòng 3036",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Không còn khoảng trống lớn; cân nhắc sửa plan cho khớp tên thật thay vì thêm script thứ ba."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "KHONG tao file trung ten plan. Chuc nang nam tron o BON script ten khac, deu xanh 11/08: list-forward-migrations (file<->so<->ledger, 2 chieu lech) · check-forward-migration-idempotent · check-migration-ledger-frozen · check-migration-test-liveness. Ghi ban do ten ngay dau list-forward-migrations.mjs de khong ai di viet script thu nam cho cung mot cau hoi."
       },
       {
         "deliverable": "docs/he-thong/99-quy-trinh-tong.md (sửa lớn)",

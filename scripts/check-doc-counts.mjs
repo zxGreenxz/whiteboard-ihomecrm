@@ -20,6 +20,7 @@
 //
 // Không cần credential, không đọc database.
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +51,18 @@ const demSql = (dir) => {
   }
   return n;
 };
+
+/**
+ * Đếm file ĐÃ ĐƯỢC GIT TRACK khớp một mẫu.
+ *
+ * Dùng `git ls-files` chứ không duyệt đĩa: thư mục làm việc có build output, file
+ * tạm và file chưa add: đếm chúng sẽ ra một con số không ai khác tái lập được, mà
+ * tái lập được mới là điểm của cả gate này.
+ */
+const demTracked = (re) =>
+  execFileSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8" })
+    .split("\n")
+    .filter((p) => p && re.test(p)).length;
 
 /**
  * Mỗi mục là một con số tài liệu ĐANG khẳng định, kèm cách đếm ra sự thật.
@@ -85,6 +98,40 @@ export const CLAIMS = [
     re: /( file \+ )(\d{1,3})( trong)/,
     dem: () => demSql("supabase/migrations-archive"),
     moTa: "số file trong supabase/migrations-archive",
+  },
+
+  // ── Bốn con số thêm 11/08/2026 khi mở rộng CODEBASE_STRUCTURE ────────────
+  //
+  // Chính tài liệu đó nay mở đầu bằng câu "mọi con số ở đây đếm được và có gate
+  // canh". Thêm số mà không thêm mục ở đây thì câu ấy thành lời hứa suông —
+  // và một lời hứa suông trong tài liệu định hướng còn tệ hơn không hứa gì.
+  {
+    file: "docs/CODEBASE_STRUCTURE.md",
+    // "| `.e2e-fleet/**` | 44 spec Playwright |"
+    re: /(`\.e2e-fleet\/\*\*` \| )(\d{1,3})( spec)/,
+    dem: () => demTracked(/^\.e2e-fleet\/specs\/.*\.spec\.ts$/),
+    moTa: "số spec Playwright trong .e2e-fleet/specs",
+  },
+  {
+    file: "docs/CODEBASE_STRUCTURE.md",
+    // "| `contracts/**` | 13 file hợp đồng |"
+    re: /(`contracts\/\*\*` \| )(\d{1,3})( file)/,
+    dem: () => demTracked(/^contracts\//),
+    moTa: "số file trong contracts/",
+  },
+  {
+    file: "docs/CODEBASE_STRUCTURE.md",
+    // "- Route/gate: `src/app/routes/**` (11 file theo domain…"
+    re: /(`src\/app\/routes\/\*\*` \()(\d{1,3})( file theo domain)/,
+    dem: () => demTracked(/^src\/app\/routes\/[^/]+\.tsx$/),
+    moTa: "số file route trong src/app/routes",
+  },
+  {
+    file: "docs/CODEBASE_STRUCTURE.md",
+    // "…chạy chung một lệnh: 9 suite, mỗi suite một runner…"
+    re: /(một lệnh: )(\d{1,3})( suite, mỗi suite một runner)/,
+    dem: () => JSON.parse(readFileSync(join(repoRoot, "tooling/test-matrix.json"), "utf8")).suites.length,
+    moTa: "số suite trong tooling/test-matrix.json",
   },
 
   // ── migration-policy.json ────────────────────────────────────────────────
