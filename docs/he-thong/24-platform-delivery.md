@@ -1,6 +1,5 @@
 ---
 status: current
-reviewed: 2026-08-07
 last_verified_commit: 7965c6a6
 source_paths:
   - .github/workflows/ci-gates.yml
@@ -21,7 +20,6 @@ source_paths:
   - supabase/migrations/20260729139000_network_center_watchdog.sql
   - docs/generated/external-controls.json
   - tooling/program-status.json
-copilot_ingest: false
 risk: infrastructure
 ---
 

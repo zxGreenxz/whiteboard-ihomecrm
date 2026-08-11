@@ -129,6 +129,44 @@ function main() {
     console.warn(`⚠ ${stale.length} tài liệu quá hạn review ${manifest.staleAfterDays} ngày:`);
     for (const s of stale) console.warn(`   - ${s.file} (${s.ageDays} ngày)`);
   }
+  // ── Quyền sở hữu trường: manifest sở hữu, frontmatter không được lặp ──────
+  //
+  // Chốt 11/08/2026 sau khi đo: 1/29 tài liệu he-thong có YAML frontmatter, và nó
+  // khai `reviewed: 2026-08-07` trong khi manifest — thứ gate này thật sự đọc —
+  // KHÔNG có ngày nào cho file đó. Hai nguồn, đã lệch ngay khi mới có hai.
+  //
+  // Vì sao chọn manifest chứ không phải frontmatter: manifest là thứ máy đọc được
+  // trong MỘT lần mở file, còn `reviewed` rải trong 29 file thì mọi phép đếm đều
+  // phải quét cả thư mục và không ai kiểm được nó khớp gì. Frontmatter vẫn giữ
+  // `status`, `source_paths`, `last_verified_commit`, `risk` — bốn thứ manifest
+  // KHÔNG có, nên chúng không tạo nguồn thứ hai.
+  const KHOA_CUA_MANIFEST = ['reviewed', 'copilot_ingest', 'copilotIngest'];
+  const lapKhoa = [];
+  for (const f of filesOnDisk) {
+    let noiDung;
+    try {
+      noiDung = readFileSync(join(DOCS_DIR, f), 'utf8');
+    } catch {
+      continue;
+    }
+    const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(noiDung);
+    if (!m) continue;
+    for (const k of KHOA_CUA_MANIFEST) {
+      if (new RegExp(`^${k}:`, 'm').test(m[1])) {
+        lapKhoa.push(
+          `${f}: frontmatter khai \`${k}\` — khoá đó thuộc manifest.json.\n` +
+          '      → dời giá trị vào manifest rồi gỡ khỏi frontmatter. Hai nguồn sẽ lệch.',
+        );
+      }
+    }
+  }
+  if (lapKhoa.length > 0) {
+    console.error(`\n❌ ${lapKhoa.length} chỗ lặp khoá giữa frontmatter và manifest:\n`);
+    for (const l of lapKhoa) console.error(`  - ${l}`);
+    process.exitCode = 1;
+    return;
+  }
+
   // ── Nợ review: chỉ được teo ────────────────────────────────────────────────
   //
   // 12/25 tài liệu Copilot đọc chưa từng ghi ngày review (đo 11/08/2026). Loại

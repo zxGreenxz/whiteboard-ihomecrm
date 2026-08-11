@@ -549,6 +549,16 @@ Copilot **không** đọc mù `docs/he-thong/`. Allowlist nằm ở `docs/he-tho
   chính) — tài liệu bị loại khỏi **cả** kết quả tra cứu **lẫn** danh sách gợi ý khi không tìm thấy;
 - `perms` chưa load ⇒ chỉ trả tài liệu không gắn quyền (fail closed).
 
+**Quyền sở hữu trường — manifest sở hữu `copilotIngest` và `reviewed`.** Frontmatter YAML của
+`docs/he-thong/*.md` **không được lặp lại hai khoá đó**; gate làm đỏ nếu có. Nó vẫn được mang
+`status`, `source_paths`, `last_verified_commit`, `risk` — bốn thứ manifest KHÔNG có, nên chúng
+không tạo nguồn thứ hai.
+
+Chốt như vậy vì đo 11/08/2026: đúng 1/29 tài liệu có frontmatter, và nó khai `reviewed: 2026-08-07`
+trong khi manifest — thứ gate thật sự đọc — không có ngày nào cho file đó. Hai nguồn, và chúng đã
+lệch ngay khi mới có hai. Chọn manifest vì nó máy đọc được trong một lần mở file; `reviewed` rải
+trong 29 file thì mọi phép đếm đều phải quét cả thư mục và không ai kiểm được nó khớp gì.
+
 ```bash
 npm run gate:copilot-docs   # file .md mới BẮT BUỘC khai trong manifest, không mặc định lọt vào
 ```

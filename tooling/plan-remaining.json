@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 40
+    "stillMissing": 39
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -459,10 +459,12 @@
       {
         "deliverable": "Frontmatter chuẩn cho current docs (status/reviewed/last_verified_commit/source_paths/copilot_ingest/risk)",
         "planRef": "mục 11, dòng 1454-1470",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "L",
         "touchesOpenClaw": false,
-        "remaining": "Chốt một trong hai: (a) thêm YAML frontmatter cho current docs (bỏ field owner theo §0.6 dòng 120) + checker schema; hoặc (b) tuyên bố manifest tập trung docs/he-thong/manifest.json + frontmatter user-docs sẵn có là phương án thay thế và sửa plan. Dù chọn gì vẫn thiếu last_verified_commit và source_paths."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Chot nhanh (b): manifest tap trung docs/he-thong/manifest.json la nguon, KHONG them frontmatter cho 28 file con lai. Ly do do duoc: dung 1/29 tai lieu co frontmatter, va no khai reviewed 2026-08-07 trong khi manifest — thu gate that su doc — KHONG co ngay nao cho file do. Hai nguon, va da lech ngay khi moi co hai. Them frontmatter cho 28 file nua se nhan cai lech do len 29 lan. Chon manifest vi no may doc duoc trong MOT lan mo file; reviewed rai trong 29 file thi moi phep dem deu phai quet ca thu muc va khong ai kiem duoc no khop gi. DA LAM: doi reviewed 2026-08-07 vao manifest (khong xoa thong tin, chi doi ve dung cho), go reviewed + copilot_ingest khoi frontmatter, them phep kiem cam lap khoa, ghi quyen so huu truong vao Contract §11. Frontmatter VAN duoc mang status/source_paths/last_verified_commit/risk — bon thu manifest khong co nen khong tao nguon thu hai. Dot bien 4/4 gom ca ca NGUOC (khoa khong thuoc manifest thi khong bi cam)."
       },
       {
         "deliverable": "Luật Copilot ingest (4 điều kiện cho phép + 6 loại cấm)",

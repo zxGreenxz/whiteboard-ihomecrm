@@ -1,5 +1,5 @@
 {
-  "$comment": "Allowlist tài liệu AI Copilot được phép đọc. TRƯỚC file này, tool huong_dan glob mù toàn bộ docs/he-thong/*.md — nghĩa là mọi file .md ai đó thả vào đây đều tự động thành nguồn tư vấn nghiệp vụ cho người dùng thật, kể cả writeup hiệu năng nội bộ hay bản đồ bảo trì realtime. Gate: node scripts/check-copilot-docs-manifest.mjs (file mới BẮT BUỘC khai ở đây, không mặc định lọt vào).",
+  "$comment": "Allowlist tài liệu AI Copilot được phép đọc. TRƯỚC file này, tool huong_dan glob mù toàn bộ docs/he-thong/*.md — nghĩa là mọi file .md ai đó thả vào đây đều tự động thành nguồn tư vấn nghiệp vụ cho người dùng thật, kể cả writeup hiệu năng nội bộ hay bản đồ bảo trì realtime. Gate: node scripts/check-copilot-docs-manifest.mjs (file mới BẮT BUỘC khai ở đây, không mặc định lọt vào). QUYỀN SỞ HỮU TRƯỜNG (chốt 11/08/2026): file này sở hữu `copilotIngest` và `reviewed`. Frontmatter của docs/he-thong/*.md KHÔNG được lặp lại hai khoá đó — lặp là tạo nguồn thứ hai, và đo 11/08 đã thấy nó lệch: 24-platform-delivery.md tự khai reviewed 2026-08-07 trong khi manifest không có ngày nào cho nó. Frontmatter vẫn giữ được `status`, `source_paths`, `last_verified_commit`, `risk` — bốn thứ manifest KHÔNG có.",
   "schemaVersion": 1,
   "staleAfterDays": 180,
   "unreviewedDebt": {
@@ -179,7 +179,8 @@
     {
       "file": "24-platform-delivery.md",
       "copilotIngest": false,
-      "why": "quy trình phát hành hạ tầng (CI gate, promote, deploy Edge, cron) — dành cho người vận hành/lập trình viên, trả nguyên văn cho người dùng cuối là vô nghĩa và lộ bề mặt vận hành"
+      "why": "quy trình phát hành hạ tầng (CI gate, promote, deploy Edge, cron) — dành cho người vận hành/lập trình viên, trả nguyên văn cho người dùng cuối là vô nghĩa và lộ bề mặt vận hành",
+      "reviewed": "2026-08-07"
     },
     {
       "file": "99-quy-trinh-tong.md",
