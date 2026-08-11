@@ -214,7 +214,8 @@ export const useAddUtilityMeter = () => {
   return useMutation({
     mutationFn: async (args: { buildingId: string; type: UtilType }) => {
       const { data, error } = await supabase.rpc('save_utility_account', {
-        p_id: rpcNullable(null),
+        // `p_id` BẮT BUỘC (không DEFAULT) nhưng nhận NULL = "tạo mới".
+        p_id: rpcNullable<string>(null),
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
         p_provider_code: undefined,
@@ -516,9 +517,10 @@ export const useUtilityChart = (
       const stats = await Promise.all(
         months.map(async (ym) => {
           const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
-            p_building_id: buildingId, p_room_id: null, p_status: null,
-            p_start_date: null, p_end_date: null,
-            p_billing_month: ym, p_payment_status: null, p_building_ids: null,
+            // Tám tham số của `get_invoice_statistics_v2` đều `DEFAULT NULL`,
+            // nên bỏ khoá = truyền null. Chỉ giữ hai cái thật sự lọc.
+            p_building_id: buildingId,
+            p_billing_month: ym,
           });
           if (error) return { elecBill: 0, waterBill: 0 };
           const r = Array.isArray(data) ? data[0] : data;

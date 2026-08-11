@@ -40,10 +40,13 @@ export const useCashBookSummary = (
       const { data: periodTotals, error: ptErr } = await supabase.rpc(
         "cashbook_period_totals",
         {
-          p_start: start_date ?? null,
-          p_end: end_date ?? null,
-          p_building_id: buildingId ?? null,
-          p_account_id: accountId ?? null,
+          // Bốn tham số đều `DEFAULT NULL` trong chữ ký live, nên bỏ hẳn khoá
+          // cho kết quả y hệt truyền `null` — mà kiểu Args sinh tự động khai
+          // `?: T` chứ không có `| null`.
+          p_start: start_date ?? undefined,
+          p_end: end_date ?? undefined,
+          p_building_id: buildingId ?? undefined,
+          p_account_id: accountId ?? undefined,
         },
       );
       if (ptErr) throw ptErr;
@@ -68,8 +71,8 @@ export const useCashBookSummary = (
           "cashbook_opening_balance",
           {
             p_before_date: start_date,
-            p_building_id: buildingId ?? null,
-            p_account_id: accountId ?? null,
+            p_building_id: buildingId ?? undefined,
+            p_account_id: accountId ?? undefined,
           },
         );
         if (obErr) throw obErr;

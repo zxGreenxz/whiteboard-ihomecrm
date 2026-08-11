@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { rpcNullable } from "@/lib/rpcNullable";
+import { batBuoc } from "@/lib/queryGuard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -544,8 +545,8 @@ export const useProfitCloseState = (
     enabled: !!organizationId && !!periodMonth,
     queryFn: async (): Promise<ProfitCloseState> => {
       const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.state, {
-        p_organization_id: organizationId,
-        p_period_month: periodMonth,
+        p_organization_id: batBuoc(organizationId, 'organizationId'),
+        p_period_month: batBuoc(periodMonth, 'periodMonth'),
       });
       if (error) throw error;
       return normalizeProfitCloseState(data);
@@ -717,13 +718,13 @@ export const useProfitClosePreview = (
       (buildingIds === null || buildingIds.length > 0),
     queryFn: async (): Promise<ProfitClosePreview> => {
       const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.preview, {
-        p_organization_id: organizationId,
-        p_period_month: periodMonth,
-        p_building_ids: buildingIds,
+        p_organization_id: batBuoc(organizationId, 'organizationId'),
+        p_period_month: batBuoc(periodMonth, 'periodMonth'),
+        p_building_ids: buildingIds ?? undefined,
         p_adjustments: previewAdjustments,
       });
       if (error) throw error;
-      return normalizeProfitClosePreview(data, organizationId, periodMonth!);
+      return normalizeProfitClosePreview(data, organizationId, batBuoc(periodMonth, 'periodMonth'));
     },
   });
 
