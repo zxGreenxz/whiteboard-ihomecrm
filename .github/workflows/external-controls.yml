@@ -57,3 +57,20 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/check-external-controls.mjs
+
+      # Hạn của known-gaps thuộc đúng loại control ở workflow này: KHÔNG commit nào
+      # làm một ngày hết hạn trôi qua. Chạy theo push thì hoặc không bao giờ bắt
+      # được, hoặc bắt được vào đúng PR của một người chẳng liên quan.
+      #
+      # Vì sao `--strict` ở ĐÂY mà không phải trong ci-gates: chú thích đầu
+      # check-known-gaps.mjs đã cân nhắc và kết luận đúng — một gate chặn merge vì
+      # ngày tháng sẽ bị gia hạn theo nghi thức, hoặc bị tắt, và khi ấy mất luôn tín
+      # hiệu. Cờ --strict có từ đầu nhưng CHƯA TỪNG có lượt chạy định kỳ nào gọi nó,
+      # nên cưỡng chế hạn cho tới hôm nay chỉ tồn tại trên giấy (đo 11/08/2026: gap
+      # quá hạn → exit 0).
+      #
+      # `if: always()` để bước này vẫn chạy khi kiểm soát ngoài repo đã đỏ — hai
+      # phép đo độc lập, không cái nào được nuốt cái kia.
+      - name: Hạn của known-gaps (cưỡng chế, chỉ ở lượt chạy định kỳ)
+        if: always()
+        run: node scripts/check-known-gaps.mjs --strict

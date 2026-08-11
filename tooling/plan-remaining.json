@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 75
+    "stillMissing": 73
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -613,18 +613,22 @@
       {
         "deliverable": "P1-16: Runtime, package, test và known-gap manifests machine-readable, mọi exemption có expiry",
         "planRef": "Mục 42 (dòng 2663)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Bật cưỡng chế expiry (xem dòng known-gap-gates). tooling/packages.json để P2 theo §0.6."
+        "remaining": "tooling/packages.json van de P2 theo §0.6 — co y, khong phai bo sot.",
+        "doneAt": "2026-08-11",
+        "evidence": "Cuong che expiry BAT THAT: co --strict co san tu dau nhung CHUA TUNG co luot chay dinh ky nao goi no (do 11/08: gap qua han -> exit 0). Nay noi vao .github/workflows/external-controls.yml (cron 03:17 UTC) voi if: always(). Giu nguyen mac dinh KHONG fail theo push — ly do trong chu thich script van dung: gate chan merge vi ngay thang se bi gia han theo nghi thuc hoac bi tat. Do lai: strict+qua han=1, strict+sach=0, khong-strict+qua han=0."
       },
       {
         "deliverable": "P1-18: PR template + risk classifier + tooling/risk-map.json (bỏ CODEOWNERS; SECURITY.md/CONTRIBUTING.md xuống stub)",
         "planRef": "Mục 42 (dòng 2665)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Viết risk classifier: đọc diff → tra tooling/risk-map.json → in tier + danh sách gate bắt buộc; nối vào PR/CI. Đây là mảnh DUY NHẤT còn thiếu của P1-18."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Risk classifier scripts/check-risk-classifier.mjs (16 test) viet o lo 25, da noi CI tai ci-gates.yml:169 va alias risk:classify. Lo 29 noi not vao .github/pull_request_template.md: chi dan chay lenh thay vi tu tra tay, kem cau canh bao no la bo BAO CAO chu khong biet ban da chay gate hay chua."
       },
       {
         "deliverable": "P2-21: Incremental src/features migration khi capability đang đổi có ownership rõ",
