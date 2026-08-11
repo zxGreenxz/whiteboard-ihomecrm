@@ -9,7 +9,8 @@
  *   supabase-js phân giải overload bằng kiểu điều kiện trên tên, truyền tên qua
  *   biến `string` là mất sạch kiểu.
  * - numeric qua PostgREST có thể về string → Number() mọi field số.
- * - p_building_ids: [] (tất cả) chuẩn hoá thành null; sort để query key ổn định.
+ * - p_building_ids: [] (tất cả) chuẩn hoá thành undefined — xem normIds; sort để
+ *   query key ổn định.
  */
 
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
@@ -29,8 +30,32 @@ const FA = "financial-analysis";
 const STALE_SLOW = 5 * 60 * 1000; // dữ liệu tháng lịch sử — đổi khi nhập phiếu lùi ngày
 const STALE_LIVE = 60 * 1000; // thu tiền/snapshot — biến động liên tục
 
-const normIds = (ids?: string[]): string[] | null =>
-  ids && ids.length ? [...ids].sort() : null;
+/**
+ * Trả `undefined` chứ không phải `null` khi không lọc toà nào.
+ *
+ * Mọi `p_building_ids` của nhóm RPC `fa_*` đều khai `DEFAULT NULL::uuid[]`, nên
+ * bỏ hẳn khoá khỏi payload cho ra đúng kết quả như truyền `null` — mà kiểu
+ * `Args` sinh tự động lại khai `p_building_ids?: string[]`, tức `| undefined`.
+ * Dùng trong `queryKey` cũng không đổi: `JSON.stringify` biến `undefined` trong
+ * mảng thành `null`, nên khoá cache giữ nguyên hình dạng cũ.
+ */
+const normIds = (ids?: string[]): string[] | undefined =>
+  ids && ids.length ? [...ids].sort() : undefined;
+
+/**
+ * `p_start_date` và `p_end_date` là tham số BẮT BUỘC của mọi RPC `fa_*` (không
+ * có DEFAULT), trong khi tham số hook lại là `string | undefined`. Mọi query ở
+ * file này đã có `enabled: !!start && !!end`, nên lúc `queryFn` chạy hai giá trị
+ * chắc chắn có — nhưng TypeScript KHÔNG đọc được `enabled`.
+ *
+ * Dùng hàm này thay cho `!`: bất biến vẫn được kiểm lúc chạy, và nếu ai đó sửa
+ * `enabled` mà quên chỗ này thì lỗi nói thẳng ra nguyên nhân, thay vì để
+ * PostgREST trả một thông báo khó truy.
+ */
+function batBuoc(giaTri: string | undefined, ten: string): string {
+  if (!giaTri) throw new Error(`Thiếu ${ten} — lẽ ra 'enabled' đã chặn query này.`);
+  return giaTri;
+}
 
 /**
  * Nhận một THUNK thay vì (tên hàm, params).
@@ -69,7 +94,7 @@ export const useFaMonthlyPnl = (
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
-        () => supabase.rpc(accrual ? "fa_monthly_pnl_accrual" : "fa_monthly_pnl", { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) }),
+        () => supabase.rpc(accrual ? "fa_monthly_pnl_accrual" : "fa_monthly_pnl", { p_start_date: batBuoc(start, 'start'), p_end_date: batBuoc(end, 'end'), p_building_ids: normIds(buildingIds) }),
         "Không thể tải P&L theo tháng",
         (r): FaMonthlyPnlRow => ({
           month: String(r.month),
@@ -96,7 +121,7 @@ export const useFaTypeBreakdown = (
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
-        () => supabase.rpc(accrual ? "fa_type_breakdown_accrual" : "fa_type_breakdown", { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) }),
+        () => supabase.rpc(accrual ? "fa_type_breakdown_accrual" : "fa_type_breakdown", { p_start_date: batBuoc(start, 'start'), p_end_date: batBuoc(end, 'end'), p_building_ids: normIds(buildingIds) }),
         "Không thể tải cơ cấu thu chi",
         (r): FaTypeBreakdownRow => ({
           month: String(r.month),
@@ -118,7 +143,7 @@ export const useFaOccupancyMonthly = (start?: string, end?: string, buildingIds?
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
-        () => supabase.rpc("fa_occupancy_monthly", { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) }),
+        () => supabase.rpc("fa_occupancy_monthly", { p_start_date: batBuoc(start, 'start'), p_end_date: batBuoc(end, 'end'), p_building_ids: normIds(buildingIds) }),
         "Không thể tải tỷ lệ lấp đầy",
         (r): FaOccupancyRow => ({
           month: String(r.month),
@@ -139,7 +164,7 @@ export const useFaLeaseEvents = (start?: string, end?: string, buildingIds?: str
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
-        () => supabase.rpc("fa_lease_events", { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) }),
+        () => supabase.rpc("fa_lease_events", { p_start_date: batBuoc(start, 'start'), p_end_date: batBuoc(end, 'end'), p_building_ids: normIds(buildingIds) }),
         "Không thể tải biến động hợp đồng",
         (r): FaLeaseEventsRow => ({
           month: String(r.month),
@@ -164,7 +189,7 @@ export const useFaInvoiceCollection = (
     placeholderData: keepPreviousData,
     queryFn: () =>
       callFa(
-        () => supabase.rpc("fa_invoice_collection", { p_start_month: startMonth, p_end_month: endMonth, p_building_ids: normIds(buildingIds) }),
+        () => supabase.rpc("fa_invoice_collection", { p_start_month: batBuoc(startMonth, 'startMonth'), p_end_month: batBuoc(endMonth, 'endMonth'), p_building_ids: normIds(buildingIds) }),
         "Không thể tải thu hồi hoá đơn",
         (r): FaInvoiceCollectionRow => ({
           billing_month: r.billing_month,

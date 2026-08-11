@@ -8,6 +8,7 @@ import {
   useSubscriptionPlans,
   useUserSubscription,
   useCreateUserSubscription,
+  type SubscriptionPlan,
 } from "@/hooks/useSubscription";
 
 function formatPrice(price: number) {
@@ -24,7 +25,14 @@ export default function SubscriptionPage() {
   const createSubscription = useCreateUserSubscription();
 
   const isLoading = plansLoading || subLoading;
-  const currentPlan = currentSub?.plan as typeof plans extends (infer T)[] ? T : never;
+  // Trước 11/08/2026 chỗ này viết
+  //   `currentSub?.plan as typeof plans extends (infer T)[] ? T : never`
+  // để suy kiểu phần tử của `plans`. Biểu thức đó HỎNG: `typeof plans` là
+  // `SubscriptionPlan[] | undefined` (React Query), mà `… | undefined` không
+  // extends `(infer T)[]`, nên nhánh sai được chọn và `currentPlan` thành
+  // `never`. Dưới cờ hiện tại `undefined` bị lược nên nó tình cờ chạy đúng; bật
+  // `strictNullChecks` là tám thuộc tính đọc trên nó cùng báo lỗi một lượt.
+  const currentPlan = currentSub?.plan as SubscriptionPlan | undefined;
   const isExpired = currentSub ? new Date(currentSub.end_date) < new Date() : false;
 
   const handleSubscribe = (planId: string, durationMonths: number) => {

@@ -4,7 +4,8 @@ import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
-type SubscriptionPlan = Database["public"]["Tables"]["subscription_plans"]["Row"];
+/** Xuất ra để trang không phải tự suy kiểu gói cước từ `typeof plans`. */
+export type SubscriptionPlan = Database["public"]["Tables"]["subscription_plans"]["Row"];
 type UserSubscription = Database["public"]["Tables"]["user_subscriptions"]["Row"];
 type UserSubscriptionInsert = Database["public"]["Tables"]["user_subscriptions"]["Insert"];
 type UserSubscriptionUpdate = Database["public"]["Tables"]["user_subscriptions"]["Update"];
