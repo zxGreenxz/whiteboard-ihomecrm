@@ -43,6 +43,44 @@ không tuyên bố đã test.
 
 ---
 
+## Công cụ tri thức (GitNexus · Understand Anything)
+
+Luật đầy đủ ở Contract §12. Đây là cách gọi cụ thể.
+
+**Trước khi đọc graph, chạy cửa chặn độ mới** — Contract §12 luật #4 cấm nạp graph khi chưa có
+verdict còn hiệu lực:
+
+```bash
+npm run gate:graph-freshness -- --nhiem-vu <onboarding|architecture|domain-review|generated-docs|medium-risk|high-risk>
+```
+
+**GitNexus — luôn qua wrapper, không gọi thẳng `gitnexus`.** Wrapper đọc version từ
+`tooling/agent-tools.json` (pin chưa `verified` thì nó từ chối chạy) và tự chèn hai thứ người gọi
+hay quên:
+
+```bash
+npm run graph:analyze            # index lại (tự ép --skip-agents-md)
+npm run graph:status
+npm run graph:impact -- <symbol>       # bán kính ảnh hưởng: đổi symbol này thì vỡ gì
+npm run graph:detect-changes           # git diff → symbol → luồng thực thi bị ảnh hưởng
+```
+
+`graph:impact` và `graph:detect-changes` là hai lệnh trả lời câu hỏi mà Contract §12 bắt phải hỏi
+trước khi sửa (bán kính ảnh hưởng). Dùng chúng thay vì đoán.
+
+> **Vì sao phải qua wrapper, không phải cho vui**: GitNexus giữ registry **toàn cục theo máy**, không
+> theo repo. Máy dev thường có nhiều clone/worktree cùng tên; khi đó lệnh truy vấn hoặc chết với
+> "Multiple repositories indexed", hoặc — tệ hơn — chạy trót lọt và trả kết quả của **repo khác** mà
+> không báo gì. Wrapper ép `--repo <đường dẫn repo này>` để câu trả lời luôn thuộc về đúng cây mã.
+
+**Understand Anything**: refresh graph là `/understand --full --language vi`, và theo Contract §12
+luật #6 nó phải đi **PR riêng**, không kèm thay đổi nào khác. Sau khi dựng lại, bắt buộc:
+
+```bash
+npm run gate:graph-secrets       # secret + PII trên artifact (cần binary gitleaks)
+npm run gate:graph-hygiene       # hộ chiếu khớp artifact
+```
+
 ## Trailer commit
 
 Mọi commit kèm:

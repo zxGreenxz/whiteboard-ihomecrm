@@ -785,6 +785,22 @@ jobs:
       - name: Quét toàn lịch sử
         run: /tmp/gitleaks git --redact --no-banner --config .gitleaks.toml .
 
+      # Artifact graph là một loại rủi ro RIÊNG, không nằm trong bước trên.
+      #
+      # `gitleaks git` quét COMMIT. Nó bắt secret bị commit — nhưng
+      # .ua/knowledge-graph.json là 8 MB văn bản do LLM sinh ra sau khi đọc toàn
+      # repo (kể cả fixture, seed, migration có dữ liệu mẫu), rồi được commit và
+      # push công khai. Hai thứ gitleaks KHÔNG bắt:
+      #   - PII khách hàng (số điện thoại, email) — không có luật nào cho nó
+      #   - và diff 8 MB JSON thì không ai review bằng mắt để bù lại
+      # Đo thật 08/08/2026: gitleaks trả "no leaks found" trên .ua/, trong khi
+      # cần một phép kiểm riêng cho trường văn bản. Đặt ở job này vì binary
+      # gitleaks đã có sẵn — tải lần nữa ở job khác là lãng phí và dễ lệch version.
+      - name: Secret + PII trên artifact graph (.ua/)
+        env:
+          GITLEAKS_BIN: /tmp/gitleaks
+        run: node scripts/check-graph-secrets.mjs
+
   # ─────────────────────────────────────────────────────────────────────────
   # Nhánh `production` là thứ Vercel phát hành. Push thẳng vào đó = phát hành mã
   # chưa từng qua CI của main. Branch protection KHÔNG bật được (repo private

@@ -1,15 +1,15 @@
 {
   "$comment": "SỔ VIỆC CÒN LẠI của plan kiến trúc/agent. Sinh từ một lượt soi 14 agent (1,53 triệu token, 665 lượt gọi công cụ) đối chiếu TỪNG deliverable của plan 3210 dòng vào repo thật, có một vòng PHẢN BIỆN cố chứng minh ngược mỗi kết luận 'chưa làm'. Giữ file này để phiên sau không phải soi lại từ đầu. Mục nào làm xong thì XOÁ khỏi đây và ghi vào program-status.json — đừng để hai sổ cùng nói về một việc.",
-  "auditedAt": "2026-08-07",
-  "auditedAtCommit": "43a5564e (soi gốc) → 36ec8b47 (cập nhật)",
+  "auditedAt": "2026-08-08",
+  "auditedAtCommit": "ca31186ec2edfc9a346ee5abe8195c4bd0630bf8",
   "method": "workflow soi-plan-con-thieu (7 lát × [soi → phản biện])",
   "totals": {
     "deliverablesInPlan": 365,
     "done": 150,
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
-    "completedAfterAudit": 71,
-    "stillMissing": 120
+    "completedAfterAudit": 73,
+    "stillMissing": 118
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -516,23 +516,7 @@
         "status": "MOT_PHAN",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Thêm npm alias + tài liệu cho `impact`/`detect_changes` trong repo (không phụ thuộc skill sinh ra bị gitignore). Reindex: chỉ mục đang cũ so với HEAD 5a91d687."
-      },
-      {
-        "deliverable": "Đợt 6 — refresh graph UA 2.9.4 (outputLanguage vi) có coverage Network Center, OpenClaw và migration sau 29/07/2026",
-        "planRef": "mục 50, dòng 2938",
-        "status": "CHUA_LAM",
-        "size": "M",
-        "touchesOpenClaw": false,
-        "remaining": "Chạy lại /understand trên HEAD hiện tại trong PR RIÊNG (luật #6), ghi toolVersion ĐO ĐƯỢC (đổi toolVersionSource 'attested' -> 'measured'), rồi `npm run gate:graph-freshness -- --nhiem-vu architecture` phải exit 0."
-      },
-      {
-        "deliverable": "Đợt 6 — graph secret/PII scan, artifact ownership, manual refresh policy; LFS chỉ khi kích thước yêu cầu",
-        "planRef": "mục 50, dòng 2939",
-        "status": "MOT_PHAN",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Viết bước quét secret/PII trên .ua/knowledge-graph.json + fingerprints.json (gitleaks hoặc tương đương) và nối vào gate trước khi commit graph mới."
+        "remaining": "CÒN: reindex định kỳ chưa có cơ chế nhắc (gate:graph-freshness báo GitNexus cũ N commit nhưng không chặn). ĐÃ XONG 08/08: npm alias graph:impact + graph:detect-changes, wrapper tự ép --repo (chống registry toàn cục trỏ nhầm clone khác), tài liệu trong CLAUDE.md mục 'Công cụ tri thức'."
       },
       {
         "deliverable": "docs/plans, docs/audits, docs/archive",
@@ -572,7 +556,7 @@
         "status": "MOT_PHAN",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Thêm mục cách gọi GitNexus qua scripts/run-pinned-gitnexus.mjs + gate:graph-freshness, và mục skill/hook."
+        "remaining": "CÒN: mục skill/hook. ĐÃ XONG 08/08: mục 'Công cụ tri thức' — cách gọi GitNexus qua scripts/run-pinned-gitnexus.mjs, gate:graph-freshness trước khi đọc graph, gate:graph-secrets sau khi dựng lại."
       },
       {
         "deliverable": "AGENTS.md rút còn adapter (pointer Contract + cách Codex dùng MCP + cách tạo draft PR + giới hạn tool)",
@@ -760,7 +744,7 @@
         "status": "MOT_PHAN",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm secret/PII scan trên artifact .ua/ trước khi commit graph — đây là phép kiểm DUY NHẤT còn thiếu của mục này."
+        "remaining": "CÒN: gộp các bước graph rải rác thành MỘT job đặt tên `knowledge-freshness-gates`, và phép kiểm 'cấm graph đè Project Contract'. ĐÃ XONG 08/08: secret/PII scan trên artifact .ua/ (scripts/check-graph-secrets.mjs, nối vào job secret-scan của ci-gates.yml)."
       },
       {
         "deliverable": "Job gate `known-gap-gates` — fail khi exemption quá hạn",
@@ -988,5 +972,5 @@
       }
     ]
   },
-  "$capNhat": "07/08/2026 phiên chiều: bỏ 32 mục đã làm xong, mỗi mục có commit hoặc file làm bằng chứng. Còn 122. Sổ này lạc hậu thì chính nó thành thứ nó sinh ra để ngăn — cập nhật sau MỖI lô, không gom lại cuối ngày. ĐÃ TRẢ LẠI 3 mục bị mẫu khớp xoá nhầm (RealtimeProviders.tsx, docs/incidents/, bản .md của docs/generated) — chúng chưa làm hoặc mới một phần, và bỏ nhầm một mục chưa làm là làm sổ nói dối theo hướng lạc quan."
+  "$capNhat": "08/08/2026: đóng 2 mục có bằng chứng kiểm được — refresh graph UA (commit a58460af: 3042/3042 file, gate:graph-freshness FRESH, toolVersionSource measured) và secret/PII scan artifact graph (scripts/check-graph-secrets.mjs + 18 test đột biến + nối vào ci-gates.yml). Sửa remaining của 3 mục làm dở thay vì xoá — bỏ nhầm một mục chưa xong là làm sổ nói dối. 07/08/2026 phiên chiều: bỏ 32 mục đã làm xong, mỗi mục có commit hoặc file làm bằng chứng. Còn 122. Sổ này lạc hậu thì chính nó thành thứ nó sinh ra để ngăn — cập nhật sau MỖI lô, không gom lại cuối ngày. ĐÃ TRẢ LẠI 3 mục bị mẫu khớp xoá nhầm (RealtimeProviders.tsx, docs/incidents/, bản .md của docs/generated) — chúng chưa làm hoặc mới một phần, và bỏ nhầm một mục chưa làm là làm sổ nói dối theo hướng lạc quan."
 }

@@ -32,6 +32,27 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PIN = join(repoRoot, "tooling", "agent-tools.json");
+
+/**
+ * Subcommand truy vấn graph — chúng nhận `-r, --repo` và mặc định đoán repo từ
+ * registry toàn cục, nên PHẢI được chỉ đích danh. Đã đối chiếu với `--help` của
+ * gitnexus 1.6.9 ngày 08/08/2026.
+ *
+ * KHÔNG gồm: analyze/index/status/mcp/smoke/doctor/list — chúng làm việc theo thư
+ * mục hiện hành hoặc không có khái niệm repo đích.
+ */
+export const SUB_CAN_REPO = new Set([
+  "query",
+  "context",
+  "impact",
+  "trace",
+  "cypher",
+  "detect-changes",
+  "detect_changes",
+  "check",
+  "wiki",
+  "augment",
+]);
 const INDEX_DIR = join(repoRoot, ".gitnexus");
 const MANIFEST = join(INDEX_DIR, "manifest.json");
 
@@ -205,6 +226,21 @@ function main(argv) {
     if (!args.includes("--skip-agents-md")) args.push("--skip-agents-md");
   } else {
     args = [sub, ...them];
+    // Ép --repo trỏ về CHÍNH repo này, cùng lý do với --skip-agents-md ở trên:
+    // gỡ một cái bẫy đặt sẵn cho mọi người dùng sau.
+    //
+    // GitNexus giữ một REGISTRY TOÀN CỤC theo máy, không theo repo. Máy này đang
+    // có hai mục CÙNG TÊN `whiteboard-ihomecrm` (repo này, và một worktree của
+    // clone khác ở XCRN/). Khi đó mọi lệnh truy vấn chết ngay với "Multiple
+    // repositories indexed" — đo được 08/08/2026. Tệ hơn: nếu chỉ có MỘT mục
+    // nhưng là mục của clone KIA, lệnh vẫn chạy và trả kết quả của repo khác mà
+    // không báo gì. Đó mới là hỏng thật: câu trả lời sai trông y như câu đúng.
+    //
+    // Truyền đường dẫn tuyệt đối chứ không truyền tên: hai mục trùng tên nên tên
+    // không phân biệt được.
+    if (SUB_CAN_REPO.has(sub) && !them.includes("--repo") && !them.includes("-r")) {
+      args.push("--repo", repoRoot);
+    }
   }
 
   console.log(`→ gitnexus@${pin.version} ${args.join(" ")}\n`);
