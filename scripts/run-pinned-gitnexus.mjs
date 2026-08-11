@@ -189,6 +189,63 @@ function smoke(pin) {
   return 0;
 }
 
+/**
+ * Đếm mức lệch của chỉ mục so với HEAD. Trả null nếu không đo được.
+ *
+ * Cố ý KHÔNG ném: đây là lời nhắc, không phải cửa chặn. Không đo được thì im,
+ * chứ không chặn người ta làm việc.
+ */
+export function doLechChiMuc(base) {
+  const chay = (a) => execFileSync("git", a, { cwd: repoRoot, encoding: "utf8" }).trim();
+  try {
+    chay(["cat-file", "-e", `${base}^{commit}`]);
+    const soCommit = Number(chay(["rev-list", "--count", `${base}..HEAD`]));
+    const fileMoi = chay(["diff", "--name-only", "--diff-filter=A", `${base}..HEAD`])
+      .split(/\r?\n/)
+      .filter((f) => /\.(ts|tsx|js|mjs|cjs|sql)$/.test(f)).length;
+    return { soCommit, fileMoi };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * In cảnh báo TRƯỚC mỗi lệnh truy vấn khi chỉ mục đã cũ.
+ *
+ * VÌ SAO ĐẶT Ở ĐÂY, không phải trong một báo cáo định kỳ (plan Đợt 6)
+ *   `gate:graph-freshness` in "GitNexus: cũ N commit · M file mới chưa index" rồi
+ *   thoát 0 — theo thiết kế, vì chặn CI vì độ mới của graph sẽ khiến người ta tắt
+ *   gate. Nhưng hệ quả là con số đó nằm trong một báo cáo mà không ai đọc ĐÚNG
+ *   LÚC nó quan trọng.
+ *
+ *   Lúc nó quan trọng là lúc chạy `impact`: M file chưa index nghĩa là caller nằm
+ *   trong M file đó SẼ KHÔNG XUẤT HIỆN trong bán kính ảnh hưởng. Câu trả lời
+ *   thiếu, và nó không tự nói là thiếu — người hỏi sẽ đọc "impactedCount: 0" thành
+ *   "sửa thoải mái". Contract §12 bắt hỏi bán kính trước khi sửa; một câu trả lời
+ *   thiếu ở đúng chỗ đó tệ hơn không hỏi.
+ *
+ *   Nên cảnh báo đứng ngay trước câu trả lời, và nói rõ nó có thể thiếu bao nhiêu.
+ */
+export function canhBaoChiMucCu(sub) {
+  if (!existsSync(MANIFEST)) return;
+  let base;
+  try {
+    base = JSON.parse(readFileSync(MANIFEST, "utf8")).baseCommit;
+  } catch {
+    return;
+  }
+  if (!base) return;
+  const lech = doLechChiMuc(base);
+  if (!lech || (lech.soCommit === 0 && lech.fileMoi === 0)) return;
+
+  console.error(`⚠ Chỉ mục GitNexus cũ ${lech.soCommit} commit · ${lech.fileMoi} file mã mới CHƯA index.`);
+  if (sub === "impact" || sub === "trace" || sub === "detect-changes" || sub === "detect_changes") {
+    console.error(`   Nghĩa là caller/quan hệ nằm trong ${lech.fileMoi} file đó SẼ KHÔNG hiện ra ở kết quả dưới.`);
+    console.error("   Kết quả trống KHÔNG chứng minh 'không ảnh hưởng gì' — nó có thể chỉ là chưa nhìn thấy.");
+  }
+  console.error("   Reindex: npm run graph:analyze\n");
+}
+
 function main(argv) {
   const sub = argv[2];
   if (!sub) {
@@ -241,6 +298,7 @@ function main(argv) {
     if (SUB_CAN_REPO.has(sub) && !them.includes("--repo") && !them.includes("-r")) {
       args.push("--repo", repoRoot);
     }
+    if (SUB_CAN_REPO.has(sub)) canhBaoChiMucCu(sub);
   }
 
   console.log(`→ gitnexus@${pin.version} ${args.join(" ")}\n`);
