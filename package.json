@@ -47,6 +47,7 @@
     "migrate:forward": "node scripts/apply-reviewed-migration.mjs",
     "catalog:capture": "node scripts/capture-production-catalog.mjs --write",
     "catalog:check": "node scripts/capture-production-catalog.mjs --check",
+    "catalog:verify-proven": "node scripts/verify-catalog-proven.mjs",
     "backup:before-schema": "node scripts/backup-before-schema.mjs",
     "check:external-controls": "node scripts/check-external-controls.mjs",
     "gen:openclaw:vectors": "node scripts/generate-openclaw-golden-vectors.mjs",

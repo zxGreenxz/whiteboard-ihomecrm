@@ -1,0 +1,26 @@
+{
+  "$comment": "Đối chiếu TỪNG bằng chứng catalog:* của các entry catalog-proven với pg_catalog production. Không lấy mẫu — đối chiếu được toàn bộ thì lấy mẫu là tự bịt mắt. Chỉ đọc, không ghi gì lên production.",
+  "verifiedAt": "2026-08-11",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "soEntryCatalogProven": 214,
+  "soBangChungDaKiem": 476,
+  "bangChungKhongPhaiCatalog": 0,
+  "theoLoai": {
+    "function": 280,
+    "table": 71,
+    "index": 49,
+    "policy": 22,
+    "trigger": 49,
+    "view": 5
+  },
+  "soCatalogThat": {
+    "function": 1605,
+    "table": 579,
+    "index": 2016,
+    "policy": 1508,
+    "trigger": 602,
+    "view": 17
+  },
+  "khongDoiChieuDuoc": [],
+  "saiDinhDangTen": []
+}

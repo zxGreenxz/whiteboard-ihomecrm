@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 62
+    "stillMissing": 61
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -43,10 +43,12 @@
       {
         "deliverable": "Đợt 1b — Review theo batch + sampling + risk-directed (§0.7), `reviewedBy` ghi `batch:<id>`",
         "planRef": "mục 45, dòng 2778",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Hoặc thêm `reviewedBy: \"batch:<id>\"` cho từng entry trỏ về review record, hoặc sửa policy/plan để ghi rõ đã thay bằng `reviewModel` cấp manifest + `migration-unknown-review.json`; và tạo hồ sơ kết quả random sample n≈30 cho bucket catalog-proven (hiện chỉ khai ý định)."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "(a) KHONG them reviewedBy: \"batch:<id>\" cho tung entry — do la do chinh xac gia: mo hinh review la CAP BATCH (reviewModel trong provenance + supabase/migration-unknown-review.json ghi 10 dieu tra doc lap), khong ai ky tung file. Ghi ro dieu do thay vi bia chu ky. (b) Ho so mau ngau nhien n~30 cho bucket catalog-proven: KHONG lay mau — doi chieu TOAN BO. scripts/verify-catalog-proven.mjs hoi pg_catalog production (CHI DOC) va kiem tung chuoi bang chung: 476/476 khop tren 214 entry (function 280, table 71, index 49, trigger 49, policy 22, view 5). Ho so o docs/generated/catalog-proven-verification.json, da quet khong co secret. Alias catalog:verify-proven. Dot bien 2/2."
       }
     ],
     "dot-2-3": [
