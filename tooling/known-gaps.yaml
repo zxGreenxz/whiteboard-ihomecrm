@@ -69,6 +69,35 @@ gaps:
       `githubBranchProtection` chuyển từ `unverified` sang `verified`. Đóng mục này khi
       bằng chứng đó tồn tại — KHÔNG đóng chỉ vì đã có biện pháp thay thế.
 
+  - id: management-api-ghi-khong-cua
+    where: >
+      scripts/apply-accounting-rollout.mjs · scripts/backfill-deposit-vouchers.mjs ·
+      scripts/seed-zalo-demo.mjs
+    expires_at: 2026-11-30
+    why: >
+      Ba script này GHI được vào production qua Management API mà không đi qua cửa nào:
+      không promotion token, không lane forward, không giới hạn org. Đo 11/08/2026 khi
+      thêm trường `giayPhep` vào tooling/management-api-writers.json — trước đó trường
+      `why` là văn xuôi nên không ai đối chiếu được, và ba script này lẫn giữa 17 mục
+      `write` cùng với 6 mục thật ra CHỈ ĐỌC (bị xếp nhầm vì SQL của chúng trích văn bản
+      định nghĩa hàm có chữ CREATE).
+
+      Mức rủi ro của ba cái KHÔNG bằng nhau:
+      - apply-accounting-rollout: đổi schema, có advisory lock + digest riêng. Nguy hiểm
+        nhất, và cũng là thứ lane forward chưa mô hình hoá được (rollout có thứ tự riêng).
+      - backfill-deposit-vouchers: DML một lần, có dry-run, chạy tay.
+      - seed-zalo-demo: xoá/chèn theo nhãn `meta.seed='zalo-demo'` và theo owner email.
+        Khoanh vùng bằng nhãn, KHÔNG bằng org — nên nhập sai SEED_OWNER_EMAIL là chạm dữ
+        liệu người khác.
+
+      Chưa gắn promotion token ngay vì cả ba đều chạy tay và việc thêm một cửa chỉ có giá
+      trị khi cửa đó không bị người chạy bỏ qua — cần đo cách dùng thật trước.
+    exit_condition: >
+      Mỗi script hoặc (a) đòi IHOMECRM_PROMOTION_TOKEN như apply-sql.mjs, hoặc (b) tự giới
+      hạn vào org DEMO/TEST và khai lại `giayPhep` tương ứng, hoặc (c) bị xoá nếu đã hết
+      việc. Đóng khi `giayPhep: khong-co-cua` không còn mục nào — gate
+      check-management-api-writes tự đòi khoảng trống này khi còn.
+
   - id: pitr-disabled-accepted-risk
     where: Supabase project tryymsxyyckgbrmmvozx
     expires_at: 2027-02-06

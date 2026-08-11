@@ -206,8 +206,69 @@ function main() {
     hong = 1;
   }
 
+  // ── Giấy phép khai phải KHỚP MÃ ────────────────────────────────────────────
+  //
+  // Trường `why` là văn xuôi: nó giải thích cho người đọc nhưng không kiểm được.
+  // Đo 11/08/2026: 17 caller `write`, chỉ 2 nhắc tới promotion token, và 6 cái
+  // thật ra CHỈ ĐỌC (bị xếp `write` vì SQL của chúng trích văn bản định nghĩa
+  // hàm, trong đó có chữ CREATE). Không có gì phân biệt được ba nhóm đó.
+  //
+  // `giayPhep` là khai báo có cấu trúc, và mỗi giá trị có một phép kiểm trên MÃ.
+  // Khai một đằng mà mã một nẻo thì đỏ — đó là điểm khác giữa khai báo và lời hứa.
+  const loiGP = [];
+  for (const b of baseline.filter((x) => x.loai === "write")) {
+    const gp = b.giayPhep;
+    if (!gp) {
+      loiGP.push(`${b.file}: thiếu \`giayPhep\` (lane · promotion-token · chi-demo · chi-test · giao-dich-rollback · chi-doc · khong-co-cua).`);
+      continue;
+    }
+    let ma = "";
+    try {
+      ma = readFileSync(join(repoRoot, b.file), "utf8");
+    } catch {
+      loiGP.push(`${b.file}: khai giayPhep nhưng không đọc được file.`);
+      continue;
+    }
+    const doi = {
+      "promotion-token": [/promotion[ _-]?token|PROMOTION_TOKEN/i, "phải thực sự đòi promotion token"],
+      "chi-demo": [/dddd0000/, "phải nhắc org DEMO dddd0000 — bằng chứng nó không chạm org THẬT"],
+      "chi-test": [/cccc0000/, "phải nhắc org TEST cccc0000"],
+      lane: [/apply-reviewed-migration|LOCK_NAME/, "phải là chính lane forward"],
+      // Ghi trong transaction rồi ROLLBACK: không dòng nào tồn tại sau khi chạy.
+      "giao-dich-rollback": [/\bROLLBACK\b/i, "phải thực sự có ROLLBACK — nếu không thì fixture ở lại production"],
+    }[gp];
+    if (doi && !doi[0].test(ma)) loiGP.push(`${b.file}: khai \`${gp}\` nhưng ${doi[1]}.`);
+  }
+
+  // `khong-co-cua` là thú nhận, không phải giấy phép — nó BẮT BUỘC có khoảng
+  // trống đã đăng ký, để một đường ghi production không cửa không thể nằm im.
+  const khongCua = baseline.filter((x) => x.giayPhep === "khong-co-cua");
+  if (khongCua.length > 0) {
+    let gaps = "";
+    try {
+      gaps = readFileSync(join(repoRoot, "tooling", "known-gaps.yaml"), "utf8");
+    } catch {
+      /* thiếu file — báo ở dưới */
+    }
+    if (!/management-api-ghi-khong-cua/.test(gaps)) {
+      loiGP.push(
+        `${khongCua.length} caller khai \`khong-co-cua\` nhưng chưa có known-gap \`management-api-ghi-khong-cua\`.\n` +
+        `      → ${khongCua.map((c) => c.file).join(", ")}`,
+      );
+    }
+  }
+
+  if (loiGP.length > 0) {
+    console.error(`\n❌ ${loiGP.length} giấy phép khai không khớp mã:`);
+    for (const l of loiGP) console.error(`  - ${l}`);
+    hong = 1;
+  }
+
   if (hong) process.exit(1);
   console.log(`✅ Không có đường GHI production mới ngoài lane \`${LANE_CHINH_THUC}\`.`);
+  const demGP = new Map();
+  for (const b of baseline.filter((x) => x.loai === "write")) demGP.set(b.giayPhep, (demGP.get(b.giayPhep) ?? 0) + 1);
+  console.log(`   giấy phép: ${[...demGP].map(([k, v]) => `${k}=${v}`).join(" · ")}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
