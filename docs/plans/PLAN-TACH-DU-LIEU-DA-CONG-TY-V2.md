@@ -21,10 +21,22 @@ phép đo trước/sau bằng vai người dùng thật. Ba commit: `9519cd98`, 
 > Mười commit: `19bb16d3`, `0d65ca5b`, `61598490`, `29096106`, `18359bf9`,
 > `0efabefd`, `0ce5396c`, `bc99510b`, `bdbc3247`, `c65a3ca0`.
 >
-> **PHIÊN 09–11/08 làm nốt GĐ9, hai bảng AI, và đóng ĐIỂM MÙ THỨ HAI của bộ đo.**
-> Số chốt: biên giới **302** · miễn trừ **2** (`ai_chat_*`, hạn 30/09) · rò sống
-> **0** · dòng NULL chưa khai **0** (từ 3.621) · frontend có `OrganizationContext`.
-> Bốn commit: `ae505187`, `979d0941`, `e54f831a`, và bản cập nhật này.
+> **KẾ HOẠCH ĐÃ ĐÓNG.** Mọi bảng có `organization_id` đều có biên giới, và sổ
+> miễn trừ RỖNG — không còn dòng nào, không còn hạn chót nào treo.
+>
+> | Chỉ số | Đầu (07/08) | Chốt (11/08) |
+> |---|---|---|
+> | Bảng có biên giới tổ chức | 32/304 | **304/304** |
+> | Sổ miễn trừ | 7 dòng | **0** |
+> | Bảng đang rò sang công ty khác | 19 | **0** |
+> | Dòng `organization_id` NULL chưa khai | 3.621 (không ai đếm) | **0** |
+> | Bảng bộ đo không hề quét | 12 | **0** |
+> | Màn hình thanh toán | 14.821 ms | **365 ms** |
+> | Bề mặt hoá đơn công khai | không giới hạn, lộ SĐT | **60 mã sai/10 phút/IP**, không SĐT |
+> | Frontend biết "tổ chức hiện tại" | không | **có** |
+>
+> Phiên 09–11/08: `ae505187`, `979d0941`, `e54f831a`, `2398037f`, và bản cập
+> nhật này.
 >
 > **KHÔNG CÒN VIỆC NÀO CHỜ QUYẾT ĐỊNH.** Việc cuối — xoay 334 mã công khai lên
 > ≥16 ký tự (GĐ0 mục 6a(i)) — đã được chủ dự án cân nhắc và **quyết KHÔNG làm**
@@ -446,9 +458,22 @@ CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần D
   Không thể có bản riêng cho từng công ty, nên nhãn `aaaa` trên chúng là **nhãn
   sai**. Đã gỡ về NULL, rào biên giới, rút khỏi sổ miễn trừ (`20260809010000`).
 
-  Sổ miễn trừ nay còn **2 dòng**: `ai_chat_threads` / `ai_chat_messages`, hạn
-  30/09 — nguyên nhân là `chatEngine.ts` insert không set `organization_id`, tức
-  đúng lớp vấn đề "105 bảng nhận được NULL" ở trên.
+- **`ai_chat_threads` / `ai_chat_messages` — ĐÃ XONG. Sổ miễn trừ nay RỖNG.**
+  `20260809040000`. Lý do miễn trừ cũ: `chatEngine.ts` insert không set
+  `organization_id` nên rào là chặn chính đường ghi của mình. Vá ở **tầng
+  database** chứ không ở client — sửa client chỉ chặn được một đường ghi, trigger
+  chặn mọi đường.
+
+  `app_private.autofill_org_chat()` **fail-closed**: suy được thì điền, không suy
+  được thì NỔ. Cố ý không dùng `_autofill_org` dùng chung vì nhánh cuối của hàm
+  đó rơi về hằng số `aaaa`. Hậu quả không đối xứng: một tin nhắn Copilot không
+  lưu được là phiền, còn một tin dán nhầm nhãn công ty là dữ liệu sai vĩnh viễn
+  trong bảng chỉ-ghi-thêm.
+
+  Ba nguồn giảm dần độ tin: client tự khai (nhưng **kiểm lại** người đó có
+  membership ACTIVE ở tổ chức được khai) → tổ chức của luồng cha → membership duy
+  nhất. Client truyền `organizationId` từ `OrganizationContext`, chỉ thật sự cần
+  với người thuộc nhiều tổ chức.
 
 ---
 
