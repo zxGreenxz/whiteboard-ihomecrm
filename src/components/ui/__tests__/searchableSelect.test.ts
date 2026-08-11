@@ -15,8 +15,12 @@ describe("normalizeVietnamese", () => {
 
   it("an toàn với chuỗi rỗng / null-ish", () => {
     expect(normalizeVietnamese("")).toBe("");
-    // @ts-expect-error – cố tình truyền undefined để kiểm tra guard
-    expect(normalizeVietnamese(undefined)).toBe("");
+    // Cố tình truyền undefined để kiểm tra guard. Chỗ này trước dùng chỉ thị
+    // `@ts-expect-error`, và nó SAI ở cả hai chiều: dưới `strictNullChecks:
+    // false` hiện tại thì `undefined` gán được vào `string` nên chỉ thị THỪA và
+    // tsc báo TS2578; còn khi bật cờ lên thì nó lại CẦN. Ép kiểu tường minh đúng
+    // ở cả hai trạng thái, nên lát bật cờ sau này không phải quay lại đây nữa.
+    expect(normalizeVietnamese(undefined as unknown as string)).toBe("");
   });
 
   it("idempotent (chuẩn hoá 2 lần = 1 lần)", () => {

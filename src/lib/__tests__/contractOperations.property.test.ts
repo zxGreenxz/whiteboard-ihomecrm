@@ -201,6 +201,12 @@ describe('Feature: lease-contract-management, Property 9: Action button availabi
             end_date,
             actual_end_date: null,
             expected_move_out_date,
+            // Hai trường này CÓ trong `ContractWithRelations` và có cột thật trong
+            // DB (`public_code` còn là NOT NULL), nhưng fixture bỏ quên. Nghĩa là
+            // test đang khẳng định điều gì đó về một hình dạng KHÁC hình dạng mã
+            // sản xuất nhìn thấy.
+            public_code: 'ABC123',
+            end_billing_date: null,
             rent_price: 0,
             total_deposit: 0,
             deposit_paid: null,

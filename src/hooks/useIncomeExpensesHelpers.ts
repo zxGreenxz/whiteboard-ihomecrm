@@ -54,17 +54,37 @@ export interface ApprovableVoucher {
   approved_at: string | null;
 }
 
+/**
+ * Ba trường trạng thái duyệt — gom lại vì cả hai hàm dưới đây đều GHI ĐÈ đúng
+ * chúng, và phải loại chúng khỏi `T` trước khi giao.
+ */
+type TruongDuyet = 'approval_status' | 'approved_by' | 'approved_at';
+
+/**
+ * BẪY KIỂU ĐÃ SỬA 11/08/2026: chữ ký cũ là
+ * `T & { approval_status: 'APPROVED'; … }`.
+ *
+ * Khi `T` đã ghim `approval_status: 'UNAPPROVED'` — tức ĐÚNG trường hợp thường
+ * gặp nhất, duyệt một phiếu đang chưa duyệt — thì `'UNAPPROVED' & 'APPROVED'`
+ * rút gọn thành `never`, và TypeScript rút gọn tiếp CẢ object thành `never`.
+ * Hệ quả: mọi truy cập thuộc tính trên kết quả đều báo
+ * "Property 'x' does not exist on type 'never'". Kiểu trả về vô dụng đúng ở
+ * trường hợp chính của hàm.
+ *
+ * `Omit` trước rồi mới giao: trường bị ghi đè thì lấy kiểu mới, phần còn lại của
+ * `T` giữ nguyên.
+ */
 export function applyApproval<T extends ApprovableVoucher>(
   voucher: T,
   approverId: string,
   approvedAt: string,
-): T & { approval_status: 'APPROVED'; approved_by: string; approved_at: string } {
+): Omit<T, TruongDuyet> & { approval_status: 'APPROVED'; approved_by: string; approved_at: string } {
   return { ...voucher, approval_status: 'APPROVED', approved_by: approverId, approved_at: approvedAt };
 }
 
 export function applyUnapproval<T extends ApprovableVoucher>(
   voucher: T,
-): T & { approval_status: 'UNAPPROVED'; approved_by: null; approved_at: null } {
+): Omit<T, TruongDuyet> & { approval_status: 'UNAPPROVED'; approved_by: null; approved_at: null } {
   return { ...voucher, approval_status: 'UNAPPROVED', approved_by: null, approved_at: null };
 }
 

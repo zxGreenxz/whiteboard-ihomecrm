@@ -44,8 +44,23 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BASELINE = join(repoRoot, "tooling", "ts-suppression-baseline.json");
 
-/** Chỉ thị bắt trong comment. Cả 3 dạng TS công nhận. */
-export const DIRECTIVE = /@ts-(ignore|expect-error|nocheck)\b/g;
+/**
+ * Chỉ thị bắt trong comment. Cả 3 dạng TS công nhận.
+ *
+ * PHẢI đứng NGAY SAU dấu mở comment (`//`, `///`, `/*`), vì đó đúng là vị trí
+ * DUY NHẤT TypeScript công nhận: bộ quét của nó khớp `^\s*(\/\/\/?\s*)?@ts-…`
+ * tính từ đầu nội dung comment. Một lần nhắc TÊN chỉ thị giữa câu văn thì không
+ * tắt kiểm tra kiểu của bất cứ dòng nào.
+ *
+ * Vì sao siết lại (11/08/2026): bản cũ khớp chuỗi ở mọi vị trí, nên một dòng
+ * chú thích giải thích "ở đây KHÔNG dùng @ts-expect-error vì…" bị đếm y như một
+ * chỉ thị thật. Đã dính ngay trong lát gỡ chỉ thị cuối cùng: gỡ xong mà gate vẫn
+ * báo 1, và cái thứ 1 đó chính là câu văn vừa viết ra để giải thích việc gỡ.
+ *
+ * Đây cùng một họ với căn bệnh file này đã tự ghi ở dưới — "cấm luôn việc VIẾT
+ * RA rằng điều đó bị cấm". Bản cũ mới chữa cho `scripts/`, chưa chữa trong `src/`.
+ */
+export const DIRECTIVE = /(?:\/\/\/?|\/\*)\s*@ts-(ignore|expect-error|nocheck)\b/g;
 
 /**
  * Quét theo `git ls-files` chứ không đi cây thư mục.

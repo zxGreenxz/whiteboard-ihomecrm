@@ -1,7 +1,5 @@
 {
   "$comment": "Ratchet chỉ thị tắt kiểm tra kiểu (@ts-ignore / @ts-expect-error / @ts-nocheck). Khoá theo TẬP fingerprint file#directive, KHÔNG theo con số — đếm số cho phép đánh tráo chỗ này lấy chỗ kia mà tổng không đổi. Vì sao cần: gate typecheck chính (check-ts-baseline.mjs) bị một dòng @ts-ignore vô hiệu hoàn toàn, và trước gate này không gì đếm chúng. Sinh bởi scripts/check-ts-suppressions.mjs.",
-  "total": 1,
-  "fingerprints": [
-    "src/components/ui/__tests__/searchableSelect.test.ts#@ts-expect-error"
-  ]
+  "total": 0,
+  "fingerprints": []
 }
