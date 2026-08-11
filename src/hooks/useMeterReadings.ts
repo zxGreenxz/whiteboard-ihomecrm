@@ -10,9 +10,26 @@ type MeterType = Database["public"]["Enums"]["meter_type"];
 // Types
 // ============================================================================
 
+/**
+ * CÓ HAI interface tên `MeterReadingFilters` trong repo, và chúng đã lệch nhau.
+ *
+ *   src/components/meter-readings/MeterReadingFilters.tsx  ← bản UI khai, CÓ room_ids
+ *   src/hooks/useMeterReadings.ts (đây)                    ← thiếu room_ids tới 11/08/2026
+ *
+ * Thân hàm bên dưới ĐÃ cài đặt lọc nhiều phòng (`filters.room_ids?.length` ⇒
+ * `.in("room_id", …)`), nên tính năng chạy đúng ở runtime — chỉ có kiểu là không
+ * mô tả nổi nó, và ts-baseline đã nuốt cả ba lỗi thành nợ đã biết.
+ *
+ * Không gộp một mối trong lát này: bản UI dùng `| null` bắt buộc còn bản này dùng
+ * `?` tuỳ chọn, hợp nhất sẽ đụng mọi consumer. Thay vào đó
+ * `__tests__/meterReadingFilters.contract.test.ts` khẳng định hai bản còn tương
+ * thích, nên lần lệch sau sẽ đỏ ngay thay vì chờ ai đó đọc ra.
+ */
 export interface MeterReadingFilters {
   building_id?: string;
   room_id?: string;
+  /** Lọc nhiều phòng cùng tên (gộp mọi toà). ƯU TIÊN hơn `room_id`. */
+  room_ids?: string[] | null;
   meter_type?: MeterType;
   month?: string;
   status?: "UNAPPROVED" | "APPROVED";
