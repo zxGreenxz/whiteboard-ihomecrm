@@ -244,7 +244,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const preview = previewQuery.data;
   const previewRows = useMemo(() => preview?.rows ?? [], [preview]);
   const stateRows = useMemo<ProfitClosePreviewRow[]>(
-    () => (state?.rows ?? []).map((row) => ({
+    () => (state?.rows ?? []).map((row): ProfitClosePreviewRow => ({
       building_id: row.building_id,
       building_name: row.building_name,
       revenue: row.source_revenue,

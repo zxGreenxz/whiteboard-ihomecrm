@@ -320,7 +320,7 @@ const IncomeExpenseBatchForm = ({
     // Kỳ áp dụng mặc định = tháng hiện tại → tháng hiện tại.
     const defPeriodStart = monthToStartDate(currentMonth());
     const defPeriodEnd = monthToEndDate(currentMonth());
-    const newRows: BatchItemRow[] = types.map((t) => ({
+    const newRows: BatchItemRow[] = types.map((t): BatchItemRow => ({
       building_id: '',
       room_id: null,
       income_expense_type_id: t.id,

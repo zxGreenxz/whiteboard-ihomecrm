@@ -75,11 +75,13 @@ const MONEY_SERIES = {
   net: { label: "Lợi nhuận", color: "hsl(var(--foreground))" },
 } as const;
 
-const MONEY_SERIES_STYLES = {
+type TrendSeriesStyle = Pick<TrendLegendSeries, "strokeDasharray" | "dot">;
+
+const MONEY_SERIES_STYLES: Record<ComparisonMetricKey, TrendSeriesStyle> = {
   revenue: { strokeDasharray: undefined, dot: { r: 3 } },
   expense: { strokeDasharray: "8 4", dot: { r: 3 } },
   net: { strokeDasharray: "2 4", dot: { r: 3 } },
-} as const;
+};
 
 const MONEY_LEGEND_SERIES: readonly TrendLegendSeries[] = (
   Object.keys(MONEY_SERIES) as ComparisonMetricKey[]
@@ -89,7 +91,9 @@ const MONEY_LEGEND_SERIES: readonly TrendLegendSeries[] = (
   ...MONEY_SERIES_STYLES[dataKey],
 }));
 
-const RATIO_SERIES = {
+type RatioMetricKey = "marginPct" | "expenseRatioPct";
+
+const RATIO_SERIES: Record<RatioMetricKey, Omit<TrendLegendSeries, "dataKey">> = {
   marginPct: {
     label: "Biên lợi nhuận",
     color: "#2563eb",
@@ -102,7 +106,7 @@ const RATIO_SERIES = {
     strokeDasharray: "6 4",
     dot: { r: 3 },
   },
-} as const;
+};
 
 const RATIO_LEGEND_SERIES: readonly TrendLegendSeries[] = Object.entries(
   RATIO_SERIES,

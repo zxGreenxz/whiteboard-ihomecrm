@@ -146,7 +146,11 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
       hasContract: !!invoice.contract_id,
       cap: !isMulti,
     });
-    if (!planned.ok) throw new Error(planned.error);
+    // `planned.ok === false` chứ không phải `!planned.ok`: repo bật
+    // strictNullChecks:false, và ở chế độ đó tsc KHÔNG phân nhánh được union
+    // theo truthiness của discriminant boolean — `planned.error` sẽ báo TS2339.
+    // So sánh tường minh với `false` thì narrowing chạy đúng.
+    if (planned.ok === false) throw new Error(planned.error);
     const { amountTm, amountTk, amountTt, change, keepAsCredit: credit, rounding } = planned.plan;
 
     // Sổ quỹ riêng từng phương thức có tiền.

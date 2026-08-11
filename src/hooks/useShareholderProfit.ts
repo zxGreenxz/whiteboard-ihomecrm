@@ -607,7 +607,7 @@ function normalizeProfitClosePreview(
         ? value
         : [];
   const rootSourceHash = String(root.source_hash ?? "");
-  const normalizedRows = rows.map((row: any): ProfitClosePreviewRow => {
+  const normalizedRows: ProfitClosePreviewRow[] = rows.map((row: any): ProfitClosePreviewRow => {
     const snapshot = normalizeSnapshot(row.current_snapshot ?? row.snapshot);
     if (snapshot && row.current_status) {
       snapshot.status = row.current_status === "LOCKED" ? "LOCKED" : "DRAFT";

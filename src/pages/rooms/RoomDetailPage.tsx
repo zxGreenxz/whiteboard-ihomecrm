@@ -198,7 +198,7 @@ const RoomDetailPage = () => {
           .order('name', { ascending: true });
 
         if (error) throw error;
-        setAssets((data || []).map(a => ({
+        setAssets((data || []).map((a): Asset => ({
           id: a.id,
           name: a.name,
           asset_code: a.code,

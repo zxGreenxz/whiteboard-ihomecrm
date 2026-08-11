@@ -152,7 +152,11 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       undefined,
       parseNetworkCenterFleet,
     );
-    const details = await Promise.all(fleet.items.map(async (item) => {
+    type FleetDetailSlot = {
+      detail: NetworkCenterBuildingDto | undefined;
+      error: string | undefined;
+    };
+    const details = await Promise.all(fleet.items.map(async (item): Promise<FleetDetailSlot> => {
       // Chính RPC hạm đội đã nói toà này không có router, không sự cố mở và
       // không bảo trì → RPC chi tiết không thêm được gì cho hàng hạm đội. Bỏ
       // một lượt gọi thay vì fan-out N+1 cho toàn bộ danh sách.

@@ -256,7 +256,7 @@ export function buildExcelRows(args: {
     invoiceCountByContract, previousDebtByContract, defaults,
   } = args;
   return contracts
-    .map((c) => {
+    .map((c): ExcelRowData => {
       const occupants = c.contract_customers?.length ?? 1;
       const meterId = meterByRoom.get(c.room_id) ?? null;
       const prev = meterId ? lastReading.get(meterId) ?? 0 : 0;

@@ -51,7 +51,7 @@ export async function signR2(bucket: string, path: string, expiresIn: number): P
       { headers: await authHeader() },
     );
     if (!res.ok) return null;
-    const j = (await res.json().catch(() => null)) as { url?: string } | null;
+    const j = (await res.json().catch((): null => null)) as { url?: string } | null;
     return j?.url || null;
   } catch {
     return null;

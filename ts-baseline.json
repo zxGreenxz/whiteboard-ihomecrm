@@ -1,9 +1,5 @@
 [
   "src/components/invoices/GenerateInvoiceDialog.tsx|TS2322|Type '{ label?: string; type?: \"invoice\" | \"deposit\"; id?: string; contract_id?: string; amount?: number; }[]' is not assignable to type '…'.",
-  "src/hooks/useQuickCollect.ts|TS2339|Property 'error' does not exist on type '…'.",
-  "src/lib/__tests__/collectPlan.test.ts|TS2339|Property 'error' does not exist on type '…'.",
-  "src/lib/__tests__/collectPlan.test.ts|TS2339|Property 'error' does not exist on type '…'.",
-  "src/lib/__tests__/collectPlan.test.ts|TS2339|Property 'error' does not exist on type '…'.",
   "src/pages/buildings/BuildingDetailPage.tsx|TS2339|Property 'notes' does not exist on type '…'.",
   "src/pages/buildings/BuildingDetailPage.tsx|TS2339|Property 'notes' does not exist on type '…'.",
   "src/pages/customers/CT01FormPage.tsx|TS2322|Type '{ email?: string; current_address?: string; date_of_birth?: string; family_members?: { date_of_birth?: string; full_name?: string; gender?: string; id_number?: string; occupation_workplace?: string; relationship_to_declarant?: string; relationship_to_household_head?: string; }[]; ... 11 more ...; temporary_address?:...' is not assignable to type '…'.",

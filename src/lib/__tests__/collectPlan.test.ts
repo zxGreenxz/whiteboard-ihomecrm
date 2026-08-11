@@ -3,8 +3,20 @@ import fc from 'fast-check';
 import * as collectPlanModule from '../collectPlan';
 import { planCollect, planConflictsWithRemaining, type CollectPlanLine } from '../collectPlan';
 
+/**
+ * Viết `r.ok === false` chứ KHÔNG phải `!r.ok`, và đó không phải chuyện văn phong.
+ *
+ * Repo đang để `strict: false` ⇒ `strictNullChecks: false`. Ở chế độ đó tsc
+ * KHÔNG thu hẹp union phân biệt theo truthiness của discriminant boolean, nên
+ * `if (!r.ok) … r.error` báo "Property 'error' does not exist" — dù `CollectPlanResult`
+ * là union đúng chuẩn `{ok:true;plan} | {ok:false;error}`. So sánh tường minh
+ * thì thu hẹp chạy bình thường. Hai cách tương đương tuyệt đối vì `ok` là `boolean`.
+ *
+ * Bốn lỗi này từng bị xếp nhầm là "không sửa được trước khi bật cờ" và nằm trong
+ * `ts-baseline.json`. Đừng "dọn" ngược về `!r.ok` — nó sẽ quay lại baseline.
+ */
 const ok = (r: ReturnType<typeof planCollect>) => {
-  if (!r.ok) throw new Error('expected ok, got error: ' + r.error);
+  if (r.ok === false) throw new Error('expected ok, got error: ' + r.error);
   return r.plan;
 };
 
@@ -51,7 +63,7 @@ describe('planCollect — multi-line', () => {
   it('nợ khách nhưng KHÔNG có hợp đồng → lỗi', () => {
     const r = planCollect({ lines: [{ method: 'TM', amount: 5_000_000 }], remaining: 4_000_000, keepAsCredit: true, hasContract: false });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/hợp đồng/);
+    if (r.ok === false) expect(r.error).toMatch(/hợp đồng/);
   });
 
   it('TK vượt remaining → bắt buộc giữ credit trừ kỳ sau', () => {
@@ -74,7 +86,7 @@ describe('planCollect — multi-line', () => {
       hasContract: false,
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/hợp đồng/);
+    if (r.ok === false) expect(r.error).toMatch(/hợp đồng/);
   });
 
   it('TK đúng remaining + TM dư → thối phần TM dư', () => {
@@ -163,7 +175,7 @@ describe('planCollect — invariants (property-based)', () => {
         fc.boolean(),
         (lines: CollectPlanLine[], remaining, keep) => {
           const r = planCollect({ lines, remaining, keepAsCredit: keep, hasContract: true });
-          if (!r.ok) return;
+          if (r.ok === false) return;
           const p = r.plan;
           if (!p.keepAsCredit) expect(p.change).toBeLessThanOrEqual(p.amountTm);
           expect(Math.min(p.amountTm, p.amountTk, p.amountTt, p.change, p.rounding)).toBeGreaterThanOrEqual(0);

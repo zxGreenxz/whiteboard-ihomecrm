@@ -3,6 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { allocateAmountByMonth } from "@/lib/accrualAllocation";
 import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
 import type { IncomeExpenseFilters } from "@/hooks/useIncomeExpenses";
+import type { Database } from "@/integrations/supabase/types";
+
+/** Đúng 4 cột `income_expense_types` mà truy vấn dưới đây select. */
+type AccrualItemType = Pick<
+  Database["public"]["Tables"]["income_expense_types"]["Row"],
+  "id" | "name" | "category" | "is_deposit"
+>;
 
 /**
  * Báo cáo P&L của 1 tháng theo KỲ PHÂN BỔ (accrual):
@@ -271,7 +278,10 @@ export const useAccrualMonthReport = (
 
       // Item giả cho phiếu trống hạng mục — khớp nhãn 'Không có hạng mục' của
       // fa_accrual_allocations (a_noitem/b_noitem), category NULL.
-      const NOITEM_TYPE = { name: "Không có hạng mục", category: null };
+      const NOITEM_TYPE: Pick<AccrualItemType, "name" | "category"> = {
+        name: "Không có hạng mục",
+        category: null,
+      };
 
       const pushRow = (
         voucher: any,

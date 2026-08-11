@@ -107,7 +107,12 @@ export interface MyNotificationPreferences {
 
 const DEFAULT_EVENTS = (): Record<NotificationEventKey, NotificationEventConfig> =>
   Object.fromEntries(
-    NOTIFICATION_EVENT_KEYS.map((k) => [k, { enabled: true, min_amount: null }]),
+    NOTIFICATION_EVENT_KEYS.map(
+      (k): [NotificationEventKey, NotificationEventConfig] => [
+        k,
+        { enabled: true, min_amount: null },
+      ],
+    ),
   ) as Record<NotificationEventKey, NotificationEventConfig>;
 
 const DEFAULT_ORG_CONFIG = (): NotificationOrgConfig => ({

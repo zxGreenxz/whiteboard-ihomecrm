@@ -150,7 +150,7 @@ const absentSettingsSchema = z.object({
   dependencyGrouping: z.null(),
   changesPaused: z.null(),
   version: z.null(),
-}).transform(() => null);
+}).transform((): null => null);
 
 const settingsOrAbsentSchema = z.union([settingsSchema, absentSettingsSchema]);
 

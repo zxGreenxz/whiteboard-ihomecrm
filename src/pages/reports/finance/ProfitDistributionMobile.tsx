@@ -247,7 +247,7 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
         // Phiếu khác → tách theo từng hạng mục (item).
         const rows: MRow[] =
           items.length > 0
-            ? items.filter((it) => !skipDeposit(it)).map((it) => {
+            ? items.filter((it) => !skipDeposit(it)).map((it): MRow => {
                 const amt = Number(it.amount);
                 const safe = Number.isFinite(amt) ? amt : Number(it.quantity) * Number(it.unit_price) || 0;
                 return {

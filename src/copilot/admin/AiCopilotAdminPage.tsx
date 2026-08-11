@@ -211,7 +211,7 @@ function EntitlementsTab() {
   const { data: rows, isLoading } = useEntitlements(true);
   const [email, setEmail] = useState('');
 
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['ai-copilot-entitlements-admin'] });
+  const refresh = (): void => void qc.invalidateQueries({ queryKey: ['ai-copilot-entitlements-admin'] });
 
   const add = useMutation({
     mutationFn: async (em: string) => {
@@ -313,7 +313,7 @@ function ProvidersTab() {
   const [defaultDraft, setDefaultDraft] = useState('');
   const [testing, setTesting] = useState<string | null>(null);
 
-  const refresh = () => void qc.invalidateQueries({ queryKey: ['ai-providers-admin'] });
+  const refresh = (): void => void qc.invalidateQueries({ queryKey: ['ai-providers-admin'] });
 
   const update = useMutation({
     mutationFn: async (p: { provider: string; patch: Record<string, unknown> }) => {
@@ -357,7 +357,9 @@ function ProvidersTab() {
           max_tokens: 20,
         }),
       });
-      const body = await res.json().catch(() => null);
+      const body = (await res.json().catch((): null => null)) as
+        | { error?: { message?: string } }
+        | null;
       if (res.ok) toast.success(`${r.label}: OK (${Date.now() - t0}ms)`);
       else toast.error(`${r.label}: HTTP ${res.status} — ${body?.error?.message ?? 'lỗi'}`);
     } catch (e) {

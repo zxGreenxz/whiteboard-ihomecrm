@@ -28,7 +28,7 @@ import { adminAccountRoutes } from "./adminAccountRoutes";
  * `useLayoutEffect` chạy trước khi trình duyệt vẽ, nên không có một khung hình
  * nào splash và nội dung cùng xuất hiện.
  */
-const RouteTreeCommit = () => {
+const RouteTreeCommit = (): null => {
   useLayoutEffect(() => hideAppSplash(), []);
   return null;
 };
