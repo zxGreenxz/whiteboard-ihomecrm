@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -174,9 +175,9 @@ export const useCreateAccount = () => {
         p_name: values.name,
         p_initial_amount: values.initial_amount,
         p_initial_date: values.initial_date,
-        p_bank_name: null,
-        p_account_number: null,
-        p_quick_default_building_id: values.quick_default_building_id ?? null,
+        p_bank_name: rpcNullable<string>(null),
+        p_account_number: rpcNullable<string>(null),
+        p_quick_default_building_id: rpcNullable(values.quick_default_building_id ?? null),
         p_idempotency_key: crypto.randomUUID(),
         p_description: values.description ?? undefined,
         p_is_default: values.is_default ?? false,
@@ -204,12 +205,12 @@ export const useUpdateAccount = () => {
       const canonical = await supabase.rpc("update_cashbook_metadata_v1", {
         p_cashbook_id: input.id,
         p_name: input.values.name,
-        p_description: input.values.description ?? null,
+        p_description: rpcNullable(input.values.description ?? null),
         p_initial_amount: input.values.initial_amount,
         p_initial_date: input.values.initial_date,
-        p_quick_default_building_id: input.values.quick_default_building_id ?? null,
-        p_is_default: input.values.is_default !== undefined ? input.values.is_default : null,
-        p_owner_user_id: input.values.user_id || null,
+        p_quick_default_building_id: rpcNullable(input.values.quick_default_building_id ?? null),
+        p_is_default: rpcNullable(input.values.is_default !== undefined ? input.values.is_default : null),
+        p_owner_user_id: rpcNullable(input.values.user_id || null),
       });
       if (!canonical.error) return;
       toast.error(canonical.error.message || "Không thể cập nhật sổ quỹ");

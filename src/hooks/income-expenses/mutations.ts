@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { toast } from "sonner";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
 import { isIeCreateFallbackSignal } from "@/lib/canonicalFallback";
@@ -73,16 +74,16 @@ export const useCreateIncomeExpense = () => {
           p_type: input.type,
           p_name: input.name,
           p_building_id: input.building_id,
-          p_room_id: input.room_id ?? null,
-          p_tenant_id: input.tenant_id ?? null,
-          p_contract_id: input.contract_id ?? null,
-          p_payer_name: input.payer_name ?? null,
-          p_receive_bank_account: input.receive_bank_account || null,
-          p_receive_bank_name: input.receive_bank_name || null,
+          p_room_id: rpcNullable(input.room_id ?? null),
+          p_tenant_id: rpcNullable(input.tenant_id ?? null),
+          p_contract_id: rpcNullable(input.contract_id ?? null),
+          p_payer_name: rpcNullable(input.payer_name ?? null),
+          p_receive_bank_account: rpcNullable(input.receive_bank_account || null),
+          p_receive_bank_name: rpcNullable(input.receive_bank_name || null),
           p_account_id: input.account_id ?? null,
           p_attachments: input.attachments ?? [],
-          p_business_result_accounting: input.business_result_accounting ?? null,
-          p_notes: null,
+          p_business_result_accounting: rpcNullable(input.business_result_accounting ?? null),
+          p_notes: rpcNullable<string>(null),
           p_voucher_date: input.voucher_date,
           p_items: input.items.map((item) => ({
             income_expense_type_id: item.income_expense_type_id,
@@ -279,9 +280,9 @@ export const useQuickUpdateIncomeExpense = () => {
         "update_income_expense_quick",
         {
           p_id: input.id,
-          p_account_id: input.account_id,
+          p_account_id: rpcNullable(input.account_id),
           p_attachments: input.attachments,
-          p_notes: input.notes,
+          p_notes: rpcNullable(input.notes),
         }
       );
       if (error) {
