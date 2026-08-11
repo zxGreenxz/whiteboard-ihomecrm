@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Building2, User, Settings, LogOut, Menu } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import NotificationBell from './NotificationBell';
+import OrganizationBadge from './OrganizationBadge';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -62,6 +63,12 @@ const Header = ({ onMenuClick }: HeaderProps) => {
             <span className="text-[10px] text-muted-foreground -mt-1">Quản lý bất động sản</span>
           </div>
         </Link>
+
+        {/* Tổ chức đang xem (GĐ9). Ẩn khi chỉ có MỘT tổ chức và người dùng
+            thuộc đúng nó — lúc đó nhãn không mang thông tin nào, chỉ chiếm chỗ.
+            Hiện ngay khi có từ hai tổ chức trở lên, hoặc khi tài khoản không
+            thuộc tổ chức nào (trường hợp đó phải nói ra chứ không để im). */}
+        <OrganizationBadge />
 
         {/* Spacer */}
         <div className="flex-1" />

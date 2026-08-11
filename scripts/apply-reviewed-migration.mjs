@@ -91,6 +91,61 @@ export function blobOid(duongDan) {
  */
 export const SAN_BANG_CO_DU_LIEU = 450;
 
+/**
+ * Dọn phiên pg_dump bỏ rơi mà CHÍNH bước backup vừa để lại.
+ *
+ * SỰ CỐ ĐÃ TÁI DIỄN BA LẦN ngày 09-11/08/2026, mỗi lần tốn một vòng backup 4-7
+ * phút: backup chạy xong, báo thành công, rồi bước apply ngay sau đó chết với
+ *     55P03: canceling statement due to lock timeout
+ * ở đúng những lệnh cần ACCESS EXCLUSIVE (CREATE/DROP POLICY, ALTER TABLE).
+ *
+ * Thủ phạm là chính bản backup vừa chạy. `pg_dump` mở một transaction
+ * REPEATABLE READ và ôm AccessShareLock trên MỌI bảng; tiến trình pg_dump thoát
+ * rồi, nhưng Supavisor (pooler) giữ phiên phía server ở trạng thái
+ * `idle in transaction` — đo được là treo tới ~17 phút trước khi tự đóng.
+ * Khoá ĐỌC đó xung khắc với ACCESS EXCLUSIVE, nên lane tự chặn chính mình.
+ *
+ * VỊ TỪ PHẢI CHẶT, vì đây là lệnh giết phiên trên production. Bốn vế, đúng
+ * đồng thời:
+ *   1. `idle in transaction` — phiên đang CHẠY thì state là 'active', nên vế
+ *      này một mình đã loại mọi pg_dump còn làm việc thật.
+ *   2. treo > 60 giây — dump vừa xong thì phiên mới, đợi một phút mới coi là bỏ
+ *      rơi.
+ *   3. truy vấn cuối mang dấu vết pg_dump (`EXECUTE dumpFunc%` hoặc `COPY %`).
+ *   4. không phải phiên đang chạy chính câu lệnh này.
+ * Thiếu một vế là có thể giết nhầm phiên của người khác.
+ *
+ * Không nổ khi dọn hụt: nếu vì lý do gì đó không terminate được, bước apply vẫn
+ * chạy và vẫn báo lock timeout như cũ — tệ hơn thì bằng hiện trạng, không xấu đi.
+ */
+async function donPhienDumpBoRoi(pat, ref) {
+  const sql = `
+    SELECT pid, extract(epoch FROM now() - xact_start)::int AS treo_giay,
+           pg_terminate_backend(pid) AS da_giet
+      FROM pg_stat_activity
+     WHERE state = 'idle in transaction'
+       AND pid <> pg_backend_pid()
+       AND xact_start < now() - interval '60 seconds'
+       AND (query LIKE 'EXECUTE dumpFunc%' OR query LIKE 'COPY %')`;
+  try {
+    const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${pat}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: sql }),
+    });
+    if (!res.ok) return;
+    const rows = JSON.parse(await res.text());
+    if (Array.isArray(rows) && rows.length > 0) {
+      console.log(
+        `✔ Dọn ${rows.length} phiên pg_dump bỏ rơi mà bước backup vừa để lại `
+        + `(treo ${rows.map((r) => r.treo_giay).join('/')}s) — chúng ôm khoá đọc và sẽ chặn apply.`,
+      );
+    }
+  } catch {
+    // Dọn hụt thì thôi; apply vẫn chạy và vẫn báo lock timeout như trước.
+  }
+}
+
 /** Đọc manifest của bản backup vừa tạo từ stdout của backup-before-schema. */
 export function docManifestBackup(stdout, docFile = readFileSync, coFile = existsSync) {
   const m = String(stdout).match(/^BACKUP_MANIFEST=(.+)$/m);
@@ -453,6 +508,12 @@ async function main(argv) {
         };
         console.log(`✔ Giấy phép tự phát từ bản backup vừa tạo (${kq.manifest.tablesWithData} bảng có dữ liệu).`);
       }
+
+      // Bản backup vừa chạy để lại phiên pg_dump ôm khoá đọc trên mọi bảng —
+      // xem donPhienDumpBoRoi(). Không dọn thì apply tự chặn chính mình.
+      // readPat() chứ không phải biến `pat` — biến đó khai ở cuối main(), sau
+      // chỗ này, nên dùng ở đây là ReferenceError lúc chạy.
+      await donPhienDumpBoRoi(readPat(), projectRef());
     }
 
     if (!giayPhep) {

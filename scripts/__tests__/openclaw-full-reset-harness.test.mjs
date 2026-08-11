@@ -8,13 +8,20 @@ import {
   FULL_RESET_MANIFEST_DOMAIN,
   SUPABASE_CLI_VERSION,
   buildFullResetPlan,
+  deriveFrozenPlanExpectations,
   loadRepositoryMigrationInputs,
   parseSupabaseStatus,
   parseFullResetArgs,
   prepareDisposableFullResetProject,
+  readFrozenPlanExpectations,
   runFullResetHarness,
   runFullResetSmokeAssertions,
 } from "../test-openclaw-full-reset.mjs";
+
+// Kỳ vọng của bộ gác KHÔNG còn là số gõ tay: nó lấy từ chính manifest provenance
+// đã được CI gác sha256 từng file. Trước đây hai số 498/18 đóng băng từ 31/07 nên
+// mọi migration mới đều làm hai test này đỏ mà không chỉ ra khuyết tật nào.
+const EXPECTED_PLAN = await readFrozenPlanExpectations();
 
 describe("OpenClaw complete Supabase reset harness", () => {
   it("exposes plan-only and Docker-backed package gates separately", async () => {
@@ -92,12 +99,46 @@ describe("OpenClaw complete Supabase reset harness", () => {
     ])).toThrow(/migration filename/i);
   });
 
+  it("derives frozen-plan expectations from the reviewed provenance manifest only", () => {
+    const derived = deriveFrozenPlanExpectations({
+      entries: [
+        { path: "supabase/migrations/016_a.sql" },
+        { path: "supabase/migrations/016_b.sql" },
+        { path: "supabase/migrations/017_z.sql" },
+        // Kho lưu trữ KHÔNG được tính — chuỗi reset chỉ chạy supabase/migrations.
+        { path: "supabase/migrations-archive/900_old.sql" },
+        { path: "supabase/migrations-archive/migrations-bundle/901_old.sql" },
+        // File không đúng khuôn tên migration cũng bị bỏ qua.
+        { path: "supabase/migrations/README.md" },
+      ],
+    });
+    expect(derived).toEqual({ fileCount: 3, duplicateVersionGroups: 1 });
+
+    expect(() => deriveFrozenPlanExpectations({ entries: [] }))
+      .toThrow(/no reviewed migration entries/i);
+    expect(() => deriveFrozenPlanExpectations({ entries: [{ version: "016" }] }))
+      .toThrow(/without a path/i);
+    expect(() => deriveFrozenPlanExpectations({
+      entries: [{ path: "supabase/migrations-archive/900_old.sql" }],
+    })).toThrow(/lists no supabase\/migrations\/ entries/i);
+  });
+
+  it("refuses to read expectations from a missing provenance manifest", async () => {
+    await expect(readFrozenPlanExpectations({
+      manifestPath: join(process.cwd(), "supabase", "no-such-provenance.json"),
+    })).rejects.toThrow(/Cannot read supabase\/migration-provenance\.json/i);
+  });
+
   it("loads the complete current repository chain with all duplicate groups explicit", async () => {
     const inputs = await loadRepositoryMigrationInputs();
     const plan = buildFullResetPlan(inputs);
-    expect(plan.entries).toHaveLength(498);
-    expect(plan.duplicateOriginalVersionGroups).toBe(18);
-    expect(new Set(plan.entries.map((entry) => entry.targetFile)).size).toBe(498);
+    expect(plan.entries).toHaveLength(EXPECTED_PLAN.fileCount);
+    expect(plan.duplicateOriginalVersionGroups).toBe(
+      EXPECTED_PLAN.duplicateVersionGroups,
+    );
+    expect(new Set(plan.entries.map((entry) => entry.targetFile)).size).toBe(
+      EXPECTED_PLAN.fileCount,
+    );
     const sourceBytes = new Map(inputs.map((input) => [input.file, input.bytes]));
     for (const entry of plan.entries) {
       expect(entry.bytes.equals(sourceBytes.get(entry.sourceFile))).toBe(true);
@@ -114,7 +155,7 @@ describe("OpenClaw complete Supabase reset harness", () => {
       dependencies: { loadInputs, prepareProject, runCli },
     });
 
-    expect(result.summary).toMatch(/PASS.*498-file/i);
+    expect(result.summary).toMatch(new RegExp(`PASS.*${EXPECTED_PLAN.fileCount}-file`, "i"));
     expect(loadInputs).toHaveBeenCalledOnce();
     expect(prepareProject).not.toHaveBeenCalled();
     expect(runCli).not.toHaveBeenCalled();
@@ -167,8 +208,8 @@ describe("OpenClaw complete Supabase reset harness", () => {
     const prepareProject = vi.fn(async () => ({
       root: "C:/temp/openclaw-full-reset",
       plan: {
-        entries: Array.from({ length: 498 }, (_, index) => ({ index: index + 1 })),
-        duplicateOriginalVersionGroups: 18,
+        entries: Array.from({ length: EXPECTED_PLAN.fileCount }, (_, index) => ({ index: index + 1 })),
+        duplicateOriginalVersionGroups: EXPECTED_PLAN.duplicateVersionGroups,
         aggregateSha256: "a".repeat(64),
       },
       cleanup,
@@ -193,7 +234,7 @@ describe("OpenClaw complete Supabase reset harness", () => {
       args: ["--local"],
       dependencies: { prepareProject, runCli, assertReset },
     });
-    expect(result.summary).toMatch(/PASS.*498-file/i);
+    expect(result.summary).toMatch(new RegExp(`PASS.*${EXPECTED_PLAN.fileCount}-file`, "i"));
     expect(runCli.mock.calls.map(([args]) => args)).toEqual([
       ["--version"],
       ["db", "start", "--workdir", "C:/temp/openclaw-full-reset"],
@@ -287,11 +328,11 @@ describe("OpenClaw complete Supabase reset harness", () => {
         prepareProject: vi.fn(async () => ({
           root: "C:/temp/openclaw-full-reset",
           plan: {
-            entries: Array.from({ length: 498 }, (_, index) => ({
+            entries: Array.from({ length: EXPECTED_PLAN.fileCount }, (_, index) => ({
               sourceFile: `migration-${index}.sql`,
               targetVersion: String(index + 1),
             })),
-            duplicateOriginalVersionGroups: 18,
+            duplicateOriginalVersionGroups: EXPECTED_PLAN.duplicateVersionGroups,
             aggregateSha256: "d".repeat(64),
           },
           cleanup,
@@ -323,10 +364,13 @@ describe("OpenClaw complete Supabase reset harness", () => {
           prepareProject: vi.fn(async () => ({
             root: "C:/temp/openclaw-full-reset",
             plan: {
-              entries: Array.from({ length: 497 }, (_, index) => ({
-                index: index + 1,
-              })),
-              duplicateOriginalVersionGroups: 18,
+              // Thiếu đúng MỘT file so với manifest — đây là phép thử bộ gác
+              // còn bắt được trôi số hay không sau khi bỏ hằng số gõ tay.
+              entries: Array.from(
+                { length: EXPECTED_PLAN.fileCount - 1 },
+                (_, index) => ({ index: index + 1 }),
+              ),
+              duplicateOriginalVersionGroups: EXPECTED_PLAN.duplicateVersionGroups,
               aggregateSha256: "c".repeat(64),
             },
             cleanup,
@@ -340,7 +384,11 @@ describe("OpenClaw complete Supabase reset harness", () => {
 
     expect(failure).toBeInstanceOf(AggregateError);
     expect(failure.errors.map((error) => error.message)).toEqual([
-      "Full-reset migration cardinality drifted: 497.",
+      `Full-reset migration cardinality drifted: plan has ${
+        EXPECTED_PLAN.fileCount - 1
+      } file(s) but supabase/migration-provenance.json records ${
+        EXPECTED_PLAN.fileCount
+      }. Regenerate the reviewed manifest with \`npm run provenance:generate\`.`,
       "temporary directory cleanup failed",
     ]);
     expect(runCli).not.toHaveBeenCalled();
@@ -364,8 +412,8 @@ describe("OpenClaw complete Supabase reset harness", () => {
         prepareProject: vi.fn(async () => ({
           root: "C:/temp/openclaw-full-reset",
           plan: {
-            entries: Array.from({ length: 498 }, (_, index) => ({ index: index + 1 })),
-            duplicateOriginalVersionGroups: 18,
+            entries: Array.from({ length: EXPECTED_PLAN.fileCount }, (_, index) => ({ index: index + 1 })),
+            duplicateOriginalVersionGroups: EXPECTED_PLAN.duplicateVersionGroups,
             aggregateSha256: "b".repeat(64),
           },
           cleanup,
@@ -400,11 +448,11 @@ describe("OpenClaw complete Supabase reset harness", () => {
         prepareProject: vi.fn(async () => ({
           root: "C:/temp/openclaw-full-reset",
           plan: {
-            entries: Array.from({ length: 498 }, (_, index) => ({
+            entries: Array.from({ length: EXPECTED_PLAN.fileCount }, (_, index) => ({
               sourceFile: `migration-${index}.sql`,
               targetVersion: String(index + 1),
             })),
-            duplicateOriginalVersionGroups: 18,
+            duplicateOriginalVersionGroups: EXPECTED_PLAN.duplicateVersionGroups,
             aggregateSha256: "e".repeat(64),
           },
           cleanup,

@@ -1,0 +1,22 @@
+{
+  "note": "Sinh cùng file .sql — dùng để chứng minh file .sql không bị sửa tay. Đừng sửa.",
+  "giaiDoan": "GĐ4",
+  "inventoryCapturedAt": "2026-08-07T17:50:20.249Z",
+  "generatedAt": "2026-08-07T17:50:20.310Z",
+  "tables": [
+    "asset_movements",
+    "document_templates",
+    "job_groups",
+    "job_types",
+    "material_adjustment_items",
+    "material_adjustments",
+    "material_categories",
+    "material_purchase_items",
+    "material_purchases",
+    "material_usage_items",
+    "material_usages",
+    "materials",
+    "public_room_events",
+    "sla_configs"
+  ]
+}

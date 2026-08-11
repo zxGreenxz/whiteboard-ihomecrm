@@ -171,20 +171,38 @@ export async function loadLatestThread(): Promise<ThreadRow | null> {
   return data;
 }
 
-export async function createThread(title: string): Promise<ThreadRow> {
+/**
+ * `organizationId` là TUỲ CHỌN vì database đã tự suy được cho người thuộc đúng
+ * một tổ chức (trigger app_private.autofill_org_chat, 20260809040000). Nó chỉ
+ * BẮT BUỘC với người thuộc NHIỀU tổ chức — lúc đó chỉ client mới biết đang chat
+ * trong ngữ cảnh nào, và trigger sẽ từ chối ghi thay vì đoán bừa.
+ *
+ * Truyền lên đây KHÔNG phải hàng rào: trigger mới là hàng rào, và nó kiểm lại
+ * rằng người dùng thật sự có membership ACTIVE ở tổ chức được khai.
+ */
+export async function createThread(title: string, organizationId?: string | null): Promise<ThreadRow> {
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
   if (!userId) throw new Error('Chưa đăng nhập');
   const { data, error } = await supabase
     .from('ai_chat_threads')
-    .insert({ user_id: userId, title: title.slice(0, 120) })
+    .insert({
+      user_id: userId,
+      title: title.slice(0, 120),
+      ...(organizationId ? { organization_id: organizationId } : {}),
+    })
     .select('id, title, updated_at')
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function saveMessages(threadId: string, msgs: Message[], model: string): Promise<void> {
+export async function saveMessages(
+  threadId: string,
+  msgs: Message[],
+  model: string,
+  organizationId?: string | null,
+): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
   if (!userId) throw new Error('Chưa đăng nhập');
@@ -196,6 +214,9 @@ export async function saveMessages(threadId: string, msgs: Message[], model: str
     tool_calls: m.tool_calls ?? null,
     tool_call_id: m.tool_call_id ?? null,
     model,
+    // Tin nhắn vốn kế thừa tổ chức của LUỒNG cha nên thường không cần; gửi kèm
+    // để đường ghi không phụ thuộc vào việc luồng đã có nhãn hay chưa.
+    ...(organizationId ? { organization_id: organizationId } : {}),
   }));
   const { error } = await supabase.from('ai_chat_messages').insert(rows as any);
   if (error) throw error;

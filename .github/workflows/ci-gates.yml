@@ -685,6 +685,35 @@ jobs:
           # `invalidateQueries` khớp theo prefix và IM LẶNG khi không khớp ai.
           node scripts/check-realtime-key-ownership.mjs
 
+      # MỌI bảng có organization_id phải có một chỗ đứng: đã rào, đang chờ vá ở
+      # một giai đoạn có tên, hoặc miễn trừ CÓ LÝ DO ĐO ĐƯỢC VÀ CÓ HẠN. Nhóm thứ
+      # tư — "chưa ai nhận" — là thứ gate này sinh ra để tìm.
+      #
+      # Khuyết tật gốc của cả chuyện tách dữ liệu: 20260713121000_sprint3b gắn
+      # biên giới theo DANH SÁCH VIẾT TAY 28 bảng, nên mọi bảng ra đời sau đều
+      # thiếu — âm thầm hơn một năm, tới lúc đo mới lòi ra 272 bảng không có ranh
+      # giới nào giữa các công ty. Event trigger org_boundary_tu_dong chặn ở tầng
+      # database; gate này là lưới vét, và cũng là chỗ canh sổ miễn trừ quá hạn.
+      - name: Mọi bảng có organization_id đều có chỗ đứng
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/build-org-boundary-inventory.mjs --check
+
+      # Đo rò xuyên tổ chức bằng VAI NGƯỜI DÙNG THẬT (SET ROLE + JWT), chỉ đọc,
+      # mọi truy vấn bọc ROLLBACK.
+      #
+      # CHẶN theo vị từ =0, KHÔNG theo số dòng tuyệt đối: dữ liệu nghiệp vụ thay
+      # đổi hằng ngày nên chốt "phải đúng 224 dòng" sẽ đỏ giả liên tục rồi bị tắt
+      # đi — và khi ấy rò thật cũng không ai thấy. "visible_foreign = 0" thì tất
+      # định vĩnh viễn.
+      #
+      # Ba mã thoát có ý nghĩa khác nhau: 0 sạch · 1 CÓ RÒ · 3 bốn chốt chống ảo
+      # giác hỏng, tức số đo không đáng tin (nguy hiểm hơn có rò, vì nó im lặng).
+      - name: Không rò dữ liệu xuyên tổ chức (đo bằng vai người dùng thật)
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/measure-org-leak.mjs
+
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.
   # Cần SUPABASE_ACCESS_TOKEN (Supabase CLI).

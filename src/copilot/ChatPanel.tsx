@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, Mic, MicOff, Plus, Send, Square, X } from 'lucide-react';
 import type { Message } from '@page-agent/llms';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { canUse } from '@/lib/permissionPages';
 import {
   createThread,
@@ -107,6 +108,9 @@ const toDisplay = (msgs: Message[]): DisplayItem[] =>
 
 export default function ChatPanel({ onClose }: Props) {
   const { data: perms } = useMyPermissions();
+  // Tổ chức đang xem — chỉ CẦN khi người dùng thuộc nhiều tổ chức; database tự
+  // suy được cho trường hợp một tổ chức (20260809040000).
+  const { organization } = useOrganization();
   const { data: providers } = useAiProviders();
   const { data: entitlement } = useCopilotEntitlement();
   const { model, setModel } = useCopilotModel();
@@ -186,7 +190,7 @@ export default function ChatPanel({ onClose }: Props) {
     abortRef.current = abort;
     let tid = threadId;
     if (!tid) {
-      tid = (await createThread(text)).id;
+      tid = (await createThread(text, organization?.id ?? null)).id;
       setThreadId(tid);
     }
     const result = await runChatTurn({
@@ -198,7 +202,7 @@ export default function ChatPanel({ onClose }: Props) {
       onToolEvent: (ev: ChatToolEvent) => setLiveTool(ev.tool),
     });
     setHistory((h) => [...h.slice(0, -1), ...result.newMessages]);
-    void saveMessages(tid, result.newMessages, model).catch(() => {
+    void saveMessages(tid, result.newMessages, model, organization?.id ?? null).catch(() => {
       /* lưu lịch sử lỗi không chặn chat */
     });
   };
