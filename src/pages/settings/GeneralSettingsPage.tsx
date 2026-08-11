@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from "@/components/layout/MainLayout";
 import NotificationOrgConfigCard from '@/components/notifications/NotificationOrgConfigCard';
 import { supabase } from '@/integrations/supabase/client';
+import { useIeAutoApproveThreshold, useSetIeAutoApproveThreshold } from '@/hooks/useIeAutoApproveThreshold';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Settings, FileText, DollarSign, Bell, Upload, Info, Receipt, MapPin } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -327,14 +328,8 @@ function SettingsTabContent({ title, description, items, settings, onSettingChan
 
 function IeAutoApproveThresholdCard() {
   const qc = useQueryClient();
-  const { data: threshold, isLoading } = useQuery({
-    queryKey: ['ie-auto-approve-threshold'],
-    queryFn: async (): Promise<number | null> => {
-      const { data, error } = await supabase.rpc('get_ie_auto_approve_threshold_v1');
-      if (error) throw new Error(error.message);
-      return data === null || data === undefined ? null : Number(data);
-    },
-  });
+  const { data: threshold, isLoading } = useIeAutoApproveThreshold();
+  const luuNguong = useSetIeAutoApproveThreshold();
   const [value, setValue] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -344,11 +339,7 @@ function IeAutoApproveThresholdCard() {
   const save = async (v: number | null) => {
     setSaving(true);
     try {
-      const { error } = await supabase.rpc('set_ie_auto_approve_threshold_v1', {
-        p_threshold: v,
-      });
-      if (error) throw new Error(error.message);
-      qc.invalidateQueries({ queryKey: ['ie-auto-approve-threshold'] });
+      await luuNguong(v);
       toast.success(
         v === null
           ? 'Đã bỏ ngưỡng — mọi phiếu chi thường tự duyệt khi tạo'

@@ -101,7 +101,6 @@
     "src/hooks/useUtilityBills.ts::delete_utility_account",
     "src/hooks/useUtilityBills.ts::get_invoice_statistics_v2",
     "src/hooks/useUtilityBills.ts::pay_utility_bill",
-    "src/hooks/useUtilityBills.ts::save_utility_account",
-    "src/pages/auth/AcceptInvitation.tsx::accept_organization_invitation_v1"
+    "src/hooks/useUtilityBills.ts::save_utility_account"
   ]
 }

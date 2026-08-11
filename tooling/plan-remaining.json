@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 36
+    "stillMissing": 35
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -386,10 +386,11 @@
       {
         "deliverable": "Mục 9 – Nguyên tắc: không gọi supabase.rpc('string') trực tiếp trong component",
         "planRef": "mục 9, dòng 1384",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "S",
         "touchesOpenClaw": true,
-        "remaining": "CON: chuyen 8 call site sang hook/wrapper typed (refactor that, co rui ro test) roi chay gate:rpc-in-view --write de ha baseline. DA XONG 08/08: scripts/check-rpc-in-view-ratchet.mjs + 14 test + noi vao ci-gates — chan MOI call site moi. So dung la 8 chu khong phai 7-8 hay 9: mot dong trong TaskCompleteDialog.tsx la COMMENT nhac supabase.rpc(), khong phai loi goi."
+        "remaining": "CON: chuyen 8 call site sang hook/wrapper typed (refactor that, co rui ro test) roi chay gate:rpc-in-view --write de ha baseline. DA XONG 08/08: scripts/check-rpc-in-view-ratchet.mjs + 14 test + noi vao ci-gates — chan MOI call site moi. So dung la 8 chu khong phai 7-8 hay 9: mot dong trong TaskCompleteDialog.tsx la COMMENT nhac supabase.rpc(), khong phai loi goi.",
+        "evidence": " | Lo 70: XONG. scripts/check-rpc-layer.mjs + 9 dot bien + 1 dot bien tren gate that. Ban dau toi do bang raw-rpc-callers-baseline.json va ket luan \"chi 1 cho sai\" — SAI, vi baseline do chi phu 121 file rui ro cao chu khong phai toan bo src. Quet that: 6 file. Da chuyen 4: TaskCompleteDialog (v5_tick_from_job -> useV5TickFromJob), ManagerSalaryPage + MySalaryPage (get_salary_v5_config -> useSalaryV5Config, gop hai ban chep cua CUNG mot useQuery, tien the go 2 as any), GeneralSettingsPage (get/set_ie_auto_approve_threshold_v1 -> useIeAutoApproveThreshold, de doc va ghi canh nhau vi chung dung chung query key). Cong AcceptInvitation da chuyen truoc do -> raw-rpc-callers baseline 101 -> 100. Con 1 mien tru: OpenClawRouteGuard, vi luat repo la khong dung vao OpenClaw khi phien khac dang sua — mien tru THEO THOI DIEM, co ghi cach go. Gate chi quet .tsx: nguyen tac noi ve COMPONENT, con src/copilot/tools/registry.ts la module dang ky cong cu, cung hang voi src/lib noi rpc von duoc phep. Gate ra doi o muc 0 vi pham la CO Y — de nguyen tac troi len vai chuc cho roi moi dung gate thi no se ra doi kem mot baseline mien tru dai, ma baseline mien tru chinh la thu da che 5 bug ten cot trong repo nay."
       },
       {
         "deliverable": "P1.8 – Query key được export từ chính domain, không chép string nhiều nơi",

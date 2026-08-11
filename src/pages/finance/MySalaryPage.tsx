@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useManagerSalary, useMyManagerConfig, useStaffDisplayMonth } from "@/hooks/useManagerSalary";
 import { usePhoneViewport } from "@/hooks/use-mobile";
-import { supabase } from "@/integrations/supabase/client";
+import { useSalaryV5Config } from "@/hooks/useSalaryV5Config";
 import SalarySelfDesktop from "@/components/salary/SalarySelfDesktop";
 import SalarySelfMobile from "@/components/salary/SalarySelfMobile";
 import { currentPeriodMonth, shiftPeriodMonth as shiftMonth } from "@/lib/salaryPeriod";
@@ -35,14 +35,7 @@ export default function MySalaryPage() {
   const effPeriod = override || ceiling;
 
   // Chế độ lương (cũ/v5) — chỉ đổi SỐ LIỆU tháng chưa chốt, UI giữ nguyên.
-  const { data: v5cfg } = useQuery({
-    queryKey: ["v5-config-salary-engine"],
-    queryFn: async () => {
-      const { data } = await supabase.rpc("get_salary_v5_config" as any);
-      return data as any;
-    },
-    staleTime: 60_000,
-  });
+  const { data: v5cfg } = useSalaryV5Config();
   // v5 chỉ áp từ system_v5.effective_from trở đi — tháng trước đó rơi về legacy.
   const salaryEngine = resolveSalaryEngine(v5cfg, effPeriod);
 

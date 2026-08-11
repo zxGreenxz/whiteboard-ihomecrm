@@ -9,8 +9,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { acceptInvitation } from '@/hooks/useAcceptInvitation';
 
 export default function AcceptInvitation() {
   const { token } = useParams<{ token: string }>();
@@ -27,16 +27,15 @@ export default function AcceptInvitation() {
         setTrangThai('loi');
         return;
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await supabase.rpc('accept_organization_invitation_v1', {
-        p_token: token,
-      });
-      if (huy) return;
-      if (error) {
-        setLoi(error.message || 'Không nhận được lời mời.');
+      try {
+        await acceptInvitation(token);
+      } catch (e) {
+        if (huy) return;
+        setLoi(e instanceof Error ? e.message : 'Không nhận được lời mời.');
         setTrangThai('loi');
         return;
       }
+      if (huy) return;
       // Quyền của phiên hiện tại vừa đổi — buộc mọi truy vấn đọc lại.
       await qc.invalidateQueries();
       setTrangThai('xong');

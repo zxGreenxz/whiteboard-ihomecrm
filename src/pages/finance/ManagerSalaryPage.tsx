@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { Wallet, Eye, Settings, CalendarCheck } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { useSalaryV5Config } from "@/hooks/useSalaryV5Config";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import {
@@ -96,14 +97,7 @@ export default function ManagerSalaryPage() {
   // Chế độ lương đang áp dụng (cũ/v5) — công tắc ở /reports/coverage tab Cài đặt v5.
   // Chỉ ĐỔI SỐ LIỆU (base=chuyên cần, thưởng=chuỗi, ngày công=ticked) cho tháng CHƯA chốt;
   // giao diện + tháng đã chốt giữ nguyên.
-  const { data: v5cfg } = useQuery({
-    queryKey: ["v5-config-salary-engine"],
-    queryFn: async () => {
-      const { data } = await supabase.rpc("get_salary_v5_config" as any);
-      return data as any;
-    },
-    staleTime: 60_000,
-  });
+  const { data: v5cfg } = useSalaryV5Config();
   // v5 chỉ áp từ system_v5.effective_from trở đi — tháng trước đó rơi về legacy.
   const salaryEngine = resolveSalaryEngine(v5cfg, effPeriod);
 

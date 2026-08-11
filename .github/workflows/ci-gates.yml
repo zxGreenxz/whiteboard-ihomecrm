@@ -672,6 +672,10 @@ jobs:
           # dẫn người sửa đi tìm migration thiếu thay vì nhìn vào tên tham số.
           # Đọc manifest đã sinh, KHÔNG tự gọi mạng.
           node scripts/check-rpc-arg-names.mjs
+          # Tầng: `supabase.rpc()` không được gọi thẳng trong component. Gom về
+          # hook/lib thì hai gate trên có ít điểm phải soi hơn, và quyền sở hữu
+          # query key nằm cùng chỗ với lời gọi.
+          node scripts/check-rpc-layer.mjs
 
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.
