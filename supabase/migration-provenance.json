@@ -10,7 +10,301 @@
     "catalog-proven": 214,
     "superseded": 15
   },
-  "duplicateVersions": 40,
+  "duplicateVersions": {
+    "count": 40,
+    "groups": [
+      {
+        "version": "016",
+        "files": [
+          "supabase/migrations/016_customers_table.sql",
+          "supabase/migrations/016_document_templates.sql",
+          "supabase/migrations/016_job_workflow_tables.sql",
+          "supabase/migrations/016_meter_readings_enhancements.sql"
+        ]
+      },
+      {
+        "version": "017",
+        "files": [
+          "supabase/migrations/017_job_workflow_seed.sql",
+          "supabase/migrations/017_meters_table.sql"
+        ]
+      },
+      {
+        "version": "20260426",
+        "files": [
+          "supabase/migrations-archive/migrations-bundle/20260426_apply_all.sql",
+          "supabase/migrations-archive/migrations-bundle/20260426_apply_cleanup_data.sql",
+          "supabase/migrations-archive/migrations-bundle/20260426_apply_contract_customers.sql",
+          "supabase/migrations-archive/migrations-bundle/20260426_apply_contract_tenant_fk.sql"
+        ]
+      },
+      {
+        "version": "20260427",
+        "files": [
+          "supabase/migrations-archive/migrations-bundle/20260427_apply_admin_super_view.sql",
+          "supabase/migrations-archive/migrations-bundle/20260427_apply_restore_contract_tenant_fk.sql",
+          "supabase/migrations-archive/migrations-bundle/20260427_apply_staff_profile_fields.sql",
+          "supabase/migrations-archive/migrations-bundle/20260427_apply_staff_visibility.sql"
+        ]
+      },
+      {
+        "version": "20260502",
+        "files": [
+          "supabase/migrations-archive/migrations-bundle/20260502_apply_cascade_roles_user_id.sql",
+          "supabase/migrations-archive/migrations-bundle/20260502_apply_delete_staff_member_rpc.sql",
+          "supabase/migrations-archive/migrations-bundle/20260502_apply_user_provision_fix.sql"
+        ]
+      },
+      {
+        "version": "20260506",
+        "files": [
+          "supabase/migrations-archive/migrations-bundle/20260506_apply_admin_bypass_rls.sql",
+          "supabase/migrations-archive/migrations-bundle/20260506_apply_super_admin_tier.sql"
+        ]
+      },
+      {
+        "version": "20260601000200",
+        "files": [
+          "supabase/migrations/20260601000200_sec_private_buckets.sql",
+          "supabase/migrations/20260601000200_termination_move_out_drop_bed_id.sql"
+        ]
+      },
+      {
+        "version": "20260603000002",
+        "files": [
+          "supabase/migrations/20260603000002_ie_all_buildings_permission.sql",
+          "supabase/migrations/20260603000002_notification_type_deposit_shortfall.sql",
+          "supabase/migrations/20260603000002_shareholder_access_and_perms.sql"
+        ]
+      },
+      {
+        "version": "20260603000003",
+        "files": [
+          "supabase/migrations/20260603000003_contract_deposit_debt_ack.sql",
+          "supabase/migrations/20260603000003_ie_all_buildings_scope_own.sql",
+          "supabase/migrations/20260603000003_termination_move_out_autonet.sql"
+        ]
+      },
+      {
+        "version": "20260619000001",
+        "files": [
+          "supabase/migrations/20260619000001_cash_handover_single_voucher.sql",
+          "supabase/migrations/20260619000001_payment_method_cantru.sql"
+        ]
+      },
+      {
+        "version": "20260627000001",
+        "files": [
+          "supabase/migrations/20260627000001_profiles_ui_preferences.sql",
+          "supabase/migrations/20260627000001_push_subscriptions.sql",
+          "supabase/migrations/20260627000001_termination_extra_charges.sql"
+        ]
+      },
+      {
+        "version": "20260627120000",
+        "files": [
+          "supabase/migrations/20260627120000_fix_get_my_available_rooms_area_ids.sql",
+          "supabase/migrations/20260627120000_public_rooms_include_moveout.sql"
+        ]
+      },
+      {
+        "version": "20260628000001",
+        "files": [
+          "supabase/migrations/20260628000001_acceptance_geofence.sql",
+          "supabase/migrations/20260628000001_manager_salary_module.sql"
+        ]
+      },
+      {
+        "version": "20260630000001",
+        "files": [
+          "supabase/migrations/20260630000001_bonus_rules_contract_combo.sql",
+          "supabase/migrations/20260630000001_fix_reading_code_global_unique.sql"
+        ]
+      },
+      {
+        "version": "20260703110000",
+        "files": [
+          "supabase/migrations/20260703110000_hide_demo_from_real_admins.sql",
+          "supabase/migrations/20260703110000_invoice_audit_v2_receipts.sql"
+        ]
+      },
+      {
+        "version": "20260703160000",
+        "files": [
+          "supabase/migrations/20260703160000_approve_voucher_permission_guard.sql",
+          "supabase/migrations/20260703160000_breakdown_rpcs_setbased_scope.sql"
+        ]
+      },
+      {
+        "version": "20260703161000",
+        "files": [
+          "supabase/migrations/20260703161000_ie_select_policies_setbased.sql",
+          "supabase/migrations/20260703161000_termination_fixes_audit_clamp_ct.sql"
+        ]
+      },
+      {
+        "version": "20260704120000",
+        "files": [
+          "supabase/migrations/20260704120000_realtime_business_tables.sql",
+          "supabase/migrations/20260704120000_termination_internal_ledger.sql"
+        ]
+      },
+      {
+        "version": "20260704130000",
+        "files": [
+          "supabase/migrations/20260704130000_income_expense_layer_stats_rpc.sql",
+          "supabase/migrations/20260704130000_v5_inspection_dwell_from_start.sql"
+        ]
+      },
+      {
+        "version": "20260704150000",
+        "files": [
+          "supabase/migrations/20260704150000_create_opening_adjustment.sql",
+          "supabase/migrations/20260704150000_fix_v5_distance_m_float8.sql"
+        ]
+      },
+      {
+        "version": "20260727120000",
+        "files": [
+          "supabase/migrations/20260727120000_ie_income_auto_approve_and_kqkd_guard.sql",
+          "supabase/migrations/20260727120000_public_rooms_hide_held_by_deposit.sql"
+        ]
+      },
+      {
+        "version": "20260728150000",
+        "files": [
+          "supabase/migrations/20260728150000_enable_non_cash_overpay_credit.sql",
+          "supabase/migrations/20260728150000_forfeit_guard_deposit_mismatch.sql"
+        ]
+      },
+      {
+        "version": "20260728180000",
+        "files": [
+          "supabase/migrations/20260728180000_income_expense_type_canonicalization.sql",
+          "supabase/migrations/20260728180000_room_price_history.sql"
+        ]
+      },
+      {
+        "version": "20260729130000",
+        "files": [
+          "supabase/migrations/20260729130000_network_center_worker_identity.sql",
+          "supabase/migrations/20260729130000_notifications_rls_own_row.sql"
+        ]
+      },
+      {
+        "version": "20260729140000",
+        "files": [
+          "supabase/migrations/20260729140000_network_center_admin_status_forward_fix.sql",
+          "supabase/migrations/20260729140000_notification_type_action_required.sql"
+        ]
+      },
+      {
+        "version": "20260729141000",
+        "files": [
+          "supabase/migrations/20260729141000_network_center_maintenance_reserved_alias_fix.sql",
+          "supabase/migrations/20260729141000_notifications_push_queue_columns.sql"
+        ]
+      },
+      {
+        "version": "20260730290000",
+        "files": [
+          "supabase/migrations/20260730290000_create_cashbook_org_resolution.sql",
+          "supabase/migrations/20260730290000_unapprove_resets_review_state.sql"
+        ]
+      },
+      {
+        "version": "20260731020000",
+        "files": [
+          "supabase/migrations/20260731020000_fee_config_clearable.sql",
+          "supabase/migrations/20260731020000_forfeit_review_state_after_approve.sql"
+        ]
+      },
+      {
+        "version": "20260731070000",
+        "files": [
+          "supabase/migrations/20260731070000_current_date_to_org_today.sql",
+          "supabase/migrations/20260731070000_lucky_draw_events.sql"
+        ]
+      },
+      {
+        "version": "20260731080000",
+        "files": [
+          "supabase/migrations/20260731080000_lucky_checkin_deadline.sql",
+          "supabase/migrations/20260731080000_special_fee_engine.sql"
+        ]
+      },
+      {
+        "version": "20260731090000",
+        "files": [
+          "supabase/migrations/20260731090000_lucky_payout_and_proof.sql",
+          "supabase/migrations/20260731090000_termination_refund_obligation.sql"
+        ]
+      },
+      {
+        "version": "20260731100000",
+        "files": [
+          "supabase/migrations/20260731100000_lucky_proof_upload_policy_fix.sql",
+          "supabase/migrations/20260731100000_termination_refund_writer.sql"
+        ]
+      },
+      {
+        "version": "20260731110000",
+        "files": [
+          "supabase/migrations/20260731110000_lucky_multiple_proofs.sql",
+          "supabase/migrations/20260731110000_refund_preview_accept_contract.sql"
+        ]
+      },
+      {
+        "version": "20260731130000",
+        "files": [
+          "supabase/migrations/20260731130000_create_contract_link_deposit_flex.sql",
+          "supabase/migrations/20260731130000_lucky_draw_manual_mode.sql"
+        ]
+      },
+      {
+        "version": "20260801020000",
+        "files": [
+          "supabase/migrations/20260801020000_sale_bonus_from_deposit.sql",
+          "supabase/migrations/20260801020000_sandbox_org_hide_from_super_admin.sql"
+        ]
+      },
+      {
+        "version": "20260801040000",
+        "files": [
+          "supabase/migrations/20260801040000_fix_sandbox_hide_null_org.sql",
+          "supabase/migrations/20260801040000_utility_ceiling_and_maintenance_rules.sql"
+        ]
+      },
+      {
+        "version": "20260801050000",
+        "files": [
+          "supabase/migrations/20260801050000_deposit_opening_into_atam.sql",
+          "supabase/migrations/20260801050000_sandbox_org_building_scope.sql"
+        ]
+      },
+      {
+        "version": "20260801060000",
+        "files": [
+          "supabase/migrations/20260801060000_clone_org_sync_rpc.sql",
+          "supabase/migrations/20260801060000_rpc_respect_org_isolation.sql"
+        ]
+      },
+      {
+        "version": "20260801070000",
+        "files": [
+          "supabase/migrations/20260801070000_building_scope_org_isolation.sql",
+          "supabase/migrations/20260801070000_clone_org_sync_queue.sql"
+        ]
+      },
+      {
+        "version": "20260802170000",
+        "files": [
+          "supabase/migrations/20260802170000_ie_posting_flag_repair.sql",
+          "supabase/migrations/20260802170000_move_cashbook_allow_invoice_collection.sql"
+        ]
+      }
+    ]
+  },
   "reviewModel": "Người review duyệt QUY TẮC phân loại và MẪU KIỂM theo batch, không ký từng file. Mọi file 'unknown' và mọi file đụng tiền/RLS/SECURITY DEFINER phải được xem 100%.",
   "entries": [
     {

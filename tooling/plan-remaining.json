@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 61
+    "stillMissing": 60
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -35,10 +35,12 @@
       {
         "deliverable": "Đợt 1b — Generator/checker đối chiếu ledger rows live, 33 nhóm duplicate + collision legacy `016_`/`017_`, catalog production và rollout evidence",
         "planRef": "mục 45, dòng 2776",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "L",
         "touchesOpenClaw": false,
-        "remaining": "Ghi cả DANH SÁCH nhóm version trùng (không chỉ số đếm) vào manifest; thêm nguồn evidence từ rollout receipt (Network Center / accounting / finance-v2) vào generator, hoặc ghi rõ trong `$comment` vì sao nguồn đó bị loại."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "(a) duplicateVersions: tu so 40 thanh {count, groups[]} kem danh sach file tung nhom. So dem noi \"co van de\" ma khong noi O DAU, va khong co danh sach thi khong biet mot nhom MOI vua xuat hien trong khi mot nhom cu vua duoc xu (tong van 40). Va manifest tai cho, KHONG sinh lai (sinh lai can ledger production va se dung 645 entry): diff 295 them / 1 xoa, chi truong do. (b) Nguon evidence rollout receipt: docs/generated/schema-change-evidence/ CHINH LA nguon do va bo sinh dang bo qua hoan toan. Noi vao: khop theo sha256 (khong theo ten), thang ca ledger vi no chung minh DUNG BYTE da chay. 12 test. GHI CHU PHAM VI: manifest dem 40 nhom/90 file tren 645 entry (630 migrations + 15 archive), Contract dem 36/77 tren 633 file .sql o goc — hai pham vi khac nhau, dung \"thong nhat\"."
       },
       {
         "deliverable": "Đợt 1b — Review theo batch + sampling + risk-directed (§0.7), `reviewedBy` ghi `batch:<id>`",

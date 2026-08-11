@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS_DIR = join(repoRoot, "supabase", "migrations");
 const ARCHIVE_DIR = join(repoRoot, "supabase", "migrations-archive");
+const EVIDENCE_DIR = join(repoRoot, "docs", "generated", "schema-change-evidence");
 const OUT = join(repoRoot, "supabase", "migration-provenance.json");
 
 function readPat() {
@@ -191,8 +192,56 @@ export function extractAddedColumns(sql) {
   return [...new Set(out)];
 }
 
-export function classify(entry, { ledgerIndex, catalog }) {
+/**
+ * Biên nhận rollout (`docs/generated/schema-change-evidence/*.json`) — nguồn bằng
+ * chứng MẠNH NHẤT, và cho tới 11/08/2026 bộ sinh này bỏ qua hoàn toàn.
+ *
+ * Vì sao mạnh hơn ledger lẫn catalog:
+ *   ledger   nói version đó đã chạy — nhưng khớp theo `version|name`, mà tên có
+ *            thể đổi và version thì trùng (40 nhóm).
+ *   catalog  nói object CÓ TỒN TẠI — không nói file nào tạo ra nó.
+ *   biên nhận ghi sha256 CỦA CHÍNH FILE, thời điểm apply, và giấy phép đã dùng.
+ *            Khớp sha256 là khớp đúng byte đã chạy, không suy diễn.
+ *
+ * Khớp theo sha256, KHÔNG theo tên file: tên đổi thì bằng chứng vẫn đúng, còn
+ * nội dung đổi thì bằng chứng phải mất hiệu lực — đó chính là điều ta muốn.
+ */
+export function bienNhanTheoSha(receipts) {
+  const m = new Map();
+  for (const r of receipts) {
+    if (r?.sha256 && r?.file) m.set(r.sha256, r);
+  }
+  return m;
+}
+
+/**
+ * Loại giấy phép ghi trong biên nhận.
+ *
+ * Hai schema cùng tồn tại trong `docs/generated/schema-change-evidence/` (đo
+ * 11/08/2026, đúng 2 file và chúng KHÁC NHAU):
+ *   - `authorization: { loai, chiTiet }`          — bản mới
+ *   - `promotionToken` / `backupTaken` phẳng      — bản cũ
+ *
+ * Trả `khong-ro-giay-phep` cho dạng thứ ba thay vì đoán. Một biên nhận không đọc
+ * được giấy phép vẫn chứng minh file ĐÃ CHẠY — nhưng không được lặng lẽ trông như
+ * đã có phê duyệt.
+ */
+export function giayPhep(bn) {
+  if (bn?.authorization?.loai) return bn.authorization.loai;
+  if (bn?.promotionToken) return "promotion-token";
+  if (bn?.backupTaken) return "bien-nhan-backup";
+  return "khong-ro-giay-phep";
+}
+
+export function classify(entry, { ledgerIndex, catalog, bienNhan = new Map() }) {
   const { version, name } = entry;
+
+  const bn = entry.sha256 ? bienNhan.get(entry.sha256) : undefined;
+  if (bn) {
+    // Biên nhận thắng cả ledger: nó chứng minh ĐÚNG BYTE này đã chạy, và ghi kèm
+    // ai cho phép chạy. Ledger chỉ khớp được `version|name`.
+    return { state: "ledger-applied", evidence: [`receipt:${bn.appliedAt}|${giayPhep(bn)}`] };
+  }
 
   if (version && ledgerIndex.has(`${version}|${name}`)) {
     return { state: "ledger-applied", evidence: [`ledger:${version}|${name}`] };
@@ -347,8 +396,23 @@ async function main(argv) {
     collect(join(ARCHIVE_DIR, "migrations-bundle"), "supabase/migrations-archive/migrations-bundle", true);
   } catch { /* thư mục có thể không tồn tại */ }
 
+  // Nạp biên nhận rollout. Thư mục có thể chưa tồn tại (chưa apply lần nào) —
+  // khi đó tập rỗng, và mọi entry rơi về ledger/catalog như trước.
+  const bienNhan = bienNhanTheoSha(
+    (() => {
+      try {
+        return readdirSync(EVIDENCE_DIR)
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => JSON.parse(readFileSync(join(EVIDENCE_DIR, f), "utf8")));
+      } catch {
+        return [];
+      }
+    })(),
+  );
+  if (bienNhan.size > 0) console.log(`  ${bienNhan.size} biên nhận rollout dùng làm bằng chứng`);
+
   for (const e of entries) {
-    const r = classify(e, { ledgerIndex, catalog });
+    const r = classify(e, { ledgerIndex, catalog, bienNhan });
     e.state = r.state;
     e.evidence = r.evidence;
     if (r.missing) e.missingObjects = r.missing;
@@ -383,7 +447,25 @@ async function main(argv) {
       ledgerRows: ledgerRows.length,
       ledgerMaxVersion: ledgerRows.at(-1)?.version ?? null,
       counts,
-      duplicateVersions: dupVersions.length,
+      // DANH SÁCH, không chỉ số đếm.
+      //
+      // Trước 11/08/2026 trường này là số `40`. Con số đó nói "có vấn đề" nhưng
+      // không nói ở ĐÂU, nên ai muốn xử một nhóm trùng vẫn phải tự quét lại thư
+      // mục — tức manifest không thay được việc phải làm bằng tay. Tệ hơn: không
+      // có danh sách thì không cách nào biết một nhóm trùng MỚI vừa xuất hiện
+      // trong khi một nhóm cũ vừa được xử, vì tổng vẫn là 40.
+      //
+      // Giữ cả `count` để đọc nhanh, và có phép kiểm buộc count === groups.length
+      // (xem scripts/check-migration-provenance.mjs) để hai số không thể lệch nhau.
+      duplicateVersions: {
+        count: dupVersions.length,
+        groups: dupVersions
+          .map(([version]) => ({
+            version,
+            files: entries.filter((e) => e.version === version).map((e) => e.path).sort(),
+          }))
+          .sort((a, b) => a.version.localeCompare(b.version)),
+      },
       reviewModel:
         "Người review duyệt QUY TẮC phân loại và MẪU KIỂM theo batch, không ký từng file. Mọi file 'unknown' và mọi file đụng tiền/RLS/SECURITY DEFINER phải được xem 100%.",
       entries,
