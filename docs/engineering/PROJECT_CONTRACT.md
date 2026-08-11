@@ -504,6 +504,24 @@ nghi thức, và nghi thức thì người ta làm cho xong.
 **6. Ghi bằng chứng vào commit message**: neo, digest trước/sau, exit code kỳ vọng và thực tế. Một
 câu "đã chạy đột biến" không kèm số đo thì không kiểm lại được.
 
+### Gate đọc MÃ, không đọc văn kể lại về mã
+
+Gate nào quét văn bản để tìm một mẫu thì phải **bỏ chú thích trước** — dùng
+`scripts/lib/bo-chu-thich.mjs`, đừng viết lại luật ở từng chỗ.
+
+Đây không phải cẩn thận thừa. Bốn gate đã dính, và hướng gây hại của chúng khác nhau:
+
+| Gate | Chuyện đã xảy ra | Hướng |
+|---|---|---|
+| `check-copilot-docs-manifest` | `registry.includes('manifest.json')` xanh dù xoá sạch code lọc, vì ba dòng comment có sẵn chữ đó | **báo THIẾU** — gate không kiểm gì mà vẫn xanh |
+| `check-realtime-query-keys` | bắt phải key nằm trong chú thích giải thích rằng key đó đã chết | báo thừa |
+| `check-known-gaps` | bắt phải `::warning::` trong chú thích nói rằng ở đây KHÔNG dùng `::warning::` | báo thừa |
+| `check-workflow-paths` | đếm script trong shell comment `# node …` rồi đòi khai nó vào `paths:` | báo thừa |
+
+Ba ca sau chỉ phiền. Ca đầu mới là loại phải sợ: một gate xanh trong khi không kiểm gì trông y hệt
+một gate đang làm việc. Nếu bạn viết gate mới có quét văn bản, ca đột biến bắt buộc là **"đặt đúng
+chuỗi cần tìm vào một dòng chú thích"** — gate phải KHÔNG đổi màu.
+
 ### E2E — mặc định chạy ẨN (headless)
 
 ```bash

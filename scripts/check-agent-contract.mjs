@@ -220,6 +220,9 @@ function main() {
     ['KHÔNG replay được', 'legacy history không dựng lại được từ đầu'],
     ['migrations-archive', 'thư mục TUYỆT ĐỐI không replay'],
     ['trùng version', 'lý do kỹ thuật khiến db push không chạy nổi'],
+    // Luật "gate đọc MÃ, không đọc văn kể lại về mã" — bốn gate đã dính, một
+    // trong đó xanh mà không kiểm gì. Ghim vì nó không gắn với script nào.
+    ['bo-chu-thich', 'gate quét văn bản phải bỏ chú thích trước'],
     ['deno.lock', 'khoá version npm specifier của edge function'],
     ['gen:types', 'quy trình regen types (không redirect)'],
     ['types:normalize', 'bỏ partition ngày sau khi regen'],

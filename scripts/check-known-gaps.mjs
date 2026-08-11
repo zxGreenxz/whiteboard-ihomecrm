@@ -17,6 +17,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 
+import { boChuThichShell } from './lib/bo-chu-thich.mjs';
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GAPS_PATH = join(repoRoot, 'tooling', 'known-gaps.yaml');
 
@@ -91,7 +93,10 @@ const KHONG_GATING = [
  * không đọc văn kể lại về mã.
  */
 export function laDongChuThich(dong) {
-  return /^\s*#/.test(dong);
+  // Dùng chung `boChuThichShell` thay vì tự viết lại luật: một dòng KHÔNG CÒN GÌ
+  // sau khi bỏ chú thích thì chính nó là chú thích. Luật nằm một chỗ (scripts/lib/
+  // bo-chu-thich.mjs) vì lỗi này đã lặp ở bốn gate khác nhau.
+  return boChuThichShell(dong) === '';
 }
 
 export function timChoKhongGating(noiDung) {

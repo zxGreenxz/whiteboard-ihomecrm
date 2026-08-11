@@ -22,6 +22,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 
+import { boChuThichShell } from './lib/bo-chu-thich.mjs';
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WF_DIR = join(repoRoot, '.github', 'workflows');
 
@@ -55,14 +57,19 @@ export function layOn(doc) {
   return doc?.on ?? doc?.[true] ?? null;
 }
 
-/** Mọi script `scripts/*.mjs` mà các job của workflow thực sự gọi. */
+/**
+ * Mọi script `scripts/*.mjs` mà các job của workflow THỰC SỰ gọi.
+ *
+ * Bỏ shell comment trước khi dò. Bản đầu không bỏ, và đo 11/08/2026 nó đếm cả
+ * `# node scripts/x.mjs` — rồi đòi khai script đã bị comment vào `paths:`, tức
+ * ép thêm nhiễu vào chính bộ lọc mà gate này sinh ra để giữ đúng.
+ */
 export function scriptDuocGoi(doc) {
   const found = new Set();
   for (const job of Object.values(doc?.jobs ?? {})) {
     for (const step of job?.steps ?? []) {
-      for (const m of String(step?.run ?? '').matchAll(/\bscripts\/[\w.-]+\.mjs\b/g)) {
-        found.add(m[0]);
-      }
+      const lenh = boChuThichShell(String(step?.run ?? ''));
+      for (const m of lenh.matchAll(/\bscripts\/[\w.-]+\.mjs\b/g)) found.add(m[0]);
     }
   }
   return [...found].sort();

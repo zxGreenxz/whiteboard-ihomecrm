@@ -30,6 +30,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { boChuThichJs } from './lib/bo-chu-thich.mjs';
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DESCRIPTOR_DIR = 'src/hooks/realtime';
 
@@ -43,11 +45,7 @@ const DESCRIPTOR_DIR = 'src/hooks/realtime';
  * nó khiến gate đòi sửa đúng dòng vừa sửa xong.
  */
 export function keyTrongDescriptor(nguon) {
-  const code = nguon
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split(/\r?\n/)
-    .filter((l) => !/^\s*\/\//.test(l))
-    .join('\n');
+  const code = boChuThichJs(nguon);
   const out = new Set();
   for (const k of code.matchAll(/keys:\s*\[([\s\S]*?)\n\s*\]/g)) {
     for (const m of k[1].matchAll(/\[\s*["'`]([^"'`]+)["'`]/g)) out.add(m[1]);
