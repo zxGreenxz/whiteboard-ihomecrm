@@ -21,6 +21,11 @@ phép đo trước/sau bằng vai người dùng thật. Ba commit: `9519cd98`, 
 > Mười commit: `19bb16d3`, `0d65ca5b`, `61598490`, `29096106`, `18359bf9`,
 > `0efabefd`, `0ce5396c`, `bc99510b`, `bdbc3247`, `c65a3ca0`.
 >
+> **PHIÊN 09–11/08 làm nốt GĐ9, hai bảng AI, và đóng ĐIỂM MÙ THỨ HAI của bộ đo.**
+> Số chốt: biên giới **302** · miễn trừ **2** (`ai_chat_*`, hạn 30/09) · rò sống
+> **0** · dòng NULL chưa khai **0** (từ 3.621) · frontend có `OrganizationContext`.
+> Bốn commit: `ae505187`, `979d0941`, `e54f831a`, và bản cập nhật này.
+>
 > **KHÔNG CÒN VIỆC NÀO CHỜ QUYẾT ĐỊNH.** Việc cuối — xoay 334 mã công khai lên
 > ≥16 ký tự (GĐ0 mục 6a(i)) — đã được chủ dự án cân nhắc và **quyết KHÔNG làm**
 > ngày 09/08/2026, chấp nhận rủi ro tồn đọng và lấy rate-limit làm biện pháp
@@ -272,9 +277,38 @@ CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần D
 
 - **GĐ10 (Test/Demo chung database) — KHÔNG CÒN.** Hai tổ chức đã bị xoá, câu hỏi
   hạ tầng tự tan.
-- **GĐ9 (frontend chưa có `OrganizationContext`) — HẠ ƯU TIÊN.** Prod nay chỉ còn
-  MỘT tổ chức, nên "tổ chức hiện tại" không có gì để chuyển đổi. Việc này chỉ
-  thành cấp thiết khi có công ty thứ hai thật.
+- **GĐ9 (frontend chưa có `OrganizationContext`) — ĐÃ XONG, đã apply prod.**
+  `20260809030000` + `src/contexts/OrganizationContext.tsx` + `OrganizationBadge`.
+
+  **Phải đi qua RPC, không đọc thẳng bảng.** Đo bằng vai người dùng thường:
+  `SELECT count(*) FROM organization_memberships` → **0**, `FROM organizations`
+  → **0**, trong khi `my_org_ids()` trả đúng. RLS hai bảng đó không cho người
+  dùng thường đọc dòng của *chính mình*; gọi thẳng sẽ hiện "không thuộc tổ chức
+  nào" cho MỌI người mà không có lỗi nào nổ ra. `get_my_organizations()` là
+  `SECURITY DEFINER`, lọc theo `auth.uid()` trong thân và **không nhận tham số**
+  — hàm bỏ qua RLS thì mọi tham số từ client đều là đường hỏi thay người khác.
+
+  Nhãn tổ chức chỉ hiện khi **nhiều tổ chức** (lúc nhầm sổ là lỗi thật) hoặc khi
+  **không thuộc tổ chức nào** — trạng thái này có thật: 6 tài khoản `demo.*` rơi
+  vào đúng đó sau khi xoá hai tổ chức, và nếu không báo thì họ thấy màn hình
+  trống mà tưởng hệ thống hỏng.
+
+- **ĐIỂM MÙ THỨ HAI CỦA BỘ ĐO — ĐÃ ĐÓNG.** Phát hiện khi khảo sát GĐ9, và lớn
+  hơn chính GĐ9. Công thức biên giới có nhánh `organization_id IS NULL` ⇒ dòng
+  NULL **ai cũng thấy**; còn bộ đo định nghĩa "dòng của tổ chức khác" là
+  `IS NOT NULL AND <> org mình` nên dòng NULL bị loại khỏi phép đếm **theo đúng
+  định nghĩa**. Đo lần đầu: **3.621 dòng trên 15 bảng**, gồm 345 dòng nhật ký
+  kiểm toán hoá đơn.
+
+  Đã vá còn **92 dòng, cả 92 nằm trong 3 bảng đã khai là toàn hệ**
+  (`cron_runs`, `ai_providers`, `ai_copilot_settings`) qua sổ mới
+  `app_private.org_null_is_global`. Gate nay đếm dòng NULL và ĐỎ nếu bảng chưa
+  khai.
+
+  **Không** gắn `_autofill_org` diện rộng cho 84 bảng suy được, dù rất cám dỗ:
+  nhánh cuối của hàm đó rơi về hằng số `aaaa`, nên gắn diện rộng sẽ làm gate xanh
+  trong khi âm thầm dán nhãn "công ty thật" lên dữ liệu chưa ai xác minh. Còn
+  **105 bảng vẫn NHẬN được NULL** — thứ canh chỗ đó là gate, không phải trigger.
 - **GĐ7 (12 bảng không có cột `organization_id`) — ĐÃ ĐO XONG, KHÔNG CÓ RÒ; điểm
   mù của bộ đo đã đóng.**
 
@@ -405,9 +439,16 @@ CHƯA chạy được `test:openclaw:sql:full-reset` (`--local`) vì nó cần D
   cùng một NAT/4G-gateway dùng chung quota. Ngưỡng phải rộng tay, và phải đếm
   theo **mã SAI** chứ không phải mọi lượt gọi — người xem hoá đơn của chính mình
   gọi đúng mã, kẻ dò thì gọi sai liên tục.
-- **Hai bảng miễn trừ còn lại** (`ai_providers`, `ai_copilot_settings`, hạn
-  30/11): câu hỏi MÔ HÌNH chưa ai trả lời — bảng cấu hình AI thuộc về hệ thống
-  hay thuộc về từng công ty? Chỉ trả lời được khi có công ty thứ hai.
+- **Hai bảng `ai_providers` / `ai_copilot_settings` — ĐÃ XỬ, không cần công ty
+  thứ hai.** Mục này từng ghi "câu hỏi MÔ HÌNH chỉ trả lời được khi có công ty
+  thứ hai". Sai: **chính khoá chính đã trả lời**. `PRIMARY KEY (provider)` ⇒ toàn
+  CSDL chỉ một dòng mỗi provider; `PRIMARY KEY (id boolean)` ⇒ tối đa hai dòng.
+  Không thể có bản riêng cho từng công ty, nên nhãn `aaaa` trên chúng là **nhãn
+  sai**. Đã gỡ về NULL, rào biên giới, rút khỏi sổ miễn trừ (`20260809010000`).
+
+  Sổ miễn trừ nay còn **2 dòng**: `ai_chat_threads` / `ai_chat_messages`, hạn
+  30/09 — nguyên nhân là `chatEngine.ts` insert không set `organization_id`, tức
+  đúng lớp vấn đề "105 bảng nhận được NULL" ở trên.
 
 ---
 
