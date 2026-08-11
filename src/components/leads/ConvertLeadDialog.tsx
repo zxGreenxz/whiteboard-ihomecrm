@@ -104,7 +104,11 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
         room_id: data.room_id || null,
         amount: data.amount,
         deposit_date: data.deposit_date,
-        hold_until_date: data.hold_until_date,
+        // Trường FORM tên `hold_until_date`, cột DB tên `hold_until`. Trước
+        // 11/08/2026 chỗ này gửi thẳng tên form xuống `deposits.insert()`, mà hook
+        // không lọc khoá lạ — PostgREST trả PGRST204 "không tìm thấy cột" và toàn
+        // bộ lượt chuyển lead thành cọc thất bại.
+        hold_until: data.hold_until_date,
         status: "PENDING",
         notes: data.notes || null,
       });

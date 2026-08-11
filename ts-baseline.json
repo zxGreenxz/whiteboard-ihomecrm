@@ -1,12 +1,10 @@
 [
   "src/components/customers/CreateCustomerDialog.tsx|TS2353|Object literal may only specify known properties, and 'id_type' does not exist in type '…'.",
-  "src/components/deposits/EditDepositDialog.tsx|TS2551|Property 'hold_until_date' does not exist on type '…'. Did you mean '…'?",
   "src/components/import-export/ImportExcelDialog.tsx|TS2314|Generic type 'ImportResult<T>' requires 1 type argument(s).",
   "src/components/import-export/ImportExcelDialog.tsx|TS2314|Generic type 'ImportResult<T>' requires 1 type argument(s).",
   "src/components/import-export/ImportExcelDialog.tsx|TS2554|Expected 1 arguments, but got 2.",
   "src/components/import-export/ImportExcelDialog.tsx|TS2554|Expected 1 arguments, but got 2.",
   "src/components/invoices/GenerateInvoiceDialog.tsx|TS2322|Type '{ label?: string; type?: \"invoice\" | \"deposit\"; id?: string; contract_id?: string; amount?: number; }[]' is not assignable to type '…'.",
-  "src/components/leads/ConvertLeadDialog.tsx|TS2561|Object literal may only specify known properties, but 'hold_until_date' does not exist in type '…'. Did you mean to write '…'?",
   "src/components/ui/__tests__/searchableSelect.test.ts|TS2578|Unused '@ts-expect-error' directive.",
   "src/hooks/__tests__/useIncomeExpenses.property.test.ts|TS2339|Property 'approval_status' does not exist on type '…'.",
   "src/hooks/__tests__/useIncomeExpenses.property.test.ts|TS2339|Property 'approval_status' does not exist on type '…'.",

@@ -92,7 +92,8 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
         room_id: deposit.room_id || "",
         amount: deposit.amount || 0,
         deposit_date: deposit.deposit_date || "",
-        hold_until_date: deposit.hold_until_date || "",
+        // Cột DB là `hold_until`; `hold_until_date` là tên TRƯỜNG FORM.
+        hold_until_date: deposit.hold_until || "",
         status: deposit.status || "PENDING",
         ctv_name: (deposit as any).ctv_name || "",
         notes: deposit.notes || "",
@@ -102,9 +103,14 @@ export function EditDepositDialog({ open, onOpenChange, deposit }: EditDepositDi
 
   const onSubmit = async (data: DepositFormValues) => {
     try {
+      // Đổi TÊN FORM sang TÊN CỘT trước khi gửi. `useUpdateDeposit` gọi thẳng
+      // `.update(data)` mà không lọc khoá lạ, nên một khoá thừa là cả lượt lưu
+      // thất bại (PGRST204) chứ không phải bị bỏ qua.
+      const { hold_until_date, ...conLai } = data;
       await updateDeposit.mutateAsync({
         id: deposit.id,
-        ...data,
+        ...conLai,
+        hold_until: hold_until_date,
         ctv_name: data.ctv_name || null,
         notes: data.notes || null,
       } as any);

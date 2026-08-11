@@ -248,7 +248,10 @@ export const useCreateDeposit = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: DepositInsert) => {
+    // `user_id` do CHÍNH hook này điền từ phiên đăng nhập (ngay dưới), nên đòi
+    // caller truyền vào là mô tả sai hợp đồng: hoặc họ để trống và TypeScript kêu,
+    // hoặc họ tự điền và có hai nguồn cho cùng một giá trị.
+    mutationFn: async (data: Omit<DepositInsert, 'user_id'>) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
