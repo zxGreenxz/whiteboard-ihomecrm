@@ -52,9 +52,13 @@ export const useAnnotateIncomeExpense = () => {
           p_remove_attachments: input.removeAttachments?.length
             ? input.removeAttachments
             : null,
-          p_notes: input.notes ?? null,
+          // `p_notes` và `p_idempotency_key` đều khai `DEFAULT NULL::text` ở
+          // server (contracts/surfaces/rpc-surface.json), nên bỏ hẳn khoá bằng
+          // `undefined` cho ra đúng NULL như cũ — và khớp kiểu `p_x?: string`
+          // mà bộ sinh Supabase viết cho tham số có DEFAULT.
+          p_notes: input.notes ?? undefined,
           p_note_mode: input.noteMode ?? "REPLACE",
-          p_idempotency_key: null,
+          p_idempotency_key: undefined,
         },
       );
       if (error) {

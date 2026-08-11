@@ -7,6 +7,7 @@
 // trong đúng tổ chức của người gọi.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { batBuoc } from "@/lib/queryGuard";
 import { rpcNullable } from "@/lib/rpcNullable";
 import type { PostgrestError } from '@supabase/supabase-js';
 import { toast } from 'sonner';
@@ -222,7 +223,12 @@ export const useMemberAuthorization = (membershipId: string | null) =>
     staleTime: 0,
     gcTime: 0,
     queryFn: () =>
-      callRpc<MemberAuthorization>(() => supabase.rpc('get_member_authorization_v1', { p_membership: membershipId })),
+      // `p_membership uuid` là tham số BẮT BUỘC và không nhận NULL. `enabled` ở
+      // trên đã bảo đảm có id, nhưng TypeScript không đọc được `enabled` — nên
+      // giữ đúng bất biến đó bằng một phép kiểm thật, không phải dấu `!`.
+      callRpc<MemberAuthorization>(() => supabase.rpc('get_member_authorization_v1', {
+        p_membership: batBuoc(membershipId, 'membershipId'),
+      })),
   });
 
 export const useOrganizationRoles = (enabled = true) =>
@@ -340,8 +346,9 @@ export const useUpsertOrganizationRole = () => {
       callRpc<{ roleId: string; created: boolean; version: number; affectedMembers: number }>(() => supabase.rpc(
         'upsert_organization_role_v1',
         {
-          p_role_id: v.roleId ?? null,
-          p_name: v.name ?? null,
+          // `p_role_id`/`p_name` đều `DEFAULT NULL` ⇒ bỏ khoá = truyền NULL.
+          p_role_id: v.roleId ?? undefined,
+          p_name: v.name ?? undefined,
           p_permissions: v.permissions ?? null,
           p_expected_version: rpcNullable(v.expectedVersion ?? null),
           p_reason: v.reason ?? undefined,
@@ -376,8 +383,9 @@ export const useInviteMember = () =>
         {
           p_email: v.email,
           p_member_type: v.memberType,
-          p_role_id: v.roleId ?? null,
-          p_scope_ids: v.scopeIds?.length ? v.scopeIds : null,
+          // `p_role_id uuid DEFAULT NULL` và `p_scope_ids uuid[] DEFAULT NULL`.
+          p_role_id: v.roleId ?? undefined,
+          p_scope_ids: v.scopeIds?.length ? v.scopeIds : undefined,
           p_expires_days: v.expiresDays ?? 7,
         },
       )),

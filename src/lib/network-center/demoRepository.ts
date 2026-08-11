@@ -27,6 +27,23 @@ import {
   validateNetworkSettings,
 } from "./model";
 
+/**
+ * Toà MÔ PHỎNG luôn có cài đặt.
+ *
+ * `NetworkBuilding.settings`/`settingsVersion` khai `| null` để diễn đạt toà
+ * THẬT chưa được provisioning (chưa có dòng `network_site_settings`). Trạng
+ * thái đó không tồn tại trong bộ nhớ demo: `generateBuilding` seed đủ cả hai
+ * trường cho mọi toà, và không có đường nào đặt chúng về `null`.
+ *
+ * Vì vậy kho demo giữ kiểu đã thu hẹp ở BÊN TRONG, thay vì rắc kiểm tra null
+ * giả ở từng chỗ dùng. Chữ ký công khai không đổi — `DemoNetworkBuilding` vẫn
+ * gán được vào `NetworkBuilding`.
+ */
+type DemoNetworkBuilding = NetworkBuilding & {
+  settings: NetworkSettings;
+  settingsVersion: number;
+};
+
 const DEMO_NOW = Date.UTC(2026, 6, 24, 3, 30, 0);
 const REDACTED = "[ĐÃ ẨN]";
 const MODELS = ["hEX S", "RB5009UG+S+", "L009UiGS", "CCR2004-1G-12S+2XS"];
@@ -166,7 +183,7 @@ export function sanitizeConfigSnapshot(snapshot: Record<string, unknown>): Recor
 }
 
 function snapshotForSite(
-  site: Pick<NetworkBuilding, "router" | "interfaces" | "settings">,
+  site: Pick<DemoNetworkBuilding, "router" | "interfaces" | "settings">,
 ): Record<string, string> {
   const snapshot: Record<string, unknown> = {
     "router.identity": site.router.identity,
@@ -205,7 +222,7 @@ function snapshotHash(snapshot: Record<string, string>): string {
   return `sha256:${hashString(content).toString(16).padStart(16, "0")}`;
 }
 
-function makeSeedRevisions(seed: number, site: NetworkBuilding): ConfigRevision[] {
+function makeSeedRevisions(seed: number, site: DemoNetworkBuilding): ConfigRevision[] {
   const olderSnapshot = snapshotForSite(site);
   olderSnapshot["dns.cacheMode"] = "legacy";
   olderSnapshot["settings.pollingSeconds"] = "90";
@@ -260,7 +277,7 @@ function makeAudit(seed: number, site: NetworkBuilding): AuditRecord[] {
   ];
 }
 
-function generateBuilding(building: PhysicalBuildingRecord): NetworkBuilding {
+function generateBuilding(building: PhysicalBuildingRecord): DemoNetworkBuilding {
   const seed = hashString(building.id);
   const backupAgeHours = seeded(seed, 4, 2, 64);
   const firmware = FIRMWARE[seed % FIRMWARE.length];
@@ -275,7 +292,7 @@ function generateBuilding(building: PhysicalBuildingRecord): NetworkBuilding {
       ? "degraded"
       : "online";
 
-  const site: NetworkBuilding = {
+  const site: DemoNetworkBuilding = {
     buildingId: building.id,
     buildingName: building.name,
     rolloutState: building.rolloutState ?? "EXECUTE",
@@ -326,7 +343,7 @@ function generateBuilding(building: PhysicalBuildingRecord): NetworkBuilding {
 
 export class DemoNetworkCenterRepository {
   private buildings: PhysicalBuildingRecord[] = [];
-  private states = new Map<string, NetworkBuilding>();
+  private states = new Map<string, DemoNetworkBuilding>();
   private revisionSequence = 0;
   private mutationSequence = 0;
 
@@ -639,7 +656,7 @@ export class DemoNetworkCenterRepository {
     return clone(revision);
   }
 
-  private requireBuilding(buildingId: string): NetworkBuilding {
+  private requireBuilding(buildingId: string): DemoNetworkBuilding {
     const site = this.states.get(buildingId);
     if (!site) throw new Error("Tòa nhà không thuộc phạm vi truy cập");
     return site;
@@ -651,7 +668,7 @@ export class DemoNetworkCenterRepository {
     }
   }
 
-  private cloneForRead(site: NetworkBuilding): NetworkBuilding {
+  private cloneForRead(site: DemoNetworkBuilding): DemoNetworkBuilding {
     const result = clone(site);
     if (!isMaintenanceActive(result.maintenance)) result.maintenance = null;
     return result;

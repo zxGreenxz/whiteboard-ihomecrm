@@ -47,7 +47,9 @@ export const useFeeConfigMatrix = (buildingIds?: string[]) => {
     queryKey: ['fee-config-matrix', key],
     queryFn: async (): Promise<FeeConfigCell[]> => {
       const { data, error } = await supabase.rpc('get_fee_config_matrix_v1', {
-        p_building_ids: key,
+        // `key` giữ `null` vì nó còn đi vào queryKey; xuống RPC thì bỏ hẳn khoá.
+        // `p_building_ids uuid[] DEFAULT NULL::uuid[]` ⇒ vắng mặt = NULL, y hệt.
+        p_building_ids: key ?? undefined,
       });
       if (error) throw new Error(error.message);
       return ((data ?? []) as any[]).map((r) => ({
@@ -117,9 +119,11 @@ export const useSaveFeeConfig = () => {
       const { data, error } = await supabase.rpc('upsert_building_fee_account', {
         p_building_id: a.buildingId,
         p_fee_category: a.feeCategory,
-        p_provider_code: clearProvider ? null : (a.providerCode ?? null),
-        p_account_holder: clearProvider ? null : (a.accountHolder ?? null),
-        p_default_amount: clearAmount ? null : (a.defaultAmount ?? null),
+        // Ba tham số này đều `DEFAULT NULL` ở server, nên "bỏ khoá" và "truyền
+        // NULL" là một. Dùng `undefined` để khớp kiểu sinh ra (`p_x?: T`).
+        p_provider_code: clearProvider ? undefined : (a.providerCode ?? undefined),
+        p_account_holder: clearProvider ? undefined : (a.accountHolder ?? undefined),
+        p_default_amount: clearAmount ? undefined : (a.defaultAmount ?? undefined),
         p_default_account_id: undefined,
         p_not_applicable: a.notApplicable ?? undefined,
         p_clear_amount: clearAmount,

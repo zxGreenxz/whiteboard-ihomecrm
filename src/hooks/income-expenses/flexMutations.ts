@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
+import { batBuoc } from "@/lib/queryGuard";
 
 // Đo trên prod 30/07/2026 (pg_get_functiondef public.can_flex_cancel_v1): reader
 // trả đúng 11 mã dưới đây. Thứ tự kiểm của server cũng là thứ tự ưu tiên:
@@ -131,8 +132,10 @@ export const useCancelVoucherFlex = () => {
         {
           p_voucher: input.voucherId,
           p_reason: input.reason,
-          p_expected_approval_version: input.expectedApprovalVersion ?? null,
-          p_expected_posting_version: input.expectedPostingVersion ?? null,
+          // Hai tham số CAS khai `DEFAULT NULL::bigint` ở server, nên không
+          // truyền khoá cho ra đúng NULL như cũ (= "không kiểm version").
+          p_expected_approval_version: input.expectedApprovalVersion ?? undefined,
+          p_expected_posting_version: input.expectedPostingVersion ?? undefined,
         },
       );
       if (error) {
@@ -204,7 +207,7 @@ export const useVoucherCancellation = (voucherId: string | null | undefined) =>
     queryFn: async (): Promise<VoucherCancellation | null> => {
       const { data, error } = await supabase.rpc(
         "get_voucher_cancellation_v1",
-        { p_voucher: voucherId },
+        { p_voucher: batBuoc(voucherId, "voucherId") },
       );
       if (error) throw new Error(error.message);
       return (data ?? null) as unknown as VoucherCancellation | null;
@@ -240,7 +243,7 @@ export const useVoucherChangeLog = (voucherId: string | null | undefined) =>
     queryFn: async (): Promise<VoucherChangeLogEntry[]> => {
       const { data, error } = await supabase.rpc(
         "get_voucher_change_log_v1",
-        { p_voucher: voucherId },
+        { p_voucher: batBuoc(voucherId, "voucherId") },
       );
       if (error) throw new Error(error.message);
       return (data ?? []) as unknown as VoucherChangeLogEntry[];

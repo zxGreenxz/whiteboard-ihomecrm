@@ -482,12 +482,18 @@ export async function getContractDiscountSlot(
 
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 
+// Năm cột này NULLABLE trong DB (`invoice_generation_settings`, xem
+// integrations/supabase/types.ts) — không cột nào có NOT NULL hay DEFAULT ở
+// schema. Kiểu viết tay trước đây hẹp hơn DB nên nói dối chỗ gọi: hàng có cột
+// NULL vẫn được trả về như thể luôn có giá trị. Nới kiểu cho khớp DB thay vì
+// bịa giá trị mặc định tại chỗ đọc — nhánh "không có hàng" bên dưới vẫn trả bộ
+// mặc định đầy đủ như cũ, nên hành vi không đổi.
 export interface InvoiceGenerationSettings {
-  auto_generate_enabled: boolean;
-  generation_day: number; // 1-28
-  due_days: number;
-  include_previous_debt: boolean;
-  auto_approve: boolean;
+  auto_generate_enabled: boolean | null;
+  generation_day: number | null; // 1-28
+  due_days: number | null;
+  include_previous_debt: boolean | null;
+  auto_approve: boolean | null;
 }
 
 export interface GeneratedInvoiceItem {

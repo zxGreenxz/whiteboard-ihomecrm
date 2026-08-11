@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { toast } from "sonner";
 import type {
   CreateProfitDistributionInput,
@@ -22,7 +23,9 @@ export const useCreateProfitDistribution = () => {
           p_amount: input.amount,
           p_account_id: input.account_id,
           p_voucher_date: input.voucher_date,
-          p_note: input.note ?? null,
+          // `p_note text` KHÔNG có DEFAULT ⇒ bắt buộc truyền, nhưng vẫn nhận
+          // NULL (phiếu không ghi chú). Bộ sinh không diễn đạt được điều đó.
+          p_note: rpcNullable(input.note ?? null),
           p_idempotency_key: `profit-dist-${crypto.randomUUID()}`,
         },
       );
@@ -62,7 +65,8 @@ export const useCreateManagerSalaryPayout = () => {
           p_amount: input.amount,
           p_account_id: input.account_id,
           p_voucher_date: input.voucher_date,
-          p_note: input.note ?? null,
+          // `p_note text` bắt buộc-nhưng-nhận-NULL, như trên.
+          p_note: rpcNullable(input.note ?? null),
           p_idempotency_key: `mgr-payout-${crypto.randomUUID()}`,
         },
       );

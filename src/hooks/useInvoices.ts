@@ -869,10 +869,10 @@ export const useUpdateInvoice = () => {
           sort_order: item.sort_order,
         })),
         p_prepaid_amount: invoiceFields.prepaid_amount || 0,
-        p_discount_notes: invoiceFields.discount_notes || null,
+        p_discount_notes: invoiceFields.discount_notes || undefined,
         p_electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
         p_previous_debt_sources: (invoiceFields.previous_debt_sources ?? []) as unknown as Json,
-        p_template_id: invoiceFields.template_id || null,
+        p_template_id: invoiceFields.template_id || undefined,
         p_notes: invoiceFields.notes || undefined,
       });
       if (!canonical.error) return canonical.data;
@@ -1295,9 +1295,9 @@ export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
       // Nhờ vậy super_admin thấy đủ data của các building trong scope (kể cả invoice
       // do staff khác tạo), khắc phục lỗi "lệch owner" của bản v1.
       const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
-        p_building_id: filters?.building_id ?? null,
-        p_room_id: filters?.room_id ?? null,
-        p_status: filters?.status ?? null,
+        p_building_id: filters?.building_id ?? undefined,
+        p_room_id: filters?.room_id ?? undefined,
+        p_status: filters?.status ?? undefined,
         p_start_date: filters?.start_date ?? undefined,
         p_end_date: filters?.end_date ?? undefined,
         p_billing_month: filters?.billing_month ?? undefined,

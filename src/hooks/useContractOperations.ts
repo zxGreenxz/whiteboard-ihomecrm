@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { ExtraChargeItem } from "@/lib/contractValidation";
+import { rpcNullable } from "@/lib/rpcNullable";
 import {
   buildForfeitWithCreditRpcArgs,
   buildMoveOutWithCreditRpcArgs,
@@ -67,7 +68,7 @@ export const useTransferRoom = () => {
     }) => {
       const { data, error } = await supabase.rpc("transfer_room", {
         p_contract_id: params.contractId,
-        p_new_room_id: params.newRoomId,        p_new_rent_price: params.newRentPrice ?? null,
+        p_new_room_id: params.newRoomId,        p_new_rent_price: params.newRentPrice ?? undefined,
         p_transfer_date: params.transferDate,
         p_notes: params.notes ?? undefined,
       });
@@ -155,10 +156,10 @@ export const useTransferContract = () => {
         {
           p_contract_id: params.contractId,
           p_new_customer_id: params.newCustomerId,
-          p_new_rent_price: params.newRentPrice ?? null,
-          p_new_deposit: params.newDeposit ?? null,
+          p_new_rent_price: params.newRentPrice ?? undefined,
+          p_new_deposit: params.newDeposit ?? undefined,
           p_transfer_date: params.transferDate,
-          p_notes: params.notes ?? null,
+          p_notes: params.notes ?? undefined,
         }
       );
 
@@ -251,10 +252,19 @@ export const useTerminateMoveOut = () => {
       receiptAccountId?: string | null;
     }) => {
       const request = prepareCustomerCreditRequest("contract-move-out");
+      const moveOutArgs = buildMoveOutWithCreditRpcArgs(params, request);
       return invokeCustomerCreditRpc(
         (fn, args) => supabase.rpc(fn, args),
         "terminate_contract_move_out_with_credit_v1",
-        buildMoveOutWithCreditRpcArgs(params, request),
+        {
+          ...moveOutArgs,
+          // p_notes (text) và p_receipt_account_id (uuid) là tham số BẮT BUỘC —
+          // không có DEFAULT trong chữ ký SQL (20260728140000_move_out_credit_route_guard)
+          // nên bộ sinh khai chúng non-null, dù PostgreSQL nhận NULL và NULL chính
+          // là giá trị đúng ở đây (không ghi chú / để server tự chọn sổ thu).
+          p_notes: rpcNullable<string>(moveOutArgs.p_notes),
+          p_receipt_account_id: rpcNullable<string>(moveOutArgs.p_receipt_account_id),
+        },
       );
     },
     onSuccess: () => {

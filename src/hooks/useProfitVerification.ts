@@ -53,7 +53,12 @@ export function useProfitVerification(opts: {
   enabled?: boolean;
 }) {
   const { ym, startDate, endDate, buildingIds, pnlOnly, accrualMode, enabled = true } = opts;
-  const bIds = buildingIds?.length ? buildingIds : null;
+  // `undefined` chứ không phải `null`: cả ba RPC dùng bIds (get_income_expense_layer_stats,
+  // fa_monthly_pnl_accrual, get_invoice_statistics_v2) đều khai `p_building_ids uuid[]
+  // DEFAULT NULL::uuid[]` → bỏ khoá khỏi payload là ĐÚNG mặc định server, và kiểu sinh
+  // ra chỉ cho phép `string[] | undefined`. Hash queryKey không đổi (JSON.stringify biến
+  // `undefined` trong mảng thành `null`), nên cache cũ không vỡ.
+  const bIds = buildingIds?.length ? buildingIds : undefined;
 
   return useQuery({
     queryKey: ["profit-verification", ym, bIds, pnlOnly, accrualMode],

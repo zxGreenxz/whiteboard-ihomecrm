@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { isIeLifecycleFallbackSignal } from "@/lib/canonicalFallback";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
 import { todayISO } from '@/lib/collect';
+import { rpcNullable } from "@/lib/rpcNullable";
 
 type RpcError = { code?: string | null; message?: string | null };
 type RpcResult = { error: RpcError | null };
@@ -305,9 +306,11 @@ export const useCancelIncomeExpense = () => {
       // Canonical cancel (phiếu flow-owned): transition + audit hash-chain
       // server-side, KHÔNG đụng payments (phiếu canonical không gắn payment).
       // Phiếu legacy → tín hiệu fallback → giữ nguyên đường cũ bên dưới.
+      // `cancel_income_expense_v1(p_reason text DEFAULT NULL)` — không lý do thì
+      // bỏ hẳn khoá, server tự lấy DEFAULT NULL (đúng giá trị đang gửi).
       const canonical = await supabase.rpc("cancel_income_expense_v1", {
         p_voucher_id: id,
-        p_reason: reason,
+        p_reason: reason ?? undefined,
       });
       if (!canonical.error) return false;
       // 7ac: phiếu do FLOW HỆ THỐNG sở hữu (vd Hoàn tiền hoá đơn) — cancel v1
@@ -319,7 +322,9 @@ export const useCancelIncomeExpense = () => {
           {
             p_voucher: id,
             p_decision: "cancel",
-            p_reason: reason,
+            // `p_reason text` KHÔNG có DEFAULT ⇒ bắt buộc truyền, nhưng NULL là
+            // giá trị hợp lệ (huỷ không kèm lý do). Bộ sinh không diễn đạt được.
+            p_reason: rpcNullable(reason),
             p_idempotency_key: `owned-cancel-${id}-${Date.now()}`,
           },
         );
@@ -356,7 +361,8 @@ export const useCancelIncomeExpense = () => {
             {
               p_voucher: id,
               p_decision: "cancel",
-              p_reason: reason,
+              // Như trên: bắt buộc-nhưng-nhận-NULL.
+              p_reason: rpcNullable(reason),
               p_idempotency_key: `owned-cancel-${id}-${Date.now()}`,
             },
           );
@@ -460,9 +466,11 @@ export const useVerifyIncomeExpense = () => {
   return useMutation({
     mutationFn: async (input: { id: string; note: string | null }) => {
       // Canonical verify (phiếu flow-owned, token-wrapped); legacy fallback.
+      // `p_note text DEFAULT NULL` ở cả hai RPC: bỏ ghi chú thì bỏ luôn khoá,
+      // server lấy DEFAULT NULL — vẫn là "note rỗng → lưu NULL" như trước.
       const canonical = await supabase.rpc("verify_income_expense_v1", {
         p_id: input.id,
-        p_note: input.note,
+        p_note: input.note ?? undefined,
       });
       if (!canonical.error) return;
       if (!isIeLifecycleFallbackSignal(canonical.error)) {
@@ -472,7 +480,7 @@ export const useVerifyIncomeExpense = () => {
 
       const { error } = await supabase.rpc("verify_income_expense", {
         p_id: input.id,
-        p_note: input.note,
+        p_note: input.note ?? undefined,
       });
       if (error) {
         toast.error(error.message || "Không thể đánh dấu đã kiểm");

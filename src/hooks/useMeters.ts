@@ -235,9 +235,11 @@ export const useUnrecordedMeters = (params: {
       const { data, error } = await supabase.rpc(
         "get_meters_without_readings_v2",
         {
-          p_building_id: buildingId ?? null,
-          p_room_id: roomId ?? null,
-          p_meter_type: meterType ?? null,
+          // 3 tham số lọc đều `DEFAULT NULL` ở server ⇒ vắng mặt = NULL. Dùng
+          // `undefined` để khớp kiểu `p_x?: T` của tham số CÓ DEFAULT.
+          p_building_id: buildingId ?? undefined,
+          p_room_id: roomId ?? undefined,
+          p_meter_type: meterType ?? undefined,
           p_month: month,
         }
       );

@@ -8,6 +8,7 @@ import {
   planInvoiceCollection,
   recordInvoiceCollectionV5,
 } from "@/lib/paymentRecordRpc";
+import { rpcNullable } from "@/lib/rpcNullable";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 
 type Payment = Database["public"]["Tables"]["payments"]["Row"];
@@ -142,6 +143,14 @@ export const useCreatePayment = () => {
       // Invoice-linked writes are V5-only: one atomic collection, one stable key.
       if (data.invoice_id) {
         if (!data.account_id) throw new Error("Vui lòng chọn sổ quỹ nhận tiền");
+        // `payment_date`/`payment_method` là tuỳ chọn trong `payments.Insert` vì
+        // bảng có DEFAULT — nhưng đường V5 KHÔNG dùng default của bảng, nó gửi
+        // hai giá trị này thẳng xuống RPC. Thiếu thì `normalizeCollectionInput`
+        // / `normalizeTender` vẫn ném, chỉ là ném muộn hơn và với thông báo nói
+        // về "ngày thu không hợp lệ" thay vì "chưa chọn". Kiểm ngay tại đây để
+        // lỗi chỉ đúng ô còn trống, và để kiểu thu hẹp thật thay vì bị ép.
+        if (!data.payment_date) throw new Error("Vui lòng chọn ngày thu");
+        if (!data.payment_method) throw new Error("Vui lòng chọn phương thức thanh toán");
         let totalAmount = data.invoice_total_amount;
         let paidAmount = data.expected_paid_amount;
         let depositDue = data.deposit_due;
@@ -200,7 +209,14 @@ export const useCreatePayment = () => {
         };
         planInvoiceCollection(request);
         return recordInvoiceCollectionV5(
-          (fn, args) => supabase.rpc(fn, args),
+          // `p_notes` và `p_receipt_image_url` khai `text` KHÔNG có DEFAULT nên
+          // bộ sinh coi là bắt buộc-và-không-null; thực tế RPC nhận NULL cho cả
+          // hai (chú thích trống). `rpcNullable` nới đúng chiều null đó.
+          (fn, args) => supabase.rpc(fn, {
+            ...args,
+            p_notes: rpcNullable(args.p_notes),
+            p_receipt_image_url: rpcNullable(args.p_receipt_image_url),
+          }),
           request,
           data.idempotency_key ?? `collect-${crypto.randomUUID()}`,
         );
