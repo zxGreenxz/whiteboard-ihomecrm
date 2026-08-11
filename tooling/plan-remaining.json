@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 73
+    "stillMissing": 72
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -519,10 +519,12 @@
       {
         "deliverable": "§32: Worker test Windows-only phải tách job Windows hoặc port cross-platform",
         "planRef": "Mục 32 (dòng 2335)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Tách job runs-on: windows-latest cho 2 file test (deploymentAssets.test.ts, deploymentPowerShellReconciliation.test.ts), hoặc port cross-platform. Hạn 31/10/2026."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Chan doan trong so SAI: gap ghi \"29/76 test can ngu nghia PowerShell 7\". Do that 11/08: chot chan cua harness hoi cung ten Invoke-RemoteMutationReconciled — ham CHI co trong deploy-vultr.ps1 — ke ca khi dot-source rollback-vultr.ps1 (ham cua no la Invoke-RollbackMutationReconciled). 29 ca DO GIA. Sua bang sentinel theo tung script (ham CUOI CUNG moi script dinh nghia, de bat ca truong hop nap do dang) => 76/76 xanh tren Windows PowerShell 5.1, KHONG can PS7. Them job worker-powershell-windows (windows-latest) chay 2 file, kem kiem skip + san >=100 test; job Linux nay loai tru 2 file do (do lai: 23 file/497 test -> 21/393, dung 104 test chuyen sang). Toan bo suite worker 497/497 xanh tren Windows. Dong known-gap deployment-assets-windows-only."
       },
       {
         "deliverable": "§32: Pin SHA + runtime cho supabase-migrate.yml",

@@ -182,15 +182,19 @@
       "includes": [
         "infra/network-center-worker/**/*.test.ts"
       ],
-      "knownGap": "deployment-assets-windows-only",
       "ciJobs": [
         {
           "workflow": ".github/workflows/network-center-validation.yml",
           "job": "validate"
+        },
+        {
+          "workflow": ".github/workflows/network-center-validation.yml",
+          "job": "worker-powershell-windows"
         }
       ],
       "environment": "ci",
-      "timeoutMinutes": 60
+      "timeoutMinutes": 60,
+      "note": "Job validate (Linux) chay 21/23 file; job worker-powershell-windows (windows-latest) chay 2 file PowerShell con lai. Chia doi 11/08/2026 — truoc do 2 file do chay tren Linux va DUOC KY VONG FAIL."
     },
     {
       "id": "openclaw-infra",

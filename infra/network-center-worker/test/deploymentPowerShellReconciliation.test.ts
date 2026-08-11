@@ -77,7 +77,31 @@ function resolvePowerShellEditions(): PowerShellEdition[] {
 
 const editions = resolvePowerShellEditions();
 
+/**
+ * Hàm cuối cùng mà mỗi script định nghĩa — dùng làm bằng chứng "đã nạp TRỌN VẸN".
+ *
+ * Chọn hàm cuối chứ không phải hàm bất kỳ là có chủ đích: nếu dot-source dừng
+ * giữa chừng, một hàm ở đầu file vẫn tồn tại và chốt chặn sẽ nói dối là đã nạp xong.
+ */
+const SENTINEL: ReadonlyArray<readonly [string, string]> = [
+  ["deploy-vultr.ps1", "Invoke-DeploymentMain"],
+  ["rollback-vultr.ps1", "Invoke-RollbackMain"],
+];
+
+export function sentinelCuaScript(script: string): string {
+  const hit = SENTINEL.find(([ten]) => script.replaceAll("\\", "/").endsWith(`/${ten}`));
+  if (!hit) {
+    // Không đoán bừa: script mới mà quên khai ở đây thì phải nổ ngay, chứ không
+    // được im lặng dùng sentinel của script khác — đó đúng là lỗi vừa sửa.
+    throw new Error(
+      `Chưa khai sentinel cho '${script}'. Thêm vào SENTINEL: [tên file, hàm CUỐI CÙNG script đó định nghĩa].`,
+    );
+  }
+  return hit[1];
+}
+
 function run(script: string, body: string, executable = "powershell.exe") {
+  const sentinel = sentinelCuaScript(script);
   const root = mkdtempSync(join(tmpdir(), "network-center-pwsh-reconcile-"));
   roots.push(root);
   const harness = join(root, "harness.ps1");
@@ -95,9 +119,19 @@ function run(script: string, body: string, executable = "powershell.exe") {
     harness,
     `$ErrorActionPreference='Stop'\n` +
       `. '${script.replaceAll("'", "''")}' ${parameters}\n` +
-      // Chốt chặn: hàm này do script deploy định nghĩa. Không có nó nghĩa là
-      // dot-source hỏng, và phải nổ thành mã thoát riêng chứ không được đi tiếp.
-      `if (-not (Get-Command Invoke-RemoteMutationReconciled -ErrorAction SilentlyContinue)) {\n` +
+      // Chốt chặn: hàm ĐẶC TRƯNG CHO CHÍNH script đang dot-source. Không có nó
+      // nghĩa là dot-source hỏng, và phải nổ thành mã thoát riêng chứ không đi tiếp.
+      //
+      // Trước 11/08/2026 chỗ này ghi cứng `Invoke-RemoteMutationReconciled` cho CẢ
+      // hai script. Hàm đó chỉ có trong deploy-vultr.ps1; rollback-vultr.ps1 định
+      // nghĩa `Invoke-RollbackMutationReconciled`. Nên mọi ca dot-source rollback
+      // đều nổ chốt chặn dù dot-source hoàn toàn thành công — 29 ca ĐỎ GIẢ.
+      //
+      // Đáng nói hơn: khoảng trống `deployment-assets-windows-only` đã ghi nguyên
+      // nhân là "29/76 test cần ngữ nghĩa PowerShell 7". Đo lại 11/08 thì sai:
+      // dot-source rollback dưới PowerShell 5.1 chạy tốt, chỉ là chốt chặn hỏi sai
+      // tên hàm. Một chẩn đoán ghi vào sổ mà không ai đo lại sẽ sống lâu hơn sự thật.
+      `if (-not (Get-Command ${sentinel} -ErrorAction SilentlyContinue)) {\n` +
       `  Write-Error 'HARNESS: dot-source that bai — khong nap duoc script deploy'\n` +
       `  exit 97\n` +
       `}\n` +

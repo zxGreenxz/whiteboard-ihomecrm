@@ -137,16 +137,19 @@ jobs:
       - name: Fail if any application test was skipped
         run: node scripts/verify-network-center-test-completeness.mjs vitest vitest-network-center.log
 
-      # NOTE FOR REVIEWERS: infra/network-center-worker/test/deploymentAssets
-      # .test.ts currently shells out to powershell.exe unconditionally in three
-      # tests. Those tests are EXPECTED to fail on this Linux runner. That is
-      # deliberately not worked around here - the failure is the signal that the
-      # deployment-asset suite is Windows-only, which makes it unverifiable on
-      # the very platform the release runs on. Fix belongs in that file's owner.
-      - name: Worker test suite
+      # Hai suite PowerShell chạy ở job `worker-powershell-windows` bên dưới, KHÔNG
+      # phải ở đây: chúng gọi powershell.exe, mà runner Linux không có.
+      #
+      # Loại trừ ở đây KHÁC HẲN với skip. Trước 11/08/2026 chúng chạy trên chính
+      # runner này và ĐƯỢC KỲ VỌNG FAIL — chú thích cũ nói thẳng như vậy. Một job có
+      # phần đỏ thường trực là job người ta ngừng đọc, và khi ấy một lỗi thật lẫn vào
+      # sẽ không ai thấy. Nay chúng chạy thật trên Windows và phải XANH ở đó.
+      - name: Worker test suite (trừ 2 suite PowerShell — xem job Windows)
         run: |
           set -euo pipefail
           npm --prefix infra/network-center-worker test -- --reporter=verbose \
+            --exclude 'test/deploymentAssets.test.ts' \
+            --exclude 'test/deploymentPowerShellReconciliation.test.ts' \
             2>&1 | tee worker-tests.log
 
       - name: Fail if any worker test was skipped
@@ -223,6 +226,65 @@ jobs:
       - name: Prove the disposable cluster left nothing listening
         if: always()
         run: node scripts/verify-network-center-disposable-teardown.mjs
+
+  # Hai suite kiểm script deploy/rollback PowerShell. Chúng gọi powershell.exe nên
+  # chỉ chạy được trên Windows — và release Network Center chạy trên Windows, nên
+  # đây là nền tảng ĐÚNG chứ không phải một ngoại lệ phải chịu đựng.
+  #
+  # Lịch sử: khoảng trống `deployment-assets-windows-only` ghi nguyên nhân là "29/76
+  # test cần ngữ nghĩa PowerShell 7". Đo lại 11/08/2026 thì sai — 29 ca đó đỏ vì
+  # chốt chặn của harness hỏi sai tên hàm khi dot-source rollback-vultr.ps1. Sửa
+  # xong thì 76/76 xanh trên Windows PowerShell 5.1, không cần PowerShell 7.
+  # Runner windows-latest vẫn có sẵn cả hai edition, nên suite tự chạy cả hai.
+  worker-powershell-windows:
+    name: Worker PowerShell suites (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node from the repository lockfile
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: infra/network-center-worker/package-lock.json
+
+      - name: Install worker dependencies
+        run: npm --prefix infra/network-center-worker ci
+
+      - name: PowerShell deployment suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix infra/network-center-worker test -- --reporter=verbose \
+            test/deploymentAssets.test.ts \
+            test/deploymentPowerShellReconciliation.test.ts \
+            2>&1 | tee worker-powershell-tests.log
+
+      # Cùng lý do như bên Linux: một test BỊ SKIP cũng báo pass. Ở job này còn
+      # quan trọng hơn — nếu resolvePowerShellEditions() không tìm thấy edition nào
+      # thì `describe.each` chạy 0 lần và cả suite "xanh" mà chưa kiểm gì.
+      - name: Fail if any PowerShell test was skipped
+        if: always()
+        shell: bash
+        run: node scripts/verify-network-center-test-completeness.mjs vitest worker-powershell-tests.log
+
+      # Sàn chống-xanh-rỗng: đo được 104 test trên máy Windows 11/08/2026 (76 +
+      # 28). Dưới 100 nghĩa là một suite biến mất chứ không phải "chạy nhanh hơn".
+      - name: Sàn số lượng test
+        if: always()
+        shell: bash
+        run: |
+          so=$(grep -oE '[0-9]+ passed' worker-powershell-tests.log | tail -1 | grep -oE '[0-9]+')
+          echo "Đã chạy: ${so:-0} test"
+          if [ "${so:-0}" -lt 100 ]; then
+            echo "::error::Chỉ ${so:-0} test chạy, kỳ vọng >=100. Suite bị thu hẹp trong im lặng."
+            exit 1
+          fi
 
   disposable-supabase:
     name: Disposable Supabase cross-tenant matrix

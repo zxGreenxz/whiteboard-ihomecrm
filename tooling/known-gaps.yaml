@@ -61,32 +61,6 @@ gaps:
       tooling/runtime-matrix.json. Hoặc gộp job này vào ci-gates (Node 24.18.0) nếu không
       còn lý do tách riêng.
 
-  - id: deployment-assets-windows-only
-    where: >
-      infra/network-center-worker/test/deploymentAssets.test.ts và
-      infra/network-center-worker/test/deploymentPowerShellReconciliation.test.ts
-    expires_at: 2026-10-31
-    why: >
-      Các test shell ra powershell.exe vô điều kiện nên FAIL trên runner Linux. Đây là
-      tín hiệu có chủ đích: suite deployment-asset chỉ kiểm được trên Windows, tức là
-      không kiểm được trên chính nền tảng mà release chạy. Che nó đi bằng skip sẽ biến
-      một khoảng trống nhìn thấy được thành khoảng trống vô hình.
-
-      MỞ RỘNG 06/08/2026 — phạm vi lớn hơn nhiều so với "3 test" ghi ban đầu:
-      (a) deploymentPowerShellReconciliation.test.ts dựng đường dẫn bằng
-          `.pathname.slice(1)` ở TOP-LEVEL nên trên Windows cả file không load được và
-          vitest báo "0 test" — 76 test biến mất không dấu vết. Đã sửa bằng fileURLToPath.
-      (b) Trên Linux, `powershell.exe` không tồn tại ⇒ spawnSync trả `status = null`, mà
-          phần lớn ca ở đó khẳng định `expect(status).not.toBe(0)` — `null !== 0` là ĐÚNG,
-          nên chúng XANH mà chưa từng chạy PowerShell. Đã thêm guard ném lỗi khi
-          spawn thất bại, để xanh-giả thành đỏ-thật.
-      (c) Máy dev chỉ có Windows PowerShell 5.1; 29/76 test cần ngữ nghĩa PowerShell 7
-          (chính header file đã lường trước nhưng resolvePowerShellEditions() vẫn nhét
-          powershell.exe làm edition[0] vô điều kiện).
-    exit_condition: >
-      Port sang cross-platform, hoặc tách job Windows CÓ PowerShell 7 riêng trong CI để
-      cả 76 test thực sự chạy. Đóng được khi suite xanh ở đâu đó, không phải khi nó im.
-
   - id: pitr-disabled-accepted-risk
     where: Supabase project tryymsxyyckgbrmmvozx
     expires_at: 2027-02-06
