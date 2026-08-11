@@ -81,6 +81,40 @@ npm run gate:graph-secrets       # secret + PII trên artifact (cần binary git
 npm run gate:graph-hygiene       # hộ chiếu khớp artifact
 ```
 
+### Dùng lệnh nào cho việc nào
+
+| Việc | Lệnh | Vì sao không dùng cái kia |
+|---|---|---|
+| Người mới vào dự án | `/understand-onboard`, `/understand-domain` | GitNexus trả quan hệ symbol, không kể được câu chuyện kiến trúc |
+| Hiểu một vùng chưa biết | `/understand-explain <file\|symbol>` | — |
+| **Sắp sửa code: đổi cái này thì vỡ gì** | `npm run graph:impact -- <symbol>` | UA **không** trả lời được câu này. Bậc quan hệ chính xác nằm ở GitNexus |
+| Đọc lại một PR / thay đổi lớn | `/understand-diff` + `npm run graph:detect-changes` | Hai cái bổ sung nhau: diff kể ý nghĩa, detect-changes chỉ đích danh symbol và luồng |
+| Trả lời câu hỏi về codebase | `/understand-chat` | — |
+
+**Không thay thế nhau**: `/understand-diff` KHÔNG thay `graph:impact`. Diff kể *cái gì đã đổi*;
+impact trả lời *cái gì sẽ vỡ*. Contract §12 bắt hỏi bán kính ảnh hưởng trước khi sửa — đó là việc
+của `impact`.
+
+**Ai đối chiếu kết quả**: mọi kết luận từ graph phải soi lại với `docs/he-thong/` (tài liệu hiện
+hành) và contract manifest. Contract §12 xếp thứ tự ưu tiên rõ ràng: **contract manifest + SQL
+harness > GitNexus > UA**. Graph nói ngược tài liệu hiện hành thì tin tài liệu, và ghi lại chỗ lệch
+— đó là dấu hiệu graph đã cũ, không phải phát hiện mới.
+
+---
+
+## Skill và hook
+
+Skill khả dụng liệt kê trong system prompt mỗi phiên; gọi bằng `/tên-skill`. Ba điều riêng của repo
+này:
+
+- **`/understand*` ghi vào `.ua/`** — thư mục đã commit. Đừng chạy chúng "cho biết" giữa một lát
+  việc khác: artifact sẽ bẩn và lẫn vào commit của bạn. Refresh đi PR riêng (luật #6).
+- **Skill sinh tự động không auto-commit**: `.claude/skills/generated/` nằm trong `.gitignore`
+  (plan §15). Skill nào đáng giữ thì viết tay và commit tường minh.
+- **Hook**: repo không cài hook tự sửa mã. GitNexus có tuỳ chọn cài hook và tự chèn mục vào
+  `CLAUDE.md`/`AGENTS.md` — wrapper `run-pinned-gitnexus.mjs` **ép `--skip-agents-md`** để chặn,
+  vì để công cụ tự sửa hợp đồng agent là để nó tự viết luật cho chính nó.
+
 ## Trailer commit
 
 Mọi commit kèm:
