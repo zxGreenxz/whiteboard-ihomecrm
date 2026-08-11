@@ -54,3 +54,12 @@ jobs:
       # chuỗi trần nên tự khớp vào chính nó. Xem đầu file script.
       - name: Guard - forbid auto-apply of migrations in any workflow
         run: node scripts/check-no-auto-apply.mjs
+
+      # Provenance: file sau cutoff PHAI co entry bang chung.
+      #
+      # Dat o DAY chu khong chi o ci-gates: workflow nay la cho nguoi ta nhin khi
+      # dong toi migration. Mot file moi sau cutoff ma khong co entry nghia la
+      # khong ai biet no da apply hay chua — va "chua ro" thi KHONG duoc doi xu
+      # nhu "chua apply" (xem supabase/migration-policy.json -> states.unknown).
+      - name: Provenance migration — sau cutoff phai co bang chung
+        run: node scripts/check-migration-provenance.mjs

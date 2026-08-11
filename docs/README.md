@@ -7,6 +7,7 @@
 
 | Nhu cầu | Nguồn nên đọc |
 |---|---|
+| **Sắp sửa code trong repo này** | **[PROJECT_CONTRACT.md](engineering/PROJECT_CONTRACT.md) — đọc TRƯỚC** |
 | Thao tác trên giao diện | [Hướng dẫn sử dụng](huong-dan-su-dung/) và sidebar VitePress |
 | Hiểu hành vi code/DB hiện tại | [Tham chiếu hệ thống](he-thong/README.md) |
 | Tìm entry point/module/test | [Cấu trúc codebase](CODEBASE_STRUCTURE.md) |
@@ -18,6 +19,18 @@
 | Vận hành Zalo worker | [Zalo CRM](zalo/README.md) |
 
 ## Mục lục đầy đủ
+
+### Hợp đồng kỹ thuật — luật, không phải mô tả
+
+- **[engineering/PROJECT_CONTRACT.md](engineering/PROJECT_CONTRACT.md)** — luật chung cho mọi agent
+  và mọi người sửa repo này: ba tổ chức trong cùng database, đường ghi production, migration, gate
+  bắt buộc theo loại thay đổi, secret, công cụ tri thức. `CLAUDE.md` và `AGENTS.md` chỉ là **adapter**
+  trỏ về đây; khi hai bên nói khác nhau thì Contract thắng.
+- `tooling/` (ngoài `docs/`) — các file **máy đọc** mà Contract cưỡng chế, không phải tài liệu:
+  `graph-policy.json`, `graph-manifests/`, `runtime-matrix.json`, `known-gaps.yaml`,
+  `local-credential-contract.json`, `plan-remaining.json`, `program-status.json`, và các
+  `*-baseline.json` của ratchet. Sửa văn xuôi mà quên sửa file tương ứng ở đây là cách hai bản lệch
+  nhau — gate sẽ bắt, nhưng chỉ khi bạn chạy nó.
 
 ### Tài liệu gốc ở `docs/`
 
@@ -36,7 +49,7 @@
 
 ### Tham chiếu kỹ thuật và vận hành
 
-- [he-thong/README.md](he-thong/README.md) — index đủ `00`–`21`, `99`, realtime và performance evidence.
+- [he-thong/README.md](he-thong/README.md) — index đủ `00`–`24`, `99`, realtime và performance evidence.
 - [authorization/README.md](authorization/README.md) — current status + toàn bộ evidence/tranche còn giữ.
 - [ai-copilot/README.md](ai-copilot/README.md) — runtime, giới hạn, plan và spike evidence.
 - [bang-luong/README.md](bang-luong/README.md) — system reference, runbook, spec, plan và implementation log.
