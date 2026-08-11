@@ -1,0 +1,65 @@
+{
+  "$comment": "Ký nhận từng lỗ hổng phụ thuộc còn sống. Luật và cách phân tầng: đầu scripts/check-dependency-audit.mjs. Mỗi mục BẮT BUỘC có lyDo và hetHan — quá hạn là gate đỏ, để 'tạm chấp nhận' không âm thầm thành vĩnh viễn. Đo lần đầu 11/08/2026.",
+  "chapNhan": [
+    {
+      "vanTay": "co-the-vao-bundle|@remix-run/router|high",
+      "lyDo": "XSS qua open redirect. Bản vá nằm ở react-router 7 — ĐỔI MAJOR, mà 134 file trong src/ import react-router-dom. Không phải việc gộp vào một lát vá bảo mật. Giảm nhẹ: ứng dụng không nhận URL chuyển hướng từ tham số ngoài; mọi navigate đều tới đường dẫn nội bộ tĩnh.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "co-the-vao-bundle|react-router|high",
+      "lyDo": "Cùng advisory với @remix-run/router — cùng một bản vá major. Xem mục trên.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "co-the-vao-bundle|react-router-dom|high",
+      "lyDo": "Cùng advisory với @remix-run/router — cùng một bản vá major. Xem mục trên.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "co-the-vao-bundle|lodash|high",
+      "lyDo": "Code injection qua `_.template`. Tới đây qua recharts 2.15.4; bản vá là recharts 3 — đổi major. src/ không gọi lodash trực tiếp (0 import), và không đường nào đưa chuỗi do người dùng nhập vào `_.template`.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "co-the-vao-bundle|xlsx|high",
+      "lyDo": "Prototype pollution + ReDoS trong SheetJS. KHÔNG có bản vá trên npm: registry đứng ở 0.18.5, SheetJS chỉ phát hành 0.20.x qua cdn.sheetjs.com. Đây là lỗ hổng DUY NHẤT vừa chắc chắn tới trình duyệt (chunk lazy dist/assets/xlsx-*.js, 420KB, nạp bằng import() động ở 5 file) vừa không vá được bằng npm. Cách chữa là đổi nguồn cài sang CDN ngoài npm — một quyết định chuỗi cung ứng, đang chờ user chốt.",
+      "hetHan": "2026-09-30"
+    },
+    {
+      "vanTay": "cai-dat-prod|brace-expansion|high",
+      "lyDo": "Chỉ tới qua tailwindcss-animate → tailwindcss → sucrase → glob. Tailwind là công cụ BUILD; npm xếp nhầm vào production vì tailwindcss-animate nằm trong dependencies. Không byte nào vào bundle trình duyệt.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "cai-dat-prod|glob|high",
+      "lyDo": "Cùng chuỗi tailwindcss-animate → tailwindcss. Công cụ build, không vào bundle. Advisory là command injection ở CLI của glob — repo không gọi CLI đó.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "cai-dat-prod|minimatch|high",
+      "lyDo": "Cùng chuỗi tailwindcss-animate → tailwindcss → sucrase → glob. Công cụ build, không vào bundle.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "cai-dat-prod|nanoid|high",
+      "lyDo": "Cùng chuỗi tailwindcss-animate → tailwindcss → postcss. Công cụ build, không vào bundle.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "cai-dat-prod|picomatch|high",
+      "lyDo": "Cùng chuỗi tailwindcss-animate → tailwindcss → chokidar. Công cụ build, không vào bundle.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "cai-dat-prod|postcss|high",
+      "lyDo": "Cùng chuỗi tailwindcss-animate → tailwindcss. XSS trong CSS stringify — chỉ chạm được nếu CSS do người ngoài nhập đi qua postcss lúc build; ở đây CSS đều nằm trong repo.",
+      "hetHan": "2026-11-30"
+    },
+    {
+      "vanTay": "cai-dat-prod|yaml|moderate",
+      "lyDo": "Cùng chuỗi tailwindcss-animate → tailwindcss → postcss-load-config. Đọc file cấu hình trong repo lúc build, không đọc YAML từ ngoài.",
+      "hetHan": "2026-11-30"
+    }
+  ]
+}

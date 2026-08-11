@@ -115,7 +115,8 @@
     "gate:migration-idempotent": "node scripts/check-forward-migration-idempotent.mjs",
     "docs:views": "node scripts/generate-docs-views.mjs",
     "gate:docs-views": "node scripts/generate-docs-views.mjs --check",
-    "gate:promote-readiness": "node scripts/check-promote-readiness.mjs"
+    "gate:promote-readiness": "node scripts/check-promote-readiness.mjs",
+    "gate:dependency-audit": "node scripts/check-dependency-audit.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -150,6 +150,14 @@ jobs:
           node scripts/check-promote-readiness.mjs
           node scripts/check-migration-test-liveness.mjs
 
+      # Tách riêng vì bước này GỌI RA MẠNG (npm audit + npm ls đọc registry).
+      # Gộp vào "Contract gates" thì một lượt registry hỏng sẽ làm cả khối gate
+      # tĩnh đỏ theo, và người đọc log không biết cái nào thật sự vi phạm.
+      # Gate tự thoát 3 khi không hỏi được registry — 3 nghĩa là KHÔNG ĐO ĐƯỢC,
+      # không phải "sạch".
+      - name: Lỗ hổng phụ thuộc — phân tầng theo tầm với, mỗi mục có hạn ký nhận
+        run: node scripts/check-dependency-audit.mjs
+
       - name: docs-freshness (Copilot manifest · số đếm tài liệu)
         run: |
           node scripts/check-copilot-docs-manifest.mjs
