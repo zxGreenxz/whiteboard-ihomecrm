@@ -20,6 +20,10 @@
         "scripts/__tests__/**/*.test.ts"
       ],
       "excludes": [
+        "services/**",
+        "infra/**",
+        ".tmp-openclaw-host/**",
+        ".e2e-fleet/**",
         "scripts/__tests__/network-center-*.test.mjs",
         "src/lib/__tests__/openclawZaloMigrations.test.ts",
         "scripts/__tests__/openclaw-sql-harness.test.mjs",
@@ -29,13 +33,22 @@
         "scripts/__tests__/openclaw-schema-drift-harness.test.mjs",
         "scripts/__tests__/openclaw-full-reset-harness.test.mjs"
       ],
-      "note": "`excludes` PHẢI khớp từng cờ --exclude ở bước Vitest trong .github/workflows/ci-gates.yml. Lệch một dòng là matrix nói dối về suite nào chạy file nào.",
-      "note2": "Các file network-center-* dùng `node:test`, Vitest gặp là fail 'No test suite found' — chúng thuộc suite node-native. Các harness SQL OpenClaw nặng thuộc suite openclaw-sql."
+      "note": "`excludes` PHẢI khớp TỪNG cờ --exclude của bước \"Vitest (root-owned app and script suites)\" trong ci-gates.yml — gate:test-matrix nay đối chiếu hai chiều, không còn là lời hứa trong chú thích. Trước 11/08/2026 mục này khai 8/12 cờ: 4 cờ services/infra/.tmp-openclaw-host/.e2e-fleet nằm trong CI mà không có ở đây, nên matrix mô tả sai phạm vi suite lớn nhất repo.",
+      "note2": "Các file network-center-* dùng `node:test`, Vitest gặp là fail 'No test suite found' — chúng thuộc suite node-native. Các harness SQL OpenClaw nặng thuộc suite openclaw-sql.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 60,
+      "ciVitestStep": "Vitest (root-owned app and script suites)"
     },
     {
       "id": "openclaw-sql",
       "runner": "vitest",
-      "ciJob": "(local — cần database, không chạy trên ci-gates)",
+      "ciJob": "openclaw-sql-gates",
       "command": "npm run test:openclaw:sql",
       "risk": "security",
       "includes": [
@@ -56,7 +69,16 @@
         "scripts/__tests__/openclawCommandContract.test.mjs"
       ],
       "note": "Suite này ĐÃ ĐƯỢC NHẮC TÊN trong ghi chú của app-unit từ đầu nhưng chưa từng được khai — nên 15 file dưới đây không có mục nào trong matrix mô tả đúng nơi chúng chạy. Bổ sung 06/08/2026.",
-      "note2": "Danh sách file lấy từ script `test:openclaw:sql:fast` trong package.json; sửa ở đó thì phải sửa ở đây."
+      "note2": "Danh sách file lấy từ script `test:openclaw:sql:fast` trong package.json; sửa ở đó thì phải sửa ở đây.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "openclaw-sql-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 45,
+      "note3": "ĐÍNH CHÍNH 11/08/2026: trường ciJob trước đây ghi \"(local — không chạy trên ci-gates)\", trong khi job openclaw-sql-gates trong ci-gates.yml chạy đúng lệnh này. Đây là loại nói dối mà một manifest không ai đối chiếu luôn tích lại. CHƯA KIỂM ĐƯỢC từ máy này: job đó chỉ npm ci rồi chạy, không thấy bước dựng Supabase local — nếu suite thật sự cần database thì nó đang đỏ hoặc bỏ qua trên CI, phải xem log lần chạy thật."
     },
     {
       "id": "openclaw-edge",
@@ -68,7 +90,15 @@
         "supabase/functions/_shared/openclaw/**/*.test.ts",
         "supabase/functions/openclaw-*/**/*.test.ts"
       ],
-      "note": "Chạy bằng VITEST dù nằm trong supabase/functions — chỉ 2 file index.test.ts mới dùng Deno."
+      "note": "Chạy bằng VITEST dù nằm trong supabase/functions — chỉ 2 file index.test.ts mới dùng Deno.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "openclaw-edge-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 25
     },
     {
       "id": "edge-deno",
@@ -81,7 +111,15 @@
         "supabase/functions/network-center-worker/index.test.ts",
         "supabase/functions/network-watchdog/index.test.ts"
       ],
-      "note": "Đúng HAI file này chạy Deno. Bản đã xác minh 22/22 xanh là Deno 2.9.4."
+      "note": "Đúng HAI file này chạy Deno. Bản đã xác minh 22/22 xanh là Deno 2.9.4.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/network-center-validation.yml",
+          "job": "validate"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 60
     },
     {
       "id": "e2e-fleet",
@@ -92,7 +130,14 @@
       "includes": [
         ".e2e-fleet/specs/**/*.spec.ts"
       ],
-      "note": "Mật khẩu không nằm trong repo nên đây là bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO."
+      "note": "Mật khẩu không nằm trong repo nên đây là bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO.",
+      "ciJobs": [],
+      "environment": "local",
+      "blockedFromCi": {
+        "reason": "Cần FLEET_PASS_CHUNHA/KETOAN/QUANLY của org DEMO. Mật khẩu không nằm trong repo và chưa được nạp làm GitHub secret, nên CI không đăng nhập được.",
+        "expiry": "2026-11-30",
+        "exitCondition": "Nạp 3 secret FLEET_PASS_* vào GitHub → thêm job playwright chạy specs trên org DEMO → đổi environment thành ci và xoá mục này."
+      }
     },
     {
       "id": "openclaw-services",
@@ -109,7 +154,23 @@
         "services/openclaw-zalo-cell/test/**"
       ],
       "note": "Vendored upstream (zalouser-bridge/upstream, artifacts, .work) KHÔNG tính — đó là suite của dự án khác, verify:upstream lo phần đó.",
-      "note3": "`services/openclaw-zalo-cell/` KHÔNG có package.json, nên chuỗi `npm --prefix` của suite này không thể chạm tới nó — pattern `services/**` ôm nhầm. Runner thật là `node --test` ở job openclaw-cell-image-contract (suite node-native). Gate cross-runner bắt được 06/08/2026."
+      "note3": "`services/openclaw-zalo-cell/` KHÔNG có package.json, nên chuỗi `npm --prefix` của suite này không thể chạm tới nó — pattern `services/**` ôm nhầm. Runner thật là `node --test` ở job openclaw-cell-image-contract (suite node-native). Gate cross-runner bắt được 06/08/2026.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "openclaw-package-gates"
+        },
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "openclaw-session-crypto-gate"
+        },
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "openclaw-vendor-gate"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 30
     },
     {
       "id": "network-center-worker",
@@ -121,7 +182,15 @@
       "includes": [
         "infra/network-center-worker/**/*.test.ts"
       ],
-      "knownGap": "deployment-assets-windows-only"
+      "knownGap": "deployment-assets-windows-only",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/network-center-validation.yml",
+          "job": "validate"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 60
     },
     {
       "id": "openclaw-infra",
@@ -136,7 +205,15 @@
         "infra/openclaw-zalo-watchdog/**/*.test.ts",
         "infra/openclaw-zalo/**/*.test.ts"
       ],
-      "note2": "media-gateway có vitest.config include CẢ .test.mjs (deploy-script.test.mjs) — pattern ở đây phải phủ cả hai đuôi, nếu không gate sẽ báo mồ côi nhầm."
+      "note2": "media-gateway có vitest.config include CẢ .test.mjs (deploy-script.test.mjs) — pattern ở đây phải phủ cả hai đuôi, nếu không gate sẽ báo mồ côi nhầm.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "openclaw-package-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 30
     },
     {
       "id": "node-native",
@@ -149,7 +226,15 @@
         "scripts/__tests__/network-center-*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
-      "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\"."
+      "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "openclaw-cell-image-contract"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 20
     }
   ],
   "ignore": [

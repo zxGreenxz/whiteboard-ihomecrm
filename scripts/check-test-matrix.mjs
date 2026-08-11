@@ -18,6 +18,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MATRIX_PATH = join(repoRoot, 'tooling', 'test-matrix.json');
@@ -108,9 +109,142 @@ export function crossRunnerConflicts(files, suites, bySuite) {
   return conflicts;
 }
 
+/**
+ * Rút đúng tập cờ `--exclude` của MỘT bước trong workflow.
+ *
+ * Đọc YAML thay vì regex trên văn bản thô: bước này là chuỗi gấp (`run: >`), nên
+ * xuống dòng đã bị YAML nối lại thành một dòng — regex trên file thô sẽ phải tự
+ * đoán chỗ nối và đoán sai lúc ai đó đổi kiểu gấp.
+ *
+ * Trả `null` khi KHÔNG TÌM THẤY bước — khác hẳn "bước có nhưng không exclude gì",
+ * và người gọi phải phân biệt hai thứ đó (exit 3 chứ không phải so tập rỗng).
+ */
+export function coExcludeCuaBuoc(doc, tenBuoc) {
+  for (const job of Object.values(doc?.jobs ?? {})) {
+    for (const step of job?.steps ?? []) {
+      if (step?.name !== tenBuoc) continue;
+      const lenh = String(step.run ?? '');
+      return [...lenh.matchAll(/--exclude\s+'([^']+)'|--exclude\s+"([^"]+)"|--exclude\s+(\S+)/g)]
+        .map((m) => m[1] ?? m[2] ?? m[3]);
+    }
+  }
+  return null;
+}
+
+/** Tên job có thật trong một workflow. Trả `null` nếu không đọc/parse được file. */
+export function jobCuaWorkflow(duong) {
+  try {
+    const doc = yaml.load(readFileSync(join(repoRoot, duong), 'utf8'));
+    return new Set(Object.keys(doc?.jobs ?? {}));
+  } catch {
+    return null;
+  }
+}
+
 function main(argv) {
   const matrix = JSON.parse(readFileSync(MATRIX_PATH, 'utf8'));
   const files = trackedTestFiles(matrix.ignore ?? []);
+  const homNay = new Date().toISOString().slice(0, 10);
+
+  // ── Chống-xanh-rỗng: đo hỏng phải kêu là đo hỏng, không được đọc thành "sạch" ──
+  const chan = [];
+  if ((matrix.suites?.length ?? 0) < 9) {
+    chan.push(`Matrix chỉ còn ${matrix.suites?.length ?? 0} suite (từng có 9). Mỗi suite mất đi là một vùng test không ai khai chạy ở đâu.`);
+  }
+  if (files.length < 200) {
+    chan.push(`Chỉ tìm được ${files.length} file test — repo có hơn 400. Phép quét hỏng, đừng đọc kết quả bên dưới.`);
+  }
+  if (chan.length > 0) {
+    console.error('❌ KHÔNG KIỂM ĐƯỢC (không phải "đã kiểm và sạch"):\n');
+    for (const c of chan) console.error(`  - ${c}`);
+    process.exit(3);
+  }
+
+  // ── Phép kiểm 3: ciJobs phải trỏ tới job CÓ THẬT ──
+  //
+  // `ciJob` cũ là văn xuôi ("network-center-validation / validate", "(local — …)")
+  // nên không ai đối chiếu được, và nó đã nói dối thật: suite openclaw-sql ghi
+  // "không chạy trên ci-gates" trong khi job openclaw-sql-gates chạy đúng lệnh đó.
+  const loiCiJob = [];
+  const cacheJob = new Map();
+  for (const s of matrix.suites) {
+    if (!Array.isArray(s.ciJobs)) {
+      loiCiJob.push(`${s.id}: thiếu trường \`ciJobs\` (mảng {workflow, job}; để [] nếu chỉ chạy local).`);
+      continue;
+    }
+    for (const { workflow, job } of s.ciJobs) {
+      if (!cacheJob.has(workflow)) cacheJob.set(workflow, jobCuaWorkflow(workflow));
+      const jobs = cacheJob.get(workflow);
+      if (jobs === null) {
+        loiCiJob.push(`${s.id}: không đọc/parse được ${workflow}.`);
+      } else if (!jobs.has(job)) {
+        loiCiJob.push(`${s.id}: khai job \`${job}\` trong ${workflow} nhưng workflow đó không có job tên vậy (có: ${[...jobs].join(', ')}).`);
+      }
+    }
+  }
+
+  // ── Phép kiểm 4: suite không chạy CI phải có LÝ DO và HẠN ──
+  //
+  // "Chạy local thôi" không hạn là cách một suite bảo mật rời khỏi CI vĩnh viễn
+  // mà không ai phải quyết định gì.
+  const loiBlocked = [];
+  for (const s of matrix.suites) {
+    const chayCi = Array.isArray(s.ciJobs) && s.ciJobs.length > 0;
+    if (chayCi) {
+      if (s.blockedFromCi) loiBlocked.push(`${s.id}: vừa khai ciJobs vừa khai blockedFromCi — mâu thuẫn, chọn một.`);
+      continue;
+    }
+    const b = s.blockedFromCi;
+    if (!b) {
+      loiBlocked.push(`${s.id}: không chạy trên CI mà không khai \`blockedFromCi\` {reason, expiry, exitCondition}.`);
+      continue;
+    }
+    if (!b.reason || String(b.reason).length < 30) loiBlocked.push(`${s.id}: \`blockedFromCi.reason\` quá ngắn để là lý do thật.`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.expiry ?? ''))) loiBlocked.push(`${s.id}: \`blockedFromCi.expiry\` phải là ngày YYYY-MM-DD.`);
+    else if (b.expiry < homNay) loiBlocked.push(`${s.id}: miễn trừ CI HẾT HẠN ${b.expiry} (hôm nay ${homNay}) — đưa lên CI hoặc gia hạn có chủ đích.`);
+    if (!b.exitCondition) loiBlocked.push(`${s.id}: thiếu \`exitCondition\` — không có điều kiện thoát thì miễn trừ là vĩnh viễn.`);
+  }
+
+  // ── Phép kiểm 5: `excludes` của app-unit phải KHỚP TỪNG CỜ --exclude thật ──
+  //
+  // Trước đây đây chỉ là một câu hứa trong chú thích của matrix. Đo 11/08/2026:
+  // matrix khai 8 cờ, CI có 12 — bốn cờ services/infra/.tmp-openclaw-host/.e2e-fleet
+  // không có trong matrix, tức matrix mô tả sai phạm vi của suite lớn nhất repo.
+  const loiExclude = [];
+  const appUnit = matrix.suites.find((s) => s.id === 'app-unit');
+  if (!appUnit?.ciVitestStep) {
+    loiExclude.push('app-unit thiếu `ciVitestStep` — không biết đối chiếu với bước nào trong CI.');
+  } else {
+    const wf = appUnit.ciJobs?.[0]?.workflow;
+    let doc = null;
+    try {
+      doc = yaml.load(readFileSync(join(repoRoot, wf), 'utf8'));
+    } catch {
+      /* doc null → xử ở dưới */
+    }
+    const thuc = doc ? coExcludeCuaBuoc(doc, appUnit.ciVitestStep) : null;
+    if (thuc === null) {
+      console.error(`❌ KHÔNG KIỂM ĐƯỢC: không tìm thấy bước "${appUnit.ciVitestStep}" trong ${wf}.`);
+      console.error('   Bước bị đổi tên thì phép đối chiếu --exclude im lặng biến mất — đó là mất kiểm soát, không phải pass.');
+      process.exit(3);
+    }
+    const khai = new Set(appUnit.excludes ?? []);
+    const that = new Set(thuc);
+    const thieu = [...that].filter((x) => !khai.has(x));
+    const thua = [...khai].filter((x) => !that.has(x));
+    for (const x of thieu) loiExclude.push(`CI loại '${x}' nhưng matrix không khai — matrix nói suite này chạy file mà thật ra nó bỏ qua.`);
+    for (const x of thua) loiExclude.push(`matrix khai loại '${x}' nhưng CI không có cờ đó — file đó VẪN chạy trên CI.`);
+  }
+
+  const loiKhai = [...loiCiJob, ...loiBlocked, ...loiExclude];
+  if (loiKhai.length > 0) {
+    console.error(`❌ ${loiKhai.length} lỗi khai báo trong tooling/test-matrix.json:\n`);
+    for (const l of loiKhai) console.error(`  - ${l}`);
+    console.error('\nMột manifest không ai đối chiếu sẽ lệch trong im lặng rồi thành nguồn sai.');
+    process.exitCode = 1;
+    return;
+  }
+
   const { bySuite, orphans } = assignSuites(files, matrix.suites);
 
   if (argv.includes('--list')) {
