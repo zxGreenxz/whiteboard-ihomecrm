@@ -39,6 +39,11 @@
       "note": "Sàn cao hơn các package OpenClaw khác (24.18 vs 24.15) — khớp với Node mà ci-gates pin."
     },
     {
+      "path": "services/openclaw-media-gateway/package.json",
+      "node": ">=24.18.0 <25",
+      "note": "Sàn 24.18 giống zalo-bridge (không phải 24.15 như các package OpenClaw còn lại). Thêm 08/08/2026 khi service này ra đời — gate:runtime-matrix đỏ vì package mới chưa có entry, đúng thiết kế."
+    },
+    {
       "path": "services/openclaw-zalo-cell/session-crypto/package.json",
       "node": ">=22.13.0",
       "note": "Khác phần còn lại của OpenClaw. Là package độc lập, không chạy trong cell."

@@ -112,6 +112,32 @@ npm run gate:runtime-matrix   # matrix phải khớp engines + workflow, kiểm 
 Đáng nhớ: `infra/network-center-worker` cố ý ở `>=20 <23` (chưa test Node 24), nên CI của nó chạy
 Node 22 — **đừng "sửa" cho khớp `ci-gates`**. Deno pin `2.9.4` ở cả hai workflow.
 
+#### Quyết định: BA Node version là cố ý, không phải cẩu thả
+
+Ba workflow chạy ba con số khác nhau, và mỗi con số bị **ràng buộc từ hai phía**:
+
+| Workflow | Node | Bị ép bởi |
+|---|---|---|
+| `ci-gates.yml` | `24.18.0` | **Sàn cao nhất**: `services/openclaw-zalo-bridge` khai `>=24.18.0 <25` |
+| `network-center-validation.yml` | `22` | **Trần thấp nhất**: `infra/network-center-worker` khai `>=20 <23` |
+| `supabase-migrate.yml` | `20` | Không ràng buộc — chỉ chạy validator tĩnh |
+
+Hai cái đầu **không thể gặp nhau**: `>=24.18` và `<23` là hai khoảng rời nhau. Nên "thống nhất một
+version cho gọn" là việc **không làm được**, không phải việc chưa ai làm.
+
+> **Bẫy đã sập thật (08/08/2026).** Một agent đọc thấy ba con số khác nhau, kết luận là thiếu nhất
+> quán, và hạ tất cả về `22.20.0`. Thay đổi đó sẽ làm **vỡ `ci-gates`** — `zalouser-bridge` và
+> `openclaw-zalo-bridge` từ chối chạy dưới 24.18, và script `test:openclaw:services` có chốt chặn
+> `process.version` tự thoát 1 nếu không phải Node 24.15–24.x. `gate:runtime-matrix` bắt được ngay,
+> nên thiệt hại dừng ở đó.
+>
+> Bài học ghi lại: **con số ở đây là kết quả của ràng buộc, không phải sở thích.** Muốn đổi thì phải
+> đổi `engines` của package bị ràng buộc trước, và chứng minh nó chạy được — không đổi ở workflow.
+
+`engines` ở root là `>=20` và **không** phải sàn thật của mọi thứ: `tooling/runtime-matrix.json` mới
+là bảng có thẩm quyền, mỗi entry kèm lý do. `gate:runtime-matrix` đối chiếu **cả hai chiều**, nên
+thêm package mới mà quên khai matrix là đỏ ngay (đã xảy ra với `services/openclaw-media-gateway`).
+
 **Các package con có `node_modules` RIÊNG — phải cài trước khi chạy test của chúng ở máy:**
 
 ```bash

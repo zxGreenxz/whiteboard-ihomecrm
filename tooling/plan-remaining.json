@@ -1,15 +1,15 @@
 {
   "$comment": "SỔ VIỆC CÒN LẠI của plan kiến trúc/agent. Sinh từ một lượt soi 14 agent (1,53 triệu token, 665 lượt gọi công cụ) đối chiếu TỪNG deliverable của plan 3210 dòng vào repo thật, có một vòng PHẢN BIỆN cố chứng minh ngược mỗi kết luận 'chưa làm'. Giữ file này để phiên sau không phải soi lại từ đầu. Mục nào làm xong thì XOÁ khỏi đây và ghi vào program-status.json — đừng để hai sổ cùng nói về một việc.",
   "auditedAt": "2026-08-08",
-  "auditedAtCommit": "d1710d8fe587466fff16d7344cea21c8ce8f2ab6",
+  "auditedAtCommit": "ab9ea0a4abc662a1cf72bab93537ba8c588d7dfc",
   "method": "workflow soi-plan-con-thieu (7 lát × [soi → phản biện])",
   "totals": {
     "deliverablesInPlan": 365,
     "done": 150,
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
-    "completedAfterAudit": 80,
-    "stillMissing": 111
+    "completedAfterAudit": 83,
+    "stillMissing": 108
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -699,14 +699,6 @@
         "remaining": "Bật --strict trên CI, hoặc ghi lý do lệch plan (chống 'gia hạn hình thức') vào PROJECT_CONTRACT/program-status thay vì để trong comment script."
       },
       {
-        "deliverable": "§32: Giữ Node 22 đến khi package engine thay đổi",
-        "planRef": "Mục 32 (dòng 2331)",
-        "status": "MOT_PHAN",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Chốt một quyết định: nâng engines cho khớp 24.18.0, hoặc hạ CI về 22. Ghi lý do vào Contract."
-      },
-      {
         "deliverable": "§32: Mọi migration đổi đều chạy classifier",
         "planRef": "Mục 32 (dòng 2333)",
         "status": "CHUA_LAM",
@@ -728,7 +720,7 @@
         "status": "MOT_PHAN",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Pin exact patch cho workflow này (hoặc thống nhất về cùng phiên bản với ci-gates) + thêm bước verify runtime như ci-gates."
+        "remaining": "CON: node-version cua supabase-migrate van la major troi noi (\"20\"), va network-center la \"22\" — GitHub tu chon patch nen runtime doi ma khong co commit. Pin exact patch can chon mot ban co that va kiem duoc; chua lam. DA XONG 08/08: action SHA da ghim day du o ca 3 workflow, va quyet dinh BA Node version (ci-gates 24.18.0 / network-center 22 / supabase-migrate 20) da ghi vao Contract muc Runtime kem ly do rang buoc hai phia."
       },
       {
         "deliverable": "§32: Cập nhật comment ledger theo provenance manifest thay vì hardcode mốc cũ",
@@ -737,14 +729,6 @@
         "size": "S",
         "touchesOpenClaw": false,
         "remaining": "Sửa comment trỏ về supabase/migration-provenance.json (ledgerMaxVersion) thay vì chép số; hoặc thêm bước in số đó ra log."
-      },
-      {
-        "deliverable": "§32: Thêm npm alias cho 4 script gate + làm rõ reconcile-money vs reconcile-money-v2 cái nào canonical",
-        "planRef": "Mục 32 (dòng 2342, mới 05/08)",
-        "status": "MOT_PHAN",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Chốt và ghi ra một chỗ có thẩm quyền: sau Finance V2 thì v2 canonical hay chưa; thêm alias cho v2 hoặc gỡ bản cũ; cập nhật risk-map tier money."
       },
       {
         "deliverable": "tooling/test-matrix.json — platform test manifest",
@@ -809,14 +793,6 @@
         "size": "M",
         "touchesOpenClaw": false,
         "remaining": "Chạy check-external-controls.mjs với GH_TOKEN để lấy bằng chứng, hoặc khai known-gap rằng required check không khả thi ở tier Free kèm biện pháp thay thế."
-      },
-      {
-        "deliverable": "P0-8: Pin workflow/action/runtime gồm Node 22 và Deno 2.9.4 ở cả 3 workflow",
-        "planRef": "Mục 41 (dòng 2652)",
-        "status": "MOT_PHAN",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Thống nhất phiên bản Node, hoặc ghi quyết định đổi 22 → 24.18.0 vào Contract/program-status (hiện chỉ có con số trong matrix, không có lý do)."
       },
       {
         "deliverable": "P0-9: Bật Vercel release control với API evidence chạy lại định kỳ",
@@ -916,5 +892,5 @@
       }
     ]
   },
-  "$capNhat": "08/08/2026 lô 4: scripts/list-forward-migrations.mjs (+13 test, alias migrations:list-forward) và đính chính README migrations-archive. Script phơi HAI chiều lệch: có-file-không-sổ (lùi được) và CÓ-SỔ-KHÔNG-CÓ-FILE (production đổi schema theo file repo không còn mô tả). Chiều thứ hai đang có thật trên main: 20260807163000_ie_types_org_boundary.sql — entry commit ở 266947de trên main, file chỉ tồn tại ở commit 9519cd98 thuộc nhánh refresh-ua-graph CHƯA merge. README archive từng ghi ledger \"đứng từ Feb 2026\", số thật là 20260727095000/372 dòng. 08/08/2026 lô 3: đóng 3 mục tài liệu công cụ tri thức. (§19) Khai tường minh nhóm vendor/runtime-state/data-dump vào .ua/.understandignore — ĐO TRƯỚC KHI BẬT: chỉ khớp 1 file thật trong scan 3042 (vendor có 172 file trên đĩa nhưng 0 lọt scan, default+gitignore đã chặn); vẫn khai vì \"đang bị loại\" khác \"được quy định là loại\". Ghi vào manifest.scope.exclusionsPendingNextRefresh chứ KHÔNG sửa description, để manifest không khai phạm vi mà artifact chưa có. (§22) Bảng lệnh-nào-cho-việc-nào trong CLAUDE.md, nói rõ /understand-diff KHÔNG thay graph:impact. (CLAUDE.md) Mục Skill và hook. 08/08/2026 lô 2: đóng 2 mục — (a) 7 alias gate còn thiếu (gate:reconcile-money-v2 + 6 script check-* mồ côi; đã quét lại: KHÔNG còn script gate nào không có alias) và mục Contract §5 phân biệt reconcile-money v1 (APPROVED=cash, 3 nguồn, bắt lệch QUYỀN) với v2 (posting-aware, bắt lệch HẠCH TOÁN) kèm điều kiện cutover; (b) 2 dòng Edge Function deploy vào bảng gate Contract §5 kèm lý do — deploy edge KHÔNG đi qua lane nào, đích deploy đến từ supabase/.temp không commit. 08/08/2026: đóng 2 mục có bằng chứng kiểm được — refresh graph UA (commit a58460af: 3042/3042 file, gate:graph-freshness FRESH, toolVersionSource measured) và secret/PII scan artifact graph (scripts/check-graph-secrets.mjs + 18 test đột biến + nối vào ci-gates.yml). Sửa remaining của 3 mục làm dở thay vì xoá — bỏ nhầm một mục chưa xong là làm sổ nói dối. 07/08/2026 phiên chiều: bỏ 32 mục đã làm xong, mỗi mục có commit hoặc file làm bằng chứng. Còn 122. Sổ này lạc hậu thì chính nó thành thứ nó sinh ra để ngăn — cập nhật sau MỖI lô, không gom lại cuối ngày. ĐÃ TRẢ LẠI 3 mục bị mẫu khớp xoá nhầm (RealtimeProviders.tsx, docs/incidents/, bản .md của docs/generated) — chúng chưa làm hoặc mới một phần, và bỏ nhầm một mục chưa làm là làm sổ nói dối theo hướng lạc quan."
+  "$capNhat": "08/08/2026 lo 5: dong 3 muc runtime. PHAT HIEN QUAN TRONG: tien de cua so SAI — so ghi \"chi co con so trong matrix, khong co ly do\", nhung tooling/runtime-matrix.json CO note ly do cho tung entry va Contract muc Runtime cung da ghi. Ba Node version la CO Y va KHONG THE thong nhat: ci-gates 24.18.0 bi ep boi openclaw-zalo-bridge (>=24.18.0 <25), network-center 22 bi ep boi network-center-worker (>=20 <23) — hai khoang ROI NHAU. Toi da thu thong nhat ve 22.20.0 va gate:runtime-matrix bat duoc ngay; da hoan tac toan bo. Ghi bay do vao Contract kem hau qua cu the. Them entry services/openclaw-media-gateway vao matrix (package moi tu phien song song, lam gate do). 08/08/2026 lô 4: scripts/list-forward-migrations.mjs (+13 test, alias migrations:list-forward) và đính chính README migrations-archive. Script phơi HAI chiều lệch: có-file-không-sổ (lùi được) và CÓ-SỔ-KHÔNG-CÓ-FILE (production đổi schema theo file repo không còn mô tả). Chiều thứ hai đang có thật trên main: 20260807163000_ie_types_org_boundary.sql — entry commit ở 266947de trên main, file chỉ tồn tại ở commit 9519cd98 thuộc nhánh refresh-ua-graph CHƯA merge. README archive từng ghi ledger \"đứng từ Feb 2026\", số thật là 20260727095000/372 dòng. 08/08/2026 lô 3: đóng 3 mục tài liệu công cụ tri thức. (§19) Khai tường minh nhóm vendor/runtime-state/data-dump vào .ua/.understandignore — ĐO TRƯỚC KHI BẬT: chỉ khớp 1 file thật trong scan 3042 (vendor có 172 file trên đĩa nhưng 0 lọt scan, default+gitignore đã chặn); vẫn khai vì \"đang bị loại\" khác \"được quy định là loại\". Ghi vào manifest.scope.exclusionsPendingNextRefresh chứ KHÔNG sửa description, để manifest không khai phạm vi mà artifact chưa có. (§22) Bảng lệnh-nào-cho-việc-nào trong CLAUDE.md, nói rõ /understand-diff KHÔNG thay graph:impact. (CLAUDE.md) Mục Skill và hook. 08/08/2026 lô 2: đóng 2 mục — (a) 7 alias gate còn thiếu (gate:reconcile-money-v2 + 6 script check-* mồ côi; đã quét lại: KHÔNG còn script gate nào không có alias) và mục Contract §5 phân biệt reconcile-money v1 (APPROVED=cash, 3 nguồn, bắt lệch QUYỀN) với v2 (posting-aware, bắt lệch HẠCH TOÁN) kèm điều kiện cutover; (b) 2 dòng Edge Function deploy vào bảng gate Contract §5 kèm lý do — deploy edge KHÔNG đi qua lane nào, đích deploy đến từ supabase/.temp không commit. 08/08/2026: đóng 2 mục có bằng chứng kiểm được — refresh graph UA (commit a58460af: 3042/3042 file, gate:graph-freshness FRESH, toolVersionSource measured) và secret/PII scan artifact graph (scripts/check-graph-secrets.mjs + 18 test đột biến + nối vào ci-gates.yml). Sửa remaining của 3 mục làm dở thay vì xoá — bỏ nhầm một mục chưa xong là làm sổ nói dối. 07/08/2026 phiên chiều: bỏ 32 mục đã làm xong, mỗi mục có commit hoặc file làm bằng chứng. Còn 122. Sổ này lạc hậu thì chính nó thành thứ nó sinh ra để ngăn — cập nhật sau MỖI lô, không gom lại cuối ngày. ĐÃ TRẢ LẠI 3 mục bị mẫu khớp xoá nhầm (RealtimeProviders.tsx, docs/incidents/, bản .md của docs/generated) — chúng chưa làm hoặc mới một phần, và bỏ nhầm một mục chưa làm là làm sổ nói dối theo hướng lạc quan."
 }
