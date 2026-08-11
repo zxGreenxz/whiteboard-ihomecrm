@@ -78,6 +78,9 @@ export function useVacantRoomsReport(
       for (const c of endedContracts ?? []) {
         const effectiveEnd = (c as any).actual_end_date || (c as any).end_date;
         if (!effectiveEnd) continue;
+        // `room_id` nullable trong DB: hợp đồng chưa gắn phòng thì không có
+        // "lần kết thúc gần nhất theo phòng" để mà ghi.
+        if (!c.room_id) continue;
         const prev = lastEndByRoom.get(c.room_id);
         if (!prev || new Date(effectiveEnd).getTime() > new Date(prev).getTime()) {
           lastEndByRoom.set(c.room_id, effectiveEnd);
@@ -266,7 +269,11 @@ export function useVacantRoomNotes(
         );
 
         const eventsByRoom = new Map<string, VacancyEvent[]>();
-        const pushEv = (roomId: string, ev: VacancyEvent) => {
+        // `roomId` nhận null vì `transfers.old_room_id` nullable trong DB — chuyển
+        // phòng có thể không có phòng CŨ (lần đầu gán phòng). Sự kiện đó không
+        // thuộc phòng nào nên bỏ qua, thay vì ép người gọi lọc trước mỗi lần.
+        const pushEv = (roomId: string | null | undefined, ev: VacancyEvent) => {
+          if (!roomId) return;
           const arr = eventsByRoom.get(roomId);
           if (arr) arr.push(ev);
           else eventsByRoom.set(roomId, [ev]);
@@ -448,7 +455,13 @@ export function useRenewalsTransfersReport(
 
       const renewals: RenewalTransferRow[] = ((extData as unknown[]) ?? [])
         .map((e) => e as RenewalExtRow)
-        .filter((e) => e.contracts && !e.contracts.deleted_at)
+        // Predicate CÓ KIỂU: `filter` với predicate boolean thường KHÔNG thu hẹp
+        // kiểu phần tử, nên năm dòng `e.contracts.x` phía dưới vẫn bị coi là có
+        // thể null dù đã lọc. Khai `e is …` để phép lọc nói được điều nó vừa làm.
+        .filter(
+          (e): e is RenewalExtRow & { contracts: NonNullable<RenewalExtRow["contracts"]> } =>
+            !!e.contracts && !e.contracts.deleted_at,
+        )
         .map((e) => ({
           id: `ext-${e.id}`,
           type: "RENEWAL",

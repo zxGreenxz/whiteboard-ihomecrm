@@ -16,8 +16,12 @@ import type { PostgrestError } from "@supabase/supabase-js";
 const PRA = "public-rooms-analytics";
 const STALE_LIVE = 60 * 1000;
 
-const normIds = (ids?: string[]): string[] | null => (ids && ids.length ? [...ids].sort() : null);
-const normTok = (t?: string): string | null => (t && t.length ? t : null);
+// Trả "undefined" chứ không "null": p_building_ids và p_token của mọi RPC pra_*
+// đều DEFAULT NULL, nên bỏ hẳn khoá cho kết quả y hệt — mà kiểu Args sinh tự
+// động lại khai "?: T". Khoá cache không đổi hình dạng vì JSON.stringify biến
+// "undefined" trong mảng thành "null".
+const normIds = (ids?: string[]): string[] | undefined => (ids && ids.length ? [...ids].sort() : undefined);
+const normTok = (t?: string): string | undefined => (t && t.length ? t : undefined);
 const n = (v: unknown): number => Number(v) || 0;
 
 export interface PraFilters {
@@ -98,9 +102,22 @@ async function callPra<Row, T>(
   return (data || []).map(map);
 }
 
+/**
+ * p_start_date / p_end_date là tham số BẮT BUỘC (không có DEFAULT), còn
+ * PraFilters khai chúng tuỳ chọn. Mọi query ở file này đã có
+ * `enabled: !!f.start && !!f.end` — chỉ là TypeScript không đọc được `enabled`.
+ *
+ * Dùng hàm này thay cho dấu `!`: bất biến vẫn được kiểm lúc chạy, và nếu ai đó
+ * sửa `enabled` mà quên chỗ này thì lỗi nói thẳng nguyên nhân.
+ */
+function batBuoc(giaTri: string | undefined, ten: string): string {
+  if (!giaTri) throw new Error(`Thiếu ${ten} — lẽ ra 'enabled' đã chặn query này.`);
+  return giaTri;
+}
+
 const baseParams = (f: PraFilters) => ({
-  p_start_date: f.start,
-  p_end_date: f.end,
+  p_start_date: batBuoc(f.start, 'start'),
+  p_end_date: batBuoc(f.end, 'end'),
   p_token: normTok(f.token),
   p_building_ids: normIds(f.buildingIds),
   p_exclude_staff: !!f.excludeStaff,
