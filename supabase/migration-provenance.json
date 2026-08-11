@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-11T02:04:31.122Z",
+  "generatedAt": "2026-08-11T02:27:08.038Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
     "unknown": 77,
-    "catalog-proven": 224,
+    "catalog-proven": 225,
     "superseded": 15
   },
   "duplicateVersions": 40,
@@ -7587,6 +7587,18 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.get_my_organizations"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260809040000_chat_org_bat_buoc_va_rao_het_mien_tru.sql",
+      "version": "20260809040000",
+      "name": "chat_org_bat_buoc_va_rao_het_mien_tru",
+      "scheme": "timestamp14",
+      "sha256": "906def006daf716751cdd2cbc39382be8d450b1e96034572ad9066dd0d67e92d",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:app_private.autofill_org_chat",
+        "catalog:trigger:public.ai_chat_threads.trg_autofill_org_chat"
       ]
     },
     {
