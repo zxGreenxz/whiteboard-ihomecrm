@@ -1,0 +1,59 @@
+name: Kiểm soát ngoài repo
+
+# VÌ SAO CHẠY ĐỊNH KỲ, không chỉ chạy theo push
+#
+#   Các control ở đây nằm NGOÀI git: Vercel production branch, branch protection,
+#   env var. Không commit nào làm chúng đổi, nên chạy theo push là chạy sai nhịp —
+#   một control bị tắt trên dashboard lúc 3 giờ chiều sẽ im lặng cho tới lần push
+#   tiếp theo, mà lần đó có thể là tuần sau.
+#
+#   Ảnh chụp chứng minh "lúc đó đã bật", không chứng minh "bây giờ vẫn bật". Chỉ
+#   thứ hai mới giữ production an toàn.
+#
+# CẦN SECRET, VÀ NẾU THIẾU THÌ NÓI THẲNG
+#
+#   Script coi thiếu credential là `unverified`, KHÔNG phải pass — và unverified
+#   được đối xử như chưa an toàn. Nên workflow này chạy được cả khi chưa có secret:
+#   nó sẽ báo unverified mỗi lần, và đó chính là lời nhắc rằng kiểm soát cứng DUY
+#   NHẤT của repo (branch protection không enforce được trên GitHub Free) đang
+#   không có ai canh.
+#
+#   Để nó kiểm được thật, thêm hai secret ở Settings → Secrets and variables →
+#   Actions:
+#     VERCEL_TOKEN  — token đọc project/env/deployment (chỉ cần quyền đọc)
+#     GH_TOKEN      — hoặc để trống và dựa vào GITHUB_TOKEN mặc định
+#
+#   Script CHỈ đọc TÊN env var và target, không bao giờ đọc giá trị: bằng chứng
+#   được commit, nên một lần lỡ tay là secret nằm vĩnh viễn trong lịch sử git.
+
+on:
+  schedule:
+    # 03:17 UTC mỗi ngày. Cố ý lệch khỏi :00 — mọi job trên GitHub Actions đều dồn
+    # vào đầu giờ, và job xếp hàng lâu hay bị bỏ.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # Cần lịch sử để kiểm SHA đang chạy production có nằm trên main không.
+          # Checkout nông sẽ làm phép kiểm đó thành "không kiểm được".
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+
+      - name: Kiểm soát ngoài repo
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-external-controls.mjs

@@ -82,6 +82,12 @@
       "node": "20",
       "deno": null,
       "note": "Chỉ chạy validator tĩnh, không cần runtime cao."
+    },
+    {
+      "path": ".github/workflows/external-controls.yml",
+      "node": "24.18.0",
+      "deno": null,
+      "note": "Chay dinh ky (cron 03:17 UTC) + workflow_dispatch, khong theo push: cac control nam NGOAI git nen khong commit nao lam chung doi. Node theo ci-gates vi chi chay script doc — khong rang buoc rieng."
     }
   ],
   "otherRuntimes": {

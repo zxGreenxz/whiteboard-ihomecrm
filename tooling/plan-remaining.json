@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 79
+    "stillMissing": 78
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -51,10 +51,12 @@
       {
         "deliverable": "Đợt 2 — `scripts/check-external-controls.mjs`: gh api + vercel env ls + project settings → JSON redacted, chạy lại ĐỊNH KỲ",
         "planRef": "§46, dòng 2808",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm phần đọc env var (Production/Preview/Development) + deployment SHA đang chạy; đăng ký chạy định kỳ (workflow schedule: hoặc scheduled task) và commit evidence mỗi lần."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "check-external-controls.mjs doc TEN+target env var (khong bao gio doc gia tri) + deployment SHA production kem ancestorOfMain; .github/workflows/external-controls.yml chay cron 03:17 UTC + workflow_dispatch (fetch-depth 0 de kiem duoc to tien). Bonus: vá điểm mù runtime-matrix — gate chi kiem chieu KHAI→THAT cho workflow, them chieu 3a THAT→KHAI, dot bien xac nhan bo 1 entry => exit 1."
       },
       {
         "deliverable": "Đợt 2 (Verification) — Dry-run chứng minh promotion bị chặn khi có gate đỏ (kể cả gate `continue-on-error` bị nhận nhầm là xanh) + rollback đã diễn tập",

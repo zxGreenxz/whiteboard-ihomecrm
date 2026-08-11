@@ -15,13 +15,14 @@
 // Không cần credential, không đọc database.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MATRIX_PATH = join(repoRoot, 'tooling', 'runtime-matrix.json');
+const WF_DIR = join(repoRoot, '.github', 'workflows');
 
 // Vendored upstream và build output không phải bề mặt runtime của repo này.
 const IGNORED = [
@@ -103,7 +104,34 @@ function main() {
     }
   }
 
-  // ── Chiều 3: workflow ──
+  // ── Chiều 3a: mọi workflow trên đĩa phải có mặt trong matrix ──
+  //
+  // ĐIỂM MÙ ĐÃ ĐO 08/08/2026: phần dưới chỉ duyệt `matrix.workflows`, tức chỉ kiểm
+  // chiều KHAI → THẬT. Thêm một file workflow mới mà quên khai thì gate vẫn báo
+  // "khớp thực tế" — đã tái hiện: 4 file trên đĩa, matrix khai 3, gate xanh.
+  //
+  // Đó đúng là lỗ hổng mà chiều 1 (package) đã bịt và chiều 3 thì quên. Hệ quả
+  // không nhỏ: một workflow mới khai `node-version: '22'` (major trôi nổi) sẽ
+  // không ai thấy, và runtime của nó đổi theo patch mới nhất mà không có commit nào.
+  const wfKhai = new Set(matrix.workflows.map((w) => w.path.replace(/\\/g, '/')));
+  const wfDia = existsSync(WF_DIR)
+    ? readdirSync(WF_DIR)
+        .filter((f) => /\.ya?ml$/.test(f))
+        .map((f) => `.github/workflows/${f}`)
+    : [];
+  if (wfDia.length === 0) {
+    problems.push('Không đọc được workflow nào trong .github/workflows — phép đo hỏng, không phải "không có workflow".');
+  }
+  for (const p of wfDia) {
+    if (!wfKhai.has(p)) {
+      problems.push(
+        `${p} chưa có trong runtime-matrix.workflows.\n` +
+        '      → thêm entry (node/deno: "..." hoặc null nếu workflow không dựng runtime đó).',
+      );
+    }
+  }
+
+  // ── Chiều 3b: mọi entry workflow trong matrix phải khớp file thật ──
   for (const wf of matrix.workflows) {
     let actual;
     try {

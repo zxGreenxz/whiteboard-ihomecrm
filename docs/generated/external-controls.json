@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-08-11T05:46:44.210Z",
+  "checkedAt": "2026-08-11T06:31:34.246Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubBranchProtection": {
@@ -12,26 +12,52 @@
       "projects": [
         {
           "name": "ptcrm-docs",
+          "id": "prj_hrMVUrVyRzgkqEblLfdAbGcim6wS",
           "repo": "zxGreenxz/whiteboard-ihomecrm",
           "productionBranch": "main"
         },
         {
           "name": "ihomecrm",
+          "id": "prj_bepNXTay1wsEg7yberZqVY4iyaNk",
           "repo": "zxGreenxz/whiteboard-ihomecrm",
           "productionBranch": "production"
         },
         {
           "name": "ihome-market",
+          "id": "prj_jpltKeIq8XTqyQDJb3UeZdLFX4pj",
           "repo": "zxGreenxz/ihome-market",
           "productionBranch": "main"
         },
         {
           "name": "n2store",
+          "id": "prj_ekvRMzuVdvfjpneuqdaLIWIytGq8",
           "repo": "zxGreenxz/github-html-starter",
           "productionBranch": "main"
         }
       ],
       "note": "1/2 project của zxGreenxz/whiteboard-ihomecrm deploy production từ nhánh KHÔNG PHẢI \"production\": ptcrm-docs→main. Mọi push vào nhánh đó là một lần phát hành thẳng ra sản phẩm. NGOÀI PHẠM VI (repo khác, không tính vào kết luận): ihome-market[zxGreenxz/ihome-market]→main, n2store[zxGreenxz/github-html-starter]→main."
+    },
+    "vercelEnvAndDeployment": {
+      "status": "checked",
+      "envVarNames": [
+        {
+          "key": "VITE_OPENCLAW_ZALO_MODE",
+          "target": "production",
+          "type": "sensitive"
+        },
+        {
+          "key": "CRON_SECRET",
+          "target": "preview+production",
+          "type": "sensitive"
+        }
+      ],
+      "productionDeployment": {
+        "sha": "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b",
+        "ref": "production",
+        "state": "READY",
+        "ancestorOfMain": true
+      },
+      "note": "2 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy c6e8e4584b0a từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
     },
     "productionBranchExists": {
       "status": "present",
@@ -39,7 +65,7 @@
     }
   },
   "localHead": {
-    "head": "b8f7bc479b30ad063f711b03ec467b0de08838fa",
+    "head": "7a9f6e50e799597e8f41ceb339d8bdeb0c846890",
     "branch": "main",
     "hasProductionBranch": true
   }

@@ -118,6 +118,9 @@ async function vercelProductionBranch() {
   const body = await res.json();
   const projects = (body.projects ?? []).map((p) => ({
     name: p.name,
+    // `id` cần cho việc đọc env/deployment ở bước sau. Không phải secret — nó là
+    // định danh công khai của project, không cấp quyền gì nếu không có token.
+    id: p.id,
     // Cần repo để khoanh phạm vi: một tài khoản Vercel phục vụ nhiều repo, và
     // repo này chỉ chịu trách nhiệm cho project deploy từ chính nó.
     repo: p.link?.org && p.link?.repo ? `${p.link.org}/${p.link.repo}` : null,
@@ -133,6 +136,72 @@ async function vercelProductionBranch() {
  * Tách riêng để test được: bản đầu chôn phán quyết trong hàm gọi mạng nên không
  * cách nào kiểm bằng test, và nó sai suốt mà không ai thấy.
  */
+/**
+ * Đọc env var và deployment production của project ihomecrm.
+ *
+ * CHỈ LẤY TÊN VÀ TARGET, KHÔNG BAO GIỜ LẤY GIÁ TRỊ. Vercel có endpoint trả giá trị
+ * (`?decrypt=true`); cố ý không gọi. File bằng chứng này được commit — một lần lỡ
+ * tay là secret nằm vĩnh viễn trong lịch sử git, và rotate xong vẫn còn đó.
+ */
+async function vercelChiTiet(token, projects) {
+  const app = projects.find((p) => p.name === "ihomecrm");
+  if (!app?.id) return { status: UNVERIFIED, note: 'Không thấy project "ihomecrm" để đọc env/deployment.' };
+  const H = { Authorization: `Bearer ${token}` };
+
+  const ev = await fetch(`https://api.vercel.com/v9/projects/${app.id}/env`, { headers: H });
+  const envs = ev.ok
+    ? (((await ev.json()).envs ?? []).map((e) => ({ key: e.key, target: (e.target ?? []).join("+"), type: e.type })))
+    : null;
+
+  const dp = await fetch(
+    `https://api.vercel.com/v6/deployments?projectId=${app.id}&target=production&limit=1`,
+    { headers: H },
+  );
+  const d = dp.ok ? ((await dp.json()).deployments ?? [])[0] : null;
+  const sha = d?.meta?.githubCommitSha ?? null;
+  const ref = d?.meta?.githubCommitRef ?? null;
+  const state = d?.state ?? d?.readyState ?? null;
+
+  // PHÉP KIỂM THẬT: mã đang chạy production phải nằm trên main.
+  //
+  // Nếu không, production đang chạy thứ CHƯA từng qua CI của main — đúng kịch bản
+  // mà Contract §3 gọi là "phát hành mã chưa từng qua CI". Không kiểm được (SHA
+  // chưa fetch về) KHÔNG phải là đạt.
+  let treanMain = null;
+  let ghiChuSha = "";
+  if (sha) {
+    try {
+      execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: repoRoot, stdio: "ignore" });
+      try {
+        execFileSync("git", ["merge-base", "--is-ancestor", sha, "origin/main"], { cwd: repoRoot, stdio: "ignore" });
+        treanMain = true;
+      } catch {
+        treanMain = false;
+      }
+    } catch {
+      ghiChuSha = " SHA chưa có trong clone này (chạy `git fetch --all`) — KHÔNG kiểm được nó có trên main hay không.";
+    }
+  }
+
+  const status = treanMain === false ? "failed" : treanMain === true ? "checked" : UNVERIFIED;
+  return {
+    status,
+    envVarNames: envs,
+    productionDeployment: sha ? { sha, ref, state, ancestorOfMain: treanMain } : null,
+    note:
+      (envs ? `${envs.length} env var (CHỈ tên + target, không lấy giá trị). ` : "Không đọc được env var. ") +
+      (sha
+        ? `Production đang chạy ${sha.slice(0, 12)} từ nhánh "${ref}", state ${state}. ` +
+          (treanMain === true
+            ? "SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
+            : treanMain === false
+              ? "SHA đó KHÔNG nằm trên origin/main: production đang chạy mã chưa từng qua CI của main (Contract §3)."
+              : "")
+        : "Không đọc được deployment production. ") +
+      ghiChuSha,
+  };
+}
+
 export function danhGiaVercel(projects) {
   // Danh sách RỖNG không phải là "đã kiểm". Token sai team trả 200 kèm 0 project,
   // và bản đầu vẫn chấm 'checked' ✅ — soi đúng con số 0 rồi kết luận yên tâm.
@@ -218,6 +287,9 @@ async function main(argv) {
 
   const protection = interpretProtection(await ghApi(`repos/${REPO}/branches/main/protection`));
   const vercel = await vercelProductionBranch();
+  const chiTiet = process.env.VERCEL_TOKEN
+    ? await vercelChiTiet(process.env.VERCEL_TOKEN, vercel.projects ?? [])
+    : { status: UNVERIFIED, note: "Không có VERCEL_TOKEN — không đọc được env var và deployment production." };
   const local = localRepoState();
 
   const report = {
@@ -228,6 +300,7 @@ async function main(argv) {
     controls: {
       githubBranchProtection: protection,
       vercelProductionBranch: vercel,
+      vercelEnvAndDeployment: chiTiet,
       productionBranchExists: {
         status: local.hasProductionBranch ? 'present' : 'absent',
         note: local.hasProductionBranch
