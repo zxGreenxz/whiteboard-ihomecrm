@@ -676,6 +676,10 @@ jobs:
           # dẫn người sửa đi tìm migration thiếu thay vì nhìn vào tên tham số.
           # Đọc manifest đã sinh, KHÔNG tự gọi mạng.
           node scripts/check-rpc-arg-names.mjs
+          # KHOẢNG MÙ của chính ba gate trên: chúng tìm tên RPC bằng chuỗi viết
+          # thẳng, nên lời gọi có tên đi qua biến thì cả ba đều không thấy. Gate
+          # này đếm và khoá phần mù đó lại (đo 12/08/2026: 31/270 = 11,5%).
+          node scripts/check-rpc-name-literal.mjs
           # Tầng: `supabase.rpc()` không được gọi thẳng trong component. Gom về
           # hook/lib thì hai gate trên có ít điểm phải soi hơn, và quyền sở hữu
           # query key nằm cùng chỗ với lời gọi.

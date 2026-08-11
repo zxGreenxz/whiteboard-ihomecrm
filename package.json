@@ -123,7 +123,8 @@
     "gate:copilot-routes": "node scripts/check-copilot-routes.mjs",
     "do:strict-null": "node scripts/do-strict-null.mjs",
     "org-inventory:build": "node scripts/build-org-boundary-inventory.mjs --write",
-    "gate:org-boundary-inventory": "node scripts/build-org-boundary-inventory.mjs --check"
+    "gate:org-boundary-inventory": "node scripts/build-org-boundary-inventory.mjs --check",
+    "gate:rpc-name-literal": "node scripts/check-rpc-name-literal.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
