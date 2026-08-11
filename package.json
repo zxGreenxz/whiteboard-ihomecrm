@@ -37,6 +37,7 @@
     "gate:known-gaps": "node scripts/check-known-gaps.mjs",
     "gate:test-matrix": "node scripts/check-test-matrix.mjs",
     "gate:workflow-paths": "node scripts/check-workflow-paths.mjs",
+    "gate:raw-rpc-callers": "node scripts/check-raw-rpc-callers.mjs",
     "migrations:list-forward": "node scripts/list-forward-migrations.mjs",
     "gate:migration-provenance": "node scripts/check-migration-provenance.mjs",
     "gate:rpc-in-view": "node scripts/check-rpc-in-view-ratchet.mjs",

@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 65
+    "stillMissing": 64
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -321,10 +321,12 @@
       {
         "deliverable": "Đợt 5 – V2: Gate chặn caller high-risk gọi raw RPC slug / Edge slug ngoài allowlist",
         "planRef": "mục 49, dòng 2912; mục 9 dòng 1390",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm checker + allowlist raw-call theo file/risk, bắt cả 4 pattern (kể cả `.rpc(\"slug\" as any)`) và allowlist cho functions.invoke."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "scripts/check-raw-rpc-callers.mjs + tooling/raw-rpc-callers-baseline.json (101 van tay) + 12 test + alias gate:raw-rpc-callers + noi ci-gates. Pham vi = tier doi soi cheo cua risk-map (money/authorization/migration/infrastructure): 121/1239 file src. Do that: 238 loi goi raw tren toan src, 101 trong tier cao (98 literal + 3 DYNAMIC + 0 edge). Bat ca 4 pattern ke ca .rpc(\"slug\" as any) va functions.invoke; slug la BIEN ghi rieng thanh DYNAMIC vi khong grep/doi ten an toan duoc. Ratchet theo TAP VAN TAY <file>::<slug>. Dot bien 5/5, gom ca \"doi slug: xoa 1 them 1\" — ca do la ly do khong dung so dem. Risk-map thu hep con 0 tier soi cheo => exit 3."
       },
       {
         "deliverable": "Đợt 5 – V3: Realtime test kiểm publication, invalidation/query ownership và cross-tenant",

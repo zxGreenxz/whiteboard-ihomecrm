@@ -128,6 +128,7 @@ jobs:
           node scripts/check-route-guards.mjs
           node scripts/check-test-matrix.mjs
           node scripts/check-workflow-paths.mjs
+          node scripts/check-raw-rpc-callers.mjs
           node scripts/check-test-only-exports.mjs
           node scripts/check-unknown-review.mjs
           node scripts/check-ts-suppressions.mjs
