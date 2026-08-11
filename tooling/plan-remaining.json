@@ -67,10 +67,12 @@
       {
         "deliverable": "Đợt 2 (Verification) — Dry-run chứng minh promotion bị chặn khi có gate đỏ (kể cả gate `continue-on-error` bị nhận nhầm là xanh) + rollback đã diễn tập",
         "planRef": "§46, dòng 2817 và Acceptance dòng 2824-2826",
-        "status": "CHUA_LAM",
+        "status": "MOT_PHAN",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Viết script promote (đọc kết luận gate, coi continue-on-error là ĐỎ, chỉ fast-forward khi tất cả xanh, ghi evidence SHA+gate+fingerprint), dry-run cả hai chiều; diễn tập rollback thật một lần rồi commit evidence."
+        "remaining": "Con lai: DIEN TAP ROLLBACK that mot lan (ghi deployment id truoc/sau + thoi gian vao evidence). Chua lam vi day la thao tac len production that va khong lui duoc bang mot lenh — can ban chot thoi diem. Phan chan-promotion-khi-do da xong va co the kiem chung ngay.",
+        "doneAt": null,
+        "evidence": "scripts/promote-to-production.mjs + 9 test + alias promote:production, noi vao job production-promotion trong ci-gates. Cua chan cu (check-production-promotion) chi hoi \"commit da co tren main chua\", KHONG hoi gate co xanh khong. Script moi doc ket luan o muc BUOC chu khong muc job: mot buoc fail bi continue-on-error nuot lam GitHub dat conclusion=failure cho BUOC nhung success cho JOB — trang Checks hien mau xanh. Repo CO dung continue-on-error (dang ky o known-gaps) nen day khong phai rui ro ly thuyet. Ba nhom tach rieng khong gop: doGate / nuot / dangChay. Thieu GH_TOKEN => exit 3, da chay thu tren may nay: dung exit 3. Mot test bat loi that trong logic cua toi: job DANG CHAY bi xep vao \"do\" thay vi \"chua xong\" — sua nguon, khong sua test."
       },
       {
         "deliverable": "Đợt 3 — Deterministic restore + partition fixture/lifecycle riêng",

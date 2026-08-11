@@ -838,3 +838,16 @@ jobs:
 
       - name: Mọi commit đang phát hành đều đã qua main
         run: node scripts/check-production-promotion.mjs
+
+      # Cửa chặn thứ hai, và là cửa duy nhất đọc KẾT LUẬN GATE.
+      #
+      # check-production-promotion chỉ hỏi "commit này đã có trên main chưa" —
+      # nó không hỏi gate của commit đó có xanh không. Bước dưới đọc kết luận ở
+      # mức BƯỚC, nên một bước fail bị continue-on-error nuốt (job vẫn báo
+      # success, trang Checks vẫn màu xanh) vẫn bị chặn.
+      #
+      # Thiếu token ⇒ exit 3 và job đỏ: "không hỏi được CI" KHÁC "CI xanh".
+      - name: Kết luận gate của commit đang phát hành
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/promote-to-production.mjs --sha "${{ github.sha }}"
