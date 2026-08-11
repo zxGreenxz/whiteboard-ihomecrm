@@ -1,6 +1,7 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { VOUCHER_SOURCES } from "@/lib/voucherSources";
+import { batBuoc } from "@/lib/queryGuard";
 import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
 import { getAllIeTypesCached, type IeTypeLite } from "@/lib/ieTypesCache";
 import { AMOUNT_SEARCH_TOLERANCE } from "@/lib/roomCodeSearch";
@@ -663,14 +664,14 @@ export const incomeExpenseStatsQuery = (
               : filters.approval_status === 'POSTED' ||
                   filters.approval_status === 'REVERSED'
                 ? filters.approval_status
-                : null,
-          p_creator_id: filters.creator_id ?? null,
-          p_amount: filters.amount_target ?? null,
+                : undefined,
+          p_creator_id: filters.creator_id ?? undefined,
+          p_amount: filters.amount_target ?? undefined,
           p_amount_tol: AMOUNT_SEARCH_TOLERANCE,
-          p_verified: filters.verified_status ?? null,
-          p_item_type_ids: itemPlan.typeSiblingIds,
-          p_voucher_ids: periodVoucherIds,
-          p_sources: groupSources,
+          p_verified: filters.verified_status ?? undefined,
+          p_item_type_ids: itemPlan.typeSiblingIds ?? undefined,
+          p_voucher_ids: periodVoucherIds ?? undefined,
+          p_sources: groupSources ?? undefined,
           p_source_manual: filters.source_group === 'Nhập tay',
           p_internal_sources: INTERNAL_SOURCES,
           p_kqkd_only: businessResultOnly,
@@ -730,7 +731,8 @@ export const useIncomeExpenseHistory = (id: string | null, enabled = true) => {
     queryFn: async (): Promise<IncomeExpenseAuditLog[]> => {
       const { data, error } = await supabase.rpc(
         "get_income_expense_history",
-        { p_id: id }
+        // `enabled: enabled && !!id` đã chặn, nhưng TypeScript không đọc được nó.
+        { p_id: batBuoc(id, 'id') }
       );
       if (error) throw error;
       return (data ?? []) as IncomeExpenseAuditLog[];

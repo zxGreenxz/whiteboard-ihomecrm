@@ -9,6 +9,7 @@
  * - p_token "" → null; p_building_ids [] → null (sort cho query key ổn định).
  */
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { batBuoc } from "@/lib/queryGuard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { PostgrestError } from "@supabase/supabase-js";
@@ -102,19 +103,7 @@ async function callPra<Row, T>(
   return (data || []).map(map);
 }
 
-/**
- * p_start_date / p_end_date là tham số BẮT BUỘC (không có DEFAULT), còn
- * PraFilters khai chúng tuỳ chọn. Mọi query ở file này đã có
- * `enabled: !!f.start && !!f.end` — chỉ là TypeScript không đọc được `enabled`.
- *
- * Dùng hàm này thay cho dấu `!`: bất biến vẫn được kiểm lúc chạy, và nếu ai đó
- * sửa `enabled` mà quên chỗ này thì lỗi nói thẳng nguyên nhân.
- */
-function batBuoc(giaTri: string | undefined, ten: string): string {
-  if (!giaTri) throw new Error(`Thiếu ${ten} — lẽ ra 'enabled' đã chặn query này.`);
-  return giaTri;
-}
-
+// `batBuoc` nay dùng chung ở `@/lib/queryGuard`.
 const baseParams = (f: PraFilters) => ({
   p_start_date: batBuoc(f.start, 'start'),
   p_end_date: batBuoc(f.end, 'end'),

@@ -14,6 +14,7 @@
  */
 
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { batBuoc } from "@/lib/queryGuard";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -42,20 +43,8 @@ const STALE_LIVE = 60 * 1000; // thu tiền/snapshot — biến động liên t�
 const normIds = (ids?: string[]): string[] | undefined =>
   ids && ids.length ? [...ids].sort() : undefined;
 
-/**
- * `p_start_date` và `p_end_date` là tham số BẮT BUỘC của mọi RPC `fa_*` (không
- * có DEFAULT), trong khi tham số hook lại là `string | undefined`. Mọi query ở
- * file này đã có `enabled: !!start && !!end`, nên lúc `queryFn` chạy hai giá trị
- * chắc chắn có — nhưng TypeScript KHÔNG đọc được `enabled`.
- *
- * Dùng hàm này thay cho `!`: bất biến vẫn được kiểm lúc chạy, và nếu ai đó sửa
- * `enabled` mà quên chỗ này thì lỗi nói thẳng ra nguyên nhân, thay vì để
- * PostgREST trả một thông báo khó truy.
- */
-function batBuoc(giaTri: string | undefined, ten: string): string {
-  if (!giaTri) throw new Error(`Thiếu ${ten} — lẽ ra 'enabled' đã chặn query này.`);
-  return giaTri;
-}
+// `batBuoc` nay dùng chung ở `@/lib/queryGuard` — ba file cần nó thì ba bản chép
+// sẽ lệch nhau, và bản lệch trong một phép kiểm bất biến là thứ khó thấy nhất.
 
 /**
  * Nhận một THUNK thay vì (tên hàm, params).
