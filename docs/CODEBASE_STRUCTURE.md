@@ -12,7 +12,7 @@
 | Data layer | `src/hooks/**`, `src/lib/**` | Query/mutation, adapter canonical writer, permission catalog và tiện ích. |
 | Supabase client/types | `src/integrations/supabase/**` | Client và generated public schema types. |
 | AI Copilot | `src/copilot/**` | Chat, UI-control, registry tool, safety/entitlement. |
-| Database | `supabase/migrations/**` | Lịch sử DDL/RPC/RLS đang hoạt động (631 file + 15 trong `migrations-archive/`). Legacy KHÔNG replay được; số đếm sinh bằng `npm run catalog:capture`. |
+| Database | `supabase/migrations/**` | Lịch sử DDL/RPC/RLS đang hoạt động (633 file + 15 trong `migrations-archive/`). Legacy KHÔNG replay được; số đếm sinh bằng `npm run catalog:capture`. |
 | Edge Functions | `supabase/functions/**` | LLM proxy, admin user, push, salary jobs và reset demo. |
 | Workers/API | `worker/**`, `api/**` | Zalo worker ngoài Vercel và endpoint cron/serverless. |
 | Tài liệu | `docs/**`, `docs-site/**` | Hai trunk runtime: hướng dẫn VitePress và tham chiếu hệ thống cho Copilot. |

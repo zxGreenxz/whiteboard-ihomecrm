@@ -7,7 +7,7 @@
 - Public generated types: [src/integrations/supabase/types.ts](../src/integrations/supabase/types.ts).
 - Mô tả schema: [docs/DATABASE_SCHEMA.md](../docs/DATABASE_SCHEMA.md).
 - Cổng tài liệu: [docs/README.md](../docs/README.md).
-- Migration hoạt động: `supabase/migrations/*.sql`. **Lịch sử legacy KHÔNG replay được** — 631 file hiện có gồm 33 nhóm trùng version (69 file) và bộ legacy `001_`–`033_` còn collision nội bộ; `supabase db push`/`supabase start` chết ở unique constraint của ledger. Repo apply qua Management API (`scripts/apply-sql.mjs`), không dùng `db push`. Số file đếm bằng script, đừng chép tay: `npm run catalog:capture`.
+- Migration hoạt động: `supabase/migrations/*.sql`. **Lịch sử legacy KHÔNG replay được** — 633 file hiện có gồm 33 nhóm trùng version (69 file) và bộ legacy `001_`–`033_` còn collision nội bộ; `supabase db push`/`supabase start` chết ở unique constraint của ledger. Repo apply qua Management API (`scripts/apply-sql.mjs`), không dùng `db push`. Số file đếm bằng script, đừng chép tay: `npm run catalog:capture`.
 
 ## Quy tắc migration
 

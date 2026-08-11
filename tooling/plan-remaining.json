@@ -1,15 +1,15 @@
 {
   "$comment": "SỔ VIỆC CÒN LẠI của plan kiến trúc/agent. Sinh từ một lượt soi 14 agent (1,53 triệu token, 665 lượt gọi công cụ) đối chiếu TỪNG deliverable của plan 3210 dòng vào repo thật, có một vòng PHẢN BIỆN cố chứng minh ngược mỗi kết luận 'chưa làm'. Giữ file này để phiên sau không phải soi lại từ đầu. Mục nào làm xong thì XOÁ khỏi đây và ghi vào program-status.json — đừng để hai sổ cùng nói về một việc.",
   "auditedAt": "2026-08-08",
-  "auditedAtCommit": "ca31186ec2edfc9a346ee5abe8195c4bd0630bf8",
+  "auditedAtCommit": "60a9f001249ea6394bd36c4ac095be9e2cdcd5fc",
   "method": "workflow soi-plan-con-thieu (7 lát × [soi → phản biện])",
   "totals": {
     "deliverablesInPlan": 365,
     "done": 150,
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
-    "completedAfterAudit": 73,
-    "stillMissing": 118
+    "completedAfterAudit": 75,
+    "stillMissing": 116
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -49,28 +49,12 @@
     ],
     "dot-2-3": [
       {
-        "deliverable": "Đợt 2 — npm alias cho 4 script gate còn thiếu + làm rõ `reconcile-money` v1/v2",
-        "planRef": "§46, dòng 2807",
-        "status": "MOT_PHAN",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Thêm alias gate:reconcile-money-v2 và ghi vào PROJECT_CONTRACT §5: v1 = legacy APPROVED-cash, v2 = posting-aware, dùng cái nào khi nào, cutover khi nào (roadmap đã có lý lẽ, chỉ cần nâng lên Contract)."
-      },
-      {
         "deliverable": "Đợt 2 — `scripts/check-external-controls.mjs`: gh api + vercel env ls + project settings → JSON redacted, chạy lại ĐỊNH KỲ",
         "planRef": "§46, dòng 2808",
         "status": "MOT_PHAN",
         "size": "M",
         "touchesOpenClaw": false,
         "remaining": "Thêm phần đọc env var (Production/Preview/Development) + deployment SHA đang chạy; đăng ký chạy định kỳ (workflow schedule: hoặc scheduled task) và commit evidence mỗi lần."
-      },
-      {
-        "deliverable": "Đợt 2 — Thêm dòng Edge Function deploy vào bảng gate §27",
-        "planRef": "§46, dòng 2809 (bảng §27 dòng 2149-2164)",
-        "status": "CHUA_LAM",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Thêm 2 dòng vào bảng gate Contract (Edge Function deploy: reviewed SHA + digest vào evidence store, preflight project/org, cấm deploy từ working tree bẩn; và Web promotion), rồi thêm invariant tương ứng vào check-agent-contract và kiểm bằng đột biến."
       },
       {
         "deliverable": "Đợt 2 — PR template + `tooling/risk-map.json` + risk classifier",
@@ -972,5 +956,5 @@
       }
     ]
   },
-  "$capNhat": "08/08/2026: đóng 2 mục có bằng chứng kiểm được — refresh graph UA (commit a58460af: 3042/3042 file, gate:graph-freshness FRESH, toolVersionSource measured) và secret/PII scan artifact graph (scripts/check-graph-secrets.mjs + 18 test đột biến + nối vào ci-gates.yml). Sửa remaining của 3 mục làm dở thay vì xoá — bỏ nhầm một mục chưa xong là làm sổ nói dối. 07/08/2026 phiên chiều: bỏ 32 mục đã làm xong, mỗi mục có commit hoặc file làm bằng chứng. Còn 122. Sổ này lạc hậu thì chính nó thành thứ nó sinh ra để ngăn — cập nhật sau MỖI lô, không gom lại cuối ngày. ĐÃ TRẢ LẠI 3 mục bị mẫu khớp xoá nhầm (RealtimeProviders.tsx, docs/incidents/, bản .md của docs/generated) — chúng chưa làm hoặc mới một phần, và bỏ nhầm một mục chưa làm là làm sổ nói dối theo hướng lạc quan."
+  "$capNhat": "08/08/2026 lô 2: đóng 2 mục — (a) 7 alias gate còn thiếu (gate:reconcile-money-v2 + 6 script check-* mồ côi; đã quét lại: KHÔNG còn script gate nào không có alias) và mục Contract §5 phân biệt reconcile-money v1 (APPROVED=cash, 3 nguồn, bắt lệch QUYỀN) với v2 (posting-aware, bắt lệch HẠCH TOÁN) kèm điều kiện cutover; (b) 2 dòng Edge Function deploy vào bảng gate Contract §5 kèm lý do — deploy edge KHÔNG đi qua lane nào, đích deploy đến từ supabase/.temp không commit. 08/08/2026: đóng 2 mục có bằng chứng kiểm được — refresh graph UA (commit a58460af: 3042/3042 file, gate:graph-freshness FRESH, toolVersionSource measured) và secret/PII scan artifact graph (scripts/check-graph-secrets.mjs + 18 test đột biến + nối vào ci-gates.yml). Sửa remaining của 3 mục làm dở thay vì xoá — bỏ nhầm một mục chưa xong là làm sổ nói dối. 07/08/2026 phiên chiều: bỏ 32 mục đã làm xong, mỗi mục có commit hoặc file làm bằng chứng. Còn 122. Sổ này lạc hậu thì chính nó thành thứ nó sinh ra để ngăn — cập nhật sau MỖI lô, không gom lại cuối ngày. ĐÃ TRẢ LẠI 3 mục bị mẫu khớp xoá nhầm (RealtimeProviders.tsx, docs/incidents/, bản .md của docs/generated) — chúng chưa làm hoặc mới một phần, và bỏ nhầm một mục chưa làm là làm sổ nói dối theo hướng lạc quan."
 }

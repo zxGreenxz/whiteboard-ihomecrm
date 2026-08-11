@@ -260,6 +260,23 @@ tắt trong một tuần, và khi ấy thay đổi schema thật cũng không ai
 | Đụng tiền | `node scripts/reconcile-money.mjs [YYYY-MM]` + idempotency + concurrency |
 | Bảng mới có `organization_id` | policy `_hide_sandbox_admin` (mục 2) |
 | Đổi schema | `npm run gen:types` (mục 6) |
+| **Deploy Edge Function** | Preflight project ref + org PHẢI khớp đích định deploy; cây làm việc phải SẠCH |
+| **Deploy Edge Function** | Ghi `reviewed SHA` + digest bundle vào evidence store trước khi deploy |
+
+**Vì sao deploy Edge Function cần hai dòng riêng.** Migration đi qua lane forward-only nên có sổ
+sách, biên nhận và cửa backup. Edge Function thì **không**: `supabase functions deploy` đẩy thẳng
+thư mục trên đĩa lên project đang trỏ tới, không hỏi gì.
+
+Hai hệ quả cụ thể, không phải giả định:
+
+1. **Đích deploy đến từ trạng thái CLI, không từ repo.** `supabase link` gắn project ref vào
+   `supabase/.temp/`, một thư mục không commit. Ai link nhầm sang project khác thì deploy trót lọt
+   và im lặng — mã của tổ chức này chạy trên database của tổ chức kia. Preflight phải đọc ref+org
+   thật và so với đích định deploy TRƯỚC khi đẩy.
+2. **Không có gì buộc thứ deploy phải là thứ đã review.** Deploy từ cây làm việc bẩn nghĩa là bản
+   đang chạy production không tương ứng commit nào — không diff được, không rollback theo SHA được.
+   Nên: cây sạch, và evidence store ghi lại SHA đã review cùng digest của bundle đã đẩy, để sau này
+   trả lời được câu "bản đang chạy là bản nào".
 
 **GOTCHA `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true`** → view chạy dưới quyền owner,
 lộ dữ liệu tenant khác. Chạy `check-view-invoker.mjs` sau MỌI migration đụng view.
@@ -273,6 +290,25 @@ không ai thấy (`profit_close_state_v2` hỏng 10 ngày, kéo sập cả tab "
 
 **GOTCHA cap-1000:** `reconcile-money.mjs` so SUM SQL thật với tổng 1000 dòng đầu — chạy ở mọi thay
 đổi đụng số tiền.
+
+### `reconcile-money` v1 và v2 — dùng cái nào, khi nào
+
+Hai bản **chạy song song có chủ ý**, không phải một bản cũ bị bỏ quên. Chúng đối chiếu hai mô hình
+tiền KHÁC NHAU, nên xanh ở bản này không nói gì về bản kia.
+
+| | `gate:reconcile-money` (v1) | `gate:reconcile-money-v2` |
+|---|---|---|
+| Mô hình | `APPROVED = cash` — lọc `approval_status` | **Posting-aware**: `initial_amount + SUM(signed_amount)` trên POSTING/REVERSAL, **KHÔNG** lọc `approval_status` |
+| Chỉ tiêu | Tổng THU đã duyệt theo tháng `voucher_date` | Số dư từng sổ quỹ (luỹ kế, không theo kỳ) + guard cap-1000 trên posting lines |
+| Nguồn đối chiếu | 3 nguồn: SQL thật · RLS+JWT+RPC · FE phân trang | `accounts_with_balance` (legacy) vs `accounts_with_balance_v2`, chỉ sổ THỰC (`is_virtual = false`) |
+| Bắt được gì mà bản kia không bắt | Lệch **quyền**: A≠B ⇒ RLS/RPC scope sai | Lệch **hạch toán**: legacy≠v2 ⇒ posting lines không dựng lại đúng số dư |
+
+**Chạy cái nào:** đụng tiền thì chạy **cả hai**. v1 canh đường đọc cũ mà UI vẫn dùng; v2 canh nguồn
+số dư mới của Finance V2. Bỏ v1 quá sớm là mất phép kiểm RLS duy nhất đi qua JWT thật.
+
+**Cutover:** chỉ bỏ v1 khi mọi đường đọc số dư trong UI đã chuyển sang `*_v2` và v2 chạy xanh liên
+tục qua một kỳ chốt sổ đầy đủ. Chưa đạt điều kiện đó thì **giữ cả hai** — Finance V2 hiện vẫn đang
+dual-run (roadmap §4c: "thêm v2, KHÔNG sửa bản cũ").
 
 ---
 
