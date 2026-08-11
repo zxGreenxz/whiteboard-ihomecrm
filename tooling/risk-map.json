@@ -6,7 +6,11 @@
       "label": "Tiền",
       "why": "Sai ở đây là sai sổ sách thật của công ty đang vận hành, và thường chỉ lộ ra khi đối chiếu cuối tháng.",
       "crossReview": true,
-      "gates": ["npm run gate:reconcile-money", "idempotency", "concurrency"],
+      "gates": [
+        "npm run gate:reconcile-money",
+        "idempotency",
+        "concurrency"
+      ],
       "paths": [
         "src/hooks/income-expenses/**",
         "src/hooks/useInvoices.ts",
@@ -34,7 +38,11 @@
       "label": "Phân quyền / RLS",
       "why": "RLS hỏng thì im lặng: truy vấn trả tập rỗng hoặc trả thừa dữ liệu tenant khác, không ném lỗi. Harness chạy bằng superuser sẽ không thấy gì.",
       "crossReview": true,
-      "gates": ["harness role thật", "cross-tenant", "npm run gate:sandbox-leak"],
+      "gates": [
+        "harness role thật",
+        "cross-tenant",
+        "npm run gate:sandbox-leak"
+      ],
       "paths": [
         "src/lib/permissions.ts",
         "src/lib/permissionPages.ts",
@@ -55,13 +63,20 @@
         "npm run catalog:check",
         "npm run gen:types && npm run types:normalize (nếu đổi schema)"
       ],
-      "paths": ["supabase/migrations/**", "supabase/functions/**"]
+      "paths": [
+        "supabase/migrations/**",
+        "supabase/functions/**"
+      ]
     },
     "infrastructure": {
       "label": "Hạ tầng / vận hành",
       "why": "Chạm vào máy thật, mạng thật, và các thao tác không idempotent (reboot router, xoay secret).",
       "crossReview": true,
-      "gates": ["verifier của subsystem", "dry-run/preflight", "diễn tập rollback"],
+      "gates": [
+        "verifier của subsystem",
+        "dry-run/preflight",
+        "diễn tập rollback"
+      ],
       "paths": [
         "infra/**",
         "services/**",
@@ -75,7 +90,9 @@
       "label": "Hợp đồng agent",
       "why": "Sửa sai ở đây làm MỌI phiên agent sau đó làm sai theo hướng dẫn chính thức — lỗi nhân bản chứ không đứng yên.",
       "crossReview": false,
-      "gates": ["npm run gate:agent-contract"],
+      "gates": [
+        "npm run gate:agent-contract"
+      ],
       "paths": [
         "CLAUDE.md",
         "AGENTS.md",
@@ -86,11 +103,17 @@
     },
     "product-surface": {
       "label": "Bề mặt sản phẩm",
-      "why": "Route, nav, launcher và permission page phải khớp nhau; lịch sử đã có ca route được gác nhưng tile và sidebar bị bỏ sót.",
+      "why": "Route, nav, launcher và permission page phải khớp nhau; lịch sử đã có ca route được gác nhưng tile và sidebar bị bỏ sót. — CẬP NHẬT 11/08/2026: tier này trỏ `src/App.tsx` vì đó từng là nơi khai route. App.tsx nay có 0 dòng `path=` (route đã dời sang src/app/routes/**, 11 file theo domain), nên tier đang canh một chỗ trống: sửa route KHÔNG rơi vào tier nào. Thêm src/app/routes/** và src/app/capabilities/**. Giữ App.tsx trong danh sách vì nó vẫn là chỗ dựng cây provider.",
       "crossReview": false,
-      "gates": ["npm run typecheck:baseline", "test điều hướng", "E2E theo vai trò"],
+      "gates": [
+        "npm run typecheck:baseline",
+        "test điều hướng",
+        "E2E theo vai trò"
+      ],
       "paths": [
         "src/App.tsx",
+        "src/app/capabilities/**",
+        "src/app/routes/**",
         "src/components/layout/Sidebar.tsx",
         "src/pages/home/launcherTiles.ts"
       ]
@@ -99,15 +122,26 @@
       "label": "AI Copilot",
       "why": "Copilot trả lời người dùng thật bằng giọng của hệ thống; tài liệu sai hoặc rò rỉ tài liệu nhạy cảm đều là sự cố hướng ra ngoài.",
       "crossReview": false,
-      "gates": ["npm run gate:copilot-docs"],
-      "paths": ["src/copilot/**", "docs/he-thong/**"]
+      "gates": [
+        "npm run gate:copilot-docs"
+      ],
+      "paths": [
+        "src/copilot/**",
+        "docs/he-thong/**"
+      ]
     },
     "docs": {
       "label": "Tài liệu",
       "why": "Rủi ro thấp, nhưng số đếm chép tay và trang quá hạn đã từng dẫn người đọc đi sai.",
       "crossReview": false,
-      "gates": ["npm run docs:check"],
-      "paths": ["docs/**", "README.md", "*.md"]
+      "gates": [
+        "npm run docs:check"
+      ],
+      "paths": [
+        "docs/**",
+        "README.md",
+        "*.md"
+      ]
     }
   },
   "notes": [

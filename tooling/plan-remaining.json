@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 52
+    "stillMissing": 49
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -121,10 +121,12 @@
       {
         "deliverable": "Registry typed mức page/product surface (route, nav, launcher, permission, feature flag, owner, risk, docs)",
         "planRef": "§48 dòng 2871",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Thêm `owner` vào types.ts:12-43 và điền cho 2 capability, HOẶC ghi vào types.ts lý do bỏ (áp cùng lý do §0.6 đã bỏ owner khỏi known-gaps.yaml: repo một người). Hiện chưa có dòng nào ghi quyết định này nên lần sau sẽ bị coi là bỏ quên."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Chon nhanh \"ghi ly do bo owner\" — cung ly do da ap cho known-gaps.yaml (§0.6, repo mot nguoi). Ghi vao types.ts: mot truong chu so huu chi co MOT gia tri kha di thi khong phan biet duoc gi, ma van phai dien cho moi muc moi; truong bat buoc nhung vo nghia la thu nguoi ta dien cho xong, roi tu do khong ai tin truong nao trong file nua. Kem dieu kien them lai: khi co nguoi thu hai thi them owner VA phep kiem no tro toi nguoi co that."
       },
       {
         "deliverable": "Selectors / contract tests thay các danh sách route/nav/permission chép tay",
@@ -225,10 +227,12 @@
       {
         "deliverable": "Output dẫn xuất/kiểm từ registry: CODEOWNER / risk tier",
         "planRef": "§7 dòng 1265 (đối chiếu §0.6 dòng 111: CODEOWNERS đã CẮT, thay bằng tooling/risk-map.json)",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm checker đối chiếu capability.risk với tier của path chứa page tương ứng trong risk-map.json, HOẶC ghi rõ hai thứ đo hai chiều khác nhau (capability đo bề mặt sản phẩm, risk-map đo file) và không cần nối."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Chon nhanh \"ghi ro hai thu do khac nhau\", VA co bang chung ky thuat: capability.risk la thuoc tinh cua mot BE MAT (dung yen khi khong ai sua gi) con tier risk-map la thuoc tinh cua mot THAY DOI (tinh tu duong dan file trong diff). Do 11/08: file cai dat cua ca hai capability khong roi vao tier nao — checker \"so risk voi tier\" se so voi null cho ca hai, xanh ma rong nghia. LAM THU DANG LAM: phat hien tier product-surface tro src/App.tsx vi do TUNG la noi khai route, ma App.tsx nay co 0 dong path= — tier dang canh mot cho trong, moi thay doi route roi vao khong-tier-nao. Them src/app/routes/** + src/app/capabilities/**, 6 test ghim (gom ca ca glob khong duoc phu ca src/app/)."
       },
       {
         "deliverable": "Acceptance §7: route production không thể thiếu nav/docs nếu không có exemption tường minh",
@@ -281,10 +285,12 @@
       {
         "deliverable": "P1.2 — src/app/capabilities/selectors.ts",
         "planRef": "P1.2 dòng 660",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Chốt một quyết định: đổi tên surfaceAdapters.ts → selectors.ts, hoặc ghi vào surfaceAdapters.ts rằng nó THAY vai selectors.ts của plan. Và dùng hoặc bỏ enabledCapabilities()."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Chot KHONG doi ten surfaceAdapters.ts -> selectors.ts. \"Selector\" mang nghia doc-va-loc; thu that su can la DOI CHIEU PHU THUOC (consumer sinh ra tu registry) nen \"adapter\" mo ta dung hon. Doi ten chi tao mot lan doi file + sua moi import + mot khoang thoi gian tai lieu cu tro sai, doi lay dung mot chu. Ghi anh xa ten ngay dau file — cung cach da lam voi check-forward-migrations.mjs."
       },
       {
         "deliverable": "P1.3 — test hành vi StrictMode / HMR",

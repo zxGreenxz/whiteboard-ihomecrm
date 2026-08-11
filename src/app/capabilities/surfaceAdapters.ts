@@ -4,6 +4,19 @@ import { capabilityById } from "./registry";
 /**
  * Cầu nối registry → bề mặt thật (sidebar, launcher).
  *
+ * FILE NÀY THAY VAI `selectors.ts` CỦA PLAN (P1.2) — không đổi tên, và đây là
+ * quyết định đã chốt ngày 11/08/2026.
+ *
+ *   Plan gọi lớp này là `src/app/capabilities/selectors.ts`. Tên "selector" mang
+ *   nghĩa đọc-và-lọc; thứ thật sự cần ở đây là ĐỔI CHIỀU PHỤ THUỘC — consumer
+ *   sinh ra từ registry thay vì khai lại rồi chờ test bắt lỗi. "Adapter" mô tả
+ *   đúng việc đó hơn.
+ *
+ *   Đổi tên bây giờ chỉ tạo một lần dời file, một lần sửa mọi import, và một
+ *   khoảng thời gian mà tài liệu cũ trỏ sai — đổi lấy đúng một chữ. Ghi lại ánh
+ *   xạ tên ở đây rẻ hơn và không mất thông tin nào, giống cách đã làm với
+ *   `check-forward-migrations.mjs` (plan gọi một tên, repo có bốn script tên khác).
+ *
  * LÁT NÀY LÀM GÌ
  *   Đợt 4 lát 1–2 dựng registry làm nguồn ĐỐI CHIẾU: contract test đọc nó rồi so
  *   với bốn nơi khai tay. Lát 3 (đây) đổi chiều phụ thuộc — consumer SINH RA từ

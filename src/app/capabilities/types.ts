@@ -58,5 +58,35 @@ export interface CapabilityDefinition {
    */
   e2e: { spec: string | null; mienTruVi?: string };
 
+  /**
+   * Mức rủi ro của BỀ MẶT SẢN PHẨM này.
+   *
+   * KHÔNG PHẢI tier của `tooling/risk-map.json`, và đừng viết checker so hai cái.
+   * Hai thứ trả lời hai câu hỏi khác nhau:
+   *   - `risk` ở đây: "trang này hỏng thì hậu quả tới đâu" — thuộc tính của một
+   *     bề mặt, đứng yên khi không ai sửa gì.
+   *   - tier risk-map: "vừa sửa file này thì phải chạy gate nào" — thuộc tính của
+   *     một THAY ĐỔI, tính từ đường dẫn file trong diff.
+   *
+   * Đo 11/08/2026 cho thấy chúng còn không so được về mặt kỹ thuật: file cài đặt
+   * của cả hai capability (`src/components/network-center/**`,
+   * `src/components/openclaw-zalo/**`) không rơi vào tier nào của risk-map. Một
+   * checker "so risk với tier" sẽ so với `null` cho cả hai — xanh mà rỗng nghĩa.
+   *
+   * Thứ ĐÁNG làm và đã làm: bảo đảm nơi khai route/capability nằm TRONG một tier,
+   * để sửa chúng còn kích hoạt đúng bộ gate (xem risk-map, tier `product-surface`).
+   */
   risk: "normal" | "financial" | "security" | "infrastructure";
+
+  /*
+   * KHÔNG có trường `owner`, và đây là quyết định chứ không phải thiếu sót.
+   *
+   * Cùng lý do đã áp cho `tooling/known-gaps.yaml` (§0.6): repo một người. Một
+   * trường chủ sở hữu chỉ có một giá trị khả dĩ thì không phân biệt được gì, mà
+   * vẫn phải điền cho mọi mục mới — và trường bắt buộc nhưng vô nghĩa là thứ
+   * người ta điền cho xong, rồi từ đó không ai tin trường nào trong file này nữa.
+   *
+   * Khi có người thứ hai: thêm `owner` VÀ một phép kiểm rằng mỗi capability trỏ
+   * tới một người có thật, chứ đừng thêm trường trước rồi hy vọng nó được giữ đúng.
+   */
 }
