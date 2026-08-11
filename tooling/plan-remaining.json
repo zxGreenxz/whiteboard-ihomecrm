@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 72
+    "stillMissing": 71
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -469,10 +469,12 @@
       {
         "deliverable": "scripts/generate-repository-inventory.mjs",
         "planRef": "§51 dòng 3028",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Cần cho §0.2/C10 (86 file test dùng readFileSync đọc source) — chưa có công cụ liệt kê chúng."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "scripts/generate-repository-inventory.mjs + 14 test + alias inventory:repo + artifact docs/generated/repository-inventory.json. Do that: 465 file test, 149 doc file bang fs (396 loi goi) -> 32 file doc MA NGUON (danh sach §0.2/C10 can), 38 sql, 23 manifest, 8 tai lieu, 2 powershell, 221 loi goi khong phan loai duoc (bao cao ro, khong lam tron xuong). Con so 86 trong plan la mot lan dem tay khong ai lap lai duoc."
       },
       {
         "deliverable": "scripts/check-forward-migrations.mjs",
