@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createElement, Fragment, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -164,7 +164,27 @@ describe("business performance navigation", () => {
     expect(route!.guards).toEqual(["ProtectedRoute"]);
     // ProfitDistributionRouteGuard từng tồn tại và đã bị gỡ; nó gắn quyền xem lợi
     // nhuận vào trạng thái TỔ CHỨC, làm route cũ phụ thuộc thứ nó không nên biết.
-    expect(app).not.toContain("ProfitDistributionRouteGuard");
+    //
+    // SOI ĐÚNG FILE — sửa 08/08/2026. Bản trước khẳng định trên `app`
+    // (`src/App.tsx`), nhưng cây route đã dời sang `src/app/routes/` ở P1.2 nên
+    // App.tsx chỉ còn 71 dòng vỏ. Khẳng định vẫn XANH, nhưng xanh vì soi nhầm
+    // file: ai đó thêm lại guard vào src/app/routes/* thì test này không thấy.
+    // Một khẳng định rỗng nghĩa tệ hơn không có — nó chiếm chỗ và trông như đang canh.
+    const nguonRoute = [
+      "src/App.tsx",
+      "src/app/lazyPages.ts",
+      ...readdirSync(resolve(process.cwd(), "src/app/routes"))
+        .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
+        .map((f) => `src/app/routes/${f}`),
+    ];
+    // Chống-xanh-rỗng: gom được quá ít file nghĩa là đường dẫn sai, và khi đó
+    // "không tìm thấy chuỗi" không chứng minh gì.
+    expect(nguonRoute.length).toBeGreaterThanOrEqual(8);
+    for (const f of nguonRoute) {
+      expect(readSource(f), `${f} không được nhắc ProfitDistributionRouteGuard`).not.toContain(
+        "ProfitDistributionRouteGuard",
+      );
+    }
   });
 
   it("does not embed business performance into the profit hub", () => {
