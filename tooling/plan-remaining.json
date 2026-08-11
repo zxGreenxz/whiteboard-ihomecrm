@@ -80,7 +80,9 @@
         "status": "MOT_PHAN",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Thêm bước fixture partition vào diễn tập (gọi ensure_raw_partitions rồi khẳng định partition dựng đúng) và một gate lifecycle/retention cho bảng phân mảnh, tách khỏi baseline."
+        "remaining": "Con lai: buoc fixture partition trong DIEN TAP restore (goi ensure_raw_partitions roi khang dinh partition dung dung). Cho cung luc voi mucchờ \"restore baseline vao Supabase project THAT\" — khong dien tap duoc thi khong them buoc vao dien tap duoc.",
+        "doneAt": null,
+        "evidence": "Nua GATE lifecycle/retention cho bang phan manh DA XONG: scripts/check-partition-runway.mjs + 9 test + alias, noi vao luot chay dinh ky (cung cho voi han known-gaps, vi ca hai la control chay theo THOI GIAN chu khong theo commit). Do that tren production (chi doc): 2 bang phan manh (network_device_samples, network_interface_samples), 46 partition moi bang, phu 28/07 -> 11/09 = giu lai 14 ngay + con 31 ngay phia truoc. San 7 ngay, co ly do: ham tao partition chan khoang qua 63 ngay nen tran la 63; san 7 cho mot tuan de phan ung, va dat san sat muc hien tai (31) se do ngay khi ai do tao it hon thuong le du chua co rui ro. Bat duoc lop hong KHONG DAN: hom nay tot, ngay mai chet sach, va thoi diem chet la mot ngay trong tuong lai khong ai co lich de nho. Test ghim ca ca so AM (tre 5 ngay phai ra -5, khong kep ve 0) va ca ten khong mang ngay => null chu khong doan bua (index/pkey cua bang phan manh cung la con cua bang cha nhung ten bi cat ngan)."
       },
       {
         "deliverable": "Đợt 3 — Evidence store ghi statement bytes, normalized digest, actor, reviewed SHA và catalog fingerprint trước/sau",

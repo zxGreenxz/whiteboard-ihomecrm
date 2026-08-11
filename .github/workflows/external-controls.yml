@@ -109,3 +109,15 @@ jobs:
       - name: Hạn của known-gaps (cưỡng chế, chỉ ở lượt chạy định kỳ)
         if: always()
         run: node scripts/check-known-gaps.mjs --strict
+
+      # Dự phòng partition cũng là loại control chạy theo THỜI GIAN, không theo
+      # commit: partition mới nhất lùi dần về hôm nay mà không ai sửa gì cả. Khi
+      # nó tụt lại phía sau, MỌI insert telemetry lỗi cùng lúc — hỏng không dần,
+      # nên phải bắt trước bằng một lượt chạy hằng ngày.
+      #
+      # Thiếu PAT ⇒ exit 3, không phải "còn đủ partition".
+      - name: Dự phòng partition telemetry
+        if: always()
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-partition-runway.mjs
