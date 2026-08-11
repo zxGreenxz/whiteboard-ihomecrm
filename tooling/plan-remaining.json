@@ -414,7 +414,9 @@
         "status": "MOT_PHAN",
         "size": "L",
         "touchesOpenClaw": false,
-        "remaining": "Quét lần lượt 5 nhóm; rẻ nhất là RoomDetailDialog.tsx (18/67 nằm trong MỘT file) rồi tới 3 trang detail (15) và test fixtures (15)."
+        "remaining": "Con 49 van tay tren 20 file. Nhom lon nhat con lai: useIncomeExpenses.property.test.ts (6), BuildingDetailPage/CustomerDetailPage/RoomDetailPage (5 moi cai). Quet tiep theo cung cach.",
+        "doneAt": null,
+        "evidence": "Nhom RoomDetailDialog.tsx: 18 -> 0, ts-baseline 67 -> 49. PHAT HIEN: khong phai 18 loi doc lap ma MOT ten cot sai do ra 18. supabase-js bien ca kieu dong thanh SelectQueryError khi .select() tro cot khong ton tai, roi moi truy cap thuoc tinh deu bao loi. Ba cot sai that: contracts.rent_amount (cot that: rent_price), invoices.title (khong co; nhan hoa don la invoice_number), rooms.area_sqm (cot that: area). Nghia la HAI QUERY NAY HONG O RUNTIME chu khong chi o kieu: PostgREST tra loi cho ca select, data=null, va hop thoai chi tiet phong hien \"khong co hop dong\" ngay ca khi co — loi nguoi dung thay duoc, im lang. Ha baseline BANG TAY chu khong dung --write: --write sinh lai tu tap loi hien tai, ma hien tai con mot loi OpenClaw cua phien khac; --write se nuot no vao baseline, tuc hop thuc hoa loi moi cua nguoi khac thanh no da chap nhan. Sau khi ha: gate van bao dung 1 loi OpenClaw nhu truoc lat nay, khong hon."
       },
       {
         "deliverable": "Mục 33 Đợt 3 – strictNullChecks: true cho toàn app",

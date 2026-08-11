@@ -58,7 +58,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
           contract_number,
           start_date,
           end_date,
-          rent_amount,
+          rent_price,
           status,
           tenant:tenants(
             id,
@@ -84,7 +84,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
 
       const { data } = await supabase
         .from("invoices")
-        .select("id, title, total_amount, paid_amount, due_date, status")
+        .select("id, invoice_number, total_amount, paid_amount, due_date, status")
         .eq("contract_id", activeContract.id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -152,7 +152,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
                   <Maximize2 className="w-5 h-5 text-muted-foreground" />
                   <div>
                     <p className="text-xs text-muted-foreground">Diện tích</p>
-                    <p className="font-medium">{room.area_sqm}m²</p>
+                    <p className="font-medium">{room.area}m²</p>
                   </div>
                 </div>
 
@@ -203,7 +203,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
 
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Giá thuê:</span>
-                      <span className="font-medium">{formatCurrency(activeContract.rent_amount)}</span>
+                      <span className="font-medium">{formatCurrency(activeContract.rent_price)}</span>
                     </div>
                   </div>
 
@@ -230,7 +230,7 @@ export function RoomDetailDialog({ open, onOpenChange, roomId }: RoomDetailDialo
 
                     <div className="bg-muted/50 p-4 rounded-lg space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm">{latestInvoice.title}</span>
+                        <span className="text-sm">{latestInvoice.invoice_number}</span>
                         <Badge variant={latestInvoice.status === "PAID" ? "default" : "destructive"}>
                           {latestInvoice.status}
                         </Badge>
