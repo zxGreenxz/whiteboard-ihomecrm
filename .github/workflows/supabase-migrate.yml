@@ -4,9 +4,21 @@ name: Supabase Migration Validation
 #
 # The accounting migration ledger (supabase_migrations.schema_migrations) is managed
 # OUT-OF-BAND via the Management-API rollout scripts (scripts/apply-accounting-rollout.mjs),
-# applied forward-only with an operator PAT. The live ledger sits at 20260716170000 while
-# the 2026-07-20/21 bundle was applied inline. An automatic Supabase migration apply here
-# would REPLAY that bundle against production and corrupt it.
+# applied forward-only with an operator PAT. An automatic Supabase migration apply here
+# would REPLAY already-applied work against production and corrupt it.
+#
+# DO NOT hardcode the ledger position in this comment. It used to say the ledger sat at
+# 20260716170000; by 2026-08-08 the real value was 20260727095000 — eleven days stale, and
+# nothing made it wrong out loud. A number copied into a comment is a number nobody updates.
+# Read it from supabase/migration-provenance.json (`ledgerMaxVersion`, `ledgerRows`), which
+# scripts/generate-migration-provenance.mjs regenerates from the live ledger:
+#
+#   node -e "const p=require('./supabase/migration-provenance.json');console.log(p.ledgerMaxVersion,p.ledgerRows)"
+#   npm run migrations:list-forward
+#
+# And note what that number does NOT tell you: migration-policy.json#knownLimits says
+# production has changes newer than the ledger max, because this repo applies via the
+# Management API without always writing a ledger row. Never use max(ledger) as schema state.
 #
 # Therefore: on push we only run read-only static validation. Real apply is always manual,
 # forward-only, via the PAT rollout scripts.
