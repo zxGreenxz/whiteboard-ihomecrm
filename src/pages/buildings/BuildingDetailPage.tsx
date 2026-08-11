@@ -362,7 +362,7 @@ const BuildingDetailPage = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Số tầng:</span>
-                  <span className="font-medium">{building.floors || '-'}</span>
+                  <span className="font-medium">{building.total_floors || '-'}</span>
                 </div>
               </CardContent>
             </Card>
@@ -474,7 +474,7 @@ const BuildingDetailPage = () => {
                         <TableCell className="font-medium">{room.name}</TableCell>
                         <TableCell>{room.floor || '-'}</TableCell>
                         <TableCell>{room.area ? `${room.area} m²` : '-'}</TableCell>
-                        <TableCell>{room.base_rent ? formatCurrency(room.base_rent) : '-'}</TableCell>
+                        <TableCell>{room.rent_price ? formatCurrency(room.rent_price) : '-'}</TableCell>
                         <TableCell>{getRoomStatusBadge(room.status)}</TableCell>
                         <TableCell className="text-right">
                           <Button

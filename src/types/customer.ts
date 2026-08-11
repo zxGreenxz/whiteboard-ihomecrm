@@ -41,6 +41,18 @@ export interface Customer {
   workplace: string | null;
   contact_person: string | null;
   contact_person_phone: string | null;
+  /**
+   * Liên hệ khẩn cấp — CÓ trong database (bảng `customers`), thiếu ở kiểu viết tay
+   * này cho tới 11/08/2026.
+   *
+   * Hệ quả đã đo: CustomerDetailPage đọc ba trường này để hiển thị mục "Liên hệ
+   * khẩn cấp", nhưng TypeScript báo lỗi và ts-baseline đã nuốt cả 5 lỗi thành nợ
+   * đã biết. Dữ liệu vẫn về từ server (select không liệt kê cột nên lấy tất), nên
+   * màn hình VẪN hiện đúng — chỉ là không ai kiểm được kiểu của nó nữa.
+   */
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relationship: string | null;
   advisor: string | null;
   advisor_phone: string | null;
   fingerprint_code: string | null;

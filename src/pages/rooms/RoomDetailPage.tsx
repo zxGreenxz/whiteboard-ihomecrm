@@ -404,7 +404,7 @@ const RoomDetailPage = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Sức chứa:</span>
-                  <span className="font-medium">{room.capacity || '-'} người</span>
+                  <span className="font-medium">{room.max_occupants || '-'} người</span>
                 </div>
               </CardContent>
             </Card>
@@ -416,7 +416,9 @@ const RoomDetailPage = () => {
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Giá thuê cơ bản:</span>
-                  <span className="font-medium">{room.base_rent ? formatCurrency(room.base_rent) : formatCurrency(room.rent_price)}</span>
+                  {/* `base_rent` không tồn tại trên bảng `rooms` — nhánh dự phòng
+                      dùng `rent_price` mới là thứ luôn chạy. Bỏ điều kiện chết. */}
+                  <span className="font-medium">{formatCurrency(room.rent_price)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Giá thuê hiện tại:</span>
