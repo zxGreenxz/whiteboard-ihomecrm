@@ -39,6 +39,7 @@
     "gate:workflow-paths": "node scripts/check-workflow-paths.mjs",
     "gate:raw-rpc-callers": "node scripts/check-raw-rpc-callers.mjs",
     "gate:realtime-query-keys": "node scripts/check-realtime-query-keys.mjs",
+    "gate:evidence-store": "node scripts/check-evidence-store.mjs",
     "migrations:list-forward": "node scripts/list-forward-migrations.mjs",
     "gate:migration-provenance": "node scripts/check-migration-provenance.mjs",
     "gate:rpc-in-view": "node scripts/check-rpc-in-view-ratchet.mjs",

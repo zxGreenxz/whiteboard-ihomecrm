@@ -49,6 +49,40 @@ const PROVENANCE = join(repoRoot, "supabase", "migration-provenance.json");
 const EVIDENCE_DIR = join(repoRoot, "docs", "generated", "schema-change-evidence");
 
 /**
+ * Digest sau khi CHUẨN HOÁ: bỏ comment, gộp khoảng trắng, thống nhất xuống dòng.
+ *
+ * Vì sao cần bên cạnh `sha256`: sha256 đổi khi file đổi bất kỳ byte nào — thêm
+ * một dòng comment, hay đơn giản là CRLF↔LF khi ai đó mở file trên Windows.
+ * Trên một lịch sử BẤT BIẾN, mọi thay đổi byte đều là báo động; mà báo động cho
+ * việc đổi định dạng thì người ta sẽ học cách bỏ qua báo động.
+ *
+ * Chuẩn hoá KHÔNG thay thế sha256 — nó là phép đo thứ hai để phân biệt "định
+ * dạng lại" với "đổi nội dung". Cả hai đều được ghi.
+ *
+ * Cố ý KHÔNG bỏ chuỗi nháy: `'-- không phải comment'` bên trong một chuỗi SQL là
+ * dữ liệu thật. Regex bỏ comment ở đây sẽ cắt nhầm những chuỗi như vậy, nên nó
+ * chỉ dùng để SO SÁNH hai bản của cùng một file, không dùng để phân tích SQL.
+ */
+export function chuanHoaSql(sql) {
+  return sql
+    .replace(/\r\n/g, "\n")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function digestChuanHoa(sql) {
+  return createHash("sha256").update(chuanHoaSql(sql)).digest("hex");
+}
+
+/** Blob OID của file — gắn với NỘI DUNG, không trôi theo commit khác trong repo. */
+export function blobOid(duongDan) {
+  const r = spawnSync("git", ["hash-object", duongDan], { cwd: repoRoot, encoding: "utf8" });
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+/**
  * Bản dump phải có bao nhiêu bảng-có-dữ-liệu mới đủ tư cách làm đường lùi.
  *
  * Đo 07/08/2026: bản dump đầy đủ có 565 mục TABLE DATA. Sàn 450 để chừa chỗ cho
@@ -495,6 +529,23 @@ async function main(argv) {
       authorization: giayPhep,
       actor,
       repoCommit,
+      // BẢN MÃ ĐÃ REVIEW, không phải bản mã lúc apply.
+      //
+      // `repoCommit` là HEAD lúc chạy — nó trôi theo mọi commit khác trong repo.
+      // Blob OID thì gắn với ĐÚNG nội dung file này: nó không đổi khi repo có
+      // commit khác, và nó đổi ngay khi file đổi một byte. Sáu tháng sau, câu
+      // "bản nào đã được xem" chỉ trả lời được bằng con số này.
+      reviewedBlob: blobOid(abs),
+      // Số byte THẬT gửi đi, và digest sau khi chuẩn hoá.
+      //
+      // Hai con số này tách hai câu hỏi hay bị gộp: `sha256` đổi khi file đổi
+      // BẤT KỲ byte nào — kể cả chỉ thêm một dòng comment hay đổi CRLF↔LF.
+      // `normalizedDigest` chỉ đổi khi NỘI DUNG SQL đổi. Khi hai file có
+      // normalizedDigest giống nhau mà sha256 khác nhau, đó là định dạng lại,
+      // không phải thay đổi schema — và trên một lịch sử bất biến thì phân biệt
+      // được hai thứ đó là khác nhau giữa "báo động" và "ghi chú".
+      statementBytes: Buffer.byteLength(sql, "utf8"),
+      normalizedDigest: digestChuanHoa(sql),
       // Bằng chứng migration THẬT SỰ đổi gì. `catalogChanged: false` không phải
       // lỗi — nó là dữ kiện, và nó chính là dấu hiệu của một lần re-apply.
       catalog: {

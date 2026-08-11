@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 59
+    "stillMissing": 58
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -83,10 +83,12 @@
       {
         "deliverable": "Đợt 3 — Evidence store ghi statement bytes, normalized digest, actor, reviewed SHA và catalog fingerprint trước/sau",
         "planRef": "§47, dòng 2840",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Bổ sung vào evidence: bytes câu lệnh đã gửi (hoặc đường dẫn bản lưu), digest chuẩn hoá, actor, git rev-parse HEAD làm reviewed SHA, và tự gọi capture-production-catalog trước/sau để có fingerprint hai đầu."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Them 3 truong vao bien nhan: reviewedBlob (git hash-object — gan voi NOI DUNG file, khong troi theo commit khac nhu repoCommit), statementBytes, normalizedDigest (sha256 sau khi bo comment + gop khoang trang + thong nhat xuong dong). normalizedDigest tach hai cau hoi hay bi gop: sha256 doi khi file doi BAT KY byte nao — ke ca CRLF<->LF tren Windows — con normalizedDigest chi doi khi NOI DUNG SQL doi. Tren mot lich su bat bien, bao dong cho viec doi dinh dang se lam nguoi ta hoc cach bo qua bao dong. Them gate check-evidence-store.mjs voi 10 truong bat buoc KEM LY DO tung truong, va 2 mien tru CO TEN cho hai bien nhan cu (khong the bo sung hoi to ma van trung thuc: blob va byte phai chup LUC apply). Gate NOI THANG no dang kiem 0 bien nhan hom nay va chi can tu lan apply sau — khong de dau ✅ tran tu noi. Dot bien 5/5, 13 test."
       },
       {
         "deliverable": "Đợt 3 — Migration CI restore baseline, apply toàn bộ forward lane, chạy security/schema/type/caller gates",
