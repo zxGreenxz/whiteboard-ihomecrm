@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 60
+    "stillMissing": 59
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -365,10 +365,12 @@
       {
         "deliverable": "P1.8 – Query key được export từ chính domain, không chép string nhiều nơi",
         "planRef": "P1.8, dòng 925",
-        "status": "MOT_PHAN",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Export query key từ hook domain (invoices/contracts/finance) theo khuôn network-center/queryKeys.ts, để descriptor tham chiếu và bỏ chuỗi chép tay trong hub."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Khong tao them mot lop queryKeys.ts cho 3 domain — do la thay chuoi chep tay bang mot nguon chep tay khac, va van khong ai kiem hai ben co khop khong. Thay vao do dung GATE doi chieu: scripts/check-realtime-query-keys.mjs bat moi key ma descriptor invalidate nhung KHONG query nao dung. No bat ngay 3 ca that: contract-terminations, contract-transfers, room-residence-segments — ba key chi ton tai trong chinh descriptor. Nghia la viec noi 2 bang vong doi vao hub moi xong MOT NUA (bang da vao publication + hub, dau ra tro vao hu khong). Sua theo query THAT: contract-termination-info, pending-terminations, termination-refund-preview, contract-history, reports. room-residence-segments BO HAN vi get_room_residence_segments_v1 khong co client nao goi. Dot bien 2/2; gate doc CODE khong doc comment (ban dau bat nham chinh chu thich vua viet)."
       },
       {
         "deliverable": "P1.4 – Tạo 4 config strict island: tsconfig.strict-{core,finance,openclaw,network-center}.json",

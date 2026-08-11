@@ -26,12 +26,23 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
   // người thứ hai bấm duyệt trên hồ sơ đã bị bác sẽ ăn lỗi thay vì thấy trước.
   // Lưu ý: ["deposit-dashboard"] đang gắn ở entry `contracts` vì bảng cọc đọc cả
   // hai — nhưng thay đổi CHỈ ở contract_terminations thì trước đây không phát gì.
+  //
+  // ĐÍNH CHÍNH 11/08/2026: key `["contract-terminations"]` ở đây KHÔNG query nào
+  // dùng — nó chỉ tồn tại trong chính file này. invalidateQueries với một prefix
+  // như vậy khớp 0 query rồi trả về: không lỗi, không cảnh báo. Nghĩa là việc nối
+  // bảng này vào hub mới xong một nửa — bảng đã vào publication, đã vào hub, mà
+  // đầu ra trỏ vào hư không. Im lặng chồng im lặng: cái sai không làm gì đỏ, và
+  // cái sửa nó cũng vậy. Gate `check-realtime-query-keys.mjs` sinh ra từ đây.
   {
     table: "contract_terminations",
     keys: [
       ["deposit-dashboard"],
       ["refund-forfeit-summary"],
-      ["contract-terminations"],
+      // Ba key THẬT mà màn thanh lý dùng, thay cho ["contract-terminations"] chết:
+      ["contract-termination-info"], // useContractDetailData
+      ["pending-terminations"], // useContracts — hàng chờ duyệt
+      ["termination-refund-preview"], // useTerminationRefund
+      ["contract-history"], // lịch sử HĐ gộp extensions + transfers + terminations
       ["contracts"],
     ],
     domain: "contracts",
@@ -39,11 +50,20 @@ export const CONTRACT_SYNC_ENTRIES: readonly SyncEntry[] = [
   // contract_transfers: Đợt 2 biến bảng này thành SỔ AUDIT thật (audit ghi trước,
   // không nuốt lỗi) và dựng projection đoạn cư trú đọc từ nó. Chuỗi cư trú đổi mà
   // màn không đổi thì người rà tay đối chiếu số cũ.
+  //
+  // ĐÍNH CHÍNH 11/08/2026, cùng lỗi như trên: `["contract-transfers"]` và
+  // `["room-residence-segments"]` không query nào dùng.
+  //
+  // `room-residence-segments` bị BỎ HẲN chứ không thay thế: projection đó tồn tại
+  // trong database (`get_room_residence_segments_v1`) nhưng KHÔNG có client nào
+  // gọi. Không có query thì không có gì để invalidate — thêm một key khác vào đây
+  // chỉ là đổi một chỗ trỏ hư không lấy một chỗ khác. Khi nào có màn đọc nó thì
+  // thêm key thật của màn đó.
   {
     table: "contract_transfers",
     keys: [
-      ["room-residence-segments"],
-      ["contract-transfers"],
+      ["contract-history"], // useContractHistory đọc thẳng contract_transfers
+      ["reports"], // báo cáo gia hạn/chuyển nhượng: ["reports","renewals-transfers",…]
       ["contracts"],
       ["rooms"],
     ],
