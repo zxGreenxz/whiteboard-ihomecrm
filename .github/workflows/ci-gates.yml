@@ -161,6 +161,10 @@ jobs:
       - name: docs-freshness (Copilot manifest · số đếm tài liệu)
         run: |
           node scripts/check-copilot-docs-manifest.mjs
+          # Whitelist ĐIỀU HƯỚNG của Copilot: route sai ⇒ nó báo "✅ Đã mở trang"
+          # rồi đưa người dùng tới màn trắng; module quyền sai ⇒ nó báo "không có
+          # quyền" cho người ĐANG có quyền. Cả hai đều là chuỗi, tsc không bắt được.
+          node scripts/check-copilot-routes.mjs
           node scripts/check-doc-counts.mjs
           node scripts/check-doc-freshness.mjs
           node scripts/generate-docs-views.mjs --check

@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 35
+    "stillMissing": 34
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -223,10 +223,11 @@
       {
         "deliverable": "Output dẫn xuất/kiểm từ registry: Copilot route whitelist",
         "planRef": "§7 dòng 1261",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "S",
         "touchesOpenClaw": true,
-        "remaining": "MỘT NỬA đã làm: gate kiểm route trong PILOT_ROUTE_ALLOWLIST phải TỒN TẠI (check-capability-surfaces). Phần SINH TỪ registry chưa làm được — registry phủ 2/146 route và không biết /apartments, /invoices, /customers. Chặn bởi việc mở rộng registry, không phải bỏ quên."
+        "remaining": "MỘT NỬA đã làm: gate kiểm route trong PILOT_ROUTE_ALLOWLIST phải TỒN TẠI (check-capability-surfaces). Phần SINH TỪ registry chưa làm được — registry phủ 2/146 route và không biết /apartments, /invoices, /customers. Chặn bởi việc mở rộng registry, không phải bỏ quên.",
+        "evidence": " | Lo 73: XONG. Danh sach trang cua mo_trang truoc day viet BON lan: khoa cua MO_TRANG_ROUTES, z.enum cua inputSchema, cau description gui cho mo hinh, va luat kiem luc chay. Bon ban chep thi moi ban lech mot kieu — z.enum lech thi tool tu choi mot trang co that; description lech thi mo hinh khong bao gio goi toi trang moi them. Da BO ba ban chep (z.enum va description nay sinh tu map) thay vi dung gate canh chung. Con hai thu khong suy ra duoc tu map thi gate: scripts/check-copilot-routes.mjs doi chieu route voi collectAllRoutes() cua check-route-guards (146 route, khong chep tay) va doi chieu module voi ALL_PAGE_FEATURES nap qua vite-node (231 feature). Kiem chat o muc <module>.view chu khong chi \"module co ton tai\", vi tool goi canUse(perms, module, view) — mot module chi khai manage se truot y het va trieu chung giong het. HAI KIEU HONG duoc dat ten trong gate: route sai => Copilot bao \"Da mo trang\" roi dua nguoi dung toi man trang; module sai => bao \"Khong co quyen xem trang\" cho nguoi DANG CO quyen, khien ho di xin cap quyen cho thu ho da co. BAI HOC: ban dau toi doc module quyen bang regex module: literal va ra DUNG 0 module — file do truyen module qua tham so ham. Gate thoat 3 nho san chong-xanh-rong; khong co san thi no da \"xanh\" tren tap rong. 6 dot bien + 2 dot bien tren gate that."
       },
       {
         "deliverable": "Output dẫn xuất/kiểm từ registry: User docs path",

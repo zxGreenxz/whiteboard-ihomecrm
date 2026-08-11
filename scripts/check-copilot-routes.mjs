@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+// Gate: whitelist điều hướng của Copilot phải trỏ tới route CÓ THẬT và module
+// quyền CÓ THẬT.
+//
+// VÌ SAO ĐÂY LÀ BIÊN NGUY HIỂM
+//   `MO_TRANG_ROUTES` là thứ duy nhất quyết định Copilot đưa người dùng đi đâu.
+//   Cả `route` lẫn `module` đều là CHUỖI, và cả hai hỏng theo kiểu khó truy:
+//
+//     - `route` sai ⇒ `navigate()` đưa tới một đường dẫn không tồn tại. Router
+//       trả trang trắng hoặc màn 404, còn Copilot vẫn báo "✅ Đã mở trang …".
+//       Người dùng nhìn thấy lời khẳng định thành công đè lên một màn hình rỗng.
+//
+//     - `module` sai ⇒ `canUse(perms, module, 'view')` không tìm thấy feature nào
+//       nên trả false, và tool ném "Không có quyền xem trang X". Đó là câu báo
+//       lỗi SAI SỰ THẬT: người dùng có quyền, chỉ là tên module gõ nhầm. Họ sẽ đi
+//       xin cấp quyền cho một thứ họ đã có.
+//
+//   Không trình biên dịch nào bắt được hai ca này: cả hai đều là chuỗi hợp lệ.
+//
+// BA BẢN CHÉP ĐÃ ĐƯỢC BỎ, KHÔNG PHẢI ĐƯỢC GATE
+//   Danh sách trang từng viết bốn lần (khoá map · `z.enum` · `description` gửi
+//   cho mô hình · luật lúc chạy). Ba cái sau nay SINH TỪ map, nên gate này không
+//   cần canh chúng — bỏ được một bản chép luôn tốt hơn dựng gate canh bản chép.
+//
+//   node scripts/check-copilot-routes.mjs
+//
+// Dùng lại `collectAllRoutes()` của check-route-guards để không chép tay danh
+// sách route. Thoát 0 · 1 vi phạm · 3 KHÔNG ĐO ĐƯỢC.
+
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { collectAllRoutes } from './check-route-guards.mjs';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const FILE_REGISTRY = join(repoRoot, 'src', 'copilot', 'tools', 'registry.ts');
+
+/** Dưới ngần này route bóc được thì bộ đọc hỏng, không phải app hết route. */
+export const SAN_ROUTE = 100;
+/** Dưới ngần này mục whitelist thì bộ đọc hỏng, không phải whitelist rỗng. */
+export const SAN_WHITELIST = 3;
+
+/** `phong: { route: '/apartments', module: 'rooms', label: '…' }` → bản ghi. */
+export function docWhitelist(vanBan) {
+  const dau = vanBan.indexOf('export const MO_TRANG_ROUTES');
+  if (dau < 0) return [];
+  const than = vanBan.slice(dau, vanBan.indexOf('\n};', dau));
+  const ra = [];
+  for (const m of than.matchAll(
+    /(\w+):\s*\{\s*route:\s*'([^']+)'\s*,\s*module:\s*'([^']+)'/g,
+  )) {
+    ra.push({ khoa: m[1], route: m[2], module: m[3] });
+  }
+  return ra;
+}
+
+/**
+ * Tập `module.action` CÓ THẬT, nạp từ chính `permissionPages.ts` qua vite-node.
+ *
+ * Không đọc bằng regex: module ở file đó được truyền qua tham số hàm
+ * (`crud("rooms", …)`, `ft(module, action, …)`) chứ không viết thành literal
+ * `module: 'rooms'`. Bản regex đầu tiên đọc ra ĐÚNG 0 module và gate thoát 3 —
+ * may là nhờ sàn chống-xanh-rỗng, nếu không nó đã "xanh" trên một tập rỗng.
+ */
+export function docFeatureQuyen() {
+  const tmp = join(repoRoot, 'node_modules', '.cache', '__perm-features.ts');
+  mkdirSync(dirname(tmp), { recursive: true });
+  writeFileSync(
+    tmp,
+    [
+      'import { ALL_PAGE_FEATURES } from "../../src/lib/permissionPages";',
+      'console.log(JSON.stringify([...new Set(ALL_PAGE_FEATURES.map((f) => `${f.module}.${f.action}`))]));',
+    ].join('\n'),
+    'utf8',
+  );
+  try {
+    // Đường dẫn TƯƠNG ĐỐI + shell:true — cùng bẫy npx.cmd/dấu cách đã ghi ở
+    // check-realtime-descriptors.
+    const r = spawnSync('npx', ['vite-node', 'node_modules/.cache/__perm-features.ts'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      shell: true,
+      timeout: 10 * 60 * 1000,
+    });
+    const dong = String(r.stdout ?? '').trim().split(/\r?\n/).filter(Boolean).pop();
+    return new Set(JSON.parse(dong));
+  } catch {
+    return null;
+  } finally {
+    rmSync(tmp, { force: true });
+  }
+}
+
+/**
+ * Route trong app, đã chuẩn hoá về dạng so sánh được: bỏ tham số động và dấu `/`
+ * cuối. `/invoices/:id` và `/invoices` là hai route khác nhau với router, nhưng
+ * whitelist chỉ trỏ tới trang danh sách nên so ở mức đường dẫn tĩnh là đủ.
+ */
+export function chuanHoa(p) {
+  return String(p).replace(/\/+$/, '') || '/';
+}
+
+function main() {
+  const wl = docWhitelist(readFileSync(FILE_REGISTRY, 'utf8'));
+  if (wl.length < SAN_WHITELIST) {
+    console.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ đọc được ${wl.length} mục whitelist (sàn ${SAN_WHITELIST}).`);
+    console.error('   Hình dạng MO_TRANG_ROUTES đã đổi — đừng đọc thành "whitelist sạch".');
+    process.exit(3);
+  }
+
+  let routes;
+  try {
+    routes = collectAllRoutes();
+  } catch (e) {
+    console.error(`❌ KHÔNG ĐO ĐƯỢC: không bóc được route — ${e.message}`);
+    process.exit(3);
+  }
+  if (routes.length < SAN_ROUTE) {
+    console.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ bóc được ${routes.length} route (sàn ${SAN_ROUTE}).`);
+    process.exit(3);
+  }
+  const coRoute = new Set(routes.map((r) => chuanHoa(typeof r === 'string' ? r : r.path)));
+
+  const features = docFeatureQuyen();
+  if (!features || features.size < 20) {
+    console.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ nạp được ${features ? features.size : 0} feature quyền (sàn 20).`);
+    console.error('   vite-node lỗi hoặc permissionPages đổi hình dạng — đừng đọc thành "module đều hợp lệ".');
+    process.exit(3);
+  }
+
+  const van = [];
+  for (const m of wl) {
+    if (!coRoute.has(chuanHoa(m.route))) {
+      van.push(
+        `${m.khoa}: route "${m.route}" KHÔNG tồn tại. Copilot sẽ báo "✅ Đã mở trang" ` +
+        'rồi đưa người dùng tới màn trắng.',
+      );
+    }
+    // Tool gọi `canUse(perms, module, 'view')`, nên phải có ĐÚNG cặp `<module>.view`.
+    // Chỉ kiểm "module có tồn tại" là chưa đủ: một module chỉ khai `manage` mà
+    // không khai `view` sẽ trượt y hệt, và triệu chứng giống hệt.
+    if (!features.has(`${m.module}.view`)) {
+      van.push(
+        `${m.khoa}: không có feature quyền "${m.module}.view". canUse() trả false nên tool ` +
+        'báo "Không có quyền xem trang" — câu đó SAI SỰ THẬT và đẩy người dùng đi xin quyền họ đã có.',
+      );
+    }
+  }
+
+  console.log(
+    `Whitelist Copilot: ${wl.length} trang · đối chiếu ${coRoute.size} route và ${features.size} feature quyền.`,
+  );
+
+  if (van.length > 0) {
+    console.error(`\n❌ ${van.length} vấn đề:\n`);
+    for (const v of van) console.error(`  - ${v}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log('✅ Mọi trang trong whitelist đều có route thật và module quyền thật.');
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

@@ -119,7 +119,8 @@
     "gate:dependency-audit": "node scripts/check-dependency-audit.mjs",
     "gate:rpc-arg-names": "node scripts/check-rpc-arg-names.mjs",
     "gate:rpc-layer": "node scripts/check-rpc-layer.mjs",
-    "gate:realtime-key-ownership": "node scripts/check-realtime-key-ownership.mjs"
+    "gate:realtime-key-ownership": "node scripts/check-realtime-key-ownership.mjs",
+    "gate:copilot-routes": "node scripts/check-copilot-routes.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

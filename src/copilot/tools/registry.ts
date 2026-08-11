@@ -42,6 +42,15 @@ function assertPerm(tool: DomainTool, ctx: ToolCtx): void {
 }
 
 // ── Route whitelist cho mo_trang (route CANONICAL — /apartments, không /rooms) ──
+//
+// MỘT nguồn, ba thứ dẫn xuất. Trước 11/08/2026 danh sách trang này được viết
+// BỐN lần: khoá của map, `z.enum` của inputSchema, câu `description` gửi cho mô
+// hình, và luật kiểm lúc chạy. Bốn bản chép của một danh sách thì bản nào lệch
+// cũng hỏng theo kiểu riêng — `z.enum` lệch thì tool từ chối một trang có thật,
+// còn `description` lệch thì mô hình không bao giờ gọi tới trang mới thêm.
+// Nay `z.enum` và `description` đều SINH TỪ map; `scripts/check-copilot-routes.mjs`
+// canh nốt hai thứ không suy ra được từ đây: route có tồn tại thật không, và
+// module có phải module quyền thật không.
 export const MO_TRANG_ROUTES: Record<string, { route: string; module: string; label: string }> = {
   phong: { route: '/apartments', module: 'rooms', label: 'Căn hộ / Phòng' },
   hoa_don: { route: '/invoices', module: 'invoices', label: 'Hoá đơn' },
@@ -49,6 +58,9 @@ export const MO_TRANG_ROUTES: Record<string, { route: string; module: string; la
   hop_dong: { route: '/contracts', module: 'contracts', label: 'Hợp đồng' },
   toa_nha: { route: '/buildings', module: 'buildings', label: 'Toà nhà' },
 };
+
+/** Khoá của whitelist, dạng tuple để `z.enum` nhận — KHÔNG khai lại bằng tay. */
+const MO_TRANG_KEYS = Object.keys(MO_TRANG_ROUTES) as [string, ...string[]];
 
 // ── Docs hướng dẫn (lazy ?raw — không vào bundle chính) ──
 //
@@ -340,9 +352,9 @@ export function buildRegistry(): DomainTool[] {
     dt({
       name: 'mo_trang',
       description:
-        'Điều hướng người dùng tới một trang trong ứng dụng. CHỈ dùng các trang: phong, hoa_don, khach_hang, hop_dong, toa_nha.',
+        `Điều hướng người dùng tới một trang trong ứng dụng. CHỈ dùng các trang: ${MO_TRANG_KEYS.join(', ')}.`,
       inputSchema: z.object({
-        trang: z.enum(['phong', 'hoa_don', 'khach_hang', 'hop_dong', 'toa_nha']),
+        trang: z.enum(MO_TRANG_KEYS),
       }),
       uiControlOnly: true, // chat KHÔNG điều hướng — trả link để user click
       execute: async (args, ctx) => {
