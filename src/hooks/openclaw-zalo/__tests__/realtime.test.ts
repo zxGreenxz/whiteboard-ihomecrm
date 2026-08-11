@@ -1,6 +1,13 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { createOpenClawRealtimeEvent, shouldInvalidateOpenClawRealtime } from "@/hooks/openclaw-zalo/useOpenClawRealtime";
+import {
+  createOpenClawRealtimeEvent,
+  openClawRealtimeInvalidationKeys,
+  OPENCLAW_REALTIME_DEBOUNCE_MS,
+  OPENCLAW_REALTIME_MAX_WAIT_MS,
+  scheduleRealtimeFlush,
+  shouldInvalidateOpenClawRealtime,
+} from "@/hooks/openclaw-zalo/useOpenClawRealtime";
 import type { RealtimeDedupeState } from "@/lib/openclaw-zalo/state-machine";
 
 const ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -41,5 +48,67 @@ describe("OpenClaw Realtime", () => {
       }),
       { numRuns: 100 },
     );
+  });
+});
+
+describe("realtime refresh under a firehose", () => {
+  // An account syncing its Zalo history writes continuously. A plain debounce
+  // never fires while events keep arriving, so the conversation list was
+  // cancelled and restarted about ten times a second and the inbox showed
+  // "Đang tải hội thoại…" forever while every request returned 200.
+  it("still flushes while events never stop arriving", () => {
+    let queuedSince: number | null = null;
+    let lastFlushAt = 0;
+    let now = 0;
+    const gaps: number[] = [];
+
+    // One row change every 50ms for 20 seconds: no quiet period, ever.
+    for (let tick = 0; tick < 400; tick += 1) {
+      now += 50;
+      const schedule = scheduleRealtimeFlush(now, queuedSince);
+      queuedSince = schedule.queuedSince;
+      const firesAt = now + schedule.delayMs;
+      // The timer is rearmed by the next event unless it fires first.
+      if (firesAt <= now + 50) {
+        gaps.push(firesAt - lastFlushAt);
+        lastFlushAt = firesAt;
+        queuedSince = null;
+      }
+    }
+
+    expect(gaps.length).toBeGreaterThan(0);
+    for (const gap of gaps) {
+      expect(gap).toBeLessThanOrEqual(OPENCLAW_REALTIME_MAX_WAIT_MS + 100);
+    }
+  });
+
+  it("waits out a burst that does go quiet, instead of refetching per row", () => {
+    const first = scheduleRealtimeFlush(1_000, null);
+    expect(first.delayMs).toBe(OPENCLAW_REALTIME_DEBOUNCE_MS);
+    const second = scheduleRealtimeFlush(1_100, first.queuedSince);
+    expect(second.delayMs).toBe(OPENCLAW_REALTIME_DEBOUNCE_MS);
+    expect(second.queuedSince).toBe(1_000);
+  });
+
+  it("never postpones past the ceiling", () => {
+    const schedule = scheduleRealtimeFlush(5_000, 1_200);
+    expect(schedule.delayMs).toBe(200);
+  });
+
+  it("refreshes only what a row change can affect", () => {
+    const organizationId = "aaaa0000-0000-4000-8000-000000000001";
+    const accountId = "aaaa1000-0000-4000-8000-000000000001";
+    const inbox = openClawRealtimeInvalidationKeys("openclaw_messages", organizationId, accountId);
+    const flattened = inbox.map(key => key.join("/"));
+    expect(flattened.some(key => key.endsWith("conversations"))).toBe(true);
+    expect(flattened.some(key => key.endsWith("messages"))).toBe(true);
+    // A message must not drag the bootstrap or the overview along with it.
+    expect(flattened.some(key => key.endsWith("bootstrap"))).toBe(false);
+    expect(flattened.some(key => key.endsWith("overview"))).toBe(false);
+
+    const connection = openClawRealtimeInvalidationKeys("openclaw_accounts", organizationId, accountId)
+      .map(key => key.join("/"));
+    expect(connection.some(key => key.endsWith("bootstrap"))).toBe(true);
+    expect(connection.some(key => key.endsWith("conversations"))).toBe(false);
   });
 });

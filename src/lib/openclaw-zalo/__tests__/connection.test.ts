@@ -106,6 +106,14 @@ describe("QR gate", () => {
   const base = { account, canManageConnections: true };
 
   it("blocks exactly what the server blocks, and nothing it does not", () => {
+    // Disconnecting is gated by the same permission but NOT by the QR
+    // preconditions: the account an operator needs to disconnect is precisely
+    // the CONNECTED one, which can never request a QR. The dialog read this
+    // field before it existed, so the disconnect button did nothing at all.
+    expect(qrGateState({ ...base, account: { ...account, connectionState: "CONNECTED" } }).canManageConnections)
+      .toBe(true);
+    expect(qrGateState({ ...base, canManageConnections: false }).canManageConnections)
+      .toBe(false);
     expect(qrGateState({ ...base, canManageConnections: false }).blockedBy)
       .toBe("PERMISSION");
     expect(qrGateState({ ...base, account: { ...account, connectionState: "CONNECTED" } })

@@ -149,6 +149,10 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({
   useOpenClawCreateSendIntent: () => idleMutation,
   useOpenClawAcknowledgeDisclosure: () => idleMutation,
   useOpenClawSetControlState: () => idleMutation,
+  // The connection dialog gained a disconnect action; a mock that omits an
+  // export the component calls fails the whole file on a missing-export error
+  // rather than on anything these tests are about.
+  useOpenClawDisconnectAccount: () => idleMutation,
 }));
 
 vi.mock("@/lib/openclaw-zalo/qrClient", () => ({
