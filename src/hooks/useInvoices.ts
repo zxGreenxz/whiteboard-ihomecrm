@@ -873,7 +873,7 @@ export const useUpdateInvoice = () => {
         p_electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
         p_previous_debt_sources: (invoiceFields.previous_debt_sources ?? []) as unknown as Json,
         p_template_id: invoiceFields.template_id || null,
-        p_notes: invoiceFields.notes || null,
+        p_notes: invoiceFields.notes || undefined,
       });
       if (!canonical.error) return canonical.data;
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;

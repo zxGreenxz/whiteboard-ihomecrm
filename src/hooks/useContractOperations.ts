@@ -69,7 +69,7 @@ export const useTransferRoom = () => {
         p_contract_id: params.contractId,
         p_new_room_id: params.newRoomId,        p_new_rent_price: params.newRentPrice ?? null,
         p_transfer_date: params.transferDate,
-        p_notes: params.notes ?? null,
+        p_notes: params.notes ?? undefined,
       });
 
       if (error) throw error;

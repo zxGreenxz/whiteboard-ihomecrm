@@ -639,16 +639,16 @@ export const incomeExpenseStatsQuery = (
             ? filters.building_ids
             : filters.building_id
               ? [filters.building_id]
-              : null,
+              : undefined,
           p_room_ids: filters.room_ids?.length
             ? filters.room_ids
             : filters.room_id
               ? [filters.room_id]
-              : null,
-          p_account_id: filters.account_id ?? null,
-          p_type: filters.type ?? null,
-          p_start_date: filters.start_date ?? null,
-          p_end_date: filters.end_date ?? null,
+              : undefined,
+          p_account_id: filters.account_id ?? undefined,
+          p_type: filters.type ?? undefined,
+          p_start_date: filters.start_date ?? undefined,
+          p_end_date: filters.end_date ?? undefined,
           // V2 composite (§12.1): pseudo-value tách thành approval + posting.
           p_approval:
             filters.approval_status === 'APPROVED_UNPOSTED'
