@@ -222,8 +222,24 @@ function main() {
   const troi = [];
   for (const [ten, noiDung] of Object.entries(ra)) {
     const p = join(OUT, ten);
-    // Bỏ dòng `reviewed:` khi so — nó đổi mỗi ngày và không nói gì về nội dung.
-    const bo = (s) => s.replace(/^reviewed: .*$/m, "");
+    // Chuẩn hoá TRƯỚC KHI SO, hai thứ, mỗi thứ chặn một kiểu đỏ giả:
+    //
+    //   (1) dòng `reviewed:` — generator đóng dấu ngày hiện tại nên nó đổi mỗi
+    //       ngày mà không nói gì về nội dung.
+    //
+    //   (2) CRLF — và đây mới là cái đã cắn thật. `core.autocrlf=true` trên máy
+    //       Windows nên git tái tạo file từ blob thành CRLF, còn generator luôn
+    //       sinh LF. Đo 08/08/2026: sau `git checkout` file có 126 CRLF / 0 LF
+    //       đơn, và `--check` báo trôi dù nội dung giống hệt từng chữ. Hệ quả:
+    //       gate ĐỎ TRÊN MỌI MÁY WINDOWS sau bất kỳ checkout nào, nhưng XANH trên
+    //       CI Linux.
+    //
+    //       Tệ gấp đôi mức "gây phiền": khi một gate luôn đỏ vì lý do không có
+    //       thật, "trên Windows nó luôn đỏ" trở thành lời giải thích cho MỌI lần
+    //       đỏ — kể cả lần nội dung trôi thật. Đây đúng là hạng lỗi mà
+    //       configDigestNote trong tooling/graph-manifests/ua.json đã ghi cho một
+    //       chỗ khác: so nội dung worktree trên Windows là so cả ký tự xuống dòng.
+    const bo = (s) => s.replace(/\r\n/g, "\n").replace(/^reviewed: .*$/m, "");
     if (kiem) {
       const cu = existsSync(p) ? readFileSync(p, "utf8") : "";
       if (bo(cu) !== bo(noiDung)) troi.push(ten);
