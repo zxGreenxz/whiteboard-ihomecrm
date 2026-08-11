@@ -18,7 +18,8 @@ Bảng rủi ro theo đường dẫn: tooling/risk-map.json
 <!--
 Đừng tự tra tay — chạy `npm run risk:classify` để nó đọc diff so với origin/main,
 tra tooling/risk-map.json rồi in tier nghiêm nhất kèm ĐÚNG danh sách gate phải chạy.
-Thêm `--json` nếu muốn dán máy đọc được, `--files a.ts,b.sql` nếu chưa commit.
+Đang sửa mà chưa commit thì thêm `--staged`. `--json` nếu muốn dán bản máy đọc được,
+`--files a.ts,b.sql` để hỏi về một tập file cụ thể.
 
 Nó là bộ BÁO CÁO, không phải cửa chặn: nó biết PR này cần gate nào, nhưng KHÔNG
 biết bạn đã chạy hay chưa — không có dấu vết nào trong repo để đọc. Phần đánh dấu

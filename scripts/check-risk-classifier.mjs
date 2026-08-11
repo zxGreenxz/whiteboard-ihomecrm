@@ -91,17 +91,70 @@ export function phanLoai(files, tiers) {
 
 const git = (a) => execFileSync("git", a, { cwd: repoRoot, encoding: "utf8" }).trim();
 
+const tach = (s) =>
+  s
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((x) => x.replace(/\\/g, "/"));
+
+/**
+ * Chọn mốc so sánh, và NÓI RA đã chọn cái gì.
+ *
+ * ĐIỂM MÙ ĐÃ ĐO 11/08/2026 — vì sao phải có nhánh dự phòng:
+ *   Bản đầu luôn lấy `merge-base(origin/main, HEAD)`. Trên một PR thì đúng. Nhưng
+ *   trên PUSH VÀO MAIN, origin/main CHÍNH LÀ HEAD, nên merge-base = HEAD và diff
+ *   luôn rỗng. Gate vẫn chạy trong ci-gates mỗi lần push và in "0 file đổi — không
+ *   có gì để phân loại" một cách vui vẻ. Nó chạy, nó xanh, và nó chưa từng phân
+ *   loại một thay đổi nào trên main.
+ *
+ *   Đó là kiểu hỏng tệ nhất: không phải gate thiếu, mà là gate CÓ và báo sai.
+ *
+ * Thứ tự: --files → --staged → --base → merge-base với origin/main → HEAD~1.
+ */
+export function chonMoc(argv, coRef, diff) {
+  const iB = argv.indexOf("--base");
+  if (iB >= 0) {
+    const r = argv[iB + 1];
+    return coRef(r) ? { nhan: `--base ${r}`, files: diff(`${r}..HEAD`) } : null;
+  }
+
+  const goc = coRef("origin/main") ? "origin/main" : coRef("main") ? "main" : null;
+  if (goc) {
+    const base = diff.mergeBase(goc);
+    // Chỉ dùng khi HEAD THẬT SỰ tách khỏi mốc. base === HEAD nghĩa là không tách,
+    // và khi đó phép so này không nói gì về thay đổi vừa đưa vào.
+    if (base && base !== diff.head()) return { nhan: `merge-base ${goc}`, files: diff(`${base}..HEAD`) };
+  }
+
+  // Dự phòng: so với commit ngay trước. Đây là câu trả lời đúng cho "vừa push cái
+  // gì lên main", và nó chỉ vô nghĩa khi HEAD là commit đầu tiên của repo.
+  if (coRef("HEAD~1")) return { nhan: "HEAD~1 (không tách khỏi mốc chung)", files: diff("HEAD~1..HEAD") };
+  return null;
+}
+
 function layFile(argv) {
   const iF = argv.indexOf("--files");
   if (iF >= 0) {
-    return argv[iF + 1]
-      .split(",")
-      .map((s) => s.trim().replace(/\\/g, "/"))
-      .filter(Boolean);
+    return {
+      nhan: "--files",
+      files: argv[iF + 1]
+        .split(",")
+        .map((s) => s.trim().replace(/\\/g, "/"))
+        .filter(Boolean),
+    };
   }
+
+  // `--staged`: phân loại thứ ĐANG SỬA, kể cả chưa commit. Đây là lúc người ta
+  // thật sự cần biết phải chạy gate nào — hỏi sau khi đã commit thì muộn rồi.
+  if (argv.includes("--staged")) {
+    const daTheoDoi = tach(git(["diff", "--name-only", "HEAD"]));
+    const chuaTheoDoi = tach(git(["ls-files", "--others", "--exclude-standard"]));
+    return { nhan: "cây làm việc (--staged)", files: [...new Set([...daTheoDoi, ...chuaTheoDoi])] };
+  }
+
   if (git(["rev-parse", "--is-shallow-repository"]) === "true") return null;
-  const iB = argv.indexOf("--base");
-  const co = (r) => {
+
+  const coRef = (r) => {
     try {
       git(["rev-parse", "--verify", r]);
       return true;
@@ -109,13 +162,17 @@ function layFile(argv) {
       return false;
     }
   };
-  const moc = iB >= 0 ? argv[iB + 1] : co("origin/main") ? "origin/main" : co("main") ? "main" : null;
-  if (!moc || !co(moc)) return null;
-  const base = git(["merge-base", moc, "HEAD"]);
-  return git(["diff", "--name-only", `${base}..HEAD`])
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((s) => s.replace(/\\/g, "/"));
+  const diff = (range) => tach(git(["diff", "--name-only", range]));
+  diff.mergeBase = (r) => {
+    try {
+      return git(["merge-base", r, "HEAD"]);
+    } catch {
+      return null;
+    }
+  };
+  diff.head = () => git(["rev-parse", "HEAD"]);
+
+  return chonMoc(argv, coRef, diff);
 }
 
 function main() {
@@ -124,14 +181,15 @@ function main() {
     process.exit(3);
   }
   const { tiers, notes } = JSON.parse(readFileSync(MAP, "utf8"));
-  const files = layFile(process.argv);
+  const nguon = layFile(process.argv);
 
-  if (files === null) {
+  if (nguon === null) {
     console.error("❌ Không xác định được danh sách file đổi (repo shallow hoặc mốc không phân giải được).");
     console.error("   KHÔNG KIỂM ĐƯỢC — đừng đọc thành 'thay đổi này không đụng tier nào'.");
-    console.error("   Dùng --base <ref> hoặc --files a.ts,b.sql.");
+    console.error("   Dùng --base <ref>, --files a.ts,b.sql, hoặc --staged cho cây làm việc.");
     process.exit(3);
   }
+  const { files, nhan } = nguon;
 
   const kq = phanLoai(files, tiers);
 
@@ -153,9 +211,13 @@ function main() {
     return;
   }
 
-  console.log(`Phân loại rủi ro: ${files.length} file đổi`);
+  console.log(`Phân loại rủi ro: ${files.length} file đổi  [mốc: ${nhan}]`);
   if (files.length === 0) {
-    console.log("  (không có file nào — không có gì để phân loại)");
+    // In mốc đã dùng, vì "0 file" gần như luôn là dấu hiệu chọn sai mốc chứ không
+    // phải một thay đổi rỗng. Trước 11/08/2026 dòng này chỉ nói "không có gì để
+    // phân loại" — nghe như đã kiểm và sạch.
+    console.log("  Không có file nào TRONG MỐC NÀY — đây không phải kết luận 'thay đổi này an toàn'.");
+    console.log("  Nếu bạn đang sửa mà chưa commit, chạy lại với --staged.");
     return;
   }
 

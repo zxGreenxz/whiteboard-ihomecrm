@@ -9,7 +9,7 @@
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
     "completedAfterAudit": 112,
-    "stillMissing": 64
+    "stillMissing": 63
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -527,10 +527,12 @@
       {
         "deliverable": "§32: Mọi migration đổi đều chạy classifier",
         "planRef": "Mục 32 (dòng 2333)",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Viết risk classifier: đọc diff → tra tooling/risk-map.json → in tier + danh sách gate bắt buộc; nối vào path filter supabase/migrations/** ở CI."
+        "remaining": null,
+        "doneAt": "2026-08-11",
+        "evidence": "Classifier da chay san trong ci-gates (khong co paths filter nen moi push, ke ca migration, deu kich hoat) — nhung DO RA no chua tung phan loai gi tren main: bo chon moc luon lay merge-base(origin/main, HEAD), ma tren push vao main origin/main CHINH LA HEAD nen diff luon rong va gate in \"0 file doi\" moi lan. Gate co, chay, xanh, va bao sai. Sua bo chon moc: --files -> --staged -> --base -> merge-base (chi khi HEAD THAT SU tach) -> HEAD~1. Moi bao cao nay kem NHAN MOC. Dong \"0 file\" doi tu \"khong co gi de phan loai\" thanh \"khong co file nao TRONG MOC NAY — day khong phai ket luan an toan\". Them --staged de hoi duoc luc dang sua (luc that su can). 7 test moi cho chonMoc, gom ca ca merge-base==HEAD va commit dau tien => null => exit 3."
       },
       {
         "deliverable": "§32: Worker test Windows-only phải tách job Windows hoặc port cross-platform",
