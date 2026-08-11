@@ -63,6 +63,9 @@ for (const { n, m } of monthSheets) {
     if (!r.some((c) => c !== '')) continue;
     if (r[0] !== '') toa = String(r[0]).trim();
     if (skipRow(r)) continue;
+    // Dòng không có nhãn toà lẫn nhãn phòng = dòng tổng kết tay (runbook mục 2) —
+    // vd cuối sheet: tổng cột khách đưa/thối lại + dòng net (thối ghi số âm) → đếm đôi nếu giữ.
+    if (String(r[0]).trim() === '' && String(r[1]).trim() === '') continue;
     const gross = num(r[kdIdx]);
     const change = isNet ? 0 : (tlIdx >= 0 ? num(r[tlIdx]) : 0);
     const net = gross - change;

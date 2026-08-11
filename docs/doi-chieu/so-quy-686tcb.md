@@ -95,10 +95,17 @@ Quy tắc riêng kênh TM (khác kênh 686):
   thu hộ người khác ("Thu dùm…", "…thu hộ" — người đó lấy lại bằng phiếu chi cùng cỡ tiền).
 - **Excel T5 không ghi chi TM** (Nathan chỉ itemize chi từ T6) → chi T5 chỉ so 1 chiều web.
 - Kiểm chứng vàng: **sheet đếm tiền mặt** (`Sheet2`/`kết tiền TX`, "ngày giờ chốt…") phải =
-  tồn web Hiệp Thu (thu − chi APPROVED) tại thời điểm chốt.
+  tồn web Hiệp Thu (thu − chi APPROVED) tại thời điểm chốt. Sheet2 có thể có NHIỀU bảng đếm
+  (nhiều túi/nhiều lần) — tổng các bảng mới là tồn TM.
+- **Cuối mỗi sheet tháng có 2 dòng tổng tay KHÔNG nhãn** (dòng tổng cột khách đưa/thối lại +
+  dòng net ghi thối lại số ÂM → net bị nhân đôi). Script đã loại theo luật mục 2 ("không nhãn
+  toà lẫn nhãn phòng"); T6 thoát nạn nhờ chữ "tiền Hiệp" ở cột xa, T7/T8 thì không — đừng bỏ luật này.
+- **Tồn TM theo sổ tay = dư tháng trước + thu − chi của sheet hiện hành** (dòng net cuối sheet),
+  KHÔNG phải exThu − exChi cộng dồn từ T5 (Excel không itemize chi T5 nên hiệu cộng dồn vô nghĩa).
 
 ### Lịch sử chốt TM
 
 | Ngày chốt | Đếm TM Excel | Tồn web Hiệp Thu | Chênh | Ghi chú |
 |---|---:|---:|---:|---|
 | 13/07/2026 13:20 | 129.991.000 | 129.991.000 | **0đ** | Thu khớp 100% (22 cặp lệch lẻ tổng 8.400đ + 303/405PVB lệch 2.600đ). T7 thu khớp tuyệt đối 408.160.000. Excel ghi "bàn giao a Tâm 129.991.000" (T7) — web CHƯA có phiếu bàn giao này; tạo phiếu thì quỹ về 0. Còn 4tr "Thu dùm Hiển 305+103/111PVC" (27/05) chưa có phiếu chi trả Hiển. 15 phiếu Hiệp Thu UNAPPROVED chờ xử lý (nghi trùng 3×1tr INV-2026-00055). |
+| 11/08/2026 | 145.617.000 (đếm 06–07/08: 111.558.000 + 34.060.000 = 145.618.000, dư 1.000đ đếm) | 153.480.000 | **+7.863.000** | Phân rã 100% = 4 khoản: **+13.000.000** web thiếu phiếu chi "bàn giao a Huy" (Excel T8); **−6.053.000** web thiếu phiếu thu "thu dùm Hiển 302/111PVC" (Excel T8: 6.204.000 − thối 151.000); **+860.000** 101/403PVB INV-202606-651630 (bộ ba thu 30/06 + thu 29/07 + hoàn tác 29/07, đều tạo 29/07 — net web +860k, Excel không ghi); **+56.000** INV-2026-00570 201/1392QT web ghi đủ 5.544.000, thực nhận 5.488.000 (thối 56k). Kiểm: 13.000.000−6.053.000+860.000+56.000 = 7.863.000 ✓. T8 thu còn lại khớp từng khoản (INV-00569 4tr = 106/1392QT, Excel có). Nước 15/22kv 1.642.000: web ghi 31/07, Excel ghi T8 — lệch thời điểm, tự triệt tiêu. BG a Tâm 129.991.000 đã có phiếu (BG2607003, 15/07). Vẫn treo: 4tr thu dùm Hiển T5 chưa có phiếu chi trả; 16 phiếu UNAPPROVED (thu 46.106.800 / chi 2.502.000 — duyệt hết thì web tồn +43.604.800, phải rà trùng trước khi duyệt). Sửa script: loại dòng tổng tay không nhãn cuối sheet (T7/T8 từng lọt, thổi phồng thu Excel 302tr). |
