@@ -68,16 +68,36 @@ export const TOI_THIEU_FILE = 500;
  * Tách khỏi I/O để test được bằng dữ liệu dựng tay — cùng lý do
  * check-migration-provenance tách `entryThieuFile`.
  */
-export function dungFingerprint(ketQua, goc = repoRoot) {
+export function dungFingerprint(ketQua, goc = repoRoot, daTrack = null) {
   const ra = [];
   for (const f of ketQua) {
     const duongDan = relative(goc, f.filePath).split(sep).join('/');
+    if (daTrack && !daTrack.has(duongDan)) continue;
     for (const m of f.messages ?? []) {
       if (m.severity !== 2) continue; // chỉ ratchet ERROR; warning đã là cảnh báo
       ra.push(`${duongDan}|${m.ruleId ?? '(khong-ro-rule)'}`);
     }
   }
   return ra.sort();
+}
+
+/**
+ * Chỉ tính file ĐÃ ĐƯỢC GIT TRACK.
+ *
+ * ESLint duyệt ĐĨA, mà đĩa của mỗi người mỗi khác: file chưa `git add`, output
+ * build cũ, thư mục thử nghiệm bỏ quên. Đo 12/08/2026: cùng một repo, máy dev
+ * ra 1715 file còn runner CI (checkout sạch) ra 1561 — lệch 154. Sàn độ phủ
+ * dựng trên con số của máy dev thì KHÔNG AI khác tái lập được, và nó đỏ ở CI vì
+ * một lý do chẳng nói lên điều gì về chất lượng mã.
+ *
+ * Cùng lập luận với `demTracked` trong check-doc-counts.mjs: tái lập được mới
+ * là điểm của cả cửa chặn. Lọc này còn chặn luôn việc một lỗi trong file chưa
+ * commit lọt vào baseline rồi biến mất bí ẩn ở lần chạy sau.
+ */
+export function fileDaTrack() {
+  const r = spawnSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  if (r.status !== 0) return null;
+  return new Set(r.stdout.split('\n').filter(Boolean));
 }
 
 /** So hai multiset, trả về phần THỪA RA ở mỗi bên (giữ trùng lặp). */
@@ -127,13 +147,19 @@ function main(argv) {
     process.exit(3);
   }
 
-  const soFile = ketQua.length;
-  if (soFile < TOI_THIEU_FILE) {
-    console.error(`❌ Chỉ lint được ${soFile} file (sàn ${TOI_THIEU_FILE}) — phạm vi đã teo, "0 lỗi mới" là vô nghĩa.`);
+  const daTrack = fileDaTrack();
+  if (!daTrack) {
+    console.error('=== ⚠ KHÔNG KIỂM ĐƯỢC — không chạy được `git ls-files` ===');
     process.exit(3);
   }
 
-  const hienTai = dungFingerprint(ketQua);
+  const soFile = ketQua.filter((f) => daTrack.has(relative(repoRoot, f.filePath).split(sep).join('/'))).length;
+  if (soFile < TOI_THIEU_FILE) {
+    console.error(`❌ Chỉ lint được ${soFile} file đã track (sàn ${TOI_THIEU_FILE}) — phạm vi đã teo, "0 lỗi mới" là vô nghĩa.`);
+    process.exit(3);
+  }
+
+  const hienTai = dungFingerprint(ketQua, repoRoot, daTrack);
 
   if (!existsSync(BASELINE)) {
     if (!argv.includes('--write')) {

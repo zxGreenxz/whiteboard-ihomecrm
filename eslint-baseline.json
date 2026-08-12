@@ -1,6 +1,6 @@
 {
   "$comment": "Nợ lint đã khai. CHỈ ĐƯỢC TEO.",
-  "soFileToiThieu": 1715,
+  "soFileToiThieu": 1561,
   "fingerprints": [
     "src/components/areas/AreaMultiSelect.tsx|@typescript-eslint/no-explicit-any",
     "src/components/areas/ManageAreasDialog.tsx|@typescript-eslint/no-explicit-any",

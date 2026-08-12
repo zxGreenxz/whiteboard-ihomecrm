@@ -48,6 +48,25 @@ test('đường dẫn luôn dùng dấu / để baseline chạy chung Windows v�
   assert.ok(fp[0].startsWith('src/sub/a.ts|'), `nhận: ${fp[0]}`);
 });
 
+test('bỏ qua file CHƯA ĐƯỢC GIT TRACK', () => {
+  // ESLint duyệt đĩa, và đĩa mỗi máy mỗi khác. Đo 12/08/2026: máy dev thấy 1715
+  // file, runner CI (checkout sạch) thấy 1561 — lệch 154 file rác cục bộ. Một
+  // baseline dựng trên con số của máy dev thì không ai tái lập được, và nó đỏ ở
+  // CI vì lý do chẳng nói gì về chất lượng mã.
+  const daTrack = new Set(['src/a.ts']);
+  const fp = dungFingerprint(
+    [ketQua('src/a.ts', loi('r')), ketQua('src/chua-add.ts', loi('r'))],
+    goc,
+    daTrack,
+  );
+  assert.deepEqual(fp, ['src/a.ts|r'], 'file chưa track không được vào baseline');
+});
+
+test('không truyền daTrack ⇒ giữ nguyên hành vi cũ (không lọc)', () => {
+  const fp = dungFingerprint([ketQua('src/a.ts', loi('r')), ketQua('x/b.ts', loi('r'))], goc);
+  assert.equal(fp.length, 2);
+});
+
 test('không có gì đổi ⇒ không lỗi mới, không lỗi đã dọn', () => {
   const nen = ['a|r', 'a|r', 'b|r'];
   const { moi, daDon } = soMultiset(['a|r', 'a|r', 'b|r'], nen);
