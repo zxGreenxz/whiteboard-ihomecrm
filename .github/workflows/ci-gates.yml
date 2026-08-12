@@ -282,6 +282,7 @@ jobs:
           scripts/__tests__/check-no-auto-apply.test.mjs \
           scripts/__tests__/check-copilot-routes.test.mjs \
           scripts/__tests__/check-dependency-audit.test.mjs \
+          scripts/__tests__/check-eslint-baseline.test.mjs \
           scripts/__tests__/check-realtime-key-ownership.test.mjs \
           scripts/__tests__/check-rpc-arg-names.test.mjs \
           scripts/__tests__/check-rpc-layer.test.mjs \
@@ -313,6 +314,7 @@ jobs:
           --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-routes.test.mjs'
           --exclude 'scripts/__tests__/check-dependency-audit.test.mjs'
+          --exclude 'scripts/__tests__/check-eslint-baseline.test.mjs'
           --exclude 'scripts/__tests__/check-realtime-key-ownership.test.mjs'
           --exclude 'scripts/__tests__/check-rpc-arg-names.test.mjs'
           --exclude 'scripts/__tests__/check-rpc-layer.test.mjs'
