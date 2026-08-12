@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-12T00:23:29.023Z",
+  "generatedAt": "2026-08-12T00:54:18.837Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 376,
+    "ledger-applied": 379,
     "unknown": 66,
     "catalog-proven": 216,
     "superseded": 15
@@ -7945,6 +7945,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-12T00:21:50.033Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260811040000_dung_lai_cong_ty_demo.sql",
+      "version": "20260811040000",
+      "name": "dung_lai_cong_ty_demo",
+      "scheme": "timestamp14",
+      "sha256": "fee68b2e1e7636123ac59a7431cdac61d82aa93bca937f2726cad9f4134568b9",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-12T00:37:34.371Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260811050000_demo_bo_loai_thu_chi.sql",
+      "version": "20260811050000",
+      "name": "demo_bo_loai_thu_chi",
+      "scheme": "timestamp14",
+      "sha256": "b6315aad6ad35790a8b2e421a248bd0a10c9c674bb643c48301121a11a7a853b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-12T00:45:38.603Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260811060000_chan_null_org_dot_ba.sql",
+      "version": "20260811060000",
+      "name": "chan_null_org_dot_ba",
+      "scheme": "timestamp14",
+      "sha256": "7d4dbeff4bb98028bbadf037f7c9ac90f75516b44a968903cb09e46c0338fa4e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-12T00:52:29.189Z|bien-nhan-backup"
       ]
     },
     {

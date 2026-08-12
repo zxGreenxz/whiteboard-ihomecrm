@@ -1,12 +1,16 @@
 {
   "note": "Sinh bằng máy — node scripts/measure-org-leak.mjs --write. Đo bằng vai người dùng thật, chỉ đọc, mọi truy vấn bọc ROLLBACK.",
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "capturedAt": "2026-08-11T17:45:10.988Z",
+  "capturedAt": "2026-08-12T00:53:33.186Z",
   "catalogFingerprint": "d40723ebc7c10cb7791af1ce8239787b0cae331a54a9d4eb7e3443426957dbdb",
   "nhanVat": [
     {
       "org": "aaaa0000-0000-4000-8000-000000000001",
       "email": "bosshuy@username.ihomecrm.local"
+    },
+    {
+      "org": "dddd0000-0000-4000-8000-000000000001",
+      "email": "demo.chunha@username.ihomecrm.local"
     },
     {
       "org": "99990000-0000-4000-8000-000000000099",
@@ -21,6 +25,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -42,6 +50,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -57,6 +69,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -78,6 +94,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -93,6 +113,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -114,6 +138,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -129,6 +157,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -150,6 +182,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 1,
           "ngoai": 0
@@ -165,6 +201,10 @@
       "ground_truth_total": 10,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 10,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 10,
           "ngoai": 0
         },
@@ -186,6 +226,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -201,6 +245,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -222,6 +270,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -237,6 +289,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -258,6 +314,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -273,6 +333,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -294,6 +358,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -310,6 +378,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 2,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -330,6 +402,10 @@
           "tong": 3,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -345,6 +421,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -366,6 +446,10 @@
           "tong": 33,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -381,6 +465,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -402,6 +490,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -417,6 +509,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -438,6 +534,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -453,6 +553,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -474,6 +578,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -492,6 +600,10 @@
           "tong": 585,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -507,6 +619,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -528,6 +644,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -543,6 +663,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -564,6 +688,10 @@
           "tong": 91,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -580,6 +708,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 156,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 6,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -600,6 +732,10 @@
           "tong": 13,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -616,6 +752,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 25,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -636,6 +776,10 @@
           "tong": 13,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 2,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -652,6 +796,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 21,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -672,6 +820,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -687,6 +839,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -708,6 +864,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -723,6 +883,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -744,6 +908,10 @@
           "tong": 390,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -760,6 +928,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 6,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -780,6 +952,10 @@
           "tong": 44,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -798,6 +974,10 @@
           "tong": 87,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -813,6 +993,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -834,6 +1018,10 @@
           "tong": 23,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -850,6 +1038,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -870,6 +1062,10 @@
           "tong": 240,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -885,6 +1081,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -906,6 +1106,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -922,6 +1126,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 33,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -942,6 +1150,10 @@
           "tong": 36,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -960,6 +1172,10 @@
           "tong": 523,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -975,6 +1191,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -996,6 +1216,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -1011,6 +1235,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1032,6 +1260,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1047,6 +1279,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1068,6 +1304,10 @@
           "tong": 73,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1083,6 +1323,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1104,6 +1348,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -1119,6 +1367,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1140,6 +1392,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -1155,6 +1411,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -1176,6 +1436,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -1191,6 +1455,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -1212,6 +1480,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -1227,6 +1499,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -1248,6 +1524,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -1260,10 +1540,14 @@
     {
       "table_name": "floors",
       "visible_foreign": 0,
-      "ground_truth_total": 1,
+      "ground_truth_total": 4,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 4,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1281,6 +1565,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1302,6 +1590,10 @@
           "tong": 72,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1318,6 +1610,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 201,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1338,6 +1634,10 @@
           "tong": 35,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1356,6 +1656,10 @@
           "tong": 2043,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1371,6 +1675,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -1392,6 +1700,10 @@
           "tong": 35,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1410,6 +1722,10 @@
           "tong": 35,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1425,6 +1741,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -1446,6 +1766,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1464,6 +1788,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -1476,10 +1804,14 @@
     {
       "table_name": "income_expense_types",
       "visible_foreign": 0,
-      "ground_truth_total": 91,
+      "ground_truth_total": 98,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 91,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 98,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1500,6 +1832,10 @@
           "tong": 1963,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1515,6 +1851,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1536,6 +1876,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1554,6 +1898,10 @@
           "tong": 17752,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1569,6 +1917,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1590,6 +1942,10 @@
           "tong": 3085,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1606,6 +1962,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 235,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1626,6 +1986,10 @@
           "tong": 229,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1642,6 +2006,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 229,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1662,6 +2030,10 @@
           "tong": 821,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1677,6 +2049,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1698,6 +2074,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1713,6 +2093,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1734,6 +2118,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1749,6 +2137,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1770,6 +2162,10 @@
           "tong": 2,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1785,6 +2181,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1806,6 +2206,10 @@
           "tong": 168,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1821,6 +2225,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1842,6 +2250,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1857,6 +2269,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1878,6 +2294,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1893,6 +2313,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -1914,6 +2338,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1930,6 +2358,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 1,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1950,6 +2382,10 @@
           "tong": 6,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -1966,6 +2402,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 29,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1986,6 +2426,10 @@
           "tong": 29,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2002,6 +2446,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 58,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -2022,6 +2470,10 @@
           "tong": 50,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2040,6 +2492,10 @@
           "tong": 30,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2055,6 +2511,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -2076,6 +2536,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2092,6 +2556,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 908,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -2112,6 +2580,10 @@
           "tong": 189,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2127,6 +2599,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2148,6 +2624,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2163,6 +2643,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2184,6 +2668,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2199,6 +2687,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2220,6 +2712,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2235,6 +2731,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2256,6 +2756,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2271,6 +2775,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2292,6 +2800,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2307,6 +2819,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2328,6 +2844,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2343,6 +2863,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2364,6 +2888,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2379,6 +2907,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2400,6 +2932,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2415,6 +2951,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -2436,6 +2976,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2451,6 +2995,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2472,6 +3020,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2487,6 +3039,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2508,6 +3064,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2523,6 +3083,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2544,6 +3108,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2559,6 +3127,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2580,6 +3152,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2595,6 +3171,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2616,6 +3196,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2631,6 +3215,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -2652,6 +3240,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2667,6 +3259,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -2688,6 +3284,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2700,10 +3300,14 @@
     {
       "table_name": "notifications",
       "visible_foreign": 0,
-      "ground_truth_total": 31,
+      "ground_truth_total": 32,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 31,
+          "tong": 32,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -2721,6 +3325,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -2742,6 +3350,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2757,6 +3369,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2778,6 +3394,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2793,6 +3413,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2814,6 +3438,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2829,6 +3457,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2850,6 +3482,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2865,6 +3501,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -2886,6 +3526,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2901,6 +3545,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -2922,6 +3570,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -2937,6 +3589,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2958,6 +3614,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -2973,6 +3633,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -2994,6 +3658,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3009,6 +3677,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -3030,6 +3702,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3045,6 +3721,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -3066,6 +3746,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3081,6 +3765,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3102,6 +3790,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3117,6 +3809,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3138,6 +3834,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3153,6 +3853,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3174,6 +3878,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3189,6 +3897,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3210,6 +3922,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3225,6 +3941,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3246,6 +3966,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3261,6 +3985,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3282,6 +4010,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3297,6 +4029,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3318,6 +4054,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3333,6 +4073,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3354,6 +4098,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3369,6 +4117,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3390,6 +4142,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3405,6 +4161,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3426,6 +4186,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3441,6 +4205,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -3462,6 +4230,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3477,6 +4249,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3498,6 +4274,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3513,6 +4293,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3534,6 +4318,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3549,6 +4337,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3570,6 +4362,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3585,6 +4381,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3606,6 +4406,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3621,6 +4425,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3642,6 +4450,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3657,6 +4469,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3678,6 +4494,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3693,6 +4513,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3714,6 +4538,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3729,6 +4557,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -3750,6 +4582,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3765,6 +4601,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -3786,6 +4626,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3801,6 +4645,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3822,6 +4670,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3837,6 +4689,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3858,6 +4714,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3873,6 +4733,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -3894,6 +4758,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3909,6 +4777,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3930,6 +4802,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -3945,6 +4821,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -3966,6 +4846,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -3981,6 +4865,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -4002,6 +4890,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4017,6 +4909,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -4038,6 +4934,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4053,6 +4953,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -4074,6 +4978,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4089,6 +4997,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4110,6 +5022,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -4125,6 +5041,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -4146,6 +5066,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4164,6 +5088,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4179,6 +5107,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4200,6 +5132,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4215,6 +5151,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4236,6 +5176,10 @@
           "tong": 963,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4251,6 +5195,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4272,6 +5220,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4288,6 +5240,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 4,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 1,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -4308,6 +5264,10 @@
           "tong": 13,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4323,6 +5283,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4344,6 +5308,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4359,6 +5327,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4380,6 +5352,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4395,6 +5371,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4416,6 +5396,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4434,6 +5418,10 @@
           "tong": 13,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4449,6 +5437,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4470,6 +5462,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4485,6 +5481,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4506,6 +5506,10 @@
           "tong": 11343,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4521,6 +5525,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4542,6 +5550,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4557,6 +5569,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4578,6 +5594,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4593,6 +5613,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4614,6 +5638,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4630,6 +5658,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 5,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -4650,6 +5682,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4665,6 +5701,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4686,6 +5726,10 @@
           "tong": 204,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 8,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4701,6 +5745,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4722,6 +5770,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4737,6 +5789,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4758,6 +5814,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4773,6 +5833,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -4794,6 +5858,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -4809,6 +5877,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4830,6 +5902,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4845,6 +5921,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -4866,6 +5946,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -4884,6 +5968,10 @@
           "tong": 2,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4899,6 +5987,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4920,6 +6012,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -4935,6 +6031,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4956,21 +6056,7 @@
           "tong": 0,
           "ngoai": 0
         },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": true,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "services",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -4984,12 +6070,38 @@
       "assigned_phase": "GĐ3"
     },
     {
+      "table_name": "services",
+      "visible_foreign": 0,
+      "ground_truth_total": 3,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 3,
+          "ngoai": 0
+        },
+        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "C_DA_KIN",
+      "assigned_phase": "GĐ3"
+    },
+    {
       "table_name": "settings",
       "visible_foreign": 0,
       "ground_truth_total": 5,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 5,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -5010,6 +6122,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5025,6 +6141,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5046,6 +6166,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5061,6 +6185,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5082,6 +6210,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5097,6 +6229,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5118,6 +6254,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5133,6 +6273,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5154,6 +6298,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5169,6 +6317,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5190,6 +6342,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5206,6 +6362,10 @@
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 4,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -5226,6 +6386,10 @@
           "tong": 1,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5241,6 +6405,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5262,6 +6430,10 @@
           "tong": null,
           "ngoai": null
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": null,
           "ngoai": null
@@ -5277,6 +6449,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": null,
           "ngoai": null
         },
@@ -5298,6 +6474,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5313,6 +6493,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5334,6 +6518,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5352,6 +6540,10 @@
           "tong": 232,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5367,6 +6559,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5388,6 +6584,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5403,6 +6603,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5424,6 +6628,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5439,6 +6647,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
@@ -5460,6 +6672,10 @@
           "tong": 0,
           "ngoai": 0
         },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
           "tong": 0,
           "ngoai": 0
@@ -5475,6 +6691,10 @@
       "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
