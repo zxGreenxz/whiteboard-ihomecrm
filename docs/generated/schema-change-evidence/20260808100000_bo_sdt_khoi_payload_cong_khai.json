@@ -29,5 +29,15 @@
       "realtimeTables": 30
     }
   },
-  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này.",
+  "reviewedBlob": "84b8160fd95c6946ca94531ad32ce28ecc2948c0",
+  "statementBytes": 9576,
+  "normalizedDigest": "ee6ce0e77688401244d8dc33dc05084a800103852cac4e6733d4eb8d1042c8e5",
+  "boSungHoiTo": {
+    "ngay": "2026-08-12",
+    "boi": "agent:claude-code",
+    "cach": "Suy ra từ chính file migration trên đĩa.",
+    "vaySaoTinDuoc": "Biên nhận đã ghi sha256 của file đã chạy. Hash của file hôm nay TRÙNG hash đó, nên byte không đổi kể từ lúc apply, và ba trường suy ra bằng đúng giá trị mà lúc apply sẽ chụp được. KHÔNG phải giá trị chụp trực tiếp lúc apply — đọc chúng như suy ra có bằng chứng, không phải quan sát trực tiếp.",
+    "hashDoiChieu": "ee6ce0e77688401244d8dc33dc05084a800103852cac4e6733d4eb8d1042c8e5"
+  }
 }

@@ -15,9 +15,9 @@
   },
   "actor": "nguyentamca165@gmail.com",
   "repoCommit": "fd34998ababf8ece9e50b7e3f2d83583c699ebca",
-  "reviewedBlob": null,
+  "reviewedBlob": "45d823f1d3e615f6ad904db0fa604d160836c17e",
   "statementBytes": 7263,
-  "normalizedDigest": "39a22927009ca38b6acd23aa8ddb4d4f3b56045cf37a64865ac4c7ae1696ddb2",
+  "normalizedDigest": "669edb343f60ccfb4ff44da02a9ab34b0b8e39d6bb23e6d736b33b75ad3dd91c",
   "catalog": {
     "before": "d40723ebc7c10cb7791af1ce8239787b0cae331a54a9d4eb7e3443426957dbdb",
     "after": "d40723ebc7c10cb7791af1ce8239787b0cae331a54a9d4eb7e3443426957dbdb",
@@ -32,5 +32,12 @@
       "realtimeTables": 30
     }
   },
-  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này.",
+  "boSungHoiTo": {
+    "ngay": "2026-08-12",
+    "boi": "agent:claude-code",
+    "cach": "Suy ra từ chính file migration trên đĩa.",
+    "vaySaoTinDuoc": "Biên nhận đã ghi sha256 của file đã chạy. Hash của file hôm nay TRÙNG hash đó, nên byte không đổi kể từ lúc apply, và ba trường suy ra bằng đúng giá trị mà lúc apply sẽ chụp được. KHÔNG phải giá trị chụp trực tiếp lúc apply — đọc chúng như suy ra có bằng chứng, không phải quan sát trực tiếp.",
+    "hashDoiChieu": "669edb343f60ccfb4ff44da02a9ab34b0b8e39d6bb23e6d736b33b75ad3dd91c"
+  }
 }

@@ -1,8 +1,8 @@
 {
   "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh.",
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-06",
-  "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1).",
+  "reviewedAt": "2026-08-12",
+  "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy.",
   "files": {
     "supabase/migrations/016_document_templates.sql": {
       "sha256": "29878ad3f80b3abdc839a61fa9dac7a470ec2d53d049bcab9fddae4cc50cc005",
@@ -388,6 +388,29 @@
         }
       ],
       "anhHuongThat": "KHÔNG có code sản xuất nào gọi public.clone_org_sync_v1 — nút \"Cài đặt → Tổ chức → Đồng bộ dữ liệu mới nhất\" đã được chuyển sang cặp hàm mới và cả hai đều TỒN TẠI trong production.\n\nĐường đi thật của nút (đã kiểm từ UI xuống RPC):\n- src/pages/settings/OrganizationPage.tsx:50 import { useCloneOrgSync, useCloneOrgSyncStatus }; dòng 260-261 dùng hook; dòng 316 render nhãn nút 'Đồng bộ dữ liệu mới nhất'.\n- src/hooks/useCloneOrgSync.ts:52 — supabase.rpc('clone_org_request_sync_v1')  ⇒ hàm CÓ trong production (baseline/schema.sql:52301, provenance catalog-proven).\n- src/hooks/useCloneOrgSync.ts:34 — supabase.rpc('clone_org_sync_status_v1')  ⇒ hàm CÓ trong production (bản 070000 ghi đè bản 060000 bằng CREATE OR REPLACE, có trong scripts/definer-acl-baseline.json:21 và src/integrations/supabase/types.ts:24134).\n- Header hook (dòng 3-8) ghi rõ: \"Nút bấm KHÔNG chạy bộ chép trực tiếp... nút chỉ ĐẶT HÀNG (clone_org_request_sync_v1), còn job pg_cron 15 giây/lần nhặt đơn và chạy.\"\n⇒ Tính năng nút bấm KHÔNG hỏng.\n\nGrep src/, api/, supabase/functions/ không có bất kỳ lời gọi clone_org_sync_v1 nào. Toàn bộ tham chiếu còn lại nằm ngoài runtime production:\n\nMỘT VẤN ĐỀ NHỎ CẦN VÁ (không phải production runtime, nhưng là bug thật):\n- scripts/clone-org/clone.mjs:29 vẫn chạy \"SELECT public.clone_org_sync_v1() AS result;\" — hàm này đã bị DROP nên script CLI này sẽ chết với 42883 function public.clone_org_sync_v1() does not exist. Đây là công cụ dev chạy qua Management API + PAT (bước 3 trong quy trình dựng org TEST), không phải code chạy trên web. Nên sửa thành gọi clone_org.do_sync() sau khi SET session_replication_role = replica (như clone_org.run_pending_sync làm), hoặc đơn giản là insert vào clone_org.sync_request rồi chờ pg_cron.\n- Hai chỗ chỉ là COMMENT lỗi thời, vô hại: scripts/clone-org/create-users.mjs:87 và scripts/clone-org/mask.mjs:8 nhắc tên hàm cũ trong chú thích.\n- Ghi chú đầu file 060000 và scripts/clone-org/clone.mjs:7-9 mô tả kiến trúc cũ (RPC gọi thẳng), nay đã bị 070000 thay — nên cập nhật để người sau không làm lại đường cũ.\n\nKhuyến nghị provenance: đổi state của 20260801060000_clone_org_sync_rpc.sql thành 'catalog-proven' với evidence trỏ vào các object CÙNG FILE vẫn còn sống (schema clone_org, clone_org.tables_to_clone, clone_org.map_text, clone_org.user_map, clone_org.sync_log, clone_org.idmap) thay vì chấm 'unknown' chỉ vì một object duy nhất đã bị migration sau cố ý xoá."
+    },
+    "supabase/migrations/20260729150000_notification_config_tables_rpc.sql": {
+      "sha256": "99f9888880620d5b4cd8b760587275edb8939f02f7ab55bd1a9be635d3bbbabc",
+      "missingObjects": [
+        "policy:public.notification_preferences.np_org_boundary"
+      ],
+      "ketLuan": "da-chay-bi-thay-the",
+      "lyLe": "Policy KHÔNG biến mất — nó bị ĐỔI TÊN. Migration `20260807190100_gd1_doi_ten_np_org_boundary.sql` (dòng 34-35) chạy `ALTER POLICY np_org_boundary ON public.notification_preferences RENAME TO notification_preferences_org_boundary`.\n\nCatalog production đo ngày 12/08/2026 có đúng ba policy trên bảng đó: `notification_preferences_org_boundary`, `notification_preferences_hide_sandbox_admin`, `np_own`. Bản đổi tên CÓ MẶT, nên file 20260729150000 chắc chắn đã chạy — không chạy thì không có gì để `ALTER POLICY ... RENAME`, và chính migration đổi tên có khối preflight `RAISE NOTICE` cho đúng ca policy cũ vắng mặt.\n\nVÌ SAO MỘT CÁI TÊN LẠI ĐÁNG MỘT MIGRATION RIÊNG — chú thích trong chính file đổi tên nói rõ: gate đếm bảng \"đã có biên giới tổ chức\" bằng cách khớp tên theo quy ước `relname || '_org_boundary'`. 31/32 policy tuân thủ, riêng bảng này mang tên viết tắt nên bị đếm là THIẾU biên giới vĩnh viễn — vá bao nhiêu lần cũng không làm con số đúng lên được. Đó chính là chỗ sinh ra khoảng lệch 272 vs 273 giữa con số bản kế hoạch dùng và con số đo thật.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260729150000_notification_config_tables_rpc.sql:107-108",
+          "trich_doan": "drop policy if exists np_org_boundary on public.notification_preferences;\ncreate policy np_org_boundary on public.notification_preferences"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260807190100_gd1_doi_ten_np_org_boundary.sql:34-35",
+          "trich_doan": "ALTER POLICY np_org_boundary ON public.notification_preferences\n  RENAME TO notification_preferences_org_boundary;"
+        },
+        {
+          "duong_dan": "catalog production, đo 12/08/2026 (pg_policy JOIN pg_class)",
+          "trich_doan": "notification_preferences: notification_preferences_hide_sandbox_admin, notification_preferences_org_boundary, np_own"
+        }
+      ],
+      "anhHuongThat": "Không có. Đây là đổi tên thuần: biểu thức policy giữ nguyên, chỉ nhãn đổi để khớp quy ước mà gate đếm dựa vào. Không mã nào gọi policy theo tên — grep tên policy trong `src/`, `api/`, `scripts/`, `supabase/functions/` chỉ ra trong chính hai file SQL trên. Bảng vẫn có đủ biên giới tổ chức, và sau khi đổi tên thì gate đếm mới nhìn thấy nó."
     }
   }
 }
