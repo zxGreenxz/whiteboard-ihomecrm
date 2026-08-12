@@ -38,6 +38,39 @@ phép đo trước/sau bằng vai người dùng thật. Ba commit: `9519cd98`, 
 > Phiên 09–11/08: `ae505187`, `979d0941`, `e54f831a`, `2398037f`, và bản cập
 > nhật này.
 >
+> **PHIÊN 11/08 — TÁCH VAI CHỦ KHỎI VAI HỆ THỐNG, VÀ DỰNG LẠI DEMO.**
+>
+> Phát hiện gốc: hệ thống **chưa từng có vai chủ công ty**. Vai `Super Admin` có
+> **0 quyền** trong `role_permissions` — sức mạnh của nó đến từ vế
+> `is_super_admin()` nhúng trong policy. Tức quyền CHỦ SỞ HỮU và quyền TÀI KHOẢN
+> HỆ THỐNG lâu nay là **cùng một thứ**, và đó là gốc của chuyện báo cáo cộng gộp.
+> Chứng minh trước khi sửa: membership OWNER đầy đủ nhưng không nằm trong
+> `super_admins` → thấy **0 toà nhà, 0 hoá đơn, 0 hợp đồng**.
+>
+> - **Vai "Chủ công ty"** (`20260811030000`): 231 quyền TENANT, phạm vi
+>   ORGANIZATION. Tài khoản `nguyentam@username.ihomecrm.local`. Kiểm bằng đăng
+>   nhập THẬT qua HTTP: 1.143 hoá đơn / 335 hợp đồng / 18 toà, `is_super_admin`=0.
+> - **Demo dựng lại** (`20260811040000`, `…050000`) như một công ty **bình
+>   thường** — chủ riêng, vai riêng, **không** dùng `sandbox_org_ids` hay
+>   `demo_user_ids`. Không cần giấu nữa vì chủ đã có tài khoản riêng. Cách ly đo
+>   **hai chiều**: chủ Demo thấy 2 toà/8 phòng và 0 dòng công ty khác; chủ thật
+>   vẫn thấy đúng 18 toà.
+> - **Ba đợt chặn NULL** (`…010000`, `…020000`, `…060000`): gate bắt 177 dòng
+>   NULL mới do app chạy thật sinh ra, qua ba đợt trong hai ngày. 10 bảng đã gắn
+>   trigger `autofill_org_strict` fail-closed.
+>
+> Bộ đo nay chạy với **ba nhân vật, hai công ty thật** — lần đầu đo được rò chéo
+> thật thay vì chỉ bằng tổ chức tổng hợp.
+>
+> **CÒN LẠI, có chủ ý không làm:** 84 bảng vẫn nhận được NULL. Gắn trigger diện
+> rộng sẽ chấm dứt trò đuổi bắt, nhưng hàm fail-closed sẽ NỔ ở bảng nào có đường
+> ghi không mang `user_id` lẫn bảng cha — đổi một chỗ rò im lặng lấy một chỗ hỏng
+> ồn ào ở nơi chưa đo. Đáng làm khi có thời gian đo từng đường ghi của 84 bảng.
+>
+> **CẦN NGƯỜI QUYẾT:** `nguyentamca165@gmail.com` vẫn giữ membership OWNER của
+> công ty thật. Gỡ thì việc tách mới triệt để, nhưng `can_v3` đòi membership
+> ACTIVE nên phải đo kỹ đường GHI trước khi gỡ.
+
 > **KHÔNG CÒN VIỆC NÀO CHỜ QUYẾT ĐỊNH.** Việc cuối — xoay 334 mã công khai lên
 > ≥16 ký tự (GĐ0 mục 6a(i)) — đã được chủ dự án cân nhắc và **quyết KHÔNG làm**
 > ngày 09/08/2026, chấp nhận rủi ro tồn đọng và lấy rate-limit làm biện pháp
