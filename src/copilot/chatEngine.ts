@@ -13,6 +13,7 @@ import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
 import { CHAT_SYSTEM_PROMPT } from './systemPromptVi';
 import { goiModelMotLuot, type KhaiBaoTool, type TinNhan } from './llmClient';
+import { dongNguCanhTrang } from './banDoHeThong';
 import { buildRegistry, toLlmTools, type ToolCtx } from './tools/registry';
 
 /** Kiểu tin nhắn dùng chung trong chat mode (tương thích OpenAI). */
@@ -119,13 +120,22 @@ export async function runChatTurn(params: {
   onToolEvent?: (ev: ChatToolEvent) => void;
   /** Từng mảnh chữ mô hình trả — để UI hiện dần thay vì đợi xong. */
   onDeltaChu?: (chu: string) => void;
+  /** Đường dẫn trang người dùng đang xem, để hiểu "cái này", "ở đây". */
+  pathname?: string;
 }): Promise<ChatTurnResult> {
   const registry = buildRegistry();
   const toolMap = toLlmTools(registry, params.ctx);
   const khaiBao = toolSangKhaiBao(toolMap);
 
+  // Ngữ cảnh trang đi vào system prompt chứ không thành tool: nó là MỘT DÒNG và
+  // luôn đúng, bắt mô hình gọi tool để biết mình đang ở đâu là thêm một vòng
+  // mạng cho một sự thật đã nằm sẵn trong tay.
+  const nguCanh = params.pathname
+    ? dongNguCanhTrang(params.pathname, params.ctx.perms)
+    : null;
+
   const messages: Message[] = [
-    { role: 'system', content: CHAT_SYSTEM_PROMPT },
+    { role: 'system', content: nguCanh ? `${CHAT_SYSTEM_PROMPT}\n\n${nguCanh}` : CHAT_SYSTEM_PROMPT },
     ...buildChatContext(params.history),
     { role: 'user', content: params.userText },
   ];

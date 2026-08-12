@@ -1,7 +1,7 @@
 // Panel chat AI Copilot — UI tiếng Việt (F9), chat read-only Phase 2
 // + UI-control experimental Phase 3 (toggle "Điều khiển trang").
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, Mic, MicOff, Plus, Send, Square, X } from 'lucide-react';
 // Kiểu tin nhắn nay do chatEngine sở hữu, không còn lấy từ @page-agent/llms:
 // `Message.content` của thư viện đó là `string | null`, không chứa được tin
@@ -137,6 +137,7 @@ export default function ChatPanel({ onClose }: Props) {
   const { data: entitlement } = useCopilotEntitlement();
   const { model, setModel, modelLoiThoi } = useCopilotModel();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const canUiControl =
     !!entitlement?.ui_control_enabled && !!perms && canUse(perms, 'ai_copilot', 'ui_control');
@@ -223,6 +224,8 @@ export default function ChatPanel({ onClose }: Props) {
       userText: text,
       ctx: { perms },
       signal: abort.signal,
+      // Cho Copilot biết người dùng đang xem màn hình nào — để hiểu "cái này".
+      pathname: location.pathname,
       onToolEvent: (ev: ChatToolEvent) => {
         setLiveTool(ev.tool);
         // Mô hình có thể nói một câu dẫn rồi mới gọi tool. Câu đó đã hiện ra;

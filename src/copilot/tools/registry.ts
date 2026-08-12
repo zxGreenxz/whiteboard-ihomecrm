@@ -381,6 +381,29 @@ export function buildRegistry(): DomainTool[] {
     }),
 
     dt({
+      name: 'ban_do_he_thong',
+      description:
+        'Tra xem một việc làm ở TRANG nào trong hệ thống, cần quyền gì, và người dùng có làm được không. Dùng khi họ hỏi "tôi làm X ở đâu", "ai được phép Y", hoặc khi cần chỉ đường tới đúng màn hình. Bỏ trống chu_de để xem toàn bộ bản đồ.',
+      inputSchema: z.object({
+        chu_de: z
+          .string()
+          .optional()
+          .describe('Việc cần làm, vd "tạo hợp đồng", "duyệt phiếu chi". Bỏ trống = liệt kê toàn bộ.'),
+      }),
+      execute: async (args, ctx) => {
+        const { timTrang, moTaTrangKhop, banDoGon } = await import('../banDoHeThong');
+        if (!args.chu_de?.trim()) return banDoGon(ctx.perms);
+        const khop = timTrang(args.chu_de, ctx.perms);
+        if (!khop.length) {
+          return ctx.perms === undefined
+            ? 'Đang tải quyền truy cập, chưa tra được. Thử lại sau vài giây.'
+            : `Không thấy trang nào bạn dùng được khớp "${args.chu_de}". Gọi lại không kèm chu_de để xem toàn bộ bản đồ.`;
+        }
+        return moTaTrangKhop(khop);
+      },
+    }),
+
+    dt({
       name: 'liet_ke_chu_de',
       description:
         'Liệt kê các tài liệu nghiệp vụ hiện có (mã và tiêu đề). Dùng khi huong_dan không tìm thấy, hoặc khi cần biết hệ thống có tài liệu về gì.',
