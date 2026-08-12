@@ -779,8 +779,17 @@ jobs:
           # (outputPath hardcode ở :192) và TỰ chèn header (:9/:79). stdout chỉ có banner npm.
           # Bản cũ `npm run gen:types > /tmp/x.ts` hỏng cả hai vế: vế phải là banner, vế trái
           # đã bị script ghi đè trước khi diff chạy ⇒ job luôn exit 1. Phải sao lưu trước.
+          #
+          # PHẢI CHUẨN HOÁ TRƯỚC KHI DIFF — đây là lỗi thứ hai của cùng bước này, sửa
+          # 12/08/2026. `gen:types` sinh bản THÔ (32.985 dòng, gồm 92 partition
+          # `*_YYYYMMDD` của bảng mẫu realtime), còn file được commit là bản ĐÃ BỎ
+          # partition (28.569 dòng — xem `npm run types:normalize`, và Contract §6 quy
+          # định đúng thứ tự gen → normalize → check). Thiếu bước normalize thì diff luôn
+          # lệch đúng 92 bảng đó, tức job KHÔNG BAO GIỜ xanh được dù schema khớp hoàn
+          # toàn. Đã đo: sau khi thêm normalize, diff rỗng trên cùng SHA mà CI báo trôi.
           cp src/integrations/supabase/types.ts /tmp/types.committed.ts
           npm run gen:types
+          npm run types:normalize
           diff -u /tmp/types.committed.ts src/integrations/supabase/types.ts \
             && echo "✅ types.ts khớp schema DB — không trôi." \
             || { echo "❌ types.ts TRÔI so với schema thật — chạy: npm run gen:types (script tự ghi + tự thêm header, KHÔNG redirect)"; exit 1; }
