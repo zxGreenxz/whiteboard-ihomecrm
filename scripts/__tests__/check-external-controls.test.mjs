@@ -11,7 +11,12 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { interpretProtection, danhGiaVercel, UNVERIFIED } from "../check-external-controls.mjs";
+import {
+  interpretProtection,
+  danhGiaVercel,
+  trangThaiNhanhPhatHanh,
+  UNVERIFIED,
+} from "../check-external-controls.mjs";
 
 const ok = (data) => ({ ok: true, data });
 
@@ -112,5 +117,37 @@ describe("danhGiaVercel — production branch bị gạt về main phải ĐỎ"
 
   it("0 project ⇒ unverified, KHÔNG phải checked (token sai team cũng trả 200)", () => {
     assert.equal(danhGiaVercel([]).status, UNVERIFIED);
+  });
+});
+
+describe("trangThaiNhanhPhatHanh — ba trạng thái, không phải hai", () => {
+  it("hỏi được và CÓ nhánh ⇒ present", () => {
+    assert.equal(trangThaiNhanhPhatHanh(true).status, "present");
+  });
+
+  it("hỏi được và KHÔNG có nhánh ⇒ absent", () => {
+    assert.equal(trangThaiNhanhPhatHanh(false).status, "absent");
+    assert.match(trangThaiNhanhPhatHanh(false).note, /mọi push vào main là một lần phát hành/);
+  });
+
+  it("HỎI KHÔNG ĐƯỢC ⇒ unverified, KHÔNG phải absent", () => {
+    // Đây là ca đắt nhất trong file này, và nó có từ một lỗi THẬT: 12/08/2026
+    // lượt chạy đầu báo `absent`, lượt ngay sau báo `present`, nhánh vẫn nằm
+    // nguyên trên remote. `read()` trả null khi `git ls-remote` hỏng (mất mạng),
+    // và bản cũ gộp null vào cùng ô với "đã hỏi, không có".
+    //
+    // Hậu quả không chỉ là một dòng sai: nó khẳng định kiểm soát an toàn phát
+    // hành KHÔNG TỒN TẠI trong khi nó vẫn còn đó. Một cảnh báo sai kiểu đó làm
+    // người đọc thôi tin cả bảng — đúng thứ mà đầu file này đã chê.
+    for (const v of [null, undefined]) {
+      assert.equal(trangThaiNhanhPhatHanh(v).status, UNVERIFIED, `với ${String(v)}`);
+      assert.match(trangThaiNhanhPhatHanh(v).note, /Chưa kiểm được KHÁC với không tồn tại/);
+    }
+  });
+
+  it("ba trạng thái là BA giá trị khác nhau", () => {
+    // Chống-xanh-rỗng: nếu ai đó gộp lại hai trong ba, ca này đỏ ngay.
+    const ra = new Set([true, false, null].map((v) => trangThaiNhanhPhatHanh(v).status));
+    assert.equal(ra.size, 3);
   });
 });

@@ -261,6 +261,29 @@ export function danhGiaVercel(projects) {
   };
 }
 
+/**
+ * Ba trạng thái của nhánh phát hành, từ kết quả hỏi remote.
+ *
+ * Tách ra thành hàm thuần để test được ĐÚNG chỗ đã hỏng: `null` (hỏi không được)
+ * phải ra `unverified`, KHÔNG được gộp vào `absent`. Gộp là biến một trục trặc
+ * mạng thoáng qua thành lời khẳng định rằng kiểm soát an toàn phát hành không tồn
+ * tại — và người đọc thấy một dòng sai như thế thì thôi tin cả bảng.
+ */
+export function trangThaiNhanhPhatHanh(coNhanh) {
+  if (coNhanh === null || coNhanh === undefined) {
+    return {
+      status: UNVERIFIED,
+      note: 'KHÔNG hỏi được remote (`git ls-remote` lỗi — mạng hoặc quyền). Chưa kiểm được KHÁC với không tồn tại; đừng đọc dòng này thành "nhánh đã bị xoá".',
+    };
+  }
+  return coNhanh
+    ? { status: 'present', note: 'Nhánh origin/production tồn tại.' }
+    : {
+        status: 'absent',
+        note: 'CHƯA có nhánh origin/production — nghĩa là Vercel vẫn đang deploy từ main, và mọi push vào main là một lần phát hành.',
+      };
+}
+
 function localRepoState() {
   const read = (cmd, args) => {
     try {
@@ -277,8 +300,24 @@ function localRepoState() {
     // cho ✅ "nhánh tồn tại" dù remote đã xoá nhánh. Đúng cái lỗi "ảnh chụp
     // chứng minh lúc đó đã bật, không chứng minh bây giờ vẫn bật" mà chính
     // header script này chê.
-    hasProductionBranch:
-      (read('git', ['ls-remote', '--heads', 'origin', NHANH_PHAT_HANH]) || '').trim() !== '',
+    //
+    // BA TRẠNG THÁI, KHÔNG PHẢI HAI. `read()` trả `null` khi lệnh HỎNG — mất
+    // mạng, remote từ chối, git không chạy được. Bản đầu viết
+    // `(read(...) || '').trim() !== ''`, tức gộp "hỏi không được" vào cùng ô với
+    // "hỏi rồi, không có nhánh nào" và báo `absent`.
+    //
+    // Đã xảy ra thật 12/08/2026: lượt chạy đầu báo `absent`, lượt ngay sau báo
+    // `present`, nhánh vẫn nằm nguyên trên remote. Một trục trặc mạng thoáng qua
+    // trở thành lời khẳng định chắc nịch rằng kiểm soát an toàn phát hành không
+    // tồn tại — đúng cái chống-chỉ-định mà đầu file này cảnh báo, và tệ hơn cả
+    // im lặng: nó làm người đọc mất tin vào mọi dòng còn lại.
+    //
+    // `null` = chưa kiểm được. Phần báo cáo xếp nó thành `unverified`.
+    hasProductionBranch: (() => {
+      const ra = read('git', ['ls-remote', '--heads', 'origin', NHANH_PHAT_HANH]);
+      if (ra === null) return null;
+      return ra.trim() !== '';
+    })(),
   };
 }
 
@@ -342,12 +381,7 @@ async function main(argv) {
       githubBranchProtection: protection,
       vercelProductionBranch: vercel,
       vercelEnvAndDeployment: chiTiet,
-      productionBranchExists: {
-        status: local.hasProductionBranch ? 'present' : 'absent',
-        note: local.hasProductionBranch
-          ? 'Nhánh origin/production tồn tại.'
-          : 'CHƯA có nhánh origin/production — nghĩa là Vercel vẫn đang deploy từ main, và mọi push vào main là một lần phát hành.',
-      },
+      productionBranchExists: trangThaiNhanhPhatHanh(local.hasProductionBranch),
     },
     localHead: local,
   };
