@@ -1,18 +1,22 @@
-// Chat engine — R8 PLAN.md v2.1: TÁI DÙNG LLM class của @page-agent/llms
-// (Message/Tool/zod conversion/validation/usage/error-mapping/retry có sẵn)
-// + tool "respond" kiểu built-in done → loop đến khi model gọi respond.
-import { LLM, type Message } from '@page-agent/llms';
+// Chat engine — nói thẳng OpenAI-compat với `llm-proxy` qua `llmClient`.
+//
+// Bản trước dùng `LLM` class của @page-agent/llms và một tool giả tên `respond`
+// làm dấu "xong". Cái tool giả đó không phải lựa chọn thiết kế mà là hệ quả:
+// `LLM.invoke` ép `tool_choice: 'required'`, nên mô hình BUỘC phải gọi một tool
+// gì đó, kể cả khi nó chỉ muốn trả lời. Hệ quả kéo theo là câu trả lời cuối về
+// dưới dạng tham số JSON của tool — thứ không stream ra chữ được (người dùng sẽ
+// thấy `{"text":"Xin ch…`).
+//
+// Nay `tool_choice: 'auto'`: mô hình gọi tool khi cần dữ liệu, trả lời thẳng
+// bằng `content` khi đã đủ. Không còn `respond`, và chữ chảy dần được.
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
-import {
-  LLM_PROXY_BASE,
-  LOCAL_PROVIDER_BASES,
-  makeCopilotFetch,
-  newTaskId,
-  parseProviderModel,
-} from './copilotConfig';
 import { CHAT_SYSTEM_PROMPT } from './systemPromptVi';
+import { goiModelMotLuot, type KhaiBaoTool, type TinNhan } from './llmClient';
 import { buildRegistry, toLlmTools, type ToolCtx } from './tools/registry';
+
+/** Kiểu tin nhắn dùng chung trong chat mode (tương thích OpenAI). */
+export type Message = TinNhan;
 
 export interface ChatToolEvent {
   tool: string;
@@ -29,6 +33,20 @@ export interface ChatTurnResult {
 }
 
 const MAX_TOOL_ROUNDS = 6;
+
+/**
+ * Độ dài "tính theo ký tự" của một `content`.
+ *
+ * `content` có thể là chuỗi, hoặc mảng multimodal (chuẩn bị cho ảnh). Với mảng
+ * thì `.length` là SỐ PHẦN TỬ — dùng nó làm ngân sách ký tự sẽ coi một ảnh
+ * base64 nửa megabyte là "1 ký tự" và ngân sách ngữ cảnh mất tác dụng đúng lúc
+ * cần nhất.
+ */
+export function doDaiNoiDung(content: Message['content']): number {
+  if (typeof content === 'string') return content.length;
+  if (Array.isArray(content)) return JSON.stringify(content).length;
+  return 0;
+}
 
 /**
  * Cắt history cho context: giữ NGUYÊN VẸN từng "block" (user-message hoặc
@@ -57,7 +75,7 @@ export function buildChatContext(
   let chars = 0;
   for (let i = blocks.length - 1; i >= 0 && out.length < maxTurns; i--) {
     const block = blocks[i];
-    const blockChars = block.reduce((s, m) => s + (m.content?.length ?? 0) + JSON.stringify(m.tool_calls ?? '').length, 0);
+    const blockChars = block.reduce((s, m) => s + doDaiNoiDung(m.content) + JSON.stringify(m.tool_calls ?? '').length, 0);
     if (chars + blockChars > maxChars && out.length > 0) break;
     out.unshift(block);
     chars += blockChars;
@@ -65,7 +83,33 @@ export function buildChatContext(
   return out.flat();
 }
 
-/** Chạy MỘT lượt chat: user hỏi → (tool*) → respond. */
+/** Giới hạn ký tự cho MỘT kết quả tool nhét vào ngữ cảnh. */
+const CAP_KET_QUA_TOOL = 12_000;
+
+/**
+ * Đổi registry tool (schema zod) sang khai báo hàm kiểu OpenAI.
+ *
+ * `io: 'input'` là chi tiết quan trọng: nó khiến trường có `.default()` KHÔNG bị
+ * xếp vào `required`. Lấy schema đầu ra sẽ bắt mô hình luôn phải truyền
+ * `xac_nhan`, tức phá đúng cái mặc-định-an-toàn `xac_nhan = false` của write tool.
+ */
+export function toolSangKhaiBao(
+  tools: Record<string, { description: string; inputSchema: z.ZodType<unknown> }>,
+): KhaiBaoTool[] {
+  return Object.entries(tools).map(([name, t]) => {
+    const schema = z.toJSONSchema(t.inputSchema, { io: 'input' }) as Record<string, unknown>;
+    delete schema.$schema; // khoá meta, không nhà cung cấp nào cần
+    return { type: 'function' as const, function: { name, description: t.description, parameters: schema } };
+  });
+}
+
+/**
+ * Chạy MỘT lượt chat: user hỏi → (tool*) → mô hình trả lời bằng văn bản.
+ *
+ * Tool trong cùng một vòng chạy SONG SONG. Mô hình thường xin nhiều thứ một lúc
+ * ("doanh thu toà X" + "phòng trống toà X"); chạy tuần tự thì độ trễ cộng dồn vô
+ * ích vì chúng không phụ thuộc nhau.
+ */
 export async function runChatTurn(params: {
   providerModel: string; // "provider:model-id"
   history: Message[];    // các lượt trước (không gồm system)
@@ -73,36 +117,12 @@ export async function runChatTurn(params: {
   ctx: ToolCtx;
   signal: AbortSignal;
   onToolEvent?: (ev: ChatToolEvent) => void;
+  /** Từng mảnh chữ mô hình trả — để UI hiện dần thay vì đợi xong. */
+  onDeltaChu?: (chu: string) => void;
 }): Promise<ChatTurnResult> {
-  const parsed = parseProviderModel(params.providerModel);
-  if (!parsed) throw new Error(`Model không hợp lệ: "${params.providerModel}"`);
-  const localBase = LOCAL_PROVIDER_BASES[parsed.provider];
-  const isLocal = !!localBase;
-  const taskId = newTaskId('chat');
-
-  const llm = new LLM({
-    baseURL: isLocal ? localBase : LLM_PROXY_BASE,
-    // local_only: browser → localhost, KHÔNG qua proxy; cloud: model giữ nguyên
-    // "provider:model" để proxy route.
-    model: isLocal ? parsed.modelId : params.providerModel,
-    apiKey: 'unused-behind-proxy',
-    maxRetries: 2, // retry CHỈ ở client — proxy không retry (F4)
-    customFetch: isLocal ? undefined : makeCopilotFetch('chat', taskId),
-  });
-
   const registry = buildRegistry();
-  const tools = toLlmTools(registry, params.ctx);
-
-  let finalText = '';
-  const respondTool = {
-    description:
-      'Trả lời CUỐI CÙNG cho người dùng. Gọi tool này khi đã đủ dữ liệu — text là toàn bộ câu trả lời (markdown, tiếng Việt).',
-    inputSchema: z.object({ text: z.string().min(1) }),
-    execute: async (args: { text: string }) => {
-      finalText = args.text;
-      return 'OK';
-    },
-  };
+  const toolMap = toLlmTools(registry, params.ctx);
+  const khaiBao = toolSangKhaiBao(toolMap);
 
   const messages: Message[] = [
     { role: 'system', content: CHAT_SYSTEM_PROMPT },
@@ -115,39 +135,77 @@ export async function runChatTurn(params: {
   const usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const result = await llm.invoke(
+    const kq = await goiModelMotLuot({
+      providerModel: params.providerModel,
       messages,
-      { ...tools, respond: respondTool },
-      params.signal,
-    );
-    usage.promptTokens += result.usage.promptTokens;
-    usage.completionTokens += result.usage.completionTokens;
-    usage.totalTokens += result.usage.totalTokens;
+      tools: khaiBao,
+      signal: params.signal,
+      onDeltaChu: params.onDeltaChu,
+    });
+    usage.promptTokens += kq.usage.promptTokens;
+    usage.completionTokens += kq.usage.completionTokens;
+    usage.totalTokens += kq.usage.totalTokens;
 
-    const { name, args } = result.toolCall;
-    if (name === 'respond') {
-      const respondMsg: Message = { role: 'assistant', content: finalText };
-      newMessages.push(respondMsg);
-      return { text: finalText, toolEvents, usage, newMessages };
+    // Không xin tool nữa ⇒ đây là câu trả lời.
+    if (kq.toolCalls.length === 0) {
+      const text = kq.content.trim();
+      const cuoi: Message = { role: 'assistant', content: text };
+      newMessages.push(cuoi);
+      return { text, toolEvents, usage, newMessages };
     }
 
-    const output = String(result.toolResult ?? '');
-    const ev = { tool: name, args, output };
-    toolEvents.push(ev);
-    params.onToolEvent?.(ev);
-
-    const callId = `call_${round}_${Date.now().toString(36)}`;
+    // Mô hình có thể vừa nói một câu dẫn ("để tôi tra…") vừa gọi tool. Giữ câu
+    // đó trong message: nó đã hiện trên màn hình rồi, bỏ đi thì lịch sử tải lại
+    // sẽ khác những gì người dùng đã đọc.
     const assistantMsg: Message = {
       role: 'assistant',
-      content: null,
-      tool_calls: [{ id: callId, type: 'function', function: { name, arguments: JSON.stringify(args ?? {}) } }],
+      content: kq.content || null,
+      tool_calls: kq.toolCalls,
     };
-    const toolMsg: Message = { role: 'tool', tool_call_id: callId, content: output.slice(0, 12_000) };
-    messages.push(assistantMsg, toolMsg);
-    newMessages.push(assistantMsg, toolMsg);
+    messages.push(assistantMsg);
+    newMessages.push(assistantMsg);
+
+    // SONG SONG. Mỗi tool tự nuốt lỗi của mình thành text: một tool hỏng không
+    // được làm hỏng cả lượt, và mô hình cần ĐỌC được lỗi để đổi cách hỏi.
+    const ketQua = await Promise.all(
+      kq.toolCalls.map(async (tc): Promise<Message> => {
+        const ten = tc.function.name;
+        let args: unknown = {};
+        let output: string;
+        try {
+          args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+        } catch {
+          output = `Lỗi: tham số không phải JSON hợp lệ (${tc.function.arguments.slice(0, 200)}).`;
+          const evLoi = { tool: ten, args, output };
+          toolEvents.push(evLoi);
+          params.onToolEvent?.(evLoi);
+          return { role: 'tool', tool_call_id: tc.id, content: output };
+        }
+        const tool = toolMap[ten];
+        if (!tool) {
+          output = `Lỗi: không có công cụ tên "${ten}" (hoặc bạn không có quyền dùng).`;
+        } else {
+          try {
+            const parsedArgs = tool.inputSchema.parse(args);
+            output = String(await tool.execute(parsedArgs));
+          } catch (e) {
+            output = `Lỗi khi chạy "${ten}": ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
+        const ev = { tool: ten, args, output };
+        toolEvents.push(ev);
+        params.onToolEvent?.(ev);
+        return { role: 'tool', tool_call_id: tc.id, content: output.slice(0, CAP_KET_QUA_TOOL) };
+      }),
+    );
+
+    // Mọi tool_call phải có ĐÚNG một message `tool` khớp `tool_call_id`, nếu
+    // không nhà cung cấp từ chối cả lượt sau.
+    messages.push(...ketQua);
+    newMessages.push(...ketQua);
   }
 
-  // Hết vòng mà chưa respond → ép trả lời từ dữ liệu đã có
+  // Hết vòng mà mô hình vẫn chưa chốt → trả thẳng dữ liệu đã gom, đừng im lặng.
   const fallback =
     toolEvents.length > 0
       ? `Kết quả tra cứu:\n${toolEvents[toolEvents.length - 1].output.slice(0, 4000)}`
@@ -197,6 +255,21 @@ export async function createThread(title: string, organizationId?: string | null
   return data;
 }
 
+/**
+ * Ép `content` về chuỗi để lưu — cột `ai_chat_messages.content` là text.
+ *
+ * Với tin nhắn multimodal, phần ảnh KHÔNG được lưu: một data URL ảnh là hàng
+ * trăm KB base64, và lưu nó biến bảng lịch sử chat thành kho ảnh có kèm bài
+ * toán retention/PII mà chưa ai thiết kế. Giữ lại phần chữ, đánh dấu chỗ có ảnh
+ * để đọc lại lịch sử vẫn hiểu được mạch hội thoại.
+ */
+export function noiDungDeLuu(content: Message['content']): string | null {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return null;
+  const phan = content.map((p) => (p.type === 'text' ? p.text : '[ảnh]'));
+  return phan.join('\n') || null;
+}
+
 export async function saveMessages(
   threadId: string,
   msgs: Message[],
@@ -210,7 +283,7 @@ export async function saveMessages(
     thread_id: threadId,
     user_id: userId,
     role: m.role,
-    content: m.content ?? null,
+    content: noiDungDeLuu(m.content),
     tool_calls: m.tool_calls ?? null,
     tool_call_id: m.tool_call_id ?? null,
     model,

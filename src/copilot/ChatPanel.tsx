@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Mic, MicOff, Plus, Send, Square, X } from 'lucide-react';
-import type { Message } from '@page-agent/llms';
+// Kiểu tin nhắn nay do chatEngine sở hữu, không còn lấy từ @page-agent/llms:
+// `Message.content` của thư viện đó là `string | null`, không chứa được tin
+// nhắn kèm ảnh.
+import type { Message } from './chatEngine';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { canUse } from '@/lib/permissionPages';
@@ -98,13 +101,28 @@ interface DisplayItem {
   text: string;
 }
 
+/**
+ * `content` thành chữ để hiển thị.
+ *
+ * Tin nhắn multimodal là mảng phần; phần ảnh hiện bằng nhãn thay vì đổ data URL
+ * base64 dài hàng trăm KB ra bong bóng chat.
+ */
+function chuHienThi(content: Message['content']): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.map((p) => (p.type === 'text' ? p.text : '🖼 [ảnh]')).join('\n');
+}
+
 const toDisplay = (msgs: Message[]): DisplayItem[] =>
   msgs
     .map((m): DisplayItem | null => {
-      if (m.role === 'user') return { kind: 'user', text: m.content ?? '' };
-      if (m.role === 'assistant' && m.content) return { kind: 'assistant', text: m.content };
+      if (m.role === 'user') return { kind: 'user', text: chuHienThi(m.content) };
+      if (m.role === 'assistant' && m.content) {
+        return { kind: 'assistant', text: chuHienThi(m.content) };
+      }
       if (m.role === 'assistant' && m.tool_calls?.length) {
-        return { kind: 'tool', text: `Đang tra cứu: ${m.tool_calls[0].function.name}` };
+        // Mô hình xin nhiều tool một lúc thì kể đủ, đừng chỉ khoe cái đầu tiên.
+        return { kind: 'tool', text: `Đang tra cứu: ${m.tool_calls.map((t) => t.function.name).join(', ')}` };
       }
       return null; // tool result thô không hiển thị
     })
@@ -127,6 +145,8 @@ export default function ChatPanel({ onClose }: Props) {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [history, setHistory] = useState<Message[]>([]);
   const [liveTool, setLiveTool] = useState<string | null>(null);
+  /** Câu trả lời đang chảy về, chưa chốt vào history. */
+  const [dangChay, setDangChay] = useState('');
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
@@ -154,7 +174,7 @@ export default function ChatPanel({ onClose }: Props) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [history, liveTool]);
+  }, [history, liveTool, dangChay]);
 
   const newThread = () => {
     touchedRef.current = true;
@@ -203,8 +223,19 @@ export default function ChatPanel({ onClose }: Props) {
       userText: text,
       ctx: { perms },
       signal: abort.signal,
-      onToolEvent: (ev: ChatToolEvent) => setLiveTool(ev.tool),
+      onToolEvent: (ev: ChatToolEvent) => {
+        setLiveTool(ev.tool);
+        // Mô hình có thể nói một câu dẫn rồi mới gọi tool. Câu đó đã hiện ra;
+        // dọn nó đi khi sang vòng tool để bong bóng "đang chảy" không dính lại
+        // phần dẫn của vòng trước.
+        setDangChay('');
+      },
+      onDeltaChu: (chu) => {
+        setLiveTool(null);
+        setDangChay((s) => s + chu);
+      },
     });
+    setDangChay('');
     setHistory((h) => [...h.slice(0, -1), ...result.newMessages]);
     void saveMessages(tid, result.newMessages, model, organization?.id ?? null).catch(() => {
       /* lưu lịch sử lỗi không chặn chat */
@@ -225,6 +256,9 @@ export default function ChatPanel({ onClose }: Props) {
       handleError(e);
     } finally {
       setLiveTool(null);
+      // Dọn bong bóng đang-chảy kể cả khi lỗi hoặc user bấm Dừng: để lại một
+      // câu dở dang không thuộc history là nói dối người đọc về thứ đã lưu.
+      setDangChay('');
       setRunning(false);
       abortRef.current = null;
     }
@@ -316,7 +350,16 @@ export default function ChatPanel({ onClose }: Props) {
             </div>
           ),
         )}
-        {running && (
+        {/* Bong bóng "đang chảy": cùng khuôn với bong bóng trả lời thật, nên
+            lúc chốt vào history chữ không nhảy chỗ. */}
+        {dangChay && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] rounded-lg bg-muted px-3 py-2">
+              <MiniMarkdown text={dangChay} />
+            </div>
+          </div>
+        )}
+        {running && !dangChay && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
             {liveTool ? `Đang tra cứu: ${liveTool}…` : 'Đang suy nghĩ…'}
