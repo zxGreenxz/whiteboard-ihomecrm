@@ -763,12 +763,12 @@
       {
         "deliverable": "check-raw-rpc-callers: tien de dem SAI voi dang literal — tach ratchet lam hai loai",
         "planRef": "Phat sinh khi do that o lo 95, khong co trong plan goc",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "S",
         "touchesOpenClaw": false,
-        "remaining": "Gate hien dem chung mot ro ba dang: rpc-literal, rpc-dynamic, edge-invoke. Ly do gate viet ra la \"supabase.rpc(slug) khong kiem slug ton tai, khong kiem ten tham so\" — DIEU DO SAI voi dang literal. Da chung minh bang thuc nghiem 12/08/2026 (file thu trong src/, chay tsc -p tsconfig.app.json): slug khong ton tai => TS2345 liet ke 648 ten hop le; ten tham so sai => TS2353 \"p_sai_ten does not exist in type { p_organization_id: string; p_period_month: string }\". Tien de chi dung voi rpc-dynamic (slug sau bien, TS mu) va edge-invoke (khong co kieu sinh tu dong). HE QUA THAT, khong phai ly thuyet: gate day nguoi ta sang \"wrapper typed\", ma wrapper lai lam ten RPC BIEN MAT khoi manifest be mat — da thu dung mau paymentRecordRpc cho 6 RPC chot loi nhuan thi check-rpc-surface do 4 cho troi va check-rpc-name-literal do 1 cho mu, tuc doi tam nhin lay mot thu (kieu) von DA CO. Kiem chung them: record_invoice_collection_v5 cua chinh paymentRecordRpc.ts KHONG co trong contracts/surfaces/rpc-surface.json. Viec can lam: tach thanh hai ratchet — \"khong kiem duoc\" (dynamic + edge, cam tang) va \"literal\" (thong tin/rieng), sua lai doan giai thich dau file, them dot bien cho ca hai chieu.",
-        "doneAt": null,
-        "evidence": "Lo 95: da REVERT thu nghiem wrapper vi no lam xau di. 4 van tay literal profit_close_* vao baseline (100 -> 104) — chung khong phai loi goi MOI ma la loi goi VUA NHIN THAY DUOC sau khi lo 669364f1 go lop bien che ten."
+        "remaining": "",
+        "doneAt": "2026-08-12",
+        "evidence": "Lo 95: da REVERT thu nghiem wrapper vi no lam xau di. 4 van tay literal profit_close_* vao baseline (100 -> 104) — chung khong phai loi goi MOI ma la loi goi VUA NHIN THAY DUOC sau khi lo 669364f1 go lop bien che ten. | Lo 96 DA DONG. Them export phanLoai(vanTay) -> khong-kiem-duoc | literal, tach bao cao lam hai nhom voi hai loi khuyen KHAC NHAU, va viet lai doan dau file bang so do that. KHONG NOI CUONG CHE: tap van tay truoc va sau deu 104, diff baseline dung 1 dong $comment; them van tay moi thuoc loai nao cung exit 1. Dot bien SONG tren file that (src/hooks/useShareholderProfit.ts, tier tien): them slug sau bien -> exit 1 + xep dung nhom \"KHONG CANH DUOC\"; them slug viet thang -> exit 1 + xep dung nhom \"VIET THANG\"; them ca hai -> 2 van tay, tach dung hai nhom; tra file lai -> exit 0. Them 6 ca don vi cho phanLoai, trong do hai ca ranh gioi: RPC ten edge_case_v1 / sync_dynamic_rates_v1 KHONG duoc xep nham vao nhom mu kieu (ranh gioi la TIEN TO gate tu gan, khong phai chuoi con), va cat o :: DAU TIEN. Them mot ca chong-xanh-rong bat baseline phai con DU CA HAI loai — neu lat sau gop hai loai lam mot thi bao cao tach nhom thanh trang tri, ca nay bat duoc."
       }
     ]
   },

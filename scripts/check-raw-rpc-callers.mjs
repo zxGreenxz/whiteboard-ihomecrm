@@ -1,14 +1,40 @@
 #!/usr/bin/env node
 // Ratchet: caller ở tier RỦI RO CAO không được thêm lời gọi RPC/Edge thô mới.
 //
-// VÌ SAO CẦN (plan Đợt 5 – V2)
-//   `supabase.rpc("slug", {...})` không có gì kiểm slug đó tồn tại, kiểm tham số
-//   đúng tên, hay kiểm kiểu trả về. Đổi tên một RPC trong migration thì TypeScript
-//   im lặng — lỗi chỉ hiện ra lúc chạy, trên production, ở đúng những đường tiền
-//   và phân quyền mà repo này quan tâm nhất.
+// HAI LOẠI, KHÔNG PHẢI MỘT — và bản đầu của gate này nói SAI về loại thứ hai
 //
-//   Repo đã có wrapper typed cho vài RPC (contractCreateRpc, paymentRecordRpc,
-//   customerCreditRpc…). Cái thiếu là thứ ngăn số lời gọi thô TĂNG TIẾP.
+//   Bản đầu viết: "`supabase.rpc("slug", {...})` không có gì kiểm slug đó tồn tại,
+//   kiểm tham số đúng tên". Đo thật 12/08/2026 (file thử trong `src/`, chạy
+//   `tsc -p tsconfig.app.json`) cho thấy câu đó SAI với slug viết thẳng:
+//     supabase.rpc("khong_ton_tai_v9", {})
+//       → TS2345, và thông báo liệt kê đủ 648 tên hợp lệ
+//     supabase.rpc("profit_close_state_v2", { p_sai_ten: "x" })
+//       → TS2353 "'p_sai_ten' does not exist in type
+//          '{ p_organization_id: string; p_period_month: string; }'"
+//   Kiểu sinh tự động ĐÃ canh cả tên hàm lẫn tên tham số cho dạng literal.
+//
+//   Tiền đề đó chỉ đúng với hai dạng còn lại:
+//     `rpc-dynamic`  slug nằm sau một biến — TypeScript mù hoàn toàn, và không
+//                    grep ra được, không đổi tên an toàn được.
+//     `edge-invoke`  Edge function không có kiểu sinh tự động nào cả.
+//
+// VÌ SAO PHÂN BIỆT LẠI QUAN TRỌNG
+//   Bản đầu khuyên "chuyển sang wrapper typed (xem paymentRecordRpc.ts)". Đã thử
+//   thật cho sáu RPC chốt lợi nhuận và kết quả là BƯỚC LÙI: wrapper nhận invoker
+//   qua tham số nên trong file không còn `.rpc(`, mà `check-rpc-surface` và
+//   `check-rpc-name-literal` tìm chỗ gọi bằng đúng chuỗi đó — tên RPC tàng hình
+//   trở lại với manifest bề mặt. Kiểm chứng: `record_invoice_collection_v5` của
+//   chính `paymentRecordRpc.ts` KHÔNG có trong `contracts/surfaces/rpc-surface.json`.
+//   Tức lời khuyên cũ đánh đổi TẦM NHÌN để lấy một thứ (kiểu) vốn đã có sẵn.
+//
+//   Wrapper vẫn đúng khi nó thêm thứ trình biên dịch không làm được: chuẩn hoá
+//   idempotency key, bất biến tiền, kế hoạch phân bổ — đó là lý do thật của
+//   `paymentRecordRpc`. Nó KHÔNG đúng khi lý do duy nhất là "cho có kiểu".
+//
+// CẢ HAI LOẠI VẪN BỊ RATCHET NHƯ CŨ
+//   Lát này KHÔNG nới cưỡng chế: thêm vân tay mới thuộc loại nào cũng exit 1.
+//   Thứ đổi là gate không còn nói sai lý do, và báo cáo tách hai nhóm để nhóm
+//   nguy hiểm thật (mù kiểu) không bị chìm giữa nhóm đã được canh.
 //
 // KHÔNG PHẢI "CẤM RAW RPC" — mà là "không thêm nữa ở chỗ đắt nhất"
 //   Đo 11/08/2026: 238 lời gọi thô trên toàn src/, trong đó 100 nằm ở 24 file
@@ -47,6 +73,19 @@ const MAU = [
   { ten: 'edge-invoke', re: /functions\.invoke\(\s*["'`]([a-zA-Z0-9_-]+)["'`]/g, lay: (m) => `edge:${m[1]}` },
   { ten: 'rpc-dynamic', re: /\.rpc\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g, lay: (m) => `DYNAMIC:${m[1]}` },
 ];
+
+/**
+ * Xếp một vân tay vào loại.
+ *
+ * `khong-kiem-duoc` = trình biên dịch KHÔNG canh được (slug sau biến, hoặc Edge
+ * function không có kiểu sinh tự động). `literal` = đã được canh tên hàm + tên
+ * tham số, phần còn thiếu là tầng kiểm hợp lệ lúc chạy chứ không phải kiểu.
+ */
+export function phanLoai(vanTay) {
+  const slug = vanTay.slice(vanTay.indexOf('::') + 2);
+  if (slug.startsWith('DYNAMIC:') || slug.startsWith('edge:')) return 'khong-kiem-duoc';
+  return 'literal';
+}
 
 export function vanTayCuaNguon(duong, nguon) {
   const out = new Set();
@@ -105,7 +144,7 @@ function main(argv) {
       JSON.stringify(
         {
           $comment:
-            'Vân tay `<file>::<slug>` của mọi lời gọi RPC/Edge THÔ trong file thuộc tier đòi soi chéo. Danh sách CHỈ ĐƯỢC TEO. Cách đóng một mục: chuyển lời gọi sang wrapper typed rồi chạy --write, KHÔNG phải thêm tên vào đây.',
+            'Vân tay `<file>::<slug>` của mọi lời gọi RPC/Edge THÔ trong file thuộc tier đòi soi chéo. Danh sách CHỈ ĐƯỢC TEO. Hai loại, đóng theo hai cách khác nhau: `DYNAMIC:` và `edge:` là loại trình biên dịch KHÔNG canh được — đóng bằng cách viết thẳng slug ra chuỗi. Loại literal đã được kiểu sinh tự động canh tên hàm + tên tham số — đóng bằng cách bỏ hẳn lời gọi, KHÔNG phải bọc vào wrapper nhận invoker (làm vậy thì tên RPC biến mất khỏi manifest bề mặt; xem đầu scripts/check-raw-rpc-callers.mjs).',
           generatedBy: 'node scripts/check-raw-rpc-callers.mjs --write',
           fingerprints: [...hienTai].sort(),
         },
@@ -129,19 +168,43 @@ function main(argv) {
   const moi = [...hienTai].filter((v) => !baseline.has(v)).sort();
   const daXoa = [...baseline].filter((v) => !hienTai.has(v)).sort();
 
+  const moiMu = moi.filter((v) => phanLoai(v) === 'khong-kiem-duoc');
+  const moiLiteral = moi.filter((v) => phanLoai(v) === 'literal');
+
   if (moi.length > 0) {
-    console.error(`❌ ${moi.length} lời gọi RPC/Edge THÔ mới ở file rủi ro cao:\n`);
-    for (const v of moi) console.error(`  - ${v}`);
-    console.error('\n  Những file này thuộc tier đòi soi chéo (tiền, phân quyền, migration, hạ tầng).');
-    console.error('  `.rpc("slug")` không kiểm slug tồn tại, không kiểm tên tham số, không kiểm kiểu trả về —');
-    console.error('  đổi tên RPC trong migration thì TypeScript im lặng và lỗi chỉ hiện lúc chạy.');
-    console.error('\n  → dùng wrapper typed (xem src/lib/paymentRecordRpc.ts làm mẫu),');
-    console.error('    hoặc nếu thật sự phải thêm: `--write` KÈM lý do trong commit message.');
+    console.error(`❌ ${moi.length} lời gọi RPC/Edge THÔ mới ở file thuộc tier đòi soi chéo`);
+    console.error('   (tiền · phân quyền · migration · hạ tầng).\n');
+
+    if (moiMu.length > 0) {
+      console.error(`  ${moiMu.length} cái TRÌNH BIÊN DỊCH KHÔNG CANH ĐƯỢC — nhóm đắt nhất:`);
+      for (const v of moiMu) console.error(`   - ${v}`);
+      console.error('    Slug nằm sau biến, hoặc là Edge function (không có kiểu sinh tự động).');
+      console.error('    Đổi tên trong migration thì TypeScript im lặng, lỗi chỉ hiện lúc chạy.');
+      console.error('    → viết thẳng slug ra chuỗi. Đó là cách duy nhất để cả trình biên dịch');
+      console.error('      lẫn ba gate bề mặt nhìn thấy nó.\n');
+    }
+
+    if (moiLiteral.length > 0) {
+      console.error(`  ${moiLiteral.length} cái là slug VIẾT THẲNG:`);
+      for (const v of moiLiteral) console.error(`   - ${v}`);
+      console.error('    Tên hàm và tên tham số đã được kiểu sinh tự động canh (TS2345 / TS2353),');
+      console.error('    nên đây KHÔNG phải lỗ hổng kiểu. Cái ratchet muốn hỏi là: đường tiền này');
+      console.error('    có cần tầng kiểm hợp lệ lúc chạy không (idempotency key, bất biến tiền)?');
+      console.error('    → nếu CÓ: đặt phần kiểm đó vào lib và GIỮ NGUYÊN lời gọi literal tại chỗ.');
+      console.error('      ĐỪNG bọc lời gọi vào wrapper nhận invoker: làm vậy thì trong file không');
+      console.error('      còn `.rpc(`, và tên RPC biến mất khỏi manifest bề mặt.');
+      console.error('    → nếu KHÔNG: `--write` KÈM lý do trong commit message.\n');
+    }
+
     process.exitCode = 1;
     return;
   }
 
-  console.log(`✅ ${hienTai.size} lời gọi thô trên ${hr.length} file rủi ro cao, không có cái nào mới.`);
+  const soMu = [...hienTai].filter((v) => phanLoai(v) === 'khong-kiem-duoc').length;
+  console.log(
+    `✅ ${hienTai.size} lời gọi thô trên ${hr.length} file rủi ro cao ` +
+      `(${soMu} không canh được bằng kiểu · ${hienTai.size - soMu} literal), không có cái nào mới.`,
+  );
   if (daXoa.length > 0) {
     console.log(`\n🎉 ${daXoa.length} lời gọi đã được gỡ — chạy --write để hạ baseline:`);
     for (const v of daXoa.slice(0, 10)) console.log(`   - ${v}`);

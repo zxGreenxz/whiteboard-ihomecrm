@@ -1,5 +1,5 @@
 {
-  "$comment": "Vân tay `<file>::<slug>` của mọi lời gọi RPC/Edge THÔ trong file thuộc tier đòi soi chéo. Danh sách CHỈ ĐƯỢC TEO. Cách đóng một mục: chuyển lời gọi sang wrapper typed rồi chạy --write, KHÔNG phải thêm tên vào đây.",
+  "$comment": "Vân tay `<file>::<slug>` của mọi lời gọi RPC/Edge THÔ trong file thuộc tier đòi soi chéo. Danh sách CHỈ ĐƯỢC TEO. Hai loại, đóng theo hai cách khác nhau: `DYNAMIC:` và `edge:` là loại trình biên dịch KHÔNG canh được — đóng bằng cách viết thẳng slug ra chuỗi. Loại literal đã được kiểu sinh tự động canh tên hàm + tên tham số — đóng bằng cách bỏ hẳn lời gọi, KHÔNG phải bọc vào wrapper nhận invoker (làm vậy thì tên RPC biến mất khỏi manifest bề mặt; xem đầu scripts/check-raw-rpc-callers.mjs).",
   "generatedBy": "node scripts/check-raw-rpc-callers.mjs --write",
   "fingerprints": [
     "src/hooks/income-expenses/annotateMutations.ts::annotate_income_expense_v1",
