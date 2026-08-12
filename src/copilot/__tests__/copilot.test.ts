@@ -157,6 +157,30 @@ describe('registry + adapters', () => {
     expect(toPageAgentTools(reg, { perms: SUPER }).mo_trang).toBeDefined();
   });
 
+  it('MỌI requiredPermission phải là cặp module.action CÓ THẬT trong catalog', async () => {
+    // Gõ sai tên module hoặc action không gây lỗi biên dịch: `canUse` chỉ trả
+    // `false`, nên tool biến mất khỏi danh sách gửi cho mô hình với MỌI người
+    // dùng, kể cả superadmin — im lặng, không log, không đỏ ở đâu cả. Đây là
+    // cùng lớp lỗi mà `check-copilot-routes.mjs` canh cho MO_TRANG_ROUTES.
+    const { ALL_PAGE_FEATURES } = await import('@/lib/permissionPages');
+    const coThat = new Set(ALL_PAGE_FEATURES.map((f) => `${f.module}.${f.action}`));
+    expect(coThat.size).toBeGreaterThanOrEqual(100); // sàn chống-xanh-rỗng
+
+    const reg = buildRegistry();
+    const coQuyen = reg.filter((t) => t.requiredPermission);
+    expect(coQuyen.length).toBeGreaterThanOrEqual(6); // sàn chống-xanh-rỗng
+    for (const t of coQuyen) {
+      const { module, action } = t.requiredPermission!;
+      expect(coThat.has(`${module}.${action}`), `tool "${t.name}" đòi quyền không tồn tại: ${module}.${action}`).toBe(true);
+    }
+  });
+
+  it('mọi tool có tên DUY NHẤT — trùng tên là một cái nuốt cái kia', () => {
+    const ten = buildRegistry().map((t) => t.name);
+    expect(new Set(ten).size).toBe(ten.length);
+    expect(ten.length).toBeGreaterThanOrEqual(12); // sàn chống-xanh-rỗng
+  });
+
   it('tool bị LOẠI khỏi danh sách khi thiếu quyền', () => {
     const reg = buildRegistry();
     const tools = toLlmTools(reg, { perms: STAFF_ROOMS_ONLY });

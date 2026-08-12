@@ -519,6 +519,7 @@
     "src/copilot/pageContext.ts",
     "src/copilot/safetyGuard.ts",
     "src/copilot/systemPromptVi.ts",
+    "src/copilot/tools/nghiepVuTools.ts",
     "src/copilot/tools/registry.ts",
     "src/copilot/tools/writeTools.ts",
     "src/copilot/useAiProviders.ts",

@@ -14,7 +14,7 @@ vi.mock('../llmClient', async (goc) => ({
   goiModelMotLuot,
 }));
 
-const { runChatTurn, toolSangKhaiBao } = await import('../chatEngine');
+const { runChatTurn, toolSangKhaiBao, dongHomNay } = await import('../chatEngine');
 const { buildRegistry, toLlmTools } = await import('../tools/registry');
 
 const luot = (p: Partial<KetQuaLuot>): KetQuaLuot => ({
@@ -173,6 +173,32 @@ describe('runChatTurn — hỏng thì mô hình phải ĐỌC được lỗi', (
     const r = await chay();
     expect(r.text).toContain('Kết quả tra cứu');
     expect(goiModelMotLuot).toHaveBeenCalledTimes(6); // MAX_TOOL_ROUNDS
+  });
+});
+
+describe('dongHomNay — mô hình không có đồng hồ', () => {
+  // Bắt gặp thật 12/08/2026: mô hình tự truyền `ngay: 2026-03-27` vào tool rồi
+  // trình bày báo cáo "tại 27/03/2026". Số liệu đều thật, chỉ sai KỲ — kiểu sai
+  // không có gì đỏ và người đọc không có cách nào biết.
+  it('nêu ngày theo GIỜ LOCAL, không lệch sang UTC', () => {
+    // 01/01/2026 lúc 00:30 giờ VN — `toISOString()` sẽ cho 2025-12-31.
+    const d = new Date(2026, 0, 1, 0, 30);
+    const s = dongHomNay(d);
+    expect(s).toContain('01/01/2026');
+    expect(s).toContain('2026-01');
+    expect(s).not.toContain('2025');
+  });
+
+  it('dặn BỎ TRỐNG tham số ngày thay vì đoán', () => {
+    expect(dongHomNay(new Date(2026, 7, 12))).toMatch(/không tự đoán ngày/i);
+  });
+
+  it('đi vào system prompt của mọi lượt', async () => {
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    await chay();
+    const sys = goiModelMotLuot.mock.calls[0][0].messages[0];
+    expect(sys.role).toBe('system');
+    expect(String(sys.content)).toContain('HÔM NAY là');
   });
 });
 

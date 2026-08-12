@@ -14,6 +14,7 @@ import { invoicesListQuery } from '@/hooks/useInvoices';
 import { mapPayloadToBuildings, type RpcPayload } from '@/pages/phong-trong/supabaseData';
 import { maskPhonePartial } from '../maskPii';
 import { taoPhieuThuChiNhap } from './writeTools';
+import { TOOL_NGHIEP_VU } from './nghiepVuTools';
 
 export interface ToolCtx {
   /** get_my_permissions() — undefined khi chưa load (mọi tool bị chặn). */
@@ -418,6 +419,9 @@ export function buildRegistry(): DomainTool[] {
         return `Có ${topics.length} tài liệu:\n${topics.map((t) => `- ${t.key}`).join('\n')}`;
       },
     }),
+
+    // Tool đọc nghiệp vụ (lấp đầy, công nợ, cọc, sổ quỹ) — xem nghiepVuTools.ts
+    ...TOOL_NGHIEP_VU,
 
     // Write tool draft-first (Phase 5): NHÁP + 2 bước xác nhận + idempotency
     taoPhieuThuChiNhap,

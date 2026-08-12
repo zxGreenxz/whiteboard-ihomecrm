@@ -88,6 +88,31 @@ export function buildChatContext(
 const CAP_KET_QUA_TOOL = 12_000;
 
 /**
+ * Nói cho mô hình biết HÔM NAY là ngày mấy.
+ *
+ * Không hiển nhiên như vẻ ngoài. Mô hình không có đồng hồ; nếu không được nói,
+ * nó ĐOÁN — và đoán theo dữ liệu huấn luyện, tức lệch hàng tháng. Bắt gặp thật
+ * ngày 12/08/2026 khi chạy thử: hỏi "tỉ lệ lấp đầy hiện tại", mô hình tự truyền
+ * `ngay: 2026-03-27` vào tool rồi trình bày báo cáo dưới tiêu đề "tại
+ * 27/03/2026". Mọi con số đều là số thật lấy từ DB — chỉ sai kỳ. Đó là kiểu sai
+ * tệ nhất: không có gì đỏ, không có gì trông lạ, và người đọc không có cách nào
+ * biết.
+ *
+ * Tool đã mặc định "bỏ trống = hôm nay", nhưng mặc định chỉ cứu được khi mô
+ * hình BỎ TRỐNG. Nó chỉ bỏ trống khi không tưởng là mình biết.
+ *
+ * Ngày lấy theo GIỜ LOCAL, không qua `toISOString()` — repo đã dọn cả một lớp
+ * lỗi lệch ngày do UTC (commit f819c2a8, 11547392).
+ */
+export function dongHomNay(now: Date = new Date()): string {
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const iso = `${now.getFullYear()}-${mm}-${dd}`;
+  const thu = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'][now.getDay()];
+  return `HÔM NAY là ${thu}, ngày ${dd}/${mm}/${now.getFullYear()} (${iso}); kỳ hiện tại là ${now.getFullYear()}-${mm}. TUYỆT ĐỐI không tự đoán ngày: cần "hôm nay" thì BỎ TRỐNG tham số ngày để hệ thống tự điền.`;
+}
+
+/**
  * Đổi registry tool (schema zod) sang khai báo hàm kiểu OpenAI.
  *
  * `io: 'input'` là chi tiết quan trọng: nó khiến trường có `.default()` KHÔNG bị
@@ -134,8 +159,10 @@ export async function runChatTurn(params: {
     ? dongNguCanhTrang(params.pathname, params.ctx.perms)
     : null;
 
+  const heThong = [CHAT_SYSTEM_PROMPT, dongHomNay(), nguCanh].filter(Boolean).join('\n\n');
+
   const messages: Message[] = [
-    { role: 'system', content: nguCanh ? `${CHAT_SYSTEM_PROMPT}\n\n${nguCanh}` : CHAT_SYSTEM_PROMPT },
+    { role: 'system', content: heThong },
     ...buildChatContext(params.history),
     { role: 'user', content: params.userText },
   ];
