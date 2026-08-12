@@ -32,7 +32,7 @@ export const REQUIRED_CASE_IDS = Object.freeze([
   "inventory.mapping",
   "inventory.aruba_above_ten",
   "inventory.aruba_display_only",
-  "inventory.protected_preserved",
+  "inventory.protection_role_widening",
   "lifecycle.offboarded_view_denied",
   "lifecycle.offboarded_execute_denied",
   "anonymous.view_denied",
@@ -347,8 +347,19 @@ FROM _nc_fixture fixture
 WHERE device.organization_id = fixture.demo_organization_id
   AND device.id IN (fixture.router_a_id, fixture.router_b_id);
 
+-- rollout_state defaults to 'OFF', and network_center_execute_action_v1 refuses
+-- anything that is not 'EXECUTE' with NETWORK_CENTER_OFF. Leaving it at the
+-- default would make every execute case fail for the same uninteresting reason
+-- and, worse, make the DENIED cases pass without proving anything: a matrix
+-- where the door is shut for everyone cannot show that it opens for the right
+-- person and stays shut for the wrong one. The fixture therefore opens the door
+-- and lets the RPCs decide who walks through.
+--
+-- This only ever exists inside this transaction, which ends in ROLLBACK, so the
+-- real DEMO buildings stay 'OFF'.
 UPDATE public.network_site_settings settings
-SET changes_paused = false
+SET changes_paused = false,
+    rollout_state = 'EXECUTE'
 FROM _nc_fixture fixture
 WHERE settings.organization_id = fixture.demo_organization_id
   AND settings.building_id IN (fixture.building_a_id, fixture.building_b_id);
@@ -375,8 +386,97 @@ WHERE NOT EXISTS (
     AND existing.is_enabled
 );
 
+-- Worker fixture for the v2 inventory path.
+--
+-- WHY THIS EXISTS AT ALL. This harness used to reach inventory through
+-- public.network_center_worker_inventory_v1, which ignores its worker argument
+-- and resolves the caller through app_private.network_center_compatibility_worker_v1
+-- -- the legacy compatibility snapshot. That snapshot is deliberately one-way:
+-- the trigger network_worker_compatibility_one_way rejects any UPDATE that grows
+-- expires_at, so the window can narrow and finalize but never reopen. It lapsed
+-- on 2026-08-09 11:48 UTC and the v1 entry point has raised 42501 for every
+-- caller since. The matrix was therefore not merely failing, it was not running:
+-- it aborted in setup, before a single isolation case was evaluated. A silent
+-- non-running security matrix is worse than a red one, which is why the fix is
+-- to move to the supported path rather than to widen the expired one. Widening
+-- would mean dropping the guard trigger, i.e. dismantling a control this repo
+-- built on purpose in order to make its own test pass.
+--
+-- WHY A LOCAL FIXTURE AND NOT A REAL CREDENTIAL. v2 authenticates by digest
+-- only: app_private.network_center_authenticate_worker_v2 accepts any 64-char
+-- lowercase hex that matches a live row in network_worker_credentials. Since
+-- this transaction inserts the credential AND makes the call, the digest can be
+-- derived on the spot with sha256() over a fixed label. No secret material is
+-- involved, nothing needs to reach CI as an environment variable, and there is
+-- nothing here that could leak if the file is read: the "secret" is a public
+-- string whose digest is only ever valid inside a transaction that ends in
+-- ROLLBACK.
+--
+-- The fixture worker is scoped to the two DEMO routers and to can_inventory
+-- alone. It deliberately does NOT get can_execute: the negative cases further
+-- down assert that a worker cannot act outside its assignment, and granting the
+-- fixture more than it needs would blunt them.
+INSERT INTO public.network_workers (worker_key, display_name, status, capabilities)
+VALUES ('demo.harness.v2', 'DEMO cross-tenant harness', 'ACTIVE',
+        ARRAY['POLL', 'INVENTORY']::text[])
+ON CONFLICT (worker_key) DO UPDATE
+  SET status = 'ACTIVE',
+      capabilities = ARRAY['POLL', 'INVENTORY']::text[];
+
+INSERT INTO public.network_worker_credentials (
+  worker_id, secret_digest, fingerprint, not_before, expires_at
+)
+SELECT worker.id,
+       encode(sha256('demo.harness.v2.cross-tenant-matrix'::bytea), 'hex')::character(64),
+       -- The fingerprint has its own CHECK (^sha256:[a-f0-9]{12,64}$); it is a
+       -- human-facing label for the credential, not a second secret, so it is
+       -- derived from the same public string.
+       'sha256:' || left(encode(sha256('demo.harness.v2.cross-tenant-matrix'::bytea), 'hex'), 16),
+       clock_timestamp() - INTERVAL '1 minute',
+       clock_timestamp() + INTERVAL '1 hour'
+FROM public.network_workers worker
+WHERE worker.worker_key = 'demo.harness.v2';
+
+INSERT INTO public.network_worker_assignments (
+  worker_id, organization_id, building_id, device_id, device_kind,
+  can_poll, can_inventory, can_execute, active_from
+)
+SELECT worker.id, fixture.demo_organization_id, input.building_id,
+       input.device_id, 'MIKROTIK', true, true, false,
+       clock_timestamp() - INTERVAL '1 minute'
+FROM _nc_fixture fixture
+CROSS JOIN public.network_workers worker
+CROSS JOIN LATERAL (
+  VALUES
+    (fixture.building_a_id, fixture.router_a_id),
+    (fixture.building_b_id, fixture.router_b_id)
+) input(building_id, device_id)
+WHERE worker.worker_key = 'demo.harness.v2';
+
 SET CONSTRAINTS ALL IMMEDIATE;
 SET CONSTRAINTS ALL DEFERRED;
+
+-- The v2 path must actually be reachable before the cases below lean on it.
+-- Without this the first symptom of a broken fixture would be an isolation case
+-- reporting "denied" -- which is what a PASS looks like for half this matrix.
+-- A setup fault that disguises itself as a pass is exactly the failure mode this
+-- file exists to prevent, so it is asserted here rather than inferred later.
+DO $nc_worker_fixture$
+DECLARE v_ok boolean;
+BEGIN
+  SELECT app_private.network_center_worker_can_access_device_v2(
+    worker.id, fixture.demo_organization_id, fixture.building_a_id,
+    fixture.router_a_id, 'INVENTORY'
+  ) INTO v_ok
+  FROM _nc_fixture fixture
+  CROSS JOIN public.network_workers worker
+  WHERE worker.worker_key = 'demo.harness.v2';
+  IF v_ok IS NOT TRUE THEN
+    RAISE EXCEPTION 'Harness worker fixture cannot inventory DEMO router A -- the v2 assignment did not take'
+      USING ERRCODE = 'P0001';
+  END IF;
+END
+$nc_worker_fixture$;
 
 GRANT SELECT ON TABLE pg_temp._nc_fixture TO authenticated, anon;
 GRANT INSERT, SELECT ON TABLE pg_temp._nc_results TO authenticated, anon;
@@ -387,10 +487,23 @@ GRANT EXECUTE ON FUNCTION pg_temp._nc_expect_42501(text, text) TO authenticated,
 -- The second interface upsert deliberately asks to lower protection; the
 -- database must preserve the original protected state.
 CREATE TEMP TABLE _nc_inventory_result ON COMMIT DROP AS
-SELECT public.network_center_worker_inventory_v1(
-  'demo.harness',
+SELECT public.network_center_worker_inventory_v2(
+  encode(sha256('demo.harness.v2.cross-tenant-matrix'::bytea), 'hex'),
   jsonb_build_object(
     'routerDeviceId', fixture.router_a_id,
+    -- Batched-discovery envelope. The impl validates these before it looks at
+    -- anything else (discoveryRunId must be an RFC-4122 UUID, batchIndex in
+    -- [0, batchCount), batchCount in [1, 4096]), and a run's batch_count is
+    -- immutable once recorded. This submission is a complete one-batch run.
+    --
+    -- The two submissions below deliberately carry DIFFERENT run ids: batches
+    -- are deduplicated on (discovery_run_id, batch_index), so reusing one id
+    -- would turn the second call into a silent no-op and quietly retire the
+    -- protection-downgrade case it exists to prove.
+    'discoveryRunId', gen_random_uuid(),
+    'observedAt', clock_timestamp(),
+    'batchIndex', 0,
+    'batchCount', 1,
     'interfaces', jsonb_build_array(
       jsonb_build_object(
         'interfaceKey', 'ether1', 'displayName', 'ether1',
@@ -407,12 +520,30 @@ SELECT public.network_center_worker_inventory_v1(
         'sortOrder', 2, 'isEnabled', true, 'metadata', '{}'::jsonb
       )
     ),
+    -- Aruba items follow the stable-identity contract the ingest now enforces.
+    --
+    -- Each item must declare where its identity comes from and carry that
+    -- identity verbatim; externalKey is not free text but a derived value the
+    -- ingest recomputes ('serial:' || stableIdentity for SERIAL, 'mac:' ||
+    -- lower(...) for HARDWARE_MAC) and compares. displayOnly must be true --
+    -- discovered APs are observations, never write targets. Anything that does
+    -- not satisfy all of it is quarantined as ARUBA_ITEM_INVALID rather than
+    -- rejected loudly, so a stale payload shape shows up as a silently empty
+    -- inventory, which is exactly how this block was failing: all 12 items
+    -- quarantined, arubaCount 0, inventoryStatus DEGRADED.
+    --
+    -- serialNumber is deliberately NOT sent: for identitySource = 'SERIAL' the
+    -- ingest derives it from stableIdentity and ignores any value supplied
+    -- here. Sending one would suggest it is load-bearing when it is not.
     'aruba', (
       SELECT jsonb_agg(jsonb_build_object(
-        'externalKey', 'demo-harness-ap-' || lpad(series::text, 3, '0'),
+        'identitySource', 'SERIAL',
+        'stableIdentity', 'DEMO-HARNESS-AP-' || lpad(series::text, 3, '0'),
+        'externalKey',
+          'serial:DEMO-HARNESS-AP-' || lpad(series::text, 3, '0'),
+        'displayOnly', true,
         'displayName', 'DEMO Aruba ' || series::text,
         'model', 'AP-DEMO',
-        'serialNumber', 'DEMO-' || lpad(series::text, 3, '0'),
         'uplinkInterfaceKey', 'ether2',
         'managementAddress', '192.0.2.' || (series + 20)::text,
         'sortOrder', series,
@@ -425,10 +556,14 @@ SELECT public.network_center_worker_inventory_v1(
 ) AS result
 FROM _nc_fixture fixture;
 
-SELECT public.network_center_worker_inventory_v1(
-  'demo.harness',
+SELECT public.network_center_worker_inventory_v2(
+  encode(sha256('demo.harness.v2.cross-tenant-matrix'::bytea), 'hex'),
   jsonb_build_object(
     'routerDeviceId', fixture.router_a_id,
+    'discoveryRunId', gen_random_uuid(),
+    'observedAt', clock_timestamp(),
+    'batchIndex', 0,
+    'batchCount', 1,
     'interfaces', jsonb_build_array(jsonb_build_object(
       'interfaceKey', 'ether2', 'displayName', 'ether2',
       'interfaceKind', 'ETHERNET', 'interfaceRole', 'ACCESS',
@@ -467,7 +602,10 @@ SELECT
    WHERE device.organization_id = fixture.demo_organization_id
      AND device.building_id = fixture.building_a_id
      AND device.device_kind = 'ARUBA'
-     AND device.external_key LIKE 'demo-harness-ap-%'),
+     -- Selector follows the derived externalKey the ingest recomputes from
+     -- stableIdentity; it is how these fixture APs are told apart from real
+     -- inventory, not part of the invariant being asserted.
+     AND device.external_key LIKE 'serial:DEMO-HARNESS-AP-%'),
   NULL::jsonb
 FROM _nc_fixture fixture
 UNION ALL
@@ -482,13 +620,47 @@ SELECT
    WHERE device.organization_id = fixture.demo_organization_id
      AND device.building_id = fixture.building_a_id
      AND device.device_kind = 'ARUBA'
-     AND device.external_key LIKE 'demo-harness-ap-%'),
+     -- Selector follows the derived externalKey the ingest recomputes from
+     -- stableIdentity; it is how these fixture APs are told apart from real
+     -- inventory, not part of the invariant being asserted.
+     AND device.external_key LIKE 'serial:DEMO-HARNESS-AP-%'),
   NULL::jsonb
 FROM _nc_fixture fixture
 UNION ALL
+-- Protection is decided by ROLE plus the router's FRESH report -- not by the
+-- previously stored value.
+--
+-- This case used to assert the opposite: that a second cycle reporting a lower
+-- protection must not lower it, i.e. is_protected = stored OR observed. That
+-- rule was removed on purpose by 20260729148000, and the reasoning is worth
+-- keeping in view because it is not obvious. Carrying protection forward fed
+-- the bind trigger its own previous output: the trigger forces is_protected
+-- true for any DISCOVERED managed resource, so from cycle two onward the stored
+-- value was true regardless of what the router said, metadata.eligibleAccess
+-- went false and stayed false, and the precondition for enrolling an access
+-- port was destroyed by the act of discovering it. Measured in production on
+-- 2026-08-03: eligibleAccess false on all five managed resources of the demo
+-- router, refreshed every 60 seconds, and the enrollment door with zero callers
+-- for its whole lifetime.
+--
+-- What still holds, and what this case now pins, is the part that actually
+-- carries the security weight:
+--   ether1 is WAN. It was reported isProtected = false and is protected anyway,
+--   because role-based widening (WAN, UPLINK, MANAGEMENT) is applied on every
+--   cycle and a worker cannot talk a WAN port out of protection.
+--   ether2 is ACCESS. It was reported protected, then reported unprotected by
+--   the second submission, and it follows the fresh report -- which is the whole
+--   point of the change.
+-- Asserting both together is strictly stronger than the old single-sided check:
+-- re-introducing the OR flips ether2, dropping role widening flips ether1, and
+-- either regression fails here.
 SELECT
-  'inventory.protected_preserved',
-  (SELECT count(*) = 2 AND bool_and(interface.is_protected)
+  'inventory.protection_role_widening',
+  (SELECT count(*) = 2
+     AND bool_and(interface.is_protected)
+       FILTER (WHERE interface.interface_key = 'ether1')
+     AND bool_and(NOT interface.is_protected)
+       FILTER (WHERE interface.interface_key = 'ether2')
    FROM public.network_interfaces interface
    WHERE interface.organization_id = fixture.demo_organization_id
      AND interface.building_id = fixture.building_a_id
@@ -556,9 +728,17 @@ SELECT pg_temp._nc_expect_true(
 ) FROM _nc_fixture fixture;
 SELECT pg_temp._nc_expect_true(
   'execute.enqueue',
+  -- A DIFFERENT action from owner.execute on purpose. Commands are deduplicated
+  -- by semantic_fingerprint inside a cooldown window, and that fingerprint does
+  -- not include who asked or why -- so a second FLUSH_DNS_CACHE on the same
+  -- router is refused as an equivalent intent no matter which role sends it.
+  -- Reusing the action here would make this case fail for a reason that has
+  -- nothing to do with permissions, which is what it is here to measure: a
+  -- staff member holding network_center.execute on building A can queue work on
+  -- router A. Same router, same role, same building -- only the verb differs.
   format(
     'SELECT (public.network_center_execute_action_v1(%L::uuid, %L, %L, %L::jsonb, NULL, gen_random_uuid())->>''status'') = ''QUEUED''',
-    fixture.router_a_id, 'FLUSH_DNS_CACHE', 'DEMO execute harness action', '{}'
+    fixture.router_a_id, 'RENEW_DHCP_LEASE', 'DEMO execute harness action', '{}'
   )
 ) FROM _nc_fixture fixture;
 SELECT pg_temp._nc_expect_42501(

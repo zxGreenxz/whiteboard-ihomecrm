@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-12T00:54:18.837Z",
+  "generatedAt": "2026-08-12T18:15:41.723Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 379,
+    "ledger-applied": 382,
     "unknown": 66,
     "catalog-proven": 216,
     "superseded": 15
@@ -7978,6 +7978,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-12T00:52:29.189Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260813010000_handover_dong_dau_system_source.sql",
+      "version": "20260813010000",
+      "name": "handover_dong_dau_system_source",
+      "scheme": "timestamp14",
+      "sha256": "50f38a63080d60e29f06fbb27c89fb3c3df68955d4e7b4b73d98cb682317a10c",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-12T17:40:25.394Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260813020000_network_center_cap_lai_slot_mikrotik.sql",
+      "version": "20260813020000",
+      "name": "network_center_cap_lai_slot_mikrotik",
+      "scheme": "timestamp14",
+      "sha256": "9410a5067a36248ae8e0bdf9703f27fd5ca56124ac96f218bd86f8b9b394753c",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-12T17:44:26.560Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260813030000_chan_null_org_dot_bon.sql",
+      "version": "20260813030000",
+      "name": "chan_null_org_dot_bon",
+      "scheme": "timestamp14",
+      "sha256": "6d113ee962554befc609f6b0b2032b20c77954df98b93f3c03055235d0afe5d7",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-12T18:08:00.780Z|bien-nhan-backup"
       ]
     },
     {

@@ -55,6 +55,43 @@ export function docCutoff() {
   return String(p.provisionalCutoff?.version ?? p.cutoff ?? "");
 }
 
+/**
+ * Ngoại lệ CÓ TÊN cho cửa idempotent, đọc từ migration-policy.json.
+ *
+ * VÌ SAO CẦN — và vì sao nó KHÔNG phải là nới tay.
+ *   Cửa này dán thân migration HAI LẦN vào MỘT transaction. Cách đó bắt được
+ *   lớp lỗi thật (CREATE thiếu IF NOT EXISTS, ràng buộc trùng tên), nhưng nó
+ *   cũng buộc tội sai hai lớp file mà việc chạy lại THẬT — hai transaction
+ *   riêng — hoàn toàn không đụng tới:
+ *
+ *     1. TEMP TABLE ... ON COMMIT DROP. Bảng tạm chỉ biến mất lúc COMMIT, mà
+ *        cửa này ROLLBACK, nên lần dán thứ hai gặp lại bảng của lần thứ nhất và
+ *        chết với 42P07. Không có cách viết nào tránh được — vấn đề nằm ở PHÉP
+ *        ĐO, không nằm ở file.
+ *     2. Khối tự-kiểm gọi hàm có bộ đếm/giới hạn nhịp. Gọi hai lần liên tiếp
+ *        trong một transaction thì lần thứ hai chạm trần và ném — đúng như hàm
+ *        được thiết kế.
+ *
+ *   Và một lớp thứ ba mà việc chạy lại PHẢI hỏng, vì đó chính là tính năng:
+ *
+ *     3. Migration một-lần có chốt đo. Chúng đối chiếu dữ liệu với con số đo
+ *        được lúc diễn tập rồi DỪNG nếu lệch ("chỉ xoá được 530 dòng, kỳ vọng
+ *        165.548"). Chạy lại nó phải ngã. Một file như thế mà chạy lại êm ru
+ *        mới là điều đáng sợ.
+ *
+ *   Nếu để cả ba lớp trên làm cửa đỏ vĩnh viễn thì cửa sẽ bị tắt, và cùng lúc
+ *   mất luôn khả năng chặn lớp lỗi THẬT. Nên: khai tên, khai lý do, và bắt mỗi
+ *   mục phải còn hỏng thật thì mới được tính.
+ *
+ * Danh sách này CHỈ ĐƯỢC TEO. Mục khai mà file đã chạy lại được ⇒ chính nó là
+ * lỗi (xem phần kiểm ở main): để lại một miễn trừ thừa là mở sẵn cửa cho lần
+ * sau có người viết đúng file đó theo kiểu không chạy lại được.
+ */
+export function docMienTru() {
+  const p = JSON.parse(readFileSync(join(repoRoot, "supabase", "migration-policy.json"), "utf8"));
+  return new Map((p.idempotencyExceptions ?? []).map((x) => [x.file, x]));
+}
+
 /** File .sql có version 14 chữ số LỚN HƠN cutoff. */
 export function timFileSauCutoff(danhSach, cutoff) {
   return danhSach
@@ -88,10 +125,12 @@ async function main() {
   }
 
   const i = process.argv.indexOf("--file");
-  const files =
-    i >= 0 && process.argv[i + 1]
-      ? [process.argv[i + 1].split(/[\\/]/).pop()]
-      : timFileSauCutoff(readdirSync(DIR), cutoff);
+  const quetToanBo = !(i >= 0 && process.argv[i + 1]);
+  const files = quetToanBo
+    ? timFileSauCutoff(readdirSync(DIR), cutoff)
+    : [process.argv[i + 1].split(/[\\/]/).pop()];
+  const mienTru = docMienTru();
+  const daKhop = new Set();
 
   if (files.length < TOI_THIEU_FILE) {
     console.error(`❌ Không có file nào sau cutoff ${cutoff} — "0 lỗi" là câu đúng mà vô nghĩa.`);
@@ -137,18 +176,44 @@ async function main() {
       } catch {
         /* giữ nguyên text thô nếu không phải JSON */
       }
-      hong.push({ f, vi });
-      console.log(`  ✗ ${f}\n      ${vi.slice(0, 200)}`);
+      const mt = mienTru.get(f);
+      if (mt) {
+        daKhop.add(f);
+        console.log(`  ~ ${f}  (miễn trừ: ${mt.lop})`);
+      } else {
+        hong.push({ f, vi });
+        console.log(`  ✗ ${f}\n      ${vi.slice(0, 200)}`);
+      }
     }
   }
 
-  if (hong.length > 0) {
-    console.error(`\n❌ ${hong.length}/${files.length} migration KHÔNG chạy lại được lần hai:`);
-    for (const h of hong) console.error(`   - ${h.f}: ${h.vi.slice(0, 160)}`);
-    console.error("\n  Re-apply xảy ra khi apply hỏng giữa chừng, khi dựng lại môi trường từ baseline");
-    console.error("  + forward lane, và khi hợp thức hoá một thay đổi đã đi đường tắt — cả ba đều là");
-    console.error("  lúc người ta đang vội. Thêm IF NOT EXISTS / OR REPLACE / ON CONFLICT cho đúng chỗ.");
+  // Miễn trừ khai mà file ĐÃ chạy lại được ⇒ rác, và rác ở đây là cửa mở sẵn.
+  // Chỉ kiểm khi chạy TOÀN BỘ: với --file thì phần lớn mục đương nhiên không
+  // được chạm tới, báo chúng là thừa sẽ là lời buộc tội sai.
+  const thua = quetToanBo
+    ? [...mienTru.keys()].filter((f) => !daKhop.has(f))
+    : [];
+
+  if (hong.length > 0 || thua.length > 0) {
+    if (hong.length > 0) {
+      console.error(`\n❌ ${hong.length}/${files.length} migration KHÔNG chạy lại được lần hai:`);
+      for (const h of hong) console.error(`   - ${h.f}: ${h.vi.slice(0, 160)}`);
+      console.error("\n  Re-apply xảy ra khi apply hỏng giữa chừng, khi dựng lại môi trường từ baseline");
+      console.error("  + forward lane, và khi hợp thức hoá một thay đổi đã đi đường tắt — cả ba đều là");
+      console.error("  lúc người ta đang vội. Thêm IF NOT EXISTS / OR REPLACE / ON CONFLICT cho đúng chỗ.");
+    }
+    for (const f of thua) {
+      console.error(
+        `\n❌ Miễn trừ idempotent khai cho ${f} nhưng file đó ĐÃ chạy lại được.\n` +
+        `   Gỡ mục đó khỏi migration-policy.json — miễn trừ thừa là cửa mở sẵn cho lần sau.`,
+      );
+    }
     process.exit(1);
+  }
+
+  if (daKhop.size > 0) {
+    console.log(`\n   ${daKhop.size} file miễn trừ CÓ TÊN (xem idempotencyExceptions trong migration-policy.json):`);
+    for (const f of daKhop) console.log(`     ~ ${f} — ${mienTru.get(f).lop}`);
   }
 
   console.log(`\n✅ ${files.length}/${files.length} migration chạy lại được lần hai mà không hỏng.`);

@@ -58,5 +58,56 @@
       "vaoSaoKhongDoiTen": "Như cặp 20260808030000.",
       "exitCondition": "Không có — ghi nhận vĩnh viễn, xem mục trên."
     }
+  ],
+  "idempotencyExceptions": [
+    {
+      "file": "20260807190100_gd1_doi_ten_np_org_boundary.sql",
+      "lop": "KHÔNG idempotent thật — file đã chạy và bất biến, không sửa được nữa",
+      "why": "CREATE POLICY notification_preferences_org_boundary không có DROP POLICY IF EXISTS đứng trước, nên lần chạy thứ hai ném 42710. Đây là lỗi THẬT thuộc đúng lớp mà cửa này sinh ra để chặn — nhưng file đã apply lên production và lịch sử migration là bất biến (check-migration-provenance canh từng byte), nên không còn đường sửa tại chỗ.",
+      "heQua": "Dựng lại môi trường từ baseline + forward lane sẽ dừng ở file này và cần bỏ qua tay. Ghi ở đây để người gặp không phải tự truy lại từ đầu.",
+      "exitCondition": "Biến mất khi cutoff dời qua khỏi 20260807190100 — lúc đó file thành legacy và không còn nằm trong tầm quét."
+    },
+    {
+      "file": "20260808080000_xoa_hai_to_chuc_test_demo.sql",
+      "lop": "một-lần có chốt đo — chạy lại PHẢI ngã, đó là tính năng",
+      "why": "Chốt đo: kỳ vọng xoá 165.548 dòng theo số đếm lúc diễn tập, thực tế lần hai chỉ còn 530 nên nó DỪNG. Một migration xoá dữ liệu mà chạy lại êm ru mới là điều đáng sợ.",
+      "exitCondition": "Không có — file một-lần. Chốt đo là thứ phải giữ."
+    },
+    {
+      "file": "20260808090000_don_profiles_ma_va_rao_ba_bang_mien_tru.sql",
+      "lop": "một-lần có chốt đo — chạy lại PHẢI ngã, đó là tính năng",
+      "why": "Cùng khuôn: kỳ vọng 7 dòng profiles sai nhãn, lần hai đo được 0 nên DỪNG với \"Dữ liệu đã đổi — đo lại trước khi chạy\".",
+      "exitCondition": "Không có — file một-lần."
+    },
+    {
+      "file": "20260808130000_gdr_rate_limit_ma_cong_khai.sql",
+      "lop": "phép đo sai: khối tự-kiểm gọi hàm có giới hạn nhịp, lần gọi thứ hai chạm trần",
+      "why": "Khối tự-kiểm gọi get_public_contract… để chứng minh bộ giới hạn nhịp hoạt động. Dán hai lần trong MỘT transaction thì lần thứ hai chạm trần và ném rate_limited — tức hàm chạy ĐÚNG. Chạy lại thật (hai transaction, cách nhau thời gian) không vướng.",
+      "exitCondition": "Biến mất nếu cửa này đổi sang so trạng thái trên database dùng-một-lần thay vì dán đôi."
+    },
+    {
+      "file": "20260808140000_gdr_tra_ve_429_thay_vi_500.sql",
+      "lop": "phép đo sai: khối tự-kiểm gọi hàm có giới hạn nhịp, lần gọi thứ hai chạm trần",
+      "why": "Như trên, cùng hàm, chỉ khác mã lỗi trả về (PT429 thay cho 54000).",
+      "exitCondition": "Như mục trên."
+    },
+    {
+      "file": "20260811030000_vai_chu_cong_ty_va_tach_khoi_super_admin.sql",
+      "lop": "phép đo sai: TEMP TABLE ON COMMIT DROP không sống qua hai lần dán trong một transaction",
+      "why": "CREATE TEMP TABLE _nt(k text, v bigint) ON COMMIT DROP. Bảng tạm chỉ rụng lúc COMMIT, mà cửa này ROLLBACK, nên lần dán thứ hai gặp lại bảng cũ và chết với 42P07. Không có cách viết nào tránh được trong khuôn đo hiện tại.",
+      "exitCondition": "Như mục rate-limit: đổi phép đo thì hết."
+    },
+    {
+      "file": "20260811040000_dung_lai_cong_ty_demo.sql",
+      "lop": "một-lần có chốt đo — chạy lại PHẢI ngã, đó là tính năng",
+      "why": "Tự khai thẳng trong thân file: \"Tổ chức Demo đã tồn tại — file này chỉ để DỰNG LẠI từ đầu. DỪNG.\" Chạy lại sẽ nhân đôi một tổ chức.",
+      "exitCondition": "Không có — file một-lần."
+    },
+    {
+      "file": "20260811050000_demo_bo_loai_thu_chi.sql",
+      "lop": "phép đo sai: TEMP TABLE ON COMMIT DROP không sống qua hai lần dán trong một transaction",
+      "why": "Cùng bảng tạm _nt như 20260811030000.",
+      "exitCondition": "Như mục đó."
+    }
   ]
 }
