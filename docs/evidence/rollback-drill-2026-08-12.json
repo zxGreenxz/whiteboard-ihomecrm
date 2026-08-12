@@ -1,0 +1,56 @@
+{
+  "batDau": "2026-08-12T06:36:22.002Z",
+  "cach": "đo bằng targets.production (bản đang phục vụ), không phải danh sách deployment",
+  "buoc": [
+    {
+      "ten": "truoc_dangPhucVu",
+      "id": "dpl_DABtzaRC1buXxtkm73dnSydRcRDn"
+    },
+    {
+      "ten": "truoc_trang",
+      "ma": 200,
+      "ms": 115
+    },
+    {
+      "ten": "goiLui",
+      "status": 201
+    },
+    {
+      "ten": "luiXong",
+      "dat": true,
+      "giay": "0.7",
+      "tongGiay": "1.0"
+    },
+    {
+      "ten": "khiDangOBanCu_trang",
+      "ma": 200,
+      "ms": 39
+    },
+    {
+      "ten": "khiDangOBanCu_dangPhucVu",
+      "id": "dpl_5CLkfAQktyjsg8dhMnWoZyvT8dQB"
+    },
+    {
+      "ten": "goiVe",
+      "status": 201
+    },
+    {
+      "ten": "veXong",
+      "dat": true,
+      "giay": "0.3",
+      "tongGiay": "0.8"
+    },
+    {
+      "ten": "cuoi_dangPhucVu",
+      "id": "dpl_DABtzaRC1buXxtkm73dnSydRcRDn"
+    },
+    {
+      "ten": "cuoi_trang",
+      "ma": 200,
+      "ms": 42
+    }
+  ],
+  "ketQua": "da-ve-dung-ban-hien-hanh",
+  "cuaSoPhucVuBanCu_giay": "1.4",
+  "ketThuc": "2026-08-12T06:36:25.638Z"
+}
