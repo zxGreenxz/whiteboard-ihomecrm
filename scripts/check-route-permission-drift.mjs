@@ -38,7 +38,15 @@ export function docRegistry(nguon) {
     const id = /id:\s*"([^"]+)"/.exec(khoi)?.[1];
     const route = /primaryRoute:\s*"([^"]+)"/.exec(khoi)?.[1];
     const p = /permission:\s*\{\s*module:\s*"([^"]+)",\s*action:\s*"([^"]+)"/.exec(khoi);
-    if (id && route && p) ra.push({ id, primaryRoute: route, module: p[1], action: p[2] });
+    // Miễn trừ guard phải nằm TRONG khối `permission` của chính capability đó.
+    // Bóc trên cả khối sẽ nhận nhầm một `mienTruVi` của `e2e` hay `docs` — ba
+    // trường miễn trừ khác nhau, và lẫn chúng thì một lý do viết cho E2E sẽ âm
+    // thầm mở khoá phép kiểm quyền.
+    const khoiQuyen = /permission:\s*\{[\s\S]*?\n\s{4}\}/.exec(khoi)?.[0] ?? '';
+    const mienTru = /guardMienTruVi:\s*\n?\s*"([^"]+)"/.exec(khoiQuyen)?.[1] ?? null;
+    if (id && route && p) {
+      ra.push({ id, primaryRoute: route, module: p[1], action: p[2], guardMienTruVi: mienTru });
+    }
   }
   return ra;
 }
@@ -57,9 +65,23 @@ export function quyenCuaRoute(nguonRoute, duongRoute) {
   const m = re.exec(boChuThichJsx(nguonRoute));
   if (!m) return { loai: 'khong-thay-route' };
 
-  const doan = m[1];
-  const truc = /<RequirePermission\s+module=["']([^"']+)["']\s+action=["']([^"']+)["']/.exec(doan);
-  if (truc) return { loai: 'truc-tiep', module: truc[1], action: truc[2] };
+  // CẮT Ở ROUTE KẾ TIẾP, không đọc trọn 600 ký tự.
+  //
+  // Bản đầu lấy nguyên cửa sổ 600 ký tự sau `path="…"`, mà 600 ký tự thừa sức
+  // tràn qua hai ba <Route> nữa. Cộng với lỗi thứ hai ngay dưới, nó sinh ra báo
+  // động giả kiểu tệ nhất: gate nói `/invoices` gác bằng `invoices.print` trong
+  // khi route đó gác bằng `invoices` — con số nó đọc là của route KHÁC.
+  const doan = m[1].split(/path=\s*["']/)[0];
+
+  // `action` là TUỲ CHỌN. `RequirePermission` khai `action = "view"` làm mặc định
+  // (xem src/components/auth/RequirePermission.tsx), và phần lớn route trong repo
+  // dựa vào mặc định đó. Regex cũ ĐÒI có `action=`, nên với route không khai nó
+  // không khớp — rồi quét tiếp và vớ phải `action` của route sau.
+  const truc = /<RequirePermission\s+module=["']([^"']+)["']((?:\s+\w+=["'][^"']*["'])*)/.exec(doan);
+  if (truc) {
+    const action = /\baction=["']([^"']+)["']/.exec(truc[2] ?? '')?.[1] ?? 'view';
+    return { loai: 'truc-tiep', module: truc[1], action };
+  }
 
   const guard = /<([A-Z][A-Za-z0-9]*(?:RouteGuard|Guard))\b/.exec(doan);
   if (guard) return { loai: 'guard-rieng', ten: guard[1] };
@@ -101,6 +123,8 @@ function main() {
 
   const lech = [];
   const khongDoc = [];
+  /** Route cố ý không gác, kèm lý do — in ra để nó không lặng lẽ tích lại. */
+  const mienTruGuard = [];
 
   for (const c of caps) {
     const q = quyenCuaRoute(nguonRoute, c.primaryRoute);
@@ -110,7 +134,23 @@ function main() {
       continue;
     }
     if (q.loai === 'khong-thay-guard') {
+      // Miễn trừ TƯỜNG MINH: route cố ý không gác vì trang tự rẽ theo quyền bên
+      // trong. Chỉ chấp nhận khi có LÝ DO viết ra — không có lý do thì đây vẫn là
+      // "quên gác", và đó là điều gate này sinh ra để bắt.
+      if (c.guardMienTruVi) {
+        mienTruGuard.push(`${c.id}: route \`${c.primaryRoute}\` cố ý không gác — ${c.guardMienTruVi}`);
+        continue;
+      }
       lech.push(`${c.id}: route \`${c.primaryRoute}\` KHÔNG có guard quyền nào — registry nói cần ${c.module}.${c.action}.`);
+      continue;
+    }
+
+    // Có guard THẬT mà vẫn khai miễn trừ ⇒ lý do đã lạc hậu. Để nguyên thì lần
+    // sau ai đó gỡ guard đi sẽ không ai báo, vì miễn trừ vẫn còn đó.
+    if (c.guardMienTruVi) {
+      lech.push(
+        `${c.id}: khai \`guardMienTruVi\` nhưng route \`${c.primaryRoute}\` CÓ guard thật — gỡ miễn trừ đi, nếu không nó sẽ che lần gỡ guard sau.`,
+      );
       continue;
     }
 
@@ -152,7 +192,14 @@ function main() {
     return;
   }
 
-  console.log(`✅ ${caps.length} capability: quyền gác route khớp registry.`);
+  console.log(
+    `✅ ${caps.length} capability: quyền gác route khớp registry` +
+      (mienTruGuard.length > 0 ? ` (${mienTruGuard.length} miễn trừ tường minh).` : "."),
+  );
+  // In ra thay vì im lặng: miễn trừ mà không ai nhìn thấy thì tích lại thành một
+  // danh sách route không gác, và không có lúc nào để ai đó hỏi "cái này còn đúng
+  // không". Đây là dòng thông tin, không phải cảnh báo — nó không đổi mã thoát.
+  for (const m of mienTruGuard) console.log(`   ℹ ${m}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

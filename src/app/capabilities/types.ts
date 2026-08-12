@@ -28,7 +28,24 @@ export interface CapabilityDefinition {
     runtimeModule: "network-center" | "openclaw-zalo" | null;
   };
 
-  permission: { module: string; action: ActionKey };
+  /**
+   * Quyền gác bề mặt này.
+   *
+   * `guardMienTruVi` = route CỐ Ý không bọc `RequirePermission`, kèm lý do.
+   * Bình thường `check-route-permission-drift` đòi guard của route khớp đúng
+   * `module.action` ở đây, và nó đòi vậy vì lệch ở tầng route là loại tệ nhất:
+   * trang mở được bằng cách gõ URL mà không có triệu chứng gì.
+   *
+   * Nhưng có trang CỐ Ý không gác vì nó phục vụ HAI đối tượng và tự rẽ bên trong
+   * theo quyền — gác ở router sẽ chặn luôn nhóm đáng được vào. Trường hợp đó khác
+   * hẳn "quên gác", và nhập hai thứ lại thì hoặc gate báo sai mãi, hoặc phải tắt
+   * gate. Khai tường minh ở đây giữ được cả hai: gate vẫn cắn mọi route quên gác,
+   * còn trường hợp cố ý thì đọc được lý do ngay tại chỗ.
+   *
+   * Cùng khuôn với `docs.userDocMienTruVi` và `e2e.mienTruVi`: miễn trừ phải
+   * TƯỜNG MINH và có lý do, không bao giờ là một trường bỏ trống.
+   */
+  permission: { module: string; action: ActionKey; guardMienTruVi?: string };
 
   surfaces: {
     desktopNav: boolean;

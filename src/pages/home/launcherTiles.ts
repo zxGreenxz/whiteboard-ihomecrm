@@ -94,11 +94,11 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       // Đóng tiền Tập trung theo Kỳ — gate `thu_tien.collect` khớp đúng route
       // guard /thanh-toan (người chỉ có quyền xem không thấy ô này).
       { id: 'thanh-toan', title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, accent: '#ea580c', module: 'thu_tien', action: 'collect' },
-      { id: 'invoices', title: 'Hoá đơn', href: '/invoices', icon: Receipt, accent: '#d6453f', module: 'invoices' },
+      ...launcherFieldsFor('invoices').map((x) => ({ ...x, icon: Receipt, accent: '#d6453f' }) satisfies LauncherTile),
       { id: 'meters', title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, accent: '#0891b2', module: 'meter_readings' },
-      { id: 'cashbook', title: 'Thu chi', href: '/income-expense', icon: CreditCard, accent: '#7c3aed', module: 'income_expenses' },
-      { id: 'funds', title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, accent: '#ca8a04', module: 'cashbooks' },
-      { id: 'salary', title: 'Bảng lương', href: '/finance/salary', icon: Coins, accent: '#eab308', module: 'salary' },
+      ...launcherFieldsFor('cashbook').map((x) => ({ ...x, icon: CreditCard, accent: '#7c3aed' }) satisfies LauncherTile),
+      ...launcherFieldsFor('funds').map((x) => ({ ...x, icon: Wallet, accent: '#ca8a04' }) satisfies LauncherTile),
+      ...launcherFieldsFor('salary').map((x) => ({ ...x, icon: Coins, accent: '#eab308' }) satisfies LauncherTile),
       { id: 'reports', title: 'Báo cáo', href: '/reports/real-estate', icon: BarChart3, accent: '#475569', module: 'reports_real_estate' },
       // Gating khớp Sidebar.tsx "Báo cáo Lợi Nhuận" (reports_finance.profit_distribution).
       { id: 'profit-report', title: 'BC Lợi Nhuận', href: '/reports/finance/profit-distribution', icon: PieChart, accent: '#4f46e5', module: 'reports_finance', action: 'profit_distribution' },

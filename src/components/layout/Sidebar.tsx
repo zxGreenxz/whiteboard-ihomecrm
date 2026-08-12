@@ -172,19 +172,19 @@ export const navigationGroups: NavGroup[] = [
         icon: CreditCard,
         items: [
           { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, module: 'meter_readings' },
-          { title: 'Hoá đơn', href: '/invoices', icon: Receipt, module: 'invoices' },
+          ...navFieldsFor('invoices').map((x) => ({ ...x, icon: Receipt }) satisfies NavItem),
           { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, module: 'thu_tien' },
           // Đóng tiền Tập trung theo Kỳ (tách khỏi overlay của /thu-tien).
           { title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, module: 'thu_tien', action: 'collect' },
-          { title: 'Thu chi', href: '/income-expense', icon: CreditCard, module: 'income_expenses' },
+          ...navFieldsFor('cashbook').map((x) => ({ ...x, icon: CreditCard }) satisfies NavItem),
           // Hộp thư duyệt: không khai `module` → luôn hiện, khớp route /approvals
           // (không bọc RequirePermission). RPC lọc theo auth.uid() nên người không
           // phải bước duyệt nào chỉ thấy danh sách rỗng.
           { title: 'Chờ duyệt', href: '/approvals', icon: ClipboardList },
-          { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, module: 'cashbooks' },
+          ...navFieldsFor('funds').map((x) => ({ ...x, icon: Wallet }) satisfies NavItem),
           // Cấu hình giá phí cố định theo toà — nguồn gợi ý số tiền cho /thanh-toan.
           { title: 'Phí cố định', href: '/settings/finance/fixed-fees', icon: Settings, module: 'thu_tien', action: 'collect' },
-          { title: 'Bảng lương', href: '/finance/salary', icon: HandCoins, module: 'salary', selfHref: '/finance/my-salary' },
+          ...navFieldsFor('salary').map((x) => ({ ...x, icon: HandCoins, selfHref: '/finance/my-salary' }) satisfies NavItem),
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
       },
