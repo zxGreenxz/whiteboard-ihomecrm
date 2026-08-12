@@ -1,13 +1,17 @@
 # AI Copilot
 
-> **Current through:** 2026-07-20  
-> **Status:** đã triển khai chat, UI-control có gate (điều hướng/lọc/điền form nhưng không submit), tool nghiệp vụ đọc và một write tool draft-first.
+> **Current through:** 2026-08-12  
+> **Status:** chat có streaming, đọc ảnh, gọi tool song song; tra tài liệu bằng BM25 theo mục; bản đồ hệ thống theo quyền; 10 tool đọc + 1 write tool draft-first; UI-control có gate và KHÔNG cầm tool ghi.
 
 ## Bề mặt đang chạy
 
 - Nút Copilot chỉ hiện khi có session, entitlement và quyền `ai_copilot.view`.
 - Chat gọi model cloud qua Edge Function `llm-proxy`; provider/key/quota/log nằm server-side. Ollama local được browser gọi trực tiếp khi bật.
-- Tool đọc hiện có: phòng trống, khách hàng, hóa đơn, hợp đồng sắp hết hạn, KQKD tháng và tra cứu `docs/he-thong/*.md`.
+- Tool đọc hiện có: phòng trống, khách hàng, hoá đơn, hợp đồng sắp hết hạn, KQKD tháng, tỉ lệ lấp đầy, công nợ hoá đơn, cọc đang giữ, sổ quỹ; tra tài liệu (`huong_dan`, `liet_ke_chu_de`) và bản đồ hệ thống (`ban_do_he_thong`).
+- Chat đi qua `src/copilot/llmClient.ts` — client OpenAI-compat mỏng nói thẳng với proxy, hỗ trợ SSE, `content` multimodal và mảng `tool_calls`. `@page-agent/llms` chỉ còn phục vụ UI-control; ba giới hạn của nó (không stream, `content` chỉ là chuỗi, `toolCall` số ít) là lý do tách ra.
+- Tra tài liệu: chunk theo heading, BM25 hai trường (thân + đường dẫn heading), bỏ dấu + bigram âm tiết + bảng đồng nghĩa + bảng hư từ. Index dựng LÚC CHẠY, chỉ từ tài liệu phiên có quyền đọc.
+- System prompt mang ngày hôm nay và trang người dùng đang xem.
+- Ảnh: nén client về 1024/JPEG, gửi kèm request, KHÔNG lưu.
 - UI-control chỉ chạy khi entitlement + quyền `ai_copilot.ui_control` hợp lệ; agent có thể điều hướng, lọc và điền form trên route allowlist, nhưng nút Lưu/Xác nhận/Submit và hành động nguy hiểm bị loại khỏi vùng tương tác.
 - Tool ghi `tao_phieu_thu_chi_nhap` bắt buộc trả bản xem trước và chờ người dùng xác nhận rõ ở lượt sau; kết quả là phiếu `UNAPPROVED`, không gắn sổ.
 - Luồng ghi gồm ba bước: INSERT `ai_write_audit` (client) → RPC `ie_compat_insert_v2` (server, tạo phiếu **và** hạng mục trong một call, tự ép `UNAPPROVED`/`PENDING` và stamp maker) → UPDATE `entity_id` vào audit (client). Bước giữa nguyên tử, nhưng **ba bước không nằm chung một transaction**: hỏng giữa chừng để lại audit thiếu `entity_id`, hoặc phiếu đã tạo mà audit chưa trỏ tới. Không còn khả năng để lại phiếu thiếu hạng mục như luồng DML rời trước Stage-7. Audit key chặn tạo trùng khi thử lại.
