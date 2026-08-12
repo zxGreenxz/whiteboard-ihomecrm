@@ -17,10 +17,20 @@ describe("phân loại lỗi ở biên RPC/Edge", () => {
       "concurrency",
       "conflict",
       "not_found",
+      "rate_limit",
       "internal_invariant",
       "unknown",
     ];
     expect(nhom.filter(isRetryable)).toEqual(["concurrency"]);
+  });
+
+  it("rate_limit KHÔNG được thử lại tự động, nhưng LÀ chuyện người dùng xử được", () => {
+    // Ca này ghim đúng lý do `rate_limit` là nhóm riêng chứ không nhập vào
+    // `concurrency`: tự động thử lại một lỗi giới hạn tốc độ là đổ thêm đúng thứ
+    // đã làm nó kích hoạt, nên limiter sẽ không bao giờ hạ xuống.
+    expect(classifyDbError({ code: "PT429" })).toBe("rate_limit");
+    expect(isRetryable("rate_limit")).toBe(false);
+    expect(isUserActionable("rate_limit")).toBe(true);
   });
 
   it("mã chưa biết rơi vào unknown và KHÔNG được thử lại", () => {

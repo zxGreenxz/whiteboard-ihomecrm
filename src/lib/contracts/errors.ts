@@ -39,6 +39,21 @@ export type ErrorCategory =
   /** Không tìm thấy đối tượng. */
   | "not_found"
   /**
+   * Bị chặn vì GỌI QUÁ NHIỀU (giới hạn tốc độ phía máy chủ).
+   *
+   * VÌ SAO KHÔNG NHÉT VÀO `concurrency`
+   *   Nhìn qua thì giống: "lát sau gọi lại sẽ được". Nhưng `concurrency` là nhóm
+   *   DUY NHẤT được thử lại TỰ ĐỘNG, mà tự động thử lại một lỗi giới hạn tốc độ
+   *   là đổ thêm đúng thứ đã làm nó kích hoạt — limiter sẽ không bao giờ hạ
+   *   xuống. Đây là nhóm "chậm lại", không phải nhóm "thử lại ngay".
+   *
+   *   Hệ này ném `PT429` (xem migration 20260808140000): PostgREST quy ước
+   *   SQLSTATE dạng `PTxxx` trả về HTTP xxx, nên `PT429` ra đúng 429 Too Many
+   *   Requests — thứ mà Cloudflare và mọi lớp trung gian hiểu là "lùi lại", khác
+   *   hẳn 5xx vốn bị đọc là "origin đang hỏng".
+   */
+  | "rate_limit"
+  /**
    * Chốt chặn NỘI BỘ vỡ (P0001 = RAISE EXCEPTION trần của chính hệ này), hoặc
    * schema đã đổi dưới chân client. Phải kêu to, không được nuốt.
    */
@@ -97,6 +112,9 @@ const MA_POSTGREST: Readonly<Record<string, ErrorCategory>> = {
   PGRST301: "permission", // JWT hết hạn / không hợp lệ
   PGRST202: "internal_invariant", // không tìm thấy hàm — slug RPC sai
   PGRST204: "internal_invariant", // không tìm thấy cột
+  // Hệ này tự ném, không phải PostgREST sinh ra: quy ước `PTxxx` → HTTP xxx.
+  // Nguồn: 20260808140000_gdr_tra_ve_429_thay_vi_500.sql (chặn dò mã theo IP).
+  PT429: "rate_limit",
 };
 
 export interface DbErrorLike {
@@ -151,5 +169,13 @@ export function isRetryable(category: ErrorCategory): boolean {
  * Dùng để quyết định hiện toast êm hay bắn cảnh báo.
  */
 export function isUserActionable(category: ErrorCategory): boolean {
-  return category === "validation" || category === "conflict" || category === "not_found";
+  return (
+    category === "validation" ||
+    category === "conflict" ||
+    category === "not_found" ||
+    // Người dùng xử được: chờ một lát rồi thử lại. Bắn cảnh báo cho người trực vì
+    // một người gõ sai mã nhiều lần là đúng thứ báo động giả làm người ta tắt
+    // bảng theo dõi — chính lý do migration 20260808140000 đổi 5xx thành 429.
+    category === "rate_limit"
+  );
 }

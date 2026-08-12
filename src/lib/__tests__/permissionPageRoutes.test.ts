@@ -44,6 +44,20 @@ describe("PermissionPage.route trỏ tới route sống", () => {
     expect(la, `trang trỏ route không có trong router: ${la.join(", ")}`).toEqual([]);
   });
 
+  it('route "/" do ĐÚNG hai trang khai, và "dashboard" đứng TRƯỚC', () => {
+    // KHÔNG phải lỗi, dù nhìn như trùng lặp — đã kiểm 12/08/2026:
+    //   `dashboard`  là trang thật ở `/`.
+    //   `ai-copilot` là NĂNG LỰC CHẠY KHẮP NƠI (chat + điều khiển UI), không thuộc
+    //                trang nào; `/` chỉ là chỗ đứng để nó có mặt trong picker.
+    // Bên khớp pathname (`src/copilot/banDoHeThong.ts`) phá hoà bằng ĐỘ DÀI route,
+    // mà hai cái cùng dài 1 ký tự — nên thứ tự MẢNG quyết định, và hôm nay
+    // `dashboard` thắng. Đó là kết quả ĐÚNG (ở `/` người dùng đang ở Bảng tin),
+    // nhưng nó đang đúng một cách TÌNH CỜ. Ca này ghim lại: đảo thứ tự hai mục
+    // trong catalog sẽ làm Copilot bảo người dùng đang ở trang "AI Copilot".
+    const goc = ALL_PAGES.filter((p) => p.route === "/").map((p) => p.key);
+    expect(goc).toEqual(["dashboard", "ai-copilot"]);
+  });
+
   it("KHÔNG trang nào trỏ vào route redirect", () => {
     const redirect = new Set(ROUTES.filter((r) => r.redirect).map((r) => chuanHoa(r.path)));
     const la = ALL_PAGES.filter((p) => redirect.has(chuanHoa(p.route))).map((p) => `${p.key} → ${p.route}`);
