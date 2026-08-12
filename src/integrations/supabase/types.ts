@@ -24185,6 +24185,7 @@ export type Database = {
         Args: {
           p_account_id?: string
           p_amount: number
+          p_attachments?: Json
           p_contract_id: string
           p_item_description?: string
           p_kind: string
@@ -25126,6 +25127,7 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      get_my_organizations: { Args: never; Returns: Json }
       get_my_permissions: { Args: never; Returns: Json }
       get_my_share_buildings: {
         Args: never
