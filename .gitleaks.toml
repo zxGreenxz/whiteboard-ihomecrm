@@ -37,6 +37,22 @@ keywords = ["key", "api", "token", "secret", "client", "passwd", "password", "au
     '''(?i)[:=]\s*"?[0-9a-f]{64}"?\s*$''',
     '''(?i):[0-9a-f]{32,64}"''',
     '''(?i)sha(256|512)-[A-Za-z0-9+/=]{20,}''',
+
+    # UUID chuẩn 8-4-4-4-12 gán cho một khoá có chữ "auth"/"key"/"token"…
+    #
+    # Đây là ĐỊNH DANH, không phải bí mật. Biết `auth_uid` của một người không
+    # cho ai quyền gì: quyền do RLS và JWT quyết, và JWT thì không đoán ra từ id.
+    # Repo dùng UUID ở khắp nơi làm dữ liệu test và khoá ngoại.
+    #
+    # An toàn được vì KHÔNG credential nào của repo này mang hình dạng UUID —
+    # đối chiếu `tooling/local-credential-contract.json`: `sbp_[a-f0-9]{40}`,
+    # `vcp_[A-Za-z0-9]{20,}`, mật khẩu, email. Nếu sau này có credential UUID
+    # được thêm vào hợp đồng đó thì PHẢI gỡ mục này, không thì nó thành lỗ.
+    #
+    # Ca thật đã bắt: `auth_uid: "df8d1df5-…"` trong
+    # scripts/__tests__/measure-org-leak.test.mjs — bộ đo rò rỉ tổ chức, khai
+    # UUID giả lập để kiểm chính bộ đo.
+    '''(?i)[:=]\s*['"\x60]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}['"\x60]?''',
   ]
 
 [allowlist]
