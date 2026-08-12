@@ -3,7 +3,7 @@
   "counts": {
     "source": 13,
     "deployed": 11,
-    "invoked": 2,
+    "invoked": 1,
     "publiclyCallable": 5
   },
   "sourceWithoutDeployment": [
@@ -17,18 +17,15 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 20,
+      "version": 22,
       "verifyJwt": true,
-      "callers": [
-        "src/hooks/useAdminUsers.ts",
-        "src/hooks/useShareholders.ts"
-      ]
+      "callers": []
     },
     "demo-reset": {
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 16,
+      "version": 18,
       "verifyJwt": false,
       "callers": []
     },
@@ -36,7 +33,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 23,
+      "version": 25,
       "verifyJwt": true,
       "callers": []
     },
@@ -44,7 +41,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 5,
+      "version": 7,
       "verifyJwt": false,
       "callers": []
     },
@@ -60,7 +57,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 3,
+      "version": 5,
       "verifyJwt": true,
       "callers": []
     },
@@ -68,7 +65,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 3,
+      "version": 5,
       "verifyJwt": true,
       "callers": []
     },
@@ -76,7 +73,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 3,
+      "version": 5,
       "verifyJwt": true,
       "callers": []
     },
@@ -84,7 +81,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 6,
+      "version": 8,
       "verifyJwt": false,
       "callers": []
     },
@@ -92,7 +89,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 3,
+      "version": 5,
       "verifyJwt": false,
       "callers": []
     },
@@ -108,7 +105,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 19,
+      "version": 21,
       "verifyJwt": false,
       "callers": []
     },
@@ -116,7 +113,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 21,
+      "version": 23,
       "verifyJwt": true,
       "callers": [
         "src/lib/push.ts",

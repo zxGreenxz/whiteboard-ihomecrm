@@ -224,11 +224,21 @@ jobs:
       # đo được 06/08/2026. Job này khi đó đỏ vì lý do chẳng liên quan gì tới
       # chất lượng code, và một CI đỏ thường trực là thứ khiến người ta ngừng
       # đọc kết quả CI.
-      # Tám file này dùng API `node:test`, KHÔNG phải Vitest. Trước 11/08/2026
+      # Những file này dùng API `node:test`, KHÔNG phải Vitest. Trước 11/08/2026
       # matrix xếp chúng vào suite Vitest và CI không loại trừ — nên bước Vitest
-      # ĐỎ vì chúng, và đồng thời KHÔNG lệnh nào chạy chúng. Tám file test tồn tại
+      # ĐỎ vì chúng, và đồng thời KHÔNG lệnh nào chạy chúng. File test tồn tại
       # trong repo mà chưa từng được thi hành: tệ hơn không có test, vì nhìn vào
       # thư mục thì thấy "đã có test".
+      #
+      # VÀ VẾT ĐÓ ĐÃ TÁI DIỄN: 7 file dưới (từ `check-copilot-routes` trở xuống)
+      # là gate viết sau ngày 11/08, mỗi cái lại dùng `node:test` mà không ai nối
+      # vào đây. Đo 12/08/2026: chúng chứa 77 test, tất cả đều xanh, và tất cả đều
+      # CHƯA TỪNG chạy trong CI. `npm run gate:test-matrix` là thứ phát hiện ra —
+      # nó đã đỏ sẵn, chỉ là chưa ai đọc.
+      #
+      # Thêm gate mới dùng `node:test` thì phải sửa BA chỗ: bước này, danh sách
+      # `--exclude` của Vitest ngay dưới, và `node-native.includes` trong
+      # `tooling/test-matrix.json`. Thiếu một chỗ là test lại thành trang trí.
       - name: node --test (script test dùng node:test)
         run: node --test scripts/__tests__/apply-reviewed-migration-authorization.test.mjs \
           scripts/__tests__/apply-reviewed-migration-transaction.test.mjs \
@@ -237,7 +247,14 @@ jobs:
           scripts/__tests__/check-external-controls.test.mjs \
           scripts/__tests__/check-graph-governance.test.mjs \
           scripts/__tests__/check-migration-provenance.test.mjs \
-          scripts/__tests__/check-no-auto-apply.test.mjs
+          scripts/__tests__/check-no-auto-apply.test.mjs \
+          scripts/__tests__/check-copilot-routes.test.mjs \
+          scripts/__tests__/check-dependency-audit.test.mjs \
+          scripts/__tests__/check-realtime-key-ownership.test.mjs \
+          scripts/__tests__/check-rpc-arg-names.test.mjs \
+          scripts/__tests__/check-rpc-layer.test.mjs \
+          scripts/__tests__/check-rpc-name-literal.test.mjs \
+          scripts/__tests__/check-ts-suppressions.test.mjs
 
       - name: Vitest (root-owned app and script suites)
         run: >
@@ -262,6 +279,13 @@ jobs:
           --exclude 'scripts/__tests__/check-graph-governance.test.mjs'
           --exclude 'scripts/__tests__/check-migration-provenance.test.mjs'
           --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-routes.test.mjs'
+          --exclude 'scripts/__tests__/check-dependency-audit.test.mjs'
+          --exclude 'scripts/__tests__/check-realtime-key-ownership.test.mjs'
+          --exclude 'scripts/__tests__/check-rpc-arg-names.test.mjs'
+          --exclude 'scripts/__tests__/check-rpc-layer.test.mjs'
+          --exclude 'scripts/__tests__/check-rpc-name-literal.test.mjs'
+          --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs'
 
       # Runner này chạy UTC còn dữ liệu và người dùng ở UTC+7, nên một lỗi ngày
       # tháng có thể XANH ở đây và SAI trên máy người dùng — hoặc ngược lại. Bước
