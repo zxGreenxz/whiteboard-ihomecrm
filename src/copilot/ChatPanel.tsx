@@ -513,7 +513,7 @@ export default function ChatPanel({ onClose }: Props) {
         ) : (
           <button
             className="rounded bg-blue-600 p-2 text-white disabled:opacity-50"
-            disabled={!input.trim()}
+            disabled={!input.trim() && !anhKem.length}
             onClick={() => void send()}
             title="Gửi"
             data-testid="copilot-send"

@@ -18,6 +18,7 @@
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
 import { formatVND } from '@/lib/utils';
+import { maskPii } from '../maskPii';
 import { todayISO } from '@/lib/collect';
 import type { DomainTool } from './registry';
 
@@ -72,7 +73,11 @@ export const tyLeLapDay = dt({
       .default(30)
       .describe('Cửa sổ phòng sắp trống, 0 = bỏ qua phần này'),
   }),
-  requiredPermission: { module: 'rooms', action: 'view' },
+  // `rooms.view` là SAI và tôi đã đặt sai ở bản đầu: màn hình phơi đúng dữ liệu
+  // này — /reports/real-estate/occupancy — gác bằng `reports_real_estate.occupancy`
+  // (xem realEstateReportRoutes.tsx:33). Cấp qua Copilot với một quyền rộng hơn
+  // và dễ được cấp hơn là mở một cửa sau vòng qua chính hàng rào của màn hình.
+  requiredPermission: { module: 'reports_real_estate', action: 'occupancy' },
   execute: async (args) => {
     const ngay = args.ngay ?? todayISO();
     const { data, error } = await supabase.rpc('occupancy_snapshot_v2', {
@@ -214,9 +219,91 @@ export const soQuy = dt({
     });
     if (error) throw new Error(`Lỗi tải sổ quỹ: ${error.message}`);
     if (!data) return `Không có dữ liệu sổ quỹ ${tu} → ${den}.`;
-    return `Đối soát sổ quỹ ${tu} → ${den}:\n${JSON.stringify(data, null, 1).slice(0, 6000)}`;
+    return dinhDangSoQuy(data as unknown as BaoCaoSoQuy, tu, den);
   },
 });
+
+// Hình dạng lấy từ `pg_get_functiondef('cashbook_settlement_report')` trên
+// production 12/08/2026, không chép từ tài liệu.
+interface BaoCaoSoQuy {
+  accounts?: {
+    name?: string; owner_name?: string; is_bank?: boolean;
+    current_balance?: number; period_collected?: number; period_spent?: number; period_handed_over?: number;
+  }[];
+  sessions?: { gross?: number; expense?: number; net?: number; voucher_count?: number }[];
+  reconciliations?: { status?: string; diff?: number }[];
+}
+
+/**
+ * Dựng báo cáo sổ quỹ từ DANH SÁCH TRƯỜNG AN TOÀN.
+ *
+ * Bản đầu của tôi làm `JSON.stringify(data).slice(0, 6000)` — đổ nguyên payload
+ * server vào ngữ cảnh mô hình, tức gửi thẳng ra nhà cung cấp LLM bên thứ ba.
+ * Payload đó mang: `owner_name` (họ tên nhân sự), `giver_name`/`receiver_name`
+ * (người giao/nhận tiền mặt), `note` (ghi chú đối soát tự do), và `name` của sổ
+ * — mà quy ước đặt tên ở đây nhét SỐ TÀI KHOẢN vào tên ("TK 19036789456013 VCB",
+ * chính hàm SQL nhận diện sổ ngân hàng bằng `name ILIKE 'tk%'`).
+ *
+ * `maskPii` tồn tại đúng để chặn việc này, nhưng nó chỉ bắt được MẪU (SĐT, CCCD,
+ * số tài khoản sau từ khoá) — nó không biết "Nguyễn Văn A" là họ tên, cũng không
+ * biết một ghi chú tự do chứa gì. Với dữ liệu có cấu trúc thì danh sách trường
+ * cho phép mới là hàng rào đúng; mask chỉ là lớp phòng thân cho phần chữ còn lại.
+ *
+ * Câu hỏi người dùng thật sự hỏi — "quỹ còn bao nhiêu", "đối soát có lệch không"
+ * — trả lời được trọn vẹn mà không cần một cái tên nào.
+ */
+export function dinhDangSoQuy(bc: BaoCaoSoQuy, tu: string, den: string): string {
+  const so = (v: unknown) => formatVND(Number(v) || 0);
+  const phan: string[] = [`Sổ quỹ ${tu} → ${den}:`];
+
+  const accs = bc.accounts ?? [];
+  if (accs.length) {
+    let duNo = 0;
+    phan.push(`\nSố dư theo sổ (${accs.length}):`);
+    for (const a of accs) {
+      duNo += Number(a.current_balance) || 0;
+      // Tên sổ vẫn cần để người dùng biết đang nói về sổ nào, nhưng đi qua
+      // maskPii vì số tài khoản nằm trong chính cái tên.
+      const nhan = maskPii(String(a.name ?? '(không tên)'));
+      phan.push(
+        `- ${nhan}${a.is_bank ? ' [ngân hàng]' : ' [tiền mặt]'}: dư ${so(a.current_balance)}` +
+          ` — kỳ này thu ${so(a.period_collected)}, chi ${so(a.period_spent)}, bàn giao ${so(a.period_handed_over)}`,
+      );
+    }
+    phan.push(`TỔNG số dư: ${so(duNo)}`);
+  }
+
+  const ss = bc.sessions ?? [];
+  if (ss.length) {
+    const gop = ss.reduce<{ gross: number; net: number; vouchers: number }>(
+      (t, s) => ({
+        gross: t.gross + (Number(s.gross) || 0),
+        net: t.net + (Number(s.net) || 0),
+        vouchers: t.vouchers + (Number(s.voucher_count) || 0),
+      }),
+      { gross: 0, net: 0, vouchers: 0 },
+    );
+    // CHỈ số tổng. Tên người giao/nhận không cần cho câu hỏi về quỹ.
+    phan.push(`\nBàn giao trong kỳ: ${ss.length} phiên, ${gop.vouchers} chứng từ, tổng ${so(gop.gross)}, ròng ${so(gop.net)}.`);
+  }
+
+  const rc = bc.reconciliations ?? [];
+  if (rc.length) {
+    const lech = rc.filter((r) => Math.abs(Number(r.diff) || 0) > 0);
+    const theoTrangThai = rc.reduce<Record<string, number>>((m, r) => {
+      const k = String(r.status ?? 'khác');
+      m[k] = (m[k] ?? 0) + 1;
+      return m;
+    }, {});
+    phan.push(
+      `\nĐối soát: ${rc.length} lần (${Object.entries(theoTrangThai).map(([k, v]) => `${k}: ${v}`).join(', ')}).` +
+        ` Có chênh lệch: ${lech.length}${lech.length ? ` — tổng lệch ${so(lech.reduce((t, r) => t + (Number(r.diff) || 0), 0))}` : ''}.`,
+    );
+    // Ghi chú đối soát là văn bản tự do — KHÔNG đưa ra ngoài.
+  }
+
+  return phan.length > 1 ? phan.join('\n') : `Không có dữ liệu sổ quỹ ${tu} → ${den}.`;
+}
 
 /** Gom lại để registry chèn vào một chỗ. */
 export const TOOL_NGHIEP_VU: DomainTool[] = [

@@ -49,25 +49,38 @@ export const DIEM_TOI_THIEU = 1;
 /**
  * Token xuất hiện ở hơn ngần này tỉ lệ chunk thì coi là KHÔNG có sức phân biệt.
  *
- * Đây là stoplist SUY RA TỪ DỮ LIỆU, thay cho một bảng "của/và/là/được" viết
- * tay phải bảo trì mãi. Nó cũng bắt được thứ bảng tay không bắt được: từ phổ
- * biến RIÊNG trong corpus này ("hệ thống", "dữ liệu", "bảng").
- *
- * Vì sao cần, và vì sao KHÔNG dùng ngưỡng điểm tuyệt đối thay thế — đo trên
- * corpus thật ngày 12/08/2026:
+ * Vì sao KHÔNG dùng ngưỡng ĐIỂM tuyệt đối thay cho luật này — đo trên corpus
+ * thật ngày 12/08/2026:
  *
  *   câu tốt, dài  "thanh lý hợp đồng"        → 118,6
  *   câu tốt, ngắn "công tơ"                  →  72,8
- *   câu tốt, hiếm "OpenClaw"                 →  19,2  ← đúng tài liệu
  *   câu tốt, hiếm "zalo"                     →  14,2  ← đúng tài liệu
- *   câu rác       "zzzz khong co chu de nao" →  19,9
  *   câu rác       "cái này thì sao"          →  14,7
  *
- * Hai nhóm CHỒNG LẤN theo điểm, nên mọi ngưỡng tuyệt đối đều vừa giết câu đúng
- * vừa cho lọt câu rác. Nhưng chúng tách bạch hoàn toàn theo một trục khác: câu
- * rác chỉ khớp hư từ, câu đúng luôn khớp ít nhất một từ hiếm.
+ * Hai nhóm chồng lấn theo điểm, nên mọi ngưỡng điểm đều vừa giết câu đúng vừa
+ * cho lọt câu rác.
+ *
+ * NGƯỠNG 0,4 LÀ SỐ ĐO, KHÔNG PHẢI SỐ ĐOÁN. Bản đầu tôi đặt 0,2 và nó loại nhầm
+ * đúng những từ nghiệp vụ trung tâm nhất — đo trên 634 chunk:
+ *
+ *   chi      69,4%  ← thật sự vô nghĩa khi đứng một mình
+ *   thu      51,6%  ← thật sự vô nghĩa khi đứng một mình
+ *   lương    26,5%  ← BỊ LOẠI OAN ở ngưỡng 0,2
+ *   cọc      25,9%  ← BỊ LOẠI OAN
+ *   thu_chi  21,3%  ← BỊ LOẠI OAN
+ *   mã       19,9%
+ *   công_nợ   3,0%
+ *
+ * Trong một bộ tài liệu về quản lý cho thuê, "cọc" và "lương" có mặt ở một phần
+ * tư số mục là chuyện bình thường — điều đó KHÔNG làm chúng mất nghĩa. Ở 0,2 thì
+ * "cọc" và "lương" chỉ còn ra kết quả nhờ bảng đồng nghĩa cứu tình cờ, còn
+ * "thu chi" trả rỗng hoàn toàn.
+ *
+ * Luật này giờ chỉ còn nhắm đúng phần việc của nó — chặn âm tiết đứng một mình
+ * mà mọi chunk đều có. Việc lọc hư từ đã có bảng riêng trong `tokenize.ts`, và
+ * bảng đó lọc trên dạng CÓ DẤU nên không đụng từ nghiệp vụ.
  */
-export const NGUONG_PHO_BIEN = 0.2;
+export const NGUONG_PHO_BIEN = 0.4;
 
 function dem(tokens: string[], idx: number, kho: Map<string, Map<number, number>>): void {
   for (const t of tokens) {

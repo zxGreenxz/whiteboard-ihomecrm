@@ -32,6 +32,14 @@ export function boDau(s: string): string {
     .replace(/đ/g, 'd');
 }
 
+/** Cắt thành âm tiết, GIỮ NGUYÊN dấu. Chỉ gấp thường. */
+export function tachAmTiet(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
 /** Cắt thành âm tiết theo mọi thứ không phải chữ/số. Đã bỏ dấu sẵn. */
 export function tachTu(s: string): string[] {
   return boDau(s)
@@ -109,38 +117,77 @@ export function moRongDongNghia(tokens: string[]): string[] {
  * Bảng này ổn định theo thời gian: ngôn ngữ không sinh thêm hư từ. Đó là khác
  * biệt giữa nó và một bảng từ khoá nghiệp vụ — thứ sẽ phải chạy theo sản phẩm.
  */
-export const HU_TU = new Set([
-  'cai', 'cua', 'va', 'la', 'duoc', 'thi', 'ma', 'nay', 'kia', 'do', 'ay',
-  'sao', 'nao', 'the', 'nhu', 'nhung', 'cac', 'mot', 'co', 'khong',
-  'cho', 'voi', 'tu', 'den', 'khi', 'neu', 'hoac', 'cung', 'da', 'se',
-  'dang', 'bi', 'boi', 'tai', 've', 'o', 'trong', 'ngoai', 'tren', 'duoi',
-  'ai', 'gi', 'dau', 'bao', 'nhieu', 'rat', 'qua', 'lam', 'hon', 'nhat',
-  'toi', 'ban', 'minh', 'ho', 'no', 'hay', 'roi', 'chi', 'con', 'nen',
+/**
+ * Hư từ, dạng CÓ DẤU. Lọc phải chạy TRƯỚC khi bỏ dấu — đây là điểm mấu chốt.
+ *
+ * Bản đầu của tôi lọc SAU khi bỏ dấu, và điều đó phá 18 cụm nghiệp vụ trung tâm
+ * cùng lúc, vì tiếng Việt bỏ dấu thì hư từ đụng thẳng vào từ có nghĩa:
+ *
+ *   nợ→no      chỉ số→chi   tài sản/tài chính→tai   báo cáo→bao
+ *   phòng TRỐNG→trong       mã hoá đơn→ma           bán hàng→ban
+ *   hộ khẩu→ho  cửa hàng→cua  đo điện→do  đầu kỳ→dau  thẻ→the  tủ→tu
+ *
+ * Hỏi "nợ" hay "phòng trống" mà trả về rỗng thì trợ lý coi như hỏng — nặng hơn
+ * nhiều so với việc thỉnh thoảng cho lọt một câu vô nghĩa. Dấu thanh chính là
+ * thứ phân biệt "nợ" với "nó", "trống" với "trong"; vứt nó đi rồi mới lọc là tự
+ * bỏ mất thông tin cần để lọc đúng.
+ */
+export const HU_TU_CO_DAU = new Set([
+  'cái', 'của', 'và', 'là', 'được', 'thì', 'mà', 'này', 'kia', 'đó', 'ấy',
+  'sao', 'nào', 'thế', 'như', 'nhưng', 'những', 'các', 'một', 'có', 'không',
+  'cho', 'với', 'từ', 'đến', 'khi', 'nếu', 'hoặc', 'cũng', 'đã', 'sẽ',
+  'đang', 'bị', 'bởi', 'tại', 'về', 'ở', 'trong', 'ngoài', 'trên', 'dưới',
+  'ai', 'gì', 'đâu', 'bao', 'nhiêu', 'rất', 'quá', 'lắm', 'hơn', 'nhất',
+  'tôi', 'bạn', 'mình', 'họ', 'nó', 'hay', 'rồi', 'chỉ', 'còn', 'nên',
 ]);
 
 /**
- * Bỏ hư từ khỏi token truy vấn.
+ * Hư từ dạng KHÔNG DẤU — chỉ những âm tiết mà bản bỏ dấu KHÔNG đụng từ nghiệp vụ nào.
  *
- * Bigram chỉ bị bỏ khi CẢ HAI vế đều là hư từ: "vào sổ" (`vao_so`) phải giữ,
- * còn "thì mà" (`thi_ma`) thì bỏ. Bỏ mọi bigram có một vế hư từ sẽ cắt mất
- * nhiều cụm nghiệp vụ có giới từ.
+ * Cần vì người dùng hay gõ không dấu, khi đó bảng có dấu ở trên không khớp gì.
+ * Danh sách này cố tình NGẮN và bảo thủ: mỗi mục thêm vào là một cơ hội nuốt
+ * nhầm từ có nghĩa. Test `tokenize.test.ts` canh bằng một rổ cụm nghiệp vụ —
+ * thêm mục nào làm rơi một cụm trong rổ đó thì test đỏ.
  */
-export function boHuTu(tokens: string[]): string[] {
-  return tokens.filter((t) => {
-    const ve = t.split('_');
-    return !ve.every((v) => HU_TU.has(v));
+export const HU_TU_KHONG_DAU = new Set([
+  'va', 'la', 'thi', 'nay', 'kia', 'ay', 'nhu', 'nhung', 'cac', 'khong',
+  'neu', 'hoac', 'cung', 'se', 'boi', 'ngoai', 'tren', 'duoi', 'ai', 'gi',
+  'nhieu', 'rat', 'hon', 'nhat', 'minh', 'roi', 'nen', 'sao', 'duoc',
+  // Hai mục dưới là ĐÁNH ĐỔI có ý thức, không phải bỏ sót:
+  //   'nao' — đụng "não", không phải từ nghiệp vụ ở đây.
+  //   'the' — đụng "thẻ" và "thể". Người gõ "the tu" (thẻ từ) sẽ mất một âm
+  //     tiết, nhưng "thế nào" là cụm hỏi phổ biến hơn nhiều bậc, và "the" đứng
+  //     một mình gần như luôn là hư từ. Ai gõ có dấu thì cả hai đều đúng.
+  'nao', 'the',
+]);
+
+/**
+ * Bỏ hư từ. Nhận âm tiết CÓ DẤU, trả về âm tiết có dấu đã lọc.
+ *
+ * Một âm tiết bị bỏ khi: nó là hư từ có dấu, HOẶC (người dùng gõ không dấu nên
+ * bản thân nó đã không dấu) nó nằm trong danh sách không dấu bảo thủ.
+ */
+export function boHuTu(amTiet: string[]): string[] {
+  return amTiet.filter((t) => {
+    if (HU_TU_CO_DAU.has(t)) return false;
+    // Chỉ áp bảng không dấu cho âm tiết vốn KHÔNG có dấu; nếu không thì "nợ"
+    // (bỏ dấu ra "no") lại bị nuốt đúng như lỗi vừa sửa.
+    if (boDau(t) === t && HU_TU_KHONG_DAU.has(t)) return false;
+    return true;
   });
 }
 
 /**
- * Token của một TRUY VẤN: âm tiết + bigram, bỏ hư từ, rồi mở rộng đồng nghĩa.
+ * Token của một TRUY VẤN: lọc hư từ trên dạng CÓ DẤU, rồi mới bỏ dấu, ghép
+ * bigram và mở rộng đồng nghĩa.
  *
  * Truy vấn chỉ gồm hư từ ⇒ trả rỗng ⇒ không kết quả. Đó là câu trả lời đúng cho
  * "cái này thì sao": thà nói không hiểu, còn hơn đưa một đoạn tài liệu ngẫu
  * nhiên kèm giọng điệu chắc chắn.
  */
 export function tokenTruyVan(q: string): string[] {
-  return moRongDongNghia(boHuTu(themBigram(tachTu(q))));
+  const giuLai = boHuTu(tachAmTiet(q)).map(boDau).filter(Boolean);
+  return moRongDongNghia(themBigram(giuLai));
 }
 
 /** Token của một ĐOẠN tài liệu: âm tiết + bigram (KHÔNG mở rộng đồng nghĩa). */

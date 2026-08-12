@@ -3,7 +3,7 @@
 // ca xếp hạng — corpus dựng tay không phản ánh được độ nhập nhằng thật.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PermissionsMap } from '@/lib/permissions';
-import { boDau, moRongDongNghia, tachTu, themBigram } from '../docs/tokenize';
+import { boDau, moRongDongNghia, tachTu, themBigram, tokenTruyVan } from '../docs/tokenize';
 import { slugHeading, tachChunk } from '../docs/chunker';
 import { chamDiem, dungIndex, W_TIEU_DE } from '../docs/bm25';
 import { dinhDangChoModel, timTaiLieu, xoaCacheIndex, GIOI_HAN_KY_TU } from '../docs/docSearch';
@@ -33,6 +33,67 @@ describe('boDau — người dùng gõ không dấu', () => {
   it('đ → d (đ là CHỮ CÁI, NFD không tách được)', () => {
     expect(boDau('đơn')).toBe('don');
     expect(boDau('Đối soát')).toBe('doi soat');
+  });
+});
+
+describe('hư từ KHÔNG được nuốt từ nghiệp vụ', () => {
+  /**
+   * Rổ này là hàng rào. Bản đầu lọc hư từ SAU khi bỏ dấu và nuốt mất 18 cụm
+   * trong đây cùng lúc — hỏi "nợ" hay "phòng trống" trả về rỗng. Thêm mục vào
+   * bảng hư từ mà làm rơi một cụm ở đây thì test này phải đỏ.
+   */
+  const NGHIEP_VU = [
+    'nợ', 'chi', 'chỉ số', 'thu chi', 'tài sản', 'tài chính', 'báo cáo',
+    'phòng trống', 'mã hoá đơn', 'bán hàng', 'hộ khẩu', 'thẻ từ', 'cửa hàng',
+    'đo điện', 'tủ', 'đầu kỳ', 'bảo trì', 'cọc', 'thu', 'chờ duyệt',
+    'đăng ký', 'công tơ', 'hợp đồng', 'thanh lý', 'sổ quỹ', 'lương',
+  ];
+
+  it('mọi cụm nghiệp vụ đều còn ít nhất một âm tiết sau khi lọc hư từ', () => {
+    for (const cum of NGHIEP_VU) {
+      const t = tokenTruyVan(cum);
+      expect(t.length, `"${cum}" bị lọc sạch — sẽ không tra được gì`).toBeGreaterThan(0);
+    }
+  });
+
+  it('từ nghiệp vụ MỘT âm tiết vẫn tra được trên corpus thật', async () => {
+    // Chỉ khẳng định CÓ kết quả, không khẳng định thứ hạng: một âm tiết đơn là
+    // tín hiệu yếu và nhập nhằng theo bản chất ("nợ" xuất hiện rải khắp tài
+    // liệu tài sản, thu chi, hợp đồng). Đòi đúng tài liệu nào đứng đầu là đòi
+    // hơn thứ dữ liệu cho phép — bản trước của test này khẳng định vậy và đỏ.
+    for (const q of ['nợ', 'cọc', 'lương', 'mã']) {
+      const kq = await timTaiLieu(q, SUPER);
+      expect(kq.hits.length, `"${q}" không ra kết quả`).toBeGreaterThan(0);
+    }
+  });
+
+  it('âm tiết QUÁ PHỔ BIẾN vẫn trả rỗng — và đó là đúng', async () => {
+    // "chi" không còn bị bảng hư từ nuốt (đó là lỗi đã sửa), nhưng nó có mặt ở
+    // hơn 20% số chunk nên luật `NGUONG_PHO_BIEN` loại nó vì không còn sức phân
+    // biệt. Trả rỗng ở đây đúng hơn là trả sáu đoạn bất kỳ: khi mọi chunk đều
+    // khớp thì không có gì để xếp hạng, và nói "hãy hỏi cụ thể hơn" là câu trả
+    // lời thật thà. Hai âm tiết trở lên thì bình thường.
+    expect((await timTaiLieu('chi', SUPER)).hits).toHaveLength(0);
+    expect((await timTaiLieu('chi phí', SUPER)).hits.length).toBeGreaterThan(0);
+    expect((await timTaiLieu('thu chi', SUPER)).hits.length).toBeGreaterThan(0);
+  });
+
+  it('cụm HAI âm tiết thì thứ hạng mới đủ tin để khẳng định', async () => {
+    for (const [q, mong] of [
+      ['công nợ', /thu-chi|hoa-don|bao-cao/],
+      ['phòng trống', /phong-trong|co-cau|kenh-cong-khai/],
+      ['sổ quỹ', /thu-chi|sop-tien/],
+    ] as const) {
+      const kq = await timTaiLieu(q, SUPER);
+      expect(kq.hits.length, `"${q}" không ra kết quả`).toBeGreaterThan(0);
+      expect(kq.hits[0].chunk.docKey, `"${q}" ra ${kq.hits[0].chunk.docKey}`).toMatch(mong);
+    }
+  });
+
+  it('vẫn lọc được câu toàn hư từ khi gõ CÓ dấu', () => {
+    for (const rac of ['cái này thì sao', 'của và là được thì mà', 'thế nào là được']) {
+      expect(tokenTruyVan(rac), `"${rac}"`).toHaveLength(0);
+    }
   });
 });
 

@@ -517,6 +517,7 @@
     "src/copilot/__tests__/docIngestFreshness.test.ts",
     "src/copilot/__tests__/docSearch.test.ts",
     "src/copilot/__tests__/llmClient.test.ts",
+    "src/copilot/__tests__/nghiepVuTools.test.ts",
     "src/copilot/admin/AiCopilotAdminPage.tsx",
     "src/copilot/anh.ts",
     "src/copilot/banDoHeThong.ts",
