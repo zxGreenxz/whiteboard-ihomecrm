@@ -378,7 +378,12 @@ export const PAGE_GROUPS: PageGroup[] = [
       {
         key: "shareholder_profit",
         label: "Lợi nhuận cổ đông",
-        route: "/finance/shareholder-profit",
+        // Trước 12/08/2026 trỏ `/finance/shareholder-profit`, mà route đó nay chỉ
+        // là `<Navigate>` sang đây (gộp vào ProfitHubPage). `route` KHÔNG chỉ để
+        // hiển thị: `src/copilot/banDoHeThong.ts` khớp pathname với trường này để
+        // biết người dùng đang ở trang nào — trỏ vào redirect thì Copilot không
+        // bao giờ nhận ra trang. `permissionPageRoutes.test.ts` canh chỗ này.
+        route: "/reports/finance/profit-distribution",
         features: [
           f("shareholder_profit", "view", "Xem trang lợi nhuận cổ đông", "view"),
           f("shareholder_profit", "lock", "Chốt lợi nhuận tháng", "elevated"),
@@ -590,7 +595,9 @@ export const PAGE_GROUPS: PageGroup[] = [
       {
         key: "users",
         label: "Phân quyền nhân viên",
-        route: "/settings/staff",
+        // Trước 12/08/2026 trỏ `/settings/staff`, nay route đó chỉ là `<Navigate>`
+        // sang `/settings/members`. Cùng lý do với `shareholder_profit` ở trên.
+        route: "/settings/members",
         desc: "Quyền nhạy cảm — chỉ cấp cho người quản lý nhân sự.",
         features: [
           f("users", "view", "Vào trang phân quyền", "elevated"),

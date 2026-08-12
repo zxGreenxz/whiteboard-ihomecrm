@@ -474,6 +474,7 @@
     "src/lib/__tests__/networkCenterRealtimeExposureSafety.test.ts",
     "src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts",
     "src/lib/__tests__/networkCenterWorkerIdentityMigration.test.ts",
+    "src/lib/__tests__/permissionPageRoutes.test.ts",
     "src/lib/__tests__/planHardeningMigration.test.ts",
     "src/lib/__tests__/profitVerification.test.ts",
     "src/lib/__tests__/publicRoomsHoldingDepositMigration.test.ts",

@@ -851,6 +851,7 @@
     "src/lib/__tests__/ngayLocalKhongUTC.test.ts",
     "src/lib/__tests__/notificationRoutes.test.ts",
     "src/lib/__tests__/paymentRecordRpc.test.ts",
+    "src/lib/__tests__/permissionPageRoutes.test.ts",
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/planHardeningMigration.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
