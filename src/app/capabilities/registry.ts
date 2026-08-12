@@ -356,6 +356,52 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
     risk: "normal",
   },
+
+  {
+    id: "rooms",
+    primaryRoute: "/apartments",
+    label: "Căn hộ",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "rooms", action: "view" },
+    surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/apartments" },
+    docs: {
+      systemDoc: "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",
+      userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/can-ho-phong/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "normal",
+  },
+  {
+    id: "materials",
+    primaryRoute: "/materials",
+    label: "Kho vật tư",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "materials", action: "view" },
+    surfaces: { desktopNav: true, mobileLauncher: false, permissionPage: "/materials" },
+    docs: {
+      systemDoc: "docs/he-thong/09-kho-vat-tu.md",
+      userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/kho-vat-tu/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "normal",
+  },
+  {
+    id: "thu-tien",
+    primaryRoute: "/thu-tien",
+    label: "Thu tiền",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "thu_tien", action: "view" },
+    surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/thu-tien" },
+    docs: {
+      systemDoc: "docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md",
+      userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/thu-tien-hoa-don/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "financial",
+  },
 ];
 
 export function capabilityById(id: string): CapabilityDefinition | undefined {

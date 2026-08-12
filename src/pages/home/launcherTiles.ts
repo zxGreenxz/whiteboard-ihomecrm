@@ -69,7 +69,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'dashboard', title: 'Bảng tin', href: '/dashboard', icon: LayoutDashboard, accent: '#1f7a52' },
       { id: 'map', title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, accent: '#2563eb', module: 'buildings' },
       ...launcherFieldsFor('buildings').map((x) => ({ ...x, icon: Building2, accent: '#6366f1' }) satisfies LauncherTile),
-      { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },
+      ...launcherFieldsFor('rooms').map((x) => ({ ...x, icon: Home, accent: '#0d9488', badge: 'totalRooms' }) satisfies LauncherTile),
       ...launcherFieldsFor('leads').map((x) => ({ ...x, icon: UserPlus, accent: '#d97706' }) satisfies LauncherTile),
       ...launcherFieldsFor('tasks').map((x) => ({ ...x, icon: ClipboardList, accent: '#0ea5e9' }) satisfies LauncherTile),
       // Sinh từ capability registry (Đợt 4 lát 3) — chỉ `icon`/`accent` là của
@@ -90,7 +90,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
   {
     label: 'Tài chính',
     items: [
-      { id: 'thu-tien', title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, accent: '#1f9d57', module: 'thu_tien', hot: true },
+      ...launcherFieldsFor('thu-tien').map((x) => ({ ...x, icon: HandCoins, accent: '#1f9d57', hot: true }) satisfies LauncherTile),
       // Đóng tiền Tập trung theo Kỳ — gate `thu_tien.collect` khớp đúng route
       // guard /thanh-toan (người chỉ có quyền xem không thấy ô này).
       { id: 'thanh-toan', title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, accent: '#ea580c', module: 'thu_tien', action: 'collect' },

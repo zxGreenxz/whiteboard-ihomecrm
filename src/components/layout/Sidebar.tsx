@@ -149,11 +149,11 @@ export const navigationGroups: NavGroup[] = [
           // bằng dialog trong trang Toà nhà; mọi ô lọc chọn theo khu vực qua
           // BuildingMultiSelect (click tên khu = chọn cả nhóm toà).
           ...navFieldsFor('buildings').map((x) => ({ ...x, icon: Building2 }) satisfies NavItem),
-          { title: 'Căn hộ', href: '/apartments', icon: Home, module: 'rooms' },
+          ...navFieldsFor('rooms').map((x) => ({ ...x, icon: Home }) satisfies NavItem),
           ...navFieldsFor('services').map((x) => ({ ...x, icon: Wrench }) satisfies NavItem),
           { title: 'Sale Phòng', href: '/sale-phong', icon: Share2, module: 'sale_phong' },
           ...navFieldsFor('assets').map((x) => ({ ...x, icon: Package }) satisfies NavItem),
-          { title: 'Kho vật tư', href: '/materials', icon: Package, module: 'materials' },
+          ...navFieldsFor('materials').map((x) => ({ ...x, icon: Package }) satisfies NavItem),
         ],
       },
       {
@@ -173,7 +173,7 @@ export const navigationGroups: NavGroup[] = [
         items: [
           ...navFieldsFor('meters').map((x) => ({ ...x, icon: Gauge }) satisfies NavItem),
           ...navFieldsFor('invoices').map((x) => ({ ...x, icon: Receipt }) satisfies NavItem),
-          { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, module: 'thu_tien' },
+          ...navFieldsFor('thu-tien').map((x) => ({ ...x, icon: HandCoins }) satisfies NavItem),
           // Đóng tiền Tập trung theo Kỳ (tách khỏi overlay của /thu-tien).
           { title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, module: 'thu_tien', action: 'collect' },
           ...navFieldsFor('cashbook').map((x) => ({ ...x, icon: CreditCard }) satisfies NavItem),
