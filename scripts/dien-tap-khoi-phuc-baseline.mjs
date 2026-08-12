@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIR = join(repoRoot, "supabase", "baseline");
 const ROLES = join(DIR, "roles.sql");
+const SHIM = join(DIR, "platform-shim.sql");
 const SCHEMA = join(DIR, "schema.sql");
 const MANIFEST = join(DIR, "manifest.json");
 
@@ -33,14 +34,66 @@ const PSQL = ["C:/Program Files/PostgreSQL/17/bin/psql.exe", "psql"].find(
   (p) => p === "psql" || existsSync(p),
 );
 
+/**
+ * Chạy psql TRONG một container Docker thay vì đòi client cài sẵn trên máy.
+ *
+ * VÌ SAO CẦN
+ *   Diễn tập này đòi một PostgreSQL **dùng-một-lần đúng 17.6**. Máy dev thường
+ *   không có psql, và cài client 17 chỉ để diễn tập là một rào cản đủ lớn để
+ *   người ta bỏ luôn việc diễn tập — mà một bản sao lưu chưa từng thử khôi phục
+ *   thì chỉ là hy vọng. Có Docker là đủ:
+ *
+ *     docker run -d --name pg-dientap -e POSTGRES_PASSWORD=… -p 55432:5432 postgres:17.6
+ *     PSQL_DOCKER=pg-dientap node scripts/dien-tap-khoi-phuc-baseline.mjs \
+ *       --dich "postgresql://postgres:…@127.0.0.1:5432/postgres"
+ *
+ *   Chuỗi kết nối tính TỪ TRONG container, nên trỏ 127.0.0.1:5432 chứ không phải
+ *   cổng đã map ra máy.
+ *
+ * `-f <đường dẫn>` PHẢI đổi thành stdin
+ *   File nằm trên máy chủ, container không thấy. Đọc trên máy rồi bơm qua stdin
+ *   với `-f -`. Không mount thư mục: baseline có thể nằm ngoài repo và mount sai
+ *   đường dẫn sẽ hỏng im lặng (psql báo "file rỗng" thay vì "không có file").
+ */
+const PSQL_DOCKER = process.env.PSQL_DOCKER || "";
+
+function goiPsql(args, opts = {}) {
+  if (!PSQL_DOCKER) return spawnSync(PSQL, args, opts);
+
+  const i = args.indexOf("-f");
+  let input;
+  let argsRa = args;
+  if (i >= 0 && args[i + 1] && args[i + 1] !== "-") {
+    input = readFileSync(args[i + 1], "utf8");
+    argsRa = [...args.slice(0, i + 1), "-", ...args.slice(i + 2)];
+  }
+  // PHẢI ép stdin thành "pipe" khi có `input`. Người gọi truyền
+  // `stdio: ["ignore", …]`, mà "ignore" ở khe 0 làm Node VỨT luôn `input` —
+  // lệnh vẫn chạy, vẫn trả mã 0, chỉ là không nhận được gì. Bản đầu quên chỗ này
+  // và diễn tập báo "0 lỗi" trên một schema 439 bảng trong 0 giây: xanh rỗng
+  // hoàn hảo, đúng thứ script này sinh ra để chống.
+  const stdio =
+    input === undefined
+      ? opts.stdio
+      : Array.isArray(opts.stdio)
+        ? ["pipe", ...opts.stdio.slice(1)]
+        : "pipe";
+  return spawnSync("docker", ["exec", "-i", PSQL_DOCKER, "psql", ...argsRa], {
+    ...opts,
+    stdio,
+    input: input ?? opts.input,
+  });
+}
+
 function main(argv) {
   const dich = argv[argv.indexOf("--dich") + 1];
   if (!dich || dich.startsWith("--")) {
     console.error('Dùng: node scripts/dien-tap-khoi-phuc-baseline.mjs --dich "postgresql://…"');
     return 1;
   }
-  if (!PSQL) {
-    console.error("❌ Không tìm thấy psql. Cài PostgreSQL client 17+.");
+  if (!PSQL && !PSQL_DOCKER) {
+    console.error("❌ Không tìm thấy psql. Cài PostgreSQL client 17+, HOẶC đặt");
+    console.error("   PSQL_DOCKER=<tên container> để chạy psql trong Docker.");
     return 1;
   }
   const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
@@ -52,15 +105,22 @@ function main(argv) {
   }
 
   const psql = (args, { imLang = false } = {}) =>
-    spawnSync(PSQL, ["-d", dich, ...args], {
+    goiPsql(["-d", dich, ...args], {
       encoding: "utf8",
       timeout: 45 * 60 * 1000,
       maxBuffer: 256 * 1024 * 1024,
       stdio: imLang ? "pipe" : ["ignore", "pipe", "pipe"],
     });
-  const hoi = (sql) =>
-    execFileSync(PSQL, ["-d", dich, "-t", "-A", "-c", sql], { encoding: "utf8" })
-      .trim().split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const hoi = (sql) => {
+    const r = goiPsql(["-d", dich, "-t", "-A", "-c", sql], { encoding: "utf8" });
+    // Ném như `execFileSync` cũ vẫn ném: một câu hỏi hỏng phải NỔ RA, không được
+    // trả mảng rỗng rồi để phép đếm bên dưới đọc thành "không có gì". Đó đúng
+    // kiểu tự lừa mình mà chính script này ra đời để chặn.
+    if (r.status !== 0) {
+      throw new Error(`psql lỗi (${r.status}): ${String(r.stderr || "").slice(0, 300)}`);
+    }
+    return String(r.stdout || "").trim().split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  };
 
   console.log(`Diễn tập khôi phục baseline (chụp ${manifest.capturedAt})`);
   console.log(`  đích: ${dich.replace(/:[^:@/]+@/, ":***@")}\n`);
@@ -87,6 +147,21 @@ function main(argv) {
       thu(`drop schema if exists ${ns} cascade`);
     }
     thu("create schema if not exists public");
+  }
+
+  // Shim nền tảng TRƯỚC roles.sql: nó dựng role/schema/extension mà Supabase có
+  // sẵn còn Postgres trần thì không. Bỏ bước này thì đúng 614 lỗi
+  // `role "authenticated" does not exist` nuốt mất 681 policy, và diễn tập báo
+  // "43% policy" — một con số nói về MÔI TRƯỜNG ĐO chứ không về bản sao lưu.
+  // Bỏ qua nếu file không có: dự án khác dùng script này có thể khôi phục lên
+  // đích đã sẵn hình dạng Supabase.
+  if (existsSync(SHIM)) {
+    console.log("→ Nạp platform-shim.sql (role/schema nền tảng Supabase)…");
+    const rShim = psql(["-q", "-v", "ON_ERROR_STOP=1", "-f", SHIM]);
+    if (rShim.status !== 0) {
+      console.error("❌ Nạp platform-shim.sql thất bại:", String(rShim.stderr).slice(0, 300));
+      return 1;
+    }
   }
 
   console.log("→ Nạp roles.sql (thứ pg_dump --schema-only KHÔNG xuất)…");
