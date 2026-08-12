@@ -2,7 +2,7 @@
 // + UI-control experimental Phase 3 (toggle "Điều khiển trang").
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Loader2, Mic, MicOff, Plus, Send, Square, X } from 'lucide-react';
+import { ImagePlus, Loader2, Mic, MicOff, Plus, Send, Square, X } from 'lucide-react';
 // Kiểu tin nhắn nay do chatEngine sở hữu, không còn lấy từ @page-agent/llms:
 // `Message.content` của thư viện đó là `string | null`, không chứa được tin
 // nhắn kèm ảnh.
@@ -20,6 +20,7 @@ import {
 } from './chatEngine';
 import { useAiProviders, useCopilotEntitlement, useCopilotModel } from './useAiProviders';
 import { hrefAnToan } from './hrefAnToan';
+import { anhTuDataTransfer, nenAnh, type AnhDaNen } from './anh';
 
 interface Props {
   onClose: () => void;
@@ -148,12 +149,15 @@ export default function ChatPanel({ onClose }: Props) {
   const [liveTool, setLiveTool] = useState<string | null>(null);
   /** Câu trả lời đang chảy về, chưa chốt vào history. */
   const [dangChay, setDangChay] = useState('');
+  /** Ảnh đính kèm cho LƯỢT SẮP GỬI. Không lưu, không mang sang lượt sau. */
+  const [anhKem, setAnhKem] = useState<AnhDaNen[]>([]);
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const uiAgentRef = useRef<{ stop: () => Promise<void>; dispose: () => void } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   // Chặn race: nếu user đã tương tác (gửi tin / mở thread mới) trước khi
   // loadLatestThread resolve, KHÔNG đè state đang chạy.
   const touchedRef = useRef(false);
@@ -209,8 +213,16 @@ export default function ChatPanel({ onClose }: Props) {
     }
   };
 
-  const runChat = async (text: string) => {
-    setHistory((h) => [...h, { role: 'user', content: text }]);
+  const runChat = async (text: string, anh: string[]) => {
+    setHistory((h) => [
+      ...h,
+      {
+        role: 'user',
+        content: anh.length
+          ? [{ type: 'text' as const, text }, ...anh.map((url) => ({ type: 'image_url' as const, image_url: { url } }))]
+          : text,
+      },
+    ]);
     const abort = new AbortController();
     abortRef.current = abort;
     let tid = threadId;
@@ -226,6 +238,7 @@ export default function ChatPanel({ onClose }: Props) {
       signal: abort.signal,
       // Cho Copilot biết người dùng đang xem màn hình nào — để hiểu "cái này".
       pathname: location.pathname,
+      anh,
       onToolEvent: (ev: ChatToolEvent) => {
         setLiveTool(ev.tool);
         // Mô hình có thể nói một câu dẫn rồi mới gọi tool. Câu đó đã hiện ra;
@@ -247,14 +260,19 @@ export default function ChatPanel({ onClose }: Props) {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || running) return;
+    if ((!text && !anhKem.length) || running) return;
+    // Ảnh không kèm câu hỏi thì mô hình không biết phải làm gì với nó; đưa một
+    // câu mặc định còn hơn để nó tự đoán ý.
+    const cauHoi = text || 'Đọc giúp tôi ảnh này.';
+    const anh = anhKem.map((a) => a.dataUrl);
     touchedRef.current = true;
     setInput('');
+    setAnhKem([]);
     setError('');
     setRunning(true);
     try {
-      if (uiMode && canUiControl) await runUiControl(text);
-      else await runChat(text);
+      if (uiMode && canUiControl) await runUiControl(cauHoi);
+      else await runChat(cauHoi, anh);
     } catch (e) {
       handleError(e);
     } finally {
@@ -264,6 +282,19 @@ export default function ChatPanel({ onClose }: Props) {
       setDangChay('');
       setRunning(false);
       abortRef.current = null;
+    }
+  };
+
+  /** Nén rồi xếp vào hàng chờ. Lỗi hiện ngay cho người dùng, không nuốt. */
+  const themAnh = async (files: File[]) => {
+    if (!files.length) return;
+    for (const f of files.slice(0, 3)) {
+      try {
+        const a = await nenAnh(f);
+        setAnhKem((cu) => [...cu, a]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }
   };
 
@@ -382,6 +413,26 @@ export default function ChatPanel({ onClose }: Props) {
         <div ref={bottomRef} />
       </div>
 
+      {/* Ảnh đã đính kèm cho lượt sắp gửi. Nhắc rõ ảnh KHÔNG được lưu — người
+          dùng cần biết trước khi gửi ảnh giấy tờ. */}
+      {anhKem.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" data-testid="copilot-anh-kem">
+          {anhKem.map((a, i) => (
+            <div key={i} className="relative">
+              <img src={a.dataUrl} alt="" className="h-12 w-12 rounded border object-cover" />
+              <button
+                className="absolute -right-1 -top-1 rounded-full bg-black/70 p-0.5 text-white"
+                title="Bỏ ảnh này"
+                onClick={() => setAnhKem((cu) => cu.filter((_, j) => j !== i))}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+          <span className="text-xs text-muted-foreground">Ảnh chỉ dùng cho câu hỏi này, không được lưu lại.</span>
+        </div>
+      )}
+
       {/* Input */}
       <div className="flex items-end gap-2 border-t p-2">
         <textarea
@@ -396,8 +447,52 @@ export default function ChatPanel({ onClose }: Props) {
               void send();
             }
           }}
+          onPaste={(e) => {
+            const files = anhTuDataTransfer(e.clipboardData);
+            if (files.length) {
+              e.preventDefault();
+              void themAnh(files);
+            }
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            const files = anhTuDataTransfer(e.dataTransfer);
+            if (files.length) {
+              e.preventDefault();
+              void themAnh(files);
+            }
+          }}
           data-testid="copilot-input"
         />
+        {/* Nút chọn ảnh. Dán và kéo-thả KHÔNG tồn tại trên điện thoại, mà chụp
+            ảnh công tơ bằng điện thoại đúng là ca dùng chính của tính năng này —
+            thiếu nút này thì vision chỉ chạy được trên máy bàn.
+            `capture="environment"` để điện thoại mở thẳng camera sau. */}
+        {!running && (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                void themAnh(Array.from(e.target.files ?? []));
+                e.target.value = ''; // cho chọn lại đúng file vừa bỏ ra
+              }}
+              data-testid="copilot-file"
+            />
+            <button
+              className="rounded p-2 hover:bg-muted"
+              title="Gửi ảnh (công tơ, biên lai…)"
+              onClick={() => fileRef.current?.click()}
+              data-testid="copilot-chon-anh"
+            >
+              <ImagePlus className="h-4 w-4" />
+            </button>
+          </>
+        )}
         {voice.supported && !running && (
           <button
             className={`rounded p-2 ${voice.listening ? 'bg-red-100 text-red-600' : 'hover:bg-muted'}`}

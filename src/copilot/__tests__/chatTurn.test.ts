@@ -176,6 +176,41 @@ describe('runChatTurn — hỏng thì mô hình phải ĐỌC được lỗi', (
   });
 });
 
+describe('runChatTurn — ảnh kèm lượt hỏi', () => {
+  const anh = 'data:image/jpeg;base64,AAAA';
+
+  it('không có ảnh ⇒ content vẫn là CHUỖI, không phải mảng', async () => {
+    // Giữ dạng chuỗi khi không cần mảng là cố ý: mọi nhà cung cấp đều nhận, và
+    // lịch sử cũ trong DB cũng là chuỗi.
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    await chay();
+    const msgs = goiModelMotLuot.mock.calls[0][0].messages;
+    expect(typeof msgs[msgs.length - 1].content).toBe('string');
+  });
+
+  it('có ảnh ⇒ content là mảng text + image_url, chữ đứng TRƯỚC', async () => {
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    const r = await chay({ userText: 'Đọc chỉ số', anh: [anh] });
+    const msgs = goiModelMotLuot.mock.calls[0][0].messages;
+    const cuoi = msgs[msgs.length - 1].content;
+    expect(Array.isArray(cuoi)).toBe(true);
+    expect(cuoi[0]).toEqual({ type: 'text', text: 'Đọc chỉ số' });
+    expect(cuoi[1]).toEqual({ type: 'image_url', image_url: { url: anh } });
+    // và message trả về cho UI cũng mang ảnh (để hiện dải xem trước đúng chỗ)
+    expect(Array.isArray(r.newMessages[0].content)).toBe(true);
+  });
+
+  it('nhiều ảnh giữ đủ và đúng thứ tự', async () => {
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    await chay({ userText: 'x', anh: [`${anh}1`, `${anh}2`] });
+    const msgs = goiModelMotLuot.mock.calls[0][0].messages;
+    const cuoi = msgs[msgs.length - 1].content;
+    expect(cuoi).toHaveLength(3);
+    expect(cuoi[1].image_url.url).toBe(`${anh}1`);
+    expect(cuoi[2].image_url.url).toBe(`${anh}2`);
+  });
+});
+
 describe('dongHomNay — mô hình không có đồng hồ', () => {
   // Bắt gặp thật 12/08/2026: mô hình tự truyền `ngay: 2026-03-27` vào tool rồi
   // trình bày báo cáo "tại 27/03/2026". Số liệu đều thật, chỉ sai KỲ — kiểu sai

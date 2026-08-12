@@ -147,6 +147,13 @@ export async function runChatTurn(params: {
   onDeltaChu?: (chu: string) => void;
   /** Đường dẫn trang người dùng đang xem, để hiểu "cái này", "ở đây". */
   pathname?: string;
+  /**
+   * Ảnh kèm theo lượt này, dạng data URL.
+   *
+   * Chỉ đi vào request; KHÔNG được lưu — `noiDungDeLuu` thay chúng bằng
+   * placeholder khi ghi lịch sử.
+   */
+  anh?: string[];
 }): Promise<ChatTurnResult> {
   const registry = buildRegistry();
   const toolMap = toLlmTools(registry, params.ctx);
@@ -161,12 +168,22 @@ export async function runChatTurn(params: {
 
   const heThong = [CHAT_SYSTEM_PROMPT, dongHomNay(), nguCanh].filter(Boolean).join('\n\n');
 
+  // Có ảnh ⇒ `content` là mảng multimodal; không có ⇒ chuỗi như cũ. Giữ dạng
+  // chuỗi khi không có ảnh là cố ý: mọi nhà cung cấp đều nhận, và lịch sử cũ
+  // trong DB cũng là chuỗi.
+  const noiDungUser: Message['content'] = params.anh?.length
+    ? [
+        { type: 'text' as const, text: params.userText },
+        ...params.anh.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+      ]
+    : params.userText;
+
   const messages: Message[] = [
     { role: 'system', content: heThong },
     ...buildChatContext(params.history),
-    { role: 'user', content: params.userText },
+    { role: 'user', content: noiDungUser },
   ];
-  const newMessages: Message[] = [{ role: 'user', content: params.userText }];
+  const newMessages: Message[] = [{ role: 'user', content: noiDungUser }];
 
   const toolEvents: ChatToolEvent[] = [];
   const usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
