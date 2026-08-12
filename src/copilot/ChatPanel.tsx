@@ -135,7 +135,7 @@ export default function ChatPanel({ onClose }: Props) {
   const { organization } = useOrganization();
   const { data: providers } = useAiProviders();
   const { data: entitlement } = useCopilotEntitlement();
-  const { model, setModel } = useCopilotModel();
+  const { model, setModel, modelLoiThoi } = useCopilotModel();
   const navigate = useNavigate();
 
   const canUiControl =
@@ -287,6 +287,8 @@ export default function ChatPanel({ onClose }: Props) {
           onChange={(e) => setModel(e.target.value)}
           data-testid="copilot-model-select"
         >
+          {/* `model` đã được useCopilotModel thay thế nếu preference lỗi thời,
+              nên nhánh này giờ chỉ còn cho lúc danh sách chưa tải xong. */}
           {!providers?.some((p) => p.value === model) && <option value={model}>{model}</option>}
           {providers?.map((p) => (
             <option key={p.value} value={p.value}>
@@ -301,6 +303,14 @@ export default function ChatPanel({ onClose }: Props) {
           <X className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Model đã lưu không còn được bật: nói ra thay vì lặng lẽ đổi. Người
+          dùng cần biết vì sao hôm nay Copilot trả lời khác hôm qua. */}
+      {modelLoiThoi && (
+        <div className="border-b bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+          Model bạn chọn trước đây không còn được bật — đang tạm dùng model mặc định. Chọn lại ở ô trên để lưu.
+        </div>
+      )}
 
       {/* Toggle UI-control (experimental) — chỉ hiện khi có entitlement + quyền */}
       {canUiControl && (

@@ -16,6 +16,7 @@ import {
 import { makeIdempotencyKey } from '../tools/writeTools';
 import { DANGER_RE, SUBMIT_RE } from '../safetyGuard';
 import { hrefAnToan } from '../hrefAnToan';
+import { modelConDungDuoc } from '../useAiProviders';
 import type { PermissionsMap } from '@/lib/permissions';
 
 const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMap;
@@ -260,6 +261,34 @@ describe('Phase 5 — write tool + form-fill guard', () => {
     for (const label of ['Xoá hoá đơn', 'Huỷ phiếu', 'Duyệt', 'Thanh lý HĐ', 'Delete']) {
       expect(DANGER_RE.test(label)).toBe(true);
     }
+  });
+});
+
+describe('modelConDungDuoc — preference trỏ vào model đã bị gỡ', () => {
+  // Đã gặp thật 12/08/2026: tài khoản còn lưu `9router:mmf/mimo-auto` sau khi
+  // model đó bị gỡ khỏi VPS. Trước khi proxy ép allowlist thì hỏng ở upstream;
+  // sau đó thì 400 ngay lượt đầu, và người dùng không hiểu vì sao chỉ mình họ
+  // bị.
+  const opts = [
+    { value: '9router:cx/gpt-5.6-sol(max)', label: 'Sol Max', provider: '9router', localOnly: false },
+    { value: 'gemini:gemini-2.5-flash', label: 'Flash', provider: 'gemini', localOnly: false },
+  ];
+
+  it('model còn trong danh sách thì giữ', () => {
+    expect(modelConDungDuoc('9router:cx/gpt-5.6-sol(max)', opts)).toBe(true);
+  });
+
+  it('model đã bị gỡ thì báo lỗi thời', () => {
+    expect(modelConDungDuoc('9router:mmf/mimo-auto', opts)).toBe(false);
+  });
+
+  it('danh sách CHƯA TẢI thì giữ nguyên preference, không đá về mặc định', () => {
+    // Coi "chưa biết" là "không hợp lệ" sẽ nháy đổi model mỗi lần mở panel.
+    expect(modelConDungDuoc('9router:mmf/mimo-auto', undefined)).toBe(true);
+  });
+
+  it('danh sách RỖNG (không provider nào bật) thì coi là lỗi thời', () => {
+    expect(modelConDungDuoc('9router:cx/gpt-5.6-sol(max)', [])).toBe(false);
   });
 });
 

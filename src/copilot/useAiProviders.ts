@@ -49,13 +49,44 @@ export function useAiProviders() {
   });
 }
 
-/** Model đang chọn (ui_preferences → fallback DEFAULT_MODEL). */
-export function useCopilotModel(): { model: string; setModel: (m: string) => void } {
+/**
+ * Model preference đã lưu có còn dùng được không?
+ *
+ * Admin gỡ một model khỏi `ai_providers.models` (vì nó chết, vì đổi nhà cung
+ * cấp) thì preference của người dùng vẫn trỏ vào cái tên cũ — nó nằm trong
+ * `profiles.ui_preferences`, không ai đi dọn. Trước đây hậu quả nhẹ: request đi
+ * lên upstream rồi hỏng ở đó. Từ khi proxy ép allowlist thì hậu quả là **400
+ * bad_model ngay lượt đầu**, và người dùng không hiểu vì sao Copilot chết trong
+ * khi đồng nghiệp vẫn dùng được.
+ *
+ * Đã gặp thật ngày 12/08/2026: tài khoản test còn lưu `9router:mmf/mimo-auto`,
+ * một model đã bị gỡ khỏi VPS từ 11/08.
+ *
+ * `options` chưa tải xong (undefined) ⇒ GIỮ NGUYÊN preference. Coi "chưa biết"
+ * là "không hợp lệ" sẽ đá mọi người về model mặc định trong chớp mắt đầu tiên
+ * của mỗi lần mở panel, rồi ghi đè lựa chọn thật của họ.
+ */
+export function modelConDungDuoc(model: string, options: ModelOption[] | undefined): boolean {
+  if (!options) return true;
+  return options.some((o) => o.value === model);
+}
+
+/**
+ * Model đang chọn (ui_preferences → fallback DEFAULT_MODEL).
+ *
+ * KHÔNG tự ghi đè preference đã lưu khi nó lỗi thời: người dùng có thể chỉ đang
+ * mất mạng, hoặc admin sắp bật lại model đó. Chỉ trả về model thay thế cho lượt
+ * chạy hiện tại; preference thật đổi khi người dùng tự chọn.
+ */
+export function useCopilotModel(): { model: string; setModel: (m: string) => void; modelLoiThoi: boolean } {
   const { data: prefs } = useUiPreferences();
+  const { data: options } = useAiProviders();
   const setPref = useSetUiPreference();
-  const model = (prefs?.[MODEL_PREF_KEY] as string) || DEFAULT_MODEL;
+  const daLuu = (prefs?.[MODEL_PREF_KEY] as string) || DEFAULT_MODEL;
+  const conDung = modelConDungDuoc(daLuu, options);
   return {
-    model,
+    model: conDung ? daLuu : DEFAULT_MODEL,
+    modelLoiThoi: !conDung,
     setModel: (m: string) => setPref.mutate({ key: MODEL_PREF_KEY, value: m }),
   };
 }
