@@ -216,12 +216,27 @@ describe('huong_dan — allowlist tài liệu + gác quyền', () => {
     expect(none).toContain('00-tong-quan');
   });
 
-  it('danh sách gợi ý khi không tìm thấy cũng đã lọc quyền', async () => {
+  it('huong_dan: không tìm thấy thì nói thẳng, không kể tên tài liệu ngoài quyền', async () => {
+    // Câu tra cũ ở đây là 'khong-co-chu-de-nay-dau'. Nó từng "không tìm thấy"
+    // vì bản cũ so khớp trên TÊN FILE. Với tìm kiếm theo nội dung thì nó KHÔNG
+    // còn vô nghĩa — nó chứa cụm "chủ đề", một từ có thật. Đổi sang câu vô
+    // nghĩa hẳn để test kiểm đúng thứ nó định kiểm.
     const reg = buildRegistry();
     const tool = reg.find((t) => t.name === 'huong_dan')!;
-    const out = await tool.execute({ chu_de: 'khong-co-chu-de-nay-dau' }, { perms: STAFF_ROOMS_ONLY });
+    const out = await tool.execute({ chu_de: 'xyzzy plugh frobnicate' }, { perms: STAFF_ROOMS_ONLY });
     expect(out).toContain('Không tìm thấy');
+    expect(out).not.toContain('(nguồn: 17-luong-thuong');
+  });
+
+  it('liet_ke_chu_de: chỉ kể tài liệu trong quyền', async () => {
+    const reg = buildRegistry();
+    const tool = reg.find((t) => t.name === 'liet_ke_chu_de')!;
+    const out = await tool.execute({}, { perms: STAFF_ROOMS_ONLY });
+    expect(out).toContain('05-hop-dong');
     expect(out).not.toContain('17-luong-thuong');
+    // perms chưa tải: nói rõ là đang tải, KHÔNG nói "không có tài liệu nào"
+    const chuaTai = await tool.execute({}, { perms: undefined });
+    expect(chuaTai).not.toContain('17-luong-thuong');
   });
 });
 

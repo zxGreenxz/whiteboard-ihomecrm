@@ -114,6 +114,24 @@ export interface DocTopic {
 }
 
 /**
+ * Nạp nội dung một tài liệu theo đường dẫn glob. Trả `null` nếu đường dẫn không
+ * thuộc glob.
+ *
+ * Đây là ĐƯỜNG NẠP DUY NHẤT, và nó cố ý nằm cùng file với phép lọc manifest ở
+ * `listDocTopics`. Người gọi (hiện là `docs/docSearch.ts`) phải tự lọc trước
+ * bằng `listDocTopics`; hàm này không tự kiểm quyền vì nó không biết quyền —
+ * gộp hai trách nhiệm vào một chỗ sẽ khiến cả hai khó kiểm hơn.
+ *
+ * Vì sao không để mỗi nơi tự `import.meta.glob`: có hai đường nạp thì tồn tại
+ * khả năng một đường đi vòng qua allowlist, và cửa chặn không còn chứng minh
+ * được điều gì.
+ */
+export async function napTaiLieu(path: string): Promise<string | null> {
+  const nap = DOC_MODULES[path];
+  return nap ? await nap() : null;
+}
+
+/**
  * Dấu review còn hiệu lực không?
  *
  * `reviewed` KHÔNG khai ⇒ coi là còn dùng được. Đây là lựa chọn có chủ đích, không
@@ -343,23 +361,38 @@ export function buildRegistry(): DomainTool[] {
     dt({
       name: 'huong_dan',
       description:
-        'Tra cứu tài liệu hướng dẫn nghiệp vụ hệ thống (hợp đồng, hoá đơn, thu chi, cọc, thanh lý…). Trả nội dung tài liệu khớp chủ đề.',
-      inputSchema: z.object({ chu_de: z.string().min(2).describe('Chủ đề cần tra, vd "hoá đơn", "thanh lý"') }),
+        'Tra cứu tài liệu nghiệp vụ hệ thống (hợp đồng, hoá đơn, thu chi, cọc, thanh lý, công tơ, lương…). Trả về các MỤC tài liệu liên quan nhất kèm nguồn. Hỏi bằng câu tự nhiên, không cần đoán tên file.',
+      inputSchema: z.object({
+        chu_de: z.string().min(2).describe('Câu hỏi hoặc chủ đề, vd "làm sao lấy lại tiền cọc"'),
+        tai_lieu: z
+          .string()
+          .optional()
+          .describe('Chỉ tìm trong một tài liệu (mã lấy từ liet_ke_chu_de), vd "16-thanh-ly-hop-dong"'),
+      }),
       execute: async (args, ctx) => {
-        // Danh sách đã lọc theo quyền phiên: tài liệu gắn requiredPermission
-        // (lương, lợi nhuận cổ đông, SOP tiền) không lọt vào cả kết quả tìm lẫn
-        // danh sách gợi ý khi không tìm thấy.
+        // Trước 12/08/2026 tool này so khớp trên TÊN FILE rồi nạp nguyên tài
+        // liệu, cắt 8000 ký tự ĐẦU. Với corpus 823KB / 25 file mà 20 file lớn
+        // hơn 8KB, nghĩa là Copilot chỉ thấy phần mở đầu — và chỉ khi người
+        // dùng gõ trúng slug tên file. Nay chunk theo heading và xếp hạng BM25.
+        const { timTaiLieu, dinhDangChoModel } = await import('../docs/docSearch');
+        const kq = await timTaiLieu(args.chu_de, ctx.perms, { chiTrongTaiLieu: args.tai_lieu });
+        return dinhDangChoModel(kq);
+      },
+    }),
+
+    dt({
+      name: 'liet_ke_chu_de',
+      description:
+        'Liệt kê các tài liệu nghiệp vụ hiện có (mã và tiêu đề). Dùng khi huong_dan không tìm thấy, hoặc khi cần biết hệ thống có tài liệu về gì.',
+      inputSchema: z.object({}),
+      execute: async (_args, ctx) => {
         const topics = listDocTopics(ctx.perms);
-        const norm = (s: string) =>
-          s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
-        const q = norm(args.chu_de);
-        const hit = topics.find((t) => norm(t.key).includes(q.replace(/\s+/g, '-')))
-          ?? topics.find((t) => q.split(/\s+/).every((w) => norm(t.key).includes(w)));
-        if (!hit) {
-          return `Không tìm thấy tài liệu cho "${args.chu_de}". Danh sách chủ đề: ${topics.map((t) => t.key).join(', ')}`;
+        if (!topics.length) {
+          return ctx.perms === undefined
+            ? 'Đang tải quyền truy cập, chưa liệt kê được. Thử lại sau vài giây.'
+            : 'Không có tài liệu nào bạn được phép đọc.';
         }
-        const content = await DOC_MODULES[hit.path]();
-        return `Tài liệu "${hit.key}":\n${content.slice(0, 8000)}${content.length > 8000 ? '\n…(cắt bớt)' : ''}`;
+        return `Có ${topics.length} tài liệu:\n${topics.map((t) => `- ${t.key}`).join('\n')}`;
       },
     }),
 
