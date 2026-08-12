@@ -124,7 +124,7 @@ export const navigationGroups: NavGroup[] = [
     items: [
       // Bảng tin = trang chủ kiêm fallback của RequirePermission → luôn hiện.
       { title: 'Bảng tin', href: '/', icon: LayoutDashboard },
-      { title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, module: 'buildings' },
+      ...navFieldsFor('map').map((x) => ({ ...x, icon: Map }) satisfies NavItem),
     ],
   },
   {
@@ -151,7 +151,7 @@ export const navigationGroups: NavGroup[] = [
           ...navFieldsFor('buildings').map((x) => ({ ...x, icon: Building2 }) satisfies NavItem),
           ...navFieldsFor('rooms').map((x) => ({ ...x, icon: Home }) satisfies NavItem),
           ...navFieldsFor('services').map((x) => ({ ...x, icon: Wrench }) satisfies NavItem),
-          { title: 'Sale Phòng', href: '/sale-phong', icon: Share2, module: 'sale_phong' },
+          ...navFieldsFor('sale-phong').map((x) => ({ ...x, icon: Share2 }) satisfies NavItem),
           ...navFieldsFor('assets').map((x) => ({ ...x, icon: Package }) satisfies NavItem),
           ...navFieldsFor('materials').map((x) => ({ ...x, icon: Package }) satisfies NavItem),
         ],
@@ -196,7 +196,7 @@ export const navigationGroups: NavGroup[] = [
   {
     label: 'BÁO CÁO',
     items: [
-      { title: 'Báo cáo bất động sản', href: '/reports/real-estate', icon: BarChart3, module: 'reports_real_estate' },
+      ...navFieldsFor('reports').map((x) => ({ ...x, icon: BarChart3 }) satisfies NavItem),
       {
         title: 'Báo cáo tài chính',
         icon: CreditCard,
@@ -209,7 +209,7 @@ export const navigationGroups: NavGroup[] = [
           { title: 'Dòng tiền', href: '/reports/finance/cash-flow', icon: TrendingUp, module: 'reports_finance', action: 'cash_flow' },
           { title: 'Báo cáo Lợi Nhuận', href: '/reports/finance/profit-distribution', icon: PieChart, module: 'reports_finance', action: 'profit_distribution' },
           { title: 'Lịch thanh toán', href: '/reports/finance/payment-schedule', icon: Calendar, module: 'reports_finance', action: 'payment_schedule' },
-          { title: 'Tiền thừa', href: '/reports/finance/overpayment', icon: Coins, module: 'reports_finance', action: 'overpayment' },
+          ...navFieldsFor('overpayment').map((x) => ({ ...x, icon: Coins }) satisfies NavItem),
           { title: 'Danh sách tiền cọc', href: '/reports/finance/deposits', icon: Wallet, module: 'reports_finance', action: 'deposits_report' },
         ],
       },
@@ -222,7 +222,7 @@ export const navigationGroups: NavGroup[] = [
         title: 'Cài đặt hệ thống',
         icon: Settings,
         items: [
-          { title: 'Cài đặt chung', href: '/settings/general', icon: Settings, module: 'settings' },
+          ...navFieldsFor('settings').map((x) => ({ ...x, icon: Settings }) satisfies NavItem),
           { title: 'Danh mục khác', href: '/settings/categories', icon: List, module: 'categories' },
           ...navFieldsFor('templates').map((x) => ({ ...x, icon: FileText }) satisfies NavItem),
           { title: 'Tổ chức', href: '/settings/organization', icon: Landmark, module: 'users' },

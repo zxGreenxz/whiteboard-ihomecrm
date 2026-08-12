@@ -402,6 +402,114 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
     risk: "financial",
   },
+
+  {
+    id: "sale-phong",
+    primaryRoute: "/sale-phong",
+    label: "Sale Phòng",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "sale_phong", action: "view" },
+    surfaces: {
+      desktopNav: true,
+      mobileLauncher: true,
+      permissionPage: "/sale-phong",
+    },
+    docs: {
+      systemDoc: "docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md",
+      userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/sale-phong/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "normal",
+  },
+  {
+    id: "reports",
+    primaryRoute: "/reports/real-estate",
+    label: "Báo cáo bất động sản",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "reports_real_estate", action: "view" },
+    surfaces: {
+      desktopNav: true,
+      mobileLauncher: true,
+      permissionPage: "/reports/real-estate",
+    },
+    docs: {
+      systemDoc: "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      userDoc: "docs/huong-dan-su-dung/04-bao-cao/hub-bds/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "normal",
+  },
+  {
+    id: "settings",
+    primaryRoute: "/settings/general",
+    label: "Cài đặt chung",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "settings", action: "view" },
+    surfaces: {
+      desktopNav: true,
+      mobileLauncher: true,
+      permissionPage: "/settings/general",
+    },
+    docs: {
+      systemDoc: "docs/he-thong/14-cai-dat-danh-muc-tai-lieu.md",
+      userDoc: "docs/huong-dan-su-dung/05-cai-dat/cai-dat-chung/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "normal",
+  },
+  {
+    id: "map",
+    primaryRoute: "/building-map",
+    label: "Sơ đồ toà nhà",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "buildings", action: "view" },
+    surfaces: {
+      desktopNav: true,
+      mobileLauncher: true,
+      // TRANG QUYỀN LÀ "/buildings", KHÔNG PHẢI "/building-map".
+      // Route này gác bằng `buildings.view` — nó MƯỢN quyền của Toà nhà chứ không
+      // có quyền riêng. Trong picker, ô cấp `buildings.view` nằm ở trang "Toà nhà &
+      // Khu vực"; entry "/building-map" trong permissionPages chỉ là lối vào cho dễ
+      // tìm, nó không cấp được gì mà trang kia chưa cấp. Trỏ vào đây mới đúng chỗ
+      // người quản trị thật sự bật/tắt quyền cho màn này.
+      permissionPage: "/buildings",
+    },
+    docs: {
+      systemDoc: "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",
+      userDoc: "docs/huong-dan-su-dung/02-theo-doi-nhanh/so-do-toa-nha/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "normal",
+  },
+  {
+    id: "overpayment",
+    primaryRoute: "/reports/finance/overpayment",
+    label: "Tiền thừa",
+    release: { enabled: true, runtimeModule: null },
+    permission: { module: "reports_finance", action: "overpayment" },
+    surfaces: {
+      desktopNav: true,
+      mobileLauncher: false,
+      // TRANG QUYỀN LÀ "/reports/finance", KHÔNG PHẢI route của chính nó.
+      // Route gác bằng `reports_finance.overpayment`, và ô cấp quyền đó nằm ở trang
+      // "Báo cáo tài chính". Trang `excess_amounts` trong picker CŨNG mang route
+      // "/reports/finance/overpayment" nhưng cấp một module KHÁC (quyền trên dữ liệu
+      // tiền thừa, cưỡng chế ở RLS) — bật nó KHÔNG mở được màn này. Đây là điểm dễ
+      // nhầm nhất trong bảng phân quyền, nên ghi thẳng ra đây.
+      permissionPage: "/reports/finance",
+    },
+    docs: {
+      systemDoc: "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/tien-thua/index.md",
+      visibility: "public",
+    },
+    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    risk: "financial",
+  },
 ];
 
 export function capabilityById(id: string): CapabilityDefinition | undefined {
