@@ -238,8 +238,19 @@ describe('gen-supabase-types wrapper', () => {
     expect(invocation.args).toContain(`@electric-sql/pglite-socket@${PGLITE_SOCKET_VERSION}`);
     expect(invocation.args).toContain('@electric-sql/pglite@0.5.4');
     expect(invocation.args[invocation.args.length - 2]).toBe('node');
+    // Dựng kỳ vọng bằng `join` thay vì ghim cứng dấu `\`.
+    //
+    // Tham số 'win32' ở trên chỉ quyết định HÌNH DẠNG LỆNH (gọi npm-cli.js qua
+    // node thay vì npx), còn đường dẫn thì hàm ghép bằng `join` của node — tức
+    // theo nền đang chạy, không theo tham số. Trong dùng thật hai thứ luôn trùng
+    // nhau vì platform mặc định là `process.platform`, nên đây không phải lỗi
+    // của hàm; chỉ kịch bản chéo-nền do chính test dựng ra mới tách chúng.
+    //
+    // Ghim `\` làm test xanh trên Windows và ĐỎ trên Linux — đúng như CI vừa
+    // gặp: `C:\repo/scripts/...` khác `C:\repo\scripts\...`. Test chỉ có ý
+    // khẳng định "đối số cuối là script sinh type pglite", nên nói đúng chừng đó.
     expect(invocation.args[invocation.args.length - 1]).toBe(
-      'C:\\repo\\scripts\\generate-openclaw-pglite-types.mjs',
+      join('C:\\repo', 'scripts', 'generate-openclaw-pglite-types.mjs'),
     );
   });
 
