@@ -69,6 +69,9 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
     'Tạo phiếu thu/chi BẢN CHỜ DUYỆT (chưa duyệt, chưa vào sổ quỹ). QUY TRÌNH BẮT BUỘC 2 BƯỚC: lần 1 gọi với xac_nhan=false để xem trước và HỎI người dùng; CHỈ khi người dùng trả lời đồng ý mới gọi lại với xac_nhan=true.',
   inputSchema,
   requiredPermission: { module: 'income_expenses', action: 'create' },
+  // Chat mới được cầm tool này. UI-control (PageAgent) thì KHÔNG — xem chú
+  // thích `chatOnly` ở DomainTool.
+  chatOnly: true,
   execute: async (args) => {
     const user = await getSessionUser();
     if (!user) throw new Error('Chưa đăng nhập.');

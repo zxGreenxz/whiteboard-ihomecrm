@@ -10,13 +10,13 @@
 - Tool đọc hiện có: phòng trống, khách hàng, hóa đơn, hợp đồng sắp hết hạn, KQKD tháng và tra cứu `docs/he-thong/*.md`.
 - UI-control chỉ chạy khi entitlement + quyền `ai_copilot.ui_control` hợp lệ; agent có thể điều hướng, lọc và điền form trên route allowlist, nhưng nút Lưu/Xác nhận/Submit và hành động nguy hiểm bị loại khỏi vùng tương tác.
 - Tool ghi `tao_phieu_thu_chi_nhap` bắt buộc trả bản xem trước và chờ người dùng xác nhận rõ ở lượt sau; kết quả là phiếu `UNAPPROVED`, không gắn sổ.
-- Luồng ghi hiện là nhiều DML client rời nhau (`ai_write_audit` → phiếu → hạng mục → cập nhật audit), **không nằm trong một transaction/RPC**. Audit key chỉ giảm tạo trùng; lỗi giữa chừng có thể để lại audit hoặc phiếu thiếu hạng mục, nên phải kiểm tra màn Thu chi trước khi thử lại.
+- Luồng ghi gồm ba bước: INSERT `ai_write_audit` (client) → RPC `ie_compat_insert_v2` (server, tạo phiếu **và** hạng mục trong một call, tự ép `UNAPPROVED`/`PENDING` và stamp maker) → UPDATE `entity_id` vào audit (client). Bước giữa nguyên tử, nhưng **ba bước không nằm chung một transaction**: hỏng giữa chừng để lại audit thiếu `entity_id`, hoặc phiếu đã tạo mà audit chưa trỏ tới. Không còn khả năng để lại phiếu thiếu hạng mục như luồng DML rời trước Stage-7. Audit key chặn tạo trùng khi thử lại.
 
 ## Giới hạn đã biết
 
 - Gate xác nhận hai bước của write tool hiện dựa vào boolean `xac_nhan` do model truyền; ứng dụng/server chưa lưu state độc lập để chứng minh đã có preview và câu đồng ý của người dùng ở lượt trước. Vì vậy đây là guardrail theo prompt/schema, không phải authorization boundary cứng.
-- Proxy kiểm provider có bật nhưng chưa bắt buộc `modelId` thuộc `ai_providers.models`; model lạ/stale vẫn có thể được gửi upstream nếu request hoặc preference bị sửa.
-- Model không có metadata giá được tính giá `0`, nên reservation/quota và log chi phí có thể thấp hơn thực tế. Các cap hiện là guardrail vận hành, chưa phải ranh giới billing cứng cho model chưa được xác thực.
+- Proxy kiểm cả provider lẫn `modelId`: model không có trong `ai_providers.models` bị từ chối 400 `bad_model` **trước khi** reserve, nên sửa request hoặc sửa `profiles.ui_preferences.copilotModel` không còn chọn được model admin chưa bật. Ngoại lệ có chủ ý: provider `mock`, vì `modelId` của nó là tên kịch bản dev/test — công tắc của nó là `ai_providers.enabled`.
+- Model đã bật nhưng khai `input_price`/`output_price` bằng `0` vẫn được tính chi phí `0`. Hạn mức USD ba cấp chỉ chính xác bằng metadata giá, nên các cap vẫn là guardrail vận hành cho tới khi mọi model đang bật đều điền giá thật; thứ chặn chắc chắn hiện nay là `rate_per_min`.
 - Bốn bảng RAG legacy `ai_conversations`, `ai_messages`, `ai_memory_embeddings`, `ai_usage_stats` và RPC/trigger liên quan đã bị drop bởi migration `20260710190000_drop_legacy_ai_assistant.sql`; runtime hiện dùng schema Copilot mới.
 
 ## Tài liệu

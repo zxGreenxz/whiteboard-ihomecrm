@@ -71,17 +71,24 @@ if (NINEROUTER_BASE) {
 
 interface ModelPricing { input_price: number; output_price: number }
 
-function findPricing(models: unknown, modelId: string): ModelPricing {
-  if (Array.isArray(models)) {
-    const m = models.find((x) => x && typeof x === 'object' && (x as any).id === modelId);
-    if (m) {
-      return {
-        input_price: Number((m as any).input_price) || 0,
-        output_price: Number((m as any).output_price) || 0,
-      };
-    }
-  }
-  return { input_price: 0, output_price: 0 };
+/**
+ * Giá của model, hoặc `null` nếu model KHÔNG có trong danh sách của provider.
+ *
+ * Phân biệt "không tìm thấy" với "giá bằng 0" là điểm mấu chốt. Bản cũ trả
+ * `{0,0}` cho cả hai, nên một `modelId` lạ vẫn được chuyển tiếp lên upstream và
+ * được ước lượng chi phí bằng 0 — tức là đi qua toàn bộ hạn mức USD ba cấp mà
+ * không tốn đồng nào của hạn mức. Ai sửa được request (hoặc sửa được
+ * `profiles.ui_preferences.copilotModel`) là chọn được model tuỳ ý, kể cả model
+ * đắt mà admin chưa bao giờ bật.
+ */
+function findPricing(models: unknown, modelId: string): ModelPricing | null {
+  if (!Array.isArray(models)) return null;
+  const m = models.find((x) => x && typeof x === 'object' && (x as any).id === modelId);
+  if (!m) return null;
+  return {
+    input_price: Number((m as any).input_price) || 0,
+    output_price: Number((m as any).output_price) || 0,
+  };
 }
 
 // ── Mock provider (dev/test — vẫn qua đủ gate reserve/finalize) ────────────
@@ -239,8 +246,23 @@ Deno.serve(async (req) => {
   const feature = req.headers.get('x-copilot-feature') === 'ui_control' ? 'ui_control' : 'chat';
   const taskId = req.headers.get('x-task-id');
 
+  // Model phải nằm trong danh sách admin đã bật cho provider này.
+  // Provider "mock" là ngoại lệ CÓ CHỦ Ý: modelId của nó là kịch bản dev/test
+  // ("echo", "navphong", "click3-input-done"…), không phải tên model, nên không
+  // liệt kê được. Nó vẫn qua đủ gate reserve/finalize, và tắt bằng
+  // ai_providers.enabled — đó mới là công tắc của nó.
+  const pricing = provider === 'mock'
+    ? { input_price: 0, output_price: 0 }
+    : findPricing(prov.models, modelId);
+  if (!pricing) {
+    return openaiError(
+      400,
+      `Model "${modelId}" is not enabled for provider "${provider}"`,
+      'bad_model',
+    );
+  }
+
   // Ước lượng chi phí reservation: prompt chars/4 × giá in + max_tokens × giá out (USD/1M)
-  const pricing = findPricing(prov.models, modelId);
   const promptChars = JSON.stringify(body.messages ?? []).length;
   const maxOut = Math.min(typeof body.max_tokens === 'number' ? (body.max_tokens as number) : 4096, 4096);
   let estCost =

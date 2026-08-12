@@ -28,6 +28,18 @@ export interface DomainTool<T = any> {
   inputSchema: z.ZodType<T>;
   requiredPermission?: { module: string; action: ActionKey };
   uiControlOnly?: boolean;
+  /**
+   * Tool GHI dữ liệu — chỉ đưa cho chat, KHÔNG đưa cho PageAgent (UI-control).
+   *
+   * Vì sao phải có cờ này thay vì tin vào prompt: UI-control là chế độ thí điểm
+   * "chỉ điều hướng + lọc + điền form, không bấm Lưu". Nhưng adapter của nó
+   * trước đây cấp NGUYÊN bộ registry, nên agent thao tác giao diện vẫn cầm
+   * `tao_phieu_thu_chi_nhap` — tức là có một đường ghi thẳng vào DB, đi vòng
+   * qua đúng cái quy tắc mà cả `safetyGuard` lẫn prompt đang canh ở tầng DOM.
+   * Chặn nút Lưu trên màn hình mà vẫn phát chìa khoá cửa sau thì việc chặn đó
+   * không còn nghĩa gì.
+   */
+  chatOnly?: boolean;
   execute: (args: T, ctx: ToolCtx) => Promise<string>;
 }
 
@@ -401,13 +413,19 @@ export function toLlmTools(
   return out;
 }
 
-/** Tool cho PageAgent (UI-control): gồm cả mo_trang; execute bọc this-context. */
+/**
+ * Tool cho PageAgent (UI-control): gồm cả mo_trang, nhưng KHÔNG gồm tool ghi.
+ *
+ * Đối xứng với `toLlmTools` bỏ `uiControlOnly`: ở đây bỏ `chatOnly`. Hai adapter
+ * cùng một registry, mỗi bên khuyết đúng phần không thuộc về mình.
+ */
 export function toPageAgentTools(
   registry: DomainTool[],
   ctx: ToolCtx,
 ): Record<string, { description: string; inputSchema: z.ZodType<any>; execute: (this: unknown, args: any, toolCtx: { signal: AbortSignal }) => Promise<string> }> {
   const out: Record<string, { description: string; inputSchema: z.ZodType<any>; execute: (this: unknown, args: any, toolCtx: { signal: AbortSignal }) => Promise<string> }> = {};
   for (const tool of registry) {
+    if (tool.chatOnly) continue;
     if (tool.requiredPermission && (!ctx.perms || !canUse(ctx.perms, tool.requiredPermission.module, tool.requiredPermission.action))) {
       continue;
     }

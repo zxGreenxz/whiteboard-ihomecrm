@@ -15,6 +15,7 @@ import {
 } from '../tools/registry';
 import { makeIdempotencyKey } from '../tools/writeTools';
 import { DANGER_RE, SUBMIT_RE } from '../safetyGuard';
+import { hrefAnToan } from '../hrefAnToan';
 import type { PermissionsMap } from '@/lib/permissions';
 
 const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMap;
@@ -119,15 +120,34 @@ describe('rowsToMessages (dựng lại conversation)', () => {
 });
 
 describe('registry + adapters', () => {
-  it('2 adapter cho ra CÙNG bộ schema với tool dùng chung', () => {
+  it('2 adapter cho ra CÙNG schema với tool CÓ Ở CẢ HAI bên', () => {
+    // Trước 12/08/2026 test này duyệt mọi khoá của llmTools và đòi paTools phải
+    // có đủ — tức nó khẳng định hai adapter cấp CÙNG MỘT bộ tool. Khẳng định đó
+    // chính là thứ đã để write tool lọt sang PageAgent. Bất biến đúng hẹp hơn:
+    // tool nào xuất hiện ở CẢ HAI thì phải dùng chung schema, không phải bản chép.
     const reg = buildRegistry();
     const llmTools = toLlmTools(reg, { perms: SUPER });
     const paTools = toPageAgentTools(reg, { perms: SUPER });
-    for (const name of Object.keys(llmTools)) {
-      expect(paTools[name]).toBeDefined();
+    const chung = Object.keys(llmTools).filter((name) => paTools[name]);
+    expect(chung.length).toBeGreaterThanOrEqual(5); // sàn chống-xanh-rỗng
+    for (const name of chung) {
       expect(paTools[name].description).toBe(llmTools[name].description);
       expect(paTools[name].inputSchema).toBe(llmTools[name].inputSchema);
     }
+  });
+
+  it('tool GHI không bao giờ tới tay PageAgent, kể cả khi thừa quyền', () => {
+    const reg = buildRegistry();
+    // SUPER có đủ income_expenses.create — nếu chặn bằng quyền thì test này xanh
+    // giả. Chặn phải đến từ cờ chatOnly, không phải từ việc thiếu quyền.
+    expect(toLlmTools(reg, { perms: SUPER }).tao_phieu_thu_chi_nhap).toBeDefined();
+    expect(toPageAgentTools(reg, { perms: SUPER }).tao_phieu_thu_chi_nhap).toBeUndefined();
+
+    // Và nói rộng hơn: KHÔNG tool ghi nào lọt sang adapter UI-control.
+    const toolGhi = reg.filter((t) => t.chatOnly).map((t) => t.name);
+    expect(toolGhi.length).toBeGreaterThanOrEqual(1); // sàn chống-xanh-rỗng
+    const paNames = Object.keys(toPageAgentTools(reg, { perms: SUPER }));
+    for (const name of toolGhi) expect(paNames).not.toContain(name);
   });
 
   it('mo_trang CHỈ có ở adapter UI-control (chat không điều hướng)', () => {
@@ -240,5 +260,44 @@ describe('Phase 5 — write tool + form-fill guard', () => {
     for (const label of ['Xoá hoá đơn', 'Huỷ phiếu', 'Duyệt', 'Thanh lý HĐ', 'Delete']) {
       expect(DANGER_RE.test(label)).toBe(true);
     }
+  });
+});
+
+describe('hrefAnToan — link do MÔ HÌNH sinh, không phải link ta viết', () => {
+  // Mô hình đọc dữ liệu nghiệp vụ (tên khách, ghi chú, tin Zalo). Một chuỗi do
+  // người ngoài nhập đi trọn đường tới đây được, nên đây là biên giới tin cậy
+  // chứ không phải chỗ định dạng cho đẹp.
+
+  it('cho qua đường dẫn nội bộ và https', () => {
+    expect(hrefAnToan('/invoices')).toBe('/invoices');
+    expect(hrefAnToan('/customers/abc-123')).toBe('/customers/abc-123');
+    expect(hrefAnToan('https://ptcrm.vercel.app/x')).toBe('https://ptcrm.vercel.app/x');
+  });
+
+  it('CHẶN javascript: kể cả khi né bằng hoa/thường và khoảng trắng', () => {
+    for (const xau of [
+      'javascript:alert(1)',
+      'JavaScript:alert(1)',
+      '  javascript:alert(1)  ',
+      'jAvAsCrIpT:fetch("/api")',
+    ]) {
+      expect(hrefAnToan(xau)).toBeNull();
+    }
+  });
+
+  it('CHẶN data:, vbscript:, file: và http trần', () => {
+    expect(hrefAnToan('data:text/html,<script>alert(1)</script>')).toBeNull();
+    expect(hrefAnToan('vbscript:msgbox(1)')).toBeNull();
+    expect(hrefAnToan('file:///etc/passwd')).toBeNull();
+    expect(hrefAnToan('http://ptcrm.vercel.app')).toBeNull(); // hạ cấp http → chặn
+  });
+
+  it('CHẶN URL giao thức-tương đối `//host` — trông như đường dẫn nội bộ nhưng ra ngoài', () => {
+    expect(hrefAnToan('//evil.example/x')).toBeNull();
+  });
+
+  it('CHẶN chuỗi không phải URL (mô hình bịa) thay vì render mù', () => {
+    expect(hrefAnToan('invoices')).toBeNull();
+    expect(hrefAnToan('')).toBeNull();
   });
 });

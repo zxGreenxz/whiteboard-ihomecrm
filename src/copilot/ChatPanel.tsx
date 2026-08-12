@@ -16,6 +16,7 @@ import {
   type ChatToolEvent,
 } from './chatEngine';
 import { useAiProviders, useCopilotEntitlement, useCopilotModel } from './useAiProviders';
+import { hrefAnToan } from './hrefAnToan';
 
 interface Props {
   onClose: () => void;
@@ -70,7 +71,10 @@ function MiniMarkdown({ text }: { text: string }) {
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
     if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push({ label: m[1], href: m[2] });
+    const href = hrefAnToan(m[2]);
+    // Scheme không an toàn → giữ nguyên cú pháp markdown dưới dạng chữ. Người
+    // dùng vẫn thấy mô hình định trỏ đi đâu, nhưng không bấm được.
+    parts.push(href ? { label: m[1], href } : m[0]);
     last = m.index + m[0].length;
   }
   if (last < text.length) parts.push(text.slice(last));

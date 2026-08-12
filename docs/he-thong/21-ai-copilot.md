@@ -30,8 +30,8 @@ flowchart LR
 ## Giới hạn cần biết
 
 - Cờ xác nhận `xac_nhan` của write tool do model tạo theo schema/prompt; chưa có state machine server-side kiểm rằng preview đã được hiển thị và người dùng đã đồng ý ở lượt trước. Không dùng cờ này như bằng chứng ủy quyền độc lập.
-- Write tool đang chạy chuỗi DML client `audit → phiếu → hạng mục → audit`, không phải transaction/RPC nguyên tử. Idempotency key chỉ giảm lặp; lỗi giữa chừng có thể để lại trạng thái một phần, phải kiểm tra trước khi retry.
-- Proxy chưa kiểm `modelId` có thuộc danh sách model của provider. Metadata giá thiếu sẽ fallback `0`, làm reservation/quota và cost log có thể đánh giá thấp model lạ hoặc cấu hình stale.
+- Write tool chạy ba bước: INSERT `ai_write_audit` (client) → RPC `ie_compat_insert_v2` → UPDATE `entity_id` vào audit (client). Phiếu và hạng mục **nằm chung một RPC nên nguyên tử với nhau**; ba bước thì không nằm chung transaction. Hỏng giữa chừng để lại audit không có `entity_id`, hoặc phiếu đã tạo mà audit chưa trỏ tới — không để lại phiếu thiếu hạng mục. Idempotency key chặn tạo trùng khi thử lại.
+- Proxy từ chối `modelId` không có trong `ai_providers.models` của provider (400 `bad_model`); provider `mock` là ngoại lệ vì "model" của nó là kịch bản dev/test. Model đã bật mà khai giá `0` thì vẫn được tính chi phí `0` — hạn mức USD chỉ đúng bằng độ đúng của metadata giá, nên chỉ bật model đã điền giá thật.
 - Các bảng/RPC RAG legacy đã bị drop; lịch sử chat hiện nằm ở `ai_chat_threads`/`ai_chat_messages`, không dùng `ai_conversations`/`ai_messages` cũ.
 
 ## Vận hành an toàn
