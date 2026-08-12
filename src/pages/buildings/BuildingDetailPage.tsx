@@ -429,14 +429,16 @@ const BuildingDetailPage = () => {
             </Card>
           </div>
 
-          {/* Notes */}
-          {building.notes && (
+          {/* Ghi chú — đọc `description`, KHÔNG phải `notes`.
+              Cùng vết với RoomDetailPage: bảng `buildings` không có cột `notes`,
+              nên khối này luôn trống. Cột có thật là `description`. */}
+          {building.description && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Ghi chú</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground whitespace-pre-wrap">{building.notes}</p>
+                <p className="text-muted-foreground whitespace-pre-wrap">{building.description}</p>
               </CardContent>
             </Card>
           )}

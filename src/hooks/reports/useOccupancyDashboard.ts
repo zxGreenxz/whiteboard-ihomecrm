@@ -61,9 +61,18 @@ export const OCCUPANCY_METRIC_DEFINITIONS = [
   "Trend theo tháng: phòng có HĐ (mọi trạng thái trừ NHÁP) giao tháng đó — tháng quá khứ tính cả HĐ nay đã thanh lý/hết hạn.",
 ] as const;
 
-/** buildingIds []/undefined = tất cả toà trong scope; RPC tự giao với quyền. */
-const toIdsParam = (buildingIds: string[]) =>
-  buildingIds.length > 0 ? buildingIds : null;
+/**
+ * buildingIds rỗng = tất cả toà trong scope; RPC tự giao với quyền.
+ *
+ * TRẢ `undefined`, KHÔNG PHẢI `null`. Cả ba RPC đều khai `p_building_ids?:
+ * string[]` trong kiểu sinh tự động, tức tham số có `DEFAULT NULL` trên server:
+ * bỏ khoá đi thì server tự dùng NULL. Hành vi y hệt bản cũ, nhưng `null` thì
+ * không gán được vào `string[] | undefined` nên nó chặn ba file này khỏi đảo
+ * strict. Đây là án lệ đã dùng ở `src/lib/rpcNullable.ts`: tham số CÓ DEFAULT thì
+ * bỏ khoá; tham số KHÔNG có DEFAULT mới phải bọc `rpcNullable`.
+ */
+const toIdsParam = (buildingIds: string[]): string[] | undefined =>
+  buildingIds.length > 0 ? buildingIds : undefined;
 
 export function useOccupancySnapshot(asOfDate: string, buildingIds: string[]) {
   return useQuery({

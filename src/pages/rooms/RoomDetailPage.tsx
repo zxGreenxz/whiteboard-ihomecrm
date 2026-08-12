@@ -518,14 +518,19 @@ const RoomDetailPage = () => {
             </Card>
           )}
 
-          {/* Notes */}
-          {room.notes && (
+          {/* Ghi chú — đọc `description`, KHÔNG phải `notes`.
+              Khối này từng đọc `room.notes`, mà bảng `rooms` không có cột đó, nên
+              nó LUÔN trống: người dùng nhập ghi chú ở đâu cũng không bao giờ thấy
+              lại. Cột có thật là `description`. (Hai cột `sale_note` /
+              `sale_bonus_note` cũng có thật nhưng thuộc luồng bán hàng, không phải
+              ghi chú chung.) */}
+          {room.description && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Ghi chú</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground whitespace-pre-wrap">{room.notes}</p>
+                <p className="text-muted-foreground whitespace-pre-wrap">{room.description}</p>
               </CardContent>
             </Card>
           )}

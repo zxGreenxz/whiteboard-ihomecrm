@@ -112,7 +112,17 @@ describe("legacy occupancy dashboard hooks", () => {
     expect(mocks.useAuth).not.toHaveBeenCalled();
   });
 
-  it("uses only legacy RPCs and maps an empty building filter to null", async () => {
+  // Bản cũ của ca này khoá `p_building_ids: null`. Đổi sang `undefined` vì cả ba
+  // RPC khai `p_building_ids?: string[]` (tham số có `DEFAULT NULL` trên server),
+  // nên bỏ khoá đi là server tự dùng NULL — hành vi không đổi. Bản `null` chặn ba
+  // file này khỏi đảo strict vì `null` không gán được vào `string[] | undefined`.
+  //
+  // Giới hạn của phép khẳng định dưới đây, ghi rõ để không ai đọc quá lời: `toEqual`
+  // BỎ QUA khoá mang `undefined` ở cả hai vế, nên nó không phân biệt được "có khoá
+  // mang undefined" với "vắng khoá". Nó VẪN bắt được `null` (null không bị bỏ qua),
+  // tức nó đủ để chặn việc lỡ tay quay về bản cũ. Chỗ nó không phân biệt được thì
+  // cũng không quan trọng: xem ca "gửi lên dây" ngay dưới.
+  it("uses only legacy RPCs and omits an empty building filter", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 25, 12));
     mocks.rpc.mockResolvedValue({ data: null, error: null });
@@ -142,7 +152,7 @@ describe("legacy occupancy dashboard hooks", () => {
     ]);
     expect(mocks.rpc).toHaveBeenNthCalledWith(1, "occupancy_snapshot_v2", {
       p_as_of_date: "2026-07-25",
-      p_building_ids: null,
+      p_building_ids: undefined,
     });
     expect(mocks.rpc).toHaveBeenNthCalledWith(
       2,
@@ -150,14 +160,47 @@ describe("legacy occupancy dashboard hooks", () => {
       {
         p_as_of_date: "2026-07-25",
         p_window_days: 30,
-        p_building_ids: null,
+        p_building_ids: undefined,
       },
     );
     expect(mocks.rpc).toHaveBeenNthCalledWith(3, "fa_occupancy_monthly", {
       p_start_date: "2025-08-01",
       p_end_date: "2026-07-25",
-      p_building_ids: null,
+      p_building_ids: undefined,
     });
+  });
+
+  it("gửi lên dây: bỏ khoá p_building_ids, KHÔNG gửi null", async () => {
+    // Vì sao ca này tồn tại: đổi `toIdsParam` từ `null` sang `undefined` là đổi
+    // thứ đi qua mạng, nên phải chứng minh nó KHÔNG đổi ý nghĩa. `JSON.stringify`
+    // — chính là bước supabase-js dựng thân request — bỏ hẳn khoá mang `undefined`,
+    // nên server thấy tham số vắng mặt và dùng `DEFAULT NULL` của chính nó. Bản cũ
+    // gửi `"p_building_ids":null` tường minh; hai đằng cho cùng một kết quả.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 25, 12));
+    mocks.rpc.mockResolvedValue({ data: null, error: null });
+
+    const snapshot = useOccupancySnapshot(
+      "2026-07-25",
+      [],
+    ) as unknown as QueryOptions<OccupancySnapshotRow[]>;
+    await snapshot.queryFn();
+
+    const [, args] = mocks.rpc.mock.calls[0] as [string, Record<string, unknown>];
+    expect(args.p_building_ids).toBeUndefined();
+    expect(args.p_building_ids).not.toBeNull();
+    expect(JSON.parse(JSON.stringify(args))).toEqual({ p_as_of_date: "2026-07-25" });
+
+    // Và khi CÓ lọc thì mảng phải đi nguyên vẹn — chống-xanh-rỗng cho ca trên:
+    // một `toIdsParam` luôn trả `undefined` cũng làm ba khẳng định kia xanh.
+    mocks.rpc.mockClear();
+    const coLoc = useOccupancySnapshot(
+      "2026-07-25",
+      [BUILDING_A],
+    ) as unknown as QueryOptions<OccupancySnapshotRow[]>;
+    await coLoc.queryFn();
+    const [, argsCoLoc] = mocks.rpc.mock.calls[0] as [string, Record<string, unknown>];
+    expect(argsCoLoc.p_building_ids).toEqual([BUILDING_A]);
   });
 
   it("keeps legacy trend aggregation and returns rate zero for zero-room months", async () => {
