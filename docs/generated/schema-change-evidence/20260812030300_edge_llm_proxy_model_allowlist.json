@@ -1,0 +1,23 @@
+{
+  "$comment": "Biên nhận DEPLOY EDGE FUNCTION (không phải migration schema). Contract §5 đòi ghi reviewed SHA + digest bundle vào kho bằng chứng TRƯỚC khi deploy, vì supabase functions deploy đẩy thẳng thư mục trên đĩa và không có sổ sách nào khác trả lời được câu \"bản đang chạy là bản nào\".",
+  "loai": "edge-function-deploy",
+  "file": "supabase/functions/llm-proxy/index.ts",
+  "sha256": "dd7764dd727c1fd812674e3751b74a9904a6a3df01883beaab044bfc6c0bcf48",
+  "bundleDigest": "bf27f3baaa56c46bdcce518ed7e3c0b4f3aacf78c257f13327feace1bf3c6339",
+  "appliedAt": "2026-08-12T03:03:00.985Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "projectName": "ihomecrm",
+  "organizationId": "zxjhorrjzrtqawxyygha",
+  "actor": "agent:claude-code (phiên 12/08/2026, người dùng uỷ quyền tường minh)",
+  "repoCommit": "78c34e16c8d16ed6a58dc01838388252695e4363",
+  "reviewedBlob": "f5b0f894a199a5178d76c0ea31d7dd27f0fe9b91",
+  "statementBytes": 20577,
+  "normalizedDigest": "dd7764dd727c1fd812674e3751b74a9904a6a3df01883beaab044bfc6c0bcf48",
+  "catalog": {
+    "schemaChanged": false,
+    "ghiChu": "Deploy Edge Function không đổi schema DB. Trường này giữ để biên nhận trả lời được cùng bộ câu hỏi với biên nhận migration."
+  },
+  "thayDoi": "Ép modelId phải thuộc ai_providers.models của provider; trả 400 bad_model TRƯỚC khi reserve. findPricing trả null thay vì {0,0} để phân biệt \"không có giá\" với \"không có trong danh sách\".",
+  "rollback": "git show 78c34e16c8d16ed6a58dc01838388252695e4363~6:supabase/functions/llm-proxy/index.ts rồi deploy lại cùng đường.",
+  "tienDeAnToan": "Đo trước khi deploy: 10/11 người dùng không đặt copilotModel (mặc định openrouter:nvidia/nemotron-... vẫn trong danh sách), 1 người đặt 9router:cx/gpt-5.6-sol(max) (trong danh sách). 0 người bị chặn."
+}
