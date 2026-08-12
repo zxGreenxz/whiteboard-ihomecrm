@@ -67,7 +67,42 @@ describe("docRegistry và quyenCuaGuard", () => {
     permission: { module: "m", action: "view" },
   },
 ];`;
-    expect(docRegistry(nguon)).toEqual([{ id: "abc", primaryRoute: "/abc", module: "m", action: "view" }]);
+    expect(docRegistry(nguon)).toEqual([
+      { id: "abc", primaryRoute: "/abc", module: "m", action: "view", guardMienTruVi: null },
+    ]);
+  });
+
+  it("bóc được `guardMienTruVi` khi capability khai miễn trừ tường minh", () => {
+    const nguon = `export const CAPABILITIES = [
+  {
+    id: "salary",
+    primaryRoute: "/finance/salary",
+    permission: {
+      module: "salary",
+      action: "view",
+      guardMienTruVi:
+        "Trang tự rẽ admin ↔ self-view.",
+    },
+  },
+];`;
+    expect(docRegistry(nguon)[0].guardMienTruVi).toBe("Trang tự rẽ admin ↔ self-view.");
+  });
+
+  it("KHÔNG nhận nhầm `mienTruVi` của e2e hay docs làm miễn trừ guard", () => {
+    // Ba trường miễn trừ khác nhau cùng tồn tại trong một capability
+    // (`docs.userDocMienTruVi`, `e2e.mienTruVi`, `permission.guardMienTruVi`).
+    // Lẫn chúng thì một lý do viết cho E2E sẽ âm thầm mở khoá phép kiểm QUYỀN —
+    // đúng loại lỗi mà bộ bóc regex hay mắc. Bộ bóc phải cắt đúng khối
+    // `permission` trước khi tìm.
+    const nguon = `export const CAPABILITIES = [
+  {
+    id: "x",
+    primaryRoute: "/x",
+    permission: { module: "m", action: "view" },
+    e2e: { spec: null, mienTruVi: "chưa có spec" },
+  },
+];`;
+    expect(docRegistry(nguon)[0].guardMienTruVi).toBeNull();
   });
 
   it("guard riêng khai VIEW_PERMISSION ⇒ tách được module.action", () => {
