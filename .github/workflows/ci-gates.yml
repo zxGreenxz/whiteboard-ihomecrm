@@ -190,21 +190,53 @@ jobs:
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         run: npm run typecheck:baseline
 
-      # Đổi tên từ "Typecheck strict app": tsconfig.app.json đang strict:false,
-      # nên tên cũ làm người đọc tưởng strict đã xong. Required check của GitHub
-      # bám theo tên JOB (quality-gates), không phải tên step, nên đổi tên step
-      # không phá cấu hình bảo vệ nhánh.
-      - name: Typecheck app (tsconfig.app.json — CHƯA strict, xem ts-baseline.json)
-        run: npx tsc --noEmit -p tsconfig.app.json
+      # ĐÃ GỠ: `npx tsc --noEmit -p tsconfig.app.json` chạy TRẦN.
+      #
+      # Bước đó đòi 0 lỗi, trong khi ts-baseline.json khai đúng 2 lỗi đã biết —
+      # tức nó mâu thuẫn với chính cơ chế mà TÊN nó trỏ người đọc tới. Nó chưa
+      # bao giờ xanh: quality-gates 0/167 lần xanh trong toàn bộ lịch sử GitHub
+      # còn giữ cho nhánh main (từ 07/08/2026), và trước hôm nay nó còn chưa
+      # từng ĐƯỢC CHẠY vì các bước đứng trước luôn đỏ sớm hơn.
+      #
+      # NGUYÊN NHÂN GỐC của cả 2 lỗi là MỘT, và nó không nằm ở hai file kia:
+      # tsconfig.app.json đặt `"strict": false`, kéo theo strictNullChecks tắt.
+      # Zod 3 nói rõ nó cần strictNullChecks; thiếu cờ đó thì `z.infer` thoái
+      # hoá và MỌI khoá của schema suy ra thành optional — kể cả khoá khai
+      # `z.string().min(1)`. Đó đúng là hình dạng trong thông báo lỗi:
+      # `{ label?: string; type?: …; amount?: number }` cho một schema mà cả ba
+      # khoá đều bắt buộc. Nên "sửa hai lỗi này" thực chất là "bật strict cho
+      # toàn app" — đúng cuộc di trú mà check-strict-islands.mjs đang làm dần
+      # theo từng vùng, không phải việc kèm vào một PR khác.
+      #
+      # KHÔNG MẤT GÌ khi gỡ. Bước "Typecheck baseline" ngay trên chạy CHÍNH XÁC
+      # cùng lệnh biên dịch (tsc --noEmit -p tsconfig.app.json, xem
+      # scripts/check-ts-baseline.mjs) rồi kiểm chặt hơn ba tầng: đối chiếu
+      # multiset fingerprint để một lỗi cũ không cấp phép cho lỗi mới cùng dạng,
+      # cross-check số dòng parse được với "Found N errors" của tsc để phát hiện
+      # parser trôi, và một SÀN ĐỘ PHỦ chặn việc thu hẹp include/exclude cho đỡ
+      # lỗi. Ratchet chỉ đi một chiều: baseline đã teo còn 2 mục.
+      #
+      # Bước này sẽ quay lại — dưới dạng khẳng định ts-baseline.json RỖNG — khi
+      # đảo strict phủ hết src/. Lúc đó nó mới nói được điều nó đang tự nhận.
 
-      - name: Lint root-owned code
-        run: >
-          npm run lint --
-          --ignore-pattern 'services/**'
-          --ignore-pattern 'infra/**'
-          --ignore-pattern 'supabase/functions/**'
-          --ignore-pattern '.tmp-openclaw-host/**'
-          --ignore-pattern '.e2e-fleet/**'
+      # Đổi từ `npm run lint` TRẦN sang ratchet.
+      #
+      # Bước cũ đòi ESLint sạch tuyệt đối trên vùng repo tự sở hữu. Đo 12/08/2026
+      # trên đúng bộ ignore này: 1714 file, **1201 lỗi** — 1179 trong đó là
+      # @typescript-eslint/no-explicit-any. Không PR nào dọn nổi 1201 lỗi, nên
+      # cửa đó chỉ có hai kết cục: đỏ vĩnh viễn hoặc bị tắt; cả hai đều mất khả
+      # năng chặn lỗi MỚI, tức mất đúng thứ nó sinh ra để giữ.
+      #
+      # Nó đang là kết cục thứ nhất mà không ai thấy: bước này CHƯA TỪNG CHẠY.
+      # quality-gates 0/167 lần xanh trong toàn bộ lịch sử GitHub còn giữ cho
+      # main (từ 07/08/2026), và job luôn dừng ở một bước đứng trước.
+      #
+      # Ratchet giữ nguyên phép đo (cùng lệnh, cùng bộ ignore) nhưng đổi câu hỏi
+      # từ "có lỗi không" sang "có lỗi MỚI không", cộng một sàn độ phủ để việc
+      # nới `ignores` không làm cửa xanh lên. Cùng khuôn với ts-baseline, và
+      # multiset giữ trùng lặp nên `any` thứ 92 trong một file đã có 91 vẫn đỏ.
+      - name: Lint root-owned code (ratchet — chặn lỗi MỚI, nợ cũ khai ở eslint-baseline.json)
+        run: node scripts/check-eslint-baseline.mjs
 
       - name: Build (vite build — bắt lỗi build-time không lộ ở tsc/eslint)
         run: npm run build
