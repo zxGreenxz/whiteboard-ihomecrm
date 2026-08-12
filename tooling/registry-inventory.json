@@ -1,0 +1,2426 @@
+{
+  "routes": [
+    {
+      "path": "/admin/users",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/01-phan-quyen-nhan-su.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/organization",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/01-phan-quyen-nhan-su.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/members",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/01-phan-quyen-nhan-su.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/roles",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/01-phan-quyen-nhan-su.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/staff",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "users",
+      "permissionModule": "users",
+      "permissionAction": "view",
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/invite/:token",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/account/profile",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "account",
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/account/subscription",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/faq",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/changelog",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/app-guide",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/areas",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/buildings",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "buildings",
+      "permissionPage": "buildings",
+      "permissionModule": "buildings",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/buildings/:id",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/apartments",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "rooms",
+      "permissionPage": "rooms",
+      "permissionModule": "rooms",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/apartments/:id",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/rooms",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/rooms/:id",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/services",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "services",
+      "permissionModule": "services",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/sale-phong",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "sale-phong",
+      "permissionPage": "sale_phong",
+      "permissionModule": "sale_phong",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/assets",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "assets",
+      "permissionModule": "assets",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/10-tai-san.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/materials",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "materials",
+      "permissionModule": "materials",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/09-kho-vat-tu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/materials/purchases",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/09-kho-vat-tu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/materials/usages",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/09-kho-vat-tu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/materials/adjustments",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/09-kho-vat-tu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/leads",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "leads",
+      "permissionPage": "leads",
+      "permissionModule": "leads",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/03-khach-hang-lead-ho-so.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/deposits",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "deposits",
+      "permissionModule": "deposits",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/04-coc-giu-cho.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reservations",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reservations/all",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/contracts",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "contracts",
+      "permissionPage": "contracts",
+      "permissionModule": "contracts",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/05-hop-dong.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/contracts/:id",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/customers",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "customers",
+      "permissionPage": "customers",
+      "permissionModule": "customers",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/03-khach-hang-lead-ho-so.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/customers/new",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/03-khach-hang-lead-ho-so.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/customers/:id/edit",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/customers/:id/ct01",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/customers/:id",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/tenants",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/tenants/:id",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/vehicles",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "vehicles",
+      "permissionPage": "vehicles",
+      "permissionModule": "vehicles",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/03-khach-hang-lead-ho-so.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/report/finance/analysis",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/report/finance/cashbook",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/report/finance/cash-flow",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/report/finance-by-month",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/report/finance/debt",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/report/finance/billing-calendar",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/report/finance/prepaid",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/report/finance/deposit",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "reports_finance",
+      "permissionModule": "reports_finance",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/daily-cashbook",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/cash-book",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/cash-flow",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/profit-distribution",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "profit-report",
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/12-co-dong-loi-nhuan.md",
+      "e2eSpec": ".e2e-fleet/specs/profit-hub-redesign.spec.ts"
+    },
+    {
+      "path": "/reports/finance/new-contract-debt",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/debt",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/customer-debt",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/payment-schedule",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/overpayment",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "excess_amounts",
+      "permissionModule": "excess_amounts",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/deposits",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/business-performance",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": ".e2e-fleet/specs/business-performance.spec.ts"
+    },
+    {
+      "path": "/reports/finance/analysis",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/ban-giao",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/08-thu-chi-so-quy.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/thu-ban-giao",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/08-thu-chi-so-quy.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/meter-readings",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "meters",
+      "permissionPage": "meter_readings",
+      "permissionModule": "meter_readings",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/06-cong-to-chi-so.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/thu-tien",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "thu-tien",
+      "permissionPage": "thu_tien",
+      "permissionModule": "thu_tien",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/thanh-toan",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "thanh-toan",
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": ".e2e-fleet/specs/thanh-toan-page.spec.ts"
+    },
+    {
+      "path": "/invoices",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "invoices",
+      "permissionPage": "invoices",
+      "permissionModule": "invoices",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/07-hoa-don-thanh-toan.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/invoices/print/:id",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/invoices/:id",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/income-expense",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "cashbook",
+      "permissionPage": "income_expenses",
+      "permissionModule": "income_expenses",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/08-thu-chi-so-quy.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/income-expense/print/:id",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/income-expense/voucher/:id",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/finance/refund-log",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/08-thu-chi-so-quy.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/approvals",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/20-phe-duyet-tai-chinh.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/payments",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/payments/income-expenses",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/payments/income-expense",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/tasks",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "tasks",
+      "permissionPage": "tasks",
+      "permissionModule": "tasks",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/11-cong-viec-su-co.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/my-day",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": true,
+      "launcherId": "my-day",
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/17-luong-thuong.md",
+      "e2eSpec": ".e2e-fleet/specs/my-day-route.spec.ts"
+    },
+    {
+      "path": "/reports/coverage",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/17-luong-thuong.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/quayso/admin",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/chat-zalo",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "chat_zalo",
+      "permissionModule": "chat_zalo",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/18-zalo-chat.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/openclaw-zalo",
+      "guards": [
+        "ProtectedRoute",
+        "OpenClawRouteGuard"
+      ],
+      "redirect": false,
+      "laOpenClaw": true,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "openclaw-zalo",
+      "permissionPage": "openclaw_zalo",
+      "permissionModule": "openclaw_zalo",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/23-openclaw-zalo.md",
+      "e2eSpec": ".e2e-fleet/specs/openclaw-zalo.spec.ts"
+    },
+    {
+      "path": "/cash-book",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "*",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/register",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/login",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/forgot-password",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reset-password",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/c/:code",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/r/:token",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md",
+      "e2eSpec": ".e2e-fleet/specs/phong-trong-export-image.spec.ts"
+    },
+    {
+      "path": "/phongtrong",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/quayso",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": ".e2e-fleet/specs/quayso-lucky-draw.spec.ts"
+    },
+    {
+      "path": "/quayso/:slug",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/quayso/:slug/quay",
+      "guards": [],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "dashboard",
+      "permissionModule": "dashboard",
+      "permissionAction": "view",
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/dashboard",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": true,
+      "launcherId": "dashboard",
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/building-map",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "map",
+      "permissionPage": "building_map",
+      "permissionModule": "buildings",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/network-center/*",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "network-center",
+      "permissionPage": "network_center",
+      "permissionModule": "network_center",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/22-network-center.md",
+      "e2eSpec": ".e2e-fleet/specs/network-center.spec.ts"
+    },
+    {
+      "path": "/notifications",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "notifications",
+      "permissionModule": "notifications",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "reports",
+      "permissionPage": "reports_real_estate",
+      "permissionModule": "reports_real_estate",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/vacant-rooms",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/vacant",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/expiring-contracts",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/expiring",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/renewals-transfers",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/occupancy",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/occupancy-new",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/promotions",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/new-leases",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/real-estate/terminations",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": ".e2e-fleet/specs/termination-refund.spec.ts"
+    },
+    {
+      "path": "/reports/real-estate/expense-ratio",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/finance/shareholder-profit",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "shareholder_profit",
+      "permissionModule": "shareholder_profit",
+      "permissionAction": "view",
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/reports/finance/shareholder-profit",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/finance/personal-wallet",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "personal_finance",
+      "permissionModule": "personal_finance",
+      "permissionAction": "view",
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/finance/salary",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "salary",
+      "permissionPage": "salary",
+      "permissionModule": "salary",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/17-luong-thuong.md",
+      "e2eSpec": ".e2e-fleet/specs/salary-mobile-period.spec.ts"
+    },
+    {
+      "path": "/finance/my-salary",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/17-luong-thuong.md",
+      "e2eSpec": ".e2e-fleet/specs/salary-mobile-period.spec.ts"
+    },
+    {
+      "path": "/settings/general",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "settings",
+      "permissionPage": "settings",
+      "permissionModule": "settings",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/14-cai-dat-danh-muc-tai-lieu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/ai-copilot",
+      "guards": [
+        "ProtectedRoute"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/21-ai-copilot.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/general-setting",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "categories",
+      "permissionModule": "categories",
+      "permissionAction": "view",
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/bank-accounts",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/auto-debt",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "auto_debt",
+      "permissionModule": "auto_debt",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/08-thu-chi-so-quy.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/income-expense-types",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/setting/finance/income-expense-types",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/service-quotas",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "service_quotas",
+      "permissionModule": "service_quotas",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/meters",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/meters",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "meters",
+      "permissionModule": "meters",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/06-cong-to-chi-so.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/income-expense-types",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/08-thu-chi-so-quy.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/income-expense-templates",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/08-thu-chi-so-quy.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/finance/cashbooks",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": true,
+      "launcherId": "funds",
+      "permissionPage": "cashbooks",
+      "permissionModule": "cashbooks",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/08-thu-chi-so-quy.md",
+      "e2eSpec": ".e2e-fleet/specs/cashbook-create-org-resolution.spec.ts"
+    },
+    {
+      "path": "/settings/finance/fixed-fees",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/finance/cashbooks/closure/:closureId",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/setting/finance/cashbooks",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/finance/cashbooks",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/cashbooks",
+      "guards": [],
+      "redirect": true,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/suppliers",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "suppliers",
+      "permissionModule": "suppliers",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/09-kho-vat-tu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/warehouses",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "warehouses",
+      "permissionModule": "warehouses",
+      "permissionAction": "view",
+      "systemDocDoan": null,
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/asset-types",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "asset_types",
+      "permissionModule": "asset_types",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/10-tai-san.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/asset-movements",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/10-tai-san.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/asset-maintenance",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/10-tai-san.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/hotlines",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "hotline",
+      "permissionModule": "hotline",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/14-cai-dat-danh-muc-tai-lieu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/general",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/14-cai-dat-danh-muc-tai-lieu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/floors",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/categories/task-types",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "task_types",
+      "permissionModule": "task_types",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/11-cong-viec-su-co.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/templates",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": true,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": "templates",
+      "permissionModule": "templates",
+      "permissionAction": "view",
+      "systemDocDoan": "docs/he-thong/14-cai-dat-danh-muc-tai-lieu.md",
+      "e2eSpec": null
+    },
+    {
+      "path": "/settings/signatures",
+      "guards": [
+        "ProtectedRoute",
+        "RequirePermission"
+      ],
+      "redirect": false,
+      "laOpenClaw": false,
+      "coTrongNav": false,
+      "coTrongLauncher": false,
+      "launcherId": null,
+      "permissionPage": null,
+      "permissionModule": null,
+      "permissionAction": null,
+      "systemDocDoan": "docs/he-thong/14-cai-dat-danh-muc-tai-lieu.md",
+      "e2eSpec": null
+    }
+  ],
+  "tongKet": {
+    "tongRoute": 146,
+    "openClaw": 1,
+    "redirect": 33,
+    "coNav": 50,
+    "coLauncher": 24,
+    "coPermission": 41,
+    "coSystemDoc": 75,
+    "coE2e": 12,
+    "duNamNguon": 4
+  },
+  "mauThuan": [
+    {
+      "loai": "permission-module-khac-route-guard",
+      "route": "/reports/finance/overpayment",
+      "moTa": "Route guard thật (financeReportRoutes.tsx) là RequirePermission module=\"reports_finance\" action=\"overpayment\" — khớp đúng với mục nav Sidebar \"Tiền thừa\" và launcher tile không có (chỉ có trong nav). Nhưng permissionPages.ts lại tách route này thành trang riêng \"excess_amounts\" với feature đại diện excess_amounts.view — một module KHÁC hẳn, không hề xuất hiện trong bất kỳ RequirePermission nào của App.tsx/routes/*. Quyền reports_finance.overpayment (quyền THẬT gác route) lại nằm ẩn trong feature list của một PermissionPage khác (\"reports_finance\", route \"/reports/finance\"). Hệ quả: chủ tổ chức bật \"Xem tiền thừa\" (excess_amounts.view) trong picker sẽ KHÔNG mở được /reports/finance/overpayment; quyền đúng nằm ở trang \"Báo cáo tài chính\" mà admin khó đoán ra."
+    },
+    {
+      "loai": "permissionPage-tro-route-da-thanh-redirect",
+      "route": "/settings/staff",
+      "moTa": "PermissionPage \"users\" (Phân quyền nhân viên) khai route: \"/settings/staff\", nhưng route đó nay CHỈ là <Navigate to=\"/settings/members\" replace /> (giữ lại cho bookmark cũ khỏi gãy). Ba route thật đang dùng module users (action=view): /settings/organization, /settings/members, /settings/roles — không route nào trong ba cái là giá trị route của PermissionPage \"users\" cả."
+    },
+    {
+      "loai": "permissionPage-tro-route-da-thanh-redirect",
+      "route": "/finance/shareholder-profit",
+      "moTa": "PermissionPage \"shareholder_profit\" khai route: \"/finance/shareholder-profit\", nhưng route này (và alias /reports/finance/shareholder-profit) nay chỉ redirect sang /reports/finance/profit-distribution (ProfitHubPage — trang gộp report + 3 tab chia LN cổ đông + tab Lương của tôi, gate quyền BÊN TRONG từng tab). permissionPages chưa cập nhật theo cú gộp trang này (đối lập với PermissionPage \"rooms\" đã cập nhật đúng route canonical /apartments thay vì /rooms)."
+    },
+    {
+      "loai": "hai-permissionPage-cung-mot-route",
+      "route": "/",
+      "moTa": "Hai PermissionPage riêng biệt (\"dashboard\" và \"ai-copilot\") đều khai route: \"/\". Trong routes[] tôi chọn \"dashboard\" làm permissionPage đại diện cho route \"/\" (literal hơn); \"ai-copilot\" bị che khuất hoàn toàn khỏi cấu trúc 1-route-1-page. Bất kỳ consumer nào giả định route→permissionPage là ánh xạ 1-1 sẽ mất một trong hai."
+    },
+    {
+      "loai": "nav-khong-co-permissionPage-khop-route",
+      "route": "/settings/ai-copilot",
+      "moTa": "Sidebar mục \"Trợ lý AI\" trỏ /settings/ai-copilot (module ai_copilot). permissionPages có PermissionPage \"ai-copilot\" nhưng route field của nó là \"/\" (mô tả chat-widget nổi toàn app), không phải \"/settings/ai-copilot\" (trang quản trị AI Copilot thật). Không PermissionPage nào có route khớp chính xác /settings/ai-copilot."
+    },
+    {
+      "loai": "guard-chi-nam-trong-trang-khong-o-router",
+      "route": "/finance/salary",
+      "moTa": "Sidebar dùng module=\"salary\" để ẩn/hiện mục nav \"Bảng lương\", và permissionPages cũng gán module salary cho route này. Nhưng route /finance/salary trong salaryProfitRoutes.tsx CHỈ có <ProtectedRoute>, KHÔNG có <RequirePermission> — ManagerSalaryPage tự rẽ admin/self-view BÊN TRONG. Vào thẳng URL (bỏ qua nav) không bị chặn quyền salary ở tầng router."
+    },
+    {
+      "loai": "guard-chi-nam-trong-trang-khong-o-router",
+      "route": "/reports/finance/profit-distribution",
+      "moTa": "Sidebar mục \"Báo cáo Lợi Nhuận\" và launcher tile \"profit-report\" đều dùng module=\"reports_finance\" action=\"profit_distribution\" để ẩn/hiện. Nhưng route thật trong financeReportRoutes.tsx chỉ có <ProtectedRoute><ProfitHubPage/></ProtectedRoute> — không RequirePermission nào ở router; ProfitHubPage tự gate từng tab bên trong. Route tài chính (rủi ro cao) mà tầng router không có gì chặn ngoài đăng nhập."
+    },
+    {
+      "loai": "guard-chi-nam-trong-trang-khong-o-router",
+      "route": "/settings/ai-copilot",
+      "moTa": "permissionPages gán module ai_copilot cho khái niệm \"Trợ lý AI\", nhưng route /settings/ai-copilot trong settingsRoutes.tsx chỉ có <ProtectedRoute> — comment nguồn ghi rõ \"gate super-admin/entitlement BÊN TRONG page\". Không RequirePermission nào ở tầng router."
+    },
+    {
+      "loai": "hai-route-khac-nhau-cung-mot-khai-niem",
+      "route": "/dashboard",
+      "moTa": "Launcher tile \"dashboard\" trỏ href /dashboard, còn Sidebar mục \"Bảng tin\" trỏ href \"/\". Cả hai route đều tồn tại thật và hợp lệ (route \"/\" tự rẽ mobile-Home/desktop-Dashboard; /dashboard ép Dashboard bất kể thiết bị) — không phải lỗi, nhưng hai nguồn UI chọn hai URL khác nhau cho cùng một khái niệm \"trang chủ/bảng tin\"."
+    },
+    {
+      "loai": "dat-ten-id-gay-nham",
+      "route": "/income-expense",
+      "moTa": "Launcher tile có id=\"cashbook\" nhưng href thật là /income-expense (Thu chi), title \"Thu chi\". Dễ nhầm với tile \"funds\" (id đúng nghĩa \"quỹ\", href /finance/cashbooks = Sổ quỹ thật). href/module vẫn đúng chức năng — chỉ riêng chuỗi id nội bộ gây hiểu lầm khi đọc code."
+    },
+    {
+      "loai": "chuoi-route-khac-nhau-cung-mot-trang",
+      "route": "/network-center/*",
+      "moTa": "App.tsx định tuyến thật là \"/network-center/*\" (wildcard — NetworkCenterApp tự bọc <Routes> con). registry.ts, permissionPages, Sidebar (qua navFieldsFor) và launcherTiles đều khai trơn \"/network-center\" (không /*). check-route-guards.mjs đã phải khai riêng ROUTE_LONG_DA_KHAI cho NetworkCenterApp.tsx vì lý do này. Không phải lỗi, nhưng bất kỳ so khớp chuỗi route thuần (kể cả registry.ts mở rộng sắp tới) phải chuẩn hoá bỏ \"/*\" trước khi so, nếu không sẽ báo sai \"route lạ, không có trong nav\"."
+    },
+    {
+      "loai": "tai-lieu-lac-hau-so-voi-routing-that",
+      "route": "/reports/real-estate/occupancy-new",
+      "moTa": "docs/he-thong/13-bao-cao-dashboard-thong-bao.md (bảng §5.4) mô tả /reports/real-estate/occupancy-new là trang LẤP ĐẦY MỚI (có filter tòa + trend 12 tháng) khác với /occupancy (\"trang cũ\"). Nhưng route thật hiện nay: /reports/real-estate/occupancy-new CHỈ là <Navigate to=\"/reports/real-estate/occupancy\" replace /> — trang \"mới\" đã bị rút lại thành alias của trang \"cũ\", ngược hẳn mô tả trong doc. Tài liệu chưa cập nhật theo thay đổi routing này."
+    },
+    {
+      "loai": "route-mo-coi-ca-ba-be-mat",
+      "route": "/admin/users",
+      "moTa": "Route dùng guard AdminOnlyRoute (không phải RequirePermission), tồn tại thật trong adminAccountRoutes.tsx, nhưng KHÔNG xuất hiện trong Sidebar, KHÔNG trong launcherTiles, và KHÔNG có PermissionPage nào khớp route. Có vẻ là trang admin toàn cục kiểu cũ, đã bị thay thế bởi mô hình phân quyền V3 (/settings/organization, /settings/members, /settings/roles) nhưng chưa bị xoá khỏi router — chỉ vào được bằng gõ thẳng URL."
+    },
+    {
+      "loai": "route-mo-coi-ca-ba-be-mat",
+      "route": "/reports/coverage",
+      "moTa": "Route dùng guard AdminOnlyRoute, tồn tại thật trong financeWorkRoutes.tsx (OwnerDashboardV5), nhưng KHÔNG có trong Sidebar, KHÔNG trong launcherTiles, KHÔNG có PermissionPage khớp route. docs/he-thong/17-luong-thuong.md nhắc route này nhiều lần như UI dành cho \"chủ\" trong hệ SALARY V5 (đối xứng với /my-day dành cho nhân viên) nhưng không có lối vào chính thức nào từ UI ngoài gõ thẳng URL hoặc link trong tài liệu."
+    }
+  ],
+  "cachDoan": {
+    "nav": "Đọc trực tiếp mảng navigationGroups trong src/components/layout/Sidebar.tsx (nguồn dữ liệu tường minh, có comment xác nhận \"EXPORT có chủ đích ... test đối chiếu cần đọc cấu trúc này như DỮ LIỆU\"). Hai mục 'openclaw-zalo' và 'network-center' được sinh động từ navFieldsFor(capabilityId) (src/app/capabilities/surfaceAdapters.ts) đọc registry.ts — tôi coi chúng là 'có trong nav' ở mức MÃ NGUỒN (structurally present), không mô phỏng cờ runtime NETWORK_CENTER_RUNTIME_ENABLED/OPENCLAW_RUNTIME_ENABLED lúc build. Route \"/network-center/*\" (wildcard trong App routes) được coi khớp với href \"/network-center\" (không wildcard) dùng trong nav/launcher/permission — đây là sai khác chuỗi đã biết, xem mauThuan.",
+    "launcher": "Đọc trực tiếp mảng LAUNCHER_SECTIONS trong src/pages/home/launcherTiles.ts, cùng cách xử lý navFieldsFor/launcherFieldsFor như trên cho hai capability network-center/openclaw-zalo.",
+    "permission": "Đọc PAGE_GROUPS trong src/lib/permissionPages.ts. Với mỗi PermissionPage, permissionModule/permissionAction lấy từ FEATURE ĐẦU TIÊN trong mảng features[] của trang (luôn là feature tier 'view' đại diện quyền vào trang, theo quy ước helper crud()/f() trong chính file — feature 'view' luôn khai trước). Route '/' có 2 PermissionPage trùng route (dashboard, ai-copilot); tôi chọn 'dashboard' làm đại diện, xem mauThuan.",
+    "systemDoc": "KHÔNG suy từ tên file không có bằng chứng. Cách làm: gom toàn bộ đường dẫn route TĨNH (bỏ route có ':' và route redirect) thành một regex, grep một lượt trên docs/he-thong/*.md, đếm số lần mỗi (route, file doc) xuất hiện. Loại hai file mang tính MỤC LỤC thuần (00-tong-quan.md liệt kê mỗi route đúng 1 lần trong một bảng 'Bản đồ domain'; README.md) khỏi phép đếm. File 13-bao-cao-dashboard-thong-bao.md ban đầu tưởng cũng là mục lục nhưng đọc trực tiếp thì lại là tài liệu CHI TIẾT thật (có 2 bảng tham chiếu từng route con /reports/real-estate/* và /reports/finance/* kèm tên hook + nguồn dữ liệu) — đã đưa vào phép đếm sau khi xác minh bằng cách đọc nội dung thật. Route được gán systemDoc khi: (a) một doc áp đảo rõ rệt về số lần nhắc VÀ tên file khớp domain, hoặc (b) chỉ một doc không-mục-lục nhắc route đó, hoặc (c) chính bảng tham chiếu trong doc 13 cross-reference tường minh sang một doc khác ('xem doc 08', 'Chi tiết: doc 12 §5.3') — khi đó dùng doc được trỏ tới thay vì doc 13. Route /invoices là ngoại lệ thủ công: đếm thô cao nhất rơi vào docs/he-thong/perf-2026-06-30-toi-uu-hieu-nang.md (ghi chú hiệu năng nhắc '/invoices' 4 lần) nhưng đó là nhiễu — tôi dùng 07-hoa-don-thanh-toan.md theo tên file khớp domain ('hoá đơn'). /settings/ai-copilot, /settings/organization, /settings/members, /settings/roles, /admin/users được gán theo tên file khớp domain THUẦN TUÝ (21-ai-copilot.md, 01-phan-quyen-nhan-su.md) vì không route nào trong số đó xuất hiện dạng chuỗi literal ở bất kỳ doc nào — chỉ chấp nhận vì tên chủ đề của file không thể hiểu theo nghĩa nào khác. Còn lại (khoảng 22 route, phần lớn là /settings/categories/* lá hoặc route tài khoản) bị bỏ trống vì tín hiệu chỉ có 1 lần nhắc VÀ không áp đảo so với ứng viên khác, hoặc hoà điểm giữa ≥2 file — thà trống còn hơn đoán sai.",
+    "e2e": "KHÔNG dùng số lần match thô làm tiêu chí chính (nhiễu nặng: gần như mọi spec income-expense/finance đều page.goto('/income-expense') hoặc '/login' như bước dọn dẹp/thiết lập, không phải chủ đề bài test). Tiêu chí thật: TÊN FILE spec phải khớp trực tiếp, không mơ hồ, với route/tính năng (vd network-center.spec.ts, openclaw-zalo.spec.ts, thanh-toan-page.spec.ts, my-day-route.spec.ts, quayso-lucky-draw.spec.ts) — cùng khuôn với 2 capability đã có sẵn trong registry.ts hiện tại (network-center, openclaw-zalo đều map 1-1 sang spec cùng tên). Khi ĐÚNG MỘT spec có tên khớp domain và không có spec nào khác cạnh tranh rõ ràng hơn thì gán (kể cả route động /r/:token — xác minh bằng cách đọc trực tiếp phong-trong-export-image.spec.ts thấy page.goto(`/r/${token}`) dạng template, nên grep chuỗi tĩnh không bắt được). Khi CÓ NHIỀU spec cùng cụm tên tiền tố cạnh tranh mà không cái nào rõ là 'spec khói chính' của cả trang (vd cụm ie-*/income-voucher-*/commission-*/finance-v2* đều đụng /income-expense; cụm contract-create-*/contract-deposit-* đều đụng /contracts; invoice-edit-previous-debt.spec.ts và invoice-collection-v5.spec.ts đều đụng /invoices) thì để trống — chọn đại một cái sẽ SAI hơn là không chọn, vì không cái nào thật sự đại diện cho cả trang."
+  }
+}
