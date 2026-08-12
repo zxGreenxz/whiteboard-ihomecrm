@@ -443,10 +443,12 @@
       {
         "deliverable": "Mục 33 Đợt 3 – noUncheckedIndexedAccess cho core contract",
         "planRef": "mục 33, dòng 2371",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "M",
         "touchesOpenClaw": false,
-        "remaining": "Cần dựng vùng contract core (mục 9) và tách config trước, rồi bật cờ cho riêng vùng đó theo khuôn đã dùng ở infra/network-center-worker."
+        "remaining": "",
+        "doneAt": "2026-08-12",
+        "evidence": "Lo 97. KHONG dung vung \"contract core\" ve tay nhu plan de xuat — dung vung DO DUOC, vi ve tay thi khong ai kiem duoc no co sach that khong. Do 12/08/2026: bat noUncheckedIndexedAccess tren dung 1025 file cua dao tang 1 => 953 loi tren 185 file, dat hon han toan bo phan con lai cua strict cong lai. Nen tach TANG thay vi nhet co vao tang 1: tang 2 = giao cua include tang 1 voi (toan bo src tru bao dong-nguoc cua 185 file loi = 562 file) => 595 file, tsc 0 loi. Gate check-strict-islands duoc tong quat thanh BANG DAO (export DAO) va lap qua tung tang, moi tang mot baseline/ratchet/san rieng; them bat bien tang-con-PHAI-la-tap-con-cua-tang-cha (timConNgoaiCha) — thieu no thi mot file co the roi khoi tang 1 ma van nam o tang 2, va cau \"tang 2 nghiem hon tang 1\" thanh sai ma khong ai thay. Gate nay TRUOC LAT NAY KHONG CO TEST NAO: them 16 ca (co bi tat ke ca co VANG MAT; coThem bi kiem that; san moi tang phai thap hon so dao that nhung khong duoc thap duoi mot nua; baseline la tap con cua include; tap-con tren FILE THAT). Dot bien song 3 ca: them file khong co o tang 1 => exit 1 dung thong diep tap con; tat noUncheckedIndexedAccess o tang 2 => exit 1 \"co khong con hieu luc sau khi hop nhat extends\"; tra lai => exit 0."
       },
       {
         "deliverable": "Mục 33 Đợt 3 / P1.4 – Xoá hẳn ts-baseline.json khi fingerprint về 0",

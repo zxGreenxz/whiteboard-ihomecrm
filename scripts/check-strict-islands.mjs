@@ -28,18 +28,43 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const TSCONFIG = "tsconfig.strict-islands.json";
-const BASELINE = join("tooling", "strict-islands-baseline.json");
 
 /**
- * Sàn chống rỗng-vô-nghĩa.
+ * Bảng đảo. Mỗi dòng là một VÙNG KHOÁ với mức cờ riêng.
  *
- * "0 lỗi strict" trên 3 file là câu đúng mà vô nghĩa. Nếu ai đó cắt include
- * xuống còn vài dòng VÀ chạy --write để hạ baseline theo, ratchet tập-tên không
- * còn gì để so. Con số này là mức đã đo được (246) trừ biên an toàn cho vài file
- * bị xoá/đổi tên hợp lệ.
+ * VÌ SAO NHIỀU TẦNG CHỨ KHÔNG MỘT
+ *   `noUncheckedIndexedAccess` đắt hơn hẳn phần còn lại của `strict`: đo
+ *   12/08/2026 trên đúng 1025 file của tầng 1 thì nó thêm **953 lỗi** — gấp
+ *   nhiều lần toàn bộ chi phí mở tầng 1. Nhét nó vào tầng 1 là ép chọn giữa
+ *   "khoá 1025 file ở mức thấp" và "khoá vài trăm file ở mức cao". Hai tầng cho
+ *   cả hai, và mỗi tầng vẫn là ratchet một chiều của riêng nó.
+ *
+ * `conCua` giữ bất biến: tầng con phải là TẬP CON của tầng cha. Không có nó thì
+ * một file có thể rơi khỏi tầng 1 mà vẫn nằm ở tầng 2, và câu "tầng 2 nghiêm hơn
+ * tầng 1" thành sai mà không ai thấy.
  */
-const TOI_THIEU_DAO = 200;
+export const DAO = [
+  {
+    ten: "strict",
+    tsconfig: "tsconfig.strict-islands.json",
+    baseline: join("tooling", "strict-islands-baseline.json"),
+    /**
+     * Sàn chống rỗng-vô-nghĩa: "0 lỗi strict" trên 3 file là câu đúng mà vô
+     * nghĩa. Mức đã đo (1023) trừ biên cho vài file bị xoá/đổi tên hợp lệ.
+     */
+    toiThieu: 900,
+    coThem: [],
+    conCua: null,
+  },
+  {
+    ten: "strict+noUncheckedIndexedAccess",
+    tsconfig: "tsconfig.strict-islands-nuia.json",
+    baseline: join("tooling", "strict-islands-nuia-baseline.json"),
+    toiThieu: 500,
+    coThem: ["noUncheckedIndexedAccess"],
+    conCua: "tsconfig.strict-islands.json",
+  },
+];
 
 const doc = (p) => readFileSync(join(repoRoot, p), "utf8");
 
@@ -67,9 +92,21 @@ export const CO_BAT_BUOC = [
   "alwaysStrict",
 ];
 
-/** Cờ bắt buộc mà giá trị hợp nhất không phải true. */
-export function timCoBiTat(hopNhat) {
-  return CO_BAT_BUOC.filter((k) => hopNhat[k] !== true);
+/** Cờ bắt buộc mà giá trị hợp nhất không phải true. `coThem` là cờ riêng của tầng. */
+export function timCoBiTat(hopNhat, coThem = []) {
+  return [...CO_BAT_BUOC, ...coThem].filter((k) => hopNhat[k] !== true);
+}
+
+/**
+ * Đảo con phải nằm gọn trong đảo cha.
+ *
+ * Trả về danh sách file có ở CON mà không có ở CHA — mỗi cái là một chỗ câu
+ * "tầng dưới nghiêm hơn tầng trên" bị phá: file đó đang bị khoá ở mức cao mà
+ * không hề bị khoá ở mức thấp, nên gỡ nó khỏi tầng cha sẽ không ai báo.
+ */
+export function timConNgoaiCha(daoCon, daoCha) {
+  const cha = new Set(daoCha);
+  return daoCon.filter((p) => !cha.has(p)).sort();
 }
 
 /** Bỏ comment `//` và `/* *​/` để JSON.parse đọc được tsconfig (JSONC). */
@@ -91,8 +128,11 @@ export function timDaoBiRut(baseline, hienTai) {
   return baseline.filter((p) => !co.has(p)).sort();
 }
 
-function main() {
-  const viet = process.argv.includes("--write");
+function kiemMotDao(caiDao, viet) {
+  const TSCONFIG = caiDao.tsconfig;
+  const BASELINE = caiDao.baseline;
+  const TOI_THIEU_DAO = caiDao.toiThieu;
+  console.log(`\n── Đảo "${caiDao.ten}" · ${TSCONFIG}`);
 
   let include;
   try {
@@ -152,7 +192,26 @@ function main() {
     console.error((cfg.stderr || cfg.stdout || "").slice(0, 600));
     process.exit(3);
   }
-  const coBiTat = timCoBiTat(hopNhat);
+  // ---- Đảo con phải nằm gọn trong đảo cha ----
+  if (caiDao.conCua) {
+    let daoCha;
+    try {
+      daoCha = locDao(JSON.parse(doJsonc(doc(caiDao.conCua))).include);
+    } catch (e) {
+      console.error(`❌ Không đọc được đảo cha ${caiDao.conCua}: ${e.message}`);
+      process.exit(3);
+    }
+    const ngoai = timConNgoaiCha(dao, daoCha);
+    if (ngoai.length > 0) {
+      console.error(`❌ ${ngoai.length} file ở đảo "${caiDao.ten}" mà KHÔNG có trong đảo cha ${caiDao.conCua}:`);
+      for (const p of ngoai.slice(0, 15)) console.error(`   - ${p}`);
+      console.error("   Tầng con phải nghiêm hơn tầng cha, nên nó phải là TẬP CON.");
+      console.error("   Ngược lại thì gỡ file khỏi tầng cha sẽ không ai báo.");
+      process.exit(1);
+    }
+  }
+
+  const coBiTat = timCoBiTat(hopNhat, caiDao.coThem);
   if (coBiTat.length > 0) {
     console.error(`❌ ${coBiTat.length} cờ strict KHÔNG còn hiệu lực sau khi hợp nhất extends:`);
     for (const k of coBiTat) console.error(`   - ${k} = ${JSON.stringify(hopNhat[k])}`);
@@ -185,10 +244,10 @@ function main() {
     process.exit(3);
   }
 
-  console.log(`Đảo strict: ${dao.length} file · baseline ${baseline.length} · lỗi ${loi.length}`);
+  console.log(`   ${dao.length} file · baseline ${baseline.length} · lỗi ${loi.length}`);
 
   if (loi.length > 0) {
-    console.error(`\n❌ ${loi.length} lỗi strict trong vùng đã khoá:`);
+    console.error(`\n❌ ${loi.length} lỗi trong vùng đã khoá "${caiDao.ten}":`);
     for (const l of loi.slice(0, 25)) console.error("   " + l);
     if (loi.length > 25) console.error(`   … và ${loi.length - 25} dòng nữa`);
     console.error("\n  Sửa code cho sạch. KHÔNG gỡ file khỏi include để cho xanh —");
@@ -211,8 +270,7 @@ function main() {
       baselinePath,
       JSON.stringify(
         {
-          $comment:
-            "Mức ratchet của đảo strict: TẬP TÊN FILE, không phải số đếm — với số đếm thì xoá một đảo rồi thêm đảo khác là hoà, mà cái bị xoá thường là cái vừa đỏ. Chốt mức mới: npm run gate:strict-islands -- --write",
+          $comment: `Mức ratchet của đảo "${caiDao.ten}": TẬP TÊN FILE, không phải số đếm — với số đếm thì xoá một đảo rồi thêm đảo khác là hoà, mà cái bị xoá thường là cái vừa đỏ. Chốt mức mới: npm run gate:strict-islands -- --write`,
           updatedAt: new Date().toISOString().slice(0, 10),
           islands: dao,
         },
@@ -220,15 +278,27 @@ function main() {
         2,
       ) + "\n",
     );
-    console.log(`✅ Đã chốt baseline ở ${dao.length} đảo (+${them.length} so với trước).`);
+    console.log(`   ✅ Đã chốt baseline ở ${dao.length} đảo (+${them.length} so với trước).`);
     return;
   }
 
   if (them.length > 0) {
-    console.log(`✅ 0 lỗi. Có ${them.length} đảo MỚI chưa chốt — chạy \`npm run gate:strict-islands -- --write\` để khoá lại.`);
+    console.log(`   ✅ 0 lỗi. Có ${them.length} đảo MỚI chưa chốt — chạy \`npm run gate:strict-islands -- --write\` để khoá lại.`);
   } else {
-    console.log(`✅ 0 lỗi strict trên ${dao.length} đảo đã khoá.`);
+    console.log(`   ✅ 0 lỗi trên ${dao.length} đảo đã khoá.`);
   }
+}
+
+function main() {
+  const viet = process.argv.includes("--write");
+  // Chống-xanh-rỗng ở mức BẢNG: bảng rỗng thì vòng lặp không chạy lần nào và
+  // gate im lặng trả 0 — đúng kiểu "xanh vì không đo gì".
+  if (DAO.length === 0) {
+    console.error("❌ Bảng đảo rỗng — không có vùng nào để kiểm.");
+    process.exit(3);
+  }
+  for (const caiDao of DAO) kiemMotDao(caiDao, viet);
+  console.log(`\n✅ ${DAO.length} đảo đều đạt.`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
