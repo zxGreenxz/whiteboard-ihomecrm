@@ -19,5 +19,11 @@
   },
   "thayDoi": "Ép modelId phải thuộc ai_providers.models của provider; trả 400 bad_model TRƯỚC khi reserve. findPricing trả null thay vì {0,0} để phân biệt \"không có giá\" với \"không có trong danh sách\".",
   "rollback": "git show 78c34e16c8d16ed6a58dc01838388252695e4363~6:supabase/functions/llm-proxy/index.ts rồi deploy lại cùng đường.",
-  "tienDeAnToan": "Đo trước khi deploy: 10/11 người dùng không đặt copilotModel (mặc định openrouter:nvidia/nemotron-... vẫn trong danh sách), 1 người đặt 9router:cx/gpt-5.6-sol(max) (trong danh sách). 0 người bị chặn."
+  "tienDeAnToan": "Đo trước khi deploy: 10/11 người dùng không đặt copilotModel (mặc định openrouter:nvidia/nemotron-... vẫn trong danh sách), 1 người đặt 9router:cx/gpt-5.6-sol(max) (trong danh sách). 0 người bị chặn.",
+  "authorization": {
+    "loai": "chi-dinh-truc-tiep-cua-chu-du-an",
+    "chiTiet": "Chủ dự án chỉ định tường minh trong phiên 12/08/2026 (\"phần deploy llm-proxy — thực hiện cho tôi đi\"), sau khi được báo đầy đủ về thay đổi và rủi ro thứ tự triển khai.",
+    "vaySaoKhongCoBackup": "Deploy Edge Function KHÔNG đổi schema và KHÔNG ghi dữ liệu, nên biên nhận backup — thứ Contract §4 đòi cho mọi thao tác schema vì PITR đang tắt — không áp dụng được ở đây. Đường lùi của lát này là deploy lại mã cũ, đã ghi sẵn ở trường `rollback`. Ghi `loai` riêng thay vì mượn \"bien-nhan-backup\" để không ai đọc nhầm biên nhận này thành một lần apply schema có backup.",
+    "tienDeAnToanDaDo": "0/11 người dùng bị cổng model mới chặn (10 người dùng mặc định openrouter còn trong danh sách, 1 người đặt cx/gpt-5.6-sol(max) cũng trong danh sách)."
+  }
 }
