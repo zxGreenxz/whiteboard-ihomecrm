@@ -1,6 +1,6 @@
 ---
 status: current
-reviewed: 2026-08-11
+reviewed: 2026-08-12
 source_paths:
   - docs/generated/repository-inventory.json
 copilot_ingest: false
@@ -16,7 +16,7 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **513** file test, **158** file đọc file bằng fs (415 lời gọi)
+- **479** file test, **158** file đọc file bằng fs (415 lời gọi)
 - **228** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.

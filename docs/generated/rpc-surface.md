@@ -1,6 +1,6 @@
 ---
 status: current
-reviewed: 2026-08-11
+reviewed: 2026-08-12
 source_paths:
   - contracts/surfaces/rpc-surface.json
 copilot_ingest: false
@@ -18,17 +18,17 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 230 |
-| Hàm trong catalog (public + api) | 1063 |
-| File mã nguồn đã quét | 1573 |
-| SECURITY DEFINER | 214 |
+| RPC được gọi từ mã nguồn | 238 |
+| Hàm trong catalog (public + api) | 1064 |
+| File mã nguồn đã quét | 1627 |
+| SECURITY DEFINER | 222 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 150 | còn lại |
+| thường | 158 | còn lại |
 | tiền | 74 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | an ninh | 6 | nơi gọi thuộc OpenClaw |
 
@@ -70,9 +70,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `get_deposits_report_summary` |  | hooks/reports/financeReports.ts |
 | `get_income_expense_history` |  | hooks/income-expenses/queries.ts |
 | `get_income_expense_layer_stats` |  | hooks/income-expenses/queries.ts, hooks/useProfitVerification.ts |
-| `get_invoice_statistics_v2` | ✔ | hooks/useInvoices.ts, hooks/useProfitVerification.ts, hooks/useUtilityBills.ts |
+| `get_invoice_statistics_v2` | ✔ | copilot/tools/nghiepVuTools.ts, hooks/useInvoices.ts, hooks/useProfitVerification.ts … (+1) |
 | `get_overpayment_summary` |  | hooks/reports/financeReports.ts |
-| `get_salary_v5_config` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts, pages/finance/ManagerSalaryPage.tsx, pages/finance/MySalaryPage.tsx |
+| `get_salary_v5_config` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts, hooks/useSalaryV5Config.ts |
 | `get_voucher_cancellation_v1` | ✔ | hooks/income-expenses/flexMutations.ts |
 | `get_voucher_change_log_v1` | ✔ | hooks/income-expenses/flexMutations.ts |
 | `get_voucher_slot_warning_v1` | ✔ | hooks/useVoucherSlotWarning.ts |

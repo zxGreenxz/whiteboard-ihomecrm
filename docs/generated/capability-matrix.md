@@ -1,6 +1,6 @@
 ---
 status: current
-reviewed: 2026-08-11
+reviewed: 2026-08-12
 source_paths:
   - src/app/capabilities/registry.ts
   - contracts/surfaces/edge-function-surface.json
@@ -16,7 +16,7 @@ risk: normal
 
 ## Capability khai trong registry
 
-Registry hiện phủ **2** capability. Toàn app có ~146 route —
+Registry hiện phủ **27** capability. Toàn app có ~146 route —
 phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CHỦ Ý: registry bắt
 đầu từ hai capability đã drift thật, mở rộng là việc riêng.
 
@@ -24,6 +24,31 @@ phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CH
 |---|---|---|---|---|
 | Trung tâm mạng | `/network-center` | `network_center.view` | hạ tầng | docs/he-thong/22-network-center.md |
 | OpenClaw Zalo | `/openclaw-zalo` | `openclaw_zalo.view` | an ninh | docs/he-thong/23-openclaw-zalo.md |
+| Hoá đơn | `/invoices` | `invoices.view` | tiền | docs/he-thong/07-hoa-don-thanh-toan.md |
+| Thu chi | `/income-expense` | `income_expenses.view` | tiền | docs/he-thong/08-thu-chi-so-quy.md |
+| Sổ quỹ | `/finance/cashbooks` | `cashbooks.view` | tiền | docs/he-thong/08-thu-chi-so-quy.md |
+| Bảng lương | `/finance/salary` | `salary.view` | tiền | docs/he-thong/17-luong-thuong.md |
+| Toà nhà | `/buildings` | `buildings.view` | thường | docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md |
+| Dịch vụ | `/services` | `services.view` | thường | docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md |
+| Tài sản | `/assets` | `assets.view` | thường | docs/he-thong/10-tai-san.md |
+| Khách hẹn | `/leads` | `leads.view` | thường | docs/he-thong/03-khach-hang-lead-ho-so.md |
+| Đặt cọc | `/deposits` | `deposits.view` | tiền | docs/he-thong/04-coc-giu-cho.md |
+| Hợp đồng | `/contracts` | `contracts.view` | tiền | docs/he-thong/05-hop-dong.md |
+| Khách hàng | `/customers` | `customers.view` | thường | docs/he-thong/03-khach-hang-lead-ho-so.md |
+| Phương tiện | `/vehicles` | `vehicles.view` | thường | docs/he-thong/03-khach-hang-lead-ho-so.md |
+| Ghi chỉ số | `/meter-readings` | `meter_readings.view` | thường | docs/he-thong/06-cong-to-chi-so.md |
+| Công việc | `/tasks` | `tasks.view` | thường | docs/he-thong/11-cong-viec-su-co.md |
+| Chat Zalo | `/chat-zalo` | `chat_zalo.view` | thường | docs/he-thong/18-zalo-chat.md |
+| Thông báo | `/notifications` | `notifications.view` | thường | docs/he-thong/13-bao-cao-dashboard-thong-bao.md |
+| Mẫu biểu | `/settings/templates` | `templates.view` | thường | docs/he-thong/14-cai-dat-danh-muc-tai-lieu.md |
+| Căn hộ | `/apartments` | `rooms.view` | thường | docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md |
+| Kho vật tư | `/materials` | `materials.view` | thường | docs/he-thong/09-kho-vat-tu.md |
+| Thu tiền | `/thu-tien` | `thu_tien.view` | tiền | docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md |
+| Sale Phòng | `/sale-phong` | `sale_phong.view` | thường | docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md |
+| Báo cáo bất động sản | `/reports/real-estate` | `reports_real_estate.view` | thường | docs/he-thong/13-bao-cao-dashboard-thong-bao.md |
+| Cài đặt chung | `/settings/general` | `settings.view` | thường | docs/he-thong/14-cai-dat-danh-muc-tai-lieu.md |
+| Sơ đồ toà nhà | `/building-map` | `buildings.view` | thường | docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md |
+| Tiền thừa | `/reports/finance/overpayment` | `reports_finance.overpayment` | tiền | docs/he-thong/13-bao-cao-dashboard-thong-bao.md |
 
 ## Edge Function
 
