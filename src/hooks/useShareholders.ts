@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { taoTaiKhoanQuanTri } from "@/lib/edgeFunctions";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 
@@ -305,17 +306,18 @@ export const useCreateShareholderLogin = () => {
       password: string;
       full_name?: string;
     }) => {
-      const { data, error } = await supabase.functions.invoke("admin-create-user", {
-        body: {
+      // Qua wrapper — xem `src/lib/edgeFunctions.ts`. Trước đây chỗ này và
+      // `useAdminUsers` gọi CÙNG một Edge Function với hai thân yêu cầu khác nhau
+      // và hai cách đọc phản hồi khác nhau, cả hai đều qua `as any`. Giờ hình dạng
+      // chỉ khai một lần.
+      const { id: newUserId } = await taoTaiKhoanQuanTri(
+        (fn, options) => supabase.functions.invoke(fn, options),
+        {
           email: input.email,
           password: input.password,
           full_name: input.full_name ?? "",
         },
-      });
-      if (error) throw new Error(error.message || "Tạo tài khoản thất bại");
-      if ((data as any)?.error) throw new Error((data as any).error);
-      const newUserId = (data as any)?.user?.id as string | undefined;
-      if (!newUserId) throw new Error("Không nhận được ID tài khoản mới");
+      );
 
       const { error: upErr } = await supabase
         .from("shareholders" as any)

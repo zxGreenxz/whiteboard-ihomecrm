@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { taoTaiKhoanQuanTri } from '@/lib/edgeFunctions';
 import { toast } from 'sonner';
 
 export interface AdminUser {
@@ -62,12 +63,15 @@ export const useCreateAdminUser = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: CreateUserPayload) => {
-      const { data, error } = await supabase.functions.invoke('admin-create-user', {
-        body: payload,
-      });
-      if (error) throw new Error(error.message || 'Tạo user thất bại');
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data;
+      // Qua wrapper: Edge Function không có kiểu sinh tự động nào, nên
+      // `src/lib/edgeFunctions.ts` là nguồn kiểu duy nhất cho thân yêu cầu và
+      // phản hồi. Nó cũng xử luôn đường hỏng thứ ba mà chỗ này TRƯỚC ĐÂY BỎ SÓT:
+      // phản hồi 200 nhưng thiếu `user.id`.
+      return await taoTaiKhoanQuanTri(
+        (fn, options) => supabase.functions.invoke(fn, options),
+        payload,
+        'Tạo user thất bại',
+      );
     },
     onSuccess: () => {
       toast.success('Đã tạo tài khoản mới');
