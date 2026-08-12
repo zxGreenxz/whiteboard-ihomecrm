@@ -1,7 +1,6 @@
 {
   "$comment": "Luật cho migration. Đọc cùng supabase/migration-provenance.json (sinh bằng máy) và docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md Phần VI.",
   "schemaVersion": 1,
-
   "provisionalCutoff": {
     "version": "20260805120000",
     "declaredAt": "2026-08-06",
@@ -9,14 +8,12 @@
     "why": "Cutoff được tuyên bố NGAY thay vì chờ phân loại xong 640 file cũ. Nếu treo cutoff để đợi forensics quá khứ, mọi migration mới sẽ bị giữ làm con tin và chương trình chết ở bước này — đó là cách các đợt dọn dẹp thường thất bại.",
     "legacyPolicy": "File có version <= cutoff là legacy-frozen: CHỈ ĐỌC. Không sửa, không đổi tên, không di chuyển. Muốn thay đổi hành vi thì viết file mới."
   },
-
   "states": {
     "ledger-applied": "Khớp CHÍNH XÁC (version, name) với một dòng trong supabase_migrations.schema_migrations.",
     "catalog-proven": "Không có trong ledger, nhưng MỌI object nó CREATE đều tồn tại trong catalog production.",
     "superseded": "Nằm trong migrations-archive/ — README ở đó ghi rõ TUYỆT ĐỐI KHÔNG replay.",
     "unknown": "Chưa có bằng chứng máy. KHÔNG được suy ra 'đã chạy' từ timestamp hay từ việc nó nằm trong repo."
   },
-
   "reviewModel": {
     "rule": "Người review duyệt QUY TẮC phân loại và MẪU KIỂM theo batch, không ký từng file.",
     "why": "640 chữ ký, mỗi cái 2-3 phút, là 25-30 giờ. Với khối lượng đó chữ ký sẽ thành nghi thức và trường reviewedBy mất hết ý nghĩa — tệ hơn không có, vì nó trông như đã được kiểm.",
@@ -27,7 +24,6 @@
     ],
     "sampling": "Với bucket catalog-proven: duyệt quy tắc một lần + random sample n≈30."
   },
-
   "knownLimits": [
     "55/66 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
     "11 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
@@ -35,9 +31,32 @@
     "42 version bị trùng (94 file) — vì vậy khoá định danh là (version, name, sha256), không phải version.",
     "Ledger dừng ở 20260727095000 trong khi production có thay đổi muộn hơn. Đừng dùng max(version) của ledger làm trạng thái schema."
   ],
-
   "applyPath": {
     "rule": "Apply qua Management API bằng script rollout có promotion token. KHÔNG dùng `supabase db push` — CI có gate chặn (scripts/check-no-auto-apply.mjs).",
     "beforeAnyApply": "node scripts/backup-before-schema.mjs --reason \"...\"  (PITR đang tắt, đây là đường lùi duy nhất)"
-  }
+  },
+  "duplicateVersionExceptions": [
+    {
+      "version": "20260808030000",
+      "files": [
+        "20260808030000_gd5_event_trigger_org_boundary.sql",
+        "20260808030000_openclaw_inbox_shows_names_and_text.sql"
+      ],
+      "declaredAt": "2026-08-13",
+      "why": "Hai file merge cùng ngày 08/08 từ hai luồng làm việc song song (rào biên giới tổ chức, và hộp thư OpenClaw) nên đụng cùng mốc giờ. CẢ HAI ĐÃ CHẠY trên production trước khi luật version-duy-nhất có người canh: gd5 có biên nhận backup (receipt 2026-08-07T18:09:12Z), openclaw là catalog-proven qua object app_private.openclaw_capture_sender_name_v1.",
+      "vaoSaoKhongDoiTen": "Đổi tên một file ĐÃ CHẠY tạo ra chiều lệch mà list-forward-migrations.mjs xếp là nguy hiểm hơn hẳn: \"có sổ, không có file\" — production đã đổi schema theo một file mà repo không còn mô tả, không diff được, không rollback theo SHA được. File openclaw còn chứa INSERT/UPDATE nên cũng không phải đổi tên thuần vô hại.",
+      "exitCondition": "Không có — đây là ghi nhận vĩnh viễn về hai file quá khứ. Luật vẫn chặn mọi cặp trùng MỚI; thêm mục vào danh sách này là dùng sai cách."
+    },
+    {
+      "version": "20260808040000",
+      "files": [
+        "20260808040000_gd6_backfill_org_null.sql",
+        "20260808040000_openclaw_inbox_returns_media.sql"
+      ],
+      "declaredAt": "2026-08-13",
+      "why": "Cùng nguyên nhân và cùng ngày với cặp trên. gd6 có biên nhận backup (receipt 2026-08-08T02:06:33Z); openclaw là catalog-proven qua object public.openclaw_list_messages_v1.",
+      "vaoSaoKhongDoiTen": "Như cặp 20260808030000.",
+      "exitCondition": "Không có — ghi nhận vĩnh viễn, xem mục trên."
+    }
+  ]
 }

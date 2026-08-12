@@ -142,12 +142,48 @@ function main() {
   }
 
   // Version 14 chữ số phải duy nhất SAU cutoff (trước cutoff đã trùng sẵn 39 nhóm).
+  //
+  // NGOẠI LỆ CÓ TÊN, và vì sao nó phải tồn tại. Luật này ra đời SAU khi vài cặp
+  // file đã merge và đã chạy trên production. Với chúng thì cả hai lối sửa đều
+  // tệ hơn bệnh:
+  //   - Đổi tên ⇒ tạo ra đúng chiều lệch mà `list-forward-migrations.mjs` gọi là
+  //     nguy hiểm hơn: "production đã đổi schema theo một file mà repo KHÔNG CÒN
+  //     mô tả". Không diff được, không rollback theo SHA được.
+  //   - Xoá hoặc gộp ⇒ mất luôn bản mô tả của thứ đã chạy.
+  // Nên lối duy nhất trung thực là GHI NHẬN, kèm lý do và bằng chứng đã-chạy.
+  //
+  // Danh sách này CHỈ ĐƯỢC TEO. Thêm một cặp mới nghĩa là có người vừa tạo trùng
+  // version SAU khi luật đã có hiệu lực — đó là lỗi cần sửa lúc mở PR, không phải
+  // thứ để khai vào đây. Gate kiểm điều đó ở dưới: mọi mục khai phải THẬT SỰ còn
+  // trùng, mục thừa cũng là lỗi.
+  const mienTru = new Map(
+    (policy.duplicateVersionExceptions ?? []).map((x) => [x.version, x]),
+  );
+  const daKhop = new Set();
   const seen = new Map();
   for (const file of onDisk) {
     const v = /^(\d{14})_/.exec(file)?.[1];
     if (!v || v <= cutoff) continue;
-    if (seen.has(v)) problems.push(`Version ${v} bị dùng cho hai file sau cutoff: ${seen.get(v)} và ${file}`);
+    if (seen.has(v)) {
+      const mt = mienTru.get(v);
+      if (mt && mt.files?.includes(seen.get(v)) && mt.files?.includes(file)) {
+        daKhop.add(v);
+        continue;
+      }
+      problems.push(`Version ${v} bị dùng cho hai file sau cutoff: ${seen.get(v)} và ${file}`);
+    }
     seen.set(v, file);
+  }
+
+  // Miễn trừ khai mà KHÔNG còn trùng thật ⇒ rác. Để lại thì lần sau có người tạo
+  // trùng đúng version đó sẽ được tha im lặng.
+  for (const [v] of mienTru) {
+    if (!daKhop.has(v)) {
+      problems.push(
+        `Miễn trừ trùng version ${v} khai trong migration-policy.json nhưng KHÔNG còn cặp nào trùng.\n` +
+        `      Gỡ mục đó đi — miễn trừ thừa là cửa mở sẵn cho lần trùng sau.`,
+      );
+    }
   }
 
   if (problems.length > 0) {
