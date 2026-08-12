@@ -26,9 +26,19 @@
 -- KHÔNG BAO GIỜ chạy file này lên project thật. Nó chỉ dành cho đích diễn tập.
 
 -- ── Role nền tảng ────────────────────────────────────────────────────────────
--- `authenticated` là role duy nhất mà schema.sql tham chiếu (614 lần). `anon` và
--- `service_role` KHÔNG xuất hiện — không tạo, đúng nguyên tắc hẹp ở trên.
+-- `authenticated` là role duy nhất `schema.sql` tham chiếu (614 lần).
+--
+-- `anon` và `service_role` thì KHÔNG xuất hiện trong schema.sql — bản đầu vì thế
+-- không tạo chúng, đúng nguyên tắc hẹp ở trên. Nhưng đo tiếp 12/08/2026 cho thấy
+-- phạm vi đó hẹp QUÁ MỘT BƯỚC: diễn tập đầy đủ không dừng ở baseline, nó còn
+-- replay 35 migration sau mốc cutoff, và **23 trong số đó chết cùng một câu**
+-- `role "anon" does not exist`. Phạm vi đúng là "thứ mà BÀI DIỄN TẬP tham chiếu",
+-- không phải "thứ mà schema.sql tham chiếu".
+--
+-- Vẫn giữ nguyên tắc: chỉ ba role nền tảng này, không chép cả bộ role của Supabase.
 DO $$ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE ROLE service_role NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ── Schema nền tảng ──────────────────────────────────────────────────────────
 CREATE SCHEMA IF NOT EXISTS auth;
