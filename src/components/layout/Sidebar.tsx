@@ -130,7 +130,7 @@ export const navigationGroups: NavGroup[] = [
   {
     label: 'KÊNH CHAT',
     items: [
-      { title: 'Chat Zalo', href: '/chat-zalo', icon: MessageSquare, module: 'chat_zalo' },
+      ...navFieldsFor('chat-zalo').map((x) => ({ ...x, icon: MessageSquare }) satisfies NavItem),
       // Nhãn, route, quyền và cờ đều SINH TỪ capability registry (Đợt 4 lát 3).
       // Trước đây bốn thứ đó khai lại ở đây và ba nơi khác, rồi trông chờ contract
       // test bắt lệch — mà đối chiếu chỉ phát hiện lệch SAU KHI nó đã nằm trong mã
@@ -148,11 +148,11 @@ export const navigationGroups: NavGroup[] = [
           // "Khu vực" không còn trang riêng — chỉ là nhãn nhóm toà nhà, quản lý
           // bằng dialog trong trang Toà nhà; mọi ô lọc chọn theo khu vực qua
           // BuildingMultiSelect (click tên khu = chọn cả nhóm toà).
-          { title: 'Toà nhà', href: '/buildings', icon: Building2, module: 'buildings' },
+          ...navFieldsFor('buildings').map((x) => ({ ...x, icon: Building2 }) satisfies NavItem),
           { title: 'Căn hộ', href: '/apartments', icon: Home, module: 'rooms' },
-          { title: 'Dịch vụ', href: '/services', icon: Wrench, module: 'services' },
+          ...navFieldsFor('services').map((x) => ({ ...x, icon: Wrench }) satisfies NavItem),
           { title: 'Sale Phòng', href: '/sale-phong', icon: Share2, module: 'sale_phong' },
-          { title: 'Tài sản', href: '/assets', icon: Package, module: 'assets' },
+          ...navFieldsFor('assets').map((x) => ({ ...x, icon: Package }) satisfies NavItem),
           { title: 'Kho vật tư', href: '/materials', icon: Package, module: 'materials' },
         ],
       },
@@ -160,18 +160,18 @@ export const navigationGroups: NavGroup[] = [
         title: 'Khách hàng',
         icon: Users,
         items: [
-          { title: 'Khách hẹn', href: '/leads', icon: UserPlus, module: 'leads' },
-          { title: 'Đặt cọc', href: '/deposits', icon: DollarSign, module: 'deposits' },
-          { title: 'Hợp đồng', href: '/contracts', icon: FileText, module: 'contracts' },
-          { title: 'Khách hàng', href: '/customers', icon: User, module: 'customers' },
-          { title: 'Phương tiện', href: '/vehicles', icon: Car, module: 'vehicles' },
+          ...navFieldsFor('leads').map((x) => ({ ...x, icon: UserPlus }) satisfies NavItem),
+          ...navFieldsFor('deposits').map((x) => ({ ...x, icon: DollarSign }) satisfies NavItem),
+          ...navFieldsFor('contracts').map((x) => ({ ...x, icon: FileText }) satisfies NavItem),
+          ...navFieldsFor('customers').map((x) => ({ ...x, icon: User }) satisfies NavItem),
+          ...navFieldsFor('vehicles').map((x) => ({ ...x, icon: Car }) satisfies NavItem),
         ],
       },
       {
         title: 'Tài chính',
         icon: CreditCard,
         items: [
-          { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, module: 'meter_readings' },
+          ...navFieldsFor('meters').map((x) => ({ ...x, icon: Gauge }) satisfies NavItem),
           ...navFieldsFor('invoices').map((x) => ({ ...x, icon: Receipt }) satisfies NavItem),
           { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, module: 'thu_tien' },
           // Đóng tiền Tập trung theo Kỳ (tách khỏi overlay của /thu-tien).
@@ -189,8 +189,8 @@ export const navigationGroups: NavGroup[] = [
         ],
       },
       ...navFieldsFor('network-center').map((f) => ({ ...f, icon: Network }) satisfies NavItem),
-      { title: 'Công việc', href: '/tasks', icon: ClipboardList, module: 'tasks' },
-      { title: 'Thông báo', href: '/notifications', icon: Bell, module: 'notifications' },
+      ...navFieldsFor('tasks').map((x) => ({ ...x, icon: ClipboardList }) satisfies NavItem),
+      ...navFieldsFor('notifications').map((x) => ({ ...x, icon: Bell }) satisfies NavItem),
     ],
   },
   {
@@ -224,7 +224,7 @@ export const navigationGroups: NavGroup[] = [
         items: [
           { title: 'Cài đặt chung', href: '/settings/general', icon: Settings, module: 'settings' },
           { title: 'Danh mục khác', href: '/settings/categories', icon: List, module: 'categories' },
-          { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText, module: 'templates' },
+          ...navFieldsFor('templates').map((x) => ({ ...x, icon: FileText }) satisfies NavItem),
           { title: 'Tổ chức', href: '/settings/organization', icon: Landmark, module: 'users' },
           { title: 'Thành viên', href: '/settings/members', icon: UserCog, module: 'users' },
           { title: 'Mẫu vai trò', href: '/settings/roles', icon: ShieldCheck, module: 'users' },

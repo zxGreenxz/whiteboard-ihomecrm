@@ -81,17 +81,28 @@ describe("capability registry ↔ bề mặt thật (cờ BẬT)", () => {
     const nav = navItems.find((i) => i.href === capability.primaryRoute);
     const tile = tiles.find((t) => t.href === capability.primaryRoute);
 
-    expect(nav, "không tìm thấy mục sidebar để so quyền").toBeDefined();
-    expect(tile, "không tìm thấy tile để so quyền").toBeDefined();
-
-    expect(nav?.module).toBe(capability.permission.module);
-    expect(tile?.module).toBe(capability.permission.module);
-    // Route dùng action 'view'; nav/tile để trống nghĩa là mặc định 'view'.
-    expect(nav?.action ?? "view").toBe(capability.permission.action);
-    expect(tile?.action ?? "view").toBe(capability.permission.action);
+    // Chỉ đòi bề mặt nào capability KHAI là có. Bản đầu đòi cả hai vì lúc đó cả
+    // hai capability đều bật cả nav lẫn launcher; từ 12/08/2026 có bề mặt chỉ nằm
+    // ở sidebar (`mobileLauncher: false`) — đòi tile ở đó là đòi sai.
+    // Ca "khai đúng nơi xuất hiện" ngay trên đã canh chuyện có/không, nên ở đây
+    // chỉ còn việc so QUYỀN của bề mặt thật sự tồn tại.
+    if (capability.surfaces.desktopNav) {
+      expect(nav, "không tìm thấy mục sidebar để so quyền").toBeDefined();
+      expect(nav?.module).toBe(capability.permission.module);
+      // Route dùng action 'view'; nav/tile để trống nghĩa là mặc định 'view'.
+      expect(nav?.action ?? "view").toBe(capability.permission.action);
+    }
+    if (capability.surfaces.mobileLauncher) {
+      expect(tile, "không tìm thấy tile để so quyền").toBeDefined();
+      expect(tile?.module).toBe(capability.permission.module);
+      expect(tile?.action ?? "view").toBe(capability.permission.action);
+    }
   });
 
   it.each(cases)("%s: id tile khớp id capability", (_id, capability) => {
+    // Bỏ qua capability không có tile — `launcherFieldsFor` lấy id capability làm
+    // id tile, nên phép kiểm này chỉ có nghĩa khi tile thật sự tồn tại.
+    if (!capability.surfaces.mobileLauncher) return;
     const tile = tiles.find((t) => t.href === capability.primaryRoute);
     expect(tile?.id).toBe(capability.id);
   });

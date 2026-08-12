@@ -68,10 +68,10 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'my-day', title: 'Hôm nay', href: '/my-day', icon: Sun, accent: '#f59e0b', hot: true },
       { id: 'dashboard', title: 'Bảng tin', href: '/dashboard', icon: LayoutDashboard, accent: '#1f7a52' },
       { id: 'map', title: 'Sơ đồ toà nhà', href: '/building-map', icon: Map, accent: '#2563eb', module: 'buildings' },
-      { id: 'buildings', title: 'Toà nhà', href: '/buildings', icon: Building2, accent: '#6366f1', module: 'buildings' },
+      ...launcherFieldsFor('buildings').map((x) => ({ ...x, icon: Building2, accent: '#6366f1' }) satisfies LauncherTile),
       { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },
-      { id: 'leads', title: 'Khách hẹn', href: '/leads', icon: UserPlus, accent: '#d97706', module: 'leads' },
-      { id: 'tasks', title: 'Công việc', href: '/tasks', icon: ClipboardList, accent: '#0ea5e9', module: 'tasks' },
+      ...launcherFieldsFor('leads').map((x) => ({ ...x, icon: UserPlus, accent: '#d97706' }) satisfies LauncherTile),
+      ...launcherFieldsFor('tasks').map((x) => ({ ...x, icon: ClipboardList, accent: '#0ea5e9' }) satisfies LauncherTile),
       // Sinh từ capability registry (Đợt 4 lát 3) — chỉ `icon`/`accent` là của
       // riêng launcher, phần còn lại registry sở hữu.
       ...launcherFieldsFor('network-center').map((f) => ({ ...f, icon: Network, accent: '#111111' }) satisfies LauncherTile),
@@ -82,9 +82,9 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
   {
     label: 'Khách hàng & Hợp đồng',
     items: [
-      { id: 'customers', title: 'Khách hàng', href: '/customers', icon: User, accent: '#7c3aed', module: 'customers' },
-      { id: 'contracts', title: 'Hợp đồng', href: '/contracts', icon: FileText, accent: '#4f46e5', module: 'contracts' },
-      { id: 'vehicles', title: 'Phương tiện', href: '/vehicles', icon: Car, accent: '#ea580c', module: 'vehicles' },
+      ...launcherFieldsFor('customers').map((x) => ({ ...x, icon: User, accent: '#7c3aed' }) satisfies LauncherTile),
+      ...launcherFieldsFor('contracts').map((x) => ({ ...x, icon: FileText, accent: '#4f46e5' }) satisfies LauncherTile),
+      ...launcherFieldsFor('vehicles').map((x) => ({ ...x, icon: Car, accent: '#ea580c' }) satisfies LauncherTile),
     ],
   },
   {
@@ -95,7 +95,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       // guard /thanh-toan (người chỉ có quyền xem không thấy ô này).
       { id: 'thanh-toan', title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, accent: '#ea580c', module: 'thu_tien', action: 'collect' },
       ...launcherFieldsFor('invoices').map((x) => ({ ...x, icon: Receipt, accent: '#d6453f' }) satisfies LauncherTile),
-      { id: 'meters', title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, accent: '#0891b2', module: 'meter_readings' },
+      ...launcherFieldsFor('meters').map((x) => ({ ...x, icon: Gauge, accent: '#0891b2' }) satisfies LauncherTile),
       ...launcherFieldsFor('cashbook').map((x) => ({ ...x, icon: CreditCard, accent: '#7c3aed' }) satisfies LauncherTile),
       ...launcherFieldsFor('funds').map((x) => ({ ...x, icon: Wallet, accent: '#ca8a04' }) satisfies LauncherTile),
       ...launcherFieldsFor('salary').map((x) => ({ ...x, icon: Coins, accent: '#eab308' }) satisfies LauncherTile),

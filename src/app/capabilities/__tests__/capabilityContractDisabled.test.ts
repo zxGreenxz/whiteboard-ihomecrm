@@ -77,14 +77,17 @@ describe("capability registry ↔ bề mặt thật (cờ TẮT)", () => {
     },
   );
 
-  it.each(luonBat.map((c) => [c.id, c.primaryRoute] as const))(
+  // Chỉ đòi bề mặt nào capability KHAI là có. Bản đầu của hai ca này đòi cả nav
+  // lẫn tile cho mọi capability luôn-bật — đúng lúc viết (cả bốn đều có đủ hai),
+  // sai ngay khi có bề mặt chỉ nằm ở sidebar.
+  it.each(luonBat.filter((c) => c.surfaces.desktopNav).map((c) => [c.id, c.primaryRoute] as const))(
     "%s (luôn bật): VẪN còn mục sidebar trỏ tới %s",
     (_id, route) => {
       expect(navItems.some((i) => i.href === route)).toBe(true);
     },
   );
 
-  it.each(luonBat.map((c) => [c.id, c.primaryRoute] as const))(
+  it.each(luonBat.filter((c) => c.surfaces.mobileLauncher).map((c) => [c.id, c.primaryRoute] as const))(
     "%s (luôn bật): VẪN còn tile launcher trỏ tới %s",
     (_id, route) => {
       expect(tiles.some((t) => t.href === route)).toBe(true);
