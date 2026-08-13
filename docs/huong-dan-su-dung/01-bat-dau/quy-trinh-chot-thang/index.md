@@ -1,6 +1,6 @@
 ---
 title: "Quy trình: Chốt tháng tài chính"
-description: "Bốn chặng khép sổ cuối tháng theo đúng thứ tự: đối soát số sổ quỹ, xem kết quả kinh doanh (KQKD/P&L), chốt-khoá và chia lợi nhuận cho cổ đông, rồi chốt & trả lương quản lý."
+description: "Bốn chặng khép sổ cuối tháng, quyền và hành động khoá/chi tiền; phân biệt KQKD phát sinh với lợi nhuận đã chốt."
 routes: []
 permissions: []
 viewport: desktop
@@ -13,13 +13,17 @@ status: published
 
 # Quy trình: Chốt tháng tài chính
 
-Cuối mỗi tháng, bạn — chủ nhà hoặc kế toán — cần "khép sổ" theo một trình tự cố định để con số lợi nhuận chia cho cổ đông và lương trả cho quản lý là **đúng và bất biến**. Trình tự đó gồm bốn chặng nối tiếp: **Đối soát số sổ quỹ => Xem KQKD / P&L => Chốt-khoá & chia lợi nhuận cổ đông => Chốt & trả lương**. Thứ tự này **không hoán đổi được**: phải khớp tiền trong sổ trước khi tính lãi, phải soi kết quả kinh doanh trước khi khoá, và **phải chốt lợi nhuận trước khi chốt lương** vì cột "Đầu tư" của bảng lương đọc phần lợi nhuận **đã khoá** của quản lý-là-cổ-đông. Trang này là bản đồ xuyên suốt bốn chặng — mỗi mắt xích dẫn tới một trang thao tác chi tiết. Đọc trang này trước để nắm dòng chảy, rồi mở từng trang khi làm thật.
+Cuối mỗi tháng, bạn — chủ nhà hoặc kế toán — cần khép sổ theo một trình tự cố định. `Profit Close V2` có snapshot, source hash, revision và cơ chế mở/chốt lại; nhưng các báo cáo đầu vào vẫn có reader sai cohort/semantics. Vì vậy con số chỉ được coi là **đã chốt theo nguồn snapshot**, không mặc định mọi con số đang hiển thị đều đúng. Trình tự vận hành vẫn là **đối soát sổ => xem KQKD phát sinh => chốt lợi nhuận => chốt và trả lương**.
 
 ::: info Điều kiện tiên quyết
-- Tài khoản **chủ nhà** (hoặc admin) — **chốt-khoá lợi nhuận** và **chốt lương** chỉ chủ làm được. **Chốt sổ quỹ** cần hai người: người đang giữ sổ đề nghị, còn **chủ nhà hoặc kế toán** ký nhận.
+- Quyền chi tiết nằm ở catalog: `shareholder_profit.lock/unlock/distribute`, `salary.lock/unlock/distribute`, `cashbooks.close_propose/close_confirm` và các quyền xem tương ứng. Không suy quyền chỉ từ tên vai trò.
 - Trong tháng đã **thu tiền, ghi thu/chi và bàn giao** đầy đủ — nếu còn tiền chưa vào sổ, số KQKD sẽ thiếu. Xem [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) và [Quy trình: Bàn giao & đối soát](/01-bat-dau/quy-trinh-ban-giao/).
 - Đã khai **cổ đông & tỷ lệ %** cho từng toà (nếu chia lợi nhuận) và **danh sách quản lý hưởng lương** (nếu chốt lương) — hai phần này cấu hình ngay trong màn tương ứng ở Bước 3 và Bước 4.
 - Nắm sơ giao diện và menu bên trái — xem [Làm quen giao diện](/01-bat-dau/lam-quen-giao-dien/).
+:::
+
+::: warning Phân biệt hai nghĩa "lợi nhuận"
+Tab **Phân bổ lợi nhuận/KQKD phát sinh** có thể gồm phiếu đang chờ duyệt; **lợi nhuận đã chốt/đủ điều kiện chia** là snapshot của thao tác Close. Trước khi chốt, kiểm pending, settlement bị huỷ, phiếu cọc/phi KQKD và mọi ngoại lệ thanh lý. Không lấy thẻ KQKD phát sinh làm số tiền được phép chi ngay.
 :::
 
 ## Hướng dẫn từng bước
@@ -46,7 +50,7 @@ Người ký phải **khác** người đề nghị. Sổ nào chỉ một mình
 Lúc vừa trao tiền là lúc duy nhất người giữ sổ còn nhớ rõ số lẻ còn lại trong két. Dồn cả tháng rồi mới đếm là phải dò lại từ đầu. Tab **Chốt LN tháng** sẽ nhắc *"còn N sổ chưa chốt tháng M"* nếu bạn bỏ sót.
 :::
 
-**Bước 2**: **Xem kết quả kinh doanh (KQKD / P&L).** Mở màn [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) => tab **Phân bổ lợi nhuận**. Chọn **tháng** cần khép và (tuỳ chọn) một **toà** ở ô lọc. Trang hiện ba thẻ tổng **Doanh thu / Chi phí / Lợi nhuận** cùng **sổ phân bổ hai cột Thu | Chi** để bạn soi từng khoản trước khi khoá. Đây là bước **đối chiếu, chưa ghi gì** — hãy đọc kỹ hai công tắc quan trọng dưới đây rồi mới sang Bước 3.
+**Bước 2**: **Xem kết quả kinh doanh phát sinh (KQKD / P&L).** Mở màn [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/) => tab **Phân bổ lợi nhuận**. Chọn tháng/toà và soi từng khoản. Đây là bước **đối chiếu, chưa ghi gì**: rà riêng phiếu chờ duyệt, settlement đã huỷ, cọc/phi KQKD và các khoản thanh lý thiếu hồ sơ trước khi sang Bước 3.
 
 ::: tip Hai công tắc quyết định con số Lợi nhuận
 - **Phân bổ theo kỳ áp dụng** (mặc định **bật**): chia đều tiền của một khoản ra các tháng trong kỳ áp dụng — đây là cách tính **dồn tích** khớp với số sẽ được khoá ở Bước 3. Tắt đi thì ghi nhận theo **ngày lập phiếu**, dùng để đối chiếu dòng tiền chứ không phải để chốt.
@@ -60,7 +64,7 @@ Lúc vừa trao tiền là lúc duy nhất người giữ sổ còn nhớ rõ s�
 :::
 
 ::: warning Chốt LN SAU KHI HẾT THÁNG
-Chốt giữa tháng là chốt trên số liệu **còn thiếu những ngày chưa tới**. Nặng hơn: từ 30/07/2026 mọi phiếu thu/chi của tháng đã chốt bị **khoá** — muốn ghi tiếp bạn phải bấm *Mở khoá tháng*, mà mở khoá thì **xoá phần đã chia** và phải chốt lại. Cứ đợi qua ngày cuối tháng rồi chốt một lần là xong. Tab **Chốt LN tháng** có cảnh báo sẵn (tháng chưa kết thúc · còn sổ quỹ chưa chốt) nhưng **không chặn** — quyết định vẫn là của bạn.
+Chốt giữa tháng là chốt trên số liệu **còn thiếu những ngày chưa tới**. Sau khi một tháng đã chốt, các phiếu thu/chi thuộc tháng đó bị **khoá** — muốn ghi tiếp bạn phải bấm *Mở khoá tháng*, mà mở khoá thì **xoá phần đã chia** và phải chốt lại. Cứ đợi qua ngày cuối tháng rồi chốt một lần là xong. Tab **Chốt LN tháng** có cảnh báo sẵn (tháng chưa kết thúc · còn sổ quỹ chưa chốt) nhưng **không chặn** — quyết định vẫn là của bạn.
 :::
 
 ::: warning Nút "Chốt tháng" áp cho tất cả toà và mở khoá sẽ xoá phần đã chia
@@ -99,6 +103,7 @@ Mỗi chặng chốt tháng là một màn hình riêng — bảng dưới tóm 
 | --- | --- |
 | Số KQKD nhỏ hơn tiền đã thu trong tháng | Phần **tiền cọc** gộp trong hoá đơn tháng đầu **không** tính vào Lợi nhuận. Bật **"Hiện cả khoản không hạch toán KQKD (cọc…)"** để thấy phần cọc đã được tách ra — đó là đúng thiết kế, không phải thiếu số. |
 | Con số hai tab "Phân bổ lợi nhuận" và "Chốt LN tháng" lệch nhau | Kiểm tra công tắc **Phân bổ theo kỳ áp dụng**: tab Chốt LN luôn dùng số **dồn tích**; nếu ở tab Phân bổ bạn tắt công tắc này (ghi nhận theo ngày phiếu) thì hai bên sẽ lệch. Bật lại để khớp. |
+| KQKD phát sinh lớn hơn số đủ điều kiện chốt | Có thể còn phiếu chờ duyệt hoặc settlement huỷ bị reader cộng. Mở chi tiết nguồn, xử lý/loại ngoại lệ trước; chỉ chi theo snapshot Close đã xác minh. |
 | Đã chốt LN nhưng cột **Đầu tư** ở bảng lương vẫn trống | Cột Đầu tư chỉ đọc lợi nhuận ở trạng thái **Đã chốt (LOCKED)**. Nếu tháng đó còn **Nháp**, hãy quay lại tab Chốt LN tháng và bấm **Chốt tháng** trước, rồi mở lại bảng lương. |
 | Bảng lương trống trơn, không có ai | Chưa cấu hình người hưởng lương. Vào tab **Cấu hình** của màn Bảng lương, thêm quản lý + lương cứng/tiền phòng, rồi quay lại tab Bảng lương tháng. |
 | Mở khoá một tháng xong thấy mất hết phần đã chia cổ đông | Đúng thiết kế: **mở khoá xoá toàn bộ phần đã chia (allocations)**. Bấm **Chốt tháng** lại để tạo lại snapshot theo tỷ lệ hiện tại. Chỉ mở khoá khi thật sự cần sửa. |
@@ -107,19 +112,19 @@ Mỗi chặng chốt tháng là một màn hình riêng — bảng dưới tóm 
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/reports/finance/profit-distribution" app-label="Mở màn Chia lợi nhuận" fixtures="Cổ đông: DEMO Cổ Đông Xuân 60% + DEMO Cổ Đông Yến 40% trên Tòa DEMO A; hợp đồng đang thuê A202 (Bùi Thị Hoa, cọc đủ 4.000.000đ) và A203 (Ngô Văn Ích, còn hoá đơn quá hạn 4.570.000đ); ví cá nhân có 3 giao dịch; bảng lương chưa cấu hình" view-only>
+<SandboxTry account="demo.chunha" app-path="/reports/finance/profit-distribution" app-label="Mở màn Chia lợi nhuận" fixtures="Đọc đúng tháng và các dòng đang hiển thị; snapshot tài chính DEMO có thể là 0đ khi chưa phát sinh chứng từ." view-only>
 
-Đây là chế độ **chỉ xem** — nhiệm vụ của bạn là **đi mắt theo chuỗi chốt tháng: KQKD => chia lợi nhuận => chốt lương**, không thao tác khoá hay ghi tiền. Tòa DEMO A là dữ liệu triển lãm, cứ xem thoải mái.
+Đây là chế độ **chỉ xem** — nhiệm vụ của bạn là **đi mắt theo chuỗi chốt tháng: KQKD => chia lợi nhuận => chốt lương**, không thao tác khoá hay ghi tiền.
 
-1. **Xem KQKD (tab Phân bổ lợi nhuận):** chọn tháng hiện tại. Đọc ba thẻ **Doanh thu / Chi phí / Lợi nhuận** của **Tòa DEMO A**. Bật thử công tắc **"Hiện cả khoản không hạch toán KQKD (cọc…)"** để thấy phần **cọc** (ví dụ cọc **4.000.000đ** của A202) nằm ngoài Lợi nhuận, và để ý hoá đơn **quá hạn 4.570.000đ** của A203 vẫn là **công nợ chưa thu** — nó không làm tăng tiền mặt nhưng doanh thu đã được ghi dồn tích.
-2. **Xem phần chia cổ đông (tab Chốt LN tháng):** mở bảng **LN theo nhà** của Tòa DEMO A, nhìn cột **LN chia cổ đông** rồi xuống khối **Xem trước chia cho cổ đông** — hình dung lợi nhuận được tách **60% cho DEMO Cổ Đông Xuân** và **40% cho DEMO Cổ Đông Yến**. (Nút **Chốt tháng** ở chế độ xem bạn chỉ quan sát, đừng bấm.)
-3. **Xem công nợ cổ đông (tab Tổng quan):** đọc bảng **Theo cổ đông** với ba cột **Được chia / Đã ứng / Còn lại** cho Xuân và Yến. Đây là số mà nút **Chi** sẽ trả ra thành phiếu chi thật khi khép sổ.
+1. **Xem KQKD (tab Phân bổ lợi nhuận):** chọn tháng cần kiểm tra, đọc ba thẻ **Doanh thu / Chi phí / Lợi nhuận** và bộ lọc toà. Nếu tất cả là `0đ`, giữ nguyên kết luận “kỳ chưa có số liệu”, không chèn ví dụ cọc/công nợ từ fixture cũ.
+2. **Xem phần chia cổ đông (tab Chốt LN tháng):** đọc bảng **LN theo nhà** và khối **Xem trước chia cho cổ đông** nếu có dòng. Nếu không có lợi nhuận đủ điều kiện, nút chốt/chi không phải công cụ tạo dữ liệu thử.
+3. **Xem công nợ cổ đông (tab Tổng quan):** đọc các cột **Được chia / Đã ứng / Còn lại** trên đúng các cổ đông đang hiển thị; tỷ lệ và tên có thể thay đổi theo cấu hình hiện tại.
 4. **Xem bước chốt lương:** mở [Bảng lương](/03-quan-ly-van-hanh/bang-luong/). Ở đây bảng đang **trống vì chưa cấu hình** — quan sát thông điệp hướng dẫn và ghé tab **Cấu hình** để thấy nơi khai **quản lý hưởng lương + lương cứng**. Hình dung: sau khi cấu hình và **chốt lợi nhuận** ở bước trên, cột **Đầu tư** của quản lý-là-cổ-đông mới có số để tính vào lương.
 
-Kết quả mong đợi: bạn dựng được bức tranh khép sổ cuối tháng — **đối soát cho sổ về 0 => xem KQKD (cọc đã bị loại, công nợ còn treo) => chốt-khoá lợi nhuận và chia 60/40 cho hai cổ đông => chốt & trả lương** — và hiểu vì sao **phải chốt lợi nhuận trước khi chốt lương**.
+Kết quả mong đợi: bạn dựng được bức tranh khép sổ cuối tháng — **đối soát sổ => xem KQKD => chốt-khoá lợi nhuận => phân bổ theo cấu hình cổ đông => chốt & trả lương** — và hiểu vì sao **phải chốt lợi nhuận trước khi chốt lương**.
 
 :::tip
-Trên sandbox bạn cứ mở xem thoải mái — đây là dữ liệu demo, không ảnh hưởng số liệu thật. Muốn xem một sổ chi tiêu riêng tư tách khỏi hệ thống, ghé [Ví cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) (có sẵn **3 giao dịch demo**) — ví này không đụng sổ quỹ hay báo cáo.
+[Ví cá nhân](/03-quan-ly-van-hanh/vi-ca-nhan/) là bề mặt riêng, không dùng số của ví để bù vào sổ quỹ hoặc KQKD. Snapshot ngày 13/08/2026 của tài khoản DEMO đang rỗng.
 :::
 
 </SandboxTry>

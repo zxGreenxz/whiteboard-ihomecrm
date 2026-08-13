@@ -2,11 +2,11 @@
 title: "Cài đặt chung"
 description: "Bật/tắt và tinh chỉnh hành vi hệ thống theo 5 nhóm: cài đặt cơ bản (logo, kiểm tra vị trí nghiệm thu), hợp đồng, hoá đơn, thu chi và thông báo."
 routes: ["/settings/general"]
-permissions: [{module: settings, action: view}]
+permissions: [{module: settings, action: view}, {module: settings, action: edit}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-20"
+  date: "2026-08-13"
   account: demo
 status: published
 ---

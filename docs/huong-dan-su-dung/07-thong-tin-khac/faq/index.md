@@ -1,110 +1,124 @@
 ---
 title: "Câu hỏi thường gặp (FAQ)"
-description: "Giải đáp nhanh những điều dễ gây bối rối khi vận hành: cọc không tính doanh thu, hợp đồng gia hạn vẫn ACTIVE, còn nợ nằm ở đâu, làm tròn tiền, phòng tự khoá cọc, nợ cũ, hai kiểu thanh lý, sổ thu tự chọn."
+description: "Giải đáp các điểm dễ nhầm trong bản hiện hành: duyệt khác ghi sổ, cọc, làm tròn, nợ cũ, hoàn tiền, báo cáo legacy, route chuyển hướng và RBAC V3."
 routes: []
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
 
 # Câu hỏi thường gặp (FAQ)
 
-Trang này gom những câu hỏi bạn hay gặp nhất khi dùng ptcrm — không phải lỗi phần mềm, mà là những chỗ **hệ thống cố tình làm khác** với suy nghĩ trực giác (cọc không phải doanh thu, hợp đồng gia hạn vẫn "đang hiệu lực", phòng tự khoá khi có cọc…). Mỗi câu có một đáp án ngắn kèm link sang trang hướng dẫn chi tiết. Nếu bạn cần tra nghĩa một thuật ngữ, xem thêm [Thuật ngữ](/07-thong-tin-khac/thuat-ngu/).
+Trang này trả lời các tình huống dễ bị hiểu sai khi vận hành ptcrm. Nội dung ưu tiên **hành vi của code và cấu trúc dữ liệu hiện hành**, đồng thời nói rõ chỗ nào của ứng dụng vẫn còn dùng nguồn legacy để bạn không lấy một con số chưa canonical làm căn cứ quyết định.
 
-::: tip Nguyên tắc xuyên suốt cần nhớ
-- **Tiền chỉ "có thật" khi phiếu thu/chi đã được Duyệt** — phiếu nháp/chưa duyệt/đã huỷ không vào số dư sổ quỹ và không vào báo cáo.
-- **Sổ thu chi (`income_expenses`) là nguồn sự thật duy nhất** cho số dư, dòng tiền và lãi/lỗ. Mọi lần thu tiền hoá đơn đều tự sinh một phiếu thu tương ứng, nên các báo cáo không đếm trùng.
-- **Cọc là tiền giữ hộ khách, không phải doanh thu.** Đây là gốc rễ của nhiều câu hỏi bên dưới.
+## Phiếu đã duyệt có phải tiền đã vào hoặc ra quỹ chưa?
+
+**Không.** Finance V2 tách bốn trục độc lập:
+
+| Trục | Trả lời câu hỏi |
+|---|---|
+| `approval_status` | Phiếu đã được phê duyệt workflow chưa? |
+| `review_state` | Phiếu chờ duyệt, cần bổ sung hay đang tranh chấp? |
+| `posting_mode` | Phiếu có đi qua sổ quỹ hay chỉ là bút toán không tiền? |
+| `posting_status` | Posting đã ghi sổ, chưa ghi, đã đảo hay không áp dụng? |
+
+Một phiếu `APPROVED/UNPOSTED` chỉ là **Đã Duyệt - Chưa Thu/Chi**. Chỉ `posting_status=POSTED` mới hiện **Đã Thu** hoặc **Đã Chi** và mới được coi là tiền thật trong sổ. Phiếu `NON_CASH/NOT_APPLICABLE` là **Đã ghi nhận - Không qua sổ**; `REVERSED` là **Đã hoàn tác**.
+
+::: danger Khi đối soát tiền
+Không kết luận từ chữ **Đã duyệt**. Hãy mở phiếu, kiểm trạng thái **Đã Thu/Đã Chi**, sổ quỹ, posting và lịch sử hoàn tác. Báo cáo dòng tiền canonical đọc posting line còn hiệu lực, gồm cả dòng `POSTING` và `REVERSAL`.
 :::
 
-## Tiền cọc, doanh thu & làm tròn
+## Vì sao cọc không được tính vào doanh thu?
 
-### Vì sao tiền cọc khách nộp không được tính vào doanh thu?
+Cọc là khoản đang giữ cho khách, không phải doanh thu vận hành. Nguồn cọc hiện hành nằm ở **hạng mục phiếu thu chi có `is_deposit=true` / accounting class cọc**, gắn với hợp đồng và posting tương ứng. Khi thu chung với hoá đơn, hệ thống vẫn phải tách phần cọc khỏi phần doanh thu.
 
-Cọc là khoản **giữ hộ khách**, sẽ hoàn/cấn trừ lúc thanh lý — nên nó **không phải kết quả kinh doanh**. Khi bạn thu một hoá đơn có gộp phần cọc còn thiếu, hệ thống tự **tách phần cọc thành hạng mục riêng "Tiền cọc"** trên phiếu thu và loại phần đó ra khỏi lãi/lỗ (chỉ phần tiền phòng/dịch vụ mới vào kết quả kinh doanh). Tiền cọc được ghi vào sổ ảo **"CỌC (giữ hộ khách)"** và tất toán về 0 cho mỗi hợp đồng khi thanh lý. Xem [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/) và báo cáo lãi/lỗ đã loại cọc tại [Phân tích tài chính](/04-bao-cao/phan-tich-tai-chinh/).
+Trang **Đặt cọc** dùng nguồn canonical này. Riêng báo cáo **Danh sách cọc** hiện vẫn đọc bảng legacy `deposits`; production được đối chiếu ngày 13/08/2026 cho thấy nguồn legacy trả 0 trong khi nguồn canonical còn hơn 1,288 tỷ đồng cọc active. Vì vậy không dùng tổng ở báo cáo legacy để kết luận công ty không giữ cọc. Xem [Danh sách cọc](/04-bao-cao/danh-sach-coc/) để biết giới hạn hiện tại.
 
-### Vì sao "Dòng tiền" cao hơn doanh thu trong báo cáo lãi/lỗ?
+## Cọc còn thiếu khi ký hợp đồng được xử lý thế nào?
 
-Vì hai báo cáo đo hai thứ khác nhau. **[Dòng tiền](/04-bao-cao/dong-tien/)** đo **tiền thật vào/ra quỹ theo ngày chứng từ**, nên nó gồm **cả tiền cọc** và cả **cặp phiếu chuyển bàn giao nội bộ** (làm phồng cả Thu lẫn Chi cùng một số). Còn **[Phân tích tài chính](/04-bao-cao/phan-tich-tai-chinh/)** đo **kết quả kinh doanh (KQKD)**: đã loại cọc và phân bổ theo kỳ áp dụng. Vì vậy Thu vào ở Dòng tiền thường **lớn hơn** doanh thu KQKD — không phải sai lệch số liệu.
+Contract V2 hỗ trợ đúng hai cách:
 
-### Vì sao tổng hoá đơn bị làm tròn? Tiền lẻ vài trăm đồng đi đâu?
+1. **Nợ cọc (`DEBT`)** — bắt buộc nhập **lý do** và **hạn bổ sung**.
+2. **Thu ở hoá đơn đầu (`FIRST_INVOICE`)** — hoá đơn đầu phải có đúng dòng cọc tương ứng phần thiếu; phần này được theo dõi là cọc, không được lọt vào doanh thu.
 
-Hệ thống **làm tròn phần lẻ dưới 1.000đ về bội số 1.000** cho tổng hoá đơn (ví dụ 1.234.900đ → 1.235.000đ) để tiện thu tiền mặt. Ngoài ra, khi thu tiền còn dư một khoản rất nhỏ (dưới 10.000đ), phần lẻ đó được ghi nhận qua sổ **"Làm tròn tiền thiếu"** để hoá đơn khép về **Đã thanh toán** thay vì treo nợ vài trăm đồng. Đây là hành vi cố ý, không phải mất tiền. Xem [Sinh hoá đơn](/03-quan-ly-van-hanh/sinh-hoa-don/) và [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/).
+Cọc thiếu không còn được tự đẩy vào “nợ cũ” của hoá đơn doanh thu. Nó được theo dõi riêng trên hợp đồng và luồng cọc.
 
-## Hợp đồng & phòng
+## Ba chỗ làm tròn tiền có giống nhau không?
 
-### Hợp đồng đã gia hạn sao trạng thái vẫn là "Đang hiệu lực" (ACTIVE)?
+**Không.** Đây là ba cơ chế khác nhau:
 
-Đúng thiết kế. Từ bản 06/2026, **gia hạn hợp đồng được thực hiện tại chỗ và GIỮ nguyên trạng thái ACTIVE** (đổi ngày kết thúc / giá thuê / cọc), không còn trạng thái riêng "EXTENDED" như trước. Việc "đã gia hạn" được thể hiện bằng **nhãn "Đã gia hạn"** trên hợp đồng (suy từ lịch sử gia hạn), chứ không đổi trạng thái. Nhờ vậy một phòng luôn chỉ có đúng một hợp đồng "đang hiệu lực". Xem [Gia hạn / chuyển phòng](/03-quan-ly-van-hanh/gia-han-chuyen-phong/).
+| Ngữ cảnh | Quy tắc hiện hành |
+|---|---|
+| Tổng hoá đơn | Lấy 3 chữ số cuối: `< 900đ` làm tròn **xuống**, `>= 900đ` làm tròn **lên** bội 1.000. Ví dụ `1.299.500 → 1.299.000`, `1.299.900 → 1.300.000`. |
+| Khi thu tiền | Phần còn thiếu dương `< 10.000đ` có thể được ghi nhận là làm tròn để khép hoá đơn, nhưng **không được bỏ qua phần cọc còn thiếu**. |
+| Khi kéo nợ cũ | Residual của hoá đơn cũ `< 10.000đ` bị loại khỏi carry-over; cọc thiếu không được cộng vào nợ cũ. |
 
-### Vì sao phòng tự chuyển "Đã cọc / Giữ chỗ" dù tôi chưa duyệt phiếu?
+Vì vậy câu “mọi phần lẻ dưới 1.000đ đều làm tròn lên” là sai.
 
-Ngay khi có **một phiếu cọc giữ chỗ** cho phòng trống, hệ thống tự đặt phòng sang **Đã đặt cọc (RESERVED)** và **ẩn phòng khỏi danh sách phòng trống** ở khắp nơi (Căn hộ/Phòng, Sơ đồ toà nhà, trang công khai) — **kể cả khi phiếu chưa được duyệt**, chỉ trừ phiếu đã huỷ. Bạn không cần chỉnh trạng thái phòng bằng tay: khi phiếu bị **Huỷ** hoặc phiếu cọc được gắn vào hợp đồng, phòng tự cập nhật lại. Lưu ý: hạn "Giữ phòng đến" chỉ là ghi chú — hệ thống **không tự nhả phòng khi hết hạn**; khách bỏ thì bạn Huỷ phiếu. Xem [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/) và [Căn hộ / Phòng](/03-quan-ly-van-hanh/can-ho-phong/).
+## Nợ kỳ trước có tự cộng vào hoá đơn mới không?
 
-### Cọc còn thiếu khi ký hợp đồng thì xử lý sao?
+Có, nhưng hệ thống chỉ lấy các hoá đơn cũ còn residual đủ ngưỡng, tránh cộng trùng nguồn đã carry-over. Các residual dưới 10.000đ không được kéo sang. **Cọc còn thiếu được theo dõi riêng**, không còn nhập chung vào nợ doanh thu.
 
-Khi ký, form tính **Cọc còn thiếu = Cọc cần thu − Cọc đã thu**. Nếu còn thiếu, hệ thống **chặn ký** cho tới khi bạn chọn một trong hai cách: **Nợ cọc** (cho khách nợ, kèm lý do và ngày hẹn bổ sung) hoặc **Thu ở hoá đơn đầu** (gộp phần thiếu thành hạng mục "Tiền cọc" trong hoá đơn tháng đầu). Badge ở tab **Đủ / Thiếu cọc** cho biết hợp đồng đang ở cách nào. Xem [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) và [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/).
+Các route báo cáo công nợ cũ `/reports/finance/new-contract-debt`, `/reports/finance/debt` và `/reports/finance/customer-debt` hiện đều chuyển hướng về `/thu-tien`. Hãy dùng màn **Thu tiền** để xem số còn phải thu và xử lý thanh toán.
 
-## Hoá đơn, thu tiền & công nợ
+## Hoàn tiền hoá đơn có chi tiền ngay không?
 
-### Khách trả một phần rồi, phần còn nợ nằm ở đâu?
+**Không ở bước tạo nghĩa vụ hiện tại.** Core tạo phiếu hoàn ở trạng thái `UNAPPROVED/UNPOSTED`, chưa gán sổ (`account_id=NULL`). Nó chưa phải tiền đã chi. Chỉ khi phiếu được duyệt đúng workflow, gán sổ và posting thành `POSTED` thì mới là **Đã Chi**.
 
-Sau khi thu một phần, hoá đơn chuyển sang **Thu một phần** và phần còn thiếu = **Tổng hoá đơn − Đã thu**. Số "đã thu" luôn được tính lại từ các phiếu thu đã duyệt (đã trừ tiền thối), nên bạn không sửa tay. Theo dõi và thu nốt ngay trong luồng [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) hoặc mở lại [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/).
-
-### Nợ cũ kỳ trước có tự cộng vào hoá đơn tháng sau không?
-
-Có. Khi bạn **sinh hoá đơn kỳ mới**, hệ thống tự **cộng phần nợ chưa trả của (các) kỳ trước** vào hoá đơn tháng này và ghi rõ nguồn nợ được kéo sang. Nhờ vậy khách chỉ cần trả một hoá đơn là dứt điểm cả nợ cũ lẫn tiền kỳ mới. Muốn xem nợ cũ được cộng thế nào, xem [Sinh hoá đơn](/03-quan-ly-van-hanh/sinh-hoa-don/); muốn xử lý số còn phải thu, mở [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/).
-
-### Khi thu tiền, tiền vào sổ quỹ nào? Vì sao tôi không chọn được sổ?
-
-Ở màn **thu tiền nhanh trên điện thoại** (`/thu-tien`), bạn có thể chọn **TM / TK / TT**; form nhiều dòng cho phép tách nhiều phương thức trong cùng lần thu. Sổ mặc định được resolve theo phương thức: TM ưu tiên sổ **"…Thu"** của bạn rồi **"Chung"**/sổ tên toà; TK/TT dùng sổ mặc định của toà hoặc sổ tên toà. Nếu báo lỗi không tìm thấy sổ, hãy cấu hình sổ phù hợp hoặc nhờ quản trị kiểm tra scope. Xem [Thu tiền trên điện thoại](/03-quan-ly-van-hanh/thu-tien-mobile/) và [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/).
-
-### Bàn giao tiền là gì và khi nào phải nộp?
-
-Tiền mặt bạn thu của khách vẫn đang **bạn cầm** cho tới khi **nộp lên** cấp trên. Thao tác **Bàn giao** tạo một phiên nộp tiền: bạn chọn các phiếu thu gốc rồi gửi cho người nhận (phải **cùng đội**); khi người nhận **Xác nhận**, hệ thống sinh **một phiếu chi trên sổ của bạn + một phiếu thu tổng trên sổ người nhận**, và khoá các phiếu gốc để không sửa/xoá. Số bạn **còn phải nộp** chính là số dư sổ bạn đang giữ. Xem [Bàn giao & đối soát](/03-quan-ly-van-hanh/ban-giao-doi-soat/) và báo cáo chu kỳ [Thu — Bàn giao](/04-bao-cao/thu-ban-giao/).
-
-## Thanh lý & phân quyền
-
-### Thanh lý "trả cọc" (move-out) và "bỏ cọc" (forfeit) khác nhau thế nào?
-
-Hai kiểu khác nhau ở **số phận của tiền cọc**:
-
-- **Thanh lý trả khách (move-out):** khách rời phòng đúng thoả thuận. Hệ thống **cấn trừ cọc + tiền thừa vào nợ và các khoản thu thêm** (tiền phòng lẻ ngày, chốt điện cuối kỳ, phí khác); phần cấn trừ ghi thành **"Doanh thu thanh lý" (có vào kết quả kinh doanh)**, phần **ròng còn lại thì trả khách** (nếu dư cọc) hoặc **thu thêm của khách** (nếu thiếu). Sổ CỌC tất toán về 0.
-- **Bỏ cọc (forfeit):** khách vi phạm / bỏ ngang, **mất cọc**. Cọc thực thu **trở thành doanh thu**, hệ thống dùng khoản cọc này gạch **Đã thanh toán** cho hoá đơn thanh lý; **các hoá đơn nợ cũ bị HUỶ**. Cần **Duyệt** phiếu thì việc bỏ cọc mới hoàn tất.
-
-Xem [Thanh lý trả khách (move-out)](/03-quan-ly-van-hanh/thanh-ly-move-out/) và [Bỏ cọc (forfeit)](/03-quan-ly-van-hanh/thanh-ly-forfeit/).
-
-::: warning Bỏ cọc là thao tác khó hoàn tác
-Bỏ cọc **huỷ các hoá đơn nợ cũ** và biến cọc thành doanh thu sau khi duyệt. Hãy chắc chắn đã chốt điện/nước và các khoản thu thêm trước khi thực hiện — làm sai thì việc dựng lại hiện trạng rất mất công.
+::: warning Giới hạn đang biết của luồng hoàn tiền
+UI và server hiện còn sai khác về ngày hoàn, sổ quỹ, response key và cách tính trần hoàn. Vì vậy sau khi tạo yêu cầu, phải kiểm tra phiếu thật trong Thu chi/Sổ quỹ; không suy “bấm Lập phiếu chi” là tiền đã ra quỹ.
 :::
 
-### Là nhân viên, vì sao tôi không thu được tiền hoặc không thấy phòng của toà khác?
+## Báo cáo Tiền thừa có phải số dư credit khách hàng chính xác không?
 
-Nhân viên chỉ thấy và thao tác trên **các toà được gán phạm vi** cho mình; toà ngoài phạm vi sẽ không hiện trong danh sách và ô lọc. Ngoài ra mỗi hành động (tạo hợp đồng, thu tiền, duyệt phiếu…) còn cần **quyền tương ứng**. Nếu một trang trống trơn hoặc một nút bị ẩn/mờ, thường là do **phạm vi toà** hoặc **thiếu quyền**, chứ không phải lỗi. Nhờ chủ nhà kiểm tra tại [Phân quyền](/05-cai-dat/phan-quyen/) và [Nhân viên & đội ngũ](/05-cai-dat/nhan-vien-doi-ngu/). Cũng nên kiểm tra ô lọc toà còn dính giá trị cũ (bộ lọc được giữ qua F5).
+Chưa. Báo cáo hiện tính `paid_amount - total_amount` trên hoá đơn. Nguồn authoritative của credit còn lại là `customer_credit_lots.remaining_amount`, vì credit có thể đã được áp dụng hoặc hoàn ở bước khác. Dùng báo cáo hiện tại như **chỉ báo reconciliation theo hoá đơn**, không dùng nó làm số dư nghĩa vụ cuối cùng với khách. Xem [Tiền thừa](/03-quan-ly-van-hanh/tien-thua/) và tab **Tiền thừa** trong [Trung tâm báo cáo tài chính](/04-bao-cao/hub-tai-chinh/).
 
-## Thử trực tiếp trên sandbox
+## Vì sao phòng chuyển sang Đã cọc/Giữ chỗ dù phiếu chưa duyệt?
 
-<SandboxTry account="demo.chunha" app-path="/" app-label="Mở sandbox demo" view-only>
+Trạng thái giữ phòng là một quy tắc vận hành khác với trạng thái tiền. Khi có phiếu giữ chỗ chưa huỷ, phòng có thể chuyển `RESERVED` và bị loại khỏi danh sách phòng trống trước khi phiếu tiền được duyệt/post. Khi huỷ hoặc chuyển cọc vào hợp đồng, trạng thái phòng được tính lại. **Giữ phòng không chứng minh tiền đã vào sổ.**
 
-Bài này **chỉ để khám phá** — bạn dạo quanh dữ liệu mẫu để đối chiếu các câu trả lời ở trên:
+## Hợp đồng gia hạn sao vẫn là ACTIVE?
 
-1. Vào [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/) và [Căn hộ / Phòng](/03-quan-ly-van-hanh/can-ho-phong/): thấy phòng có cọc đã tự chuyển **Đã cọc / Giữ chỗ** và biến khỏi danh sách phòng trống.
-2. Mở [Dòng tiền](/04-bao-cao/dong-tien/) rồi [Phân tích tài chính](/04-bao-cao/phan-tich-tai-chinh/): so hai con số và thấy Dòng tiền (gồm cọc) **cao hơn** doanh thu kết quả kinh doanh.
-3. Gặp tình huống lạ? Tra FAQ này hoặc bấm **Reset sandbox** để làm lại từ đầu với dữ liệu mẫu sạch (Tòa **DEMO A / DEMO B**).
+Gia hạn hiện sửa tiếp hợp đồng đang hiệu lực; hợp đồng vẫn `ACTIVE`, còn dấu “đã gia hạn” đến từ lịch sử gia hạn. `EXTENDED` là mã legacy, không phải trạng thái mới cần chọn.
 
-Kết quả mong đợi: bạn nhận ra hầu hết "điều lạ" đều là hành vi cố ý của hệ thống, và biết trang nào để xem chi tiết.
+## Khi không thấy một nút hoặc trang, kiểm gì trước?
 
-</SandboxTry>
+Kiểm lần lượt:
+
+1. Membership của tài khoản có active trong đúng tổ chức không.
+2. Tài khoản đang mang vai trò nào.
+3. Role binding có scope đúng organization/khu vực/toà/sổ không.
+4. Có override `DENY` hay không — `DENY` thắng `ALLOW`.
+5. Tính năng có bị runtime flag tắt không. OpenClaw Zalo và Network Center có mặc định code `off`; cấp quyền không tự làm route xuất hiện. Riêng production được kiểm tra ngày 13/08/2026 đang bật OpenClaw Zalo, nên đối chiếu deployment hiện tại.
+
+Route quản trị thành viên hiện hành là `/settings/members`; `/settings/staff` chỉ chuyển hướng. Xem [Bảng tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/).
+
+## Vì sao sửa vai trò lại ảnh hưởng nhiều người?
+
+RBAC V3 dùng vai trò thật trong `organization_roles`, không còn là “mẫu chỉ sao chép một lần”. Khi sửa một vai trò tự tạo, quyền của **mọi người đang mang vai trò đó đổi ngay**; màn hình hiển thị số người bị ảnh hưởng trước khi lưu. Vai trò hệ thống chỉ đọc, có thể nhân bản thành vai trò mới để chỉnh.
+
+## Trang Lịch sử cập nhật có phải release log đầy đủ không?
+
+Không. `/changelog` hiện render một mảng tĩnh gồm các mục năm 2024–2025 trong source. Nó không tự đồng bộ commit, migration hay deployment và không phải nguồn phát hành authoritative. Dùng [Ghi chú phiên bản](/07-thong-tin-khac/ghi-chu-phien-ban/) để hiểu giới hạn này.
+
+## Tôi nên làm gì khi nghi giao dịch tiền bị lỗi?
+
+1. Dừng bấm lại để tránh yêu cầu trùng.
+2. Ghi lại URL, thời điểm, người thao tác, toà/phòng/hợp đồng/hoá đơn liên quan.
+3. Kiểm phiếu theo mã/id ở **Thu chi**, kiểm `posting_status`, sổ quỹ và lịch sử reversal.
+4. Kiểm **Sổ quỹ** hoặc báo cáo dựa trên posting; không chỉ nhìn badge duyệt.
+5. Gửi báo lỗi theo mẫu tại [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/), không gửi mật khẩu hay dữ liệu nhạy cảm không cần thiết.
 
 ## Quy trình liên quan
 
-- [Thuật ngữ](/07-thong-tin-khac/thuat-ngu/) — tra nhanh nghĩa các từ chuyên môn dùng trong FAQ này.
-- [Giới thiệu hệ thống](/01-bat-dau/gioi-thieu/) — bản đồ 7 khu chức năng và vòng đời nghiệp vụ tổng quát.
-- [Quy trình khách thuê](/01-bat-dau/quy-trinh-khach-thue/) — từ khách hẹn, đặt cọc đến ký hợp đồng và vận hành.
-- [Quy trình thanh lý](/01-bat-dau/quy-trinh-thanh-ly/) — bức tranh tổng hai kiểu thanh lý trả cọc và bỏ cọc.
-- [Bàn giao & đối soát](/03-quan-ly-van-hanh/ban-giao-doi-soat/) — nộp tiền mặt lên cấp trên và chốt số sổ.
-- [Sandbox demo](/01-bat-dau/sandbox/) — cách vào môi trường thử và nút Reset sandbox.
+- [Thuật ngữ & bảng trạng thái](/07-thong-tin-khac/thuat-ngu/)
+- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/)
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/)
+- [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)
+- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/)
+- [Danh sách cọc](/04-bao-cao/danh-sach-coc/)
+- [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/)

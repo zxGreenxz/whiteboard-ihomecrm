@@ -1,86 +1,121 @@
 ---
 title: "Kênh hỗ trợ"
-description: "Cách liên hệ hỗ trợ, dùng sandbox để thử trước và báo lỗi kèm đủ thông tin để được xử lý nhanh."
+description: "Quy trình tự kiểm tra và báo lỗi có đủ route, id, trạng thái posting, sổ quỹ, quyền và dữ liệu tái hiện — không bịa thông tin liên hệ."
 routes: []
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
 
 # Kênh hỗ trợ
 
-Trang này giúp bạn tự xử lý nhanh khi gặp vướng mắc và biết cách **báo lỗi đúng cách** để được hỗ trợ hiệu quả. Phần lớn thắc mắc ("sao tôi không thấy nút này?", "số liệu lệch?", "thu tiền không được?") có thể tự giải quyết bằng vài bước kiểm tra bên dưới trước khi cần nhờ đến ai. Khi thật sự cần hỗ trợ, một báo lỗi có **đường dẫn + các bước tái hiện + ảnh chụp** sẽ được xử lý nhanh hơn nhiều so với một câu "hệ thống bị lỗi".
+Repo hiện không công bố một số điện thoại, email hay endpoint hỗ trợ cố định để tài liệu có thể dẫn chính xác. Vì vậy hãy dùng **kênh hỗ trợ nội bộ/nhà cung cấp đã được đơn vị bạn thống nhất**, và gửi một bộ bằng chứng đủ để người xử lý đi thẳng vào đúng route, dữ liệu và thời điểm.
 
-## Thử tự xử lý trước
+## Phân loại trước khi gửi
 
-Làm nhanh 4 bước này — đa số vướng mắc dừng lại ở đây:
+| Nhóm | Dấu hiệu | Người xử lý đầu tiên |
+|---|---|---|
+| **Quyền/phạm vi** | Không thấy trang/nút/toà/sổ; người khác thấy nhưng tài khoản bạn không thấy. | Chủ tổ chức hoặc người quản trị vai trò/thành viên. |
+| **Dữ liệu nghiệp vụ** | Chỉ một hợp đồng/hoá đơn/phòng có vấn đề; sandbox hoặc dữ liệu khác chạy đúng. | Quản lý nghiệp vụ/kế toán để kiểm lịch sử và nguồn dữ liệu. |
+| **Lỗi giao diện/runtime** | Trang trắng, lỗi đỏ, thao tác không phản hồi, console/network lỗi. | Nhóm kỹ thuật/nhà cung cấp phần mềm. |
+| **Sai lệch tiền** | Số dư, posting, reversal, hoàn tiền, bàn giao hoặc báo cáo không khớp. | Kế toán + quản trị sổ trước; chuyển kỹ thuật kèm bằng chứng đầy đủ. |
+| **Sai tài liệu** | Route, nhãn, quyền hoặc bước trong docs khác app/code hiện hành. | Nhóm duy trì tài liệu, kèm cả URL docs và URL app. |
 
-1. **Tải lại trang** (F5). Nhiều lỗi hiển thị tạm thời (danh sách trống, số chưa cập nhật) hết ngay sau khi tải lại.
-2. **Kiểm tra quyền và phạm vi toà**. Nếu bạn không thấy một nút, một trang hay một số liệu, rất có thể do **quyền** hoặc **phạm vi toà nhà** của tài khoản. Đối chiếu ở trang [Tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/).
-3. **Tra thuật ngữ**. Nếu một nhãn hay trạng thái khó hiểu (ví dụ `ACTIVE`, cọc "giữ chỗ", KQKD), xem [Thuật ngữ](/07-thong-tin-khac/thuat-ngu/).
-4. **Đọc câu hỏi thường gặp**. Các tình huống hay gặp và cách xử lý gom tại [Câu hỏi thường gặp](/07-thong-tin-khac/faq/).
+## Tự kiểm tra an toàn
 
-::: tip Tái hiện trên sandbox trước khi hỏi
-Nếu vẫn chưa rõ, hãy **thử lại đúng thao tác đó trên sandbox** (dữ liệu demo, tách biệt hoàn toàn với số liệu thật). Nếu sandbox chạy đúng còn dữ liệu thật thì không, khả năng cao là do **dữ liệu hoặc quyền** của tài khoản bạn, không phải lỗi phần mềm. Xem mục **Thử trực tiếp trên sandbox** ở cuối trang.
+### Nếu không thấy trang hoặc nút
+
+1. Sao chép URL hiện tại.
+2. Kiểm tài khoản có membership active trong đúng tổ chức.
+3. Kiểm vai trò, role binding, scope và override `DENY` ở `/settings/members`.
+4. Đối chiếu key tại [Bảng tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/).
+5. Kiểm route có phải đường cũ đã redirect không; ví dụ `/settings/staff` đã chuyển sang `/settings/members`.
+6. Với OpenClaw/Network Center, kiểm runtime flag của đúng deployment; có quyền nhưng runtime `off` thì route vẫn không xuất hiện. Production ngày 13/08/2026 đang hiển thị OpenClaw Zalo.
+
+### Nếu số tiền không khớp
+
+1. **Dừng thao tác lặp lại.** Không bấm Thu/Chi/Hoàn/Bàn giao nhiều lần để “thử”.
+2. Ghi id hoá đơn, payment, phiếu thu chi, hợp đồng, termination hoặc phiên bàn giao liên quan.
+3. Kiểm bốn trục của phiếu: `approval_status`, `review_state`, `posting_mode`, `posting_status`.
+4. Xác định sổ quỹ và người giữ sổ; kiểm có posting `POSTED` hay reversal `REVERSED`.
+5. Đối chiếu Sổ quỹ/Dòng tiền dựa trên posting. **Không chỉ nhìn chữ Đã duyệt.**
+6. Nếu là hoàn tiền hoá đơn, nhớ rằng bước tạo nghĩa vụ hiện tại có thể chỉ tạo `UNAPPROVED/UNPOSTED`, chưa gán sổ và chưa phải tiền đã chi.
+7. Nếu là cọc hoặc tiền thừa, kiểm cảnh báo nguồn dữ liệu: báo cáo cọc và tiền thừa hiện chưa phải nguồn canonical cuối cùng.
+
+::: danger Không “F5 rồi bấm lại” với giao dịch tiền
+Tải lại trang có thể hữu ích cho lỗi hiển thị, nhưng không phải cách xác định giao dịch đã ghi hay chưa. Trước khi thử lại, phải kiểm id giao dịch, posting, sổ quỹ và lịch sử idempotency/reversal. Nếu chưa xác định được, dừng và báo lỗi.
 :::
 
-## Cách liên hệ hỗ trợ
+## Một báo lỗi đầy đủ cần gì?
 
-Chọn đúng người theo loại vấn đề để khỏi mất thời gian chuyển qua lại:
+- **Tiêu đề ngắn:** chức năng + triệu chứng, ví dụ “Thu tiền HĐ 2026-08/B101 tạo nghĩa vụ nhưng chưa vào sổ”.
+- **URL đầy đủ:** cả route app và route docs nếu báo sai tài liệu.
+- **Môi trường:** production hay sandbox; trình duyệt, thiết bị, thời điểm và múi giờ.
+- **Tài khoản nghiệp vụ:** vai trò, organization, toà và scope liên quan; không gửi mật khẩu/token.
+- **Đối tượng:** id và mã dễ đọc của phòng, khách, hợp đồng, hoá đơn, phiếu, sổ hoặc phiên bàn giao.
+- **Các bước tái hiện:** đánh số, bắt đầu từ màn hình nào, bấm gì, nhập gì.
+- **Kết quả mong đợi / thực tế:** viết riêng hai dòng.
+- **Ảnh/video:** chụp cả thông báo và URL; che CCCD, số điện thoại, tài khoản ngân hàng nếu không cần cho việc xử lý.
+- **Bằng chứng tài chính:** bốn trạng thái phiếu, sổ quỹ, số tiền, posting/reversal và lịch sử liên quan.
+- **Console/Network:** chỉ gửi khi biết cách lấy; không dán secret, cookie, authorization header hoặc toàn bộ response chứa PII.
 
-| Loại vấn đề | Liên hệ ai |
-| --- | --- |
-| Không thấy nút/trang, không mở được tính năng, thiếu số liệu của một toà | **Chủ nhà / quản trị viên** trong đơn vị bạn — thường là vấn đề **phân quyền** hoặc **phạm vi toà** (xử lý ở [Phân quyền](/05-cai-dat/phan-quyen/), [Nhân viên & Đội ngũ](/05-cai-dat/nhan-vien-doi-ngu/)). |
-| Quên mật khẩu, cần tạo/khoá tài khoản nhân viên | **Chủ nhà / quản trị viên** — quản lý tại trang quản trị người dùng. |
-| Nghi ngờ lỗi phần mềm: trang trắng, báo lỗi đỏ, thao tác đúng nhưng kết quả sai, số tiền/số liệu lệch không giải thích được | **Nhà cung cấp phần mềm ptcrm** — gửi kèm đủ thông tin ở mục "Khi báo lỗi, hãy gửi kèm" bên dưới. |
-| Góp ý tính năng, thắc mắc nghiệp vụ | Trao đổi nội bộ trước; nếu cần thay đổi phần mềm thì chuyển cho nhà cung cấp. |
+### Mẫu báo lỗi
 
-::: warning Đừng gửi mật khẩu hay ảnh chứa thông tin nhạy cảm
-Khi báo lỗi, **không** gửi mật khẩu của bạn cho bất kỳ ai. Trong ảnh chụp màn hình, hãy che các thông tin nhạy cảm không liên quan đến lỗi (số CCCD, số điện thoại khách thật, số dư tài khoản ngân hàng) nếu không cần thiết cho việc xử lý.
-:::
+```text
+Tiêu đề:
+Môi trường + thời điểm:
+URL app:
+URL tài liệu (nếu có):
+Vai trò / tổ chức / toà:
+Đối tượng và id:
 
-## Khi báo lỗi, hãy gửi kèm
+Các bước:
+1.
+2.
+3.
 
-Một báo lỗi tốt trả lời được ba câu: **ở đâu**, **làm gì**, **thấy gì**. Cụ thể gửi kèm:
+Mong đợi:
+Thực tế:
 
-- **Đường dẫn (route)**: sao chép **toàn bộ URL** trên thanh địa chỉ trình duyệt tại màn hình bị lỗi (ví dụ `https://ptcrm.vercel.app/contracts/...`). Đây là thứ giúp người hỗ trợ tới đúng chỗ nhanh nhất.
-- **Tài khoản và vai trò** đang đăng nhập lúc gặp lỗi (chủ nhà, quản lý toà, kế toán…) và **toà nhà** liên quan.
-- **Các bước tái hiện, đánh số**: liệt kê từng thao tác dẫn tới lỗi. Ví dụ: "1. Vào Thu tiền. 2. Chọn phòng B101. 3. Bấm Thu đủ → hiện lỗi đỏ".
-- **Kết quả mong đợi vs kết quả thực tế**: bạn nghĩ sẽ xảy ra gì, và thực tế đã xảy ra gì.
-- **Ảnh chụp màn hình** nguyên trạng lỗi (chụp cả thanh địa chỉ nếu được). Nếu có hộp thông báo lỗi, chụp đủ nội dung.
-- **Thời điểm** xảy ra (ngày, giờ) — giúp đối chiếu nhật ký.
+Trạng thái tài chính (nếu có):
+- approval_status:
+- review_state:
+- posting_mode:
+- posting_status:
+- sổ quỹ / posting hoặc reversal liên quan:
 
-::: tip Cách lấy thêm lỗi kỹ thuật (không bắt buộc)
-Nếu quen thao tác: nhấn **F12** để mở công cụ nhà phát triển, chọn tab **Console**, tái hiện lại lỗi, rồi chụp các dòng chữ **đỏ** hiện ra. Thông tin này giúp nhà cung cấp phần mềm khoanh vùng nguyên nhân rất nhanh.
-:::
+Đính kèm:
+```
 
-::: danger Với lỗi liên quan đến tiền, đừng lặp lại thao tác nhiều lần
-Nếu lỗi xảy ra khi **thu tiền, chi tiền, bàn giao hoặc thanh lý**, đừng bấm lại nhiều lần vì có thể tạo trùng phiếu vào sổ quỹ. Hãy dừng lại, chụp màn hình, kiểm tra ở [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) xem giao dịch đã ghi hay chưa, rồi mới báo lỗi kèm ảnh.
-:::
+## Tái hiện trên sandbox
 
-## Thử trực tiếp trên sandbox
+Chỉ tái hiện trên sandbox nếu thao tác an toàn và dữ liệu demo cho phép. Nếu lỗi liên quan tiền:
 
-<SandboxTry account="demo.chunha" app-path="/" view-only>
+1. Ghi lại trạng thái ban đầu và id đối tượng.
+2. Thực hiện **một lần** theo đúng bước.
+3. Kiểm phiếu và sổ sau thao tác, không chỉ toast.
+4. Thu thập ảnh/URL/id rồi dừng.
+5. Reset sandbox theo hướng dẫn của môi trường demo nếu bạn đã tạo dữ liệu.
 
-Bài xem: **Trước khi hỏi hỗ trợ, thử tái hiện trên sandbox rồi bấm Reset.**
+Không thử một lỗi production bằng cách ghi vào tổ chức thật chỉ để lấy bằng chứng.
 
-1. Đăng nhập tài khoản demo và đi tới đúng màn hình bạn nghi ngờ có lỗi (dùng dữ liệu **Tòa DEMO A** / **Tòa DEMO B**).
-2. Lặp lại từng bước thao tác giống lúc gặp lỗi trên dữ liệu thật. Vừa làm vừa ghi lại **các bước đã đánh số** — chính là phần bạn sẽ gửi kèm khi báo lỗi.
-3. Nếu tái hiện được lỗi ở đây, chụp màn hình và ghi lại **đường dẫn** trên thanh địa chỉ.
-4. Xong thì mở trang [Sandbox](/01-bat-dau/sandbox/) và bấm **Reset** để trả dữ liệu demo về gốc cho người sau.
+## Không gửi những gì
 
-Kết quả mong đợi: bạn có sẵn một bộ mô tả lỗi gọn (đường dẫn + các bước + ảnh) để gửi hỗ trợ; hoặc phát hiện ra thao tác đúng chạy bình thường trên sandbox, nghĩa là vấn đề nằm ở **quyền/dữ liệu** của tài khoản thật chứ không phải phần mềm.
-
-</SandboxTry>
+- Mật khẩu, OTP, access token, refresh token, cookie hoặc service key.
+- Toàn bộ file cấu hình môi trường.
+- Ảnh chứa PII không liên quan.
+- Câu “hệ thống lỗi” không có URL, thời điểm và bước tái hiện.
+- Kết luận “đã mất tiền” chỉ dựa trên badge **Đã duyệt** mà chưa kiểm posting/sổ.
 
 ## Quy trình liên quan
 
-- [Sandbox](/01-bat-dau/sandbox/) — môi trường demo để tái hiện lỗi an toàn và nút **Reset**.
-- [Câu hỏi thường gặp](/07-thong-tin-khac/faq/) — các tình huống hay gặp và cách tự xử lý.
-- [Tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/) — kiểm tra quyền/phạm vi khi không thấy nút hoặc số liệu.
-- [Thuật ngữ](/07-thong-tin-khac/thuat-ngu/) — giải nghĩa nhãn và trạng thái trong hệ thống.
-- [Ghi chú phiên bản](/07-thong-tin-khac/ghi-chu-phien-ban/) — kiểm tra tính năng có thay đổi gần đây không.
+- [Câu hỏi thường gặp](/07-thong-tin-khac/faq/)
+- [Thuật ngữ & bảng trạng thái](/07-thong-tin-khac/thuat-ngu/)
+- [Bảng tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/)
+- [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/)
+- [Ghi chú phiên bản](/07-thong-tin-khac/ghi-chu-phien-ban/)

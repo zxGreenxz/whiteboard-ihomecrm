@@ -2,12 +2,13 @@
 title: "Bước 2: Tạo tầng & phòng"
 description: "Thêm phòng cho toà nhà, khai báo giá thuê và tiền cọc, hiểu 5 trạng thái phòng tự cập nhật theo hợp đồng và cọc."
 routes: ["/apartments"]
-permissions: [{module: rooms, action: create}]
+permissions: [{module: rooms, action: view}, {module: rooms, action: create}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -17,7 +18,7 @@ Sau khi có toà nhà, bạn khai báo từng **phòng** (căn hộ) bên trong 
 
 ::: info Điều kiện tiên quyết
 
-- Quyền **Căn hộ / Phòng => Thêm** (`rooms.create`).
+- `rooms.view` để mở trang và `rooms.create` để thêm phòng; toà/phòng chỉ hiện trong phạm vi được giao.
 - Đã tạo ít nhất **1 toà nhà đang hoạt động** ở Bước 1 — ô chọn toà trong form chỉ liệt kê toà có trạng thái **Đang hoạt động**.
 - Nắm sẵn giá thuê và tiền cọc dự kiến của từng phòng (cả hai đều bắt buộc).
 
@@ -29,11 +30,11 @@ Sau khi có toà nhà, bạn khai báo từng **phòng** (căn hộ) bên trong 
 
 ![Danh sách căn hộ của Tòa DEMO A với trạng thái, giá thuê và tiền cọc từng phòng](./images/buoc-01-danh-sach.webp)
 
-**Bước 2**: Nếu danh sách dài, dùng ô **Tìm** và **Toà nhà** ở thanh lọc để thu hẹp về đúng toà bạn đang khai báo. Ô **Tầng** chỉ bật lên khi bạn đã chọn đúng 1 toà nhà.
+**Bước 2**: Nếu danh sách dài, dùng ô **Tìm**, bộ lọc nhiều **Toà nhà** hoặc khu vực để thu hẹp. Ô **Tầng** chỉ bật khi bộ lọc còn đúng một toà.
 
 **Bước 3**: Ấn **Thêm** (góc phải trên). Hộp thoại thêm phòng mở ra.
 
-**Bước 4**: Chọn **Toà nhà** cho phòng. Danh sách chỉ hiện các toà **Đang hoạt động**. Nếu chưa có toà mong muốn, ấn mục **+ Thêm toà nhà** ngay trong ô chọn để tạo nhanh (chỉ cần tên + mã) rồi quay lại điền địa chỉ đầy đủ sau ở màn Toà nhà.
+**Bước 4**: Chọn **Toà nhà** cho phòng. Danh sách chỉ hiện toà **Đang hoạt động** trong phạm vi của bạn. Nút **+ Thêm toà nhà** chỉ là lối tạo nhanh tên + mã; form này có thể bị backend chặn vì thiếu địa chỉ bắt buộc, nên đường chuẩn là tạo tại `/buildings` trước.
 
 **Bước 5**: Chọn **Tầng**. Ô tầng lọc theo đúng toà vừa chọn. Nếu tầng chưa có trong danh sách, ấn **+ Thêm tầng** ngay trong ô chọn — đây là cách tạo tầng thật của hệ thống (điền số tầng, hệ thống tự gắn vào toà đang chọn).
 
@@ -43,7 +44,7 @@ Bạn có thể xem lại toàn bộ tầng đã tạo ở **Cài đặt => Danh
 
 **Bước 6**: Điền **Tên phòng** (ví dụ `A101`). Tên phòng phải **duy nhất trong cùng một toà** — trùng tên trong toà sẽ bị chặn với thông báo "Tên phòng đã tồn tại trong toà nhà này". Tên phòng ở hai toà khác nhau thì được phép trùng.
 
-**Bước 7**: Điền **Giá thuê** và **Tiền cọc**. Cả hai đều **bắt buộc** và không được âm (ví dụ giá thuê `3.000.000đ`, tiền cọc `3.000.000đ`). Đây là số mặc định hệ thống gợi ý khi bạn lập hợp đồng cho phòng.
+**Bước 7**: Điền **Giá thuê** và **Tiền cọc**. Giao diện đánh dấu bắt buộc; validation chấp nhận `0` nhưng không chấp nhận số âm. Đây là số mặc định hệ thống gợi ý khi lập hợp đồng.
 
 **Bước 8**: (Tuỳ chọn) Điền thêm **Diện tích**, **Số người ở tối đa**, mô tả, ảnh nếu cần.
 
@@ -61,10 +62,8 @@ Cột trạng thái trên danh sách phản ánh tình trạng thực tế của
 | **Bảo trì** (MAINTENANCE) | Đang sửa chữa, tạm không cho thuê | Đặt tay khi cần |
 | **Ngừng hoạt động** (UNAVAILABLE) | Không đưa vào khai thác | Đặt tay khi cần |
 
-::: warning Trạng thái phòng chủ yếu tự động — đừng sửa tay
-**Đang thuê** và **Đã đặt cọc** do hệ thống tự bật/tắt theo vòng đời hợp đồng và phiếu cọc, không phải bạn gán. Khi hợp đồng kết thúc, phòng tự trả về **Trống**; khi có phiếu cọc giữ chỗ (kể cả phiếu chưa duyệt), phòng tự chuyển **Đã đặt cọc**.
-
-Công tắc bật/tắt nhanh trên bảng chỉ nên dùng cho cặp **Trống ⇄ Ngừng hoạt động**. Bật một phòng đang **Đang thuê** hay **Đã đặt cọc** về **Trống** có thể "mở bán" nhầm phòng đang có khách, và hệ thống không tự khôi phục lại trạng thái **Đang thuê**.
+::: warning Phân biệt trạng thái lưu và trạng thái hiển thị
+Trạng thái **Đang thuê**, **Sắp hết hạn** và **Đã đặt cọc** trên danh sách/sơ đồ được tính từ hợp đồng và cọc đang có. Công tắc nhanh chỉ đổi trạng thái nền **Trống ⇄ Ngừng hoạt động**; nó không thay thế thao tác hợp đồng hoặc cọc.
 :::
 
 ## Các tính năng khác trên màn hình
@@ -72,7 +71,7 @@ Công tắc bật/tắt nhanh trên bảng chỉ nên dùng cho cặp **Trống 
 | Nút / Bộ lọc | Công dụng |
 | --- | --- |
 | Ô **Tìm** | Tìm phòng theo tên, mã hoặc tên khách đang thuê. |
-| **Toà nhà** | Lọc danh sách về đúng 1 toà (hoặc tất cả toà). |
+| **Toà nhà / Khu vực** | Có thể chọn nhiều toà; khu vực là lối tắt chọn nhóm toà. |
 | **Tầng** | Lọc theo tầng — chỉ bật khi đã chọn đúng 1 toà. |
 | **Trạng thái** | Lọc theo Đang hoạt động / Đã đặt cọc / Ngừng hoạt động. |
 | Thẻ thống kê | 4 thẻ: Tổng phòng, Tổng phòng trống, Đã đặt cọc, Sắp hết hạn — tính theo danh sách đang lọc. |
@@ -86,7 +85,7 @@ Các bộ lọc trên đều được **giữ nguyên khi bạn tải lại tran
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Không thấy toà nhà trong ô chọn khi thêm phòng | Ô chọn chỉ liệt kê toà **Đang hoạt động**. Kiểm tra lại trạng thái toà ở Bước 1, hoặc dùng **+ Thêm toà nhà** để tạo nhanh. |
+| Không thấy toà nhà trong ô chọn khi thêm phòng | Toà phải **Đang hoạt động** và nằm trong phạm vi tài khoản. Tạo/sửa toà ở `/buildings`. |
 | Báo "Tên phòng đã tồn tại trong toà nhà này" | Trong một toà, tên phòng phải là duy nhất. Đổi tên khác, hoặc kiểm tra phòng cũ đã bị xoá mềm hay chưa. |
 | Ô **Tầng** bị mờ, không chọn được | Ô tầng chỉ bật khi đã lọc đúng 1 toà nhà. Chọn 1 toà ở ô **Toà nhà** trước. |
 | Không lưu được vì thiếu giá / cọc | **Giá thuê** và **Tiền cọc** đều bắt buộc và không được âm. Điền cả hai (nhập `0` nếu thực sự bằng 0). |
@@ -95,12 +94,12 @@ Các bộ lọc trên đều được **giữ nguyên khi bạn tải lại tran
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/apartments" app-label="Mở màn Căn hộ / Phòng" fixtures="A101..A305, B101..B104">
+<SandboxTry account="demo.quanly" app-path="/apartments" app-label="Mở màn Căn hộ / Phòng" fixtures="DEMO Toà A và DEMO Toà B" view-only>
 
-Trong sandbox đã có sẵn các phòng của **Tòa DEMO A** (A101..A305) và **Tòa DEMO B** (B101..B104) ở nhiều trạng thái khác nhau.
+Tài khoản `demo.quanly` hiện được giao **DEMO Toà A + B**; mỗi toà có ít nhất 10 phòng và có nhiều trạng thái khác nhau. `demo.quanly2` dùng phạm vi **DEMO Toà C + D**.
 
 1. Xem danh sách phòng, quan sát cột trạng thái, giá thuê và tiền cọc.
-2. Lọc ô **Toà nhà** về **Tòa DEMO A** để chỉ còn các phòng A1xx–A3xx.
+2. Lọc ô **Toà nhà** về **DEMO Toà A** để chỉ còn phòng của toà đó.
 3. Ấn vào một phòng để mở chi tiết và xem thông tin đầy đủ.
 4. Đối chiếu các phòng có trạng thái **Trống**, **Đã thuê**, **Giữ chỗ**, **Bảo trì**.
 

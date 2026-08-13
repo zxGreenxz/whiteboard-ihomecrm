@@ -2,12 +2,13 @@
 title: "Bước 4: Công tơ điện nước"
 description: "Khai báo đồng hồ điện/nước/gas gắn theo phòng để mỗi tháng ghi chỉ số và lên hoá đơn."
 routes: ["/settings/meters"]
-permissions: [{module: meters, action: create}]
+permissions: [{module: meters, action: view}, {module: meters, action: create}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -16,18 +17,20 @@ status: published
 Màn hình **Đồng hồ Công tơ** là nơi bạn khai báo từng đồng hồ điện, nước, gas lắp trong phòng. Mỗi công tơ gắn với một phòng, một loại dịch vụ và một chỉ số ban đầu. Đây là bước chuẩn bị bắt buộc trong quá trình khởi tạo dữ liệu: chỉ khi phòng đã có công tơ thì mỗi tháng bạn mới ghi được chỉ số và lên hoá đơn tiền điện, tiền nước theo mức tiêu thụ thật.
 
 ::: info Điều kiện tiên quyết
-- Tài khoản có quyền **Đồng hồ / Công tơ** (module `meters`).
+- `meters.view` để mở trang và `meters.create` để thêm công tơ; toà/phòng chỉ hiện trong phạm vi được giao.
 - Đã tạo **toà nhà** và **phòng** trước — công tơ phải gắn vào một phòng cụ thể. Xem [Tạo tầng & phòng](/01-bat-dau/tao-tang-phong/).
 - Hệ thống đã có các **dịch vụ** đúng tên **Điện**, **Nước**, **Gas** — mỗi công tơ tự nối vào dịch vụ tương ứng theo loại. Xem [Dịch vụ & định mức](/01-bat-dau/dich-vu-dinh-muc/).
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Tại thanh menu, ấn chọn **Cài đặt** => **Danh mục khác** => **Tài chính** => **Đồng hồ Công tơ**. Màn hình liệt kê toàn bộ công tơ đã khai báo, mỗi dòng hiển thị mã, tên, loại, toà nhà, phòng, chỉ số đầu và chỉ số chốt gần nhất.
+**Bước 1**: Tại thanh menu, mở **Cài đặt hệ thống** => **Đồng hồ / Công tơ** (`/settings/meters`). Màn hình liệt kê mã, loại, toà nhà, phòng, chỉ số đầu và chỉ số chốt gần nhất.
 
 ![Danh sách công tơ theo phòng](./images/buoc-01-danh-sach.webp)
 
 **Bước 2**: Ấn nút **Thêm** ở góc trên. Hộp thoại **Thêm công tơ** hiện ra.
+
+![Hộp thoại Thêm công tơ được mở để nhận diện các trường, sau đó đóng bằng Hủy](./images/buoc-02-form-cong-to.webp)
 
 **Bước 3**: Chọn **Tòa nhà**, rồi chọn **Phòng**. Danh sách phòng chỉ hiện sau khi bạn đã chọn toà nhà.
 
@@ -35,7 +38,7 @@ Màn hình **Đồng hồ Công tơ** là nơi bạn khai báo từng đồng h�
 
 **Bước 5**: Điền **Mã công tơ** (ví dụ `CTD-201`). Mã này là duy nhất, dùng để định danh đồng hồ khi import chỉ số hàng loạt.
 
-**Bước 6**: Nếu cần, điền **Chỉ số ban đầu** (số hiện trên mặt đồng hồ lúc lắp), **Ngày lắp đặt** và **Ghi chú vị trí**. Bỏ trống **Tên công tơ** thì hệ thống tự đặt theo mẫu "{tên phòng} - {loại}".
+**Bước 6**: Điền **Chỉ số ban đầu** (số hiện trên mặt đồng hồ lúc lắp), **Ngày lắp đặt** và **Ghi chú vị trí** nếu cần. Form không có trường tên công tơ và không tự sinh tên; định danh người dùng nhập là **Mã công tơ**.
 
 **Bước 7**: Ấn **Lưu**. Công tơ mới xuất hiện ngay trong danh sách với trạng thái **Hoạt động**.
 
@@ -70,16 +73,15 @@ Xoá công tơ chỉ ẩn nó khỏi danh sách chứ **không giải phóng mã
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/settings/meters" app-label="Mở màn Đồng hồ Công tơ" fixtures="DEMO-A101-D..DEMO-B104-N" view-only>
+<SandboxTry account="demo.chunha" app-path="/settings/meters" app-label="Mở màn Đồng hồ Công tơ" fixtures="Snapshot 13/08/2026: chưa có công tơ." view-only>
 
 **Hãy nhìn thấy**
 
-1. Mở màn **Đồng hồ Công tơ**, xem danh sách các công tơ demo như `DEMO-A101-D` (điện), `DEMO-A101-N` (nước)…
-2. Lọc **Chọn tòa nhà** = **Tòa DEMO A**, đối chiếu: mỗi phòng có **đúng 2 dòng** — một công tơ **Điện** và một công tơ **Nước**.
-3. So mã của phòng **A101**: `DEMO-A101-D` và `DEMO-A101-N` cùng trỏ về phòng đó nhưng khác loại.
-4. Nhìn cột **Chỉ số đầu** — đây là số máy lúc lắp, sẽ được dùng làm chỉ số cũ cho lần ghi chỉ số đầu tiên.
+1. Xác nhận empty state **Chưa có công tơ nào**; không giả định các mã fixture cũ vẫn tồn tại.
+2. Ấn **Thêm** để mở form và nhận diện các trường **Tòa nhà, Phòng, Loại công tơ, Mã công tơ, Chỉ số ban đầu**.
+3. Đóng form bằng **Hủy**, không bấm **Lưu**.
 
-Qua bài quan sát này bạn nắm được: **một công tơ = một phòng + một loại (Điện/Nước/Gas) + một chỉ số đầu**, mã công tơ là duy nhất, và phải đủ công tơ trước khi ghi chỉ số hàng tháng.
+Qua bài quan sát này bạn nắm được cấu trúc **một công tơ = một phòng + một loại (Điện/Nước/Gas) + một chỉ số đầu** mà không tạo dữ liệu.
 
 </SandboxTry>
 

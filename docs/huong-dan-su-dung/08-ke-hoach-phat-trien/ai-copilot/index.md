@@ -9,13 +9,17 @@ routes: []
 permissions: []
 viewport: desktop
 captured:
-  date: "2026-07-20"
+  date: "2026-08-13"
   commit: "6acd7b4"
   account: "docs-presentation"
   manifest: null
 audience: [chu-doanh-nghiep, quan-ly, ke-toan, product-owner, ky-thuat]
 status: published
 ---
+
+::: danger PROPOSAL — KHÔNG PHẢI RUNTIME
+Trang này là kế hoạch tương lai, không phải hướng dẫn tính năng production. Runtime hiện hành chỉ gồm các bề mặt được source code và policy hiện tại bật; xem [Trợ lý AI](/05-cai-dat/tro-ly-ai/) để phân biệt launcher, trang quản trị và feature đang tắt.
+:::
 
 <div class="plan-hero">
   <div class="plan-eyebrow">KẾ HOẠCH PHÁT TRIỂN SẢN PHẨM</div>

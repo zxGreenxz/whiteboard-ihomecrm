@@ -2,11 +2,11 @@
 title: "Kho (địa điểm lưu)"
 description: "Khai báo và quản lý danh mục kho — các địa điểm lưu tài sản và vật tư (tên kho, vị trí) dùng để tham chiếu trong toàn hệ thống."
 routes: ["/settings/categories/warehouses"]
-permissions: [{module: warehouses, action: view}]
+permissions: [{module: warehouses, action: view}, {module: warehouses, action: create}, {module: warehouses, action: edit}, {module: warehouses, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---

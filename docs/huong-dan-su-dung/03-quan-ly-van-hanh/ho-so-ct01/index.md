@@ -6,8 +6,9 @@ permissions: [{module: customers, action: print}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -17,10 +18,18 @@ Trang chi tiết cư dân gom toàn bộ thông tin nhân thân của một khá
 
 CT01 lấy sẵn phần lớn dữ liệu từ hồ sơ khách (họ tên, ngày sinh, số CCCD, địa chỉ), bạn chỉ cần bổ sung phần khai riêng của tờ khai: **cơ quan đăng ký cư trú**, **chủ hộ**, **thành viên cùng thay đổi** và **nội dung đề nghị**. Vì vậy hồ sơ khách càng đầy đủ thì lập CT01 càng nhanh.
 
+::: tip Snapshot production DEMO (13/08/2026)
+Lượt xác minh với `demo.chunha` bắt đầu từ danh sách `/customers` đang hiển thị các dòng `DEMO Khách`. Snapshot này chỉ chứng minh có thể mở hồ sơ và form CT01 để xem trường; không khẳng định một khách cụ thể đã có bản CT01 lưu sẵn.
+:::
+
 ::: info Điều kiện tiên quyết
 - Quyền **Cư dân => In** (module `customers`, action `print`) để mở và in được tờ khai CT01.
 - Đã có **hồ sơ khách** cần khai báo trong hệ thống. Nếu chưa, tạo trước ở màn [Cư dân](/03-quan-ly-van-hanh/cu-dan/).
 - Hồ sơ khách nên điền đủ **họ tên**, **ngày sinh**, **giới tính**, **số CCCD/hộ chiếu** và **địa chỉ** — vì CT01 sẽ đổ sẵn các trường này. Khách nước ngoài cần bật cờ **Khách nước ngoài** (`is_foreign`) trong hồ sơ.
+:::
+
+::: danger CT01 chứa dữ liệu cá nhân nhạy cảm
+Tờ khai có CCCD/hộ chiếu, ngày sinh, địa chỉ, thông tin chủ hộ và thành viên cùng thay đổi. Chỉ mở/in khi có mục đích nghiệp vụ hợp lệ; kiểm tra đúng người nhận, tránh máy in dùng chung, không tải PDF lên kho công khai và xoá bản tải tạm theo chính sách lưu giữ của đơn vị. Quyền đọc hồ sơ khách hiện là org-wide, không được hiểu bộ lọc toà trên giao diện như một biện pháp cô lập dữ liệu.
 :::
 
 ## Hướng dẫn từng bước
@@ -48,7 +57,7 @@ Vì tờ khai đổ sẵn dữ liệu từ hồ sơ, hãy hoàn thiện hồ sơ
 :::
 
 ::: warning Tờ khai không có màn lịch sử — hãy in ngay
-Mỗi lần ấn **Lưu & In**, hệ thống tạo **một bản ghi tờ khai mới**. Hiện chưa có màn "lịch sử tờ khai" để xem/in lại tờ đã lưu: bạn chỉ in lại được **trong phiên đang mở** bằng nút **Chỉ in**. Nếu đóng trang rồi cần in lại, bạn phải lập một tờ khai mới. Vì vậy hãy in (hoặc lưu PDF) ngay khi lập xong, đừng đóng tab trước khi in.
+Mỗi lần ấn **Lưu & In**, hệ thống lưu dữ liệu tờ khai, nhưng hiện chưa có màn "lịch sử tờ khai" để người dùng tra cứu/in lại bản đã lưu. Bạn chỉ in lại bản đang có trong phiên bằng **Chỉ in**. Nếu đóng trang, không tạo thêm tờ chỉ để dò xem bản cũ có tồn tại; xác nhận quy trình lưu trữ nội bộ hoặc nhờ quản trị trích xuất bản ghi khi cần audit.
 :::
 
 ## Các tính năng khác trên màn hình
@@ -70,25 +79,26 @@ Mỗi lần ấn **Lưu & In**, hệ thống tạo **một bản ghi tờ khai m
 | Mở CT01 báo **"Không tìm thấy khách hàng"** | Hồ sơ khách không tồn tại hoặc đã bị xoá. Quay lại màn [Cư dân](/03-quan-ly-van-hanh/cu-dan/), mở đúng khách rồi ấn lại **Mẫu CT01**. |
 | Không lưu được — báo thiếu trường | Tờ khai bắt buộc **Cơ quan đăng ký cư trú**, **họ tên**, **ngày sinh**, **giới tính** và **số CCCD**. Điền đủ các ô này rồi lưu lại. Nếu số CCCD/ngày sinh trống, hãy bổ sung ở hồ sơ khách trước. |
 | Hộp thoại in không tự mở | Trình duyệt có thể chặn cửa sổ in. Cho phép in cho trang, hoặc ấn **Chỉ in** để mở lại hộp thoại in bản vừa lập. |
-| Lưu xong nhưng không tìm thấy tờ khai cũ để in lại | Đúng hiện trạng: chưa có màn lịch sử tờ khai. Trong phiên đang mở, dùng **Chỉ in** để in lại; nếu đã đóng trang, lập một tờ CT01 mới. |
+| Lưu xong nhưng không tìm thấy tờ khai cũ để in lại | Chưa có UI lịch sử dù dữ liệu khai đã được lưu. Trong phiên dùng **Chỉ in**; ngoài phiên, nhờ quản trị tra bản ghi hoặc làm theo chính sách hồ sơ, tránh tạo bản mới chỉ để thay thế audit trail. |
+| Không thấy khách khi lọc theo toà | Quyền `customers.print`/đọc khách không được cô lập theo toà ở tầng dữ liệu; bỏ bộ lọc giao diện và tìm theo định danh. Nếu vẫn trống, kiểm tra lỗi truy vấn thay vì kết luận không có hồ sơ. |
 | Khách nước ngoài in ra sai loại giấy tờ | Bật cờ **Khách nước ngoài** (`is_foreign`) và nhập **số hộ chiếu** trong hồ sơ khách, sau đó mở lại **Mẫu CT01** để dữ liệu đổ đúng. |
 | Thông tin trên tờ khai bị sai/cũ | CT01 đổ theo hồ sơ khách tại thời điểm mở form. Ấn **Sửa** hồ sơ khách, cập nhật đúng rồi lập lại tờ khai. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/customers" app-label="Mở màn Cư dân" fixtures="khách Nguyễn Văn An có sẵn CT01">
+<SandboxTry account="demo.chunha" app-path="/customers" app-label="Mở màn Cư dân" fixtures="các dòng DEMO Khách đang hiển thị" view-only>
 
-**Bài tập thực hành**
+**Bài tập chỉ xem**
 
-1. Tại màn **Cư dân**, tìm và ấn vào khách **Nguyễn Văn An** để mở hồ sơ chi tiết.
-2. Trên trang chi tiết, ấn nút **Mẫu CT01** để mở tờ khai cư trú.
-3. Kiểm tra phần người khai đã đổ sẵn từ hồ sơ; điền **Cơ quan đăng ký cư trú** và thông tin **chủ hộ**.
-4. Ấn **Lưu & In** để tạo tờ khai và mở bản in (hoặc lưu PDF).
+1. Tại màn **Cư dân**, chọn một dòng `DEMO Khách` đang hiển thị để mở hồ sơ chi tiết.
+2. Trên trang chi tiết, ấn nút **Mẫu CT01** để mở form tờ khai cư trú.
+3. Chỉ xem các trường đã đổ sẵn và các trường CT01 cần khai; không nhập dữ liệu mới.
+4. Đóng form bằng **Huỷ/Đóng** hoặc quay lại danh sách. **Không ấn Lưu & In**, **Chỉ in** hay bất kỳ nút ghi dữ liệu nào.
 
 **Kết quả mong đợi**
 
-- Bạn mở được hồ sơ khách An và biết đường vào mục khai báo cư trú **CT01**.
-- Bạn lập và in được một tờ CT01 hoàn chỉnh cho khách — nắm được quy trình khai báo cư trú cho một cư dân.
+- Bạn mở được một hồ sơ `DEMO Khách` đang hiển thị và biết đường vào mục khai báo cư trú **CT01**.
+- Bạn đọc được các trường CT01 trong phiên xem thử mà không tạo, lưu hoặc in bản khai.
 
 </SandboxTry>
 

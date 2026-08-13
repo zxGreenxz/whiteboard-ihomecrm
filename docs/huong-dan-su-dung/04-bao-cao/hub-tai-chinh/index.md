@@ -1,38 +1,44 @@
 ---
 title: "Báo cáo tài chính (tổng quan)"
-description: "Trung tâm 9 báo cáo tài chính hiện hành."
+description: "Trung tâm 10 báo cáo tài chính đang hiển thị trên production, gồm Trung tâm Tài chính & Hiệu quả và chín báo cáo nghiệp vụ."
 routes: ["/reports/finance"]
 permissions: [{module: reports_finance, action: view}]
 viewport: desktop
 audience: [chu-nha, ke-toan, quan-ly-toa]
 captured:
-  date: "2026-07-20"
-  account: production
+  date: "2026-08-13"
+  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  account: demo.chunha
 status: published
 ---
 
 # Báo cáo tài chính
 
-Hub `/reports/finance` hiện có **9 báo cáo**:
+Hub `/reports/finance` trên deployment production được kiểm tra ngày 13/08/2026 hiển thị **10 loại báo cáo**. Mỗi thẻ báo cáo còn có action quyền riêng; mở được hub không đồng nghĩa mở được mọi báo cáo.
 
-1. Phân tích tài chính.
-2. Bàn giao tiền & đối soát sổ.
-3. Chu kỳ Thu → Bàn giao.
-4. Sổ quỹ theo ngày.
-5. Dòng tiền.
-6. Báo cáo lợi nhuận.
-7. Lịch thanh toán.
-8. Tiền thừa.
-9. Danh sách tiền cọc.
+![Hub Báo cáo Tài chính của tài khoản demo.chunha hiển thị 10 loại báo cáo và mục OpenClaw Zalo trên sidebar production](./images/buoc-01-man-hinh.webp)
 
-![Hub báo cáo tài chính](./images/buoc-01-man-hinh.webp)
+## 10 thẻ đang hiển thị
 
-Hai báo cáo công nợ cũ không còn là trang báo cáo riêng. Các URL cũ **Công nợ HĐ mới** và **Khách nợ tiền** chuyển về `/thu-tien`, là nơi canonical để theo dõi và thu nợ theo phòng/khách.
+1. Trung tâm Tài chính & Hiệu quả
+2. Phân tích tài chính (`analysis`)
+3. Bàn giao tiền & Đối soát sổ (`handover_report`)
+4. Chu kỳ Thu → Bàn giao (`collection_cycle`)
+5. Sổ quỹ theo ngày (`daily_cashbook`)
+6. Dòng tiền (`cash_flow`)
+7. Báo cáo Lợi nhuận (`profit_distribution` và quyền tab liên quan)
+8. Lịch thanh toán (`payment_schedule`)
+9. Tiền thừa (`overpayment`)
+10. Danh sách tiền cọc (`deposits_report`)
 
-## Cách đọc số
+::: info Runtime đã kiểm tra
+Ảnh trên là production với tổ chức DEMO và tài khoản `demo.chunha`; thẻ **Trung tâm Tài chính & Hiệu quả** đang được hiển thị. Ở tổ chức hoặc vai trò khác, thẻ có thể bị ẩn bởi điều kiện tổ chức/quyền riêng của route.
+:::
 
-- Báo cáo dòng tiền/sổ quỹ đọc giao dịch đã có hiệu lực trong sổ.
-- Lịch thanh toán/tiền thừa/cọc đọc trạng thái hóa đơn hoặc cọc tương ứng.
-- Báo cáo lợi nhuận và phân tích tài chính có bộ lọc riêng; kiểm tra kỳ, tòa và chế độ tiền mặt/dồn tích trước khi xuất.
+## Chọn báo cáo đúng câu hỏi
 
-Mỗi thẻ có permission action riêng. Nếu mở hub được nhưng không vào được một báo cáo, nhờ owner kiểm tra [Phân quyền](/05-cai-dat/phan-quyen/).
+- Muốn biết tiền đã vào/ra: dùng **Dòng tiền** hoặc **Sổ quỹ theo ngày**.
+- Muốn biết lãi/lỗ: dùng **Phân tích tài chính**.
+- Muốn kiểm tra cọc: ưu tiên luồng **Đặt cọc**; báo cáo danh sách cọc hiện là legacy.
+- Muốn xem credit khách còn lại: không dùng **Tiền thừa** làm nguồn canonical.
+- Muốn đối chiếu người đi thu/nộp: dùng **Chu kỳ Thu → Bàn giao**, rồi kiểm tra sổ quỹ để biết balance chính xác.

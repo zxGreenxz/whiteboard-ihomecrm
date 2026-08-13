@@ -2,11 +2,11 @@
 title: "Định mức dịch vụ"
 description: "Tạo bảng giá bậc thang (luỹ tiến) cho dịch vụ — khai từng bậc Từ – Đến – Đơn giá rồi gắn định mức vào dịch vụ tính theo đồng hồ."
 routes: ["/settings/categories/service-quotas"]
-permissions: [{module: service_quotas, action: view}]
+permissions: [{module: service_quotas, action: view}, {module: service_quotas, action: create}, {module: service_quotas, action: edit}, {module: service_quotas, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---

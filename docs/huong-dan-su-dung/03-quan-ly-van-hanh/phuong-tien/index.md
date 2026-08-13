@@ -1,21 +1,26 @@
 ---
 title: "Phương tiện"
-description: "Quản lý xe của khách thuê: thêm/sửa/xoá xe theo loại, gắn xe với cư dân và phòng, ghi biển số, số vé và phí giữ xe."
+description: "Quản lý xe của khách thuê theo phạm vi toà; nhận diện khác biệt desktop/mobile, trường phí chỉ hiển thị và các nút import/export chưa hoạt động."
 routes: ["/vehicles"]
 permissions: [{module: vehicles, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
 # Phương tiện
 
-Màn **Phương tiện** là nơi bạn quản lý xe của khách đang thuê: mỗi xe được gắn với một **cư dân** và một **phòng**, kèm **biển số**, **số vé xe** và **phí giữ xe**. Dùng màn này khi cần cấp vé gửi xe cho khách mới, tra nhanh "xe biển số này của phòng nào", hoặc cập nhật lại danh sách xe khi khách đổi phương tiện.
+Màn **Phương tiện** là nơi quản lý xe của khách đang thuê: mỗi xe có thể gắn với cư dân, phòng và toà, kèm biển số/số vé. Bản desktop hiện truy vấn cố định loại `MOTORBIKE`, trong khi bản mobile hỗ trợ các loại xe khác; vì vậy danh sách desktop không phải toàn bộ phương tiện của tổ chức.
 
-Xe được phân theo **loại** (xe máy, ô tô, xe đạp, xe điện, loại khác). Phí giữ xe ghi trên từng xe chính là phần **phí dịch vụ giữ xe** hiển thị lại trong hồ sơ cư dân — nhờ vậy bạn nắm được mỗi phòng đang gửi mấy xe và thu phí giữ xe bao nhiêu.
+::: tip Snapshot production DEMO (13/08/2026)
+Với tài khoản `demo.chunha`, `/vehicles` tải xong hiển thị **12 xe**, phân trang **1/1**. Các dòng đang thấy là xe máy như **Vision**, **Air Blade**, **Sirius**, gắn với các khách `DEMO Khách` và phòng **A-01**, **A-02**...; lượt xác minh chỉ xem và console không có lỗi.
+:::
+
+Xe được phân theo **loại** (xe máy, ô tô, xe đạp, xe điện, loại khác). Trường `parking_fee` có thể được hiển thị trong hồ sơ nhưng form phương tiện hiện không cho sửa; không coi nó là nguồn tự động sinh hoá đơn hay mức phí dịch vụ đang áp dụng.
 
 ::: info Điều kiện tiên quyết
 - Quyền **Phương tiện => Xem** (module `vehicles`, action `view`) để mở màn danh sách.
@@ -28,12 +33,12 @@ Xe được phân theo **loại** (xe máy, ô tô, xe đạp, xe điện, loạ
 
 **Bước 1**: Tại menu bên trái, ấn chọn **Phương tiện**. Màn hiện danh sách xe kèm ô tìm kiếm; mỗi dòng cho biết **loại xe**, **dòng xe**, **màu**, **biển số**, **chủ xe / cư dân**, **phòng – toà** và **số vé xe**.
 
-![Màn Phương tiện: danh sách xe với xe máy phòng A101 và ô tô phòng B101](./images/buoc-01-danh-sach.webp)
+![Màn Phương tiện: danh sách 12 xe máy DEMO gắn khách và phòng](./images/buoc-01-danh-sach.webp)
 
 **Bước 2**: Dùng ô **tìm kiếm** ở đầu trang để tra nhanh theo **biển số**, **dòng xe**, **tên chủ xe** hoặc **tên cư dân**. Kết quả áp ngay vào danh sách. Ô tìm kiếm và các bộ lọc được giữ lại khi bạn tải lại trang (F5).
 
-**Bước 3**: Muốn thêm xe, ấn **Thêm** để mở form. Điền các trường:
-- **Loại xe** — chọn Xe máy / Ô tô / Xe đạp / Xe điện / Khác.
+**Bước 3**: Muốn thêm xe, ấn **Thêm** để mở form. Trên desktop, luồng hiện tập trung/hard-pin **Xe máy (`MOTORBIKE`)**; để thao tác và lọc đủ loại xe, dùng giao diện mobile. Điền các trường:
+- **Loại xe** — trên mobile có Xe máy / Ô tô / Xe đạp / Xe điện / Khác; desktop có thể cố định Xe máy.
 - **Dòng xe** (ví dụ "Honda Vision"), **Màu**, **Biển số**.
 - **Chủ xe** — tên người đứng tên xe (có thể khác cư dân).
 - **Số vé xe** — mã vé gửi xe bạn cấp cho khách.
@@ -43,8 +48,8 @@ Xe được phân theo **loại** (xe máy, ô tô, xe đạp, xe điện, loạ
 
 **Bước 4**: Cần chỉnh, ấn **Sửa** trên dòng xe, đổi thông tin rồi ấn **Lưu**. Muốn bỏ một xe (khách trả xe, nhập nhầm…), ấn **Xoá** — xe được ẩn khỏi danh sách.
 
-::: tip Phí giữ xe hiển thị ở hồ sơ cư dân
-Mỗi xe có một **phí giữ xe** (`parking_fee`) — chính là phí dịch vụ giữ xe của xe đó. Con số này hiển thị trong tab **Phương tiện** ở trang chi tiết cư dân, giúp bạn biết mỗi khách đang gửi mấy xe và tổng phí giữ xe. Lưu ý ở bản hiện tại **ô phí giữ xe chưa nhập trực tiếp được từ form thêm/sửa xe** (form chỉ nhận loại xe, dòng xe, màu, biển số, chủ xe, số vé, cư dân/toà/phòng và ảnh). Nếu cần đặt/điều chỉnh phí giữ xe, xử lý qua dịch vụ giữ xe của phòng thay vì trông chờ nhập ở đây.
+::: warning `parking_fee` chỉ là trường hiển thị ở luồng này
+Form thêm/sửa xe không có ô cập nhật `parking_fee`, và trường này không tự chứng minh phí đã được đưa vào dịch vụ/hóa đơn. Thiết lập và đối chiếu phí gửi xe bằng cấu hình dịch vụ/hợp đồng/hoá đơn đang áp dụng; không sửa dữ liệu phương tiện để kỳ vọng phát sinh billing.
 :::
 
 ::: warning Xoá xe khó khôi phục từ giao diện
@@ -64,32 +69,31 @@ Nút **Xoá** ẩn xe khỏi mọi danh sách (xoá mềm). Bản ghi vẫn còn
 | **Xoá** | Ẩn xe khỏi danh sách (xoá mềm). |
 
 ::: tip Lọc đủ loại xe trên bản điện thoại
-Bản desktop tập trung quản lý **xe máy** và ẩn ô lọc theo loại xe. Nếu bạn cần lọc và xem đầy đủ các loại (ô tô, xe đạp, xe điện), hãy mở màn **Phương tiện** trên **bản điện thoại** — ở đó có đủ bộ lọc loại xe cùng toà và phòng.
+Bản desktop hard-pin truy vấn `MOTORBIKE` và ẩn ô lọc loại. Muốn xem/lọc ô tô, xe đạp, xe điện hoặc loại khác, dùng bản mobile với bộ lọc loại xe, toà và phòng.
 :::
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
-| Không thấy nút **Thêm** / **Nhập** | Bạn chưa được gán phạm vi toà nào hoặc thiếu quyền thêm xe. Nhờ quản trị gán phạm vi/quyền `vehicles` cho tài khoản. |
+| Không thấy nút **Thêm** / **Nhập** | Bạn thiếu quyền thêm xe hoặc nút import/export chưa được triển khai. Nhờ quản trị cấp quyền `vehicles` cho tài khoản. |
 | Thấy xe nhưng không sửa/xoá được | Sửa/Xoá mở theo **toà của từng xe** — bạn chỉ thao tác được với xe thuộc toà mình phụ trách. Xe chưa gắn toà chỉ người quản lý toàn hệ thống mới sửa được. |
-| Danh sách trống dù chắc chắn có xe | Kiểm tra ô tìm kiếm và bộ lọc còn dính giá trị cũ (bộ lọc giữ qua F5); hoặc do phạm vi toà: nhân viên chỉ thấy xe thuộc toà được gán. |
+| Danh sách trống dù chắc chắn có xe | Kiểm tra bộ lọc và phạm vi toà. Truy vấn lỗi có thể hiện như danh sách rỗng; tải lại/kiểm tra mạng hoặc nhờ quản trị xác minh. Nếu xe không phải `MOTORBIKE`, xem trên mobile. |
 | Không lọc được đủ loại (ô tô/xe đạp/xe điện) | Bản desktop ẩn ô lọc loại xe và ưu tiên xe máy. Mở bản điện thoại để lọc đủ các loại xe. |
 | Không nhập được **phí giữ xe** trong form | Đúng hiện trạng: form thêm/sửa xe chưa mở ô phí giữ xe. Phí giữ xe hiển thị ở hồ sơ cư dân; đặt/điều chỉnh qua dịch vụ giữ xe của phòng. |
-| Nút **Xuất Excel** / **Nhập Excel** bấm không thấy gì | Hai nút này hiện chưa hoạt động (đang là bản dựng). Cứ thêm/sửa xe thủ công trong màn. |
+| Nút **Xuất Excel** / **Nhập Excel** bấm không thấy gì | Hai nút hiện là stub, chưa thực hiện import/export. Không dùng chúng để xác nhận đã sao lưu hoặc nạp dữ liệu; thêm/sửa thủ công trong phạm vi được phép. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/vehicles" app-label="Mở màn Phương tiện" fixtures="xe máy phòng A101, ô tô phòng B101">
+<SandboxTry account="demo.chunha" app-path="/vehicles" app-label="Mở màn Phương tiện" fixtures="12 xe DEMO; Vision/Air Blade/Sirius; phòng A-01, A-02..." view-only>
 
-Thực hành quản lý xe và phí giữ xe:
+Bài tập **chỉ xem** trên snapshot đang hiển thị:
 
-1. Mở màn **Phương tiện** và xem 2 xe mẫu đang có: **xe máy** gắn phòng **A101** và **ô tô** gắn phòng **B101**. Để ý biển số, chủ xe và phòng – toà của từng xe.
-2. Ấn **Thêm** để mở form. Chọn **Loại xe = Xe máy**, điền **Dòng xe** (ví dụ "Honda Wave"), **Biển số** giả (ví dụ "59X1-999.99"), rồi gắn **Phòng = A102** và cư dân của phòng đó.
-3. Ấn **Lưu** và kiểm tra xe mới xuất hiện trong danh sách.
-4. Mở trang chi tiết của cư dân phòng **A102** (mục Cư dân), vào tab **Phương tiện** và kiểm tra xe vừa thêm hiển thị ở đó kèm ô **phí giữ xe**.
+1. Quan sát tổng số **12 xe** và phân trang **1/1**.
+2. Đọc các dòng xe máy **Vision**, **Air Blade**, **Sirius**; đối chiếu tên khách `DEMO Khách` và phòng **A-01**, **A-02**... ở từng dòng.
+3. Dùng ô tìm kiếm để lọc một dòng đang hiển thị, mở lại danh sách và xác nhận phân trang vẫn là **1/1**. Không ấn **Thêm**, **Lưu**, **Sửa** hoặc **Xoá**.
 
-Kết quả mong đợi: bạn quen với việc thêm/sửa xe, gắn xe với đúng cư dân và phòng, và biết phí giữ xe của mỗi xe được thể hiện lại trong hồ sơ cư dân.
+Kết quả mong đợi: bạn nhận diện được snapshot phương tiện DEMO hiện hành và đọc đúng liên kết xe–khách–phòng mà không ghi dữ liệu.
 
 </SandboxTry>
 

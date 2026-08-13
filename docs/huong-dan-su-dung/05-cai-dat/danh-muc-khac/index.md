@@ -1,19 +1,19 @@
 ---
 title: "Danh mục khác (tổng quan)"
-description: "Trang tổng quan Danh mục khác — cổng vào các danh mục cấu hình: sổ quỹ, tài khoản, gạch nợ tự động, định mức dịch vụ, công tơ, nhà cung cấp, kho/tài sản, hotline, tầng, loại công việc."
+description: "Cổng điều hướng tới các danh mục Tài chính, Tài sản và Khác; Sổ quỹ dùng route chính thức /finance/cashbooks."
 routes: ["/settings/categories"]
 permissions: [{module: categories, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
 
 # Danh mục khác (tổng quan)
 
-Trang **Danh mục khác** là "bản đồ" gom mọi danh mục cấu hình phụ trợ của phần mềm về một chỗ. Bản thân trang này không nhập liệu — nó chỉ chia các danh mục thành nhóm và cho bạn bấm vào từng thẻ để mở đúng trang quản lý. Hãy coi đây là cổng vào khi bạn cần chỉnh sổ quỹ, tài khoản nhận tiền, gạch nợ tự động, định mức điện nước, danh sách công tơ, nhà cung cấp, kho tài sản, hotline, danh sách tầng hay loại công việc. Bạn thường ghé trang này khi mới khởi tạo dữ liệu, hoặc mỗi khi cần bổ sung một hạng mục mới cho hệ thống.
+Trang **Danh mục khác** là "bản đồ" gom các lối vào cấu hình phụ trợ. Bản thân trang không nhập liệu; nó chỉ chia thẻ thành **Tài chính**, **Tài sản** và **Khác**, rồi điều hướng sang route tương ứng. Danh sách hiện hành không có thẻ Tài khoản ngân hàng riêng; quản lý sổ tiền mặt/ngân hàng tại `/finance/cashbooks`.
 
 ::: info Điều kiện tiên quyết
 - Bạn cần quyền **Danh mục** (module `categories`, hành động `view`) để mở trang tổng hợp này.
@@ -30,7 +30,7 @@ Trang **Danh mục khác** là "bản đồ" gom mọi danh mục cấu hình ph
 
 **Bước 3**: Bấm vào thẻ danh mục bạn muốn chỉnh — ví dụ **Nhà cung cấp** hoặc **Danh sách tầng** — để mở trang quản lý riêng của danh mục đó.
 
-**Bước 4**: Thao tác thêm/sửa/xoá ngay trên trang danh mục vừa mở. Xong xuôi, quay lại **Danh mục khác** để chuyển sang danh mục kế tiếp. Mọi thay đổi có hiệu lực ngay cho toàn bộ tòa nhà của bạn (các danh mục này dùng chung, không tách riêng theo từng tòa).
+**Bước 4**: Chỉ thao tác thêm/sửa/xoá nếu trang đích thực sự có form và bạn có quyền tương ứng. Phạm vi dữ liệu phụ thuộc RLS và scope của từng module; không mặc định mọi danh mục đều áp dụng cho mọi toà.
 
 ## Các tính năng khác trên màn hình
 
@@ -39,7 +39,6 @@ Bảng dưới liệt kê đầy đủ các thẻ danh mục trên trang tổng 
 | Nhóm | Thẻ danh mục | Dùng để làm gì | Xem hướng dẫn |
 |------|--------------|----------------|----------------|
 | Tài chính | **Sổ quỹ** | Quản lý các sổ quỹ tiền mặt / ngân hàng để ghi nhận tiền vào — ra | [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) · [Khởi tạo sổ quỹ](/01-bat-dau/so-quy-loai-thu-chi/) |
-| Tài chính | **Tài khoản ngân hàng** | Khai báo tài khoản nhận chuyển khoản của bạn | [Tài khoản ngân hàng](/05-cai-dat/tai-khoan-ngan-hang/) |
 | Tài chính | **Gạch nợ tự động** | Cấu hình quy tắc tự động khớp tiền chuyển khoản vào công nợ khách | — |
 | Tài chính | **Loại thu chi** | Danh mục hạng mục thu / chi dùng khi lập phiếu quỹ | [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/) |
 | Tài chính | **Định mức dịch vụ** | Đơn giá điện, nước và các dịch vụ áp cho hợp đồng | [Dịch vụ & định mức](/01-bat-dau/dich-vu-dinh-muc/) · [Dịch vụ](/03-quan-ly-van-hanh/dich-vu/) |
@@ -74,8 +73,8 @@ Dạo qua các nhóm danh mục con.
 
 Bạn đang xem trang **Danh mục khác** của tài khoản demo (Tòa **DEMO A** và **DEMO B**). Hãy làm quen với bố cục:
 
-1. Nhìn cột **Tài chính**: tìm các thẻ **Sổ quỹ**, **Tài khoản ngân hàng**, **Loại thu chi**, **Định mức dịch vụ**, **Đồng hồ công tơ**.
-2. Nhìn cột **Tài sản**: **Nhà cung cấp**, **Kho tài sản**, **Loại tài sản**, **Lịch sử di chuyển / sửa chữa** — nơi bạn quản lý 3 tài sản demo (máy lạnh, tủ lạnh, giường).
+1. Nhìn nhóm **Tài chính**: tìm các thẻ **Sổ quỹ**, **Gạch nợ tự động**, **Loại thu chi**, **Định mức dịch vụ**, **Đồng hồ công tơ**.
+2. Nhìn cột **Tài sản**: **Nhà cung cấp**, **Kho tài sản**, **Loại tài sản**, **Lịch sử di chuyển / sửa chữa**. Snapshot hiện tại của Tài sản đang rỗng; **Loại tài sản** và **Nhà cung cấp** đều là bề mặt đang phát triển.
 3. Nhìn nhóm **Khác**: **Quản lý Hotline**, **Danh mục chung**, **Danh sách tầng**, **Loại công việc**.
 4. Rê chuột qua từng thẻ để đọc mô tả ngắn, hình dung mỗi danh mục dùng cho việc gì trước khi bấm vào chỉnh thật.
 </SandboxTry>
@@ -89,5 +88,5 @@ Bạn đang xem trang **Danh mục khác** của tài khoản demo (Tòa **DEMO 
 - [Nhà cung cấp](/05-cai-dat/nha-cung-cap/)
 - [Danh sách tầng](/05-cai-dat/danh-sach-tang/)
 - [Loại công việc](/05-cai-dat/loai-cong-viec/)
-- [Nhân viên & đội ngũ](/05-cai-dat/nhan-vien-doi-ngu/)
+- [Thành viên tổ chức](/05-cai-dat/nhan-vien-doi-ngu/)
 - [Phân quyền](/05-cai-dat/phan-quyen/)

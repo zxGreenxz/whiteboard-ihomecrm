@@ -6,8 +6,9 @@ permissions: [{module: materials, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -24,9 +25,9 @@ Kho vật tư là nơi bạn theo dõi **vật tư tiêu hao** dùng cho bảo t
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Vào menu **Kho vật tư** (nhóm **Danh mục dữ liệu**). Màn mở ra với **4 tab**: **Vật tư** / **Phiếu nhập** / **Phiếu xuất** / **Kiểm kê**. Tab **Vật tư** hiện sẵn danh sách các loại vật tư kèm tồn kho. Trong dữ liệu demo bạn thấy 3 vật tư: **Bóng đèn LED** (tồn **20**), **Vòi nước** (tồn **8**) và **Sơn** (tồn **4**).
+**Bước 1**: Vào menu **Kho vật tư** (nhóm **Danh mục dữ liệu**). Màn mở ra với **4 tab**: **Vật tư** / **Phiếu nhập** / **Phiếu xuất** / **Kiểm kê**. Snapshot production ngày 13/08/2026 của tài khoản DEMO đang rỗng; khi có dữ liệu, tab **Vật tư** liệt kê từng loại cùng tồn kho.
 
-![Tab Vật tư của màn Kho vật tư liệt kê Bóng đèn LED tồn 20, Vòi nước tồn 8, Sơn tồn 4 kèm đơn vị và giá vốn trung bình](./images/buoc-01-danh-sach.webp)
+![Tab Vật tư của màn Kho vật tư với danh sách, tồn kho và giá vốn trung bình](./images/buoc-01-danh-sach.webp)
 
 **Bước 2**: Đọc bảng tồn kho. Mỗi dòng cho biết **Mã**, **Tên**, **Danh mục**, **Đơn vị**, **Tồn** (hiển thị bằng nhãn màu) và **Giá vốn TB** (giá vốn trung bình). Nhãn tồn có **3 mức**: **Hết hàng** (tồn ≤ 0, đỏ), **Sắp hết** (tồn ≤ ngưỡng cảnh báo, vàng) và **Còn** (xám). Dùng hai sub-tab **Tất cả** / **Sắp hết** để lọc nhanh những vật tư cần nhập thêm — vật tư vào nhóm "Sắp hết" khi **Tồn ≤ Ngưỡng cảnh báo** (`reorder_level`) mà bạn đặt cho nó.
 
@@ -36,6 +37,8 @@ Kho vật tư là nơi bạn theo dõi **vật tư tiêu hao** dùng cho bảo t
 - **Đơn vị** (bắt buộc, mặc định **cái**) và **Ngưỡng cảnh báo** — số tồn mà từ đó trở xuống vật tư bị đánh dấu "Sắp hết".
 
 Ấn **Lưu**. Lưu ý: form **không có ô nhập Tồn hay Giá vốn** — hai con số đó do hệ thống tính từ các phiếu, không khai tay.
+
+Mã vật tư không có ràng buộc duy nhất ở cơ sở dữ liệu. Hệ thống vẫn có thể lưu hai vật tư trùng mã, nên hãy tự đặt mã không trùng trong kho chung để tìm kiếm và chọn dòng chính xác.
 
 ::: warning Tồn và giá vốn là số dẫn xuất — đừng tìm cách sửa tay
 **Tồn** và **Giá vốn TB** chỉ thay đổi khi bạn lập phiếu **nhập / xuất / kiểm kê**. Không có chỗ nào chỉnh trực tiếp hai con số này, và bạn không nên tìm cách "ép" chúng cho khớp. Muốn tồn đúng thì lập phiếu kiểm kê; muốn giá vốn đúng thì lập phiếu nhập với đơn giá đúng.
@@ -100,15 +103,13 @@ Cả hai cách đều sinh mã **MU-…** và **trừ số lượng khỏi tồn
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.kythuat" app-path="/materials" app-label="Mở màn Kho vật tư" fixtures="3 vật tư demo (Bóng đèn LED tồn 20, Vòi nước tồn 8, Sơn tồn 4) + 1 phiếu nhập sẵn">
+<SandboxTry account="demo.chunha" app-path="/materials" app-label="Mở màn Kho vật tư" fixtures="Snapshot 13/08/2026: bốn tab đang rỗng." view-only>
 
-Thực hành xem tồn kho rồi lập một phiếu để thấy tồn tự thay đổi:
+Quan sát cấu trúc kho mà không lập phiếu:
 
-1. Ở tab **Vật tư**, xem 3 vật tư demo và cột **Tồn**: **Bóng đèn LED 20**, **Vòi nước 8**, **Sơn 4**. Bấm sub-tab **Sắp hết** để xem loại nào đã chạm ngưỡng cảnh báo.
-2. Lập một **phiếu nhập**: sang tab **Phiếu nhập** => **Tạo phiếu nhập**, chọn nhà cung cấp, thêm dòng **Bóng đèn LED**, số lượng **10**, đơn giá tuỳ ý, rồi **Lưu**. Quay lại tab **Vật tư** — tồn Bóng đèn LED tăng lên **30**.
-3. Lập một **phiếu xuất**: sang tab **Phiếu xuất** => **Tạo phiếu xuất**, thêm dòng **Vòi nước**, số lượng **3**, rồi **Lưu**. Tồn Vòi nước giảm còn **5**.
-4. Để ý phiếu nhập vừa lập **không** tạo phiếu chi nào bên Thu chi — kho và tiền là hai việc tách rời.
-5. Xong bấm **Reset** để trả sandbox về trạng thái ban đầu.
+1. Chuyển qua **Vật tư / Phiếu nhập / Phiếu xuất / Kiểm kê** và đọc empty state của từng tab.
+2. Nhận diện bộ lọc, cột tồn và các nút tạo phiếu; không mở/lưu phiếu trong bài quan sát.
+3. Ghi nhớ phiếu kho và phiếu tiền là hai nghiệp vụ tách rời; khi có mua vật tư thật phải ghi tiền riêng ở Thu chi.
 
 Kết quả mong đợi: bạn hiểu rằng tồn kho là con số **dẫn xuất** — chỉ thay đổi khi lập phiếu nhập / xuất / kiểm kê — và nhập kho không đụng tới sổ quỹ.
 

@@ -1,86 +1,90 @@
 ---
-title: "Phân quyền theo trang (mẫu quyền)"
-description: "Tạo và chỉnh mẫu phân quyền theo từng trang (3 mức Xem/Quản lý/Nhạy cảm), gán mẫu cho nhân viên và đối chiếu quyền khác mẫu."
-routes: ["/settings/staff"]
-permissions: [{module: users, action: view}]
-viewport: desktop
+title: "Mẫu vai trò và phân quyền RBAC V3"
+description: "Tạo gói quyền dùng lại, gán vai trò theo phạm vi và kiểm tra quyền hiệu lực cùng ngoại lệ của từng thành viên."
+routes: ["/settings/roles", "/settings/members"]
+permissions: [{module: users, action: view}, {module: users, action: edit}, {module: users, action: manage_templates}]
+viewport: responsive
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-14"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
-# Phân quyền theo trang (mẫu quyền)
+# Mẫu vai trò và phân quyền RBAC V3
 
-Màn hình này để bạn quản lý **mẫu phân quyền** — bộ quyền tái sử dụng mô tả "nhân viên được làm gì trên từng trang của phần mềm". Danh mục quyền được liệt kê **theo từng trang** (gần 40 trang chia thành 10 nhóm như Bất động sản, Hợp đồng, Thu chi, Báo cáo, Cấu hình…), mỗi trang lại tách quyền thành **3 mức**: **Xem** (view), **Quản lý** (manage, thêm/sửa/xoá/duyệt) và **Nhạy cảm** (elevated — thao tác dễ ảnh hưởng tiền hoặc phân quyền). Phần mềm có sẵn **4 mẫu hệ thống** (**Super Admin**, **Quản Lý Tòa**, **Partner**, **Viewer**); bạn có thể **nhân bản** rồi tinh chỉnh thành mẫu riêng, sau đó **gán mẫu cho nhân viên** và theo dõi khi quyền của một người bị chỉnh **khác mẫu**.
+`/settings/roles` hiển thị **Mẫu vai trò**: các gói quyền có thể dùng lại cho nhiều thành viên. `/settings/members` là nơi gán những vai trò đó cho từng người và chọn phạm vi áp dụng.
 
-Mẫu quyền chỉ quyết định **"làm được gì"**. Còn **"làm ở toà nào"** là một chiều kiểm soát riêng — **phạm vi toà** — được chọn khi bạn thêm/sửa nhân viên, độc lập với mẫu quyền.
+![Màn Mẫu vai trò trên production của demo.chunha với vai trò Chủ công ty 231 quyền và Quản Lý Tòa 136 quyền](./images/buoc-01-man-hinh.webp)
 
-::: info Điều kiện tiên quyết
-- Tài khoản có quyền **Xem** trang phân quyền (module `users`) để mở màn hình; muốn tạo/sửa mẫu cần thêm quyền **Quản lý mẫu phân quyền** (`users.manage_templates`).
-- Vào được **Cài đặt** => **Nhân viên & Đội ngũ**. Chủ nhà (Super Admin) luôn có đủ quyền này.
+::: warning Vai trò là cấu hình sống
+Sửa một vai trò làm thay đổi quyền của **tất cả thành viên đang mang vai trò đó ngay lập tức**. Nếu chỉ muốn điều chỉnh một người, dùng tab **Ngoại lệ** của thành viên thay vì sửa vai trò chung.
 :::
 
-## Hướng dẫn từng bước
+## Mô hình quyền
 
-**Bước 1**: Vào **Cài đặt** => **Nhân viên & Đội ngũ**, rồi chọn tab **Mẫu phân quyền**.
+- `organization_roles`: vai trò thuộc tổ chức.
+- `role_permissions`: các quyền `ALLOW` của vai trò.
+- `role_bindings`: gán vai trò cho thành viên.
+- `role_binding_scopes`: phạm vi `ORGANIZATION`, `AREA`, `BUILDING` hoặc `CASHBOOK` của binding.
+- `member_permission_overrides`: ngoại lệ `ALLOW`/`DENY` cho riêng thành viên.
+- `permission_definitions`: danh mục quyền hợp lệ phía máy chủ.
 
-![Màn hình](./images/buoc-01-man-hinh.webp)
+Một vai trò **không chứa scope**. Mỗi role binding phải có ít nhất một scope; một thành viên có thể mang nhiều vai trò ở nhiều phạm vi. `ORGANIZATION` bao phủ cả tài nguyên tạo trong tương lai và là scope độc quyền trong binding đó. Khi quyền xung đột, `DENY` luôn thắng.
 
-**Bước 2**: Xem danh sách mẫu. Bốn thẻ đầu là **mẫu hệ thống** — **Super Admin** (toàn quyền), **Quản Lý Tòa** (quản lý vận hành 1+ toà), **Partner** (cộng tác viên: quản lý khách hẹn/cọc, xem hợp đồng), **Viewer** (chỉ xem). Bên dưới là các mẫu **tự tạo**. Mỗi thẻ hiển thị số **nhân viên đang dùng** mẫu đó.
+## Tạo hoặc sửa vai trò
 
-**Bước 3**: Bấm vào một mẫu để mở **ma trận quyền theo trang**. Cột trái là danh sách trang chia theo 10 nhóm (mỗi trang có badge *số quyền đang bật / tổng*); panel phải liệt kê **từng chức năng** của trang với ô tích và mô tả. Quyền mức **Nhạy cảm** có badge **Nhạy cảm** để bạn nhận diện. Dùng ô **tìm kiếm** để lọc nhanh chức năng xuyên các trang.
+1. Mở `/settings/roles`.
+2. Bấm **Tạo vai trò**, đặt tên và chọn quyền theo từng trang/chức năng.
+3. Dùng các mức hiển thị **Xem**, **Quản lý** và **Nhạy cảm** để đánh giá rủi ro; mức này chỉ hỗ trợ trình bày, quyền thật vẫn là từng key `module.action`.
+4. Lưu vai trò, sau đó sang `/settings/members` để gán vai trò cùng scope.
 
-::: warning Cân nhắc khi bật quyền "Nhạy cảm"
-Các quyền gắn badge **Nhạy cảm** (ví dụ thu tiền, chia lợi nhuận, quản lý nhân sự, thao tác thanh lý) cho phép nhân viên **ghi nhận tiền hoặc thay đổi phân quyền**. Chỉ bật cho người thực sự cần; cấp nhầm rồi thu hồi vẫn có thể để lại dữ liệu đã tạo trước đó.
-:::
+Catalog hiện có **231 permission feature**. Ảnh production ngày 13/08/2026 cho thấy vai trò **Chủ công ty** mang đủ 231 quyền và sidebar đang hiển thị **OpenClaw Zalo**; vì vậy không còn đúng nếu mô tả deployment hiện tại là runtime-off hoặc khẳng định tám key OpenClaw luôn bị ẩn. Bộ chọn quyền phụ thuộc runtime của chính deployment đang phục vụ. Không dùng bốn mẫu legacy như nguồn thẩm quyền hiện hành.
 
-**Bước 4**: Với **mẫu hệ thống**, ma trận ở chế độ **chỉ xem** (không sửa được). Muốn có bản chỉnh riêng, bấm **Tạo bản sao** để nhân bản thành mẫu tuỳ chỉnh, rồi mới sửa.
+![Bộ chọn quyền của vai trò Chủ công ty: 231 quyền đang bật, nhóm OpenClaw Zalo cá nhân đủ 8 trên 8 quyền](./images/buoc-02-bo-chon-quyen.webp)
 
-**Bước 5**: Với **mẫu tuỳ chỉnh**, tích/bỏ tích từng quyền. Mỗi trang có nút nhanh **Bỏ hết** / **Chỉ xem** / **Tất cả**; ngoài ra có nút preset áp cho **toàn bộ** mẫu. Đặt **tên mẫu** (bắt buộc, không để trống) rồi bấm **Lưu**.
+## Sơ đồ tính quyền hiệu lực
 
-**Bước 6 — Gán mẫu cho nhân viên**: Sang tab **Nhân viên**, mở một nhân viên (hoặc bấm **Thêm nhân viên**). Ở khu **Cài đặt nhanh**, chọn **một mẫu** — phần mềm **sao chép** toàn bộ quyền của mẫu cho nhân viên đó. Nếu cần, tinh chỉnh thêm ở khu **Tinh chỉnh từng quyền** (chỉnh riêng cho người này, không ảnh hưởng mẫu gốc hay người khác), rồi **Lưu**.
+```mermaid
+flowchart LR
+    A["Permission catalog<br/>231 key hiện hành"] --> B["Vai trò<br/>các ALLOW dùng lại"]
+    B --> C["Role binding<br/>gán vai trò cho thành viên"]
+    S["Scope<br/>Organization / Area / Building / Cashbook"] --> C
+    C --> E["Quyền hiệu lực"]
+    O["Ngoại lệ riêng<br/>ALLOW hoặc DENY + lý do"] --> E
+    R["Runtime capability<br/>route được mount hay không"] --> G{"Có mở/thao tác được?"}
+    E --> G
+    G -->|"Có quyền + đúng scope + runtime bật"| Y["Cho phép vào bề mặt"]
+    G -->|"DENY / sai scope / runtime tắt"| N["Ẩn hoặc từ chối"]
+```
 
-**Bước 7 — Đọc chênh lệch "khác mẫu"**: Trên thẻ mỗi nhân viên, phần mềm hiển thị trạng thái quyền: **Bypass toàn quyền** (Super Admin), **Khớp mẫu** (quyền y hệt mẫu) hoặc **N thay đổi so với mẫu** (đã tinh chỉnh khác mẫu). Đây là cách nhanh để biết ai đang có quyền lệch khỏi mẫu chuẩn.
+## Quyền hiệu lực của thành viên
 
-## Các tính năng khác trên màn hình
+Trong hộp thoại thành viên:
 
-| Nút / Thành phần | Công dụng |
+1. **Vai trò & phạm vi** — quản lý role binding và scope.
+2. **Ngoại lệ** — cấp hoặc cấm một quyền lẻ cho riêng người đó; mọi thay đổi cần lý do.
+3. **Quyền hiệu lực** — đối chiếu kết quả cuối cùng trước và sau khi lưu.
+
+![Hộp thoại phân quyền thành viên DEMO Kế Toán với ba tab, vai trò Quản Lý Tòa 136 quyền và phạm vi Toàn tổ chức](./images/buoc-03-quyen-hieu-luc.webp)
+
+Ảnh production xác nhận thành viên **DEMO Kế Toán** đang có một vai trò **Quản Lý Tòa — 136 quyền**, phạm vi **Toàn tổ chức**, và tab **Quyền hiệu lực** hiển thị 136. Tài khoản chủ DEMO có **229 quyền hiệu lực** nhưng không thể tự sửa authorization của chính mình; muốn xem đầy đủ hộp thoại chỉnh sửa, mở một thành viên khác.
+
+Ví dụ: vai trò cho phép `cashbooks.view` ở một `CASHBOOK`, nhưng ngoại lệ `DENY cashbooks.view` cùng phạm vi sẽ chặn quyền đó. Ngược lại, một ngoại lệ `ALLOW` không thể vượt qua một `DENY` phù hợp.
+
+## Quyền quản trị cần có
+
+| Quyền | Công dụng |
 |---|---|
-| Tab **Nhân viên** | Thêm/sửa/xoá nhân viên và gán mẫu quyền + phạm vi toà cho từng người. |
-| Tab **Đội ngũ** | Nhóm nhân viên thành đội để bàn giao tiền mặt nội đội và thấy tên nhau. |
-| Tab **Mẫu phân quyền** | Danh sách mẫu quyền; nơi tạo/sửa/xoá và xem ma trận quyền theo trang. |
-| **Tạo bản sao** | Nhân bản một mẫu (kể cả mẫu hệ thống) thành mẫu tuỳ chỉnh để chỉnh sửa. |
-| Nút **Bỏ hết** / **Chỉ xem** / **Tất cả** | Đặt nhanh toàn bộ quyền của **một trang** về: tắt hết / chỉ mức Xem / bật hết. |
-| Preset toàn cục | Áp một mức quyền chung cho **toàn bộ** các trang trong mẫu cùng lúc. |
-| Ô **tìm kiếm** | Lọc nhanh chức năng theo tên, xuyên tất cả các trang. |
-| Badge **Nhạy cảm** | Đánh dấu quyền mức elevated (dễ ảnh hưởng tiền / phân quyền). |
-| Số **nhân viên đang dùng** | Trên mỗi thẻ mẫu, cho biết mẫu đang được gán cho bao nhiêu người. |
-| Biểu tượng **sửa** / **xoá** (mẫu tuỳ chỉnh) | Đổi tên/quyền của mẫu, hoặc xoá mẫu (chặn nếu đang có người dùng). |
+| `users.view` | Mở trang thành viên/vai trò |
+| `users.edit` | Sửa vai trò, phạm vi hoặc ngoại lệ của thành viên |
+| `users.manage_templates` | Tạo, sửa và quản lý Mẫu vai trò |
 
-## Tình huống & lỗi thường gặp
-
-| Tình huống | Nguyên nhân & cách xử lý |
-|---|---|
-| Không sửa được mẫu **Super Admin / Quản Lý Tòa / Partner / Viewer** | Đây là mẫu hệ thống, cố ý khoá để giữ chuẩn. Bấm **Tạo bản sao** rồi sửa trên bản sao. |
-| Xoá mẫu báo không cho phép | Mẫu đang được gán cho ít nhất một nhân viên. Chuyển những người đó sang mẫu khác trước, rồi mới xoá. |
-| Không thấy tab **Mẫu phân quyền** hoặc nút Thêm/Sửa | Thiếu quyền **Quản lý mẫu phân quyền** (`users.manage_templates`) hoặc chỉ có quyền Xem. Nhờ chủ nhà cấp thêm quyền module `users`. |
-| Đã chỉnh quyền một nhân viên về **đúng mẫu** rồi Lưu nhưng thẻ vẫn hiện **N thay đổi so với mẫu** | Khi bạn chỉnh về khớp mẫu, chênh lệch bằng 0 nên hệ thống không ghi đè lại quyền đã tinh chỉnh trước đó. Cách chắc chắn: đổi nhân viên sang một mẫu khác rồi chọn lại đúng mẫu mong muốn để nạp mới quyền. |
-| Nhân viên có quyền nhưng vẫn không thao tác được ở một toà | Quyền (mẫu) và **phạm vi toà** là hai chiều riêng. Kiểm tra lại phạm vi toà của người đó ở tab **Nhân viên** (khu vực / toà lẻ / tất cả toà). |
-| Tinh chỉnh quyền một người nhưng sợ ảnh hưởng người khác | Không ảnh hưởng. Tinh chỉnh trong hồ sơ nhân viên chỉ áp cho riêng người đó; mẫu gốc và các nhân viên khác giữ nguyên. |
-
-## Thử trực tiếp trên sandbox
-
-<SandboxTry account="demo.chunha" app-path="/settings/staff" view-only>
-
-**Bài xem**
-
-Mở tab **Mẫu phân quyền**, bấm vào một mẫu (ví dụ **Quản Lý Tòa**) để xem **ma trận quyền theo từng trang**: quan sát danh sách trang chia theo nhóm ở cột trái, các chức năng cùng ô tích ở panel phải, và badge **Nhạy cảm** ở những quyền dễ ảnh hưởng tiền — chỉ xem, không cần lưu.
-
-</SandboxTry>
+Chỉ cấp các quyền quản trị này cho người chịu trách nhiệm phân quyền. Người dùng không thể tự sửa authorization của chính mình.
 
 ## Quy trình liên quan
 
+- [Thành viên tổ chức](/05-cai-dat/nhan-vien-doi-ngu/)
 - [Thêm nhân viên](/01-bat-dau/them-nhan-vien/)
 - [Danh mục khác](/05-cai-dat/danh-muc-khac/)

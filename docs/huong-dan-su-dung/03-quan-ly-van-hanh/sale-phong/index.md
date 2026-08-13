@@ -6,8 +6,9 @@ permissions: [{module: sale_phong, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  account: demo.chunha
 status: published
 ---
 
@@ -28,6 +29,10 @@ Màn **Sale Phòng** là nơi bạn vận hành trang phòng trống công khai 
 **Bước 1**: Tại menu bên trái, vào **Danh mục dữ liệu => Sale Phòng**. Màn mở ra với **6 tab**: **Link chia sẻ**, **Cài đặt hiển thị**, **Thông tin sale**, **Khách nhờ sale**, **Sơ đồ tòa nhà** và **Thống kê**. Bạn chỉ thấy những tab mà mình có quyền.
 
 ![Màn Sale Phòng với 6 tab Link chia sẻ, Cài đặt hiển thị, Thông tin sale, Khách nhờ sale, Sơ đồ tòa nhà, Thống kê](./images/buoc-01-man-hinh.webp)
+
+::: warning DEMO hiện chưa có link chia sẻ
+Snapshot production ngày 13/08/2026 hiển thị empty state **Chưa có link chia sẻ nào**. Tài liệu không tự tạo link chỉ để lấy ảnh vì đó là một thay đổi dữ liệu; phần dưới mô tả quy trình tạo/thu hồi, còn ảnh phản ánh đúng trạng thái hiện tại.
+:::
 
 **Bước 2**: Tạo link chia sẻ — ở tab **Link chia sẻ**, ấn nút tạo link mới, đặt **Nhãn** gợi nhớ (ví dụ "Gửi sale khu Gò Vấp") rồi lưu. Hệ thống sinh một **mã token ngẫu nhiên 6 ký tự** và tạo đường dẫn dạng `https://ptcrm.vercel.app/r/<token>`. Mã này **không chứa thông tin của bạn** nên chia sẻ an toàn.
 
@@ -61,6 +66,8 @@ Phòng đăng ở đây hiện trên trang công khai với **màu riêng** (kh�
 
 Khi khách mở link, họ **không đăng nhập** mà vẫn xem được mọi toà của bạn đang có phòng trống, ở 2 chế độ: **Danh sách** (thẻ ảnh + giá + tiện ích) và **Sơ đồ** (bố trí phòng từng tầng). Bấm vào một phòng mở bảng chi tiết: bộ ảnh, giá/cọc/tiền điện, khuyến mãi, và các nút **Gọi / Zalo / Chỉ đường / Chia sẻ / Tải ảnh**. Trang tự làm mới định kỳ nên khách luôn thấy tình trạng phòng gần đúng thời điểm hiện tại. Riêng nút **Tạo cọc giữ phòng** chỉ hiện khi **sale đang đăng nhập và có quyền tạo cọc** — khách vãng lai không bao giờ thấy.
 
+Nút cọc nhanh thử tạo giữ chỗ canonical 24 giờ rồi mới tạo voucher, nhưng hai bước không nguyên tử và giữ chỗ có thể fail-open khi writer/quyền/hạ tầng không sẵn sàng. Vì vậy sale phải tải lại để kiểm phòng đã được giữ và kiểm voucher đã `POSTED`; không suy ra đã khoá phòng hay đã thu tiền chỉ từ việc hộp thoại báo thành công.
+
 ### Phiên bản điện thoại
 
 Mở `/sale-phong` trên điện thoại, màn mặc định chuyển sang bản mobile: xem nhanh **phòng trống của chính bạn** (không cần link), và một chế độ **Quản lý** gồm đủ 6 chức năng như bản máy tính, cùng ràng buộc quyền.
@@ -73,21 +80,21 @@ Mở `/sale-phong` trên điện thoại, màn mặc định chuyển sang bản
 | Trang công khai hiện **toà lạ / phòng mẫu** không phải của bạn | Bạn đang mở trang **không có token hợp lệ** nên hệ thống hiện **dữ liệu mẫu** để xem thử giao diện. Hãy mở đúng link `/r/<token>` bạn đã tạo. |
 | Một **toà không lên** trang công khai | Trang chỉ hiện toà có ít nhất một phòng **trống / sắp trống / khách nhờ sale**. Toà đã kín khách sẽ không xuất hiện, trừ khi có phòng đăng ở tab **Khách nhờ sale**. |
 | Phòng **còn hợp đồng nhưng vẫn hiện trống** trên trang | Trang suy trạng thái từ **hợp đồng thật**, không từ cờ trạng thái phòng. Kiểm tra hợp đồng của phòng còn **hiệu lực** không; nếu hợp đồng đã kết thúc thì phòng đúng là trống. |
-| Phòng đã **đặt cọc giữ chỗ** vẫn hiện trống | Không nên xảy ra: phòng có phiếu cọc giữ chỗ tự chuyển **Đã đặt cọc** và biến khỏi danh sách trống ngay (kể cả phiếu chưa duyệt). Nếu vẫn thấy, kiểm tra lại phiếu cọc ở [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/). |
+| Vừa tạo **cọc giữ chỗ** nhưng phòng vẫn hiện trống | Cọc nhanh và giữ chỗ là hai request riêng; bước giữ chỗ có thể fail-open. Tải lại trang, kiểm tra phiếu cọc ở [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/) và xác nhận trạng thái phòng trước khi hứa đã khoá phòng cho khách. |
 | Ô **Thưởng sale** khách có nhìn thấy không | Không. **Thưởng sale** là ghi chú **nội bộ**, không nằm trong nội dung chia sẻ cho khách. Ô **Khuyến mãi** thì có gửi khách được. |
 | Tab **Sắp trống** không hiện dù hợp đồng sắp hết | Kiểm tra **Số ngày báo "sắp trống"** ở tab **Cài đặt hiển thị** — hợp đồng phải sắp hết hạn (hoặc khách đã đăng ký chuyển đi) **trong khoảng số ngày** đó mới hiện nhãn Sắp trống. |
 | Không thấy một số tab | Mỗi tab cần quyền chi tiết riêng (xem Điều kiện tiên quyết). Nhờ quản trị bật quyền `sale_phong.*` tương ứng ở [Phân quyền](/05-cai-dat/phan-quyen/). |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.sale" app-path="/sale-phong" app-label="Mở màn Sale Phòng" fixtures="phòng trống Tòa DEMO A/B">
+<SandboxTry account="demo.sale" app-path="/sale-phong" app-label="Mở màn Sale Phòng" fixtures="snapshot hiện chưa có link chia sẻ; có phòng trống trong dữ liệu DEMO" view-only>
 
 Thực hành đăng phòng trống và xem link công khai:
 
 1. Lần lượt mở **6 tab** để làm quen: **Link chia sẻ**, **Cài đặt hiển thị**, **Thông tin sale**, **Khách nhờ sale**, **Sơ đồ tòa nhà**, **Thống kê**.
-2. Ở tab **Link chia sẻ**, tạo một link mới với nhãn **"Thử gửi khách"**, rồi **Sao chép link**.
-3. Ấn **Mở thử** (hoặc dán link vào tab mới) để xem trang phòng trống công khai của **Tòa DEMO A/B** — đúng những gì khách sẽ thấy. Chuyển giữa chế độ **Danh sách** và **Sơ đồ**, bấm vào một phòng để xem chi tiết.
-4. Quay lại tab **Link chia sẻ**, **Thu hồi** link vừa tạo rồi mở lại đường dẫn: trang báo **"Liên kết không hợp lệ"**. **Khôi phục** lại và mở lần nữa để thấy nó hoạt động lại.
+2. Ở tab **Link chia sẻ**, quan sát empty state và nút **Tạo link mới**; không tạo link trong tài khoản dùng chung nếu chưa có kế hoạch dọn dữ liệu.
+3. Sang **Cài đặt hiển thị**, **Thông tin sale**, **Khách nhờ sale**, **Sơ đồ tòa nhà** và **Thống kê** để kiểm tra các bề mặt hiện có.
+4. Khi cần thử vòng đời link, dùng một fixture riêng có cleanup hoặc tạo rồi xoá/thu hồi theo quy trình quản trị đã thống nhất.
 
 Kết quả mong đợi: bạn hiểu vòng đời một link chia sẻ (tạo → gửi → thu hồi/khôi phục) và thấy trang công khai hiển thị đúng phòng trống mà không cần khách đăng nhập. Xong bấm **Reset** để trả sandbox về trạng thái ban đầu.
 

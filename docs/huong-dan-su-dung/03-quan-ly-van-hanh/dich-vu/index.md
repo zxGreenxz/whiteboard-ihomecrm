@@ -1,19 +1,24 @@
 ---
 title: "Dịch vụ"
-description: "Tra cứu và quản lý danh mục dịch vụ (điện, nước, rác, giữ xe...): loại phí, cách tính giá, gán vào từng toà, đơn giá riêng theo toà và định mức bậc thang."
+description: "Tra cứu và quản lý danh mục dịch vụ (điện, nước, rác...): loại phí, cách tính giá, gán vào từng toà, đơn giá riêng theo toà và định mức bậc thang."
 routes: ["/services"]
 permissions: [{module: services, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
 # Dịch vụ
 
-Màn **Dịch vụ** là nơi bạn khai báo và tra cứu toàn bộ dịch vụ thu tiền của hệ thống — điện, nước, rác, giữ xe, wifi, vệ sinh... Mỗi dịch vụ định nghĩa **loại phí** (lên cột nào của hoá đơn), **cách tính tiền** (cố định theo tháng, theo đồng hồ, theo người, theo phòng...) và **đơn giá**. Bạn dùng màn này khi cần thêm một khoản thu định kỳ mới, chỉnh giá, hoặc gán/bật một dịch vụ cho từng toà với đơn giá riêng.
+Màn **Dịch vụ** là nơi bạn khai báo và tra cứu toàn bộ dịch vụ thu tiền của hệ thống — điện, nước, rác và các khoản dịch vụ khác. Mỗi dịch vụ định nghĩa **loại phí** (lên cột nào của hoá đơn), **cách tính tiền** (cố định theo tháng, theo đồng hồ, theo người, theo phòng...) và **đơn giá**. Bạn dùng màn này khi cần thêm một khoản thu định kỳ mới, chỉnh giá, hoặc gán/bật một dịch vụ cho từng toà với đơn giá riêng.
+
+::: tip Snapshot production DEMO (13/08/2026)
+Với tài khoản `demo.chunha`, `/services` tải xong có đúng ba dòng: **DEMO Điện — 3.500**, **DEMO Nước — 100.000** và **DEMO Rác — 50.000**. Không có dòng **Giữ Xe** trong snapshot đã xác minh; lượt kiểm tra chỉ xem và console không có lỗi.
+:::
 
 Đây là danh mục dùng chung ở cấp chủ nhà: một dịch vụ khai một lần rồi **bật cho từng toà** và có thể đặt **đơn giá riêng cho mỗi toà**. Việc khai lần đầu cho toàn hệ thống xem thêm ở trang [Dịch vụ & định mức](/01-bat-dau/dich-vu-dinh-muc/).
 
@@ -46,12 +51,16 @@ Màn **Dịch vụ** là nơi bạn khai báo và tra cứu toàn bộ dịch v�
 Cột **Loại phí** (Tiền điện / Tiền nước / Tiền phí dịch vụ / Tiền vệ sinh / Tiền phí khác) quyết định khoản thu này rơi vào **cột nào** trên hoá đơn phòng. Đặt đúng loại phí giúp báo cáo tách bạch điện–nước–dịch vụ, đừng gộp mọi thứ vào "phí khác".
 :::
 
-**Bước 4**: Cần thêm dịch vụ mới, ấn nút **Thêm**. Trong form, điền **Tên** (ví dụ "Giữ xe"), **Mã** (tuỳ chọn), chọn **Loại phí** và **Loại tính tiền**, nhập **Đơn giá** và **Đơn vị** (Phòng / Người / Kwh / m³ / Tháng...). Nếu tính theo bậc thang, chọn **Định mức** đã tạo sẵn. Bên dưới, tick các **toà nhà** áp dụng dịch vụ này; với mỗi toà bạn có thể đặt **đơn giá riêng** (ghi đè đơn giá mặc định). Xong ấn **Lưu**.
+**Bước 4**: Khi cần xem hoặc cấu hình thêm dịch vụ, ấn nút **Thêm**. Trong form, điền **Tên**, **Mã** (tuỳ chọn), chọn **Loại phí** và **Loại tính tiền**, nhập **Đơn giá** và **Đơn vị** (Phòng / Người / Kwh / m³ / Tháng...). Nếu tính theo bậc thang, chọn **Định mức** đã tạo sẵn. Bên dưới, tick các **toà nhà** áp dụng dịch vụ này; với mỗi toà bạn có thể đặt **đơn giá riêng** (ghi đè đơn giá mặc định). Xong ấn **Lưu**.
 
 **Bước 5**: Muốn xem đầy đủ các trường của một dịch vụ hoặc chỉnh giá, ấn **Sửa** trên dòng dịch vụ. Form mở ra đúng các trường ở Bước 4 kèm giá trị hiện tại: loại phí, cách tính, đơn giá mặc định, đơn vị, định mức, cờ **Mặc định** / **Bắt buộc** khi lập hợp đồng, và danh sách toà đang bật kèm đơn giá riêng từng toà. Chỉnh xong ấn **Lưu**.
 
 ::: tip Đơn giá riêng theo toà
 Khi một toà được đặt **đơn giá riêng**, hoá đơn của toà đó dùng con số riêng thay cho đơn giá mặc định của dịch vụ. Nếu đổi đơn giá mặc định mà một toà vẫn ra giá cũ, gần như chắc chắn toà đó có đơn giá riêng — sửa lại trong form dịch vụ (hoặc trong form toà, phần **Dịch vụ toà**).
+:::
+
+::: warning Lưu dịch vụ và liên kết toà là hai bước riêng
+Tạo/cập nhật bản ghi dịch vụ và đồng bộ danh sách toà áp dụng là các request riêng, không phải một giao dịch nguyên tử. Nếu mạng lỗi giữa chừng, dịch vụ có thể đã lưu nhưng liên kết toà chưa khớp; hãy mở lại form để kiểm tra. Bỏ tick rồi lưu vẫn giữ `unit_price_override` của các liên kết còn lại, nhưng liên kết đã xoá rồi thêm lại sẽ mất giá riêng cũ và cần nhập lại.
 :::
 
 **Bước 6**: Không dùng một dịch vụ nữa, ấn **Xoá** trên dòng của nó. Dịch vụ được ẩn khỏi danh mục nhưng **không xoá cứng** — các hoá đơn/hợp đồng cũ đã dùng dịch vụ này vẫn giữ nguyên số liệu.
@@ -85,15 +94,15 @@ Xoá một dịch vụ đang được các toà sử dụng sẽ khiến nó kh�
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/services" app-label="Mở màn Dịch vụ" fixtures="DEMO Điện/Nước/Rác/Giữ Xe">
+<SandboxTry account="demo.chunha" app-path="/services" app-label="Mở màn Dịch vụ" fixtures="3 dòng DEMO: Điện 3.500, Nước 100.000, Rác 50.000; không có Giữ Xe" view-only>
 
-Làm quen với mô hình giá dịch vụ:
+Bài tập **chỉ xem** trên snapshot đang hiển thị:
 
-1. Đọc cột **Loại tính tiền** của 4 dịch vụ mẫu: để ý **Điện/Nước** tính theo đồng hồ, **Rác** cố định theo tháng, **Giữ Xe** tính theo phòng hoặc theo người.
-2. Đối chiếu cột **Loại phí** với **Loại tính tiền** để hiểu hai trường này khác nhau: loại phí quyết định cột hoá đơn, cách tính quyết định ra số tiền thế nào.
-3. Ấn **Sửa** dịch vụ **Điện** (không cần Lưu) để xem đầy đủ các trường: loại phí, cách tính, đơn giá, đơn vị, định mức và danh sách toà được bật kèm đơn giá riêng.
+1. Đối chiếu đúng ba dòng và đơn giá: **DEMO Điện — 3.500**, **DEMO Nước — 100.000**, **DEMO Rác — 50.000**.
+2. Đọc cột **Loại phí**, **Loại tính tiền**, **Đơn vị** và **Mặc định** của từng dòng; xác nhận danh sách không có **Giữ Xe**.
+3. Dùng bộ lọc hoặc ô tìm kiếm để xem lại các dòng đang hiển thị, rồi bỏ lọc. Không ấn **Thêm**, **Lưu**, **Sửa** hoặc **Xoá**.
 
-Kết quả mong đợi: bạn phân biệt được loại phí và cách tính, hiểu vì sao một dịch vụ có thể có đơn giá khác nhau ở từng toà, và biết mỗi trường trong form dùng để làm gì.
+Kết quả mong đợi: bạn phân biệt được ba dịch vụ DEMO hiện hành và đọc được mô hình giá mà không tạo hay thay đổi dữ liệu.
 
 </SandboxTry>
 

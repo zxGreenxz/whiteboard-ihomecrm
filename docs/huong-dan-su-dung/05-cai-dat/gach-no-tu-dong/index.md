@@ -2,11 +2,11 @@
 title: "Gạch nợ tự động"
 description: "Cấu hình quy tắc tự động cấn trừ tiền chuyển khoản ngân hàng vào công nợ hoá đơn cũ."
 routes: ["/settings/categories/auto-debt"]
-permissions: [{module: auto_debt, action: view}]
+permissions: [{module: auto_debt, action: view}, {module: auto_debt, action: create}, {module: auto_debt, action: edit}, {module: auto_debt, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---

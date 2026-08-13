@@ -1,19 +1,19 @@
 ---
 title: "Chữ ký"
-description: "Quản lý chữ ký điện tử (ảnh chữ ký, con dấu) để chèn vào mẫu biểu khi in hợp đồng và hóa đơn."
+description: "Xem giao diện mẫu chữ ký hiện hành; các nút tải ảnh, vẽ và nhập text chưa có luồng lưu runtime."
 routes: ["/settings/signatures"]
 permissions: [{module: templates, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  account: production
 status: published
 ---
 
 # Chữ ký
 
-Trang **Chữ ký** là nơi bạn quản lý các mẫu chữ ký điện tử — ảnh chữ ký hoặc con dấu — để chèn vào **mẫu biểu** khi in ra (hợp đồng, hóa đơn). Mỗi chữ ký có thể được tạo theo ba cách: **Tải ảnh** lên, **Vẽ** trực tiếp, hoặc **Nhập text**. Chữ ký được cấu hình ở đây dùng chung cho toàn bộ tài khoản của bạn (không phân theo tòa nhà), giống như kho mẫu biểu — thay vì phải ký tay từng bản in, bạn cấu hình một lần rồi hệ thống chèn sẵn vào tài liệu.
+Trang `/settings/signatures` hiện hiển thị giao diện mẫu với hai chữ ký minh hoạ và ba nút **Tải ảnh lên**, **Vẽ chữ ký**, **Nhập text**. Các nút chưa nối với form hay mutation lưu dữ liệu, vì vậy đây chưa phải màn CRUD chữ ký hoàn chỉnh.
 
 ::: info Điều kiện tiên quyết
 Bạn cần quyền **Mẫu biểu** (xem) để mở trang này — cùng nhóm quyền với kho **Mẫu biểu**, vì chữ ký được coi là một loại tài liệu mẫu dùng chung cho cả tổ chức (không phân theo tòa nhà bạn được giao). Trang này **không có sẵn trong menu sidebar** — bạn truy cập bằng đường dẫn trực tiếp `/settings/signatures`. Chữ ký cấu hình xong sẽ được dùng khi in hợp đồng và hóa đơn thông qua mẫu biểu tương ứng.
@@ -25,14 +25,14 @@ Bạn cần quyền **Mẫu biểu** (xem) để mở trang này — cùng nhóm
 
 ![Màn hình](./images/buoc-01-man-hinh.webp)
 
-**Bước 2**: Xem danh sách các chữ ký đã cấu hình. Mỗi dòng là một mẫu chữ ký với tên gọi và kiểu tạo (ảnh / vẽ tay / text) để bạn nhận diện khi chọn chèn vào tài liệu.
+**Bước 2**: Xem các thẻ minh hoạ hiện có. Dữ liệu đang được khai báo trực tiếp trong giao diện, không phải danh sách chữ ký đã lưu theo tổ chức.
 
-**Bước 3**: Chọn một trong ba cách tạo chữ ký ở đầu trang:
+**Bước 3**: Quan sát ba cách dự kiến ở đầu trang:
 - **Tải ảnh** — tải lên một tệp ảnh chữ ký hoặc con dấu đã có sẵn (ví dụ ảnh scan chữ ký, con dấu tròn của công ty).
 - **Vẽ** — vẽ chữ ký trực tiếp bằng chuột hoặc cảm ứng.
 - **Nhập text** — gõ tên và chọn kiểu chữ (font) để tạo chữ ký dạng chữ.
 
-**Bước 4**: Sau khi có chữ ký, chữ ký sẽ được chèn vào **bản in hợp đồng và hóa đơn** qua mẫu biểu tương ứng — bạn không cần ký tay lại trên từng bản in. Việc chọn mẫu biểu và in nằm ở kho **Mẫu biểu** cũng như ở màn hình in của từng hợp đồng / hóa đơn.
+**Bước 4**: Để dùng chữ ký trong chứng từ hiện tại, chèn ảnh/chữ ký trực tiếp vào file `.docx` trước khi tải lên **Mẫu biểu**. Không giả định chữ ký ở trang này tự được chèn vào hợp đồng hoặc hoá đơn.
 
 ## Các tính năng khác trên màn hình
 

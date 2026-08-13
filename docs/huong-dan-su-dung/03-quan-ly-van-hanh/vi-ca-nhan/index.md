@@ -6,8 +6,9 @@ permissions: [{module: personal_finance, action: view}]
 viewport: desktop
 audience: [tat-ca]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -18,7 +19,7 @@ Màn **Ví cá nhân** là cuốn sổ tay thu chi **riêng của chính bạn**
 ::: info Điều kiện tiên quyết
 - Quyền **Ví cá nhân => Xem** (module `personal_finance`, action `view`) để mở màn.
 - Không cần sổ quỹ hay hạng mục thu chi của công ty — ví cá nhân là dữ liệu **của riêng từng người**, mỗi tài khoản có ví riêng và không thấy ví của người khác.
-- Nếu bạn là **cổ đông**, đầu trang có thêm dải "Từ công ty" tóm tắt phần lợi nhuận bạn được chia — xem [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/).
+- Nếu bạn là **cổ đông**, đầu trang có thêm dải "Từ công ty" tóm tắt phần lợi nhuận được phân bổ/đã chi — xem [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/). Con số được chia hoặc request đã duyệt không tự chứng minh bạn đã nhận tiền; chỉ khoản chi `POSTED` mới là biến động sổ quỹ thật.
 :::
 
 ::: danger Đừng ghi tiền của công ty vào ví cá nhân
@@ -27,9 +28,9 @@ Ví cá nhân **không** phải sổ quỹ công ty. Khoản bạn nhập ở đ
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Vào menu **Tài chính => Ví cá nhân**. Màn mở ra gồm **3 thẻ thống kê** (Tổng thu / Tổng chi / Số dư), một ô chọn **Năm**, nút **Thêm khoản**, hai biểu đồ (Thu/Chi theo tháng và Cơ cấu chi theo danh mục) và bảng **Giao dịch** liệt kê từng khoản. Trong dữ liệu demo bạn thấy sẵn 3 khoản: một khoản **Thu — thưởng 2.000.000đ**, một khoản **Chi — ăn trưa 350.000đ** và một khoản **Chi — xăng 1.200.000đ**.
+**Bước 1**: Vào menu **Tài chính => Ví cá nhân**. Màn mở ra gồm **3 thẻ thống kê** (Tổng thu / Tổng chi / Số dư), một ô chọn **Năm**, nút **Thêm khoản**, hai biểu đồ (Thu/Chi theo tháng và Cơ cấu chi theo danh mục) và bảng **Giao dịch** liệt kê từng khoản. Snapshot production ngày 13/08/2026 của `demo.chunha` đang rỗng; các thẻ và biểu đồ chỉ có số khi chính tài khoản đó ghi giao dịch cá nhân.
 
-![Màn Ví thu chi cá nhân với 3 thẻ thống kê, biểu đồ và bảng giao dịch demo: thưởng 2.000.000đ, ăn trưa 350.000đ, xăng 1.200.000đ](./images/buoc-01-man-hinh.webp)
+![Màn Ví cá nhân với ba thẻ thống kê, biểu đồ và bảng giao dịch](./images/buoc-01-man-hinh.webp)
 
 **Bước 2**: Đọc 3 thẻ và bảng **Giao dịch**. Ba thẻ **Tổng thu**, **Tổng chi**, **Số dư** cộng gộp **toàn bộ** giao dịch của bạn (mọi năm) — **Số dư** = Tổng thu − Tổng chi. Bảng **Giao dịch** ở dưới mỗi dòng có: **Ngày**, **Loại** (Thu tô xanh / Chi tô đỏ), **Danh mục**, **Mô tả** và **Số tiền** (Thu có dấu **+**, Chi có dấu **−**). Bảng và hai biểu đồ chỉ hiển thị các khoản của **năm đang chọn** ở ô Năm.
 
@@ -79,15 +80,13 @@ Khi bấm **Xoá**, khoản bị **ẩn khỏi ví cá nhân của bạn** và k
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/finance/personal-wallet" app-label="Mở màn Ví cá nhân" fixtures="3 giao dịch: thưởng 2.000.000đ, ăn trưa 350.000đ, xăng 1.200.000đ">
+<SandboxTry account="demo.chunha" app-path="/finance/personal-wallet" app-label="Mở màn Ví cá nhân" fixtures="Snapshot 13/08/2026: ví đang rỗng." view-only>
 
-Thực hành xem ví và thêm một khoản chi cá nhân:
+Quan sát ví mà không tạo giao dịch:
 
-1. Xem bảng **Giao dịch**: đã có sẵn **Thu — thưởng 2.000.000đ**, **Chi — ăn trưa 350.000đ** và **Chi — xăng 1.200.000đ**. Đối chiếu với 3 thẻ (Tổng thu **2.000.000đ**, Tổng chi **1.550.000đ**, Số dư **450.000đ**).
-2. Bấm **Thêm khoản**. Giữ nút **Chi**, nhập **Số tiền** = **1.000.000**, chọn **Ngày** hôm nay, **Danh mục** = **Cá nhân**, **Mô tả** = "Mua sắm". Bấm **Lưu**.
-3. Để ý khoản mới xuất hiện trong bảng, **Tổng chi** tăng và **Số dư** giảm đi **1.000.000đ**.
-4. Mở lại màn [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) hoặc [Thu chi](/03-quan-ly-van-hanh/thu-chi/) của công ty và kiểm tra: khoản vừa thêm **không** hề xuất hiện ở đó.
-5. Xong bấm **Reset** để trả sandbox về trạng thái ban đầu.
+1. Đọc ba thẻ, hai biểu đồ và empty state của bảng **Giao dịch**.
+2. Đổi ô **Năm** để hiểu bộ lọc; không bấm **Thêm khoản**.
+3. Ghi nhớ dữ liệu ví là riêng tư theo tài khoản và tách khỏi [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) / [Thu chi](/03-quan-ly-van-hanh/thu-chi/) của công ty.
 
 Kết quả mong đợi: bạn hiểu rằng ví cá nhân là sổ tay thu chi **của riêng bạn**, hoàn toàn **tách bạch** với sổ quỹ và báo cáo của công ty — ghi ở đây không đụng tới tiền chung.
 

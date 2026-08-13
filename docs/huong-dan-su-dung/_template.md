@@ -11,7 +11,7 @@ permissions:
 viewport: desktop             # desktop (1440x900) | mobile (390x844)
 captured:
   date: null                  # YYYY-MM-DD ngày chụp bộ ảnh hiện tại
-  commit: null                # HEAD của app lúc chụp
+  commit: null                # SHA deployment production đang phục vụ lúc chụp; để null nếu chưa truy nguyên được
   account: null               # account demo dùng khi chụp (vd demo-quanly)
   manifest: null              # manifests/<nhom>/<trang>.yml
 audience: []                  # vd [chu-nha, quan-ly-toa, ke-toan]
@@ -42,24 +42,29 @@ màn hình nào trong tình huống nào. Không đặt heading "Mục đích".
 <!-- ::: warning cho hành động khó hoàn tác (xoá, duyệt, import hàng loạt) -->
 <!-- ::: tip cho mẹo làm nhanh -->
 
-<!-- ===== KHỐI THỬ TRỰC TIẾP — trang có action GHI mới thêm; trang read-only thêm view-only ===== -->
+<!-- Với phiếu tài chính, luôn tách approval_status / review_state / posting_mode / posting_status. -->
+<!-- Không viết "Đã duyệt = tiền thật": chỉ posting_status=POSTED mới là Đã Thu/Đã Chi. -->
+<!-- Route phải dùng đường canonical hiện tại; nếu nhắc route cũ, ghi rõ đó là redirect. -->
+<!-- Trang thuộc 08-ke-hoach-phat-trien phải có lifecycle: proposal và banner "không phải runtime". -->
+
+<!-- ===== KHỐI THỬ TRỰC TIẾP — ưu tiên view-only; chỉ cho phép ghi khi bài có fixture tự dọn rõ ràng ===== -->
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.ketoan" app-path="/thu-tien" app-label="Mở màn hình Thu tiền" fixtures="B101, B102">
+<SandboxTry account="demo.chunha" app-path="/duong-dan-route" app-label="Mở màn hình cần kiểm tra" fixtures="Mô tả snapshot đã xác minh theo ngày chụp" view-only>
 
-**Bài tập thực hành**
+**Bài tập chỉ xem**
 
-1. Thu **đủ** hoá đơn phòng **B101** (1.000.000đ) bằng **Tiền mặt**.
-2. Thu **một phần** hoá đơn phòng B102 (nhập 2.000.000đ).
+1. Mở đúng màn hình và đối chiếu các nhãn, cột, số liệu hoặc trạng thái được mô tả trong bài.
+2. Nếu cần kiểm tra form/dialog, chỉ mở để xem trường rồi **Đóng/Huỷ**; không bấm **Lưu**, **Duyệt**, **Thu tiền** hoặc thao tác ghi khác.
 
 **Kết quả mong đợi**
 
-- B101 chuyển **Đã thanh toán**; sổ quỹ có phiếu thu 1.000.000đ.
-- B102 chuyển **Thu một phần**, còn phải thu phần chênh.
+- Giao diện và snapshot hiện tại khớp nội dung hướng dẫn.
+- Không có dữ liệu DEMO nào bị tạo, sửa, xoá hoặc post vào sổ.
 
 </SandboxTry>
 
-<!-- Trang read-only dùng: <SandboxTry account="demo.codong" app-path="/reports/..." view-only> nội dung "hãy nhìn thấy…" </SandboxTry> -->
+<!-- Chỉ bỏ view-only khi bài ghi có fixture cô lập + cơ chế tự dọn đã được kiểm chứng và nêu rõ ngay trong block. -->
 
 ## Các tính năng khác trên màn hình
 

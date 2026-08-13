@@ -15,6 +15,8 @@ status: published
 
 Trang **Phân bổ & chia lợi nhuận** giúp bạn khai tỷ lệ góp vốn theo toà, xem lợi nhuận nguồn của tháng, trừ lương điều hành, chốt phần được chia và theo dõi số đã chi/còn lại.
 
+Đây là route chuẩn `/reports/finance/profit-distribution`. Hai địa chỉ cũ `/finance/shareholder-profit` và `/reports/finance/shareholder-profit` chỉ chuyển hướng về trang này.
+
 ::: warning Tab quản trị đang ẩn trên giao diện
 Trên **desktop**, nhấp nhanh **3 lần vào icon xanh bên trái tiêu đề "Báo cáo Lợi Nhuận"** để hiện các tab **Chốt LN tháng**, **Cổ đông & tỷ lệ** và **Lương của tôi** nếu tài khoản có quyền. Bản mobile hiện không có các tab chốt/cấu hình; hãy mở bằng máy tính hoặc bật chế độ trang desktop.
 :::
@@ -26,7 +28,7 @@ Nguyên tắc chính:
 Lần chốt hiện hành do server tính và ghi trong một giao dịch có source hash, idempotency và revision. Bạn không còn mở khoá từng toà rồi xoá snapshot bằng tay như flow cũ.
 
 ::: info Điều kiện tiên quyết
-- Có quyền `shareholder_profit.view`; thao tác chốt cần `lock`, đặt lại cần `unlock`, chi lợi nhuận cần `distribute`. Luồng **Chi lương điều hành** hiện còn gap: backend yêu cầu `shareholder_profit.pay_manager` nhưng action này chưa xuất hiện trong catalog/màn Phân quyền, nên phải xác minh grant trực tiếp và có thể bị từ chối.
+- Có quyền `shareholder_profit.view`; thao tác chốt cần `lock`, đặt lại cần `unlock`, chi lợi nhuận cần `distribute`, và **Chi lương điều hành** cần `pay_manager`. Quyền `shareholder_profit.pay_manager` đã có trong danh mục Phân quyền và được cấp độc lập với quyền chi lợi nhuận cổ đông.
 - Dùng desktop cho thao tác chốt/cấu hình và mở nhóm tab ẩn bằng 3 lần nhấp icon tiêu đề.
 - Đã khai cổ đông, tỷ lệ theo toà và quản lý điều hành nếu có.
 - Thu/chi của tháng đã được rà soát; xem [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/).
@@ -64,9 +66,9 @@ Nếu preview đang tải lại, có lỗi nguồn, tỷ lệ vượt 100%, cấ
 Thao tác bỏ snapshot hiện tại của cả tháng, nhưng revision trước đó vẫn tồn tại. Chỉ dùng khi màn hình yêu cầu hoặc khi trạng thái tháng thực sự không thể reclose an toàn.
 :::
 
-**Bước 7: Gửi yêu cầu chi lợi nhuận.** Ở tab **Tổng quan**, chọn cổ đông, số tiền, sổ quỹ, ngày và ghi chú rồi bấm **Chi lợi nhuận**. Hệ thống tạo request canonical có idempotency; khoản tiền chỉ được post thành phiếu chi sau khi qua luồng phê duyệt hợp lệ. Nút **Chi lương điều hành** dùng writer tương tự nhưng hiện có thể bị backend từ chối do gap quyền `shareholder_profit.pay_manager` nêu ở phần điều kiện tiên quyết.
+**Bước 7: Gửi yêu cầu chi lợi nhuận.** Ở tab **Tổng quan**, chọn cổ đông, số tiền, sổ quỹ, ngày và ghi chú rồi bấm **Chi lợi nhuận**. Hệ thống tạo request canonical có idempotency; nút **Chi lương điều hành** dùng writer tương tự và cần quyền `shareholder_profit.pay_manager`.
 
-Phiếu sau khi post nằm trên toà ảo **Chung**, gắn đúng cổ đông/quản lý và không tính lại vào KQKD, tránh trừ lợi nhuận hai lần.
+Việc **chốt/phân bổ** hoặc request được **duyệt** chưa chứng minh cổ đông hay quản lý đã nhận tiền. Chỉ request `POSTED` mới tạo biến động trên sổ quỹ thật; phiếu sau khi post nằm trên toà ảo **Chung**, gắn đúng cổ đông/quản lý và không tính lại vào KQKD, tránh trừ lợi nhuận hai lần.
 
 ## Thành phần trên màn hình
 
@@ -92,7 +94,7 @@ Phiếu sau khi post nằm trên toà ảo **Chung**, gắn đúng cổ đông/q
 | Bấm chốt báo source conflict | Dữ liệu đổi sau preview; tải lại, kiểm số rồi xác nhận lại |
 | Điều chỉnh bị từ chối | Số khác 0 phải có lý do 8–500 ký tự |
 | Cổ đông inactive không có allocation mới | Đây là hành vi đúng; bật lại trước khi chốt nếu họ vẫn phải nhận phần |
-| Bấm Chi nhưng chưa thấy giảm quỹ | Request còn chờ duyệt; mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) để theo dõi. Nếu là **Chi lương điều hành** và bị `42501`, đây là gap `shareholder_profit.pay_manager` chưa được expose trong catalog. |
+| Bấm Chi nhưng chưa thấy giảm quỹ | Request còn chờ duyệt hoặc đã duyệt nhưng chưa `POSTED`; mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) để theo dõi. Nếu **Chi lương điều hành** bị từ chối quyền, kiểm tra tài khoản đã được cấp `shareholder_profit.pay_manager`. |
 | Còn lại âm | Rà các phiếu chi đã post cho cổ đông ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) |
 
 ## Thử trực tiếp trên sandbox

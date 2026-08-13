@@ -57,11 +57,15 @@ Ngay khi bạn bấm **Hoàn thành** một việc có thưởng, popup và thô
 Với tháng **chưa được quản trị chốt**, con số là **tạm tính** và có thể **thay đổi** khi bạn làm thêm việc, ký thêm hợp đồng, hoặc khi phiếu hoa hồng được duyệt. Chỉ khi quản trị **chốt tháng**, các số mới được **đóng băng** và là con số cuối cùng. Đây là màn chỉ-xem, bạn không tự chốt hay tự sửa được — mọi thay đổi tiền đều do quản trị thực hiện bên [Bảng lương](/03-quan-ly-van-hanh/bang-luong/).
 :::
 
+::: warning "Thực nhận" là số lương ròng, không phải trạng thái đã nhận tiền
+Thẻ **Thực nhận**, snapshot lương đã chốt và phần **Đầu tư** được phân bổ cho biết số được tính cho bạn, không chứng minh tiền đã vào tay. Khoản trả lương/lợi nhuận chỉ là tiền thật đã chi khi request tương ứng ở trạng thái `POSTED`; request đã duyệt nhưng `UNPOSTED` vẫn chưa làm giảm sổ quỹ.
+:::
+
 ## Các tính năng khác trên màn hình
 
 | Thành phần | Công dụng |
 | --- | --- |
-| Thẻ **Thực nhận** | Số tiền cuối cùng bạn nhận trong tháng đang xem (đã cộng thưởng, trừ ứng và tiền phòng). |
+| Thẻ **Thực nhận** | Số lương ròng được tính cho tháng đang xem (đã cộng thưởng, trừ ứng và tiền phòng); xem trạng thái payout để biết đã chi thật hay chưa. |
 | Chi tiết **Lương cứng / Thưởng / Hoa hồng / Đầu tư** | Các khoản **cộng** vào lương, tách rõ từng nguồn. |
 | Chi tiết **Ứng lương / Tiền phòng** | Các khoản **trừ** khỏi lương trong tháng. |
 | **Lịch sử việc** (bảng kê) | Liệt kê từng dòng bằng chứng (việc, phụ cấp, ký HĐ) đã cộng thành Thưởng tự động. |

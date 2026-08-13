@@ -1,65 +1,73 @@
 ---
 title: Sandbox — Môi trường thực hành
-description: Tài khoản demo, quy tắc thực hành và nút reset dữ liệu sandbox.
+description: Tài khoản demo, phạm vi dữ liệu hiện hành, quy tắc thực hành và reset snapshot.
 routes: []
 permissions: []
 viewport: desktop
+captured:
+  date: null
+  commit: null
+  account: null
+  manifest: null
+audience: [chu-nha, quan-ly-toa, ke-toan, sale, ky-thuat, co-dong]
 status: published
 ---
 
 # Sandbox — Môi trường thực hành
 
-Tài liệu này không chỉ để đọc. Bạn có thể **đăng nhập vào app thật** bằng tài khoản demo, tự tay thao tác trên **Tòa DEMO A** và **Tòa DEMO B**, rồi bấm **Reset** để đưa mọi thứ về trạng thái gốc cho người sau. Dữ liệu demo nằm tách biệt hoàn toàn với dữ liệu kinh doanh thật — bạn không thể nhìn thấy hay làm hỏng số liệu thật.
+Sandbox production là tổ chức **DEMO** tách biệt dữ liệu công ty thật. Snapshot hiện hành có **4 toà** — `DEMO Toà A`, `DEMO Toà B`, `DEMO Toà C`, `DEMO Toà D` — mỗi toà ít nhất 10 phòng, bao phủ đủ trạng thái đang thuê, sắp hết hạn, giữ chỗ, trống và bảo trì. Ngoài ra có ít nhất 20 khách hàng và 8 phương tiện để thực hành các luồng liên quan.
 
-::: tip Cách học hiệu quả nhất
-Mỗi trang hướng dẫn có khối **🧪 Thử trực tiếp** ở cuối phần các bước: đọc xong thì mở app bằng tài khoản gợi ý, làm theo **bài tập thực hành**, đối chiếu **kết quả mong đợi**. Xong thì bấm Reset.
+::: tip Cách học hiệu quả
+Mỗi trang có khối **Thử trực tiếp**. Đọc điều kiện/quyền trước, mở app bằng tài khoản gợi ý, đối chiếu kết quả rồi chỉ reset khi thật sự cần.
 :::
 
 ## Tài khoản demo
 
-Tất cả tài khoản đăng nhập tại <https://ptcrm.vercel.app> bằng **username** (không phải email), cùng một mật khẩu ở mục dưới.
+Đăng nhập tại <https://ptcrm.vercel.app> bằng username và mật khẩu do trang Sandbox đã xuất bản hoặc quản trị viên cung cấp.
 
-| Tài khoản | Vai trò | Dùng khi học nhóm trang |
+| Tài khoản | Vai trò / phạm vi hiện hành | Dùng khi học |
 |---|---|---|
-| `demo.chunha` | Chủ nhà (toàn quyền demo) | Phân quyền, chia lợi nhuận, báo cáo tổng, cài đặt hệ thống |
-| `demo.quanly` | Quản lý tòa | Tòa/phòng, hợp đồng, ghi chỉ số, công việc |
-| `demo.ketoan` | Kế toán | Hoá đơn, thu tiền, thu chi, sổ quỹ, bàn giao – đối soát |
-| `demo.sale` | Sale | Khách hẹn, đặt cọc giữ chỗ, khách hàng |
-| `demo.kythuat` | Kỹ thuật | Công việc, tài sản, kho vật tư |
-| `demo.codong` | Cổ đông | Báo cáo phân bổ lợi nhuận (chỉ xem) |
+| `demo.chunha` | Chủ tổ chức DEMO | Thành viên, vai trò, báo cáo tổng, cài đặt. |
+| `demo.quanly` | Quản lý DEMO Toà A + B | Toà/phòng, hợp đồng, chỉ số, công việc trong A+B. |
+| `demo.quanly2` | Quản lý DEMO Toà C + D | Kiểm tra phân tách phạm vi C+D. |
+| `demo.ketoan` | Kế toán, phạm vi tổ chức | Hoá đơn, thu tiền, thu chi, sổ quỹ, đối soát. |
+| `demo.sale` | Sale, phạm vi tổ chức | Khách hẹn, cọc giữ chỗ, khách hàng. |
+| `demo.kythuat` | Kỹ thuật, phạm vi tổ chức | Việc của tôi, kiểm tra nhà, tài sản/kho. |
+| `demo.codong` | Cổ đông, phạm vi tổ chức | Báo cáo phân bổ lợi nhuận được cấp. |
 
 ## Mật khẩu
 
-::: info Mật khẩu đăng nhập cho cả 6 tài khoản demo
-```
-Aa@0378160165
-```
-Mật khẩu này chỉ ghi tại trang Sandbox. Các trang hướng dẫn khác chỉ hiện username và liên kết về đây.
+::: info Nguồn mật khẩu
+Mật khẩu demo có thể được thay khi làm mới snapshot. Dùng mật khẩu đang hiển thị trên bản Sandbox đã xuất bản hoặc mật khẩu quản trị viên cung cấp; không sao chép mật khẩu từ tài liệu cũ/cache.
 :::
 
 ## Quy tắc sandbox
 
-1. **Không nhập dữ liệu thật** — tên, số điện thoại, CCCD của người thật. Dùng dữ liệu giả (Nguyễn Văn A, `0900 000 001`…).
-2. **Dữ liệu dùng chung** — có thể có người khác đang thực hành cùng lúc; số liệu bạn thấy đôi khi khác bài tập.
-3. **Reset ảnh hưởng mọi người** — nút Reset đưa **toàn bộ** sandbox về trạng thái gốc, xoá cả thao tác dở dang của người khác.
-4. **Cooldown 10 phút** — sau một lần reset, phải chờ ~10 phút mới reset lại được.
-5. **Mỗi bài tập một phòng riêng** — chỉ thao tác đúng phòng mà bài tập chỉ định, để không giẫm lên bài của người khác.
+1. **Không nhập dữ liệu thật** — không dùng tên, số điện thoại, CCCD hoặc email của người thật.
+2. **Dữ liệu dùng chung** — người khác có thể đang thao tác, nên số liệu có thể thay đổi giữa hai lần mở.
+3. **Tôn trọng phạm vi** — `demo.quanly` chỉ A+B, `demo.quanly2` chỉ C+D; đây là dữ liệu để kiểm chứng RLS, không phải lỗi thiếu toà.
+4. **Reset ảnh hưởng mọi người** — reset toàn snapshot DEMO, không chỉ dữ liệu của tài khoản đang dùng.
+5. **Cooldown 10 phút** — database chặn reset liên tiếp trong khoảng 10 phút.
 
 ## Reset dữ liệu demo
 
-Bấm nút dưới để đưa sandbox về trạng thái gốc (chỉ hoạt động trên bản đã xuất bản của trang tài liệu này):
-
 <DemoResetButton />
+
+Reset khôi phục **snapshot đang được phát hành**, không khôi phục mô hình cũ 2 toà. Nếu snapshot hoặc tripwire kiểm tra không hợp lệ, reset sẽ fail closed thay vì ghi dữ liệu nửa chừng. Reset dữ liệu không xoá tài khoản Auth/profile DEMO.
 
 ## Bố cục dữ liệu demo
 
-- **Tòa DEMO A** (15 phòng, 3 tầng) — các phòng ở đây minh hoạ mọi trạng thái để xem và chụp ảnh: hợp đồng lâu năm, sắp hết hạn, đã gia hạn, phòng giữ chỗ, phòng bảo trì… Nên **xem, hạn chế thao tác phá**.
-- **Tòa DEMO B** (4 phòng) + vài phòng trống của Tòa A — dành cho **bài tập**: thu tiền, ghi chỉ số, ký hợp đồng, gia hạn, thanh lý…
+- 4 toà, mỗi toà ≥10 phòng.
+- 5 trạng thái hiển thị phòng được tạo bằng dữ liệu hợp đồng/cọc thật: đang thuê, sắp hết hạn, giữ chỗ, trống, bảo trì.
+- `demo.quanly` và `demo.quanly2` tạo hai lát cắt phạm vi không chồng lấn để kiểm tra phân quyền theo toà.
+- Tài khoản kỹ thuật/kế toán/sale/cổ đông có phạm vi tổ chức nhưng capability khác nhau, vì phạm vi không thay thế quyền thao tác.
 
 ## Câu hỏi thường gặp
 
-**Số liệu khác với hướng dẫn?** Có thể người khác vừa thao tác. Bấm Reset rồi làm lại từ đầu.
+**Số liệu khác hướng dẫn?** Có thể người khác vừa thao tác. Chỉ reset khi không có bài thực hành đang dùng chung và cooldown đã hết.
 
-**Tôi có thể làm hỏng dữ liệu thật không?** Không. Tài khoản demo chỉ nhìn thấy 2 tòa DEMO; toàn bộ dữ liệu khách hàng, hoá đơn, sổ quỹ thật đều bị ẩn hoàn toàn.
+**Tôi chỉ thấy 2 toà?** Kiểm tra tài khoản: hai tài khoản quản lý cố ý chỉ thấy A+B hoặc C+D. Chủ/kỹ thuật/kế toán/sale/cổ đông có phạm vi tổ chức theo cấu hình demo hiện hành.
 
-**Reset có xoá tài khoản demo không?** Không. Reset chỉ đưa **dữ liệu** (phòng, hợp đồng, hoá đơn…) về gốc; tài khoản đăng nhập luôn còn.
+**Reset có xoá tài khoản demo không?** Không. Reset khôi phục dữ liệu snapshot và giữ Auth/profile.
+
+**Reset báo lỗi?** Chờ hết cooldown; nếu vẫn lỗi, snapshot/tripwire có thể đang fail closed và cần quản trị viên xử lý.

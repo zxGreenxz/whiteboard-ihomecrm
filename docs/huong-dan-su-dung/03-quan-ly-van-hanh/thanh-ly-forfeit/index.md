@@ -1,13 +1,14 @@
 ---
 title: "Thanh lý hợp đồng — Khách bỏ cọc"
-description: "Kết thúc hợp đồng khi khách bỏ ngang mất cọc: tịch thu cọc thành doanh thu, huỷ hoá đơn nợ cũ, và dùng Thu thêm để tạo hoá đơn AR đòi phần vượt cọc."
+description: "Kết thúc hợp đồng khi khách bỏ ngang mất cọc, với kiểm tra công nợ và đối soát bắt buộc cho hoá đơn, cặp phiếu cấn trừ, phòng và lịch sử thanh lý."
 routes: ["/contracts/:id"]
 permissions: [{module: contracts, action: terminate}]
 viewport: desktop
 audience: [quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -16,6 +17,7 @@ status: published
 Khi khách **bỏ ngang, chịu mất cọc**, bạn thanh lý hợp đồng theo hình thức **Khách bỏ cọc** (forfeit). Đây là luồng ghi tiền: hệ thống **tịch thu phần cọc khách đã thực đóng** và chuyển thành doanh thu (phí phạt), đồng thời **huỷ toàn bộ hoá đơn còn nợ** của hợp đồng. Nếu bạn cần đòi thêm phần vượt quá cọc, khu **Thu thêm** sẽ tạo một **hoá đơn thu tiền khách riêng** để bạn theo dõi và thu sau. Trang này hướng dẫn mở form từ trang chi tiết hợp đồng, đọc đúng các con số, và nắm rõ dòng tiền của việc bỏ cọc.
 
 ::: info Điều kiện tiên quyết
+- Có quyền **Hợp đồng => Thanh lý** (`contracts.terminate`) và phạm vi toà của hợp đồng.
 - Quyền **Hợp đồng => Thanh lý** (module `contracts`, action `terminate`). Thao tác chỉ chạy khi bạn có quyền trên **toà của hợp đồng** — nếu không, bấm xác nhận sẽ bị hệ thống từ chối.
 - Hợp đồng đang ở trạng thái **Đang hoạt động** (chưa **Thanh lý** / **Hết hạn**) và còn phòng, còn toà.
 - Đã cấu hình **sổ CỌC** (`CỌC (giữ hộ khách)`) và **sổ vận hành** của toà để tiền cọc và doanh thu có chỗ chảy vào. Xem [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/).
@@ -24,7 +26,7 @@ Khi khách **bỏ ngang, chịu mất cọc**, bạn thanh lý hợp đồng the
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Mở trang chi tiết hợp đồng cần thanh lý. Từ menu **Khách hàng => Hợp đồng**, tìm dòng hợp đồng **A203** (khách **Ngô Văn Ích**, **Tòa DEMO A**) rồi ấn vào để mở. Đầu trang có một hàng nút thao tác vòng đời, trong đó có nút **Thanh lý**.
+**Bước 1**: Mở trang chi tiết một hợp đồng **Đang hoạt động** cần kiểm tra. Ảnh production dùng `HD-2026-00001`, phòng **A-01**, khách **DEMO Khách 01**. Đầu trang có một hàng nút thao tác vòng đời, trong đó có nút **Thanh lý**.
 
 **Bước 2**: Ấn **Thanh lý** để mở hộp thoại **Thanh lý hợp đồng**. Ở bước đầu **Chọn hình thức thanh lý hợp đồng:**, ấn ô **Khách bỏ cọc** (ô đỏ, biểu tượng cấm) — dành cho trường hợp khách bỏ ngang, mất cọc.
 
@@ -32,15 +34,19 @@ Khi khách **bỏ ngang, chịu mất cọc**, bạn thanh lý hợp đồng the
 
 ![Form "Thanh lý — Khách bỏ cọc": ngày bỏ cọc, bảng hoá đơn sẽ bị huỷ, hộp giải thích, khu Thu thêm, và thẻ Tiền cọc / Tóm tắt hoá đơn bên phải](./images/buoc-01-form.webp)
 
-**Bước 4**: Đọc khối **Hoá đơn sẽ bị huỷ**. Bảng liệt kê mọi hoá đơn còn nợ của hợp đồng theo cột **Mã HĐ**, **Kỳ**, **Tổng tiền**, **Đã TT**, **Còn nợ**. Với A203 có một hoá đơn quá hạn (ví dụ **INV-2026-00006**, kỳ **2026-06**, tổng **4.570.000đ**, đã TT **0**, còn nợ **4.570.000đ**), và dòng **Tổng còn nợ sẽ huỷ: 4.570.000đ**. Khi bỏ cọc, **toàn bộ phần nợ này bị xoá**: hoá đơn chưa thu chuyển về huỷ với tổng tiền 0; hoá đơn đã thu một phần thì giữ lại đúng phần đã thu làm doanh thu, chỉ xoá phần nợ.
-
-**Bước 5**: Đọc hộp giải thích màu xanh, rồi nhìn sang thẻ **Tiền cọc** bên phải: **Tổng tiền cọc 4.000.000đ**, **Đã thu 4.000.000đ**, **Còn lại 0đ** (dòng **Đã thu đủ tiền cọc**). Phần **cọc khách đã thực đóng** (ở đây 4.000.000đ) sẽ bị **tịch thu → ghi nhận thành phí phạt = doanh thu bỏ cọc**. Hệ thống chỉ tịch thu phần cọc **đã thực đóng**, không tính phần khách còn nợ cọc — nên doanh thu bỏ cọc có thể **nhỏ hơn** tổng cọc ghi trên hợp đồng.
-
-::: danger Bỏ cọc là thao tác ghi tiền và theo quy trình 2 bước
-Khi bạn ấn **Lập hoá đơn & thanh lý**, hệ thống: huỷ hoá đơn nợ cũ, tạo **hoá đơn thanh lý** (một dòng phí phạt = cọc đã thực đóng), và tạo sẵn một **cặp phiếu "Doanh thu bỏ cọc" ở trạng thái chờ duyệt** rút từ **sổ CỌC**. Cọc **chưa** vào doanh thu (KQKD) và hoá đơn thanh lý **chưa** tất toán cho tới khi bạn vào **Tài chính => Thu chi**, tìm cặp phiếu đó và bấm **Duyệt**. Quên bấm **Duyệt** = doanh thu bỏ cọc bị thiếu trong Kết quả kinh doanh. Đây là tiền thật vào sổ và rất khó hoàn tác sau khi duyệt — chỉ thực hiện khi đã đối chiếu kỹ.
+::: danger Không thanh lý khi danh sách nợ còn loading hoặc vừa lỗi
+Danh sách/tổng nợ được tính phía trình duyệt. Khi truy vấn lỗi, form có thể coi nợ là 0 và huỷ/tất toán sai. Chỉ tiếp tục sau khi bảng hoá đơn ổn định và tổng được đối chiếu với nguồn kế toán; mọi con số minh hoạ phải được thay bằng số đang hiển thị trên hợp đồng thực tế.
 :::
 
-**Bước 6**: Nếu cần **đòi thêm** phần vượt quá cọc (ở A203 nợ 4.570.000đ lớn hơn cọc 4.000.000đ, phần chênh **không** tự động được đòi vì hoá đơn nợ cũ đã bị huỷ), dùng khu **Thu thêm**. Nhập các khoản khách phải trả thêm:
+**Bước 4**: Đọc khối **Hoá đơn sẽ bị huỷ**. Bảng liệt kê mọi hoá đơn còn nợ của hợp đồng theo cột **Mã HĐ**, **Kỳ**, **Tổng tiền**, **Đã TT**, **Còn nợ**. Nếu không có nợ như snapshot ngày 13/08/2026, form hiện *Không có hoá đơn còn nợ*. Khi có dữ liệu thật, hoá đơn chưa thu bị huỷ phần nợ; hoá đơn đã thu một phần giữ lại đúng phần đã thu, chỉ xoá phần chưa thu.
+
+**Bước 5**: Đọc hộp giải thích màu xanh và dòng **Tiền cọc chuyển thành doanh thu**. Snapshot cho thấy **cọc theo hợp đồng 4.000.000đ nhưng mới thu 0đ**, nên số chuyển thành doanh thu là **0đ**. Hệ thống chỉ tịch thu phần cọc **đã thực đóng**, không tính phần khách còn nợ cọc — doanh thu bỏ cọc có thể nhỏ hơn tổng cọc ghi trên hợp đồng.
+
+::: danger Bỏ cọc là quyết định kế toán không tiền mặt, được tự duyệt trong cùng writer
+Khi bạn ấn **Lập hoá đơn & thanh lý**, hệ thống huỷ phần nợ cũ, tạo **hoá đơn thanh lý** bằng phần cọc đã thực đóng, rồi tạo cặp bút toán nội bộ **Cấn cọc bỏ cọc / Doanh thu bỏ cọc** trên sổ ảo. Cặp này được đóng dấu `posting_mode=NON_CASH`, `posting_status=NOT_APPLICABLE` và **tự duyệt** trong writer thanh lý; cascade đồng thời tạo payment không tiền mặt để tất toán hoá đơn thanh lý. Vì vậy không có bước **Duyệt và Thu/Chi** thủ công, và tuyệt đối không coi đây là tiền mới vào hoặc ra sổ quỹ thật.
+:::
+
+**Bước 6**: Nếu cần **đòi thêm** một khoản ngoài phần cọc thực thu, dùng khu **Thu thêm**. Nhập các khoản khách phải trả thêm:
 - **Tiền phòng + Nước + PDV** theo khoảng **Ở từ** → **đến** (ô **đến** mặc định là ngày bỏ cọc) — hệ thống tính theo số ngày ở thực tế.
 - **Tiền điện**: nhập **số đầu** → **Số cuối** để chốt số điện cuối kỳ.
 - **Tiền vệ sinh** (mặc định **200.000đ**).
@@ -50,10 +56,14 @@ Cuối khu hiện **Tổng thu thêm**. Khác với rời phòng, thu thêm khi 
 
 **Bước 7 (bài tập — không hoàn tất)**: Để chỉ tìm hiểu dòng tiền mà không ghi dữ liệu, ấn **Hủy** (hoặc dấu **✕** góc trên) để đóng form. Nút **Quay lại** đưa bạn về bước chọn hình thức nếu muốn xem lại luồng **Khách rời phòng**.
 
-::: warning Nếu đã lỡ hoàn tất — và tuyệt đối không sửa ghi chú phiếu trước khi Duyệt
-Thanh lý đóng hợp đồng thật (đổi trạng thái **Thanh lý**, giải phóng phòng) và rất khó hoàn tác. Trên sandbox, nếu bạn đã ấn **Lập hoá đơn & thanh lý**, dùng nút **Reset** của sandbox để trả A203 về **Đang hoạt động**.
+::: warning Nếu đã lỡ hoàn tất — dừng sửa dữ liệu và đối soát
+Thanh lý đóng hợp đồng thật (đổi trạng thái **Thanh lý**, giải phóng phòng) và rất khó hoàn tác. Bài kiểm tra tài liệu chỉ mở form rồi đóng; không bấm **Lập hoá đơn & thanh lý**.
 
-Cặp phiếu chờ duyệt được nhận diện qua **nhãn ghi chú** (bắt đầu bằng `[CẤN CỌC BỎ CỌC …]`). **KHÔNG sửa ghi chú của phiếu trước khi bấm Duyệt** — máy trạng thái đọc đúng nhãn này để tự động duyệt cả cặp và ghi thanh toán cấn cọc; sửa nhãn đi thì cọc sẽ không vào doanh thu và hoá đơn thanh lý không tất toán.
+Cặp bút toán được bảo vệ bằng `system_source` canonical và authorization bất biến; marker ghi chú `[CẤN CỌC BỎ CỌC …]` chỉ còn dùng để nhận diện dữ liệu legacy đã review. **Không sửa phiếu, ghi chú, sổ hoặc trạng thái của cặp bút toán bằng thao tác thông thường.** Nếu kết quả không khớp, giữ nguyên bằng chứng và chuyển kế toán/quản trị kỹ thuật xử lý qua writer/RPC được phép.
+:::
+
+::: danger Checklist bắt buộc sau bỏ cọc
+Sau bước thanh lý, kiểm tra: hợp đồng **TERMINATED** đúng ngày; phòng **TRỐNG** và không còn hợp đồng hiệu lực; hoá đơn cũ/hoá đơn thanh lý/hoá đơn Thu thêm có trạng thái đúng; **cả hai đầu** cặp bút toán cấn trừ tồn tại đúng một lần, cùng sổ ảo, cùng số tiền, `APPROVED` và `posting_status=NOT_APPLICABLE`; payment tất toán hoá đơn có `received_amount=0`; có bản ghi `contract_terminations`/lịch sử. Nếu thiếu bất kỳ phần nào, dừng thao tác và báo kế toán + quản trị kỹ thuật. Không thanh lý lại, không tạo cặp phiếu bù và không chỉnh nhãn để ép máy trạng thái.
 :::
 
 ## Các tính năng khác trên màn hình
@@ -62,38 +72,39 @@ Cặp phiếu chờ duyệt được nhận diện qua **nhãn ghi chú** (bắt
 | --- | --- |
 | **Ngày bỏ cọc** | Ngày ghi nhận bỏ cọc (mặc định hôm nay); quyết định tháng của hoá đơn thanh lý. |
 | Bảng **Hoá đơn sẽ bị huỷ** | Liệt kê mọi hoá đơn còn nợ (Mã HĐ / Kỳ / Tổng tiền / Đã TT / Còn nợ) sẽ bị huỷ; dòng **Tổng còn nợ sẽ huỷ** cộng lại phần nợ. |
-| Hộp giải thích (xanh) | Tóm tắt cơ chế bỏ cọc: huỷ nợ, cọc thành phí phạt, phiếu chờ duyệt rút từ sổ CỌC, bấm **Duyệt** mới vào KQKD. |
+| Hộp giải thích (xanh) | Tóm tắt cơ chế bỏ cọc: huỷ nợ, cọc thành phí phạt, cặp bút toán nội bộ tự duyệt trên sổ ảo và payment không tiền mặt tất toán hoá đơn thanh lý. |
 | Khu **Thu thêm** | Bốn khoản đòi thêm: **Tiền phòng + Nước + PDV** (theo **Ở từ** → **đến**), **Tiền điện** (số đầu → **Số cuối**), **Tiền vệ sinh**, **Thêm khoản** tuỳ ý; hiện **Tổng thu thêm**. |
 | Thẻ **Tiền cọc** (phải) | **Tổng tiền cọc** / **Đã thu** / **Còn lại** — nguồn của phần cọc bị tịch thu. |
 | Thẻ **Tóm tắt hóa đơn** (phải) | **Tổng hóa đơn** / **Tổng phát sinh** / **Đã thanh toán** / **Công nợ** của hợp đồng. |
 | **Quay lại** | Về bước **Chọn hình thức thanh lý** (đổi sang **Khách rời phòng**). |
 | **Hủy** | Đóng hộp thoại, không ghi gì. |
-| **Lập hoá đơn & thanh lý** | Nút đỏ xác nhận: chạy thanh lý bỏ cọc (huỷ nợ, tạo hoá đơn thanh lý + cặp phiếu chờ duyệt, hoá đơn AR thu thêm nếu có). |
+| **Lập hoá đơn & thanh lý** | Nút đỏ xác nhận: chạy thanh lý bỏ cọc (huỷ nợ, tạo hoá đơn thanh lý + cặp bút toán nội bộ tự duyệt, hoá đơn AR thu thêm nếu có). |
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 | --- | --- |
 | Bấm **Lập hoá đơn & thanh lý** báo **từ chối quyền** | Trang chi tiết vẫn hiện nút cho mọi toà, nhưng thao tác chỉ chạy khi bạn có quyền **Thanh lý** trên toà của hợp đồng. Nhờ người quản lý toà đó thực hiện, hoặc kiểm tra phân quyền. |
-| Đã thanh lý nhưng **hoá đơn thanh lý chưa tất toán** / KQKD thiếu doanh thu bỏ cọc | Bỏ cọc theo **quy trình 2 bước**. Vào **Tài chính => Thu chi**, tìm cặp phiếu **"Doanh thu bỏ cọc"** (nhãn `[CẤN CỌC BỎ CỌC …]`) và bấm **Duyệt** — cọc mới vào doanh thu và hoá đơn thanh lý mới **PAID**. |
+| Đã thanh lý nhưng **hoá đơn thanh lý chưa tất toán** / KQKD thiếu doanh thu bỏ cọc | Đây là lỗi của chuỗi writer/cascade vì cặp bút toán hiện phải tự duyệt và tất toán ngay. Giữ nguyên dữ liệu; đối chiếu hai `system_source` `termination.forfeit_offset`/`termination.forfeit_revenue`, authorization và payment không tiền mặt, rồi báo quản trị kỹ thuật. **Không bấm Duyệt/Thu/Chi thủ công và không thanh lý lại.** |
 | **Cọc thành doanh thu ít hơn** tổng cọc trên hợp đồng | Đúng thiết kế: bỏ cọc chỉ tịch thu phần cọc **khách đã thực đóng**, không tính phần khách còn nợ cọc. |
 | Nợ **lớn hơn** cọc, muốn thu phần vượt | Bỏ cọc huỷ hết hoá đơn nợ cũ và giữ cọc làm doanh thu; phần vượt **không** tự đòi. Dùng khu **Thu thêm** để tạo **hoá đơn thu tiền khách riêng**, rồi thu sau ở [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/). |
-| Đã bấm **Duyệt** nhưng cọc vẫn không vào doanh thu | Kiểm tra **ghi chú** cặp phiếu có bị sửa không — máy trạng thái nhận diện qua nhãn `[CẤN CỌC BỎ CỌC …]`. Nếu nhãn bị đổi, đảo duyệt rồi khôi phục đúng nhãn, hoặc thanh lý lại. |
+| Cặp bút toán hiện nút **Duyệt và Thu/Chi** | Không thao tác: đây là bút toán `NON_CASH/NOT_APPLICABLE`, không được ghi vào sổ quỹ thật. Chụp trạng thái và báo quản trị kỹ thuật kiểm runtime/migration. |
+| Hợp đồng đã đóng nhưng thiếu lịch sử thanh lý | Có lỗi đã biết khiến insert `contract_terminations` bị bỏ qua. Đối chiếu hợp đồng, phòng, hoá đơn và cặp phiếu; báo quản trị phục hồi audit trail, không thực hiện lại giao dịch. |
 | Không thấy nút **Thanh lý** hoặc form báo lỗi | Hợp đồng đã **Thanh lý** / **Hết hạn**, hoặc chưa có phòng/toà. Chỉ thanh lý được hợp đồng **Đang hoạt động**. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/contracts" app-label="Mở danh sách hợp đồng" fixtures="A203 còn hoá đơn quá hạn 4.570.000đ">
+<SandboxTry account="demo.chunha" app-path="/contracts" app-label="Mở danh sách hợp đồng" fixtures="HD-2026-00001 · không có hoá đơn còn nợ · cọc yêu cầu 4.000.000đ, đã thu 0đ" view-only>
 
-Tìm hiểu dòng tiền bỏ cọc trên hợp đồng **A203** (khách **Ngô Văn Ích**, **Tòa DEMO A**) — **không cần hoàn tất**:
+Tìm hiểu dòng tiền bỏ cọc trên `HD-2026-00001` — **không hoàn tất**:
 
-1. Trong danh sách hợp đồng, tìm dòng **A203** và ấn để mở trang chi tiết.
+1. Trong danh sách hợp đồng, mở `HD-2026-00001` của phòng **A-01**.
 2. Đầu trang, ấn **Thanh lý** → ở bước **Chọn hình thức thanh lý hợp đồng:** chọn **Khách bỏ cọc**.
-3. Ở form **Thanh lý — Khách bỏ cọc**, đọc bảng **Hoá đơn sẽ bị huỷ** (nợ **4.570.000đ**) và thẻ **Tiền cọc** (đã thu **4.000.000đ**): hình dung cọc **4.000.000đ** bị tịch thu thành doanh thu, còn phần nợ vượt cọc bị huỷ.
+3. Ở form **Thanh lý — Khách bỏ cọc**, xác nhận **Không có hoá đơn còn nợ** và dòng **Tiền cọc chuyển thành doanh thu = 0đ** vì cọc chưa được thu.
 4. Xem khu **Thu thêm**: để ý dòng dưới cùng báo sẽ tạo **hoá đơn thu tiền khách riêng** — cách đòi thêm phần vượt cọc.
-5. Ấn **Hủy** (hoặc **✕**) để đóng mà không ghi dữ liệu. Nếu bạn lỡ ấn **Lập hoá đơn & thanh lý**, dùng nút **Reset** của sandbox để trả A203 về **Đang hoạt động**.
+5. Ấn **Hủy** (hoặc **✕**) để đóng mà không ghi dữ liệu.
 
-Kết quả mong đợi: bạn hiểu dòng tiền bỏ cọc — cọc thực đóng thành doanh thu (qua cặp phiếu **chờ duyệt** ở sổ thu chi), hoá đơn nợ cũ bị huỷ, và phần vượt cọc phải đòi bằng hoá đơn AR từ khu **Thu thêm**.
+Kết quả mong đợi: bạn hiểu luồng bỏ cọc — cọc thực đóng thành doanh thu qua **cặp bút toán nội bộ tự duyệt, không tiền mặt**, hoá đơn nợ cũ bị huỷ, và phần vượt cọc phải đòi bằng hoá đơn AR từ khu **Thu thêm**.
 
 </SandboxTry>
 
@@ -102,7 +113,7 @@ Kết quả mong đợi: bạn hiểu dòng tiền bỏ cọc — cọc thực �
 - [Hợp đồng chi tiết](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) — nơi có nút **Thanh lý** mở hộp thoại này.
 - [Thanh lý — Khách rời phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) — hình thức còn lại: khách trả phòng đúng quy trình, còn cọc phải trả lại.
 - [Hoàn / bỏ cọc](/03-quan-ly-van-hanh/hoan-bo-coc/) — tra soát các khoản đã hoàn/bỏ cọc sau thanh lý.
-- [Thu chi & Sổ quỹ](/03-quan-ly-van-hanh/thu-chi/) — nơi bấm **Duyệt** cặp phiếu "Doanh thu bỏ cọc" để hoàn tất bước 2.
+- [Thu chi & Sổ quỹ](/03-quan-ly-van-hanh/thu-chi/) — nơi tra soát cặp bút toán nội bộ; không dùng nút Thu/Chi cho cặp bỏ cọc.
 - [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/) — thu hoá đơn AR "thu thêm" sinh ra khi bỏ cọc.
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — sổ CỌC (giữ hộ khách) và sổ vận hành, hai đầu của dòng tiền bỏ cọc.
 - [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/) — nguồn của số cọc bị tịch thu.

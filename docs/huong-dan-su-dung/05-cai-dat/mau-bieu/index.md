@@ -2,11 +2,11 @@
 title: "Mẫu biểu (hợp đồng, hoá đơn, biên bản)"
 description: "Quản lý các mẫu in dùng chung: hợp đồng đặt cọc, hợp đồng thuê, biên bản bàn giao, mẫu hoá đơn và mẫu thu chi."
 routes: ["/settings/templates"]
-permissions: [{module: templates, action: view}]
+permissions: [{module: templates, action: view}, {module: templates, action: create}, {module: templates, action: edit}, {module: templates, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---

@@ -15,9 +15,11 @@ status: published
 
 Màn **Chat Zalo** (`/chat-zalo`) đưa việc nhắn tin Zalo với khách trọ, khách tiềm năng và môi giới vào thẳng CRM. Ngoài việc chat 1-1, trang còn có ba nhóm công cụ để bạn làm việc nhanh hơn với số đông: **gửi tin hàng loạt (broadcast) theo nhãn**, **chèn mẫu tin** khi soạn, và **bật/tắt tự động hoá tin nhắn**. Bài này tập trung vào ba nhóm đó — cùng ghi rõ tính năng nào đã chạy thật và tính năng nào mới là khung để bạn khỏi kỳ vọng nhầm.
 
+Đây là hệ Chat Zalo hiện hành dùng quyền `chat_zalo.*`, tách biệt với hạ tầng OpenClaw Zalo. Production ngày 13/08/2026 đang hiển thị OpenClaw như một bề mặt riêng; các công tắc hay broadcast trong bài này vẫn thuộc Chat Zalo cũ và không điều khiển OpenClaw.
+
 ::: info Điều kiện tiên quyết
 - Quyền **Chat Zalo => Xem** (module `chat_zalo`, action `view`) để mở trang `/chat-zalo`. Không có quyền này thì mục **Chat Zalo** bị ẩn khỏi menu (nhóm **Kênh chat**).
-- Quyền **Chat Zalo => Gửi** (`chat_zalo.send`) để gửi tin và **broadcast**; quyền **Chat Zalo => Quản lý tự động hoá** (`chat_zalo.manage_automation`) để bật/tắt các công tắc tự động.
+- Quyền **Chat Zalo => Gửi** (`chat_zalo.send`) để gửi tin và **broadcast**; quyền **Quản lý mẫu tin** (`chat_zalo.manage_templates`) để thêm/sửa/xoá mẫu; quyền **Quản lý tự động hoá** (`chat_zalo.manage_automation`) để bật/tắt các công tắc tự động.
 - Đã **kết nối ít nhất một tài khoản Zalo** (quét QR ở nút **Kết nối Zalo cá nhân**) và tiến trình đồng bộ đang chạy — nếu chưa, danh sách hội thoại và nhãn sẽ trống.
 - **Nhãn phân loại** được tạo và sửa trong **ứng dụng Zalo**, hệ thống chỉ **đọc về** để lọc và chọn người nhận (xem mục Nhãn phân loại bên dưới).
 :::
@@ -61,8 +63,8 @@ Mẫu tin giúp bạn chèn nhanh những câu hay dùng (chào hỏi, nhắc n�
 - Khi đang mở một hội thoại, ở **ô soạn tin** (cột giữa) có nút **mẫu tin** — bấm để chọn một mẫu, nội dung được **chèn vào ô soạn** để bạn xem lại và gửi.
 - Thư viện mẫu tin cũng hiển thị ở **cột thông tin bên phải**, tab **Tự động hoá**, để bạn xem nhanh các mẫu đang có.
 
-::: warning Mẫu tin hiện chèn theo tiêu đề, chưa quản lý trong app
-Trang chèn mẫu tin theo **tiêu đề mẫu**, nên hãy đặt **tiêu đề chính là câu bạn muốn gửi** (câu ngắn, đầy đủ). Ngoài ra hệ thống **chưa có màn thêm/sửa/xoá mẫu tin trong ứng dụng** — danh sách mẫu hiện do quản trị nạp sẵn ở tầng dữ liệu. Quyền **Chat Zalo => Quản lý mẫu tin** (`chat_zalo.manage_templates`) đã có trong danh mục phân quyền nhưng **chưa có màn nào dùng tới**. Nếu cần thêm/sửa mẫu, hãy nhờ quản trị hệ thống.
+::: tip Quản lý thư viện mẫu ngay trong Chat Zalo
+Tài khoản có quyền `chat_zalo.manage_templates` thấy biểu tượng **Quản lý mẫu tin** trong bộ chọn mẫu. Hộp thoại này cho phép thêm, sửa, bật/tắt và xoá mẫu dùng chung cho công ty; mỗi mẫu có **tiêu đề** và **nội dung**, nên không cần đặt tiêu đề thành toàn bộ câu gửi. Người không có quyền quản lý vẫn chèn được các mẫu đang hoạt động vào ô soạn để xem lại trước khi gửi.
 :::
 
 ## Nhãn phân loại khách
@@ -87,7 +89,7 @@ Vì nhãn thuộc về tài khoản Zalo, bạn tạo/đổi tên/đổi màu nh
 Bật/tắt cần quyền **Chat Zalo => Quản lý tự động hoá** (`chat_zalo.manage_automation`); trạng thái được lưu lại theo tài khoản của bạn.
 
 ::: warning Hai công tắc này hiện mới lưu trạng thái, chưa tự gửi tin
-Bật hai công tắc trên **chưa khiến hệ thống tự động gửi tin** — phần thực thi (engine) đang được hoàn thiện. Xem đây là nơi **ghi nhận ý định bật tính năng**, đừng dựa vào nó để chăm khách thay bạn. Con số **lượt chạy tự động** hiển thị ở chân danh sách hội thoại hiện là **số minh hoạ**, không phản ánh hoạt động thật. Việc gửi hàng loạt thật, ngay lúc này, hãy dùng **broadcast thủ công** ở mục trên.
+Bật hai công tắc trên **chưa khiến hệ thống tự động gửi tin** — phần thực thi (engine) đang được hoàn thiện. Xem đây là nơi **ghi nhận ý định bật tính năng**, đừng dựa vào nó để chăm khách thay bạn. Con số **lượt chạy tự động** ở chân danh sách hiện là **0**, vì chưa có engine thực thi. Việc gửi hàng loạt thật, ngay lúc này, hãy dùng **broadcast thủ công** ở mục trên.
 :::
 
 ## ZNS và Zalo OA — hiện chưa hỗ trợ
@@ -117,21 +119,20 @@ Bật hai công tắc trên **chưa khiến hệ thống tự động gửi tin*
 | Bấm loa nhưng **không gửi được** hoặc nút mờ | Bạn thiếu quyền **Chat Zalo => Gửi** (`chat_zalo.send`). Nhờ quản trị cấp quyền. |
 | Broadcast báo "Đã gửi tới N" nhưng **N nhỏ hơn** số chọn | Hệ thống kiểm quyền **theo từng hội thoại**; hội thoại bạn không đủ quyền bị **bỏ qua âm thầm**. |
 | Broadcast **tới chậm**, rải trong vài phút | Đúng thiết kế: tin được **rải nhịp 0,7–1,5 giây/tin** để tránh bị Zalo coi là spam. Không phải lỗi. |
-| Không tìm thấy màn **thêm/sửa mẫu tin** | Đúng hiện trạng: chưa có màn quản lý mẫu tin trong app. Nhờ quản trị nạp mẫu ở tầng dữ liệu; đặt **tiêu đề mẫu chính là câu cần gửi**. |
+| Không thấy nút **Quản lý mẫu tin** | Tài khoản thiếu quyền `chat_zalo.manage_templates`. Nhờ quản trị cấp quyền; người không có quyền vẫn chèn được các mẫu đang hoạt động. |
 | Bật **Tự động hoá** mà không thấy tin nào tự gửi | Đúng hiện trạng: hai công tắc mới lưu trạng thái, **chưa có engine thực thi**. Dùng **broadcast thủ công** để gửi hàng loạt. |
 | Muốn gửi **ZNS/OA** | Chưa hỗ trợ trong phiên bản này. Dùng chat trực tiếp hoặc broadcast qua tài khoản Zalo cá nhân. |
 | Đang nhận tin thì **rớt kết nối** | Có thể do nick Zalo đang được mở ở nơi khác (Zalo Web/thiết bị khác). Dùng **nick phụ riêng** cho CRM và chỉ đăng nhập một nơi. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/chat-zalo" app-label="Mở Chat Zalo" fixtures="Vài hội thoại Zalo mẫu + nhãn phân loại (chỉ để xem)" view-only>
+<SandboxTry account="demo.chunha" app-path="/chat-zalo" app-label="Mở Chat Zalo" fixtures="Snapshot 13/08/2026: chưa có hội thoại hoặc nhãn được đồng bộ." view-only>
 
-Bài này chỉ **xem để định vị** các khu chức năng — sandbox không gửi tin Zalo thật:
+Bài này chỉ **xem để định vị** empty state — không kết nối tài khoản hoặc gửi tin Zalo:
 
-1. Mở **Chat Zalo**. Ở đầu **cột danh sách hội thoại**, tìm nút **loa** — đây là nơi mở hộp thoại **Gửi tin hàng loạt (broadcast)**. Bấm để xem cách **lọc theo nhãn**, **tìm** và **Chọn tất cả** (chỉ chọn trong tập đang lọc). Đóng lại mà không gửi.
-2. Vẫn ở cột trái, thử **ô lọc theo nhãn** để thấy nhãn phân loại được đọc từ Zalo.
-3. Mở một hội thoại bất kỳ, để ý nút **mẫu tin** ở **ô soạn tin** — đây là nơi chèn nhanh câu mẫu.
-4. Sang **cột thông tin bên phải**, mở tab **Tự động hoá** để thấy hai công tắc **Gửi ảnh phòng trống** / **Tự động trả lời** và thư viện mẫu tin.
+1. Mở **Chat Zalo** và xác nhận danh sách hội thoại đang rỗng.
+2. Đọc hướng dẫn kết nối/đồng bộ trên màn; không bấm kết nối vì thao tác đó yêu cầu tài khoản Zalo và tạo trạng thái ngoài tài liệu.
+3. Ghi nhớ nút broadcast, lọc nhãn, mẫu tin và tự động hoá chỉ có dữ liệu sử dụng sau khi một tài khoản Zalo được kết nối và đồng bộ.
 
 Kết quả mong đợi: bạn biết chính xác **broadcast**, **mẫu tin** và **tự động hoá** nằm ở đâu trong màn Chat Zalo, và nhớ rằng cách gửi hàng loạt thật hiện nay là **broadcast thủ công theo nhãn**.
 
@@ -141,5 +142,5 @@ Kết quả mong đợi: bạn biết chính xác **broadcast**, **mẫu tin** v
 
 - [Thông báo](/02-theo-doi-nhanh/thong-bao/) — thông báo đẩy (Web Push) khi có tin Zalo mới về.
 - [Thu tiền tại phòng (điện thoại)](/03-quan-ly-van-hanh/thu-tien-mobile/) — nút **Zalo** trên từng ô phòng để nhắn nhanh cho khách đại diện.
-- [Phân quyền](/05-cai-dat/phan-quyen/) — cấp quyền `chat_zalo` (Xem / Gửi / Quản lý tự động hoá) cho nhân viên.
+- [Phân quyền](/05-cai-dat/phan-quyen/) — cấp quyền `chat_zalo` (Xem / Gửi / Quản lý mẫu tin / Quản lý tự động hoá) cho nhân viên.
 - [Nhân viên & đội ngũ](/05-cai-dat/nhan-vien-doi-ngu/) — giao phạm vi và tài khoản để nhân viên dùng Chat Zalo.

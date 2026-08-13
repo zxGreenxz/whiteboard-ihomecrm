@@ -1,57 +1,88 @@
 ---
 title: "Ghi chú phiên bản"
-description: "Bộ tài liệu này bám theo phiên bản hệ thống hiện tại và được cập nhật khi có tính năng mới — cách xem Lịch sử cập nhật ngay trong ứng dụng."
+description: "Cách xác định tài liệu khớp bản hiện hành và giới hạn của trang /changelog đang dùng dữ liệu tĩnh 2024–2025."
 routes: []
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-20"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
 
 # Ghi chú phiên bản
 
-Bộ tài liệu hướng dẫn này được biên soạn bám sát **phiên bản hệ thống đang chạy thật** trên ptcrm. Vì phần mềm được cập nhật liên tục — thêm màn hình, đổi luồng nghiệp vụ, chỉnh nút bấm — nên mỗi trang hướng dẫn đều được viết lại hoặc bổ sung mỗi khi tính năng thay đổi. Trang này giải thích cách tài liệu được đánh dấu theo phiên bản và cách bạn tự xem **Lịch sử cập nhật** của ứng dụng.
+Bộ hướng dẫn này được rà soát theo code, route, catalog quyền và database production hiện hành tại thời điểm ghi trong `captured.date`. Ngày này là **mốc đối chiếu tài liệu**, không phải số phiên bản sản phẩm và không chứng minh mọi ảnh chụp trên toàn bộ site được tạo lại cùng ngày.
 
-## Tài liệu bám theo phiên bản nào
+## Nguồn nào đáng tin khi có khác biệt?
 
-- Mỗi trang hướng dẫn được **chụp lại theo một mốc thời gian cụ thể**. Bạn thấy điều này ở đầu mỗi trang: ảnh minh hoạ và các bước thao tác phản ánh giao diện tại thời điểm được ghi.
-- Bản tài liệu hiện tại được rà soát theo hệ thống ngày **20/07/2026**. Các trang mới nhất gồm **Chờ duyệt**, **Trợ lý AI**, mô hình approval/RBAC và trung tâm báo cáo 9 mục.
-- Khi giao diện thật khác một chút so với ảnh trong tài liệu (ví dụ thêm một nút, đổi tên nhãn), đó là dấu hiệu trang đang chờ cập nhật — hãy ưu tiên làm theo những gì bạn thấy trên màn hình, phần mô tả nghiệp vụ vẫn đúng.
+Ưu tiên theo thứ tự:
 
-## Khi nào tài liệu được cập nhật
+1. Hành vi đang chạy và route trong code hiện hành.
+2. Contract/schema, catalog và inventory đo từ database production.
+3. Quyền/RLS/RPC đang kiểm ở server.
+4. Markdown hướng dẫn và ảnh minh hoạ.
+5. Trang `/changelog` trong ứng dụng.
 
-- **Có tính năng mới**: khi hệ thống bổ sung màn hình hoặc luồng nghiệp vụ, trang hướng dẫn liên quan sẽ được viết mới hoặc bổ sung mục tương ứng.
-- **Đổi thao tác trên màn hình cũ**: nếu một nút, bộ lọc hay bước nhập liệu thay đổi, phần **Hướng dẫn từng bước** và bảng **Các tính năng khác** của trang đó được chỉnh lại.
-- **Sửa lỗi mô tả**: khi phát hiện tài liệu ghi chưa khớp với hệ thống thật, phần đó được sửa mà không đổi cấu trúc trang.
+Tài liệu phải được sửa khi lệch các nguồn phía trên; không dùng một ảnh cũ hoặc một dòng changelog để phủ nhận hành vi và dữ liệu đang chạy.
 
-## Xem Lịch sử cập nhật trong ứng dụng
+## Giới hạn của `/changelog`
 
-Ứng dụng có trang **Lịch sử cập nhật**, nhưng nội dung trong app có thể ngắn hơn hoặc chậm hơn source docs. Dùng trang này để xem ghi chú UI; dùng bộ tài liệu và commit hiện hành làm nguồn mô tả nghiệp vụ.
+Trang **Lịch sử cập nhật** hiện render một mảng tĩnh nằm trong source `ChangelogPage.tsx`, gồm ba mục:
 
-- Mở đường dẫn **/changelog** trong ứng dụng để xem các ghi chú phát hành đang được hiển thị.
-- Mỗi mục nêu ngắn gọn những gì được thêm, sửa hoặc cải thiện trong đợt phát hành đó.
-- Nếu có khác biệt, ưu tiên hành vi thật trên màn hình và tài liệu có `captured.date` mới hơn; báo lại qua [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/).
+| Phiên bản hiển thị | Ngày trong mảng tĩnh |
+|---|---|
+| `v1.0.0` | 15/01/2025 |
+| `v0.9.0` | 01/12/2024 |
+| `v0.8.0` | 01/11/2024 |
 
-::: tip Kết hợp hai nguồn
-**Lịch sử cập nhật (/changelog)** là ghi chú trong app; bộ tài liệu này giải thích *cách dùng* và được rà soát theo mốc code/documentation. Khi có khác biệt, dùng ngày `captured` để chọn bản đáng tin hơn.
+Trang này **không tự đọc commit, migration, deployment, Vercel hay database**, nên không phải release log authoritative và không phản ánh đầy đủ các thay đổi năm 2026. Nội dung tĩnh còn nhắc những cấu trúc cũ như `SUMMARY.md`; hãy xem nó như lịch sử giao diện được đóng gói trong build, không phải bằng chứng về trạng thái hiện tại.
+
+::: warning Không lấy `/changelog` làm mốc “bản mới nhất”
+Việc mục trên cùng ghi `v1.0.0 — 15/01/2025` không có nghĩa hệ thống production đang dừng ở bản đó. Khi cần điều tra một thay đổi nghiệp vụ, dùng route/code/schema và lịch sử triển khai nội bộ, rồi đối chiếu tài liệu có `captured.date` mới hơn.
 :::
 
-## Thử trực tiếp trên sandbox
+## Cách nhận biết một trang hướng dẫn đã cũ
+
+- Route trong bài tự chuyển sang một route khác, ví dụ `/settings/staff → /settings/members`.
+- Bài nói **Đã duyệt** là tiền thật, trong khi Finance V2 yêu cầu `posting_status=POSTED`.
+- Bài mô tả báo cáo cọc từ bảng `deposits` như số cọc authoritative, dù nguồn canonical là hạng mục cọc của `income_expenses`.
+- Bài mô tả báo cáo Tiền thừa như credit còn lại, dù credit authoritative nằm trong `customer_credit_lots.remaining_amount`.
+- Bài suy trạng thái OpenClaw hoặc Network Center chỉ từ mặc định code. Runtime phải đối chiếu đúng deployment; production ngày 13/08/2026 đang hiển thị OpenClaw Zalo.
+- Bài coi khu **08 — Kế hoạch phát triển** là tính năng đã phát hành.
+
+Khi gặp một trong các dấu hiệu này, ưu tiên trang hướng dẫn mới có cảnh báo rõ và báo lại theo [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/).
+
+## Phân biệt ba loại nội dung trên site docs
+
+| Loại | Có thể dùng để thao tác production? | Cách nhận biết |
+|---|---|---|
+| **Hướng dẫn hiện hành** | Có, sau khi kiểm quyền và điều kiện nghiệp vụ. | Nằm trong các nhóm bắt đầu, vận hành, báo cáo, cài đặt, tài khoản; mô tả route và trạng thái hiện hành. |
+| **Cảnh báo giới hạn hiện tại** | Có, để tránh tin sai một bề mặt chưa canonical. | Nêu rõ nguồn legacy, route redirect, runtime-off hoặc khoảng trống verification. |
+| **Kế hoạch/đề xuất** | Không tự dùng làm chỉ dẫn production. | Nằm ở khu `08-ke-hoach-phat-trien`; phải có banner proposal và chỉ trở thành runtime khi được triển khai/kiểm chứng. |
+
+## Cách báo một sai lệch tài liệu
+
+Gửi đủ:
+
+- URL của trang docs và URL màn hình app.
+- Tên mục/câu đang sai.
+- Ảnh hoặc video ngắn thể hiện hành vi thật.
+- Vai trò, tổ chức/toà và thời điểm kiểm tra.
+- Nếu liên quan tiền: id hoá đơn/phiếu, trạng thái phê duyệt, trạng thái posting và sổ quỹ — không gửi mật khẩu.
+
+## Xem trang lịch sử tĩnh trong sandbox
 
 <SandboxTry account="demo.chunha" app-path="/changelog" app-label="Mở Lịch sử cập nhật" view-only>
 
-Đăng nhập bằng `demo.chunha` và mở trang **/changelog**. Bạn nên nhìn thấy:
-
-- Danh sách các bản cập nhật của hệ thống, đợt mới nhất nằm trên cùng.
-- Mỗi mục mô tả ngắn gọn những thay đổi (thêm tính năng, sửa lỗi, cải thiện) của đợt đó.
+Bạn có thể mở `/changelog` để xem ba mục tĩnh kể trên. Kết quả mong đợi là hiểu đây là nội dung của build, **không phải danh sách đầy đủ mọi lần phát hành**.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Giới thiệu hệ thống](/01-bat-dau/gioi-thieu/) — ptcrm là gì và bản đồ 7 khu chức năng.
-- [Câu hỏi thường gặp](/07-thong-tin-khac/faq/) — giải đáp nhanh các thắc mắc khi dùng hệ thống.
-- [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/) — nơi liên hệ khi cần trợ giúp hoặc góp ý về tính năng.
+- [Giới thiệu hệ thống](/01-bat-dau/gioi-thieu/)
+- [Câu hỏi thường gặp](/07-thong-tin-khac/faq/)
+- [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/)
+- [Kế hoạch phát triển](/08-ke-hoach-phat-trien/)

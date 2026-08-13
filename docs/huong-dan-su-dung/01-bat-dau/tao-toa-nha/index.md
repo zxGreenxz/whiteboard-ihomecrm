@@ -2,12 +2,13 @@
 title: "Bước 1: Tạo khu vực & toà nhà"
 description: "Tạo khu vực để nhóm toà và thêm toà nhà mới với tên, mã, địa chỉ và cấu hình mặc định."
 routes: ["/buildings"]
-permissions: [{module: buildings, action: create}]
+permissions: [{module: buildings, action: view}, {module: buildings, action: create}, {module: areas, action: create}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -16,13 +17,14 @@ status: published
 Toà nhà là đơn vị trung tâm của cả hệ thống: mọi hợp đồng, hoá đơn, công tơ, sổ quỹ và báo cáo sau này đều gắn với một toà. Đây là việc đầu tiên bạn làm khi khởi tạo dữ liệu — tạo **khu vực** (nhãn nhóm các toà theo địa bàn) rồi **thêm từng toà nhà**. Bạn quay lại màn hình này mỗi khi tiếp nhận thêm một toà mới để vận hành.
 
 ::: info Điều kiện tiên quyết
-- Tài khoản có quyền **Tạo toà nhà** (module `buildings`) — thực tế chỉ chủ nhà / người có phạm vi toàn hệ thống mới tạo được khu vực và toà.
+- Tài khoản có `buildings.view` để mở trang và `buildings.create` để thêm toà. Tạo khu vực cần thêm `areas.create`.
+- Capability và phạm vi là hai lớp độc lập: role name không tự cấp quyền; dữ liệu chỉ hiện trong phạm vi hiệu lực. Với thao tác tạo dữ liệu cấp tổ chức, nên dùng phạm vi **Toàn tổ chức**.
 - Chưa cần dữ liệu nào khác: đây là bước khởi tạo đầu tiên, tầng/phòng và dịch vụ sẽ thêm ở các bước sau.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Tại thanh menu bên trái, ấn chọn **Danh mục** => **Toà nhà** để mở màn hình danh sách toà. Bạn thấy 3 thẻ thống kê (**Tất cả** / **Đang hoạt động** / **Ngừng**), ô tìm kiếm, và bảng liệt kê các toà hiện có.
+**Bước 1**: Tại thanh menu bên trái, mở **Quản lý & Vận hành** => **Toà nhà** (`/buildings`). Bạn thấy các thẻ thống kê, ô tìm kiếm và danh sách những toà nằm trong phạm vi được giao.
 
 ![Màn hình danh sách Toà nhà với thẻ thống kê, ô tìm kiếm và các nút Thêm, Quản lý khu vực](./images/buoc-01-danh-sach.webp)
 
@@ -36,7 +38,7 @@ Một toà có thể thuộc **nhiều khu vực** cùng lúc (ví dụ vừa "N
 
 ![Form Toà nhà với các khối Thông tin địa chỉ, Dịch vụ toà nhà, Cấu hình và Hoa hồng môi giới](./images/buoc-02-form-toa.webp)
 
-**Bước 4**: Điền thông tin toà. Các trường bắt buộc gồm **tên toà**, **tỉnh/thành**, **quận/huyện** và **phường/xã**; **mã toà** và **địa chỉ chi tiết** là tuỳ chọn. Bạn có thể nhập nhiều mã cách nhau bởi dấu phẩy để khớp khi tạo công việc nhanh sau này. Ô **Tổng số phòng** hệ thống tự đếm — không nhập tay.
+**Bước 4**: Điền thông tin toà. Các trường bắt buộc gồm **tên toà**, **tỉnh/thành**, **quận/huyện**, **phường/xã** và **địa chỉ chi tiết**. **Mã toà** là nhãn/alias tuỳ chọn để tìm kiếm và nhận diện nhanh. Cơ sở dữ liệu hiện không chặn mã trùng, nhưng bạn nên chủ động đặt mã khác nhau để tránh chọn nhầm toà trong bộ lọc và các form nghiệp vụ. Ô **Tổng số phòng** hệ thống tự đếm — không nhập tay.
 
 **Bước 5**: (Tuỳ chọn) Mở khối **Dịch vụ toà nhà** để bật các dịch vụ áp cho toà; khối **Cấu hình** để chọn mẫu hoá đơn / hợp đồng và **sổ quỹ mặc định**; khối **Hoa hồng môi giới** để đặt bậc hoa hồng theo số tháng hợp đồng. Xong thì ấn **Lưu**. Toà mới xuất hiện ngay đầu bảng danh sách.
 
@@ -49,7 +51,7 @@ Hai ô sổ quỹ mặc định trong khối **Cấu hình** quyết định ti�
 | Nút / Bộ lọc | Công dụng |
 |---|---|
 | **Sửa** (biểu tượng bút chì trên dòng toà) | Mở lại form **Toà nhà** để chỉnh tên, địa chỉ, dịch vụ, cấu hình sổ quỹ, hoa hồng. |
-| **Xoá** (biểu tượng thùng rác) | Xoá toà (xoá mềm — toà biến khỏi danh sách nhưng dữ liệu lịch sử vẫn giữ). |
+| **Xoá** (biểu tượng thùng rác) | Xoá mềm toà, nhưng hệ thống chặn nếu toà còn phòng chưa xoá. |
 | **In** | In danh sách toà nhà đang hiển thị. |
 | Chuyển **Dạng lưới / Dạng danh sách** | Đổi cách hiển thị giữa lưới thẻ và bảng danh sách cho dễ nhìn. |
 | Ô tìm kiếm | Tìm nhanh theo **tên**, **mã** hoặc **địa chỉ** toà. |
@@ -67,27 +69,28 @@ Nút **Xoá** ẩn toà khỏi danh sách. Chỉ xoá khi chắc chắn toà kh�
 | Tình huống | Cách xử lý |
 |---|---|
 | Không thấy nút **Thêm** hoặc **Quản lý khu vực** | Tài khoản của bạn có phạm vi theo-toà nên không được tạo mới. Cần chủ nhà (phạm vi toàn hệ thống) tạo toà, sau đó gán bạn vào toà đó. |
-| Bấm **Lưu** báo "Mã tòa nhà đã tồn tại" | Đây chỉ là nhắc nhở của giao diện — mã toà **không bắt buộc duy nhất**, nếu muốn bạn vẫn có thể đổi mã cho rõ ràng rồi lưu lại. |
-| Không lưu được, báo thiếu địa chỉ | **Tỉnh/thành, quận/huyện, phường/xã** là bắt buộc — điền đủ cả ba mới lưu được. |
+| Bấm **Lưu** báo "Mã tòa nhà đã tồn tại" | Đây là thông báo chung khi thao tác gặp lỗi trùng dữ liệu (`23505`), không chứng minh mã toà đang có ràng buộc duy nhất. Kiểm tra các dữ liệu liên quan, thử lại; bạn vẫn nên đổi mã khác hoặc để trống để tránh nhầm lẫn khi tra cứu. |
+| Không lưu được, báo thiếu địa chỉ | Điền đủ **tỉnh/thành, quận/huyện, phường/xã và địa chỉ chi tiết**. |
+| Bấm **Xoá** nhưng bị chặn | Toà còn phòng chưa xoá. Chuyển/xử lý phòng trước rồi thử lại. |
 | Danh sách trống dù đã tạo toà | Kiểm tra bộ lọc **toà nhà** hoặc **trạng thái** còn đang lọc; hoặc tài khoản không có quyền xem toà đó (màn hình hiện "Chưa có dữ liệu" thay vì báo lỗi quyền). |
 | **Tổng số phòng** hiển thị 0 | Bình thường với toà mới — số này tự tăng khi bạn thêm phòng ở bước sau, không nhập tay. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.chunha" app-path="/buildings" app-label="Mở màn hình Toà nhà" fixtures="Tòa DEMO A, Tòa DEMO B">
+<SandboxTry account="demo.chunha" app-path="/buildings" app-label="Mở màn hình Toà nhà" fixtures="DEMO Toà A, DEMO Toà B, DEMO Toà C, DEMO Toà D" view-only>
 
 **Bài tập thực hành**
 
-1. Ấn nút **Quản lý khu vực** và tìm khu **KV DEMO** trong danh sách — xem những toà nào đang thuộc khu này.
-2. Đóng hộp thoại, ấn nút **Thêm** để mở form tạo toà. Xem qua các trường: tên toà, mã, tỉnh/quận/phường, địa chỉ (không cần lưu).
+1. Quan sát bốn toà **DEMO Toà A/B/C/D** trong phạm vi toàn tổ chức của tài khoản chủ.
+2. Ấn nút **Thêm** để mở form tạo toà. Xem qua các trường: tên, mã, tỉnh/quận/phường và địa chỉ chi tiết (không cần lưu).
 
 **Kết quả mong đợi**
 
-- Bạn nhận ra khu **KV DEMO** đang nhóm **Tòa DEMO A** và **Tòa DEMO B**.
-- Bạn nắm được các trường **bắt buộc** khi tạo một toà: tên toà và bộ ba địa chỉ tỉnh/quận/phường.
+- Bạn thấy bốn toà của snapshot DEMO hiện hành.
+- Bạn nắm được các trường **bắt buộc**: tên toà, bộ ba địa giới và địa chỉ chi tiết.
 
-::: tip Sandbox demo không lưu được toà mới
-Tài khoản `demo.chunha` có phạm vi theo-toà nên **không tạo được toà mới** — bài tập này chỉ để bạn xem form và làm quen các trường, không cần bấm **Lưu**.
+::: tip Bài tập chỉ quan sát
+Không bấm **Lưu** nếu không được bài thực hành yêu cầu; sandbox dùng chung và thao tác mới sẽ ảnh hưởng người đang học cùng.
 :::
 
 </SandboxTry>

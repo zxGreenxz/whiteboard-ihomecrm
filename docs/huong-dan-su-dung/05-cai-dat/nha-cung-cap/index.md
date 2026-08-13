@@ -6,7 +6,7 @@ permissions: [{module: suppliers, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
@@ -15,12 +15,12 @@ status: published
 
 Nhà cung cấp là **danh mục lưu thông tin liên hệ** của những đơn vị bán vật tư (bóng đèn, vòi nước, sơn...) và tài sản (máy lạnh, tủ lạnh, giường...) cho bạn: **tên, số điện thoại, email, địa chỉ**. Danh mục này **dùng chung** cho cả hai nơi trong phần mềm — khi bạn **lập phiếu nhập kho** ở [Kho vật tư] và khi bạn **khai một tài sản mới** — để bạn chọn đúng nguồn nhập, tiện gọi lại đặt hàng và đối chiếu sau này.
 
-Trang này nằm ở **Cài đặt hệ thống** => **Danh mục khác** => **Nhà cung cấp**. Ở thời điểm hiện tại, màn hình quản lý danh mục nhà cung cấp **đang được hoàn thiện** (hiện thông báo *"Tính năng đang phát triển"*): bạn **chưa thêm/sửa nhà cung cấp trực tiếp tại đây**. Các nhà cung cấp có sẵn trong hệ thống (từ dữ liệu khởi tạo) vẫn hoạt động bình thường — bạn **chọn** chúng ở ô *Nhà cung cấp* trong phiếu nhập kho và form tài sản.
+Trang này nằm ở **Cài đặt hệ thống** => **Danh mục khác** => **Nhà cung cấp**. Ở thời điểm hiện tại, màn hình quản lý danh mục nhà cung cấp **đang được hoàn thiện** (hiện thông báo *"Tính năng đang phát triển"*): bạn **chưa thêm/sửa nhà cung cấp trực tiếp tại đây**. Khi tổ chức đã được khởi tạo danh mục, các ô *Nhà cung cấp* trong phiếu nhập kho và form tài sản sẽ đọc từ nguồn đó.
 
 ::: info Điều kiện tiên quyết
 - Quyền xem **Nhà cung cấp** (`suppliers.view`) — thường là chủ nhà hoặc quản lý toà.
 - Danh mục nhà cung cấp dùng chung giữa **Kho vật tư** và **Tài sản**: mọi thay đổi (khi tính năng quản lý hoàn thiện) sẽ ảnh hưởng cả hai nơi.
-- Để thấy nhà cung cấp *đang được dùng*, bạn cần đã có ít nhất một **phiếu nhập kho** (trong dữ liệu demo đã có sẵn một phiếu nhập cho ba vật tư bóng đèn / vòi / sơn).
+- Snapshot DEMO ngày 13/08/2026 chưa có vật tư, phiếu nhập hoặc tài sản; không dùng dữ liệu khởi tạo cũ để suy ra danh sách nhà cung cấp hiện tại.
 :::
 
 ## Hướng dẫn từng bước
@@ -33,7 +33,7 @@ Trang này nằm ở **Cài đặt hệ thống** => **Danh mục khác** => **N
 
 **Bước 3**: Xem nhà cung cấp *đang được dùng ở đâu*. Mở **Kho vật tư** => thẻ **Phiếu nhập** => **Tạo phiếu nhập**. Trong form phiếu nhập có ô **Nhà cung cấp** — đây là nơi bạn **chọn** một nhà cung cấp từ danh mục để ghi *nguồn nhập* cho lô vật tư. Nhà cung cấp được chọn sẽ hiển thị trên dòng phiếu nhập và giúp bạn biết đã mua hàng từ đâu. Tương tự, khi khai một **tài sản** mới, form tài sản cũng có ô **Nhà cung cấp** chọn từ cùng danh mục này.
 
-**Bước 4**: Nếu cần thêm một nhà cung cấp *mới* mà chưa thấy trong danh sách chọn, hãy liên hệ **chủ nhà / quản trị hệ thống** để bổ sung (hiện việc thêm mới thực hiện ở khâu khởi tạo dữ liệu, chưa có nút *Thêm* trên màn hình này). Khi tính năng quản lý được mở, bạn sẽ nhập được trực tiếp: tên, số điện thoại, email, địa chỉ của nhà cung cấp ngay tại trang này.
+**Bước 4**: Nếu cần thêm một nhà cung cấp mới, liên hệ quản trị viên phụ trách dữ liệu. Không khẳng định form hay trường tương lai cho tới khi trang runtime được triển khai.
 
 ::: tip Một danh mục dùng chung cho cả Kho vật tư và Tài sản
 Nhà cung cấp **không tách riêng** theo từng nghiệp vụ — chỉ có **một danh sách duy nhất** dùng chung. Cùng một đơn vị (ví dụ "Cửa hàng điện nước DEMO A") có thể vừa xuất hiện trong ô chọn của phiếu nhập kho, vừa trong form khai tài sản. Vì vậy khi tính năng sửa/xoá được mở, hãy nhớ: chỉnh sửa một nhà cung cấp sẽ ảnh hưởng **mọi phiếu nhập và mọi tài sản** đang trỏ tới đơn vị đó.
@@ -63,9 +63,8 @@ Nhà cung cấp **không tách riêng** theo từng nghiệp vụ — chỉ có 
 <SandboxTry account="demo.kythuat" app-path="/settings/categories/suppliers" app-label="Mở trang Nhà cung cấp" view-only>
 
 1. Vào **Cài đặt hệ thống** => **Danh mục khác** => **Nhà cung cấp**. Quan sát màn hình: hiện thông báo **"Tính năng đang phát triển"** — đây là trạng thái hiện tại của trang quản lý danh mục.
-2. Hiểu ý nghĩa: bạn **chưa thêm/sửa** nhà cung cấp trực tiếp tại đây; các nhà cung cấp có sẵn đến từ dữ liệu khởi tạo và được **chọn** ở nơi khác.
-3. Bấm **Quay lại Danh mục khác** rồi mở **Kho vật tư** => thẻ **Phiếu nhập** => **Tạo phiếu nhập**. Xem ô **Nhà cung cấp** — đây chính là chỗ danh mục này được dùng để ghi *nguồn nhập* cho lô vật tư (bóng đèn / vòi / sơn trong dữ liệu demo).
-4. Đóng form phiếu nhập mà **không lưu** để không tạo thêm dữ liệu.
+2. Hiểu ý nghĩa: bạn **chưa thêm/sửa** nhà cung cấp trực tiếp tại đây; danh mục chỉ xuất hiện ở nơi khác sau khi được quản trị khởi tạo.
+3. Bấm **Quay lại Danh mục khác**. Không mở form nhập kho trong snapshot rỗng; chỉ ghi nhớ ô **Nhà cung cấp** là nơi danh mục này được dùng khi có phiếu thật.
 
 Kết quả mong đợi: bạn nắm được **nhà cung cấp là gì, dùng chung ở đâu** (phiếu nhập kho và tài sản), và biết rằng màn hình quản lý danh mục đang được hoàn thiện — hiện thời nhà cung cấp được chọn từ danh sách có sẵn chứ chưa thêm/sửa tại trang này.
 

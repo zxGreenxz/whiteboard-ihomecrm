@@ -2,11 +2,11 @@
 title: "Danh sách tầng"
 description: "Danh mục tầng dùng để đặt tên và lọc phòng theo tầng — không phải nơi quyết định phòng thuộc tầng nào."
 routes: ["/settings/categories/floors"]
-permissions: [{module: categories, action: view}]
+permissions: [{module: categories, action: view}, {module: categories, action: create}, {module: categories, action: edit}, {module: categories, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---

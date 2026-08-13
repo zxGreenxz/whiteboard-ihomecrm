@@ -2,18 +2,22 @@
 title: "Mẫu kế hoạch phát triển"
 description: "Khung nội dung tái sử dụng để tạo một bản demo kế hoạch có phần nghiệp vụ, biểu đồ và phụ lục kỹ thuật."
 kind: presentation-template
-lifecycle: current
+lifecycle: proposal
 routes: []
 permissions: []
 viewport: desktop
 captured:
-  date: "2026-07-20"
+  date: "2026-08-13"
   commit: "6acd7b4"
   account: "docs-presentation"
   manifest: null
 audience: [chu-doanh-nghiep, quan-ly, product-owner, ky-thuat]
 status: published
 ---
+
+::: danger PROPOSAL — KHÔNG PHẢI RUNTIME
+Đây là mẫu soạn tài liệu đề xuất. Mọi route, permission, trạng thái, KPI và flow điền vào mẫu phải được xem là giả thuyết cho đến khi có bằng chứng runtime và phê duyệt triển khai.
+:::
 
 <div class="plan-hero plan-hero-compact">
   <div class="plan-eyebrow">MẪU TÁI SỬ DỤNG</div>

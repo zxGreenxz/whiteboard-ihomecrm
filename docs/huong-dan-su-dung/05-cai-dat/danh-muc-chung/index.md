@@ -1,19 +1,19 @@
 ---
 title: "Danh mục chung"
-description: "Khu vực tập hợp các danh mục dùng chung khác của hệ thống, truy cập từ trang Danh mục khác."
+description: "Trang giữ chỗ Danh mục chung; chưa có danh sách hoặc thao tác CRUD runtime."
 routes: ["/settings/categories/general"]
 permissions: [{module: categories, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
 
 # Danh mục chung
 
-Trang **Danh mục chung** là nơi hệ thống gom các danh mục dùng chung khác — những danh mục phụ trợ không gắn riêng một tòa nhà mà áp dụng chung cho toàn bộ tài khoản của bạn (ví dụ tầng, loại công việc, hotline, nhà cung cấp). Bạn mở trang này từ trang tổng hợp **Danh mục khác** để có cái nhìn tổng quan về các danh mục dùng chung. Việc thêm/sửa từng danh mục cụ thể được thực hiện ngay trên trang quản lý riêng của danh mục đó.
+Trang **Danh mục chung** tại `/settings/categories/general` hiện là trang giữ chỗ với thông báo tính năng đang phát triển. Nó chưa hiển thị danh sách con và chưa có thao tác thêm, sửa hoặc xoá.
 
 ::: info Điều kiện tiên quyết
 Bạn cần quyền **Danh mục** (xem) để mở trang này. Trang nằm trong nhóm **Cài đặt hệ thống**, truy cập qua **Cài đặt** => **Danh mục khác**. Nếu là nhân viên được phân quyền, các danh mục dùng chung ở đây là dữ liệu chung của chủ tài khoản (không phân theo tòa nhà bạn được giao).
@@ -25,9 +25,9 @@ Bạn cần quyền **Danh mục** (xem) để mở trang này. Trang nằm tron
 
 **Bước 2**: Ở nhóm **Khác**, chọn **Danh mục chung**. Trang mở ra tại đường dẫn `/settings/categories/general`.
 
-**Bước 3**: Xem các danh mục dùng chung được gom tại đây. Đây là khu vực tập hợp các danh mục phụ trợ dùng chung cho mọi tòa nhà — các danh mục này phẳng theo tài khoản, không có ô lọc theo tòa nhà hay khu vực.
+**Bước 3**: Đọc trạng thái placeholder. Không dùng trang này để suy ra danh mục nào đang áp dụng toàn tổ chức hay theo phạm vi.
 
-**Bước 4**: Để chỉnh sửa một danh mục cụ thể, quay lại **Danh mục khác** và chọn đúng mục cần sửa — mỗi danh mục dùng chung (Danh sách tầng, Loại công việc, Quản lý Hotline, Nhà cung cấp...) có một trang quản lý riêng với đầy đủ nút Thêm / Sửa / Xóa.
+**Bước 4**: Quay lại **Danh mục khác** và chọn đúng trang đích. Lưu ý **Nhà cung cấp** và **Loại tài sản** cũng đang là placeholder; chỉ các trang có form runtime mới cho phép CRUD.
 
 ## Các tính năng khác trên màn hình
 

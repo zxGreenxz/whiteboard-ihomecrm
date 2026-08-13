@@ -6,8 +6,9 @@ permissions: [{module: meter_readings, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -24,16 +25,16 @@ Màn **Ghi chỉ số** là nơi mỗi tháng bạn đọc số đồng hồ đi
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Tại thanh menu, ấn chọn **Tài chính** => **Ghi chỉ số**. Màn mở ra với hàng **thẻ thống kê** ở trên (chỉ số đã duyệt, chưa duyệt, tổng tiêu thụ điện theo kWh, nước theo m³), bên dưới là **danh sách các lần ghi chỉ số** theo tháng. Trong dữ liệu demo bạn thấy chỉ số điện và nước tháng 7 đã ghi cho các phòng **A101–A105** và **B101**.
+**Bước 1**: Tại thanh menu, ấn chọn **Tài chính** => **Ghi chỉ số**. Màn mở ra với hàng **thẻ thống kê** ở trên (chỉ số đã duyệt, chưa duyệt, tổng tiêu thụ điện theo kWh, nước theo m³), bên dưới là **danh sách các lần ghi chỉ số** theo tháng. Snapshot production ngày 13/08/2026 của tài khoản DEMO đang rỗng; đây là trạng thái hợp lệ khi kỳ/phạm vi chưa có lần ghi.
 
-![Màn Ghi chỉ số với các chỉ số điện/nước tháng 7 đã ghi cho A101–A105 và B101](./images/buoc-01-danh-sach.webp)
+![Màn Ghi chỉ số và khu thống kê/danh sách theo kỳ](./images/buoc-01-danh-sach.webp)
 
 **Bước 2**: Đọc một dòng trong danh sách. Mỗi dòng gồm: **mã chỉ số** kèm badge trạng thái (**Đã duyệt** hoặc **Chưa duyệt**), tên **công tơ**, **chỉ số đầu**, **chỉ số cuối**, **số tiêu thụ** (chênh lệch, hệ thống tự tính — không sửa tay), **ngày chốt** và **người chốt**. Dùng ô lọc **Toà nhà**, **Loại công tơ** và **Tháng chốt** ở đầu bảng để thu hẹp danh sách.
 
 **Bước 3**: Ghi chỉ số mới cho một tháng — ấn **Thêm chỉ số**. Trong form, chọn **Tòa nhà** (bắt buộc), **Phòng**, **Loại công tơ** (**Điện** hoặc **Nước**), **Tháng chốt** và **Ngày chốt**. Ngay khi đủ toà và tháng, form **tự nạp bảng các công tơ chưa chốt** của bộ lọc đó — mỗi dòng có sẵn cột **Chỉ số đầu** (lấy từ lần ghi trước hoặc chỉ số ban đầu của công tơ) và ô nhập **Chỉ số mới**.
 
 ::: tip Chỉ số đầu tự nối tiếp kỳ trước (carry-forward)
-Bạn **không cần nhập chỉ số đầu**. Với lần ghi đầu tiên của một công tơ, hệ thống lấy **chỉ số ban đầu** khai lúc tạo công tơ; từ lần thứ hai trở đi, chỉ số đầu chính là **chỉ số cuối của kỳ liền trước** — chuỗi số luôn liền mạch, không có khoảng hở. Nhờ vậy số tiêu thụ mỗi tháng luôn khớp mức dùng thực tế.
+Bạn **không cần nhập chỉ số đầu**. Với lần ghi đầu tiên của một công tơ, hệ thống lấy **chỉ số ban đầu** khai lúc tạo công tơ; từ lần thứ hai trở đi, hệ thống tìm lần ghi trước để lấy chỉ số cuối làm đầu kỳ. Tuy nhiên cơ sở dữ liệu không chặn tuyệt đối các lần ghi trùng công tơ/ngày/tháng, nên hãy kiểm tra danh sách và thứ tự ngày chốt; dữ liệu trùng hoặc nhập lệch thứ tự có thể làm chuỗi carry-forward không còn liên tục.
 :::
 
 **Bước 4**: Nhập **Chỉ số mới** đọc được trên mặt đồng hồ cho từng dòng công tơ. Hệ thống tự lấy **Chỉ số mới − Chỉ số đầu** ra **số tiêu thụ**. Ấn **Thêm chỉ số** (nút lưu ở cuối form) để lưu. Các dòng bạn bỏ trống (không nhập) sẽ được bỏ qua.
@@ -48,7 +49,9 @@ Nếu bạn nhập **chỉ số mới nhỏ hơn chỉ số đầu**, hệ thố
 Sau khi một chỉ số đã được dùng để tính tiền điện trên hoá đơn, việc **sửa hoặc xoá** nó **không tự cập nhật ngược lại hoá đơn** — hai nơi sẽ lệch nhau, và chuỗi carry-forward sang tháng sau cũng có thể sai. Nếu buộc phải chỉnh, hãy kiểm tra lại hoá đơn liên quan và số đầu kỳ của tháng kế tiếp.
 :::
 
-**Bước 6**: Ghi hàng loạt bằng Excel — ấn **Import**. Tải **file mẫu**, điền **mã công tơ**, **ngày chốt** và **chỉ số mới** cho từng dòng, rồi tải file lên. Import **định danh hoàn toàn bằng mã công tơ** (không cần chọn toà/phòng), nên hãy điền đúng mã như đã khai ở màn Công tơ. Hệ thống kiểm từng dòng và báo tổng kết bao nhiêu dòng thành công, bao nhiêu dòng lỗi.
+**Bước 6**: Ghi hàng loạt bằng Excel — ấn **Import**. Tải **file mẫu**, điền **mã công tơ**, **ngày chốt** và **chỉ số mới** cho từng dòng, rồi tải file lên. Import **định danh hoàn toàn bằng mã công tơ** (không cần chọn toà/phòng), nên hãy điền đúng mã như đã khai ở màn Công tơ. Import dùng luồng hàng loạt legacy: mỗi dòng thành công được lưu ở trạng thái **Chưa duyệt (`UNAPPROVED`)**, khác với form ghi trực tiếp tự tạo dòng **Đã duyệt (`APPROVED`)**. Đây là import **thành công một phần**: dòng đúng vẫn được ghi dù dòng khác lỗi, và màn báo tổng kết từng nhóm.
+
+Màn hiện tại chưa nối nút **Duyệt / Duyệt hàng loạt** cho các dòng import. Vì vậy dòng `UNAPPROVED` không được hoá đơn sử dụng và không thể hoàn tất vòng chốt chỉ bằng luồng import trên màn này; với chỉ số cần lên hoá đơn ngay, hãy ghi bằng form trực tiếp hoặc nhờ quản trị xử lý các dòng đã import. Nếu sửa file rồi import lại, hãy rà dòng đã thành công trước đó để tránh tạo bản ghi trùng.
 
 ## Các tính năng khác trên màn hình
 
@@ -58,7 +61,7 @@ Sau khi một chỉ số đã được dùng để tính tiền điện trên ho
 | Ô lọc **Loại công tơ** | Lọc theo **Điện** / **Nước**. |
 | Ô lọc **Tháng chốt** | Xem chỉ số theo tháng (`YYYY-MM`). |
 | **Thêm chỉ số** | Mở form ghi chỉ số theo toà + tháng, tự nạp danh sách công tơ chưa chốt. |
-| **Import** | Nạp chỉ số hàng loạt từ file Excel theo mã công tơ. |
+| **Import** | Nạp chỉ số hàng loạt từ file Excel theo mã công tơ; dòng thành công ban đầu ở trạng thái **Chưa duyệt**. |
 | Badge **Đã duyệt / Chưa duyệt** | Trạng thái chốt của chỉ số; chỉ **Đã duyệt** mới được hoá đơn lấy làm chỉ số điện. |
 | Menu **Cập nhật** trên từng dòng | Sửa **chỉ số mới**, ngày chốt, ghi chú, ảnh của một lần ghi (toà/phòng/loại/tháng khoá, không đổi được). |
 | Menu **Xoá** trên từng dòng | Gỡ một lần ghi (xoá mềm). |
@@ -76,19 +79,19 @@ Bộ lọc đang chọn được **giữ lại khi bạn tải lại trang (F5)*
 | Phòng thiếu công tơ nên không hiện để ghi | Sang [Công tơ điện nước](/01-bat-dau/cong-to/) thêm đủ công tơ **Điện/Nước** cho phòng đó rồi quay lại ghi. |
 | Chỉ số rơi **nhầm tháng** so với mong đợi | Tháng của lần ghi bám theo **Ngày chốt**, không phải ô Tháng chốt. Chọn ngày chốt nằm đúng trong tháng bạn muốn ghi. |
 | Import báo có **dòng lỗi** | Thường do sai **mã công tơ** hoặc chỉ số mới nhỏ hơn chỉ số đầu ở dòng đó. Sửa đúng ô trong file mẫu rồi import lại — các dòng đúng vẫn được ghi. |
+| Import thành công nhưng chỉ số vẫn **Chưa duyệt** | Đúng hiện trạng của luồng import legacy; màn chưa có nút duyệt các dòng này. Chỉ số `UNAPPROVED` không lên hoá đơn, nên dùng form trực tiếp cho kỳ cần chốt hoặc nhờ quản trị xử lý. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/meter-readings" app-label="Mở màn Ghi chỉ số" fixtures="chỉ số điện/nước tháng 7 các phòng A">
+<SandboxTry account="demo.chunha" app-path="/meter-readings" app-label="Mở màn Ghi chỉ số" fixtures="Snapshot 13/08/2026: danh sách đang rỗng." view-only>
 
-Thực hành ghi và chốt một chỉ số mới:
+Quan sát màn hình mà không ghi dữ liệu:
 
-1. Xem danh sách sẵn có: chỉ số điện/nước **tháng 7** của các phòng **A101–A105** và **B101** đều có badge **Đã duyệt**.
-2. Ấn **Thêm chỉ số**. Chọn **Tòa DEMO B**, chọn một phòng B chưa có chỉ số tháng 7 (ví dụ **B102**), loại **Điện**, **Tháng chốt** = tháng 7 và **Ngày chốt** trong tháng 7.
-3. Trong bảng công tơ vừa nạp, nhìn cột **Chỉ số đầu** (tự lấy từ chỉ số ban đầu của công tơ), rồi nhập **Chỉ số mới** một số **lớn hơn chỉ số đầu**. Để ý số tiêu thụ tự hiện ra.
-4. Ấn nút lưu **Thêm chỉ số**. Quay lại danh sách, tìm dòng vừa ghi cho phòng B: nó xuất hiện với badge **Đã duyệt** — tức đã chốt và sẵn sàng lên hoá đơn.
+1. Kiểm tra thẻ thống kê và bảng danh sách của kỳ/phạm vi hiện tại. Nếu rỗng, không kết luận hệ thống thiếu dữ liệu của kỳ khác.
+2. Mở các bộ lọc Toà, tháng, loại Điện/Nước để hiểu cách thu hẹp danh sách; giữ nguyên giá trị, không lưu chỉ số.
+3. Chỉ khi nghiệp vụ thật có công tơ và kỳ cần ghi, dùng **Thêm chỉ số** rồi đối chiếu số đầu, số mới và sản lượng trước khi lưu.
 
-Kết quả mong đợi: bạn hiểu quy trình **ghi chỉ số → hệ thống tự tính số tiêu thụ → chỉ số ở trạng thái "Đã duyệt"** chính là điều kiện để hoá đơn lấy làm chỉ số điện. Xong thì **Reset** dữ liệu sandbox để trả về trạng thái ban đầu.
+Kết quả mong đợi: bạn hiểu empty state và điều kiện **có công tơ + đúng kỳ + số mới hợp lệ** trước khi tạo chỉ số; chỉ số đã duyệt mới là đầu vào cho hoá đơn.
 
 </SandboxTry>
 

@@ -1,152 +1,162 @@
 ---
 title: "Thuật ngữ & bảng trạng thái"
-description: "Tra cứu nhanh ý nghĩa các trạng thái hợp đồng, phòng, hoá đơn, cọc, hình thức thanh toán và các thuật ngữ KQKD, cọc gộp, gạch nợ, bàn giao, đối soát."
+description: "Từ điển trạng thái hiện hành cho hợp đồng, phòng, hoá đơn, cọc và Finance V2; phân biệt phê duyệt, review, ghi sổ và bút toán không tiền."
 routes: []
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
 
 # Thuật ngữ & bảng trạng thái
 
-Trang này là **từ điển tra cứu**: gặp một nhãn trạng thái lạ (ở hợp đồng, phòng, hoá đơn, cọc) hay một cụm từ nghiệp vụ khó hiểu (KQKD, cọc gộp, gạch nợ, bàn giao, đối soát), bạn mở đây tìm nghĩa. Mỗi bảng gom một nhóm trạng thái, kèm **mã hệ thống** (giá trị kỹ thuật đôi khi hiện trên badge hoặc trong dữ liệu xuất ra) và ý nghĩa thực tế. Không cần đọc từ đầu đến cuối — dùng như tra từ điển.
+Đây là từ điển tra cứu cho các mã và nhãn đang dùng trong ptcrm. Điểm quan trọng nhất của bản hiện hành là **không gom mọi trạng thái tài chính vào một chữ “Đã duyệt”**: phê duyệt và ghi sổ là hai việc độc lập.
 
-::: tip Đọc bảng thế nào
-Cột **Nhãn hiển thị** là chữ bạn thấy trong app; cột **Mã hệ thống** là giá trị gốc (hay gặp khi xuất Excel hoặc xem badge viết tắt như **TM**, **TK**); cột **Ý nghĩa** giải thích khi nào trạng thái đó xuất hiện. Nhãn tiếng Việt có thể chênh nhẹ theo màn hình, nhưng **mã hệ thống thì cố định**.
+::: tip Cách đọc
+- **Mã hệ thống** là giá trị lưu hoặc truyền giữa các lớp; nhãn tiếng Việt là cách UI diễn giải.
+- Một đối tượng có thể có nhiều trục trạng thái đồng thời. Ví dụ phiếu thu có thể `APPROVED` nhưng `UNPOSTED`.
+- Khi kiểm tiền thật, ưu tiên `posting_status`, posting line, sổ quỹ và reversal; không suy từ `approval_status`.
+:::
+
+## Finance V2: bốn trục trạng thái phiếu thu chi
+
+| Trục | Giá trị chính | Ý nghĩa |
+|---|---|---|
+| Phê duyệt | `approval_status`: `UNAPPROVED`, `APPROVED`, `CANCELLED` | Quyết định workflow; **không tự chứng minh tiền đã ghi sổ**. |
+| Review | `review_state`: `PENDING`, `CHANGES_REQUESTED`, `DISPUTED`, `RESOLVED` | Substate trong quá trình xem xét phiếu chưa hoàn tất. |
+| Cách hạch toán | `posting_mode`: `CASHBOOK`, `NON_CASH` | Phiếu cần đi qua sổ quỹ hay chỉ ghi nhận nghiệp vụ không tiền. |
+| Ghi sổ | `posting_status`: `UNPOSTED`, `POSTED`, `REVERSED`, `NOT_APPLICABLE` | Trạng thái posting; đây là trục quyết định tiền thật. |
+
+### Nhãn phiếu canonical
+
+| Điều kiện | Nhãn hiển thị | Có phải tiền thật đang hiệu lực? |
+|---|---|---|
+| `UNAPPROVED` + `PENDING` + `UNPOSTED` | **Chờ duyệt** | Không |
+| `UNAPPROVED` + `CHANGES_REQUESTED` | **Cần bổ sung** | Không |
+| `UNAPPROVED` + `DISPUTED` | **Đang tranh chấp** | Không |
+| `APPROVED` + `UNPOSTED`, phiếu thu | **Đã Duyệt - Chưa Thu** | Không |
+| `APPROVED` + `UNPOSTED`, phiếu chi | **Đã Duyệt - Chưa Chi** | Không |
+| `APPROVED` + `NON_CASH/NOT_APPLICABLE` | **Đã ghi nhận - Không qua sổ** | Không |
+| `posting_status=POSTED`, phiếu thu | **Đã Thu** | Có |
+| `posting_status=POSTED`, phiếu chi | **Đã Chi** | Có |
+| `posting_status=REVERSED` | **Đã hoàn tác** | Posting gốc đã bị đảo; đọc cả cặp posting/reversal |
+| `approval_status=CANCELLED` | **Đã hủy** | Không |
+
+Nếu phiếu đã duyệt nhưng chưa được gán đúng sổ, UI có thể thêm hậu tố **· Chờ phân sổ**. “Duyệt và Thu/Chi” là thao tác gộp hai bước trong cùng transaction khi người thao tác vừa có quyền duyệt vừa là người giữ sổ; bản chất hai quyết định vẫn tách biệt.
+
+::: danger Bất biến về tiền
+Chỉ `posting_status=POSTED` mới làm `isCash=true`. Báo cáo dòng tiền phải đọc posting line còn hiệu lực, kể cả line `POSTING` và `REVERSAL`, thay vì cộng mọi phiếu `APPROVED`.
 :::
 
 ## Trạng thái hợp đồng
 
-Vòng đời một hợp đồng thuê, hiển thị ở cột trạng thái trang **Hợp đồng** và trong hợp đồng chi tiết.
-
-| Nhãn hiển thị | Mã hệ thống | Ý nghĩa |
+| Nhãn | Mã | Ý nghĩa |
 |---|---|---|
-| **Nháp** | `DRAFT` | Hợp đồng đang soạn, chưa có hiệu lực |
-| **Còn hạn** / **Đang ở** | `ACTIVE` | Hợp đồng đang hiệu lực, khách đang thuê |
-| *(đã ngưng dùng)* | `EXTENDED` | **Không còn ghi mới.** Trước đây dùng cho hợp đồng đã gia hạn; nay hợp đồng gia hạn **vẫn giữ trạng thái Còn hạn** và được đánh dấu "đã gia hạn" bằng nhãn phụ, không đổi trạng thái |
-| **Đã chuyển nhượng** | `TRANSFERRED` | Hợp đồng đã sang tên/chuyển cho người khác |
-| **Đã thanh lý** | `TERMINATED` | Hợp đồng đã kết thúc qua thủ tục thanh lý (chốt điện nước, xử lý cọc) |
-| **Hết hạn** | `EXPIRED` | Đã qua ngày kết thúc mà không gia hạn |
+| **Nháp** | `DRAFT` | Hợp đồng đang soạn, chưa có hiệu lực. |
+| **Còn hạn / Đang ở** | `ACTIVE` | Hợp đồng đang hiệu lực. Hợp đồng đã gia hạn vẫn giữ mã này. |
+| *(legacy)* | `EXTENDED` | Không còn là trạng thái ghi mới; dấu đã gia hạn được suy từ lịch sử. |
+| **Đã chuyển nhượng** | `TRANSFERRED` | Hợp đồng đã được chuyển theo luồng chuyển nhượng/chuyển phòng. |
+| **Đã thanh lý** | `TERMINATED` | Hợp đồng đã kết thúc qua luồng thanh lý. |
+| **Hết hạn** | `EXPIRED` | Đã qua ngày kết thúc mà không được gia hạn. |
 
-::: warning "Đã gia hạn" không phải một trạng thái
-Một hợp đồng gia hạn **vẫn hiển thị Còn hạn** (`ACTIVE`) — hệ thống suy ra dấu "đã gia hạn" từ lịch sử gia hạn, không đổi sang `EXTENDED`. Vì vậy khi lọc hợp đồng "còn hiệu lực", bạn lọc theo **Còn hạn**, không cần tìm trạng thái riêng cho hợp đồng đã gia hạn.
-:::
+### Xử lý thiếu cọc khi tạo hợp đồng V2
+
+| Mã | Nghĩa |
+|---|---|
+| `DEBT` | Cho phép nợ cọc; bắt buộc có lý do và hạn bổ sung. |
+| `FIRST_INVOICE` | Đưa đúng phần cọc thiếu vào hoá đơn đầu dưới dòng cọc riêng. |
+
+Phần cọc thiếu không được nhập chung vào “nợ cũ” của hoá đơn doanh thu.
 
 ## Trạng thái phòng
 
-Hiển thị trên **Sơ đồ toà nhà**, trang **Căn hộ / Phòng** và ô lọc phòng.
-
-| Nhãn hiển thị | Mã hệ thống | Ý nghĩa |
+| Nhãn | Mã | Ý nghĩa |
 |---|---|---|
-| **Trống** | `AVAILABLE` | Không có khách, sẵn sàng cho thuê |
-| **Đang thuê** | `OCCUPIED` | Có hợp đồng còn hiệu lực |
-| **Đã cọc** / **Giữ chỗ** | `RESERVED` | Có phiếu cọc giữ chỗ nhưng chưa lên hợp đồng — phòng bị khoá tạm, ẩn khỏi danh sách phòng trống |
-| **Bảo trì** | `MAINTENANCE` | Đang sửa chữa, tạm không cho thuê |
-| **Không khai thác** | `UNAVAILABLE` | Ngừng cho thuê (kho, phòng chủ giữ lại…) |
+| **Trống** | `AVAILABLE` | Sẵn sàng cho thuê. |
+| **Đang thuê** | `OCCUPIED` | Có hợp đồng còn hiệu lực. |
+| **Đã cọc / Giữ chỗ** | `RESERVED` | Có giữ chỗ chưa huỷ; phòng bị loại khỏi nguồn phòng trống. Trạng thái này không chứng minh tiền đã POSTED. |
+| **Bảo trì** | `MAINTENANCE` | Tạm dừng khai thác để sửa chữa. |
+| **Không khai thác** | `UNAVAILABLE` | Chủ động không cho thuê. |
 
-::: tip Trạng thái phòng phần lớn tự chạy
-Bạn **không phải chỉnh tay** hai chuyển đổi phổ biến: khi ký/thanh lý hợp đồng, phòng tự đổi **Trống ⇄ Đang thuê**; khi có/hết phiếu cọc giữ chỗ, phòng tự đổi **Trống ⇄ Đã cọc** (kể cả phiếu cọc **chưa duyệt**). Bạn chỉ đặt tay **Bảo trì** hoặc **Không khai thác** khi cần.
-:::
+`AVAILABLE ⇄ OCCUPIED` và `AVAILABLE ⇄ RESERVED` phần lớn được hệ thống tính theo hợp đồng/cọc. Chỉ đặt tay trạng thái vận hành như bảo trì hoặc không khai thác khi luồng màn hình cho phép.
 
 ## Trạng thái hoá đơn
 
-Hiển thị ở cột trạng thái trang **Hoá đơn** và trong hoá đơn chi tiết.
-
-| Nhãn hiển thị | Mã hệ thống | Ý nghĩa |
+| Nhãn | Mã | Ý nghĩa |
 |---|---|---|
-| **Nháp** | `DRAFT` | Đang soạn, chưa phát hành |
-| **Chờ duyệt** | `PENDING_APPROVAL` | Đã lập, chờ duyệt |
-| **Đã duyệt** | `APPROVED` | Đã phát hành, chờ thu tiền (phần lớn hoá đơn tạo thẳng vào trạng thái này) |
-| **Đã thanh toán** | `PAID` | Đã thu đủ |
-| **Thu một phần** | `PARTIAL_PAID` | Khách trả một phần, còn nợ |
-| **Quá hạn** | `OVERDUE` | Đã qua hạn thu mà chưa thu đủ |
-| **Đã huỷ** | `CANCELLED` | Bị huỷ (có thể khôi phục về Đã duyệt) |
+| **Nháp** | `DRAFT` | Đang soạn. |
+| **Chờ duyệt** | `PENDING_APPROVAL` | Chờ phát hành/duyệt theo luồng hoá đơn. |
+| **Đã duyệt** | `APPROVED` | Hoá đơn đã phát hành và còn phải thu. |
+| **Đã thanh toán** | `PAID` | Số được ghi nhận thanh toán đã phủ đủ tổng phải thu. |
+| **Thu một phần** | `PARTIAL_PAID` | Đã thu một phần, còn residual. |
+| **Quá hạn** | `OVERDUE` | Qua hạn và chưa thu đủ. |
+| **Đã huỷ** | `CANCELLED` | Hoá đơn bị huỷ. |
 
-::: tip Đã thanh toán / Thu một phần / Quá hạn được tính tự động
-Ba trạng thái **Đã thanh toán**, **Thu một phần**, **Quá hạn** không phải chọn tay — hệ thống tự suy ra từ **số tiền đã thu** so với tổng hoá đơn và **hạn thu**. Bạn chỉ thao tác thu tiền, trạng thái tự cập nhật.
-:::
+Trạng thái hoá đơn và trạng thái phiếu thu là hai lớp khác nhau. Khi điều tra sai lệch, đi từ hoá đơn sang danh sách payment/voucher rồi kiểm posting của từng phiếu.
 
-## Hình thức thanh toán (TM · TK · TT · CT)
+## Trạng thái cọc giữ chỗ
 
-Badge hình thức trên phiếu thu, phiếu chi và hoá đơn. Hệ thống **giữ nguyên mã viết tắt**, không dịch dài dòng và không gắn icon.
-
-| Mã | Nghĩa | Ghi chú |
+| Nhãn | Mã | Ý nghĩa vận hành |
 |---|---|---|
-| **TM** | Tiền mặt | Thu/chi bằng tiền mặt, vào sổ tiền mặt của người thu |
-| **TK** | Chuyển khoản (tài khoản) | Tiền vào/ra qua tài khoản ngân hàng |
-| **TT** | Thanh toán | Hình thức thanh toán khác được ghi nhận theo mã này |
-| **CT** | Cấn trừ | **Gạch nợ, KHÔNG phải tiền mặt** — hệ thống tự sinh, người dùng không chọn tay |
+| **Chờ xác nhận** | `PENDING` | Phiếu giữ chỗ mới tạo. |
+| **Đã xác nhận** | `CONFIRMED` | Phiếu được xác nhận theo lifecycle cọc. |
+| **Đã lên hợp đồng** | `CONVERTED` | Cọc đã được liên kết/chuyển vào hợp đồng. |
+| **Đã hoàn cọc** | `REFUNDED` | Lifecycle đánh dấu đã hoàn. |
+| **Đã bỏ cọc** | `FORFEITED` | Lifecycle đánh dấu khách mất cọc. |
 
-::: warning CT (Cấn trừ) không phải một khoản tiền thật
-**CT** là bút toán **gạch nợ** (ví dụ khi thanh lý, cấn phần khách còn nợ vào tiền cọc; hoặc trừ tiền phòng vào lương). Nó **không** làm tăng/giảm tiền mặt trong két, nên trên bảng điều khiển được tách riêng khỏi ô tiền mặt. Bạn **không tạo được** phiếu hình thức CT bằng tay — chỉ hệ thống tự sinh trong các quy trình nói trên.
-:::
+Các nhãn này không phải nguồn authoritative cho số tiền cọc còn giữ. Số cọc canonical phải truy từ các hạng mục cọc trên `income_expenses`, trạng thái posting, liên kết hợp đồng và các bút toán hoàn/bỏ tương ứng. Báo cáo Danh sách cọc hiện vẫn đọc bảng `deposits` legacy nên có thể khác nguồn canonical.
 
-## Trạng thái cọc
+## Hình thức thanh toán
 
-Trạng thái ghi trên phiếu cọc giữ chỗ (trang **Đặt cọc**).
-
-| Nhãn hiển thị | Mã hệ thống | Ý nghĩa |
+| Mã | Nghĩa | Tác động sổ |
 |---|---|---|
-| **Chờ xác nhận** | `PENDING` | Phiếu cọc mới tạo |
-| **Đã xác nhận** | `CONFIRMED` | Cọc đã được xác nhận |
-| **Đã lên hợp đồng** | `CONVERTED` | Cọc đã chuyển thành hợp đồng thuê |
-| **Đã hoàn cọc** | `REFUNDED` | Đã trả lại cọc cho khách |
-| **Đã bỏ cọc** | `FORFEITED` | Khách mất cọc (bỏ cọc) |
+| `TM` | Tiền mặt | Đi qua sổ tiền mặt phù hợp. |
+| `TK` | Chuyển khoản/tài khoản | Đi qua sổ ngân hàng/tài khoản phù hợp. |
+| `TT` | Hình thức thanh toán khác được hệ thống hỗ trợ | Phải kiểm sổ được chọn và posting. |
+| `CT` | Cấn trừ/gạch nợ | Thường là bút toán không tiền; không được hiểu là tiền mặt vào/ra. |
 
-::: warning Số cọc thật không đọc từ trạng thái này
-Trạng thái phiếu cọc ở trên **chỉ mang tính đánh dấu** và không phải nguồn số liệu chuẩn. **Số cọc thực còn giữ** của một hợp đồng được tính từ **các phiếu thu cọc thực tế** (đánh dấu là cọc), trừ đi phần đã hoàn/bỏ. Khi cần biết "còn giữ bao nhiêu cọc", hãy xem số cọc còn lại trên hợp đồng hoặc trang theo dõi cọc, đừng suy từ nhãn phiếu.
-:::
+## Thuật ngữ nghiệp vụ
 
-## Trạng thái phiếu thu chi
-
-Ghi trên phiếu thu/phiếu chi trong **Sổ quỹ** và **Thu chi**.
-
-| Nhãn hiển thị | Mã hệ thống | Ý nghĩa |
-|---|---|---|
-| **Đã duyệt** | `APPROVED` | Mặc định khi tạo; **chỉ phiếu Đã duyệt và chưa xoá** mới được tính vào số dư và báo cáo |
-| **Chưa duyệt** | `UNAPPROVED` | Không tính vào số dư/báo cáo cho tới khi duyệt |
-| **Đã huỷ** | `CANCELLED` | Bỏ, không tính |
-
-## Thuật ngữ nghiệp vụ hay gặp
-
-| Thuật ngữ | Ý nghĩa |
+| Thuật ngữ | Định nghĩa hiện hành |
 |---|---|
-| **KQKD** (Kết quả kinh doanh) | Báo cáo lãi/lỗ (P&L). Doanh thu và chi phí được cộng theo **từng hạng mục** của phiếu thu chi; phần nào là **tiền cọc** sẽ **tự động bị loại** khỏi KQKD, nên một lần thu gộp cả tiền phòng lẫn cọc vẫn hạch toán đúng. Phiếu chia lợi nhuận, lương điều hành, lương quản lý được đánh dấu **không vào KQKD**. |
-| **Cọc gộp** | Tiền cọc còn thiếu được gộp thành dòng **Tiền cọc** ngay trong **hoá đơn tháng đầu**. Khi khách trả, hệ thống **tách riêng** phần cọc để nó không bị tính thành doanh thu KQKD, và đưa vào **sổ CỌC (giữ hộ khách)**. |
-| **Gạch nợ / Cấn trừ (CT)** | Trừ thẳng vào công nợ thay vì thu/chi tiền mặt. Ví dụ khi thanh lý, phần khách còn nợ được **cấn trừ** vào tiền cọc; bút toán này mang mã **CT**, do hệ thống tự sinh, không phải tiền mặt. |
-| **Bàn giao (tiền mặt)** | Nhân viên nộp tiền đã thu lên cho quản lý/kế toán. Một lần bàn giao tạo **1 phiếu chi** (bên giao) và **1 phiếu thu tổng** (bên nhận) kèm các hạng mục chi tiết. |
-| **Đối soát / Chốt số sổ** | So khớp số dư **hệ thống tính** với số **thực tế** của sổ/tài khoản tại một mốc ngày, rồi **chốt** để làm mốc cho kỳ sau. Dùng khi bàn giao ca hoặc cuối kỳ. |
-| **Sổ quỹ (tài khoản)** | Nơi tiền "nằm": tiền mặt của từng người thu, tài khoản ngân hàng, **sổ CỌC** (giữ hộ khách), sổ hệ thống (làm tròn…). Mọi phiếu thu chi đều gắn **đúng một sổ quỹ**. |
-| **Phiếu thu / phiếu chi** | Một lần tiền vào (thu) hoặc ra (chi). Chỉ phiếu **đã duyệt** và chưa xoá mới vào số dư và báo cáo. |
-| **Thanh lý hợp đồng** | Kết thúc hợp đồng: chốt điện/nước, tính phần phải thu/phải trả, xử lý tiền cọc (hoàn hoặc bỏ cọc). Sau thanh lý hợp đồng chuyển trạng thái **Đã thanh lý**. |
-| **Bỏ cọc (forfeit)** | Khách mất cọc; tiền cọc chuyển thành **doanh thu thanh lý** thay vì hoàn lại khách. |
-| **Cọc còn giữ** | Số tiền cọc thực còn giữ của hợp đồng, tính từ các phiếu thu cọc trừ phần đã hoàn/bỏ. |
-| **Tòa ảo "Chung"** | Một "toà" không có phòng thật, dùng để hạch toán các khoản dùng chung không thuộc toà cụ thể nào (ví dụ phiếu chia lợi nhuận cổ đông). Báo cáo theo toà thật thường loại trừ toà ảo này. |
-| **Kỳ tháng `YYYY-MM`** | Cách ghi tháng chốt cho hoá đơn, chỉ số công tơ, chốt lợi nhuận — ví dụ `2026-07` là tháng 7/2026. |
+| **Posting / ghi sổ** | Sự kiện đưa phiếu vào một sổ quỹ. Posting `POSTED` là nguồn tiền thật; reversal đảo tác động thay vì xoá lịch sử. |
+| **Approval / phê duyệt** | Quyết định chấp nhận phiếu về workflow. Approval không tự ghi tiền. |
+| **Người giữ sổ (custodian)** | Người có quyền thực hiện posting trên sổ được giao; khác với người lập và người duyệt. |
+| **Bút toán không tiền** | Phiếu `NON_CASH/NOT_APPLICABLE`, dùng ghi nhận nghiệp vụ như cấn trừ nhưng không làm tăng/giảm số dư sổ tiền thật. |
+| **KQKD** | Kết quả kinh doanh/lãi lỗ; phân loại doanh thu và chi phí theo hạng mục, loại cọc và các khoản được đánh dấu không vào KQKD. |
+| **Dòng tiền** | Tổng tiền vào/ra theo posting. Có thể khác KQKD vì gồm cọc, chuyển nội bộ và khác kỳ ghi nhận. |
+| **Cọc canonical** | Hạng mục phiếu thu chi được đánh dấu cọc (`is_deposit=true`/class cọc), không phải chỉ dòng trong bảng `deposits` legacy. |
+| **Cọc gộp hoá đơn đầu** | Dòng cọc riêng trong hoá đơn đầu khi chọn `FIRST_INVOICE`; khi thu phải tách khỏi doanh thu. |
+| **Nợ cũ / carry-over** | Residual đủ ngưỡng từ hoá đơn trước được kéo sang kỳ mới; residual `<10.000đ` bị loại, cọc thiếu không được kéo chung. |
+| **Làm tròn tổng hoá đơn** | Ba chữ số cuối `<900đ` làm xuống; `>=900đ` làm lên bội 1.000. |
+| **Làm tròn khi thu** | Residual dương `<10.000đ` có thể khép, trừ khi vẫn còn nghĩa vụ cọc chưa thu. |
+| **Credit khách hàng** | Quyền lợi tiền thừa authoritative nằm ở `customer_credit_lots.remaining_amount`; không đồng nhất với phép trừ trên một hoá đơn. |
+| **Bàn giao tiền mặt** | Chuyển trách nhiệm giữ tiền giữa hai người/sổ theo một phiên có đối soát; phải kiểm posting ở cả hai phía. |
+| **Chốt sổ** | Khoá mốc số dư và tạo bằng chứng bàn giao/đối soát; các quyền `cashbooks.close` và `cashbooks.close_confirm` tách riêng. |
+| **Vai trò** | Gói quyền dùng lại trong RBAC V3. Sửa vai trò tự tạo ảnh hưởng ngay mọi thành viên đang mang nó. |
+| **Binding** | Liên kết một membership với vai trò và scope. |
+| **Scope** | Phạm vi organization, khu vực, toà hoặc sổ mà binding/override áp dụng. |
+| **Override** | Ngoại lệ `ALLOW`/`DENY` cho thành viên; `DENY` thắng khi cùng áp dụng. |
+| **Runtime-off** | Tính năng có code/quyền trong catalog nhưng route không được dựng khi runtime của build là `off`. OpenClaw Zalo và Network Center dùng cơ chế này; production ngày 13/08/2026 đang bật OpenClaw Zalo dù mặc định code là `off`. |
 
-## Thử trực tiếp trên sandbox
+## Route canonical thường bị nhầm
 
-<SandboxTry account="demo.chunha" app-path="/contracts" view-only>
-
-Mở app bằng tài khoản **demo.chunha** (chỉ xem, không sửa) và vào **Quản lý & Vận hành** => **Hợp đồng**:
-
-- Nhìn cột trạng thái các hợp đồng: đối chiếu các nhãn **Còn hạn**, **Đã thanh lý**, **Hết hạn** với bảng **Trạng thái hợp đồng** ở trên.
-- Tìm một hợp đồng có nhãn phụ "đã gia hạn": để ý nó **vẫn ở trạng thái Còn hạn** chứ không phải một trạng thái riêng — đúng như ghi chú `EXTENDED` đã ngưng dùng.
-- Chuyển sang **Sơ đồ toà nhà** của **Tòa DEMO A**: đối chiếu màu/nhãn phòng **Trống**, **Đang thuê**, **Đã cọc/Giữ chỗ**, **Bảo trì** với bảng **Trạng thái phòng**.
-- Mở một hoá đơn bất kỳ: xem nhãn **Đã duyệt / Đã thanh toán / Thu một phần** và badge hình thức **TM / TK** — khớp với các bảng ở trên.
-
-</SandboxTry>
+| Chức năng | Route hiện hành | Route cũ / ghi chú |
+|---|---|---|
+| Thành viên | `/settings/members` | `/settings/staff` chuyển hướng. |
+| Sổ quỹ | `/finance/cashbooks` | `/settings/finance/cashbooks`, `/setting/finance/cashbooks`, `/cashbooks` chuyển hướng. |
+| Phân bổ lợi nhuận | `/reports/finance/profit-distribution` | `/finance/shareholder-profit` chuyển hướng. |
+| Công nợ/thu tiền | `/thu-tien` | Ba route báo cáo debt cũ chuyển hướng về đây. |
+| Bảng lương | `/finance/salary` | Route chỉ bọc đăng nhập; trang tự tách admin/self-view, dữ liệu vẫn bị quyền và RLS giới hạn. |
 
 ## Quy trình liên quan
 
-- [Sandbox — Môi trường thực hành](/01-bat-dau/sandbox/) — danh sách tài khoản demo để tự đối chiếu trạng thái
-- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/) — nơi gặp trạng thái hợp đồng
-- [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/) — nơi gặp trạng thái hoá đơn và hình thức thanh toán
-- [Đặt cọc giữ chỗ](/03-quan-ly-van-hanh/dat-coc/) — nơi gặp trạng thái cọc và trạng thái phòng Đã cọc
-- [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — phiếu thu/chi, hình thức TM/TK/TT/CT
-- [Bàn giao & đối soát](/03-quan-ly-van-hanh/ban-giao-doi-soat/) — thuật ngữ bàn giao và đối soát số sổ
-- [Câu hỏi thường gặp](/07-thong-tin-khac/faq/) — giải đáp nhanh các thắc mắc khác
+- [Câu hỏi thường gặp](/07-thong-tin-khac/faq/)
+- [Thu chi](/03-quan-ly-van-hanh/thu-chi/)
+- [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)
+- [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/)
+- [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/)
+- [Bảng tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/)

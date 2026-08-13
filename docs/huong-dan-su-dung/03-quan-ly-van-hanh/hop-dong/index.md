@@ -1,13 +1,14 @@
 ---
 title: "Hợp đồng — danh sách & ký mới"
-description: "Tra cứu, lọc và tìm hợp đồng theo trạng thái/toà/phòng/tháng; đọc badge Đủ cọc/Thiếu cọc; nhập/xuất Excel và ký hợp đồng mới nhiều bước với cọc gộp vào hoá đơn tháng đầu."
+description: "Tra cứu, lọc và tìm hợp đồng; đọc tình trạng cọc; ký hợp đồng mới qua luồng chuẩn và nhận diện rủi ro của nhập Excel hoặc cọc mồ côi."
 routes: ["/contracts"]
 permissions: [{module: contracts, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  account: demo.chunha
 status: published
 ---
 
@@ -31,6 +32,10 @@ Màn **Hợp đồng** là trục vận hành của toàn hệ thống: mỗi h�
 
 ![Màn Hợp đồng: 4 thẻ thống kê, bộ lọc và bảng hợp đồng kèm badge trạng thái và tình trạng cọc](./images/buoc-01-danh-sach.webp)
 
+::: warning Snapshot DEMO hiện có 20 hợp đồng đều thiếu cọc
+Ảnh production ngày 13/08/2026 hiển thị **20 hợp đồng**, **4 sắp hết hạn**; các dòng quan sát đều mang badge **Thiếu cọc 4.000.000đ**. Vì vậy các fixture cũ như A101 đủ cọc/A102 thiếu 2 triệu không còn đúng với dataset hiện tại; hãy đọc badge và số trên màn hình thay vì dựa vào ví dụ cũ.
+:::
+
 **Bước 2**: Lọc danh sách theo nhu cầu. Ấn một **thẻ thống kê** để lọc nhanh (ví dụ **Sắp hết hạn** để soi các hợp đồng còn 1–30 ngày). Tại **ô lọc toà** (danh sách phẳng A→Z, gõ để tìm), ấn chọn đúng **1 toà** hoặc **Tất cả toà nhà**; khi đã chọn toà, ô **Phòng** (gộp theo tên) và ô **Tháng** giúp thu hẹp thêm. Các bộ lọc được giữ lại khi bạn tải lại trang (F5).
 
 **Bước 3**: Cần tìm đúng một hợp đồng, gõ vào **ô tìm kiếm** — tìm được theo **mã hợp đồng**, **tên khách đại diện**, **số điện thoại** hoặc **tên phòng**. Kết quả và các thẻ thống kê áp dụng ngay.
@@ -43,6 +48,8 @@ Màn **Hợp đồng** là trục vận hành của toàn hệ thống: mỗi h�
 - **Nhập tiền**: điền **Giá thuê**, **Tổng cọc**, **Đã thu cọc**, **Chu kỳ thanh toán**, mốc tính hoá đơn và **Khuyến mãi tháng đầu** (nếu có).
 - **Xem trước hoá đơn**: form dựng sẵn **hoá đơn cọc + hoá đơn tháng đầu** với các dòng tự sinh; bạn **chỉnh trực tiếp** được (sửa mô tả/đơn giá/số lượng, thêm hoặc xoá dòng) trước khi lưu.
 
+Luồng **Thêm** chuẩn dùng RPC `create_contract_v2`, là writer mạnh nhất hiện tại: phần lõi tạo hợp đồng/khách gắn hợp đồng được thực hiện nguyên tử và có khoá idempotency để giảm tạo trùng khi gửi lại. Tuy vậy, trước khi lưu vẫn phải xác minh mọi phiếu cọc chưa gắn theo **người nộp/khách**, không chỉ theo phòng và thời gian.
+
 **Bước 6**: Nếu **Đã thu cọc** chưa bằng **Tổng cọc**, form bắt bạn chọn **cách xử lý cọc còn thiếu** và tick **Đồng ý cho nợ cọc**:
 - **Cho nợ cọc** (DEBT): nhập **lý do** và **ngày hẹn bổ sung** — hệ thống ghi nhận phần thiếu là công nợ cọc.
 - **Thu trong hoá đơn đầu** (FIRST_INVOICE): phần cọc thiếu được **thêm thành một dòng "Tiền cọc" ngay trong hoá đơn tháng đầu**.
@@ -54,7 +61,11 @@ Khi bạn ký mà khách **chưa đóng đủ cọc**, phần thiếu **không**
 :::
 
 ::: danger Ký hợp đồng là thao tác ghi tiền vào sổ
-Lưu hợp đồng mới sẽ **tự ghi vào sổ quỹ**: tạo **phiếu thu cọc** (phần cọc đã thu) vào sổ **"CỌC (giữ hộ khách)"**, sinh **hoá đơn cọc + hoá đơn tháng đầu**, và ngay sau đó mở modal lập **phiếu chi hoa hồng**. Hãy kiểm tra lại phòng, khách, giá thuê và các con số cọc trước khi ấn **Lưu** — các bút toán này đi thẳng vào báo cáo dòng tiền và khó hoàn tác.
+Lưu hợp đồng mới có thể tạo các dữ liệu tài chính liên quan như phiếu cọc và hoá đơn tháng đầu; modal hoa hồng là bước tiếp theo riêng, không phải bằng chứng mọi bút toán đã hoàn tất trong cùng giao dịch. Hãy kiểm tra lại phòng, khách, giá thuê và cọc trước khi ấn **Lưu**. Sau khi lưu, mở hợp đồng để xác nhận hợp đồng/khách, phiếu cọc, hoá đơn đầu và trạng thái duyệt/posting tương ứng; không tạo bù ngay nếu một phần chưa xuất hiện.
+:::
+
+::: warning Không nhập Excel cho hợp đồng production nếu cần bảo toàn bất biến
+Luồng **Nhập** ghi dữ liệu trực tiếp và bỏ qua một số kiểm tra/side effect của `create_contract_v2`, gồm nguy cơ nhiều hợp đồng hiệu lực trên cùng phòng và thiếu dữ liệu vòng đời liên quan. Với hợp đồng thật, dùng nút **Thêm**. Chỉ dùng import cho dữ liệu migration đã được kiểm tra, có kế hoạch đối soát riêng và người có thẩm quyền phê duyệt.
 :::
 
 ::: tip Khuyến mãi (giảm giá) tháng đầu
@@ -73,7 +84,7 @@ Lưu hợp đồng mới sẽ **tự ghi vào sổ quỹ**: tạo **phiếu thu 
 | Badge **Còn hạn / Sắp hết hạn / Nháp** | Trạng thái hiệu lực của hợp đồng; **Sắp hết hạn** là còn 1–30 ngày. |
 | Badge **Đủ cọc / Thiếu cọc** | Tình trạng cọc; **Thiếu cọc** nghĩa là số cọc đã thu chưa bằng tổng cọc. |
 | **Thêm** | Mở form ký hợp đồng mới (chọn phòng, khách, giá, cọc, xem trước hoá đơn). Cần quyền **Tạo** và phạm vi toà. |
-| **Nhập** | Nhập hàng loạt hợp đồng từ file Excel (bắt buộc chọn toà trước). Cần quyền **Tạo**. |
+| **Nhập** | Luồng migration ghi trực tiếp, không bảo toàn đầy đủ bất biến của luồng **Thêm**; tránh dùng cho hợp đồng production. Cần quyền **Tạo**. |
 | **Xuất** | Kết xuất **toàn bộ** hợp đồng theo bộ lọc hiện tại ra Excel (không chỉ trang đang xem). Cần quyền **Xuất**. |
 | Nút thao tác mỗi dòng | **Sửa / Gia hạn / Chuyển phòng / Đăng ký chuyển đi / Nhượng / Thanh lý / Xoá** — ẩn bớt tuỳ trạng thái hợp đồng và quyền của bạn trên toà. |
 | **Xem / In / QR** | Mở chi tiết, in hợp đồng, và tạo mã QR (`/c/<mã>`) cho khách tự tra hoá đơn mới nhất. |
@@ -88,19 +99,20 @@ Lưu hợp đồng mới sẽ **tự ghi vào sổ quỹ**: tạo **phiếu thu 
 | Không chọn được phòng khi ký hợp đồng | Phòng đang có hợp đồng **đang hiệu lực** khác. Một phòng chỉ có một hợp đồng hiệu lực — thanh lý hợp đồng cũ trước, hoặc chọn phòng khác. |
 | Bấm **Lưu** nhưng bị chặn vì cọc | Cọc đã thu chưa đủ mà chưa tick **Đồng ý cho nợ cọc**. Chọn **Cho nợ cọc** (kèm lý do + ngày hẹn) hoặc **Thu trong hoá đơn đầu**, tick đồng ý rồi lưu lại. |
 | Hợp đồng hiện **Thiếu cọc** dù khách nói đã đóng đủ | Số "đã thu cọc" được tính từ **phiếu thu cọc** thực tế trong sổ. Kiểm tra tab **Tiền cọc** ở [chi tiết hợp đồng](/03-quan-ly-van-hanh/hop-dong-chi-tiet/) xem đã có phiếu thu cọc tương ứng chưa. |
+| Hợp đồng mới gắn cọc của khách trước | Cơ chế tìm cọc mồ côi có thể dựa chủ yếu vào phòng/thời gian. Dừng thu thêm, đối chiếu người nộp/khách trên từng phiếu và nhờ kế toán/quản trị tách đúng quyền sở hữu trước khi tiếp tục. |
 | Hợp đồng **đã gia hạn** nhưng trạng thái vẫn là **Còn hạn** (ACTIVE) | Đúng thiết kế: hợp đồng gia hạn **giữ nguyên hiệu lực (ACTIVE)**, chỉ dời ngày kết thúc; dấu "đã gia hạn" hiển thị ở trang chi tiết, không đổi trạng thái. |
-| Nhập Excel tạo trùng hợp đồng trên cùng phòng | Luồng **Nhập** ghi thẳng dữ liệu và không kiểm tra "một phòng một hợp đồng". Rà soát file trước khi nhập; chỉ nhập cho phòng chưa có hợp đồng hiệu lực. |
+| Nhập Excel tạo trùng hợp đồng trên cùng phòng | Đây là rủi ro đã biết của luồng import vì bỏ qua bất biến của luồng chuẩn. Không tiếp tục import; cô lập batch và nhờ quản trị đối soát. Với dữ liệu production, tạo hợp đồng bằng **Thêm**. |
 | Tải danh sách báo lỗi | Ấn **Thử lại** trên panel lỗi để nạp lại; nếu vẫn lỗi, kiểm tra kết nối mạng rồi thử lại sau. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/contracts" app-label="Mở màn Hợp đồng" fixtures="7 HĐ: A101 đủ cọc, A102 thiếu cọc 2tr, A103 sắp hết hạn, A104 đã gia hạn, A105 KM, A201 nháp, B101">
+<SandboxTry account="demo.chunha" app-path="/contracts" app-label="Mở màn Hợp đồng" fixtures="20 hợp đồng DEMO; snapshot 13/08/2026 có 4 sắp hết hạn và các dòng quan sát đang thiếu cọc" view-only>
 
 Thực hành đọc trạng thái hợp đồng và tình trạng cọc:
 
-1. Ấn thẻ **Sắp hết hạn** (hoặc lọc theo nhóm này) và kiểm tra danh sách nêu bật hợp đồng phòng **A103** — còn khoảng 21 ngày.
-2. Gõ **A102** vào ô tìm kiếm; mở dòng kết quả và để ý badge **Thiếu cọc** với số cọc còn thiếu **2.000.000đ**.
-3. Ấn nút **Thêm** để mở form ký hợp đồng mới và xem qua các phần: chọn phòng → chọn khách → nhập giá/cọc → xem trước hoá đơn cọc + tháng đầu. Không cần lưu — chỉ quan sát các bước.
+1. Ấn thẻ **Sắp hết hạn** và kiểm tra danh sách đang có 4 hợp đồng trong nhóm này.
+2. Mở một hợp đồng và đối chiếu badge **Thiếu cọc** cùng số thiếu đang hiển thị.
+3. Có thể ấn nút **Thêm** để xem form ký hợp đồng mới, nhưng đóng form và không lưu vì fixture tạo hợp đồng an toàn hiện không qua được preflight.
 
 Kết quả mong đợi: bạn đọc được trạng thái từng hợp đồng (Còn hạn / Sắp hết hạn / Nháp) cùng tình trạng cọc (Đủ cọc / Thiếu cọc), và nắm được trình tự các bước khi ký hợp đồng mới.
 

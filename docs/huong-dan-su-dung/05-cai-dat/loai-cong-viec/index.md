@@ -2,11 +2,11 @@
 title: "Loại công việc"
 description: "Danh mục loại công việc vận hành: đặt mức thưởng, cờ việc sửa chữa và cờ ký hợp đồng để dùng khi tạo công việc."
 routes: ["/settings/categories/task-types"]
-permissions: [{module: task_types, action: view}]
+permissions: [{module: task_types, action: view}, {module: task_types, action: create}, {module: task_types, action: edit}, {module: task_types, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---

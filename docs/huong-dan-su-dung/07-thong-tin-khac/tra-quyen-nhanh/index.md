@@ -1,177 +1,177 @@
 ---
 title: "Bảng tra quyền nhanh"
-description: "Bảng tra cứu nhanh quyền theo trang, kèm mô hình tổ chức, role binding, phạm vi và override ALLOW/DENY."
+description: "Catalog 231 quyền hiện hành, cách tính quyền hiệu lực theo RBAC V3, route canonical, runtime flag, scope và các quyền nhạy cảm về tiền."
 routes: []
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-20"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
 
 # Bảng tra quyền nhanh
 
-Trang này là **bảng tra cứu** để bạn nắm nhanh: mỗi trang (module) trong phần mềm có những **chức năng** nào, và mỗi chức năng thuộc **mức quyền** nào — **Xem**, **Quản lý** hay **Nhạy cảm**. Dùng bảng này khi bạn thiết kế mẫu phân quyền cho nhân viên, khi rà soát xem một người đang được cấp gì, hoặc khi muốn hiểu vì sao ai đó "thấy được nhưng không thao tác được".
+Catalog frontend và registry quyền production hiện khớp **231 khoá quyền**. Snapshot production ngày 13/08/2026 cho thấy vai trò Chủ công ty có đủ 231 quyền và OpenClaw Zalo đang xuất hiện trên sidebar; bộ chọn có thể ẩn hoặc hiện 8 khoá OpenClaw theo runtime của deployment. Catalog cho biết **quyền nào tồn tại**; việc một người có mở được trang và thao tác được hay không còn phụ thuộc membership, vai trò, scope, override, runtime flag và kiểm tra RLS/RPC phía server.
 
-Quyền hiệu lực không chỉ là một ô tick. Hệ thống kết hợp **membership trong tổ chức**, **role binding** (được làm gì), **scope** (được làm ở đâu) và **override riêng ALLOW/DENY**. Xem công thức ở mục [Quyền hiệu lực](#hai-chieu-kiem-soat-quyen-x-pham-vi). Để cấp/chỉnh quyền, vào màn hình **Phân quyền** — xem [Phân quyền theo trang](/05-cai-dat/phan-quyen/).
+## Quyền hiệu lực trong RBAC V3
 
-::: info Cách đọc trang này
-- Danh mục quyền được tổ chức **theo từng trang** của phần mềm (gần **40 trang**, chia thành **10 nhóm**: Bất động sản, Khách & Hợp đồng, Hoá đơn, Thu chi, Sổ quỹ, Báo cáo, Cấu hình…).
-- Mỗi trang tách quyền thành tối đa **3 mức**: **Xem** · **Quản lý** · **Nhạy cảm**. Không phải trang nào cũng có đủ 3 mức.
-- Đây là trang tra cứu, **không có thao tác**. Bạn không cần quyền gì để đọc; nhưng để mở màn hình cấu hình quyền thật thì cần quyền module **Phân quyền** (`users`).
+Một yêu cầu chỉ thành công khi tất cả lớp liên quan đều cho phép:
+
+1. **Membership** — tài khoản là thành viên active của đúng organization.
+2. **Vai trò (`organization_roles`)** — chứa các permission key `ALLOW` và có thể có `DENY`.
+3. **Role binding** — gán vai trò cho membership.
+4. **Scope của binding** — organization, khu vực, toà hoặc sổ quỹ phải khớp tài nguyên đang thao tác.
+5. **Override của thành viên** — ngoại lệ `ALLOW`/`DENY` theo key và scope; khi cùng áp dụng, **DENY thắng**.
+6. **Guard/RLS/RPC** — route, component và database đều có thể kiểm lại quyền/phạm vi.
+7. **Runtime flag** — quyền tồn tại không có nghĩa route đã được phát hành trong build.
+
+::: warning Sửa vai trò khác với sửa “mẫu” legacy
+Vai trò hiện hành là gói quyền dùng chung thật. **Sửa một vai trò tự tạo ảnh hưởng ngay mọi thành viên đang mang vai trò đó**; màn `/settings/roles` hiển thị số người bị ảnh hưởng trước khi lưu. Vai trò hệ thống là chỉ đọc; muốn tuỳ biến, hãy **nhân bản** thành vai trò mới rồi gán lại có chủ đích.
 :::
 
-## Ba mức quyền: Xem, Quản lý, Nhạy cảm {#ba-muc-quyen}
+### Cách xử lý khi “có quyền nhưng vẫn không làm được”
 
-Mọi chức năng trong phần mềm được xếp vào một trong ba mức. Hiểu đúng ba mức này là đủ để đọc cả bảng tra bên dưới.
+Kiểm theo đúng thứ tự: membership active → vai trò → binding → scope → override `DENY` → runtime flag → RLS/RPC. Với sổ quỹ, cần kiểm thêm người giữ sổ; với phiếu tiền, quyền **duyệt** và quyền **ghi sổ** là hai năng lực khác nhau.
 
-| Mức | Ý nghĩa | Ví dụ điển hình |
+## Ba mức hiển thị trong bộ chọn quyền
+
+| Mức | Dùng để nhóm | Lưu ý |
 |---|---|---|
-| **Xem** *(view)* | Chỉ **đọc** dữ liệu của trang: mở danh sách, xem chi tiết, xem báo cáo. Không tạo/sửa/xoá được gì. | Xem danh sách hợp đồng, xem hoá đơn, xem báo cáo dòng tiền. |
-| **Quản lý** *(manage)* | **Tạo · sửa · xoá · duyệt** — các thao tác vận hành thông thường trên trang đó. | Thêm phòng, sửa hợp đồng, tạo phiếu thu chi, xoá khách hẹn. |
-| **Nhạy cảm** *(elevated)* | Thao tác **dễ ảnh hưởng tiền hoặc ảnh hưởng phân quyền** — cần cân nhắc kỹ trước khi cấp. | Thu tiền hoá đơn, hoàn/bỏ cọc, thanh lý hợp đồng, chia lợi nhuận, quản lý nhân sự & mẫu quyền. |
+| **Xem** (`view`) | Mở trang, đọc dữ liệu, xem báo cáo. | Một số báo cáo có key riêng cho từng tab. |
+| **Quản lý** (`manage`) | Tạo, sửa, xoá, in, xuất hoặc thao tác vận hành. | Mỗi action là một key độc lập; không suy rằng có một key quản lý thì tự có mọi key khác. |
+| **Nhạy cảm** (`elevated`) | Duyệt, ghi/đảo tiền, chốt sổ, thanh lý, chia lợi nhuận, phân quyền hoặc thao tác rủi ro cao. | Chỉ cấp theo nguyên tắc tối thiểu cần thiết và đúng scope. |
 
-::: warning Mức "Nhạy cảm" cần cấp có chọn lọc
-Các chức năng mức **Nhạy cảm** cho phép người dùng **ghi nhận tiền** (thu tiền, hoàn cọc, thanh lý) hoặc **thay đổi phân quyền** (quản lý nhân viên, sửa mẫu quyền). Chỉ cấp cho người thực sự cần. Thu hồi quyền về sau **không** tự động xoá những dữ liệu (phiếu thu, hợp đồng đã thanh lý…) mà người đó đã tạo trước đó.
-:::
+## Catalog quyền theo trang
 
-## Quyền hiệu lực: tổ chức × binding × phạm vi × override {#hai-chieu-kiem-soat-quyen-x-pham-vi}
+Các bảng dưới dùng đúng key `module.action`. Route là route canonical mà catalog và Copilot dùng để nhận diện trang.
 
-Một nhân viên chỉ thao tác được khi các lớp liên quan đều hợp lệ:
+### Tổng quan
 
-1. **Membership tổ chức** — tài khoản phải là thành viên đang hoạt động của đúng organization.
-2. **Role binding** — nối thành viên với vai trò, xác định tập quyền được phép.
-3. **Phạm vi (scope)** — giới hạn binding theo toàn tổ chức, khu vực, toà hoặc sổ quỹ.
-4. **Override riêng** — ngoại lệ `ALLOW`/`DENY` cho từng thành viên; nếu cùng áp dụng thì **DENY thắng ALLOW**.
-
-Màn thêm/sửa nhân viên (xem [Thêm nhân viên](/01-bat-dau/them-nhan-vien/)) thường trình bày **3 kiểu phạm vi toà**:
-
-| Kiểu phạm vi | Nghĩa |
+| Trang · route | Quyền hiện hành |
 |---|---|
-| **Tất cả toà** | Áp quyền cho **mọi toà** hiện có và toà tạo sau này. |
-| **Theo khu vực** *(tự cập nhật)* | Áp cho mọi toà thuộc **khu vực** được chọn; thêm toà vào khu sau này thì nhân viên **tự động** có phạm vi toà đó. |
-| **Toà lẻ** *(cố định)* | Chỉ đúng các toà được tích, không tự mở rộng. |
+| **Bảng tin** · `/` | `dashboard.view` — xem bảng tin; `dashboard.view_finance` — xem doanh thu/công nợ trên dashboard. |
+| **AI Copilot** · `/` | `ai_copilot.view` — dùng chat; `ai_copilot.ui_control` — cho AI điều hướng/lọc/điền form ở chế độ experimental. Quyền chưa đủ: còn entitlement và kill switch server. |
+| **Thông báo** · `/notifications` | `notifications.view`, `notifications.create`, `notifications.edit`, `notifications.delete`. |
+| **Sơ đồ toà nhà** · `/building-map` | `buildings.view`. |
 
-Các chức năng cấp tổ chức như AI Copilot, khách hàng hoặc cấu hình dùng scope organization; nghiệp vụ sổ quỹ có thể kiểm thêm scope cashbook.
+### Kênh chat
 
-::: tip Vì sao "có quyền mà vẫn không làm được"
-Nếu một người có ô quyền nhưng vẫn không thao tác được, hãy kiểm tra lần lượt membership có active, binding còn hiệu lực, scope có khớp tài nguyên và có override `DENY` hay không. Với hợp đồng/phòng, nguyên nhân thường gặp nhất vẫn là phạm vi toà chưa bao gồm toà đó.
-
-Ngoại lệ: một số danh mục **cấp tổ chức** — điển hình là **Khách hàng / Cư dân** — **không** giới hạn theo toà. Ai có quyền *Quản lý* khách hàng thì sửa được mọi khách của bạn, bất kể toà.
-:::
-
-## Bảng tra nhanh: trang × chức năng × mức quyền {#bang-tra-nhanh}
-
-Bảng dưới liệt kê các module chính. Ô để trống nghĩa là module đó **không có** mức tương ứng.
-
-### Tổng quan & AI
-
-| Trang / Module | Xem | Quản lý | Nhạy cảm |
-|---|---|---|---|
-| **AI Copilot** | **Dùng chat Trợ lý AI** (`ai_copilot.view`) | — | **Điều khiển trang thử nghiệm** (`ai_copilot.ui_control`): điều hướng, lọc, điền form nhưng không tự Lưu/Xác nhận |
-
-Quyền AI chưa đủ để bật tính năng: tài khoản còn cần entitlement server-side và global kill switch đang mở.
+| Trang · route | Quyền hiện hành |
+|---|---|
+| **Chat Zalo** · `/chat-zalo` | `chat_zalo.view`, `chat_zalo.send`, `chat_zalo.manage_automation`, `chat_zalo.manage_templates`. |
+| **OpenClaw Zalo cá nhân** · `/openclaw-zalo` | `openclaw_zalo.view`, `send`, `manage_connections`, `manage_automation`, `manage_knowledge`, `manage_handoff`, `manage_operations`, `audit`. Runtime code mặc định `off`, nhưng deployment production được kiểm tra ngày 13/08/2026 đang bật bề mặt này; quyền vẫn được kiểm tra riêng. |
 
 ### Bất động sản
 
-| Trang / Module | Xem | Quản lý | Nhạy cảm |
-|---|---|---|---|
-| **Toà nhà** | Xem danh sách & sơ đồ toà | Thêm / sửa / xoá toà | — |
-| **Phòng / Căn hộ** | Xem danh sách phòng, trạng thái | Thêm / sửa / xoá phòng | — |
-| **Khu vực** | Xem danh sách khu | Thêm / sửa / xoá khu *(cần phạm vi **Tất cả toà**)* | — |
-| **Ghi chỉ số điện nước** | Xem chỉ số đã ghi | Ghi / sửa chỉ số | — |
-
-### Khách & Hợp đồng
-
-| Trang / Module | Xem | Quản lý | Nhạy cảm |
-|---|---|---|---|
-| **Khách hàng / Cư dân** | Xem hồ sơ khách | Thêm / sửa / xoá khách *(cấp tổ chức — không theo toà)* | — |
-| **Khách hẹn** *(leads)* | Xem danh sách khách hẹn | Thêm / sửa / xoá, gán phụ trách | — |
-| **Đặt cọc** | Xem danh sách cọc | Tạo phiếu cọc | **Chuyển cọc** vào hợp đồng · **Hoàn / bỏ cọc** (ghi tiền) |
-| **Hợp đồng** | Xem danh sách & chi tiết hợp đồng | Tạo / sửa / xoá hợp đồng | **Gia hạn** · **Chuyển phòng** · **Thanh lý** · **Bàn giao** |
-
-### Hoá đơn & Thu tiền
-
-| Trang / Module | Xem | Quản lý | Nhạy cảm |
-|---|---|---|---|
-| **Hoá đơn** | Xem danh sách & chi tiết hoá đơn | Tạo / sửa / xoá hoá đơn, **In**, **Xuất** | **Thu tiền** (record_payment) · **Huỷ hoá đơn** · **Duyệt** |
-| **Thu tiền** *(màn thu nhanh trên điện thoại)* | Xem báo cáo thu | — | **Thu tiền** · **Hoàn tác phiếu thu** |
-| **Sinh hoá đơn hàng loạt** | — | Sinh hoá đơn theo tháng | — |
-
-### Thu chi & Sổ quỹ
-
-| Trang / Module | Xem | Quản lý | Nhạy cảm |
-|---|---|---|---|
-| **Thu chi** | Xem phiếu thu / chi | Tạo / sửa / xoá phiếu, **Duyệt** | **Mọi toà** (ghi thu chi vượt phạm vi toà) · **Hạng mục hạn chế** (tạo / xem hạng mục nhạy cảm) |
-| **Sổ quỹ** | Xem sổ & số dư | Tạo / sửa / xoá sổ quỹ | — |
-| **Kho vật tư** | Xem tồn kho | Nhập / xuất / kiểm kê vật tư | — |
-
-### Vận hành khác
-
-| Trang / Module | Xem | Quản lý | Nhạy cảm |
-|---|---|---|---|
-| **Công việc** | Xem việc & nhóm việc | Tạo / sửa / xoá, giao việc | — |
-| **Phương tiện** | Xem danh sách xe | Thêm / sửa / xoá xe | — |
-| **Tài sản** | Xem danh mục tài sản | Thêm / sửa / xoá | **Điều chuyển** · **Bảo trì** |
-| **Sale phòng** *(trang quản trị)* | Xem cấu hình sale | — | **Quản lý liên kết chia sẻ** · **Cài đặt** · **Ảnh** · **Sơ đồ tầng** · **Khách nhờ sale** · **Thống kê** |
-| **Chat Zalo** | Xem hội thoại | **Gửi tin nhắn** | **Tự động hoá** · **Mẫu tin nhắn** |
-
-### Báo cáo & Tài chính
-
-| Trang / Module | Xem | Quản lý | Nhạy cảm |
-|---|---|---|---|
-| **Báo cáo Bất động sản** | Xem từng báo cáo (lấp đầy, phòng trống, cho thuê mới, cọc…) | — | — |
-| **Báo cáo Tài chính** | Xem từng báo cáo (dòng tiền, công nợ, phân tích, sổ quỹ ngày…) | — | **Đối soát / chốt số** · **Báo cáo bàn giao** · **Chu kỳ thu → bàn giao** |
-| **Chia lợi nhuận cổ đông** | Xem phân bổ lợi nhuận | — | **Khoá / mở khoá** kỳ · **Chia** · **Quản lý cổ đông** |
-| **Bảng lương** | Xem bảng lương | — | **Khoá / mở khoá** · **Chia** · **Quản lý lương** · **Xuất** |
-
-### Cấu hình
-
-| Trang / Module | Xem | Quản lý | Nhạy cảm |
-|---|---|---|---|
-| **Cài đặt chung & Danh mục** | Xem cấu hình, danh mục | Thêm / sửa / xoá danh mục (loại thu chi, mẫu biểu, hotline, nhà cung cấp…) | — |
-| **Phân quyền & Nhân sự** *(module `users`)* | Xem trang phân quyền, danh sách nhân viên | Thêm / sửa / xoá nhân viên | **Quản lý mẫu phân quyền** — cả module này thuộc mức **Nhạy cảm** |
-
-## Bốn mẫu hệ thống có sẵn {#bon-mau-he-thong}
-
-Thay vì tick từng quyền, bạn thường bắt đầu từ một **mẫu hệ thống** rồi tinh chỉnh. Phần mềm có sẵn 4 mẫu (không sửa được — muốn đổi thì **Tạo bản sao**):
-
-| Mẫu | Cấp những gì | Phù hợp với |
-|---|---|---|
-| **Super Admin** | Toàn quyền, bỏ qua mọi kiểm tra | Chủ nhà / người vận hành chính |
-| **Quản Lý Tòa** | Đầy đủ vận hành 1+ toà (tạo/sửa/xoá/duyệt hầu hết module; **Khu vục** & **Mẫu biểu** chỉ *Xem*) | Quản lý toà |
-| **Partner** | Quản lý khách hẹn & cọc, **xem** bất động sản và hợp đồng (read-only) | Cộng tác viên / đối tác |
-| **Viewer** | Mọi module chỉ **Xem** | Người chỉ cần theo dõi |
-
-Mẫu là điểm khởi đầu để cấp vai trò. Trong mô hình quyền hiệu lực, nhân viên có membership trong organization, role binding kèm scope; phần tinh chỉnh riêng được biểu diễn bằng override `ALLOW`/`DENY` và **DENY thắng**. Thẻ nhân viên vẫn có thể hiện **N thay đổi so với mẫu**, nhưng sửa mẫu không nên được hiểu là tự động xoá binding/override đã có của từng người.
-
-## Tình huống & lỗi thường gặp {#tinh-huong}
-
-| Tình huống | Nguyên nhân & cách xử lý |
+| Trang · route | Quyền hiện hành |
 |---|---|
-| Có quyền *Quản lý* nhưng không sửa được dữ liệu ở một toà | **Phạm vi toà** chưa bao gồm toà đó. Kiểm tra lại phạm vi (Tất cả toà / khu vực / toà lẻ) trong hồ sơ nhân viên. |
-| Có quyền *Xem* khách hàng nhưng lại sửa được **mọi** khách | Đúng thiết kế: **Khách hàng / Cư dân** là danh mục cấp tổ chức, không giới hạn theo toà. Cấp quyền *Quản lý* khách cho ai là mở với **toàn bộ** khách. |
-| Đã tick quyền *Xem* nhưng người dùng vẫn không mở được một trang | Trang đó có thể thuộc mức **Nhạy cảm** (ví dụ *Phân quyền*, *Chia lợi nhuận*) — cần cấp đúng chức năng nhạy cảm chứ không chỉ *Xem* chung. |
-| Không thấy nhân viên bật được **Mọi toà** trong Thu chi | Đây là chức năng **Nhạy cảm** riêng của module Thu chi; phải tick riêng, không nằm trong quyền *Quản lý* thu chi thông thường. |
-| Đã cấp `ai_copilot.view` nhưng không thấy nút AI | Quyền UI chỉ là một lớp; kiểm tra thêm entitlement của tài khoản và kill switch Copilot phía server. |
-| Thu hồi quyền rồi mà dữ liệu cũ vẫn còn | Thu hồi quyền chỉ chặn thao tác **từ nay về sau**; các phiếu / hợp đồng người đó đã tạo trước đó vẫn được giữ nguyên. |
-| Nhân viên cũ vẫn hoạt động sau khi cập nhật mẫu quyền | Binding/scope hoặc override riêng của người đó vẫn còn hiệu lực; mở hồ sơ nhân viên để rà lại vai trò, phạm vi và ngoại lệ thay vì chỉ nhìn mẫu. |
+| **Toà nhà & Khu vực** · `/buildings` | `buildings.view/create/edit/delete`; `areas.view/create/edit/delete`. |
+| **Căn hộ / Phòng** · `/apartments` | `rooms.view/create/edit/delete`. |
+| **Dịch vụ** · `/services` | `services.view/create/edit/delete`. |
+| **Sale Phòng** · `/sale-phong` | `sale_phong.view`, `edit`, `manage_tokens`, `manage_settings`, `manage_images`, `edit_floor_plan`, `manage_pass_listings`, `create_deposit`, `view_analytics`. `create_deposit` là quyền nhạy cảm. |
 
-## Thử trực tiếp trên sandbox {#thu-tren-sandbox}
+### Khách hàng & hợp đồng
 
-<SandboxTry account="demo.chunha" app-path="/settings/staff" view-only>
+| Trang · route | Quyền hiện hành |
+|---|---|
+| **Khách hẹn** · `/leads` | `leads.view/create/edit/delete/convert/export`. |
+| **Đặt cọc** · `/deposits` | `deposits.view/create/edit/delete/convert/refund/print`. Quyền refund bao gồm hoàn/bỏ cọc theo luồng được phép. |
+| **Hợp đồng** · `/contracts` | `contracts.view/create/edit/delete/approve/renew/transfer/terminate/handover/print/export`. `approve` và `terminate` là nhạy cảm. |
+| **Cư dân** · `/customers` | `customers.view/create/edit/delete/import/print/export`. Đây là dữ liệu cấp tổ chức; không mặc định giới hạn theo một toà. |
+| **Phương tiện** · `/vehicles` | `vehicles.view/create/edit/delete`. |
 
-**Bài xem**
+### Tài chính vận hành
 
-Mở **Mẫu phân quyền** để đối chiếu với bảng tra quyền ở trên: bấm vào một mẫu (ví dụ **Quản Lý Tòa**) để xem **ma trận quyền theo trang** — quan sát danh sách trang chia theo nhóm ở cột trái, từng chức năng và ô tích ở panel phải, cùng badge **Nhạy cảm** đánh dấu các quyền dễ ảnh hưởng tiền. Chỉ xem, không cần lưu.
+| Trang · route | Quyền hiện hành |
+|---|---|
+| **Sổ quỹ** · `/finance/cashbooks` | `cashbooks.view/create/edit/delete/share`; `cashbooks.manage_custody` — giao/nhận người giữ sổ; `cashbooks.post` — ghi sổ; `cashbooks.close` — đề nghị chốt/bàn giao; `cashbooks.close_confirm` — xác nhận nhận bàn giao và khoá vĩnh viễn. Bốn key cuối là quyền nhạy cảm độc lập. |
+| **Ghi chỉ số** · `/meter-readings` | `meter_readings.view/create/edit/delete/export`. |
+| **Hoá đơn** · `/invoices` | `invoices.view/create/edit/delete/approve/cancel/record_payment/print/export`. `approve` là nhạy cảm; `record_payment` cho phép ghi nhận thanh toán nhưng posting vẫn bị server/sổ kiểm lại. |
+| **Thu tiền mobile** · `/thu-tien` | `thu_tien.view`, `thu_tien.collect`, `thu_tien.undo`, `thu_tien.report`. Các route báo cáo debt cũ đều chuyển hướng về trang này. |
+| **Thu chi** · `/income-expense` | `income_expenses.view/create/edit/delete/approve/cancel/print/export/all_buildings/restricted_create/restricted_view/reverse/self_approve_within_limit`; thêm `approvals.emergency_override`. Các key `approve`, `all_buildings`, `restricted_*`, `reverse`, `self_approve_within_limit` và `emergency_override` là nhạy cảm. |
+| **Tiền thừa** · `/reports/finance/overpayment` | `excess_amounts.view/create/edit/delete`. Lưu ý báo cáo hiện còn tính theo chênh lệch hoá đơn, không phải credit lot authoritative. |
+
+::: danger Duyệt, ghi sổ và đảo bút toán là ba quyền khác nhau
+`income_expenses.approve` chỉ quyết định workflow. Ghi tiền cần `cashbooks.post` cùng quyền/scope giữ sổ phù hợp. Đảo một posting đã hiệu lực cần `income_expenses.reverse`; hệ thống sinh bút toán ngược và giữ phiếu gốc, không xoá lịch sử.
+:::
+
+### Cổ đông & tài chính cá nhân
+
+| Trang · route | Quyền hiện hành |
+|---|---|
+| **Lợi nhuận cổ đông** · `/reports/finance/profit-distribution` | `shareholder_profit.view/lock/unlock/distribute/manage_shareholders/pay_manager/export`. `pay_manager` là quyền chi lương quản lý từ kỳ lợi nhuận đã chốt. `/finance/shareholder-profit` chỉ là route chuyển hướng. |
+| **Bảng lương quản lý** · `/finance/salary` | `salary.view/lock/unlock/distribute/manage_salary/export`. Route không bọc `RequirePermission` cố định vì trang tự rẽ admin/self-view; server/RLS vẫn giới hạn dữ liệu và action. |
+| **Ví thu chi cá nhân** · `/finance/personal-wallet` | `personal_finance.view/create/edit/delete`. |
+
+### Tài sản & kho
+
+| Trang · route | Quyền hiện hành |
+|---|---|
+| **Tài sản** · `/assets` | `assets.view/create/edit/delete/move/maintain`. |
+| **Vật tư** · `/materials` | `materials.view/create/edit/delete`. |
+| **Loại tài sản** · `/settings/categories/asset-types` | `asset_types.view/create/edit/delete`. |
+| **Kho** · `/settings/categories/warehouses` | `warehouses.view/create/edit/delete`. |
+| **Nhà cung cấp** · `/settings/categories/suppliers` | `suppliers.view/create/edit/delete`. |
+
+### Vận hành
+
+| Trang · route | Quyền hiện hành |
+|---|---|
+| **Trung tâm mạng** · `/network-center` | `network_center.view`, `network_center.execute`. Route mặc định không được dựng khi `VITE_NETWORK_CENTER_MODE` là `off`; đây là bề mặt nội bộ/runtime-gated. |
+| **Công việc** · `/tasks` | `tasks.view/create/edit/delete/complete/approve`. `tasks.complete` tách khỏi CRUD; `tasks.approve` là quyền duyệt/nghiệm thu nhạy cảm. |
+| **Loại công việc** · `/settings/categories/task-types` | `task_types.view/create/edit/delete`. |
+
+### Báo cáo
+
+| Trang · route | Quyền hiện hành |
+|---|---|
+| **Báo cáo BĐS** · `/reports/real-estate` | `reports_real_estate.view`, `vacant_rooms`, `expiring`, `renewals_transfers`, `occupancy`, `promotions`, `new_leases`, `terminations`, `expense_ratio`, `export`. Mỗi báo cáo có key xem riêng. |
+| **Báo cáo tài chính** · `/reports/finance` | `reports_finance.view`, `analysis`, `daily_cashbook`, `cash_flow`, `profit_distribution`, `payment_schedule`, `overpayment`, `deposits_report`, `handover_report`, `reconcile`, `collection_cycle`, `export`. Hai key debt legacy không còn xuất hiện trong UI cấu hình mới. |
+
+### Cấu hình hệ thống
+
+| Trang · route | Quyền hiện hành |
+|---|---|
+| **Đồng hồ / Công tơ** · `/settings/meters` | `meters.view/create/edit/delete`. |
+| **Định mức dịch vụ** · `/settings/categories/service-quotas` | `service_quotas.view/create/edit/delete`. |
+| **Gạch nợ tự động** · `/settings/categories/auto-debt` | `auto_debt.view/create/edit/delete`. |
+| **Hotline** · `/settings/categories/hotlines` | `hotline.view/create/edit/delete`. |
+| **Danh mục khác** · `/settings/categories` | `categories.view/create/edit/delete`. |
+| **Biểu mẫu / Chữ ký** · `/settings/templates` | `templates.view/create/edit/delete`. |
+| **Cài đặt chung** · `/settings/general` | `settings.view/create/edit/delete`; xoá là quyền nhạy cảm. |
+| **Phân quyền nhân viên** · `/settings/members` | `users.view/create/edit/delete/manage_templates`. Toàn bộ nhóm được xếp nhạy cảm. `/settings/staff` là route cũ chuyển hướng; vai trò nằm ở `/settings/roles`. |
+
+## Các tình huống thường gặp
+
+| Tình huống | Cách hiểu và xử lý |
+|---|---|
+| Có key `view` nhưng không thấy dữ liệu của một toà | Scope binding không bao gồm toà đó, hoặc RLS lọc theo phạm vi. |
+| Có quyền duyệt phiếu nhưng không có nút Thu/Chi | Duyệt và posting tách nhau; kiểm `cashbooks.post`, custody và scope sổ. |
+| Có quyền OpenClaw nhưng không thấy route | Kiểm runtime của deployment/tổ chức hiện tại; code mặc định có thể `off`, còn production ngày 13/08/2026 đang hiển thị route. |
+| Có quyền Network Center nhưng route 404/không hiện | Runtime Network Center đang off hoặc build không ở mode production/demo phù hợp. |
+| Sửa vai trò rồi nhiều người đổi quyền | Đúng mô hình V3: họ dùng chung vai trò. Muốn thay đổi riêng một người, chỉnh binding/scope/override hoặc tạo vai trò khác. |
+| Cấp quyền lương nhưng nhân viên chỉ thấy lương mình | `/finance/salary` tự rẽ theo năng lực và cấu hình; RLS không cho xem toàn bộ chỉ vì route mở được. |
+| Không thấy báo cáo công nợ cũ | Các route debt đã chuyển về `/thu-tien`; dùng quyền `thu_tien.*`. |
+| Đã ALLOW nhưng vẫn bị chặn | Tìm override hoặc role `DENY`; `DENY` thắng, sau đó kiểm scope và server guard. |
+
+## Thực hành an toàn
+
+<SandboxTry account="demo.chunha" app-path="/settings/members" app-label="Mở Thành viên" view-only>
+
+Chỉ xem trên sandbox:
+
+1. Mở một thành viên để xem các vai trò, scope và quyền hiệu lực.
+2. Sang `/settings/roles`, mở một vai trò hệ thống để thấy trạng thái chỉ đọc và số thành viên đang mang vai trò.
+3. Không lưu thay đổi nếu bạn chỉ đang đối chiếu; mục tiêu là nhận ra quyền đến từ **vai trò + phạm vi + ngoại lệ**, không phải một danh sách tick phẳng.
 
 </SandboxTry>
 
-## Quy trình liên quan {#quy-trinh-lien-quan}
+## Quy trình liên quan
 
-- [Phân quyền theo trang (mẫu quyền)](/05-cai-dat/phan-quyen/)
-- [Thêm nhân viên](/01-bat-dau/them-nhan-vien/)
+- [Phân quyền theo trang](/05-cai-dat/phan-quyen/)
 - [Nhân viên & Đội ngũ](/05-cai-dat/nhan-vien-doi-ngu/)
-- [Quản lý tài khoản (admin)](/05-cai-dat/admin-users/)
+- [Thêm nhân viên](/01-bat-dau/them-nhan-vien/)
+- [Thuật ngữ & bảng trạng thái](/07-thong-tin-khac/thuat-ngu/)
+- [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/)

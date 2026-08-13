@@ -6,8 +6,9 @@ permissions: [{module: rooms, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  account: demo.chunha
 status: published
 ---
 
@@ -35,6 +36,8 @@ Màn **Căn hộ / Phòng** là nơi bạn tra cứu và quản lý toàn bộ p
 **Bước 3**: Khi đã chọn đúng 1 toà, ô **Tầng** mới bật lên. Chọn tầng để thu hẹp danh sách; nếu chưa chọn toà, ô Tầng hiện mờ với nhắc "Tầng (chọn 1 toà)".
 
 **Bước 4**: Tại ô **Trạng thái**, chọn **Đang hoạt động** (phòng trống) / **Đã đặt cọc** / **Ngừng hoạt động** để lọc theo tình trạng. Kết hợp thêm ô tìm kiếm ở trên để tìm theo tên phòng. Các bộ lọc được giữ lại khi bạn tải lại trang (F5).
+
+Ba giá trị lọc lưu ở dữ liệu là `AVAILABLE`, `RESERVED`, `UNAVAILABLE`. Nhãn hiển thị như **Đang thuê** hoặc **Sắp trống** còn được suy thêm từ hợp đồng và ngày hết hạn, nên một nhãn bạn thấy trên dòng không phải lúc nào cũng là giá trị raw của bộ lọc trạng thái.
 
 **Bước 5**: Ấn vào một phòng để mở trang **chi tiết**. Tại đây bạn xem được giá thuê, tiền cọc, trạng thái và các tab **Hợp đồng**, **Hoá đơn**, **Khách thuê**, **Tài sản** của phòng.
 
@@ -74,18 +77,18 @@ Công tắc trạng thái nhanh trên dòng phòng chỉ nên dùng để chuy�
 | Lưu phòng báo lỗi trùng tên | Tên phòng phải **duy nhất trong cùng một toà**. Đổi tên khác (mã phòng thì không bắt buộc duy nhất). |
 | Không chọn được toà trong form thêm phòng | Ô Toà chỉ liệt kê toà **đang hoạt động**. Bật lại hoạt động cho toà ở màn [Toà nhà](/03-quan-ly-van-hanh/toa-nha/), hoặc dùng **+ Thêm toà nhà** để tạo nhanh. |
 | Phòng vẫn hiện **Đang thuê** dù đã kết thúc hợp đồng | Trạng thái tự tính theo hợp đồng còn hiệu lực. Kiểm tra lại hợp đồng của phòng ở tab chi tiết — nếu còn một hợp đồng đang chạy trên phòng thì phòng vẫn là Đang thuê. |
-| Phòng tự chuyển sang **Đã đặt cọc** mà không ai đặt tay | Đúng thiết kế: khi có phiếu cọc giữ chỗ chưa gắn hợp đồng (kể cả phiếu chưa duyệt), hệ thống tự đưa phòng trống về **Đã đặt cọc**. Huỷ/duyệt xong phiếu cọc sẽ tự cập nhật lại. |
+| Phòng tự chuyển sang **Đã đặt cọc** mà không ai đặt tay | Kiểm tra phiếu cọc/giữ chỗ chưa gắn hợp đồng: kể cả request chưa duyệt cũng có thể làm nhãn phòng thành **Đã đặt cọc**. Duyệt request không đồng nghĩa đã thu tiền; chỉ trạng thái `POSTED` mới chứng minh tiền đã vào sổ quỹ. |
 | Số phòng của toà sai sau khi chuyển phòng sang toà khác | Con số tự đếm lại khi có thay đổi phòng kế tiếp của chính toà đó. Đừng sửa tay; chỉnh/thêm/xoá một phòng của toà để hệ thống đếm lại. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/apartments" app-label="Mở màn Căn hộ / Phòng" fixtures="A101..B104">
+<SandboxTry account="demo.chunha" app-path="/apartments" app-label="Mở màn Căn hộ / Phòng" fixtures="Snapshot 13/08/2026: 44 phòng, 20 đang thuê, 20 trống; dùng tên phòng đang hiển thị." view-only>
 
 Thực hành lọc và đọc thông tin phòng:
 
-1. Tại ô lọc toà, chọn **Tòa DEMO A** và kiểm tra danh sách chỉ còn các phòng A101, A102... của toà này.
+1. Tại ô lọc toà, chọn một toà đang hiển thị và kiểm tra danh sách chỉ còn các phòng thuộc toà đó.
 2. Chọn thêm **Trạng thái = Đang hoạt động** để xem những phòng còn trống; để ý 4 thẻ thống kê cập nhật lại theo kết quả lọc.
-3. Ấn vào một phòng (ví dụ **A101**) để mở chi tiết, đọc **giá thuê**, **tiền cọc** và **trạng thái** của phòng ở đó.
+3. Ấn vào một phòng đang hiển thị để mở chi tiết, đọc **giá thuê**, **tiền cọc** và **trạng thái** của phòng ở đó.
 
 Kết quả mong đợi: bạn lọc được phòng theo toà và trạng thái, rồi đọc được trạng thái cùng thông tin cơ bản của một phòng.
 

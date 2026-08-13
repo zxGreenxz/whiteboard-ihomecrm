@@ -2,7 +2,7 @@
 title: "Bảng lương quản lý"
 description: "Tính lương quản lý từ việc thật, HH Sale, đầu tư và ứng lương; cấu hình người hưởng lương và quy tắc thưởng, chốt/mở khoá tháng rồi trả lương bằng phiếu chi."
 routes: ["/finance/salary"]
-permissions: [{module: salary, action: manage_salary}]
+permissions: []
 viewport: desktop
 audience: [chu-nha]
 captured:
@@ -16,7 +16,8 @@ status: published
 Màn **Bảng lương** là nơi bạn — chủ nhà — tính công cho nhân viên quản lý vận hành. Lương lấy từ dữ liệu thật: việc đã hoàn thành, hoa hồng, lợi nhuận đầu tư, ứng và tiền phòng. Cuối tháng bạn chốt snapshot, rồi gửi yêu cầu trả lương qua luồng phê duyệt; tiền chỉ được post vào sổ sau quyết định hợp lệ.
 
 ::: info Điều kiện tiên quyết
-- Quyền **Bảng lương => Xem** (module `salary`, action `view`) để mở màn; **Cấu hình** (`manage_salary`) để khai báo người hưởng lương và quy tắc; **Chốt** (`lock`) / **Mở khoá** (`unlock`) để đóng/mở tháng; **Trả lương** (`distribute`) để ghi phiếu chi.
+- Route `/finance/salary` chỉ yêu cầu đăng nhập rồi tự chọn giao diện theo vai trò. Superadmin hoặc tài khoản có ít nhất một trong các quyền `salary.manage_salary`, `salary.lock`, `salary.distribute` thấy màn quản trị; nhân viên đã được cấu hình nhưng không có các quyền quản trị này được đưa vào màn **Lương của tôi**.
+- Các thao tác vẫn kiểm quyền riêng: **Cấu hình** (`manage_salary`) để khai báo người hưởng lương và quy tắc; **Chốt** (`lock`) / **Mở khoá** (`unlock`) để đóng/mở tháng; **Trả lương** (`distribute`) để gửi yêu cầu chi.
 - Đã **thêm nhân viên** quản lý vào hệ thống — xem [Thêm nhân viên](/01-bat-dau/them-nhan-vien/). Chỉ nhân viên được khai báo ở tab Cấu hình mới xuất hiện trong bảng lương.
 - Đã có **sổ quỹ** và bộ **loại thu chi** để phiếu trả lương chảy ra — xem [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/).
 - **Dữ liệu demo CHƯA cấu hình lương**: chưa có ai được khai báo hưởng lương, nên tab **Bảng lương tháng** sẽ **trống** hoặc hiện thông điệp hướng dẫn. Bạn bắt đầu ở tab **Cấu hình** (Bước 2).
@@ -55,10 +56,10 @@ Trong đó: **Thưởng việc tự động** gộp 3 nhóm — thưởng theo l
 Mở khoá (quyền `unlock`) sẽ xoá bản ảnh chụp và đưa tháng về **nháp** để tính lại theo dữ liệu hiện hành — con số có thể đổi so với lúc bạn đã chốt. Chỉ mở khoá khi thực sự cần sửa, và **chốt lại** ngay sau khi sửa xong.
 :::
 
-**Bước 7**: **Trả lương** (cần quyền `distribute`). Bấm trả từng người hoặc hàng loạt, chọn sổ quỹ và kiểm số thực nhận. Hệ thống tạo request canonical qua engine duyệt. Sau khi được duyệt/post, phiếu chi **Lương quản lý** nằm trên toà ảo **Chung**, không tính KQKD; phần tiền phòng tháng kế được cấn trừ và tự gạch nợ theo flow server.
+**Bước 7**: **Trả lương** (cần quyền `distribute`). Bấm trả từng người hoặc hàng loạt, chọn sổ quỹ và kiểm số thực nhận. Hệ thống tạo request canonical qua engine duyệt. Chỉ khi request ở trạng thái `POSTED`, phiếu chi **Lương quản lý** mới nằm trên toà ảo **Chung**, không tính KQKD; phần tiền phòng tháng kế mới được cấn trừ và tự gạch nợ theo flow server.
 
-::: danger Trả lương khởi tạo một yêu cầu tiền thật
-Kiểm tra kỹ đúng người, số thực nhận và sổ quỹ trước khi gửi. Request có thể ở trạng thái chờ duyệt; chỉ khi được duyệt/post mới làm giảm quỹ và gạch trạng thái đã trả. Theo dõi tại [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/).
+::: danger Phân biệt duyệt yêu cầu với tiền đã ra khỏi quỹ
+Kiểm tra kỹ đúng người, số thực nhận và sổ quỹ trước khi gửi. `APPROVED + UNPOSTED` nghĩa là đã duyệt nhưng **chưa có biến động tiền**; `POSTED` mới là đã ghi vào sổ quỹ thật; `NOT_APPLICABLE` là nghiệp vụ không dùng tiền mặt; `REVERSED` là khoản đã được hoàn tác. Theo dõi trạng thái tại [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) và chỉ coi lương đã trả khi request đã `POSTED`.
 :::
 
 ## Các tính năng khác trên màn hình
@@ -72,7 +73,7 @@ Kiểm tra kỹ đúng người, số thực nhận và sổ quỹ trước khi 
 | **Thêm / Sửa / Xoá adjustment** | Ghi dòng thưởng hoặc trừ thủ công (có dấu) cho một quản lý trong tháng. |
 | **Xem dưới vai trò** | Xem trước màn "Lương của tôi" đúng như nhân viên nhìn thấy. |
 | **Chốt tháng** / **Mở khoá** | Đóng băng số vào bản lương tháng (Lock) hoặc mở lại để tính lại (Unlock). |
-| **Trả lương** (từng người / hàng loạt) | Gửi request trả lương; sau duyệt/post mới ghi phiếu chi và gạch nợ tiền phòng nếu có. |
+| **Trả lương** (từng người / hàng loạt) | Gửi request trả lương; chỉ trạng thái `POSTED` mới ghi phiếu chi thật và gạch nợ tiền phòng nếu có. |
 | **Ngày lễ** (trong Cấu hình) | Danh sách ngày lễ của bạn, có nút thêm nhanh bộ lễ Việt Nam; ảnh hưởng thưởng Chủ nhật/Lễ. |
 
 ## Tình huống & lỗi thường gặp
@@ -86,7 +87,7 @@ Kiểm tra kỹ đúng người, số thực nhận và sổ quỹ trước khi 
 | Sửa quy tắc/loại việc nhưng **tháng cũ không đổi** | Đúng thiết kế: tháng đã **chốt** đóng băng số, không tính lại. Muốn áp lại phải **Mở khoá** rồi chốt lại (cân nhắc kỹ). |
 | Đã trả lương nhưng **tiền phòng** nhân viên vẫn còn nợ | Tiền phòng chỉ tự gạch khi nhân viên có **hoá đơn phòng** ở tháng kế và bạn đã gán **Phòng ở** trong Cấu hình; không gán thì chỉ khấu trừ theo "tiền phòng mặc định", không đụng hoá đơn. |
 | Không thấy nút **Chốt / Trả lương** | Thiếu quyền tương ứng (`lock` / `distribute`). Nhờ chủ hệ thống cấp quyền trong Phân quyền. |
-| Đã bấm Trả lương nhưng quỹ chưa giảm | Request còn chờ duyệt hoặc chưa post. Mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) để xem trạng thái. |
+| Đã bấm Trả lương nhưng quỹ chưa giảm | Request còn chờ duyệt hoặc đang `APPROVED + UNPOSTED`. Mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) và kiểm tra tới khi `POSTED`. |
 | Nhân viên báo **xem tháng bị lùi** | Đúng chính sách: self-view mặc định hiển thị tháng trước cho tới khi tháng đó được **chốt**. Bật hiển thị sớm ở **Tháng hiển thị cho nhân viên** (tab Cấu hình). |
 
 ## Thử trực tiếp trên sandbox
@@ -100,7 +101,7 @@ Bài này **chỉ xem** — bạn quan sát cấu trúc màn và hình dung lu�
 3. Bấm sang tab **Bảng kê công việc** để hình dung bảng **bằng chứng** — từng dòng việc hoàn thành sẽ là nguồn thưởng, lọc theo người/toà.
 4. Ở đầu màn, thử đổi **tháng ±** để thấy bảng lương gắn theo từng tháng. Không cần chốt hay trả (bài chỉ xem).
 
-Kết quả mong đợi: bạn hiểu rằng lương ở đây **cộng từ việc thật + hoa hồng + đầu tư** rồi trừ ứng/tiền phòng; muốn bảng có số thì phải **cấu hình người hưởng lương trước** ở tab Cấu hình, và **trả lương** là bước ghi phiếu chi thật (không thao tác trong bài này).
+Kết quả mong đợi: bạn hiểu rằng lương ở đây **cộng từ việc thật + hoa hồng + đầu tư** rồi trừ ứng/tiền phòng; muốn bảng có số thì phải **cấu hình người hưởng lương trước** ở tab Cấu hình, và nút **Trả lương** chỉ gửi yêu cầu — tiền thật chỉ ra khỏi quỹ khi request đã `POSTED` (không thao tác trong bài này).
 
 </SandboxTry>
 

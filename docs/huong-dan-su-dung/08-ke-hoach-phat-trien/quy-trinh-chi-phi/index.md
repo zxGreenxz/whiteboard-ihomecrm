@@ -4,17 +4,21 @@ description: "Artifact nghiệp vụ mô tả cách tách ghi nhận lợi nhu�
 kind: presentation-plan
 lifecycle: proposal
 decision_state: "da-chot-flow-chinh-con-quyet-dinh-trien-khai"
-routes: ["/payments/income-expenses", "/approvals", "/settings/cashbooks", "/reports/finance/profit-distribution"]
+routes: ["/income-expense", "/approvals", "/finance/cashbooks", "/reports/finance/profit-distribution"]
 permissions: ["income_expenses.create", "income_expenses.approve", "cashbooks.view", "cashbooks.post", "cashbooks.share", "shareholder_profit.lock"]
 viewport: responsive
 captured:
-  date: "2026-07-21"
+  date: "2026-08-13"
   commit: "e8cc059"
   account: "docs-presentation"
   manifest: null
 audience: [chu-doanh-nghiep, quan-ly, ke-toan, product-owner, ky-thuat]
 status: published
 ---
+
+::: danger PROPOSAL — KHÔNG PHẢI RUNTIME
+Flow, trạng thái và mô hình quyền dưới đây là đề xuất thiết kế, không xác nhận hệ thống production đang vận hành như mô tả. Các route trong metadata chỉ là bề mặt runtime liên quan để đối chiếu: `/income-expense`, `/approvals`, `/finance/cashbooks` và `/reports/finance/profit-distribution`.
+:::
 
 <div class="plan-hero">
   <div class="plan-eyebrow">ARTIFACT NGHIỆP VỤ TÀI CHÍNH</div>
@@ -87,17 +91,21 @@ Flow chính và phạm vi giai đoạn đầu đã được chốt là chỉ chi
 - Chỉ bước Chi thành công mới làm giảm sổ quỹ; nếu ghi sổ thất bại thì nhánh Duyệt và Chi cũng phải thất bại toàn bộ.
 - Quyền duyệt, quyền thao tác sổ quỹ và quyền nhìn thấy giao dịch được kiểm tra độc lập.
 
-### Hiện trạng và mục tiêu
+### Bối cảnh khi lập đề xuất và runtime hiện hành
 
-| Nội dung | Hệ thống hiện tại | Quy trình mục tiêu |
+::: info Trạng thái sau Finance V2
+Production hiện đã có bốn trục trạng thái độc lập `approval_status`, `review_state`, `posting_mode` và `posting_status`; chỉ `posting_status=POSTED` mới là tiền thật. Route canonical cũng đã dùng binding **Người giữ sổ (CUSTODIAN)** / **Người biết sổ (KNOWER)**. Bảng dưới giữ lại baseline lịch sử đã dẫn tới đề xuất; không dùng cột giữa để suy luận runtime hôm nay. Một số màn/báo cáo legacy vẫn có thể đọc `APPROVED`, nên cần xem hướng dẫn vận hành tương ứng thay vì coi kế hoạch này là bảng trạng thái triển khai.
+:::
+
+| Nội dung | Baseline lịch sử khi lập đề xuất | Quy trình mục tiêu của đề xuất |
 |---|---|---|
 | Tên `UNAPPROVED` | Có nơi gọi Nháp, có nơi gọi Chờ duyệt | Chỉ gọi **Chờ duyệt** |
 | Báo cáo lợi nhuận | Loại phiếu chưa duyệt khỏi tổng | Tính khoản phải chi đã phát sinh và gắn nhãn chờ duyệt |
-| Thao tác Duyệt | Đang đồng thời bị coi như đã ghi sổ | Hiện lựa chọn **Duyệt** hoặc **Chi**; nhánh Chi nghĩa là duyệt và chi ngay |
+| Thao tác Duyệt | Từng đồng thời bị coi như đã ghi sổ | Hiện lựa chọn **Duyệt** hoặc **Chi**; nhánh Chi nghĩa là duyệt và chi ngay |
 | Dữ liệu thanh toán | Chưa có ngày chi riêng; ảnh chưa bắt buộc | Ngày chi, sổ quỹ và hình ảnh đều bắt buộc cho mọi lần Chi |
-| Sổ quỹ | Đang giảm khi phiếu chuyển sang `APPROVED` | Chỉ giảm khi có sự kiện ghi sổ `POSTED` thành công |
+| Sổ quỹ | Từng giảm khi phiếu chuyển sang `APPROVED` | Chỉ giảm khi có sự kiện ghi sổ `POSTED` thành công |
 | Chốt lợi nhuận | Chưa chặn đầy đủ theo phiếu chờ duyệt | Server từ chối chốt nếu kỳ còn phiếu chờ duyệt thuộc KQKD |
-| Phạm vi sổ quỹ | Người được chia sẻ đang có thể thấy toàn bộ giao dịch và tạo cả Thu/Chi | Tách **Người giữ sổ** và **Người biết sổ**, lọc từ database đến giao diện |
+| Phạm vi sổ quỹ | Danh sách chia sẻ từng cho phạm vi rộng hơn vai trò theo từng sổ | Tách **Người giữ sổ** và **Người biết sổ**, lọc từ database đến giao diện |
 
 ## Flow duyệt và chi
 
@@ -233,8 +241,8 @@ sequenceDiagram
 
 ## Phân quyền sổ quỹ và trang Thu chi
 
-::: danger Lỗi bảo mật cần ưu tiên cao nhất
-Hiện tại phạm vi đọc sổ và giao dịch đang bị mở rộng bởi nhiều policy cộng dồn: người dùng có thể nhìn thấy sổ của đồng nghiệp cùng phạm vi tòa nhà, còn người được chia sẻ sổ có thể thấy toàn bộ phiếu và tạo cả Thu lẫn Chi. Không thể sửa lỗi này chỉ bằng cách ẩn dropdown ở giao diện; database, RPC, thống kê, export và trang chi tiết đều phải dùng cùng một luật truy cập.
+::: warning Rủi ro lịch sử đã dẫn tới thiết kế V2
+Khi lập đề xuất, nhiều policy cộng dồn từng mở rộng phạm vi đọc sổ và giao dịch: người dùng có thể thấy sổ của đồng nghiệp cùng phạm vi tòa nhà, còn người được chia sẻ sổ có thể thấy toàn bộ phiếu và tạo cả Thu lẫn Chi. Production canonical hiện dùng binding `CUSTODIAN`/`KNOWER` và RPC V2; đoạn này là lý do thiết kế, không phải kết luận rằng lỗ hổng đó vẫn còn. Nguyên tắc vẫn giữ nguyên: database, RPC, thống kê, export và trang chi tiết phải dùng cùng một luật truy cập, không chỉ ẩn dropdown ở giao diện.
 :::
 
 ```mermaid
@@ -481,24 +489,28 @@ Không được triển khai `PARTIALLY_POSTED` chỉ bằng cách cộng nhiề
 
 ## Vì sao đây không phải thay đổi một nút bấm
 
-Qua đối chiếu hệ thống hiện tại, `APPROVED` đang được dùng đồng thời với hai nghĩa **đã duyệt** và **đã vào sổ**. Số dư sổ quỹ, thống kê tiền thật, badge giao diện và nhiều luồng tạo phiếu đều dựa vào giả định này. Vì vậy chỉ đổi nút Duyệt sẽ làm báo cáo và tồn quỹ lệch nhau.
+Khi đề xuất được lập, `APPROVED` từng được dùng đồng thời với hai nghĩa **đã duyệt** và **đã vào sổ**. Số dư sổ quỹ, thống kê tiền thật, badge giao diện và nhiều luồng tạo phiếu khi đó dựa vào giả định này. Finance V2 production hiện đã tách trạng thái posting; phần dưới ghi lại phạm vi cutover đã được nhận diện, không mô tả nguyên trạng runtime hôm nay.
 
 Các đường ghi bắt buộc phải chuyển cùng một đợt:
 
-- Tạo phiếu lẻ đang có trường hợp tự sinh trạng thái đã duyệt.
+- Tạo phiếu lẻ từng có trường hợp tự sinh trạng thái đã duyệt.
 - Phiếu hệ thống, phiếu lặp lại, import và tạo hàng loạt có đường ghi riêng.
-- Hộp thư duyệt hiện có thể duyệt và ghi sổ ngay trong engine cũ.
-- Form hiện dùng ngày nghiệp vụ như ngày thực chi và chưa bắt buộc hình ảnh.
-- Query số dư, báo cáo, thống kê và badge đang coi phiếu đã duyệt là tiền thật.
-- Policy đọc/ghi theo tòa nhà và danh sách chia sẻ đang rộng hơn quyền theo từng sổ.
+- Hộp thư duyệt từng có thể duyệt và ghi sổ ngay trong engine cũ.
+- Form legacy từng dùng ngày nghiệp vụ như ngày thực chi và chưa bắt buộc hình ảnh.
+- Query số dư, báo cáo, thống kê và badge legacy từng coi phiếu đã duyệt là tiền thật.
+- Policy đọc/ghi theo tòa nhà và danh sách chia sẻ từng rộng hơn quyền theo từng sổ.
 
-Do đó cần inventory toàn bộ nơi đọc/ghi `APPROVED`, phân loại lại thành **workflow phê duyệt** hoặc **giao dịch tiền thật**, rồi mới cutover.
+Do đó kế hoạch yêu cầu inventory toàn bộ nơi đọc/ghi `APPROVED`, phân loại lại thành **workflow phê duyệt** hoặc **giao dịch tiền thật**, rồi mới cutover. Runtime canonical đã thực hiện phần tách trạng thái; các consumer legacy còn lại phải được đánh giá riêng, không được suy luận rằng `APPROVED` là tiền thật.
 
 ::: warning Điều kiện trước khi cutover phân quyền
 Không tự chuyển toàn bộ danh sách “được phép sử dụng” cũ thành Người giữ sổ vì sẽ nâng quyền hàng loạt. Mỗi binding cũ phải được phân loại rõ; bản ghi chưa xác định phải nằm trong danh sách cần rà soát và chặn cutover, không được mặc định cấp quyền rộng.
 :::
 
 ## Lộ trình triển khai đề xuất
+
+::: info Cách đọc lộ trình
+Đây là thứ tự triển khai được đề xuất tại thời điểm soạn, không phải bảng tiến độ production. Một số hạng mục như trạng thái posting và binding sổ V2 đã có trong runtime; trạng thái hoàn tất phải lấy từ code, migration và gate hiện hành.
+:::
 
 <div class="plan-phase-strip">
   <div class="plan-phase"><strong>1 · Chặn rò dữ liệu</strong><br />Tạo quyền Người giữ sổ/Người biết sổ, phân loại người dùng cũ và thay policy đọc/ghi rộng.</div>

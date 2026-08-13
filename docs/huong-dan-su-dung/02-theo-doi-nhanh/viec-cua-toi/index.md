@@ -18,9 +18,9 @@ status: published
 Trang tối ưu cho khổ điện thoại (một cột). Mọi số tiền hiển thị là **TẠM TÍNH** — chốt khi khoá sổ cuối tháng.
 
 ::: info Điều kiện tiên quyết
-- Tài khoản **nhân viên** đã được phân công ít nhất một toà nhà (để việc và toà xuất hiện trong danh sách).
+- Route `/my-day` chỉ yêu cầu đăng nhập, không có route capability riêng; dữ liệu vẫn bị giới hạn theo chính user và các toà được giao.
 - Điện thoại cho phép truy cập **camera** và **vị trí (GPS)** — cần khi check-in kiểm tra nhà.
-- Toà nhà đã nhập toạ độ trong hồ sơ thì phần kiểm tra khoảng cách mới chính xác (không bắt buộc, không nhập vẫn check-in được).
+- Toà nhà cần toạ độ để server xác nhận ảnh trong bán kính. Ít nhất một ảnh có vị trí hợp lệ là điều kiện chốt ngày công; nếu GPS/thiết bị lỗi, dùng luồng báo chủ duyệt thủ công.
 :::
 
 ## Hướng dẫn từng bước
@@ -33,7 +33,7 @@ Trang tối ưu cho khổ điện thoại (một cột). Mọi số tiền hiể
 
 **Bước 3**: Kéo tới mục **Hôm nay nên ghé**. Đây là các toà hệ thống gợi ý ưu tiên (kèm nhãn số ngày chưa có dấu chân). Ấn nút **Bắt đầu** ở toà bạn định đi để mở phiên **Kiểm tra nhà**.
 
-**Bước 4**: Trong phiên kiểm tra, ấn chụp từng mục theo danh sách. Máy mở **camera trực tiếp** (không lấy ảnh từ thư viện), tự ghi giờ, địa chỉ và GPS lên ảnh. Chụp đủ số ảnh yêu cầu và ở lại đủ thời gian tại toà thì phiên **đạt chuẩn** và hệ thống chốt cho bạn **1 ngày công** hôm nay.
+**Bước 4**: Trong phiên kiểm tra, chụp từng mục bằng **camera trực tiếp**. Phiên FULL cần đủ checklist/ảnh, đủ thời gian tại toà và ít nhất một ảnh có GPS trong bán kính cấu hình. Ảnh ngoài bán kính hoặc không có GPS vẫn được lưu nhưng chưa đủ để chốt ngày công.
 
 **Bước 5**: Xem mục **Việc của tôi** — danh sách việc đang làm được giao cho bạn. Ấn một dòng, hoặc ấn **Tất cả →** để mở trang **Công việc** đầy đủ.
 
@@ -44,7 +44,7 @@ Không cần chờ có việc được giao: **kiểm tra nhà là việc-mặc-
 :::
 
 ::: warning Ảnh check-in phải chụp tại chỗ
-Ảnh chỉ nhận khi **chụp trực tiếp qua camera** và bạn đang **đứng tại toà**. Không thể chọn ảnh cũ trong thư viện, và ảnh đã nộp trong ngày không dùng lại được cho phiên khác. Nếu đứng ngoài phạm vi, máy chỉ hiện cảnh báo chứ không chặn — bạn vẫn hoàn thành được.
+Ảnh chỉ nhận khi **chụp trực tiếp qua camera**. Không thể chọn ảnh cũ trong thư viện, và ảnh đã nộp trong ngày không dùng lại được cho phiên khác. Server yêu cầu **ít nhất một ảnh trong bán kính toà**; ảnh ngoài phạm vi chỉ cảnh báo ngay lúc chụp nhưng khi bấm Hoàn tất, phiên sẽ ở trạng thái ghi nhận có mặt/chưa đạt cho tới khi bổ sung ảnh hợp lệ hoặc được duyệt sự cố thiết bị.
 :::
 
 ## Các tính năng khác trên màn hình
@@ -65,7 +65,7 @@ Không cần chờ có việc được giao: **kiểm tra nhà là việc-mặc-
 | Vẫn báo *Hôm nay chưa có ngày công* dù đã đi làm | Ngày công chỉ chốt khi **hoàn tất một phiên kiểm tra đạt chuẩn** (đủ ảnh + đủ thời gian tại toà) hoặc hoàn thành một việc có ảnh. Mở **Hôm nay nên ghé** và ấn **Bắt đầu** |
 | Chụp xong nhưng ảnh không được nhận | Ảnh phải **chụp trực tiếp** qua camera trong phiên, không lấy từ thư viện; ảnh đã nộp trong ngày không nhận lại |
 | Hiện *Đã ghi nhận có mặt tại toà* nhưng chưa đủ | Bạn mới có mặt chứ chưa đủ mục. **Bổ sung mục ảnh còn thiếu trước 23:59** cùng ngày để chốt ngày công |
-| Cảnh báo khoảng cách / chip đỏ khi chụp | Chỉ là cảnh báo bạn đang ở xa toà — **không chặn** hoàn thành. Nếu đang đúng tại toà mà vẫn báo, kiểm tra đã bật định vị cho trình duyệt chưa |
+| Cảnh báo khoảng cách / chip đỏ khi chụp | Ảnh đó chưa tính là bằng chứng tại toà. Chụp thêm ít nhất một ảnh có GPS hợp lệ; nếu thiết bị lỗi, dùng **GPS trục trặc — báo chủ duyệt**. |
 | GPS/thiết bị hỏng không chụp được | Trong phiên kiểm tra, chọn **báo sự cố thiết bị** để chủ duyệt tay ngày công cho bạn |
 | Danh sách toà hoặc việc trống | Bạn chưa được phân công toà, hoặc các toà đều mới được ghé gần đây. Nếu cần thêm việc, hỏi quản lý để được phân công |
 | Số tiền thay đổi mỗi ngày | Mọi con số trên trang là **TẠM TÍNH**; tiền thật chốt khi khoá sổ cuối tháng |

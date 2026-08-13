@@ -2,11 +2,11 @@
 title: "Hotline"
 description: "Quản lý danh mục hotline/đường dây nóng hiển thị cho khách trên trang Phòng trống công khai."
 routes: ["/settings/categories/hotlines"]
-permissions: [{module: hotline, action: view}]
+permissions: [{module: hotline, action: view}, {module: hotline, action: create}, {module: hotline, action: edit}, {module: hotline, action: delete}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---

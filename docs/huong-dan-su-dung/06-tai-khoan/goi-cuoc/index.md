@@ -2,11 +2,11 @@
 title: "Gói cước"
 description: "Xem gói cước đang dùng, hạn sử dụng và giới hạn tài nguyên của tài khoản, cùng danh sách gói khả dụng để đăng ký/nâng cấp."
 routes: ["/account/subscription"]
-permissions: [{module: settings, action: view}]
+permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
+  date: "2026-08-13"
   account: demo
 status: published
 ---
@@ -18,7 +18,7 @@ Trang **Gói cước** là nơi bạn xem tài khoản của mình đang dùng *
 Trang này **không ghi tiền vào sổ quỹ** và **không tính vào Kết quả kinh doanh**. Việc đăng ký gói ở đây chỉ ghi nhận bạn đang ở gói nào; phần thanh toán/nâng cấp thực tế hiện được xử lý qua **kênh hỗ trợ** (xem mục cuối trang).
 
 ::: info Điều kiện tiên quyết
-- Bạn đã **đăng nhập** vào tài khoản của mình. Đây là trang tài khoản cá nhân nên **luôn mở được** với chủ tài khoản — không cần cấu hình gì trước.
+- Bạn đã **đăng nhập** vào tài khoản của mình. Route này không yêu cầu `settings.view`.
 - Gói cước gắn với **chủ tài khoản** (owner). Nhân viên đăng nhập bằng tài khoản được cấp sẽ thấy gói theo tài khoản đang dùng, không phải gói của chủ nhà.
 :::
 

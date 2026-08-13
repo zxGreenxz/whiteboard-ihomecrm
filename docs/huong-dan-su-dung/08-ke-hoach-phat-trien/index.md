@@ -2,18 +2,22 @@
 title: "Demo kế hoạch phát triển"
 description: "Phòng trình bày các kế hoạch phát triển sản phẩm bằng sơ đồ, lộ trình, mô hình nghiệp vụ và phụ lục kỹ thuật."
 kind: presentation-hub
-lifecycle: current
+lifecycle: proposal
 routes: []
 permissions: []
 viewport: desktop
 captured:
-  date: "2026-07-20"
+  date: "2026-08-13"
   commit: "6acd7b4"
   account: "docs-presentation"
   manifest: null
 audience: [chu-doanh-nghiep, quan-ly, ke-toan, ky-thuat]
 status: published
 ---
+
+::: danger PROPOSAL — KHÔNG PHẢI RUNTIME
+Toàn bộ mục 08 là tài liệu đề xuất/trình bày. Route, quyền, trạng thái, flow và timeline trong các trang này không xác nhận tính năng đang chạy trong production. Muốn biết runtime hiện hành, đối chiếu hướng dẫn vận hành và source code.
+:::
 
 <div class="plan-hero">
   <div class="plan-eyebrow">PHÒNG TRÌNH BÀY KẾ HOẠCH</div>
@@ -24,10 +28,6 @@ status: published
     <a class="plan-action" href="/08-ke-hoach-phat-trien/ai-copilot/">Xem kế hoạch AI Copilot</a>
   </div>
 </div>
-
-::: info Đây là khu demo, không phải cam kết triển khai
-Mỗi trang thể hiện một phương án để lãnh đạo, nghiệp vụ và kỹ thuật cùng xem trước. Phạm vi, ngân sách và ngày triển khai chỉ trở thành cam kết sau khi được phê duyệt chính thức.
-:::
 
 ## Cách đọc một kế hoạch
 

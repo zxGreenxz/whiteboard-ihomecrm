@@ -1,8 +1,8 @@
 ---
 title: "Trang phòng trống công khai (khách xem)"
 description: "Chia sẻ một liên kết /r/:token để khách xem danh sách phòng trống, giá, ảnh, hotline và sơ đồ tầng của toà — không cần đăng nhập; sale đã đăng nhập có thể tạo cọc giữ phòng ngay trên trang."
-routes: ["/r/:token"]
-permissions: [{module: sale_phong, action: view}]
+routes: ["/r/:token", "/phongtrong"]
+permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
@@ -72,15 +72,15 @@ Nếu bạn — chủ nhà hoặc sale — mở **chính liên kết công khai 
 
 1. Mở phòng còn trống, ấn **Tạo cọc giữ phòng**.
 2. Điền số tiền cọc (có thể để trống nếu chỉ giữ chỗ tạm), ngày vào dự kiến rồi xác nhận.
-3. Hệ thống tạo **một phiếu thu cọc** vào sổ quỹ **"CỌC (giữ hộ khách)"** với hạng mục **Tiền cọc**, gắn với phòng nhưng **chưa gắn hợp đồng**.
-4. Phòng lập tức chuyển sang **Đã thuê / giữ chỗ** và **biến mất khỏi mọi liên kết chia sẻ** — không ai khác đặt trùng được nữa.
+3. Hệ thống **thử tạo giữ chỗ canonical 24 giờ** trước, sau đó tạo voucher cọc. Hai thao tác là request riêng, không nguyên tử; nếu writer giữ chỗ, quyền hoặc hạ tầng không sẵn sàng, luồng có thể tiếp tục tạo voucher mà không khoá phòng.
+4. Số tiền để trống hoặc **1đ** dùng tài khoản ảo **CỌC**; số tiền lớn hơn 1 dùng sổ quỹ thật mặc định của nhân viên khi tìm thấy. Voucher mới có thể còn chờ duyệt/chưa post, nên hãy kiểm tra trạng thái và phòng sau khi tạo.
 
-::: danger Tạo cọc giữ phòng là ghi tiền thật vào sổ quỹ
-Nút này tạo **một phiếu thu cọc thật** trong sổ quỹ và **khoá phòng ngay lập tức**, chứ không phải bản nháp. Hãy chắc chắn đúng phòng và đúng số tiền trước khi xác nhận. Nếu bạn chỉ để trống số tiền để "giữ chỗ", hệ thống vẫn ghi một phiếu cọc tối thiểu nhằm chiếm chỗ — hãy vào tiếp [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) để bổ sung đúng số cọc và xử lý tiếp. Tiền cọc được ghi riêng và **không tính vào kết quả kinh doanh (KQKD)**.
+::: danger Không coi việc bấm nút là bằng chứng đã thu tiền hoặc đã khoá phòng
+`APPROVED + UNPOSTED` vẫn chưa làm tiền vào sổ; chỉ voucher `POSTED` trên một sổ quỹ thật mới chứng minh đã thu tiền. Giữ chỗ 24 giờ là nỗ lực best-effort và có thể fail-open, nên sau khi xác nhận hãy mở [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/) hoặc [Thu chi](/03-quan-ly-van-hanh/thu-chi/) để kiểm trạng thái, đồng thời tải lại trang để chắc phòng đã biến khỏi danh sách. Khoản cọc được ghi riêng và **không tính vào KQKD**.
 :::
 
-::: warning Huỷ giữ chỗ phải xử lý ở phiếu thu, không tự bỏ trên trang công khai
-Trang công khai chỉ **tạo** cọc, không có nút gỡ. Muốn trả phòng về "trống" (khách đổi ý), bạn phải xoá/huỷ phiếu thu cọc ở màn [Thu chi](/03-quan-ly-van-hanh/thu-chi/) hoặc xử lý ở [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/); phòng chỉ mở lại sau khi phiếu cọc được gỡ.
+::: warning Voucher cọc và giữ chỗ là hai bản ghi riêng
+Trang công khai chỉ **tạo**, không có nút gỡ. Vì voucher và giữ chỗ không cùng một giao dịch, huỷ một bên chưa chắc tự huỷ bên kia. Khi khách đổi ý, xử lý voucher ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/) hoặc [Đặt cọc](/03-quan-ly-van-hanh/dat-coc/), rồi kiểm tra lại trạng thái/giữ chỗ của phòng trước khi mở bán.
 :::
 
 ## Đo đếm lượt xem của khách

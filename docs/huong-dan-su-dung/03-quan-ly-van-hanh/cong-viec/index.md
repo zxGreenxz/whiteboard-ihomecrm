@@ -6,31 +6,34 @@ permissions: [{module: tasks, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  account: demo.chunha
 status: published
 ---
 
 # Công việc & sự cố
 
-Màn **Công việc** là nơi bạn giao và theo dõi mọi việc vận hành toà nhà — từ một yêu cầu nhỏ ("phòng A101 sửa vòi nước") tới việc định kỳ ("vệ sinh hành lang tầng 2"). Mỗi phiếu việc gắn với một **toà / phòng**, được giao cho một **nhân viên**, có **độ ưu tiên** và **hạn hoàn thành**. Khi làm xong, người thực hiện **chụp ảnh nghiệm thu ngay tại chỗ** (chụp trực tiếp, đóng dấu ngày/giờ và địa chỉ GPS) để hoàn thành việc — và nếu loại việc có cấu hình thưởng, họ nhận **thưởng nóng** liền.
+Màn **Công việc** là nơi bạn giao và theo dõi mọi việc vận hành toà nhà — từ một yêu cầu nhỏ ở một phòng cụ thể tới việc định kỳ cho cả toà. Mỗi phiếu việc gắn với một **toà / phòng**, được giao cho một **nhân viên**, có **độ ưu tiên** và **hạn hoàn thành**. Khi làm xong, người thực hiện **chụp ảnh nghiệm thu ngay tại chỗ** (chụp trực tiếp, đóng dấu ngày/giờ và địa chỉ GPS) để hoàn thành việc — và nếu loại việc có cấu hình thưởng, họ nhận **thưởng nóng** liền.
 
 Trang này quản lý hệ **Công việc** (jobs) với vòng đời gọn hai trạng thái: **đang làm** rồi **hoàn thành**. Bên cạnh đó hệ thống còn có khái niệm **Sự cố** (ticket có nhiều giai đoạn xử lý và SLA) — hiện chưa có trang quản trị riêng, thống kê sự cố mới xuất hiện ở màn Tổng quan (Dashboard). Vì vậy phần lớn hướng dẫn dưới đây xoay quanh **phiếu Công việc**.
 
 ::: info Điều kiện tiên quyết
 - Quyền **Công việc => Xem** (module `tasks`, action `view`) để mở trang `/tasks`. Không có quyền này thì mục **Công việc** bị ẩn khỏi menu.
-- Quyền **Thêm** (`create`) để tạo phiếu việc; quyền **Hoàn thành công việc** (`complete`, mặc định đi kèm quyền `edit`) để chụp ảnh nghiệm thu và đóng việc.
+- Quyền **Thêm** (`create`) để tạo phiếu việc; quyền **Sửa** (`edit`) để chỉnh nội dung; quyền **Hoàn thành công việc** (`complete`) để chụp ảnh nghiệm thu và đóng việc. `complete` là quyền riêng, không được suy ra từ `edit`. Danh mục cũng có quyền `tasks.approve` riêng, nhưng màn jobs hiện tại chưa có bước/nút phê duyệt sau hoàn thành.
 - Phạm vi dữ liệu đi theo **toà nhà**: bạn thấy và thao tác trên phiếu của những toà mình được phân công (qua Nhân viên & đội ngũ). Chủ nhà / quản trị thấy tất cả.
 - Muốn dùng **thưởng nóng** khi hoàn thành, loại việc phải được đặt **tiền thưởng** ở danh mục Loại công việc, và người bấm hoàn thành phải chính là người được giao việc.
 :::
 
 ## Hướng dẫn từng bước
 
-**Bước 1**: Vào menu **Công việc** (nhóm Vận hành). Màn hiện danh sách phiếu việc, mỗi dòng có **Mã** (dạng `JOB-YYYYMMDD-NNNN`, hệ thống tự cấp), **Tiêu đề** (loại việc + mô tả), **Toà / Phòng**, **Người thực hiện**, **Độ ưu tiên**, **Hạn hoàn thành** và **Trạng thái**. Mặc định trang chỉ lọc **Đang làm**, nên bạn thấy ngay việc còn dang dở. Trong dữ liệu demo có ba phiếu: **Sửa vòi A101** (đang làm, Khẩn cấp), **Thay đèn tầng 2** (đang làm, Bình thường) và **Vệ sinh A303** (đã hoàn thành).
+**Bước 1**: Vào menu **Công việc** (nhóm Vận hành). Màn hiện danh sách phiếu việc, mỗi dòng có **Mã** (dạng `JOB-YYYYMMDD-NNNN`, hệ thống tự cấp), **Tiêu đề** (loại việc + mô tả), **Toà / Phòng**, **Người thực hiện**, **Độ ưu tiên**, **Hạn hoàn thành** và **Trạng thái**. Mặc định trang chỉ lọc **Đang làm**. Snapshot production ngày 13/08/2026 của tài khoản DEMO đang ở empty state: **0 đang làm, 0 hoàn thành**; khi có phiếu, chúng xuất hiện theo đúng bộ lọc hiện tại.
 
-![Màn Công việc: danh sách phiếu việc kèm mã, người thực hiện, độ ưu tiên và trạng thái đang làm / hoàn thành](./images/buoc-01-danh-sach.webp)
+![Màn Công việc DEMO đang rỗng với 0 việc đang làm, 0 hoàn thành và nút Thêm công việc](./images/buoc-01-danh-sach.webp)
 
 **Bước 2**: Lọc và tìm việc. Dùng thanh **tab** ở đầu bảng để chuyển giữa **Tất cả**, **Của tôi** (việc được giao cho bạn) và **Đang theo dõi** (việc giao cho người khác). Bấm các thẻ **thống kê trạng thái** để lọc nhanh **Đang làm** / **Hoàn thành**. Mở **bộ lọc** để lọc theo **Căn hộ** (toà), **Phòng**, **Loại công việc**, **Độ ưu tiên**, **Người thực hiện**, **Trạng thái** và **khoảng ngày**. Gõ vào **ô tìm kiếm** để lọc theo tiêu đề, mã hoặc tên người thực hiện. Mọi lựa chọn lọc được **giữ lại khi tải lại trang (F5)**.
+
+Trang chỉ nạp cửa sổ dữ liệu khoảng **90 ngày** theo bộ lọc hiện tại. Vì vậy liên kết `/tasks?job=<uuid>` chỉ tự mở được phiếu đang nằm trong tập đã nạp; nếu phiếu cũ hơn hoặc ngoài bộ lọc, hãy đổi khoảng ngày/bộ lọc rồi tìm lại.
 
 **Bước 3**: Tạo một phiếu việc mới. Ấn nút **Tạo công việc**. Ở ô nhập nhanh một dòng, gõ theo thứ tự **phòng → toà → loại việc → mô tả → [hạn]**, ví dụ: `A101 DEMO A sửa vòi nước rò rỉ 1`. Hệ thống phân tích ngay và tô **xanh** phần nhận đúng, **đỏ** phần chưa khớp:
 
@@ -48,7 +51,7 @@ Nếu bạn thêm vật tư vào phiếu, hệ thống tạo một **phiếu xu�
 
 **Bước 5**: Đổi độ ưu tiên hoặc sửa thông tin. Phiếu mới luôn mang ưu tiên **Bình thường**. Muốn nâng lên **Khẩn cấp** (hoặc hạ xuống **Thấp**), mở **Sửa** phiếu và chọn lại **Mức độ ưu tiên**; tại đây cũng đổi được tiêu đề, người thực hiện, hạn, mô tả. Ba mức ưu tiên của Công việc là **Khẩn cấp / Bình thường / Thấp**.
 
-**Bước 6**: Hoàn thành việc bằng ảnh nghiệm thu. Mở phiếu đang làm, bấm **Hoàn thành**. Chọn **thời điểm hoàn thành** (mặc định là bây giờ) rồi bấm **Chụp ảnh & hoàn thành**. Màn camera mở toàn màn hình:
+**Bước 6**: Hoàn thành việc bằng ảnh nghiệm thu. Mở phiếu đang làm, bấm **Hoàn thành** rồi **Chụp ảnh & hoàn thành**. Thời điểm hoàn thành do server đóng dấu khi nhận thao tác; người dùng không chọn hay sửa mốc này. Màn camera mở toàn màn hình:
 
 1. Hệ thống bật **camera** (ưu tiên camera sau) và đọc **vị trí GPS** của bạn. Đây là bước **bắt buộc chụp trực tiếp** — không có tuỳ chọn chọn ảnh từ thư viện.
 2. Bấm chụp. Ảnh được **đóng dấu (watermark)**: giờ cỡ lớn + ngày + thứ + **địa chỉ lấy từ toạ độ GPS thực tế** + một dòng GPS cho biết **khoảng cách tới toà nhà**.
@@ -102,16 +105,15 @@ Mở `/tasks` trên màn hình hẹp (điện thoại) sẽ chuyển sang **giao
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.kythuat" app-path="/tasks" app-label="Mở màn Công việc" fixtures="Sửa vòi A101 (đang làm), Thay đèn tầng 2 (đang làm), Vệ sinh A303 (hoàn thành)">
+<SandboxTry account="demo.chunha" app-path="/tasks" app-label="Mở màn Công việc" fixtures="Snapshot 13/08/2026: 0 việc đang làm, 0 việc hoàn thành." view-only>
 
-Bạn đăng nhập bằng tài khoản kỹ thuật demo, được giao hai toà DEMO A/B. Hãy thử trọn một vòng tạo và hoàn thành việc:
+Đây là bài quan sát, không tạo hoặc hoàn thành phiếu:
 
-1. Ở màn **Công việc**, xem ba phiếu demo. Bấm thẻ **Hoàn thành** để thấy **Vệ sinh A303**, rồi quay lại thẻ **Đang làm** để thấy **Sửa vòi A101** (Khẩn cấp) và **Thay đèn tầng 2**.
-2. Ấn **Tạo công việc**. Gõ nhanh một dòng, ví dụ `A101 DEMO A kiểm tra ổ điện 1`, để ý preview tô **xanh** phần khớp. Để **Người thực hiện** là chính bạn, rồi lưu — phiếu mới vào trạng thái **Đang làm** và được cấp mã `JOB-...`.
-3. Mở một việc **đang làm**, bấm **Hoàn thành** → **Chụp ảnh & hoàn thành**. Cho phép trình duyệt dùng camera, chụp một ảnh và bấm **Dùng ảnh này**. Quan sát trạng thái chuyển sang **Hoàn thành** và ảnh nghiệm thu (có đóng dấu ngày/giờ) được lưu kèm phiếu.
-4. Mở **Chi tiết** việc vừa hoàn thành để xem lại ảnh; thử **Ghi chú** để viết một dòng nhận xét nghiệm thu.
+1. Đọc hai thẻ thống kê **Đang làm** và **Hoàn thành**; snapshot hiện tại đều bằng `0`.
+2. Chuyển giữa các tab **Tất cả / Của tôi / Đang theo dõi** và kiểm tra empty state giữ đúng theo từng bộ lọc.
+3. Mở bộ lọc để nhận diện các tiêu chí Toà, Phòng, Loại việc, Người thực hiện, Trạng thái và khoảng ngày; không bấm **Tạo công việc**.
 
-Kết quả mong đợi: bạn nắm được cách giao việc bằng ô nhập nhanh, hiểu vòng đời **đang làm → hoàn thành**, và thấy vì sao mỗi việc hoàn thành đều đi kèm **ảnh chụp trực tiếp có định vị**. Xong bài, bấm **Reset** để trả sandbox về ba phiếu demo ban đầu.
+Kết quả mong đợi: bạn nhận diện đúng empty state và biết nơi tìm/lọc phiếu khi dữ liệu phát sinh. Quy trình tạo và hoàn thành chỉ thực hiện trong nghiệp vụ thật với quyền, camera và vị trí phù hợp.
 
 </SandboxTry>
 

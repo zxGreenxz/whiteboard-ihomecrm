@@ -2,12 +2,13 @@
 title: "Thông tin cá nhân"
 description: "Xem và cập nhật họ tên, email, số điện thoại, ảnh đại diện, đổi mật khẩu đăng nhập và bật/tắt thông báo đẩy cho từng thiết bị."
 routes: ["/account/profile"]
-permissions: [{module: settings, action: view}]
+permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  account: demo.chunha
 status: published
 ---
 
@@ -18,14 +19,14 @@ Trang **Thông tin cá nhân** là hồ sơ của chính bạn trong hệ thốn
 Nguyên tắc cần nhớ: **email trong trang này là email hiển thị trong hồ sơ**, khác với việc đổi mật khẩu đăng nhập; còn **thông báo đẩy bật riêng cho từng thiết bị** — bật trên máy tính không tự bật trên điện thoại và ngược lại.
 
 ::: info Điều kiện tiên quyết
-- Chỉ cần **đã đăng nhập** — mọi tài khoản (chủ nhà, quản lý toà, kế toán, nhân viên) đều có sẵn trang thông tin cá nhân của riêng mình, không cần cấp quyền đặc biệt.
+- Chỉ cần **đã đăng nhập** — route này không yêu cầu `settings.view` hay quyền nghiệp vụ đặc biệt.
 - Để bật **thông báo đẩy**, trình duyệt phải hỗ trợ (Chrome/Edge/Firefox bản mới; hoặc Safari trên iOS 16.4+ sau khi "Thêm vào màn hình chính").
 - Để đổi **ảnh đại diện**, chuẩn bị một ảnh **JPG hoặc PNG, tối đa 2MB**.
 :::
 
 ## Hướng dẫn từng bước
 
-![Màn hình](./images/buoc-01-man-hinh.webp)
+![Màn Thông tin cá nhân của demo.chunha với ảnh đại diện, họ tên, email, số điện thoại và khu Đổi mật khẩu](./images/buoc-01-man-hinh.webp)
 
 **Bước 1**: Mở trang. Bấm vào **ảnh đại diện/tên của bạn** ở góc trên (hoặc menu tài khoản) => **Thông tin cá nhân**, hoặc vào thẳng đường dẫn `/account/profile`. Màn hình chia thành các thẻ: **Ảnh đại diện**, **Thông tin cá nhân**, **Đổi mật khẩu** và **Thông báo đẩy (Push)**.
 
@@ -98,5 +99,5 @@ Kết quả mong đợi: bạn hiểu trang này gom **hồ sơ cá nhân + đ�
 
 - [Gói cước](/06-tai-khoan/goi-cuoc/) — xem gói thuê bao và hạn sử dụng của tài khoản.
 - [Chat Zalo](/03-quan-ly-van-hanh/chat-zalo/) — nguồn phát nhiều thông báo đẩy (tin nhắn Zalo mới) mà bạn bật ở thẻ **Thông báo đẩy**.
-- [Nhân viên & đội ngũ](/05-cai-dat/nhan-vien-doi-ngu/) — nơi chủ nhà quản lý danh sách tài khoản; tên/ảnh của bạn hiển thị ở đây.
+- [Thành viên tổ chức](/05-cai-dat/nhan-vien-doi-ngu/) — nơi quản trị viên quản lý membership, vai trò và phạm vi.
 - [Phân quyền](/05-cai-dat/phan-quyen/) — quyết định mỗi tài khoản làm được gì (khác với thông tin cá nhân của riêng bạn).

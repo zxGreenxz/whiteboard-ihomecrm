@@ -1,8 +1,8 @@
 ---
 title: "Thông báo"
-description: "Trung tâm thông báo IN_APP: nhắc hợp đồng hết hạn, hoá đơn tới hạn, thiếu cọc, thưởng việc — đánh dấu đã đọc, xoá và bật đẩy lên điện thoại."
+description: "Trung tâm thông báo cá nhân: lọc loại, đánh dấu đọc, điều hướng an toàn và xoá theo quyền."
 routes: ["/notifications"]
-permissions: [{module: notifications, action: view}]
+permissions: [{module: notifications, action: view}, {module: notifications, action: delete}]
 viewport: desktop
 audience: [tat-ca]
 captured:
@@ -13,73 +13,55 @@ status: published
 
 # Thông báo
 
-Trang **Thông báo** gom mọi nhắc nhở hệ thống sinh tự động — hợp đồng sắp hết hạn, hoá đơn tới hạn / quá hạn, hợp đồng còn thiếu cọc, thưởng khi hoàn thành việc — vào một hàng đợi để bạn xem, đánh dấu đã đọc và xoá. Dùng trang này mỗi ngày để không bỏ lỡ việc cần xử lý, hoặc bấm chuông ở góc trên màn hình để liếc nhanh 10 thông báo mới nhất.
+Route `/notifications` yêu cầu đăng nhập và `notifications.view`. Query chỉ lấy tối đa 200 thông báo IN_APP của chính user hiện tại; nhân viên không “xem thông báo của chủ nhà”. Chuông và trang đầy đủ cập nhật theo Realtime của từng user.
 
 ::: info Điều kiện tiên quyết
-- Quyền **Thông báo** (xem) — nhân viên cần được cấp module quyền này để thấy thông báo của chủ nhà.
-- Có sẵn dữ liệu đang vận hành để hệ thống có cái mà nhắc: hợp đồng đang hiệu lực, hoá đơn đã duyệt, hoặc hợp đồng còn thiếu cọc.
-- Thông báo nhắc chỉ được sinh khi **chính tài khoản chủ nhà** mở app (Bảng tin / Dashboard) và tự làm mới mỗi 6 giờ. Nhân viên mở app không tự sinh thông báo cho chủ.
-- Muốn nhận thông báo đẩy lên **thanh trạng thái điện thoại / máy tính**: cấp quyền thông báo cho trình duyệt khi được hỏi (trên iPhone phải "Thêm vào màn hình chính" trước).
+- `notifications.view` để mở trang.
+- Đánh dấu đọc áp dụng cho thông báo của chính bạn. Xoá cần capability/policy tương ứng; catalog khai báo `notifications.delete`.
+- Web Push cần trình duyệt hỗ trợ và người dùng cho phép; trên iPhone thường cần cài web app vào màn hình chính.
 :::
 
-## Hướng dẫn từng bước
+## Hướng dẫn
 
-**Bước 1**: Tại thanh điều hướng, mở **Theo dõi nhanh** => **Thông báo** (hoặc bấm biểu tượng **chuông** ở góc trên rồi chọn **Xem tất cả**). Màn hình hiện danh sách thông báo, mới nhất ở trên, mỗi dòng có nhãn loại, tiêu đề và nội dung.
+**Bước 1**: Mở **Quản lý & Vận hành** => **Thông báo**, hoặc nhấn chuông rồi **Xem tất cả**.
 
 ![Màn Thông báo với danh sách các thông báo hệ thống](./images/buoc-01-danh-sach.webp)
 
-**Bước 2**: Tại đầu trang, chọn tab **Tất cả** hoặc **Chưa đọc** để thu hẹp danh sách, rồi ấn các nút lọc theo loại (**Hóa đơn mới**, **Nhắc thanh toán**, **Quá hạn**, **HĐ hết hạn**, **Công việc**, **Thông báo chung**). Danh sách chỉ còn các thông báo khớp bộ lọc bạn chọn.
+**Bước 2**: Chọn tab **Tất cả** / **Chưa đọc**, sau đó chọn chip loại. Chip không có dòng dữ liệu sẽ tự ẩn; khi loại đó xuất hiện, chip tự hiện lại.
 
-**Bước 3**: Ấn vào một thông báo. Hệ thống tự đánh dấu nó là **đã đọc** (dòng nhạt đi) rồi mở thẳng thực thể liên quan — hoá đơn hoặc hợp đồng gắn với thông báo đó — để bạn xử lý ngay.
+Các loại hiện được UI hỗ trợ gồm: **Chờ tôi xử lý**, **Kết quả duyệt**, **Nhắc thanh toán**, **Quá hạn**, **Hợp đồng hết hạn**, **Thiếu cọc**, **Thưởng/Lương**, **Hoá đơn mới**, **Công việc**, **Thông báo chung** và **Thông báo tuỳ chỉnh**.
 
-**Bước 4**: Muốn dọn sạch dấu chưa đọc, ấn **Đánh dấu đã đọc**. Mọi thông báo chưa đọc chuyển sang đã đọc và con số đỏ trên chuông về 0.
+**Bước 3**: Nhấn một thông báo để đánh dấu đã đọc và mở đích liên quan. `metadata.url` được kiểm tra capability trước; nếu đích không mở được, router hạ về trang an toàn. Route cũ `/issues/:id` đã bị loại bỏ.
 
-**Bước 5**: Ấn nút **X** trên một dòng để xoá riêng thông báo đó, hoặc ấn **Xóa đã đọc** để dọn toàn bộ các thông báo đã xem xong.
+**Bước 4**: Dùng **Đánh dấu đã đọc** để chuyển toàn bộ thông báo chưa đọc của bạn sang READ.
 
-::: warning Xoá là vĩnh viễn
-Thông báo bị xoá không khôi phục lại được. Với thông báo nhắc (hết hạn, quá hạn, thiếu cọc), nếu điều kiện vẫn còn thì hệ thống sẽ sinh lại ở chu kỳ quét sau — nhưng thông báo thưởng việc thì chỉ đến một lần, cân nhắc trước khi **Xóa đã đọc** hàng loạt.
-:::
+**Bước 5**: Dùng nút X hoặc **Xoá đã đọc** khi có quyền. Xoá là vĩnh viễn và chỉ tác động dòng của chính user.
 
-::: tip Bật đẩy thông báo lên điện thoại
-Hệ thống có kênh **Web Push**: đẩy thông báo lên thanh trạng thái ngay cả khi bạn không mở tab app. Khi trình duyệt hỏi "Cho phép thông báo?", chọn **Cho phép**. Hiện có hai nguồn đẩy đang chạy thật: **thưởng khi hoàn thành việc** và **tin nhắn Zalo mới**.
-:::
+## Bộ sinh nhắc định kỳ
 
-## Các tính năng khác trên màn hình
-
-| Nút / Bộ lọc | Công dụng |
-|---|---|
-| Biểu tượng **chuông** (góc trên) | Badge đỏ hiện số thông báo chưa đọc; ấn để mở nhanh 10 thông báo gần nhất mà không rời trang đang xem. |
-| **Xem tất cả** (trong dropdown chuông) | Chuyển sang trang Thông báo đầy đủ này. |
-| Tab **Tất cả** / **Chưa đọc** | Lọc theo trạng thái đọc; **Chưa đọc** chỉ hiện thông báo còn dấu mới. |
-| Nút lọc theo loại | Lọc theo nhóm nghiệp vụ (hoá đơn, nhắc thanh toán, quá hạn, hết hạn, công việc, chung). Thông báo **thiếu cọc** không có nút lọc riêng — xem ở tab **Tất cả** dưới badge **Khác**. |
-| Nút **X** trên từng dòng | Xoá một thông báo. |
-| **Đánh dấu đã đọc** | Chuyển mọi thông báo chưa đọc thành đã đọc cùng lúc. |
-| **Xóa đã đọc** | Xoá toàn bộ thông báo đã đọc để làm gọn danh sách. |
+Hook định kỳ chạy cho **user đang đăng nhập**, không giới hạn chủ nhà. Nó thử chạy khi app mount, dùng localStorage để chặn thực thi dày hơn khoảng **20 giờ**, đồng thời giữ interval 6 giờ làm lưới an toàn cho tab mở qua ngày. Vì vậy không nên kỳ vọng cứ 6 giờ chắc chắn tạo một thông báo mới; từng loại nhắc còn có logic chống trùng riêng.
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 |---|---|
-| Không thấy thông báo nhắc nào dù có hợp đồng / hoá đơn sắp tới hạn | Thông báo nhắc chỉ sinh khi **tài khoản chủ nhà** mở app và lặp mỗi 6 giờ. Đăng nhập bằng tài khoản chủ và mở Bảng tin để kích hoạt bộ sinh nhắc. |
-| Điện thoại không nhận thông báo đẩy | Bạn chưa cấp quyền thông báo cho trình duyệt. Vào cài đặt trình duyệt bật lại thông báo cho trang; trên iPhone phải "Thêm vào màn hình chính" rồi mở từ biểu tượng đó. |
-| Lọc theo loại mà không thấy thông báo **thiếu cọc** | Thiếu cọc không có nút lọc riêng, nó nằm ở badge **Khác**. Chuyển về tab **Tất cả** để xem. |
-| Ấn thông báo công việc nhưng không mở được trang chi tiết | Module công việc đang được hoàn thiện, một vài liên kết chi tiết tạm thời chưa mở trang. Thông báo hoá đơn và hợp đồng vẫn mở bình thường. |
-| Số đỏ trên chuông không giảm sau khi xem | Chỉ khi bạn ấn vào thông báo (hoặc ấn **Đánh dấu đã đọc**) nó mới tính là đã đọc. Con số đỏ đếm theo số **chưa đọc**. |
+| Không thấy chip một loại thông báo | Chip có số lượng 0 được ẩn; chuyển về **Tất cả** và chờ dữ liệu loại đó phát sinh. |
+| Không thấy chip **Thiếu cọc** | UI hiện đã có chip riêng; nếu không thấy nghĩa là chưa có dòng thiếu cọc hoặc bộ lọc đang lưu giá trị khác. |
+| Nhấn thông báo nhưng về `/my-day` | Đích metadata không được phép hoặc không còn route; hệ thống fallback an toàn. |
+| Xoá bị từ chối | Kiểm tra `notifications.delete` và policy dữ liệu; `notifications.view` không tự bao gồm quyền xoá. |
+| Không thấy nhắc mới ngay | Bộ scheduler tối đa khoảng một lần/ngày/user và có chống trùng; kiểm tra điều kiện hợp đồng/hoá đơn thực tế. |
+| Chuông không cập nhật | Realtime có thể mất kết nối; tải lại trang. Web Push và chuông trong app là hai kênh khác nhau. |
 
 ## Thử trực tiếp trên sandbox
 
 <SandboxTry account="demo.quanly" app-path="/notifications" app-label="Mở Thông báo" view-only>
 
-Đăng nhập bằng `demo.quanly` và mở trang Thông báo. Bạn nên nhìn thấy:
-
-- Danh sách các thông báo hệ thống với nhãn loại khác nhau (nhắc hết hạn, tới hạn hoá đơn, quá hạn, thiếu cọc ở badge **Khác**...).
-- Chuyển giữa tab **Tất cả** / **Chưa đọc** và bấm các nút lọc theo loại để thấy danh sách thay đổi.
-- Ấn một thông báo để nó tự chuyển sang **đã đọc**, rồi thử nút **X** để xoá một dòng và **Đánh dấu đã đọc** cho phần còn lại.
+Quan sát danh sách của chính `demo.quanly`, chuyển giữa Tất cả/Chưa đọc và các chip đang có dữ liệu. Không xoá hàng loạt trong bài quan sát vì sandbox dùng chung.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Bảng tin](/02-theo-doi-nhanh/bang-tin/) — nơi hệ thống chạy bộ sinh thông báo nhắc mỗi khi chủ nhà mở app.
-- [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/) — hoàn thành việc có thưởng sẽ bắn thông báo thưởng và đẩy lên điện thoại.
-- [Thêm nhân viên & phân quyền](/01-bat-dau/them-nhan-vien/) — cấp quyền **Thông báo** để nhân viên thấy thông báo của chủ nhà.
+- [Bảng tin](/02-theo-doi-nhanh/bang-tin/)
+- [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/)
+- [Thêm nhân viên & phân quyền](/01-bat-dau/them-nhan-vien/)

@@ -6,14 +6,15 @@ permissions: [{module: assets, action: view}]
 viewport: desktop
 audience: [chu-nha, quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
 # Tài sản
 
-Màn **Tài sản** là sổ quản lý toàn bộ nội thất và tài sản cố định của bạn: máy lạnh, tủ lạnh, giường, bàn ghế… Mỗi món là một dòng, có **loại tài sản**, **tình trạng**, **giá mua**, **số lượng** và **vị trí** (toà nhà + căn hộ). Dùng màn này khi cần biết "phòng A101 đang có những đồ gì", theo dõi món nào đã cũ/hỏng cần thay, ghi lại việc chuyển đồ giữa các phòng, lập phiếu sửa chữa hay làm biên bản giao/nhận tài sản khi khách vào/ra.
+Màn **Tài sản** là sổ quản lý toàn bộ nội thất và tài sản cố định của bạn: máy lạnh, tủ lạnh, giường, bàn ghế… Mỗi món là một dòng, có **loại tài sản**, **tình trạng**, **giá mua**, **số lượng** và **vị trí** (toà nhà + căn hộ). Dùng màn này khi cần biết một phòng đang có những đồ gì, theo dõi món nào đã cũ/hỏng cần thay, ghi lại việc chuyển đồ giữa các phòng, lập phiếu sửa chữa hay làm biên bản giao/nhận tài sản khi khách vào/ra.
 
 Toàn bộ nghiệp vụ tài sản gom trong một màn với ba tab: **Danh sách tài sản**, **Lịch sử di chuyển** và **Lịch sử sửa chữa**. Từ đây bạn tạo tài sản mới, lập phiếu di chuyển, phiếu bảo trì và biên bản bàn giao theo hợp đồng.
 
@@ -43,6 +44,8 @@ Toàn bộ nghiệp vụ tài sản gom trong một màn với ba tab: **Danh s�
 **Bước 4**: Muốn ghi lại việc chuyển một món sang phòng khác, ấn **Di chuyển** để mở phiếu. Chọn **Tài sản** cần chuyển, **Từ căn hộ** (vị trí hiện tại), **Đến căn hộ** (bắt buộc), nhập **Số lượng**, **Ngày di chuyển** và **Lý do**, rồi lưu. Phiếu được ghi vào tab **Lịch sử di chuyển**.
 
 **Bước 5**: Cần ghi nhận sửa chữa/bảo trì, ấn **Bảo trì** để mở phiếu. Điền **Tài sản**, **Mô tả công việc** (bắt buộc), **Ngày bảo trì**, tùy chọn **Chi phí (VNĐ)**, **Phân công cho**, **Ghi chú** và **Trạng thái** (**Chờ xử lý / Đang làm / Hoàn thành**), rồi lưu. Phiếu vào tab **Lịch sử sửa chữa**.
+
+Ô **Chi phí** trên phiếu bảo trì chỉ là metadata theo dõi của tài sản. Nó không tự tạo phiếu chi, không làm giảm sổ quỹ công ty và không tự vào báo cáo tài chính; nếu đã trả tiền sửa chữa, hãy ghi khoản chi riêng ở [Thu chi](/03-quan-ly-van-hanh/thu-chi/).
 
 **Bước 6**: Khi khách nhận hoặc trả căn hộ, ấn **Biên bản bàn giao** để lập biên bản. Chọn **Hợp đồng**, **Loại** (**Nhận căn hộ** khi khách vào / **Trả căn hộ** khi khách ra), **Ngày**, và điền **Danh sách tài sản** bàn giao, rồi ấn **Tạo biên bản**.
 
@@ -83,18 +86,15 @@ Sau khi tạo, phiếu bảo trì **giữ nguyên trạng thái** bạn chọn l
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.kythuat" app-path="/assets" app-label="Mở màn Tài sản" fixtures="3 tài sản demo (máy lạnh A101, tủ lạnh A102, giường) + 1 phiếu di chuyển">
+<SandboxTry account="demo.chunha" app-path="/assets" app-label="Mở màn Tài sản" fixtures="Snapshot 13/08/2026: danh sách tài sản đang rỗng." view-only>
 
-Thực hành xem tài sản và lập phiếu di chuyển:
+Quan sát empty state mà không tạo dữ liệu:
 
-1. Mở màn **Tài sản** và xem 3 món mẫu: **máy lạnh** ở phòng **A101**, **tủ lạnh** ở phòng **A102** và một chiếc **giường**. Để ý loại, tình trạng và vị trí của từng món; xem 4 thẻ thống kê ở đầu trang.
-2. Mở tab **Lịch sử di chuyển** để xem phiếu di chuyển đã có sẵn.
-3. Quay lại tab **Danh sách tài sản**, ấn **Di chuyển**. Chọn **Tài sản = máy lạnh**, **Đến căn hộ = A102** (hoặc một phòng khác trong Tòa DEMO A), nhập **Số lượng = 1**, chọn **Ngày di chuyển** và ghi **Lý do** (ví dụ "chuyển phòng cho khách"), rồi lưu.
-4. Mở lại tab **Lịch sử di chuyển** và kiểm tra phiếu vừa tạo đã xuất hiện.
-5. (Tuỳ chọn) Vào **Sửa** món máy lạnh và đổi **Căn hộ** sang A102 để vị trí khớp với phiếu di chuyển.
-6. Xong, ấn **Reset** để trả sandbox về trạng thái ban đầu.
+1. Mở tab **Danh sách tài sản**, đọc bốn thẻ thống kê và xác nhận bảng không có dòng ở snapshot hiện tại.
+2. Mở **Lịch sử di chuyển** và **Lịch sử sửa chữa** để kiểm tra trạng thái rỗng theo từng tab.
+3. Nhận diện các nút **Tạo tài sản / Di chuyển / Bảo trì / Biên bản bàn giao**, nhưng không mở/lưu form trong bài quan sát.
 
-Kết quả mong đợi: bạn đọc được thông tin tài sản, hiểu 4 thẻ thống kê, và biết cách lập một phiếu di chuyển cùng lưu ý phải sửa lại vị trí tài sản cho khớp.
+Kết quả mong đợi: bạn nhận diện đúng empty state và biết các điều kiện dữ liệu cần có trước khi tạo tài sản, di chuyển hoặc bảo trì.
 
 </SandboxTry>
 

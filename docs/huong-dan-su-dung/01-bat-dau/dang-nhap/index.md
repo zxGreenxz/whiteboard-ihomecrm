@@ -1,7 +1,7 @@
 ---
 title: "Đăng nhập & khôi phục mật khẩu"
-description: "Cách đăng nhập ptcrm bằng tên đăng nhập, số điện thoại hoặc email, dùng nút hiện/ẩn mật khẩu, ghi nhớ đăng nhập và khôi phục mật khẩu qua email."
-routes: ["/login", "/forgot-password", "/reset-password", "/register"]
+description: "Đăng nhập bằng username, số điện thoại hoặc email; khôi phục mật khẩu bằng email và nhận lời mời tổ chức."
+routes: ["/login", "/forgot-password", "/reset-password", "/register", "/invite/:token"]
 permissions: []
 viewport: desktop
 audience: [tat-ca]
@@ -13,82 +13,67 @@ status: published
 
 # Đăng nhập & khôi phục mật khẩu
 
-Đây là cửa vào phần mềm ptcrm. Bạn dùng trang này mỗi khi bắt đầu phiên làm việc, hoặc khi cần đặt lại mật khẩu đã quên. Điểm cần nhớ: tài khoản **nhân viên** đăng nhập bằng **tên đăng nhập** (username) do quản lý cấp — không phải email — nên đừng bối rối nếu bạn không có email công ty.
+Trang `/login` nhận username, số điện thoại hoặc email. `/login`, `/register`, `/forgot-password` dành cho người chưa đăng nhập; nếu đã có phiên, hệ thống chuyển về `/`. `/reset-password` là route công khai nhưng chỉ cho đặt mật khẩu khi có recovery session hợp lệ.
 
 ::: info Điều kiện tiên quyết
-- Một tài khoản đã được quản lý tạo sẵn (**tên đăng nhập** + **mật khẩu**). Đăng ký công khai đã đóng — bạn không tự tạo tài khoản được, hãy liên hệ quản lý.
-- Để khôi phục mật khẩu qua email, tài khoản của bạn phải có **email thật** đã khai trong hồ sơ (không phải tên đăng nhập).
-- Không cần quyền đặc biệt: trang đăng nhập mở cho tất cả.
+- Có tài khoản đã được cấp hoặc được mời vào tổ chức.
+- Để dùng **Quên mật khẩu**, tài khoản phải có email thật mà bạn truy cập được.
+- Đăng ký công khai đã đóng; `/register` chỉ hướng dẫn liên hệ quản trị.
 :::
 
-## Hướng dẫn từng bước
+## Đăng nhập
 
-**Bước 1**: Tại trang **Đăng nhập**, điền định danh của bạn vào ô **Tài Khoản**. Ô này nhận **3 kiểu**: tên đăng nhập (vd `nguyenvana`), số điện thoại (vd `0900 000 001`) hoặc email — nhập kiểu nào cũng vào đúng tài khoản đó.
+**Bước 1**: Mở `/login`, nhập định danh vào ô **Tài Khoản**.
 
 ![Màn hình đăng nhập với ô Tài Khoản, Mật khẩu, nút Đăng nhập và liên kết Quên mật khẩu](./images/buoc-01-man-hinh.webp)
 
-**Bước 2**: Điền mật khẩu vào ô **Mật khẩu**. Ấn biểu tượng **con mắt** ở cuối ô để hiện/ẩn mật khẩu, giúp bạn kiểm tra đã gõ đúng chưa trước khi đăng nhập.
+Hệ thống chuẩn hoá định danh như sau:
 
-**Bước 3**: Nếu đây là máy cá nhân, tích **Ghi nhớ đăng nhập** để lần sau không phải nhập lại. Trên máy dùng chung, bỏ trống ô này.
+- Chuỗi 10–11 chữ số: số điện thoại.
+- Chuỗi có dạng email: email.
+- Giá trị khác: username, có hỗ trợ tiếng Việt và khoảng trắng trước khi chuẩn hoá nội bộ.
 
-**Bước 4**: Ấn **Đăng nhập**. Đăng nhập đúng sẽ đưa bạn vào **Bảng tin** (trang chủ), và giao diện tự hiển thị đúng những mục bạn được cấp quyền.
+**Bước 2**: Nhập mật khẩu, dùng biểu tượng con mắt để kiểm tra ký tự.
 
-::: tip Nhân viên nhập tên đăng nhập, không phải email
-Tài khoản nhân viên thường không gắn email công ty. Hệ thống tự nhận diện: nhập số 10–11 chữ số sẽ hiểu là số điện thoại, có ký tự `@` thì hiểu là email, còn lại hiểu là tên đăng nhập. Vì vậy chỉ cần nhập đúng thứ quản lý cấp cho bạn.
+**Bước 3**: Ấn **Đăng nhập**. Thành công sẽ điều hướng tới `/`: desktop hiển thị Bảng tin, mobile hiển thị HomeLauncher.
+
+::: info Đích sau đăng nhập
+Luồng đăng nhập hiện điều hướng về `/`. Nếu bạn được đưa tới đăng nhập từ một link mời hoặc route bảo vệ, hãy mở lại link/route đó sau khi đăng nhập; route đích vẫn kiểm tra capability và phạm vi.
 :::
 
-### Khôi phục mật khẩu qua email
+## Quên và đặt lại mật khẩu
 
-Chỉ dùng được khi tài khoản có email thật trong hồ sơ. Nếu bạn đăng nhập bằng tên đăng nhập và không nhớ email, hãy nhờ quản lý đặt lại giúp.
+1. Tại `/forgot-password`, nhập **email thật**. Form không nhận username hoặc số điện thoại cho luồng này.
+2. Mở email và dùng link đặt lại; hướng dẫn giao diện ghi link có hiệu lực **1 giờ**.
+3. `/reset-password` kiểm tra recovery session. Nếu session/link không hợp lệ hoặc đã dùng, quay lại xin link mới.
+4. Mật khẩu mới cần tối thiểu **8 ký tự**, có chữ hoa, chữ thường và số.
 
-**Bước 1**: Ở trang đăng nhập, ấn liên kết **Quên mật khẩu?**.
+## Nhận lời mời tổ chức
 
-**Bước 2**: Điền địa chỉ email của bạn rồi gửi. Hệ thống gửi một email chứa liên kết đặt lại mật khẩu.
-
-**Bước 3**: Mở email, ấn liên kết trong đó — bạn được đưa tới trang **Đặt lại mật khẩu**.
-
-**Bước 4**: Nhập mật khẩu mới (tối thiểu **8 ký tự**, có **chữ hoa, chữ thường và số**; thanh đo hiển thị độ mạnh), xác nhận lại rồi lưu. Sau đó quay về trang đăng nhập và vào bằng mật khẩu mới.
-
-::: warning Liên kết đặt lại có hạn dùng
-Liên kết trong email chỉ hiệu lực trong thời gian ngắn. Nếu trang **Đặt lại mật khẩu** báo "Link không hợp lệ", hãy quay lại bước **Quên mật khẩu?** để xin liên kết mới thay vì dùng lại liên kết cũ.
-:::
-
-## Các tính năng khác trên màn hình
-
-| Nút / Bộ lọc | Công dụng |
-|---|---|
-| Ô **Tài Khoản** | Nhập một trong ba: tên đăng nhập, số điện thoại (10–11 số) hoặc email. |
-| Biểu tượng **con mắt** (trong ô Mật khẩu) | Bật/tắt hiển thị mật khẩu để kiểm tra ký tự đã gõ. |
-| **Ghi nhớ đăng nhập** | Giữ phiên đăng nhập cho lần sau trên máy tin cậy. |
-| **Đăng nhập** | Xác thực và vào Bảng tin. |
-| **Quên mật khẩu?** | Mở luồng gửi email đặt lại mật khẩu. |
-| **Đăng ký ngay** | Đăng ký công khai đã đóng — liên kết chỉ dẫn tới trang thông báo liên hệ quản lý. |
+Người quản trị tạo lời mời tại `/settings/members` và gửi link thủ công. Người nhận phải đăng nhập bằng **đúng email được mời**, sau đó mở `/invite/:token`. Đăng nhập đúng nhưng link hết hạn vẫn không thể nhận lời mời; cần nhờ quản trị tạo link mới.
 
 ## Tình huống & lỗi thường gặp
 
 | Tình huống | Cách xử lý |
 |---|---|
-| Báo sai tài khoản hoặc mật khẩu | Kiểm tra lại đúng kiểu định danh (tên đăng nhập / SĐT / email) và mật khẩu; ấn con mắt để xem mật khẩu đã gõ. Thông báo lỗi gộp cả ba kiểu định danh nên không chỉ rõ sai ở đâu. |
-| Nhân viên cố đăng nhập bằng email nhưng không được | Tài khoản nhân viên đăng nhập bằng **tên đăng nhập** quản lý cấp, không phải email cá nhân. Dùng đúng tên đăng nhập. |
-| Không nhận được email đặt lại mật khẩu | Kiểm tra hộp thư rác; xác nhận tài khoản có email thật trong hồ sơ. Nếu tài khoản chỉ có tên đăng nhập, nhờ quản lý đặt lại giúp. |
-| Trang **Đặt lại mật khẩu** báo "Link không hợp lệ" | Liên kết đã hết hạn hoặc đã dùng — xin liên kết mới ở **Quên mật khẩu?**. |
-| Mật khẩu mới bị từ chối | Đặt tối thiểu 8 ký tự, có đủ chữ hoa, chữ thường và số. |
-| Muốn có tài khoản mới nhưng chỉ thấy trang liên hệ | Đăng ký công khai đã đóng; tài khoản do quản lý tạo trong mục Thêm nhân viên. |
+| Đang đăng nhập nhưng mở `/login` hoặc `/forgot-password` | PublicRoute chuyển bạn về trang chủ; đăng xuất trước nếu muốn đổi tài khoản. |
+| Báo sai tài khoản/mật khẩu | Kiểm tra khoảng trắng, kiểu định danh và mật khẩu; thông báo được gộp để không tiết lộ tài khoản nào tồn tại. |
+| Không nhận email khôi phục | Kiểm tra spam và email thật đã gắn tài khoản; username demo/nội bộ không thay cho email khôi phục. |
+| `/reset-password` báo link không hợp lệ | Link hết hạn, đã dùng hoặc recovery session không tồn tại; xin link mới. |
+| `/register` không có form đăng ký | Đăng ký công khai đã đóng; liên hệ quản trị hoặc nhận lời mời tổ chức. |
+| Link mời từ chối email | Đăng xuất tài khoản hiện tại và đăng nhập đúng email ghi trong lời mời. |
 
 ## Thử trực tiếp trên sandbox
 
 <SandboxTry account="demo.quanly" app-path="/login" app-label="Mở trang Đăng nhập" view-only>
 
-Đăng nhập thử bằng một tài khoản demo bất kỳ ở trang Sandbox, rồi quan sát giao diện đổi theo quyền:
-
-- Bạn sẽ **nhìn thấy** ô **Tài Khoản**, ô **Mật khẩu** kèm nút con mắt hiện/ẩn, ô **Ghi nhớ đăng nhập** và nút **Đăng nhập**.
-- Sau khi vào, để ý menu và các mục hiển thị **khác nhau** giữa tài khoản Quản lý và tài khoản nhân viên — đúng nguyên tắc "ai được cấp quyền gì thì thấy nấy".
+Dùng username demo và mật khẩu được công bố trên [trang Sandbox](/01-bat-dau/sandbox/). Sau đăng nhập, desktop mở Bảng tin tại `/`, còn mobile mở lưới chức năng.
 
 </SandboxTry>
 
 ## Quy trình liên quan
 
-- [Giới thiệu hệ thống](/01-bat-dau/gioi-thieu/) — hiểu tổng quan trước khi đăng nhập.
-- [Làm quen giao diện](/01-bat-dau/lam-quen-giao-dien/) — điều bạn thấy ngay sau khi đăng nhập.
-- [Thêm nhân viên & phân quyền](/01-bat-dau/them-nhan-vien/) — nơi quản lý tạo tên đăng nhập và mật khẩu cho nhân viên.
-- [Bảng tin](/02-theo-doi-nhanh/bang-tin/) — trang chủ mở ra sau khi đăng nhập thành công.
+- [Giới thiệu hệ thống](/01-bat-dau/gioi-thieu/)
+- [Làm quen giao diện](/01-bat-dau/lam-quen-giao-dien/)
+- [Thêm nhân viên & phân quyền](/01-bat-dau/them-nhan-vien/)
+- [Bảng tin](/02-theo-doi-nhanh/bang-tin/)

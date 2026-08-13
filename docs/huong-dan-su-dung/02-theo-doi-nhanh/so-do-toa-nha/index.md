@@ -6,8 +6,9 @@ permissions: [{module: buildings, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "c6e8e4584b0a43a543ac0dd296f49c53f7e85d6b"
+  account: demo.chunha
 status: published
 ---
 
@@ -16,7 +17,7 @@ status: published
 Trang **Sơ đồ toà nhà** vẽ toàn bộ phòng của một toà thành lưới xếp theo tầng, mỗi phòng tô màu theo trạng thái để bạn nắm nhanh phòng nào đang thuê, phòng nào còn trống hay đã đặt cọc. Đây là màn hình **chỉ để xem**, hợp lý khi bạn cần một cái nhìn tổng quan tình trạng cho thuê của toà mà không phải mở từng phòng. Trạng thái các phòng được tính tự động từ hợp đồng đang hiệu lực và cọc giữ chỗ, nên sơ đồ luôn phản ánh đúng thực tế mà không ai phải cập nhật tay.
 
 ::: info Điều kiện tiên quyết
-- Quyền **Bất động sản → Toà nhà (Xem)** để thấy trang và danh sách toà (bạn chỉ thấy các toà được phân quyền).
+- Route `/building-map` yêu cầu đăng nhập và `buildings.view`; danh sách toà/phòng còn được RLS lọc theo phạm vi.
 - Đã có **toà nhà** cùng **tầng** và **phòng** — xem [Tạo tầng & phòng](/01-bat-dau/tao-tang-phong/) nếu toà còn trống.
 - Trạng thái "Đang thuê" / "Sắp trống" tự hiện khi phòng có hợp đồng; trạng thái "Đã đặt cọc" tự hiện khi có phiếu thu cọc giữ chỗ.
 :::
@@ -25,7 +26,7 @@ Trang **Sơ đồ toà nhà** vẽ toàn bộ phòng của một toà thành lư
 
 **Bước 1**: Tại menu điều hướng, ấn chọn **Sơ đồ toà nhà**. Màn hình hiện lưới các phòng, xếp theo từng tầng và tô màu theo trạng thái.
 
-![Màn Sơ đồ toà nhà hiển thị các phòng theo tầng với màu trạng thái](./images/buoc-01-so-do.webp)
+![Sơ đồ DEMO Toà C hiển thị 12 căn theo tầng và năm màu trạng thái Đang thuê, Đã đặt cọc, Trống, Sắp trống, Ngừng hoạt động](./images/buoc-01-so-do.webp)
 
 **Bước 2**: Tại ô lọc **Toà nhà** ở đầu trang, chọn toà cần xem. Bạn có thể gõ tên toà (ví dụ *Tòa DEMO A*) hoặc gõ tên khu vực để thu hẹp nhanh; sơ đồ sẽ vẽ lại toàn bộ phòng của toà vừa chọn. Nếu bạn chưa chọn, trang tự lấy toà đầu tiên trong danh sách.
 
@@ -39,9 +40,9 @@ Trang **Sơ đồ toà nhà** vẽ toàn bộ phòng của một toà thành lư
 | **Sắp trống** | Hợp đồng của phòng còn 1–30 ngày là hết hạn. |
 | **Đã đặt cọc** | Có phiếu thu cọc giữ chỗ (chưa ký hợp đồng) — hệ thống tự đặt. |
 | **Trống** | Phòng chưa có hợp đồng và chưa có cọc giữ chỗ. |
-| **Ngừng hoạt động** | Phòng đang bảo trì hoặc tạm ngừng cho thuê. |
+| **Ngừng hoạt động** | Nhãn hiển thị cho trạng thái bảo trì/ngừng khai thác trên sơ đồ desktop. |
 
-**Bước 5**: Ấn vào một ô phòng bất kỳ để mở hộp chi tiết phòng — xem thông tin phòng cùng các nút thao tác nhanh (tạo hợp đồng, báo cáo công việc).
+**Bước 5**: Ấn vào một ô phòng để mở chi tiết. Sơ đồ là màn chỉ xem; các nút điều hướng tới hợp đồng/công việc vẫn cần capability riêng của route đích.
 
 ::: tip
 Trạng thái trên sơ đồ được tính tự động: "Đang thuê / Sắp trống" suy từ hợp đồng đang hiệu lực, "Đã đặt cọc" suy từ phiếu thu cọc giữ chỗ. Muốn đổi trạng thái một phòng, hãy sửa ở hợp đồng hoặc phiếu cọc — không có ô chỉnh trạng thái ngay trên sơ đồ này.
@@ -57,8 +58,7 @@ Trạng thái trên sơ đồ được tính tự động: "Đang thuê / Sắp 
 | Ô **tìm phòng / khách** | Gõ tên phòng hoặc tên khách để lọc nhanh trong toà đang xem. |
 | Thẻ thống kê | Đếm nhanh số phòng theo từng trạng thái của toà đang xem. |
 | Chú thích màu | Bảng màu giải nghĩa 5 trạng thái phòng. |
-| Nút **Tạo hợp đồng** (trong chi tiết phòng) | Mở form hợp đồng đã điền sẵn toà và phòng. |
-| Nút **Báo cáo công việc** (trong chi tiết phòng) | Chuyển sang trang Việc để ghi nhận công việc / sự cố cho phòng. |
+| Nút nghiệp vụ trong chi tiết | Chỉ điều hướng; route đích tự kiểm tra capability tạo hợp đồng/công việc. |
 
 Các bộ lọc (toà, tầng, trạng thái, ô tìm) được giữ lại khi bạn tải lại trang (F5), nên quay lại màn hình bạn không phải chọn lại từ đầu.
 
@@ -77,7 +77,7 @@ Các bộ lọc (toà, tầng, trạng thái, ô tìm) được giữ lại khi 
 
 <SandboxTry account="demo.quanly" app-path="/building-map" app-label="Mở Sơ đồ toà nhà" view-only>
 
-Chọn **Tòa DEMO A** ở ô lọc **Toà nhà**, rồi quan sát màu trạng thái của từng phòng theo tầng.
+Chọn **DEMO Toà A** ở ô lọc **Toà nhà**, rồi quan sát màu trạng thái của từng phòng theo tầng. Tài khoản này chỉ thấy A+B; dùng `demo.quanly2` để xem C+D.
 
 Bạn hãy nhìn thấy:
 - Lưới các phòng (A101, A102…) gom nhóm theo tầng.

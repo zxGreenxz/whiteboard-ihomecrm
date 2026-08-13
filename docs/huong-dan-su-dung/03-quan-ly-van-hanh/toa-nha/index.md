@@ -6,8 +6,9 @@ permissions: [{module: buildings, action: view}]
 viewport: desktop
 audience: [quan-ly-toa]
 captured:
-  date: "2026-07-03"
-  account: demo
+  date: "2026-08-13"
+  commit: "ca1104137123942e27c1aa6b41147b256be59e82"
+  account: demo.chunha
 status: published
 ---
 
@@ -66,11 +67,11 @@ Cột số phòng (**total_rooms**) của mỗi toà do hệ thống **tự đ�
 | Không thấy ô **sổ quỹ mặc định** trong form | 2 sổ quỹ TT/TK chỉ hiển thị với tài khoản **quản trị cấp cao**. Nhân viên/quản lý thường sẽ không thấy phần này. |
 | Bật/tắt hoạt động nhưng bảng "nhảy" lại trạng thái cũ | Thao tác phản hồi tức thì rồi ghi xuống máy chủ; nếu ghi lỗi (mất mạng/thiếu quyền) hệ thống tự trả về trạng thái cũ. Thử lại hoặc kiểm tra quyền **Sửa**. |
 | Toà "Chung" không xuất hiện trong danh sách | Đúng thiết kế: toà ảo dùng cho chi phí không thuộc toà thật nào bị ẩn khỏi danh sách, chỉ dùng trong form thu/chi. |
-| Nhập trùng **mã** toà mà vẫn lưu được | Mã toà không bắt buộc duy nhất ở hệ thống; nên tự đặt mã không trùng để tiện tra cứu và tạo công việc nhanh. |
+| Nhập trùng **mã** toà mà vẫn lưu được | Cơ sở dữ liệu không có ràng buộc duy nhất cho mã toà; đây là nhãn tra cứu do bạn quản lý. Nên tự đặt mã không trùng để lọc và tạo công việc nhanh không chọn nhầm. |
 
 ## Thử trực tiếp trên sandbox
 
-<SandboxTry account="demo.quanly" app-path="/buildings" app-label="Mở màn Toà nhà" fixtures="Tòa DEMO A, Tòa DEMO B">
+<SandboxTry account="demo.quanly" app-path="/buildings" app-label="Mở màn Toà nhà" fixtures="Tòa DEMO A, Tòa DEMO B" view-only>
 
 Thực hành điều hướng màn danh sách toà:
 

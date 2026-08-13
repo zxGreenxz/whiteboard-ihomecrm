@@ -1,8 +1,8 @@
 ---
 title: "Báo cáo: Lịch thanh toán"
-description: "Theo dõi từng phòng đang thuê đã được lập hoá đơn đến ngày nào, để biết phòng nào sắp tới kỳ thu tiền tiếp theo."
+description: "Theo dõi hạn hóa đơn theo phòng và hiểu các giới hạn hiện tại của bộ lọc, phạm vi thời gian và số dòng."
 routes: ["/reports/finance/payment-schedule"]
-permissions: [{module: reports_finance, action: view}]
+permissions: [{module: reports_finance, action: payment_schedule}]
 viewport: desktop
 audience: [chu-nha, ke-toan, quan-ly-toa]
 captured:
@@ -13,71 +13,36 @@ status: published
 
 # Báo cáo: Lịch thanh toán
 
-Báo cáo **Lịch thanh toán** cho bạn biết **mỗi phòng đang thuê đã được lập hoá đơn đến ngày nào**. Thay vì liệt kê từng hoá đơn, báo cáo gom **mỗi phòng thành một dòng** và hiển thị mốc **Đã lên hóa đơn đến ngày** — tức ngày đến hạn muộn nhất trong số các hoá đơn đã tạo cho phòng đó.
+Route cần quyền `reports_finance.payment_schedule`. Báo cáo hỗ trợ rà các hạn hóa đơn theo phòng, nhưng không phải lịch phát hành canonical và hiện có một số giới hạn cần biết.
 
-Nhờ vậy bạn nhìn nhanh được phòng nào đã "phủ" hoá đơn tới tương lai và phòng nào có mốc rơi vào quá khứ / gần hôm nay — dấu hiệu **cần tạo hoá đơn cho kỳ thu tiếp theo**. Báo cáo này chỉ hiển thị **mốc ngày**, không hiển thị số tiền còn phải thu; phần tiền xử lý tại [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/).
+![Màn hình báo cáo Lịch thanh toán](./images/buoc-01-man-hinh.webp)
 
-Báo cáo phù hợp với **kế toán**, **quản lý toà** và **chủ nhà** khi rà soát chu kỳ xuất hoá đơn hằng tháng.
+## Cách đọc
 
-::: info Điều kiện tiên quyết
-Bạn cần quyền xem **Báo cáo tài chính** (module `reports_finance`, hành động **Xem**). Nếu menu **Báo cáo tài chính** không hiện, hãy nhờ chủ nhà bật quyền cho tài khoản của bạn. Nhân viên chỉ thấy dữ liệu của các toà nằm trong phạm vi được phân công.
+- Dữ liệu lấy các hóa đơn có `due_date` đến **hôm nay + 365 ngày**.
+- Các dòng được nhóm theo phòng; ngày đại diện là **hạn lớn nhất** trong nhóm.
+- Dùng báo cáo để tìm phòng cần rà tiếp, rồi mở danh sách/chi tiết hóa đơn để quyết định nghiệp vụ.
+
+## Giới hạn hiện tại
+
+::: warning Không dùng làm danh sách đầy đủ tuyệt đối
+- Truy vấn hiện chưa loại hóa đơn đã hủy hoặc bị xóa.
+- Truy vấn chưa phân trang nên có thể bị giới hạn ở 1.000 dòng.
+- Bộ lọc phòng trên giao diện hiện không thực sự lọc kết quả.
+- Một phòng có nhiều hóa đơn sẽ hiển thị theo ngày đến hạn lớn nhất, có thể che một hóa đơn cũ hơn cần xử lý.
 :::
 
-## Cách mở
+Vì vậy, không kết luận “không có hóa đơn” chỉ vì báo cáo không hiện dòng. Hãy kiểm tra [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/) với bộ lọc hợp đồng, kỳ và trạng thái.
 
-1. Trên thanh điều hướng, vào **Báo cáo** => **Báo cáo tài chính** để mở trang tổng hợp báo cáo tài chính.
-2. Tại lưới thẻ, bấm thẻ **Lịch thanh toán**.
+## Cách sử dụng an toàn
 
-![Màn hình báo cáo](./images/buoc-01-man-hinh.webp)
-
-Bạn cũng có thể vào thẳng qua đường dẫn **/reports/finance/payment-schedule**.
-
-## Bộ lọc & cách đọc số
-
-Trên đầu trang có các ô lọc, phía dưới là bảng dữ liệu. Bộ lọc áp dụng ngay khi bạn chọn (không cần nút "Áp dụng").
-
-| Cột / Chỉ số | Ý nghĩa |
-| --- | --- |
-| **Toà nhà** (ô lọc) | Chọn một toà để chỉ xem phòng của toà đó; để **Tất cả toà nhà** để xem toàn bộ. Ô này lọc trước khi gom theo phòng. |
-| **Chọn phòng** (ô lọc) | Hiện chỉ có lựa chọn **Tất cả phòng**. Ô này chưa lọc được theo từng phòng riêng lẻ. |
-| **Chọn ngày** (ô lọc) | Giới hạn dưới của cột **Đã lên hóa đơn đến ngày**: chỉ hiện phòng có mốc **từ ngày này trở đi**. |
-| **Ngày kết thúc** (ô lọc) | Giới hạn trên: chỉ hiện phòng có mốc **đến ngày này**. Kết hợp với **Chọn ngày** để soi một khoảng thời gian. |
-| **Toà nhà** (cột bảng) | Tên toà nhà chứa phòng. |
-| **Căn hộ** (cột bảng) | Số / tên phòng. Mỗi phòng chỉ xuất hiện **một dòng** duy nhất. |
-| **Khách hàng** (cột bảng) | Khách đại diện của hợp đồng đang thuê phòng. |
-| **Đã lên hóa đơn đến ngày** (cột bảng) | Ngày đến hạn **muộn nhất** trong các hoá đơn đã tạo cho phòng. Đây là "ranh giới" đã xuất hoá đơn: mốc càng xa trong tương lai nghĩa là phòng đã được lập hoá đơn tới kỳ đó. |
-| **Số bản ghi** (dưới bảng) | Số dòng mỗi trang: 10 / 20 / 50 / 100. |
-
-**Cách đọc nhanh:** bảng sắp xếp **giảm dần theo ngày** (phòng có mốc xa nhất lên trên). Những phòng nằm **cuối bảng** — có **Đã lên hóa đơn đến ngày** rơi vào quá khứ hoặc rất gần hôm nay — là phòng bạn nên kiểm tra xem **đã tạo hoá đơn cho kỳ kế tiếp chưa**.
-
-## Nguồn số liệu
-
-- Báo cáo đọc từ bảng **hoá đơn** (`invoices`), lấy các hoá đơn có **ngày đến hạn trong vòng 365 ngày tới** rồi **gom theo phòng**.
-- Với mỗi phòng, cột **Đã lên hóa đơn đến ngày** = **ngày đến hạn muộn nhất** trong tất cả hoá đơn của phòng đó.
-- Cột **Khách hàng** lấy khách **đại diện** của hợp đồng gắn với hoá đơn.
-- Lưu ý: báo cáo gom **mọi** hoá đơn của phòng (kể cả hoá đơn nháp hoặc đã huỷ/xoá mềm nếu có), nên hãy đối chiếu với trang **Hoá đơn** khi thấy một mốc ngày bất thường. Xem thêm [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/).
-
-## Xuất & mẹo
-
-- Trang **chưa có nút Xuất Excel**. Để lưu lại, bạn có thể chụp màn hình, hoặc tăng **Số bản ghi** lên 100 rồi bôi đen bảng để sao chép.
-- Dùng cặp ô **Chọn ngày** + **Ngày kết thúc** để lọc riêng những phòng có mốc rơi vào tháng hiện tại — nhanh chóng thấy phòng nào **sắp hết kỳ đã xuất hoá đơn**.
-- Chọn từng **Toà nhà** khi bạn phụ trách nhiều toà, để rà soát gọn theo từng toà.
-- Báo cáo này chỉ nói **đến ngày nào**, không nói **còn phải thu bao nhiêu**. Muốn biết và xử lý số tiền, hãy mở [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/).
-- Bộ lọc bạn chọn được **giữ lại qua F5** (làm mới trang), nên khi quay lại báo cáo vẫn ở đúng toà/khoảng ngày bạn đang xem.
-
-## Thử trực tiếp trên sandbox
-
-<SandboxTry account="demo.chunha" app-path="/reports/finance/payment-schedule" view-only>
-
-Hãy nhìn thấy: mỗi phòng đang thuê ở **Toà DEMO A** và **Toà DEMO B** là **một dòng** trong bảng, với cột **Đã lên hóa đơn đến ngày** cho biết phòng đã được xuất hoá đơn tới mốc nào. Thử để **Tất cả toà nhà** rồi đổi sang **Toà DEMO A** để thấy bảng chỉ còn phòng của toà A. Các phòng đang còn nợ như **A102** và **A105** vẫn xuất hiện ở đây kèm mốc ngày của hoá đơn gần nhất — số tiền còn nợ thì xem ở báo cáo Khách nợ tiền.
-
-</SandboxTry>
+1. Lọc tòa/phạm vi hỗ trợ nếu có.
+2. Ghi nhận các phòng có hạn cần chú ý.
+3. Mở danh sách hóa đơn để loại trạng thái hủy/xóa và xem từng kỳ.
+4. Chỉ tạo hóa đơn mới sau khi chắc chắn kỳ tương ứng chưa tồn tại.
 
 ## Quy trình liên quan
 
-- [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/) — tạo hoá đơn kỳ mới cho các phòng đã hết kỳ.
-- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) — sau khi có hoá đơn thì ghi nhận thu tiền.
-- [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/) — nơi tạo và tra cứu chi tiết từng hoá đơn của phòng.
-- [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/) — ghi nhận thanh toán cho hoá đơn.
-- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) — xem và thu số tiền còn lại theo hóa đơn/phòng.
-- [Hub Báo cáo tài chính](/04-bao-cao/hub-tai-chinh/) — quay lại danh sách toàn bộ báo cáo tài chính.
+- [Hoá đơn — danh sách & tạo lẻ](/03-quan-ly-van-hanh/hoa-don/)
+- [Sinh hoá đơn hàng loạt](/03-quan-ly-van-hanh/sinh-hoa-don/)
+- [Thu tiền tại phòng](/03-quan-ly-van-hanh/thu-tien-mobile/)
