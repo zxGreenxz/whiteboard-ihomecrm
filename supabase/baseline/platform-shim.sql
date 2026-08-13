@@ -48,7 +48,19 @@ CREATE SCHEMA IF NOT EXISTS extensions;
 -- 183 tham chiếu, hầu hết là khoá ngoại `REFERENCES auth.users(id)`. Chỉ cần cột
 -- `id` để khoá ngoại dựng được; KHÔNG dựng lại toàn bộ bảng users của GoTrue —
 -- diễn tập kiểm cấu trúc của app, không kiểm hạ tầng đăng nhập.
-CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);
+-- `email` phải có: forward lane có migration đọc `u.email` từ `auth.users` và
+-- chết với "column u.email does not exist" nếu bảng chỉ có `id`. Cùng bài học
+-- phạm vi như phần role ở trên — biên phải tính cả forward lane, không chỉ
+-- baseline. Vẫn KHÔNG dựng lại toàn bộ bảng users của GoTrue: chỉ hai cột mà
+-- diễn tập thật sự chạm tới.
+CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY, email text);
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email text;
+
+-- Quyền trên schema `public`. Trên Supabase, ba role nền tảng có sẵn quyền này;
+-- Postgres trần thì không, và một migration trong forward lane chết với
+-- "permission denied for schema public".
+GRANT USAGE ON SCHEMA public TO authenticated, anon, service_role;
+GRANT USAGE ON SCHEMA auth, extensions TO authenticated, anon, service_role;
 
 -- ── auth.uid() / auth.jwt() / auth.role() ────────────────────────────────────
 -- 650 policy gọi `auth.uid()`. Trả NULL là đúng ngữ nghĩa cho một phiên không
