@@ -58,3 +58,9 @@ d20c7b93a5c46ebb1547339c6935a516f42a9904:supabase/migrations/20260727090000_open
 # là TÊN RPC trong một bảng kế hoạch, viết trong code span Markdown. Không miễn trừ
 # cả docs/ vì đó chính là kiểu miễn trừ mà .gitleaks.toml cấm ở đầu file.
 80153a9ae70c0e667253938201fc25369c80773f:docs/superpowers/plans/2026-07-30-thu-tien-state-of-world.md:generic-api-key:1157
+
+# supabase/baseline/schema.sql — `root.r2_anchor_key = p_request->>'anchorKey'` trong thân hàm
+# openclaw_maintenance (baseline schema-only chụp từ production, 0 dòng dữ liệu). Đây là phép
+# SO SÁNH CỘT SQL với tham số request, không phải giá trị khoá. Xác minh 13/08/2026 khi commit
+# baseline vào repo cho Migration Restore Drill.
+5b8cd87483cb2c3b5c8647ecfb3440f44b07f1cd:supabase/baseline/schema.sql:generic-api-key:31958

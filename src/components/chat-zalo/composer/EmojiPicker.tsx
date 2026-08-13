@@ -14,11 +14,21 @@ const GROUPS: { name: string; list: string }[] = [
 const RECENT_KEY = 'zalo-recent-emoji';
 
 function getRecents(): string[] {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+  } catch {
+    // localStorage hỏng/JSON rác/private mode — "gần đây" chỉ là tiện ích trang
+    // trí, rỗng là hành vi đúng, không có nhánh quyền/dữ liệu nào để phân biệt.
+    return [];
+  }
 }
 function pushRecent(e: string) {
   const cur = [e, ...getRecents().filter((x) => x !== e)].slice(0, 16);
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(cur)); } catch { /* private mode */ }
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(cur));
+  } catch {
+    // private mode / hết quota — mất "gần đây" không ảnh hưởng gì.
+  }
 }
 
 // Tách chuỗi emoji thành mảng grapheme (emoji ghép giữ nguyên). Intl.Segmenter

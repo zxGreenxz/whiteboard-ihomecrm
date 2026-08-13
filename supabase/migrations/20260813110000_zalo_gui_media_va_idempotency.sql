@@ -111,7 +111,9 @@ CREATE POLICY "zalo media doc theo org"
 --    (DROP chữ ký cũ để tránh nhập nhằng overload trên PostgREST)
 -- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.zalo_send_message(uuid, text, text, text, jsonb, text);
-CREATE FUNCTION public.zalo_send_message(
+-- OR REPLACE để chạy lại được lần hai: lần 2 chữ ký 6 tham số đã biến mất
+-- nhưng bản 8 tham số tồn tại — CREATE trần nổ 42723 (gate idempotent).
+CREATE OR REPLACE FUNCTION public.zalo_send_message(
   p_conversation_id     uuid,
   p_type                text  DEFAULT 'text',
   p_body                text  DEFAULT NULL,

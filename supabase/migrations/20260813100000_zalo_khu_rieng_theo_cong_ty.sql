@@ -468,7 +468,9 @@ $$;
 
 -- 7.7 Bật/tắt tự động hoá — theo TỔ CHỨC (đổi chữ ký: thêm p_organization_id)
 DROP FUNCTION IF EXISTS public.zalo_toggle_automation(text, boolean);
-CREATE FUNCTION public.zalo_toggle_automation(p_kind text, p_enabled boolean, p_organization_id uuid DEFAULT NULL)
+-- OR REPLACE để file chạy lại được lần hai (gate idempotent): lần 2 chữ ký cũ
+-- đã biến mất nhưng chữ ký mới tồn tại — CREATE trần sẽ nổ 42723.
+CREATE OR REPLACE FUNCTION public.zalo_toggle_automation(p_kind text, p_enabled boolean, p_organization_id uuid DEFAULT NULL)
 RETURNS public.zalo_automations
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -505,7 +507,8 @@ REVOKE ALL ON FUNCTION public.zalo_toggle_automation(text, boolean, uuid) FROM a
 
 -- 7.8 Kết nối tài khoản — theo TỔ CHỨC (đổi chữ ký: thêm p_organization_id)
 DROP FUNCTION IF EXISTS public.zalo_request_connect(uuid, text);
-CREATE FUNCTION public.zalo_request_connect(p_account_id uuid DEFAULT NULL, p_name text DEFAULT NULL, p_organization_id uuid DEFAULT NULL)
+-- OR REPLACE cùng lý do zalo_toggle_automation ở trên.
+CREATE OR REPLACE FUNCTION public.zalo_request_connect(p_account_id uuid DEFAULT NULL, p_name text DEFAULT NULL, p_organization_id uuid DEFAULT NULL)
 RETURNS public.zalo_accounts
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
