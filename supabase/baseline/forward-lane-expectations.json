@@ -86,6 +86,11 @@
       "thongDiep": "ma tran cach ly can it nhat 2",
       "why": "Nghiệm thu ma trận cách ly cần ít nhất 2 toà DEMO có router MikroTik hoạt động; database rỗng có 0 toà."
     },
+    "20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "ma tran cach ly can it nhat 2",
+      "why": "Bản tái-lập-được của 20260813020000: chép NGUYÊN VĂN khối khẳng định (luật thay-thế của audit rollout đòi vậy), nên trên database rỗng nó dừng ở đúng chỗ đó với đúng thông điệp đó — 0 toà DEMO có router."
+    },
     "20260813030000_chan_null_org_dot_bon.sql": {
       "kyVong": "cascade",
       "tu": "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql",

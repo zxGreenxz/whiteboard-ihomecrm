@@ -4,6 +4,24 @@
   "reviewedAt": "2026-08-12",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy.",
   "files": {
+    "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
+      "sha256": "6b53c7ae47840ef998a1530b3619001e8092ef532f3832ad8f2a67e3a8d6280f",
+      "missingObjects": [
+        "function:app_private.network_center_cap_lai_slot_mikrotik_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 14/08/2026, chưa đi qua lane apply nào — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Nó là forward-fix làm 20260813020000 (DML thuần, đã ledger-applied) quan sát được với audit rollout: hàm chép nguyên văn hai INSERT + khối DO của file gốc. Hàm sẽ xuất hiện khi stage 25 của rollout manifest (hoặc migrate:forward) chạy; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.network_center_cap_lai_slot_mikrotik_v1()"
+        },
+        {
+          "duong_dan": "scripts/network-center-rollout-manifest.json",
+          "trich_doan": "function:app_private.network_center_cap_lai_slot_mikrotik_v1() — descriptor stage 25, đo bằng generator trên cụm dùng-một-lần"
+        }
+      ]
+    },
     "supabase/migrations/016_document_templates.sql": {
       "sha256": "29878ad3f80b3abdc839a61fa9dac7a470ec2d53d049bcab9fddae4cc50cc005",
       "missingObjects": [

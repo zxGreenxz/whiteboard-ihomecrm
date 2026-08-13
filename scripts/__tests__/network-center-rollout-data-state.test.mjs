@@ -56,9 +56,16 @@ import { REPO_ROOT, loadManifest } from "../network-center-rollout-common.mjs";
 
 const ROLLOUT_OFF = "rows_rollout_off:public.network_site_settings";
 const STAGE_23 = "supabase/migrations/20260729148000_network_center_action_path_reachability.sql";
+// Stage 25 (14/08/2026): forward-fix làm stage 24 DML thuần quan sát được. Chưa
+// từng chạy trên production — hàm nó khai vắng mặt y như bộ object của stage 23.
+const STAGE_25 =
+  "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
+// Cập nhật 14/08/2026 khi manifest lên 25 stage: stage 24 (DML thuần,
+// ledger-applied qua lane forward) không thêm descriptor nào; stage 25 thêm đúng
+// MỘT — hàm dưới đây — và chưa apply nên nó vào danh sách vắng mặt.
 const MEASURED_ABSENT = [
   ROLLOUT_OFF,
   "function_service_only:public.network_center_admin_enroll_access_port_v1(uuid,text,text,uuid)",
@@ -67,6 +74,7 @@ const MEASURED_ABSENT = [
   "function:app_private.network_center_reconcile_device_lifecycle_v1(timestamp with time zone)",
   "function:public.network_center_admin_enroll_access_port_v1(uuid,text,text,uuid)",
   "function:public.network_center_admin_list_access_ports_v1(uuid)",
+  "function:app_private.network_center_cap_lai_slot_mikrotik_v1()",
 ];
 
 // Measured the same way: the functions stage 23 owns whose live body is not the
@@ -83,6 +91,7 @@ const MEASURED_ABSENT_BODIES = [
   "app_private.network_center_reconcile_device_lifecycle_v1",
   "public.network_center_admin_enroll_access_port_v1",
   "public.network_center_admin_list_access_ports_v1",
+  "app_private.network_center_cap_lai_slot_mikrotik_v1",
 ];
 
 // The two DEMO sites that were legitimately promoted. Real ids are not needed
@@ -124,16 +133,17 @@ async function productionFixture() {
 // testing something else.
 test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
-  assert.equal(every.length, 445);
+  assert.equal(every.length, 446);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 23);
+  assert.equal(manifest.migrations.length, 25);
   assert.equal(manifest.migrations[22].path, STAGE_23);
+  assert.equal(manifest.migrations[24].path, STAGE_25);
   const classification = classifyCatalog(manifest, present, { expectations, live });
-  assert.equal(classification.bodyMismatches.length, 8);
+  assert.equal(classification.bodyMismatches.length, 9);
   assert.deepEqual(
-    [...new Set(classification.bodyMismatches.map((item) => item.migration))],
-    [STAGE_23],
-    "every stale body must belong to the unapplied stage; an earlier one would be a different bug",
+    [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
+    [STAGE_23, STAGE_25].sort(),
+    "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });
 
