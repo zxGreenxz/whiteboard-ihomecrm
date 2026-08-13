@@ -418,7 +418,7 @@ WHERE NOT EXISTS (
 -- fixture more than it needs would blunt them.
 --
 -- Nó cũng KHÔNG được can_poll, và đây không chỉ là triết lý cấp-đủ-dùng: index
--- một-phần `one_active_poller_per_device_idx` chỉ cho MỘT assignment
+-- một-phần one_active_poller_per_device_idx chỉ cho MỘT assignment
 -- can_poll=true đang hiệu lực trên mỗi thiết bị. Từ 13/08/2026 router DEMO có
 -- poller THẬT (bootstrap Network Center) giữ suất đó, nên fixture xin
 -- can_poll=true là 23505 ngay từ setup — gate chết trước khi đo được gì, vì một
@@ -444,22 +444,6 @@ SELECT worker.id,
        clock_timestamp() + INTERVAL '1 hour'
 FROM public.network_workers worker
 WHERE worker.worker_key = 'demo.harness.v2';
-
--- ĐỖ TẠM slot poller đang sống trên hai router fixture. Từ 20260813020000,
--- index one_active_poller_per_device (WHERE can_poll AND active_until IS NULL)
--- chỉ cho MỘT poller active mỗi thiết bị — và worker THẬT
--- (vd vultr-network-center-01, nhận slot 13/08 17:03) đang giữ nó, nên INSERT
--- fixture bên dưới nổ 23505 (đã cắn trên CI 13/08). Vì TOÀN BỘ harness này
--- chạy trong transaction kết thúc bằng ROLLBACK, thu hẹp active_until ở đây
--- chỉ tồn tại BÊN TRONG transaction: rollback trả slot về nguyên trạng, worker
--- thật ngoài đời không mất một giây poll nào.
-UPDATE public.network_worker_assignments assignment
-   SET active_until = clock_timestamp()
-FROM _nc_fixture fixture
-WHERE assignment.organization_id = fixture.demo_organization_id
-  AND assignment.device_id IN (fixture.router_a_id, fixture.router_b_id)
-  AND assignment.can_poll
-  AND assignment.active_until IS NULL;
 
 INSERT INTO public.network_worker_assignments (
   worker_id, organization_id, building_id, device_id, device_kind,
