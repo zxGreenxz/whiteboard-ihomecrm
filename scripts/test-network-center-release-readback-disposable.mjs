@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -4436,16 +4436,43 @@ export async function runDisposableReleaseProof({ environment = process.env } = 
       "--no-locale",
     ], { quiet: true });
     startAttempted = true;
-    runNative(binaries.pg_ctl, [
-      "-D", cluster,
-      "-l", logPath,
-      "-o", `-p ${port} -h 127.0.0.1`,
-      "-w", "start",
-    ], {
-      quiet: true,
-      stdio: PG_CTL_STDIO,
-      timeoutMs: PG_CTL_TIMEOUT_MS,
-    });
+    // -k là bắt buộc trên Debian/Ubuntu: bản đóng gói của họ đặt
+    // unix_socket_directories mặc định /var/run/postgresql — thư mục của user
+    // `postgres`, còn GitHub runner chạy bằng `runner` nên postmaster chết ngay
+    // lúc khởi động với
+    //   FATAL: could not create lock file "/var/run/postgresql/.s.PGSQL.<port>.lock"
+    // Chỉ bind TCP không né được — socket Unix được tạo TRƯỚC. Cùng khuôn và
+    // cùng số đo với scripts/network-center-disposable-db.mjs (2026-08-12);
+    // runner này bị bỏ quên vì trước 14/08 nó luôn tự skip trên CI do thiếu
+    // POSTGRES_BIN. Bỏ qua trên Windows (không có socket Unix) và khi đường dẫn
+    // chứa khoảng trắng, vì pg_ctl tách chuỗi -o theo dấu cách, không hiểu quote.
+    const socketArgs =
+      process.platform !== "win32" && !/\s/.test(cluster) ? ` -k ${cluster}` : "";
+    try {
+      runNative(binaries.pg_ctl, [
+        "-D", cluster,
+        "-l", logPath,
+        "-o", `-p ${port} -h 127.0.0.1${socketArgs}`,
+        "-w", "start",
+      ], {
+        quiet: true,
+        stdio: PG_CTL_STDIO,
+        timeoutMs: PG_CTL_TIMEOUT_MS,
+      });
+    } catch (error) {
+      // stdio của pg_ctl cố ý là ignore (đúng chủ đề của bài test giữ-pipe),
+      // nên chẩn đoán duy nhất nằm trong postgres.log — đọc nó ra thay vì để
+      // "native command failed" trống trơn như lượt CI 13/08 19:01.
+      let duoiLog = "";
+      try {
+        duoiLog = readFileSync(logPath, "utf8").trim().slice(-2_000);
+      } catch {
+        duoiLog = "(postgres.log chưa kịp sinh)";
+      }
+      throw new Error(`${error.message}\n--- postgres.log (đuôi) ---\n${duoiLog}`, {
+        cause: error,
+      });
+    }
     started = true;
     runNative(binaries.psql, connectionArgs, {
       input: `${BOOTSTRAP_SQL}\n${OPERATIONAL_SAFETY_BOOTSTRAP_SQL}\n`
