@@ -74,6 +74,22 @@ jobs:
       - name: Verify exact Node runtime
         run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact Node v24.18.0, got '+process.version);process.exit(1)}"
 
+      # Job này TRƯỚC NAY không cài gì. Chú thích ngay trên đã lập luận rằng cả ba
+      # script dưới đây chỉ dùng thư viện chuẩn — và đó là chỗ đo sai:
+      # `check-no-auto-apply.mjs` import `js-yaml` để phân tích workflow (nó phải
+      # dùng parser thật; bản grep trước đó bỏ lọt 7/10 cách viết, xem 1bf587bb).
+      #
+      # Nó vẫn chạy được ở ci-gates chỉ vì `npm ci` ở đó kéo js-yaml về theo diện
+      # BẮC CẦU qua eslint → @eslint/eslintrc. Ở đây không có npm ci nên bước này
+      # chết với ERR_MODULE_NOT_FOUND — tức cửa chặn auto-apply CHƯA TỪNG thật sự
+      # chạy trong workflow migration, đúng nơi nó cần chạy nhất.
+      #
+      # Đã khai js-yaml thành devDependency tường minh (trước đó KHÔNG có trong
+      # package.json ở bất kỳ mục nào), nên một lần nâng eslint không còn âm thầm
+      # gỡ mất cửa chặn. Và job này nay cài dependency thay vì tin vào may mắn.
+      - name: Cài dependency (guard cần parser YAML thật)
+        run: npm ci
+
       - name: Static validation — CHỈ bộ accounting rollout (14 file), KHÔNG phủ migration mới
         run: node scripts/validate-accounting-migrations.mjs
 

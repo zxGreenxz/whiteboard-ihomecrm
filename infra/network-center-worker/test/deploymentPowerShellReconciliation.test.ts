@@ -1,5 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -946,6 +946,15 @@ Remove-Item -LiteralPath $knownHosts -Force -ErrorAction SilentlyContinue
     expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
     const [outcome, commands] = result.stdout.trim().split("@@");
     expect(outcome).toBe("no-error");
+    // `commands` là string|undefined (noUncheckedIndexedAccess). Hai chỗ dùng
+    // split("@@") khác trong file này chỉ đưa nó vào `expect(...).toContain`,
+    // vốn nhận undefined, nên chỉ dòng này đòi thu hẹp kiểu.
+    //
+    // Ném thay vì dùng `!`: nếu harness không in phần lệnh thì nguyên nhân hiện
+    // ra kèm stdout thật, thay vì một TypeError ở dòng dưới chẳng nói gì.
+    if (commands === undefined) {
+      throw new Error(`Harness không in phần lệnh sau "@@": ${result.stdout}`);
+    }
     expect(commands.split("|").filter((command) => command.includes("finalize-last-transition"))).toHaveLength(1);
   });
 
