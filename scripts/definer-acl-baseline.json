@@ -1,8 +1,8 @@
 {
   "note": "SECURITY DEFINER functions anon-executable — allowlist baseline (Sprint 6 CI gate). Regenerate intentionally when adding a genuine public endpoint.",
   "denylistNote": "Hàm ĐÃ CỐ Ý đóng với anon. Gate fail nếu chúng anon-executable trở lại, KỂ CẢ khi nằm trong signatures. Án lệ 07/08/2026: bản vá 20260530000003 bị 20260601000000_remove_tax_fields.sql chép đè một dòng GRANT, lỗ mở lại hơn hai tháng mà gate im lặng vì hàm nằm sẵn trong allowlist.",
-  "generated": "2026-08-07",
-  "count": 58,
+  "generated": "2026-08-13",
+  "count": 48,
   "denylist": [
     "get_public_latest_invoice_by_contract(uuid)",
     "building_of_invoice(uuid)",
@@ -57,16 +57,6 @@
     "soft_delete_customer(uuid)",
     "staff_building_scope(uuid)",
     "staff_can(text,text,uuid)",
-    "staff_in_building(uuid,uuid)",
-    "zalo_broadcast(uuid[],text)",
-    "zalo_can(text)",
-    "zalo_disconnect_account(uuid)",
-    "zalo_load_history(uuid,integer)",
-    "zalo_mark_read(uuid)",
-    "zalo_react_message(uuid,text)",
-    "zalo_recall_message(uuid)",
-    "zalo_request_connect(uuid,text)",
-    "zalo_send_message(uuid,text,text,text,jsonb,text)",
-    "zalo_toggle_automation(text,boolean)"
+    "staff_in_building(uuid,uuid)"
   ]
 }
