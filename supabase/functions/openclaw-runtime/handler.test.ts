@@ -360,6 +360,33 @@ function inboundWorkContextResult() {
   };
 }
 
+/**
+ * Khoác hình dạng PostgrestFilterBuilder lên một kết quả rpc giả lập.
+ *
+ * Chỉ dựng đúng phần hợp đồng mà handler dùng: `.abortSignal()` trả về chính nó
+ * để còn `await` được. KHÔNG dựng cả builder — một bản giả càng đầy đủ càng dễ
+ * lệch khỏi supabase-js thật mà không ai biết, và phần thừa đó không được test
+ * nào chạm tới.
+ *
+ * Tín hiệu huỷ được GIỮ LẠI để test có thể khẳng định hạn giờ thật sự được gắn,
+ * thay vì chỉ chứng minh lời gọi không nổ.
+ */
+function nhuBuilder(ketQua: unknown) {
+  const thenable = Promise.resolve(ketQua) as Promise<unknown> & {
+    abortSignal: (signal: AbortSignal) => typeof thenable;
+    signalDaNhan?: AbortSignal;
+  };
+  thenable.abortSignal = (signal: AbortSignal) => {
+    thenable.signalDaNhan = signal;
+    tinHieuHuyGanNhat = signal;
+    return thenable;
+  };
+  return thenable;
+}
+
+/** Tín hiệu huỷ của lời gọi facade gần nhất — dùng cho khẳng định hạn giờ. */
+let tinHieuHuyGanNhat: AbortSignal | undefined;
+
 function dependencies(options: {
   rpc?: ReturnType<typeof vi.fn>;
   verify?: ReturnType<typeof vi.fn>;
@@ -427,7 +454,20 @@ function dependencies(options: {
         }
         : {},
     },
-    createServiceClient: () => ({ rpc }),
+    // `rpc()` thật của supabase-js trả về PostgrestFilterBuilder — một thenable
+    // có thêm các phương thức chuỗi, trong đó có `.abortSignal()`. Bộ giả lập ở
+    // đây trả về Promise trần, nên từ khi fc12840f gắn hạn giờ cho lời gọi facade
+    // (`.abortSignal(AbortSignal.timeout(...))`) thì MỌI đường có chạm SQL đều
+    // ném `client.rpc(...).abortSignal is not a function` và rơi vào catch → 500.
+    // Đó là toàn bộ 18 test đỏ, và cả 18 đều báo "expected 500 to be 200", một
+    // thông báo không hề nhắc tới abortSignal.
+    //
+    // Bọc tại ĐÚNG MỘT chỗ này thay vì sửa từng bộ giả lập: mỗi test vẫn truyền
+    // `rpc` riêng của nó và mọi khẳng định `toHaveBeenCalledWith` vẫn nguyên, vì
+    // spy không bị thay — chỉ giá trị TRẢ VỀ được khoác thêm hình dạng builder.
+    createServiceClient: () => ({
+      rpc: (...args: unknown[]) => nhuBuilder((rpc as (...a: unknown[]) => unknown)(...args)),
+    }),
     verifyRuntimeRequest: verify,
     logger: options.logger ?? { error: vi.fn() },
     requestIdFactory: () => "dddd9000-0000-4000-8000-000000000001",
@@ -1842,6 +1882,29 @@ describe("OpenClaw runtime API handler", () => {
     expect(response.status).toBe(400);
     expect(dependency.verify).not.toHaveBeenCalled();
     expect(dependency.rpc).not.toHaveBeenCalled();
+  });
+
+  it("gắn hạn giờ vào lời gọi facade thay vì chờ vô hạn", async () => {
+    // VÌ SAO CÓ TEST NÀY. fc12840f thêm `.abortSignal(AbortSignal.timeout(...))`
+    // để một RPC treo không giữ mãi connection. Bộ giả lập `rpc` lúc đó trả về
+    // Promise trần nên `.abortSignal` không tồn tại — 18 test rơi vào catch và
+    // báo "expected 500 to be 200", một câu không hề nhắc tới abortSignal.
+    //
+    // Khi vá bộ giả lập, tôi kiểm bằng đột biến: GỠ hẳn `.abortSignal(...)` khỏi
+    // handler thì 76/76 test vẫn XANH. Tức bản vá làm test chạy lại được nhưng
+    // để chính thứ vừa gây ra sự cố nằm ngoài tầm đo — ai xoá hạn giờ sau này
+    // cũng không ai biết. Test này bịt đúng chỗ đó.
+    tinHieuHuyGanNhat = undefined;
+    const deps = dependencies();
+    const response = await handleRuntimeRequest(
+      runtimeRequest("/v1/outbox/complete", outboxCompletion),
+      deps,
+    );
+    expect(response.status).toBe(200);
+    expect(tinHieuHuyGanNhat).toBeInstanceOf(AbortSignal);
+    // Chưa hết hạn ngay: nếu ai đó đặt nhầm thành AbortSignal.abort() thì lời gọi
+    // sẽ chết ngay lập tức thay vì có thời gian chạy.
+    expect(tinHieuHuyGanNhat?.aborted).toBe(false);
   });
 
   it("accepts only the canonical nested outbox completion contract", async () => {

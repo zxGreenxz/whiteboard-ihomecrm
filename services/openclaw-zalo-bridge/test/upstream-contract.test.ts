@@ -37,11 +37,27 @@ const REQUIRED_PUBLIC_ENTRYPOINTS = [
 // Mirrors services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/series. TWO
 // suites pin this list - this one and the fork's own reproducible-pack test - so a
 // new patch has to be declared in both or one of them goes red.
+// Bản sao CÓ CHỦ Ý của patches/series.
+//
+// Trùng lặp ở đây không phải sơ suất: nếu test đọc thẳng `series` thì thêm một
+// patch vào vendor sẽ tự động được áp và tự động được coi là hợp lệ — tức mất
+// hẳn bước người xem lại. Danh sách này là chữ ký "đã review", nên nó phải được
+// sửa TAY mỗi lần fork nhận thêm bản vá.
+//
+// 0005 thêm ngày 08/08/2026 (commit ea352456) và series được cập nhật cùng lúc,
+// nhưng danh sách này thì không — nên hợp đồng đứng ở 4 trong khi fork đã có 5.
+// Không ai thấy suốt bốn ngày vì job openclaw-package-gates cần quality-gates
+// xanh mới chạy, mà quality-gates đỏ liên tục 168 lượt.
 const PATCH_SERIES = [
   "0001-durable-inbound-bridge-listener.patch",
   "0002-private-bridge-send-rpc.patch",
   "0003-close-bypasses-and-classify-control.patch",
   "0004-declare-web-login-gateway-methods.patch",
+  // Socket realtime của Zalo phải đi qua egress broker: `ws` tự đặt
+  // `opts.createConnection` nên dial wss:// KHÔNG dùng agent mặc định của Node,
+  // và mạng `application` là internal:true (không resolver, không tuyến) nên
+  // socket chết ngay ở DNS với EAI_AGAIN. Xem ea352456 để có số đo.
+  "0005-route-zalo-sockets-through-egress-proxy.patch",
 ];
 
 function readText(path: string): string {

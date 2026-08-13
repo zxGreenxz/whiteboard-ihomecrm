@@ -385,12 +385,33 @@ async function startDisposableNativePostgres(environment = process.env) {
     if (initialized.code !== 0) {
       throw new Error(`initdb failed: ${initialized.stderr.slice(0, 1_000)}`);
     }
+    // `-k` là BẮT BUỘC, không phải tinh chỉnh.
+    //
+    // Postgres của Debian/Ubuntu được biên dịch với unix_socket_directories mặc
+    // định là /var/run/postgresql — thư mục do gói hệ thống tạo và chỉ user
+    // `postgres` ghi được. Runner của GitHub chạy dưới user `runner`, nên
+    // postmaster chết ngay lúc khởi động với
+    //   FATAL: could not create lock file "/var/run/postgresql/.s.PGSQL.<port>.lock": Permission denied
+    // dù `-h 127.0.0.1` đã nói rõ là chỉ cần TCP. Postgres vẫn dựng socket Unix
+    // trước khi mở cổng TCP, nên tắt TCP-only không cứu được.
+    //
+    // Trỏ socket vào chính thư mục tạm dùng-một-lần: nó đã được `mkdtemp` tạo,
+    // đã nằm trong khối dọn dẹp ở `stop()`, và ngắn (/tmp/openclaw-pg-XXXXXX)
+    // nên không chạm trần 107 ký tự của sun_path.
+    //
+    // Bỏ qua trên Windows (không có socket Unix) và bỏ qua nếu đường dẫn có dấu
+    // cách — pg_ctl tách chuỗi `-o` theo khoảng trắng và không hiểu dấu nháy,
+    // nên truyền vào sẽ hỏng theo cách khó đọc hơn cả lỗi ban đầu.
+    const dungSocketRieng = process.platform !== "win32" && !/\s/.test(root);
+    const thamSo = [`-F`, `-p ${port}`, `-h 127.0.0.1`];
+    if (dungSocketRieng) thamSo.push(`-k ${root}`);
+
     const launched = await runQuiet(
       pgCtl,
       [
         "-D", data,
         "-l", log,
-        "-o", `-F -p ${port} -h 127.0.0.1`,
+        "-o", thamSo.join(" "),
         "-w", "start",
       ],
       childEnvironment,

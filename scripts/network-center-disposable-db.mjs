@@ -1335,6 +1335,23 @@ export async function runDisposableLocalClusterMatrix({
     // -h 127.0.0.1 is the whole safety story for network exposure: the
     // postmaster never binds a routable address, so no firewall or NAT rule can
     // be wrong about it. No restart policy exists to resurrect it either.
+    //
+    // -k is separate and mandatory on Debian/Ubuntu. Their Postgres build has
+    // unix_socket_directories defaulting to /var/run/postgresql, a directory the
+    // system package creates for the `postgres` user; a GitHub runner executes
+    // as `runner` and the postmaster dies during startup with
+    //   FATAL: could not create lock file "/var/run/postgresql/.s.PGSQL.<port>.lock"
+    // Binding TCP only does not avoid it -- the Unix socket is created first.
+    // Measured on 2026-08-12 in openclaw-sql-gates, which uses the same launch
+    // shape in scripts/test-openclaw-concurrency.mjs.
+    //
+    // Point the socket at the disposable cluster directory: already created,
+    // already removed by the teardown path, and short enough not to reach the
+    // 107-byte sun_path limit. Skipped on Windows (no Unix sockets) and when the
+    // path contains whitespace, because pg_ctl splits the -o string on spaces
+    // and does not honour quoting.
+    const socketArgs =
+      process.platform !== "win32" && !/\s/.test(cluster) ? ` -k ${cluster}` : "";
     runLocalNative(
       binaries.pg_ctl,
       [
@@ -1343,7 +1360,7 @@ export async function runDisposableLocalClusterMatrix({
         "-l",
         join(cluster, "postgres.log"),
         "-o",
-        `-p ${port} -h 127.0.0.1`,
+        `-p ${port} -h 127.0.0.1${socketArgs}`,
         "-w",
         "start",
       ],

@@ -175,7 +175,19 @@ describe("real runtime-token → runtime handler composition", () => {
       }),
       {
         environment,
-        createServiceClient: () => ({ rpc: runtimeRpc }),
+        // Xem chú thích `nhuBuilder` trong handler.test.ts: handler runtime gắn
+        // hạn giờ bằng `.abortSignal()`, thứ chỉ có trên builder của supabase-js
+        // chứ không có trên Promise trần. Chỉ handler NÀY dùng nó — client của
+        // openclaw-runtime-token ở trên không cần bọc.
+        createServiceClient: () => ({
+          rpc: (...args: unknown[]) => {
+            const ketQua = Promise.resolve(
+              (runtimeRpc as (...a: unknown[]) => unknown)(...args),
+            ) as Promise<unknown> & { abortSignal: (s: AbortSignal) => unknown };
+            ketQua.abortSignal = () => ketQua;
+            return ketQua;
+          },
+        }),
         verifyRuntimeRequest,
         signGatewayPayload: () => Promise.resolve("A".repeat(86)),
         ticketKeyGeneration: 1,
