@@ -1,29 +1,56 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, History } from 'lucide-react';
 import SystemMessage from './SystemMessage';
 import MessageBubble from './MessageBubble';
 import ImageMessage from './ImageMessage';
 import VideoMessage from './VideoMessage';
+import VoiceMessage from './VoiceMessage';
+import FileMessage from './FileMessage';
+import StickerMessage from './StickerMessage';
+import AlbumMessage from './AlbumMessage';
+import ZaloLightbox from './ZaloLightbox';
 import TypingIndicator from './TypingIndicator';
+import { buildThreadItems } from './threadItems';
 import { EMERALD } from './zaloTheme';
 import type { ZaloConversation, ZaloMessage } from './types';
+import type { MsgActionProps } from './MessageBubble';
 
-interface Props {
+interface Props extends MsgActionProps {
   conv: ZaloConversation;
   showTyping?: boolean;
   canLoadHistory?: boolean;
   loadingHistory?: boolean;
   onLoadHistory?: () => void;
-  onReact?: (id: string, emoji: string) => void;
-  onRecall?: (id: string) => void;
-  onShare?: (m: ZaloMessage) => void;
+  /** Số tin chưa đọc chốt lúc mở thread (vẽ divider "Tin nhắn chưa đọc") */
+  unreadAtOpen?: number;
+  /** id tin đang được cuộn tới từ ThreadSearchBar */
+  scrollToId?: string | null;
 }
 
-/** Khu vực cuộn chứa luồng tin; cuộn đáy khi đổi hội thoại / có tin mới (nếu đang ở đáy). */
-export default function MessageList({ conv, showTyping, canLoadHistory, loadingHistory, onLoadHistory, onReact, onRecall, onShare }: Props) {
+/** Khu vực cuộn chứa luồng tin: divider ngày/chưa đọc, gom nhóm, album, lightbox. */
+export default function MessageList({
+  conv, showTyping, canLoadHistory, loadingHistory, onLoadHistory,
+  unreadAtOpen = 0, scrollToId,
+  onReact, onRecall, onShare, onReply, onDelete, highlightTerm,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const prevConv = useRef(conv.id);
   const atBottom = useRef(true);
+  const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const items = useMemo(() => buildThreadItems(conv.messages, unreadAtOpen), [conv.messages, unreadAtOpen]);
+
+  // Mọi ảnh trong thread — cho lightbox prev/next xuyên album lẫn ảnh lẻ.
+  const lightboxImages = useMemo(() =>
+    conv.messages
+      .filter((m): m is ZaloMessage & { id: string } => m.type === 'image' && !!m.id && !!(m.mediaUrl || m.localUrl))
+      .map((m) => ({ id: m.id, url: (m.localUrl || m.mediaUrl)!, label: m.label })),
+  [conv.messages]);
+  const openLightbox = (messageId: string) => {
+    const i = lightboxImages.findIndex((x) => x.id === messageId);
+    if (i >= 0) setLightboxIndex(i);
+  };
 
   const onScroll = () => {
     const el = ref.current;
@@ -42,6 +69,22 @@ export default function MessageList({ conv, showTyping, canLoadHistory, loadingH
     if (atBottom.current || showTyping) el.scrollTop = el.scrollHeight + 999;
   }, [conv.id, conv.messages.length, showTyping]);
 
+  // Điều hướng tìm kiếm: cuộn tới tin + nháy viền
+  useEffect(() => {
+    if (!scrollToId) return;
+    const el = msgRefs.current[scrollToId];
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.style.outline = `2px solid ${EMERALD}`;
+      el.style.outlineOffset = '2px';
+      el.style.borderRadius = '12px';
+      const t = setTimeout(() => { el.style.outline = 'none'; }, 1600);
+      return () => clearTimeout(t);
+    }
+  }, [scrollToId]);
+
+  const actionProps = { onReact, onRecall, onShare, onReply, onDelete };
+
   return (
     <div ref={ref} onScroll={onScroll} className="wz-scroll" style={{ flex: 1, overflowY: 'auto', padding: '18px 26px', display: 'flex', flexDirection: 'column', gap: 3, background: 'hsl(160 20% 98.5%)' }}>
       {canLoadHistory && (
@@ -55,16 +98,46 @@ export default function MessageList({ conv, showTyping, canLoadHistory, loadingH
           </button>
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 10px' }}>
-        <span style={{ background: 'hsl(210 20% 92%)', color: 'hsl(210 10% 40%)', fontSize: 11.5, fontWeight: 600, padding: '4px 12px', borderRadius: 10 }}>{conv.day}</span>
-      </div>
-      {conv.messages.map((m, i) => {
-        if (m.type === 'sys') return <SystemMessage key={m.id || i} text={m.text || ''} />;
-        if (m.type === 'image') return <ImageMessage key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} onShare={onShare} />;
-        if (m.type === 'video') return <VideoMessage key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} onShare={onShare} />;
-        return <MessageBubble key={m.id || i} m={m} onReact={onReact} onRecall={onRecall} onShare={onShare} />;
+      {items.map((it) => {
+        if (it.kind === 'day') {
+          return (
+            <div key={it.key} style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 6px' }}>
+              <span style={{ background: 'hsl(210 20% 92%)', color: 'hsl(210 10% 40%)', fontSize: 11.5, fontWeight: 600, padding: '4px 12px', borderRadius: 10 }}>{it.label}</span>
+            </div>
+          );
+        }
+        if (it.kind === 'unread') {
+          return (
+            <div key={it.key} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0 6px' }}>
+              <span style={{ flex: 1, height: 1, background: 'hsl(0 70% 84%)' }} />
+              <span style={{ color: 'hsl(0 60% 48%)', fontSize: 11.5, fontWeight: 700 }}>Tin nhắn chưa đọc</span>
+              <span style={{ flex: 1, height: 1, background: 'hsl(0 70% 84%)' }} />
+            </div>
+          );
+        }
+        if (it.kind === 'album') {
+          return (
+            <div key={it.key} ref={(el) => { if (it.items[0].id) msgRefs.current[it.items[0].id] = el; }} style={it.grouped ? { marginTop: -5 } : undefined}>
+              <AlbumMessage items={it.items} onOpenLightbox={openLightbox} {...actionProps} />
+            </div>
+          );
+        }
+        const m = it.m;
+        const wrap = (node: React.ReactNode) => (
+          <div key={it.key} ref={(el) => { if (m.id) msgRefs.current[m.id] = el; }} style={it.grouped ? { marginTop: -5 } : undefined}>
+            {node}
+          </div>
+        );
+        if (m.type === 'sys') return wrap(<SystemMessage text={m.text || ''} />);
+        if (m.type === 'image') return wrap(<ImageMessage m={m} onOpenLightbox={openLightbox} {...actionProps} />);
+        if (m.type === 'video') return wrap(<VideoMessage m={m} onReact={onReact} onRecall={onRecall} onShare={onShare} />);
+        if (m.type === 'voice') return wrap(<VoiceMessage m={m} {...actionProps} />);
+        if (m.type === 'file') return wrap(<FileMessage m={m} {...actionProps} />);
+        if (m.type === 'sticker') return wrap(<StickerMessage m={m} {...actionProps} />);
+        return wrap(<MessageBubble m={m} {...actionProps} highlightTerm={highlightTerm} />);
       })}
       {showTyping && <TypingIndicator />}
+      <ZaloLightbox images={lightboxImages} index={lightboxIndex} onIndexChange={setLightboxIndex} />
     </div>
   );
 }

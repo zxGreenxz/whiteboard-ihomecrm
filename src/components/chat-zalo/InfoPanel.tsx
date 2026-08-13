@@ -3,10 +3,9 @@ import { cn } from '@/lib/utils';
 import { tagStyle } from './zaloTheme';
 import ZaloAvatar from './ZaloAvatar';
 import { mono } from './infoCards';
-import TenantInfo from './TenantInfo';
-import LeadInfo from './LeadInfo';
 import BrokerInfo from './BrokerInfo';
 import ZaloContactInfo from './ZaloContactInfo';
+import CrmInfoCard from './CrmInfoCard';
 import AutomationPanel from './AutomationPanel';
 import type { ZaloConversation, ZaloAutomations, RightTab } from './types';
 
@@ -18,6 +17,8 @@ interface Props {
   onToggle: (key: 'broadcastOn' | 'autoReplyOn') => void;
   templates: { title: string; color: string }[];
   className?: string;
+  /** mở dialog gắn/tháo hồ sơ CRM */
+  onLinkCrm?: (c: ZaloConversation) => void;
 }
 
 function tabBtn(on: boolean, hasText: boolean): React.CSSProperties {
@@ -30,8 +31,11 @@ function tabBtn(on: boolean, hasText: boolean): React.CSSProperties {
 }
 
 /** Cột 3: tabs Thông tin / Tự động hoá. */
-export default function InfoPanel({ conv, tab, onTab, automations, onToggle, templates, className }: Props) {
+export default function InfoPanel({ conv, tab, onTab, automations, onToggle, templates, className, onLinkCrm }: Props) {
   const p = conv.profile;
+  // Rẽ nhánh theo FK LIVE (customer_id/lead_id do matcher/gắn tay set) — snapshot
+  // profile.kind chỉ còn cho 'broker' (legacy) và nhóm/danh bạ chưa gắn.
+  const linkedCrm = !!(conv.customerId || conv.leadId);
   return (
     <section className={cn('flex-col flex-none bg-white border-l overflow-hidden', className)}>
       {/* Tabs header */}
@@ -56,10 +60,16 @@ export default function InfoPanel({ conv, tab, onTab, automations, onToggle, tem
               ))}
             </div>
           </div>
-          {p.kind === 'tenant' && <TenantInfo p={p} />}
-          {p.kind === 'lead' && <LeadInfo p={p} />}
-          {p.kind === 'broker' && <BrokerInfo p={p} />}
-          {(!p.kind || p.kind === 'unknown') && <ZaloContactInfo conv={conv} />}
+          {linkedCrm ? (
+            <CrmInfoCard conv={conv} onLinkCrm={onLinkCrm} />
+          ) : p.kind === 'broker' ? (
+            <BrokerInfo p={p} />
+          ) : (
+            <>
+              <ZaloContactInfo conv={conv} />
+              {!conv.isGroup && <CrmInfoCard conv={conv} onLinkCrm={onLinkCrm} />}
+            </>
+          )}
         </div>
       ) : (
         <AutomationPanel automations={automations} onToggle={onToggle} templates={templates} />

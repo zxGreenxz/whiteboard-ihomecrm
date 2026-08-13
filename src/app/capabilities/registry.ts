@@ -323,7 +323,7 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
       userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/chat-zalo/index.md",
       visibility: "public",
     },
-    e2e: { spec: ".e2e-fleet/specs/capability-route-smoke.spec.ts" },
+    e2e: { spec: ".e2e-fleet/specs/chat-zalo.spec.ts" },
     risk: "normal",
   },
   {

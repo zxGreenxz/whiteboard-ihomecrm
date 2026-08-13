@@ -1,31 +1,57 @@
 import { useState } from 'react';
-import { Check, CheckCheck } from 'lucide-react';
+import { Check, CheckCheck, Clock, AlertCircle } from 'lucide-react';
 import { EMERALD } from './zaloTheme';
 import MessageActions from './MessageActions';
-import type { ZaloMessage } from './types';
+import type { ZaloMessage, MsgTick } from './types';
 
 export interface MsgActionProps {
   onReact?: (id: string, emoji: string) => void;
   onRecall?: (id: string) => void;
   onShare?: (m: ZaloMessage) => void;
+  onReply?: (m: ZaloMessage) => void;
+  onDelete?: (id: string) => void;
+  /** Tìm trong hội thoại: từ khoá đang highlight */
+  highlightTerm?: string;
 }
 
-/** Hàng meta (giờ + tick seen/sent) dùng chung cho bubble & ảnh. */
-export function MetaRow({ out, time, tick }: { out: boolean; time?: string; tick?: 'seen' | 'sent' }) {
+/** Hàng meta (giờ + tick pending/sent/seen/failed) dùng chung cho mọi bubble. */
+export function MetaRow({ out, time, tick }: { out: boolean; time?: string; tick?: MsgTick }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: out ? 'flex-end' : 'flex-start', gap: 5, margin: '3px 4px 0' }}>
       <span style={{ fontSize: 11, color: 'hsl(210 10% 55%)' }}>{time}</span>
       {tick === 'seen' && <CheckCheck size={15} color="hsl(152 69% 38%)" strokeWidth={2.4} />}
       {tick === 'sent' && <Check size={14} color="hsl(210 10% 55%)" strokeWidth={2.4} />}
+      {tick === 'pending' && <Clock size={12} color="hsl(210 10% 60%)" strokeWidth={2.2} />}
+      {tick === 'failed' && <AlertCircle size={13} color="hsl(0 70% 50%)" strokeWidth={2.2} />}
     </div>
   );
 }
 
+/** Tô đậm từ khoá tìm kiếm — tách chuỗi thành segment + <mark>, KHÔNG innerHTML. */
+export function highlightText(text: string, term?: string) {
+  if (!term || !term.trim()) return text;
+  const lower = text.toLowerCase();
+  const t = term.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  let idx = lower.indexOf(t, i);
+  if (idx === -1) return text;
+  let k = 0;
+  while (idx !== -1) {
+    if (idx > i) parts.push(text.slice(i, idx));
+    parts.push(<mark key={k++} style={{ background: 'hsl(48 96% 76%)', borderRadius: 3, padding: '0 1px' }}>{text.slice(idx, idx + t.length)}</mark>);
+    i = idx + t.length;
+    idx = lower.indexOf(t, i);
+  }
+  if (i < text.length) parts.push(text.slice(i));
+  return <>{parts}</>;
+}
+
 /** Bong bóng tin nhắn text (in/out), kèm reply-quote + reaction + hover actions. */
-export default function MessageBubble({ m, onReact, onRecall, onShare }: { m: ZaloMessage } & MsgActionProps) {
+export default function MessageBubble({ m, onReact, onRecall, onShare, onReply, onDelete, highlightTerm }: { m: ZaloMessage } & MsgActionProps) {
   const out = m.dir === 'out';
   const [hover, setHover] = useState(false);
-  const canAct = (!!m.id && (!!onReact || !!onRecall)) || !!onShare;
+  const canAct = (!!m.id && (!!onReact || !!onRecall || !!onReply || !!onDelete)) || !!onShare;
   const bubbleStyle = out
     ? { background: EMERALD, color: '#fff', padding: '10px 14px', borderRadius: '16px 16px 4px 16px', fontSize: 13.5, lineHeight: 1.5, boxShadow: '0 1px 2px rgba(16,40,30,.12)' as const }
     : { background: '#fff', border: '1px solid hsl(210 20% 89%)', color: 'hsl(160 30% 14%)', padding: '10px 14px', borderRadius: '16px 16px 16px 4px', fontSize: 13.5, lineHeight: 1.5 };
@@ -34,7 +60,15 @@ export default function MessageBubble({ m, onReact, onRecall, onShare }: { m: Za
     <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', marginTop: 8 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div style={{ maxWidth: '74%', position: 'relative' }}>
         {hover && canAct && (
-          <MessageActions out={out} canRecall={out && !!onRecall && !!m.id} onReact={(e) => m.id && onReact?.(m.id, e)} onRecall={() => m.id && onRecall?.(m.id)} onShare={onShare ? () => onShare(m) : undefined} />
+          <MessageActions
+            out={out}
+            canRecall={out && !!onRecall && !!m.id}
+            onReact={(e) => m.id && onReact?.(m.id, e)}
+            onRecall={() => m.id && onRecall?.(m.id)}
+            onShare={onShare ? () => onShare(m) : undefined}
+            onReply={onReply && m.id ? () => onReply(m) : undefined}
+            onDelete={onDelete && m.id ? () => onDelete(m.id!) : undefined}
+          />
         )}
         <div style={bubbleStyle}>
           {m.reply && (
@@ -43,7 +77,7 @@ export default function MessageBubble({ m, onReact, onRecall, onShare }: { m: Za
               <div style={{ fontSize: 12, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reply.text}</div>
             </div>
           )}
-          {m.text}
+          {highlightText(m.text || '', highlightTerm)}
         </div>
         {m.react && (
           <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', margin: out ? '4px 8px 0 0' : '4px 0 0 8px' }}>

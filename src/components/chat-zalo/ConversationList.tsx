@@ -11,6 +11,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'unread', label: 'Chưa đọc' },
   { key: 'tenant', label: 'Khách trọ' },
   { key: 'lead', label: 'Lead' },
+  { key: 'contacts', label: 'Danh bạ' },
 ];
 
 interface Props {
@@ -31,6 +32,13 @@ interface Props {
   selectedLabel?: number | null;
   onSelectLabel?: (id: number | null) => void;
   onBroadcast?: () => void;
+  onComposeNew?: () => void;
+  onTogglePin?: (c: ZaloConversation) => void;
+  onToggleMute?: (c: ZaloConversation) => void;
+  onToggleUnread?: (c: ZaloConversation) => void;
+  onLinkCrm?: (c: ZaloConversation) => void;
+  /** banner lỗi tải danh sách (giữ data cũ nếu có) */
+  errorBanner?: ReactNode;
 }
 
 /** Cột 1: danh sách hội thoại + tìm + lọc + footer tự động hoá. */
@@ -38,6 +46,7 @@ export default function ConversationList({
   conversations, totalCount, activeId, filter, search, automationActive, automationRuns,
   onFilter, onSearch, onSelect, className, topSlot,
   labels = [], selectedLabel = null, onSelectLabel, onBroadcast,
+  onComposeNew, onTogglePin, onToggleMute, onToggleUnread, onLinkCrm, errorBanner,
 }: Props) {
   return (
     <section className={cn('flex-col flex-none bg-white border-r', className)}>
@@ -53,7 +62,7 @@ export default function ConversationList({
             <button onClick={onBroadcast} title="Chia sẻ / Gửi hàng loạt" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <Megaphone size={17} />
             </button>
-            <button title="Soạn tin mới" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <button onClick={onComposeNew} title="Soạn tin mới theo SĐT" style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid hsl(210 20% 88%)', background: '#fff', color: EMERALD, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <MessageSquarePlus size={17} />
             </button>
           </div>
@@ -88,6 +97,8 @@ export default function ConversationList({
         </div>
       </div>
 
+      {errorBanner}
+
       {/* List (giới hạn render để mượt với danh bạ lớn; lọc/tìm để thu hẹp) */}
       <div className="wz-scroll" style={{ flex: 1, overflowY: 'auto' }}>
         {conversations.length === 0 ? (
@@ -97,7 +108,10 @@ export default function ConversationList({
         ) : (
           <>
             {conversations.slice(0, 300).map((c) => (
-              <ConversationRow key={c.id} conv={c} active={c.id === activeId} onSelect={onSelect} />
+              <ConversationRow
+                key={c.id} conv={c} active={c.id === activeId} onSelect={onSelect}
+                onTogglePin={onTogglePin} onToggleMute={onToggleMute} onToggleUnread={onToggleUnread} onLinkCrm={onLinkCrm}
+              />
             ))}
             {conversations.length > 300 && (
               <div style={{ padding: '12px 16px', textAlign: 'center', color: 'hsl(210 10% 50%)', fontSize: 12 }}>

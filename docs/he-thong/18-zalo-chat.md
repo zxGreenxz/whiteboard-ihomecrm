@@ -1,6 +1,11 @@
 # Chat Zalo (Zalo Chat)
 
-> **Reviewed:** 2026-07-20. Outbound từ web chỉ hỗ trợ text/reply/broadcast text; media là chiều nhận/render. Worker giữ service-role và cookie phiên plaintext nên là thành phần đặc quyền cần hardening.
+> **Reviewed:** 2026-08-13 — đợt nâng cấp lớn "khu Zalo riêng theo công ty":
+> ORG-SCOPED toàn tuyến (migration 20260813100000..130000), gửi media/voice/sticker
+> từ web, reply quote thật, gắn hội thoại ↔ CRM theo SĐT, pin/mute/đánh dấu chưa
+> đọc, tìm trong hội thoại, soạn tin theo SĐT, CRUD mẫu tin; worker mã hoá phiên
+> AES-256-GCM + lease đơn-instance + watchdog/proactive re-login. Các đoạn dưới
+> đây mô tả mô hình MỚI; chỗ nào còn tả mô hình owner-scoped cũ đã được sửa.
 
 ## 1. Tổng quan & vai trò nghiệp vụ
 
@@ -85,14 +90,16 @@ Mọi thao tác từ web đi Zalo đều thành 1 job ở đây (worker poll 2s)
 
 `kind` (CHECK ∈ {`broadcast_vacant`,`auto_reply`}, UNIQUE theo user), `enabled`, `config`, `stats` (jsonb). **Chỉ là công tắc lưu DB** — worker không đọc bảng này, chưa có logic gửi ảnh phòng trống / tự trả lời nào chạy.
 
-### 2.8. RLS & Realtime
+### 2.8. RLS & Realtime — ORG-SCOPED (đổi 2026-08-13)
 
-- **RLS** ([20260626000001](supabase/migrations/20260626000001_zalo_chat_schema.sql)): mô hình **owner-scoped** (khác trục toà nhà của jobs/thu chi):
-  - `zalo_accounts` / `zalo_message_templates` / `zalo_automations` / `zalo_send_queue` / `zalo_labels`: policy ALL `user_id = auth.uid() OR is_super_admin() OR is_admin()`.
-  - `zalo_conversations`: SELECT thêm nhánh `assigned_staff_id = auth.uid()` (staff được giao hội thoại thấy được); WRITE vẫn owner/admin.
-  - `zalo_messages`: SELECT owner/admin + EXISTS hội thoại có `assigned_staff_id = auth.uid()`; WRITE owner/admin. Vì `assigned_staff_id` chưa được ghi ở đâu, thực tế staff thường **không thấy** hội thoại nào — trải nghiệm staff đi qua RPC + quyền `chat_zalo.*` (mục 4.1) chứ không qua SELECT trực tiếp.
-- Helper `zalo_can(_action)` (SECURITY DEFINER): super/admin bypass, hoặc staff có `permissions->'chat_zalo'->>_action = true` trong `staff_assignments`/`roles` — dùng làm guard trong mọi RPC.
-- **Realtime publication**: `zalo_conversations`, `zalo_messages` ([20260626000002](supabase/migrations/20260626000002_zalo_realtime.sql)), `zalo_accounts` (000003), `zalo_labels` (000007). Đây là đường "đẩy" duy nhất từ worker lên FE.
+- **RLS** ([20260813100000](supabase/migrations/20260813100000_zalo_khu_rieng_theo_cong_ty.sql)) — mô hình **theo TỔ CHỨC**, thay owner-scoped cũ:
+  - `organization_id` **NOT NULL** trên cả 7 bảng; trigger `app_private.autofill_org_zalo()` FAIL-CLOSED điền org theo thứ tự account → hội thoại cha → client khai (kiểm membership) → membership duy nhất → NỔ. Khai org khác org của account = 42501.
+  - Policy PERMISSIVE: SELECT = `organization_id IN zalo_authorized_org_ids('view')`; WRITE = `('send')` (templates = `manage_templates`, automations = `manage_automation`). Đồng nghiệp CÙNG công ty giờ thấy chung khu chat; công ty khác tuyệt đối không.
+  - RESTRICTIVE `<bảng>_org_boundary` giữ làm lớp 2 — nhánh thoát `organization_id IS NULL` đã ĐÓNG.
+  - `is_admin()` đã gỡ khỏi zalo (nó ≡ `is_super_admin` từ 20260710150000; nhúng lại là mìn hẹn giờ).
+- Helper `public.zalo_authorized_org_ids(action)` = `my_org_ids() ⨯ authorized_scope_v3('chat_zalo.'||action)` lọc org_wide — **RBAC v3**; `zalo_can(action, org)` bọc nó cho RPC. Bản `zalo_can` cũ đọc `staff_assignments` (nguồn đã chết từ cutover 25/07) đã bị thay — quyền giờ cấp qua màn phân quyền v3 là CÓ tác dụng.
+  - ⚠ Helper đặt ở **public** có chủ đích: `authenticated` không có USAGE trên schema `app_private` (đo pg_namespace 13/08) — policy gọi thẳng `app_private.*` từ RLS sẽ chết khi user thường query (openclaw đang có đúng bẫy này, chưa ai giẫm vì feature flag off).
+- **Realtime publication**: 4 bảng như cũ; FE subscribe kèm filter `organization_id=eq.<org hiện hành>` để user đa-org không refetch chéo.
 
 ---
 
@@ -264,16 +271,24 @@ Route khai báo trong [App.tsx](src/App.tsx) với `RequirePermission module="ch
 
 ## 7. Trạng thái module & tài liệu trong `docs/zalo/`
 
-### 7.1. Chạy thật vs. chưa chạy
+### 7.1. Chạy thật vs. chưa chạy (cập nhật 2026-08-13)
 
-| Đang chạy thật (đã verify trên code + tài khoản thật) | Chưa chạy / mới là khung |
+| Đã hiện thực (đợt 13/08 — code + gate + E2E build local; ✋ = chưa chạy với nick Zalo thật) | Chưa chạy / mới là khung |
 |---|---|
-| Kết nối đa nick QR + re-login cookie + đa tài khoản xem song song | Gửi **ảnh/file/sticker/voice** từ web (nút composer trang trí) |
-| Đồng bộ danh bạ + nhóm + tin gần đây; nhận tin realtime (text/ảnh/video) | 2 luồng **tự động hoá** (toggle lưu DB, không engine) |
-| Gửi text + reply, broadcast theo nhãn, reaction/thu hồi/tải tin cũ nhóm từ web | Gắn hội thoại ↔ **customer/lead/contract** (FK chừa sẵn); filter Khách trọ/Lead vì thế chưa có data |
-| Nhãn phân loại đồng bộ 2 chiều đọc, seen/undo/reaction inbound | UI CRUD **mẫu tin** (`manage_templates` chưa tiêu thụ; picker mới chèn `title`) |
-| Web Push tin mới (worker → send-push) | **OA / ZNS** (cột `kind='oa'`, `channel='oa'`, `zns_template_id` chừa sẵn) |
-| Quy tắc chống egress (debounce + cột + limit) | Ghim/mute hội thoại (`is_pinned/is_muted` có cột, không UI); tách tab Danh bạ; ảo hoá list; watchdog re-login chủ động |
+| **ORG-SCOPED toàn tuyến**: mỗi công ty một khu Zalo, RLS v3, autofill org fail-closed — verify bằng role thật (org DEMO thấy 0 dòng org THẬT; Chủ công ty không-super-admin thấy đủ 1.832 hội thoại) | 2 luồng **tự động hoá** (toggle lưu DB, không engine) |
+| Gửi **ảnh album/file/sticker/voice** từ web ✋: bucket private `zalo-media`, RPC `zalo_send_media`, worker tải bytes → zca; media tự host nên reload vẫn hiện | **OA / ZNS** (cột chừa sẵn) |
+| **Reply quote THẬT** ✋ (zalo_raw + payload target → SendMessageQuote; Zalo từ chối quote thì gửi thường), mentions plumbing BE sẵn | **@mention nhóm trên UI** — cần lưu sender_uid/tên thành viên nhóm (v1 chưa có cột); RPC đã nhận `p_mentions` |
+| **Gắn hội thoại ↔ CRM**: matcher SĐT (tenants+HĐ ACTIVE → customers → leads, CÙNG org), trigger + backfill sau sync, gắn/tháo tay, InfoPanel dữ liệu LIVE (`zalo_get_crm_summary`) | Ảo hoá danh sách dài (vẫn cap 300 + search) |
+| **Idempotency gửi** (client_dedup_key + randomUUID + busy-lock), unread gate theo msgId, tên 1-1 không nhiễm uid shop | `assigned_staff_id` (giao hội thoại cho nhân viên cụ thể) |
+| Pin/mute/đánh dấu chưa đọc (menu chuột phải), chip **Danh bạ**, tìm trong hội thoại (bỏ dấu), soạn tin theo SĐT ✋ (job find_user), xoá phía mình ✋, seen/typing outbound ✋ | |
+| **CRUD mẫu tin** (dialog + quyền manage_templates; picker chèn **body** — sửa bug chèn title) | |
+| Worker: phiên **mã hoá AES-256-GCM** (fail-closed, migrate plaintext tại chỗ), **lease đơn-instance** (test 2 instance thật), watchdog keepAlive 90s + proactive re-login 3.5 ngày ✋, backoff/kick 3000-3003 ✋, WRONG_ACCOUNT guard, graceful shutdown | |
+| Quy tắc chống egress (debounce + cột + limit) — GIỮ NGUYÊN, realtime filter thêm theo org | |
+
+**Khoảng trống xác minh (13/08)**: các mục đánh ✋ chưa chạy với nick Zalo THẬT
+(worker chưa được khởi động lại với `ZALO_SESSION_KEY` + quét QR). Việc của người
+vận hành: sinh key, chạy worker, quét QR nick phụ, gửi thử 1 ảnh + 1 reply +
+1 voice, xem `docs/zalo/ZALO-WORKER-SETUP.md`.
 
 ### 7.2. Đọc tài liệu `docs/zalo/` cho đúng
 

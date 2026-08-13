@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Phone, MoreVertical, PanelRightOpen } from 'lucide-react';
+import { ArrowLeft, Search, Phone, PanelRightOpen } from 'lucide-react';
 import { tagStyle } from './zaloTheme';
 import ZaloAvatar from './ZaloAvatar';
 import type { ZaloConversation } from './types';
@@ -9,6 +9,8 @@ interface Props {
   onBack?: () => void;
   /** Mobile: mở panel thông tin */
   onOpenInfo?: () => void;
+  /** Bật/tắt thanh tìm trong hội thoại */
+  onSearch?: () => void;
 }
 
 const actBtn = {
@@ -17,7 +19,7 @@ const actBtn = {
 } as const;
 
 /** Đầu khung chat: avatar + tên + tag + nút thao tác. */
-export default function ThreadHeader({ conv, onBack, onOpenInfo }: Props) {
+export default function ThreadHeader({ conv, onBack, onOpenInfo, onSearch }: Props) {
   return (
     <div style={{ height: 64, flex: 'none', padding: '0 18px', background: '#fff', borderBottom: '1px solid hsl(210 20% 90%)', display: 'flex', alignItems: 'center', gap: 12 }}>
       {onBack && (
@@ -34,12 +36,13 @@ export default function ThreadHeader({ conv, onBack, onOpenInfo }: Props) {
         <div style={{ fontSize: 12, color: 'hsl(210 10% 45%)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.headerSub}</div>
       </div>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button style={actBtn} title="Tìm trong hội thoại"><Search size={17} /></button>
-        <button style={actBtn} title="Gọi"><Phone size={17} /></button>
+        <button onClick={onSearch} style={actBtn} title="Tìm trong hội thoại"><Search size={17} /></button>
+        {conv.phone && (
+          <a href={`tel:${conv.phone}`} style={{ ...actBtn, textDecoration: 'none' }} title={`Gọi ${conv.phone}`}><Phone size={17} /></a>
+        )}
         {onOpenInfo && (
           <button onClick={onOpenInfo} className="lg:hidden" style={actBtn} title="Thông tin"><PanelRightOpen size={17} /></button>
         )}
-        <button style={actBtn} title="Thêm"><MoreVertical size={17} /></button>
       </div>
     </div>
   );

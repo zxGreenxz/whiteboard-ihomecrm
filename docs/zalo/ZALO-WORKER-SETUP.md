@@ -14,6 +14,38 @@
 
 ---
 
+## 0. ĐỔI LỚN 2026-08-13 — đọc trước khi khởi động lại worker
+
+Worker đã tách module (`worker/lib/*`) và thêm 4 hàng rào. **Ba việc bắt buộc
+khi nâng cấp từ bản cũ:**
+
+1. **`ZALO_SESSION_KEY` là BẮT BUỘC** trong `worker/.env` — phiên Zalo giờ mã
+   hoá at-rest AES-256-GCM, worker **từ chối chạy** nếu thiếu key (64 hex):
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+
+   File phiên plaintext cũ trong `worker/sessions/` được **tự mã hoá tại chỗ**
+   lần chạy đầu. ⚠️ Mất/đổi key = mọi phiên đã lưu vô dụng → quét QR lại.
+   Backup key ở chỗ an toàn NGOÀI repo.
+2. **Lease đơn-instance** (bảng `zalo_worker_lease`): tại một thời điểm chỉ MỘT
+   worker chạy; instance mới chờ instance cũ nhả (≤35s), instance cũ thấy lease
+   đổi chủ thì tự thoát. Hết cảnh 2 máy "đấu" phiên đá nhau (close 3000/3003).
+   pm2 nên đặt `kill_timeout: 15000` để graceful shutdown kịp nhả lease.
+3. **Đa công ty (org-scoped)**: worker stamp `organization_id` vào mọi dòng nó
+   ghi (lấy từ `zalo_accounts.organization_id`). Một worker phục vụ được nhiều
+   công ty; muốn tách hẳn worker theo công ty → đặt
+   `WORKER_ORG_IDS="uuid1,uuid2"` trong `.env`.
+
+Kèm theo (không cần cấu hình): watchdog keepAlive 90s, proactive re-login 3.5
+ngày trước hạn cookie ~7 ngày, backoff khi rớt mạng, nghỉ 10 phút khi bị đá
+phiên 4 lần liên tiếp, guard WRONG_ACCOUNT (uid lạ không được gắn vào slot),
+job mới: gửi ảnh/file/voice/sticker (tải bytes từ bucket `zalo-media`),
+find_user (soạn tin theo SĐT), sticker_list, delete_for_me, seen/typing.
+
+---
+
 ## 1. Kiến trúc
 
 ```

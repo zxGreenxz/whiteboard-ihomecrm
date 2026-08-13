@@ -1,6 +1,6 @@
 {
   "$comment": "Nợ tài liệu: file Copilot ĐỌC mà con dấu review không còn hiệu lực. Ratchet — danh sách chỉ được ngắn đi. Dọn một file = đọc lại nó, sửa cho đúng, rồi cập nhật `reviewed` trong docs/he-thong/manifest.json, sau đó chạy `npm run gate:doc-freshness -- --write`. Vì sao quan trọng: Copilot trả lời câu hỏi nghiệp vụ TỪ những trang này, gồm SOP tiền và sổ quỹ — một trang sai không dừng ở chỗ sai, nó được đọc to lên bằng giọng của hệ thống.",
-  "updatedAt": "2026-08-07",
+  "updatedAt": "2026-08-13",
   "staleAfterDays": 180,
   "files": [
     "00-tong-quan.md",
@@ -22,7 +22,6 @@
     "17-luong-thuong.md",
     "18-zalo-chat.md",
     "19-sop-tien-va-so-quy.md",
-    "21-ai-copilot.md",
     "99-quy-trinh-tong.md"
   ]
 }
