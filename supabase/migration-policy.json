@@ -108,6 +108,14 @@
       "lop": "phép đo sai: TEMP TABLE ON COMMIT DROP không sống qua hai lần dán trong một transaction",
       "why": "Cùng bảng tạm _nt như 20260811030000.",
       "exitCondition": "Như mục đó."
+    },
+    {
+      "file": "20260812010000_demo_ma_tran_du_lieu_day_du.sql",
+      "lop": "KHÔNG idempotent thật — file đã chạy và bất biến, không sửa được nữa",
+      "why": "INSERT INTO public.accounts không có ON CONFLICT, nên lần chạy thứ hai đụng idx_accounts_code_unique với code=DEMO-QAB. Đây là LỖI THẬT, đúng lớp mà cửa này sinh ra để chặn — và cửa đã chặn đúng ngay lần đầu file được chạy qua nó.",
+      "heQua": "Không sửa tại chỗ được: file đã ledger-applied lên production (có biên nhận 20260812010000_demo_ma_tran_du_lieu_day_du.json) nên bytes là bất biến — check-migration-provenance từ chối mọi thay đổi. Viết file mới cũng không giúp: vấn đề nằm ở chính lần chạy lại của file NÀY.",
+      "baiHoc": "Migration chèn dữ liệu DEMO phải có ON CONFLICT DO NOTHING ngay từ đầu. Cái giá của việc quên là một mục vĩnh viễn trong danh sách này.",
+      "exitCondition": "Biến mất khi cutoff dời qua khỏi 20260812010000 — lúc đó file thành legacy và không còn nằm trong tầm quét."
     }
   ]
 }
