@@ -116,6 +116,13 @@
       "heQua": "Không sửa tại chỗ được: file đã ledger-applied lên production (có biên nhận 20260812010000_demo_ma_tran_du_lieu_day_du.json) nên bytes là bất biến — check-migration-provenance từ chối mọi thay đổi. Viết file mới cũng không giúp: vấn đề nằm ở chính lần chạy lại của file NÀY.",
       "baiHoc": "Migration chèn dữ liệu DEMO phải có ON CONFLICT DO NOTHING ngay từ đầu. Cái giá của việc quên là một mục vĩnh viễn trong danh sách này.",
       "exitCondition": "Biến mất khi cutoff dời qua khỏi 20260812010000 — lúc đó file thành legacy và không còn nằm trong tầm quét."
+    },
+    {
+      "file": "20260812020000_demo_hai_quan_ly_dung_vai.sql",
+      "lop": "phép đo sai: TEMP TABLE ON COMMIT DROP không sống qua hai lần dán trong một transaction",
+      "why": "CREATE TEMP TABLE _truoc … ON COMMIT DROP để đo trạng thái TRƯỚC/SAU. Bảng tạm chỉ rụng lúc COMMIT, mà cửa này ROLLBACK, nên lần dán thứ hai gặp lại bảng cũ và chết với 42P07. Chạy lại THẬT (hai transaction riêng) không vướng.",
+      "ghiChu": "Đây là mục thứ BA cùng lớp (sau _nt ở 20260811030000 và 20260811050000). Ba lần cùng một nguyên nhân là dấu hiệu nên đổi PHÉP ĐO của cửa, không phải khai thêm ngoại lệ: so trạng thái trên database dùng-một-lần thay vì dán đôi trong một transaction.",
+      "exitCondition": "Biến mất khi cửa đổi sang database dùng-một-lần, hoặc khi cutoff dời qua 20260812020000."
     }
   ]
 }
