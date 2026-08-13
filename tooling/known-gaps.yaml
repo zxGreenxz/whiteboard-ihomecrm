@@ -16,7 +16,15 @@
 schemaVersion: 1
 gaps:
   - id: supabase-cli-replay-broken
-    where: .github/workflows/network-center-validation.yml (bước "Measure the historical Supabase replay")
+    where: >
+      HAI chỗ, cùng một phép đo bất khả thi:
+      (1) .github/workflows/network-center-validation.yml — bước "Measure the historical Supabase replay";
+      (2) .github/workflows/ci-gates.yml, job openclaw-sql-gates — bước "Diễn tập reset toàn bộ lịch sử".
+      Chỗ (2) khai ngày 13/08/2026: nó vốn GATING và chưa từng chạy (job cần
+      quality-gates xanh, mà job đó đỏ 168 lượt liên tiếp). Lần đầu chạy được thì
+      dừng tại 016_meter_readings_enhancements.sql — `UPDATE … SET building_id =
+      c.building_id` trong khi contracts.building_id chỉ thêm ở 20250701000001,
+      sắp xếp SAU. File legacy đã đóng băng byte nên không có đường vá hợp lệ.
     expires_at: 2026-11-30
     why: >
       Replay 640 file migration qua Supabase CLI từ database trắng KHÔNG thể thành công
