@@ -36,6 +36,27 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
  *   nuot    bước fail nhưng job vẫn success — đây là thứ trang Checks giấu đi
  *   dangChay bước chưa xong — chưa kết luận được, không phải "xanh"
  */
+/**
+ * Chỉ đánh giá run của các nhánh TRƯỚC khi promote — loại run trên `production`.
+ *
+ * Vì sao phải lọc: API `/actions/runs?head_sha=` trả MỌI run của commit, không
+ * phân biệt nhánh. Mà chính cú push `production` lại kích hoạt một lượt CI mới
+ * trên nhánh đó — trong lượt ấy có job production-promotion đang chạy ĐÚNG script
+ * này. Không lọc thì script chấm điểm cả run chứa chính nó, và run đó không bao
+ * giờ "completed" khi nó còn đang chấm ⇒ job này về cấu trúc KHÔNG THỂ xanh trên
+ * nhánh production. Đo thật 13/08/2026 (run 31722280140): cùng SHA ca110413 xanh
+ * trọn trên main lúc 16:54, nhưng job này đỏ lúc 16:45 vì đếm 51 bước "chưa
+ * xong" — toàn bộ thuộc các run tiếng-vọng vừa sinh trên production.
+ *
+ * Lọc theo nhánh chứ không theo run id: cú push production sinh CẢ các workflow
+ * khác (Migration Restore Drill…) trên nhánh đó — loại mỗi run hiện tại là chưa
+ * đủ. Phán quyết phải đến từ các run đã chạy trên main trước khi promote; luật
+ * "commit phát hành phải qua main" đã có check-production-promotion đứng gác.
+ */
+export function locRunsDanhGia(workflowRuns) {
+  return (workflowRuns ?? []).filter((r) => r.head_branch !== 'production');
+}
+
 export function danhGiaJobs(jobs) {
   const doGate = [];
   const nuot = [];
@@ -119,14 +140,15 @@ async function main(argv) {
     process.exit(3);
   }
 
-  if (!runs.workflow_runs?.length) {
-    console.error(`❌ KHÔNG KIỂM ĐƯỢC: không có workflow run nào cho ${sha.slice(0, 12)}.`);
-    console.error('   Có thể CI chưa chạy xong, hoặc commit này chưa từng được push.');
+  const runsDanhGia = locRunsDanhGia(runs.workflow_runs);
+  if (!runsDanhGia.length) {
+    console.error(`❌ KHÔNG KIỂM ĐƯỢC: không có workflow run nào (ngoài nhánh production) cho ${sha.slice(0, 12)}.`);
+    console.error('   Có thể CI chưa chạy xong, hoặc commit này chưa từng được push lên main.');
     process.exit(3);
   }
 
   const jobs = [];
-  for (const run of runs.workflow_runs) {
+  for (const run of runsDanhGia) {
     try {
       const r = await goiGitHub(`/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`, token);
       jobs.push(...(r.jobs ?? []).map((j) => ({ ...j, name: `${run.name} / ${j.name}` })));

@@ -9,12 +9,33 @@
 // một commit có gate đỏ và không ai thấy gì bất thường.
 import { describe, expect, it } from "vitest";
 
-import { danhGiaJobs } from "../promote-to-production.mjs";
+import { danhGiaJobs, locRunsDanhGia } from "../promote-to-production.mjs";
 
 const buoc = (name, conclusion, status = "completed") => ({ name, conclusion, status });
 // `status` mặc định "completed": phần lớn ca nói về job đã xong. Ca job đang
 // chạy khai status tường minh — chính ca đó đã bắt được lỗi xếp nhầm loại.
 const job = (name, conclusion, steps, status = "completed") => ({ name, conclusion, steps, status });
+
+describe("locRunsDanhGia", () => {
+  // Cú push `production` kích hoạt CI mới trên nhánh đó — gồm cả run đang chạy
+  // chính script promote. Không lọc thì script chấm điểm run chứa chính nó
+  // (không bao giờ completed khi đang chấm) ⇒ job promotion đỏ VĨNH VIỄN trên
+  // nhánh production. Đo thật 13/08/2026, run 31722280140: cùng SHA xanh trọn
+  // trên main mà job này đỏ vì 51 bước "chưa xong" toàn của các run tiếng-vọng.
+  it("loại run trên nhánh production — kể cả run đang chạy chính script này", () => {
+    const runs = [
+      { id: 1, head_branch: "main", status: "completed" },
+      { id: 2, head_branch: "production", status: "in_progress" },
+      { id: 3, head_branch: "production", status: "completed" },
+    ];
+    expect(locRunsDanhGia(runs).map((r) => r.id)).toEqual([1]);
+  });
+
+  it("không còn run nào sau khi lọc ⇒ trả rỗng để main() fail closed (exit 3)", () => {
+    expect(locRunsDanhGia([{ id: 2, head_branch: "production" }])).toEqual([]);
+    expect(locRunsDanhGia(undefined)).toEqual([]);
+  });
+});
 
 describe("danhGiaJobs", () => {
   it("mọi bước xanh ⇒ đủ điều kiện promote", () => {
