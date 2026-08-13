@@ -16,7 +16,7 @@
 | Data layer | `src/hooks/**`, `src/lib/**` | Query/mutation, adapter canonical writer, permission catalog và tiện ích. |
 | Supabase client/types | `src/integrations/supabase/**` | Client và generated public schema types. |
 | AI Copilot | `src/copilot/**` | Chat, UI-control, registry tool, safety/entitlement. |
-| Database | `supabase/migrations/**` | Lịch sử DDL/RPC/RLS đang hoạt động (667 file + 15 trong `migrations-archive/`). Legacy KHÔNG replay được; số đếm sinh bằng `npm run catalog:capture`. |
+| Database | `supabase/migrations/**` | Lịch sử DDL/RPC/RLS đang hoạt động (672 file + 15 trong `migrations-archive/`). Legacy KHÔNG replay được; số đếm sinh bằng `npm run catalog:capture`. |
 | Edge Functions | `supabase/functions/**` | LLM proxy, admin user, push, salary jobs và reset demo. |
 | Workers/API | `worker/**` (6 file), `api/**` (1 file) | Zalo worker ngoài Vercel và endpoint cron/serverless. |
 | Tài liệu | `docs/**`, `docs-site/**` | Hai trunk runtime: hướng dẫn VitePress (`docs-site/`, build riêng) và tham chiếu hệ thống cho Copilot (`docs/he-thong/`). |
@@ -31,7 +31,7 @@ CI khác. Tra runtime của từng cái ở `tooling/runtime-matrix.json`.
 |---|---|---|
 | `services/**` | 5 package OpenClaw Zalo: `openclaw-egress-broker`, `openclaw-media-gateway`, `openclaw-zalo-bridge`, `openclaw-zalo-cell`, `openclaw-zalo-maintenance` | `openclaw-zalo-cell` chứa vendored upstream — **không** phải mã của dự án này, `verify:upstream` lo phần đó. |
 | `infra/**` | 5 package: `network-center-worker`, `cloudflare-worker`, `openclaw-media-gateway`, `openclaw-zalo-watchdog`, `openclaw-zalo` | `network-center-worker` deploy bằng PowerShell; hai suite kiểm script đó chạy ở job Windows riêng. |
-| `.e2e-fleet/**` | 45 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
+| `.e2e-fleet/**` | 46 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
 | `contracts/**` | 13 file hợp đồng | Nguồn ưu tiên CAO NHẤT khi đối chiếu (trên cả graph tri thức). |
 
 ## Luồng phụ thuộc chính

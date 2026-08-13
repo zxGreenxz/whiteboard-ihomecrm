@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1627,
-    "catalogFunctions": 1064,
+    "sourceCallSites": 1650,
+    "catalogFunctions": 1081,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 238,
+    "calledRpcs": 250,
     "byRisk": {
-      "normal": 158,
+      "normal": 170,
       "financial": 74,
       "security": 6
     },
-    "securityDefiner": 222
+    "securityDefiner": 234
   },
   "missingOnServer": [],
   "rpcs": {
@@ -4587,7 +4587,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4595,6 +4594,46 @@
       ],
       "callers": [
         "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_delete_message_for_me": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_message_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloConversationActions.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_delete_template": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloTemplatesAdmin.ts"
       ],
       "risk": "normal"
     },
@@ -4608,7 +4647,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4616,6 +4654,46 @@
       ],
       "callers": [
         "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_get_crm_summary": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloCrmProfile.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_link_conversation": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid, p_customer_id uuid DEFAULT NULL::uuid, p_lead_id uuid DEFAULT NULL::uuid",
+          "returns": "zalo_conversations",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloCrmProfile.ts"
       ],
       "risk": "normal"
     },
@@ -4629,7 +4707,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4650,7 +4727,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4671,7 +4747,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4692,7 +4767,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4707,13 +4781,12 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "p_account_id uuid DEFAULT NULL::uuid, p_name text DEFAULT NULL::text",
+          "args": "p_account_id uuid DEFAULT NULL::uuid, p_name text DEFAULT NULL::text, p_organization_id uuid DEFAULT NULL::uuid",
           "returns": "zalo_accounts",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4721,6 +4794,46 @@
       ],
       "callers": [
         "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_save_template": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_title text, p_body text, p_id uuid DEFAULT NULL::uuid, p_category text DEFAULT NULL::text, p_color text DEFAULT NULL::text, p_sort_order integer DEFAULT 0, p_is_active boolean DEFAULT true, p_organization_id uuid DEFAULT NULL::uuid",
+          "returns": "zalo_message_templates",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloTemplatesAdmin.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_send_media": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid, p_kind text, p_media jsonb DEFAULT '[]'::jsonb, p_caption text DEFAULT NULL::text, p_cli_msg_id text DEFAULT NULL::text, p_sticker jsonb DEFAULT NULL::jsonb",
+          "returns": "SETOF zalo_messages",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloMedia.ts"
       ],
       "risk": "normal"
     },
@@ -4728,13 +4841,12 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "p_conversation_id uuid, p_type text DEFAULT 'text'::text, p_body text DEFAULT NULL::text, p_media_url text DEFAULT NULL::text, p_reply_to jsonb DEFAULT NULL::jsonb, p_cli_msg_id text DEFAULT NULL::text",
+          "args": "p_conversation_id uuid, p_type text DEFAULT 'text'::text, p_body text DEFAULT NULL::text, p_media_url text DEFAULT NULL::text, p_reply_to jsonb DEFAULT NULL::jsonb, p_cli_msg_id text DEFAULT NULL::text, p_mentions jsonb DEFAULT NULL::jsonb, p_reply_to_message_id uuid DEFAULT NULL::uuid",
           "returns": "zalo_messages",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4745,17 +4857,116 @@
       ],
       "risk": "normal"
     },
+    "zalo_send_seen": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloConversationActions.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_send_typing": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloConversationActions.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_set_conversation_flags": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid, p_pinned boolean DEFAULT NULL::boolean, p_muted boolean DEFAULT NULL::boolean, p_marked_unread boolean DEFAULT NULL::boolean",
+          "returns": "zalo_conversations",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloConversationActions.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_start_chat_by_phone": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_account_id uuid, p_phone text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloConversationActions.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_sticker_search": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_account_id uuid, p_keyword text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloMedia.ts"
+      ],
+      "risk": "normal"
+    },
     "zalo_toggle_automation": {
       "definitions": [
         {
           "schema": "public",
-          "args": "p_kind text, p_enabled boolean",
+          "args": "p_kind text, p_enabled boolean, p_organization_id uuid DEFAULT NULL::uuid",
           "returns": "zalo_automations",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]
@@ -4763,6 +4974,26 @@
       ],
       "callers": [
         "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_unlink_conversation": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid",
+          "returns": "zalo_conversations",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/chat-zalo/useZaloCrmProfile.ts"
       ],
       "risk": "normal"
     }
