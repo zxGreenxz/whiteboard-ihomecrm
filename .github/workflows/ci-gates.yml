@@ -99,9 +99,28 @@ jobs:
         run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
 
       - name: Cài dependency (npm ci — khớp package-lock.json)
+        id: caidat
         run: npm ci
 
+      # ─── MỘT LƯỢT PHƠI HẾT LỖI ───────────────────────────────────────────
+      # Từ đây xuống, mọi bước gate mang điều kiện `!cancelled()` + caidat xanh:
+      # một bước đỏ KHÔNG chặn các bước sau chạy nữa. Job vẫn ĐỎ nếu bất kỳ bước
+      # nào đỏ — đây không phải continue-on-error (Contract §3 cấm tính nó là
+      # xanh), chỉ là bỏ kiểu dừng-ở-lỗi-đầu-tiên.
+      #
+      # Vì sao: ngày 13/08/2026 một đợt tính năng cần 5 VÒNG sửa-push-chờ kéo 19
+      # tiếng, vì mỗi lượt chạy chỉ lộ đúng MỘT bước đỏ rồi giấu các bước sau
+      # (restore drill → idempotent → docs-freshness → docs-freshness → đảo
+      # strict). Tổng thời gian máy chạy cả ngày chưa tới một giờ; phần còn lại
+      # là số vòng. Chạy hết các bước độc lập thì một lượt push thấy đủ mọi lỗi.
+      #
+      # Ngoại lệ duy nhất: bước "Bundle" cần dist/ nên chỉ chạy khi "Build" xanh.
+      # Các khối gộp nhiều script cũng gom lỗi (`|| loi=1` … `exit $loi`) thay vì
+      # `bash -e` chết ở script đầu — cùng lý do, tầng trong của cùng một luật.
+      # ─────────────────────────────────────────────────────────────────────
+
       - name: OpenClaw isolation boundary
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-openclaw-isolation.mjs
 
       # BA NHÓM GATE TĨNH theo plan §31 — nhưng là ba STEP, không phải ba JOB.
@@ -120,35 +139,41 @@ jobs:
       # (ci-gates-mot-job-thay-vi-ba) — để deliverable không treo lơ lửng.
 
       - name: contract-gates (luật agent · bề mặt sản phẩm · runtime pin · known-gap hết hạn)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: |
-          node scripts/check-agent-contract.mjs
-          node scripts/check-runtime-matrix.mjs
-          node scripts/check-known-gaps.mjs
-          node scripts/check-capability-surfaces.mjs
-          node scripts/check-route-permission-drift.mjs
-          node scripts/check-capability-docs.mjs
-          node scripts/check-baseline-doc.mjs
-          node scripts/check-route-guards.mjs
-          node scripts/check-test-matrix.mjs
-          node scripts/check-workflow-paths.mjs
-          node scripts/check-raw-rpc-callers.mjs
-          node scripts/check-realtime-query-keys.mjs
-          node scripts/check-evidence-store.mjs
-          node scripts/check-test-only-exports.mjs
-          node scripts/check-unknown-review.mjs
-          node scripts/check-ts-suppressions.mjs
-          node scripts/check-rpc-cast-ratchet.mjs
-          node scripts/check-rpc-in-view-ratchet.mjs
-          node scripts/check-error-swallow-ratchet.mjs
+          loi=0
+          node scripts/check-agent-contract.mjs || loi=1
+          node scripts/check-runtime-matrix.mjs || loi=1
+          node scripts/check-known-gaps.mjs || loi=1
+          node scripts/check-capability-surfaces.mjs || loi=1
+          node scripts/check-route-permission-drift.mjs || loi=1
+          node scripts/check-capability-docs.mjs || loi=1
+          node scripts/check-baseline-doc.mjs || loi=1
+          node scripts/check-route-guards.mjs || loi=1
+          node scripts/check-test-matrix.mjs || loi=1
+          node scripts/check-workflow-paths.mjs || loi=1
+          node scripts/check-raw-rpc-callers.mjs || loi=1
+          node scripts/check-realtime-query-keys.mjs || loi=1
+          node scripts/check-evidence-store.mjs || loi=1
+          node scripts/check-test-only-exports.mjs || loi=1
+          node scripts/check-unknown-review.mjs || loi=1
+          node scripts/check-ts-suppressions.mjs || loi=1
+          node scripts/check-rpc-cast-ratchet.mjs || loi=1
+          node scripts/check-rpc-in-view-ratchet.mjs || loi=1
+          node scripts/check-error-swallow-ratchet.mjs || loi=1
+          exit $loi
 
       - name: schema-gates (provenance migration · canonical types · đường ghi production)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: |
-          node scripts/check-migration-provenance.mjs
-          node scripts/normalize-supabase-types.mjs --check
-          node scripts/check-no-auto-apply.mjs
-          node scripts/check-management-api-writes.mjs
-          node scripts/check-promote-readiness.mjs
-          node scripts/check-migration-test-liveness.mjs
+          loi=0
+          node scripts/check-migration-provenance.mjs || loi=1
+          node scripts/normalize-supabase-types.mjs --check || loi=1
+          node scripts/check-no-auto-apply.mjs || loi=1
+          node scripts/check-management-api-writes.mjs || loi=1
+          node scripts/check-promote-readiness.mjs || loi=1
+          node scripts/check-migration-test-liveness.mjs || loi=1
+          exit $loi
 
       # Tách riêng vì bước này GỌI RA MẠNG (npm audit + npm ls đọc registry).
       # Gộp vào "Contract gates" thì một lượt registry hỏng sẽ làm cả khối gate
@@ -156,38 +181,46 @@ jobs:
       # Gate tự thoát 3 khi không hỏi được registry — 3 nghĩa là KHÔNG ĐO ĐƯỢC,
       # không phải "sạch".
       - name: Lỗ hổng phụ thuộc — phân tầng theo tầm với, mỗi mục có hạn ký nhận
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-dependency-audit.mjs
 
       - name: docs-freshness (Copilot manifest · số đếm tài liệu)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: |
-          node scripts/check-copilot-docs-manifest.mjs
+          loi=0
+          node scripts/check-copilot-docs-manifest.mjs || loi=1
           # Whitelist ĐIỀU HƯỚNG của Copilot: route sai ⇒ nó báo "✅ Đã mở trang"
           # rồi đưa người dùng tới màn trắng; module quyền sai ⇒ nó báo "không có
           # quyền" cho người ĐANG có quyền. Cả hai đều là chuỗi, tsc không bắt được.
-          node scripts/check-copilot-routes.mjs
-          node scripts/check-doc-counts.mjs
-          node scripts/check-doc-freshness.mjs
-          node scripts/generate-docs-views.mjs --check
+          node scripts/check-copilot-routes.mjs || loi=1
+          node scripts/check-doc-counts.mjs || loi=1
+          node scripts/check-doc-freshness.mjs || loi=1
+          node scripts/generate-docs-views.mjs --check || loi=1
+          exit $loi
 
       # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +
       # biên dịch 247 file), tốn hàng chục giây — trong khi cả khối trên chạy dưới
       # một giây. Gộp vào sẽ làm mất tín hiệu "khối gate tĩnh nhanh".
       - name: Đảo strict — vùng đã sạch không được bẩn lại
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-strict-islands.mjs
 
       # Chặn NỢ MỚI — khác gate trên, vốn canh nợ CŨ không bẩn lại.
       # Cần lịch sử git (diff với merge-base), nên job này phải checkout fetch-depth: 0.
       - name: Module mới phải strict ngay từ đầu
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-new-modules-strict.mjs
 
       # BAO CAO, khong phai cua chan: in tier rui ro + gate bat buoc cua PR nay.
       # No KHONG kiem duoc ban da chay cac gate do hay chua — khong co dau vet nao
       # trong repo de doc. Muc dich la de nguoi review thay ngay minh dang nhin gi.
       - name: Phan loai rui ro thay doi (bao cao)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-risk-classifier.mjs
 
 
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: npm run typecheck:baseline
 
       # ĐÃ GỠ: `npx tsc --noEmit -p tsconfig.app.json` chạy TRẦN.
@@ -236,16 +269,21 @@ jobs:
       # nới `ignores` không làm cửa xanh lên. Cùng khuôn với ts-baseline, và
       # multiset giữ trùng lặp nên `any` thứ 92 trong một file đã có 91 vẫn đỏ.
       - name: Lint root-owned code (ratchet — chặn lỗi MỚI, nợ cũ khai ở eslint-baseline.json)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-eslint-baseline.mjs
 
       - name: Build (vite build — bắt lỗi build-time không lộ ở tsc/eslint)
+        id: build
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: npm run build
 
       # Kiểm ngay sau build, khi dist/ còn nguyên. 99 trang khai lazy(); chỉ cần
       # MỘT chỗ import thẳng một trang là nó bị gộp vào chunk entry và người dùng
       # tải thêm vài trăm KB ở lần mở đầu. Không có gì hỏng — build xanh, test
       # xanh, giao diện đúng — nên không ai phát hiện trừ khi có phép đo này.
+      # Cần dist/ nguyên vẹn nên là bước DUY NHẤT điều kiện theo Build, không theo caidat.
       - name: Bundle không có hồi quy eager-import
+        if: ${{ !cancelled() && steps.build.conclusion == 'success' }}
         run: node scripts/generate-bundle-inventory.mjs
 
       # Keep root discovery inside root-owned suites. Node-only packages run in
@@ -272,6 +310,7 @@ jobs:
       # `--exclude` của Vitest ngay dưới, và `node-native.includes` trong
       # `tooling/test-matrix.json`. Thiếu một chỗ là test lại thành trang trí.
       - name: node --test (script test dùng node:test)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node --test scripts/__tests__/apply-reviewed-migration-authorization.test.mjs \
           scripts/__tests__/apply-reviewed-migration-transaction.test.mjs \
           scripts/__tests__/backup-luu-tru.test.mjs \
@@ -291,6 +330,7 @@ jobs:
           scripts/__tests__/check-ts-suppressions.test.mjs
 
       - name: Vitest (root-owned app and script suites)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: >
           npx vitest run src scripts/__tests__
           --exclude 'services/**'
@@ -334,6 +374,7 @@ jobs:
       # ~48 giây (4 lượt × 12s) nên KHÔNG gộp vào bước "Contract gates" vốn dành
       # cho các kiểm tra dưới một giây.
       - name: Ổn định múi giờ (chạy lại test ngày/tiền ở UTC-11 → UTC+14)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: npm run gate:timezone
 
   openclaw-edge-gates:

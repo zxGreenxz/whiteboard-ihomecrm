@@ -606,7 +606,10 @@ chúng lệch nhau. Hai điều dễ quên nhất, đều nằm trong file JSON:
 2. Test trên web thật (headless, mục 8).
 3. Cần seed/cleanup dữ liệu thì tự làm qua Management API trong phạm vi DEMO/TEST, không hỏi user.
 4. Sửa lỗi → re-test → lặp đến khi chạy đúng. **Không tuyên bố "đã xong" khi chưa thấy nó hoạt động.**
-5. Commit (stage file cụ thể) → push `HEAD:main` → promote nếu gate xanh (mục 3).
+5. `npm run gate:truoc-push` — máy tự sinh số tài liệu (kiểm kê repo, docs views, số đếm) rồi
+   chạy hết nhóm gate tĩnh hay vấp **không dừng ở lỗi đầu tiên**; generator có sửa file thì stage
+   kèm. Đừng tự đếm số cho tài liệu — đó là việc của generator, con người đếm là con số sẽ trôi.
+6. Commit (stage file cụ thể) → push `HEAD:main` → promote nếu gate xanh (mục 3).
 
 ### Definition of Done
 

@@ -73,6 +73,7 @@
     "docs:check": "npm run docs:check:links && npm --prefix docs-site run images:check",
     "docs:check:links": "node scripts/check-docs.mjs",
     "gate:timezone": "node scripts/check-timezone-stability.mjs",
+    "gate:truoc-push": "node scripts/kiem-nhanh-truoc-push.mjs",
     "gate:route-guards": "node scripts/check-route-guards.mjs",
     "gate:doc-counts": "node scripts/check-doc-counts.mjs",
     "gate:unknown-review": "node scripts/check-unknown-review.mjs",
