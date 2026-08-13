@@ -85,6 +85,21 @@ export const BOOTSTRAP_UNMODELLED_MIGRATIONS = Object.freeze({
     + "scripts/test-network-center-action-path-disposable.mjs, which replays every "
     + "real migration by glob against a real PostgreSQL 17 cluster instead of a "
     + "bootstrap replica",
+  "20260813020000_network_center_cap_lai_slot_mikrotik.sql":
+    "backfill DML cấp slot MikroTik cho toà nhà vật lý còn thiếu — INSERT vào "
+    + "public.network_devices dùng bề mặt slot (external_key, vendor, "
+    + "lifecycle_status, write_capability) mà shim network_devices của bootstrap "
+    + "này không dựng. Hiệu ứng được phủ bởi "
+    + "scripts/test-network-center-action-path-disposable.mjs (replay mọi "
+    + "migration thật bằng glob trên PostgreSQL 17 thật) và bởi bộ sinh manifest "
+    + "rollout, vốn replay đủ 25 stage trên cụm dùng-một-lần mỗi lần sinh lại",
+  "20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql":
+    "bản tái-lập-được của 20260813020000 (hàm "
+    + "app_private.network_center_cap_lai_slot_mikrotik_v1 + chạy nó) — cùng bề "
+    + "mặt slot mà bootstrap này không mô hình hoá, cùng độ phủ thay thế như "
+    + "entry ngay trên. Loại một mình 020000 mà giữ 004500 thì lỗi external_key "
+    + "chỉ dời sang stage sau, vì hàm này chép nguyên văn câu INSERT đó theo "
+    + "đúng luật thay-thế của assertStagesObservable",
 });
 
 export function discoverForwardFixMigrations(directory = MIGRATION_DIRECTORY) {

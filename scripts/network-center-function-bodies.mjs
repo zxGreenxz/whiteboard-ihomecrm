@@ -344,10 +344,14 @@ const FUNCTION_SCOPED_STATEMENT = [
  *
  * The clause is kept narrow enough that it cannot be used as an escape hatch:
  *
- *   - The stage must DECLARE at least one function. A stage that declares
- *     nothing (a pure GRANT, policy or constraint stage) is still refused, which
- *     is the case that motivated the `policy:` descriptor rather than a
- *     relaxation.
+ *   - The stage must DECLARE at least one function — trừ MỘT lớp hẹp thêm
+ *     14/08/2026: stage DML thuần (không declare gì, không diff catalog) được
+ *     coi là subsumed khi TỪNG câu lệnh không-tầm-thường của nó xuất hiện
+ *     nguyên văn (chuẩn hoá khoảng trắng, khớp ranh giới `;`) trong source của
+ *     một stage sau tự quan sát được. Ca thật: 20260813020000 backfill slot
+ *     MikroTik đã ledger-applied trên production (không sửa được nữa) và được
+ *     20260814004500 chép nguyên văn vào thân hàm nó sở hữu. Stage GRANT/policy
+ *     thuần vẫn bị từ chối như cũ — đó là ca đã sinh ra descriptor `policy:`.
  *   - Owning nothing while declaring something already means, by last-writer-
  *     wins, that EVERY function it declares is re-declared later. Partial
  *     subsumption cannot reach here: the stage would still own the remainder.
@@ -368,6 +372,16 @@ export function assertStagesObservable(manifest, sources) {
       ),
     ),
   ]);
+  // Tính trước stage nào TỰ quan sát được (thêm descriptor mới, hoặc sở hữu thân
+  // hàm cuối release). Lớp thay-thế-DML bên dưới cần nhìn XUÔI về các stage sau,
+  // trong khi vòng lặp chính đang đi tới — nên phải đo xong toàn cục trước.
+  const truocDo = new Set();
+  const quanSatDuoc = migrations.map((migration) => {
+    const required = migration.postApply?.required ?? [];
+    const themMoi = required.some((descriptor) => !truocDo.has(descriptor));
+    for (const descriptor of required) truocDo.add(descriptor);
+    return themMoi || (expectations.get(migration.path) ?? []).length > 0;
+  });
   const seen = new Set();
   const subsumed = [];
   for (let index = 0; index < migrations.length; index += 1) {
@@ -387,6 +401,58 @@ export function assertStagesObservable(manifest, sources) {
         );
       };
       if (!declares.length) {
+        // LỚP THỨ TƯ: DML thuần được TÁI TẠO NGUYÊN VĂN bởi một stage sau tự
+        // quan sát được. Ca thật (14/08/2026): 20260813020000 backfill slot
+        // MikroTik — DML thuần, đã ledger-applied trên production nên không sửa
+        // được nữa, và không diff catalog nào để generator đo. Từ chối nó là
+        // làm cả release không ship được trong khi hiệu ứng của nó ĐƯỢC mang đi
+        // đầy đủ: stage sau chép từng câu lệnh (trong thân hàm nó sở hữu — vẫn
+        // là một phần source của stage). Skip stage này rồi apply stage sau đạt
+        // đúng end-state — chính là định nghĩa "subsumed" phía trên.
+        //
+        // Chống lạm dụng: đòi TỪNG câu lệnh không-tầm-thường xuất hiện nguyên
+        // văn (chuẩn hoá khoảng trắng) trong source của MỘT stage sau tự quan
+        // sát được. Muốn đi cửa này là phải bê nguyên câu lệnh đi — mà bê
+        // nguyên câu lệnh đi chính là tái tạo, không phải miễn trừ. Stage sau
+        // không quan sát được thì không tính: audit phải phân biệt được chính
+        // stage mang bản tái tạo đó đã chạy hay chưa.
+        const chuanHoa = (text) => text.replace(/\s+/g, " ").trim().replace(/;$/, "");
+        // Nguồn chứa KHÔNG được cắt dấu `;` cuối — câu lệnh nằm cuối file sẽ mất
+        // đúng dấu ranh giới mà phép khớp bên dưới đòi hỏi (đã dính thật khi khối
+        // DO nằm cuối 20260814004500).
+        const chuanHoaNguon = (text) => text.replace(/\s+/g, " ").trim();
+        const nguonSauQuanSatDuoc = migrations
+          .map((later, laterIndex) => ({ later, laterIndex }))
+          .filter(({ laterIndex }) => laterIndex > index && quanSatDuoc[laterIndex])
+          .map(({ later }) => ({ path: later.path, nguon: chuanHoaNguon(sources.get(later.path)) }));
+        const cauLenh = splitSqlStatements(sources.get(migration.path))
+          .map((statement) => stripLeadingNoise(statement))
+          .filter((head) => !SUBSUMABLE_STATEMENT.some((pattern) => pattern.test(head)));
+        const taiLapBoi = new Set();
+        let taiLapDu = cauLenh.length > 0;
+        for (const statement of cauLenh) {
+          // Khớp theo RANH GIỚI CÂU LỆNH, không phải substring trần: đòi mẫu kết
+          // thúc đúng bằng dấu `;` trong nguồn chứa nó. Không có chốt này thì
+          // "SELECT 1" khớp ké tiền tố của "SELECT 1 FROM ..." — và ca tổng hợp
+          // trong bộ test (thay source bằng đúng một câu SELECT 1) chứng minh
+          // lỗ đó bị khai thác được ngay lần chạy đầu.
+          const mau = `${chuanHoa(statement)};`;
+          const chua = nguonSauQuanSatDuoc.find(({ nguon }) => nguon.includes(mau));
+          if (!chua) {
+            taiLapDu = false;
+            break;
+          }
+          taiLapBoi.add(chua.path);
+        }
+        if (taiLapDu) {
+          subsumed.push({
+            ordinal: index + 1,
+            path: migration.path,
+            supersededBy: [...taiLapBoi].sort().map((path) => ({ qualifiedName: null, by: path })),
+          });
+          for (const descriptor of required) seen.add(descriptor);
+          continue;
+        }
         refuse("It declares no function either, so nothing in this release reproduces its effect.");
       }
       for (const statement of splitSqlStatements(sources.get(migration.path))) {

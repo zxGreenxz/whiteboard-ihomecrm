@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-13T14:35:06.901Z",
+  "generatedAt": "2026-08-13T18:33:43.770Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 390,
-    "unknown": 66,
+    "unknown": 67,
     "catalog-proven": 216,
     "superseded": 15
   },
@@ -8099,6 +8099,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-13T11:03:28.433Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql",
+      "version": "20260814004500",
+      "name": "network_center_cap_lai_slot_mikrotik_tai_lap_duoc",
+      "scheme": "timestamp14",
+      "sha256": "6b53c7ae47840ef998a1530b3619001e8092ef532f3832ad8f2a67e3a8d6280f",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.network_center_cap_lai_slot_mikrotik_v1"
       ]
     },
     {

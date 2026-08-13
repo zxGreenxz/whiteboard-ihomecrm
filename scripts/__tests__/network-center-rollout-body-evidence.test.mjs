@@ -280,10 +280,22 @@ test("the release on disk is shippable, and every no-op stage in it is genuinely
     }
   }
 
-  // A stage may only be a no-op because a later stage re-declares its bodies -
-  // never because it quietly stopped declaring anything.
+  // A stage may only be a no-op for one of two stated reasons: a later stage
+  // re-declares its bodies, or (lớp thứ tư, 14/08/2026) a later observable
+  // stage reproduces its DML statements verbatim. In the second shape the
+  // entries carry qualifiedName: null — the deep containment proof lives inside
+  // assertStagesObservable itself, which just ran on the worst-case manifest
+  // above; here we pin the SHAPE so a stage cannot ride through with neither
+  // declared functions nor a reproduction claim.
   for (const stage of result.subsumed) {
     const declared = extractFunctionDefinitions(sources.get(stage.path), stage.path);
+    if (!declared.length) {
+      assert.ok(
+        stage.supersededBy.every((item) => item.qualifiedName === null),
+        `${stage.path} declares no function yet was accepted as subsumed without a reproduction claim`,
+      );
+      continue;
+    }
     assert.ok(declared.length, `${stage.path} declares no function yet was accepted as subsumed`);
   }
 });
