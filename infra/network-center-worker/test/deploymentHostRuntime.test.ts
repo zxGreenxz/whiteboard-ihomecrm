@@ -109,7 +109,7 @@ const PHASE_FAITHFUL_JQ = `jq() {
   case "$*" in
     *"def pointer_set:"*) return 0;;
     *'.phase = $phase'*) printf '{"schemaVersion":1,"operation":"promote","phase":"%s"}\\n' "$phase";;
-    *"-cn"*) printf '{"schemaVersion":2}\\n';;
+    "-cn "*) printf '{"schemaVersion":2}\\n';;
     *".operation"*) printf 'promote\\n';;
     *".phase"*) printf 'committed\\n';;`;
 
@@ -149,7 +149,15 @@ const RUNTIME_INTENT_JQ = `jq() {
   done
   case "$*" in
     "-e "*) [[ -s "\${!#}" ]];;
-    *"-n"*) printf '{"schemaVersion":1,"operation":"emergency-stop","releaseSha":"%s","emergencyStop":%s}\\n' "$release" "$stop";;
+    # Neo cờ -n ở ĐẦU chuỗi, tuyệt đối không dùng *"-n"*: đối số cuối của lệnh
+    # ĐỌC là đường dẫn file trong thư mục tạm ngẫu nhiên, và khi mkdtemp rút
+    # trúng ký tự 'n' ngay sau prefix "...-runtime-" thì đường dẫn chứa "-n" —
+    # lệnh đọc rơi vào nhánh ghi, trả document rỗng, releaseSha thành rác, và
+    # recover_runtime_intent bỏ qua bước ghi env. Đã tái hiện tất định 14/08/2026
+    # bằng TEMP chứa sẵn "-n": 2 test đỏ đúng thông điệp từng thấy trên CI
+    # (17:48 resume-failed · 19:20 stop-not-in-force) trong khi Windows local
+    # xanh nhờ chưa trúng số.
+    "-n "*) printf '{"schemaVersion":1,"operation":"emergency-stop","releaseSha":"%s","emergencyStop":%s}\\n' "$release" "$stop";;
     *".releaseSha"*) sed -n 's/.*"releaseSha":"\\([^"]*\\)".*/\\1/p' "\${!#}";;
     *".emergencyStop"*) sed -n 's/.*"emergencyStop":\\([a-z]*\\).*/\\1/p' "\${!#}";;
     *) return 97;;
