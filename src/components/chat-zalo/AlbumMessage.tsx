@@ -13,11 +13,13 @@ interface Props extends MsgActionProps {
 /** Album ≥2 ảnh liên tiếp — grid 2 cột (2 ảnh), 1+2 (3 ảnh), 2×2+“+N” (≥4). */
 export default function AlbumMessage({ items, onOpenLightbox, onReact, onRecall, onShare, onReply, onDelete }: Props) {
   const first = items[0];
-  const out = first.dir === 'out';
-  const [hover, setHover] = useState(false);
-  const shown = items.slice(0, 4);
-  const extra = items.length - shown.length;
   const last = items[items.length - 1];
+  const [hover, setHover] = useState(false);
+  if (!first || !last) return null; // threadItems chỉ tạo album ≥2 — guard cho TS
+  const out = first.dir === 'out';
+  const shown = items.slice(0, 4);
+  const [s0, s1, s2] = shown;
+  const extra = items.length - shown.length;
   const caption = items.map((m) => m.text).find((t) => t && t.trim());
 
   const cell = (m: ZaloMessage, i: number, style: React.CSSProperties = {}) => (
@@ -37,12 +39,12 @@ export default function AlbumMessage({ items, onOpenLightbox, onReact, onRecall,
             onDelete={onDelete && first.id ? () => onDelete(first.id!) : undefined}
           />
         )}
-        {shown.length === 3 ? (
+        {shown.length === 3 && s0 && s1 && s2 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {cell(shown[0], 0, { width: '100%', height: 150 })}
+            {cell(s0, 0, { width: '100%', height: 150 })}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
-              {cell(shown[1], 1, { height: 110 })}
-              {cell(shown[2], 2, { height: 110 })}
+              {cell(s1, 1, { height: 110 })}
+              {cell(s2, 2, { height: 110 })}
             </div>
           </div>
         ) : (

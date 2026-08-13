@@ -116,8 +116,9 @@ export default function MessageList({
           );
         }
         if (it.kind === 'album') {
+          const head = it.items[0];
           return (
-            <div key={it.key} ref={(el) => { if (it.items[0].id) msgRefs.current[it.items[0].id] = el; }} style={it.grouped ? { marginTop: -5 } : undefined}>
+            <div key={it.key} ref={(el) => { if (head?.id) msgRefs.current[head.id] = el; }} style={it.grouped ? { marginTop: -5 } : undefined}>
               <AlbumMessage items={it.items} onOpenLightbox={openLightbox} {...actionProps} />
             </div>
           );

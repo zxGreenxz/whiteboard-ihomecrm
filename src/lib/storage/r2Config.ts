@@ -66,7 +66,7 @@ export function corsFetchUrl(value: string): string {
 export function parseR2Ref(value: string): { bucket: string; path: string } | null {
   if (!value || !R2_PUBLIC_BASE) return null;
   if (!value.startsWith(R2_PUBLIC_BASE + '/')) return null;
-  const rest = value.slice(R2_PUBLIC_BASE.length + 1).split('?')[0];
+  const rest = value.slice(R2_PUBLIC_BASE.length + 1).split('?')[0] ?? '';
   const slash = rest.indexOf('/');
   if (slash < 0) return null;
   const bucket = rest.slice(0, slash);

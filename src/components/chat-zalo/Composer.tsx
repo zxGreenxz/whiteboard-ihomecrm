@@ -140,7 +140,12 @@ export default function Composer({
     if (slashItems.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setSuggestIdx((i) => Math.min(i + 1, slashItems.length - 1)); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setSuggestIdx((i) => Math.max(i - 1, 0)); return; }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickSuggest(slashItems[suggestIdx]); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const chosen = slashItems[suggestIdx];
+        if (chosen) pickSuggest(chosen);
+        return;
+      }
       if (e.key === 'Escape') { onDraft(''); return; }
     }
     if (e.key === 'Enter' && !e.shiftKey) {

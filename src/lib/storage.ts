@@ -73,8 +73,10 @@ export const SIGNED_URL_TTL = 3600; // 1 giờ
  */
 function parseSupabaseRef(value: string): { bucket: string; path: string } | null {
   const m = value.match(/\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+?)(?:\?|$)/);
-  if (!m) return null;
-  return { bucket: m[1], path: decodeURIComponent(m[2]) };
+  const bucket = m?.[1];
+  const path = m?.[2];
+  if (!bucket || !path) return null;
+  return { bucket, path: decodeURIComponent(path) };
 }
 
 /**

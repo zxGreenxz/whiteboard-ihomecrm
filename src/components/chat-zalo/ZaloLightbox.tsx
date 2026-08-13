@@ -37,7 +37,8 @@ export default function ZaloLightbox({ images, index, onIndexChange }: Props) {
   }, [open, step, onIndexChange]);
 
   if (!open) return null;
-  const img = images[index!];
+  const img = index !== null ? images[index] : undefined;
+  if (!img) return null;
 
   const navBtn: React.CSSProperties = {
     position: 'fixed', top: '50%', transform: 'translateY(-50%)', width: 44, height: 44,

@@ -66,7 +66,7 @@ export function buildThreadItems(messages: ZaloMessage[], unreadCount = 0): Thre
   if (unreadCount > 0) {
     let seen = 0;
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].dir === 'in') {
+      if (messages[i]?.dir === 'in') {
         seen++;
         if (seen === unreadCount) { unreadAt = i; break; }
       }
@@ -78,11 +78,16 @@ export function buildThreadItems(messages: ZaloMessage[], unreadCount = 0): Thre
   const chunks: Chunk[] = [];
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
+    if (!m) continue;
     if (m.type === 'image') {
       const run: ZaloMessage[] = [m];
       // divider chưa đọc không được rơi vào giữa album — cắt album tại đó
-      while (i + 1 < messages.length && canAlbum(run[run.length - 1], messages[i + 1]) && (i + 1) !== unreadAt) {
-        run.push(messages[++i]);
+      while (i + 1 < messages.length && (i + 1) !== unreadAt) {
+        const tail = run[run.length - 1];
+        const next = messages[i + 1];
+        if (!tail || !next || !canAlbum(tail, next)) break;
+        run.push(next);
+        i++;
       }
       if (run.length >= 2) { chunks.push({ album: run }); continue; }
       chunks.push({ one: m });
@@ -91,14 +96,19 @@ export function buildThreadItems(messages: ZaloMessage[], unreadCount = 0): Thre
     chunks.push({ one: m });
   }
 
-  // Duyệt chunk → chèn divider ngày/chưa đọc + tính cờ gom nhóm
-  const firstOf = (c: Chunk) => ('album' in c ? c.album[0] : c.one);
-  const lastOf = (c: Chunk) => ('album' in c ? c.album[c.album.length - 1] : c.one);
+  // Duyệt chunk → chèn divider ngày/chưa đọc + tính cờ gom nhóm.
+  // (Album do vòng trên tạo luôn ≥2 phần tử nên firstOf/lastOf không thể rỗng;
+  //  guard dưới đây thoả noUncheckedIndexedAccess, không phải nhánh chạy thật.)
+  const firstOf = (c: Chunk): ZaloMessage | undefined => ('album' in c ? c.album[0] : c.one);
+  const lastOf = (c: Chunk): ZaloMessage | undefined => ('album' in c ? c.album[c.album.length - 1] : c.one);
   let msgIndex = 0; // index của tin ĐẦU chunk trong mảng messages
 
   for (let ci = 0; ci < chunks.length; ci++) {
     const c = chunks[ci];
+    if (!c) continue;
     const first = firstOf(c);
+    const clast = lastOf(c);
+    if (!first || !clast) continue;
     const size = 'album' in c ? c.album.length : 1;
 
     const dk = dayKey(first.createdAt);
@@ -110,18 +120,20 @@ export function buildThreadItems(messages: ZaloMessage[], unreadCount = 0): Thre
       out.push({ kind: 'unread', key: 'unread_divider' });
     }
 
-    const prev = ci > 0 ? lastOf(chunks[ci - 1]) : null;
-    const next = ci + 1 < chunks.length ? firstOf(chunks[ci + 1]) : null;
+    const prevChunk = ci > 0 ? chunks[ci - 1] : undefined;
+    const nextChunk = ci + 1 < chunks.length ? chunks[ci + 1] : undefined;
+    const prev = prevChunk ? lastOf(prevChunk) : null;
+    const next = nextChunk ? firstOf(nextChunk) : null;
     // divider (ngày/chưa đọc) phá chuỗi gom nhóm
-    const brokeBefore = (dk && out.length && out[out.length - 1].kind === 'day')
-      || (out.length && out[out.length - 1].kind === 'unread');
+    const brokeBefore = (dk && out.length && out[out.length - 1]?.kind === 'day')
+      || (out.length && out[out.length - 1]?.kind === 'unread');
     const grouped = !!prev && !brokeBefore && sameGroup(prev, first);
     const nextDk = next ? dayKey(next.createdAt) : '';
     const nextBreaks = !next || (nextDk && nextDk !== dk) || (unreadAt >= 0 && msgIndex + size === unreadAt);
-    const lastOfGroup = nextBreaks || !sameGroup(lastOf(c), next!);
+    const lastOfGroup = !!nextBreaks || !next || !sameGroup(clast, next);
 
     if ('album' in c) {
-      out.push({ kind: 'album', key: `alb_${c.album[0].id || msgIndex}`, items: c.album, grouped, lastOfGroup });
+      out.push({ kind: 'album', key: `alb_${first.id || msgIndex}`, items: c.album, grouped, lastOfGroup });
     } else {
       out.push({ kind: 'msg', key: String(c.one.id || c.one.cliId || `i${msgIndex}`), m: c.one, grouped, lastOfGroup });
     }
