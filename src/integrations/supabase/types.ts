@@ -22069,7 +22069,7 @@ export type Database = {
           meta: Json
           name: string
           oa_id: string | null
-          organization_id: string | null
+          organization_id: string
           qr_data: string | null
           qr_expires_at: string | null
           status: string
@@ -22087,7 +22087,7 @@ export type Database = {
           meta?: Json
           name: string
           oa_id?: string | null
-          organization_id?: string | null
+          organization_id: string
           qr_data?: string | null
           qr_expires_at?: string | null
           status?: string
@@ -22105,7 +22105,7 @@ export type Database = {
           meta?: Json
           name?: string
           oa_id?: string | null
-          organization_id?: string | null
+          organization_id?: string
           qr_data?: string | null
           qr_expires_at?: string | null
           status?: string
@@ -22130,7 +22130,7 @@ export type Database = {
           enabled: boolean
           id: string
           kind: string
-          organization_id: string | null
+          organization_id: string
           stats: Json
           updated_at: string
           user_id: string
@@ -22141,7 +22141,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           kind: string
-          organization_id?: string | null
+          organization_id: string
           stats?: Json
           updated_at?: string
           user_id: string
@@ -22152,7 +22152,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           kind?: string
-          organization_id?: string | null
+          organization_id?: string
           stats?: Json
           updated_at?: string
           user_id?: string
@@ -22188,7 +22188,8 @@ export type Database = {
           last_message_text: string | null
           lead_id: string | null
           list_tag: Json | null
-          organization_id: string | null
+          marked_unread: boolean
+          organization_id: string
           peer_avatar_url: string | null
           peer_name: string
           peer_phone: string | null
@@ -22224,7 +22225,8 @@ export type Database = {
           last_message_text?: string | null
           lead_id?: string | null
           list_tag?: Json | null
-          organization_id?: string | null
+          marked_unread?: boolean
+          organization_id: string
           peer_avatar_url?: string | null
           peer_name: string
           peer_phone?: string | null
@@ -22260,7 +22262,8 @@ export type Database = {
           last_message_text?: string | null
           lead_id?: string | null
           list_tag?: Json | null
-          organization_id?: string | null
+          marked_unread?: boolean
+          organization_id?: string
           peer_avatar_url?: string | null
           peer_name?: string
           peer_phone?: string | null
@@ -22330,7 +22333,7 @@ export type Database = {
           id: string
           label_id: number
           name: string
-          organization_id: string | null
+          organization_id: string
           sort_order: number
           updated_at: string
           user_id: string
@@ -22343,7 +22346,7 @@ export type Database = {
           id?: string
           label_id: number
           name: string
-          organization_id?: string | null
+          organization_id: string
           sort_order?: number
           updated_at?: string
           user_id: string
@@ -22356,7 +22359,7 @@ export type Database = {
           id?: string
           label_id?: number
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           sort_order?: number
           updated_at?: string
           user_id?: string
@@ -22386,7 +22389,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
-          organization_id: string | null
+          organization_id: string
           sort_order: number
           title: string
           updated_at: string
@@ -22401,7 +22404,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
-          organization_id?: string | null
+          organization_id: string
           sort_order?: number
           title: string
           updated_at?: string
@@ -22416,7 +22419,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
-          organization_id?: string | null
+          organization_id?: string
           sort_order?: number
           title?: string
           updated_at?: string
@@ -22439,16 +22442,18 @@ export type Database = {
           account_id: string | null
           body: string | null
           cli_msg_id: string | null
+          client_dedup_key: string | null
           conversation_id: string
           created_at: string
           direction: string
+          hidden_at: string | null
           id: string
           media_label: string | null
           media_meta: Json | null
           media_tone: string | null
           media_url: string | null
           msg_type: string
-          organization_id: string | null
+          organization_id: string
           reaction_emoji: string | null
           reactions: Json
           reply_to: Json | null
@@ -22457,21 +22462,24 @@ export type Database = {
           status: string
           user_id: string
           zalo_msg_id: string | null
+          zalo_raw: Json | null
         }
         Insert: {
           account_id?: string | null
           body?: string | null
           cli_msg_id?: string | null
+          client_dedup_key?: string | null
           conversation_id: string
           created_at?: string
           direction: string
+          hidden_at?: string | null
           id?: string
           media_label?: string | null
           media_meta?: Json | null
           media_tone?: string | null
           media_url?: string | null
           msg_type?: string
-          organization_id?: string | null
+          organization_id: string
           reaction_emoji?: string | null
           reactions?: Json
           reply_to?: Json | null
@@ -22480,21 +22488,24 @@ export type Database = {
           status?: string
           user_id: string
           zalo_msg_id?: string | null
+          zalo_raw?: Json | null
         }
         Update: {
           account_id?: string | null
           body?: string | null
           cli_msg_id?: string | null
+          client_dedup_key?: string | null
           conversation_id?: string
           created_at?: string
           direction?: string
+          hidden_at?: string | null
           id?: string
           media_label?: string | null
           media_meta?: Json | null
           media_tone?: string | null
           media_url?: string | null
           msg_type?: string
-          organization_id?: string | null
+          organization_id?: string
           reaction_emoji?: string | null
           reactions?: Json
           reply_to?: Json | null
@@ -22503,6 +22514,7 @@ export type Database = {
           status?: string
           user_id?: string
           zalo_msg_id?: string | null
+          zalo_raw?: Json | null
         }
         Relationships: [
           {
@@ -22538,9 +22550,11 @@ export type Database = {
           id: string
           last_error: string | null
           message_id: string | null
-          organization_id: string | null
+          not_before: string | null
+          organization_id: string
           payload: Json
           processed_at: string | null
+          result: Json | null
           status: string
           user_id: string
         }
@@ -22553,9 +22567,11 @@ export type Database = {
           id?: string
           last_error?: string | null
           message_id?: string | null
-          organization_id?: string | null
+          not_before?: string | null
+          organization_id: string
           payload?: Json
           processed_at?: string | null
+          result?: Json | null
           status?: string
           user_id: string
         }
@@ -22568,9 +22584,11 @@ export type Database = {
           id?: string
           last_error?: string | null
           message_id?: string | null
-          organization_id?: string | null
+          not_before?: string | null
+          organization_id?: string
           payload?: Json
           processed_at?: string | null
+          result?: Json | null
           status?: string
           user_id?: string
         }
@@ -22604,6 +22622,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      zalo_worker_lease: {
+        Row: {
+          claimed_at: string
+          heartbeat_at: string
+          hostname: string | null
+          id: string
+          instance_id: string
+        }
+        Insert: {
+          claimed_at?: string
+          heartbeat_at?: string
+          hostname?: string | null
+          id?: string
+          instance_id: string
+        }
+        Update: {
+          claimed_at?: string
+          heartbeat_at?: string
+          hostname?: string | null
+          id?: string
+          instance_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -26587,6 +26629,7 @@ export type Database = {
         Args: { _action: string; _table: string }
         Returns: string[]
       }
+      phone_digits: { Args: { p: string }; Returns: string }
       post_approved_income_expense_v2: { Args: { input: Json }; Returns: Json }
       pra_by_token: {
         Args: {
@@ -28077,14 +28120,80 @@ export type Database = {
         }
         Returns: Json
       }
+      zalo_authorized_org_ids: { Args: { p_action: string }; Returns: string[] }
+      zalo_backfill_crm_links: {
+        Args: { p_account_id?: string }
+        Returns: number
+      }
       zalo_broadcast: {
         Args: { p_body: string; p_conversation_ids: string[] }
         Returns: number
       }
-      zalo_can: { Args: { _action: string }; Returns: boolean }
+      zalo_can:
+        | { Args: { _action: string }; Returns: boolean }
+        | { Args: { _action: string; _org: string }; Returns: boolean }
+      zalo_delete_message_for_me: {
+        Args: { p_message_id: string }
+        Returns: undefined
+      }
+      zalo_delete_template: { Args: { p_id: string }; Returns: undefined }
       zalo_disconnect_account: {
         Args: { p_account_id: string }
         Returns: undefined
+      }
+      zalo_get_crm_summary: {
+        Args: { p_conversation_id: string }
+        Returns: Json
+      }
+      zalo_link_conversation: {
+        Args: {
+          p_conversation_id: string
+          p_customer_id?: string
+          p_lead_id?: string
+        }
+        Returns: {
+          account_id: string | null
+          assigned_staff_id: string | null
+          contract_id: string | null
+          created_at: string
+          customer_id: string | null
+          header_sub: string | null
+          header_tag: Json | null
+          id: string
+          initials: string | null
+          is_muted: boolean
+          is_online: boolean
+          is_pinned: boolean
+          kind: string
+          label_ids: Json
+          last_message_at: string | null
+          last_message_dir: string | null
+          last_message_text: string | null
+          lead_id: string | null
+          list_tag: Json | null
+          marked_unread: boolean
+          organization_id: string
+          peer_avatar_url: string | null
+          peer_name: string
+          peer_phone: string | null
+          peer_zalo_uid: string | null
+          profile: Json
+          room_id: string | null
+          sub_label: string | null
+          sub_tone: string | null
+          thread_id: string | null
+          thread_type: string
+          tone: string
+          unread_count: number
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "zalo_conversations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       zalo_load_history: {
         Args: { p_conversation_id: string; p_count?: number }
@@ -28093,6 +28202,10 @@ export type Database = {
       zalo_mark_read: {
         Args: { p_conversation_id: string }
         Returns: undefined
+      }
+      zalo_match_conversation_crm: {
+        Args: { p_conversation_id: string }
+        Returns: string
       }
       zalo_react_message: {
         Args: { p_emoji: string; p_message_id: string }
@@ -28103,7 +28216,11 @@ export type Database = {
         Returns: undefined
       }
       zalo_request_connect: {
-        Args: { p_account_id?: string; p_name?: string }
+        Args: {
+          p_account_id?: string
+          p_name?: string
+          p_organization_id?: string
+        }
         Returns: {
           avatar_url: string | null
           created_at: string
@@ -28114,7 +28231,7 @@ export type Database = {
           meta: Json
           name: string
           oa_id: string | null
-          organization_id: string | null
+          organization_id: string
           qr_data: string | null
           qr_expires_at: string | null
           status: string
@@ -28129,29 +28246,64 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      zalo_send_message: {
+      zalo_save_template: {
         Args: {
-          p_body?: string
+          p_body: string
+          p_category?: string
+          p_color?: string
+          p_id?: string
+          p_is_active?: boolean
+          p_organization_id?: string
+          p_sort_order?: number
+          p_title: string
+        }
+        Returns: {
+          body: string | null
+          category: string | null
+          color: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          sort_order: number
+          title: string
+          updated_at: string
+          user_id: string
+          variables: Json
+          zns_template_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "zalo_message_templates"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      zalo_send_media: {
+        Args: {
+          p_caption?: string
           p_cli_msg_id?: string
           p_conversation_id: string
-          p_media_url?: string
-          p_reply_to?: Json
-          p_type?: string
+          p_kind: string
+          p_media?: Json
+          p_sticker?: Json
         }
         Returns: {
           account_id: string | null
           body: string | null
           cli_msg_id: string | null
+          client_dedup_key: string | null
           conversation_id: string
           created_at: string
           direction: string
+          hidden_at: string | null
           id: string
           media_label: string | null
           media_meta: Json | null
           media_tone: string | null
           media_url: string | null
           msg_type: string
-          organization_id: string | null
+          organization_id: string
           reaction_emoji: string | null
           reactions: Json
           reply_to: Json | null
@@ -28160,6 +28312,51 @@ export type Database = {
           status: string
           user_id: string
           zalo_msg_id: string | null
+          zalo_raw: Json | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "zalo_messages"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      zalo_send_message: {
+        Args: {
+          p_body?: string
+          p_cli_msg_id?: string
+          p_conversation_id: string
+          p_media_url?: string
+          p_mentions?: Json
+          p_reply_to?: Json
+          p_reply_to_message_id?: string
+          p_type?: string
+        }
+        Returns: {
+          account_id: string | null
+          body: string | null
+          cli_msg_id: string | null
+          client_dedup_key: string | null
+          conversation_id: string
+          created_at: string
+          direction: string
+          hidden_at: string | null
+          id: string
+          media_label: string | null
+          media_meta: Json | null
+          media_tone: string | null
+          media_url: string | null
+          msg_type: string
+          organization_id: string
+          reaction_emoji: string | null
+          reactions: Json
+          reply_to: Json | null
+          sent_at: string | null
+          sent_by: string | null
+          status: string
+          user_id: string
+          zalo_msg_id: string | null
+          zalo_raw: Json | null
         }
         SetofOptions: {
           from: "*"
@@ -28168,15 +28365,82 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      zalo_send_seen: {
+        Args: { p_conversation_id: string }
+        Returns: undefined
+      }
+      zalo_send_typing: {
+        Args: { p_conversation_id: string }
+        Returns: undefined
+      }
+      zalo_set_conversation_flags: {
+        Args: {
+          p_conversation_id: string
+          p_marked_unread?: boolean
+          p_muted?: boolean
+          p_pinned?: boolean
+        }
+        Returns: {
+          account_id: string | null
+          assigned_staff_id: string | null
+          contract_id: string | null
+          created_at: string
+          customer_id: string | null
+          header_sub: string | null
+          header_tag: Json | null
+          id: string
+          initials: string | null
+          is_muted: boolean
+          is_online: boolean
+          is_pinned: boolean
+          kind: string
+          label_ids: Json
+          last_message_at: string | null
+          last_message_dir: string | null
+          last_message_text: string | null
+          lead_id: string | null
+          list_tag: Json | null
+          marked_unread: boolean
+          organization_id: string
+          peer_avatar_url: string | null
+          peer_name: string
+          peer_phone: string | null
+          peer_zalo_uid: string | null
+          profile: Json
+          room_id: string | null
+          sub_label: string | null
+          sub_tone: string | null
+          thread_id: string | null
+          thread_type: string
+          tone: string
+          unread_count: number
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "zalo_conversations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      zalo_start_chat_by_phone: {
+        Args: { p_account_id: string; p_phone: string }
+        Returns: Json
+      }
+      zalo_sticker_search: {
+        Args: { p_account_id: string; p_keyword: string }
+        Returns: Json
+      }
       zalo_toggle_automation: {
-        Args: { p_enabled: boolean; p_kind: string }
+        Args: { p_enabled: boolean; p_kind: string; p_organization_id?: string }
         Returns: {
           config: Json
           created_at: string
           enabled: boolean
           id: string
           kind: string
-          organization_id: string | null
+          organization_id: string
           stats: Json
           updated_at: string
           user_id: string
@@ -28184,6 +28448,52 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "zalo_automations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      zalo_unlink_conversation: {
+        Args: { p_conversation_id: string }
+        Returns: {
+          account_id: string | null
+          assigned_staff_id: string | null
+          contract_id: string | null
+          created_at: string
+          customer_id: string | null
+          header_sub: string | null
+          header_tag: Json | null
+          id: string
+          initials: string | null
+          is_muted: boolean
+          is_online: boolean
+          is_pinned: boolean
+          kind: string
+          label_ids: Json
+          last_message_at: string | null
+          last_message_dir: string | null
+          last_message_text: string | null
+          lead_id: string | null
+          list_tag: Json | null
+          marked_unread: boolean
+          organization_id: string
+          peer_avatar_url: string | null
+          peer_name: string
+          peer_phone: string | null
+          peer_zalo_uid: string | null
+          profile: Json
+          room_id: string | null
+          sub_label: string | null
+          sub_tone: string | null
+          thread_id: string | null
+          thread_type: string
+          tone: string
+          unread_count: number
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "zalo_conversations"
           isOneToOne: true
           isSetofReturn: false
         }

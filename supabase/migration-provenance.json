@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-13T02:21:17.771Z",
+  "generatedAt": "2026-08-13T03:23:22.796Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 385,
+    "ledger-applied": 389,
     "unknown": 66,
     "catalog-proven": 216,
     "superseded": 15
@@ -8044,6 +8044,50 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-13T01:09:11.772Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260813100000_zalo_khu_rieng_theo_cong_ty.sql",
+      "version": "20260813100000",
+      "name": "zalo_khu_rieng_theo_cong_ty",
+      "scheme": "timestamp14",
+      "sha256": "ac5a5a071a84e9ff6980b4f286ebf4a506222fef65d728274ab822e8c480a392",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-13T03:06:45.772Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260813110000_zalo_gui_media_va_idempotency.sql",
+      "version": "20260813110000",
+      "name": "zalo_gui_media_va_idempotency",
+      "scheme": "timestamp14",
+      "sha256": "61eba682729b9097c3f6f4fdbf94cf8c8a6cb09d7142c9270ea9c34277972b38",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-13T03:12:18.224Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260813120000_zalo_tien_ich_rpc.sql",
+      "version": "20260813120000",
+      "name": "zalo_tien_ich_rpc",
+      "scheme": "timestamp14",
+      "sha256": "24e23881314928c07ac5669a6e699bb17350277dbc2bf8e8bbfd72fa9bf20205",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-13T03:16:59.074Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260813130000_zalo_gan_hoi_thoai_crm.sql",
+      "version": "20260813130000",
+      "name": "zalo_gan_hoi_thoai_crm",
+      "scheme": "timestamp14",
+      "sha256": "35a7342879bb98b09be40dba1d3b15795d0de7b46607ea517737ce0378709793",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-13T03:23:04.955Z|bien-nhan-backup"
       ]
     },
     {
