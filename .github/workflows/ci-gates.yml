@@ -639,6 +639,16 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          # verify-image-lock.mjs xác thực DÒNG DÕI COMMIT: nó chạy
+          # `git rev-list <M_SHA>..<HEAD>` để chứng minh ảnh cell được dựng từ
+          # một nhánh nối liền với checkpoint đã review. Trên checkout nông chỉ
+          # có commit đỉnh, nên git trả `fatal: Invalid revision range` và gate
+          # đỏ vì thiếu dữ liệu, không vì dòng dõi sai.
+          #
+          # Cùng lớp lỗi với openclaw-vendor-gate ngay trên và với quality-gates
+          # ở đầu file. Ba job cùng cần lịch sử, hai trong ba trước nay không
+          # khai — và không ai biết vì cả hai đều nằm sau quality-gates.
+          fetch-depth: 0
 
       - name: Setup Node 24.18.0
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
