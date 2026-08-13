@@ -3,6 +3,9 @@
 // RỚT security_invoker → view chạy dưới quyền OWNER → lộ dữ liệu tenant khác
 // (tài khoản demo từng đọc được sổ quỹ/chỉ số điện thật). CHẠY SAU MỌI MIGRATION
 // ĐỤNG VIEW. Exit 1 nếu có view hở.
+//
+// SQL này có bản psql chạy trên đích diễn tập ở kiem-bao-mat-sau-khoi-phuc.mjs
+// — đổi luật ở đây thì đổi cả đó, hai phép kiểm phải cùng một định nghĩa "hở".
 import { readFileSync } from 'node:fs';
 
 let pat = process.env.SUPABASE_PAT;

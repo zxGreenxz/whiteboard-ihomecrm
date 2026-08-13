@@ -62,6 +62,29 @@ ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email text;
 GRANT USAGE ON SCHEMA public TO authenticated, anon, service_role;
 GRANT USAGE ON SCHEMA auth, extensions TO authenticated, anon, service_role;
 
+-- ── Default privileges của nền tảng ──────────────────────────────────────────
+-- Supabase đặt sẵn ALTER DEFAULT PRIVILEGES trong `public` cho ba role nền
+-- tảng, nên MỌI bảng/hàm tạo ra trên production tự mang GRANT cho chúng.
+-- Baseline thì chụp bằng `pg_dump --no-acl` (cố ý — ACL production lẫn cả
+-- lịch sử REVOKE tay không replay được), nên không có khối này thì object
+-- khôi phục ra đời TRẦN quyền. Đo 13/08/2026, replay 39 file forward lane
+-- thiếu nó thì chết hai kiểu, cùng một gốc:
+--   · 20260807183000 REVOKE building_of_* FROM PUBLIC rồi VERIFY rằng
+--     authenticated vẫn còn EXECUTE — còn thật trên production nhờ grant
+--     riêng do default privileges phát lúc tạo hàm; trên bản khôi phục hàm
+--     chỉ có PUBLIC mặc định, REVOKE xong là trụi → "authenticated MẤT quyền".
+--   · 20260809010000 tự SET LOCAL ROLE authenticated trong khối nghiệm thu
+--     rồi SELECT ai_providers → "permission denied for table ai_providers".
+--     Thông điệp dễ đọc nhầm thành lỗi superuser; thật ra là SET ROLE hạ
+--     quyền xuống một role không được GRANT gì trên bảng.
+-- Phải đứng TRƯỚC schema.sql vì default privileges chỉ áp cho object tạo SAU
+-- nó — đúng trật tự mà nền tảng thật có. Chỉ schema `public`: Supabase cũng
+-- chỉ đặt sẵn ở đó; quyền trên app_private là của app tự GRANT qua migration,
+-- shim mà cấp hộ là làm diễn tập dễ hơn thực tế.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, anon, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated, anon, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO authenticated, anon, service_role;
+
 -- ── auth.uid() / auth.jwt() / auth.role() ────────────────────────────────────
 -- 650 policy gọi `auth.uid()`. Trả NULL là đúng ngữ nghĩa cho một phiên không
 -- đăng nhập, và đủ để policy DỰNG ĐƯỢC — thứ diễn tập cần đếm. Nó KHÔNG mô phỏng

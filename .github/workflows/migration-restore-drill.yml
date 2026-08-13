@@ -1,0 +1,103 @@
+# Diễn tập khôi phục TRONG CI — dựng PostgreSQL 17.6 dùng-một-lần rồi chạy trọn
+# bài: khôi phục baseline → replay forward lane (đối chiếu sổ kỳ vọng) → bộ kiểm
+# bảo mật trên bản dựng lại.
+#
+# VÌ SAO LÀ MỘT WORKFLOW RIÊNG, KHÔNG PHẢI JOB TRONG ci-gates
+#   ci-gates chạy trên MỌI push/PR; bài diễn tập chỉ có lý do chạy lại khi đụng
+#   migration, baseline, hay chính các script diễn tập — bộ lọc `paths:` bên
+#   dưới nói đúng điều đó. Trộn vào ci-gates là bắt mọi thay đổi UI trả thêm
+#   3-4 phút Docker + restore vô ích.
+#
+# CÁI GIÁ ĐÃ TRẢ ĐỂ CÓ WORKFLOW NÀY (đọc trước khi "dọn dẹp")
+#   · "Forward lane apply sạch 100%" KHÔNG phải tiêu chí — baseline là
+#     schema-only, nhiều migration khẳng định trên dữ liệu thật và DỪNG là
+#     chúng làm đúng việc. Tiêu chí thật: 0 lỗi schema, đối chiếu HAI CHIỀU với
+#     supabase/baseline/forward-lane-expectations.json (why ghi trong đó).
+#   · Baseline chụp --no-acl nên quyền của ba role nền tảng do
+#     platform-shim.sql tái lập bằng default privileges — gỡ khối đó khỏi shim
+#     thì 20260807183000 và 20260809010000 đỏ lại ngay (đo 13/08/2026).
+#   · KHÔNG cần npm ci: ba script chỉ dùng node core + Docker, và job này không
+#     đụng node_modules. Thêm npm ci vào đây là +90 giây mỗi lượt không đổi lại gì.
+#
+# Không secret nào: đích là container vừa dựng, không phải production. Script
+# tự chặn chuỗi kết nối chứa project ref production (chanProduction).
+
+name: Migration Restore Drill
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/migration-restore-drill.yml'
+      - 'supabase/migrations/**'
+      - 'supabase/baseline/**'
+      - 'supabase/migration-policy.json'
+      - 'scripts/dien-tap-khoi-phuc-baseline.mjs'
+      - 'scripts/dien-tap-forward-lane.mjs'
+      - 'scripts/kiem-bao-mat-sau-khoi-phuc.mjs'
+      - 'scripts/lib/goi-psql-dich.mjs'
+      - 'scripts/definer-acl-baseline.json'
+  push:
+    branches:
+      - main
+      - production
+    paths:
+      - '.github/workflows/migration-restore-drill.yml'
+      - 'supabase/migrations/**'
+      - 'supabase/baseline/**'
+      - 'supabase/migration-policy.json'
+      - 'scripts/dien-tap-khoi-phuc-baseline.mjs'
+      - 'scripts/dien-tap-forward-lane.mjs'
+      - 'scripts/kiem-bao-mat-sau-khoi-phuc.mjs'
+      - 'scripts/lib/goi-psql-dich.mjs'
+      - 'scripts/definer-acl-baseline.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-restore-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PSQL_DOCKER: pg-dientap
+      # Chuỗi kết nối tính TỪ TRONG container (psql chạy qua docker exec),
+      # nên trỏ 127.0.0.1:5432 — không phải cổng map ra runner.
+      DICH: postgresql://postgres:dientap@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Dựng PostgreSQL 17.6 dùng-một-lần
+        # Pin đúng 17.6 — cùng con số production trong tooling/runtime-matrix.json
+        # (otherRuntimes.postgres). Diễn tập trên major khác là đo môi trường khác.
+        run: |
+          docker run -d --name pg-dientap -e POSTGRES_PASSWORD=dientap postgres:17.6
+          for i in $(seq 1 30); do
+            docker exec pg-dientap pg_isready -U postgres && exit 0
+            sleep 1
+          done
+          echo "PostgreSQL không sẵn sàng sau 30s" >&2
+          exit 1
+
+      - name: Khôi phục baseline (shim + roles + schema, đối chiếu manifest)
+        run: node scripts/dien-tap-khoi-phuc-baseline.mjs --dich "$DICH"
+
+      - name: Replay forward lane — đối chiếu sổ kỳ vọng hai chiều
+        run: node scripts/dien-tap-forward-lane.mjs --dich "$DICH"
+
+      - name: Kiểm bảo mật trên bản dựng lại (RLS · invoker · search_path · stable-fn locks · denylist)
+        run: node scripts/kiem-bao-mat-sau-khoi-phuc.mjs --dich "$DICH"

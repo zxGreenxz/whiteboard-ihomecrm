@@ -88,6 +88,12 @@
       "node": "24.18.0",
       "deno": null,
       "note": "Chay dinh ky (cron 03:17 UTC) + workflow_dispatch, khong theo push: cac control nam NGOAI git nen khong commit nao lam chung doi. Node theo ci-gates vi chi chay script doc — khong rang buoc rieng."
+    },
+    {
+      "path": ".github/workflows/migration-restore-drill.yml",
+      "node": "24.18.0",
+      "deno": null,
+      "note": "Dien tap khoi phuc: restore baseline + replay forward lane + kiem bao mat len postgres:17.6 Docker dung-mot-lan. Node theo ci-gates vi ba script chi dung node core; Postgres pin 17.6 khop otherRuntimes.postgres — dien tap tren major khac la do moi truong khac."
     }
   ],
   "otherRuntimes": {

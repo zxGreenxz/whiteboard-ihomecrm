@@ -1,0 +1,102 @@
+{
+  "$comment": "SỔ KỲ VỌNG khi replay forward lane (mọi migration > cutoff) lên BASELINE SCHEMA-ONLY trong bài diễn tập khôi phục. File KHÔNG có entry ở đây PHẢI chạy sạch. File CÓ entry PHẢI dừng với đúng thông điệp khai — dừng là KẾT QUẢ MONG ĐỢI, vì baseline không mang dữ liệu (manifest.containsData=false) mà các migration này khẳng định trên DỮ LIỆU THẬT trước khi dám chạy; chạy sạch trên database rỗng mới là tin xấu (môi trường diễn tập 'dễ hơn thực tế', hoặc chốt đo của migration đã chết). Vì vậy scripts/dien-tap-forward-lane.mjs đối chiếu HAI CHIỀU và khớp cả thông điệp. Đo gốc 13/08/2026 trên postgres:17.6 Docker, sau khi platform-shim có default privileges: 21 chạy sạch / 18 dừng đúng phân loại / 0 lỗi schema thật.",
+  "measuredAt": "2026-08-13",
+  "luatThemEntry": "Chỉ thêm entry khi đã chạy diễn tập thật và ĐỌC migration để hiểu vì sao nó dừng. Một migration mới mà đỏ trong CI thì hoặc sửa migration (lỗi schema thật), hoặc thêm entry kèm why (khẳng định dữ liệu có chủ đích). Đừng thêm entry chỉ để CI xanh — đó là cách nuốt một lỗi schema thật vào sổ.",
+  "expectations": {
+    "20260808050000_gd7_don_tham_chieu_cheo.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "loại việc tên \"sửa\" (cần đúng 1)",
+      "why": "Trỏ lại tham chiếu chéo đòi đúng MỘT loại việc tên 'sửa' của công ty thật; database rỗng có 0 nên nó từ chối — đúng việc."
+    },
+    "20260808080000_xoa_hai_to_chuc_test_demo.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "quá ít so với 165.548 đo được lúc diễn tập",
+      "why": "Migration xoá dữ liệu một-lần có chốt đo theo số dòng đếm lúc viết; trên database rỗng xoá được 0 nên nó KHÔNG commit — chốt đo là tính năng (đã ghi ở migration-policy.json → idempotencyExceptions)."
+    },
+    "20260808090000_don_profiles_ma_va_rao_ba_bang_mien_tru.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "kỳ vọng 7. Dữ liệu đã đổi",
+      "why": "Chốt đo 7 dòng profiles sai nhãn lúc viết; đo được 0 thì dừng đòi đo lại — đúng việc của migration một-lần."
+    },
+    "20260808100000_bo_sdt_khoi_payload_cong_khai.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "phép nghiệm thu đang MÙ",
+      "why": "Nghiệm thu cần payload công khai có full_name để chứng minh SĐT đã bị bỏ; database rỗng không có payload nào nên phép đo tự khai mù thay vì báo sạch — chính là chống xanh-rỗng."
+    },
+    "20260808130000_gdr_rate_limit_ma_cong_khai.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không có hợp đồng sống nào để nghiệm thu",
+      "why": "Nghiệm thu rate-limit cần một hợp đồng sống để gọi thử; database rỗng không có."
+    },
+    "20260808140000_gdr_tra_ve_429_thay_vi_500.sql": {
+      "kyVong": "cascade",
+      "tu": "20260808130000_gdr_rate_limit_ma_cong_khai.sql",
+      "thongDiep": "app_private.ip_dang_tin() does not exist",
+      "why": "Hàm ip_dang_tin() do 20260808130000 tạo, mà file đó dừng vì dữ liệu (xem entry của nó) nên hàm chưa ra đời — chết theo, không phải lỗi độc lập."
+    },
+    "20260809010000_ai_toan_he_go_nhan_sai_va_rao.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Copilot sẽ có ô chọn model rỗng",
+      "why": "Khối nghiệm thu SET ROLE authenticated rồi đòi thấy ≥1 provider đang bật; bảng ai_providers trên baseline schema-only rỗng. Trước 13/08/2026 file này chết SỚM HƠN với 'permission denied for table ai_providers' — không phải lỗi superuser mà là SET ROLE hạ quyền xuống một role không được GRANT gì, vì baseline chụp --no-acl; đã xử bằng default privileges trong platform-shim, từ đó nó chạy tới đúng khẳng định dữ liệu này."
+    },
+    "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Guard append-only của invoice_audit_log KHÔNG chặn UPDATE",
+      "why": "Nghiệm thu kiểm guard bằng UPDATE dòng đầu tiên của invoice_audit_log; bảng rỗng nên subquery trả NULL, UPDATE chạm 0 dòng, trigger không hề kích hoạt, và migration kết luận 'guard hỏng' — lỗi GIẢ do thiếu dữ liệu, không phải schema sai. File này cũng là nơi tạo app_private.org_null_is_global mà các đợt chan_null_org sau cần."
+    },
+    "20260809030000_gd9_rpc_to_chuc_cua_toi.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không có người dùng thường nào để nghiệm thu",
+      "why": "Nghiệm thu RPC cần một người dùng thường có membership thật; database rỗng không có ai."
+    },
+    "20260809040000_chat_org_bat_buoc_va_rao_het_mien_tru.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không có người dùng thường nào để nghiệm thu",
+      "why": "Cùng khuôn nghiệm thu với 20260809030000."
+    },
+    "20260811020000_chan_null_org_dot_hai.sql": {
+      "kyVong": "cascade",
+      "tu": "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql",
+      "thongDiep": "org_null_is_global\" does not exist",
+      "why": "Cần bảng sổ khai app_private.org_null_is_global do 20260809020000 tạo — file đó dừng vì dữ liệu nên bảng chưa ra đời."
+    },
+    "20260811030000_vai_chu_cong_ty_va_tach_khoi_super_admin.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Chưa có tài khoản nguyentam@username.ihomecrm.local",
+      "why": "Đòi tài khoản chủ công ty tạo trước bằng GoTrue admin; auth.users trong shim là bảng vỏ rỗng."
+    },
+    "20260811040000_dung_lai_cong_ty_demo.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không còn tài khoản demo.chunha",
+      "why": "Dựng lại công ty Demo cần tài khoản demo.chunha có sẵn trong auth.users — không có trên baseline."
+    },
+    "20260811050000_demo_bo_loai_thu_chi.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không có tài khoản chủ Demo",
+      "why": "Cùng gốc với 20260811040000: không có chủ Demo thì không gắn được bộ loại thu chi."
+    },
+    "20260811060000_chan_null_org_dot_ba.sql": {
+      "kyVong": "cascade",
+      "tu": "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql",
+      "thongDiep": "org_null_is_global\" does not exist",
+      "why": "Như 20260811020000."
+    },
+    "20260813020000_network_center_cap_lai_slot_mikrotik.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "ma tran cach ly can it nhat 2",
+      "why": "Nghiệm thu ma trận cách ly cần ít nhất 2 toà DEMO có router MikroTik hoạt động; database rỗng có 0 toà."
+    },
+    "20260813030000_chan_null_org_dot_bon.sql": {
+      "kyVong": "cascade",
+      "tu": "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql",
+      "thongDiep": "org_null_is_global\" does not exist",
+      "why": "Như 20260811020000."
+    },
+    "20260813040000_chan_null_org_dot_nam.sql": {
+      "kyVong": "cascade",
+      "tu": "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql",
+      "thongDiep": "org_null_is_global\" does not exist",
+      "why": "Như 20260811020000."
+    }
+  }
+}

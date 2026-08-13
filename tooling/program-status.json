@@ -1,6 +1,6 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
-  "updatedAt": "2026-08-08",
+  "updatedAt": "2026-08-13",
   "currentWave": "5-6",
   "waveTitle": "Đã soi toàn bộ plan: 365 deliverable · còn 106 mục (sổ ở tooling/plan-remaining.json, cập nhật sau MỖI lô)",
   "$soSachViecConLai": "tooling/plan-remaining.json — sinh từ một lượt soi 14 agent (1,53 triệu token) đối chiếu TỪNG deliverable của plan 3210 dòng vào repo thật, kèm một vòng phản biện cố chứng minh ngược mỗi kết luận 'chưa làm'. GIỮ FILE ĐÓ. Trước khi nó tồn tại, câu 'đã xong plan chưa' không ai trả lời được mà không đọc lại 3210 dòng, và chính vì vậy nó được trả lời sai nhiều lần.",
@@ -13,6 +13,10 @@
     }
   ],
   "done": [
+    {
+      "item": "✅ Migration CI (Đợt 3 §47, lô 120): bài diễn tập khôi phục chạy TRONG CI — restore baseline + replay forward lane + gate bảo mật trên bản dựng lại",
+      "evidence": "13/08/2026. Gốc chung của cả hai 'lỗi quyền' là baseline chụp --no-acl: platform-shim.sql tái lập default privileges của nền tảng (TABLES/SEQUENCES/FUNCTIONS cho 3 role, chỉ public, đứng trước schema.sql) — 20260807183000 chạy trọn, còn 'permission denied for table ai_providers' của 20260809010000 hoá ra là khối nghiệm thu tự SET ROLE authenticated trên bảng không GRANT, sau vá thì dừng đúng việc ở khẳng định dữ liệu. Replay 39 file: 21 sạch / 18 dừng có sổ kỳ vọng HAI CHIỀU + khớp thông điệp (supabase/baseline/forward-lane-expectations.json) / 0 lỗi schema thật. scripts/kiem-bao-mat-sau-khoi-phuc.mjs (RLS coverage · view invoker 12/12 · definer search_path · stable-fn locks · denylist 4 cửa) nhận --dich; đột biến 3 phép trên DB + 1 phép trên sổ đều đỏ đúng lý do rồi hoàn nguyên xanh. .github/workflows/migration-restore-drill.yml chạy trọn bộ trên postgres:17.6 Docker (PSQL_DOCKER), không secret, không npm ci; runtime-matrix + workflow-paths xanh; 17 test vitest."
+    },
     {
       "item": "✅ Apply migration thật lên production QUA LANE — mục này từng nằm ở hoanCoChuY, nay đã làm",
       "evidence": "20260807140000_ie_guard_handover_scope.sql apply qua npm run migrate:forward (commit 266947de + biên nhận docs/generated/schema-change-evidence/). npm run migrations:list-forward xác nhận state \"đã apply (có bằng chứng)\". Gỡ khỏi hoanCoChuY 08/08/2026 — lý do hoãn cũ (\"không có migration nào đang chờ apply\") đã hết đúng.",

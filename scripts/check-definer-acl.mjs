@@ -23,6 +23,10 @@
 // (lệnh --update TỪ CHỐI chạy nếu có hàm nằm trong denylist đang anon-executable,
 //  để không nuốt ngược lỗ hổng vào allowlist.)
 //
+// DENYLIST còn được kiem-bao-mat-sau-khoi-phuc.mjs kiểm trên bản KHÔI PHỤC từ
+// baseline (chỉ denylist — allowlist không áp được ở đó, lý do ghi trong file
+// ấy). Đổi cấu trúc file baseline này thì sửa cả bên đó.
+//
 // Dùng: node scripts/check-definer-acl.mjs   → exit 1 nếu drift.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

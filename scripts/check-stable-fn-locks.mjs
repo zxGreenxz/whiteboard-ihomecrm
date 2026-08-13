@@ -12,6 +12,9 @@
 // CHẠY SAU MỌI MIGRATION TẠO/SỬA HÀM. Exit 1 nếu có hàm hở.
 // Cách sửa: ALTER FUNCTION <sig> VOLATILE (an toàn khi FE gọi bằng supabase.rpc()
 // — mặc định POST; chỉ hàm cần gọi qua GET mới buộc phải non-volatile).
+//
+// SQL này có bản psql chạy trên đích diễn tập ở kiem-bao-mat-sau-khoi-phuc.mjs
+// — đổi luật ở đây thì đổi cả đó.
 import { readFileSync } from 'node:fs';
 
 let pat = process.env.SUPABASE_PAT;
