@@ -55,6 +55,16 @@ export default function AlbumMessage({ items, onOpenLightbox, onReact, onRecall,
         {caption && (
           <div style={{ marginTop: 4, fontSize: 13, color: 'hsl(160 30% 14%)', background: '#fff', border: '1px solid hsl(210 20% 89%)', borderRadius: 10, padding: '6px 10px' }}>{caption}</div>
         )}
+        {(() => {
+          // reaction thả lên album ghi vào tin ĐẦU (onReact dùng first.id) —
+          // hiện badge từ bất kỳ item nào có react để bấm xong thấy ngay.
+          const react = items.map((m) => m.react).find(Boolean);
+          return react ? (
+            <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', margin: '4px 8px 0' }}>
+              <span style={{ background: '#fff', border: '1px solid hsl(210 20% 88%)', borderRadius: 11, padding: '1px 7px', fontSize: 11, boxShadow: '0 1px 3px rgba(16,24,40,.12)' }}>{react}</span>
+            </div>
+          ) : null;
+        })()}
         <MetaRow out={out} time={last.time} tick={last.tick} />
       </div>
     </div>
