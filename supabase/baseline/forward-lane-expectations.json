@@ -97,6 +97,37 @@
       "tu": "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql",
       "thongDiep": "org_null_is_global\" does not exist",
       "why": "Như 20260811020000."
+    },
+    "20260812010000_demo_ma_tran_du_lieu_day_du.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không thấy DEMO Toà A/B",
+      "why": "Ma trận dữ liệu demo nối tiếp 20260811040000 (dựng công ty Demo) — file đó dừng vì thiếu tài khoản demo trong auth.users, nên Toà A/B chưa ra đời."
+    },
+    "20260812020000_demo_hai_quan_ly_dung_vai.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Chưa có tài khoản demo.quanly2@username.ihomecrm.local",
+      "why": "Đòi tài khoản quản lý demo tạo trước bằng GoTrue admin; auth.users trong shim là bảng vỏ rỗng — cùng gốc 20260811040000."
+    },
+    "20260813100000_zalo_khu_rieng_theo_cong_ty.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không có người dùng org DEMO để nghiệm thu",
+      "why": "Nghiệm thu org-scoped ĐÓNG VAI người org DEMO bằng SET LOCAL ROLE authenticated để chứng minh không thấy/không ghi được dữ liệu org THẬT; database rỗng không có membership DEMO nào. Dừng ở đây nghĩa là các bước trước (NOT NULL, policy, trigger autofill, RPC) đã CREATE sạch — đúng thứ bài diễn tập cần đo."
+    },
+    "20260813110000_zalo_gui_media_va_idempotency.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "storage.buckets\" does not exist",
+      "why": "Tạo bucket zalo-media cần schema storage của Supabase — baseline CỐ Ý loại schema storage (manifest.excludedSchemas) vì nó thuộc nền tảng, không thuộc app. Trên Supabase project thật schema này luôn có."
+    },
+    "20260813130000_zalo_gan_hoi_thoai_crm.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không có người dùng org DEMO. DỪNG",
+      "why": "Nghiệm thu matcher CRM cần user org DEMO + customer DEMO để chứng minh match đúng-trong-org và không gắn chéo công ty; database rỗng không có."
+    },
+    "20260813140000_zalo_rpc_revoke_public.sql": {
+      "kyVong": "cascade",
+      "tu": "20260813130000_zalo_gan_hoi_thoai_crm.sql",
+      "thongDiep": "zalo_backfill_crm_links(uuid) does not exist",
+      "why": "REVOKE trên hàm do 20260813130000 tạo — file đó dừng vì dữ liệu (xem entry của nó) nên hàm chưa ra đời; 20260813110000 dừng vì storage cũng góp phần. Chết theo, không phải lỗi độc lập."
     }
   }
 }

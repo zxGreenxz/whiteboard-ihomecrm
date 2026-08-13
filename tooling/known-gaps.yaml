@@ -107,31 +107,45 @@ gaps:
       check-management-api-writes tự đòi khoảng trống này khi còn.
 
   - id: baseline-schema-khong-trong-repo
-    where: supabase/baseline/ (schema.sql bị gitignore) · CI chưa có job migration-forward-gates
+    where: supabase/baseline/ · chưa có bản ghi restore vào Supabase project THẬT
     expires_at: 2026-11-30
     why: >
-      Đường khôi phục của repo là "dựng từ baseline rồi apply forward migration" — thay cho
-      replay 640 file migration vốn không chạy được. Nhưng artifact chính của đường đó,
-      `supabase/baseline/schema.sql`, nằm trong .gitignore (nhiều MB). Một bản clone mới
-      KHÔNG khôi phục được nếu không sinh lại dump, mà sinh lại thì cần SUPABASE_PAT.
+      CẬP NHẬT 13/08/2026 — nửa đầu của gap này ĐÃ ĐÓNG: schema.sql (5.6MB, sha256 ghim
+      trong manifest) đã COMMIT vào repo, vì workflow Migration Restore Drill chạy trên
+      checkout sạch của CI cần đúng file đó và đã đỏ 7/7 lần chạy kể từ khi ra đời vì
+      thiếu nó. Fresh clone giờ tự diễn tập được; drill chạy trọn 3 bước trong CI
+      (restore 439/439 bảng · forward lane 0 lệch sổ kỳ vọng · kiểm bảo mật sạch — đo
+      local Docker postgres:17.6 trước khi push).
 
-      Hệ quả trực tiếp: job CI `migration-forward-gates` (dựng baseline → apply forward →
-      chạy bộ gate security/schema/type/caller) KHÔNG dựng được trong CI công khai. Nó cần
-      cả credential production lẫn một Postgres dùng-một-lần.
-
-      Và bằng chứng khôi phục hiện CHƯA đầy đủ: manifest.restoreDrill ghi rõ mới restore thử
-      trên PostgreSQL TRẦN (303/439 bảng, 817 lỗi đều do target thiếu schema auth/extensions
-      và role do migration trước tạo), chưa lần nào vào một Supabase project thật.
-
-      Phát hiện 11/08/2026 khi đọc chéo ba nguồn: README nói "đã diễn tập thật, 439/439",
-      .gitignore nói "chưa verify, không dùng để restore", manifest nói "chưa đầy đủ". Ba
-      chỗ, ba câu chuyện khác nhau, về đúng thứ đắt nhất khi cần dùng. README và .gitignore
-      đã được sửa cho khớp manifest, và `npm run gate:baseline-doc` nay canh chúng.
+      Phần CÒN LẠI của gap: mọi diễn tập tới nay đều trên PostgreSQL TRẦN + platform-shim
+      (giả lập role/default privileges của Supabase). CHƯA lần nào restore vào một Supabase
+      project thật — auth/storage/realtime schema thật có thể hành xử khác shim, và đó là
+      môi trường duy nhất giống hoàn cảnh khôi phục thật.
     exit_condition: >
       Restore baseline vào một Supabase project THẬT, ghi kết quả vào manifest.restoreDrill
       (bảng/hàm/policy khớp counts), rồi hoặc (a) dựng job migration-forward-gates với
       credential trong secret, hoặc (b) ghi rõ ở đây rằng CI công khai cố ý không có đường đó
       và diễn tập chạy tay theo lịch. Đóng khi có bản ghi restore thành công trên Supabase.
+
+  - id: network-center-validation-chua-tung-xanh
+    where: .github/workflows/network-center-validation.yml
+    expires_at: 2026-10-31
+    why: >
+      Đo 13/08/2026 qua GitHub API: workflow này FAIL 50/50 lần chạy trong toàn bộ lịch
+      sử ghi nhận — nó CHƯA TỪNG xanh, tức mọi lần promote production trước nay đều diễn
+      ra khi nó đỏ, và màu đỏ của nó không mang tín hiệu hồi quy. Hai lỗi độc lập đang
+      thấy: (1) test "disposable PostgreSQL runner" chết ở `pg_ctl failed (1)` với stderr
+      RỖNG vì PG_CTL_STDIO=["ignore","ignore","ignore"] nuốt hết chẩn đoán — lỗi thật nằm
+      trong postgres.log của cluster tạm đã bị xoá; (2) luồng việc network-center thêm
+      migration 20260813020000 sáng 13/08 nhưng chưa đo lại rollout-manifest + fixture
+      "state measured on production" (23 stage → 24) — việc đo lại thuộc chủ domain đó
+      (đang có plan dở 2026-08-12-network-center-operational-observability), người ngoài
+      bịa số đo là phá cơ chế chống xanh-rỗng của chính fixture.
+    exit_condition: >
+      `GH_TOKEN=... gh run list --workflow "Network Center validation" --limit 1` trả
+      conclusion=success trên main. Đường tới đó: chủ domain network-center (a) mở stderr
+      cho pg_ctl hoặc đọc postgres.log trước khi dọn cluster để thấy lỗi thật, (b) chạy
+      generate-network-center-rollout-manifest + đo lại fixture sau migration 20260813020000.
 
   - id: pitr-disabled-accepted-risk
     where: Supabase project tryymsxyyckgbrmmvozx

@@ -111,13 +111,11 @@ scripts/.backfill-deposit-plan.json
 .ua/diff-overlay.json
 .clone-org-snapshots/
 
-# Baseline schema dump — KHÔNG commit (nhiều MB, sinh lại được).
+# Baseline schema dump — ĐÃ COMMIT từ 13/08/2026 (đổi quyết định cũ).
 #
-# Chú thích cũ ở đây ghi "chưa verify, không dùng để restore", mâu thuẫn với
-# supabase/baseline/README.md. Bản ghi đúng nằm ở manifest.json:
-# đã restore thử trên PostgreSQL TRẦN (303 bảng, 817 lỗi đều do target thiếu
-# schema auth/extensions), CHƯA restore vào Supabase project thật.
-#
-# Sinh lại: node scripts/capture-schema-baseline.mjs (cần SUPABASE_PAT).
-# Fresh clone KHÔNG có file này — xem known-gap baseline-schema-khong-trong-repo.
-supabase/baseline/schema.sql
+# Vì sao đổi: workflow Migration Restore Drill chạy trên checkout SẠCH của CI
+# và cần đúng file này — thiếu nó drill chết ENOENT ở bước đầu, và nó đã đỏ
+# 7/7 lần chạy kể từ khi ra đời. 5.6MB schema-only (0 dòng dữ liệu, sha256
+# ghim trong manifest.json) là cái giá rẻ để đường khôi phục diễn tập được
+# tự động. Sinh lại khi schema đổi: node scripts/capture-schema-baseline.mjs
+# --write (cần password pooler trong CLAUDE.local.md).
