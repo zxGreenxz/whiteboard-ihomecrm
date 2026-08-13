@@ -15,11 +15,27 @@ import {
   type RuntimeRouteDefinition,
 } from "./schemas.ts";
 
+/** Kết quả một lời gọi facade — thenable, kèm phần builder mà handler thật sự dùng. */
+export interface RuntimeRpcCall
+  extends PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }> {
+  /**
+   * Gắn hạn giờ cho lời gọi. Trả về chính nó để còn `await` được.
+   *
+   * Khai ở đây vì handler GỌI nó (xem `rpcDeadline`), và supabase-js có thật:
+   * `rpc()` trả PostgrestFilterBuilder chứ không phải Promise trần. Trước đây
+   * kiểu này dừng ở `PromiseLike`, nên `deno check` báo TS2339 "Property
+   * 'abortSignal' does not exist" — lỗi kiểu THẬT trong mã production, kéo dài
+   * từ fc12840f. Không ai thấy vì job openclaw-edge-gates cần quality-gates
+   * xanh mới chạy, mà quality-gates đỏ 168 lượt liên tiếp.
+   *
+   * Cùng một thiếu sót gây ra 18 test đỏ ở tầng test (bộ giả lập trả Promise
+   * trần): một thay đổi, hai chỗ quên cập nhật, hai triệu chứng chẳng giống nhau.
+   */
+  abortSignal(signal: AbortSignal): RuntimeRpcCall;
+}
+
 export interface RuntimeServiceClient {
-  rpc(
-    name: string,
-    args: Record<string, unknown>,
-  ): PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>;
+  rpc(name: string, args: Record<string, unknown>): RuntimeRpcCall;
 }
 
 export interface RuntimeDependencies {

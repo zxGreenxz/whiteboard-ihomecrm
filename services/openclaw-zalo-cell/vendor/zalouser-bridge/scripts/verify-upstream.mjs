@@ -18,7 +18,9 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 
-const M_SHA = "0650187981ad9728d295fae34eff92b508e36bc8";
+// Commit ĐÃ REVIEW của checkpoint M. Export để test dựng được bản export từ
+// đúng cây này thay vì từ HEAD — xem chú thích trong vendor-integrity.test.ts.
+export const M_SHA = "0650187981ad9728d295fae34eff92b508e36bc8";
 const VENDOR_REL = "services/openclaw-zalo-cell/vendor/zalouser-bridge";
 const UPSTREAM_REL = `${VENDOR_REL}/UPSTREAM.json`;
 const EXPECTED_AGGREGATE = "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b";

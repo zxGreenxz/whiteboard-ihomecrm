@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  M_SHA,
   fetchBoundedJson,
   fetchTarballWithRedirects,
   parseCliArguments,
@@ -304,10 +305,25 @@ describe("reviewed upstream and legal inputs", () => {
     let temporaryRoot: string | undefined;
 
     if (!manifestPath || !reviewedTree) {
-      reviewedTree = execFileSync("git", ["rev-parse", "HEAD"], {
-        cwd: repoRoot,
-        encoding: "utf8",
-      }).trim();
+      // Export từ CÂY ĐÃ REVIEW (M_SHA), không phải HEAD.
+      //
+      // Ca này kiểm ĐƯỜNG ĐỌC: `readReviewedExportRecords` thay cho
+      // `readReviewedRecords`, tức chứng minh việc xác minh chạy được mà không
+      // cần thư mục .git. Cây nào được export chỉ là phương tiện.
+      //
+      // Lấy HEAD biến nó thành một thứ khác hẳn: bộ dò trôi cho 87 file trong
+      // danh mục M — mà danh mục đó gồm cả BA file gốc repo (.gitattributes,
+      // eslint.config.js, vite.config.ts) vì chúng quyết định cách vendor được
+      // build. Hai trong ba đã đổi từ M_SHA vì lý do chẳng liên quan gì tới
+      // vendor: thêm luật `eol=lf` (5e1c362e) và gỡ lovable-tagger (801d208e).
+      // Aggregate vì thế lệch, và test đỏ với "M aggregate mismatch" — một câu
+      // nghe như nội dung vendor bị đụng, trong khi 85/87 file vendor byte-đối-byte
+      // KHÔNG đổi.
+      //
+      // Đường M_SHA thật sự vẫn được canh: bước `verify:upstream` của cùng job
+      // gọi `readReviewedRecords(repoRoot, M_SHA, …)` và so đúng aggregate ấy.
+      // Nên đổi ở đây không bỏ mất phép kiểm nào — nó trả ca này về đúng việc.
+      reviewedTree = M_SHA;
       temporaryRoot = mkdtempSync(join(tmpdir(), "ihome-reviewed-export-"));
       const outputRoot = join(temporaryRoot, "root");
       manifestPath = join(temporaryRoot, "reviewed-tree-manifest.json");
