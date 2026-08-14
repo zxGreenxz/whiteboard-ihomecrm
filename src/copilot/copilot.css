@@ -59,9 +59,12 @@
   .bc-float, .bc-blink, .bc-smoke, .bc-dot { animation: none; }
 }
 
-/* ---- Nút mở nổi ---- */
+/* ---- Nút mở nổi ----
+   KHÔNG đặt position ở đây: nút dùng Tailwind `fixed` để ghim góc màn hình,
+   mà CSS chunk lazy nạp SAU utilities nên khai position tại đây sẽ ĐÈ `fixed`
+   (đã dính thật 14/08: nút rơi vào cuối luồng trang, vô hình trên production).
+   `fixed` cũng đủ làm gốc định vị cho chấm online absolute bên trong. */
 .bc-launcher {
-  position: relative;
   width: 56px;
   height: 56px;
   border-radius: 9999px;
