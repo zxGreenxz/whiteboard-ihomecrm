@@ -36,6 +36,7 @@ import { collectAllRoutes } from './check-route-guards.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FILE_REGISTRY = join(repoRoot, 'src', 'copilot', 'tools', 'registry.ts');
+const FILE_GUARD = join(repoRoot, 'src', 'copilot', 'safetyGuard.ts');
 
 /** Dưới ngần này route bóc được thì bộ đọc hỏng, không phải app hết route. */
 export const SAN_ROUTE = 100;
@@ -102,6 +103,37 @@ export function chuanHoa(p) {
   return String(p).replace(/\/+$/, '') || '/';
 }
 
+/** `PILOT_ROUTE_ALLOWLIST = ['/a', '/b']` → `['/a', '/b']`. */
+export function docAllowlist(vanBan) {
+  return [...String(vanBan).matchAll(/PILOT_ROUTE_ALLOWLIST\s*=\s*\[([^\]]*)\]/g)].flatMap((m) =>
+    [...m[1].matchAll(/["'`]([^"'`]+)["'`]/g)].map((x) => x[1]),
+  );
+}
+
+/**
+ * Route mà `mo_trang` quảng cáo NHƯNG route guard sẽ chặn.
+ *
+ * Vì sao hai danh sách này phải trùng khớp, không chỉ là chuyện gọn gàng:
+ * `mo_trang` gọi `navigate()` sang trang đích, rồi ngay bước kế tiếp
+ * `makeRouteGuard` đọc `window.location.pathname` và NÉM LỖI nếu đường dẫn nằm
+ * ngoài allowlist. Tức là tool tự đưa agent vào chỗ mà chốt chặn của chính nó
+ * cấm đứng — agent điều hướng thành công rồi chết ngay sau đó, và người dùng
+ * thấy "✅ Đã mở trang X" đi kèm một task đứt gánh.
+ *
+ * Đo 13/08/2026: whitelist 5 trang, allowlist 3 → `/contracts` và `/buildings`
+ * rơi đúng vào cái bẫy này.
+ *
+ * So khớp theo cùng luật với guard lúc chạy: khớp tuyệt đối hoặc là tiền tố
+ * thư mục (`/x` phủ `/x/123`), KHÔNG phải tiền tố chuỗi (`/x` không phủ `/xyz`).
+ */
+export function routesNgoaiAllowlist(whitelist, allowlist) {
+  const ds = allowlist.map(chuanHoa);
+  return whitelist
+    .map((m) => (typeof m === 'string' ? m : m.route))
+    .map(chuanHoa)
+    .filter((r) => !ds.some((a) => r === a || r.startsWith(a + '/')));
+}
+
 function main() {
   const wl = docWhitelist(readFileSync(FILE_REGISTRY, 'utf8'));
   if (wl.length < SAN_WHITELIST) {
@@ -149,8 +181,24 @@ function main() {
     }
   }
 
+  // Whitelist điều hướng phải là TẬP CON của phạm vi route guard cho phép đứng.
+  const allowlist = docAllowlist(readFileSync(FILE_GUARD, 'utf8'));
+  if (allowlist.length === 0) {
+    console.error('❌ KHÔNG ĐO ĐƯỢC: không đọc được PILOT_ROUTE_ALLOWLIST trong safetyGuard.ts.');
+    console.error('   Bộ đọc hỏng hoặc danh sách đã đổi hình dạng — đừng đọc thành "không lệch".');
+    process.exit(3);
+  }
+  for (const r of routesNgoaiAllowlist(wl, allowlist)) {
+    van.push(
+      `route "${r}" được mo_trang quảng cáo nhưng NẰM NGOÀI PILOT_ROUTE_ALLOWLIST. ` +
+        'Agent điều hướng tới nơi mà route guard cấm đứng: tool báo "✅ Đã mở trang" ' +
+        'rồi bước kế tiếp ném lỗi và task đứt gánh.',
+    );
+  }
+
   console.log(
-    `Whitelist Copilot: ${wl.length} trang · đối chiếu ${coRoute.size} route và ${features.size} feature quyền.`,
+    `Whitelist Copilot: ${wl.length} trang · allowlist guard ${allowlist.length} route · ` +
+      `đối chiếu ${coRoute.size} route và ${features.size} feature quyền.`,
   );
 
   if (van.length > 0) {
