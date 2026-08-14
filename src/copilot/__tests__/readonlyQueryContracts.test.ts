@@ -21,7 +21,7 @@ const { buildRegistry } = await import('../tools/registry');
 import type { PermissionsMap } from '@/lib/permissions';
 
 const SUPER = { __superadmin: true } as unknown as PermissionsMap;
-const ctx = { perms: SUPER };
+const ctx = { perms: SUPER, organizationId: 'aaaa0000-0000-4000-8000-000000000001' };
 
 /**
  * Builder giả lập chuỗi PostgREST. Ghi lại tên bảng + chuỗi select rồi trả

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
@@ -41,6 +41,16 @@ export interface Organization {
 export interface OrganizationState {
   /** Tổ chức đang xem. `null` khi chưa nạp xong HOẶC người dùng không thuộc tổ chức nào. */
   organization: Organization | null;
+  /**
+   * ID tổ chức ĐANG CHỌN, hoặc `null` khi chưa chốt được.
+   *
+   * Đây là thứ mọi đường đọc/ghi có phạm vi tổ chức phải dùng. `null` KHÔNG có
+   * nghĩa "dùng mặc định" — nó có nghĩa là chưa chốt, và bên gọi phải từ chối
+   * chạy. Xem `resolveSelectedOrganizationId`.
+   */
+  selectedOrganizationId: string | null;
+  /** Chọn tổ chức. ID không nằm trong danh bạ hiện tại sẽ bị bỏ qua. */
+  selectOrganization: (id: string) => void;
   /** Mọi tổ chức người dùng có membership ACTIVE. */
   organizations: Organization[];
   /** Có nhiều hơn một tổ chức — nơi duy nhất đáng hiện bộ chuyển đổi. */
@@ -52,6 +62,39 @@ export interface OrganizationState {
    * tổ chức nào thì phải báo cho người dùng biết chứ không để màn trắng.
    */
   isOrphan: boolean;
+  /**
+   * Đã nạp xong, có NHIỀU tổ chức, nhưng chưa ai chọn. Giao diện phải hỏi.
+   *
+   * Tách khỏi `isOrphan` vì cách xử lý ngược nhau: mồ côi thì không có gì để
+   * chọn, còn đây là có nhiều thứ để chọn mà chưa chọn.
+   */
+  canChonToChuc: boolean;
+}
+
+const KHOA_LUU = 'ihomecrm.selectedOrganizationId';
+
+/**
+ * Tổ chức nào đang được chọn, từ danh bạ và lựa chọn đã lưu.
+ *
+ * Luật, theo đúng thứ tự:
+ *   1. Đúng MỘT tổ chức ⇒ chọn luôn. Bắt người dùng bấm để xác nhận thứ duy nhất
+ *      họ có là nghi thức rỗng.
+ *   2. Lựa chọn đã lưu còn nằm trong danh bạ ⇒ giữ.
+ *   3. Mọi trường hợp khác ⇒ `null`.
+ *
+ * Điều (3) là chỗ khác hẳn hành vi cũ (`organizations[0]`). Người bị gỡ khỏi
+ * công ty B mà lựa chọn còn trỏ vào B sẽ nhận `null` chứ KHÔNG âm thầm rơi về
+ * công ty A — vì rơi âm thầm nghĩa là họ tiếp tục làm việc trên sổ của một công
+ * ty khác mà không có gì báo.
+ */
+export function resolveSelectedOrganizationId(
+  organizations: Organization[],
+  persistedId: string | null,
+): string | null {
+  if (organizations.length === 0) return null;
+  if (organizations.length === 1) return organizations[0].id;
+  if (persistedId && organizations.some((o) => o.id === persistedId)) return persistedId;
+  return null;
 }
 
 const OrganizationContext = createContext<OrganizationState | null>(null);
@@ -96,16 +139,56 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Chỉ lưu ID, không lưu cả bản ghi tổ chức: một bản chép trong localStorage sẽ
+  // cũ đi (đổi tên, bị gỡ quyền) mà không có gì làm nó mới lại, và giao diện sẽ
+  // hiện tên cũ của một công ty người dùng không còn vào được.
+  const [luuId, datLuuId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(KHOA_LUU);
+    } catch {
+      return null; // Safari chế độ riêng tư ném ở đây; mất lựa chọn còn hơn vỡ app.
+    }
+  });
+
+  const organizations = useMemo(() => data ?? [], [data]);
+  const selectedOrganizationId = resolveSelectedOrganizationId(organizations, luuId);
+
+  // Lựa chọn đã lưu không còn hợp lệ thì DỌN, đừng để rác trỏ vào công ty cũ.
+  useEffect(() => {
+    if (isLoading) return;
+    if (luuId && !organizations.some((o) => o.id === luuId)) {
+      try {
+        localStorage.removeItem(KHOA_LUU);
+      } catch { /* xem chú thích khởi tạo */ }
+      datLuuId(null);
+    }
+  }, [isLoading, luuId, organizations]);
+
+  const selectOrganization = useCallback(
+    (id: string) => {
+      // Bỏ qua ID ngoài danh bạ: nhận bừa sẽ tạo ra một lựa chọn không tương ứng
+      // với thứ gì, và `resolveSelectedOrganizationId` chỉ việc trả null sau đó.
+      if (!organizations.some((o) => o.id === id)) return;
+      try {
+        localStorage.setItem(KHOA_LUU, id);
+      } catch { /* xem chú thích khởi tạo */ }
+      datLuuId(id);
+    },
+    [organizations],
+  );
+
   const value = useMemo<OrganizationState>(() => {
-    const organizations = data ?? [];
     return {
       organizations,
-      organization: organizations[0] ?? null,
+      organization: organizations.find((o) => o.id === selectedOrganizationId) ?? null,
+      selectedOrganizationId,
+      selectOrganization,
       isMultiOrg: organizations.length > 1,
       isLoading,
       isOrphan: !isLoading && organizations.length === 0,
+      canChonToChuc: !isLoading && organizations.length > 1 && selectedOrganizationId === null,
     };
-  }, [data, isLoading]);
+  }, [organizations, selectedOrganizationId, selectOrganization, isLoading]);
 
   return (
     <OrganizationContext.Provider value={value}>

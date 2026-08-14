@@ -137,7 +137,11 @@ export default function ChatPanel({ onClose }: Props) {
   const { data: perms } = useMyPermissions();
   // Tổ chức đang xem — chỉ CẦN khi người dùng thuộc nhiều tổ chức; database tự
   // suy được cho trường hợp một tổ chức (20260809040000).
-  const { organization } = useOrganization();
+  // `selectedOrganizationId` chứ không phải `organization?.id`: hai thứ này đã
+  // từng là một, nhưng nay `organization` chỉ để HIỂN THỊ còn lựa chọn tường minh
+  // mới là thứ đi vào ToolCtx. `null` = chưa chốt, và tool org-scoped sẽ từ chối
+  // chạy chứ không lặng lẽ đọc union nhiều công ty.
+  const { organization, selectedOrganizationId } = useOrganization();
   const { data: providers } = useAiProviders();
   const { data: entitlement } = useCopilotEntitlement();
   const { model, setModel, modelLoiThoi } = useCopilotModel();
@@ -206,7 +210,7 @@ export default function ChatPanel({ onClose }: Props) {
     setHistory((h) => [...h, { role: 'user', content: text }]);
     setLiveTool('điều khiển trang');
     const { createUiControlAgent } = await import('./createAgent');
-    const agent = createUiControlAgent({ providerModel: model, ctx: { perms, navigate } });
+    const agent = createUiControlAgent({ providerModel: model, ctx: { perms, organizationId: selectedOrganizationId, navigate } });
     uiAgentRef.current = agent;
     try {
       const result = await agent.run(text);
@@ -238,7 +242,7 @@ export default function ChatPanel({ onClose }: Props) {
       providerModel: model,
       history,
       userText: text,
-      ctx: { perms },
+      ctx: { perms, organizationId: selectedOrganizationId },
       signal: abort.signal,
       // Cho Copilot biết người dùng đang xem màn hình nào — để hiểu "cái này".
       pathname: location.pathname,

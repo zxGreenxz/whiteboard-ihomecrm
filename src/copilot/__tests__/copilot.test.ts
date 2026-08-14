@@ -20,6 +20,8 @@ import { modelConDungDuoc } from '../useAiProviders';
 import type { PermissionsMap } from '@/lib/permissions';
 
 const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMap;
+/** Cong ty dung trong test - ToolCtx nay bat buoc co, xem chotToChuc. */
+const ORG_TEST = 'aaaa0000-0000-4000-8000-000000000001';
 const STAFF_ROOMS_ONLY: PermissionsMap = { rooms: { view: true } };
 
 describe('maskPii', () => {
@@ -127,8 +129,8 @@ describe('registry + adapters', () => {
     // chính là thứ đã để write tool lọt sang PageAgent. Bất biến đúng hẹp hơn:
     // tool nào xuất hiện ở CẢ HAI thì phải dùng chung schema, không phải bản chép.
     const reg = buildRegistry();
-    const llmTools = toLlmTools(reg, { perms: SUPER });
-    const paTools = toPageAgentTools(reg, { perms: SUPER });
+    const llmTools = toLlmTools(reg, { perms: SUPER, organizationId: ORG_TEST });
+    const paTools = toPageAgentTools(reg, { perms: SUPER, organizationId: ORG_TEST });
     const chung = Object.keys(llmTools).filter((name) => paTools[name]);
     expect(chung.length).toBeGreaterThanOrEqual(5); // sàn chống-xanh-rỗng
     for (const name of chung) {
@@ -141,20 +143,20 @@ describe('registry + adapters', () => {
     const reg = buildRegistry();
     // SUPER có đủ income_expenses.create — nếu chặn bằng quyền thì test này xanh
     // giả. Chặn phải đến từ cờ chatOnly, không phải từ việc thiếu quyền.
-    expect(toLlmTools(reg, { perms: SUPER }).tao_phieu_thu_chi_nhap).toBeDefined();
-    expect(toPageAgentTools(reg, { perms: SUPER }).tao_phieu_thu_chi_nhap).toBeUndefined();
+    expect(toLlmTools(reg, { perms: SUPER, organizationId: ORG_TEST }).tao_phieu_thu_chi_nhap).toBeDefined();
+    expect(toPageAgentTools(reg, { perms: SUPER, organizationId: ORG_TEST }).tao_phieu_thu_chi_nhap).toBeUndefined();
 
     // Và nói rộng hơn: KHÔNG tool ghi nào lọt sang adapter UI-control.
     const toolGhi = reg.filter((t) => t.chatOnly).map((t) => t.name);
     expect(toolGhi.length).toBeGreaterThanOrEqual(1); // sàn chống-xanh-rỗng
-    const paNames = Object.keys(toPageAgentTools(reg, { perms: SUPER }));
+    const paNames = Object.keys(toPageAgentTools(reg, { perms: SUPER, organizationId: ORG_TEST }));
     for (const name of toolGhi) expect(paNames).not.toContain(name);
   });
 
   it('mo_trang CHỈ có ở adapter UI-control (chat không điều hướng)', () => {
     const reg = buildRegistry();
-    expect(toLlmTools(reg, { perms: SUPER }).mo_trang).toBeUndefined();
-    expect(toPageAgentTools(reg, { perms: SUPER }).mo_trang).toBeDefined();
+    expect(toLlmTools(reg, { perms: SUPER, organizationId: ORG_TEST }).mo_trang).toBeUndefined();
+    expect(toPageAgentTools(reg, { perms: SUPER, organizationId: ORG_TEST }).mo_trang).toBeDefined();
   });
 
   it('MỌI requiredPermission phải là cặp module.action CÓ THẬT trong catalog', async () => {
@@ -183,7 +185,7 @@ describe('registry + adapters', () => {
 
   it('tool bị LOẠI khỏi danh sách khi thiếu quyền', () => {
     const reg = buildRegistry();
-    const tools = toLlmTools(reg, { perms: STAFF_ROOMS_ONLY });
+    const tools = toLlmTools(reg, { perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST });
     expect(tools.phong_trong).toBeDefined();       // rooms.view có
     expect(tools.doanh_thu_thang).toBeUndefined(); // reports_finance.analysis không
     expect(tools.huong_dan).toBeDefined();         // không cần quyền
@@ -195,7 +197,7 @@ describe('registry + adapters', () => {
     const reg = buildRegistry();
     const moTrang = reg.find((t) => t.name === 'mo_trang')!;
     let navigated = '';
-    const out = await moTrang.execute({ trang: 'phong' }, { perms: SUPER, navigate: (to) => { navigated = to; } });
+    const out = await moTrang.execute({ trang: 'phong' }, { perms: SUPER, organizationId: ORG_TEST, navigate: (to) => { navigated = to; } });
     expect(navigated).toBe('/apartments');
     expect(out).toContain('/apartments');
   });
@@ -204,7 +206,7 @@ describe('registry + adapters', () => {
     const reg = buildRegistry();
     const moTrang = reg.find((t) => t.name === 'mo_trang')!;
     await expect(
-      moTrang.execute({ trang: 'hoa_don' }, { perms: STAFF_ROOMS_ONLY, navigate: () => {} }),
+      moTrang.execute({ trang: 'hoa_don' }, { perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST, navigate: () => {} }),
     ).rejects.toThrow(/quyền/);
   });
 });
@@ -247,7 +249,7 @@ describe('huong_dan — allowlist tài liệu + gác quyền', () => {
     // nghĩa hẳn để test kiểm đúng thứ nó định kiểm.
     const reg = buildRegistry();
     const tool = reg.find((t) => t.name === 'huong_dan')!;
-    const out = await tool.execute({ chu_de: 'xyzzy plugh frobnicate' }, { perms: STAFF_ROOMS_ONLY });
+    const out = await tool.execute({ chu_de: 'xyzzy plugh frobnicate' }, { perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST });
     expect(out).toContain('Không tìm thấy');
     expect(out).not.toContain('(nguồn: 17-luong-thuong');
   });
@@ -255,11 +257,11 @@ describe('huong_dan — allowlist tài liệu + gác quyền', () => {
   it('liet_ke_chu_de: chỉ kể tài liệu trong quyền', async () => {
     const reg = buildRegistry();
     const tool = reg.find((t) => t.name === 'liet_ke_chu_de')!;
-    const out = await tool.execute({}, { perms: STAFF_ROOMS_ONLY });
+    const out = await tool.execute({}, { perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST });
     expect(out).toContain('05-hop-dong');
     expect(out).not.toContain('17-luong-thuong');
     // perms chưa tải: nói rõ là đang tải, KHÔNG nói "không có tài liệu nào"
-    const chuaTai = await tool.execute({}, { perms: undefined });
+    const chuaTai = await tool.execute({}, { perms: undefined, organizationId: ORG_TEST });
     expect(chuaTai).not.toContain('17-luong-thuong');
   });
 });
@@ -275,8 +277,8 @@ describe('Phase 5 — write tool + form-fill guard', () => {
     }) as { xac_nhan: boolean };
     expect(parsed.xac_nhan).toBe(false);
     // bị LOẠI khỏi danh sách khi user không có quyền create
-    expect(toLlmTools(reg, { perms: STAFF_ROOMS_ONLY }).tao_phieu_thu_chi_nhap).toBeUndefined();
-    expect(toLlmTools(reg, { perms: SUPER }).tao_phieu_thu_chi_nhap).toBeDefined();
+    expect(toLlmTools(reg, { perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST }).tao_phieu_thu_chi_nhap).toBeUndefined();
+    expect(toLlmTools(reg, { perms: SUPER, organizationId: ORG_TEST }).tao_phieu_thu_chi_nhap).toBeDefined();
   });
 
   it('KHÔNG chỉ dẫn nào trỏ tới tool đã bị gỡ khỏi registry', async () => {

@@ -20,7 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatVND } from '@/lib/utils';
 import { maskPii } from '../maskPii';
 import { todayISO } from '@/lib/collect';
-import type { DomainTool } from './registry';
+import { chotToChuc, type DomainTool } from './registry';
 
 const dt = <T,>(t: DomainTool<T>): DomainTool<T> => t;
 
@@ -78,7 +78,8 @@ export const tyLeLapDay = dt({
   // (xem realEstateReportRoutes.tsx:33). Cấp qua Copilot với một quyền rộng hơn
   // và dễ được cấp hơn là mở một cửa sau vòng qua chính hàng rào của màn hình.
   requiredPermission: { module: 'reports_real_estate', action: 'occupancy' },
-  execute: async (args) => {
+  execute: async (args, ctx) => {
+    chotToChuc(ctx, 'ty_le_lap_day');
     const ngay = args.ngay ?? todayISO();
     const { data, error } = await supabase.rpc('occupancy_snapshot_v2', {
       p_as_of_date: ngay,
@@ -140,7 +141,8 @@ export const congNoTongQuan = dt({
       .describe('Kỳ YYYY-MM. Bỏ trống = toàn bộ.'),
   }),
   requiredPermission: { module: 'invoices', action: 'view' },
-  execute: async (args) => {
+  execute: async (args, ctx) => {
+    chotToChuc(ctx, 'cong_no_tong_quan');
     const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
       ...(args.thang ? { p_billing_month: args.thang } : {}),
     });
@@ -174,7 +176,8 @@ export const cocDangGiu = dt({
     'Tiền cọc đang giữ theo toà: số hợp đồng, cọc phải thu, đã giữ, còn thiếu. Dùng khi hỏi về cọc, ai chưa đóng đủ cọc.',
   inputSchema: z.object({}),
   requiredPermission: { module: 'deposits', action: 'view' },
-  execute: async () => {
+  execute: async (_args, ctx) => {
+    chotToChuc(ctx, 'coc_dang_giu');
     const { data, error } = await supabase.rpc('get_held_deposit_summary', {});
     if (error) throw new Error(`Lỗi tải cọc: ${error.message}`);
     const rows = (data ?? []) as unknown as HangCoc[];
@@ -209,7 +212,8 @@ export const soQuy = dt({
       .describe('Bỏ trống = hôm nay'),
   }),
   requiredPermission: { module: 'income_expenses', action: 'view' },
-  execute: async (args) => {
+  execute: async (args, ctx) => {
+    chotToChuc(ctx, 'so_quy');
     const nay = new Date();
     const tu = args.tu_ngay ?? ngayISO(new Date(nay.getFullYear(), nay.getMonth(), 1));
     const den = args.den_ngay ?? todayISO();

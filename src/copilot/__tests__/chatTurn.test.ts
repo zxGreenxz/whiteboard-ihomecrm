@@ -38,7 +38,7 @@ const chay = (over: Partial<Parameters<typeof runChatTurn>[0]> = {}) =>
     userText: 'Cách thanh lý hợp đồng?',
     // perms undefined ⇒ chỉ còn tool không gắn quyền (`huong_dan`). Giữ test
     // khỏi phải chạm Supabase.
-    ctx: { perms: undefined },
+    ctx: { perms: undefined, organizationId: null },
     signal: new AbortController().signal,
     ...over,
   });
@@ -262,7 +262,7 @@ describe('toolSangKhaiBao — schema gửi cho mô hình', () => {
 
   it('giữ description của tool — mô hình chọn tool bằng chính câu này', async () => {
     const registry = buildRegistry();
-    const kb = toolSangKhaiBao(toLlmTools(registry, { perms: undefined }));
+    const kb = toolSangKhaiBao(toLlmTools(registry, { perms: undefined, organizationId: null }));
     const hd = kb.find((t) => t.function.name === 'huong_dan')!;
     expect(hd.function.description).toContain('tài liệu');
   });

@@ -19,8 +19,40 @@ import { TOOL_NGHIEP_VU } from './nghiepVuTools';
 export interface ToolCtx {
   /** get_my_permissions() — undefined khi chưa load (mọi tool bị chặn). */
   perms: PermissionsMap | undefined;
+  /**
+   * Công ty ĐANG CHỌN, từ `OrganizationContext.selectedOrganizationId`.
+   *
+   * `null` KHÔNG có nghĩa "mọi công ty" hay "công ty mặc định" — nó có nghĩa
+   * chưa chốt được, và mọi tool có phạm vi công ty phải TỪ CHỐI chạy. Trước
+   * 14/08/2026 trường này không tồn tại: Copilot đọc sổ theo union mọi công ty
+   * người dùng thuộc về, còn "công ty hiện tại" trên giao diện là
+   * `organizations[0]`. Hai thứ đó có thể là hai công ty khác nhau, và không có
+   * gì trong câu trả lời nói cho người đọc biết họ đang xem sổ của ai.
+   */
+  organizationId: string | null;
   /** react-router navigate — chỉ adapter UI-control truyền vào. */
   navigate?: (to: string) => void;
+}
+
+/** Mã lỗi ổn định khi tool có phạm vi công ty bị gọi lúc chưa chốt công ty. */
+export const LOI_THIEU_TO_CHUC = 'organization_required';
+
+/**
+ * Chặn TRƯỚC mọi truy vấn khi chưa chốt công ty.
+ *
+ * Gọi ở đầu `execute` của tool có phạm vi công ty. Đặt ở đây thay vì để RLS lo:
+ * RLS trả về union của các công ty người dùng thuộc về, tức một câu trả lời
+ * "đúng" nhưng cộng gộp sổ của nhiều công ty — không có lỗi nào nổ ra, và con số
+ * sai theo cách không ai nhìn ra được.
+ */
+export function chotToChuc(ctx: ToolCtx, tenTool: string): string {
+  if (!ctx.organizationId) {
+    throw new Error(
+      `${LOI_THIEU_TO_CHUC}: chưa chọn công ty nên không chạy được "${tenTool}". ` +
+        'Người dùng thuộc nhiều công ty — hãy bảo họ chọn công ty ở nhãn trên thanh đầu trang.',
+    );
+  }
+  return ctx.organizationId;
 }
 
 export interface DomainTool<T = any> {
@@ -263,7 +295,8 @@ export function buildRegistry(): DomainTool[] {
         toa_nha: z.string().optional().describe('Lọc theo tên toà (khớp gần đúng), bỏ trống = tất cả'),
       }),
       requiredPermission: { module: 'rooms', action: 'view' },
-      execute: async (args) => {
+      execute: async (args, ctx) => {
+        chotToChuc(ctx, 'phong_trong');
         const { data, error } = await supabase.rpc('get_my_available_rooms');
         if (error) throw new Error(`Lỗi tải phòng trống: ${error.message}`);
         let buildings = mapPayloadToBuildings((data as unknown as RpcPayload | null) ?? null);
@@ -297,7 +330,8 @@ export function buildRegistry(): DomainTool[] {
       description: 'Tìm khách hàng/cư dân theo tên hoặc SĐT. Trả về tên, SĐT (che một phần), phòng đang thuê.',
       inputSchema: z.object({ tu_khoa: z.string().min(1).describe('Tên hoặc SĐT') }),
       requiredPermission: { module: 'customers', action: 'view' },
-      execute: async (args) => {
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'tim_khach_hang');
         const kw = args.tu_khoa.trim();
         // Phòng/toà KHÔNG nằm trên `customers` — bảng này không có `room_id`
         // hay `building_id`. Bản trước nhúng thẳng `rooms(...)`/`buildings(...)`
@@ -320,6 +354,7 @@ export function buildRegistry(): DomainTool[] {
               'name, building:buildings!rooms_building_id_fkey(name)' +
               ')))',
           )
+          .eq('organization_id', orgId)
           .is('deleted_at', null)
           .or(`full_name.ilike.%${kw}%,phone.ilike.%${kw}%`)
           .limit(10);
@@ -345,7 +380,8 @@ export function buildRegistry(): DomainTool[] {
         tu_khoa: z.string().optional().describe('Tên khách hoặc số hoá đơn'),
       }),
       requiredPermission: { module: 'invoices', action: 'view' },
-      execute: async (args) => {
+      execute: async (args, ctx) => {
+        chotToChuc(ctx, 'tim_hoa_don');
         // Tái dùng factory (lọc kind/deleted/sort chuẩn — PLAN §2.2)
         const q = invoicesListQuery(
           { billing_month: args.thang, payment_status: args.trang_thai, search: args.tu_khoa },
@@ -370,7 +406,8 @@ export function buildRegistry(): DomainTool[] {
         so_ngay: z.number().int().min(1).max(365).default(30).describe('Số ngày tới'),
       }),
       requiredPermission: { module: 'reports_real_estate', action: 'expiring' },
-      execute: async (args) => {
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'hop_dong_sap_het_han');
         const today = new Date();
         const until = new Date(today.getTime() + args.so_ngay * 86_400_000);
         // Đọc theo giờ LOCAL: toISOString() đổi sang UTC nên trước 7h sáng giờ VN
@@ -394,6 +431,7 @@ export function buildRegistry(): DomainTool[] {
               'customer:customers!contract_customers_customer_id_fkey(full_name)' +
               ')',
           )
+          .eq('organization_id', orgId)
           .eq('status', 'ACTIVE')
           .is('deleted_at', null)
           .gte('end_date', iso(today))
@@ -420,7 +458,8 @@ export function buildRegistry(): DomainTool[] {
         accrual: z.boolean().default(false).describe('true = dồn tích (accrual), false = tiền mặt'),
       }),
       requiredPermission: { module: 'reports_finance', action: 'analysis' },
-      execute: async (args) => {
+      execute: async (args, ctx) => {
+        chotToChuc(ctx, 'doanh_thu_thang');
         const [y, m] = args.thang.split('-').map(Number);
         const start = `${args.thang}-01`;
         const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); // ngày cuối tháng

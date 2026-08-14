@@ -90,7 +90,7 @@ describe('so_quy — PII không được rời hệ thống', () => {
     // `dinhDangSoQuy` trực tiếp, nên nếu tool NGỪNG dùng nó (quay lại
     // `JSON.stringify(data)`) thì không test nào đỏ. Ca này chạy qua `execute`.
     rpc.mockResolvedValueOnce({ data: BAO_CAO, error: null });
-    const out = await soQuy.execute({ tu_ngay: '2026-08-01', den_ngay: '2026-08-12' }, { perms: undefined });
+    const out = await soQuy.execute({ tu_ngay: '2026-08-01', den_ngay: '2026-08-12' }, { perms: undefined, organizationId: 'aaaa0000-0000-4000-8000-000000000001' });
     expect(rpc).toHaveBeenCalledWith('cashbook_settlement_report', {
       p_from: '2026-08-01',
       p_to: '2026-08-12',
