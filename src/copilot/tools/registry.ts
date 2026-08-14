@@ -64,12 +64,26 @@ function assertPerm(tool: DomainTool, ctx: ToolCtx): void {
 // Nay `z.enum` và `description` đều SINH TỪ map; `scripts/check-copilot-routes.mjs`
 // canh nốt hai thứ không suy ra được từ đây: route có tồn tại thật không, và
 // module có phải module quyền thật không.
+//
+// DANH SÁCH NÀY PHẢI LÀ TẬP CON của `PILOT_ROUTE_ALLOWLIST` (safetyGuard.ts).
+// Gate `scripts/check-copilot-routes.mjs` canh điều đó.
+//
+// Vì sao ngày 14/08/2026 danh sách rút từ 5 xuống 3: `/contracts` và `/buildings`
+// từng nằm ở đây nhưng KHÔNG có trong allowlist, nên `mo_trang` điều hướng sang
+// rồi `makeRouteGuard` ném lỗi ngay bước kế — hai trang đó trên thực tế đã không
+// dùng được, danh sách chỉ đang nói dối về phạm vi.
+//
+// Và hướng sửa ngược lại (nới allowlist lên 5) đã bị bác bằng khảo sát: hai
+// trang đó có control ĐỔI DỮ LIỆU NGAY mà lớp blacklist không thấy —
+// `<Switch>` bật/tắt trạng thái toà nhà (BuildingListTable) và multiselect gán
+// toà vào khu vực (ManageAreasDialog) đều không có nhãn văn bản nào, còn nhãn
+// "Xoá"/"Thanh lý"/"Nhượng HĐ" trên bảng hợp đồng nằm trong tooltip/`title`
+// chứ không nằm trong `textContent`. Mở phạm vi trước khi có safe-control theo
+// khai báo (Phase C) là mở đúng vào chỗ hàng rào hiện tại không với tới.
 export const MO_TRANG_ROUTES: Record<string, { route: string; module: string; label: string }> = {
   phong: { route: '/apartments', module: 'rooms', label: 'Căn hộ / Phòng' },
   hoa_don: { route: '/invoices', module: 'invoices', label: 'Hoá đơn' },
   khach_hang: { route: '/customers', module: 'customers', label: 'Cư dân' },
-  hop_dong: { route: '/contracts', module: 'contracts', label: 'Hợp đồng' },
-  toa_nha: { route: '/buildings', module: 'buildings', label: 'Toà nhà' },
 };
 
 /** Khoá của whitelist, dạng tuple để `z.enum` nhận — KHÔNG khai lại bằng tay. */

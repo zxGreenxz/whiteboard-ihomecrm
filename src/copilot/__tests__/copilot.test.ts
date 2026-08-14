@@ -14,7 +14,7 @@ import {
   MO_TRANG_ROUTES,
 } from '../tools/registry';
 import { makeIdempotencyKey } from '../tools/writeTools';
-import { DANGER_RE, SUBMIT_RE } from '../safetyGuard';
+import { DANGER_RE, SUBMIT_RE, nhanNguyHiem } from '../safetyGuard';
 import { hrefAnToan } from '../hrefAnToan';
 import { modelConDungDuoc } from '../useAiProviders';
 import type { PermissionsMap } from '@/lib/permissions';
@@ -323,6 +323,59 @@ describe('Phase 5 — write tool + form-fill guard', () => {
     for (const label of ['Xoá hoá đơn', 'Huỷ phiếu', 'Duyệt', 'Thanh lý HĐ', 'Delete']) {
       expect(DANGER_RE.test(label)).toBe(true);
     }
+  });
+
+  it('nhãn ở `title` cũng bị soi, không chỉ textContent/aria-label', () => {
+    // Khảo sát 14/08/2026: nút icon trên bảng toà nhà đặt nhãn ở `title`
+    // (BuildingListTable "Sửa"/"Xoá"/"In"). Trước đây chỉ đọc textContent +
+    // aria-label nên nút "Xoá" đó là icon trần không chữ — hàng rào đi ngang qua.
+    expect(nhanNguyHiem(['', '', 'Xoá'])).toBe(true);
+    expect(nhanNguyHiem(['', '', 'Lưu'])).toBe(true);
+    expect(nhanNguyHiem(['', '', 'In'])).toBe(false);
+    expect(nhanNguyHiem(['', '', 'Sửa'])).toBe(false);
+  });
+
+  it('nhãn được soi RỜI, chuỗi trước không che được chuỗi sau', () => {
+    // SUBMIT_RE neo đầu (`^`). Nối "Xem" + "Lưu" thành một chuỗi thì luật submit
+    // không khớp nữa — nối chuỗi ở đây là tự tạo điểm mù.
+    expect(SUBMIT_RE.test('Xem Lưu')).toBe(false);
+    expect(nhanNguyHiem(['Xem', 'Lưu'])).toBe(true);
+  });
+
+  it('biến thể chính tả thật trong repo đều bị chặn', () => {
+    // Cùng một hành động viết khác dấu ở các file khác nhau — khảo sát 14/08
+    // liệt kê đủ cặp này; regex phải phủ cả hai bên.
+    for (const label of [
+      'Xóa', 'Xoá', 'Đang xóa...', 'Đang xoá...',
+      'Hủy', 'Huỷ', 'Huỷ bỏ',
+      'Thanh lý', 'Xác nhận thanh lý',
+      'Lập hoá đơn & thanh lý', 'Lập hoá đơn & Thanh lý',
+      'Nhượng hợp đồng', 'Nhượng HĐ',
+    ]) {
+      expect(nhanNguyHiem([label]), `nhãn "${label}" lọt hàng rào`).toBe(true);
+    }
+  });
+
+  it('"nhượng" bị chặn nhưng từ nối "nhưng" thì không', () => {
+    // Ranh giới hẹp: hai ký tự "ượ" phải khớp RỜI. Gộp thành một char class sẽ
+    // nuốt luôn "nhưng" và chặn nhầm những nút hoàn toàn lành.
+    expect(DANGER_RE.test('Nhượng HĐ')).toBe(true);
+    expect(DANGER_RE.test('Nhượng hợp đồng')).toBe(true);
+    expect(DANGER_RE.test('chuyển nhượng')).toBe(true);
+    expect(DANGER_RE.test('Có nhưng chưa đủ')).toBe(false);
+  });
+
+  it('KHOẢNG TRỐNG ĐÃ BIẾT: nhãn chỉ nằm trong tooltip thì regex không thấy', () => {
+    // Ghi lại bằng test để không ai đọc nhầm hàng rào này là đã phủ hết.
+    // "Gia hạn", "Chuyển phòng", "ĐK chuyển đi" trên bảng hợp đồng chỉ có chữ
+    // trong <TooltipContent> (render vào portal khi hover) — lúc quét DOM thì
+    // nút là icon trần. Đóng lỗ này là việc của safe-control theo khai báo
+    // (Phase C), không phải của regex nhãn.
+    for (const label of ['Gia hạn', 'Chuyển phòng', 'ĐK chuyển đi']) {
+      expect(nhanNguyHiem([label]), `nếu regex đã bắt "${label}" thì cập nhật test này`).toBe(false);
+    }
+    // Và control autosave không nhãn thì không nhãn nào bắt được.
+    expect(nhanNguyHiem([])).toBe(false);
   });
 });
 
