@@ -107,8 +107,18 @@ public.get_my_copilot_availability_v1(p_organization_id uuid) RETURNS jsonb
 | A3.3 — inventory tool sinh từ nguồn | ✅ xong | `432c7937` |
 | A5 — kỳ tương đối + năng lực prompt | ✅ xong | `6f20583f` |
 | A3.1 — containment write | ⏭ gộp vào B1 (xem ghi chú) | — |
-| A4 — selected organization | ⏳ đang làm | — |
+| A4 — selected organization | ✅ xong | `80cc45aa` (migration), `4f3af291` (client) |
+| **Phase A** | **✅ HOÀN TẤT** | 213/213 test · 2619 test ×4 múi giờ |
 | Phase B/C/D | ⬜ chưa bắt đầu | — |
+
+**Chưa apply lên production**: migration `20260814032500` mới nằm trong repo, chờ
+`migrate:forward`. Client KHÔNG phụ thuộc nó (vẫn dùng `get_my_organizations`), nên
+deploy web trước hay sau đều an toàn; RPC mới chỉ cần khi bật danh bạ superadmin.
+
+**Khoảng trống A4 còn lại** (đã ghi bằng test trong `toolOrgScope.test.ts`): 6 tool
+đi qua RPC có chữ ký cố định chỉ **chặn** được, chưa **lọc** được theo công ty —
+sau khi chọn, chúng vẫn trả union. Với người một công ty (đa số) hai thứ trùng nhau.
+Đóng nốt cần RPC v2 cho từng cái.
 
 **Ghi chú A3.1 → B1**: plan gốc định gỡ `tao_phieu_thu_chi_nhap` khỏi model cho tới
 khi có nonce. Làm vậy sẽ mất một tính năng đang chạy trong suốt thời gian làm B1, mà
