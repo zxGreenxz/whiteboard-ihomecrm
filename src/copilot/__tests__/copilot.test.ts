@@ -267,18 +267,40 @@ describe('huong_dan — allowlist tài liệu + gác quyền', () => {
 });
 
 describe('Phase 5 — write tool + form-fill guard', () => {
-  it('tao_phieu_thu_chi_nhap: yêu cầu income_expenses.create, mặc định xac_nhan=false', () => {
+  it('tao_phieu_thu_chi_nhap: KHÔNG còn cờ xác nhận nào trong input schema', async () => {
     const reg = buildRegistry();
     const tool = reg.find((t) => t.name === 'tao_phieu_thu_chi_nhap')!;
     expect(tool.requiredPermission).toEqual({ module: 'income_expenses', action: 'create' });
-    // schema default: thiếu xac_nhan → false (bước xem trước bắt buộc)
-    const parsed = tool.inputSchema.parse({
-      loai: 'chi', so_tien: 100000, ten_phieu: 'Chi thử', toa_nha: 'X', hang_muc: 'Vệ sinh',
-    }) as { xac_nhan: boolean };
-    expect(parsed.xac_nhan).toBe(false);
-    // bị LOẠI khỏi danh sách khi user không có quyền create
+
+    // Đây là bất biến ĐẮT NHẤT của cả luồng ghi: mô hình không được có bất kỳ
+    // trường nào để tự khai "người dùng đã đồng ý". Còn một cờ như thế thì nonce
+    // chỉ là trang trí — mô hình vẫn tự bấm nút của chính nó.
+    const schema = (await import('zod/v4')).toJSONSchema(tool.inputSchema, { io: 'input' }) as {
+      properties?: Record<string, unknown>;
+    };
+    const khoa = Object.keys(schema.properties ?? {});
+    expect(khoa).toEqual(
+      expect.arrayContaining(['loai', 'so_tien', 'ten_phieu', 'toa_nha', 'hang_muc']),
+    );
+    for (const cam of ['xac_nhan', 'confirm', 'confirmed', 'confirmation_nonce', 'nonce']) {
+      expect(khoa, `input schema còn trường "${cam}"`).not.toContain(cam);
+    }
+
+    // Và tool ghi vẫn không bao giờ tới tay PageAgent.
     expect(toLlmTools(reg, { perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST }).tao_phieu_thu_chi_nhap).toBeUndefined();
     expect(toLlmTools(reg, { perms: SUPER, organizationId: ORG_TEST }).tao_phieu_thu_chi_nhap).toBeDefined();
+  });
+
+  it('hàm thực thi xác nhận KHÔNG nằm trong registry', async () => {
+    // Nếu `thucThiXacNhan` là một DomainTool thì mô hình gọi được nó, và cả kiến
+    // trúc nonce sụp trong một dòng.
+    const reg = buildRegistry();
+    const { thucThiXacNhan } = await import('../tools/writeTools');
+    expect(typeof thucThiXacNhan).toBe('function');
+    for (const t of reg) {
+      expect(t.execute, `tool "${t.name}" chính là hàm thực thi xác nhận`).not.toBe(thucThiXacNhan);
+      expect(t.name).not.toMatch(/xac_nhan|confirm/i);
+    }
   });
 
   it('KHÔNG chỉ dẫn nào trỏ tới tool đã bị gỡ khỏi registry', async () => {

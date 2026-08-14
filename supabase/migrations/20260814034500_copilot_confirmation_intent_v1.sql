@@ -159,10 +159,16 @@ BEGIN
      AND b.deleted_at IS NULL
      AND b.name ILIKE '%' || v_toa || '%';
 
+  -- BẪY: `income_expense_types.type` là chữ THƯỜNG ('income'/'expense') còn
+  -- `income_expenses.type` là chữ HOA ('INCOME'/'EXPENSE'). So thẳng `v_ie_type`
+  -- vào bảng hạng mục thì KHÔNG BAO GIỜ khớp, và triệu chứng là "hang_muc_khong_thay"
+  -- cho mọi hạng mục có thật — một lỗi trông y hệt dữ liệu thiếu.
+  -- Bẫy này đã được ghi trong `writeTools.ts:resolveType` từ trước; đây là lần
+  -- thứ hai nó suýt cắn.
   SELECT count(*) INTO v_dem
     FROM public.income_expense_types t
    WHERE t.organization_id = p_organization_id
-     AND t.type = v_ie_type
+     AND t.type = lower(v_ie_type)
      AND t.name ILIKE '%' || v_hang_muc || '%';
   IF v_dem = 0 THEN
     RAISE EXCEPTION 'hang_muc_khong_thay' USING ERRCODE = '22023';
@@ -172,7 +178,7 @@ BEGIN
   SELECT t.id, t.name INTO v_type
     FROM public.income_expense_types t
    WHERE t.organization_id = p_organization_id
-     AND t.type = v_ie_type
+     AND t.type = lower(v_ie_type)
      AND t.name ILIKE '%' || v_hang_muc || '%';
 
   -- Payload CHUẨN HOÁ: chỉ gồm những gì đã được chốt. Băm cái này chứ không băm

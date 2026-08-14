@@ -12,6 +12,7 @@ import {
 import type { Message } from './chatEngine';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import XacNhanPhieuCard from './XacNhanPhieuCard';
 import { canUse } from '@/lib/permissionPages';
 import {
   createThread,
@@ -453,6 +454,17 @@ export default function ChatPanel({ onClose }: Props) {
               {liveTool ? `Đang tra cứu: ${liveTool}…` : `${TEN_LINH_THU} đang nghĩ…`}
             </span>
           </div>
+        )}
+        {/* Thẻ xác nhận GHI. Đặt sau tin nhắn cuối và trước điểm cuộn để nó
+            luôn nằm trong tầm mắt ngay khi xuất hiện — một nút xác nhận nằm
+            ngoài màn hình là một nút không ai bấm. Nonce đi qua bộ nhớ, không
+            qua chuỗi trả về của tool, nên mô hình không chạm được vào đây. */}
+        {!running && (
+          <XacNhanPhieuCard
+            onXong={(thongBao) =>
+              setHistory((h) => [...h, { role: 'assistant', content: thongBao }])
+            }
+          />
         )}
         {error && <div className="rounded bg-red-50 p-2 text-xs text-red-600">{error}</div>}
         <div ref={bottomRef} />

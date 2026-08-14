@@ -181,3 +181,18 @@ describe('an toàn chung', () => {
     }
   });
 });
+
+describe('bẫy hoa/thường của cột type', () => {
+  it('tra hạng mục bằng chữ THƯỜNG, tra phiếu bằng chữ HOA', () => {
+    // `income_expense_types.type` là 'income'/'expense' còn `income_expenses.type`
+    // là 'INCOME'/'EXPENSE'. So thẳng giá trị hoa vào bảng hạng mục thì không bao
+    // giờ khớp, và triệu chứng là "không thấy hạng mục" cho MỌI hạng mục có thật
+    // — một lỗi trông y hệt dữ liệu thiếu. Bẫy này đã ghi ở writeTools.resolveType
+    // từ trước và suýt cắn lần thứ hai ở đây.
+    expect(sql).toMatch(/t\.type = lower\(v_ie_type\)/);
+    expect(sql).not.toMatch(/t\.type = v_ie_type\b/);
+    // Còn phiếu thì vẫn dùng giá trị HOA nguyên vẹn.
+    expect(sql).toMatch(/v_ie_type := CASE WHEN v_loai = 'THU' THEN 'INCOME' ELSE 'EXPENSE' END/);
+    expect(sql).toMatch(/'type',\s+p_payload ->> 'type'/);
+  });
+});

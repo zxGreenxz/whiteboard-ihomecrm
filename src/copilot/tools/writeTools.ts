@@ -1,17 +1,32 @@
-// WRITE TOOLS draft-first (Phase 5 PLAN.md v2.1).
-// Nguyên tắc: (1) CHỈ tạo bản NHÁP (approval_status=UNAPPROVED, account_id=null
-// — chưa vào sổ, người thật duyệt trên /income-expense); (2) confirmation 2 BƯỚC
-// trong chat (xac_nhan=false → preview, chỉ khi user đồng ý mới xac_nhan=true);
-// (3) idempotency: INSERT ai_write_audit (key UNIQUE) TRƯỚC — trùng 23505 =
-// đã tạo rồi, trả entity cũ; (4) audit log giữ payload.
+// WRITE TOOL draft-first — xác nhận bằng NONCE do server phát.
+//
+// LUỒNG, và vì sao nó chia làm hai nửa không nối với nhau qua mô hình:
+//
+//   1. Mô hình gọi tool này với các trường NGHIỆP VỤ (không có cờ xác nhận nào).
+//   2. Tool gọi `copilot_preview_income_expense_v1` — server chốt toà + hạng mục
+//      trong công ty đang chọn, băm payload chuẩn hoá, phát nonce 32 byte.
+//   3. Tool cất nonce vào `confirmationStore` (BỘ NHỚ) và trả về CHỈ bản xem
+//      trước. Chuỗi trả về đi vào ngữ cảnh mô hình; nonce thì không.
+//   4. Giao diện thấy có đề xuất đang chờ, vẽ thẻ xác nhận có nút bấm.
+//   5. Người dùng bấm → giao diện gọi `copilot_execute_income_expense_v1` kèm
+//      nonce. Mô hình không tham gia bước này.
+//
+// VÌ SAO KHÔNG CÒN `xac_nhan: boolean`
+//   Cờ đó nằm trong input schema, nghĩa là chính mô hình quyết định khi nào
+//   "người dùng đã đồng ý": gọi lần đầu `false`, đọc bản xem trước, gọi lại
+//   `true`. Không có gì chứng minh giữa hai lần đó có một con người. Và dữ liệu
+//   nghiệp vụ (ghi chú tự do, tên khách) đi thẳng vào ngữ cảnh mô hình, nên một
+//   câu "xác nhận luôn giúp tôi" nằm trong ghi chú là đủ để nó tự lật cờ.
+//
+//   Bước 3 là chỗ ranh giới thật sự nằm: thứ mô hình sinh ra được là VĂN BẢN, và
+//   văn bản không mở được cửa này.
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
-import { getSessionUser } from '@/lib/authSession';
 import { formatVND } from '@/lib/utils';
-import type { DomainTool } from './registry';
-import { todayISO } from '@/lib/collect';
+import { chotToChuc, type DomainTool } from './registry';
+import { datXacNhanDangCho } from '../confirmationStore';
 
-/** Hash chuỗi ổn định (djb2) — đủ cho idempotency key client-side. */
+/** Hash chuỗi ổn định (djb2) — vẫn dùng cho khoá dedupe phía giao diện. */
 export function makeIdempotencyKey(parts: (string | number)[]): string {
   const s = parts.join('|');
   let h = 5381;
@@ -29,10 +44,10 @@ export function makeIdempotencyKey(parts: (string | number)[]): string {
  * cả hai đều làm hỏng đúng bước dừng-để-hỏi mà bản xem trước sinh ra để bảo vệ.
  */
 export const TEXT_XEM_TRUOC_MAU =
-  '⚠️ CHƯA TẠO. BƯỚC TIẾP THEO BẮT BUỘC: TRẢ LỜI THẲNG cho người dùng ngay bây giờ ' +
-  '(không dùng thêm tool nào), đưa bản xem trước ở trên và hỏi "Bạn xác nhận tạo phiếu này chứ?". ' +
-  'KHÔNG dùng lại tool này cho đến khi người dùng trả lời đồng ý — khi đó mới truyền ' +
-  'xac_nhan=true và giữ nguyên các tham số cũ.';
+  '⚠️ CHƯA TẠO. Người dùng sẽ thấy một thẻ xác nhận ngay dưới tin nhắn này và tự bấm nút để tạo. ' +
+  'BƯỚC TIẾP THEO CỦA BẠN: trả lời thẳng bằng văn bản (không dùng thêm tool nào), nhắc lại ngắn gọn ' +
+  'nội dung phiếu và mời họ kiểm tra rồi bấm nút. KHÔNG dùng lại tool này cho cùng một phiếu, và ' +
+  'KHÔNG có cách nào để bạn tự xác nhận thay người dùng.';
 
 const inputSchema = z.object({
   loai: z.enum(['thu', 'chi']).describe('thu = phiếu THU, chi = phiếu CHI'),
@@ -40,168 +55,161 @@ const inputSchema = z.object({
   ten_phieu: z.string().min(3).describe('Tên/mô tả phiếu, vd "Chi mua bóng đèn toà X"'),
   toa_nha: z.string().min(1).describe('Tên toà nhà (khớp gần đúng)'),
   hang_muc: z.string().min(1).describe('Tên hạng mục thu/chi, vd "Vệ sinh", "Điện"'),
-  ngay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('CHỈ truyền khi người dùng NÓI RÕ ngày cụ thể; bỏ trống = hệ thống tự lấy hôm nay (đừng tự đoán ngày)'),
-  xac_nhan: z
-    .boolean()
-    .default(false)
-    .describe('false = chỉ XEM TRƯỚC (bắt buộc lần đầu); true = tạo thật (CHỈ sau khi người dùng đồng ý)'),
+  ngay: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .describe('CHỈ truyền khi người dùng NÓI RÕ ngày cụ thể; bỏ trống = hệ thống tự lấy hôm nay'),
 });
 
 type Input = z.infer<typeof inputSchema>;
 
-async function resolveBuilding(name: string) {
-  const { data, error } = await supabase
-    .from('buildings')
-    .select('id, name, organization_id')
-    .ilike('name', `%${name}%`)
-    .is('deleted_at', null)
-    .limit(5);
-  if (error) throw new Error(`Lỗi tìm toà nhà: ${error.message}`);
-  return data ?? [];
+
+/**
+ * Gọi RPC chưa có trong generated types.
+ *
+ * Hai hàm `copilot_*_income_expense_v1` nằm trong migration 20260814034500 và
+ * CHƯA được apply, nên bộ sinh type của Supabase chưa biết tên chúng. Ép kiểu ở
+ * đúng một chỗ, có tên, thay vì rải `as never` khắp nơi — khi migration apply
+ * xong và types được sinh lại, xoá helper này là biết ngay còn sót chỗ nào.
+ *
+ * Tên RPC vẫn là chuỗi VIẾT THẲNG tại nơi gọi để ba gate biên RPC tìm thấy.
+ */
+type GoiRpcChuaSinhType = (
+  fn: string,
+  params: Record<string, unknown>,
+) => Promise<{ data: unknown; error: { message?: string } | null }>;
+
+/** Hình dạng server trả về ở bước xem trước. */
+interface KetQuaXemTruoc {
+  confirmation_nonce: string;
+  canonical: unknown;
+  preview: {
+    loai: string;
+    so_tien: number;
+    ten_phieu: string;
+    toa_nha: string;
+    hang_muc: string;
+    ngay: string;
+    trang_thai: string;
+  };
 }
 
-async function resolveType(
-  name: string,
-  ieType: 'INCOME' | 'EXPENSE',
-  organizationId: string,
-) {
-  // GOTCHA: income_expense_types.type là chữ THƯỜNG ('income'/'expense'),
-  // trong khi income_expenses.type là HOA ('INCOME'/'EXPENSE').
-  const { data, error } = await supabase
-    .from('income_expense_types')
-    .select('id, name, type')
-    .eq('organization_id', organizationId)
-    .eq('type', ieType.toLowerCase())
-    .ilike('name', `%${name}%`)
-    .limit(5);
-  if (error) throw new Error(`Lỗi tìm hạng mục: ${error.message}`);
-  return data ?? [];
+/** Lỗi nghiệp vụ từ RPC → câu tiếng Việt mô hình đọc và thuật lại được. */
+const GIAI_THICH_LOI: Record<string, string> = {
+  organization_required: 'Chưa chọn công ty. Bảo người dùng chọn công ty ở nhãn trên thanh đầu trang.',
+  not_permitted: 'Người dùng không có quyền tạo phiếu thu/chi trong công ty đang chọn.',
+  loai_khong_hop_le: 'Loại phiếu phải là "thu" hoặc "chi".',
+  so_tien_khong_hop_le: 'Số tiền phải là số dương.',
+  ten_phieu_qua_ngan: 'Tên phiếu quá ngắn (cần ít nhất 3 ký tự).',
+  toa_nha_khong_thay: 'Không tìm thấy toà nhà nào khớp trong công ty đang chọn. Hỏi lại tên toà chính xác.',
+  toa_nha_mo_ho: 'Có nhiều toà cùng khớp tên đó. Hỏi người dùng chọn toà nào rồi gọi lại với tên chính xác.',
+  hang_muc_khong_thay: 'Không tìm thấy hạng mục nào khớp. Hỏi lại tên hạng mục chính xác.',
+  hang_muc_mo_ho: 'Có nhiều hạng mục cùng khớp. Hỏi người dùng chọn hạng mục nào rồi gọi lại.',
+};
+
+function dienGiaiLoi(message: string): string {
+  for (const [ma, cau] of Object.entries(GIAI_THICH_LOI)) {
+    if (message.includes(ma)) return cau;
+  }
+  return `Lỗi khi lập phiếu: ${message}`;
 }
 
 export const taoPhieuThuChiNhap: DomainTool<Input> = {
   name: 'tao_phieu_thu_chi_nhap',
   description:
-    'Tạo phiếu thu/chi BẢN CHỜ DUYỆT (chưa duyệt, chưa vào sổ quỹ). QUY TRÌNH BẮT BUỘC 2 BƯỚC: lần 1 gọi với xac_nhan=false để xem trước và HỎI người dùng; CHỈ khi người dùng trả lời đồng ý mới gọi lại với xac_nhan=true.',
+    'Lập ĐỀ XUẤT phiếu thu/chi để người dùng xác nhận. Tool này KHÔNG tạo phiếu: nó chỉ dựng bản xem ' +
+    'trước và hiện một thẻ xác nhận cho người dùng bấm. Phiếu tạo ra sau đó là bản CHỜ DUYỆT, chưa vào sổ quỹ.',
   inputSchema,
   requiredPermission: { module: 'income_expenses', action: 'create' },
   // Chat mới được cầm tool này. UI-control (PageAgent) thì KHÔNG — xem chú
   // thích `chatOnly` ở DomainTool.
   chatOnly: true,
-  execute: async (args) => {
-    const user = await getSessionUser();
-    if (!user) throw new Error('Chưa đăng nhập.');
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'tao_phieu_thu_chi_nhap');
 
-    const ieType = args.loai === 'thu' ? 'INCOME' : 'EXPENSE';
-    const voucherDate = args.ngay ?? todayISO();
-
-    // Resolve toà + hạng mục (RLS scope theo user)
-    const buildings = await resolveBuilding(args.toa_nha);
-    if (!buildings.length) return `Không tìm thấy toà nhà nào khớp "${args.toa_nha}". Hỏi lại người dùng tên toà chính xác.`;
-    if (buildings.length > 1) {
-      return `Có ${buildings.length} toà khớp "${args.toa_nha}": ${buildings.map((b) => b.name).join(', ')}. Hỏi người dùng chọn toà nào rồi gọi lại với tên chính xác.`;
-    }
-    const building = buildings[0];
-    if (!building.organization_id) {
-      throw new Error('Tòa nhà chưa thuộc tổ chức; không thể chọn hạng mục an toàn.');
-    }
-    const types = await resolveType(args.hang_muc, ieType, building.organization_id);
-    if (!types.length) return `Không tìm thấy hạng mục ${args.loai} nào khớp "${args.hang_muc}". Hỏi lại người dùng.`;
-    if (types.length > 1) {
-      return `Có ${types.length} hạng mục khớp "${args.hang_muc}": ${types.map((t) => t.name).join(', ')}. Hỏi người dùng chọn rồi gọi lại với tên chính xác.`;
-    }
-    const type = types[0];
-
-    const preview =
-      `PHIẾU ${args.loai === 'thu' ? 'THU' : 'CHI'} CHỜ DUYỆT:\n` +
-      `- Tên: ${args.ten_phieu}\n- Số tiền: ${formatVND(args.so_tien)}\n` +
-      `- Toà: ${building.name}\n- Hạng mục: ${type.name}\n- Ngày: ${voucherDate}\n` +
-      `- Trạng thái: CHỜ DUYỆT (chưa duyệt, chưa vào sổ — người dùng duyệt tại /income-expense)`;
-
-    if (!args.xac_nhan) {
-      return `${preview}\n\n${TEXT_XEM_TRUOC_MAU}`;
-    }
-
-    // Idempotency: INSERT audit trước, key từ nội dung phiếu (không gồm xac_nhan)
-    const key = makeIdempotencyKey([user.id, ieType, args.so_tien, building.id, type.id, voucherDate, args.ten_phieu]);
-    const { data: audit, error: auditErr } = await supabase
-      .from('ai_write_audit')
-      .insert({
-        user_id: user.id,
-        tool: 'tao_phieu_thu_chi_nhap',
-        idempotency_key: key,
-        entity_table: 'income_expenses',
-        payload: { ...args, building_id: building.id, type_id: type.id },
-      })
-      .select('id')
-      .single();
-    if (auditErr) {
-      if ((auditErr as { code?: string }).code === '23505') {
-        const { data: prev } = await supabase
-          .from('ai_write_audit')
-          .select('entity_id, created_at')
-          .eq('idempotency_key', key)
-          .maybeSingle();
-        return `⚠️ Phiếu này ĐÃ được tạo trước đó (${prev?.created_at ?? ''}) — không tạo trùng. Xem tại [Thu chi](/income-expense).`;
-      }
-      throw new Error(`Lỗi ghi audit: ${auditErr.message}`);
-    }
-
-    // Tạo phiếu NHÁP qua server RPC ie_compat_insert_v2 (Stage-7 drain: client
-    // hết INSERT trực tiếp income_expenses/_items). Server ép approval_status
-    // UNAPPROVED/PENDING + stamp maker; account_id null (sổ trống — chưa đụng
-    // tiền thật). Phiếu + hạng mục atomic trong một call.
-    const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-    const creatorName = String(meta.full_name || meta.name || user.email || 'Người dùng');
-    const { data: created, error: vErr } = await (supabase.rpc as unknown as (
-      fn: string,
-      params: Record<string, unknown>,
-    ) => Promise<{ data: unknown; error: { message?: string } | null }>)(
-      'ie_compat_insert_v2',
-      {
-        p_row: {
-          user_id: user.id,
-          organization_id: building.organization_id,
-          creator_name: `${creatorName} (AI Copilot)`,
-          type: ieType,
-          name: args.ten_phieu,
-          building_id: building.id,
-          account_id: null,
-          voucher_date: voucherDate,
-          attachments: [],
-          notes: `Tạo bởi AI Copilot (draft-first, audit ${audit.id})`,
-          repeat_cycle: 'NONE',
-          repeat_infinity: false,
-          repeat_count: 0,
-          repeat_auto_approve: true,
-          repeat_remaining: 0,
-        },
-        p_items: [
-          {
-            income_expense_type_id: type.id,
-            organization_id: building.organization_id,
-            description: args.ten_phieu,
-            quantity: 1,
-            unit_price: args.so_tien,
-          },
-        ],
+    const goiRpc = supabase.rpc as unknown as GoiRpcChuaSinhType;
+    const { data, error } = await goiRpc('copilot_preview_income_expense_v1', {
+      p_organization_id: orgId,
+      p_payload: {
+        loai: args.loai,
+        so_tien: args.so_tien,
+        ten_phieu: args.ten_phieu,
+        toa_nha: args.toa_nha,
+        hang_muc: args.hang_muc,
+        ...(args.ngay ? { ngay: args.ngay } : {}),
       },
-    );
-    if (vErr) throw new Error(`Lỗi tạo phiếu: ${vErr.message}`);
-    const voucherId = (created as { id?: string } | null)?.id;
-    if (!voucherId) throw new Error('Lỗi tạo phiếu: server không trả về id.');
+    });
+    if (error) return dienGiaiLoi(error.message ?? String(error));
 
-    await supabase
-      .from('ai_write_audit')
-      .update({ entity_id: voucherId })
-      .eq('id', audit.id);
+    const kq = data as unknown as KetQuaXemTruoc | null;
+    if (!kq?.confirmation_nonce) {
+      throw new Error('Server không trả về mã xác nhận — không lập được đề xuất.');
+    }
 
-    // RPC chỉ trả {id, approval_status} — đọc lại code (read-only) cho message.
-    const { data: codeRow } = await supabase
-      .from('income_expenses')
-      .select('code')
-      .eq('id', voucherId)
-      .maybeSingle();
-    const code = (codeRow as { code?: string } | null)?.code ?? voucherId.slice(0, 8);
-    return `✅ Đã tạo phiếu ${args.loai === 'thu' ? 'THU' : 'CHI'} CHỜ DUYỆT ${code} — ${formatVND(args.so_tien)} — ${building.name}. Phiếu CHƯA duyệt, chưa vào sổ; người dùng kiểm tra và duyệt tại [Thu chi](/income-expense).`;
+    // Nonce rẽ sang bộ nhớ cho giao diện; KHÔNG đi vào chuỗi trả về.
+    datXacNhanDangCho({
+      nonce: kq.confirmation_nonce,
+      canonical: kq.canonical,
+      preview: kq.preview as unknown as Record<string, unknown>,
+    });
+
+    const p = kq.preview;
+    const banXemTruoc =
+      `PHIẾU ${p.loai} CHỜ XÁC NHẬN:\n` +
+      `- Tên: ${p.ten_phieu}\n` +
+      `- Số tiền: ${formatVND(p.so_tien)}\n` +
+      `- Toà: ${p.toa_nha}\n` +
+      `- Hạng mục: ${p.hang_muc}\n` +
+      `- Ngày: ${p.ngay}\n` +
+      `- Trạng thái sau khi tạo: ${p.trang_thai} (chưa duyệt, chưa vào sổ)`;
+
+    return `${banXemTruoc}\n\n${TEXT_XEM_TRUOC_MAU}`;
   },
 };
+
+/**
+ * Thực thi đề xuất đang chờ. CHỈ giao diện gọi, sau một cú bấm thật.
+ *
+ * Không nằm trong registry: nếu nó là một `DomainTool` thì mô hình gọi được, và
+ * cả kiến trúc nonce sụp — mô hình sẽ tự bấm nút của chính mình.
+ */
+export async function thucThiXacNhan(nonce: string, canonical: unknown): Promise<string> {
+  const goiRpc = supabase.rpc as unknown as GoiRpcChuaSinhType;
+  const { data, error } = await goiRpc('copilot_execute_income_expense_v1', {
+    p_confirmation_nonce: nonce,
+    p_payload: canonical as Record<string, unknown>,
+  });
+  if (error) {
+    const m = error.message ?? String(error);
+    if (m.includes('confirmation_expired')) {
+      return '⏱️ Đề xuất đã quá hạn (5 phút). Hãy yêu cầu Copilot lập lại phiếu.';
+    }
+    if (m.includes('confirmation_already_used')) {
+      return '⚠️ Đề xuất này đã được dùng rồi — không tạo trùng.';
+    }
+    if (m.includes('payload_changed')) {
+      return '⚠️ Nội dung phiếu đã thay đổi sau khi xem trước. Hãy lập lại đề xuất.';
+    }
+    if (m.includes('confirmation_not_found') || m.includes('confirmation_required')) {
+      return '⚠️ Không tìm thấy đề xuất hợp lệ. Hãy yêu cầu Copilot lập lại phiếu.';
+    }
+    throw new Error(`Lỗi tạo phiếu: ${m}`);
+  }
+
+  const kq = data as unknown as { status?: string; entity_id?: string } | null;
+  if (kq?.status === 'da_tao_truoc_do') {
+    return '⚠️ Phiếu này đã được tạo trước đó — không tạo trùng. Xem tại [Thu chi](/income-expense).';
+  }
+  const id = kq?.entity_id;
+  if (!id) throw new Error('Server không trả về id phiếu.');
+
+  // Đọc lại mã phiếu (read-only) để câu thông báo có thứ người dùng tra cứu được.
+  const { data: codeRow } = await supabase
+    .from('income_expenses')
+    .select('code')
+    .eq('id', id)
+    .maybeSingle();
+  const code = (codeRow as { code?: string } | null)?.code ?? id.slice(0, 8);
+  return `✅ Đã tạo phiếu CHỜ DUYỆT ${code}. Phiếu chưa duyệt, chưa vào sổ; kiểm tra và duyệt tại [Thu chi](/income-expense).`;
+}
