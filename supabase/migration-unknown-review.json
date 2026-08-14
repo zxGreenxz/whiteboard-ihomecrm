@@ -1,7 +1,7 @@
 {
   "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh.",
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-12",
+  "reviewedAt": "2026-08-14",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy.",
   "files": {
     "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
@@ -429,6 +429,24 @@
         }
       ],
       "anhHuongThat": "Không có. Đây là đổi tên thuần: biểu thức policy giữ nguyên, chỉ nhãn đổi để khớp quy ước mà gate đếm dựa vào. Không mã nào gọi policy theo tên — grep tên policy trong `src/`, `api/`, `scripts/`, `supabase/functions/` chỉ ra trong chính hai file SQL trên. Bảng vẫn có đủ biên giới tổ chức, và sau khi đổi tên thì gate đếm mới nhìn thấy nó."
+    },
+    "supabase/migrations/20260814032500_copilot_superadmin_organization_directory.sql": {
+      "sha256": "766d2e0b4b1536b53d9493c607e96be9a3251b7f62c5200235ab01b0c0ec71f3",
+      "missingObjects": [
+        "function:public.list_my_copilot_organizations_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 14/08/2026, chưa đi qua lane apply nào — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Đây là hàm MỚI HOÀN TOÀN: grep toàn bộ supabase/migrations cho `list_my_copilot_organizations` chỉ ra đúng file này, nên không có migration nào trước đó tạo rồi migration sau DROP. Hàm sẽ xuất hiện khi migrate:forward chạy; khi đó provenance chuyển sang catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260814032500_copilot_superadmin_organization_directory.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.list_my_copilot_organizations_v1()"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260809030000_gd9_rpc_to_chuc_cua_toi.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.get_my_organizations() — hàm CŨ, phạm vi hẹp hơn (chỉ membership), KHÔNG bị file mới thay thế hay DROP; hai hàm cùng tồn tại."
+        }
+      ]
     }
   }
 }

@@ -133,6 +133,11 @@
       "tu": "20260813130000_zalo_gan_hoi_thoai_crm.sql",
       "thongDiep": "zalo_backfill_crm_links(uuid) does not exist",
       "why": "REVOKE trên hàm do 20260813130000 tạo — file đó dừng vì dữ liệu (xem entry của nó) nên hàm chưa ra đời; 20260813110000 dừng vì storage cũng góp phần. Chết theo, không phải lỗi độc lập."
+    },
+    "20260814032500_copilot_superadmin_organization_directory.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không có người dùng thường nào để nghiệm thu",
+      "why": "Khối nghiệm thu đo bằng VAI THẬT: nó cần ít nhất một người dùng thường có membership ACTIVE trên org ACTIVE, và một super admin. Database rỗng của diễn tập không có ai nên hàm dừng — đúng việc, y hệt 20260809030000 (cùng khuôn, cùng thông điệp). Bản thân CREATE FUNCTION đã chạy xong trước khi khối này chạy; thứ dừng lại là phép nghiệm thu, không phải phần tạo đối tượng."
     }
   }
 }
