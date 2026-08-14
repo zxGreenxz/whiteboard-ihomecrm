@@ -109,7 +109,25 @@ public.get_my_copilot_availability_v1(p_organization_id uuid) RETURNS jsonb
 | A3.1 — containment write | ⏭ gộp vào B1 (xem ghi chú) | — |
 | A4 — selected organization | ✅ xong | `80cc45aa` (migration), `4f3af291` (client) |
 | **Phase A** | **✅ HOÀN TẤT** | 213/213 test · 2619 test ×4 múi giờ |
-| Phase B/C/D | ⬜ chưa bắt đầu | — |
+| B1 — nonce xác nhận server | ✅ xong | `86717f59` (migration), `562ea33a` (store), `da89ecc1` (client) |
+| B2 — cứng hoá `ai_write_audit` | ✅ xong | `e366679c` |
+| B3 — build SHA + E2E đầu tiên | ✅ xong | `d5bd7903`, `393a5cbc` |
+| **Phase B** | **✅ HOÀN TẤT** | 3465/3465 test src · 9 gate xanh · build xanh |
+| Phase C/D | ⬜ chưa bắt đầu | — |
+
+### Thứ tự phát hành Phase B — bắt buộc
+
+1. `migrate:forward` áp **theo thứ tự timestamp**: `032500` (danh bạ) → `034500`
+   (nonce) → `034600` (cứng hoá audit). Thứ tự này có chủ ý: đường ghi mới phải
+   tồn tại trước khi đường ghi cũ bị đóng.
+2. Regen `src/integrations/supabase/types.ts` + `contracts/surfaces/rpc-surface.json`,
+   rồi **xoá `GoiRpcChuaSinhType`** trong `writeTools.ts` — helper đó tồn tại đúng để
+   đánh dấu chỗ chưa có type; giữ lại sau khi apply là che mất kiểu thật.
+3. Deploy web **ngay sau đó**. Khoảng giữa bước 1 và 3, write tool của bản web cũ
+   sẽ báo lỗi RLS và **không tạo phiếu nào** — hỏng an toàn, không phải hỏng dữ liệu.
+4. Chạy E2E: `FLEET_BASE_URL=<preview> EXPECTED_SOURCE_SHA=$(git rev-parse HEAD)
+   FLEET_PASS_CHUNHA=… npx playwright test specs/copilot-confirmation.spec.ts`.
+   Đã xác minh SHA vào được bundle khi build với `VITE_BUILD_SHA`.
 
 **Chưa apply lên production**: migration `20260814032500` mới nằm trong repo, chờ
 `migrate:forward`. Client KHÔNG phụ thuộc nó (vẫn dùng `get_my_organizations`), nên
