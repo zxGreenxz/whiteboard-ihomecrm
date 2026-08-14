@@ -1492,3 +1492,26 @@ PageAgent lam phan giao dien an toan; typed server action lam phan co authority;
 plane giu state nghiep vu nhieu buoc. Cho toi khi B1-B7 duoc dong, F7 dat golden gate va E2E tracked xanh, UI-control nen
 duoc coi la experimental/contained, khong production-
 ready cho yeu cau dieu khien toan bo website cua superadmin.
+
+## 23. Addendum 2026-08-14 — doi chieu code/database va quyet dinh LEAN
+
+Ngay 2026-08-14 da doi chieu toan bo gia dinh cua spec/plan voi HEAD `0ea9aa22` (khong co drift
+trong `src/copilot`, `src/app/capabilities`, `src/contexts`, `llm-proxy`, E2E specs tu snapshot
+`931eb9e78cee`). Ket qua:
+
+- **Xac nhan dung**: 14 tool, page-agent 1.11.0, MO_TRANG 5 vs allowlist 3, `organizations[0]`,
+  113/146 route, `ai_write_audit` cho browser INSERT/UPDATE (policy `ai_write_audit_insert` +
+  `ai_write_audit_update_own`), chua co CSP, chua co doi tuong `copilot_*` nao trong migrations,
+  17 gate script plan tham chieu deu ton tai, 3 FK-qualified path dung ten trong generated types.
+- **13 diem lech** duoc liet ke va sua trong Phu luc A cua plan moi (cung file path plan cu).
+  Dang chu y: prerequisite security-remediation Task 9/16 chua implement 0% va harness
+  `scripts/test-security-remediation.mjs` khong ton tai; khong co bang `ai_usage_reservations`;
+  entitlement la 3 tang (`ai_copilot_settings` + `ai_copilot_entitlements` + permission).
+
+**Quyet dinh product owner (2026-08-14):** chon muc can bang **LEAN (Op1)** — giu nguyen cac rao
+chan co bang chung loi that (org scope, nonce server, audit bat bien, safe-control whitelist,
+route sync); cat/hoan governance nang (execution-plan engine muc 11.5, immutable manifest muc
+11.3, attestation day du, egress grant token) sang phu luc Deferred cua plan. Cac muc 11.3, 11.5
+va phan attestation cua spec nay vi the la **thiet ke tham chieu cho giai doan sau (Op3)**, khong
+phai yeu cau cua dot trien khai hien tai. Plan thuc thi hien hanh:
+`docs/superpowers/plans/2026-08-13-ai-copilot-superadmin-full-site-control.md` (ban LEAN).
