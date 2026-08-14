@@ -449,7 +449,7 @@
       ]
     },
     "supabase/migrations/20260814034500_copilot_confirmation_intent_v1.sql": {
-      "sha256": "d94a315cbb73abcd1291958cbfa4678347da4056a771bba1d400e71d510604d6",
+      "sha256": "e72a4d299f3073c30ec80709ad45d44936ca34068695dfca3e2e72c083d4defa",
       "missingObjects": [
         "table:app_private.copilot_write_confirmations",
         "function:app_private.copilot_payload_hash_v1",

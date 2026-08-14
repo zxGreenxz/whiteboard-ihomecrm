@@ -354,7 +354,12 @@ BEGIN
 
   v_vid := (v_voucher ->> 'id')::uuid;
   IF v_vid IS NULL THEN
-    RAISE EXCEPTION 'voucher_not_created' USING ERRCODE = '22000';
+    -- KHONG dat ERRCODE: RAISE EXCEPTION tran mac dinh la P0001, va errors.ts
+    -- xep P0001 vao `internal_invariant` — dung ban chat cua ca nay. Writer tra
+    -- ve khong co id la gia dinh cua CHINH he nay bi vi pham, khong phai loi
+    -- nguoi dung. Dat 22000 (data_exception chung) vua sai nghia vua lam thung
+    -- bang phan loai loi (co test canh).
+    RAISE EXCEPTION 'voucher_not_created';
   END IF;
 
   -- Audit ghi trong CUNG giao dich voi phieu. Luong cu ghi audit tu browser roi
