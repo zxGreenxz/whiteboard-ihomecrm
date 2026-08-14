@@ -63,6 +63,32 @@ export function createUiControlAgent(params: {
     onBeforeStep: makeRouteGuard(allowlist),
     customTools: {
       execute_javascript: null, // chặn thoát sandbox / bypass mask
+      //
+      // TOOL MANG CHỈ SỐ — tắt hết, và đây là chốt chặn THẬT của UI-control.
+      //
+      // Ba tool này nhận một số nguyên trỏ vào bảng phần tử tương tác do thư
+      // viện tự dựng. Vấn đề không phải mô hình chọn nhầm số: vấn đề là BẢNG đó
+      // chứa mọi thứ heuristic cho là tương tác được — tức gần như toàn bộ giao
+      // diện. Một tool nhận chỉ số vào bảng đó là một tool chạm được mọi nút.
+      //
+      // Vì sao không dùng `interactiveWhitelist` để thu hẹp bảng: đo trên chính
+      // bundle 1.11.0 (xem `pageAgentCompatibility.ts` + test của nó), whitelist
+      // là ADDITIVE chứ không phải bộ lọc —
+      //     if (blacklist.includes(el)) return false;
+      //     if (whitelist.includes(el)) return true;
+      //     … heuristic vẫn chạy tiếp …
+      // Phần tử ngoài whitelist vẫn tương tác được. Muốn mặc-định-từ-chối thì
+      // phải liệt kê PHẦN BÙ vào blacklist, mà phần bù đó không dựng nổi từ mã
+      // ứng dụng: bộ duyệt của thư viện đi vào open shadow root và same-origin
+      // iframe, còn `querySelectorAll('*')` thì không.
+      //
+      // Nên `interactiveBlacklist` bên dưới GIỮ NGUYÊN vai trò phòng thủ theo
+      // chiều sâu (nó bắt nút nguy hiểm theo nhãn), nhưng nó KHÔNG còn là thứ
+      // đang gánh trách nhiệm chính. Trách nhiệm đó nay nằm ở việc mô hình
+      // không có tool nào để chỉ vào một phần tử tuỳ ý.
+      click_element_by_index: null,
+      input_text: null,
+      select_dropdown_option: null,
       ...domainTools,
     },
     interactiveBlacklist: liveBlacklist,
