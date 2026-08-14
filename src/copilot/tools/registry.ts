@@ -192,6 +192,52 @@ export function listDocTopics(perms?: PermissionsMap, now: number = Date.now()):
     });
 }
 
+// ── Trích dữ liệu từ chuỗi quan hệ khách ↔ hợp đồng ──────────────────────────
+//
+// Một hợp đồng có NHIỀU người ở (`contract_customers` là bảng nối), nên "khách
+// của hợp đồng" là một danh sách chứ không phải một dòng. Cột `is_representative`
+// là thứ phân biệt người đứng tên với người ở cùng. Không có ai được đánh dấu
+// thì lấy phần tử đầu — thà nêu một cái tên có thật còn hơn hiện "?" khi dữ
+// liệu cũ chưa kịp gắn cờ đại diện.
+
+interface KhachCuaHopDong {
+  is_representative?: boolean | null;
+  customer?: { full_name?: string | null } | null;
+}
+
+/** Khách đứng tên hợp đồng; fallback phần tử đầu khi chưa ai được đánh dấu. */
+export function khachDaiDien(
+  danhSach: KhachCuaHopDong[] | null | undefined,
+): { full_name: string } | null {
+  if (!Array.isArray(danhSach) || !danhSach.length) return null;
+  const chon = danhSach.find((k) => k?.is_representative) ?? danhSach[0];
+  const ten = chon?.customer?.full_name;
+  return ten ? { full_name: ten } : null;
+}
+
+interface HopDongCuaKhach {
+  contract?: {
+    status?: string | null;
+    room?: { name?: string | null; building?: { name?: string | null } | null } | null;
+  } | null;
+}
+
+/**
+ * Mô tả nơi ở hiện tại của một khách, lấy từ hợp đồng ACTIVE nếu có.
+ *
+ * Trả chuỗi rỗng khi khách không gắn hợp đồng nào — đó là trạng thái hợp lệ
+ * (khách tiềm năng, khách đã trả phòng), không phải lỗi.
+ */
+export function choOThucTe(danhSach: HopDongCuaKhach[] | null | undefined): string {
+  if (!Array.isArray(danhSach) || !danhSach.length) return '';
+  const hd =
+    danhSach.find((h) => h?.contract?.status === 'ACTIVE')?.contract ?? danhSach[0]?.contract;
+  const phong = hd?.room?.name;
+  if (!phong) return '';
+  const toa = hd?.room?.building?.name;
+  return ` — phòng ${phong}${toa ? ` (${toa})` : ''}`;
+}
+
 // ── Tools ────────────────────────────────────────────────────────────────────
 export function buildRegistry(): DomainTool[] {
   return [
@@ -239,9 +285,27 @@ export function buildRegistry(): DomainTool[] {
       requiredPermission: { module: 'customers', action: 'view' },
       execute: async (args) => {
         const kw = args.tu_khoa.trim();
+        // Phòng/toà KHÔNG nằm trên `customers` — bảng này không có `room_id`
+        // hay `building_id`. Bản trước nhúng thẳng `rooms(...)`/`buildings(...)`
+        // nên PostgREST không dựng được quan hệ và trả lỗi schema-cache trên
+        // deployment thật (đánh giá 13/08/2026: C02, C14 FAIL, C27 PARTIAL).
+        //
+        // Đường thật đi qua bảng nối: customer → contract_customers → contracts
+        // → rooms → buildings. Mỗi bước nêu ĐÍCH DANH tên khoá ngoại vì giữa
+        // các bảng này có nhiều hơn một đường nối; để PostgREST tự đoán là mời
+        // nó chọn nhầm hoặc báo mơ hồ.
         const { data, error } = await supabase
           .from('customers')
-          .select('id, full_name, phone, room:rooms(name), building:buildings(name)')
+          .select(
+            'id, full_name, phone, ' +
+              'hop_dong:contract_customers!contract_customers_customer_id_fkey(' +
+              'is_representative, ' +
+              'contract:contracts!contract_customers_contract_id_fkey(' +
+              'status, ' +
+              'room:rooms!contracts_room_id_fkey(' +
+              'name, building:buildings!rooms_building_id_fkey(name)' +
+              ')))',
+          )
           .is('deleted_at', null)
           .or(`full_name.ilike.%${kw}%,phone.ilike.%${kw}%`)
           .limit(10);
@@ -250,8 +314,8 @@ export function buildRegistry(): DomainTool[] {
         // Field allowlist + mask SĐT một phần (KHÔNG trả CCCD/STK)
         return data
           .map((c: any) => {
-            const room = c.room?.name ? ` — phòng ${c.room.name}${c.building?.name ? ` (${c.building.name})` : ''}` : '';
-            return `- ${c.full_name} — ${maskPhonePartial(c.phone)}${room} [link: /customers/${c.id}]`;
+            const noiO = choOThucTe(c.hop_dong);
+            return `- ${c.full_name} — ${maskPhonePartial(c.phone)}${noiO} [link: /customers/${c.id}]`;
           })
           .join('\n');
       },
@@ -300,9 +364,22 @@ export function buildRegistry(): DomainTool[] {
         // hết hạn — sai âm thầm, vì kết quả vẫn "có vẻ hợp lý".
         const iso = (d: Date) =>
           `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        // Toà nhà KHÔNG nằm trên `contracts` (chỉ có `room_id`), và khách hàng
+        // nối qua bảng `contract_customers` chứ không phải cột `customer_id`.
+        // Bản trước nhúng thẳng `buildings(...)`/`customers(...)` nên hỏng trên
+        // deployment thật (đánh giá 13/08/2026: C04, C16 FAIL).
         const { data, error } = await supabase
           .from('contracts')
-          .select('id, contract_number, end_date, room:rooms(name), building:buildings(name), customer:customers(full_name)')
+          .select(
+            'id, contract_number, end_date, ' +
+              'room:rooms!contracts_room_id_fkey(' +
+              'name, building:buildings!rooms_building_id_fkey(name)' +
+              '), ' +
+              'khach:contract_customers!contract_customers_contract_id_fkey(' +
+              'is_representative, ' +
+              'customer:customers!contract_customers_customer_id_fkey(full_name)' +
+              ')',
+          )
           .eq('status', 'ACTIVE')
           .is('deleted_at', null)
           .gte('end_date', iso(today))
@@ -311,9 +388,11 @@ export function buildRegistry(): DomainTool[] {
           .limit(30);
         if (error) throw new Error(`Lỗi tải hợp đồng: ${error.message}`);
         if (!data?.length) return `Không có hợp đồng nào hết hạn trong ${args.so_ngay} ngày tới.`;
-        const lines = data.map((c: any) =>
-          `- ${c.contract_number ?? c.id.slice(0, 8)} — ${c.customer?.full_name ?? '?'} — phòng ${c.room?.name ?? '?'}${c.building?.name ? ` (${c.building.name})` : ''} — hết hạn ${c.end_date} [link: /contracts/${c.id}]`,
-        );
+        const lines = data.map((c: any) => {
+          const ten = khachDaiDien(c.khach)?.full_name ?? '?';
+          const toa = c.room?.building?.name ? ` (${c.room.building.name})` : '';
+          return `- ${c.contract_number ?? c.id.slice(0, 8)} — ${ten} — phòng ${c.room?.name ?? '?'}${toa} — hết hạn ${c.end_date} [link: /contracts/${c.id}]`;
+        });
         return `${data.length} hợp đồng hết hạn trong ${args.so_ngay} ngày tới:\n${lines.join('\n')}`;
       },
     }),
