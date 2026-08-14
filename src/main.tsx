@@ -5,6 +5,10 @@ import { reloadOnceForStaleChunk } from "./lib/chunkReload";
 import { hideAppSplash } from "./lib/appSplash";
 import { registerServiceWorker } from "./lib/push";
 import { initPerfTrace } from "./lib/perfTrace";
+import { ganMetaBuildSha } from './buildMetadata';
+
+// Khai bản build TRƯỚC khi app chạy: E2E phải đọc được kể cả khi app lỗi khởi động.
+ganMetaBuildSha();
 
 // The standalone watchdog is only cleared once this entry module evaluates.
 (window as Window & { __ihomePwaEntryReady?: () => void }).__ihomePwaEntryReady?.();

@@ -34,7 +34,16 @@ const RADIX_ENTRY_CORE = new Set([
 ]);
 
 // https://vitejs.dev/config/
+// SHA của commit dựng ra bản build. Vercel cấp `VERCEL_GIT_COMMIT_SHA`; build
+// cục bộ có thể truyền `VITE_BUILD_SHA=$(git rev-parse HEAD)`. Không có thì để
+// rỗng — E2E coi rỗng là THẤT BẠI, không phải "bỏ qua" (xem src/buildMetadata.ts).
+const BUILD_SHA =
+  process.env.VITE_BUILD_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? '';
+
 export default defineConfig(() => ({
+  define: {
+    'import.meta.env.VITE_BUILD_SHA': JSON.stringify(BUILD_SHA),
+  },
   server: {
     host: "::",
     port: 8080,

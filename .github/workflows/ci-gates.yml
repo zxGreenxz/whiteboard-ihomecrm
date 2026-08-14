@@ -320,6 +320,7 @@ jobs:
           scripts/__tests__/check-migration-provenance.test.mjs \
           scripts/__tests__/check-no-auto-apply.test.mjs \
           scripts/__tests__/check-copilot-routes.test.mjs \
+          scripts/__tests__/check-copilot-tool-inventory.test.mjs \
           scripts/__tests__/check-dependency-audit.test.mjs \
           scripts/__tests__/check-eslint-baseline.test.mjs \
           scripts/__tests__/check-local-types-parity.test.mjs \
@@ -354,6 +355,7 @@ jobs:
           --exclude 'scripts/__tests__/check-migration-provenance.test.mjs'
           --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-routes.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-tool-inventory.test.mjs'
           --exclude 'scripts/__tests__/check-dependency-audit.test.mjs'
           --exclude 'scripts/__tests__/check-eslint-baseline.test.mjs'
           --exclude 'scripts/__tests__/check-local-types-parity.test.mjs'
