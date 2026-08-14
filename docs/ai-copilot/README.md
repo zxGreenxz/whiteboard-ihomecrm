@@ -1,13 +1,43 @@
 # AI Copilot
 
-> **Current through:** 2026-08-12  
-> **Status:** chat có streaming, đọc ảnh, gọi tool song song; tra tài liệu bằng BM25 theo mục; bản đồ hệ thống theo quyền; 10 tool đọc + 1 write tool draft-first; UI-control có gate và KHÔNG cầm tool ghi.
+> **Current through:** 2026-08-14  
+> **Status:** chat có streaming, đọc ảnh, gọi tool song song; tra tài liệu bằng BM25 theo mục; bản đồ hệ thống theo quyền; write tool draft-first; UI-control có gate và KHÔNG cầm tool ghi.
+
+## Tool đang chạy
+
+Bảng dưới sinh từ `src/copilot/tools/**` — gate `npm run gate:copilot-tools` bắt mọi
+sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file này.
+
+<!-- COPILOT_TOOL_INVENTORY:START -->
+
+<!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
+     node scripts/check-copilot-tool-inventory.mjs --write -->
+
+**14 tool**: 12 đọc · 1 ghi · 1 điều hướng (chỉ UI-control).
+
+| Tool | Loại | Quyền | Nguồn |
+| --- | --- | --- | --- |
+| `ban_do_he_thong` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
+| `coc_dang_giu` | read | `deposits.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `cong_no_tong_quan` | read | `invoices.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `doanh_thu_thang` | read | `reports_finance.analysis` | `src/copilot/tools/registry.ts` |
+| `hop_dong_sap_het_han` | read | `reports_real_estate.expiring` | `src/copilot/tools/registry.ts` |
+| `huong_dan` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
+| `liet_ke_chu_de` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
+| `mo_trang` | navigate | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
+| `phong_trong` | read | `rooms.view` | `src/copilot/tools/registry.ts` |
+| `so_quy` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `tao_phieu_thu_chi_nhap` | write | `income_expenses.create` | `src/copilot/tools/writeTools.ts` |
+| `tim_hoa_don` | read | `invoices.view` | `src/copilot/tools/registry.ts` |
+| `tim_khach_hang` | read | `customers.view` | `src/copilot/tools/registry.ts` |
+| `ty_le_lap_day` | read | `reports_real_estate.occupancy` | `src/copilot/tools/nghiepVuTools.ts` |
+
+<!-- COPILOT_TOOL_INVENTORY:END -->
 
 ## Bề mặt đang chạy
 
 - Nút Copilot chỉ hiện khi có session, entitlement và quyền `ai_copilot.view`.
 - Chat gọi model cloud qua Edge Function `llm-proxy`; provider/key/quota/log nằm server-side. Ollama local được browser gọi trực tiếp khi bật.
-- Tool đọc hiện có: phòng trống, khách hàng, hoá đơn, hợp đồng sắp hết hạn, KQKD tháng, tỉ lệ lấp đầy, công nợ hoá đơn, cọc đang giữ, sổ quỹ; tra tài liệu (`huong_dan`, `liet_ke_chu_de`) và bản đồ hệ thống (`ban_do_he_thong`).
 - Chat đi qua `src/copilot/llmClient.ts` — client OpenAI-compat mỏng nói thẳng với proxy, hỗ trợ SSE, `content` multimodal và mảng `tool_calls`. `@page-agent/llms` chỉ còn phục vụ UI-control; ba giới hạn của nó (không stream, `content` chỉ là chuỗi, `toolCall` số ít) là lý do tách ra.
 - Tra tài liệu: chunk theo heading, BM25 hai trường (thân + đường dẫn heading), bỏ dấu + bigram âm tiết + bảng đồng nghĩa + bảng hư từ. Index dựng LÚC CHẠY, chỉ từ tài liệu phiên có quyền đọc.
 - System prompt mang ngày hôm nay và trang người dùng đang xem.

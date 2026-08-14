@@ -122,6 +122,7 @@
     "gate:rpc-layer": "node scripts/check-rpc-layer.mjs",
     "gate:realtime-key-ownership": "node scripts/check-realtime-key-ownership.mjs",
     "gate:copilot-routes": "node scripts/check-copilot-routes.mjs",
+    "gate:copilot-tools": "node scripts/check-copilot-tool-inventory.mjs",
     "do:strict-null": "node scripts/do-strict-null.mjs",
     "org-inventory:build": "node scripts/build-org-boundary-inventory.mjs --write",
     "gate:org-boundary-inventory": "node scripts/build-org-boundary-inventory.mjs --check",
