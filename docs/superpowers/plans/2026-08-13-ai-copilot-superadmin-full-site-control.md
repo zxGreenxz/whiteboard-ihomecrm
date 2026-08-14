@@ -112,10 +112,39 @@ public.get_my_copilot_availability_v1(p_organization_id uuid) RETURNS jsonb
 | B1 — nonce xác nhận server | ✅ xong | `86717f59` (migration), `562ea33a` (store), `da89ecc1` (client) |
 | B2 — cứng hoá `ai_write_audit` | ✅ xong | `e366679c` |
 | B3 — build SHA + E2E đầu tiên | ✅ xong | `d5bd7903`, `393a5cbc` |
-| **Phase B** | **✅ HOÀN TẤT** | 3465/3465 test src · 9 gate xanh · build xanh |
-| Phase C/D | ⬜ chưa bắt đầu | — |
+| **Phase B** | **✅ HOÀN TẤT + ĐÃ LÊN PRODUCTION** | 3491/3491 test · CI 3/3 xanh · migration đã apply |
+| C1.1 — pin semantics PageAgent | ✅ xong | `34fb965e` |
+| C1.2 — bộ giải safe-control | ✅ xong | `04437ba8` |
+| C1.3+ — safe tools, page contract, flags, CSP | ⬜ chưa | — |
+| Phase D | ⬜ chưa bắt đầu | — |
 
-### Thứ tự phát hành Phase B — bắt buộc
+**Phát hiện C1.1 sửa lại spec**: `eval` chỉ nằm trong thân
+`PageController.executeJavascript` — tool đã tắt từ trước. Nên **CSP production
+KHÔNG cần `'unsafe-eval'`**, trái với giả định F6 của spec. Việc thêm CSP rẻ hơn
+nhiều so với kế hoạch.
+
+### ✅ ĐÃ APPLY LÊN PRODUCTION — 2026-08-14
+
+Ba migration đã chạy thật, mỗi lần lane tự backup trước và tự phát giấy phép từ
+chính bản dump đó:
+
+| Migration | Backup | Giấy phép |
+| --- | --- | --- |
+| `20260814032500` danh bạ tổ chức | 55.9 MB · 577 bảng có dữ liệu | `958a9678bf427f10` |
+| `20260814034500` nonce xác nhận | 55.9 MB · 577 bảng | `94ef51a36f40b610` |
+| `20260814034600` cứng hoá audit | 55.9 MB · 578 bảng | `5f3e9927ec411ac7` |
+
+**Kiểm chứng bằng catalog thật**, không tin dòng "catalog KHÔNG ĐỔI" của lane
+(fingerprint của nó không phủ hàm public): hàm `1558 → 1559 → 1562 → 1563`,
+SECURITY DEFINER `1086 → 1090`. Đúng số dự kiến — hai hàm nonce là DEFINER, hàm
+băm KHÔNG phải DEFINER, khớp thiết kế và khớp test tĩnh.
+
+Đã regen types + rpc-surface và **gỡ `GoiRpcChuaSinhType`**. Kiểu thật chặt hơn
+cast cũ và bắt được một chỗ: `p_payload` phải là `Json`.
+
+Bằng chứng lưu ở `docs/generated/schema-change-evidence/`.
+
+### Thứ tự phát hành Phase B — bắt buộc (đã thực hiện)
 
 1. `migrate:forward` áp **theo thứ tự timestamp**: `032500` (danh bạ) → `034500`
    (nonce) → `034600` (cứng hoá audit). Thứ tự này có chủ ý: đường ghi mới phải
