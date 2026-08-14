@@ -449,7 +449,7 @@
       ]
     },
     "supabase/migrations/20260814034500_copilot_confirmation_intent_v1.sql": {
-      "sha256": "28881ddb8d5f89f176e211f0dd02efaaac9fb373bc2e25a53f437d003cb9bff3",
+      "sha256": "d94a315cbb73abcd1291958cbfa4678347da4056a771bba1d400e71d510604d6",
       "missingObjects": [
         "table:app_private.copilot_write_confirmations",
         "function:app_private.copilot_payload_hash_v1",
@@ -471,6 +471,29 @@
         {
           "duong_dan": "supabase/migrations/20260711050000_ai_write_audit.sql",
           "trich_doan": "Bảng ai_write_audit CŨ vẫn giữ nguyên — file mới chỉ THÊM đường ghi audit từ server, không DROP gì của nó."
+        }
+      ]
+    },
+    "supabase/migrations/20260814034600_ai_write_audit_hardening.sql": {
+      "sha256": "cd84f33f96d4baa89a3d462e834c4b47bc4fbf44272511d4bb3f0259c71507ed",
+      "missingObjects": [
+        "function:app_private.ai_write_audit_bat_bien_v1",
+        "trigger:public.ai_write_audit.trg_ai_write_audit_bat_bien"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TAO 14/08/2026, chua di qua lane apply nao — ham va trigger vang mat tren production vi migration CHUA CHAY, khong phai vi bi DROP. Ca hai deu MOI HOAN TOAN: grep supabase/migrations cho ai_write_audit_bat_bien_v1 va trg_ai_write_audit_bat_bien chi ra dung file nay. Bang ai_write_audit da co tu 20260711050000 va file nay KHONG DROP no — no chi go hai policy ghi va them trigger bat bien. Se chuyen catalog-proven khi migrate:forward chay.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260814034600_ai_write_audit_hardening.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.ai_write_audit_bat_bien_v1()"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260814034600_ai_write_audit_hardening.sql",
+          "trich_doan": "CREATE TRIGGER trg_ai_write_audit_bat_bien BEFORE UPDATE OR DELETE ON public.ai_write_audit"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260711050000_ai_write_audit.sql",
+          "trich_doan": "CREATE TABLE public.ai_write_audit — bang goc, file moi khong DROP no, chi doi quyen ghi."
         }
       ]
     }

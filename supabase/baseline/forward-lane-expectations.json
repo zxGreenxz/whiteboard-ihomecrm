@@ -143,6 +143,11 @@
       "kyVong": "cascade",
       "thongDiep": "app_private.authorized_scope_v3",
       "why": "Preview goi app_private.authorized_scope_v3 de chan bang xem truoc theo quyen. Ham do duoc dung o dot authz v3 (truoc cutoff, thuoc bo legacy KHONG replay duoc), nen database rong cua dien tap khong co no va CREATE FUNCTION cua preview do o buoc phan giai. Day la phu thuoc that vao nen authz co san, khong phai loi schema cua file nay — tren production ham do ton tai (grep supabase/baseline/schema.sql dong 3632)."
+    },
+    "20260814034600_ai_write_audit_hardening.sql": {
+      "kyVong": "cascade",
+      "thongDiep": "public.ai_write_audit",
+      "why": "Bang ai_write_audit duoc dung o 20260711050000 — file legacy TRUOC cutoff, thuoc bo KHONG replay duoc. Database rong cua dien tap khong co bang do nen DROP POLICY / REVOKE / CREATE TRIGGER deu do o buoc phan giai. Day la phu thuoc that vao bang co san tren production (xem supabase/baseline/schema.sql), khong phai loi schema cua file nay."
     }
   }
 }
