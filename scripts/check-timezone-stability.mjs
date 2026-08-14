@@ -30,7 +30,13 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const TARGETS = ['src/lib', 'src/hooks'];
+// `src/copilot` vào danh sách từ 14/08/2026: Copilot chuẩn hoá kỳ tương đối
+// ("tháng này"/"tháng trước") bằng mã trong `temporalContext.ts`, tức nó có
+// logic ngày tháng thật và thừa hưởng nguyên lớp lỗi mà gate này canh — mô hình
+// hỏi "doanh thu tháng trước" lúc 1h sáng mùng 1 giờ VN mà máy chạy UTC sẽ ra
+// lệch hẳn một kỳ. Chú thích cũ "phần component không có logic ngày" vẫn đúng
+// cho phần còn lại của `src`, nhưng không còn đúng với thư mục này.
+const TARGETS = ['src/lib', 'src/hooks', 'src/copilot'];
 
 // UTC = môi trường CI. Asia/Ho_Chi_Minh = môi trường thật của dữ liệu.
 // Hai đầu mút là để bắt lỗi mà hai cái trên bỏ lọt: chênh nhau 25 giờ.

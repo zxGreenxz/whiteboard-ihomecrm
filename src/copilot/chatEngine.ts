@@ -15,6 +15,11 @@ import { CHAT_SYSTEM_PROMPT } from './systemPromptVi';
 import { goiModelMotLuot, type KhaiBaoTool, type TinNhan } from './llmClient';
 import { dongNguCanhTrang } from './banDoHeThong';
 import { buildRegistry, toLlmTools, type ToolCtx } from './tools/registry';
+import {
+  apDungKyTuongDoi,
+  resolveRelativePeriod,
+  taoRequestContext,
+} from './temporalContext';
 
 /** Kiểu tin nhắn dùng chung trong chat mode (tương thích OpenAI). */
 export type Message = TinNhan;
@@ -113,6 +118,28 @@ export function dongHomNay(now: Date = new Date()): string {
 }
 
 /**
+ * Dòng liệt kê ĐÍCH DANH các công cụ phiên này đang có.
+ *
+ * Danh sách tool đã đi kèm request qua tham số `tools`, nhưng ca C25 (13/08/2026)
+ * cho thấy như thế chưa đủ: mô hình TỪ CHỐI SAI, nói "không có công cụ" cho
+ * `ty_le_lap_day` trong khi tool đó nằm ngay trong request. Nhắc lại tên tool
+ * bằng lời, ngay trong system prompt, là chỗ nó chắc chắn đọc.
+ *
+ * Sinh từ `toolMap` ĐÃ LỌC QUYỀN, không phải danh sách viết tay: một danh sách
+ * viết tay sẽ hoặc kể tên tool người dùng không có quyền dùng (mô hình gọi rồi
+ * ăn lỗi), hoặc bỏ sót tool mới thêm — đúng kiểu lệch đã xảy ra với README.
+ */
+export function dongNangLuc(tenTool: string[]): string | null {
+  if (!tenTool.length) return null;
+  return (
+    `CÔNG CỤ BẠN ĐANG CÓ (${tenTool.length}): ${[...tenTool].sort().join(', ')}. ` +
+    'Chỉ nói "không có công cụ" khi tên cần dùng KHÔNG nằm trong danh sách này. ' +
+    'Một công cụ chạy lỗi KHÔNG có nghĩa là các ý khác của câu hỏi bị huỷ: ' +
+    'hãy chạy nốt những ý còn lại rồi báo rõ ý nào xong, ý nào lỗi.'
+  );
+}
+
+/**
  * Đổi registry tool (schema zod) sang khai báo hàm kiểu OpenAI.
  *
  * `io: 'input'` là chi tiết quan trọng: nó khiến trường có `.default()` KHÔNG bị
@@ -166,7 +193,23 @@ export async function runChatTurn(params: {
     ? dongNguCanhTrang(params.pathname, params.ctx.perms)
     : null;
 
-  const heThong = [CHAT_SYSTEM_PROMPT, dongHomNay(), nguCanh].filter(Boolean).join('\n\n');
+  // Kỳ tương đối chuẩn hoá BẰNG MÃ trước khi mô hình chạm vào tham số ngày.
+  // Prompt đã mang ngày hôm nay từ lâu, vậy mà ca C28 (13/08/2026) mô hình vẫn
+  // nói không biết ngày và hỏi lại kỳ — một câu văn là gợi ý, không phải hợp đồng.
+  const ctxThoiGian = taoRequestContext();
+  const kyTuongDoi = resolveRelativePeriod(params.userText, ctxThoiGian);
+
+  const heThong = [
+    CHAT_SYSTEM_PROMPT,
+    dongNangLuc(Object.keys(toolMap)),
+    dongHomNay(),
+    kyTuongDoi
+      ? `Câu hỏi này nói tới kỳ ${kyTuongDoi.month} (${kyTuongDoi.startDate} → ${kyTuongDoi.endDate}). Hệ thống đã chốt kỳ đó; đừng hỏi lại người dùng là kỳ nào.`
+      : null,
+    nguCanh,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   // Có ảnh ⇒ `content` là mảng multimodal; không có ⇒ chuỗi như cũ. Giữ dạng
   // chuỗi khi không có ảnh là cố ý: mọi nhà cung cấp đều nhận, và lịch sử cũ
@@ -240,8 +283,18 @@ export async function runChatTurn(params: {
           output = `Lỗi: không có công cụ tên "${ten}" (hoặc bạn không có quyền dùng).`;
         } else {
           try {
-            const parsedArgs = tool.inputSchema.parse(args);
+            // Kỳ do MÃ chốt thắng kỳ do mô hình đoán. Báo lại khi ghi đè —
+            // sửa im lặng là cách nhanh nhất để không ai biết chỗ này hỏng.
+            const { args: argsKy, kyBiThayThe } = apDungKyTuongDoi(
+              ten,
+              args as Record<string, unknown>,
+              kyTuongDoi,
+            );
+            const parsedArgs = tool.inputSchema.parse(argsKy);
             output = String(await tool.execute(parsedArgs));
+            if (kyBiThayThe) {
+              output = `(Kỳ đã chuẩn hoá về ${kyTuongDoi!.month} theo câu hỏi, thay cho ${kyBiThayThe}.)\n${output}`;
+            }
           } catch (e) {
             output = `Lỗi khi chạy "${ten}": ${e instanceof Error ? e.message : String(e)}`;
           }
