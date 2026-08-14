@@ -24199,6 +24199,14 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: number
       }
+      copilot_execute_income_expense_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_income_expense_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
       create_cash_handover: {
         Args: {
           p_note?: string
@@ -25577,6 +25585,7 @@ export type Database = {
           since: string
         }[]
       }
+      list_my_copilot_organizations_v1: { Args: never; Returns: Json }
       list_my_pending_approvals_compat_v2: {
         Args: never
         Returns: {

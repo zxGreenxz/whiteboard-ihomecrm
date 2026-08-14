@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1650,
-    "catalogFunctions": 1081,
+    "sourceCallSites": 1666,
+    "catalogFunctions": 1084,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 250,
+    "calledRpcs": 252,
     "byRisk": {
-      "normal": 170,
+      "normal": 172,
       "financial": 74,
       "security": 6
     },
-    "securityDefiner": 234
+    "securityDefiner": 236
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1037,6 +1037,46 @@
       ],
       "callers": [
         "src/hooks/useReconciliations.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_execute_income_expense_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_confirmation_nonce text, p_payload jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/writeTools.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_preview_income_expense_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_payload jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/writeTools.ts"
       ],
       "risk": "normal"
     },

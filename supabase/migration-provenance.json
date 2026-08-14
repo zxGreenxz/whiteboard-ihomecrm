@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-14T08:17:28.522Z",
+  "generatedAt": "2026-08-14T08:51:56.468Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 390,
-    "unknown": 70,
+    "ledger-applied": 393,
+    "unknown": 67,
     "catalog-proven": 216,
     "superseded": 15
   },
@@ -8119,10 +8119,9 @@
       "name": "copilot_superadmin_organization_directory",
       "scheme": "timestamp14",
       "sha256": "766d2e0b4b1536b53d9493c607e96be9a3251b7f62c5200235ab01b0c0ec71f3",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.list_my_copilot_organizations_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-14T08:39:51.659Z|bien-nhan-backup"
       ]
     },
     {
@@ -8131,14 +8130,9 @@
       "name": "copilot_confirmation_intent_v1",
       "scheme": "timestamp14",
       "sha256": "419d167c923fdea7cc14005a1d5a2792b9f412ee9f1aa8866b4b2f6fb8154cf9",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.copilot_write_confirmations",
-        "function:app_private.copilot_payload_hash_v1",
-        "function:public.copilot_preview_income_expense_v1",
-        "function:public.copilot_execute_income_expense_v1",
-        "index:app_private.idx_copilot_write_confirmations_het_han"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-14T08:45:55.997Z|bien-nhan-backup"
       ]
     },
     {
@@ -8147,11 +8141,9 @@
       "name": "ai_write_audit_hardening",
       "scheme": "timestamp14",
       "sha256": "87a70b9445a238df211d8c2119d1d939d0fc6bfa2f575e2a1c63c47c23e663a5",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.ai_write_audit_bat_bien_v1",
-        "trigger:public.ai_write_audit.trg_ai_write_audit_bat_bien"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-14T08:51:31.158Z|bien-nhan-backup"
       ]
     },
     {

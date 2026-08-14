@@ -22,6 +22,7 @@
 //   văn bản không mở được cửa này.
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { formatVND } from '@/lib/utils';
 import { chotToChuc, type DomainTool } from './registry';
 import { datXacNhanDangCho } from '../confirmationStore';
@@ -64,21 +65,6 @@ const inputSchema = z.object({
 
 type Input = z.infer<typeof inputSchema>;
 
-
-/**
- * Gọi RPC chưa có trong generated types.
- *
- * Hai hàm `copilot_*_income_expense_v1` nằm trong migration 20260814034500 và
- * CHƯA được apply, nên bộ sinh type của Supabase chưa biết tên chúng. Ép kiểu ở
- * đúng một chỗ, có tên, thay vì rải `as never` khắp nơi — khi migration apply
- * xong và types được sinh lại, xoá helper này là biết ngay còn sót chỗ nào.
- *
- * Tên RPC vẫn là chuỗi VIẾT THẲNG tại nơi gọi để ba gate biên RPC tìm thấy.
- */
-type GoiRpcChuaSinhType = (
-  fn: string,
-  params: Record<string, unknown>,
-) => Promise<{ data: unknown; error: { message?: string } | null }>;
 
 /** Hình dạng server trả về ở bước xem trước. */
 interface KetQuaXemTruoc {
@@ -128,8 +114,7 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
   execute: async (args, ctx) => {
     const orgId = chotToChuc(ctx, 'tao_phieu_thu_chi_nhap');
 
-    const goiRpc = supabase.rpc as unknown as GoiRpcChuaSinhType;
-    const { data, error } = await goiRpc('copilot_preview_income_expense_v1', {
+    const { data, error } = await supabase.rpc('copilot_preview_income_expense_v1', {
       p_organization_id: orgId,
       p_payload: {
         loai: args.loai,
@@ -175,10 +160,13 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
  * cả kiến trúc nonce sụp — mô hình sẽ tự bấm nút của chính mình.
  */
 export async function thucThiXacNhan(nonce: string, canonical: unknown): Promise<string> {
-  const goiRpc = supabase.rpc as unknown as GoiRpcChuaSinhType;
-  const { data, error } = await goiRpc('copilot_execute_income_expense_v1', {
+  const { data, error } = await supabase.rpc('copilot_execute_income_expense_v1', {
     p_confirmation_nonce: nonce,
-    p_payload: canonical as Record<string, unknown>,
+    // `Json` của generated types, không phải `Record<string, unknown>`: payload
+    // này đi NGUYÊN VẸN từ preview sang execute và server băm nó để so. Ép sang
+    // một kiểu rộng hơn ở đây là mở đường cho ai đó sửa nó giữa đường mà trình
+    // biên dịch không nói gì — mà sửa nó chính là thứ phép so hash tồn tại để bắt.
+    p_payload: canonical as Json,
   });
   if (error) {
     const m = error.message ?? String(error);
