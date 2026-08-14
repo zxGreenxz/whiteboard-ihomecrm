@@ -1,8 +1,11 @@
 // Panel chat AI Copilot — UI tiếng Việt (F9), chat read-only Phase 2
 // + UI-control experimental Phase 3 (toggle "Điều khiển trang").
+// Giao diện "Bé Chiu" theo design "Trợ lý AI - Bé Chiu.dc.html".
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ImagePlus, Loader2, Mic, MicOff, Plus, Send, Square, X } from 'lucide-react';
+import {
+  BarChart3, Building2, FileText, ImagePlus, Mic, MicOff, Plus, Receipt, Send, Square, X,
+} from 'lucide-react';
 // Kiểu tin nhắn nay do chatEngine sở hữu, không còn lấy từ @page-agent/llms:
 // `Message.content` của thư viện đó là `string | null`, không chứa được tin
 // nhắn kèm ảnh.
@@ -21,17 +24,18 @@ import {
 import { useAiProviders, useCopilotEntitlement, useCopilotModel } from './useAiProviders';
 import { hrefAnToan } from './hrefAnToan';
 import { anhTuDataTransfer, nenAnh, type AnhDaNen } from './anh';
+import { BeChiu, TEN_LINH_THU } from './BeChiu';
 
 interface Props {
   onClose: () => void;
 }
 
-// Gợi ý nhanh khi thread trống
+// Gợi ý nhanh khi thread trống — mỗi chip một màu status theo design.
 const SUGGESTION_CHIPS = [
-  'Phòng nào đang trống?',
-  'Doanh thu tháng này?',
-  'Hợp đồng nào sắp hết hạn?',
-  'Cách tạo hoá đơn?',
+  { text: 'Phòng nào đang trống?', Icon: Building2, mau: 'bc-chip--success' },
+  { text: 'Doanh thu tháng này?', Icon: BarChart3, mau: 'bc-chip--info' },
+  { text: 'Hợp đồng nào sắp hết hạn?', Icon: FileText, mau: 'bc-chip--warning' },
+  { text: 'Cách tạo hoá đơn?', Icon: Receipt, mau: 'bc-chip--tasks' },
 ];
 
 // Web Speech API (Chrome/Edge) — nhận giọng nói tiếng Việt, đổ vào ô nhập.
@@ -88,7 +92,7 @@ function MiniMarkdown({ text }: { text: string }) {
         typeof p === 'string' ? (
           <span key={i}>{p}</span>
         ) : (
-          <a key={i} href={p.href} className="text-blue-600 underline" target={p.href.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
+          <a key={i} href={p.href} className="font-medium text-primary underline" target={p.href.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
             {p.label}
           </a>
         ),
@@ -309,14 +313,18 @@ export default function ChatPanel({ onClose }: Props) {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-[9998] flex h-[min(640px,80vh)] w-[min(420px,calc(100vw-2rem))] flex-col rounded-xl border bg-background shadow-2xl"
+      className="bc-goc fixed bottom-4 right-4 z-[9998] flex h-[min(640px,80vh)] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border bg-card shadow-[0_22px_45px_-18px_hsl(152_69%_25%/.28)]"
       data-testid="copilot-panel"
     >
       {/* Header */}
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <span className="font-semibold text-sm">Trợ lý AI</span>
+      <div className="flex items-center gap-2.5 border-b bg-accent px-3 py-2.5">
+        <BeChiu size={32} animated blush cuaSo className="shrink-0" />
+        <div className="flex min-w-0 flex-col">
+          <span className="text-[15px] font-bold leading-tight tracking-tight">{TEN_LINH_THU}</span>
+          <span className="text-[11px] leading-snug text-muted-foreground">Trợ lý nhỏ xinh của bạn</span>
+        </div>
         <select
-          className="ml-auto max-w-[180px] truncate rounded border bg-background px-1 py-0.5 text-xs"
+          className="ml-auto max-w-[132px] cursor-pointer truncate rounded-full border border-[hsl(var(--primary-100))] bg-card px-2.5 py-1 text-[11px] font-semibold text-accent-foreground shadow-sm"
           value={model}
           onChange={(e) => setModel(e.target.value)}
           data-testid="copilot-model-select"
@@ -330,10 +338,19 @@ export default function ChatPanel({ onClose }: Props) {
             </option>
           ))}
         </select>
-        <button className="rounded p-1 hover:bg-muted" title="Cuộc trò chuyện mới" onClick={newThread}>
+        <button
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--primary-100))] bg-card text-accent-foreground transition hover:-translate-y-px hover:bg-[hsl(var(--primary-50))]"
+          title="Cuộc trò chuyện mới"
+          onClick={newThread}
+        >
           <Plus className="h-4 w-4" />
         </button>
-        <button className="rounded p-1 hover:bg-muted" title="Đóng" onClick={onClose} data-testid="copilot-close">
+        <button
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--primary-100))] bg-card text-accent-foreground transition hover:-translate-y-px hover:bg-[hsl(var(--primary-50))]"
+          title="Đóng"
+          onClick={onClose}
+          data-testid="copilot-close"
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -341,54 +358,70 @@ export default function ChatPanel({ onClose }: Props) {
       {/* Model đã lưu không còn được bật: nói ra thay vì lặng lẽ đổi. Người
           dùng cần biết vì sao hôm nay Copilot trả lời khác hôm qua. */}
       {modelLoiThoi && (
-        <div className="border-b bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+        <div className="border-b bg-[hsl(var(--status-warning-bg))] px-3 py-1.5 text-xs text-[hsl(var(--status-warning-fg))]">
           Model bạn chọn trước đây không còn được bật — đang tạm dùng model mặc định. Chọn lại ở ô trên để lưu.
         </div>
       )}
 
       {/* Toggle UI-control (experimental) — chỉ hiện khi có entitlement + quyền */}
       {canUiControl && (
-        <label className="flex items-center gap-2 border-b bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
+        <label className="flex cursor-pointer items-center gap-2 border-b bg-[hsl(var(--status-warning-bg))] px-3 py-1.5 text-[11px] text-[hsl(var(--status-warning-fg))]">
           <input
             type="checkbox"
+            className="sr-only"
             checked={uiMode}
             onChange={(e) => setUiMode(e.target.checked)}
             disabled={running}
             data-testid="copilot-uimode"
           />
+          <span className="bc-switch" aria-hidden="true" />
           Điều khiển trang (thử nghiệm) — chỉ điều hướng & lọc, mỗi lệnh độc lập
         </label>
       )}
 
       {/* Messages */}
-      <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm">
-        {items.length === 0 && (
-          <div className="mt-8 space-y-3 text-center text-muted-foreground">
-            <div>Hỏi tôi về phòng trống, hoá đơn, hợp đồng sắp hết hạn, doanh thu tháng, cách dùng hệ thống…</div>
-            <div className="flex flex-wrap justify-center gap-2">
-              {SUGGESTION_CHIPS.map((chip) => (
+      <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-3.5 text-sm leading-relaxed">
+        {items.length === 0 && !running && (
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-3 text-center">
+            <BeChiu size={96} animated smoke blush cuaSo shadow />
+            <div className="flex flex-col gap-1.5">
+              <div className="text-lg font-bold tracking-tight">Chào bạn, mình là {TEN_LINH_THU}!</div>
+              <div className="max-w-[300px] text-[13px] leading-normal text-muted-foreground">
+                Hỏi mình về phòng trống, hoá đơn, hợp đồng sắp hết hạn, doanh thu tháng hay cách dùng hệ thống nhé.
+              </div>
+            </div>
+            <div className="grid grid-cols-[auto_auto] justify-center gap-2">
+              {SUGGESTION_CHIPS.map(({ text, Icon, mau }) => (
                 <button
-                  key={chip}
-                  className="rounded-full border px-3 py-1 text-xs hover:bg-muted"
-                  onClick={() => setInput(chip)}
+                  key={text}
+                  className={`bc-chip ${mau}`}
+                  onClick={() => setInput(text)}
                   data-testid="copilot-chip"
                 >
-                  {chip}
+                  <Icon className="h-3.5 w-3.5" />
+                  {text}
                 </button>
               ))}
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <ImagePlus className="h-3.5 w-3.5" />
+              Dán hoặc kéo ảnh công tơ, biên lai vào đây
             </div>
           </div>
         )}
         {items.map((it, i) =>
           it.kind === 'tool' ? (
             <div key={i} className="text-xs italic text-muted-foreground">⚙ {it.text}</div>
+          ) : it.kind === 'user' ? (
+            <div key={i} className="flex justify-end">
+              <div className="max-w-[82%] break-words rounded-[14px] rounded-tr-[4px] bg-primary px-3 py-2 text-primary-foreground shadow-[0_6px_14px_-8px_hsl(152_69%_25%/.5)]">
+                <MiniMarkdown text={it.text} />
+              </div>
+            </div>
           ) : (
-            <div key={i} className={`flex ${it.kind === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 ${
-                  it.kind === 'user' ? 'bg-blue-600 text-white' : 'bg-muted'
-                }`}
-              >
+            <div key={i} className="flex justify-start gap-2">
+              <BeChiu size={24} className="mt-0.5 shrink-0" />
+              <div className="max-w-[82%] break-words rounded-[14px] rounded-tl-[4px] bg-muted px-3 py-2">
                 <MiniMarkdown text={it.text} />
               </div>
             </div>
@@ -397,16 +430,24 @@ export default function ChatPanel({ onClose }: Props) {
         {/* Bong bóng "đang chảy": cùng khuôn với bong bóng trả lời thật, nên
             lúc chốt vào history chữ không nhảy chỗ. */}
         {dangChay && (
-          <div className="flex justify-start">
-            <div className="max-w-[85%] rounded-lg bg-muted px-3 py-2">
+          <div className="flex justify-start gap-2">
+            <BeChiu size={24} className="mt-0.5 shrink-0" />
+            <div className="max-w-[82%] break-words rounded-[14px] rounded-tl-[4px] bg-muted px-3 py-2">
               <MiniMarkdown text={dangChay} />
             </div>
           </div>
         )}
         {running && !dangChay && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            {liveTool ? `Đang tra cứu: ${liveTool}…` : 'Đang suy nghĩ…'}
+          <div className="flex items-center justify-start gap-2">
+            <BeChiu size={24} eyes="nham" className="shrink-0" />
+            <div className="flex items-center gap-[5px] rounded-[14px] rounded-tl-[4px] bg-muted px-[13px] py-[11px]">
+              <span className="bc-dot" />
+              <span className="bc-dot" style={{ animationDelay: '.15s' }} />
+              <span className="bc-dot" style={{ animationDelay: '.3s' }} />
+            </div>
+            <span className="text-[11px] italic text-muted-foreground">
+              {liveTool ? `Đang tra cứu: ${liveTool}…` : `${TEN_LINH_THU} đang nghĩ…`}
+            </span>
           </div>
         )}
         {error && <div className="rounded bg-red-50 p-2 text-xs text-red-600">{error}</div>}
@@ -434,11 +475,11 @@ export default function ChatPanel({ onClose }: Props) {
       )}
 
       {/* Input */}
-      <div className="flex items-end gap-2 border-t p-2">
+      <div className="flex items-end gap-2 border-t p-2.5">
         <textarea
-          className="max-h-28 min-h-[38px] flex-1 resize-none rounded border bg-background px-2 py-1.5 text-sm"
+          className="max-h-28 min-h-[40px] flex-1 resize-none rounded-xl border border-transparent bg-muted px-3 py-2 text-base leading-snug text-foreground outline-none focus:border-[hsl(var(--ring))] focus:bg-card"
           rows={1}
-          placeholder={uiMode ? 'Lệnh điều khiển, vd "mở trang phòng"…' : 'Nhập câu hỏi…'}
+          placeholder={uiMode ? 'Lệnh điều khiển, vd "mở trang phòng"…' : `Hỏi ${TEN_LINH_THU} điều gì đó…`}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -484,27 +525,31 @@ export default function ChatPanel({ onClose }: Props) {
               data-testid="copilot-file"
             />
             <button
-              className="rounded p-2 hover:bg-muted"
+              className="rounded-full p-2 text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
               title="Gửi ảnh (công tơ, biên lai…)"
               onClick={() => fileRef.current?.click()}
               data-testid="copilot-chon-anh"
             >
-              <ImagePlus className="h-4 w-4" />
+              <ImagePlus className="h-[17px] w-[17px]" />
             </button>
           </>
         )}
         {voice.supported && !running && (
           <button
-            className={`rounded p-2 ${voice.listening ? 'bg-red-100 text-red-600' : 'hover:bg-muted'}`}
+            className={`rounded-full p-2 transition ${
+              voice.listening
+                ? 'bg-red-100 text-red-600'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            }`}
             title={voice.listening ? 'Đang nghe… (bấm để dừng)' : 'Nói tiếng Việt'}
             onClick={voice.toggle}
           >
-            {voice.listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            {voice.listening ? <MicOff className="h-[17px] w-[17px]" /> : <Mic className="h-[17px] w-[17px]" />}
           </button>
         )}
         {running ? (
           <button
-            className="rounded bg-red-600 p-2 text-white"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-white"
             title="Dừng"
             onClick={stopRun}
           >
@@ -512,7 +557,7 @@ export default function ChatPanel({ onClose }: Props) {
           </button>
         ) : (
           <button
-            className="rounded bg-blue-600 p-2 text-white disabled:opacity-50"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_6px_14px_-6px_hsl(152_69%_25%/.6)] transition hover:bg-[hsl(var(--primary-600))] disabled:opacity-50"
             disabled={!input.trim() && !anhKem.length}
             onClick={() => void send()}
             title="Gửi"

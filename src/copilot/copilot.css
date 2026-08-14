@@ -1,0 +1,137 @@
+/* Widget AI Copilot "Bé Chiu" — style theo design "Trợ lý AI - Bé Chiu.dc.html"
+   (project claude.ai/design "AI Copilot giao diện mới").
+   Token primary-tint + status lấy từ design system ihomecrm (tokens/colors.css)
+   — index.css chưa có các token này nên scope vào .bc-goc, theo pattern
+   salary.css. */
+
+.bc-goc {
+  --primary-50: 152 50% 96%;
+  --primary-100: 152 45% 90%;
+  --primary-600: 152 69% 28%;
+
+  --status-success: 142 71% 45%;
+  --status-success-bg: 138 76% 97%;
+  --status-success-fg: 142 72% 29%;
+  --status-info-bg: 214 95% 93%;
+  --status-info-fg: 224 76% 48%;
+  --status-warning-bg: 55 97% 88%;
+  --status-warning-fg: 32 81% 29%;
+  --status-tasks-bg: 269 100% 95%;
+  --status-tasks-fg: 273 67% 39%;
+}
+
+/* ---- Chuyển động linh thú ---- */
+@keyframes bcFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes bcBlink {
+  0%, 91%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.12); }
+}
+@keyframes bcSmoke {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  30% { opacity: 0.7; }
+  100% { opacity: 0; transform: translateY(-9px) scale(1.15); }
+}
+@keyframes bcDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+
+.bc-float { animation: bcFloat 4s ease-in-out infinite; }
+.bc-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bcBlink 5.2s ease-in-out infinite;
+}
+.bc-smoke { animation: bcSmoke 3.5s ease-in-out infinite; }
+
+.bc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground));
+  animation: bcDot 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bc-float, .bc-blink, .bc-smoke, .bc-dot { animation: none; }
+}
+
+/* ---- Nút mở nổi ---- */
+.bc-launcher {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  background: hsl(var(--card));
+  border: 1.5px solid hsl(var(--primary-100));
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 26px -10px hsl(152 69% 25% / 0.45);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.bc-launcher:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px -10px hsl(152 69% 25% / 0.55);
+}
+.bc-cham-online {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 9999px;
+  background: hsl(var(--status-success));
+  border: 2.5px solid hsl(var(--card));
+}
+
+/* ---- Chip gợi ý (màu theo status palette) ---- */
+.bc-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  cursor: pointer;
+  border-radius: 9999px;
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: transform 0.15s;
+}
+.bc-chip:hover { transform: translateY(-1px); }
+.bc-chip--success { background: hsl(var(--status-success-bg)); color: hsl(var(--status-success-fg)); }
+.bc-chip--info { background: hsl(var(--status-info-bg)); color: hsl(var(--status-info-fg)); }
+.bc-chip--warning { background: hsl(var(--status-warning-bg)); color: hsl(var(--status-warning-fg)); }
+.bc-chip--tasks { background: hsl(var(--status-tasks-bg)); color: hsl(var(--status-tasks-fg)); }
+
+/* ---- Công tắc "Điều khiển trang" ---- */
+.bc-switch {
+  flex-shrink: 0;
+  width: 26px;
+  height: 15px;
+  border-radius: 9999px;
+  background: hsl(var(--border));
+  position: relative;
+  display: inline-block;
+  transition: background 0.15s;
+}
+.bc-switch::after {
+  content: "";
+  position: absolute;
+  top: 1.5px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+  transition: left 0.15s;
+}
+input:checked + .bc-switch { background: hsl(var(--primary)); }
+input:checked + .bc-switch::after { left: 12px; }
+input:disabled + .bc-switch { opacity: 0.5; }

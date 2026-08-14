@@ -3,11 +3,11 @@
 // LƯU Ý: đây chỉ là gate UI — gate THẬT nằm trong RPC reserve_ai_usage (F14).
 import { lazy, Suspense, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { useCopilotEntitlement } from './useAiProviders';
+import { BeChiu, TEN_LINH_THU } from './BeChiu';
 
 const ChatPanel = lazy(() => import('./ChatPanel'));
 
@@ -47,12 +47,13 @@ function GatedLauncher() {
       )}
       {!open && (
         <button
-          className="fixed bottom-4 right-4 z-[9997] flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition hover:bg-blue-700"
-          title="Trợ lý AI"
+          className="bc-goc bc-launcher fixed bottom-4 right-4 z-[9997]"
+          title={`Chat với ${TEN_LINH_THU}`}
           onClick={() => setOpen(true)}
           data-testid="copilot-launcher"
         >
-          <Sparkles className="h-5 w-5" />
+          <BeChiu size={38} animated smoke blush cuaSo />
+          <span className="bc-cham-online" />
         </button>
       )}
     </>
