@@ -19,6 +19,21 @@ export function makeIdempotencyKey(parts: (string | number)[]): string {
   return `iek_${(h >>> 0).toString(36)}_${s.length}`;
 }
 
+/**
+ * Chỉ dẫn kèm bản xem trước — thứ mô hình đọc đúng lúc sắp tạo phiếu thật.
+ *
+ * Tách thành hằng số để test soi được nội dung. Bản trước bảo mô hình "gọi
+ * respond NGAY BÂY GIỜ", nhưng tool `respond` đã bị gỡ khi chat engine chuyển
+ * sang `tool_choice: 'auto'` (xem chú thích đầu `chatEngine.ts`). Một chỉ dẫn
+ * trỏ vào tool không tồn tại thì mô hình hoặc lờ đi, hoặc gọi rồi nhận lỗi —
+ * cả hai đều làm hỏng đúng bước dừng-để-hỏi mà bản xem trước sinh ra để bảo vệ.
+ */
+export const TEXT_XEM_TRUOC_MAU =
+  '⚠️ CHƯA TẠO. BƯỚC TIẾP THEO BẮT BUỘC: TRẢ LỜI THẲNG cho người dùng ngay bây giờ ' +
+  '(không dùng thêm tool nào), đưa bản xem trước ở trên và hỏi "Bạn xác nhận tạo phiếu này chứ?". ' +
+  'KHÔNG dùng lại tool này cho đến khi người dùng trả lời đồng ý — khi đó mới truyền ' +
+  'xac_nhan=true và giữ nguyên các tham số cũ.';
+
 const inputSchema = z.object({
   loai: z.enum(['thu', 'chi']).describe('thu = phiếu THU, chi = phiếu CHI'),
   so_tien: z.number().positive().describe('Số tiền VND'),
@@ -103,7 +118,7 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
       `- Trạng thái: CHỜ DUYỆT (chưa duyệt, chưa vào sổ — người dùng duyệt tại /income-expense)`;
 
     if (!args.xac_nhan) {
-      return `${preview}\n\n⚠️ CHƯA TẠO. BƯỚC TIẾP THEO BẮT BUỘC: gọi respond NGAY BÂY GIỜ, đưa bản xem trước trên cho người dùng và hỏi "Bạn xác nhận tạo phiếu này chứ?". KHÔNG gọi lại tool này cho đến khi người dùng trả lời đồng ý (khi đó mới gọi với xac_nhan=true, giữ nguyên tham số).`;
+      return `${preview}\n\n${TEXT_XEM_TRUOC_MAU}`;
     }
 
     // Idempotency: INSERT audit trước, key từ nội dung phiếu (không gồm xac_nhan)

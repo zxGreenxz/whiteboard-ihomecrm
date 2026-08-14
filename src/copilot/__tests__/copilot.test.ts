@@ -279,6 +279,29 @@ describe('Phase 5 — write tool + form-fill guard', () => {
     expect(toLlmTools(reg, { perms: SUPER }).tao_phieu_thu_chi_nhap).toBeDefined();
   });
 
+  it('KHÔNG chỉ dẫn nào trỏ tới tool đã bị gỡ khỏi registry', async () => {
+    // `respond` từng là tool giả làm dấu "xong", bị gỡ khi chat engine chuyển
+    // sang tool_choice:'auto' (chú thích đầu chatEngine.ts). Chỉ dẫn còn sót lại
+    // bảo mô hình "gọi respond NGAY BÂY GIỜ" là trỏ vào hư không — mô hình hoặc
+    // lờ đi, hoặc gọi rồi nhận lỗi, và bước dừng-để-hỏi trước khi tạo phiếu
+    // hỏng đúng lúc nó cần chắc nhất.
+    const reg = buildRegistry();
+    const tenTool = new Set(reg.map((t) => t.name));
+    expect(tenTool.has('respond')).toBe(false);
+
+    // Quét cả description (mô hình đọc mọi lúc) lẫn văn bản xem trước của tool
+    // ghi (mô hình đọc đúng lúc sắp tạo phiếu).
+    const { TEXT_XEM_TRUOC_MAU } = await import('../tools/writeTools');
+    const vanBan = [...reg.map((t) => t.description), TEXT_XEM_TRUOC_MAU].join('\n');
+    for (const m of vanBan.matchAll(/g[ọo]i\s+`?([a-z_][a-z0-9_]*)`?/gi)) {
+      const ten = m[1].toLowerCase();
+      // Chỉ soi các từ trông như tên tool (có gạch dưới hoặc trùng tool đã biết).
+      if (!ten.includes('_') && !tenTool.has(ten)) continue;
+      expect(tenTool.has(ten), `chỉ dẫn nhắc tool không tồn tại: "${ten}"`).toBe(true);
+    }
+    expect(vanBan.toLowerCase()).not.toContain('gọi respond');
+  });
+
   it('makeIdempotencyKey: ổn định + phân biệt nội dung khác', () => {
     const a = makeIdempotencyKey(['u1', 'EXPENSE', 100000, 'b1', 't1', '2026-07-11', 'Chi thử']);
     const b = makeIdempotencyKey(['u1', 'EXPENSE', 100000, 'b1', 't1', '2026-07-11', 'Chi thử']);
