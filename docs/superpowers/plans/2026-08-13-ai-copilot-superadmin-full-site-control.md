@@ -97,6 +97,38 @@ public.get_my_copilot_availability_v1(p_organization_id uuid) RETURNS jsonb
 
 ---
 
+## Tiến độ (cập nhật 2026-08-14)
+
+| Task | Trạng thái | Commit |
+| --- | --- | --- |
+| A1 — sửa 4 quan hệ sai | ✅ xong | `56b177c6` |
+| A2 — đồng bộ route + gate subset | ✅ xong | `a01e63dc`, `fb20970a` |
+| A3.2 — bug chỉ dẫn tool `respond` | ✅ xong | `27962a39` |
+| A3.3 — inventory tool sinh từ nguồn | ✅ xong | `432c7937` |
+| A5 — kỳ tương đối + năng lực prompt | ✅ xong | `6f20583f` |
+| A3.1 — containment write | ⏭ gộp vào B1 (xem ghi chú) | — |
+| A4 — selected organization | ⏳ đang làm | — |
+| Phase B/C/D | ⬜ chưa bắt đầu | — |
+
+**Ghi chú A3.1 → B1**: plan gốc định gỡ `tao_phieu_thu_chi_nhap` khỏi model cho tới
+khi có nonce. Làm vậy sẽ mất một tính năng đang chạy trong suốt thời gian làm B1, mà
+bán kính thiệt hại của lỗ hổng hiện tại có giới hạn (phiếu tạo ra là `UNAPPROVED`,
+phải có người duyệt ở `/income-expense`). Đổi lại: B1 chuyển thẳng từ `xac_nhan`
+sang nonce, không có khoảng trống. Thứ tự phát hành bắt buộc: **apply migration
+trước, deploy web sau** (migration chỉ THÊM đối tượng nên apply sớm là an toàn).
+
+**Phát hiện mới trong lúc thực thi** (bổ sung bằng chứng cho B1 của spec):
+- Lỗ autosave KHÔNG chỉ có `PaymentsSummaryDialog`. Thêm hai chỗ trên `/buildings`:
+  `<Switch>` bật/tắt trạng thái toà nhà (`BuildingListTable`) và multiselect gán toà
+  vào khu vực (`ManageAreasDialog`) — cả hai gọi mutation ngay khi đổi, **không có
+  nhãn văn bản nào** nên không hàng rào theo nhãn nào bắt được.
+- Hàng rào nhãn bỏ sót ba lớp, đã vá hai: `title` (đã đọc), nhãn ghép che nhau (đã
+  soi rời), `nhượng` không có "chuyển" phía trước (đã vá regex). Còn lại **chưa vá**:
+  nhãn chỉ nằm trong `<TooltipContent>` (portal, chỉ render khi hover) — "Thanh lý",
+  "Gia hạn", "Chuyển phòng", "ĐK chuyển đi" trên bảng hợp đồng. Đây là việc của C1.
+- `\b` của JS regex không hoạt động sau ký tự có dấu. Đã dính hai lần trong phiên
+  này (`công cụ\b` trong gate inventory, và chính `DANGER_RE` đã ghi chú sẵn bẫy đó).
+
 ## Phase A — Sửa cái đang hỏng trên production
 
 ### Task A1: Sửa 4 query sai relation (đóng FAIL C02/C04/C14/C16, gốc của PARTIAL C27)
