@@ -16,8 +16,8 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **529** file test, **168** file đọc file bằng fs (430 lời gọi)
-- **232** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
+- **530** file test, **173** file đọc file bằng fs (440 lời gọi)
+- **234** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
 
@@ -25,13 +25,13 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
 | Loại | Số file | Vì sao đáng/không đáng lo |
 |---|---|---|
-| sql | 46 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
-| ma-nguon | 35 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
-| manifest | 29 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
+| sql | 50 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
+| ma-nguon | 37 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
+| manifest | 30 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
 | tai-lieu | 8 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
-## 35 file đọc MÃ NGUỒN
+## 37 file đọc MÃ NGUỒN
 
 Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.
 
@@ -57,6 +57,8 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 - `src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx`
 - `src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx`
 - `src/components/openclaw-zalo/__tests__/cockpitWiring.test.tsx`
+- `src/copilot/__tests__/confirmationStore.test.ts`
+- `src/copilot/__tests__/pageAgentCompatibility.test.ts`
 - `src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts`
 - `src/hooks/__tests__/realtimeTenantBoundary.test.ts`
 - `src/hooks/__tests__/useManagerSalaryOrganizationScope.test.ts`

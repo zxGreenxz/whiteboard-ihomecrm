@@ -91,8 +91,12 @@ export function resolveSelectedOrganizationId(
   organizations: Organization[],
   persistedId: string | null,
 ): string | null {
-  if (organizations.length === 0) return null;
-  if (organizations.length === 1) return organizations[0].id;
+  // `at(0)` chứ không phải `[0]`: dưới `noUncheckedIndexedAccess` thì chỉ số
+  // mảng luôn có thể `undefined`, và phép kiểm `length === 1` ở dòng trên không
+  // thuyết phục được trình biên dịch. Ở đây nó chỉ là hình thức, nhưng cùng lớp
+  // lỗi đó là thật ở chỗ khác — nên đảo strict cấm luôn cả hình thức.
+  const duyNhat = organizations.length === 1 ? organizations.at(0) : undefined;
+  if (duyNhat) return duyNhat.id;
   if (persistedId && organizations.some((o) => o.id === persistedId)) return persistedId;
   return null;
 }

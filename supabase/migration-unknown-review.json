@@ -449,7 +449,7 @@
       ]
     },
     "supabase/migrations/20260814034500_copilot_confirmation_intent_v1.sql": {
-      "sha256": "e72a4d299f3073c30ec80709ad45d44936ca34068695dfca3e2e72c083d4defa",
+      "sha256": "419d167c923fdea7cc14005a1d5a2792b9f412ee9f1aa8866b4b2f6fb8154cf9",
       "missingObjects": [
         "table:app_private.copilot_write_confirmations",
         "function:app_private.copilot_payload_hash_v1",
@@ -475,7 +475,7 @@
       ]
     },
     "supabase/migrations/20260814034600_ai_write_audit_hardening.sql": {
-      "sha256": "cd84f33f96d4baa89a3d462e834c4b47bc4fbf44272511d4bb3f0259c71507ed",
+      "sha256": "87a70b9445a238df211d8c2119d1d939d0fc6bfa2f575e2a1c63c47c23e663a5",
       "missingObjects": [
         "function:app_private.ai_write_audit_bat_bien_v1",
         "trigger:public.ai_write_audit.trg_ai_write_audit_bat_bien"
