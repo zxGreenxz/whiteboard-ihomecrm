@@ -31,7 +31,7 @@ CI khác. Tra runtime của từng cái ở `tooling/runtime-matrix.json`.
 |---|---|---|
 | `services/**` | 5 package OpenClaw Zalo: `openclaw-egress-broker`, `openclaw-media-gateway`, `openclaw-zalo-bridge`, `openclaw-zalo-cell`, `openclaw-zalo-maintenance` | `openclaw-zalo-cell` chứa vendored upstream — **không** phải mã của dự án này, `verify:upstream` lo phần đó. |
 | `infra/**` | 5 package: `network-center-worker`, `cloudflare-worker`, `openclaw-media-gateway`, `openclaw-zalo-watchdog`, `openclaw-zalo` | `network-center-worker` deploy bằng PowerShell; hai suite kiểm script đó chạy ở job Windows riêng. |
-| `.e2e-fleet/**` | 47 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
+| `.e2e-fleet/**` | 48 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
 | `contracts/**` | 13 file hợp đồng | Nguồn ưu tiên CAO NHẤT khi đối chiếu (trên cả graph tri thức). |
 
 ## Luồng phụ thuộc chính
