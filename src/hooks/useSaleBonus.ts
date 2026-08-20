@@ -64,6 +64,10 @@ export interface CreateSaleBonusFromDepositArgs {
   recipient?: string;
   accountNumber?: string;
   bank?: string;
+  /** Sổ quỹ chi thưởng. Bỏ trống ⇒ phiếu ra chưa gắn sổ, duyệt sau mới chọn. */
+  accountId?: string | null;
+  /** URL ảnh chứng từ đã upload (bucket income-expense-attachments). */
+  attachments?: string[];
 }
 
 /**
@@ -81,6 +85,8 @@ export const useCreateSaleBonusFromDeposit = () => {
         p_account_number: a.accountNumber ?? undefined,
         p_bank: a.bank ?? undefined,
         p_voucher_date: undefined,
+        p_account_id: a.accountId ?? undefined,
+        p_attachments: a.attachments ?? [],
       });
       if (error) throw new Error(error.message);
       return data as { voucherId: string; code: string; amount: number; note: string };

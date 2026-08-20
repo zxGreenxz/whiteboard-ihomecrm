@@ -1,6 +1,6 @@
 ---
 status: current
-reviewed: 2026-08-14
+reviewed: 2026-08-20
 source_paths:
   - docs/generated/repository-inventory.json
 copilot_ingest: false

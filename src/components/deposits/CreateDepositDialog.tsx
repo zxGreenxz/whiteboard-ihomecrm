@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { tryPlaceRoomHold } from "@/lib/reservationHold";
@@ -67,9 +68,16 @@ const depositSchema = z.object({
   hold_until: z.string().optional(),
   ctv_name: z.string().optional(),
   notes: z.string().optional(),
+  // Sổ quỹ ghi cọc — BẮT BUỘC chọn (quyết định chủ 20/08/2026). Trước đây dialog
+  // tự chọn ngầm: cọc > 1đ lấy sổ mặc định của người tạo, còn lại lấy sổ CỌC ảo.
+  // Chọn ngầm nghĩa là tiền vào sổ nào không ai để ý cho tới lúc đối chiếu.
+  account_id: z.string().min(1, "Phải chọn sổ quỹ ghi cọc"),
   // Thưởng nóng Sale — tuỳ chọn, tạo ngay cùng lúc với phiếu cọc.
   sale_bonus_amount: z.coerce.number().min(0).optional(),
   sale_bonus_recipient: z.string().optional(),
+  sale_bonus_account_id: z.string().optional(),
+  sale_bonus_account_number: z.string().optional(),
+  sale_bonus_bank: z.string().optional(),
 });
 
 type DepositFormValues = z.infer<typeof depositSchema>;
@@ -84,6 +92,10 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
   const [createNewTenant, setCreateNewTenant] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  // Ảnh chứng từ giữ ngoài react-hook-form: AttachmentUpload đã tự quản lý
+  // upload/xoá trên storage và chỉ trả về mảng URL — cùng khuôn CommissionVoucherModal.
+  const [depositAttachments, setDepositAttachments] = useState<string[]>([]);
+  const [bonusAttachments, setBonusAttachments] = useState<string[]>([]);
 
   const createIE = useCreateIncomeExpense();
   const createSaleBonus = useCreateSaleBonusFromDeposit();
@@ -102,10 +114,12 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
     };
   }, []);
 
-  // Sổ thu THẬT của chính user (RLS-safe) cho cọc > 1đ; nếu không có → sổ CỌC ảo.
-  const myDefaultAccount = useMemo(() => {
+  // Sổ quỹ xếp sổ của chính mình lên trước — người thu cọc hầu như luôn ghi vào
+  // sổ mình giữ, nhưng vẫn thấy đủ sổ khác (kể cả sổ CỌC ảo) để chọn tay.
+  const sortedAccounts = useMemo(() => {
     const mine = accounts.filter((a) => a.user_id === myUserId);
-    return mine.find((a) => a.is_default) ?? mine[0] ?? null;
+    const others = accounts.filter((a) => a.user_id !== myUserId);
+    return [...mine, ...others];
   }, [accounts, myUserId]);
 
   const form = useForm<DepositFormValues>({
@@ -121,8 +135,12 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       hold_until: "",
       ctv_name: "",
       notes: "",
+      account_id: "",
       sale_bonus_amount: 0,
       sale_bonus_recipient: "",
+      sale_bonus_account_id: "",
+      sale_bonus_account_number: "",
+      sale_bonus_bank: "",
     },
   });
 
@@ -169,17 +187,11 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
         throw new Error('Không lấy được hạng mục "Tiền cọc".');
       }
 
-      // Cọc thật (>1đ) → sổ thu default của user; giữ chỗ 1đ / không có sổ → sổ CỌC ảo.
-      let accId: string | null =
-        data.amount > 1 && myDefaultAccount ? myDefaultAccount.id : null;
+      // Sổ quỹ do người tạo CHỌN (quyết định chủ 20/08/2026) — không còn đường
+      // tự lấy sổ mặc định / sổ CỌC ảo ngầm. Zod đã chặn rỗng, đây là chốt cuối.
+      const accId: string = data.account_id;
       if (!accId) {
-        const { data: depAcc, error: accErr } = await rpc(
-          "get_or_create_deposit_account",
-        );
-        if (accErr || !depAcc) {
-          throw new Error("Không lấy được sổ quỹ để ghi cọc.");
-        }
-        accId = depAcc as string;
+        throw new Error("Chưa chọn sổ quỹ ghi cọc.");
       }
 
       const roomLabel = room.code || room.name;
@@ -207,7 +219,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
         repeat_cycle: "NONE",
         repeat_infinity: false,
         repeat_count: 0,
-        attachments: [],
+        attachments: depositAttachments,
         items: [
           {
             income_expense_type_id: typeId as string,
@@ -232,6 +244,10 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
             depositVoucherId: depositId,
             amount: bonusAmt,
             recipient: data.sale_bonus_recipient || undefined,
+            accountNumber: data.sale_bonus_account_number || undefined,
+            bank: data.sale_bonus_bank || undefined,
+            accountId: data.sale_bonus_account_id || null,
+            attachments: bonusAttachments,
           });
           toast.success(`Đã tạo phiếu thưởng Sale ${r?.code ?? ""} — đang chờ duyệt.`);
         } catch (e) {
@@ -249,6 +265,8 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       queryClient.invalidateQueries({ queryKey: ["orphan-deposit-vouchers"] });
 
       form.reset();
+      setDepositAttachments([]);
+      setBonusAttachments([]);
       setCreateNewTenant(false);
       onOpenChange(false);
     } catch (error) {
@@ -431,6 +449,34 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                 />
               </div>
 
+              {/* Sổ quỹ ghi cọc — bắt buộc. Tiền cọc vào sổ nào phải do người thu
+                  nói rõ, không để hệ thống đoán. */}
+              <FormField
+                control={form.control}
+                name="account_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sổ quỹ ghi cọc *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn sổ quỹ nhận tiền cọc" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {sortedAccounts.map((acc) => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.name}
+                            {acc.code ? ` (${acc.code})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="ctv_name"
@@ -458,6 +504,22 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                   </FormItem>
                 )}
               />
+
+              {/* Ảnh chứng từ của PHIẾU CỌC (uỷ nhiệm chi, ảnh chuyển khoản…). */}
+              <div className="space-y-2">
+                <div className="text-sm font-medium">
+                  Ảnh chứng từ{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (tuỳ chọn — JPG/PNG/PDF, tối đa 5MB)
+                  </span>
+                </div>
+                <AttachmentUpload
+                  attachments={depositAttachments}
+                  onChange={setDepositAttachments}
+                  userId={myUserId ?? ""}
+                  disabled={submitting || !myUserId}
+                />
+              </div>
 
               {/* Thưởng nóng Sale — tạo ngay cùng phiếu cọc.
                   Để trống thì không tạo gì. Phiếu thưởng ra ở trạng thái CHỜ DUYỆT,
@@ -504,6 +566,95 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                     )}
                   />
                 </div>
+
+                {/* STK + ngân hàng người nhận — ghi vào đúng cột của phiếu chi,
+                    không chỉ nằm trong ghi chú. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="sale_bonus_account_number"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">STK người nhận</FormLabel>
+                        <FormControl>
+                          <Input
+                            inputMode="numeric"
+                            placeholder="Số tài khoản nhận thưởng"
+                            {...field}
+                            value={field.value ?? ""}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="sale_bonus_bank"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">Ngân hàng</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="VD: Vietcombank"
+                            {...field}
+                            value={field.value ?? ""}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Sổ quỹ chi thưởng — để trống được: chi thưởng có thể ra từ quỹ
+                    khác quỹ nhận cọc, và người duyệt mới là người biết quỹ nào. */}
+                <FormField
+                  control={form.control}
+                  name="sale_bonus_account_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">
+                        Sổ quỹ chi thưởng{" "}
+                        <span className="font-normal text-muted-foreground">
+                          (tuỳ chọn)
+                        </span>
+                      </FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chưa chọn — điền sau khi duyệt" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {sortedAccounts.map((acc) => (
+                            <SelectItem key={acc.id} value={acc.id}>
+                              {acc.name}
+                              {acc.code ? ` (${acc.code})` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">
+                    Ảnh chứng từ thưởng{" "}
+                    <span className="font-normal text-muted-foreground">
+                      (tuỳ chọn)
+                    </span>
+                  </div>
+                  <AttachmentUpload
+                    attachments={bonusAttachments}
+                    onChange={setBonusAttachments}
+                    userId={myUserId ?? ""}
+                    disabled={submitting || !myUserId}
+                  />
+                </div>
+
                 <p className="text-[11px] text-muted-foreground">
                   Phiếu thưởng tạo ra ở trạng thái <strong>chờ duyệt</strong>. Mỗi phiếu cọc
                   chỉ thưởng một lần — khi ký hợp đồng, ô thưởng bên đó sẽ tự tô xám.

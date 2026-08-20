@@ -24543,8 +24543,10 @@ export type Database = {
       }
       create_sale_bonus_from_deposit_v1: {
         Args: {
+          p_account_id?: string
           p_account_number?: string
           p_amount: number
+          p_attachments?: Json
           p_bank?: string
           p_deposit_voucher_id: string
           p_recipient?: string
