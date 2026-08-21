@@ -19,6 +19,12 @@ import { supabase } from '@/integrations/supabase/client';
 export interface LuckyTeamPublic {
   id: string;
   name: string;
+  /**
+   * Mã sale sở hữu tấm vé (vd `1392QT`). Một sale có thể ôm nhiều vé — đó chính
+   * là ý nghĩa của "càng nhiều vé cơ hội càng cao". CHỈ dùng để gom nhóm khi
+   * cộng sổ và hiển thị; phép bốc luôn chạy trên VÉ, không trên người.
+   */
+  sale: string | null;
   deals: number;
   topRank: number | null;
   topPrizeAmount: number | null;
@@ -71,7 +77,36 @@ export interface LuckyEventPublic {
   winnerTeamId: string | null;
   /** Trò chơi công bố kết quả. Sự kiện cũ có thể thiếu → dùng `luckyGameOf`. */
   game: LuckyGame | null;
+  /** Độ dài một lượt đua (giây), 8–45. Thiếu → mặc định 20. */
+  raceSeconds: number | null;
   serverNow: string;
+}
+
+/**
+ * Một LƯỢT đua. Sự kiện có thể chia nhiều lượt, mỗi lượt trao `winnersCount`
+ * suất cùng mệnh giá. Đua xong lượt này mới sang lượt sau.
+ *
+ * Mỗi lượt bốc lại từ TOÀN BỘ vé đã điểm danh — vé trúng lượt trước vẫn có cửa,
+ * vì thể lệ là "1 người trúng được nhiều giải". Trong cùng một lượt thì các suất
+ * chắc chắn khác vé nhau (server ràng buộc bằng UNIQUE).
+ */
+export interface LuckyRoundPublic {
+  id: string;
+  /** Thứ tự lượt, bắt đầu từ 1. Cũng là khoá idempotent khi gọi chốt kết quả. */
+  ordinal: number;
+  label: string;
+  amount: number;
+  winnersCount: number;
+  status: 'pending' | 'drawn';
+  drawnAt: string | null;
+  winners: LuckyRoundWinner[];
+}
+
+export interface LuckyRoundWinner {
+  teamId: string;
+  /** Thứ hạng trong lượt, bắt đầu từ 1. */
+  position: number;
+  amount: number;
 }
 
 export interface LuckyPublicState {
@@ -79,6 +114,8 @@ export interface LuckyPublicState {
   reason?: string;
   event?: LuckyEventPublic;
   teams?: LuckyTeamPublic[];
+  /** Rỗng = sự kiện một giải kiểu cũ (dùng `event.winnerTeamId`). */
+  rounds?: LuckyRoundPublic[];
 }
 
 export interface LuckyTeamAdmin
@@ -90,6 +127,14 @@ export interface LuckyTeamAdmin
 export interface LuckyEventAdmin extends LuckyEventPublic {
   createdAt: string;
   teams: LuckyTeamAdmin[];
+  rounds: LuckyRoundPublic[];
+}
+
+/** Một dòng trong bảng thể lệ ở trang quản trị. */
+export interface LuckyRoundInput {
+  label?: string;
+  amount: number;
+  winnersCount: number;
 }
 
 export interface LuckyAdminState {
@@ -143,6 +188,52 @@ export function luckyCheckin(code: string) {
 
 export function luckyDraw(eventId: string) {
   return publicRpc<LuckyPublicState>('lucky_draw_v1', { p_event: eventId });
+}
+
+/**
+ * Chốt kết quả MỘT lượt. Phải truyền `ordinal` chứ không để server tự tìm
+ * "lượt kế tiếp": hai máy cùng bấm thì máy sau (đang chờ khoá) sẽ thấy lượt
+ * trước vừa xong và chốt luôn lượt kế — cháy một lượt chưa ai kịp xem. Có
+ * `ordinal` thì lần gọi thứ hai chỉ trả lại kết quả cũ.
+ */
+export function luckyDrawRound(eventId: string, ordinal: number) {
+  return publicRpc<LuckyPublicState>('lucky_draw_round_v1', {
+    p_event: eventId,
+    p_ordinal: ordinal,
+  });
+}
+
+/** Lượt đầu tiên chưa quay; null = đã xong hết (hoặc sự kiện không chia lượt). */
+export function nextPendingRound(rounds: LuckyRoundPublic[] | undefined): LuckyRoundPublic | null {
+  if (!rounds?.length) return null;
+  return [...rounds].sort((a, b) => a.ordinal - b.ordinal)
+    .find((r) => r.status !== 'drawn') ?? null;
+}
+
+/** Tổng tiền của cả sự kiện chia lượt. */
+export function totalRoundsPrize(rounds: LuckyRoundPublic[] | undefined): number {
+  return (rounds ?? []).reduce((s, r) => s + r.amount * r.winnersCount, 0);
+}
+
+/**
+ * Cộng sổ theo SALE, không theo vé: một sale ôm nhiều vé trúng thì gộp lại thành
+ * một dòng. Vé không khai sale thì đứng tên chính nó.
+ */
+export function tallyBySale(
+  rounds: LuckyRoundPublic[] | undefined,
+  teams: LuckyTeamPublic[],
+): { sale: string; total: number }[] {
+  const ten = new Map(teams.map((t) => [t.id, t.sale?.trim() || t.name]));
+  const m = new Map<string, number>();
+  for (const r of rounds ?? []) {
+    for (const w of r.winners) {
+      const k = ten.get(w.teamId) ?? '—';
+      m.set(k, (m.get(k) ?? 0) + w.amount);
+    }
+  }
+  return [...m.entries()]
+    .map(([sale, total]) => ({ sale, total }))
+    .sort((a, b) => b.total - a.total || a.sale.localeCompare(b.sale));
 }
 
 export interface LuckyPayoutInput {
@@ -247,7 +338,25 @@ export const luckyAdminApi = {
     drawAt?: string | null;
     status?: 'open' | 'closed';
     game?: LuckyGame;
+    raceSeconds?: number;
   }) => adminRpc<{ ok: boolean; eventId: string; slug: string; game: LuckyGame }>(() => supabase.rpc('lucky_admin_upsert_event_v1', { p })),
+  /**
+   * Khai lại TOÀN BỘ thể lệ (danh sách lượt). Server từ chối khi đã quay ít
+   * nhất một lượt — đổi thể lệ giữa chừng là thay luật khi cuộc chơi đang chạy;
+   * muốn đổi thì bấm "Đặt lại kết quả" trước.
+   */
+  setRounds: (eventId: string, rounds: LuckyRoundInput[]) =>
+    adminRpc<{ ok: boolean; rounds: number }>(() => supabase.rpc('lucky_admin_set_rounds_v1', {
+      p_event: eventId,
+      // Ép qua dạng bản ghi thuần: `Json` của generated types đòi index
+      // signature, mà interface TypeScript thì không có. Chuyển sang object
+      // literal giữ nguyên dữ liệu và thoả kiểu, không phải `as unknown as`.
+      p_rounds: rounds.map((r) => ({
+        label: r.label ?? '',
+        amount: r.amount,
+        winnersCount: r.winnersCount,
+      })),
+    })),
   addTeam: (p: {
     eventId: string;
     name: string;
@@ -255,6 +364,7 @@ export const luckyAdminApi = {
     topRank?: number | null;
     topPrize?: number | null;
     inWheel?: boolean;
+    sale?: string | null;
   }) =>
     adminRpc<{ ok: boolean; teamId: string; code: string }>(() => supabase.rpc('lucky_admin_add_team_v1', {
       p_event: p.eventId,
@@ -263,11 +373,13 @@ export const luckyAdminApi = {
       p_top_rank: p.topRank ?? undefined,
       p_top_prize: p.topPrize ?? undefined,
       p_in_wheel: p.inWheel ?? true,
+      p_sale: p.sale ?? undefined,
     })),
   updateTeam: (
     teamId: string,
     p: {
       name?: string;
+      sale?: string | null;
       deals?: number;
       topRank?: number | null;
       topPrizeAmount?: number | null;

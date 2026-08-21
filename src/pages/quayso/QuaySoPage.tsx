@@ -24,6 +24,7 @@ import {
   luckySavePayout,
   luckyGameOf,
   serverClockOffset,
+  totalRoundsPrize,
   uploadLuckyProof,
   PROOF_MAX_FILES,
   type LuckyProof,
@@ -33,6 +34,7 @@ import {
 import { formatCountdown } from '@/lib/luckyWheel';
 import LuckyWheelCanvas, { fireConfetti } from './LuckyWheelCanvas';
 import AnimalRaceTrack from './AnimalRaceTrack';
+import MultiRoundStage from './MultiRoundStage';
 import './quayso.css';
 
 const CODE_KEY = 'qs_code_v1';
@@ -377,6 +379,8 @@ export default function QuaySoPage() {
   const state = stateQuery.data;
   const event = state?.ok ? state.event : undefined;
   const teams = useMemo(() => (state?.ok ? state.teams ?? [] : []), [state]);
+  // Rỗng = sự kiện một giải kiểu cũ. Có = sự kiện chia lượt, sân khấu khác hẳn.
+  const rounds = useMemo(() => (state?.ok ? state.rounds ?? [] : []), [state]);
 
   // Ghi nhận đã thấy sự kiện lúc còn mở → coi như đang xem trực tiếp.
   useEffect(() => {
@@ -628,7 +632,23 @@ export default function QuaySoPage() {
           <>
             {/* Đếm ngược */}
             <section className="qs-count" aria-live="polite">
-              {drawn ? (
+              {rounds.length > 0 ? (
+                /* Sự kiện chia lượt không có MỘT mốc "đã quay xong" để đếm tới:
+                   nó xong dần từng lượt. Khối đếm ngược một-giải nói "Đã quay
+                   xong · bánh xe đang quay…" ngay cả khi mới xong lượt 1, nên ở
+                   đây thay bằng tiến độ theo lượt. Chi tiết từng lượt do
+                   `MultiRoundStage` lo. */
+                <>
+                  <p className="qs-eyebrow">Thể lệ</p>
+                  <div className="qs-clock qs-goldtext">
+                    {rounds.filter((r) => r.status === 'drawn').length}/{rounds.length} lượt
+                  </div>
+                  <span className="qs-when">
+                    {rounds.reduce((n, r) => n + r.winnersCount, 0)} giải ·{' '}
+                    {formatVnd(totalRoundsPrize(rounds))} · 1 người trúng được nhiều giải
+                  </span>
+                </>
+              ) : drawn ? (
                 revealed ? (
                   <>
                     <p className="qs-eyebrow">Kết quả đã chốt</p>
@@ -707,7 +727,11 @@ export default function QuaySoPage() {
             <>
             <section>
               <div className="qs-head">
-                <p className="qs-eyebrow">{loi.khu} {formatVnd(event.prizeAmount)}</p>
+                <p className="qs-eyebrow">
+                  {rounds.length > 0
+                    ? `${loi.khu} · ${rounds.length} lượt · ${formatVnd(totalRoundsPrize(rounds))}`
+                    : `${loi.khu} ${formatVnd(event.prizeAmount)}`}
+                </p>
                 <h2 className="qs-display"><span className="qs-skew">Đội tham gia</span></h2>
                 <p>{loi.doiThamGia}</p>
               </div>
@@ -746,12 +770,28 @@ export default function QuaySoPage() {
 
             {/* Bánh xe */}
             <section className="qs-wheelwrap">
-              {game === 'race' ? (
+              {rounds.length > 0 ? (
+                /* Sự kiện chia lượt: người xem KHÔNG chốt gì, chỉ diễn lại lượt
+                   nào ban tổ chức đã mở. Xem chú thích "hai vai" ở MultiRoundStage. */
+                <MultiRoundStage
+                  event={event}
+                  entrants={wheelCheckedIn}
+                  allTeams={teams}
+                  rounds={rounds}
+                  mode="viewer"
+                  onDrawn={(s) => queryClient.setQueryData(queryKey, s)}
+                  onCelebrate={() => {
+                    if (winnerIsMine) fireConfetti(confettiRef.current);
+                  }}
+                />
+              ) : game === 'race' ? (
                 <AnimalRaceTrack
                   teams={wheelCheckedIn}
-                  winnerId={event.winnerTeamId}
+                  winnerIds={event.winnerTeamId ? [event.winnerTeamId] : []}
                   spinToken={spinToken}
                   onSpinDone={onSpinDone}
+                  seconds={event.raceSeconds ?? 20}
+                  prizeLabel={formatVnd(event.prizeAmount)}
                 />
               ) : (
                 <LuckyWheelCanvas
@@ -763,13 +803,17 @@ export default function QuaySoPage() {
               )}
 
               {/* Vào trang sau khi đã quay: bánh xe đứng yên, người xem tự bấm
-                  để xem lại màn quay thay vì bị hiện thẳng đáp án. */}
-              {canReplay && (
+                  để xem lại màn quay thay vì bị hiện thẳng đáp án.
+                  KHÔNG áp cho sự kiện chia lượt: ở đó `MultiRoundStage` tự lo
+                  bảng kết quả từng lượt và bảng vàng, thêm khối này vào là hai
+                  bảng công bố chồng nhau, mỗi bảng nói một giải khác nhau. */}
+              {rounds.length === 0 && canReplay && (
                 <button type="button" className="qs-replay" onClick={() => setSpinNonce((n) => n + 1)}>
                   {loi.xemLai}
                 </button>
               )}
 
+              {rounds.length === 0 && (
               <p className="qs-wheelnote" role="status">
                 {revealed && winner
                   ? `Chúc mừng ${winner.name} — ${event.prizeLabel} ${formatVnd(event.prizeAmount)}!`
@@ -784,8 +828,9 @@ export default function QuaySoPage() {
                         )
                       : loi.chuaDiemDanh}
               </p>
+              )}
 
-              {revealed && winner && (
+              {rounds.length === 0 && revealed && winner && (
                 <>
                   <div className="qs-lastwin">
                     <div className="qs-lw-txt">
@@ -822,7 +867,7 @@ export default function QuaySoPage() {
 
       <canvas className="qs-confetti" ref={confettiRef} aria-hidden="true" />
 
-      {showWin && winner && event && (
+      {showWin && winner && event && rounds.length === 0 && (
         <div
           className="qs-overlay"
           role="dialog"

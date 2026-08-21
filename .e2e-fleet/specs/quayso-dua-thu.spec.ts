@@ -130,7 +130,6 @@ test.describe('Đua thú trên /quayso', () => {
     await expect(xemLai).toBeVisible();
     await expect(page.locator('.qs-lastwin')).toHaveCount(0);
     await expect(page.locator('.qs-winlabel')).toHaveCount(0);
-    await expect(page.locator('.qs-race-win')).toHaveCount(0);
 
     // Bấm đua → phải qua đếm ngược rồi mới chạy.
     await xemLai.click();
@@ -140,8 +139,10 @@ test.describe('Đua thú trên /quayso', () => {
     await expect(page.locator('.qs-lastwin')).toHaveCount(0);
 
     // Về đích → công bố, và ĐÚNG đội server đã chốt.
-    await expect(page.locator('.qs-race-win')).toBeVisible({ timeout: 60_000 });
-    await expect(page.locator('.qs-race-win')).toContainText(thang.name);
+    // Mốc là `.qs-lastwin` — bảng công bố của TRANG. Bài này từng soi
+    // `.qs-race-win`, một dòng nằm trong chính component đua; dòng đó đã gộp vào
+    // bảng của trang khi lên nhiều lượt nên không còn tồn tại.
+    await expect(page.locator('.qs-lastwin')).toBeVisible({ timeout: 60_000 });
     await expect(page.locator('.qs-lastwin')).toContainText(thang.name);
     await expect(page.locator('.qs-winlabel')).toHaveText(/Trúng giải/);
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
@@ -220,7 +221,7 @@ test.describe('Đua thú trên /quayso', () => {
     expect(Math.max(...khac.map((d) => d.x)), `thứ tự lúc công bố: ${bang}`)
       .toBeLessThan((nhat as { x: number }).x);
 
-    await expect(page.locator('.qs-race-win')).toContainText(thang.name);
+    await expect(page.locator('.qs-lastwin')).toContainText(thang.name);
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
 
@@ -239,7 +240,7 @@ test.describe('Đua thú trên /quayso', () => {
     await page.goto(`/quayso?e=${s.eventId}`);
     await nhapMa(page, s.codes[0].code);
     await page.getByRole('button', { name: /Xem lại cuộc đua/i }).click();
-    await expect(page.locator('.qs-race-win')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('.qs-lastwin')).toBeVisible({ timeout: 60_000 });
 
     const do1 = await page.locator('.qs-runner').evaluateAll((els) =>
       els.map((el) => {

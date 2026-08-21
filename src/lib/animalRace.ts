@@ -1,23 +1,25 @@
 /**
  * Toán học trò "đua thú" (/quayso — trò chơi thứ hai bên cạnh vòng xoay).
  *
- * CÙNG MỘT LUẬT VỚI BÁNH XE: server đã chốt đội trúng (`lucky_draw_v1`), client
- * chỉ diễn lại kết quả đó cho đẹp. Nên bất biến quan trọng nhất ở đây giống hệt
- * bất biến "kim dừng đúng ô" của `luckyWheel.ts`:
+ * CÙNG MỘT LUẬT VỚI BÁNH XE: server đã chốt danh sách vé trúng cho lượt này
+ * (`lucky_draw_round_v1`), client chỉ diễn lại. Nên bất biến quan trọng nhất ở
+ * đây giống hệt bất biến "kim dừng đúng ô" của `luckyWheel.ts`, chỉ mạnh hơn vì
+ * một lượt có thể có nhiều giải:
  *
- *   → CON THÚ CỦA ĐỘI TRÚNG LUÔN VỀ NHẤT, với mọi nhịp khung hình.
+ *   → CÁC VÉ TRÚNG VỀ ĐÍCH ĐÚNG THỨ HẠNG SERVER ĐÃ CHỐT, TRƯỚC MỌI VÉ KHÁC,
+ *     với mọi nhịp khung hình.
  *
- * Cách bảo đảm: các làn KHÔNG trúng bị KẸP TRẦN ở `LEAD_CAP` (< 1) cho tới khi
- * làn trúng cán đích. Không dựa vào "chạy nhanh hơn" — vì `dt` do trình duyệt
- * quyết, một khung hình rớt dài (tab ẩn, máy yếu) đủ để một con khác nhảy qua
- * vạch trước. Kẹp trần là bất biến cứng, tốc độ chỉ còn là chuyện thẩm mỹ.
+ * Cách bảo đảm — DÂY CHUYỀN KẸP TRẦN, không dựa vào "chạy nhanh hơn":
+ *   · Vé hạng r chỉ được vượt `LEAD_CAP` khi mọi hạng 0..r-1 ĐÃ về.
+ *   · Vé không trúng chỉ được vượt trần khi TẤT CẢ vé trúng đã về.
+ * `dt` do trình duyệt quyết; một khung hình rớt dài (tab ẩn, máy yếu) đủ để con
+ * khác nhảy qua vạch trước. Trần là bất biến cứng, tốc độ chỉ còn là thẩm mỹ.
  *
  * Mô hình vận tốc (mượn từ bản thiết kế "Quay Live Đêm Tổng Kết"):
  *   v = (1 - p) / (finishAt - t)      → tự hiệu chỉnh để cán đích đúng giờ đã định
  *   v *= (1 + surge)                  → nhấp nhô sin cho ra dáng đua, tắt dần về cuối
- * Làn trúng còn bị ghìm bớt trong 60% đầu để nó bứt lên ở đoạn cuối, không dẫn
- * một mạch từ đầu (dẫn từ đầu là lộ đáp án, mất hết hồi hộp). Tính ra thì nó
- * vượt lên dẫn đầu vào khoảng 80% chặng đường.
+ * Vé trúng còn bị ghìm bớt trong 60% đầu để bứt lên ở đoạn cuối, không dẫn một
+ * mạch từ đầu (dẫn từ đầu là lộ đáp án, mất hết hồi hộp).
  *
  * BA CÁI BẪY ĐÃ TRẢ GIÁ, đừng gỡ:
  *
@@ -27,16 +29,16 @@
  *     0.9999999999999999. Triệu chứng ở người dùng: con thú dừng SÁT vạch, kết
  *     quả không bao giờ công bố. Phải snap về 1 khi đã đủ gần.
  *
- *  2. Sau khi làn trúng về, các làn khác PHẢI chạy tiếp về đích chứ không đóng
- *     băng tại chỗ. Đóng băng làm cả đàn đứng chết giữa đường trong lúc pháo
- *     giấy nổ — nhìn như web treo.
+ *  2. Sau khi vé trúng cuối cùng về, đàn còn lại PHẢI chạy tiếp về đích chứ
+ *     không đóng băng tại chỗ. Đóng băng làm cả đàn đứng chết giữa đường trong
+ *     lúc pháo giấy nổ — nhìn như web treo.
  *
  *  3. `RacePlan` là BẤT BIẾN, mọi thứ thay đổi theo thời gian nằm ở `RaceState`.
  *     Nếu nhét cờ "đã báo tăng tốc" vào plan thì bấm "xem lại" lần hai sẽ mất
  *     sạch lời bình, vì plan đã bị bước chạy trước làm bẩn.
  */
 
-/** Trần tiến độ của làn KHÔNG trúng khi làn trúng còn chạy. */
+/** Trần tiến độ của làn CHƯA tới lượt được về đích. */
 export const LEAD_CAP = 0.93;
 
 /** Nhịp khung hình tối đa được nạp vào một bước (giây). Tab ẩn → dt khổng lồ. */
@@ -47,6 +49,9 @@ export const MAX_STEP = 0.05;
  * 1e-6 của chiều dài đường đua là dưới một phần nghìn pixel — mắt không thấy.
  */
 export const FINISH_EPS = 1e-6;
+
+/** Khoảng cách giữa hai vé trúng liên tiếp khi cán đích (giây). */
+const KHOANG_HANG = 0.9;
 
 /**
  * Bộ thú đua. 18 con, đủ khác nhau để nhìn lướt là phân biệt được — tránh mấy
@@ -62,6 +67,15 @@ export const RACE_ANIMALS = [
   '🐓', '🦆', '🐢', '🐈', '🐐', '🦓', '🐄', '🦔', '🦙',
 ] as const;
 
+/** Huy chương theo thứ hạng trong một lượt. */
+export const MEDALS = ['🥇', '🥈', '🥉'] as const;
+
+/** Huy chương cho hạng `pos` (0-based); quá 3 thì dùng số. */
+export function medalFor(pos: number, total: number): string {
+  if (total === 1) return '🏆';
+  return MEDALS[pos] ?? `#${pos + 1}`;
+}
+
 /** FNV-1a 32-bit — nhỏ, không phụ thuộc thư viện, đủ tản cho id dạng uuid. */
 export function hashId(id: string): number {
   let h = 0x811c9dc5;
@@ -73,17 +87,17 @@ export function hashId(id: string): number {
 }
 
 /**
- * Gán con thú cho từng đội — ỔN ĐỊNH theo id đội, và KHÔNG TRÙNG trong cùng một
- * sự kiện (khi số đội ≤ 18).
+ * Gán con thú cho từng vé — ỔN ĐỊNH theo id vé, và KHÔNG TRÙNG trong cùng một
+ * sự kiện (khi số vé ≤ 18).
  *
- * Vì sao không chỉ `RACE_ANIMALS[hash % 18]`: 9 đội thì xác suất có ít nhất một
- * cặp trùng đã ~90% (nghịch lý ngày sinh). Hai đội cùng con 🐎 trên đường đua là
+ * Vì sao không chỉ `RACE_ANIMALS[hash % 18]`: 9 vé thì xác suất có ít nhất một
+ * cặp trùng đã ~90% (nghịch lý ngày sinh). Hai vé cùng con 🐎 trên đường đua là
  * lỗi nhìn thấy được ngay.
  *
- * Vì sao duyệt theo id đã SẮP XẾP chứ không theo thứ tự hiển thị: thứ tự đội đổi
- * theo `top_rank`/thời điểm tạo, đội điểm danh sau chen vào giữa sẽ làm con thú
+ * Vì sao duyệt theo id đã SẮP XẾP chứ không theo thứ tự hiển thị: thứ tự vé đổi
+ * theo `top_rank`/thời điểm tạo, vé điểm danh sau chen vào giữa sẽ làm con thú
  * của người khác nhảy lung tung giữa hai lần tải trang. Sắp xếp rồi mới gán thì
- * chỉ khi DANH SÁCH ĐỘI đổi mới có thể đổi, và cũng chỉ đổi ở đội bị trùng chỗ.
+ * chỉ khi DANH SÁCH VÉ đổi mới có thể đổi, và cũng chỉ đổi ở vé bị trùng chỗ.
  */
 export function assignAnimals(teamIds: readonly string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -91,7 +105,7 @@ export function assignAnimals(teamIds: readonly string[]): Record<string, string
   const taken = new Set<number>();
   for (const id of [...teamIds].sort()) {
     let slot = hashId(id) % n;
-    // Ô đã có chủ → dò tuyến tính sang phải. Quá 18 đội thì cho phép trùng lại,
+    // Ô đã có chủ → dò tuyến tính sang phải. Quá 18 vé thì cho phép trùng lại,
     // vẫn hơn là bỏ trống làn.
     for (let k = 0; k < n && taken.has(slot); k++) slot = (slot + 1) % n;
     taken.add(slot);
@@ -117,13 +131,20 @@ export interface RaceBoost {
 /** BẤT BIẾN sau khi dựng — xem bẫy #3 ở đầu file. */
 export interface RacePlan {
   readonly count: number;
-  /** Chỉ số làn của đội server đã chốt. */
-  readonly winner: number;
-  /** Làn về nhì — dùng để bắt khoảnh khắc "sát nút". */
+  /** Làn của các vé trúng, THEO ĐÚNG THỨ HẠNG server đã chốt (hạng nhất trước). */
+  readonly winners: readonly number[];
+  /**
+   * `rank[lane]` = thứ hạng trong danh sách trúng, hoặc -1 nếu không trúng.
+   * Tra bảng thay vì `indexOf` — vòng lặp chạy 60 lần/giây × số làn.
+   */
+  readonly rank: readonly number[];
+  /** Làn về ngay sau vé trúng cuối — dùng để bắt khoảnh khắc "sát nút". */
   readonly runnerUp: number;
-  /** Giây làn trúng cán đích. */
+  /** Giây vé trúng ĐẦU TIÊN cán đích. */
   readonly winnerFinish: number;
-  /** Lượt này có dàn cảnh cảnh sát nút hay không (không phải lượt nào cũng nên có). */
+  /** Giây vé trúng CUỐI CÙNG cán đích — mốc kết thúc phần hồi hộp. */
+  readonly lastWinnerFinish: number;
+  /** Lượt này có dàn cảnh sát nút hay không (không phải lượt nào cũng nên có). */
   readonly photoFinish: boolean;
   readonly lanes: readonly RaceLane[];
   readonly boosts: readonly RaceBoost[];
@@ -139,61 +160,89 @@ export interface RaceState {
   boostUntil: number[];
   /** Cú tăng tốc thứ k đã phát lời bình chưa. */
   boostAnnounced: boolean[];
+  /** Bao nhiêu vé trúng đã về — con trỏ của dây chuyền kẹp trần. */
+  winnersHome: number;
 }
 
 export interface RaceStepResult {
   /** Làn vừa chạm vạch trong bước này, theo thứ tự về đích. */
   finished: number[];
+  /** Vé TRÚNG vừa chạm vạch trong bước này (kèm thứ hạng). */
+  wonNow: { lane: number; pos: number }[];
   /** Làn vừa bắt đầu tăng tốc trong bước này. */
   boosted: number[];
-  /** Làn trúng đã về chưa. */
-  winnerHome: boolean;
+  /** Đã đủ số vé trúng của lượt này chưa — mốc CÔNG BỐ. */
+  allWinnersHome: boolean;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /**
+ * Lọc danh sách làn trúng về dạng dùng được: bỏ trùng, bỏ ngoài miền, cắt bớt
+ * nếu nhiều hơn số làn. Rỗng thì lấy làn 0 — thà diễn sai một lượt còn hơn treo
+ * cuộc đua vì không ai được phép qua vạch.
+ */
+function chuanHoaWinners(winners: readonly number[], count: number): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const w of winners) {
+    const i = Math.floor(w);
+    if (!Number.isFinite(i) || i < 0 || i >= count || seen.has(i)) continue;
+    seen.add(i);
+    out.push(i);
+    if (out.length >= count) break;
+  }
+  return out.length ? out : [0];
+}
+
+/**
  * Dựng kịch bản một lượt đua.
  *
- * @param count    số làn (số đội đã điểm danh trên đường đua)
- * @param winner   chỉ số làn của đội trúng — server đã chốt
+ * @param count    số làn (số vé đã điểm danh trên đường đua)
+ * @param winners  làn của các vé trúng, THEO THỨ HẠNG — server đã chốt
  * @param seconds  độ dài mong muốn của cuộc đua
  * @param rng      nguồn ngẫu nhiên, tiêm được để test
  */
 export function makeRacePlan(
   count: number,
-  winner: number,
+  winners: readonly number[],
   seconds: number,
   rng: () => number = Math.random,
 ): RacePlan {
   const n = Math.max(1, Math.floor(count));
-  const win = clamp(Math.floor(winner), 0, n - 1);
+  const Ws = chuanHoaWinners(winners, n);
+
   // Dưới 8s không kịp thấy gì; trên 45s là người xem bỏ đi.
   const total = clamp(seconds, 8, 45);
-  // Trừ hao 4s cho khoảnh khắc ăn mừng ở cuối (đếm ngược nằm ngoài đồng hồ này).
-  const T = Math.max(6, total - 4);
+  // Trừ hao 4s cho khoảnh khắc ăn mừng, cộng thời gian giãn hạng.
+  const T = Math.max(6, total - 4 - (Ws.length - 1) * KHOANG_HANG);
+  const lastT = T + (Ws.length - 1) * KHOANG_HANG;
+
+  const rank: number[] = Array<number>(n).fill(-1);
+  Ws.forEach((lane, pos) => { rank[lane] = pos; });
 
   const lanes: RaceLane[] = [];
   for (let i = 0; i < n; i++) {
+    const r = rank[i];
     lanes.push({
-      // Làn thua "định" về sau làn trúng 6–24%. Vì bị kẹp ở LEAD_CAP nên con số
+      // Vé thua "định" về sau vé trúng cuối 6–24%. Vì bị kẹp trần nên con số
       // này thực chất điều khiển việc chúng bám sát tới đâu.
-      finishAt: i === win ? T : T * (1.06 + rng() * 0.18),
+      finishAt: r >= 0 ? T + r * KHOANG_HANG : lastT * (1.06 + rng() * 0.18),
       phase: rng() * Math.PI * 2,
       freq: 1.2 + rng() * 1.6,
     });
   }
 
-  // Về nhì = làn thua có finishAt nhỏ nhất. Một mình một làn thì tự nó về nhì.
-  let runnerUp = win;
+  // Về ngay sau vé trúng cuối = vé thua có finishAt nhỏ nhất.
+  let runnerUp = -1;
   for (let i = 0; i < n; i++) {
-    if (i === win) continue;
-    if (runnerUp === win || lanes[i].finishAt < lanes[runnerUp].finishAt) runnerUp = i;
+    if (rank[i] >= 0) continue;
+    if (runnerUp === -1 || lanes[i].finishAt < lanes[runnerUp].finishAt) runnerUp = i;
   }
 
   // Không phải lượt nào cũng sát nút — lượt nào cũng "nín thở" thì hết nín thở.
-  const photoFinish = n > 1 && runnerUp !== win && rng() < 0.55;
-  if (photoFinish) lanes[runnerUp].finishAt = T * 1.014;
+  const photoFinish = runnerUp !== -1 && rng() < 0.55;
+  if (photoFinish) lanes[runnerUp].finishAt = lastT * 1.014;
 
   const boosts: RaceBoost[] = [];
   const used = new Set<number>();
@@ -206,7 +255,17 @@ export function makeRacePlan(
     boosts.push({ lane, at: T * (0.15 + rng() * 0.55) });
   }
 
-  return { count: n, winner: win, runnerUp, winnerFinish: T, photoFinish, lanes, boosts };
+  return {
+    count: n,
+    winners: Ws,
+    rank,
+    runnerUp: runnerUp === -1 ? Ws[Ws.length - 1] : runnerUp,
+    winnerFinish: T,
+    lastWinnerFinish: lastT,
+    photoFinish,
+    lanes,
+    boosts,
+  };
 }
 
 /** Trạng thái lúc cả đàn còn ở vạch xuất phát. */
@@ -217,12 +276,13 @@ export function initialRaceState(plan: RacePlan): RaceState {
     finishedAt: Array<number | null>(plan.count).fill(null),
     boostUntil: Array<number>(plan.count).fill(0),
     boostAnnounced: Array<boolean>(plan.boosts.length).fill(false),
+    winnersHome: 0,
   };
 }
 
-/** Làn trúng đã chạm vạch chưa. */
-export function winnerHome(plan: RacePlan, st: RaceState): boolean {
-  return st.finishedAt[plan.winner] != null;
+/** Đã đủ số vé trúng của lượt này chưa — mốc được phép CÔNG BỐ. */
+export function allWinnersHome(plan: RacePlan, st: RaceState): boolean {
+  return st.winnersHome >= plan.winners.length;
 }
 
 /** Cả đàn đã về hết chưa (dùng để tắt tiếng vó chạy). */
@@ -239,20 +299,23 @@ export function stepRace(plan: RacePlan, st: RaceState, dtRaw: number): RaceStep
   const dt = clamp(Number.isFinite(dtRaw) ? dtRaw : 0, 0, MAX_STEP);
   st.t += dt;
   const t = st.t;
-  const { winner, winnerFinish: T, lanes } = plan;
+  const { rank, winnerFinish: T, lanes } = plan;
+  const soTrung = plan.winners.length;
 
-  // Đọc MỘT LẦN trước vòng lặp: nếu đọc trong vòng lặp thì làn trúng cán đích ở
-  // giữa bước sẽ nhả trần cho những làn xử lý SAU nó ngay trong cùng khung hình,
-  // và chúng có thể cùng chạm vạch ở bước đó — hoà với đội trúng.
-  const homeAlready = st.finishedAt[winner] != null;
+  // Đọc MỘT LẦN trước vòng lặp: nếu đọc trong vòng lặp thì một vé cán đích ở
+  // giữa bước sẽ nới trần cho những làn xử lý SAU nó ngay trong cùng khung hình,
+  // và chúng có thể cùng chạm vạch ở bước đó — hoà, mất thứ hạng.
+  const daVe = st.winnersHome;
 
   const finished: number[] = [];
+  const wonNow: { lane: number; pos: number }[] = [];
   const boosted: number[] = [];
 
   for (let i = 0; i < plan.count; i++) {
     if (st.finishedAt[i] != null) continue;
     const p = st.progress[i];
     const lane = lanes[i];
+    const r = rank[i];
 
     const tLeft = Math.max(0.05, lane.finishAt - t);
     const v = (1 - p) / tLeft;
@@ -261,8 +324,8 @@ export function stepRace(plan: RacePlan, st: RaceState, dtRaw: number): RaceStep
     const env = Math.max(0, 1 - t / T);
     let surge = Math.sin(t * lane.freq + lane.phase) * 0.32 * env;
 
-    // Ghìm làn trúng ở nửa đầu để nó bứt lên đoạn cuối.
-    if (i === winner && t < T * 0.6) surge -= 0.22;
+    // Ghìm vé trúng ở nửa đầu để nó bứt lên đoạn cuối.
+    if (r >= 0 && t < T * 0.6) surge -= 0.22;
 
     for (let k = 0; k < plan.boosts.length; k++) {
       const b = plan.boosts[k];
@@ -278,9 +341,11 @@ export function stepRace(plan: RacePlan, st: RaceState, dtRaw: number): RaceStep
     // (1 + surge) không bao giờ ≤ 0: đáy là 1 - 0.32 - 0.22 = 0.46.
     let np = p + v * (1 + surge) * dt;
 
-    // ── Bất biến: làn thua không được vượt vạch trước làn trúng ──
-    // Sau khi làn trúng về thì nhả trần cho chúng chạy nốt về đích (bẫy #2).
-    if (i !== winner && !homeAlready) np = Math.min(np, LEAD_CAP);
+    // ── DÂY CHUYỀN KẸP TRẦN — bất biến thứ hạng ──
+    // Hạng r chỉ qua vạch được khi đủ r vé hạng trên đã về; vé thua (r = -1)
+    // phải chờ hết. Nhờ vậy mỗi bước tối đa MỘT vé trúng cán đích, đúng thứ tự.
+    const duocQuaVach = r >= 0 ? daVe >= r : daVe >= soTrung;
+    if (!duocQuaVach) np = Math.min(np, LEAD_CAP);
 
     np = clamp(np, p, 1);
     // Bẫy #1: snap, nếu không thì kẹt ở 1-ulp mãi mãi.
@@ -290,21 +355,28 @@ export function stepRace(plan: RacePlan, st: RaceState, dtRaw: number): RaceStep
     if (np >= 1) {
       st.finishedAt[i] = t;
       finished.push(i);
+      if (r >= 0) {
+        st.winnersHome++;
+        wonNow.push({ lane: i, pos: r });
+      }
     }
   }
 
-  return { finished, boosted, winnerHome: st.finishedAt[winner] != null };
+  return { finished, wonNow, boosted, allWinnersHome: st.winnersHome >= soTrung };
 }
 
 /**
- * Khoảnh khắc "sát nút": làn trúng sắp chạm vạch mà con về nhì còn bám dính.
+ * Khoảnh khắc "sát nút": vé trúng cuối sắp chạm vạch mà con bám sau còn dính.
  * Dùng để bật quay-chậm + chớp đèn flash. Chỉ đúng MỘT lần mỗi lượt đua nên
  * bên gọi tự nhớ đã dùng chưa.
  */
 export function isPhotoFinish(plan: RacePlan, st: RaceState): boolean {
   if (!plan.photoFinish) return false;
-  if (st.finishedAt[plan.winner] != null) return false;
-  const w = st.progress[plan.winner];
+  const cuoi = plan.winners[plan.winners.length - 1];
+  if (st.finishedAt[cuoi] != null) return false;
+  // Chỉ nín thở ở suất CUỐI: các suất trước còn giải phía sau, chưa phải cao trào.
+  if (st.winnersHome < plan.winners.length - 1) return false;
+  const w = st.progress[cuoi];
   if (w < 0.9) return false;
   const gap = w - st.progress[plan.runnerUp];
   return gap < 0.045 && gap > -0.02;

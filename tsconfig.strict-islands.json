@@ -1098,6 +1098,7 @@
     "src/pages/quayso/AnimalRaceTrack.tsx",
     "src/pages/quayso/LuckyDrawAdminPage.tsx",
     "src/pages/quayso/LuckyWheelCanvas.tsx",
+    "src/pages/quayso/MultiRoundStage.tsx",
     "src/pages/quayso/QuaySoPage.tsx",
     "src/pages/quayso/QuaySoScreenPage.tsx",
     "src/pages/quayso/raceAudio.ts",

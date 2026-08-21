@@ -1302,6 +1302,153 @@
   .qs-lane-animal.qs-lane-run { animation: none; }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   SÂN KHẤU NHIỀU LƯỢT (MultiRoundStage.tsx)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.qs-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* Dải ô giải — mỗi SUẤT một ô, kể cả hai suất cùng lượt. */
+.qs-prizes { display: flex; gap: 6px; flex: none; flex-wrap: wrap; }
+.qs-prize {
+  flex: 1 1 68px;
+  min-width: 0;
+  border: 1px solid var(--qs-line);
+  border-radius: 11px;
+  background: rgba(34, 16, 25, .85);
+  padding: 6px 4px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.qs-prize b {
+  font-family: var(--qs-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--qs-cream);
+}
+.qs-prize span {
+  font-family: var(--qs-data);
+  font-size: 8.5px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--qs-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qs-prize-current { border-color: var(--qs-ember); }
+.qs-prize-current span { color: var(--qs-ember); }
+.qs-prize-done { border-color: var(--qs-gold); }
+.qs-prize-done b { color: var(--qs-gold); }
+
+/* Bảng kết quả một lượt + bảng vàng cuối */
+.qs-roundwin,
+.qs-goldboard {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 2px solid var(--qs-gold);
+  background: linear-gradient(180deg, rgba(255, 194, 60, .22), var(--qs-ink-2) 70%);
+  box-shadow: 0 16px 44px -18px rgba(255, 194, 60, .8);
+  animation: qs-slam .45s cubic-bezier(.2, 1.5, .4, 1);
+}
+.qs-roundwin .qs-eyebrow,
+.qs-goldboard .qs-eyebrow { text-align: center; }
+
+.qs-roundwin-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px dashed rgba(255, 242, 228, .12);
+  padding: 2px 0 5px;
+}
+.qs-roundwin-row:last-of-type { border-bottom: 0; }
+.qs-roundwin-row strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+  font-size: 14px;
+  text-transform: uppercase;
+  text-align: left;
+}
+.qs-roundwin-row b {
+  font-family: var(--qs-data);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  color: var(--qs-gold);
+  white-space: nowrap;
+}
+.qs-roundwin-row > span { font-size: 15px; flex: none; }
+
+.qs-tally {
+  margin: 4px 0 0;
+  font-family: var(--qs-data);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--qs-cream);
+  text-align: center;
+}
+
+/* Nút toàn màn hình trên màn chiếu */
+.qs-fs-btn {
+  /* `fixed` chứ không `absolute`: neo vào header thì tiêu đề dài (căn giữa) sẽ
+     chui xuống dưới nút và bị nút che mất một chữ. Góc màn hình thì luôn trống. */
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 9;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--qs-line);
+  background: rgba(34, 16, 25, .85);
+  color: var(--qs-cream);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.qs-fs-btn:focus-visible { outline: 2px solid var(--qs-gold); outline-offset: 2px; }
+
+/* ── MÀN CHIẾU ĐUA THÚ: TO HẾT CỠ ──
+   Bánh xe là hình tròn nên rộng thêm cũng vô ích, còn đường đua thì càng rộng
+   càng rõ: quãng đường chạy = bề rộng làn trừ khối chạy, nên mỗi pixel bề ngang
+   là một pixel kịch tính. Vì vậy chỉ nới khung cho trò đua. */
+.qs-screen-race .qs-screen-inner { max-width: min(1600px, 98vw); padding: 4px 0; }
+.qs-screen-race .qs-screen-head { position: relative; }
+.qs-screen-race .qs-screen-head h1 { font-size: clamp(20px, 3.4vw, 40px); }
+.qs-screen-race .qs-prize { flex-basis: 96px; }
+.qs-screen-race .qs-prize b { font-size: clamp(13px, 1.5vw, 20px); }
+.qs-screen-race .qs-prize span { font-size: clamp(8.5px, .8vw, 11px); }
+.qs-screen-race .qs-lane-chip { font-size: clamp(10px, 1vw, 15px); }
+.qs-screen-race .qs-race-say { font-size: clamp(12px, 1.1vw, 17px); }
+.qs-screen-race .qs-roundwin-row strong { font-size: clamp(14px, 1.3vw, 20px); }
+
+/* Toàn màn hình thật: bỏ nốt lề để đường đua ăn trọn màn. */
+:fullscreen .qs-screen { padding: 6px; }
+:fullscreen .qs-screen-race .qs-screen-inner { max-width: 100%; }
+
 @media (prefers-reduced-motion: reduce) {
   .qs-page *, .qs-page *::before, .qs-page *::after {
     animation-duration: .01ms !important;

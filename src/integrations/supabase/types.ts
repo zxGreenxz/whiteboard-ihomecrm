@@ -8303,6 +8303,50 @@ export type Database = {
           },
         ]
       }
+      lucky_event_rounds: {
+        Row: {
+          amount: number
+          created_at: string
+          drawn_at: string | null
+          event_id: string
+          id: string
+          label: string
+          ordinal: number
+          status: string
+          winners_count: number
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          drawn_at?: string | null
+          event_id: string
+          id?: string
+          label?: string
+          ordinal: number
+          status?: string
+          winners_count?: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          drawn_at?: string | null
+          event_id?: string
+          id?: string
+          label?: string
+          ordinal?: number
+          status?: string
+          winners_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lucky_event_rounds_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "lucky_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lucky_event_teams: {
         Row: {
           checked_in_at: string | null
@@ -8320,6 +8364,7 @@ export type Database = {
           proof_path: string | null
           proof_uploaded_at: string | null
           proofs: Json
+          sale: string | null
           top_prize_amount: number | null
           top_rank: number | null
         }
@@ -8339,6 +8384,7 @@ export type Database = {
           proof_path?: string | null
           proof_uploaded_at?: string | null
           proofs?: Json
+          sale?: string | null
           top_prize_amount?: number | null
           top_rank?: number | null
         }
@@ -8358,6 +8404,7 @@ export type Database = {
           proof_path?: string | null
           proof_uploaded_at?: string | null
           proofs?: Json
+          sale?: string | null
           top_prize_amount?: number | null
           top_rank?: number | null
         }
@@ -8382,6 +8429,7 @@ export type Database = {
           organization_id: string
           prize_amount: number
           prize_label: string
+          race_seconds: number
           slug: string
           status: string
           title: string
@@ -8398,6 +8446,7 @@ export type Database = {
           organization_id: string
           prize_amount?: number
           prize_label?: string
+          race_seconds?: number
           slug: string
           status?: string
           title?: string
@@ -8414,6 +8463,7 @@ export type Database = {
           organization_id?: string
           prize_amount?: number
           prize_label?: string
+          race_seconds?: number
           slug?: string
           status?: string
           title?: string
@@ -8431,6 +8481,58 @@ export type Database = {
           {
             foreignKeyName: "lucky_events_winner_fk"
             columns: ["winner_team_id"]
+            isOneToOne: false
+            referencedRelation: "lucky_event_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lucky_round_winners: {
+        Row: {
+          amount: number
+          created_at: string
+          event_id: string
+          id: string
+          position: number
+          round_id: string
+          team_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          event_id: string
+          id?: string
+          position: number
+          round_id: string
+          team_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          event_id?: string
+          id?: string
+          position?: number
+          round_id?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lucky_round_winners_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "lucky_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lucky_round_winners_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "lucky_event_rounds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lucky_round_winners_team_id_fkey"
+            columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "lucky_event_teams"
             referencedColumns: ["id"]
@@ -25656,6 +25758,7 @@ export type Database = {
           p_event: string
           p_in_wheel?: boolean
           p_name: string
+          p_sale?: string
           p_top_prize?: number
           p_top_rank?: number
         }
@@ -25670,12 +25773,20 @@ export type Database = {
       lucky_admin_get_v1: { Args: never; Returns: Json }
       lucky_admin_org_v1: { Args: never; Returns: string }
       lucky_admin_reset_draw_v1: { Args: { p_event: string }; Returns: Json }
+      lucky_admin_set_rounds_v1: {
+        Args: { p_event: string; p_rounds: Json }
+        Returns: Json
+      }
       lucky_admin_update_team_v1: {
         Args: { p: Json; p_team: string }
         Returns: Json
       }
       lucky_admin_upsert_event_v1: { Args: { p: Json }; Returns: Json }
       lucky_checkin_v1: { Args: { p_code: string }; Returns: Json }
+      lucky_draw_round_v1: {
+        Args: { p_event: string; p_ordinal: number }
+        Returns: Json
+      }
       lucky_draw_v1: { Args: { p_event: string }; Returns: Json }
       lucky_event_open_v1: { Args: { p_folder: string }; Returns: boolean }
       lucky_event_payload_v1: {

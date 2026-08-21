@@ -29,7 +29,8 @@ import {
 } from '@/components/ui/select';
 import {
   LUCKY_GAMES, PROOF_BUCKET, formatVnd, luckyAdminApi, luckyGameOf, luckyPublicUrl,
-  type LuckyEventAdmin, type LuckyGame, type LuckyTeamAdmin,
+  totalRoundsPrize,
+  type LuckyEventAdmin, type LuckyGame, type LuckyRoundInput, type LuckyTeamAdmin,
 } from '@/lib/luckyDrawApi';
 
 const QK = ['lucky-admin'] as const;
@@ -50,13 +51,15 @@ function localInputToIso(v: string): string | null {
 
 interface TeamDraft {
   name: string;
+  /** Mã sale sở hữu vé. Một sale nhiều vé = nhiều cửa trúng. */
+  sale: string;
   deals: number;
   topRank: number | null;
   topPrize: number | null;
   inWheel: boolean;
 }
 
-const EMPTY_DRAFT: TeamDraft = { name: '', deals: 1, topRank: null, topPrize: null, inWheel: true };
+const EMPTY_DRAFT: TeamDraft = { name: '', sale: '', deals: 1, topRank: null, topPrize: null, inWheel: true };
 
 export default function LuckyDrawAdminPage() {
   const queryClient = useQueryClient();
@@ -111,6 +114,15 @@ export default function LuckyDrawAdminPage() {
       else toast.error('Không quay được.');
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+  const mSetRounds = useMutation({
+    mutationFn: (a: { eventId: string; rounds: LuckyRoundInput[] }) =>
+      luckyAdminApi.setRounds(a.eventId, a.rounds),
+    onSuccess: (r) => {
+      invalidate();
+      toast.success(r.rounds ? `Đã lưu thể lệ ${r.rounds} lượt.` : 'Đã bỏ chia lượt — về một giải như cũ.');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Không lưu được thể lệ.'),
   });
   const mResetDraw = useMutation({
     mutationFn: luckyAdminApi.resetDraw,
@@ -293,7 +305,14 @@ export default function LuckyDrawAdminPage() {
               </CardContent>
             </Card>
 
-            {/* Danh sách đội + mã */}
+            {/* Thể lệ: chia lượt hay một giải */}
+            <RoundsCard
+              event={event}
+              saving={mSetRounds.isPending}
+              onSave={(rounds) => mSetRounds.mutate({ eventId: event.id, rounds })}
+            />
+
+            {/* Danh sách vé + mã */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">
@@ -318,7 +337,9 @@ export default function LuckyDrawAdminPage() {
                         <tr key={t.id} className="border-b last:border-0">
                           <td className="py-2 pr-2">
                             <div className="font-medium">{t.name}</div>
-                            <div className="text-xs text-muted-foreground">{t.deals} deal</div>
+                            <div className="text-xs text-muted-foreground">
+                              {t.sale ? `${t.sale} · ` : ''}{t.deals} deal
+                            </div>
                           </td>
                           <td className="px-2 py-2">
                             <button
@@ -396,6 +417,7 @@ export default function LuckyDrawAdminPage() {
                                   setEditTeam(t);
                                   setEditDraft({
                                     name: t.name,
+                                    sale: t.sale ?? '',
                                     deals: t.deals,
                                     topRank: t.topRank,
                                     topPrize: t.topPrizeAmount,
@@ -430,7 +452,7 @@ export default function LuckyDrawAdminPage() {
                   </table>
                 </div>
 
-                {/* Thêm đội */}
+                {/* Thêm vé */}
                 <div className="flex flex-wrap items-end gap-2 border-t pt-3">
                   <div className="min-w-40 flex-1">
                     <Label htmlFor="ld-name">Tên đội</Label>
@@ -444,6 +466,15 @@ export default function LuckyDrawAdminPage() {
                           mAddTeam.mutate({ eventId: event.id, ...draft, name: draft.name.trim() });
                         }
                       }}
+                    />
+                  </div>
+                  <div className="w-32">
+                    <Label htmlFor="ld-sale">Mã sale</Label>
+                    <Input
+                      id="ld-sale"
+                      value={draft.sale}
+                      placeholder="vd: 1392QT"
+                      onChange={(e) => setDraft((d) => ({ ...d, sale: e.target.value }))}
                     />
                   </div>
                   <div className="w-20">
@@ -491,7 +522,9 @@ export default function LuckyDrawAdminPage() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Đội có TOP sẽ hiện ở khối “nhận giải”, không lên bánh xe. Đội thường tự động tham gia quay.
+                  Vé có TOP sẽ hiện ở khối “nhận giải”, không lên bánh xe/đường đua. Vé thường tự động tham gia.
+                  <br />
+                  <b>Mã sale</b> để gom sổ: một sale ôm nhiều vé thì nhiều cửa trúng, và bảng vàng cộng dồn theo sale.
                 </p>
               </CardContent>
             </Card>
@@ -507,8 +540,13 @@ export default function LuckyDrawAdminPage() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label htmlFor="ed-name">Tên đội</Label>
+              <Label htmlFor="ed-name">Tên vé</Label>
               <Input id="ed-name" value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="ed-sale">Mã sale</Label>
+              <Input id="ed-sale" value={editDraft.sale} placeholder="vd: 1392QT"
+                onChange={(e) => setEditDraft((d) => ({ ...d, sale: e.target.value }))} />
             </div>
             <div className="flex gap-2">
               <div className="w-24">
@@ -560,6 +598,7 @@ export default function LuckyDrawAdminPage() {
                   teamId: editTeam.id,
                   p: {
                     name: editDraft.name.trim(),
+                    sale: editDraft.sale.trim() || null,
                     deals: editDraft.deals,
                     topRank: editDraft.topRank,
                     topPrizeAmount: editDraft.topPrize,
@@ -593,6 +632,7 @@ function EventForm({
     prizeAmount: number;
     drawAt: string | null;
     game: LuckyGame;
+    raceSeconds: number;
   }) => void;
   saving: boolean;
 }) {
@@ -602,6 +642,7 @@ function EventForm({
   const [prizeAmount, setPrizeAmount] = useState(event.prizeAmount);
   const [drawAtLocal, setDrawAtLocal] = useState(isoToLocalInput(event.drawAt));
   const [game, setGame] = useState<LuckyGame>(luckyGameOf(event.game));
+  const [raceSeconds, setRaceSeconds] = useState(event.raceSeconds ?? 20);
   const moTa = LUCKY_GAMES.find((g) => g.value === game)?.hint ?? '';
 
   return (
@@ -661,6 +702,24 @@ function EventForm({
         </Select>
         <p className="mt-1 text-xs text-muted-foreground">{moTa}</p>
       </div>
+      {game === 'race' && (
+        <div className="w-40">
+          <Label htmlFor="ev-secs">Độ dài cuộc đua</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="ev-secs"
+              type="number"
+              min={8}
+              max={45}
+              value={raceSeconds}
+              onChange={(e) =>
+                setRaceSeconds(Math.min(45, Math.max(8, Number(e.target.value) || 20)))
+              }
+            />
+            <span className="text-sm text-muted-foreground">giây</span>
+          </div>
+        </div>
+      )}
       <div className="w-56">
         <Label htmlFor="ev-drawat">Giờ mở thưởng (giờ máy bạn)</Label>
         <Input
@@ -680,11 +739,150 @@ function EventForm({
             prizeAmount,
             drawAt: localInputToIso(drawAtLocal),
             game,
+            raceSeconds,
           })
         }
       >
         Lưu
       </Button>
     </div>
+  );
+}
+
+/* ── Thể lệ: sự kiện chia mấy lượt, mỗi lượt mấy suất ── */
+
+/**
+ * Không chia lượt (bảng rỗng) = sự kiện MỘT GIẢI như trước, dùng `prizeAmount`
+ * và `lucky_draw_v1`. Có lượt = mỗi lượt một cuộc đua/quay riêng, đua xong lượt
+ * này mới sang lượt sau.
+ *
+ * Server TỪ CHỐI đổi thể lệ khi đã quay ít nhất một lượt — đổi giữa chừng là
+ * thay luật lúc cuộc chơi đang chạy. Nút bị khoá ở đây cho khớp, kèm lời chỉ
+ * đường sang "Đặt lại kết quả".
+ */
+function RoundsCard({
+  event,
+  onSave,
+  saving,
+}: {
+  event: LuckyEventAdmin;
+  onSave: (rounds: LuckyRoundInput[]) => void;
+  saving: boolean;
+}) {
+  const [rows, setRows] = useState<LuckyRoundInput[]>(() =>
+    event.rounds.map((r) => ({ amount: r.amount, winnersCount: r.winnersCount })),
+  );
+  const daQuay = event.rounds.some((r) => r.status === 'drawn');
+  const tong = rows.reduce((sum, r) => sum + r.amount * r.winnersCount, 0);
+  const soGiai = rows.reduce((sum, r) => sum + r.winnersCount, 0);
+
+  const set = (i: number, patch: Partial<LuckyRoundInput>) =>
+    setRows((ds) => ds.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">
+          Thể lệ — {rows.length ? `${rows.length} lượt · ${soGiai} giải · ${formatVnd(tong)}` : 'một giải duy nhất'}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {rows.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Chưa chia lượt: sự kiện chạy một giải duy nhất ({formatVnd(event.prizeAmount)}).
+            Thêm lượt bên dưới để tổ chức nhiều cuộc đua liên tiếp.
+          </p>
+        )}
+
+        {rows.map((r, i) => (
+          <div key={i} className="flex flex-wrap items-end gap-2">
+            <div className="w-16">
+              <Label>Lượt</Label>
+              <div className="flex h-9 items-center px-1 font-mono text-sm">{i + 1}</div>
+            </div>
+            <div className="w-40">
+              <Label htmlFor={`rd-amt-${i}`}>Tiền mỗi suất (đ)</Label>
+              <Input
+                id={`rd-amt-${i}`}
+                type="number"
+                min={0}
+                step={50000}
+                value={r.amount}
+                disabled={daQuay}
+                onChange={(e) => set(i, { amount: Math.max(0, Number(e.target.value) || 0) })}
+              />
+            </div>
+            <div className="w-28">
+              <Label htmlFor={`rd-n-${i}`}>Số suất</Label>
+              <Input
+                id={`rd-n-${i}`}
+                type="number"
+                min={1}
+                max={50}
+                value={r.winnersCount}
+                disabled={daQuay}
+                onChange={(e) =>
+                  set(i, { winnersCount: Math.min(50, Math.max(1, Number(e.target.value) || 1)) })
+                }
+              />
+            </div>
+            <div className="flex-1 text-sm text-muted-foreground">
+              = {formatVnd(r.amount * r.winnersCount)}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={daQuay}
+              onClick={() => setRows((ds) => ds.filter((_, k) => k !== i))}
+            >
+              Xoá
+            </Button>
+          </div>
+        ))}
+
+        <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={daQuay || rows.length >= 20}
+            onClick={() => setRows((ds) => [...ds, { amount: 100000, winnersCount: 1 }])}
+          >
+            + Thêm lượt
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={daQuay}
+            onClick={() =>
+              setRows([
+                { amount: 100000, winnersCount: 3 },
+                { amount: 200000, winnersCount: 2 },
+                { amount: 500000, winnersCount: 1 },
+              ])
+            }
+          >
+            Mẫu đêm tổng kết (100K×3 → 200K×2 → 500K×1)
+          </Button>
+          <div className="flex-1" />
+          <Button disabled={saving || daQuay} onClick={() => onSave(rows)}>
+            Lưu thể lệ
+          </Button>
+        </div>
+
+        {daQuay ? (
+          <p className="text-xs text-amber-600">
+            Sự kiện đã quay ít nhất một lượt nên thể lệ bị khoá. Bấm <b>Huỷ kết quả</b> ở khối trên
+            nếu muốn đổi rồi quay lại từ đầu.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Thứ tự lượt chạy từ trên xuống. Mỗi lượt bốc lại từ <b>toàn bộ vé đã điểm danh</b> — vé
+            trúng lượt trước vẫn có cửa, đúng thể lệ “1 người trúng được nhiều giải”. Tổng đang khai:{' '}
+            <b>{formatVnd(tong)}</b>{event.rounds.length > 0 && tong !== totalRoundsPrize(event.rounds)
+              ? ' (chưa lưu)' : ''}.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

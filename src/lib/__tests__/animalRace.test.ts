@@ -6,14 +6,15 @@ import {
   MAX_STEP,
   RACE_ANIMALS,
   allHome,
+  allWinnersHome,
   assignAnimals,
   hashId,
   initialRaceState,
   isPhotoFinish,
   leaderLane,
   makeRacePlan,
+  medalFor,
   stepRace,
-  winnerHome,
   type RacePlan,
   type RaceState,
 } from '../animalRace';
@@ -28,6 +29,17 @@ function seeded(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Bốc `k` làn khác nhau trong `n` làn, tất định theo seed. */
+function bocWinners(n: number, k: number, seed: number): number[] {
+  const rng = seeded(seed);
+  const ds = Array.from({ length: n }, (_, i) => i);
+  for (let i = ds.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [ds[i], ds[j]] = [ds[j], ds[i]];
+  }
+  return ds.slice(0, Math.min(k, n));
 }
 
 /** Chạy tới khi cả đàn về đích. Trả về thứ tự về đích. */
@@ -45,92 +57,124 @@ function runToEnd(
   return order;
 }
 
-describe('animalRace — con thú của đội trúng phải về nhất', () => {
-  it('property: mọi (số làn, làn trúng, độ dài, nhịp khung hình) đều cho làn trúng về đầu tiên', () => {
+describe('animalRace — thứ hạng về đích phải đúng như server đã chốt', () => {
+  it('property: mọi (số làn, số giải, độ dài, nhịp khung hình) đều ra ĐÚNG THỨ HẠNG', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 1, max: 30 }),
-        fc.integer({ min: 0, max: 29 }),
+        fc.integer({ min: 1, max: 6 }),
         fc.double({ min: 8, max: 45, noNaN: true }),
         fc.integer({ min: 1, max: 0xffffffff }),
         // Nhịp khung hình xấu: 240Hz cho tới 10Hz giật cục.
         fc.double({ min: 0.004, max: 0.1, noNaN: true }),
-        (count, winSeed, seconds, seed, dt) => {
-          const winner = winSeed % count;
-          const plan = makeRacePlan(count, winner, seconds, seeded(seed));
+        (count, soGiai, seconds, seed, dt) => {
+          const Ws = bocWinners(count, soGiai, seed);
+          const plan = makeRacePlan(count, Ws, seconds, seeded(seed));
           const st = initialRaceState(plan);
           const order = runToEnd(plan, st, () => dt);
           expect(order).toHaveLength(count);
-          expect(order[0]).toBe(plan.winner);
+          // Đúng k người đầu tiên, ĐÚNG THỨ TỰ.
+          expect(order.slice(0, plan.winners.length)).toEqual([...plan.winners]);
         },
       ),
       { numRuns: 500 },
     );
   });
 
-  it('property: nhịp khung hình NGẪU NHIÊN từng bước (máy giật) cũng không đổi người thắng', () => {
+  it('property: nhịp khung hình NGẪU NHIÊN từng bước (máy giật) cũng không đổi thứ hạng', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 2, max: 20 }),
-        fc.integer({ min: 0, max: 19 }),
+        fc.integer({ min: 1, max: 5 }),
         fc.integer({ min: 1, max: 0xffffffff }),
-        (count, winSeed, seed) => {
-          const plan = makeRacePlan(count, winSeed % count, 20, seeded(seed));
+        (count, soGiai, seed) => {
+          const plan = makeRacePlan(count, bocWinners(count, soGiai, seed), 20, seeded(seed));
           const st = initialRaceState(plan);
           const jitter = seeded(seed ^ 0x5bf03635);
-          expect(runToEnd(plan, st, () => 0.002 + jitter() * 0.3)[0]).toBe(plan.winner);
+          const order = runToEnd(plan, st, () => 0.002 + jitter() * 0.3);
+          expect(order.slice(0, plan.winners.length)).toEqual([...plan.winners]);
         },
       ),
       { numRuns: 300 },
     );
   });
 
-  it('một khung hình dài bất thường (tab ẩn 30 giây) vẫn không cho làn thua vượt trước', () => {
-    const plan = makeRacePlan(9, 4, 20, seeded(7));
+  it('mỗi bước tối đa MỘT vé trúng cán đích — không bao giờ hoà hạng', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const plan = makeRacePlan(9, bocWinners(9, 3, seed), 20, seeded(seed));
+      const st = initialRaceState(plan);
+      while (!allHome(st) && st.t < 200) {
+        const r = stepRace(plan, st, 0.05);
+        expect(r.wonNow.length, 'hai vé trúng cùng cán đích một khung hình').toBeLessThanOrEqual(1);
+      }
+      expect(st.winnersHome).toBe(3);
+    }
+  });
+
+  it('wonNow báo đúng thứ hạng, theo đúng trình tự 0,1,2…', () => {
+    const plan = makeRacePlan(9, [7, 2, 5], 22, seeded(4));
+    const st = initialRaceState(plan);
+    const thuTu: { lane: number; pos: number }[] = [];
+    while (!allHome(st) && st.t < 200) thuTu.push(...stepRace(plan, st, 0.016).wonNow);
+    expect(thuTu).toEqual([
+      { lane: 7, pos: 0 },
+      { lane: 2, pos: 1 },
+      { lane: 5, pos: 2 },
+    ]);
+  });
+
+  it('một khung hình dài bất thường (tab ẩn 30 giây) không phá thứ hạng', () => {
+    const plan = makeRacePlan(9, [4, 1], 20, seeded(7));
     const st = initialRaceState(plan);
     const r = stepRace(plan, st, 30);
     expect(r.finished).toEqual([]);
-    // Đồng hồ đua chỉ nhích đúng một bước tối đa, không nhảy 30 giây.
     expect(st.t).toBeCloseTo(MAX_STEP, 10);
-    expect(runToEnd(plan, st, () => 0.016)[0]).toBe(4);
+    expect(runToEnd(plan, st, () => 0.016).slice(0, 2)).toEqual([4, 1]);
   });
 
   it('dt rác (NaN, âm, vô cực) không làm vỡ trạng thái', () => {
-    const plan = makeRacePlan(6, 2, 20, seeded(13));
+    const plan = makeRacePlan(6, [2, 4], 20, seeded(13));
     const st = initialRaceState(plan);
     for (const bad of [NaN, -5, Infinity, -Infinity]) {
       stepRace(plan, st, bad);
       expect(Number.isFinite(st.t)).toBe(true);
       expect(st.progress.every(Number.isFinite)).toBe(true);
     }
-    expect(runToEnd(plan, st, () => 0.016)[0]).toBe(2);
+    expect(runToEnd(plan, st, () => 0.016).slice(0, 2)).toEqual([2, 4]);
   });
 
-  it('làn thua bị kẹp ở LEAD_CAP chừng nào làn trúng chưa về', () => {
-    const plan = makeRacePlan(9, 3, 20, seeded(99));
+  it('vé chưa tới lượt bị kẹp ở LEAD_CAP — kể cả vé trúng hạng dưới', () => {
+    const plan = makeRacePlan(9, [3, 6, 0], 20, seeded(99));
     const st = initialRaceState(plan);
-    while (!winnerHome(plan, st) && st.t < 400) {
+    let hong = '';
+    while (!allWinnersHome(plan, st) && st.t < 400) {
+      const daVe = st.winnersHome;
       stepRace(plan, st, 0.016);
       for (let i = 0; i < plan.count; i++) {
-        if (i === plan.winner) continue;
-        expect(st.progress[i]).toBeLessThanOrEqual(LEAD_CAP + 1e-12);
+        const r = plan.rank[i];
+        const duocQua = r >= 0 ? daVe >= r : daVe >= plan.winners.length;
+        if (!duocQua && st.progress[i] > LEAD_CAP + 1e-12) {
+          hong = `làn ${i} (hạng ${r}) vượt trần khi mới ${daVe} vé về`;
+        }
       }
+      if (hong) break;
     }
-    expect(winnerHome(plan, st)).toBe(true);
+    expect(hong).toBe('');
+    expect(allWinnersHome(plan, st)).toBe(true);
   });
 
   it('property: tiến độ luôn trong [0,1] và không bao giờ lùi', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 1, max: 16 }),
+        fc.integer({ min: 1, max: 4 }),
         fc.integer({ min: 1, max: 0xffffffff }),
-        (count, seed) => {
-          const plan = makeRacePlan(count, seed % count, 16, seeded(seed));
+        (count, soGiai, seed) => {
+          const plan = makeRacePlan(count, bocWinners(count, soGiai, seed), 16, seeded(seed));
           const st = initialRaceState(plan);
           const prev = [...st.progress];
           // Kiểm bằng biến cờ chứ không gọi expect() trong vòng lặp nóng:
-          // 60 kịch bản × ~1500 bước × 16 làn là 1,4 triệu lời gọi, đủ để test
-          // chạy quá 5 giây rồi timeout — đỏ vì CHẬM chứ không phải vì SAI.
+          // hàng triệu lời gọi đủ để test timeout — đỏ vì CHẬM chứ không phải vì SAI.
           let hong = '';
           while (!allHome(st) && st.t < 120) {
             stepRace(plan, st, 0.016);
@@ -150,8 +194,6 @@ describe('animalRace — con thú của đội trúng phải về nhất', () =>
   });
 
   it('BẪY DẤU PHẨY ĐỘNG: p += k·(1−p) không tự chạm 1 — phải snap, nếu không đua treo', () => {
-    // Tái hiện đúng phép tính trong stepRace khi đã quá vạch thời gian:
-    // v = (1-p)/0.05, dt = 0.016 → p += 0.32·(1-p). Không có FINISH_EPS thì kẹt.
     let p = 0;
     for (let k = 0; k < 100000; k++) {
       const np = p + 0.32 * (1 - p);
@@ -161,30 +203,26 @@ describe('animalRace — con thú của đội trúng phải về nhất', () =>
     expect(p).toBeLessThan(1);
     expect(1 - p).toBeLessThan(FINISH_EPS);
 
-    // Còn stepRace thì phải về được đích thật.
-    const plan = makeRacePlan(3, 0, 12, seeded(5));
+    const plan = makeRacePlan(3, [0], 12, seeded(5));
     const st = initialRaceState(plan);
     runToEnd(plan, st, () => 0.016);
     expect(st.progress[0]).toBe(1);
   });
 
-  it('LUỒNG CHƠI: đội trúng cán đích là công bố được NGAY, không chờ cả đàn về', () => {
+  it('LUỒNG CHƠI: đủ số giải là công bố được NGAY, không chờ cả đàn về', () => {
     for (let seed = 1; seed <= 30; seed++) {
-      const plan = makeRacePlan(9, seed % 9, 20, seeded(seed));
+      const plan = makeRacePlan(9, bocWinners(9, 3, seed), 20, seeded(seed));
       const st = initialRaceState(plan);
       let tCongBo: number | null = null;
       while (!allHome(st) && st.t < 200) {
         const r = stepRace(plan, st, 0.016);
-        if (r.winnerHome && tCongBo == null) {
+        if (r.allWinnersHome && tCongBo == null) {
           tCongBo = st.t;
-          // Đúng khoảnh khắc công bố, các con khác vẫn đang chạy (chưa về hết)
-          // — nghĩa là công bố không phải chờ ai.
+          // Đúng khoảnh khắc công bố, đàn thua vẫn đang chạy.
           expect(st.finishedAt.filter((f) => f == null).length).toBeGreaterThan(0);
-          expect(r.finished).toContain(plan.winner);
         }
       }
       expect(tCongBo).not.toBeNull();
-      // Và đàn còn lại về nốt sau đó — không đứng chết giữa đường.
       expect(allHome(st)).toBe(true);
       expect(st.t).toBeGreaterThan(tCongBo as number);
     }
@@ -192,39 +230,50 @@ describe('animalRace — con thú của đội trúng phải về nhất', () =>
 
   it('cuộc đua kết thúc trong khoảng thời gian đã hẹn, không kéo lê vô tận', () => {
     for (let seed = 1; seed <= 40; seed++) {
-      const plan = makeRacePlan(9, seed % 9, 20, seeded(seed));
+      const Ws = bocWinners(9, 3, seed);
+      const plan = makeRacePlan(9, Ws, 20, seeded(seed));
       const st = initialRaceState(plan);
       runToEnd(plan, st, () => 0.016);
-      // Đặt 20s → làn trúng về quanh giây thứ 16 (trừ hao 4s ăn mừng).
-      const tWin = st.finishedAt[plan.winner];
-      expect(tWin).not.toBeNull();
-      expect(tWin as number).toBeGreaterThan(10);
-      expect(tWin as number).toBeLessThan(24);
-      // Con về bét cũng không lê quá 8 giây sau đội trúng.
-      expect(Math.max(...(st.finishedAt as number[]))).toBeLessThan((tWin as number) + 8);
+      const tCuoi = st.finishedAt[Ws[Ws.length - 1]] as number;
+      expect(tCuoi).not.toBeNull();
+      // 20s: T = 20 - 4 - 2×0.9 = 14.2, vé cuối về quanh 16.
+      expect(tCuoi).toBeGreaterThan(9);
+      expect(tCuoi).toBeLessThan(24);
+      expect(Math.max(...(st.finishedAt as number[]))).toBeLessThan(tCuoi + 8);
     }
   });
 
-  it('một mình một làn thì vẫn về đích (sự kiện chỉ có 1 đội điểm danh)', () => {
-    const plan = makeRacePlan(1, 0, 12, seeded(3));
+  it('số giải bằng số làn: mọi vé đều trúng, vẫn đúng thứ hạng', () => {
+    const plan = makeRacePlan(4, [3, 1, 0, 2], 20, seeded(8));
+    const st = initialRaceState(plan);
+    expect(runToEnd(plan, st, () => 0.016)).toEqual([3, 1, 0, 2]);
+  });
+
+  it('một mình một làn thì vẫn về đích (sự kiện chỉ có 1 vé điểm danh)', () => {
+    const plan = makeRacePlan(1, [0], 12, seeded(3));
     const st = initialRaceState(plan);
     expect(runToEnd(plan, st, () => 0.016)).toEqual([0]);
     expect(isPhotoFinish(plan, st)).toBe(false);
-    expect(plan.photoFinish).toBe(false);
   });
 
-  it('tham số ngoài miền bị kẹp thay vì làm vỡ cuộc đua', () => {
-    const plan = makeRacePlan(0, 99, 0.1, seeded(5));
-    expect(plan.count).toBe(1);
-    expect(plan.winner).toBe(0);
-    expect(plan.winnerFinish).toBeGreaterThanOrEqual(6);
+  it('danh sách trúng bẩn (trùng, âm, ngoài miền, rỗng) bị lọc thay vì làm vỡ', () => {
+    const p1 = makeRacePlan(5, [2, 2, -1, 99, 3], 20, seeded(5));
+    expect(p1.winners).toEqual([2, 3]);
 
-    const dai = makeRacePlan(5, 2, 9999, seeded(5));
-    expect(dai.winnerFinish).toBeLessThanOrEqual(41);
+    const p2 = makeRacePlan(5, [], 20, seeded(5));
+    expect(p2.winners).toEqual([0]);
+
+    const p3 = makeRacePlan(0, [9], 0.1, seeded(5));
+    expect(p3.count).toBe(1);
+    expect(p3.winners).toEqual([0]);
+    expect(p3.winnerFinish).toBeGreaterThanOrEqual(6);
+
+    const p4 = makeRacePlan(5, [1], 9999, seeded(5));
+    expect(p4.winnerFinish).toBeLessThanOrEqual(41);
   });
 
-  it('RacePlan bất biến: chạy xong rồi dựng state mới là đua lại y hệt (nút "xem lại")', () => {
-    const plan = makeRacePlan(9, 6, 20, seeded(42));
+  it('RacePlan bất biến: dựng state mới là đua lại y hệt (nút "xem lại")', () => {
+    const plan = makeRacePlan(9, [6, 1], 20, seeded(42));
     const goc = JSON.stringify(plan);
 
     const chay = () => {
@@ -240,20 +289,20 @@ describe('animalRace — con thú của đội trúng phải về nhất', () =>
 
     const lan1 = chay();
     expect(JSON.stringify(plan)).toBe(goc); // stepRace không chạm vào plan
-    expect(chay()).toEqual(lan1);           // lượt hai giống hệt lượt một
+    expect(chay()).toEqual(lan1);
     expect(lan1.filter((m) => m.startsWith('boost:')).length).toBe(plan.boosts.length);
   });
 
   it('leaderLane bỏ qua làn đã về, hết người chạy thì trả -1', () => {
-    const plan = makeRacePlan(4, 1, 12, seeded(11));
+    const plan = makeRacePlan(4, [1], 12, seeded(11));
     const st = initialRaceState(plan);
-    expect(leaderLane(st)).toBe(0); // hoà 0 hết → làn đầu tiên
+    expect(leaderLane(st)).toBe(0);
     runToEnd(plan, st, () => 0.016);
     expect(leaderLane(st)).toBe(-1);
   });
 
   it('mỗi cú tăng tốc chỉ báo MỘT lần dù kéo dài nhiều khung hình', () => {
-    const plan = makeRacePlan(9, 0, 20, seeded(21));
+    const plan = makeRacePlan(9, [0, 4], 20, seeded(21));
     const st = initialRaceState(plan);
     const dem = new Map<number, number>();
     while (!allHome(st) && st.t < 200) {
@@ -263,11 +312,11 @@ describe('animalRace — con thú của đội trúng phải về nhất', () =>
     for (const [, lan] of dem) expect(lan).toBe(1);
   });
 
-  it('sát nút chỉ xảy ra ở lượt được dàn cảnh, và chỉ ở đoạn cuối', () => {
+  it('sát nút chỉ xảy ra ở SUẤT CUỐI của lượt được dàn cảnh', () => {
     let coDanCanh = 0;
     let khongDanCanh = 0;
     for (let seed = 1; seed <= 60; seed++) {
-      const plan = makeRacePlan(9, seed % 9, 20, seeded(seed));
+      const plan = makeRacePlan(9, bocWinners(9, 3, seed), 20, seeded(seed));
       const st = initialRaceState(plan);
       let batGap = false;
       while (!allHome(st) && st.t < 200) {
@@ -275,7 +324,8 @@ describe('animalRace — con thú của đội trúng phải về nhất', () =>
         if (isPhotoFinish(plan, st)) {
           batGap = true;
           expect(plan.photoFinish).toBe(true);
-          expect(st.progress[plan.winner]).toBeGreaterThanOrEqual(0.9);
+          // Chỉ nín thở khi đã trao xong các suất trên.
+          expect(st.winnersHome).toBe(plan.winners.length - 1);
         }
       }
       if (plan.photoFinish) coDanCanh++;
@@ -284,14 +334,21 @@ describe('animalRace — con thú của đội trúng phải về nhất', () =>
         expect(batGap).toBe(false);
       }
     }
-    // Không phải lượt nào cũng nín thở — nếu luôn có thì mất hết giá trị.
     expect(coDanCanh).toBeGreaterThan(0);
     expect(khongDanCanh).toBeGreaterThan(0);
+  });
+
+  it('huy chương: một giải thì cúp, nhiều giải thì vàng/bạc/đồng', () => {
+    expect(medalFor(0, 1)).toBe('🏆');
+    expect(medalFor(0, 3)).toBe('🥇');
+    expect(medalFor(1, 3)).toBe('🥈');
+    expect(medalFor(2, 3)).toBe('🥉');
+    expect(medalFor(3, 5)).toBe('#4');
   });
 });
 
 describe('animalRace — gán con thú', () => {
-  it('không đội nào trùng con thú khi số đội ≤ số con thú', () => {
+  it('không vé nào trùng con thú khi số vé ≤ số con thú', () => {
     fc.assert(
       fc.property(
         fc.uniqueArray(fc.uuid(), { minLength: 1, maxLength: RACE_ANIMALS.length }),
@@ -305,25 +362,23 @@ describe('animalRace — gán con thú', () => {
     );
   });
 
-  it('vượt quá số con thú thì cho phép trùng, nhưng vẫn gán đủ mọi đội', () => {
+  it('vượt quá số con thú thì cho phép trùng, nhưng vẫn gán đủ mọi vé', () => {
     const ids = Array.from({ length: 40 }, (_, i) => `team-${i}`);
     const map = assignAnimals(ids);
     expect(Object.keys(map)).toHaveLength(40);
     for (const id of ids) expect(RACE_ANIMALS).toContain(map[id]);
   });
 
-  it('ổn định: cùng danh sách đội thì cùng kết quả, thứ tự truyền vào không đổi gì', () => {
+  it('ổn định: cùng danh sách vé thì cùng kết quả, thứ tự truyền vào không đổi gì', () => {
     const ids = ['c', 'a', 'b', 'd', 'e'];
-    const lan1 = assignAnimals(ids);
-    expect(assignAnimals([...ids].reverse())).toEqual(lan1);
+    expect(assignAnimals([...ids].reverse())).toEqual(assignAnimals(ids));
   });
 
-  it('thêm một đội mới không làm xáo trộn con thú của các đội cũ khi chưa đụng ô', () => {
+  it('thêm một vé mới không xáo trộn con thú của các vé cũ khi chưa đụng ô', () => {
     const cu = ['aaa', 'bbb', 'ccc'];
     const truoc = assignAnimals(cu);
     const sau = assignAnimals([...cu, 'zzz']);
     for (const id of cu) {
-      // Chỉ được đổi nếu đội mới cướp đúng ô — với 3 đội/18 ô thì hiếm.
       if (sau[id] !== truoc[id]) expect(sau['zzz']).toBe(truoc[id]);
     }
   });
