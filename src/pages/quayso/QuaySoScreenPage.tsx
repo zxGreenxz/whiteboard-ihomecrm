@@ -16,9 +16,11 @@ import {
   fetchLuckyPublicState,
   formatVnd,
   luckyDraw,
+  luckyGameOf,
   type LuckyPublicState,
 } from '@/lib/luckyDrawApi';
 import LuckyWheelCanvas, { fireConfetti } from './LuckyWheelCanvas';
+import AnimalRaceTrack from './AnimalRaceTrack';
 import './quayso.css';
 
 export default function QuaySoScreenPage() {
@@ -47,6 +49,8 @@ export default function QuaySoScreenPage() {
   const teams = state?.ok ? state.teams ?? [] : [];
   const entrants = teams.filter((t) => t.inWheel && t.checkedIn);
   const winner = teams.find((t) => t.id === event?.winnerTeamId) ?? null;
+  // Trò chơi do chủ giải chọn lúc tổ chức. Sự kiện cũ không có cột này → vòng xoay.
+  const game = luckyGameOf(event?.game);
 
   const drawn = event?.status === 'drawn';
   const revealed = drawn && !!event?.drawnAt && revealedFor === event.drawnAt;
@@ -128,14 +132,25 @@ export default function QuaySoScreenPage() {
           )}
         </header>
 
-        <LuckyWheelCanvas
-          teams={entrants}
-          winnerId={event?.winnerTeamId ?? null}
-          spinToken={spinToken}
-          onSpinDone={onSpinDone}
-          maxSize={560}
-          hubLabel="IHOME"
-        />
+        {game === 'race' ? (
+          <AnimalRaceTrack
+            teams={entrants}
+            winnerId={event?.winnerTeamId ?? null}
+            spinToken={spinToken}
+            onSpinDone={onSpinDone}
+            seconds={22}
+            big
+          />
+        ) : (
+          <LuckyWheelCanvas
+            teams={entrants}
+            winnerId={event?.winnerTeamId ?? null}
+            spinToken={spinToken}
+            onSpinDone={onSpinDone}
+            maxSize={560}
+            hubLabel="IHOME"
+          />
+        )}
 
         <footer className="qs-screen-foot">
           {revealed && winner ? (
@@ -151,7 +166,11 @@ export default function QuaySoScreenPage() {
               disabled={!canSpin}
               onClick={() => void handleSpin()}
             >
-              {busy ? 'Đang chốt…' : drawn ? '▶ Quay lại' : '▶ Quay số'}
+              {busy
+                ? 'Đang chốt…'
+                : game === 'race'
+                  ? (drawn ? '▶ Đua lại' : '▶ Xuất phát')
+                  : (drawn ? '▶ Quay lại' : '▶ Quay số')}
             </button>
           )}
 
@@ -164,7 +183,7 @@ export default function QuaySoScreenPage() {
                 setSpinNonce((n) => n + 1);
               }}
             >
-              ↺ Quay lại lần nữa
+              {game === 'race' ? '↺ Đua lại lần nữa' : '↺ Quay lại lần nữa'}
             </button>
           )}
 
@@ -173,7 +192,9 @@ export default function QuaySoScreenPage() {
             <p className="qs-codeerr">Không tìm thấy sự kiện — kiểm tra lại link.</p>
           )}
           {event && entrants.length === 0 && !drawn && (
-            <p className="qs-screen-hint">Chưa đội nào điểm danh — bảo anh em vào link điểm danh trước.</p>
+            <p className="qs-screen-hint">
+              Chưa đội nào điểm danh — bảo anh em vào link điểm danh trước.
+            </p>
           )}
         </footer>
       </div>

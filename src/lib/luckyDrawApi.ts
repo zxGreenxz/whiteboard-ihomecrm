@@ -40,6 +40,24 @@ export interface LuckyProof {
   at?: string;
 }
 
+/**
+ * Trò chơi dùng để CÔNG BỐ kết quả. Chủ giải chọn lúc tổ chức (cột
+ * `lucky_events.game`). Đây thuần là cách diễn lại — đội trúng vẫn do
+ * `lucky_draw_v1` chốt một lần trên server, không trò nào đụng được vào.
+ * Thêm trò mới: nới CHECK ở migration, thêm nhánh ở đây và ở hai trang công khai.
+ */
+export type LuckyGame = 'wheel' | 'race';
+
+export const LUCKY_GAMES: { value: LuckyGame; label: string; hint: string }[] = [
+  { value: 'wheel', label: '🎡 Vòng xoay may mắn', hint: 'Bánh xe quay, kim dừng ở đội trúng.' },
+  { value: 'race', label: '🏇 Đua thú', hint: 'Mỗi đội một con thú, con của đội trúng về nhất.' },
+];
+
+/** Sự kiện cũ tạo trước khi có cột `game` → coi như vòng xoay. */
+export function luckyGameOf(g: string | null | undefined): LuckyGame {
+  return g === 'race' ? 'race' : 'wheel';
+}
+
 export interface LuckyEventPublic {
   id: string;
   /** Đường dẫn ngắn: /quayso/<slug>. */
@@ -51,6 +69,8 @@ export interface LuckyEventPublic {
   status: 'open' | 'drawn' | 'closed';
   drawnAt: string | null;
   winnerTeamId: string | null;
+  /** Trò chơi công bố kết quả. Sự kiện cũ có thể thiếu → dùng `luckyGameOf`. */
+  game: LuckyGame | null;
   serverNow: string;
 }
 
@@ -226,7 +246,8 @@ export const luckyAdminApi = {
     prizeAmount?: number;
     drawAt?: string | null;
     status?: 'open' | 'closed';
-  }) => adminRpc<{ ok: boolean; eventId: string; slug: string }>(() => supabase.rpc('lucky_admin_upsert_event_v1', { p })),
+    game?: LuckyGame;
+  }) => adminRpc<{ ok: boolean; eventId: string; slug: string; game: LuckyGame }>(() => supabase.rpc('lucky_admin_upsert_event_v1', { p })),
   addTeam: (p: {
     eventId: string;
     name: string;

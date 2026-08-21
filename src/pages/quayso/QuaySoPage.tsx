@@ -22,6 +22,7 @@ import {
   luckyCheckin,
   luckyDraw,
   luckySavePayout,
+  luckyGameOf,
   serverClockOffset,
   uploadLuckyProof,
   PROOF_MAX_FILES,
@@ -31,9 +32,39 @@ import {
 } from '@/lib/luckyDrawApi';
 import { formatCountdown } from '@/lib/luckyWheel';
 import LuckyWheelCanvas, { fireConfetti } from './LuckyWheelCanvas';
+import AnimalRaceTrack from './AnimalRaceTrack';
 import './quayso.css';
 
 const CODE_KEY = 'qs_code_v1';
+
+/**
+ * Chữ nghĩa đổi theo trò chơi. Gom một chỗ vì nếu rải `game === 'race' ? …` khắp
+ * JSX thì lần thêm trò thứ ba sẽ phải đi soát lại từng câu, và chắc chắn sót.
+ */
+const LOI = {
+  wheel: {
+    khu: 'Vòng xoay',
+    doiThamGia: 'Đội điểm danh mới lên bánh xe. Mỗi đội một ô, cơ hội bằng nhau.',
+    dangChay: 'Bánh xe đang quay…',
+    xemLai: '▶ Xem lại kết quả quay',
+    bamXemLai: 'Bấm “Xem lại kết quả quay” để mở đáp án.',
+    xongRoi: 'Sự kiện đã quay xong — bấm nút trên để xem lại màn quay.',
+    lai: '↺ Quay lại màn công bố',
+    coHoi: (n: number, pct: string) => `${n} đội trên bánh xe · mỗi đội ${pct}% cơ hội · quay tự động đúng giờ.`,
+    chuaDiemDanh: 'Điểm danh để đội bạn xuất hiện trên bánh xe.',
+  },
+  race: {
+    khu: 'Đường đua',
+    doiThamGia: 'Đội điểm danh mới được lên đường đua. Mỗi đội một con thú, cơ hội bằng nhau.',
+    dangChay: 'Đàn thú đang chạy…',
+    xemLai: '▶ Xem lại cuộc đua',
+    bamXemLai: 'Bấm “Xem lại cuộc đua” để mở đáp án.',
+    xongRoi: 'Sự kiện đã đua xong — bấm nút trên để xem lại cuộc đua.',
+    lai: '↺ Xem lại cuộc đua',
+    coHoi: (n: number, pct: string) => `${n} con thú vào cuộc · mỗi đội ${pct}% cơ hội · xuất phát tự động đúng giờ.`,
+    chuaDiemDanh: 'Điểm danh để con thú của đội bạn ra vạch xuất phát.',
+  },
+} as const;
 
 /* ────────────────────── Hồ sơ nhận thưởng của đội ───────────────────────── */
 
@@ -370,6 +401,9 @@ export default function QuaySoPage() {
   const wheelTeams = teams.filter((t) => t.inWheel);
   const wheelCheckedIn = wheelTeams.filter((t) => t.checkedIn);
   const winner = teams.find((t) => t.id === event?.winnerTeamId) ?? null;
+  // Trò chơi do chủ giải chọn lúc tổ chức. Sự kiện cũ không có cột này → vòng xoay.
+  const game = luckyGameOf(event?.game);
+  const loi = LOI[game];
 
   // Giờ server hiện tại (offset cập nhật mỗi lần poll).
   const offset = event ? serverClockOffset(event.serverNow) : 0;
@@ -492,7 +526,7 @@ export default function QuaySoPage() {
           {[0, 1].map((half) => (
             <span key={half}>
               {event
-                ? `${event.title} ✦ ${event.prizeLabel} ${formatVnd(event.prizeAmount)} ✦ Điểm danh bằng mã 6 số ✦ Quay tự động đúng giờ ✦ `
+                ? `${event.title} ✦ ${event.prizeLabel} ${formatVnd(event.prizeAmount)} ✦ Điểm danh bằng mã 6 số ✦ Mở thưởng tự động đúng giờ ✦ `
                 : 'IHOME · Vòng xoay may mắn ✦ Điểm danh bằng mã 6 số ✦ '}
             </span>
           ))}
@@ -608,7 +642,7 @@ export default function QuaySoPage() {
                     <p className="qs-eyebrow">Đã quay xong</p>
                     <div className="qs-clock qs-soon">✦ ✦ ✦</div>
                     <span className="qs-when">
-                      {canReplay ? 'Bấm “Xem lại kết quả quay” để mở đáp án.' : 'Bánh xe đang quay…'}
+                      {canReplay ? loi.bamXemLai : loi.dangChay}
                     </span>
                   </>
                 )
@@ -673,9 +707,9 @@ export default function QuaySoPage() {
             <>
             <section>
               <div className="qs-head">
-                <p className="qs-eyebrow">Vòng xoay {formatVnd(event.prizeAmount)}</p>
+                <p className="qs-eyebrow">{loi.khu} {formatVnd(event.prizeAmount)}</p>
                 <h2 className="qs-display"><span className="qs-skew">Đội tham gia</span></h2>
-                <p>Đội điểm danh mới lên bánh xe. Mỗi đội một ô, cơ hội bằng nhau.</p>
+                <p>{loi.doiThamGia}</p>
               </div>
               <div className="qs-progress">
                 <div className="qs-bar">
@@ -712,18 +746,27 @@ export default function QuaySoPage() {
 
             {/* Bánh xe */}
             <section className="qs-wheelwrap">
-              <LuckyWheelCanvas
-                teams={wheelCheckedIn}
-                winnerId={event.winnerTeamId}
-                spinToken={spinToken}
-                onSpinDone={onSpinDone}
-              />
+              {game === 'race' ? (
+                <AnimalRaceTrack
+                  teams={wheelCheckedIn}
+                  winnerId={event.winnerTeamId}
+                  spinToken={spinToken}
+                  onSpinDone={onSpinDone}
+                />
+              ) : (
+                <LuckyWheelCanvas
+                  teams={wheelCheckedIn}
+                  winnerId={event.winnerTeamId}
+                  spinToken={spinToken}
+                  onSpinDone={onSpinDone}
+                />
+              )}
 
               {/* Vào trang sau khi đã quay: bánh xe đứng yên, người xem tự bấm
                   để xem lại màn quay thay vì bị hiện thẳng đáp án. */}
               {canReplay && (
                 <button type="button" className="qs-replay" onClick={() => setSpinNonce((n) => n + 1)}>
-                  ▶ Xem lại kết quả quay
+                  {loi.xemLai}
                 </button>
               )}
 
@@ -732,11 +775,14 @@ export default function QuaySoPage() {
                   ? `Chúc mừng ${winner.name} — ${event.prizeLabel} ${formatVnd(event.prizeAmount)}!`
                   : drawn
                     ? canReplay
-                      ? 'Sự kiện đã quay xong — bấm nút trên để xem lại màn quay.'
-                      : 'Bánh xe đang quay, nín thở…'
+                      ? loi.xongRoi
+                      : loi.dangChay
                     : wheelCheckedIn.length
-                      ? `${wheelCheckedIn.length} đội trên bánh xe · mỗi đội ${(100 / wheelCheckedIn.length).toFixed(1).replace('.', ',')}% cơ hội · quay tự động đúng giờ.`
-                      : 'Điểm danh để đội bạn xuất hiện trên bánh xe.'}
+                      ? loi.coHoi(
+                          wheelCheckedIn.length,
+                          (100 / wheelCheckedIn.length).toFixed(1).replace('.', ','),
+                        )
+                      : loi.chuaDiemDanh}
               </p>
 
               {revealed && winner && (
@@ -759,7 +805,7 @@ export default function QuaySoPage() {
                     </div>
                   )}
                   <button type="button" className="qs-replay-mini" onClick={() => setSpinNonce((n) => n + 1)}>
-                    ↺ Quay lại màn công bố
+                    {loi.lai}
                   </button>
                 </>
               )}

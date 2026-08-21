@@ -1,6 +1,6 @@
 ---
 status: current
-reviewed: 2026-08-20
+reviewed: 2026-08-21
 source_paths:
   - contracts/surfaces/rpc-surface.json
 copilot_ingest: false

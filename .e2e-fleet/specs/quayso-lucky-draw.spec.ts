@@ -129,13 +129,14 @@ test.describe('Trang công khai /quayso', () => {
 
     await enterCode(page, mine.code);
     const mineCard = page.locator('.qs-mine');
-    await expect(mineCard.getByText(/Đội của bạn/i)).toBeVisible();
+    // Câu chữ đổi ở 0227e86d: "Đội của bạn" → "Bạn đang điểm danh với tư cách đội".
+    await expect(mineCard.getByText(/tư cách đội/i)).toBeVisible();
     await expect(mineCard.getByText(mine.name)).toBeVisible();
     await expect(page.getByText(/^1\/\d+ đội$/)).toBeVisible();
 
     // Mã nhớ trong localStorage → tải lại không phải nhập lại
     await page.reload();
-    await expect(page.locator('.qs-mine').getByText(/Đội của bạn/i)).toBeVisible();
+    await expect(page.locator('.qs-mine').getByText(/tư cách đội/i)).toBeVisible();
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
 
@@ -180,7 +181,7 @@ test.describe('Trang công khai /quayso', () => {
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
 
-  test('vào sau khi đã quay: chờ bấm "Xem lại", đội THUA không thấy popup', async ({ page }) => {
+  test('vào sau khi đã quay: chờ bấm "Xem lại", đội THUA thấy popup cổ vũ', async ({ page }) => {
     test.setTimeout(120_000);
     const errors = trackConsoleErrors(page);
     const seed = await seedEvent(-120, 3);
@@ -211,8 +212,16 @@ test.describe('Trang công khai /quayso', () => {
     await expect(page.locator('.qs-lastwin')).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('.qs-lastwin')).toContainText(winnerTeam.name);
 
-    // Mình là đội THUA → tuyệt đối không có popup
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    // Mình là đội THUA → VẪN có popup, nhưng là lời cổ vũ chứ không phải ăn mừng.
+    // Bài này từng đòi "tuyệt đối không có popup"; hành vi đã đổi CÓ CHỦ Ý ở
+    // c5c84c8a (chính commit đó chỉnh câu chữ trong popup đội chưa trúng) — im
+    // lặng với đội thua làm người ta hụt hẫng. Bài cũ đỏ suốt trên production.
+    const hop = page.getByRole('dialog');
+    await expect(hop).toBeVisible();
+    await expect(hop).toContainText(/lần sau nhé/i);
+    // Nhưng tuyệt đối không được là popup ăn mừng, và không nêu tên đội trúng.
+    await expect(hop.getByRole('button', { name: /Quá đã/i })).toHaveCount(0);
+    await expect(hop).not.toContainText(winnerTeam.name);
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
 });

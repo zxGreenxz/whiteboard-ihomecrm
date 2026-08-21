@@ -25,8 +25,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { SIGNED_URL_TTL } from '@/lib/storage';
 import {
-  PROOF_BUCKET, formatVnd, luckyAdminApi, luckyPublicUrl,
-  type LuckyEventAdmin, type LuckyTeamAdmin,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  LUCKY_GAMES, PROOF_BUCKET, formatVnd, luckyAdminApi, luckyGameOf, luckyPublicUrl,
+  type LuckyEventAdmin, type LuckyGame, type LuckyTeamAdmin,
 } from '@/lib/luckyDrawApi';
 
 const QK = ['lucky-admin'] as const;
@@ -589,6 +592,7 @@ function EventForm({
     prizeLabel: string;
     prizeAmount: number;
     drawAt: string | null;
+    game: LuckyGame;
   }) => void;
   saving: boolean;
 }) {
@@ -597,6 +601,8 @@ function EventForm({
   const [prizeLabel, setPrizeLabel] = useState(event.prizeLabel);
   const [prizeAmount, setPrizeAmount] = useState(event.prizeAmount);
   const [drawAtLocal, setDrawAtLocal] = useState(isoToLocalInput(event.drawAt));
+  const [game, setGame] = useState<LuckyGame>(luckyGameOf(event.game));
+  const moTa = LUCKY_GAMES.find((g) => g.value === game)?.hint ?? '';
 
   return (
     <div className="flex flex-wrap items-end gap-2">
@@ -642,6 +648,20 @@ function EventForm({
         />
       </div>
       <div className="w-56">
+        <Label htmlFor="ev-game">Trò chơi công bố</Label>
+        <Select value={game} onValueChange={(v) => setGame(v as LuckyGame)}>
+          <SelectTrigger id="ev-game">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LUCKY_GAMES.map((g) => (
+              <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="mt-1 text-xs text-muted-foreground">{moTa}</p>
+      </div>
+      <div className="w-56">
         <Label htmlFor="ev-drawat">Giờ mở thưởng (giờ máy bạn)</Label>
         <Input
           id="ev-drawat"
@@ -659,6 +679,7 @@ function EventForm({
             prizeLabel: prizeLabel.trim() || 'Giải may mắn',
             prizeAmount,
             drawAt: localInputToIso(drawAtLocal),
+            game,
           })
         }
       >

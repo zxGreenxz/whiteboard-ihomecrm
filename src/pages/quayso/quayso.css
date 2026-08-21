@@ -995,6 +995,299 @@
   cursor: pointer;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ĐUA THÚ — trò chơi thứ hai (AnimalRaceTrack.tsx)
+
+   Vị trí con thú do JS đặt thẳng vào `transform` mỗi khung hình, nên ở đây
+   TUYỆT ĐỐI không đặt `transition` lên `.qs-runner`: transition sẽ nội suy
+   giữa hai giá trị mà JS vừa ghi, làm con thú trượt trễ sau vị trí thật và
+   khoảnh khắc cán đích lệch hẳn với tiếng kèn.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.qs-race { display: flex; flex-direction: column; gap: 9px; }
+
+/* Trên MÀN CHIẾU, đường đua phải giãn đầy chiều cao còn lại — giống `.qs-stage`
+   của bánh xe. Thiếu dòng này thì `justify-content: space-between` của
+   `.qs-screen-inner` đẩy khối đua xuống, để lại một mảng trống to phía trên và
+   đường đua thì bẹp dí: quay video ra rất xấu. */
+.qs-screen .qs-race { flex: 1 1 auto; width: 100%; min-height: 0; }
+.qs-screen .qs-race .qs-track { flex: 1 1 auto; min-height: 0; }
+
+.qs-race-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.qs-race-tag {
+  font-family: var(--qs-data);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--qs-muted);
+}
+.qs-race-mute {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--qs-line);
+  background: rgba(34, 16, 25, .85);
+  color: var(--qs-cream);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.qs-race-mute:focus-visible { outline: 2px solid var(--qs-gold); outline-offset: 2px; }
+
+/* ── Đường đua ── */
+.qs-track {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 268px;
+  border: 1px solid var(--qs-line);
+  border-radius: 20px;
+  background: var(--qs-ink-2);
+  overflow: hidden;
+  box-shadow: 0 22px 60px -24px rgba(245, 51, 63, .55);
+}
+.qs-race-big .qs-track { min-height: 340px; }
+
+/* Nhiều đội: làn co tới đáy rồi cho cuộn dọc, JS tự kéo theo con dẫn đầu. */
+.qs-track-scroll { overflow-y: auto; scrollbar-width: thin; }
+.qs-track-scroll .qs-lane { flex: 0 0 30px; }
+
+.qs-track-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(-34deg, rgba(255, 242, 228, .02) 0 2px, transparent 2px 16px),
+    linear-gradient(90deg, transparent calc(25% - 1px), rgba(255, 242, 228, .07) 25%, transparent calc(25% + 1px)),
+    linear-gradient(90deg, transparent calc(50% - 1px), rgba(255, 242, 228, .07) 50%, transparent calc(50% + 1px)),
+    linear-gradient(90deg, transparent calc(75% - 1px), rgba(255, 242, 228, .07) 75%, transparent calc(75% + 1px));
+}
+/* Vạch đích kẻ caro — JS chừa đúng 30px cho dải này. */
+.qs-track-finish {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  z-index: 0;
+  pointer-events: none;
+  border-left: 3px solid var(--qs-gold);
+  background: repeating-conic-gradient(
+    rgba(255, 242, 228, .8) 0% 25%, rgba(34, 16, 25, .9) 0% 50%) 0 0 / 10px 10px;
+  opacity: .9;
+}
+
+.qs-lane {
+  flex: 1 1 0;
+  min-height: 30px;
+  position: relative;
+  border-bottom: 1px dashed rgba(255, 242, 228, .08);
+  z-index: 1;
+}
+.qs-lane:last-child { border-bottom: 0; }
+.qs-lane-no {
+  position: absolute;
+  left: 8px;
+  top: 2px;
+  font-family: var(--qs-data);
+  font-size: 8px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgba(176, 143, 156, .55);
+}
+
+.qs-runner {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translate(0, -50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  will-change: transform;
+  z-index: 2;
+
+  /* TRẦN BỀ RỘNG LÀ BẮT BUỘC, KHÔNG PHẢI TRANG TRÍ.
+     JS tính quãng đường chạy được bằng `lane.clientWidth - runner.offsetWidth - 30`.
+     Đội tên dài làm khối này rộng hơn cả làn ⇒ hiệu số ÂM ⇒ bị kẹp về 0 ⇒ CẢ ĐÀN
+     ĐỨNG IM, cuộc đua không nhúc nhích một pixel nào mà cũng chẳng báo lỗi.
+     Đã dính thật với tên đội 38 ký tự. Neo theo `.qs-lane` (containing block có
+     bề rộng xác định vì `.qs-runner` là absolute) nên luôn còn ít nhất 42% làn
+     để chạy, dù tên dài tới đâu. */
+  max-width: 58%;
+}
+
+.qs-lane-bolt {
+  opacity: 0;
+  transition: opacity .15s;
+  font-size: 14px;
+  filter: drop-shadow(0 0 6px rgba(255, 194, 60, .9));
+}
+
+/* Huy hiệu đội trúng nằm NGOÀI luồng layout của `.qs-runner`.
+   Vì sao: JS tính quãng đường bằng `lane.clientWidth - runner.offsetWidth`.
+   Nếu huy hiệu chèn vào làm runner rộng thêm ~90px thì quãng đường co lại đúng
+   lúc công bố, và con thú nhảy vọt qua vạch đích đúng một khung hình trước khi
+   `paint()` kịp tính lại. Tách khỏi luồng thì `offsetWidth` không đổi. */
+.qs-lane-badge {
+  position: absolute;
+  right: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--qs-data);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--qs-gold-hi), var(--qs-gold));
+  color: #34190A;
+  white-space: nowrap;
+  animation: qs-slam .4s cubic-bezier(.2, 1.5, .4, 1);
+}
+
+.qs-lane-chip {
+  font-family: var(--qs-data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* `min-width: 0` để flex ĐƯỢC PHÉP co lại: mặc định `min-width: auto` giữ
+     nguyên bề rộng nội dung và trần ở `.qs-runner` sẽ bị tràn thay vì cắt chữ. */
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 242, 228, .18);
+  background: rgba(21, 10, 16, .88);
+  color: var(--qs-cream);
+  transition: border-color .25s, color .25s, box-shadow .25s;
+}
+.qs-lane-chip.qs-lane-hot {
+  border-color: var(--qs-gold);
+  color: var(--qs-gold);
+  box-shadow: 0 0 14px rgba(255, 194, 60, .5);
+}
+.qs-lane-chip.qs-lane-home {
+  background: linear-gradient(180deg, var(--qs-gold-hi), var(--qs-gold));
+  color: #34190A;
+}
+
+.qs-lane-animal {
+  font-size: clamp(17px, 3.2vh, 30px);
+  line-height: 1;
+  display: inline-block;
+  filter: drop-shadow(0 5px 7px rgba(0, 0, 0, .55));
+  /* Lật ngang để con thú quay mặt về phía vạch đích. */
+  transform: scaleX(-1);
+}
+.qs-race-big .qs-lane-animal { font-size: clamp(22px, 4.4vh, 40px); }
+.qs-lane-animal.qs-lane-run { animation: qs-gallop .3s ease-in-out infinite; }
+
+@keyframes qs-gallop {
+  0%, 100% { transform: scaleX(-1) translateY(0); }
+  50%      { transform: scaleX(-1) translateY(-3px); }
+}
+@keyframes qs-slam {
+  from { opacity: 0; transform: scale(.72) rotate(-3deg); }
+}
+@keyframes qs-flashout {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* Đếm ngược phủ lên đường đua */
+.qs-track-count {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: rgba(21, 10, 16, .55);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.qs-track-count span {
+  font-family: var(--qs-data);
+  font-weight: 700;
+  font-size: clamp(56px, 18vw, 92px);
+  line-height: 1;
+  color: var(--qs-gold);
+  text-shadow: 0 8px 30px rgba(245, 51, 63, .6);
+  animation: qs-slam .3s cubic-bezier(.2, 1.5, .4, 1);
+}
+
+/* Chớp đèn "sát nút" */
+.qs-track-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: rgba(255, 242, 228, .55);
+  animation: qs-flashout .9s ease-out forwards;
+  font-family: var(--qs-data);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--qs-ink);
+}
+
+.qs-track-empty {
+  margin: auto;
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--qs-muted);
+  z-index: 1;
+}
+
+/* Lời bình + công bố */
+.qs-race-say {
+  margin: 0;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border: 1px solid var(--qs-line);
+  border-radius: 12px;
+  background: rgba(34, 16, 25, .85);
+  font-family: var(--qs-data);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--qs-cream);
+}
+.qs-race-win {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  color: var(--qs-gold);
+  animation: qs-slam .45s cubic-bezier(.2, 1.5, .4, 1);
+}
+.qs-race-win strong { font-weight: 900; text-transform: uppercase; }
+
+@media (prefers-reduced-motion: reduce) {
+  .qs-lane-animal.qs-lane-run { animation: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .qs-page *, .qs-page *::before, .qs-page *::after {
     animation-duration: .01ms !important;
