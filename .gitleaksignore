@@ -64,3 +64,9 @@ d20c7b93a5c46ebb1547339c6935a516f42a9904:supabase/migrations/20260727090000_open
 # SO SÁNH CỘT SQL với tham số request, không phải giá trị khoá. Xác minh 13/08/2026 khi commit
 # baseline vào repo cho Migration Restore Drill.
 5b8cd87483cb2c3b5c8647ecfb3440f44b07f1cd:supabase/baseline/schema.sql:generic-api-key:31958
+
+# `const MUTE_KEY = 'qs_race_muted_v1'` — TÊN Ô localStorage nhớ việc người xem đã bật hay
+# tắt tiếng trường đua, không phải khoá gì cả. Luật generic-api-key bắt vì hằng kết thúc
+# bằng `KEY` và giá trị là chuỗi dài. Đã đổi tên hằng thành `MUTE_PREF` ngay commit sau nên
+# không tái diễn, nhưng lịch sử commit thì không xoá được. Xác minh 21/08/2026.
+6fc823a2ecd0157146a686ed0a9a50c8e2bb6366:src/pages/quayso/AnimalRaceTrack.tsx:generic-api-key:40

@@ -37,7 +37,11 @@ import {
 import type { LuckyTeamPublic } from '@/lib/luckyDrawApi';
 import { RaceAudio } from './raceAudio';
 
-const MUTE_KEY = 'qs_race_muted_v1';
+/* Tên ô localStorage nhớ lựa chọn bật/tắt tiếng. KHÔNG đặt tên hằng kết thúc
+   bằng `_KEY`: luật `generic-api-key` của gitleaks bắt đúng mẫu `*KEY = '<chuỗi
+   dài>'` và báo dương tính giả, phải khai fingerprint vào `.gitleaksignore`
+   vĩnh viễn vì lịch sử commit không xoá được. */
+const MUTE_PREF = 'qs_race_muted_v1';
 
 /** Số làn tối đa còn chia đều vừa khung; hơn thì làn co lại và cho cuộn. */
 const LANES_FIT = 12;
@@ -85,7 +89,7 @@ export default function AnimalRaceTrack({
   const [flash, setFlash] = useState(false);
   const [muted, setMuted] = useState(() => {
     try {
-      return localStorage.getItem(MUTE_KEY) !== '0';
+      return localStorage.getItem(MUTE_PREF) !== '0';
     } catch {
       return true;
     }
@@ -135,7 +139,7 @@ export default function AnimalRaceTrack({
       const next = !m;
       audioRef.current?.setMuted(next);
       try {
-        localStorage.setItem(MUTE_KEY, next ? '1' : '0');
+        localStorage.setItem(MUTE_PREF, next ? '1' : '0');
       } catch {
         /* chế độ riêng tư chặn — vẫn chạy trong phiên */
       }
