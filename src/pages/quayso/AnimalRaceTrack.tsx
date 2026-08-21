@@ -160,6 +160,15 @@ export default function AnimalRaceTrack({
       const max = Math.max(0, lane.clientWidth - el.offsetWidth - 30);
       el.style.transform = `translate(${state.progress[i] * max}px,-50%)`;
 
+      // Trạng thái cán đích của TỪNG làn, phơi ra DOM.
+      //
+      // Không phải hook cho test cho vui: bất biến "công bố ngay khi đội trúng
+      // cán đích, không chờ cả đàn" chỉ chứng minh được nếu nhìn thấy được lúc
+      // công bố CÒN LÀN NÀO CHƯA VỀ. Đo gián tiếp bằng khoảng cách pixel giữa
+      // các con thì phụ thuộc nhịp khung hình — dưới tải, ảnh chụp trễ vài
+      // khung là khoảng cách co lại và bài đỏ vì máy chậm chứ không vì sai.
+      el.dataset.veDich = state.finishedAt[i] != null ? '1' : '0';
+
       const bolt = boltRefs.current[i];
       if (bolt) bolt.style.opacity = state.t < state.boostUntil[i] ? '1' : '0';
 

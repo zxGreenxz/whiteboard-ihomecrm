@@ -8377,6 +8377,7 @@ export type Database = {
           created_by: string
           draw_at: string | null
           drawn_at: string | null
+          game: string
           id: string
           organization_id: string
           prize_amount: number
@@ -8392,6 +8393,7 @@ export type Database = {
           created_by?: string
           draw_at?: string | null
           drawn_at?: string | null
+          game?: string
           id?: string
           organization_id: string
           prize_amount?: number
@@ -8407,6 +8409,7 @@ export type Database = {
           created_by?: string
           draw_at?: string | null
           drawn_at?: string | null
+          game?: string
           id?: string
           organization_id?: string
           prize_amount?: number

@@ -375,6 +375,13 @@ export class RaceAudio {
     this.ctx = null;
     this.master = null;
     this.noise = null;
-    if (ctx) void ctx.close().catch(() => undefined);
+    if (ctx) {
+      // `close()` từ chối khi ngữ cảnh đã đóng sẵn (rời trang hai lần, StrictMode
+      // gắn-nhả-gắn ở chế độ dev). Không có gì để quyết định: ngữ cảnh đóng rồi
+      // thì mục tiêu của hàm này đã đạt.
+      void ctx.close().catch(() => {
+        /* đã đóng từ trước — đúng ý muốn */
+      });
+    }
   }
 }

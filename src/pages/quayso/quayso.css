@@ -1124,9 +1124,14 @@
      Đội tên dài làm khối này rộng hơn cả làn ⇒ hiệu số ÂM ⇒ bị kẹp về 0 ⇒ CẢ ĐÀN
      ĐỨNG IM, cuộc đua không nhúc nhích một pixel nào mà cũng chẳng báo lỗi.
      Đã dính thật với tên đội 38 ký tự. Neo theo `.qs-lane` (containing block có
-     bề rộng xác định vì `.qs-runner` là absolute) nên luôn còn ít nhất 42% làn
-     để chạy, dù tên dài tới đâu. */
-  max-width: 58%;
+     bề rộng xác định vì `.qs-runner` là absolute) nên luôn còn ít nhất 34% làn
+     để chạy, dù tên dài tới đâu.
+
+     Vì sao 66% chứ không chặt hơn: tên đội thật dài 6–15 ký tự (`HK 302`,
+     `LIKESROOM 302`, `SALE HOÀNG MAI`) — ở mức này chúng KHÔNG bị cắt chữ, chỉ
+     tên bất thường mới chạm trần. Đặt 58% thì "SALE HOÀNG MAI" đã thành
+     "SALE HO…" trên điện thoại, đọc không ra đội nào. */
+  max-width: 66%;
 }
 
 .qs-lane-bolt {
@@ -1283,6 +1288,15 @@
   animation: qs-slam .45s cubic-bezier(.2, 1.5, .4, 1);
 }
 .qs-race-win strong { font-weight: 900; text-transform: uppercase; }
+
+/* Điện thoại hẹp: nén chữ và con thú để đường chạy còn đủ dài mà tên đội vẫn
+   đọc được nguyên. Không nén thì hoặc cắt chữ, hoặc con thú gần như đứng yên. */
+@media (max-width: 480px) {
+  .qs-lane-chip { font-size: 9px; padding: 2px 6px; letter-spacing: .04em; }
+  .qs-lane-animal { font-size: clamp(15px, 2.8vh, 24px); }
+  .qs-lane-bolt { font-size: 12px; }
+  .qs-runner { gap: 4px; max-width: 70%; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .qs-lane-animal.qs-lane-run { animation: none; }

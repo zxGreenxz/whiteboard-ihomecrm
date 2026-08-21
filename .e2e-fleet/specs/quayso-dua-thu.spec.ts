@@ -157,60 +157,69 @@ test.describe('Đua thú trên /quayso', () => {
     await page.goto(`/quayso?e=${s.eventId}`);
     await nhapMa(page, s.codes[0].code);
 
-    // CHỤP DOM ĐÚNG KHOẢNH KHẮC ĐỘI TRÚNG CHẠM VẠCH.
+    // CHỤP DOM ĐÚNG KHUNG HÌNH ĐỘI TRÚNG CHẠM VẠCH.
     //
-    // Mốc là lúc `paint()` gắn class `qs-lane-home` cho làn đội trúng — việc đó
-    // xảy ra NGAY TRONG khung hình phát hiện cán đích. Không lấy mốc là lúc
-    // `.qs-race-win` hiện ra: thẻ đó do React commit, mà commit rơi vào lượt
-    // xử lý sau và có thể trễ tới lúc cả đàn đã về, khi đó mọi con cùng một
-    // toạ độ và không còn phân biệt được ai về trước (đã dính đúng lỗi này).
-    const chup = page.evaluate<{ ten: string; x: number; veDich: boolean }[]>(
+    // Mốc: `paint()` gắn `qs-lane-home` cho làn đội trúng ngay trong khung hình
+    // phát hiện cán đích. Cùng khung đó, mỗi làn mang `data-ve-dich` nói nó đã
+    // về hay chưa — nhờ vậy bất biến "công bố không chờ cả đàn" đo được TRỰC
+    // TIẾP, không phải suy ra từ khoảng cách pixel (khoảng cách co lại khi máy
+    // chậm ⇒ bài đỏ vì tải chứ không vì luồng sai; đã dính đúng lỗi này).
+    const chup = page.evaluate<{
+      tenThang: string | null;
+      soVeDich: number;
+      viTri: { ten: string; x: number; ve: boolean }[];
+    }>(
       () =>
         new Promise((resolve) => {
           const doc = () =>
             Array.from(document.querySelectorAll('.qs-runner')).map((el) => {
-              const chip = el.querySelector('.qs-lane-chip');
               const thu = el.querySelector('.qs-lane-animal');
               return {
-                ten: chip?.textContent?.trim() ?? '',
+                ten: el.querySelector('.qs-lane-chip')?.textContent?.trim() ?? '',
                 x: thu ? thu.getBoundingClientRect().right : 0,
-                veDich: chip?.classList.contains('qs-lane-home') ?? false,
+                ve: (el as HTMLElement).dataset.veDich === '1',
               };
             });
           const xong = () => {
-            if (!document.querySelector('.qs-lane-chip.qs-lane-home')) return;
+            const home = document.querySelector('.qs-lane-home');
+            if (!home) return;
             obs.disconnect();
-            resolve(doc());
+            const vi = doc();
+            resolve({
+              tenThang: home.textContent?.trim() ?? null,
+              soVeDich: vi.filter((d) => d.ve).length,
+              viTri: vi,
+            });
           };
           const obs = new MutationObserver(xong);
           obs.observe(document.body, {
             childList: true,
             subtree: true,
             attributes: true,
-            attributeFilter: ['class'],
+            attributeFilter: ['class', 'data-ve-dich'],
           });
           xong();
         }),
     );
 
     await page.getByRole('button', { name: /Xem lại cuộc đua/i }).click();
-    const dan = await chup;
-    const ta = (l: typeof dan) => l.map((d) => `${d.ten}=${d.x.toFixed(0)}`).join(' | ');
+    const kq = await chup;
+    const bang = kq.viTri.map((d) => `${d.ten}${d.ve ? '(về)' : ''}=${d.x.toFixed(0)}`).join(' | ');
 
-    // (1) Làn đã cán đích tại khoảnh khắc công bố phải là ĐÚNG đội server chốt.
-    const veDich = dan.filter((d) => d.veDich);
-    expect(veDich.map((d) => d.ten), `trạng thái lúc công bố: ${ta(dan)}`).toEqual([thang.name]);
+    // (1) Làn cán đích đầu tiên phải là ĐÚNG đội server đã chốt.
+    expect(kq.tenThang, `trạng thái lúc công bố: ${bang}`).toBe(thang.name);
 
-    // (2) Nó cũng phải là con ĐI XA NHẤT — không ai vượt mặt.
-    const xa = [...dan].sort((a, b) => b.x - a.x);
-    expect(xa[0].ten, `thứ tự lúc công bố: ${ta(xa)}`).toBe(thang.name);
+    // (2) CÔNG BỐ NGAY: đúng khung hình đó mới CÓ MỘT làn về đích, cả đàn còn
+    //     lại vẫn đang chạy. Bằng số làn nghĩa là đã ngồi chờ nhau — sai luồng.
+    expect(kq.soVeDich, `công bố mà ${kq.soVeDich}/8 làn đã về ⇒ chờ nhau: ${bang}`).toBe(1);
 
-    // (3) CÔNG BỐ NGAY: đàn còn lại vẫn chưa tới vạch, tức không hề chờ nhau.
-    const conChay = xa.slice(1).filter((d) => d.x < xa[0].x - 8).length;
-    expect(conChay, `công bố mà cả đàn đã về hết ⇒ chờ nhau, sai luồng: ${ta(xa)}`)
-      .toBeGreaterThan(0);
+    // (3) Nó cũng là con đi xa nhất — không ai vượt mặt.
+    const nhat = kq.viTri.find((d) => d.ten === thang.name);
+    const khac = kq.viTri.filter((d) => d.ten !== thang.name);
+    expect(nhat, `không thấy đội trúng trên đường đua: ${bang}`).toBeTruthy();
+    expect(Math.max(...khac.map((d) => d.x)), `thứ tự lúc công bố: ${bang}`)
+      .toBeLessThan((nhat as { x: number }).x);
 
-    // Và kết quả hiện ra đúng tên đó.
     await expect(page.locator('.qs-race-win')).toContainText(thang.name);
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
