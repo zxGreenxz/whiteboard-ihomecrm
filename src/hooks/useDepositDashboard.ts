@@ -95,6 +95,19 @@ export interface RefundForfeitServerSummary extends RefundForfeitSummary {
   /** Đã tạo phiếu hoàn nhưng CHƯA ghi sổ ⇒ "chờ chi", không phải "đã hoàn". */
   pendingTotal: number;
   pendingCount: number;
+  /**
+   * Tách ô KPI: phần thật sự là CỌC và phần KHÔNG PHẢI cọc (hoàn tiền thừa /
+   * hoàn tiền phòng ngày khách không ở). Phiếu `termination.refund` CỐ Ý mang
+   * mọi khoản trả lại khách, nên nhãn "Đã hoàn cọc" một mình sẽ nói quá.
+   *
+   * Đẳng thức bảo đảm theo cấu trúc ở SQL:
+   *   refundDepositTotal        + refundNonDepositTotal        === refundTotal
+   *   pendingDepositTotal       + pendingNonDepositTotal       === pendingTotal
+   */
+  refundDepositTotal: number;
+  refundNonDepositTotal: number;
+  pendingDepositTotal: number;
+  pendingNonDepositTotal: number;
   /** Công thức GENERATED cũ, CHỈ để đối chiếu lịch sử. Không phải tiền phải trả. */
   netSettlementTotal: number;
   /** `refund_amount` âm = khách còn nợ. Không được hiện "Đã hoàn 0đ". */
@@ -142,6 +155,13 @@ export function useRefundForfeitSummary(buildingIds?: string[]) {
         orphanCount: nn(d.refund_posted_orphan_count),
         pendingTotal: nn(d.refund_pending_total),
         pendingCount: nn(d.refund_pending_count),
+        // Server cũ (chưa apply 20260822113000) không có bốn khoá này ⇒ nn() cho
+        // 0, và UI chỉ hiện dòng tách khi tổng hai phần khớp refundTotal. Nhờ vậy
+        // FE mới chạy trên server cũ thì im lặng bỏ qua, không hiện số sai.
+        refundDepositTotal: nn(d.refund_deposit_total),
+        refundNonDepositTotal: nn(d.refund_non_deposit_total),
+        pendingDepositTotal: nn(d.refund_pending_deposit_total),
+        pendingNonDepositTotal: nn(d.refund_pending_non_deposit_total),
         netSettlementTotal: nn(d.refund_net_settlement_total),
         customerDebtTotal: nn(d.customer_debt_total),
         customerDebtCount: nn(d.customer_debt_count),

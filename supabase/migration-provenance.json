@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-22T09:25:35.126Z",
+  "generatedAt": "2026-08-22T14:42:48.444Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 398,
+    "ledger-applied": 399,
     "unknown": 67,
     "catalog-proven": 217,
     "superseded": 15
@@ -8207,10 +8207,20 @@
       "name": "termination_customer_refund_items",
       "scheme": "timestamp14",
       "sha256": "0088bbab7379756870324643cc5fae02b5a0a26deaa67267c40fc5a6823ce65e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-22T09:35:16.828Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260822113000_refund_kpi_split_deposit_vs_other.sql",
+      "version": "20260822113000",
+      "name": "refund_kpi_split_deposit_vs_other",
+      "scheme": "timestamp14",
+      "sha256": "aa94ea54437357482a853f48c1da6ed2386be584b31a08c5d1ec1d0188d2916c",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:public.terminate_contract_move_out_impl",
-        "catalog:function:public.terminate_contract_move_out"
+        "catalog:function:public.get_refund_forfeit_summary"
       ]
     },
     {

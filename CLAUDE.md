@@ -117,11 +117,21 @@ này:
 
 ## Trailer commit
 
-Mọi commit kèm:
+Thay đổi do Claude Code thực hiện dùng trailer:
 
 ```text
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
+
+**Không ghi số hiệu model vào đây.** Dòng này từng ghi cứng `Claude Opus 4.7 (1M context)` và
+lặng lẽ cũ đi khi model đổi: đo ngày 22/08/2026 trên 25 commit gần nhất thì 15 commit ghi 4.7,
+10 commit ghi Opus 5, **đan xen nhau ngay trong cùng một ngày**. Mỗi phiên tự xử một kiểu —
+phiên nào theo file rule thì ghi sai model thật, phiên nào ghi đúng model thì lệch file rule.
+Cả hai đều biến `git log` thành nguồn không tin được về việc ai làm gì.
+
+Bỏ số hiệu là chữa nguyên nhân gốc, không phải chữa triệu chứng: quy ước không còn thứ để cũ đi.
+Muốn biết model nào chạy phiên nào thì tra transcript phiên, đừng suy từ trailer. Cách này cũng
+khớp `AGENTS.md`, vốn đã dùng `Co-Authored-By: Codex <noreply@openai.com>` không kèm phiên bản.
 
 Phần còn lại của quy ước commit (prefix `feat`/`fix`/`chore`, và luật stage đúng file của phiên
 mình) ở Contract §3 và §11.3.

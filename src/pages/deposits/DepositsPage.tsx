@@ -222,6 +222,16 @@ const DepositsDesktop = () => {
     Math.round(rfSummary.linkedTotal + rfSummary.orphanTotal) ===
       Math.round(rfSummary.refundTotal);
 
+  // Chỉ bóc tách cọc / không-phải-cọc khi hai phần cộng lại ĐÚNG bằng tổng, và
+  // phần không phải cọc thật sự khác 0. Server chưa apply 20260822113000 trả
+  // thiếu khoá ⇒ cả hai phần = 0 ⇒ đẳng thức vỡ (trừ khi tổng cũng 0) ⇒ dòng tự
+  // ẩn. Cùng lối phòng thủ với rfReconciles: thà không hiện còn hơn hiện số sai.
+  const refundSplitOk =
+    rfReconciles &&
+    rfSummary!.refundNonDepositTotal > 0 &&
+    Math.round(rfSummary!.refundDepositTotal + rfSummary!.refundNonDepositTotal) ===
+      Math.round(rfSummary!.refundTotal);
+
   // KPI cọc đang giữ — từ RPC aggregate (không client-reduce trên danh sách bị cap-1000).
   const kpi = useMemo(() => {
     const held_ = heldAgg.reduce((s, r) => s + r.held, 0);
@@ -462,6 +472,22 @@ const DepositsDesktop = () => {
 
           {/* ===== TAB 1: TỔNG QUAN ===== */}
           <TabsContent value="overview" className="space-y-4">
+            {/* Ô KPI mang nhãn "Đã hoàn cọc" nhưng phiếu termination.refund CỐ Ý
+                gom mọi khoản trả lại khách — hoàn tiền thừa (credit) từ lâu, và
+                hoàn tiền phòng ngày không ở từ 22/08/2026. Không bóc ra thì nhãn
+                nói quá về cọc. Chỉ hiện khi hai phần cộng lại ĐÚNG bằng tổng:
+                server chưa apply 20260822113000 sẽ trả 0/0 và dòng này tự ẩn. */}
+            {refundSplitOk && (
+              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[13px] text-sky-900">
+                Trong ô <strong>Đã hoàn cọc</strong>:{" "}
+                <strong>{formatCurrency(rfSummary!.refundDepositTotal)}</strong> là
+                tiền cọc,{" "}
+                <strong>{formatCurrency(rfSummary!.refundNonDepositTotal)}</strong>{" "}
+                <em>không phải cọc</em> (tiền thừa khách trả dư · tiền phòng ngày
+                khách không ở). Phần không phải cọc{" "}
+                <strong>tính vào lãi lỗ</strong>, khác tiền cọc là tiền giữ hộ.
+              </div>
+            )}
             {/* Dòng cảnh báo BẮT BUỘC của §1ter.1: ô KPI đếm tiền ĐÃ RA KÉT, còn
                 bảng "Hoàn / Bỏ cọc" chỉ liệt kê được phiếu nối được hồ sơ thanh
                 lý. Không hiện phần chênh ra đây thì ô KPI lại nói khác cái bảng
