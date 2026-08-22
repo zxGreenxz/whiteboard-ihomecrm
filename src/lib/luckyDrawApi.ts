@@ -195,6 +195,19 @@ export function luckyDraw(eventId: string) {
  * "lượt kế tiếp": hai máy cùng bấm thì máy sau (đang chờ khoá) sẽ thấy lượt
  * trước vừa xong và chốt luôn lượt kế — cháy một lượt chưa ai kịp xem. Có
  * `ordinal` thì lần gọi thứ hai chỉ trả lại kết quả cũ.
+ *
+ * ĐÂY LÀ ENDPOINT CÔNG KHAI (anon), có trong `scripts/definer-acl-baseline.json`.
+ * Đánh đổi đã cân nhắc, cùng loại với `lucky_draw_v1` (án lệ 20260731130000):
+ * link màn quay là link công khai nên ai cầm link cũng chốt được lượt khi ở chế
+ * độ quay tay. Chấp nhận được vì (1) kết quả mỗi lượt chốt MỘT LẦN rồi khoá,
+ * gọi lại chỉ trả kết quả cũ; (2) chỉ bốc trong các vé ĐÃ ĐIỂM DANH; (3) không
+ * lộ gì ngoài thứ trang công khai vốn đã hiện.
+ *
+ * KHÁC BIỆT SO VỚI MỘT GIẢI, phải biết: nhiều lượt nghĩa là người cầm link có
+ * thể đốt SẠCH các lượt trước khi chủ giải kịp giới thiệu, chứ không chỉ một
+ * lượt. Muốn chặt thì ĐẶT `draw_at` — có hẹn giờ thì server chặn tới giờ mới
+ * cho chốt. Giao diện người xem cố ý không có nút bấm, nhưng đó là phép lịch
+ * sự phía client, KHÔNG phải hàng rào.
  */
 export function luckyDrawRound(eventId: string, ordinal: number) {
   return publicRpc<LuckyPublicState>('lucky_draw_round_v1', {

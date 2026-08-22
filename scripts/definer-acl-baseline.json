@@ -1,8 +1,8 @@
 {
   "note": "SECURITY DEFINER functions anon-executable — allowlist baseline (Sprint 6 CI gate). Regenerate intentionally when adding a genuine public endpoint.",
   "denylistNote": "Hàm ĐÃ CỐ Ý đóng với anon. Gate fail nếu chúng anon-executable trở lại, KỂ CẢ khi nằm trong signatures. Án lệ 07/08/2026: bản vá 20260530000003 bị 20260601000000_remove_tax_fields.sql chép đè một dòng GRANT, lỗ mở lại hơn hai tháng mà gate im lặng vì hàm nằm sẵn trong allowlist.",
-  "generated": "2026-08-13",
-  "count": 48,
+  "generated": "2026-08-22",
+  "count": 49,
   "denylist": [
     "get_public_latest_invoice_by_contract(uuid)",
     "building_of_invoice(uuid)",
@@ -46,6 +46,7 @@
     "log_income_expense_action(uuid,text,text)",
     "log_public_room_events(text,jsonb)",
     "lucky_checkin_v1(text)",
+    "lucky_draw_round_v1(uuid,integer)",
     "lucky_draw_v1(uuid)",
     "lucky_event_open_v1(text)",
     "lucky_public_state_v1(uuid,text,text)",
