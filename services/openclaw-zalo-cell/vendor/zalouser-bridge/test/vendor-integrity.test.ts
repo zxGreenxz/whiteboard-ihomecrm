@@ -10,6 +10,7 @@ import {
   fetchBoundedJson,
   fetchTarballWithRedirects,
   parseCliArguments,
+  reacquireProvenanceInputs,
   verifyCommittedInputs,
   verifyExternalSourceMembership,
   verifySigstoreAttestations,
@@ -284,15 +285,75 @@ describe("reviewed upstream and legal inputs", () => {
     expect(calls).toEqual([...responses.keys()]);
   });
 
+  // Dau vao provenance TAI LAI: so NOI DUNG (JCS), khong so tung byte.
+  //
+  // Boi canh 22/08/2026: npm doi cach dinh dang response cua endpoint
+  // attestation. Noi dung khong doi mot ly, nhung phep so byte cu van do — va
+  // ghim lai bytes KHONG cuu duoc: hai lan ghim hai gia tri khac nhau, CI van
+  // do ca hai, vi runner nhan mot chuoi byte thu ba. Mot cua doi bang nhau tung
+  // byte voi endpoint song cua ben thu ba chi xanh khi ben do byte-on dinh voi
+  // moi client.
+  //
+  // Hai ca duoi khoa CHINH XAC ranh gioi moi: dinh dang khac thi QUA, noi dung
+  // khac thi CHAN. Fixture dung file DA COMMIT, khong goi mang.
+  function stubProvenanceFetch(
+    upstream: { provenanceInputs: Array<{ path: string; endpoint: string }> },
+    bienDoi: (path: string, bytes: Buffer) => Buffer,
+  ) {
+    const theoEndpoint = new Map(
+      upstream.provenanceInputs.map((item) => [
+        item.endpoint,
+        bienDoi(item.path, readFileSync(resolve(vendorRoot, item.path))),
+      ]),
+    );
+    return async (input: unknown) => {
+      const bytes = theoEndpoint.get(String(input));
+      if (!bytes) throw new Error(`endpoint ngoai fixture: ${String(input)}`);
+      return new Response(bytes, {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+  }
+
+  it("accepts a reacquired provenance input that differs only in JSON formatting", async () => {
+    const upstream = JSON.parse(readFileSync(resolve(vendorRoot, "UPSTREAM.json"), "utf8"));
+    // Dinh dang lai that su khac: xuong dong + thut le 2 dau cach.
+    const fetchImpl = stubProvenanceFetch(upstream, (_path, bytes) =>
+      Buffer.from(JSON.stringify(JSON.parse(bytes.toString("utf8")), null, 2), "utf8"),
+    );
+
+    const result = await reacquireProvenanceInputs({ vendorRoot, upstream, fetchImpl });
+
+    expect(result.inputCount).toBe(upstream.provenanceInputs.length);
+  });
+
+  it("still rejects a reacquired provenance input whose CONTENT was tampered with", async () => {
+    const upstream = JSON.parse(readFileSync(resolve(vendorRoot, "UPSTREAM.json"), "utf8"));
+    const attestationPath = "upstream/provenance/npm-attestation-bundles.json";
+    const fetchImpl = stubProvenanceFetch(upstream, (path, bytes) => {
+      if (path !== attestationPath) return bytes;
+      // Doi DUNG MOT ky tu trong chu ky DSSE — khong doi so byte.
+      const doc = JSON.parse(bytes.toString("utf8"));
+      const chuKy = doc.attestations[0].bundle.dsseEnvelope.signatures[0];
+      chuKy.sig = (chuKy.sig[0] === "A" ? "B" : "A") + chuKy.sig.slice(1);
+      return Buffer.from(JSON.stringify(doc), "utf8");
+    });
+
+    await expect(
+      reacquireProvenanceInputs({ vendorRoot, upstream, fetchImpl }),
+    ).rejects.toThrow(/reacquired provenance input mismatch/i);
+  });
+
   it("rechecks every exact M Git object, aggregate, provenance blob, and final UPSTREAM blob", async () => {
     const result = await verifyCommittedInputs({ repoRoot, vendorRoot });
 
     expect(result).toMatchObject({
-      aggregateSha256: "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b",
+      aggregateSha256: "188154e64449a535d9c131b17eb586ff7ced45643a3043f6b8f6b24b562906e7",
       inputCount: 87,
       sourceBlobCount: 75,
-      upstreamBlobOid: "1feb5726487a162aab7310f702e036ecac09bda1",
-      upstreamSha256: "989902dd5a1873025b1fef4864c4a6b9874fbaa15216201dc1c75ad053ce31ea",
+      upstreamBlobOid: "299ff7ed950083a576d40bc3df353f50d02339f8",
+      upstreamSha256: "6113e1bcd83e5d796c05065040167324fbc1d5f3493b6894909fda96bb254f79",
     });
   });
 
@@ -499,11 +560,11 @@ describe("reviewed upstream and legal inputs", () => {
         reviewedTree,
       });
       expect(result).toMatchObject({
-        aggregateSha256: "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b",
+        aggregateSha256: "188154e64449a535d9c131b17eb586ff7ced45643a3043f6b8f6b24b562906e7",
         inputCount: 87,
         sourceBlobCount: 75,
-        upstreamBlobOid: "1feb5726487a162aab7310f702e036ecac09bda1",
-        upstreamSha256: "989902dd5a1873025b1fef4864c4a6b9874fbaa15216201dc1c75ad053ce31ea",
+        upstreamBlobOid: "299ff7ed950083a576d40bc3df353f50d02339f8",
+        upstreamSha256: "6113e1bcd83e5d796c05065040167324fbc1d5f3493b6894909fda96bb254f79",
       });
     } finally {
       if (temporaryRoot) rmSync(temporaryRoot, { recursive: true, force: true });

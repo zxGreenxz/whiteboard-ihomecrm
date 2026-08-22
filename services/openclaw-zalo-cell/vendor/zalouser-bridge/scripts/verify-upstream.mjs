@@ -333,10 +333,31 @@ export async function reacquireProvenanceInputs(options) {
     }
     const committedValue = parseJsonStrict(committedBytes, `committed ${item.path}`);
     const { bytes } = await fetchBoundedJson(item.endpoint, item.cap, fetchImpl);
-    if (bytes.length !== item.size || sha256(bytes) !== item.sha256 || !bytes.equals(committedBytes)) {
+    const reacquiredValue = parseJsonStrict(bytes, `reacquired ${item.path}`);
+    // So NOI DUNG (JCS: sort khoa, bo moi khoang trang), KHONG so tung byte.
+    //
+    // VI SAO DOI (do 22/08/2026): npm doi cach DINH DANG response cua endpoint
+    // attestation. Noi dung khong doi mot ly — JCS cua ban cu va ban moi bang
+    // nhau tuyet doi, cung sha512 doi tuong duoc ky, cung chu ky DSSE — nhung
+    // phep so byte van do.
+    //
+    // Va ghim lai bytes KHONG cuu duoc: da thu that. Ghim 15645 -> CI do; ghim
+    // 15559 (dung bytes npm tra ve cho may nay, VPS Singapore, va cho chinh
+    // fetchBoundedJson) -> CI VAN do, chay lai lan hai van do. Runner nhan mot
+    // chuoi byte thu ba ma khong client nao o day tai ve duoc. Mot cua doi bang
+    // nhau TUNG BYTE voi endpoint song cua ben thu ba chi xanh khi ben do byte-on
+    // dinh voi MOI client — dieu npm khong bao dam va thuc te khong giu.
+    //
+    // Tinh chat bao mat GIU NGUYEN, khong nhuong mot buoc nao:
+    //   - Ban DA COMMIT van ghim tung byte (size + sha256 tu UPSTREAM.json) o
+    //     phep kiem ngay tren, va van nam trong M-aggregate.
+    //   - Ban TAI LAI phai trung KHOP TUNG GIA TRI: chu ky, digest, payload,
+    //     thu tu phan tu mang. JSON khong gan nghia cho khoang trang hay thu tu
+    //     khoa, nen thu bo di dung la thu khong mang thong tin.
+    //   - Doi mot byte trong chu ky hay digest van do — co test dot bien ben duoi.
+    if (jcs(reacquiredValue) !== jcs(committedValue)) {
       fail(`reacquired provenance input mismatch: ${item.path}`);
     }
-    parseJsonStrict(bytes, `reacquired ${item.path}`);
     parsed.set(item.path, committedValue);
   }
   return { inputCount: parsed.size, parsed };
