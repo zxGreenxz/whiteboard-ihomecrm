@@ -112,6 +112,22 @@ export default function MultiRoundStage({
   /** Đã diễn hết mọi lượt server đã chốt chưa. */
   const doneAll = allDrawn && playedUpTo >= (sorted[sorted.length - 1]?.ordinal ?? 0);
 
+  /* ── Ban tổ chức đặt lại kết quả → quên luôn phần đã diễn ──
+     Máy này nhớ "đã diễn tới lượt N". Nếu quản trị bấm "Huỷ kết quả" thì mọi
+     lượt về `pending`, nhưng `playedUpTo` vẫn là N — và hiệu ứng bên dưới chỉ
+     nhận lượt có `ordinal > playedUpTo`, nên khi lượt 1 được chốt lại thì máy
+     này ĐỨNG IM, không diễn gì. Thấy lượt mình đã diễn nay không còn `drawn`
+     nghĩa là có ai đó vừa đặt lại — quên hết và bắt đầu lại từ đầu. */
+  useEffect(() => {
+    if (playedUpTo === 0) return;
+    const daDien = sorted.find((r) => r.ordinal === playedUpTo);
+    if (daDien && daDien.status !== 'drawn') {
+      setPlayedUpTo(0);
+      setJustDone(null);
+      setActive(null);
+    }
+  }, [sorted, playedUpTo]);
+
   /* ── Người xem: tự diễn lượt nào server đã chốt mà mình chưa diễn ── */
   useEffect(() => {
     if (active) return;

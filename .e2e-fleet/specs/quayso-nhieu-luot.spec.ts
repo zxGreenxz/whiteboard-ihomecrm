@@ -234,6 +234,39 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
 
+  test('ban tổ chức ĐẶT LẠI giữa chừng: trang người xem quay về lượt 1, không đứng im', async ({ page }) => {
+    test.setTimeout(150_000);
+    const errors = trackConsoleErrors(page);
+    const s = await seed();
+    const [{ code }] = await sql<{ code: string }>(
+      `select code from public.lucky_event_teams where event_id = '${s.eventId}' limit 1;`);
+
+    await page.goto(`/quayso/${s.slug}`);
+    await page.getByLabel(/Mã điểm danh của đội/i).fill(code);
+    await page.getByRole('button', { name: /^Điểm danh$/i }).click();
+
+    // Diễn xong lượt 1 trên máy người xem.
+    await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
+    await expect(page.getByText('Kết quả lượt 1')).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('.qs-prize-done')).toHaveCount(3);
+
+    // Ban tổ chức huỷ kết quả (đúng việc `lucky_admin_reset_draw_v1` làm).
+    await sql(`delete from public.lucky_round_winners where event_id = '${s.eventId}';`);
+    await sql(`update public.lucky_event_rounds set status='pending', drawn_at=null
+               where event_id = '${s.eventId}';`);
+    await sql(`update public.lucky_events set status='open', winner_team_id=null, drawn_at=null
+               where id = '${s.eventId}';`);
+
+    // Máy này phải QUÊN phần đã diễn, không thì lượt 1 chốt lại nó sẽ đứng im.
+    await expect(page.locator('.qs-prize-done')).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByText(/Chờ ban tổ chức mở lượt 1/)).toBeVisible();
+
+    // Chốt lại lượt 1 → phải diễn lại được.
+    await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
+    await expect(page.getByText('Kết quả lượt 1')).toBeVisible({ timeout: 60_000 });
+    expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
+  });
+
   test('người xem tự diễn lại lượt mà ban tổ chức vừa chốt', async ({ page }) => {
     test.setTimeout(120_000);
     const errors = trackConsoleErrors(page);
