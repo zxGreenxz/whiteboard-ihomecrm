@@ -29,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ArrowLeft, Ban, LogOut, ReceiptText } from "lucide-react";
+import { Loader2, ArrowLeft, Ban, LogOut, ReceiptText, Undo2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,7 +66,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TerminationExtraCharges } from "./TerminationExtraCharges";
-import type { ExtraChargeItem } from "@/lib/contractValidation";
+import { TerminationRefundItems } from "./TerminationRefundItems";
+import type { ExtraChargeItem, RefundItem } from "@/lib/contractValidation";
+import { computeTerminationSettlement } from "@/lib/terminationSettlement";
 import { todayISO } from '@/lib/collect';
 
 type TerminationType = "FORFEIT" | "MOVE_OUT";
@@ -554,6 +556,12 @@ function StepMoveOut({
   const [extraCharges, setExtraCharges] = useState<ExtraChargeItem[]>([]);
   const extraTotal = extraCharges.reduce((s, it) => s + (it.amount || 0), 0);
 
+  // Khoản MÌNH trả lại khách (tiền phòng ngày không ở…) — thêm 22/08/2026.
+  // Trước đó không có ô nào nhập được: hoàn cọc kẹp ở cọc thực thu, credit kẹp ở
+  // lot đang có, còn "Thu thêm" chỉ nhận số dương.
+  const [refundItems, setRefundItems] = useState<RefundItem[]>([]);
+  const refundTotal = refundItems.reduce((s, it) => s + (it.amount || 0), 0);
+
   // A5 (audit 03/07): khi quyết toán âm (khách còn phải trả), cho chọn
   // "đã trả ngay" (ghi thu) hay "ghi nợ" (giữ công nợ thật chờ thu).
   const [shortfallMode, setShortfallMode] = useState<"PAID" | "DEBT">("PAID");
@@ -593,9 +601,24 @@ function StepMoveOut({
     }, 0);
   }, [unpaidInvoices]);
 
-  // Settlement formula: deposit_refund + excess_rent - outstanding_debt - thu thêm
+  // Phép quyết toán nằm ở lib/terminationSettlement — MỘT nguồn sự thật, có
+  // property test, và soi gương đúng phần toán trong
+  // public.terminate_contract_move_out_impl. Màn xác nhận nói con số nào thì
+  // server phải ghi đúng con số đó, vì thao tác này không hoàn tác được.
   const totalDeductions = outstandingDebt + extraTotal;
-  const settlementAmount = depositRefund + excessRent - totalDeductions;
+  const settlement = useMemo(
+    () =>
+      computeTerminationSettlement({
+        depositPaid,
+        depositRefundRequested: depositRefund,
+        excessRent,
+        outstandingDebt,
+        extraChargesTotal: extraTotal,
+        customerRefundTotal: refundTotal,
+      }),
+    [depositPaid, depositRefund, excessRent, outstandingDebt, extraTotal, refundTotal],
+  );
+  const settlementAmount = settlement.net;
 
   const onSubmit = (data: TerminateMoveOutFormData) => {
     setPendingData(data);
@@ -614,6 +637,7 @@ function StepMoveOut({
         outstandingDebt,
         notes: pendingData.notes,
         extraCharges,
+        refundItems,
         shortfallMode,
         receiptAccountId: receiptAccountId || null,
       },
@@ -820,12 +844,22 @@ function StepMoveOut({
                       name={field.name}
                     />
                   </FormControl>
-                  {creditBalance > 0 && (
+                  {/* Dòng chữ cũ nói tính năng "chưa được kích hoạt" đã SAI từ
+                      28/07/2026: migration 20260728150000 đặt
+                      customer.credit.apply.v1 sang mode=ON và route CANONICAL cho
+                      cả hai org. Nó đang bảo người dùng rằng một ô chạy được là
+                      vô dụng. */}
+                  {creditBalance > 0 ? (
                     <p className="text-[11px] text-blue-700">
-                      Khách đang có {formatVND(creditBalance)}đ credit (tiền trả
-                      dư). Mặc định <b>0</b> — tính năng áp credit vào quyết toán
-                      hiện <b>chưa được kích hoạt</b>, nhập số lớn hơn 0 sẽ bị hệ
-                      thống từ chối. Khoản dư giữ nguyên, hoàn hoặc cấn trừ riêng.
+                      Khách đang có <b>{formatVND(creditBalance)}đ</b> credit (tiền
+                      trả dư). Nhập tối đa bằng số đó để cấn vào quyết toán; phần
+                      không nhập vẫn treo trên hợp đồng sau khi thanh lý.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      Hợp đồng này không có tiền trả dư — để trống. Muốn trả lại
+                      tiền phòng những ngày khách không ở thì dùng mục{" "}
+                      <b>Hoàn lại khách</b> bên dưới.
                     </p>
                   )}
                   <FormMessage />
@@ -850,6 +884,44 @@ function StepMoveOut({
                 Các khoản này vào <strong>hoá đơn thanh lý riêng</strong> (kỳ tháng
                 trả phòng) và được khấu trừ vào cọc — <strong>không</strong> sửa hoá
                 đơn tiền phòng hằng tháng.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Section 3c: Hoàn lại khách — vế ngược của "Thu thêm". Chỉ có ở nhánh
+            rời phòng; nhánh bỏ cọc không có mục này (bút toán bỏ cọc bị
+            guard_termination_forfeit_voucher_v1 khoá cứng). */}
+        <div className="border-t pt-4">
+          <TerminationRefundItems
+            contract={contract}
+            moveOutDate={form.watch("move_out_date")}
+            onChange={setRefundItems}
+          />
+          {refundTotal > 0 && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+              <Undo2 className="h-4 w-4 mt-0.5 shrink-0" />
+              <p>
+                {settlement.owedApplied > 0 ? (
+                  <>
+                    <strong>{formatVND(settlement.owedApplied)} đ</strong> được{" "}
+                    <strong>cấn thẳng vào công nợ</strong> (không ra tiền mặt)
+                    {settlement.refundOwed > 0 ? (
+                      <>
+                        , còn <strong>{formatVND(settlement.refundOwed)} đ</strong>{" "}
+                        chi trả khách trên phiếu hoàn.
+                      </>
+                    ) : (
+                      "."
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <strong>{formatVND(refundTotal)} đ</strong> cộng vào phiếu chi
+                    hoàn khách. Khoản này <strong>giảm lợi nhuận</strong> — khác
+                    hoàn cọc (tiền giữ hộ, ngoài KQKD).
+                  </>
+                )}
               </p>
             </div>
           )}
@@ -880,6 +952,25 @@ function StepMoveOut({
                   {formatVND(excessRent)} đ
                 </span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Hoàn lại khách</span>
+                <span className="font-medium tabular-nums text-emerald-600">
+                  {formatVND(refundTotal)} đ
+                </span>
+              </div>
+              {refundItems
+                .filter((it) => (it.amount || 0) > 0)
+                .map((it, i) => (
+                  <div
+                    key={i}
+                    className="flex justify-between text-xs text-muted-foreground pl-4"
+                  >
+                    <span>· {it.description || it.kind}</span>
+                    <span className="tabular-nums">
+                      {formatVND(it.amount || 0)} đ
+                    </span>
+                  </div>
+                ))}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tổng thu thêm</span>
                 <span className="font-medium tabular-nums text-red-600">
@@ -1062,6 +1153,30 @@ function StepMoveOut({
                     <span>Tiền thừa (credit) áp vào quyết toán</span>
                     <b className="tabular-nums">{formatVND(excessRent)} đ</b>
                   </div>
+                )}
+                {refundTotal > 0 && (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Hoàn lại khách</span>
+                      <b className="tabular-nums">{formatVND(refundTotal)} đ</b>
+                    </div>
+                    {settlement.owedApplied > 0 && (
+                      <div className="flex justify-between pl-4 text-xs text-muted-foreground">
+                        <span>· cấn vào công nợ (không ra tiền mặt)</span>
+                        <span className="tabular-nums">
+                          {formatVND(settlement.owedApplied)} đ
+                        </span>
+                      </div>
+                    )}
+                    {settlement.refundOwed > 0 && (
+                      <div className="flex justify-between pl-4 text-xs text-muted-foreground">
+                        <span>· chi trả khách (giảm lợi nhuận)</span>
+                        <span className="tabular-nums">
+                          {formatVND(settlement.refundOwed)} đ
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
                 {/* [A2] Sau khi bỏ auto-fill, excessRent mặc định = 0 nên màn
                     hình xác nhận cuối cùng sẽ KHÔNG nhắc gì tới credit của

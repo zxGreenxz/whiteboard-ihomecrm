@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
-import type { ExtraChargeItem } from "@/lib/contractValidation";
+import type { ExtraChargeItem, RefundItem } from "@/lib/contractValidation";
 import { rpcNullable } from "@/lib/rpcNullable";
 import {
   buildForfeitWithCreditRpcArgs,
@@ -243,6 +243,8 @@ export const useTerminateMoveOut = () => {
       outstandingDebt?: number;
       notes?: string;
       extraCharges?: ExtraChargeItem[];
+      /** Khoản MÌNH trả lại khách (tiền phòng ngày không ở…) — 22/08/2026. */
+      refundItems?: RefundItem[];
       // A5 (audit 03/07): 'PAID' = khách đã trả phần thiếu tại chỗ (ghi thu ngay,
       // như cũ); 'DEBT' = ghi nợ — hoá đơn giữ công nợ thật chờ thu, KHÔNG tạo
       // phiếu "Khách trả thêm" (tránh doanh thu ảo khi khách chưa trả).

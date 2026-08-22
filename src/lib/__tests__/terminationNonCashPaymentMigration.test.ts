@@ -1,6 +1,49 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
+
+const MIG_DIR = join(process.cwd(), "supabase", "migrations");
+
+/**
+ * Thân hàm ĐANG CHẠY = lần CREATE cuối cùng trên toàn bộ thư mục migration.
+ *
+ * Cần thiết từ 22/08/2026: đợt "Hoàn lại khách" phải DROP rồi CREATE lại
+ * public.terminate_contract_move_out để thêm tham số p_refund_items, nên định
+ * nghĩa sống đã dời sang file khác. Đọc file cũ thì vế 'actual' thành hằng số —
+ * test xanh vĩnh viễn kể cả khi hàm thật đổi hành vi.
+ * Xem scripts/check-migration-test-liveness.mjs.
+ */
+function thanHamDangChay(tenHam: string): string {
+  const signature = `FUNCTION public.${tenHam}(`;
+  const files = readdirSync(MIG_DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  let hit: string | null = null;
+  for (const f of files) {
+    const sql = readFileSync(join(MIG_DIR, f), "utf8");
+    if (sql.includes(signature)) hit = sql;
+  }
+  expect(hit, `không thấy định nghĩa nào của ${tenHam}`).not.toBeNull();
+  const sql = hit as string;
+  // Tên hàm còn xuất hiện ở REVOKE/GRANT/postflight NẰM SAU phần thân, nên
+  // lastIndexOf() trần sẽ rơi vào một dòng cấp quyền và không tìm thấy thân.
+  // Chỉ nhận lần xuất hiện thật sự mở đầu một định nghĩa.
+  let start = -1;
+  for (let i = sql.indexOf(signature); i >= 0; i = sql.indexOf(signature, i + 1)) {
+    if (/\bCREATE\s+(OR\s+REPLACE\s+)?$/i.test(sql.slice(Math.max(0, i - 24), i))) {
+      start = i;
+    }
+  }
+  expect(start, `không thấy định nghĩa của ${tenHam}`).toBeGreaterThan(-1);
+  // Thẻ dollar-quote thay đổi theo cách sinh: `$$` khi viết tay, `$function$`
+  // khi lấy ra bằng pg_get_functiondef.
+  const tag = /\bAS (\$[A-Za-z_]*\$)/.exec(sql.slice(start))?.[1] ?? "$$";
+  const open = sql.indexOf(tag, start);
+  const close = sql.indexOf(tag, open + tag.length);
+  expect(close, signature).toBeGreaterThan(open);
+  return sql.slice(start, close + tag.length);
+}
 
 const migrationPath =
   "supabase/migrations/20260721135500_termination_non_cash_payment_semantics.sql";
@@ -89,9 +132,9 @@ describe("termination non-cash payment migration", () => {
     const forfeitWrapper = functionBody(
       "CREATE OR REPLACE FUNCTION public.terminate_contract_forfeit(",
     );
-    const moveOutWrapper = functionBody(
-      "CREATE OR REPLACE FUNCTION public.terminate_contract_move_out(",
-    );
+    // Đo ĐỊNH NGHĨA SỐNG: hàm này đã được DROP/CREATE lại ở đợt "Hoàn lại
+    // khách" (22/08/2026) nên không còn nằm trong file migration của đợt này.
+    const moveOutWrapper = thanHamDangChay("terminate_contract_move_out");
     expect(forfeitWrapper).toContain("begin_accounting_chain_write_v1");
     expect(forfeitWrapper).toContain("terminate_contract_forfeit_impl");
     expect(forfeitWrapper).toContain("end_accounting_chain_write_v1");

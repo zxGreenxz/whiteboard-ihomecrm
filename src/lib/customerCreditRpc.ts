@@ -178,6 +178,8 @@ export function buildMoveOutWithCreditRpcArgs(
     outstandingDebt?: number;
     notes?: string;
     extraCharges?: Json[];
+    /** Khoản MÌNH trả lại khách (tiền phòng ngày không ở…) — thêm 22/08/2026. */
+    refundItems?: Json[];
     shortfallMode?: "PAID" | "DEBT";
     receiptAccountId?: string | null;
   },
@@ -195,6 +197,9 @@ export function buildMoveOutWithCreditRpcArgs(
     p_shortfall_mode: input.shortfallMode ?? "PAID",
     p_receipt_account_id: input.receiptAccountId ?? null,
     p_idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
+    // Nằm trong payload_hash phía server: hai cú thanh lý khác khoản hoàn KHÔNG
+    // được coi là replay của nhau.
+    p_refund_items: input.refundItems ?? [],
   };
 }
 

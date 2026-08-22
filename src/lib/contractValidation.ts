@@ -89,6 +89,24 @@ export const extraChargeItemSchema = z.object({
 });
 export type ExtraChargeItem = z.infer<typeof extraChargeItemSchema>;
 
+// Một dòng "Hoàn lại khách" khi thanh lý — khoản MÌNH trả lại khách, ngược
+// chiều với "Thu thêm". Gửi xuống RPC dưới dạng mảng jsonb p_refund_items.
+//  - PRORATED_REFUND: tiền phòng+nước+PDV của `days` ngày khách KHÔNG ở.
+//  - CUSTOM:          khoản tuỳ ý {tên, số tiền}.
+//
+// Vì sao không nhét chung vào extraChargeItemSchema với số tiền âm: server tính
+// hai vế theo hai đường kế toán khác hẳn nhau — "Thu thêm" vào hoá đơn thanh lý
+// và làm tăng công nợ, còn khoản hoàn sinh bút toán giảm doanh thu (KQKD) rồi
+// mới ra tiền. Trộn một mảng sẽ buộc server đoán ý theo dấu của con số.
+export const refundItemSchema = z.object({
+  kind: z.enum(['PRORATED_REFUND', 'CUSTOM']),
+  description: z.string().min(1, 'Tên khoản hoàn không được để trống'),
+  amount: z.number().min(0, 'Số tiền không được âm'),
+  days: z.number().min(0).optional(),
+  unit_price: z.number().min(0).optional(),
+});
+export type RefundItem = z.infer<typeof refundItemSchema>;
+
 export const terminateForfeitFormSchema = z.object({
   forfeit_date: z.string().min(1, 'Ngày bỏ cọc không được để trống'),
 });
