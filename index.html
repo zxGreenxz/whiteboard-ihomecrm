@@ -312,7 +312,8 @@
     <link rel="preconnect" href="https://tryymsxyyckgbrmmvozx.supabase.co" crossorigin />
 
     <!-- Fonts gộp 1 request (tránh CSS @import render-blocking + nối tiếp trong
-         các kit mobile): Baloo 2 (nhãn QR) + Be Vietnam Pro + Space Mono (app kit).
+         các kit mobile): Baloo 2 (nhãn QR) + Be Vietnam Pro + Space Mono (app kit)
+         + Lora (tiêu đề Trung tâm mạng).
          Nạp NON-BLOCKING (preload → đổi rel khi CSS về): font CSS không được phép
          chặn first paint của #app-splash — nếu request này dính dead-socket (án lệ
          Android 07/2026) mà render-blocking thì user thấy màn trắng thay vì splash
@@ -322,13 +323,13 @@
     <link
       rel="preload"
       as="style"
-      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Lora:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
       onload="this.onload=null;this.rel='stylesheet'"
     />
     <noscript>
       <link
         rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Lora:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
       />
     </noscript>
   </head>
