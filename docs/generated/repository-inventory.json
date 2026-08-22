@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 539,
-  "soFileDocBangFs": 175,
-  "tongLoiGoi": 442,
-  "khongPhanLoaiDuoc": 236,
+  "tongSoFileTest": 541,
+  "soFileDocBangFs": 176,
+  "tongLoiGoi": 448,
+  "khongPhanLoaiDuoc": 239,
   "theoLoai": {
     "tai-lieu": {
       "soFile": 8,
@@ -23,7 +23,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 50,
+      "soFile": 51,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -76,22 +76,22 @@
       "khongPhanLoaiDuoc": 17
     },
     {
+      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/vendor-integrity.test.ts",
+      "soGoi": 20,
+      "loai": {
+        "manifest": 11,
+        "tai-lieu": 2,
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 6
+    },
+    {
       "file": "infra/network-center-worker/test/deploymentHostRuntime.test.ts",
       "soGoi": 19,
       "loai": {
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 17
-    },
-    {
-      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/vendor-integrity.test.ts",
-      "soGoi": 17,
-      "loai": {
-        "manifest": 9,
-        "tai-lieu": 2,
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 5
     },
     {
       "file": "scripts/__tests__/network-center-worker-release-readback.test.mjs",
@@ -351,6 +351,14 @@
       "khongPhanLoaiDuoc": 3
     },
     {
+      "file": "src/lib/__tests__/terminationNonCashPaymentMigration.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "infra/network-center-worker/test/container.test.ts",
       "soGoi": 3,
       "loai": {
@@ -402,14 +410,6 @@
       "soGoi": 3,
       "loai": {},
       "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "src/lib/__tests__/terminationNonCashPaymentMigration.test.ts",
-      "soGoi": 3,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "infra/network-center-worker/test/backupStore.test.ts",
@@ -620,6 +620,14 @@
     },
     {
       "file": "src/lib/__tests__/planHardeningMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/terminationCustomerRefundMigration.test.ts",
       "soGoi": 2,
       "loai": {
         "sql": 1
