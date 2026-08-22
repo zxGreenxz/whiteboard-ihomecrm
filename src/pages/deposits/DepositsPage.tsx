@@ -156,7 +156,7 @@ const DepositsDesktop = () => {
   // Hạn phải làm hợp đồng (bảng reservation_hold_deadlines). Chưa tải xong thì
   // `holdDeadlines` rỗng ⇒ chưa phiếu nào bị xếp "quá hạn làm HĐ" — thà thiếu
   // một nhóm trong nửa giây còn hơn tô đỏ nhầm.
-  const { data: holdDeadlines = {} } = useReservationHoldDeadlines();
+  const { data: holdTerms = {} } = useReservationHoldDeadlines();
   const { data: resvSummary } = useReservationDepositSummary(buildingIds);
   // KPI "Đã hoàn cọc" = TIỀN THẬT ĐÃ RA KHỎI KÉT (quyết định của chủ 30/07,
   // §1ter.1) ⇒ phải lấy từ server, xem khối chú thích ở `refundKpi` bên dưới.
@@ -289,9 +289,9 @@ const DepositsDesktop = () => {
         today: vnTodayISO(),
         held: heldFiltered,
         reservations,
-        holdDeadlines,
+        holdTerms,
       }),
-    [heldFiltered, reservations, holdDeadlines],
+    [heldFiltered, reservations, holdTerms],
   );
   const todoCount = countTasks(workQueue);
   const ledgerCount = heldFiltered.length + reservations.length;
@@ -309,10 +309,15 @@ const DepositsDesktop = () => {
 
   const handleEditDeadline = (task: DepositTask) => {
     if (!task.voucherId) return;
+    const terms = holdTerms[task.voucherId];
     setDeadlineTarget({
       voucherId: task.voucherId,
       label: `P.${task.roomName} · ${task.buildingName}${task.code ? ` · ${task.code}` : ""}`,
-      current: task.dueDate,
+      holdUntil: terms?.holdUntil ?? null,
+      topupDueDate: terms?.topupDueDate ?? null,
+      depositTarget: terms?.depositTarget ?? null,
+      // `paidAmount` chỉ có ở thẻ thiếu cọc; thẻ khác in số cọc nên dùng amount.
+      paidAmount: task.paidAmount ?? task.amount,
     });
   };
 

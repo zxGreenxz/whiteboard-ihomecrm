@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-22T14:42:48.444Z",
+  "generatedAt": "2026-08-22T16:51:24.409Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 399,
+    "ledger-applied": 401,
     "unknown": 67,
-    "catalog-proven": 217,
+    "catalog-proven": 216,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -8218,9 +8218,20 @@
       "name": "refund_kpi_split_deposit_vs_other",
       "scheme": "timestamp14",
       "sha256": "aa94ea54437357482a853f48c1da6ed2386be584b31a08c5d1ec1d0188d2916c",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.get_refund_forfeit_summary"
+        "receipt:2026-08-22T14:54:21.597Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260822120000_han_bo_sung_coc_cho_phieu_giu_cho.sql",
+      "version": "20260822120000",
+      "name": "han_bo_sung_coc_cho_phieu_giu_cho",
+      "scheme": "timestamp14",
+      "sha256": "cb86066f6e193bd4c92a509291c6ea970884626895b98fd1e5df9c7eda86e09f",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-22T16:30:51.496Z|bien-nhan-backup"
       ]
     },
     {

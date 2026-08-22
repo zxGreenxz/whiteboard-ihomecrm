@@ -39,7 +39,7 @@ import { getSessionUser } from "@/lib/authSession";
 import { tryPlaceRoomHold } from "@/lib/reservationHold";
 import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
 import { useCreateSaleBonusFromDeposit } from "@/hooks/useSaleBonus";
-import { useSetReservationHoldDeadline } from "@/hooks/useReservationHoldDeadlines";
+import { useSetReservationHoldTerms } from "@/hooks/useReservationHoldDeadlines";
 import { useCreateTenant, useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -84,6 +84,16 @@ const depositSchema = z.object({
   amount: z.number().min(0, "Số tiền phải >= 0"),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
   hold_until: z.string().optional(),
+  /**
+   * Cọc PHẢI ĐỦ, và hạn khách phải bổ sung cho đủ.
+   *
+   * Ca chủ nêu 22/08/2026: phòng 5tr, thu 2tr ngày 22/08, phải đủ 5tr trước
+   * 25/08, nhận phòng 29/08 — quá 25/08 chưa đủ thì huỷ phiếu và mất cọc.
+   * Đây là mốc KHÁC `hold_until`: lỡ nó là khách mất TIỀN, lỡ `hold_until` là
+   * chủ mất PHÒNG.
+   */
+  deposit_target: z.number().min(0).optional(),
+  topup_due_date: z.string().optional(),
   ctv_name: z.string().optional(),
   notes: z.string().optional(),
   // Sổ quỹ ghi cọc — BẮT BUỘC chọn (quyết định chủ 20/08/2026). Trước đây dialog
@@ -117,7 +127,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
 
   const createIE = useCreateIncomeExpense();
   const createSaleBonus = useCreateSaleBonusFromDeposit();
-  const setHoldDeadline = useSetReservationHoldDeadline();
+  const setHoldTerms = useSetReservationHoldTerms();
   const createTenant = useCreateTenant();
   const { data: tenants = [] } = useTenantsLegacy();
   const { data: rooms = [] } = useRooms();
@@ -153,6 +163,8 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       amount: 0,
       deposit_date: todayISO(),
       hold_until: "",
+      deposit_target: 0,
+      topup_due_date: "",
       ctv_name: "",
       notes: "",
       account_id: "",
@@ -187,6 +199,25 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
 
   // ── Hạn phải làm hợp đồng suy ra từ "giữ phòng đến" ───────────────────────
   const holdDays = diffDaysISO(holdUntil || null, depositDate || null);
+
+  // ── Cọc cần đủ + hạn bổ sung ───────────────────────────────────────────────
+  const depositTarget = form.watch("deposit_target") ?? 0;
+  const topupDue = form.watch("topup_due_date");
+  const amountNow = form.watch("amount") ?? 0;
+
+  // Mặc định "cọc cần đủ" = giá phòng (lệ cọc một tháng), sửa được. Đổi phòng
+  // thì kéo lại theo phòng MỚI, cùng lý do với ô giá phòng.
+  useEffect(() => {
+    if (!selectedRoomId) return;
+    form.setValue("deposit_target", listedPrice, { shouldDirty: false });
+  }, [selectedRoomId, listedPrice, form]);
+
+  const conThieu = Math.max(0, Math.round(depositTarget) - Math.round(amountNow));
+  const topupDays = diffDaysISO(topupDue || null, depositDate || null);
+  // Bổ sung sau khi phòng đã nhả khoá là vô nghĩa — writer cũng chặn, nhưng nói
+  // ngay tại form thì người nhập sửa được trước khi bấm lưu.
+  const topupSauHold =
+    !!topupDue && !!holdUntil && (diffDaysISO(topupDue, holdUntil) ?? 0) > 0;
 
   const onSubmit = async (data: DepositFormValues) => {
     if (submitting) return;
@@ -300,16 +331,26 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       //
       // Hỏng ở đây KHÔNG được kéo đổ phiếu cọc: tiền đã thu, phiếu đã tạo. Báo
       // rõ để người dùng đặt lại hạn thay vì im lặng nuốt.
-      if (data.hold_until && depositId) {
+      // Chỉ ghi "cọc cần đủ" khi nó THỰC SỰ lớn hơn số vừa thu. Bằng nhau nghĩa
+      // là đã đủ ngay từ đầu — ghi vào chỉ tạo ra một mốc không bao giờ dùng tới.
+      const targetToSave =
+        Number(data.deposit_target) > Number(data.amount)
+          ? Number(data.deposit_target)
+          : null;
+      const topupToSave = targetToSave !== null ? data.topup_due_date || null : null;
+
+      if ((data.hold_until || topupToSave || targetToSave !== null) && depositId) {
         try {
-          await setHoldDeadline.mutateAsync({
+          await setHoldTerms.mutateAsync({
             incomeExpenseId: depositId,
-            holdUntil: data.hold_until,
+            holdUntil: data.hold_until || null,
+            topupDueDate: topupToSave,
+            depositTarget: targetToSave,
           });
         } catch {
           toast.error(
-            "Phiếu cọc đã tạo, nhưng CHƯA ghi được hạn làm hợp đồng — " +
-              "vào thẻ phiếu trên trang Quản lý Cọc để đặt lại.",
+            "Phiếu cọc đã tạo, nhưng CHƯA ghi được kỳ hạn (hạn làm HĐ / hạn bổ " +
+              "sung cọc) — vào thẻ phiếu trên trang Quản lý Cọc để đặt lại.",
           );
         }
       }
@@ -597,6 +638,104 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                   )}
                 </div>
               )}
+
+              {/* ── CỌC CẦN ĐỦ + HẠN BỔ SUNG ────────────────────────────────
+                  Mốc thứ hai, KHÁC "giữ phòng đến". Ca chủ nêu 22/08/2026:
+                  phòng 5tr, thu 2tr ngày 22/08, phải đủ 5tr trước 25/08, nhận
+                  phòng 29/08. Lỡ mốc này là khách MẤT CỌC — nên nó phải có chỗ
+                  riêng, không nhét chung vào ghi chú. */}
+              <div className="rounded-lg border p-3 space-y-3">
+                <div className="text-sm font-medium">
+                  Cọc cần đủ &amp; hạn bổ sung{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (để trống nếu khách đã cọc đủ ngay)
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="deposit_target"
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <FormLabel className="text-xs">Cọc cần đủ</FormLabel>
+                          {selectedRoomId && listedPrice > 0 && (
+                            <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10.5px] font-bold text-emerald-700">
+                              mặc định = giá phòng
+                            </span>
+                          )}
+                        </div>
+                        <FormControl>
+                          <CurrencyInput
+                            value={field.value ?? 0}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="topup_due_date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">Hạn bổ sung cho đủ</FormLabel>
+                        <FormControl>
+                          <DateInput
+                            value={field.value || ""}
+                            onChange={field.onChange}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {conThieu > 0 && (
+                  <div
+                    className={
+                      "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-[12.5px] " +
+                      (topupSauHold || (topupDays !== null && topupDays < 0)
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-amber-200 bg-amber-50 text-amber-800")
+                    }
+                  >
+                    <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
+                    {topupSauHold ? (
+                      <span>
+                        Hạn bổ sung <strong>sau</strong> ngày hết hạn giữ phòng — tới lúc đó
+                        phòng đã nhả khoá. Đặt hạn bổ sung trước{" "}
+                        <strong>{fmtVNDate(holdUntil!)}</strong>.
+                      </span>
+                    ) : topupDays !== null && topupDays < 0 ? (
+                      <span>
+                        Hạn bổ sung đang <strong>trước</strong> ngày đặt cọc — kiểm tra lại.
+                      </span>
+                    ) : (
+                      <span>
+                        Còn thiếu <strong>{formatCurrency(conThieu)}</strong>
+                        {topupDue ? (
+                          <>
+                            {" "}— khách phải bổ sung cho đủ{" "}
+                            <strong>{formatCurrency(depositTarget)}</strong> trước{" "}
+                            <strong>{fmtVNDate(topupDue)}</strong>. Quá ngày này phiếu vào
+                            nhóm "quá hạn bổ sung cọc" trên bàn xử lý (hệ thống KHÔNG tự
+                            huỷ, không tự tịch thu).
+                          </>
+                        ) : (
+                          <> — chưa đặt hạn bổ sung, sẽ không ai được nhắc.</>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Sổ quỹ ghi cọc — bắt buộc. Tiền cọc vào sổ nào phải do người thu
                   nói rõ, không để hệ thống đoán. */}

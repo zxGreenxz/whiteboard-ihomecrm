@@ -36,6 +36,9 @@ function taskHeadline(task: DepositTask): string {
   switch (task.kind) {
     case "HOLD_OVERDUE":
       return `QUÁ HẠN LÀM HĐ · ${task.buildingName}`;
+    case "RESV_TOPUP_OVERDUE":
+    case "RESV_TOPUP_DUE_SOON":
+      return `THIẾU CỌC GIỮ CHỖ · ${task.buildingName}`;
     case "TOPUP_OVERDUE":
     case "TOPUP_DUE_SOON":
       return `THIẾU CỌC · ${task.buildingName}`;
@@ -69,8 +72,14 @@ function taskDeadlineText(task: DepositTask): string {
       : "chưa đặt hạn";
   }
   const day = formatISODayMonth(dueDate);
-  const isHold = task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY";
-  const label = isHold ? "hạn làm HĐ" : "hẹn";
+  // Ba loại mốc, ba tên khác nhau. Gọi mốc bổ sung cọc là "hạn làm HĐ" thì
+  // người đọc sẽ tưởng còn thời gian tới ngày ký, trong khi cái sắp mất là CỌC.
+  const label =
+    task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY"
+      ? "hạn làm HĐ"
+      : task.kind === "RESV_TOPUP_OVERDUE" || task.kind === "RESV_TOPUP_DUE_SOON"
+        ? "hạn bổ sung"
+        : "hẹn";
   if (d < 0) return `${label} ${day} · trễ ${-d} ngày`;
   if (d === 0) return `${label} ${day} · hôm nay`;
   return `${label} ${day} · còn ${d} ngày`;
@@ -94,7 +103,13 @@ function TaskCard({ task, tone, actions }: {
   actions: WorkQueueActions;
 }) {
   const overdue = tone === "danger";
-  const isHold = task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY";
+  // Mọi thẻ đi từ PHIẾU giữ chỗ đều đặt/sửa kỳ hạn được và tạo hợp đồng được —
+  // kể cả thẻ đang thiếu cọc (chủ có thể chốt ký sớm rồi thu nốt sau).
+  const isHold =
+    task.kind === "HOLD_OVERDUE" ||
+    task.kind === "HOLD_READY" ||
+    task.kind === "RESV_TOPUP_OVERDUE" ||
+    task.kind === "RESV_TOPUP_DUE_SOON";
   return (
     <div
       className={
@@ -153,7 +168,7 @@ function TaskCard({ task, tone, actions }: {
         )}
         {isHold && (
           <Button size="sm" variant="outline" onClick={() => actions.onEditDeadline(task)}>
-            {task.dueDate ? "Gia hạn giữ chỗ" : "Đặt hạn"}
+            {task.dueDate ? "Sửa kỳ hạn" : "Đặt kỳ hạn"}
           </Button>
         )}
         {isHold && actions.canCreateContract && task.roomId && (

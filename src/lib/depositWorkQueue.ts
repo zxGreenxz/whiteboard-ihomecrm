@@ -20,11 +20,18 @@ import type { ReservationDepositRow } from "@/hooks/useDeposits";
 /** Số ngày tính là "sắp đến hạn" (nằm trong hàng đợi nhưng chưa trễ). */
 export const DUE_SOON_DAYS = 7;
 
+/** Chênh dưới mức này coi như đã đủ (khớp DEPOSIT_SHORTFALL_THRESHOLD). */
+export const DEPOSIT_ROUNDING_THRESHOLD = 10_000;
+
 export type DepositTaskKind =
-  /** Phiếu giữ chỗ quá ngày phải ký hợp đồng — mất phòng nếu bỏ quên. */
+  /** Phiếu giữ chỗ quá ngày phải ký hợp đồng — mất PHÒNG nếu bỏ quên. */
   | "HOLD_OVERDUE"
+  /** Phiếu giữ chỗ quá hạn bổ sung cọc — khách có nguy cơ MẤT CỌC. */
+  | "RESV_TOPUP_OVERDUE"
   /** Hợp đồng trễ ngày hẹn bổ sung cọc. */
   | "TOPUP_OVERDUE"
+  /** Phiếu giữ chỗ sắp tới hạn bổ sung cọc mà chưa đủ. */
+  | "RESV_TOPUP_DUE_SOON"
   /** Hợp đồng sắp tới ngày hẹn bổ sung cọc. */
   | "TOPUP_DUE_SOON"
   /** Phiếu giữ chỗ đã duyệt, còn hạn — việc là làm hợp đồng. */
@@ -69,17 +76,27 @@ export interface DepositTaskGroup {
 }
 
 const GROUP_META: Record<DepositTaskKind, { label: string; tone: DepositTaskTone }> = {
+  RESV_TOPUP_OVERDUE: { label: "QUÁ HẠN BỔ SUNG CỌC — NGUY CƠ MẤT CỌC", tone: "danger" },
   HOLD_OVERDUE: { label: "QUÁ HẠN LÀM HỢP ĐỒNG", tone: "danger" },
   TOPUP_OVERDUE: { label: "QUÁ HẠN HẸN BỔ SUNG CỌC", tone: "danger" },
+  RESV_TOPUP_DUE_SOON: { label: "SẮP HẾT HẠN BỔ SUNG CỌC", tone: "warn" },
   TOPUP_DUE_SOON: { label: "SẮP ĐẾN HẠN", tone: "warn" },
   HOLD_READY: { label: "GIỮ CHỖ SẴN SÀNG KÝ HĐ", tone: "ok" },
   PENDING_APPROVAL: { label: "CHỜ DUYỆT", tone: "pending" },
 };
 
-/** Thứ tự hiển thị — gấp nhất lên trước, khớp bản vẽ 2a/2b. */
+/**
+ * Thứ tự hiển thị — gấp nhất lên trước.
+ *
+ * "Quá hạn bổ sung cọc" đứng TRÊN "quá hạn làm hợp đồng" có chủ ý: lỡ mốc đầu
+ * là khách MẤT TIỀN đã trả, lỡ mốc sau là chủ mất một phòng trống vài ngày.
+ * Thiệt hại không cùng hạng, nên thứ tự đọc cũng không được cùng hạng.
+ */
 const GROUP_ORDER: DepositTaskKind[] = [
+  "RESV_TOPUP_OVERDUE",
   "HOLD_OVERDUE",
   "TOPUP_OVERDUE",
+  "RESV_TOPUP_DUE_SOON",
   "TOPUP_DUE_SOON",
   "HOLD_READY",
   "PENDING_APPROVAL",
@@ -93,13 +110,21 @@ export interface BuildWorkQueueInput {
   /** Phiếu cọc giữ chỗ (đã lọc toà nhà ở tầng gọi). */
   reservations: ReservationDepositRow[];
   /**
-   * Hạn phải làm hợp đồng theo id phiếu — Phase B (bảng
-   * `reservation_hold_deadlines`). Thiếu bản đồ này thì KHÔNG có phiếu nào rơi
-   * vào "QUÁ HẠN LÀM HỢP ĐỒNG": không biết hạn thì không được phép kết luận là
-   * đã trễ.
+   * Kỳ hạn theo id phiếu (bảng `reservation_hold_deadlines`).
+   *
+   * Thiếu bản đồ này thì KHÔNG phiếu nào rơi vào nhóm quá hạn: không biết hạn
+   * thì không được phép kết luận là đã trễ. Đo trên prod 21/08/2026: 23/24 phiếu
+   * đang chạy không có hạn nào — suy bừa sẽ tô đỏ cả sổ cọc thật.
    */
-  holdDeadlines?: Readonly<Record<string, string>>;
+  holdTerms?: Readonly<Record<string, ReservationHoldTerms>>;
   dueSoonDays?: number;
+}
+
+/** Kỳ hạn của một phiếu giữ chỗ (khớp `useReservationHoldDeadlines`). */
+export interface ReservationHoldTerms {
+  holdUntil: string | null;
+  topupDueDate: string | null;
+  depositTarget: number | null;
 }
 
 /** Sắp trong nhóm: trễ nhiều nhất trước, cùng mức trễ thì tiền lớn trước. */
@@ -112,7 +137,7 @@ function byUrgency(a: DepositTask, b: DepositTask): number {
 
 export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGroup[] {
   const { today, held, reservations } = input;
-  const holdDeadlines = input.holdDeadlines ?? {};
+  const holdTerms = input.holdTerms ?? {};
   const dueSoonDays = input.dueSoonDays ?? DUE_SOON_DAYS;
 
   const buckets = new Map<DepositTaskKind, DepositTask[]>(
@@ -151,16 +176,59 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
   }
 
   // ── Phiếu cọc giữ chỗ ────────────────────────────────────────────────────
+  //
+  // "Đã thu bao nhiêu" phải cộng theo PHÒNG, không theo phiếu: khách bổ sung
+  // cọc bằng một PHIẾU THU MỚI trên cùng phòng, chứ không sửa phiếu cũ. Đọc mỗi
+  // phiếu riêng lẻ thì một phòng đã thu đủ 5tr qua hai lần vẫn bị coi là còn
+  // thiếu 3tr, và thẻ đỏ sẽ không bao giờ rời hàng đợi.
+  const paidByRoom = new Map<string, number>();
+  for (const v of reservations) {
+    if (v.approval_status === "CANCELLED" || !v.room_id) continue;
+    paidByRoom.set(v.room_id, (paidByRoom.get(v.room_id) ?? 0) + v.total_amount);
+  }
+
   for (const v of reservations) {
     if (v.approval_status === "CANCELLED") continue;
-    const deadline = holdDeadlines[v.id] ?? null;
-    const days = deadline ? diffDaysISO(deadline, today) : null;
-    const kind: DepositTaskKind =
-      v.approval_status === "UNAPPROVED"
-        ? "PENDING_APPROVAL"
-        : days !== null && days < 0
-          ? "HOLD_OVERDUE"
-          : "HOLD_READY";
+    const terms = holdTerms[v.id];
+    const holdUntil = terms?.holdUntil ?? null;
+    const topupDue = terms?.topupDueDate ?? null;
+    const target = terms?.depositTarget ?? null;
+
+    const holdDays = holdUntil ? diffDaysISO(holdUntil, today) : null;
+    const topupDays = topupDue ? diffDaysISO(topupDue, today) : null;
+
+    const paid = v.room_id ? (paidByRoom.get(v.room_id) ?? v.total_amount) : v.total_amount;
+    const shortfall = target === null ? 0 : target - paid;
+    const conThieu = shortfall >= DEPOSIT_ROUNDING_THRESHOLD;
+
+    // Thứ tự quyết định = thứ tự thiệt hại. Chưa duyệt thì việc cần làm là
+    // DUYỆT, mọi mốc khác chưa có nghĩa.
+    let kind: DepositTaskKind;
+    let dueDate: string | null;
+    let daysToDue: number | null;
+    if (v.approval_status === "UNAPPROVED") {
+      kind = "PENDING_APPROVAL";
+      dueDate = null;
+      daysToDue = null;
+    } else if (conThieu && topupDays !== null && topupDays < 0) {
+      kind = "RESV_TOPUP_OVERDUE";
+      dueDate = topupDue;
+      daysToDue = topupDays;
+    } else if (holdDays !== null && holdDays < 0) {
+      kind = "HOLD_OVERDUE";
+      dueDate = holdUntil;
+      daysToDue = holdDays;
+    } else if (conThieu && topupDays !== null && topupDays <= dueSoonDays) {
+      kind = "RESV_TOPUP_DUE_SOON";
+      dueDate = topupDue;
+      daysToDue = topupDays;
+    } else {
+      kind = "HOLD_READY";
+      dueDate = holdUntil;
+      daysToDue = holdDays;
+    }
+
+    const laTopup = kind === "RESV_TOPUP_OVERDUE" || kind === "RESV_TOPUP_DUE_SOON";
     push(kind, {
       key: `resv:${v.id}`,
       kind,
@@ -169,11 +237,12 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
       buildingId: v.building_id,
       roomId: v.room_id,
       personName: v.payer_name ?? "—",
-      amount: v.total_amount,
-      paidAmount: null,
-      expectedAmount: null,
-      dueDate: deadline,
-      daysToDue: days,
+      // Thẻ thiếu cọc in đậm SỐ CÒN THIẾU (việc phải làm), thẻ khác in số cọc.
+      amount: laTopup ? Math.max(0, shortfall) : v.total_amount,
+      paidAmount: laTopup ? paid : null,
+      expectedAmount: laTopup ? target : null,
+      dueDate,
+      daysToDue,
       heldDays: diffDaysISO(today, v.voucher_date),
       code: v.code,
       contractId: null,

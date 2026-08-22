@@ -141,7 +141,79 @@ describe("bảng reservation_hold_deadlines", () => {
   });
 });
 
-describe(`writer ${FN}`, () => {
+describe("hạn BỔ SUNG CỌC (mốc thứ hai)", () => {
+  // Ca chủ nêu 22/08/2026: phòng 5tr, thu 2tr ngày 22/08, phải đủ 5tr trước
+  // 25/08, nhận phòng 29/08. Quá 25/08 chưa đủ thì huỷ phiếu + mất cọc.
+  //
+  // Hai mốc KHÁC NHAU và không được gộp:
+  //   topup_due_date 25/08 — quá hạn là nguy cơ mất TIỀN của khách
+  //   hold_until     29/08 — quá hạn là nguy cơ mất PHÒNG của chủ
+  const TERMS = "set_reservation_hold_terms_v1";
+
+  it("bảng mang cả hai mốc và số cọc phải đủ", () => {
+    const all = filesMentioning(TABLE).map((m) => m.sql).join("\n");
+    expect(all).toMatch(/ADD COLUMN IF NOT EXISTS topup_due_date\s+date/i);
+    expect(all).toMatch(/ADD COLUMN IF NOT EXISTS deposit_target\s+numeric/i);
+    // hold_until phải NỚI được: có phiếu chỉ đặt hạn bổ sung cọc.
+    expect(all).toMatch(/ALTER COLUMN hold_until DROP NOT NULL/i);
+  });
+
+  it("chặn dòng rỗng và số cọc phải đủ âm", () => {
+    const all = filesMentioning(TABLE).map((m) => m.sql).join("\n");
+    expect(all).toMatch(/CHECK \(hold_until IS NOT NULL OR topup_due_date IS NOT NULL/i);
+    expect(all).toMatch(/deposit_target IS NULL OR deposit_target > 0/i);
+  });
+
+  it("writer đầy đủ chặn mốc vô lý", () => {
+    const { body } = liveFunction(TERMS);
+    // Trước ngày lập phiếu = đã trễ ngay lúc tạo.
+    expect(body).toMatch(/p_topup_due_date\s*<\s*v_ie\.voucher_date/i);
+    // Bổ sung cọc SAU khi phòng đã nhả khoá là vô nghĩa.
+    expect(body).toMatch(/p_topup_due_date\s*>\s*p_hold_until/i);
+    expect(body).toMatch(/p_deposit_target\s*(IS NOT NULL AND p_deposit_target\s*)?<=\s*0/i);
+  });
+
+  it("writer đầy đủ giữ nguyên luật quyền của bản trước", () => {
+    const { body } = liveFunction(TERMS);
+    expect(body).toMatch(/SECURITY\s+DEFINER/i);
+    expect(body).toMatch(/\bVOLATILE\b/i);
+    expect(body).toMatch(/FOR\s+UPDATE/i);
+    expect(body).toMatch(/can_access_building\s*\(\s*v_ie\.building_id\s*\)/i);
+    expect(body).toMatch(/auth\.uid\(\)/);
+  });
+
+  it("writer CŨ không được âm thầm xoá hạn bổ sung cọc", () => {
+    // FE dang chạy trên production vẫn gọi writer cũ. Nếu nó ghi đè
+    // topup_due_date = NULL thì một cú "gia hạn giữ chỗ" sẽ xoá mất mốc mất-tiền
+    // mà không ai thấy.
+    const { body } = liveFunction(FN);
+    expect(body).toContain("set_reservation_hold_terms_v1");
+    // Phải ĐỌC hai trường cũ ra biến...
+    expect(body).toMatch(/SELECT\s+topup_due_date,\s*deposit_target\s+INTO\s+v_topup,\s*v_target/i);
+    // ...VÀ truyền chính hai biến đó xuống. Chỉ kiểm "có chữ topup_due_date"
+    // là hở: đột biến thay `v_topup, v_target` thành `NULL, NULL` vẫn giữ
+    // nguyên câu SELECT nên vẫn lọt (đã đo — ca duy nhất sống sót trong đợt
+    // kiểm đột biến 22/08).
+    expect(body).toMatch(
+      /set_reservation_hold_terms_v1\([\s\S]{0,120}?v_topup,\s*v_target\)/i,
+    );
+  });
+
+  it("KHÔNG tự huỷ, KHÔNG tự tịch thu cọc", () => {
+    // Quyết định của chủ 22/08: quá hạn thì đẩy lên bàn xử lý, người quyết.
+    // Bất kỳ lệnh nào tự đổi trạng thái phiếu trong writer đều là vi phạm.
+    const { body } = liveFunction(TERMS);
+    expect(body).not.toMatch(/UPDATE\s+public\.income_expenses/i);
+    expect(body).not.toMatch(/'CANCELLED'/);
+  });
+});
+
+// Bat bien CUONG CHE nam o WRITER DAY DU. `set_reservation_hold_deadline_v1`
+// tu 20260822120000 chi con la lop mong uy quyen xuong day (giu cho ban FE cu
+// dang chay tren production), nen soi no la soi nham cho.
+describe("writer set_reservation_hold_terms_v1", () => {
+  const FN = "set_reservation_hold_terms_v1";
+
   it("là SECURITY DEFINER và VOLATILE", () => {
     const { body } = liveFunction(FN);
     expect(body).toMatch(/SECURITY\s+DEFINER/i);
@@ -173,9 +245,19 @@ describe(`writer ${FN}`, () => {
     expect(body).toMatch(/p_hold_until\s*<\s*v_ie\.voucher_date/i);
   });
 
-  it("NULL nghĩa là xoá hạn, không phải lỗi", () => {
+  it("chỉ xoá dòng khi BỎ HẾT kỳ hạn, không phải khi hold_until rỗng", () => {
+    // Từ khi có mốc thứ hai, `hold_until = NULL` mà vẫn còn hạn bổ sung cọc thì
+    // dòng PHẢI ở lại — xoá là làm bay mất mốc mất-tiền.
     const { body } = liveFunction(FN);
-    expect(body).toMatch(/IF\s+p_hold_until\s+IS\s+NULL\s+THEN/i);
+    expect(body).toMatch(
+      /p_hold_until IS NULL AND p_topup_due_date IS NULL AND p_deposit_target IS NULL/i,
+    );
+  });
+
+  it("bỏ hết kỳ hạn thì xoá dòng, không phải lỗi", () => {
+    // Từ 20260822120000 điều kiện xoá là BỎ HẾT ba trường, không còn là
+    // "hold_until rỗng" — xem ca riêng ở nhóm "hạn BỔ SUNG CỌC".
+    const { body } = liveFunction(FN);
     expect(body).toMatch(new RegExp(`DELETE\\s+FROM\\s+public\\.${TABLE}`, "i"));
   });
 

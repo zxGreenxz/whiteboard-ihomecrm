@@ -66,6 +66,10 @@ function headline(task: DepositTask): string {
       return `⚠ THIẾU CỌC · ${task.buildingName}`;
     case "TOPUP_DUE_SOON":
       return `THIẾU CỌC · ${task.buildingName}`;
+    case "RESV_TOPUP_OVERDUE":
+      return `⚠ THIẾU CỌC GIỮ CHỖ · ${task.buildingName}`;
+    case "RESV_TOPUP_DUE_SOON":
+      return `THIẾU CỌC GIỮ CHỖ · ${task.buildingName}`;
     default:
       return `GIỮ CHỖ · ${task.buildingName}`;
   }
@@ -91,7 +95,11 @@ function deadlineText(task: DepositTask): string {
   }
   const day = formatISODayMonth(dueDate);
   const label =
-    task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY" ? "hạn HĐ" : "hẹn";
+    task.kind === "HOLD_OVERDUE" || task.kind === "HOLD_READY"
+      ? "hạn HĐ"
+      : task.kind === "RESV_TOPUP_OVERDUE" || task.kind === "RESV_TOPUP_DUE_SOON"
+        ? "bổ sung"
+        : "hẹn";
   if (d < 0) return `${label} ${day} · trễ ${-d}n`;
   if (d === 0) return `${label} ${day} · hôm nay`;
   return `${label} ${day} · còn ${d}n`;
@@ -121,7 +129,7 @@ export default function DepositsMobilePage() {
   const { data: reservations = [], isLoading: resvLoading } = useReservationDeposits();
   const { data: heldAgg = [] } = useHeldDepositSummary();
   const { data: rfSummary } = useRefundForfeitSummary();
-  const { data: holdDeadlines = {} } = useReservationHoldDeadlines();
+  const { data: holdTerms = {} } = useReservationHoldDeadlines();
 
   const kpi = useMemo(() => {
     const heldTotal = heldAgg.reduce((s, r) => s + r.held, 0);
@@ -141,8 +149,8 @@ export default function DepositsMobilePage() {
   );
 
   const groups = useMemo(
-    () => buildDepositWorkQueue({ today: vnTodayISO(), held, reservations, holdDeadlines }),
-    [held, reservations, holdDeadlines],
+    () => buildDepositWorkQueue({ today: vnTodayISO(), held, reservations, holdTerms }),
+    [held, reservations, holdTerms],
   );
   const todoCount = countTasks(groups);
 
@@ -491,20 +499,22 @@ export default function DepositsMobilePage() {
                   )}
                 </div>
                 <div className="dp-sheet-acts">
-                  {(openTask.kind === "HOLD_READY" || openTask.kind === "HOLD_OVERDUE") &&
-                  openTask.voucherId ? (
+                  {openTask.voucherId && openTask.kind !== "PENDING_APPROVAL" ? (
                     <button
                       type="button"
                       onClick={() => {
                         setDeadlineTarget({
                           voucherId: openTask.voucherId!,
                           label: `P.${openTask.roomName} · ${openTask.buildingName}`,
-                          current: openTask.dueDate,
+                          holdUntil: holdTerms[openTask.voucherId!]?.holdUntil ?? null,
+                          topupDueDate: holdTerms[openTask.voucherId!]?.topupDueDate ?? null,
+                          depositTarget: holdTerms[openTask.voucherId!]?.depositTarget ?? null,
+                          paidAmount: openTask.paidAmount ?? openTask.amount,
                         });
                         closeSheet();
                       }}
                     >
-                      {openTask.dueDate ? "Gia hạn" : "Đặt hạn"}
+                      {openTask.dueDate ? "Sửa kỳ hạn" : "Đặt kỳ hạn"}
                     </button>
                   ) : (
                     <button type="button" onClick={closeSheet}>

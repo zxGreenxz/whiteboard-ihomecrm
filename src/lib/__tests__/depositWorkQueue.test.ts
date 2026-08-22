@@ -136,7 +136,7 @@ describe("buildDepositWorkQueue — phiếu giữ chỗ", () => {
       today: TODAY,
       held: [],
       reservations: [resvRow({ approval_status: "UNAPPROVED" })],
-      holdDeadlines: { v1: "2026-08-19" },
+      holdTerms: { v1: { holdUntil: "2026-08-19", topupDueDate: null, depositTarget: null } },
     });
     expect(kinds(groups)).toEqual(["PENDING_APPROVAL"]);
   });
@@ -158,7 +158,7 @@ describe("buildDepositWorkQueue — phiếu giữ chỗ", () => {
       today: TODAY,
       held: [],
       reservations: [resvRow()],
-      holdDeadlines: {},
+      holdTerms: {},
     });
     expect(kinds(groups)).toEqual(["HOLD_READY"]);
     expect(groups[0].tasks[0].daysToDue).toBeNull();
@@ -169,7 +169,7 @@ describe("buildDepositWorkQueue — phiếu giữ chỗ", () => {
       today: TODAY,
       held: [],
       reservations: [resvRow()],
-      holdDeadlines: { v1: "2026-08-19" },
+      holdTerms: { v1: { holdUntil: "2026-08-19", topupDueDate: null, depositTarget: null } },
     });
     expect(kinds(groups)).toEqual(["HOLD_OVERDUE"]);
     expect(groups[0].tasks[0].daysToDue).toBe(-2);
@@ -180,7 +180,7 @@ describe("buildDepositWorkQueue — phiếu giữ chỗ", () => {
       today: TODAY,
       held: [],
       reservations: [resvRow()],
-      holdDeadlines: { v1: TODAY },
+      holdTerms: { v1: { holdUntil: TODAY, topupDueDate: null, depositTarget: null } },
     });
     expect(kinds(groups)).toEqual(["HOLD_READY"]);
     expect(groups[0].tasks[0].daysToDue).toBe(0);
@@ -196,6 +196,123 @@ describe("buildDepositWorkQueue — phiếu giữ chỗ", () => {
   });
 });
 
+describe("buildDepositWorkQueue — hạn BỔ SUNG CỌC của phiếu giữ chỗ", () => {
+  // Ca chủ nêu 22/08/2026, dựng nguyên văn:
+  //   phòng 5tr · thu 2tr ngày 22/08 · phải đủ 5tr trước 25/08 · nhận phòng 29/08
+  const CA_CHU = {
+    reservations: [
+      resvRow({ id: "v1", total_amount: 2_000_000, voucher_date: "2026-08-22", room_id: "r5" }),
+    ],
+    terms: {
+      v1: { holdUntil: "2026-08-29", topupDueDate: "2026-08-25", depositTarget: 5_000_000 },
+    },
+  };
+
+  it("chưa tới hạn bổ sung: nằm ở SẮP HẾT HẠN, in số CÒN THIẾU", () => {
+    const groups = buildDepositWorkQueue({
+      today: "2026-08-23",
+      held: [],
+      reservations: CA_CHU.reservations,
+      holdTerms: CA_CHU.terms,
+    });
+    expect(kinds(groups)).toEqual(["RESV_TOPUP_DUE_SOON"]);
+    const t = groups[0].tasks[0];
+    expect(t.amount).toBe(3_000_000); // 5tr − 2tr, KHÔNG phải 2tr đã thu
+    expect(t.paidAmount).toBe(2_000_000);
+    expect(t.expectedAmount).toBe(5_000_000);
+    expect(t.daysToDue).toBe(2);
+  });
+
+  it("quá hạn bổ sung: thành nhóm ĐỎ, dù phòng vẫn còn hạn giữ", () => {
+    const groups = buildDepositWorkQueue({
+      today: "2026-08-26",
+      held: [],
+      reservations: CA_CHU.reservations,
+      holdTerms: CA_CHU.terms,
+    });
+    // 26/08 đã quá 25/08 nhưng CHƯA quá 29/08 — mất tiền trước khi mất phòng.
+    expect(kinds(groups)).toEqual(["RESV_TOPUP_OVERDUE"]);
+    expect(groups[0].tasks[0].daysToDue).toBe(-1);
+  });
+
+  it("mất TIỀN xếp trên mất PHÒNG khi cả hai mốc đều đã qua", () => {
+    const groups = buildDepositWorkQueue({
+      today: "2026-08-30",
+      held: [],
+      reservations: CA_CHU.reservations,
+      holdTerms: CA_CHU.terms,
+    });
+    expect(kinds(groups)).toEqual(["RESV_TOPUP_OVERDUE"]);
+  });
+
+  it("bổ sung bằng PHIẾU THU MỚI cùng phòng thì thẻ rời hàng đợi", () => {
+    // Khách không sửa phiếu cũ — họ nộp thêm một phiếu nữa. Cộng theo PHÒNG.
+    const groups = buildDepositWorkQueue({
+      today: "2026-08-26",
+      held: [],
+      reservations: [
+        ...CA_CHU.reservations,
+        resvRow({ id: "v2", total_amount: 3_000_000, voucher_date: "2026-08-24", room_id: "r5" }),
+      ],
+      holdTerms: CA_CHU.terms,
+    });
+    // Đã đủ 5tr ⇒ không còn nhóm thiếu cọc nào.
+    expect(kinds(groups)).not.toContain("RESV_TOPUP_OVERDUE");
+    expect(kinds(groups)).not.toContain("RESV_TOPUP_DUE_SOON");
+  });
+
+  it("chênh dưới ngưỡng làm tròn coi như đã đủ", () => {
+    const groups = buildDepositWorkQueue({
+      today: "2026-08-26",
+      held: [],
+      reservations: [
+        resvRow({ id: "v1", total_amount: 4_995_000, voucher_date: "2026-08-22", room_id: "r5" }),
+      ],
+      holdTerms: CA_CHU.terms,
+    });
+    expect(kinds(groups)).not.toContain("RESV_TOPUP_OVERDUE");
+  });
+
+  it("có hạn bổ sung mà KHÔNG biết cọc cần đủ thì không kết luận thiếu", () => {
+    // Thiếu `depositTarget` là "chưa đo được", không phải "đã đủ" hay "còn thiếu".
+    const groups = buildDepositWorkQueue({
+      today: "2026-08-26",
+      held: [],
+      reservations: CA_CHU.reservations,
+      holdTerms: {
+        v1: { holdUntil: "2026-08-29", topupDueDate: "2026-08-25", depositTarget: null },
+      },
+    });
+    expect(kinds(groups)).toEqual(["HOLD_READY"]);
+  });
+
+  it("chưa duyệt thì vẫn là CHỜ DUYỆT, không phải quá hạn bổ sung", () => {
+    const groups = buildDepositWorkQueue({
+      today: "2026-08-30",
+      held: [],
+      reservations: [
+        resvRow({ id: "v1", total_amount: 2_000_000, voucher_date: "2026-08-22", room_id: "r5", approval_status: "UNAPPROVED" }),
+      ],
+      holdTerms: CA_CHU.terms,
+    });
+    expect(kinds(groups)).toEqual(["PENDING_APPROVAL"]);
+  });
+
+  it("phiếu ĐÃ HUỶ không được cộng vào số đã thu", () => {
+    const groups = buildDepositWorkQueue({
+      today: "2026-08-26",
+      held: [],
+      reservations: [
+        ...CA_CHU.reservations,
+        resvRow({ id: "v2", total_amount: 3_000_000, room_id: "r5", approval_status: "CANCELLED" }),
+      ],
+      holdTerms: CA_CHU.terms,
+    });
+    expect(kinds(groups)).toEqual(["RESV_TOPUP_OVERDUE"]);
+    expect(groups[0].tasks[0].amount).toBe(3_000_000);
+  });
+});
+
 describe("buildDepositWorkQueue — thứ tự và tổng", () => {
   it("nhóm xếp theo mức gấp, nhóm rỗng bị loại", () => {
     const groups = buildDepositWorkQueue({
@@ -208,7 +325,9 @@ describe("buildDepositWorkQueue — thứ tự và tổng", () => {
         resvRow({ id: "v-late" }),
         resvRow({ id: "v-wait", approval_status: "UNAPPROVED" }),
       ],
-      holdDeadlines: { "v-late": "2026-08-19" },
+      holdTerms: {
+        "v-late": { holdUntil: "2026-08-19", topupDueDate: null, depositTarget: null },
+      },
     });
     expect(kinds(groups)).toEqual([
       "HOLD_OVERDUE",
