@@ -20,14 +20,14 @@ import { gunzipSync } from "node:zlib";
 
 // Commit ĐÃ REVIEW của checkpoint M. Export để test dựng được bản export từ
 // đúng cây này thay vì từ HEAD — xem chú thích trong vendor-integrity.test.ts.
-export const M_SHA = "d0f961856736a22cfa9ec3b166e481515b933cb1";
+export const M_SHA = "0650187981ad9728d295fae34eff92b508e36bc8";
 const VENDOR_REL = "services/openclaw-zalo-cell/vendor/zalouser-bridge";
 const UPSTREAM_REL = `${VENDOR_REL}/UPSTREAM.json`;
-const EXPECTED_AGGREGATE = "188154e64449a535d9c131b17eb586ff7ced45643a3043f6b8f6b24b562906e7";
+const EXPECTED_AGGREGATE = "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b";
 const EXPECTED_UPSTREAM = Object.freeze({
   mode: "100644",
-  oid: "299ff7ed950083a576d40bc3df353f50d02339f8",
-  sha256: "6113e1bcd83e5d796c05065040167324fbc1d5f3493b6894909fda96bb254f79",
+  oid: "1feb5726487a162aab7310f702e036ecac09bda1",
+  sha256: "989902dd5a1873025b1fef4864c4a6b9874fbaa15216201dc1c75ad053ce31ea",
   size: 29539,
 });
 

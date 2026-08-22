@@ -349,11 +349,11 @@ describe("reviewed upstream and legal inputs", () => {
     const result = await verifyCommittedInputs({ repoRoot, vendorRoot });
 
     expect(result).toMatchObject({
-      aggregateSha256: "188154e64449a535d9c131b17eb586ff7ced45643a3043f6b8f6b24b562906e7",
+      aggregateSha256: "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b",
       inputCount: 87,
       sourceBlobCount: 75,
-      upstreamBlobOid: "299ff7ed950083a576d40bc3df353f50d02339f8",
-      upstreamSha256: "6113e1bcd83e5d796c05065040167324fbc1d5f3493b6894909fda96bb254f79",
+      upstreamBlobOid: "1feb5726487a162aab7310f702e036ecac09bda1",
+      upstreamSha256: "989902dd5a1873025b1fef4864c4a6b9874fbaa15216201dc1c75ad053ce31ea",
     });
   });
 
@@ -560,11 +560,11 @@ describe("reviewed upstream and legal inputs", () => {
         reviewedTree,
       });
       expect(result).toMatchObject({
-        aggregateSha256: "188154e64449a535d9c131b17eb586ff7ced45643a3043f6b8f6b24b562906e7",
+        aggregateSha256: "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b",
         inputCount: 87,
         sourceBlobCount: 75,
-        upstreamBlobOid: "299ff7ed950083a576d40bc3df353f50d02339f8",
-        upstreamSha256: "6113e1bcd83e5d796c05065040167324fbc1d5f3493b6894909fda96bb254f79",
+        upstreamBlobOid: "1feb5726487a162aab7310f702e036ecac09bda1",
+        upstreamSha256: "989902dd5a1873025b1fef4864c4a6b9874fbaa15216201dc1c75ad053ce31ea",
       });
     } finally {
       if (temporaryRoot) rmSync(temporaryRoot, { recursive: true, force: true });

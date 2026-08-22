@@ -670,8 +670,8 @@
       "path": "upstream/provenance/npm-attestation-bundles.json",
       "endpoint": "https://registry.npmjs.org/-/npm/v1/attestations/@openclaw%2fzalouser@2026.7.1",
       "cap": 262144,
-      "size": 15559,
-      "sha256": "8a85e01f110bd391f7d1b7a397ccfae238e25d8048ced76fbc8aa7602e02a353"
+      "size": 15645,
+      "sha256": "bed90b7c252549f0c999a6b3cc4c529dd047bc71030c8f317eef7239e3757eba"
     },
     {
       "path": "upstream/provenance/sigstore-trusted-root.json",
@@ -708,6 +708,6 @@
     "schema": 1,
     "domain": "ihome-openclaw-m-inputs-v1",
     "pathCount": 87,
-    "sha256": "188154e64449a535d9c131b17eb586ff7ced45643a3043f6b8f6b24b562906e7"
+    "sha256": "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b"
   }
 }
