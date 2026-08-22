@@ -17,7 +17,7 @@ Không phải một app React/Supabase đơn giản. Đây là platform đa runt
 của công ty đang vận hành**:
 
 - React/Vite frontend trên Vercel (production: <https://ptcrm.vercel.app>)
-- Supabase PostgreSQL 17.6: 679 migration, ~1000 hàm SECURITY DEFINER, RLS trên mọi bảng public
+- Supabase PostgreSQL 17.6: 681 migration, ~1000 hàm SECURITY DEFINER, RLS trên mọi bảng public
 - Edge Functions (14 thư mục), worker Node, OpenClaw Zalo (bridge/cell/maintenance/media gateway),
   Network Center (worker + Docker + WireGuard + RouterOS), Cloudflare R2/Worker
 - VitePress user docs + AI Copilot đọc thẳng tài liệu hệ thống
@@ -283,7 +283,7 @@ vào git. Kèm manifest `.json` có sha256, thời lượng và gợi ý restore
   dry-run là mặc định, `--apply` đòi giấy phép (biên nhận backup tự phát, hoặc promotion token khi
   `--khong-backup`). Gate: `npm run gate:migration-provenance`.
 - **Legacy history KHÔNG replay được** — đừng tin `supabase db push` hay `supabase start`:
-  679 file có 38 nhóm trùng version (81 file) + bộ legacy `001_`–`033_` còn collision nội bộ
+  681 file có 38 nhóm trùng version (81 file) + bộ legacy `001_`–`033_` còn collision nội bộ
   (`016_` ×4, `017_` ×2); ledger `supabase_migrations.schema_migrations` đã tụt lại sau production.
 - `supabase/migrations-archive/` **TUYỆT ĐỐI KHÔNG replay** (1 file superseded + `migrations-bundle/`
   14 file `*_apply_*.sql` hand-apply Apr–May 2026, đã phản ánh trong DB live).

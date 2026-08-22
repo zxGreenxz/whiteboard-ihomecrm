@@ -1,0 +1,144 @@
+/* =============================================================
+   Quản lý Cọc (mobile) — stylesheet ĐỘC LẬP, scope dưới .cm-stage/.cm-app.
+   Dựng lại từ handoff Claude Design ("Quản lý Cọc - Phương án mới.dc.html" ·
+   2b). Khung điện thoại + top bar dùng chung mobileApp.css; file này chỉ thêm
+   phần riêng của màn cọc (.dp-*). KHÔNG kế thừa theme site, không rò ra ngoài.
+   Nạp lười theo nhánh mobile của DepositsPage.
+   ============================================================= */
+
+/* Bảng màu của bản vẽ 2b — xanh lá đậm + cảnh báo hồng, khác token warm-neutral
+   của mobileApp.css nên khai riêng ở đây thay vì đè token dùng chung.
+   KHAI Ở `.cm-app`, KHÔNG phải `.dp-body`: bảng thao tác trượt lên (.dp-sheet)
+   là anh em của .dp-body chứ không nằm trong nó. Khai ở .dp-body thì mọi
+   `var(--dp-*)` trong sheet không phân giải được — đã đo: nút "Tạo hợp đồng"
+   ra nền `rgba(0,0,0,0)` + chữ trắng, tức TÀNG HÌNH trên nền trắng, mà DOM vẫn
+   có đủ nút nên nhìn code không thấy gì sai. */
+.cm-app {
+  --dp-green: #0d6b3c;
+  --dp-green-2: #159a57;
+  --dp-green-50: #e7f3ec;
+  --dp-red: #cf3b30;
+  --dp-red-2: #a8443b;
+  --dp-red-50: #fdecea;
+  --dp-red-100: #f6d5d1;
+  --dp-orange: #e8730c;
+  --dp-orange-2: #c2600a;
+  --dp-amber: #8a6b13;
+  --dp-amber-50: #fbf4d9;
+  --dp-ink: #17211d;
+  --dp-ink-3: #8b9691;
+  --dp-surface: #fff;
+  --dp-line: #edf0ee;
+}
+
+/* ===== Dải KPI ===== */
+.cm-app .dp-kpi { background: var(--dp-surface); border-radius: 16px; box-shadow: 0 1px 2px rgba(16,32,24,.07); padding: 14px; }
+.cm-app .dp-kpi-row { display: flex; }
+.cm-app .dp-kpi-cell { flex: 1; min-width: 0; }
+.cm-app .dp-kpi-cell .lb { display: flex; align-items: center; gap: 5px; }
+.cm-app .dp-kpi-cell .bd { width: 6px; height: 6px; border-radius: 99px; flex: none; }
+.cm-app .dp-kpi-cell .lb span { font-size: 9.5px; font-weight: 700; letter-spacing: .05em; color: var(--dp-ink-3); white-space: nowrap; }
+.cm-app .dp-kpi-cell .val { font-size: 19px; font-weight: 800; letter-spacing: -.01em; margin-top: 1px; color: var(--dp-ink); }
+.cm-app .dp-kpi-foot { margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--dp-line); display: flex; gap: 8px; font-size: 11px; color: var(--dp-ink-3); }
+.cm-app .dp-kpi-foot strong { color: var(--dp-ink); }
+.cm-app .dp-kpi-foot .r { margin-left: auto; text-align: right; }
+.cm-app .dp-kpi-warn { margin-top: 9px; display: flex; gap: 6px; align-items: flex-start; background: var(--dp-red-50); color: var(--dp-red); border-radius: 9px; padding: 7px 9px; font-size: 11px; font-weight: 600; line-height: 1.4; }
+
+/* ===== Hai pill điều hướng (thay thanh tab dưới) ===== */
+.cm-app .dp-seg { display: flex; gap: 9px; }
+.cm-app .dp-seg button {
+  flex: 1; height: 44px; border: 0; border-radius: 12px; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 600; color: var(--dp-ink);
+  background: var(--dp-surface); box-shadow: 0 1px 2px rgba(16,32,24,.07);
+}
+.cm-app .dp-seg button.on { background: var(--dp-green); color: #fff; font-weight: 700; box-shadow: 0 2px 6px -2px rgba(13,107,60,.5); }
+.cm-app .dp-seg button:active { transform: scale(.99); }
+
+/* ===== Tiêu đề nhóm việc ===== */
+.cm-app .dp-sec { display: flex; align-items: center; gap: 8px; padding: 4px 2px 0; }
+.cm-app .dp-sec span { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; white-space: nowrap; }
+.cm-app .dp-sec i { flex: 1; height: 1px; background: #e2e7e4; }
+.cm-app .dp-sec.danger span { color: var(--dp-red); }
+.cm-app .dp-sec.warn span { color: var(--dp-orange-2); }
+.cm-app .dp-sec.ok span { color: var(--dp-green); }
+.cm-app .dp-sec.pending span { color: var(--dp-amber); }
+
+/* ===== Thẻ việc ===== */
+.cm-app .dp-card {
+  width: 100%; text-align: left; font-family: inherit; cursor: pointer;
+  background: var(--dp-surface); border: 1px solid transparent; border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16,32,24,.07); padding: 12px 13px;
+  display: flex; align-items: flex-start; gap: 9px;
+}
+.cm-app .dp-card:active { background: #f7f9f8; }
+.cm-app .dp-card.danger { background: var(--dp-red-50); border-color: var(--dp-red-100); box-shadow: none; }
+.cm-app .dp-card.danger:active { background: #fbe2df; }
+.cm-app .dp-room { flex: none; font-size: 9.5px; font-weight: 700; border-radius: 6px; padding: 3px 6px; background: #f2f4f3; color: #7a857f; }
+.cm-app .dp-card.danger .dp-room { background: #fbdcd8; color: var(--dp-red-2); }
+.cm-app .dp-card.ok .dp-room { background: var(--dp-green-50); color: var(--dp-green); }
+.cm-app .dp-card.pending .dp-room { background: var(--dp-amber-50); color: var(--dp-amber); }
+.cm-app .dp-mid { min-width: 0; flex: 1; }
+.cm-app .dp-mid b { display: block; font-size: 13px; font-weight: 800; color: var(--dp-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-app .dp-mid span { display: block; font-size: 11.5px; color: var(--dp-ink-3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-app .dp-card.danger .dp-mid span { color: #a8756f; }
+.cm-app .dp-right { text-align: right; flex: none; }
+.cm-app .dp-right b { display: block; font-size: 15px; font-weight: 800; color: var(--dp-ink); }
+.cm-app .dp-right span { display: block; font-size: 10px; color: var(--dp-ink-3); margin-top: 1px; }
+.cm-app .dp-card.danger .dp-right b, .cm-app .dp-card.danger .dp-right span { color: var(--dp-red); font-weight: 700; }
+.cm-app .dp-card.warn .dp-right b { color: var(--dp-orange); }
+.cm-app .dp-card.ok .dp-right span { color: var(--dp-green-2); font-weight: 700; }
+.cm-app .dp-card.pending .dp-right span { color: var(--dp-amber); font-weight: 700; }
+
+/* ===== Màn trống ===== */
+.cm-app .dp-clear { background: var(--dp-green-50); border: 1px solid #cde5d8; border-radius: 14px; padding: 22px 16px; text-align: center; }
+.cm-app .dp-clear b { display: block; font-size: 14px; font-weight: 800; color: var(--dp-green); }
+.cm-app .dp-clear span { display: block; font-size: 12px; color: #5f8a72; margin-top: 3px; }
+
+/* ===== Sổ cọc: chip lọc + dòng ===== */
+.cm-app .dp-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.cm-app .dp-chips button { font-family: inherit; font-size: 12px; font-weight: 600; color: #5f6f67; background: var(--dp-surface); border: 1px solid #e0e5e2; border-radius: 99px; padding: 6px 11px; cursor: pointer; }
+.cm-app .dp-chips button.on { background: var(--dp-green); border-color: var(--dp-green); color: #fff; }
+.cm-app .dp-ledger { background: var(--dp-surface); border-radius: 14px; box-shadow: 0 1px 2px rgba(16,32,24,.07); overflow: hidden; }
+.cm-app .dp-lrow { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-bottom: 1px solid #f0f2f1; }
+.cm-app .dp-lrow:last-child { border-bottom: 0; }
+.cm-app .dp-lrow .dot { width: 7px; height: 7px; flex: none; border-radius: 99px; }
+.cm-app .dp-lrow .tx { min-width: 0; flex: 1; }
+.cm-app .dp-lrow .tx b { display: block; font-size: 12.5px; font-weight: 700; color: var(--dp-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-app .dp-lrow .tx span { display: block; font-size: 11px; color: var(--dp-ink-3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-app .dp-lrow .rt { text-align: right; flex: none; }
+.cm-app .dp-lrow .rt b { display: block; font-size: 13px; font-weight: 800; color: var(--dp-ink); }
+.cm-app .dp-lrow .rt span { display: block; font-size: 10px; color: var(--dp-ink-3); }
+.cm-app .dp-filterline { display: flex; align-items: center; gap: 8px; padding: 0 2px; font-size: 11.5px; }
+.cm-app .dp-filterline b { color: var(--dp-green); font-weight: 700; }
+.cm-app .dp-filterline i { color: var(--dp-ink-3); font-style: normal; }
+
+/* ===== Bảng thao tác trượt lên ===== */
+.cm-app .dp-sheet-mask { position: absolute; inset: 0; z-index: 5; background: rgba(15,26,21,.42); display: flex; flex-direction: column; justify-content: flex-end; border: 0; padding: 0; }
+/* Đệm đáy 84px để hàng nút KHÔNG nằm dưới nút nổi Copilot (fixed, 56px, cách
+   đáy 16px, z-index 9997 — nó luôn thắng vì .cm-stage là stacking context
+   z-index 0). Đã đo: nút "Tạo hợp đồng" có trong DOM mà bị che hoàn toàn. */
+.cm-app .dp-sheet { background: #fff; border-radius: 20px 20px 0 0; padding: 8px 16px calc(84px + env(safe-area-inset-bottom)); }
+@media (prefers-reduced-motion: no-preference) {
+  .cm-app .dp-sheet { animation: dpSheetIn .2s cubic-bezier(.22,.61,.36,1) both; }
+  @keyframes dpSheetIn { from { transform: translateY(18px); opacity: .4; } to { transform: none; opacity: 1; } }
+}
+.cm-app .dp-sheet-grip { width: 38px; height: 4px; border-radius: 99px; background: #dfe4e1; margin: 0 auto 14px; }
+.cm-app .dp-sheet-head { display: flex; align-items: flex-start; gap: 10px; }
+.cm-app .dp-sheet-head .t { min-width: 0; flex: 1; }
+.cm-app .dp-sheet-head .t b { display: block; font-size: 15px; font-weight: 800; color: var(--dp-ink); }
+.cm-app .dp-sheet-head .t span { display: block; font-size: 12px; color: var(--dp-ink-3); margin-top: 2px; }
+.cm-app .dp-sheet-head .a { text-align: right; }
+.cm-app .dp-sheet-head .a b { display: block; font-size: 18px; font-weight: 800; }
+.cm-app .dp-sheet-head .a span { display: block; font-size: 11px; color: var(--dp-ink-3); }
+.cm-app .dp-sheet-facts { margin-top: 14px; background: #f7f9f8; border-radius: 12px; padding: 12px 13px; display: flex; flex-direction: column; gap: 7px; font-size: 12px; }
+.cm-app .dp-sheet-facts div { display: flex; gap: 10px; }
+.cm-app .dp-sheet-facts span { color: var(--dp-ink-3); }
+.cm-app .dp-sheet-facts b { margin-left: auto; font-weight: 700; color: var(--dp-ink); text-align: right; }
+.cm-app .dp-sheet-acts { display: flex; gap: 9px; margin-top: 14px; }
+.cm-app .dp-sheet-acts a, .cm-app .dp-sheet-acts button {
+  flex: 1; height: 46px; border-radius: 12px; font-family: inherit; font-size: 13.5px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none;
+  border: 1px solid #e0e5e2; background: #fff; color: var(--dp-ink);
+}
+.cm-app .dp-sheet-acts .primary { flex: 1.2; border: 0; background: var(--dp-green); color: #fff; }
+.cm-app .dp-sheet-acts button:disabled { opacity: .6; cursor: default; }

@@ -32,16 +32,20 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { AlertTriangle } from "lucide-react";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { tryPlaceRoomHold } from "@/lib/reservationHold";
 import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
 import { useCreateSaleBonusFromDeposit } from "@/hooks/useSaleBonus";
+import { useSetReservationHoldDeadline } from "@/hooks/useReservationHoldDeadlines";
 import { useCreateTenant, useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
 import { todayISO } from '@/lib/collect';
+import { diffDaysISO } from "@/lib/vnDate";
+import { formatCurrency } from "@/lib/utils";
 
 /**
  * Dialog "Tạo đặt cọc" — tạo CỌC GIỮ CHỖ thật, ghi vào income_expenses (phiếu
@@ -57,12 +61,26 @@ function fmtVNDate(iso: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 
+/**
+ * Nhãn "Giá thoả thuận" ghi vào description của item cọc.
+ *
+ * VÌ SAO LÀ GHI CHÚ CÓ CẤU TRÚC CHỨ KHÔNG PHẢI CỘT (quyết định của chủ
+ * 21/08/2026): giá phòng lúc đặt cọc chưa phải giá hợp đồng — hợp đồng mới là
+ * nơi chốt giá, và nó có cột riêng cho việc đó. Ở phiếu cọc, con số này chỉ để
+ * người thu cọc và người ký hợp đồng sau đó nhìn thấy điều đã hứa với khách.
+ * Vì thế chỉ ghi khi người dùng SỬA khác giá niêm yết: giá bằng đúng niêm yết
+ * thì viết ra là lặp lại thứ đã có ở hồ sơ phòng.
+ */
+const AGREED_PRICE_PREFIX = "Giá thoả thuận: ";
+
 const depositSchema = z.object({
   tenant_id: z.string().optional(),
   create_tenant: z.boolean(),
   tenant_name: z.string().optional(),
   tenant_phone: z.string().optional(),
   room_id: z.string().min(1, "Phải chọn căn hộ"),
+  /** Giá phòng/tháng — mặc định lấy giá niêm yết của căn hộ, sửa được. */
+  room_price: z.number().min(0, "Giá phòng phải >= 0").optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
   deposit_date: z.string().min(1, "Ngày đặt cọc là bắt buộc"),
   hold_until: z.string().optional(),
@@ -99,6 +117,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
 
   const createIE = useCreateIncomeExpense();
   const createSaleBonus = useCreateSaleBonusFromDeposit();
+  const setHoldDeadline = useSetReservationHoldDeadline();
   const createTenant = useCreateTenant();
   const { data: tenants = [] } = useTenantsLegacy();
   const { data: rooms = [] } = useRooms();
@@ -130,6 +149,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       tenant_name: "",
       tenant_phone: "",
       room_id: "",
+      room_price: 0,
       amount: 0,
       deposit_date: todayISO(),
       hold_until: "",
@@ -143,6 +163,30 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       sale_bonus_bank: "",
     },
   });
+
+  // ── Giá phòng: mặc định hệ thống, sửa tay thì đánh dấu ────────────────────
+  const selectedRoomId = form.watch("room_id");
+  const depositDate = form.watch("deposit_date");
+  const holdUntil = form.watch("hold_until");
+  const roomPrice = form.watch("room_price") ?? 0;
+
+  const listedPrice = useMemo(() => {
+    const room = rooms.find((r) => r.id === selectedRoomId);
+    return Number((room as { rent_price?: number } | undefined)?.rent_price) || 0;
+  }, [rooms, selectedRoomId]);
+
+  // Đổi phòng thì kéo lại giá niêm yết của phòng MỚI. Giữ nguyên số cũ ở đây sẽ
+  // im lặng gán giá phòng này cho phòng khác — đúng loại lỗi không ai phát hiện
+  // cho tới lúc ký hợp đồng.
+  useEffect(() => {
+    if (!selectedRoomId) return;
+    form.setValue("room_price", listedPrice, { shouldDirty: false });
+  }, [selectedRoomId, listedPrice, form]);
+
+  const priceEdited = listedPrice > 0 && Math.round(roomPrice) !== Math.round(listedPrice);
+
+  // ── Hạn phải làm hợp đồng suy ra từ "giữ phòng đến" ───────────────────────
+  const holdDays = diffDaysISO(holdUntil || null, depositDate || null);
 
   const onSubmit = async (data: DepositFormValues) => {
     if (submitting) return;
@@ -201,6 +245,15 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       }`;
       const extras: string[] = [];
       if (data.hold_until) extras.push(`Giữ phòng đến ${fmtVNDate(data.hold_until)}`);
+      // Chỉ ghi khi KHÁC giá niêm yết — xem chú thích AGREED_PRICE_PREFIX.
+      const listed = Number((room as { rent_price?: number }).rent_price) || 0;
+      const agreed = Number(data.room_price) || 0;
+      if (agreed > 0 && Math.round(agreed) !== Math.round(listed)) {
+        extras.push(
+          `${AGREED_PRICE_PREFIX}${Math.round(agreed).toLocaleString("vi-VN")}đ/tháng` +
+            (listed > 0 ? ` (niêm yết ${Math.round(listed).toLocaleString("vi-VN")}đ)` : ""),
+        );
+      }
       if (data.ctv_name) extras.push(`CTV: ${data.ctv_name}`);
       if (data.notes) extras.push(data.notes);
       const itemDesc = extras.length ? extras.join(" · ") : null;
@@ -238,6 +291,28 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       // Thưởng hỏng thì KHÔNG kéo đổ phiếu cọc — cọc là việc chính.
       const bonusAmt = Number(data.sale_bonus_amount) || 0;
       const depositId = createdDeposit?.id ?? createdDeposit?.voucher_id ?? null;
+
+      // HẠN PHẢI LÀM HỢP ĐỒNG — ghi vào bảng chuyên trách
+      // (`reservation_hold_deadlines`, migration 20260822010000). Đây mới là
+      // NGUỒN SỰ THẬT mà bàn xử lý /deposits đọc để xếp nhóm "quá hạn làm HĐ";
+      // chuỗi "Giữ phòng đến …" trong ghi chú phiếu vẫn giữ để người đọc phiếu
+      // thấy, nhưng KHÔNG ai suy luận từ nó nữa.
+      //
+      // Hỏng ở đây KHÔNG được kéo đổ phiếu cọc: tiền đã thu, phiếu đã tạo. Báo
+      // rõ để người dùng đặt lại hạn thay vì im lặng nuốt.
+      if (data.hold_until && depositId) {
+        try {
+          await setHoldDeadline.mutateAsync({
+            incomeExpenseId: depositId,
+            holdUntil: data.hold_until,
+          });
+        } catch {
+          toast.error(
+            "Phiếu cọc đã tạo, nhưng CHƯA ghi được hạn làm hợp đồng — " +
+              "vào thẻ phiếu trên trang Quản lý Cọc để đặt lại.",
+          );
+        }
+      }
       if (bonusAmt > 0 && depositId) {
         try {
           const r = await createSaleBonus.mutateAsync({
@@ -389,6 +464,53 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                 )}
               />
 
+              {/* Giá phòng / tháng — lấy mặc định từ giá niêm yết của căn hộ.
+                  Sửa tay thì đánh dấu "giá thoả thuận" và ghi vào ghi chú phiếu
+                  (xem AGREED_PRICE_PREFIX): người ký hợp đồng sau đó phải nhìn
+                  thấy con số đã hứa với khách, không phải nghe kể lại. */}
+              <FormField
+                control={form.control}
+                name="room_price"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <FormLabel>Giá phòng / tháng</FormLabel>
+                      {selectedRoomId && listedPrice > 0 && (
+                        priceEdited ? (
+                          <button
+                            type="button"
+                            onClick={() => field.onChange(listedPrice)}
+                            className="rounded-md bg-orange-50 px-1.5 py-0.5 text-[10.5px] font-bold text-orange-600 hover:bg-orange-100"
+                          >
+                            giá thoả thuận · về mặc định ✕
+                          </button>
+                        ) : (
+                          <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10.5px] font-bold text-emerald-700">
+                            mặc định hệ thống
+                          </span>
+                        )
+                      )}
+                    </div>
+                    <FormControl>
+                      <CurrencyInput
+                        value={field.value ?? 0}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                      />
+                    </FormControl>
+                    <p className="text-[11px] text-muted-foreground">
+                      {!selectedRoomId
+                        ? "Chọn căn hộ để lấy giá niêm yết."
+                        : listedPrice > 0
+                          ? `Không sửa thì lấy giá niêm yết của căn hộ (${formatCurrency(listedPrice)}).`
+                          : "Căn hộ này chưa có giá niêm yết — nhập tay."}
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Deposit Info */}
               <div className="grid grid-cols-3 gap-4">
                 <FormField
@@ -448,6 +570,33 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                   )}
                 />
               </div>
+
+              {/* Ngày giữ phòng SINH RA hạn phải làm hợp đồng. Nói thẳng hệ quả
+                  ở đây thay vì để người dùng tự suy: quá ngày này phòng bị đánh
+                  dấu "quá hạn làm HĐ" và nhả khoá giữ phòng. */}
+              {holdDays !== null && (
+                <div
+                  className={
+                    "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-[12.5px] " +
+                    (holdDays < 0
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : "border-amber-200 bg-amber-50 text-amber-800")
+                  }
+                >
+                  <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
+                  {holdDays < 0 ? (
+                    <span>
+                      "Giữ phòng đến" đang <strong>trước</strong> ngày đặt cọc — kiểm tra lại hai ngày này.
+                    </span>
+                  ) : (
+                    <span>
+                      Giữ <strong>{holdDays} ngày</strong> — phải ký hợp đồng trước{" "}
+                      <strong>{fmtVNDate(holdUntil!)}</strong>. Quá ngày này phòng bị đánh dấu
+                      "quá hạn làm HĐ" và nhả khoá giữ phòng.
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Sổ quỹ ghi cọc — bắt buộc. Tiền cọc vào sổ nào phải do người thu
                   nói rõ, không để hệ thống đoán. */}

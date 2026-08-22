@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1672,
+    "sourceCallSites": 1682,
     "catalogFunctions": 1087,
     "schemas": [
       "public",
@@ -9,13 +9,13 @@
     ]
   },
   "counts": {
-    "calledRpcs": 253,
+    "calledRpcs": 254,
     "byRisk": {
-      "normal": 173,
+      "normal": 174,
       "financial": 74,
       "security": 6
     },
-    "securityDefiner": 237
+    "securityDefiner": 238
   },
   "missingOnServer": [],
   "rpcs": {
@@ -3978,6 +3978,26 @@
       ],
       "callers": [
         "src/hooks/useNotificationSettings.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_reservation_hold_deadline_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_income_expense_id uuid, p_hold_until date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReservationHoldDeadlines.ts"
       ],
       "risk": "normal"
     },

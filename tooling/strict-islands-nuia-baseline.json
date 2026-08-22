@@ -1,6 +1,6 @@
 {
   "$comment": "Mức ratchet của đảo \"strict+noUncheckedIndexedAccess\": TẬP TÊN FILE, không phải số đếm — với số đếm thì xoá một đảo rồi thêm đảo khác là hoà, mà cái bị xoá thường là cái vừa đỏ. Chốt mức mới: npm run gate:strict-islands -- --write",
-  "updatedAt": "2026-08-21",
+  "updatedAt": "2026-08-22",
   "islands": [
     "src/app/capabilities/__tests__/riskMapCoverage.test.ts",
     "src/app/capabilities/registry.ts",

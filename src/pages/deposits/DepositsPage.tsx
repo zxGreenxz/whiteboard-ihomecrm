@@ -1,14 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import {
   Plus,
   Search,
   DollarSign,
-  Wallet,
-  Building2,
   AlertTriangle,
-  RotateCcw,
   Ban,
   CheckCircle2,
 } from "lucide-react";
@@ -45,6 +42,10 @@ import {
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
 import { CreateDepositDialog } from "@/components/deposits/CreateDepositDialog";
 import {
+  HoldDeadlineDialog,
+  type HoldDeadlineTarget,
+} from "@/components/deposits/HoldDeadlineDialog";
+import {
   ContractFormDialog,
   type ContractPrefill,
 } from "@/components/contracts/ContractFormDialog";
@@ -52,6 +53,21 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import { usePhoneViewport } from "@/hooks/use-mobile";
+import { useReservationHoldDeadlines } from "@/hooks/useReservationHoldDeadlines";
+import { useApproveVoucher } from "@/hooks/income-expenses/statusMutations";
+import { vnTodayISO } from "@/lib/vnDate";
+import {
+  buildDepositWorkQueue,
+  countTasks,
+  type DepositTask,
+} from "@/lib/depositWorkQueue";
+import { DepositWorkQueuePanel } from "./DepositWorkQueuePanel";
+import {
+  BuildingCoverageCard,
+  RefundReconcileCard,
+  ReservationBreakdownCard,
+} from "./DepositSidePanel";
 
 // Trạng thái phiếu giữ chỗ (theo approval_status của phiếu thu cọc mồ côi).
 const RESV_STATUS = {
@@ -60,46 +76,60 @@ const RESV_STATUS = {
   CANCELLED: { label: "Đã huỷ", color: "bg-gray-100 text-gray-700" },
 } as const;
 
-function KpiCard({
+/**
+ * Một ô của dải KPI (bản 2a): chấm màu + nhãn in hoa + số to.
+ *
+ * Bốn ô nằm trên MỘT dải liền thay vì bốn thẻ rời — bốn con số này chỉ có nghĩa
+ * khi đọc cạnh nhau (đang giữ ↔ cần thu ↔ còn thiếu), tách thành thẻ rời làm
+ * mất đúng phép so sánh đó.
+ */
+function KpiCell({
   label,
   value,
-  sub,
-  icon: Icon,
-  tone = "default",
+  dot,
+  valueClass = "",
+  first = false,
 }: {
   label: string;
   value: string;
-  sub?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  tone?: "default" | "green" | "orange" | "red" | "blue";
+  dot: string;
+  valueClass?: string;
+  first?: boolean;
 }) {
-  const toneMap: Record<string, string> = {
-    default: "text-foreground",
-    green: "text-green-600",
-    orange: "text-orange-600",
-    red: "text-red-600",
-    blue: "text-blue-600",
-  };
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-1 min-w-0">
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className={`text-xl font-bold ${toneMap[tone]}`}>{value}</p>
-          {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-        </div>
-        <Icon className={`h-5 w-5 shrink-0 ${toneMap[tone]}`} />
+    // `min-w-0` + `flex-1`: bốn ô chia đều chỗ còn lại và CO ĐƯỢC. Thiếu nó thì
+    // số tiền đầy đủ (1.129.600.000 đ) giữ nguyên bề rộng, đẩy khối bên phải
+    // xuống dòng hai và để lại một mảng trống giữa dải KPI.
+    <div className={"min-w-0 flex-1 " + (first ? "pr-6" : "border-l pl-6 pr-6")}>
+      <div className="flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+        <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted-foreground">
+          {label}
+        </span>
       </div>
-    </Card>
+      <div
+        className={`mt-0.5 truncate text-[21px] font-extrabold tracking-tight ${valueClass}`}
+        title={value}
+      >
+        {value}
+      </div>
+    </div>
   );
 }
 
-const DepositsPage = () => {
+const DepositsDesktop = () => {
   const queryClient = useQueryClient();
   const [tab, setTab] = usePersistedState("flt:deposits:tab", "overview");
+  // Hai pill của bản 2a: bàn xử lý ("work") vs sổ cọc đầy đủ ("ledger" — chính
+  // là bốn tab cũ, KHÔNG bỏ tab nào).
+  const [view, setView] = usePersistedState<"work" | "ledger">("flt:deposits:view", "work");
   const { data: perms } = useMyPermissions();
   const canCreateDeposit = canUse(perms, "deposits", "create");
   const canConvertDeposit = canUse(perms, "deposits", "convert");
+  const canApproveDeposit = canUse(perms, "deposits", "edit");
+  const approveVoucher = useApproveVoucher();
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [deadlineTarget, setDeadlineTarget] = useState<HoldDeadlineTarget | null>(null);
 
   // Bộ lọc toà nhà dùng chung cho mọi tab ([] = tất cả toà).
   const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:deposits:buildingIds", []);
@@ -123,6 +153,10 @@ const DepositsPage = () => {
   // danh sách (hụt tổng khi HĐ/phiếu > 1000). Danh sách chi tiết vẫn dùng row
   // hooks (đã phân trang) cho bảng.
   const { data: heldAgg = [] } = useHeldDepositSummary(buildingIds);
+  // Hạn phải làm hợp đồng (bảng reservation_hold_deadlines). Chưa tải xong thì
+  // `holdDeadlines` rỗng ⇒ chưa phiếu nào bị xếp "quá hạn làm HĐ" — thà thiếu
+  // một nhóm trong nửa giây còn hơn tô đỏ nhầm.
+  const { data: holdDeadlines = {} } = useReservationHoldDeadlines();
   const { data: resvSummary } = useReservationDepositSummary(buildingIds);
   // KPI "Đã hoàn cọc" = TIỀN THẬT ĐÃ RA KHỎI KÉT (quyết định của chủ 30/07,
   // §1ter.1) ⇒ phải lấy từ server, xem khối chú thích ở `refundKpi` bên dưới.
@@ -237,6 +271,47 @@ const DepositsPage = () => {
     setResvContractOpen(true);
   };
 
+  // ── Hàng đợi "Cần xử lý" (bản 2a) ──────────────────────────────────────
+  // `today` lấy theo GIỜ VN, không theo giờ máy: xem `vnTodayISO`.
+  const workQueue = useMemo(
+    () =>
+      buildDepositWorkQueue({
+        today: vnTodayISO(),
+        held: heldFiltered,
+        reservations,
+        holdDeadlines,
+      }),
+    [heldFiltered, reservations, holdDeadlines],
+  );
+  const todoCount = countTasks(workQueue);
+  const ledgerCount = heldFiltered.length + reservations.length;
+
+  const handleApproveTask = (task: DepositTask) => {
+    if (!task.voucherId) return;
+    setApprovingId(task.voucherId);
+    approveVoucher.mutate(task.voucherId, {
+      onSettled: () => {
+        setApprovingId(null);
+        queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] });
+      },
+    });
+  };
+
+  const handleEditDeadline = (task: DepositTask) => {
+    if (!task.voucherId) return;
+    setDeadlineTarget({
+      voucherId: task.voucherId,
+      label: `P.${task.roomName} · ${task.buildingName}${task.code ? ` · ${task.code}` : ""}`,
+      current: task.dueDate,
+    });
+  };
+
+  const handleCreateContractFromTask = (task: DepositTask) => {
+    if (!task.roomId) return;
+    setResvPrefill({ buildingId: task.buildingId, roomId: task.roomId });
+    setResvContractOpen(true);
+  };
+
   return (
     <MainLayout>
       <div className="p-6 space-y-6">
@@ -249,24 +324,134 @@ const DepositsPage = () => {
               giữ chỗ
             </p>
           </div>
-          {canCreateDeposit && (
-            <Button onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Tạo đặt cọc
-            </Button>
-          )}
+          <div className="flex items-end gap-3">
+            {/* Bộ lọc toà nhà (1 toà hoặc tất cả) — dùng chung mọi màn */}
+            <BuildingFilterSelect
+              value={buildingIds}
+              onChange={setBuildingIds}
+              className="w-[280px]"
+              aria-label="Lọc theo toà nhà"
+            />
+            {canCreateDeposit && (
+              <Button onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Tạo đặt cọc
+              </Button>
+            )}
+          </div>
         </div>
 
-        {/* Bộ lọc toà nhà (1 toà hoặc tất cả) — dùng chung mọi tab */}
-        <div className="flex flex-wrap items-end gap-3">
-          <BuildingFilterSelect
-            value={buildingIds}
-            onChange={setBuildingIds}
-            className="w-[280px]"
-            aria-label="Lọc theo toà nhà"
+        {/* ===== DẢI KPI — luôn hiện, không nằm trong tab nào ===== */}
+        <Card className="flex flex-wrap items-center gap-y-4 px-5 py-4">
+          <KpiCell
+            first
+            label="Cọc đang giữ"
+            value={formatCurrency(kpi.held_)}
+            dot="bg-emerald-500"
+            valueClass="text-emerald-600"
           />
+          <KpiCell
+            label="Cần thu theo HĐ"
+            value={formatCurrency(kpi.expected)}
+            dot="bg-foreground"
+          />
+          <KpiCell
+            label={`Còn thiếu · ${kpi.shortCount} HĐ`}
+            value={formatCurrency(kpi.shortfall)}
+            dot="bg-orange-500"
+            valueClass="text-orange-600"
+          />
+          <KpiCell
+            label={`Giữ chỗ chờ ký · ${resvSummary?.approvedCount ?? 0}`}
+            value={formatCurrency(holdingAmount)}
+            dot="bg-blue-500"
+            valueClass="text-blue-600"
+          />
+          <div className="flex w-full shrink-0 flex-col gap-1.5 border-t pt-3 text-xs text-muted-foreground 2xl:w-[300px] 2xl:border-l 2xl:border-t-0 2xl:pl-6 2xl:pt-0">
+            <span>
+              Đã hoàn cọc (tiền đã ra khỏi két){" "}
+              <strong className="text-foreground">{formatCurrency(kpi.refundTotal)}</strong> ·{" "}
+              {kpi.refundCount} phiếu
+            </span>
+            <span>
+              Đã bỏ cọc <strong className="text-red-600">{formatCurrency(kpi.forfeitTotal)}</strong> ·{" "}
+              {kpi.forfeitCount} lần
+            </span>
+            {rfReconciles && (rfSummary?.orphanCount ?? 0) > 0 && (
+              <span className="inline-flex items-start gap-1.5 rounded-md bg-red-50 px-2 py-1.5 font-semibold leading-snug text-red-600">
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                {rfSummary!.orphanCount} phiếu hoàn (
+                {formatCurrency(rfSummary!.orphanTotal)}) chưa nối hồ sơ — rà tay
+              </span>
+            )}
+          </div>
+        </Card>
+
+        {/* ===== HAI PILL: bàn xử lý ↔ sổ cọc đầy đủ ===== */}
+        <div className="flex max-w-2xl gap-3">
+          <button
+            type="button"
+            onClick={() => setView("work")}
+            aria-pressed={view === "work"}
+            className={
+              "h-11 flex-1 rounded-xl text-sm font-bold transition " +
+              (view === "work"
+                ? "bg-primary text-primary-foreground shadow"
+                : "bg-card text-foreground shadow-sm hover:bg-accent")
+            }
+          >
+            Cần xử lý · {todoCount}
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("ledger")}
+            aria-pressed={view === "ledger"}
+            className={
+              "h-11 flex-1 rounded-xl text-sm font-semibold transition " +
+              (view === "ledger"
+                ? "bg-primary text-primary-foreground shadow"
+                : "bg-card text-foreground shadow-sm hover:bg-accent")
+            }
+          >
+            Sổ cọc đầy đủ · {ledgerCount}
+          </button>
         </div>
 
+        {/* ===== BÀN XỬ LÝ ===== */}
+        {view === "work" && (
+          <div className="flex flex-col items-start gap-4 xl:flex-row">
+            <div className="min-w-0 flex-[1.9]">
+              <DepositWorkQueuePanel
+                groups={workQueue}
+                isLoading={heldLoading || resvLoading}
+                ledgerCount={ledgerCount}
+                onOpenLedger={() => setView("ledger")}
+                actions={{
+                  onCreateContract: handleCreateContractFromTask,
+                  onApprove: handleApproveTask,
+                  onEditDeadline: handleEditDeadline,
+                  canCreateContract: canConvertDeposit,
+                  canApprove: canApproveDeposit,
+                  approvingId,
+                }}
+              />
+            </div>
+            <div className="flex w-full flex-col gap-4 xl:w-auto xl:flex-1">
+              <ReservationBreakdownCard
+                reservations={reservations}
+                onOpenHolds={() => {
+                  setView("ledger");
+                  setTab("holds");
+                }}
+              />
+              <BuildingCoverageCard rows={byBuilding} />
+              <RefundReconcileCard summary={rfSummary} reconciles={rfReconciles} />
+            </div>
+          </div>
+        )}
+
+        {/* ===== SỔ CỌC ĐẦY ĐỦ — nguyên bốn tab cũ ===== */}
+        {view === "ledger" && (
         <Tabs value={tab} onValueChange={setTab} className="space-y-4">
           <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="overview">Tổng quan</TabsTrigger>
@@ -277,46 +462,6 @@ const DepositsPage = () => {
 
           {/* ===== TAB 1: TỔNG QUAN ===== */}
           <TabsContent value="overview" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
-              <KpiCard
-                label="Cọc đang giữ"
-                value={formatCurrency(kpi.held_)}
-                icon={Wallet}
-                tone="green"
-              />
-              <KpiCard
-                label="Cọc cần thu"
-                value={formatCurrency(kpi.expected)}
-                icon={DollarSign}
-              />
-              <KpiCard
-                label="Thiếu cọc"
-                value={formatCurrency(kpi.shortfall)}
-                sub={`${kpi.shortCount} hợp đồng`}
-                icon={AlertTriangle}
-                tone="orange"
-              />
-              <KpiCard
-                label="Giữ chỗ chờ"
-                value={formatCurrency(holdingAmount)}
-                icon={Building2}
-                tone="blue"
-              />
-              <KpiCard
-                label="Đã hoàn cọc (tiền đã ra khỏi két)"
-                value={formatCurrency(kpi.refundTotal)}
-                sub={`${kpi.refundCount} phiếu hoàn đã duyệt & vào sổ`}
-                icon={RotateCcw}
-              />
-              <KpiCard
-                label="Đã bỏ cọc"
-                value={formatCurrency(kpi.forfeitTotal)}
-                sub={`${kpi.forfeitCount} lần`}
-                icon={Ban}
-                tone="red"
-              />
-            </div>
-
             {/* Dòng cảnh báo BẮT BUỘC của §1ter.1: ô KPI đếm tiền ĐÃ RA KÉT, còn
                 bảng "Hoàn / Bỏ cọc" chỉ liệt kê được phiếu nối được hồ sơ thanh
                 lý. Không hiện phần chênh ra đây thì ô KPI lại nói khác cái bảng
@@ -736,9 +881,14 @@ const DepositsPage = () => {
             </Card>
           </TabsContent>
         </Tabs>
+        )}
 
         {/* Dialogs */}
         <CreateDepositDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+        <HoldDeadlineDialog
+          target={deadlineTarget}
+          onOpenChange={(open) => !open && setDeadlineTarget(null)}
+        />
         {resvPrefill && (
           <ContractFormDialog
             open={resvContractOpen}
@@ -754,4 +904,20 @@ const DepositsPage = () => {
   );
 };
 
-export default DepositsPage;
+const DepositsMobilePage = lazy(() => import("./DepositsMobilePage"));
+
+/**
+ * Trang Quản lý Cọc. Trên điện thoại rẽ sang màn app full-screen (bản 2b) —
+ * cùng khuôn với ContractsPage/BuildingsPage: `usePhoneViewport` khởi tạo ĐỒNG
+ * BỘ nên không nháy bảng desktop trước khi effect chạy.
+ */
+export default function DepositsPage() {
+  const isPhone = usePhoneViewport();
+  if (isPhone)
+    return (
+      <Suspense fallback={null}>
+        <DepositsMobilePage />
+      </Suspense>
+    );
+  return <DepositsDesktop />;
+}

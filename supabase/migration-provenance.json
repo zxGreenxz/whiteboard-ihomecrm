@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-21T17:52:04.024Z",
+  "generatedAt": "2026-08-22T01:30:48.922Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 396,
+    "ledger-applied": 398,
     "unknown": 67,
     "catalog-proven": 216,
     "superseded": 15
@@ -8177,6 +8177,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-21T17:15:03.743Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260822010000_han_lam_hop_dong_cho_phieu_coc_giu_cho.sql",
+      "version": "20260822010000",
+      "name": "han_lam_hop_dong_cho_phieu_coc_giu_cho",
+      "scheme": "timestamp14",
+      "sha256": "ff0306d837e715abca0bb88949e0c0ea92ec725c07af5bce6d3974f22cd5d2ea",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-22T01:21:18.785Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260822011000_sieu_quyen_bang_han_lam_hop_dong.sql",
+      "version": "20260822011000",
+      "name": "sieu_quyen_bang_han_lam_hop_dong",
+      "scheme": "timestamp14",
+      "sha256": "0de1b1ec4662bace1bdd99f8734be16e99ae35589bf1f69b0ebf2e9a25724566",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-22T01:24:51.883Z|bien-nhan-backup"
       ]
     },
     {

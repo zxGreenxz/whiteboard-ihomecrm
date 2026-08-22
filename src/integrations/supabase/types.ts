@@ -19441,6 +19441,62 @@ export type Database = {
           },
         ]
       }
+      reservation_hold_deadlines: {
+        Row: {
+          created_at: string
+          created_by: string
+          hold_until: string
+          income_expense_id: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          hold_until: string
+          income_expense_id: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          hold_until?: string
+          income_expense_id?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_hold_deadlines_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: true
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_hold_deadlines_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_hold_deadlines_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: true
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "reservation_hold_deadlines_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_binding_scopes: {
         Row: {
           organization_id: string
@@ -27383,6 +27439,10 @@ export type Database = {
       }
       set_notification_org_config_v1: {
         Args: { p_events?: Json; p_quiet_end?: number; p_quiet_start?: number }
+        Returns: Json
+      }
+      set_reservation_hold_deadline_v1: {
+        Args: { p_hold_until?: string; p_income_expense_id: string }
         Returns: Json
       }
       set_room_pass_listing_active: {
