@@ -381,6 +381,17 @@ export default function QuaySoPage() {
   const teams = useMemo(() => (state?.ok ? state.teams ?? [] : []), [state]);
   // Rỗng = sự kiện một giải kiểu cũ. Có = sự kiện chia lượt, sân khấu khác hẳn.
   const rounds = useMemo(() => (state?.ok ? state.rounds ?? [] : []), [state]);
+  /**
+   * Câu giới thiệu giải. Sự kiện chia lượt KHÔNG dùng `prizeAmount` (đó là
+   * trường của thể lệ một-giải), nên để nguyên câu cũ là quảng cáo sai số tiền:
+   * đêm tổng kết 6 giải/1.200.000đ mà chạy chữ "Giải may mắn 500.000đ".
+   */
+  const gioiThieuGiai = useMemo(() => {
+    if (!event) return '';
+    if (rounds.length === 0) return `${event.prizeLabel} ${formatVnd(event.prizeAmount)}`;
+    const soGiai = rounds.reduce((n, r) => n + r.winnersCount, 0);
+    return `${rounds.length} lượt · ${soGiai} giải · ${formatVnd(totalRoundsPrize(rounds))}`;
+  }, [event, rounds]);
 
   // Ghi nhận đã thấy sự kiện lúc còn mở → coi như đang xem trực tiếp.
   useEffect(() => {
@@ -530,7 +541,7 @@ export default function QuaySoPage() {
           {[0, 1].map((half) => (
             <span key={half}>
               {event
-                ? `${event.title} ✦ ${event.prizeLabel} ${formatVnd(event.prizeAmount)} ✦ Điểm danh bằng mã 6 số ✦ Mở thưởng tự động đúng giờ ✦ `
+                ? `${event.title} ✦ ${gioiThieuGiai} ✦ Điểm danh bằng mã 6 số ✦ ${rounds.length ? 'Càng nhiều vé cơ hội càng cao' : 'Mở thưởng tự động đúng giờ'} ✦ `
                 : 'IHOME · Vòng xoay may mắn ✦ Điểm danh bằng mã 6 số ✦ '}
             </span>
           ))}
@@ -549,7 +560,9 @@ export default function QuaySoPage() {
           </h1>
           <p className="qs-tag">
             {event
-              ? `${event.prizeLabel} ${formatVnd(event.prizeAmount)} — nhập mã đội để điểm danh và theo dõi giờ mở thưởng.`
+              ? rounds.length
+                ? `${gioiThieuGiai} — mỗi deal một vé, càng nhiều vé cơ hội càng cao. Nhập mã để điểm danh.`
+                : `${gioiThieuGiai} — nhập mã đội để điểm danh và theo dõi giờ mở thưởng.`
               : 'Nhập mã 6 số BTC cấp cho đội bạn để vào sự kiện.'}
           </p>
         </section>
@@ -756,7 +769,7 @@ export default function QuaySoPage() {
                   >
                     <div className="qs-tname">{t.name}</div>
                     <div className="qs-tmeta">
-                      <span>{t.deals} deal</span>
+                      <span>{t.sale?.trim() ? `${t.sale.trim()} · ${t.deals} deal` : `${t.deals} deal`}</span>
                       {revealed && t.id === event.winnerTeamId ? (
                         <span className="qs-winlabel">Trúng giải ✦</span>
                       ) : (
