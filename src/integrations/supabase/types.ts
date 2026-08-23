@@ -25860,6 +25860,7 @@ export type Database = {
       }
       lucky_gen_code: { Args: never; Returns: string }
       lucky_gen_slug: { Args: never; Returns: string }
+      lucky_is_event_admin_v1: { Args: { p_event: string }; Returns: boolean }
       lucky_public_state_v1: {
         Args: { p_code?: string; p_event?: string; p_slug?: string }
         Returns: Json
