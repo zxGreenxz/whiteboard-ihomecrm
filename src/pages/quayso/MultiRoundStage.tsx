@@ -5,16 +5,19 @@
  * (đêm tổng kết: 100K×3 → 200K×2 → 500K×1). Component này lo TOÀN BỘ việc điều
  * phối, hai trang chỉ việc đặt nó vào và nói mình là chủ giải hay người xem.
  *
- * ── HAI VAI, MỘT NGUỒN SỰ THẬT ────────────────────────────────────────────
- *   · `host`   (màn chiếu): bấm nút → gọi `lucky_draw_round_v1` chốt lượt kế.
- *   · `viewer` (trang điểm danh): KHÔNG chốt gì cả, chỉ poll và diễn lại lượt
- *     nào server đã chốt mà mình chưa diễn. Nhờ vậy mọi máy thấy cùng kết quả
- *     và chủ giải giữ được nhịp chương trình.
+ * ── SÂN KHẤU NÀY CHỈ DIỄN LẠI, KHÔNG CHỐT GÌ ──────────────────────────────
+ * Cả hai trang công khai đều chỉ poll và diễn lại lượt nào server ĐÃ chốt mà
+ * máy mình chưa diễn. Việc mở lượt nằm ở TRANG QUẢN TRỊ (`/quayso/admin`), và
+ * server cưỡng chế điều đó chứ không phải giao diện.
  *
- * ── VÌ SAO KHÔNG ĐỂ NGƯỜI XEM TỰ CHỐT LƯỢT ────────────────────────────────
- * `lucky_draw_round_v1` là public (án lệ quay tay 20260731130000). Nếu người
- * xem cũng gọi thì máy nào mở trang trước sẽ chốt luôn lượt kế trong khi chủ
- * giải chưa kịp giới thiệu — cháy lượt. Người xem chỉ ĐỌC.
+ * ── VÌ SAO KHÔNG CÓ NÚT Ở ĐÂY ─────────────────────────────────────────────
+ * Bản đầu (21/08) có nút "mở lượt" ngay trên màn chiếu, gọi RPC mở cho `anon`
+ * theo án lệ quay tay 20260731130000. Án lệ đó chỉ đúng cho sự kiện MỘT giải:
+ * chốt một lần rồi khoá, ai bấm cũng như nhau. Với NHIỀU LƯỢT thì nó hỏng —
+ * link màn chiếu là link công khai, nên một người cầm link bấm liên tiếp là
+ * ĐỐT SẠCH cả 3 lượt trước khi chủ giải kịp giới thiệu lượt nào. Giấu nút đi
+ * không cứu được: RPC gọi thẳng được. Migration 20260823060000 thu hồi quyền
+ * của anon; đây là phần giao diện đi theo.
  *
  * ── HAI TRÒ CHƠI, HAI NHỊP ────────────────────────────────────────────────
  *   · Đua thú: cả lượt diễn MỘT lần, n con về đích theo thứ hạng.
@@ -26,13 +29,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   formatVnd,
-  luckyDrawRound,
   luckyGameOf,
   nextPendingRound,
   tallyBySale,
   totalRoundsPrize,
   type LuckyEventPublic,
-  type LuckyPublicState,
   type LuckyRoundPublic,
   type LuckyTeamPublic,
 } from '@/lib/luckyDrawApi';
@@ -47,10 +48,6 @@ export interface MultiRoundStageProps {
   /** Toàn bộ vé (kể cả chưa điểm danh) — để tra tên khi dựng bảng vàng. */
   allTeams: LuckyTeamPublic[];
   rounds: LuckyRoundPublic[];
-  /** `host` được bấm chốt lượt; `viewer` chỉ diễn lại thứ server đã chốt. */
-  mode: 'host' | 'viewer';
-  /** Kết quả mới từ server — trang cha nhét vào cache để mọi chỗ cùng thấy. */
-  onDrawn: (s: LuckyPublicState) => void;
   /** Ăn mừng khi trao xong một suất (pháo giấy, rung máy…). */
   onCelebrate?: () => void;
   big?: boolean;
@@ -78,8 +75,6 @@ export default function MultiRoundStage({
   entrants,
   allTeams,
   rounds,
-  mode,
-  onDrawn,
   onCelebrate,
   big = false,
 }: MultiRoundStageProps) {
@@ -93,8 +88,6 @@ export default function MultiRoundStage({
   /** Vòng xoay: suất thứ mấy trong lượt đang diễn (0-based). */
   const [slot, setSlot] = useState(0);
   const [nonce, setNonce] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   /** Lượt vừa diễn xong — để hiện bảng kết quả lượt. */
   const [justDone, setJustDone] = useState<LuckyRoundPublic | null>(null);
 
@@ -138,35 +131,6 @@ export default function MultiRoundStage({
     setJustDone(null);
     setNonce((n) => n + 1);
   }, [sorted, playedUpTo, active]);
-
-  /* ── Chủ giải: bấm chốt lượt kế ── */
-  const drawNext = useCallback(async () => {
-    if (busy || !pending) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const res = await luckyDrawRound(event.id, pending.ordinal);
-      if (!res.ok) {
-        setErr(
-          res.reason === 'no_checked_in_teams'
-            ? 'Chưa có vé nào điểm danh — chưa quay được.'
-            : res.reason === 'not_time'
-              ? 'Chưa tới giờ mở thưởng đã hẹn.'
-              : res.reason === 'previous_round_pending'
-                ? 'Lượt trước chưa xong.'
-                : 'Không quay được, thử lại.',
-        );
-        return;
-      }
-      onDrawn(res);
-      // Không tự `setActive` ở đây: `res` đã cập nhật `rounds`, hiệu ứng bên
-      // trên sẽ bắt lượt vừa chốt và chạy. Một đường vào duy nhất cho cả hai vai.
-    } catch {
-      setErr('Mạng chập chờn — thử lại.');
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, pending, event.id, onDrawn]);
 
   /* ── Một suất (vòng xoay) hoặc cả lượt (đua thú) vừa xong ── */
   const onSpinDone = useCallback(() => {
@@ -288,22 +252,11 @@ export default function MultiRoundStage({
         </div>
       )}
 
-      {/* Điều khiển */}
-      {mode === 'host' && !active && pending && (
-        <button type="button" className="qs-screen-btn" disabled={busy || !entrants.length}
-          onClick={() => void drawNext()}>
-          {busy ? 'Đang chốt…'
-            : `▶ ${playedUpTo > 0 ? `Lượt ${pending.ordinal}` : 'Bắt đầu lượt 1'} · ${nhanLuot(pending)}`}
-        </button>
-      )}
-      {mode === 'host' && !active && pending && (
-        <p className="qs-screen-hint">
-          Còn {sorted.length - playedUpTo} lượt · tổng giải {formatVnd(tong)}
-        </p>
-      )}
-      {mode === 'viewer' && !active && pending && (
+      {/* Đang chờ lượt kế — mở lượt là việc của trang quản trị */}
+      {!active && pending && (
         <p className="qs-screen-hint">
           Chờ ban tổ chức mở lượt {pending.ordinal} · {nhanLuot(pending)}
+          {' · '}còn {sorted.length - playedUpTo}/{sorted.length} lượt
         </p>
       )}
 
@@ -327,26 +280,23 @@ export default function MultiRoundStage({
               {tally.map((x) => `${x.sale}: ${shortVnd(x.total)}`).join(' · ')} 🎉
             </p>
           )}
-          {mode === 'host' && (
-            <button
-              type="button"
-              className="qs-replay-mini"
-              onClick={() => {
-                // Chỉ tua lại PHẦN NHÌN: kết quả đã chốt trên server không đổi,
-                // hiệu ứng ở trên sẽ bắt lại lượt 1 rồi chạy tiếp từng lượt.
-                // Muốn bốc lại kết quả thật thì vào trang quản trị bấm "Đặt lại".
-                setJustDone(null);
-                setPlayedUpTo(0);
-              }}
-            >
-              ↺ Xem lại toàn bộ
-            </button>
-          )}
+          <button
+            type="button"
+            className="qs-replay-mini"
+            onClick={() => {
+              // Chỉ tua lại PHẦN NHÌN: kết quả đã chốt trên server không đổi,
+              // hiệu ứng ở trên sẽ bắt lại lượt 1 rồi chạy tiếp từng lượt.
+              // Muốn bốc lại kết quả THẬT thì vào trang quản trị bấm "Huỷ kết quả".
+              setJustDone(null);
+              setPlayedUpTo(0);
+            }}
+          >
+            ↺ Xem lại toàn bộ
+          </button>
         </div>
       )}
 
-      {err && <p className="qs-codeerr">{err}</p>}
-      {mode === 'host' && !entrants.length && (
+      {!entrants.length && (
         <p className="qs-screen-hint">Chưa vé nào điểm danh — bảo anh em vào link điểm danh trước.</p>
       )}
     </div>

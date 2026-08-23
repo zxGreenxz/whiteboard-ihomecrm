@@ -4,13 +4,15 @@
  * Màn hình để CHỦ GIẢI chiếu lên máy chiếu / quay video. Không cần đăng nhập.
  *
  * Hai chế độ, tự nhận theo dữ liệu:
- *   · Sự kiện có KHAI LƯỢT → sân khấu nhiều lượt (`MultiRoundStage`, vai host):
- *     bấm mở từng lượt, đua xong lượt này mới sang lượt sau, cuối cùng ra bảng
- *     vàng cộng theo sale.
- *   · Không khai lượt → giữ NGUYÊN đường cũ: một giải, một vé trúng, bấm quay.
+ *   · Sự kiện có KHAI LƯỢT → sân khấu nhiều lượt, màn này CHỈ DIỄN LẠI. Mở
+ *     lượt là việc của `/quayso/admin`; ở đó bấm xong thì màn này bắt được sau
+ *     ~1,5 giây và tự chạy. Xem chú thích "vì sao không có nút" ở
+ *     `MultiRoundStage`.
+ *   · Không khai lượt → một giải, một vé trúng. Có hẹn giờ thì trang tự chốt
+ *     khi tới giờ; QUAY TAY thì phải bấm ở trang quản trị (server đòi quyền).
  *
- * Kết quả do server chốt (`lucky_draw_round_v1` / `lucky_draw_v1`); bấm lại chỉ
- * diễn lại đúng kết quả đó ⇒ quay hỏng thì ghi lại bao nhiêu lần cũng được.
+ * Bấm lại chỉ diễn lại đúng kết quả server đã chốt ⇒ quay hỏng thì ghi hình lại
+ * bao nhiêu lần cũng được.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -70,7 +72,16 @@ export default function QuaySoScreenPage() {
     queryKey,
     enabled: Boolean(eventParam || slug),
     queryFn: () => fetchLuckyPublicState(eventParam, null, slug),
-    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+    // Còn lượt chưa quay ⇒ hỏi dồn 1,5 giây một lần: chủ giải bấm "Mở lượt" ở
+    // trang quản trị thì màn chiếu phải bắt được gần như tức thì, chứ để 5 giây
+    // thì khán phòng nhìn thấy một khoảng chết ngay sau tiếng bấm.
+    refetchInterval: (query) => {
+      const s = query.state.data;
+      if (!s?.ok) return 5000;
+      const conLuot = (s.rounds ?? []).some((r) => r.status !== 'drawn');
+      return conLuot ? 1500 : 5000;
+    },
   });
 
   const state = stateQuery.data;
@@ -131,7 +142,10 @@ export default function QuaySoScreenPage() {
             ? 'Chưa có vé nào điểm danh — chưa quay được.'
             : res.reason === 'not_time'
               ? 'Chưa tới giờ mở thưởng đã hẹn.'
-              : 'Không quay được, thử lại.',
+              : res.reason === 'forbidden'
+                ? 'Quay tay là quyền quản trị — mở /quayso/admin rồi bấm “Quay ngay”. '
+                  + 'Muốn màn này tự quay thì đặt “Giờ mở thưởng” cho sự kiện.'
+                : 'Không quay được, thử lại.',
         );
         return;
       }
@@ -184,8 +198,6 @@ export default function QuaySoScreenPage() {
             entrants={entrants}
             allTeams={teams}
             rounds={rounds}
-            mode="host"
-            onDrawn={(s) => queryClient.setQueryData(queryKey, s)}
             onCelebrate={anMung}
             big
           />

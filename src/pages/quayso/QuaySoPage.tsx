@@ -778,8 +778,6 @@ export default function QuaySoPage() {
                   entrants={wheelCheckedIn}
                   allTeams={teams}
                   rounds={rounds}
-                  mode="viewer"
-                  onDrawn={(s) => queryClient.setQueryData(queryKey, s)}
                   onCelebrate={() => {
                     if (winnerIsMine) fireConfetti(confettiRef.current);
                   }}

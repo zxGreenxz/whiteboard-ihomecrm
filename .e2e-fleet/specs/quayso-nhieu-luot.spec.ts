@@ -7,6 +7,10 @@ import { trackConsoleErrors } from './auth';
  *
  * Bốn điều bài này canh, đều là chỗ dễ vỡ khi lên nhiều lượt:
  *
+ *  0. CHỐT LƯỢT LÀ QUYỀN QUẢN TRỊ: gọi bằng khoá `anon` (đúng thứ trình duyệt
+ *     người lạ có) phải BỊ TỪ CHỐI. Đây là hàng rào thật; việc giao diện công
+ *     khai không có nút chỉ là phép lịch sự, RPC gọi thẳng được.
+ *
  *  1. KHÔNG NHẢY CÓC: `lucky_draw_round_v1` phải từ chối khi lượt trước chưa
  *     xong, và phải IDEMPOTENT khi gọi lại đúng lượt đã chốt. Không có hai tính
  *     chất này thì hai máy cùng bấm sẽ cháy một lượt chưa ai kịp xem.
@@ -43,14 +47,52 @@ async function sql<T = Record<string, unknown>>(query: string): Promise<T[]> {
   return (await res.json()) as T[];
 }
 
-/** Gọi RPC công khai đúng như trình duyệt gọi (anon), để kiểm luật phía server. */
-async function rpc(fn: string, args: Record<string, unknown>) {
-  const [{ out }] = await sql<{ out: unknown }>(
-    `select public.${fn}(${Object.values(args)
-      .map((v) => (typeof v === 'number' ? String(v) : `'${String(v)}'`))
-      .join(',')}) as out;`,
-  );
-  return out as { ok: boolean; reason?: string; rounds?: { ordinal: number; status: string }[] };
+/**
+ * Gọi RPC VỚI TƯ CÁCH QUẢN TRỊ — mô phỏng đúng việc chủ giải bấm ở
+ * `/quayso/admin`.
+ *
+ * Từ 23/08/2026 `lucky_draw_round_v1` đòi quyền quản trị, nên gọi trần qua
+ * Management API không còn ăn: role ở đó không có `auth.uid()` nên
+ * `lucky_is_event_admin_v1` trả false và hàm đáp `forbidden`. Muốn giả lập một
+ * quản trị thật thì phải nạp claim JWT của một thành viên ACTIVE trong org, y
+ * như PostgREST làm khi người ta đăng nhập.
+ */
+async function rpcAdmin(fn: string, args: Record<string, unknown>) {
+  const doiSo = Object.values(args)
+    .map((v) => (typeof v === 'number' ? String(v) : `'${String(v)}'`))
+    .join(',');
+  const [{ out }] = await sql<{ out: unknown }>(`
+    select set_config(
+      'request.jwt.claims',
+      json_build_object(
+        'sub', (select user_id from public.organization_memberships
+                 where organization_id = '${DEMO_ORG}' and status = 'ACTIVE'
+                   and member_type in ('OWNER','STAFF') limit 1),
+        'role', 'authenticated')::text,
+      false);
+    select public.${fn}(${doiSo}) as out;`);
+  return out as { ok: boolean; reason?: string };
+}
+
+/**
+ * Gọi RPC bằng ĐÚNG khoá `anon` mà trình duyệt người lạ cầm — không phải qua
+ * Management API (service role bỏ qua mọi GRANT, nên không kiểm được quyền).
+ */
+async function rpcAnon(fn: string, body: Record<string, unknown>) {
+  const url = process.env.SUPABASE_URL ?? 'https://tryymsxyyckgbrmmvozx.supabase.co';
+  const key = process.env.SUPABASE_ANON_KEY;
+  if (!key) throw new Error('Thiếu env SUPABASE_ANON_KEY (lấy từ .env: VITE_SUPABASE_PUBLISHABLE_KEY).');
+  const r = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Profile': 'public',
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify(body),
+  });
+  return { http: r.status, body: await r.text() };
 }
 
 const created: string[] = [];
@@ -86,16 +128,81 @@ async function seed(): Promise<{ eventId: string; slug: string }> {
 }
 
 test.describe('Sự kiện nhiều lượt trên /quayso', () => {
+  test('HÀNG RÀO: người lạ cầm link KHÔNG mở được lượt', async () => {
+    const s = await seed();
+
+    // Đúng thứ trình duyệt người lạ có: khoá anon công khai.
+    const r = await rpcAnon('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
+    expect(
+      r.http === 401 || r.http === 403 || /forbidden|permission denied/i.test(r.body),
+      `anon vẫn mở được lượt! http=${r.http} body=${r.body.slice(0, 200)}`,
+    ).toBe(true);
+
+    // Và không được đốt mất lượt nào.
+    const [{ conCho }] = await sql<{ conCho: number }>(`
+      select count(*)::int as "conCho" from public.lucky_event_rounds
+      where event_id = '${s.eventId}' and status = 'pending';`);
+    expect(conCho, 'người lạ bấm xong mà lượt bị chốt mất').toBe(3);
+  });
+
+  test('HÀNG RÀO: quay tay sự kiện MỘT GIẢI cũng đòi quản trị', async () => {
+    const uniq = `${TAG}-TAY-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const [{ event_id }] = await sql<{ event_id: string }>(`
+      insert into public.lucky_events
+        (organization_id, title, prize_label, prize_amount, draw_at, game, created_by)
+      values ('${DEMO_ORG}', '${uniq}', 'Giải may mắn', 100000, null, 'wheel',
+              (select user_id from public.organization_memberships
+                where organization_id = '${DEMO_ORG}' and status = 'ACTIVE' limit 1))
+      returning id as event_id;`);
+    created.push(event_id);
+    await sql(`insert into public.lucky_event_teams (event_id, name, deals, checked_in_at)
+               values ('${event_id}', 'VE A', 1, now());`);
+
+    // draw_at NULL = quay tay ⇒ anon phải bị từ chối.
+    const r = await rpcAnon('lucky_draw_v1', { p_event: event_id });
+    expect(/forbidden/i.test(r.body) || r.http === 401 || r.http === 403,
+      `anon quay tay được! http=${r.http} body=${r.body.slice(0, 200)}`).toBe(true);
+
+    const [{ st }] = await sql<{ st: string }>(
+      `select status as st from public.lucky_events where id = '${event_id}';`);
+    expect(st, 'sự kiện bị người lạ chốt mất').toBe('open');
+  });
+
+  test('KHÔNG chặn nhầm: hẹn giờ + đã tới giờ thì trang công khai VẪN tự quay được', async () => {
+    // Đây là cơ chế "quay tự động đúng giờ" mà trang điểm danh dựa vào. Siết
+    // quyền mà chặn luôn đường này là giết một tính năng đang chạy.
+    const uniq = `${TAG}-GIO-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const [{ event_id }] = await sql<{ event_id: string }>(`
+      insert into public.lucky_events
+        (organization_id, title, prize_label, prize_amount, draw_at, game, created_by)
+      values ('${DEMO_ORG}', '${uniq}', 'Giải may mắn', 100000,
+              now() - interval '60 seconds', 'wheel',
+              (select user_id from public.organization_memberships
+                where organization_id = '${DEMO_ORG}' and status = 'ACTIVE' limit 1))
+      returning id as event_id;`);
+    created.push(event_id);
+    await sql(`insert into public.lucky_event_teams (event_id, name, deals, checked_in_at)
+               values ('${event_id}', 'VE A', 1, now());`);
+
+    const r = await rpcAnon('lucky_draw_v1', { p_event: event_id });
+    expect(r.http, `hẹn giờ mà anon vẫn bị chặn: ${r.body.slice(0, 200)}`).toBe(200);
+    expect(r.body).toContain('"ok": true');
+
+    const [{ st }] = await sql<{ st: string }>(
+      `select status as st from public.lucky_events where id = '${event_id}';`);
+    expect(st).toBe('drawn');
+  });
+
   test('server: không cho nhảy cóc lượt, và gọi lại đúng lượt là idempotent', async () => {
     const s = await seed();
 
     // Nhảy thẳng lượt 2 khi lượt 1 chưa quay → phải từ chối.
-    const nhayCoc = await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 2 });
+    const nhayCoc = await rpcAdmin('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 2 });
     expect(nhayCoc.ok, 'server cho nhảy cóc lượt').toBe(false);
     expect(nhayCoc.reason).toBe('previous_round_pending');
 
     // Chốt lượt 1.
-    const l1 = await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
+    const l1 = await rpcAdmin('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
     expect(l1.ok).toBe(true);
     const [{ n1 }] = await sql<{ n1: number }>(`
       select count(*)::int as n1 from public.lucky_round_winners w
@@ -104,7 +211,7 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
     expect(n1).toBe(3);
 
     // Gọi lại đúng lượt 1 → KHÔNG được bốc thêm lần nữa.
-    await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
+    await rpcAdmin('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
     const [{ n1b }] = await sql<{ n1b: number }>(`
       select count(*)::int as n1b from public.lucky_round_winners w
       join public.lucky_event_rounds r on r.id = w.round_id
@@ -122,7 +229,7 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
   test('server: chốt hết lượt thì đóng sổ, winner_team_id trỏ giải cao nhất', async () => {
     const s = await seed();
     for (const k of [1, 2, 3]) {
-      const r = await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: k });
+      const r = await rpcAdmin('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: k });
       expect(r.ok, `lượt ${k} chốt lỗi: ${r.reason}`).toBe(true);
     }
     const [row] = await sql<{ status: string; khop: boolean; tong: number }>(`
@@ -158,7 +265,7 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
                values ('${event_id}',1,'',100000,1), ('${event_id}',2,'',200000,1);`);
 
     for (const k of [1, 2]) {
-      const r = await rpc('lucky_draw_round_v1', { p_event: event_id, p_ordinal: k });
+      const r = await rpcAdmin('lucky_draw_round_v1', { p_event: event_id, p_ordinal: k });
       expect(r.ok, `lượt ${k} lỗi: ${r.reason}`).toBe(true);
     }
 
@@ -184,13 +291,18 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
     await expect(page.locator('.qs-prize-done')).toHaveCount(0);
     expect(await page.content()).not.toContain('🏅');
 
+    // Màn chiếu KHÔNG có nút mở lượt — chủ giải bấm ở trang quản trị.
+    await expect(page.getByRole('button', { name: /Bắt đầu lượt|^▶ Lượt/ })).toHaveCount(0);
+
     for (const k of [1, 2, 3]) {
-      const nut = page.getByRole('button', { name: /Bắt đầu lượt 1|^▶ Lượt/ });
-      await expect(nut).toBeVisible({ timeout: 20_000 });
-      await nut.click();
+      await expect(page.getByText(new RegExp(`Chờ ban tổ chức mở lượt ${k}`)))
+        .toBeVisible({ timeout: 20_000 });
+
+      // Chủ giải mở lượt ở NƠI KHÁC (trang quản trị); màn chiếu phải tự bám theo.
+      await rpcAdmin('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: k });
 
       // Đang đua thì CHƯA được lộ kết quả lượt này.
-      await expect(page.locator('.qs-track-count')).toBeVisible({ timeout: 6_000 });
+      await expect(page.locator('.qs-track-count')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.qs-prize-done')).toHaveCount(k === 1 ? 0 : k === 2 ? 3 : 5);
 
       if (k < 3) {
@@ -227,7 +339,7 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
     await page.getByRole('button', { name: /^Điểm danh$/i }).click();
     await expect(page.locator('.qs-mine')).toBeVisible();
 
-    // Có dải giải, nhưng KHÔNG có nút mở lượt — quyền đó thuộc màn chiếu.
+    // Có dải giải, nhưng KHÔNG có nút mở lượt — quyền đó chỉ ở trang quản trị.
     await expect(page.locator('.qs-prize')).toHaveCount(6);
     await expect(page.getByRole('button', { name: /Bắt đầu lượt|^▶ Lượt/ })).toHaveCount(0);
     await expect(page.getByText(/Chờ ban tổ chức mở lượt 1/)).toBeVisible();
@@ -246,7 +358,7 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
     await page.getByRole('button', { name: /^Điểm danh$/i }).click();
 
     // Diễn xong lượt 1 trên máy người xem.
-    await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
+    await rpcAdmin('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
     await expect(page.getByText('Kết quả lượt 1')).toBeVisible({ timeout: 60_000 });
     await expect(page.locator('.qs-prize-done')).toHaveCount(3);
 
@@ -262,7 +374,7 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
     await expect(page.getByText(/Chờ ban tổ chức mở lượt 1/)).toBeVisible();
 
     // Chốt lại lượt 1 → phải diễn lại được.
-    await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
+    await rpcAdmin('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
     await expect(page.getByText('Kết quả lượt 1')).toBeVisible({ timeout: 60_000 });
     expect(errors, `console errors: ${errors.join(' | ')}`).toHaveLength(0);
   });
@@ -280,7 +392,7 @@ test.describe('Sự kiện nhiều lượt trên /quayso', () => {
     await expect(page.getByText(/Chờ ban tổ chức mở lượt 1/)).toBeVisible();
 
     // Ban tổ chức chốt lượt 1 ở nơi khác → trang này tự bắt được qua poll.
-    await rpc('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
+    await rpcAdmin('lucky_draw_round_v1', { p_event: s.eventId, p_ordinal: 1 });
 
     await expect(page.locator('.qs-track-count')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Kết quả lượt 1')).toBeVisible({ timeout: 60_000 });

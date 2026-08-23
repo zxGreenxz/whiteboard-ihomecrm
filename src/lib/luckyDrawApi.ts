@@ -191,30 +191,17 @@ export function luckyDraw(eventId: string) {
 }
 
 /**
- * Chốt kết quả MỘT lượt. Phải truyền `ordinal` chứ không để server tự tìm
- * "lượt kế tiếp": hai máy cùng bấm thì máy sau (đang chờ khoá) sẽ thấy lượt
- * trước vừa xong và chốt luôn lượt kế — cháy một lượt chưa ai kịp xem. Có
- * `ordinal` thì lần gọi thứ hai chỉ trả lại kết quả cũ.
+ * CHỐT LƯỢT LÀ VIỆC CỦA QUẢN TRỊ — xem `luckyAdminApi.drawRound`.
  *
- * ĐÂY LÀ ENDPOINT CÔNG KHAI (anon), có trong `scripts/definer-acl-baseline.json`.
- * Đánh đổi đã cân nhắc, cùng loại với `lucky_draw_v1` (án lệ 20260731130000):
- * link màn quay là link công khai nên ai cầm link cũng chốt được lượt khi ở chế
- * độ quay tay. Chấp nhận được vì (1) kết quả mỗi lượt chốt MỘT LẦN rồi khoá,
- * gọi lại chỉ trả kết quả cũ; (2) chỉ bốc trong các vé ĐÃ ĐIỂM DANH; (3) không
- * lộ gì ngoài thứ trang công khai vốn đã hiện.
+ * Từ 23/08/2026 `lucky_draw_round_v1` KHÔNG còn cấp quyền cho `anon`. Bản
+ * public cũ đã bị gỡ khỏi đây để không ai vô tình gọi lại: nó chỉ trả 401.
  *
- * KHÁC BIỆT SO VỚI MỘT GIẢI, phải biết: nhiều lượt nghĩa là người cầm link có
- * thể đốt SẠCH các lượt trước khi chủ giải kịp giới thiệu, chứ không chỉ một
- * lượt. Muốn chặt thì ĐẶT `draw_at` — có hẹn giờ thì server chặn tới giờ mới
- * cho chốt. Giao diện người xem cố ý không có nút bấm, nhưng đó là phép lịch
- * sự phía client, KHÔNG phải hàng rào.
+ * Vì sao đổi: link màn chiếu vốn công khai, nên khi hàm còn mở cho anon thì một
+ * người cầm link có thể bấm liên tiếp và ĐỐT SẠCH cả 3 lượt trước khi chủ giải
+ * kịp giới thiệu lượt nào. Với sự kiện MỘT giải thì án lệ 20260731130000 chấp
+ * nhận được (chốt một lần rồi khoá, ai bấm cũng thế); với nhiều lượt thì không.
+ * "Giao diện người xem không có nút" không phải hàng rào — RPC gọi thẳng được.
  */
-export function luckyDrawRound(eventId: string, ordinal: number) {
-  return publicRpc<LuckyPublicState>('lucky_draw_round_v1', {
-    p_event: eventId,
-    p_ordinal: ordinal,
-  });
-}
 
 /** Lượt đầu tiên chưa quay; null = đã xong hết (hoặc sự kiện không chia lượt). */
 export function nextPendingRound(rounds: LuckyRoundPublic[] | undefined): LuckyRoundPublic | null {
@@ -358,6 +345,20 @@ export const luckyAdminApi = {
    * nhất một lượt — đổi thể lệ giữa chừng là thay luật khi cuộc chơi đang chạy;
    * muốn đổi thì bấm "Đặt lại kết quả" trước.
    */
+  /**
+   * Chốt kết quả MỘT lượt. Phải truyền `ordinal` chứ không để server tự tìm
+   * "lượt kế tiếp": hai máy cùng bấm thì máy sau (đang chờ khoá) sẽ thấy lượt
+   * trước vừa xong và chốt luôn lượt kế — cháy một lượt chưa ai kịp xem. Có
+   * `ordinal` thì lần gọi thứ hai chỉ trả lại kết quả cũ.
+   *
+   * Đi qua `adminRpc` (supabase-js, có phiên đăng nhập) chứ KHÔNG qua
+   * `publicRpc`: server đòi quyền quản trị sự kiện, anon gọi thì 401.
+   */
+  drawRound: (eventId: string, ordinal: number) =>
+    adminRpc<LuckyPublicState>(() => supabase.rpc('lucky_draw_round_v1', {
+      p_event: eventId,
+      p_ordinal: ordinal,
+    })),
   setRounds: (eventId: string, rounds: LuckyRoundInput[]) =>
     adminRpc<{ ok: boolean; rounds: number }>(() => supabase.rpc('lucky_admin_set_rounds_v1', {
       p_event: eventId,

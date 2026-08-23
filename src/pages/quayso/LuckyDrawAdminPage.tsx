@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/select';
 import {
   LUCKY_GAMES, PROOF_BUCKET, formatVnd, luckyAdminApi, luckyGameOf, luckyPublicUrl,
-  totalRoundsPrize,
+  nextPendingRound, totalRoundsPrize,
   type LuckyEventAdmin, type LuckyGame, type LuckyRoundInput, type LuckyTeamAdmin,
 } from '@/lib/luckyDrawApi';
 
@@ -114,6 +114,20 @@ export default function LuckyDrawAdminPage() {
       else toast.error('Không quay được.');
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+  const mDrawRound = useMutation({
+    mutationFn: (a: { eventId: string; ordinal: number }) =>
+      luckyAdminApi.drawRound(a.eventId, a.ordinal),
+    onSuccess: (r, a) => {
+      invalidate();
+      if (r.ok) toast.success(`Đã mở lượt ${a.ordinal} — màn chiếu sẽ chạy trong ~2 giây.`);
+      else if (r.reason === 'no_checked_in_teams') toast.error('Chưa vé nào điểm danh — chưa mở được.');
+      else if (r.reason === 'not_time') toast.error('Chưa tới giờ mở thưởng đã hẹn.');
+      else if (r.reason === 'previous_round_pending') toast.error('Lượt trước chưa xong.');
+      else if (r.reason === 'forbidden') toast.error('Bạn không có quyền quản trị sự kiện này.');
+      else toast.error('Không mở được lượt.');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Không mở được lượt.'),
   });
   const mSetRounds = useMutation({
     mutationFn: (a: { eventId: string; rounds: LuckyRoundInput[] }) =>
@@ -304,6 +318,15 @@ export default function LuckyDrawAdminPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Điều khiển buổi quay — CHỈ ở đây mới mở được lượt */}
+            {event.rounds.length > 0 && (
+              <RoundControlCard
+                event={event}
+                busy={mDrawRound.isPending}
+                onDraw={(ordinal) => mDrawRound.mutate({ eventId: event.id, ordinal })}
+              />
+            )}
 
             {/* Thể lệ: chia lượt hay một giải */}
             <RoundsCard
@@ -882,6 +905,94 @@ function RoundsCard({
               ? ' (chưa lưu)' : ''}.
           </p>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ── Điều khiển buổi quay: mở từng lượt ── */
+
+/**
+ * NÚT MỞ LƯỢT CHỈ NẰM Ở ĐÂY, và đó là chủ ý.
+ *
+ * Bản đầu (21/08) đặt nút ngay trên màn chiếu công khai. Màn chiếu không cần
+ * đăng nhập, nên bất kỳ ai cầm link đều bấm được — với sự kiện nhiều lượt thì
+ * họ ĐỐT SẠCH được cả buổi trước khi MC kịp giới thiệu lượt nào. Giấu nút không
+ * cứu được vì RPC gọi thẳng được; migration 20260823060000 mới là hàng rào thật
+ * (thu hồi quyền của `anon`), còn đây là chỗ hợp lệ duy nhất để bấm.
+ *
+ * Cách dùng khi tổ chức: mở màn chiếu ở cửa sổ thứ hai (máy chiếu), giữ trang
+ * này trên máy mình. Bấm "Mở lượt" xong màn chiếu bắt được sau ~1,5 giây.
+ */
+function RoundControlCard({
+  event,
+  onDraw,
+  busy,
+}: {
+  event: LuckyEventAdmin;
+  onDraw: (ordinal: number) => void;
+  busy: boolean;
+}) {
+  const rounds = [...event.rounds].sort((a, b) => a.ordinal - b.ordinal);
+  const pending = nextPendingRound(rounds);
+  const daXong = rounds.filter((r) => r.status === 'drawn').length;
+  const coMat = event.teams.filter((t) => t.inWheel && t.checkedIn).length;
+  const tenVe = new Map(event.teams.map((t) => [t.id, t]));
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">
+          Điều khiển buổi quay — {daXong}/{rounds.length} lượt · {coMat} vé có mặt
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          Mở màn chiếu ở cửa sổ khác rồi bấm bên dưới:{' '}
+          <a
+            href={`/quayso/${event.slug}/quay`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono font-semibold underline underline-offset-2"
+          >
+            /quayso/{event.slug}/quay
+          </a>
+        </div>
+
+        {rounds.map((r) => {
+          const laLuotKe = pending?.ordinal === r.ordinal;
+          return (
+            <div key={r.id} className="flex flex-wrap items-center gap-2 border-b pb-2 last:border-0">
+              <span className="w-16 font-mono text-sm">Lượt {r.ordinal}</span>
+              <span className="w-40 text-sm">
+                {formatVnd(r.amount)}{r.winnersCount > 1 ? ` ×${r.winnersCount}` : ''}
+              </span>
+              <div className="min-w-48 flex-1 text-sm text-muted-foreground">
+                {r.status === 'drawn'
+                  ? [...r.winners].sort((a, b) => a.position - b.position)
+                      .map((w) => tenVe.get(w.teamId)?.name ?? '—').join(' · ')
+                  : laLuotKe ? 'sẵn sàng' : 'chờ lượt trước'}
+              </div>
+              {r.status === 'drawn' ? (
+                <Badge variant="outline">✓ Đã quay</Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={busy || !laLuotKe || coMat === 0}
+                  onClick={() => onDraw(r.ordinal)}
+                >
+                  ▶ Mở lượt {r.ordinal}
+                </Button>
+              )}
+            </div>
+          );
+        })}
+
+        <p className="text-xs text-muted-foreground">
+          Chỉ trang này mở được lượt. Người cầm link màn chiếu <b>không</b> bấm được —
+          nếu không thì họ đốt hết lượt trước khi anh kịp giới thiệu.
+          {coMat === 0 && ' Hiện chưa vé nào điểm danh nên chưa mở được.'}
+        </p>
       </CardContent>
     </Card>
   );

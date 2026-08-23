@@ -1,6 +1,6 @@
 ---
 status: current
-reviewed: 2026-08-22
+reviewed: 2026-08-23
 source_paths:
   - contracts/surfaces/rpc-surface.json
 copilot_ingest: false
@@ -18,17 +18,17 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 254 |
-| Hàm trong catalog (public + api) | 1088 |
+| RPC được gọi từ mã nguồn | 255 |
+| Hàm trong catalog (public + api) | 1089 |
 | File mã nguồn đã quét | 1687 |
-| SECURITY DEFINER | 238 |
+| SECURITY DEFINER | 239 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 174 | còn lại |
+| thường | 175 | còn lại |
 | tiền | 74 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | an ninh | 6 | nơi gọi thuộc OpenClaw |
 

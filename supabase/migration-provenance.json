@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-22T16:51:24.409Z",
+  "generatedAt": "2026-08-23T05:58:48.793Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 401,
+    "ledger-applied": 402,
     "unknown": 67,
     "catalog-proven": 216,
     "superseded": 15
@@ -8232,6 +8232,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-22T16:30:51.496Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260823060000_lucky_chot_ket_qua_la_quyen_quan_tri.sql",
+      "version": "20260823060000",
+      "name": "lucky_chot_ket_qua_la_quyen_quan_tri",
+      "scheme": "timestamp14",
+      "sha256": "a1d4669ebd980ab50b0c9626cbb4973c4083bd98b5785ba4ce3c8c07061db244",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-23T05:36:56.913Z|bien-nhan-backup"
       ]
     },
     {

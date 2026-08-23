@@ -1,0 +1,36 @@
+{
+  "file": "supabase/migrations/20260823060000_lucky_chot_ket_qua_la_quyen_quan_tri.sql",
+  "sha256": "a1d4669ebd980ab50b0c9626cbb4973c4083bd98b5785ba4ce3c8c07061db244",
+  "appliedAt": "2026-08-23T05:36:56.913Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "authorization": {
+    "loai": "bien-nhan-backup",
+    "chiTiet": "349e95c238303c69",
+    "backupFile": "C:\\Users\\Nguyen Tam\\ihomecrm-backups\\ihomecrm-full-2026-08-23T05-34-07-197Z.dump",
+    "backupSha256": "a8ae23ec4c323c01a475e9605cd6343cba0a7db1867a72bbe4d0904fe9d28784",
+    "backupCreatedAt": "2026-08-23T05:36:48.112Z",
+    "backupTablesWithData": 581
+  },
+  "actor": "nguyentamca165@gmail.com",
+  "repoCommit": "c96eed9a90d0b1418a0c90d22d1b89f7845d3e83",
+  "reviewedBlob": "e8541514f18877983bb022993e52f3289648c0ab",
+  "statementBytes": 9578,
+  "normalizedDigest": "7ce9a8f374f277f9f5ec8ddf5ac81684f6a16222c981a794e5ceac899c095661",
+  "catalog": {
+    "before": "01def909df50113b69955d5c151acb46ee52249cd6b0c2f517282b076700c810",
+    "after": "01def909df50113b69955d5c151acb46ee52249cd6b0c2f517282b076700c810",
+    "changed": false,
+    "countsAfter": {
+      "logicalTables": 319,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 1565,
+      "securityDefinerFunctions": 1092,
+      "enums": 30,
+      "realtimeTables": 30
+    }
+  },
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+}
