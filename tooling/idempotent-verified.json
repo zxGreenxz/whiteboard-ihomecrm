@@ -241,6 +241,10 @@
     "20260823140000_network_center_cap_slot_950nk.sql": {
       "sha256": "698af9b3ac9b734598bba7a6c9e9b524fc4f3b2443e6a4a333dadfde4fa7ca44",
       "ketQua": "chay-lai-duoc"
+    },
+    "20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql": {
+      "sha256": "9a189a63933ecde73e15e815814cd454896bb60672d51b853ed9b22a10141a94",
+      "ketQua": "chay-lai-duoc"
     }
   }
 }
