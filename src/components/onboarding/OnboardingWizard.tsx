@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -36,10 +35,10 @@ import { useCreateBuilding } from '@/hooks/useBuildings';
 import { useCreateRoom } from '@/hooks/useRooms';
 import { useCreateService } from '@/hooks/useServices';
 import { useUpdateIndividualSetting } from '@/hooks/useSettings';
+import { useAuth } from '@/hooks/useAuth';
+import { fetchOnboardingCompleted, ONBOARDING_KEY } from './onboardingCompleted';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
-
-const ONBOARDING_KEY = 'onboarding_completed';
 
 const STEPS = [
   { id: 'welcome', title: 'Chào mừng', icon: Sparkles },
@@ -49,28 +48,27 @@ const STEPS = [
   { id: 'complete', title: 'Hoàn thành', icon: CheckCircle2 },
 ] as const;
 
-// Query CÔ LẬP, key ổn định (KHÔNG kèm user?.id) + không bao giờ refetch nền:
-// cờ onboarding gần như bất biến (đã true là mãi true). Bản cũ dùng
-// useIndividualSetting (key có user?.id) trên trang Dashboard bị REFETCH LOOP
-// ~1.6 lần/giây (poll vô hạn onboarding_completed dù cờ đã true) — key ổn định
-// + refetchOnMount:false chặn mọi kiểu trigger (remount/enable-flap). markCompleted
-// ghi qua mutation cũ RỒI set-cache trực tiếp để UI tắt wizard tức thì.
-const ONBOARDING_QK = ['onboarding-completed-flag'] as const;
+// Query CÔ LẬP + không bao giờ refetch nền: cờ onboarding gần như bất biến
+// (đã true là mãi true). Bản cũ dùng useIndividualSetting trên trang Dashboard
+// bị REFETCH LOOP ~1.6 lần/giây — staleTime Infinity + refetchOnMount:false
+// chặn mọi kiểu trigger (remount/enable-flap). Key CÓ user id: đọc cờ phải lọc
+// theo user (xem onboardingCompleted.ts — không lọc thì RLS multi-row làm cờ
+// đọc thành false vĩnh viễn); query chỉ bật khi đã có user id nên key ổn định
+// suốt phiên, không tái phát loop. markCompleted ghi qua mutation cũ RỒI
+// set-cache trực tiếp để UI tắt wizard tức thì.
+const onboardingQK = (userId: string | undefined) =>
+  ['onboarding-completed-flag', userId] as const;
 
 export function useOnboardingState() {
   const queryClient = useQueryClient();
+  const { data: user } = useAuth();
   const updateSetting = useUpdateIndividualSetting(ONBOARDING_KEY);
+  const userId = user?.id;
 
-  const { data: completed, isLoading } = useQuery({
-    queryKey: ONBOARDING_QK,
-    queryFn: async (): Promise<boolean> => {
-      const { data } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', ONBOARDING_KEY)
-        .maybeSingle();
-      return data?.value === true;
-    },
+  const { data: completed } = useQuery({
+    queryKey: onboardingQK(userId),
+    queryFn: () => fetchOnboardingCompleted(userId!),
+    enabled: !!userId,
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnMount: false,
@@ -81,9 +79,12 @@ export function useOnboardingState() {
 
   return {
     isCompleted: completed === true,
-    isLoading,
+    // completed === undefined khi query disabled (chưa có user) HOẶC đang tải
+    // HOẶC lỗi — cả ba trường hợp đều KHÔNG được nháy wizard. (isLoading của
+    // react-query v5 là false khi query disabled nên không dùng được ở đây.)
+    isLoading: completed === undefined,
     markCompleted: () => {
-      queryClient.setQueryData(ONBOARDING_QK, true); // tắt wizard ngay
+      queryClient.setQueryData(onboardingQK(userId), true); // tắt wizard ngay
       updateSetting.mutate(true); // ghi bền xuống settings
     },
   };

@@ -330,10 +330,14 @@ export function useIndividualSetting(key: string, defaultValue: IndividualSettin
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
+      // PHẢI lọc user_id: RLS cho super admin/staff thấy row settings của user
+      // khác — chỉ lọc key thì ≥2 row cùng key làm maybeSingle() lỗi PGRST116
+      // (bug bảng Chào mừng hiện lại mãi, 26/08/2026).
       const { data, error } = await supabase
         .from('settings')
         .select('value')
         .eq('key', key)
+        .eq('user_id', user.id)
         .maybeSingle();
 
       if (error) throw error;
