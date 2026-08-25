@@ -164,6 +164,35 @@ function main() {
     for (const f of fileMoiDoi) console.log(`      ${f}`);
   }
 
+  // ── Chốt lỗ hổng "gate đọc working tree, CI đọc bản commit" ────────────────
+  //
+  // Án lệ 25/08/2026, run 32873960678: check-doc-counts --fix sửa "9 → 11 suite"
+  // trong docs/CODEBASE_STRUCTURE.md ở máy, battery xanh — nhưng file đó đang bẩn
+  // dở từ phiên trước nên không được stage, CI đọc bản commit vẫn ghi 9 → đỏ.
+  // Mọi gate ở đây đọc NỘI DUNG TRÊN ĐĨA; CI đọc NỘI DUNG ĐÃ COMMIT. Hai thứ chỉ
+  // trùng khi mọi file mang số máy sinh đều được stage. Danh sách dưới là các file
+  // check-doc-counts ghi số vào (đồng bộ với CLAIMS trong scripts/check-doc-counts.mjs)
+  // cộng các artifact máy sở hữu.
+  const FILE_MANG_SO_MAY = [
+    "docs/CODEBASE_STRUCTURE.md",
+    "docs/DATABASE_SCHEMA.md",
+    "docs/engineering/PROJECT_CONTRACT.md",
+    "supabase/README.md",
+    "supabase/migration-provenance.json",
+    "src/integrations/supabase/types.ts",
+  ];
+  const chuaStage = (spawnSync("git", ["diff", "--name-only"], { cwd: repoRoot, encoding: "utf8" }).stdout ?? "")
+    .split("\n").filter(Boolean).map((f) => f.replace(/\\/g, "/"));
+  const soLech = chuaStage.filter(
+    (f) => FILE_MANG_SO_MAY.includes(f) || f.startsWith("docs/generated/") || f.startsWith("contracts/surfaces/"),
+  );
+  if (soLech.length > 0) {
+    console.log(`\n  ❌ ${soLech.length} file mang số máy sinh đang SỬA DỞ CHƯA STAGE — gate dưới sẽ đọc bản trên đĩa`);
+    console.log("     và báo xanh, nhưng CI đọc bản commit và sẽ ĐỎ. Stage phần số đếm rồi chạy lại:");
+    for (const f of soLech) console.log(`       git add ${f}`);
+    process.exitCode = 1;
+  }
+
   console.log(`\n── Bước 2/2: gate tĩnh (${boDaoStrict ? "bỏ" : "kèm"} đảo strict) ──`);
   const doSo = [];
   const danhSach = boDaoStrict ? GATE_NHANH : [...GATE_NHANH, ...GATE_NANG];
