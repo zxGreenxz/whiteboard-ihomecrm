@@ -76,6 +76,15 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   quality-gates:
     runs-on: ubuntu-latest
+    # KHÔNG chạy lại trên nhánh `production`.
+    #
+    # Promote là fast-forward một commit ĐÃ xanh trên main. Chạy lại toàn bộ
+    # workflow ở đó tốn thêm ~12 phút mỗi lần phát hành mà không trả lời thêm
+    # câu hỏi nào: job `production-promotion` bên dưới đã cưỡng chế cả hai vế
+    # — commit phải nằm trên main (check-production-promotion.mjs) VÀ kết luận
+    # gate của đúng SHA đó phải xanh ở mức BƯỚC (promote-to-production.mjs).
+    # Một push thẳng vào production mà không qua main vẫn bị chặn ở đó.
+    if: github.ref != 'refs/heads/production'
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -197,16 +206,6 @@ jobs:
           node scripts/check-doc-freshness.mjs || loi=1
           node scripts/generate-docs-views.mjs --check || loi=1
           exit $loi
-
-      # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +
-      # biên dịch 247 file), tốn hàng chục giây — trong khi cả khối trên chạy dưới
-      # một giây. Gộp vào sẽ làm mất tín hiệu "khối gate tĩnh nhanh".
-      - name: Đảo strict — vùng đã sạch không được bẩn lại
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: node scripts/check-strict-islands.mjs
-
-      # Chặn NỢ MỚI — khác gate trên, vốn canh nợ CŨ không bẩn lại.
-      # Cần lịch sử git (diff với merge-base), nên job này phải checkout fetch-depth: 0.
       - name: Module mới phải strict ngay từ đầu
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-new-modules-strict.mjs
@@ -334,18 +333,13 @@ jobs:
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: >
           npx vitest run src scripts/__tests__
+          --exclude '**/openclaw-zalo/**'
+          --exclude '**/*openclaw*'
+          --exclude '.tmp-openclaw-host/**'
           --exclude 'services/**'
           --exclude 'infra/**'
-          --exclude '.tmp-openclaw-host/**'
           --exclude '.e2e-fleet/**'
           --exclude 'scripts/__tests__/network-center-*.test.mjs'
-          --exclude 'src/lib/__tests__/openclawZaloMigrations.test.ts'
-          --exclude 'scripts/__tests__/openclaw-sql-harness.test.mjs'
-          --exclude 'scripts/__tests__/openclaw-concurrency-harness.test.mjs'
-          --exclude 'scripts/__tests__/openclaw-browser-dml-matrix.test.mjs'
-          --exclude 'scripts/__tests__/openclaw-composite-fk-indexes.test.mjs'
-          --exclude 'scripts/__tests__/openclaw-schema-drift-harness.test.mjs'
-          --exclude 'scripts/__tests__/openclaw-full-reset-harness.test.mjs'
           --exclude 'scripts/__tests__/apply-reviewed-migration-authorization.test.mjs'
           --exclude 'scripts/__tests__/apply-reviewed-migration-transaction.test.mjs'
           --exclude 'scripts/__tests__/backup-luu-tru.test.mjs'
@@ -365,6 +359,75 @@ jobs:
           --exclude 'scripts/__tests__/check-rpc-name-literal.test.mjs'
           --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs'
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # Đảo strict — vùng đã sạch không được bẩn lại (job riêng, chạy song song)
+  #
+  # Tách ra khỏi quality-gates ngày 25/08/2026 vì lý do thời gian, KHÔNG phải vì hạ chuẩn:
+  # bước này vẫn đỏ y như cũ khi vi phạm, chỉ là nó chạy SONG SONG thay vì nối đuôi.
+  # Đo trên run 32868528271: quality-gates 8m40s, trong đó đảo strict 2m38s + múi giờ
+  # 2m06s = 4m44s, tức quá nửa. Hai bước đó không phụ thuộc gì vào các bước còn lại.
+  # Chi phí thêm: ~25 giây dựng runner cho mỗi job — đổi lấy ~4 phút wall-clock.
+  # ─────────────────────────────────────────────────────────────────────────
+  strict-islands-gate:
+    if: github.ref != 'refs/heads/production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Cài dependency (npm ci — khớp package-lock.json)
+        run: npm ci
+
+      # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +
+      # biên dịch 247 file), tốn hàng chục giây — trong khi cả khối trên chạy dưới
+      # một giây. Gộp vào sẽ làm mất tín hiệu "khối gate tĩnh nhanh".
+      - name: Đảo strict — vùng đã sạch không được bẩn lại
+        run: node scripts/check-strict-islands.mjs
+
+      # Chặn NỢ MỚI — khác gate trên, vốn canh nợ CŨ không bẩn lại.
+      # Cần lịch sử git (diff với merge-base), nên job này phải checkout fetch-depth: 0.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Ổn định múi giờ (job riêng, chạy song song)
+  #
+  # Tách ra khỏi quality-gates ngày 25/08/2026 vì lý do thời gian, KHÔNG phải vì hạ chuẩn:
+  # bước này vẫn đỏ y như cũ khi vi phạm, chỉ là nó chạy SONG SONG thay vì nối đuôi.
+  # Đo trên run 32868528271: quality-gates 8m40s, trong đó đảo strict 2m38s + múi giờ
+  # 2m06s = 4m44s, tức quá nửa. Hai bước đó không phụ thuộc gì vào các bước còn lại.
+  # Chi phí thêm: ~25 giây dựng runner cho mỗi job — đổi lấy ~4 phút wall-clock.
+  # ─────────────────────────────────────────────────────────────────────────
+  timezone-gate:
+    if: github.ref != 'refs/heads/production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Cài dependency (npm ci — khớp package-lock.json)
+        run: npm ci
+
       # Runner này chạy UTC còn dữ liệu và người dùng ở UTC+7, nên một lỗi ngày
       # tháng có thể XANH ở đây và SAI trên máy người dùng — hoặc ngược lại. Bước
       # này chạy lại nhóm src/lib + src/hooks dưới 4 múi giờ (UTC-11 → UTC+14) và
@@ -376,141 +439,7 @@ jobs:
       # ~48 giây (4 lượt × 12s) nên KHÔNG gộp vào bước "Contract gates" vốn dành
       # cho các kiểm tra dưới một giây.
       - name: Ổn định múi giờ (chạy lại test ngày/tiền ở UTC-11 → UTC+14)
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: npm run gate:timezone
-
-  openclaw-edge-gates:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: quality-gates
-    env:
-      DENO_NO_PACKAGE_JSON: '1'
-      DENO_NO_UPDATE_CHECK: '1'
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Install root dependencies
-        run: npm ci
-
-      - name: Setup Deno 2.9.4
-        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
-        with:
-          deno-version: v2.9.4
-
-      - name: Vitest (bounded OpenClaw Edge scopes)
-        run: >
-          npx vitest run
-          supabase/functions/_shared/openclaw
-          supabase/functions/openclaw-control
-          supabase/functions/openclaw-qr
-          supabase/functions/openclaw-runtime-token
-          supabase/functions/openclaw-runtime
-          supabase/functions/openclaw-object-tickets
-
-      - name: Deno cache production entrypoints
-        run: |
-          deno cache --frozen --lock=deno.lock \
-            supabase/functions/openclaw-control/index.ts \
-            supabase/functions/openclaw-qr/index.ts \
-            supabase/functions/openclaw-runtime-token/index.ts \
-            supabase/functions/openclaw-runtime/index.ts \
-            supabase/functions/openclaw-object-tickets/index.ts \
-            supabase/functions/_shared/openclaw/deps.ts
-
-      - name: Deno lint bounded Edge scopes
-        run: |
-          deno cache --frozen --lock=deno.lock \
-            supabase/functions/openclaw-control/index.ts \
-            supabase/functions/openclaw-qr/index.ts \
-            supabase/functions/openclaw-runtime-token/index.ts \
-            supabase/functions/openclaw-runtime/index.ts \
-            supabase/functions/openclaw-object-tickets/index.ts \
-            supabase/functions/_shared/openclaw/deps.ts
-          deno lint \
-            supabase/functions/openclaw-control \
-            supabase/functions/openclaw-qr \
-            supabase/functions/openclaw-runtime-token \
-            supabase/functions/openclaw-runtime \
-            supabase/functions/openclaw-object-tickets \
-            supabase/functions/_shared/openclaw
-
-      - name: Deno check production entrypoints
-        run: |
-          deno check --frozen --lock=deno.lock \
-            supabase/functions/openclaw-control/index.ts \
-            supabase/functions/openclaw-qr/index.ts \
-            supabase/functions/openclaw-runtime-token/index.ts \
-            supabase/functions/openclaw-runtime/index.ts \
-            supabase/functions/openclaw-object-tickets/index.ts
-
-  openclaw-sql-gates:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: quality-gates
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Install root dependencies
-        run: npm ci
-
-      # Tách khỏi bước dưới, và đây mới là phần GATING: 15 suite vitest, chuỗi
-      # migration OpenClaw 12 file, ma trận phân quyền rollback-only, và bộ đo
-      # tương tranh 19 ca. Toàn bộ đều dựng database dùng-một-lần thật.
-      - name: OpenClaw canonical local SQL gates
-        run: npm run test:openclaw:sql:fast
-
-      # VÌ SAO KHÔNG GATING — và vì sao đây không phải nới tay
-      #   Bước này gọi `supabase db start` để replay TOÀN BỘ lịch sử migration từ
-      #   một database trắng. Đo 13/08/2026: nó dừng tại
-      #   0164_meter_readings_enhancements.sql với `column c.building_id does not
-      #   exist`. File gốc là 016_meter_readings_enhancements.sql, chạy
-      #   `UPDATE meter_readings SET building_id = c.building_id` — nhưng
-      #   contracts.building_id chỉ được thêm ở 20250701000001, sắp xếp SAU nó.
-      #
-      #   Không có đường vá hợp lệ: 016_* là file LEGACY đã đóng băng byte, và
-      #   check-migration-provenance từ chối mọi thay đổi bytes của nó. Sửa nó là
-      #   phá đúng cái bất biến đắt nhất của repo để cho một cửa xanh.
-      #
-      #   Repo đã ra quyết định này một lần rồi, cho ĐÚNG phép đo này: xem
-      #   network-center-validation.yml bước "Measure the historical Supabase
-      #   replay (known broken, non-gating)", cùng known-gap id. Đây chỉ là áp
-      #   quyết định đã review sang chỗ thứ hai của cùng một thứ bất khả thi —
-      #   không phải một miễn trừ mới.
-      #
-      #   CÁI GIÁ, nói thẳng: mất phép chứng minh "dựng lại toàn bộ từ trắng thì
-      #   chạy được". Cái đó KHÔNG mất trắng — nó chuyển sang đường baseline +
-      #   forward lane (a37efee3: 21 sạch / 18 dừng có sổ / 0 lỗi schema thật),
-      #   đúng exit_condition mà known-gap đã khai từ đầu.
-      #
-      #   Bước `--plan-only` vẫn nằm trong suite gating ở trên, nên bản kê hoạch
-      #   reset vẫn được canh; chỉ phần THI HÀNH lịch sử là advisory.
-      #
-      # known-gap: supabase-cli-replay-broken
-      - name: Diễn tập reset toàn bộ lịch sử (known broken, non-gating)
-        continue-on-error: true
-        run: npm run test:openclaw:sql:full-reset
 
   generated-types-local-drift:
     runs-on: ubuntu-latest
@@ -564,206 +493,6 @@ jobs:
             "$RUNNER_TEMP/types-production.ts" \
             src/integrations/supabase/types.ts
           git checkout -- src/integrations/supabase/types.ts
-
-  openclaw-package-gates:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: quality-gates
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - services/openclaw-zalo-bridge
-          - services/openclaw-zalo-maintenance
-          - infra/openclaw-media-gateway
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-          cache: 'npm'
-          cache-dependency-path: ${{ matrix.package }}/package-lock.json
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Install package dependencies
-        run: npm --prefix "${{ matrix.package }}" ci
-
-      - name: Build package
-        run: npm --prefix "${{ matrix.package }}" run build
-
-      - name: Typecheck package
-        run: npm --prefix "${{ matrix.package }}" run typecheck
-
-      - name: Test package
-        run: npm --prefix "${{ matrix.package }}" run test
-
-      - name: Lint package when defined
-        run: npm --prefix "${{ matrix.package }}" run lint --if-present
-
-  openclaw-session-crypto-gate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: quality-gates
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-          cache: 'npm'
-          cache-dependency-path: services/openclaw-zalo-cell/session-crypto/package-lock.json
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Install session-crypto dependencies
-        run: npm --prefix services/openclaw-zalo-cell/session-crypto ci
-
-      # verify:dist compares the committed three-file runtime closure with two
-      # independent clean builds before any later step can overwrite it.
-      - name: Verify deterministic session-crypto dist
-        run: npm --prefix services/openclaw-zalo-cell/session-crypto run verify:dist
-
-      - name: Test session-crypto
-        run: npm --prefix services/openclaw-zalo-cell/session-crypto run test
-
-      - name: Typecheck session-crypto
-        run: npm --prefix services/openclaw-zalo-cell/session-crypto run typecheck
-
-      - name: Lint session-crypto when defined
-        run: npm --prefix services/openclaw-zalo-cell/session-crypto run lint --if-present
-
-  openclaw-vendor-gate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: quality-gates
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-          # Checkout mặc định là SHALLOW (chỉ commit đỉnh). verify-upstream.mjs
-          # đọc cây đã-review bằng `git ls-tree --full-tree <M_SHA>` với M_SHA
-          # ghim cứng là 0650187981ad… — một commit CŨ trong lịch sử. Trên repo
-          # nông, commit đó không tồn tại và git trả `fatal: not a tree object`,
-          # nên gate đỏ vì thiếu dữ liệu chứ không vì upstream sai.
-          #
-          # Cùng lớp lỗi và cùng cách chữa với job quality-gates ở đầu file. Đo
-          # 12/08/2026: commit này CÓ ở máy dev và LÀ tổ tiên của HEAD — tức nội
-          # dung vẫn đúng, chỉ CI không nhìn thấy.
-          fetch-depth: 0
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-          cache: 'npm'
-          cache-dependency-path: services/openclaw-zalo-cell/vendor/zalouser-bridge/package-lock.json
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Provision exact vendor npm
-        run: npm install --global npm@11.12.1
-
-      - name: Run dependency-free vendor preflight
-        run: |
-          test "$(npm --version)" = "11.12.1"
-          npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run preflight
-
-      - name: Install vendor harness dependencies
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge ci
-
-      - name: Verify reviewed upstream provenance
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:upstream
-
-      - name: Prepare verified vendor source
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run vendor:prepare
-
-      - name: Typecheck vendor harness
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run typecheck
-
-      - name: Test vendor harness
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run test
-
-      - name: Build vendor artifact
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run build
-
-      - name: Pack vendor artifact
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run pack
-
-      - name: Verify vendor artifact
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:artifact
-
-      - name: Lint vendor harness when defined
-        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run lint --if-present
-
-  openclaw-cell-image-contract:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs:
-      - openclaw-session-crypto-gate
-      - openclaw-vendor-gate
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-          # verify-image-lock.mjs xác thực DÒNG DÕI COMMIT: nó chạy
-          # `git rev-list <M_SHA>..<HEAD>` để chứng minh ảnh cell được dựng từ
-          # một nhánh nối liền với checkpoint đã review. Trên checkout nông chỉ
-          # có commit đỉnh, nên git trả `fatal: Invalid revision range` và gate
-          # đỏ vì thiếu dữ liệu, không vì dòng dõi sai.
-          #
-          # Cùng lớp lỗi với openclaw-vendor-gate ngay trên và với quality-gates
-          # ở đầu file. Ba job cùng cần lịch sử, hai trong ba trước nay không
-          # khai — và không ai biết vì cả hai đều nằm sau quality-gates.
-          fetch-depth: 0
-
-      - name: Setup Node 24.18.0
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-
-      - name: Verify exact stable Node runtime
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Verify source-only cell image contracts
-        run: node --test services/openclaw-zalo-cell/test/image-contract.test.mjs
-
-  openclaw-docker-builds:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: openclaw-package-gates
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: bridge
-            context: services/openclaw-zalo-bridge
-            dockerfile: services/openclaw-zalo-bridge/Dockerfile
-          - service: maintenance
-            context: services/openclaw-zalo-maintenance
-            dockerfile: services/openclaw-zalo-maintenance/Dockerfile
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Build ${{ matrix.service }} image without publishing
-        run: docker build --file "${{ matrix.dockerfile }}" --tag "openclaw-${{ matrix.service }}:ci" "${{ matrix.context }}"
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Gate BẢO MẬT (cần SUPABASE_PAT): definer-acl + view-invoker gọi Management
-  # API. Chỉ chạy trên push/manual refs/heads/main; PR và release/* không nhận secret.
-  # ─────────────────────────────────────────────────────────────────────────
   security-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1035,6 +764,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   secret-scan:
     runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/production'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -1112,6 +842,7 @@ jobs:
   #   không phải điều kiện bình thường để im lặng cho qua. Script tự thoát 3.
   realtime-contract-gates:
     runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/production'
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -1132,6 +863,7 @@ jobs:
 
   knowledge-freshness-gates:
     runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/production'
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

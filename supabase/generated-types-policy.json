@@ -17,6 +17,14 @@
     "Raw live typegen ĐƯỢC PHÉP chứa child partition — đó là sự thật của catalog.",
     "Canonical types.ts KHÔNG chứa child partition nào khớp namePatterns.",
     "Parent table trong parentsMustExist PHẢI còn trong canonical output; mất parent là lỗi thật, không phải nhiễu partition.",
-    "Drift check so CANONICAL output, không so raw. Kiểm kê partition thuộc về gate retention/lifecycle của Network Center, không thuộc frontend contract."
-  ]
+    "Drift check so CANONICAL output, không so raw. Kiểm kê partition thuộc về gate retention/lifecycle của Network Center, không thuộc frontend contract.",
+    "PostgrestVersion trong canonical types.ts phải bằng platformVersion.pinned; chênh lệch với live là cảnh báo, không phải drift."
+  ],
+  "platformVersion": {
+    "why": "`__InternalSupabase.PostgrestVersion` là phiên bản PostgREST của NỀN TẢNG Supabase, không phải bề mặt schema của repo. Supabase nâng nó theo lịch của họ, và mỗi lần nâng thì job generated-types-drift ĐỎ ở MọI lần chạy với diff đúng MỘT dòng — không liên quan gì tới code. Án lệ 25/08/2026: 13.0.5 → 14.17 làm đỏ liên tiếp cho tới commit 6382f10f `fix(ci)`; tra `git log -- src/integrations/supabase/types.ts` thấy 4 commit `fix(ci)` cùng loại trước đó. Cùng lớp nhiễu với runtimePartitions: sự thật của catalog, nhưng không phải hợp đồng frontend.",
+    "field": "PostgrestVersion",
+    "pinned": "14.17",
+    "rule": "Canonical types.ts LUÔN mang giá trị `pinned`. Bản raw live mang giá trị gì cũng được. Nâng `pinned` là hành vi CÓ CHỦ Ý (đổi kiểu suy luận của supabase-js) — đi PR riêng, không để CI tự đẩy.",
+    "khongCheGiau": "normalize IN RA cảnh báo khi live khác pinned, nên độ lệch vẫn nhìn thấy được; nó chỉ thôi làm đỏ gate."
+  }
 }

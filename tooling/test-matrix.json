@@ -20,6 +20,8 @@
         "scripts/__tests__/**/*.test.ts"
       ],
       "excludes": [
+        "**/*openclaw*",
+        "**/openclaw-zalo/**",
         ".e2e-fleet/**",
         ".tmp-openclaw-host/**",
         "infra/**",
@@ -42,14 +44,7 @@
         "scripts/__tests__/check-rpc-name-literal.test.mjs",
         "scripts/__tests__/check-ts-suppressions.test.mjs",
         "scripts/__tests__/network-center-*.test.mjs",
-        "scripts/__tests__/openclaw-browser-dml-matrix.test.mjs",
-        "scripts/__tests__/openclaw-composite-fk-indexes.test.mjs",
-        "scripts/__tests__/openclaw-concurrency-harness.test.mjs",
-        "scripts/__tests__/openclaw-full-reset-harness.test.mjs",
-        "scripts/__tests__/openclaw-schema-drift-harness.test.mjs",
-        "scripts/__tests__/openclaw-sql-harness.test.mjs",
-        "services/**",
-        "src/lib/__tests__/openclawZaloMigrations.test.ts"
+        "services/**"
       ],
       "note": "`excludes` PHẢI khớp TỪNG cờ --exclude của bước \"Vitest (root-owned app and script suites)\" trong ci-gates.yml — gate:test-matrix nay đối chiếu hai chiều, không còn là lời hứa trong chú thích. Trước 11/08/2026 mục này khai 8/12 cờ: 4 cờ services/infra/.tmp-openclaw-host/.e2e-fleet nằm trong CI mà không có ở đây, nên matrix mô tả sai phạm vi suite lớn nhất repo.",
       "note2": "Các file network-center-* dùng `node:test`, Vitest gặp là fail 'No test suite found' — chúng thuộc suite node-native. Các harness SQL OpenClaw nặng thuộc suite openclaw-sql.",
@@ -66,7 +61,7 @@
     {
       "id": "openclaw-sql",
       "runner": "vitest",
-      "ciJob": "openclaw-sql-gates",
+      "ciJob": "(không chạy CI — OpenClaw nghỉ hưu 25/08/2026)",
       "command": "npm run test:openclaw:sql",
       "risk": "security",
       "includes": [
@@ -88,20 +83,20 @@
       ],
       "note": "Suite này ĐÃ ĐƯỢC NHẮC TÊN trong ghi chú của app-unit từ đầu nhưng chưa từng được khai — nên 15 file dưới đây không có mục nào trong matrix mô tả đúng nơi chúng chạy. Bổ sung 06/08/2026.",
       "note2": "Danh sách file lấy từ script `test:openclaw:sql:fast` trong package.json; sửa ở đó thì phải sửa ở đây.",
-      "ciJobs": [
-        {
-          "workflow": ".github/workflows/ci-gates.yml",
-          "job": "openclaw-sql-gates"
-        }
-      ],
+      "ciJobs": [],
       "environment": "ci",
       "timeoutMinutes": 45,
-      "note3": "ĐÍNH CHÍNH 11/08/2026: trường ciJob trước đây ghi \"(local — không chạy trên ci-gates)\", trong khi job openclaw-sql-gates trong ci-gates.yml chạy đúng lệnh này. Đây là loại nói dối mà một manifest không ai đối chiếu luôn tích lại. CHƯA KIỂM ĐƯỢC từ máy này: job đó chỉ npm ci rồi chạy, không thấy bước dựng Supabase local — nếu suite thật sự cần database thì nó đang đỏ hoặc bỏ qua trên CI, phải xem log lần chạy thật."
+      "note3": "ĐÍNH CHÍNH 11/08/2026: trường ciJob trước đây ghi \"(local — không chạy trên ci-gates)\", trong khi job openclaw-sql-gates trong ci-gates.yml chạy đúng lệnh này. Đây là loại nói dối mà một manifest không ai đối chiếu luôn tích lại. CHƯA KIỂM ĐƯỢC từ máy này: job đó chỉ npm ci rồi chạy, không thấy bước dựng Supabase local — nếu suite thật sự cần database thì nó đang đỏ hoặc bỏ qua trên CI, phải xem log lần chạy thật.",
+      "blockedFromCi": {
+        "reason": "OpenClaw đã NGỪNG PHÁT TRIỂN (quyết định của chủ sở hữu, 25/08/2026): tính năng chưa hoàn thiện, không còn dùng, mã giữ lại CHỈ làm tài liệu tham khảo. 11 job CI của nó chiếm quá nửa workflow và openclaw-sql-gates nằm ở ĐUÔI đường tới hạn (4m46s chạy sau quality-gates), nên mọi thay đổi CRM đều trả giá cho một module đã chết. Gate check-openclaw-isolation VẪN chạy trong quality-gates — nó canh mã OpenClaw không rò sang CRM, và giá trị của nó TĂNG khi module không còn ai bảo trì.",
+        "expiry": "2027-08-25",
+        "exitCondition": "Biến mất khi một trong hai việc xảy ra: (a) chủ sở hữu quyết định hồi sinh OpenClaw — khôi phục các job từ git history của ci-gates.yml (bản trước 25/08/2026); hoặc (b) cây mã OpenClaw bị xoá hẳn khỏi repo — lúc đó xoá luôn suite này khỏi matrix."
+      }
     },
     {
       "id": "openclaw-edge",
       "runner": "vitest",
-      "ciJob": "openclaw-edge-gates",
+      "ciJob": "(không chạy CI — OpenClaw nghỉ hưu 25/08/2026)",
       "command": "npx vitest run supabase/functions/_shared/openclaw supabase/functions/openclaw-*",
       "risk": "security",
       "includes": [
@@ -109,14 +104,14 @@
         "supabase/functions/openclaw-*/**/*.test.ts"
       ],
       "note": "Chạy bằng VITEST dù nằm trong supabase/functions — chỉ 2 file index.test.ts mới dùng Deno.",
-      "ciJobs": [
-        {
-          "workflow": ".github/workflows/ci-gates.yml",
-          "job": "openclaw-edge-gates"
-        }
-      ],
+      "ciJobs": [],
       "environment": "ci",
-      "timeoutMinutes": 25
+      "timeoutMinutes": 25,
+      "blockedFromCi": {
+        "reason": "OpenClaw đã NGỪNG PHÁT TRIỂN (quyết định của chủ sở hữu, 25/08/2026): tính năng chưa hoàn thiện, không còn dùng, mã giữ lại CHỈ làm tài liệu tham khảo. 11 job CI của nó chiếm quá nửa workflow và openclaw-sql-gates nằm ở ĐUÔI đường tới hạn (4m46s chạy sau quality-gates), nên mọi thay đổi CRM đều trả giá cho một module đã chết. Gate check-openclaw-isolation VẪN chạy trong quality-gates — nó canh mã OpenClaw không rò sang CRM, và giá trị của nó TĂNG khi module không còn ai bảo trì.",
+        "expiry": "2027-08-25",
+        "exitCondition": "Biến mất khi một trong hai việc xảy ra: (a) chủ sở hữu quyết định hồi sinh OpenClaw — khôi phục các job từ git history của ci-gates.yml (bản trước 25/08/2026); hoặc (b) cây mã OpenClaw bị xoá hẳn khỏi repo — lúc đó xoá luôn suite này khỏi matrix."
+      }
     },
     {
       "id": "edge-deno",
@@ -160,7 +155,7 @@
     {
       "id": "openclaw-services",
       "runner": "vitest (per-package)",
-      "ciJob": "openclaw-package-gates / openclaw-session-crypto-gate / openclaw-vendor-gate",
+      "ciJob": "(không chạy CI — OpenClaw nghỉ hưu 25/08/2026)",
       "command": "npm run test:openclaw:services",
       "runtime": "node >=24.15.0 <25 (script tự chặn)",
       "risk": "security",
@@ -173,22 +168,14 @@
       ],
       "note": "Vendored upstream (zalouser-bridge/upstream, artifacts, .work) KHÔNG tính — đó là suite của dự án khác, verify:upstream lo phần đó.",
       "note3": "`services/openclaw-zalo-cell/` KHÔNG có package.json, nên chuỗi `npm --prefix` của suite này không thể chạm tới nó — pattern `services/**` ôm nhầm. Runner thật là `node --test` ở job openclaw-cell-image-contract (suite node-native). Gate cross-runner bắt được 06/08/2026.",
-      "ciJobs": [
-        {
-          "workflow": ".github/workflows/ci-gates.yml",
-          "job": "openclaw-package-gates"
-        },
-        {
-          "workflow": ".github/workflows/ci-gates.yml",
-          "job": "openclaw-session-crypto-gate"
-        },
-        {
-          "workflow": ".github/workflows/ci-gates.yml",
-          "job": "openclaw-vendor-gate"
-        }
-      ],
+      "ciJobs": [],
       "environment": "ci",
-      "timeoutMinutes": 30
+      "timeoutMinutes": 30,
+      "blockedFromCi": {
+        "reason": "OpenClaw đã NGỪNG PHÁT TRIỂN (quyết định của chủ sở hữu, 25/08/2026): tính năng chưa hoàn thiện, không còn dùng, mã giữ lại CHỈ làm tài liệu tham khảo. 11 job CI của nó chiếm quá nửa workflow và openclaw-sql-gates nằm ở ĐUÔI đường tới hạn (4m46s chạy sau quality-gates), nên mọi thay đổi CRM đều trả giá cho một module đã chết. Gate check-openclaw-isolation VẪN chạy trong quality-gates — nó canh mã OpenClaw không rò sang CRM, và giá trị của nó TĂNG khi module không còn ai bảo trì.",
+        "expiry": "2027-08-25",
+        "exitCondition": "Biến mất khi một trong hai việc xảy ra: (a) chủ sở hữu quyết định hồi sinh OpenClaw — khôi phục các job từ git history của ci-gates.yml (bản trước 25/08/2026); hoặc (b) cây mã OpenClaw bị xoá hẳn khỏi repo — lúc đó xoá luôn suite này khỏi matrix."
+      }
     },
     {
       "id": "network-center-worker",
@@ -217,7 +204,7 @@
     {
       "id": "openclaw-infra",
       "runner": "vitest (per-package)",
-      "ciJob": "openclaw-package-gates / test:openclaw:r2",
+      "ciJob": "(không chạy CI — OpenClaw nghỉ hưu 25/08/2026)",
       "command": "npm run test:openclaw:r2 và npm --prefix infra/openclaw-zalo-watchdog test",
       "runtime": "node >=24.15.0 <25",
       "risk": "security",
@@ -228,19 +215,19 @@
         "infra/openclaw-zalo/**/*.test.ts"
       ],
       "note2": "media-gateway có vitest.config include CẢ .test.mjs (deploy-script.test.mjs) — pattern ở đây phải phủ cả hai đuôi, nếu không gate sẽ báo mồ côi nhầm.",
-      "ciJobs": [
-        {
-          "workflow": ".github/workflows/ci-gates.yml",
-          "job": "openclaw-package-gates"
-        }
-      ],
+      "ciJobs": [],
       "environment": "ci",
-      "timeoutMinutes": 30
+      "timeoutMinutes": 30,
+      "blockedFromCi": {
+        "reason": "OpenClaw đã NGỪNG PHÁT TRIỂN (quyết định của chủ sở hữu, 25/08/2026): tính năng chưa hoàn thiện, không còn dùng, mã giữ lại CHỈ làm tài liệu tham khảo. 11 job CI của nó chiếm quá nửa workflow và openclaw-sql-gates nằm ở ĐUÔI đường tới hạn (4m46s chạy sau quality-gates), nên mọi thay đổi CRM đều trả giá cho một module đã chết. Gate check-openclaw-isolation VẪN chạy trong quality-gates — nó canh mã OpenClaw không rò sang CRM, và giá trị của nó TĂNG khi module không còn ai bảo trì.",
+        "expiry": "2027-08-25",
+        "exitCondition": "Biến mất khi một trong hai việc xảy ra: (a) chủ sở hữu quyết định hồi sinh OpenClaw — khôi phục các job từ git history của ci-gates.yml (bản trước 25/08/2026); hoặc (b) cây mã OpenClaw bị xoá hẳn khỏi repo — lúc đó xoá luôn suite này khỏi matrix."
+      }
     },
     {
       "id": "node-native",
       "runner": "node --test",
-      "ciJob": "openclaw-cell-image-contract / network-center scripted regression",
+      "ciJob": "quality-gates (ci-gates) / validate (network-center-validation)",
       "command": "node --test <file>",
       "risk": "infrastructure",
       "includes": [
@@ -262,16 +249,11 @@
         "scripts/__tests__/check-rpc-layer.test.mjs",
         "scripts/__tests__/check-rpc-name-literal.test.mjs",
         "scripts/__tests__/check-ts-suppressions.test.mjs",
-        "scripts/__tests__/network-center-*.test.mjs",
-        "services/openclaw-zalo-cell/test/**/*.test.mjs"
+        "scripts/__tests__/network-center-*.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",
       "ciJobs": [
-        {
-          "workflow": ".github/workflows/ci-gates.yml",
-          "job": "openclaw-cell-image-contract"
-        },
         {
           "workflow": ".github/workflows/network-center-validation.yml",
           "job": "validate"
@@ -284,6 +266,66 @@
       "environment": "ci",
       "timeoutMinutes": 20,
       "note3": "BỔ SUNG 12/08/2026: bảy file từ `check-copilot-routes` tới `check-ts-suppressions` là gate viết SAU đợt sửa 06/08 và 11/08, mỗi cái lại dùng `node:test` mà không ai nối vào đây — nên chúng bị xếp nhầm vào suite Vitest và KHÔNG lệnh nào chạy chúng. Đo lúc phát hiện: 77 test, xanh cả 77, chưa từng chạy trong CI lần nào. Thêm gate mới dùng `node:test` phải sửa BA chỗ: `includes` ở đây, bước `node --test` và danh sách `--exclude` của Vitest trong ci-gates.yml."
+    },
+    {
+      "id": "openclaw-app-nghi-huu",
+      "runner": "vitest",
+      "ciJob": "(không chạy CI — OpenClaw nghỉ hưu 25/08/2026)",
+      "command": "npx vitest run src/components/openclaw-zalo src/hooks/openclaw-zalo src/lib/openclaw-zalo src/pages/openclaw-zalo",
+      "runtime": "node 24.18.0",
+      "risk": "nghi-huu",
+      "note": "Giữ quyền sở hữu các file test OpenClaw ở tầng app mà app-unit vừa loại khỏi bước Vitest. Không xoá đi để chúng không thành test MỒ CÔI — mồ côi là loại tệ hơn: nhìn repo thấy \"đã có test\", nhìn CI thấy xanh, mà không ai chạy gì. Ở đây thì trạng thái được KHAI BÁO, có lý do và có hạn xét lại.",
+      "includes": [
+        "src/components/openclaw-zalo/**/*.test.ts",
+        "src/components/openclaw-zalo/**/*.test.tsx",
+        "src/hooks/openclaw-zalo/**/*.test.ts",
+        "src/lib/openclaw-zalo/**/*.test.ts",
+        "src/pages/openclaw-zalo/**/*.test.tsx",
+        "src/lib/__tests__/openclaw*.test.ts",
+        "scripts/__tests__/*openclaw*.test.mjs",
+        "scripts/__tests__/openclaw*.test.mjs"
+      ],
+      "excludes": [
+        "src/lib/__tests__/openclawZaloMigrations.test.ts",
+        "src/lib/__tests__/openclawFullContract.test.ts",
+        "scripts/__tests__/openclaw-sql-harness.test.mjs",
+        "scripts/__tests__/openclaw-concurrency-harness.test.mjs",
+        "scripts/__tests__/openclaw-browser-dml-matrix.test.mjs",
+        "scripts/__tests__/openclaw-composite-fk-indexes.test.mjs",
+        "scripts/__tests__/openclaw-schema-drift-harness.test.mjs",
+        "scripts/__tests__/openclaw-full-reset-harness.test.mjs",
+        "scripts/__tests__/openclaw-migration-facades.test.mjs",
+        "scripts/__tests__/openclaw-browser-privileges.test.mjs",
+        "scripts/__tests__/openclaw-crm-source-isolation.test.mjs",
+        "scripts/__tests__/openclaw-knowledge-lifecycle.test.mjs",
+        "scripts/__tests__/openclaw-query-plans.test.mjs",
+        "scripts/__tests__/openclaw-host-isolation.test.mjs",
+        "scripts/__tests__/openclawCommandContract.test.mjs"
+      ],
+      "ciJobs": [],
+      "blockedFromCi": {
+        "reason": "OpenClaw đã NGỪNG PHÁT TRIỂN (quyết định của chủ sở hữu, 25/08/2026): tính năng chưa hoàn thiện, không còn dùng, mã giữ lại CHỈ làm tài liệu tham khảo. 11 job CI của nó chiếm quá nửa workflow và openclaw-sql-gates nằm ở ĐUÔI đường tới hạn (4m46s chạy sau quality-gates), nên mọi thay đổi CRM đều trả giá cho một module đã chết. Gate check-openclaw-isolation VẪN chạy trong quality-gates — nó canh mã OpenClaw không rò sang CRM, và giá trị của nó TĂNG khi module không còn ai bảo trì.",
+        "expiry": "2027-08-25",
+        "exitCondition": "Biến mất khi một trong hai việc xảy ra: (a) chủ sở hữu quyết định hồi sinh OpenClaw — khôi phục các job từ git history của ci-gates.yml (bản trước 25/08/2026); hoặc (b) cây mã OpenClaw bị xoá hẳn khỏi repo — lúc đó xoá luôn suite này khỏi matrix."
+      }
+    },
+    {
+      "id": "openclaw-cell-nghi-huu",
+      "runner": "node --test",
+      "ciJob": "(không chạy CI — OpenClaw nghỉ hưu 25/08/2026)",
+      "command": "node --test services/openclaw-zalo-cell/test/image-contract.test.mjs",
+      "runtime": "node 24.18.0",
+      "risk": "nghi-huu",
+      "note": "Tách khỏi node-native vì job openclaw-cell-image-contract đã bị xoá. Để nguyên trong node-native thì matrix sẽ khai một file chạy trên CI trong khi thật ra không — đúng loại nói dối mà gate này sinh ra để chặn.",
+      "includes": [
+        "services/openclaw-zalo-cell/test/**/*.test.mjs"
+      ],
+      "ciJobs": [],
+      "blockedFromCi": {
+        "reason": "OpenClaw đã NGỪNG PHÁT TRIỂN (quyết định của chủ sở hữu, 25/08/2026): tính năng chưa hoàn thiện, không còn dùng, mã giữ lại CHỈ làm tài liệu tham khảo. 11 job CI của nó chiếm quá nửa workflow và openclaw-sql-gates nằm ở ĐUÔI đường tới hạn (4m46s chạy sau quality-gates), nên mọi thay đổi CRM đều trả giá cho một module đã chết. Gate check-openclaw-isolation VẪN chạy trong quality-gates — nó canh mã OpenClaw không rò sang CRM, và giá trị của nó TĂNG khi module không còn ai bảo trì.",
+        "expiry": "2027-08-25",
+        "exitCondition": "Biến mất khi một trong hai việc xảy ra: (a) chủ sở hữu quyết định hồi sinh OpenClaw — khôi phục các job từ git history của ci-gates.yml (bản trước 25/08/2026); hoặc (b) cây mã OpenClaw bị xoá hẳn khỏi repo — lúc đó xoá luôn suite này khỏi matrix."
+      }
     }
   ],
   "ignore": [

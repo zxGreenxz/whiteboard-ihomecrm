@@ -119,3 +119,6 @@ scripts/.backfill-deposit-plan.json
 # ghim trong manifest.json) là cái giá rẻ để đường khôi phục diễn tập được
 # tự động. Sinh lại khi schema đổi: node scripts/capture-schema-baseline.mjs
 # --write (cần password pooler trong CLAUDE.local.md).
+
+# Cache incremental cua gate typecheck:baseline (scripts/check-ts-baseline.mjs)
+.tscache/

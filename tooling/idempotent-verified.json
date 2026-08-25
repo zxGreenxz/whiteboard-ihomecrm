@@ -1,0 +1,246 @@
+{
+  "$comment": "Sổ chứng nhận idempotent theo sha256. Sinh bằng: node scripts/check-forward-migration-idempotent.mjs --ghi-so. Mỗi mục nói: nội dung file này (theo digest) ĐÃ được chứng minh chạy lại được lần hai. File sau cutoff là bất biến theo migration-policy.json, nên chứng nhận còn giá trị tới khi nội dung đổi. Sửa một byte là digest đổi và file bị đo lại — không có đường lách.",
+  "schemaVersion": 1,
+  "entries": {
+    "20260806090000_commission_voucher_attachments.sql": {
+      "sha256": "19738bf32a2d431e2daca57fecdf33d6672169f728df11e92f923107c1300f0a",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260807140000_ie_guard_handover_scope.sql": {
+      "sha256": "b0f7401997f97687895b03ee558a375c5b5770559d7cde12449ddcd5e982a2d3",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260807160000_chung_building_org_scope.sql": {
+      "sha256": "5c2ba681ee2a19d7528fd8b0b64b9bb4f8ea25ab2713e2d9288c39c4be38892e",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260807163000_ie_types_org_boundary.sql": {
+      "sha256": "ff46da27e6811f750434313c8f6e94d9718dee04d9f911c641b8a3177d225e5a",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260807180000_openclaw_disconnect_recovery.sql": {
+      "sha256": "b9763e7cf7614bdccd1117ccefe78945320d79aacba4225c3197ab2cdd575507",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260807183000_gd0_bit_be_mat_an_danh.sql": {
+      "sha256": "b058f8380420b8aa50aa9859a0d7cf3527571c4239f6c420da056b62a10240b1",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260807190000_openclaw_begin_qr_without_gateway.sql": {
+      "sha256": "57af4da72fd199cccb64343d6c0c987d6128238e6b565464c212fa3adbca82da",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260807190050_gd1_so_mien_tru_org_boundary.sql": {
+      "sha256": "dd5e693ccc5faa4155ba44474d8becaf0ee8e5b8b6b95197b7e455b30810aded",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260807190100_gd1_doi_ten_np_org_boundary.sql": {
+      "sha256": "c30d7f87d1c11e41a7de5f244f5a9e8591b921b21d98ffd53f6daa5a8ec1ea7c",
+      "ketQua": "mien-tru"
+    },
+    "20260808010000_gd3_rao_bang_an_toan.sql": {
+      "sha256": "6938688c0be95b31553cec18d1d5e9a0d52a3db39b346dde5104679e02e1c6c3",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808020000_gd4_rao_bang_dang_ro.sql": {
+      "sha256": "901fdc3b5b93c546763b5a49f9fe285aeae0f2c370911c2ed4240443951dfb27",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808030000_gd5_event_trigger_org_boundary.sql": {
+      "sha256": "674a2ee667e0aa2a8e826ec71c74f8b8c90355a556f99ab891bfe1df9f36bce2",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808030000_openclaw_inbox_shows_names_and_text.sql": {
+      "sha256": "ce0d2af4df56616f08f705155f652694c0f1d51ed4bb202a686add616ee054f1",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808040000_gd6_backfill_org_null.sql": {
+      "sha256": "693fc4c176c8cae55abd4063a63f3062892cc47acd8fdce9bdcfd2424fdedf5c",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808040000_openclaw_inbox_returns_media.sql": {
+      "sha256": "301480bcec87456f7e7b38b4933d423dabf0a54fa46d136947e997ee316a2837",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808050000_gd7_don_tham_chieu_cheo.sql": {
+      "sha256": "fddc96f73529530ac41e5cd64b0ba6aac6cce73a93c5dedaf68c7e8a3739a239",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808060000_gd7b_material_usage_item_tro_lai_vat_tu_cua_minh.sql": {
+      "sha256": "6e45c7b1aeac2b4edd2cb8d4387748b8b5adb934bde6ca07adb8b8988ad1ada9",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808070000_cat_rls_long_man_thanh_toan.sql": {
+      "sha256": "05da46a4d823245de8b656e3bc861ceae4b44f1a199ed4fff1adfd233c28614d",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808080000_xoa_hai_to_chuc_test_demo.sql": {
+      "sha256": "dd97139d3f075e0379f66babf790be664f2cf19fecbd2fce9724c2e99725dd65",
+      "ketQua": "mien-tru"
+    },
+    "20260808090000_don_profiles_ma_va_rao_ba_bang_mien_tru.sql": {
+      "sha256": "e75c65cc847e91cc6d2aea76b824d6a63a10602c04a108837cc825867ba11e94",
+      "ketQua": "mien-tru"
+    },
+    "20260808100000_bo_sdt_khoi_payload_cong_khai.sql": {
+      "sha256": "ee6ce0e77688401244d8dc33dc05084a800103852cac4e6733d4eb8d1042c8e5",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808110000_spike_request_headers_gdr.sql": {
+      "sha256": "5d2176750020cc77f6e883cc75ab3a22bd031897831332b260fcd3b815e94cec",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808120000_go_spike_request_headers.sql": {
+      "sha256": "8156fd6426faf4d25e4be2f2232558d5ca3613038e677d06566682736353c003",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260808130000_gdr_rate_limit_ma_cong_khai.sql": {
+      "sha256": "daf99f78d6d997aa2d4dca247ca00ea5fbfb9f755ca0d4b38b52727900297c59",
+      "ketQua": "mien-tru"
+    },
+    "20260808140000_gdr_tra_ve_429_thay_vi_500.sql": {
+      "sha256": "a7cd88c3bea2bf6e2b6addd5e9d52c30f3c27d07cb27ae9af96e435e988464ef",
+      "ketQua": "mien-tru"
+    },
+    "20260809010000_ai_toan_he_go_nhan_sai_va_rao.sql": {
+      "sha256": "ed377f30bf67f5063dc6d452ad8fa848815e51ea0df6ee50185adeae1677c7ba",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql": {
+      "sha256": "a0f3545efcb2d606a1be5fef245413611cf0be8a0c5147b813f9bb6acb3cd0c8",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260809030000_gd9_rpc_to_chuc_cua_toi.sql": {
+      "sha256": "a63e5a4f79732712d6b76622c685c6df0f257e5af0a44689711c1b5ca5302b84",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260809040000_chat_org_bat_buoc_va_rao_het_mien_tru.sql": {
+      "sha256": "906def006daf716751cdd2cbc39382be8d450b1e96034572ad9066dd0d67e92d",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260811010000_chan_null_org_sau_dong_hop_dong.sql": {
+      "sha256": "d83aa5f7b158525f448d57677a1312e2e3cc892cd48371c99eec5f512d4d3449",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260811020000_chan_null_org_dot_hai.sql": {
+      "sha256": "669edb343f60ccfb4ff44da02a9ab34b0b8e39d6bb23e6d736b33b75ad3dd91c",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260811030000_vai_chu_cong_ty_va_tach_khoi_super_admin.sql": {
+      "sha256": "7dd3ee3356efb0681b7e507f1586d231e79a3a81c21128b6ab701822bf7b41bf",
+      "ketQua": "mien-tru"
+    },
+    "20260811040000_dung_lai_cong_ty_demo.sql": {
+      "sha256": "fee68b2e1e7636123ac59a7431cdac61d82aa93bca937f2726cad9f4134568b9",
+      "ketQua": "mien-tru"
+    },
+    "20260811050000_demo_bo_loai_thu_chi.sql": {
+      "sha256": "b6315aad6ad35790a8b2e421a248bd0a10c9c674bb643c48301121a11a7a853b",
+      "ketQua": "mien-tru"
+    },
+    "20260811060000_chan_null_org_dot_ba.sql": {
+      "sha256": "7d4dbeff4bb98028bbadf037f7c9ac90f75516b44a968903cb09e46c0338fa4e",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260812010000_demo_ma_tran_du_lieu_day_du.sql": {
+      "sha256": "666b2f50cd12bbb3db0379d4dd42c1a02b7d85152b1a15dc3bbe5d79d00b328b",
+      "ketQua": "mien-tru"
+    },
+    "20260812020000_demo_hai_quan_ly_dung_vai.sql": {
+      "sha256": "086b6e44407a0d0bc20d10ed94dae09f2ddebc9856390710d9f8b0cdda17f7b9",
+      "ketQua": "mien-tru"
+    },
+    "20260813010000_handover_dong_dau_system_source.sql": {
+      "sha256": "50f38a63080d60e29f06fbb27c89fb3c3df68955d4e7b4b73d98cb682317a10c",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260813020000_network_center_cap_lai_slot_mikrotik.sql": {
+      "sha256": "9410a5067a36248ae8e0bdf9703f27fd5ca56124ac96f218bd86f8b9b394753c",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260813030000_chan_null_org_dot_bon.sql": {
+      "sha256": "6d113ee962554befc609f6b0b2032b20c77954df98b93f3c03055235d0afe5d7",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260813040000_chan_null_org_dot_nam.sql": {
+      "sha256": "13151e856829982241637ce452e1850ad7192db94a0103a94ed8fa71493cf4f3",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260813100000_zalo_khu_rieng_theo_cong_ty.sql": {
+      "sha256": "d9ac565a30dc8633217f461b0ea1b4d70311a639e529a6fd73580f72c0f962b8",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260813110000_zalo_gui_media_va_idempotency.sql": {
+      "sha256": "95d9a6ed4bc075d76e63bb8f024330d183e96e43d00bb18cf870b6d32aefe8c4",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260813120000_zalo_tien_ich_rpc.sql": {
+      "sha256": "24e23881314928c07ac5669a6e699bb17350277dbc2bf8e8bbfd72fa9bf20205",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260813130000_zalo_gan_hoi_thoai_crm.sql": {
+      "sha256": "35a7342879bb98b09be40dba1d3b15795d0de7b46607ea517737ce0378709793",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260813140000_zalo_rpc_revoke_public.sql": {
+      "sha256": "553670c30b208d64ab10873e3a7cb1194fbb84dce4d38f3d2d47254db65b71df",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
+      "sha256": "6b53c7ae47840ef998a1530b3619001e8092ef532f3832ad8f2a67e3a8d6280f",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260814032500_copilot_superadmin_organization_directory.sql": {
+      "sha256": "766d2e0b4b1536b53d9493c607e96be9a3251b7f62c5200235ab01b0c0ec71f3",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260814034500_copilot_confirmation_intent_v1.sql": {
+      "sha256": "419d167c923fdea7cc14005a1d5a2792b9f412ee9f1aa8866b4b2f6fb8154cf9",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260814034600_ai_write_audit_hardening.sql": {
+      "sha256": "87a70b9445a238df211d8c2119d1d939d0fc6bfa2f575e2a1c63c47c23e663a5",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260820090000_sale_bonus_deposit_account_attachments.sql": {
+      "sha256": "91fe5e5ada3523a200d98815ac8a8100a38b3c5e2ff315008190edfacf95bfa1",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260821060000_lucky_game_mode.sql": {
+      "sha256": "0274840827f27eadb830fa14625b019f2ec17a6ffee1e2ac841dba03aa10947c",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260821140000_lucky_nhieu_luot_dua.sql": {
+      "sha256": "b10b87cb1d979c7f7a3c510794f736137f134383142b4c421245f0b00968fc77",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260822010000_han_lam_hop_dong_cho_phieu_coc_giu_cho.sql": {
+      "sha256": "ff0306d837e715abca0bb88949e0c0ea92ec725c07af5bce6d3974f22cd5d2ea",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260822011000_sieu_quyen_bang_han_lam_hop_dong.sql": {
+      "sha256": "0de1b1ec4662bace1bdd99f8734be16e99ae35589bf1f69b0ebf2e9a25724566",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260822093000_termination_customer_refund_items.sql": {
+      "sha256": "0088bbab7379756870324643cc5fae02b5a0a26deaa67267c40fc5a6823ce65e",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260822113000_refund_kpi_split_deposit_vs_other.sql": {
+      "sha256": "aa94ea54437357482a853f48c1da6ed2386be584b31a08c5d1ec1d0188d2916c",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260822120000_han_bo_sung_coc_cho_phieu_giu_cho.sql": {
+      "sha256": "cb86066f6e193bd4c92a509291c6ea970884626895b98fd1e5df9c7eda86e09f",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260823060000_lucky_chot_ket_qua_la_quyen_quan_tri.sql": {
+      "sha256": "a1d4669ebd980ab50b0c9626cbb4973c4083bd98b5785ba4ce3c8c07061db244",
+      "ketQua": "chay-lai-duoc"
+    },
+    "20260823140000_network_center_cap_slot_950nk.sql": {
+      "sha256": "698af9b3ac9b734598bba7a6c9e9b524fc4f3b2443e6a4a333dadfde4fa7ca44",
+      "ketQua": "chay-lai-duoc"
+    }
+  }
+}

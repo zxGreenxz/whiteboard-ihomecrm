@@ -26,10 +26,42 @@ export function loadPolicy(policyPath = POLICY_PATH) {
   if (!Array.isArray(patterns) || patterns.length === 0) {
     throw new Error(`Policy thiếu runtimePartitions.namePatterns: ${policyPath}`);
   }
+  const pv = policy?.platformVersion;
+  if (pv && (typeof pv.field !== 'string' || typeof pv.pinned !== 'string')) {
+    throw new Error(`Policy platformVersion thiếu field/pinned dạng chuỗi: ${policyPath}`);
+  }
   return {
     canonicalTypesPath: policy.canonicalTypesPath || 'src/integrations/supabase/types.ts',
     matchers: patterns.map((p) => new RegExp(p)),
     parentsMustExist: policy?.runtimePartitions?.parentsMustExist ?? [],
+    platformVersion: pv ? { field: pv.field, pinned: pv.pinned } : null,
+  };
+}
+
+/**
+ * Ghim phiên bản nền tảng (`__InternalSupabase.PostgrestVersion`) về giá trị canonical.
+ *
+ * VÌ SAO — có án lệ 25/08/2026
+ *   Supabase nâng PostgREST của họ từ 13.0.5 lên 14.17. Con số đó nằm trong
+ *   output của `gen:types`, nên job generated-types-drift ĐỎ mỗi lần chạy với
+ *   diff đúng MỘT dòng — không liên quan gì tới schema của repo. 3 trong 5
+ *   commit gần nhất đụng types.ts là `fix(ci)` chỉ để đuổi theo nó.
+ *
+ * KHÔNG PHẢI CHE GIẤU: hàm trả về giá trị live tìm được để người gọi in cảnh
+ * báo. Độ lệch vẫn nhìn thấy, nó chỉ thôi làm đỏ một cổng đo schema.
+ */
+export function pinPlatformVersion(source, platformVersion) {
+  if (!platformVersion) return { output: source, live: null, changed: false };
+  const { field, pinned } = platformVersion;
+  const re = new RegExp(`^(\\s*)${field}: "([^"]*)"`, 'm');
+  const m = re.exec(source);
+  if (!m) return { output: source, live: null, changed: false };
+  const live = m[2];
+  if (live === pinned) return { output: source, live, changed: false };
+  return {
+    output: source.replace(re, `$1${field}: "${pinned}"`),
+    live,
+    changed: true,
   };
 }
 
@@ -92,35 +124,56 @@ function main(argv) {
 
   if (args.has('--stdin')) {
     const source = readFileSync(0, 'utf8');
-    const { output } = stripRuntimePartitions(source, policy.matchers);
-    assertParentsPresent(output, policy.parentsMustExist);
-    process.stdout.write(output);
+    const stripped = stripRuntimePartitions(source, policy.matchers);
+    assertParentsPresent(stripped.output, policy.parentsMustExist);
+    process.stdout.write(pinPlatformVersion(stripped.output, policy.platformVersion).output);
     return 0;
   }
 
   const target = join(repoRoot, policy.canonicalTypesPath);
   const source = readFileSync(target, 'utf8');
-  const { output, removed } = stripRuntimePartitions(source, policy.matchers);
-  assertParentsPresent(output, policy.parentsMustExist);
+  const stripped = stripRuntimePartitions(source, policy.matchers);
+  assertParentsPresent(stripped.output, policy.parentsMustExist);
+  const removed = stripped.removed;
+  const ghim = pinPlatformVersion(stripped.output, policy.platformVersion);
+  const output = ghim.output;
+
+  // Cảnh báo độ lệch nền tảng — IN RA TRƯỚC khi quyết định xanh/đỏ, để con số
+  // thật không biến mất khỏi log chỉ vì nó thôi làm đỏ gate.
+  if (ghim.changed) {
+    console.log(
+      `⚠ ${policy.platformVersion.field}: nền tảng đang chạy "${ghim.live}", canonical ghim ` +
+      `"${policy.platformVersion.pinned}" — ghim lại theo policy. Đây KHÔNG phải drift schema; ` +
+      'nâng ghim thì sửa supabase/generated-types-policy.json (đi PR riêng).',
+    );
+  }
 
   const before = source.split('\n').length;
   const after = output.split('\n').length;
 
-  if (removed.length === 0) {
-    console.log(`✅ ${policy.canonicalTypesPath}: không có runtime partition (${before} dòng).`);
+  if (removed.length === 0 && !ghim.changed) {
+    console.log(`✅ ${policy.canonicalTypesPath}: không có runtime partition, phiên bản nền tảng đúng ghim (${before} dòng).`);
     return 0;
   }
 
   if (args.has('--check')) {
-    console.error(`❌ ${policy.canonicalTypesPath} còn ${removed.length} runtime partition:`);
-    console.error(`   ${removed.slice(0, 5).join(', ')}${removed.length > 5 ? ` … (+${removed.length - 5})` : ''}`);
+    console.error(`❌ ${policy.canonicalTypesPath} chưa chuẩn hoá:`);
+    if (removed.length > 0) {
+      console.error(`   • còn ${removed.length} runtime partition: ${removed.slice(0, 5).join(', ')}${removed.length > 5 ? ` … (+${removed.length - 5})` : ''}`);
+    }
+    if (ghim.changed) {
+      console.error(`   • ${policy.platformVersion.field} = "${ghim.live}", phải là "${policy.platformVersion.pinned}"`);
+    }
     console.error('   Chạy: node scripts/normalize-supabase-types.mjs --write');
     return 1;
   }
 
   if (args.has('--write')) {
     writeFileSync(target, output, 'utf8');
-    console.log(`✅ Đã bỏ ${removed.length} runtime partition khỏi ${policy.canonicalTypesPath} (${before} → ${after} dòng).`);
+    const phan = [];
+    if (removed.length > 0) phan.push(`bỏ ${removed.length} runtime partition`);
+    if (ghim.changed) phan.push(`ghim ${policy.platformVersion.field} về "${policy.platformVersion.pinned}"`);
+    console.log(`✅ Đã ${phan.join(' + ')} trong ${policy.canonicalTypesPath} (${before} → ${after} dòng).`);
     return 0;
   }
 

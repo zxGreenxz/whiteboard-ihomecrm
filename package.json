@@ -114,6 +114,7 @@
     "gate:doc-freshness": "node scripts/check-doc-freshness.mjs",
     "gate:ledger-frozen": "node scripts/check-migration-ledger-frozen.mjs",
     "gate:migration-idempotent": "node scripts/check-forward-migration-idempotent.mjs",
+    "gate:migration-idempotent:ghi-so": "node scripts/check-forward-migration-idempotent.mjs --ghi-so",
     "docs:views": "node scripts/generate-docs-views.mjs",
     "gate:docs-views": "node scripts/generate-docs-views.mjs --check",
     "gate:promote-readiness": "node scripts/check-promote-readiness.mjs",

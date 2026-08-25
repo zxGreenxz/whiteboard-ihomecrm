@@ -68,8 +68,9 @@
     {
       "path": ".github/workflows/ci-gates.yml",
       "node": "24.18.0",
-      "deno": "v2.9.4",
-      "note": "Pin exact. Khớp sàn cao nhất (bridge 24.18)."
+      "note": "Pin exact. Khớp sàn cao nhất (bridge 24.18).",
+      "noteDeno": "Deno từng có ở đây qua job openclaw-edge-gates (deno lint/check các Edge Function OpenClaw). Job đó bị xoá 25/08/2026 khi OpenClaw nghỉ hưu, nên ci-gates.yml KHÔNG còn dùng Deno. Deno vẫn dùng ở network-center-validation.yml.",
+      "deno": null
     },
     {
       "path": ".github/workflows/network-center-validation.yml",

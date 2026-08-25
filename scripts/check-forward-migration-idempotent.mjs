@@ -30,13 +30,15 @@
 //
 // Cần SUPABASE_PAT. KHÔNG ghi gì (mọi thứ ROLLBACK). Thoát 0 · 1 · 3.
 
-import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildTransaction } from "./apply-reviewed-migration.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIR = join(repoRoot, "supabase", "migrations");
+const SO = join(repoRoot, "tooling", "idempotent-verified.json");
 
 /** Sàn chống rỗng: nếu không tìm được file nào sau cutoff, "0 lỗi" là vô nghĩa. */
 export const TOI_THIEU_FILE = 1;
@@ -48,6 +50,51 @@ export function pat() {
   } catch {
     return null;
   }
+}
+
+/**
+ * SỔ CHỨNG NHẬN THEO DIGEST — vì sao cần, và vì sao nó không phải nới tay.
+ *
+ * VẤN ĐỀ: cửa này quét MỌI file sau cutoff, mà cutoff đứng yên từ 06/08/2026.
+ * Tập đó CHỈ TĂNG: đo 25/08/2026 là 60 file, mỗi file dán hai lượt qua mạng tới
+ * production, tổng 176 giây MỖI LẦN CI chạy — và mỗi migration mới cộng thêm ~3 giây
+ * vĩnh viễn. Người viết một tính năng nhỏ phải trả giá cho toàn bộ quá khứ.
+ *
+ * VÌ SAO BỎ QUA ĐƯỢC MÀ KHÔNG MẤT GÌ: file sau cutoff là forward-only và BẤT BIẾN
+ * — policy đã cấm sửa/đổi tên/di chuyển, và migration-provenance.json giữ sha256
+ * của từng file. Một file có NỘI DUNG không đổi thì phép đo chạy lại trên nó cũng
+ * không đổi. Sổ này khoá theo sha256, nên sửa MỘT byte là mất chứng nhận và file
+ * bị đo lại — không có đường nào để một thay đổi lọt qua.
+ *
+ * KHÁC cutoff: dời cutoff sẽ làm lệch bộ khôi phục (baseline/schema.sql + forward
+ * lane phải cộng lại đúng production). Sổ này không đụng tới hợp đồng đó.
+ */
+export function docSo(duong = SO) {
+  try {
+    const j = JSON.parse(readFileSync(duong, "utf8"));
+    return j?.entries && typeof j.entries === "object" ? j.entries : {};
+  } catch {
+    return {};
+  }
+}
+
+export function bam(noiDung) {
+  return createHash("sha256").update(noiDung, "utf8").digest("hex");
+}
+
+/**
+ * Chia tập quét thành "phải đo" và "đã có chứng nhận".
+ * Thuần tuý, không I/O — test được.
+ */
+export function chiaTheoSo(files, digest, so) {
+  const phaiDo = [];
+  const daChung = [];
+  for (const f of files) {
+    const e = so[f];
+    if (e && e.sha256 === digest.get(f)) daChung.push(f);
+    else phaiDo.push(f);
+  }
+  return { phaiDo, daChung };
 }
 
 export function docCutoff() {
@@ -137,10 +184,32 @@ async function main() {
     process.exit(3);
   }
 
-  console.log(`Idempotency: ${files.length} migration sau cutoff ${cutoff} · mỗi file chạy HAI LẦN rồi ROLLBACK\n`);
+  // ── Sổ chứng nhận theo digest ───────────────────────────────────────────
+  const boQuaSo = process.argv.includes("--bo-qua-so");
+  const ghiSo = process.argv.includes("--ghi-so");
+  const digest = new Map(files.map((f) => [f, bam(readFileSync(join(DIR, f), "utf8"))]));
+  const so = boQuaSo ? {} : docSo();
+  const { phaiDo, daChung } = chiaTheoSo(files, digest, so);
+
+  // Sổ có mục cho file KHÔNG còn trong tầm quét ⇒ sổ đang tả một thế giới khác.
+  // Không chặn, nhưng phải nói ra: một cuốn sổ lệch trong im lặng là cửa tự mở.
+  const racSo = Object.keys(so).filter((f) => !digest.has(f));
+  if (racSo.length > 0) {
+    console.log(`⚠ ${racSo.length} mục trong tooling/idempotent-verified.json không còn file tương ứng — chạy --ghi-so để dọn.`);
+  }
+
+  const dsChay = quetToanBo ? phaiDo : files;
+  console.log(`Idempotency: ${files.length} migration sau cutoff ${cutoff} · mỗi file chạy HAI LẦN rồi ROLLBACK`);
+  if (quetToanBo) {
+    console.log(`  đo lần này: ${dsChay.length} · bỏ qua theo sha256 đã chứng nhận: ${daChung.length}`);
+    console.log("  (file sau cutoff là BẤT BIẾN theo policy; sửa một byte là mất chứng nhận và bị đo lại.");
+    console.log("   --bo-qua-so để ép đo hết, --ghi-so để cập nhật sổ.)");
+  }
+  console.log("");
 
   const hong = [];
-  for (const f of files) {
+  const chungMoi = [];
+  for (const f of dsChay) {
     let sql;
     try {
       sql = buildTransaction(readFileSync(join(DIR, f), "utf8"), { rollback: true, lanChay: 2 });
@@ -168,6 +237,7 @@ async function main() {
 
     if (kq.ok) {
       console.log(`  ✓ ${f}`);
+      chungMoi.push([f, "chay-lai-duoc"]);
     } else {
       // Lấy đúng câu lỗi Postgres, bỏ phần bao JSON — người đọc cần biết CÂU NÀO hỏng.
       let vi = kq.text.slice(0, 300);
@@ -180,6 +250,7 @@ async function main() {
       if (mt) {
         daKhop.add(f);
         console.log(`  ~ ${f}  (miễn trừ: ${mt.lop})`);
+        chungMoi.push([f, "mien-tru"]);
       } else {
         hong.push({ f, vi });
         console.log(`  ✗ ${f}\n      ${vi.slice(0, 200)}`);
@@ -190,7 +261,11 @@ async function main() {
   // Miễn trừ khai mà file ĐÃ chạy lại được ⇒ rác, và rác ở đây là cửa mở sẵn.
   // Chỉ kiểm khi chạy TOÀN BỘ: với --file thì phần lớn mục đương nhiên không
   // được chạm tới, báo chúng là thừa sẽ là lời buộc tội sai.
-  const thua = quetToanBo
+  // Chỉ kết luận "miễn trừ thừa" khi lượt này THẬT SỰ đo hết mọi file. Khi sổ đã
+  // bỏ qua phần lớn, một mục miễn trừ không được chạm tới KHÔNG chứng minh nó thừa —
+  // buộc tội trong trường hợp đó là đúng lớp lỗi mà chính file này cảnh báo ở trên.
+  const doHet = quetToanBo && dsChay.length === files.length;
+  const thua = doHet
     ? [...mienTru.keys()].filter((f) => !daKhop.has(f))
     : [];
 
@@ -216,7 +291,42 @@ async function main() {
     for (const f of daKhop) console.log(`     ~ ${f} — ${mienTru.get(f).lop}`);
   }
 
-  console.log(`\n✅ ${files.length}/${files.length} migration chạy lại được lần hai mà không hỏng.`);
+  // ── Ghi sổ ──────────────────────────────────────────────────────────────
+  // Chỉ ghi khi được yêu cầu tường minh. CI KHÔNG ghi sổ: một cổng tự cấp
+  // chứng nhận cho chính nó là cổng không còn canh gì. Sổ đi kèm commit của
+  // người viết migration, cùng đường với `npm run provenance:generate`.
+  if (ghiSo) {
+    const cu = boQuaSo ? {} : docSo();
+    const moiSo = {};
+    for (const f of files) {
+      const da = chungMoi.find(([ten]) => ten === f);
+      if (da) moiSo[f] = { sha256: digest.get(f), ketQua: da[1] };
+      else if (cu[f]?.sha256 === digest.get(f)) moiSo[f] = cu[f];
+    }
+    const noiDung = {
+      $comment:
+        "Sổ chứng nhận idempotent theo sha256. Sinh bằng: node scripts/check-forward-migration-idempotent.mjs --ghi-so. " +
+        "Mỗi mục nói: nội dung file này (theo digest) ĐÃ được chứng minh chạy lại được lần hai. " +
+        "File sau cutoff là bất biến theo migration-policy.json, nên chứng nhận còn giá trị tới khi nội dung đổi. " +
+        "Sửa một byte là digest đổi và file bị đo lại — không có đường lách.",
+      schemaVersion: 1,
+      entries: Object.fromEntries(Object.keys(moiSo).sort().map((k) => [k, moiSo[k]])),
+    };
+    writeFileSync(SO, `${JSON.stringify(noiDung, null, 2)}
+`, "utf8");
+    console.log(`
+✍ Đã ghi tooling/idempotent-verified.json — ${Object.keys(moiSo).length} mục.`);
+  }
+
+  const doThucTe = dsChay.length;
+  console.log(`
+✅ ${doThucTe}/${doThucTe} migration đo lần này chạy lại được lần hai mà không hỏng.`);
+  if (daChung.length > 0) {
+    console.log(`   ${daChung.length} file bỏ qua vì sha256 khớp sổ chứng nhận (nội dung không đổi từ lần đo đạt).`);
+  }
+  if (!doHet) {
+    console.log("   CHƯA ĐO LẦN NÀY: các mục miễn trừ không bị chạm tới nên không kết luận được chúng còn cần thiết hay đã thừa.");
+  }
   console.log("   CHƯA PHỦ: ghi đè im lặng (INSERT thiếu ON CONFLICT chèn hai dòng, không ném lỗi).");
   console.log("   Phủ nốt cần database dùng-một-lần để so trạng thái từng lượt.");
 }

@@ -11,7 +11,7 @@
 // Dùng:
 //   node scripts/check-ts-baseline.mjs           (kiểm tra; npm run typecheck:baseline)
 //   node scripts/check-ts-baseline.mjs --write    (regen ts-baseline.json từ tập hiện tại)
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,14 +24,28 @@ const WRITE = process.argv.includes('--write');
 // Lưu ý Windows/Node>=20: spawn .cmd với shell:false ném EINVAL (chặn sau
 // CVE-2024-27980). Nên gọi node lên đúng JS entrypoint của tsc — vẫn tất định,
 // shell:false, không phụ thuộc PATH. Fallback .bin/tsc.cmd|tsc nếu thiếu entry.
+// ── Cache incremental ────────────────────────────────────────────────────────
+// tsc đọc 1.340 file mỗi lượt, trong đó types.ts một mình 29.086 dòng — đo
+// 25/08/2026: 54 giây nguội, 5,7 giây khi có .tsbuildinfo, CÙNG số lỗi báo ra.
+//
+// KHÔNG hạ chuẩn: tsc tự ghi phiên bản compiler + toàn bộ option vào buildinfo và
+// DỰNG LẠI TỪ ĐẦU khi chúng lệch, nên một cache cũ không thể cho ra kết luận cũ.
+// Cache hỏng/thiếu cũng chỉ làm chậm, không làm sai.
+const buildInfoDir = path.join(repoRoot, '.tscache');
+const buildInfo = path.join(buildInfoDir, 'app.tsbuildinfo');
+if (!existsSync(buildInfoDir)) mkdirSync(buildInfoDir, { recursive: true });
+
 const tscJs = path.join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc');
 const useJsEntry = existsSync(tscJs);
 const bin = useJsEntry
   ? process.execPath
   : path.join(repoRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc');
-const args = useJsEntry
-  ? [tscJs, '--noEmit', '--pretty', 'false', '-p', 'tsconfig.app.json']
-  : ['--noEmit', '--pretty', 'false', '-p', 'tsconfig.app.json'];
+const coBan = [
+  '--noEmit', '--pretty', 'false',
+  '--incremental', '--tsBuildInfoFile', buildInfo,
+  '-p', 'tsconfig.app.json',
+];
+const args = useJsEntry ? [tscJs, ...coBan] : coBan;
 const res = spawnSync(
   bin,
   args,
