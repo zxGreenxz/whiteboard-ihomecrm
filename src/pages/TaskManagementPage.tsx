@@ -24,6 +24,7 @@ import { paginateJobs } from "@/lib/jobValidation";
 import { TaskStatusStats } from "@/components/tasks/TaskStatusStats";
 import { TaskFiltersPanel } from "@/components/tasks/TaskFiltersPanel";
 import TaskTable from "@/components/tasks/TaskTable";
+import TaskSortMenu from "@/components/tasks/TaskSortMenu";
 import TaskCreateDialog from "@/components/tasks/TaskCreateDialog";
 import TaskDetailDialog from "@/components/tasks/TaskDetailDialog";
 import TaskEditDialog from "@/components/tasks/TaskEditDialog";
@@ -31,6 +32,7 @@ import TaskNotesDialog from "@/components/tasks/TaskNotesDialog";
 import TaskCompleteDialog from "@/components/tasks/TaskCompleteDialog";
 import type { TaskFilters, JobWithRelations } from "@/types/jobs";
 import { defaultTaskFilters } from "@/types/jobs";
+import { sortJobs, defaultTaskSort, type TaskSort } from "@/lib/taskSort";
 
 const TasksMobilePage = lazy(() => import("./TasksMobilePage"));
 
@@ -64,6 +66,7 @@ function TaskManagementDesktopPage() {
   // Mặc định chỉ hiển thị phiếu chưa hoàn thành (đang làm + trễ hẹn).
   // Click vào stat card sẽ chuyển sang IN_PROGRESS hoặc COMPLETED.
   const [statusFilter, setStatusFilter] = usePersistedState<StatusFilter>("flt:tasks:status", "IN_PROGRESS");
+  const [sort, setSort] = usePersistedState<TaskSort>("flt:tasks:sort", defaultTaskSort);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobWithRelations | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -164,9 +167,13 @@ function TaskManagementDesktopPage() {
     return { tabFiltered, tabCounts, searchFiltered };
   }, [allJobs, myUserId, activeTab, statusFilter, q]);
 
+  // Sắp xếp SAU khi lọc, TRƯỚC khi cắt trang — nếu không thì mỗi trang tự sắp
+  // riêng và người dùng thấy thứ tự vỡ khi lật trang.
+  const sortedJobs = useMemo(() => sortJobs(searchFiltered, sort), [searchFiltered, sort]);
+
   // Client-side pagination
   const { data: paginatedData, total: totalCount } = paginateJobs(
-    searchFiltered,
+    sortedJobs,
     pagination.page,
     pagination.pageSize
   );
@@ -217,6 +224,11 @@ function TaskManagementDesktopPage() {
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
+    pagination.setPage(1);
+  };
+
+  const handleSortChange = (next: TaskSort) => {
+    setSort(next);
     pagination.setPage(1);
   };
 
@@ -371,14 +383,17 @@ function TaskManagementDesktopPage() {
 
       {/* Toolbar */}
       <div className="flex items-center justify-between mt-4 mb-4">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Tìm theo mã, công việc, người thực hiện..."
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9 h-9"
-          />
+        <div className="flex items-center gap-2 min-w-0 flex-1 mr-3">
+          <div className="relative flex-1 min-w-0 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Tìm theo mã, công việc, người thực hiện..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9 h-9"
+            />
+          </div>
+          <TaskSortMenu value={sort} onChange={handleSortChange} />
         </div>
         <div className="flex items-center gap-2">
           <Button

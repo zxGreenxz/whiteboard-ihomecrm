@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, Search, SlidersHorizontal, Clock, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Plus, Search, SlidersHorizontal, Clock, CheckCircle2, ArrowUpDown, Check, CalendarClock, CalendarPlus } from 'lucide-react';
 import '@/styles/mobileApp.css';
 import {
   Sheet,
@@ -33,6 +33,15 @@ import TaskNotesDialog from '@/components/tasks/TaskNotesDialog';
 import TaskCompleteDialog from '@/components/tasks/TaskCompleteDialog';
 import type { TaskFilters, JobWithRelations } from '@/types/jobs';
 import { defaultTaskFilters } from '@/types/jobs';
+import {
+  sortJobs,
+  defaultTaskSort,
+  isSameTaskSort,
+  TASK_SORT_OPTIONS,
+  TASK_SORT_DIR_LABEL,
+  TASK_SORT_FIELD_LABEL,
+  type TaskSort,
+} from '@/lib/taskSort';
 
 type TaskTab = 'ALL' | 'MINE' | 'WATCHING';
 type StatusFilter = 'IN_PROGRESS' | 'COMPLETED' | null;
@@ -72,10 +81,12 @@ export default function TasksMobilePage() {
 
   const [search, setSearch] = usePersistedState('flt:tasks-mb:search', '');
   const [showFilters, setShowFilters] = useState(false);
+  const [showSort, setShowSort] = useState(false);
   const [filters, setFilters] = usePersistedState<TaskFilters>('flt:tasks-mb:filters', defaultTaskFilters);
   const [appliedFilters, setAppliedFilters] = usePersistedState<TaskFilters>('flt:tasks-mb:applied', defaultTaskFilters);
   const [activeTab, setActiveTab] = usePersistedState<TaskTab>('flt:tasks-mb:tab', 'ALL');
   const [statusFilter, setStatusFilter] = usePersistedState<StatusFilter>('flt:tasks-mb:status', 'IN_PROGRESS');
+  const [sort, setSort] = usePersistedState<TaskSort>('flt:tasks-mb:sort', defaultTaskSort);
   const [visible, setVisible] = useState(40);
 
   // Dialog state
@@ -153,9 +164,10 @@ export default function TasksMobilePage() {
         );
       });
     }
-    return r;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabFiltered, statusFilter, q]);
+    // Sắp xếp SAU cùng, trước khi cắt `visible` — nếu không thì "Tải thêm" sẽ
+    // chèn dòng vào giữa danh sách đang xem.
+    return sortJobs(r, sort);
+  }, [tabFiltered, statusFilter, q, sort]);
 
   const shown = rows.slice(0, visible);
 
@@ -209,6 +221,13 @@ export default function TasksMobilePage() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
+              <button
+                className={'tkfbtn' + (isSameTaskSort(sort, defaultTaskSort) ? '' : ' act')}
+                onClick={() => setShowSort(true)}
+                aria-label={`Sắp xếp: ${TASK_SORT_FIELD_LABEL[sort.field]} — ${TASK_SORT_DIR_LABEL[sort.field][sort.dir]}`}
+              >
+                <ArrowUpDown size={17} />
+              </button>
               <button
                 className={'tkfbtn' + (activeFilterCount ? ' act' : '')}
                 onClick={() => setShowFilters(true)}
@@ -313,6 +332,44 @@ export default function TasksMobilePage() {
           </div>
         </div>
       </div>
+
+      {/* Sort sheet (bottom) — cùng 4 lựa chọn với desktop (lib/taskSort) */}
+      <Sheet open={showSort} onOpenChange={setShowSort}>
+        <SheetContent side="bottom" className="p-0">
+          <SheetHeader className="px-4 py-3 border-b">
+            <SheetTitle>Sắp xếp</SheetTitle>
+          </SheetHeader>
+          <div className="p-2 pb-6">
+            {TASK_SORT_OPTIONS.map((opt) => {
+              const active = isSameTaskSort(opt, sort);
+              const FieldIcon = opt.field === 'deadline' ? CalendarClock : CalendarPlus;
+              return (
+                <button
+                  key={`${opt.field}-${opt.dir}`}
+                  type="button"
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left ${
+                    active ? 'bg-green-50' : ''
+                  }`}
+                  onClick={() => {
+                    setSort(opt);
+                    setVisible(40);
+                    setShowSort(false);
+                  }}
+                >
+                  <FieldIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <span className="flex-1 leading-tight">
+                    <span className="block text-sm font-medium">{TASK_SORT_FIELD_LABEL[opt.field]}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {TASK_SORT_DIR_LABEL[opt.field][opt.dir]}
+                    </span>
+                  </span>
+                  {active && <Check className="h-5 w-5 text-green-600 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Filter sheet (bottom) — tái dùng panel desktop */}
       <Sheet open={showFilters} onOpenChange={setShowFilters}>
