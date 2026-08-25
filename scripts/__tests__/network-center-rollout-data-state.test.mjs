@@ -60,6 +60,11 @@ const STAGE_23 = "supabase/migrations/20260729148000_network_center_action_path_
 // từng chạy trên production — hàm nó khai vắng mặt y như bộ object của stage 23.
 const STAGE_25 =
   "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql";
+// Stage 27 (26/08/2026): forward-fix làm stage 26 DML thuần (cap slot 950NK,
+// ledger-applied qua lane forward ngày 23/08) quan sát được — cùng khuôn với
+// cặp stage 24→25. Chưa từng chạy trên production: hàm nó khai vắng mặt.
+const STAGE_27 =
+  "supabase/migrations/20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
@@ -75,6 +80,7 @@ const MEASURED_ABSENT = [
   "function:public.network_center_admin_enroll_access_port_v1(uuid,text,text,uuid)",
   "function:public.network_center_admin_list_access_ports_v1(uuid)",
   "function:app_private.network_center_cap_lai_slot_mikrotik_v1()",
+  "function:app_private.network_center_cap_slot_950nk_v1()",
 ];
 
 // Measured the same way: the functions stage 23 owns whose live body is not the
@@ -92,6 +98,7 @@ const MEASURED_ABSENT_BODIES = [
   "public.network_center_admin_enroll_access_port_v1",
   "public.network_center_admin_list_access_ports_v1",
   "app_private.network_center_cap_lai_slot_mikrotik_v1",
+  "app_private.network_center_cap_slot_950nk_v1",
 ];
 
 // The two DEMO sites that were legitimately promoted. Real ids are not needed
@@ -133,16 +140,17 @@ async function productionFixture() {
 // testing something else.
 test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
-  assert.equal(every.length, 446);
+  assert.equal(every.length, 447);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 25);
+  assert.equal(manifest.migrations.length, 27);
   assert.equal(manifest.migrations[22].path, STAGE_23);
   assert.equal(manifest.migrations[24].path, STAGE_25);
+  assert.equal(manifest.migrations[26].path, STAGE_27);
   const classification = classifyCatalog(manifest, present, { expectations, live });
-  assert.equal(classification.bodyMismatches.length, 9);
+  assert.equal(classification.bodyMismatches.length, 10);
   assert.deepEqual(
     [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
-    [STAGE_23, STAGE_25].sort(),
+    [STAGE_23, STAGE_25, STAGE_27].sort(),
     "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });

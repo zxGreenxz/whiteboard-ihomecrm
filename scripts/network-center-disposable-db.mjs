@@ -501,7 +501,8 @@ INSERT INTO public.authorization_scopes (organization_id, scope_type, building_i
 VALUES
   ('${DEMO_ORG_ID}', 'BUILDING', 'dddd1000-0000-4000-8000-000000000001'),
   ('${DEMO_ORG_ID}', 'BUILDING', 'dddd1000-0000-4000-8000-000000000002'),
-  ('${PROD_ORG_ID}', 'BUILDING', 'aaaa1000-0000-4000-8000-000000000001')
+  ('${PROD_ORG_ID}', 'BUILDING', 'aaaa1000-0000-4000-8000-000000000001'),
+  ('${PROD_ORG_ID}', 'BUILDING', 'aaaa1000-0000-4000-8000-000000000002')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO public.network_devices (
@@ -1163,6 +1164,11 @@ export function buildLocalClusterSeedSql({
   // into a pre-seeded building would collide on it.
   includeFleetFixtures = true,
 }) {
+  // Toà '950NK' (không router lúc seed) tồn tại ở đây VÌ migration
+  // 20260823140000 khẳng định bằng TÊN toà đó: khối DO của nó đòi 950NK có
+  // slot MikroTik sau khi quét. Thiếu toà này thì MỌI môi trường replay từ seed
+  // (generator manifest, bộ regression) chết ở stage đó và không đo được gì nữa.
+  // Sweep của stage đó sẽ tự cấp slot cho nó — chính là hành vi được kiểm.
   const fleetFixtures = includeFleetFixtures
     ? `INSERT INTO public.buildings (
   id, user_id, organization_id, name, code, province, district, ward,
@@ -1170,7 +1176,8 @@ export function buildLocalClusterSeedSql({
 ) VALUES
   ('dddd1000-0000-4000-8000-000000000001', '${DEMO_OWNER_ID}', '${DEMO_ORG_ID}', 'DEMO-NC-BUILDING-A', 'DEMO-NC-A', 'Local', 'Local', 'Local', 1, 1, false),
   ('dddd1000-0000-4000-8000-000000000002', '${DEMO_OWNER_ID}', '${DEMO_ORG_ID}', 'DEMO-NC-BUILDING-B', 'DEMO-NC-B', 'Local', 'Local', 'Local', 1, 1, false),
-  ('aaaa1000-0000-4000-8000-000000000001', '${PROD_OWNER_ID}', '${PROD_ORG_ID}', 'PROD-NC-READ-ONLY', 'PROD-NC-RO', 'Local', 'Local', 'Local', 1, 1, false)
+  ('aaaa1000-0000-4000-8000-000000000001', '${PROD_OWNER_ID}', '${PROD_ORG_ID}', 'PROD-NC-READ-ONLY', 'PROD-NC-RO', 'Local', 'Local', 'Local', 1, 1, false),
+  ('aaaa1000-0000-4000-8000-000000000002', '${PROD_OWNER_ID}', '${PROD_ORG_ID}', '950NK', 'PROD-950NK', 'Local', 'Local', 'Local', 1, 1, false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.authorization_scopes (organization_id, scope_type, building_id)

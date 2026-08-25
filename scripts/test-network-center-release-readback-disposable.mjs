@@ -100,6 +100,20 @@ export const BOOTSTRAP_UNMODELLED_MIGRATIONS = Object.freeze({
     + "entry ngay trên. Loại một mình 020000 mà giữ 004500 thì lỗi external_key "
     + "chỉ dời sang stage sau, vì hàm này chép nguyên văn câu INSERT đó theo "
     + "đúng luật thay-thế của assertStagesObservable",
+  "20260823140000_network_center_cap_slot_950nk.sql":
+    "cùng lớp với 20260813020000: backfill DML cấp slot cho toà 950NK sinh sau "
+    + "đợt seed — INSERT vào public.network_devices dùng bề mặt slot "
+    + "(external_key, vendor, lifecycle_status, write_capability) mà shim "
+    + "network_devices của bootstrap này không dựng. Hiệu ứng được phủ bởi "
+    + "scripts/test-network-center-action-path-disposable.mjs và bởi bộ sinh "
+    + "manifest rollout (fixture cụm có toà 950NK để khối khẳng định của nó "
+    + "đo được thật)",
+  "20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql":
+    "bản tái-lập-được của 20260823140000 (hàm "
+    + "app_private.network_center_cap_slot_950nk_v1 + chạy nó) — cùng bề mặt "
+    + "slot mà bootstrap này không mô hình hoá, cùng độ phủ thay thế như "
+    + "cặp 020000/004500 ngay trên: hàm chép nguyên văn các câu lệnh theo "
+    + "luật thay-thế của assertStagesObservable",
 });
 
 export function discoverForwardFixMigrations(directory = MIGRATION_DIRECTORY) {

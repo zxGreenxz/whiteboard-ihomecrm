@@ -429,6 +429,24 @@
         }
       ],
       "anhHuongThat": "Không có. Đây là đổi tên thuần: biểu thức policy giữ nguyên, chỉ nhãn đổi để khớp quy ước mà gate đếm dựa vào. Không mã nào gọi policy theo tên — grep tên policy trong `src/`, `api/`, `scripts/`, `supabase/functions/` chỉ ra trong chính hai file SQL trên. Bảng vẫn có đủ biên giới tổ chức, và sau khi đổi tên thì gate đếm mới nhìn thấy nó."
+    },
+    "supabase/migrations/20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql": {
+      "sha256": "9a189a63933ecde73e15e815814cd454896bb60672d51b853ed9b22a10141a94",
+      "missingObjects": [
+        "function:app_private.network_center_cap_slot_950nk_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 26/08/2026, chưa đi qua lane apply nào — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Nó là forward-fix làm 20260823140000 (DML thuần cấp slot cho toà 950NK, đã ledger-applied 23/08 qua lane forward) quan sát được với audit rollout — cùng khuôn với cặp 20260813020000 → 20260814004500 ngay trên: hàm chép nguyên văn hai INSERT + khối DO của file gốc theo luật thay-thế của assertStagesObservable (đo thật: run CI 32874901646 từ chối release vì stage 26 unobservable). Hàm sẽ xuất hiện khi stage 27 của rollout manifest chạy; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.network_center_cap_slot_950nk_v1()"
+        },
+        {
+          "duong_dan": "scripts/network-center-rollout-manifest.json",
+          "trich_doan": "function:app_private.network_center_cap_slot_950nk_v1() — descriptor stage 27, đo bằng generator trên cụm dùng-một-lần"
+        }
+      ]
     }
   }
 }

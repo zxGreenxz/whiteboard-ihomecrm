@@ -138,6 +138,16 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "Không có người dùng thường nào để nghiệm thu",
       "why": "Khối nghiệm thu đo bằng VAI THẬT: nó cần ít nhất một người dùng thường có membership ACTIVE trên org ACTIVE, và một super admin. Database rỗng của diễn tập không có ai nên hàm dừng — đúng việc, y hệt 20260809030000 (cùng khuôn, cùng thông điệp). Bản thân CREATE FUNCTION đã chạy xong trước khi khối này chạy; thứ dừng lại là phép nghiệm thu, không phải phần tạo đối tượng."
+    },
+    "20260823140000_network_center_cap_slot_950nk.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "van khong co slot MikroTik hoat dong (dem duoc 0)",
+      "why": "Khối khẳng định đòi toà TÊN 950NK (org iHome thật) có slot MikroTik sau khi quét; database rỗng của diễn tập không có toà nào tên vậy nên nó dừng — đúng việc của chốt đo một-lần. Hai INSERT phía trước là quét điều-kiện (NOT EXISTS / ON CONFLICT) đã chạy sạch trước khi khối này đo. Đo thật trên CI run 32874901646 (25/08/2026) khi hồ sơ migration bỏ dở được commit nốt."
+    },
+    "20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "van khong co slot MikroTik hoat dong (dem duoc 0)",
+      "why": "Bản tái-lập-được của 20260823140000: chép NGUYÊN VĂN khối khẳng định (luật thay-thế của assertStagesObservable đòi vậy — y hệt cặp 20260813020000 → 20260814004500), nên trên database rỗng nó dừng ở đúng chỗ đó với đúng thông điệp đó. CREATE FUNCTION + REVOKE + SELECT hàm phía trước đã chạy sạch — đó mới là phần bài diễn tập cần chứng minh."
     }
   }
 }
