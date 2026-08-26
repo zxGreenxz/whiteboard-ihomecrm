@@ -21,8 +21,8 @@ export const v5Copy = {
     `+${amountVnd.toLocaleString("vi-VN")}đ TẠM TÍNH · chuỗi ${streak} ngày · còn ${nextInDays} ngày tới mốc +${k(nextDeltaVnd)}`,
   tickedToastNoNext: (amountVnd: number, streak: number) =>
     `+${amountVnd.toLocaleString("vi-VN")}đ TẠM TÍNH · chuỗi ${streak} ngày · đã chạm mốc cao nhất tháng này 🏆`,
-  milestoneBanked: (milestone: number | "full_month", deltaVnd: number) =>
-    milestone === "full_month"
+  milestoneBanked: (milestone: number | "full_month", deltaVnd: number, top?: boolean) =>
+    milestone === "full_month" || top
       ? `Trọn tháng! +${k(deltaVnd)} đã KHOÁ 🔒 (giữ nguyên dù nghỉ)`
       : `Mốc ${milestone} ngày! +${k(deltaVnd)} đã KHOÁ 🔒 (giữ nguyên dù nghỉ)`,
   streakNewCycle: "Bắt đầu chuỗi mới 🔥",

@@ -473,16 +473,18 @@ export default function MyDayPage() {
                   </span>
                 )}
               </span>
-              <span className="flex items-center gap-1 text-xs text-slate-500">
+              <span className="flex items-center gap-1 text-xs text-slate-500" title="Khiên: miễn phí · tháng-hoàn-hảo · điểm CN">
                 <Shield className="h-3.5 w-3.5" />
-                {s.streak.shields_free_left}+{s.streak.shields_reserve_left}
+                {s.streak.sunday_points_left !== undefined
+                  ? `${s.streak.shields_free_left} · ${s.streak.shields_perfect_left ?? 0} · CN ${s.streak.sunday_points_left}`
+                  : `${s.streak.shields_free_left}+${s.streak.shields_reserve_left}`}
               </span>
             </div>
             {s.streak.banked.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {s.streak.banked.map((b) => (
                   <span key={String(b.milestone)} className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                    🔒 {b.milestone === "full_month" ? "Trọn tháng" : `Mốc ${b.milestone}`} +{Math.round(b.delta / 1000)}k
+                    🔒 {b.milestone === "full_month" ? "Trọn tháng" : b.top ? `Đỉnh ${b.milestone} — đủ tháng` : `Mốc ${b.milestone}`} +{Math.round(b.delta / 1000)}k
                   </span>
                 ))}
               </div>

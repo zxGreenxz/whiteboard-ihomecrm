@@ -416,7 +416,8 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
               : [];
             stats.workdays = v.ticked;
             stats.streak = v.cur;
-            incomeGoal = 9_000_000; // trần v5 = 6tr chuyên cần + 3tr chuỗi
+            // trần v5: 6tr chuyên cần + chuỗi (3tr trước 09/2026, 2.5tr từ V5.1)
+            incomeGoal = periodMonth >= "2026-09-01" ? 8_500_000 : 9_000_000;
           }
         }
 

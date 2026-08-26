@@ -18,7 +18,9 @@ export interface MyDaySummary {
   streak: {
     current: number; best: number; breaks_no_leave: number;
     shields_free_left: number; shields_reserve_left: number;
-    banked: { milestone: number | "full_month"; delta: number }[];
+    // V5.1 (kỳ ≥ 09/2026): kho tháng-hoàn-hảo + điểm Chủ nhật; kỳ legacy không có 2 key này
+    shields_perfect_left?: number; sunday_points_left?: number;
+    banked: { milestone: number | "full_month"; delta: number; top?: boolean }[];
     next: { milestone: number; delta: number; days_to_go: number } | null;
   };
   pending_checks: { building_id: string; building_name: string | null }[];
