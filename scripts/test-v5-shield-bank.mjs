@@ -4,8 +4,11 @@
 // Pattern ke thua scripts/test-v5-streak-recompute-alias.mjs.
 import { readFileSync } from "node:fs";
 
-const migrationFile =
-  "supabase/migrations/20260826120000_v5_1_khien_3_lop_phep_nam_moc_2tr5.sql";
+const migrationFiles = [
+  "supabase/migrations/20260826120000_v5_1_khien_3_lop_phep_nam_moc_2tr5.sql",
+  "supabase/migrations/20260826123000_v5_1_my_day_phep_nam.sql",
+  "supabase/migrations/20260826150000_v5_1_thang_2tr5_ap_ca_t7_t8.sql",
+];
 const projectRef = JSON.parse(
   readFileSync("supabase/.temp/linked-project.json", "utf8"),
 ).ref;
@@ -17,9 +20,13 @@ if (!pat) {
   process.exit(1);
 }
 
-const migrationBody = readFileSync(migrationFile, "utf8")
-  .replace(/^﻿?\s*BEGIN;\s*/i, "")
-  .replace(/\s*COMMIT;[\s\S]*$/i, "");
+const migrationBody = migrationFiles
+  .map((f) =>
+    readFileSync(f, "utf8")
+      .replace(/^﻿?\s*BEGIN;\s*/i, "")
+      .replace(/\s*COMMIT;[\s\S]*$/i, ""),
+  )
+  .join("\n");
 
 const JOEY = "d45a7506-5250-4d99-ac94-9f73cbd4df17";
 
@@ -66,16 +73,17 @@ BEGIN
   SELECT COALESCE(SUM((e->>'delta')::numeric),0) INTO v_sum FROM jsonb_array_elements(v_eff) e;
   IF v_sum <> 3000000 THEN RAISE EXCEPTION 'A4 fail: legacy full_month tong % <> 3tr', v_sum; END IF;
 
-  -- ===== D. Legacy bat bien (du lieu THAT thang 7 cua Joey, bank_from van 2026-09-01) =====
+  -- ===== D. Legacy (thang 7 THAT cua Joey): co che khien cu, THANG TIEN moi 2.5tr =====
+  -- Joey T7: best 24 = N_chuan 24 (3 phep) -> cham dinh dong -> full 2.5tr, tong 8.5tr
   v_r := public.v5_recompute_streak(v_joey, DATE '2026-07-01');
   IF (v_r->>'best')::int <> 24 OR (v_r->>'breaks_no_leave')::int <> 0 THEN
-    RAISE EXCEPTION 'D1 fail: legacy thang 7 doi hanh vi: %', v_r;
+    RAISE EXCEPTION 'D1 fail: legacy thang 7 doi hanh vi chuoi: %', v_r;
   END IF;
   SELECT COALESCE(SUM((b->>'delta')::numeric),0) INTO v_sum FROM jsonb_array_elements(v_r->'banked') b;
-  IF v_sum <> 3000000 THEN RAISE EXCEPTION 'D1 fail: banked thang 7 = % <> 3tr', v_sum; END IF;
+  IF v_sum <> 2500000 THEN RAISE EXCEPTION 'D1 fail: banked thang 7 = % <> 2.5tr (thang moi)', v_sum; END IF;
   v_m := public.v5_month_money(v_joey, DATE '2026-07-01');
-  IF (v_m->>'total')::numeric <> 9000000 OR (v_m->>'streak_budget')::numeric <> 3000000 THEN
-    RAISE EXCEPTION 'D2 fail: money thang 7: %', v_m;
+  IF (v_m->>'total')::numeric <> 8500000 OR (v_m->>'streak_budget')::numeric <> 2500000 THEN
+    RAISE EXCEPTION 'D2 fail: money thang 7 (ky vong 8.5tr / tran 2.5tr): %', v_m;
   END IF;
   v_m := public.v5_month_money(v_joey, DATE '2026-10-01');
   IF (v_m->>'streak_budget')::numeric <> 2500000 THEN

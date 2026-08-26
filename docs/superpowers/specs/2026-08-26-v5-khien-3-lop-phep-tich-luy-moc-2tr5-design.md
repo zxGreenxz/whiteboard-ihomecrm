@@ -112,6 +112,15 @@ qua `provenance:generate`. Config data-patch nằm trong cùng migration (UPDATE
   rollback = migration đảo config về giá trị cũ + engine bản cũ (giữ file SQL cũ nguyên vẹn
   trong lịch sử để tái tạo).
 
+## 6b. Tu chỉnh đợt 2 (chủ quyết 26/08, sau phát hành đợt 1)
+
+**Thang tiền 2.5tr đỉnh động áp cho CẢ tháng 7–8/2026** (migration
+`20260826150000`), thay điều khoản "tháng 7–8 giữ trọn luật cũ" ở §6. Chỉ THANG TIỀN
+hồi tố; CƠ CHẾ khiên/phép của kỳ legacy giữ nguyên (free 3, dự trữ, quota phép tháng) —
+không bắt quá khứ chơi lại luật khiên mới. Hệ quả đã báo chủ: tháng 7 của người đủ
+N_chuẩn từ 9tr về **8.5tr**; mốc trọn-tháng biến mất khỏi mọi kỳ; `v5_month_money`
+còn một trần duy nhất đọc từ config.
+
 ## 7. Ngoài phạm vi
 
 - Không đụng pool chuyên cần 6tr, sàn mềm, nguồn tick, chống gian lận, coverage, SLA.
