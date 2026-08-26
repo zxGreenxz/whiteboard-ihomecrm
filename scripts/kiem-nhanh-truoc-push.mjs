@@ -46,6 +46,7 @@ const TU_CHUA = [
   ["sinh kiểm kê repo (JSON)", ["scripts/generate-repository-inventory.mjs", "--write"]],
   ["sinh bản .md render từ manifest", ["scripts/generate-docs-views.mjs"]],
   ["sửa số đếm trong tài liệu", ["scripts/check-doc-counts.mjs", "--fix"]],
+  ["dán số baseline từ manifest vào README", ["scripts/check-baseline-doc.mjs", "--fix"]],
 ];
 
 // ── Bước 2: gate tĩnh, thứ tự khớp ci-gates.yml để dễ đối chiếu ──────────────
@@ -81,6 +82,7 @@ const GATE_NHANH = [
   // docs-freshness (số đã được bước 1 chữa; ở đây chỉ còn xác nhận)
   "check-copilot-docs-manifest",
   "check-copilot-routes",
+  "check-copilot-tool-inventory",
   "check-doc-counts",
   "check-doc-freshness",
   ["generate-docs-views", "--check"],

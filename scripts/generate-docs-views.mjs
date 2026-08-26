@@ -40,7 +40,11 @@ function dauTrang(nguon) {
   return [
     "---",
     "status: current",
-    `reviewed: ${new Date().toISOString().slice(0, 10)}`,
+    // KHÔNG đóng dấu `reviewed: <hôm nay>` nữa (bỏ 26/08/2026). Dấu ngày làm cả
+    // ba file bẩn MỖI NGÀY chạy generator dù nội dung không đổi một chữ — rồi bị
+    // gate:truoc-push tự stage, rồi đi vào commit như thay đổi giả. Chế độ
+    // --check vốn đã bỏ qua dòng này khi so, tức nó chưa từng là dữ liệu ai đọc.
+    // Ngày review thật của NGUỒN nằm trong docs/he-thong/manifest.json.
     "source_paths:",
     ...nguon.map((s) => `  - ${s}`),
     "copilot_ingest: false",

@@ -16,11 +16,18 @@
 //   nay, nó chỉ làm người đọc tin rằng đường lùi đã được chứng minh — và người ta
 //   chỉ phát hiện ra vào đúng lúc cần dùng nó.
 //
-//   node scripts/check-baseline-doc.mjs
+//   node scripts/check-baseline-doc.mjs          # kiểm (gate CI)
+//   node scripts/check-baseline-doc.mjs --fix    # tự dán số từ manifest vào README
+//
+// --fix thêm 26/08/2026, cùng khuôn check-doc-counts: phép đối chiếu này thuần
+// cơ học (trường manifest → con số sau một câu neo trong README) nên bắt người
+// chép số bằng tay chỉ tạo vòng sửa-đi-sửa-lại. LƯU Ý --fix chỉ dán SỐ; luật
+// văn bản "CHƯA có bản ghi nào" vẫn là gate chặn, không tự sửa được — đúng chủ
+// đích, vì câu đó là lời khẳng định con người phải chịu trách nhiệm.
 //
 // Không cần credential. Thoát 0 · 1 khi lệch · 3 khi KHÔNG ĐỌC ĐƯỢC.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,6 +77,30 @@ export function doiChieu(readme, manifest, bang = DOI_CHIEU) {
   return van;
 }
 
+/**
+ * Dán số từ manifest vào README theo đúng các neo của DOI_CHIEU.
+ * Thuần biến đổi văn bản — test được. Trả { output, daSua: [tên...] }.
+ * Neo nào không tìm thấy thì KHÔNG sửa (để gate báo "mất neo" như cũ —
+ * fix một neo đã mất là bịa vị trí cho con số).
+ */
+export function danSo(readme, manifest, bang = DOI_CHIEU) {
+  let output = readme;
+  const daSua = [];
+  for (const c of bang) {
+    const that = layTruong(manifest, c.truong);
+    if (that === undefined) continue;
+    const m = c.re.exec(output);
+    if (!m || Number(m[1]) === Number(that)) continue;
+    // Thay đúng nhóm bắt (m[1]) trong lần khớp này, giữ nguyên phần còn lại.
+    const truoc = m[0];
+    const viTriSo = truoc.lastIndexOf(m[1]);
+    const sau = truoc.slice(0, viTriSo) + String(that) + truoc.slice(viTriSo + m[1].length);
+    output = output.replace(truoc, sau);
+    daSua.push(`${c.ten}: ${m[1]} → ${that}`);
+  }
+  return { output, daSua };
+}
+
 function main() {
   let readme;
   let manifest;
@@ -79,6 +110,16 @@ function main() {
   } catch (error) {
     console.error(`❌ KHÔNG ĐỌC ĐƯỢC baseline: ${error.message}`);
     process.exit(3);
+  }
+
+  if (process.argv.includes('--fix')) {
+    const { output, daSua } = danSo(readme, manifest);
+    if (daSua.length > 0) {
+      writeFileSync(README, output, 'utf8');
+      console.log(`✍ Đã dán ${daSua.length} con số từ manifest vào README baseline:`);
+      for (const s of daSua) console.log(`    ${s}`);
+      readme = output;
+    }
   }
 
   const van = doiChieu(readme, manifest);

@@ -94,6 +94,11 @@ const SQL_DEM_SECURITY_DEFINER = `
 // Nguồn: check-stable-fn-locks.mjs — nguyên văn CTE, kể cả bước BỎ COMMENT
 // (không bỏ thì gate khớp vào chính câu văn nói rằng hàm không khoá dòng) và
 // LOCK TABLE (cũng ném 25006 y như FOR UPDATE trong transaction read-only).
+//
+// BẢN GỐC LÀ NGUỒN, bản này là bản chép: từ 26/08/2026 check-stable-fn-locks
+// chạy trong CI (ci-gates.yml, job security-gates) nên nó không còn mồ côi.
+// Sửa CTE thì sửa BÊN ĐÓ trước rồi chép lại sang đây — hai bản trôi khỏi nhau
+// là đúng lớp lỗi khiến câu chú thích này tồn tại.
 const SQL_STABLE_FN_LOCKS = `
   WITH RECURSIVE fns AS (
     SELECT p.oid, n.nspname AS ns, p.proname AS nm, p.provolatile AS vol,
