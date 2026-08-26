@@ -72,19 +72,36 @@ export function roundVnd(v: number): number {
 
 /**
  * Cắt mốc streak cho tháng ngắn (C10): mốc giữ SỐ TUYỆT ĐỐI; mốc > N_chuẩn bị cắt
- * từ trên xuống, delta của mốc bị cắt DỒN vào mốc 'full_month' — tổng luôn = budget.
+ * từ trên xuống, delta của mốc bị cắt DỒN vào mốc đích — tổng luôn = budget.
+ *
+ * V5.1: sentinel 'n_top' = ĐỈNH ĐỘNG tại N_chuẩn (thay 'full_month' từ kỳ 09/2026).
+ * Delta cắt dồn vào n_top; n_top trùng một mốc số thì MERGE thành một mốc.
+ * 'full_month' giữ nguyên hành vi cũ cho kỳ legacy. Mirror của SQL
+ * public_v5_effective_milestones (migration 20260826120000) — sửa một phía
+ * phải sửa phía kia.
  */
 export function effectiveMilestones(
-  milestones: (number | "full_month")[],
+  milestones: (number | "full_month" | "n_top")[],
   deltas: number[],
   n: number,
-): { milestone: number | "full_month"; delta: number }[] {
+): { milestone: number | "full_month" | "n_top"; at?: number; delta: number }[] {
   const items = milestones.map((m, i) => ({ milestone: m, delta: deltas[i] ?? 0 }));
-  const kept = items.filter((it) => it.milestone === "full_month" || (it.milestone as number) <= n);
+  const topDelta = items.find((it) => it.milestone === "n_top")?.delta;
+  const fmDelta = items.find((it) => it.milestone === "full_month")?.delta;
+  const out: { milestone: number | "full_month" | "n_top"; at?: number; delta: number }[] = items
+    .filter((it) => typeof it.milestone === "number" && it.milestone <= n)
+    .map((it) => ({ milestone: it.milestone, at: it.milestone as number, delta: it.delta }));
   const cutSum = items
-    .filter((it) => it.milestone !== "full_month" && (it.milestone as number) > n)
+    .filter((it) => typeof it.milestone === "number" && it.milestone > n)
     .reduce((s, it) => s + it.delta, 0);
-  return kept.map((it) =>
-    it.milestone === "full_month" ? { ...it, delta: it.delta + cutSum } : it,
-  );
+  if (topDelta !== undefined) {
+    const same = out.find((it) => it.at === n);
+    if (same) same.delta += topDelta + cutSum;
+    else out.push({ milestone: "n_top", at: n, delta: topDelta + cutSum });
+  } else if (fmDelta !== undefined) {
+    out.push({ milestone: "full_month", delta: fmDelta + cutSum });
+  } else if (cutSum > 0 && out.length > 0) {
+    out[out.length - 1].delta += cutSum;
+  }
+  return out;
 }
