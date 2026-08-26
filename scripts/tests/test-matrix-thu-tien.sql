@@ -407,7 +407,24 @@ K1 ✓ kỳ cũ bị chặn ngay khi sinh: '||left(SQLERRM,50);
       JOIN buildings b ON b.id=u.building_id
      WHERE b.organization_id<>v_demo AND u.utility_type='ELECTRIC'
        AND u.deleted_at IS NULL LIMIT 1;
-    IF v_meter IS NULL THEN RAISE EXCEPTION 'THIẾU FIXTURE: DEMO không có công tơ điện'; END IF;
+    -- 26/08/2026 — FIXTURE, không phải trang trí. Đo trên prod: cả 30 công tơ
+    -- (18 điện + 12 nước) đều thuộc org THẬT, DEMO có 0 cái. RAISE cũ ở đây nằm
+    -- NGOÀI mọi EXCEPTION handler nên nó giết cả ma trận trước khi tới dòng tổng
+    -- kết — nghĩa là M0..M4 chưa chạy lần nào, và không ai biết vì lỗi "thiếu
+    -- fixture" trông giống lỗi môi trường hơn là gate đỏ.
+    -- Dựng công tơ ngay trong transaction: ma trận kết thúc bằng RAISE nên mọi
+    -- thứ rollback, DEMO không giữ lại gì.
+    IF v_meter IS NULL THEN
+      SELECT id INTO v_bmeter FROM buildings
+       WHERE organization_id = v_demo AND deleted_at IS NULL
+       ORDER BY id LIMIT 1;
+      INSERT INTO building_utility_accounts
+        (building_id, utility_type, provider_code, account_holder, user_id, organization_id)
+      SELECT v_bmeter, 'ELECTRIC', 'MTX-E-FIXTURE', 'Ma tran kiem thu', b.user_id, v_demo
+        FROM buildings b WHERE b.id = v_bmeter
+      RETURNING id INTO v_meter;
+      v_ket := v_ket || E'\nM* (fixture) DEMO chưa có công tơ điện → dựng tạm trong transaction';
+    END IF;
 
     -- M0 ĐỐI CHỨNG DƯƠNG: chỉ đích danh công tơ thì đóng được
     BEGIN
@@ -484,6 +501,78 @@ K1 ✓ kỳ cũ bị chặn ngay khi sinh: '||left(SQLERRM,50);
       v_ket:=v_ket||E'\nM4 ✓ SAI-bị-chặn: không mượn được công tơ của toà/org khác: '||left(SQLERRM,52);
     END;
     END IF;
+
+    -- ═══ M5/M6 — AI ĐI THẲNG, AI PHẢI CHỜ (26/08/2026) ══════════════
+    -- Luật mới: người lập phiếu MÀ CÓ QUYỀN DUYỆT thì phiếu sinh ra đã duyệt
+    -- và tiền ra khỏi sổ ngay; ngưỡng tự duyệt chỉ còn áp cho người KHÔNG có
+    -- quyền duyệt. Trước đó mọi hoá đơn trên ngưỡng đều thành CHỜ DUYỆT, kể cả
+    -- của chủ công ty — cùng số tiền đó nhập tay ở form Thu chi lại tự duyệt.
+    --
+    -- M5 phải assert CẢ posting_status. Chỉ assert APPROVED là chưa chứng minh
+    -- được vế "chi luôn": phiếu có thể duyệt mà không sinh bút toán, khi đó
+    -- giao diện xanh trong khi tồn quỹ chưa trừ.
+    -- M6 là ĐỐI CHỨNG ÂM. Thiếu nó thì M5 xanh cũng không loại trừ khả năng
+    -- hàm đã duyệt cho tất cả mọi người.
+    DECLARE
+      v_chu_nha uuid := 'de6f33f3-349f-4bec-bd3d-106192f6715e'; -- vai "Chủ công ty", CÓ income_expenses.approve
+      v_acc_ai  uuid; v_r56 jsonb; v_st text; v_ps text; v_nguong numeric;
+    BEGIN
+      SELECT threshold INTO v_nguong
+        FROM app_private.ie_auto_approve_config WHERE organization_id = v_demo;
+
+      -- M5: CÓ quyền duyệt + số tiền TRÊN ngưỡng ⇒ duyệt và ghi sổ ngay
+      BEGIN
+        PERFORM set_config('request.jwt.claim.sub', v_chu_nha::text, true);
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_chu_nha, 'role', 'authenticated')::text, true);
+        SELECT id INTO v_acc_ai FROM accounts
+         WHERE user_id = v_chu_nha AND deleted_at IS NULL
+           AND NOT COALESCE(is_virtual, false) LIMIT 1;
+        v_r56 := public.pay_utility_bill(
+          p_building_id:=v_bmeter, p_utility_type:='ELECTRIC',
+          p_amount:=GREATEST(COALESCE(v_nguong, 0) + 1000000, 6000000),
+          p_period_month:='2029-04', p_voucher_date:=public.org_today_v1(v_demo),
+          p_provider_code:=NULL, p_account_holder:=NULL, p_account_id:=v_acc_ai,
+          p_attachments:=NULL, p_utility_account_id:=v_meter);
+        SELECT approval_status, posting_status INTO v_st, v_ps
+          FROM income_expenses WHERE id = (v_r56->>'voucher_id')::uuid;
+        IF v_st = 'APPROVED' AND v_ps = 'POSTED' THEN v_pass:=v_pass+1;
+          v_ket:=v_ket||E'\nM5 ✓ ĐÚNG: người có quyền duyệt đóng trên ngưỡng ⇒ APPROVED + POSTED (duyệt và chi luôn)';
+        ELSE v_fail:=v_fail+1;
+          v_ket:=v_ket||E'\nM5 ✗ người có quyền duyệt vẫn phải chờ: '||COALESCE(v_st,'?')||' / posting='||COALESCE(v_ps,'?');
+        END IF;
+      EXCEPTION WHEN OTHERS THEN v_fail:=v_fail+1;
+        v_ket:=v_ket||E'\nM5 ✗ lỗi khi đóng: '||left(SQLERRM,70);
+      END;
+
+      -- M6 ĐỐI CHỨNG ÂM: KHÔNG có quyền duyệt + cùng mức tiền ⇒ vẫn CHỜ DUYỆT
+      BEGIN
+        PERFORM set_config('request.jwt.claim.sub', v_ql::text, true);
+        PERFORM set_config('request.jwt.claims',
+          json_build_object('sub', v_ql, 'role', 'authenticated')::text, true);
+        SELECT id INTO v_acc_ai FROM accounts
+         WHERE user_id = v_ql AND deleted_at IS NULL
+           AND NOT COALESCE(is_virtual, false) LIMIT 1;
+        v_r56 := public.pay_utility_bill(
+          p_building_id:=v_bmeter, p_utility_type:='ELECTRIC',
+          p_amount:=GREATEST(COALESCE(v_nguong, 0) + 1000000, 6000000),
+          p_period_month:='2029-05', p_voucher_date:=public.org_today_v1(v_demo),
+          p_provider_code:=NULL, p_account_holder:=NULL, p_account_id:=v_acc_ai,
+          p_attachments:=NULL, p_utility_account_id:=v_meter);
+        SELECT approval_status INTO v_st
+          FROM income_expenses WHERE id = (v_r56->>'voucher_id')::uuid;
+        IF v_st = 'UNAPPROVED' THEN v_pass:=v_pass+1;
+          v_ket:=v_ket||E'\nM6 ✓ ĐÚNG (đối chứng âm): không có quyền duyệt ⇒ vẫn CHỜ DUYỆT, ngưỡng còn nguyên';
+        ELSE v_fail:=v_fail+1;
+          v_ket:=v_ket||E'\nM6 ✗✗ NGUY HIỂM: người KHÔNG có quyền duyệt cũng tự duyệt được ('||COALESCE(v_st,'?')||')';
+        END IF;
+      EXCEPTION WHEN OTHERS THEN
+        -- Bị chặn từ vòng ngoài (quyền toà/sổ quỹ) thì KHÔNG tính là đạt: bài
+        -- này chỉ có nghĩa khi phiếu thật sự được tạo rồi mới xét trạng thái.
+        v_fail:=v_fail+1;
+        v_ket:=v_ket||E'\nM6 ✗ không đo được (chặn trước khi tạo phiếu): '||left(SQLERRM,70);
+      END;
+    END;
   END;
 
   RAISE EXCEPTION 'MA TRẬN: % ĐẠT / % HỎNG%', v_pass, v_fail, v_ket;
