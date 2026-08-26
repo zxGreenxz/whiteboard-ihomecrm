@@ -42,20 +42,14 @@ codex mcp add gitnexus -- node scripts/run-pinned-gitnexus.mjs mcp
 Repo đã có sẵn `.mcp.json` khai đúng lệnh đó (theo DỰ ÁN, không theo máy) — dòng trên chỉ cần khi
 client Codex của bạn không đọc `.mcp.json`.
 
-Ba thứ wrapper làm mà lệnh trần không làm, mỗi thứ chặn một cách hỏng cụ thể:
-
-- **Đọc version từ `tooling/agent-tools.json`** và từ chối chạy nếu pin chưa `verified`. `@latest`
-  nghĩa là hôm nay và tháng sau chạy hai công cụ khác nhau trên cùng một câu hỏi.
-- **Ép `--skip-agents-md`** cho `analyze`. Không có nó, GitNexus tự chèn mục vào `CLAUDE.md` và
-  `AGENTS.md` — tức công cụ tự viết luật cho chính nó, vào đúng file bạn đang đọc.
-- **Ép `--repo <repo này>`** cho các lệnh truy vấn. GitNexus giữ registry **toàn cục theo máy**;
-  máy nào có hai clone cùng tên thì lệnh hoặc chết với "Multiple repositories indexed", hoặc — tệ
-  hơn — chạy trót lọt và trả kết quả của **repo khác** mà không báo gì.
+Vì sao phải qua wrapper (pin version, ép `--skip-agents-md`, ép `--repo`): xem mục
+"Công cụ tri thức" trong `CLAUDE.md` — một bản, đừng chép lại đây (chính file này là án lệ
+của việc hai bản lệch nhau).
 
 Trước khi ĐỌC graph, chạy cửa chặn độ mới (Contract §12 luật #4):
 
 ```bash
-npm run gate:graph-freshness -- --nhiem-vu <onboarding|architecture|domain-review|medium-risk|high-risk>
+npm run gate:graph-freshness -- --nhiem-vu <onboarding|architecture|domain-review|generated-docs|medium-risk|high-risk>
 npm run graph:impact -- <symbol>        # bán kính ảnh hưởng — bắt buộc hỏi trước khi sửa
 npm run graph:detect-changes            # git diff → symbol → luồng bị ảnh hưởng
 ```
@@ -86,11 +80,6 @@ rõ trong báo cáo và đưa link tạo tay — đừng tuyên bố đã mở P
 
 ## Công cụ trình duyệt
 
-Contract §8 quy định E2E chạy headless, chỉ ghi org DEMO, mật khẩu qua `FLEET_PASS_*`.
-
-```bash
-cd .e2e-fleet && FLEET_WORKERS=8 npx playwright test specs/<file>.spec.ts
-```
-
+E2E: xem Contract §8 (headless, chỉ org DEMO) — lệnh cụ thể ở `CLAUDE.md` mục "Công cụ trình duyệt".
 Nếu session Codex không có công cụ browser, **ghi rõ khoảng trống xác minh trong báo cáo cuối** —
 không tuyên bố đã test.

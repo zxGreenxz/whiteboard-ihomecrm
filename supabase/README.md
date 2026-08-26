@@ -7,7 +7,7 @@
 - Public generated types: [src/integrations/supabase/types.ts](../src/integrations/supabase/types.ts).
 - Mô tả schema: [docs/DATABASE_SCHEMA.md](../docs/DATABASE_SCHEMA.md).
 - Cổng tài liệu: [docs/README.md](../docs/README.md).
-- Migration hoạt động: `supabase/migrations/*.sql`. **Lịch sử legacy KHÔNG replay được** — 687 file hiện có gồm nhiều nhóm trùng version cộng collision nội bộ trong bộ legacy `001_`–`033_`; `supabase db push`/`supabase start` chết ở unique constraint của ledger. Con số 633 do `gate:doc-counts` canh nên nó không lạc hậu được; **số nhóm trùng thì đọc từ [`migration-provenance.json`](migration-provenance.json)** (`duplicateVersions`, `ledgerRows`, `ledgerMaxVersion`) chứ đừng chép vào đây — bản trước ghi "33 nhóm trùng (69 file)", đo lại 08/08/2026 ra 36 nhóm / 77 file, và không có gì làm nó sai ra tiếng.
+- Migration hoạt động: `supabase/migrations/*.sql`. **Lịch sử legacy KHÔNG replay được** — 687 file hiện có gồm nhiều nhóm trùng version cộng collision nội bộ trong bộ legacy `001_`–`033_`; `supabase db push`/`supabase start` chết ở unique constraint của ledger. Con số 687 ở đầu câu do `gate:doc-counts` tự dán lại; **số nhóm trùng thì đọc từ [`migration-provenance.json`](migration-provenance.json)** (`duplicateVersions`, `ledgerRows`, `ledgerMaxVersion`) chứ đừng chép vào đây — số chép tay đã sai hai lần liên tiếp mà không sai ra tiếng.
 
 ## Quy tắc migration
 

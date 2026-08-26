@@ -11,7 +11,32 @@ chạy `npm run gen:types` kèm dấu redirect `>` đổ vào `types.ts` — cá
 và không ai sửa file rule.
 
 Bảng ánh xạ từng rule cũ về vị trí mới: **Contract §13**. Gate `node scripts/check-agent-contract.mjs`
-canh cả hai đầu — file này phải trỏ về Contract, và Contract không được đánh rơi 16 invariant đắt nhất.
+canh cả hai đầu — file này phải trỏ về Contract, và Contract không được đánh rơi các invariant đắt
+nhất (danh sách sống là `MUST_MENTION` trong chính script — đừng chép con số vào đây: bản trước ghi
+"16" khi danh sách đã lên 36).
+
+---
+
+## Trước khi push — MỘT lệnh
+
+```bash
+npm run gate:truoc-push                          # đầy đủ (kèm đảo strict, ~3 phút)
+npm run gate:truoc-push -- --khong-dao-strict    # ~60 giây, đủ cho thay đổi docs/script
+```
+
+Nó TỰ sinh mọi artifact máy-sở-hữu đúng thứ tự (types.ts, bề mặt RPC/Edge/realtime, kiểm kê repo,
+docs views, số đếm tài liệu, số baseline), TỰ `git add` các file đó, rồi chạy ~34 gate tĩnh không
+dừng ở lỗi đầu. Mổ xẻ 17 lần CI đỏ (20–25/08/2026): 12 lần vì số đếm, 8 lần vì types.ts trôi —
+toàn thứ lệnh này tự chữa. Đừng tự tay chạy lẻ 5 generator theo trí nhớ.
+
+Đọc kết quả CI bằng `gh api .../runs/<id> --jq '.conclusion'` — `gh run watch --exit-status` từng
+trả 0 trên run failure (đo 25/08/2026).
+
+## OpenClaw: NGỪNG PHÁT TRIỂN (25/08/2026)
+
+Mã `openclaw-*`/`openclaw-zalo` đóng băng làm tài liệu tham khảo — đã rút khỏi CI và vitest gốc.
+KHÔNG sửa, không viết test mới, không import vào code CRM (`check-openclaw-isolation` chặn).
+Chi tiết + điều kiện hồi sinh: `tooling/test-matrix.json → blockedFromCi`.
 
 ---
 

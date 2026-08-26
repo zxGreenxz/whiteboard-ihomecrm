@@ -42,28 +42,19 @@ giữa hai commit chỉ đụng `package.json`, `scripts/check-local-agent-crede
 `tooling/local-credential-contract.json` — không chạm bề mặt migration, và mọi số dưới đây đã được
 chạy lại ở `7965c6a6`):
 
-| Con số | Giá trị | Cách đo lại |
-|---|---|---|
-| File `.sql` trong `supabase/migrations/` | **629** | `find supabase/migrations -type f -iname "*.sql" \| wc -l` |
-| File trong `supabase/migrations-archive/` | **15** (1 superseded + 14 bundle) | `find supabase/migrations-archive -type f -iname "*.sql" \| wc -l` |
-| Entry trong manifest provenance | **644** (629 + 15 archive) | `node scripts/check-migration-provenance.mjs` |
-| Trạng thái | ledger-applied 351 · catalog-proven 213 · unknown 65 · superseded 15 | như trên |
-| Dòng trong ledger `supabase_migrations.schema_migrations` | **372**, max version **20260727095000** | `supabase/migration-provenance.json` (trường `ledgerRows` / `ledgerMaxVersion`) |
-| Version bị trùng | **40 version / 90 file** trên toàn manifest; riêng thư mục `migrations/` là **36 version / 77 file** | manifest `duplicateVersions` (=40); số thứ hai: gom `entries` có `path` bắt đầu bằng `supabase/migrations/` theo trường `version` rồi đếm nhóm ≥2 |
-| File SAU cutoff | **3** | gate in ra "3 file sau cutoff đều có entry" |
+**Trang này KHÔNG chép con số nữa** (dọn 26/08/2026). Bản trước mang một bảng 7 con số "đo
+07/08/2026" (629 file, 644 entry, 40 version trùng…) — tất cả đã chết chỉ sau ba tuần (thực tế đã
+687/702/42). Số sống nằm ở hai chỗ, cả hai đều có máy canh:
 
-**Đừng chép các con số này đi nơi khác.** `scripts/check-doc-counts.mjs` sinh ra chính vì án lệ
-"371 migration" nằm lặp ở 3 file trong khi thực tế đã 625 — CI xanh suốt (xem đầu file script). Ngay
-lúc viết trang này, gate đó đang **ĐỎ**: `supabase/README.md`, `docs/DATABASE_SCHEMA.md`,
-`docs/CODEBASE_STRUCTURE.md` ghi 628 trong khi thực tế 629 (`node scripts/check-doc-counts.mjs` →
-exit 1, in đúng 3 dòng đó).
+- **`supabase/migration-provenance.json`** — manifest sinh bằng máy (`npm run provenance:generate`);
+  chạy `node scripts/check-migration-provenance.mjs` để in bảng độ phủ hiện hành.
+- Các con số được phép xuất hiện trong văn (README supabase, DATABASE_SCHEMA, CODEBASE_STRUCTURE,
+  PROJECT_CONTRACT §1/§5, migration-policy.json) đều có neo trong `CLAIMS` của
+  `scripts/check-doc-counts.mjs` và được `gate:truoc-push` tự dán lại (`--fix`).
 
-Tệ hơn: `PROJECT_CONTRACT.md` ghi **625** ở hai chỗ — §1 ("625 migration") và §5 ("625 file có 33 nhóm
-trùng version (69 file)") — trong khi thực tế là 629 file và 36 nhóm trùng version (77 file). Cả hai
-con số này **không có neo** trong `CLAIMS` của `check-doc-counts.mjs`: mảng đó chỉ phủ
-`supabase/README.md`, `docs/DATABASE_SCHEMA.md`, `docs/CODEBASE_STRUCTURE.md` và
-`supabase/migration-policy.json` — **không có entry nào cho `PROJECT_CONTRACT.md`**. Tức chính file
-LUẬT là file duy nhất trong nhóm này không ai canh số.
+Bài học giữ nguyên: **đừng chép số đi nơi khác** — án lệ "371 migration" lặp ở 3 file khi thực tế đã
+625, CI xanh suốt (xem đầu `check-doc-counts.mjs`). Khoảng trống "PROJECT_CONTRACT không ai canh số"
+mà bản trước mô tả đã BỊT từ 13/08: `CLAIMS` nay có 4 entry cho chính file Contract.
 
 ## Vì sao lịch sử KHÔNG replay được
 
@@ -120,14 +111,20 @@ Quy trình 3 bước, **đúng thứ tự** — chi tiết ở `supabase/baselin
    922/1193 — mất 271 hàng rào RLS**. Database trông như đã khôi phục, nhưng dữ liệu hở.
 2. `schema.sql` **lượt 1** với `ON_ERROR_STOP=0`.
 3. `schema.sql` **lượt 2**. Không thừa: `public.rooms` có cột sinh
-   `name_sort GENERATED ALWAYS AS (public.room_sort_key(name))` tham chiếu *tiến*, lượt 1 rơi và kéo theo
-   3 view. Đo: lượt 1 = 438/439 bảng, 11/14 view, 1170/1193 policy → lượt 2 = **439/439 · 14/14 ·
-   1193/1193**, trigger 493/493 (diễn tập thật trên Supabase project trắng PG 17.6, commit `17bb0090`).
+   `name_sort GENERATED ALWAYS AS (public.room_sort_key(name))` tham chiếu *tiến*, lượt 1 rơi và kéo
+   theo 3 view — lượt 2 vá được phần rơi vì phụ thuộc đã tồn tại.
 
-**Mâu thuẫn còn nguyên trong repo:** `supabase/baseline/manifest.json` vẫn ghi
-`status: "TESTED trên Postgres trần — chờ xác minh trên Supabase project để lên verified"` và
-`knownIssues: ["Chưa restore thử trên Supabase project thật"]`, tức manifest **chưa được cập nhật** sau
-diễn tập ở README/commit `17bb0090`. Tin README + commit; manifest đang lạc hậu ở trường `status`.
+**ĐÍNH CHÍNH 26/08/2026 — đoạn này của bản trước nói NGƯỢC sự thật, và sai theo hướng nguy hiểm
+nhất có thể với tài liệu khôi phục.** Bản trước trích "439/439 · 14/14 · 1193/1193, diễn tập thật
+trên Supabase project trắng" rồi kết luận *"Tin README + commit; manifest đang lạc hậu"*. Nhưng
+`supabase/baseline/README.md` đã tự đính chính từ **11/08/2026**: bốn con số đó là số **ĐÃ CHỤP từ
+production** (`manifest.counts`) bị chép nhầm vào chỗ mô tả kết quả restore — **không có bản ghi nào
+của lần diễn tập 07/08 để đối chiếu**. Nguồn đúng là **`supabase/baseline/manifest.json →
+restoreDrill`**: diễn tập có bản ghi duy nhất chạy trên PostgreSQL TRẦN + platform-shim (303 bảng
+restore, 817 lỗi phân loại được, `whyNotVerifiedYet` còn nguyên) — **CHƯA lần nào restore vào một
+Supabase project thật**. Thứ tự tin cậy: **manifest > README > mọi trang kể lại** (trang này đứng
+cuối hàng). Gate `check-baseline-doc` cưỡng chế README khớp manifest từng trường; khoảng trống còn
+lại nằm ở known-gap `baseline-schema-khong-trong-repo`.
 
 Baseline **không thay thế backup**: nó dựng lại *cấu trúc*, không dựng lại *sổ sách*.
 
@@ -264,13 +261,19 @@ opt-in `--bo-phu-du` (`scripts/backup-before-schema.mjs:45-51`; chuỗi keepaliv
 
 ## Gate trong CI
 
-Chạy trong khối "Contract gates" của `.github/workflows/ci-gates.yml` — **17 lệnh**, đều là biến đổi
-văn bản thuần, không cần credential. Comment ngay trên khối vẫn ghi "Ba gate tĩnh": lại một chỗ trôi
-tài liệu-trong-code.
+Các gate migration nằm trong job `quality-gates` của `.github/workflows/ci-gates.yml`, chia theo
+**ba step có tên** — tìm bằng chuỗi tên step, ĐỪNG tìm bằng số dòng (số dòng trôi theo mỗi lần sửa
+file; bản trước của trang này ghi ":106-124" và chết chỉ sau vài commit):
 
-> **Đừng tra khối này bằng số dòng.** Tại `7965c6a6` nó nằm ở `:106-124`; ngay lúc viết trang này,
-> một thay đổi CHƯA COMMIT trong working tree đã đẩy nó xuống `:110-128`. Tìm bằng chuỗi
-> `- name: Contract gates`, đừng tìm bằng số dòng.
+- step **`schema-gates`**: `check-migration-provenance`, `normalize-supabase-types --check`,
+  `check-no-auto-apply`, `check-management-api-writes`, `check-promote-readiness`,
+  `check-migration-test-liveness`.
+- step **`contract-gates`**: `check-unknown-review` cùng ~18 gate tĩnh khác (danh sách sống trong
+  chính step đó).
+- step **`docs-freshness`**: `check-doc-counts` (neo con số tài liệu vào số đếm thật) và họ hàng.
+
+Cùng tập gate tĩnh đó chạy được ở máy dev bằng **`npm run gate:truoc-push`** — kèm bước tự-chữa nên
+đây là đường chính, CI chỉ là lưới sau. Toàn bộ là biến đổi văn bản thuần, không cần credential.
 
 - `check-migration-provenance.mjs` — **file sau cutoff thiếu entry ⇒ FAIL**; file trước cutoff đổi bytes
   ⇒ FAIL; số `unknown` chỉ là **metric**, không fail (đo 07/08/2026: gate in "⚠ 65 file chưa có bằng
@@ -280,8 +283,9 @@ tài liệu-trong-code.
 - `check-no-auto-apply.mjs` — cấm `supabase db push` / `supabase migration up --linked` trong mọi workflow
   **và** trong `.github/actions/`. `.github/workflows/supabase-migrate.yml:3-13` nói rõ vì sao: auto-apply
   ở đó sẽ **replay** bộ 2026-07-20/21 lên production và làm hỏng nó.
-- `check-doc-counts.mjs` — neo con số tài liệu vào số đếm thật.
-- `check-migration-test-liveness.mjs`, `check-unknown-review.mjs` — cùng khối.
+- `check-forward-migration-idempotent.mjs` (job `security-gates`, cần PAT) — mỗi migration sau cutoff
+  phải chạy lại được lần hai; sổ `tooling/idempotent-verified.json` khoá theo sha256 nên file bất biến
+  đã đo đạt không bị đo lại (migration mới: `npm run gate:migration-idempotent:ghi-so` đi cùng commit).
 
 **Ba** án lệ đã sửa trong chính gate provenance (commit `616b3f9d`, đo 07/08/2026 — thân commit ghi
 "đem đột biến ra thử thì 5/6 cách né đi thẳng qua"):

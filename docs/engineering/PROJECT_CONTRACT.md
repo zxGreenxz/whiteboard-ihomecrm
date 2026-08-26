@@ -18,8 +18,12 @@ của công ty đang vận hành**:
 
 - React/Vite frontend trên Vercel (production: <https://ptcrm.vercel.app>)
 - Supabase PostgreSQL 17.6: 687 migration, ~1000 hàm SECURITY DEFINER, RLS trên mọi bảng public
-- Edge Functions (14 thư mục), worker Node, OpenClaw Zalo (bridge/cell/maintenance/media gateway),
+- Edge Functions (danh sách sống ở `contracts/surfaces/edge-surface.json`), worker Node,
   Network Center (worker + Docker + WireGuard + RouterOS), Cloudflare R2/Worker
+- OpenClaw Zalo (bridge/cell/maintenance/media gateway): **NGỪNG PHÁT TRIỂN 25/08/2026** — mã đóng
+  băng giữ làm tài liệu tham khảo, đã rút khỏi CI/test; lý do + điều kiện hồi sinh ở
+  `tooling/test-matrix.json → blockedFromCi`. Gate `check-openclaw-isolation` VẪN chạy (canh mã
+  chết không rò sang CRM).
 - VitePress user docs + AI Copilot đọc thẳng tài liệu hệ thống
 
 Hệ quả: **một thay đổi đúng ở harness vẫn có thể sai trên production.** Rất nhiều lỗi trong lịch sử
@@ -45,7 +49,8 @@ Hai luật không được quên khi viết migration/RPC mới:
    `public.can_access_building()` / `accessible_building_ids()` (đã chặn sandbox sẵn). Đừng tự viết
    `is_super_admin() OR …` — đó chính là lỗ đã làm `fa_occupancy_monthly` trả thừa 12 toà org TEST.
 
-Cửa chặn: `node scripts/clone-org/snapshot.mjs after` phải ra "0/158 bảng rò rỉ".
+Cửa chặn: `node scripts/clone-org/snapshot.mjs after` phải ra "0/158 bảng rò rỉ" (mẫu số là BIẾN
+theo số bảng thật lúc đo — `0/158` là ví dụ lịch sử; điều bất biến là tử số **0**).
 Đồng bộ lại org TEST: *Cài đặt → Tổ chức → Đồng bộ dữ liệu mới nhất*, hoặc `node scripts/clone-org/clone.mjs`.
 Chi tiết + bẫy đã cắn: `scripts/clone-org/README.md`.
 
@@ -83,7 +88,8 @@ không phải người:
 >
 > Nên câu "push `main` chỉ tạo Preview" **đúng với app, KHÔNG đúng với docs**. Bản trước của mục này
 > viết như thể chỉ có một project — sai vì thiếu, và không có gì làm nó sai ra tiếng cho tới khi gọi
-> API thật. `gate:external-controls` hiện **đỏ** vì đúng lý do đó, và nó nên đỏ cho tới khi có người
+> API thật. `check:external-controls` (tên npm script thật — bản trước ghi `gate:external-controls`,
+> một cái tên không tồn tại) hiện **đỏ** vì đúng lý do đó, và nó nên đỏ cho tới khi có người
 > quyết: hoặc đổi `ptcrm-docs` sang `production`, hoặc khai đây là ngoại lệ có chủ đích.
 >
 > Promote: `git push origin origin/main:production` **sau khi** gate xanh.
@@ -125,8 +131,9 @@ Script cố tình **không** exit 1 khi thiếu token — biến nó thành gate
 ### Runtime
 
 Repo có **6 ràng buộc Node khác nhau** trên 8 manifest (+2 package chưa khai), nên
-`engines: ">=20"` ở root **không** phải sàn thật của mọi thứ — script `test:openclaw:services`
-tự chặn nếu không phải Node 24.15–24.x. Tra bảng ở `tooling/runtime-matrix.json`, đừng đoán từ root.
+`engines: ">=20"` ở root **không** phải sàn thật của mọi thứ — ví dụ script `test:openclaw:services`
+(nay chỉ-chạy-tay, OpenClaw đã rời CI) tự chặn nếu không phải Node 24.15–24.x. Tra bảng ở
+`tooling/runtime-matrix.json`, đừng đoán từ root.
 
 ```bash
 npm run gate:runtime-matrix   # matrix phải khớp engines + workflow, kiểm CẢ HAI chiều
@@ -141,21 +148,16 @@ Ba workflow chạy ba con số khác nhau, và mỗi con số bị **ràng buộ
 
 | Workflow | Node | Bị ép bởi |
 |---|---|---|
-| `ci-gates.yml` | `24.18.0` | **Sàn cao nhất**: `services/openclaw-zalo-bridge` khai `>=24.18.0 <25` |
+| `ci-gates.yml` | `24.18.0` | Pin exact giữ vì tính tất định. Nguồn ép lịch sử là `services/openclaw-zalo-bridge` (`>=24.18.0 <25`) — suite đó rời CI ngày 25/08/2026 khi OpenClaw nghỉ hưu, nên đây không còn là ràng buộc SỐNG; hạ version nay là được PHÉP về kỹ thuật nhưng phải đi qua `gate:runtime-matrix` (sửa cả hai phía) và có lý do |
 | `network-center-validation.yml` | `22` | **Trần thấp nhất**: `infra/network-center-worker` khai `>=20 <23` |
 | `supabase-migrate.yml` | `20` | Không ràng buộc — chỉ chạy validator tĩnh |
 
-Hai cái đầu **không thể gặp nhau**: `>=24.18` và `<23` là hai khoảng rời nhau. Nên "thống nhất một
-version cho gọn" là việc **không làm được**, không phải việc chưa ai làm.
-
-> **Bẫy đã sập thật (08/08/2026).** Một agent đọc thấy ba con số khác nhau, kết luận là thiếu nhất
-> quán, và hạ tất cả về `22.20.0`. Thay đổi đó sẽ làm **vỡ `ci-gates`** — `zalouser-bridge` và
-> `openclaw-zalo-bridge` từ chối chạy dưới 24.18, và script `test:openclaw:services` có chốt chặn
-> `process.version` tự thoát 1 nếu không phải Node 24.15–24.x. `gate:runtime-matrix` bắt được ngay,
-> nên thiệt hại dừng ở đó.
->
-> Bài học ghi lại: **con số ở đây là kết quả của ràng buộc, không phải sở thích.** Muốn đổi thì phải
-> đổi `engines` của package bị ràng buộc trước, và chứng minh nó chạy được — không đổi ở workflow.
+> **Bẫy đã sập thật (08/08/2026) — nay là ÁN LỆ, không còn là cưỡng chế sống.** Một agent đọc thấy
+> ba con số khác nhau, kết luận là thiếu nhất quán, và hạ tất cả về `22.20.0`. Lúc đó thay đổi này
+> làm **vỡ `ci-gates`** vì các suite OpenClaw từ chối chạy dưới 24.18; `gate:runtime-matrix` bắt
+> được ngay. Những suite đó đã rời CI (25/08/2026), nhưng bài học giữ nguyên giá trị:
+> **con số ở đây là kết quả của ràng buộc, không phải sở thích** — muốn đổi thì đối chiếu
+> `tooling/runtime-matrix.json` trước, sửa cả hai phía, và chứng minh nó chạy được.
 
 `engines` ở root là `>=20` và **không** phải sàn thật của mọi thứ: `tooling/runtime-matrix.json` mới
 là bảng có thẩm quyền, mỗi entry kèm lý do. `gate:runtime-matrix` đối chiếu **cả hai chiều**, nên
@@ -395,10 +397,9 @@ npm run gen:types     # KHÔNG redirect, KHÔNG thêm header tay
 *trước khi* generator chạy; generator lỗi thì `types.ts` chỉ còn một dòng banner. CI có test chống
 đúng lớp lỗi này.
 
-Xem drift mà không đụng repo:
-```bash
-cp src/integrations/supabase/types.ts /tmp/before.ts && npm run gen:types && diff /tmp/before.ts src/integrations/supabase/types.ts
-```
+Cách thường ngày: **`npm run gate:truoc-push`** đã tự gen + normalize + stage `types.ts` (bước
+TU_CHUA của `kiem-nhanh-truoc-push.mjs`) — không còn nghi thức cp/diff tay. CI canh drift độc lập
+bằng hai job `generated-types-drift` (so DB thật) và `generated-types-local-drift` (replay migration).
 
 ### Canonical vs raw: partition ngày
 
@@ -427,9 +428,9 @@ PAT đọc từ `CLAUDE.local.md`.
 
 - Type check thật: `npx tsc --noEmit -p tsconfig.app.json`. **Root `tsc --noEmit` KHÔNG check gì**
   (root `tsconfig.json` là `files: []` + `references`; non-build mode không đi theo references).
-- Ratchet: `npm run typecheck:baseline` → so **tập fingerprint** trong `ts-baseline.json`
-  (hiện **30**). Fail khi có fingerprint MỚI; tổng số không còn ý nghĩa.
-- `ts-baseline.txt` (chuỗi `74`) là **artifact chết** — không script/CI nào đọc. Đừng trích số đó.
+- Ratchet: `npm run typecheck:baseline` → so **tập fingerprint** trong `ts-baseline.json`.
+  Fail khi có fingerprint MỚI; tổng số không còn ý nghĩa — và ĐỪNG chép tổng số vào tài liệu
+  (bản trước ghi "hiện 30" khi con số thật là 2; số sống tra thẳng file JSON).
 - `tsconfig.app.json` hiện `strict: false`, `noImplicitAny: false`. Bước strict đi theo **island**
   (`strictNullChecks` trước), không flip toàn repo một lần. **Module mới phải viết strict-clean.**
 
@@ -739,7 +740,7 @@ manifest + SQL harness của repo, không bằng graph.
 | Stack, deploy Vercel | CLAUDE/AGENTS | §1 |
 | Test Edge = Deno portable v2.9.4 + gotcha coverage | CLAUDE/AGENTS | §8 |
 | `tsc --noEmit -p tsconfig.app.json`, root không check gì | CLAUDE/AGENTS | §7 |
-| `ts-baseline` ratchet | CLAUDE/AGENTS | §7 (sửa: 30 fingerprint, `.txt` đã chết) |
+| `ts-baseline` ratchet | CLAUDE/AGENTS | §7 (số sống tra `ts-baseline.json`, đừng chép vào văn) |
 | `npm run gen:types` ghi thẳng, không redirect | CLAUDE | §6 |
 | Drift 92 quan hệ / partition ngày | CLAUDE | §6 (sửa: ~80 partition đã commit) |
 | `check-view-invoker` sau migration đụng VIEW | CLAUDE/AGENTS | §5 |
@@ -766,6 +767,23 @@ manifest + SQL harness của repo, không bằng graph.
 | ~~"KEEP all routes in src/App.tsx"~~ | AI_RULES | **BỎ — đi ngược Đợt 4** (tách route groups + Capability Registry) |
 | ~~"NEVER write custom CSS"~~ | AI_RULES | **NỚI**: có page CSS cô lập có chủ đích (`networkCenter.css`) |
 | ~~"khớp 100% SUMMARY.md"~~ | `Sidebar.tsx:112` | **BỎ — `SUMMARY.md` đã bị xoá**; nav truth sẽ là Capability Registry |
+
+### Script CHẠY TAY có chủ đích — không thuộc CI, không phải mồ côi
+
+Các npm script sau **cố ý** không nằm trong workflow nào, vì chúng cần credential/trạng thái chỉ có
+ở máy dev hoặc là công cụ một-lần. Thấy chúng "không ai gọi" thì đó là thiết kế, đừng nối bừa vào CI
+(rà 26/08/2026):
+
+| Script | Vì sao chạy tay |
+|---|---|
+| `backup:check` | Đọc bản dump ở `~/ihomecrm-backups` — cố ý ngoài git, CI không bao giờ thấy |
+| `catalog:capture` / `catalog:check` / `catalog:verify-proven` | Chụp catalog production, chạy quanh đợt migration |
+| `gate:local-credentials` | Kiểm credential máy dev — theo định nghĩa là local |
+| `gate:sandbox-leak` | Cần org TEST vừa clone xong làm mốc so |
+| `gate:ie-guard-gates` · `gate:salary-completion-date` · `gate:v5-calendar-parity` | Bất biến nghiệp vụ đọc production qua PAT, chạy khi đụng domain đó |
+| `gate:reconcile-money-v2` | Bản kế nhiệm reconcile-money, đang thử tay trước khi thay bản CI |
+| `test:openclaw:*` | OpenClaw nghỉ hưu — chạy tay nếu hồi sinh (xem `blockedFromCi`) |
+| `docs:check` | Kiểm link docs-site, chạy khi sửa docs-site |
 
 ---
 
@@ -794,19 +812,19 @@ manifest + SQL harness của repo, không bằng graph.
 - High-risk (tiền, authz) phải qua wrapper typed do domain sở hữu. Prior art để kế thừa:
   - `src/hooks/openclaw-zalo/openClawRpc.ts` — facade "one hole"
   - `src/lib/network-center/{contracts,dto,supabaseRepository,demoRepository}.ts` — boundary đầy đủ nhất repo
-- Hiện có **244 call site RPC**, trong đó **176 đi qua `any` cast** trên 67 file (đo 2026-08-06),
-  dày nhất ở nhóm tiền: `useInvoices` 15, `income-expenses/statusMutations` 12, `usePeriodFees` 9.
+- Nợ `any` cast **ĐÃ TRẢ XONG**: từ 176/244 call site (đo 2026-08-06) về **0** ngày 2026-08-07 —
+  `tooling/rpc-cast-baseline.json` ghi `total: 0`. (Bản trước của mục này vẫn dạy "chặn tăng từ
+  176" suốt 19 ngày sau khi nợ đã hết — đúng lớp lỗi số-chết-trong-văn mà §13 cảnh báo.)
 
 ```bash
-npm run gate:rpc-cast    # ratchet: con số CHỈ ĐƯỢC GIẢM
+npm run gate:rpc-cast    # ratchet: giữ ĐÚNG 0 — một cast mới xuất hiện là đỏ
 ```
 
 Hai dạng `(supabase as any).rpc(...)` và `(supabase.rpc as any)(...)` tắt hoàn toàn kiểm tra kiểu ở
 đúng chỗ nguy hiểm nhất: **tên RPC gõ sai hay tham số sai tên vẫn biên dịch sạch**, chỉ lộ ra khi chạy
-thật. Đó chính là cơ chế đã làm contract media-resolve ship hỏng.
-
-Sửa hết trong một đợt là refactor xuyên hệ thống trên code sổ sách tiền thật — rủi ro cao hơn lợi ích.
-Vì vậy luật là **chặn tăng**: file mới không được có cast, file cũ không được thêm. Khi giảm được thì
-chạy `--write` để chốt mức mới. Mẫu để noi theo: `src/hooks/openclaw-zalo/openClawRpc.ts` — gom cast
-vào **đúng một lỗ**, tên RPC là union được compiler kiểm, kết quả cố ý để `unknown` để buộc validate
-bằng Zod thay vì tin generated type.
+thật. Đó chính là cơ chế đã làm contract media-resolve ship hỏng. Baseline đã về 0 nghĩa là luật nay
+đơn giản hơn hồi còn nợ: **KHÔNG viết cast mới, ở bất kỳ file nào** — không còn ngoại lệ "file cũ".
+Mẫu gom-một-lỗ khi cần gọi RPC ngoài generated types: `src/hooks/openclaw-zalo/openClawRpc.ts`
+(tên RPC là union được compiler kiểm, kết quả cố ý để `unknown` để buộc validate bằng Zod) — lưu ý
+file này thuộc vùng OpenClaw đã đóng băng: đọc để HỌC KHUÔN, đừng import nó vào code CRM
+(`check-openclaw-isolation` sẽ chặn).
