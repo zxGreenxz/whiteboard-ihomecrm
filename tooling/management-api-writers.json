@@ -181,6 +181,12 @@
       "giayPhep": "chi-demo"
     },
     {
+      "file": "scripts/test-v5-shield-bank.mjs",
+      "loai": "write",
+      "why": "Harness V5.1: áp migration + dựng fixture SAD tổng hợp để kiểm bank khiên suy-ra-từ-sổ, toàn bộ trong một transaction kết thúc bằng ROLLBACK — không dòng nào ở lại production.",
+      "giayPhep": "giao-dich-rollback"
+    },
+    {
       "file": "scripts/test-v5-streak-recompute-alias.mjs",
       "loai": "read",
       "why": "Kiểm alias recompute chuỗi ngày, đọc là chính."

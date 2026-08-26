@@ -20580,6 +20580,33 @@ export type Database = {
           },
         ]
       }
+      salary_shield_seed: {
+        Row: {
+          created_at: string
+          legacy_earn_applied: boolean
+          organization_id: string | null
+          perfect_seed: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          legacy_earn_applied?: boolean
+          organization_id?: string | null
+          perfect_seed?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          legacy_earn_applied?: boolean
+          organization_id?: string | null
+          perfect_seed?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       salary_streak_state: {
         Row: {
           best_streak: number
@@ -20592,9 +20619,11 @@ export type Database = {
           period_month: string
           reset_from_date: string | null
           shields_free_left: number
+          shields_perfect: number | null
           shields_reserve: number
           shields_reserve_used: number
           sim_cap2: Json
+          sunday_points: number | null
           updated_at: string
           user_id: string
         }
@@ -20609,9 +20638,11 @@ export type Database = {
           period_month: string
           reset_from_date?: string | null
           shields_free_left?: number
+          shields_perfect?: number | null
           shields_reserve?: number
           shields_reserve_used?: number
           sim_cap2?: Json
+          sunday_points?: number | null
           updated_at?: string
           user_id: string
         }
@@ -20626,9 +20657,11 @@ export type Database = {
           period_month?: string
           reset_from_date?: string | null
           shields_free_left?: number
+          shields_perfect?: number | null
           shields_reserve?: number
           shields_reserve_used?: number
           sim_cap2?: Json
+          sunday_points?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -28205,6 +28238,10 @@ export type Database = {
         Args: { p_month: string; p_user: string }
         Returns: Json
       }
+      v5_recompute_streak_legacy: {
+        Args: { p_month: string; p_user: string }
+        Returns: Json
+      }
       v5_route_candidates: {
         Args: { p_user: string }
         Returns: {
@@ -28282,6 +28319,10 @@ export type Database = {
       v5_run_score: { Args: never; Returns: Json }
       v5_run_tier: { Args: never; Returns: Json }
       v5_shadow_report: { Args: { p_month: string }; Returns: Json }
+      v5_shield_bank: {
+        Args: { p_upto: string; p_user: string }
+        Returns: Json
+      }
       v5_tick_attendance: {
         Args: {
           p_date: string
