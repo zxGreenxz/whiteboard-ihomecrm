@@ -202,6 +202,9 @@ jobs:
           # rồi đưa người dùng tới màn trắng; module quyền sai ⇒ nó báo "không có
           # quyền" cho người ĐANG có quyền. Cả hai đều là chuỗi, tsc không bắt được.
           node scripts/check-copilot-routes.mjs || loi=1
+          # NỐI 26/08/2026 — nghịch lý cũ: TEST của gate này chạy trong CI (bước
+          # node --test) mà chính gate thì chưa từng chạy ở đâu. Gate tĩnh, <1s.
+          node scripts/check-copilot-tool-inventory.mjs || loi=1
           node scripts/check-doc-counts.mjs || loi=1
           node scripts/check-doc-freshness.mjs || loi=1
           node scripts/generate-docs-views.mjs --check || loi=1
@@ -449,20 +452,61 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          # fetch-depth 0 để bước dưới diff được với origin/main — checkout nông
+          # chỉ có commit đỉnh thì `git diff` không có mốc so.
+          fetch-depth: 0
+
+      # ─── CHỈ CHẠY KHI SCHEMA/GENERATOR ĐỔI (thêm 26/08/2026) ───────────────
+      # Job này replay TOÀN BỘ migration qua PGlite rồi gen types — bước đắt
+      # nhất ngoài quality-gates, và trước đây chạy trên MỌI PR/push kể cả khi
+      # diff chỉ đụng UI. Câu nó trả lời ("replay migration có dựng lại đúng
+      # schema production không") chỉ đổi đáp án khi một trong các đường dưới
+      # đây đổi — diff không chạm thì kết luận của lần chạy trước vẫn nguyên.
+      # Skip ở đây là skip CÓ CHỨNG CỨ (đo diff thật), khác skip vì cấu hình.
+      - name: Xác định diff có đụng schema/generator không
+        id: schema_doi
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MOC="origin/${{ github.base_ref }}"
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}" || true
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Chạy tay là muốn đo thật — không skip.
+            echo "doi=true" >> "$GITHUB_OUTPUT"; exit 0
+          else
+            MOC="${{ github.event.before }}"
+            # Push đầu tiên của nhánh (before toàn số 0) → không có mốc, chạy đủ.
+            case "$MOC" in 0000000*) echo "doi=true" >> "$GITHUB_OUTPUT"; exit 0;; esac
+          fi
+          if git diff --name-only "$MOC"...HEAD -- \
+              supabase/migrations supabase/baseline \
+              scripts/gen-supabase-types.mjs scripts/normalize-supabase-types.mjs \
+              scripts/generate-openclaw-pglite-types.mjs \
+              scripts/check-local-types-parity.mjs \
+              supabase/generated-types-policy.json \
+              src/integrations/supabase/types.ts | grep -q .; then
+            echo "doi=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "doi=false" >> "$GITHUB_OUTPUT"
+            echo "Diff không đụng schema/generator — bỏ qua replay PGlite (kết luận lần trước còn nguyên giá trị)."
+          fi
 
       - name: Setup Node 24.18.0
+        if: steps.schema_doi.outputs.doi == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
           cache: 'npm'
 
       - name: Verify exact stable Node runtime
+        if: steps.schema_doi.outputs.doi == 'true'
         run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
 
       - name: Install root dependencies
+        if: steps.schema_doi.outputs.doi == 'true'
         run: npm ci
 
       - name: Deterministic local generated-types drift
+        if: steps.schema_doi.outputs.doi == 'true'
         env:
           SUPABASE_TYPES_SOURCE: local
           SUPABASE_TYPES_LOCAL_ENGINE: pglite
@@ -471,9 +515,9 @@ jobs:
           #
           # 1. Thiếu `types:normalize`. Generator xuất bản thô có phân mảnh runtime;
           #    file đã commit là bản ĐÃ chuẩn hoá (Contract §6). Đúng khiếm khuyết
-          #    đã vá ở 43ebc8bb cho job anh em generated-types-drift — nó sống sót
-          #    ở đây vì job này `needs: quality-gates`, mà quality-gates đỏ 168
-          #    lượt liên tiếp nên cửa chưa từng chạy.
+          #    đã vá ở 43ebc8bb cho job anh em generated-types-drift. (Ghi chú cũ
+          #    "job này chưa từng chạy vì quality-gates đỏ 168 lượt" đã hết đúng —
+          #    quality-gates xanh ổn định từ 22/08 và job này chạy thật.)
           #
           # 2. So BYTE giữa hai BỘ NỘI SUY khác nhau. Kể cả khi đã chuẩn hoá,
           #    `git diff` vẫn cho 10.069 thêm / 10.229 xoá — nhưng so theo nội
@@ -598,6 +642,12 @@ jobs:
           # BẢNG (publication ↔ hub ↔ descriptor), không gì chặn tầng key.
           # `invalidateQueries` khớp theo prefix và IM LẶNG khi không khớp ai.
           node scripts/check-realtime-key-ownership.mjs
+          # NỐI VÀO CI 26/08/2026 — trước đó gate này MỒ CÔI: không workflow nào
+          # gọi nó, trong khi CTE của nó bị CHÉP NGUYÊN VĂN vào
+          # kiem-bao-mat-sau-khoi-phuc.mjs (chạy trong restore-drill). Bản gốc
+          # không ai chạy thì hai bản sẽ trôi khỏi nhau trong im lặng — chạy nó
+          # ở đây (job đã có PAT sẵn) là cách rẻ nhất giữ nguồn còn sống.
+          node scripts/check-stable-fn-locks.mjs
 
       # MỌI bảng có organization_id phải có một chỗ đứng: đã rào, đang chờ vá ở
       # một giai đoạn có tên, hoặc miễn trừ CÓ LÝ DO ĐO ĐƯỢC VÀ CÓ HẠN. Nhóm thứ
@@ -840,28 +890,12 @@ jobs:
   #   Repo này private và mọi PR đến từ nhánh trong CÙNG repo, nên secret luôn có.
   #   Không có PAT nghĩa là secret bị gỡ hoặc hết hạn — đó là chuyện phải biết,
   #   không phải điều kiện bình thường để im lặng cho qua. Script tự thoát 3.
-  realtime-contract-gates:
-    runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/production'
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-
-      - name: Cài phụ thuộc
-        run: npm ci
-
-      - name: Bảng realtime hub lắng nghe đều được publish
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-realtime-descriptors.mjs
-
-  knowledge-freshness-gates:
+  # 26/08/2026 — gộp từ HAI job (`realtime-contract-gates` + job này). Mỗi job
+  # từng trả một lượt checkout + setup Node + `npm ci` (~60–90 giây máy) chỉ để
+  # chạy tổng cộng 3 script vài giây. Gộp lại tiết kiệm nguyên một lượt dựng
+  # runner mỗi run mà không mất phép đo nào — ba step vẫn nguyên tên, vẫn đỏ
+  # độc lập như cũ. `fetch-depth: 0` giữ theo yêu cầu của cặp graph.
+  realtime-and-knowledge-gates:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/production'
     timeout-minutes: 10
@@ -881,6 +915,11 @@ jobs:
 
       - name: Cài phụ thuộc
         run: npm ci
+
+      - name: Bảng realtime hub lắng nghe đều được publish
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-realtime-descriptors.mjs
 
       # Vệ sinh graph — CHẶN. Ba phép kiểm: manifest khớp artifact, refresh đi PR
       # riêng, và graph KHÔNG được đè bản luật quy định chính nó (Contract,

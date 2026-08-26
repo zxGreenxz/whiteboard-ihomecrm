@@ -192,7 +192,14 @@ function main(argv) {
     return;
   }
 
+  // `loai: chap-nhan-vinh-vien` (thêm 26/08/2026): dành cho gap mà điều kiện
+  // đóng là QUYẾT ĐỊNH THƯƠNG MẠI (nâng tier GitHub, bật PITR trả phí) chứ không
+  // phải việc kỹ thuật ai đó quên làm. Nhắc "sắp tới hạn" với chúng chỉ sinh
+  // nghi thức gia hạn vô tận — thứ mà header file này cảnh báo. Chúng VẪN phải
+  // có expires_at (đến hạn thì rà lại quyết định) và vẫn hiện khi QUÁ hạn;
+  // chỉ tắt tiếng nhắc-trước-30-ngày.
   const soon = gaps
+    .filter((g) => g.loai !== 'chap-nhan-vinh-vien')
     .map((g) => ({ id: g.id, days: Math.floor((new Date(g.expires_at) - new Date()) / 86_400_000) }))
     .filter((g) => g.days <= 30)
     .sort((a, b) => a.days - b.days);

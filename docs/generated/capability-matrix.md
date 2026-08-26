@@ -1,6 +1,5 @@
 ---
 status: current
-reviewed: 2026-08-25
 source_paths:
   - src/app/capabilities/registry.ts
   - contracts/surfaces/edge-function-surface.json

@@ -4,10 +4,17 @@ name: Network Center validation
 #
 #   validate   - lockfile installs, focused app tests, worker tests/typecheck/
 #                build, Edge tests, every Network Center verifier (including the
-#                database-backed hardening wrappers), typecheck baseline, app
-#                build and the worker Docker build.
-#   disposable - brings up the local Supabase stack, applies migrations and runs
-#                the cross-tenant matrix, with guaranteed and VERIFIED teardown.
+#                database-backed hardening wrappers) and the worker Docker build.
+#                (typecheck baseline + app build đã GỠ 26/08/2026: ci-gates chạy
+#                y hệt hai lệnh đó trên cùng SHA — trả hai lần không mua thêm gì.)
+#   disposable - runs the cross-tenant matrix against the Docker-free disposable
+#                cluster, with guaranteed and VERIFIED teardown.
+#                (Bước "Measure the historical Supabase replay" đã GỠ 26/08/2026:
+#                nó continue-on-error, CHƯA BAO GIỜ pass nổi từ database trắng —
+#                bốn nguyên nhân gốc ghi ở header network-center-disposable-db.mjs
+#                — và chạy ×2 shard, là mục tốn máy nhất toàn repo cho một con số
+#                ai cũng biết trước. Shard managed-resources rơi theo vì việc còn
+#                lại của nó — verify --local-cluster — chạy y hệt ở job validate.)
 #
 # Non-negotiable safety rules encoded below, each from a real incident on this
 # project:
@@ -38,11 +45,16 @@ on:
       - 'src/components/network-center/**'
       - 'supabase/functions/network-center-worker/**'
       - 'supabase/functions/network-watchdog/**'
-      # Trước đây là 'supabase/migrations/20260729*' — một bộ lọc theo NGÀY, khớp
-      # đúng 5 trong 625 file. Mọi migration Network Center tạo sau 29/07/2026 đều
-      # lặng lẽ không kích workflow này, tức là gate tồn tại nhưng không chạy.
-      # Đổi sang toàn thư mục: thà chạy thừa còn hơn bỏ lọt migration.
-      - 'supabase/migrations/**'
+      # Lịch sử bộ lọc migration, ba đời:
+      #   1. '20260729*' — lọc theo NGÀY, khớp 5 file rồi mù với mọi migration mới.
+      #   2. 'supabase/migrations/**' — toàn thư mục, không bỏ lọt nhưng bắt MỌI
+      #      migration (lương, kế toán, hoá đơn…) trả ~150 phút máy cho 4 job
+      #      Network Center, kể cả runner Windows tính phí ×2.
+      #   3. (hiện tại) lọc theo TÊN: migration Network Center đều mang chữ
+      #      "network" trong tên file — đo 26/08/2026: 27/27 file hiện có khớp.
+      # QUY ƯỚC đi kèm, bắt buộc: migration đụng bảng network_* PHẢI mang chữ
+      # "network" trong tên file, nếu không workflow này không canh nó.
+      - 'supabase/migrations/*network*'
   pull_request:
     paths:
       - '.github/workflows/network-center-validation.yml'
@@ -54,11 +66,16 @@ on:
       - 'src/components/network-center/**'
       - 'supabase/functions/network-center-worker/**'
       - 'supabase/functions/network-watchdog/**'
-      # Trước đây là 'supabase/migrations/20260729*' — một bộ lọc theo NGÀY, khớp
-      # đúng 5 trong 625 file. Mọi migration Network Center tạo sau 29/07/2026 đều
-      # lặng lẽ không kích workflow này, tức là gate tồn tại nhưng không chạy.
-      # Đổi sang toàn thư mục: thà chạy thừa còn hơn bỏ lọt migration.
-      - 'supabase/migrations/**'
+      # Lịch sử bộ lọc migration, ba đời:
+      #   1. '20260729*' — lọc theo NGÀY, khớp 5 file rồi mù với mọi migration mới.
+      #   2. 'supabase/migrations/**' — toàn thư mục, không bỏ lọt nhưng bắt MỌI
+      #      migration (lương, kế toán, hoá đơn…) trả ~150 phút máy cho 4 job
+      #      Network Center, kể cả runner Windows tính phí ×2.
+      #   3. (hiện tại) lọc theo TÊN: migration Network Center đều mang chữ
+      #      "network" trong tên file — đo 26/08/2026: 27/27 file hiện có khớp.
+      # QUY ƯỚC đi kèm, bắt buộc: migration đụng bảng network_* PHẢI mang chữ
+      # "network" trong tên file, nếu không workflow này không canh nó.
+      - 'supabase/migrations/*network*'
   workflow_dispatch:
 
 concurrency:
@@ -210,11 +227,9 @@ jobs:
       # no production credential, so those two gates stay a local/release-time
       # step. Their absence is a known, stated limitation, not an oversight.
 
-      - name: TypeScript baseline
-        run: npm run typecheck:baseline
-
-      - name: Application build
-        run: npm run build
+      # "TypeScript baseline" và "Application build" đã GỠ 26/08/2026: ci-gates.yml
+      # (job quality-gates) chạy y hệt `npm run typecheck:baseline` + `npm run build`
+      # trên cùng SHA cho mọi push/PR — lặp lại ở đây chỉ cộng ~80 giây máy mỗi lượt.
 
       - name: Worker Docker image build
         run: |
@@ -288,17 +303,22 @@ jobs:
             exit 1
           fi
 
+  # 26/08/2026 — job này từng là matrix 2 shard [cross-tenant, managed-resources]
+  # với một bước "Measure the historical Supabase replay" (continue-on-error).
+  # Đã rút về MỘT job vì hai lý do độc lập, cả hai đo được:
+  #   1. Bước Measure replay qua Supabase CLI CHƯA BAO GIỜ pass nổi từ database
+  #      trắng (bốn nguyên nhân gốc ở header network-center-disposable-db.mjs) —
+  #      nó dựng nguyên một Supabase stack Docker ×2 shard chỉ để in ra thất bại
+  #      đã biết trước. Gỡ bước đo là đóng known-gap supabase-cli-replay-broken.
+  #   2. Việc gating còn lại của shard managed-resources là
+  #      `verify-network-center-managed-resources.mjs --local-cluster` — chạy
+  #      Y HỆT (cùng cờ) ở job validate phía trên. Trùng tuyệt đối thì bỏ một.
+  # Phần giữ lại: ma trận cross-tenant trên cluster dùng-một-lần KHÔNG Docker,
+  # cộng chuỗi teardown CÓ BẰNG CHỨNG — đó là giá trị thật của job này.
   disposable-supabase:
-    name: Disposable Supabase cross-tenant matrix
+    name: Disposable cross-tenant matrix
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    # "Concurrency 2" from the plan: at most two disposable stacks in flight,
-    # each with its own loopback ports and its own workspace.
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        shard: [cross-tenant, managed-resources]
 
     steps:
       - name: Check out the reviewed revision
@@ -338,41 +358,8 @@ jobs:
           done
           node scripts/check-no-auto-apply.mjs
 
-      # MEASUREMENT, NOT A GATE - read this before "fixing" the red X.
-      #
-      # `--local-disposable` replays supabase/migrations/** through the Supabase
-      # CLI. That replay CANNOT succeed from a blank database and never could;
-      # see the header of scripts/network-center-disposable-db.mjs for the four
-      # independent root causes, each verified against PostgreSQL 17. This step
-      # therefore records what the historical replay actually does today instead
-      # of pretending it passes, and its failure does not fail the job.
-      #
-      # The teardown assertions below are NOT advisory: they run regardless and
-      # they do fail the job. Proving that a disposable database died is the
-      # whole reason this job is allowed to start one.
-      # known-gap: supabase-cli-replay-broken
-      - name: Measure the historical Supabase replay (known broken, non-gating)
-        id: matrix
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          mkdir -p disposable-evidence
-          case "${{ matrix.shard }}" in
-            cross-tenant)
-              node scripts/test-cross-tenant.mjs --local-disposable                 2>&1 | tee disposable-evidence/replay-cross-tenant.log
-              ;;
-            managed-resources)
-              node scripts/verify-network-center-managed-resources.mjs --local-disposable                 2>&1 | tee disposable-evidence/replay-managed-resources.log
-              ;;
-            *)
-              echo "::error::Unknown shard ${{ matrix.shard }}" >&2
-              exit 1
-              ;;
-          esac
-
-      # The gating half of this job: the same matrices against the Docker-free
-      # disposable cluster, which builds the database from the declared platform
-      # bootstrap plus the real Network Center migrations.
+      # The Docker-free disposable cluster builds the database from the declared
+      # platform bootstrap plus the real Network Center migrations.
       - name: Resolve PostgreSQL binaries for the disposable cluster
         run: |
           set -euo pipefail
@@ -385,26 +372,21 @@ jobs:
           echo "::error::No PostgreSQL 16+ server binaries found on this runner" >&2
           exit 1
 
-      - name: Run the gating disposable-cluster matrix
+      # KNOWN GAP, deliberately non-gating and deliberately still run:
+      # the 20-case tenant matrix builds a legacy-v1 inventory payload
+      # that the shipped compatibility path rejects on a freshly built
+      # database. The schema itself is correct - every Network Center
+      # migration applies - so what is missing is fixture data, not a
+      # security property. Recorded rather than hidden.
+      - name: Run the cross-tenant matrix on the disposable cluster
         run: |
           set -euo pipefail
-          case "${{ matrix.shard }}" in
-            managed-resources)
-              node scripts/verify-network-center-managed-resources.mjs --local-cluster
-              ;;
-            cross-tenant)
-              # KNOWN GAP, deliberately non-gating and deliberately still run:
-              # the 20-case tenant matrix builds a legacy-v1 inventory payload
-              # that the shipped compatibility path rejects on a freshly built
-              # database. The schema itself is correct - every Network Center
-              # migration applies - so what is missing is fixture data, not a
-              # security property. Recorded rather than hidden.
-              # known-gap: cross-tenant-fixture-non-gating
-              node scripts/test-cross-tenant.mjs --local-cluster                 2>&1 | tee disposable-evidence/cluster-cross-tenant.log || {
-                  echo "::warning::cross-tenant --local-cluster still fails on fixture payload; see log artifact"
-                }
-              ;;
-          esac
+          mkdir -p disposable-evidence
+          # known-gap: cross-tenant-fixture-non-gating
+          node scripts/test-cross-tenant.mjs --local-cluster \
+            2>&1 | tee disposable-evidence/cluster-cross-tenant.log || {
+              echo "::warning::cross-tenant --local-cluster still fails on fixture payload; see log artifact"
+            }
 
       # Teardown runs even when the matrix failed, was cancelled, or the runner
       # is about to be reclaimed. It is a best-effort STOP followed by a
@@ -435,7 +417,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: disposable-teardown-evidence-${{ matrix.shard }}
+          name: disposable-teardown-evidence-cross-tenant
           path: disposable-evidence/
           retention-days: 7
           if-no-files-found: warn
