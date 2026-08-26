@@ -47,6 +47,7 @@ flowchart TD
 | **v4** (v4.1–v4.2) | **Đảo cấu trúc tiền theo yêu cầu chủ**: 2 pool = chuyên cần 6tr + streak 3tr = 9tr; chỉ bật được nhờ 3 phát minh khoá (best-streak **banked** · sàn 3tr · tách trục đo COUNT vs MAX); FULL = đủ 26 ngày; 1 ngày phép có lương/tháng; đỉnh streak = trọn tháng. |
 | **v4.3** | "Kiểm tra nhà" thành **nguồn ngày-công hạng nhất** + hệ coverage xoay tua (SLA 7/5, priority score, piggyback) — thiết kế trên dữ liệu thật Nathan/Joey. |
 | **v5** (file này) | **HỢP NHẤT** tiền (v4.2) + coverage (v4.3) quanh **MỘT ma trận dấu chân** (Ch.3); hội đồng 6 vai chốt C1–C10; siết SLA 7/5 → **4/3**; calendar động (khai tử hằng số 26 và 230.769); **bỏ nguồn khiên-từ-CN**; scheduling bằng Vercel Cron + edge function; timeline shadow 1 trục có gate + đường lui. |
+| **v5.1** (26/08/2026, hiệu lực kỳ 09/2026) | Chủ quyết trực tiếp: streak **2.5tr** đỉnh động `n_top` = N_chuẩn, **bỏ mốc trọn-tháng**; khiên 3 lớp free **1** → tháng-hoàn-hảo (cap 3) → **điểm CN +0.5 vĩnh viễn** (khôi phục nguồn lợi-từ-CN, đảo C7 một phần); phép **tích lũy theo năm** 12 ngày reset 01/01. Kỳ ≤ 08/2026 giữ trọn luật v5 (engine đóng băng hằng số). Spec + plan trong `docs/superpowers/`. |
 
 ## 1.2 Dữ liệu thật (query DB prod 2026-07-02) — vì sao bài toán cấp bách
 
@@ -223,6 +224,13 @@ attend_pay   = 6.000.000 × clamp(ngày_công / N_chuẩn, 0, 1)
 | **chuyên cần** | 1,85tr | 2,31tr | **3,00tr** | 3,69tr | 4,15tr | 4,62tr | 5,08tr | 5,54tr | **6,00tr** |
 
 *(Sàn mềm bật: cột 8→3,00tr, 10→3,00tr; ≥13 giữ nguyên như trên.)*
+
+> **⚠️ V5.1 override (chủ duyệt 26/08/2026, hiệu lực kỳ 09/2026)** — spec
+> `docs/superpowers/specs/2026-08-26-v5-khien-3-lop-phep-tich-luy-moc-2tr5-design.md`:
+> pool streak **2.5tr** (mốc 4/8/13/18/23 = 300/400/500/500/400k + **đỉnh động `n_top` tại
+> N_chuẩn** +400k, **bỏ mốc trọn-tháng**); khiên 3 lớp (free **1**/tháng → tháng-hoàn-hảo
+> cap 3 → điểm CN +0.5 vĩnh viễn, không trần tiêu); phép tích lũy theo năm (12/năm, reset
+> 01/01). §4.3–4.4 dưới đây là biên bản LỊCH SỬ của luật cũ — vẫn đúng cho kỳ ≤ 08/2026.
 
 ## 4.3 STREAK → 3tr (best-of-month, banked, reset tháng)
 
