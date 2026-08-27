@@ -25627,6 +25627,7 @@ export type Database = {
         Args: { p_ie_id: string }
         Returns: undefined
       }
+      ie_stop_recurring_v1: { Args: { p_id: string }; Returns: Json }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
       invite_organization_member_v1: {
         Args: {

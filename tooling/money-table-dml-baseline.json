@@ -1,0 +1,36 @@
+{
+  "$comment": "Mốc ratchet cho scripts/check-money-table-dml.mjs — con số chỉ được PHÉP GIẢM. Cả 5 dòng dưới đây đều thuộc lát lương V5 (useManagerSalary.ts) và đều là nhánh SỐNG, không phải fallback chết: dòng 711 chạy ngay sau khi chốt lương canonical thành công để DUYỆT các phiếu hoa hồng, nên \"Chốt lương\" có phiếu hoa hồng sẽ dính 403 \"permission denied for table income_expenses\" y như nút Dừng lặp lại đã dính. Chưa sửa trong đợt này vì lát lương V5.1 đang do phiên khác nắm; đây là NỢ ĐÃ GHI, không phải lời tha bổng.",
+  "soViPham": 5,
+  "chiTiet": [
+    {
+      "file": "src/hooks/useManagerSalary.ts",
+      "bang": "income_expenses",
+      "phepGhi": "update",
+      "dong": 711
+    },
+    {
+      "file": "src/hooks/useManagerSalary.ts",
+      "bang": "income_expenses",
+      "phepGhi": "insert",
+      "dong": 948
+    },
+    {
+      "file": "src/hooks/useManagerSalary.ts",
+      "bang": "income_expense_items",
+      "phepGhi": "insert",
+      "dong": 997
+    },
+    {
+      "file": "src/hooks/useManagerSalary.ts",
+      "bang": "income_expenses",
+      "phepGhi": "insert",
+      "dong": 1043
+    },
+    {
+      "file": "src/hooks/useManagerSalary.ts",
+      "bang": "income_expense_items",
+      "phepGhi": "insert",
+      "dong": 1064
+    }
+  ]
+}

@@ -7,19 +7,19 @@ import { toast } from "sonner";
 
 // Dừng lặp lại cho 1 phiếu GỐC: giữ nguyên phiếu + các phiếu con đã sinh,
 // chỉ ngừng sinh phiếu con tương lai.
+//
+// PHẢI ĐI RPC, KHÔNG ĐƯỢC .from().update() — đây là chỗ đã hỏng thật.
+//   Migration 20260723070000 REVOKE UPDATE của `authenticated` trên
+//   income_expenses; nhánh direct-DML cũ ở đây bị bỏ sót khỏi đợt dọn caller,
+//   nên nút này trả 403 "permission denied for table income_expenses" suốt từ
+//   23/07 tới lúc người dùng báo (27/08/2026). Lỗi kiểu này không có gì trong
+//   repo bắt được ngoài gate check-money-table-dml — TypeScript không có gì để
+//   nói, vì lời gọi hoàn toàn hợp lệ về kiểu.
 export const useStopRecurring = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("income_expenses")
-        .update({
-          repeat_cycle: "NONE",
-          repeat_infinity: false,
-          repeat_remaining: 0,
-          repeat_next_date: null,
-        })
-        .eq("id", id);
+      const { error } = await supabase.rpc("ie_stop_recurring_v1", { p_id: id });
       if (error) {
         toast.error(error.message || "Không thể dừng lặp lại");
         throw error;

@@ -16,6 +16,7 @@
     "src/hooks/income-expenses/queries.ts::get_income_expense_history",
     "src/hooks/income-expenses/queries.ts::get_income_expense_layer_stats",
     "src/hooks/income-expenses/recurring.ts::generate_recurring_vouchers_v2",
+    "src/hooks/income-expenses/recurring.ts::ie_stop_recurring_v1",
     "src/hooks/income-expenses/specialized.ts::distribute_shareholder_profit_v1",
     "src/hooks/income-expenses/specialized.ts::manager_salary_payout_v1",
     "src/hooks/income-expenses/statusMutations.ts::approve_income_expense_v1",

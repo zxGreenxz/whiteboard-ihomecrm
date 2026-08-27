@@ -170,6 +170,7 @@ jobs:
           node scripts/check-rpc-cast-ratchet.mjs || loi=1
           node scripts/check-rpc-in-view-ratchet.mjs || loi=1
           node scripts/check-error-swallow-ratchet.mjs || loi=1
+          node scripts/check-money-table-dml.mjs || loi=1
           exit $loi
 
       - name: schema-gates (provenance migration · canonical types · đường ghi production)

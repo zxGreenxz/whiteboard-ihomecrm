@@ -72,6 +72,7 @@ const GATE_NHANH = [
   "check-rpc-cast-ratchet",
   "check-rpc-in-view-ratchet",
   "check-error-swallow-ratchet",
+  "check-money-table-dml",
   // schema-gates
   "check-migration-provenance",
   ["normalize-supabase-types", "--check"],
