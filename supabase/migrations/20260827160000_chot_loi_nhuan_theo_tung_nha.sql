@@ -719,14 +719,21 @@ COMMENT ON FUNCTION public._profit_write_close_v2_base(
 --    khong noi cho nay, vi no la thu chan reset tren trang thai da cu. Chi RIENG
 --    tac dong moi thu hep lai.
 --
---    Bat buoc DROP roi CREATE: `CREATE OR REPLACE` voi chu ky khac se de ra
---    overload va PostgREST chon nham ham.
+--    Bat buoc DROP chu ky CU (6 tham so): `CREATE OR REPLACE` voi chu ky khac
+--    khong thay the ma DE RA OVERLOAD, roi PostgREST chon nham ham.
+--
+--    Nhung chu ky MOI phai la `CREATE OR REPLACE`, khong phai `CREATE` tran:
+--    lane forward chay lai file lan hai (gate check-forward-migration-idempotent)
+--    thi ban 7 tham so da ton tai, `CREATE` tran ne ra 42723 "function already
+--    exists with same argument types". Re-apply xay ra khi apply hong giua
+--    chung hoac khi dung lai moi truong tu baseline — dung luc khong ai muon
+--    doc loi.
 -- ---------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.profit_reset_checked_v2(
   uuid, date, text, text, text, uuid[]
 );
 
-CREATE FUNCTION public.profit_reset_checked_v2(
+CREATE OR REPLACE FUNCTION public.profit_reset_checked_v2(
   p_organization_id uuid,
   p_period_month date,
   p_reason text,

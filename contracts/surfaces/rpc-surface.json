@@ -3590,7 +3590,7 @@
           "schema": "public",
           "args": "p_organization_id uuid",
           "returns": "jsonb",
-          "volatility": "STABLE",
+          "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=pg_catalog, public",
           "execRoles": [

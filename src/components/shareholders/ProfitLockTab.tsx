@@ -1098,8 +1098,16 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[44px]">
+                  {/* Checkbox dùng chung vẽ CÙNG một dấu ✓ cho `checked` lẫn
+                      `indeterminate` (xem src/components/ui/checkbox.tsx —
+                      Indicator không phân biệt trạng thái). Chọn 4/18 nhà mà
+                      trông y hệt chọn hết là nói dối người dùng đúng chỗ nguy
+                      hiểm nhất, nên tô nhạt riêng cho indeterminate và in thẳng
+                      số đếm bên dưới. Không sửa component dùng chung vì nó nằm
+                      trên hàng chục màn khác. */}
+                  <TableHead className="w-[52px]">
                     <Checkbox
+                      className="data-[state=indeterminate]:bg-primary/40 data-[state=indeterminate]:text-primary-foreground"
                       checked={
                         rows.length > 0 && selectedIds.length === rows.length
                           ? true
@@ -1111,6 +1119,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                       disabled={rows.length === 0}
                       aria-label="Chọn tất cả nhà"
                     />
+                    <p className="mt-1 text-[10px] font-normal leading-tight text-muted-foreground">
+                      {selectedIds.length}/{rows.length}
+                    </p>
                   </TableHead>
                   <TableHead className="min-w-[150px]">Nhà</TableHead>
                   <TableHead className="text-right">Doanh thu</TableHead>
