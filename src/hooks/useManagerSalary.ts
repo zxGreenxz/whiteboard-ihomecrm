@@ -572,25 +572,25 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
 // 4 khoản thưởng tay + 2 salary_monthly nhập ngày 27/08/2026 rơi ra NULL và làm đỏ
 // gate measure-org-leak. Thà ném lỗi còn hơn ghi một dòng tiền không có biên giới.
 async function orgOfStaff(staffId: string): Promise<string> {
-  const { data: cfg } = await (supabase
+  const { data: cfg } = await supabase
     .from("manager_salary_config")
-    .select("organization_id") as any)
+    .select("organization_id")
     .eq("staff_id", staffId)
     .not("organization_id", "is", null)
     .order("is_active", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if ((cfg as any)?.organization_id) return (cfg as any).organization_id as string;
+  if (cfg?.organization_id) return cfg.organization_id;
 
-  const { data: mem } = await (supabase
+  const { data: mem } = await supabase
     .from("organization_memberships")
-    .select("organization_id") as any)
+    .select("organization_id")
     .eq("user_id", staffId)
     .eq("status", "ACTIVE")
     .limit(1)
     .maybeSingle();
-  if ((mem as any)?.organization_id) return (mem as any).organization_id as string;
+  if (mem?.organization_id) return mem.organization_id;
 
   throw new Error("Không xác định được tổ chức của nhân viên — không thể ghi dòng lương");
 }
