@@ -1,6 +1,6 @@
 {
   "$comment": "Danh sách script được phép GHI production qua Management API. Gate: scripts/check-management-api-writes.mjs. Vì sao cần: 07/08/2026 một migration được POST thẳng tới /database/query, bỏ qua toàn bộ lane migrate:forward — không cutoff, không provenance, không digest, KHÔNG BACKUP; với PITR tắt thì đường lùi là ~24 giờ sổ sách. Luật cấm đã có trong Contract từ trước nhưng chỉ là chữ. THÊM DÒNG VÀO ĐÂY LÀ MỘT QUYẾT ĐỊNH: phải ghi `why` nói rõ vì sao script này cần ghi và vì sao không đi qua lane được. Trường `giayPhep` (thêm 11/08/2026) khai CỬA nào chặn lời ghi đó: lane · promotion-token · chi-demo · chi-test · chi-doc (xếp write nhầm) · khong-co-cua (chưa có gì chặn, phải có known-gap).",
-  "updatedAt": "2026-08-07",
+  "updatedAt": "2026-08-28",
   "lane": "scripts/apply-reviewed-migration.mjs",
   "callers": [
     {
@@ -195,6 +195,12 @@
       "file": "scripts/v5-calendar-parity.mjs",
       "loai": "read",
       "why": "chỉ đọc catalog"
+    },
+    {
+      "file": "scripts/seed-demo-hoan-coc.mjs",
+      "loai": "write",
+      "why": "Seed/don fixture DEMO cho E2E chu trinh hoan coc (termination-refund-full-cycle.spec.ts) — dieu kien §17.6 truoc khi khoa duong thanh ly cu. Chi DML du lieu test, khong dung schema; moi cau SQL neo cung org DEMO dddd…0001 va MARKER; khong bao gio xoa phieu POSTED. Khong di lane duoc vi lane la cho migration schema, con day la du lieu dung-roi-don cua mot bai test.",
+      "giayPhep": "chi-demo"
     }
   ]
 }

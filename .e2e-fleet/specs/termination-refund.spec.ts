@@ -15,8 +15,12 @@ import { login, trackConsoleErrors } from './auth';
  *   qua đường chưa ai kiểm.
  *
  * Spec CHỈ ĐỌC theo mặc định: nó mở hộp thoại, đọc số hệ thống tính ra, rồi ĐÓNG.
- * Không bấm "Tạo phiếu hoàn" để khỏi đẻ phiếu tiền trên DEMO. Muốn chạy nhánh ghi
- * thì đặt env `FLEET_REFUND_WRITE=1` — khi đó spec tự dọn phiếu vừa tạo.
+ * Không bấm "Tạo phiếu hoàn" để khỏi đẻ phiếu tiền trên DEMO. Nhánh ghi gated
+ * bằng env `FLEET_REFUND_WRITE=1` — nhưng ĐÍNH CHÍNH 28/08: nhánh đó KHÔNG tự
+ * dọn như comment cũ hứa (chưa từng có code dọn), và trên DEMO nó cũng không
+ * bao giờ chạy được vì mọi hồ sơ sẵn có đều khách-còn-nợ ⇒ nút tạo vô hiệu.
+ * Chu trình GHI trọn vòng giờ nằm ở `termination-refund-full-cycle.spec.ts`,
+ * có fixture seed/dọn riêng (`scripts/seed-demo-hoan-coc.mjs`).
  */
 
 const ROUTE = '/reports/real-estate/terminations';
