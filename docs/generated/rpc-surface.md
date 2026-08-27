@@ -17,10 +17,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 255 |
+| RPC được gọi từ mã nguồn | 256 |
 | Hàm trong catalog (public + api) | 1092 |
 | File mã nguồn đã quét | 1692 |
-| SECURITY DEFINER | 239 |
+| SECURITY DEFINER | 240 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
@@ -28,10 +28,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 175 | còn lại |
-| tiền | 74 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 75 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | an ninh | 6 | nơi gọi thuộc OpenClaw |
 
-## 74 RPC chạm TIỀN
+## 75 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -76,6 +76,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `get_voucher_change_log_v1` | ✔ | hooks/income-expenses/flexMutations.ts |
 | `get_voucher_slot_warning_v1` | ✔ | hooks/useVoucherSlotWarning.ts |
 | `ie_compat_update_pending_v2` | ✔ | hooks/useUpdatePaymentMethod.ts, hooks/useUploadPaymentReceipt.ts |
+| `ie_stop_recurring_v1` | ✔ | hooks/income-expenses/recurring.ts |
 | `invoice_active_payment_methods` |  | hooks/useInvoices.ts |
 | `invoice_payment_method_drilldown` |  | hooks/useInvoices.ts |
 | `is_admin` | ✔ | hooks/useIsAdmin.ts, supabase/functions/salary-v5-jobs/index.ts |
