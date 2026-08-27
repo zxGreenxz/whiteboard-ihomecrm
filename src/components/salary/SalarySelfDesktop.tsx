@@ -17,12 +17,19 @@ import { zeroBonusReason, isUnqualifiedContractRow, type SalManager, type SalLed
 // Chế độ v5 trả thưởng CHUỖI, chế độ cũ trả thưởng theo VIỆC — gọi cả hai là
 // "Thưởng việc · N việc" là sai: tháng 7 hiện "31 việc +1.400.000" trong khi
 // 1.400.000 là tiền chuỗi, không đến từ việc nào.
+// Từ 27/08/2026 v5 trả CẢ HAI (chuỗi ∥ thưởng việc) nên nhiều dòng là chuyện thường:
+// số tiền đi kèm nhãn này là c.bonus — gồm cả chuỗi lẫn điều chỉnh tay — nên gọi tên
+// theo một nhóm bất kỳ đều sai. Nhiều dòng → "Tổng thưởng" + ghi chú kể nguồn.
 function bonusLabelOf(m: SalManager): { label: string; note: string } {
   if (m.bonusAuto.length === 1) {
     return { label: m.bonusAuto[0].label, note: m.bonusAuto[0].note || "" };
   }
   const earned = m.ledger.filter((r) => (r.bonus_amount || 0) > 0).length;
-  return { label: "Thưởng việc", note: `${earned} việc` };
+  const hasStreak = m.bonusAuto.some((b) => b.icon === "Flame");
+  return {
+    label: "Tổng thưởng",
+    note: hasStreak ? `${earned} việc + chuỗi` : `${earned} việc`,
+  };
 }
 
 const plus = (v: number) => Math.round(Math.abs(v)).toLocaleString("vi-VN");

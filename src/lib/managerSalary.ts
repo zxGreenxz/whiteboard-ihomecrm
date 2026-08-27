@@ -175,6 +175,30 @@ export function buildBonusAuto(ledger: SalLedgerRow[], requirePhoto = false): Sa
   return lines;
 }
 
+// v5 KHÔNG nuốt thưởng việc — hai nguồn tiền chạy SONG SONG (chủ quyết 27/08/2026):
+// chuyên cần + chuỗi là tiền "đi làm đều", thưởng việc theo rule cũ là tiền "làm thêm".
+// Trước đây nhánh v5 gán đè bonusAuto = [chuỗi] nên 1.820.000đ tiền việc của kỳ 7/2026
+// biến mất khỏi bảng lương trong khi bảng kê vẫn hiện đủ từng dòng kèm số tiền — bảng kê
+// hứa tiền, bảng lương không trả. Trần 8,5tr của v5 từ đây chỉ áp cho HAI QUỸ chuyên cần
+// + chuỗi (v5_month_money tự kẹp), không áp cho tổng lương.
+// Dòng chuỗi đứng ĐẦU để popover đọc từ khoản lớn xuống khoản nhỏ.
+export function mergeV5Bonus(jobLines: SalBonusLine[], streakAmount: number): SalBonusLine[] {
+  const lines: SalBonusLine[] = [];
+  if (streakAmount > 0) {
+    lines.push({ icon: "Flame", label: "Thưởng chuỗi (v5)", note: "mốc chuỗi đã đạt", amount: streakAmount });
+  }
+  return lines.concat(jobLines);
+}
+
+// Tách contract_bonus khỏi work_bonus khi đóng băng tháng. Icon "FileClock" = ký HĐ
+// ngoài giờ/CN/lễ, do buildBonusAuto gắn ở mục (3); mọi dòng khác (chuỗi Flame, việc
+// Wrench, ngày CalendarCheck) thuộc work_bonus. Gom về một chỗ vì useLockSalaryMonth
+// lặp đúng biểu thức này ở hai nhánh (canonical + fallback legacy) — thêm dòng thưởng
+// mới mà quên một nhánh là lệch sổ giữa hai đường ghi.
+export function contractBonusOf(bonusAuto: SalBonusLine[]): number {
+  return (bonusAuto || []).filter((b) => b.icon === "FileClock").reduce((s, b) => s + b.amount, 0);
+}
+
 export function computeStats(ledger: SalLedgerRow[]): Omit<SalStats, "streak"> {
   const jobs = ledger.filter((r) => r.item_type === "JOB").length;
   const repairs = ledger.filter((r) => r.item_type === "JOB" && r.is_repair).length;

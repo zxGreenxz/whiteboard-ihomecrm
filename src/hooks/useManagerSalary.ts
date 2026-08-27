@@ -15,6 +15,8 @@ import {
   type SalCommissionItem,
   salCalc,
   buildBonusAuto,
+  mergeV5Bonus,
+  contractBonusOf,
   computeStats,
   computeStreak,
   firstName,
@@ -405,18 +407,23 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         const stats = { ...stats0, streak: computeStreak(ledger) };
 
         let incomeGoal = num(c.income_goal) || base + investment;
-        // CHẾ ĐỘ v5 (chỉ tháng CHƯA chốt): lương cứng→chuyên cần, thưởng→chuỗi, ngày công→ticked.
-        // Giữ nguyên đầu tư/HH Sale/ứng/tiền phòng + toàn bộ UI. Tháng đã chốt dùng số đã đóng băng.
+        // CHẾ ĐỘ v5 (chỉ tháng CHƯA chốt): lương cứng→chuyên cần, ngày công→ticked, và
+        // THÊM thưởng chuỗi vào bên cạnh thưởng việc. Giữ nguyên đầu tư/HH Sale/ứng/
+        // tiền phòng + toàn bộ UI. Tháng đã chốt dùng số đã đóng băng.
+        //
+        // Chủ quyết 27/08/2026: v5 KHÔNG thay thưởng việc. Trước đây dòng dưới GÁN ĐÈ
+        // bonusAuto = [chuỗi], vứt sạch buildBonusAuto(ledger) ở trên → kỳ 7/2026 mất
+        // 1.820.000đ tiền việc mà tab "Bảng kê công việc" vẫn hiện đủ từng dòng.
+        // Trần 8,5tr giờ chỉ là trần của HAI QUỸ chuyên cần + chuỗi (v5_month_money tự
+        // kẹp), không phải trần tổng lương — nên incomeGoal vẫn 8,5tr và thưởng việc là
+        // phần VƯỢT mục tiêu (chủ chốt giữ nguyên mốc so sánh giữa hai người).
         if (engine === "v5" && !locked) {
           const v = v5ByStaff.get(staff);
           if (v) {
             base = v.attend;
-            bonusAuto = v.streak > 0
-              ? [{ icon: "Flame", label: "Thưởng chuỗi (v5)", note: "mốc chuỗi đã đạt", amount: v.streak }]
-              : [];
+            bonusAuto = mergeV5Bonus(bonusAuto, v.streak);
             stats.workdays = v.ticked;
             stats.streak = v.cur;
-            // trần v5.1 = 6tr chuyên cần + 2.5tr chuỗi, áp MỌI kỳ (chủ quyết 26/08 đợt 2)
             incomeGoal = 8_500_000;
           }
         }
@@ -670,7 +677,7 @@ export const useLockSalaryMonth = () => {
       // Duyệt HH qua writer chuẩn (không raw UPDATE). Flag OFF → fallback legacy.
       const canonicalManagers = managers.map((m) => {
         const c = m.calc || salCalc(m);
-        const contractBonus = m.bonusAuto.filter((b) => b.icon === "FileClock").reduce((s, b) => s + b.amount, 0);
+        const contractBonus = contractBonusOf(m.bonusAuto);
         return {
           staff_id: m.id,
           base_salary: m.base,
@@ -717,7 +724,7 @@ export const useLockSalaryMonth = () => {
 
       for (const m of managers) {
         const c = m.calc || salCalc(m);
-        const contractBonus = m.bonusAuto.filter((b) => b.icon === "FileClock").reduce((s, b) => s + b.amount, 0);
+        const contractBonus = contractBonusOf(m.bonusAuto);
         const workBonus = c.autoSum - contractBonus;
         const { data: row, error } = await supabase
           .from("salary_monthly")

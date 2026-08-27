@@ -27,7 +27,7 @@ flowchart TD
 
 **5 điều chủ doanh nghiệp cần nhớ:**
 
-- **Trả tối đa 9tr/người/tháng, trần cứng:** 6tr chuyên cần (đơn giá ngày = 6tr ÷ số ngày-làm chuẩn của tháng, ~231k) + 3tr thưởng chuỗi đi làm đều (**banked — đã leo mốc nào là khoá mốc đó**). Không có nấc nhắc, điểm số hay SLA nào tự động trừ tiền — máy chỉ flag, **chủ là người kết án duy nhất**.
+- **Hai quỹ "đi làm đều" trần cứng 9tr/người/tháng** (v5.1 hạ còn 8,5tr): 6tr chuyên cần (đơn giá ngày = 6tr ÷ số ngày-làm chuẩn của tháng, ~231k) + 3tr thưởng chuỗi đi làm đều (**banked — đã leo mốc nào là khoá mốc đó**). ⚠️ **v5.2 (27/08/2026): trần này KHÔNG còn là trần tổng lương** — thưởng việc theo rule cũ cộng thêm bên ngoài hai quỹ (§1.1). Không có nấc nhắc, điểm số hay SLA nào tự động trừ tiền — máy chỉ flag, **chủ là người kết án duy nhất**.
 - **Ngày không có việc vẫn kiếm được ngày-công** bằng phiên **kiểm tra nhà FULL đạt chuẩn** (checklist + ảnh + đủ thời gian tại toà). Công ty không mua "sự có mặt" — công ty **mua sự kiểm tra** tài sản tiền tỷ; với người quản toà êm (Joey) đây là xương sống thu nhập.
 - **Không toà nào bị bỏ rơi:** SLA **4 ngày/toà (3 ngày nếu đang chào khách)**, app tự nhắc 3 nấc (vàng in-app → đỏ push nhân viên → báo chủ). Các điểm mù kiểu 65NTG (2 tháng không ai ghé) về mặt toán học không thể tái diễn. Chủ chỉ thao tác **3 nút, tổng <10 phút/ngày**: duyệt phép · duyệt sự-cố-thiết-bị · spot-audit 2–3 phiếu/tuần.
 - **Chống gian lận có due process:** máy flag (hash ảnh trùng, EXIF lạ, travel-time bất khả) → chủ kết án trên màn hình bằng chứng → nhân viên có **48h kháng nghị** → án chốt trước khoá sổ. Gian lận xác nhận = huỷ công ngày đó + tước toàn bộ mốc streak đã bank trong tháng (ngoại lệ duy nhất của banked).
@@ -48,6 +48,7 @@ flowchart TD
 | **v4.3** | "Kiểm tra nhà" thành **nguồn ngày-công hạng nhất** + hệ coverage xoay tua (SLA 7/5, priority score, piggyback) — thiết kế trên dữ liệu thật Nathan/Joey. |
 | **v5** (file này) | **HỢP NHẤT** tiền (v4.2) + coverage (v4.3) quanh **MỘT ma trận dấu chân** (Ch.3); hội đồng 6 vai chốt C1–C10; siết SLA 7/5 → **4/3**; calendar động (khai tử hằng số 26 và 230.769); **bỏ nguồn khiên-từ-CN**; scheduling bằng Vercel Cron + edge function; timeline shadow 1 trục có gate + đường lui. |
 | **v5.1** (26/08/2026, hiệu lực kỳ 09/2026) | Chủ quyết trực tiếp: streak **2.5tr** đỉnh động `n_top` = N_chuẩn, **bỏ mốc trọn-tháng**; khiên 3 lớp free **1** → tháng-hoàn-hảo (cap 3) → **điểm CN +0.5 vĩnh viễn** (khôi phục nguồn lợi-từ-CN, đảo C7 một phần); phép **tích lũy theo năm** 12 ngày reset 01/01. Đợt 2 cùng ngày: **thang tiền 2.5tr áp hồi tố cả kỳ 7–8/2026** (trần 9tr→8.5tr), kỳ ≤ 08/2026 chỉ còn giữ cơ chế khiên/phép cũ. Spec + plan trong `docs/superpowers/`. |
+| **v5.2** (27/08/2026, hiệu lực NGAY, mọi kỳ v5) | Chủ **đảo Ch.3 ở phần tiền**: việc hoàn thành vừa tick ngày công **vừa sinh tiền riêng như rule cũ**. Chuyên cần + chuỗi = tiền đi làm đều; thưởng việc / CN-Lễ / ký HĐ **cộng thêm** vào cột Thưởng. **Trần 8,5tr từ nay chỉ là trần của HAI QUỸ chuyên cần + chuỗi, không phải trần tổng lương.** Coverage/SLA và toàn bộ Ch.5 giữ nguyên. Chỉ sửa FE (`mergeV5Bonus`/`contractBonusOf` trong `src/lib/managerSalary.ts`), không migration. Lý do: kỳ 7/2026 mất 1.820.000đ tiền việc khỏi bảng lương trong khi bảng kê vẫn ghi nhận đủ. |
 
 ## 1.2 Dữ liệu thật (query DB prod 2026-07-02) — vì sao bài toán cấp bách
 
@@ -116,6 +117,8 @@ v5 giải cả hai bằng một thiết kế: **mỗi dấu chân hợp lệ v�
 | 5 | FULL **fail chuẩn** = PRESENCE | ❌ | ✅ | Presence = ≥1 ảnh camera-only **mới** (hash sạch) + geofence + thiết bị đăng nhập. Báo NGAY TẠI TOÀ *"còn X mục nữa là đủ công hôm nay"*; **bổ sung = resume đúng phiên đến 23:59**, đủ chuẩn lúc nào tick lúc đó; qua 0h phiên đóng vĩnh viễn |
 | 6 | QUICK đơn lẻ (không kèm thu tiền) | ❌ **VĨNH VIỄN** | ✅ | +15 điểm phi-tiền; mọi màn QUICK có nút **"Nâng cấp lên FULL"** tại chỗ; không có cơ chế gom N QUICK = 1 công |
 | 7 | Gian lận ảnh (hash trùng/né camera/EXIF giả) | ❌ **HUỶ CÔNG NGÀY ĐÓ** | ❌ (không có cả presence) | Máy flag → chủ kết án → 48h kháng nghị → chốt trước LOCK; án xác nhận: **tước toàn bộ mốc banked THÁNG HIỆN HÀNH** (ngoại lệ duy nhất của banked); ngày sạch khác + sàn mềm giữ nguyên; sau LOCK chỉ xử qua adjustments kỳ sau |
+
+> **v5.2 (27/08/2026) sửa đúng MỘT ô của ma trận này:** nguồn #1 (việc thật) ngoài việc tick ngày-công còn **sinh tiền thưởng riêng theo rule cũ** (`buildBonusAuto`), cộng thêm ngoài hai quỹ. Sáu nguồn còn lại, cột "Reset SLA", và toàn bộ điều kiện chất lượng **giữ nguyên**. Câu "phần vượt chỉ cộng điểm phi-tiền" ngay dưới đây chỉ còn đúng cho **ngày-công**, không còn đúng cho thưởng.
 
 **Bất biến kèm bảng:** binary — 1 việc = 8 việc = 1 ngày-công; phần vượt chỉ cộng điểm phi-tiền. **STREAK = chuỗi ngày-công liên tiếp suy từ chính bảng này.** Mỗi tick ghi 1 dòng `ATTEND_DAY` trạng thái tạm qua RPC idempotent; mốc streak → `STREAK_MILESTONE`. **Không luồng v5 nào chạm `payments`/`income_expenses`** (trừ việc đọc + thêm cột GPS `collect_*` cho nguồn 3).
 

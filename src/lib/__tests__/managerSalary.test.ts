@@ -4,6 +4,8 @@ import {
   firstName,
   initialsOf,
   buildBonusAuto,
+  mergeV5Bonus,
+  contractBonusOf,
   computeStats,
   computeStreak,
   resolveSalaryEngine,
@@ -88,6 +90,69 @@ describe("buildBonusAuto", () => {
   });
 });
 
+describe("mergeV5Bonus", () => {
+  // Số thật kỳ 7/2026 của NATHAN: 960k sửa chữa + 200k ký HĐ + 90k CN/Lễ = 1.250.000,
+  // toàn bộ từng biến mất khỏi bảng lương vì nhánh v5 gán đè bonusAuto = [chuỗi].
+  const jobLines = [
+    { icon: "Wrench", label: "Sửa chữa", note: "32 việc × 30.000", amount: 960000 },
+    { icon: "FileClock", label: "Ký HĐ ngoài giờ / CN / lễ", note: "4 HĐ × 50.000", amount: 200000 },
+    { icon: "CalendarCheck", label: "CN/Lễ có sửa chữa", note: "3 ngày × 30.000", amount: 90000 },
+  ];
+
+  it("chuỗi + việc chạy SONG SONG, không nuốt nhau", () => {
+    const lines = mergeV5Bonus(jobLines, 2500000);
+    expect(lines.length).toBe(4);
+    expect(lines[0].icon).toBe("Flame"); // khoản lớn nhất đứng đầu popover
+    expect(lines.reduce((s, l) => s + l.amount, 0)).toBe(3750000);
+  });
+
+  it("chưa đạt mốc chuỗi → chỉ còn thưởng việc, không đẻ dòng 0đ", () => {
+    const lines = mergeV5Bonus(jobLines, 0);
+    expect(lines.length).toBe(3);
+    expect(lines.some((l) => l.icon === "Flame")).toBe(false);
+    expect(lines.reduce((s, l) => s + l.amount, 0)).toBe(1250000);
+  });
+
+  it("tháng chưa có việc nào → giữ nguyên hành vi cũ: chỉ dòng chuỗi", () => {
+    const lines = mergeV5Bonus([], 2500000);
+    expect(lines.length).toBe(1);
+    expect(lines[0].amount).toBe(2500000);
+  });
+
+  it("không chuỗi, không việc → rỗng", () => {
+    expect(mergeV5Bonus([], 0)).toEqual([]);
+  });
+
+  it("không đụng vào mảng gốc của buildBonusAuto", () => {
+    const src = [...jobLines];
+    mergeV5Bonus(src, 2500000);
+    expect(src.length).toBe(3);
+  });
+});
+
+describe("contractBonusOf", () => {
+  it("chỉ tách dòng FileClock — chuỗi/việc/CN-Lễ ở lại work_bonus", () => {
+    const lines = mergeV5Bonus(
+      [
+        { icon: "Wrench", label: "Sửa chữa", amount: 960000 },
+        { icon: "FileClock", label: "Ký HĐ ngoài giờ / CN / lễ", amount: 200000 },
+        { icon: "CalendarCheck", label: "CN/Lễ có sửa chữa", amount: 90000 },
+      ],
+      2500000,
+    );
+    const contractBonus = contractBonusOf(lines);
+    const autoSum = lines.reduce((s, l) => s + l.amount, 0);
+    expect(contractBonus).toBe(200000);
+    // work_bonus = autoSum − contract_bonus: chuỗi 2.5tr + việc 960k + CN/Lễ 90k
+    expect(autoSum - contractBonus).toBe(3550000);
+  });
+
+  it("không có dòng ký HĐ → 0", () => {
+    expect(contractBonusOf([{ icon: "Flame", label: "Thưởng chuỗi (v5)", amount: 2500000 }])).toBe(0);
+    expect(contractBonusOf([])).toBe(0);
+  });
+});
+
 describe("salCalc", () => {
   it("gross/takehome đúng công thức", () => {
     const m = {
@@ -99,6 +164,31 @@ describe("salCalc", () => {
     expect(c.bonus).toBe(540000 + 260000 - 30000); // 770000
     expect(c.gross).toBe(8000000 + 770000 + 5254000 + 600000); // 14624000
     expect(c.takehome).toBe(c.gross - 4974000 - 2742000);
+  });
+
+  // Chủ quyết 27/08/2026: bật thưởng việc trong v5 KHÔNG được chặn đường cộng/trừ
+  // thưởng tay ở trang lương — hai nguồn nằm ở hai nhánh khác nhau của salCalc.
+  it("v5: chuyên cần + (chuỗi ∥ thưởng việc) + thưởng tay cộng/trừ vẫn ăn đủ", () => {
+    const c = salCalc({
+      base: 6000000, // chuyên cần v5
+      investment: 0, commission: 0, advance: 0, roomRent: 0,
+      bonusAuto: mergeV5Bonus(
+        [
+          { icon: "Wrench", label: "Sửa chữa", amount: 960000 },
+          { icon: "FileClock", label: "Ký HĐ", amount: 200000 },
+          { icon: "CalendarCheck", label: "CN/Lễ", amount: 90000 },
+        ],
+        2500000,
+      ),
+      adjustments: [
+        { icon: "Plus", label: "Thưởng tay", amount: 100000 },
+        { icon: "Minus", label: "Trừ tay", amount: -50000 },
+      ],
+    });
+    expect(c.autoSum).toBe(3750000);
+    expect(c.adjSum).toBe(50000);
+    expect(c.bonus).toBe(3800000);
+    expect(c.gross).toBe(9800000); // vượt trần 8,5tr — trần chỉ áp 2 quỹ chuyên cần + chuỗi
   });
 });
 
