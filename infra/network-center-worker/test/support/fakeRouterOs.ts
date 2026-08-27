@@ -119,6 +119,9 @@ export interface FakeDhcpLease {
   expiresAfter?: string;
   status?: string;
   server?: string;
+  /** RouterOS duration form. Real `print detail` always carries it for a lease
+   * the router has ever transacted; omitted models one it has not. */
+  lastSeen?: string;
 }
 
 export interface FakeSchedulerEntry {
@@ -456,6 +459,7 @@ export class FakeRouterOs {
         `status=${lease.status ?? "bound"}`,
       );
       if (lease.expiresAfter !== undefined) fields.push(`expires-after=${lease.expiresAfter}`);
+      if (lease.lastSeen !== undefined) fields.push(`last-seen=${lease.lastSeen}`);
       if (lease.hostName !== undefined) fields.push(`host-name="${lease.hostName}"`);
       fields.push("dynamic=yes", "blocked=no", "disabled=no");
       return fields.join(" ");

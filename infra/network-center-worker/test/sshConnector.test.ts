@@ -1296,6 +1296,115 @@ describe("client telemetry value domains", () => {
       .not.toBe(observation.clients[1]?.sessionKey);
   });
 
+  // The failure that took Network Center down for 20 hours on 26-27/08/2026, and
+  // the reason it went unnoticed: the heartbeat kept saying the worker was alive
+  // while every poll was rejected. One MAC held two bound leases - a static
+  // reservation on `dhcp-camera` and a stale dynamic one on `dhcp-hotspot` -
+  // so two clients carried `dhcp:3c:a7:ae:9d:2b:60`. The ingest upsert targets
+  // `(organization_id, building_id, session_key)`, and reaching one row twice in
+  // a single ON CONFLICT DO UPDATE is a 21000 that discards the ENTIRE batch,
+  // for every building the worker polls, not just the offending row.
+  it("collapses two leases for one MAC into a single client", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [
+        {
+          address: "192.168.1.49",
+          macAddress: "3C:A7:AE:9D:2B:60",
+          server: "dhcp-camera",
+          status: "bound",
+          lastSeen: "1d22h34m3s",
+        },
+        {
+          address: "192.168.95.252",
+          macAddress: "3C:A7:AE:9D:2B:60",
+          server: "dhcp-hotspot",
+          status: "bound",
+          lastSeen: "11h33m14s",
+        },
+      ],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.clients).toHaveLength(1);
+    // Most recent DHCP transaction wins between two bound leases.
+    expect(observation.clients[0]?.observedIp).toBe("192.168.95.252");
+    expect(observation.clients[0]?.sessionKey).toBe("dhcp:3c:a7:ae:9d:2b:60");
+  });
+
+  // A lease the router has not bound is not an assigned address, so it must not
+  // win on recency alone - otherwise a device mid-handshake erases the address
+  // it is actually holding.
+  it("prefers a bound lease over a more recent unbound one", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [
+        { address: "10.0.0.5", macAddress: "AA:BB:CC:DD:EE:01", status: "waiting", lastSeen: "3s" },
+        { address: "10.0.0.6", macAddress: "AA:BB:CC:DD:EE:01", status: "bound", lastSeen: "40m" },
+      ],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.clients).toHaveLength(1);
+    expect(observation.clients[0]?.observedIp).toBe("10.0.0.6");
+  });
+
+  // Distinct devices must NOT be collapsed - the guard has to be keyed on the
+  // session key, not on "there is more than one lease".
+  it("keeps distinct MACs as distinct clients, in router order", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [
+        { address: "10.0.0.7", macAddress: "AA:BB:CC:DD:EE:02", status: "bound", lastSeen: "1m" },
+        { address: "10.0.0.8", macAddress: "AA:BB:CC:DD:EE:03", status: "bound", lastSeen: "9m" },
+      ],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.clients).toHaveLength(2);
+    expect(observation.clients.map((c) => c.observedIp)).toEqual(["10.0.0.7", "10.0.0.8"]);
+    expect(new Set(observation.clients.map((c) => c.sessionKey)).size).toBe(2);
+  });
+
+  // Whatever survives, no two rows may share a session key - this is the
+  // property the database actually enforces, asserted directly.
+  it("never emits two clients sharing a session key", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [
+        { address: "10.0.0.9", macAddress: "AA:BB:CC:DD:EE:04", status: "bound" },
+        { address: "10.0.0.10", macAddress: "AA:BB:CC:DD:EE:04", status: "bound" },
+        { address: "10.0.0.11", macAddress: "AA:BB:CC:DD:EE:04", status: "waiting", lastSeen: "1s" },
+        { address: "  ", macAddress: "", status: "waiting" },
+        { address: "  ", macAddress: "", status: "waiting" },
+      ],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    const keys = observation.clients.map((c) => c.sessionKey);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   // observed_mac is cast to `macaddr` by the ingest RPC. An uncastable string is
   // a 22P02 that destroys the same batch a 23514 would, so a value that is not a
   // canonical MAC is reported as not-observed rather than forwarded.

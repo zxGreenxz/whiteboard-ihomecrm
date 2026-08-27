@@ -618,6 +618,64 @@ export function leaseExpiryIso(
   return new Date(new Date(observedAt).getTime() + boundedSeconds * 1_000).toISOString();
 }
 
+/**
+ * One MAC can hold more than one lease at a time - a static reservation on one
+ * DHCP server and a stale dynamic lease on another are both "bound" until the
+ * second expires, which on a two-server router (hotspot + camera) takes up to a
+ * day. `sessionKey` is `dhcp:<mac>`, so those leases arrive as two clients that
+ * claim the same identity.
+ *
+ * That is not a cosmetic duplicate. The ingest upsert targets
+ * `(organization_id, building_id, session_key)`, and an ON CONFLICT DO UPDATE
+ * that reaches the same row twice in one statement is a 21000 - which, because
+ * the writer is all-or-nothing, DISCARDS THE WHOLE BATCH for every building the
+ * worker polls. Measured 26-27/08/2026: one duplicate at 950NK produced 240
+ * consecutive failed polls and left every assigned building blind for 20 hours,
+ * while the heartbeat kept reporting the worker as alive.
+ *
+ * A MAC is one device, so the collapse is one row rather than two rows or a
+ * wider key. Order: a bound lease beats a non-bound one, then the smaller
+ * `last-seen` wins; with neither reported, input order decides so the result is
+ * stable.
+ *
+ * That order picks THE ROUTER'S MOST RECENT DHCP TRANSACTION for the MAC, which
+ * is not the same claim as "the segment the device is plugged into now".
+ * `last-seen` measures DHCP messages, not traffic, so a long static reservation
+ * a device is actively using can read older than a dead dynamic lease on
+ * another server - exactly the 950NK shape (camera `1d22h`, stale hotspot
+ * `11h33m`). No lease field settles that, so this does not pretend to: the
+ * identity on the row is the MAC and is right either way, only the address may
+ * lag until the loser expires. The duplicate is what took the system down;
+ * picking the wrong one of two addresses does not.
+ *
+ * `records[i]` is the lease `clients[i]` was mapped from - the caller builds
+ * both from one `.map()` over the same array, so the indexes correspond.
+ */
+export function collapseDuplicateLeaseClients(
+  clients: RouterClientObservation[],
+  records: Array<Record<string, string>>,
+): RouterClientObservation[] {
+  const giu = new Map<string, number>();
+  clients.forEach((client, i) => {
+    const cu = giu.get(client.sessionKey);
+    if (cu === undefined || leaseIsFresher(records[i], records[cu])) giu.set(client.sessionKey, i);
+  });
+  return [...giu.values()].sort((a, b) => a - b).map((i) => clients[i]!);
+}
+
+function leaseIsFresher(
+  ung: Record<string, string> | undefined,
+  dangGiu: Record<string, string> | undefined,
+): boolean {
+  const bound = (r?: Record<string, string>) => (r?.status === "bound" ? 0 : 1);
+  if (bound(ung) !== bound(dangGiu)) return bound(ung) < bound(dangGiu);
+  // Absent `last-seen` must lose to any reported one, so it sorts as infinitely
+  // long ago rather than as zero.
+  const lanCuoi = (r?: Record<string, string>) =>
+    parseDurationSeconds(r?.["last-seen"]) ?? Number.POSITIVE_INFINITY;
+  return lanCuoi(ung) < lanCuoi(dangGiu);
+}
+
 function interfaceRole(
   name: string,
   type: string,
@@ -1239,7 +1297,8 @@ export class SshRouterConnector implements RouterConnector {
       };
     });
 
-    const clients: RouterClientObservation[] = parseRouterOsRecords(leaseOutput).map((record, index) => {
+    const leaseRecords = parseRouterOsRecords(leaseOutput);
+    const leaseClients: RouterClientObservation[] = leaseRecords.map((record, index) => {
       // `?? null` is not enough here, and the difference is another whole-batch
       // rollback. A BLANK value is not null, so `?? null` kept it, `mac ?? address`
       // then chose it, and `sessionKey` became the 5-character `"dhcp:"` against
@@ -1295,6 +1354,10 @@ export class SshRouterConnector implements RouterConnector {
           && ["2", "6", "a", "e"].includes(observedMac[1] ?? ""),
       };
     });
+
+    // See `collapseDuplicateLeaseClients`: two leases for one MAC are one 21000
+    // away from discarding this batch and every other building's with it.
+    const clients = collapseDuplicateLeaseClients(leaseClients, leaseRecords);
 
     const arubaInventory = parseArubaNeighbors(parseRouterOsRecords(neighborOutput));
     const aruba = arubaInventory.valid;
