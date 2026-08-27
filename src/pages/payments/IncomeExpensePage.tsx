@@ -85,6 +85,8 @@ import {
   useCustodianCashbooksV2,
   uploadFinanceEvidence,
   adoptVoucherAttachmentsAsEvidence,
+  useAttachPostingEvidence,
+  useRemovePostingAttachment,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 // Đợt 4: hỏi-trước can_flex_cancel_v1 + writer huỷ-một-nhát có CAS hai version.
@@ -352,6 +354,10 @@ const IncomeExpenseDesktopPage = () => {
 
   const { data: accounts = [] } = useAccounts();
   const { data: authUser } = useAuth();
+  // Dán ảnh trong hộp thoại Thu/Chi = đính ảnh lên phiếu rồi nhận nó làm chứng
+  // từ — nhờ vậy ảnh hiện luôn ở dòng thu chi (chủ báo 27/08/2026).
+  const attachPostingEvidence = useAttachPostingEvidence();
+  const removePostingAttachment = useRemovePostingAttachment();
 
   // Finance V2 route-aware (§9.6): org CANONICAL → duyệt-only không đổi tồn quỹ,
   // "Duyệt và Chi/Thu" đi qua Posting dialog atomic. Mặc định LEGACY giữ flow cũ.
@@ -1168,6 +1174,17 @@ const IncomeExpenseDesktopPage = () => {
             (approveTarget as { posting_version?: number }).posting_version ?? 1
           }
           onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
+          onAttachEvidence={(file) =>
+            attachPostingEvidence(file, {
+              voucherId: approveTarget.id,
+              userId: authUser?.id ?? "",
+              organizationId: (approveTarget as { organization_id?: string | null })
+                .organization_id,
+            })
+          }
+          onRemoveAttachment={(url) =>
+            removePostingAttachment(approveTarget.id, url)
+          }
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(
               file,
@@ -1256,6 +1273,16 @@ const IncomeExpenseDesktopPage = () => {
           expectedApprovalVersion={postApprovedTarget.approval_version ?? 1}
           expectedPostingVersion={postApprovedTarget.posting_version ?? 1}
           onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
+          onAttachEvidence={(file) =>
+            attachPostingEvidence(file, {
+              voucherId: postApprovedTarget.id,
+              userId: authUser?.id ?? "",
+              organizationId: postApprovedTarget.organization_id,
+            })
+          }
+          onRemoveAttachment={(url) =>
+            removePostingAttachment(postApprovedTarget.id, url)
+          }
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(file, postApprovedTarget.organization_id)
           }

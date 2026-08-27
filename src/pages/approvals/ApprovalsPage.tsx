@@ -30,6 +30,7 @@ import { Check, ClipboardCheck, RefreshCw, X } from "lucide-react";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/useAuth";
 import {
   usePendingApprovals,
   useDecideApproval,
@@ -48,6 +49,9 @@ import {
   useApproveAndPostIncomeExpenseV2,
   useCustodianCashbooksV2,
   uploadFinanceEvidence,
+  adoptVoucherAttachmentsAsEvidence,
+  useAttachPostingEvidence,
+  useRemovePostingAttachment,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 
@@ -62,6 +66,11 @@ const ApprovalsPage = () => {
   const isMobile = useIsMobile();
   const { data: rows = [], isLoading, isFetching, refetch } = usePendingApprovals();
   const decide = useDecideApproval();
+  const { data: authUser } = useAuth();
+  // Dán ảnh trong hộp thoại Thu/Chi = đính ảnh lên phiếu rồi nhận nó làm chứng
+  // từ, để ảnh hiện được ở dòng thu chi (xem IncomeExpensePage).
+  const attachPostingEvidence = useAttachPostingEvidence();
+  const removePostingAttachment = useRemovePostingAttachment();
 
   // Từ chối BẮT BUỘC nhập lý do → mở dialog thay vì gọi thẳng RPC.
   const [rejecting, setRejecting] = useState<PendingApproval | null>(null);
@@ -331,6 +340,17 @@ const ApprovalsPage = () => {
           expectedExecutionRevision={0}
           expectedApprovalVersion={postTarget.approval_version ?? 1}
           expectedPostingVersion={postTarget.posting_version ?? 1}
+          onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
+          onAttachEvidence={(file) =>
+            attachPostingEvidence(file, {
+              voucherId: postTarget.voucher_id as string,
+              userId: authUser?.id ?? "",
+              organizationId: postTarget.organization_id,
+            })
+          }
+          onRemoveAttachment={(url) =>
+            removePostingAttachment(postTarget.voucher_id as string, url)
+          }
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(file, postTarget.organization_id)
           }

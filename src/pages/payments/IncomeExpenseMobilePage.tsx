@@ -98,6 +98,8 @@ import {
   useCustodianCashbooksV2,
   uploadFinanceEvidence,
   adoptVoucherAttachmentsAsEvidence,
+  useAttachPostingEvidence,
+  useRemovePostingAttachment,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -435,6 +437,9 @@ export default function IncomeExpenseMobilePage() {
 
   const { data: accounts = [] } = useAccounts();
   const { data: authUser } = useAuth();
+  // Dán ảnh trong hộp thoại Thu/Chi = đính ảnh lên phiếu (xem IncomeExpensePage).
+  const attachPostingEvidence = useAttachPostingEvidence();
+  const removePostingAttachment = useRemovePostingAttachment();
 
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, "income_expenses", "create");
@@ -1359,6 +1364,17 @@ export default function IncomeExpenseMobilePage() {
             (approveTarget as { posting_version?: number }).posting_version ?? 1
           }
           onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
+          onAttachEvidence={(file) =>
+            attachPostingEvidence(file, {
+              voucherId: approveTarget.id,
+              userId: authUser?.id ?? "",
+              organizationId: (approveTarget as { organization_id?: string | null })
+                .organization_id,
+            })
+          }
+          onRemoveAttachment={(url) =>
+            removePostingAttachment(approveTarget.id, url)
+          }
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(
               file,
@@ -1455,6 +1471,18 @@ export default function IncomeExpenseMobilePage() {
             (postApprovedTarget as { posting_version?: number }).posting_version ?? 1
           }
           onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
+          onAttachEvidence={(file) =>
+            attachPostingEvidence(file, {
+              voucherId: postApprovedTarget.id,
+              userId: authUser?.id ?? "",
+              organizationId: (postApprovedTarget as {
+                organization_id?: string | null;
+              }).organization_id,
+            })
+          }
+          onRemoveAttachment={(url) =>
+            removePostingAttachment(postApprovedTarget.id, url)
+          }
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(
               file,

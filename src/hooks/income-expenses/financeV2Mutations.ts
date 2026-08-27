@@ -11,11 +11,15 @@
 //   approve_and_post_income_expense_v2(input jsonb)   -> jsonb
 // input = PostFinanceExecutionInput (src/lib/incomeExpensePostingValidation.ts).
 
+import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { PostFinanceExecutionInput } from "@/lib/incomeExpensePostingValidation";
 import { todayISO } from '@/lib/collect';
+import { uploadFile, deleteFile, sanitizeStorageFileName } from "@/lib/storage";
+import { validateAttachmentFile } from "@/components/income-expenses/AttachmentUpload";
+import { periodBlockMessage } from "@/lib/cashbookClosing";
 
 // RPC v2 chưa có trong generated types cho tới lần regen sau forward-apply.
 type RpcResult = { data: unknown; error: { code?: string; message?: string } | null };
@@ -267,4 +271,165 @@ export function useCustodianCashbooksV2(enabled: boolean) {
       return (data ?? []) as { id: string; name: string }[];
     },
   });
+}
+
+/**
+ * Kết quả một lần dán ảnh trong hộp thoại Thu/Chi.
+ * `attachedToVoucher=false` nghĩa là phải đi ĐƯỜNG LÙI: ảnh chỉ nằm trong kho
+ * chứng từ, không đính được lên phiếu (nên KHÔNG hiện ở dòng thu chi).
+ */
+export interface AttachPostingEvidenceResult {
+  /** URL ảnh trên phiếu; null khi đi đường lùi. */
+  url: string | null;
+  /** Toàn bộ chứng từ hợp lệ của phiếu sau lần dán này. */
+  evidenceIds: string[];
+  skipped: { url: string; reason: string }[];
+  attachedToVoucher: boolean;
+}
+
+export interface AttachPostingEvidenceOptions {
+  voucherId: string;
+  userId: string;
+  organizationId?: string | null;
+}
+
+/**
+ * DÁN ẢNH TRONG HỘP THOẠI THU/CHI = ĐÍNH ẢNH LÊN PHIẾU, rồi nhận chính file đó
+ * làm chứng từ. Một tấm ảnh, một file trong kho, hai bản ghi trỏ về nó.
+ *
+ * VÌ SAO ĐỔI (chủ báo 27/08/2026): "bấm huỷ chi rồi bấm chi lại thêm ảnh chứng
+ * từ nhưng sau đó không thấy ảnh đó trong dòng thu chi". Đường cũ
+ * (`uploadFinanceEvidence`) ghi ảnh vào `finance_evidence_objects` với path
+ * `v2/<org>/<mid>/<uuid>` — KHÔNG có đuôi file và KHÔNG nằm trong
+ * `income_expenses.attachments`, mà mọi chỗ hiển thị (dòng thu chi, chi tiết
+ * phiếu, mobile) chỉ đọc `attachments`. Nên ảnh chi xong là biến mất khỏi mắt
+ * người dùng dù server vẫn giữ đủ bằng chứng.
+ *
+ * Đường mới đi bằng hai RPC đã có sẵn, không cần migration:
+ *   uploadFile(...)  → publicUrl CÓ ĐUÔI FILE (isImageUrl bắt được ⇒ có thumbnail)
+ *   annotate_income_expense_v1(add)      → URL vào attachments ⇒ dòng thu chi thấy ngay
+ *   adopt_voucher_attachments_as_evidence_v2 → chính file đó thành evidence FINALIZED
+ *
+ * ĐƯỜNG LÙI: `annotate` từ chối 42501 khi actor không đủ quyền đính ảnh (vd thủ
+ * quỹ giữ sổ khác sổ đang ghi trên phiếu). Lúc đó xoá file vừa tải cho khỏi rác
+ * rồi quay về đường cũ — thà ảnh không hiện ở dòng còn hơn chặn người ta chi tiền.
+ */
+export function useAttachPostingEvidence() {
+  const qc = useQueryClient();
+
+  return useCallback(
+    async (
+      file: File,
+      opts: AttachPostingEvidenceOptions,
+    ): Promise<AttachPostingEvidenceResult | null> => {
+      const invalid = validateAttachmentFile(file);
+      if (invalid) {
+        toast.error(invalid);
+        return null;
+      }
+
+      const bucket = "income-expense-attachments";
+      const path = `${opts.userId}/${Date.now()}-${sanitizeStorageFileName(file.name)}`;
+
+      // Bắt lỗi để BÁO, không để nuốt: giữ lại đối tượng lỗi rồi quyết định ở
+      // ngoài khối catch (catch trả rỗng là mẫu bị gate error-swallow chặn).
+      let url: string | null = null;
+      let loiTai: unknown = null;
+      try {
+        url = await uploadFile(bucket, path, file);
+      } catch (e) {
+        loiTai = e;
+      }
+      if (!url) {
+        toast.error((loiTai as Error)?.message || "Không tải được ảnh lên kho");
+        return null;
+      }
+
+      const ann = await rpc("annotate_income_expense_v1", {
+        p_voucher: opts.voucherId,
+        p_add_attachments: [url],
+      });
+
+      if (ann.error) {
+        // Kỳ đã đóng là lỗi THẬT — chi cũng sẽ hỏng, nói thẳng thay vì lùi âm thầm.
+        const blocked = periodBlockMessage(ann.error.message);
+        if (blocked) {
+          toast.error(blocked);
+          await cleanupOrphanUpload(bucket, url);
+          return null;
+        }
+
+        // Thiếu quyền đính ảnh lên phiếu → vẫn chi được bằng đường chứng từ cũ.
+        await cleanupOrphanUpload(bucket, url);
+        const evidenceId = await uploadFinanceEvidence(file, opts.organizationId);
+        if (!evidenceId) return null;
+        toast.warning(
+          "Ảnh đã lưu làm chứng từ chi, nhưng chưa đính được lên phiếu (thiếu quyền sửa) — nó sẽ không hiện ở dòng thu chi.",
+        );
+        return {
+          url: null,
+          evidenceIds: [evidenceId],
+          skipped: [],
+          attachedToVoucher: false,
+        };
+      }
+
+      const adopted = await adoptVoucherAttachmentsAsEvidence(opts.voucherId);
+
+      // Dòng thu chi phải thấy ảnh NGAY, kể cả khi người dùng bấm Huỷ bỏ sau đó.
+      qc.invalidateQueries({ queryKey: ["income-expenses"] });
+      qc.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+
+      return {
+        url,
+        evidenceIds: adopted.evidenceIds,
+        skipped: adopted.skipped,
+        attachedToVoucher: true,
+      };
+    },
+    [qc],
+  );
+}
+
+/** Xoá file vừa tải khi bước sau hỏng — không để lại rác trong kho. Lỗi thì bỏ qua. */
+async function cleanupOrphanUpload(bucket: string, publicUrl: string): Promise<void> {
+  try {
+    const marker = `/object/public/${bucket}/`;
+    const idx = publicUrl.indexOf(marker);
+    if (idx === -1) return;
+    await deleteFile(bucket, decodeURIComponent(publicUrl.slice(idx + marker.length)));
+  } catch {
+    // Rác một file không đáng để làm hỏng luồng chi tiền.
+  }
+}
+
+/**
+ * Gỡ một ảnh khỏi phiếu ngay trong hộp thoại Thu/Chi. Server chỉ cho NGƯỜI CÓ
+ * QUYỀN SỬA thu chi gỡ (gỡ bằng chứng là hành vi sửa, không phải chú thích) —
+ * bị từ chối thì báo thật, không giả vờ đã gỡ.
+ */
+export function useRemovePostingAttachment() {
+  const qc = useQueryClient();
+
+  return useCallback(
+    async (voucherId: string, url: string): Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] } | null> => {
+      const res = await rpc("annotate_income_expense_v1", {
+        p_voucher: voucherId,
+        p_remove_attachments: [url],
+      });
+      if (res.error) {
+        toast.error(
+          periodBlockMessage(res.error.message) ||
+            res.error.message ||
+            "Không gỡ được ảnh khỏi phiếu",
+        );
+        return null;
+      }
+      const adopted = await adoptVoucherAttachmentsAsEvidence(voucherId);
+      qc.invalidateQueries({ queryKey: ["income-expenses"] });
+      qc.invalidateQueries({ queryKey: ["voucher-with-batch"] });
+      return adopted;
+    },
+    [qc],
+  );
 }

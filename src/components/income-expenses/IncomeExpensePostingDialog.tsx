@@ -24,8 +24,14 @@ import { DateSegmentInput } from '@/components/ui/date-segment-input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { StorageImage } from '@/components/ui/storage-image';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
-import { formatVND } from '@/lib/utils';
+import { cn, formatVND } from '@/lib/utils';
 import { todayISO } from '@/lib/collect';
+import {
+  buildPostingEvidenceItems,
+  countUsableEvidence,
+  isPdfAttachment,
+  type PostingEvidenceItem,
+} from '@/lib/postingEvidenceItems';
 import {
   buildIncomeExpensePostingSchema,
   type IncomeExpensePostingFormValues,
@@ -71,13 +77,13 @@ export interface PostingVoucherSummary {
    */
   defaultCashbookId?: string | null;
   /**
-   * Ảnh đính kèm sẵn trên phiếu (income_expenses.attachments) — hiển thị để đối
-   * chiếu ngay trong hộp thoại.
+   * Ảnh đính kèm của phiếu (`income_expenses.attachments`) — TỪ 27/08/2026 đây
+   * CHÍNH LÀ danh sách chứng từ của hộp thoại này.
    *
-   * LƯU Ý: đây KHÔNG phải chứng từ chi. Chứng từ chi là bản ghi evidence riêng
-   * (intent → upload → finalize) mà server kiểm FINALIZED theo tenant; ảnh đính
-   * kèm chỉ là file trong bucket của phiếu. Vì vậy chúng chỉ xem được, không tự
-   * động thoả điều kiện "phải có chứng từ".
+   * Chứng từ vẫn là bản ghi riêng trong `finance_evidence_objects` (server kiểm
+   * FINALIZED theo tenant), nhưng nó trỏ vào đúng file đã đính kèm — một tấm
+   * ảnh, một file trong kho. Ảnh đã dùng cho lần ghi sổ trước sẽ hiện mờ kèm lý
+   * do, vì luật one-shot bắt mỗi lần ghi sổ phải có chứng từ riêng.
    */
   attachments?: string[] | null;
 }
@@ -117,6 +123,22 @@ export interface IncomeExpensePostingDialogProps {
   onAdoptAttachments?: (
     voucherId: string,
   ) => Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] }>;
+  /**
+   * Dán ảnh = đính ảnh LÊN PHIẾU rồi nhận chính nó làm chứng từ (đường chính từ
+   * 27/08/2026 — xem `useAttachPostingEvidence`). Không truyền thì rơi về
+   * `onUploadEvidence`, lúc đó ảnh chỉ nằm ở kho chứng từ và KHÔNG hiện ở dòng
+   * thu chi.
+   */
+  onAttachEvidence?: (file: File) => Promise<{
+    url: string | null;
+    evidenceIds: string[];
+    skipped: { url: string; reason: string }[];
+    attachedToVoucher: boolean;
+  } | null>;
+  /** Gỡ một ảnh khỏi phiếu (server chỉ cho người có quyền sửa thu chi). */
+  onRemoveAttachment?: (
+    url: string,
+  ) => Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] } | null>;
 }
 
 /** Sinh idempotency key khi server không cấp (chống double-post lúc retry UI). */
@@ -135,56 +157,46 @@ function todayIso(): string {
 }
 
 /**
- * Placeholder thu thập evidenceIds cho §12.3. Nếu caller nối `onUpload` thật thì
- * dùng id đã finalize; nếu không, tạo id tạm chỉ để dựng UI (báo rõ chưa nối).
+ * Ô "Hình ảnh/chứng từ" — MỘT lưới ảnh duy nhất của phiếu.
+ *
+ * Trước 27/08/2026 chỗ này vẽ hai khối tách nhau: khối thumbnail "ảnh đính kèm
+ * sẵn" (chỉ để xem) và một danh sách CHỮ "Chứng từ 1, Chứng từ 2" cho ảnh vừa
+ * dán — vì ảnh vừa dán chỉ trả về `evidenceId` (uuid), component không có URL
+ * nào để vẽ. Chủ báo đúng hai triệu chứng của kiến trúc đó: dán ảnh xong không
+ * thấy ảnh thu nhỏ, và chi xong ảnh không hiện ở dòng thu chi.
+ *
+ * Giờ ảnh chứng từ CHÍNH LÀ ảnh đính kèm của phiếu, nên chỉ còn một danh sách.
+ * Ảnh không dùng được cho lần ghi sổ này (vd đã dùng cho lần chi trước) vẫn hiện
+ * nhưng mờ đi và nói rõ lý do — im lặng bỏ qua là cách chắc chắn làm người dùng
+ * tưởng hệ thống nuốt mất ảnh.
  */
-function EvidencePlaceholderUpload({
-  value,
-  onChange,
+function PostingEvidenceUpload({
+  items,
+  onFiles,
+  onRemove,
+  busy,
+  adopting,
   disabled,
-  onUpload,
-  existingAttachments = [],
-  adoptedCount = 0,
-  adopting = false,
-  adoptSkipped = [],
+  fallbackCount,
 }: {
-  value: string[];
-  onChange: (ids: string[]) => void;
+  items: PostingEvidenceItem[];
+  onFiles: (files: FileList | File[] | null) => Promise<void>;
+  /** Không truyền → không cho gỡ (vd hộp thoại mở cho subject không phải phiếu). */
+  onRemove?: (url: string) => Promise<void>;
+  busy: boolean;
+  adopting: boolean;
   disabled?: boolean;
-  onUpload?: (file: File) => Promise<string | null>;
-  /** Ảnh đã đính kèm từ lúc tạo phiếu. */
-  existingAttachments?: string[];
-  /** Bao nhiêu ảnh trong số đó đã được nhận làm chứng từ (7ai). */
-  adoptedCount?: number;
-  adopting?: boolean;
-  adoptSkipped?: { url: string; reason: string }[];
+  /** Số chứng từ chỉ nằm ở kho chứng từ, không đính được lên phiếu (đường lùi). */
+  fallbackCount: number;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
 
   const handleFiles = useCallback(
     async (files: FileList | File[] | null) => {
-      const list = files ? Array.from(files as ArrayLike<File>) : [];
-      if (list.length === 0) return;
-      setBusy(true);
-      try {
-        const added: string[] = [];
-        for (const file of list) {
-          if (onUpload) {
-            const id = await onUpload(file);
-            if (id) added.push(id);
-          } else {
-            // Chưa nối luồng thật — id tạm chỉ để dựng giao diện.
-            added.push(`local:${genIdempotencyKey()}`);
-          }
-        }
-        if (added.length > 0) onChange([...value, ...added]);
-      } finally {
-        setBusy(false);
-        if (inputRef.current) inputRef.current.value = '';
-      }
+      await onFiles(files);
+      if (inputRef.current) inputRef.current.value = '';
     },
-    [onChange, onUpload, value],
+    [onFiles],
   );
 
   // Ctrl+V dán ảnh ngay trong ô chứng từ (đối xứng AttachmentUpload lúc tạo phiếu).
@@ -194,48 +206,10 @@ function EvidencePlaceholderUpload({
     multiple: true,
   });
 
-  const removeAt = (idx: number) => {
-    onChange(value.filter((_, i) => i !== idx));
-  };
+  const usable = countUsableEvidence(items);
 
   return (
     <div className="space-y-2" {...pasteHandlers}>
-      {existingAttachments.length > 0 && (
-        <div className="space-y-1 rounded-md border border-dashed bg-muted/30 p-2">
-          <p className="text-xs text-muted-foreground">
-            {adopting
-              ? `Đang nhận ${existingAttachments.length} ảnh đính kèm làm chứng từ…`
-              : adoptedCount > 0
-                ? `Dùng ${adoptedCount}/${existingAttachments.length} ảnh đính kèm sẵn làm chứng từ — bấm lưu được ngay, cần bổ sung thì thêm ở dưới.`
-                : `Ảnh đính kèm từ lúc tạo phiếu (${existingAttachments.length}) — chưa dùng làm chứng từ được, hãy thêm chứng từ ở dưới.`}
-          </p>
-          {adoptSkipped.length > 0 && (
-            <p className="text-xs text-amber-700">
-              {adoptSkipped.length} ảnh không dùng lại được
-              {adoptSkipped.some((s) => s.reason === 'ATTACHED')
-                ? ' (đã dùng cho lần ghi sổ trước — mỗi lần chi cần chứng từ riêng)'
-                : ''}
-              .
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {existingAttachments.map((url, idx) => (
-              <div
-                key={`${url}-${idx}`}
-                className="h-16 w-16 overflow-hidden rounded border bg-background"
-                title={`Ảnh đính kèm ${idx + 1}`}
-              >
-                <StorageImage
-                  value={url}
-                  alt={`Ảnh đính kèm ${idx + 1}`}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <input
         ref={inputRef}
         type="file"
@@ -261,38 +235,72 @@ function EvidencePlaceholderUpload({
         </span>
       </div>
 
-      {value.length > 0 && (
-        <ul className="space-y-1">
-          {value.map((id, idx) => (
-            <li
-              key={`${id}-${idx}`}
-              className="flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-sm"
-            >
-              <span className="flex items-center gap-2 truncate">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate" title={id}>
-                  Chứng từ {idx + 1}
-                  {idx < adoptedCount && ' — ảnh đính kèm sẵn'}
-                </span>
-              </span>
-              {!disabled && (
-                <button
-                  type="button"
-                  className="text-destructive hover:opacity-70"
-                  onClick={() => removeAt(idx)}
-                  aria-label="Gỡ chứng từ"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+      {adopting && (
+        <p className="text-xs text-muted-foreground">Đang kiểm ảnh của phiếu…</p>
       )}
 
-      {!onUpload && (
-        <p className="text-xs text-amber-600">
-          Chưa nối luồng tải chứng từ — id tạm thời chỉ để dựng giao diện.
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {items.map((item) => (
+            <div
+              key={item.url}
+              className={cn(
+                'relative group h-20 w-20 overflow-hidden rounded-lg border bg-muted/40',
+                !item.usable && 'opacity-40 grayscale',
+              )}
+              title={
+                item.usable
+                  ? item.addedNow
+                    ? 'Ảnh vừa thêm — đã đính lên phiếu'
+                    : 'Ảnh đính kèm của phiếu, dùng làm chứng từ'
+                  : item.reasonText
+              }
+            >
+              {isPdfAttachment(item.url) ? (
+                <div className="flex h-full w-full items-center justify-center">
+                  <FileText className="h-8 w-8 text-muted-foreground" />
+                </div>
+              ) : (
+                <StorageImage
+                  value={item.url}
+                  alt="Chứng từ"
+                  className="h-full w-full object-cover"
+                />
+              )}
+              {onRemove && !disabled && (
+                <button
+                  type="button"
+                  className="absolute right-0.5 top-0.5 rounded-full bg-red-500 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={() => onRemove(item.url)}
+                  aria-label="Gỡ chứng từ"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {items.some((i) => !i.usable) && (
+        <p className="text-xs text-amber-700">
+          {items.filter((i) => !i.usable).length} ảnh mờ:{' '}
+          {items.find((i) => !i.usable)?.reasonText}. Hãy thêm ảnh mới cho lần này.
+        </p>
+      )}
+
+      {items.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {usable > 0
+            ? `${usable} ảnh tính là chứng từ cho lần ghi sổ này — cũng chính là ảnh đính kèm của phiếu.`
+            : 'Chưa có ảnh nào tính là chứng từ cho lần ghi sổ này.'}
+        </p>
+      )}
+
+      {fallbackCount > 0 && (
+        <p className="text-xs text-amber-700">
+          {fallbackCount} chứng từ chỉ lưu ở kho chứng từ (không đính được lên
+          phiếu) — sẽ không hiện ở dòng thu chi.
         </p>
       )}
     </div>
@@ -322,6 +330,8 @@ export default function IncomeExpensePostingDialog({
   onSubmit,
   isSubmitting = false,
   onAdoptAttachments,
+  onAttachEvidence,
+  onRemoveAttachment,
 }: IncomeExpensePostingDialogProps) {
   const isExpense = voucher.type === 'EXPENSE';
   const allowAmount = voucher.subjectKind === 'SALARY_AUTHORIZATION';
@@ -420,11 +430,21 @@ export default function IncomeExpensePostingDialog({
     { url: string; reason: string }[]
   >([]);
   const [adopting, setAdopting] = useState(false);
+  /** URL vừa dán trong phiên này — `voucher.attachments` là ảnh chụp lúc mở nên không tự cập nhật. */
+  const [sessionUrls, setSessionUrls] = useState<string[]>([]);
+  /** URL vừa gỡ khỏi phiếu — loại khỏi danh sách hiển thị mà không cần mở lại. */
+  const [removedUrls, setRemovedUrls] = useState<string[]>([]);
+  /** Chứng từ đi ĐƯỜNG LÙI: có trong kho chứng từ nhưng không đính được lên phiếu. */
+  const [fallbackIds, setFallbackIds] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setAdoptedIds([]);
       setAdoptSkipped([]);
+      setSessionUrls([]);
+      setRemovedUrls([]);
+      setFallbackIds([]);
       return;
     }
     if (attachments.length === 0 || !onAdoptAttachments) return;
@@ -437,12 +457,6 @@ export default function IncomeExpensePostingDialog({
         if (cancelled) return;
         setAdoptedIds(res.evidenceIds);
         setAdoptSkipped(res.skipped ?? []);
-        if (
-          res.evidenceIds.length > 0 &&
-          (form.getValues('evidenceIds') ?? []).length === 0
-        ) {
-          form.setValue('evidenceIds', res.evidenceIds, { shouldValidate: true });
-        }
       })
       .finally(() => {
         if (!cancelled) setAdopting(false);
@@ -452,6 +466,73 @@ export default function IncomeExpensePostingDialog({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, voucher.subjectId, mode, attachments.length]);
+
+  /**
+   * `evidenceIds` của form LUÔN được suy ra, không bao giờ sửa tay: chứng từ hợp
+   * lệ = ảnh của phiếu mà server nhận (adopt) + chứng từ đi đường lùi. Suy ra
+   * thay vì tích luỹ để ảnh vừa gỡ biến mất khỏi lần ghi sổ ngay lập tức.
+   */
+  useEffect(() => {
+    const next = [...adoptedIds, ...fallbackIds];
+    const current = form.getValues('evidenceIds') ?? [];
+    if (current.length === next.length && current.every((v, i) => v === next[i])) return;
+    form.setValue('evidenceIds', next, { shouldValidate: next.length > 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adoptedIds, fallbackIds]);
+
+  const evidenceItems = useMemo(
+    () =>
+      buildPostingEvidenceItems({
+        attachments: attachments.filter((u) => !removedUrls.includes(u)),
+        sessionUploaded: sessionUrls,
+        skipped: adoptSkipped,
+      }),
+    [attachments, removedUrls, sessionUrls, adoptSkipped],
+  );
+
+  const handleEvidenceFiles = useCallback(
+    async (files: FileList | File[] | null) => {
+      const list = files ? Array.from(files as ArrayLike<File>) : [];
+      if (list.length === 0) return;
+      setUploading(true);
+      try {
+        for (const file of list) {
+          if (onAttachEvidence) {
+            const res = await onAttachEvidence(file);
+            if (!res) continue;
+            if (res.attachedToVoucher) {
+              if (res.url) setSessionUrls((prev) => [...prev, res.url as string]);
+              setAdoptedIds(res.evidenceIds);
+              setAdoptSkipped(res.skipped ?? []);
+            } else {
+              setFallbackIds((prev) => [...prev, ...res.evidenceIds]);
+            }
+            continue;
+          }
+          if (onUploadEvidence) {
+            const id = await onUploadEvidence(file);
+            if (id) setFallbackIds((prev) => [...prev, id]);
+          }
+        }
+      } finally {
+        setUploading(false);
+      }
+    },
+    [onAttachEvidence, onUploadEvidence],
+  );
+
+  const handleEvidenceRemove = useCallback(
+    async (url: string) => {
+      if (!onRemoveAttachment) return;
+      const res = await onRemoveAttachment(url);
+      if (!res) return; // server từ chối (thiếu quyền sửa) — không giả vờ đã gỡ
+      setRemovedUrls((prev) => [...prev, url]);
+      setSessionUrls((prev) => prev.filter((u) => u !== url));
+      setAdoptedIds(res.evidenceIds);
+      setAdoptSkipped(res.skipped ?? []);
+    },
+    [onRemoveAttachment],
+  );
 
   const submit = form.handleSubmit(async (values) => {
     const input: PostFinanceExecutionInput = {
@@ -582,20 +663,19 @@ export default function IncomeExpensePostingDialog({
             <FormField
               control={form.control}
               name="evidenceIds"
-              render={({ field }) => (
+              render={() => (
                 <FormItem>
                   <FormLabel>
                     Hình ảnh/chứng từ {requireEvidence ? '*' : '(tuỳ chọn)'}
                   </FormLabel>
                   <FormControl>
-                    <EvidencePlaceholderUpload
-                      value={field.value ?? []}
-                      onChange={field.onChange}
-                      onUpload={onUploadEvidence}
-                      existingAttachments={attachments}
-                      adoptedCount={adoptedIds.length}
+                    <PostingEvidenceUpload
+                      items={evidenceItems}
+                      onFiles={handleEvidenceFiles}
+                      onRemove={onRemoveAttachment ? handleEvidenceRemove : undefined}
+                      busy={uploading}
                       adopting={adopting}
-                      adoptSkipped={adoptSkipped}
+                      fallbackCount={fallbackIds.length}
                     />
                   </FormControl>
                   <FormMessage />
