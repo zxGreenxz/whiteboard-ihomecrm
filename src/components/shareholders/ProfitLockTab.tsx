@@ -169,7 +169,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     period: string;
     stateHash: string;
     snapshotIds: string[];
-    targetBuildingIds: string[];
+    /** null = cả kỳ, kể cả dòng legacy trên toà ảo/đã xoá. */
+    targetBuildingIds: string[] | null;
   } | null>(null);
   const [resetReason, setResetReason] = useState("");
   const resetReasonLength = resetReason.trim().length;
@@ -867,13 +868,19 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   buildingIds: selectedLockedIds,
                 });
               }}
+              // Không tự nới về "mọi nhà đang khoá" khi chưa tick gì: nút này
+              // XOÁ phần đã phân bổ, nên phạm vi phải do người dùng nói ra.
               disabled={
                 unlockMutation.isPending ||
                 resetMutation.isPending ||
                 closeMutation.isPending ||
                 selectedLockedIds.length === 0
               }
-              title="Gỡ khoá để sửa phiếu của các nhà đang chọn. LƯU Ý: phần đã phân bổ cho cổ đông và quản lý của những nhà đó sẽ bị XOÁ, snapshot về Nháp — phải chốt lại sau khi sửa xong."
+              title={
+                selectedLockedIds.length === 0
+                  ? "Chưa tick nhà nào đang ở trạng thái Đã chốt. Tick những nhà cần sửa phiếu rồi bấm lại."
+                  : "Gỡ khoá để sửa phiếu của các nhà đang chọn. LƯU Ý: phần đã phân bổ cho cổ đông và quản lý của những nhà đó sẽ bị XOÁ, snapshot về Nháp — phải chốt lại sau khi sửa xong."
+              }
             >
               <LockOpen className="mr-1.5 h-3.5 w-3.5" />
               Mở khoá {selectedLockedIds.length} nhà đã chọn
@@ -885,26 +892,42 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               className="ph-control ph-control--danger"
               onClick={() => {
                 if (!state?.state_hash || state.snapshot_ids.length === 0) return;
-                if (selectedSnapshotBuildingIds.length === 0) return;
+                if (!mixedState && selectedSnapshotBuildingIds.length === 0) return;
                 setResetGuard({
                   organizationId,
                   period,
                   stateHash: state.state_hash,
                   snapshotIds: [...state.snapshot_ids],
-                  targetBuildingIds: [...selectedSnapshotBuildingIds].sort(),
+                  // Dòng legacy nằm trên toà ảo/đã xoá KHÔNG có mặt trong preview
+                  // nên không tick được. Nếu chỉ đặt lại theo vùng chọn thì cảnh
+                  // báo đỏ "phải đặt lại các dòng đó" trở thành lời khuyên không
+                  // có nút bấm — nên trường hợp này quay về đặt lại CẢ KỲ, đúng
+                  // hành vi cũ, và nhãn nút nói rõ điều đó.
+                  targetBuildingIds: mixedState
+                    ? null
+                    : [...selectedSnapshotBuildingIds].sort(),
                 });
                 setResetOpen(true);
               }}
               disabled={
                 !state?.state_hash ||
                 state.snapshot_ids.length === 0 ||
-                selectedSnapshotBuildingIds.length === 0 ||
+                (!mixedState && selectedSnapshotBuildingIds.length === 0) ||
                 resetMutation.isPending ||
                 closeMutation.isPending
               }
+              title={
+                mixedState
+                  ? "Tháng còn dòng chốt trên toà ảo/đã xoá — những dòng đó không hiện trong bảng nên phải đặt lại cả kỳ."
+                  : selectedSnapshotBuildingIds.length === 0
+                    ? "Chưa tick nhà nào đang có snapshot. Tick những nhà cần bỏ snapshot rồi bấm lại."
+                    : undefined
+              }
             >
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              Đặt lại {selectedSnapshotBuildingIds.length} nhà đã chọn
+              {mixedState
+                ? "Đặt lại cả tháng (gồm dòng legacy)"
+                : `Đặt lại ${selectedSnapshotBuildingIds.length} nhà đã chọn`}
             </Button>
           )}
         </div>
@@ -1552,13 +1575,17 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Đặt lại {resetGuard?.targetBuildingIds.length ?? 0} nhà của {periodToLabel(period)}?
+              {resetGuard?.targetBuildingIds
+                ? `Đặt lại ${resetGuard.targetBuildingIds.length} nhà của ${periodToLabel(period)}?`
+                : `Đặt lại CẢ THÁNG ${periodToLabel(period)}?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Thao tác này bỏ snapshot hiện tại của những nhà đang chọn để chốt mới từ
-              đầu. Lịch sử revision vẫn được lưu phục vụ kiểm toán. Server vẫn kiểm
-              trạng thái TOÀN THÁNG trước khi ghi, nên nếu ai đó vừa chốt hoặc mở khoá
-              nhà khác thì thao tác này bị từ chối để bạn tải lại.
+              {resetGuard?.targetBuildingIds
+                ? "Thao tác này bỏ snapshot hiện tại của những nhà đang chọn để chốt mới từ đầu."
+                : "Thao tác này bỏ TOÀN BỘ snapshot của tháng, kể cả dòng legacy nằm trên toà ảo hoặc toà đã xoá — đó chính là thứ đang chặn không cho chốt tiếp."}{" "}
+              Lịch sử revision vẫn được lưu phục vụ kiểm toán. Server vẫn kiểm trạng
+              thái TOÀN THÁNG trước khi ghi, nên nếu ai đó vừa chốt hoặc mở khoá nhà
+              khác thì thao tác này bị từ chối để bạn tải lại.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-1">
@@ -1583,7 +1610,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             >
               {resetMutation.isPending
                 ? "Đang đặt lại…"
-                : `Đặt lại ${resetGuard?.targetBuildingIds.length ?? 0} nhà`}
+                : resetGuard?.targetBuildingIds
+                  ? `Đặt lại ${resetGuard.targetBuildingIds.length} nhà`
+                  : "Đặt lại cả tháng"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
