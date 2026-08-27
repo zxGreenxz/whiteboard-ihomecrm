@@ -565,6 +565,36 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
 
 // --- Mutations ---
 
+// Tổ chức của một nhân viên hưởng lương — ĐỌC ĐÚNG NGUỒN mà writer canonical dùng
+// (lock_salary_month_v1: manager_salary_config → fallback organization_memberships).
+// Bắt buộc phải có: công thức biên giới tổ chức có nhánh `organization_id IS NULL`,
+// nên một dòng lương thiếu nhãn org sẽ hiển thị cho MỌI công ty. Đã xảy ra thật:
+// 4 khoản thưởng tay + 2 salary_monthly nhập ngày 27/08/2026 rơi ra NULL và làm đỏ
+// gate measure-org-leak. Thà ném lỗi còn hơn ghi một dòng tiền không có biên giới.
+async function orgOfStaff(staffId: string): Promise<string> {
+  const { data: cfg } = await (supabase
+    .from("manager_salary_config")
+    .select("organization_id") as any)
+    .eq("staff_id", staffId)
+    .not("organization_id", "is", null)
+    .order("is_active", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if ((cfg as any)?.organization_id) return (cfg as any).organization_id as string;
+
+  const { data: mem } = await (supabase
+    .from("organization_memberships")
+    .select("organization_id") as any)
+    .eq("user_id", staffId)
+    .eq("status", "ACTIVE")
+    .limit(1)
+    .maybeSingle();
+  if ((mem as any)?.organization_id) return (mem as any).organization_id as string;
+
+  throw new Error("Không xác định được tổ chức của nhân viên — không thể ghi dòng lương");
+}
+
 async function ensureMonthly(ownerId: string, staffId: string, periodMonth: string): Promise<string> {
   const { data: existing } = await (supabase
     .from("salary_monthly")
@@ -574,9 +604,16 @@ async function ensureMonthly(ownerId: string, staffId: string, periodMonth: stri
     .limit(1)
     .maybeSingle();
   if (existing?.id) return (existing as any).id;
+  const organizationId = await orgOfStaff(staffId);
   const { data: created, error } = await supabase
     .from("salary_monthly")
-    .insert({ user_id: ownerId, staff_id: staffId, period_month: periodMonth, status: "DRAFT" })
+    .insert({
+      user_id: ownerId,
+      staff_id: staffId,
+      period_month: periodMonth,
+      status: "DRAFT",
+      organization_id: organizationId,
+    })
     .select("id")
     .single();
   if (error) throw error;
@@ -617,6 +654,8 @@ export const useSaveSalaryAdjustment = () => {
         amount: Math.abs(input.amount),
         note: input.note ?? null,
         source: "MANUAL",
+        // thiếu nhãn org = dòng thưởng tay hiện cho mọi công ty (xem orgOfStaff)
+        organization_id: await orgOfStaff(input.staffId),
       });
       if (error) throw error;
     },
