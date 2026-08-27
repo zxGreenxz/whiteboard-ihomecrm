@@ -53,9 +53,13 @@ const INVALIDATE_KEYS = [
   ["voucher-change-log"],
   ["financial-analysis"],
   ["business-performance"],
-  ["shareholder-profit"],
   ["profit-verification"],
-  ["dashboard-stats"],
+  // Lợi nhuận đem chia đổi theo — đây là hệ quả nặng nhất của việc gạt cờ.
+  ["monthly-building-profit"],
+  ["profit-close-preview"],
+  ["profit-close-state"],
+  // Dashboard: KPI "Doanh thu tháng này" + biểu đồ 12 tháng.
+  ["dashboard-summary"],
   ["revenue-chart"],
 ] as const;
 
