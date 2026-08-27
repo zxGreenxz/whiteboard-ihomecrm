@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-27T17:32:33.081Z",
+  "generatedAt": "2026-08-27T18:25:12.979Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 416,
+    "ledger-applied": 419,
     "unknown": 69,
     "catalog-proven": 216,
     "superseded": 15
@@ -8421,6 +8421,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-27T17:30:51.776Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260828120000_room_cash_lifecycle_read_rpc.sql",
+      "version": "20260828120000",
+      "name": "room_cash_lifecycle_read_rpc",
+      "scheme": "timestamp14",
+      "sha256": "f434cf34b7eb07365369eafbbeed2c36c59b14c9b96551b5e5b6fb7e6349a5cd",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-27T18:13:04.126Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260828121000_room_cash_lifecycle_close_ended_segments.sql",
+      "version": "20260828121000",
+      "name": "room_cash_lifecycle_close_ended_segments",
+      "scheme": "timestamp14",
+      "sha256": "875eda9210b15bd823dabcccbae41363f0d28c900ca2d90b3947bf69b9771e13",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-27T18:18:55.568Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260828122000_room_cash_lifecycle_guard_inverted_segments.sql",
+      "version": "20260828122000",
+      "name": "room_cash_lifecycle_guard_inverted_segments",
+      "scheme": "timestamp14",
+      "sha256": "759ee7af67984bf6a38d05ada9d4081656d271bce088468831d406617bf98573",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-27T18:24:19.728Z|bien-nhan-backup"
       ]
     },
     {

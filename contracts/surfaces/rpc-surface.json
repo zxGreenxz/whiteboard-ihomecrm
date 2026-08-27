@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1699,
-    "catalogFunctions": 1096,
+    "sourceCallSites": 1704,
+    "catalogFunctions": 1097,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 259,
+    "calledRpcs": 260,
     "byRisk": {
-      "normal": 177,
+      "normal": 178,
       "financial": 76,
       "security": 6
     },
-    "securityDefiner": 243
+    "securityDefiner": 244
   },
   "missingOnServer": [],
   "rpcs": {
@@ -2289,6 +2289,26 @@
       ],
       "callers": [
         "src/hooks/useDeposits.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_room_cash_lifecycle_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_room_id uuid, p_from date DEFAULT NULL::date, p_to date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useRoomCashLifecycle.ts"
       ],
       "risk": "normal"
     },

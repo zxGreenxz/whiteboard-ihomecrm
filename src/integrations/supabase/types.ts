@@ -25478,6 +25478,10 @@ export type Database = {
         Args: { p_building_ids?: string[] }
         Returns: Json
       }
+      get_room_cash_lifecycle_v1: {
+        Args: { p_from?: string; p_room_id: string; p_to?: string }
+        Returns: Json
+      }
       get_room_residence_conflicts_v1: {
         Args: { p_contract_ids?: string[] }
         Returns: {

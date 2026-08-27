@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, HandCoins, Plug, Repeat } from 'lucide-react';
+import { ArrowLeft, HandCoins, History, Plug, Repeat } from 'lucide-react';
 import './thu-tien.css';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useThuTienInvoices } from '@/hooks/useCollectionReport';
@@ -28,6 +28,7 @@ import { CollectDrawer } from '@/components/thu-tien/CollectDrawer';
 import { CollectionReport } from '@/components/thu-tien/CollectionReport';
 import { HandoverSheet } from '@/components/thu-tien/HandoverSheet';
 import { ManagePanel } from '@/components/thu-tien/ManagePanel';
+import { RoomLifecycleSheet } from '@/components/thu-tien/room-lifecycle/RoomLifecycleSheet';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -65,6 +66,8 @@ const ThuTien = () => {
   });
   const [report, setReport] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
   const [handover, setHandover] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
+  // Chu trình phòng (Plan 2 Task 7 Step 4) — panel đọc-only, không vào registry.
+  const [lifecycle, setLifecycle] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
   const { actionCount: handoverActionCount } = useCashHandoverList();
 
   useEffect(() => {
@@ -258,6 +261,16 @@ const ThuTien = () => {
   // "Đóng tiền" giờ là page riêng /thanh-toan (không còn overlay tại chỗ).
   const openUtility = () => navigate('/thanh-toan');
 
+  // Cùng khuôn mount → rAF hai pha của report/handover — bỏ pha rAF là mất animation.
+  const openLifecycle = () => {
+    setLifecycle({ mounted: true, show: false });
+    requestAnimationFrame(() => setLifecycle({ mounted: true, show: true }));
+  };
+  const closeLifecycle = () => {
+    setLifecycle((s) => ({ ...s, show: false }));
+    window.setTimeout(() => setLifecycle({ mounted: false, show: false }), 320);
+  };
+
   const emptyIcon = statusFilter === 'paid' || allRooms.length === 0 ? '🔍' : '🎉';
   const emptyMessage =
     allRooms.length === 0
@@ -317,6 +330,14 @@ const ThuTien = () => {
                 <Repeat />
               </button>
             )}
+            <button
+              type="button"
+              className="tt-utility"
+              title="Chu trình phòng — vòng đời hợp đồng trên trục thời gian"
+              onClick={openLifecycle}
+            >
+              <History />
+            </button>
             <div className="hdr-period">
               <input
                 className="ky-input"
@@ -397,6 +418,15 @@ const ThuTien = () => {
         )}
 
         {handover.mounted && <HandoverSheet show={handover.show} onClose={closeHandover} />}
+
+        {lifecycle.mounted && (
+          <RoomLifecycleSheet
+            show={lifecycle.show}
+            onClose={closeLifecycle}
+            buildingId={buildingId}
+            buildings={buildingOpts}
+          />
+        )}
         </div>
       </div>
     </div>

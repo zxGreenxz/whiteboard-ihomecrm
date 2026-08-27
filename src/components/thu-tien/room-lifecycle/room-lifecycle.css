@@ -1,0 +1,101 @@
+/* Chu trình phòng — timeline theo phòng trong sheet /thu-tien.
+   Toàn bộ toán ở src/lib/roomLifecycle.ts; đây chỉ là da. */
+
+.rl-wrap { display: flex; flex-direction: column; gap: 14px; }
+
+.rl-empty {
+  padding: 28px 12px; text-align: center;
+  color: var(--tt-mut, #8a8f98); font-size: 13px;
+}
+
+.rl-problem {
+  background: #fff7ed; border: 1px solid #fdba74; color: #9a3412;
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.45;
+}
+
+/* ── khối lane ─────────────────────────────────────────── */
+.rl-lanes { position: relative; padding-top: 18px; }
+
+.rl-axis { position: relative; height: 14px; margin-left: 92px; }
+.rl-tick {
+  position: absolute; transform: translateX(-50%);
+  font-size: 10px; color: #9aa0a8; user-select: none;
+}
+
+.rl-base { position: relative; height: 8px; margin-left: 92px; border-radius: 4px; background: #eef0f3; }
+.rl-vacancy {
+  position: absolute; top: 0; bottom: 0; border-radius: 4px;
+  background: repeating-linear-gradient(45deg, #fecaca, #fecaca 4px, #fee2e2 4px, #fee2e2 8px);
+}
+
+.rl-lane { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.rl-lane-label { width: 84px; flex: none; overflow: hidden; }
+.rl-hd { display: block; font-size: 11px; font-weight: 700; color: #374151; white-space: nowrap; }
+.rl-tenant {
+  display: block; font-size: 10px; color: #8a8f98;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.rl-track { position: relative; flex: 1; height: 22px; }
+.rl-bar {
+  position: absolute; top: 4px; height: 14px; border-radius: 7px;
+  background: linear-gradient(180deg, #34d399, #10b981);
+  box-shadow: inset 0 0 0 1px rgb(5 150 105 / 35%);
+  min-width: 4px;
+}
+.rl-bar.open { border-top-right-radius: 2px; border-bottom-right-radius: 2px; }
+.rl-bar.nostart {
+  border-top-left-radius: 2px; border-bottom-left-radius: 2px;
+  mask-image: linear-gradient(90deg, transparent, #000 14px);
+}
+.rl-bar.untrusted {
+  background: repeating-linear-gradient(45deg, #fbbf24, #fbbf24 5px, #fde68a 5px, #fde68a 10px);
+  box-shadow: inset 0 0 0 1px rgb(180 83 9 / 45%);
+}
+
+.rl-dot {
+  position: absolute; top: 0; width: 8px; height: 8px; border-radius: 50%;
+  transform: translateX(-50%); border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 12%);
+}
+.rl-dot.tone-in { background: #2563eb; }
+.rl-dot.tone-out { background: #dc2626; }
+.rl-dot.tone-neutral { background: #9ca3af; }
+.rl-dot.tone-warn { background: #f59e0b; }
+.rl-dot.untrusted { opacity: 0.45; }
+
+/* ── chú giải ──────────────────────────────────────────── */
+.rl-legend {
+  display: flex; flex-wrap: wrap; gap: 10px 14px;
+  font-size: 11px; color: #6b7280; align-items: center;
+}
+.rl-legend i { display: inline-block; vertical-align: -2px; margin-right: 4px; }
+.rl-bar-sample { width: 18px; height: 10px; border-radius: 5px; background: #10b981; }
+.rl-bar-sample.untrusted {
+  background: repeating-linear-gradient(45deg, #fbbf24, #fbbf24 4px, #fde68a 4px, #fde68a 8px);
+}
+.rl-vac-sample {
+  width: 18px; height: 8px; border-radius: 4px;
+  background: repeating-linear-gradient(45deg, #fecaca, #fecaca 4px, #fee2e2 4px, #fee2e2 8px);
+}
+.rl-dot-sample { width: 8px; height: 8px; border-radius: 50%; }
+.rl-dot-sample.tone-in { background: #2563eb; }
+.rl-dot-sample.tone-out { background: #dc2626; }
+
+/* ── chuỗi sự kiện dọc ─────────────────────────────────── */
+.rl-feed { display: flex; flex-direction: column; border-top: 1px solid #eef0f3; }
+.rl-item {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 7px 2px; border-bottom: 1px dashed #f0f1f4; font-size: 12.5px;
+}
+.rl-item-date { flex: none; width: 74px; color: #8a8f98; font-variant-numeric: tabular-nums; }
+.rl-item-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; align-self: center; }
+.rl-item.tone-in .rl-item-dot { background: #2563eb; }
+.rl-item.tone-out .rl-item-dot { background: #dc2626; }
+.rl-item.tone-warn .rl-item-dot { background: #f59e0b; }
+.rl-item-body { flex: 1; min-width: 0; color: #374151; }
+.rl-item-body em { color: #6b7280; font-style: normal; }
+.rl-item-amount { float: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rl-item.tone-in .rl-item-amount { color: #1d4ed8; }
+.rl-item.tone-out .rl-item-amount { color: #b91c1c; }
+.rl-item-warn { color: #b45309; font-size: 11px; }
