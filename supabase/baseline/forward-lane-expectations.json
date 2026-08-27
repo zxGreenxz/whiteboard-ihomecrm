@@ -81,15 +81,20 @@
       "thongDiep": "org_null_is_global\" does not exist",
       "why": "Như 20260811020000."
     },
+    "20260812010000_demo_ma_tran_du_lieu_day_du.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Không thấy DEMO Toà A/B",
+      "why": "Ma trận dữ liệu demo nối tiếp 20260811040000 (dựng công ty Demo) — file đó dừng vì thiếu tài khoản demo trong auth.users, nên Toà A/B chưa ra đời."
+    },
+    "20260812020000_demo_hai_quan_ly_dung_vai.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Chưa có tài khoản demo.quanly2@username.ihomecrm.local",
+      "why": "Đòi tài khoản quản lý demo tạo trước bằng GoTrue admin; auth.users trong shim là bảng vỏ rỗng — cùng gốc 20260811040000."
+    },
     "20260813020000_network_center_cap_lai_slot_mikrotik.sql": {
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "ma tran cach ly can it nhat 2",
       "why": "Nghiệm thu ma trận cách ly cần ít nhất 2 toà DEMO có router MikroTik hoạt động; database rỗng có 0 toà."
-    },
-    "20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
-      "kyVong": "dung-vi-du-lieu",
-      "thongDiep": "ma tran cach ly can it nhat 2",
-      "why": "Bản tái-lập-được của 20260813020000: chép NGUYÊN VĂN khối khẳng định (luật thay-thế của audit rollout đòi vậy), nên trên database rỗng nó dừng ở đúng chỗ đó với đúng thông điệp đó — 0 toà DEMO có router."
     },
     "20260813030000_chan_null_org_dot_bon.sql": {
       "kyVong": "cascade",
@@ -102,16 +107,6 @@
       "tu": "20260809020000_dong_nhanh_null_org_va_so_khai_toan_he.sql",
       "thongDiep": "org_null_is_global\" does not exist",
       "why": "Như 20260811020000."
-    },
-    "20260812010000_demo_ma_tran_du_lieu_day_du.sql": {
-      "kyVong": "dung-vi-du-lieu",
-      "thongDiep": "Không thấy DEMO Toà A/B",
-      "why": "Ma trận dữ liệu demo nối tiếp 20260811040000 (dựng công ty Demo) — file đó dừng vì thiếu tài khoản demo trong auth.users, nên Toà A/B chưa ra đời."
-    },
-    "20260812020000_demo_hai_quan_ly_dung_vai.sql": {
-      "kyVong": "dung-vi-du-lieu",
-      "thongDiep": "Chưa có tài khoản demo.quanly2@username.ihomecrm.local",
-      "why": "Đòi tài khoản quản lý demo tạo trước bằng GoTrue admin; auth.users trong shim là bảng vỏ rỗng — cùng gốc 20260811040000."
     },
     "20260813100000_zalo_khu_rieng_theo_cong_ty.sql": {
       "kyVong": "dung-vi-du-lieu",
@@ -134,6 +129,11 @@
       "thongDiep": "zalo_backfill_crm_links(uuid) does not exist",
       "why": "REVOKE trên hàm do 20260813130000 tạo — file đó dừng vì dữ liệu (xem entry của nó) nên hàm chưa ra đời; 20260813110000 dừng vì storage cũng góp phần. Chết theo, không phải lỗi độc lập."
     },
+    "20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "ma tran cach ly can it nhat 2",
+      "why": "Bản tái-lập-được của 20260813020000: chép NGUYÊN VĂN khối khẳng định (luật thay-thế của audit rollout đòi vậy), nên trên database rỗng nó dừng ở đúng chỗ đó với đúng thông điệp đó — 0 toà DEMO có router."
+    },
     "20260814032500_copilot_superadmin_organization_directory.sql": {
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "Không có người dùng thường nào để nghiệm thu",
@@ -148,6 +148,11 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "van khong co slot MikroTik hoat dong (dem duoc 0)",
       "why": "Bản tái-lập-được của 20260823140000: chép NGUYÊN VĂN khối khẳng định (luật thay-thế của assertStagesObservable đòi vậy — y hệt cặp 20260813020000 → 20260814004500), nên trên database rỗng nó dừng ở đúng chỗ đó với đúng thông điệp đó. CREATE FUNCTION + REVOKE + SELECT hàm phía trước đã chạy sạch — đó mới là phần bài diễn tập cần chứng minh."
+    },
+    "20260827120000_building_fee_accounts_org_scope.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "Smoke: không tìm được toà nhà có org để thử",
+      "why": "Khối smoke chèn THẬT một dòng building_fee_accounts thiếu org rồi cuộn lại, để chứng minh trigger _autofill_org có điền — phép đo đó đòi một toà nhà có org, mà baseline schema-only không có toà nào. Dừng ở đây là đúng việc của phép đo, KHÔNG phải lỗi schema. Nhưng dừng thì cả file cuộn lại nên bản dựng lại mất luôn trigger; hiệu ứng đó đã được 20260827130000_bfa_org_trigger_khong_can_du_lieu.sql gánh lại bằng đường không cần dữ liệu (backfill lọc IS NULL + DROP/CREATE trigger + kiểm bằng catalog). Entry này KHÔNG phải để CI xanh: nếu xoá file 130000 thì lane vẫn xanh mà trigger vẫn mất, nên hai thứ phải đi cùng nhau."
     }
   }
 }
