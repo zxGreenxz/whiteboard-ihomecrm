@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1695,
-    "catalogFunctions": 1092,
+    "sourceCallSites": 1698,
+    "catalogFunctions": 1094,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 256,
+    "calledRpcs": 258,
     "byRisk": {
-      "normal": 175,
-      "financial": 75,
+      "normal": 176,
+      "financial": 76,
       "security": 6
     },
-    "securityDefiner": 240
+    "securityDefiner": 242
   },
   "missingOnServer": [],
   "rpcs": {
@@ -2550,6 +2550,25 @@
       ],
       "risk": "financial"
     },
+    "is_company_owner_self_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "boolean",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useIsCompanyOwner.ts"
+      ],
+      "risk": "normal"
+    },
     "is_org_owner_self_v1": {
       "definitions": [
         {
@@ -3922,6 +3941,25 @@
         "src/hooks/useUtilityBills.ts"
       ],
       "risk": "normal"
+    },
+    "set_forfeit_voucher_kqkd_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_kqkd boolean, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/forfeitKqkd.ts"
+      ],
+      "risk": "financial"
     },
     "set_ie_accounting_standard_v1": {
       "definitions": [

@@ -52,6 +52,13 @@ import {
   type IncomeExpenseWithRelations,
 } from '@/hooks/useIncomeExpenses';
 import {
+  forfeitKqkdGate,
+  forfeitKqkdReasonValid,
+  FORFEIT_KQKD_REASON_MIN,
+} from '@/lib/financeV2VoucherState';
+import { useSetForfeitVoucherKqkd } from '@/hooks/income-expenses/forfeitKqkd';
+import { useIsCompanyOwner } from '@/hooks/useIsCompanyOwner';
+import {
   useIncomeExpenseFormBuildings,
   useIncomeExpenseFormRooms,
 } from '@/hooks/useIncomeExpenseFormScope';
@@ -151,6 +158,14 @@ const IncomeExpenseForm = ({
   const updateMutation = useUpdateIncomeExpense();
   const { data: authUser } = useAuth();
   const { data: isAdmin = false } = useIsAdmin();
+  // Chủ công ty KHÁC chủ tổ chức: xem đầu useIsCompanyOwner (vai "Chủ công ty"
+  // có system_key NULL nên is_org_owner_self_v1 bỏ sót chính chủ doanh nghiệp).
+  const { data: isCompanyOwner = false } = useIsCompanyOwner();
+  const forfeitKqkdMutation = useSetForfeitVoucherKqkd();
+  // Lý do sửa — chỉ dùng cho cửa đổi KQKD của phiếu bỏ cọc. Không đưa vào zod
+  // schema của phiếu vì nó không phải một trường của phiếu, nó là bằng chứng
+  // cho MỘT thao tác.
+  const [forfeitReason, setForfeitReason] = useState('');
   const isMobile = useIsMobile();
 
   // Cascade dropdown state
@@ -555,6 +570,22 @@ const IncomeExpenseForm = ({
 
   const onSubmit = async (data: IncomeExpenseFormValues) => {
     try {
+      // Cửa hẹp phiếu bỏ cọc: KHÔNG đụng updateMutation. Đường thường sẽ chết ở
+      // trigger writer thanh lý, và nó cũng sẽ ghi cả những cột ta cố ý không
+      // cho sửa. Ở đây gửi đúng một cờ + lý do.
+      if (forfeitKqkdMode && voucher) {
+        if (!forfeitKqkdChanged) {
+          onOpenChange(false);
+          return;
+        }
+        await forfeitKqkdMutation.mutateAsync({
+          voucherId: voucher.id,
+          kqkd: forfeitKqkdNext,
+          reason: forfeitReason.trim(),
+        });
+        onOpenChange(false);
+        return;
+      }
       if (isEditing && voucher) {
         await updateMutation.mutateAsync({ id: voucher.id, data });
       } else {
@@ -573,16 +604,48 @@ const IncomeExpenseForm = ({
     }
   };
 
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const isPending =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    forfeitKqkdMutation.isPending;
   // Phiếu Nháp (UNAPPROVED): cho phép sửa.
   // Phiếu đã ghi nhận/đã huỷ: chỉ xem (read-only) — TRỪ Super Admin.
   // Super Admin: edit được mọi phiếu (lẻ hoặc trong đợt) ở mọi trạng thái,
   // của bất kỳ ai. Khớp với RLS bypass ở DB (xem 20260506000002).
   // Tạo mới: edit được.
   const isUnapprovedDraft = voucher?.approval_status === 'UNAPPROVED';
-  const canEdit = !voucher || isUnapprovedDraft || isAdmin;
-  const isViewing = !!voucher && !canEdit;
-  const isAdminOverride = !!voucher && !isUnapprovedDraft && isAdmin;
+
+  // ── Cặp bút toán bỏ cọc: một cửa RẤT hẹp ───────────────────────────────
+  // Trigger guard_termination_forfeit_voucher_v1 chặn MỌI ghi lên hai chân của
+  // cặp nếu transaction không giữ năng lực "writer thanh lý" — nó không nhìn
+  // user, nên super admin bấm Lưu ở đường thường cũng nhận đúng câu
+  // "Bút toán bỏ cọc chỉ được tạo hoặc sửa bởi writer thanh lý". Vì thế:
+  //   · KHOÁ hẳn đường sửa thường cho cả hai chân (đỡ mời người dùng làm việc
+  //     chắc chắn hỏng),
+  //   · và mở đúng MỘT ô — cờ KQKD trên chân doanh thu — đi qua RPC riêng
+  //     set_forfeit_voucher_kqkd_v1, chỉ cho chủ công ty / super admin.
+  const { isForfeitLeg, forfeitKqkdMode, canEditNormally } = forfeitKqkdGate(
+    voucher,
+    { isAdmin, isCompanyOwner },
+  );
+
+  const canEdit = canEditNormally;
+  const isViewing = !!voucher && !canEdit && !forfeitKqkdMode;
+  const isAdminOverride =
+    !!voucher && !isUnapprovedDraft && isAdmin && !isForfeitLeg;
+
+  // Giá trị cờ KQKD đang hiển thị vs giá trị gốc của phiếu. `null` nghĩa là
+  // "tự động", nên phải so ở mức HIỆU LỰC chứ không so thẳng null với boolean.
+  const forfeitKqkdWatched = form.watch('business_result_accounting');
+  const forfeitKqkdNext =
+    forfeitKqkdWatched === null || forfeitKqkdWatched === undefined
+      ? autoBusinessResult
+      : !!forfeitKqkdWatched;
+  const forfeitKqkdOriginal =
+    voucher?.business_result_accounting ?? autoBusinessResult;
+  const forfeitKqkdChanged =
+    forfeitKqkdMode && forfeitKqkdNext !== forfeitKqkdOriginal;
+  const forfeitReasonOk = forfeitKqkdReasonValid(forfeitReason);
 
   const totalAmount = itemRows.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
@@ -601,7 +664,9 @@ const IncomeExpenseForm = ({
         >
           <DialogHeader>
             <DialogTitle>
-              {isAdminOverride
+              {forfeitKqkdMode
+                ? 'HẠCH TOÁN KQKD — PHIẾU BỎ CỌC'
+                : isAdminOverride
                 ? 'SỬA PHIẾU (SUPER ADMIN)'
                 : isUnapprovedDraft
                 ? 'SỬA PHIẾU CHỜ DUYỆT'
@@ -610,6 +675,31 @@ const IncomeExpenseForm = ({
                 : 'THÊM PHIẾU THU/CHI'}
             </DialogTitle>
           </DialogHeader>
+
+          {forfeitKqkdMode && (
+            <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 space-y-1">
+              <p>
+                Đây là <b>bút toán bỏ cọc</b> — một chân của cặp phiếu do luồng
+                thanh lý sinh ra. Số tiền, sổ quỹ, hạng mục và hợp đồng{' '}
+                <b>không sửa được</b>: sửa lệch một chân là cặp phiếu kẹt vĩnh
+                viễn (không duyệt lại, không huỷ được).
+              </p>
+              <p>
+                Thứ duy nhất đổi được ở đây là <b>hạch toán kết quả kinh doanh</b>.
+                Nó <b>không</b> làm đổi tồn quỹ hay dòng tiền — cặp phiếu này chạy
+                trên sổ nội bộ, không có bút toán tiền. Thứ đổi là{' '}
+                <b>báo cáo lợi nhuận</b> của toà trong tháng phát sinh, kéo theo
+                số đem chia cho cổ đông.
+              </p>
+            </div>
+          )}
+          {isForfeitLeg && !forfeitKqkdMode && (
+            <p className="text-sm text-muted-foreground">
+              Đây là <b>bút toán bỏ cọc</b> do luồng thanh lý sinh ra — chỉ xem.
+              Muốn đổi cách hạch toán khoản này vào lợi nhuận, cần{' '}
+              <b>chủ công ty</b> hoặc <b>super admin</b>.
+            </p>
+          )}
 
           {isAdminOverride && (
             <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
@@ -992,13 +1082,41 @@ const IncomeExpenseForm = ({
                           <Switch
                             checked={effective}
                             onCheckedChange={(v) => field.onChange(v)}
-                            disabled={!canEdit}
+                            disabled={!canEdit && !forfeitKqkdMode}
+                            data-testid="kqkd-switch"
                           />
                         </FormControl>
                       </FormItem>
                     );
                   }}
                 />
+
+                {/* Lý do — bắt buộc, và server cũng bắt (≥ 8 ký tự). Chỉ hiện khi
+                    người dùng THẬT SỰ đã gạt công tắc, để không bày một ô trống
+                    bắt điền cho người chỉ vào xem. */}
+                {forfeitKqkdChanged && (
+                  <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                    <label
+                      htmlFor="forfeit-kqkd-reason"
+                      className="text-sm font-medium"
+                    >
+                      Lý do đổi hạch toán <span className="text-destructive">*</span>
+                    </label>
+                    <Textarea
+                      id="forfeit-kqkd-reason"
+                      data-testid="forfeit-kqkd-reason"
+                      value={forfeitReason}
+                      onChange={(e) => setForfeitReason(e.target.value)}
+                      placeholder="Vì sao khoản bỏ cọc này không tính (hoặc có tính) vào lợi nhuận?"
+                      rows={2}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {forfeitReasonOk
+                        ? 'Lý do sẽ được ghi vào nhật ký phiếu cùng người sửa và thời điểm.'
+                        : `Cần ít nhất ${FORFEIT_KQKD_REASON_MIN} ký tự — đây là bằng chứng đối soát về sau.`}
+                    </p>
+                  </div>
+                )}
 
                 {/* Cảnh báo trùng ô — CHỈ thông báo, không chặn nút Lưu. Đặt ngay
                     trên bảng hạng mục để đọc được trước khi gõ số tiền. */}
@@ -1327,11 +1445,18 @@ const IncomeExpenseForm = ({
                 >
                   {isViewing ? 'Đóng' : 'Huỷ bỏ'}
                 </Button>
-                {canEdit && (
+                {(canEdit || forfeitKqkdMode) && (
                   <Button
                     type="submit"
-                    disabled={isPending}
+                    // Cửa bỏ cọc: chưa gạt công tắc thì không có gì để lưu; gạt
+                    // rồi thì phải có lý do — cùng ngưỡng với server để người
+                    // dùng không bấm rồi mới ăn 22023.
+                    disabled={
+                      isPending ||
+                      (forfeitKqkdMode && (!forfeitKqkdChanged || !forfeitReasonOk))
+                    }
                     className={isMobile ? "flex-1" : ""}
+                    data-testid="ie-form-save"
                   >
                     {isPending ? 'Đang lưu...' : 'Lưu'}
                   </Button>

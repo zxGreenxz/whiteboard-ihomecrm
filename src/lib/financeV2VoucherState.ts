@@ -102,6 +102,88 @@ export function isNonCashVoucher(
   );
 }
 
+/** `system_source` của hai chân cặp bút toán bỏ cọc. */
+export const FORFEIT_REVENUE_SOURCE = "termination.forfeit_revenue";
+export const FORFEIT_OFFSET_SOURCE = "termination.forfeit_offset";
+
+/**
+ * Chân DOANH THU của cặp bỏ cọc — phiếu duy nhất mà chủ công ty / super admin
+ * được đổi cờ "tính vào kết quả kinh doanh" (RPC set_forfeit_voucher_kqkd_v1).
+ *
+ * Nhận diện theo `system_source` chứ KHÔNG theo tên phiếu: tên do người dùng gõ
+ * lại được, còn `system_source` do writer thanh lý đóng dấu và guard
+ * `guard_termination_forfeit_voucher_v1` canh theo đúng cột này.
+ */
+export function isForfeitRevenueVoucher(
+  v: { system_source?: string | null } | null | undefined,
+): boolean {
+  return v?.system_source === FORFEIT_REVENUE_SOURCE;
+}
+
+/**
+ * Chân ĐỐI ỨNG (cấn cọc) — bút toán tiêu cọc. `kqkd_amount` của nó phải bằng 0
+ * vĩnh viễn, nên cửa đổi cờ KQKD cố ý KHÔNG nhận phiếu này; server trả P0001.
+ */
+export function isForfeitOffsetVoucher(
+  v: { system_source?: string | null } | null | undefined,
+): boolean {
+  return v?.system_source === FORFEIT_OFFSET_SOURCE;
+}
+
+/** Ai đang mở phiếu — hai cờ hiển thị lấy từ server. */
+export interface ForfeitKqkdViewer {
+  /** useIsAdmin() — trên prod hôm nay ≡ is_super_admin(). */
+  isAdmin: boolean;
+  /** useIsCompanyOwner() — KHÁC useIsOrgOwner, xem đầu hook đó. */
+  isCompanyOwner: boolean;
+}
+
+export interface ForfeitKqkdGate {
+  /** Phiếu là một chân của cặp bỏ cọc (bất kể chân nào). */
+  isForfeitLeg: boolean;
+  /**
+   * Bày cửa hẹp "đổi cờ KQKD". Khi true thì `canEditNormally` LUÔN false —
+   * hai cái loại trừ nhau, đó là điểm chính của cửa này.
+   */
+  forfeitKqkdMode: boolean;
+  /** Đường sửa phiếu THƯỜNG (mọi ô) có mở không. */
+  canEditNormally: boolean;
+}
+
+/**
+ * Quyết định form Thu chi mở ô nào cho phiếu đang xem.
+ *
+ * Tách thành hàm thuần vì đây là chỗ dễ sai nhất và cũng là chỗ khó thấy nhất:
+ * ba cờ (`isAdmin`, `isCompanyOwner`, trạng thái phiếu) nhân với hai chân của
+ * cặp bỏ cọc. Sai một ô là hoặc chủ công ty bị khoá read-only không hiểu vì sao,
+ * hoặc quản lý toà được mời bấm một nút mà server chắc chắn từ chối.
+ *
+ * Luật:
+ *   · Hai chân của cặp bỏ cọc KHÔNG BAO GIỜ sửa được bằng đường thường — trigger
+ *     writer thanh lý chặn mọi ghi, kể cả của super admin. Khoá hẳn thay vì mời
+ *     người dùng làm việc chắc chắn hỏng.
+ *   · Chân DOANH THU, chưa huỷ, người xem là chủ công ty hoặc super admin →
+ *     mở đúng một ô: cờ KQKD, đi qua set_forfeit_voucher_kqkd_v1.
+ */
+export function forfeitKqkdGate(
+  voucher:
+    | { system_source?: string | null; approval_status?: ApprovalStatus | null }
+    | null
+    | undefined,
+  viewer: ForfeitKqkdViewer,
+): ForfeitKqkdGate {
+  const isForfeitLeg =
+    isForfeitRevenueVoucher(voucher) || isForfeitOffsetVoucher(voucher);
+  const forfeitKqkdMode =
+    isForfeitRevenueVoucher(voucher) &&
+    voucher?.approval_status !== "CANCELLED" &&
+    (viewer.isAdmin || viewer.isCompanyOwner);
+  const isUnapprovedDraft = voucher?.approval_status === "UNAPPROVED";
+  const canEditNormally =
+    !isForfeitLeg && (!voucher || isUnapprovedDraft || viewer.isAdmin);
+  return { isForfeitLeg, forfeitKqkdMode, canEditNormally };
+}
+
 /** Kết quả mô hình hiển thị. */
 export interface VoucherDisplayState {
   /** Nhãn tiếng Việt canonical (không bao giờ là "Nháp"). */
@@ -311,4 +393,20 @@ export function getVoucherActions(
       (review === "PENDING" || review === "CHANGES_REQUESTED"),
     resubmit: caps.isMaker && review === "CHANGES_REQUESTED",
   };
+}
+
+/**
+ * Ngưỡng lý do khi đổi cờ KQKD của phiếu bỏ cọc — GIỮ CHUNG MỘT CON SỐ với
+ * server (`set_forfeit_voucher_kqkd_v1` ném 22023 khi < 8 ký tự).
+ *
+ * Đặt ở lib chứ không ở hook: đây là phần kiểm hợp lệ của một đường ghi sổ, nên
+ * nó phải test được mà không dựng react-query, và phải có đúng một nơi để sửa
+ * khi ngưỡng ở server đổi. Lời gọi RPC vẫn giữ literal tại chỗ để tên hàm còn
+ * xuất hiện trong manifest bề mặt (xem scripts/check-raw-rpc-callers.mjs).
+ */
+export const FORFEIT_KQKD_REASON_MIN = 8;
+
+/** true ⇔ lý do đủ dài để server nhận. Cắt khoảng trắng đúng như `btrim` bên SQL. */
+export function forfeitKqkdReasonValid(reason: string | null | undefined): boolean {
+  return (reason ?? "").trim().length >= FORFEIT_KQKD_REASON_MIN;
 }

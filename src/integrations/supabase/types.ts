@@ -25692,6 +25692,7 @@ export type Database = {
       }
       is_account_owner: { Args: { p_account_id: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
+      is_company_owner_self_v1: { Args: never; Returns: boolean }
       is_org_owner_self_v1: { Args: never; Returns: boolean }
       is_staff_of: { Args: { owner_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
@@ -27440,6 +27441,10 @@ export type Database = {
           p_organization_id?: string
           p_rate_percent: number
         }
+        Returns: Json
+      }
+      set_forfeit_voucher_kqkd_v1: {
+        Args: { p_kqkd: boolean; p_reason: string; p_voucher: string }
         Returns: Json
       }
       set_ie_accounting_standard_v1: {

@@ -17,21 +17,21 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 256 |
-| Hàm trong catalog (public + api) | 1092 |
-| File mã nguồn đã quét | 1695 |
-| SECURITY DEFINER | 240 |
+| RPC được gọi từ mã nguồn | 258 |
+| Hàm trong catalog (public + api) | 1094 |
+| File mã nguồn đã quét | 1698 |
+| SECURITY DEFINER | 242 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 175 | còn lại |
-| tiền | 75 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 176 | còn lại |
+| tiền | 76 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 | an ninh | 6 | nơi gọi thuộc OpenClaw |
 
-## 75 RPC chạm TIỀN
+## 76 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -96,6 +96,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `salary_payout_v1` | ✔ | hooks/useManagerSalary.ts |
 | `salary_staff_months` | ✔ | hooks/useManagerSalary.ts |
 | `salary_work_ledger` | ✔ | hooks/useManagerSalary.ts |
+| `set_forfeit_voucher_kqkd_v1` | ✔ | hooks/income-expenses/forfeitKqkd.ts |
 | `set_salary_v5_config` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
 | `unapprove_invoice_v1` | ✔ | hooks/useInvoices.ts |
 | `unapprove_voucher` | ✔ | hooks/income-expenses/statusMutations.ts |
