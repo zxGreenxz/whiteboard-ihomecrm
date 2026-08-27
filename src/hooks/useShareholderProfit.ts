@@ -12,6 +12,7 @@ import {
 import {
   normalizeUnallocatedDisposition,
   type ProfitCloseAdjustmentPayload,
+  type TotalGroupPeerMap,
   type ProfitUnallocatedDisposition,
 } from "@/lib/profitClose";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
@@ -420,6 +421,7 @@ export const PROFIT_CLOSE_RPC = {
   close: "profit_close_v2",
   reclose: "profit_reclose_v2",
   reset: "profit_reset_checked_v2",
+  totalGroupPeers: "profit_total_group_peers_v2",
 } as const;
 
 export interface ProfitCloseOrganizationScope {
@@ -546,6 +548,47 @@ function normalizeProfitCloseState(value: any): ProfitCloseState {
     })),
   };
 }
+
+/**
+ * Bản đồ "chốt nhà này thì phải chốt cùng nhà nào".
+ *
+ * Là cấu hình mức tổ chức (quy tắc lương điều hành TOTAL_GROUP), không phụ thuộc
+ * tháng — nên tách khỏi preview. Cố ý KHÔNG nhét vào `profit_close_preview_v2`:
+ * mọi khoá mới trong tài liệu nguồn đều đổi `building_source_hash` và làm mọi
+ * snapshot đang LOCKED hoá "lệch nguồn".
+ */
+export const useProfitTotalGroupPeers = (organizationId?: string) => {
+  return useQuery({
+    queryKey: ["profit-total-group-peers", organizationId],
+    enabled: !!organizationId,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<TotalGroupPeerMap> => {
+      const { data, error } = await supabase.rpc("profit_total_group_peers_v2", {
+        p_organization_id: batBuoc(organizationId, "organizationId"),
+      });
+      if (error) throw error;
+      const root: Record<string, unknown> =
+        data && typeof data === "object" && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : {};
+      const map: TotalGroupPeerMap = {};
+      for (const [buildingId, value] of Object.entries(root)) {
+        const entry: Record<string, unknown> =
+          value && typeof value === "object" && !Array.isArray(value)
+            ? (value as Record<string, unknown>)
+            : {};
+        map[buildingId] = {
+          peerIds: Array.isArray(entry.peer_ids)
+            ? entry.peer_ids.map((id: unknown) => String(id))
+            : [],
+          peerNames: String(entry.peer_names ?? ""),
+          ruleLabels: String(entry.rule_labels ?? ""),
+        };
+      }
+      return map;
+    },
+  });
+};
 
 export const useProfitCloseState = (
   organizationId?: string,
@@ -832,6 +875,14 @@ export interface ResetProfitPeriodInput {
   expectedStateHash: string;
   expectedSnapshotIds: string[];
   reason: string;
+  /**
+   * NULL = đặt lại cả kỳ (hành vi cũ). Khác NULL = chỉ đặt lại các nhà này.
+   *
+   * CAS vẫn ở mức TOÀN KỲ: expectedStateHash + expectedSnapshotIds phải khớp
+   * toàn bộ snapshot đang có của tháng, nên không đặt lại được trên trạng thái
+   * đã cũ dù chỉ nhắm một nhà.
+   */
+  targetBuildingIds: string[] | null;
 }
 
 export interface UnlockProfitMonthInput {
@@ -908,6 +959,9 @@ export const useResetProfitPeriod = () => {
         p_idempotency_key: `profit-reset-${crypto.randomUUID()}`,
         p_expected_state_hash: input.expectedStateHash,
         p_expected_snapshot_ids: [...input.expectedSnapshotIds].sort(),
+        p_target_building_ids: input.targetBuildingIds
+          ? [...input.targetBuildingIds].sort()
+          : undefined,
       });
       if (error) throw error;
       return data;

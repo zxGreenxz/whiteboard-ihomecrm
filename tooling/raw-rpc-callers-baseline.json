@@ -102,6 +102,7 @@
     "src/hooks/useShareholderProfit.ts::profit_close_scopes_v2",
     "src/hooks/useShareholderProfit.ts::profit_close_state_v2",
     "src/hooks/useShareholderProfit.ts::profit_reset_checked_v2",
+    "src/hooks/useShareholderProfit.ts::profit_total_group_peers_v2",
     "src/hooks/useShareholderProfit.ts::unlock_profit_month_v1",
     "src/hooks/useUtilityBills.ts::cancel_utility_bill",
     "src/hooks/useUtilityBills.ts::delete_utility_account",

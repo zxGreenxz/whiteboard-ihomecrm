@@ -1,21 +1,21 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1698,
-    "catalogFunctions": 1094,
+    "sourceCallSites": 1699,
+    "catalogFunctions": 1095,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 258,
+    "calledRpcs": 259,
     "byRisk": {
-      "normal": 176,
+      "normal": 177,
       "financial": 76,
       "security": 6
     },
-    "securityDefiner": 242
+    "securityDefiner": 243
   },
   "missingOnServer": [],
   "rpcs": {
@@ -3568,9 +3568,29 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "p_organization_id uuid, p_period_month date, p_reason text, p_idempotency_key text, p_expected_state_hash text, p_expected_snapshot_ids uuid[]",
+          "args": "p_organization_id uuid, p_period_month date, p_reason text, p_idempotency_key text, p_expected_state_hash text, p_expected_snapshot_ids uuid[], p_target_building_ids uuid[] DEFAULT NULL::uuid[]",
           "returns": "jsonb",
           "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
+    "profit_total_group_peers_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
           "securityDefiner": true,
           "searchPath": "search_path=pg_catalog, public",
           "execRoles": [

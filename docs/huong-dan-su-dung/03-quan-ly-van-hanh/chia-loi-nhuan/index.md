@@ -56,14 +56,27 @@ Lần chốt hiện hành do server tính và ghi trong một giao dịch có so
 Nếu preview đang tải lại, có lỗi nguồn, tỷ lệ vượt 100%, cấu hình sai tổ chức hoặc source hash đổi, hãy sửa dữ liệu rồi tải lại. Server sẽ từ chối ghi nếu nguồn đổi sau lúc bạn xem preview.
 :::
 
-**Bước 4: Chốt lần đầu.** Khi tháng chưa có snapshot, bấm **Chốt tháng MM/YYYY**. Hệ thống chốt toàn bộ toà thật đang hoạt động trong tổ chức, không chốt lẻ từng toà. Sau xác nhận, mỗi toà có snapshot `LOCKED` và revision kiểm toán.
+**Bước 4: Chọn nhà rồi chốt.** Mỗi dòng trong bảng có một ô tick ở đầu. Mặc định hệ thống tick sẵn mọi nhà chưa chốt; bỏ tick những nhà chưa muốn chốt rồi bấm **Chốt N nhà đã chọn**. Sau xác nhận, chỉ những nhà đó có snapshot `LOCKED` và revision kiểm toán — các nhà còn lại giữ nguyên, **phiếu thu-chi của chúng vẫn sửa được bình thường**.
 
-**Bước 5: Chốt lại khi nguồn thay đổi.** Nếu tháng đã chốt nhưng thu/chi, tỷ lệ hoặc cấu hình lương thay đổi, màn hình đánh dấu snapshot cũ. Bấm **Chốt lại tháng**, nhập lý do bắt buộc và xem preview mới. Chốt lại tạo revision mới; lịch sử cũ vẫn được giữ.
+Dùng cách này khi muốn trả phần lợi nhuận của vài nhà trước (ví dụ nhà có nhân viên góp vốn) mà sổ sách các nhà khác chưa xong. Số nào đã chốt thì chảy ngay vào cột **Đầu tư** của bảng lương tháng đó.
 
-**Bước 6: Đặt lại tháng khi trạng thái không đồng nhất.** Nếu tháng có nhà đã chốt xen nhà chưa chốt hoặc còn snapshot legacy ngoài preview, hệ thống không cho chốt một phần. Dùng **Đặt lại tháng**, nhập lý do, rồi chốt lại từ đầu. Reset được bảo vệ bằng state hash và danh sách snapshot; nếu dữ liệu đổi trước lúc xác nhận, bạn phải tải lại.
+::: warning Nhà dùng chung một quy tắc lương điều hành phải chốt cùng lúc
+Quy tắc lương `TOTAL_GROUP` chia một khoản cho **cả nhóm nhà** theo lợi nhuận từng nhà. Tick một nhà trong nhóm thì hệ thống tự tick nốt các nhà còn lại và báo cho bạn biết vì sao (bỏ tick cũng bỏ cả nhóm). Đừng cố lách: chốt nửa nhóm sẽ dồn phần lớn khoản lương đó vào nhà đã chốt và làm sai số đã chia cho cổ đông của chính nhà đó — server chặn bằng thông báo **"Lương điều hành … phải chốt cùng lúc"**.
+:::
+
+**Bước 5: Chốt lại khi nguồn thay đổi.** Nếu nhà đã chốt nhưng thu/chi, tỷ lệ hoặc cấu hình lương thay đổi, màn hình đánh dấu snapshot **Cũ**. Tick đúng những nhà đó rồi bấm **Chốt lại N nhà đã chọn**, nhập lý do bắt buộc và xem preview mới. Chốt lại tạo revision mới; lịch sử cũ vẫn được giữ.
+
+Vùng chọn **không được lẫn** nhà đã chốt với nhà chưa chốt: chốt và chốt lại là hai thao tác khác nhau, làm hai lượt.
+
+**Bước 6: Mở khoá / Đặt lại theo nhà.** Nhà đã chốt xen nhà chưa chốt là **bình thường** — đó chính là cái bạn vừa làm ở Bước 4. Hai nút này cũng chạy trên đúng vùng đang tick:
+
+- **Mở khoá N nhà đã chọn** — gỡ khoá để sửa phiếu của những nhà đó. Phần đã phân bổ cho cổ đông và quản lý của chúng **bị xoá**, snapshot về Nháp, sửa xong phải chốt lại.
+- **Đặt lại N nhà đã chọn** — bỏ hẳn snapshot của những nhà đó để chốt mới từ đầu, cần nhập lý do.
+
+Riêng khi tháng còn snapshot nằm trên **toà ảo hoặc toà đã xoá**, màn hình báo đỏ và bạn phải đặt lại các dòng đó trước khi chốt tiếp. Reset được bảo vệ bằng state hash và danh sách snapshot của **cả tháng**; nếu ai đó vừa chốt hoặc mở khoá nhà khác thì thao tác bị từ chối để bạn tải lại.
 
 ::: warning Đặt lại không xoá lịch sử kiểm toán
-Thao tác bỏ snapshot hiện tại của cả tháng, nhưng revision trước đó vẫn tồn tại. Chỉ dùng khi màn hình yêu cầu hoặc khi trạng thái tháng thực sự không thể reclose an toàn.
+Thao tác bỏ snapshot hiện tại của những nhà đang chọn, nhưng revision trước đó vẫn tồn tại. Chỉ dùng khi màn hình yêu cầu hoặc khi trạng thái nhà đó thực sự không thể reclose an toàn.
 :::
 
 **Bước 7: Gửi yêu cầu chi lợi nhuận.** Ở tab **Tổng quan**, chọn cổ đông, số tiền, sổ quỹ, ngày và ghi chú rồi bấm **Chi lợi nhuận**. Hệ thống tạo request canonical có idempotency; nút **Chi lương điều hành** dùng writer tương tự và cần quyền `shareholder_profit.pay_manager`.
@@ -102,7 +115,7 @@ Việc **chốt/phân bổ** hoặc request được **duyệt** chưa chứng m
 <SandboxTry account="demo.chunha" app-path="/reports/finance/profit-distribution" app-label="Mở màn Chia lợi nhuận" fixtures="Dữ liệu demo có cổ đông và tỷ lệ" view-only>
 
 1. Trên desktop, nhấp nhanh 3 lần icon xanh bên trái tiêu đề để hiện tab quản trị; mở **Cổ đông & tỷ lệ**, xem tỷ lệ theo toà và trạng thái active.
-2. Sang **Chốt LN tháng**, chọn tháng và đọc preview: LN nguồn, điều chỉnh, lương điều hành, LN chia cổ đông, source hash.
+2. Sang **Chốt LN tháng**, chọn tháng và đọc preview: LN nguồn, điều chỉnh, lương điều hành, LN chia cổ đông, source hash. Tick đúng những nhà muốn chốt.
 3. Quan sát badge trạng thái và nút **Chốt / Chốt lại / Đặt lại** tương ứng. Không xác nhận thao tác ghi trong bài xem thử.
 4. Sang **Tổng quan** để đối chiếu Được chia, Đã ứng và Còn lại.
 

@@ -27042,6 +27042,7 @@ export type Database = {
           p_organization_id: string
           p_period_month: string
           p_reason: string
+          p_target_building_ids?: string[]
         }
         Returns: Json
       }
@@ -27054,6 +27055,10 @@ export type Database = {
           p_period_month: string
           p_reason: string
         }
+        Returns: Json
+      }
+      profit_total_group_peers_v2: {
+        Args: { p_organization_id: string }
         Returns: Json
       }
       profit_unlock_v2: {

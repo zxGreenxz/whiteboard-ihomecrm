@@ -1,6 +1,6 @@
 # Cổ đông, Profit Close V2 và ví cá nhân
 
-> **Reviewed:** 2026-07-20
+> **Reviewed:** 2026-08-27
 > Nguồn hiện hành: `src/components/shareholders/**`, `src/hooks/useShareholderProfit.ts`, `src/hooks/income-expenses/specialized.ts` và migrations `20260720210000`–`20260720223000`.
 
 ## 1. Phạm vi
@@ -19,7 +19,8 @@ Trên desktop, các tab nhạy cảm **Chốt LN tháng**, **Cổ đông & tỷ 
 ## 2. Bất biến hiện hành
 
 - **Server tính nguồn:** client không gửi P&L, lương điều hành, tỷ lệ hay allocation cuối cùng. `profit_close_preview_v2` tự đọc nguồn accrual và cấu hình trong organization.
-- **Chốt toàn tháng:** CLOSE/RECLOSE phải bao phủ mọi toà thật đang hoạt động trong organization. Không chốt lẻ vì quy tắc lương `TOTAL_GROUP` phụ thuộc cả nhóm.
+- **Tính cả tháng, ghi phần được chọn (từ 27/08/2026):** CLOSE/RECLOSE tính preview canonical trên MỌI toà thật của organization nhưng chỉ GHI các toà trong `p_building_ids`. Vì phạm vi tính không đổi, `source_hash` (CAS) và `building_source_hash` giữ nguyên công thức cũ — chốt lẻ không làm snapshot đã chốt trước đó hoá `is_stale`.
+- **Tập ghi đóng theo `TOTAL_GROUP`:** với mỗi quy tắc lương điều hành `basis=TOTAL_GROUP` đang active, tập ghi phải chứa TẤT CẢ hoặc KHÔNG toà nào của quy tắc đó. Chốt nửa nhóm sẽ dồn sai khoản lương của cả nhóm vào phần toà đã chốt mà không có gì báo; server từ chối bằng `[TOTAL_GROUP_KHONG_DU]` kèm tên toà còn thiếu. Đây là bất biến THAY THẾ luật "chốt toàn tháng" cũ, không phải nới nó.
 - **Điều chỉnh minh bạch:** `adjusted_profit = computed_profit + adjustment_amount`. Điều chỉnh khác 0 bắt buộc lý do 8–500 ký tự và lưu người/thời điểm.
 - **Chống nguồn đổi:** preview trả `source_hash`; close/reclose chỉ ghi nếu hash vẫn khớp. Dữ liệu đổi giữa xem trước và xác nhận trả conflict, không chốt mù.
 - **Idempotency:** mỗi write dùng idempotency key; replay cùng payload trả kết quả cũ, tái dùng key cho payload khác bị từ chối.
@@ -92,19 +93,21 @@ UI chỉ gửi `adjustment_amount` có dấu và `adjustment_reason`; server tí
 
 ### 4.2. Chốt lần đầu
 
-`profit_close_v2` yêu cầu source hash preview và idempotency key. Trong transaction, server khoá nguồn cần thiết, kiểm hash, upsert mọi `profit_monthly`, thay allocations, tăng revision và ghi audit.
+`profit_close_v2` yêu cầu source hash preview (của TOÀN THÁNG) và idempotency key. Trong transaction, server khoá nguồn cần thiết, dựng lại preview trên toàn bộ toà thật, kiểm hash, rồi upsert `profit_monthly` + thay allocations CHỈ cho các toà trong `p_building_ids`, tăng revision và ghi audit.
+
+`profit_close_runs.source_snapshot` luôn là tài liệu nguồn TOÀN THÁNG — `app_private.current_profit_building_source_hash_v1` dựng lại hash từ `run.source_snapshot->'pnl'` để canh độ tươi của phiếu chi cổ đông. `result_snapshot.buildings`/`totals` mới là phần đã ghi, kèm `scope_building_ids` và `written_building_ids`.
 
 Lý do lần chốt đầu có thể dùng mặc định; điều chỉnh khác 0 vẫn phải có lý do riêng.
 
 ### 4.3. Chốt lại
 
-`profit_reclose_v2` dùng khi toàn bộ toà của tháng đã LOCKED nhưng nguồn/cấu hình thay đổi. UI bắt buộc nhập lý do; server tạo revision mới và thay snapshot hiện tại sau khi source hash vẫn khớp.
+`profit_reclose_v2` dùng khi các toà ĐƯỢC CHỌN đều đã LOCKED nhưng nguồn/cấu hình thay đổi. UI bắt buộc nhập lý do; server tạo revision mới và thay snapshot hiện tại sau khi source hash vẫn khớp. Vùng chọn lẫn toà đã chốt với toà chưa chốt là không hợp lệ — CLOSE và RECLOSE là hai RPC, mỗi cái đòi trạng thái đồng nhất trong tập ghi.
 
 Không cần mở khoá/xoá allocation bằng nhiều DML client như flow cũ.
 
 ### 4.4. Đặt lại tháng
 
-Nếu tháng có trạng thái hỗn hợp, snapshot legacy ngoài phạm vi hoặc không thể reclose an toàn, UI dùng **Đặt lại tháng**.
+Toà đã chốt xen toà chưa chốt KHÔNG còn là trạng thái hỏng — đó chính là thứ chốt-theo-từng-toà tạo ra. Chỉ khi tháng còn snapshot nằm trên toà ảo/đã xoá (`has_out_of_scope_snapshots`) hoặc không thể reclose an toàn thì UI mới dùng **Đặt lại**.
 
 `profit_reset_checked_v2` bắt buộc:
 
@@ -112,6 +115,8 @@ Nếu tháng có trạng thái hỗn hợp, snapshot legacy ngoài phạm vi ho�
 - `expected_state_hash` của toàn bộ snapshot/allocation hiện tại;
 - danh sách chính xác `expected_snapshot_ids`;
 - idempotency key.
+
+Tham số `p_target_building_ids` (thêm 27/08/2026) thu hẹp TÁC ĐỘNG về vài toà, nhưng CAS vẫn ở mức TOÀN KỲ — không đặt lại được trên trạng thái đã cũ dù chỉ nhắm một toà. `NULL` = đặt lại cả kỳ (hành vi cũ).
 
 Nếu snapshot đổi trước lúc reset, server trả conflict. Reset bỏ snapshot hiện tại nhưng lịch sử revision vẫn giữ để kiểm toán.
 
@@ -128,7 +133,7 @@ Các adapter frontend vẫn có fallback coexistence được phân loại cho t
 
 | Action | Ý nghĩa |
 |---|---|
-| `shareholder_profit.view` | Xem báo cáo/phần được chia trong phạm vi cho phép |
+| `shareholder_profit.view` | Xem báo cáo/phần được chia trong phạm vi cho phép; cũng là quyền đọc `profit_total_group_peers_v2` (bản đồ toà nào phải chốt cùng toà nào) |
 | `shareholder_profit.lock` | Preview, close và reclose toàn kỳ |
 | `shareholder_profit.unlock` | Xem state và reset/unlock theo guard |
 | `shareholder_profit.distribute` | Lập request chi lợi nhuận |
@@ -139,7 +144,7 @@ RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phả
 
 ## 7. Trang và hook chính
 
-- `ProfitLockTab.tsx`: chọn organization/tháng, preview, điều chỉnh, close/reclose/reset.
+- `ProfitLockTab.tsx`: chọn organization/tháng, **tick từng toà**, preview, điều chỉnh, close/reclose/unlock/reset theo đúng vùng chọn. Tick một toà thuộc nhóm `TOTAL_GROUP` thì cả nhóm được chọn theo (và bỏ tick cũng bỏ cả nhóm) — logic thuần ở `expandTotalGroupSelection` trong `src/lib/profitClose.ts`.
 - `useProfitCloseOrganizations`, `useProfitCloseState`, `useProfitClosePreview`, `useCloseProfitPeriod`, `useResetProfitPeriod`: client của RPC V2.
 - `ProfitOverviewTab.tsx`: tổng allocation, đã chi và còn lại.
 - `ShareConfigTab.tsx`: cổ đông, tỷ lệ và quản lý điều hành.
@@ -152,7 +157,9 @@ RPC/RLS kiểm organization và scope; ẩn/hiện tab ở frontend không phả
 2. Test idempotency replay và key reuse khác payload.
 3. Test active/inactive/deleted shareholder/manager và cross-org mapping.
 4. Test tháng hỗn hợp dùng reset guard với state hash/snapshot IDs.
-5. Chạy test liên quan, `npm run typecheck:baseline` và `node scripts/reconcile-money.mjs [YYYY-MM]`.
-6. Nếu migration đụng view, chạy `node scripts/check-view-invoker.mjs`.
+5. Test chốt lẻ: chốt 2 toà rồi mở lại preview toàn tháng — 2 toà đó phải KHÔNG `is_stale`. Đây là bất biến dễ vỡ nhất khi ai đó "tối ưu" preview về đúng tập ghi.
+6. Test guard nhóm: dựng một quy tắc `TOTAL_GROUP` phủ 3 toà rồi chốt 1 toà — phải nhận `[TOTAL_GROUP_KHONG_DU]`.
+7. Chạy test liên quan, `npm run typecheck:baseline` và `node scripts/reconcile-money.mjs [YYYY-MM]`.
+8. Nếu migration đụng view, chạy `node scripts/check-view-invoker.mjs`.
 
 Xem hướng dẫn thao tác: [Chia lợi nhuận](../huong-dan-su-dung/03-quan-ly-van-hanh/chia-loi-nhuan/).
