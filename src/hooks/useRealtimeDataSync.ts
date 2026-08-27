@@ -122,8 +122,23 @@ function flushEntry(qc: QueryClient, entry: SyncEntry) {
   }
 }
 
-// Guard chống mở 2 channel trùng (StrictMode double-mount / lỡ mount 2 nơi).
-let hubActive = false;
+// ── Singleton hub theo REF-COUNT (sửa 28/08, audit 27/08 C-INFRA-6) ─────────
+//
+// Bản cũ là cờ boolean `hubActive`: consumer thứ hai mount khi hub đang sống
+// thì `return` sớm KHÔNG cleanup — rồi khi consumer ĐẦU unmount, cleanup của nó
+// hạ cờ + removeChannel, còn consumer sống sót thì VĨNH VIỄN không subscribe.
+// Hôm nay App.tsx chỉ mount một lần nên chưa nổ, nhưng đó là bất biến ngầm chờ
+// một lần refactor mount-topology để vỡ. Ref-count làm hành vi đúng với MỌI số
+// consumer: hub sống chừng nào còn ≥1 consumer, chết khi consumer cuối rời đi,
+// và dựng lại khi user đổi.
+let hubRefs = 0;
+let hubUserId: string | null = null;
+let hubTeardown: (() => void) | null = null;
+
+/** Số consumer đang giữ hub — cho test bất biến ref-count. */
+export function __hubRefsForTest() {
+  return hubRefs;
+}
 
 export function useRealtimeDataSync() {
   const qc = useQueryClient();
@@ -131,9 +146,30 @@ export function useRealtimeDataSync() {
   const userId = user?.id ?? null;
 
   useEffect(() => {
-    if (!userId || hubActive) return;
-    hubActive = true;
+    if (!userId) return;
+    hubRefs += 1;
+    if (hubTeardown === null || hubUserId !== userId) {
+      // Consumer đầu tiên, hoặc user đã đổi khi hub cũ còn sống: dọn rồi dựng.
+      hubTeardown?.();
+      hubUserId = userId;
+      hubTeardown = dungHub(qc, userId);
+    }
+    return () => {
+      hubRefs -= 1;
+      if (hubRefs <= 0) {
+        hubRefs = 0;
+        hubTeardown?.();
+        hubTeardown = null;
+        hubUserId = null;
+      }
+    };
+  }, [userId, qc]);
+}
 
+/** Dựng channel + toàn bộ debounce; trả về hàm dọn. Tách khỏi effect để
+ *  ref-count ở trên chỉ còn đúng một việc: đếm. */
+function dungHub(qc: QueryClient, userId: string): () => void {
+  {
     // Kèm mốc event ĐẦU của cụm để áp MAX_WAIT_MS. Giữ chung một Map thay vì
     // hai: một thứ phải dọn ở cleanup thay vì hai thứ phải nhớ.
     const timers = new Map<
@@ -205,13 +241,12 @@ export function useRealtimeDataSync() {
 
     return () => {
       dangTuDon = true;
-      hubActive = false;
       timers.forEach((t) => clearTimeout(t.timer));
       if (businessPerformanceTimer) clearTimeout(businessPerformanceTimer);
       pendingBusinessPerformanceTables.clear();
       supabase.removeChannel(channel);
     };
-  }, [userId, qc]);
+  }
 }
 
 /** Component tiện mount trong App — hook cần nằm dưới QueryClientProvider. */

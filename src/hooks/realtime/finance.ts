@@ -64,6 +64,14 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["ie-history"],
       ["flex-cancel-eligibility"],
       ["can-reverse-collection"],
+      // --- 28/08 (C-INFRA-7): bốn khoá của /thanh-toan đọc phiếu theo kỳ.
+      // usePeriodFees tự invalidate sau mutation CỦA MÌNH (:167-174), nhưng
+      // phiếu do MÁY KHÁC tạo/duyệt thì chỉ đường realtime này gọi tới —
+      // thiếu chúng là ô phí kẹt "chưa đóng" tới khi F5.
+      ["period-fee-status"],
+      ["period-commissions"],
+      ["period-maintenance"],
+      ["fee-accounts"],
     ],
     domain: "income-expenses",
   },
@@ -115,6 +123,25 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["handover-vouchers"],
       ["settlement-report"],
       ["cashbook-closing-blockers"],
+    ],
+  },
+
+  // ── 28/08 (C-INFRA-7): hai bảng CẤU HÌNH PHÍ THEO TOÀ ─────────────
+  // building_fee_accounts: mã NCC + số dự kiến + cờ "Không áp dụng" của từng ô
+  // phí /thanh-toan (useFeeAccounts đọc thẳng bảng, key ['fee-accounts']).
+  {
+    table: "building_fee_accounts",
+    keys: [
+      ["fee-accounts"],
+      ["period-fee-status"], // trạng thái ô suy từ cấu hình + phiếu
+    ],
+  },
+  // building_utility_accounts: sổ điện/nước theo toà — "Đóng điện nước" đọc.
+  {
+    table: "building_utility_accounts",
+    keys: [
+      ["utility-accounts"],
+      ["utility-payments"],
     ],
   },
 ];

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/supabaseFetchAll';
 
 /**
  * Ba SỔ THEO DÕI của trang Thanh toán (01/08/2026): chi thanh lý, thưởng Sale,
@@ -45,35 +46,47 @@ export const useTerminationRefundQueue = (period: string, enabled = true) =>
     enabled: enabled && !!period,
     queryFn: async (): Promise<TerminationQueueRow[]> => {
       const { from, to } = monthRange(period);
-      const { data, error } = await supabase
-        .from('contract_terminations')
-        .select(`
-          id, contract_id, termination_date, termination_type, total_deposit, refund_amount,
-          contracts:contract_id (
-            contract_number,
-            rooms:room_id ( name, buildings:building_id ( name ) )
-          )
-        `)
-        .gte('termination_date', from)
-        .lt('termination_date', to)
-        .order('termination_date', { ascending: false });
-      if (error) throw new Error(error.message);
+      // Vá F8 (audit 27/08): bản cũ không phân trang ⇒ dính cap-1000 của
+      // PostgREST — kỳ nhiều thanh lý thì hàng đợi IM LẶNG thiếu dòng, và
+      // `.in()` một phát cả nghìn id thì URL quá dài. fetchAllRows phân trang
+      // fail-closed (lỗi → null → throw, KHÔNG coi là rỗng), `.in()` chia lô
+      // ≤500 và MỌI lô phải thành công mới publish.
+      const rows = await fetchAllRows<any>(
+        (f, t) => supabase
+          .from('contract_terminations')
+          .select(`
+            id, contract_id, termination_date, termination_type, total_deposit, refund_amount,
+            contracts:contract_id (
+              contract_number,
+              rooms:room_id ( name, buildings:building_id ( name ) )
+            )
+          `)
+          .gte('termination_date', from)
+          .lt('termination_date', to)
+          .order('termination_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(f, t),
+        { label: 'thanh-toan.terminationQueue' },
+      );
+      if (rows === null) throw new Error('Lỗi tải hồ sơ thanh lý — không thể dựng hàng đợi');
 
-      const rows = (data ?? []) as any[];
-      const contractIds = rows.map((r) => r.contract_id).filter(Boolean);
+      const contractIds = [...new Set(rows.map((r) => r.contract_id).filter(Boolean))] as string[];
 
       // Phiếu hoàn đã tồn tại — correlate theo contract_id (cách duy nhất hôm nay).
-      let vouchers: any[] = [];
-      if (contractIds.length > 0) {
+      const vouchers: any[] = [];
+      for (let i = 0; i < contractIds.length; i += 500) {
+        const chunk = contractIds.slice(i, i + 500);
         const { data: vs, error: ve } = await supabase
           .from('income_expenses')
           .select('contract_id, code, total_amount, approval_status, posting_status')
-          .in('contract_id', contractIds)
+          .in('contract_id', chunk)
           .like('system_source', 'termination.refund%')
           .is('deleted_at', null)
           .neq('approval_status', 'CANCELLED');
+        // Một lô lỗi = fail toàn query. Nuốt lô lỗi là tuyên bố sai "chưa có
+        // phiếu hoàn" cho cả trăm hợp đồng.
         if (ve) throw new Error(ve.message);
-        vouchers = vs ?? [];
+        vouchers.push(...(vs ?? []));
       }
       const byContract = new Map<string, any>();
       for (const v of vouchers) {

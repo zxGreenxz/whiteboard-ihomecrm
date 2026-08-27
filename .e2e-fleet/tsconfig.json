@@ -1,0 +1,23 @@
+{
+  "$comment": "C-INFRA-9 (Plan 2 §2.3, audit 27/08): specs .e2e-fleet nằm ngoài tsconfig gốc nên lỗi type ở đây vô hình cho tới lúc Playwright chạy. Chạy: npm run typecheck:e2e. | openclaw-zalo.spec.ts bi EXCLUDE: OpenClaw dong bang 25/08 (CLAUDE.md) — khong sua ke ca loi type; 15 loi TS2559 cua no nam yen trong vung dong bang.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "specs/**/*.ts",
+    "playwright.config.ts"
+  ],
+  "exclude": [
+    "specs/openclaw-zalo.spec.ts"
+  ]
+}

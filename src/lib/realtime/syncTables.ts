@@ -36,6 +36,11 @@ export const REALTIME_SYNC_TABLES = [
   // phòng là im lặng hoàn toàn.
   "contract_terminations",
   "contract_transfers",
+  // 28/08 (audit 27/08 C-INFRA-7): hai bảng CẤU HÌNH PHÍ THEO TOÀ mà /thanh-toan
+  // đọc — vắng ở đây thì máy này sửa cấu hình phí, máy kia phải F5 mới thấy.
+  // Publication: 20260828130000_realtime_building_fee_tables.sql.
+  "building_fee_accounts",
+  "building_utility_accounts",
 ] as const;
 
 /** Union tên bảng, suy ra TỪ danh sách — không khai hai lần rồi trôi khỏi nhau. */

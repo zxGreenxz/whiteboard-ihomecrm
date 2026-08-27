@@ -211,7 +211,7 @@ Ghi lại để không ai đi lại đường này:
 | Bug singleton `hubActive` trong `src/hooks/useRealtimeDataSync.ts:126` chưa ref-count | Trung bình |
 | `.e2e-fleet/tsconfig.json` + `typecheck:e2e` — vùng mù type còn nguyên | Trung bình |
 | `IncomeExpenseForm.tsx` chưa disable amount/items cho phiếu owned | Trung bình |
-| Fixture chỉ phủ 2/5 ca regression của Task 7 Step 6 | Trung bình |
+| ~~Fixture chỉ phủ 2/5 ca regression~~ **ĐÍNH CHÍNH 28/08: SAI — đọc lại  thì cả 5 ca (a)–(e) đều đã phủ** (drift −978.500, drift +500.000, UNAPPROVED không tính, 3 phiếu DEMO 50/40/30k, net âm). Phán quyết gốc lấy từ báo cáo trung gian chưa tự kiểm. | — |
 
 Mọi "8/8", "12/12" trong nhật ký §14 là phép kiểm chạy tay qua Management API rồi ghi vào tài liệu — **không tái chạy được, không vào CI**.
 

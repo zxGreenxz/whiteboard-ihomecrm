@@ -27,6 +27,12 @@ export function TerminationRefundQueueSection({ period }: { period: string }) {
 
   const posted = rows.filter((r) => r.refundVoucherStatus === 'POSTED');
   const pending = rows.filter((r) => r.refundVoucherStatus === 'PENDING');
+  // QUYẾT ĐỊNH GHI LẠI (audit 27/08 F7): `refundAmount` là cột GENERATED của hồ
+  // sơ — KHÔNG phải số phải trả. Ở đây nó chỉ làm TRIAGE ("hồ sơ nói phải hoàn
+  // mà chưa thấy phiếu → đáng bấm Kiểm tra"), và bảng đặt nó cạnh cột "Phiếu
+  // hoàn thật" với tiêu đề nói rõ nguồn. Số phải trả THẬT do
+  // preview_termination_refund_v1 tính trong dialog, đối chiếu cọc thật đã vào
+  // két — không con số nào ở màn này được dùng để ghi tiền.
   const none = rows.filter((r) => r.refundVoucherStatus === null && r.refundAmount > 0);
   const owes = rows.filter((r) => r.refundAmount <= 0 && r.refundVoucherStatus === null);
 

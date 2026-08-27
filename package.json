@@ -13,6 +13,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "typecheck:baseline": "node scripts/check-ts-baseline.mjs",
+    "typecheck:e2e": "tsc -p .e2e-fleet/tsconfig.json --noEmit",
     "gen:types": "node scripts/gen-supabase-types.mjs",
     "types:normalize": "node scripts/normalize-supabase-types.mjs --write",
     "types:check": "node scripts/normalize-supabase-types.mjs --check",

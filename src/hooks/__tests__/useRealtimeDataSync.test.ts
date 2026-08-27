@@ -47,7 +47,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-import { useRealtimeDataSync } from "@/hooks/useRealtimeDataSync";
+import { useRealtimeDataSync, __hubRefsForTest } from "@/hooks/useRealtimeDataSync";
 import { QueryClient } from "@tanstack/react-query";
 
 const NEW_REPORT_ROOTS = new Set([
@@ -278,8 +278,47 @@ describe("useRealtimeDataSync report invalidation", () => {
       // phòng là im lặng hoàn toàn. Migration 20260731060000 thêm vào publication.
       "contract_terminations",
       "contract_transfers",
+      // 28/08 (C-INFRA-7): hai bảng CẤU HÌNH PHÍ THEO TOÀ mà /thanh-toan đọc.
+      // Publication: 20260828130000_realtime_building_fee_tables.sql.
+      "building_fee_accounts",
+      "building_utility_accounts",
     ].sort());
     expect(new Set(registeredTables).size).toBe(registeredTables.length);
+  });
+
+  // C-INFRA-6 (audit 27/08): bản cũ là cờ boolean — consumer thứ HAI return sớm
+  // không cleanup, rồi consumer ĐẦU unmount là hạ cờ + removeChannel, để lại
+  // consumer sống sót VĨNH VIỄN không subscribe. Ref-count phải chịu được hai
+  // consumer: hub sống chừng nào còn ≥1, và channel chỉ bị remove khi consumer
+  // CUỐI rời đi.
+  it("hai consumer: hub sống tới khi consumer CUỐI unmount, không chết theo consumer đầu", () => {
+    // Mock useEffect mặc định chỉ giữ MỘT cleanup (harness.cleanup) — hai
+    // consumer cần giữ RIÊNG từng cleanup để unmount đúng thứ tự.
+    const cleanups: Array<void | (() => void)> = [];
+    harness.useEffect.mockImplementation((effect: () => void | (() => void)) => {
+      cleanups.push(effect());
+    });
+
+    useRealtimeDataSync(); // consumer A
+    useRealtimeDataSync(); // consumer B
+
+    // Hai consumer nhưng chỉ MỘT channel được dựng.
+    expect(harness.channelFactory).toHaveBeenCalledTimes(1);
+    expect(__hubRefsForTest()).toBe(2);
+
+    // Consumer đầu rời đi: hub PHẢI còn sống (bản cũ chết ngay tại đây —
+    // cleanup của A hạ cờ + removeChannel trong khi B còn đứng nhìn).
+    (cleanups[0] as () => void)();
+    expect(__hubRefsForTest()).toBe(1);
+    expect(harness.removeChannel).not.toHaveBeenCalled();
+
+    // Consumer cuối rời đi: giờ mới được dọn.
+    (cleanups[1] as () => void)();
+    expect(__hubRefsForTest()).toBe(0);
+    expect(harness.removeChannel).toHaveBeenCalledTimes(1);
+
+    // afterEach đừng dọn đôi — cleanup đã chạy hết trong test này.
+    harness.cleanup = undefined;
   });
 
   // Chốt chặn cho chính việc tách file ở P1.8: tách một mảng thành ba module tạo

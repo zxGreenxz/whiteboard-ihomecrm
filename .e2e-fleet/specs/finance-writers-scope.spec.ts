@@ -354,8 +354,10 @@ test('finance-writers-scope: KNOWER không leak', async ({ browser }) => {
     await navQ;
 
     // Xác định membership quanly qua RPC lành (get_cashbook_access_admin_v2).
+    // (typecheck:e2e 28/08 bắt được: authQ khai `| null`, TS đúng — dòng gán
+    // ngay trên bảo đảm nó không null tại đây, nhưng nói ra tường minh.)
     const admin0 = await readAccessAdmin(authC, refs.cashbookId);
-    const quanlyMid = admin0.eligible_memberships.find((m) => m.user_id === authQ.userId)?.membership_id;
+    const quanlyMid = admin0.eligible_memberships.find((m) => m.user_id === authQ!.userId)?.membership_id;
     expect(quanlyMid, 'phải thấy membership của quanly').toBeTruthy();
 
     // Chuyển quanly custodian→KNOWER qua Management API (đường RPC lỗi 22P02).
