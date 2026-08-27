@@ -30,10 +30,21 @@ Bảng phải nằm trong publication `supabase_realtime`. Năm bảng gốc đ�
 Zalo bật riêng ở các migration `20260626000002/03/07`.
 
 > **Chưa có realtime** (mọi thay đổi chỉ thấy khi F5 / hết staleTime): `building_utility_accounts`,
-> `accounts`, `payments`, `meter_readings`, `contract_terminations`, các bảng lương v5… Nếu
+> `building_fee_accounts`, `accounts`, `payments`, `meter_readings`, các bảng lương v5… Nếu
 > một màn đọc CHÍNH từ các bảng này và cần live, phải: (1) ADD bảng vào publication, (2) thêm
 > entry vào `SYNC_TABLES`. Hiện các màn đó live *gián tiếp* nhờ dùng chung bảng đã bật (vd số
 > dư sổ quỹ derive từ `income_expenses`).
+
+> **ĐÍNH CHÍNH 27/08/2026.** `contract_terminations` đã được **bỏ khỏi** danh sách trên: nó cùng
+> `contract_transfers` đã vào publication từ
+> [20260731060000_realtime_lifecycle_tables.sql](../../supabase/migrations/20260731060000_realtime_lifecycle_tables.sql)
+> và đã có entry trong `SYNC_TABLES` ([src/lib/realtime/syncTables.ts](../../src/lib/realtime/syncTables.ts)
+> dòng 37-38). Đã xác minh `pg_publication_tables` trên production. Tài liệu này nói ngược code suốt
+> gần một tháng.
+>
+> Đồng thời **thêm** `building_fee_accounts` vào danh sách chưa có realtime — nó chưa vào `SYNC_TABLES`,
+> cùng nhóm với `building_utility_accounts`. Cả hai là món nợ đã có tên, xem
+> [AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md](../audits/AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md) §6.
 
 ---
 

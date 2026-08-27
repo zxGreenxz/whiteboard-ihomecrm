@@ -773,6 +773,8 @@ mặt bản 29/07 bỏ sót · **[BỎ]** nhắm vào vấn đề không tồn t
 
 ### Task 0: Khóa audit chuyển phòng và dựng residence segments — Slice 2, KHÔNG bị chặn
 
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — XONG gần trọn.** Hai migration đã ship nhưng **đổi tên** so với plan (`20260731050000_contract_transfer_audit_hardening.sql`, `20260731051000_room_residence_segments.sql`) và đã có trên production. Còn hở: Step 1 và Step 6 — `scripts/test-contract-transfer-segments.mjs` không tồn tại. Hai RPC sinh ra **chưa client nào gọi**. Chi tiết: `docs/audits/AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md`.
+
 **Files:** `supabase/migrations/20260731010500_contract_transfer_audit_hardening.sql`,
 `supabase/migrations/20260731011000_room_residence_segments.sql`,
 `scripts/test-contract-transfer-segments.mjs`.
@@ -835,6 +837,8 @@ chạy song song với Plan 1 Slice 1. Nhưng nó **phải** dùng dải timesta
   Task 0 phải VOLATILE (§3.3).
 
 ### Task 1: Tạo settlement snapshot và obligation ledger bất biến
+
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — LỆCH NẶNG.** Bảng `termination_settlement_snapshots` **chưa từng được viết**. Thay vào đó là `20260731090000_termination_refund_obligation.sql` giản lược: obligation 16 cột, không snapshot id, không state machine, không 3 hash, không idempotency key, không `deposit_subtotal`/`other_subtotal`, không sticky subject registry, 0/5 named wrapper. Đây là **điểm rẽ kiến trúc có chủ ý** (`danh-gia…v2.md` §16.2), nhưng kèm hai lỗi chặn F2 và F3 của audit. Chi tiết: `docs/audits/AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md`.
 
 **Files:** `supabase/migrations/20260731030000_termination_settlement_snapshot.sql`,
 `supabase/migrations/20260731031000_termination_refund_obligations.sql`,
@@ -955,6 +959,8 @@ quyết định §3.6(A/B).
 
 ### Task 2: Canonicalize BA termination writer và freeze voucher tại birth
 
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — CHƯA LÀM.** Không migration nào của Task này tồn tại. Bốn writer thanh lý vẫn `GRANT EXECUTE` cho `authenticated`; `terminate_contract_move_out_impl` và `terminate_contract_forfeit_impl` vẫn nuốt lỗi audit bằng `RAISE WARNING`; `approve_contract_termination_v1` vẫn tính từ cột GENERATED và INSERT không có `system_source`. Đây là việc **cố ý hoãn** (§17.6); điều kiện gỡ chặn đặt ra 31/07 và **đến 27/08 vẫn chưa đạt**. Xem F6 của audit.
+
 **Files:** `supabase/migrations/20260731031500_termination_writer_canonicalization.sql`,
 `scripts/test-termination-obligations.mjs`.
 
@@ -1070,6 +1076,8 @@ quyết định §3.6(A/B).
 
 ### Task 3: Legacy correlation và signed deposit basis
 
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — LỆCH, làm một nửa.** `app_private.resolve_signed_contract_deposit_basis_v1` **có trên production** và được `preview_termination_refund_v1` gọi, có lưu `basis_fingerprint`. Nhưng không có migration backfill, không có report tách rổ, không có ngưỡng, và `scripts/audit-room-lifecycle-rollout.mjs` không tồn tại.
+
 **Files:** `supabase/migrations/20260731033000_termination_lifecycle_backfill.sql`,
 `scripts/audit-room-lifecycle-rollout.mjs`.
 
@@ -1128,6 +1136,8 @@ quyết định §3.6(A/B).
   **không** dùng `apply-sql.mjs --dry-run` (script hard-code production ref — đã xác minh lại).
 
 ### Task 4: Authorized queue, preview, `/deposits` status reads — và ô KPI
+
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — LỆCH.** `get_refund_forfeit_summary` **đã redefine đúng nguyên tắc** "tiền đã ra két" (SECURITY INVOKER, VOLATILE) — nhưng lấy con số **khác plan** theo quyết định của chủ 30/07; xem đính chính ở §7 Definition of Done. Ba RPC còn lại (`list_termination_refund_queue_v1`, `get_termination_refund_statuses_v1`, `get_contract_termination_refund_status_v1`) **không tồn tại**; UI đọc thẳng bảng qua RLS. `preview_termination_refund_v1` có chữ ký khác plan và chỉ chốt quyền ở mức tổ chức, không mức toà (F10). Realtime publication thì **XONG** (`20260731060000_realtime_lifecycle_tables.sql`).
 
 **Files:** `supabase/migrations/20260731032000_termination_refund_read_rpcs.sql`,
 `scripts/test-termination-refund-reads.mjs`.
@@ -1193,6 +1203,8 @@ Xây tiếp trên Slice −1.7 (reader `/deposits` đã sửa).
   query key mà **production im lặng vĩnh viễn** trong khi test mock vẫn xanh (`B25`).
 
 ### Task 5: Exact refund writer trên trang đóng tiền
+
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — LỆCH CÓ CHỦ Ý.** Thay bằng `create_termination_refund_voucher_v1(p_obligation_id, p_account_id, p_force, p_force_reason)` ở `20260731100000_termination_refund_writer.sql`: không evidence, không idempotency key, không hash recheck, **không đọc `contract_terminations.status`** (F3), và **cố ý không tự post** — phiếu ra `UNAPPROVED`, người duyệt là cổng (`danh-gia…v2.md` §16.2). Kèm lỗi chặn F1: writer ghi `system_source` là `termination.refund.v2`, không khớp vị ngữ của bất kỳ màn đọc nào.
 
 **Files:** `supabase/migrations/20260731034000_termination_refund_special_writer.sql`,
 `scripts/test-termination-refund-special-page.mjs`.
@@ -1314,6 +1326,10 @@ Xây tiếp trên Slice −1.7 (reader `/deposits` đã sửa).
 
 ### Task 6: Authorized room lifecycle read model
 
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — CHƯA LÀM, 0%.** `get_room_cash_lifecycle_v1` không tồn tại trên đĩa lẫn trên production. Không có `src/lib/roomLifecycle.ts`, không có `useRoomCashLifecycle`, không có event taxonomy. Thứ duy nhất tồn tại là tiền đề Task 0 (`get_room_residence_segments_v1`), và nó **đang nằm không**.
+>
+> **ĐỌC TRƯỚC KHI THIẾT KẾ:** trên production `contracts.parent_contract_id` rỗng **0/366** và `contract_extensions.new_contract_id` rỗng **0/101** — không tồn tại liên kết cha-con nào giữa các hợp đồng, vì gia hạn sửa ngày trên chính hợp đồng cũ chứ không sinh hợp đồng mới. "Biểu đồ cây" **không dựng được** từ dữ liệu hiện có; thứ dựng được là **timeline theo phòng**. Xem §8.1 của audit.
+
 **Files:** `supabase/migrations/20260731032500_room_lifecycle_read_rpc.sql`, `src/lib/roomLifecycle.ts`,
 `src/lib/__tests__/roomLifecycle.test.ts`, `src/lib/__tests__/roomLifecycle.property.test.ts`,
 `scripts/test-room-lifecycle.mjs`.
@@ -1372,6 +1388,8 @@ Xây tiếp trên Slice −1.7 (reader `/deposits` đã sửa).
   đẩy invariant render về unit test; **vẫn không thêm jsdom**.
 
 ### Task 7: Hooks và UI — `/thanh-toan` (Hoàn cọc), `/thu-tien` (Chu trình phòng), `/deposits`, contract detail
+
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — HỖN HỢP.** Step 5 (a, c, d) **XONG và đúng hướng**: `/deposits` bỏ hẳn `refund_date`/`COMPLETED`, hiện "Khách còn nợ" cho net âm, contract detail đổi cả hai nhãn. Step 1, 2, 3 **LỆCH**: chỉ có nửa registry (`chi_thanh_ly`), hàng đợi không chunk và dính cap-1000 (F8), 4 query key realtime + 2 bảng `SYNC_TABLES` chưa thêm, bug singleton `hubActive` chưa vá. Step 5(e) mới nửa vời — vẫn chỉ bắt `UNAPPROVED` nên phiếu `APPROVED` chưa vào sổ không được cảnh báo ở đâu (F4). Step 4 (Lifecycle UI) **CHƯA** — và theo `BLOCKED-BY` của chính Task này thì nó bị chặn bởi Task 6 vốn chưa tồn tại.
 
 **Files:** toàn bộ paths ở §2.2, đặc biệt `src/hooks/useRoomCashLifecycle.ts`,
 `src/hooks/useTerminationRefundQueue.ts`, `src/components/thu-tien/room-lifecycle/RefundPaymentDialog.tsx`,
@@ -1498,6 +1516,8 @@ Xây tiếp trên Slice −1.7 (reader `/deposits` đã sửa).
 
 ### Task 8: Verification, rollout và rollback
 
+> **TRẠNG THÁI THỰC TẾ 27/08/2026 — CHƯA LÀM.** 0/6 script gate tồn tại; `docs/superpowers/runbooks/` **không tồn tại**; không có feature route nào trên đường hoàn mới nên không có gì để SHADOW/CANARY/OFF; `set_feature_freeze_v1` không tồn tại. **Step 1 hiện không chạy được** — xem đính chính ngay dưới.
+
 **Files:** `scripts/audit-room-lifecycle-rollout.mjs`, `.e2e-fleet/specs/room-lifecycle.spec.ts`,
 `.e2e-fleet/specs/termination-refund-special-page.spec.ts`, `.e2e-fleet/specs/deposit-refund-status.spec.ts`,
 `docs/superpowers/runbooks/2026-07-31-room-lifecycle-refund-rollout.md`.
@@ -1515,6 +1535,15 @@ Xây tiếp trên Slice −1.7 (reader `/deposits` đã sửa).
   **`20260731034000_termination_refund_special_writer.sql` với mọi route OFF**. Chỉ sau khi toàn bộ
   migration/test pass mới apply production đúng cùng thứ tự. Compare lifecycle/deposit/refund totals.
   **Never call fake `--dry-run`** (`apply-sql.mjs` hard-code production ref).
+  >
+  > **ĐÍNH CHÍNH 27/08/2026 — KỊCH BẢN NÀY KHÔNG CHẠY ĐƯỢC.** Không một tên file nào trong chuỗi trên
+  > tồn tại trên đĩa. Tên thật đã ship: `20260731050000_contract_transfer_audit_hardening.sql`,
+  > `20260731051000_room_residence_segments.sql`, `20260731060000_realtime_lifecycle_tables.sql`,
+  > `20260731090000_termination_refund_obligation.sql`, `20260731100000_termination_refund_writer.sql`,
+  > `20260731110000_refund_preview_accept_contract.sql`. Năm file còn lại
+  > (`termination_settlement_snapshot`, `termination_writer_canonicalization`,
+  > `termination_refund_read_rpcs`, `room_lifecycle_read_rpc`, `termination_lifecycle_backfill`)
+  > **chưa từng được viết**. Ai dựng lại rehearsal phải viết lại chuỗi này theo tên thật trước.
   **[THÊM] Rehearsal phải là CLONE CỦA PRODUCTION**, vì Đợt 0–6 khi đó đã thường trú và mọi guard được
   luyện. Nếu clone **không** mang được, phải ghi thẳng vào plan rằng rehearsal **không bao phủ**
   `a02_ie_profit_lock_*`, `trg_ie_check_lock_ins`, nhánh ANNOTATE của
@@ -1731,6 +1760,19 @@ Trailer: theo đúng tác nhân chạy phiên. `CLAUDE.md` quy định trailer c
   chỉ ghi "Đã hoàn" khi canonical obligation có active posting, hiện **"Khách còn nợ"** cho net âm, và
   **ô KPI khớp tổng cột bảng** (`aaaa` 8.290.000đ/3 lần → 4.302.000đ/2 lần; `dddd` 700.000đ/8 lần → 0).
   Generated `refund_amount` không còn là payable truth ở bất kỳ đâu.
+  >
+  > **SUPERSEDED 27/08/2026 — mệnh đề "ô KPI khớp tổng cột bảng" ĐÃ BỊ CHỦ BÁC.** Quyết định của chủ
+  > ngày 30/07 (`danh-gia…v2.md:117-136`): KPI "Đã hoàn cọc" phải là **tiền thật đã ra khỏi két**, tức
+  > gồm cả phiếu hoàn đã ghi sổ mà không nối được hồ sơ thanh lý — 28.039.100đ/10 phiếu, chứ không phải
+  > 4.302.000đ/2. Lý do: lấy phần nối được là khai **thiếu** 23.737.100đ tiền đã chi thật. Code hiện
+  > theo quyết định của chủ và bù bằng đối chiếu `refund_linked_total + refund_posted_orphan_total =
+  > refund_total` cộng một dòng cảnh báo trên UI. **Tiêu chí DoD ở dòng trên không còn hiệu lực.**
+  >
+  > Ba mệnh đề còn lại của gạch đầu dòng này vẫn CHƯA đạt: `/deposits` **không** chunk ≤500 (dùng
+  > `fetchAllRows` phân trang thay thế), **không** dùng snapshot room/building (vẫn join phòng hiện
+  > tại — F5), và `refund_amount` vẫn là payable truth ở `useThanhToanLedgers.ts:98` cùng
+  > `SettlementPanels.tsx:30` (F7). Hai mệnh đề ĐÃ đạt: "Đã hoàn" chỉ khi có phiếu POSTED với posting
+  > sống, và "Khách còn nợ" cho net âm.
 - Contract detail **không** còn hiện đồng thời *"Đã thu 0đ"* và *"Hoàn lại khách 2.428.500đ"* cho cùng một
   hợp đồng; cảnh báo phiếu thanh lý chờ xử lý nhận cả owned `APPROVED + UNPOSTED` và không dò `notes LIKE`.
 - Completed `ROOM_CHANGE|BOTH_CHANGE` dùng move-out/move-in effective dates; **đường trigger
@@ -1858,3 +1900,47 @@ Plan này là VĂN BẢN THIẾT KẾ; trạng thái thi hành thật ghi ở da
   (danh-gia §18.1) — hàm SECURITY DEFINER đi vòng qua RLS. Mọi hàm trả danh sách
   phải áp `app_private.building_org_visible_v1(building_id)` hoặc hai mệnh đề
   RLS tương đương, và đo bằng đối chứng "số hàm trả = số đọc thẳng bảng".
+
+
+---
+
+## PHỤ LỤC KIỂM TOÁN — 27/08/2026
+
+Toàn văn: [`docs/audits/AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md`](../../audits/AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md).
+
+Đợt kiểm đối chiếu 72 checkbox của plan này với code trong repo, migration trên đĩa, và object thật
+trên production (`pg_proc` / `pg_indexes` / `pg_publication_tables`, chỉ đọc). Kết quả tóm tắt đã được
+chèn thành khối **TRẠNG THÁI THỰC TẾ 27/08/2026** ngay dưới mỗi tiêu đề Task.
+
+**Vì sao 72 checkbox vẫn để trống:** các Step "đã xong" phần lớn được thi hành bằng một kiến trúc
+KHÁC với thứ Step đó mô tả — tick `[x]` sẽ nói dối rằng plan đã được thực hiện đúng như viết. Khối
+trạng thái theo Task nói đúng hơn: cái gì xong, cái gì lệch, lệch chỗ nào.
+
+### Ba lỗi CHẶN trên đường hoàn cọc mới
+
+Đường này gọi được từ UI (mục **"Chi thanh lý (hoàn cọc)"** trên `/thanh-toan`, và
+`TerminationRefundDialog` trên `/reports/real-estate/terminations`). Nó **chưa nổ chỉ vì production
+còn 0 nghĩa vụ hoàn cọc** — `termination_refund_obligations` rỗng. Ai định bật/dùng đường này phải vá
+trước:
+
+| # | Lỗi | Nơi |
+|---|---|---|
+| **F1** | Writer ghi `system_source = 'termination.refund.v2'`, trong khi ô KPI `/deposits`, `useDepositDashboard`, `useContractDetailData` và `voucherSources` đều lọc **bằng đúng** `'termination.refund'`. Tiền ra khỏi két mà mọi màn vẫn nói chưa hoàn; `/thu-chi` hiện nguồn "Nhập tay". | `20260731100000_termination_refund_writer.sql:143` |
+| **F2** | Không gì chặn hai phiếu hoàn cho cùng một hồ sơ. `version` tăng vô hạn, và index `ux_tro_voucher` là `UNIQUE (organization_id, id) WHERE voucher_id IS NOT NULL` — `id` đã là PK nên **index không ràng buộc gì**. Đã báo ở audit 13/08, chưa vá. | `20260731090000_...:38-40` |
+| **F3** | Không đọc `contract_terminations.status` — hồ sơ `DRAFT` vẫn sinh được phiếu chi. | `20260731100000_...` |
+
+Kèm **F4**: cảnh báo "Phiếu thanh lý chờ xử lý" chỉ bắt `UNAPPROVED`, nên 3 phiếu `APPROVED` chưa có
+bút toán sống (9.515.634đ trên prod) không được nhắc ở màn nào.
+
+### Điều kiện §17.6 vẫn chưa đạt
+
+"Khoá đường thanh lý cũ" được hoãn từ 31/07 với điều kiện: dựng spec E2E chạy trọn thanh lý → nghĩa vụ
+→ phiếu hoàn trên DEMO. **Đến 27/08 điều kiện đó vẫn chưa đạt**, và bốn writer cũ vẫn `GRANT EXECUTE`
+cho `authenticated`.
+
+### Dữ kiện phải biết trước khi làm Task 6
+
+Trên production `contracts.parent_contract_id` rỗng **0/366** và `contract_extensions.new_contract_id`
+rỗng **0/101**. Không tồn tại liên kết cha-con nào giữa các hợp đồng — gia hạn sửa ngày trên chính hợp
+đồng cũ chứ không sinh hợp đồng mới. Task 6 phải thiết kế theo hướng **timeline theo phòng**, không
+phải cây kế thừa hợp đồng.

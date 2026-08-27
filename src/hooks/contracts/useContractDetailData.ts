@@ -60,10 +60,14 @@ export function useContractDepositVouchers(contractId: string) {
 export interface PendingTerminationVoucher {
   system_source?: string | null;
   notes?: string | null;
+  /** Thiếu field ⇒ hiểu là UNAPPROVED (caller cũ chỉ fetch phiếu chưa duyệt). */
+  approval_status?: string | null;
+  posting_status?: string | null;
+  active_posting_id_v2?: string | null;
 }
 
 /**
- * Phân loại phiếu thanh lý CHỜ DUYỆT theo `system_source` (marker do writer đặt),
+ * Phân loại phiếu thanh lý CHỜ XỬ LÝ theo `system_source` (marker do writer đặt),
  * và VẪN nhận tiền tố `notes` cũ để không mất phiếu legacy.
  *
  * Vì sao đổi (Slice −1 · §−1.7(d)): bản cũ dò DUY NHẤT `notes LIKE '[CẤN CỌC BỎ
@@ -72,6 +76,12 @@ export interface PendingTerminationVoucher {
  * `system_source='termination.refund'`, phiếu cấn cọc đặt `'termination.offset'`),
  * nên cảnh báo "Phiếu thanh lý chờ xử lý" bỏ sót phần lớn phiếu. Hợp hai luật
  * (OR) nên tuyệt đối không nhận diện ít hơn bản cũ.
+ *
+ * Nới 28/08 (audit F4): phiếu HOÀN đã duyệt mà tiền CHƯA ra két thật
+ * (`APPROVED` nhưng chưa POSTED + posting sống) cũng là "chờ xử lý" — trên prod
+ * có 3 phiếu 9.515.634đ ở đúng trạng thái này mà không màn nào nhắc. Riêng
+ * phiếu CẤN CỌC là bút toán nội bộ sổ ảo, `NOT_APPLICABLE` là trạng thái XONG
+ * của nó, nên nhánh forfeit vẫn chỉ đếm phiếu chưa duyệt.
  */
 export function classifyPendingTerminationVouchers(
   rows: PendingTerminationVoucher[],
@@ -81,10 +91,17 @@ export function classifyPendingTerminationVouchers(
   for (const v of rows) {
     const src = v.system_source ?? "";
     const notes = v.notes ?? "";
+    const approval = v.approval_status ?? "UNAPPROVED";
+    const moneyOut =
+      approval === "APPROVED" &&
+      v.posting_status === "POSTED" &&
+      v.active_posting_id_v2 != null;
     if (src === TERMINATION_REFUND_SOURCE || notes.startsWith("[HOÀN KHÁCH THANH LÝ]")) {
-      refund += 1;
+      // Hoàn là TIỀN THẬT: chưa duyệt, hoặc đã duyệt mà chưa có bút toán sống
+      // ⇒ đều còn dang dở.
+      if (!moneyOut) refund += 1;
     } else if (src === TERMINATION_OFFSET_SOURCE || notes.startsWith("[CẤN CỌC BỎ CỌC")) {
-      forfeit += 1;
+      if (approval === "UNAPPROVED") forfeit += 1;
     }
   }
   return { forfeit, refund };
@@ -99,14 +116,18 @@ export function useContractPendingTermination(contractId: string) {
     queryKey: ["contract-pending-forfeit", contractId],
     enabled: !!contractId,
     queryFn: async (): Promise<{ forfeit: number; refund: number }> => {
-      // Một query lấy đúng tập phiếu CHỜ DUYỆT của HĐ rồi phân loại phía client
+      // Một query lấy tập phiếu CHƯA XONG của HĐ rồi phân loại phía client
       // (một HĐ chỉ có vài phiếu — không cần phân trang). Trước đây là 2 query
       // `head:true count` với 2 pattern LIKE trên `notes`.
+      //
+      // Nới 28/08 (audit F4): fetch cả APPROVED — phiếu hoàn đã duyệt mà chưa
+      // POSTED + posting sống vẫn là "chờ xử lý" (tiền chưa ra két thật);
+      // classifyPendingTerminationVouchers lo phần phân loại theo trạng thái.
       const { data, error } = await supabase
         .from("income_expenses")
-        .select("id, system_source, notes")
+        .select("id, system_source, notes, approval_status, posting_status, active_posting_id_v2")
         .eq("contract_id", contractId)
-        .eq("approval_status", "UNAPPROVED")
+        .in("approval_status", ["UNAPPROVED", "APPROVED"])
         .is("deleted_at", null);
       if (error) throw error;
       return classifyPendingTerminationVouchers((data ?? []) as PendingTerminationVoucher[]);

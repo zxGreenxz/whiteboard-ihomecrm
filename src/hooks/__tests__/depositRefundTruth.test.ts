@@ -202,4 +202,53 @@ describe("classifyPendingTerminationVouchers", () => {
   it("danh sách rỗng ⇒ không có cảnh báo", () => {
     expect(classifyPendingTerminationVouchers([])).toEqual({ refund: 0, forfeit: 0 });
   });
+
+  // Audit 27/08 F4: prod có 3 phiếu hoàn APPROVED + NOT_APPLICABLE (9.515.634đ)
+  // mà không màn nào nhắc — /deposits (đúng) không tính "đã hoàn", còn cảnh báo
+  // này thì chỉ bắt UNAPPROVED. Phiếu hoàn là TIỀN THẬT: đã duyệt mà chưa
+  // POSTED + posting sống thì vẫn phải cảnh báo.
+  it("phiếu hoàn APPROVED chưa ra két vẫn là chờ xử lý; cấn cọc APPROVED thì không", () => {
+    const out = classifyPendingTerminationVouchers([
+      // đã duyệt, tiền CHƯA ra két (đúng ca 3 phiếu prod) ⇒ đếm
+      {
+        system_source: "termination.refund",
+        approval_status: "APPROVED",
+        posting_status: "NOT_APPLICABLE",
+        active_posting_id_v2: null,
+      },
+      // đã duyệt + POSTED + posting sống ⇒ tiền đã ra két, KHÔNG đếm
+      {
+        system_source: "termination.refund",
+        approval_status: "APPROVED",
+        posting_status: "POSTED",
+        active_posting_id_v2: "p1",
+      },
+      // POSTED nhưng bút toán đã bị reversal (posting sống = null) ⇒ đếm lại
+      {
+        system_source: "termination.refund",
+        approval_status: "APPROVED",
+        posting_status: "POSTED",
+        active_posting_id_v2: null,
+      },
+      // cấn cọc là bút toán nội bộ: APPROVED + NOT_APPLICABLE là trạng thái
+      // XONG của nó ⇒ KHÔNG đếm (22 phiếu prod ở đúng trạng thái này)
+      {
+        system_source: "termination.offset",
+        approval_status: "APPROVED",
+        posting_status: "NOT_APPLICABLE",
+        active_posting_id_v2: null,
+      },
+      // cấn cọc chưa duyệt ⇒ đếm
+      { system_source: "termination.offset", approval_status: "UNAPPROVED" },
+    ]);
+    expect(out).toEqual({ refund: 2, forfeit: 1 });
+  });
+
+  it("row không mang approval_status (caller cũ chỉ fetch UNAPPROVED) vẫn được đếm như trước", () => {
+    const out = classifyPendingTerminationVouchers([
+      { system_source: "termination.refund", notes: null },
+      { system_source: null, notes: "[CẤN CỌC BỎ CỌC] legacy" },
+    ]);
+    expect(out).toEqual({ refund: 1, forfeit: 1 });
+  });
 });
