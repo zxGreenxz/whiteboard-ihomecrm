@@ -114,6 +114,20 @@ export const BOOTSTRAP_UNMODELLED_MIGRATIONS = Object.freeze({
     + "slot mà bootstrap này không mô hình hoá, cùng độ phủ thay thế như "
     + "cặp 020000/004500 ngay trên: hàm chép nguyên văn các câu lệnh theo "
     + "luật thay-thế của assertStagesObservable",
+  "20260829010000_network_center_h196a_downstream.sql":
+    "cùng lý do bề-mặt-slot với bốn mục trên, không phải một ngoại lệ mới: "
+    + "migration này nới network_devices_kind_check và thêm ràng buộc "
+    + "network_devices_h196a_display_only, mà ràng buộc đó đọc write_capability, "
+    + "credential_ref và parent_device_id — ba cột shim network_devices sáu-cột "
+    + "của bootstrap này không dựng, nên nó ngã ở `column write_capability does "
+    + "not exist` chứ không phải vì migration sai. Độ phủ thay thế: "
+    + "scripts/test-network-center-action-path-disposable.mjs replay MỌI migration "
+    + "thật bằng glob trên PostgreSQL 17 thật; bộ sinh manifest rollout replay đủ "
+    + "28 stage trên cụm dùng-một-lần mỗi lần sinh lại; và bản thân migration đã "
+    + "chạy 13 khẳng định chức năng trong một transaction rollback trên chính "
+    + "schema production ngày 28/08/2026 (nạp 5 thiết bị, trễ ba lượt trước khi "
+    + "gọi OFFLINE, gộp trùng stableKey, chặn MAC ngẫu nhiên, và ba ràng buộc "
+    + "chỉ-để-nhìn / phải-có-cha / một-MikroTik-một-toà)",
 });
 
 export function discoverForwardFixMigrations(directory = MIGRATION_DIRECTORY) {

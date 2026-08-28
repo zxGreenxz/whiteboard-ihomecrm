@@ -245,7 +245,11 @@ export const TELEMETRY_DOMAIN_BINDINGS = Object.freeze([
 /** The two literals F6 got wrong, read out of the connector that ships. */
 export function readEmittedClientLiterals(repoRoot) {
   const source = readFileSync(join(repoRoot, WORKER_CONNECTOR_SOURCE), "utf8");
-  const literals = extractObjectLiteralStrings(source, "clients");
+  // `leaseClients`, khong phai `clients`. Tu 27/08/2026 connector gop mot-MAC-
+  // mot-dong truoc khi tra ve, nen `clients` la KET QUA cua
+  // `collapseDuplicateLeaseClients(...)` — mot loi goi ham, khong con object
+  // literal nao de doc. Cho nay phai tro vao dung noi literal duoc dung len.
+  const literals = extractObjectLiteralStrings(source, "leaseClients");
   const connectionType = literals.get("connectionType");
   const sessionType = literals.get("sessionType");
   if (typeof connectionType !== "string" || typeof sessionType !== "string") {

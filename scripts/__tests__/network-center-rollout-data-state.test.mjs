@@ -65,6 +65,12 @@ const STAGE_25 =
 // cặp stage 24→25. Chưa từng chạy trên production: hàm nó khai vắng mặt.
 const STAGE_27 =
   "supabase/migrations/20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql";
+// Stage 28 (29/08/2026): H196A downstream. Đã chạy trên production ngày
+// 28/08/2026 qua lane forward, nhưng phép đo mà fixture này mô tả neo ở
+// 03/08/2026 — lúc đó nó chưa tồn tại, nên ba hàm nó khai vắng thân y như
+// stage 23/25/27.
+const STAGE_28 =
+  "supabase/migrations/20260829010000_network_center_h196a_downstream.sql";
 
 // Measured against production on 2026-08-03, read-only, via the Management API.
 // These are the ONLY manifest descriptors that were absent.
@@ -86,6 +92,23 @@ const MEASURED_ABSENT = [
 // Measured the same way: the functions stage 23 owns whose live body is not the
 // reviewed one. Four exist with the body an earlier stage installed; four do not
 // exist at all, because stage 23 has never run.
+// Stage 28 (29/08/2026): H196A downstream. Cùng khuôn với stage 25 và 27 —
+// phép đo neo ở 03/08/2026, khi migration này chưa tồn tại, nên toàn bộ mười
+// descriptor nó khai đều vắng mặt. Ghi ra từng cái thay vì một dòng "trừ stage
+// 28": danh sách tường minh là thứ sẽ đỏ nếu ai đó đổi bề mặt của nó.
+const MEASURED_ABSENT_STAGE_28 = [
+  "function:app_private.network_center_guard_h196a_parent_v1()",
+  "function:app_private.network_center_h196a_inventory_v1(public.network_devices,jsonb)",
+  "function:public.network_center_list_h196a_v1(uuid,integer,uuid,integer)",
+  "index:app_private:network_h196a_profiles_building_idx",
+  "index:app_private:network_h196a_profiles_gateway_key_uniq",
+  "index:app_private:network_h196a_profiles_pkey",
+  "index:app_private:network_h196a_quarantine_pkey",
+  "index:public:network_devices_h196a_cursor_idx",
+  "table:app_private.network_h196a_profiles",
+  "table:app_private.network_h196a_quarantine",
+];
+
 const MEASURED_STALE_BODIES = [
   "app_private.network_center_bind_managed_interface_v1",
   "app_private.network_center_worker_inventory_legacy_impl_v1",
@@ -93,6 +116,9 @@ const MEASURED_STALE_BODIES = [
   "public.network_center_watchdog_liveness_v1",
 ];
 const MEASURED_ABSENT_BODIES = [
+  "app_private.network_center_guard_h196a_parent_v1",
+  "app_private.network_center_h196a_inventory_v1",
+  "public.network_center_list_h196a_v1",
   "app_private.network_center_derive_device_lifecycle_v1",
   "app_private.network_center_reconcile_device_lifecycle_v1",
   "public.network_center_admin_enroll_access_port_v1",
@@ -119,7 +145,7 @@ async function productionFixture() {
       ...manifest.postApply.required,
     ]),
   ];
-  const absent = new Set(MEASURED_ABSENT);
+  const absent = new Set([...MEASURED_ABSENT, ...MEASURED_ABSENT_STAGE_28]);
   const present = every.filter((descriptor) => !absent.has(descriptor));
 
   const owned = new Map(
@@ -140,17 +166,17 @@ async function productionFixture() {
 // testing something else.
 test("the fixture reproduces the state measured on production", async () => {
   const { manifest, expectations, present, live, every } = await productionFixture();
-  assert.equal(every.length, 447);
+  assert.equal(every.length, 457);
   assert.equal(present.length, 438);
-  assert.equal(manifest.migrations.length, 27);
+  assert.equal(manifest.migrations.length, 28);
   assert.equal(manifest.migrations[22].path, STAGE_23);
   assert.equal(manifest.migrations[24].path, STAGE_25);
   assert.equal(manifest.migrations[26].path, STAGE_27);
   const classification = classifyCatalog(manifest, present, { expectations, live });
-  assert.equal(classification.bodyMismatches.length, 10);
+  assert.equal(classification.bodyMismatches.length, 13);
   assert.deepEqual(
     [...new Set(classification.bodyMismatches.map((item) => item.migration))].sort(),
-    [STAGE_23, STAGE_25, STAGE_27].sort(),
+    [STAGE_23, STAGE_25, STAGE_27, STAGE_28].sort(),
     "every stale body must belong to an unapplied stage; an earlier one would be a different bug",
   );
 });
