@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { quetFileSql, entryThieuFile } from "../check-migration-provenance.mjs";
+import { phanVungQuet, quetFileSql, entryThieuFile } from "../check-migration-provenance.mjs";
 
 describe("quetFileSql — phải thấy mọi file .sql", () => {
   let dir;
@@ -72,5 +72,27 @@ describe("entryThieuFile — chiều NGƯỢC manifest → đĩa", () => {
   it("phủ cả migrations-archive, không chỉ migrations", () => {
     const con = new Set(["supabase/migrations/a.sql", "supabase/migrations/b.sql"]);
     assert.deepEqual(entryThieuFile(entries, (p) => con.has(p)), ["supabase/migrations-archive/c.sql"]);
+  });
+});
+
+describe("phanVungQuet — file .sql untracked la WIP phien khac, khong lam gate do oan (28/08/2026)", () => {
+  // Tai hien luc khao sat: 2 migration copilot untracked lam gate do voi MOI
+  // phien tren working tree chung. Pham vi quet cua gate local la INDEX; file
+  // untracked chi canh bao — va tro lai CUNG ngay khi duoc stage hoac tren CI.
+  const index = ["20260828120000_cua_minh.sql"];
+  const untracked = ["20260828140000_wip_phien_khac.sql"];
+
+  it("local: quet danh sach index, untracked ve nhom canh bao", () => {
+    const kq = phanVungQuet(index, untracked, false);
+    assert.deepEqual(kq.kiemTra, index);
+    assert.deepEqual(kq.canhBao, untracked);
+    assert.deepEqual(kq.loiCi, []);
+  });
+
+  it("CI: untracked la loi cung — cay CI phai sach", () => {
+    const kq = phanVungQuet(index, untracked, true);
+    assert.deepEqual(kq.kiemTra, index);
+    assert.deepEqual(kq.canhBao, []);
+    assert.deepEqual(kq.loiCi, untracked);
   });
 });

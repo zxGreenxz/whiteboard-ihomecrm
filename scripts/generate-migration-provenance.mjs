@@ -28,7 +28,24 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { lietKeTracked } from "./lib/git-scope.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * Từ danh sách đường dẫn của `git ls-files`, lấy tên file .sql nằm NGAY TRONG
+ * `relPrefix` (không xuống thư mục con — giữ đúng hành vi readdirSync cũ),
+ * sort để manifest ổn định giữa các máy. Thuần, để test không đụng git.
+ */
+export function locSqlTrucTiep(paths, relPrefix) {
+  const truoc = `${relPrefix.replace(/\\/g, "/")}/`;
+  return paths
+    .map((p) => p.replace(/\\/g, "/"))
+    .filter((p) => p.startsWith(truoc))
+    .map((p) => p.slice(truoc.length))
+    .filter((f) => !f.includes("/") && /\.sql$/i.test(f))
+    .sort();
+}
 const MIGRATIONS_DIR = join(repoRoot, "supabase", "migrations");
 const ARCHIVE_DIR = join(repoRoot, "supabase", "migrations-archive");
 const EVIDENCE_DIR = join(repoRoot, "docs", "generated", "schema-change-evidence");
@@ -373,8 +390,14 @@ async function main(argv) {
   };
 
   const entries = [];
+  // Liệt kê từ INDEX chứ không readdirSync (28/08/2026). Án lệ 75c22b77 +
+  // 91784e62: quét đĩa trên working tree chung nuốt entry của migration WIP
+  // (untracked, phiên khác) vào manifest — commit xong CI đỏ "có trong manifest
+  // nhưng KHÔNG còn trên đĩa". Đã chữa tay hai lần bằng worktree sạch của
+  // HEAD; đây là bản mã hoá. Hệ quả: migration MỚI phải `git add` trước khi
+  // chạy generator này — khớp Contract §3 (stage tên cụ thể trước commit).
   const collect = (dir, relPrefix, archived) => {
-    for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql"))) {
+    for (const file of locSqlTrucTiep(lietKeTracked([relPrefix]), relPrefix)) {
       const full = join(dir, file);
       const sql = readFileSync(full, "utf8");
       const { version, name, scheme } = parseFileName(file);
@@ -392,9 +415,7 @@ async function main(argv) {
   };
   collect(MIGRATIONS_DIR, "supabase/migrations", false);
   collect(join(ARCHIVE_DIR), "supabase/migrations-archive", true);
-  try {
-    collect(join(ARCHIVE_DIR, "migrations-bundle"), "supabase/migrations-archive/migrations-bundle", true);
-  } catch { /* thư mục có thể không tồn tại */ }
+  collect(join(ARCHIVE_DIR, "migrations-bundle"), "supabase/migrations-archive/migrations-bundle", true);
 
   // Nạp biên nhận rollout. Thư mục có thể chưa tồn tại (chưa apply lần nào) —
   // khi đó tập rỗng, và mọi entry rơi về ledger/catalog như trước.

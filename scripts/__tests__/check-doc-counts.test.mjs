@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLAIMS, kiemTra } from '../check-doc-counts.mjs';
+import { CLAIMS, demSqlTuDanhSach, demTrungVersionTuDanhSach, kiemTra } from '../check-doc-counts.mjs';
 
 // Gate này lấy TÀI LIỆU làm đích sửa (có --fix), nên nó sai là nó ghi số sai vào
 // tài liệu. Bản đầu tôi viết đếm thiếu thư mục con và suýt "sửa" con số 15 đúng
@@ -60,5 +60,35 @@ describe('danh sách CLAIMS', () => {
       expect(Number.isInteger(n), `${c.file}: đếm ra ${n}`).toBe(true);
       expect(n).toBeGreaterThanOrEqual(0);
     }
+  });
+});
+
+describe('đếm từ danh sách INDEX — con số phải tái lập được từ commit (28/08/2026)', () => {
+  // Bản cũ demSql/demTrungVersion quét ĐĨA: một file .sql untracked của phiên
+  // song song làm --fix ghi 709 vào docs trong khi CI (đọc cây commit) chỉ thấy
+  // 707 → đỏ. Đã xảy ra thật, chữa tay ở c9f3937f; đây là bản mã hoá.
+  const danhSach = [
+    'supabase/migrations/20260101000000_a.sql',
+    'supabase/migrations/20260101000000_b.sql',
+    'supabase/migrations/20260102000000_c.SQL',
+    'supabase/migrations/nhom/20260103000000_con.sql',
+    'supabase/migrations-archive/20200101000000_cu.sql',
+    'supabase/migrations/ghi-chu.md',
+  ];
+
+  it('demSqlTuDanhSach đếm đệ quy, không phân biệt hoa thường, đúng thư mục', () => {
+    expect(demSqlTuDanhSach(danhSach, 'supabase/migrations')).toBe(4);
+    expect(demSqlTuDanhSach(danhSach, 'supabase/migrations-archive')).toBe(1);
+  });
+
+  it('demSqlTuDanhSach không lẫn thư mục có tên là tiền tố của nhau', () => {
+    // 'supabase/migrations-archive/...' KHÔNG được tính vào 'supabase/migrations'.
+    expect(demSqlTuDanhSach(['supabase/migrations-archive/x.sql'], 'supabase/migrations')).toBe(0);
+  });
+
+  it('demTrungVersionTuDanhSach chỉ xét file ngay trong supabase/migrations, nhóm theo version', () => {
+    const kq = demTrungVersionTuDanhSach(danhSach);
+    expect(kq.soNhom).toBe(1);
+    expect(kq.soFile).toBe(2);
   });
 });

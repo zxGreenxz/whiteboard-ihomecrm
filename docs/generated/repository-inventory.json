@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 556,
-  "soFileDocBangFs": 183,
-  "tongLoiGoi": 458,
+  "tongSoFileTest": 558,
+  "soFileDocBangFs": 181,
+  "tongLoiGoi": 455,
   "khongPhanLoaiDuoc": 244,
   "theoLoai": {
     "tai-lieu": {
@@ -19,7 +19,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 39,
+      "soFile": 37,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
@@ -50,10 +50,8 @@
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
     "src/components/openclaw-zalo/__tests__/cockpitWiring.test.tsx",
-    "src/contexts/__tests__/OrganizationContext.test.ts",
     "src/copilot/__tests__/confirmationStore.test.ts",
     "src/copilot/__tests__/pageAgentCompatibility.test.ts",
-    "src/copilot/__tests__/toolOrgScope.test.ts",
     "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",
     "src/hooks/__tests__/realtimeTenantBoundary.test.ts",
     "src/hooks/__tests__/useManagerSalaryOrganizationScope.test.ts",
@@ -558,14 +556,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "src/copilot/__tests__/toolOrgScope.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "ma-nguon": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/lib/__tests__/accountingLegacyPaymentSemantics.test.ts",
       "soGoi": 2,
       "loai": {
@@ -875,14 +865,6 @@
       "soGoi": 1,
       "loai": {
         "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/contexts/__tests__/OrganizationContext.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
     },

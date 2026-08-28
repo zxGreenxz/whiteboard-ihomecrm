@@ -21,36 +21,33 @@
 // Không cần credential, không đọc database.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { docTuIndex, lietKeTracked, lietKeUntracked } from "./lib/git-scope.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * Đếm file .sql, ĐỆ QUY xuống thư mục con.
- *
- * Bản đầu tôi viết chỉ đếm file ngay trong thư mục, và nó lập tức báo
- * "migrations-archive ghi 15, thực tế 1" — trong khi tài liệu ĐÚNG: 1 file ở gốc
- * + 14 file trong `migrations-bundle/`. Chạy `--fix` lúc đó sẽ sửa một con số
- * đúng thành sai. Với một gate lấy tài liệu làm đích sửa, đếm sai còn tệ hơn
- * không đếm.
+ * Đếm file .sql từ một DANH SÁCH đường dẫn (đệ quy tự nhiên vì ls-files trả
+ * đường dẫn đầy đủ), KHÔNG phân biệt hoa/thường — một file `.SQL` vẫn là
+ * migration (đo 07/08/2026, cùng lớp lỗi `relkind='i'` bỏ sót 'I'). Tách thuần
+ * để test không cần đụng git.
  */
-const demSql = (dir) => {
-  const p = join(repoRoot, dir);
-  if (!existsSync(p)) return 0;
-  let n = 0;
-  for (const e of readdirSync(p, { withFileTypes: true })) {
-    if (e.isDirectory()) n += demSql(join(dir, e.name));
-    // KHÔNG phân biệt hoa/thường: một file đặt tên `.SQL` vẫn là migration (trên
-    // Windows hệ tệp còn không phân biệt nổi), nhưng bộ đếm cũ dùng
-    // `endsWith(".sql")` nên nó lọt và con số tài liệu vẫn "khớp". Đo 07/08/2026:
-    // thêm một file .SQL vào supabase/migrations ⇒ gate xanh; đúng file đó đổi
-    // thành .sql ⇒ gate đỏ ngay. Cùng lớp lỗi với `relkind='i'` bỏ sót 'I'.
-    else if (/\.sql$/i.test(e.name)) n += 1;
-  }
-  return n;
+export const demSqlTuDanhSach = (paths, dir) => {
+  const tienTo = `${dir.replace(/\\/g, "/")}/`;
+  return paths.filter((p) => p.replace(/\\/g, "/").startsWith(tienTo) && /\.sql$/i.test(p)).length;
 };
+
+/**
+ * Đếm từ INDEX chứ không quét đĩa (28/08/2026). Bản cũ readdirSync đếm cả file
+ * .sql untracked — WIP của phiên song song — nên `--fix` từng ghi 709 vào docs
+ * trong khi CI (đọc cây commit) chỉ thấy 707 → đỏ (án lệ c9f3937f, chữa tay
+ * bằng worktree sạch; đây là bản mã hoá). Con số phải TÁI LẬP ĐƯỢC từ commit —
+ * cùng triết lý với demTracked ngay dưới.
+ */
+const demSql = (dir) => demSqlTuDanhSach(lietKeTracked([dir]), dir);
 
 /**
  * Đếm file ĐÃ ĐƯỢC GIT TRACK khớp một mẫu.
@@ -65,22 +62,29 @@ const demTracked = (re, boQua = []) =>
     .filter((p) => p && re.test(p) && !boQua.some((x) => x.test(p))).length;
 
 /**
- * Nhóm migration TRÙNG SỐ VERSION, đếm từ TÊN FILE trên đĩa.
- *
- * Đếm từ đĩa chứ không từ manifest là có chủ đích ở đây: con số này tồn tại để
- * giải thích vì sao `supabase db push` không replay được, và cái chặn `db push`
- * chính là tên file trùng — không phải một entry trong manifest.
+ * Nhóm migration TRÙNG SỐ VERSION từ một danh sách đường dẫn — chỉ xét file
+ * NGAY TRONG supabase/migrations (không xuống thư mục con), giữ đúng phạm vi
+ * của bộ đếm cũ. Tách thuần để test không cần đụng git.
  */
-const demTrungVersion = () => {
+export const demTrungVersionTuDanhSach = (paths) => {
   const dem = new Map();
-  for (const e of readdirSync(join(repoRoot, "supabase", "migrations"), { withFileTypes: true })) {
-    if (!e.isFile() || !/\.sql$/i.test(e.name)) continue;
-    const v = /^(\d+)/.exec(e.name)?.[1];
+  for (const p of paths) {
+    const m = /^supabase\/migrations\/([^/]+)$/.exec(p.replace(/\\/g, "/"));
+    if (!m || !/\.sql$/i.test(m[1])) continue;
+    const v = /^(\d+)/.exec(m[1])?.[1];
     if (v) dem.set(v, (dem.get(v) ?? 0) + 1);
   }
   const trung = [...dem.values()].filter((n) => n > 1);
   return { soNhom: trung.length, soFile: trung.reduce((a, n) => a + n, 0) };
 };
+
+/**
+ * Đếm từ INDEX (28/08/2026) — cùng lý do với demSql: số ghi vào tài liệu phải
+ * tái lập được từ commit. Cái chặn `supabase db push` đúng là tên file trên
+ * ĐĨA, nên nhóm trùng chỉ-tồn-tại-nhờ-file-untracked được cảnh báo RIÊNG trong
+ * main() thay vì lặng lẽ đổi con số của docs theo WIP của phiên khác.
+ */
+const demTrungVersion = () => demTrungVersionTuDanhSach(lietKeTracked(["supabase/migrations"]));
 
 /**
  * Mỗi mục là một con số tài liệu ĐANG khẳng định, kèm cách đếm ra sự thật.
@@ -246,9 +250,18 @@ export const CLAIMS = [
   },
 ];
 
+// Bật bởi --nguon-index: đọc tài liệu VÀ manifest từ INDEX thay vì đĩa — đo
+// đúng thứ CI sẽ thấy sau commit, miễn nhiễm file đang bẩn dở trên đĩa (của
+// phiên này lẫn phiên khác). Đây là chế độ mà kiem-nhanh-truoc-push dùng làm
+// chốt cuối trước push.
+let nguonIndex = false;
+
 /** Đọc manifest provenance (artifact sinh bằng máy) — nguồn sự thật cho các số trên. */
 const docManifest = () =>
-  JSON.parse(readFileSync(join(repoRoot, "supabase", "migration-provenance.json"), "utf8"));
+  JSON.parse(
+    (nguonIndex ? docTuIndex("supabase/migration-provenance.json") : null) ??
+      readFileSync(join(repoRoot, "supabase", "migration-provenance.json"), "utf8"),
+  );
 
 /**
  * Tách nhóm file `unknown`.
@@ -284,14 +297,38 @@ export function kiemTra(doc, claim) {
 
 function main(argv) {
   const fix = argv.includes("--fix");
+  nguonIndex = argv.includes("--nguon-index");
+  if (fix && nguonIndex) {
+    console.error("❌ --fix không đi cùng --nguon-index: index không phải chỗ để ghi — sửa trên đĩa rồi `git add`.");
+    process.exitCode = 1;
+    return;
+  }
+
+  // Nhóm trùng version chỉ-tồn-tại-nhờ-file-untracked: không đổi số trong docs
+  // (số phải tái lập từ commit), nhưng phải NÓI RA — cái chặn `db push` là tên
+  // file trên đĩa, kể cả chưa add.
+  const trungIndex = demTrungVersion();
+  const trungCaDia = demTrungVersionTuDanhSach([
+    ...lietKeTracked(["supabase/migrations"]),
+    ...lietKeUntracked(["supabase/migrations"]),
+  ]);
+  if (trungCaDia.soNhom > trungIndex.soNhom) {
+    console.warn(
+      `⚠ ${trungCaDia.soNhom - trungIndex.soNhom} nhóm version trùng CHỈ xuất hiện khi tính cả file chưa add (WIP — có thể của phiên khác).`,
+    );
+    console.warn("  Số trong tài liệu vẫn đếm theo index; nhưng tên file trùng trên đĩa sẽ chặn `db push` — xử trước khi stage.");
+  }
+
   const lech = [];
   const mat = [];
   let daSua = 0;
+  const fileDaSua = new Set();
 
   for (const claim of CLAIMS) {
     const path = join(repoRoot, claim.file);
-    if (!existsSync(path)) { mat.push(`${claim.file} (không tồn tại)`); continue; }
-    let doc = readFileSync(path, "utf8");
+    if (!existsSync(path) && !nguonIndex) { mat.push(`${claim.file} (không tồn tại)`); continue; }
+    let doc = nguonIndex ? docTuIndex(claim.file) : readFileSync(path, "utf8");
+    if (doc == null) { mat.push(`${claim.file} (không có trong index)`); continue; }
     const r = kiemTra(doc, claim);
 
     if (r.trangThai === "khong-tim-thay") {
@@ -306,11 +343,16 @@ function main(argv) {
       doc = doc.replace(claim.re, `$1${r.that}$3`);
       writeFileSync(path, doc);
       daSua += 1;
+      fileDaSua.add(claim.file);
       console.log(`  sửa ${claim.file}: ${claim.moTa} ${r.khai} → ${r.that}`);
     } else {
       lech.push(`${claim.file}: ${claim.moTa} ghi ${r.khai}, thực tế ${r.that}`);
     }
   }
+
+  // Dòng máy-đọc-được cho kiem-nhanh-truoc-push: nó chỉ được stage đúng những
+  // file mà --fix của LƯỢT NÀY vừa vá — không vơ file bẩn sẵn của phiên khác.
+  if (fix) for (const f of [...fileDaSua].sort()) console.log(`DA_SUA ${f}`);
 
   if (mat.length > 0) {
     console.error(`❌ ${mat.length} chỗ neo bị mất — gate không còn kiểm được:\n`);

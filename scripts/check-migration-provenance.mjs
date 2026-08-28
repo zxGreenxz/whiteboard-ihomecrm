@@ -18,6 +18,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { laCI, lietKeTracked, lietKeUntracked } from "./lib/git-scope.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFEST = join(repoRoot, "supabase", "migration-provenance.json");
 const POLICY = join(repoRoot, "supabase", "migration-policy.json");
@@ -50,6 +52,24 @@ export function entryThieuFile(entries, tonTai) {
   return entries.filter((e) => !tonTai(e.path)).map((e) => e.path);
 }
 
+/**
+ * Chia vùng quét theo luật phiên-song-song (28/08/2026): phạm vi sự thật của
+ * gate local là INDEX — file .sql untracked thường là WIP của PHIÊN KHÁC trên
+ * working tree chung, đỏ cứng vì nó là đỏ oan (tái hiện lúc khảo sát: 2
+ * migration copilot untracked làm gate đỏ với mọi phiên). Untracked ⇒ cảnh báo
+ * local; trên CI (cây phải sạch) ⇒ lỗi cứng. Ngay khi file được `git add` nó
+ * vào nhóm kiemTra như cũ — lưới "mọi migration sau cutoff phải có provenance"
+ * không thủng, chỉ dời sang lúc-đã-stage, đúng thời điểm Contract §3 bắt buộc
+ * trước commit.
+ */
+export function phanVungQuet(indexPaths, untrackedPaths, ci) {
+  return {
+    kiemTra: [...indexPaths],
+    canhBao: ci ? [] : [...untrackedPaths],
+    loiCi: ci ? [...untrackedPaths] : [],
+  };
+}
+
 function main() {
   for (const f of [MANIFEST, POLICY]) {
     if (!existsSync(f)) {
@@ -65,7 +85,25 @@ function main() {
 
   const byPath = new Map(manifest.entries.map((e) => [e.path, e]));
   const problems = [];
-  const onDisk = quetFileSql(MIGRATIONS_DIR);
+
+  // Nguồn quét là INDEX chứ không phải đĩa (28/08/2026): file untracked của
+  // phiên khác không được làm gate này đỏ. Xem chú thích phanVungQuet.
+  const tienTo = "supabase/migrations/";
+  const boTienTo = (ds) => ds.filter((p) => /\.sql$/i.test(p)).map((p) => p.slice(tienTo.length));
+  const vung = phanVungQuet(
+    boTienTo(lietKeTracked([tienTo.slice(0, -1)])),
+    boTienTo(lietKeUntracked([tienTo.slice(0, -1)])),
+    laCI(),
+  );
+  if (vung.canhBao.length > 0) {
+    console.warn(`⚠ ${vung.canhBao.length} file .sql CHƯA ADD — WIP (có thể của phiên khác), gate không xét:`);
+    for (const f of vung.canhBao) console.warn(`  - ${f}`);
+    console.warn("  Nếu là của bạn: `git add` xong file PHẢI có entry provenance — gate sẽ chặn cứng.");
+  }
+  for (const f of vung.loiCi) {
+    problems.push(`${f}: file untracked trên CI — cây CI phải sạch, đây là rác do pipeline sinh ra.`);
+  }
+  const onDisk = vung.kiemTra;
 
   let afterCutoff = 0;
   let legacyChecked = 0;
@@ -133,9 +171,15 @@ function main() {
   // "không sửa, không đổi tên, không di chuyển" — nên đổi tên đúng là điều gate
   // này phải chặn, và nó lại là điều duy nhất nó không thấy. Đo 07/08/2026:
   // chuyển một file ra khỏi thư mục ⇒ gate vẫn xanh.
-  for (const p of entryThieuFile(manifest.entries, (rel) => existsSync(join(repoRoot, rel)))) {
+  // "Còn tồn tại" đo theo INDEX chứ không theo đĩa (28/08/2026): một file bị
+  // `git rm` nhưng còn nằm trên đĩa vẫn phải đỏ — CI sẽ không thấy nó; và ngược
+  // lại file untracked của phiên khác không "che" được một entry mồ côi.
+  const trongIndex = new Set(
+    lietKeTracked(["supabase/migrations", "supabase/migrations-archive"]),
+  );
+  for (const p of entryThieuFile(manifest.entries, (rel) => trongIndex.has(rel.replace(/\\/g, "/")))) {
     problems.push(
-      `${p}: có trong manifest nhưng KHÔNG còn trên đĩa (bị xoá hoặc đổi tên).\n` +
+      `${p}: có trong manifest nhưng KHÔNG còn trong index (bị xoá, đổi tên, hoặc chưa git add).\n` +
       `      Lịch sử đã deploy là chỉ-đọc: không sửa, không đổi tên, không di chuyển.\n` +
       `      Muốn đổi hành vi thì thêm file MỚI.`,
     );
