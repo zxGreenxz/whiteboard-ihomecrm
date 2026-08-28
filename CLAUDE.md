@@ -51,6 +51,12 @@ INDEX: cảnh báo ⚠ trên file untracked CỦA MÌNH nghĩa là "sẽ chặn 
 cùng lệnh chạy sạch ở checkout chính. Trong worktree hãy chạy
 `npm run gate:truoc-push -- --khong-dao-strict`; đảo strict để CI canh (nó luôn chạy trên cây sạch).
 
+**Bẫy thứ hai cùng ngày**: `CLAUDE.local.md` (vault, gitignore) chỉ nằm ở CHECKOUT CHÍNH — trong
+worktree các generator cần PAT (gen:types, 3 surface) lặng lẽ rơi về ⚠ "cần mạng/PAT" và types.ts
+không được làm tươi; job `generated-types-drift` trên CI sẽ đỏ nếu schema production vừa đổi. Trước
+khi chạy battery trong worktree, nạp PAT từ checkout chính vào env
+(`$env:SUPABASE_PAT = <đọc sbp_… từ CLAUDE.local.md của checkout chính>`).
+
 Đọc kết quả CI bằng `gh api .../runs/<id> --jq '.conclusion'` — `gh run watch --exit-status` từng
 trả 0 trên run failure (đo 25/08/2026).
 

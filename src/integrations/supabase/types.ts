@@ -26123,6 +26123,15 @@ export type Database = {
         Returns: Json
       }
       network_center_list_fleet_v1: { Args: never; Returns: Json }
+      network_center_list_h196a_v1: {
+        Args: {
+          p_after_id?: string
+          p_after_sort_order?: number
+          p_building_id: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
       network_center_pause_organization_v1: {
         Args: {
           p_anchor_building_id: string
