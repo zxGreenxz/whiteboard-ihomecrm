@@ -101,3 +101,42 @@ describe("doiChieuKyVong", () => {
     expect(dat).toBe(true);
   });
 });
+
+describe("doiChieuKyVong — phamVi scoped theo diff (28/08/2026)", () => {
+  // Restore drill kich hoat boi paths supabase/migrations/**: migration cua
+  // phien A thieu entry ky vong lam PR cua phien B do. Replay van tuan tu toan
+  // bo (tinh dung phu thuoc chuoi), nhung doi chieu CUNG chi ap cho file thuoc
+  // diff cua push nay; file ngoai diff xuong canh bao LECH-NGOAI-PHAM-VI.
+  const kyVong = { "b.sql": { kyVong: "dung-vi-du-lieu", thongDiep: "DUNG" } };
+
+  it("phamVi null giu nguyen hanh vi cu: moi lech deu CUNG", () => {
+    const kq = doiChieuKyVong([{ ten: "a.sql", ok: false, stderr: "ERROR x" }], {});
+    expect(kq.dat).toBe(false);
+  });
+
+  it("loi o file NGOAI diff -> LECH-NGOAI-PHAM-VI, van dat", () => {
+    const kq = doiChieuKyVong([{ ten: "a.sql", ok: false, stderr: "ERROR x" }], {}, new Set(["khac.sql"]));
+    expect(kq.dat).toBe(true);
+    expect(kq.dong[0].trangThai).toBe("LECH-NGOAI-PHAM-VI");
+    expect(kq.dong[0].chiTiet).toBeTruthy();
+  });
+
+  it("loi o file TRONG diff -> LECH cung nhu cu", () => {
+    const kq = doiChieuKyVong([{ ten: "a.sql", ok: false, stderr: "ERROR x" }], {}, new Set(["a.sql"]));
+    expect(kq.dat).toBe(false);
+  });
+
+  it("entry mo coi: trong diff -> LECH cung; ngoai diff -> canh bao", () => {
+    const trong = doiChieuKyVong([], kyVong, new Set(["b.sql"]));
+    expect(trong.dat).toBe(false);
+    const ngoai = doiChieuKyVong([], kyVong, new Set(["khac.sql"]));
+    expect(ngoai.dat).toBe(true);
+    expect(ngoai.dong[0].trangThai).toBe("LECH-NGOAI-PHAM-VI");
+  });
+
+  it("file trong diff chay dung ky vong van la dung-dung-ky-vong", () => {
+    const kq = doiChieuKyVong([{ ten: "b.sql", ok: false, stderr: "ERROR: DUNG vi thieu du lieu" }], kyVong, new Set(["b.sql"]));
+    expect(kq.dat).toBe(true);
+    expect(kq.dong[0].trangThai).toBe("dung-dung-ky-vong");
+  });
+});

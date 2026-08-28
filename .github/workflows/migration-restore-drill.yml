@@ -26,6 +26,13 @@ name: Migration Restore Drill
 
 on:
   workflow_dispatch:
+  # Cron tuần chạy STRICT TOÀN BỘ (không --moc): các run theo push/PR đối chiếu
+  # cứng CHỈ file thuộc diff (28/08/2026 — migration của phiên A thiếu entry
+  # từng làm PR của phiên B đỏ), nên lệch ở file ngoài diff chỉ là cảnh báo, và
+  # concurrency cancel-in-progress còn có thể nuốt hẳn một run. Không có lượt
+  # strict định kỳ thì nợ cảnh báo tích tụ vĩnh viễn không ai bắt.
+  schedule:
+    - cron: '17 2 * * 1'
   pull_request:
     paths:
       - '.github/workflows/migration-restore-drill.yml'
@@ -72,6 +79,24 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          # Full history để bước tính mốc diff bên dưới hoạt động (28/08/2026).
+          fetch-depth: 0
+
+      # Mốc so sánh cho đối chiếu scoped — khuôn bước schema_doi của ci-gates:
+      # PR → merge-base với base_ref; push → github.event.before (0000000 =
+      # push đầu nhánh → script tự strict); dispatch/cron → strict toàn bộ.
+      - name: Tính mốc diff cho đối chiếu kỳ vọng
+        id: moc
+        run: |
+          MOC=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MOC="origin/${{ github.base_ref }}"
+            git fetch --quiet origin "${{ github.base_ref }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            MOC="${{ github.event.before }}"
+          fi
+          echo "moc=$MOC" >> "$GITHUB_OUTPUT"
+          echo "Mốc: ${MOC:-'(trống — strict toàn bộ)'}"
 
       - name: Setup Node 24.18.0
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -97,7 +122,9 @@ jobs:
         run: node scripts/dien-tap-khoi-phuc-baseline.mjs --dich "$DICH"
 
       - name: Replay forward lane — đối chiếu sổ kỳ vọng hai chiều
-        run: node scripts/dien-tap-forward-lane.mjs --dich "$DICH"
+        # Replay vẫn TUẦN TỰ TOÀN BỘ; --moc chỉ scoped phần đối chiếu kỳ vọng.
+        # MOC rỗng (dispatch/cron) hoặc hỏng → script tự strict toàn bộ.
+        run: node scripts/dien-tap-forward-lane.mjs --dich "$DICH" --moc "${{ steps.moc.outputs.moc }}"
 
       - name: Kiểm bảo mật trên bản dựng lại (RLS · invoker · search_path · stable-fn locks · denylist)
         run: node scripts/kiem-bao-mat-sau-khoi-phuc.mjs --dich "$DICH"

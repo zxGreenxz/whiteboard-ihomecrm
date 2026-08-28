@@ -31,10 +31,12 @@
 // ứng) — muốn chạy lại thì khôi phục baseline lại từ đầu.
 // Thoát: 0 = khớp sổ kỳ vọng · 1 = lệch · 3 = không kiểm được.
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { giaiMoc } from "./check-forward-migration-idempotent.mjs";
 import { chanProduction, coPsql, goiPsql } from "./lib/goi-psql-dich.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -70,12 +72,22 @@ function dauLoi(stderr) {
 /**
  * Đối chiếu kết quả chạy với sổ kỳ vọng. Thuần tuý, không I/O — test được.
  * ketQua: [{ ten, ok, stderr }] theo thứ tự chạy.
+ *
+ * `phamVi` (28/08/2026): Set tên file thuộc diff của push đang kiểm; `null` =
+ * strict toàn bộ (hành vi cũ). Drill kích hoạt bởi paths supabase/migrations/**
+ * nên migration của phiên A thiếu entry từng làm PR của phiên B đỏ. Replay vẫn
+ * TUẦN TỰ TOÀN BỘ (tính đúng của lane phụ thuộc chuỗi), chỉ phần đối chiếu là
+ * scoped: lệch ở file NGOÀI phạm vi hạ xuống `LECH-NGOAI-PHAM-VI` — in đầy đủ
+ * chi tiết nhưng không đánh trượt; mọi chiều với file TRONG phạm vi giữ cứng.
+ * Nợ cảnh báo tích tụ được quét bởi run cron strict hàng tuần (xem workflow).
+ *
  * Trả { dat, dong: [{ ten, trangThai, chiTiet? }] } với trangThai:
- *   'chay-sach' | 'dung-dung-ky-vong' | 'LECH'.
+ *   'chay-sach' | 'dung-dung-ky-vong' | 'LECH' | 'LECH-NGOAI-PHAM-VI'.
  */
-export function doiChieuKyVong(ketQua, kyVong) {
+export function doiChieuKyVong(ketQua, kyVong, phamVi = null) {
   const dong = [];
   const daCham = new Set();
+  const nhanLech = (ten) => (phamVi && !phamVi.has(ten) ? "LECH-NGOAI-PHAM-VI" : "LECH");
   for (const k of ketQua) {
     daCham.add(k.ten);
     const e = kyVong[k.ten];
@@ -84,19 +96,19 @@ export function doiChieuKyVong(ketQua, kyVong) {
       else
         dong.push({
           ten: k.ten,
-          trangThai: "LECH",
+          trangThai: nhanLech(k.ten),
           chiTiet: `LỖI mà không có trong sổ kỳ vọng — lỗi schema thật, hoặc khẳng định dữ liệu mới chưa được phân loại: ${dauLoi(k.stderr)}`,
         });
     } else if (k.ok) {
       dong.push({
         ten: k.ten,
-        trangThai: "LECH",
+        trangThai: nhanLech(k.ten),
         chiTiet: `sổ kỳ vọng nói phải DỪNG (${e.kyVong}) mà lại chạy sạch — môi trường diễn tập "dễ hơn thực tế", hoặc entry đã thối`,
       });
     } else if (!String(k.stderr || "").includes(e.thongDiep)) {
       dong.push({
         ten: k.ten,
-        trangThai: "LECH",
+        trangThai: nhanLech(k.ten),
         chiTiet: `dừng nhưng SAI thông điệp — kỳ vọng chứa "${e.thongDiep}", nhận: ${dauLoi(k.stderr)}`,
       });
     } else {
@@ -107,7 +119,7 @@ export function doiChieuKyVong(ketQua, kyVong) {
     if (!daCham.has(ten)) {
       dong.push({
         ten,
-        trangThai: "LECH",
+        trangThai: nhanLech(ten),
         chiTiet: "entry trong sổ kỳ vọng không khớp file nào sau cutoff trên đĩa — file đã bị đổi tên/xoá, hoặc entry gõ sai tên",
       });
     }
@@ -150,6 +162,35 @@ function main(argv) {
   }
 
   const kyVong = JSON.parse(readFileSync(KY_VONG, "utf8")).expectations ?? {};
+
+  // --moc <ref>: đối chiếu CỨNG chỉ cho file thuộc diff moc..HEAD (28/08/2026)
+  // — xem chú thích doiChieuKyVong. Replay vẫn tuần tự đủ. Dùng diff ĐẦY ĐỦ
+  // (không --diff-filter=A): file bị xoá/đổi tên trong push này cũng thuộc
+  // trách nhiệm của nó, entry mồ côi tương ứng phải cứng.
+  const iMoc = argv.indexOf("--moc");
+  let phamVi = null;
+  if (iMoc >= 0) {
+    const coRef = (r) => {
+      try {
+        execFileSync("git", ["rev-parse", "--verify", "-q", `${r}^{commit}`], {
+          cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+        });
+        return true;
+      } catch { return false; }
+    };
+    const moc = giaiMoc(argv[iMoc + 1] ?? "", coRef);
+    if (moc.kieu === "scoped") {
+      phamVi = new Set(
+        execFileSync("git", ["diff", "--name-only", `${moc.moc}..HEAD`, "--", "supabase/migrations"], {
+          cwd: repoRoot, encoding: "utf8",
+        }).split("\n").filter(Boolean).map((p) => p.replace(/\\/g, "/").split("/").pop()),
+      );
+      console.log(`Đối chiếu CỨNG cho ${phamVi.size} file thuộc diff ${moc.moc}..HEAD; lệch ở file ngoài diff chỉ cảnh báo.`);
+    } else {
+      console.log(`⚠ --moc: ${moc.lyDo} — đối chiếu STRICT toàn bộ (chiều an toàn).`);
+    }
+  }
+
   console.log(`Replay forward lane: ${files.length} file sau cutoff ${cutoff}`);
   console.log(`  đích: ${dich.replace(/:[^:@/]+@/, ":***@")}\n`);
 
@@ -164,14 +205,17 @@ function main(argv) {
     ketQua.push({ ten, ok: r.status === 0, stderr: String(r.stderr || "") });
   }
 
-  const { dat, dong } = doiChieuKyVong(ketQua, kyVong);
-  const dem = { "chay-sach": 0, "dung-dung-ky-vong": 0, LECH: 0 };
+  const { dat, dong } = doiChieuKyVong(ketQua, kyVong, phamVi);
+  const dem = { "chay-sach": 0, "dung-dung-ky-vong": 0, LECH: 0, "LECH-NGOAI-PHAM-VI": 0 };
   for (const d of dong) {
     dem[d.trangThai] += 1;
     if (d.trangThai === "LECH") console.error(`  ✗ ${d.ten}\n      ${d.chiTiet}`);
+    // In ĐẦY ĐỦ chi tiết cho lệch ngoài phạm vi — hạ mức không có nghĩa là giấu.
+    if (d.trangThai === "LECH-NGOAI-PHAM-VI") console.warn(`  ⚠ ${d.ten} (ngoài diff — không đánh trượt)\n      ${d.chiTiet}`);
   }
   console.log(
-    `\n${Math.round((Date.now() - t0) / 1000)}s · ${dem["chay-sach"]} chạy sạch · ${dem["dung-dung-ky-vong"]} dừng đúng kỳ vọng · ${dem.LECH} LỆCH`,
+    `\n${Math.round((Date.now() - t0) / 1000)}s · ${dem["chay-sach"]} chạy sạch · ${dem["dung-dung-ky-vong"]} dừng đúng kỳ vọng · ${dem.LECH} LỆCH` +
+      (phamVi ? ` · ${dem["LECH-NGOAI-PHAM-VI"]} lệch ngoài diff (cảnh báo — cron tuần sẽ quét strict)` : ""),
   );
   if (!dat) {
     console.error("\n❌ Forward lane LỆCH sổ kỳ vọng — xem từng dòng ✗ ở trên.");
