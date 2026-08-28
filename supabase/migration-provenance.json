@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-28T02:19:27.282Z",
+  "generatedAt": "2026-08-28T02:28:49.057Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -8468,18 +8468,6 @@
       ]
     },
     {
-      "path": "supabase/migrations/20260828140000_copilot_org_scope_v1.sql",
-      "version": "20260828140000",
-      "name": "copilot_org_scope_v1",
-      "scheme": "timestamp14",
-      "sha256": "9252393dea4efc3ca6185ae1b2d31c5c966e5590c448636d2eff7fa1f4f1ab7d",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_cashbook_settlement_v1"
-      ]
-    },
-    {
       "path": "supabase/migrations/20260828150000_utility_ceiling_wired_into_pay_bill.sql",
       "version": "20260828150000",
       "name": "utility_ceiling_wired_into_pay_bill",
@@ -8488,6 +8476,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-28T02:19:17.697Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829010000_network_center_h196a_downstream.sql",
+      "version": "20260829010000",
+      "name": "network_center_h196a_downstream",
+      "scheme": "timestamp14",
+      "sha256": "f8f478ca0bf5876bdbe3324840d08e6e2704a8072a50e11f0dc293dc79742522",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.network_h196a_profiles",
+        "table:app_private.network_h196a_quarantine",
+        "function:app_private.network_center_guard_h196a_parent_v1",
+        "function:app_private.network_center_h196a_inventory_v1",
+        "function:public.network_center_list_h196a_v1"
       ]
     },
     {
