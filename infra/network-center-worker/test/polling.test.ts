@@ -63,6 +63,7 @@ describe("polling coordinator", () => {
             enabled: true,
           }],
           clients: [],
+          h196a: [],
           aruba: [],
         }),
         close: async () => undefined,
@@ -97,6 +98,7 @@ describe("polling coordinator", () => {
           sample: { rxBps: index, txBps: index },
         })),
         clients: [],
+        h196a: [],
         aruba: Array.from({ length: 600 }, (_, index) => ({
           stableIdentity: `SERIAL-${index}`,
           identitySource: "SERIAL" as const,
@@ -172,6 +174,7 @@ describe("polling coordinator", () => {
         device: { reachable: true, identity: "demo" },
         interfaces: [],
         clients: [],
+        h196a: [],
         aruba: Array.from({ length: 300 }, (_, index) => ({
           stableIdentity: `SERIAL-${index}`,
           identitySource: "SERIAL" as const,
@@ -275,6 +278,7 @@ describe("polling coordinator", () => {
           device: { reachable: true, identity: "demo" },
           interfaces: [],
           clients: [],
+          h196a: [],
           aruba: [],
         }),
         close: async () => undefined,
@@ -331,6 +335,7 @@ describe("polling coordinator", () => {
             device: { reachable: true },
             interfaces: [],
             clients: [],
+            h196a: [],
             aruba: [],
             arubaQuarantine: pollNo === 1
               ? [{ code: "ARUBA_STABLE_IDENTITY_INVALID" as const, fingerprint: "a".repeat(64) }]
@@ -385,7 +390,7 @@ describe("polling coordinator", () => {
         poll: async () => {
           attempts += 1;
           if (attempts === 1) throw new Error("connection lost");
-          return { observedAt: new Date().toISOString(), device: {}, interfaces: [], clients: [], aruba: [] };
+          return { observedAt: new Date().toISOString(), device: {}, interfaces: [], clients: [], h196a: [], aruba: [] };
         },
         close: async () => undefined,
       }),
@@ -504,6 +509,7 @@ describe("polling coordinator", () => {
             enabled: true,
           }],
           clients: [],
+          h196a: [],
           aruba: [],
         }),
         close: async () => undefined,
@@ -548,6 +554,7 @@ describe("polling coordinator", () => {
           device: { identity: item.displayName },
           interfaces: [],
           clients: [],
+          h196a: [],
           aruba: [],
         }),
         close: async () => undefined,
@@ -591,6 +598,7 @@ describe("polling coordinator", () => {
             device: {},
             interfaces: [],
             clients: [],
+            h196a: [],
             aruba: pollNo === 1
               ? [{
                 stableIdentity: "AP-1",

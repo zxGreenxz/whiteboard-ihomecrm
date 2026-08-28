@@ -134,6 +134,56 @@ export interface ArubaQuarantineObservation {
 }
 
 /**
+ * A downstream router the MikroTik can see but never talk to.
+ *
+ * Deliberately NOT modelled on `ArubaObservation` field-for-field, because the
+ * two are known through different evidence and saying otherwise in the type
+ * would be the lie. Aruba carries `model` and a `managementIp` it announced
+ * itself; an H196A announces nothing, so there is no model, no serial and no
+ * firmware to hold — see `../h196a/discovery.ts`.
+ *
+ * What this type has instead is a health verdict with the reason attached.
+ * `ArubaObservation.reachable` is a hard-coded `true` that only ever meant
+ * "present in this scan", and it cannot distinguish a live access point from a
+ * dead one whose DHCP lease has not expired yet.
+ */
+export type H196aHealthStatus = "ONLINE" | "STALE" | "UNKNOWN";
+
+export type H196aEvidenceSource =
+  | "MIKROTIK_DHCP_LEASE"
+  | "MIKROTIK_BRIDGE_HOST"
+  | "MIKROTIK_ARP";
+
+export interface H196aObservation {
+  stableIdentity: string;
+  /** Always `HARDWARE_MAC`: no MikroTik read yields an H196A serial. */
+  identitySource: "HARDWARE_MAC";
+  externalKey: string;
+  stableKey: string;
+  /** Read from the static lease comment on every poll, so renaming is instant. */
+  displayName: string;
+  displayOnly: true;
+  macAddress: string;
+  observedIp: string | null;
+  hostname: string | null;
+  /** Physical port the frame arrived on; null means absent from the host table. */
+  bridgePort: string | null;
+  arpStatus: string | null;
+  /** Bridge ageing interval — the sensitivity of the liveness signal. */
+  bridgeAgeingSeconds: number | null;
+  healthStatus: H196aHealthStatus;
+  /** Why the verdict is what it is, so a wrong call can be argued with. */
+  healthReason: string;
+  evidenceSources: H196aEvidenceSource[];
+  observedAt: string;
+}
+
+export interface H196aQuarantineObservation {
+  code: "H196A_STABLE_IDENTITY_INVALID";
+  fingerprint: string;
+}
+
+/**
  * One observed client, shaped exactly like the `clients[]` recordset
  * `network_center_worker_ingest_v2` destructures.
  *
@@ -170,6 +220,8 @@ export interface RouterObservation {
   clients: RouterClientObservation[];
   aruba: ArubaObservation[];
   arubaQuarantine?: ArubaQuarantineObservation[];
+  h196a: H196aObservation[];
+  h196aQuarantine?: H196aQuarantineObservation[];
 }
 
 export interface InventoryMapping {

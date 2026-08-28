@@ -95,6 +95,7 @@ describe("shared RouterOS operation gate", () => {
             device: { reachable: true },
             interfaces: [],
             clients: [],
+            h196a: [],
             aruba: [],
           };
         },
@@ -243,6 +244,7 @@ describe("shared RouterOS operation gate", () => {
             device: { reachable: true },
             interfaces: [],
             clients: [],
+            h196a: [],
             aruba: [],
           };
         },

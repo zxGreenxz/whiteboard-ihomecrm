@@ -101,7 +101,7 @@ function harness(
   let rebooted = false;
   let renewCallback: (() => void | Promise<void>) | undefined;
   const connector: RouterConnector = {
-    poll: async () => ({ observedAt: new Date().toISOString(), device: {}, interfaces: [], clients: [], aruba: [] }),
+    poll: async () => ({ observedAt: new Date().toISOString(), device: {}, interfaces: [], clients: [], h196a: [], aruba: [] }),
     captureBackup: async () => {
       calls.push("backup");
       return {

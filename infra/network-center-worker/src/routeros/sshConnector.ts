@@ -18,6 +18,7 @@ import {
   type RouterInterfaceObservation,
   type RouterObservation,
 } from "../domain.js";
+import { bridgeAgeingSeconds, discoverH196aCandidates } from "../h196a/discovery.js";
 import type { ActionObservation, CommandIntent } from "../reconciliation.js";
 import type { RouterBackup, RouterConnector, RouterHealth } from "./connector.js";
 import { stageExportTextBounded } from "./boundedSftpRead.js";
@@ -77,6 +78,33 @@ export const ROUTER_OS_READ_COMMANDS = Object.freeze({
   neighbors: "/ip/neighbor/print detail terse without-paging",
   firewallFilters: "/ip/firewall/filter/print detail terse without-paging",
   dns: ":put [/ip/dns/print as-value]",
+  // The three reads below exist for downstream devices that publish NO LLDP.
+  //
+  // Aruba is discovered from `neighbors` because an IAP announces itself
+  // (measured at 102LVT: `platform="ArubaOS"`, `MODEL: 315`, plus the operator's
+  // own name in `identity`). The ZTE H196A units at 950NK announce NOTHING:
+  // `/ip/neighbor` was EMPTY there even after the physical ports were added to
+  // the discovery list and seven minutes elapsed — fourteen discovery intervals
+  // (measured 28/08/2026). Three of the five sit behind an unmanaged switch,
+  // which an 802.1D bridge is required NOT to forward LLDP through, so this
+  // proves "the router cannot see them", not "the device is silent". Either way
+  // the neighbour table carries nothing for them and cannot be the evidence.
+  //
+  // What IS available: the DHCP lease (already read above) gives identity, and
+  // these two give liveness the lease alone cannot.
+  //
+  // Both are BEST EFFORT for the same reason `interfaceStats` is: a build that
+  // rejects them must degrade the downstream verdict to UNKNOWN, never fail the
+  // whole poll and never fabricate "offline". Verified readable by the
+  // permission-restricted `ihome-nc-worker` account (`read` policy, no widening
+  // needed): 40 ARP rows and 22 bridge hosts on the 950NK hEX.
+  arp: "/ip/arp/print detail terse without-paging",
+  bridgeHosts: "/interface/bridge/host/print detail terse without-paging",
+  // Only for `ageing-time`. A MAC missing from the host table means "no frame
+  // seen for one ageing interval", so the interval IS the sensitivity of the
+  // liveness signal. It is 5m on both 950NK bridges today, but hard-coding that
+  // turns someone else's bridge retune into a silent lie about uptime.
+  bridges: "/interface/bridge/print detail terse without-paging",
 });
 
 /**
@@ -1219,6 +1247,22 @@ export class SshRouterConnector implements RouterConnector {
     return parseInterfaceCounters(parseRouterOsValueRecords(outcome.output));
   }
 
+  /**
+   * A read whose failure must NOT fail the poll.
+   *
+   * `null` and `[]` are different answers and the caller depends on the
+   * difference: `[]` means the router answered and the table is empty, `null`
+   * means it did not answer at all. Collapsing the two would let one rejected
+   * command report every downstream device as absent, which is a fabricated
+   * outage - the same class of lie as the fabricated zero counters
+   * `#readInterfaceCounters` exists to avoid.
+   */
+  async #readOptionalRecords(command: string): Promise<Array<Record<string, string>> | null> {
+    const outcome = await this.#executeDetailed(command);
+    if (outcome.failure || !outcome.completed) return null;
+    return parseRouterOsRecords(outcome.output);
+  }
+
   async poll(): Promise<RouterObservation> {
     const [
       identityOutput,
@@ -1229,6 +1273,9 @@ export class SshRouterConnector implements RouterConnector {
       leaseOutput,
       neighborOutput,
       firewallOutput,
+      arpRecords,
+      bridgeHostRecords,
+      bridgeRecords,
     ] =
       await Promise.all([
         this.#execute(ROUTER_OS_READ_COMMANDS.identity),
@@ -1239,6 +1286,9 @@ export class SshRouterConnector implements RouterConnector {
         this.#execute(ROUTER_OS_READ_COMMANDS.leases),
         this.#execute(ROUTER_OS_READ_COMMANDS.neighbors),
         this.#execute(ROUTER_OS_READ_COMMANDS.firewallFilters),
+        this.#readOptionalRecords(ROUTER_OS_READ_COMMANDS.arp),
+        this.#readOptionalRecords(ROUTER_OS_READ_COMMANDS.bridgeHosts),
+        this.#readOptionalRecords(ROUTER_OS_READ_COMMANDS.bridges),
       ]);
     const identity = parseRouterOsRecords(identityOutput)[0] ?? {};
     const resource = parseRouterOsRecords(resourceOutput)[0] ?? {};
@@ -1362,6 +1412,18 @@ export class SshRouterConnector implements RouterConnector {
     const arubaInventory = parseArubaNeighbors(parseRouterOsRecords(neighborOutput));
     const aruba = arubaInventory.valid;
 
+    // Downstream routers that publish no LLDP, so `neighborOutput` above cannot
+    // see them at all. `leaseRecords` is REUSED rather than re-read: it is the
+    // same list the client observations came from, and reading it twice would
+    // let two views of one poll disagree with each other.
+    const h196aInventory = discoverH196aCandidates({
+      observedAt: now,
+      leases: leaseRecords,
+      arp: arpRecords,
+      bridgeHosts: bridgeHostRecords,
+      bridgeAgeingSeconds: bridgeAgeingSeconds(bridgeRecords, parseDurationSeconds),
+    });
+
     const totalMemory = parseBytes(resource["total-memory"]);
     const freeMemory = parseBytes(resource["free-memory"]);
     const totalDisk = parseBytes(resource["total-hdd-space"]);
@@ -1390,6 +1452,8 @@ export class SshRouterConnector implements RouterConnector {
       clients,
       aruba,
       arubaQuarantine: arubaInventory.quarantined,
+      h196a: h196aInventory.valid,
+      h196aQuarantine: h196aInventory.quarantined,
     };
   }
 
