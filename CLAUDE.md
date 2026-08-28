@@ -25,9 +25,31 @@ npm run gate:truoc-push -- --khong-dao-strict    # ~60 giây, đủ cho thay đ�
 ```
 
 Nó TỰ sinh mọi artifact máy-sở-hữu đúng thứ tự (types.ts, bề mặt RPC/Edge/realtime, kiểm kê repo,
-docs views, số đếm tài liệu, số baseline), TỰ `git add` các file đó, rồi chạy ~34 gate tĩnh không
-dừng ở lỗi đầu. Mổ xẻ 17 lần CI đỏ (20–25/08/2026): 12 lần vì số đếm, 8 lần vì types.ts trôi —
-toàn thứ lệnh này tự chữa. Đừng tự tay chạy lẻ 5 generator theo trí nhớ.
+docs views, số đếm tài liệu, số baseline), TỰ `git add` các file đó **theo allowlist sở hữu của
+từng generator** (từ 28/08/2026 — không còn vơ file bẩn của phiên khác), rồi chạy ~34 gate tĩnh
+không dừng ở lỗi đầu. Mổ xẻ 17 lần CI đỏ (20–25/08/2026): 12 lần vì số đếm, 8 lần vì types.ts trôi
+— toàn thứ lệnh này tự chữa. Đừng tự tay chạy lẻ 5 generator theo trí nhớ. Lệnh có lock
+per-worktree: gặp "phiên khác đang chạy" thì chờ nó xong, đừng xoá lock tay.
+
+## Làm việc song song — worktree
+
+Luật đầy đủ ở **Contract §3, mục "Làm việc song song — mỗi hạng mục một worktree"**. Riêng trong
+Claude Code: dùng công cụ worktree của harness (EnterWorktree) khi có; tự tạo thì nhớ đường dẫn
+repo CÓ DẤU CÁCH nên phải nháy kép:
+
+```bash
+git worktree add "../whiteboard-<ten-hang-muc>" -b <nhanh> origin/main
+```
+
+Migration mới xin tên bằng `node scripts/tao-ten-migration.mjs <slug>` (tự kiểm trùng xuyên mọi
+worktree trên máy) rồi `git add` TRƯỚC khi chạy `provenance:generate`. Gate local đọc phạm vi
+INDEX: cảnh báo ⚠ trên file untracked CỦA MÌNH nghĩa là "sẽ chặn cứng ngay khi stage" — xử trước,
+đừng coi là bỏ qua được.
+
+**Bẫy đã đo (28/08/2026)**: trong worktree nằm dưới `.claude\worktrees\` trên Windows,
+`check-strict-islands` chết exit 3 vì `tsc --showConfig` sinh regex hỏng từ chính đường dẫn đó —
+cùng lệnh chạy sạch ở checkout chính. Trong worktree hãy chạy
+`npm run gate:truoc-push -- --khong-dao-strict`; đảo strict để CI canh (nó luôn chạy trên cây sạch).
 
 Đọc kết quả CI bằng `gh api .../runs/<id> --jq '.conclusion'` — `gh run watch --exit-status` từng
 trả 0 trên run failure (đo 25/08/2026).

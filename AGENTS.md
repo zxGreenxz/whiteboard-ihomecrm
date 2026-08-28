@@ -56,6 +56,15 @@ npm run graph:detect-changes            # git diff → symbol → luồng bị �
 
 ---
 
+## Làm việc song song
+
+Luật đầy đủ ở **Contract §3, mục "Làm việc song song — mỗi hạng mục một worktree"**. Riêng cho
+Codex: worktree của Codex nằm dưới `codex-worktrees/` cạnh repo; đường dẫn repo CÓ DẤU CÁCH nên
+mọi lệnh phải nháy kép. Migration mới xin tên bằng `node scripts/tao-ten-migration.mjs <slug>`
+(cấm chọn tay mốc tròn) và `git add` trước khi chạy `provenance:generate`.
+
+---
+
 ## Mở draft PR
 
 Repo này là **trunk-based**: việc thường đi thẳng `git push origin HEAD:main` sau khi gate xanh

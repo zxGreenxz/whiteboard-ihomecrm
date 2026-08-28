@@ -61,7 +61,11 @@ Ba gate gần đây đều có bản đầu bị lỗi mà test xanh không phá
 
 ## Nếu chạm runtime (`src/`, `api/`, `vite.config.ts`, dependencies)
 
-<!-- Chừng nào Vercel còn deploy từ main thì push = phát hành. -->
+<!-- Mô hình hai bậc (Contract §3, flip 06/08/2026): push main chỉ tạo Vercel
+     PREVIEW cho app; phát hành production là bước promote riêng
+     (git push origin origin/main:production) sau khi gate xanh. Ngoại lệ duy
+     nhất: project ptcrm-docs vẫn deploy thẳng từ main. -->
+
 
 - [ ] Đã kiểm **bundle sau build**, không chỉ tin test
       <!-- Vitest và production build khác nhau ở khoản nạp asset: một
@@ -69,7 +73,7 @@ Ba gate gần đây đều có bản đầu bị lỗi mà test xanh không phá
 
 ## Nếu chạm database
 
-- [ ] Migration mới, timestamp 14 chữ số duy nhất, **không sửa file cũ**
+- [ ] Migration mới, timestamp 14 chữ số duy nhất (cấp bằng `node scripts/tao-ten-migration.mjs <slug>` — Contract §3 mục song song), **không sửa file cũ**
 - [ ] Gate theo loại object (view invoker / stable-fn locks / RLS role thật)
 - [ ] `npm run gen:types && npm run types:normalize` nếu đổi schema
 - [ ] `npm run catalog:check`

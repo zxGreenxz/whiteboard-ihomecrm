@@ -230,6 +230,13 @@ function main() {
     ['git add -A', 'điều bị cấm khi stage'],
     ['backup-before-schema', 'PITR tắt nên phải dump trước thao tác schema'],
     ['migration-policy.json', 'cutoff và luật forward-only'],
+    // Ba mục thêm 28/08/2026 — luật phiên song song. Cùng lớp rủi ro "bán kính
+    // ảnh hưởng": không gắn với script nào chạy tự động, rút Contract quá tay
+    // là cả mô hình cách ly biến mất không dấu vết, rồi các phiên lại chen
+    // chung một checkout và vòng fix(ci) 28/08 tái diễn.
+    ['git worktree', 'mỗi hạng mục song song một worktree riêng — cách ly WIP giữa các phiên'],
+    ['tao-ten-migration', 'cấp timestamp migration bằng script, chống hai phiên đụng cùng mốc giờ'],
+    ['lấy bản của main rồi chạy lại generator', 'cách giải conflict file máy-sinh khi rebase'],
   ];
   for (const [needle, what] of MUST_MENTION) {
     if (!contract.includes(needle)) {

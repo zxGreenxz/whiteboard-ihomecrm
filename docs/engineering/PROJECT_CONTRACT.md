@@ -222,6 +222,33 @@ Cây làm việc repo này thường có file dở dang từ phiên khác; gom n
 Push bằng `git push origin HEAD:main` (nhánh local thường không phải `main`, `git push origin main`
 sẽ đẩy nhầm nhánh cũ); kiểm trước bằng `git merge-base --is-ancestor origin/main HEAD`.
 
+### Làm việc song song — mỗi hạng mục một worktree
+
+Máy này thường chạy nhiều phiên agent cùng lúc. Trước 28/08/2026 tất cả chen chung một checkout:
+gate quét đĩa thấy file WIP của nhau nên đỏ oan, `--fix` ghi số đếm theo cây bẩn chung, và ba commit
+`fix(ci)` liên tiếp trong một ngày (75c22b77 · 91784e62 · c9f3937f) đều là dọn hậu quả của đúng cơ
+chế đó. Năm luật:
+
+1. **Hạng mục độc lập ⇒ `git worktree` riêng, nhánh riêng.**
+   `git worktree add ../<ten-hang-muc> -b <nhanh> origin/main` — không làm hai hạng mục trên cùng
+   một worktree, không làm hạng mục dài hơi ngay trên checkout chính.
+2. **Gộp về main theo bốn bước.** `git fetch` rồi rebase lên `origin/main` → conflict ở file NGUỒN:
+   giải tay như thường → conflict ở file MÁY-SINH (`types.ts`, `contracts/surfaces/`,
+   `docs/generated/`, `migration-provenance.json`, số đếm trong docs): KHÔNG giải tay —
+   lấy bản của main rồi chạy lại generator (`npm run gate:truoc-push` tự sinh và tự stage
+   phần máy sở hữu) → gate xanh → `git push origin HEAD:main`.
+3. **Timestamp migration cấp bằng `node scripts/tao-ten-migration.mjs <slug>`** — UTC đến giây
+   thật, tự kiểm trùng với index, đĩa và MỌI worktree khác trên máy. Cấm chọn tay mốc tròn: cả hai
+   cặp miễn trừ trùng version trong `migration-policy.json` đều do hai phiên song song cùng chọn
+   `…120000`. Migration mới phải `git add` TRƯỚC khi chạy `npm run provenance:generate` —
+   generator liệt kê từ index, file chưa add không vào manifest.
+4. **`gate:truoc-push` tự tuần tự hoá** bằng lock trong git-dir của từng worktree
+   (`gate-truoc-push.lock`). Gặp "phiên khác đang chạy" thì chờ; script tự coi lock có pid chết
+   hoặc quá 20 phút là stale — đừng xoá tay khi chưa chắc.
+5. **Gate local đọc phạm vi INDEX ∪ tracked.** Vi phạm nằm trong file untracked (WIP — thường của
+   phiên khác) chỉ là cảnh báo ⚠ ở local và thành lỗi cứng ngay khi file được stage, luôn cứng trên
+   CI. Hệ quả: ⚠ trên file CỦA MÌNH không phải thứ bỏ qua được — nó là lỗi tương lai đã điểm tên.
+
 ---
 
 ## 4. Ghi vào production database
@@ -241,7 +268,8 @@ sẽ đẩy nhầm nhánh cũ); kiểm trước bằng `git merge-base --is-ance
   TẮT, chỉ thứ hai quyết định thiệt hại — và con người gõ token chưa bao giờ tạo ra bản dump đó.
   Thứ THẬT SỰ mất: không còn ai xem lại **nội dung** migration trước khi nó chạm production; ba lớp
   còn lại kiểm xuất xứ, không kiểm ý định.
-- Preflight bắt buộc: đúng project/org/environment, working tree sạch, reviewed SHA.
+- Preflight bắt buộc: đúng project/org/environment, working tree sạch (xét trong **worktree đang
+  thao tác** — worktree khác bẩn không liên quan, xem §3 mục song song), reviewed SHA.
 - Ghi evidence: statement bytes, normalized digest, catalog fingerprint trước/sau, actor.
 - Fail closed khi provenance state / reviewed SHA / precondition catalog lạ.
 - **Không rollback tự động destructive** — forward fix riêng.
@@ -332,7 +360,7 @@ tắt trong một tuần, và khi ấy thay đổi schema thật cũng không ai
 | Đụng tiền | `node scripts/reconcile-money.mjs [YYYY-MM]` + idempotency + concurrency |
 | Bảng mới có `organization_id` | policy `_hide_sandbox_admin` (mục 2) |
 | Đổi schema | `npm run gen:types` (mục 6) |
-| **Deploy Edge Function** | Preflight project ref + org PHẢI khớp đích định deploy; cây làm việc phải SẠCH |
+| **Deploy Edge Function** | Preflight project ref + org PHẢI khớp đích định deploy; cây làm việc phải SẠCH (trong worktree đang thao tác) |
 | **Deploy Edge Function** | Ghi `reviewed SHA` + digest bundle vào evidence store trước khi deploy |
 
 **Vì sao deploy Edge Function cần hai dòng riêng.** Migration đi qua lane forward-only nên có sổ
@@ -639,6 +667,8 @@ hidden retry cho thao tác không idempotent.
 8. Commit/di chuyển/in toàn bộ credential từ `CLAUDE.local.md`.
 9. Flip TypeScript strict toàn repo trong một PR; move toàn bộ `src/` theo feature trong một mega PR.
 10. Tự mở trình duyệt hiện hình khi user không yêu cầu.
+11. Làm hai hạng mục song song trên CÙNG một worktree, hoặc chọn tay timestamp migration thay vì
+    `tao-ten-migration` (§3 mục song song).
 
 ---
 
