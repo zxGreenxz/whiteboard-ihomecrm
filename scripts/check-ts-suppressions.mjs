@@ -41,6 +41,8 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { laCI, lietKeUntracked, phanCap } from "./lib/git-scope.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BASELINE = join(repoRoot, "tooling", "ts-suppression-baseline.json");
 
@@ -115,6 +117,19 @@ export function quet() {
 
 const NANG = { "@ts-nocheck": 3, "@ts-ignore": 2, "@ts-expect-error": 1 };
 
+/** Glob file mà quet() dùng — tách hằng để lượt liệt kê untracked dùng đúng tập. */
+const GLOB_TS = ["*.ts", "*.tsx", "*.mts", "*.cts"];
+
+/**
+ * Tách fingerprint MỚI thành {cung, mem} theo luật phiên-song-song (28/08/2026):
+ * chỉ thị nằm trong file UNTRACKED thường là WIP của phiên khác trên working
+ * tree chung — local hạ xuống cảnh báo; đã stage hoặc trên CI thì cứng như cũ
+ * (lúc stage file rời nhóm untracked nên lưới "bắt trước khi push" không thủng).
+ */
+export function phanLoaiChiThiMoi(khoaMoi, tapUntracked, ci) {
+  return phanCap(khoaMoi, tapUntracked, ci, (k) => k.split("#")[0]);
+}
+
 function main(argv) {
   const { files, tim } = quet();
 
@@ -137,20 +152,28 @@ function main(argv) {
   }
 
   if (argv.includes("--write")) {
+    // Baseline phải TÁI LẬP ĐƯỢC từ commit — fingerprint nằm trong file
+    // untracked (WIP, có thể của phiên khác) mà nướng vào đây thì baseline mô
+    // tả một trạng thái không ai khác dựng lại nổi, và CI đỏ ngay lượt sau.
+    const tapUntrackedWrite = new Set(lietKeUntracked(GLOB_TS));
+    const khoaGhi = khoa.filter((k) => !tapUntrackedWrite.has(k.split("#")[0]));
+    if (khoaGhi.length < khoa.length) {
+      console.warn(`⚠ Bỏ ${khoa.length - khoaGhi.length} fingerprint trên file chưa add khỏi baseline (WIP).`);
+    }
     writeFileSync(
       BASELINE,
       `${JSON.stringify(
         {
           $comment:
             "Ratchet chỉ thị tắt kiểm tra kiểu (@ts-ignore / @ts-expect-error / @ts-nocheck). Khoá theo TẬP fingerprint file#directive, KHÔNG theo con số — đếm số cho phép đánh tráo chỗ này lấy chỗ kia mà tổng không đổi. Vì sao cần: gate typecheck chính (check-ts-baseline.mjs) bị một dòng @ts-ignore vô hiệu hoàn toàn, và trước gate này không gì đếm chúng. Sinh bởi scripts/check-ts-suppressions.mjs.",
-          total: khoa.length,
-          fingerprints: khoa,
+          total: khoaGhi.length,
+          fingerprints: khoaGhi,
         },
         null,
         2,
       )}\n`,
     );
-    console.log(`✅ Đã chốt baseline: ${khoa.length} fingerprint.`);
+    console.log(`✅ Đã chốt baseline: ${khoaGhi.length} fingerprint.`);
     return;
   }
 
@@ -163,9 +186,20 @@ function main(argv) {
   const cu = new Set(JSON.parse(readFileSync(BASELINE, "utf8")).fingerprints ?? []);
   const moi = khoa.filter((k) => !cu.has(k));
 
-  if (moi.length > 0) {
-    console.error(`❌ ${moi.length} chỗ tắt kiểm tra kiểu MỚI:\n`);
-    for (const k of moi) {
+  // Fingerprint mới trong file UNTRACKED chỉ mềm ở local — WIP phiên khác trên
+  // working tree chung không được làm phiên này đỏ (đo 28/08/2026).
+  const tapUntracked = new Set(lietKeUntracked(GLOB_TS));
+  const { cung: moiCung, mem: moiMem } = phanLoaiChiThiMoi(moi, tapUntracked, laCI());
+
+  if (moiMem.length > 0) {
+    console.warn(`⚠ ${moiMem.length} chỉ thị tắt kiểm tra kiểu trong file CHƯA ADD (WIP — có thể của phiên khác):`);
+    for (const k of moiMem) console.warn(`  - ${k}`);
+    console.warn("  Nếu là của bạn: sẽ CHẶN CỨNG ngay khi `git add` — xử trước khi stage.");
+  }
+
+  if (moiCung.length > 0) {
+    console.error(`❌ ${moiCung.length} chỗ tắt kiểm tra kiểu MỚI:\n`);
+    for (const k of moiCung) {
       const viTri = tim.filter((t) => t.khoa === k).map((t) => `dòng ${t.line}`).join(", ");
       console.error(`  - ${k}  (${viTri})`);
     }

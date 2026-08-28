@@ -20,6 +20,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 
+import { laCI, lietKeUntracked, phanCap } from './lib/git-scope.mjs';
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MATRIX_PATH = join(repoRoot, 'tooling', 'test-matrix.json');
 
@@ -56,12 +58,26 @@ export function trackedTestFiles(ignorePatterns) {
   // `--others --exclude-standard`: file test MỚI chưa `git add` vẫn phải bị soi.
   // Thiếu hai cờ này, một file test mới tạo là mồ côi mà gate vẫn xanh — lỗi đã
   // đo được 07/08/2026 ở cả ba gate dùng `git ls-files` trong repo.
+  // (Mồ côi trên file untracked nay chỉ CẢNH BÁO ở local — xem phanLoaiMoCoi —
+  // nhưng vẫn phải quét thấy để cảnh báo được và để CỨNG trên CI.)
   return execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { cwd: repoRoot, encoding: 'utf8' })
     .trim()
     .split('\n')
     .map((p) => p.replace(/\\/g, '/'))
     .filter((p) => TEST_FILE.test(p))
     .filter((p) => !ignores.some((re) => re.test(p)));
+}
+
+/**
+ * Tách mồ côi thành {cung, mem} theo luật phiên-song-song (28/08/2026): file
+ * test untracked thường là WIP của PHIÊN KHÁC trên working tree chung, đỏ cứng
+ * vì nó là đỏ oan. Untracked ⇒ mềm ở local; đã stage/tracked hoặc chạy trên CI
+ * ⇒ cứng như cũ. Lưới không thủng: Contract §3 bắt stage trước commit, và ngay
+ * lúc stage thì file rời nhóm untracked.
+ */
+export function phanLoaiMoCoi(orphans, tapUntracked, ci) {
+  const { cung, mem } = phanCap(orphans, tapUntracked, ci, (f) => f);
+  return { cung, mem };
 }
 
 export function assignSuites(files, suites) {
@@ -145,6 +161,9 @@ function main(argv) {
   const matrix = JSON.parse(readFileSync(MATRIX_PATH, 'utf8'));
   const files = trackedTestFiles(matrix.ignore ?? []);
   const homNay = new Date().toISOString().slice(0, 10);
+  // File test untracked = WIP (thường của phiên khác trên working tree chung).
+  // Mọi vi phạm chỉ dính file untracked đều hạ xuống ⚠ ở local — xem phanLoaiMoCoi.
+  const tapUntracked = new Set(lietKeUntracked().filter((p) => TEST_FILE.test(p)));
 
   // ── Chống-xanh-rỗng: đo hỏng phải kêu là đo hỏng, không được đọc thành "sạch" ──
   const chan = [];
@@ -274,17 +293,23 @@ function main(argv) {
       const dungNodeTest = /from\s+['"]node:test['"]/.test(src);
       const dungVitest = /from\s+['"]vitest['"]/.test(src);
       if (laVitest && dungNodeTest && !dungVitest) {
-        loiRunner.push(`${f}: dùng \`node:test\` nhưng suite \`${id}\` chạy bằng Vitest — Vitest không đọc nổi nó.`);
+        loiRunner.push({ file: f, msg: `${f}: dùng \`node:test\` nhưng suite \`${id}\` chạy bằng Vitest — Vitest không đọc nổi nó.` });
       }
       if (laNode && dungVitest) {
-        loiRunner.push(`${f}: dùng \`vitest\` nhưng suite \`${id}\` chạy bằng \`node --test\`.`);
+        loiRunner.push({ file: f, msg: `${f}: dùng \`vitest\` nhưng suite \`${id}\` chạy bằng \`node --test\`.` });
       }
     }
   }
 
-  if (loiRunner.length > 0) {
-    console.error(`❌ ${loiRunner.length} file được giao cho runner KHÔNG chạy nổi nó:\n`);
-    for (const l of loiRunner) console.error(`  - ${l}`);
+  const runnerCap = phanCap(loiRunner, tapUntracked, laCI());
+  if (runnerCap.mem.length > 0) {
+    console.warn(`⚠ ${runnerCap.mem.length} file CHƯA ADD giao nhầm runner (WIP — có thể của phiên khác):`);
+    for (const l of runnerCap.mem) console.warn(`  - ${l.msg}`);
+    console.warn('  Nếu là của bạn: sẽ CHẶN CỨNG ngay khi `git add` — sửa matrix trước khi stage.');
+  }
+  if (runnerCap.cung.length > 0) {
+    console.error(`❌ ${runnerCap.cung.length} file được giao cho runner KHÔNG chạy nổi nó:\n`);
+    for (const l of runnerCap.cung) console.error(`  - ${l.msg}`);
     console.error('\n  Matrix khai một đằng, runner đọc một nẻo: bước CI đỏ vì lý do không');
     console.error('  liên quan tới chất lượng code, VÀ file test đó không được ai chạy.');
     process.exitCode = 1;
@@ -301,12 +326,17 @@ function main(argv) {
   const empty = [...bySuite].filter(([, list]) => list.length === 0).map(([id]) => id);
   const conflicts = crossRunnerConflicts(files, matrix.suites, bySuite);
 
-  if (conflicts.length > 0) {
-    console.error(`❌ ${conflicts.length} file bị HAI RUNNER khác nhau cùng nhận:\n`);
-    for (const c of conflicts.slice(0, 10)) {
+  const conflictCap = phanCap(conflicts, tapUntracked, laCI());
+  if (conflictCap.mem.length > 0) {
+    console.warn(`⚠ ${conflictCap.mem.length} file CHƯA ADD bị hai runner cùng nhận (WIP — có thể của phiên khác):`);
+    for (const c of conflictCap.mem.slice(0, 5)) console.warn(`  - ${c.file} (${c.runners.join(' vs ')})`);
+  }
+  if (conflictCap.cung.length > 0) {
+    console.error(`❌ ${conflictCap.cung.length} file bị HAI RUNNER khác nhau cùng nhận:\n`);
+    for (const c of conflictCap.cung.slice(0, 10)) {
       console.error(`  - ${c.file}\n      ${c.owners.join(' + ')} → runner ${c.runners.join(' vs ')}`);
     }
-    if (conflicts.length > 10) console.error(`  … và ${conflicts.length - 10} file nữa`);
+    if (conflictCap.cung.length > 10) console.error(`  … và ${conflictCap.cung.length - 10} file nữa`);
     console.error('\n  Khác runner thì ít nhất một bên KHÔNG chạy nổi file đó (vd Vitest gặp');
     console.error('  file `node:test` sẽ fail "No test suite found"). Sửa bằng `excludes`');
     console.error('  ở suite không thực sự chạy nó, khớp đúng cờ --exclude trong CI.');
@@ -314,11 +344,22 @@ function main(argv) {
     return;
   }
 
-  if (orphans.length > 0 || empty.length > 0) {
-    if (orphans.length > 0) {
-      console.error(`❌ ${orphans.length} file test MỒ CÔI — không suite nào chạy chúng:\n`);
-      for (const f of orphans.slice(0, 20)) console.error(`  - ${f}`);
-      if (orphans.length > 20) console.error(`  … và ${orphans.length - 20} file nữa`);
+  // Mồ côi trên file UNTRACKED chỉ mềm ở local: đỏ cứng vì WIP phiên khác là
+  // đỏ oan (đo 28/08/2026: 3 spec copilot dở làm gate của mọi phiên đỏ).
+  const { cung: moCoiCung, mem: moCoiMem } = phanLoaiMoCoi(orphans, tapUntracked, laCI());
+
+  if (moCoiMem.length > 0) {
+    console.warn(`⚠ ${moCoiMem.length} file test mồ côi nhưng CHƯA ADD (WIP — có thể của phiên khác):`);
+    for (const f of moCoiMem.slice(0, 10)) console.warn(`  - ${f}`);
+    if (moCoiMem.length > 10) console.warn(`  … và ${moCoiMem.length - 10} file nữa`);
+    console.warn('  Nếu là của bạn: sẽ CHẶN CỨNG ngay khi `git add` — khai suite trước khi stage.');
+  }
+
+  if (moCoiCung.length > 0 || empty.length > 0) {
+    if (moCoiCung.length > 0) {
+      console.error(`❌ ${moCoiCung.length} file test MỒ CÔI — không suite nào chạy chúng:\n`);
+      for (const f of moCoiCung.slice(0, 20)) console.error(`  - ${f}`);
+      if (moCoiCung.length > 20) console.error(`  … và ${moCoiCung.length - 20} file nữa`);
       console.error('\n  → thêm vào `includes` của suite phù hợp trong tooling/test-matrix.json,');
       console.error('    hoặc vào `ignore` nếu cố ý không chạy (kèm lý do trong $comment).');
     }
@@ -331,7 +372,9 @@ function main(argv) {
   }
 
   console.log(
-    `✅ ${files.length} file test, ${matrix.suites.length} suite, không file nào mồ côi.`,
+    `✅ ${files.length} file test, ${matrix.suites.length} suite, không file nào mồ côi${
+      moCoiMem.length > 0 ? ` (trừ ${moCoiMem.length} file chưa add — xem ⚠ trên)` : ''
+    }.`,
   );
   const multi = files.filter((f) => [...bySuite].filter(([, l]) => l.includes(f)).length > 1);
   if (multi.length > 0) {

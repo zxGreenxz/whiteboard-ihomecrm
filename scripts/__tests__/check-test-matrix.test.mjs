@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assignSuites, crossRunnerConflicts, globToRegExp } from '../check-test-matrix.mjs';
+import { assignSuites, crossRunnerConflicts, globToRegExp, phanLoaiMoCoi } from '../check-test-matrix.mjs';
 
 // Gate check-test-matrix.mjs canh một thứ không có test nào khác canh được: file
 // test nào thực sự chạy dưới runner nào. Bản thân nó sai thì mọi kết luận về độ
@@ -82,5 +82,26 @@ describe('crossRunnerConflicts', () => {
     const files = ['scripts/plain.test.mjs'];
     const { bySuite } = assignSuites(files, suites);
     expect(crossRunnerConflicts(files, suites, bySuite)).toEqual([]);
+  });
+});
+
+describe('phanLoaiMoCoi — mồ côi trên file untracked chỉ mềm ở local', () => {
+  // Working tree này chạy nhiều phiên song song: file test untracked thường là
+  // WIP của PHIÊN KHÁC. Trước 28/08/2026 gate đỏ cứng vì chúng — phiên A tạo 3
+  // spec dở là gate của phiên B đỏ oan. Nay: untracked ⇒ cảnh báo local, nhưng
+  // vẫn CỨNG ngay khi được stage (--cached thấy nó) và luôn CỨNG trên CI.
+  const orphans = ['scripts/__tests__/cua-minh.test.mjs', 'scripts/__tests__/wip-phien-khac.test.mjs'];
+  const untracked = new Set(['scripts/__tests__/wip-phien-khac.test.mjs']);
+
+  it('local: mồ côi untracked về nhóm MỀM, mồ côi đã tracked/stage về nhóm CỨNG', () => {
+    const { cung, mem } = phanLoaiMoCoi(orphans, untracked, false);
+    expect(cung).toEqual(['scripts/__tests__/cua-minh.test.mjs']);
+    expect(mem).toEqual(['scripts/__tests__/wip-phien-khac.test.mjs']);
+  });
+
+  it('CI: mọi mồ côi đều CỨNG kể cả untracked', () => {
+    const { cung, mem } = phanLoaiMoCoi(orphans, untracked, true);
+    expect(cung).toHaveLength(2);
+    expect(mem).toHaveLength(0);
   });
 });

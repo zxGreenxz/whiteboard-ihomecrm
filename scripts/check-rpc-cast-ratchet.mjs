@@ -16,10 +16,11 @@
 //
 // Không cần credential, không đọc database.
 
-import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { laCI, lietKeTracked, lietKeUntracked } from "./lib/git-scope.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BASELINE = join(repoRoot, "tooling", "rpc-cast-baseline.json");
@@ -53,24 +54,15 @@ export function countCasts(source) {
   return n;
 }
 
-export function scanRepo() {
-  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "src/**/*.ts", "src/**/*.tsx"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  })
-    .trim()
-    .split("\n")
-    .filter(Boolean);
+const GLOB_SRC = ["src/**/*.ts", "src/**/*.tsx"];
 
+/** Bộ đếm thuần: nhận danh sách file + reader, để test không cần đụng git/đĩa. */
+export function demCastTheoFile(files, docFile) {
   const perFile = {};
   let total = 0;
   for (const rel of files) {
-    let source;
-    try {
-      source = readFileSync(join(repoRoot, rel), "utf8");
-    } catch {
-      continue;
-    }
+    const source = docFile(rel);
+    if (source == null) continue;
     const n = countCasts(source);
     if (n > 0) {
       perFile[rel.replace(/\\/g, "/")] = n;
@@ -78,6 +70,31 @@ export function scanRepo() {
     }
   }
   return { perFile, total };
+}
+
+const docTuDia = (rel) => {
+  try {
+    return readFileSync(join(repoRoot, rel), "utf8");
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Con số ratchet CHỈ tính file trong INDEX (28/08/2026). Bản cũ kèm `--others`
+ * nên đếm cả cast trong file untracked — WIP của phiên khác trên working tree
+ * chung làm ratchet của phiên này đỏ oan, và baseline không tái lập được từ
+ * commit. File mới ĐÃ stage vẫn được đếm (`--cached` thấy nó) nên "file mới
+ * không được có cast" vẫn được canh trước khi commit; file untracked xem
+ * scanUntracked bên dưới.
+ */
+export function scanRepo() {
+  return demCastTheoFile(lietKeTracked(GLOB_SRC), docTuDia);
+}
+
+/** Cast trong file untracked — cảnh báo ở local, cứng trên CI. */
+export function scanUntracked() {
+  return demCastTheoFile(lietKeUntracked(GLOB_SRC), docTuDia);
 }
 
 export function compare(baseline, current) {
@@ -136,6 +153,20 @@ function main(argv) {
   }
 
   const { problems, improved } = compare(baseline, current);
+
+  // Cast trong file UNTRACKED: WIP (thường của phiên khác) — không tính vào
+  // ratchet, chỉ cảnh báo; trên CI thì cứng (cây CI sạch, còn untracked là rác
+  // do chính pipeline sinh ra).
+  const untracked = scanUntracked();
+  if (untracked.total > 0) {
+    const dong = Object.entries(untracked.perFile).map(([f, n]) => `${f} (${n})`);
+    if (laCI()) {
+      problems.push(`file untracked mang cast trên CI — cây CI phải sạch: ${dong.join(", ")}`);
+    } else {
+      console.warn(`⚠ ${untracked.total} any-cast trong file CHƯA ADD (WIP — có thể của phiên khác): ${dong.join(", ")}`);
+      console.warn("  Nếu là của bạn: sẽ CHẶN CỨNG ngay khi `git add` — dùng facade typed thay vì cast.");
+    }
+  }
 
   if (problems.length > 0) {
     console.error("❌ Ratchet any-cast RPC bị vi phạm:\n");

@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { DIRECTIVE } from '../check-ts-suppressions.mjs';
+import { DIRECTIVE, phanLoaiChiThiMoi } from '../check-ts-suppressions.mjs';
 
 const bat = (s) => [...s.matchAll(new RegExp(DIRECTIVE.source, 'g'))];
 
@@ -41,4 +41,20 @@ test('phân biệt đúng ba loại chỉ thị', () => {
 test('chuỗi gần giống không bị bắt nhầm', () => {
   assert.deepEqual(bat('// @ts-ignored'), []);
   assert.deepEqual(bat('// ts-ignore'), []);
+});
+
+test('fingerprint MỚI trên file untracked chỉ MỀM ở local — WIP phiên khác không làm phiên này đỏ', () => {
+  // Working tree chạy nhiều phiên song song (28/08/2026): file .tsx untracked
+  // của phiên khác mang @ts-ignore từng làm gate của mọi phiên đỏ oan. Untracked
+  // ⇒ cảnh báo; đã stage (--cached thấy) hoặc trên CI ⇒ cứng như cũ.
+  const moi = ['src/a.tsx#@ts-ignore', 'src/wip-phien-khac.tsx#@ts-ignore'];
+  const untracked = new Set(['src/wip-phien-khac.tsx']);
+
+  const local = phanLoaiChiThiMoi(moi, untracked, false);
+  assert.deepEqual(local.cung, ['src/a.tsx#@ts-ignore']);
+  assert.deepEqual(local.mem, ['src/wip-phien-khac.tsx#@ts-ignore']);
+
+  const ci = phanLoaiChiThiMoi(moi, untracked, true);
+  assert.equal(ci.cung.length, 2);
+  assert.equal(ci.mem.length, 0);
 });
