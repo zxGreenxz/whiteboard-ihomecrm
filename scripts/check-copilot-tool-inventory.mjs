@@ -109,6 +109,14 @@ export function timSoTuKhai(vanBan) {
   return [...ngoai.matchAll(/(\d+)\s+(?:write\s+)?(?:tool\b|công cụ)/gi)].map((m) => m[0].trim());
 }
 
+/**
+ * So sánh bỏ khác biệt CRLF (28/08/2026). Checkout Windows (autocrlf) trả
+ * README về CRLF trong khi khối sinh ra là LF — phép so chuỗi thô lệch từng
+ * dòng dù nội dung giống hệt, gate đỏ trên MỌI máy Windows và xanh trên CI
+ * Linux. Cùng lớp lỗi mà generate-docs-views đã tự ghi trong hàm bo() của nó.
+ */
+export const khopBoCRLF = (a, b) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
+
 function main() {
   const ghi = process.argv.includes('--write');
 
@@ -145,7 +153,7 @@ function main() {
   const van = [];
   if (iDau < 0 || iCuoi < 0) {
     van.push(`README thiếu khối sinh tự động (${MOC_DAU} … ${MOC_CUOI}).`);
-  } else if (readme.slice(iDau, iCuoi + MOC_CUOI.length) !== khoiMoi) {
+  } else if (!khopBoCRLF(readme.slice(iDau, iCuoi + MOC_CUOI.length), khoiMoi)) {
     van.push(
       'Khối inventory trong README lệch với registry. Chạy ' +
         '`node scripts/check-copilot-tool-inventory.mjs --write` rồi commit.',

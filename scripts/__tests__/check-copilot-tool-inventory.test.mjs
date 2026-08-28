@@ -95,3 +95,18 @@ test('câu tự khai nằm SAU khối cũng bị bắt', () => {
   const sau = `${MOC_DAU}\n**14 tool**\n${MOC_CUOI}\n\nGhi chú: 9 công cụ đọc.`;
   assert.ok(timSoTuKhai(sau).some((s) => s.includes('9')));
 });
+
+// 28/08/2026: gate do oan tren MOI may Windows — checkout autocrlf tra README
+// ve CRLF, khoi sinh ra la LF, phep so sanh chuoi tho :148 lech tung dong mot
+// du noi dung giong het (CI Linux van xanh nen khong ai thay). Cung lop loi ma
+// generate-docs-views da tu ghi trong ham bo() cua no.
+import { khopBoCRLF } from '../check-copilot-tool-inventory.mjs';
+
+test('khopBoCRLF: khoi CRLF (Windows checkout) van khop khoi LF (generator)', () => {
+  assert.equal(khopBoCRLF('a\r\nb\r\n', 'a\nb\n'), true);
+  assert.equal(khopBoCRLF('a\nb\n', 'a\nb\n'), true);
+});
+
+test('khopBoCRLF: noi dung khac that su van phai lech', () => {
+  assert.equal(khopBoCRLF('a\r\nb\r\n', 'a\nc\n'), false);
+});

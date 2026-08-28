@@ -118,6 +118,9 @@ function main() {
       writeFileSync(README, output, 'utf8');
       console.log(`✍ Đã dán ${daSua.length} con số từ manifest vào README baseline:`);
       for (const s of daSua) console.log(`    ${s}`);
+      // Dòng máy-đọc cho kiem-nhanh-truoc-push: chỉ stage file mà --fix của
+      // LƯỢT NÀY vừa vá — không vơ file bẩn sẵn của phiên khác.
+      console.log('DA_SUA supabase/baseline/README.md');
       readme = output;
     }
   }

@@ -237,6 +237,17 @@ export function dungCapabilityMatrix(registrySrc, edgeM, rtM) {
   ].join("\n");
 }
 
+/**
+ * Danh sách bản .md mà generator này SỞ HỮU — kiem-nhanh-truoc-push đọc để
+ * biết được phép tự stage những file nào (allowlist theo sở hữu, 28/08/2026).
+ * Thêm view mới thì thêm ở đây, đừng chép tay đường dẫn sang runner.
+ */
+export const DANH_SACH_VIEW = [
+  "docs/generated/rpc-surface.md",
+  "docs/generated/repository-inventory.md",
+  "docs/generated/capability-matrix.md",
+];
+
 function main() {
   const canCo = [
     "contracts/surfaces/rpc-surface.json",

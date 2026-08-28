@@ -20,11 +20,28 @@
 //   eslint, build, vitest, timezone — CI vẫn canh đủ). Thêm gate mới vào CI thì
 //   cân nhắc thêm vào đây nếu nó rẻ (<5 giây) và hay vấp.
 //
+// PHIÊN SONG SONG (viết lại 28/08/2026)
+//   Working tree này thường chạy nhiều phiên agent cùng lúc. Bản cũ stage theo
+//   delta `git status` toàn repo trước/sau Bước 1 ∪ mọi file bẩn dưới
+//   docs/generated/ — nó vơ cả file phiên khác ghi trong cửa sổ 30-60s lẫn file
+//   bẩn sẵn của họ vào staging của mình, vi phạm chính Contract §3/§11.3 mà nó
+//   phục vụ. Bản này:
+//     - mỗi generator KHAI SỞ HỮU (soHuu) tường minh; chỉ stage file thuộc sở
+//       hữu VÀ đang khác INDEX (nên chạy hai lần liên tiếp vẫn stage đủ);
+//     - generator kiểu `va-tay` (--fix vá số vào file người viết) chỉ stage
+//       file có dòng DA_SUA của lượt này VÀ sạch trước khi Bước 1 chạy;
+//     - chốt cuối đo bản INDEX (check-doc-counts --nguon-index) — đúng thứ CI
+//       sẽ đọc sau commit, miễn nhiễm file bẩn dở của phiên khác;
+//     - lock trong git-dir của worktree chặn hai phiên chạy đồng thời.
+//
 // Thoát 0 = sạch · 1 = có gate đỏ (chi tiết in ở phần tóm tắt).
 
 import { spawnSync } from "node:child_process";
+import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { DANH_SACH_VIEW } from "./generate-docs-views.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -37,16 +54,23 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // 20–25/08 thì 12 lần do số đếm tài liệu, 8 lần do types.ts trôi, 3 lần do
 // manifest bề mặt RPC trôi — toàn bộ là artifact MÁY SỞ HỮU mà quy trình lại
 // bắt con người nhớ chạy đúng 5 lệnh đúng thứ tự. Từ nay một lệnh này làm hết.
+//
+// `soHuu`: file/tiền-tố (kết thúc `/`) mà generator này được phép tự stage.
+// `kieu: "va-tay"`: file NGƯỜI viết, máy chỉ vá số — stage theo dòng DA_SUA.
+// docs/generated/schema-change-evidence/ cố ý KHÔNG thuộc sở hữu của ai ở đây:
+// biên nhận cặp đôi với MỘT migration cụ thể và phải đi cùng commit của
+// migration đó (suýt tạo evidence mồ côi 25/08/2026).
+const TYPES = "src/integrations/supabase/types.ts";
 const TU_CHUA = [
-  ["sinh types.ts từ DB thật (gen:types)", ["scripts/gen-supabase-types.mjs"], { mang: true }],
-  ["chuẩn hoá types.ts (bỏ partition + ghim phiên bản nền tảng)", ["scripts/normalize-supabase-types.mjs", "--write"]],
-  ["sinh manifest bề mặt RPC", ["scripts/generate-rpc-surface.mjs"], { mang: true }],
-  ["sinh manifest bề mặt Edge", ["scripts/generate-edge-surface.mjs"], { mang: true }],
-  ["sinh manifest bề mặt realtime", ["scripts/generate-realtime-surface.mjs"], { mang: true }],
-  ["sinh kiểm kê repo (JSON)", ["scripts/generate-repository-inventory.mjs", "--write"]],
-  ["sinh bản .md render từ manifest", ["scripts/generate-docs-views.mjs"]],
-  ["sửa số đếm trong tài liệu", ["scripts/check-doc-counts.mjs", "--fix"]],
-  ["dán số baseline từ manifest vào README", ["scripts/check-baseline-doc.mjs", "--fix"]],
+  ["sinh types.ts từ DB thật (gen:types)", ["scripts/gen-supabase-types.mjs"], { mang: true, soHuu: [TYPES] }],
+  ["chuẩn hoá types.ts (bỏ partition + ghim phiên bản nền tảng)", ["scripts/normalize-supabase-types.mjs", "--write"], { soHuu: [TYPES] }],
+  ["sinh manifest bề mặt RPC", ["scripts/generate-rpc-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/rpc-surface.json"] }],
+  ["sinh manifest bề mặt Edge", ["scripts/generate-edge-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/edge-function-surface.json"] }],
+  ["sinh manifest bề mặt realtime", ["scripts/generate-realtime-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/realtime-surface.json"] }],
+  ["sinh kiểm kê repo (JSON)", ["scripts/generate-repository-inventory.mjs", "--write"], { soHuu: ["docs/generated/repository-inventory.json"] }],
+  ["sinh bản .md render từ manifest", ["scripts/generate-docs-views.mjs"], { soHuu: DANH_SACH_VIEW }],
+  ["sửa số đếm trong tài liệu", ["scripts/check-doc-counts.mjs", "--fix"], { kieu: "va-tay" }],
+  ["dán số baseline từ manifest vào README", ["scripts/check-baseline-doc.mjs", "--fix"], { kieu: "va-tay" }],
 ];
 
 // ── Bước 2: gate tĩnh, thứ tự khớp ci-gates.yml để dễ đối chiếu ──────────────
@@ -100,133 +124,242 @@ const chay = (args) => spawnSync("node", args.map((a, i) => (i === 0 ? join(repo
   encoding: "utf8",
 });
 
-const trangThaiGit = () =>
-  spawnSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" }).stdout ?? "";
+const goiGit = (args) =>
+  (spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" }).stdout ?? "")
+    .split("\n")
+    .filter(Boolean)
+    .map((p) => p.replace(/\\/g, "/"));
+
+/** File tracked đang khác index + file mới chưa add, GIỚI HẠN trong `paths`. */
+const dangKhacIndexTrong = (paths) => {
+  if (paths.length === 0) return [];
+  return [
+    ...goiGit(["diff", "--name-only", "--", ...paths]),
+    ...goiGit(["ls-files", "--others", "--exclude-standard", "--", ...paths]),
+  ];
+};
+
+/** `file` có thuộc danh sách sở hữu không — khớp đích danh, hoặc tiền tố kết thúc `/`. */
+export const thuocSoHuu = (file, soHuu) =>
+  soHuu.some((s) => (s.endsWith("/") ? file.startsWith(s) : file === s));
+
+/** Rút danh sách file từ các dòng `DA_SUA <path>` mà generator va-tay in ra. */
+export const layDaSua = (stdout) =>
+  [...String(stdout ?? "").matchAll(/^DA_SUA (.+)$/gm)].map((m) => m[1].trim().replace(/\\/g, "/"));
+
+/**
+ * Tập file được phép tự stage. Thuần để test không đụng git.
+ *
+ * @param cacMuc [{ten, kieu: "may"|"va-tay", soHuu, thanhCong, daSua}]
+ * @param dangKhacIndex Set — file đang khác index (chỉ cần phủ vùng soHuu)
+ * @param banTruoc Set — file đã bẩn TRƯỚC khi Bước 1 chạy
+ */
+export function tinhTapStage(cacMuc, dangKhacIndex, banTruoc) {
+  const stage = new Set();
+  const boQua = [];
+  for (const m of cacMuc) {
+    if (!m.thanhCong) continue;
+    if (m.kieu === "va-tay") {
+      for (const f of m.daSua ?? []) {
+        if (banTruoc.has(f)) boQua.push({ file: f, ten: m.ten });
+        else stage.add(f);
+      }
+    } else {
+      for (const f of dangKhacIndex) {
+        if (thuocSoHuu(f, m.soHuu ?? [])) stage.add(f);
+      }
+    }
+  }
+  return { stage: [...stage].sort(), boQua };
+}
+
+/**
+ * Lock đã tồn tại là "song" (phải chờ) hay "stale" (chiếm được)?
+ * Stale khi: không đọc được, pid đã chết, hoặc quá hạn (gate không chạy quá
+ * 20 phút — lâu hơn là xác treo của một phiên đã bị kill).
+ */
+export function danhGiaLock(lock, pidConSong, bayGioMs, hanMs = 20 * 60 * 1000) {
+  if (!lock || typeof lock.pid !== "number" || typeof lock.batDauMs !== "number") return "stale";
+  if (!pidConSong(lock.pid)) return "stale";
+  if (bayGioMs - lock.batDauMs > hanMs) return "stale";
+  return "song";
+}
+
+// ── Lock: một worktree một lượt gate — hai phiên chạy đồng thời sẽ ghi đè
+// artifact của nhau giữa chừng rồi cùng stage sai. Lock nằm trong git-dir CỦA
+// WORKTREE (rev-parse --absolute-git-dir) nên hai worktree khác nhau vẫn chạy
+// song song được — đúng mô hình mỗi-hạng-mục-một-worktree của Contract §3.
+function chiemLock() {
+  const gitDir = spawnSync("git", ["rev-parse", "--absolute-git-dir"], { cwd: repoRoot, encoding: "utf8" })
+    .stdout?.trim();
+  if (!gitDir) return { loi: "không tìm được git-dir — đang đứng ngoài repo?" };
+  const duong = join(gitDir, "gate-truoc-push.lock");
+  const ghi = () => {
+    const fd = openSync(duong, "wx");
+    writeSync(fd, JSON.stringify({ pid: process.pid, batDauMs: Date.now() }));
+    closeSync(fd);
+  };
+  try {
+    ghi();
+    return { duong };
+  } catch {
+    let lock = null;
+    try { lock = JSON.parse(readFileSync(duong, "utf8")); } catch { /* hỏng ⇒ stale */ }
+    const pidConSong = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    if (danhGiaLock(lock, pidConSong, Date.now()) === "song") {
+      return {
+        loi:
+          `phiên khác đang chạy gate:truoc-push (pid ${lock.pid}, từ ${new Date(lock.batDauMs).toISOString()}).\n` +
+          `   Chờ nó xong rồi chạy lại. Lock: ${duong} — chỉ xoá tay khi chắc chắn phiên kia đã chết.`,
+      };
+    }
+    try { unlinkSync(duong); ghi(); return { duong }; } catch (e) {
+      return { loi: `không chiếm được lock (${e.message})` };
+    }
+  }
+}
 
 function main() {
   const boDaoStrict = process.argv.includes("--khong-dao-strict");
   const t0 = Date.now();
 
-  console.log("── Bước 1/2: máy tự sinh số ──");
-  const truoc = trangThaiGit();
-  const loiTuChua = [];
-  const canhBaoMang = [];
-  for (const [ten, args, tuyChon] of TU_CHUA) {
-    const r = chay(args);
-    if (r.status === 0) console.log(`  ✅ ${ten}`);
-    else if (tuyChon?.mang) {
-      canhBaoMang.push(ten);
-      console.log(`  ⚠ ${ten} (exit ${r.status}) — cần mạng/PAT; nếu bạn vừa đổi schema/RPC thì PHẢI chạy lại khi có mạng`);
-    } else {
-      loiTuChua.push([ten, r]);
-      console.log(`  ❌ ${ten} (exit ${r.status})`);
-    }
-  }
-  const sau = trangThaiGit();
-  // Tập cần stage = (file đổi TRONG lượt này) ∪ (file bẩn dưới docs/generated/).
-  //
-  // Vế hai cần thiết vì phép so trước/sau chỉ thấy thay đổi của ĐÚNG lượt đang
-  // chạy. Chạy lệnh này hai lần liên tiếp thì lượt thứ hai không sinh gì mới,
-  // nên file bẩn từ lượt trước sẽ trượt khỏi tầm — rồi commit thiếu, rồi CI đỏ.
-  // docs/generated/ hoàn toàn do máy sinh (mọi file ở đó có generator riêng),
-  // nên gom cả file bẩn ở đó là an toàn, không đụng vào mã người viết.
-  const doiTrongLuot = sau
-    .split("\n")
-    .filter((l) => l && !truoc.includes(l))
-    .map((l) => l.slice(3));
-  const banSinhTuDong = sau
-    .split("\n")
-    .filter((l) => l.trim() !== "")
-    .map((l) => l.slice(3))
-    // schema-change-evidence/ cặp đôi với MỘT migration cụ thể và phải đi cùng
-    // commit của migration đó — tự quét ở đây dễ tạo evidence mồ côi khi file
-    // .sql tương ứng còn nằm ngoài stage (đã suýt xảy ra 25/08/2026).
-    .filter((f) => f.startsWith("docs/generated/") && !f.startsWith("docs/generated/schema-change-evidence/"));
-  const fileMoiDoi = [...new Set([...doiTrongLuot, ...banSinhTuDong])].sort();
-  // TỰ STAGE, không chỉ nhắc.
-  //
-  // Bản cũ in "NHỚ stage kèm commit" rồi phó mặc cho trí nhớ con người. Trí nhớ
-  // thua: đo 25/08/2026 trên `git log -- src/integrations/supabase/types.ts` và
-  // docs/generated/, có 4 commit `fix(ci)` chỉ để dán lại thứ máy tự sinh được —
-  // mỗi lần là một vòng push-chờ-CI 12 phút cho một phép cộng.
-  //
-  // Đây KHÔNG phải agent tự ý commit hộ: nó chỉ `git add` những file mà generator
-  // của chính repo vừa ghi ra ở Bước 1, và chỉ khi người dùng đã tự tay chạy lệnh
-  // này. Nội dung do máy sở hữu; con người không nên là người làm phép cộng cho gate.
-  //
-  // Thứ tự quan trọng: stage TRƯỚC Bước 2. check-doc-counts đếm bằng `git ls-files`
-  // nên một file chưa `git add` sẽ không được tính — chạy gate trước khi stage cho
-  // ra kết quả "khớp" GIẢ rồi CI đỏ.
-  if (fileMoiDoi.length > 0) {
-    const add = spawnSync("git", ["add", "--", ...fileMoiDoi], { cwd: repoRoot, encoding: "utf8" });
-    if (add.status === 0) {
-      console.log(`  ✍ generator cập nhật ${fileMoiDoi.length} file — ĐÃ tự \`git add\` (nội dung do máy sinh):`);
-    } else {
-      console.log(`  ✍ generator cập nhật ${fileMoiDoi.length} file — KHÔNG tự stage được (${add.stderr?.trim() || "git lỗi"}), stage tay:`);
-    }
-    for (const f of fileMoiDoi) console.log(`      ${f}`);
-  }
-
-  // ── Chốt lỗ hổng "gate đọc working tree, CI đọc bản commit" ────────────────
-  //
-  // Án lệ 25/08/2026, run 32873960678: check-doc-counts --fix sửa "9 → 11 suite"
-  // trong docs/CODEBASE_STRUCTURE.md ở máy, battery xanh — nhưng file đó đang bẩn
-  // dở từ phiên trước nên không được stage, CI đọc bản commit vẫn ghi 9 → đỏ.
-  // Mọi gate ở đây đọc NỘI DUNG TRÊN ĐĨA; CI đọc NỘI DUNG ĐÃ COMMIT. Hai thứ chỉ
-  // trùng khi mọi file mang số máy sinh đều được stage. Danh sách dưới là các file
-  // check-doc-counts ghi số vào (đồng bộ với CLAIMS trong scripts/check-doc-counts.mjs)
-  // cộng các artifact máy sở hữu.
-  const FILE_MANG_SO_MAY = [
-    "docs/CODEBASE_STRUCTURE.md",
-    "docs/DATABASE_SCHEMA.md",
-    "docs/engineering/PROJECT_CONTRACT.md",
-    "supabase/README.md",
-    "supabase/migration-provenance.json",
-    "src/integrations/supabase/types.ts",
-  ];
-  const chuaStage = (spawnSync("git", ["diff", "--name-only"], { cwd: repoRoot, encoding: "utf8" }).stdout ?? "")
-    .split("\n").filter(Boolean).map((f) => f.replace(/\\/g, "/"));
-  const soLech = chuaStage.filter(
-    (f) => FILE_MANG_SO_MAY.includes(f) || f.startsWith("docs/generated/") || f.startsWith("contracts/surfaces/"),
-  );
-  if (soLech.length > 0) {
-    console.log(`\n  ❌ ${soLech.length} file mang số máy sinh đang SỬA DỞ CHƯA STAGE — gate dưới sẽ đọc bản trên đĩa`);
-    console.log("     và báo xanh, nhưng CI đọc bản commit và sẽ ĐỎ. Stage phần số đếm rồi chạy lại:");
-    for (const f of soLech) console.log(`       git add ${f}`);
+  const lock = chiemLock();
+  if (lock.loi) {
+    console.error(`❌ ${lock.loi}`);
     process.exitCode = 1;
-  }
-
-  console.log(`\n── Bước 2/2: gate tĩnh (${boDaoStrict ? "bỏ" : "kèm"} đảo strict) ──`);
-  const doSo = [];
-  const danhSach = boDaoStrict ? GATE_NHANH : [...GATE_NHANH, ...GATE_NANG];
-  for (const muc of danhSach) {
-    const args = Array.isArray(muc) ? muc : [muc];
-    const ten = args.join(" ");
-    const r = chay([`scripts/${args[0]}.mjs`, ...args.slice(1)]);
-    if (r.status === 0) {
-      console.log(`  ✅ ${ten}`);
-    } else {
-      // exit 3 = "không kiểm được" (thiếu tiền đề) — tin KHÁC "kiểm rồi thấy vi
-      // phạm", in nhãn riêng nhưng vẫn tính là chưa sạch: chưa nhìn thấy thì
-      // chưa được coi là đạt (Contract §3).
-      console.log(`  ${r.status === 3 ? "⚠" : "❌"} ${ten} (exit ${r.status})`);
-      doSo.push([ten, r]);
-    }
-  }
-
-  const giay = Math.round((Date.now() - t0) / 1000);
-  if (doSo.length === 0 && loiTuChua.length === 0) {
-    console.log(`\n✅ Sạch — ${danhSach.length} gate xanh trong ${giay}s. Push được.`);
     return;
   }
+  const nhaLock = () => { try { unlinkSync(lock.duong); } catch { /* đã gỡ */ } };
+  process.on("exit", nhaLock);
+  process.on("SIGINT", () => { nhaLock(); process.exit(130); });
 
-  console.log(`\n❌ ${doSo.length + loiTuChua.length} mục chưa sạch (${giay}s). Output từng mục:`);
-  for (const [ten, r] of [...loiTuChua, ...doSo]) {
-    console.log(`\n───── ${ten} ─────`);
-    if (r.stdout?.trim()) console.log(r.stdout.trim());
-    if (r.stderr?.trim()) console.log(r.stderr.trim());
+  try {
+    console.log("── Bước 1/2: máy tự sinh số ──");
+    // File đã bẩn TRƯỚC Bước 1 (so với index): --fix có vá số trên đó thì cũng
+    // KHÔNG stage — có thể là sửa tay dở của phiên khác.
+    const banTruoc = new Set(goiGit(["diff", "--name-only"]));
+    const loiTuChua = [];
+    const canhBaoMang = [];
+    const ketQuaMuc = [];
+    for (const [ten, args, tuyChon = {}] of TU_CHUA) {
+      const r = chay(args);
+      const thanhCong = r.status === 0;
+      if (thanhCong) console.log(`  ✅ ${ten}`);
+      else if (tuyChon.mang) {
+        canhBaoMang.push([ten, tuyChon]);
+        console.log(`  ⚠ ${ten} (exit ${r.status}) — cần mạng/PAT; nếu bạn vừa đổi schema/RPC thì PHẢI chạy lại khi có mạng`);
+      } else {
+        loiTuChua.push([ten, r]);
+        console.log(`  ❌ ${ten} (exit ${r.status})`);
+      }
+      ketQuaMuc.push({
+        ten,
+        kieu: tuyChon.kieu ?? "may",
+        soHuu: tuyChon.soHuu ?? [],
+        thanhCong,
+        daSua: thanhCong && tuyChon.kieu === "va-tay" ? layDaSua(r.stdout) : [],
+      });
+    }
+
+    // TỰ STAGE theo ALLOWLIST SỞ HỮU, không chỉ nhắc.
+    //
+    // Bản trước-nữa in "NHỚ stage kèm commit" rồi phó mặc trí nhớ con người —
+    // trí nhớ thua (4 commit fix(ci) đo 25/08 chỉ để dán lại thứ máy sinh).
+    // Bản 25/08 tự stage nhưng theo delta git status toàn repo — vơ nhầm file
+    // phiên khác (mổ xẻ 28/08). Bản này chỉ stage file THUỘC SỞ HỮU của
+    // generator vừa chạy THÀNH CÔNG và đang khác INDEX.
+    //
+    // Thứ tự quan trọng: stage TRƯỚC Bước 2. check-doc-counts đếm bằng
+    // `git ls-files` nên một file chưa `git add` sẽ không được tính — chạy gate
+    // trước khi stage cho ra kết quả "khớp" GIẢ rồi CI đỏ.
+    const soHuuMayOk = ketQuaMuc.filter((m) => m.thanhCong && m.kieu === "may").flatMap((m) => m.soHuu);
+    const dangKhac = new Set(dangKhacIndexTrong([...new Set(soHuuMayOk)]));
+    const { stage, boQua } = tinhTapStage(ketQuaMuc, dangKhac, banTruoc);
+
+    for (const b of boQua) {
+      console.log(`  ⚠ KHÔNG stage ${b.file} — file đang có sửa tay dở từ TRƯỚC (có thể phiên khác).`);
+      console.log(`     Generator đã vá số trên đĩa; nếu file là của bạn thì tự stage phần số đếm.`);
+    }
+    if (stage.length > 0) {
+      const add = spawnSync("git", ["add", "--", ...stage], { cwd: repoRoot, encoding: "utf8" });
+      if (add.status === 0) {
+        console.log(`  ✍ generator cập nhật ${stage.length} file thuộc sở hữu — ĐÃ tự \`git add\`:`);
+      } else {
+        console.log(`  ✍ generator cập nhật ${stage.length} file — KHÔNG tự stage được (${add.stderr?.trim() || "git lỗi"}), stage tay:`);
+      }
+      for (const f of stage) console.log(`      ${f}`);
+    }
+
+    // ── Chốt lỗ hổng "gate đọc working tree, CI đọc bản commit" ──────────────
+    //
+    // Án lệ 25/08/2026, run 32873960678: check-doc-counts --fix sửa số trong
+    // docs ở máy, battery xanh — nhưng file đó bẩn dở từ phiên trước nên không
+    // được stage, CI đọc bản commit vẫn số cũ → đỏ. Chốt này vì thế đo đúng
+    // thứ CI sẽ thấy:
+    //   (a) artifact máy-toàn-phần của generator đã chạy: phải KHÔNG còn khác
+    //       index (tự stage ở trên phải vét sạch);
+    //   (b) số đếm đọc từ INDEX phải khớp (check-doc-counts --nguon-index) —
+    //       file va-tay bẩn của phiên khác không làm chốt này đỏ, vì bản index
+    //       (thứ CI đọc) vẫn đúng.
+    const conKhac = dangKhacIndexTrong([...new Set(soHuuMayOk)]);
+    if (conKhac.length > 0) {
+      console.log(`\n  ❌ ${conKhac.length} artifact máy sinh vẫn khác INDEX sau khi tự stage — bất thường, stage tay rồi chạy lại:`);
+      for (const f of conKhac) console.log(`       git add ${f}`);
+      process.exitCode = 1;
+    }
+    const rIndex = chay(["scripts/check-doc-counts.mjs", "--nguon-index"]);
+    if (rIndex.status !== 0) {
+      console.log("\n  ❌ Số đếm trong INDEX (bản CI sẽ đọc) chưa khớp:");
+      if (rIndex.stdout?.trim()) console.log(rIndex.stdout.trim().replace(/^/gm, "     "));
+      if (rIndex.stderr?.trim()) console.log(rIndex.stderr.trim().replace(/^/gm, "     "));
+      console.log("     File nêu trên cần được stage phần số đếm (git add <file>, hoặc git add -p");
+      console.log("     nếu file đang lẫn sửa tay dở của phiên khác) rồi chạy lại.");
+      process.exitCode = 1;
+    } else {
+      console.log("  ✅ số đếm trong INDEX khớp — bản CI sẽ đọc là bản đúng");
+    }
+    for (const [ten, tuyChon] of canhBaoMang) {
+      if (tuyChon.soHuu?.length) {
+        console.log(`  ⚠ ${ten} chưa chạy được — artifact có thể cũ: ${tuyChon.soHuu.join(", ")}. PHẢI chạy lại khi có mạng.`);
+      }
+    }
+
+    console.log(`\n── Bước 2/2: gate tĩnh (${boDaoStrict ? "bỏ" : "kèm"} đảo strict) ──`);
+    const doSo = [];
+    const danhSach = boDaoStrict ? GATE_NHANH : [...GATE_NHANH, ...GATE_NANG];
+    for (const muc of danhSach) {
+      const args = Array.isArray(muc) ? muc : [muc];
+      const ten = args.join(" ");
+      const r = chay([`scripts/${args[0]}.mjs`, ...args.slice(1)]);
+      if (r.status === 0) {
+        console.log(`  ✅ ${ten}`);
+      } else {
+        // exit 3 = "không kiểm được" (thiếu tiền đề) — tin KHÁC "kiểm rồi thấy vi
+        // phạm", in nhãn riêng nhưng vẫn tính là chưa sạch: chưa nhìn thấy thì
+        // chưa được coi là đạt (Contract §3).
+        console.log(`  ${r.status === 3 ? "⚠" : "❌"} ${ten} (exit ${r.status})`);
+        doSo.push([ten, r]);
+      }
+    }
+
+    const giay = Math.round((Date.now() - t0) / 1000);
+    if (doSo.length === 0 && loiTuChua.length === 0 && process.exitCode !== 1) {
+      console.log(`\n✅ Sạch — ${danhSach.length} gate xanh trong ${giay}s. Push được.`);
+      return;
+    }
+
+    console.log(`\n❌ ${doSo.length + loiTuChua.length} mục chưa sạch (${giay}s). Output từng mục:`);
+    for (const [ten, r] of [...loiTuChua, ...doSo]) {
+      console.log(`\n───── ${ten} ─────`);
+      if (r.stdout?.trim()) console.log(r.stdout.trim());
+      if (r.stderr?.trim()) console.log(r.stderr.trim());
+    }
+    process.exitCode = 1;
+  } finally {
+    nhaLock();
   }
-  process.exitCode = 1;
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main();
+}
