@@ -89,7 +89,7 @@ record ra phiên bản nghĩa vụ thứ 2 nhưng vẫn chỉ **1 phiếu sống
 | E2E trọn vòng thanh lý → nghĩa vụ → phiếu hoàn trên DEMO | ✅ **ĐẠT 28/08** (spec §2.3) |
 | 4 lỗi chặn của audit 27/08 (F1/F2/F3 + F4) | ✅ đã vá, đã lên prod (`20260828090000` + commit `dfd44d42`) |
 | Một ca hoàn cọc **thật** (org thật, người thật duyệt) đi trọn đường mới | ❌ **chưa** — prod vẫn 0 nghĩa vụ |
-| Quyết định của chủ về thời điểm khoá | ❌ chưa hỏi lại |
+| Quyết định của chủ về thời điểm khoá | ⏸ **CHỦ QUYẾT 28/08: TẠM DỪNG** — "đợt 4 tạm dừng lại giữ như cũ tính sau". Đường cũ giữ nguyên; mọi việc ở mục "Khi khoá (Đợt 4)" bên dưới CHƯA được làm và không được tự ý làm khi chủ chưa gật lại |
 
 **Khi khoá (Đợt 4), việc phải làm** — theo Task 2 của plan + F6 của audit:
 1. REVOKE `EXECUTE` khỏi `authenticated` trên `terminate_contract_move_out`,
@@ -129,3 +129,39 @@ Khôi phục theo `docs/engineering/PROJECT_CONTRACT.md` (Restore Drill đã di�
 trong CI — job `restore-drill`). Riêng các vá hàm: mọi migration của chuỗi này
 đều idempotent, muốn quay bản hàm cũ thì re-apply file cũ hơn **chỉ khi** hiểu
 rõ selfcheck của file mới sẽ không còn được thoả — an toàn hơn là viết forward-fix.
+
+
+## 6. Đợt 2 — ĐÃ ĐIỀN 4 BẢNG LUẬT (28/08/2026, chủ chốt "chạy hết")
+
+Điền qua 4 RPC chính thống (`set_commission_tier_v1`, `set_utility_ceiling_v1`,
+`set_sale_bonus_cap_v1`, `set_maintenance_rule_v1`) với phiên super admin —
+versioned, có `created_by`, retire/đổi được bất kỳ lúc nào bằng chính các RPC đó.
+
+**Nguyên tắc chọn số: KHÔNG bịa. Mọi con số đều là hiện trạng đo được:**
+
+| Bảng | Đã điền | Nguồn số |
+|---|---|---|
+| `commission_tier_versions` | **46 bậc / 23 toà** | Chép nguyên `buildings.commission_tiers` đang chạy (nguồn client prefill — 34/41 phiếu lịch sử là tiếng vọng của chính nó). VD 102LVT: 5-6 tháng 50%, 10-12 tháng 70% |
+| `utility_ceiling_versions` | **24 trần (toà × điện/nước)** | Đỉnh lịch sử phiếu APPROVED của CHÍNH toà đó, chỉ toà ≥2 phiếu. VD 102LVT ELECTRIC = 24.964.000đ |
+| `sale_bonus_cap_versions` | **2** (org thật + DEMO, 500.000đ) | Đỉnh lịch sử 19 phiếu Thưởng nóng Sale (max 500k, trung vị 200k) — chưa phiếu nào từng vượt |
+| `maintenance_rule_versions` | **2** (org thật + DEMO, máy lạnh) | Giãn cách 5 tháng · `counts_history=FALSE` (KHÔNG khoá 59 phòng lịch sử — bảng tự thiết kế sẵn lối an toàn này) · `enforcement=WARN` (không chặn cứng phòng 2 máy) · KHÔNG đặt giá chuẩn/trần (mới 1 điểm dữ liệu) |
+
+**Đã probe sau khi điền** (28/08): `commission_rate_for_v1(102LVT, 12 tháng)` = 70% ·
+`(6 tháng)` = 50% · trần điện 102LVT: bằng đỉnh → `WITHIN_LIMIT`, đỉnh+1 →
+`OVER_CEILING` · cap = 500.000.
+
+**Việc nối dây đi kèm** — đo trước khi điền thì động cơ trần điện/nước có **0 caller**:
+migration `20260828140000_utility_ceiling_wired_into_pay_bill.sql` nối
+`utility_ceiling_check_v1` vào `pay_utility_bill`: vượt trần ⇒ phiếu hạ về
+**CHỜ DUYỆT** (kể cả người có quyền duyệt — phải nhìn cảnh báo một lần), lý do nối
+vào notes; chưa công bố trần ⇒ hành vi y cũ. Mọi chốt cũ (chống trùng B1, bắt khai
+công tơ B2, ngưỡng, maker-can-approve, MẪU NEO) tự kiểm lại trong selfcheck.
+
+**Còn nợ của Đợt 2:** động cơ bảo trì hiện chỉ có `preview_maintenance_rule_v1`
+(advisory) và **chưa UI nào gọi** — luật 5 tháng đã đăng nhưng người dùng chưa
+thấy cảnh báo trên màn bảo trì. Nối preview vào `MAINTENANCE_BATCH` flow của
+/thanh-toan là việc riêng, chưa làm.
+
+**Đổi số về sau:** gọi lại đúng RPC `set_*_v1` (phiên bản mới tự retire bản cũ
+cùng slot). Muốn tắt hẳn một luật: retire bằng cách đặt lại rồi xoá? — KHÔNG,
+đặt version mới với giá trị chủ muốn; các bảng là append-only có chủ đích.

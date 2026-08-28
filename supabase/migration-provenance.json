@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-27T18:40:48.078Z",
+  "generatedAt": "2026-08-28T02:19:27.282Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 419,
+    "ledger-applied": 421,
     "unknown": 70,
     "catalog-proven": 216,
     "superseded": 15
@@ -8462,10 +8462,32 @@
       "name": "realtime_building_fee_tables",
       "scheme": "timestamp14",
       "sha256": "64b1164dbb6244f475287290af42f3714e2212f9c3e0e8469dbd68ace2a61d81",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-27T18:44:08.567Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260828140000_copilot_org_scope_v1.sql",
+      "version": "20260828140000",
+      "name": "copilot_org_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "9252393dea4efc3ca6185ae1b2d31c5c966e5590c448636d2eff7fa1f4f1ab7d",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+        "function:public.copilot_cashbook_settlement_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260828150000_utility_ceiling_wired_into_pay_bill.sql",
+      "version": "20260828150000",
+      "name": "utility_ceiling_wired_into_pay_bill",
+      "scheme": "timestamp14",
+      "sha256": "a05020df1c5eecadb9a384692867c378199bf3ad5790ae5f1196afc0f8523ef8",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T02:19:17.697Z|bien-nhan-backup"
       ]
     },
     {
