@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-28T02:28:49.057Z",
+  "generatedAt": "2026-08-28T02:33:53.948Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 421,
-    "unknown": 70,
+    "unknown": 69,
     "catalog-proven": 216,
     "superseded": 15
   },
@@ -8476,22 +8476,6 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-28T02:19:17.697Z|bien-nhan-backup"
-      ]
-    },
-    {
-      "path": "supabase/migrations/20260829010000_network_center_h196a_downstream.sql",
-      "version": "20260829010000",
-      "name": "network_center_h196a_downstream",
-      "scheme": "timestamp14",
-      "sha256": "f8f478ca0bf5876bdbe3324840d08e6e2704a8072a50e11f0dc293dc79742522",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.network_h196a_profiles",
-        "table:app_private.network_h196a_quarantine",
-        "function:app_private.network_center_guard_h196a_parent_v1",
-        "function:app_private.network_center_h196a_inventory_v1",
-        "function:public.network_center_list_h196a_v1"
       ]
     },
     {
