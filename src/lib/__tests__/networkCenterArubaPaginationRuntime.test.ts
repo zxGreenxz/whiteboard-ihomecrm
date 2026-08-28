@@ -135,19 +135,30 @@ describe("Network Center Aruba pagination runtime", () => {
   it("uses an identity-scoped disabled query and keeps at most one page in memory", () => {
     useNetworkCenter("building-a");
 
-    expect(spies.infiniteOptions).toHaveLength(1);
-    expect(spies.infiniteOptions[0]).toMatchObject({
-      enabled: false,
-      maxPages: 1,
-      queryKey: [
-        "network-center",
-        "user-a",
-        "organization-a",
-        "building",
-        "building-a",
-        "aruba",
-      ],
-    });
+    // HAI truy vấn phân trang: Aruba và H196A. Hai toà thật chạy hai mô hình
+    // khác nhau — 102LVT có 10 con Aruba và 0 con H196A, 950NK thì ngược lại —
+    // nên mỗi loại có đường nạp riêng. Con số này được ghim để một truy vấn thứ
+    // ba không lặng lẽ chui vào ngân sách request.
+    expect(spies.infiniteOptions).toHaveLength(2);
+    // Tìm theo khoá thay vì theo chỉ số: thứ tự khai báo trong hook không phải
+    // là thứ mà test này muốn ghim.
+    const theoLoai = (loai: string) => spies.infiniteOptions.find(
+      (options) => (options.queryKey as unknown[]).at(-1) === loai,
+    );
+    for (const loai of ["aruba", "h196a"]) {
+      expect(theoLoai(loai)).toMatchObject({
+        enabled: false,
+        maxPages: 1,
+        queryKey: [
+          "network-center",
+          "user-a",
+          "organization-a",
+          "building",
+          "building-a",
+          loai,
+        ],
+      });
+    }
     expect(spies.listArubaPage).not.toHaveBeenCalled();
   });
 });

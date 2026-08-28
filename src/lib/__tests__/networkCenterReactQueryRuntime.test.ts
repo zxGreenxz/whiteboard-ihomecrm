@@ -204,7 +204,11 @@ describe("Network Center React Query runtime", () => {
     expect(controller.mode).toBe("off");
     expect(controller.canView).toBe(false);
     expect(controller.canExecute).toBe(false);
-    expect(runtimeSpies.queryOptions).toHaveLength(4);
+    // 5 chứ không phải 4 từ 28/08/2026: thêm truy vấn phân trang H196A cho các
+    // toà chạy MikroTik + router downstream không nói LLDP (950NK). Con số này
+    // ghim có chủ ý — nó là ngân sách request của trang, và mỗi lần nó tăng thì
+    // phải có người nhìn thấy.
+    expect(runtimeSpies.queryOptions).toHaveLength(5);
     expect(runtimeSpies.queryOptions.every((options) => options.enabled === false)).toBe(true);
     expect(runtimeSpies.queryErrors).toEqual([]);
     expect(runtimeSpies.listFleet).not.toHaveBeenCalled();

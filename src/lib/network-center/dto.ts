@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import type {
   ArubaPage,
+  H196aNode,
+  H196aPage,
   ArubaNode,
   AuditRecord,
   ClientRecord,
@@ -22,6 +24,8 @@ import type {
 
 export const NETWORK_CENTER_PAGE_SIZE = 100;
 export const NETWORK_CENTER_ARUBA_PAGE_SIZE = 100;
+export const NETWORK_CENTER_H196A_PAGE_SIZE = 100;
+export const NETWORK_CENTER_H196A_MAX_PAGE_SIZE = 250;
 export const NETWORK_CENTER_ARUBA_MAX_PAGE_SIZE = 250;
 export const NETWORK_CENTER_MAX_FLEET_SIZE = 500;
 
@@ -189,6 +193,29 @@ const arubaPageSchema = z.object({
   nextCursor: arubaCursorSchema.nullable(),
 });
 
+const h196aItemSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  externalKey: z.string(),
+  lifecycleStatus: z.string(),
+  address: nullableStringSchema,
+  bridgePort: nullableStringSchema,
+  arpStatus: nullableStringSchema,
+  bridgeAgeingSeconds: z.number().int().nullable(),
+  lastSeenAt: nullableTimestampSchema,
+  lastFrameAt: nullableTimestampSchema,
+  evidenceSources: z.array(z.string()).nullable(),
+  healthStatus: z.string(),
+  healthReason: z.string(),
+  absentPolls: z.number().int().nonnegative(),
+});
+
+const h196aPageSchema = z.object({
+  items: z.array(h196aItemSchema).max(NETWORK_CENTER_H196A_MAX_PAGE_SIZE),
+  nextCursor: arubaCursorSchema.nullable(),
+  total: z.number().int().nonnegative().optional(),
+});
+
 const clientItemSchema = z.object({
   id: uuidSchema,
   hostname: nullableStringSchema,
@@ -314,6 +341,7 @@ export type NetworkCenterFleetDto = z.infer<typeof fleetSchema>;
 export type NetworkCenterFleetItemDto = z.infer<typeof fleetItemSchema>;
 export type NetworkCenterBuildingDto = z.infer<typeof buildingSchema>;
 export type NetworkCenterArubaPageDto = z.infer<typeof arubaPageSchema>;
+export type NetworkCenterH196aPageDto = z.infer<typeof h196aPageSchema>;
 export type NetworkCenterClientPageDto = z.infer<typeof clientPageSchema>;
 export type NetworkCenterCommandPageDto = z.infer<typeof commandPageSchema>;
 export type NetworkCenterCommandDto = z.infer<typeof commandItemSchema>;
@@ -330,6 +358,10 @@ export function parseNetworkCenterBuilding(value: unknown): NetworkCenterBuildin
 
 export function parseNetworkCenterArubaPage(value: unknown): NetworkCenterArubaPageDto {
   return arubaPageSchema.parse(value);
+}
+
+export function parseNetworkCenterH196aPage(value: unknown): NetworkCenterH196aPageDto {
+  return h196aPageSchema.parse(value);
 }
 
 export function parseNetworkCenterClientPage(value: unknown): NetworkCenterClientPageDto {
@@ -527,6 +559,11 @@ function baseFleetBuilding(item: NetworkCenterFleetItemDto, now: number): Networ
     arubaNodes: [],
     arubaTotal: item.arubaCount,
     arubaOnline: null,
+    // Danh sách H196A nạp riêng bằng con trỏ phân trang, giống Aruba. `undefined`
+    // ở tổng số nghĩa là CHƯA BIẾT — `summarizeH196a` dựa vào đó để hiện `—`
+    // thay vì `0`.
+    h196aNodes: [],
+    h196aOnline: null,
     incidents: [],
     maintenance: null,
     revisions: [],
@@ -574,6 +611,42 @@ export function mapNetworkCenterArubaPage(
 ): ArubaPage {
   return {
     items: page.items.map((item) => mapAruba(item, now)),
+    nextCursor: page.nextCursor
+      ? { sortOrder: page.nextCursor.sortOrder!, id: page.nextCursor.id! }
+      : null,
+  };
+}
+
+function mapH196a(item: z.infer<typeof h196aItemSchema>, now: number): H196aNode {
+  // Chuyển thẳng phán quyết của cơ sở dữ liệu, KHÔNG diễn giải lại ở đây. Cột
+  // `healthStatus` đã cộng cả trễ ba lượt; suy lại ở tầng này là để hai nơi bất
+  // đồng rồi không ai biết bên nào đúng.
+  const status = item.healthStatus === "ONLINE"
+    ? "online" as const
+    : item.healthStatus === "OFFLINE"
+      ? "offline" as const
+      : item.healthStatus === "STALE" ? "stale" as const : "unknown" as const;
+  return {
+    id: item.id,
+    name: item.name,
+    status,
+    address: item.address ?? "Chưa xác định",
+    bridgePort: item.bridgePort,
+    healthReason: item.healthReason,
+    absentPolls: item.absentPolls,
+    // Mốc "lần cuối thấy khung tin", không phải "lần cuối thấy lease" — một
+    // lease sống lâu hơn thiết bị sở hữu nó, nên dùng lease sẽ báo một AP đã
+    // chết là vừa thấy xong.
+    lastSeenLabel: lastSeenLabel(item.lastFrameAt ?? item.lastSeenAt, item.lifecycleStatus, now),
+  };
+}
+
+export function mapNetworkCenterH196aPage(
+  page: NetworkCenterH196aPageDto,
+  now = Date.now(),
+): H196aPage {
+  return {
+    items: page.items.map((item) => mapH196a(item, now)),
     nextCursor: page.nextCursor
       ? { sortOrder: page.nextCursor.sortOrder!, id: page.nextCursor.id! }
       : null,
@@ -805,6 +878,9 @@ export function mergeNetworkCenterBuilding(
     arubaOnline: loadedAllAruba
       ? arubaNodes.filter((item) => item.status === "online").length
       : fallback.arubaOnline ?? null,
+    h196aNodes: fallback.h196aNodes,
+    h196aTotal: fallback.h196aTotal,
+    h196aOnline: fallback.h196aOnline ?? null,
     clients: clientItems.map(mapClient),
     jobs: [],
     audit: [],

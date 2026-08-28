@@ -1,6 +1,8 @@
 import type {
   ArubaPage,
   ArubaPageCursor,
+  H196aPage,
+  H196aPageCursor,
   ConfigDiff,
   MaintenanceInput,
   MaintenanceWindow,
@@ -31,6 +33,14 @@ class AsyncDemoNetworkCenterRepository implements NetworkCenterRepository {
 
   async getBuilding(buildingId: string): Promise<NetworkBuilding | null> {
     return this.repository.getBuilding(buildingId);
+  }
+
+  async listH196aPage(
+    buildingId: string,
+    cursor: H196aPageCursor | null = null,
+    limit = 100,
+  ): Promise<H196aPage> {
+    return this.repository.listH196aPage(buildingId, cursor, limit);
   }
 
   async listArubaPage(

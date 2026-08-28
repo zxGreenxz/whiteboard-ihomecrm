@@ -2,6 +2,8 @@ import { supabase } from "@/integrations/supabase/client";
 import type {
   ArubaPage,
   ArubaPageCursor,
+  H196aPage,
+  H196aPageCursor,
   ConfigDiff,
   MaintenanceInput,
   MaintenanceWindow,
@@ -15,15 +17,19 @@ import type {
 import {
   NETWORK_CENTER_ARUBA_MAX_PAGE_SIZE,
   NETWORK_CENTER_ARUBA_PAGE_SIZE,
+  NETWORK_CENTER_H196A_MAX_PAGE_SIZE,
+  NETWORK_CENTER_H196A_PAGE_SIZE,
   NETWORK_CENTER_PAGE_SIZE,
   mapNetworkCenterArubaPage,
   mapNetworkCenterCommand,
+  mapNetworkCenterH196aPage,
   mapNetworkCenterExecuteResult,
   mapNetworkCenterFleetItem,
   mergeNetworkCenterBuilding,
   parseNetworkCenterAcknowledgementResult,
   parseNetworkCenterArubaPage,
   parseNetworkCenterAuditPage,
+  parseNetworkCenterH196aPage,
   parseNetworkCenterBuilding,
   parseNetworkCenterCancellationResult,
   parseNetworkCenterClientPage,
@@ -244,6 +250,30 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       audit.items,
     );
     return building;
+  }
+
+  async listH196aPage(
+    buildingId: string,
+    cursor: H196aPageCursor | null = null,
+    limit = NETWORK_CENTER_H196A_PAGE_SIZE,
+  ): Promise<H196aPage> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > NETWORK_CENTER_H196A_MAX_PAGE_SIZE) {
+      throw new NetworkCenterRepositoryError(
+        `Kích thước trang H196A phải từ 1 đến ${NETWORK_CENTER_H196A_MAX_PAGE_SIZE}`,
+      );
+    }
+    const normalizedBuildingId = buildingId.trim().toLowerCase();
+    const page = await this.call(
+      "network_center_list_h196a_v1",
+      {
+        p_building_id: normalizedBuildingId,
+        p_after_sort_order: cursor?.sortOrder ?? null,
+        p_after_id: cursor?.id ?? null,
+        p_limit: limit,
+      },
+      parseNetworkCenterH196aPage,
+    );
+    return mapNetworkCenterH196aPage(page);
   }
 
   async listArubaPage(

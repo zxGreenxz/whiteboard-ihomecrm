@@ -67,6 +67,10 @@ const inventoryMappingSchema = z.object({
     enrollmentState: z.enum(["DISCOVERED", "ENROLLED", "REVOKED"]),
   }).strict()).max(256),
   aruba: z.array(z.object({ externalKey: z.string(), id: z.uuid() })).max(256),
+  // `optional` co chu y: mot co so du lieu chua chay migration H196A tra ve
+  // phan hoi khong co khoa nay, va worker moi phai chay duoc tren do. Bat buoc
+  // o day se bien mot thu tu phat hanh sai thanh su co ngung giam sat.
+  h196a: z.array(z.object({ stableKey: z.string(), id: z.uuid() })).max(256).optional(),
   inventoryStatus: z.enum(["OK", "DEGRADED"]).optional(),
   quarantinedCount: z.number().int().nonnegative().max(1_000_000).optional(),
 }).passthrough();

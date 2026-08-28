@@ -10,6 +10,8 @@ import { canUse } from "@/lib/permissionPages";
 import type {
   ArubaNode,
   ArubaPageCursor,
+  H196aNode,
+  H196aPageCursor,
   MaintenanceInput,
   NetworkActionRequest,
   NetworkSettings,
@@ -151,6 +153,14 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     ),
     [actor.id, normalizedSelectedBuildingId, selectedOrganizationId],
   );
+  const h196aKey = useMemo(
+    () => networkCenterQueryKeys.h196a(
+      actor.id || "anonymous",
+      selectedOrganizationId,
+      normalizedSelectedBuildingId || "none",
+    ),
+    [actor.id, normalizedSelectedBuildingId, selectedOrganizationId],
+  );
   const arubaKey = useMemo(
     () => networkCenterQueryKeys.aruba(
       actor.id || "anonymous",
@@ -228,6 +238,23 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     () => arubaQuery.data?.pages.at(-1)?.items ?? [],
     [arubaQuery.data],
   );
+  const h196aQuery = useInfiniteQuery({
+    queryKey: h196aKey,
+    initialPageParam: null as H196aPageCursor | null,
+    queryFn: ({ pageParam }) => requireRepository().listH196aPage(
+      normalizedSelectedBuildingId,
+      pageParam,
+    ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    maxPages: 1,
+    enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
+    retry: shouldRetryNetworkCenterQuery,
+    retryOnMount: false,
+  });
+  const h196aNodes = useMemo<H196aNode[]>(
+    () => h196aQuery.data?.pages.at(-1)?.items ?? [],
+    [h196aQuery.data],
+  );
   const selectedBuilding = useMemo(() => {
     const building = buildingQuery.data;
     if (!building) return null;
@@ -243,6 +270,13 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       arubaOnline: loadedEveryArubaPage
         ? arubaNodes.filter((node) => node.status === "online").length
         : null,
+      h196aNodes,
+      h196aTotal: h196aNodes.length,
+      // Chỉ đếm khi đã nạp HẾT. Đếm nửa chừng là một con số trông như sự thật
+      // nhưng đang thiếu, và người đọc không có cách nào biết.
+      h196aOnline: h196aQuery.data?.pages.length && !h196aQuery.hasNextPage
+        ? h196aNodes.filter((node) => node.status === "online").length
+        : null,
       jobs: activeCommandQuery.data
         ? [
           { ...activeCommandQuery.data, isStableIntent: true },
@@ -253,6 +287,9 @@ export function useNetworkCenter(selectedBuildingId?: string) {
   }, [
     activeCommandQuery.data,
     arubaNodes,
+    h196aNodes,
+    h196aQuery.data,
+    h196aQuery.hasNextPage,
     arubaQuery.data,
     arubaQuery.hasNextPage,
     buildingQuery.data,

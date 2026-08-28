@@ -95,6 +95,7 @@ export interface FleetPollEvidence {
 interface InventoryIds {
   interfaceIds: Map<string, string>;
   arubaIds: Map<string, string>;
+  h196aIds: Map<string, string>;
   offlineAruba: Array<{ externalKey: string; deviceId: string }>;
   inventoryDegraded: boolean;
   quarantinedCount: number;
@@ -105,6 +106,7 @@ interface InventoryCacheEntry {
   refreshedAt: number;
   interfaceIds: Map<string, string>;
   arubaIds: Map<string, string>;
+  h196aIds: Map<string, string>;
   inventoryDegraded: boolean;
   quarantinedCount: number;
 }
@@ -172,6 +174,32 @@ function inventoryInterface(
       immutableKey: item.immutableKey,
       currentName: item.displayName,
     },
+  };
+}
+
+/**
+ * Mot quan sat H196A duoi dang `network_center_h196a_inventory_v1` doc.
+ *
+ * Khong co `model`, `serialNumber` hay `firmwareVersion`: khong nguon nao tren
+ * MikroTik cho cac gia tri do, va gui `null` cho chung chi de UI tuong la co
+ * cho ma dien vao.
+ */
+function inventoryH196a(
+  item: RouterObservation["h196a"][number],
+): Record<string, unknown> {
+  return {
+    stableKey: item.stableKey,
+    displayName: item.displayName,
+    observedIp: item.observedIp,
+    hostname: item.hostname,
+    bridgePort: item.bridgePort,
+    arpStatus: item.arpStatus,
+    bridgeAgeingSeconds: item.bridgeAgeingSeconds === null
+      ? null
+      : String(item.bridgeAgeingSeconds),
+    healthStatus: item.healthStatus,
+    healthReason: item.healthReason,
+    evidenceSources: item.evidenceSources,
   };
 }
 
@@ -293,8 +321,10 @@ export class PollingCoordinator {
     const interfaces = observation.interfaces.map(inventoryInterface);
     const aruba = observation.aruba.map(inventoryAruba);
     const quarantine = observation.arubaQuarantine ?? [];
+    const h196a = observation.h196a.map(inventoryH196a);
+    const h196aQuarantine = observation.h196aQuarantine ?? [];
     const signature = createHash("sha256")
-      .update(JSON.stringify({ interfaces, aruba, quarantine }))
+      .update(JSON.stringify({ interfaces, aruba, quarantine, h196a, h196aQuarantine }))
       .digest("hex");
     const refreshedAt = this.#now().getTime();
     const cached = this.#inventoryCache.get(connection.deviceId);
@@ -305,6 +335,7 @@ export class PollingCoordinator {
       return {
         interfaceIds: cached.interfaceIds,
         arubaIds: cached.arubaIds,
+        h196aIds: cached.h196aIds,
         offlineAruba: [],
         inventoryDegraded: cached.inventoryDegraded,
         quarantinedCount: cached.quarantinedCount,
@@ -313,16 +344,21 @@ export class PollingCoordinator {
     const interfaceChunks = chunkAll(interfaces, BATCH_LIMIT);
     const arubaChunks = chunkAll(aruba, BATCH_LIMIT);
     const quarantineChunks = chunkAll(quarantine, BATCH_LIMIT);
+    const h196aChunks = chunkAll(h196a, BATCH_LIMIT);
+    const h196aQuarantineChunks = chunkAll(h196aQuarantine, BATCH_LIMIT);
     const batchCount = Math.max(
       interfaceChunks.length,
       arubaChunks.length,
       quarantineChunks.length,
+      h196aChunks.length,
+      h196aQuarantineChunks.length,
       1,
     );
     const discoveryRunId = randomUUID();
     const interfaceIds = new Map<string, string>();
     const arubaIds = new Map<string, string>();
-    let inventoryDegraded = quarantine.length > 0;
+    const h196aIds = new Map<string, string>();
+    let inventoryDegraded = quarantine.length > 0 || h196aQuarantine.length > 0;
     let quarantinedCount = 0;
     let receivedQuarantineCount = false;
     const managedInterfaces: ManagedInterfaceMapping[] = [];
@@ -337,6 +373,8 @@ export class PollingCoordinator {
         interfaces: interfaceChunks[index] ?? [],
         aruba: arubaChunks[index] ?? [],
         quarantine: quarantineChunks[index] ?? [],
+        h196a: h196aChunks[index] ?? [],
+        h196aQuarantine: h196aQuarantineChunks[index] ?? [],
       });
       if (mapping.routerDeviceId !== connection.deviceId) {
         throw new Error("Inventory response router does not match request");
@@ -344,6 +382,9 @@ export class PollingCoordinator {
       managedInterfaces.push(...mapping.interfaces);
       for (const item of mapping.interfaces) interfaceIds.set(item.interfaceKey, item.id);
       for (const item of mapping.aruba) arubaIds.set(item.externalKey, item.id);
+      // `?? []` chu khong phai bat buoc: co so du lieu chua chay migration se
+      // khong tra khoa nay, va worker phai chay tiep chu khong duoc nga.
+      for (const item of mapping.h196a ?? []) h196aIds.set(item.stableKey, item.id);
       inventoryDegraded ||= mapping.inventoryStatus === "DEGRADED";
       if (typeof mapping.quarantinedCount === "number") {
         quarantinedCount += mapping.quarantinedCount;
@@ -357,6 +398,7 @@ export class PollingCoordinator {
       refreshedAt,
       interfaceIds,
       arubaIds,
+      h196aIds,
       inventoryDegraded,
       quarantinedCount,
     });
@@ -368,6 +410,7 @@ export class PollingCoordinator {
     return {
       interfaceIds,
       arubaIds,
+      h196aIds,
       offlineAruba,
       inventoryDegraded,
       quarantinedCount,
@@ -395,6 +438,28 @@ export class PollingCoordinator {
         routerosVersion: null,
         connectionCount: null,
       }] : [];
+    }), ...observation.h196a.flatMap((item) => {
+      const deviceId = inventoryIds.h196aIds.get(item.stableKey);
+      if (!deviceId) return [];
+      // STALE khong phai OFFLINE, va do la chu y chu khong phai su de dai. Vang
+      // mat mot luot la mot luot im lang; phan quyet chet do co so du lieu dua
+      // ra sau ba luot lien tiep (`consecutive_absent_polls`), vi worker chi
+      // quan sat chu khong co tham quyen tuyen bo su co.
+      //
+      // UNKNOWN giu nguyen la UNKNOWN. Doc hong mot bang khong duoc phep bien
+      // thanh mot su co khong he xay ra.
+      const health = item.healthStatus === "ONLINE"
+        ? "HEALTHY"
+        : item.healthStatus === "STALE" ? "DEGRADED" : "UNKNOWN";
+      return [{
+        deviceId,
+        lastSeenAt: observation.observedAt,
+        reachable: item.healthStatus === "ONLINE",
+        healthStatus: health satisfies DeviceHealthStatus,
+        identity: item.displayName,
+        routerosVersion: null,
+        connectionCount: null,
+      }];
     }), ...inventoryIds.offlineAruba.map((item) => ({
       deviceId: item.deviceId,
       lastSeenAt: observation.observedAt,
@@ -518,6 +583,7 @@ export class PollingCoordinator {
         inventoryIds = {
           interfaceIds: new Map(cached?.interfaceIds ?? []),
           arubaIds: new Map(cached?.arubaIds ?? []),
+          h196aIds: new Map(cached?.h196aIds ?? []),
           offlineAruba: [],
           inventoryDegraded: true,
           quarantinedCount: 0,

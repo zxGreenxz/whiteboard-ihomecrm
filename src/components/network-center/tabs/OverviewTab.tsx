@@ -2,7 +2,7 @@ import { Activity, DatabaseBackup, Network, Users } from "lucide-react";
 
 import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
-import { allowsNetworkExecution, networkRolloutDisabledMessage, summarizeAruba } from "@/lib/network-center/model";
+import { allowsNetworkExecution, networkRolloutDisabledMessage, summarizeAruba, summarizeH196a } from "@/lib/network-center/model";
 import { MaintenanceDialog } from "../MaintenanceDialog";
 import { NetworkActionDialog } from "../NetworkActionDialog";
 import { NetworkStatus } from "../NetworkStatus";
@@ -16,6 +16,7 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
   );
   const aruba = summarizeAruba(site);
   const arubaOnline = aruba.online ?? 0;
+  const h196a = summarizeH196a(site);
   const openIncidents = site.incidents.filter((incident) => incident.status !== "resolved").length;
   const wanTone = site.router.wanStatus === "up" ? "good" : "bad";
   const arubaTone = aruba.online === null
@@ -23,6 +24,11 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
     : site.arubaNodes.some((node) => node.status === "offline")
       ? "bad"
       : site.arubaNodes.some((node) => node.status === "slow") ? "warn" : "good";
+  const h196aTone = h196a.online === null
+    ? "info"
+    : site.h196aNodes.some((node) => node.status === "offline")
+      ? "bad"
+      : site.h196aNodes.some((node) => node.status === "stale") ? "warn" : "good";
   const incidentTone = openIncidents === 0
     ? "good"
     : site.incidents.some((incident) => incident.status !== "resolved" && ["critical", "high"].includes(incident.severity)) ? "bad" : "warn";
@@ -34,6 +40,9 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
         <article className="nc-kpi nc-tone-info"><span className="nc-kpi-label"><Activity /> CPU / RAM</span><strong>{site.router.cpuPercent}/{site.router.memoryPercent}%</strong><small>{site.router.lastSeenLabel}</small></article>
         <article className="nc-kpi nc-tone-info"><span className="nc-kpi-label"><Users /> Client</span><strong>{site.activeClients}</strong><small>{site.clients.length} mẫu hiển thị</small></article>
         <article className={`nc-kpi nc-tone-${arubaTone}`}><span className="nc-kpi-label"><Network /> Aruba</span><strong>{aruba.online === null ? "—" : arubaOnline}/{aruba.total}</strong><small>Chỉ hiển thị</small></article>
+        {h196a.total > 0 ? (
+          <article className={`nc-kpi nc-tone-${h196aTone}`}><span className="nc-kpi-label"><Network /> H196A</span><strong>{h196a.online === null ? "—" : h196a.online}/{h196a.total}</strong><small>Chỉ hiển thị</small></article>
+        ) : null}
         <article className={`nc-kpi nc-tone-${incidentTone}`}><span className="nc-kpi-label"><Activity /> Sự cố</span><strong>{openIncidents}</strong><small>đang theo dõi</small></article>
         <article className={`nc-kpi nc-tone-${backupTone}`}><span className="nc-kpi-label"><DatabaseBackup /> Backup</span><strong>{site.backupAgeHours < 0 ? "Chưa có" : `${site.backupAgeHours}h`}</strong><small>{site.revisions[0] ? `${controller.isDemo ? "Mã mô phỏng" : "SHA-256"} ${site.revisions[0].hash.slice(-8)}` : "Chưa có snapshot"}</small></article>
       </section>

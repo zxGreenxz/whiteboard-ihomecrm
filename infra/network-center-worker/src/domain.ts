@@ -228,6 +228,7 @@ export interface InventoryMapping {
   routerDeviceId: string;
   interfaces: ManagedInterfaceMapping[];
   aruba: Array<{ externalKey: string; id: string }>;
+  h196a?: Array<{ stableKey: string; id: string }>;
   inventoryStatus?: "OK" | "DEGRADED";
   quarantinedCount?: number;
 }

@@ -73,6 +73,40 @@ export interface ArubaPage {
   nextCursor: ArubaPageCursor | null;
 }
 
+/**
+ * Router downstream không nói LLDP — hôm nay là ZTE H196A ở 950NK.
+ *
+ * KHÔNG dùng chung `ArubaNode` dù nhìn na ná, vì hai bên biết được những thứ
+ * khác nhau và gộp lại là bịa. `ArubaNode` có `model` (Aruba tự khai qua LLDP);
+ * ở đây không có model, không serial, không firmware — không nguồn nào trên
+ * MikroTik cho các giá trị đó. Đổi lại, chỗ này có `healthReason` và
+ * `bridgePort`: `ArubaNode.status` không nói được vì sao nó là thế.
+ */
+export interface H196aNode {
+  id: string;
+  name: string;
+  /** `unknown` nghĩa là CHƯA ĐO ĐƯỢC, không phải đã chết. */
+  status: "online" | "stale" | "offline" | "unknown";
+  address: string;
+  /** Cổng vật lý khung tin đi vào; `null` khi vắng bảng bridge host. */
+  bridgePort: string | null;
+  /** Vì sao phán quyết là thế, để người đọc cãi lại được. */
+  healthReason: string;
+  /** Số lượt vắng mặt liên tiếp; OFFLINE bắt đầu từ 3. */
+  absentPolls: number;
+  lastSeenLabel: string;
+}
+
+export interface H196aPageCursor {
+  sortOrder: number;
+  id: string;
+}
+
+export interface H196aPage {
+  items: H196aNode[];
+  nextCursor: H196aPageCursor | null;
+}
+
 export interface NetworkIncident {
   id: string;
   buildingId: string;
@@ -235,9 +269,13 @@ export interface NetworkBuilding {
   interfaces: InterfaceRecord[];
   clients: ClientRecord[];
   arubaNodes: ArubaNode[];
+  h196aNodes: H196aNode[];
   /** Fleet-level aggregate; detail pages fill exact online state after cursor pagination. */
   arubaTotal?: number;
   arubaOnline?: number | null;
+  h196aTotal?: number;
+  /** `null` nghĩa là chưa biết. Hiện `—`, tuyệt đối không hiện `0`. */
+  h196aOnline?: number | null;
   incidents: NetworkIncident[];
   maintenance: MaintenanceWindow | null;
   revisions: ConfigRevision[];
@@ -279,6 +317,12 @@ export interface MaintenanceInput {
 export interface NetworkCenterRepository {
   listFleet(): Promise<NetworkBuilding[]>;
   getBuilding(buildingId: string, fallback?: NetworkBuilding): Promise<NetworkBuilding | null>;
+  listH196aPage(
+    buildingId: string,
+    cursor?: H196aPageCursor | null,
+    limit?: number,
+  ): Promise<H196aPage>;
+
   listArubaPage(
     buildingId: string,
     cursor?: ArubaPageCursor | null,

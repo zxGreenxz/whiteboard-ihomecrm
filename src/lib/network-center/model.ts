@@ -67,6 +67,21 @@ export function summarizeAruba(site: NetworkBuilding): ArubaSummary {
   return { total, online };
 }
 
+/**
+ * Giống `summarizeAruba` từng chi tiết, kể cả quy ước `online === null`.
+ *
+ * `null` nghĩa là CHƯA BIẾT và phải hiện `—`. Trả `0` cho "chưa đo" là biến một
+ * khoảng trống dữ liệu thành lời khẳng định rằng mọi thứ đã chết.
+ */
+export function summarizeH196a(site: NetworkBuilding): { total: number; online: number | null } {
+  const total = site.h196aTotal ?? site.h196aNodes.length;
+  const online = site.h196aOnline
+    ?? (site.h196aTotal === undefined
+      ? site.h196aNodes.filter((node) => node.status === "online").length
+      : null);
+  return { total, online };
+}
+
 export function isMaintenanceActive(
   maintenance: MaintenanceWindow | null,
   now: number | Date = Date.now(),

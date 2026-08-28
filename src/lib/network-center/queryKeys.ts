@@ -30,4 +30,13 @@ export const networkCenterQueryKeys = {
       normalize(buildingId),
       "aruba",
     ] as const,
+  h196a: (userId: string, organizationId: string, buildingId: string) =>
+    [
+      "network-center",
+      normalize(userId),
+      normalize(organizationId),
+      "building",
+      normalize(buildingId),
+      "h196a",
+    ] as const,
 };

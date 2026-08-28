@@ -28,9 +28,10 @@ export function TopologyTab({
   const uplink = site.interfaces.find((networkInterface) => networkInterface.role === "uplink");
   const arubaNodes = controller?.arubaNodes ?? site.arubaNodes;
   const total = Math.max(site.arubaTotal ?? 0, arubaNodes.length);
+  const h196aNodes = site.h196aNodes;
   return (
     <div className="nc-tab-stack">
-      <div className="nc-locked-note nc-display-note"><Eye /><p><strong>Aruba chỉ dùng để theo dõi.</strong> Màn hình không có thao tác cấu hình, khởi động lại hoặc dữ liệu đăng nhập Aruba.</p></div>
+      <div className="nc-locked-note nc-display-note"><Eye /><p><strong>Thiết bị nhánh dưới chỉ dùng để theo dõi.</strong> Màn hình không có thao tác cấu hình, khởi động lại hoặc dữ liệu đăng nhập cho Aruba và H196A.</p></div>
       <section className="nc-topology nc-topology-full" aria-labelledby="topology-title">
         <div className="nc-panel-heading"><div><p className="nc-eyebrow">MikroTik → uplink → AP</p><h3 id="topology-title">Aruba & sơ đồ</h3></div><NetworkStatus kind={site.health} /></div>
         <div className="nc-router-node"><Network /><strong>{site.router.identity}</strong><span>{isDemo ? "Gateway mô phỏng" : "Gateway đang theo dõi"}</span></div>
@@ -58,6 +59,38 @@ export function TopologyTab({
         {controller?.isLoadingAruba && arubaNodes.length === 0
           ? <p className="nc-empty-copy">Đang tải danh sách Aruba…</p>
           : null}
+        {/*
+          Chỉ dựng khối này khi toà THẬT SỰ có H196A. 950NK có H196A và không có
+          Aruba; 102LVT thì ngược lại. Hiện một khối rỗng ở toà không có loại
+          thiết bị đó là bắt người đọc tự đoán xem im lặng nghĩa là "không có"
+          hay "chưa tải xong".
+        */}
+        {h196aNodes.length > 0 ? (
+          <>
+            <div className="nc-branch-connector" aria-hidden="true" />
+            <div className="nc-aruba-nodes nc-aruba-nodes-full" aria-label="Router H196A">
+              {h196aNodes.map((node) => (
+                <article className={`nc-aruba-node nc-node-${node.status === "online" ? "online" : node.status === "offline" ? "offline" : "slow"}`} key={node.id}>
+                  <strong>{node.name}</strong>
+                  <span>{node.address}</span>
+                  <span>
+                    {node.bridgePort
+                      ? `Gián tiếp qua DHCP · cổng ${node.bridgePort}`
+                      : "Gián tiếp qua DHCP"}
+                  </span>
+                  <NetworkStatus
+                    kind={node.status === "online" ? "online" : node.status === "offline" ? "offline" : "degraded"}
+                    label={node.status === "online"
+                      ? "Online"
+                      : node.status === "offline"
+                        ? `Offline (${node.absentPolls} lượt vắng)`
+                        : node.status === "stale" ? "Im lặng" : "Chưa đo được"}
+                  />
+                </article>
+              ))}
+            </div>
+          </>
+        ) : null}
         {!controller?.isLoadingAruba && !controller?.arubaPageError && arubaNodes.length === 0
           ? <p className="nc-empty-copy">Chưa phát hiện Aruba trong tòa nhà này.</p>
           : null}

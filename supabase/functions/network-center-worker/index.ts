@@ -395,6 +395,11 @@ function inventoryArgs(body: JsonObject): Record<string, unknown> {
   asArray(payload.interfaces ?? [], "payload.interfaces", 256);
   asArray(payload.aruba ?? [], "payload.aruba", 256);
   asArray(payload.quarantine ?? [], "payload.quarantine", 256);
+  // Downstream khong noi LLDP. Tran 256 giong Aruba: khong co ly do de mot
+  // router hop le gui hon chung ay, va mot payload phinh to phai bi chan o
+  // day chu khong phai o Postgres.
+  asArray(payload.h196a ?? [], "payload.h196a", 256);
+  asArray(payload.h196aQuarantine ?? [], "payload.h196aQuarantine", 256);
   return { p_payload: payload };
 }
 

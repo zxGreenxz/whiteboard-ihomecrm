@@ -1,6 +1,8 @@
 import type {
   ArubaPage,
   ArubaPageCursor,
+  H196aPage,
+  H196aPageCursor,
   ArubaNode,
   AuditRecord,
   ClientRecord,
@@ -320,6 +322,9 @@ function generateBuilding(building: PhysicalBuildingRecord): DemoNetworkBuilding
     interfaces,
     clients: makeClients(seed, activeClients),
     arubaNodes,
+    h196aNodes: [],
+    h196aTotal: 0,
+    h196aOnline: 0,
     arubaTotal: arubaNodes.length,
     arubaOnline: arubaNodes.filter((node) => node.status === "online").length,
     incidents: makeIncidents(seed, building.id, health),
@@ -375,6 +380,22 @@ export class DemoNetworkCenterRepository {
   getBuilding(buildingId: string): NetworkBuilding | null {
     const site = this.states.get(buildingId);
     return site ? this.cloneForRead(site) : null;
+  }
+
+  listH196aPage(
+    buildingId: string,
+    cursor: H196aPageCursor | null = null,
+    limit = 100,
+  ): H196aPage {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 250) {
+      throw new Error("Kích thước trang H196A phải từ 1 đến 250");
+    }
+    // DEMO không có toà nào chạy H196A: mô hình đó là của 950NK trên org thật.
+    // Trả rỗng chứ không bịa thiết bị — một con H196A giả trong DEMO sẽ dạy
+    // người dùng tin vào một sơ đồ không tồn tại.
+    void this.requireBuilding(buildingId);
+    void cursor;
+    return { items: [], nextCursor: null };
   }
 
   listArubaPage(
