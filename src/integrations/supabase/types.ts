@@ -3431,6 +3431,125 @@ export type Database = {
           },
         ]
       }
+      copilot_feature_flag_audit: {
+        Row: {
+          canary_org: string | null
+          changed_at: string
+          contract_id: string
+          evidence_link: string
+          expires_at: string | null
+          id: number
+          next_state: string
+          previous_canary_org: string | null
+          previous_expires_at: string | null
+          previous_state: string | null
+          reason: string
+          revision: number
+          rollback_reference: string
+          scope: string
+          updated_by: string | null
+        }
+        Insert: {
+          canary_org?: string | null
+          changed_at?: string
+          contract_id: string
+          evidence_link: string
+          expires_at?: string | null
+          id?: never
+          next_state: string
+          previous_canary_org?: string | null
+          previous_expires_at?: string | null
+          previous_state?: string | null
+          reason: string
+          revision: number
+          rollback_reference: string
+          scope: string
+          updated_by?: string | null
+        }
+        Update: {
+          canary_org?: string | null
+          changed_at?: string
+          contract_id?: string
+          evidence_link?: string
+          expires_at?: string | null
+          id?: never
+          next_state?: string
+          previous_canary_org?: string | null
+          previous_expires_at?: string | null
+          previous_state?: string | null
+          reason?: string
+          revision?: number
+          rollback_reference?: string
+          scope?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "copilot_feature_flag_audit_canary_org_fkey"
+            columns: ["canary_org"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "copilot_feature_flag_audit_previous_canary_org_fkey"
+            columns: ["previous_canary_org"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      copilot_feature_flags: {
+        Row: {
+          canary_org: string | null
+          contract_id: string
+          evidence_link: string
+          expires_at: string | null
+          reason: string
+          revision: number
+          rollback_reference: string
+          scope: string
+          state: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          canary_org?: string | null
+          contract_id: string
+          evidence_link?: string
+          expires_at?: string | null
+          reason?: string
+          revision?: number
+          rollback_reference?: string
+          scope: string
+          state?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          canary_org?: string | null
+          contract_id?: string
+          evidence_link?: string
+          expires_at?: string | null
+          reason?: string
+          revision?: number
+          rollback_reference?: string
+          scope?: string
+          state?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "copilot_feature_flags_canary_org_fkey"
+            columns: ["canary_org"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cron_runs: {
         Row: {
           error: string | null
@@ -24402,9 +24521,151 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: number
       }
+      copilot_available_rooms_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      copilot_cashbook_settlement_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_from: string
+          p_organization_id: string
+          p_to: string
+        }
+        Returns: Json
+      }
+      copilot_cashbook_settlement_v2: {
+        Args: { p_from: string; p_organization_id: string; p_to: string }
+        Returns: Json
+      }
+      copilot_customer_search_v1: {
+        Args: { p_organization_id: string; p_search: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          contract_status: string
+          customer_id: string
+          customer_name: string
+          is_representative: boolean
+          phone: string
+          room_id: string
+          room_name: string
+        }[]
+      }
+      copilot_deposit_summary_v1: {
+        Args: { p_organization_id: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_count: number
+          expected: number
+          first_invoice_count: number
+          full_count: number
+          held: number
+          short_count: number
+          shortfall_all: number
+          shortfall_short: number
+        }[]
+      }
       copilot_execute_income_expense_v1: {
         Args: { p_confirmation_nonce: string; p_payload: Json }
         Returns: Json
+      }
+      copilot_expiring_contracts_v1: {
+        Args: {
+          p_as_of_date: string
+          p_organization_id: string
+          p_window_days: number
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          contract_status: string
+          customer_name: string
+          effective_end_date: string
+          end_date: string
+          is_representative: boolean
+          room_id: string
+          room_name: string
+        }[]
+      }
+      copilot_financial_pnl_v1: {
+        Args: {
+          p_accrual?: boolean
+          p_end_date: string
+          p_organization_id: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          expense: number
+          is_virtual: boolean
+          month: string
+          net: number
+          revenue: number
+        }[]
+      }
+      copilot_invoice_search_v1: {
+        Args: {
+          p_billing_month?: string
+          p_organization_id: string
+          p_payment_status?: string
+          p_search?: string
+        }
+        Returns: Json
+      }
+      copilot_invoice_stats_v1: {
+        Args: { p_billing_month?: string; p_organization_id: string }
+        Returns: Json
+      }
+      copilot_occupancy_upcoming_v1: {
+        Args: {
+          p_as_of_date: string
+          p_organization_id: string
+          p_window_days?: number
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          days_remaining: number
+          effective_end_date: string
+          extension_applied: boolean
+          rent_price: number
+          room_id: string
+          room_name: string
+        }[]
+      }
+      copilot_occupancy_v1: {
+        Args: {
+          p_as_of_date: string
+          p_organization_id: string
+          p_window_days?: number
+        }
+        Returns: {
+          available: number
+          building_id: string
+          building_name: string
+          committed_pct: number
+          generated_at: string
+          maintenance: number
+          missed_revenue: number
+          occupancy_pct: number
+          occupied: number
+          reserved: number
+          total: number
+          unavailable: number
+        }[]
+      }
+      copilot_org_scope_buildings_v1: {
+        Args: { p_organization_id: string; p_permission_key: string }
+        Returns: string[]
       }
       copilot_preview_income_expense_v1: {
         Args: { p_organization_id: string; p_payload: Json }
@@ -25377,6 +25638,10 @@ export type Database = {
       }
       get_my_available_rooms: { Args: never; Returns: Json }
       get_my_context: { Args: never; Returns: Json }
+      get_my_copilot_availability_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_my_day_summary: { Args: never; Returns: Json }
       get_my_notification_preferences_v1: {
         Args: { p_organization_id: string }
@@ -27458,6 +27723,33 @@ export type Database = {
           p_note?: string
           p_organization_id?: string
           p_rate_percent: number
+        }
+        Returns: Json
+      }
+      set_copilot_feature_flag_v1: {
+        Args: {
+          p_canary_org?: string
+          p_contract_id: string
+          p_evidence_link?: string
+          p_expires_at?: string
+          p_reason?: string
+          p_rollback_reference?: string
+          p_scope: string
+          p_state: string
+        }
+        Returns: Json
+      }
+      set_copilot_feature_flag_v2: {
+        Args: {
+          p_canary_org?: string
+          p_contract_id: string
+          p_evidence_link?: string
+          p_expected_revision: number
+          p_expires_at?: string
+          p_reason?: string
+          p_rollback_reference?: string
+          p_scope: string
+          p_state: string
         }
         Returns: Json
       }
