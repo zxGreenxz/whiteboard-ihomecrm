@@ -30,6 +30,7 @@
 //
 // Cần SUPABASE_PAT. KHÔNG ghi gì (mọi thứ ROLLBACK). Thoát 0 · 1 · 3.
 
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -147,6 +148,29 @@ export function timFileSauCutoff(danhSach, cutoff) {
     .sort();
 }
 
+/**
+ * Giải nghĩa `--tu-moc` (28/08/2026). Scoped chỉ khi mốc THẬT SỰ dùng được;
+ * mọi trường hợp mơ hồ rơi về quét TOÀN BỘ — chiều an toàn, và phải NÓI RA lý
+ * do (khuôn `chonMoc` của check-risk-classifier: nhánh dự phòng lặng lẽ là
+ * nhánh sẽ biến mất không ai hay).
+ */
+export function giaiMoc(moc, coRef) {
+  if (!moc) return { kieu: "full", lyDo: "không có mốc" };
+  if (/^0+$/.test(moc)) return { kieu: "full", lyDo: "push đầu nhánh (before toàn số 0) — không có gì để diff" };
+  if (!coRef(moc)) return { kieu: "full", lyDo: `mốc ${moc} không tồn tại trong repo (force-push làm commit bị GC?)` };
+  return { kieu: "scoped", moc };
+}
+
+/**
+ * Giao của tập file-sau-cutoff với diff (so theo TÊN FILE — diff trả đường dẫn
+ * repo-relative). Chỉ file THÊM MỚI đáng đo: file sau cutoff là immutable theo
+ * policy, sửa nó đã có check-migration-provenance chặn bằng sha256.
+ */
+export function locTheoMoc(filesSauCutoff, diffPaths) {
+  const ten = new Set(diffPaths.map((p) => p.replace(/\\/g, "/").split("/").pop()));
+  return filesSauCutoff.filter((f) => ten.has(f));
+}
+
 async function chaySql(ref, token, sql) {
   const r = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
     method: "POST",
@@ -173,13 +197,52 @@ async function main() {
 
   const i = process.argv.indexOf("--file");
   const quetToanBo = !(i >= 0 && process.argv[i + 1]);
-  const files = quetToanBo
+  let files = quetToanBo
     ? timFileSauCutoff(readdirSync(DIR), cutoff)
     : [process.argv[i + 1].split(/[\\/]/).pop()];
   const mienTru = docMienTru();
   const daKhop = new Set();
 
-  if (files.length < TOI_THIEU_FILE) {
+  // ── --tu-moc: chỉ đo migration THÊM MỚI trong diff của push này (28/08/2026)
+  // Trước đây gate đo TOÀN BỘ file sau cutoff chưa chứng nhận — migration của
+  // phiên A bị đem dry-run lên production trong lượt CI do phiên B kích hoạt.
+  // File cũ đã có hai lớp che: sổ chứng nhận sha256 + luật immutable (sửa là
+  // check-migration-provenance đỏ), nên bỏ chúng khỏi lượt đo không mất gì.
+  const iMoc = process.argv.indexOf("--tu-moc");
+  const mocArg = iMoc >= 0 ? (process.argv[iMoc + 1] ?? "") : null;
+  let theoMoc = false;
+  if (quetToanBo && mocArg !== null) {
+    const coRef = (r) => {
+      try {
+        execFileSync("git", ["rev-parse", "--verify", "-q", `${r}^{commit}`], {
+          cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+        });
+        return true;
+      } catch { return false; }
+    };
+    const moc = giaiMoc(mocArg, coRef);
+    if (moc.kieu === "scoped") {
+      const diffAdded = execFileSync(
+        "git",
+        ["diff", "--name-only", "--diff-filter=A", `${moc.moc}..HEAD`, "--", "supabase/migrations"],
+        { cwd: repoRoot, encoding: "utf8" },
+      ).split("\n").filter(Boolean);
+      files = locTheoMoc(files, diffAdded);
+      theoMoc = true;
+      console.log(`Phạm vi --tu-moc ${moc.moc}..HEAD: ${files.length} migration THÊM MỚI trong diff.`);
+      if (files.length === 0) {
+        console.log("✅ Diff không thêm migration mới — kết luận idempotent của các file cũ còn nguyên");
+        console.log("   (sổ chứng nhận sha256 + luật immutable của policy che chúng). Không có gì để đo.");
+        return;
+      }
+    } else {
+      console.log(`⚠ --tu-moc ${mocArg || "(rỗng)"}: ${moc.lyDo} — quét TOÀN BỘ (chiều an toàn).`);
+    }
+  }
+
+  // Sàn chống rỗng chỉ có nghĩa cho quét toàn bộ: cutoff đứng yên nên "0 file
+  // sau cutoff" là phép quét hỏng; còn scoped thì rỗng đã xử lý tường minh trên.
+  if (!theoMoc && files.length < TOI_THIEU_FILE) {
     console.error(`❌ Không có file nào sau cutoff ${cutoff} — "0 lỗi" là câu đúng mà vô nghĩa.`);
     process.exit(3);
   }
@@ -187,13 +250,20 @@ async function main() {
   // ── Sổ chứng nhận theo digest ───────────────────────────────────────────
   const boQuaSo = process.argv.includes("--bo-qua-so");
   const ghiSo = process.argv.includes("--ghi-so");
+  if (ghiSo && theoMoc) {
+    // Khối ghi sổ dựng lại entries từ tập `files` — với tập scoped nó sẽ XOÁ
+    // chứng nhận của mọi file ngoài phạm vi. Ghi sổ là việc của lượt đo đầy đủ.
+    console.error("❌ --ghi-so không đi cùng --tu-moc: ghi sổ từ tập con sẽ xoá oan chứng nhận cũ. Bỏ --tu-moc khi ghi sổ.");
+    process.exit(3);
+  }
   const digest = new Map(files.map((f) => [f, bam(readFileSync(join(DIR, f), "utf8"))]));
   const so = boQuaSo ? {} : docSo();
   const { phaiDo, daChung } = chiaTheoSo(files, digest, so);
 
   // Sổ có mục cho file KHÔNG còn trong tầm quét ⇒ sổ đang tả một thế giới khác.
   // Không chặn, nhưng phải nói ra: một cuốn sổ lệch trong im lặng là cửa tự mở.
-  const racSo = Object.keys(so).filter((f) => !digest.has(f));
+  // Khi scoped theo mốc thì tầm quét cố ý hẹp — mục ngoài phạm vi KHÔNG phải rác.
+  const racSo = theoMoc ? [] : Object.keys(so).filter((f) => !digest.has(f));
   if (racSo.length > 0) {
     console.log(`⚠ ${racSo.length} mục trong tooling/idempotent-verified.json không còn file tương ứng — chạy --ghi-so để dọn.`);
   }
@@ -264,7 +334,9 @@ async function main() {
   // Chỉ kết luận "miễn trừ thừa" khi lượt này THẬT SỰ đo hết mọi file. Khi sổ đã
   // bỏ qua phần lớn, một mục miễn trừ không được chạm tới KHÔNG chứng minh nó thừa —
   // buộc tội trong trường hợp đó là đúng lớp lỗi mà chính file này cảnh báo ở trên.
-  const doHet = quetToanBo && dsChay.length === files.length;
+  // Scoped không bao giờ được kết luận "miễn trừ thừa" — nó cố ý không chạm
+  // phần lớn file, đúng cái bẫy buộc-tội-sai mà chú thích trên đã cảnh báo.
+  const doHet = quetToanBo && !theoMoc && dsChay.length === files.length;
   const thua = doHet
     ? [...mienTru.keys()].filter((f) => !daKhop.has(f))
     : [];

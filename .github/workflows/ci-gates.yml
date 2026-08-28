@@ -550,6 +550,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          # Full history để gate idempotent tính diff từ github.event.before
+          # (mốc scoped 28/08/2026). Job này timeout 20 phút, fetch full chỉ
+          # thêm vài giây — rẻ hơn hẳn logic fetch-lẻ SHA kèm fallback.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -608,10 +612,17 @@ jobs:
       # hỏng giữa chừng, khi dựng lại môi trường từ baseline + forward lane, và khi
       # hợp thức hoá một thay đổi đã đi đường tắt — cả ba đều là lúc người ta vội.
       # Chạy trên production nhưng KHÔNG ghi: hai lượt trong một transaction, ROLLBACK.
+      #
+      # --tu-moc (28/08/2026): chỉ đo migration THÊM MỚI trong diff của push này —
+      # trước đây file dở của phiên A bị đem đo trong lượt CI do phiên B kích hoạt.
+      # File cũ đã có sổ chứng nhận sha256 + luật immutable che. Mốc hỏng (before
+      # toàn 0, commit bị GC sau force-push) hoặc workflow_dispatch (before rỗng)
+      # thì script tự rơi về quét toàn bộ — chạy tay = đo thật, khớp triết lý
+      # bước schema_doi của generated-types-local-drift.
       - name: Migration forward chạy lại được lần hai (idempotent)
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-        run: node scripts/check-forward-migration-idempotent.mjs
+        run: node scripts/check-forward-migration-idempotent.mjs --tu-moc "${{ github.event.before }}"
 
       # BA BIÊN mà hợp đồng chỉ là MỘT CHUỖI, và không trình biên dịch nào kiểm
       # được: tên RPC, slug Edge Function, tên bảng realtime. types.ts có kiểu RPC
