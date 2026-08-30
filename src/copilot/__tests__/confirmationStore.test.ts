@@ -56,6 +56,15 @@ describe('confirmationStore', () => {
     expect(layXacNhanDangCho()?.nonce).toBe('b'.repeat(64));
   });
 
+  it('giữ các intent độc lập để không dùng nhầm nonce giữa hai hành động', () => {
+    datXacNhanDangCho({ ...MAU, intentKey: 'org-a:action-a' });
+    datXacNhanDangCho({ ...MAU, nonce: 'b'.repeat(64), intentKey: 'org-b:action-b' });
+    expect(layXacNhanDangCho(Date.now(), 'org-a:action-a')?.nonce).toBe(MAU.nonce);
+    expect(layXacNhanDangCho(Date.now(), 'org-b:action-b')?.nonce).toBe('b'.repeat(64));
+    expect(tieuXacNhan(Date.now(), 'org-a:action-a')?.nonce).toBe(MAU.nonce);
+    expect(layXacNhanDangCho(Date.now(), 'org-a:action-a')).toBeNull();
+  });
+
   it('KHÔNG chạm localStorage/sessionStorage', async () => {
     // Nonce sống 5 phút và chỉ có nghĩa trong lượt chat đang mở. Ghi xuống đĩa
     // là kéo dài vòng đời của một thứ cố ý ngắn, và thêm một chỗ nữa để nó rò ra.
@@ -70,5 +79,12 @@ describe('confirmationStore', () => {
       .filter((d) => !d.trim().startsWith('//') && !d.trim().startsWith('*'))
       .join('\n');
     expect(ma).not.toMatch(/localStorage|sessionStorage|indexedDB|document\.cookie/);
+  });
+
+  it('accessors không đối số vẫn lấy đề xuất intent mới nhất cho thẻ xác nhận', () => {
+    datXacNhanDangCho({ ...MAU, intentKey: 'org-a:action-a' });
+    expect(layXacNhanDangCho()?.nonce).toBe(MAU.nonce);
+    expect(tieuXacNhan()?.nonce).toBe(MAU.nonce);
+    expect(layXacNhanDangCho()).toBeNull();
   });
 });

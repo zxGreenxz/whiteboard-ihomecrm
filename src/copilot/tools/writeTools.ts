@@ -25,7 +25,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { formatVND } from '@/lib/utils';
 import { chotToChuc, type DomainTool } from './registry';
-import { datXacNhanDangCho } from '../confirmationStore';
+import { datXacNhanDangCho, layNguCanhXacNhan } from '../confirmationStore';
 
 /** Hash chuỗi ổn định (djb2) — vẫn dùng cho khoá dedupe phía giao diện. */
 export function makeIdempotencyKey(parts: (string | number)[]): string {
@@ -33,6 +33,30 @@ export function makeIdempotencyKey(parts: (string | number)[]): string {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return `iek_${(h >>> 0).toString(36)}_${s.length}`;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function makeConfirmationIntentKey(
+  organizationId: string,
+  canonical: unknown,
+  threadId?: string | null,
+): string {
+  return makeIdempotencyKey([
+    'tao_phieu_thu_chi_nhap',
+    organizationId,
+    threadId ?? '',
+    canonicalJson(canonical),
+  ]);
 }
 
 /**
@@ -111,8 +135,12 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
   // Chat mới được cầm tool này. UI-control (PageAgent) thì KHÔNG — xem chú
   // thích `chatOnly` ở DomainTool.
   chatOnly: true,
+  rolloutExempt: true,
+  rolloutExemptionReason: 'write requires server nonce preview and explicit user confirmation',
   execute: async (args, ctx) => {
     const orgId = chotToChuc(ctx, 'tao_phieu_thu_chi_nhap');
+    const scopedCtx = ctx as typeof ctx & { threadId?: string | null; generation?: number };
+    const threadId = scopedCtx.threadId ?? null;
 
     const { data, error } = await supabase.rpc('copilot_preview_income_expense_v1', {
       p_organization_id: orgId,
@@ -137,6 +165,10 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
       nonce: kq.confirmation_nonce,
       canonical: kq.canonical,
       preview: kq.preview as unknown as Record<string, unknown>,
+      organizationId: orgId,
+      threadId,
+      generation: scopedCtx.generation,
+      intentKey: makeConfirmationIntentKey(orgId, kq.canonical, threadId),
     });
 
     const p = kq.preview;
@@ -159,7 +191,26 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
  * Không nằm trong registry: nếu nó là một `DomainTool` thì mô hình gọi được, và
  * cả kiến trúc nonce sụp — mô hình sẽ tự bấm nút của chính mình.
  */
-export async function thucThiXacNhan(nonce: string, canonical: unknown): Promise<string> {
+export interface ConfirmationExecutionContext {
+  organizationId: string | null;
+  threadId: string | null;
+  generation?: number;
+}
+
+export async function thucThiXacNhan(
+  nonce: string,
+  canonical: unknown,
+  expectedContext: ConfirmationExecutionContext,
+): Promise<string> {
+  const current = layNguCanhXacNhan();
+  if (
+    !current ||
+    current.organizationId !== expectedContext.organizationId ||
+    current.threadId !== expectedContext.threadId ||
+    (expectedContext.generation !== undefined && current.generation !== expectedContext.generation)
+  ) {
+    throw new Error('confirmation_scope_mismatch: organization or conversation changed');
+  }
   const { data, error } = await supabase.rpc('copilot_execute_income_expense_v1', {
     p_confirmation_nonce: nonce,
     // `Json` của generated types, không phải `Record<string, unknown>`: payload

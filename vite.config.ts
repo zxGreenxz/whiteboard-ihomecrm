@@ -40,6 +40,13 @@ const RADIX_ENTRY_CORE = new Set([
 const BUILD_SHA =
   process.env.VITE_BUILD_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? '';
 
+const BUILD_SHA_META_PLUGIN = {
+  name: 'build-sha-meta',
+  transformIndexHtml(html: string) {
+    return html.replaceAll('%VITE_BUILD_SHA%', BUILD_SHA);
+  },
+};
+
 export default defineConfig(() => ({
   define: {
     'import.meta.env.VITE_BUILD_SHA': JSON.stringify(BUILD_SHA),
@@ -48,7 +55,7 @@ export default defineConfig(() => ({
     host: "::",
     port: 8080,
   },
-  plugins: [react()],
+  plugins: [react(), BUILD_SHA_META_PLUGIN],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -74,8 +81,13 @@ export default defineConfig(() => ({
       "**/.claude/worktrees/**",
       // Same class as the line above: `vitest run` takes NAME patterns, not paths,
       // so any scratch checkout left in the repo root gets swept in and its
-      // failures are reported as this project's.
+      // failures are reported as this project's. `.tmp-openclaw-host/` is a copy of
+      // the upstream OpenClaw tree and brings ~40 red files that have nothing to do
+      // with this repo.
       ".tmp-*/**",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package/**",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/**",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/**",
     ],
   },
   build: {

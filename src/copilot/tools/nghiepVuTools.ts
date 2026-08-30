@@ -78,13 +78,15 @@ export const tyLeLapDay = dt({
   // (xem realEstateReportRoutes.tsx:33). Cấp qua Copilot với một quyền rộng hơn
   // và dễ được cấp hơn là mở một cửa sau vòng qua chính hàng rào của màn hình.
   requiredPermission: { module: 'reports_real_estate', action: 'occupancy' },
+  rolloutExempt: true,
+  rolloutExemptionReason: 'occupancy report is governed by reports_real_estate permission and server RPC scope',
   execute: async (args, ctx) => {
-    chotToChuc(ctx, 'ty_le_lap_day');
+    const orgId = chotToChuc(ctx, 'ty_le_lap_day');
     const ngay = args.ngay ?? todayISO();
-    const { data, error } = await supabase.rpc('occupancy_snapshot_v2', {
+    const { data, error } = await supabase.rpc('copilot_occupancy_v1', {
+      p_organization_id: orgId,
       p_as_of_date: ngay,
-      // Bỏ khoá `p_building_ids` = server dùng DEFAULT NULL = mọi toà trong
-      // quyền. Truyền `null` tường minh sẽ chặn file này khỏi đảo strict.
+      p_window_days: args.so_ngay_sap_trong,
     });
     if (error) throw new Error(`Lỗi tải lấp đầy: ${error.message}`);
     const rows = (data ?? []) as unknown as HangLapDay[];
@@ -105,7 +107,8 @@ export const tyLeLapDay = dt({
     ];
 
     if (args.so_ngay_sap_trong > 0) {
-      const { data: sap, error: eSap } = await supabase.rpc('occupancy_upcoming_vacancy_v2', {
+      const { data: sap, error: eSap } = await supabase.rpc('copilot_occupancy_upcoming_v1', {
+        p_organization_id: orgId,
         p_as_of_date: ngay,
         p_window_days: args.so_ngay_sap_trong,
       });
@@ -141,10 +144,13 @@ export const congNoTongQuan = dt({
       .describe('Kỳ YYYY-MM. Bỏ trống = toàn bộ.'),
   }),
   requiredPermission: { module: 'invoices', action: 'view' },
+  rolloutExempt: true,
+  rolloutExemptionReason: 'invoice debt report is governed by invoices permission and server RPC scope',
   execute: async (args, ctx) => {
-    chotToChuc(ctx, 'cong_no_tong_quan');
-    const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
-      ...(args.thang ? { p_billing_month: args.thang } : {}),
+    const orgId = chotToChuc(ctx, 'cong_no_tong_quan');
+    const { data, error } = await supabase.rpc('copilot_invoice_stats_v1', {
+      p_organization_id: orgId,
+      p_billing_month: args.thang ?? null,
     });
     if (error) throw new Error(`Lỗi tải thống kê hoá đơn: ${error.message}`);
     if (!data) return 'Không có dữ liệu hoá đơn.';
@@ -176,9 +182,11 @@ export const cocDangGiu = dt({
     'Tiền cọc đang giữ theo toà: số hợp đồng, cọc phải thu, đã giữ, còn thiếu. Dùng khi hỏi về cọc, ai chưa đóng đủ cọc.',
   inputSchema: z.object({}),
   requiredPermission: { module: 'deposits', action: 'view' },
+  rolloutExempt: true,
+  rolloutExemptionReason: 'deposit report is governed by deposits permission and server RPC scope',
   execute: async (_args, ctx) => {
-    chotToChuc(ctx, 'coc_dang_giu');
-    const { data, error } = await supabase.rpc('get_held_deposit_summary', {});
+    const orgId = chotToChuc(ctx, 'coc_dang_giu');
+    const { data, error } = await supabase.rpc('copilot_deposit_summary_v1', { p_organization_id: orgId });
     if (error) throw new Error(`Lỗi tải cọc: ${error.message}`);
     const rows = (data ?? []) as unknown as HangCoc[];
     if (!rows.length) return 'Không có dữ liệu cọc.';
@@ -211,15 +219,18 @@ export const soQuy = dt({
       .optional()
       .describe('Bỏ trống = hôm nay'),
   }),
-  requiredPermission: { module: 'income_expenses', action: 'view' },
+  requiredPermission: { module: 'cashbooks', action: 'view' },
+  rolloutExempt: true,
+  rolloutExemptionReason: 'cashbook report is governed by cashbooks permission and server RPC scope',
   execute: async (args, ctx) => {
-    chotToChuc(ctx, 'so_quy');
+    const orgId = chotToChuc(ctx, 'so_quy');
     const nay = new Date();
     const tu = args.tu_ngay ?? ngayISO(new Date(nay.getFullYear(), nay.getMonth(), 1));
     const den = args.den_ngay ?? todayISO();
-    const { data, error } = await supabase.rpc('cashbook_settlement_report', {
+    const { data, error } = await supabase.rpc('copilot_cashbook_settlement_v2', {
       p_from: tu,
       p_to: den,
+      p_organization_id: orgId,
     });
     if (error) throw new Error(`Lỗi tải sổ quỹ: ${error.message}`);
     if (!data) return `Không có dữ liệu sổ quỹ ${tu} → ${den}.`;

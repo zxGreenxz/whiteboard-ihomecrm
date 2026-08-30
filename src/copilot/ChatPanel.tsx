@@ -13,6 +13,7 @@ import type { Message } from './chatEngine';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import XacNhanPhieuCard from './XacNhanPhieuCard';
+import { datNguCanhXacNhan } from './confirmationStore';
 import { canUse } from '@/lib/permissionPages';
 import {
   createThread,
@@ -20,12 +21,16 @@ import {
   loadThreadMessages,
   runChatTurn,
   saveMessages,
+  isCurrentChatScope,
   type ChatToolEvent,
 } from './chatEngine';
 import { useAiProviders, useCopilotEntitlement, useCopilotModel } from './useAiProviders';
 import { hrefAnToan } from './hrefAnToan';
 import { anhTuDataTransfer, nenAnh, type AnhDaNen } from './anh';
 import { BeChiu, TEN_LINH_THU } from './BeChiu';
+import { useCopilotAvailability } from './featureFlags';
+import { assertUiControlAvailability } from './uiControlAvailability';
+import type { ToolCtx } from './tools/registry';
 
 interface Props {
   onClose: () => void;
@@ -41,25 +46,40 @@ const SUGGESTION_CHIPS = [
 
 // Web Speech API (Chrome/Edge) — nhận giọng nói tiếng Việt, đổ vào ô nhập.
 function useVoiceInput(onText: (text: string) => void) {
+  type SpeechResultEvent = { results: ArrayLike<{ 0: { transcript: string } }> };
+  type SpeechRecognitionLike = {
+    lang: string;
+    interimResults: boolean;
+    continuous: boolean;
+    onresult: ((event: SpeechResultEvent) => void) | null;
+    onend: (() => void) | null;
+    onerror: (() => void) | null;
+    start: () => void;
+    stop: () => void;
+  };
+  type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
   const [listening, setListening] = useState(false);
-  const recRef = useRef<any>(null);
+  const recRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechWindow = typeof window !== 'undefined' ? window as Window & {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  } : null;
   const supported =
-    typeof window !== 'undefined' &&
-    !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+    !!(speechWindow?.SpeechRecognition || speechWindow?.webkitSpeechRecognition);
 
   const toggle = () => {
     if (listening) {
       recRef.current?.stop();
       return;
     }
-    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const Ctor = speechWindow?.SpeechRecognition || speechWindow?.webkitSpeechRecognition;
     if (!Ctor) return;
     const rec = new Ctor();
     rec.lang = 'vi-VN';
     rec.interimResults = false;
     rec.continuous = false;
-    rec.onresult = (e: any) => {
-      const text = Array.from(e.results).map((r: any) => r[0].transcript).join(' ');
+    rec.onresult = (e) => {
+      const text = Array.from(e.results).map((r) => r[0].transcript).join(' ');
       if (text) onText(text);
     };
     rec.onend = () => setListening(false);
@@ -142,7 +162,8 @@ export default function ChatPanel({ onClose }: Props) {
   // từng là một, nhưng nay `organization` chỉ để HIỂN THỊ còn lựa chọn tường minh
   // mới là thứ đi vào ToolCtx. `null` = chưa chốt, và tool org-scoped sẽ từ chối
   // chạy chứ không lặng lẽ đọc union nhiều công ty.
-  const { organization, selectedOrganizationId } = useOrganization();
+  const { selectedOrganizationId } = useOrganization();
+  const { data: availability } = useCopilotAvailability(selectedOrganizationId);
   const { data: providers } = useAiProviders();
   const { data: entitlement } = useCopilotEntitlement();
   const { model, setModel, modelLoiThoi } = useCopilotModel();
@@ -170,31 +191,57 @@ export default function ChatPanel({ onClose }: Props) {
   // Chặn race: nếu user đã tương tác (gửi tin / mở thread mới) trước khi
   // loadLatestThread resolve, KHÔNG đè state đang chạy.
   const touchedRef = useRef(false);
+  const orgGenerationRef = useRef(0);
 
+  /* load latest thread for the selected organization; stale generations are ignored */
   useEffect(() => {
+    const generation = ++orgGenerationRef.current;
+    datNguCanhXacNhan({ organizationId: selectedOrganizationId, threadId: null, generation });
+    abortRef.current?.abort();
+    abortRef.current = null;
+    void uiAgentRef.current?.stop();
+    uiAgentRef.current?.dispose();
+    uiAgentRef.current = null;
+    touchedRef.current = false;
+    setThreadId(null);
+    setHistory([]);
+    setError('');
+    setLiveTool(null);
+    setDangChay('');
+    setRunning(false);
+    if (!selectedOrganizationId) return;
     void (async () => {
       try {
-        const t = await loadLatestThread();
-        if (touchedRef.current || !t) return;
-        const msgs = await loadThreadMessages(t.id);
-        if (touchedRef.current) return;
+        const t = await loadLatestThread(selectedOrganizationId);
+        if (generation !== orgGenerationRef.current || touchedRef.current || !t) return;
+        const msgs = await loadThreadMessages(t.id, selectedOrganizationId);
+        if (generation !== orgGenerationRef.current || touchedRef.current) return;
         setThreadId(t.id);
+        datNguCanhXacNhan({ organizationId: selectedOrganizationId, threadId: t.id, generation });
         setHistory(msgs);
       } catch {
         /* chưa có thread — bỏ qua */
       }
     })();
-  }, []);
+    return () => {
+      if (orgGenerationRef.current === generation) abortRef.current?.abort();
+    };
+  }, [selectedOrganizationId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history, liveTool, dangChay]);
 
   const newThread = () => {
+    orgGenerationRef.current += 1;
+    datNguCanhXacNhan({ organizationId: selectedOrganizationId, threadId: null, generation: orgGenerationRef.current });
+    abortRef.current?.abort();
+    abortRef.current = null;
     touchedRef.current = true;
     setThreadId(null);
     setHistory([]);
     setError('');
+    setRunning(false);
   };
 
   const handleError = (e: unknown) => {
@@ -208,21 +255,37 @@ export default function ChatPanel({ onClose }: Props) {
 
   // UI-control: mỗi lệnh ĐỘC LẬP (execute reset history) — không lưu thread.
   const runUiControl = async (text: string) => {
+    const organizationId = selectedOrganizationId;
+    const generation = orgGenerationRef.current;
     setHistory((h) => [...h, { role: 'user', content: text }]);
     setLiveTool('điều khiển trang');
     const { createUiControlAgent } = await import('./createAgent');
-    const agent = createUiControlAgent({ providerModel: model, ctx: { perms, organizationId: selectedOrganizationId, navigate } });
+    if (
+      !isCurrentChatScope(generation, orgGenerationRef.current, organizationId, selectedOrganizationId) ||
+      !canUiControl ||
+      !organizationId ||
+      !availability ||
+      availability.organizationId !== organizationId
+    ) return;
+    assertUiControlAvailability({ pathname: location.pathname, ctx: { perms, organizationId, availability } });
+    const agent = createUiControlAgent({
+      providerModel: model,
+      ctx: { perms, organizationId, navigate, availability: availability ?? null },
+    });
     uiAgentRef.current = agent;
     try {
       const result = await agent.run(text);
+      if (!isCurrentChatScope(generation, orgGenerationRef.current, organizationId, selectedOrganizationId)) return;
       setHistory((h) => [...h, { role: 'assistant', content: result.data }]);
     } finally {
       agent.dispose();
-      uiAgentRef.current = null;
+      if (uiAgentRef.current === agent) uiAgentRef.current = null;
     }
   };
 
   const runChat = async (text: string, anh: string[]) => {
+    const organizationId = selectedOrganizationId;
+    const generation = orgGenerationRef.current;
     setHistory((h) => [
       ...h,
       {
@@ -236,19 +299,25 @@ export default function ChatPanel({ onClose }: Props) {
     abortRef.current = abort;
     let tid = threadId;
     if (!tid) {
-      tid = (await createThread(text, organization?.id ?? null)).id;
+      tid = (await createThread(text, organizationId)).id;
+      if (generation !== orgGenerationRef.current) return;
       setThreadId(tid);
     }
+    datNguCanhXacNhan({ organizationId, threadId: tid, generation });
     const result = await runChatTurn({
       providerModel: model,
       history,
       userText: text,
-      ctx: { perms, organizationId: selectedOrganizationId },
+      ctx: { perms, organizationId, availability: availability ?? null, threadId: tid, generation } as ToolCtx & {
+        threadId: string | null;
+        generation: number;
+      },
       signal: abort.signal,
       // Cho Copilot biết người dùng đang xem màn hình nào — để hiểu "cái này".
       pathname: location.pathname,
       anh,
       onToolEvent: (ev: ChatToolEvent) => {
+        if (generation !== orgGenerationRef.current) return;
         setLiveTool(ev.tool);
         // Mô hình có thể nói một câu dẫn rồi mới gọi tool. Câu đó đã hiện ra;
         // dọn nó đi khi sang vòng tool để bong bóng "đang chảy" không dính lại
@@ -256,13 +325,15 @@ export default function ChatPanel({ onClose }: Props) {
         setDangChay('');
       },
       onDeltaChu: (chu) => {
+        if (generation !== orgGenerationRef.current) return;
         setLiveTool(null);
         setDangChay((s) => s + chu);
       },
     });
+    if (!isCurrentChatScope(generation, orgGenerationRef.current, organizationId, selectedOrganizationId)) return;
     setDangChay('');
     setHistory((h) => [...h.slice(0, -1), ...result.newMessages]);
-    void saveMessages(tid, result.newMessages, model, organization?.id ?? null).catch(() => {
+    void saveMessages(tid, result.newMessages, model, organizationId).catch(() => {
       /* lưu lịch sử lỗi không chặn chat */
     });
   };
@@ -274,6 +345,7 @@ export default function ChatPanel({ onClose }: Props) {
     // câu mặc định còn hơn để nó tự đoán ý.
     const cauHoi = text || 'Đọc giúp tôi ảnh này.';
     const anh = anhKem.map((a) => a.dataUrl);
+    const generation = orgGenerationRef.current;
     touchedRef.current = true;
     setInput('');
     setAnhKem([]);
@@ -285,12 +357,12 @@ export default function ChatPanel({ onClose }: Props) {
     } catch (e) {
       handleError(e);
     } finally {
-      setLiveTool(null);
+      if (generation === orgGenerationRef.current) setLiveTool(null);
       // Dọn bong bóng đang-chảy kể cả khi lỗi hoặc user bấm Dừng: để lại một
       // câu dở dang không thuộc history là nói dối người đọc về thứ đã lưu.
-      setDangChay('');
-      setRunning(false);
-      abortRef.current = null;
+      if (generation === orgGenerationRef.current) setDangChay('');
+      if (generation === orgGenerationRef.current) setRunning(false);
+      if (generation === orgGenerationRef.current) abortRef.current = null;
     }
   };
 
@@ -315,6 +387,9 @@ export default function ChatPanel({ onClose }: Props) {
   const voice = useVoiceInput((text) => setInput((cur) => (cur ? `${cur} ${text}` : text)));
 
   const items = toDisplay(history);
+  const confirmationGeneration = orgGenerationRef.current;
+  const confirmationOrganizationId = selectedOrganizationId;
+  const confirmationThreadId = threadId;
 
   return (
     <div
@@ -461,9 +536,22 @@ export default function ChatPanel({ onClose }: Props) {
             qua chuỗi trả về của tool, nên mô hình không chạm được vào đây. */}
         {!running && (
           <XacNhanPhieuCard
-            onXong={(thongBao) =>
-              setHistory((h) => [...h, { role: 'assistant', content: thongBao }])
-            }
+            organizationId={selectedOrganizationId}
+            threadId={threadId}
+            generation={confirmationGeneration}
+            availability={availability}
+            onXong={(thongBao) => {
+              if (
+                !isCurrentChatScope(
+                  confirmationGeneration,
+                  orgGenerationRef.current,
+                  confirmationOrganizationId,
+                  selectedOrganizationId,
+                )
+              ) return;
+              if (confirmationThreadId !== threadId) return;
+              setHistory((h) => [...h, { role: 'assistant', content: thongBao }]);
+            }}
           />
         )}
         {error && <div className="rounded bg-red-50 p-2 text-xs text-red-600">{error}</div>}

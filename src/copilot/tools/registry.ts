@@ -10,11 +10,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey, PermissionsMap } from '@/lib/permissions';
 import { formatVND } from '@/lib/utils';
-import { invoicesListQuery } from '@/hooks/useInvoices';
 import { mapPayloadToBuildings, type RpcPayload } from '@/pages/phong-trong/supabaseData';
 import { maskPhonePartial } from '../maskPii';
 import { taoPhieuThuChiNhap } from './writeTools';
 import { TOOL_NGHIEP_VU } from './nghiepVuTools';
+import {
+  copilotAvailability,
+  copilotAvailabilitySnapshotIsFresh,
+  type CopilotAvailabilitySnapshot,
+} from '../featureFlags';
 
 export interface ToolCtx {
   /** get_my_permissions() — undefined khi chưa load (mọi tool bị chặn). */
@@ -32,6 +36,8 @@ export interface ToolCtx {
   organizationId: string | null;
   /** react-router navigate — chỉ adapter UI-control truyền vào. */
   navigate?: (to: string) => void;
+  /** Server-fetched page/action availability; absent means legacy callers opt out. */
+  availability?: CopilotAvailabilitySnapshot | null;
 }
 
 /** Mã lỗi ổn định khi tool có phạm vi công ty bị gọi lúc chưa chốt công ty. */
@@ -55,6 +61,19 @@ export function chotToChuc(ctx: ToolCtx, tenTool: string): string {
   return ctx.organizationId;
 }
 
+/** Resolve the selected organization's buildings before any org-scoped RPC. */
+export async function layToaTheoToChuc(organizationId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('buildings')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null);
+  if (error) throw new Error(`Lỗi tải phạm vi công ty: ${error.message}`);
+  return (data ?? [])
+    .map((row: { id?: unknown }) => row.id)
+    .filter((id): id is string => typeof id === 'string');
+}
+
 export interface DomainTool<T = any> {
   name: string;
   description: string;
@@ -73,6 +92,13 @@ export interface DomainTool<T = any> {
    * không còn nghĩa gì.
    */
   chatOnly?: boolean;
+  /** Optional page contract key controlled by the Copilot rollout snapshot. */
+  rolloutKey?: string;
+  /** Multiple page contracts must all be enabled before a multi-page tool is exposed. */
+  rolloutKeys?: readonly string[];
+  /** Explicitly documents tools governed by a different server-side rollout. */
+  rolloutExempt?: boolean;
+  rolloutExemptionReason?: string;
   execute: (args: T, ctx: ToolCtx) => Promise<string>;
 }
 
@@ -285,8 +311,37 @@ export function choOThucTe(danhSach: HopDongCuaKhach[] | null | undefined): stri
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────
-export function buildRegistry(): DomainTool[] {
-  return [
+type CopilotRpcError = { message: string };
+type CopilotCustomerSearchRow = {
+  customer_id: string;
+  customer_name: string;
+  phone: string;
+  room_name: string | null;
+  building_name: string | null;
+};
+type CopilotExpiringContractRow = {
+  contract_id: string;
+  contract_number: string | null;
+  customer_name: string | null;
+  end_date: string | null;
+  effective_end_date: string | null;
+  room_name: string | null;
+  building_name: string | null;
+};
+
+/** Typed boundary for the customer/contract RPCs before generated types are refreshed. */
+const callCopilotRpc = <TArgs, TData>(
+  functionName: string,
+  args: TArgs,
+): PromiseLike<{ data: TData | null; error: CopilotRpcError | null }> =>
+  (supabase.rpc as unknown as (
+    name: string,
+    params: TArgs,
+  ) => PromiseLike<{ data: TData | null; error: CopilotRpcError | null }>)(functionName, args);
+
+/** Build the complete definition set for inventory and adapter filtering. */
+export function buildRegistryDefinitions(): DomainTool[] {
+  const tools: DomainTool[] = [
     dt({
       name: 'phong_trong',
       description:
@@ -295,9 +350,10 @@ export function buildRegistry(): DomainTool[] {
         toa_nha: z.string().optional().describe('Lọc theo tên toà (khớp gần đúng), bỏ trống = tất cả'),
       }),
       requiredPermission: { module: 'rooms', action: 'view' },
+      rolloutKey: 'rooms.list',
       execute: async (args, ctx) => {
-        chotToChuc(ctx, 'phong_trong');
-        const { data, error } = await supabase.rpc('get_my_available_rooms');
+        const orgId = chotToChuc(ctx, 'phong_trong');
+        const { data, error } = await supabase.rpc('copilot_available_rooms_v1', { p_organization_id: orgId });
         if (error) throw new Error(`Lỗi tải phòng trống: ${error.message}`);
         let buildings = mapPayloadToBuildings((data as unknown as RpcPayload | null) ?? null);
         if (args.toa_nha) {
@@ -330,6 +386,7 @@ export function buildRegistry(): DomainTool[] {
       description: 'Tìm khách hàng/cư dân theo tên hoặc SĐT. Trả về tên, SĐT (che một phần), phòng đang thuê.',
       inputSchema: z.object({ tu_khoa: z.string().min(1).describe('Tên hoặc SĐT') }),
       requiredPermission: { module: 'customers', action: 'view' },
+      rolloutKey: 'customers.list',
       execute: async (args, ctx) => {
         const orgId = chotToChuc(ctx, 'tim_khach_hang');
         const kw = args.tu_khoa.trim();
@@ -342,29 +399,22 @@ export function buildRegistry(): DomainTool[] {
         // → rooms → buildings. Mỗi bước nêu ĐÍCH DANH tên khoá ngoại vì giữa
         // các bảng này có nhiều hơn một đường nối; để PostgREST tự đoán là mời
         // nó chọn nhầm hoặc báo mơ hồ.
-        const { data, error } = await supabase
-          .from('customers')
-          .select(
-            'id, full_name, phone, ' +
-              'hop_dong:contract_customers!contract_customers_customer_id_fkey(' +
-              'is_representative, ' +
-              'contract:contracts!contract_customers_contract_id_fkey(' +
-              'status, ' +
-              'room:rooms!contracts_room_id_fkey(' +
-              'name, building:buildings!rooms_building_id_fkey(name)' +
-              ')))',
-          )
-          .eq('organization_id', orgId)
-          .is('deleted_at', null)
-          .or(`full_name.ilike.%${kw}%,phone.ilike.%${kw}%`)
-          .limit(10);
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_search: string },
+          CopilotCustomerSearchRow[]
+        >('copilot_customer_search_v1', {
+          p_organization_id: orgId,
+          p_search: kw,
+        });
         if (error) throw new Error(`Lỗi tìm khách hàng: ${error.message}`);
-        if (!data?.length) return `Không tìm thấy khách hàng nào khớp "${kw}".`;
-        // Field allowlist + mask SĐT một phần (KHÔNG trả CCCD/STK)
-        return data
-          .map((c: any) => {
-            const noiO = choOThucTe(c.hop_dong);
-            return `- ${c.full_name} — ${maskPhonePartial(c.phone)}${noiO} [link: /customers/${c.id}]`;
+        const rows = Array.isArray(data) ? data : [];
+        if (!rows.length) return `Không tìm thấy khách hàng nào khớp "${kw}".`;
+        return rows
+          .map((c) => {
+            const noiO = c.room_name
+              ? ` — phòng ${c.room_name}${c.building_name ? ` (${c.building_name})` : ''}`
+              : '';
+            return `- ${c.customer_name} — ${maskPhonePartial(c.phone)}${noiO} [link: /customers/${c.customer_id}]`;
           })
           .join('\n');
       },
@@ -380,22 +430,25 @@ export function buildRegistry(): DomainTool[] {
         tu_khoa: z.string().optional().describe('Tên khách hoặc số hoá đơn'),
       }),
       requiredPermission: { module: 'invoices', action: 'view' },
+      rolloutKey: 'invoices.list',
       execute: async (args, ctx) => {
-        chotToChuc(ctx, 'tim_hoa_don');
-        // Tái dùng factory (lọc kind/deleted/sort chuẩn — PLAN §2.2)
-        const q = invoicesListQuery(
-          { billing_month: args.thang, payment_status: args.trang_thai, search: args.tu_khoa },
-          { page: 1, pageSize: 10 },
-        );
-        const result = await (q.queryFn as () => Promise<any>)();
-        const rows = result?.data ?? [];
+        const orgId = chotToChuc(ctx, 'tim_hoa_don');
+        const { data, error } = await supabase.rpc('copilot_invoice_search_v1', {
+          p_organization_id: orgId,
+          p_billing_month: args.thang,
+          p_payment_status: args.trang_thai,
+          p_search: args.tu_khoa?.trim() || null,
+        });
+        if (error) throw new Error(`Lỗi tìm hoá đơn: ${error.message}`);
+        const rows = Array.isArray(data) ? data.slice(0, 10) : [];
         if (!rows.length) return 'Không tìm thấy hoá đơn nào khớp điều kiện.';
         const lines = rows.map((inv: any) => {
-          const room = inv.room?.name ?? '?';
-          const building = inv.building?.name ?? '';
+          // The server wrapper returns flat names; nested fields remain a compatibility fallback.
+          const room = inv.room_name ?? inv.room?.name ?? '?';
+          const building = inv.building_name ?? inv.building?.name ?? '';
           return `- HĐ ${inv.invoice_number ?? inv.id.slice(0, 8)} — phòng ${room}${building ? ` (${building})` : ''} — kỳ ${inv.billing_month} — tổng ${formatVND(inv.total_amount)} — trạng thái ${inv.status}`;
         });
-        return `Tìm thấy ${result.count ?? rows.length} hoá đơn (hiện 10 đầu):\n${lines.join('\n')}`;
+        return `Tìm thấy ${Array.isArray(data) ? data.length : rows.length} hoá đơn (hiện 10 đầu):\n${lines.join('\n')}`;
       },
     }),
 
@@ -406,12 +459,13 @@ export function buildRegistry(): DomainTool[] {
         so_ngay: z.number().int().min(1).max(365).default(30).describe('Số ngày tới'),
       }),
       requiredPermission: { module: 'reports_real_estate', action: 'expiring' },
+      rolloutExempt: true,
+      rolloutExemptionReason: 'contract read is governed by reports_real_estate permission and server RPC scope',
       execute: async (args, ctx) => {
         const orgId = chotToChuc(ctx, 'hop_dong_sap_het_han');
         const today = new Date();
-        const until = new Date(today.getTime() + args.so_ngay * 86_400_000);
         // Đọc theo giờ LOCAL: toISOString() đổi sang UTC nên trước 7h sáng giờ VN
-        // cả hai mốc lùi một ngày, và Copilot trả lời sai danh sách hợp đồng sắp
+        // mốc bắt đầu lùi một ngày, và Copilot trả lời sai danh sách hợp đồng sắp
         // hết hạn — sai âm thầm, vì kết quả vẫn "có vẻ hợp lý".
         const iso = (d: Date) =>
           `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -419,33 +473,22 @@ export function buildRegistry(): DomainTool[] {
         // nối qua bảng `contract_customers` chứ không phải cột `customer_id`.
         // Bản trước nhúng thẳng `buildings(...)`/`customers(...)` nên hỏng trên
         // deployment thật (đánh giá 13/08/2026: C04, C16 FAIL).
-        const { data, error } = await supabase
-          .from('contracts')
-          .select(
-            'id, contract_number, end_date, ' +
-              'room:rooms!contracts_room_id_fkey(' +
-              'name, building:buildings!rooms_building_id_fkey(name)' +
-              '), ' +
-              'khach:contract_customers!contract_customers_contract_id_fkey(' +
-              'is_representative, ' +
-              'customer:customers!contract_customers_customer_id_fkey(full_name)' +
-              ')',
-          )
-          .eq('organization_id', orgId)
-          .eq('status', 'ACTIVE')
-          .is('deleted_at', null)
-          .gte('end_date', iso(today))
-          .lte('end_date', iso(until))
-          .order('end_date', { ascending: true })
-          .limit(30);
-        if (error) throw new Error(`Lỗi tải hợp đồng: ${error.message}`);
-        if (!data?.length) return `Không có hợp đồng nào hết hạn trong ${args.so_ngay} ngày tới.`;
-        const lines = data.map((c: any) => {
-          const ten = khachDaiDien(c.khach)?.full_name ?? '?';
-          const toa = c.room?.building?.name ? ` (${c.room.building.name})` : '';
-          return `- ${c.contract_number ?? c.id.slice(0, 8)} — ${ten} — phòng ${c.room?.name ?? '?'}${toa} — hết hạn ${c.end_date} [link: /contracts/${c.id}]`;
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_as_of_date: string; p_window_days: number },
+          CopilotExpiringContractRow[]
+        >('copilot_expiring_contracts_v1', {
+          p_organization_id: orgId,
+          p_as_of_date: iso(today),
+          p_window_days: args.so_ngay,
         });
-        return `${data.length} hợp đồng hết hạn trong ${args.so_ngay} ngày tới:\n${lines.join('\n')}`;
+        if (error) throw new Error(`Lỗi tải hợp đồng: ${error.message}`);
+        const rows = Array.isArray(data) ? data : [];
+        if (!rows.length) return `Không có hợp đồng nào hết hạn trong ${args.so_ngay} ngày tới.`;
+        const lines = rows.map((c) => {
+          const toa = c.building_name ? ` (${c.building_name})` : '';
+          return `- ${c.contract_number ?? c.contract_id.slice(0, 8)} — ${c.customer_name ?? '?'} — phòng ${c.room_name ?? '?'}${toa} — hết hạn ${c.effective_end_date ?? c.end_date} [link: /contracts/${c.contract_id}]`;
+        });
+        return `${rows.length} hợp đồng hết hạn trong ${args.so_ngay} ngày tới:\n${lines.join('\n')}`;
       },
     }),
 
@@ -458,8 +501,10 @@ export function buildRegistry(): DomainTool[] {
         accrual: z.boolean().default(false).describe('true = dồn tích (accrual), false = tiền mặt'),
       }),
       requiredPermission: { module: 'reports_finance', action: 'analysis' },
+      rolloutExempt: true,
+      rolloutExemptionReason: 'financial read is governed by reports_finance permission and server RPC scope',
       execute: async (args, ctx) => {
-        chotToChuc(ctx, 'doanh_thu_thang');
+        const orgId = chotToChuc(ctx, 'doanh_thu_thang');
         const [y, m] = args.thang.split('-').map(Number);
         const start = `${args.thang}-01`;
         const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); // ngày cuối tháng
@@ -470,10 +515,12 @@ export function buildRegistry(): DomainTool[] {
         // `p_building_ids` bỏ hẳn khoá: chữ ký live ghi `DEFAULT NULL::uuid[]`
         // nên vắng mặt cho ra đúng NULL như cũ, và khớp kiểu `?: string[]` mà bộ
         // sinh Supabase viết cho tham số có DEFAULT.
-        const thamSo = { p_start_date: start, p_end_date: end };
-        const { data, error } = args.accrual
-          ? await supabase.rpc('fa_monthly_pnl_accrual', thamSo)
-          : await supabase.rpc('fa_monthly_pnl', thamSo);
+        const { data, error } = await supabase.rpc('copilot_financial_pnl_v1', {
+          p_organization_id: orgId,
+          p_start_date: start,
+          p_end_date: end,
+          p_accrual: args.accrual,
+        });
         if (error) throw new Error(`Lỗi tải P&L: ${error.message}`);
         const rows = (data ?? []) as any[];
         if (!rows.length) return `Không có dữ liệu KQKD tháng ${args.thang}.`;
@@ -502,6 +549,8 @@ export function buildRegistry(): DomainTool[] {
           .optional()
           .describe('Chỉ tìm trong một tài liệu (mã lấy từ liet_ke_chu_de), vd "16-thanh-ly-hop-dong"'),
       }),
+      rolloutExempt: true,
+      rolloutExemptionReason: 'knowledge retrieval is governed by document manifest and permission filters',
       execute: async (args, ctx) => {
         // Trước 12/08/2026 tool này so khớp trên TÊN FILE rồi nạp nguyên tài
         // liệu, cắt 8000 ký tự ĐẦU. Với corpus 823KB / 25 file mà 20 file lớn
@@ -523,6 +572,8 @@ export function buildRegistry(): DomainTool[] {
           .optional()
           .describe('Việc cần làm, vd "tạo hợp đồng", "duyệt phiếu chi". Bỏ trống = liệt kê toàn bộ.'),
       }),
+      rolloutExempt: true,
+      rolloutExemptionReason: 'system map is a read-only capability directory filtered by permissions',
       execute: async (args, ctx) => {
         const { timTrang, moTaTrangKhop, banDoGon } = await import('../banDoHeThong');
         if (!args.chu_de?.trim()) return banDoGon(ctx.perms);
@@ -541,6 +592,8 @@ export function buildRegistry(): DomainTool[] {
       description:
         'Liệt kê các tài liệu nghiệp vụ hiện có (mã và tiêu đề). Dùng khi huong_dan không tìm thấy, hoặc khi cần biết hệ thống có tài liệu về gì.',
       inputSchema: z.object({}),
+      rolloutExempt: true,
+      rolloutExemptionReason: 'document topic listing is governed by document manifest and permission filters',
       execute: async (_args, ctx) => {
         const topics = listDocTopics(ctx.perms);
         if (!topics.length) {
@@ -566,6 +619,7 @@ export function buildRegistry(): DomainTool[] {
         trang: z.enum(MO_TRANG_KEYS),
       }),
       uiControlOnly: true, // chat KHÔNG điều hướng — trả link để user click
+      rolloutKeys: ['rooms.list', 'customers.list', 'invoices.list'],
       execute: async (args, ctx) => {
         const target = MO_TRANG_ROUTES[args.trang];
         if (!target) throw new Error(`Trang "${args.trang}" không nằm trong whitelist.`);
@@ -578,6 +632,51 @@ export function buildRegistry(): DomainTool[] {
       },
     }),
   ];
+  return tools;
+}
+
+/** Build only tools backed by a fresh, server-owned rollout snapshot. */
+export function buildRegistry(availability: CopilotAvailabilitySnapshot | null = null): DomainTool[] {
+  if (availability === null) return [];
+  return buildRegistryDefinitions().filter((tool) => toolAvailableForRollout(tool, availability));
+}
+
+function toolAvailableForRollout(tool: DomainTool, availability: CopilotAvailabilitySnapshot | null): boolean {
+  if (!copilotAvailabilitySnapshotIsFresh(availability)) return false;
+  if (tool.rolloutExempt) return true;
+  const keys = tool.rolloutKeys ?? (tool.rolloutKey ? [tool.rolloutKey] : []);
+  return keys.length > 0 && keys.every((key) => copilotAvailability(availability, key) === 'enabled');
+}
+
+const LOI_ROLLOUT_ORGANIZATION = 'organization_mismatch';
+
+function availabilityMatchesOrganization(
+  ctx: ToolCtx,
+  availability: CopilotAvailabilitySnapshot | null | undefined,
+): boolean {
+  return Boolean(
+    ctx.organizationId &&
+      availability &&
+      copilotAvailabilitySnapshotIsFresh(availability) &&
+      availability.organizationId === ctx.organizationId,
+  );
+}
+
+function assertAvailabilityOrganization(
+  ctx: ToolCtx,
+  availability: CopilotAvailabilitySnapshot | null | undefined,
+): void {
+  if (!availabilityMatchesOrganization(ctx, availability)) {
+    throw new Error(
+      `${LOI_ROLLOUT_ORGANIZATION}: snapshot rollout khong thuoc cong ty dang chon.`,
+    );
+  }
+}
+
+function assertRollout(tool: DomainTool, availability: CopilotAvailabilitySnapshot | null | undefined): void {
+  if (!toolAvailableForRollout(tool, availability ?? null)) {
+    throw new Error(`rollout_unavailable: công cụ "${tool.name}" đã bị tắt hoặc snapshot rollout đã hết hạn.`);
+  }
 }
 
 // ── Adapters ─────────────────────────────────────────────────────────────────
@@ -586,9 +685,13 @@ export function buildRegistry(): DomainTool[] {
 export function toLlmTools(
   registry: DomainTool[],
   ctx: ToolCtx,
+  availability?: CopilotAvailabilitySnapshot | null,
 ): Record<string, { description: string; inputSchema: z.ZodType<any>; execute: (args: any) => Promise<string> }> {
+  const effectiveAvailability = availability === undefined ? (ctx.availability ?? null) : availability;
   const out: Record<string, { description: string; inputSchema: z.ZodType<any>; execute: (args: any) => Promise<string> }> = {};
   for (const tool of registry) {
+    if (!availabilityMatchesOrganization(ctx, effectiveAvailability)) continue;
+    if (!toolAvailableForRollout(tool, effectiveAvailability)) continue;
     if (tool.uiControlOnly) continue;
     if (tool.requiredPermission && (!ctx.perms || !canUse(ctx.perms, tool.requiredPermission.module, tool.requiredPermission.action))) {
       continue; // không đưa cho model tool mà user không có quyền
@@ -597,6 +700,8 @@ export function toLlmTools(
       description: tool.description,
       inputSchema: tool.inputSchema,
       execute: async (args: any) => {
+        assertAvailabilityOrganization(ctx, effectiveAvailability);
+        assertRollout(tool, effectiveAvailability);
         assertPerm(tool, ctx);
         return tool.execute(args, ctx);
       },
@@ -614,9 +719,13 @@ export function toLlmTools(
 export function toPageAgentTools(
   registry: DomainTool[],
   ctx: ToolCtx,
+  availability?: CopilotAvailabilitySnapshot | null,
 ): Record<string, { description: string; inputSchema: z.ZodType<any>; execute: (this: unknown, args: any, toolCtx: { signal: AbortSignal }) => Promise<string> }> {
+  const effectiveAvailability = availability === undefined ? (ctx.availability ?? null) : availability;
   const out: Record<string, { description: string; inputSchema: z.ZodType<any>; execute: (this: unknown, args: any, toolCtx: { signal: AbortSignal }) => Promise<string> }> = {};
   for (const tool of registry) {
+    if (!availabilityMatchesOrganization(ctx, effectiveAvailability)) continue;
+    if (!toolAvailableForRollout(tool, effectiveAvailability)) continue;
     if (tool.chatOnly) continue;
     if (tool.requiredPermission && (!ctx.perms || !canUse(ctx.perms, tool.requiredPermission.module, tool.requiredPermission.action))) {
       continue;
@@ -625,6 +734,8 @@ export function toPageAgentTools(
       description: tool.description,
       inputSchema: tool.inputSchema,
       async execute(args: any) {
+        assertAvailabilityOrganization(ctx, effectiveAvailability);
+        assertRollout(tool, effectiveAvailability);
         assertPerm(tool, ctx);
         return tool.execute(args, ctx);
       },

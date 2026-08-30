@@ -1,0 +1,33 @@
+html, body { margin: 0; }
+html.pwa-standalone, html.pwa-standalone body { background: #f5f3ee; }
+#app-splash {
+  position: fixed; inset: 0; z-index: 99999;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  gap: 24px; background: #f5f3ee;
+  opacity: 1; transition: opacity .28s ease;
+}
+html.pwa-standalone #app-splash { display: flex; }
+#app-splash .as-logo {
+  width: 84px; height: 84px; border-radius: 21px;
+  background: linear-gradient(150deg, #21845a, #176244);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 12px 38px rgba(27, 24, 19, .18), 0 4px 12px rgba(27, 24, 19, .10);
+}
+#app-splash .as-logo svg { width: 44px; height: 44px; }
+#app-splash .as-spin {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 3px solid rgba(23, 98, 68, .18); border-top-color: #176244;
+  animation: as-spin .8s linear infinite;
+}
+#app-splash .as-recovery {
+  display: none; max-width: 300px; padding: 0 24px;
+  color: #26352e; text-align: center; font: 500 14px/1.5 sans-serif;
+}
+#app-splash .as-recovery button {
+  margin-top: 14px; border: 0; border-radius: 10px; padding: 10px 16px;
+  background: #176244; color: #fff; font: inherit; cursor: pointer;
+}
+#app-splash.as-slow .as-recovery { display: block; }
+#app-splash.as-failed .as-spin { display: none; }
+#app-splash.as-failed .as-recovery { display: block; }
+@keyframes as-spin { to { transform: rotate(360deg); } }

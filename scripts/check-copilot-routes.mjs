@@ -66,12 +66,14 @@ export function docWhitelist(vanBan) {
  * may là nhờ sàn chống-xanh-rỗng, nếu không nó đã "xanh" trên một tập rỗng.
  */
 export function docFeatureQuyen() {
-  const tmp = join(repoRoot, 'node_modules', '.cache', '__perm-features.ts');
+  // Worktree node_modules may be a junction to another checkout. Keep the
+  // generated importer under repoRoot so vite-node resolves this tree's source.
+  const tmp = join(repoRoot, '.tmp-copilot-loaders', '__perm-features.ts');
   mkdirSync(dirname(tmp), { recursive: true });
   writeFileSync(
     tmp,
     [
-      'import { ALL_PAGE_FEATURES } from "../../src/lib/permissionPages";',
+      'import { ALL_PAGE_FEATURES } from "../src/lib/permissionPages";',
       'console.log(JSON.stringify([...new Set(ALL_PAGE_FEATURES.map((f) => `${f.module}.${f.action}`))]));',
     ].join('\n'),
     'utf8',
@@ -79,7 +81,7 @@ export function docFeatureQuyen() {
   try {
     // Đường dẫn TƯƠNG ĐỐI + shell:true — cùng bẫy npx.cmd/dấu cách đã ghi ở
     // check-realtime-descriptors.
-    const r = spawnSync('npx', ['vite-node', 'node_modules/.cache/__perm-features.ts'], {
+    const r = spawnSync('npx', ['vite-node', '.tmp-copilot-loaders/__perm-features.ts'], {
       cwd: repoRoot,
       encoding: 'utf8',
       shell: true,

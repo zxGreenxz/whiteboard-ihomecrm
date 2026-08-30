@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1306,
+    "sourceCallSites": 1326,
     "catalogFunctions": 1010,
     "schemas": [
       "public",
@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 254,
+    "calledRpcs": 263,
     "byRisk": {
-      "normal": 178,
+      "normal": 187,
       "financial": 76
     },
-    "securityDefiner": 238
+    "securityDefiner": 247
   },
   "missingOnServer": [],
   "rpcs": {
@@ -893,7 +893,6 @@
         }
       ],
       "callers": [
-        "src/copilot/tools/nghiepVuTools.ts",
         "src/hooks/useSettlementReport.ts"
       ],
       "risk": "normal"
@@ -1039,6 +1038,66 @@
       ],
       "risk": "normal"
     },
+    "copilot_available_rooms_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/registry.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_cashbook_settlement_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_from date, p_to date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/nghiepVuTools.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_deposit_summary_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "TABLE(building_id uuid, building_name text, contract_count bigint, expected numeric, held numeric, shortfall_all numeric, shortfall_short numeric, full_count bigint, short_count bigint, first_invoice_count bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/nghiepVuTools.ts"
+      ],
+      "risk": "normal"
+    },
     "copilot_execute_income_expense_v1": {
       "definitions": [
         {
@@ -1056,6 +1115,106 @@
       ],
       "callers": [
         "src/copilot/tools/writeTools.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_financial_pnl_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_start_date date, p_end_date date, p_accrual boolean DEFAULT false",
+          "returns": "TABLE(month date, building_id uuid, building_name text, is_virtual boolean, revenue numeric, expense numeric, net numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/registry.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_invoice_search_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_billing_month text DEFAULT NULL::text, p_payment_status text DEFAULT NULL::text, p_search text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/registry.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_invoice_stats_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_billing_month text DEFAULT NULL::text",
+          "returns": "json",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/nghiepVuTools.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_occupancy_upcoming_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_as_of_date date, p_window_days integer DEFAULT 30",
+          "returns": "TABLE(contract_id uuid, contract_number text, building_id uuid, building_name text, room_id uuid, room_name text, effective_end_date date, days_remaining integer, rent_price numeric, extension_applied boolean)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/nghiepVuTools.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_occupancy_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_as_of_date date, p_window_days integer DEFAULT 30",
+          "returns": "TABLE(building_id uuid, building_name text, total integer, occupied integer, reserved integer, maintenance integer, unavailable integer, available integer, occupancy_pct numeric, committed_pct numeric, missed_revenue numeric, generated_at timestamp with time zone)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/nghiepVuTools.ts"
       ],
       "risk": "normal"
     },
@@ -1429,7 +1588,6 @@
         }
       ],
       "callers": [
-        "src/copilot/tools/registry.ts",
         "src/hooks/useFinancialAnalysis.ts"
       ],
       "risk": "normal"
@@ -1450,7 +1608,6 @@
         }
       ],
       "callers": [
-        "src/copilot/tools/registry.ts",
         "src/hooks/useFinancialAnalysis.ts",
         "src/hooks/useProfitVerification.ts",
         "src/hooks/useShareholderProfit.ts"
@@ -1795,7 +1952,6 @@
         }
       ],
       "callers": [
-        "src/copilot/tools/nghiepVuTools.ts",
         "src/hooks/useDepositDashboard.ts"
       ],
       "risk": "normal"
@@ -1878,7 +2034,6 @@
         }
       ],
       "callers": [
-        "src/copilot/tools/nghiepVuTools.ts",
         "src/hooks/useInvoices.ts",
         "src/hooks/useProfitVerification.ts",
         "src/hooks/useUtilityBills.ts"
@@ -1984,7 +2139,6 @@
         }
       ],
       "callers": [
-        "src/copilot/tools/registry.ts",
         "src/hooks/useMyAvailableRooms.ts"
       ],
       "risk": "normal"
@@ -2026,26 +2180,6 @@
       ],
       "callers": [
         "src/hooks/useNotificationSettings.ts"
-      ],
-      "risk": "normal"
-    },
-    "get_my_organizations": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/contexts/OrganizationContext.tsx"
       ],
       "risk": "normal"
     },
@@ -2686,6 +2820,26 @@
       ],
       "risk": "financial"
     },
+    "list_my_copilot_organizations_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/contexts/OrganizationContext.tsx"
+      ],
+      "risk": "normal"
+    },
     "list_my_pending_approvals_v1": {
       "definitions": [
         {
@@ -3121,7 +3275,6 @@
         }
       ],
       "callers": [
-        "src/copilot/tools/nghiepVuTools.ts",
         "src/hooks/reports/useOccupancyDashboard.ts"
       ],
       "risk": "normal"
@@ -3142,7 +3295,6 @@
         }
       ],
       "callers": [
-        "src/copilot/tools/nghiepVuTools.ts",
         "src/hooks/reports/useOccupancyDashboard.ts"
       ],
       "risk": "normal"
@@ -3862,6 +4014,26 @@
       ],
       "callers": [
         "src/hooks/useUtilityBills.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_copilot_feature_flag_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_scope text, p_contract_id text, p_state text, p_expected_revision bigint, p_canary_org uuid DEFAULT NULL::uuid, p_reason text DEFAULT NULL::text, p_evidence_link text DEFAULT NULL::text, p_expires_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_rollback_reference text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/featureFlags.ts"
       ],
       "risk": "normal"
     },

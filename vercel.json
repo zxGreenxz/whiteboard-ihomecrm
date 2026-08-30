@@ -23,6 +23,10 @@
                 {
                     "key": "Referrer-Policy",
                     "value": "strict-origin-when-cross-origin"
+                },
+                {
+                    "key": "Content-Security-Policy",
+                    "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://tryymsxyyckgbrmmvozx.supabase.co wss://tryymsxyyckgbrmmvozx.supabase.co https://storage.chillhome.io.vn https://api.geoapify.com https://us1.locationiq.com https://photon.komoot.io https://nominatim.openstreetmap.org https://provinces.open-api.vn https://api.vietqr.io http://localhost:11434; img-src 'self' data: blob: https://tryymsxyyckgbrmmvozx.supabase.co https://img.chillhome.io.vn https://storage.chillhome.io.vn https://ptcrm.vercel.app https://picsum.photos https://img.vietqr.io https://*.zdn.vn; media-src 'self' blob: https://tryymsxyyckgbrmmvozx.supabase.co https://storage.chillhome.io.vn https://*.zdn.vn; frame-src 'self' https://tryymsxyyckgbrmmvozx.supabase.co https://storage.chillhome.io.vn; worker-src 'self' blob:; form-action 'self'; manifest-src 'self'"
                 }
             ]
         },

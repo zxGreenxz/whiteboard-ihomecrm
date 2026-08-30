@@ -1,5 +1,19 @@
 import type { ActionKey } from "@/lib/permissions";
 
+export type CopilotPageMode = "none" | "read" | "navigate" | "filter" | "draft";
+export type CopilotDataClass = "public" | "internal" | "financial" | "security" | "pii";
+
+export interface CopilotPageContract {
+  key: string;
+  route: string;
+  mode: CopilotPageMode;
+  permission: { module: string; action: ActionKey };
+  dataClass: CopilotDataClass;
+  safeControlIds: readonly string[];
+  e2eSpec?: string;
+  exemption?: string;
+}
+
 /**
  * Một "capability" = một bề mặt sản phẩm ở mức TRANG: route chính, chỗ nó xuất
  * hiện trong nav/launcher, quyền gác nó, và cờ bật/tắt.
@@ -46,6 +60,9 @@ export interface CapabilityDefinition {
    * TƯỜNG MINH và có lý do, không bao giờ là một trường bỏ trống.
    */
   permission: { module: string; action: ActionKey; guardMienTruVi?: string };
+
+  /** Explicit page surfaces Copilot may access; omitted means no Copilot access. */
+  copilot?: { pages: readonly CopilotPageContract[] };
 
   surfaces: {
     desktopNav: boolean;

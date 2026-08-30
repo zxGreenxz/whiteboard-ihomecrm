@@ -11,7 +11,72 @@ import {
   gocDom,
   hopLoai,
   thoatChuoiChon,
+  taoCongCuDieuKhienAnToan,
 } from '../safeControls';
+
+describe('taoCongCuDieuKhienAnToan', () => {
+  it('chi giai control co khoa trang day du va dispatch input', async () => {
+    const input = el({ id: 'invoices.list.o-tim', tag: 'input' }) as unknown as HTMLInputElement & {
+      value: string;
+      __safeId: string | null;
+    };
+    input.value = '';
+    const tools = taoCongCuDieuKhienAnToan(
+      { key: 'invoices.list', safeControlIds: ['o-tim'] },
+      root([input]) as unknown as Document,
+    );
+    const result = await tools.safe_input.execute({ control_id: 'o-tim', text: 'abc' }, { signal: new AbortController().signal });
+    expect(result).toContain('o-tim');
+    expect(input.value).toBe('abc');
+  });
+
+  it('tu choi control khong duoc gan dung namespace trang', async () => {
+    const input = el({ id: 'customers.list.o-tim', tag: 'input' });
+    const tools = taoCongCuDieuKhienAnToan(
+      { key: 'invoices.list', safeControlIds: ['o-tim'] },
+      root([input]) as unknown as Document,
+    );
+    await expect(
+      tools.safe_input.execute({ control_id: 'o-tim', text: 'abc' }, { signal: new AbortController().signal }),
+    ).rejects.toMatchObject({ ma: 'khong_thay' });
+  });
+
+  it('khong thao tac neu phan tu bi thay the sau khi giai', async () => {
+    const input = el({ id: 'invoices.list.o-tim', tag: 'input' });
+    const rootDoc = root([input]) as unknown as Document;
+    const tools = taoCongCuDieuKhienAnToan(
+      { key: 'invoices.list', safeControlIds: ['o-tim'] },
+      rootDoc,
+    );
+    (input as unknown as { isConnected: boolean }).isConnected = false;
+    await expect(
+      tools.safe_input.execute({ control_id: 'o-tim', text: 'abc' }, { signal: new AbortController().signal }),
+    ).rejects.toMatchObject({ ma: 'khong_thay' });
+  });
+
+  it('kiem tra lai guard trang ngay truoc khi dispatch', async () => {
+    let choPhep = true;
+    let daDispatch = false;
+    const input = el({ id: 'invoices.list.o-tim', tag: 'input' });
+    (input as unknown as { value: string }).value = '';
+    (input as unknown as { dispatchEvent: () => boolean }).dispatchEvent = () => {
+      daDispatch = true;
+      return true;
+    };
+    const tools = taoCongCuDieuKhienAnToan(
+      { key: 'invoices.list', safeControlIds: ['o-tim'] },
+      root([input]) as unknown as Document,
+      { beforeDispatch: () => { if (!choPhep) throw new Error('page_changed'); } },
+    );
+
+    choPhep = false;
+    await expect(
+      tools.safe_input.execute({ control_id: 'o-tim', text: 'abc' }, { signal: new AbortController().signal }),
+    ).rejects.toThrow('page_changed');
+    expect(daDispatch).toBe(false);
+    expect((input as unknown as { value: string }).value).toBe('');
+  });
+});
 
 const trang = { key: 'invoices.list', safeControlIds: ['loc-thang', 'o-tim', 'chon-trang-thai'] };
 

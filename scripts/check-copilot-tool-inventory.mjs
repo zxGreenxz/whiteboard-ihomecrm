@@ -23,6 +23,11 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  inventoryFromCopilotSource,
+  validateCopilotActionInventory,
+} from './check-copilot-forbidden-actions.mjs';
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const THU_MUC_TOOL = join(repoRoot, 'src', 'copilot', 'tools');
 const FILE_README = join(repoRoot, 'docs', 'ai-copilot', 'README.md');
@@ -109,12 +114,7 @@ export function timSoTuKhai(vanBan) {
   return [...ngoai.matchAll(/(\d+)\s+(?:write\s+)?(?:tool\b|công cụ)/gi)].map((m) => m[0].trim());
 }
 
-/**
- * So sánh bỏ khác biệt CRLF (28/08/2026). Checkout Windows (autocrlf) trả
- * README về CRLF trong khi khối sinh ra là LF — phép so chuỗi thô lệch từng
- * dòng dù nội dung giống hệt, gate đỏ trên MỌI máy Windows và xanh trên CI
- * Linux. Cùng lớp lỗi mà generate-docs-views đã tự ghi trong hàm bo() của nó.
- */
+/** Compare generated documentation independent of the checkout line ending. */
 export const khopBoCRLF = (a, b) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
 
 function main() {
@@ -129,6 +129,16 @@ function main() {
     console.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ bóc được ${tools.length} tool (sàn ${SAN_TOOL}).`);
     console.error('   Hình dạng khai báo tool đã đổi — đừng đọc thành "registry rỗng".');
     process.exit(3);
+  }
+
+  // Keep the inventory gate build-failing when a forbidden executor is added.
+  // This runs against executable source, not human-facing descriptions.
+  const actionProblems = validateCopilotActionInventory(inventoryFromCopilotSource(nguon));
+  if (actionProblems.length) {
+    console.error(`Copilot forbidden-action gate: ${actionProblems.length} problem(s)`);
+    for (const problem of actionProblems) console.error(`  - ${problem}`);
+    process.exitCode = 1;
+    return;
   }
 
   const readme = readFileSync(FILE_README, 'utf8');

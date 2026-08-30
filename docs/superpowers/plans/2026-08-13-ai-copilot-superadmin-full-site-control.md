@@ -22,9 +22,10 @@ batch-consent / step-up approve (đường nâng cấp Op3 khi cần).
 **Spec:** `docs/superpowers/specs/2026-08-13-ai-copilot-superadmin-control-design.md` (hồ sơ audit +
 findings B1–B7/F1–F7; xem Addendum 2026-08-14 trong spec về quyết định LEAN).
 
-**Oracle chất lượng:** `docs/ai-copilot/COPILOT-EVALUATION-2026-08-13.md` — 40 case live, nhóm
-C01–C30 hiện 15 PASS / 7 PARTIAL / 8 FAIL. Plan này phải đóng được các FAIL/PARTIAL nhóm query,
-routing, relative-date, orchestration.
+**Oracle chất lượng:** `docs/ai-copilot/COPILOT-EVALUATION-2026-08-13.md` — 40 case live. Headline
+snapshot ghi C01–C30 là 15 PASS / 7 PARTIAL / 8 FAIL, nhưng các case rows hiện đếm được 16 PASS /
+7 PARTIAL / 7 FAIL; discrepancy này phải được reconcile bằng golden runner trước khi dùng làm KPI.
+Plan này phải đóng được các FAIL/PARTIAL nhóm query, routing, relative-date, orchestration.
 
 ---
 
@@ -63,7 +64,8 @@ routing, relative-date, orchestration.
 ## Interface bắt buộc (lean)
 
 ```ts
-// src/copilot/tools/registry.ts — mở rộng (hiện KHÔNG có organizationId)
+// src/copilot/tools/registry.ts — contract đã land ở worktree; acceptance vẫn phải giữ
+// selected organization explicit và server-authorized cho mọi tool scoped.
 export interface ToolCtx {
   perms: PermissionsMap | undefined;
   organizationId: string | null;      // MỚI — Phase A4
@@ -90,33 +92,52 @@ public.copilot_preview_income_expense_v1(p_organization_id uuid, p_payload jsonb
 public.copilot_execute_income_expense_v1(p_confirmation_nonce text, p_payload jsonb) RETURNS jsonb
   -- nonce raw 32 byte trả đúng một lần, TTL 5 phút, digest lưu app_private, CAS consumed_at.
 
--- Phase C3 (migration 20260814035500)
+- Phase C3 (forward migration rollout; source hien tai `20260828170000_copilot_feature_flags_v1.sql`)
 public.get_my_copilot_availability_v1(p_organization_id uuid) RETURNS jsonb
   -- trả set page/action ID đang enabled cho actor+org từ bảng copilot_feature_flags.
 ```
 
 ---
 
-## Tiến độ (cập nhật 2026-08-14)
+## Tiến độ (cập nhật 2026-08-28 — đối chiếu lại bằng chứng)
 
 | Task | Trạng thái | Commit |
 | --- | --- | --- |
-| A1 — sửa 4 quan hệ sai | ✅ xong | `56b177c6` |
-| A2 — đồng bộ route + gate subset | ✅ xong | `a01e63dc`, `fb20970a` |
+| A1 — sửa 4 quan hệ sai | ⚠ source + local harness đã xanh; live PostgREST chưa rerun | `56b177c6`, `2584f23a` |
+| A2 — đồng bộ route + gate subset | ✅ xong cho pilot 3 route (không phải full-site) | `a01e63dc`, `fb20970a` |
 | A3.2 — bug chỉ dẫn tool `respond` | ✅ xong | `27962a39` |
 | A3.3 — inventory tool sinh từ nguồn | ✅ xong | `432c7937` |
-| A5 — kỳ tương đối + năng lực prompt | ✅ xong | `6f20583f` |
+| A5 — kỳ tương đối + năng lực prompt | ⚠ unit/static có, live rerun và prompt drift còn mở | `6f20583f` |
 | A3.1 — containment write | ⏭ gộp vào B1 (xem ghi chú) | — |
-| A4 — selected organization | ✅ xong | `80cc45aa` (migration), `4f3af291` (client) |
-| **Phase A** | **✅ HOÀN TẤT** | 213/213 test · 2619 test ×4 múi giờ |
-| B1 — nonce xác nhận server | ✅ xong | `86717f59` (migration), `562ea33a` (store), `da89ecc1` (client) |
-| B2 — cứng hoá `ai_write_audit` | ✅ xong | `e366679c` |
-| B3 — build SHA + E2E đầu tiên | ✅ xong | `d5bd7903`, `393a5cbc` |
-| **Phase B** | **✅ HOÀN TẤT + ĐÃ LÊN PRODUCTION** | 3491/3491 test · CI 3/3 xanh · migration đã apply |
-| C1.1 — pin semantics PageAgent | ✅ xong | `34fb965e` |
-| C1.2 — bộ giải safe-control | ✅ xong | `04437ba8` |
-| C1.3+ — safe tools, page contract, flags, CSP | ⬜ chưa | — |
+| A4 — selected organization | ⚠ 9 tool scoped đã nhận org ở source: 7 tool qua 8 RPC wrapper; `tim_khach_hang` và `hop_dong_sap_het_han` vẫn query PostgREST với filter do client cung cấp, chưa là server authorization; live catalog/readback, role-real E2E và provenance còn mở | `80cc45aa` (migration), `4f3af291` (client), worktree 28/08 |
+| **Phase A** | **⚠ source/static từng phần, chưa đạt release gate** | A1 local 7/7; còn live rerun, A4 scope và A5 behavioral proof |
+| B1 — nonce xác nhận server | ⚠ source/migration có, negative/E2E đầy đủ còn thiếu | `86717f59` (migration), `562ea33a` (store), `da89ecc1` (client) |
+| B2 — cứng hoá `ai_write_audit` | ⚠ migration/static có, runtime ACL harness chưa có | `e366679c` |
+| B3 — build SHA + E2E đầu tiên | ⚠ worktree có 4 Copilot spec (1 tracked + 3 mới chưa tracked); chưa có live run attested đúng SHA | `d5bd7903`, `393a5cbc`, worktree 28/08 |
+| **Phase B** | **❌ CHƯA ĐỦ BẰNG CHỨNG / KHÔNG ĐƯỢC GỌI LÀ ĐÃ LÊN PRODUCTION** | E2E fleet local-only; spec mới chưa tracked và behavioral/negative cases chưa đủ |
+| C1.1 — pin semantics PageAgent | ✅ source/unit, chưa có browser safety proof | `34fb965e` |
+| C1.2 — bộ giải safe-control | ✅ source/unit, chưa có semantic integration | `04437ba8` |
+| C1.3+ — safe tools, page contract, flags, CSP | ⚠ scaffold có; marker/browser proof và rollout authority chưa đạt | worktree 28/08 |
 | Phase D | ⬜ chưa bắt đầu | — |
+
+**Ghi chú reconciliation 2026-08-28:** ba migration Copilot có evidence đã apply production; điều
+đó không đồng nghĩa Phase A/B đã đạt release gate ứng dụng. Sau khi đối chiếu
+`COPILOT-EVALUATION-2026-08-13.md`, B3 vẫn chưa đạt vì các spec hiện mới chỉ tồn tại trong
+worktree (ba spec mới chưa tracked), chưa có live run/attestation và chưa đủ negative/behavioral
+oracle; A4 source đã có server-bound wrapper nhưng chưa
+đạt multi-org release vì live catalog/readback, provenance và role-real wrong-org/revocation proof
+còn thiếu; A5 còn thiếu live relative-date/routing proof (prompt boolean drift đã được supersede ở
+source). Không chuyển
+phase tiếp theo hoặc promote production
+cho Copilot cho đến khi các điều kiện trong Addendum 2026-08-28 của audit được chứng minh.
+
+A1 đã có thêm harness local ở commit `2584f23a`: 7/7 assertion FK/schema/positive/empty/wrong-org
+trên PostgreSQL disposable cluster, có rollback và teardown. Bằng chứng này nâng A1 từ “thiếu
+harness” thành “local contract pass”, nhưng chưa thay thế PostgREST schema-cache/live rerun đúng SHA.
+
+Các checkbox ở phần task bên dưới là **acceptance criteria chưa đủ bằng chứng**, kể cả khi file/source
+tương ứng đã tồn tại. Không suy ra trạng thái hiện hành từ câu mở đầu lịch sử như “Hiện...” hoặc từ
+nhãn “đã thực hiện”; bảng tiến độ và audit Addendum 27 là nguồn trạng thái hiện hành.
 
 **Phát hiện C1.1 sửa lại spec**: `eval` chỉ nằm trong thân
 `PageController.executeJavascript` — tool đã tắt từ trước. Nên **CSP production
@@ -158,14 +179,19 @@ Bằng chứng lưu ở `docs/generated/schema-change-evidence/`.
    FLEET_PASS_CHUNHA=… npx playwright test specs/copilot-confirmation.spec.ts`.
    Đã xác minh SHA vào được bundle khi build với `VITE_BUILD_SHA`.
 
-**Chưa apply lên production**: migration `20260814032500` mới nằm trong repo, chờ
-`migrate:forward`. Client KHÔNG phụ thuộc nó (vẫn dùng `get_my_organizations`), nên
-deploy web trước hay sau đều an toàn; RPC mới chỉ cần khi bật danh bạ superadmin.
+**Đã apply production ngày 2026-08-14**: ba migration `032500`/`034500`/`034600` có evidence ở
+`docs/generated/schema-change-evidence/`. Source hiện đã chuyển client sang
+`list_my_copilot_organizations_v1`; release gate A4 vẫn mở vì các wrapper mới chưa có live
+catalog/readback và role-real proof trên deployment đúng SHA.
 
-**Khoảng trống A4 còn lại** (đã ghi bằng test trong `toolOrgScope.test.ts`): 6 tool
-đi qua RPC có chữ ký cố định chỉ **chặn** được, chưa **lọc** được theo công ty —
-sau khi chọn, chúng vẫn trả union. Với người một công ty (đa số) hai thứ trùng nhau.
-Đóng nốt cần RPC v2 cho từng cái.
+**Khoảng trống A4 còn lại** (đã ghi một phần bằng test trong `toolOrgScope.test.ts`): 9 tool scoped
+hiện gồm 7 tool qua 8 RPC wrapper server-side (occupancy dùng hai RPC) và 2 tool PostgREST còn
+tin vào filter `organization_id` do client cung cấp. Filter phía browser không phải selected-org
+server boundary, đặc biệt khi RLS cho superadmin đọc toàn bảng. Live catalog/readback, provenance,
+server authorization và role-real wrong-org/revocation proof còn thiếu. Không coi binding source là
+release PASS; mọi tool phải chứng minh foreign row = 0 trước formatter.
+`doanh_thu_thang` là một trong các tool đã được chuyển sang wrapper P&L server-bound; vẫn cần
+positive/empty/wrong-org/revoked assertion và parity readback cùng các tool còn lại.
 
 **Ghi chú A3.1 → B1**: plan gốc định gỡ `tao_phieu_thu_chi_nhap` khỏi model cho tới
 khi có nonce. Làm vậy sẽ mất một tính năng đang chạy trong suốt thời gian làm B1, mà
@@ -202,6 +228,10 @@ direct relation đó → PostgREST lỗi schema-cache trên deployment thật (5
 - Create: `scripts/test-copilot-readonly-queries.mjs` (harness production-like, pattern
   `scripts/test-cross-tenant.mjs` với `--local-cluster`; hạ tầng
   `scripts/network-center-disposable-db.mjs`)
+
+**Cập nhật 2026-08-28:** harness đã land ở commit `2584f23a` và pass 7/7 assertion trên
+PostgreSQL disposable cluster (có rollback/teardown). Đây là local contract proof; vẫn bắt buộc
+rerun PostgREST trên deployment đúng SHA để đóng các case C02/C04/C14/C16/C27.
 
 **Steps:**
 
@@ -263,8 +293,8 @@ Hiện `MO_TRANG_ROUTES` = 5 route (`/apartments /invoices /customers /contracts
 - [ ] **A3.2** Sửa bug `writeTools.ts:106`: bỏ chỉ dẫn model "gọi respond NGAY BÂY GIỜ" — tool
   `respond` đã bị gỡ khỏi chat engine (xem doc-comment `chatEngine.ts:3-11`); chỉnh text preview
   theo flow hiện tại.
-- [ ] **A3.3** `docs/ai-copilot/README.md` dòng 4 đang claim "10 tool đọc + 1 write" — thực tế 13
-  đọc + 1 write. Thay số đếm tay bằng block sinh từ registry giữa
+- [ ] **A3.3** Baseline lúc lập plan ghi "10 tool đọc + 1 write" (sau đó từng lệch thành 13 đọc);
+  inventory hiện hành là 12 đọc + 1 ghi + 1 điều hướng = 14 tool. Thay số đếm tay bằng block sinh từ registry giữa
   `<!-- COPILOT_TOOL_INVENTORY:START/END -->`; gate so block với source, fail khi drift.
 
 ### Task A4: Selected organization — nền tảng đúng-công-ty (đóng B4, thay security-remediation Task 9 phần Copilot)
@@ -276,8 +306,10 @@ Hiện `MO_TRANG_ROUTES` = 5 route (`/apartments /invoices /customers /contracts
 - Modify: `src/copilot/ChatPanel.tsx`
 - Modify: `src/copilot/tools/registry.ts`, `src/copilot/tools/nghiepVuTools.ts`,
   `src/copilot/tools/writeTools.ts`
+- Create: `supabase/migrations/20260829020000_copilot_customer_contract_scope_v1.sql`
 - Create: `src/copilot/__tests__/toolOrgScope.test.ts`
 - Create: `scripts/test-copilot-org.mjs` (harness `--local-cluster`, pattern `test-cross-tenant.mjs`)
+- Modify: `.e2e-fleet/specs/copilot-readonly-smoke.spec.ts`
 - Modify sau apply: `src/integrations/supabase/types.ts`, `contracts/surfaces/rpc-surface.json`
 
 **Steps:**
@@ -288,8 +320,9 @@ Hiện `MO_TRANG_ROUTES` = 5 route (`/apartments /invoices /customers /contracts
   - `resolveSelectedOrganizationId`: 4 case như Interface bắt buộc ở trên.
   - RPC: user thường chỉ thấy memberships ACTIVE; superadmin thấy directory ACTIVE; org
     suspended/unknown bị từ chối chọn; user thường forge org khác → từ chối.
-  - Mỗi tool org-scoped (`so_quy`, `doanh_thu_thang`, `cong_no_tong_quan`, `tim_khach_hang`,
-    `hop_dong_sap_het_han`, `tao_phieu_thu_chi_nhap`) trả lỗi ổn định `organization_required`
+  - Mỗi tool org-scoped (`so_quy`, `doanh_thu_thang`, `cong_no_tong_quan`, `coc_dang_giu`,
+    `ty_le_lap_day`, `phong_trong`, `tim_hoa_don`, `tim_khach_hang`, `hop_dong_sap_het_han`,
+    `tao_phieu_thu_chi_nhap`) trả lỗi ổn định `organization_required`
     TRƯỚC khi query khi `ctx.organizationId === null`.
 - [ ] **A4.2** Migration: RPC `list_my_copilot_organizations_v1` (SECURITY DEFINER, REVOKE
   PUBLIC/anon). Đăng ký đủ sổ migration (provenance + unknown-review nếu áp dụng); qua
@@ -300,16 +333,20 @@ Hiện `MO_TRANG_ROUTES` = 5 route (`/apartments /invoices /customers /contracts
   lần refresh, clear ngay khi org hết ACTIVE. **Xoá authority `organizations[0]`**
   (`OrganizationContext.tsx:103`). Grep chốt:
   `rg -n "organizations\[0\]" src/contexts src/copilot` → 0 kết quả mang tính authority.
-- [ ] **A4.4** Luồn `organizationId` vào `ToolCtx` từ `ChatPanel`; tool đọc thêm
-  `.eq('organization_id', ctx.organizationId)` nơi schema có cột đó; RPC tool truyền
-  `p_organization_id` nơi RPC nhận; tool resolve tài nguyên cuối (building/type) vẫn authorize
-  server-side. Hai tool A1 chỉ được bật lại cho model sau khi cả base + enrichment query đều bind
-  org và harness wrong-org negative xanh.
+- [ ] **A4.4** Luồn `organizationId` vào `ToolCtx` từ `ChatPanel`; tool truyền
+  `p_organization_id` vào typed RPC nơi RPC nhận; **không dùng `.eq('organization_id', ...)` ở
+  browser làm authority**. Migration `20260829020000_copilot_customer_contract_scope_v1.sql`
+  tạo typed RPC cho `tim_khach_hang` và `hop_dong_sap_het_han`, field allowlist, re-check actor,
+  org ACTIVE, sandbox/lifecycle, permission và selected-org contract trước khi đọc. Tool resolve tài
+  nguyên cuối (building/type) vẫn authorize server-side. Hai tool A1 chỉ được bật lại cho model sau
+  khi base + enrichment cùng bind org và harness wrong-org/forged-org negative xanh.
 - [ ] **A4.5** Verify:
   ```powershell
   npx vitest run src/contexts/__tests__/OrganizationContext.test.ts src/copilot/__tests__/toolOrgScope.test.ts src/copilot/__tests__/copilot.test.ts
   node scripts/test-copilot-org.mjs --local-cluster
   node scripts/test-copilot-readonly-queries.mjs --local-cluster
+  # positive, empty, forged-org, wrong-org, revoked-membership; foreign-row = 0 trước formatter
+  cd .e2e-fleet; npx playwright test specs/copilot-readonly-smoke.spec.ts
   npm run gate:migration-provenance; npm run gate:rpc-surface; npm run gate:definer-acl
   ```
 
@@ -334,8 +371,12 @@ Hiện `MO_TRANG_ROUTES` = 5 route (`/apartments /invoices /customers /contracts
 - [ ] **A5.4** Verify: vitest các file trên + chạy lại thủ công 6 case eval
   (C23/C25/C27/C28 + C02/C04) trên preview build, ghi kết quả vào PR.
 
-**Exit gate Phase A:** 5 FAIL query = 0; wrong-org negative xanh; `organizations[0]` hết authority;
-route không lệch; README đúng inventory; write tool không còn expose cho model.
+**Exit gate Phase A:** 5 FAIL query = 0; các ca wrong-org/forged-org/revoked-membership đều
+negative xanh; `tim_khach_hang` và `hop_dong_sap_het_han` không còn client-only
+`.eq('organization_id', ...)` mà dùng typed server boundary; foreign-row = 0 trước formatter;
+`organizations[0]` hết authority; route không lệch; README đúng inventory; write tool không
+expose cho **PageAgent/UI-control** (chat vẫn có thể thấy write tool sau khi server consent
+contract đã bật).
 
 ---
 
@@ -343,8 +384,10 @@ route không lệch; README đúng inventory; write tool không còn expose cho 
 
 ### Task B1: Confirmation nonce server (đóng B3 — thay security-remediation Task 16)
 
-Hiện `xac_nhan: z.boolean()` nằm trong input schema (`writeTools.ts:29-32`) — model tự lật
-`false→true`, prompt injection tạo được phiếu thật. Không có `confirmationStore.ts` (Create mới).
+**Baseline trước remediation:** `xac_nhan: z.boolean()` từng nằm trong input schema và model có thể
+tự lật `false→true`. Source hiện đã có nonce server + `confirmationStore.ts`, nhưng store mới là một
+khe global và proof behavioral còn thiếu; các checkbox dưới đây là acceptance criteria chưa đủ bằng
+chứng, không phải mô tả code chưa tồn tại.
 
 **Files:**
 - Create: `supabase/migrations/20260814034500_copilot_confirmation_intent_v1.sql`
@@ -396,15 +439,17 @@ INSERT/UPDATE trực tiếp (baseline schema ~159941-159995), và `writeTools.ts
 
 ### Task B3: E2E Copilot đầu tiên + chống deployment drift kiểu lean (đóng C38, F cũ về E2E)
 
-Hiện `.e2e-fleet/specs/` KHÔNG có spec `copilot-*` nào; Playwright config default
-`https://ptcrm.vercel.app` (production) và chưa có logic source-SHA.
+Baseline khi task B3 được lập không có spec `copilot-*`; hiện worktree đã có 4 spec (confirmation
+đã tracked và ba spec mới chưa tracked). Playwright config vẫn có default
+`https://ptcrm.vercel.app` (production), còn source-SHA helper mới chỉ là source/local evidence.
 
 **Files:**
 - Create: `src/buildMetadata.ts` (hằng build-time = full git SHA) + meta tag trong `index.html`
 - Modify: `.e2e-fleet/playwright.config.ts` (helper đọc meta tag; spec ghi bắt buộc
   `FLEET_BASE_URL` tường minh)
-- Create: `.e2e-fleet/specs/copilot-confirmation.spec.ts` (Create — plan cũ ghi nhầm "Modify")
-- Create: `.e2e-fleet/specs/copilot-readonly-smoke.spec.ts`
+- Existing/tracked: `.e2e-fleet/specs/copilot-confirmation.spec.ts`
+- Existing/untracked at current worktree: `.e2e-fleet/specs/copilot-readonly-smoke.spec.ts`,
+  `.e2e-fleet/specs/copilot-golden-readonly.spec.ts`, `.e2e-fleet/specs/copilot-pageagent-safety.spec.ts`
 
 **Steps:**
 
@@ -415,12 +460,20 @@ Hiện `.e2e-fleet/specs/` KHÔNG có spec `copilot-*` nào; Playwright config d
   preview→click→execute tạo đúng 1 draft `UNAPPROVED` + 1 dòng audit; negative (không click, nonce
   hết hạn, payload đổi) tạo 0. `copilot-readonly-smoke.spec.ts`: chạy C01-mẫu, C02, C04, C25, C28
   qua proxy mock — zero runtime query error.
+- [ ] **B3.2a** Gate file-existence phải fail nếu một trong **bốn** spec Copilot bắt buộc
+  (`copilot-confirmation`, `copilot-readonly-smoke`, `copilot-golden-readonly`,
+  `copilot-pageagent-safety`) không tồn tại; không dựa vào Playwright để phát hiện file thiếu.
+  Gate cũng phải kiểm tra các spec đã được git-track và ghi artifact run; file tồn tại/typecheck
+  không được tính là live behavioral coverage. Confirmation spec phải cấu hình mock provider/upstream
+  thật sự; chỉ viết chữ "mock" trong plan không được tính là coverage.
 - [ ] **B3.3** Verify:
   ```powershell
   $env:EXPECTED_SOURCE_SHA = git rev-parse HEAD
   # FLEET_BASE_URL trỏ preview build của HEAD đã review — bắt buộc, không nhận default
   cd .e2e-fleet; $env:FLEET_WORKERS='2'; npx playwright test specs/copilot-confirmation.spec.ts specs/copilot-readonly-smoke.spec.ts
   ```
+  File-existence/typecheck pass không thay thế việc chạy đủ bốn spec trên preview build đã attested;
+  ba spec mới hiện chỉ là smoke/schema tối thiểu, chưa phải behavioral golden proof.
 
 **Exit gate Phase B:** model không thể tự xác nhận ghi (mọi negative đỏ→xanh); browser hết đường
 INSERT/UPDATE audit; E2E copilot tracked chạy trên đúng bản build đã review.
@@ -471,13 +524,22 @@ exclusive; selector-map không public — nên đi path B: semantic tools.
 
 ### Task C3: Feature flags rollout đơn giản (thay rollout control plane)
 
-- [ ] **C3.1** Migration `20260814035500_copilot_feature_flags.sql`: bảng
+- [ ] **C3.1** Migration rollout (forward timestamp thực tế phải theo file chưa deploy): bảng
   `copilot_feature_flags(scope 'page'|'action', contract_id, state 'disabled'|'shadow'|'enabled',
   canary_org uuid null, updated_by, updated_at)` + audit log thường (bảng append phụ, không cần
-  ledger engine); RPC `get_my_copilot_availability_v1(p_organization_id)`. Admin toggle qua RPC,
-  không `.from().update()` trực tiếp. Sổ migration + gates như A4.
+  ledger engine); RPC `get_my_copilot_availability_v1(p_organization_id)`. Admin toggle qua typed
+  transition RPC, không `.from().update()` trực tiếp. Transition RPC phải re-check quyền admin,
+  validate `disabled -> shadow -> enabled`/rollback, dùng expected global revision để chặn stale và
+  ghi audit append-only trong cùng transaction. Snapshot key phải giữ cả `scope` và `contract_id`
+  (composite hoặc nested), không được `jsonb_object_agg(contract_id, state)` làm page/action đè nhau;
+  revision phải monotonic toàn cục, không dùng `max()` của counter từng row. Audit tối thiểu có
+  reason, evidence/reference, expiry/canary window và rollback ref; có immutability guard. Test bắt
+  buộc: unauthorized, stale revision, hai transition đồng thời, rollback và audit UPDATE/DELETE bị
+  từ chối. Sổ migration + gates như A4.
 - [ ] **C3.2** `buildRegistry`/`toPageAgentTools`/`toLlmTools` lọc theo availability set; null/stale
-  snapshot → expose 0 action rollout-controlled (fail closed); admin UI hiển thị state + blocker.
+  snapshot → expose 0 action rollout-controlled (fail closed); mọi capability được expose phải có
+  rollout key hoặc exemption tường minh. Test cả execute path cho missing/stale/revoked snapshot,
+  không chỉ test registry; admin UI hiển thị state, global revision và blocker.
 
 ### Task C4: Mở read/navigation theo batch domain + golden eval lite
 
@@ -486,6 +548,9 @@ exclusive; selector-map không public — nên đi path B: semantic tools.
   `.e2e-fleet/specs/copilot-golden-readonly.spec.ts`: mock lane (safety/authz deterministic) +
   real-model lane pinned (chất lượng routing + latency, ghi min/median/p95). Ghi provider/model +
   build SHA mỗi run; KHÔNG yêu cầu entitlement/permission snapshot đầy đủ (Deferred).
+- [ ] **C4.1a** Product owner chốt SLA số trước khi đánh PASS latency. Baseline 13/08:
+  median 17,448 ms, mean 21,105 ms, p95 42,057 ms, max 55,913 ms; golden lane phải giữ ít nhất
+  p50/p95/max và không coi HTTP 200 là đạt hiệu năng.
 - [ ] **C4.2** Mở page contract theo batch (buildings/rooms → customers/contracts → invoices read →
   reports...) — mỗi batch: khai contract, bật flag `shadow` → chạy golden + smoke → `enabled`.
   Trang admin/public/auth mặc định `none` + exemption. Batch sau chỉ mở khi batch trước xanh.
@@ -503,8 +568,9 @@ exclusive; selector-map không public — nên đi path B: semantic tools.
   `/settings/ai-copilot?knowledge=<docKey>` + cảnh báo `knowledge_stale` khi doc chưa review —
   KHÔNG chặn execute.
 
-**Exit gate Phase C:** default-deny theo contract + flag; autosave/icon-only/injection zero-mutation
-proof; 113 route accounted; golden eval lite chạy 2 lane xanh trên batch đã mở.
+**Exit gate Phase C:** default-deny theo contract + flag; transition chỉ qua typed RPC với global
+revision + append-only audit; autosave/icon-only/injection zero-mutation proof; 113 route accounted;
+golden eval lite chạy 2 lane xanh trên batch đã mở.
 
 ---
 

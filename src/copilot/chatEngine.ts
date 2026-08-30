@@ -11,6 +11,7 @@
 // bằng `content` khi đã đủ. Không còn `respond`, và chữ chảy dần được.
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { CHAT_SYSTEM_PROMPT } from './systemPromptVi';
 import { goiModelMotLuot, type KhaiBaoTool, type TinNhan } from './llmClient';
 import { dongNguCanhTrang } from './banDoHeThong';
@@ -110,11 +111,14 @@ const CAP_KET_QUA_TOOL = 12_000;
  * lỗi lệch ngày do UTC (commit f819c2a8, 11547392).
  */
 export function dongHomNay(now: Date = new Date()): string {
-  const dd = String(now.getDate()).padStart(2, '0');
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const iso = `${now.getFullYear()}-${mm}-${dd}`;
-  const thu = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'][now.getDay()];
-  return `HÔM NAY là ${thu}, ngày ${dd}/${mm}/${now.getFullYear()} (${iso}); kỳ hiện tại là ${now.getFullYear()}-${mm}. TUYỆT ĐỐI không tự đoán ngày: cần "hôm nay" thì BỎ TRỐNG tham số ngày để hệ thống tự điền.`;
+  const timezone = 'Asia/Ho_Chi_Minh';
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+  const year = parts.find((p) => p.type === 'year')?.value ?? '';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '';
+  const day = parts.find((p) => p.type === 'day')?.value ?? '';
+  const iso = `${year}-${month}-${day}`;
+  const thu = new Intl.DateTimeFormat('vi-VN', { timeZone: timezone, weekday: 'long' }).format(now);
+  return `CURRENT_DATETIME_CONTEXT: timezone=${timezone}; date=${iso}; current_month=${year}-${month}. HÔM NAY là ${thu}, ngày ${day}/${month}/${year} (${iso}); kỳ hiện tại là ${year}-${month}. TUYỆT ĐỐI không tự đoán ngày: cần "hôm nay" thì BỎ TRỐNG tham số ngày để hệ thống tự điền.`;
 }
 
 /**
@@ -182,7 +186,7 @@ export async function runChatTurn(params: {
    */
   anh?: string[];
 }): Promise<ChatTurnResult> {
-  const registry = buildRegistry();
+  const registry = buildRegistry(params.ctx.availability);
   const toolMap = toLlmTools(registry, params.ctx);
   const khaiBao = toolSangKhaiBao(toolMap);
 
@@ -315,7 +319,7 @@ export async function runChatTurn(params: {
   // Hết vòng mà mô hình vẫn chưa chốt → trả thẳng dữ liệu đã gom, đừng im lặng.
   const fallback =
     toolEvents.length > 0
-      ? `Kết quả tra cứu:\n${toolEvents[toolEvents.length - 1].output.slice(0, 4000)}`
+      ? `Kết quả tra cứu:\n${toolEvents.map((ev) => `- ${ev.tool}: ${ev.output.slice(0, 4000)}`).join('\n')}`
       : 'Xin lỗi, tôi chưa trả lời được câu hỏi này (quá số vòng công cụ cho phép).';
   newMessages.push({ role: 'assistant', content: fallback });
   return { text: fallback, toolEvents, usage, newMessages };
@@ -325,13 +329,49 @@ export async function runChatTurn(params: {
 
 export interface ThreadRow { id: string; title: string | null; updated_at: string }
 
-export async function loadLatestThread(): Promise<ThreadRow | null> {
-  const { data, error } = await supabase
+/** Guard state commits from async work started under a previous org selection. */
+export function isCurrentChatScope(
+  generation: number,
+  currentGeneration: number,
+  organizationId: string | null,
+  currentOrganizationId: string | null,
+): boolean {
+  return generation === currentGeneration && organizationId === currentOrganizationId;
+}
+
+async function currentUserId(): Promise<string> {
+  const { data } = await supabase.auth.getUser();
+  const userId = data.user?.id;
+  if (!userId) throw new Error('ChÆ°a Ä‘Äƒng nháº­p');
+  return userId;
+}
+
+export async function loadLatestThread(organizationId: string | null): Promise<ThreadRow | null> {
+  if (!organizationId) return null;
+  const userId = await currentUserId();
+  let query = supabase
     .from('ai_chat_threads')
     .select('id, title, updated_at')
+    .eq('user_id', userId);
+  query = organizationId ? query.eq('organization_id', organizationId) : query.is('organization_id', null);
+  const { data, error } = await query
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function loadOwnedThread(threadId: string, organizationId: string | null) {
+  if (!organizationId) return null;
+  const userId = await currentUserId();
+  let query = supabase
+    .from('ai_chat_threads')
+    .select('id, user_id, organization_id')
+    .eq('id', threadId)
+    .eq('user_id', userId);
+  query = organizationId ? query.eq('organization_id', organizationId) : query.is('organization_id', null);
+  const { data, error } = await query.maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -345,9 +385,9 @@ export async function loadLatestThread(): Promise<ThreadRow | null> {
  * Truyền lên đây KHÔNG phải hàng rào: trigger mới là hàng rào, và nó kiểm lại
  * rằng người dùng thật sự có membership ACTIVE ở tổ chức được khai.
  */
-export async function createThread(title: string, organizationId?: string | null): Promise<ThreadRow> {
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData.user?.id;
+export async function createThread(title: string, organizationId: string | null): Promise<ThreadRow> {
+  if (!organizationId) throw new Error('Pháº£i chá»n tá»• chá»©c trÆ°á»›c khi lÆ°u chat');
+  const userId = await currentUserId();
   if (!userId) throw new Error('Chưa đăng nhập');
   const { data, error } = await supabase
     .from('ai_chat_threads')
@@ -383,22 +423,23 @@ export async function saveMessages(
   model: string,
   organizationId?: string | null,
 ): Promise<void> {
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData.user?.id;
+  const parent = await loadOwnedThread(threadId, organizationId ?? null);
+  if (!parent) throw new Error('Thread khong thuoc nguoi dung hoac to chuc dang chon');
+  const userId = parent.user_id;
   if (!userId) throw new Error('Chưa đăng nhập');
   const rows = msgs.map((m) => ({
     thread_id: threadId,
     user_id: userId,
     role: m.role,
     content: noiDungDeLuu(m.content),
-    tool_calls: m.tool_calls ?? null,
+    tool_calls: m.tool_calls ? JSON.parse(JSON.stringify(m.tool_calls)) as Json : null,
     tool_call_id: m.tool_call_id ?? null,
     model,
     // Tin nhắn vốn kế thừa tổ chức của LUỒNG cha nên thường không cần; gửi kèm
     // để đường ghi không phụ thuộc vào việc luồng đã có nhãn hay chưa.
     ...(organizationId ? { organization_id: organizationId } : {}),
   }));
-  const { error } = await supabase.from('ai_chat_messages').insert(rows as any);
+  const { error } = await supabase.from('ai_chat_messages').insert(rows);
   if (error) throw error;
 }
 
@@ -414,13 +455,20 @@ export function rowsToMessages(
   }));
 }
 
-export async function loadThreadMessages(threadId: string): Promise<Message[]> {
-  const { data, error } = await supabase
+export async function loadThreadMessages(threadId: string, organizationId: string | null): Promise<Message[]> {
+  const parent = await loadOwnedThread(threadId, organizationId);
+  if (!parent) return [];
+  let messagesQuery = supabase
     .from('ai_chat_messages')
     .select('role, content, tool_calls, tool_call_id')
     .eq('thread_id', threadId)
+    .eq('user_id', parent.user_id);
+  messagesQuery = organizationId
+    ? messagesQuery.eq('organization_id', organizationId)
+    : messagesQuery.is('organization_id', null);
+  const { data, error } = await messagesQuery
     .order('seq', { ascending: true })
     .limit(200);
   if (error) throw error;
-  return rowsToMessages((data ?? []) as any);
+  return rowsToMessages((data ?? []) as { role: string; content: string | null; tool_calls: unknown; tool_call_id: string | null }[]);
 }

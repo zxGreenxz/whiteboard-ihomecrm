@@ -11,7 +11,8 @@ import { describe, expect, it, vi } from 'vitest';
 // Cần vì kiểm bằng đột biến đã chỉ ra: test chỉ gọi `dinhDangSoQuy` trực tiếp
 // thì việc tool ngừng dùng hàm đó (quay lại đổ JSON thô) KHÔNG bị bắt.
 const rpc = vi.hoisted(() => vi.fn());
-vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc } }));
+const from = vi.hoisted(() => vi.fn());
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc, from } }));
 
 const { dinhDangSoQuy, soQuy, tyLeLapDay, TOOL_NGHIEP_VU } = await import('../tools/nghiepVuTools');
 
@@ -89,11 +90,16 @@ describe('so_quy — PII không được rời hệ thống', () => {
     // Kiểm bằng đột biến bắt được đúng chỗ này: bản test đầu chỉ gọi
     // `dinhDangSoQuy` trực tiếp, nên nếu tool NGỪNG dùng nó (quay lại
     // `JSON.stringify(data)`) thì không test nào đỏ. Ca này chạy qua `execute`.
+    const chain: Record<string, unknown> = {};
+    for (const method of ['select', 'eq', 'is']) chain[method] = () => chain;
+    chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve);
+    from.mockReturnValue(chain);
     rpc.mockResolvedValueOnce({ data: BAO_CAO, error: null });
     const out = await soQuy.execute({ tu_ngay: '2026-08-01', den_ngay: '2026-08-12' }, { perms: undefined, organizationId: 'aaaa0000-0000-4000-8000-000000000001' });
-    expect(rpc).toHaveBeenCalledWith('cashbook_settlement_report', {
+    expect(rpc).toHaveBeenCalledWith('copilot_cashbook_settlement_v2', {
       p_from: '2026-08-01',
       p_to: '2026-08-12',
+      p_organization_id: 'aaaa0000-0000-4000-8000-000000000001',
     });
     for (const ten of ['Nguyễn Văn Kế Toán', 'Lê Văn Giao', 'nghi anh Tuấn']) {
       expect(out, `tool để lọt "${ten}"`).not.toContain(ten);

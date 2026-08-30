@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "providers": [
+    {
+      "provider": "openrouter",
+      "enabled": true,
+      "default_model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "data_class": "cloud",
+      "egress": "cloud",
+      "models": [
+        {
+          "id": "nvidia/nemotron-3-super-120b-a12b:free",
+          "pricing_mode": "free",
+          "input_price": 0,
+          "output_price": 0
+        }
+      ]
+    },
+    {
+      "provider": "9router",
+      "enabled": true,
+      "default_model": "cx/gpt-5.6-sol(max)",
+      "data_class": "cloud",
+      "egress": "cloud",
+      "models": [
+        { "id": "cx/gpt-5.6-sol(max)", "pricing_mode": "self_hosted", "input_price": 0, "output_price": 0 }
+      ]
+    },
+    {
+      "provider": "ollama",
+      "enabled": false,
+      "default_model": null,
+      "data_class": "local_only",
+      "egress": "local",
+      "models": []
+    }
+  ]
+}

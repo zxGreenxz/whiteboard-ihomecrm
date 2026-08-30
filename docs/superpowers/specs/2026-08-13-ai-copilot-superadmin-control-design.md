@@ -2,25 +2,24 @@
 
 **Ngay:** 2026-08-13
 
-**Cap nhat:** 2026-08-14 - doi chieu live evaluation 2026-08-13
+**Cap nhat:** 2026-08-28 - doi chieu evaluation, remediation source, rerun test va bang chung release
 
-**Trang thai:** Danh gia va thiet ke de ra quyet dinh; chua trien khai
+**Trang thai:** Audit hien hanh; implementation da remediation mot phan, chua dat full-site/release gate
 
-**Source snapshot:** audit chi tiet tai `main@931eb9e78cee`; baseline Copilot da doi chieu tai
-`main@c925307da634`. Heartbeat so sanh moi `HEAD` voi baseline nay trong `src/copilot`,
-`src/app/capabilities`, `src/contexts`, `supabase/functions/llm-proxy` va Copilot E2E; commit chi doi
-inventory/tai lieu ngoai cac path do khong lam doi finding va khong buoc cap nhat snapshot.
-Committed drift trong scope rong chi gom migration Zalo revoke ACL, tooling restore/credential
-governance va refresh generated RPC/repository inventory (contract hien ghi 672 migration); khong
-dong finding Copilot nao. Current source gate van bao 146 route va 5 route navigation Copilot;
-package van pin PageAgent 1.11.0, chat van `MAX_TOOL_ROUNDS = 6`, UI-control van `maxSteps = 25`.
+**Source snapshots:** audit baseline tai `main@931eb9e78cee`; local readonly harness tai
+`main@2584f23ab54375432ec3346244419f36c5f99b2d`; worktree moi nhat duoc doi chieu tren
+`main@485577a2da063aa9c27f26b9bbad883479b05d7d`. Cac commit sau `2584f23a` khong doi cac path
+Copilot lien quan, nhung worktree hien co thay doi Copilot chua commit/deploy. Gate hien bao 14 tool
+(12 doc, 1 ghi, 1 dieu huong), 3 route navigation pilot va 146 route toan app. Cac finding baseline
+o muc 4-6 phai doc cung Addendum 27; nhan lich su khong thay the artifact release hien hanh.
 
 **Live evaluation supplement:** `docs/ai-copilot/COPILOT-EVALUATION-2026-08-13.md`
 (SHA-256 `65450dca3cbe3926f2ec0bddc4eed62498fcd5d0ab3325e35965cc41a9152980`) ghi nhan
 browser headless authenticated tren `https://ptcrm.vercel.app`, 40 case va read-only oracle tren org
-THAT. Bao cao/harness nay la local untracked artifact, khong ghi deployment source SHA, contract/tool
-manifest digest hay snapshot entitlement/permission, va chua duoc audit nay tai chay doc lap. Vi vay
-no la bang chung live one-off de cap nhat finding, khong phai CI/release attestation.
+THAT. Bao cao da duoc luu nhu snapshot bat bien; harness goc la local artifact da don. Run khong ghi
+deployment source SHA, contract/tool manifest digest hay snapshot entitlement/permission, va chua
+duoc audit nay tai chay doc lap. Vi vay no la bang chung live one-off de cap nhat finding, khong phai
+CI/release attestation.
 
 **Pham vi danh gia:** Chat nghiep vu, tra cuu tai lieu, domain tools, UI-control/PageAgent,
 provider/quota, phan quyen, tenant scope, confirmation, audit, test va van hanh.
@@ -33,18 +32,23 @@ quyen superadmin**.
 He thong da co mot nen tang tot cho chat va tra cuu co kiem quyen: JWT qua proxy, entitlement,
 kill switch, quota, tool registry loc quyen hai lan, truy van chay duoi session user va RLS lam
 lop chan cuoi. Tuy nhien, kha nang dieu khien giao dien moi chi la pilot tren ba route, trong khi
-toan app co 146 route declaration. Quan trong hon, boundary "PageAgent khong co write tool"
-khong ngan duoc side effect phat sinh tu control autosave tren DOM.
+toan app co 146 route declaration. Source hien hanh da tat cac primitive mang chi so va them
+semantic safe-control, nhung chua co day du control marker va browser/release proof de khang dinh
+rang cac control autosave khong tao side effect ngoai hop dong.
 
 Verdict theo tung muc dich:
 
+> **Trang thai hien hanh (28/08):** bang nay da reconciliation theo Addendum 27. Cac so lieu live
+> C01-C40 van la baseline 13/08; cac remediation source khong duoc tinh la PASS neu chua co rerun
+> deployment dung SHA va artifact release bat buoc.
+
 | Muc dich | Verdict |
 | --- | --- |
-| Chat hoi dap, tra cuu nghiep vu co kiem quyen | **Mot phan - live eval 15 PASS, 7 PARTIAL, 8 FAIL** |
-| Doc so lieu qua domain tool/RLS | **Chua dat pilot release gate - co query runtime fail va org chua explicit** |
-| Mo trang, loc danh sach tren pilot | **Thu nghiem - co one-off live evidence, chua co E2E tracked/attested** |
-| Dien form nhap nhung khong commit | **Chua dat - whitelist control chua ton tai** |
-| Ghi du lieu co xac nhan | **Blocker - consent do model tu khai** |
+| Chat hoi dap, tra cuu nghiep vu co kiem quyen | **Mot phan - headline snapshot ghi 15 PASS, 7 PARTIAL, 8 FAIL; bang case cu the dem duoc 16 PASS, 7 PARTIAL, 7 FAIL (can reconcile)** |
+| Doc so lieu qua domain tool/RLS | **Chua dat pilot release gate - query da remediation source nhung chua live rerun; multi-org con union scope** |
+| Mo trang, loc danh sach tren pilot | **Worktree co 4 Copilot E2E spec (1 tracked + 3 spec moi); 3 spec moi chua git-track/live-run attested dung SHA** |
+| Dien form nhap nhung khong commit | **Source co semantic safe-control va tat index primitive; chua dat browser/release proof** |
+| Ghi du lieu co xac nhan | **Chua dat release gate - nonce server da co; prompt/store va negative E2E con thieu** |
 | Duyet, vao so, xoa, doi quyen | **Khong duoc mo** |
 | Dieu khien toan site | **Chua dat** |
 | Tuyen bo production-ready cho full-site control | **Khong du co so** |
@@ -170,8 +174,9 @@ manifest, source va live catalog van co do uu tien cao hon graph theo Project Co
 
 ### 3.3 Khoang trong runtime/browser
 
-- Evaluation supplement da chay browser headless authenticated tren deployment that. C01-C30 dat
-  15 `PASS`, 7 `PARTIAL`, 8 `FAIL`; C31-C40 co 5 live pass, 4 static-only va 1 deployment fail.
+- Evaluation supplement da chay browser headless authenticated tren deployment that. Headline
+  snapshot ghi C01-C30 la 15 `PASS`, 7 `PARTIAL`, 8 `FAIL`, nhung 30 dong case cu the dem duoc
+  16 `PASS`, 7 `PARTIAL`, 7 `FAIL`; C31-C40 co 5 live pass, 4 static-only va 1 deployment fail.
 - C36 la bang chung live tich cuc cho 429/rate gate va C38 la deployment fail multimodal, nhung ca hai
   van la one-off: chua co tracked burst test hay upload -> proxy -> vision-model smoke de lam release gate.
 - Bang chung nay dong khoang trong "chua tung quan sat browser authenticated" o muc one-off, nhung
@@ -211,30 +216,34 @@ nen khong tuyen bo digest parity; no cung khong chung minh cac query Copilot tru
 
 ## 4. Ma tran muc do san sang
 
+> **Cach doc:** cac dong khong lien quan remediation Copilot giu verdict audit goc. Cac dong query,
+> organization, route, write confirmation/audit va deployment evidence duoi day da duoc reconciliation
+> voi source snapshot 28/08; chi live/release artifact moi duoc phep dong finding.
+
 | Boundary | Trang thai | Bang chung | Ket luan |
 | --- | --- | --- | --- |
 | JWT va cloud proxy | Dat | `llm-proxy` xac thuc bearer, provider/model allowlist | Nen tang tot |
 | Kill switch, entitlement, rate, quota | Dat mot phan | `reserve_ai_usage` re-check server-side | USD cap sai neu pricing sai |
 | Permission tool | Dat mot phan | Loc khi build va execute; session user + RLS | Chua co final object/scope contract cho moi tool |
-| Organization scope | Chua dat | `OrganizationContext` mac dinh `organizations[0]`; `ToolCtx` chua co org | Blocker cho multi-org/superadmin |
+| Organization scope | Chua dat | Selected org/fail-closed va directory RPC da co; 9 tool scoped hien gom 7 tool qua 8 RPC wrapper server-side, con `tim_khach_hang` va `hop_dong_sap_het_han` van query PostgREST bang bo loc `organization_id` do client cung cap; live catalog/readback, server-side selected-org authorization va role-real proof chua co | Blocker cho multi-org/superadmin |
 | Knowledge allowlist | Dat mot phan | 25/29 docs, 7 permission-gated | Chi 5 review con hieu luc; 20 debt |
 | Capability inventory | Dat mot phan | 27 capability, 146 route declaration | Chua dai dien toan site |
-| Route navigation Copilot | Chua dat | Tool co 5 route, PageAgent guard co 3 | Hai whitelist lech nhau |
-| UI safe boundary | Blocker | Blacklist text/aria, khong co component gan marker | Autosave co the ghi |
+| Route navigation Copilot | Source da dong bo cho pilot 3 route; release chua xac minh | Tool va PageAgent guard cung 3 route; gate doi chieu 146 route; chua co E2E tracked | Chua phai full-site rollout |
+| UI safe boundary | Blocker | Index primitive da tat, semantic adapter da co; production chua gan marker va chua co browser mutation proof | Chua chung minh autosave/portal control an toan |
 | DOM action audit | Chua dat | Usage log chi request/model/token/cost/status | Khong truy vet click/input/navigation |
 | Typed action catalog | Chua dat | Registry hien tai chi mo ta page surface | Khong co risk/consent/executor/rollback |
-| Write confirmation | Blocker | `xac_nhan` do model truyen | Khong phai bang chung user consent |
-| Write audit integrity | Blocker | User update own audit; khong co immutable trigger | Khong phai authoritative ledger |
+| Write confirmation | Chua dat release gate | Nonce preview/execute va canonical intent da co; E2E van thieu expiry/payload/replay/concurrency | Consent boundary co source remediation, behavioral proof chua du |
+| Write audit integrity | Dat mot phan | Migration hardening/static tests da co trong source; chua co bang chung migration da apply tren runtime moi va chua co authenticated ACL/effect-ledger harness | Chua du release proof cho authoritative ledger |
 | Idempotency | Dat mot phan | Unique key cho mot write tool | Client-derived, chi mot action |
 | Financial safety | Dat mot phan | Tao `UNAPPROVED/PENDING`, account null | Van co side effect va consent yeu |
 | Provider governance | Chua dat | 69/70 cloud model co price zero/thieu | USD cap khong dang tin |
 | Local provider governance | Chua dat | Ollama browser -> localhost | Bypass reserve/finalize/log/revocation |
 | Data egress governance | Blocker | DOM co mask nhung tool output/history vao model request | Chua bind data class voi provider |
 | Multi-step orchestration | Blocker | Chat toi da 6 tool round; PageAgent reset task/history moi `execute()` | Khong co durable plan/checkpoint/resume/compensation |
-| Read query correctness | Blocker cho readonly pilot | 5/30 live case fail vi relation PostgREST khong ton tai | Query source khong khop generated schema |
-| Tool routing/answer quality | Chua dat | Live eval bo/sai tool, bo multi-intent, mat relative date | Chua co golden functional gate |
-| Copilot behavioral tests | Dat one-off, chua reproducible | Live browser matrix co; harness khong tracked/attested | Khong the dung lam CI/release proof |
-| Deployment/source attestation | Chua dat | Upload/UI-control mismatch; khong co frontend SHA, Edge version/digest hay authz snapshot | Khong phan biet web/proxy drift voi fixture drift |
+| Read query correctness | Source remediated, live chua xac minh | FK-qualified chain + local production-like harness pass; thieu PostgREST/deployment rerun dung SHA | Chua dong 5 case live baseline |
+| Tool routing/answer quality | Chua dat | Baseline live bo/sai tool, bo multi-intent, mat relative date; golden schema da co nhung chua co behavioral runner | Chua co golden functional gate |
+| Copilot behavioral tests | Co artifact/schema trong worktree, chua co verdict | 4 E2E spec (1 tracked + 3 spec moi chua git-track); readonly/golden/page-agent moi chi la smoke/schema toi thieu; chua co live run attested/aggregate verdict | Khong the dung lam CI/release proof |
+| Deployment/source attestation | Dat mot phan | Frontend build-SHA/helper da co; thieu readonly/golden E2E va Edge/authz attestation | Chua phan biet day du web/proxy drift voi fixture drift |
 | Multimodal deployment path | Chua dat | C38 khong chay duoc vi thieu upload control tren fixture | Chua co upload -> proxy -> vision-model smoke |
 | Proxy rate-limit regression | Dat one-off, chua reproducible | C36 burst live tra 429 dung mot lan | Chua co tracked policy-derived burst E2E |
 | Full-site rollout | Chua dat | UI allowlist 3 route | Khong du coverage va safety gate |
@@ -247,7 +256,7 @@ them execution semantics cho Copilot. Vi vay verdict phai tach theo cap kha nang
 | Nhom nghiep vu | Hien tai Copilot lam duoc | Boundary con thieu | Muc rollout toi da truoc nang cap |
 | --- | --- | --- | --- |
 | Dashboard/bao cao | Hoi dap va 4 typed query tool hien huu | Chua phu tat ca report, data egress/provider class | Read shadow/canary tung report |
-| Toa nha/phong/khach/hop dong | Mo 5 route cong bo, query mot so so lieu | Route guard chi 3; final org/resource binding; E2E | Read/navigation sau contract |
+| Toa nha/phong/khach/hop dong | Source hien chi cong bo pilot 3 route; query mot so so lieu | Full-site page/action contract, final org/resource binding, E2E | Read/navigation chi mo theo batch sau khi co proof |
 | Hoa don/cong no/so quy | Read tool va finance draft client-side | Consent, ledger, pricing, maker-checker proof | Read; draft server-action sau Tasks 7-12 |
 | Cau hinh/phan quyen/user | Co the huong dan tu docs | Authz/session/control nhay cam, khong co action contract | Guidance/read; final action khong autonomous |
 | Van hanh noi bo/nhan su | Mot so doc/query co permission | Coverage/action inventory va separation of duties | Read theo permission |
@@ -284,6 +293,10 @@ Khong nen viet lai toan bo Copilot. Nhung lop sau dang dung huong va nen duoc ta
   phai pin dependency adapter/semantic tools thay vi xem complement light-DOM la authority.
 
 ## 6. Findings theo muc do uu tien
+
+> **Luu y ve lich su:** cac mo ta trong muc nay giu nguyen finding tai snapshot baseline 13/08 de
+> truy vet nguyen nhan. Trang thai source va bang chung release hien hanh phai doc Addendum 27; khong
+> dien giai cac cau mo dau nhu "hien" trong finding lich su thanh claim code da xac minh ngay nay.
 
 ### B1 - Blocker: UI-control co the ghi gian tiep qua control autosave
 
@@ -334,9 +347,9 @@ va side effect nao da xay ra".
 - Server action ledger authoritative, duoc ghi cung transaction voi side effect; correction
   bang compensating event, khong UPDATE dong cu.
 
-### B3 - Blocker: Write confirmation do model tu khai
+### B3 - Blocker tai baseline 13/08: Write confirmation do model tu khai
 
-`tao_phieu_thu_chi_nhap` nhan `xac_nhan:boolean`. Prompt yeu cau model preview truoc, nhung
+Tai snapshot evaluation 13/08, `tao_phieu_thu_chi_nhap` nhan `xac_nhan:boolean`. Prompt yeu cau model preview truoc, nhung
 server khong co nonce/intent chung minh preview da hien va user da dong y o turn khac.
 
 **He qua:** model, prompt injection hoac conversation reconstruction co the gui
@@ -346,7 +359,7 @@ server khong co nonce/intent chung minh preview da hien va user da dong y o turn
 canonical payload hash, permission snapshot va expiry. Execute consume nonce mot lan va
 re-check permission/scope.
 
-### B4 - Blocker: Organization scope chua duoc chot ro cho superadmin
+### B4 - Blocker tai baseline 13/08: Organization scope chua duoc chot ro cho superadmin
 
 `OrganizationContext` tra `organization: organizations[0]`. `ChatPanel` luu thread voi org do,
 nhung `ToolCtx` hien chi co `perms` va `navigate`; domain tool khong nhan selected org canonical.
@@ -362,7 +375,7 @@ typed server organization directory de chon mot tenant ACTIVE ngay ca khi khong 
 doc bang truc tiep hoac nhan org ID tu model. Quyen liet ke/chon nay khong thay final-resource
 permission/deny va organization lifecycle re-check. Moi action bind final organization va resource.
 
-### F1 - Fix-now: Hai whitelist route dang lech nhau
+### F1 - Fix-now tai baseline: Hai whitelist route dang lech nhau
 
 `MO_TRANG_ROUTES` cong bo nam route:
 
@@ -378,10 +391,10 @@ sau do `onBeforeStep` dung task o buoc ke tiep.
 Gate `check-copilot-routes.mjs` chi kiem route va permission ton tai, chua kiem
 `MO_TRANG_ROUTES subset PILOT_ROUTE_ALLOWLIST`.
 
-Final source verification minh hoa khoang trong nay: `gate:copilot-routes` van xanh va bao 5 trang
-duoc cong bo tren 146 route, du hai route `/contracts` va `/buildings` van khong nam trong guard 3
-route. Vi vay gate xanh hien tai la bang chung route/permission co ton tai, khong phai bang chung
-boundary PageAgent nhat quan.
+Tai baseline 13/08, source verification minh hoa khoang trong nay: `gate:copilot-routes` van xanh
+va bao 5 trang duoc cong bo tren 146 route, du hai route `/contracts` va `/buildings` van khong nam
+trong guard 3 route. Source snapshot 28/08 da thu hep publication con 3 route va gate hien hanh bao
+3/3; day la remediation source, chua phai bang chung full-site rollout vi van thieu E2E tracked.
 
 ### F2 - Fix-now: Khong co Action Registry
 
@@ -478,7 +491,7 @@ CAS/checkpoint va re-check actor, organization, permission, rollout, provider, k
 version va resource version. External effect `UNKNOWN` chan downstream cho toi khi reconcile; cancel
 chi dung step chua chay, khong xoa effect da hoan thanh, compensation la action/audit rieng.
 
-### B7 - Blocker cho readonly pilot: Query relation khong khop deployed schema
+### B7 - Blocker tai baseline 13/08 cho readonly pilot: Query relation khong khop deployed schema
 
 Live evaluation co 5 runtime failure: `tim_khach_hang` tai C02/C14/C27 va
 `hop_dong_sap_het_han` tai C04/C16. Source dang embed truc tiep
@@ -501,7 +514,7 @@ failure; action chua co proof bi disabled thay vi de model goi roi moi loi.
 
 ### F7 - Fix-now, blocker truoc Phase 3: Tool routing va orchestration chua dat functional quality
 
-Live C01-C30 chi co 15 `PASS`; model tuyen bo khong co capability dang expose cho
+Live C01-C30 co headline 15 `PASS`; cac dong case cu the dem duoc 16 `PASS`; model tuyen bo khong co capability dang expose cho
 `coc_dang_giu`, `so_quy` va bo/sai `ty_le_lap_day`, `cong_no_tong_quan`. C06 suy occupancy sai tu
 `phong_trong`; C25 bo mot nua multi-intent; C27 khong tiep tuc nhanh `phong_trong` doc lap sau khi
 nhanh customer fail; C28 khong su dung ngay hien tai. Median latency la 17.448 giay, mean 21.105 giay,
@@ -1428,6 +1441,7 @@ neu da trien khai, chuong trinh Copilot re-use interface hien hanh va chi mo ron
 | B2 audit khong authoritative | UI telemetry tach biet va immutable action ledger | 6, 7 | DB privilege/trigger negative, effect-ledger parity |
 | B3 model tu xac nhan | Server preview/execute nonce one-time | 8 | First-turn/payload-change/replay/revoke negative |
 | B4 organization ngam dinh | Selected ACTIVE org explicit, typed superadmin directory, final-resource server binding | 2, 8 | Multi-org null, superadmin no-membership select, wrong/suspended org va revoked-mid-task negative |
+| F26.11 client-supplied org filter | Typed server RPC cho customer/contract search; server re-check actor, ACTIVE org, permission, lifecycle va selected-org contract | A4 | Forged org/wrong-org superadmin, revoked org, foreign-row = 0 truoc formatter, live catalog/readback |
 | F1 route whitelist drift | Route exposure sinh tu page contract va subset gate | 1, 3 | `gate:copilot-routes`, `gate:copilot-pages` |
 | F2 thieu Action Registry | Contract/default-deny cho tat ca 14 tool hien huu | 4 | Inventory exact va uncontracted action denied |
 | F3 knowledge stale | Action-level doc/section/review gate | 10 | Financial/security stale action blocked |
@@ -1515,3 +1529,768 @@ route sync); cat/hoan governance nang (execution-plan engine muc 11.5, immutable
 va phan attestation cua spec nay vi the la **thiet ke tham chieu cho giai doan sau (Op3)**, khong
 phai yeu cau cua dot trien khai hien tai. Plan thuc thi hien hanh:
 `docs/superpowers/plans/2026-08-13-ai-copilot-superadmin-full-site-control.md` (ban LEAN).
+
+## 24. Addendum 2026-08-28 - doi chieu lai evaluation voi source va bang chung release
+
+Addendum nay doc lai nguyen ven snapshot `docs/ai-copilot/COPILOT-EVALUATION-2026-08-13.md`
+(khong sua noi dung hay verdict lich su), sau do doi chieu voi source Copilot hien hanh. Ket luan
+khong duoc suy ra tu nhan trang thai trong plan; chi artifact va lenh kiem tra thuc te moi duoc tinh
+la bang chung.
+
+### 24.1. Nhung diem cua evaluation da co remediation trong source
+
+- Hai duong query gay loi C02/C04/C14/C16 da chuyen sang quan he FK-qualified trong
+  `src/copilot/tools/registry.ts`; unit contract test hien bao phu duong select moi.
+- Registry/route va inventory tai lieu da duoc dong bo o muc source: inventory hien la **14 tool**
+  (12 doc, 1 ghi, 1 dieu huong), con pilot navigation chu yeu la 3 route.
+- Luong ghi da chuyen sang preview/execute voi server nonce; browser khong con duong client
+  `INSERT/UPDATE` audit trong source hien hanh. Build SHA va guard khong chay spec ghi tren production
+  cung da co trong E2E harness.
+- Context thoi gian tuong doi, chan organization chua chon o dau tool, va mot so negative test
+  da duoc bo sung.
+
+Nhung diem tren chi chung minh **source/static remediation**. Chung chua tu dong dong verdict live cua
+C02/C04/C14/C16/C27, C38 hoac C40 khi chua co rerun tren deployment dung SHA.
+
+### 24.2. Finding phai giu nguyen hoac nang muc vi thieu bang chung
+
+1. **A1/B7 - query correctness: local contract da xanh, live chua dong.** Da co FK-qualified
+   implementation va `scripts/test-copilot-readonly-queries.mjs` pass 7/7 tren PostgreSQL disposable
+   cluster (positive/empty/wrong-org, rollback/teardown). Vi vay 5/30 loi runtime trong snapshot van
+   duoc danh dau *remediated in source, unverified live*, khong duoc doi thanh PASS khi chua co
+   PostgREST production-like/deployment rerun.
+2. **A4/B4 - organization scope: source da remediation, release blocker van mo.**
+   `OrganizationContext` hien goi `list_my_copilot_organizations_v1()`. Trong 9 tool scoped,
+   7 tool di qua 8 RPC wrapper server-side nhan organization (occupancy dung hai RPC), con
+   `tim_khach_hang` va `hop_dong_sap_het_han` van la PostgREST query co loc `organization_id`.
+   Tuy nhien, evaluation
+   snapshot khong duoc tu dong nang PASS: live catalog/provenance chua khop, chua co role-real
+   wrong-org/revocation E2E va chua co PostgREST readback tren dung SHA. Pham vi theo doi hien tai
+   gom **9 tool scoped** (`phong_trong`, `tim_khach_hang`, `tim_hoa_don`, `hop_dong_sap_het_han`,
+   `doanh_thu_thang`, `ty_le_lap_day`, `cong_no_tong_quan`, `coc_dang_giu`, `so_quy`). Chon org la
+   can thiet nhung chua du; moi wrapper phai chung minh foreign row = 0 truoc formatter va revoke
+   co hieu luc ngay truoc khi coi superadmin multi-org an toan.
+3. **A5/F7 - prompt va orchestration drift.** `src/copilot/systemPromptVi.ts` van yeu cau
+   `xac_nhan=false/true` du schema write hien dung nonce server. Day la drift co the lam model goi
+   sai/lap preview. Fallback chat van co the chi hien thi event tool cuoi, che mat nhanh thanh cong
+   hoac loi trong cau hoi nhieu y.
+4. **B1/B2 - write safety: source da chat hon nhung proof chua du.** `confirmationStore.ts` hien
+   chi co mot khe global, khong key theo conversation/action/payload-hash nhu contract plan; E2E
+   hien chi co ba ca (no-write-before-cancel, mot execute, prompt-injection), thieu expiry, payload
+   change, replay va concurrency. Khong duoc dung nhan "Phase B hoan tat" thay cho cac ca nay.
+5. **B3 - E2E/release gate: chua dat.** Chi ton tai
+   `.e2e-fleet/specs/copilot-confirmation.spec.ts`; thieu
+   `copilot-readonly-smoke.spec.ts`, golden readonly spec va harness mock-provider tuong ung.
+   Quan trong hon, confirmation spec hien khong cau hinh `page.route`/mock upstream; mo ta
+   "mock provider qua proxy" trong plan chua duoc chung minh boi artifact. `tooling/test-matrix.json`
+   xep e2e-fleet la local-only; lenh Playwright goi ca file co that va file thieu co the van exit 0
+   nhung am tham chi chay file co that. Vi vay claim "B3/Phase B da len production" khong du bang chung.
+6. **C36/C38 - regression chua thanh release gate.** Burst 429 va loi multimodal trong evaluation
+   van la one-off. Chua co tracked rate-limit E2E va chua co upload -> proxy -> vision-model smoke
+   tren fixture DEMO cung source/Edge attestation.
+7. **C2-C5 va D1-D3 - nang luc mo rong con thieu artifact.** Chua co page-contract gate, feature
+   flag rollout, golden corpus hai lane, pricing/egress gate, draft matrix hoac forbidden-action
+   validator. Day la cac hang muc chua trien khai, khong phai finding da dong.
+8. **Hieu nang - chua co release verdict.** Evaluation ghi median 17,448 ms, mean 21,105 ms,
+   p95 42,057 ms va max 55,913 ms; spec/plan chua co SLA so duoc product owner phe duyet. Cac so do
+   phai duoc giu trong golden eval va chi duoc goi PASS sau khi co nguong SLA, khong duoc suy ra
+   "dat" tu viec request tra HTTP 200.
+
+### 24.3. Bang chung duong tinh can giu, nhung khong duoc dien giai qua muc
+
+Evaluation da goi truc tiep cac RPC read-only cua org THAT bang explicit organization/building scope;
+count truoc/sau van la 520 khach hang, 1.121 hoa don, 333 hop dong va 18 toa. Day la bang chung tot
+cho isolation cua **cac RPC da test**, khong phai bang chung Copilot da bind dung org cho moi tool.
+Khong co reusable digest oracle nen audit khong tuyen bo digest parity 17/17.
+
+### 24.4. Quyet dinh audit va dieu kien cap nhat verdict
+
+| Hang muc | Trang thai sau doi chieu 28/08 | Dieu kien doi sang PASS/closed |
+| --- | --- | --- |
+| Read query (C02/C04/C14/C16/C27) | Source remediated, live **chua xac minh** | Harness production-like + rerun deployment dung SHA, zero schema-cache error |
+| Selected organization | **Blocker** cho multi-org | Server-derived/authorized scope cho ca 9 tool scoped (8 wrapper RPC cho 7 tool + typed RPC cho customer/contract search), khong client-only filter + wrong-org/revocation E2E |
+| Preview/execute write | Static/unit **co**, behavioral **thieu** | Negative expiry/payload/replay/concurrency + audit/effect parity |
+| B3 build/E2E | **Chua dat** | Du confirmation va readonly smoke, file-existence gate, run DEMO voi SHA 40 ky tu |
+| C36 rate limit | One-off live | Tracked policy-derived burst, chung minh deny truoc upstream |
+| C38 multimodal | Deployment fail/khong co oracle | Upload fixture DEMO qua proxy toi vision model, readback attestation |
+| Latency | Co so do one-off, **chua co SLA** | Golden eval ghi p50/p95/max va SLA duoc phe duyet |
+| Full-site control | **Chua dat** | 100% page/action accounted, default-deny contract, golden + role-real E2E xanh |
+
+**Ket luan cap nhat:** evaluation 13/08 van la baseline hop le va da chi ra remediation dung huong,
+nhung khong co co so nang Copilot len production-ready hoac full-site control. Audit hien hanh phai
+ghi trang thai trung gian la **source da sua mot phan, bang chung release chua du**; moi nhan
+Phase A/B "hoan tat + production" trong plan duoc coi la claim lich su cho den khi artifact/run o
+bang tren ton tai va pass.
+
+### 24.5. Verification source/static ngay 2026-08-28
+
+Các lệnh dưới đây đã chạy lại trên `main@2584f23ab54375432ec3346244419f36c5f99b2d`. Chúng xác nhận
+source, tài liệu, unit/static contract và local production-like query harness; **không thay thế**
+live rerun PostgREST trên deployment, golden/release attestation hay role-real E2E được yêu cầu ở bảng 24.4.
+
+| Lệnh | Kết quả |
+| --- | --- |
+| `npx vitest run src/copilot/__tests__` | 14 file, 220/220 test pass |
+| `npm run gate:copilot-docs` | 25/29 tài liệu ingest, 7 file gác quyền |
+| `npm run gate:doc-freshness` | 0 vi phạm mới, 20 baseline debt |
+| `npm run gate:copilot-tools` | 14 tool (12 đọc, 1 ghi, 1 điều hướng) |
+| `npm run gate:copilot-routes` | 3 route pilot, đối chiếu 146 route/231 permission feature |
+| `node scripts/test-copilot-readonly-queries.mjs --local-cluster` | 7/7 assertion pass; FK-qualified source, positive/empty/wrong-org; rollback và disposable-cluster teardown |
+| `git diff --check` | Không có lỗi nội dung; chỉ cảnh báo chuyển line-ending của Git |
+
+Artifact bắt buộc vẫn chưa tồn tại tại thời điểm kiểm tra: `.e2e-fleet/specs/copilot-readonly-smoke.spec.ts`,
+`.e2e-fleet/specs/copilot-golden-readonly.spec.ts` và `tooling/copilot-golden-eval.json`.
+Harness `scripts/test-copilot-readonly-queries.mjs` đã tồn tại trong snapshot hiện hành và pass local
+7/7; nó chỉ chứng minh contract FK/schema/tenant ở cluster disposable, chưa đóng verdict live của
+C02/C04/C14/C16/C27.
+
+### 24.6. Traceability bo sung tu ma tran evaluation
+
+Bang duoi bo sung cac ket qua ma Addendum 24.1-24.5 moi nhac gian tiep. No khong doi verdict lich
+su cua C01-C40; muc dich la chan viec mot source/unit fix hep bi dien giai thanh behavioral PASS.
+
+**Data-quality note:** audit dem lai 30 dong verdict C01-C30 va thay 16 PASS / 7 PARTIAL / 7 FAIL,
+trong khi headline cua snapshot ghi 15 PASS / 7 PARTIAL / 8 FAIL. Day la sai lech noi bo cua bao cao;
+giu nguyen headline lich su de truy vet, nhung khong dung ca headline lan case-row count lam KPI release
+cho den khi dataset/golden runner tu sinh aggregate va reconcile.
+
+| Bang chung evaluation | Cach audit dien giai hien hanh | Release proof con thieu |
+| --- | --- | --- |
+| C06 suy occupancy tu danh sach phong trong | Loi ngu nghia du lieu, khong chi la chon nham tool | Golden case bat buoc dung `ty_le_lap_day`/oracle occupancy va chan suy dien "khong trong = 100%" |
+| C07/C08/C09/C18/C20 bo hoac phu nhan tool dang ton tai | Tool inventory source khong chung minh model discover/routing on dinh | Golden eval theo role, actor-visible tool manifest va false-missing-capability = 0 |
+| C23 chi huong dan tren trang hoa don | Runtime contract chua chot giua UI-control va chat/deep-link readonly | Moi page intent phai co ket qua xac dinh: semantic control thuc thi, hoac typed read + deep-link; khong fallback mo ho |
+| C25/C27 bo mot nhanh; C26 dat ket qua nhung chi goi mot tool | Functional answer va orchestration proof la hai gate rieng | Multi-intent oracle ghi outcome tung nhanh, sibling failure khong huy nhanh doc lap, khong che loi |
+| C28 khong dung duoc "thang truoc" | Co prose current-date trong prompt chua du | Structured date/timezone trong request + live/golden relative-date cases |
+| C32/C37/C39/C40 la `STATIC-ONLY` | Khong duoc dem vao behavioral hoac release PASS | Role-real revoke/tool-filter E2E; UI-control network zero-mutation; confirmation expiry/payload/replay/concurrency |
+
+**UI-control source hien hanh can doc dung muc:** `src/copilot/safeControls.ts` da co bo giai semantic
+va `src/copilot/createAgent.ts` da wire bo giai nay thanh custom tool; ba primitive mang chi so
+`click_element_by_index`, `input_text`, `select_dropdown_option` dang bi tat. Tuy nhien, production
+chua co day du `data-ai-safe` marker va chua co browser E2E traversal/mutation proof. Vi vay cac mo ta
+"loc/dien form" moi la source capability co dieu kien, chua phai runtime PASS. C39 chi xac nhan
+PageAgent khong cam write tool va co blacklist source; no khong chung minh moi control autosave,
+shadow-root/iframe hoac mutation request deu bi chan.
+
+**Citation chua dong:** `src/copilot/docs/docSearch.ts` co chu y tra citation text
+`(nguon: <doc> § <heading>)` vi `docs/he-thong` chua co route publish. Audit khong yeu cau tao link
+gia hoac link 404. Gate dung la mot href permission-compatible den noi dung duoc publish, mo dung
+heading, va co negative test cho 404, stale review va unauthorized actor.
+
+**Cleanup la bang chung bounded:** inventory UUID/email exact, xoa fixture co kiem soat va cac count
+520 khach/1.121 hoa don/333 hop dong/18 toa khong doi la bang chung tot rang dot evaluation khong
+lam thay doi cac aggregate da do. No khong thay the network-write assertion cua UI-control, digest
+oracle tai tao duoc, wrong-org/role-real E2E, hay effect-ledger parity cua write confirmation.
+
+### 24.7. Cap nhat A1 sau khi bo sung harness local (2026-08-28)
+
+Commit `2584f23ab54375432ec3346244419f36c5f99b2d` them
+`scripts/test-copilot-readonly-queries.mjs`. Lenh `node scripts/test-copilot-readonly-queries.mjs
+--local-cluster` da pass **7/7 assertion**, bao gom source FK-qualified, positive/empty,
+schema FK/direct-relation, wrong-org exclusion, rollback va disposable-cluster teardown.
+Vitest contract lien quan pass **55/55** va ESLint/node syntax check cua harness pass.
+
+Day la production-like **local contract proof** cho A1, khong phai PostgREST/deployment rerun; do do
+verdict C02/C04/C14/C16/C27 van la *source remediated, live chua xac minh* cho den khi chay lai
+trên deployment đúng SHA với readonly smoke/golden artifact. A1 trong plan được nâng từ “thiếu harness”
+thành “local harness xanh; live gate còn mở”.
+
+### 24.8. Provenance va gioi han cua evaluation snapshot
+
+De tranh nham lan giua bang chung live va release evidence, audit ghi lai provenance toi thieu cua
+lan test goc:
+
+- Model `9router:cx/gpt-5.6-sol(max)` duoc dung cho toan bo C01-C30.
+- Browser headless chay theo **3 wave, moi wave 10 Playwright worker/browser doc lap**.
+- Chat fixture chi o org DEMO, gom 10 user tam; cleanup sau test da duoc doi chieu trong bao cao.
+- Oracle org THAT dung tai khoan owner goi truc tiep RPC/REST read-only; khong gui cau hoi Copilot va
+  khong cap entitlement moi cho tai khoan nay.
+- C31-C40 la ma tran tron live, static-only va deployment-blocked; rieng C38 khong co duong upload
+  tren fixture deployment nen khong duoc dien giai la multimodal PASS.
+
+Nhung chi tiet tren lam ro pham vi va kha nang tai lap cua snapshot, nhung khong bo sung nhung artifact
+ma run goc thieu: exact deployed frontend/Edge SHA, contract/tool-manifest digest, entitlement/
+permission snapshot, golden dataset va harness tracked. Vi vay provenance nay chi ho tro truy vet; no
+khong thay the cac dieu kien release trong Addendum 24.4.
+
+### 24.9. Bo sung finding ve P&L scope va danh ba to chuc (2026-08-28)
+
+Doi chieu call-flow chi ra hai chi tiet ma evaluation snapshot khong the hien het:
+
+- `src/contexts/OrganizationContext.tsx:137` van goi `get_my_organizations`, trong khi migration
+  `supabase/migrations/20260814032500_copilot_superadmin_organization_directory.sql:45-91` da
+  tao `list_my_copilot_organizations_v1()` va generated type da co tai
+  `src/integrations/supabase/types.ts:25799`. Day la **runtime call-site drift**, khong phai thieu
+  migration: superadmin co the khong nhan duoc danh ba org moi (vi khong co membership) va cac quy
+  tac ACTIVE/sandbox cua RPC moi chua duoc ap dung vao context.
+- `src/copilot/tools/registry.ts:470-476` goi `fa_monthly_pnl`/`fa_monthly_pnl_accrual` chi voi
+  ngay bat dau/ket thuc, khong truyen `p_building_ids`. Chu ky RPC trong
+  `supabase/migrations/20260611140000_financial_analysis_rpcs.sql:23-45` va
+  `supabase/migrations/20260626000000_fa_accrual_pnl.sql:170-197` dat `p_building_ids uuid[]
+  DEFAULT NULL` va loc qua `can_access_building`; voi `is_super_admin()` dieu nay la tap building
+  rong hon org dang chon. Vi vay finding A4 phai theo doi **7 tool chua bind selected org**, khong
+  phai 6 tool trong known-gap list hien tai.
+
+Day la scope/data-isolation finding, khong duoc ha muc chi vi cac RPC P&L van tra ket qua hop le voi
+nguoi dung mot org. Can bo sung positive/negative org-binding assertion cho P&L, thay call-site
+danh ba sang RPC Copilot moi, va chay lai wrong-org voi actor superadmin truoc khi dong A4.
+
+**Snapshot test-count note:** evaluation 13/08 ghi `140/140` Copilot tests; source snapshot 28/08
+da chay `14 file, 220/220`. Hai so nay thuoc hai lan do khac nhau va khong duoc tron thanh mot KPI;
+chi golden runner co provenance moi duoc dung lam release baseline.
+
+## 25. Addendum 2026-08-28 - doi chieu test Copilot bo sung va chot blocker release (lich su)
+
+Addendum nay doi chieu lai toan bo evaluation bat bien
+`docs/ai-copilot/COPILOT-EVALUATION-2026-08-13.md` (SHA-256
+`65450dca3cbe3926f2ec0bddc4eed62498fcd5d0ab3325e35965cc41a9152980`) voi HEAD
+`main@2584f23ab54375432ec3346244419f36c5f99b2d` **va cac thay doi source dang co trong working
+tree**. Snapshot evaluation khong bi sua va van la baseline live 13/08; unit/static test sau do
+chi la bang chung remediation source neu chua co deployment SHA, catalog, entitlement va role-real
+E2E trung khop. Khong duoc doc Addendum nay nhu mot release commit da duoc deploy.
+Neu co mau thuan voi Addendum 26 ben duoi, Addendum 27 la ban ghi hien hanh.
+
+### 25.1. Ket luan dieu hanh
+
+**Can cap nhat audit. Copilot chua production-ready va chua du full-site control.** Mot so finding
+cua Addendum 24 da duoc sua trong source, nhung cac blocker sau phai giu mo cho den khi co bang
+chung runtime/release:
+
+| Finding | Trang thai hien hanh | Muc do | Dieu kien dong |
+| --- | --- | --- | --- |
+| Chat history khong bind selected organization | `loadLatestThread()` va `loadThreadMessages()` van doc theo user/thread, khong loc org; `ChatPanel` chi load mot lan khi mount | Blocker bao mat context | Org-scoped load/create/save, parent-thread check, reset khi doi org, wrong-org/revocation E2E |
+| Organization scope | Source da them server-bound wrapper cho 7 tool; 2 tool customer/contract van client-only PostgREST filter; live catalog/readback va role-real proof chua co | Blocker multi-org | Server-boundary derive/validate scope cho ca 9 tool, khong de foreign rows vao browser, role-real wrong-org E2E |
+| So quy | `copilot_cashbook_settlement_v2` da co trong source nhung live catalog/provenance/parity chua xac minh | Blocker runtime + semantic parity | Catalog refresh, semantic parity voi report goc, ACL/provenance test |
+| Rollout authority | Feature-flag adapter da co nhung khong co runtime loader; `ChatPanel` khong truyen snapshot | Chua dat | Snapshot server-authoritative theo actor/org, fail-closed khi thieu/stale, revoke E2E |
+| Full-site/release proof | 113 non-redirect route da duoc account, chi 3 page contract pilot; phan con lai la exemption; golden moi pass schema | Chua dat | 100% page/action contract, golden runner hai lane, role-real E2E, C36/C38 va attestation xanh |
+
+### 25.2. Finding moi - lich su chat co the cheo to chuc
+
+Call-flow hien hanh cho thay:
+
+- `src/copilot/chatEngine.ts:328-337` dinh nghia `loadLatestThread()` khong nhan
+  `organizationId` va khong co filter `organization_id`.
+- `src/copilot/ChatPanel.tsx:174-187` goi ham nay trong effect co dependency rong (`[]`), nen
+  lich su nap mot lan theo thread moi nhat cua user, khong nap lai khi selected organization thay
+  doi.
+- Tao/luu tin nhan o `src/copilot/ChatPanel.tsx:239-265` dung `organization?.id`, trong khi
+  tool context o cung luot dung `selectedOrganizationId`; hai gia tri co the lech trong luc doi
+  org hoac khi request bat dong bo.
+- `src/copilot/chatEngine.ts:417-426` nap message theo `thread_id` ma khong verify org cua
+  thread cha. RLS chat da co restrictive org policy, nhung policy chi cho phep cac org ma actor
+  duoc cap (va superadmin bypass), khong bind voi selected organization cua UI; do do no khong
+  thay the cho selected-org boundary.
+
+He qua: user chon org B nhung model co the nhan context lich su cua org A, sau do goi tool voi
+`organizationId = B`. Day la loi phan tach context va du lieu, khong phai chi la loi UX; khong duoc
+dong A4/B4 hoac mo multi-org chat cho den khi co test am tinh.
+
+Trigger `app_private.autofill_org_chat()` van kiem tra membership ACTIVE khi client khai org, nen
+day khong phai ket luan rang moi actor co the ghi tuy y vao org la. Khoang trong nam o cho doc/nap
+context cua superadmin hoac actor thuoc nhieu org chua bi rang buoc boi selected-org cua phien UI.
+
+**Quy trinh sua bat buoc:**
+
+1. Doi API persistence thanh org-scoped: `loadLatestThread(organizationId)`,
+   `loadThreadMessages(threadId, organizationId)` va `saveMessages(..., organizationId)`; server
+   phai kiem tra thread cha co cung `user_id` va `organization_id`.
+2. Tao thread moi luon dung `selectedOrganizationId`; neu user thuoc nhieu org ma chua chon thi
+   tu choi ca chat va ghi.
+3. Khi doi org, huy request dang chay, xoa history/thread hien tai va nap lai thread cua org moi;
+   khong cho async response cua org cu ghi de state org moi.
+4. Them E2E DEMO: tao message chi co o org A, chuyen sang B khong thay context; thu hoi membership
+   A thi thread cu khong con duoc load; wrong-org thread ID phai tra empty/403.
+
+### 25.3. Finding moi - organization remediation chua phai server-boundary
+
+`OrganizationContext` da doi sang `list_my_copilot_organizations_v1()` (`src/contexts/OrganizationContext.tsx:131-169`)
+va source da them boundary `copilot_org_scope_buildings_v1()` cung cac wrapper nhan
+`p_organization_id`. Day la huong remediation dung, nhung chua la release proof: live catalog,
+provenance, PostgREST readback va role-real revoke/forged-building E2E van thieu. Khong dong A4 chi
+bang client/unit scoping; harness bat buoc phai co positive, empty, wrong-org, revoked-membership
+va forged-building cases, foreign row = 0 truoc formatter. So tool theo doi hien tai la 9, khong phai
+7, va phai bao gom ca P&L/cashbook.
+
+### 25.4. Finding moi - so quy dang la blocker runtime va co nguy co mat semantic
+
+Migration `supabase/migrations/20260828140000_copilot_org_scope_v1.sql` tao wrapper
+`copilot_cashbook_settlement_v1`, nhung:
+
+- `npm run gate:rpc-surface` hien bao `copilot_cashbook_settlement_v1` **missing from live
+  catalog**. Vi vay `so_quy` o `src/copilot/tools/nghiepVuTools.ts:220-233` compile duoc nhung
+  co the fail ngay khi chay tren deployment chua apply migration.
+- Wrapper goi report global `cashbook_settlement_report()` roi chi loc mang `accounts` theo
+  `organization_id`/`quick_default_building_id` (`supabase/migrations/20260828140000_copilot_org_scope_v1.sql:33-44`). Day la post-filter, khong phai
+  server-derived input scope cho toan bo report.
+- Wrapper tra co dinh `sessions: []` va `reconciliations: []` (`supabase/migrations/20260828140000_copilot_org_scope_v1.sql:45-46`), trong khi
+  evaluation org THAT da xac nhan report goc co ca ba phan. Neu coi wrapper la scoped report da
+  hoan tat, day la semantic regression va mat kha nang doi soat.
+
+**Dieu kien release rieng cho so quy:** giu nguyen shape va y nghia cua report goc (accounts,
+sessions, reconciliations), co provenance cho tung dong, ACL server-side theo org/building,
+test idempotent/read-only va catalog snapshot sau migration. Khong deploy migration vao production
+chi de lam xanh gate; phai co backup, migration evidence va live readback theo Contract.
+
+### 25.5. Cac remediation source da supersede finding lich su, nhung chua dong behavioral gate
+
+Cac doan trong Addendum 24 can duoc doc la lich su tai thoi diem truoc remediation; source hien
+hanh da thay doi nhu sau:
+
+- `src/copilot/systemPromptVi.ts:13-26` khong con yeu cau contract boolean `xac_nhan`; baseline mo ta drift
+  ve boolean duoc giu o muc lich su de truy vet, khong phai trang thai source hien hanh.
+- `src/copilot/confirmationStore.ts:37-90` da dung map theo `intentKey`, giu accessor tuong
+  thich UI; `src/copilot/tools/writeTools.ts:49-156` tao intent key tu org + canonical payload.
+- `src/copilot/createAgent.ts:41-99` da wire semantic safe-control theo page contract; primitive
+  PageAgent co chi so van bi tat.
+- `node scripts/check-copilot-page-contracts.mjs` da account 3 page pilot va 113 non-redirect
+  route; day la inventory/exemption proof, khong phai 113 route da duoc mo.
+- `node scripts/check-copilot-provider-policy.mjs` va `node scripts/check-copilot-golden-eval.mjs`
+  da pass policy/schema static; golden co 30 case nhung chua co runner tao verdict hanh vi.
+
+Vi vay cac mo ta cu ve `xac_nhan` trong 24.2/24.6 duoc **supersede o muc source**, nhung expiry,
+payload-change, replay, concurrency, consent, audit-effect parity va live deployment van la gate mo.
+Khong dung unit pass de ha muc C40 thanh PASS.
+
+### 25.6. Feature flag chua co runtime authority
+
+`src/copilot/featureFlags.ts:9-34` fail-closed khi nhan snapshot hop le va het han, nhung audit
+khong tim thay hook/RPC/Edge response nao nap `CopilotAvailabilitySnapshot`. `ChatPanel` cung
+khong truyen `availability` vao `runChatTurn()` hay `createUiControlAgent()`; khi gia tri la
+`undefined`, `buildRegistry()` giu legacy tools enabled (`src/copilot/tools/registry.ts:613-619`).
+Do do day la plumbing static, khong phai kill-switch/rollout authority server-side.
+
+**Quy trinh rollout:** server phat snapshot co `revision`, `fetchedAt`, actor/org scope va digest;
+client phai fail-closed neu snapshot thieu/stale; moi tool/page/action phai bi loc o ca expose va
+execute; revoke test phai chung minh request tiep theo bi chan truoc upstream. Evidence cua run phai
+ghi snapshot revision cung build/proxy SHA.
+
+### 25.7. Full-site control va release proof van chua dat
+
+Page contract hien chi co 3 route pilot (`/apartments`, `/invoices`, `/customers`); cac route con
+lai trong tong so 113 non-redirect route duoc account bang exemption co ly do trong
+`src/app/capabilities/registry.ts`. Gate account route la dieu kien inventory, khong phai bang chung
+Copilot co the dieu khien 113 route.
+
+Golden `tooling/copilot-golden-eval.json` hien chi duoc validate schema (30 case);
+`latencySlaMs.status = pending-owner-approval`, nen cac so do baseline 17,448 ms median,
+42,057 ms p95 va 55,913 ms max chua the goi la latency PASS. C36 burst 429 van la one-off;
+C38 chua co upload -> proxy -> vision-model oracle; chua co role-real E2E, Edge attestation,
+tracked forbidden-action validator hoac run aggregate tu dong.
+
+### 25.8. Plan nghiep vu nang cap va thu tu GO/STOP
+
+| Phase | Muc tieu nghiep vu | Deliverable bat buoc | STOP neu |
+| --- | --- | --- | --- |
+| P0 - Containment | Khong de Copilot doc nham org va khong goi surface chua co runtime | Tam khoa multi-org history, giu UI control/rollout o default-deny, tat `so_quy` cho den khi catalog live va semantic parity | Co foreign context/row, RPC missing catalog, hoac stale snapshot van expose tool |
+| P1 - Context isolation | Moi hoi dap gan dung org, actor va thread | Org-scoped persistence API, parent-thread check, org-switch reset, wrong-org/revocation E2E | Mot test A->B thay message/context cua A |
+| P2 - Server scope | Server la nguon duy nhat cua tenant boundary | 9 tool scoped co server-side org/building validation (8 wrapper RPC cho 7 tool + typed RPC cho customer/contract search), khong client-only PostgREST filter/union post-filter, SQL harness + role-real E2E | Client-only org filter con expose, forged org/building ID hoac role revoke van tra row |
+| P3 - Cashbook parity | So quy dung so lieu va du shape de doi soat | RPC live catalog, accounts/sessions/reconciliations parity, provenance, ACL, readback sau migration | Bat ky phan nao bi [] do wrapper, hoac catalog drift |
+| P4 - Behavioral release | Chuyen source fix thanh kha nang co the phat hanh | Golden runner 2 lane, provider snapshot authority, page/action contract, C36/C38, latency SLA duyet, attestation | Chi co unit/static pass, thieu SHA/catalog/role-real evidence |
+
+Chi duoc GO pilot tiep neu P0 xanh va P1-P3 khong con blocker bao mat/runtime. Chi duoc mo
+full-site khi P4 co verdict tu dong va tat ca route/action la `enabled` hoac exemption duoc phe
+duyet; exemption khong duoc dem la capability.
+
+### 25.9. Verification tai moc doi chieu 28/08/2026
+
+| Lenh | Ket qua | Cach dien giai |
+| --- | --- | --- |
+| `npx vitest run src/copilot/__tests__ src/contexts/__tests__` | 17 file, 240 test pass | Source/unit xanh; khong thay live proof |
+| `node scripts/check-copilot-page-contracts.mjs` | Pass: 3 page explicit, 113 non-redirect route accounted | Inventory/exemption only |
+| `node scripts/check-copilot-provider-policy.mjs` | Pass: 3 provider | Static policy only |
+| `node scripts/check-copilot-golden-eval.mjs` | Pass schema: 30 case; latency SLA `pending-owner-approval` | Chua co behavioral runner |
+| `npm run gate:copilot-docs` | Pass: 25/29 docs, 7 permission-gated | Ingest gate only |
+| `npm run gate:copilot-tools` | Pass: 14 tool, 12 read | Registry inventory only |
+| `npm run gate:copilot-routes` | Pass: 3 Copilot route, 146 app route, 231 permission feature | Khong phai full-site enablement |
+| `npm run docs:check:links` | Pass: 247 Markdown, 0 error | Link integrity |
+| `git diff --check` | Khong co loi noi dung; chi canh bao CRLF | Khong phai release attestation |
+| `npm run gate:rpc-surface` | **Fail:** thieu `copilot_cashbook_settlement_v1` trong live catalog | Blocker runtime (ket qua lich su cua Addendum 25) |
+| `npm run gate:graph-freshness -- --nhiem-vu domain-review` | **Fail:** UA stale 338 commit, 983 file changed, thieu 76 migration; GitNexus fresh | Khong dung `.ua` lam bang chung duy nhat (ket qua lich su cua Addendum 25) |
+
+**Quyet dinh audit sau Addendum 25:** giu verdict tong the **CHUA PRODUCTION-READY / CHUA
+FULL-SITE CONTROL**. Evaluation snapshot 13/08 van dung de truy vet cac C01-C40; source remediation
+28/08 duoc ghi nhan la tien bo co kiem soat; cac blocker context/org-boundary/cashbook va moi
+release gate neu tren van mo cho den khi co behavioral evidence tren deployment dung SHA.
+
+## 26. Addendum 2026-08-28 - doi chieu evaluation voi worktree hien hanh
+
+Addendum nay la lan doi chieu moi nhat voi snapshot test do nguoi dung cung cap. File snapshot
+`docs/ai-copilot/COPILOT-EVALUATION-2026-08-13.md` duoc giu bat bien; SHA-256 da kiem tra lai:
+
+`65450dca3cbe3926f2ec0bddc4eed62498fcd5d0ab3325e35965cc41a9152980`
+
+Tai thoi diem audit, HEAD quan sat duoc la `485577a2da063aa9c27f26b9bbad883479b05d7d` va
+working tree dang co nhieu thay doi Copilot chua commit/deploy. Vi vay moi ket qua unit, static,
+SQL migration va inventory duoi day chi la **source/local evidence**, khong phai live PASS. Bien moi
+truong `SUPABASE_PAT` khong duoc nap; mot so gate co the dung credential fallback local de doc catalog,
+nhung van chua co bang chung migration da apply, entitlement/deployment SHA moi de chung minh runtime
+production.
+
+### 26.1. Ket luan dieu hanh
+
+**Can cap nhat audit, nhung verdict khong doi: Copilot CHUA PRODUCTION-READY va CHUA DU
+FULL-SITE CONTROL.** Snapshot 13/08 van giu headline C01-C30 la `15 PASS / 7 PARTIAL / 8 FAIL`
+va C31-C40 la `5 live pass / 4 static-only / 1 deployment fail`. Khi dem lai 30 dong C01-C30,
+audit van thay `16 PASS / 7 PARTIAL / 7 FAIL`; day la discrepancy noi bo cua snapshot va phai giu
+nguyen trong provenance, khong duoc tu y sua snapshot hoac tron voi KPI unit sau remediation.
+
+Latencies baseline van la min `8,822 ms`, median `17,448 ms`, mean `21,105 ms`, p95 `42,057 ms`,
+max `55,913 ms`; burst van la 21 request, 20 HTTP 200 va 1 HTTP 429. Cac so do nay khong duoc
+goi la release SLA cho den khi owner phe duyet nguong va co run co provenance moi.
+
+### 26.2. Remediation source da xac nhan, nhung chua la live PASS
+
+- Chat persistence da nhan `organizationId`; load thread/message, save message va parent-thread
+  check deu bind user + selected organization. `ChatPanel` reset khi doi org, huy request cu va
+  chan stale generation. Focused context suite moi nhat pass `15/15`.
+- Bay nhom nghiep vu (rooms, invoice search, P&L, occupancy/upcoming, invoice stats, deposits va
+  cashbook) duoc phuc vu boi **8 RPC wrapper server-side** nhan organization va tu resolve scope;
+  occupancy/upcoming la hai RPC trong cung mot nhom. Hai tool scoped con lai,
+  `tim_khach_hang` va `hop_dong_sap_het_han`, van dung PostgREST query loc `organization_id`.
+  Migration wrapper source hien co la
+  `supabase/migrations/20260828160000_copilot_server_scope_v2.sql`.
+- Confirmation write da chuyen khoi boolean model-supplied sang `confirmationStore` + canonical
+  intent key; safe-control semantic da duoc wire, con primitive index-based van disabled.
+- Availability adapter, E2E file gate, page-contract inventory, provider policy va golden schema
+  artifact da co trong worktree. Day la plumbing va static guard; mot so file van chua git-track,
+  chua co server RPC live, role-real rerun hay behavioral golden verdict.
+
+### 26.3. Findings moi can bo sung/giu mo
+
+#### F26.1 - Release blocker: room semantic parity chua co live proof (source da remediation)
+
+Finding semantic ban dau da duoc **supersede mot phan trong source**. Ban hien hanh cua
+`copilot_available_rooms_v1` trong `supabase/migrations/20260828160000_copilot_server_scope_v2.sql:27-121`
+da bo sung cac diem quan trong cua `get_my_available_rooms()` (`supabase/baseline/schema.sql:64744-64920`):
+
+- trang thai `free`, `soon`, `rented`, `pass`;
+- overlay `room_pass_listings`, `pass_avail_date` va `pass_contact_manager`;
+- holding deposit va hop dong dang/ sap ket thuc;
+- loai tru building virtual;
+- `org_today_v1`, `avail_date` va output allowlist khong tra contact rieng tu.
+
+Focused contract suite hien pass `28/28`, nen khong con co so ghi wrapper hien tai dang chac chan chi
+tra `AVAILABLE` hoac bo qua virtual building. Tuy nhien chua co PostgREST/deployment readback dung SHA,
+parity oracle theo tung room/building va role-real wrong-org/revocation E2E. Cac khac biet con co the
+nam o owner/settings resolution, area/contact metadata, duplicate settings row hoac serialization.
+Vi vay giu gate P2/P4 mo duoi dang **source remediated, live parity unverified**, khong mo ta day la
+semantic regression da xac nhan.
+
+#### F26.2 - Release blocker: `so_quy` v2 parity chua co live proof (source da remediation mot phan)
+
+Ban v2 hien tai trong `supabase/migrations/20260828160000_copilot_server_scope_v2.sql:167-181` da tra
+du ba nhom `accounts/sessions/reconciliations`, loc scope cashbook tu server, bo sổ ao/sandbox/demo,
+ap dung ACL participant/owner/team va chi xuat explicit fields. Vi vay cac mo ta cu rang wrapper
+thieu toan bo guard, dung `to_jsonb(ch)` hoac bo qua participant ACL la **lich su truoc remediation**,
+khong phai trang thai source hien hanh.
+
+Rui ro con lai la chua co parity oracle/readback tren deployment voi report goc
+`cashbook_settlement_report()` (`supabase/baseline/schema.sql:52007-52104`): can doi chieu count/total,
+session visibility ca hai phia account, reconciliation metadata, virtual/sandbox guards va output
+allowlist tren cung fixture. Focused source contract pass khong thay the catalog/provenance/live ACL
+evidence; do do P3 van **chua dat** cho den khi parity va role-real negative test xanh.
+
+#### F26.3 - Risk authorization: mapping `cashbooks.view` sang building scope co the tu choi nham
+
+`invoices.view` trong permission definition co the chap nhan dimension `CASHBOOK`, trong khi
+`copilot_org_scope_buildings_v1()` chu yeu resolve building IDs. Mot actor co quyen cashbook hop le
+nhung khong co building scope co the bi wrapper tra `not_permitted`, hoac mot wrapper co the vo tinh
+mo rong scope neu tu suy building tu client. Can chot mot quy tac duy nhat (cashbook -> building
+mapping tren server, hoac cashbook-only contract) va them test positive, empty, wrong-org, revoked
+va forged-scope cho moi permission lien quan. Khong coi day la loi UX; day la authorization
+compatibility gate truoc release.
+
+#### F26.4 - Blocker rollout authority: availability moi co local adapter
+
+`src/copilot/featureFlags.ts:81-94` goi `get_my_copilot_availability_v1`. Generated Supabase type
+file da normalize va `npm run types:check` pass, nhung chinh RPC availability nay van chua co trong
+live catalog (va chua co typed admin transition RPC);
+`npm run gate:migration-provenance` cung fail vi ba migration Copilot `20260828140000`,
+`20260828160000`, `20260828170000` chua co entry provenance. `ChatPanel` hien da nap snapshot va
+truyen no vao chat/UI-control, nhung chua the chung minh snapshot co revision, timestamp, actor/org
+scope va digest duoc server phat hanh; cung chua co revoke E2E chung minh request tiep theo bi chan
+truoc upstream. Quan trong hon,
+`buildRegistry`/adapter van giu cac tool khong co `rolloutKey` khi snapshot la `null` (va giu toan bo
+registry neu caller bo qua tham so), nen thieu snapshot chua phai deny-all that su. Phai chot danh
+sach tool/page nao bat buoc rollout-gated va test missing/stale/revoked snapshot truoc khi cho execute.
+
+#### F26.5 - (Da dong o lop unit; finding lich su)
+
+Tai moc doi chieu truoc, `16/17` test files pass va `237/238` tests pass do assertion
+`src/copilot/__tests__/featureFlags.test.ts:27` chua theo contract milliseconds. Finding nay da
+duoc dong sau khi chot parser/test cung don vi; rerun fresh ghi o Addendum 27 dat `17/17` file va
+`238/238` test pass. Ket qua nay chi dong blocker unit/source, khong thay the behavioral E2E,
+live catalog hay release attestation.
+
+#### F26.6 - Fix-now documentation/release hygiene (da remediation source, can giu gate)
+
+Tai lan doi chieu truoc, `npm run gate:copilot-tools` do vi inventory trong
+`docs/ai-copilot/README.md` lech registry 14 tool (12 doc). Lan chay lai cuoi phien da **pass**
+va xac nhan tai lieu khop registry. Finding chi con la quy tac duy tri: moi thay doi registry phai
+chay lai gate, khong sua tay de che lech. Day van la gate release that vi inventory la nguon de nguoi
+van hanh biet tool nao duoc expose.
+
+#### F26.7 - Coverage gap: evaluation chua dai dien da-provider va positive-data quality
+
+Snapshot C01-C30 chi chay mot cau hinh model/provider (`9router:cx/gpt-5.6-sol(max)`) va phan lon
+case du lieu la empty-state/khong co du lieu. Vi vay snapshot co the phat hien loi routing/schema
+tren cau hinh do, nhung chua chung minh cac provider/model duoc phep khac cho ra cung ket qua, cung
+chua do duoc do chinh xac cua so lieu duong (positive rows), format tien, timezone va citation tren
+tung lane. Day la khoang trong coverage, khong phai ket luan rang provider khac dang loi.
+
+**Dieu kien bo sung:** golden runner phai chay toi thieu mot mock lane deterministic va mot real-model
+lane cho moi provider/model duoc phep (hoac ghi ro exemption co phe duyet), bind source SHA, provider,
+model, tool/contract digest va authz snapshot; moi nhom domain phai co ca positive, empty, wrong-org,
+permission-denied va malformed-input oracle. Khong dung ket qua cua mot provider de tuyen bo da bao phu
+toan bo provider policy.
+
+#### F26.8 - Blocker chuc nang: semantic safe-control chua co marker tren production page
+
+`giaiSafeControl()` chi tra ve phan tu co thuoc tinh `data-ai-safe` dung voi `safeControlIds` cua
+page contract. Kiem tra source hien tai chi thay hang so thuoc tinh trong
+`src/copilot/safeControls.ts`, khong thay marker tren component cua ba page pilot
+(`/apartments`, `/invoices`, `/customers`). Vi vay viec wire `safe_click`/`safe_input`/`safe_select`
+la plumbing, nhung control thuc te se roi vao loi `khong_thay`; khong the coi C23 hoac kha nang loc/
+dien form la da hoat dong. Day la blocker chuc nang rieng, khong chi la thieu E2E.
+
+**Dieu kien bo sung:** gan marker cho dung control an toan tren moi page pilot; gate phai bat trung lap,
+unknown marker va marker nam ngoai contract; E2E phai co positive input/select/filter, stale/replaced
+node, alert/submit negative va assertion khong co network write.
+
+#### F26.9 - Blocker rollout control-plane: migration flag chua dap ung contract C3.1
+
+Migration `supabase/migrations/20260828170000_copilot_feature_flags_v1.sql` moi co read RPC
+`get_my_copilot_availability_v1`; khong co typed admin transition RPC trong khi C3.1 yeu cau admin
+toggle qua RPC va browser khong duoc ghi bang `.from().update()`. Do table privilege da revoke cho
+`authenticated`, rollout hien khong co duong van hanh da khai bao de chuyen `disabled -> shadow ->
+enabled` hoac rollback co kiem toan.
+
+Ngoai viec thieu command boundary, payload snapshot va so audit con bon loi contract:
+
+- `states` duoc tao bang `jsonb_object_agg(contract_id, state)`, bo mat `scope`; neu mot page va mot
+  action trung `contract_id`, mot state co the de len state kia. Key runtime phai la composite
+  `scope:contract_id` hoac object long theo scope, va client/parser phai tu choi key mo ho.
+- `revision` snapshot la `max(revision)` cua cac row, trong khi moi row tu tang rieng. Hai transition
+  tren hai flag khac nhau co the cung de snapshot revision o cung mot gia tri; day khong phai global
+  monotonic rollout revision de CAS/read-after-write hay `expected_rollout_revision` dua vao.
+- `copilot_feature_flag_audit` chua duoc khoa append-only bang trigger/ACL cho moi server writer va
+  thieu metadata van hanh bat buoc: reason, evidence/reference, expiry/canary window va rollback ref.
+- Bang metadata khong bat RLS trong migration; revoke grant cho `authenticated` la mot lop giam lo,
+  nhung chua thay the bang chung ACL cho moi server/privileged role chi duoc thay doi qua transition RPC.
+- Khong co transition test cho actor unauthorized, stale expected revision, hai update dong thoi,
+  rollback va audit immutability. Migration idempotency `23/23` chi chung minh double-run rollback,
+  khong chung minh rollout authority dung nghiep vu.
+
+**Dieu kien bo sung:** them mot typed admin transition RPC re-check superadmin/permission va current
+revision, lock row/control revision, validate state machine/canary, ghi audit append-only trong cung
+transaction va tra snapshot revision/digest moi. Snapshot key phai giu `scope`; revision phai tang
+toan cuc cho moi transition. Chi sau khi co unauthorized/concurrency/rollback/immutability test va
+live catalog/provenance evidence moi duoc coi C3.1 dat.
+
+#### F26.10 - Blocker release hygiene: migration provenance chua duoc dang ky
+
+Run fresh `npm run gate:migration-provenance` fail cho ba migration Copilot:
+
+- `20260828140000_copilot_org_scope_v1.sql`;
+- `20260828160000_copilot_server_scope_v2.sql`;
+- `20260828170000_copilot_feature_flags_v1.sql`.
+
+Gate cung bao mot migration Network Center ngoai pham vi Copilot chua co entry; khong duoc sua/gom
+file ngoai ownership chi de lam gate xanh. `gate:ledger-frozen` pass chi xac nhan baseline ledger cu
+khong bi sua, khong thay the provenance cua forward migration moi. Vi vay migration Copilot khong
+duoc apply/promote cho den khi chay generator theo quy trinh, review state/digest, bo sung
+unknown-review/forward-lane expectation neu ap dung va chay lai toan bo gate migration lien quan.
+
+#### F26.11 - Authorization/release blocker: hai tool PostgREST tin vao organization do client cung cap
+
+`chotToChuc()` trong `src/copilot/tools/registry.ts` chi kiem tra `organizationId` khac `null`.
+Hai tool `tim_khach_hang` (`src/copilot/tools/registry.ts:349-378`) va
+`hop_dong_sap_het_han` (`src/copilot/tools/registry.ts:427-458`) sau do query truc tiep
+`customers`/`contracts` bang `.eq('organization_id', orgId)`. Khong co typed server RPC nao
+re-check actor, selected organization, permission, lifecycle hay resource scope cho hai duong nay.
+
+Baseline RLS co policy `customers_org_boundary`/`contracts_org_boundary` va policy
+`customers_super_admin_all`/`contracts_super_admin_all` voi nhanh `is_super_admin()`. Vi vay RLS
+khong phai la selected-organization boundary cho superadmin: mot client bi gia mao hoac request bi
+forge co the thay `organizationId` khac va nhan rows cua org khac neu org do nam trong tap duoc phep
+doc. Day la rui ro cau truc co co so va la vi pham invariant selected-org; audit **chua** chay live
+exploit tren deployment dung SHA, nen khong ghi nhan day la data leak da xac nhan.
+
+Test `src/copilot/__tests__/toolOrgScope.test.ts` hien chi assert `.eq('organization_id', ORG)`;
+no khong chung minh forged organization ID bi tu choi, role-real wrong-org hay foreign-row = 0.
+Khong gop finding nay mot cach mu quang vao B4 scope/provenance: B4 la thieu context va release
+evidence; F26.11 la thieu server authorization tren hai query truc tiep.
+
+**Dieu kien bo sung:**
+
+1. Chuyen ca hai tool sang typed server-side RPC/view co output field allowlist; RPC phai xac thuc
+   actor, org ACTIVE, sandbox/lifecycle, permission va selected-org contract truoc khi doc.
+2. Khong coi `.eq('organization_id', ...)` o browser la authority. Server phai derive/re-check scope
+   va cam foreign rows truoc formatter, ke ca voi superadmin.
+3. Them role-real E2E positive, empty, forged org, wrong org, revoked membership va malformed input;
+   assert foreign-row count bang 0 truoc formatter va capture catalog/provenance/readback tren dung
+   SHA.
+
+### 26.4. Verification fresh tai moc 2026-08-28
+
+Bang duoi phan tach ket qua chay cuoi phien voi ket qua lich su o cac addendum truoc. Khi co mau
+thuan, ket qua chay cuoi phien duoc uu tien cho trang thai hien hanh; cac so lieu cu van giu lai de
+truy vet provenance. Luu y: `gate:rpc-surface` van duoc chay lai va van fail voi 8 RPC missing
+catalog; day la blocker live hien hanh, khong chi la ket qua lich su.
+
+| Lenh | Ket qua fresh | Dien giai |
+| --- | --- | --- |
+| `npx vitest run src/copilot/__tests__` | **17 file, 238/238 pass** | F26.5 closed at unit/source layer; see Addendum 27 |
+| `npx vitest run src/copilot/__tests__/featureFlags.test.ts src/copilot/__tests__/chatPersistenceOrgScope.test.ts src/copilot/__tests__/availabilityAdapters.test.ts src/copilot/__tests__/toolOrgScope.test.ts src/lib/__tests__/copilotAvailabilityMigration.test.ts src/lib/__tests__/copilotOrgScopeBoundaryMigration.test.ts src/app/capabilities/__tests__/copilotPageContracts.test.ts src/contexts/__tests__/OrganizationContext.test.ts` | **8 file, 48/48 pass** | Focused source contract evidence only |
+| `npx vitest run src/contexts/__tests__/OrganizationContext.test.ts src/copilot/__tests__/chatPersistenceOrgScope.test.ts` | **15/15** | Context isolation source evidence |
+| `node scripts/check-copilot-e2e-files.mjs` | Pass, 3 spec | File/schema gate, chua la live E2E |
+| `node scripts/check-copilot-golden-eval.mjs` | Pass, 30 case schema; SLA `pending-owner-approval` | Chua tao behavioral verdict |
+| `node scripts/check-copilot-provider-policy.mjs` | Pass, 3 provider | Static provider policy |
+| `node scripts/check-copilot-page-contracts.mjs` | Pass, 3 page; 113 route accounted | Inventory/exemption, khong phai 113 route enabled |
+| `npm run gate:copilot-routes` | Pass, 3 Copilot route / 146 app route / 231 feature | Whitelist gate |
+| `npm run gate:copilot-docs` | Pass, 25/29 doc; 7 permission-gated | Ingest gate; con 12 review debt canh bao |
+| `npm run docs:check:links` | Pass, 247 Markdown, 0 loi | Link integrity |
+| `npm run gate:rpc-surface` | **Fail, 8 RPC missing live catalog** | F26.4/runtime blocker; gom 7 wrapper v1 + `copilot_cashbook_settlement_v2`; chay lai cuoi phien van fail |
+| `npm run gate:migration-provenance` | **Fail:** 3 migration Copilot + 1 migration Network Center thieu entry | F26.10; khong apply/promote migration Copilot |
+| `npm run gate:ledger-frozen` | Pass, baseline ledger 372 row khong doi | Khong thay the forward-migration provenance |
+| `npm run types:check` | Pass | Generated type normalized; khong chung minh RPC live |
+| `npm run gate:copilot-tools` | **Pass: 14 tool, 12 read** | Inventory gate xanh; van can giu dong bo khi registry thay doi |
+| `toolOrgScope.test.ts` | **Pass static** | Chi chung minh `.eq('organization_id', ...)`; khong thay the forged-org/role-real server authorization proof cua F26.11 |
+| `tooling/copilot-golden-eval.json` provenance | **Chua dat coverage**: chi pin mot real-model baseline, chua co matrix provider/model va positive-data oracle | F26.7 |
+| `data-ai-safe` page markers | **Chua dat chuc nang**: contract co ID nhung source khong gan marker tren ba page pilot | F26.8 |
+| `npx tsc --noEmit -p tsconfig.app.json --pretty false` | **Fail: 3 errors** | 1 Copilot generated-type gap + 2 errors outside scope; `types:check` khong thay the app typecheck |
+| `npm run gate:graph-freshness -- --nhiem-vu domain-review` | **Fail, UA stale** (345 commit, 1007 file doi, 314 file moi, 78 migration thieu, 1 subsystem vang) | Khong dung UA lam bang chung duy nhat |
+| `git diff --check` | Pass noi dung; chi canh bao CRLF | Khong phai deployment attestation |
+
+Khong co live rerun tren SHA moi, role-real wrong-org/revocation E2E, tracked C36 burst, C38
+upload -> proxy -> vision oracle, hay production catalog snapshot. Khoang trong nay la ly do truc tiep
+de giu STOP, khong phai chi tiet hanh chinh.
+
+### 26.5. Cap nhat P0-P4 va plan nghiep vu GO/STOP
+
+| Phase | Trang thai sau doi chieu 26 | Viec bat buoc tiep theo | STOP neu |
+| --- | --- | --- | --- |
+| P0 - Containment | Source da co org guard va chat reset; live catalog/availability van chua xac nhan | Khong deploy; tam khoa tool wrapper chua co catalog, dac biet `so_quy`; khi thieu snapshot phai default-deny rollout-gated capability | Foreign context/row, RPC missing van duoc expose, snapshot stale van cho execute, hoac flag co the transition ngoai typed RPC/audit |
+| P1 - Context isolation | **Source remediated; live E2E mo** | Chay DEMO A -> B, wrong-thread, revoked-membership va stale-request E2E tren dung build SHA | Mot message/context cua A xuat hien o B |
+| P2 - Server scope | **Chua dong**: source wrapper/parity da remediation mot phan, nhung 2 query PostgREST con client-only org filter; catalog/live readback va permission mapping chua chot | Mirror room legacy; thay 2 query customer/contract bang typed RPC; test forged org/building/role revoke; catalog/type/provenance sau apply TEST/DEMO | Client-only org filter con expose, foreign row khong bang 0 truoc formatter, room output lech legacy, hoac actor cashbook hop le bi tu choi sai |
+| P3 - Cashbook parity | **Chua dat** | Viet parity oracle cho accounts/sessions/reconciliations, participant ACL, virtual/sandbox/demo guard, safe output shape; readback live | Bat ky nhom nao bi `[]` do wrapper, payload vuot contract, hoac count/total lech report goc |
+| P4 - Behavioral release | **Chua dat** | Hoan tat rollout transition RPC/global revision/audit; deploy attested SHA; golden mock + real-model matrix theo provider/exemption, positive-data oracle; role-real E2E; C36/C38; latency SLA owner-approved | Chi co unit/static pass, mot-provider baseline hoac thieu SHA/catalog/entitlement/snapshot/revoke/rollout-transition evidence |
+
+Trinh tu nghiep vu khuyen nghi:
+
+1. **Containment:** giu Copilot o pilot allowlist, readonly/DEMO; khong apply migration production khi
+   RPC catalog va typecheck con do.
+2. **Chot nghia du lieu:** so sanh wrapper voi report/UI legacy tren cung fixture; chot mapping
+   permission cashbook-building bang policy duoc owner phe duyet; chuyen hai query customer/contract
+   khoi client-only PostgREST sang typed server boundary.
+3. **Hoan tat server contract:** apply availability read RPC dung quy trinh; them typed admin
+   transition RPC, composite scoped key, global monotonic revision va append-only audit; sua
+   room/cashbook parity, ACL va output minimization; capture catalog revision/digest.
+4. **Chung minh hanh vi:** chay golden functional + forbidden-action lane tren mock va cac real-model
+   provider duoc phep/duoc mien tru; bo sung positive-data oracle, wrong-org/revoke/forged scope
+   role-real E2E; controlled burst phai chung minh 429 truoc upstream; multimodal phai co upload ->
+   proxy -> vision readback tren DEMO.
+5. **Release gate:** build preview tu dung SHA, ghi migration/catalog/entitlement/provider snapshot,
+   rerun C01-C40 va latency; chi promote khi tat ca blocker P0-P4 xanh. Neu mot gate do thi giu SHA
+   production cu va mo incident/remediation ticket co owner, expiry va exit condition.
+
+### 26.6. Quyet dinh ket thuc audit
+
+Evaluation snapshot 13/08 van la baseline bat bien de truy vet. Worktree 28/08 cho thay tien bo
+thuc te o chat persistence, server-scope scaffold, confirmation va static safety, nhung cung phat
+hien room/cashbook parity chua co live proof, permission mapping risk, availability
+catalog/provenance gap, rollout transition/revision/audit contract chua dat, thieu marker cho
+semantic control, coverage chi co mot provider/chu yeu empty-state va F26.11 tren hai query
+PostgREST chua co server authorization. Full Copilot unit suite da rerun xanh 17 file/238 test
+(F26.5 da dong o lop unit), nhung app typecheck van fail o RPC availability (chua co trong generated type) va hai loi ngoai
+pham vi. Cac diem nay du de ket luan:
+
+**CHUA PRODUCTION-READY / CHUA FULL-SITE CONTROL.**
+
+Pham vi an toan hien tai la pilot noi bo co kiem soat, uu tien readonly va DEMO; khong coi source
+remediation la kha nang da deploy cho den khi co live evidence trung khop SHA, catalog, entitlement,
+provider/availability snapshot va role-real E2E.
+
+## 27. Addendum 2026-08-28 - cap nhat sau rerun full Copilot suite
+
+Addendum nay cap nhat **chi trang thai verification source/local** sau khi sua hop dong don vi thoi
+gian cua availability snapshot. Snapshot live goc tai `docs/ai-copilot/COPILOT-EVALUATION-2026-08-13.md`
+khong bi sua; SHA-256 van la
+`65450dca3cbe3926f2ec0bddc4eed62498fcd5d0ab3325e35965cc41a9152980`. Khong co deployment, migration,
+catalog hay production data write nao duoc suy ra tu rerun nay.
+
+### 27.1. Finding duoc dong o lop unit
+
+**F26.5 - full Copilot suite:** da dong o lop unit/source. Lenh fresh
+`npx vitest run src/copilot/__tests__` cho ket qua **17 test files passed, 238 tests passed, 0 failed**.
+Nguyen nhan truoc do la parser chuan hoa numeric epoch giay `1234` thanh `1,234,000` ms; assertion
+da duoc chot cung contract milliseconds. Day khong phai la bang chung behavioral, live E2E hay
+release readiness, nen khong dong P4 va khong ha verdict tong the.
+
+Focused rerun lien quan cung xanh: 8 file, 48 test pass (feature flags, chat org scope, availability,
+customer/contract scope, migration contracts, page contracts va organization context).
+
+### 27.2. Blocker van mo sau rerun
+
+- **Build/typecheck:** `npx tsc --noEmit -p tsconfig.app.json --pretty false` van fail. Loi trong
+  Copilot: `src/copilot/featureFlags.ts` goi `get_my_copilot_availability_v1` nhung RPC chua co trong
+  generated Supabase type. Hai loi con lai o `src/components/invoices/GenerateInvoiceDialog.tsx` va
+  `src/pages/customers/CT01FormPage.tsx` la ngoai pham vi nhung van chan completion gate cua build.
+- **RPC/live catalog:** `npm run gate:rpc-surface` van fail voi 8 RPC Copilot khong co trong live catalog:
+  `copilot_available_rooms_v1`, `copilot_cashbook_settlement_v2`, `copilot_deposit_summary_v1`,
+  `copilot_financial_pnl_v1`, `copilot_invoice_search_v1`, `copilot_invoice_stats_v1`,
+  `copilot_occupancy_upcoming_v1`, `copilot_occupancy_v1`.
+- **Migration provenance:** `npm run gate:migration-provenance` van fail voi ba migration Copilot
+  `20260828140000`, `20260828160000`, `20260828170000` va mot migration Network Center ngoai ownership.
+- **Authorization boundary:** `tim_khach_hang` va `hop_dong_sap_het_han` van dung PostgREST browser
+  voi `.eq('organization_id', orgId)`; chua co typed server RPC re-check actor, selected org, permission
+  va revoked membership. Static test khong thay the forged-org/wrong-org role-real proof.
+- **Rollout authority:** migration feature flags van chi co read RPC; chua co typed admin transition,
+  global monotonic revision, composite scope-preserving snapshot va append-only immutable audit theo C3.1.
+- **Semantic control/release:** page contract moi pass inventory (3 page, 113 route accounted) nhung
+  chua co marker `data-ai-safe` tren control pilot va chua co browser mutation proof; golden schema/provider
+  gate pass static nhung chua co behavioral verdict; C36 burst va C38 upload -> proxy -> vision chua co
+  tracked live evidence.
+- **E2E tracking/scope:** Worktree hien co 4 Copilot spec: `copilot-confirmation.spec.ts` da
+  tracked, con ba spec moi `copilot-readonly-smoke.spec.ts`, `copilot-golden-readonly.spec.ts` va
+  `copilot-pageagent-safety.spec.ts` dang untracked. File gate chi xac nhan 3 spec moi ton tai va co
+  test Playwright; khong xac nhan da commit, da chay hay da attested. Ba spec moi cung chua phai
+  behavioral proof day du: readonly smoke chi chay mot prompt, golden spec chi kiem tra schema 30
+  case + launcher, con page-agent safety chi gui mot yeu cau tong quat va dem request ghi trong 3
+  giay; chua traversal control autosave/portal/shadow/iframe, stale-node hay golden result aggregate.
+- **Gate enforcement:** `check-copilot-page-contracts.mjs` va `check-copilot-provider-policy.mjs` deu
+  pass khi goi truc tiep, nhung chua co npm gate tuong ung va chua duoc dua vao tap pre-push/CI; vi vay
+  ket qua static nay chua phai enforcement gate cua release.
+
+### 27.3. Gate status fresh
+
+| Lenh | Ket qua | Cach dien giai |
+| --- | --- | --- |
+| `npx vitest run src/copilot/__tests__` | **17 file, 238/238 pass** | F26.5 closed at unit/source layer |
+| Focused Copilot/context/migration suite | **8 file, 48/48 pass** | Source contract evidence only |
+| `node scripts/test-copilot-readonly-queries.mjs --local-cluster` | **7/7 pass** | Disposable PostgreSQL contract; khong phai live PostgREST |
+| `npm run gate:copilot-tools` | **Pass: 14 tool, 12 read** | Inventory synchronized |
+| `npm run gate:copilot-routes` | **Pass: 3 pilot / 146 app / 231 feature** | Whitelist, khong phai full-site enablement |
+| `npm run gate:copilot-e2e-files` | **Pass: 3 required spec present** | Gate chi kiem tra readonly/golden/page-agent; khong gom confirmation, khong kiem tra git tracking/run/attestation |
+| `npm run gate:copilot-golden-eval` | **Pass: 30 case schema** | SLA `pending-owner-approval`, chua co behavioral result |
+| `npm run build` | **Pass: 4,977 modules, Vite build 1m17s** | Build artifact tao duoc; khong thay the app typecheck; Vite van canh bao `eval` trong dependency PageAgent va mot so dynamic-import/browserslist warning |
+| `node scripts/check-copilot-page-contracts.mjs` | **Pass: 3 page / 113 route accounted** | Inventory/exemption only |
+| `node scripts/check-copilot-provider-policy.mjs` | **Pass: 3 provider** | Static policy only |
+| `npm run gate:definer-acl` | **Pass** | Khong co SECURITY DEFINER ACL regression moi |
+| `npm run gate:rpc-arg-names` | **Pass** | Khong thay mismatch o call co the doc |
+| `npm run gate:rpc-surface` | **Fail: 8 RPC missing live catalog** | Release blocker |
+| `npm run gate:migration-provenance` | **Fail: 4 migration entries missing** | Release blocker; 3 Copilot + 1 outside scope |
+| `npx tsc --noEmit -p tsconfig.app.json --pretty false` | **Fail: 3 errors** | 1 Copilot generated-type gap + 2 pre-existing outside scope |
+| `npm run typecheck:e2e` | **Pass** | Chi kiem tra TypeScript cua spec; khong thay the viec execute live, git tracking hay attestation |
+
+### 27.4. Cap nhat quyet dinh
+
+F26.5 duoc danh dau **closed (unit/source)**, khong con la blocker doc lap. Cac blocker release
+F26.1-F26.4, F26.7-F26.11 van mo; them mot gate build ro rang cho generated RPC type va live catalog.
+Vi vay ket luan van giu nguyen:
+
+**CHUA PRODUCTION-READY / CHUA FULL-SITE CONTROL.**
+
+Dieu kien de xem xet lai khong doi: deploy dung SHA; catalog/provenance/typecheck xanh; server-bound
+org authorization cho 9 tool scoped; rollout transition RPC + revision/audit; semantic marker/browser
+zero-mutation; role-real wrong-org/revocation; golden mock + real-provider positive-data; C36/C38 live
+E2E; va latency SLA duoc owner phe duyet.

@@ -52,6 +52,7 @@ export interface SearchableSelectProps {
   align?: "start" | "center" | "end";
   id?: string;
   "aria-label"?: string;
+  "data-ai-safe"?: string;
 }
 
 /** Text dùng để so khớp tìm kiếm của một option. */
@@ -104,9 +105,11 @@ export function SearchableSelect({
   align = "start",
   id,
   "aria-label": ariaLabel,
+  "data-ai-safe": dataAiSafe,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
 
   const selected = React.useMemo(
     () => options.find((o) => o.value === value),
@@ -134,6 +137,18 @@ export function SearchableSelect({
     setOpen(false);
     setQuery("");
   };
+
+  React.useEffect(() => {
+    const trigger = triggerRef.current;
+    if (!trigger || !dataAiSafe) return;
+    const onExternalChange = () => {
+      const next = trigger.getAttribute("data-ai-selected");
+      if (next && options.some((option) => option.value === next)) handleSelect(next);
+      trigger.removeAttribute("data-ai-selected");
+    };
+    trigger.addEventListener("change", onExternalChange);
+    return () => trigger.removeEventListener("change", onExternalChange);
+  }, [dataAiSafe, options, onValueChange]);
 
   const renderItem = (opt: SearchableSelectOption) => (
     <CommandItem
@@ -165,10 +180,12 @@ export function SearchableSelect({
       <PopoverTrigger asChild>
         <button
           type="button"
+          ref={triggerRef}
           id={id}
           role="combobox"
           aria-expanded={open}
           aria-label={ariaLabel}
+          data-ai-safe={dataAiSafe}
           disabled={disabled}
           className={cn(triggerBaseClass, className)}
         >

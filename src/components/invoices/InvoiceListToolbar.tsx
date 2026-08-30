@@ -107,6 +107,7 @@ const InvoiceListToolbar = ({
         <div className={`relative ${compact ? 'flex-1 min-w-0' : 'w-[240px]'}`}>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
+            data-ai-safe="invoices.list.invoice.search"
             placeholder="Tìm mã phòng, số HĐ, tên khách, số tiền…"
             value={searchQuery}
             onChange={(e) => onSearch(e.target.value)}

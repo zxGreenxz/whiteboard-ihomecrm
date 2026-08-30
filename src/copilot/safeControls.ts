@@ -25,11 +25,30 @@ export const THUOC_TINH_AN_TOAN = 'data-ai-safe';
 
 export type LoaiThaoTac = 'click' | 'input' | 'select';
 
+export interface SafeControlTool {
+  description: string;
+  inputSchema: import('zod/v4').ZodTypeAny;
+  execute: (args: { control_id: string; text?: string }, ctx: { signal: AbortSignal }) => Promise<string>;
+}
+
+export interface SafeControlExecutionOptions {
+  /**
+   * Synchronous last-mile guard. Callers use this to re-check the current route,
+   * page contract, rollout, and permission immediately before a DOM mutation.
+   */
+  beforeDispatch?: () => void;
+}
+
 export interface HopDongTrangToiThieu {
   /** Khoá trang trong hợp đồng — dùng để tiền tố ID control. */
   key: string;
   /** Danh sách ID control an toàn của ĐÚNG trang này. */
   safeControlIds: readonly string[];
+}
+
+/** Convert a page contract into the id namespace consumed by semantic tools. */
+export function hopDongTuPageContract(page: { key: string; safeControlIds: readonly string[] }): HopDongTrangToiThieu {
+  return { key: page.key, safeControlIds: page.safeControlIds };
 }
 
 export class LoiSafeControl extends Error {
@@ -142,11 +161,21 @@ export function giaiSafeControl(
     );
   }
 
-  const chon = `[${THUOC_TINH_AN_TOAN}="${thoatChuoiChon(controlId)}"]`;
+  // Prefer the page-qualified attribute; the unqualified fallback preserves
+  // compatibility with legacy controls while still requiring an explicit id.
+  const ids = [`${page.key}.${controlId}`, controlId];
   const thay: HTMLElement[] = [];
-  for (const goc of gocDom(root)) {
-    for (const el of goc.querySelectorAll<HTMLElement>(chon)) {
-      if (el.isConnected) thay.push(el);
+  for (const id of ids) {
+    const chon = `[${THUOC_TINH_AN_TOAN}="${thoatChuoiChon(id)}"]`;
+    const found: HTMLElement[] = [];
+    for (const goc of gocDom(root)) {
+      for (const el of goc.querySelectorAll<HTMLElement>(chon)) {
+        if (el.isConnected && !found.includes(el)) found.push(el);
+      }
+    }
+    if (found.length > 0) {
+      thay.push(...found);
+      break;
     }
   }
 
@@ -173,4 +202,71 @@ export function giaiSafeControl(
     );
   }
   return el;
+}
+
+function assertLive(el: HTMLElement, page: HopDongTrangToiThieu, controlId: string, loai: LoaiThaoTac): void {
+  if (!el.isConnected) {
+    throw new LoiSafeControl('khong_thay', `Control "${controlId}" khÃ´ng cÃ²n trÃªn trang.`);
+  }
+  if (!hopLoai(el, loai)) {
+    throw new LoiSafeControl('sai_loai', `Control "${controlId}" khÃ´ng nháº­n thao tÃ¡c "${loai}".`);
+  }
+  // Guard against a component being replaced between resolve and act.
+  const actual = el.getAttribute(THUOC_TINH_AN_TOAN);
+  if (actual !== `${page.key}.${controlId}` && actual !== controlId) {
+    throw new LoiSafeControl('khong_ket_noi', `Control "${controlId}" Ä‘Ã£ thay Ä‘á»•i trong lÃºc thao tÃ¡c.`);
+  }
+}
+
+function dispatch(el: HTMLElement, type: string): void {
+  const fn = (el as unknown as { dispatchEvent?: (event: Event) => boolean }).dispatchEvent;
+  if (typeof fn === 'function' && typeof Event !== 'undefined') fn.call(el, new Event(type, { bubbles: true }));
+}
+
+import * as z from 'zod/v4';
+
+/** Build default-deny semantic tools for one declared page contract. */
+export function taoCongCuDieuKhienAnToan(
+  page: HopDongTrangToiThieu,
+  root: Document = document,
+  options: SafeControlExecutionOptions = {},
+): Record<'safe_click' | 'safe_input' | 'safe_select', SafeControlTool> {
+  const resolve = (controlId: string, kind: LoaiThaoTac): HTMLElement => {
+    const el = giaiSafeControl(page, controlId, kind, root);
+    assertLive(el, page, controlId, kind);
+    return el;
+  };
+  const inputSchema = z.object({ control_id: z.string().min(1), text: z.string() });
+  const clickSchema = z.object({ control_id: z.string().min(1) });
+  const make = (kind: LoaiThaoTac, description: string, input: z.ZodTypeAny): SafeControlTool => ({
+    description,
+    inputSchema: input,
+    execute: async (args, ctx) => {
+      ctx.signal.throwIfAborted();
+      const el = resolve(args.control_id, kind);
+      // The page may have changed while PageAgent was deciding which semantic
+      // tool to call. Re-check synchronously after resolving and before mutation.
+      options.beforeDispatch?.();
+      ctx.signal.throwIfAborted();
+      assertLive(el, page, args.control_id, kind);
+      if (kind === 'input') {
+        (el as HTMLInputElement | HTMLTextAreaElement).value = args.text ?? '';
+        dispatch(el, 'input');
+        dispatch(el, 'change');
+      } else if (kind === 'select') {
+        const option = args.text ?? '';
+        if ('value' in el) (el as HTMLSelectElement).value = option;
+        el.setAttribute('data-ai-selected', option);
+        dispatch(el, 'change');
+      } else {
+        dispatch(el, 'click');
+      }
+      return `Đã thao tác an toàn ${kind} control ${args.control_id}.`;
+    },
+  });
+  return {
+    safe_click: make('click', 'Click only an explicitly declared safe control id.', clickSchema),
+    safe_input: make('input', 'Type only into an explicitly declared safe control id.', inputSchema),
+    safe_select: make('select', 'Select only an explicitly declared safe control id.', inputSchema),
+  };
 }

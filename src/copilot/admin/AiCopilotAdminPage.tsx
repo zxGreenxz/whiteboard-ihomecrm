@@ -16,6 +16,17 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { formatVND } from '@/lib/utils';
 import { LLM_PROXY_BASE, makeCopilotFetch, newTaskId } from '../copilotConfig';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import {
+  copilotRolloutTransitions,
+  formatCopilotRolloutError,
+  rolloutRowsFromAvailability,
+  setCopilotFeatureFlagV2,
+  useCopilotAvailability,
+  type CopilotFlagState,
+} from '../featureFlags';
+import { validateDefaultModel, validateProviderModels } from '../providerPolicy';
+import type { ProviderModel } from '../providerPolicy';
 
 // ── Data hooks ───────────────────────────────────────────────────────────────
 
@@ -80,6 +91,14 @@ interface ProviderRow {
   data_class: string;
 }
 
+function providerModelCost(model: ProviderModel): string {
+  if (model.pricing_mode === 'unknown') return 'unknown';
+  if (typeof model.input_price !== 'number' || typeof model.output_price !== 'number' ||
+      !Number.isFinite(model.input_price) || !Number.isFinite(model.output_price) ||
+      model.input_price < 0 || model.output_price < 0) return 'invalid';
+  return `$${model.input_price}/$${model.output_price} per 1M tokens`;
+}
+
 const useProvidersAdmin = (enabled: boolean) =>
   useQuery({
     queryKey: ['ai-providers-admin'],
@@ -102,9 +121,16 @@ interface UsageRow {
   feature: string;
   total_tokens: number;
   cost_usd: number | null;
-  reserved_cost_usd: number;
+  reserved_cost_usd: number | null;
   status: string;
   created_at: string;
+}
+
+function formatUsageCost(costUsd: number | null, reservedCostUsd: number | null): string {
+  // A reservation is only an estimate; a missing finalized cost is unknown.
+  if (costUsd === null) return 'unknown';
+  const value = Number(costUsd);
+  return Number.isFinite(value) && value >= 0 ? `$${value.toFixed(5)}` : 'unknown';
 }
 
 const useUsage = () =>
@@ -200,6 +226,161 @@ function SettingsTab() {
       <Button disabled={!draft || save.isPending} onClick={() => cur && save.mutate(cur)}>
         {save.isPending ? 'Đang lưu…' : 'Lưu cài đặt'}
       </Button>
+    </div>
+  );
+}
+
+// -- Tab: Rollout server-owned contracts -------------------------------------
+
+function RolloutTab() {
+  const qc = useQueryClient();
+  const {
+    organizations,
+    selectedOrganizationId,
+    selectOrganization,
+    isLoading: organizationsLoading,
+  } = useOrganization();
+  const {
+    data: availability,
+    isLoading: availabilityLoading,
+    isFetching,
+    refetch,
+  } = useCopilotAvailability(selectedOrganizationId);
+  const [reason, setReason] = useState('');
+  const [evidenceLink, setEvidenceLink] = useState('');
+  const [rollbackReference, setRollbackReference] = useState('');
+  const [pending, setPending] = useState<string | null>(null);
+  const rows = rolloutRowsFromAvailability(availability);
+
+  const transition = async (contractId: string, state: CopilotFlagState) => {
+    if (!availability) {
+      toast.error('Rollout đang bị khóa: chưa có snapshot server còn hiệu lực.');
+      return;
+    }
+    if (!reason.trim() || !evidenceLink.trim() || !rollbackReference.trim()) {
+      toast.error('Nhập lý do, liên kết bằng chứng và tham chiếu rollback trước.');
+      return;
+    }
+    setPending(`${contractId}:${state}`);
+    try {
+      await setCopilotFeatureFlagV2({
+        scope: 'page',
+        contractId,
+        state,
+        expectedRevision: availability.revision,
+        canaryOrg: null,
+        reason: reason.trim(),
+        evidenceLink: evidenceLink.trim(),
+        expiresAt: null,
+        rollbackReference: rollbackReference.trim(),
+      });
+      toast.success(`Đã chuyển ${contractId} → ${state}`);
+      await qc.invalidateQueries({ queryKey: ['copilot-availability'] });
+      await refetch();
+    } catch (error) {
+      toast.error(formatCopilotRolloutError(error));
+      if (String(error instanceof Error ? error.message : error).includes('stale_revision')) {
+        await refetch();
+      }
+    } finally {
+      setPending(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded border p-3">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="font-medium text-sm">Server-owned rollout</div>
+            <div className="text-xs text-muted-foreground">
+              Mọi thay đổi dùng CAS theo revision; snapshot lỗi hoặc hết hạn sẽ khóa toàn bộ tool.
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Revision: <span className="font-mono">{availability?.revision ?? '—'}</span>
+            {isFetching ? ' · đang tải lại…' : ''}
+          </div>
+        </div>
+        <label className="block text-sm">
+          Tổ chức đang kiểm tra
+          <select
+            className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={selectedOrganizationId ?? ''}
+            disabled={organizationsLoading || organizations.length === 0}
+            onChange={(event) => selectOrganization(event.target.value)}
+          >
+            <option value="">Chọn tổ chức</option>
+            {organizations.map((organization) => (
+              <option key={organization.id} value={organization.id}>{organization.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="text-sm">
+          Lý do bắt buộc
+          <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ví dụ: pilot đã đạt acceptance" />
+        </label>
+        <label className="text-sm">
+          Liên kết bằng chứng
+          <Input value={evidenceLink} onChange={(event) => setEvidenceLink(event.target.value)} placeholder="URL / mã run / ticket" />
+        </label>
+        <label className="text-sm">
+          Tham chiếu rollback
+          <Input value={rollbackReference} onChange={(event) => setRollbackReference(event.target.value)} placeholder="SHA / ticket rollback" />
+        </label>
+      </div>
+
+      {!selectedOrganizationId || availability === null || (availabilityLoading && !availability) ? (
+        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          BLOCKED — chưa có snapshot rollout server hợp lệ; không cho phép thay đổi hay suy đoán trạng thái.
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto rounded border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left">
+            <tr>
+              <th className="p-2">Contract</th>
+              <th className="p-2">Trạng thái</th>
+              <th className="p-2">Chuyển tiếp hợp lệ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={`${row.scope}:${row.contractId}`} className="border-t">
+                <td className="p-2">
+                  <div className="font-medium">{row.label}</div>
+                  <div className="font-mono text-xs text-muted-foreground">{row.scope}:{row.contractId}</div>
+                </td>
+                <td className="p-2">
+                  <span className="rounded bg-muted px-2 py-1 text-xs font-medium">{row.state}</span>
+                </td>
+                <td className="p-2">
+                  <div className="flex flex-wrap gap-2">
+                    {copilotRolloutTransitions(row.state).map((nextState) => (
+                      <Button
+                        key={nextState}
+                        size="sm"
+                        variant={nextState === 'disabled' ? 'destructive' : 'outline'}
+                        disabled={!availability || pending !== null || !reason.trim() || !evidenceLink.trim() || !rollbackReference.trim()}
+                        onClick={() => void transition(row.contractId, nextState)}
+                      >
+                        {pending === `${row.contractId}:${nextState}` ? 'Đang lưu…' : nextState}
+                      </Button>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!rows.length && (
+              <tr><td className="p-3 text-muted-foreground" colSpan={3}>Chưa có snapshot rollout.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -331,6 +512,13 @@ function ProvidersTab() {
     try {
       const parsed = JSON.parse(modelsDraft);
       if (!Array.isArray(parsed)) throw new Error('models phải là mảng [{id,label,input_price,output_price}]');
+      const problems = validateProviderModels(parsed);
+      if (problems.length) throw new Error(problems.join('; '));
+      if (parsed.some((model) => model?.pricing_mode === 'unknown')) {
+        throw new Error('unknown pricing không được bật; khai báo metered/free/self_hosted');
+      }
+      const defaultProblems = validateDefaultModel(parsed, defaultDraft || null);
+      if (defaultProblems.length) throw new Error(defaultProblems.join('; '));
       update.mutate({ provider, patch: { models: parsed, default_model: defaultDraft || null } });
       setEditing(null);
       toast.success('Đã lưu models');
@@ -380,7 +568,21 @@ function ProvidersTab() {
       {rows?.map((r) => (
         <div key={r.provider} className="rounded border p-3">
           <div className="flex flex-wrap items-center gap-3">
-            <Switch checked={r.enabled} onCheckedChange={(v) => update.mutate({ provider: r.provider, patch: { enabled: v } })} />
+            <Switch
+              checked={r.enabled}
+              onCheckedChange={(v) => {
+                if (v) {
+                  const problems = validateProviderModels(r.models);
+                  if (problems.length || (Array.isArray(r.models) && (r.models as ProviderModel[]).some((m) => m.pricing_mode === 'unknown'))) {
+                    toast.error('Không thể bật provider: models phải có pricing hợp lệ, không unknown');
+                    return;
+                  }
+                  const defaultProblems = validateDefaultModel(r.models, r.default_model);
+                  if (defaultProblems.length) { toast.error(defaultProblems.join('; ')); return; }
+                }
+                update.mutate({ provider: r.provider, patch: { enabled: v } });
+              }}
+            />
             <span className="font-medium">{r.label}</span>
             <span className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.provider}</span>
             {r.data_class === 'local_only' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">local-only</span>}
@@ -421,6 +623,16 @@ function ProvidersTab() {
           )}
           {editing === r.provider && (
             <div className="mt-3 space-y-2">
+              {Array.isArray(r.models) && r.models.length > 0 && (
+                <div className="rounded bg-muted/40 p-2 text-xs">
+                  {(r.models as ProviderModel[]).map((model) => (
+                    <div key={String(model.id)} className="flex justify-between gap-2">
+                      <span>{String(model.id)} ({String(model.pricing_mode ?? 'missing')})</span>
+                      <span>{providerModelCost(model)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <textarea
                 className="h-40 w-full rounded border bg-background p-2 font-mono text-xs"
                 value={modelsDraft}
@@ -447,14 +659,23 @@ function UsageTab() {
 
   if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
   const list = rows ?? [];
-  const cost = (r: UsageRow) => Number(r.cost_usd ?? r.reserved_cost_usd) || 0;
-  const totalCost = list.reduce((s, r) => s + cost(r), 0);
+  const cost = (r: UsageRow): number | null => {
+    if (r.cost_usd === null) return null;
+    const value = Number(r.cost_usd);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  };
+  const totalCost = list.reduce<number | null>((s, r) => {
+    const value = cost(r);
+    return s === null || value === null ? null : s + value;
+  }, 0);
   const totalTokens = list.reduce((s, r) => s + (r.total_tokens || 0), 0);
 
   const byUser = new Map<string, { n: number; tokens: number; cost: number }>();
   for (const r of list) {
-    const cur = byUser.get(r.user_id) ?? { n: 0, tokens: 0, cost: 0 };
-    cur.n += 1; cur.tokens += r.total_tokens || 0; cur.cost += cost(r);
+    const cur = byUser.get(r.user_id) ?? { n: 0, tokens: 0, cost: null as number | null };
+    const value = cost(r);
+    cur.n += 1; cur.tokens += r.total_tokens || 0;
+    cur.cost = cur.cost === null || value === null ? null : cur.cost + value;
     byUser.set(r.user_id, cur);
   }
 
@@ -463,7 +684,7 @@ function UsageTab() {
       <div className="flex flex-wrap gap-3">
         <div className="rounded border p-3"><div className="text-xs text-muted-foreground">Request 7 ngày</div><div className="text-lg font-semibold">{list.length}</div></div>
         <div className="rounded border p-3"><div className="text-xs text-muted-foreground">Tokens</div><div className="text-lg font-semibold">{totalTokens.toLocaleString('vi-VN')}</div></div>
-        <div className="rounded border p-3"><div className="text-xs text-muted-foreground">Chi phí (USD)</div><div className="text-lg font-semibold">${totalCost.toFixed(4)}</div></div>
+        <div className="rounded border p-3"><div className="text-xs text-muted-foreground">Chi phí (USD)</div><div className="text-lg font-semibold">{totalCost === null ? 'unknown' : `$${totalCost.toFixed(4)}`}</div></div>
       </div>
       <div className="overflow-x-auto rounded border">
         <table className="w-full text-sm">
@@ -471,12 +692,12 @@ function UsageTab() {
             <tr><th className="p-2">Người dùng</th><th className="p-2">Request</th><th className="p-2">Tokens</th><th className="p-2">USD</th></tr>
           </thead>
           <tbody>
-            {[...byUser.entries()].sort((a, b) => b[1].cost - a[1].cost).map(([uid, agg]) => (
+            {[...byUser.entries()].sort((a, b) => (b[1].cost ?? -1) - (a[1].cost ?? -1)).map(([uid, agg]) => (
               <tr key={uid} className="border-t">
                 <td className="p-2">{names?.[uid] ?? uid.slice(0, 8)}</td>
                 <td className="p-2">{agg.n}</td>
                 <td className="p-2">{agg.tokens.toLocaleString('vi-VN')}</td>
-                <td className="p-2">${agg.cost.toFixed(4)}</td>
+                <td className="p-2">{agg.cost === null ? 'unknown' : `$${agg.cost.toFixed(4)}`}</td>
               </tr>
             ))}
             {!list.length && <tr><td className="p-3 text-muted-foreground" colSpan={4}>Chưa có request nào trong 7 ngày.</td></tr>}
@@ -496,7 +717,7 @@ function UsageTab() {
                 <td className="p-2">{r.provider}:{r.model}</td>
                 <td className="p-2">{r.feature}</td>
                 <td className="p-2">{r.total_tokens}</td>
-                <td className="p-2">${cost(r).toFixed(5)}</td>
+                <td className="p-2">{formatUsageCost(r.cost_usd, r.reserved_cost_usd)}</td>
                 <td className="p-2">{r.status}</td>
               </tr>
             ))}
@@ -530,11 +751,13 @@ export default function AiCopilotAdminPage() {
         <Tabs defaultValue="settings">
           <TabsList>
             <TabsTrigger value="settings">Cài đặt</TabsTrigger>
+            <TabsTrigger value="rollout">Rollout</TabsTrigger>
             <TabsTrigger value="users">Người dùng</TabsTrigger>
             <TabsTrigger value="providers">Providers</TabsTrigger>
             <TabsTrigger value="usage">Sử dụng</TabsTrigger>
           </TabsList>
           <TabsContent value="settings" className="pt-4"><SettingsTab /></TabsContent>
+          <TabsContent value="rollout" className="pt-4"><RolloutTab /></TabsContent>
           <TabsContent value="users" className="pt-4"><EntitlementsTab /></TabsContent>
           <TabsContent value="providers" className="pt-4"><ProvidersTab /></TabsContent>
           <TabsContent value="usage" className="pt-4"><UsageTab /></TabsContent>

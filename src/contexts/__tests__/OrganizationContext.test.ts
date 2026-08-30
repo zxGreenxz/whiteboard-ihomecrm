@@ -5,6 +5,7 @@
 // "hiện tại" do `ORDER BY o.name` trong RPC quyết định — đổi tên công ty là đổi
 // sổ đang xem, và không ai được báo gì cả.
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   parseOrganizations,
   resolveSelectedOrganizationId,
@@ -85,5 +86,13 @@ describe('parseOrganizations', () => {
     for (const xau of [null, undefined, {}, { organizations: 'không phải mảng' }]) {
       expect(parseOrganizations(xau)).toEqual([]);
     }
+  });
+});
+
+describe('OrganizationProvider RPC contract', () => {
+  it('uses the Copilot organization directory RPC instead of the membership-only legacy RPC', () => {
+    const source = readFileSync('src/contexts/OrganizationContext.tsx', 'utf8');
+    expect(source).toContain("supabase.rpc('list_my_copilot_organizations_v1')");
+    expect(source).not.toContain("supabase.rpc('get_my_organizations')");
   });
 });

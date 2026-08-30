@@ -10,7 +10,7 @@ const from = vi.hoisted(() => vi.fn());
 const rpc = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from, rpc } }));
 
-const { buildRegistry, LOI_THIEU_TO_CHUC } = await import('../tools/registry');
+const { buildRegistryDefinitions, LOI_THIEU_TO_CHUC } = await import('../tools/registry');
 import type { PermissionsMap } from '@/lib/permissions';
 
 const SUPER = { __superadmin: true } as unknown as PermissionsMap;
@@ -34,7 +34,7 @@ const TOOL_THEO_CONG_TY = [
 ];
 
 const tool = (ten: string) => {
-  const t = buildRegistry().find((x) => x.name === ten);
+  const t = buildRegistryDefinitions().find((x) => x.name === ten);
   if (!t) throw new Error(`không có tool ${ten}`);
   return t;
 };
@@ -92,16 +92,40 @@ describe('đã chốt công ty ⇒ tool PostgREST lọc đúng công ty', () => 
     return eqs;
   }
 
-  it('tim_khach_hang lọc organization_id', async () => {
-    const eqs = mockChain();
+  it('tim_khach_hang passes selected organization to its RPC', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
     await tool('tim_khach_hang').execute({ tu_khoa: 'An' }, { perms: SUPER, organizationId: ORG });
-    expect(eqs).toContainEqual(['organization_id', ORG]);
+    expect(rpc).toHaveBeenCalledWith('copilot_customer_search_v1', {
+      p_organization_id: ORG,
+      p_search: 'An',
+    });
   });
 
-  it('hop_dong_sap_het_han lọc organization_id', async () => {
-    const eqs = mockChain();
+  it('hop_dong_sap_het_han passes selected organization to its RPC', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
     await tool('hop_dong_sap_het_han').execute({ so_ngay: 30 }, { perms: SUPER, organizationId: ORG });
-    expect(eqs).toContainEqual(['organization_id', ORG]);
+    expect(rpc).toHaveBeenCalledWith(
+      'copilot_expiring_contracts_v1',
+      expect.objectContaining({ p_organization_id: ORG, p_window_days: 30 }),
+    );
+  });
+
+  it('registry binds every scoped tool to the selected organization before querying', async () => {
+    const source = await import('node:fs').then(({ readFileSync }) =>
+      readFileSync('src/copilot/tools/registry.ts', 'utf8'),
+    );
+    const nghiệpVụ = await import('node:fs').then(({ readFileSync }) =>
+      readFileSync('src/copilot/tools/nghiepVuTools.ts', 'utf8'),
+    );
+    expect(source).toContain(".eq('organization_id', organizationId)");
+    expect(source).toContain("copilot_available_rooms_v1");
+    expect(source).toContain("copilot_invoice_search_v1");
+    expect(source).toContain("copilot_financial_pnl_v1");
+    expect(nghiệpVụ).toContain("copilot_occupancy_v1");
+    expect(nghiệpVụ).toContain("copilot_invoice_stats_v1");
+    expect(nghiệpVụ).toContain("copilot_deposit_summary_v1");
+    expect(nghiệpVụ).toContain("copilot_cashbook_settlement_v2");
+    expect(source).not.toContain("get_my_available_rooms");
   });
 });
 
@@ -117,17 +141,10 @@ describe('KHOẢNG TRỐNG ĐÃ BIẾT: RPC cũ chưa nhận công ty', () => {
     // Đóng nốt cần RPC v2 cho từng cái — cùng loại việc mà security-remediation
     // Task 9 mô tả với `cashbook_settlement_report_v2`. KHÔNG được sửa chữ ký RPC
     // đang chạy tại chỗ: nơi khác đang gọi chúng.
-    const CHUA_LOC_DUOC_THEO_CONG_TY = [
-      'so_quy',            // cashbook_settlement_report(p_from, p_to)
-      'ty_le_lap_day',     // occupancy_snapshot_v2(p_as_of_date, p_building_ids)
-      'cong_no_tong_quan', // get_invoice_statistics_v2(p_billing_month)
-      'coc_dang_giu',      // get_held_deposit_summary()
-      'phong_trong',       // get_my_available_rooms()
-      'tim_hoa_don',       // đi qua invoicesListQuery — hàng đợi riêng, xem hooks/useInvoices
-    ];
+    const CHUA_LOC_DUOC_THEO_CONG_TY: string[] = [];
     // Sàn: danh sách này chỉ được TEO. Thêm tên vào đây là mở rộng khoảng trống,
     // và phải có lý do tường minh trong PR.
-    expect(CHUA_LOC_DUOC_THEO_CONG_TY.length).toBeLessThanOrEqual(6);
+    expect(CHUA_LOC_DUOC_THEO_CONG_TY).toEqual([]);
   });
 });
 
@@ -144,7 +161,7 @@ describe('không bỏ sót tool nào', () => {
     ]);
     const daPhu = new Set(TOOL_THEO_CONG_TY.map((t) => t.ten));
 
-    const thieu = buildRegistry()
+    const thieu = buildRegistryDefinitions()
       .map((t) => t.name)
       .filter((ten) => !daPhu.has(ten) && !CHO_PHEP_KHONG_THEO_CONG_TY.has(ten));
 

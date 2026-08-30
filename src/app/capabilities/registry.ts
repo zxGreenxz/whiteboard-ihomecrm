@@ -1,5 +1,101 @@
 import { NETWORK_CENTER_RUNTIME_ENABLED } from "@/lib/network-center/runtime";
-import type { CapabilityDefinition } from "./types";
+import type { CapabilityDefinition, CopilotPageContract } from "./types";
+
+export const COPILOT_PAGE_CONTRACTS: readonly CopilotPageContract[] = [
+  {
+    key: "rooms.list",
+    route: "/apartments",
+    mode: "filter",
+    permission: { module: "rooms", action: "view" },
+    dataClass: "internal",
+    safeControlIds: ["room.search", "room.status-filter"],
+  },
+  {
+    key: "invoices.list",
+    route: "/invoices",
+    mode: "navigate",
+    permission: { module: "invoices", action: "view" },
+    dataClass: "financial",
+    safeControlIds: ["invoice.month-filter", "invoice.status-filter", "invoice.search"],
+  },
+  {
+    key: "customers.list",
+    route: "/customers",
+    mode: "filter",
+    permission: { module: "customers", action: "view" },
+    dataClass: "pii",
+    safeControlIds: ["customer.search"],
+  },
+];
+
+/**
+ * Routes deliberately outside the initial Copilot read/navigation pilot.
+ * Each pattern has a reason so adding a route cannot silently expand exposure.
+ */
+export const COPILOT_PAGE_EXEMPTIONS = [
+  { route: "/admin/*", reason: "admin surface remains disabled until its authz contract is reviewed" },
+  { route: "/settings/*", reason: "settings and control-plane pages remain disabled" },
+  { route: "/invite/*", reason: "invite/session flow is not a Copilot surface" },
+  { route: "/account/*", reason: "account self-service remains disabled" },
+  { route: "/faq", reason: "support content has no page contract yet" },
+  { route: "/changelog", reason: "support content has no page contract yet" },
+  { route: "/app-guide", reason: "support content has no page contract yet" },
+  { route: "/buildings/*", reason: "building CRUD/detail surface is deferred to a later batch" },
+  { route: "/apartments/*", reason: "room detail surface is deferred; list contract is explicit" },
+  { route: "/services", reason: "service catalog surface is deferred" },
+  { route: "/sale-phong", reason: "sales surface is deferred" },
+  { route: "/assets", reason: "asset surface is deferred" },
+  { route: "/materials/*", reason: "materials CRUD surface is deferred" },
+  { route: "/leads", reason: "lead surface is deferred" },
+  { route: "/deposits", reason: "deposit surface is deferred" },
+  { route: "/contracts/*", reason: "contract detail/write surface is deferred" },
+  { route: "/customers/*", reason: "customer detail/write surface is deferred; list contract is explicit" },
+  { route: "/vehicles", reason: "vehicle surface is deferred" },
+  { route: "/reports/finance/*", reason: "finance reports are deferred pending read-only proof" },
+  { route: "/meter-readings", reason: "meter surface is deferred" },
+  { route: "/thu-tien", reason: "collection surface is deferred" },
+  { route: "/thanh-toan", reason: "payment surface is deferred" },
+  { route: "/invoices/*", reason: "invoice detail/print surface is deferred; list contract is explicit" },
+  { route: "/income-expense/*", reason: "cashbook write/detail surface is deferred" },
+  { route: "/finance/*", reason: "finance write/detail surface is deferred" },
+  { route: "/approvals", reason: "approval surface is deferred" },
+  { route: "/tasks", reason: "task surface is deferred" },
+  { route: "/my-day", reason: "personal dashboard surface is deferred" },
+  { route: "/reports/coverage", reason: "coverage report is deferred" },
+  { route: "/quayso/*", reason: "campaign/admin surface is deferred" },
+  { route: "/chat-zalo", reason: "messaging surface is deferred" },
+  { route: "*", reason: "404 fallback is not a Copilot surface" },
+  { route: "/register", reason: "authentication flow is not a Copilot surface" },
+  { route: "/login", reason: "authentication flow is not a Copilot surface" },
+  { route: "/forgot-password", reason: "authentication flow is not a Copilot surface" },
+  { route: "/reset-password", reason: "authentication flow is not a Copilot surface" },
+  { route: "/c/:code", reason: "public customer link is not a Copilot surface" },
+  { route: "/r/:token", reason: "public vacancy link is not a Copilot surface" },
+  { route: "/phongtrong", reason: "public vacancy alias is not a Copilot surface" },
+  { route: "/", reason: "dashboard shell is deferred" },
+  { route: "/dashboard", reason: "dashboard shell is deferred" },
+  { route: "/building-map", reason: "map surface is deferred" },
+  { route: "/network-center/*", reason: "infrastructure surface is deferred" },
+  { route: "/notifications", reason: "notification surface is deferred" },
+  { route: "/reports/real-estate/*", reason: "real-estate reports are deferred" },
+  { route: "/finance/personal-wallet", reason: "personal finance surface is deferred" },
+  { route: "/finance/salary", reason: "salary surface is deferred" },
+  { route: "/finance/my-salary", reason: "salary self-service surface is deferred" },
+];
+
+function normalizeCopilotRoute(pathname: string): string {
+  const path = pathname.split(/[?#]/, 1)[0] || "/";
+  return path.replace(/\/+$/, "") || "/";
+}
+
+export function copilotPageByRoute(pathname: string): CopilotPageContract | undefined {
+  const normalized = normalizeCopilotRoute(pathname);
+  return COPILOT_PAGE_CONTRACTS.find((page) => normalizeCopilotRoute(page.route) === normalized);
+}
+
+export function copilotRouteForKey(key: string): string | undefined {
+  return COPILOT_PAGE_CONTRACTS.find((page) => page.key === key)?.route;
+}
 
 /**
  * Registry bề mặt sản phẩm ở mức trang.
@@ -67,6 +163,7 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     label: "Hoá đơn",
     release: { enabled: true, runtimeModule: null },
     permission: { module: "invoices", action: "view" },
+    copilot: { pages: COPILOT_PAGE_CONTRACTS.filter((p) => p.key === "invoices.list") },
     surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/invoices" },
     docs: {
       systemDoc: "docs/he-thong/07-hoa-don-thanh-toan.md",
@@ -231,6 +328,7 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     label: "Khách hàng",
     release: { enabled: true, runtimeModule: null },
     permission: { module: "customers", action: "view" },
+    copilot: { pages: COPILOT_PAGE_CONTRACTS.filter((p) => p.key === "customers.list") },
     surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/customers" },
     docs: {
       systemDoc: "docs/he-thong/03-khach-hang-lead-ho-so.md",
@@ -337,6 +435,7 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     label: "Căn hộ",
     release: { enabled: true, runtimeModule: null },
     permission: { module: "rooms", action: "view" },
+    copilot: { pages: COPILOT_PAGE_CONTRACTS.filter((p) => p.key === "rooms.list") },
     surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/apartments" },
     docs: {
       systemDoc: "docs/he-thong/02-co-cau-toa-nha-phong-dich-vu.md",

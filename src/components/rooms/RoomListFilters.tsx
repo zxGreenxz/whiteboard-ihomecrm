@@ -51,6 +51,7 @@ export default function RoomListFilters({
       <div className="relative flex-1">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
+          data-ai-safe="rooms.list.room.search"
           placeholder="Tìm kiếm theo tên phòng, mã..."
           value={searchTerm}
           onChange={(e) => onSearchChange(e.target.value)}
@@ -79,6 +80,7 @@ export default function RoomListFilters({
         ]}
       />
       <SearchableSelect
+        data-ai-safe="rooms.list.room.status-filter"
         value={statusFilter}
         onValueChange={onStatusChange}
         className="w-full sm:w-[200px]"

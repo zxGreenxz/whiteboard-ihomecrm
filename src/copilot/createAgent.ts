@@ -13,10 +13,16 @@ import { UI_CONTROL_SYSTEM_PROMPT } from './systemPromptVi';
 import { pageContext } from './pageContext';
 import {
   attachDangerStamping,
-  makeRouteGuard,
   PILOT_ROUTE_ALLOWLIST,
 } from './safetyGuard';
 import { buildRegistry, toPageAgentTools, type ToolCtx } from './tools/registry';
+import { copilotPageByRoute } from '@/app/capabilities/registry';
+import { hopDongTuPageContract, taoCongCuDieuKhienAnToan } from './safeControls';
+import {
+  assertUiControlAvailability,
+  assertUiControlPageContract,
+  makeUiControlStepGuard,
+} from './uiControlAvailability';
 
 export interface UiControlAgent {
   run: (task: string) => Promise<{ success: boolean; data: string }>;
@@ -35,12 +41,31 @@ export function createUiControlAgent(params: {
     throw new Error('UI-control chưa hỗ trợ provider local (Ollama/9Router) — dùng provider cloud.');
   }
 
+  assertUiControlAvailability({
+    pathname: window.location.pathname,
+    ctx: params.ctx,
+  });
+
   const allowlist = params.allowlist ?? PILOT_ROUTE_ALLOWLIST;
   const taskId = newTaskId('ui');
   const liveBlacklist: Element[] = [];
 
-  const registry = buildRegistry();
+  const registry = buildRegistry(params.ctx.availability);
   const domainTools = toPageAgentTools(registry, params.ctx);
+  const pageContract = copilotPageByRoute(window.location.pathname)!;
+  const semanticTools = taoCongCuDieuKhienAnToan(
+    hopDongTuPageContract(pageContract),
+    document,
+    {
+      beforeDispatch: () => {
+        // Step-level guards do not cover a route transition between tool
+        // selection and the actual DOM mutation.
+        assertUiControlPageContract(window.location.pathname, pageContract.key, params.ctx);
+      },
+    },
+  );
+
+  const guardCurrentStep = makeUiControlStepGuard(params.ctx, allowlist);
 
   const agent = new PageAgent({
     baseURL: LLM_PROXY_BASE,
@@ -60,7 +85,7 @@ export function createUiControlAgent(params: {
         }
       },
     },
-    onBeforeStep: makeRouteGuard(allowlist),
+    onBeforeStep: guardCurrentStep,
     customTools: {
       execute_javascript: null, // chặn thoát sandbox / bypass mask
       //
@@ -89,6 +114,7 @@ export function createUiControlAgent(params: {
       click_element_by_index: null,
       input_text: null,
       select_dropdown_option: null,
+      ...semanticTools,
       ...domainTools,
     },
     interactiveBlacklist: liveBlacklist,

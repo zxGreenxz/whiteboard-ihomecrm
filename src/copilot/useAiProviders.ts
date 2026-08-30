@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSetUiPreference, useUiPreferences } from '@/hooks/useUiPreferences';
 import { DEFAULT_MODEL, MODEL_PREF_KEY } from './copilotConfig';
 import { listLocalModels } from './ollama';
+import { isUsableProviderModel } from './providerPolicy';
 
 export interface ModelOption {
   value: string; // "provider:model-id"
@@ -35,6 +36,9 @@ export function useAiProviders() {
           models = await listLocalModels(p.provider);
         }
         for (const m of models) {
+          // Cloud models need complete, known pricing before they can reach the proxy.
+          // Local models are discovered from the user's dev-only instance instead.
+          if (!localOnly && !isUsableProviderModel(m)) continue;
           if (!m?.id) continue;
           out.push({
             value: `${p.provider}:${m.id}`,

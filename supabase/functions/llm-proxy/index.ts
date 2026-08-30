@@ -69,7 +69,8 @@ if (NINEROUTER_BASE) {
   UPSTREAMS['9router'] = { baseURL: NINEROUTER_BASE, envKey: 'NINEROUTER_API_KEY' };
 }
 
-interface ModelPricing { input_price: number; output_price: number }
+type PricingMode = 'metered' | 'free' | 'self_hosted' | 'unknown';
+interface ModelPricing { pricing_mode: Exclude<PricingMode, 'unknown'>; input_price: number; output_price: number }
 
 /**
  * Giá của model, hoặc `null` nếu model KHÔNG có trong danh sách của provider.
@@ -85,10 +86,15 @@ function findPricing(models: unknown, modelId: string): ModelPricing | null {
   if (!Array.isArray(models)) return null;
   const m = models.find((x) => x && typeof x === 'object' && (x as any).id === modelId);
   if (!m) return null;
-  return {
-    input_price: Number((m as any).input_price) || 0,
-    output_price: Number((m as any).output_price) || 0,
-  };
+  const mode = (m as any).pricing_mode;
+  const input = (m as any).input_price;
+  const output = (m as any).output_price;
+  if (!['metered', 'free', 'self_hosted', 'unknown'].includes(mode)) return null;
+  if (mode === 'unknown') return null;
+  if (typeof input !== 'number' || !Number.isFinite(input) || input < 0) return null;
+  if (typeof output !== 'number' || !Number.isFinite(output) || output < 0) return null;
+  if (mode === 'metered' && (input <= 0 || output <= 0)) return null;
+  return { pricing_mode: mode, input_price: input, output_price: output };
 }
 
 // ── Mock provider (dev/test — vẫn qua đủ gate reserve/finalize) ────────────
@@ -252,9 +258,13 @@ Deno.serve(async (req) => {
   // liệt kê được. Nó vẫn qua đủ gate reserve/finalize, và tắt bằng
   // ai_providers.enabled — đó mới là công tắc của nó.
   const pricing = provider === 'mock'
-    ? { input_price: 0, output_price: 0 }
+    ? { pricing_mode: 'free' as const, input_price: 0, output_price: 0 }
     : findPricing(prov.models, modelId);
   if (!pricing) {
+    const listed = Array.isArray(prov.models) && prov.models.some((m: any) => m?.id === modelId);
+    if (listed) {
+      return openaiError(400, `Model "${modelId}" has invalid or unknown pricing metadata`, 'bad_pricing');
+    }
     return openaiError(
       400,
       `Model "${modelId}" is not enabled for provider "${provider}"`,

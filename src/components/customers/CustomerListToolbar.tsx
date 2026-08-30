@@ -37,6 +37,7 @@ export default function CustomerListToolbar({
       <div className="relative w-full sm:w-72">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
+          data-ai-safe="customers.list.customer.search"
           placeholder="Tìm kiếm khách hàng..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}

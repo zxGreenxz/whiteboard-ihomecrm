@@ -1,7 +1,7 @@
 {
   "$comment": "Ratchet chống nuốt lỗi (plan §9). TẬP FINGERPRINT chứ không phải số đếm — với số đếm thì xoá một chỗ ở màn cài đặt rồi thêm một chỗ ở màn thu tiền là hoà, và repo đã có đúng án lệ đó ở ratchet any-cast. Fingerprint là file#mẫu#thứ-tự, cố ý KHÔNG dùng số dòng: thêm một dòng ở đầu file sẽ đổi mọi fingerprint bên dưới và biến một commit vô hại thành đỏ toàn bộ. Chốt mức mới: npm run gate:error-swallow -- --write",
-  "updatedAt": "2026-08-13",
-  "total": 35,
+  "updatedAt": "2026-08-30",
+  "total": 34,
   "money": 7,
   "sites": [
     "src/components/cashbooks/CashbookForm.tsx#if-error-return-rong#0",
@@ -37,7 +37,6 @@
     "src/lib/storage/r2Client.ts#catch-tra-rong#0",
     "src/pages/account/AccountMobilePage.tsx#catch-arrow-rong#0",
     "src/pages/phong-trong/PhongTrongPage.tsx#catch-tra-rong#0",
-    "src/pages/phong-trong/tracking.ts#catch-arrow-rong#0",
-    "src/pages/quayso/QuaySoScreenPage.tsx#catch-arrow-rong#0"
+    "src/pages/phong-trong/tracking.ts#catch-arrow-rong#0"
   ]
 }

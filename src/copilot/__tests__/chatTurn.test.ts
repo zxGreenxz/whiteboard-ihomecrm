@@ -15,7 +15,18 @@ vi.mock('../llmClient', async (goc) => ({
 }));
 
 const { runChatTurn, toolSangKhaiBao, dongHomNay } = await import('../chatEngine');
-const { buildRegistry, toLlmTools } = await import('../tools/registry');
+const { buildRegistryDefinitions, toLlmTools } = await import('../tools/registry');
+
+const AVAILABILITY = {
+  revision: 1,
+  fetchedAt: Date.now(),
+  organizationId: 'aaaa0000-0000-4000-8000-000000000001',
+  states: {
+    'page:rooms.list': 'enabled' as const,
+    'page:customers.list': 'enabled' as const,
+    'page:invoices.list': 'enabled' as const,
+  },
+};
 
 const luot = (p: Partial<KetQuaLuot>): KetQuaLuot => ({
   content: '',
@@ -261,9 +272,40 @@ describe('toolSangKhaiBao — schema gửi cho mô hình', () => {
   });
 
   it('giữ description của tool — mô hình chọn tool bằng chính câu này', async () => {
-    const registry = buildRegistry();
-    const kb = toolSangKhaiBao(toLlmTools(registry, { perms: undefined, organizationId: null }));
+    const registry = buildRegistryDefinitions();
+    const kb = toolSangKhaiBao(toLlmTools(registry, {
+      perms: undefined,
+      organizationId: AVAILABILITY.organizationId,
+      availability: AVAILABILITY,
+    }));
     const hd = kb.find((t) => t.function.name === 'huong_dan')!;
     expect(hd.function.description).toContain('tài liệu');
+  });
+});
+describe('structured date and fallback regressions', () => {
+  it('includes an explicit timezone marker in the current date context', async () => {
+    const { dongHomNay } = await import('../chatEngine');
+    const s = dongHomNay(new Date('2026-08-31T18:00:00Z'));
+    expect(s).toContain('Asia/Ho_Chi_Minh');
+    expect(s).toContain('CURRENT_DATETIME_CONTEXT');
+  });
+
+  it('keeps all independent tool outputs in max-round fallback', async () => {
+    const registryMod = await import('../tools/registry');
+    const z = await import('zod/v4');
+    const spy = vi.spyOn(registryMod, 'toLlmTools').mockReturnValue({
+      nhanh_a: { description: 'a', inputSchema: z.object({}), execute: async () => 'KET_QUA_A' },
+      nhanh_b: { description: 'b', inputSchema: z.object({}), execute: async () => 'KET_QUA_B' },
+    });
+    try {
+      goiModelMotLuot.mockResolvedValue(
+        luot({ toolCalls: [goiTool('a', 'nhanh_a', {}), goiTool('b', 'nhanh_b', {})] }),
+      );
+      const r = await chay();
+      expect(r.text).toContain('KET_QUA_A');
+      expect(r.text).toContain('KET_QUA_B');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

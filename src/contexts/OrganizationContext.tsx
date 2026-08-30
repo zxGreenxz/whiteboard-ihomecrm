@@ -134,7 +134,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     queryFn: async (): Promise<Organization[]> => {
       const user = await getSessionUser();
       if (!user) return [];
-      const { data: rpc, error } = await supabase.rpc('get_my_organizations');
+      const { data: rpc, error } = await supabase.rpc('list_my_copilot_organizations_v1');
       if (error) throw error;
       return parseOrganizations(rpc);
     },

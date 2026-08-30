@@ -2,7 +2,17 @@ import { useEffect, useState } from 'react';
 
 import { formatVND } from '@/lib/utils';
 import { layXacNhanDangCho, tieuXacNhan, xoaXacNhanDangCho } from './confirmationStore';
-import { thucThiXacNhan } from './tools/writeTools';
+import { layNguCanhXacNhan } from './confirmationStore';
+import { thucThiXacNhan, type ConfirmationExecutionContext } from './tools/writeTools';
+import { copilotAvailabilitySnapshotIsFresh, type CopilotAvailabilitySnapshot } from './featureFlags';
+
+interface Props {
+  onXong: (thongBao: string) => void;
+  organizationId: string | null;
+  threadId: string | null;
+  generation: number;
+  availability: CopilotAvailabilitySnapshot | null | undefined;
+}
 
 /**
  * Thẻ xác nhận tạo phiếu — CÚ BẤM THẬT, chỗ duy nhất mở được đường ghi.
@@ -20,17 +30,18 @@ import { thucThiXacNhan } from './tools/writeTools';
  *   Nonce sống 5 phút. Để nút bấm nằm đó sau khi nonce chết là mời người dùng
  *   bấm vào một lỗi, nên thẻ tự kiểm mỗi giây và biến mất đúng lúc.
  */
-export default function XacNhanPhieuCard({ onXong }: { onXong: (thongBao: string) => void }) {
-  const [dangCho, setDangCho] = useState(() => layXacNhanDangCho());
+export default function XacNhanPhieuCard({ onXong, organizationId, threadId, generation, availability }: Props) {
+  const scope: ConfirmationExecutionContext = { organizationId, threadId, generation };
+  const [dangCho, setDangCho] = useState(() => layXacNhanDangCho(Date.now(), undefined, scope));
   const [dangGui, setDangGui] = useState(false);
   const [loi, setLoi] = useState('');
 
   // Nhịp một giây: đủ để thẻ biến mất gần như ngay khi nonce hết hạn, và rẻ hơn
   // nhiều so với việc dựng một bộ hẹn giờ chính xác cho thứ chỉ sống 5 phút.
   useEffect(() => {
-    const t = setInterval(() => setDangCho(layXacNhanDangCho()), 1000);
+    const t = setInterval(() => setDangCho(layXacNhanDangCho(Date.now(), undefined, scope)), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [organizationId, threadId, generation]);
 
   if (!dangCho) return null;
 
@@ -48,14 +59,27 @@ export default function XacNhanPhieuCard({ onXong }: { onXong: (thongBao: string
     setDangGui(true);
     setLoi('');
     // Lấy-và-xoá trong một bước: hai lần bấm nhanh không được cầm cùng một nonce.
-    const x = tieuXacNhan();
+    const current = layNguCanhXacNhan();
+    if (
+      !current ||
+      current.organizationId !== organizationId ||
+      current.threadId !== threadId ||
+      current.generation !== generation ||
+      !copilotAvailabilitySnapshotIsFresh(availability) ||
+      availability.organizationId !== organizationId
+    ) {
+      setDangCho(null);
+      setDangGui(false);
+      return;
+    }
+    const x = tieuXacNhan(Date.now(), undefined, scope);
     if (!x) {
       setDangCho(null);
       setDangGui(false);
       return;
     }
     try {
-      const thongBao = await thucThiXacNhan(x.nonce, x.canonical);
+      const thongBao = await thucThiXacNhan(x.nonce, x.canonical, scope);
       setDangCho(null);
       onXong(thongBao);
     } catch (e) {

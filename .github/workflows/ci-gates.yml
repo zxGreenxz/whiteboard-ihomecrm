@@ -319,6 +319,13 @@ jobs:
           scripts/__tests__/check-no-auto-apply.test.mjs \
           scripts/__tests__/check-copilot-routes.test.mjs \
           scripts/__tests__/check-copilot-tool-inventory.test.mjs \
+          scripts/__tests__/check-copilot-e2e-files.test.mjs \
+          scripts/__tests__/check-copilot-forbidden-actions.test.mjs \
+          scripts/__tests__/check-copilot-page-contracts.test.mjs \
+          scripts/__tests__/check-copilot-provider-policy.test.mjs \
+          scripts/__tests__/check-copilot-safe-control-markers.test.mjs \
+          scripts/__tests__/check-csp-build-attestation.test.mjs \
+          scripts/__tests__/run-copilot-golden-eval.test.mjs \
           scripts/__tests__/check-dependency-audit.test.mjs \
           scripts/__tests__/check-eslint-baseline.test.mjs \
           scripts/__tests__/check-realtime-key-ownership.test.mjs \
@@ -345,6 +352,13 @@ jobs:
           --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-routes.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-tool-inventory.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-e2e-files.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-forbidden-actions.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-page-contracts.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-provider-policy.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-safe-control-markers.test.mjs'
+          --exclude 'scripts/__tests__/check-csp-build-attestation.test.mjs'
+          --exclude 'scripts/__tests__/run-copilot-golden-eval.test.mjs'
           --exclude 'scripts/__tests__/check-dependency-audit.test.mjs'
           --exclude 'scripts/__tests__/check-eslint-baseline.test.mjs'
           --exclude 'scripts/__tests__/check-realtime-key-ownership.test.mjs'

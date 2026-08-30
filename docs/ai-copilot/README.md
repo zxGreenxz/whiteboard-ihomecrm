@@ -1,7 +1,7 @@
 # AI Copilot
 
-> **Current through:** 2026-08-14  
-> **Status:** chat có streaming, đọc ảnh, gọi tool song song; tra tài liệu bằng BM25 theo mục; bản đồ hệ thống theo quyền; write tool draft-first; UI-control có gate và KHÔNG cầm tool ghi.
+> **Current through:** 2026-08-28
+> **Status:** source đã có chat streaming, đọc ảnh, gọi tool song song, tool nghiệp vụ và write preview/execute với nonce server; tuy nhiên release evidence chưa đủ để gọi production-ready hoặc full-site control (xem audit/spec).
 
 ## Tool đang chạy
 
@@ -26,7 +26,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `liet_ke_chu_de` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `mo_trang` | navigate | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `phong_trong` | read | `rooms.view` | `src/copilot/tools/registry.ts` |
-| `so_quy` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `so_quy` | read | `cashbooks.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `tao_phieu_thu_chi_nhap` | write | `income_expenses.create` | `src/copilot/tools/writeTools.ts` |
 | `tim_hoa_don` | read | `invoices.view` | `src/copilot/tools/registry.ts` |
 | `tim_khach_hang` | read | `customers.view` | `src/copilot/tools/registry.ts` |
@@ -43,12 +43,14 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 - System prompt mang ngày hôm nay và trang người dùng đang xem.
 - Ảnh: nén client về 1024/JPEG, gửi kèm request, KHÔNG lưu.
 - UI-control chỉ chạy khi entitlement + quyền `ai_copilot.ui_control` hợp lệ; agent có thể điều hướng, lọc và điền form trên route allowlist, nhưng nút Lưu/Xác nhận/Submit và hành động nguy hiểm bị loại khỏi vùng tương tác.
-- Tool ghi `tao_phieu_thu_chi_nhap` bắt buộc trả bản xem trước và chờ người dùng xác nhận rõ ở lượt sau; kết quả là phiếu `UNAPPROVED`, không gắn sổ.
-- Luồng ghi gồm ba bước: INSERT `ai_write_audit` (client) → RPC `ie_compat_insert_v2` (server, tạo phiếu **và** hạng mục trong một call, tự ép `UNAPPROVED`/`PENDING` và stamp maker) → UPDATE `entity_id` vào audit (client). Bước giữa nguyên tử, nhưng **ba bước không nằm chung một transaction**: hỏng giữa chừng để lại audit thiếu `entity_id`, hoặc phiếu đã tạo mà audit chưa trỏ tới. Không còn khả năng để lại phiếu thiếu hạng mục như luồng DML rời trước Stage-7. Audit key chặn tạo trùng khi thử lại.
+- Tool ghi `tao_phieu_thu_chi_nhap` bắt buộc trả bản xem trước và chờ người dùng bấm thẻ xác nhận; kết quả là phiếu `UNAPPROVED`, không gắn sổ.
+- Luồng ghi hiện hành: tool chỉ gọi RPC preview; nonce được giữ trong bộ nhớ trình duyệt và không đi vào model context. Chỉ nút xác nhận của người dùng mới gọi RPC execute; server kiểm payload/nonce và tạo phiếu `UNAPPROVED` cùng audit trong boundary đã harden. Đây là source/static behavior đã có, nhưng vẫn cần negative E2E cho expiry, payload-change, replay và concurrency trước khi coi là release gate hoàn tất.
 
 ## Giới hạn đã biết
 
-- Gate xác nhận hai bước của write tool hiện dựa vào boolean `xac_nhan` do model truyền; ứng dụng/server chưa lưu state độc lập để chứng minh đã có preview và câu đồng ý của người dùng ở lượt trước. Vì vậy đây là guardrail theo prompt/schema, không phải authorization boundary cứng.
+- Confirmation nonce đã thay cho boolean `xac_nhan` trong input schema. Kho client hiện là một khe global (đề xuất mới đè đề xuất cũ), nên chưa đáp ứng contract key theo conversation/action/payload-hash và chưa có đủ proof replay/concurrency.
+- Organization context đã fail-closed và client dùng danh bạ Copilot. Các tool scoped, gồm `tim_khach_hang` và `hop_dong_sap_het_han`, hiện đi qua RPC server-side có scope tổ chức/toà nhà do server suy ra; live catalog/readback, migration provenance và role-real wrong-org/revocation E2E vẫn thiếu, nên chưa coi đây là boundary release an toàn cho superadmin.
+- Evaluation live ngày 2026-08-13 vẫn là baseline lịch sử (headline 15 PASS / 7 PARTIAL / 8 FAIL; các case rows đếm được 16 PASS / 7 PARTIAL / 7 FAIL). Source đã được remediation một phần; harness production-like local đã pass 7/7 và các smoke/golden/page-agent safety spec đã có trong worktree, nhưng chưa có behavioral run hoặc rerun PostgREST deployment đúng SHA.
 - Proxy kiểm cả provider lẫn `modelId`: model không có trong `ai_providers.models` bị từ chối 400 `bad_model` **trước khi** reserve, nên sửa request hoặc sửa `profiles.ui_preferences.copilotModel` không còn chọn được model admin chưa bật. Ngoại lệ có chủ ý: provider `mock`, vì `modelId` của nó là tên kịch bản dev/test — công tắc của nó là `ai_providers.enabled`.
 - Model đã bật nhưng khai `input_price`/`output_price` bằng `0` vẫn được tính chi phí `0`. Hạn mức USD ba cấp chỉ chính xác bằng metadata giá, nên các cap vẫn là guardrail vận hành cho tới khi mọi model đang bật đều điền giá thật; thứ chặn chắc chắn hiện nay là `rate_per_min`.
 - Bốn bảng RAG legacy `ai_conversations`, `ai_messages`, `ai_memory_embeddings`, `ai_usage_stats` và RPC/trigger liên quan đã bị drop bởi migration `20260710190000_drop_legacy_ai_assistant.sql`; runtime hiện dùng schema Copilot mới.
@@ -59,7 +61,8 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 - [PLAN.md](PLAN.md) — thiết kế v2.1 và rationale; các câu “sẽ làm” cũ phải đọc cùng README này.
 - [SPIKE-RESULTS.md](SPIKE-RESULTS.md) — bằng chứng spike ngày 10/07, không phải status vận hành.
 - Tham chiếu hệ thống: [../he-thong/21-ai-copilot.md](../he-thong/21-ai-copilot.md).
+- Audit/plan cập nhật 2026-08-28: [spec](../superpowers/specs/2026-08-13-ai-copilot-superadmin-control-design.md) và [plan](../superpowers/plans/2026-08-13-ai-copilot-superadmin-full-site-control.md).
 
 ## Nguồn sự thật
 
-Runtime nằm ở `src/copilot/**`, backend tại `supabase/functions/llm-proxy`, schema/type trong generated types và migrations `20260710*ai_copilot*` + `20260711050000_ai_write_audit.sql`.
+Runtime nằm ở `src/copilot/**`, backend tại `supabase/functions/llm-proxy`, schema/type trong generated types và migrations `20260710*ai_copilot*`, `20260711050000_ai_write_audit.sql`, các migration nonce/organization/audit-hardening `20260814032500`–`20260814034600`, cùng các migration scope/feature-flag Copilot `20260828140000`, `20260828160000`, `20260828170000`, `20260829020000`, `20260829030000`, `20260829040000`, `20260829050000` (chưa đủ provenance/live-catalog evidence để promote).

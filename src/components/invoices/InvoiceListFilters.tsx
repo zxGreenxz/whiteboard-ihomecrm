@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRooms } from '@/hooks/useRooms';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,7 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
 
   // Month Picker state
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const monthTriggerRef = useRef<HTMLButtonElement>(null);
   const [pickerYear, setPickerYear] = useState(() => {
     if (filters.billing_month) return parseInt(filters.billing_month.split('-')[0]);
     return new Date().getFullYear();
@@ -93,6 +94,31 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
     setMonthPickerOpen(false);
   };
 
+  // `safe_select` writes data-ai-selected before dispatching change. Keep the
+  // custom month trigger on the same deterministic path as a native select.
+  useEffect(() => {
+    const trigger = monthTriggerRef.current;
+    if (!trigger) return;
+    const onExternalChange = () => {
+      const next = trigger.getAttribute('data-ai-selected') ?? trigger.value;
+      const match = /^(\d{4})-(\d{1,2})$/.exec(next);
+      if (match) {
+        const month = Number(match[2]);
+        if (month >= 1 && month <= 12) {
+          setPickerYear(Number(match[1]));
+          update({ billing_month: `${match[1]}-${String(month).padStart(2, '0')}` });
+          setMonthPickerOpen(false);
+        }
+      } else if (/^\d{1,2}$/.test(next)) {
+        const month = Number(next);
+        if (month >= 1 && month <= 12) handleMonthSelect(month);
+      }
+      trigger.removeAttribute('data-ai-selected');
+    };
+    trigger.addEventListener('change', onExternalChange);
+    return () => trigger.removeEventListener('change', onExternalChange);
+  }, [pickerYear, filters, onFiltersChange]);
+
   const roomTriggerClass = compact ? 'h-9 text-sm flex-1 min-w-0' : 'h-9 text-sm w-[140px]';
   const monthTriggerClass = compact
     ? 'h-9 text-sm flex-1 min-w-0 justify-start font-normal px-2'
@@ -123,6 +149,7 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
       {/* Trạng thái hoá đơn: Đã duyệt (mặc định, ẩn HĐ huỷ) / Đã huỷ / Tất cả */}
       {!compact && (
         <SearchableSelect
+          data-ai-safe="invoices.list.invoice.status-filter"
           value={viewStatusValue}
           onValueChange={handleViewStatusChange}
           className="h-9 text-sm w-[140px]"
@@ -154,7 +181,14 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
       {/* Chọn tháng - Custom Month Picker */}
       <Popover open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" className={monthTriggerClass}>
+          <Button
+            variant="outline"
+            ref={monthTriggerRef}
+            role="combobox"
+            aria-label="Chọn tháng"
+            className={monthTriggerClass}
+            data-ai-safe="invoices.list.invoice.month-filter"
+          >
             {!compact && <Calendar className="h-4 w-4 mr-2 shrink-0 text-muted-foreground" />}
             <span className="truncate">
               {filters.billing_month
