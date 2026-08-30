@@ -12,6 +12,7 @@ import BroadcastDialog from '@/components/chat-zalo/BroadcastDialog';
 import ComposeNewDialog from '@/components/chat-zalo/ComposeNewDialog';
 import LinkCustomerDialog from '@/components/chat-zalo/LinkCustomerDialog';
 import TemplateManagerDialog from '@/components/chat-zalo/TemplateManagerDialog';
+import AutomationSettingsDialog from '@/components/chat-zalo/automation/AutomationSettingsDialog';
 import type { FilterKey, RightTab, ZaloConversation, ZaloMessage } from '@/components/chat-zalo/types';
 import {
   useZaloConversations, useZaloMessages, useSendZaloMessage, useMarkConversationRead,
@@ -70,6 +71,10 @@ export default function ChatZaloPage() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [linkConv, setLinkConv] = useState<ZaloConversation | null>(null);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  // Màn cài đặt tự động hoá — dialog cấp TRANG chứ không nằm trong InfoPanel:
+  // InfoPanel được render hai lần (cột phải desktop + sheet mobile), để dialog
+  // bên trong nó thì sẽ có hai bản cùng lúc, hai bộ state, hai lần nạp cấu hình.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<ZaloMessage | null>(null);
   // Số tin chưa đọc CHỐT tại lúc mở thread — vẽ divider "Tin nhắn chưa đọc"
   const [unreadAtOpen, setUnreadAtOpen] = useState<Record<string, number>>({});
@@ -310,6 +315,8 @@ export default function ChatZaloPage() {
               automations={automations}
               onToggle={toggleAutomation}
               templates={templates}
+              conversations={conversations}
+              onOpenSettings={() => setSettingsOpen(true)}
               onLinkCrm={setLinkConv}
             />
             <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
@@ -323,6 +330,12 @@ export default function ChatZaloPage() {
                     automations={automations}
                     onToggle={toggleAutomation}
                     templates={templates}
+                    conversations={conversations}
+                    // Đóng sheet TRƯỚC khi mở dialog: hai lớp modal lồng nhau
+                    // (Sheet + Dialog của Radix) tranh nhau focus trap, và trên
+                    // màn hẹp thì dialog rộng 880px nằm dưới sheet 330px là
+                    // không đọc được.
+                    onOpenSettings={() => { setInfoOpen(false); setSettingsOpen(true); }}
                     onLinkCrm={setLinkConv}
                   />
                 </div>
@@ -362,6 +375,14 @@ export default function ChatZaloPage() {
       />
 
       <LinkCustomerDialog open={!!linkConv} onOpenChange={(v) => !v && setLinkConv(null)} conv={linkConv} />
+
+      {/* Cấu hình tự động hoá theo TỔ CHỨC — không phụ thuộc hội thoại đang mở,
+          nên render ở cấp trang và không nằm trong nhánh `active &&`. */}
+      <AutomationSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        conversations={conversations}
+      />
 
       {can(perms, 'chat_zalo', 'manage_templates') && (
         <TemplateManagerDialog open={templateManagerOpen} onOpenChange={setTemplateManagerOpen} />

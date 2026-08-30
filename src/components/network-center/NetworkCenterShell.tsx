@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, Database, Network } from "lucide-react";
+import { ArrowLeft, Building2, Database, Network, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -19,6 +19,10 @@ interface NetworkCenterShellProps {
   selectedBuildingId?: string;
   canExecute: boolean;
   mode: NetworkCenterMode;
+  /** Nạp lại mọi truy vấn Network Center — xem `refreshAll` của controller. */
+  onRefresh: () => void | Promise<void>;
+  /** Có truy vấn nào đang chạy không (khoá nút + quay icon). */
+  isRefreshing: boolean;
   children: ReactNode;
 }
 
@@ -27,6 +31,8 @@ export function NetworkCenterShell({
   selectedBuildingId,
   canExecute,
   mode,
+  onRefresh,
+  isRefreshing,
   children,
 }: NetworkCenterShellProps) {
   const navigate = useNavigate();
@@ -74,6 +80,19 @@ export function NetworkCenterShell({
 
         <div className="nc-header-tools">
           <div className="nc-demo-label"><Database aria-hidden="true" /> {mode === "demo" ? "Dữ liệu mô phỏng" : "Dữ liệu trực tiếp"}</div>
+          {/* Router được hỏi thăm 30 phút một lần (migration 20260830165629) và
+              sự kiện realtime còn bị gom 5 giây, nên đây là đường tắt cho người
+              muốn số liệu ngay. */}
+          <button
+            type="button"
+            className="nc-refresh-button"
+            onClick={() => { void onRefresh(); }}
+            disabled={isRefreshing}
+            title="Nạp lại số liệu Trung tâm mạng"
+          >
+            <RefreshCw aria-hidden="true" className={isRefreshing ? "nc-refresh-spinning" : undefined} />
+            {isRefreshing ? "Đang nạp…" : "Làm mới"}
+          </button>
           <NetworkStatus
             kind={canExecute && (selectedBuildingId
               ? rolloutStatus === "EXECUTE"

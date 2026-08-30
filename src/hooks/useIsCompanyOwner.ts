@@ -20,7 +20,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-const AUTHORIZATION_REFRESH_INTERVAL = 60_000;
+/**
+ * Vai chủ công ty đổi vài lần một năm, nhưng hook này mounted ở mọi trang.
+ *
+ * Bản trước để 60 giây kèm `refetchInterval` + `refetchOnWindowFocus: 'always'`:
+ * ~960 request mỗi ngày mỗi người, hỏi đi hỏi lại một sự thật gần như bất biến.
+ * Chủ dự án chốt 24 giờ ngày 30/08/2026.
+ *
+ * Vì sao cắt được mà không mất an toàn: đây chỉ là cờ HIỂN THỊ (ẩn/hiện nút).
+ * Mọi thao tác vẫn đi qua RPC + RLS phía server, nên quyền vừa bị thu hồi là
+ * thao tác bị chặn NGAY, dù giao diện còn vẽ nút cho tới lần nạp sau.
+ */
+const AUTHORIZATION_STALE_TIME = 24 * 60 * 60_000;
 
 /** true ⇔ đang đăng nhập và là chủ công ty ở ≥1 tổ chức. */
 export const useIsCompanyOwner = () =>
@@ -36,8 +47,6 @@ export const useIsCompanyOwner = () =>
       }
       return !!data;
     },
-    staleTime: AUTHORIZATION_REFRESH_INTERVAL,
-    refetchInterval: AUTHORIZATION_REFRESH_INTERVAL,
-    refetchOnWindowFocus: 'always',
+    staleTime: AUTHORIZATION_STALE_TIME,
     retry: 1,
   });

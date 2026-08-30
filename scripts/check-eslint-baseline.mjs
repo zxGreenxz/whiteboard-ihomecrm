@@ -55,7 +55,6 @@ export const BO_QUA = [
   'services/**',
   'infra/**',
   'supabase/functions/**',
-  '.tmp-openclaw-host/**',
   '.e2e-fleet/**',
 ];
 

@@ -183,6 +183,41 @@ api.listener.start();
 - Mở 1 instance duy nhất / nick (single-listener). Khi deploy lại: dừng cũ trước (graceful SIGTERM).
 - Theo dõi `zalo_accounts.status`; có thể thêm health-check log.
 
+## 5b. Tự động hoá — bắt buộc làm trước khi BẬT (thêm 2026-08-30)
+
+Worker giờ có hai engine: broadcast phòng trống định kỳ và auto-reply cho sale.
+Broadcast **vẽ ảnh bảng ngay trên máy chạy worker**, nên máy đó phải đủ hai thứ:
+
+```bash
+cd worker
+npm install            # kéo thêm @napi-rs/canvas (gói NATIVE, xem bẫy dưới)
+npm run setup          # = tai-font.mjs + kiem-anh.mjs
+```
+
+**Rồi MỞ ẢNH `worker/kiem-anh-phong-trong.png` RA XEM BẰNG MẮT.** Chữ có dấu
+(Trống, Phòng, Điện) phải đọc được. Đây không phải bước cho có: thiếu font tiếng
+Việt **không** làm worker chết — nó vẫn vẽ, vẫn gửi, chỉ là mọi chữ có dấu ra ô
+vuông. Không log nào đỏ, không job nào `failed`; người đầu tiên phát hiện ra sẽ là
+khách hàng nhận ảnh. `npm run kiem-anh <organization_id>` vẽ bằng dữ liệu THẬT của
+một công ty nếu muốn chắc hơn.
+
+Ba bẫy nền tảng đã lường trước, script `kiem-anh` bắt được cả ba:
+
+| Bẫy | Dấu hiệu | Chữa |
+|---|---|---|
+| **`@napi-rs/canvas` là gói native** | `import` nổ ngay lúc chạy `kiem-anh` | Chạy `npm install` **trên chính VPS**. Copy `node_modules` từ Windows sang Linux thì KHÔNG chạy. |
+| **Thiếu font tiếng Việt** | Script in `Font: font-he-thong` kèm cảnh báo | `npm run tai-font`, hoặc cài font hệ thống: `apt-get install -y fonts-noto-core` |
+| **Node thiếu full-ICU** | Script in `Định dạng giá: "4,500,000" ⚠ SAI` | Dùng bản Node chính thức (đã kèm full-ICU), đừng dùng bản small-icu tự build |
+
+Sau khi ảnh xem được, vào web ▸ Chat Zalo ▸ tab **Tự động hoá** để cài lịch, người
+nhận và các phanh chống spam. Cho tới khi có người bấm bật, engine **không gửi gì** —
+`enabled = false` là mặc định.
+
+Kiểm nhanh engine có sống không: bảng `zalo_automation_runs` phải có dòng mới sau
+mỗi lượt (kể cả lượt "bỏ lượt"). Không có dòng nào = worker chưa chạy engine, hoặc
+tài khoản Zalo đã rớt phiên (engine bỏ qua hội thoại của account không có phiên
+sống — cố ý, để không tạo ra một đống job `failed`).
+
 ## 6. Chống Zalo nhận diện đa-nick "cùng máy"
 
 **Làm rõ:** Zalo **KHÔNG đọc được MAC address / ID phần cứng / fingerprint trình

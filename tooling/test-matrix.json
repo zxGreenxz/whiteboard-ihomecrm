@@ -10,14 +10,15 @@
       "id": "app-unit",
       "runner": "vitest",
       "ciJob": "quality-gates",
-      "command": "npx vitest run src scripts/__tests__",
+      "command": "npx vitest run src scripts/__tests__ worker/__tests__",
       "runtime": "node 24.18.0 (CI)",
       "risk": "normal",
       "includes": [
         "src/**/*.test.ts",
         "src/**/*.test.tsx",
         "scripts/__tests__/**/*.test.mjs",
-        "scripts/__tests__/**/*.test.ts"
+        "scripts/__tests__/**/*.test.ts",
+        "worker/__tests__/**/*.test.js"
       ],
       "excludes": [
         ".e2e-fleet/**",

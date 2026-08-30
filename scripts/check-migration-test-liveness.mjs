@@ -60,7 +60,7 @@ function motFile(duongDan) {
       const p = join(d, e.name);
       if (e.isDirectory()) {
         if (!/node_modules|dist/.test(p)) walk(p);
-      } else if (/\.test\.(ts|tsx|mjs)$/.test(e.name) && !/openclaw/i.test(p)) {
+      } else if (/\.test\.(ts|tsx|mjs)$/.test(e.name)) {
         out.push(p);
       }
     }

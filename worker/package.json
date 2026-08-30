@@ -8,9 +8,13 @@
   "type": "module",
   "description": "Worker zca-js cho Chat Zalo (CRM) — chạy LOCAL trước, VPS sau. Đọc zalo_send_queue + ghi zalo_messages qua Supabase service-role. KHÔNG deploy lên Vercel.",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "setup": "node tai-font.mjs && node kiem-anh.mjs",
+    "tai-font": "node tai-font.mjs",
+    "kiem-anh": "node kiem-anh.mjs"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.65",
     "@supabase/supabase-js": "^2.81.1",
     "dotenv": "^16.4.5",
     "qrcode": "^1.5.4",

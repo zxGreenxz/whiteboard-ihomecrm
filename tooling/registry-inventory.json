@@ -6,7 +6,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -23,7 +22,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -40,7 +38,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -57,7 +54,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -71,7 +67,6 @@
       "path": "/settings/staff",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -87,7 +82,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -103,7 +97,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "account",
@@ -119,7 +112,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -135,7 +127,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -151,7 +142,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -167,7 +157,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -181,7 +170,6 @@
       "path": "/areas",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -198,7 +186,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "buildings",
@@ -215,7 +202,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -232,7 +218,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "rooms",
@@ -249,7 +234,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -263,7 +247,6 @@
       "path": "/rooms",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -277,7 +260,6 @@
       "path": "/rooms/:id",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -294,7 +276,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -311,7 +292,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "sale-phong",
@@ -328,7 +308,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -345,7 +324,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -362,7 +340,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -379,7 +356,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -396,7 +372,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -413,7 +388,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "leads",
@@ -430,7 +404,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -444,7 +417,6 @@
       "path": "/reservations",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -458,7 +430,6 @@
       "path": "/reservations/all",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -475,7 +446,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "contracts",
@@ -492,7 +462,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -509,7 +478,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "customers",
@@ -526,7 +494,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -543,7 +510,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -560,7 +526,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -577,7 +542,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -591,7 +555,6 @@
       "path": "/tenants",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -605,7 +568,6 @@
       "path": "/tenants/:id",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -622,7 +584,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "vehicles",
@@ -636,7 +597,6 @@
       "path": "/report/finance/analysis",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -650,7 +610,6 @@
       "path": "/report/finance/cashbook",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -664,7 +623,6 @@
       "path": "/report/finance/cash-flow",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -678,7 +636,6 @@
       "path": "/report/finance-by-month",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -692,7 +649,6 @@
       "path": "/report/finance/debt",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -706,7 +662,6 @@
       "path": "/report/finance/billing-calendar",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -720,7 +675,6 @@
       "path": "/report/finance/prepaid",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -734,7 +688,6 @@
       "path": "/report/finance/deposit",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -751,7 +704,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -768,7 +720,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -785,7 +736,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -802,7 +752,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -818,7 +767,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "profit-report",
@@ -832,7 +780,6 @@
       "path": "/reports/finance/new-contract-debt",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -846,7 +793,6 @@
       "path": "/reports/finance/debt",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -860,7 +806,6 @@
       "path": "/reports/finance/customer-debt",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -877,7 +822,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -894,7 +838,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -911,7 +854,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -927,7 +869,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -944,7 +885,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -961,7 +901,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -978,7 +917,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -995,7 +933,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "meters",
@@ -1012,7 +949,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "thu-tien",
@@ -1029,7 +965,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "thanh-toan",
@@ -1046,7 +981,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "invoices",
@@ -1063,7 +997,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1080,7 +1013,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1097,7 +1029,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "cashbook",
@@ -1114,7 +1045,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1131,7 +1061,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1148,7 +1077,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1164,7 +1092,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1178,7 +1105,6 @@
       "path": "/payments",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1192,7 +1118,6 @@
       "path": "/payments/income-expenses",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1206,7 +1131,6 @@
       "path": "/payments/income-expense",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1223,7 +1147,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "tasks",
@@ -1239,7 +1162,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": true,
       "launcherId": "my-day",
@@ -1255,7 +1177,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1271,7 +1192,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1288,7 +1208,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1302,7 +1221,6 @@
       "path": "/cash-book",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1316,7 +1234,6 @@
       "path": "*",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1330,7 +1247,6 @@
       "path": "/register",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1344,7 +1260,6 @@
       "path": "/login",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1358,7 +1273,6 @@
       "path": "/forgot-password",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1372,7 +1286,6 @@
       "path": "/reset-password",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1386,7 +1299,6 @@
       "path": "/c/:code",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1400,7 +1312,6 @@
       "path": "/r/:token",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1414,7 +1325,6 @@
       "path": "/phongtrong",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1428,7 +1338,6 @@
       "path": "/quayso",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1442,7 +1351,6 @@
       "path": "/quayso/:slug",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1456,7 +1364,6 @@
       "path": "/quayso/:slug/quay",
       "guards": [],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1472,7 +1379,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1488,7 +1394,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": true,
       "launcherId": "dashboard",
@@ -1505,7 +1410,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "map",
@@ -1522,7 +1426,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "network-center",
@@ -1539,7 +1442,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1556,7 +1458,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "reports",
@@ -1573,7 +1474,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1590,7 +1490,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1607,7 +1506,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1624,7 +1522,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1641,7 +1538,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1658,7 +1554,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1672,7 +1567,6 @@
       "path": "/reports/real-estate/occupancy-new",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1689,7 +1583,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1706,7 +1599,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1723,7 +1615,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1740,7 +1631,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1754,7 +1644,6 @@
       "path": "/finance/shareholder-profit",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1768,7 +1657,6 @@
       "path": "/reports/finance/shareholder-profit",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1785,7 +1673,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1801,7 +1688,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "salary",
@@ -1817,7 +1703,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1834,7 +1719,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "settings",
@@ -1850,7 +1734,6 @@
         "ProtectedRoute"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1864,7 +1747,6 @@
       "path": "/general-setting",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1881,7 +1763,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1898,7 +1779,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1915,7 +1795,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1929,7 +1808,6 @@
       "path": "/settings/categories/income-expense-types",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1943,7 +1821,6 @@
       "path": "/setting/finance/income-expense-types",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1960,7 +1837,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1974,7 +1850,6 @@
       "path": "/settings/categories/meters",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -1991,7 +1866,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2008,7 +1882,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2025,7 +1898,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2042,7 +1914,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": true,
       "launcherId": "funds",
@@ -2059,7 +1930,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2076,7 +1946,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2090,7 +1959,6 @@
       "path": "/setting/finance/cashbooks",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2104,7 +1972,6 @@
       "path": "/settings/finance/cashbooks",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2118,7 +1985,6 @@
       "path": "/cashbooks",
       "guards": [],
       "redirect": true,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2135,7 +2001,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2152,7 +2017,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2169,7 +2033,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2186,7 +2049,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2203,7 +2065,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2220,7 +2081,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2237,7 +2097,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2254,7 +2113,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2271,7 +2129,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2288,7 +2145,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": true,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2305,7 +2161,6 @@
         "RequirePermission"
       ],
       "redirect": false,
-      "laOpenClaw": false,
       "coTrongNav": false,
       "coTrongLauncher": false,
       "launcherId": null,
@@ -2317,8 +2172,7 @@
     }
   ],
   "tongKet": {
-    "tongRoute": 146,
-    "openClaw": 1,
+    "tongRoute": 145,
     "redirect": 33,
     "coNav": 50,
     "coLauncher": 24,
@@ -2400,11 +2254,11 @@
     }
   ],
   "cachDoan": {
-    "nav": "Đọc trực tiếp mảng navigationGroups trong src/components/layout/Sidebar.tsx (nguồn dữ liệu tường minh, có comment xác nhận \"EXPORT có chủ đích ... test đối chiếu cần đọc cấu trúc này như DỮ LIỆU\"). Hai mục 'openclaw-zalo' và 'network-center' được sinh động từ navFieldsFor(capabilityId) (src/app/capabilities/surfaceAdapters.ts) đọc registry.ts — tôi coi chúng là 'có trong nav' ở mức MÃ NGUỒN (structurally present), không mô phỏng cờ runtime NETWORK_CENTER_RUNTIME_ENABLED/OPENCLAW_RUNTIME_ENABLED lúc build. Route \"/network-center/*\" (wildcard trong App routes) được coi khớp với href \"/network-center\" (không wildcard) dùng trong nav/launcher/permission — đây là sai khác chuỗi đã biết, xem mauThuan.",
-    "launcher": "Đọc trực tiếp mảng LAUNCHER_SECTIONS trong src/pages/home/launcherTiles.ts, cùng cách xử lý navFieldsFor/launcherFieldsFor như trên cho hai capability network-center/openclaw-zalo.",
+    "nav": "Đọc trực tiếp mảng navigationGroups trong src/components/layout/Sidebar.tsx (nguồn dữ liệu tường minh, có comment xác nhận \"EXPORT có chủ đích ... test đối chiếu cần đọc cấu trúc này như DỮ LIỆU\"). Mục 'network-center' được sinh động từ navFieldsFor(capabilityId) (src/app/capabilities/surfaceAdapters.ts) đọc registry.ts — tôi coi chúng là 'có trong nav' ở mức MÃ NGUỒN (structurally present), không mô phỏng cờ runtime NETWORK_CENTER_RUNTIME_ENABLED lúc build. Route \"/network-center/*\" (wildcard trong App routes) được coi khớp với href \"/network-center\" (không wildcard) dùng trong nav/launcher/permission — đây là sai khác chuỗi đã biết, xem mauThuan.",
+    "launcher": "Đọc trực tiếp mảng LAUNCHER_SECTIONS trong src/pages/home/launcherTiles.ts, cùng cách xử lý navFieldsFor/launcherFieldsFor như trên cho capability network-center.",
     "permission": "Đọc PAGE_GROUPS trong src/lib/permissionPages.ts. Với mỗi PermissionPage, permissionModule/permissionAction lấy từ FEATURE ĐẦU TIÊN trong mảng features[] của trang (luôn là feature tier 'view' đại diện quyền vào trang, theo quy ước helper crud()/f() trong chính file — feature 'view' luôn khai trước). Route '/' có 2 PermissionPage trùng route (dashboard, ai-copilot); tôi chọn 'dashboard' làm đại diện, xem mauThuan.",
     "systemDoc": "KHÔNG suy từ tên file không có bằng chứng. Cách làm: gom toàn bộ đường dẫn route TĨNH (bỏ route có ':' và route redirect) thành một regex, grep một lượt trên docs/he-thong/*.md, đếm số lần mỗi (route, file doc) xuất hiện. Loại hai file mang tính MỤC LỤC thuần (00-tong-quan.md liệt kê mỗi route đúng 1 lần trong một bảng 'Bản đồ domain'; README.md) khỏi phép đếm. File 13-bao-cao-dashboard-thong-bao.md ban đầu tưởng cũng là mục lục nhưng đọc trực tiếp thì lại là tài liệu CHI TIẾT thật (có 2 bảng tham chiếu từng route con /reports/real-estate/* và /reports/finance/* kèm tên hook + nguồn dữ liệu) — đã đưa vào phép đếm sau khi xác minh bằng cách đọc nội dung thật. Route được gán systemDoc khi: (a) một doc áp đảo rõ rệt về số lần nhắc VÀ tên file khớp domain, hoặc (b) chỉ một doc không-mục-lục nhắc route đó, hoặc (c) chính bảng tham chiếu trong doc 13 cross-reference tường minh sang một doc khác ('xem doc 08', 'Chi tiết: doc 12 §5.3') — khi đó dùng doc được trỏ tới thay vì doc 13. Route /invoices là ngoại lệ thủ công: đếm thô cao nhất rơi vào docs/he-thong/perf-2026-06-30-toi-uu-hieu-nang.md (ghi chú hiệu năng nhắc '/invoices' 4 lần) nhưng đó là nhiễu — tôi dùng 07-hoa-don-thanh-toan.md theo tên file khớp domain ('hoá đơn'). /settings/ai-copilot, /settings/organization, /settings/members, /settings/roles, /admin/users được gán theo tên file khớp domain THUẦN TUÝ (21-ai-copilot.md, 01-phan-quyen-nhan-su.md) vì không route nào trong số đó xuất hiện dạng chuỗi literal ở bất kỳ doc nào — chỉ chấp nhận vì tên chủ đề của file không thể hiểu theo nghĩa nào khác. Còn lại (khoảng 22 route, phần lớn là /settings/categories/* lá hoặc route tài khoản) bị bỏ trống vì tín hiệu chỉ có 1 lần nhắc VÀ không áp đảo so với ứng viên khác, hoặc hoà điểm giữa ≥2 file — thà trống còn hơn đoán sai.",
-    "e2e": "KHÔNG dùng số lần match thô làm tiêu chí chính (nhiễu nặng: gần như mọi spec income-expense/finance đều page.goto('/income-expense') hoặc '/login' như bước dọn dẹp/thiết lập, không phải chủ đề bài test). Tiêu chí thật: TÊN FILE spec phải khớp trực tiếp, không mơ hồ, với route/tính năng (vd network-center.spec.ts, openclaw-zalo.spec.ts, thanh-toan-page.spec.ts, my-day-route.spec.ts, quayso-lucky-draw.spec.ts) — cùng khuôn với 2 capability đã có sẵn trong registry.ts hiện tại (network-center, openclaw-zalo đều map 1-1 sang spec cùng tên). Khi ĐÚNG MỘT spec có tên khớp domain và không có spec nào khác cạnh tranh rõ ràng hơn thì gán (kể cả route động /r/:token — xác minh bằng cách đọc trực tiếp phong-trong-export-image.spec.ts thấy page.goto(`/r/${token}`) dạng template, nên grep chuỗi tĩnh không bắt được). Khi CÓ NHIỀU spec cùng cụm tên tiền tố cạnh tranh mà không cái nào rõ là 'spec khói chính' của cả trang (vd cụm ie-*/income-voucher-*/commission-*/finance-v2* đều đụng /income-expense; cụm contract-create-*/contract-deposit-* đều đụng /contracts; invoice-edit-previous-debt.spec.ts và invoice-collection-v5.spec.ts đều đụng /invoices) thì để trống — chọn đại một cái sẽ SAI hơn là không chọn, vì không cái nào thật sự đại diện cho cả trang."
+    "e2e": "KHÔNG dùng số lần match thô làm tiêu chí chính (nhiễu nặng: gần như mọi spec income-expense/finance đều page.goto('/income-expense') hoặc '/login' như bước dọn dẹp/thiết lập, không phải chủ đề bài test). Tiêu chí thật: TÊN FILE spec phải khớp trực tiếp, không mơ hồ, với route/tính năng (vd network-center.spec.ts, thanh-toan-page.spec.ts, my-day-route.spec.ts, quayso-lucky-draw.spec.ts) — cùng khuôn với capability network-center trong registry.ts (map 1-1 sang spec cùng tên). Khi ĐÚNG MỘT spec có tên khớp domain và không có spec nào khác cạnh tranh rõ ràng hơn thì gán (kể cả route động /r/:token — xác minh bằng cách đọc trực tiếp phong-trong-export-image.spec.ts thấy page.goto(`/r/${token}`) dạng template, nên grep chuỗi tĩnh không bắt được). Khi CÓ NHIỀU spec cùng cụm tên tiền tố cạnh tranh mà không cái nào rõ là 'spec khói chính' của cả trang (vd cụm ie-*/income-voucher-*/commission-*/finance-v2* đều đụng /income-expense; cụm contract-create-*/contract-deposit-* đều đụng /contracts; invoice-edit-previous-debt.spec.ts và invoice-collection-v5.spec.ts đều đụng /invoices) thì để trống — chọn đại một cái sẽ SAI hơn là không chọn, vì không cái nào thật sự đại diện cho cả trang."
   },
   "$dinhChinh": {
     "ngay": "2026-08-12",

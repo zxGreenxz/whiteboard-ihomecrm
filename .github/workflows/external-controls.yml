@@ -51,6 +51,14 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
+          cache: 'npm'
+
+      # BẮT BUỘC: bước "Hạn của known-gaps" chạy scripts/check-known-gaps.mjs, mà
+      # script đó `import yaml from 'js-yaml'`. Thiếu bước này, workflow ĐỎ ở MỌI
+      # lượt cron với `ERR_MODULE_NOT_FOUND` — đã xảy ra thật ít nhất 3 ngày liên
+      # tiếp (28, 29, 30/08/2026), tức một cửa chặn đã câm mà không ai nhận ra.
+      - name: Cài dependency
+        run: npm ci
 
       - name: Kiểm soát ngoài repo
         env:

@@ -115,6 +115,9 @@ export interface ZaloConversation {
   /** đã có tin nhắn nào chưa (null = danh bạ thuần, chưa từng nhắn) */
   hasMessages: boolean;
   isGroup: boolean;
+  /** Đánh dấu tay: hội thoại này là sale/môi giới. Điều kiện để nhận tin phòng
+   *  trống định kỳ và để được tự động trả lời. */
+  isSalePartner: boolean;
   /** liên kết CRM (null = chưa gắn) */
   customerId?: string | null;
   leadId?: string | null;

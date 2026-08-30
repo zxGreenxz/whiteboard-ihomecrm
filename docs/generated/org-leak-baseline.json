@@ -1,7 +1,7 @@
 {
   "note": "Sinh bằng máy — node scripts/measure-org-leak.mjs --write. Đo bằng vai người dùng thật, chỉ đọc, mọi truy vấn bọc ROLLBACK.",
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "capturedAt": "2026-08-12T00:53:33.186Z",
+  "capturedAt": "2026-08-30T17:08:00.426Z",
   "catalogFingerprint": "d40723ebc7c10cb7791af1ce8239787b0cae331a54a9d4eb7e3443426957dbdb",
   "nhanVat": [
     {
@@ -88,14 +88,14 @@
     {
       "table_name": "accounts",
       "visible_foreign": 0,
-      "ground_truth_total": 1,
+      "ground_truth_total": 2,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 1,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 1,
+          "tong": 2,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -110,14 +110,14 @@
     {
       "table_name": "ai_chat_messages",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 4,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 4,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -126,20 +126,20 @@
         }
       },
       "authenticated_can_select": true,
-      "group": "A_RONG",
+      "group": "C_DA_KIN",
       "assigned_phase": "GĐ3"
     },
     {
       "table_name": "ai_chat_threads",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 3,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 3,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -148,7 +148,7 @@
         }
       },
       "authenticated_can_select": true,
-      "group": "A_RONG",
+      "group": "C_DA_KIN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -220,14 +220,14 @@
     {
       "table_name": "ai_usage_logs",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 10,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 10,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -236,7 +236,7 @@
         }
       },
       "authenticated_can_select": true,
-      "group": "A_RONG",
+      "group": "C_DA_KIN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -777,7 +777,7 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 2,
+          "tong": 4,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -902,14 +902,14 @@
     {
       "table_name": "contract_customers",
       "visible_foreign": 0,
-      "ground_truth_total": 390,
+      "ground_truth_total": 403,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 390,
+          "tong": 403,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 20,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -924,10 +924,10 @@
     {
       "table_name": "contract_deposit_links",
       "visible_foreign": 0,
-      "ground_truth_total": 6,
+      "ground_truth_total": 14,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 6,
+          "tong": 14,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -946,10 +946,10 @@
     {
       "table_name": "contract_extensions",
       "visible_foreign": 0,
-      "ground_truth_total": 44,
+      "ground_truth_total": 83,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 44,
+          "tong": 83,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -968,10 +968,10 @@
     {
       "table_name": "contract_services",
       "visible_foreign": 0,
-      "ground_truth_total": 87,
+      "ground_truth_total": 90,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 87,
+          "tong": 90,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -1012,14 +1012,14 @@
     {
       "table_name": "contract_terminations",
       "visible_foreign": 0,
-      "ground_truth_total": 23,
+      "ground_truth_total": 37,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 23,
+          "tong": 37,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 4,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1056,14 +1056,14 @@
     {
       "table_name": "contracts",
       "visible_foreign": 0,
-      "ground_truth_total": 240,
+      "ground_truth_total": 249,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 240,
+          "tong": 249,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 20,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1122,10 +1122,10 @@
     {
       "table_name": "customer_credit_applications",
       "visible_foreign": 0,
-      "ground_truth_total": 33,
+      "ground_truth_total": 34,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 33,
+          "tong": 34,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -1166,14 +1166,14 @@
     {
       "table_name": "customers",
       "visible_foreign": 0,
-      "ground_truth_total": 523,
+      "ground_truth_total": 547,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 523,
+          "tong": 547,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 24,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1298,10 +1298,10 @@
     {
       "table_name": "excess_amounts",
       "visible_foreign": 0,
-      "ground_truth_total": 73,
+      "ground_truth_total": 74,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 73,
+          "tong": 74,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -1540,14 +1540,14 @@
     {
       "table_name": "floors",
       "visible_foreign": 0,
-      "ground_truth_total": 4,
+      "ground_truth_total": 10,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 1,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 4,
+          "tong": 10,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1584,14 +1584,14 @@
     {
       "table_name": "income_expense_audit_log",
       "visible_foreign": 0,
-      "ground_truth_total": 72,
+      "ground_truth_total": 142,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 72,
+          "tong": 142,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 1,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1606,10 +1606,10 @@
     {
       "table_name": "income_expense_batch_items",
       "visible_foreign": 0,
-      "ground_truth_total": 201,
+      "ground_truth_total": 219,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 201,
+          "tong": 219,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -1628,10 +1628,10 @@
     {
       "table_name": "income_expense_batches",
       "visible_foreign": 0,
-      "ground_truth_total": 35,
+      "ground_truth_total": 38,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 35,
+          "tong": 38,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -1650,14 +1650,14 @@
     {
       "table_name": "income_expense_items",
       "visible_foreign": 0,
-      "ground_truth_total": 2043,
+      "ground_truth_total": 2203,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 2043,
+          "tong": 2203,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 9,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1804,14 +1804,14 @@
     {
       "table_name": "income_expense_types",
       "visible_foreign": 0,
-      "ground_truth_total": 98,
+      "ground_truth_total": 100,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 91,
+          "tong": 98,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 98,
+          "tong": 100,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1826,14 +1826,14 @@
     {
       "table_name": "income_expenses",
       "visible_foreign": 0,
-      "ground_truth_total": 1963,
+      "ground_truth_total": 2111,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 1963,
+          "tong": 2111,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 9,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -1892,10 +1892,10 @@
     {
       "table_name": "invoice_audit_log",
       "visible_foreign": 0,
-      "ground_truth_total": 17752,
+      "ground_truth_total": 18469,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 17752,
+          "tong": 18469,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -1936,10 +1936,10 @@
     {
       "table_name": "invoice_items",
       "visible_foreign": 0,
-      "ground_truth_total": 3085,
+      "ground_truth_total": 3467,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 3085,
+          "tong": 3467,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -1958,10 +1958,10 @@
     {
       "table_name": "invoice_payment_allocations",
       "visible_foreign": 0,
-      "ground_truth_total": 235,
+      "ground_truth_total": 262,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 235,
+          "tong": 262,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -1980,10 +1980,10 @@
     {
       "table_name": "invoice_payment_collections",
       "visible_foreign": 0,
-      "ground_truth_total": 229,
+      "ground_truth_total": 253,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 229,
+          "tong": 253,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -2002,10 +2002,10 @@
     {
       "table_name": "invoice_payment_tenders",
       "visible_foreign": 0,
-      "ground_truth_total": 229,
+      "ground_truth_total": 253,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 229,
+          "tong": 253,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -2024,10 +2024,10 @@
     {
       "table_name": "invoices",
       "visible_foreign": 0,
-      "ground_truth_total": 821,
+      "ground_truth_total": 930,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 821,
+          "tong": 930,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -2200,10 +2200,10 @@
     {
       "table_name": "jobs",
       "visible_foreign": 0,
-      "ground_truth_total": 168,
+      "ground_truth_total": 198,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 168,
+          "tong": 198,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -2442,10 +2442,10 @@
     {
       "table_name": "material_usage_items",
       "visible_foreign": 0,
-      "ground_truth_total": 58,
+      "ground_truth_total": 64,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 58,
+          "tong": 64,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -2464,10 +2464,10 @@
     {
       "table_name": "material_usages",
       "visible_foreign": 0,
-      "ground_truth_total": 50,
+      "ground_truth_total": 55,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 50,
+          "tong": 55,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -2552,10 +2552,10 @@
     {
       "table_name": "meter_readings",
       "visible_foreign": 0,
-      "ground_truth_total": 908,
+      "ground_truth_total": 1004,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 908,
+          "tong": 1004,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -2948,14 +2948,14 @@
     {
       "table_name": "network_incidents",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 3,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 3,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -2964,7 +2964,7 @@
         }
       },
       "authenticated_can_select": true,
-      "group": "A_RONG",
+      "group": "C_DA_KIN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -3212,14 +3212,14 @@
     {
       "table_name": "network_worker_building_status",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 2,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 2,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -3228,7 +3228,7 @@
         }
       },
       "authenticated_can_select": true,
-      "group": "A_RONG",
+      "group": "C_DA_KIN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -3300,14 +3300,14 @@
     {
       "table_name": "notifications",
       "visible_foreign": 0,
-      "ground_truth_total": 32,
+      "ground_truth_total": 47,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 32,
+          "tong": 47,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 21,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -3317,1744 +3317,6 @@
       },
       "authenticated_can_select": true,
       "group": "C_DA_KIN",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_account_connections",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_accounts",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_ai_drafts",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_audit_events",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_audit_gateway_tickets",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_audit_roots",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_audit_signing_configs",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_automation_versions",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_automations",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_campaign_runs",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_campaigns",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_capacity_controls",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": true,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_cell_rebinds",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_client_operations",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_consents",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_contacts",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_control_states",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_conversation_members",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_conversations",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_crm_event_occurrences",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_crm_event_subscription_snapshots",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_crm_event_subscriptions",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_dead_letters",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_delivery_attempts",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_generation_revocations",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_health_events",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_inbound_automation_decisions",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_inbound_collisions",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_inbound_events",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_inbound_provider_identities",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_knowledge_chunks",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_knowledge_sources",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_knowledge_versions",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_maintenance_credentials",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_maintenance_leases",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_maintenance_principals",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_maintenance_work_attempts",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_maintenance_work_items",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_media_upload_tickets",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_message_media",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_messages",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_outbound_authorizations",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_outbox",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_policies",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_policy_versions",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_qr_challenges",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_delete_authorizations",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_delete_ticket_lineage",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_delete_tickets",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_evidence_seals",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_gateway_configs",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_hold_clocks",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_hold_scopes",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_holds",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_policies",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_retention_tombstones",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_rollout_checkpoints",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_rollout_observations",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_rollout_runs",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_runtime_cells",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_runtime_commands",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_runtime_credentials",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_runtime_leases",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_sales_group_allowlists",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_sales_groups",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_schedule_occurrences",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_schedule_snapshots",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_schedules",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_send_work_attempts",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_send_work_items",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_service_nonces",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_smoke_cleanup_proofs",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_smoke_observations",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_smoke_runs",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_suppressions",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_takeovers",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_targets",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
-          "ngoai": 0
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": 0,
-          "ngoai": 0
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_unknown_resolutions",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
-      "assigned_phase": "GĐ3"
-    },
-    {
-      "table_name": "openclaw_watchdog_envelope_nonces",
-      "visible_foreign": 0,
-      "ground_truth_total": 0,
-      "theoVai": {
-        "bosshuy@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "demo.chunha@username.ihomecrm.local": {
-          "tong": null,
-          "ngoai": null
-        },
-        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
-          "tong": null,
-          "ngoai": null
-        }
-      },
-      "authenticated_can_select": false,
-      "group": "A_RONG",
       "assigned_phase": "GĐ3"
     },
     {
@@ -5170,10 +3432,10 @@
     {
       "table_name": "payments",
       "visible_foreign": 0,
-      "ground_truth_total": 963,
+      "ground_truth_total": 1008,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 963,
+          "tong": 1008,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -5258,10 +3520,10 @@
     {
       "table_name": "profit_allocations",
       "visible_foreign": 0,
-      "ground_truth_total": 13,
+      "ground_truth_total": 19,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 13,
+          "tong": 19,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -5280,14 +3542,14 @@
     {
       "table_name": "profit_close_revisions",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 8,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 8,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -5296,20 +3558,20 @@
         }
       },
       "authenticated_can_select": true,
-      "group": "A_RONG",
+      "group": "C_DA_KIN",
       "assigned_phase": "GĐ3"
     },
     {
       "table_name": "profit_close_runs",
       "visible_foreign": 0,
-      "ground_truth_total": 0,
+      "ground_truth_total": 4,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
           "tong": 0,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 4,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -5318,7 +3580,7 @@
         }
       },
       "authenticated_can_select": true,
-      "group": "A_RONG",
+      "group": "C_DA_KIN",
       "assigned_phase": "GĐ3"
     },
     {
@@ -5412,10 +3674,10 @@
     {
       "table_name": "profit_monthly",
       "visible_foreign": 0,
-      "ground_truth_total": 13,
+      "ground_truth_total": 19,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 13,
+          "tong": 19,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -5500,10 +3762,10 @@
     {
       "table_name": "public_room_events",
       "visible_foreign": 0,
-      "ground_truth_total": 11343,
+      "ground_truth_total": 16200,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 11343,
+          "tong": 16200,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -5565,6 +3827,28 @@
     },
     {
       "table_name": "push_subscriptions",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": 0,
+          "ngoai": 0
+        },
+        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
+          "tong": 0,
+          "ngoai": 0
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
+      "table_name": "reservation_hold_deadlines",
       "visible_foreign": 0,
       "ground_truth_total": 0,
       "theoVai": {
@@ -5676,10 +3960,10 @@
     {
       "table_name": "room_pass_listings",
       "visible_foreign": 0,
-      "ground_truth_total": 1,
+      "ground_truth_total": 0,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 1,
+          "tong": 0,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
@@ -5692,7 +3976,7 @@
         }
       },
       "authenticated_can_select": true,
-      "group": "C_DA_KIN",
+      "group": "A_RONG",
       "assigned_phase": "GĐ3"
     },
     {
@@ -5727,7 +4011,7 @@
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 8,
+          "tong": 44,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -5960,6 +4244,28 @@
       "assigned_phase": "GĐ3"
     },
     {
+      "table_name": "salary_shield_seed",
+      "visible_foreign": 0,
+      "ground_truth_total": 0,
+      "theoVai": {
+        "bosshuy@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "demo.chunha@username.ihomecrm.local": {
+          "tong": null,
+          "ngoai": null
+        },
+        "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
+          "tong": null,
+          "ngoai": null
+        }
+      },
+      "authenticated_can_select": true,
+      "group": "A_RONG",
+      "assigned_phase": "GĐ3"
+    },
+    {
       "table_name": "salary_streak_state",
       "visible_foreign": 0,
       "ground_truth_total": 2,
@@ -6094,14 +4400,14 @@
     {
       "table_name": "settings",
       "visible_foreign": 0,
-      "ground_truth_total": 5,
+      "ground_truth_total": 7,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 5,
+          "tong": 7,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 1,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {
@@ -6534,14 +4840,14 @@
     {
       "table_name": "vehicles",
       "visible_foreign": 0,
-      "ground_truth_total": 232,
+      "ground_truth_total": 251,
       "theoVai": {
         "bosshuy@username.ihomecrm.local": {
-          "tong": 232,
+          "tong": 251,
           "ngoai": 0
         },
         "demo.chunha@username.ihomecrm.local": {
-          "tong": 0,
+          "tong": 12,
           "ngoai": 0
         },
         "(tổ chức tổng hợp — vừa sinh ra, phải thấy 0)": {

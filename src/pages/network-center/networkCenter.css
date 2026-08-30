@@ -145,6 +145,20 @@
 }
 
 .nc-demo-label { min-height: 44px; justify-content: center; border: 2px solid var(--nc-ink); background: var(--nc-yellow); color: var(--nc-ink); padding: 7px 12px; }
+
+/* Nút "Làm mới" — mượn đúng khối hình của .nc-demo-label để không phá nhịp
+   header, nhưng nền trắng để đọc ra là hành động chứ không phải nhãn. */
+.nc-refresh-button {
+  display: inline-flex; align-items: center; gap: 7px;
+  min-height: 44px; padding: 7px 12px;
+  border: 2px solid var(--nc-ink); background: #fff; color: var(--nc-ink);
+  font-weight: 900; font-size: .8rem; cursor: pointer;
+}
+.nc-refresh-button:hover:not(:disabled) { background: var(--nc-yellow); }
+.nc-refresh-button:disabled { opacity: .6; cursor: progress; }
+.nc-refresh-button svg { width: 17px; height: 17px; }
+.nc-refresh-spinning { animation: nc-spin 1s linear infinite; }
+@keyframes nc-spin { to { transform: rotate(360deg); } }
 .nc-header-tools .nc-status { min-height: 44px; padding: 7px 12px; font-size: .8rem; }
 .nc-demo-label svg,
 .nc-status svg,

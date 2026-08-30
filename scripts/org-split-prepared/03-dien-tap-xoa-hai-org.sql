@@ -63,8 +63,10 @@ SET LOCAL lock_timeout = '15s';
 -- (xoá ~9s + tự kiểm ~7s), không phải một "cửa sổ rủi ro". Khác nhau ở chỗ:
 -- đứng hình thì người dùng thấy chậm rồi thôi; cửa sổ rủi ro thì có thứ lọt qua
 -- mà không ai biết. Ở đây không có gì lọt qua được.
+-- Bảng `public.openclaw_runtime_cells` từng được khoá cùng ở đây; nó bị DROP
+-- ngày 30/08/2026 (migration 20260830085316 xoá toàn bộ OpenClaw), nên dòng
+-- LOCK cũ sẽ làm cả transaction diễn tập chết ở lệnh thứ hai.
 LOCK TABLE public.organizations           IN ACCESS EXCLUSIVE MODE;
-LOCK TABLE public.openclaw_runtime_cells  IN ACCESS EXCLUSIVE MODE;
 
 CREATE TEMP TABLE dt_log(buoc text, chi_tiet text, so bigint, ms numeric);
 CREATE TEMP TABLE dt_xoa(bang text, so_dong bigint);

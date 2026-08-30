@@ -28,7 +28,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-const AUTHORIZATION_REFRESH_INTERVAL = 60_000;
+/**
+ * Cùng lý do với `useIsCompanyOwner`: cờ hiển thị của một vai đổi vài lần một
+ * năm, mounted ở mọi trang. 60 giây → 24 giờ (chủ dự án chốt 30/08/2026); hàng
+ * rào thật vẫn là RPC + RLS phía server.
+ */
+const AUTHORIZATION_STALE_TIME = 24 * 60 * 60_000;
 
 /** true ⇔ đang đăng nhập và có vai trò system_key='TENANT_OWNER' ở ≥1 tổ chức. */
 export const useIsOrgOwner = () =>
@@ -44,8 +49,6 @@ export const useIsOrgOwner = () =>
       }
       return !!data;
     },
-    staleTime: AUTHORIZATION_REFRESH_INTERVAL,
-    refetchInterval: AUTHORIZATION_REFRESH_INTERVAL,
-    refetchOnWindowFocus: 'always',
+    staleTime: AUTHORIZATION_STALE_TIME,
     retry: 1,
   });

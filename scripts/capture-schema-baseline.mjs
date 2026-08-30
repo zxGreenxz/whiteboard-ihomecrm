@@ -37,13 +37,11 @@ const OUT_DIR = join(repoRoot, "supabase", "baseline");
  * theo rác khác nhau mỗi lần chụp. Thêm role mới ⇒ thêm vào đây; diễn tập
  * khôi phục sẽ bắt được nếu quên (policy tham chiếu role thiếu sẽ rơi).
  */
+// 5 role `openclaw_*` đã bị DROP khỏi production 30/08/2026 (migration
+// 20260830085316). Giữ chúng ở đây sẽ khiến bản chụp baseline kế tiếp khai
+// những role không tồn tại — đúng thứ danh sách này sinh ra để tránh.
 const ROLE_UNG_DUNG = [
   "ie_canonical_writer",
-  "openclaw_function_owner",
-  "openclaw_maintenance_writer",
-  "openclaw_migration_writer",
-  "openclaw_runtime_writer",
-  "openclaw_service_dispatcher",
   "supabase_privileged_role",
 ];
 const POOLER_HOST = "aws-1-ap-southeast-1.pooler.supabase.com";
