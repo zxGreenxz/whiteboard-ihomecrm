@@ -43,7 +43,11 @@ export default function AutoReplyFields({ value, onChange }: Props) {
 
   const v: CauHinhAutoReply = useMemo(() => {
     const c = chuanHoaAutoReply(value);
-    const raw = (value || {}) as Record<string, unknown>;
+    // Qua `unknown` chứ không cast thẳng: `CauHinhAutoReply` không có index
+    // signature nên TypeScript coi phép ép trực tiếp là nghi vấn — và đúng là
+    // nghi vấn, vì ở đây ta cố ý đọc `value` như dữ liệu THÔ (nó có thể là bản
+    // ghi cũ thiếu khoá, không phải một CauHinhAutoReply hoàn chỉnh).
+    const raw = (value || {}) as unknown as Record<string, unknown>;
     // Xem đầu file: mảng người dùng đang sửa thắng kết quả chuẩn hoá, để việc
     // xoá chip cuối cùng không bị "hoàn tác" ngay trước mắt họ.
     return {

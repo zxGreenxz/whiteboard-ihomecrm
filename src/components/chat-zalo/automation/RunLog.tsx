@@ -12,7 +12,7 @@
 import { Loader2, History } from 'lucide-react';
 import { tagStyle } from '../zaloTheme';
 import { mono } from '../infoCards';
-import type { TagKey } from '@/components/chat-zalo/types';
+import { nhanCuaLuot } from './nhanCheDo';
 import type { ZaloAutomationRun } from '@/hooks/useZaloChat';
 import { CHU_MO, VIEN, VIEN_NHAT, NEN_MO } from './uiChung';
 
@@ -21,17 +21,8 @@ interface Props {
   loading?: boolean;
 }
 
-/** Nhãn + tông badge cho từng chế độ. Tông lấy từ bảng TAG của Chat Zalo để
- *  màu ở đây khớp badge ở mọi chỗ khác trong trang. */
-const CHE_DO: Record<string, { ten: string; tone: TagKey; mo?: boolean }> = {
-  full: { ten: 'ĐẦY ĐỦ', tone: 'info' },
-  compact: { ten: 'GỌN', tone: 'neutral' },
-  event: { ten: 'BỔ SUNG', tone: 'purple' },
-  reply: { ten: 'TRẢ LỜI', tone: 'success' },
-  skipped: { ten: 'BỎ LƯỢT', tone: 'warning' },
-  off: { ten: 'ĐANG TẮT', tone: 'neutral', mo: true },
-  failed: { ten: 'LỖI', tone: 'danger' },
-};
+// Bảng nhãn ở `nhanCheDo.ts` — dùng chung với dòng "lần chạy cuối" của
+// AutomationPanel, để hai chỗ không trôi khỏi nhau khi worker thêm `mode` mới.
 
 /** Loại lượt chạy. `event` là bản tin bổ sung giữa ngày, khác lượt định kỳ —
  *  phân biệt được hai thứ này là điều kiện để đọc hiểu cột "số tin". */
@@ -103,7 +94,7 @@ export default function RunLog({ runs, loading }: Props) {
         </thead>
         <tbody>
           {ds.map((r) => {
-            const c = CHE_DO[r.mode] || { ten: String(r.mode || '—').toUpperCase(), tone: 'neutral' as TagKey };
+            const c = nhanCuaLuot(r.mode);
             return (
               <tr key={r.id} style={{ borderTop: `1px solid ${VIEN_NHAT}` }}>
                 <td style={{ ...O, whiteSpace: 'nowrap', ...mono({ fontSize: 11.5, color: CHU_MO }) }}>

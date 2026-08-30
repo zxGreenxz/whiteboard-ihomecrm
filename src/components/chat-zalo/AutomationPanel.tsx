@@ -26,8 +26,8 @@ import { mono } from './infoCards';
 import { useZaloAutomationConfigs, useZaloAutomationRuns } from '@/hooks/useZaloChat';
 import type { ZaloAutomationRun } from '@/hooks/useZaloChat';
 import { chuanHoaBroadcast, chuanHoaAutoReply, KHOA_NGAY } from './automationConfig';
-import type { CheDoNgay } from './automationConfig';
-import type { ZaloAutomations, ZaloConversation, TagKey } from './types';
+import { NHAN_CHE_DO_NGAY, nhanCuaLuot } from './automation/nhanCheDo';
+import type { ZaloAutomations, ZaloConversation } from './types';
 
 interface Props {
   automations: ZaloAutomations;
@@ -71,24 +71,9 @@ function DongTrong({ children, dangTai }: { children: React.ReactNode; dangTai?:
 
 const TEN_THU = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 
-/** Nhãn + tông cho chế độ của một ngày. Ba giá trị này là toàn bộ `CheDoNgay`. */
-const NHAN_CHE_DO: Record<CheDoNgay, { ten: string; tone: TagKey }> = {
-  full: { ten: 'ĐẦY ĐỦ', tone: 'info' },
-  compact: { ten: 'GỌN', tone: 'neutral' },
-  off: { ten: 'KHÔNG GỬI', tone: 'warning' },
-};
-
-/** Nhãn chế độ của một LƯỢT CHẠY (bảng runs) — tập giá trị rộng hơn `CheDoNgay`
- *  vì còn có lượt bổ sung, lượt bỏ và lượt lỗi. Giữ khớp với `RunLog.tsx`. */
-const NHAN_LUOT: Record<string, { ten: string; tone: TagKey }> = {
-  full: { ten: 'ĐẦY ĐỦ', tone: 'info' },
-  compact: { ten: 'GỌN', tone: 'neutral' },
-  event: { ten: 'BỔ SUNG', tone: 'purple' },
-  reply: { ten: 'TRẢ LỜI', tone: 'success' },
-  skipped: { ten: 'BỎ LƯỢT', tone: 'warning' },
-  off: { ten: 'ĐANG TẮT', tone: 'neutral' },
-  failed: { ten: 'LỖI', tone: 'danger' },
-};
+// Bảng nhãn chế độ dùng chung với RunLog — xem `automation/nhanCheDo.ts`. Trước
+// đây mỗi file giữ một bản chép; worker thêm một `mode` mới thì phải sửa hai nơi,
+// quên một nơi thì badge hiện nhãn thô viết hoa mà không gate nào đỏ.
 
 /** "hôm nay 08:30" / "29/08 08:30" — đủ để trả lời "lượt vừa rồi là bao giờ". */
 function moTaLuc(iso: string): string {
@@ -140,10 +125,10 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
   const thuHomNay = new Date().getDay();
   const khoaHomNay = KHOA_NGAY[thuHomNay] ?? 'sun';
   const cheDoHomNay = bc.schedule.days[khoaHomNay];
-  const nhanHomNay = NHAN_CHE_DO[cheDoHomNay] ?? NHAN_CHE_DO.off;
+  const nhanHomNay = NHAN_CHE_DO_NGAY[cheDoHomNay] ?? NHAN_CHE_DO_NGAY.off;
 
   const luotCuoi: ZaloAutomationRun | undefined = runsQuery.data?.[0];
-  const nhanLuot = luotCuoi ? (NHAN_LUOT[luotCuoi.mode] ?? { ten: String(luotCuoi.mode || '—').toUpperCase(), tone: 'neutral' as TagKey }) : null;
+  const nhanLuot = luotCuoi ? nhanCuaLuot(luotCuoi.mode) : null;
 
   const dangTaiCfg = cfgQuery.isLoading;
   const loiCfg = cfgQuery.isError;

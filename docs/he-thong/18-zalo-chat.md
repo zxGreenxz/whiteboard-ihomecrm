@@ -34,6 +34,8 @@ Nguyên tắc kiến trúc cốt lõi (khác mọi domain khác trong hệ thố
 > **Trạng thái thực tế của codebase (2026-07-02):** phần **đang chạy thật** gồm: kết nối đa tài khoản qua QR, đồng bộ danh bạ + nhóm (~1.470 bạn + ~354 nhóm), nhận tin realtime (kể cả ảnh/video/reaction/thu hồi/seen), gửi text + reply, thả reaction / thu hồi / tải thêm tin cũ (nhóm) từ web, nhãn phân loại + broadcast theo nhãn, Web Push tin mới. Phần **chưa chạy** (UI có sẵn hoặc schema chừa sẵn): gửi ảnh/file/sticker từ web, gắn hội thoại với customer/lead/contract (cột FK có, không gì ghi), OA/ZNS. Chi tiết mục 7.
 >
 > **Cập nhật 2026-08-30:** hai luồng **tự động hoá đã có engine thật** trong worker — broadcast phòng trống định kỳ (hai chế độ GỌN/ĐẦY ĐỦ, ảnh bảng render server-side) và auto-reply cho sale theo từ khoá. Xem mục 2.7 và 4.1b. Chưa chạy trên production tính tới lúc viết dòng này: cần apply migration và bật trong tab Tự động hoá.
+>
+> **⚠️ Thứ tự triển khai: migration TRƯỚC, deploy web SAU.** `CONV_COLS` trong [useZaloChat.ts](src/hooks/useZaloChat.ts) đã có `is_sale_partner`, nên deploy web khi cột chưa tồn tại làm PostgREST trả `42703` và **toàn bộ danh sách hội thoại trống** — hỏng cả màn chat đang chạy, không riêng tính năng mới. Đã đo bằng truy vấn thật trên production 31/08/2026.
 
 ---
 

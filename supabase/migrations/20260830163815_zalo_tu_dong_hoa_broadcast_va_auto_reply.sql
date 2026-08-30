@@ -43,6 +43,14 @@
 --      broadcast đi vào group Zalo hàng chục người — thứ gì không được ra khỏi
 --      công ty thì không đưa vào payload, chứ không dựa vào tầng trên nhớ lọc.
 --
+-- ⚠️ THỨ TỰ TRIỂN KHAI — MIGRATION TRƯỚC, DEPLOY WEB SAU.
+--    `useZaloChat.ts` đưa `is_sale_partner` vào hằng CONV_COLS, tức truy vấn
+--    danh sách hội thoại của trang /chat-zalo sẽ SELECT cột này. Deploy web khi
+--    cột chưa tồn tại thì PostgREST trả `42703: column "is_sale_partner" does
+--    not exist` và TOÀN BỘ danh sách hội thoại trống — không phải hỏng riêng
+--    tính năng mới, mà hỏng cả màn chat đang chạy. Đã đo bằng truy vấn thật
+--    trên production 31/08/2026.
+--
 -- Idempotent. Chạy SAU 20260813140000. Khối nghiệm thu chỉ soi catalog nên chạy
 -- được trên database RỖNG (CI "Migration Restore Drill" replay lên baseline
 -- schema-only — smoke đòi dữ liệu thật sẽ làm cuộn cả file, mất luôn object).

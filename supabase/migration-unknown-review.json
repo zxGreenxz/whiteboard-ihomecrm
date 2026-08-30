@@ -5,7 +5,7 @@
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply. | Bổ sung 31/08/2026: 1 file (20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql) — CHƯA-ÁP-DỤNG có chủ ý, đang chờ chủ dự án chốt việc ghi schema production. Phương pháp: diễn tập nguyên văn file trên production trong transaction có ROLLBACK (3 lượt), kiểm dấu vết bằng cách đếm lại catalog sau mỗi lượt.",
   "files": {
     "supabase/migrations/20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql": {
-      "sha256": "c1029ad897766d939cd8c3b567f0fde38b8bd145ba4195a09a7018c0e10ef868",
+      "sha256": "bd9b2750983fa3285ec582cc19b6b8841bf76222dc9cfb684cf8d9e0966204bd",
       "missingObjects": [
         "table:public.zalo_automation_runs",
         "function:app_private.zalo_runs_kiem_org",

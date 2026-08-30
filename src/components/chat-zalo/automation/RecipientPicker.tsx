@@ -34,7 +34,10 @@ const DAU_DEN = 0x036f;
 const boDau = (s: string) =>
   Array.from(String(s ?? '').toLowerCase().replace(/đ/g, 'd').normalize('NFD'))
     .filter((ch) => {
-      const c = ch.codePointAt(0);
+      // `codePointAt` khai kiểu `number | undefined` (chuỗi rỗng). Array.from
+      // không sinh phần tử rỗng nên nhánh đó không xảy ra, nhưng giữ mặc định 0
+      // thay vì ép kiểu — 0 nằm ngoài dải dấu nên ký tự vẫn được giữ.
+      const c = ch.codePointAt(0) ?? 0;
       return c < DAU_TU || c > DAU_DEN;
     })
     .join('');

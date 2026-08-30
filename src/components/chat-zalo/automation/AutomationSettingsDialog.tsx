@@ -22,14 +22,14 @@
 // =============================================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Megaphone, MessageSquareReply, Users, CalendarClock, FileText, ShieldAlert } from 'lucide-react';
+import { Loader2, Megaphone, MessageSquareReply, Users, CalendarClock, FileText, ShieldAlert, History } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useZaloAutomationConfigs, useSaveAutomation } from '@/hooks/useZaloChat';
+import { useZaloAutomationConfigs, useSaveAutomation, useZaloAutomationRuns } from '@/hooks/useZaloChat';
 import { chuanHoaBroadcast, chuanHoaAutoReply } from '../automationConfig';
 import type { CauHinhBroadcast, CauHinhAutoReply } from '../automationConfig';
 import type { ZaloConversation } from '@/components/chat-zalo/types';
@@ -38,6 +38,7 @@ import SchedulePlanner from './SchedulePlanner';
 import TemplateBuilder from './TemplateBuilder';
 import AntiSpamFields from './AntiSpamFields';
 import AutoReplyFields from './AutoReplyFields';
+import RunLog from './RunLog';
 import { CHU_MO, VIEN, KhoiCaiDat, BangCanhBao } from './uiChung';
 
 interface Props {
@@ -46,10 +47,13 @@ interface Props {
   conversations: ZaloConversation[];
 }
 
-type Tab = 'broadcast' | 'reply';
+type Tab = 'broadcast' | 'reply' | 'nhatky';
 
 export default function AutomationSettingsDialog({ open, onOpenChange, conversations }: Props) {
   const { data, isLoading } = useZaloAutomationConfigs(open);
+  // Nhật ký chỉ nạp khi dialog mở — cùng lý do với cấu hình: đây là màn người
+  // dùng chủ động mở, không phải thứ trang chat phải trả tiền băng thông cho.
+  const { data: runs = [], isLoading: dangTaiRuns } = useZaloAutomationRuns(open);
   const luu = useSaveAutomation();
 
   const [tab, setTab] = useState<Tab>('broadcast');
@@ -139,12 +143,15 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
           </div>
         ) : (
           <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="broadcast">
                 <Megaphone className="mr-2 h-4 w-4" />Gửi phòng trống định kỳ
               </TabsTrigger>
               <TabsTrigger value="reply">
                 <MessageSquareReply className="mr-2 h-4 w-4" />Tự động trả lời
+              </TabsTrigger>
+              <TabsTrigger value="nhatky">
+                <History className="mr-2 h-4 w-4" />Nhật ký
               </TabsTrigger>
             </TabsList>
 
@@ -243,21 +250,37 @@ export default function AutomationSettingsDialog({ open, onOpenChange, conversat
                 </KhoiCaiDat>
               </div>
             </TabsContent>
+
+            {/* -------------------------------------------------- NHẬT KÝ */}
+            <TabsContent value="nhatky">
+              <div style={{ maxHeight: '58vh', overflowY: 'auto', paddingRight: 4 }}>
+                <p style={{ fontSize: 12, color: CHU_MO, margin: '2px 0 10px' }}>
+                  Mỗi lượt engine chạy đều ghi một dòng, <b>kể cả lượt quyết định không gửi</b>.
+                  Nhật ký trống nhiều ngày trong khi tính năng đang bật là dấu hiệu tài khoản Zalo
+                  đã rớt phiên — lúc đó tự động hoá ngừng trong im lặng.
+                </p>
+                <RunLog runs={runs} loading={dangTaiRuns} />
+              </div>
+            </TabsContent>
           </Tabs>
         )}
 
         <DialogFooter className="items-center gap-2 sm:justify-between">
-          <span style={{ fontSize: 11.5, color: coDoi ? 'hsl(17 88% 38%)' : CHU_MO, fontWeight: coDoi ? 600 : 400 }}>
-            {coDoi ? 'Có thay đổi chưa lưu ở tab này.' : 'Nút Lưu chỉ ghi tab đang mở.'}
+          <span style={{ fontSize: 11.5, color: coDoi && tab !== 'nhatky' ? 'hsl(17 88% 38%)' : CHU_MO, fontWeight: coDoi && tab !== 'nhatky' ? 600 : 400 }}>
+            {tab === 'nhatky'
+              ? 'Nhật ký chỉ đọc — worker là bên ghi.'
+              : coDoi ? 'Có thay đổi chưa lưu ở tab này.' : 'Nút Lưu chỉ ghi tab đang mở.'}
           </span>
           <span style={{ display: 'flex', gap: 8 }}>
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={luu.isPending}>
               Đóng
             </Button>
-            <Button onClick={luuTab} disabled={luu.isPending || isLoading}>
-              {luu.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {tab === 'broadcast' ? 'Lưu lịch gửi' : 'Lưu tự động trả lời'}
-            </Button>
+            {tab !== 'nhatky' && (
+              <Button onClick={luuTab} disabled={luu.isPending || isLoading}>
+                {luu.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {tab === 'broadcast' ? 'Lưu lịch gửi' : 'Lưu tự động trả lời'}
+              </Button>
+            )}
           </span>
         </DialogFooter>
       </DialogContent>
