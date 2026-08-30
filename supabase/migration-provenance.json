@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-30T16:57:37.278Z",
+  "generatedAt": "2026-08-30T18:07:42.877Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 423,
-    "unknown": 74,
+    "ledger-applied": 425,
+    "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -8508,15 +8508,25 @@
       ]
     },
     {
+      "path": "supabase/migrations/20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql",
+      "version": "20260830163815",
+      "name": "zalo_tu_dong_hoa_broadcast_va_auto_reply",
+      "scheme": "timestamp14",
+      "sha256": "bd9b2750983fa3285ec582cc19b6b8841bf76222dc9cfb684cf8d9e0966204bd",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-30T18:02:34.549Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20260830165629_giam_poll_network_center_va_don_log_cron.sql",
       "version": "20260830165629",
       "name": "giam_poll_network_center_va_don_log_cron",
       "scheme": "timestamp14",
       "sha256": "0c1c591fc66a14566c564f284e7a43d09ace577488a0734b150c2221bf6dfb4c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-30T17:00:14.401Z|bien-nhan-backup"
       ]
     },
     {
