@@ -26,7 +26,6 @@ import { adminAccountRoutes } from "../adminAccountRoutes";
 // Số tối thiểu ở đây là số route RUNTIME, có thể NHỎ HƠN số gate đếm tĩnh.
 // Lý do: một số route bọc trong cờ tính năng —
 //   {NETWORK_CENTER_RUNTIME_ENABLED ? <Route … /> : null}
-//   {OPENCLAW_RUNTIME_ENABLED ? <Route … /> : null}
 // Gate check-route-guards đọc AST nên vẫn THẤY và vẫn kiểm guard của chúng (đúng:
 // route tắt cờ hôm nay có thể bật ngày mai, guard phải đúng sẵn). Còn ở đây cờ mặc
 // định TẮT nên react-router chỉ dựng phần đang bật. Hai con số lệch nhau là ĐÚNG,

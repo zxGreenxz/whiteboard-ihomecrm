@@ -40,9 +40,9 @@ Một vai trò **không chứa scope**. Mỗi role binding phải có ít nhất
 3. Dùng các mức hiển thị **Xem**, **Quản lý** và **Nhạy cảm** để đánh giá rủi ro; mức này chỉ hỗ trợ trình bày, quyền thật vẫn là từng key `module.action`.
 4. Lưu vai trò, sau đó sang `/settings/members` để gán vai trò cùng scope.
 
-Catalog hiện có **231 permission feature**. Ảnh production ngày 13/08/2026 cho thấy vai trò **Chủ công ty** mang đủ 231 quyền và sidebar đang hiển thị **OpenClaw Zalo**; vì vậy không còn đúng nếu mô tả deployment hiện tại là runtime-off hoặc khẳng định tám key OpenClaw luôn bị ẩn. Bộ chọn quyền phụ thuộc runtime của chính deployment đang phục vụ. Không dùng bốn mẫu legacy như nguồn thẩm quyền hiện hành.
+Catalog hiện có **223 permission feature** (231 trừ 8 khóa OpenClaw Zalo đã xóa cùng cả hệ ngày 30/08/2026). Bộ chọn quyền phụ thuộc runtime của chính deployment đang phục vụ. Không dùng bốn mẫu legacy như nguồn thẩm quyền hiện hành.
 
-![Bộ chọn quyền của vai trò Chủ công ty: 231 quyền đang bật, nhóm OpenClaw Zalo cá nhân đủ 8 trên 8 quyền](./images/buoc-02-bo-chon-quyen.webp)
+![Bộ chọn quyền của vai trò Chủ công ty (ảnh chụp trước 30/08/2026, còn nhóm OpenClaw Zalo nay đã gỡ)](./images/buoc-02-bo-chon-quyen.webp)
 
 ## Sơ đồ tính quyền hiệu lực
 

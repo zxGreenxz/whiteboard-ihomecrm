@@ -9,9 +9,8 @@ import { Route, Routes, Navigate } from "react-router-dom";
 import { hideAppSplash } from "@/lib/appSplash";
 import ProtectedRoute from "../../components/auth/ProtectedRoute";
 import { RequirePermission } from "../../components/auth/RequirePermission";
-import { ChatZaloPage, LuckyDrawAdminPage, OpenClawRouteGuard, OpenClawZaloPage } from "../lazyPages";
+import { ChatZaloPage, LuckyDrawAdminPage } from "../lazyPages";
 import NotFound from "../../pages/NotFound";
-import { OPENCLAW_RUNTIME_ENABLED } from "@/lib/openclaw-zalo/runtime";
 import { publicRoutes } from "./publicRoutes";
 import { quickTrackRoutes } from "./quickTrackRoutes";
 import { catalogRoutes } from "./catalogRoutes";
@@ -57,23 +56,6 @@ export function AppRoutes() {
         {quickTrackRoutes}
         {/* === KÊNH CHAT === */}
         <Route path="/chat-zalo" element={<ProtectedRoute><RequirePermission module="chat_zalo" action="view"><ChatZaloPage /></RequirePermission></ProtectedRoute>} />
-        {/* Behind a build-time flag, default OFF, the same way Network Center is.
-            `openclaw_zalo.view` is granted to every organization owner including
-            the real one, so the server permission cannot also serve as the
-            "not shipped yet" switch: it says who may use the feature, not
-            whether the feature is finished. Tasks 26/28/29 are not done. */}
-        {OPENCLAW_RUNTIME_ENABLED ? (
-          <Route
-            path="/openclaw-zalo"
-            element={
-              <ProtectedRoute>
-                <OpenClawRouteGuard>
-                  <OpenClawZaloPage />
-                </OpenClawRouteGuard>
-              </ProtectedRoute>
-            }
-          />
-        ) : null}
         {catalogRoutes}
         {customerRoutes}
         {realEstateReportRoutes}

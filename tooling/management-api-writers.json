@@ -4,12 +4,6 @@
   "lane": "scripts/apply-reviewed-migration.mjs",
   "callers": [
     {
-      "file": "scripts/__tests__/openclaw-sql-harness.test.mjs",
-      "loai": "write",
-      "why": "Harness SQL của OpenClaw, chạy trên database dùng-một-lần.",
-      "giayPhep": "chi-demo"
-    },
-    {
       "file": "scripts/apply-accounting-rollout.mjs",
       "loai": "write",
       "why": "Rollout kế toán theo từng bước có advisory lock + digest. Là ông tổ của lane hiện tại; giữ vì rollout đó có thứ tự riêng lane chưa mô hình hoá.",
@@ -167,12 +161,6 @@
       "loai": "write",
       "why": "Kiểm lấp đầy, fixture trên DEMO.",
       "giayPhep": "giao-dich-rollback"
-    },
-    {
-      "file": "scripts/test-openclaw-migrations.mjs",
-      "loai": "write",
-      "why": "Kiểm migration OpenClaw trên database dùng-một-lần.",
-      "giayPhep": "chi-demo"
     },
     {
       "file": "scripts/test-v5-route-phase12.mjs",

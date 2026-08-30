@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Gate: tooling/runtime-matrix.json phải khớp thực tế, theo CẢ HAI chiều.
 //
-// Vì sao cần: repo có sáu ràng buộc Node khác nhau trên tám manifest, và root
-// `engines: ">=20"` không phải sàn thật của mọi thứ — script test:openclaw:services
-// tự chặn nếu không phải Node 24.15+. Agent đọc root rồi chọn Node 20 sẽ thấy
-// test OpenClaw fail vì lý do chẳng liên quan gì tới code đang sửa.
+// Vì sao cần: repo có nhiều ràng buộc Node khác nhau trên các manifest, và root
+// `engines: ">=20"` không chắc là sàn thật của mọi package con. Agent đọc root
+// rồi chọn Node thấp hơn sẽ thấy test package con fail vì lý do chẳng liên quan
+// gì tới code đang sửa.
 //
 // Một bảng tra chỉ có ích khi nó ĐÚNG. Nếu chỉ có file JSON mà không ai kiểm,
 // nó sẽ lệch trong im lặng và trở thành nguồn sai còn nguy hiểm hơn không có gì

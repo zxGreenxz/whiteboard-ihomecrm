@@ -11,7 +11,6 @@ source_paths:
   - scripts/generate-edge-surface.mjs
   - scripts/check-edge-surface.mjs
   - scripts/deploy-edge-fn.mjs
-  - scripts/deploy-openclaw-edge-fn.mjs
   - scripts/apply-reviewed-migration.mjs
   - scripts/check-external-controls.mjs
   - scripts/check-no-auto-apply.mjs
@@ -43,7 +42,7 @@ git commit ─────────┤              promote: git push origin 
                     ├─ (3) EDGE ──── node scripts/deploy-*-edge-fn.mjs / supabase functions deploy
                     │                (KHÔNG gắn với git push, KHÔNG có trong workflow nào)
                     │
-                    └─ (4) WORKER/VPS ── rollout manifest riêng (Network Center, OpenClaw)
+                    └─ (4) WORKER/VPS ── rollout manifest riêng (Network Center)
 ```
 
 Hệ quả phải nhớ: **merge vào `main` không thay đổi gì trên production.** Và ngược lại — một Edge
@@ -97,7 +96,6 @@ trường** — preview và production build cùng nhận giá trị này.
 | Nhóm | Job | Chạy khi nào |
 |---|---|---|
 | Bắt buộc, không cần secret | `quality-gates` | mọi PR và push `main`/`release/*` — job DUY NHẤT không có `needs` lẫn `if` |
-| Nối sau quality-gates (trực tiếp hoặc bắc cầu) | `openclaw-edge-gates`, `openclaw-sql-gates`, `openclaw-package-gates`, `openclaw-session-crypto-gate`, `openclaw-vendor-gate`, `generated-types-local-drift` có `needs: quality-gates`; `openclaw-docker-builds` needs `openclaw-package-gates`; `openclaw-cell-image-contract` needs `openclaw-session-crypto-gate` + `openclaw-vendor-gate` | cũng chạy trên PR — không job nào trong nhóm có `if:` |
 | Cần secret + chỉ `refs/heads/main` | `preflight`, `security-gates`, `generated-types-drift`, `reconcile-money`, `cross-tenant-isolation` | push/`workflow_dispatch` trên `main`, và chỉ khi secret đã cấu hình |
 
 Điều này quan trọng hơn vẻ ngoài: **mọi gate đối chiếu với database thật — ACL definer, view invoker,
@@ -152,12 +150,14 @@ chạy), và call site `functions.invoke()`. Số đo ghi trong manifest (07/08/
 
 | | Số |
 |---|---|
-| Thư mục có mã nguồn (không tính `_shared`) | **13** |
-| Bản ACTIVE trên server | **11** |
+| Thư mục có mã nguồn (không tính `_shared`) | **7** |
+| Bản ACTIVE trên server | **6** |
 | Được mã client `functions.invoke()` gọi | **2** (`admin-create-user`, `send-push`) |
-| `verify_jwt = false` — bất kỳ ai trên Internet cũng gọi được | **5** (`demo-reset`, `network-center-worker`, `openclaw-runtime`, `openclaw-runtime-token`, `salary-v5-jobs`) |
+| `verify_jwt = false` — bất kỳ ai trên Internet cũng gọi được | **3** (`demo-reset`, `network-center-worker`, `salary-v5-jobs`) |
 
-**Có mã nhưng CHƯA deploy: `network-watchdog` và `openclaw-watchdog`.** Không có gì trong repo tự nói
+(6 thư mục + 5 bản ACTIVE của OpenClaw đã xóa 30/08/2026 — cả mã nguồn lẫn trên server.)
+
+**Có mã nhưng CHƯA deploy: `network-watchdog`.** Không có gì trong repo tự nói
 ra điều đó — đó chính là lý do manifest phải hỏi Management API.
 
 Với `network-watchdog`, việc chưa deploy là **hợp lệ và có chủ đích**: migration
@@ -179,12 +179,11 @@ deploy thứ chưa sẵn sàng hoặc xoá mã đang viết dở.
 | Slug | Công cụ |
 |---|---|
 | `network-center-worker` | `node scripts/deploy-edge-fn.mjs network-center-worker --no-verify-jwt --revision <sha 40 ký tự>` — allowlist đúng 4 file (`deno.json`, `deno.lock`, `index.ts`, `workerAuth.ts`), có manifest SHA + biên nhận |
-| 5 slug OpenClaw: `openclaw-control`, `openclaw-qr`, `openclaw-object-tickets`, `openclaw-runtime-token`, `openclaw-runtime` | `node scripts/deploy-openclaw-edge-fn.mjs <slug> [--include-shared openclaw]` — đúng 5 khoá này nằm trong hằng `OPENCLAW_EDGE_FUNCTIONS` (`:19-24`); `verifyJwt` ghim sẵn từng slug, từ chối cờ CLI mâu thuẫn |
 | `admin-create-user`, `demo-reset`, `llm-proxy`, `salary-v5-jobs`, `send-push` | `supabase functions deploy <name>` bằng tay — [supabase/functions/README.md](../../supabase/functions/README.md) (dòng 22) |
-| `network-watchdog`, `openclaw-watchdog` | **Không công cụ nào trong repo nhận hai slug này.** Đây cũng chính là hai thư mục chưa deploy ở trên — xem `sourceWithoutDeployment` trong manifest |
+| `network-watchdog` | **Không công cụ nào trong repo nhận slug này.** Đây cũng chính là thư mục chưa deploy ở trên — xem `sourceWithoutDeployment` trong manifest |
 
-1 + 5 + 5 + 2 = **13**, khớp số thư mục mã nguồn. Đừng đọc bảng này như "danh sách hàm đang chạy":
-hai dòng cuối cùng là mã chưa lên server.
+1 + 5 + 1 = **7**, khớp số thư mục mã nguồn. Đừng đọc bảng này như "danh sách hàm đang chạy":
+dòng cuối cùng là mã chưa lên server.
 
 ## 6. Cron: ba scheduler khác nhau
 
@@ -203,7 +202,7 @@ Vercel Cron gọi bằng **GET**; ép POST sẽ làm hỏng cron thật.
 **(b) pg_cron trong database** — đăng ký thẳng bằng migration, ví dụ `recurring_vouchers_daily`
 (`0 18 * * *` UTC = 01:00 VN) và `clone_org_sync_worker` (`15 seconds`). pg_cron dùng **UTC**.
 
-**(c) Scheduler ngoài** — watchdog OpenClaw chạy trên Cloudflare, ngoài VPS ([23](23-openclaw-zalo.md)).
+**(c) Scheduler ngoài** — cron trên VPS/máy ngoài (ví dụ worker Network Center tự poll theo env riêng).
 
 ## 7. Những điều dễ hiểu sai
 
@@ -211,41 +210,25 @@ Vercel Cron gọi bằng **GET**; ép POST sẽ làm hỏng cron thật.
    PR, toàn bộ nhóm gate cần `SUPABASE_PAT` bị bỏ qua. Xanh trên PR = "biên dịch, lint, test cục bộ
    và build đều ổn", không hơn.
 2. **Deploy Edge có kiểm soát YẾU HƠN ghi database, dù cả hai đều là production.** Migration đòi
-   `IHOMECRM_PROMOTION_TOKEN` nhập tại chỗ; còn `scripts/deploy-openclaw-edge-fn.mjs` đọc thẳng PAT
-   `sbp_…` từ `CLAUDE.local.md` (hàm `loadDeploymentInputs`) và deploy được ngay. Plan kiến trúc đã
-   gọi tên đúng vấn đề này (mục R5: "đường lên production thứ hai, không qua Vercel, không qua
-   forward lane") — nhưng plan ghi "14 function dir đang chạy", còn số đo thật là **13 thư mục / 11
-   đang chạy**. Đừng lấy con số từ plan.
-3. **`supabase/functions/README.md` đang chỉ sai lệnh deploy OpenClaw.** Nó viết
-   `node scripts/deploy-edge-fn.mjs <slug> --include-shared openclaw`, nhưng script đó chỉ nhận
-   `--revision` và `--no-verify-jwt` (`scripts/deploy-edge-fn.mjs:145` ném `Unknown argument`), và
-   allowlist file của nó chỉ có `network-center-worker`. Công cụ đúng là
-   `scripts/deploy-openclaw-edge-fn.mjs` — mà chính chuỗi usage của file này (dòng 48) vẫn in tên cũ
-   `deploy-edge-fn.mjs`, di sản lúc tách hai công cụ. Hai file có **cùng tên hàm**
-   `deployEdgeFunction` (`deploy-edge-fn.mjs:69`, `deploy-openclaw-edge-fn.mjs:180`) nhưng là hai
-   công cụ khác nhau.
-   Cùng chỗ đó README còn sai lần thứ hai, độc lập với lần thứ nhất: dòng 117–118 ghi thứ tự deploy
-   **sáu** slug, kết thúc bằng `openclaw-watchdog`. Nhưng `OPENCLAW_EDGE_FUNCTIONS` chỉ có **năm**
-   khoá, nên `parseDeployArgs(['openclaw-watchdog','--include-shared','openclaw'])` ném
-   `Slug is not an OpenClaw entrypoint.` (đo bằng cách import thẳng hàm export, 07/08/2026). Sửa mỗi
-   tên script vẫn chưa deploy được `openclaw-watchdog` — và điều đó **nhất quán** với manifest: nó là
-   một trong hai hàm chưa từng lên server.
-4. **`verify_jwt = false` không phải lỗi, nhưng phải nhìn thấy được.** Đó là lựa chọn thiết kế cho
+   token/biên nhận backup; còn deploy Edge đọc thẳng PAT `sbp_…` từ `CLAUDE.local.md` và deploy được
+   ngay. Plan kiến trúc đã gọi tên đúng vấn đề này (mục R5: "đường lên production thứ hai, không qua
+   Vercel, không qua forward lane"). Đừng lấy con số function từ plan — đo bằng manifest.
+3. **`verify_jwt = false` không phải lỗi, nhưng phải nhìn thấy được.** Đó là lựa chọn thiết kế cho
    webhook/cron; nó nghĩa là xác thực **nằm hoàn toàn trong thân function** (cron secret, worker
-   secret digest, runtime token, envelope Ed25519). Sửa một trong 5 hàm đó mà làm hỏng nhánh xác thực
+   secret digest). Sửa một trong 3 hàm đó mà làm hỏng nhánh xác thực
    nội bộ là mở cửa cho cả Internet.
-5. **Không có gì tự làm tươi manifest bề mặt Edge — CI chỉ phát hiện nó đã cũ.** `check-edge-surface.mjs`
+4. **Không có gì tự làm tươi manifest bề mặt Edge — CI chỉ phát hiện nó đã cũ.** `check-edge-surface.mjs`
    không chứa lệnh ghi file nào (grep `writeFileSync` → rỗng); nó chỉ đối chiếu manifest với catalog
    live rồi đỏ. Việc ghi lại là `npm run surface:edge` (`generate-edge-surface.mjs`) do người chạy
    tay. Nên chuỗi phụ thuộc là: người quên chạy `surface:edge` **và** gate không chạy ⇒ manifest cũ
    mà không ai biết. Mà gate thì nằm trong `security-gates`: cần `SUPABASE_PAT`, chỉ chạy trên push
    `main`. **CHƯA KIỂM CHỨNG:** không đọc được danh sách secret của GitHub từ máy này, nên không xác
    nhận được `SUPABASE_PAT` hiện đã cấu hình hay chưa — nếu chưa, job bị skip và cả hai lớp cùng im.
-6. **Gate bề mặt có sàn chống rỗng.** `check-edge-surface.mjs` khai `TOI_THIEU_THU_MUC = 8` và
-   `TOI_THIEU_DEPLOY = 5`: nếu `readdirSync` trỏ sai chỗ hoặc Management API trả mảng rỗng thì mọi
+5. **Gate bề mặt có sàn chống rỗng.** `check-edge-surface.mjs` khai `TOI_THIEU_THU_MUC = 5` và
+   `TOI_THIEU_DEPLOY = 4`: nếu `readdirSync` trỏ sai chỗ hoặc Management API trả mảng rỗng thì mọi
    phép so đều thoả và gate in dấu tick — đúng lớp lỗi mà `check-external-controls.mjs` đã dính với
    "0 project".
-7. **Rollback của bốn đường không giống nhau.** Web rollback được bằng một lệnh promote. Migration
+6. **Rollback của bốn đường không giống nhau.** Web rollback được bằng một lệnh promote. Migration
    thì **không** — Contract §4 cấm rollback tự động destructive, chỉ có forward fix. Edge rollback là
    deploy lại bản trước. Đừng suy "đã có rollback" từ đường web sang ba đường còn lại.
 

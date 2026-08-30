@@ -49,7 +49,7 @@ Việc mục trên cùng ghi `v1.0.0 — 15/01/2025` không có nghĩa hệ th�
 - Bài nói **Đã duyệt** là tiền thật, trong khi Finance V2 yêu cầu `posting_status=POSTED`.
 - Bài mô tả báo cáo cọc từ bảng `deposits` như số cọc authoritative, dù nguồn canonical là hạng mục cọc của `income_expenses`.
 - Bài mô tả báo cáo Tiền thừa như credit còn lại, dù credit authoritative nằm trong `customer_credit_lots.remaining_amount`.
-- Bài suy trạng thái OpenClaw hoặc Network Center chỉ từ mặc định code. Runtime phải đối chiếu đúng deployment; production ngày 13/08/2026 đang hiển thị OpenClaw Zalo.
+- Bài suy trạng thái Network Center chỉ từ mặc định code. Runtime phải đối chiếu đúng deployment.
 - Bài coi khu **08 — Kế hoạch phát triển** là tính năng đã phát hành.
 
 Khi gặp một trong các dấu hiệu này, ưu tiên trang hướng dẫn mới có cảnh báo rõ và báo lại theo [Kênh hỗ trợ](/07-thong-tin-khac/kenh-ho-tro/).

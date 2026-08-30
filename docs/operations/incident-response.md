@@ -58,7 +58,7 @@ Chỗ dễ tự lừa mình nhất, và cả ba nguồn trong repo đều nói t
 | Bản dump mới nhất | `ihomecrm-full-2026-08-07T00-20-46-495Z.dump` — 0.3 ngày tuổi, 20.9 MB, **562 mục TABLE DATA**, đọc lại được |
 | Số bản dump đang giữ | **2** (trần giữ 5 — `GIU_TOI_DA`, `backup-before-schema.mjs:111`) |
 | `reason` của bản mới nhất | `"kiem chung ban sua: keepalive + bo bang phu du + kiem toan ven"` — tức bản **kiểm chứng công cụ**, không phải backup trước một thao tác thật |
-| `excludedTableData` của bản mới nhất | 3 bảng: `public.openclaw_service_nonces`, `public.openclaw_runtime_commands`, `cron.job_run_details` — **bản mới nhất KHÔNG đầy đủ dữ liệu** (cấu trúc vẫn có) |
+| `excludedTableData` của bản mới nhất | 1 bảng: `cron.job_run_details` — **bản mới nhất KHÔNG đầy đủ dữ liệu** (cấu trúc vẫn có). (Hai bảng openclaw_* từng trong danh sách đã bị DROP 30/08/2026.) |
 | Lịch backup tuần | Đã đăng ký (`ihomecrm-backup-tuan`, CN 09:00), nhưng `Last Run Time = 11/30/1999`, `Last Result = 267011` ⇒ **CHƯA CHẠY LẦN NÀO** |
 
 Đừng suy từ bản mới nhất ra mọi bản: việc bỏ dữ liệu phù du là **tuỳ chọn, mặc định TẮT** — phải tự
@@ -86,13 +86,13 @@ thì chưa từng tự chạy. Đừng dựa vào nó cho tới khi thấy dòng
 07/08/2026, `backup-before-schema.mjs:222-223`), `income_expense_audit_log`,
 `authorization_audit_events`, `accounting_repair_audit`, `ai_write_audit`. Hai hàm kiểm chuỗi băm
 `app_private.verify_authz_audit_chain_v1` (`schema.sql:40045`) và
-`app_private.verify_openclaw_audit_chain_v1` (`schema.sql:40150`) nằm trong `app_private`, và baseline
+`app_private.*` (ví dụ các helper audit-chain) nằm ngoài schema public, và baseline
 **không có `GRANT` nào** cho chúng, cũng **không có `GRANT USAGE ON SCHEMA app_private`** ⇒ role client
 không gọi được, phải đi đường quản trị.
 CHƯA KIỂM CHỨNG: tôi đọc chúng ra từ baseline + migration
-(`20260725180000_authz_audit_append_helper.sql`, `20260727040000_openclaw_delivery_audit_ops.sql`),
+(`20260725180000_authz_audit_append_helper.sql`),
 **không gọi thử**. Lưu ý ngược lại: chỉ hàm `authz` có mặt trong
-`supabase/migration-provenance.json`; hàm `openclaw` **không** — nên đừng dùng provenance làm danh
+`supabase/migration-provenance.json`; không phải hàm nào cũng vậy — nên đừng dùng provenance làm danh
 sách đủ.
 
 **B3 — Nếu nghi về TIỀN chứ không phải về dòng dữ liệu:** `npm run gate:reconcile-money` — đối chiếu
@@ -133,7 +133,7 @@ dựng được 922/1193** — database trông như đã khôi phục nhưng d�
 > 06/08), còn README.md cập nhật ở `17bb0090`.
 > Tệ hơn, `restoreDrill.interpretation` còn chứa đúng **suy luận đã bị chứng minh là SAI** — "trên
 > một Supabase project mới, những thứ đó có sẵn": các role thiếu là role của **chính ứng dụng**
-> (`openclaw_function_owner`, `ie_canonical_writer`…), Supabase **không** tạo sẵn
+> (`ie_canonical_writer`…), Supabase **không** tạo sẵn
 > (`tooling/known-gaps.yaml:146-150`).
 > Và `status` / `knownIssues` / `restoreDrill` / `tablesBySchema` **không nằm trong** object manifest
 > mà `scripts/capture-schema-baseline.mjs:268-283` sinh ra ⇒ được thêm tay, và **sẽ bị xoá trắng** nếu

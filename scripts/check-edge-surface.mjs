@@ -10,7 +10,7 @@
 //
 // CHỈ BÁO (không đỏ):
 //   - thư mục có mã mà chưa deploy. Đây là trạng thái HỢP LỆ và đang có thật:
-//     network-watchdog, openclaw-watchdog. Bắt đỏ sẽ ép người ta deploy thứ chưa
+//     network-watchdog. Bắt đỏ sẽ ép người ta deploy thứ chưa
 //     sẵn sàng, hoặc xoá mã đang viết dở — cả hai đều tệ hơn việc biết mà chờ.
 //     Nó chỉ thành lỗi khi CÓ AI GỌI, và trường hợp đó rơi vào (1).
 //   - verify_jwt = false. Đó là lựa chọn thiết kế cho webhook/cron, nhưng phải
@@ -39,8 +39,11 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
  * Sàn chống rỗng. Nếu readdirSync trỏ sai chỗ hoặc Management API trả mảng rỗng,
  * mọi phép so đều thoả và gate in dấu tick. Hệ này CHẮC CHẮN có hàng chục hàm.
  */
-export const TOI_THIEU_THU_MUC = 8;
-export const TOI_THIEU_DEPLOY = 5;
+// Hạ sàn 8/5 → 5/4 ngày 30/08/2026: xóa OpenClaw rút 6 thư mục + 5 bản deploy.
+// Sàn vẫn phải > 0 rõ rệt để bắt "phép đo hỏng" (readdirSync trỏ sai chỗ,
+// Management API trả rỗng) — đừng hạ về 0.
+export const TOI_THIEU_THU_MUC = 5;
+export const TOI_THIEU_DEPLOY = 4;
 
 export function soManifestEdge(cu, moi) {
   const lech = [];

@@ -93,7 +93,7 @@ Kiểm lần lượt:
 2. Tài khoản đang mang vai trò nào.
 3. Role binding có scope đúng organization/khu vực/toà/sổ không.
 4. Có override `DENY` hay không — `DENY` thắng `ALLOW`.
-5. Tính năng có bị runtime flag tắt không. OpenClaw Zalo và Network Center có mặc định code `off`; cấp quyền không tự làm route xuất hiện. Riêng production được kiểm tra ngày 13/08/2026 đang bật OpenClaw Zalo, nên đối chiếu deployment hiện tại.
+5. Tính năng có bị runtime flag tắt không. Network Center có mặc định code `off`; cấp quyền không tự làm route xuất hiện — đối chiếu deployment hiện tại.
 
 Route quản trị thành viên hiện hành là `/settings/members`; `/settings/staff` chỉ chuyển hướng. Xem [Bảng tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/).
 

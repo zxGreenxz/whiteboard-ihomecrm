@@ -13,7 +13,7 @@ status: published
 
 # Bảng tra quyền nhanh
 
-Catalog frontend và registry quyền production hiện khớp **231 khoá quyền**. Snapshot production ngày 13/08/2026 cho thấy vai trò Chủ công ty có đủ 231 quyền và OpenClaw Zalo đang xuất hiện trên sidebar; bộ chọn có thể ẩn hoặc hiện 8 khoá OpenClaw theo runtime của deployment. Catalog cho biết **quyền nào tồn tại**; việc một người có mở được trang và thao tác được hay không còn phụ thuộc membership, vai trò, scope, override, runtime flag và kiểm tra RLS/RPC phía server.
+Catalog frontend và registry quyền production hiện khớp **223 khoá quyền** (231 trừ 8 khóa OpenClaw Zalo đã xóa cùng cả hệ ngày 30/08/2026). Catalog cho biết **quyền nào tồn tại**; việc một người có mở được trang và thao tác được hay không còn phụ thuộc membership, vai trò, scope, override, runtime flag và kiểm tra RLS/RPC phía server.
 
 ## Quyền hiệu lực trong RBAC V3
 
@@ -61,7 +61,6 @@ Các bảng dưới dùng đúng key `module.action`. Route là route canonical 
 | Trang · route | Quyền hiện hành |
 |---|---|
 | **Chat Zalo** · `/chat-zalo` | `chat_zalo.view`, `chat_zalo.send`, `chat_zalo.manage_automation`, `chat_zalo.manage_templates`. |
-| **OpenClaw Zalo cá nhân** · `/openclaw-zalo` | `openclaw_zalo.view`, `send`, `manage_connections`, `manage_automation`, `manage_knowledge`, `manage_handoff`, `manage_operations`, `audit`. Runtime code mặc định `off`, nhưng deployment production được kiểm tra ngày 13/08/2026 đang bật bề mặt này; quyền vẫn được kiểm tra riêng. |
 
 ### Bất động sản
 
@@ -149,7 +148,6 @@ Các bảng dưới dùng đúng key `module.action`. Route là route canonical 
 |---|---|
 | Có key `view` nhưng không thấy dữ liệu của một toà | Scope binding không bao gồm toà đó, hoặc RLS lọc theo phạm vi. |
 | Có quyền duyệt phiếu nhưng không có nút Thu/Chi | Duyệt và posting tách nhau; kiểm `cashbooks.post`, custody và scope sổ. |
-| Có quyền OpenClaw nhưng không thấy route | Kiểm runtime của deployment/tổ chức hiện tại; code mặc định có thể `off`, còn production ngày 13/08/2026 đang hiển thị route. |
 | Có quyền Network Center nhưng route 404/không hiện | Runtime Network Center đang off hoặc build không ở mode production/demo phù hợp. |
 | Sửa vai trò rồi nhiều người đổi quyền | Đúng mô hình V3: họ dùng chung vai trò. Muốn thay đổi riêng một người, chỉnh binding/scope/override hoặc tạo vai trò khác. |
 | Cấp quyền lương nhưng nhân viên chỉ thấy lương mình | `/finance/salary` tự rẽ theo năng lực và cấu hình; RLS không cho xem toàn bộ chỉ vì route mở được. |

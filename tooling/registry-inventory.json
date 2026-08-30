@@ -1299,23 +1299,6 @@
       "e2eSpec": null
     },
     {
-      "path": "/openclaw-zalo",
-      "guards": [
-        "ProtectedRoute",
-        "OpenClawRouteGuard"
-      ],
-      "redirect": false,
-      "laOpenClaw": true,
-      "coTrongNav": true,
-      "coTrongLauncher": true,
-      "launcherId": "openclaw-zalo",
-      "permissionPage": "openclaw_zalo",
-      "permissionModule": "openclaw_zalo",
-      "permissionAction": "view",
-      "systemDocDoan": "docs/he-thong/23-openclaw-zalo.md",
-      "e2eSpec": ".e2e-fleet/specs/openclaw-zalo.spec.ts"
-    },
-    {
       "path": "/cash-book",
       "guards": [],
       "redirect": true,

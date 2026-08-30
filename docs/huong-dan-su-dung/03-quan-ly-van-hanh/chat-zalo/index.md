@@ -16,7 +16,7 @@ status: published
 
 Màn **Chat Zalo** đưa kênh Zalo vào thẳng CRM: bạn nhắn tin 2 chiều với khách trọ, khách tiềm năng (lead) hay môi giới ngay trong web, không phải mở app Zalo riêng. Khi có và chọn một hội thoại, màn hình mở thành **workspace 3 cột** — **danh sách hội thoại** bên trái, **khung chat** ở giữa, **panel thông tin** bên phải — cùng với gửi tin theo **nhãn phân loại** hàng loạt và **thông báo đẩy (Web Push)** mỗi khi có tin mới. Dùng trang này để chăm sóc khách, tư vấn lead và nhắc nhở mà vẫn giữ toàn bộ lịch sử trong hệ thống.
 
-Trang `/chat-zalo` là hệ **Chat Zalo hiện hành** dùng nhóm quyền `chat_zalo.*`. Nó tách biệt với hạ tầng OpenClaw Zalo. OpenClaw có runtime riêng; production ngày 13/08/2026 đang hiển thị cả hai mục, nhưng thao tác và nhóm quyền của hai hệ không thay thế nhau.
+Trang `/chat-zalo` là hệ **Chat Zalo hiện hành** dùng nhóm quyền `chat_zalo.*`. (Hệ OpenClaw Zalo từng chạy song song đã bị xóa toàn bộ 30/08/2026.)
 
 Điểm cần nắm trước: web **không** nói chuyện trực tiếp với Zalo. Một **tài khoản Zalo** phải được kết nối vào hệ thống (quét mã QR) và một tiến trình nền giữ phiên đăng nhập; web chỉ đọc/ghi dữ liệu qua hệ thống rồi được đẩy tin về theo thời gian thực. Vì vậy **nếu chưa kết nối tài khoản Zalo nào thì danh sách hội thoại sẽ trống** — kể cả trên tài khoản demo (xem phần Thử trực tiếp).
 

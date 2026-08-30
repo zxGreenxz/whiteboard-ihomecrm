@@ -140,7 +140,7 @@ Các nhãn này không phải nguồn authoritative cho số tiền cọc còn g
 | **Binding** | Liên kết một membership với vai trò và scope. |
 | **Scope** | Phạm vi organization, khu vực, toà hoặc sổ mà binding/override áp dụng. |
 | **Override** | Ngoại lệ `ALLOW`/`DENY` cho thành viên; `DENY` thắng khi cùng áp dụng. |
-| **Runtime-off** | Tính năng có code/quyền trong catalog nhưng route không được dựng khi runtime của build là `off`. OpenClaw Zalo và Network Center dùng cơ chế này; production ngày 13/08/2026 đang bật OpenClaw Zalo dù mặc định code là `off`. |
+| **Runtime-off** | Tính năng có code/quyền trong catalog nhưng route không được dựng khi runtime của build là `off`. Network Center dùng cơ chế này. |
 
 ## Route canonical thường bị nhầm
 

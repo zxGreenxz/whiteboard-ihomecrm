@@ -118,7 +118,6 @@ export function xepRuiRo(cacFile) {
   const s = cacFile.join(" ");
   if (/income-expense|invoice|payment|cashbook|salary|finance|thu-tien|thanh-toan|voucher|commission/i.test(s))
     return "financial";
-  if (/openclaw/i.test(s)) return "security";
   if (/network-center/i.test(s)) return "infrastructure";
   return "normal";
 }

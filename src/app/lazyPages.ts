@@ -26,8 +26,6 @@ export const CopilotLauncher = lazy(() => import("../copilot/CopilotLauncher"));
 export const AiCopilotAdminPage = lazy(() => import("../copilot/admin/AiCopilotAdminPage"));
 export const NotificationsPage = lazy(() => import("../pages/NotificationsPage"));
 export const ChatZaloPage = lazy(() => import("../pages/chat-zalo/ChatZaloPage"));
-export const OpenClawZaloPage = lazy(() => import("../pages/openclaw-zalo/OpenClawZaloPage"));
-export const OpenClawRouteGuard = lazy(() => import("../components/openclaw-zalo/OpenClawRouteGuard"));
 
 // Danh mục dữ liệu
 export const BuildingsPage = lazy(() => import("../pages/buildings/BuildingsPage"));

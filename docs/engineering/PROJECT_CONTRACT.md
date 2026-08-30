@@ -17,13 +17,12 @@ Không phải một app React/Supabase đơn giản. Đây là platform đa runt
 của công ty đang vận hành**:
 
 - React/Vite frontend trên Vercel (production: <https://ptcrm.vercel.app>)
-- Supabase PostgreSQL 17.6: 707 migration, ~1000 hàm SECURITY DEFINER, RLS trên mọi bảng public
+- Supabase PostgreSQL 17.6: 708 migration, ~1000 hàm SECURITY DEFINER, RLS trên mọi bảng public
 - Edge Functions (danh sách sống ở `contracts/surfaces/edge-surface.json`), worker Node,
   Network Center (worker + Docker + WireGuard + RouterOS), Cloudflare R2/Worker
-- OpenClaw Zalo (bridge/cell/maintenance/media gateway): **NGỪNG PHÁT TRIỂN 25/08/2026** — mã đóng
-  băng giữ làm tài liệu tham khảo, đã rút khỏi CI/test; lý do + điều kiện hồi sinh ở
-  `tooling/test-matrix.json → blockedFromCi`. Gate `check-openclaw-isolation` VẪN chạy (canh mã
-  chết không rò sang CRM).
+- OpenClaw Zalo: **ĐÃ XÓA TOÀN BỘ 30/08/2026** (code + 79 bảng/249 hàm/5 role trên DB + 5 edge
+  function) theo lệnh chủ dự án — dead code chiếm 60% dung lượng DB. 16 migration cũ giữ nguyên
+  (ledger đóng băng). Đường lùi: dump trong `%USERPROFILE%/ihomecrm-backups/`.
 - VitePress user docs + AI Copilot đọc thẳng tài liệu hệ thống
 
 Hệ quả: **một thay đổi đúng ở harness vẫn có thể sai trên production.** Rất nhiều lỗi trong lịch sử
@@ -130,9 +129,8 @@ Script cố tình **không** exit 1 khi thiếu token — biến nó thành gate
 
 ### Runtime
 
-Repo có **6 ràng buộc Node khác nhau** trên 8 manifest (+2 package chưa khai), nên
-`engines: ">=20"` ở root **không** phải sàn thật của mọi thứ — ví dụ script `test:openclaw:services`
-(nay chỉ-chạy-tay, OpenClaw đã rời CI) tự chặn nếu không phải Node 24.15–24.x. Tra bảng ở
+Repo có nhiều ràng buộc Node khác nhau trên các manifest, nên `engines: ">=20"` ở root
+**không** chắc là sàn thật của mọi package con. Tra bảng ở
 `tooling/runtime-matrix.json`, đừng đoán từ root.
 
 ```bash
@@ -148,20 +146,20 @@ Ba workflow chạy ba con số khác nhau, và mỗi con số bị **ràng buộ
 
 | Workflow | Node | Bị ép bởi |
 |---|---|---|
-| `ci-gates.yml` | `24.18.0` | Pin exact giữ vì tính tất định. Nguồn ép lịch sử là `services/openclaw-zalo-bridge` (`>=24.18.0 <25`) — suite đó rời CI ngày 25/08/2026 khi OpenClaw nghỉ hưu, nên đây không còn là ràng buộc SỐNG; hạ version nay là được PHÉP về kỹ thuật nhưng phải đi qua `gate:runtime-matrix` (sửa cả hai phía) và có lý do |
+| `ci-gates.yml` | `24.18.0` | Pin exact giữ vì tính tất định. Nguồn ép lịch sử (OpenClaw, đã xóa 30/08/2026) không còn là ràng buộc SỐNG; hạ version là được PHÉP về kỹ thuật nhưng phải đi qua `gate:runtime-matrix` (sửa cả hai phía) và có lý do |
 | `network-center-validation.yml` | `22` | **Trần thấp nhất**: `infra/network-center-worker` khai `>=20 <23` |
 | `supabase-migrate.yml` | `20` | Không ràng buộc — chỉ chạy validator tĩnh |
 
 > **Bẫy đã sập thật (08/08/2026) — nay là ÁN LỆ, không còn là cưỡng chế sống.** Một agent đọc thấy
 > ba con số khác nhau, kết luận là thiếu nhất quán, và hạ tất cả về `22.20.0`. Lúc đó thay đổi này
-> làm **vỡ `ci-gates`** vì các suite OpenClaw từ chối chạy dưới 24.18; `gate:runtime-matrix` bắt
-> được ngay. Những suite đó đã rời CI (25/08/2026), nhưng bài học giữ nguyên giá trị:
+> làm **vỡ `ci-gates`** vì các suite OpenClaw (thời còn trong repo) từ chối chạy dưới 24.18;
+> `gate:runtime-matrix` bắt được ngay. Bài học giữ nguyên giá trị:
 > **con số ở đây là kết quả của ràng buộc, không phải sở thích** — muốn đổi thì đối chiếu
 > `tooling/runtime-matrix.json` trước, sửa cả hai phía, và chứng minh nó chạy được.
 
 `engines` ở root là `>=20` và **không** phải sàn thật của mọi thứ: `tooling/runtime-matrix.json` mới
 là bảng có thẩm quyền, mỗi entry kèm lý do. `gate:runtime-matrix` đối chiếu **cả hai chiều**, nên
-thêm package mới mà quên khai matrix là đỏ ngay (đã xảy ra với `services/openclaw-media-gateway`).
+thêm package mới mà quên khai matrix là đỏ ngay (đã có án lệ 08/08/2026).
 
 **Các package con có `node_modules` RIÊNG — phải cài trước khi chạy test của chúng ở máy:**
 
@@ -293,7 +291,7 @@ vào git. Kèm manifest `.json` có sha256, thời lượng và gợi ý restore
 **Điều phải biết TRƯỚC khi khẩn cấp** — đã diễn tập restore thật:
 
 - Restore vào **Postgres trần** báo ~4200 lỗi, gần như toàn bộ là `role "authenticated" does not exist`
-  (644 lần) cùng các role riêng của Supabase/OpenClaw. **Đây là bình thường**, đừng hoảng: bảng, hàm và
+  (644 lần) cùng các role riêng của Supabase. **Đây là bình thường**, đừng hoảng: bảng, hàm và
   **dữ liệu vẫn vào đủ** (đo được 399 bảng, 1408 hàm, `invoices` 2290 dòng, `income_expenses` 5374 dòng).
 - Nhưng **RLS policy KHÔNG vào hết** (323/1231) vì policy tham chiếu role không tồn tại.
   ⇒ Muốn khôi phục **đầy đủ kể cả RLS**, target phải là một **Supabase project** (đã có sẵn role), không
@@ -313,7 +311,7 @@ vào git. Kèm manifest `.json` có sha256, thời lượng và gợi ý restore
   dry-run là mặc định, `--apply` đòi giấy phép (biên nhận backup tự phát, hoặc promotion token khi
   `--khong-backup`). Gate: `npm run gate:migration-provenance`.
 - **Legacy history KHÔNG replay được** — đừng tin `supabase db push` hay `supabase start`:
-  707 file có 38 nhóm trùng version (81 file) + bộ legacy `001_`–`033_` còn collision nội bộ
+  708 file có 38 nhóm trùng version (81 file) + bộ legacy `001_`–`033_` còn collision nội bộ
   (`016_` ×4, `017_` ×2); ledger `supabase_migrations.schema_migrations` đã tụt lại sau production.
 - `supabase/migrations-archive/` **TUYỆT ĐỐI KHÔNG replay** (1 file superseded + `migrations-bundle/`
   14 file `*_apply_*.sql` hand-apply Apr–May 2026, đã phản ánh trong DB live).
@@ -812,7 +810,6 @@ Các npm script sau **cố ý** không nằm trong workflow nào, vì chúng c�
 | `gate:sandbox-leak` | Cần org TEST vừa clone xong làm mốc so |
 | `gate:ie-guard-gates` · `gate:salary-completion-date` · `gate:v5-calendar-parity` | Bất biến nghiệp vụ đọc production qua PAT, chạy khi đụng domain đó |
 | `gate:reconcile-money-v2` | Bản kế nhiệm reconcile-money, đang thử tay trước khi thay bản CI |
-| `test:openclaw:*` | OpenClaw nghỉ hưu — chạy tay nếu hồi sinh (xem `blockedFromCi`) |
 | `docs:check` | Kiểm link docs-site, chạy khi sửa docs-site |
 
 ---
@@ -840,7 +837,6 @@ Các npm script sau **cố ý** không nằm trong workflow nào, vì chúng c�
 
 - **Không gọi `supabase.rpc('string')` trực tiếp trong component.**
 - High-risk (tiền, authz) phải qua wrapper typed do domain sở hữu. Prior art để kế thừa:
-  - `src/hooks/openclaw-zalo/openClawRpc.ts` — facade "one hole"
   - `src/lib/network-center/{contracts,dto,supabaseRepository,demoRepository}.ts` — boundary đầy đủ nhất repo
 - Nợ `any` cast **ĐÃ TRẢ XONG**: từ 176/244 call site (đo 2026-08-06) về **0** ngày 2026-08-07 —
   `tooling/rpc-cast-baseline.json` ghi `total: 0`. (Bản trước của mục này vẫn dạy "chặn tăng từ
@@ -854,7 +850,5 @@ Hai dạng `(supabase as any).rpc(...)` và `(supabase.rpc as any)(...)` tắt h
 đúng chỗ nguy hiểm nhất: **tên RPC gõ sai hay tham số sai tên vẫn biên dịch sạch**, chỉ lộ ra khi chạy
 thật. Đó chính là cơ chế đã làm contract media-resolve ship hỏng. Baseline đã về 0 nghĩa là luật nay
 đơn giản hơn hồi còn nợ: **KHÔNG viết cast mới, ở bất kỳ file nào** — không còn ngoại lệ "file cũ".
-Mẫu gom-một-lỗ khi cần gọi RPC ngoài generated types: `src/hooks/openclaw-zalo/openClawRpc.ts`
-(tên RPC là union được compiler kiểm, kết quả cố ý để `unknown` để buộc validate bằng Zod) — lưu ý
-file này thuộc vùng OpenClaw đã đóng băng: đọc để HỌC KHUÔN, đừng import nó vào code CRM
-(`check-openclaw-isolation` sẽ chặn).
+Mẫu gom-một-lỗ khi cần gọi RPC ngoài generated types: tên RPC là union được compiler kiểm, kết
+quả cố ý để `unknown` để buộc validate bằng Zod — xem boundary Network Center ở trên làm khuôn.

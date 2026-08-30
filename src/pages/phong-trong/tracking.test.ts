@@ -10,8 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
  * Database type now spans every table in the project - enough that inferring
  * through those overloads inside `vi.spyOn` exceeds TypeScript's instantiation
  * depth (TS2589). The spy only needs to observe calls, so it attaches through
- * this narrow shape instead, the same way src/hooks/openclaw-zalo/openClawRpc.ts
- * keeps its one deliberate cast in a single place.
+ * this narrow shape instead, keeping the one deliberate cast in a single place.
  */
 const spyableClient = supabase as unknown as {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;

@@ -60,11 +60,15 @@ khi chạy battery trong worktree, nạp PAT từ checkout chính vào env
 Đọc kết quả CI bằng `gh api .../runs/<id> --jq '.conclusion'` — `gh run watch --exit-status` từng
 trả 0 trên run failure (đo 25/08/2026).
 
-## OpenClaw: NGỪNG PHÁT TRIỂN (25/08/2026)
+## OpenClaw: ĐÃ XÓA HẲN (30/08/2026)
 
-Mã `openclaw-*`/`openclaw-zalo` đóng băng làm tài liệu tham khảo — đã rút khỏi CI và vitest gốc.
-KHÔNG sửa, không viết test mới, không import vào code CRM (`check-openclaw-isolation` chặn).
-Chi tiết + điều kiện hồi sinh: `tooling/test-matrix.json → blockedFromCi`.
+OpenClaw ngừng phát triển 25/08 rồi bị chủ dự án cho xóa toàn bộ 30/08: 79 bảng +
+249 hàm + 5 role khỏi DB (migration `20260830085316_xoa_toan_bo_openclaw.sql`),
+654 file code, 5 edge function trên prod. **Đừng đi tìm code/bảng openclaw — không
+còn.** 16 migration `*openclaw*` cũ giữ lại làm sổ (ledger đóng băng, chỉ đọc).
+Đường lùi: dump `ihomecrm-full-2026-08-30T08-51-19-514Z.dump` trong
+`%USERPROFILE%/ihomecrm-backups/`. Chat Zalo (`/chat-zalo`, bảng `zalo_*`) là hệ
+KHÁC, vẫn sống.
 
 ---
 

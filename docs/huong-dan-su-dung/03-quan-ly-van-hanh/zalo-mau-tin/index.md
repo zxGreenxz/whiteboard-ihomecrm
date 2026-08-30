@@ -15,7 +15,7 @@ status: published
 
 Màn **Chat Zalo** (`/chat-zalo`) đưa việc nhắn tin Zalo với khách trọ, khách tiềm năng và môi giới vào thẳng CRM. Ngoài việc chat 1-1, trang còn có ba nhóm công cụ để bạn làm việc nhanh hơn với số đông: **gửi tin hàng loạt (broadcast) theo nhãn**, **chèn mẫu tin** khi soạn, và **bật/tắt tự động hoá tin nhắn**. Bài này tập trung vào ba nhóm đó — cùng ghi rõ tính năng nào đã chạy thật và tính năng nào mới là khung để bạn khỏi kỳ vọng nhầm.
 
-Đây là hệ Chat Zalo hiện hành dùng quyền `chat_zalo.*`, tách biệt với hạ tầng OpenClaw Zalo. Production ngày 13/08/2026 đang hiển thị OpenClaw như một bề mặt riêng; các công tắc hay broadcast trong bài này vẫn thuộc Chat Zalo cũ và không điều khiển OpenClaw.
+Đây là hệ Chat Zalo hiện hành dùng quyền `chat_zalo.*`. (Hệ OpenClaw Zalo từng hiển thị song song đã bị xóa toàn bộ 30/08/2026.)
 
 ::: info Điều kiện tiên quyết
 - Quyền **Chat Zalo => Xem** (module `chat_zalo`, action `view`) để mở trang `/chat-zalo`. Không có quyền này thì mục **Chat Zalo** bị ẩn khỏi menu (nhóm **Kênh chat**).

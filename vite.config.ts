@@ -74,13 +74,8 @@ export default defineConfig(() => ({
       "**/.claude/worktrees/**",
       // Same class as the line above: `vitest run` takes NAME patterns, not paths,
       // so any scratch checkout left in the repo root gets swept in and its
-      // failures are reported as this project's. `.tmp-openclaw-host/` is a copy of
-      // the upstream OpenClaw tree and brings ~40 red files that have nothing to do
-      // with this repo.
+      // failures are reported as this project's.
       ".tmp-*/**",
-      "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package/**",
-      "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/**",
-      "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/**",
     ],
   },
   build: {

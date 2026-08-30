@@ -26,7 +26,7 @@ Ba cạm bẫy khi đọc bảng trên — bản cũ của tài liệu này dín
    tăng theo lịch mà không ai đổi schema.
 2. **`pg_proc` ≠ số RPC.** 1527 là mọi hàm kể cả overload và hàm nội bộ; số RPC mà frontend gọi
    được nhỏ hơn nhiều. Đừng so trực tiếp con số này với số function trong generated types.
-3. **Số file migration ≠ số migration đã deploy.** Repository hiện có 707 file trong
+3. **Số file migration ≠ số migration đã deploy.** Repository hiện có 708 file trong
    `supabase/migrations/` + 15 file trong `migrations-archive/`; ledger `schema_migrations` dừng
    trước schema đang chạy. Xem `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md`
    Phần VI, và **đừng coi số file là bằng chứng đã deploy**.
@@ -58,15 +58,9 @@ Không dùng các con số inventory như API ổn định. Khi cần số mới
   `network_config_snapshots`, `network_managed_resources`), sự cố (`network_incidents`,
   `network_incident_events`, `network_maintenance_windows`), và **đo lường dạng chuỗi thời gian**
   (`network_device_samples`, `network_interface_samples`, `network_metric_hourly`).
-- **OpenClaw Zalo** (`openclaw_*`, **79 bảng**): cầu nối chat Zalo ↔ CRM. Cụm lớn nhất trong repo
-  tính theo số bảng, gồm catalog vai trò, chủ thể bảo mật, inbox, automation, policy/knowledge,
-  delivery + audit chain, access policy, allowlist realtime, và maintenance/retention chạy bằng
-  `pg_cron`.
-
-> **Hai cụm trên từng KHÔNG có mặt trong tài liệu này.** Đo 08/08/2026: `DATABASE_SCHEMA.md` nhắc
-> "OpenClaw" đúng **0 lần** trong khi migration định nghĩa 79 bảng `openclaw_*`. Một tài liệu tự nhận
-> mô tả schema mà mù hẳn hai hệ con thì tệ hơn không có: người đọc tin là đã đủ. Cùng khoảng trống
-> ấy tồn tại trong graph tri thức cho tới lần dựng lại 07/08 (Network Center và OpenClaw có 0 node).
+> Cụm **OpenClaw Zalo** (`openclaw_*`, từng là cụm lớn nhất với 79 bảng) đã bị **DROP toàn bộ
+> 30/08/2026** — migration `20260830085316_xoa_toan_bo_openclaw.sql`. 16 migration tạo ra nó vẫn
+> nằm trong repo (ledger đóng băng); replay từ baseline sẽ dựng lên rồi drop lại, đó là chủ ý.
 
 ### Partition theo ngày — đọc trước khi sinh types
 

@@ -1,5 +1,5 @@
 {
-  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh.",
+  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 30/08/2026: 4 file openclaw — object bị 20260830085316 (xóa toàn bộ OpenClaw) DROP; đối chiếu biên nhận apply cùng ngày.",
   "schemaVersion": 1,
   "reviewedAt": "2026-08-14",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
@@ -467,6 +467,84 @@
         {
           "duong_dan": "docs/audits/AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md",
           "trich_doan": "F2 (P1, ĐÃ BÁO 13/08, CHƯA VÁ) — không có gì chặn hai phiếu hoàn cho cùng một hồ sơ"
+        }
+      ]
+    },
+    "supabase/migrations/20260807180000_openclaw_disconnect_recovery.sql": {
+      "sha256": "b9763e7cf7614bdccd1117ccefe78945320d79aacba4225c3197ab2cdd575507",
+      "missingObjects": [
+        "function:app_private.openclaw_media_revocation_gateway_enabled_v1",
+        "function:app_private.openclaw_try_finalize_disconnect_v1",
+        "function:app_private.expire_openclaw_stale_commands_v1",
+        "function:app_private.run_openclaw_maintenance_jobs_v1"
+      ],
+      "ketLuan": "da-chay-bi-thay-the",
+      "lyLe": "Object vắng mặt vì migration 20260830085316_xoa_toan_bo_openclaw.sql (apply lên production 30/08/2026, biên nhận backup 78bd1488ce746856) DROP TOÀN BỘ hệ OpenClaw: bước (9) drop động mọi hàm %openclaw% ở public + app_private bằng pg_get_function_identity_arguments, bước (8) DROP TABLE public.openclaw_* CASCADE kéo theo trigger trên bảng openclaw. Trước 30/08 các object này CÓ trong catalog (file khi đó là catalog-proven / có hồ sơ policy version-trùng) — vắng mặt nay đã được giải thích, không phải bằng chứng chưa-từng-chạy.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260830085316_xoa_toan_bo_openclaw.sql",
+          "trich_doan": "EXECUTE format('DROP %s IF EXISTS %I.%I(%s) CASCADE', r.kind, r.nspname, r.proname, r.args); -- moi ham %openclaw% o public + app_private"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260830085316_xoa_toan_bo_openclaw.json",
+          "trich_doan": "bien nhan apply 30/08/2026 — giay phep bien-nhan-backup 78bd1488ce746856"
+        }
+      ]
+    },
+    "supabase/migrations/20260807190000_openclaw_begin_qr_without_gateway.sql": {
+      "sha256": "57af4da72fd199cccb64343d6c0c987d6128238e6b565464c212fa3adbca82da",
+      "missingObjects": [
+        "function:public.openclaw_begin_qr_login_v1"
+      ],
+      "ketLuan": "da-chay-bi-thay-the",
+      "lyLe": "Object vắng mặt vì migration 20260830085316_xoa_toan_bo_openclaw.sql (apply lên production 30/08/2026, biên nhận backup 78bd1488ce746856) DROP TOÀN BỘ hệ OpenClaw: bước (9) drop động mọi hàm %openclaw% ở public + app_private bằng pg_get_function_identity_arguments, bước (8) DROP TABLE public.openclaw_* CASCADE kéo theo trigger trên bảng openclaw. Trước 30/08 các object này CÓ trong catalog (file khi đó là catalog-proven / có hồ sơ policy version-trùng) — vắng mặt nay đã được giải thích, không phải bằng chứng chưa-từng-chạy.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260830085316_xoa_toan_bo_openclaw.sql",
+          "trich_doan": "EXECUTE format('DROP %s IF EXISTS %I.%I(%s) CASCADE', r.kind, r.nspname, r.proname, r.args); -- moi ham %openclaw% o public + app_private"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260830085316_xoa_toan_bo_openclaw.json",
+          "trich_doan": "bien nhan apply 30/08/2026 — giay phep bien-nhan-backup 78bd1488ce746856"
+        }
+      ]
+    },
+    "supabase/migrations/20260808030000_openclaw_inbox_shows_names_and_text.sql": {
+      "sha256": "ce0d2af4df56616f08f705155f652694c0f1d51ed4bb202a686add616ee054f1",
+      "missingObjects": [
+        "function:app_private.openclaw_capture_sender_name_v1",
+        "function:public.openclaw_list_conversations_v1",
+        "function:public.openclaw_list_messages_v1",
+        "trigger:public.openclaw_inbound_events.openclaw_capture_sender_name"
+      ],
+      "ketLuan": "da-chay-bi-thay-the",
+      "lyLe": "Object vắng mặt vì migration 20260830085316_xoa_toan_bo_openclaw.sql (apply lên production 30/08/2026, biên nhận backup 78bd1488ce746856) DROP TOÀN BỘ hệ OpenClaw: bước (9) drop động mọi hàm %openclaw% ở public + app_private bằng pg_get_function_identity_arguments, bước (8) DROP TABLE public.openclaw_* CASCADE kéo theo trigger trên bảng openclaw. Trước 30/08 các object này CÓ trong catalog (file khi đó là catalog-proven / có hồ sơ policy version-trùng) — vắng mặt nay đã được giải thích, không phải bằng chứng chưa-từng-chạy.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260830085316_xoa_toan_bo_openclaw.sql",
+          "trich_doan": "EXECUTE format('DROP %s IF EXISTS %I.%I(%s) CASCADE', r.kind, r.nspname, r.proname, r.args); -- moi ham %openclaw% o public + app_private"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260830085316_xoa_toan_bo_openclaw.json",
+          "trich_doan": "bien nhan apply 30/08/2026 — giay phep bien-nhan-backup 78bd1488ce746856"
+        }
+      ]
+    },
+    "supabase/migrations/20260808040000_openclaw_inbox_returns_media.sql": {
+      "sha256": "301480bcec87456f7e7b38b4933d423dabf0a54fa46d136947e997ee316a2837",
+      "missingObjects": [
+        "function:public.openclaw_list_messages_v1"
+      ],
+      "ketLuan": "da-chay-bi-thay-the",
+      "lyLe": "Object vắng mặt vì migration 20260830085316_xoa_toan_bo_openclaw.sql (apply lên production 30/08/2026, biên nhận backup 78bd1488ce746856) DROP TOÀN BỘ hệ OpenClaw: bước (9) drop động mọi hàm %openclaw% ở public + app_private bằng pg_get_function_identity_arguments, bước (8) DROP TABLE public.openclaw_* CASCADE kéo theo trigger trên bảng openclaw. Trước 30/08 các object này CÓ trong catalog (file khi đó là catalog-proven / có hồ sơ policy version-trùng) — vắng mặt nay đã được giải thích, không phải bằng chứng chưa-từng-chạy.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260830085316_xoa_toan_bo_openclaw.sql",
+          "trich_doan": "EXECUTE format('DROP %s IF EXISTS %I.%I(%s) CASCADE', r.kind, r.nspname, r.proname, r.args); -- moi ham %openclaw% o public + app_private"
+        },
+        {
+          "duong_dan": "docs/generated/schema-change-evidence/20260830085316_xoa_toan_bo_openclaw.json",
+          "trich_doan": "bien nhan apply 30/08/2026 — giay phep bien-nhan-backup 78bd1488ce746856"
         }
       ]
     }

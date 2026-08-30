@@ -128,10 +128,6 @@ jobs:
       # `bash -e` chết ở script đầu — cùng lý do, tầng trong của cùng một luật.
       # ─────────────────────────────────────────────────────────────────────
 
-      - name: OpenClaw isolation boundary
-        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: node scripts/check-openclaw-isolation.mjs
-
       # BA NHÓM GATE TĨNH theo plan §31 — nhưng là ba STEP, không phải ba JOB.
       #
       # Plan §0.6 muốn gộp 8 job thành 3 để "giảm bề mặt bảo trì và số nơi có thể
@@ -289,8 +285,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.conclusion == 'success' }}
         run: node scripts/generate-bundle-inventory.mjs
 
-      # Keep root discovery inside root-owned suites. Node-only packages run in
-      # openclaw-package-gates, so Bridge node:sqlite tests are never collected here.
+      # Keep root discovery inside root-owned suites.
       # scripts/__tests__/network-center-*.test.mjs dùng API `node:test`, KHÔNG
       # phải Vitest. Chúng do `node --test` chạy trong workflow network-center.
       # Để Vitest quét thì cả 22 file fail với "No test suite found in file" —
@@ -326,7 +321,6 @@ jobs:
           scripts/__tests__/check-copilot-tool-inventory.test.mjs \
           scripts/__tests__/check-dependency-audit.test.mjs \
           scripts/__tests__/check-eslint-baseline.test.mjs \
-          scripts/__tests__/check-local-types-parity.test.mjs \
           scripts/__tests__/check-realtime-key-ownership.test.mjs \
           scripts/__tests__/check-rpc-arg-names.test.mjs \
           scripts/__tests__/check-rpc-layer.test.mjs \
@@ -337,9 +331,6 @@ jobs:
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: >
           npx vitest run src scripts/__tests__
-          --exclude '**/openclaw-zalo/**'
-          --exclude '**/*openclaw*'
-          --exclude '.tmp-openclaw-host/**'
           --exclude 'services/**'
           --exclude 'infra/**'
           --exclude '.e2e-fleet/**'
@@ -356,7 +347,6 @@ jobs:
           --exclude 'scripts/__tests__/check-copilot-tool-inventory.test.mjs'
           --exclude 'scripts/__tests__/check-dependency-audit.test.mjs'
           --exclude 'scripts/__tests__/check-eslint-baseline.test.mjs'
-          --exclude 'scripts/__tests__/check-local-types-parity.test.mjs'
           --exclude 'scripts/__tests__/check-realtime-key-ownership.test.mjs'
           --exclude 'scripts/__tests__/check-rpc-arg-names.test.mjs'
           --exclude 'scripts/__tests__/check-rpc-layer.test.mjs'
@@ -445,99 +435,6 @@ jobs:
       - name: Ổn định múi giờ (chạy lại test ngày/tiền ở UTC-11 → UTC+14)
         run: npm run gate:timezone
 
-  generated-types-local-drift:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: quality-gates
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-          # fetch-depth 0 để bước dưới diff được với origin/main — checkout nông
-          # chỉ có commit đỉnh thì `git diff` không có mốc so.
-          fetch-depth: 0
-
-      # ─── CHỈ CHẠY KHI SCHEMA/GENERATOR ĐỔI (thêm 26/08/2026) ───────────────
-      # Job này replay TOÀN BỘ migration qua PGlite rồi gen types — bước đắt
-      # nhất ngoài quality-gates, và trước đây chạy trên MỌI PR/push kể cả khi
-      # diff chỉ đụng UI. Câu nó trả lời ("replay migration có dựng lại đúng
-      # schema production không") chỉ đổi đáp án khi một trong các đường dưới
-      # đây đổi — diff không chạm thì kết luận của lần chạy trước vẫn nguyên.
-      # Skip ở đây là skip CÓ CHỨNG CỨ (đo diff thật), khác skip vì cấu hình.
-      - name: Xác định diff có đụng schema/generator không
-        id: schema_doi
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            MOC="origin/${{ github.base_ref }}"
-            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}" || true
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Chạy tay là muốn đo thật — không skip.
-            echo "doi=true" >> "$GITHUB_OUTPUT"; exit 0
-          else
-            MOC="${{ github.event.before }}"
-            # Push đầu tiên của nhánh (before toàn số 0) → không có mốc, chạy đủ.
-            case "$MOC" in 0000000*) echo "doi=true" >> "$GITHUB_OUTPUT"; exit 0;; esac
-          fi
-          if git diff --name-only "$MOC"...HEAD -- \
-              supabase/migrations supabase/baseline \
-              scripts/gen-supabase-types.mjs scripts/normalize-supabase-types.mjs \
-              scripts/generate-openclaw-pglite-types.mjs \
-              scripts/check-local-types-parity.mjs \
-              supabase/generated-types-policy.json \
-              src/integrations/supabase/types.ts | grep -q .; then
-            echo "doi=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "doi=false" >> "$GITHUB_OUTPUT"
-            echo "Diff không đụng schema/generator — bỏ qua replay PGlite (kết luận lần trước còn nguyên giá trị)."
-          fi
-
-      - name: Setup Node 24.18.0
-        if: steps.schema_doi.outputs.doi == 'true'
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: '24.18.0'
-          cache: 'npm'
-
-      - name: Verify exact stable Node runtime
-        if: steps.schema_doi.outputs.doi == 'true'
-        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
-
-      - name: Install root dependencies
-        if: steps.schema_doi.outputs.doi == 'true'
-        run: npm ci
-
-      - name: Deterministic local generated-types drift
-        if: steps.schema_doi.outputs.doi == 'true'
-        env:
-          SUPABASE_TYPES_SOURCE: local
-          SUPABASE_TYPES_LOCAL_ENGINE: pglite
-        run: |
-          # Bản cũ: `npm run gen:types` rồi `git diff --exit-code`. Hỏng HAI chỗ.
-          #
-          # 1. Thiếu `types:normalize`. Generator xuất bản thô có phân mảnh runtime;
-          #    file đã commit là bản ĐÃ chuẩn hoá (Contract §6). Đúng khiếm khuyết
-          #    đã vá ở 43ebc8bb cho job anh em generated-types-drift. (Ghi chú cũ
-          #    "job này chưa từng chạy vì quality-gates đỏ 168 lượt" đã hết đúng —
-          #    quality-gates xanh ổn định từ 22/08 và job này chạy thật.)
-          #
-          # 2. So BYTE giữa hai BỘ NỘI SUY khác nhau. Kể cả khi đã chuẩn hoá,
-          #    `git diff` vẫn cho 10.069 thêm / 10.229 xoá — nhưng so theo nội
-          #    dung thì bản migration KHÔNG thừa dòng nào và chỉ thiếu 160 dòng,
-          #    toàn bộ là `isOneToOne: false`. Phần còn lại thuần là thứ tự khoá.
-          #    Cả hai khác biệt thuộc về engine (PGlite vs Postgres hosted), không
-          #    thuộc về schema — bắt chúng trùng byte là đòi hai engine cho ra
-          #    output y hệt, chẳng liên quan gì tới câu hỏi cần trả lời.
-          #
-          # Câu hỏi cần trả lời là: replay migration có dựng lại ĐÚNG schema
-          # production không. check-local-types-parity.mjs hỏi đúng câu đó, và
-          # vẫn bắt được mọi bảng/cột/hàm/enum thiếu hoặc thừa.
-          cp src/integrations/supabase/types.ts "$RUNNER_TEMP/types-production.ts"
-          npm run gen:types
-          npm run types:normalize
-          node scripts/check-local-types-parity.mjs \
-            "$RUNNER_TEMP/types-production.ts" \
-            src/integrations/supabase/types.ts
-          git checkout -- src/integrations/supabase/types.ts
   security-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 20

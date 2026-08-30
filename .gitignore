@@ -87,17 +87,6 @@ test-results/
 # Bản sao repo do hạm đội subagent tạo (harness tự sinh) — KHÔNG bao giờ commit
 .claude/worktrees/
 
-# OpenClaw Zalo local secrets, generated runtime state, and test artifacts
-infra/openclaw-zalo/.env
-infra/openclaw-zalo/secrets/
-infra/openclaw-zalo/rendered/
-infra/openclaw-media-gateway/.dev.vars
-infra/openclaw-media-gateway/.wrangler/
-services/openclaw-zalo-bridge/.data/
-services/openclaw-zalo-bridge/coverage/
-services/openclaw-zalo-cell/.state/
-services/openclaw-zalo-cell/.release/
-services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/
 
 # Ke hoach backfill coc (chua du lieu kinh doanh, khong commit)
 scripts/.backfill-deposit-plan.json

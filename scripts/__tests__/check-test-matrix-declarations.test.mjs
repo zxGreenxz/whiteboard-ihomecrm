@@ -75,9 +75,11 @@ describe("bất biến khai báo của test-matrix.json", () => {
     expect([...s.excludes].sort()).toEqual([...that].sort());
   });
 
-  it("chống-xanh-rỗng: đủ 9 suite và bước Vitest loại ít nhất 12 đường", () => {
+  it("chống-xanh-rỗng: đủ 5 suite và bước Vitest loại ít nhất 9 đường", () => {
     // Sàn này tồn tại vì hai ca trên vẫn xanh khi cả hai phía cùng rỗng.
-    expect(matrix.suites.length).toBeGreaterThanOrEqual(9);
-    expect(matrix.suites.find((x) => x.id === "app-unit").excludes.length).toBeGreaterThanOrEqual(12);
+    // Hạ 9→5 và 12→9 ngày 30/08/2026: xóa OpenClaw rút 6 suite + 3 cờ exclude —
+    // teo THẬT do xóa hệ con, không phải hai phía cùng rỗng.
+    expect(matrix.suites.length).toBeGreaterThanOrEqual(5);
+    expect(matrix.suites.find((x) => x.id === "app-unit").excludes.length).toBeGreaterThanOrEqual(9);
   });
 });

@@ -60,9 +60,9 @@ const POOLER_PORT = 5432; // session mode — pg_dump KHÔNG chạy được ở
  * thiếu dữ liệu mà người khôi phục không biết còn tệ hơn không có bản dump.
  */
 const BANG_PHU_DU = [
-  "public.openclaw_service_nonces",   // 23 MB — nonce dùng một lần, tự sinh lại
-  "public.openclaw_runtime_commands", // 18 MB — lệnh runtime đã thi hành
-  "cron.job_run_details",             // 7.7 MB — nhật ký chạy cron
+  // Hai bảng openclaw_* từng đứng đầu danh sách này đã bị DROP 30/08/2026
+  // (migration 20260830085316) — cả hệ OpenClaw không còn trong DB.
+  "cron.job_run_details",             // nhật ký chạy cron
 ];
 
 const PG_DUMP_CANDIDATES = [

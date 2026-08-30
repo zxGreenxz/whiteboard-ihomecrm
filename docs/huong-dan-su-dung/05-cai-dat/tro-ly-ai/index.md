@@ -35,7 +35,6 @@ Không cung cấp mật khẩu, token hoặc dữ liệu nhạy cảm không c�
 
 ## Tính năng nội bộ đang tắt mặc định
 
-- **OpenClaw Zalo** dùng `VITE_OPENCLAW_ZALO_MODE`, mặc định code là `off`; route chỉ được mount khi runtime bật. Deployment production được kiểm tra ngày 13/08/2026 đang bật và hiển thị mục **OpenClaw Zalo** cho `demo.chunha`, nên phải đọc runtime thực tế thay vì suy từ mặc định local.
 - **Network Center** dùng `VITE_NETWORK_CENTER_MODE`, mặc định `off`; route `/network-center/*` chỉ tồn tại khi runtime bật và khi đó cần `network_center.view`.
 - Mode `demo` của cả hai bị từ chối trong production build. Có permission không đồng nghĩa tính năng đã được phát hành.
 

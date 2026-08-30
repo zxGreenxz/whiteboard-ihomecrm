@@ -98,7 +98,7 @@ Mọi thao tác từ web đi Zalo đều thành 1 job ở đây (worker poll 2s)
   - RESTRICTIVE `<bảng>_org_boundary` giữ làm lớp 2 — nhánh thoát `organization_id IS NULL` đã ĐÓNG.
   - `is_admin()` đã gỡ khỏi zalo (nó ≡ `is_super_admin` từ 20260710150000; nhúng lại là mìn hẹn giờ).
 - Helper `public.zalo_authorized_org_ids(action)` = `my_org_ids() ⨯ authorized_scope_v3('chat_zalo.'||action)` lọc org_wide — **RBAC v3**; `zalo_can(action, org)` bọc nó cho RPC. Bản `zalo_can` cũ đọc `staff_assignments` (nguồn đã chết từ cutover 25/07) đã bị thay — quyền giờ cấp qua màn phân quyền v3 là CÓ tác dụng.
-  - ⚠ Helper đặt ở **public** có chủ đích: `authenticated` không có USAGE trên schema `app_private` (đo pg_namespace 13/08) — policy gọi thẳng `app_private.*` từ RLS sẽ chết khi user thường query (openclaw đang có đúng bẫy này, chưa ai giẫm vì feature flag off).
+  - ⚠ Helper đặt ở **public** có chủ đích: `authenticated` không có USAGE trên schema `app_private` (đo pg_namespace 13/08) — policy gọi thẳng `app_private.*` từ RLS sẽ chết khi user thường query.
 - **Realtime publication**: 4 bảng như cũ; FE subscribe kèm filter `organization_id=eq.<org hiện hành>` để user đa-org không refetch chéo.
 
 ---

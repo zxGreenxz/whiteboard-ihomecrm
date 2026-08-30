@@ -17,10 +17,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 260 |
-| Hàm trong catalog (public + api) | 1116 |
-| File mã nguồn đã quét | 1708 |
-| SECURITY DEFINER | 244 |
+| RPC được gọi từ mã nguồn | 254 |
+| Hàm trong catalog (public + api) | 1010 |
+| File mã nguồn đã quét | 1306 |
+| SECURITY DEFINER | 238 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
@@ -29,7 +29,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 |---|---|---|
 | thường | 178 | còn lại |
 | tiền | 76 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
-| an ninh | 6 | nơi gọi thuộc OpenClaw |
 
 ## 76 RPC chạm TIỀN
 
@@ -115,13 +114,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `verify_income_expense` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `verify_income_expense_v1` | ✔ | hooks/income-expenses/statusMutations.ts |
 
-## 6 RPC thuộc OpenClaw
+## 0 RPC mức an ninh
 
 | RPC | Nơi gọi |
 |---|---|
-| `get_authorization_context_v1` | src/components/openclaw-zalo/OpenClawRouteGuard.tsx, src/hooks/openclaw-zalo/useOpenClawPermissions.ts |
-| `openclaw_get_bootstrap_v1` | src/hooks/openclaw-zalo/useOpenClawBootstrap.ts |
-| `openclaw_get_overview_v1` | src/hooks/openclaw-zalo/useOpenClawOverview.ts |
-| `openclaw_list_conversations_v1` | src/hooks/openclaw-zalo/useOpenClawInbox.ts |
-| `openclaw_list_messages_v1` | src/hooks/openclaw-zalo/useOpenClawInbox.ts |
-| `openclaw_list_my_organizations_v1` | src/hooks/openclaw-zalo/useOpenClawOrganization.ts |

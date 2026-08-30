@@ -38,14 +38,12 @@ Deploy: Vercel (frontend + `api/` serverless + 2 cron lương). Cloudflare Worke
 ```text
 src/            frontend — pages/ components/ hooks/ lib/ copilot/ integrations/
 api/            Vercel serverless (cron lương v5)
-supabase/       migrations/ functions/ (14 Edge function) migrations-archive/
-services/       openclaw-zalo-{bridge,cell,maintenance}, openclaw-egress-broker
-infra/          network-center-worker, openclaw-media-gateway, openclaw-zalo-watchdog,
-                cloudflare-worker, openclaw-zalo
-worker/         worker Zalo thế hệ cũ (pm2, không deploy lên Vercel)
+supabase/       migrations/ functions/ migrations-archive/
+infra/          network-center-worker, cloudflare-worker
+worker/         worker Zalo (pm2, không deploy lên Vercel)
 scripts/        gate, verifier, rollout, harness SQL
-contracts/      JSON schema (OpenClaw) + golden vectors
-docs/           engineering/ he-thong/ generated/ openclaw-zalo/ huong-dan-su-dung/
+contracts/      surfaces (RPC/Edge/realtime)
+docs/           engineering/ he-thong/ generated/ huong-dan-su-dung/
 docs-site/      VitePress — tài liệu cho người dùng cuối
 .e2e-fleet/     Playwright headless chạy song song
 tooling/        risk-map, program-status (manifest máy đọc)
@@ -58,9 +56,8 @@ npm ci
 npm run dev          # http://localhost:8080
 ```
 
-Cần Node **≥20** cho app chính. Một số subsystem đòi Node khác — `services/openclaw-*` cần
-**24.15–24.x**, `infra/network-center-worker` cần **≥20 <23**. Script `test:openclaw:services` tự chặn
-nếu sai phiên bản. Nên dùng volta/fnm/nvm để đổi nhanh.
+Cần Node **≥20** cho app chính. Một số subsystem đòi Node khác — `infra/network-center-worker`
+cần **≥20 <23** (xem `tooling/runtime-matrix.json`). Nên dùng volta/fnm/nvm để đổi nhanh.
 
 **Secret không nằm trong repo.** Biến `VITE_*` trong `.env` (publishable, nhúng vào bundle client);
 credential thật đọc từ `CLAUDE.local.md` — file này **luôn** bị gitignore và không bao giờ được commit,

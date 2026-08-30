@@ -8,9 +8,6 @@ export default tseslint.config(
   {
     ignores: [
       "dist",
-      "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package/**",
-      "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/**",
-      "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/**",
     ],
   },
   {

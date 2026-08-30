@@ -12,10 +12,6 @@ vi.mock("@/lib/network-center/runtime", () => ({
   NETWORK_CENTER_RUNTIME_ENABLED: false,
   NETWORK_CENTER_RUNTIME_MODE: "off",
 }));
-vi.mock("@/lib/openclaw-zalo/runtime", () => ({
-  OPENCLAW_RUNTIME_ENABLED: false,
-  OPENCLAW_RUNTIME_MODE: "off",
-}));
 
 const { CAPABILITIES } = await import("../registry");
 const { navigationGroups } = await import("@/components/layout/Sidebar");

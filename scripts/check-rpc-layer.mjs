@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Gate: `supabase.rpc()` KHÔNG được gọi thẳng trong tầng giao diện.
 //
-// NGUYÊN TẮC NÀY ĐÃ GẦN ĐẠT — GATE ĐỂ NÓ KHÔNG TRÔI NGƯỢC
-//   Đo 11/08/2026: 5 component/trang gọi `supabase.rpc()` thẳng. Lát này chuyển
-//   hết 4 chỗ chuyển được vào `src/hooks/`, còn 1 chỗ thuộc OpenClaw thì miễn
-//   trừ có ghi lý do (xem MIEN_TRU) vì phiên khác đang sửa vùng đó.
+// NGUYÊN TẮC NÀY ĐÃ ĐẠT — GATE ĐỂ NÓ KHÔNG TRÔI NGƯỢC
+//   Đo 11/08/2026: 5 component/trang gọi `supabase.rpc()` thẳng, đã chuyển hết
+//   vào `src/hooks/` (miễn trừ cuối cùng thuộc OpenClaw, gỡ 30/08/2026 khi xóa
+//   OpenClaw khỏi repo).
 //
 //   Gate ra đời ở mức 0 vi phạm là CỐ Ý. Để nguyên tắc trôi lên vài chục chỗ rồi
 //   mới dựng gate thì nó sẽ ra đời kèm một baseline miễn trừ dài — mà baseline
@@ -45,15 +45,10 @@ export const TANG_GIAO_DIEN = ['src/components', 'src/pages', 'src/copilot'];
 export const SAN_SO_FILE = 300;
 
 /**
- * Hai ngoại lệ, mỗi cái một lý do đo được. Danh sách này CỐ Ý ngắn: mỗi dòng
- * thêm vào là một chỗ nguyên tắc không còn đúng, nên phải đắt để thêm.
+ * Danh sách miễn trừ CỐ Ý ngắn (hiện RỖNG): mỗi dòng thêm vào là một chỗ
+ * nguyên tắc không còn đúng, nên phải đắt để thêm — kèm lý do đo được.
  */
-export const MIEN_TRU = [
-  // OpenClaw đang được một phiên khác sửa; luật của repo là không đụng vào vùng
-  // đó. Đây là miễn trừ THEO THỜI ĐIỂM, không phải theo nguyên tắc: khi phiên
-  // kia xong, chuyển `get_authorization_context_v1` vào hook rồi xoá dòng này.
-  'src/components/openclaw-zalo/OpenClawRouteGuard.tsx',
-];
+export const MIEN_TRU = [];
 
 export function timLoiGoi(vanBan) {
   // Bỏ chú thích trước: một dòng `// đừng gọi supabase.rpc(...) ở đây` là VĂN

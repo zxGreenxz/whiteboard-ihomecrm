@@ -30,7 +30,6 @@ import {
   Car,
   Wallet,
   Coins,
-  Bot,
   Network,
   Banknote,
 } from 'lucide-react';
@@ -76,7 +75,6 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       // riêng launcher, phần còn lại registry sở hữu.
       ...launcherFieldsFor('network-center').map((f) => ({ ...f, icon: Network, accent: '#111111' }) satisfies LauncherTile),
       ...launcherFieldsFor('sale-phong').map((x) => ({ ...x, icon: DoorOpen, accent: '#16a34a' }) satisfies LauncherTile),
-      ...launcherFieldsFor('openclaw-zalo').map((f) => ({ ...f, icon: Bot, accent: '#0f766e' }) satisfies LauncherTile),
     ],
   },
   {

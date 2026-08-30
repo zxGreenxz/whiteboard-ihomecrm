@@ -16,7 +16,7 @@ status: published
 
 Hub `/reports/finance` trên deployment production được kiểm tra ngày 13/08/2026 hiển thị **10 loại báo cáo**. Mỗi thẻ báo cáo còn có action quyền riêng; mở được hub không đồng nghĩa mở được mọi báo cáo.
 
-![Hub Báo cáo Tài chính của tài khoản demo.chunha hiển thị 10 loại báo cáo và mục OpenClaw Zalo trên sidebar production](./images/buoc-01-man-hinh.webp)
+![Hub Báo cáo Tài chính của tài khoản demo.chunha hiển thị 10 loại báo cáo (ảnh chụp trước 30/08/2026, sidebar còn mục OpenClaw Zalo nay đã gỡ)](./images/buoc-01-man-hinh.webp)
 
 ## 10 thẻ đang hiển thị
 

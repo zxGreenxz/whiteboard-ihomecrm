@@ -1,7 +1,0 @@
-node_modules
-dist
-coverage
-test
-*.log
-.env*
-CLAUDE.local.md

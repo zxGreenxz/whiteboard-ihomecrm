@@ -1,11 +1,10 @@
 {
-  "$comment": "Nguồn sự thật về runtime. Repo này có SÁU ràng buộc Node khác nhau trên tám manifest, cộng hai package không khai gì — và root engines '>=20' KHÔNG phải sàn thật của mọi thứ (script test:openclaw:services tự chặn nếu không phải Node 24.15+). Agent đọc root package.json rồi chọn Node 20 sẽ thấy test OpenClaw fail vì lý do không liên quan gì tới code. File này để tra một chỗ; scripts/check-runtime-matrix.mjs đối chiếu nó với thực tế theo CẢ HAI chiều.",
+  "$comment": "Nguồn sự thật về runtime. Các package trong repo có ràng buộc Node khác nhau và root engines '>=20' không phải sàn thật của mọi thứ. File này để tra một chỗ; scripts/check-runtime-matrix.mjs đối chiếu nó với thực tế theo CẢ HAI chiều.",
   "schemaVersion": 1,
   "packages": [
     {
       "path": "package.json",
-      "node": ">=20",
-      "note": "App chính. Nhưng script test:openclaw:services trong CÙNG file này tự chặn nếu không phải Node 24.15–24.x — root engines không phải sàn thật của nó."
+      "node": ">=20"
     },
     {
       "path": "docs-site/package.json",
@@ -16,42 +15,6 @@
       "path": "infra/network-center-worker/package.json",
       "node": ">=20 <23",
       "note": "CỐ Ý chưa lên Node 24 — chưa test tương thích. Đây là lý do CI của nó chạy Node 22 chứ không phải 24.18.0 như ci-gates."
-    },
-    {
-      "path": "infra/openclaw-media-gateway/package.json",
-      "node": ">=24.15.0 <25"
-    },
-    {
-      "path": "infra/openclaw-zalo-watchdog/package.json",
-      "node": ">=24.15.0 <25"
-    },
-    {
-      "path": "services/openclaw-egress-broker/package.json",
-      "node": ">=24.15.0 <25"
-    },
-    {
-      "path": "services/openclaw-zalo-maintenance/package.json",
-      "node": ">=24.15.0 <25"
-    },
-    {
-      "path": "services/openclaw-zalo-bridge/package.json",
-      "node": ">=24.18.0 <25",
-      "note": "Sàn cao hơn các package OpenClaw khác (24.18 vs 24.15) — khớp với Node mà ci-gates pin."
-    },
-    {
-      "path": "services/openclaw-media-gateway/package.json",
-      "node": ">=24.18.0 <25",
-      "note": "Sàn 24.18 giống zalo-bridge (không phải 24.15 như các package OpenClaw còn lại). Thêm 08/08/2026 khi service này ra đời — gate:runtime-matrix đỏ vì package mới chưa có entry, đúng thiết kế."
-    },
-    {
-      "path": "services/openclaw-zalo-cell/session-crypto/package.json",
-      "node": ">=22.13.0",
-      "note": "Khác phần còn lại của OpenClaw. Là package độc lập, không chạy trong cell."
-    },
-    {
-      "path": "services/openclaw-zalo-cell/vendor/zalouser-bridge/package.json",
-      "node": ">=24.15.0 <25",
-      "note": "Vendored upstream — artifact verify byte-exact, đừng đụng."
     },
     {
       "path": "worker/package.json",
@@ -69,7 +32,7 @@
       "path": ".github/workflows/ci-gates.yml",
       "node": "24.18.0",
       "note": "Pin exact. Khớp sàn cao nhất (bridge 24.18).",
-      "noteDeno": "Deno từng có ở đây qua job openclaw-edge-gates (deno lint/check các Edge Function OpenClaw). Job đó bị xoá 25/08/2026 khi OpenClaw nghỉ hưu, nên ci-gates.yml KHÔNG còn dùng Deno. Deno vẫn dùng ở network-center-validation.yml.",
+      "noteDeno": "ci-gates.yml KHÔNG dùng Deno (job Deno cuối cùng bị xoá 25/08/2026). Deno vẫn dùng ở network-center-validation.yml.",
       "deno": null
     },
     {

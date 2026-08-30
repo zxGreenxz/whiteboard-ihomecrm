@@ -30,7 +30,6 @@ source_paths:
   - worker/index.js
   - .e2e-fleet/playwright.config.ts
   - .e2e-fleet/specs/auth.ts
-  - .e2e-fleet/specs/openclaw-zalo-admin.ts
 copilot_ingest: false
 risk: security
 ---
@@ -257,7 +256,7 @@ chứng minh "không rò qua PostgREST bằng quyền của tài khoản thật"
 - **45 bảng không được nhân bản** (`lib.mjs:84-106`), nhóm nguy hiểm nhất là kênh gửi ra ngoài:
   `worker/index.js` quét `zalo_send_queue` **không lọc org** ⇒ chép là **nhắn trúng khách thật**.
 - **Fixture E2E phải tự chặn org đích tại từng lần ghi**, không phải một lần lúc khởi động:
-  `assertDemoOrganization()` ở `.e2e-fleet/specs/openclaw-zalo-admin.ts:105-117` từ chối org
+  `assertDemoOrganization()` (helper của các spec admin trong `.e2e-fleet/specs/`) từ chối org
   production theo danh tính và từ chối mọi org không phải DEMO. Lý do ghi tại chỗ: một kịch bản
   suy org id từ page state có thể mang id production vào lệnh ghi, còn check lúc khởi động thì đã
   pass từ lâu.

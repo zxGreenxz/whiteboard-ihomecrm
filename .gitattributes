@@ -8,7 +8,6 @@ supabase/functions/** text eol=lf
 # Windows biến LF thành CRLF là kích thước và sha256 đổi hết, gate dựng ảnh đỏ
 # mà chẳng file nào trông có gì khác.
 *.tmpl text eol=lf
-services/openclaw-zalo-cell/** text eol=lf
 
 # Shebang + CRLF phá bộ chuyển đổi module của vitest. Một file .mjs mở đầu bằng
 # `#!/usr/bin/env node` mà dòng đó kết thúc \r\n sẽ ném "SyntaxError: Invalid or
@@ -29,7 +28,6 @@ services/openclaw-zalo-cell/** text eol=lf
 # một clone Windows bật autocrlf=true không làm test đỏ vì lý do chẳng liên quan
 # tới nội dung. Trên máy hiện tại file đang là LF thuần (đã kiểm) nên luật này chỉ
 # giữ nguyên hiện trạng, không đổi byte nào.
-contracts/openclaw-zalo/*.json text eol=lf
 
 # NGOẠI LỆ CÓ CHỦ ĐÍCH — ĐỪNG "sửa cho sạch".
 #
@@ -54,5 +52,3 @@ contracts/openclaw-zalo/*.json text eol=lf
 # normalise anything under it. These rules sit AFTER the eol=lf rules on purpose -
 # later patterns win, and `*.sql` above would otherwise rewrite line endings for
 # any .sql file the vendor tree carries and break its recorded SHA-256.
-services/openclaw-zalo-cell/vendor/zalouser-bridge/** -text
-services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/*.tgz binary

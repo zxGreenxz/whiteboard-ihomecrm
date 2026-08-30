@@ -1,5 +1,4 @@
 import { NETWORK_CENTER_RUNTIME_ENABLED } from "@/lib/network-center/runtime";
-import { OPENCLAW_RUNTIME_ENABLED } from "@/lib/openclaw-zalo/runtime";
 import type { CapabilityDefinition } from "./types";
 
 /**
@@ -39,31 +38,6 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     e2e: { spec: ".e2e-fleet/specs/network-center.spec.ts" },
     risk: "infrastructure",
   },
-  {
-    id: "openclaw-zalo",
-    primaryRoute: "/openclaw-zalo",
-    label: "OpenClaw Zalo",
-    release: { enabled: OPENCLAW_RUNTIME_ENABLED, runtimeModule: "openclaw-zalo" },
-    permission: { module: "openclaw_zalo", action: "view" },
-    surfaces: {
-      desktopNav: true,
-      mobileLauncher: true,
-      permissionPage: "/openclaw-zalo",
-    },
-    docs: {
-      systemDoc: "docs/he-thong/23-openclaw-zalo.md",
-      // LƯU Ý dễ nhầm: docs-site CÓ trang "chat-zalo" nhưng đó là Chat Zalo CŨ
-      // (docs/he-thong/18-zalo-chat.md), một hệ khác. Trỏ nó vào đây sẽ dẫn người
-      // đọc tới hướng dẫn của tính năng khác — sai còn tệ hơn để trống.
-      userDoc: null,
-      userDocMienTruVi:
-        "Rollout 11 bậc chưa tới bậc COMPLETE và cờ build-time mặc định TẮT. Trang hướng dẫn viết bây giờ sẽ mô tả một luồng còn đang đổi.",
-      visibility: "internal",
-    },
-    e2e: { spec: ".e2e-fleet/specs/openclaw-zalo.spec.ts" },
-    risk: "security",
-  },
-
   // ===========================================================================
   // ĐỢT MIỀN TIỀN — bốn bề mặt đầu tiên KHÔNG phải "tính năng sau cờ".
   //

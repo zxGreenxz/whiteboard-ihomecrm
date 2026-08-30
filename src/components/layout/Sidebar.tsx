@@ -62,7 +62,6 @@ import {
   Coins,
   Share2,
   MessageSquare,
-  Bot,
   Sparkles,
   Gift,
   Landmark,
@@ -131,11 +130,6 @@ export const navigationGroups: NavGroup[] = [
     label: 'KÊNH CHAT',
     items: [
       ...navFieldsFor('chat-zalo').map((x) => ({ ...x, icon: MessageSquare }) satisfies NavItem),
-      // Nhãn, route, quyền và cờ đều SINH TỪ capability registry (Đợt 4 lát 3).
-      // Trước đây bốn thứ đó khai lại ở đây và ba nơi khác, rồi trông chờ contract
-      // test bắt lệch — mà đối chiếu chỉ phát hiện lệch SAU KHI nó đã nằm trong mã
-      // nguồn. Ở đây chỉ còn phần trình bày: icon.
-      ...navFieldsFor('openclaw-zalo').map((f) => ({ ...f, icon: Bot }) satisfies NavItem),
     ],
   },
   {

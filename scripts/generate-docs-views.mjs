@@ -135,7 +135,7 @@ export function dungRpcSurface(m) {
           k === "financial"
             ? "có nơi gọi nằm trong màn tiền — sai là sai sổ sách"
             : k === "security"
-              ? "nơi gọi thuộc OpenClaw"
+              ? "nơi gọi thuộc vùng an ninh"
               : k === "infrastructure"
                 ? "nơi gọi thuộc Network Center"
                 : "còn lại",
@@ -157,7 +157,7 @@ export function dungRpcSurface(m) {
       ]),
     ),
     "",
-    `## ${anNinh.length} RPC thuộc OpenClaw`,
+    `## ${anNinh.length} RPC mức an ninh`,
     "",
     bang(["RPC", "Nơi gọi"], anNinh.map(([ten, r]) => [`\`${ten}\``, r.callers.join(", ")])),
     "",

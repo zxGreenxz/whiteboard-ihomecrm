@@ -1,21 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1708,
-    "catalogFunctions": 1116,
+    "sourceCallSites": 1306,
+    "catalogFunctions": 1010,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 260,
+    "calledRpcs": 254,
     "byRisk": {
       "normal": 178,
-      "financial": 76,
-      "security": 6
+      "financial": 76
     },
-    "securityDefiner": 244
+    "securityDefiner": 238
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1619,27 +1618,6 @@
       ],
       "risk": "normal"
     },
-    "get_authorization_context_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_organization_id uuid DEFAULT NULL::uuid",
-          "returns": "jsonb",
-          "volatility": "STABLE",
-          "securityDefiner": true,
-          "searchPath": "search_path=pg_catalog, public, app_private",
-          "execRoles": [
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/components/openclaw-zalo/OpenClawRouteGuard.tsx",
-        "src/hooks/openclaw-zalo/useOpenClawPermissions.ts"
-      ],
-      "risk": "security"
-    },
     "get_change_breakdown_v2": {
       "definitions": [
         {
@@ -3168,101 +3146,6 @@
         "src/hooks/reports/useOccupancyDashboard.ts"
       ],
       "risk": "normal"
-    },
-    "openclaw_get_bootstrap_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request jsonb",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=\"\"",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/openclaw-zalo/useOpenClawBootstrap.ts"
-      ],
-      "risk": "security"
-    },
-    "openclaw_get_overview_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request jsonb",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=\"\"",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/openclaw-zalo/useOpenClawOverview.ts"
-      ],
-      "risk": "security"
-    },
-    "openclaw_list_conversations_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request jsonb",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=\"\"",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/openclaw-zalo/useOpenClawInbox.ts"
-      ],
-      "risk": "security"
-    },
-    "openclaw_list_messages_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_request jsonb",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=\"\"",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/openclaw-zalo/useOpenClawInbox.ts"
-      ],
-      "risk": "security"
-    },
-    "openclaw_list_my_organizations_v1": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "",
-          "returns": "jsonb",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=\"\"",
-          "execRoles": [
-            "authenticated"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/openclaw-zalo/useOpenClawOrganization.ts"
-      ],
-      "risk": "security"
     },
     "pass_listing_form_rooms": {
       "definitions": [

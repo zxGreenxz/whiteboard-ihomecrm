@@ -75,7 +75,6 @@ const TU_CHUA = [
 
 // ── Bước 2: gate tĩnh, thứ tự khớp ci-gates.yml để dễ đối chiếu ──────────────
 const GATE_NHANH = [
-  "check-openclaw-isolation",
   // contract-gates
   "check-agent-contract",
   "check-runtime-matrix",

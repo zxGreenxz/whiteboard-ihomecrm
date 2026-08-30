@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 563,
-  "soFileDocBangFs": 182,
-  "tongLoiGoi": 456,
-  "khongPhanLoaiDuoc": 245,
+  "tongSoFileTest": 405,
+  "soFileDocBangFs": 128,
+  "tongLoiGoi": 279,
+  "khongPhanLoaiDuoc": 158,
   "theoLoai": {
     "tai-lieu": {
-      "soFile": 8,
+      "soFile": 3,
       "moTa": "Đọc tài liệu/asset."
     },
     "manifest": {
-      "soFile": 31,
+      "soFile": 16,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "powershell": {
@@ -19,37 +19,23 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 37,
+      "soFile": 23,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 52,
+      "soFile": 40,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
   "testDocMaNguon": [
-    "infra/openclaw-media-gateway/test/security.test.ts",
-    "infra/openclaw-zalo/test/task20-adapters.test.ts",
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
-    "scripts/__tests__/deploy-openclaw-edge-bundle.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
     "scripts/__tests__/network-center-worker-release-readback.test.mjs",
     "scripts/__tests__/network-center-worker-scope-verifier.test.mjs",
-    "scripts/__tests__/openclaw-host-isolation.test.mjs",
-    "scripts/__tests__/openclawCommandContract.test.mjs",
-    "services/openclaw-zalo-cell/session-crypto/src/daemon.test.ts",
-    "services/openclaw-zalo-cell/test/image-contract.test.mjs",
-    "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/control-patched-source.test.ts",
-    "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/egress-patched-source.test.ts",
-    "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/inbound-patched-source.test.ts",
-    "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/outbound-patched-source.test.ts",
-    "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/reproducible-pack.test.ts",
-    "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/vendor-integrity.test.ts",
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
-    "src/components/openclaw-zalo/__tests__/cockpitWiring.test.tsx",
     "src/copilot/__tests__/confirmationStore.test.ts",
     "src/copilot/__tests__/pageAgentCompatibility.test.ts",
     "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",
@@ -68,24 +54,6 @@
   ],
   "chiTiet": [
     {
-      "file": "infra/openclaw-zalo/test/script-contract.test.ts",
-      "soGoi": 21,
-      "loai": {
-        "manifest": 4
-      },
-      "khongPhanLoaiDuoc": 17
-    },
-    {
-      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/vendor-integrity.test.ts",
-      "soGoi": 20,
-      "loai": {
-        "manifest": 11,
-        "tai-lieu": 2,
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 6
-    },
-    {
       "file": "infra/network-center-worker/test/deploymentHostRuntime.test.ts",
       "soGoi": 19,
       "loai": {
@@ -103,29 +71,10 @@
       "khongPhanLoaiDuoc": 13
     },
     {
-      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/reproducible-pack.test.ts",
-      "soGoi": 16,
-      "loai": {
-        "ma-nguon": 5,
-        "manifest": 3
-      },
-      "khongPhanLoaiDuoc": 8
-    },
-    {
       "file": "infra/network-center-worker/test/installHostSafety.test.ts",
       "soGoi": 11,
       "loai": {},
       "khongPhanLoaiDuoc": 11
-    },
-    {
-      "file": "services/openclaw-zalo-cell/test/image-contract.test.mjs",
-      "soGoi": 11,
-      "loai": {
-        "ma-nguon": 1,
-        "tai-lieu": 4,
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 5
     },
     {
       "file": "infra/network-center-worker/test/deploymentPowerShellReconciliation.test.ts",
@@ -148,12 +97,6 @@
       "khongPhanLoaiDuoc": 4
     },
     {
-      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/prepare-overlay.test.ts",
-      "soGoi": 8,
-      "loai": {},
-      "khongPhanLoaiDuoc": 8
-    },
-    {
       "file": "infra/network-center-worker/test/bootstrap.test.ts",
       "soGoi": 7,
       "loai": {
@@ -161,14 +104,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/outbound-patched-source.test.ts",
-      "soGoi": 7,
-      "loai": {
-        "ma-nguon": 4
-      },
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
@@ -200,14 +135,6 @@
       "khongPhanLoaiDuoc": 5
     },
     {
-      "file": "infra/openclaw-zalo/test/task20-adapters.test.ts",
-      "soGoi": 5,
-      "loai": {
-        "ma-nguon": 2
-      },
-      "khongPhanLoaiDuoc": 3
-    },
-    {
       "file": "scripts/__tests__/network-center-admin-credential-reconciliation.test.mjs",
       "soGoi": 5,
       "loai": {},
@@ -218,82 +145,6 @@
       "soGoi": 5,
       "loai": {
         "manifest": 3
-      },
-      "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "services/openclaw-zalo-cell/session-crypto/src/daemon.test.ts",
-      "soGoi": 5,
-      "loai": {
-        "manifest": 1,
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "infra/openclaw-media-gateway/test/security.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "manifest": 2,
-        "ma-nguon": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/gen-supabase-types.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "ma-nguon": 4
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/openclaw-full-reset-harness.test.mjs",
-      "soGoi": 4,
-      "loai": {
-        "manifest": 3
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "services/openclaw-zalo-bridge/test/operability.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "manifest": 1,
-        "tai-lieu": 1
-      },
-      "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "services/openclaw-zalo-bridge/test/runtime-assets.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "sql": 4
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/egress-patched-source.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "ma-nguon": 3
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/inbound-patched-source.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "ma-nguon": 3
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "services/openclaw-zalo-maintenance/test/recovery.test.ts",
-      "soGoi": 4,
-      "loai": {
-        "manifest": 1,
-        "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 2
     },
@@ -367,20 +218,12 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "scripts/__tests__/deploy-openclaw-edge-bundle.test.mjs",
+      "file": "scripts/__tests__/gen-supabase-types.test.ts",
       "soGoi": 3,
       "loai": {
-        "manifest": 1,
-        "tai-lieu": 1,
-        "ma-nguon": 1
+        "ma-nguon": 3
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "services/openclaw-zalo-cell/session-crypto/src/crypto.test.ts",
-      "soGoi": 3,
-      "loai": {},
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",
@@ -438,14 +281,6 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "infra/openclaw-media-gateway/test/receipts.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "manifest": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "scripts/__tests__/check-raw-rpc-callers.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -461,14 +296,6 @@
     },
     {
       "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "scripts/__tests__/generate-openclaw-golden-vectors.test.mjs",
       "soGoi": 2,
       "loai": {
         "manifest": 1
@@ -501,59 +328,6 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/openclaw-browser-privileges.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/openclaw-host-isolation.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "scripts/__tests__/openclawCommandContract.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "manifest": 1,
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "services/openclaw-media-gateway/test/server.test.ts",
-      "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "services/openclaw-zalo-bridge/test/inbound-listener-ordering.test.ts",
-      "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "services/openclaw-zalo-bridge/test/spool-recovery.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/control-patched-source.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/accountingLegacyPaymentSemantics.test.ts",
@@ -619,12 +393,6 @@
       "khongPhanLoaiDuoc": 2
     },
     {
-      "file": "src/lib/__tests__/openclawRpcSurfaceMigration.test.ts",
-      "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
-    },
-    {
       "file": "src/lib/__tests__/planHardeningMigration.test.ts",
       "soGoi": 2,
       "loai": {
@@ -649,22 +417,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "src/lib/openclaw-zalo/__tests__/auditChain.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/openclaw-zalo/__tests__/legalHold.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": ".e2e-fleet/specs/phong-trong-export-image.spec.ts",
       "soGoi": 1,
       "loai": {},
@@ -680,26 +432,6 @@
     },
     {
       "file": "infra/network-center-worker/test/sshConnector.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/openclaw-media-gateway/test/deploy-script.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "infra/openclaw-zalo/test/compose-contract.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "infra/openclaw-zalo/test/task20-contract.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
@@ -787,21 +519,7 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "scripts/__tests__/production-openclaw-smoke.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "scripts/__tests__/provenance-bien-nhan.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "services/openclaw-zalo-bridge/test/upstream-contract.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
@@ -841,30 +559,6 @@
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/components/openclaw-zalo/__tests__/authorizationSchema.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/components/openclaw-zalo/__tests__/cockpitWiring.test.tsx",
-      "soGoi": 1,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/components/openclaw-zalo/__tests__/unknownResolution.test.tsx",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -1237,104 +931,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "src/lib/__tests__/openclawAccessPoliciesMigration.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawCrmEventSourcesMigration.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawDeliveryMigration.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/openclawInboxMigration.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawIsolation.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawNavigation.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawOrganizationListScope.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/openclawPermissionMigration.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawPolicyAutomationMigration.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/openclawRealtimeMaintenanceMigration.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawRuntimeFoundationMigration.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/openclawTask14To18Contracts.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawTask21ServerContractMigration.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawWatchdogEgressMigration.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/__tests__/openclawZaloMigrations.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "src/lib/__tests__/permissionPages.test.ts",
       "soGoi": 1,
       "loai": {
@@ -1371,20 +967,6 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/openclaw-zalo/__tests__/actionContractsAgainstSql.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "src/lib/openclaw-zalo/__tests__/operations.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/pages/reports/finance/__tests__/BusinessPerformanceReportPage.test.tsx",

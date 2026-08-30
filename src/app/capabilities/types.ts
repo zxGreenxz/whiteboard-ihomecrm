@@ -25,7 +25,7 @@ export interface CapabilityDefinition {
   release: {
     /** `true` = luôn bật; ngược lại là giá trị dẫn xuất từ runtime module. */
     enabled: boolean;
-    runtimeModule: "network-center" | "openclaw-zalo" | null;
+    runtimeModule: "network-center" | null;
   };
 
   /**
@@ -126,9 +126,8 @@ export interface CapabilityDefinition {
    *     một THAY ĐỔI, tính từ đường dẫn file trong diff.
    *
    * Đo 11/08/2026 cho thấy chúng còn không so được về mặt kỹ thuật: file cài đặt
-   * của cả hai capability (`src/components/network-center/**`,
-   * `src/components/openclaw-zalo/**`) không rơi vào tier nào của risk-map. Một
-   * checker "so risk với tier" sẽ so với `null` cho cả hai — xanh mà rỗng nghĩa.
+   * của capability (`src/components/network-center/**`) không rơi vào tier nào
+   * của risk-map. Một checker "so risk với tier" sẽ so với `null` — xanh mà rỗng nghĩa.
    *
    * Thứ ĐÁNG làm và đã làm: bảo đảm nơi khai route/capability nằm TRONG một tier,
    * để sửa chúng còn kích hoạt đúng bộ gate (xem risk-map, tier `product-surface`).

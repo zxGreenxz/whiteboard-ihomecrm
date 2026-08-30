@@ -16,7 +16,7 @@
 | Data layer | `src/hooks/**`, `src/lib/**` | Query/mutation, adapter canonical writer, permission catalog và tiện ích. |
 | Supabase client/types | `src/integrations/supabase/**` | Client và generated public schema types. |
 | AI Copilot | `src/copilot/**` | Chat, UI-control, registry tool, safety/entitlement. |
-| Database | `supabase/migrations/**` | Lịch sử DDL/RPC/RLS đang hoạt động (707 file + 15 trong `migrations-archive/`). Legacy KHÔNG replay được; số đếm sinh bằng `npm run catalog:capture`. |
+| Database | `supabase/migrations/**` | Lịch sử DDL/RPC/RLS đang hoạt động (708 file + 15 trong `migrations-archive/`). Legacy KHÔNG replay được; số đếm sinh bằng `npm run catalog:capture`. |
 | Edge Functions | `supabase/functions/**` | LLM proxy, admin user, push, salary jobs và reset demo. |
 | Workers/API | `worker/**` (6 file), `api/**` (1 file) | Zalo worker ngoài Vercel và endpoint cron/serverless. |
 | Tài liệu | `docs/**`, `docs-site/**` | Hai trunk runtime: hướng dẫn VitePress (`docs-site/`, build riêng) và tham chiếu hệ thống cho Copilot (`docs/he-thong/`). |
@@ -29,10 +29,9 @@ CI khác. Tra runtime của từng cái ở `tooling/runtime-matrix.json`.
 
 | Cây | Nội dung | Ghi chú |
 |---|---|---|
-| `services/**` | 5 package OpenClaw Zalo: `openclaw-egress-broker`, `openclaw-media-gateway`, `openclaw-zalo-bridge`, `openclaw-zalo-cell`, `openclaw-zalo-maintenance` | `openclaw-zalo-cell` chứa vendored upstream — **không** phải mã của dự án này, `verify:upstream` lo phần đó. |
-| `infra/**` | 5 package: `network-center-worker`, `cloudflare-worker`, `openclaw-media-gateway`, `openclaw-zalo-watchdog`, `openclaw-zalo` | `network-center-worker` deploy bằng PowerShell; hai suite kiểm script đó chạy ở job Windows riêng. |
-| `.e2e-fleet/**` | 54 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
-| `contracts/**` | 13 file hợp đồng | Nguồn ưu tiên CAO NHẤT khi đối chiếu (trên cả graph tri thức). |
+| `infra/**` | 2 package: `network-center-worker`, `cloudflare-worker` | `network-center-worker` deploy bằng PowerShell; hai suite kiểm script đó chạy ở job Windows riêng. |
+| `.e2e-fleet/**` | 52 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
+| `contracts/**` | 3 file hợp đồng | Nguồn ưu tiên CAO NHẤT khi đối chiếu (trên cả graph tri thức). |
 
 ## Luồng phụ thuộc chính
 
@@ -100,7 +99,7 @@ lệch trong im lặng và thành nguồn sai còn nguy hiểm hơn không có g
 
 Test nằm cạnh module trong `__tests__` hoặc file `*.test.ts(x)`; gate chung được khai báo trong `package.json` và CI. Khi thay đổi database, kiểm cả SQL/RPC permission, generated types và caller frontend.
 
-Test **không** chạy chung một lệnh: 11 suite, mỗi suite một runner và một job CI —
+Test **không** chạy chung một lệnh: 5 suite, mỗi suite một runner và một job CI —
 `tooling/test-matrix.json` là bản đồ, `npm run gate:test-matrix` canh nó khớp thực tế.
 Muốn biết test nào đọc mã nguồn bằng `fs` thay vì import: `npm run inventory:repo`.
 

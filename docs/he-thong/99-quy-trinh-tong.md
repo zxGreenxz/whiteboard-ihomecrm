@@ -28,7 +28,6 @@ flowchart LR
   PROFIT -. "phần đầu tư đã chốt" .-> SALARY
   AI["AI Copilot"] -. "đọc docs/tool theo quyền" .-> CFG
   ZALO["Zalo worker (chat cũ)"] -. "CSKH" .-> SALE
-  OC["OpenClaw Zalo: consent → QR → outbox → policy"] -. "gửi theo 11 bậc rollout" .-> SALE
   NC["Network Center: 4 thao tác lên router, EXECUTE theo từng toà"] -. "hạ tầng của toà" .-> CFG
 ```
 
@@ -128,28 +127,6 @@ Chi tiết ở [22-network-center.md](22-network-center.md); phần dưới ch�
 **Thêm một thao tác không phải là thêm một nút**: phải đổi contract + migration + verifier. Đó là
 thiết kế, không phải thủ tục rườm rà — bốn thao tác này đều có thể làm rớt mạng cả toà.
 
-### 3.11. OpenClaw Zalo — vòng đời từ consent tới lượt gửi
-
-Chi tiết ở [23-openclaw-zalo.md](23-openclaw-zalo.md) và 11 runbook trong
-[`docs/openclaw-zalo/runbooks/`](../openclaw-zalo/runbooks/). Bốn điểm cần biết khi đọc quy trình tổng:
-
-1. **Consent → QR → kết nối**: `DISCONNECTED → QR_PENDING → CONNECTING → CONNECTED → DISCONNECTING`,
-   cộng `RECONNECT_REQUIRED`. Rủi ro phiên tách riêng: `HEALTHY | DEGRADED | LIMITED |
-   SUSPECTED_THEFT | INVALID`.
-2. **Chế độ phân biệt *configured* với *effective*** — `DRAFT_ONLY | MANUAL_SEND |
-   LIMITED_AUTO_REPLY | PROACTIVE | SALES_GROUPS`. Cấu hình một đằng mà hiệu lực một nẻo là trạng thái
-   hợp lệ, không phải lỗi.
-3. **Nháp và gửi đi qua outbox 7 trạng thái**: `QUEUED → LEASED → DISPATCHING → SENT`, nhánh `FAILED`,
-   `UNKNOWN`, `DEAD_LETTER` — bốn trạng thái cuối là terminal.
-4. **Từng lượt gửi qua policy có thứ tự lý do CỐ ĐỊNH**, không phải "gặp cái nào báo cái đó":
-   `GLOBAL_STOP → MODE_PAUSED → ACCOUNT_PAUSED → CAMPAIGN_CANCELLED → TAKEOVER_ACTIVE → SUPPRESSED →
-   CONSENT_MISSING → QUIET_HOURS → RATE_LIMITED → GROUP_NOT_ALLOWLISTED → GROUP_DIRECTORY_STALE →
-   ALLOWED`. Schema ràng `decision = ALLOW` **khi và chỉ khi** `reason = ALLOWED`.
-
-**Rollout 11 bậc** `FOUNDATION → INFRASTRUCTURE → WAITING_OWNER_QR → CONNECTION → SHADOW →
-WAITING_OWNER_INBOUND → LIMITED_OBSERVING → LIMITED_VERIFIED → PROACTIVE → SALES_GROUPS → COMPLETE`.
-Chỉ hai bậc chờ con người: `WAITING_OWNER_QR` và `WAITING_OWNER_INBOUND`.
-
 ### 3.12. Đưa thay đổi lên production
 
 Chi tiết ở [24-platform-delivery.md](24-platform-delivery.md). Bốn đường lên production là **bốn
@@ -164,7 +141,7 @@ hành:
 | Cron | ba scheduler khác nhau | Đọc nhầm scheduler sẽ sửa đúng code mà sai nơi chạy |
 
 **Feature flag và rollout theo từng đơn vị** là cách hai domain trên được bật: Network Center theo
-toà (`OFF/READ_ONLY/EXECUTE`), OpenClaw theo 11 bậc. Không có công tắc "bật tất cả", và đó là chủ ý.
+toà (`OFF/READ_ONLY/EXECUTE`). Không có công tắc "bật tất cả", và đó là chủ ý.
 
 **Bằng chứng production**: các control nằm NGOÀI git (nhánh production của Vercel, biến môi trường,
 branch protection) không đổi theo commit nào, nên chúng được đo bằng lượt chạy định kỳ

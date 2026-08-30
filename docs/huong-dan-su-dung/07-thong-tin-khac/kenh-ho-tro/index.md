@@ -34,7 +34,7 @@ Repo hiện không công bố một số điện thoại, email hay endpoint h�
 3. Kiểm vai trò, role binding, scope và override `DENY` ở `/settings/members`.
 4. Đối chiếu key tại [Bảng tra quyền nhanh](/07-thong-tin-khac/tra-quyen-nhanh/).
 5. Kiểm route có phải đường cũ đã redirect không; ví dụ `/settings/staff` đã chuyển sang `/settings/members`.
-6. Với OpenClaw/Network Center, kiểm runtime flag của đúng deployment; có quyền nhưng runtime `off` thì route vẫn không xuất hiện. Production ngày 13/08/2026 đang hiển thị OpenClaw Zalo.
+6. Với Network Center, kiểm runtime flag của đúng deployment; có quyền nhưng runtime `off` thì route vẫn không xuất hiện.
 
 ### Nếu số tiền không khớp
 

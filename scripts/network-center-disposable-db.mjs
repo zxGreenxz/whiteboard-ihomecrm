@@ -1349,8 +1349,7 @@ export async function runDisposableLocalClusterMatrix({
     // as `runner` and the postmaster dies during startup with
     //   FATAL: could not create lock file "/var/run/postgresql/.s.PGSQL.<port>.lock"
     // Binding TCP only does not avoid it -- the Unix socket is created first.
-    // Measured on 2026-08-12 in openclaw-sql-gates, which uses the same launch
-    // shape in scripts/test-openclaw-concurrency.mjs.
+    // Measured on 2026-08-12 in a CI job using the same PGlite launch shape.
     //
     // Point the socket at the disposable cluster directory: already created,
     // already removed by the teardown path, and short enough not to reach the

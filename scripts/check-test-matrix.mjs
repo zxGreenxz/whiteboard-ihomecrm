@@ -167,8 +167,10 @@ function main(argv) {
 
   // ── Chống-xanh-rỗng: đo hỏng phải kêu là đo hỏng, không được đọc thành "sạch" ──
   const chan = [];
-  if ((matrix.suites?.length ?? 0) < 9) {
-    chan.push(`Matrix chỉ còn ${matrix.suites?.length ?? 0} suite (từng có 9). Mỗi suite mất đi là một vùng test không ai khai chạy ở đâu.`);
+  // Sàn 9→5 ngày 30/08/2026: xóa OpenClaw rút 6 suite (openclaw-sql/-edge/-services/
+  // -infra và 2 suite nghỉ-hưu) — teo THẬT do xóa hệ con, không phải phép đo hỏng.
+  if ((matrix.suites?.length ?? 0) < 5) {
+    chan.push(`Matrix chỉ còn ${matrix.suites?.length ?? 0} suite (sàn 5). Mỗi suite mất đi là một vùng test không ai khai chạy ở đâu.`);
   }
   if (files.length < 200) {
     chan.push(`Chỉ tìm được ${files.length} file test — repo có hơn 400. Phép quét hỏng, đừng đọc kết quả bên dưới.`);

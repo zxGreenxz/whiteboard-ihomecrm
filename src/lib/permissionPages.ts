@@ -15,7 +15,6 @@
 // LƯU Ý: catalog phải phủ ĐỦ mọi (module × action) trong registry — module
 // nào không có trang riêng thì gắn vào trang gần nghĩa nhất.
 
-import { OPENCLAW_RUNTIME_ENABLED } from "@/lib/openclaw-zalo/runtime";
 import {
   actionsForModule,
   ALL_MODULES,
@@ -136,22 +135,6 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("chat_zalo", "send", "Gửi / soạn tin nhắn", "manage"),
           f("chat_zalo", "manage_automation", "Bật/tắt luồng tự động hoá", "manage"),
           f("chat_zalo", "manage_templates", "Quản lý mẫu tin / ZNS", "manage"),
-        ],
-      },
-      {
-        key: "openclaw_zalo",
-        label: "OpenClaw Zalo cá nhân",
-        route: "/openclaw-zalo",
-        desc: "Kết nối Zalo cá nhân, inbox, AI draft, tự động hoá và nhóm sale theo tổ chức.",
-        features: [
-          f("openclaw_zalo", "view", "Vào trang OpenClaw Zalo", "view"),
-          f("openclaw_zalo", "send", "Gửi tin thủ công", "manage"),
-          f("openclaw_zalo", "manage_connections", "Kết nối, ngắt kết nối và đăng nhập QR", "elevated"),
-          f("openclaw_zalo", "manage_automation", "Xuất bản tự động hoá và lịch gửi", "elevated"),
-          f("openclaw_zalo", "manage_knowledge", "Quản lý tri thức và bản nháp AI", "manage"),
-          f("openclaw_zalo", "manage_handoff", "Tiếp quản và bàn giao hội thoại", "manage"),
-          f("openclaw_zalo", "manage_operations", "GLOBAL_STOP, UNKNOWN và vận hành", "elevated"),
-          f("openclaw_zalo", "audit", "Xem nhật ký và bằng chứng vận hành", "elevated"),
         ],
       },
     ],
@@ -626,9 +609,7 @@ export const ALL_PAGES: PermissionPage[] = PAGE_GROUPS.flatMap((g) => g.pages);
  * sản phẩm kèm mô tả tính năng, cấp quyền xong rồi không có gì để bấm vào.
  * Đây là "chưa ship", việc mà quyền máy chủ không diễn đạt được.
  */
-export const UNSHIPPED_PAGE_KEYS: ReadonlySet<string> = new Set<string>(
-  OPENCLAW_RUNTIME_ENABLED ? [] : ["openclaw_zalo"],
-);
+export const UNSHIPPED_PAGE_KEYS: ReadonlySet<string> = new Set<string>();
 
 /** PAGE_GROUPS đã bỏ trang chưa ship — dùng cho MỌI bề mặt hiển thị. */
 export const VISIBLE_PAGE_GROUPS: PageGroup[] = PAGE_GROUPS.map((g) => ({
