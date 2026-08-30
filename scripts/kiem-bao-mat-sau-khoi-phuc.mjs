@@ -41,7 +41,10 @@ const ACL_BASELINE = join(repoRoot, "scripts", "definer-acl-baseline.json");
  * SECURITY DEFINER; đích nào đo ra dưới sàn thì không phải bản khôi phục
  * baseline, và mọi kết luận "sạch" trên đó là tự lừa.
  */
-export const SAN_BANG_PUBLIC = 300;
+// Hạ sàn bảng 300→200 ngày 30/08/2026: migration 20260830085316 DROP 79 bảng
+// openclaw_* nên bản dựng lại ĐÚNG chỉ còn ~241 bảng public. Sàn vẫn phải bắt
+// được bản khôi phục cụt (vd chết giữa chừng còn vài chục bảng) — đừng hạ về 0.
+export const SAN_BANG_PUBLIC = 200;
 export const SAN_SECURITY_DEFINER = 400;
 
 // ── SQL từng phép — chép nguyên văn từ gate gốc, ghi nguồn ──────────────────

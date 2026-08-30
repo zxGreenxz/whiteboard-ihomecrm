@@ -1,6 +1,6 @@
 {
-  "$comment": "Nợ lint đã khai. CHỈ ĐƯỢC TEO.",
-  "soFileToiThieu": 1561,
+  "$comment": "No lint da khai. CHI DUOC TEO. Ngoai le 30/08/2026: ha san 1561->1532 vi XOA THAT 29 file openclaw khoi pham vi lint (ca he OpenClaw bi go), khong phai mo rong ignores.",
+  "soFileToiThieu": 1532,
   "fingerprints": [
     "src/components/areas/AreaMultiSelect.tsx|@typescript-eslint/no-explicit-any",
     "src/components/areas/ManageAreasDialog.tsx|@typescript-eslint/no-explicit-any",
@@ -1023,9 +1023,6 @@
     "src/lib/__tests__/networkCenterModel.test.ts|@typescript-eslint/no-explicit-any",
     "src/lib/__tests__/notificationRoutes.test.ts|@typescript-eslint/no-explicit-any",
     "src/lib/__tests__/notificationRoutes.test.ts|@typescript-eslint/no-explicit-any",
-    "src/lib/__tests__/openclawTask14To18Contracts.test.ts|@typescript-eslint/no-explicit-any",
-    "src/lib/__tests__/openclawTask14To18Contracts.test.ts|@typescript-eslint/no-explicit-any",
-    "src/lib/__tests__/openclawTask14To18Contracts.test.ts|@typescript-eslint/no-explicit-any",
     "src/lib/collect.ts|@typescript-eslint/no-explicit-any",
     "src/lib/collect.ts|@typescript-eslint/no-explicit-any",
     "src/lib/collect.ts|@typescript-eslint/no-explicit-any",
