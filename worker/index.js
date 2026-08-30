@@ -30,6 +30,7 @@ import { claimLease, heartbeatLease, releaseLease, INSTANCE_ID } from './lib/lea
 import { startLoginQR, tryRelogin, shouldRelogin } from './lib/login.js';
 import { watchdogTick, WATCHDOG_MS } from './lib/watchdog.js';
 import { processJob } from './lib/queue.js';
+import { tickTuDongHoa, AUTOMATION_MS } from './lib/automation.js';
 
 // ── Fail-closed từ boot: thiếu credential/khoá là DỪNG, không chạy nửa vời ──
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -96,6 +97,7 @@ async function tick() {
 
 let tickTimer = null;
 let watchdogTimer = null;
+let automationTimer = null;
 
 async function main() {
   log('Zalo worker khởi động →', SUPABASE_URL, '· instance', INSTANCE_ID.slice(0, 8));
@@ -117,6 +119,14 @@ async function main() {
       .then(({ data }) => watchdogTick(data || []))
       .then(() => {}, (e) => log('watchdog error', e?.message || e));
   }, WATCHDOG_MS);
+
+  // Tự động hoá chạy nhịp riêng (1 phút): lịch tính theo phút nên không cần bám
+  // tick 2 giây, và một lượt broadcast có thể mất vài giây (render ảnh, upload)
+  // — để nó chen vào tick gửi tin là làm chậm cả đường gửi thường.
+  automationTimer = setInterval(() => {
+    if (shuttingDown) return;
+    tickTuDongHoa(ORG_FILTER).catch((e) => log('automation error', e?.message || e));
+  }, AUTOMATION_MS);
 }
 
 // Graceful shutdown (bài học WEB2 §13.22): đóng listener + nhả lease TRƯỚC khi
@@ -127,6 +137,7 @@ async function shutdown(fromSignal = true) {
   log('shutting down…');
   clearInterval(tickTimer);
   clearInterval(watchdogTimer);
+  clearInterval(automationTimer);
   // đợi job đang processing xong (tối đa 10s)
   for (let i = 0; i < 20 && ticking; i++) await sleep(500);
   for (const [id, s] of sessions) {

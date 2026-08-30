@@ -330,7 +330,7 @@ jobs:
       - name: Vitest (root-owned app and script suites)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: >
-          npx vitest run src scripts/__tests__
+          npx vitest run src scripts/__tests__ worker/__tests__
           --exclude 'services/**'
           --exclude 'infra/**'
           --exclude '.e2e-fleet/**'

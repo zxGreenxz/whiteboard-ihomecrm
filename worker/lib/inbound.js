@@ -12,6 +12,7 @@
 // =============================================================
 import { ThreadType } from 'zca-js';
 import { sb, log, chunk, orgOf, notifyPush, sessions } from './ctx.js';
+import { xuLyTinDen } from './auto-reply.js';
 
 // ── Map event message zca-js → row inbound ──
 const MSGTYPE_LABEL = {
@@ -113,8 +114,11 @@ async function fillPeerInfo(api, convId, uid) {
 async function upsertConversation(accountId, ownerId, m, api) {
   const threadId = threadIdOf(m);
   const ttype = threadTypeOf(m);
+  // Lấy kèm user_id/organization_id/is_sale_partner: auto-reply cần cả ba ngay
+  // sau khi ghi tin, và một truy vấn ở đây rẻ hơn một truy vấn thứ hai sau đó.
+  const COT_CONV = 'id, unread_count, user_id, organization_id, is_sale_partner';
   let { data: conv } = await sb.from('zalo_conversations')
-    .select('id, unread_count').eq('account_id', accountId).eq('thread_id', threadId).maybeSingle();
+    .select(COT_CONV).eq('account_id', accountId).eq('thread_id', threadId).maybeSingle();
   if (!conv) {
     const isSelf = !!m?.isSelf;
     // §13.7 — tin MÌNH gửi tạo thread mới: uidFrom/dName là của SHOP, không
@@ -128,7 +132,7 @@ async function upsertConversation(accountId, ownerId, m, api) {
       user_id: ownerId, organization_id: orgOf(accountId),
       account_id: accountId, thread_id: threadId, thread_type: ttype,
       peer_name: peerName, peer_zalo_uid: peerUid, kind: 'unknown',
-    }).select('id, unread_count').single();
+    }).select(COT_CONV).single();
     conv = ins.data;
     if (conv && isSelf && ttype === 'user' && api) fillPeerInfo(api, conv.id, threadId);
   }
@@ -175,6 +179,11 @@ export async function handleInbound(accountId, ownerId, m, api) {
         url: '/chat-zalo',
         tag: `zalo-${conv.id}`,
       });
+      // Tự động trả lời sale — fire & forget. Hàm tự nuốt mọi lỗi: đường NHẬN
+      // tin không được hỏng vì một tính năng phụ, và người dùng thà mất một tin
+      // trả lời tự động còn hơn mất một tin của khách.
+      xuLyTinDen({ accountId, conv: { ...conv, user_id: conv.user_id || ownerId }, body })
+        .catch((e) => log('auto-reply (nuốt)', e?.message || e));
     }
   } catch (e) { log('handleInbound error', e.message); }
 }

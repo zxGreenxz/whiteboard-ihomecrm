@@ -31,7 +31,9 @@ Nguyên tắc kiến trúc cốt lõi (khác mọi domain khác trong hệ thố
                                              └────────────────────────┘
 ```
 
-> **Trạng thái thực tế của codebase (2026-07-02):** phần **đang chạy thật** gồm: kết nối đa tài khoản qua QR, đồng bộ danh bạ + nhóm (~1.470 bạn + ~354 nhóm), nhận tin realtime (kể cả ảnh/video/reaction/thu hồi/seen), gửi text + reply, thả reaction / thu hồi / tải thêm tin cũ (nhóm) từ web, nhãn phân loại + broadcast theo nhãn, Web Push tin mới. Phần **chưa chạy** (UI có sẵn hoặc schema chừa sẵn): gửi ảnh/file/sticker từ web, 2 luồng tự động hoá (toggle chỉ lưu DB — worker **không có** logic thực thi), gắn hội thoại với customer/lead/contract (cột FK có, không gì ghi), OA/ZNS. Chi tiết mục 7.
+> **Trạng thái thực tế của codebase (2026-07-02):** phần **đang chạy thật** gồm: kết nối đa tài khoản qua QR, đồng bộ danh bạ + nhóm (~1.470 bạn + ~354 nhóm), nhận tin realtime (kể cả ảnh/video/reaction/thu hồi/seen), gửi text + reply, thả reaction / thu hồi / tải thêm tin cũ (nhóm) từ web, nhãn phân loại + broadcast theo nhãn, Web Push tin mới. Phần **chưa chạy** (UI có sẵn hoặc schema chừa sẵn): gửi ảnh/file/sticker từ web, gắn hội thoại với customer/lead/contract (cột FK có, không gì ghi), OA/ZNS. Chi tiết mục 7.
+>
+> **Cập nhật 2026-08-30:** hai luồng **tự động hoá đã có engine thật** trong worker — broadcast phòng trống định kỳ (hai chế độ GỌN/ĐẦY ĐỦ, ảnh bảng render server-side) và auto-reply cho sale theo từ khoá. Xem mục 2.7 và 4.1b. Chưa chạy trên production tính tới lúc viết dòng này: cần apply migration và bật trong tab Tự động hoá.
 
 ---
 
@@ -86,9 +88,29 @@ Mọi thao tác từ web đi Zalo đều thành 1 job ở đây (worker poll 2s)
 
 `title`, `body`, `category`, `color`, `zns_template_id` (chừa cho ZNS), `variables`, `is_active`, `sort_order`. **Chưa có UI CRUD** — FE chỉ đọc `title/color` để chèn vào ô soạn ([useZaloTemplates](src/hooks/useZaloChat.ts)); lưu ý gotcha: picker chèn **`title`** làm nội dung tin, cột `body` chưa được dùng.
 
-### 2.7. `zalo_automations` — công tắc tự động hoá
+### 2.7. `zalo_automations` — cấu hình tự động hoá
 
-`kind` (CHECK ∈ {`broadcast_vacant`,`auto_reply`}, UNIQUE theo user), `enabled`, `config`, `stats` (jsonb). **Chỉ là công tắc lưu DB** — worker không đọc bảng này, chưa có logic gửi ảnh phòng trống / tự trả lời nào chạy.
+`kind` (CHECK ∈ {`broadcast_vacant`,`auto_reply`}, UNIQUE theo **tổ chức**), `enabled`, `config`, `stats` (jsonb).
+Từ [20260830163815](supabase/migrations/20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql) đây **không còn là công tắc suông**: worker đọc `config` để chạy thật, và ghi `stats` làm sổ trạng thái.
+
+- `config` — hình dạng do cặp file [worker/lib/automation-config.js](worker/lib/automation-config.js) ⇄ [src/components/chat-zalo/automationConfig.ts](src/components/chat-zalo/automationConfig.ts) định nghĩa. Hai bản phải khớp từng giá trị mặc định; [test đối chiếu](src/components/chat-zalo/__tests__/automationConfig.test.ts) canh việc đó, vì `jsonb` không có kiểu để ép hai đầu khớp nhau.
+- `stats` — worker sở hữu: `lastScheduledDate`, `lastRoomsHash`, `knownRoomIds` (phát hiện phòng MỚI), `pendingSince` (đồng hồ gom sự kiện), `sentDate`/`sentToday` (trần tin/ngày).
+
+### 2.7b. `zalo_automation_runs` — nhật ký chạy
+
+Mỗi lượt engine chạy ghi một dòng, **kể cả lượt quyết định không gửi** (`mode` ∈ `full`/`compact`/`event`/`reply`/`skipped`/`off`/`failed`), kèm `reason` viết bằng tiếng Việt đọc được. Ba việc nó phục vụ:
+
+1. worker rớt phiên QR thì automation chết **im lặng** — không có nhật ký thì không ai biết;
+2. worker tra cooldown auto-reply theo `conversation_id`;
+3. đếm trần tin/ngày.
+
+Chỉ `service_role` ghi. `authenticated` có **đúng một** quyền `SELECT` — cố ý: sổ mà người bị ghi sổ sửa được thì không còn là bằng chứng. Khối nghiệm thu trong migration đo lại bằng `has_table_privilege` chứ không tin câu `GRANT` (Supabase cấp sẵn INSERT/UPDATE/DELETE cho `authenticated` trên mọi bảng mới — `GRANT SELECT` không thu hồi phần đó).
+
+Bảng này là bảng zalo_* **duy nhất KHÔNG** dùng `app_private.autofill_org_zalo()`. Hàm chung đọc `COALESCE(NEW.user_id, auth.uid())`, mà nhật ký là của công ty nên không có cột `user_id` — đo thật bằng dry-run trên production: chèn một dòng không kèm `account_id` thì nổ `42703: record "new" has no field "user_id"`. Nghĩa là đúng lúc engine gặp sự cố và ghi nhật ký lỗi mà không kèm được tài khoản nào, **chính việc ghi sổ cũng hỏng** — mất đúng dòng cần nhất. Thay bằng `app_private.zalo_runs_kiem_org()`: giữ nguyên phần chặn ghi chéo công ty (khai org khác org của `account_id` → `42501`), bỏ phần suy-org-theo-người vốn không áp dụng ở đây.
+
+### 2.7c. `zalo_conversations.is_sale_partner` — van an toàn
+
+Cờ bật **thủ công** trong tab Thông tin. Đây là điều kiện CẦN của cả hai luồng tự động: broadcast chỉ bắn vào hội thoại được chọn trong danh sách người nhận, auto-reply chỉ trả lời hội thoại có cờ này. Cố ý **không** suy tự động từ `kind`/nhãn — đoán sai nghĩa là bắn bảng giá vào mặt một khách đang khiếu nại.
 
 ### 2.8. RLS & Realtime — ORG-SCOPED (đổi 2026-08-13)
 
@@ -160,11 +182,36 @@ sequenceDiagram
 | `zalo_recall_message(msg)` | đổi thành `(Tin đã được thu hồi)` `msg_type=sys` + enqueue `action=recall`; **chỉ tin `direction='out'`** | chủ HOẶC `zalo_can('send')` |
 | `zalo_load_history(conv, count≤200)` | enqueue `action=load_history` — **chỉ NHÓM** (zca-js không có API lịch sử 1-1) | chủ HOẶC `zalo_can('view')` |
 | `zalo_broadcast(conv_ids[], body)` | vòng lặp: mỗi hội thoại 1 message `out` + 1 job; trả số gửi được ([20260626000008](supabase/migrations/20260626000008_zalo_broadcast.sql)) | per-hội-thoại: chủ HOẶC `zalo_can('send')` (không đủ quyền thì lặng lẽ bỏ qua) |
-| `zalo_toggle_automation(kind, enabled)` | upsert `zalo_automations` | `zalo_can('manage_automation')` |
+| `zalo_toggle_automation(kind, enabled, org?)` | upsert `enabled` (giữ nguyên, web vẫn gọi cho công tắc nhanh) | `zalo_can('manage_automation')` |
+| `zalo_luu_tu_dong_hoa(kind, enabled, config?, org?)` | upsert `enabled` **và** `config`; `config=NULL` = chỉ bật/tắt, giữ cấu hình cũ | `zalo_can('manage_automation')` |
+| `zalo_danh_dau_sale(conv, is_sale)` | bật/tắt `is_sale_partner` | `zalo_can('manage_automation')` — gắn cờ là thêm người vào danh sách nhận tin tự động, không phải thao tác chat thường ngày |
+| `zalo_phong_trong_cho_worker_v1(org)` | phòng còn chào được của cả công ty, cùng định nghĩa "trống" với trang chia sẻ công khai | **CHỈ `service_role`**. `copilot_available_rooms_v1` và `get_my_available_rooms` đều đòi `auth.uid()`, mà worker chạy service-role không có JWT người dùng nên không gọi được cái nào. Không trả `sale_bonus_note` (thưởng sale — nội bộ) |
 | `zalo_request_connect(account_id?, name?)` | tạo account mới `status='connecting'` hoặc reset account cũ về `connecting` | owner/admin |
 | `zalo_disconnect_account(account_id)` | `status='disconnected'`, xoá `qr_data` | owner/admin |
 
 Quyền UI: module **`chat_zalo`** trong catalog phân quyền ([permissions.ts](src/lib/permissions.ts), [permissionPages.ts](src/lib/permissionPages.ts)) — core `view` (gate route), extra `send`, `manage_automation`, `manage_templates` (`manage_templates` hiện chưa có UI nào tiêu thụ).
+
+### 4.1b. Hai engine tự động hoá (2026-08-30)
+
+**Broadcast phòng trống** ([worker/lib/automation.js](worker/lib/automation.js), nhịp riêng 60 giây):
+
+Quyết định "có gửi không, chế độ nào" nằm trọn trong [automation-scenario.js](worker/lib/automation-scenario.js) — hàm thuần, không đụng mạng/DB/đồng hồ, nên kiểm được bằng bảng tình huống ([test](worker/__tests__/automation-scenario.test.js)). Hai chế độ:
+
+| Chế độ | Nội dung |
+|---|---|
+| **GỌN** | link tổng + ảnh bảng danh sách kiểu Excel |
+| **ĐẦY ĐỦ** | như trên, **cộng** chi tiết + ảnh từng phòng (mỗi phòng một tin) |
+
+Chế độ của một ngày lấy theo **thứ** người dùng cài; hai quy tắc theo **thay đổi** ghi đè lên nó: có phòng trống MỚI so lần trước → nâng GỌN thành ĐẦY ĐỦ; danh sách y hệt → **bỏ lượt**. Lượt bổ sung trong ngày gom sự kiện `debounceMinutes` rồi gửi riêng chi tiết phòng vừa trống.
+
+Ba điểm thiết kế đáng ghi:
+- **Đi qua `zalo_send_queue`, không gọi thẳng zca.** `not_before` biến việc rải nhịp thành *dữ liệu*: worker restart giữa chừng thì phần chưa gửi vẫn còn và vẫn đúng giờ, thay vì mất hoặc bắn dồn một cục. Claim nguyên tử của queue chống gửi trùng, và tin tự động hiện trong khung chat y như tin người gửi.
+- **Ảnh render server-side**: [room-list-image.js](worker/lib/room-list-image.js) là bản port của `exportRoomListImage.ts` sang `@napi-rs/canvas`; model bảng port ở [room-list-table.js](worker/lib/room-list-table.js). Hai cặp file này phải giữ khớp với bản `src/pages/phong-trong/` — worker không import được TypeScript nên đây là chỗ dễ trôi nhất.
+- **Ba phanh chống spam kiểm TRƯỚC khi xếp hàng**: khung giờ, giãn nhịp (giữa người nhận và giữa các tin phòng), trần tin/ngày. Trần được trừ theo số tin *thật sự xếp được*, không phải số dự định. `zca-js` là API không chính thức nên đây là ràng buộc thiết kế, không phải tuỳ chọn.
+
+**Auto-reply cho sale** ([worker/lib/auto-reply.js](worker/lib/auto-reply.js), kích hoạt từ `handleInbound`): bốn cửa theo thứ tự rẻ-trước-đắt-sau — hội thoại có `is_sale_partner` → tin KHÔNG chạm danh sách chặn → tin CÓ khớp từ khoá → hết cooldown và chưa chạm trần ngày. Cửa "chặn" đặt **trước** cửa "khớp" có chủ ý: tin *"còn phòng nào cho cọc trước không"* khớp cả hai, và trong tình huống đó thứ đúng là im lặng.
+
+Nội dung trả lời = lời chào người dùng soạn sẵn + số liệu lấy thẳng từ CSDL, **không** để mô hình ngôn ngữ tự viết: [docs/zalo/PLAN.md](docs/zalo/PLAN.md) ghi NO-GO cho AI auto-send trên tài khoản Zalo cá nhân. Câu hỏi lạ thì máy im lặng để người thật trả lời — im lặng là hành vi mặc định an toàn.
 
 ### 4.2. Vòng lặp worker ([worker/index.js](worker/index.js))
 
@@ -244,7 +291,9 @@ Route khai báo trong [App.tsx](src/App.tsx) với `RequirePermission module="ch
 
 **Cột 3 — Panel thông tin** ([InfoPanel](src/components/chat-zalo/InfoPanel.tsx)), 2 tab:
 - **Thông tin**: rẽ nhánh theo `profile.kind` — [TenantInfo](src/components/chat-zalo/TenantInfo.tsx) (phòng/HĐ/công nợ) / [LeadInfo](src/components/chat-zalo/LeadInfo.tsx) / [BrokerInfo](src/components/chat-zalo/BrokerInfo.tsx) đọc từ **snapshot jsonb `profile`**, KHÔNG join live sang customers/contracts; dữ liệu thật hiện luôn rơi vào [ZaloContactInfo](src/components/chat-zalo/ZaloContactInfo.tsx) (danh bạ/nhóm: thành viên, mô tả).
-- **Tự động hoá** ([AutomationPanel](src/components/chat-zalo/AutomationPanel.tsx)): 2 toggle "Gửi ảnh phòng trống" / "Tự động trả lời" (RPC `zalo_toggle_automation`, optimistic) + thư viện mẫu tin. **Toggle chỉ lưu trạng thái** — chưa có engine chạy phía sau; con số "automationRuns=34" ở footer danh sách là **hằng mock** trong ChatZaloPage.
+- **Tự động hoá** ([AutomationPanel](src/components/chat-zalo/AutomationPanel.tsx)): tóm tắt + 2 công tắc, mở màn cài đặt đầy đủ qua [AutomationSettingsDialog](src/components/chat-zalo/automation/AutomationSettingsDialog.tsx) (cột phải rộng ~330px, không dựng nổi bảng 7 ngày + danh sách người nhận + 5 ô chống spam).
+
+  Bản trước của panel này là **UI giả**: "Mỗi giờ · 08–20h", "8 môi giới", "10:00 (52')", bốn từ khoá hằng số, "đã trả lời 24 tin" — không dòng nào đọc từ DB. Cái hại không phải là xấu mà là **nói dối đúng giọng thật**: người dùng bật công tắc, đọc "10:00 (52')" rồi đi làm việc khác, tin không bao giờ tới, và không ai nghi màn hình cả. Quy tắc của bản mới: **mỗi số trên màn phải có nguồn** — giờ gửi/người nhận/chế độ hôm nay/từ khoá/cooldown đọc từ `config`, "lần chạy cuối" đọc từ `zalo_automation_runs`; thiếu nguồn thì viết thẳng "Chưa cấu hình"/"Chưa chạy lần nào" chứ không lấp bằng mặc định cho đẹp.
 
 **Edge case đáng nhớ:**
 - Chưa chọn hội thoại → tự lấy hội thoại đầu danh sách (`effectiveId`).
@@ -262,7 +311,7 @@ Route khai báo trong [App.tsx](src/App.tsx) với `RequirePermission module="ch
 - → **Phân quyền nhân sự**: module `chat_zalo` (view/send/manage_automation/manage_templates) trong catalog quyền theo trang; RPC guard qua `zalo_can` (mục 4.1).
 
 **Đi VÀO:**
-- ← **Sale Phòng / Phòng trống** (dự kiến): automation `broadcast_vacant` được thiết kế để bắn ảnh phòng trống cho tập khách theo nhãn — mới có công tắc, chưa có engine.
+- ← **Sale Phòng / Phòng trống**: automation `broadcast_vacant` đọc phòng trống qua `zalo_phong_trong_cho_worker_v1` (cùng định nghĩa "trống" với trang chia sẻ công khai `/r/:token`) rồi vẽ đúng bảng Excel mà Sale vẫn gửi Zalo — dùng lại model bảng của [roomListTable.ts](src/pages/phong-trong/roomListTable.ts), port sang Node ở [worker/lib/room-list-table.js](worker/lib/room-list-table.js).
 - ← Các domain khác hiện **không đọc** bảng `zalo_*` nào (nút "Gửi Zalo" trên hoá đơn ([InvoiceSendActions](src/components/invoices/InvoiceSendActions.tsx)), trang khách hàng… hiện mở deep-link/copy nội dung, không đi qua module chat).
 
 **Ranh giới hạ tầng:** worker là tiến trình ngoài Vercel giữ service-role key, poll queue mỗi 2 giây và có thể bypass RLS. Cookie phiên Zalo nằm trong JSON plaintext ở `worker/sessions/`; giới hạn quyền file/backup/log, dùng tài khoản phụ và xoay phiên nếu lộ. Xem [runbook Zalo](../zalo/README.md).
@@ -275,7 +324,7 @@ Route khai báo trong [App.tsx](src/App.tsx) với `RequirePermission module="ch
 
 | Đã hiện thực (đợt 13/08 — code + gate + E2E build local; ✋ = chưa chạy với nick Zalo thật) | Chưa chạy / mới là khung |
 |---|---|
-| **ORG-SCOPED toàn tuyến**: mỗi công ty một khu Zalo, RLS v3, autofill org fail-closed — verify bằng role thật (org DEMO thấy 0 dòng org THẬT; Chủ công ty không-super-admin thấy đủ 1.832 hội thoại) | 2 luồng **tự động hoá** (toggle lưu DB, không engine) |
+| **ORG-SCOPED toàn tuyến**: mỗi công ty một khu Zalo, RLS v3, autofill org fail-closed — verify bằng role thật (org DEMO thấy 0 dòng org THẬT; Chủ công ty không-super-admin thấy đủ 1.832 hội thoại) | **Tự động hoá**: engine đã viết + có test, nhưng CHƯA chạy production (chờ apply migration + bật) |
 | Gửi **ảnh album/file/sticker/voice** từ web ✋: bucket private `zalo-media`, RPC `zalo_send_media`, worker tải bytes → zca; media tự host nên reload vẫn hiện | **OA / ZNS** (cột chừa sẵn) |
 | **Reply quote THẬT** ✋ (zalo_raw + payload target → SendMessageQuote; Zalo từ chối quote thì gửi thường), mentions plumbing BE sẵn | **@mention nhóm trên UI** — cần lưu sender_uid/tên thành viên nhóm (v1 chưa có cột); RPC đã nhận `p_mentions` |
 | **Gắn hội thoại ↔ CRM**: matcher SĐT (tenants+HĐ ACTIVE → customers → leads, CÙNG org), trigger + backfill sau sync, gắn/tháo tay, InfoPanel dữ liệu LIVE (`zalo_get_crm_summary`) | Ảo hoá danh sách dài (vẫn cap 300 + search) |

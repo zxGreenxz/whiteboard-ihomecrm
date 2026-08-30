@@ -24,7 +24,7 @@ import type {
 // động ở đây tồn tại từ trước ratchet rpc-cast — KHÔNG thêm cast mới ngoài dòng này).
 const db = supabase as any;
 
-const CONV_COLS = 'id, account_id, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, profile, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id';
+const CONV_COLS = 'id, account_id, label_ids, peer_name, initials, peer_avatar_url, tone, last_message_at, sub_label, sub_tone, last_message_text, unread_count, list_tag, is_online, header_tag, header_sub, peer_phone, profile, is_pinned, is_muted, marked_unread, thread_type, customer_id, lead_id, contract_id, room_id, is_sale_partner';
 const MSG_COLS = 'id, msg_type, body, direction, media_label, media_url, media_tone, media_meta, created_at, status, reaction_emoji, reply_to, cli_msg_id';
 const CONV_LIMIT = 5000;
 const MSG_LIMIT = 1000;
@@ -83,6 +83,7 @@ function mapConv(r: any): ZaloConversation {
     markedUnread: !!r.marked_unread,
     hasMessages: !!r.last_message_at,
     isGroup: r.thread_type === 'group' || !!(r.profile && r.profile.isGroup),
+    isSalePartner: !!r.is_sale_partner,
     customerId: r.customer_id || null,
     leadId: r.lead_id || null,
     contractId: r.contract_id || null,
@@ -348,6 +349,128 @@ export function useToggleAutomation() {
     },
     onError: (_e, _v, ctx) => { if (ctx) qc.setQueryData(ctx.key, ctx.prev); toast.error('Không đổi được trạng thái'); },
     onSettled: () => qc.invalidateQueries({ queryKey: QK.automations }),
+  });
+}
+
+// ── Cấu hình tự động hoá đầy đủ (enabled + config jsonb) ──
+// Tách khỏi useZaloAutomations: cái đó chỉ lấy 2 cờ bật/tắt cho tab, cái này
+// kéo cả `config` nên chỉ nạp khi người dùng thực sự mở màn cài đặt.
+export interface ZaloAutomationRow {
+  kind: 'broadcast_vacant' | 'auto_reply';
+  enabled: boolean;
+  config: unknown;
+  stats: Record<string, unknown> | null;
+  updatedAt: string | null;
+}
+export function useZaloAutomationConfigs(enabled = true) {
+  const orgId = useZaloOrgId();
+  return useQuery({
+    queryKey: [...QK.automations, 'config', orgId],
+    enabled: !!orgId && enabled,
+    retry: 1,
+    queryFn: async (): Promise<Record<string, ZaloAutomationRow>> => {
+      const { data, error } = await db.from('zalo_automations')
+        .select('kind, enabled, config, stats, updated_at')
+        .eq('organization_id', orgId);
+      if (error) throw error;
+      const ra: Record<string, ZaloAutomationRow> = {};
+      for (const r of data || []) {
+        ra[r.kind] = {
+          kind: r.kind, enabled: !!r.enabled, config: r.config,
+          stats: r.stats || null, updatedAt: r.updated_at || null,
+        };
+      }
+      return ra;
+    },
+  });
+}
+
+/** Lưu cả trạng thái bật/tắt lẫn cấu hình. Bỏ trống `config` = chỉ bật/tắt. */
+export function useSaveAutomation() {
+  const qc = useQueryClient();
+  const orgId = useZaloOrgId();
+  return useMutation({
+    mutationFn: async (v: { kind: 'broadcast_vacant' | 'auto_reply'; enabled: boolean; config?: unknown }) => {
+      const { error } = await db.rpc('zalo_luu_tu_dong_hoa', {
+        p_kind: v.kind,
+        p_enabled: v.enabled,
+        p_config: v.config === undefined ? null : v.config,
+        p_organization_id: orgId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Đã lưu cài đặt tự động hoá');
+      qc.invalidateQueries({ queryKey: QK.automations });
+    },
+    onError: (e: Error) => toast.error(e?.message || 'Không lưu được cài đặt'),
+  });
+}
+
+// ── Nhật ký chạy tự động hoá (chỉ đọc — worker là bên ghi) ──
+export interface ZaloAutomationRun {
+  id: string;
+  kind: 'broadcast_vacant' | 'auto_reply';
+  mode: 'full' | 'compact' | 'event' | 'reply' | 'skipped' | 'off' | 'failed';
+  reason: string | null;
+  recipientsCount: number;
+  messagesCount: number;
+  detail: Record<string, unknown>;
+  createdAt: string;
+}
+/** Hàng thô từ DB — khai riêng để phần map không phải mượn `any`. */
+interface ZaloAutomationRunRow {
+  id: string;
+  kind: ZaloAutomationRun['kind'];
+  mode: ZaloAutomationRun['mode'];
+  reason: string | null;
+  recipients_count: number | null;
+  messages_count: number | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+const RUNS_LIMIT = 50;
+export function useZaloAutomationRuns(enabled = true) {
+  const orgId = useZaloOrgId();
+  return useQuery({
+    queryKey: [...QK.automations, 'runs', orgId],
+    enabled: !!orgId && enabled,
+    retry: 1,
+    queryFn: async (): Promise<ZaloAutomationRun[]> => {
+      // Cột tường minh + LIMIT trần: cùng quy tắc chống egress với hai bảng kia.
+      const { data, error } = await db.from('zalo_automation_runs')
+        .select('id, kind, mode, reason, recipients_count, messages_count, detail, created_at')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(RUNS_LIMIT);
+      if (error) throw error;
+      const rows = (data || []) as ZaloAutomationRunRow[];
+      return rows.map((r) => ({
+        id: r.id, kind: r.kind, mode: r.mode, reason: r.reason,
+        recipientsCount: r.recipients_count ?? 0,
+        messagesCount: r.messages_count ?? 0,
+        detail: r.detail || {},
+        createdAt: r.created_at,
+      }));
+    },
+  });
+}
+
+/** Bật/tắt cờ "hội thoại này là sale" — quyết định ai nhận tin tự động. */
+export function useMarkSalePartner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { conversationId: string; isSale: boolean }) => {
+      const { error } = await db.rpc('zalo_danh_dau_sale', {
+        p_conversation_id: v.conversationId, p_is_sale: v.isSale,
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_d, v) => {
+      toast.success(v.isSale ? 'Đã đánh dấu là sale/môi giới' : 'Đã bỏ đánh dấu sale');
+      qc.invalidateQueries({ queryKey: QK.conversations });
+    },
+    onError: (e: Error) => toast.error(e?.message || 'Không đổi được đánh dấu'),
   });
 }
 

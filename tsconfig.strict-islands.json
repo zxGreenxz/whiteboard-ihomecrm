@@ -88,6 +88,7 @@
     "src/components/chat-zalo/VideoMessage.tsx",
     "src/components/chat-zalo/ZaloAvatar.tsx",
     "src/components/chat-zalo/ZaloContactInfo.tsx",
+    "src/components/chat-zalo/automationConfig.ts",
     "src/components/chat-zalo/infoCards.tsx",
     "src/components/chat-zalo/types.ts",
     "src/components/chat-zalo/zaloTheme.ts",

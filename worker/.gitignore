@@ -1,4 +1,8 @@
-node_modules/
-.env
-sessions/
-*.log
+# Artifact tải về / sinh ra khi chạy — không phải mã nguồn.
+
+# Bộ font cho ảnh bảng phòng trống. Tải bằng `node worker/tai-font.mjs`.
+# KHÔNG commit: ~670KB nhị phân, và mỗi máy tự tải được trong vài giây.
+fonts/
+
+# Ảnh do `node worker/kiem-anh.mjs` ghi ra để người vận hành soi bằng mắt.
+kiem-anh-phong-trong.png
