@@ -143,10 +143,12 @@ gaps:
       trước là 0 và 0. Manifest đổi toolVersionSource "attested" → "measured" (đọc thẳng
       package.json của plugin đã chạy), tức khoản nợ "CHƯA ĐƯỢC CHE" của bản ghi cũ đã trả.
 
-      SỐ ĐO HIỆN TẠI (đo 08/08/2026, thay cho "488 commit / 18 subsystem" đã lỗi thời):
-      cũ 25 commit · 1 tiểu hệ vắng mặt — `services/openclaw-media-gateway`. Dịch vụ này
-      RA ĐỜI SAU lần refresh, nên đây là trôi bình thường của một repo đang phát triển,
-      KHÔNG phải khoảng trống thiết kế như 18 tiểu hệ trước đây.
+      SỐ ĐO 08/08/2026: cũ 25 commit · 1 tiểu hệ vắng mặt (`services/openclaw-media-gateway`).
+
+      CẬP NHẬT 30/08/2026: toàn bộ OpenClaw đã bị XOÁ khỏi repo và database, nên tiểu hệ
+      từng vắng mặt nay không còn tồn tại — nhưng graph lại trôi XA HƠN vì đợt xoá gỡ 654
+      file. Đo lại: 360 commit sau mốc `ca31186e` (ngưỡng 200) và 1.598 file lệch (ngưỡng
+      500). Gap vì thế vẫn mở, chỉ đổi lý do.
 
       VÌ SAO GAP CHƯA ĐÓNG: policy đặt maxMissingSubsystems = 0, nên đúng một tiểu hệ vắng
       cũng đủ làm `--nhiem-vu architecture` exit 1. Ngưỡng 0 là CỐ Ý và không nên nới:
@@ -155,8 +157,9 @@ gaps:
       `npm run gate:graph-freshness -- --nhiem-vu architecture` exit 0. Hai điều kiện kia
       (refresh trong PR riêng theo luật #6; manifest ghi toolVersion đo THẬT thay vì
       attested) đã đạt 08/08/2026 — xem tooling/graph-manifests/ua.json.
-      Thực tế: cần một lần refresh nữa sau khi services/openclaw-media-gateway ổn định.
-      ĐỪNG refresh sau mỗi service mới — mỗi lần là một PR riêng 8 MB; gom lại theo đợt.
+      Thực tế: cần một lần refresh sau đợt xoá OpenClaw (30/08/2026) để graph thôi mô tả
+      364 node của một hệ không còn tồn tại. ĐỪNG refresh sau mỗi thay đổi lớn — mỗi lần là
+      một PR riêng 8 MB; gom lại theo đợt.
 
   - id: contract-type-handwritten-drift
     where: src/hooks/useContracts.ts (2 chỗ `as unknown as ContractWithRelations`)

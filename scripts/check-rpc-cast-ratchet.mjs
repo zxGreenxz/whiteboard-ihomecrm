@@ -106,7 +106,7 @@ export function compare(baseline, current) {
     if (was === 0) {
       problems.push(
         `${file}: ${n} lời gọi RPC dùng any-cast trong file CHƯA có trong baseline.\n` +
-        `      → dùng facade typed của domain (xem src/hooks/openclaw-zalo/openClawRpc.ts làm mẫu),\n` +
+        `      → dùng facade typed của domain (xem src/lib/network-center/supabaseRepository.ts làm mẫu),\n` +
         `        hoặc gọi supabase.rpc() trực tiếp nếu generated types đã mô tả được hàm đó.`,
       );
     } else if (n > was) {

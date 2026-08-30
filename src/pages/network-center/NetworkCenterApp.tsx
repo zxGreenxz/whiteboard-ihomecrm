@@ -45,6 +45,8 @@ export default function NetworkCenterApp() {
       selectedBuildingId={buildingMatch?.params.buildingId}
       canExecute={controller.canExecute}
       mode={controller.mode}
+      onRefresh={controller.refreshAll}
+      isRefreshing={controller.isRefreshing}
     >
       <Routes>
         <Route index element={<FleetOverview controller={controller} />} />

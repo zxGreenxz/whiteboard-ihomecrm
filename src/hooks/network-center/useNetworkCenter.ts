@@ -40,7 +40,20 @@ import {
 
 const EXECUTE_DISABLED_MESSAGE =
   "Tài khoản chỉ có quyền xem. Cần network_center.execute để thực thi thao tác.";
-const REALTIME_DEBOUNCE_MS = 150;
+/**
+ * Gom sự kiện realtime trước khi refetch. 150ms → 5000ms ngày 30/08/2026.
+ *
+ * Đo trên production: một vòng poll ghi ~40 dòng current-state rải ra hơn 150ms,
+ * nên mỗi vòng sinh ~39 lần refetch thay vì 1 — 8.625 lượt gọi
+ * `network_center_get_building_v1` trong 4 giờ, chiếm 28,8% CPU SQL của cả
+ * database. Nhịp poll nay là 30 phút (xem migration 20260830165629) nên sự kiện
+ * đến theo cụm; 5 giây gom trọn một cụm.
+ *
+ * Cái giá: bảng số trên màn hình cập nhật chậm thêm ~5 giây so với lúc dữ liệu
+ * chạm database. Với dữ liệu 30 phút mới làm mới một lần thì không ai nhận ra —
+ * và nút "Làm mới" ở header cho người dùng đường tắt khi cần ngay.
+ */
+const REALTIME_DEBOUNCE_MS = 5_000;
 
 function normalizeId(value: string | undefined): string {
   return value?.trim().toLowerCase() ?? "";
@@ -504,6 +517,21 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     canView,
     canExecute,
     executeDisabledMessage: EXECUTE_DISABLED_MESSAGE,
+    /**
+     * Đường tắt thủ công cho người dùng: nạp lại MỌI truy vấn Network Center
+     * của tài khoản này (fleet, chi tiết toà, danh sách Aruba, lệnh đang chạy).
+     *
+     * Có mặt vì hai lớp làm tươi tự động đều cố ý chậm: server poll router 30
+     * phút một lần, và sự kiện realtime còn bị gom 5 giây. Ai muốn biết ngay
+     * thì bấm, thay vì ngồi đợi hoặc F5 cả trang.
+     */
+    isRefreshing: fleetQuery.isFetching || buildingQuery.isFetching || arubaQuery.isFetching,
+    async refreshAll() {
+      if (!actor?.id) return;
+      await queryClient.invalidateQueries({
+        queryKey: networkCenterQueryKeys.user(actor.id),
+      });
+    },
     async loadMoreAruba() {
       if (!arubaQuery.hasNextPage || arubaQuery.isFetchingNextPage) return;
       await arubaQuery.fetchNextPage();

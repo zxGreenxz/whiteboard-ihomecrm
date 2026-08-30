@@ -105,10 +105,11 @@ regexes = [
   # lại đúng mẫu "bộ lọc chỉ phủ một biến thể".
   '''["'`][a-z][a-z0-9]*([_.][a-z0-9]+)+["'`]''',
 
-  # Giá trị GIẢ hiển nhiên dùng để test chính cơ chế che secret. Ví dụ thật trong
-  # repo: `const secret = "sbp_0123456789abcdef0123456789abcdef01234567"` ở
-  # scripts/__tests__/openclaw-host-isolation.test.mjs. Nếu bắt đỏ ở đây thì test
-  # kiểm tra việc che secret lại chính là thứ làm cửa chặn secret kêu.
+  # Giá trị GIẢ hiển nhiên dùng để test chính cơ chế che secret, dạng
+  # `const secret = "sbp_0123456789abcdef0123456789abcdef01234567"`. Nếu bắt đỏ ở
+  # đây thì test kiểm tra việc che secret lại chính là thứ làm cửa chặn secret
+  # kêu. (Ví dụ được viện dẫn trước đây nằm trong test OpenClaw, đã xoá 30/08/2026;
+  # mẫu vẫn cần vì lịch sử git còn và test khác dùng cùng khuôn.)
   '''0123456789abcdef''',
   '''(?i)(dummy|fake|example|placeholder|xxxx+|test-token|not-a-real)''',
 ]
