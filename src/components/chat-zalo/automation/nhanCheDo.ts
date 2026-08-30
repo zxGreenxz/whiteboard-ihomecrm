@@ -39,8 +39,16 @@ export function nhanCuaLuot(mode: string | null | undefined): NhanCheDo {
 }
 
 /** Nhãn chế độ CÀI cho một ngày trong tuần — tập hẹp hơn (không có lượt chạy). */
-export const NHAN_CHE_DO_NGAY: Record<string, NhanCheDo> = {
+const NHAN_CHE_DO_NGAY: Record<string, NhanCheDo> = {
   full: { ten: 'ĐẦY ĐỦ', tone: 'info' },
   compact: { ten: 'GỌN', tone: 'neutral' },
   off: { ten: 'KHÔNG GỬI', tone: 'warning' },
 };
+
+/** Ngày chưa cài / cài giá trị lạ → coi như "không gửi". Trả hàm chứ không phơi
+ *  bảng ra: dưới `noUncheckedIndexedAccess` mọi phép tra `Record<string, T>` đều
+ *  ra `T | undefined`, và chỗ gọi sẽ phải rải `??` khắp nơi — dễ quên đúng một
+ *  chỗ rồi vỡ ở CI thay vì ở đây. */
+export function nhanCuaNgay(cheDo: string | null | undefined): NhanCheDo {
+  return NHAN_CHE_DO_NGAY[String(cheDo ?? '')] ?? NHAN_CHE_DO_NGAY.off!;
+}

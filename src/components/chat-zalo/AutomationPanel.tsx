@@ -26,7 +26,7 @@ import { mono } from './infoCards';
 import { useZaloAutomationConfigs, useZaloAutomationRuns } from '@/hooks/useZaloChat';
 import type { ZaloAutomationRun } from '@/hooks/useZaloChat';
 import { chuanHoaBroadcast, chuanHoaAutoReply, KHOA_NGAY } from './automationConfig';
-import { NHAN_CHE_DO_NGAY, nhanCuaLuot } from './automation/nhanCheDo';
+import { nhanCuaNgay, nhanCuaLuot } from './automation/nhanCheDo';
 import type { ZaloAutomations, ZaloConversation } from './types';
 
 interface Props {
@@ -125,7 +125,7 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
   const thuHomNay = new Date().getDay();
   const khoaHomNay = KHOA_NGAY[thuHomNay] ?? 'sun';
   const cheDoHomNay = bc.schedule.days[khoaHomNay];
-  const nhanHomNay = NHAN_CHE_DO_NGAY[cheDoHomNay] ?? NHAN_CHE_DO_NGAY.off;
+  const nhanHomNay = nhanCuaNgay(cheDoHomNay);
 
   const luotCuoi: ZaloAutomationRun | undefined = runsQuery.data?.[0];
   const nhanLuot = luotCuoi ? nhanCuaLuot(luotCuoi.mode) : null;

@@ -79,7 +79,13 @@ export default function TemplateBuilder({ value, onChange, eventDriven, onEventD
     const j = i + huong;
     if (i < 0 || j < 0 || j >= dangBat.length) return;
     const moi = [...dangBat];
-    moi[i] = moi[j];
+    // `j` đã được chặn trong khoảng hợp lệ ở dòng trên, nhưng dưới
+    // `noUncheckedIndexedAccess` thì `moi[j]` vẫn khai `KhoiTin | undefined`.
+    // Gán qua biến có kiểm thay vì ép kiểu — ép kiểu ở đây sẽ biến một lỗi chỉ
+    // số thành `undefined` lọt vào mảng blocks rồi worker đọc ra khối rỗng.
+    const phanTuDich = moi[j];
+    if (phanTuDich === undefined) return;
+    moi[i] = phanTuDich;
     moi[j] = k;
     onChange({ ...v, blocks: moi });
   };

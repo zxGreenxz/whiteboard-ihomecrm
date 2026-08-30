@@ -1,5 +1,5 @@
 {
-  "$comment": "SỔ KỲ VỌNG khi replay forward lane (mọi migration > cutoff) lên BASELINE SCHEMA-ONLY trong bài diễn tập khôi phục. File KHÔNG có entry ở đây PHẢI chạy sạch. File CÓ entry PHẢI dừng với đúng thông điệp khai — dừng là KẾT QUẢ MONG ĐỢI, vì baseline không mang dữ liệu (manifest.containsData=false) mà các migration này khẳng định trên DỮ LIỆU THẬT trước khi dám chạy; chạy sạch trên database rỗng mới là tin xấu (môi trường diễn tập 'dễ hơn thực tế', hoặc chốt đo của migration đã chết). Vì vậy scripts/dien-tap-forward-lane.mjs đối chiếu HAI CHIỀU và khớp cả thông điệp. Đo gốc 13/08/2026 trên postgres:17.6 Docker, sau khi platform-shim có default privileges: 21 chạy sạch / 18 dừng đúng phân loại / 0 lỗi schema thật.",
+  "$comment": "SỔ KỲ VỌNG khi replay forward lane (mọi migration > cutoff) lên BASELINE SCHEMA-ONLY trong bài diễn tập khôi phục. File KHÔNG có entry ở đây PHẢI chạy sạch. File CÓ entry PHẢI dừng với đúng thông điệp khai — dừng là KẾT QUẢ MONG ĐỢI, vì baseline không mang dữ liệu (manifest.containsData=false) mà các migration này khẳng định trên DỮ LIỆU THẬT trước khi dám chạy; chạy sạch trên database rỗng mới là tin xấu (môi trường diễn tập 'dễ hơn thực tế', hoặc chốt đo của migration đã chết). Vì vậy scripts/dien-tap-forward-lane.mjs đối chiếu HAI CHIỀU và khớp cả thông điệp. Đo gốc 13/08/2026 trên postgres:17.6 Docker, sau khi platform-shim có default privileges: 21 chạy sạch / 18 dừng đúng phân loại / 0 lỗi schema thật. | Bổ sung 31/08/2026: 1 entry cascade (20260830163815_zalo_tu_dong_hoa) — policy của bảng nhật ký tự động hoá gọi helper quyền v3 do 20260813100000 tạo, mà file đó đã dừng vì dữ liệu; biểu thức policy phân giải ngay lúc CREATE nên chết theo. Đọc từ log drill thật của run 33327266870, không phải suy đoán.",
   "measuredAt": "2026-08-13",
   "luatThemEntry": "Chỉ thêm entry khi đã chạy diễn tập thật và ĐỌC migration để hiểu vì sao nó dừng. Một migration mới mà đỏ trong CI thì hoặc sửa migration (lỗi schema thật), hoặc thêm entry kèm why (khẳng định dữ liệu có chủ đích). Đừng thêm entry chỉ để CI xanh — đó là cách nuốt một lỗi schema thật vào sổ.",
   "expectations": {
@@ -158,6 +158,12 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "relation \"cron.job\" does not exist",
       "why": "Bản dựng lại từ baseline KHÔNG có extension pg_cron (baseline chụp schema public/app_private, không mang theo schema `cron` của Supabase). File này đăng ký job dọn `cron.job_run_details` giữ 7 ngày, nên khối DO của nó chạm `cron.job` và dừng. Trên production — nơi pg_cron có thật — file đã apply sạch ngày 30/08/2026 (biên nhận a73c2f70a9de4ff9, nghiệm thu trong cùng transaction xác nhận 22 site + 3 connection về 1800s và job đã đăng ký). Cuộn lại trên môi trường diễn tập KHÔNG mất object nào: file chỉ UPDATE dữ liệu (bảng rỗng trên bản dựng lại) và đăng ký cron, không CREATE gì."
+    },
+    "20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql": {
+      "kyVong": "cascade",
+      "tu": "20260813100000_zalo_khu_rieng_theo_cong_ty.sql",
+      "thongDiep": "zalo_authorized_org_ids(unknown) does not exist",
+      "why": "Policy SELECT của zalo_automation_runs gọi public.zalo_authorized_org_ids(text) — helper quyền v3 do 20260813100000 tạo. File đó dừng vì thiếu người dùng org DEMO (xem entry của nó) nên helper chưa ra đời trên bản dựng lại từ baseline, và biểu thức policy được phân giải NGAY LÚC CREATE POLICY nên chết theo. Chết theo, không phải lỗi độc lập: trên production helper có thật từ 13/08 và file này đã apply sạch 30/08 (biên nhận 345bcae966192d49), 10 phép đo catalog sau apply đều đúng. Cùng dây chuyền với 20260813140000."
     }
   }
 }
