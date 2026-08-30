@@ -2,34 +2,21 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 1317,
-    "catalogFunctions": 1010,
+    "catalogFunctions": 1013,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 254,
+    "calledRpcs": 256,
     "byRisk": {
-      "normal": 178,
+      "normal": 180,
       "financial": 76
     },
-    "securityDefiner": 238
+    "securityDefiner": 240
   },
-  "missingOnServer": [
-    {
-      "name": "zalo_danh_dau_sale",
-      "callers": [
-        "src/hooks/useZaloChat.ts"
-      ]
-    },
-    {
-      "name": "zalo_luu_tu_dong_hoa",
-      "callers": [
-        "src/hooks/useZaloChat.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -4690,6 +4677,26 @@
       ],
       "risk": "normal"
     },
+    "zalo_danh_dau_sale": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid, p_is_sale boolean",
+          "returns": "zalo_conversations",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
     "zalo_delete_message_for_me": {
       "definitions": [
         {
@@ -4796,6 +4803,26 @@
           "schema": "public",
           "args": "p_conversation_id uuid, p_count integer DEFAULT 50",
           "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_luu_tu_dong_hoa": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_kind text, p_enabled boolean, p_config jsonb DEFAULT NULL::jsonb, p_organization_id uuid DEFAULT NULL::uuid",
+          "returns": "zalo_automations",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
