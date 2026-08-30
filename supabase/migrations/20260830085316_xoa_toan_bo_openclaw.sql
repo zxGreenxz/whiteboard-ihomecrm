@@ -245,10 +245,16 @@ BEGIN
   IF pg_catalog.to_regprocedure('public.trg_room_status_reconcile()') IS NULL THEN
     RAISE EXCEPTION 'NGHIEM THU: mat ham trg_room_status_reconcile';
   END IF;
+  -- So khớp THAM CHIẾU thật (tên hàm/cột đã xóa), không phải chuỗi 'openclaw'
+  -- chung chung — thân hàm mới có chữ OpenClaw trong COMMENT giải thích lịch sử,
+  -- và comment nằm trong prosrc (dry-run đầu tiên đã vấp đúng chỗ này).
   IF EXISTS (
-    SELECT 1 FROM pg_proc WHERE proname = 'trg_room_status_reconcile' AND prosrc ILIKE '%openclaw%'
+    SELECT 1 FROM pg_proc
+    WHERE proname = 'trg_room_status_reconcile'
+      AND (prosrc ILIKE '%openclaw_insert_crm_occurrence%'
+        OR prosrc ILIKE '%openclaw_availability_revision%')
   ) THEN
-    RAISE EXCEPTION 'NGHIEM THU: trg_room_status_reconcile van con nhac openclaw';
+    RAISE EXCEPTION 'NGHIEM THU: trg_room_status_reconcile van con goi/doc object openclaw';
   END IF;
 
   -- Cột openclaw trên bảng sống phải biến mất
