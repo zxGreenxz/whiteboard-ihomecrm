@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-30T08:58:43.907Z",
+  "generatedAt": "2026-08-30T09:03:06.808Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 422,
-    "unknown": 69,
-    "catalog-proven": 217,
+    "ledger-applied": 423,
+    "unknown": 73,
+    "catalog-proven": 212,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -7642,10 +7642,13 @@
       "name": "openclaw_disconnect_recovery",
       "scheme": "timestamp14",
       "sha256": "b9763e7cf7614bdccd1117ccefe78945320d79aacba4225c3197ab2cdd575507",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:app_private.openclaw_media_revocation_gateway_enabled_v1",
-        "catalog:function:app_private.openclaw_try_finalize_disconnect_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.openclaw_media_revocation_gateway_enabled_v1",
+        "function:app_private.openclaw_try_finalize_disconnect_v1",
+        "function:app_private.expire_openclaw_stale_commands_v1",
+        "function:app_private.run_openclaw_maintenance_jobs_v1"
       ]
     },
     {
@@ -7665,9 +7668,10 @@
       "name": "openclaw_begin_qr_without_gateway",
       "scheme": "timestamp14",
       "sha256": "57af4da72fd199cccb64343d6c0c987d6128238e6b565464c212fa3adbca82da",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:public.openclaw_begin_qr_login_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.openclaw_begin_qr_login_v1"
       ]
     },
     {
@@ -7731,11 +7735,13 @@
       "name": "openclaw_inbox_shows_names_and_text",
       "scheme": "timestamp14",
       "sha256": "ce0d2af4df56616f08f705155f652694c0f1d51ed4bb202a686add616ee054f1",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:app_private.openclaw_capture_sender_name_v1",
-        "catalog:function:public.openclaw_list_conversations_v1",
-        "catalog:trigger:public.openclaw_inbound_events.openclaw_capture_sender_name"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.openclaw_capture_sender_name_v1",
+        "function:public.openclaw_list_conversations_v1",
+        "function:public.openclaw_list_messages_v1",
+        "trigger:public.openclaw_inbound_events.openclaw_capture_sender_name"
       ]
     },
     {
@@ -7755,9 +7761,10 @@
       "name": "openclaw_inbox_returns_media",
       "scheme": "timestamp14",
       "sha256": "301480bcec87456f7e7b38b4933d423dabf0a54fa46d136947e997ee316a2837",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:public.openclaw_list_messages_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.openclaw_list_messages_v1"
       ]
     },
     {
@@ -8495,9 +8502,9 @@
       "name": "xoa_toan_bo_openclaw",
       "scheme": "timestamp14",
       "sha256": "4e228a1edf426e27067b4085c663ab35cda73183de5f491677d26e7ae75aa9ce",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.trg_room_status_reconcile"
+        "receipt:2026-08-30T09:02:26.181Z|bien-nhan-backup"
       ]
     },
     {
