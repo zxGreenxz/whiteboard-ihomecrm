@@ -153,6 +153,11 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "Smoke: không tìm được toà nhà có org để thử",
       "why": "Khối smoke chèn THẬT một dòng building_fee_accounts thiếu org rồi cuộn lại, để chứng minh trigger _autofill_org có điền — phép đo đó đòi một toà nhà có org, mà baseline schema-only không có toà nào. Dừng ở đây là đúng việc của phép đo, KHÔNG phải lỗi schema. Nhưng dừng thì cả file cuộn lại nên bản dựng lại mất luôn trigger; hiệu ứng đó đã được 20260827130000_bfa_org_trigger_khong_can_du_lieu.sql gánh lại bằng đường không cần dữ liệu (backfill lọc IS NULL + DROP/CREATE trigger + kiểm bằng catalog). Entry này KHÔNG phải để CI xanh: nếu xoá file 130000 thì lane vẫn xanh mà trigger vẫn mất, nên hai thứ phải đi cùng nhau."
+    },
+    "20260830165629_giam_poll_network_center_va_don_log_cron.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "relation \"cron.job\" does not exist",
+      "why": "Bản dựng lại từ baseline KHÔNG có extension pg_cron (baseline chụp schema public/app_private, không mang theo schema `cron` của Supabase). File này đăng ký job dọn `cron.job_run_details` giữ 7 ngày, nên khối DO của nó chạm `cron.job` và dừng. Trên production — nơi pg_cron có thật — file đã apply sạch ngày 30/08/2026 (biên nhận a73c2f70a9de4ff9, nghiệm thu trong cùng transaction xác nhận 22 site + 3 connection về 1800s và job đã đăng ký). Cuộn lại trên môi trường diễn tập KHÔNG mất object nào: file chỉ UPDATE dữ liệu (bảng rỗng trên bản dựng lại) và đăng ký cron, không CREATE gì."
     }
   }
 }

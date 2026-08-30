@@ -112,10 +112,21 @@ describe("GĐ3 — file phải KHỚP inventory, không được sửa tay", () 
   });
 
   it("KHÔNG rào bảng nào đang được miễn trừ", () => {
+    // Chốt chống-rỗng ở đây từng là `expect(mienTru.length).toBeGreaterThan(0)`
+    // trên inventory SỐNG — cùng cái bẫy mà hai ca ngay trên đã mô tả và đã
+    // chữa: nó ngầm đòi thế giới phải còn ít nhất một bảng được tha. Ngày
+    // 30/08/2026 cả 7 bảng miễn trừ cuối (ai_chat_*, ai_copilot_settings,
+    // ai_providers, profiles, roles, settings) đều đã có policy `*_org_boundary`
+    // thật nên chuyển sang DA_CO_BOUNDARY, nhóm EXEMPT về 0 — và test đỏ đúng
+    // vào lúc mọi thứ vừa được vá xong.
+    //
+    // Mệnh đề THẬT của ca này là "file .sql không được rào một bảng đang được
+    // tha", và nó đúng vĩnh viễn kể cả khi sổ miễn trừ rỗng. Phần chống-rỗng
+    // chuyển sang canh cái không bao giờ rỗng: bản thân inventory.
+    expect(inventory.rows.length).toBeGreaterThan(0);
     const mienTru = inventory.rows
       .filter((r: any) => r.group === "EXEMPT")
       .map((r: any) => r.table_name);
-    expect(mienTru.length).toBeGreaterThan(0);
     for (const t of mienTru) expect(bangTrongSql).not.toContain(t);
   });
 
