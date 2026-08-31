@@ -43,6 +43,11 @@ on:
       - 'scripts/check-no-auto-apply.mjs'
       - 'src/**/networkCenter**'
       - 'src/components/network-center/**'
+      # Ba dong tren KHONG phu src/lib/network-center/ — 12 file hop dong,
+      # trong do co dto.ts va model.ts. Su co 31/08/2026 song dung o do:
+      # zod chan pollingSeconds o 300 trong khi co so du lieu cho toi 3600,
+      # va workflow nay khong he duoc goi day khi hai file do doi.
+      - 'src/lib/network-center/**'
       - 'supabase/functions/network-center-worker/**'
       - 'supabase/functions/network-watchdog/**'
       # Lịch sử bộ lọc migration, ba đời:
@@ -64,6 +69,11 @@ on:
       - 'scripts/check-no-auto-apply.mjs'
       - 'src/**/networkCenter**'
       - 'src/components/network-center/**'
+      # Ba dong tren KHONG phu src/lib/network-center/ — 12 file hop dong,
+      # trong do co dto.ts va model.ts. Su co 31/08/2026 song dung o do:
+      # zod chan pollingSeconds o 300 trong khi co so du lieu cho toi 3600,
+      # va workflow nay khong he duoc goi day khi hai file do doi.
+      - 'src/lib/network-center/**'
       - 'supabase/functions/network-center-worker/**'
       - 'supabase/functions/network-watchdog/**'
       # Lịch sử bộ lọc migration, ba đời:
