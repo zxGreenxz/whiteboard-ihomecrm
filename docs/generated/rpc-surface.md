@@ -17,17 +17,17 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 258 |
-| Hàm trong catalog (public + api) | 1015 |
-| File mã nguồn đã quét | 1324 |
-| SECURITY DEFINER | 242 |
+| RPC được gọi từ mã nguồn | 267 |
+| Hàm trong catalog (public + api) | 1017 |
+| File mã nguồn đã quét | 1350 |
+| SECURITY DEFINER | 251 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 182 | còn lại |
+| thường | 191 | còn lại |
 | tiền | 76 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
 ## 76 RPC chạm TIỀN
@@ -68,7 +68,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `get_deposits_report_summary` |  | hooks/reports/financeReports.ts |
 | `get_income_expense_history` |  | hooks/income-expenses/queries.ts |
 | `get_income_expense_layer_stats` |  | hooks/income-expenses/queries.ts, hooks/useProfitVerification.ts |
-| `get_invoice_statistics_v2` | ✔ | copilot/tools/nghiepVuTools.ts, hooks/useInvoices.ts, hooks/useProfitVerification.ts … (+1) |
+| `get_invoice_statistics_v2` | ✔ | hooks/useInvoices.ts, hooks/useProfitVerification.ts, hooks/useUtilityBills.ts |
 | `get_overpayment_summary` |  | hooks/reports/financeReports.ts |
 | `get_salary_v5_config` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts, hooks/useSalaryV5Config.ts |
 | `get_voucher_cancellation_v1` | ✔ | hooks/income-expenses/flexMutations.ts |

@@ -243,6 +243,27 @@ describe("useRealtimeDataSync report invalidation", () => {
     expect(invalidatedReportRoots()).toEqual(expectedRoots);
   });
 
+  // 31/08 (audit /thanh-toan P2-01): C-INFRA-7 vá 4 khoá lưới phí nhưng bỏ quên
+  // 3 sổ theo dõi (SettlementPanels) + biểu đồ Điện & Nước. Chốt cả cụm ở đây
+  // để lần "vá thiếu khoá" sau không tái diễn im lặng.
+  it("income_expenses invalidates 4 khoá lưới phí (C-INFRA-7) + 3 sổ tt-* + utility-chart (P2-01)", () => {
+    useRealtimeDataSync();
+    triggerTable("income_expenses");
+    const roots = invalidatedRoots();
+    for (const root of [
+      "period-fee-status",
+      "period-commissions",
+      "period-maintenance",
+      "fee-accounts",
+      "tt-termination-queue",
+      "tt-sale-bonus",
+      "tt-deposit-ledger",
+      "utility-chart",
+    ]) {
+      expect(roots, `thiếu invalidation cho ['${root}']`).toContain(root);
+    }
+  });
+
   it("registers every realtime table exactly once per mount", () => {
     useRealtimeDataSync();
 

@@ -230,3 +230,22 @@ export const todayISO = (): string => {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${mm}-${dd}`;
 };
+
+/**
+ * Kỳ 'YYYY-MM' hiện tại theo GIỜ VIỆT NAM — ghim múi giờ thay vì tin giờ máy
+ * (audit 31/08 P2-04). Server đã chuyển hết sang `org_today` (migration
+ * 20260731070000); client mở trang trong đêm giao tháng trên máy lệch múi giờ
+ * (du lịch, VPS, máy sai giờ) sẽ được chọn sẵn ĐÚNG kỳ VN thay vì kỳ của máy.
+ * Máy ở VN thì kết quả y hệt giờ local — không đổi hành vi cho ca thường.
+ */
+export const currentMonthVN = (): string => {
+  try {
+    // en-CA cho định dạng ISO 'YYYY-MM' thẳng từ Intl, khỏi tự ghép.
+    const ym = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit',
+    }).format(new Date());
+    if (/^\d{4}-\d{2}$/.test(ym)) return ym;
+  } catch { /* môi trường thiếu dữ liệu múi giờ — rơi về giờ máy bên dưới */ }
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};

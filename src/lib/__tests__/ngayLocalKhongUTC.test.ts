@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { todayISO } from "../collect";
+import { currentMonthVN, todayISO } from "../collect";
 
 /**
  * Khoá lại một lớp lỗi đã cắn thật, không phải một quy ước phong cách.
@@ -48,6 +48,18 @@ describe("todayISO — ngày theo giờ local, không phải UTC", () => {
     const d = new Date();
     const mong = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     expect(todayISO()).toBe(mong);
+  });
+
+  // 31/08 (audit /thanh-toan P2-04): kỳ mặc định của /thu-tien + /thanh-toan
+  // GHIM múi giờ VN qua Intl — tất định ở MỌI máy chạy test, kể cả CI UTC/UTC-11
+  // (khác todayISO vốn cố ý theo local). Đúng khoảnh giờ hỏng: 18:00Z ngày 31/08
+  // = 01:00 ngày 01/09 giờ VN ⇒ kỳ phải là 2026-09, dù máy UTC đang ở tháng 8.
+  it("currentMonthVN trả kỳ theo giờ VN, không theo giờ máy", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(KHOANH_GIO_HONG);
+
+    expect(currentMonthVN()).toBe("2026-09");
+    expect(currentMonthVN()).toMatch(/^\d{4}-\d{2}$/);
   });
 
   // ĐÃ GỠ một test thứ ba ở đây, và lý do đáng ghi lại.

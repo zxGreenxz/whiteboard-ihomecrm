@@ -35,9 +35,7 @@ import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
 import { UtilityReceiptThumb } from './UtilityReceiptThumb';
-import { PeriodFeeEditModal } from './PeriodFeeEditModal';
-import { PeriodFeeVoucherList, PeriodFeePayDraftModal, PeriodFeeDupConfirmModal } from './PeriodFeeVoucherList';
-import { PeriodCommissionModal } from './PeriodCommissionModal';
+import { PeriodFeeSharedModals } from './PeriodFeeSharedModals';
 import { UtilityEnContent } from './UtilityEnContent';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { BookIcon } from './utilityIcons';
@@ -828,51 +826,14 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
       )}
 
       {/* ===== Modals ===== */}
-      <PeriodFeeEditModal
-        target={S.editTarget}
-        isAdmin={isAdmin}
-        myBooks={S.myBooks}
-        saving={S.saving}
-        uploading={S.uploadingKey === '__edit__'}
-        onAttach={S.onEditAttachClick}
+      {/* 31/08 (P3-02): 5 modal wiring trùng với Sheet gom về PeriodFeeSharedModals
+          — instance CỦA RIÊNG bề mặt này (modal local là chủ ý, xem comment hook). */}
+      <PeriodFeeSharedModals
+        S={S} isAdmin={isAdmin} canRecordPayment={canRecordPayment}
+        cat={cat} buildings={buildings}
+        vlistFor={vlistFor} setVlistFor={setVlistFor}
+        commRow={commRow} setCommRow={setCommRow}
         onView={onView}
-        onClose={S.closeEdit}
-        onSave={(args) => S.submitEdit({ isAdmin, ...args })}
-      />
-      <PeriodFeeVoucherList
-        open={!!vlistFor}
-        title={vlistFor ? `${cat?.label ?? ''} · ${buildings.find((b) => b.id === vlistFor)?.name ?? ''}` : ''}
-        vouchers={vlistFor ? S.vouchersOf(vlistFor) : []}
-        canRecordPayment={canRecordPayment}
-        onView={onView}
-        onEdit={(v) => { S.openEdit(vlistFor!, v); setVlistFor(null); }}
-        onCancel={(v) => { S.requestCancel(vlistFor!, v); setVlistFor(null); }}
-        onPayDraft={(v) => { S.openPayDraft(vlistFor!, v); setVlistFor(null); }}
-        onClose={() => setVlistFor(null)}
-      />
-      <PeriodFeePayDraftModal
-        target={S.draftTarget}
-        myBooks={S.myBooks}
-        defaultBookId={S.draftTarget ? S.defaultBookFor(S.draftTarget.buildingId) : S.defaultBookId}
-        attachments={S.draftPayAttachments}
-        uploading={S.uploadingKey === '__draftpay__'}
-        busy={S.payingDraft}
-        onAttach={S.onDraftPayAttachClick}
-        onView={onView}
-        onClose={S.closePayDraft}
-        onSubmit={S.submitPayDraft}
-      />
-      <PeriodFeeDupConfirmModal
-        target={S.dupConfirm}
-        busy={S.payingKey != null}
-        onClose={S.closeDupConfirm}
-        onConfirm={S.confirmPayDup}
-      />
-      <PeriodCommissionModal
-        row={commRow}
-        myBooks={S.myBooks}
-        defaultBookId={S.defaultBookId}
-        onClose={() => setCommRow(null)}
       />
       <UtilityCancelModal target={S.cancelTarget} busy={S.cancelling} onClose={S.closeCancel} onConfirm={S.confirmCancel} />
       <AttachmentLightbox attachments={viewer.attachments} index={viewer.index} onIndexChange={(i) => setViewer((v) => ({ ...v, index: i }))} />

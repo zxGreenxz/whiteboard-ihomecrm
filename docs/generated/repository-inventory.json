@@ -1,29 +1,29 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 415,
-  "soFileDocBangFs": 128,
-  "tongLoiGoi": 279,
-  "khongPhanLoaiDuoc": 158,
+  "tongSoFileTest": 448,
+  "soFileDocBangFs": 145,
+  "tongLoiGoi": 307,
+  "khongPhanLoaiDuoc": 163,
   "theoLoai": {
+    "manifest": {
+      "soFile": 18,
+      "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
+    },
     "tai-lieu": {
       "soFile": 3,
       "moTa": "Đọc tài liệu/asset."
-    },
-    "manifest": {
-      "soFile": 16,
-      "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "powershell": {
       "soFile": 3,
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 23,
+      "soFile": 27,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 40,
+      "soFile": 51,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -36,8 +36,11 @@
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
+    "src/contexts/__tests__/OrganizationContext.test.ts",
     "src/copilot/__tests__/confirmationStore.test.ts",
     "src/copilot/__tests__/pageAgentCompatibility.test.ts",
+    "src/copilot/__tests__/readonlyQueryContracts.test.ts",
+    "src/copilot/__tests__/toolOrgScope.test.ts",
     "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",
     "src/hooks/__tests__/realtimeTenantBoundary.test.ts",
     "src/hooks/__tests__/useManagerSalaryOrganizationScope.test.ts",
@@ -47,6 +50,7 @@
     "src/lib/__tests__/financeV2Characterization.test.ts",
     "src/lib/__tests__/ieGuardHandoverScopeMigration.test.ts",
     "src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts",
+    "src/lib/__tests__/networkCenterSettingsBoundsMatchDatabase.test.ts",
     "src/lib/__tests__/permissionPages.test.ts",
     "src/lib/__tests__/profitClose.test.ts",
     "src/lib/__tests__/salaryCompletionDate.test.ts",
@@ -110,6 +114,12 @@
       "soGoi": 7,
       "loai": {},
       "khongPhanLoaiDuoc": 7
+    },
+    {
+      "file": "scripts/__tests__/check-strict-islands.test.mjs",
+      "soGoi": 6,
+      "loai": {},
+      "khongPhanLoaiDuoc": 6
     },
     {
       "file": "scripts/__tests__/network-center-disposable-supabase.test.mjs",
@@ -235,6 +245,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/copilotOrgScopeBoundaryMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts",
       "soGoi": 3,
       "loai": {
@@ -289,12 +307,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "scripts/__tests__/check-strict-islands.test.mjs",
-      "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
-    },
-    {
       "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -330,6 +342,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/copilot/__tests__/toolOrgScope.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/accountingLegacyPaymentSemantics.test.ts",
       "soGoi": 2,
       "loai": {
@@ -356,6 +376,30 @@
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/lib/__tests__/copilotAuthorizedScopeRevocationMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotDraftWriterMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotIncomeExpenseRpcHardeningMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/customerCreditMigration.test.ts",
@@ -387,6 +431,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/networkCenterSettingsBoundsMatchDatabase.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/networkCenterWorkerIdentityMigration.test.ts",
       "soGoi": 2,
       "loai": {},
@@ -415,6 +467,14 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": ".e2e-fleet/specs/copilot-golden-readonly.spec.ts",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": ".e2e-fleet/specs/phong-trong-export-image.spec.ts",
@@ -525,6 +585,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/app/capabilities/__tests__/riskMapCoverage.test.ts",
       "soGoi": 1,
       "loai": {
@@ -563,7 +631,23 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/contexts/__tests__/OrganizationContext.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/copilot/__tests__/confirmationStore.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/copilot/__tests__/readonlyQueryContracts.test.ts",
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
@@ -693,7 +777,55 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/copilotAvailabilityMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/copilotConfirmationNonceMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotFeatureFlagCasMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotFeatureFlagRlsMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotOrgScopeAclMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotOrgScopeSemanticsMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotProviderPricingMigration.test.ts",
       "soGoi": 1,
       "loai": {
         "sql": 1
@@ -721,6 +853,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/demoOrganizationMetadataMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/docsDemoSeedP3.test.ts",

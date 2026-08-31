@@ -1,7 +1,9 @@
 // =============================================================================
 // UtilityEnContent — nội dung họ "Điện & Nước" (KHÔNG header) để nhúng vào
 // PeriodFeePanel / PeriodFeeSheet. Giữ NGUYÊN luồng đồng hồ hiện có
-// (useUtilityPayState + pay_utility_bill). Tách từ UtilityDesktopPanel body.
+// (useUtilityPayState + pay_utility_bill). Tách từ body của surface
+// UtilityDesktopPanel cũ (file đó + UtilityBillSheet đã XOÁ 31/08 — dead code
+// 758 dòng, audit P3-01; cần khảo cổ thì xem git history).
 //
 // 30/07/2026 (Slice −1) — ba trạng thái ô thay vì hai:
 //   đã đóng (phiếu đã duyệt) · ĐÃ TẠO CHỜ DUYỆT (§−1.1: `pay_utility_bill` sinh

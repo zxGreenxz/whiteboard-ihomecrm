@@ -29,9 +29,7 @@ import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
 import { UtilityReceiptThumb } from './UtilityReceiptThumb';
-import { PeriodFeeEditModal } from './PeriodFeeEditModal';
-import { PeriodFeeVoucherList, PeriodFeePayDraftModal, PeriodFeeDupConfirmModal } from './PeriodFeeVoucherList';
-import { PeriodCommissionModal } from './PeriodCommissionModal';
+import { PeriodFeeSharedModals } from './PeriodFeeSharedModals';
 import {
   TerminationRefundQueueSection, SaleBonusSection, DepositLedgerSection,
 } from './SettlementPanels';
@@ -617,32 +615,16 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
       </div>
 
       {/* Modals dùng chung */}
-      <PeriodFeeEditModal target={S.editTarget} isAdmin={isAdmin} myBooks={S.myBooks} saving={S.saving} uploading={S.uploadingKey === '__edit__'} onAttach={S.onEditAttachClick} onView={onView} onClose={S.closeEdit} onSave={(args) => S.submitEdit({ isAdmin, ...args })} />
-      <PeriodFeeVoucherList
-        open={!!vlistFor}
-        title={vlistFor ? `${cat?.label ?? ''} · ${buildings.find((b) => b.id === vlistFor)?.name ?? ''}` : ''}
-        vouchers={vlistFor ? S.vouchersOf(vlistFor) : []}
-        canRecordPayment={canRecordPayment}
+      {/* 31/08 (P3-02): 5 modal wiring trùng với Panel gom về PeriodFeeSharedModals
+          — instance CỦA RIÊNG bề mặt này. CancelModal ở dưới KHÔNG gom: Sheet trộn
+          nguồn huỷ của cả Điện-Nước (EN), Panel thì không. */}
+      <PeriodFeeSharedModals
+        S={S} isAdmin={isAdmin} canRecordPayment={canRecordPayment}
+        cat={cat} buildings={buildings}
+        vlistFor={vlistFor} setVlistFor={setVlistFor}
+        commRow={commRow} setCommRow={setCommRow}
         onView={onView}
-        onEdit={(v) => { S.openEdit(vlistFor!, v); setVlistFor(null); }}
-        onCancel={(v) => { S.requestCancel(vlistFor!, v); setVlistFor(null); }}
-        onPayDraft={(v) => { S.openPayDraft(vlistFor!, v); setVlistFor(null); }}
-        onClose={() => setVlistFor(null)}
       />
-      <PeriodFeePayDraftModal
-        target={S.draftTarget}
-        myBooks={S.myBooks}
-        defaultBookId={S.draftTarget ? S.defaultBookFor(S.draftTarget.buildingId) : S.defaultBookId}
-        attachments={S.draftPayAttachments}
-        uploading={S.uploadingKey === '__draftpay__'}
-        busy={S.payingDraft}
-        onAttach={S.onDraftPayAttachClick}
-        onView={onView}
-        onClose={S.closePayDraft}
-        onSubmit={S.submitPayDraft}
-      />
-      <PeriodFeeDupConfirmModal target={S.dupConfirm} busy={S.payingKey != null} onClose={S.closeDupConfirm} onConfirm={S.confirmPayDup} />
-      <PeriodCommissionModal row={commRow} myBooks={S.myBooks} defaultBookId={S.defaultBookId} onClose={() => setCommRow(null)} />
       <UtilityCancelModal target={S.cancelTarget || EN.cancelTarget} busy={S.cancelling || EN.cancelling} onClose={() => { S.closeCancel(); EN.closeCancel(); }} onConfirm={S.cancelTarget ? S.confirmCancel : EN.confirmCancel} />
       {/* 2 nguồn ảnh (GRID viewer + EN receiptView) — chọn theo nguồn ĐANG MỞ
           (index != null), tránh dính ảnh cũ của nguồn kia sau khi đóng. */}

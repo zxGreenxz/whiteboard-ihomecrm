@@ -1,8 +1,8 @@
 {
-  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 30/08/2026: 4 file openclaw — object bị 20260830085316 (xóa toàn bộ OpenClaw) DROP; đối chiếu biên nhận apply cùng ngày.",
+  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh.",
   "schemaVersion": 1,
   "reviewedAt": "2026-08-14",
-  "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply. | Bổ sung 31/08/2026: 1 file (20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql) — CHƯA-ÁP-DỤNG có chủ ý, đang chờ chủ dự án chốt việc ghi schema production. Phương pháp: diễn tập nguyên văn file trên production trong transaction có ROLLBACK (3 lượt), kiểm dấu vết bằng cách đếm lại catalog sau mỗi lượt.",
+  "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
   "files": {
     "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
       "sha256": "6b53c7ae47840ef998a1530b3619001e8092ef532f3832ad8f2a67e3a8d6280f",
@@ -478,36 +478,30 @@
         "function:app_private.expire_openclaw_stale_commands_v1",
         "function:app_private.run_openclaw_maintenance_jobs_v1"
       ],
-      "ketLuan": "da-chay-bi-thay-the",
-      "lyLe": "Object vắng mặt vì migration 20260830085316_xoa_toan_bo_openclaw.sql (apply lên production 30/08/2026, biên nhận backup 78bd1488ce746856) DROP TOÀN BỘ hệ OpenClaw: bước (9) drop động mọi hàm %openclaw% ở public + app_private bằng pg_get_function_identity_arguments, bước (8) DROP TABLE public.openclaw_* CASCADE kéo theo trigger trên bảng openclaw. Trước 30/08 các object này CÓ trong catalog (file khi đó là catalog-proven / có hồ sơ policy version-trùng) — vắng mặt nay đã được giải thích, không phải bằng chứng chưa-từng-chạy.",
+      "ketLuan": "da-go-khoi-production-30-08",
+      "lyLe": "Toàn bộ hệ OpenClaw đã bị XOÁ khỏi production ngày 30/08/2026 (79 bảng + edge functions; đường lùi là dump trong ihomecrm-backups) — đo lại 01/09/2026 qua Management API: 0 bảng 'openclaw%' còn trên production, và chính missingObjects của manifest là phép đo các hàm đã vắng. Object của file này vắng mặt vì BỊ GỠ CÓ CHỦ ĐÍCH sau khi đã chạy, không phải vì migration chưa từng chạy — CLAUDE.md đã tuyên bố đóng băng/rút khỏi CI từ 25/08. KHÔNG được replay file này; muốn hồi sinh xem điều kiện trong CLAUDE.md mục OpenClaw.",
       "bangChung": [
         {
-          "duong_dan": "supabase/migrations/20260830085316_xoa_toan_bo_openclaw.sql",
-          "trich_doan": "EXECUTE format('DROP %s IF EXISTS %I.%I(%s) CASCADE', r.kind, r.nspname, r.proname, r.args); -- moi ham %openclaw% o public + app_private"
-        },
-        {
-          "duong_dan": "docs/generated/schema-change-evidence/20260830085316_xoa_toan_bo_openclaw.json",
-          "trich_doan": "bien nhan apply 30/08/2026 — giay phep bien-nhan-backup 78bd1488ce746856"
+          "duong_dan": "CLAUDE.md",
+          "trich_doan": "Mã `openclaw-*`/`openclaw-zalo` đóng băng làm tài liệu tham khảo — đã rút khỏi CI và vitest gốc. KHÔNG sửa, không viết test mới, không import vào code CRM"
         }
-      ]
+      ],
+      "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
     },
     "supabase/migrations/20260807190000_openclaw_begin_qr_without_gateway.sql": {
       "sha256": "57af4da72fd199cccb64343d6c0c987d6128238e6b565464c212fa3adbca82da",
       "missingObjects": [
         "function:public.openclaw_begin_qr_login_v1"
       ],
-      "ketLuan": "da-chay-bi-thay-the",
-      "lyLe": "Object vắng mặt vì migration 20260830085316_xoa_toan_bo_openclaw.sql (apply lên production 30/08/2026, biên nhận backup 78bd1488ce746856) DROP TOÀN BỘ hệ OpenClaw: bước (9) drop động mọi hàm %openclaw% ở public + app_private bằng pg_get_function_identity_arguments, bước (8) DROP TABLE public.openclaw_* CASCADE kéo theo trigger trên bảng openclaw. Trước 30/08 các object này CÓ trong catalog (file khi đó là catalog-proven / có hồ sơ policy version-trùng) — vắng mặt nay đã được giải thích, không phải bằng chứng chưa-từng-chạy.",
+      "ketLuan": "da-go-khoi-production-30-08",
+      "lyLe": "Toàn bộ hệ OpenClaw đã bị XOÁ khỏi production ngày 30/08/2026 (79 bảng + edge functions; đường lùi là dump trong ihomecrm-backups) — đo lại 01/09/2026 qua Management API: 0 bảng 'openclaw%' còn trên production, và chính missingObjects của manifest là phép đo các hàm đã vắng. Object của file này vắng mặt vì BỊ GỠ CÓ CHỦ ĐÍCH sau khi đã chạy, không phải vì migration chưa từng chạy — CLAUDE.md đã tuyên bố đóng băng/rút khỏi CI từ 25/08. KHÔNG được replay file này; muốn hồi sinh xem điều kiện trong CLAUDE.md mục OpenClaw.",
       "bangChung": [
         {
-          "duong_dan": "supabase/migrations/20260830085316_xoa_toan_bo_openclaw.sql",
-          "trich_doan": "EXECUTE format('DROP %s IF EXISTS %I.%I(%s) CASCADE', r.kind, r.nspname, r.proname, r.args); -- moi ham %openclaw% o public + app_private"
-        },
-        {
-          "duong_dan": "docs/generated/schema-change-evidence/20260830085316_xoa_toan_bo_openclaw.json",
-          "trich_doan": "bien nhan apply 30/08/2026 — giay phep bien-nhan-backup 78bd1488ce746856"
+          "duong_dan": "CLAUDE.md",
+          "trich_doan": "Mã `openclaw-*`/`openclaw-zalo` đóng băng làm tài liệu tham khảo — đã rút khỏi CI và vitest gốc. KHÔNG sửa, không viết test mới, không import vào code CRM"
         }
-      ]
+      ],
+      "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
     },
     "supabase/migrations/20260808030000_openclaw_inbox_shows_names_and_text.sql": {
       "sha256": "ce0d2af4df56616f08f705155f652694c0f1d51ed4bb202a686add616ee054f1",
@@ -517,36 +511,30 @@
         "function:public.openclaw_list_messages_v1",
         "trigger:public.openclaw_inbound_events.openclaw_capture_sender_name"
       ],
-      "ketLuan": "da-chay-bi-thay-the",
-      "lyLe": "Object vắng mặt vì migration 20260830085316_xoa_toan_bo_openclaw.sql (apply lên production 30/08/2026, biên nhận backup 78bd1488ce746856) DROP TOÀN BỘ hệ OpenClaw: bước (9) drop động mọi hàm %openclaw% ở public + app_private bằng pg_get_function_identity_arguments, bước (8) DROP TABLE public.openclaw_* CASCADE kéo theo trigger trên bảng openclaw. Trước 30/08 các object này CÓ trong catalog (file khi đó là catalog-proven / có hồ sơ policy version-trùng) — vắng mặt nay đã được giải thích, không phải bằng chứng chưa-từng-chạy.",
+      "ketLuan": "da-go-khoi-production-30-08",
+      "lyLe": "Toàn bộ hệ OpenClaw đã bị XOÁ khỏi production ngày 30/08/2026 (79 bảng + edge functions; đường lùi là dump trong ihomecrm-backups) — đo lại 01/09/2026 qua Management API: 0 bảng 'openclaw%' còn trên production, và chính missingObjects của manifest là phép đo các hàm đã vắng. Object của file này vắng mặt vì BỊ GỠ CÓ CHỦ ĐÍCH sau khi đã chạy, không phải vì migration chưa từng chạy — CLAUDE.md đã tuyên bố đóng băng/rút khỏi CI từ 25/08. KHÔNG được replay file này; muốn hồi sinh xem điều kiện trong CLAUDE.md mục OpenClaw.",
       "bangChung": [
         {
-          "duong_dan": "supabase/migrations/20260830085316_xoa_toan_bo_openclaw.sql",
-          "trich_doan": "EXECUTE format('DROP %s IF EXISTS %I.%I(%s) CASCADE', r.kind, r.nspname, r.proname, r.args); -- moi ham %openclaw% o public + app_private"
-        },
-        {
-          "duong_dan": "docs/generated/schema-change-evidence/20260830085316_xoa_toan_bo_openclaw.json",
-          "trich_doan": "bien nhan apply 30/08/2026 — giay phep bien-nhan-backup 78bd1488ce746856"
+          "duong_dan": "CLAUDE.md",
+          "trich_doan": "Mã `openclaw-*`/`openclaw-zalo` đóng băng làm tài liệu tham khảo — đã rút khỏi CI và vitest gốc. KHÔNG sửa, không viết test mới, không import vào code CRM"
         }
-      ]
+      ],
+      "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
     },
     "supabase/migrations/20260808040000_openclaw_inbox_returns_media.sql": {
       "sha256": "301480bcec87456f7e7b38b4933d423dabf0a54fa46d136947e997ee316a2837",
       "missingObjects": [
         "function:public.openclaw_list_messages_v1"
       ],
-      "ketLuan": "da-chay-bi-thay-the",
-      "lyLe": "Object vắng mặt vì migration 20260830085316_xoa_toan_bo_openclaw.sql (apply lên production 30/08/2026, biên nhận backup 78bd1488ce746856) DROP TOÀN BỘ hệ OpenClaw: bước (9) drop động mọi hàm %openclaw% ở public + app_private bằng pg_get_function_identity_arguments, bước (8) DROP TABLE public.openclaw_* CASCADE kéo theo trigger trên bảng openclaw. Trước 30/08 các object này CÓ trong catalog (file khi đó là catalog-proven / có hồ sơ policy version-trùng) — vắng mặt nay đã được giải thích, không phải bằng chứng chưa-từng-chạy.",
+      "ketLuan": "da-go-khoi-production-30-08",
+      "lyLe": "Toàn bộ hệ OpenClaw đã bị XOÁ khỏi production ngày 30/08/2026 (79 bảng + edge functions; đường lùi là dump trong ihomecrm-backups) — đo lại 01/09/2026 qua Management API: 0 bảng 'openclaw%' còn trên production, và chính missingObjects của manifest là phép đo các hàm đã vắng. Object của file này vắng mặt vì BỊ GỠ CÓ CHỦ ĐÍCH sau khi đã chạy, không phải vì migration chưa từng chạy — CLAUDE.md đã tuyên bố đóng băng/rút khỏi CI từ 25/08. KHÔNG được replay file này; muốn hồi sinh xem điều kiện trong CLAUDE.md mục OpenClaw.",
       "bangChung": [
         {
-          "duong_dan": "supabase/migrations/20260830085316_xoa_toan_bo_openclaw.sql",
-          "trich_doan": "EXECUTE format('DROP %s IF EXISTS %I.%I(%s) CASCADE', r.kind, r.nspname, r.proname, r.args); -- moi ham %openclaw% o public + app_private"
-        },
-        {
-          "duong_dan": "docs/generated/schema-change-evidence/20260830085316_xoa_toan_bo_openclaw.json",
-          "trich_doan": "bien nhan apply 30/08/2026 — giay phep bien-nhan-backup 78bd1488ce746856"
+          "duong_dan": "CLAUDE.md",
+          "trich_doan": "Mã `openclaw-*`/`openclaw-zalo` đóng băng làm tài liệu tham khảo — đã rút khỏi CI và vitest gốc. KHÔNG sửa, không viết test mới, không import vào code CRM"
         }
-      ]
+      ],
+      "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
     }
   }
 }

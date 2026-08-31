@@ -32,6 +32,7 @@
 
 import { useLocation, useNavigate } from 'react-router-dom';
 import './thu-tien.css';
+import { currentMonthVN } from '@/lib/collect';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -42,10 +43,9 @@ import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import { useState } from 'react';
 
-const currentMonth = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
+// Kỳ mặc định GHIM giờ Việt Nam (audit 31/08 P2-04) — máy lệch múi giờ mở trang
+// đêm giao tháng không còn được chọn sẵn kỳ sai. Server đã org_today từ trước.
+const currentMonth = currentMonthVN;
 
 const ThanhToan = () => {
   const navigate = useNavigate();

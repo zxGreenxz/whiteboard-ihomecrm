@@ -65,20 +65,19 @@ import {
 } from '@/hooks/usePeriodFees';
 import type { FeeCategory } from '@/lib/feeCategories';
 import type { CancelTarget } from '@/components/thu-tien/UtilityCancelModal';
+import {
+  type FeeSlot,
+  type JustPaidMark,
+  addMonths,
+  readSlot, writeSlot, subscribeSlot, retainSlot, releaseSlot, inflightPays,
+} from '@/lib/periodFeeSlots';
 
 const fmtDate = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
 
-/** 'YYYY-MM' + n tháng (n có thể âm). */
-export const addMonths = (ym: string, n: number): string => {
-  const [y, m] = ym.slice(0, 7).split('-').map(Number);
-  const d = new Date(y, m - 1 + n, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
-/** 'T7/2026' hoặc 'T7/2026 → T12/2026'. */
-export const rangeLabel = (start: string, end: string): string => {
-  const f = (ym: string) => `T${Number(ym.slice(5, 7))}/${ym.slice(0, 4)}`;
-  return start === end ? f(start) : `${f(start)} → ${f(end)}`;
-};
+// 31/08 (audit P3-03): kho slot + toán kỳ tách sang src/lib/periodFeeSlots.ts
+// để test được không cần React — re-export giữ nguyên đường import của
+// Panel/Sheet. Hành vi KHÔNG đổi.
+export { addMonths, rangeLabel } from '@/lib/periodFeeSlots';
 
 /** Mục tiêu mở modal Sửa phiếu (seed từ 1 phiếu CỤ THỂ). */
 export interface FeeEditTarget {
@@ -107,6 +106,12 @@ export interface FeeEditTarget {
   notes: string;
   notesOriginal: string;          // để phát hiện có đổi hay không
   isAuto: boolean;
+  /**
+   * Token CAS seed lúc MỞ modal (audit 31/08 P2-05): hai bề mặt của trang mở
+   * được hai modal Sửa cùng một phiếu — bản lưu sau phải bị server 55000 thay
+   * vì nuốt im lặng sổ/ảnh của bản lưu trước.
+   */
+  updatedAt: string | null;
 }
 
 /** Xác nhận đóng trùng (RPC trả warning). */
@@ -132,68 +137,13 @@ export interface DraftPayTarget {
   categoryLabel: string;
 }
 
-/** Ô vừa gửi RPC xong nhưng reader chưa kịp thấy phiếu (khe refetch). */
-export interface JustPaidMark {
-  amount: number;
-  /** true = phiếu thứ 2+ do chủ xác nhận đóng thêm. */
-  force: boolean;
-}
-
 // ── KHO STATE DÙNG CHUNG (module-level) ─────────────────────────────────────
 // Khoá = `${hạng mục}|${kỳ}`. Cùng khuôn với `useReceiptPasteTarget`: hai
 // instance hook trên cùng một màn hình phải nói chuyện với nhau qua biến module,
 // vì React state không đi xuyên hai cây con.
-interface FeeSlot {
-  amounts: Record<string, number>;
-  bookSel: Record<string, string>;
-  attach: Record<string, string>;
-  periodN: Record<string, number>;
-  draft: Record<string, { code: string; holder: string }>;
-  payingKey: string | null;
-  justPaid: Record<string, JustPaidMark>;
-}
-
-const EMPTY_SLOT: FeeSlot = Object.freeze({
-  amounts: {}, bookSel: {}, attach: {}, periodN: {}, draft: {},
-  payingKey: null, justPaid: {},
-}) as FeeSlot;
-
-const slotStore = new Map<string, FeeSlot>();
-const slotSubs = new Map<string, Set<() => void>>();
-const slotRefs = new Map<string, number>();
-/** Chốt ĐỒNG BỘ theo `${scope}::${buildingId}` — chống re-entry trước cả re-render. */
-const inflightPays = new Set<string>();
-
-const readSlot = (scope: string): FeeSlot => slotStore.get(scope) ?? EMPTY_SLOT;
-
-const writeSlot = (scope: string, patch: (s: FeeSlot) => FeeSlot) => {
-  slotStore.set(scope, patch(readSlot(scope)));
-  slotSubs.get(scope)?.forEach((fn) => fn());
-};
-
-const subscribeSlot = (scope: string, fn: () => void) => {
-  let set = slotSubs.get(scope);
-  if (!set) { set = new Set(); slotSubs.set(scope, set); }
-  set.add(fn);
-  return () => {
-    set!.delete(fn);
-    if (set!.size === 0) slotSubs.delete(scope);
-  };
-};
-
-// Đếm consumer để BIẾT KHI NÀO được xoá ô nhớ: đổi hạng mục/kỳ trong khi bề mặt
-// kia vẫn ở hạng mục cũ thì KHÔNG được xoá (bên kia đang gõ dở). Về 0 mới xoá —
-// giữ đúng hành vi "đổi hạng mục là reset sạch" của V2.
-const retainSlot = (scope: string) => slotRefs.set(scope, (slotRefs.get(scope) ?? 0) + 1);
-const releaseSlot = (scope: string) => {
-  const n = (slotRefs.get(scope) ?? 1) - 1;
-  if (n > 0) { slotRefs.set(scope, n); return; }
-  slotRefs.delete(scope);
-  slotStore.delete(scope);
-  // CỐ TÌNH không dọn `inflightPays` ở đây: chốt phải sống đến khi RPC trả về
-  // (doPay tự xoá trong finally). Dọn sớm = mở lại đúng khe re-entry cần chặn
-  // cho ca "đổi hạng mục qua-lại trong lúc phiếu đang bay".
-};
+// 31/08 (audit P3-03): toàn bộ kho nằm ở src/lib/periodFeeSlots.ts (có unit
+// test); ở đây chỉ còn tiêu thụ. JustPaidMark re-export giữ đường import cũ.
+export type { JustPaidMark } from '@/lib/periodFeeSlots';
 
 export function usePeriodFeeState(
   period: string,
@@ -283,9 +233,19 @@ export function usePeriodFeeState(
   // ── Sổ mặc định tòa×hạng mục×user (ui_preferences.feeBooks) ──
   const feeBooks = (uiPrefs?.feeBooks ?? {}) as Record<string, string>;
   const validBook = (id?: string | null) => (id && myBooks.some((b) => b.id === id) ? id : null);
-  /** pref (tòa×hạng mục) → pref (hạng mục, last-used) → sổ "…Thu". */
+  /**
+   * pref (tòa×hạng mục) → pref (hạng mục, last-used) → cấu hình toà
+   * (`building_fee_accounts.default_account_id` — server học first-write-wins)
+   * → heuristic sổ "…Thu" cuối cùng. Nấc cấu-hình-toà thêm 31/08 (audit P2-07):
+   * trước đó trang CHI tiền nhảy thẳng vào sổ tên "…Thu" và user không có sổ
+   * tên đó thì kẹt. validBook lọc theo sổ CỦA user nên default của toà thuộc
+   * user khác không bị mượn nhầm.
+   */
   const defaultBookFor = (bId: string): string | null =>
-    validBook(feeBooks[`${bId}:${key}`]) ?? validBook(feeBooks[`cat:${key}`]) ?? thuBookId;
+    validBook(feeBooks[`${bId}:${key}`])
+      ?? validBook(feeBooks[`cat:${key}`])
+      ?? validBook(cfgOf(bId)?.defaultAccountId)
+      ?? thuBookId;
   const rememberBook = (bId: string, accountId: string) => {
     const next = { ...feeBooks, [`${bId}:${key}`]: accountId, [`cat:${key}`]: accountId };
     setPref.mutate({ key: 'feeBooks', value: next });
@@ -603,6 +563,7 @@ export function usePeriodFeeState(
       notes: v.notes ?? '',
       notesOriginal: v.notes ?? '',
       isAuto: v.isAuto,
+      updatedAt: v.updatedAt ?? null,
     });
   };
   const submitEdit = async (args: {
@@ -626,6 +587,7 @@ export function usePeriodFeeState(
         periodStart: args.isAdmin && t.itemCount <= 1 ? args.periodStart ?? null : null,
         periodEnd: args.isAdmin && t.itemCount <= 1 ? args.periodEnd ?? null : null,
         notes: notesChanged ? args.notes! : null,
+        expectedUpdatedAt: t.updatedAt,
       });
       toast.success('Đã lưu thay đổi phiếu');
       setEditTarget(null);

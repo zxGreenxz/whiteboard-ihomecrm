@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-31T14:03:32.122Z",
+  "generatedAt": "2026-08-31T18:10:08.950Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 443,
+    "ledger-applied": 446,
     "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
@@ -8725,6 +8725,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-31T12:29:06.510Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260831160000_chu_cong_ty_vao_vai_tenant_owner.sql",
+      "version": "20260831160000",
+      "name": "chu_cong_ty_vao_vai_tenant_owner",
+      "scheme": "timestamp14",
+      "sha256": "f860005b2f135e59f3426caa1c955c68bdb0fe82d390a1df7ba77918e561fa5b",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T17:26:01.296Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260831161000_pay_draft_fee_voucher_gate_truoc_doc.sql",
+      "version": "20260831161000",
+      "name": "pay_draft_fee_voucher_gate_truoc_doc",
+      "scheme": "timestamp14",
+      "sha256": "329a918770a2755f719cb15640b680e8ce2624500d0ec5c6b84c3c6c2ca7cd00",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T17:29:03.616Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260831162000_update_period_fee_cas_va_don_pay_period_fee.sql",
+      "version": "20260831162000",
+      "name": "update_period_fee_cas_va_don_pay_period_fee",
+      "scheme": "timestamp14",
+      "sha256": "ced9a287d2e0530a69d2c163a38fb407d9d0cda48ad999eb6192271da5120cf5",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T17:31:40.177Z|bien-nhan-backup"
       ]
     },
     {

@@ -139,23 +139,30 @@ export const useSaleBonusVouchers = (period: string, enabled = true) =>
     enabled: enabled && !!period,
     queryFn: async (): Promise<SaleBonusRow[]> => {
       const { from, to } = monthRange(period);
-      const { data, error } = await supabase
-        .from('income_expenses')
-        .select(`
-          id, code, total_amount, voucher_date, approval_status, posting_status, notes,
-          contract_id,
-          buildings:building_id ( name ),
-          rooms:room_id ( name ),
-          contracts:contract_id ( contract_number )
-        `)
-        .eq('commission_kind', 'sale')
-        .is('deleted_at', null)
-        .neq('approval_status', 'CANCELLED')
-        .gte('voucher_date', from)
-        .lt('voucher_date', to)
-        .order('voucher_date', { ascending: false });
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
+      // 31/08 (audit P2-02): cùng khuôn fetchAllRows như hàng đợi thanh lý (F8)
+      // — vượt 1.000 phiếu/kỳ thì sổ không được im lặng thiếu dòng.
+      const data = await fetchAllRows<any>(
+        (f, t) => supabase
+          .from('income_expenses')
+          .select(`
+            id, code, total_amount, voucher_date, approval_status, posting_status, notes,
+            contract_id,
+            buildings:building_id ( name ),
+            rooms:room_id ( name ),
+            contracts:contract_id ( contract_number )
+          `)
+          .eq('commission_kind', 'sale')
+          .is('deleted_at', null)
+          .neq('approval_status', 'CANCELLED')
+          .gte('voucher_date', from)
+          .lt('voucher_date', to)
+          .order('voucher_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(f, t),
+        { label: 'thanh-toan.saleBonus' },
+      );
+      if (data === null) throw new Error('Lỗi tải sổ thưởng Sale — thử lại.');
+      return (data as any[]).map((r) => ({
         id: r.id,
         code: r.code ?? null,
         amount: Number(r.total_amount) || 0,
@@ -194,27 +201,33 @@ export const useDepositLedger = (period: string, enabled = true) =>
     queryFn: async (): Promise<DepositLedgerRow[]> => {
       const { from, to } = monthRange(period);
       // `!inner` để chỉ lấy phiếu CÓ dòng cọc; phiếu thu thường không dính vào.
-      const { data, error } = await supabase
-        .from('income_expenses')
-        .select(`
-          id, code, total_amount, voucher_date, approval_status, posting_status,
-          buildings:building_id ( name ),
-          rooms:room_id ( name ),
-          contracts:contract_id ( contract_number ),
-          accounts:account_id ( name ),
-          income_expense_items!inner ( accounting_class )
-        `)
-        .eq('type', 'INCOME')
-        .eq('income_expense_items.accounting_class', 'DEPOSIT')
-        .is('deleted_at', null)
-        .neq('approval_status', 'CANCELLED')
-        .gte('voucher_date', from)
-        .lt('voucher_date', to)
-        .order('voucher_date', { ascending: false });
-      if (error) throw new Error(error.message);
+      // 31/08 (audit P2-02): fetchAllRows vá cap-1000, cùng khuôn F8.
+      const data = await fetchAllRows<any>(
+        (f, t) => supabase
+          .from('income_expenses')
+          .select(`
+            id, code, total_amount, voucher_date, approval_status, posting_status,
+            buildings:building_id ( name ),
+            rooms:room_id ( name ),
+            contracts:contract_id ( contract_number ),
+            accounts:account_id ( name ),
+            income_expense_items!inner ( accounting_class )
+          `)
+          .eq('type', 'INCOME')
+          .eq('income_expense_items.accounting_class', 'DEPOSIT')
+          .is('deleted_at', null)
+          .neq('approval_status', 'CANCELLED')
+          .gte('voucher_date', from)
+          .lt('voucher_date', to)
+          .order('voucher_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(f, t),
+        { label: 'thanh-toan.depositLedger' },
+      );
+      if (data === null) throw new Error('Lỗi tải sổ cọc đã thu — thử lại.');
       // !inner nhân bản phiếu theo số dòng cọc — gộp lại theo id.
       const seen = new Map<string, DepositLedgerRow>();
-      for (const r of (data ?? []) as any[]) {
+      for (const r of data as any[]) {
         if (seen.has(r.id)) continue;
         seen.set(r.id, {
           id: r.id,

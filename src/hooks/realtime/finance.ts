@@ -72,6 +72,14 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["period-commissions"],
       ["period-maintenance"],
       ["fee-accounts"],
+      // --- 31/08 (audit P2-01): đợt C-INFRA-7 vá 4 khoá lưới phí nhưng bỏ quên
+      // 3 sổ theo dõi của SettlementPanels (useThanhToanLedgers) + biểu đồ
+      // Điện & Nước — máy khác tạo/duyệt/huỷ phiếu thì các màn này giữ số cũ
+      // tới khi đổi kỳ hoặc F5.
+      ["tt-termination-queue"],
+      ["tt-sale-bonus"],
+      ["tt-deposit-ledger"],
+      ["utility-chart"],
     ],
     domain: "income-expenses",
   },

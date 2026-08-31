@@ -9,6 +9,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import {
   collectStatus,
+  currentMonthVN,
   paidAsOf,
   paymentsInRange,
   remainingAsOf,
@@ -33,10 +34,9 @@ import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
 import { usePersistedState } from '@/hooks/usePersistedState';
 
-const currentMonth = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
+// Kỳ mặc định GHIM giờ Việt Nam (audit 31/08 P2-04) — cùng key kỳ với
+// /thanh-toan nên hai trang phải cùng một cách tính.
+const currentMonth = currentMonthVN;
 
 const ThuTien = () => {
   const navigate = useNavigate();

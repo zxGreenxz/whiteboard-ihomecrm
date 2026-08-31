@@ -54,6 +54,14 @@ export interface PeriodFeeVoucher {
   start: string | null;         // khoảng phủ của item
   end: string | null;
   creatorName: string | null;
+  /**
+   * Token optimistic-concurrency (audit 31/08 P2-05): `ie.updated_at` tại thời
+   * điểm reader trả về. Modal Sửa seed nó vào `p_expected_updated_at`; phiếu bị
+   * sửa ở nơi khác trong lúc modal mở thì server 55000 "mở lại" thay vì bản lưu
+   * sau nuốt bản lưu trước. Reader cũ chưa trả khoá này → null → server bỏ qua
+   * (hành vi cũ), nên client/server lệch phiên bản vẫn không vỡ.
+   */
+  updatedAt: string | null;
 }
 
 export interface PeriodFeeStatus {
@@ -196,6 +204,7 @@ const mapVoucher = (v: any): PeriodFeeVoucher => ({
   start: v.start ?? null,
   end: v.end ?? null,
   creatorName: v.creator_name ?? null,
+  updatedAt: v.updated_at ?? null,
 });
 
 // ── GRID: trạng thái đã/chưa đóng ────────────────────────────────────────────
@@ -347,6 +356,11 @@ export const useUpdatePeriodFee = () => {
       periodStart?: string | null;
       periodEnd?: string | null;
       notes?: string | null;          // null = giữ nguyên
+      /**
+       * Token CAS (audit 31/08 P2-05): `vouchers[].updatedAt` lúc MỞ modal.
+       * Server 55000 nếu phiếu đã bị sửa ở nơi khác; null = bỏ kiểm (hành vi cũ).
+       */
+      expectedUpdatedAt?: string | null;
     }) => {
       const { error } = await supabase.rpc('update_period_fee', {
         p_voucher_id: args.voucherId,
@@ -356,6 +370,7 @@ export const useUpdatePeriodFee = () => {
         p_period_start: args.periodStart ?? undefined,
         p_period_end: args.periodEnd ?? undefined,
         p_notes: args.notes ?? undefined,
+        p_expected_updated_at: args.expectedUpdatedAt ?? undefined,
       });
       if (error) throw new Error(error.message);
     },

@@ -22291,6 +22291,7 @@ export type Database = {
           p_account_id?: string
           p_amount?: number
           p_attachments?: Json
+          p_expected_updated_at?: string
           p_notes?: string
           p_period_end?: string
           p_period_start?: string

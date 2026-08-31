@@ -17,6 +17,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { monthToStartDate, monthToEndDate } from '@/lib/monthPeriod';
 import { jsonProp } from '@/lib/jsonValue';
+import { fetchAllRows } from '@/lib/supabaseFetchAll';
+import { utilityRowParts, splitUtilityAmounts } from '@/lib/utilityVoucherSplit';
 
 export type UtilType = 'electric' | 'water';
 
@@ -65,6 +67,12 @@ export interface UtilityPaymentRow {
   book: string;         // sổ quỹ ghi chi (tên account)
   hasReceipt: boolean;  // có ảnh phiếu chi
   attachments: string[]; // ảnh phiếu chi (URL/path đã lưu) — xem qua lightbox
+  /**
+   * true = phiếu gộp CẢ điện lẫn nước (P1-01, audit 31/08): một phiếu như vậy
+   * được tách thành HAI dòng (một điện, một nước) cùng `voucher_id`, mỗi dòng
+   * mang đúng PHẦN tiền của loại đó. Hủy một dòng = hủy cả phiếu (cả dòng kia).
+   */
+  mixedVoucher: boolean;
 }
 
 /**
@@ -316,49 +324,66 @@ export const useUtilityPayments = (billingMonth: string) => {
       // (§−1.1). KHÔNG lấy 'CANCELLED' — trên prod phiếu CANCELLED có
       // `deleted_at IS NULL` (đã đo 30/07: 5 phiếu utility.bill dạng này) nên
       // filter deleted_at KHÔNG loại được chúng.
-      const { data, error } = await supabase
-        .from('income_expenses')
-        .select(`
-          id, building_id, total_amount, voucher_date, created_at, creator_name, attachments, utility_account_id,
-          approval_status,
-          building:buildings(name),
-          book:accounts!income_expenses_account_id_fkey(name),
-          meter:building_utility_accounts!income_expenses_utility_account_id_fkey(provider_code),
-          it:income_expense_items!inner ( income_expense_type_id, start_date, end_date )
-        `)
-        .eq('type', 'EXPENSE')
-        .in('approval_status', ['APPROVED', 'UNAPPROVED'])
-        .is('deleted_at', null)
-        .in('it.income_expense_type_id', allIds)
-        .lte('it.start_date', rangeEnd)
-        .gte('it.end_date', rangeStart)
-        .order('voucher_date', { ascending: false });
-      if (error) throw error;
+      // fetchAllRows: vá cap-1000 (P2-03, audit 31/08) — order kèm tiebreaker id.
+      const data = await fetchAllRows<any>(
+        (from, to) => supabase
+          .from('income_expenses')
+          .select(`
+            id, building_id, total_amount, voucher_date, created_at, creator_name, attachments, utility_account_id,
+            approval_status,
+            building:buildings(name),
+            book:accounts!income_expenses_account_id_fkey(name),
+            meter:building_utility_accounts!income_expenses_utility_account_id_fkey(provider_code, utility_type),
+            it:income_expense_items!inner ( income_expense_type_id, amount, start_date, end_date )
+          `)
+          .eq('type', 'EXPENSE')
+          .in('approval_status', ['APPROVED', 'UNAPPROVED'])
+          .is('deleted_at', null)
+          .in('it.income_expense_type_id', allIds)
+          .lte('it.start_date', rangeEnd)
+          .gte('it.end_date', rangeStart)
+          .order('voucher_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, to),
+        { label: 'utility-payments' },
+      );
+      if (data === null) throw new Error('Không tải được danh sách phiếu điện nước — thử lại.');
 
       const out: UtilityPaymentRow[] = [];
-      for (const v of (data ?? []) as any[]) {
+      for (const v of data as any[]) {
         const items = Array.isArray(v.it) ? v.it : v.it ? [v.it] : [];
-        const isElec = items.some((i: any) => elecIds.has(i.income_expense_type_id));
         // attachments = jsonb array URL/path (chuẩn hoá string; bỏ phần tử lạ).
         const atts: string[] = (Array.isArray(v.attachments) ? v.attachments : [])
           .map((x: any) => (typeof x === 'string' ? x : x?.url))
           .filter((x: any): x is string => typeof x === 'string' && x.length > 0);
-        out.push({
-          voucher_id: v.id,
-          pending: v.approval_status === 'UNAPPROVED',
-          account_id: v.utility_account_id ?? null,
-          building_id: v.building_id,
-          building_name: v.building?.name ?? '—',
-          type: isElec ? 'electric' : 'water',
-          code: v.meter?.provider_code ?? '',
-          amount: Number(v.total_amount) || 0,
-          payment_date: (v.voucher_date ?? '').slice(0, 10),
-          time: fmtTimeVN(v.created_at),
-          by: v.creator_name ?? '',
-          book: v.book?.name ?? '',
-          hasReceipt: atts.length > 0,
-          attachments: atts,
-        });
+        // P1-01 (audit 31/08): chia phiếu theo TỪNG dòng hạng mục thay vì gán cả
+        // phiếu thành "điện" + total_amount. Phiếu gộp → 2 dòng, mỗi dòng đúng
+        // phần tiền loại đó (fixture thật: 5916661a… 6.384.000 = 5.758.000+626.000).
+        const meterType: 'electric' | 'water' | null =
+          v.meter?.utility_type === 'ELECTRIC' ? 'electric'
+          : v.meter?.utility_type === 'WATER' ? 'water' : null;
+        for (const part of utilityRowParts(items, elecIds, waterIds, Number(v.total_amount) || 0)) {
+          out.push({
+            voucher_id: v.id,
+            pending: v.approval_status === 'UNAPPROVED',
+            // Đồng hồ chỉ nhận phần tiền ĐÚNG loại của nó; phần loại kia rơi về
+            // nhóm "chưa gắn công tơ" (hiện được, không giấu) thay vì cộng nhầm
+            // tiền nước vào thẻ đồng hồ điện.
+            account_id: meterType === null || meterType === part.type ? (v.utility_account_id ?? null) : null,
+            building_id: v.building_id,
+            building_name: v.building?.name ?? '—',
+            type: part.type,
+            code: meterType === null || meterType === part.type ? (v.meter?.provider_code ?? '') : '',
+            amount: part.amount,
+            payment_date: (v.voucher_date ?? '').slice(0, 10),
+            time: fmtTimeVN(v.created_at),
+            by: v.creator_name ?? '',
+            book: v.book?.name ?? '',
+            hasReceipt: atts.length > 0,
+            attachments: atts,
+            mixedVoucher: part.mixedVoucher,
+          });
+        }
       }
       return out;
     },
@@ -422,13 +447,17 @@ export const useUtilityPayments = (billingMonth: string) => {
   // giấu tiền; tab Báo cáo vẫn liệt kê từng phiếu như trước.
   const noMeter = useMemo(() => {
     const m: Record<string, { amount: number; pendingAmount: number; count: number }> = {};
+    // Đếm PHIẾU distinct: phiếu gộp điện+nước giờ tách 2 dòng (P1-01) — tiền
+    // cộng theo dòng nhưng "X phiếu" không được đếm đôi cùng một phiếu.
+    const seen: Record<string, Set<string>> = {};
     for (const r of rows) {
       if (r.account_id) continue;
       const k = `${r.building_id}:${r.type}:no-meter`;
       const cur = (m[k] ??= { amount: 0, pendingAmount: 0, count: 0 });
       if (r.pending) cur.pendingAmount += r.amount;
       else cur.amount += r.amount;
-      cur.count += 1;
+      const s = (seen[k] ??= new Set());
+      if (!s.has(r.voucher_id)) { s.add(r.voucher_id); cur.count += 1; }
     }
     return m;
   }, [rows]);
@@ -489,24 +518,41 @@ export const useUtilityChart = (
       for (const ym of months) paidByMonth[ym] = { elec: 0, water: 0 };
 
       if (allIds.length > 0) {
-        let paidQuery = supabase
-          .from('income_expenses')
-          .select(`total_amount, it:income_expense_items!inner ( income_expense_type_id, start_date )`)
-          .eq('type', 'EXPENSE')
-          .eq('approval_status', 'APPROVED')
-          .is('deleted_at', null)
-          .in('it.income_expense_type_id', allIds)
-          .gte('it.start_date', rangeStart)
-          .lte('it.start_date', rangeEnd);
-        if (buildingId) paidQuery = paidQuery.eq('building_id', buildingId);
-        const { data, error } = await paidQuery;
-        if (error) throw error;
-        for (const v of (data ?? []) as any[]) {
+        // P1-01 (audit 31/08): cộng `it.amount` của TỪNG dòng, không phải
+        // `total_amount` cả phiếu cho mỗi dòng — cách cũ làm phiếu gộp điện+nước
+        // bị đếm ĐÔI (cả hai nhánh cùng phồng nguyên tổng phiếu), và phiếu nhiều
+        // dòng cùng loại trải nhiều tháng bị cộng lặp theo số dòng.
+        // fetchAllRows: vá cap-1000 (P2-03) — span nhiều tháng dễ chạm trần nhất.
+        const data = await fetchAllRows<any>(
+          (from, to) => {
+            let q = supabase
+              .from('income_expenses')
+              .select(`id, total_amount, it:income_expense_items!inner ( income_expense_type_id, amount, start_date )`)
+              .eq('type', 'EXPENSE')
+              .eq('approval_status', 'APPROVED')
+              .is('deleted_at', null)
+              .in('it.income_expense_type_id', allIds)
+              .gte('it.start_date', rangeStart)
+              .lte('it.start_date', rangeEnd);
+            if (buildingId) q = q.eq('building_id', buildingId);
+            return q.order('id', { ascending: true }).range(from, to);
+          },
+          { label: 'utility-chart' },
+        );
+        if (data === null) throw new Error('Không tải được dữ liệu biểu đồ điện nước — thử lại.');
+        for (const v of data as any[]) {
           const items = Array.isArray(v.it) ? v.it : v.it ? [v.it] : [];
+          // Suy biến dữ liệu cổ (item chưa mang amount): chia lại theo splitUtilityAmounts
+          // sẽ ra 0 — khi đó rơi về total_amount cho ĐÚNG MỘT dòng đầu tiên khớp loại,
+          // để phiếu không biến mất khỏi biểu đồ (và vẫn không đếm đôi).
+          const split = splitUtilityAmounts(items, elecIds, waterIds);
+          const degenerate = split.elec === 0 && split.water === 0;
+          let degenerateUsed = false;
           for (const it of items) {
             const ym = (it.start_date ?? '').slice(0, 7);
             if (!paidByMonth[ym]) continue;
-            const amt = Number(v.total_amount) || 0;
+            let amt = Number(it.amount) || 0;
+            if (degenerate && !degenerateUsed) { amt = Number(v.total_amount) || 0; degenerateUsed = true; }
             if (elecIds.has(it.income_expense_type_id)) paidByMonth[ym].elec += amt;
             else if (waterIds.has(it.income_expense_type_id)) paidByMonth[ym].water += amt;
           }

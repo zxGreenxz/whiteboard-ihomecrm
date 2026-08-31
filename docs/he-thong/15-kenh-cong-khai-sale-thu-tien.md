@@ -148,7 +148,7 @@ flowchart LR
 - `pay_period_fee` nhận **tổng tiền của cả khoảng kỳ**; `start_date/end_date` trên item làm nguồn accrual để báo cáo chia theo tháng. Có chip số kỳ và nhập tuỳ ý 1–36 kỳ. RPC chống đóng trùng phiếu APPROVED, trả cảnh báo trước khi user force ghi.
 - Phiếu định kỳ có thể sinh `UNAPPROVED` + sổ trống khi `repeat_auto_approve=false`. `pay_draft_fee_voucher` gán sổ, ảnh và duyệt nguyên tử; nháp vẫn được tính là chưa chi cho tới khi thanh toán.
 - Sửa/huỷ/đính ảnh làm theo **từng voucher** qua `update_period_fee`, `cancel_period_fee`, `append_fee_attachment`; phiếu nhiều item bị hạn chế sửa tiền/kỳ và phiếu thuộc batch không được huỷ từ lưới. Hoa hồng dùng trạng thái `unpaid|draft|paid`; bảo trì đọc các phiếu batch/đơn hiện có để tránh tạo lại.
-- FE hiện hành: [usePeriodFees.ts](src/hooks/usePeriodFees.ts) + [usePeriodFeeState.ts](src/hooks/usePeriodFeeState.ts), [PeriodFeePanel](src/components/thu-tien/PeriodFeePanel.tsx) desktop và [PeriodFeeSheet](src/components/thu-tien/PeriodFeeSheet.tsx) mobile. Các component `UtilityBill*` cũ không còn là surface chính.
+- FE hiện hành: [usePeriodFees.ts](src/hooks/usePeriodFees.ts) + [usePeriodFeeState.ts](src/hooks/usePeriodFeeState.ts), [PeriodFeePanel](src/components/thu-tien/PeriodFeePanel.tsx) desktop và [PeriodFeeSheet](src/components/thu-tien/PeriodFeeSheet.tsx) mobile. Các surface `UtilityDesktopPanel`/`UtilityBillSheet` cũ đã XOÁ 31/08/2026 (dead code — audit /thanh-toan P3-01); cần thì xem git history.
 
 ### 2.7. Bảng `room_pass_listings` — "phòng khách nhờ sale / pass" (2026-06-17)
 
