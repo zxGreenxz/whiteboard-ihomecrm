@@ -2,19 +2,19 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 1317,
-    "catalogFunctions": 1013,
+    "catalogFunctions": 1015,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 256,
+    "calledRpcs": 257,
     "byRisk": {
-      "normal": 180,
+      "normal": 181,
       "financial": 76
     },
-    "securityDefiner": 240
+    "securityDefiner": 241
   },
   "missingOnServer": [],
   "rpcs": {
@@ -3271,8 +3271,8 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false, p_limit integer DEFAULT 200",
-          "returns": "TABLE(created_at timestamp with time zone, token text, session_id text, kind text, message text, context text, user_agent text)",
+          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false, p_limit integer DEFAULT 200, p_source text DEFAULT NULL::text",
+          "returns": "TABLE(created_at timestamp with time zone, token text, session_id text, kind text, message text, context text, user_agent text, source text, line_no integer, col_no integer, stack text, href text, viewport text, build text, fingerprint text, n integer)",
           "volatility": "STABLE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
@@ -3312,7 +3312,7 @@
         {
           "schema": "public",
           "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false",
-          "returns": "TABLE(total_sessions bigint, total_views bigint, room_opens bigint, impressions bigint, contact_clicks bigint, favorites bigint, deposit_dialogs bigint, errors bigint, avg_session_ms numeric, unique_rooms_seen bigint)",
+          "returns": "TABLE(total_sessions bigint, total_views bigint, room_opens bigint, impressions bigint, contact_clicks bigint, favorites bigint, deposit_dialogs bigint, errors bigint, avg_session_ms numeric, unique_rooms_seen bigint, errors_external bigint, error_hits bigint)",
           "volatility": "STABLE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
@@ -4743,6 +4743,26 @@
           "schema": "public",
           "args": "p_account_id uuid",
           "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_dung_khan_cap": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
           "volatility": "VOLATILE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
