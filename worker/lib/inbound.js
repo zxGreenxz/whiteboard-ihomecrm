@@ -173,14 +173,17 @@ async function upsertConversation(accountId, ownerId, m, api) {
 }
 
 /**
- * Echo của MEDIA mình vừa gửi từ web: gắn vào đúng dòng đang chờ thay vì đẻ dòng mới.
+ * Echo của tin mình vừa gửi từ web: gắn vào đúng dòng đang chờ thay vì đẻ dòng mới.
  *
- * VÌ SAO CẦN — lỗi đã cắn thật 31/08/2026: mỗi ảnh gửi từ web hiện HAI lần trong
- * khung chat. Dòng thứ nhất do web tạo (trỏ ảnh tự host, trạng thái `pending`),
- * dòng thứ hai là echo `selfListen` từ Zalo. Cơ chế chống trùng sẵn có dựa hoàn
- * toàn vào `zalo_msg_id`, mà zca **không phải lúc nào cũng trả msgId cho
- * attachment** — chính `media.js` đã ghi chú điều đó và trông cậy vào "unique sẽ
- * tự vá". Không có id chung thì unique không vá được gì, và ta còn lại hai dòng.
+ * VÌ SAO CẦN — lỗi đã cắn thật 31/08/2026: mỗi tin gửi từ web hiện HAI lần trong
+ * khung chat (chủ dự án gửi một dấu chấm, thấy một tin "đang gửi" và một tin đã
+ * gửi; máy bên kia chỉ nhận MỘT). Dòng thứ nhất do web tạo (`pending`), dòng thứ
+ * hai là echo `selfListen` từ Zalo. Cơ chế chống trùng sẵn có dựa hoàn toàn vào
+ * `zalo_msg_id`, mà zca **không phải lúc nào cũng trả msgId** — chính `media.js`
+ * đã ghi chú điều đó và trông cậy vào "unique sẽ tự vá". Không có id chung thì
+ * unique không vá được gì, và ta còn lại hai dòng.
+ *
+ * Áp cho CẢ tin chữ lẫn media: đo trên dữ liệu thật cho thấy cả hai cùng bệnh.
  *
  * Ghép theo (hội thoại + loại media + đang chờ + trong 5 phút), lấy dòng CŨ NHẤT
  * để khớp thứ tự gửi khi có nhiều ảnh liên tiếp. Giữ `media_url` tự host của dòng
@@ -189,14 +192,26 @@ async function upsertConversation(accountId, ownerId, m, api) {
  * @returns true nếu đã gắn vào dòng có sẵn (chỗ gọi khỏi chèn dòng mới).
  */
 async function gopVaoTinDangCho(accountId, convId, cm, msgId, m) {
-  if (!msgId || !['image', 'file', 'voice', 'video'].includes(cm.msg_type)) return false;
+  if (!msgId) return false;
+  if (!['image', 'file', 'voice', 'video', 'text'].includes(cm.msg_type)) return false;
   const tuLuc = new Date(Date.now() - 5 * 60_000).toISOString();
-  const { data: cho } = await sb.from('zalo_messages')
+
+  let truyVan = sb.from('zalo_messages')
     .select('id')
     .eq('conversation_id', convId).eq('account_id', accountId)
     .eq('direction', 'out').eq('status', 'pending').eq('msg_type', cm.msg_type)
     .is('zalo_msg_id', null)
-    .gte('created_at', tuLuc)
+    .gte('created_at', tuLuc);
+
+  // TIN CHỮ ghép chặt hơn media: có sẵn nội dung để đối chiếu, dùng luôn. Media
+  // không có gì so ngoài loại, nên chỉ ghép được theo thứ tự thời gian.
+  if (cm.msg_type === 'text') {
+    const noiDung = cm.body ?? '';
+    if (!noiDung) return false;      // tin rỗng thì không đủ căn cứ để ghép
+    truyVan = truyVan.eq('body', noiDung);
+  }
+
+  const { data: cho } = await truyVan
     .order('created_at', { ascending: true })
     .limit(1).maybeSingle();
   if (!cho) return false;
