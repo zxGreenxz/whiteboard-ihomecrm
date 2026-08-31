@@ -98,6 +98,24 @@ Ba giới hạn có sẵn, nên biết để không bất ngờ:
 
 Kênh này chạy trên **tài khoản Zalo cá nhân**, mà Zalo có cơ chế phát hiện hành vi máy. Vì vậy màn cài đặt có sẵn: **khung giờ được phép gửi**, **giãn nhịp giữa từng người nhận**, **giãn nhịp giữa các tin phòng**, **số phòng tối đa gửi chi tiết mỗi lượt**, và **trần tổng số tin máy gửi mỗi ngày**. Nới rộng các con số này làm tin đi nhanh hơn, đổi lại tăng rủi ro **khoá nick Zalo của công ty**.
 
+### Nút Dừng khẩn cấp — khi cần chặn ngay
+
+Nút đỏ **Dừng khẩn cấp** nằm trong tab Tự động hoá, ngay trên "Cài đặt chi tiết", và **luôn hiện** kể cả khi hai công tắc đang tắt.
+
+::: warning Vì sao gạt công tắc là chưa đủ
+Khi tới lượt, máy xếp **cả lô tin** vào hàng chờ với giờ gửi rải sẵn — một lượt đầy đủ có thể là vài chục tin trải ra hàng chục phút. Gạt công tắc chỉ ngăn **lượt sau**; lô đang bay vẫn lần lượt đi ra. Muốn chặn lô đang bay thì phải bấm **Dừng khẩn cấp**.
+:::
+
+Bấm nút này sẽ: huỷ mọi tin tự động đang chờ, đánh dấu chúng là không gửi được trong khung chat, và tắt cả hai công tắc.
+
+Ba điều cần biết trước khi bấm:
+
+- **Tin bạn tự gõ tay không bị ảnh hưởng** — nút chỉ đụng tin do máy tạo.
+- **Nếu có một tin đang được gửi dở thì nó vẫn đi ra.** Không chặn được giữa chừng một lời gọi tới Zalo; hộp xác nhận sẽ cho bạn biết còn bao nhiêu tin ở tình trạng đó.
+- **Tin đã huỷ không dựng lại được.** Muốn gửi thì bật lại và chờ lượt sau.
+
+Mỗi lần bấm đều được ghi vào Nhật ký với nhãn riêng, kèm số tin đã huỷ.
+
 ### Nhật ký — cách biết máy còn sống
 
 Mục **Nhật ký** ghi mọi lượt máy chạy, **kể cả lượt quyết định không gửi**, kèm lý do bằng tiếng Việt ("Danh sách không đổi so với lần gửi trước — bỏ lượt…"). Đây là chỗ để kiểm tra: nếu tài khoản Zalo rớt phiên, tự động hoá sẽ ngừng **im lặng** — không có tin nào gửi đi mà cũng không có lỗi nào hiện lên. Nhật ký trống nhiều ngày là dấu hiệu cần kiểm tra kết nối Zalo.

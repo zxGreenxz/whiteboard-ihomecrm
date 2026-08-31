@@ -187,6 +187,7 @@ sequenceDiagram
 | `zalo_toggle_automation(kind, enabled, org?)` | upsert `enabled` (giữ nguyên, web vẫn gọi cho công tắc nhanh) | `zalo_can('manage_automation')` |
 | `zalo_luu_tu_dong_hoa(kind, enabled, config?, org?)` | upsert `enabled` **và** `config`; `config=NULL` = chỉ bật/tắt, giữ cấu hình cũ | `zalo_can('manage_automation')` |
 | `zalo_danh_dau_sale(conv, is_sale)` | bật/tắt `is_sale_partner` | `zalo_can('manage_automation')` — gắn cờ là thêm người vào danh sách nhận tin tự động, không phải thao tác chat thường ngày |
+| `zalo_dung_khan_cap(org?)` | **phanh khẩn cấp**: huỷ job tự động còn `queued` + đánh dấu tin `pending` thành `failed` + tắt cả hai công tắc, trong MỘT giao dịch. Trả `{da_huy, tin_danh_dau_that_bai, con_dang_gui}` | `zalo_can('manage_automation')` |
 | `zalo_phong_trong_cho_worker_v1(org)` | phòng còn chào được của cả công ty, cùng định nghĩa "trống" với trang chia sẻ công khai | **CHỈ `service_role`**. `copilot_available_rooms_v1` và `get_my_available_rooms` đều đòi `auth.uid()`, mà worker chạy service-role không có JWT người dùng nên không gọi được cái nào. Không trả `sale_bonus_note` (thưởng sale — nội bộ) |
 | `zalo_request_connect(account_id?, name?)` | tạo account mới `status='connecting'` hoặc reset account cũ về `connecting` | owner/admin |
 | `zalo_disconnect_account(account_id)` | `status='disconnected'`, xoá `qr_data` | owner/admin |
@@ -210,6 +211,10 @@ Ba điểm thiết kế đáng ghi:
 - **Đi qua `zalo_send_queue`, không gọi thẳng zca.** `not_before` biến việc rải nhịp thành *dữ liệu*: worker restart giữa chừng thì phần chưa gửi vẫn còn và vẫn đúng giờ, thay vì mất hoặc bắn dồn một cục. Claim nguyên tử của queue chống gửi trùng, và tin tự động hiện trong khung chat y như tin người gửi.
 - **Ảnh render server-side**: [room-list-image.js](worker/lib/room-list-image.js) là bản port của `exportRoomListImage.ts` sang `@napi-rs/canvas`; model bảng port ở [room-list-table.js](worker/lib/room-list-table.js). Hai cặp file này phải giữ khớp với bản `src/pages/phong-trong/` — worker không import được TypeScript nên đây là chỗ dễ trôi nhất.
 - **Ba phanh chống spam kiểm TRƯỚC khi xếp hàng**: khung giờ, giãn nhịp (giữa người nhận và giữa các tin phòng), trần tin/ngày. Trần được trừ theo số tin *thật sự xếp được*, không phải số dự định. `zca-js` là API không chính thức nên đây là ràng buộc thiết kế, không phải tuỳ chọn.
+
+**Mặt trái của việc xếp cả lô — và cái phanh vá nó** ([20260831015222](supabase/migrations/20260831015222_zalo_dung_khan_cap_tu_dong_hoa.sql)): vì cả lô đã nằm sẵn trong hàng đợi với giờ gửi rải trước, **gạt công tắc chỉ ngăn lượt SAU** — lô đang bay vẫn lần lượt đi ra. Cắn thật ngay lượt chạy đầu tiên trên production 31/08/2026: chủ dự án bấm tắt, 32 tin vẫn tiếp tục nhắn suốt ~2,5 phút. Với lô đầy đủ gửi nhiều nhóm thì khoảng đó là hàng chục phút, và không có cách nào chặn ngoài tắt nguồn máy chạy worker. Một công tắc mà bấm xong thứ nó điều khiển vẫn chạy tiếp thì không phải công tắc.
+
+`zalo_dung_khan_cap` là phanh thật. Nó **cố ý không đụng job `processing`** — worker đang cầm job đó giữa chừng một lời gọi zca, xoá dòng dưới chân nó chỉ tạo ra tin đã gửi mà DB tưởng chưa. RPC trả về số đó (`con_dang_gui`) và giao diện nói thẳng ra, vì người dùng sẽ thấy một tin lọt sau khi bấm và mất tin vào nút nếu ta giấu.
 
 **Auto-reply cho sale** ([worker/lib/auto-reply.js](worker/lib/auto-reply.js), kích hoạt từ `handleInbound`): bốn cửa theo thứ tự rẻ-trước-đắt-sau — hội thoại có `is_sale_partner` → tin KHÔNG chạm danh sách chặn → tin CÓ khớp từ khoá → hết cooldown và chưa chạm trần ngày. Cửa "chặn" đặt **trước** cửa "khớp" có chủ ý: tin *"còn phòng nào cho cọc trước không"* khớp cả hai, và trong tình huống đó thứ đúng là im lặng.
 
