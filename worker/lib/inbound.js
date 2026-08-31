@@ -172,6 +172,47 @@ async function upsertConversation(accountId, ownerId, m, api) {
   return conv;
 }
 
+/**
+ * Echo của MEDIA mình vừa gửi từ web: gắn vào đúng dòng đang chờ thay vì đẻ dòng mới.
+ *
+ * VÌ SAO CẦN — lỗi đã cắn thật 31/08/2026: mỗi ảnh gửi từ web hiện HAI lần trong
+ * khung chat. Dòng thứ nhất do web tạo (trỏ ảnh tự host, trạng thái `pending`),
+ * dòng thứ hai là echo `selfListen` từ Zalo. Cơ chế chống trùng sẵn có dựa hoàn
+ * toàn vào `zalo_msg_id`, mà zca **không phải lúc nào cũng trả msgId cho
+ * attachment** — chính `media.js` đã ghi chú điều đó và trông cậy vào "unique sẽ
+ * tự vá". Không có id chung thì unique không vá được gì, và ta còn lại hai dòng.
+ *
+ * Ghép theo (hội thoại + loại media + đang chờ + trong 5 phút), lấy dòng CŨ NHẤT
+ * để khớp thứ tự gửi khi có nhiều ảnh liên tiếp. Giữ `media_url` tự host của dòng
+ * cũ — người dùng xem lại được vĩnh viễn, không phụ thuộc CDN Zalo hết hạn.
+ *
+ * @returns true nếu đã gắn vào dòng có sẵn (chỗ gọi khỏi chèn dòng mới).
+ */
+async function gopVaoTinDangCho(accountId, convId, cm, msgId, m) {
+  if (!msgId || !['image', 'file', 'voice', 'video'].includes(cm.msg_type)) return false;
+  const tuLuc = new Date(Date.now() - 5 * 60_000).toISOString();
+  const { data: cho } = await sb.from('zalo_messages')
+    .select('id')
+    .eq('conversation_id', convId).eq('account_id', accountId)
+    .eq('direction', 'out').eq('status', 'pending').eq('msg_type', cm.msg_type)
+    .is('zalo_msg_id', null)
+    .gte('created_at', tuLuc)
+    .order('created_at', { ascending: true })
+    .limit(1).maybeSingle();
+  if (!cho) return false;
+
+  const { error } = await sb.from('zalo_messages').update({
+    status: 'sent',
+    zalo_msg_id: msgId,
+    cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
+    zalo_raw: rawSubset(m),
+    // media_url GIỮ NGUYÊN bản tự host — xem mục trên.
+  }).eq('id', cho.id);
+  if (error) { log('gộp echo media lỗi', error.message); return false; }
+  log('gộp echo media vào dòng đang chờ', cho.id);
+  return true;
+}
+
 export async function handleInbound(accountId, ownerId, m, api) {
   try {
     // isSelf = tin do CHÍNH tài khoản gửi (kể cả từ điện thoại) → lưu là 'out'.
@@ -181,6 +222,9 @@ export async function handleInbound(accountId, ownerId, m, api) {
     const cm = classifyMessage(m);
     const body = cm.body;
     const msgId = m?.data?.msgId ? String(m.data.msgId) : null;
+
+    // Tin media do CHÍNH MÌNH gửi: thử gắn vào dòng đang chờ trước đã.
+    if (out && await gopVaoTinDangCho(accountId, conv.id, cm, msgId, m)) return;
     const { data: insData } = await sb.from('zalo_messages').upsert({
       user_id: ownerId, organization_id: orgOf(accountId),
       conversation_id: conv.id, account_id: accountId,
