@@ -135,7 +135,7 @@ const revisionSchema = z.object({
 });
 
 const settingsSchema = z.object({
-  pollingSeconds: z.number().int().min(30).max(300),
+  pollingSeconds: z.number().int().min(30).max(3600),
   backupHour: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
   alertSensitivity: z.enum(["standard", "strict"]),
   dependencyGrouping: z.boolean(),

@@ -320,8 +320,14 @@ export function validateNetworkSettings(input: unknown): NetworkSettings {
   if (!Number.isInteger(pollingSeconds)) {
     throw new Error("Chu kỳ polling phải là số nguyên");
   }
-  if (pollingSeconds < 30 || pollingSeconds > 300) {
-    throw new Error("Chu kỳ polling phải từ 30 đến 300 giây");
+  // 30..3600 — SAO CHÉP từ ràng buộc `network_site_settings_poll_check` trong
+  // migration 20260729010000. Bản trước chặn ở 300 trong khi cơ sở dữ liệu cho
+  // tới 3600, và ngày 30/08/2026 ai đó đặt cả 22 toà thành 1800: hợp lệ với cơ
+  // sở dữ liệu, nhưng zod ở tầng đọc bác nó và giết TOÀN BỘ trang Network
+  // Center — không toà nào mở được. Ràng buộc phía đọc chặt hơn cơ sở dữ liệu
+  // nghĩa là dữ liệu hợp lệ làm sập giao diện.
+  if (pollingSeconds < 30 || pollingSeconds > 3600) {
+    throw new Error("Chu kỳ polling phải từ 30 đến 3600 giây");
   }
 
   const backupHour = typeof settings.backupHour === "string" ? settings.backupHour.trim() : "";
