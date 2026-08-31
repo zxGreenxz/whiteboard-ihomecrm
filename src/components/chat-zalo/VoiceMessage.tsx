@@ -5,6 +5,7 @@ import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
 import type { MsgActionProps } from './MessageBubble';
+import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
 
 function fmtDur(ms?: number): string {
   const s = Math.max(0, Math.round((ms || 0) / 1000));
@@ -18,7 +19,7 @@ export default function VoiceMessage({ m, onReact, onRecall, onShare, onReply, o
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const url = m.localUrl || m.mediaUrl;
+  const url = useSignedMediaUrl(m.localUrl || m.mediaUrl);
   const durMs = Number(m.mediaMeta?.duration_ms) || undefined;
 
   useEffect(() => () => { audioRef.current?.pause(); }, []);

@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
 
 export interface LightboxImage { id: string; url: string; label?: string }
 
@@ -39,6 +40,8 @@ export default function ZaloLightbox({ images, index, onIndexChange }: Props) {
   if (!open) return null;
   const img = index !== null ? images[index] : undefined;
   if (!img) return null;
+  // Không gọi hook ở đây được (sau early return) — phần ký nằm ở NoiDungAnh
+  // bên dưới, render như một component con để hook luôn chạy đúng thứ tự.
 
   const navBtn: React.CSSProperties = {
     position: 'fixed', top: '50%', transform: 'translateY(-50%)', width: 44, height: 44,
@@ -67,17 +70,29 @@ export default function ZaloLightbox({ images, index, onIndexChange }: Props) {
         </button>
       )}
       <figure onClick={(e) => e.stopPropagation()} style={{ margin: 0, maxWidth: '92vw', maxHeight: '90vh', textAlign: 'center' }}>
-        <img
-          src={img.url}
-          alt={img.label || 'Ảnh'}
-          referrerPolicy="no-referrer"
-          style={{ maxWidth: '92vw', maxHeight: '84vh', objectFit: 'contain', borderRadius: 8 }}
-        />
+        <AnhDaKy url={img.url} nhan={img.label} />
         <figcaption style={{ color: 'rgba(255,255,255,.75)', fontSize: 12.5, marginTop: 10 }}>
           {img.label ? `${img.label} · ` : ''}{index! + 1}/{images.length}
         </figcaption>
       </figure>
     </div>,
     document.body,
+  );
+}
+
+/**
+ * Tách riêng để gọi được `useSignedMediaUrl` — component cha có early return nên
+ * không đặt hook trong đó được. Ảnh SHOP gửi nằm ở bucket private `zalo-media`;
+ * ảnh khách gửi là CDN Zalo (hook tự nhận ra và trả nguyên URL).
+ */
+function AnhDaKy({ url, nhan }: { url: string; nhan?: string }) {
+  const src = useSignedMediaUrl(url);
+  return (
+    <img
+      src={src}
+      alt={nhan || 'Ảnh'}
+      referrerPolicy="no-referrer"
+      style={{ maxWidth: '92vw', maxHeight: '84vh', objectFit: 'contain', borderRadius: 8 }}
+    />
   );
 }

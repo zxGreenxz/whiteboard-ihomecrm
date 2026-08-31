@@ -37,20 +37,43 @@ async function downloadAttachment(a) {
 
 // Cập nhật tick cho từng dòng message của lô — có dedup echo selfListen
 // (echo về trước khi mình kịp update thì bỏ row pending, giữ echo).
+//
+// MỌI LỜI GỌI Ở ĐÂY ĐỀU PHẢI KIỂM `error`. Bản trước bỏ qua hết, và đó không
+// phải chuyện nhỏ: tin gửi đi thành công nhưng dòng trong DB kẹt vĩnh viễn ở
+// `pending`, khung chat hiện một ô "đang gửi" không bao giờ xong, còn hàng đợi
+// thì báo `sent` nên không ai biết có gì sai. Lỗi im lặng ở đây tự che chính nó.
+// Nay ném lên để `processJob` ghi vào `zalo_send_queue.last_error` — đọc được
+// từ DB, không cần bới log.
+//
+// `count: 'exact'` để phân biệt "update chạy nhưng không khớp dòng nào" với
+// "update chạy và trúng" — hai ca đó cần chữa khác nhau, và bản cũ không phân
+// biệt được vì nó không nhìn kết quả.
 async function markSent(accountId, dbMsgIds, zaloMsgIds) {
   const ids = Array.isArray(dbMsgIds) ? dbMsgIds : [];
+  if (!ids.length) {
+    log('markSent: KHÔNG có message_id nào để cập nhật — dòng tin sẽ kẹt ở pending');
+    return;
+  }
   for (let i = 0; i < ids.length; i++) {
     const zid = zaloMsgIds && zaloMsgIds[i] ? String(zaloMsgIds[i]) : null;
     if (zid) {
-      const { data: dup } = await sb.from('zalo_messages').select('id')
+      const { data: dup, error: eDup } = await sb.from('zalo_messages').select('id')
         .eq('account_id', accountId).eq('zalo_msg_id', zid).maybeSingle();
+      if (eDup) throw new Error(`markSent/tìm echo trùng: ${eDup.message}`);
       if (dup && dup.id !== ids[i]) {
-        await sb.from('zalo_messages').delete().eq('id', ids[i]);   // bỏ row pending, giữ echo
+        const { error } = await sb.from('zalo_messages').delete().eq('id', ids[i]); // bỏ row pending, giữ echo
+        if (error) throw new Error(`markSent/xoá dòng chờ: ${error.message}`);
         continue;
       }
-      await sb.from('zalo_messages').update({ status: 'sent', zalo_msg_id: zid }).eq('id', ids[i]);
+      const { error, count } = await sb.from('zalo_messages')
+        .update({ status: 'sent', zalo_msg_id: zid }, { count: 'exact' }).eq('id', ids[i]);
+      if (error) throw new Error(`markSent/cập nhật kèm zalo_msg_id: ${error.message}`);
+      if (!count) throw new Error(`markSent: không tìm thấy dòng tin ${ids[i]} để cập nhật (tin đã gửi nhưng DB không ghi nhận)`);
     } else {
-      await sb.from('zalo_messages').update({ status: 'sent' }).eq('id', ids[i]);
+      const { error, count } = await sb.from('zalo_messages')
+        .update({ status: 'sent' }, { count: 'exact' }).eq('id', ids[i]);
+      if (error) throw new Error(`markSent/cập nhật trạng thái: ${error.message}`);
+      if (!count) throw new Error(`markSent: không tìm thấy dòng tin ${ids[i]} để cập nhật (tin đã gửi nhưng DB không ghi nhận)`);
     }
   }
 }

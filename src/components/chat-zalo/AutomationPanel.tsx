@@ -20,10 +20,15 @@
 // =============================================================================
 
 import { useMemo } from 'react';
-import { Image as ImageIcon, MessageSquare, Send, SlidersHorizontal, History, Loader2 } from 'lucide-react';
+import { Image as ImageIcon, MessageSquare, Send, SlidersHorizontal, History, Loader2, OctagonX } from 'lucide-react';
 import { EMERALD, tagStyle } from './zaloTheme';
 import { mono } from './infoCards';
-import { useZaloAutomationConfigs, useZaloAutomationRuns } from '@/hooks/useZaloChat';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { useZaloAutomationConfigs, useZaloAutomationRuns, useEmergencyStop } from '@/hooks/useZaloChat';
 import type { ZaloAutomationRun } from '@/hooks/useZaloChat';
 import { chuanHoaBroadcast, chuanHoaAutoReply, KHOA_NGAY } from './automationConfig';
 import { nhanCuaNgay, nhanCuaLuot } from './automation/nhanCheDo';
@@ -257,6 +262,9 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
         )}
       </div>
 
+      {/* ------------------------------------------------ Dừng khẩn cấp */}
+      <NutDungKhanCap dangBat={automations.broadcastOn || automations.autoReplyOn} />
+
       {/* -------------------------------------------------- Cài đặt chi tiết */}
       <button
         onClick={onOpenSettings}
@@ -283,5 +291,63 @@ export default function AutomationPanel({ automations, onToggle, templates, conv
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Phanh khẩn cấp. Đặt NGAY TRÊN "Cài đặt chi tiết" và luôn hiện, kể cả khi hai
+ * công tắc đang tắt — vì lúc cần nó, người dùng đã tắt công tắc rồi mà tin vẫn
+ * bay ra, và đó chính là lúc họ hoảng nhất.
+ *
+ * Có bước xác nhận vì việc này KHÔNG LÙI ĐƯỢC: tin đã huỷ không dựng lại được,
+ * phải cấu hình và chờ lượt sau. Nhưng câu hỏi xác nhận phải nhanh đọc — người
+ * đang muốn dừng một chuỗi tin không có thời gian đọc một đoạn văn.
+ */
+function NutDungKhanCap({ dangBat }: { dangBat: boolean }) {
+  const dung = useEmergencyStop();
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <button
+          disabled={dung.isPending}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+            width: '100%', padding: '9px 0', borderRadius: 10,
+            border: '1px solid hsl(0 72% 82%)', background: dangBat ? 'hsl(0 86% 97%)' : 'hsl(0 0% 99%)',
+            color: 'hsl(0 72% 42%)', fontWeight: 700, fontSize: 12.5,
+            cursor: dung.isPending ? 'default' : 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          {dung.isPending ? <Loader2 size={14} className="animate-spin" /> : <OctagonX size={14} />}
+          Dừng khẩn cấp
+        </button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Dừng toàn bộ tin tự động?</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+              Huỷ mọi tin tự động <b>đang chờ gửi</b> và tắt cả hai công tắc.
+              <div style={{ marginTop: 8, color: 'hsl(215 16% 42%)' }}>
+                Tin bạn tự gõ tay <b>không</b> bị ảnh hưởng. Nếu một tin đang được gửi dở
+                thì nó vẫn đi ra — không chặn lại được giữa chừng.
+              </div>
+              <div style={{ marginTop: 8, color: 'hsl(215 16% 42%)' }}>
+                Tin đã huỷ không dựng lại được; muốn gửi phải bật lại và chờ lượt sau.
+              </div>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Không</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => dung.mutate()}
+            style={{ background: 'hsl(0 72% 45%)' }}
+          >
+            Dừng ngay
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

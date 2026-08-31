@@ -3,18 +3,25 @@ import { format, subDays, parseISO } from "date-fns";
 import { Eye, Clock, DoorOpen, Layers, Phone, Heart } from "lucide-react";
 import {
   usePraSummary, usePraTimeseries, usePraTopRooms, usePraFunnel, usePraByToken,
-  type PraFilters, type PraTimeseriesRow,
+  usePraErrorGroups,
+  type PraFilters, type PraTimeseriesRow, type PraErrorSource,
 } from "@/hooks/usePublicRoomsAnalytics";
-import { fmtDuration } from "../analyticsUtils";
+import { fmtDuration, parseUA } from "../analyticsUtils";
 
 const fmtDay = (iso: string) => { try { return format(parseISO(iso), "dd/MM"); } catch { return iso; } };
 const roomName = (r: { room_code: string | null; room_name: string | null }) => r.room_code || r.room_name || "(đã xoá)";
 
-type AnTab = "overview" | "rooms" | "hours" | "links";
+type AnTab = "overview" | "rooms" | "hours" | "links" | "errors";
 const RANGES = [{ d: 7, l: "7 ngày" }, { d: 30, l: "30 ngày" }, { d: 90, l: "90 ngày" }];
 const TABS: { k: AnTab; l: string }[] = [
   { k: "overview", l: "Tổng quan" }, { k: "rooms", l: "Phòng xem nhiều" },
   { k: "hours", l: "Theo giờ" }, { k: "links", l: "Theo link" },
+  { k: "errors", l: "Lỗi" },
+];
+/** Mặc định "Lỗi ứng dụng": nhóm ngoài app (WebView Zalo…) áp đảo về số lượng
+ *  nhưng không sửa được, để chung sẽ lấp mất lỗi thật. */
+const SOURCES: { k: PraErrorSource | "all"; l: string }[] = [
+  { k: "app", l: "Lỗi app" }, { k: "external", l: "Ngoài app" }, { k: "all", l: "Tất cả" },
 ];
 
 /** Đường + vùng tô cho biểu đồ lưu lượng (viewBox 0 0 320 110). */
@@ -34,6 +41,7 @@ function buildPaths(values: number[]) {
 export default function MobileAnalytics() {
   const [days, setDays] = useState(30);
   const [tab, setTab] = useState<AnTab>("overview");
+  const [errSource, setErrSource] = useState<PraErrorSource | "all">("app");
 
   const filters: PraFilters = useMemo(() => {
     const today = new Date();
@@ -46,6 +54,7 @@ export default function MobileAnalytics() {
   const funnel = usePraFunnel(filters);
   const topRooms = usePraTopRooms(filters, 50);
   const byToken = usePraByToken(filters);
+  const errGroups = usePraErrorGroups(filters, errSource, 30);
   const s = summary.data;
 
   const tsData = tsDay.data || [];
@@ -68,6 +77,8 @@ export default function MobileAnalytics() {
 
   const rooms = useMemo(() => [...(topRooms.data || [])].sort((a, b) => b.open_count - a.open_count).slice(0, 8), [topRooms.data]);
   const maxOpen = Math.max(1, ...rooms.map((r) => r.open_count));
+
+  const errors = errGroups.data || [];
 
   const links = useMemo(() => [...(byToken.data || [])].sort((a, b) => b.sessions - a.sessions).slice(0, 10), [byToken.data]);
   const maxLink = Math.max(1, ...links.map((l) => l.sessions));
@@ -211,6 +222,46 @@ export default function MobileAnalytics() {
                   </div>
                   <div className="sp-bartrack">
                     <div className="fill" style={{ width: `${(l.sessions / maxLink) * 100}%`, background: linkColors[i % linkColors.length] }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "errors" && (
+        <div className="sp-chartcard" style={{ marginBottom: 0 }}>
+          <div className="ct">Nhóm lỗi trang công khai</div>
+          <p className="sp-hint" style={{ margin: "0 0 10px" }}>
+            {s?.error_groups ?? 0} lỗi ứng dụng ({s?.errors ?? 0} lượt phiên dính) ·{" "}
+            {s?.error_groups_external ?? 0} lỗi ngoài app (script do trình duyệt in-app
+            tiêm vào — không sửa được từ phía mình).
+          </p>
+          <div className="sp-range" style={{ marginBottom: 12 }}>
+            {SOURCES.map((x) => (
+              <button key={x.k} className={errSource === x.k ? "on" : ""} onClick={() => setErrSource(x.k)}>{x.l}</button>
+            ))}
+          </div>
+          {errors.length === 0 ? (
+            <p className="sp-hint" style={{ margin: 0 }}>Không có lỗi nào trong kỳ — tốt!</p>
+          ) : (
+            <div className="sp-bars">
+              {errors.map((e) => (
+                <div key={e.fingerprint}>
+                  <div className="sp-bar-h">
+                    <span className="nm" style={{ fontFamily: "var(--font)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+                      {e.message ?? "(không có thông điệp)"}
+                    </span>
+                    <span className="val" style={{ color: e.source === "external" ? "var(--acc-amber)" : "var(--red)" }}>
+                      {e.total_count}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 10.5, fontWeight: 600, color: "var(--ink-3)" }}>
+                    <span>{e.kind ?? "—"}</span>
+                    <span>{e.sessions} phiên</span>
+                    <span>{parseUA(e.sample_user_agent)}</span>
+                    <span>{fmtDay(e.last_seen)}</span>
                   </div>
                 </div>
               ))}

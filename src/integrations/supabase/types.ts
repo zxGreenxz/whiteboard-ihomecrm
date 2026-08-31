@@ -21003,23 +21003,60 @@ export type Database = {
           views: number
         }[]
       }
+      pra_error_groups: {
+        Args: {
+          p_building_ids?: string[]
+          p_end_date: string
+          p_exclude_staff?: boolean
+          p_limit?: number
+          p_source?: string
+          p_start_date: string
+          p_token?: string
+        }
+        Returns: {
+          context: string
+          fingerprint: string
+          first_seen: string
+          kind: string
+          last_seen: string
+          message: string
+          sample_build: string
+          sample_href: string
+          sample_stack: string
+          sample_token: string
+          sample_user_agent: string
+          sessions: number
+          source: string
+          total_count: number
+        }[]
+      }
       pra_errors: {
         Args: {
           p_building_ids?: string[]
           p_end_date: string
           p_exclude_staff?: boolean
           p_limit?: number
+          p_source?: string
           p_start_date: string
           p_token?: string
         }
         Returns: {
+          build: string
+          col_no: number
           context: string
           created_at: string
+          fingerprint: string
+          href: string
           kind: string
+          line_no: number
           message: string
+          n: number
           session_id: string
+          source: string
+          stack: string
           token: string
           user_agent: string
+          viewport: string
         }[]
       }
       pra_funnel: {
@@ -21049,7 +21086,11 @@ export type Database = {
           avg_session_ms: number
           contact_clicks: number
           deposit_dialogs: number
+          error_groups: number
+          error_groups_external: number
+          error_hits: number
           errors: number
+          errors_external: number
           favorites: number
           impressions: number
           room_opens: number
@@ -22599,6 +22640,10 @@ export type Database = {
       zalo_disconnect_account: {
         Args: { p_account_id: string }
         Returns: undefined
+      }
+      zalo_dung_khan_cap: {
+        Args: { p_organization_id?: string }
+        Returns: Json
       }
       zalo_get_crm_summary: {
         Args: { p_conversation_id: string }

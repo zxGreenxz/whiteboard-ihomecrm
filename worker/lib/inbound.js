@@ -95,6 +95,32 @@ export function threadIdOf(m) {
   return String(m?.threadId ?? m?.data?.threadId ?? m?.data?.uidFrom ?? '');
 }
 
+// Điền tên/avatar THẬT cho NHÓM mới tạo từ một tin nhắn — best-effort.
+//
+// Vì sao cần: `syncContacts` chỉ quét danh sách nhóm MỘT LẦN lúc đăng nhập. Nhóm
+// lập sau đó chỉ vào CSDL khi có tin nhắn đầu tiên đi qua, mà tin nhắn KHÔNG mang
+// tên nhóm — `dName` trong đó là tên NGƯỜI GỬI. Không có hàm này thì nhóm nằm
+// trong danh sách dưới cái tên "Nhóm Zalo", và người dùng không thể chọn nó làm
+// nơi nhận tin phòng trống định kỳ vì không biết nó là nhóm nào.
+async function fillGroupInfo(api, convId, groupId) {
+  try {
+    const info = await api.getGroupInfo([String(groupId)]);
+    const g = Object.values(info?.gridInfoMap || {}).find((x) => x && x.groupId);
+    if (!g) return;
+    await sb.from('zalo_conversations').update({
+      ...(g.name ? { peer_name: g.name } : {}),
+      ...(g.fullAvt || g.avt ? { peer_avatar_url: g.fullAvt || g.avt } : {}),
+      profile: {
+        kind: 'unknown', isGroup: true,
+        members: g.totalMember || (Array.isArray(g.memberIds) ? g.memberIds.length : null),
+        desc: g.desc || null,
+        memberIds: Array.isArray(g.memberIds) ? g.memberIds.slice(0, 500) : null,
+      },
+    }).eq('id', convId);
+    log('điền tên nhóm →', convId, g.name);
+  } catch (e) { log('fillGroupInfo', e?.message || e); }
+}
+
 // Điền tên/avatar thật cho hội thoại 1-1 tạo từ tin isSelf — best-effort.
 async function fillPeerInfo(api, convId, uid) {
   try {
@@ -126,17 +152,80 @@ async function upsertConversation(accountId, ownerId, m, api) {
     const peerUid = ttype === 'user'
       ? (isSelf ? threadId : String(m?.data?.uidFrom ?? threadId))
       : String(m?.data?.uidFrom ?? '');
-    const peerName = (!isSelf && (m?.data?.dName || m?.data?.fromName))
-      || (ttype === 'group' ? 'Nhóm Zalo' : 'Khách Zalo');
+    // NHÓM: `dName`/`fromName` là tên NGƯỜI GỬI, không phải tên nhóm — dùng nó
+    // sẽ đặt cho nhóm cái tên của người tình cờ nhắn đầu tiên. Đặt tạm rồi hỏi
+    // Zalo tên thật ở dưới.
+    const peerName = ttype === 'group'
+      ? 'Nhóm Zalo'
+      : ((!isSelf && (m?.data?.dName || m?.data?.fromName)) || 'Khách Zalo');
     const ins = await sb.from('zalo_conversations').insert({
       user_id: ownerId, organization_id: orgOf(accountId),
       account_id: accountId, thread_id: threadId, thread_type: ttype,
       peer_name: peerName, peer_zalo_uid: peerUid, kind: 'unknown',
     }).select(COT_CONV).single();
     conv = ins.data;
-    if (conv && isSelf && ttype === 'user' && api) fillPeerInfo(api, conv.id, threadId);
+    if (conv && api) {
+      if (ttype === 'group') fillGroupInfo(api, conv.id, threadId);
+      else if (isSelf) fillPeerInfo(api, conv.id, threadId);
+    }
   }
   return conv;
+}
+
+/**
+ * Echo của tin mình vừa gửi từ web: gắn vào đúng dòng đang chờ thay vì đẻ dòng mới.
+ *
+ * VÌ SAO CẦN — lỗi đã cắn thật 31/08/2026: mỗi tin gửi từ web hiện HAI lần trong
+ * khung chat (chủ dự án gửi một dấu chấm, thấy một tin "đang gửi" và một tin đã
+ * gửi; máy bên kia chỉ nhận MỘT). Dòng thứ nhất do web tạo (`pending`), dòng thứ
+ * hai là echo `selfListen` từ Zalo. Cơ chế chống trùng sẵn có dựa hoàn toàn vào
+ * `zalo_msg_id`, mà zca **không phải lúc nào cũng trả msgId** — chính `media.js`
+ * đã ghi chú điều đó và trông cậy vào "unique sẽ tự vá". Không có id chung thì
+ * unique không vá được gì, và ta còn lại hai dòng.
+ *
+ * Áp cho CẢ tin chữ lẫn media: đo trên dữ liệu thật cho thấy cả hai cùng bệnh.
+ *
+ * Ghép theo (hội thoại + loại media + đang chờ + trong 5 phút), lấy dòng CŨ NHẤT
+ * để khớp thứ tự gửi khi có nhiều ảnh liên tiếp. Giữ `media_url` tự host của dòng
+ * cũ — người dùng xem lại được vĩnh viễn, không phụ thuộc CDN Zalo hết hạn.
+ *
+ * @returns true nếu đã gắn vào dòng có sẵn (chỗ gọi khỏi chèn dòng mới).
+ */
+async function gopVaoTinDangCho(accountId, convId, cm, msgId, m) {
+  if (!msgId) return false;
+  if (!['image', 'file', 'voice', 'video', 'text'].includes(cm.msg_type)) return false;
+  const tuLuc = new Date(Date.now() - 5 * 60_000).toISOString();
+
+  let truyVan = sb.from('zalo_messages')
+    .select('id')
+    .eq('conversation_id', convId).eq('account_id', accountId)
+    .eq('direction', 'out').eq('status', 'pending').eq('msg_type', cm.msg_type)
+    .is('zalo_msg_id', null)
+    .gte('created_at', tuLuc);
+
+  // TIN CHỮ ghép chặt hơn media: có sẵn nội dung để đối chiếu, dùng luôn. Media
+  // không có gì so ngoài loại, nên chỉ ghép được theo thứ tự thời gian.
+  if (cm.msg_type === 'text') {
+    const noiDung = cm.body ?? '';
+    if (!noiDung) return false;      // tin rỗng thì không đủ căn cứ để ghép
+    truyVan = truyVan.eq('body', noiDung);
+  }
+
+  const { data: cho } = await truyVan
+    .order('created_at', { ascending: true })
+    .limit(1).maybeSingle();
+  if (!cho) return false;
+
+  const { error } = await sb.from('zalo_messages').update({
+    status: 'sent',
+    zalo_msg_id: msgId,
+    cli_msg_id: m?.data?.cliMsgId ? String(m.data.cliMsgId) : null,
+    zalo_raw: rawSubset(m),
+    // media_url GIỮ NGUYÊN bản tự host — xem mục trên.
+  }).eq('id', cho.id);
+  if (error) { log('gộp echo media lỗi', error.message); return false; }
+  log('gộp echo media vào dòng đang chờ', cho.id);
+  return true;
 }
 
 export async function handleInbound(accountId, ownerId, m, api) {
@@ -148,6 +237,9 @@ export async function handleInbound(accountId, ownerId, m, api) {
     const cm = classifyMessage(m);
     const body = cm.body;
     const msgId = m?.data?.msgId ? String(m.data.msgId) : null;
+
+    // Tin media do CHÍNH MÌNH gửi: thử gắn vào dòng đang chờ trước đã.
+    if (out && await gopVaoTinDangCho(accountId, conv.id, cm, msgId, m)) return;
     const { data: insData } = await sb.from('zalo_messages').upsert({
       user_id: ownerId, organization_id: orgOf(accountId),
       conversation_id: conv.id, account_id: accountId,
@@ -189,7 +281,9 @@ export async function handleInbound(accountId, ownerId, m, api) {
 }
 
 // ── Upsert N tin vào 1 hội thoại; tạo hội thoại nếu chưa có ──
-export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, msgs) {
+// `api` là TUỲ CHỌN và chỉ dùng để hỏi tên nhóm thật; thiếu nó thì hội thoại
+// nhóm vẫn được tạo, chỉ mang tên tạm "Nhóm Zalo".
+export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, msgs, api = null) {
   if (!Array.isArray(msgs) || !msgs.length) return 0;
   let { data: conv } = await sb.from('zalo_conversations').select('id').eq('account_id', accountId).eq('thread_id', threadId).maybeSingle();
   if (!conv) {
@@ -198,10 +292,13 @@ export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, 
     const ins = await sb.from('zalo_conversations').insert({
       user_id: ownerId, organization_id: orgOf(accountId),
       account_id: accountId, thread_id: threadId, thread_type: tt,
-      peer_name: (!isSelf && f?.data?.dName) || (tt === 'group' ? 'Nhóm Zalo' : 'Khách Zalo'),
+      // Cùng lý do như upsertConversation: với NHÓM thì `dName` là tên người
+      // gửi, không phải tên nhóm.
+      peer_name: tt === 'group' ? 'Nhóm Zalo' : ((!isSelf && f?.data?.dName) || 'Khách Zalo'),
       peer_zalo_uid: tt === 'user' ? (isSelf ? threadId : String(f?.data?.uidFrom || threadId)) : String(f?.data?.uidFrom || ''),
     }).select('id').single();
     conv = ins.data;
+    if (conv && tt === 'group' && api) fillGroupInfo(api, conv.id, threadId);
   }
   if (!conv) return 0;
   const rows = msgs.map((m) => {
@@ -230,7 +327,7 @@ export async function upsertMessagesForThread(accountId, ownerId, threadId, tt, 
 }
 
 // ── Đồng bộ TIN GẦN ĐÂY (event old_messages) — gom theo thread rồi upsert ──
-export async function handleOldMessages(accountId, ownerId, messages, type) {
+export async function handleOldMessages(accountId, ownerId, messages, type, api = null) {
   try {
     if (!Array.isArray(messages) || !messages.length) return;
     const tt = type === ThreadType.Group ? 'group' : 'user';
@@ -242,7 +339,7 @@ export async function handleOldMessages(accountId, ownerId, messages, type) {
       byThread.get(tid).push(m);
     }
     let total = 0;
-    for (const [tid, msgs] of byThread) total += await upsertMessagesForThread(accountId, ownerId, tid, tt, msgs);
+    for (const [tid, msgs] of byThread) total += await upsertMessagesForThread(accountId, ownerId, tid, tt, msgs, api);
     log('old_messages', tt, '→', total, 'tin /', byThread.size, 'hội thoại');
   } catch (e) { log('handleOldMessages', e?.message || e); }
 }
@@ -399,7 +496,7 @@ export async function attachSession(accountId, ownerId, api, { onClosed, session
   });
   try {
     api.listener.on('message', (m) => handleInbound(accountId, ownerId, m, api));
-    api.listener.on('old_messages', (msgs, type) => handleOldMessages(accountId, ownerId, msgs, type));
+    api.listener.on('old_messages', (msgs, type) => handleOldMessages(accountId, ownerId, msgs, type, api));
     api.listener.on('reaction', (e) => handleReaction(accountId, e));
     api.listener.on('undo', (e) => handleUndo(accountId, e));
     api.listener.on('seen_messages', (e) => handleSeen(accountId, e));

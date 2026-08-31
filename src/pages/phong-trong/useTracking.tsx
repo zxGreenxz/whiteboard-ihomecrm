@@ -7,6 +7,11 @@
  */
 import React, { createContext, useContext, useEffect, useRef } from "react";
 import { createTracker, NOOP_TRACKER, type Tracker } from "./tracking";
+import {
+  clearBoundaryReporter,
+  setBoundaryReporter,
+  type BoundaryReporter,
+} from "@/components/errors/boundaryReporter";
 
 const TrackingContext = createContext<Tracker>(NOOP_TRACKER);
 
@@ -32,6 +37,24 @@ export function useTracking(token: string | undefined, isStaff: boolean): Tracke
   useEffect(() => {
     tracker.start();
     return () => tracker.stop();
+  }, [tracker]);
+
+  // React render crash: boundary nuốt lỗi nên window.onerror không thấy. Đăng ký
+  // nhận ở đây và gửi NGAY kiểu keepalive — lỗi chunk kéo theo reload, chờ tới
+  // nhịp flush 8 giây thì trang đã đi rồi.
+  useEffect(() => {
+    if (!tracker.enabled) return;
+    const report: BoundaryReporter = (error, info) => {
+      tracker.trackError({
+        kind: "react_boundary",
+        msg: String(error),
+        stack: error?.stack ?? info?.componentStack ?? undefined,
+        where: "ErrorBoundary",
+      });
+      tracker.flushNow();
+    };
+    setBoundaryReporter(report);
+    return () => clearBoundaryReporter(report);
   }, [tracker]);
 
   useEffect(() => {

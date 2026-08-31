@@ -18,12 +18,27 @@ interface Props {
 /** Thanh thao tác nổi khi hover bong bóng: cảm xúc + trả lời + chia sẻ + thu hồi + xoá phía mình. */
 export default function MessageActions({ out, canRecall, onReact, onRecall, onShare, onReply, onDelete }: Props) {
   return (
+    // HAI LỚP, và lớp ngoài là thứ chữa một lỗi thật: bản cũ đặt thanh ở
+    // `top: -34` nên giữa đáy thanh và đỉnh bong bóng còn ~6px TRỐNG. Khoảng đó
+    // không thuộc phần tử nào của tin này, nên chuột đi từ bong bóng lên thanh
+    // là rời vùng hover → thanh biến mất giữa đường và KHÔNG BẤM ĐƯỢC. Chủ dự án
+    // báo đúng triệu chứng này 31/08/2026: "đưa chuột lên là nó bị ẩn đi".
+    //
+    // Lớp ngoài neo bằng `bottom: 100%` (dính sát đỉnh bong bóng) và lấy
+    // `paddingBottom` làm CẦU trong suốt bắc qua khoảng hở — chuột không bao giờ
+    // rời khỏi cây DOM của tin nữa. Padding thay vì margin: margin nằm ngoài
+    // vùng chuột, đúng cái bẫy vừa gỡ.
     <div
       style={{
-        position: 'absolute', top: -34, [out ? 'right' : 'left']: 0,
+        position: 'absolute', bottom: '100%', [out ? 'right' : 'left']: 0,
+        paddingBottom: 6, zIndex: 5,
+      }}
+    >
+    <div
+      style={{
         display: 'flex', alignItems: 'center', gap: 1,
         background: '#fff', border: '1px solid hsl(210 20% 88%)', borderRadius: 18,
-        padding: '3px 5px', boxShadow: '0 3px 10px rgba(16,24,40,.14)', zIndex: 5,
+        padding: '3px 5px', boxShadow: '0 3px 10px rgba(16,24,40,.14)',
       }}
     >
       {REACTION_EMOJIS.map((e) => (
@@ -53,6 +68,7 @@ export default function MessageActions({ out, canRecall, onReact, onRecall, onSh
           <button onClick={onDelete} title="Xoá ở phía bạn" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'hsl(210 10% 45%)', display: 'flex', padding: 3, borderRadius: 6 }}><EyeOff size={15} /></button>
         </>
       )}
+    </div>
     </div>
   );
 }

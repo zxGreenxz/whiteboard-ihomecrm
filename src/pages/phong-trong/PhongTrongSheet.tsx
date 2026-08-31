@@ -255,7 +255,7 @@ export function DetailSheet({
       catch (e) { if ((e as DOMException)?.name === "AbortError") return; }
     }
     try { await navigator.clipboard.writeText(text); onToast(copyFallbackMsg); return; } catch { /* */ }
-    trackRoom("error", { where: "share", msg: "share+clipboard failed" });
+    track.trackError({ kind: "ui", where: "share", msg: "share+clipboard failed", room_id: r.id });
     onToast("Không chia sẻ được — bấm thử lại");
   };
   const doShare = () => {
@@ -272,7 +272,7 @@ export function DetailSheet({
     const entry = ensureFiles(r);
     if (!entry.done) onToast("Đang chuẩn bị ảnh…");
     const files = await entry.promise;
-    if (!files.length) { trackRoom("error", { where: "download", msg: "no images" }); onToast("Không tải được ảnh"); return; }
+    if (!files.length) { track.trackError({ kind: "ui", where: "download", msg: "no images", room_id: r.id }); onToast("Không tải được ảnh"); return; }
 
     if (nav.share && nav.canShare && nav.canShare({ files })) {
       try {

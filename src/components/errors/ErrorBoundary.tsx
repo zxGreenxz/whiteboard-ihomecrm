@@ -7,6 +7,7 @@ import {
   hasAutoReloadBudget,
   isReloadPending,
 } from "@/lib/chunkReload";
+import { reportBoundaryError } from "./boundaryReporter";
 
 interface Props {
   children: ReactNode;
@@ -44,6 +45,10 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Báo TRƯỚC nhánh chunk-error: lỗi chunk dẫn tới reload, và sau reload thì
+    // không còn gì để kể lại. Ô cắm rỗng ở mọi màn hình không đăng ký nhận.
+    reportBoundaryError(error, errorInfo);
+
     // Chunk lazy 404/poisoned sau deploy mới (Vite emit bare import() cho chunk
     // không có dep nên không qua vite:preloadError) → bust cache độc + reload lấy
     // bản mới. Truyền `error` để rút URL chunk hỏng mà bust đúng entry.

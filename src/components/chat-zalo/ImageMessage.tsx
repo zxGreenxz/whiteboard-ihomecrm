@@ -5,6 +5,7 @@ import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
 import type { MsgActionProps } from './MessageBubble';
+import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
 
 interface Props extends MsgActionProps {
   m: ZaloMessage;
@@ -19,7 +20,8 @@ export default function ImageMessage({ m, onReact, onRecall, onShare, onReply, o
   const [hover, setHover] = useState(false);
   const canAct = (!!m.id && (!!onReact || !!onRecall || !!onReply || !!onDelete)) || !!onShare;
   const radius = out ? '14px 4px 14px 14px' : '14px 14px 14px 4px';
-  const url = m.localUrl || m.mediaUrl;
+  // Ảnh SHOP gửi nằm trong bucket private `zalo-media` — phải ký mới xem được.
+  const url = useSignedMediaUrl(m.localUrl || m.mediaUrl);
 
   const img = (
     <img

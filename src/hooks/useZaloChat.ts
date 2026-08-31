@@ -456,6 +456,52 @@ export function useZaloAutomationRuns(enabled = true) {
   });
 }
 
+/**
+ * DỪNG KHẨN CẤP: huỷ mọi tin tự động đang chờ + tắt cả hai công tắc.
+ *
+ * Vì sao cần một nút riêng thay vì chỉ gạt công tắc: engine xếp CẢ LÔ tin vào
+ * hàng đợi với giờ gửi rải sẵn. Gạt công tắc chỉ ngăn lượt SAU — lô đang bay vẫn
+ * lần lượt đi ra trong nhiều phút. Đã cắn thật 31/08/2026 ngay lượt chạy đầu
+ * tiên: chủ dự án bấm tắt và tin vẫn tiếp tục nhắn.
+ */
+export interface KetQuaDungKhanCap {
+  daHuy: number;
+  tinDanhDauThatBai: number;
+  conDangGui: number;
+}
+export function useEmergencyStop() {
+  const qc = useQueryClient();
+  const orgId = useZaloOrgId();
+  return useMutation({
+    mutationFn: async (): Promise<KetQuaDungKhanCap> => {
+      const { data, error } = await db.rpc('zalo_dung_khan_cap', { p_organization_id: orgId });
+      if (error) throw error;
+      const r = (data || {}) as Record<string, number>;
+      return {
+        daHuy: r.da_huy ?? 0,
+        tinDanhDauThatBai: r.tin_danh_dau_that_bai ?? 0,
+        conDangGui: r.con_dang_gui ?? 0,
+      };
+    },
+    onSuccess: (r) => {
+      // Nói rõ cả phần KHÔNG chặn được: worker có thể đang cầm 1 tin giữa chừng
+      // một lời gọi Zalo, tin đó vẫn sẽ đi ra. Giấu chi tiết này đi thì người
+      // dùng thấy một tin lọt sau khi bấm và mất tin vào nút.
+      const them = r.conDangGui > 0
+        ? ` Còn ${r.conDangGui} tin đang gửi dở sẽ vẫn đi ra.`
+        : '';
+      toast.success(
+        r.daHuy > 0
+          ? `Đã dừng: huỷ ${r.daHuy} tin đang chờ, tắt cả hai công tắc.${them}`
+          : `Không còn tin nào đang chờ. Đã tắt cả hai công tắc.${them}`,
+      );
+      qc.invalidateQueries({ queryKey: QK.automations });
+      qc.invalidateQueries({ queryKey: QK.conversations });
+    },
+    onError: (e: Error) => toast.error(e?.message || 'Không dừng được — thử lại'),
+  });
+}
+
 /** Bật/tắt cờ "hội thoại này là sale" — quyết định ai nhận tin tự động. */
 export function useMarkSalePartner() {
   const qc = useQueryClient();

@@ -174,7 +174,7 @@ export async function processJob(job) {
       await jobDone(job.id);
     } else if (p.action === 'load_history') {
       const h = await s.api.getGroupChatHistory(String(p.thread_id), Number(p.count) || 50);
-      const n = await upsertMessagesForThread(job.account_id, job.user_id, String(p.thread_id), 'group', h?.groupMsgs || []);
+      const n = await upsertMessagesForThread(job.account_id, job.user_id, String(p.thread_id), 'group', h?.groupMsgs || [], s.api);
       log('history', job.id, '→', n, 'tin');
       await jobDone(job.id);
     } else if (p.action === 'delete_for_me') {
