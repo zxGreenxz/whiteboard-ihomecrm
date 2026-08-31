@@ -9,275 +9,13 @@
     <title>CRM</title>
     <meta name="description" content="Cập nhật realtime · đầy đủ thông tin phòng & vị trí toà nhà" />
     <meta name="author" content="CRM" />
+    <meta name="build-sha" content="%VITE_BUILD_SHA%" />
 
-    <!-- Bắt lỗi sớm cho trang công khai "Phòng trống". PHẢI là script đầu tiên:
-         bộ đo đếm nằm trong bundle React chỉ gắn được listener sau khi chunk
-         lazy mount xong (0,5–3 giây trên 4G), nên mọi lỗi lúc tải tài liệu —
-         đúng quãng WebView in-app tiêm script cầu nối của nó — trước đây không
-         ai thấy. File này xếp hàng, tracker rút hàng đợi rồi cắm hook. Tự thoát
-         ngay trên mọi đường dẫn khác. -->
+    <!-- Public-room telemetry boot remains external so CSP can stay strict. -->
     <script src="/pt-boot.js"></script>
+    <script src="/pwa-entry-watchdog.js"></script>
+    <link rel="stylesheet" href="/pwa-splash.css" />
 
-    <!-- Standalone-only entry watchdog. Browser tabs keep their current behavior.
-         Án lệ Android 07/2026: đổi mạng WiFi→LTE làm socket chết → fetch entry
-         JS treo LƠ LỬNG (không error, không xong) và cả location.replace() cứu
-         hộ cũng treo theo → splash xoay vô hạn, phải kill app. Vì vậy mọi bước
-         đều có tầng thoát: nhắc mạng chậm (soft) → tự reload (hard) → reload
-         không cập bến thì hiện màn lỗi + nút thử lại (nav). -->
-    <script>
-      (function () {
-        var standalone = false;
-        try {
-          standalone =
-            window.matchMedia('(display-mode: standalone)').matches ||
-            window.navigator.standalone === true;
-        } catch (e) {}
-        if (!standalone) return;
-
-        document.documentElement.classList.add('pwa-standalone');
-
-        // Timings cho phép test override qua window.__ihomeWdT (đặt trước khi
-        // script này chạy — addInitScript của Playwright). Prod dùng mặc định.
-        var T = window.__ihomeWdT || {};
-        var retryKey = 'ihome:pwa-entry-retry';
-        var retryWindowMs = T.retryWindow || 120000;
-        var softTimeoutMs = T.soft || 12000; // nhắc "mạng chậm", spinner vẫn chạy, KHÔNG hủy download đang dở
-        var hardTimeoutMs = T.hard || 30000; // tự reload bust-cache (1 lần / retryWindowMs)
-        var navTimeoutMs = T.nav || 6000;    // reload phát đi mà navigation không cập bến → màn lỗi
-        var probeIntervalMs = T.probe || 5000;   // nhịp dò mạng khi đã ở màn lỗi
-        var probeAbortMs = T.probeAbort || 4000; // mỗi lần dò chờ tối đa bấy nhiêu rồi hủy
-        var autoKey = 'ihome:pwa-auto-reloads';  // ngân sách tự-reload-khi-có-mạng (3 lần/phiên)
-        var autoReloadDone = false;
-        var failedShown = false;
-        var retryBound = false;
-        var timers = [];
-
-        function armTimer(fn, ms) { timers.push(window.setTimeout(fn, ms)); }
-        function clearTimers() {
-          for (var i = 0; i < timers.length; i++) window.clearTimeout(timers[i]);
-          timers = [];
-        }
-
-        armTimer(function () {
-          showRecovery(false, 'Mạng chậm, ứng dụng vẫn đang tải…');
-        }, softTimeoutMs);
-        armTimer(autoReload, hardTimeoutMs);
-
-        function onEntryError(event) {
-          var target = event.target;
-          if (target && target.tagName === 'SCRIPT' && target.type === 'module') {
-            autoReload();
-          }
-        }
-        window.addEventListener('error', onEntryError, true);
-
-        window.__ihomePwaEntryReady = function () {
-          clearTimers();
-          stopProbing();
-          window.removeEventListener('error', onEntryError, true);
-          var splash = document.getElementById('app-splash');
-          if (splash) {
-            splash.classList.remove('as-slow', 'as-failed');
-            splash.setAttribute('aria-hidden', 'true');
-          }
-          try {
-            window.sessionStorage.removeItem(retryKey);
-            window.sessionStorage.removeItem(autoKey);
-          } catch (e) {}
-          try {
-            var cleanUrl = new URL(window.location.href);
-            if (cleanUrl.searchParams.has('_ihome_boot')) {
-              cleanUrl.searchParams.delete('_ihome_boot');
-              window.history.replaceState(window.history.state, '', cleanUrl.toString());
-            }
-          } catch (e) {}
-        };
-
-        function cacheBustedUrl() {
-          var url = new URL(window.location.href);
-          url.searchParams.set('_ihome_boot', String(Date.now()));
-          return url.toString();
-        }
-
-        function startReload() {
-          clearTimers();
-          armTimer(function () {
-            showRecovery(true, budgetLeft()
-              ? 'Mất kết nối máy chủ. Sẽ tự tải lại ngay khi có mạng — hoặc bấm tải lại.'
-              : 'Không thể kết nối máy chủ. Kiểm tra mạng rồi bấm tải lại.');
-          }, navTimeoutMs);
-          window.location.replace(cacheBustedUrl());
-        }
-
-        function autoReload() {
-          if (autoReloadDone) return;
-          autoReloadDone = true;
-          var shouldReload = false;
-          var now = Date.now();
-          try {
-            var lastRetry = Number(window.sessionStorage.getItem(retryKey) || 0);
-            if (!lastRetry || now - lastRetry > retryWindowMs) {
-              window.sessionStorage.setItem(retryKey, String(now));
-              shouldReload = true;
-            }
-          } catch (e) {}
-
-          if (shouldReload) { startReload(); return; }
-          clearTimers();
-          showRecovery(true, 'Ứng dụng chưa thể khởi động. Hãy kiểm tra kết nối rồi tải lại.');
-        }
-
-        // ===== Tự hồi phục: khi đã rơi vào màn lỗi, dò mạng định kỳ (fetch nhỏ
-        // + hủy sau probeAbortMs) kết hợp sự kiện online/visibilitychange —
-        // mạng sống lại là TỰ reload, không cần bấm. Ngân sách autoKey (3 lần/
-        // phiên) chặn vòng lặp reload khi mạng OK nhưng app hỏng (deploy lỗi):
-        // hết ngân sách thì chỉ còn nút bấm tay.
-        var probing = false;
-        var probeInFlight = false;
-        var probeIval = null;
-        var probeListenersBound = false;
-
-        function budgetLeft() {
-          try { return Number(window.sessionStorage.getItem(autoKey) || 0) < 3; }
-          catch (e) { return false; }
-        }
-
-        function stopProbing() {
-          probing = false;
-          if (probeIval) { window.clearInterval(probeIval); probeIval = null; }
-        }
-
-        function kickProbe() { if (probing) doProbe(); }
-
-        function startProbing() {
-          if (probing || !budgetLeft()) return;
-          probing = true;
-          if (!probeListenersBound) {
-            probeListenersBound = true;
-            window.addEventListener('online', kickProbe);
-            document.addEventListener('visibilitychange', function () {
-              if (document.visibilityState === 'visible') kickProbe();
-            });
-          }
-          probeIval = window.setInterval(doProbe, probeIntervalMs);
-          doProbe();
-        }
-
-        function doProbe() {
-          if (probeInFlight) return;
-          probeInFlight = true;
-          var done = false;
-          var ctrl = null;
-          try { ctrl = new AbortController(); } catch (e) {}
-          function settle(ok) {
-            if (done) return;
-            done = true;
-            probeInFlight = false;
-            if (ok && probing) { stopProbing(); autoReloadViaProbe(); }
-          }
-          window.setTimeout(function () {
-            if (ctrl) { try { ctrl.abort(); } catch (e) {} }
-            settle(false);
-          }, probeAbortMs);
-          try {
-            fetch('/manifest.webmanifest?_probe=' + Date.now(), {
-              cache: 'no-store',
-              credentials: 'omit',
-              signal: ctrl ? ctrl.signal : undefined,
-            }).then(function (res) { settle(!!res && res.ok); }, function () { settle(false); });
-          } catch (e) { settle(false); }
-        }
-
-        function autoReloadViaProbe() {
-          if (!budgetLeft()) {
-            showRecovery(true, 'Ứng dụng chưa thể khởi động. Hãy kiểm tra kết nối rồi bấm tải lại.');
-            return;
-          }
-          try {
-            var n = Number(window.sessionStorage.getItem(autoKey) || 0);
-            window.sessionStorage.setItem(autoKey, String(n + 1));
-          } catch (e) {}
-          startReload();
-        }
-
-        function showRecovery(failed, message) {
-          if (failed) startProbing(); // idempotent; tự thoát nếu hết ngân sách
-          function reveal() {
-            if (!failed && failedShown) return; // không hạ cấp màn lỗi về nhắc mạng chậm
-            var splash = document.getElementById('app-splash');
-            var msg = document.getElementById('app-splash-msg');
-            var retry = document.getElementById('app-splash-reload');
-            if (!splash || !msg || !retry) return;
-            if (failed) failedShown = true;
-            msg.textContent = message;
-            splash.classList.add(failed ? 'as-failed' : 'as-slow');
-            splash.setAttribute('aria-hidden', 'false');
-            if (!retryBound) {
-              retryBound = true;
-              retry.addEventListener('click', function () {
-                try {
-                  window.sessionStorage.removeItem(retryKey);
-                  window.sessionStorage.removeItem(autoKey);
-                } catch (e) {}
-                autoReloadDone = true;
-                startReload();
-              });
-            }
-          }
-
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', reveal, { once: true });
-          } else {
-            reveal();
-          }
-        }
-      })();
-    </script>
-
-    <!-- Splash tức thì: nền brand + logo ngay từ paint đầu tiên, tránh MÀN ĐEN
-         khi chunk JS đang tải (đặc biệt standalone iOS dark mode). React gọi
-         hideAppSplash() khi trang đầu mount (xem src/lib/appSplash.ts).
-         Mặc định display:none → chỉ .pwa-standalone mới bật. -->
-    <style>
-      html, body { margin: 0; }
-      html.pwa-standalone, html.pwa-standalone body { background: #f5f3ee; }
-      #app-splash {
-        position: fixed; inset: 0; z-index: 99999;
-        display: none; flex-direction: column; align-items: center; justify-content: center;
-        gap: 24px; background: #f5f3ee;
-        opacity: 1; transition: opacity .28s ease;
-      }
-      html.pwa-standalone #app-splash { display: flex; }
-      #app-splash .as-logo {
-        width: 84px; height: 84px; border-radius: 21px;
-        background: linear-gradient(150deg, #21845a, #176244);
-        display: flex; align-items: center; justify-content: center;
-        box-shadow: 0 12px 38px rgba(27, 24, 19, .18), 0 4px 12px rgba(27, 24, 19, .10);
-      }
-      #app-splash .as-logo svg { width: 44px; height: 44px; }
-      #app-splash .as-spin {
-        width: 24px; height: 24px; border-radius: 50%;
-        border: 3px solid rgba(23, 98, 68, .18); border-top-color: #176244;
-        animation: as-spin .8s linear infinite;
-      }
-      #app-splash .as-recovery {
-        display: none; max-width: 300px; padding: 0 24px;
-        color: #26352e; text-align: center; font: 500 14px/1.5 sans-serif;
-      }
-      #app-splash .as-recovery button {
-        margin-top: 14px; border: 0; border-radius: 10px; padding: 10px 16px;
-        background: #176244; color: #fff; font: inherit; cursor: pointer;
-      }
-      /* as-slow: nhắc mạng chậm — spinner VẪN chạy (download tiếp tục phía sau) */
-      #app-splash.as-slow .as-recovery { display: block; }
-      #app-splash.as-failed .as-spin { display: none; }
-      #app-splash.as-failed .as-recovery { display: block; }
-      @keyframes as-spin { to { transform: rotate(360deg); } }
-    </style>
-
-    <!-- PWA / Thêm vào màn hình chính → chạy full-screen như app (ẩn thanh
-         địa chỉ + thanh công cụ trình duyệt). viewport-fit=cover bật các
-         env(safe-area-inset-*) mà các trang mobile đã dùng sẵn. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#ffffff" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -287,9 +25,6 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192.png" />
 
-    <!-- iOS launch screens: bỏ màn trắng nhấp nháy khi mở app từ MH chính.
-         Khớp theo device-width/height (CSS px) + dpr + portrait. Máy không khớp
-         → fallback nền trắng (vô hại). Ảnh splash-* generate sẵn trong public/. -->
     <link rel="apple-touch-startup-image" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash-640x1136.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/splash-750x1334.png" />
     <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/splash-1242x2208.png" />
@@ -310,30 +45,19 @@
     <meta property="og:image" content="https://ptcrm.vercel.app/og-image.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://ptcrm.vercel.app/og-image.jpg" />
 
-    <!-- Preconnect Supabase TRƯỚC fonts: useAuth đọc session từ localStorage nên
-         request mạng đầu tiên của app là data query — dựng sẵn DNS+TCP+TLS ở đây
-         tiết kiệm ~100–300 ms cold load trên 4G. -->
     <link rel="preconnect" href="https://tryymsxyyckgbrmmvozx.supabase.co" crossorigin />
-
-    <!-- Fonts gộp 1 request (tránh CSS @import render-blocking + nối tiếp trong
-         các kit mobile): Baloo 2 (nhãn QR) + Be Vietnam Pro + Space Mono (app kit)
-         + Lora (tiêu đề Trung tâm mạng).
-         Nạp NON-BLOCKING (preload → đổi rel khi CSS về): font CSS không được phép
-         chặn first paint của #app-splash — nếu request này dính dead-socket (án lệ
-         Android 07/2026) mà render-blocking thì user thấy màn trắng thay vì splash
-         + màn cứu hộ watchdog. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="preload"
       as="style"
+      id="app-font-preload"
       href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Lora:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
-      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <script src="/pwa-font-loader.js"></script>
     <noscript>
       <link
         rel="stylesheet"

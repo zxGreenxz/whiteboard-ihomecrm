@@ -1,31 +1,97 @@
 import { NETWORK_CENTER_RUNTIME_ENABLED } from "@/lib/network-center/runtime";
-import type { CapabilityDefinition, CopilotPageContract } from "./types";
+import type { CapabilityDefinition, CopilotPageBatch, CopilotPageContract } from "./types";
+
+type PageSeed = Omit<CopilotPageContract, "batch" | "rolloutKey"> & {
+  batch: CopilotPageBatch;
+  rolloutKey?: string;
+};
+
+/** Keep page metadata declarative: rollout keys are server-owned and default-off. */
+const page = (seed: PageSeed): CopilotPageContract => ({
+  ...seed,
+  rolloutKey: seed.rolloutKey ?? seed.key,
+});
 
 export const COPILOT_PAGE_CONTRACTS: readonly CopilotPageContract[] = [
-  {
+  page({
     key: "rooms.list",
     route: "/apartments",
     mode: "filter",
     permission: { module: "rooms", action: "view" },
     dataClass: "internal",
+    batch: "property",
     safeControlIds: ["room.search", "room.status-filter"],
-  },
-  {
+  }),
+  page({
     key: "invoices.list",
     route: "/invoices",
     mode: "navigate",
     permission: { module: "invoices", action: "view" },
     dataClass: "financial",
+    batch: "billing",
     safeControlIds: ["invoice.month-filter", "invoice.status-filter", "invoice.search"],
-  },
-  {
+  }),
+  page({
     key: "customers.list",
     route: "/customers",
     mode: "filter",
     permission: { module: "customers", action: "view" },
     dataClass: "pii",
+    batch: "crm",
     safeControlIds: ["customer.search"],
-  },
+  }),
+
+  // Property and inventory read batch. Detail routes are patterns, not IDs.
+  page({ key: "buildings.list", route: "/buildings", mode: "navigate", permission: { module: "buildings", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "buildings.detail", route: "/buildings/:id", canonicalRoute: "/buildings", mode: "read", permission: { module: "buildings", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "rooms.detail", route: "/apartments/:id", canonicalRoute: "/apartments", mode: "read", permission: { module: "rooms", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "services.list", route: "/services", mode: "read", permission: { module: "services", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "assets.list", route: "/assets", mode: "read", permission: { module: "assets", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "materials.list", route: "/materials", mode: "read", permission: { module: "materials", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "materials.purchases", route: "/materials/purchases", canonicalRoute: "/materials", mode: "read", permission: { module: "materials", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "materials.usages", route: "/materials/usages", canonicalRoute: "/materials", mode: "read", permission: { module: "materials", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "materials.adjustments", route: "/materials/adjustments", canonicalRoute: "/materials", mode: "read", permission: { module: "materials", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "vehicles.list", route: "/vehicles", mode: "read", permission: { module: "vehicles", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+
+  // CRM and tenancy read batch. Writes and customer forms stay exempt below.
+  page({ key: "leads.list", route: "/leads", mode: "read", permission: { module: "leads", action: "view" }, dataClass: "pii", batch: "crm", safeControlIds: [] }),
+  page({ key: "deposits.list", route: "/deposits", mode: "read", permission: { module: "deposits", action: "view" }, dataClass: "financial", batch: "crm", safeControlIds: [] }),
+  page({ key: "contracts.list", route: "/contracts", mode: "read", permission: { module: "contracts", action: "view" }, dataClass: "pii", batch: "crm", safeControlIds: [] }),
+  page({ key: "contracts.detail", route: "/contracts/:id", canonicalRoute: "/contracts", mode: "read", permission: { module: "contracts", action: "view" }, dataClass: "pii", batch: "crm", safeControlIds: [] }),
+  page({ key: "customers.detail", route: "/customers/:id", canonicalRoute: "/customers", mode: "read", permission: { module: "customers", action: "view" }, dataClass: "pii", batch: "crm", safeControlIds: [] }),
+
+  // Billing/reporting read batch. No contract in this list grants a write mode.
+  page({ key: "invoices.detail", route: "/invoices/:id", canonicalRoute: "/invoices", mode: "read", permission: { module: "invoices", action: "view" }, dataClass: "financial", batch: "billing", safeControlIds: [] }),
+  page({ key: "invoices.print", route: "/invoices/print/:id", canonicalRoute: "/invoices", mode: "read", permission: { module: "invoices", action: "print" }, dataClass: "financial", batch: "billing", safeControlIds: [] }),
+  page({ key: "income-expenses.list", route: "/income-expense", mode: "read", permission: { module: "income_expenses", action: "view" }, dataClass: "financial", batch: "billing", safeControlIds: [] }),
+  page({ key: "cashbooks.list", route: "/finance/cashbooks", mode: "read", permission: { module: "cashbooks", action: "view" }, dataClass: "financial", batch: "billing", safeControlIds: [] }),
+  page({ key: "reports.finance", route: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "view" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.daily-cashbook", route: "/reports/finance/daily-cashbook", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "daily_cashbook" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.cash-book", route: "/reports/finance/cash-book", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "daily_cashbook" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.cash-flow", route: "/reports/finance/cash-flow", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "cash_flow" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.payment-schedule", route: "/reports/finance/payment-schedule", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "payment_schedule" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.overpayment", route: "/reports/finance/overpayment", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "overpayment" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.deposits", route: "/reports/finance/deposits", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "deposits_report" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.analysis", route: "/reports/finance/analysis", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "analysis" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.handover", route: "/reports/finance/ban-giao", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "handover_report" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.finance.collection", route: "/reports/finance/thu-ban-giao", canonicalRoute: "/reports/finance", mode: "read", permission: { module: "reports_finance", action: "collection_cycle" }, dataClass: "financial", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate", route: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "view" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.vacant", route: "/reports/real-estate/vacant-rooms", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "vacant_rooms" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.vacant-alias", route: "/reports/real-estate/vacant", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "vacant_rooms" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.expiring", route: "/reports/real-estate/expiring-contracts", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "expiring" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.expiring-alias", route: "/reports/real-estate/expiring", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "expiring" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.renewals", route: "/reports/real-estate/renewals-transfers", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "renewals_transfers" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.occupancy", route: "/reports/real-estate/occupancy", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "occupancy" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.promotions", route: "/reports/real-estate/promotions", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "promotions" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.new-leases", route: "/reports/real-estate/new-leases", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "new_leases" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.terminations", route: "/reports/real-estate/terminations", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "terminations" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "reports.real-estate.expense-ratio", route: "/reports/real-estate/expense-ratio", canonicalRoute: "/reports/real-estate", mode: "read", permission: { module: "reports_real_estate", action: "expense_ratio" }, dataClass: "internal", batch: "reports", safeControlIds: [] }),
+  page({ key: "meter-readings.list", route: "/meter-readings", mode: "read", permission: { module: "meter_readings", action: "view" }, dataClass: "internal", batch: "property", safeControlIds: [] }),
+  page({ key: "thu-tien.list", route: "/thu-tien", mode: "read", permission: { module: "thu_tien", action: "view" }, dataClass: "financial", batch: "billing", safeControlIds: [] }),
+
+  // Internal communication/work queues are read-only until scoped tools exist.
+  page({ key: "chat-zalo.list", route: "/chat-zalo", mode: "read", permission: { module: "chat_zalo", action: "view" }, dataClass: "pii", batch: "communications", safeControlIds: [] }),
+  page({ key: "tasks.list", route: "/tasks", mode: "read", permission: { module: "tasks", action: "view" }, dataClass: "internal", batch: "workforce", safeControlIds: [] }),
 ];
 
 /**
@@ -40,30 +106,21 @@ export const COPILOT_PAGE_EXEMPTIONS = [
   { route: "/faq", reason: "support content has no page contract yet" },
   { route: "/changelog", reason: "support content has no page contract yet" },
   { route: "/app-guide", reason: "support content has no page contract yet" },
-  { route: "/buildings/*", reason: "building CRUD/detail surface is deferred to a later batch" },
-  { route: "/apartments/*", reason: "room detail surface is deferred; list contract is explicit" },
-  { route: "/services", reason: "service catalog surface is deferred" },
   { route: "/sale-phong", reason: "sales surface is deferred" },
-  { route: "/assets", reason: "asset surface is deferred" },
-  { route: "/materials/*", reason: "materials CRUD surface is deferred" },
-  { route: "/leads", reason: "lead surface is deferred" },
-  { route: "/deposits", reason: "deposit surface is deferred" },
-  { route: "/contracts/*", reason: "contract detail/write surface is deferred" },
-  { route: "/customers/*", reason: "customer detail/write surface is deferred; list contract is explicit" },
-  { route: "/vehicles", reason: "vehicle surface is deferred" },
-  { route: "/reports/finance/*", reason: "finance reports are deferred pending read-only proof" },
-  { route: "/meter-readings", reason: "meter surface is deferred" },
-  { route: "/thu-tien", reason: "collection surface is deferred" },
-  { route: "/thanh-toan", reason: "payment surface is deferred" },
-  { route: "/invoices/*", reason: "invoice detail/print surface is deferred; list contract is explicit" },
+  { route: "/customers/new", reason: "customer create form is deferred; read-only customer contracts remain explicit" },
+  { route: "/customers/:id/edit", reason: "customer edit form is deferred" },
+  { route: "/customers/:id/ct01", reason: "customer print/form surface is deferred" },
+  { route: "/materials/*", reason: "materials write sub-surface is deferred; read-only list views are explicit" },
   { route: "/income-expense/*", reason: "cashbook write/detail surface is deferred" },
-  { route: "/finance/*", reason: "finance write/detail surface is deferred" },
+  { route: "/finance/*", reason: "finance write/detail and salary surfaces are deferred" },
+  { route: "/reports/finance/profit-distribution", reason: "profit distribution has an internal tab-level guard and is deferred" },
+  { route: "/reports/finance/business-performance", reason: "business performance report lacks a route-level permission guard" },
+  { route: "/finance/refund-log", reason: "refund log is a financial detail surface deferred pending read-only proof" },
+  { route: "/thanh-toan", reason: "payment surface is deferred" },
   { route: "/approvals", reason: "approval surface is deferred" },
-  { route: "/tasks", reason: "task surface is deferred" },
   { route: "/my-day", reason: "personal dashboard surface is deferred" },
   { route: "/reports/coverage", reason: "coverage report is deferred" },
   { route: "/quayso/*", reason: "campaign/admin surface is deferred" },
-  { route: "/chat-zalo", reason: "messaging surface is deferred" },
   { route: "*", reason: "404 fallback is not a Copilot surface" },
   { route: "/register", reason: "authentication flow is not a Copilot surface" },
   { route: "/login", reason: "authentication flow is not a Copilot surface" },
@@ -77,7 +134,6 @@ export const COPILOT_PAGE_EXEMPTIONS = [
   { route: "/building-map", reason: "map surface is deferred" },
   { route: "/network-center/*", reason: "infrastructure surface is deferred" },
   { route: "/notifications", reason: "notification surface is deferred" },
-  { route: "/reports/real-estate/*", reason: "real-estate reports are deferred" },
   { route: "/finance/personal-wallet", reason: "personal finance surface is deferred" },
   { route: "/finance/salary", reason: "salary surface is deferred" },
   { route: "/finance/my-salary", reason: "salary self-service surface is deferred" },
@@ -88,13 +144,29 @@ function normalizeCopilotRoute(pathname: string): string {
   return path.replace(/\/+$/, "") || "/";
 }
 
+function copilotRouteMatches(pattern: string, pathname: string): boolean {
+  const expected = normalizeCopilotRoute(pattern);
+  const actual = normalizeCopilotRoute(pathname);
+  if (expected === "*") return actual === "*";
+  const expectedParts = expected.split("/").filter(Boolean);
+  const actualParts = actual.split("/").filter(Boolean);
+  const wildcard = expectedParts.at(-1) === "*";
+  const fixedLength = wildcard ? expectedParts.length - 1 : expectedParts.length;
+  if ((!wildcard && expectedParts.length !== actualParts.length) || actualParts.length < fixedLength) return false;
+  return expectedParts.slice(0, fixedLength).every((part, index) => part.startsWith(":") || part === actualParts[index]);
+}
+
 export function copilotPageByRoute(pathname: string): CopilotPageContract | undefined {
   const normalized = normalizeCopilotRoute(pathname);
-  return COPILOT_PAGE_CONTRACTS.find((page) => normalizeCopilotRoute(page.route) === normalized);
+  const exact = COPILOT_PAGE_CONTRACTS.find((page) => normalizeCopilotRoute(page.route) === normalized);
+  if (exact) return exact;
+  if (COPILOT_PAGE_EXEMPTIONS.some((entry) => copilotRouteMatches(entry.route, normalized))) return undefined;
+  return COPILOT_PAGE_CONTRACTS.find((page) => copilotRouteMatches(page.route, normalized));
 }
 
 export function copilotRouteForKey(key: string): string | undefined {
-  return COPILOT_PAGE_CONTRACTS.find((page) => page.key === key)?.route;
+  const page = COPILOT_PAGE_CONTRACTS.find((entry) => entry.key === key);
+  return page?.canonicalRoute ?? page?.route;
 }
 
 /**

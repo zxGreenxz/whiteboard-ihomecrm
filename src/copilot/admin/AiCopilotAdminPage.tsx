@@ -670,7 +670,7 @@ function UsageTab() {
   }, 0);
   const totalTokens = list.reduce((s, r) => s + (r.total_tokens || 0), 0);
 
-  const byUser = new Map<string, { n: number; tokens: number; cost: number }>();
+  const byUser = new Map<string, { n: number; tokens: number; cost: number | null }>();
   for (const r of list) {
     const cur = byUser.get(r.user_id) ?? { n: 0, tokens: 0, cost: null as number | null };
     const value = cost(r);

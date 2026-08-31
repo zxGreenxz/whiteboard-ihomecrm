@@ -117,6 +117,13 @@ export function doJsonc(text) {
     .trim();
 }
 
+/** Đọc danh sách đảo từ `files` hoặc `include` mà không để tsc tự mở rộng glob. */
+export function docDao(text) {
+  const config = JSON.parse(doJsonc(text));
+  const entries = Array.isArray(config.files) ? config.files : config.include;
+  return Array.isArray(entries) ? entries : [];
+}
+
 /** Đảo = mọi entry include trừ file khai kiểu môi trường. */
 export function locDao(include) {
   return include.map((p) => p.replace(/\\/g, "/")).filter((p) => !p.endsWith(".d.ts"));
@@ -136,7 +143,7 @@ function kiemMotDao(caiDao, viet) {
 
   let include;
   try {
-    include = JSON.parse(doJsonc(doc(TSCONFIG))).include;
+    include = docDao(doc(TSCONFIG));
   } catch (e) {
     console.error(`❌ Không đọc được ${TSCONFIG}: ${e.message}`);
     process.exit(3);
@@ -196,7 +203,7 @@ function kiemMotDao(caiDao, viet) {
   if (caiDao.conCua) {
     let daoCha;
     try {
-      daoCha = locDao(JSON.parse(doJsonc(doc(caiDao.conCua))).include);
+      daoCha = locDao(docDao(doc(caiDao.conCua)));
     } catch (e) {
       console.error(`❌ Không đọc được đảo cha ${caiDao.conCua}: ${e.message}`);
       process.exit(3);

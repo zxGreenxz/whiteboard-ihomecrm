@@ -12,6 +12,23 @@ export function validateGolden(golden) {
   if (!Array.isArray(golden?.provenance?.lane) || !golden.provenance.lane.includes('mock') || !golden.provenance.lane.includes('real-model')) {
     problems.push('provenance lane must include mock and real-model');
   }
+  const allowedScenarios = new Set([
+    'positive',
+    'empty',
+    'orchestration',
+    'error',
+    'knowledge',
+    'navigation',
+    'ui-control',
+    'relative-date',
+  ]);
+  if (golden?.mockOracle?.deterministic !== true || !Array.isArray(golden?.mockOracle?.requiredScenarios)) {
+    problems.push('mockOracle must declare deterministic and requiredScenarios');
+  } else {
+    for (const scenario of golden.mockOracle.requiredScenarios) {
+      if (!allowedScenarios.has(scenario)) problems.push(`mockOracle: unknown scenario ${scenario}`);
+    }
+  }
   const cases = Array.isArray(golden?.cases) ? golden.cases : [];
   const expectedIds = Array.from({ length: 30 }, (_, index) => `C${String(index + 1).padStart(2, '0')}`);
   const actualIds = cases.map((item) => item?.id);
@@ -22,6 +39,7 @@ export function validateGolden(golden) {
     if (typeof item?.forbidden !== 'boolean') problems.push(`${item?.id ?? '<unknown>'}: forbidden must be boolean`);
     if (item?.forbidden && item?.expectedOutcome !== 'forbidden') problems.push(`${item?.id ?? '<unknown>'}: forbidden case must expect forbidden outcome`);
     if (item?.emptyState !== 'explicit') problems.push(`${item?.id ?? '<unknown>'}: emptyState must be explicit`);
+    if (!allowedScenarios.has(item?.oracleScenario)) problems.push(`${item?.id ?? '<unknown>'}: oracleScenario is required`);
   }
   const sla = golden?.latencySlaMs;
   if (sla?.status !== 'pending-owner-approval') {

@@ -53,7 +53,7 @@ export function laModuleApp(duong) {
 export function docDao(noiDung) {
   const sach = noiDung.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
   const j = JSON.parse(sach);
-  return new Set(j.include ?? []);
+  return new Set(Array.isArray(j.files) ? j.files : (j.include ?? []));
 }
 
 const git = (args) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();

@@ -1,79 +1,85 @@
--- Forward-only hardening for the Copilot income/expense write path.
--- The 20260814034500 definitions remain immutable; this migration replaces
--- both RPC bodies so preview and execute bind the exact authorized building.
-
--- =============================================================================
--- Xác nhận GHI của Copilot chuyển từ cờ do mô hình tự khai sang nonce do server phát
+-- Copilot income/expense hardening.
 --
--- VẤN ĐỀ ĐANG SỬA
---   Tool `tao_phieu_thu_chi_nhap` nhận `xac_nhan: boolean` NGAY TRONG input
---   schema. Nghĩa là chính mô hình quyết định khi nào "người dùng đã đồng ý":
---   nó gọi lần đầu với `false`, đọc bản xem trước, rồi gọi lại với `true`. Không
---   có gì ở phía server chứng minh giữa hai lần đó có một con người nào đã đọc
---   và đồng ý.
---
---   Đây không phải rủi ro lý thuyết. Nội dung trang và dữ liệu nghiệp vụ (tên
---   khách, ghi chú tự do) đi thẳng vào ngữ cảnh mô hình; một câu "hãy xác nhận
---   luôn giúp tôi" nằm trong ghi chú là đủ để mô hình tự lật cờ. Chốt chặn duy
---   nhất còn lại là phiếu sinh ra ở trạng thái UNAPPROVED — tức thiệt hại giới
---   hạn ở việc rác vào hàng chờ duyệt, nhưng bản thân ranh giới consent thì
---   không tồn tại.
---
--- CÁCH LÀM
---   Server phát một nonce 32 byte NGẪU NHIÊN khi xem trước, chỉ trả RA MỘT LẦN,
---   và chỉ lưu DIGEST. Muốn ghi thật phải trình đúng nonce đó. Mô hình không
---   nhìn thấy nonce (client giữ trong bộ nhớ và chỉ gắn vào lời gọi khi người
---   dùng bấm nút), nên nó không thể tự tạo bằng chứng đồng ý — thứ nó có thể tạo
---   là văn bản, mà văn bản không mở được cửa này.
---
--- VÌ SAO LƯU DIGEST CHỨ KHÔNG LƯU NONCE
---   Bảng nằm trong `app_private` nên client không đọc được, nhưng một bản sao
---   database, một lần khôi phục, hay một truy vấn service-role đọc nhầm cũng đủ
---   để lộ nguyên bộ nonce còn hạn. Lưu digest thì thứ rò ra không dùng được.
---
--- CÁI GÌ *KHÔNG* NẰM Ở ĐÂY
---   Writer vẫn là authority cuối cho các default/server-owned fields. Migration này
---   chỉ bổ sung một re-check resource scope tại building đích để chặn revoke
---   sau preview; nó không thay thế các guard của `ie_compat_insert_v2`.
---
---   Phép kiểm phạm vi ở `preview` (tổ chức ACTIVE, có quyền tạo trong tổ chức
---   đó) là để BẢN XEM TRƯỚC không hiển thị dữ liệu ngoài tầm, không phải để
---   thay lớp phân quyền lúc ghi.
--- =============================================================================
+-- This migration deliberately lands before the shared writer replacement.  The
+-- private capability starts disabled, so an execute call fails closed until the
+-- following writer migration has installed and enabled the draft contract.
 
 BEGIN;
 SET LOCAL lock_timeout = '15s';
 
--- 1. Kho nonce -----------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS app_private.copilot_write_confirmations (
-  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  nonce_digest    bytea       NOT NULL UNIQUE,
-  user_id         uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  organization_id uuid        NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-  tool            text        NOT NULL,
-  payload_hash    bytea       NOT NULL,
-  permission_key  text        NOT NULL,
-  expires_at      timestamptz NOT NULL,
-  consumed_at     timestamptz,
+-- A transaction-local capability without GUCs.  The marker is random and is
+-- stored only as a digest; transaction_id prevents a marker from being reused
+-- in another transaction.
+CREATE TABLE IF NOT EXISTS app_private.copilot_ie_writer_context_v1 (
+  transaction_id  text PRIMARY KEY,
+  actor_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  context_name    text NOT NULL,
+  marker_digest   bytea NOT NULL,
   created_at      timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 
-COMMENT ON TABLE app_private.copilot_write_confirmations IS
-  'Nonce một lần cho thao tác GHI của Copilot. Chỉ lưu digest — nonce thô trả về đúng một lần lúc '
-  'xem trước. Trả lời một câu duy nhất: có người thật vừa đồng ý việc CỤ THỂ này không. Phân quyền '
-  'vẫn do writer nghiệp vụ (ie_compat_insert_v2) lo.';
+CREATE INDEX IF NOT EXISTS copilot_ie_writer_context_created_idx
+  ON app_private.copilot_ie_writer_context_v1 (created_at);
 
-CREATE INDEX IF NOT EXISTS idx_copilot_write_confirmations_het_han
-  ON app_private.copilot_write_confirmations (expires_at)
-  WHERE consumed_at IS NULL;
+REVOKE ALL ON app_private.copilot_ie_writer_context_v1
+  FROM PUBLIC, anon, authenticated, service_role;
 
-REVOKE ALL ON app_private.copilot_write_confirmations FROM PUBLIC, anon, authenticated;
+CREATE TABLE IF NOT EXISTS app_private.copilot_ie_writer_capabilities_v1 (
+  capability_key text PRIMARY KEY,
+  enabled        boolean NOT NULL DEFAULT false,
+  writer_version text NOT NULL DEFAULT 'disabled',
+  enabled_at     timestamptz
+);
 
--- 2. Băm payload chuẩn hoá -----------------------------------------------------
---
--- Hai lời gọi cùng nội dung phải ra cùng hash, kể cả khi client sắp xếp khoá
--- khác nhau. `jsonb` đã chuẩn hoá thứ tự khoá và bỏ khoảng trắng, nên ép kiểu
--- rồi ép chuỗi là đủ — không cần bộ tuần tự riêng.
+INSERT INTO app_private.copilot_ie_writer_capabilities_v1
+  (capability_key, enabled, writer_version)
+VALUES
+  ('income_expense_draft_v1', false, 'disabled')
+ON CONFLICT (capability_key) DO NOTHING;
+
+REVOKE ALL ON app_private.copilot_ie_writer_capabilities_v1
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- The writer migration enables the singleton only after its replacement has
+-- been installed.  Both the execute RPC and the writer call this function.
+CREATE OR REPLACE FUNCTION app_private.copilot_ie_writer_ready_v1(
+  p_actor  uuid,
+  p_org    uuid,
+  p_marker text
+)
+RETURNS boolean
+LANGUAGE sql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, app_private, public, extensions
+AS $f$
+  SELECT p_marker IS NOT NULL
+     AND btrim(p_marker) <> ''
+     AND p_actor IS NOT DISTINCT FROM auth.uid()
+     AND EXISTS (
+       SELECT 1
+         FROM app_private.copilot_ie_writer_capabilities_v1 c
+        WHERE c.capability_key = 'income_expense_draft_v1'
+          AND c.enabled
+     )
+     AND EXISTS (
+       SELECT 1
+         FROM app_private.copilot_ie_writer_context_v1 c
+        WHERE c.transaction_id = pg_current_xact_id()::text
+          AND c.actor_id = p_actor
+          AND c.organization_id = p_org
+          AND c.context_name = 'copilot_execute_income_expense_v1'
+          AND c.marker_digest = extensions.digest(
+                convert_to(p_marker, 'UTF8'), 'sha256')
+          AND c.created_at > clock_timestamp() - interval '10 minutes'
+     );
+$f$;
+
+REVOKE ALL ON FUNCTION app_private.copilot_ie_writer_ready_v1(uuid, uuid, text)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- Keep the payload hash implementation stable for both preview and execute.
 CREATE OR REPLACE FUNCTION app_private.copilot_payload_hash_v1(p_payload jsonb)
 RETURNS bytea
 LANGUAGE sql
@@ -83,7 +89,6 @@ AS $f$
   SELECT extensions.digest(convert_to(p_payload::text, 'UTF8'), 'sha256');
 $f$;
 
--- 3. Xem trước: chốt tài nguyên, phát nonce -------------------------------------
 CREATE OR REPLACE FUNCTION public.copilot_preview_income_expense_v1(
   p_organization_id uuid,
   p_payload         jsonb
@@ -95,10 +100,10 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app_private, extensions
 AS $f$
 DECLARE
-  v_actor      uuid := (SELECT auth.uid());
+  v_actor      uuid := auth.uid();
   v_loai       text := upper(coalesce(p_payload ->> 'loai', ''));
   v_ie_type    text;
-  v_so_tien    numeric;
+  v_so_tien   numeric;
   v_ten        text := trim(coalesce(p_payload ->> 'ten_phieu', ''));
   v_toa        text := trim(coalesce(p_payload ->> 'toa_nha', ''));
   v_hang_muc   text := trim(coalesce(p_payload ->> 'hang_muc', ''));
@@ -106,7 +111,7 @@ DECLARE
   v_building   record;
   v_type       record;
   v_scope      record;
-  v_dem        int;
+  v_dem        integer;
   v_nonce      bytea;
   v_canonical  jsonb;
 BEGIN
@@ -117,12 +122,13 @@ BEGIN
     RAISE EXCEPTION 'organization_required' USING ERRCODE = '22023';
   END IF;
 
-  -- Người gọi phải có quyền TẠO trong CHÍNH tổ chức này. Bản xem trước hiển thị
-  -- tên toà và hạng mục thật, nên nó tự nó đã là một phép đọc cần được rào.
   SELECT s.org_wide, s.building_ids
     INTO v_scope
-    FROM app_private.authorized_scope_v3('income_expenses.create', p_organization_id) s;
-  IF NOT FOUND OR (NOT coalesce(v_scope.org_wide, false) AND coalesce(cardinality(v_scope.building_ids), 0) = 0) THEN
+    FROM app_private.authorized_scope_v3(
+      'income_expenses.create', p_organization_id) s;
+  IF NOT FOUND
+     OR (NOT coalesce(v_scope.org_wide, false)
+         AND coalesce(cardinality(v_scope.building_ids), 0) = 0) THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
 
@@ -143,64 +149,63 @@ BEGIN
     RAISE EXCEPTION 'ten_phieu_qua_ngan' USING ERRCODE = '22023';
   END IF;
 
-  v_ngay := coalesce((p_payload ->> 'ngay')::date, (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date);
+  v_ngay := coalesce(
+    (p_payload ->> 'ngay')::date,
+    (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+  );
 
-  -- Toà nhà: khớp gần đúng TRONG tổ chức đã chốt. Nhiều kết quả thì DỪNG và bắt
-  -- hỏi lại — đoán lấy cái đầu nghĩa là ghi tiền vào một toà mà không ai chọn.
-  SELECT count(*) INTO v_dem
-   FROM public.buildings b
+  SELECT count(*)
+    INTO v_dem
+    FROM public.buildings b
    WHERE b.organization_id = p_organization_id
      AND b.deleted_at IS NULL
-     AND (
-       coalesce(v_scope.org_wide, false)
-       OR b.id = ANY(coalesce(v_scope.building_ids, '{}'::uuid[]))
-     )
+     AND (coalesce(v_scope.org_wide, false)
+          OR b.id = ANY(coalesce(v_scope.building_ids, '{}'::uuid[])))
      AND b.name ILIKE '%' || v_toa || '%';
   IF v_dem = 0 THEN
     RAISE EXCEPTION 'toa_nha_khong_thay' USING ERRCODE = '22023';
   ELSIF v_dem > 1 THEN
     RAISE EXCEPTION 'toa_nha_mo_ho' USING ERRCODE = '22023';
   END IF;
-  SELECT b.id, b.name, b.organization_id INTO v_building
+
+  SELECT b.id, b.name, b.organization_id
+    INTO v_building
     FROM public.buildings b
    WHERE b.organization_id = p_organization_id
      AND b.deleted_at IS NULL
-     AND (
-       coalesce(v_scope.org_wide, false)
-       OR b.id = ANY(coalesce(v_scope.building_ids, '{}'::uuid[]))
-     )
+     AND (coalesce(v_scope.org_wide, false)
+          OR b.id = ANY(coalesce(v_scope.building_ids, '{}'::uuid[])))
      AND b.name ILIKE '%' || v_toa || '%';
 
-  IF NOT coalesce(v_scope.org_wide, false)
-     AND NOT (v_building.id = ANY(coalesce(v_scope.building_ids, '{}'::uuid[]))) THEN
-    RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
-  END IF;
-
-  -- BẪY: `income_expense_types.type` là chữ THƯỜNG ('income'/'expense') còn
-  -- `income_expenses.type` là chữ HOA ('INCOME'/'EXPENSE'). So thẳng `v_ie_type`
-  -- vào bảng hạng mục thì KHÔNG BAO GIỜ khớp, và triệu chứng là "hang_muc_khong_thay"
-  -- cho mọi hạng mục có thật — một lỗi trông y hệt dữ liệu thiếu.
-  -- Bẫy này đã được ghi trong `writeTools.ts:resolveType` từ trước; đây là lần
-  -- thứ hai nó suýt cắn.
-  SELECT count(*) INTO v_dem
+  SELECT count(*)
+    INTO v_dem
     FROM public.income_expense_types t
    WHERE t.organization_id = p_organization_id
-     AND t.type = lower(v_ie_type)
-     AND t.name ILIKE '%' || v_hang_muc || '%';
+     AND lower(t.type) = lower(v_ie_type)
+     AND t.name ILIKE '%' || v_hang_muc || '%'
+     AND NOT coalesce(t.system_only, false)
+     AND (
+       NOT coalesce(t.is_restricted, false)
+       OR public.can_create_restricted_ie()
+     );
   IF v_dem = 0 THEN
     RAISE EXCEPTION 'hang_muc_khong_thay' USING ERRCODE = '22023';
   ELSIF v_dem > 1 THEN
     RAISE EXCEPTION 'hang_muc_mo_ho' USING ERRCODE = '22023';
   END IF;
-  SELECT t.id, t.name INTO v_type
+
+  SELECT t.id, t.name
+    INTO v_type
     FROM public.income_expense_types t
    WHERE t.organization_id = p_organization_id
-     AND t.type = lower(v_ie_type)
-     AND t.name ILIKE '%' || v_hang_muc || '%';
+     AND lower(t.type) = lower(v_ie_type)
+     AND t.name ILIKE '%' || v_hang_muc || '%'
+     AND NOT coalesce(t.system_only, false)
+     AND (
+       NOT coalesce(t.is_restricted, false)
+       OR public.can_create_restricted_ie()
+     );
 
-  -- Payload CHUẨN HOÁ: chỉ gồm những gì đã được chốt. Băm cái này chứ không băm
-  -- input thô — input thô mang tên toà gõ gần đúng, nên hai lần gõ khác nhau cho
-  -- ra hai hash khác nhau dù trỏ về cùng một toà.
   v_canonical := jsonb_build_object(
     'organization_id', p_organization_id,
     'type',            v_ie_type,
@@ -210,48 +215,40 @@ BEGIN
     'type_id',         v_type.id,
     'voucher_date',    v_ngay
   );
-
   v_nonce := extensions.gen_random_bytes(32);
 
   INSERT INTO app_private.copilot_write_confirmations
-    (nonce_digest, user_id, organization_id, tool, payload_hash, permission_key, expires_at)
+    (nonce_digest, user_id, organization_id, tool, payload_hash,
+     permission_key, expires_at)
   VALUES
     (extensions.digest(v_nonce, 'sha256'), v_actor, p_organization_id,
      'tao_phieu_thu_chi_nhap', app_private.copilot_payload_hash_v1(v_canonical),
      'income_expenses.create', clock_timestamp() + interval '5 minutes');
 
   RETURN jsonb_build_object(
-    -- Nonce thô trả RA MỘT LẦN. Client giữ trong bộ nhớ; nó không được vào ngữ
-    -- cảnh mô hình, không vào lịch sử chat, không vào URL, không vào log.
     'confirmation_nonce', encode(v_nonce, 'hex'),
     'canonical',          v_canonical,
     'preview', jsonb_build_object(
-      'loai',        v_loai,
-      'so_tien',     v_so_tien,
-      'ten_phieu',   v_ten,
-      'toa_nha',     v_building.name,
-      'hang_muc',    v_type.name,
-      'ngay',        v_ngay,
-      'trang_thai',  'CHỜ DUYỆT'
+      'loai',       v_loai,
+      'so_tien',    v_so_tien,
+      'ten_phieu',  v_ten,
+      'toa_nha',    v_building.name,
+      'hang_muc',   v_type.name,
+      'ngay',       v_ngay,
+      'trang_thai', 'CHO DUYET'
     )
   );
 END
 $f$;
 
 COMMENT ON FUNCTION public.copilot_preview_income_expense_v1(uuid, jsonb) IS
-  'Xem trước phiếu thu/chi do Copilot đề xuất: chốt toà + hạng mục trong tổ chức đã chọn, phát nonce '
-  'một lần TTL 5 phút. Toà/hạng mục khớp nhiều hơn một thì DỪNG thay vì đoán. Nonce thô trả về đúng '
-  'một lần và không được đưa vào ngữ cảnh mô hình.';
+  'Preview resolves organization, building and income/expense type server-side and issues a one-time nonce.';
 
-REVOKE EXECUTE ON FUNCTION public.copilot_preview_income_expense_v1(uuid, jsonb) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.copilot_preview_income_expense_v1(uuid, jsonb) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.copilot_preview_income_expense_v1(uuid, jsonb)
+  FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.copilot_preview_income_expense_v1(uuid, jsonb)
+  TO authenticated;
 
--- 4. Thuc thi: tieu nonce, tao phieu, ghi audit — MOT giao dich -----------------
---
--- Nhan CHINH payload chuan hoa ma `preview` da tra ve, khong nhan input tho.
--- Nho vay khong phai giai ten toa/hang muc lan hai (hai lan giai co the ra hai
--- ket qua khac nhau neu du lieu doi giua chung), va phep so hash tro thanh mot
--- phep so byte thang tuot: doi bat cu truong nao sau khi xem truoc deu lech hash.
 CREATE OR REPLACE FUNCTION public.copilot_execute_income_expense_v1(
   p_confirmation_nonce text,
   p_payload            jsonb
@@ -263,48 +260,56 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app_private, extensions
 AS $f$
 DECLARE
-  v_actor     uuid := (SELECT auth.uid());
-  v_hash      bytea;
-  v_row       app_private.copilot_write_confirmations;
-  v_scope     record;
-  v_org       uuid;
+  v_actor          uuid := auth.uid();
+  v_hash           bytea;
+  v_row            app_private.copilot_write_confirmations%ROWTYPE;
+  v_scope          record;
+  v_org            uuid;
   v_target_building uuid;
-  v_target_row public.buildings%ROWTYPE;
-  v_voucher   jsonb;
-  v_vid       uuid;
-  v_approval_status text;
-  v_posting_status text;
-  v_key       text;
-  v_audit_id  uuid;
-  v_prev      public.ai_write_audit;
-  v_ten_nguoi text;
-  v_draft_marker text;
-  v_existing_ie public.income_expenses;
+  v_target_row     public.buildings%ROWTYPE;
+  v_type_row       public.income_expense_types%ROWTYPE;
+  v_voucher        jsonb;
+  v_vid            uuid;
+  v_key            text;
+  v_audit_id       uuid;
+  v_prev           public.ai_write_audit%ROWTYPE;
+  v_ten_nguoi      text;
+  v_marker         text;
+  v_ready          boolean;
+  v_existing_ie    public.income_expenses%ROWTYPE;
+  v_item           public.income_expense_items%ROWTYPE;
+  v_item_count     bigint;
+  v_expected_type  text;
+  v_expected_type_id uuid;
+  v_expected_amount numeric;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
   END IF;
-  IF p_confirmation_nonce IS NULL OR length(p_confirmation_nonce) <> 64 THEN
-    -- Nonce la 32 byte in hex. Do dai sai thi khong can tra bang: mot lan goi
-    -- khong co nonce that khong duoc phep cham vao bang nonce.
+
+  -- Never call decode until the nonce has been proven to be exactly 32 bytes
+  -- represented as lowercase or uppercase hexadecimal.
+  IF p_confirmation_nonce IS NULL
+     OR p_confirmation_nonce !~ '^[0-9a-fA-F]{64}$' THEN
     RAISE EXCEPTION 'confirmation_required' USING ERRCODE = '42501';
   END IF;
 
   v_hash := app_private.copilot_payload_hash_v1(p_payload);
 
-  -- Khoa dong nonce ngay tu dau: hai lan bam nut song song phai co dung mot
-  -- lan thang. Khong khoa thi ca hai deu doc thay consumed_at IS NULL.
-  SELECT * INTO v_row
+  SELECT *
+    INTO v_row
     FROM app_private.copilot_write_confirmations c
-   WHERE c.nonce_digest = extensions.digest(decode(p_confirmation_nonce, 'hex'), 'sha256')
-     FOR UPDATE;
-
+   WHERE c.nonce_digest = extensions.digest(
+           decode(p_confirmation_nonce, 'hex'), 'sha256')
+   FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'confirmation_not_found' USING ERRCODE = '42501';
   END IF;
-  IF v_row.user_id <> v_actor THEN
-    -- Nonce cua nguoi khac. Bao cung mot loi voi "khong tim thay" de khong xac
-    -- nhan giup ke goi rang nonce nay co that.
+  IF v_row.tool IS DISTINCT FROM 'tao_phieu_thu_chi_nhap'
+     OR v_row.permission_key IS DISTINCT FROM 'income_expenses.create' THEN
+    RAISE EXCEPTION 'confirmation_contract_mismatch' USING ERRCODE = '42501';
+  END IF;
+  IF v_row.user_id IS DISTINCT FROM v_actor THEN
     RAISE EXCEPTION 'confirmation_not_found' USING ERRCODE = '42501';
   END IF;
   IF v_row.consumed_at IS NOT NULL THEN
@@ -313,19 +318,46 @@ BEGIN
   IF v_row.expires_at <= clock_timestamp() THEN
     RAISE EXCEPTION 'confirmation_expired' USING ERRCODE = '42501';
   END IF;
-  IF v_row.payload_hash <> v_hash THEN
-    -- Noi dung doi sau khi nguoi dung xem. Dong y cu KHONG dung cho viec moi.
+  IF v_row.payload_hash IS DISTINCT FROM v_hash THEN
     RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
   END IF;
 
-  v_org := (p_payload ->> 'organization_id')::uuid;
-  IF v_org IS DISTINCT FROM v_row.organization_id THEN
+  BEGIN
+    v_org := (p_payload ->> 'organization_id')::uuid;
+    v_target_building := (p_payload ->> 'building_id')::uuid;
+  EXCEPTION WHEN others THEN
+    RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
+  END;
+  IF v_org IS NULL OR v_target_building IS NULL
+     OR v_org IS DISTINCT FROM v_row.organization_id THEN
     RAISE EXCEPTION 'organization_mismatch' USING ERRCODE = '42501';
   END IF;
 
-  -- Re-check the actor's current permission at the exact target building.
-  -- This closes the revoke-after-preview window before any voucher insert.
-  v_target_building := (p_payload ->> 'building_id')::uuid;
+  -- Re-resolve the category after preview.  This closes the revoke and
+  -- restricted-category gap between issuing a nonce and consuming it.
+  BEGIN
+    v_expected_type_id := (p_payload ->> 'type_id')::uuid;
+  EXCEPTION WHEN others THEN
+    RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
+  END;
+  SELECT *
+    INTO v_type_row
+    FROM public.income_expense_types t
+   WHERE t.id = v_expected_type_id
+     AND t.organization_id = v_org
+   FOR SHARE;
+  IF NOT FOUND
+     OR lower(v_type_row.type) IS DISTINCT FROM
+        lower(coalesce(p_payload ->> 'type', ''))
+     OR coalesce(v_type_row.system_only, false)
+     OR (
+       coalesce(v_type_row.is_restricted, false)
+       AND NOT public.can_create_restricted_ie()
+     ) THEN
+    RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
+  END IF;
+
+  -- Re-check the selected resource and current permission after preview.
   SELECT b.*
     INTO v_target_row
     FROM public.buildings b
@@ -334,47 +366,124 @@ BEGIN
    FOR UPDATE;
   SELECT s.org_wide, s.building_ids
     INTO v_scope
-    FROM app_private.authorized_scope_v3('income_expenses.create', v_org) s;
-  IF NOT FOUND OR v_target_row.id IS NULL
+    FROM app_private.authorized_scope_v3(
+      'income_expenses.create', v_org) s;
+  IF NOT FOUND
+     OR v_target_row.id IS NULL
      OR v_target_row.organization_id IS DISTINCT FROM v_org
-     OR (
-       NOT coalesce(v_scope.org_wide, false)
-       AND NOT (v_target_row.id = ANY(coalesce(v_scope.building_ids, '{}'::uuid[])))
-     ) THEN
+     OR (NOT coalesce(v_scope.org_wide, false)
+         AND NOT (v_target_row.id = ANY(
+           coalesce(v_scope.building_ids, '{}'::uuid[])))) THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
 
-  -- Tieu nonce bang CAS. Dat TRUOC khi tao phieu: neu tao phieu hong thi ca giao
-  -- dich cuon lai va nonce song lai — dung. Nguoc lai (tao truoc, tieu sau) se co
-  -- cua so ma mot lan goi thu hai chen vao giua.
+  -- Bind idempotency to every security-relevant dimension, not only payload.
+  v_key := 'copilot_ie_v2:' || v_actor::text || ':' || v_org::text || ':'
+        || v_row.tool || ':' || v_row.permission_key || ':'
+        || encode(v_hash, 'hex');
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_key, 0));
+
+  -- Install the private transaction capability before touching the shared
+  -- writer.  The following migration flips readiness; until then this call
+  -- aborts without creating a voucher.
+  v_marker := encode(extensions.gen_random_bytes(32), 'hex');
+  INSERT INTO app_private.copilot_ie_writer_context_v1
+    (transaction_id, actor_id, organization_id, context_name, marker_digest)
+  VALUES
+    (pg_current_xact_id()::text, v_actor, v_org,
+     'copilot_execute_income_expense_v1',
+     extensions.digest(convert_to(v_marker, 'UTF8'), 'sha256'))
+  ON CONFLICT (transaction_id) DO UPDATE
+    SET actor_id = EXCLUDED.actor_id,
+        organization_id = EXCLUDED.organization_id,
+        context_name = EXCLUDED.context_name,
+        marker_digest = EXCLUDED.marker_digest,
+        created_at = clock_timestamp();
+
+  v_ready := app_private.copilot_ie_writer_ready_v1(v_actor, v_org, v_marker);
+  IF NOT v_ready THEN
+    RAISE EXCEPTION 'writer_not_ready' USING ERRCODE = '55000';
+  END IF;
+
+  -- Consume the nonce with a CAS.  Any later failure rolls the whole
+  -- transaction back, including this consumption and the context row.
   UPDATE app_private.copilot_write_confirmations
      SET consumed_at = clock_timestamp()
-   WHERE id = v_row.id AND consumed_at IS NULL;
+   WHERE id = v_row.id
+     AND consumed_at IS NULL;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'confirmation_already_used' USING ERRCODE = '42501';
   END IF;
 
-  -- Idempotency: cung mot y dinh (cung nguoi, cung payload chuan hoa) chi tao
-  -- dung mot phieu, du nguoi dung bam lai hay mang chap chon.
-  v_key := 'copilot_ie_' || encode(v_hash, 'hex');
-
-  -- Serialize every Copilot attempt for this canonical intent. The lock is
-  -- transaction-scoped, so it is released on both success and rollback. The
-  -- hash collision behavior is conservative: unrelated intents may wait, but
-  -- they can never be merged because the full unique key is checked below.
-  PERFORM pg_advisory_xact_lock(hashtextextended(v_key, 0));
-
-  SELECT * INTO v_prev FROM public.ai_write_audit a WHERE a.idempotency_key = v_key;
+  -- A replay is allowed only when every audit/entity/item field still proves
+  -- the exact same operation.  An entity_id-only lookup is not sufficient.
+  SELECT *
+    INTO v_prev
+    FROM public.ai_write_audit a
+   WHERE a.idempotency_key = v_key;
   IF FOUND THEN
-    IF v_prev.entity_id IS NULL THEN
-      RAISE EXCEPTION 'copilot_audit_orphan' USING ERRCODE = 'P0001';
+    IF v_prev.user_id IS DISTINCT FROM v_actor
+       OR v_prev.organization_id IS DISTINCT FROM v_org
+       OR v_prev.tool IS DISTINCT FROM v_row.tool
+       OR v_prev.entity_table IS DISTINCT FROM 'income_expenses'
+       OR v_prev.entity_id IS NULL
+       OR app_private.copilot_payload_hash_v1(v_prev.payload)
+            IS DISTINCT FROM v_hash THEN
+      RAISE EXCEPTION 'copilot_audit_mismatch' USING ERRCODE = 'P0001';
     END IF;
-    SELECT * INTO v_existing_ie
+
+    SELECT *
+      INTO v_existing_ie
       FROM public.income_expenses ie
      WHERE ie.id = v_prev.entity_id;
-    IF NOT FOUND THEN
-      RAISE EXCEPTION 'copilot_audit_orphan' USING ERRCODE = 'P0001';
+    IF NOT FOUND
+       OR v_existing_ie.organization_id IS DISTINCT FROM v_org
+       OR v_existing_ie.user_id IS DISTINCT FROM v_actor
+       OR v_existing_ie.building_id IS DISTINCT FROM v_target_building
+       OR v_existing_ie.type IS DISTINCT FROM (p_payload ->> 'type')
+       OR v_existing_ie.name IS DISTINCT FROM (p_payload ->> 'name')
+       OR v_existing_ie.voucher_date IS DISTINCT FROM
+          (p_payload ->> 'voucher_date')::date
+       OR v_existing_ie.approval_status IS DISTINCT FROM 'UNAPPROVED'
+       OR v_existing_ie.posting_status IS DISTINCT FROM 'UNPOSTED'
+       OR v_existing_ie.account_id IS NOT NULL
+       OR v_existing_ie.active_posting_id_v2 IS NOT NULL
+       OR v_existing_ie.posting_id IS NOT NULL
+       OR v_existing_ie.approved_by IS NOT NULL
+       OR v_existing_ie.approved_at IS NOT NULL
+       OR v_existing_ie.repeat_cycle IS DISTINCT FROM 'NONE'
+       OR v_existing_ie.repeat_next_date IS NOT NULL
+       OR v_existing_ie.repeat_parent_id IS NOT NULL THEN
+      RAISE EXCEPTION 'copilot_audit_mismatch' USING ERRCODE = 'P0001';
     END IF;
+
+    BEGIN
+      v_expected_type_id := (p_payload ->> 'type_id')::uuid;
+      v_expected_amount := (p_payload ->> 'amount')::numeric;
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'copilot_audit_mismatch' USING ERRCODE = 'P0001';
+    END;
+    SELECT count(*)
+      INTO v_item_count
+      FROM public.income_expense_items i
+     WHERE i.income_expense_id = v_prev.entity_id;
+    SELECT *
+      INTO v_item
+      FROM public.income_expense_items i
+     WHERE i.income_expense_id = v_prev.entity_id
+     LIMIT 1;
+    IF v_item_count <> 1
+       OR v_item.organization_id IS DISTINCT FROM v_org
+       OR v_item.income_expense_type_id IS DISTINCT FROM v_expected_type_id
+       OR v_item.quantity <> 1
+       OR coalesce(v_item.amount, v_item.quantity * v_item.unit_price)
+            IS DISTINCT FROM v_expected_amount THEN
+      RAISE EXCEPTION 'copilot_audit_mismatch' USING ERRCODE = 'P0001';
+    END IF;
+
+    DELETE FROM app_private.copilot_ie_writer_context_v1
+     WHERE transaction_id = pg_current_xact_id()::text
+       AND marker_digest = extensions.digest(convert_to(v_marker, 'UTF8'), 'sha256');
     RETURN jsonb_build_object(
       'status', 'da_tao_truoc_do',
       'entity_id', v_prev.entity_id,
@@ -382,21 +491,19 @@ BEGIN
     );
   END IF;
 
-  SELECT coalesce(u.raw_user_meta_data ->> 'full_name', u.raw_user_meta_data ->> 'name', u.email, 'Nguoi dung')
+  SELECT coalesce(
+    u.raw_user_meta_data ->> 'full_name',
+    u.raw_user_meta_data ->> 'name',
+    u.email,
+    'Nguoi dung'
+  )
     INTO v_ten_nguoi
-    FROM auth.users u WHERE u.id = v_actor;
-
-  -- This random value is generated inside the SECURITY DEFINER function and
-  -- never comes from request JSON. The shared compat writer accepts draft mode
-  -- only when this transaction-local marker is present and echoed by this
-  -- server-built payload; a browser cannot predict it to forge the context.
-  v_draft_marker := encode(extensions.gen_random_bytes(32), 'hex');
-  PERFORM set_config('app.copilot_writer_context', 'copilot_execute_income_expense_v1', true);
-  PERFORM set_config('app.copilot_draft_marker', v_draft_marker, true);
+    FROM auth.users u
+   WHERE u.id = v_actor;
 
   v_voucher := public.ie_compat_insert_v2(
     p_row := jsonb_build_object(
-      'user_id',              v_actor,
+      'user_id',              auth.uid(),
       'organization_id',      v_org,
       'creator_name',         v_ten_nguoi || ' (AI Copilot)',
       'type',                 p_payload ->> 'type',
@@ -405,13 +512,15 @@ BEGIN
       'account_id',           NULL,
       'voucher_date',         p_payload ->> 'voucher_date',
       'attachments',          '[]'::jsonb,
-      'notes',                'Tao boi AI Copilot (draft-first, xac nhan bang nonce)',
+      'notes',                'Tao boi AI Copilot (draft-first, nonce)',
       'repeat_cycle',         'NONE',
       'repeat_infinity',      false,
       'repeat_count',         0,
       'repeat_auto_approve',  false,
+      'repeat_next_date',     NULL,
+      'repeat_parent_id',     NULL,
       'repeat_remaining',     0,
-      'copilot_draft_marker', v_draft_marker
+      'copilot_draft_marker', v_marker
     ),
     p_items := jsonb_build_array(jsonb_build_object(
       'income_expense_type_id', p_payload ->> 'type_id',
@@ -424,40 +533,54 @@ BEGIN
 
   v_vid := (v_voucher ->> 'id')::uuid;
   IF v_vid IS NULL THEN
-    -- KHONG dat ERRCODE: RAISE EXCEPTION tran mac dinh la P0001, va errors.ts
-    -- xep P0001 vao `internal_invariant` — dung ban chat cua ca nay. Writer tra
-    -- ve khong co id la gia dinh cua CHINH he nay bi vi pham, khong phai loi
-    -- nguoi dung. Dat 22000 (data_exception chung) vua sai nghia vua lam thung
-    -- bang phan loai loi (co test canh).
-    RAISE EXCEPTION 'voucher_not_created';
+    RAISE EXCEPTION 'voucher_not_created' USING ERRCODE = 'P0001';
   END IF;
 
-  -- ie_compat_insert_v2 owns server defaults and may evolve independently;
-  -- reject any writer result that is not the Copilot draft contract.
-  SELECT ie.approval_status, ie.posting_status
-    INTO v_approval_status, v_posting_status
+  SELECT *
+    INTO v_existing_ie
     FROM public.income_expenses ie
    WHERE ie.id = v_vid;
-  IF v_approval_status IS DISTINCT FROM 'UNAPPROVED'
-     OR v_posting_status IS DISTINCT FROM 'UNPOSTED' THEN
-    RAISE EXCEPTION 'copilot_draft_invariant_violation';
-  END IF;
-
-  SELECT * INTO v_existing_ie
-    FROM public.income_expenses ie
-   WHERE ie.id = v_vid;
-  IF v_existing_ie.account_id IS NOT NULL
+  IF NOT FOUND
+     OR v_existing_ie.organization_id IS DISTINCT FROM v_org
+     OR v_existing_ie.user_id IS DISTINCT FROM v_actor
+     OR v_existing_ie.building_id IS DISTINCT FROM v_target_building
+     OR v_existing_ie.type IS DISTINCT FROM (p_payload ->> 'type')
+     OR v_existing_ie.name IS DISTINCT FROM (p_payload ->> 'name')
+     OR v_existing_ie.voucher_date IS DISTINCT FROM
+        (p_payload ->> 'voucher_date')::date
+     OR v_existing_ie.approval_status IS DISTINCT FROM 'UNAPPROVED'
+     OR v_existing_ie.posting_status IS DISTINCT FROM 'UNPOSTED'
+     OR v_existing_ie.account_id IS NOT NULL
      OR v_existing_ie.active_posting_id_v2 IS NOT NULL
      OR v_existing_ie.posting_id IS NOT NULL
      OR v_existing_ie.approved_by IS NOT NULL
      OR v_existing_ie.approved_at IS NOT NULL
      OR v_existing_ie.repeat_cycle IS DISTINCT FROM 'NONE'
-     OR coalesce(v_existing_ie.repeat_auto_approve, false) IS TRUE THEN
-    RAISE EXCEPTION 'copilot_draft_invariant_violation';
+     OR v_existing_ie.repeat_next_date IS NOT NULL
+     OR v_existing_ie.repeat_parent_id IS NOT NULL THEN
+    RAISE EXCEPTION 'copilot_draft_invariant_violation' USING ERRCODE = 'P0001';
   END IF;
 
-  -- Audit ghi trong CUNG giao dich voi phieu. Luong cu ghi audit tu browser roi
-  -- moi goi RPC roi lai UPDATE entity_id — ba buoc, ba co hoi de lech nhau.
+  v_expected_type_id := (p_payload ->> 'type_id')::uuid;
+  v_expected_amount := (p_payload ->> 'amount')::numeric;
+  SELECT count(*)
+    INTO v_item_count
+    FROM public.income_expense_items i
+   WHERE i.income_expense_id = v_vid;
+  SELECT *
+    INTO v_item
+    FROM public.income_expense_items i
+   WHERE i.income_expense_id = v_vid
+   LIMIT 1;
+  IF v_item_count <> 1
+     OR v_item.organization_id IS DISTINCT FROM v_org
+     OR v_item.income_expense_type_id IS DISTINCT FROM v_expected_type_id
+     OR v_item.quantity <> 1
+     OR coalesce(v_item.amount, v_item.quantity * v_item.unit_price)
+          IS DISTINCT FROM v_expected_amount THEN
+    RAISE EXCEPTION 'copilot_draft_invariant_violation' USING ERRCODE = 'P0001';
+  END IF;
+
   INSERT INTO public.ai_write_audit
     (user_id, tool, idempotency_key, entity_table, entity_id, payload, organization_id)
   VALUES
@@ -466,15 +589,25 @@ BEGIN
   RETURNING id INTO v_audit_id;
 
   IF v_audit_id IS NULL THEN
-    -- A legacy writer that does not take the advisory lock may have won the
-    -- unique key between the pre-check and this insert. Never keep a voucher
-    -- without its matching audit; abort and let the transaction roll back.
-    SELECT * INTO v_prev FROM public.ai_write_audit a WHERE a.idempotency_key = v_key;
-    IF NOT FOUND OR v_prev.entity_id IS NULL THEN
+    SELECT *
+      INTO v_prev
+      FROM public.ai_write_audit a
+     WHERE a.idempotency_key = v_key;
+    IF NOT FOUND OR v_prev.entity_id IS NULL
+       OR v_prev.user_id IS DISTINCT FROM v_actor
+       OR v_prev.organization_id IS DISTINCT FROM v_org
+       OR v_prev.tool IS DISTINCT FROM v_row.tool
+       OR v_prev.entity_table IS DISTINCT FROM 'income_expenses'
+       OR app_private.copilot_payload_hash_v1(v_prev.payload)
+            IS DISTINCT FROM v_hash THEN
       RAISE EXCEPTION 'copilot_audit_orphan' USING ERRCODE = 'P0001';
     END IF;
     RAISE EXCEPTION 'copilot_idempotency_race' USING ERRCODE = 'P0001';
   END IF;
+
+  DELETE FROM app_private.copilot_ie_writer_context_v1
+   WHERE transaction_id = pg_current_xact_id()::text
+     AND marker_digest = extensions.digest(convert_to(v_marker, 'UTF8'), 'sha256');
 
   RETURN jsonb_build_object(
     'status',    'da_tao',
@@ -485,19 +618,11 @@ END
 $f$;
 
 COMMENT ON FUNCTION public.copilot_execute_income_expense_v1(text, jsonb) IS
-  'Tao phieu thu/chi nhap tu de xuat cua Copilot, CHI khi trinh dung nonce da phat luc xem truoc. '
-  'Tieu nonce bang CAS truoc khi tao phieu, ghi ai_write_audit trong cung giao dich. Payload phai la '
-  'ban CHUAN HOA ma preview tra ve — doi bat cu truong nao deu lech hash va bi tu choi.';
+  'Consumes a server nonce, rechecks organization/building permission, writes one draft voucher and immutable audit atomically.';
 
-REVOKE EXECUTE ON FUNCTION public.copilot_execute_income_expense_v1(text, jsonb) FROM PUBLIC, anon;
-GRANT  EXECUTE ON FUNCTION public.copilot_execute_income_expense_v1(text, jsonb) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.copilot_execute_income_expense_v1(text, jsonb)
+  FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.copilot_execute_income_expense_v1(text, jsonb)
+  TO authenticated;
 
 COMMIT;
-
--- =============================================================================
--- ROLLBACK:
---   DROP FUNCTION public.copilot_execute_income_expense_v1(text, jsonb);
---   DROP FUNCTION public.copilot_preview_income_expense_v1(uuid, jsonb);
---   DROP FUNCTION app_private.copilot_payload_hash_v1(jsonb);
---   DROP TABLE app_private.copilot_write_confirmations;
--- =============================================================================

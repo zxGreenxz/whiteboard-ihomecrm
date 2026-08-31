@@ -94,10 +94,10 @@ export async function setCopilotFeatureFlagV2(input: SetCopilotRolloutInput): Pr
     p_contract_id: input.contractId,
     p_state: input.state,
     p_expected_revision: input.expectedRevision,
-    p_canary_org: input.canaryOrg ?? null,
+    ...(typeof input.canaryOrg === 'string' ? { p_canary_org: input.canaryOrg } : {}),
     p_reason: input.reason,
     p_evidence_link: input.evidenceLink,
-    p_expires_at: input.expiresAt ?? null,
+    ...(typeof input.expiresAt === 'string' ? { p_expires_at: input.expiresAt } : {}),
     p_rollback_reference: input.rollbackReference,
   });
   if (error) throw error;

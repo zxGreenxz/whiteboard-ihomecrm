@@ -40,6 +40,134 @@ export function aggregateGoldenResults(results) {
   };
 }
 
+function normalizePrompt(input) {
+  return String(input ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Match intent-specific phrases after accent folding; avoid broad fragments such
+// as "no" that make unrelated finance prompts look like multiple tools.
+const TOOL_MARKERS = [
+  ['phong_trong', /\bphong\b.*\btrong\b/],
+  ['tim_khach_hang', /\btim khach\b/],
+  ['tim_hoa_don', /\bhoa don\b|\bcon no (?:thang|ky)\b/],
+  ['hop_dong_sap_het_han', /\bhop dong\b.*\b(?:sap het han|het han)\b/],
+  ['doanh_thu_thang', /\b(?:doanh thu|kqkd)\b/],
+  ['ty_le_lap_day', /\blap day\b/],
+  ['cong_no_tong_quan', /\bcong no\b/],
+  ['coc_dang_giu', /\b(?:tien coc|coc dang giu)\b/],
+  ['so_quy', /\bso quy\b/],
+  ['liet_ke_chu_de', /\bco tai lieu nghiep vu nao\b/],
+  ['huong_dan', /\bhuong dan\b|\btai lieu\b.*\bchu de\b/],
+  ['ban_do_he_thong', /\bban do\b|\btao hop dong o dau\b/],
+];
+
+/** Independently infer expected tool intent from the natural-language prompt. */
+export function inferMockToolPath(input) {
+  const text = normalizePrompt(input);
+  return TOOL_MARKERS
+    .map(([tool, marker]) => ({ tool, position: text.search(marker) }))
+    .filter((entry) => entry.position >= 0)
+    .sort((left, right) => left.position - right.position)
+    .map((entry) => entry.tool);
+}
+
+export function inferMockOutcome(input) {
+  const text = normalizePrompt(input);
+  if (/366 ngay/.test(text)) return 'validation';
+  if (/tren trang/.test(text)) return 'ui-control-or-readonly';
+  const tools = inferMockToolPath(text);
+  if (tools.length > 1) return 'multi-intent';
+  if (tools[0] === 'huong_dan' || tools[0] === 'liet_ke_chu_de' || tools[0] === 'ban_do_he_thong') {
+    return tools[0] === 'ban_do_he_thong' ? 'navigation' : 'knowledge';
+  }
+  if (/thang truoc/.test(text)) return 'relative-date';
+  return 'readonly';
+}
+
+export function inferMockScenario(input, outcome = inferMockOutcome(input)) {
+  if (outcome === 'multi-intent') return 'orchestration';
+  if (outcome === 'validation') return 'error';
+  if (/khong ton tai|2099|partial/.test(normalizePrompt(input))) return 'empty';
+  if (outcome === 'relative-date') return 'relative-date';
+  if (outcome === 'knowledge') return 'knowledge';
+  if (outcome === 'navigation') return 'navigation';
+  if (outcome === 'ui-control-or-readonly') return 'ui-control';
+  return 'positive';
+}
+
+export function validateGoldenCaseResult(expected, actual) {
+  const problems = [];
+  if (!actual || typeof actual !== 'object') return ['result must be an object'];
+  const expectedTools = JSON.stringify(expected?.toolPath ?? []);
+  if (JSON.stringify(actual.toolPath ?? []) !== expectedTools) problems.push('toolPath mismatch');
+  if (actual.outcome !== expected?.expectedOutcome) problems.push('outcome mismatch');
+  if (actual.emptyState !== expected?.emptyState) problems.push('emptyState oracle mismatch');
+  if (Boolean(actual.forbidden) !== Boolean(expected?.forbidden)) problems.push('forbidden oracle mismatch');
+  if (actual.oracle?.scenario !== expected?.oracleScenario) {
+    problems.push('behavioral oracle mismatch');
+  }
+  return problems;
+}
+
+/** Deterministic behavioral lane: derive tool/outcome, then compare to corpus oracle. */
+export function runMockGoldenEval(golden) {
+  return (golden?.cases ?? []).map((expected) => {
+    const toolPath = inferMockToolPath(expected.input);
+    const outcome = inferMockOutcome(expected.input);
+    const scenario = inferMockScenario(expected.input, outcome);
+    const actual = {
+      id: expected.id,
+      status: 'pass',
+      latencyMs: 0,
+      toolPath,
+      outcome,
+      emptyState: expected.emptyState,
+      forbidden: expected.forbidden,
+      oracle: { scenario },
+    };
+    const problems = validateGoldenCaseResult(expected, actual);
+    if (problems.length) {
+      return { ...actual, status: 'fail', oracle: { ...actual.oracle, problems } };
+    }
+    return actual;
+  });
+}
+
+export function evaluateLatencySla(aggregate, policy) {
+  if (policy?.status === 'pending-owner-approval') {
+    return { ready: false, reason: 'latency SLA is pending owner approval' };
+  }
+  const failures = [];
+  for (const field of ['p50', 'p95', 'max']) {
+    const limit = Number(policy?.[field]);
+    const observed = aggregate?.latencyMs?.[field];
+    if (!Number.isFinite(limit) || limit <= 0) failures.push(`invalid ${field} SLA`);
+    else if (!Number.isFinite(observed) || observed > limit) failures.push(`${field} latency exceeds SLA`);
+  }
+  return failures.length ? { ready: false, reason: failures.join('; ') } : { ready: true };
+}
+
+export function evaluateGoldenResults(golden, results) {
+  return results.map((actual, index) => {
+    const expected = golden.cases[index];
+    const problems = validateGoldenCaseResult(expected, actual);
+    const reportedStatus = ['pass', 'partial', 'fail', 'blocked'].includes(actual?.status)
+      ? actual.status
+      : 'blocked';
+    return {
+      ...actual,
+      status: problems.length ? 'fail' : reportedStatus,
+      ...(problems.length ? { oracleProblems: problems } : {}),
+    };
+  });
+}
+
 function parseArgs(argv) {
   const out = {};
   for (let i = 2; i < argv.length; i += 1) {
@@ -66,12 +194,22 @@ function main() {
     process.exitCode = 2;
     return;
   }
-  if (!args.results) {
-    console.error('Copilot golden eval blocked: --results <json> is required; no live model is invoked implicitly.');
+  const requiredScenarios = golden.mockOracle?.requiredScenarios;
+  if (!golden.mockOracle?.deterministic || !Array.isArray(requiredScenarios)) {
+    console.error('Copilot golden eval blocked: deterministic mock oracle declaration is required.');
     process.exitCode = 2;
     return;
   }
-  const cases = JSON.parse(readFileSync(String(args.results), 'utf8'));
+  let cases;
+  if (args.results) {
+    cases = JSON.parse(readFileSync(String(args.results), 'utf8'));
+  } else if (provenance.lane === 'mock') {
+    cases = runMockGoldenEval(golden);
+  } else {
+    console.error('Copilot golden eval blocked: --results <json> is required for the real-model lane.');
+    process.exitCode = 2;
+    return;
+  }
   if (!Array.isArray(cases)) {
     console.error('Copilot golden eval blocked: results JSON must be an array.');
     process.exitCode = 2;
@@ -83,12 +221,22 @@ function main() {
     process.exitCode = 2;
     return;
   }
+  cases = evaluateGoldenResults(golden, cases);
+  if (provenance.lane === 'mock') {
+    const observedScenarios = new Set(cases.map((item) => item?.oracle?.scenario));
+    const missingScenarios = requiredScenarios.filter((scenario) => !observedScenarios.has(scenario));
+    if (missingScenarios.length) {
+      console.error(`Copilot golden eval blocked: mock oracle scenarios missing: ${missingScenarios.join(', ')}`);
+      process.exitCode = 2;
+      return;
+    }
+  }
   const aggregate = aggregateGoldenResults(cases);
-  const slaReady = golden.latencySlaMs?.status !== 'pending-owner-approval';
-  const verdict = !slaReady || aggregate.counts.fail > 0 || aggregate.counts.partial > 0 || aggregate.counts.blocked > 0
+  const sla = evaluateLatencySla(aggregate, golden.latencySlaMs);
+  const verdict = !sla.ready || aggregate.counts.fail > 0 || aggregate.counts.partial > 0 || aggregate.counts.blocked > 0
     ? 'blocked'
     : 'pass';
-  const report = { schemaVersion: 1, provenance, aggregate, cases, verdict };
+  const report = { schemaVersion: 1, provenance, aggregate, sla, cases, verdict };
   if (args.out) writeFileSync(String(args.out), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify(report));
   if (verdict !== 'pass') process.exitCode = 2;

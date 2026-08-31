@@ -150,7 +150,7 @@ export const congNoTongQuan = dt({
     const orgId = chotToChuc(ctx, 'cong_no_tong_quan');
     const { data, error } = await supabase.rpc('copilot_invoice_stats_v1', {
       p_organization_id: orgId,
-      p_billing_month: args.thang ?? null,
+      ...(args.thang === undefined ? {} : { p_billing_month: args.thang }),
     });
     if (error) throw new Error(`Lỗi tải thống kê hoá đơn: ${error.message}`);
     if (!data) return 'Không có dữ liệu hoá đơn.';

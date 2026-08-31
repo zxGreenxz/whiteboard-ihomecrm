@@ -6,10 +6,10 @@ import {
 } from '../registry';
 
 describe('Copilot page contracts', () => {
-  it('exposes only explicit pilot contracts and normalizes trailing slash', () => {
+  it('exposes declared contracts and normalizes trailing slash and detail routes', () => {
     expect(COPILOT_PAGE_CONTRACTS.length).toBeGreaterThanOrEqual(3);
     expect(copilotPageByRoute('/apartments/')).toMatchObject({ key: 'rooms.list', route: '/apartments' });
-    expect(copilotPageByRoute('/apartments/123')).toBeUndefined();
+    expect(copilotPageByRoute('/apartments/123')).toMatchObject({ key: 'rooms.detail', canonicalRoute: '/apartments' });
   });
 
   it('returns canonical route for a declared key and denies unknown keys', () => {

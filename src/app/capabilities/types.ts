@@ -2,13 +2,17 @@ import type { ActionKey } from "@/lib/permissions";
 
 export type CopilotPageMode = "none" | "read" | "navigate" | "filter" | "draft";
 export type CopilotDataClass = "public" | "internal" | "financial" | "security" | "pii";
+export type CopilotPageBatch = "property" | "crm" | "billing" | "reports" | "communications" | "workforce";
 
 export interface CopilotPageContract {
   key: string;
   route: string;
+  canonicalRoute?: string;
   mode: CopilotPageMode;
   permission: { module: string; action: ActionKey };
   dataClass: CopilotDataClass;
+  batch: CopilotPageBatch;
+  rolloutKey: string;
   safeControlIds: readonly string[];
   e2eSpec?: string;
   exemption?: string;

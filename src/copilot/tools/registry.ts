@@ -437,7 +437,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
           p_organization_id: orgId,
           p_billing_month: args.thang,
           p_payment_status: args.trang_thai,
-          p_search: args.tu_khoa?.trim() || null,
+          ...(args.tu_khoa?.trim() ? { p_search: args.tu_khoa.trim() } : {}),
         });
         if (error) throw new Error(`Lỗi tìm hoá đơn: ${error.message}`);
         const rows = Array.isArray(data) ? data.slice(0, 10) : [];

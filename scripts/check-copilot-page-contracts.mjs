@@ -14,11 +14,12 @@ export function routeMatches(pattern, pathname) {
   const p = normalizeRoute(pattern);
   const actual = normalizeRoute(pathname);
   if (p === '*') return actual === '*';
-  if (p.endsWith('/*')) {
-    const base = p.slice(0, -2) || '/';
-    return actual === base || actual.startsWith(`${base}/`);
-  }
-  return p === actual;
+  const patternParts = p.split('/').filter(Boolean);
+  const actualParts = actual.split('/').filter(Boolean);
+  const splat = patternParts.at(-1) === '*';
+  const fixedLength = splat ? patternParts.length - 1 : patternParts.length;
+  if ((!splat && patternParts.length !== actualParts.length) || actualParts.length < fixedLength) return false;
+  return patternParts.slice(0, fixedLength).every((part, index) => part.startsWith(':') || part === actualParts[index]);
 }
 
 function loadContracts(repoRoot) {
@@ -72,6 +73,15 @@ export function validateContracts(contracts, routes = [], exemptions = [], permi
     if (!route || routeSet.has(route)) problems.push(`duplicate or missing route: ${page?.route ?? '<empty>'}`);
     routeSet.add(route);
     if (!['none', 'read', 'navigate', 'filter', 'draft'].includes(page?.mode)) problems.push(`${page.key}: invalid mode`);
+    if (!['property', 'crm', 'billing', 'reports', 'communications', 'workforce'].includes(page?.batch)) {
+      problems.push(`${page.key}: invalid or missing batch`);
+    }
+    if (typeof page?.rolloutKey !== 'string' || !page.rolloutKey.trim()) {
+      problems.push(`${page.key}: rolloutKey is required`);
+    }
+    if (page?.canonicalRoute !== undefined && (!String(page.canonicalRoute).startsWith('/') || /:\w+|\*$/.test(page.canonicalRoute))) {
+      problems.push(`${page.key}: canonicalRoute must be a concrete path`);
+    }
     if (!page?.permission?.module || !page?.permission?.action) problems.push(`${page.key}: missing permission`);
     if (permissionKeys && !permissionKeys.has(`${page.permission.module}.${page.permission.action}`)) {
       problems.push(`${page.key}: permission ${page.permission.module}.${page.permission.action} is not registered`);
@@ -159,8 +169,22 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  const nonRedirectCount = routes.filter((route) => !route?.redirect && route?.path !== '(index)').length;
-  console.log(`Copilot page contracts: ${contracts.length} explicit page(s), ${nonRedirectCount} non-redirect route(s) accounted.`);
+  const renderableRoutes = routes.filter((route) => !route?.redirect && route?.path !== '(index)');
+  const contractedRoutes = renderableRoutes.filter((route) =>
+    (contracts ?? []).some((entry) => routeMatches(entry.route, route.path)),
+  );
+  const exemptedRoutes = renderableRoutes.filter((route) =>
+    !(contracts ?? []).some((entry) => routeMatches(entry.route, route.path)) &&
+    (exemptions ?? []).some((entry) => routeMatches(entry.route, route.path)),
+  );
+  const canonicalPages = new Set(
+    (contracts ?? []).map((entry) => normalizeRoute(entry.canonicalRoute ?? entry.route)),
+  );
+  console.log(
+    `Copilot page contracts: ${contracts.length} explicit page(s), ${canonicalPages.size} canonical page(s), ` +
+      `${renderableRoutes.length} non-redirect route(s) accounted ` +
+      `(${contractedRoutes.length} contracted, ${exemptedRoutes.length} exempted).`,
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

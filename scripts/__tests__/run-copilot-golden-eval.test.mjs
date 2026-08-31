@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { aggregateGoldenResults, validateRunProvenance } from '../run-copilot-golden-eval.mjs';
+import {
+  aggregateGoldenResults,
+  inferMockOutcome,
+  inferMockScenario,
+  inferMockToolPath,
+  validateRunProvenance,
+} from '../run-copilot-golden-eval.mjs';
 
 test('aggregates case results with latency percentiles and explicit counts', () => {
   const summary = aggregateGoldenResults([
@@ -25,4 +31,15 @@ test('rejects missing provenance instead of reporting a release verdict', () => 
   assert.deepEqual(validateRunProvenance({ lane: 'unknown', buildSha: 'a'.repeat(40), providerModel: 'mock:test' }), [
     'lane must be mock or real-model',
   ]);
+});
+
+test('classifies every pinned corpus prompt without broad Vietnamese regex matches', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const golden = JSON.parse(await readFile(new URL('../../tooling/copilot-golden-eval.json', import.meta.url), 'utf8'));
+
+  for (const expected of golden.cases) {
+    assert.deepEqual(inferMockToolPath(expected.input), expected.toolPath, expected.id);
+    assert.equal(inferMockOutcome(expected.input), expected.expectedOutcome, expected.id);
+    assert.equal(inferMockScenario(expected.input, expected.expectedOutcome), expected.oracleScenario, expected.id);
+  }
 });

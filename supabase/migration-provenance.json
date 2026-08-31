@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-31T03:03:44.201Z",
+  "generatedAt": "2026-08-31T14:03:32.122Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 428,
+    "ledger-applied": 443,
     "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
@@ -8475,6 +8475,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20260828140000_copilot_org_scope_v1.sql",
+      "version": "20260828140000",
+      "name": "copilot_org_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "9252393dea4efc3ca6185ae1b2d31c5c966e5590c448636d2eff7fa1f4f1ab7d",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T14:26:45.541Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20260828150000_utility_ceiling_wired_into_pay_bill.sql",
       "version": "20260828150000",
       "name": "utility_ceiling_wired_into_pay_bill",
@@ -8486,6 +8497,28 @@
       ]
     },
     {
+      "path": "supabase/migrations/20260828160000_copilot_server_scope_v2.sql",
+      "version": "20260828160000",
+      "name": "copilot_server_scope_v2",
+      "scheme": "timestamp14",
+      "sha256": "40fafa7f55433b68a429f0d0efd951fa9484fbce8ed444f7906420e406c943a1",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T14:31:05.172Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260828170000_copilot_feature_flags_v1.sql",
+      "version": "20260828170000",
+      "name": "copilot_feature_flags_v1",
+      "scheme": "timestamp14",
+      "sha256": "ac71e4c9a7c8f81eb5383674d6dfc272f0d1ac4c4e38e406d000bb8074c59415",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T14:34:58.096Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20260829010000_network_center_h196a_downstream.sql",
       "version": "20260829010000",
       "name": "network_center_h196a_downstream",
@@ -8494,6 +8527,105 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-28T03:09:23.955Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829020000_copilot_customer_contract_scope_v1.sql",
+      "version": "20260829020000",
+      "name": "copilot_customer_contract_scope_v1",
+      "scheme": "timestamp14",
+      "sha256": "a4a1755bc088d2e43a2212ac99d56cfca65d64f14dc6dba33fbd3231585e50bf",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T14:38:33.724Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829030000_copilot_feature_flags_cas_v2.sql",
+      "version": "20260829030000",
+      "name": "copilot_feature_flags_cas_v2",
+      "scheme": "timestamp14",
+      "sha256": "b0c0e6b6cdcb78fb63bee98c6872c4c8a5ce25488747fc050d610d780bc66deb",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T14:44:28.039Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829040000_copilot_feature_flags_rls_v1.sql",
+      "version": "20260829040000",
+      "name": "copilot_feature_flags_rls_v1",
+      "scheme": "timestamp14",
+      "sha256": "76748ece52b9640fdcf7adec0a2f1f959691ead709ddd6ce7c2e8fa40b41d397",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T14:52:13.535Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829050000_copilot_org_scope_acl_v1.sql",
+      "version": "20260829050000",
+      "name": "copilot_org_scope_acl_v1",
+      "scheme": "timestamp14",
+      "sha256": "1a4e73080ca919623bc1a55d3883f00ef38891673b6c1cbb4d5de493407c2b39",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T15:00:56.304Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829060000_copilot_cashbook_legacy_acl_v1.sql",
+      "version": "20260829060000",
+      "name": "copilot_cashbook_legacy_acl_v1",
+      "scheme": "timestamp14",
+      "sha256": "117468394c472216f413cc08465bee14e1489811c49ffd5ef4bf432f827d0e02",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-30T12:15:16.841Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829070000_restore_demo_organization_metadata.sql",
+      "version": "20260829070000",
+      "name": "restore_demo_organization_metadata",
+      "scheme": "timestamp14",
+      "sha256": "d9309dd4e85ea5bcf8cdda9d4158545f56e6d8c559ae288f805577257801dc87",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-28T20:03:27.322Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829080000_copilot_provider_pricing_policy_v1.sql",
+      "version": "20260829080000",
+      "name": "copilot_provider_pricing_policy_v1",
+      "scheme": "timestamp14",
+      "sha256": "c13c3de6274400d733f74c9d3436106905d02372f35d6fa3e9ad6225a4cfab12",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-30T07:33:33.872Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829090000_copilot_org_scope_semantics_v1.sql",
+      "version": "20260829090000",
+      "name": "copilot_org_scope_semantics_v1",
+      "scheme": "timestamp14",
+      "sha256": "790a20c5f69da67b9686663e8b27b4e7585d314ccc6f104d398b43b3781cd504",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-30T12:09:00.180Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260829100000_copilot_authorized_scope_revocation_v1.sql",
+      "version": "20260829100000",
+      "name": "copilot_authorized_scope_revocation_v1",
+      "scheme": "timestamp14",
+      "sha256": "5576e428f489f7f36b7e62619c55b8145e21fc64c3629e723aecfd89a07901d7",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T13:10:39.776Z|bien-nhan-backup"
       ]
     },
     {
@@ -8530,6 +8662,28 @@
       ]
     },
     {
+      "path": "supabase/migrations/20260830171108_copilot_income_expense_rpc_hardening_v1.sql",
+      "version": "20260830171108",
+      "name": "copilot_income_expense_rpc_hardening_v1",
+      "scheme": "timestamp14",
+      "sha256": "548dbb239f5b51f4988b1d3db0e4a947c0b098aeb48247f932b94fae13b024ed",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T12:21:55.412Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260830183259_copilot_draft_writer_v1.sql",
+      "version": "20260830183259",
+      "name": "copilot_draft_writer_v1",
+      "scheme": "timestamp14",
+      "sha256": "bcb3bb02da0bc273e385d089f8d4dcb2d51ca853dabe0e519bceb07bc2b279ef",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T12:24:59.590Z|bien-nhan-backup"
+      ]
+    },
+    {
       "path": "supabase/migrations/20260831015222_zalo_dung_khan_cap_tu_dong_hoa.sql",
       "version": "20260831015222",
       "name": "zalo_dung_khan_cap_tu_dong_hoa",
@@ -8560,6 +8714,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-31T02:46:45.151Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260831110236_copilot_restricted_category_guard_v1.sql",
+      "version": "20260831110236",
+      "name": "copilot_restricted_category_guard_v1",
+      "scheme": "timestamp14",
+      "sha256": "ecd0465cc1536478a7336ee017bfd50c1330aec771528333d47553694d71da52",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T12:29:06.510Z|bien-nhan-backup"
       ]
     },
     {

@@ -177,17 +177,20 @@ function main(argv) {
     return 1;
   }
 
-  let localMd;
+  // Worktrees intentionally do not carry a second vault.  CI/automation may
+  // pass the already-authorized password through the process environment for
+  // this one invocation; keep the existing vault fallback for the primary
+  // checkout and never write the value to disk or stdout.
+  let localMd = "";
   try {
     localMd = readFileSync(join(repoRoot, "CLAUDE.local.md"), "utf8");
   } catch {
-    console.error("❌ Không đọc được CLAUDE.local.md — đây là nguồn credential local bắt buộc.");
-    return 1;
+    localMd = "";
   }
 
-  const password = readPoolerPassword(localMd);
+  const password = process.env.SUPABASE_DB_PASSWORD?.trim() || readPoolerPassword(localMd);
   if (!password) {
-    console.error("❌ Không tìm thấy password pooler trong CLAUDE.local.md (mục 'Supabase Database').");
+    console.error("❌ Không tìm thấy password pooler (SUPABASE_DB_PASSWORD hoặc CLAUDE.local.md).");
     return 1;
   }
 

@@ -26,6 +26,8 @@ test('requires every non-redirect route to be contracted or explicitly exempted'
     mode: 'filter',
     permission: { module: 'rooms', action: 'view' },
     dataClass: 'internal',
+    batch: 'property',
+    rolloutKey: 'rooms.list',
     safeControlIds: [],
   }];
   assert.deepEqual(

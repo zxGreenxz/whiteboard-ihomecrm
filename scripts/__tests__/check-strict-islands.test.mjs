@@ -15,6 +15,7 @@ import {
   CO_BAT_BUOC,
   DAO,
   doJsonc,
+  docDao,
   locDao,
   timConNgoaiCha,
   timCoBiTat,
@@ -77,6 +78,10 @@ describe("locDao / timDaoBiRut / doJsonc", () => {
   it("doJsonc đọc được tsconfig có comment", () => {
     expect(JSON.parse(doJsonc('{ /* x */ "a": 1 } // đuôi'))).toEqual({ a: 1 });
   });
+
+  it("docDao đọc danh sách file cố định mà không phụ thuộc include", () => {
+    expect(docDao('{ "files": ["src/a.ts"], "include": [] }')).toEqual(["src/a.ts"]);
+  });
 });
 
 describe("bảng DAO — khai báo phải khớp file thật", () => {
@@ -94,7 +99,7 @@ describe("bảng DAO — khai báo phải khớp file thật", () => {
 
   it("sàn chống-rỗng của mỗi tầng phải THẤP HƠN số đảo thật — nhưng không thấp vô nghĩa", () => {
     for (const d of DAO) {
-      const soDao = locDao(docJson(d.tsconfig).include).length;
+      const soDao = locDao(docDao(readFileSync(new URL(d.tsconfig, goc), "utf8"))).length;
       expect(soDao, `${d.ten}: ${soDao} đảo mà sàn ${d.toiThieu}`).toBeGreaterThan(d.toiThieu);
       // Sàn thấp hơn nửa mức thật thì nó không còn chặn được việc cắt danh sách.
       expect(d.toiThieu, `${d.ten}: sàn quá thấp so với ${soDao}`).toBeGreaterThan(soDao / 2);
@@ -103,7 +108,7 @@ describe("bảng DAO — khai báo phải khớp file thật", () => {
 
   it("baseline của mỗi tầng là TẬP CON của include tầng đó", () => {
     for (const d of DAO) {
-      const include = new Set(locDao(docJson(d.tsconfig).include));
+      const include = new Set(locDao(docDao(readFileSync(new URL(d.tsconfig, goc), "utf8"))));
       const baseline = JSON.parse(readFileSync(new URL(d.baseline.replace(/\\/g, "/"), goc), "utf8")).islands;
       expect(timDaoBiRut(baseline, [...include]), `${d.ten} có đảo bị rút`).toEqual([]);
     }
@@ -114,8 +119,8 @@ describe("bảng DAO — khai báo phải khớp file thật", () => {
     // Chống-xanh-rỗng: nếu không tầng nào khai cha thì ca này chẳng kiểm gì.
     expect(coCha.length).toBeGreaterThanOrEqual(1);
     for (const d of coCha) {
-      const con = locDao(docJson(d.tsconfig).include);
-      const cha = locDao(docJson(d.conCua).include);
+      const con = locDao(docDao(readFileSync(new URL(d.tsconfig, goc), "utf8")));
+      const cha = locDao(docDao(readFileSync(new URL(d.conCua, goc), "utf8")));
       expect(timConNgoaiCha(con, cha), `${d.ten} vượt ra ngoài ${d.conCua}`).toEqual([]);
     }
   });

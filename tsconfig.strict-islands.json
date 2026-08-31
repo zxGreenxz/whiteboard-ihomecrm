@@ -14,7 +14,7 @@
     "noImplicitOverride": true,
     "noEmit": true
   },
-  "include": [
+  "files": [
     "src/app/capabilities/__tests__/capabilityContract.test.ts",
     "src/app/capabilities/__tests__/capabilityContractDisabled.test.ts",
     "src/app/capabilities/__tests__/navRoutesExist.test.ts",
@@ -542,6 +542,10 @@
     "src/copilot/docs/chunker.ts",
     "src/copilot/docs/docSearch.ts",
     "src/copilot/docs/tokenize.ts",
+    "src/copilot/featureFlags.ts",
+    "src/copilot/phaseDWriteMatrix.ts",
+    "src/copilot/providerPolicy.ts",
+    "src/copilot/uiControlAvailability.ts",
     "src/copilot/hrefAnToan.ts",
     "src/copilot/llmClient.ts",
     "src/copilot/maskPii.ts",

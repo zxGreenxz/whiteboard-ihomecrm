@@ -6,7 +6,7 @@
   "compilerOptions": {
     "noUncheckedIndexedAccess": true
   },
-  "include": [
+  "files": [
     "src/app/capabilities/__tests__/riskMapCoverage.test.ts",
     "src/app/capabilities/registry.ts",
     "src/app/capabilities/surfaceAdapters.ts",
