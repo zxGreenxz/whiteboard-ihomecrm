@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1317,
+    "sourceCallSites": 1318,
     "catalogFunctions": 1015,
     "schemas": [
       "public",
@@ -3312,7 +3312,7 @@
         {
           "schema": "public",
           "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false",
-          "returns": "TABLE(total_sessions bigint, total_views bigint, room_opens bigint, impressions bigint, contact_clicks bigint, favorites bigint, deposit_dialogs bigint, errors bigint, avg_session_ms numeric, unique_rooms_seen bigint, errors_external bigint, error_hits bigint)",
+          "returns": "TABLE(total_sessions bigint, total_views bigint, room_opens bigint, impressions bigint, contact_clicks bigint, favorites bigint, deposit_dialogs bigint, errors bigint, avg_session_ms numeric, unique_rooms_seen bigint, errors_external bigint, error_hits bigint, error_groups bigint, error_groups_external bigint)",
           "volatility": "STABLE",
           "securityDefiner": true,
           "searchPath": "search_path=public",
