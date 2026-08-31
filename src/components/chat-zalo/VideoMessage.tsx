@@ -5,6 +5,7 @@ import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
 import type { MsgActionProps } from './MessageBubble';
+import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
 
 /** Tin video Zalo — phát inline (poster = thumbnail). Lỗi tải thì hiện poster + nút mở. */
 export default function VideoMessage({ m, onReact, onRecall, onShare }: { m: ZaloMessage } & MsgActionProps) {
@@ -13,6 +14,8 @@ export default function VideoMessage({ m, onReact, onRecall, onShare }: { m: Zal
   const [hover, setHover] = useState(false);
   const canAct = (!!m.id && (!!onReact || !!onRecall)) || !!onShare;
   const radius = out ? '14px 4px 14px 14px' : '14px 14px 14px 4px';
+  // Video SHOP gửi nằm trong bucket private `zalo-media` — phải ký mới phát được.
+  const urlVideo = useSignedMediaUrl(m.mediaUrl);
 
   return (
     <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', marginTop: 8 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
@@ -20,24 +23,24 @@ export default function VideoMessage({ m, onReact, onRecall, onShare }: { m: Zal
         {hover && canAct && (
           <MessageActions out={out} canRecall={out && !!onRecall && !!m.id} onReact={(e) => m.id && onReact?.(m.id, e)} onRecall={() => m.id && onRecall?.(m.id)} onShare={onShare ? () => onShare(m) : undefined} />
         )}
-        {m.mediaUrl && !err ? (
+        {urlVideo && !err ? (
           <video
             controls
             preload="metadata"
             poster={m.videoThumb || undefined}
-            src={m.mediaUrl}
+            src={urlVideo}
             onError={() => setErr(true)}
             style={{ maxWidth: 260, maxHeight: 320, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', display: 'block', background: '#000' }}
           />
         ) : m.videoThumb ? (
-          <a href={m.mediaUrl || m.videoThumb} target="_blank" rel="noreferrer" style={{ display: 'block', position: 'relative', width: 206, borderRadius: radius, overflow: 'hidden', border: '1px solid hsl(210 20% 86%)' }}>
+          <a href={urlVideo || m.videoThumb} target="_blank" rel="noreferrer" style={{ display: 'block', position: 'relative', width: 206, borderRadius: radius, overflow: 'hidden', border: '1px solid hsl(210 20% 86%)' }}>
             <img src={m.videoThumb} alt="Video" referrerPolicy="no-referrer" loading="lazy" style={{ width: '100%', display: 'block', objectFit: 'cover' }} />
             <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.28)' }}>
               <span style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Play size={22} color="#fff" fill="#fff" /></span>
             </span>
           </a>
         ) : (
-          <a href={m.mediaUrl || '#'} target="_blank" rel="noreferrer" style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS.warm, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textDecoration: 'none' }}>
+          <a href={urlVideo || '#'} target="_blank" rel="noreferrer" style={{ width: 206, height: 140, borderRadius: radius, border: '1px solid hsl(210 20% 86%)', background: IMG_GRADS.warm, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, color: 'hsl(160 16% 46%)', textDecoration: 'none' }}>
             <VideoIcon size={28} strokeWidth={1.6} />
             <span style={{ fontSize: 11, fontWeight: 600 }}>{m.label || 'Video'}</span>
           </a>

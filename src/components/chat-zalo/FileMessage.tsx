@@ -4,6 +4,7 @@ import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
 import type { MsgActionProps } from './MessageBubble';
+import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
 
 function fmtSize(n?: unknown): string {
   const b = Number(n);
@@ -19,7 +20,7 @@ export default function FileMessage({ m, onReact, onRecall, onShare, onReply, on
   const [hover, setHover] = useState(false);
   const name = (m.mediaMeta?.filename as string) || m.label || m.text || 'Tệp đính kèm';
   const size = fmtSize(m.mediaMeta?.size);
-  const url = m.localUrl || m.mediaUrl;
+  const url = useSignedMediaUrl(m.localUrl || m.mediaUrl);
 
   return (
     <div style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', marginTop: 8 }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>

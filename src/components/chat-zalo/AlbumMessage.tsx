@@ -4,6 +4,7 @@ import { MetaRow } from './MessageBubble';
 import MessageActions from './MessageActions';
 import type { ZaloMessage } from './types';
 import type { MsgActionProps } from './MessageBubble';
+import { useSignedMediaUrl } from '@/hooks/chat-zalo/useSignedMediaUrl';
 
 interface Props extends MsgActionProps {
   items: ZaloMessage[];
@@ -73,7 +74,7 @@ export default function AlbumMessage({ items, onOpenLightbox, onReact, onRecall,
 
 function AlbumCell({ m, onClick, overlay, style }: { m: ZaloMessage; onClick: () => void; overlay?: string; style?: React.CSSProperties }) {
   const [err, setErr] = useState(false);
-  const url = m.localUrl || m.mediaUrl;
+  const url = useSignedMediaUrl(m.localUrl || m.mediaUrl);
   return (
     <button onClick={onClick} style={{ position: 'relative', border: '1px solid hsl(210 20% 86%)', borderRadius: 10, overflow: 'hidden', padding: 0, cursor: 'pointer', background: 'hsl(210 20% 95%)', ...style }}>
       {url && !err ? (
