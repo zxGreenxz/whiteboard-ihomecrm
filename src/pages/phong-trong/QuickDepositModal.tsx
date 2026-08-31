@@ -179,7 +179,13 @@ export function QuickDepositModal({
       onDone(`Đã tạo cọc — phòng ${roomLabel} đã được giữ`);
       onClose();
     } catch (e) {
-      track.track("error", { room_id: room.id, metadata: { where: "deposit", msg: (e as Error)?.message?.slice(0, 300) } });
+      track.trackError({
+        kind: "deposit",
+        where: "QuickDepositModal",
+        msg: (e as Error)?.message,
+        stack: (e as Error)?.stack,
+        room_id: room.id,
+      });
       onDone((e as Error)?.message || "Tạo phiếu cọc thất bại");
       setSubmitting(false);
     }

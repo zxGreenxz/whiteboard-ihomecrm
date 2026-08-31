@@ -10,6 +10,14 @@
     <meta name="description" content="Cập nhật realtime · đầy đủ thông tin phòng & vị trí toà nhà" />
     <meta name="author" content="CRM" />
 
+    <!-- Bắt lỗi sớm cho trang công khai "Phòng trống". PHẢI là script đầu tiên:
+         bộ đo đếm nằm trong bundle React chỉ gắn được listener sau khi chunk
+         lazy mount xong (0,5–3 giây trên 4G), nên mọi lỗi lúc tải tài liệu —
+         đúng quãng WebView in-app tiêm script cầu nối của nó — trước đây không
+         ai thấy. File này xếp hàng, tracker rút hàng đợi rồi cắm hook. Tự thoát
+         ngay trên mọi đường dẫn khác. -->
+    <script src="/pt-boot.js"></script>
+
     <!-- Standalone-only entry watchdog. Browser tabs keep their current behavior.
          Án lệ Android 07/2026: đổi mạng WiFi→LTE làm socket chết → fetch entry
          JS treo LƠ LỬNG (không error, không xong) và cả location.replace() cứu

@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-31T02:01:35.499Z",
+  "generatedAt": "2026-08-31T03:03:44.201Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 426,
+    "ledger-applied": 428,
     "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
@@ -8538,6 +8538,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-31T01:56:17.697Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260831023937_public_room_events_ghi_loi_ben_vung.sql",
+      "version": "20260831023937",
+      "name": "public_room_events_ghi_loi_ben_vung",
+      "scheme": "timestamp14",
+      "sha256": "fe9e17e936c12a8b22cda92e1978e78048dd34ea535b32517382c98af394ca98",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T02:43:47.089Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260831023938_pra_errors_v2_nhom_loi.sql",
+      "version": "20260831023938",
+      "name": "pra_errors_v2_nhom_loi",
+      "scheme": "timestamp14",
+      "sha256": "d09e770e1b6b93fe9a5c5597a91df55a0e842bcb0453fdbd7476ea3d452c6527",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-08-31T02:46:45.151Z|bien-nhan-backup"
       ]
     },
     {

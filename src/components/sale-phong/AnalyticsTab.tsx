@@ -28,9 +28,10 @@ import { KpiCard } from "@/components/finance-analysis/KpiCard";
 import { ChartCard } from "@/components/finance-analysis/ChartCard";
 import { usePublicRoomTokens } from "@/hooks/usePublicRoomTokens";
 import { fmtDuration } from "./analyticsUtils";
+import ErrorsSection from "./ErrorsSection";
 import {
   usePraSummary, usePraTimeseries, usePraTopRooms, usePraFunnel,
-  usePraByToken, usePraErrors,
+  usePraByToken,
   type PraFilters, type PraTopRoomRow, type PraTimeseriesRow,
 } from "@/hooks/usePublicRoomsAnalytics";
 import { usePersistedState, usePersistedDateRange } from "@/hooks/usePersistedState";
@@ -141,7 +142,21 @@ function OverviewSection({ f }: { f: PraFilters }) {
         <KpiCard label="Lượt bấm liên hệ" value={String(s?.contact_clicks ?? 0)} icon={Phone} accent="emerald" loading={loading} sub="gọi / Zalo" />
         <KpiCard label="Phòng quan tâm (lưu)" value={String(s?.favorites ?? 0)} icon={Activity} accent="slate" loading={loading} />
         <KpiCard label="Số phòng được xem" value={String(s?.unique_rooms_seen ?? 0)} icon={DoorOpen} accent="slate" loading={loading} />
-        <KpiCard label="Số lỗi phát sinh" value={String(s?.errors ?? 0)} icon={AlertTriangle} accent="red" loading={loading} />
+        {/* Chỉ đếm lỗi CỦA ỨNG DỤNG, đã gộp lỗi trùng. Nhóm do WebView/tiện ích
+            bên thứ ba tiêm vào để ở dòng phụ: vẫn ghi nhận, nhưng không sửa được
+            nên không được phép đội con số này lên. */}
+        <KpiCard
+          label="Số lỗi phát sinh"
+          value={String(s?.error_groups ?? 0)}
+          icon={AlertTriangle}
+          accent="red"
+          loading={loading}
+          sub={
+            s?.error_groups_external
+              ? `lỗi riêng biệt của app · +${s.error_groups_external} ngoài app`
+              : "lỗi riêng biệt của app"
+          }
+        />
       </div>
 
       <ChartCard title="Lưu lượng theo ngày" loading={ts.isLoading} empty={!tsData.length} height={320}>
@@ -376,7 +391,7 @@ function ByTokenSection({ f }: { f: PraFilters }) {
     "Mở phòng": r.room_opens,
     "Bấm liên hệ": r.contact_clicks,
     "TG xem TB": fmtDuration(r.avg_session_ms),
-    "Số lỗi": r.errors,
+    "Số lỗi app": r.errors,
   }));
 
   return (
@@ -409,7 +424,16 @@ function ByTokenSection({ f }: { f: PraFilters }) {
                 <TableHead className="text-right">Mở phòng</TableHead>
                 <TableHead className="text-right">Liên hệ</TableHead>
                 <TableHead className="text-right">TG xem TB</TableHead>
-                <TableHead className="text-right">Lỗi</TableHead>
+                {/* Đổi nghĩa 31/08: đếm lỗi của ỨNG DỤNG, đã gộp trùng theo
+                    phiên và bỏ nhóm do trình duyệt in-app tiêm vào — nên thấp
+                    hơn hẳn con số cũ. Đổi luôn tên cột để không ai so hai kỳ báo
+                    cáo rồi tưởng lỗi đã tự hết. */}
+                <TableHead
+                  className="text-right"
+                  title="Lỗi của ứng dụng, đã gộp trùng theo phiên; không tính lỗi do trình duyệt in-app tiêm vào"
+                >
+                  Lỗi app
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -431,62 +455,5 @@ function ByTokenSection({ f }: { f: PraFilters }) {
         </div>
       </ChartCard>
     </div>
-  );
-}
-
-/* ===== 5. Lỗi ===== */
-function ErrorsSection({ f }: { f: PraFilters }) {
-  const { data = [], isLoading } = usePraErrors(f, 300);
-  const exportRows = data.map((r) => ({
-    "Thời điểm": r.created_at,
-    "Loại": r.kind ?? "",
-    "Thông điệp": r.message ?? "",
-    "Vị trí": r.context ?? "",
-    "Link": r.token,
-    "Trình duyệt": r.user_agent ?? "",
-  }));
-  const fmtTs = (iso: string) => {
-    try { return format(parseISO(iso), "dd/MM HH:mm"); } catch { return iso; }
-  };
-
-  return (
-    <ChartCard
-      title={`Nhật ký lỗi (${data.length})`}
-      loading={isLoading}
-      empty={!data.length}
-      height={200}
-      action={data.length ? <ExportButtons data={exportRows} filename={`nhat-ky-loi-${f.start}_${f.end}`} /> : undefined}
-    >
-      {!data.length ? (
-        <div className="grid h-[180px] place-items-center text-sm text-muted-foreground">
-          Chưa có lỗi nào trong kỳ — tốt!
-        </div>
-      ) : (
-        <div className="max-h-[460px] overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[120px]">Thời điểm</TableHead>
-                <TableHead>Loại</TableHead>
-                <TableHead>Thông điệp</TableHead>
-                <TableHead>Vị trí</TableHead>
-                <TableHead>Link</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((r, i) => (
-                <TableRow key={i}>
-                  <TableCell className="whitespace-nowrap text-xs tabular-nums">{fmtTs(r.created_at)}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs">{r.kind ?? "—"}</Badge></TableCell>
-                  <TableCell className="max-w-[360px] truncate text-xs" title={r.message ?? ""}>{r.message ?? "—"}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.context ?? "—"}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.token}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </ChartCard>
   );
 }

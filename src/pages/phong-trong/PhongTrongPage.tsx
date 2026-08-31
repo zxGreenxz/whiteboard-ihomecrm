@@ -221,7 +221,7 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
 
   // Ghi lỗi tải dữ liệu / token sai (không log giá trị token).
   useEffect(() => {
-    if (token && isError) tracker.track("error", { metadata: { kind: "fetch_or_token", where: "usePhongTrong" } });
+    if (token && isError) tracker.trackError({ kind: "fetch_or_token", where: "usePhongTrong", msg: "Tải danh sách phòng trống thất bại" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isError, token]);
 

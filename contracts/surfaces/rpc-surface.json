@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1318,
+    "sourceCallSites": 1324,
     "catalogFunctions": 1015,
     "schemas": [
       "public",
@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 257,
+    "calledRpcs": 258,
     "byRisk": {
-      "normal": 181,
+      "normal": 182,
       "financial": 76
     },
-    "securityDefiner": 241
+    "securityDefiner": 242
   },
   "missingOnServer": [],
   "rpcs": {
@@ -3253,6 +3253,26 @@
           "schema": "public",
           "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false",
           "returns": "TABLE(token text, label text, revoked boolean, sessions bigint, views bigint, room_opens bigint, contact_clicks bigint, errors bigint, avg_session_ms numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomsAnalytics.ts"
+      ],
+      "risk": "normal"
+    },
+    "pra_error_groups": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false, p_source text DEFAULT NULL::text, p_limit integer DEFAULT 100",
+          "returns": "TABLE(fingerprint text, kind text, message text, source text, context text, total_count bigint, sessions bigint, first_seen timestamp with time zone, last_seen timestamp with time zone, sample_stack text, sample_user_agent text, sample_href text, sample_build text, sample_token text)",
           "volatility": "STABLE",
           "securityDefiner": true,
           "searchPath": "search_path=public",

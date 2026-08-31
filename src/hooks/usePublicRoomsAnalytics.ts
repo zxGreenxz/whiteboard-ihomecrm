@@ -1,8 +1,9 @@
 /**
  * Data hooks cho tab "Thống kê" trang công khai Phòng trống (/r/:token).
- * Gọi 6 RPC pra_* (migration 20260621100100_public_room_analytics_reports.sql).
+ * Gọi 7 RPC pra_* (20260621100100_public_room_analytics_reports.sql, nâng cấp ở
+ * 20260831100100_pra_errors_v2_nhom_loi.sql).
  *
- * - 6 RPC pra_* ĐÃ có trong generated types (types.ts:26589-26701) nên gọi typed, KHÔNG cast.
+ * - Mọi RPC pra_* ĐỀU có trong generated types nên gọi typed, KHÔNG cast.
  *   callPra nhận một thunk để mỗi supabase.rpc() giữ được tên hàm dạng literal — supabase-js
  *   phân giải overload bằng kiểu điều kiện trên tên, truyền tên qua biến sẽ mất kiểu.
  *   numeric/bigint qua PostgREST có thể về string → Number().
@@ -41,9 +42,21 @@ export interface PraSummaryRow {
   contact_clicks: number;
   favorites: number;
   deposit_dialogs: number;
+  /** Số LƯỢT phiên dính lỗi ứng dụng — đơn vị là cặp (phiên × vân tay). */
   errors: number;
   avg_session_ms: number;
   unique_rooms_seen: number;
+  /** Như `errors` nhưng cho nhóm ngoài app (WebView/tiện ích bên thứ ba). */
+  errors_external: number;
+  /** Tổng số LẦN lỗi ứng dụng xảy ra (cộng bộ đếm lặp trong từng phiên). */
+  error_hits: number;
+  /**
+   * Số lỗi RIÊNG BIỆT của ứng dụng (đếm vân tay) — khớp số dòng bảng "Nhóm lỗi".
+   * ĐỪNG lẫn với `errors`: đo trên production 31/08, nhóm ngoài app có 688 lượt
+   * phiên nhưng chỉ 2 lỗi riêng biệt.
+   */
+  error_groups: number;
+  error_groups_external: number;
 }
 export interface PraTimeseriesRow {
   bucket: string;
@@ -80,6 +93,9 @@ export interface PraByTokenRow {
   errors: number;
   avg_session_ms: number;
 }
+/** app = lỗi của mình · external = script bên thứ ba tiêm vào trang. */
+export type PraErrorSource = "app" | "external";
+
 export interface PraErrorRow {
   created_at: string;
   token: string;
@@ -88,6 +104,35 @@ export interface PraErrorRow {
   message: string | null;
   context: string | null;
   user_agent: string | null;
+  source: PraErrorSource;
+  line_no: number | null;
+  col_no: number | null;
+  stack: string | null;
+  href: string | null;
+  viewport: string | null;
+  build: string | null;
+  fingerprint: string;
+  /** Số lần lặp trong phiên (MAX theo (phiên, vân tay)). */
+  n: number;
+}
+
+export interface PraErrorGroupRow {
+  fingerprint: string;
+  kind: string | null;
+  message: string | null;
+  source: PraErrorSource;
+  context: string | null;
+  /** Tổng số LẦN xảy ra, cộng qua mọi phiên. */
+  total_count: number;
+  /** Số phiên khách bị dính nhóm lỗi này. */
+  sessions: number;
+  first_seen: string;
+  last_seen: string;
+  sample_stack: string | null;
+  sample_user_agent: string | null;
+  sample_href: string | null;
+  sample_build: string | null;
+  sample_token: string | null;
 }
 
 async function callPra<Row, T>(
@@ -133,6 +178,10 @@ export const usePraSummary = (f: PraFilters) =>
         errors: n(r.errors),
         avg_session_ms: n(r.avg_session_ms),
         unique_rooms_seen: n(r.unique_rooms_seen),
+        errors_external: n(r.errors_external),
+        error_hits: n(r.error_hits),
+        error_groups: n(r.error_groups),
+        error_groups_external: n(r.error_groups_external),
       })),
     select: (rows) => rows[0] as PraSummaryRow | undefined,
   });
@@ -217,15 +266,24 @@ export const usePraByToken = (f: PraFilters) =>
       })),
   });
 
-export const usePraErrors = (f: PraFilters, limit = 200) =>
+/** Nguồn nào cũng lấy → truyền `undefined` để RPC dùng DEFAULT NULL. */
+const normSource = (s?: PraErrorSource | "all"): PraErrorSource | undefined =>
+  s === "app" || s === "external" ? s : undefined;
+
+export const usePraErrors = (f: PraFilters, limit = 200, source?: PraErrorSource | "all") =>
   useQuery({
-    queryKey: [PRA, "errors", limit, ...baseKey(f)],
+    queryKey: [PRA, "errors", limit, normSource(source) ?? "all", ...baseKey(f)],
     enabled: !!f.start && !!f.end,
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
       callPra(
-        () => supabase.rpc("pra_errors", { ...baseParams(f), p_limit: limit }),
+        () =>
+          supabase.rpc("pra_errors", {
+            ...baseParams(f),
+            p_limit: limit,
+            p_source: normSource(source),
+          }),
         "Không tải được nhật ký lỗi",
         (r): PraErrorRow => ({
           created_at: String(r.created_at),
@@ -235,6 +293,53 @@ export const usePraErrors = (f: PraFilters, limit = 200) =>
           message: r.message ?? null,
           context: r.context ?? null,
           user_agent: r.user_agent ?? null,
+          source: r.source === "external" ? "external" : "app",
+          line_no: r.line_no == null ? null : n(r.line_no),
+          col_no: r.col_no == null ? null : n(r.col_no),
+          stack: r.stack ?? null,
+          href: r.href ?? null,
+          viewport: r.viewport ?? null,
+          build: r.build ?? null,
+          fingerprint: String(r.fingerprint),
+          n: n(r.n) || 1,
+        }),
+      ),
+  });
+
+export const usePraErrorGroups = (
+  f: PraFilters,
+  source?: PraErrorSource | "all",
+  limit = 100,
+) =>
+  useQuery({
+    queryKey: [PRA, "error-groups", limit, normSource(source) ?? "all", ...baseKey(f)],
+    enabled: !!f.start && !!f.end,
+    staleTime: STALE_LIVE,
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      callPra(
+        () =>
+          supabase.rpc("pra_error_groups", {
+            ...baseParams(f),
+            p_source: normSource(source),
+            p_limit: limit,
+          }),
+        "Không tải được nhóm lỗi",
+        (r): PraErrorGroupRow => ({
+          fingerprint: String(r.fingerprint),
+          kind: r.kind ?? null,
+          message: r.message ?? null,
+          source: r.source === "external" ? "external" : "app",
+          context: r.context ?? null,
+          total_count: n(r.total_count),
+          sessions: n(r.sessions),
+          first_seen: String(r.first_seen),
+          last_seen: String(r.last_seen),
+          sample_stack: r.sample_stack ?? null,
+          sample_user_agent: r.sample_user_agent ?? null,
+          sample_href: r.sample_href ?? null,
+          sample_build: r.sample_build ?? null,
+          sample_token: r.sample_token ?? null,
         }),
       ),
   });

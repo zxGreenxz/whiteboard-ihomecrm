@@ -115,6 +115,29 @@ async function exportToExcel(data: any[], filename: string): Promise<void> {
   }
 }
 
+/**
+ * Một ô CSV an toàn cho Excel/Sheets.
+ *
+ * Hai vấn đề tách bạch, phải xử cả hai:
+ *
+ *  1. **Thoát chuỗi.** Bản cũ chỉ bọc nháy khi ô có dấu phẩy hoặc xuống dòng.
+ *     Một ô CÓ dấu nháy mà không có phẩy thì đi ra trần trụi, và dấu nháy lẻ đó
+ *     nuốt toàn bộ phần còn lại của file vào một ô — che sạch những dòng bên
+ *     dưới. Nay bọc nháy MỌI chuỗi và nhân đôi nháy bên trong.
+ *
+ *  2. **Tiêm công thức.** Ô bắt đầu bằng `=` `+` `-` `@` (hoặc tab/CR) được
+ *     Excel chạy như công thức — bọc nháy KHÔNG chặn được. Điều này đáng lo ở
+ *     đây vì `log_public_room_events` mở cho `anon`: ai cầm link `/r/<token>`
+ *     cũng ghi được thông điệp lỗi tuỳ ý, và nó chảy thẳng vào file mà chủ nhà
+ *     mở bằng Excel. Nay chèn dấu nháy đơn dẫn đầu để Excel coi là văn bản.
+ */
+export function oCsvAnToan(value: unknown): string {
+  if (value == null) return "";
+  const s = String(value);
+  const canDanNhay = /^[=+\-@\t\r]/.test(s);
+  return `"${(canDanNhay ? "'" + s : s).replace(/"/g, '""')}"`;
+}
+
 // Simple CSV export helper
 function exportToCSV(data: any[], filename: string) {
   if (!data || data.length === 0) {
@@ -124,17 +147,8 @@ function exportToCSV(data: any[], filename: string) {
 
   const headers = Object.keys(data[0]);
   const csvContent = [
-    headers.join(","),
-    ...data.map(row =>
-      headers.map(header => {
-        const value = row[header];
-        // Escape quotes and wrap in quotes if contains comma or newline
-        if (typeof value === "string" && (value.includes(",") || value.includes("\n"))) {
-          return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
-      }).join(",")
-    )
+    headers.map(oCsvAnToan).join(","),
+    ...data.map(row => headers.map(header => oCsvAnToan(row[header])).join(","))
   ].join("\n");
 
   const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
