@@ -7,6 +7,9 @@ cho code/runtime hiện hành.
 
 Danh sách đầy đủ, mới → cũ:
 
+- [Audit bảng DB mồ côi + phần chưa hoạt động 2026-09-02](AUDIT-DB-BANG-MO-COI-VA-PHAN-CHUA-HOAT-DONG-2026-09-02.md) —
+  read-only trên production: 12/14 bảng nghi vấn hóa ra SỐNG; 2 bảng `legacy_owner_*` mồ côi thật
+  (ứng viên DROP plan riêng); phát hiện bucket `avatars`/`documents` không tồn tại → đổi avatar hỏng 100%.
 - [Audit thanh toán 2026-08-31](AUDIT-THANH-TOAN-2026-08-31.md) — trang `/thanh-toan` end-to-end;
   13 finding (2 P1 · 7 P2 · 4 P3). **13/13 đã vá 01/09** (commit `b8b3fe83`, 3 migration live prod).
 - [Audit brief thanh toán 2026-08-31](AUDIT-BRIEF-THANH-TOAN-2026-08-31.md) — đề bài + phạm vi của
