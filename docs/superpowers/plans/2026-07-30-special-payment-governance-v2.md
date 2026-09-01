@@ -1,5 +1,7 @@
 # Special Payment Governance Implementation Plan — v2 (30/07/2026)
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Tài liệu hiện hành: `docs/he-thong/20-phe-duyet-tai-chinh.md` + `08-thu-chi-so-quy.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans`. Các bước dùng checkbox để theo dõi.
 >
 > Tài liệu này **thay thế** `special-payment-governance.md` (29/07/2026, chỉ tồn tại trên nhánh

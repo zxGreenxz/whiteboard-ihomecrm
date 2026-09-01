@@ -59,7 +59,7 @@
     {
       "file": "07-hoa-don-thanh-toan.md",
       "copilotIngest": true,
-      "reviewed": "2026-07-20"
+      "reviewed": "2026-09-02"
     },
     {
       "file": "08-thu-chi-so-quy.md",
@@ -144,7 +144,7 @@
     {
       "file": "20-phe-duyet-tai-chinh.md",
       "copilotIngest": true,
-      "reviewed": "2026-07-20",
+      "reviewed": "2026-09-02",
       "requiredPermission": {
         "module": "income_expenses",
         "action": "view"

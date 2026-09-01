@@ -1,5 +1,7 @@
 # PLAN - Hoan thien V5 Collection, va lo hong va port fix ke toan dung
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Tài liệu hiện hành: `docs/he-thong/07-hoa-don-thanh-toan.md` + `08-thu-chi-so-quy.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > Ngay cap nhat: 2026-07-22  
 > Trang thai: **SAN SANG THUC THI**  
 > Muc tieu: hoan thien `invoice.collection.v5` va `invoice.collection.reverse.v5`, giu dung sua loi L03/coc/KQKD, dong thoi port co chon loc cac fix an toan tu `05dce6e` ma khong dua he thong quay lai kien truc V3/V4.

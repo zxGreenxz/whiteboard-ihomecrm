@@ -1,13 +1,21 @@
 # Hoá đơn và thanh toán
 
-> **Reviewed:** 2026-07-20
+> **Reviewed:** 2026-09-02
 > Nguồn hiện hành: `src/hooks/useInvoices.ts`, `src/hooks/useInvoicePayments.ts`, `src/hooks/useBulkRecordPayment.ts`, `src/lib/paymentRecordRpc.ts` và writer/RPC mới nhất.
+
+> **Phạm vi file này:** vòng đời hoá đơn (tạo/sửa/duyệt/huỷ) và ghi nhận thanh toán TRÊN hoá đơn.
+> **KHÔNG nói về:** phiếu thu/chi + sổ quỹ + posting — xem `08-thu-chi-so-quy.md`; quy trình con
+> người cầm tiền — `19-sop-tien-va-so-quy.md`; luật phê duyệt — `20-phe-duyet-tai-chinh.md`.
+> Audit mới nhất của chủ đề: `docs/audits/AUDIT-THANH-TOAN-2026-08-31.md` — **13/13 finding đã vá
+> 01/09** (commit `b8b3fe83`).
 
 ## 1. Phạm vi
 
 Domain này quản lý:
 
-- tạo/sửa/duyệt/huỷ/xoá mềm hoá đơn;
+- tạo/sửa/duyệt/huỷ hoá đơn — **từ 01/09/2026 UI chỉ còn MỘT nút Huỷ** (nút Xoá đã gom về Huỷ,
+  commit `2bc2972c`, hết đường "bốc hơi" hoá đơn; `canCancelInvoice` là hàng rào duy nhất — RPC
+  không tự guard; phục hồi mở cho user thường; đường xoá mềm chỉ còn ở tầng dữ liệu/legacy);
 - hạng mục tiền phòng, dịch vụ, điện nước, nợ cũ và cọc;
 - ghi nhận TM/TK/TT, tiền thối, làm tròn và credit;
 - recompute số đã thu/còn lại/trạng thái;

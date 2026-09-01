@@ -1,5 +1,7 @@
 # EXEC REPORT — Hoàn thiện V5 Collection (2026-07-22)
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Tài liệu hiện hành: `docs/he-thong/07-hoa-don-thanh-toan.md` + `08-thu-chi-so-quy.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > Báo cáo thực thi bắt buộc theo plan §16. Cập nhật liên tục theo từng phase.
 > Branch làm việc: `fix/v5-collection-completion-20260722` (từ `origin/main`).
 

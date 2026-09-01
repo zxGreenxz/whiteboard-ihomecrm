@@ -1,5 +1,7 @@
 # Đánh giá lại hai plan `/thu-tien` — bản quyết định production v2 (30/07/2026)
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Meta-đánh giá 2 plan thu tiền V2 (07/2026). Tài liệu hiện hành: `docs/he-thong/07-hoa-don-thanh-toan.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > Tài liệu này **thay thế** `danh-gia-2-plan-thu-tien.md` (29/07/2026, chỉ tồn tại trên nhánh
 > `fix/v5-collection-completion-20260722`). Bản 29/07 vẫn là bằng chứng lịch sử; mọi chỗ hai bản
 > xung đột thì bản này thắng, vì nó được dựng trên một đợt kiểm toán 10 mảng chạy trên **codebase

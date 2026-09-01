@@ -1,5 +1,7 @@
 # Audit tiền - hóa đơn - thu chi - thanh toán
 
+> **Chuỗi audit:** audit MỚI NHẤT của chủ đề thanh toán là `AUDIT-THANH-TOAN-2026-08-31.md` — 13/13 finding đã vá 01/09/2026 (commit `b8b3fe83`). File dưới đây là bằng chứng bất biến, không cập nhật nội dung.
+
 **Ngày chốt:** 2026-08-13
 
 **Commit dữ liệu/runtime đã đo:** `b2ebf32256ba197c8cf0d945546c663b75add2c9`

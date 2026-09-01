@@ -1,5 +1,7 @@
 # Kế hoạch triển khai Thu Chi V2: Duyệt, Thu/Chi và phân quyền sổ quỹ
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Tài liệu hiện hành: `docs/he-thong/07-hoa-don-thanh-toan.md` + `08-thu-chi-so-quy.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 | Thuộc tính | Giá trị |
 |---|---|
 | Baseline đã đối chiếu | `origin/main` tại `d6837dd` ngày `2026-07-22`; đối chiếu thêm live catalog cùng ngày |

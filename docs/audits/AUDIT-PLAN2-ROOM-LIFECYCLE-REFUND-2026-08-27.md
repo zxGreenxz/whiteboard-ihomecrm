@@ -1,5 +1,7 @@
 # Audit Plan 2 `room-lifecycle-refund-v2` — đối chiếu kế hoạch với thực tế
 
+> **Chuỗi audit:** audit MỚI NHẤT của chủ đề thanh toán là `AUDIT-THANH-TOAN-2026-08-31.md` — 13/13 finding đã vá 01/09/2026 (commit `b8b3fe83`). File dưới đây là bằng chứng bất biến, không cập nhật nội dung.
+
 **Ngày chốt:** 2026-08-27
 
 **HEAD khi đo:** `a80b70c2e557b72f42e2453b7a4ef45490a378cb`

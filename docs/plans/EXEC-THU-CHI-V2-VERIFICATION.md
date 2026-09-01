@@ -1,5 +1,7 @@
 # TỔNG KIỂM & HOÀN THIỆN Thu Chi V2 — Kế hoạch thực thi (2026-07-23)
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Tài liệu hiện hành: `docs/he-thong/07-hoa-don-thanh-toan.md` + `08-thu-chi-so-quy.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > Lệnh owner: kiểm tra TOÀN BỘ plan (code + data + hành vi) → sửa → test browser → lặp tới khi
 > xong hết. **Định nghĩa "XONG" = đã verify bằng Playwright trên bản deploy, đường bấm thật.**
 > Trạng thái 3 mức: 🟢 browser-verified · 🟡 test-verified (unit/DB) · 🔴 built-chưa-kiểm / thiếu.

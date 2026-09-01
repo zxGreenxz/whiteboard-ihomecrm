@@ -1,5 +1,7 @@
 # Hiện trạng đã xác minh của hệ thống `/thu-tien` — bản đo ngày 30/07/2026
 
+> **[LỖI THỜI — BỊ THAY THẾ]** Snapshot theo branch `feat/thu-chi-dot5-6-20260729`, HEAD `678d4ab` — đã rất xa hiện tại. Thay bằng: `docs/he-thong/07-hoa-don-thanh-toan.md` + `08-thu-chi-so-quy.md`. Nội dung dưới đây có thể sai so với hiện tại.
+
 > **Tài liệu này THAY THẾ toàn bộ mục §4 "Hiện trạng đã xác minh" của bản quyết định 29/07/2026**
 > (`danh-gia-2-plan-thu-tien.md` §4.1 Luồng và UI, §4.2 Finance V2, §4.3 Số liệu live, §4.4 Function
 > body quan trọng). Ở mọi chỗ tài liệu này và bản 29/07 nói khác nhau, **tài liệu này thắng**.

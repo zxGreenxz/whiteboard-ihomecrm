@@ -1,5 +1,7 @@
 # Phase-0 Inventory — Thu Chi V2 Finance Migration (Consolidated)
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Tài liệu hiện hành: `docs/he-thong/07-hoa-don-thanh-toan.md` + `08-thu-chi-so-quy.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > Authoritative basis for authoring the 13 migration stages. Synthesized from 12 parallel readers. **Central fact:** `income_expenses.approval_status` (DEFAULT `'APPROVED'` NOT NULL since `supabase/migrations/20260426000002_thu_chi_remove_approval_add_cancel.sql:16`) is a **single predicate serving four meanings** — authorization (WORKFLOW), cash-moved (CASH_TRUTH), P&L-recognized (PROFIT), and provenance (OTHER). No `income_expense_postings` table exists yet; "cash moved" is currently expressed as `APPROVED + non-virtual account_id + non-internal source` (see the correct model at `src/lib/voucherSources.ts:97` / `src/hooks/income-expenses/queries.ts:195`) and, for invoice paths, a companion `payments` row. The posting *columns* (`posting_id`, `posted_at_v2`, `reversed_by_posting_id`) already exist on `income_expenses` and are stamped by `transition_canonical_income_expense_v1`, but the posting *table* does not.
 
 ---

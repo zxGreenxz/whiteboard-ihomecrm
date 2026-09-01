@@ -1,6 +1,12 @@
 # Thu chi & Sổ quỹ (Income/Expenses · Accounts/Cashbooks)
 
-> **Reviewed:** 2026-07-20. Thanh toán hoá đơn dùng writer atomic; approval canonical đã go-live, nhưng các flow batch/legacy khác trong domain vẫn phải đọc theo cảnh báo riêng.
+> **Reviewed:** 2026-09-02. Thanh toán hoá đơn dùng writer atomic; approval canonical đã go-live, nhưng các flow batch/legacy khác trong domain vẫn phải đọc theo cảnh báo riêng.
+
+> **Phạm vi file này:** phiếu thu/chi (`income_expenses`), sổ quỹ (`accounts`), duyệt–posting–số dư
+> ở tầng dữ liệu. **KHÔNG nói về:** vòng đời hoá đơn — `07-hoa-don-thanh-toan.md`; SOP con người cầm
+> tiền — `19-sop-tien-va-so-quy.md`; luật phê duyệt — `20-phe-duyet-tai-chinh.md`. Audit mới nhất:
+> `docs/audits/AUDIT-THANH-TOAN-2026-08-31.md` (13/13 đã vá 01/09 — trong đó `pay_draft_fee_voucher`
+> thêm gate org trước UPDATE và `update_period_fee` thêm CAS, migration live prod).
 
 > Domain trung tâm dòng tiền. Mọi tiền vào/ra hệ thống — thu HĐ, thanh toán hoá đơn,
 > chi phí vận hành, hoàn/thối cọc, hoa hồng, chia lợi nhuận cổ đông — đều đáp xuống

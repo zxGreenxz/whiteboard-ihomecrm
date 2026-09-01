@@ -1,5 +1,7 @@
 # EXEC — Roadmap thực thi Thu Chi V2 (Finance V2)
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Tài liệu hiện hành: `docs/he-thong/07-hoa-don-thanh-toan.md` + `08-thu-chi-so-quy.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > Companion thực thi cho `PLAN-THU-CHI-V2-DUYET-CHI-PHAN-QUYEN-SO-QUY.md`.
 > File plan là **authority nghiệp vụ**; file này là **hợp đồng thực thi**: chốt ground-truth
 > live, ghi mọi điểm plan lệch thực tế, chia phase có dependency rõ, và vạch **ranh giới

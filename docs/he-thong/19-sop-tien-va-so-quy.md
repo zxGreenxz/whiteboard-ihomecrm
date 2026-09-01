@@ -1,5 +1,10 @@
 # 19. SOP tiền & sổ quỹ — quy trình vận hành chuẩn
 
+> **Phạm vi file này:** quy trình VẬN HÀNH cho người cầm tiền (ai thu, nộp về đâu, kiểm kê thế nào).
+> **KHÔNG nói về:** cấu trúc dữ liệu phiếu/sổ — `08-thu-chi-so-quy.md`; vòng đời hoá đơn —
+> `07-hoa-don-thanh-toan.md`; luật phê duyệt — `20-phe-duyet-tai-chinh.md`. Audit mới nhất:
+> `docs/audits/AUDIT-THANH-TOAN-2026-08-31.md`.
+
 > Chốt bởi chủ nhà + hội đồng cố vấn 04/07/2026 (chương trình "Thống nhất tài
 > chính toàn web"). Nguyên tắc gốc: **sổ quỹ chỉ là SỔ GIỮ TIỀN THẬT** — doanh
 > thu, tiền cọc đang giữ, lợi nhuận đều đếm **theo hạng mục** (engine

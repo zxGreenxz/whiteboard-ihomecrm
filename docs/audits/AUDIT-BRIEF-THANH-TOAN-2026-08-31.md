@@ -1,5 +1,7 @@
 # HỒ SƠ BÀN GIAO AUDIT — Trang `/thanh-toan` (Đóng tiền Tập trung theo Kỳ)
 
+> **Chuỗi audit:** audit MỚI NHẤT của chủ đề thanh toán là `AUDIT-THANH-TOAN-2026-08-31.md` — 13/13 finding đã vá 01/09/2026 (commit `b8b3fe83`). File dưới đây là bằng chứng bất biến, không cập nhật nội dung.
+
 > **Ngày lập:** 2026-08-31 · **Người lập:** Claude Code (khảo sát trực tiếp trên working tree, mọi `file:line` đã kiểm bằng mắt hoặc `wc -l`/`grep -n` — không suy đoán).
 >
 > **Dành cho:** một agent AI khác thực hiện audit ĐỘC LẬP. File này đủ tự thân — không cần khảo sát lại từ đầu, nhưng **được phép và nên nghi ngờ mọi nhận định trong đây**: đây là bản đồ, không phải kết luận.

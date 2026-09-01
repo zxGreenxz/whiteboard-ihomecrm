@@ -1,5 +1,7 @@
 # Room Lifecycle và Hoàn cọc — Implementation Plan v2 (30/07/2026)
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Đợt 1/2/3/5/6 (Chu trình phòng + 4 bảng luật + writer hoàn cọc) ĐÃ SHIP prod 28/08/2026. **Đợt 4 (khoá đường thanh lý cũ) CHỦ TẠM DỪNG 28/08 — không tự ý làm.** Runbook: `docs/superpowers/runbooks/2026-08-28-hoan-coc-runbook.md`.
+
 > **Tài liệu này THAY THẾ `room-lifecycle-refund.md`** (29/07/2026, chỉ tồn tại trên nhánh
 > `fix/v5-collection-completion-20260722`). Bản 29/07 vẫn là bằng chứng lịch sử; mọi chỗ hai bản xung
 > đột thì bản này thắng.
