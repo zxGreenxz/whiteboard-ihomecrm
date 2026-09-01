@@ -1,5 +1,7 @@
 # Đặc tả tính năng Facebook (qua Pancake) của Web 2.0 — để tái hiện thực
 
+> **[SPEC THAM CHIẾU HỆ NGOÀI — N2Store/Pancake, KHÔNG mô tả iHomeCRM]** Dùng làm nguồn "bất biến đã trả giá bằng bug" khi port tính năng. Trạng thái port Facebook: thiết kế đã duyệt, chưa triển khai (`docs/superpowers/specs/2026-08-13-facebook-inbox-design.md`).
+
 > **Mục đích**: tài liệu này mô tả TOÀN BỘ tính năng Facebook của hệ Web 2.0 (N2Store) đủ chi tiết
 > để một AI agent hiện thực lại trên nền tảng khác — gồm kiến trúc, cấu trúc dữ liệu (DDL), API,
 > shape payload, flow xử lý và các bẫy đã trả giá bằng bug thật.

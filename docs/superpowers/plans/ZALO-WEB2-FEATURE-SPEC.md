@@ -1,5 +1,7 @@
 # Đặc tả kỹ thuật đầy đủ: Tính năng Zalo (Web 2.0 — N2Store)
 
+> **[SPEC THAM CHIẾU HỆ NGOÀI — N2Store/Pancake, KHÔNG mô tả iHomeCRM]** Dùng làm nguồn "bất biến đã trả giá bằng bug" khi port tính năng. Trạng thái port Facebook: thiết kế đã duyệt, chưa triển khai (`docs/superpowers/specs/2026-08-13-facebook-inbox-design.md`).
+
 > **Mục đích**: Tài liệu này mô tả TOÀN BỘ tính năng Zalo trên hệ thống Web 2.0 — cấu trúc dữ liệu, API, service, luồng xử lý, realtime, các bẫy đã gặp — đủ chi tiết để một AI agent khác hiện thực lại tính năng này trên một trang web/hệ thống khác **mà không cần đọc code gốc**.
 >
 > **Phạm vi**: chat Zalo cá nhân 2 chiều (qua thư viện không chính thức `zca-js`), ZNS/OA chính thức, quản lý nhiều tài khoản, realtime SSE, và các điểm nhúng chat vào trang khác.

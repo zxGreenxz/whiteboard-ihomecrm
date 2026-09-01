@@ -1,5 +1,7 @@
 # Chat Zalo — Worker zca-js (hợp đồng + hướng dẫn chạy)
 
+> Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/18-zalo-chat.md`. File này là runbook vận hành worker.
+
 > Trang Chat Zalo trong CRM này **chỉ nói chuyện với Supabase** (bảng + Realtime +
 > RPC). Phần web (React trên Vercel) **không bao giờ gọi Zalo trực tiếp**. Kết nối
 > Zalo thật do **một worker zca-js** (tài khoản Zalo **cá nhân**) đảm nhiệm:

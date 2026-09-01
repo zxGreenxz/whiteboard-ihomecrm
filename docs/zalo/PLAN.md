@@ -1,5 +1,7 @@
 # Kế hoạch triển khai hệ thống Zalo + AI chăm sóc khách hàng
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Artifact chuẩn bị cho các tranche Zalo+AI tiếp theo — CHƯA thực thi. Phần đã ship nằm ở `docs/he-thong/18-zalo-chat.md` (org-scoped 13/08, automation 31/08); đọc snapshot bên dưới với con mắt lịch sử.
+
 > **Lifecycle:** kế hoạch đã được review tới 2026-07-20 nhưng vẫn là prepare/review artifact cho các tranche tiếp theo. Authorization runtime hiện đã go-live 15/15; xem [authorization status](../authorization/README.md). Không suy ra “NO-GO authorization cutover” từ snapshot cũ bên dưới.
 
 ## Context
