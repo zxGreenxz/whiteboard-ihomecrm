@@ -11,8 +11,8 @@ import { usePhoneViewport } from '@/hooks/use-mobile';
 const InvoicesMobilePage = lazy(() => import('./InvoicesMobilePage'));
 import {
   useInvoices,
-  useDeleteInvoice,
-  useBulkDeleteInvoices,
+  useCancelInvoice,
+  useBulkCancelInvoices,
   useCheckOverdueInvoices,
   useRestoreInvoice,
   useForceCancelInvoice,
@@ -55,7 +55,11 @@ const InvoicesDesktopPage = () => {
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, 'invoices', 'create');
   const canEdit = canUse(perms, 'invoices', 'edit');
-  const canDelete = canUse(perms, 'invoices', 'delete');
+  // Gôm nút Xoá về nút Huỷ (09/2026): nhận cả hai quyền trong giai đoạn chuyển
+  // tiếp — role cũ chỉ có invoices.delete vẫn thấy nút Huỷ, không ai mất nút.
+  // (Ở DB cả hai RPC đều chỉ guard invoices.edit trên toà.)
+  const canCancel =
+    canUse(perms, 'invoices', 'cancel') || canUse(perms, 'invoices', 'delete');
   const canRecordPayment = canUse(perms, 'invoices', 'record_payment');
 
   // Search
@@ -143,8 +147,8 @@ const InvoicesDesktopPage = () => {
   const totalCount = invoicesData?.count ?? 0;
 
   // Mutations
-  const deleteMutation = useDeleteInvoice();
-  const bulkDeleteMutation = useBulkDeleteInvoices();
+  const cancelMutation = useCancelInvoice();
+  const bulkCancelMutation = useBulkCancelInvoices();
   const restoreMutation = useRestoreInvoice();
   const forceCancelMutation = useForceCancelInvoice();
 
@@ -251,13 +255,13 @@ const InvoicesDesktopPage = () => {
     setEditDialogOpen(true);
   }, []);
 
-  const handleDelete = useCallback(
+  const handleCancel = useCallback(
     (invoice: InvoiceWithRelations) => {
-      if (confirm('Bạn có chắc chắn muốn xoá hoá đơn này?')) {
-        deleteMutation.mutate(invoice.id);
+      if (confirm('Huỷ hoá đơn này? Hoá đơn sẽ chuyển vào mục "Đã huỷ" và có thể phục hồi khi cần.')) {
+        cancelMutation.mutate(invoice.id);
       }
     },
-    [deleteMutation],
+    [cancelMutation],
   );
 
   const handleRecordPayment = useCallback((invoice: InvoiceWithRelations) => {
@@ -307,14 +311,14 @@ const InvoicesDesktopPage = () => {
     });
   }, [forceDeleteTarget, forceCancelMutation]);
 
-  const handleBulkDelete = useCallback(() => {
+  const handleBulkCancel = useCallback(() => {
     if (selectedIds.length === 0) return;
-    if (confirm(`Bạn có chắc chắn muốn xoá ${selectedIds.length} hoá đơn đã chọn?`)) {
-      bulkDeleteMutation.mutate(selectedIds, {
+    if (confirm(`Huỷ ${selectedIds.length} hoá đơn đã chọn? Chúng sẽ chuyển vào mục "Đã huỷ" và có thể phục hồi khi cần.`)) {
+      bulkCancelMutation.mutate(selectedIds, {
         onSuccess: () => setSelectedIds([]),
       });
     }
-  }, [selectedIds, bulkDeleteMutation]);
+  }, [selectedIds, bulkCancelMutation]);
 
   return (
     <MainLayout
@@ -343,13 +347,13 @@ const InvoicesDesktopPage = () => {
             onAdd={() => setCreateDialogOpen(true)}
             onExcelMode={() => setExcelModeDialogOpen(true)}
             onBulkRecordPayment={() => setBulkPayDialogOpen(true)}
-            onBulkDelete={handleBulkDelete}
+            onBulkCancel={handleBulkCancel}
             columnVisibility={columnVisibility}
             onToggleColumn={toggleColumn}
             onResetColumns={resetColumns}
             canCreate={canCreate}
             canRecordPayment={canRecordPayment}
-            canDelete={canDelete}
+            canCancel={canCancel}
           />
 
           {/* Table */}
@@ -381,17 +385,19 @@ const InvoicesDesktopPage = () => {
                   onToggleSelect={handleToggleSelect}
                   onToggleSelectAll={handleToggleSelectAll}
                   onEdit={handleEdit}
-                  onDelete={handleDelete}
+                  onCancel={handleCancel}
                   onRecordPayment={handleRecordPayment}
                   onViewDetail={handleViewDetail}
                   onViewPayments={handleViewPayments}
                   onViewHistory={handleViewHistory}
-                  onRestore={ctx?.isSuper ? handleRestore : undefined}
+                  // Phục hồi mở cho ai có quyền huỷ (RPC chỉ đòi invoices.edit)
+                  // — bài học vụ Joey 31/08: tự bấm nhầm phải tự cứu được.
+                  onRestore={ctx?.isSuper || canCancel ? handleRestore : undefined}
                   onForceCancel={ctx?.isSuper ? handleForceCancel : undefined}
                   isSuper={!!ctx?.isSuper}
                   columnVisibility={columnVisibility}
                   canEdit={canEdit}
-                  canDelete={canDelete}
+                  canCancel={canCancel}
                   canRecordPayment={canRecordPayment}
                 />
                 <DataTablePagination

@@ -116,18 +116,22 @@ export function canEditInvoice(invoice: InvoiceLike): boolean {
 }
 
 /**
- * Quy tắc xoá:
- * - User thường: giống canEdit (DRAFT/APPROVED chưa thu tiền).
- * - Super admin (opts.isSuper): xoá được HĐ ở MỌI trạng thái trừ CANCELLED
- *   và HĐ đã bị soft-delete trước đó. Backend RPC sẽ hard-delete payments
- *   liên quan rồi chuyển status sang CANCELLED.
+ * Quy tắc HỦY (đường kết thúc hoá đơn duy nhất — gôm từ nút Xoá cũ, 09/2026):
+ * - User thường: DRAFT/APPROVED chưa thu tiền (giống canEdit). RPC
+ *   cancel_invoice_with_credit_v1 KHÔNG tự chặn status/paid_amount ở DB, nên
+ *   guard này là hàng rào duy nhất — thiếu nó thì hủy được cả HĐ đã thu tiền
+ *   và restore sẽ trả về status sai (APPROVED thay vì PARTIAL_PAID).
+ * - Super admin (opts.isSuper): hủy được HĐ ở MỌI trạng thái trừ CANCELLED
+ *   (đi force-cancel flow riêng, có kiểm tra payment ở DB).
+ * - HĐ đã soft-delete (di sản đường Xoá cũ): luôn từ chối.
  */
-export function canDeleteInvoice(
+export function canCancelInvoice(
   invoice: InvoiceLike,
   opts?: { isSuper?: boolean },
 ): boolean {
+  if (invoice.deleted_at != null) return false;
   if (opts?.isSuper) {
-    return invoice.status !== 'CANCELLED' && invoice.deleted_at == null;
+    return invoice.status !== 'CANCELLED';
   }
   return canEditInvoice(invoice);
 }

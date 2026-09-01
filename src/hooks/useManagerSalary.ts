@@ -109,6 +109,10 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
             // chiếm chỗ "mới nhất" và làm sai cơ sở lương nếu không lọc).
             .eq("kind", "MONTHLY")
             .is("deleted_at", null)
+            // HĐ đã huỷ cũng phải loại: từ 09/2026 nút Xoá gôm về nút Huỷ nên
+            // HĐ rác mang status CANCELLED (không còn deleted_at) — thiếu dòng
+            // này thì bản huỷ mới nhất chiếm chỗ và lương tính trên HĐ đã huỷ.
+            .neq("status", "CANCELLED")
             .order("created_at", { ascending: false }),
         ]);
         for (const r of (rmRes.data || []) as any[]) roomNameById.set(r.id, r.name);
@@ -924,6 +928,8 @@ export const useSalaryPayout = () => {
           )
           .eq("id", input.rentInvoice.invoiceId)
           .is("deleted_at", null)
+          // Không gạch nợ lên hoá đơn đã huỷ (nút Xoá đã gôm về Huỷ 09/2026).
+          .neq("status", "CANCELLED")
           .single() as any);
         if (invFresh) {
           const remaining =

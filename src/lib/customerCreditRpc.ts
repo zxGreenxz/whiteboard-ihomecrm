@@ -2,13 +2,14 @@ import type { Json } from "@/integrations/supabase/types";
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
 
+// Đường xoá mềm hoá đơn (invoice-delete / invoice-bulk-delete) đã gỡ khỏi FE
+// 09/2026 — gôm về nút Huỷ. RPC soft_delete_* vẫn tồn tại trong DB (fail-closed,
+// không call site) để lịch sử canonical_write_operations còn tra được.
 export type CustomerCreditMutationKind =
   | "invoice-create"
   | "contract-forfeit"
   | "contract-move-out"
   | "invoice-cancel"
-  | "invoice-delete"
-  | "invoice-bulk-delete"
   | "invoice-force-cancel"
   | "invoice-restore";
 
@@ -17,8 +18,6 @@ export type CustomerCreditRpcName =
   | "terminate_contract_forfeit_with_credit_v1"
   | "terminate_contract_move_out_with_credit_v1"
   | "cancel_invoice_with_credit_v1"
-  | "soft_delete_invoice_with_credit_v1"
-  | "bulk_soft_delete_invoices_with_credit_v1"
   | "super_admin_force_cancel_invoice_with_credit_v1"
   | "restore_invoice_with_credit_v1";
 
@@ -47,8 +46,6 @@ const KEY_PREFIX: Record<CustomerCreditMutationKind, string> = {
   "contract-forfeit": "contract-credit-forfeit",
   "contract-move-out": "contract-credit-moveout",
   "invoice-cancel": "invoice-credit-cancel",
-  "invoice-delete": "invoice-credit-delete",
-  "invoice-bulk-delete": "invoice-credit-bulk-delete",
   "invoice-force-cancel": "invoice-credit-force-cancel",
   "invoice-restore": "invoice-credit-restore",
 };
@@ -209,16 +206,6 @@ export function buildInvoiceCreditLifecycleRpcArgs(
 ): { p_invoice_id: string; p_idempotency_key: string } {
   return {
     p_invoice_id: invoiceId,
-    p_idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
-  };
-}
-
-export function buildBulkInvoiceCreditLifecycleRpcArgs(
-  invoiceIds: string[],
-  request: PreparedCustomerCreditRequest,
-): { p_invoice_ids: string[]; p_idempotency_key: string } {
-  return {
-    p_invoice_ids: [...invoiceIds],
     p_idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
   };
 }

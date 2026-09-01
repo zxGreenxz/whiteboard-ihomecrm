@@ -33,7 +33,7 @@ import { useInvoice, useCancelInvoice, useRestoreInvoice } from '@/hooks/useInvo
 import { useMyContext } from '@/hooks/useMyContext';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
-import { canEditInvoice } from '@/lib/invoiceUtils';
+import { canEditInvoice, canCancelInvoice } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { usePhoneViewport } from '@/hooks/use-mobile';
@@ -94,7 +94,10 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   const { data: perms } = useMyPermissions();
   const canEditPerm = canUse(perms, 'invoices', 'edit');
   const canRecordPaymentPerm = canUse(perms, 'invoices', 'record_payment');
-  const canCancelPerm = canUse(perms, 'invoices', 'cancel');
+  // Gôm nút Xoá về nút Huỷ (09/2026): nhận cả quyền invoices.delete cũ trong
+  // giai đoạn chuyển tiếp để role cũ không mất nút.
+  const canCancelPerm =
+    canUse(perms, 'invoices', 'cancel') || canUse(perms, 'invoices', 'delete');
 
   // Lấy danh sách phiếu thu/chi APPROVED gắn với hoá đơn (declared trước early
   // returns để giữ thứ tự hooks ổn định giữa các render).
@@ -169,7 +172,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   const isOverdue = invoice.status !== 'PAID' && invoice.due_date && new Date(invoice.due_date) < new Date();
 
   const handleCancel = () => {
-    if (confirm('Bạn có chắc chắn muốn hủy hóa đơn này? Hành động này không thể hoàn tác.')) {
+    if (confirm('Huỷ hoá đơn này? Hoá đơn sẽ chuyển vào mục "Đã huỷ" và có thể phục hồi khi cần.')) {
       cancelMutation.mutate(invoice.id);
     }
   };
@@ -212,9 +215,12 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
       invoice.status === 'PARTIAL_PAID' ||
       invoice.status === 'OVERDUE');
   const showEditBtn = canEditPerm && canEditInvoice(invoice);
-  const showCancelBtn =
-    canCancelPerm && (invoice.status === 'DRAFT' || invoice.status === 'APPROVED');
-  const showRestoreBtn = invoice.status === 'CANCELLED' && !!ctx?.isSuper;
+  // canCancelInvoice thêm điều kiện paid_amount=0 — RPC cancel KHÔNG guard ở DB.
+  const showCancelBtn = canCancelPerm && canCancelInvoice(invoice);
+  // Phục hồi mở cho ai có quyền huỷ (RPC restore chỉ đòi invoices.edit) —
+  // bài học vụ Joey 31/08: tự bấm nhầm phải tự cứu được.
+  const showRestoreBtn =
+    invoice.status === 'CANCELLED' && (!!ctx?.isSuper || canCancelPerm);
   const showQR = !!invoice.contract_id && invoice.contract?.status !== 'TERMINATED';
 
   // Dialog thanh toán / in / sửa / QR — dùng chung cả 2 layout.
@@ -318,7 +324,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
           </Button>
         )}
 
-        {canCancelPerm && (invoice.status === 'DRAFT' || invoice.status === 'APPROVED') && (
+        {showCancelBtn && (
           <Button
             variant="destructive"
             size="icon"
@@ -331,7 +337,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
           </Button>
         )}
 
-        {invoice.status === 'CANCELLED' && ctx?.isSuper && (
+        {showRestoreBtn && (
           <Button
             variant="outline"
             size="icon"

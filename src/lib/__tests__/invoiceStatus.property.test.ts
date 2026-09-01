@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { canEditInvoice, canDeleteInvoice, canApproveInvoice } from '../invoiceUtils';
+import { canEditInvoice, canCancelInvoice, canApproveInvoice } from '../invoiceUtils';
 import type { InvoiceStatus } from '@/types/invoice';
 
 // =============================================
@@ -19,16 +19,17 @@ const nonDraftStatusArb = fc.constantFrom<InvoiceStatus>(...nonDraftStatuses);
 
 /**
  * Feature: invoice-reimplementation
- * Property 6: Quyền sửa/xoá phụ thuộc trạng thái
+ * Property 6: Quyền sửa/huỷ phụ thuộc trạng thái
  *
- * Với bất kỳ hoá đơn, canEditInvoice(status) và canDeleteInvoice(status)
- * phải trả về true khi và chỉ khi status === 'DRAFT'.
- * Với tất cả trạng thái khác (APPROVED, PAID, PARTIAL_PAID, OVERDUE, CANCELLED),
+ * Với bất kỳ hoá đơn, canEditInvoice và canCancelInvoice (đường kết thúc hoá
+ * đơn duy nhất từ 09/2026 — nút Xoá đã gôm về nút Huỷ) phải trả về true khi và
+ * chỉ khi status ∈ {DRAFT, APPROVED} và paid_amount = 0.
+ * Với tất cả trạng thái khác (PAID, PARTIAL_PAID, OVERDUE, CANCELLED),
  * phải trả về false.
  *
  * **Validates: Requirements 3.6, 4.4**
  */
-describe('Feature: invoice-reimplementation, Property 6: Quyền sửa/xoá phụ thuộc trạng thái', () => {
+describe('Feature: invoice-reimplementation, Property 6: Quyền sửa/huỷ phụ thuộc trạng thái', () => {
   it('canEditInvoice returns true for DRAFT/APPROVED with paid_amount=0', () => {
     fc.assert(
       fc.property(statusArb, (status) => {
@@ -40,10 +41,10 @@ describe('Feature: invoice-reimplementation, Property 6: Quyền sửa/xoá ph�
     );
   });
 
-  it('canDeleteInvoice mirrors canEditInvoice', () => {
+  it('canCancelInvoice mirrors canEditInvoice', () => {
     fc.assert(
       fc.property(statusArb, (status) => {
-        const result = canDeleteInvoice({ status, paid_amount: 0 });
+        const result = canCancelInvoice({ status, paid_amount: 0 });
         const allowed = status === 'DRAFT' || status === 'APPROVED';
         expect(result).toBe(allowed);
       }),
@@ -51,7 +52,7 @@ describe('Feature: invoice-reimplementation, Property 6: Quyền sửa/xoá ph�
     );
   });
 
-  it('canEditInvoice/canDeleteInvoice always false for PAID/PARTIAL_PAID/CANCELLED', () => {
+  it('canEditInvoice/canCancelInvoice always false for PAID/PARTIAL_PAID/CANCELLED', () => {
     const lockedStatuses: InvoiceStatus[] = ['PAID', 'PARTIAL_PAID', 'OVERDUE', 'CANCELLED'];
     const lockedArb = fc.constantFrom<InvoiceStatus>(...lockedStatuses);
     fc.assert(
@@ -62,19 +63,33 @@ describe('Feature: invoice-reimplementation, Property 6: Quyền sửa/xoá ph�
           return;
         }
         expect(canEditInvoice({ status, paid_amount: paid })).toBe(false);
-        expect(canDeleteInvoice({ status, paid_amount: paid })).toBe(false);
+        expect(canCancelInvoice({ status, paid_amount: paid })).toBe(false);
       }),
       { numRuns: 100 },
     );
   });
 
-  it('any positive paid_amount blocks edit/delete even for APPROVED', () => {
+  it('any positive paid_amount blocks edit/cancel even for APPROVED', () => {
     fc.assert(
       fc.property(fc.double({ min: 0.01, max: 1_000_000, noNaN: true, noDefaultInfinity: true }), (paid) => {
         expect(canEditInvoice({ status: 'APPROVED', paid_amount: paid })).toBe(false);
-        expect(canDeleteInvoice({ status: 'APPROVED', paid_amount: paid })).toBe(false);
+        expect(canCancelInvoice({ status: 'APPROVED', paid_amount: paid })).toBe(false);
       }),
       { numRuns: 50 },
+    );
+  });
+
+  it('soft-deleted invoices (legacy delete path) can never be cancelled', () => {
+    fc.assert(
+      fc.property(statusArb, fc.boolean(), (status, isSuper) => {
+        expect(
+          canCancelInvoice(
+            { status, paid_amount: 0, deleted_at: '2026-08-31T16:49:38Z' },
+            { isSuper },
+          ),
+        ).toBe(false);
+      }),
+      { numRuns: 100 },
     );
   });
 });
@@ -112,9 +127,9 @@ describe('Feature: invoice-reimplementation, Property 4: Hoá đơn mới đư�
         }),
         (_invoiceData) => {
           expect(INITIAL_INVOICE_STATUS).toBe('APPROVED');
-          // Newly created invoices have paid_amount=0, so they remain editable/deletable.
+          // Newly created invoices have paid_amount=0, so they remain editable/cancellable.
           expect(canEditInvoice({ status: INITIAL_INVOICE_STATUS, paid_amount: 0 })).toBe(true);
-          expect(canDeleteInvoice({ status: INITIAL_INVOICE_STATUS, paid_amount: 0 })).toBe(true);
+          expect(canCancelInvoice({ status: INITIAL_INVOICE_STATUS, paid_amount: 0 })).toBe(true);
         },
       ),
       { numRuns: 100 },
@@ -170,9 +185,9 @@ describe('Feature: invoice-reimplementation, Property 7: Duyệt/Bỏ duyệt l�
           expect(afterUnapprove).toBe('DRAFT');
           expect(afterUnapprove).toBe(initial);
 
-          // Edit/delete are allowed for both DRAFT and APPROVED (paid=0)
+          // Edit/cancel are allowed for both DRAFT and APPROVED (paid=0)
           expect(canEditInvoice({ status: afterUnapprove, paid_amount: 0 })).toBe(true);
-          expect(canDeleteInvoice({ status: afterUnapprove, paid_amount: 0 })).toBe(true);
+          expect(canCancelInvoice({ status: afterUnapprove, paid_amount: 0 })).toBe(true);
         },
       ),
       { numRuns: 100 },

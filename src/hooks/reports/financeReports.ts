@@ -31,6 +31,10 @@ export function usePaymentScheduleReport(daysAhead: number = 30) {
           )
         `)
         .lte("due_date", futureDate.toISOString())
+        // Bỏ HĐ đã xoá mềm (bug sẵn có: trước đây lọt vào báo cáo) và HĐ đã
+        // huỷ — từ 09/2026 nút Xoá gôm về nút Huỷ nên rác mang status CANCELLED.
+        .is("deleted_at", null)
+        .neq("status", "CANCELLED")
         .order("due_date", { ascending: true });
 
       if (error) throw error;

@@ -802,7 +802,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                 Hợp đồng này đã có hoá đơn kỳ <b>{watchedBillingMonth}</b>{' '}
                 ({existingInvoice.invoice_number || existingInvoice.id?.slice(0, 8)}).
                 Hệ thống chỉ cho phép 1 hoá đơn / hợp đồng / kỳ — chọn kỳ khác hoặc
-                xoá/sửa hoá đơn cũ trước.
+                huỷ/sửa hoá đơn cũ trước.
               </span>
             </div>
           )}

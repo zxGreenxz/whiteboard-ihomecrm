@@ -17,7 +17,7 @@ import {
   Plus,
   LayoutGrid,
   Search,
-  Trash2,
+  XCircle,
   Table as TableIcon,
   Wallet,
 } from 'lucide-react';
@@ -34,7 +34,8 @@ interface InvoiceListToolbarProps {
   onAdd: () => void;
   onExcelMode: () => void;
   onBulkRecordPayment: () => void;
-  onBulkDelete: () => void;
+  /** Huỷ hàng loạt các HĐ đã chọn (nút Xoá hàng loạt cũ đã gỡ 09/2026). */
+  onBulkCancel: () => void;
   columnVisibility: InvoiceColumnVisibility;
   onToggleColumn: (key: InvoiceColumnKey) => void;
   onResetColumns: () => void;
@@ -43,7 +44,7 @@ interface InvoiceListToolbarProps {
   /** Gate quyền — ẩn nút khi user không có quyền tương ứng. */
   canCreate?: boolean;
   canRecordPayment?: boolean;
-  canDelete?: boolean;
+  canCancel?: boolean;
 }
 
 interface ToolbarButton {
@@ -62,14 +63,14 @@ const InvoiceListToolbar = ({
   onAdd,
   onExcelMode,
   onBulkRecordPayment,
-  onBulkDelete,
+  onBulkCancel,
   columnVisibility,
   onToggleColumn,
   onResetColumns,
   compact = false,
   canCreate = true,
   canRecordPayment = true,
-  canDelete = true,
+  canCancel = true,
 }: InvoiceListToolbarProps) => {
   const buttons: ToolbarButton[] = [
     ...(canCreate ? [{
@@ -191,14 +192,14 @@ const InvoiceListToolbar = ({
       </div>
 
       {/* Bulk actions */}
-      {selectedCount > 0 && canDelete && (
+      {selectedCount > 0 && canCancel && (
         <div className={`flex items-center gap-2 mb-4 ${compact ? 'px-3' : ''}`}>
           <span className="text-sm text-muted-foreground">
             Đã chọn {selectedCount} hoá đơn
           </span>
-          <Button variant="destructive" size="sm" onClick={onBulkDelete}>
-            <Trash2 className="h-4 w-4 mr-1" />
-            Xoá hàng loạt
+          <Button variant="destructive" size="sm" onClick={onBulkCancel}>
+            <XCircle className="h-4 w-4 mr-1" />
+            Huỷ hàng loạt
           </Button>
         </div>
       )}

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   calculateInvoiceTotals,
   canEditInvoice,
-  canDeleteInvoice,
+  canCancelInvoice,
   canApproveInvoice,
   getStatusColor,
   isOverdue,
@@ -97,7 +97,7 @@ describe('calculateInvoiceTotals', () => {
 });
 
 // =============================================
-// canEditInvoice / canDeleteInvoice / canApproveInvoice
+// canEditInvoice / canCancelInvoice / canApproveInvoice
 // =============================================
 
 describe('status permission checks', () => {
@@ -117,12 +117,29 @@ describe('status permission checks', () => {
     expect(canEditInvoice({ status: 'DRAFT', paid_amount: 1 })).toBe(false);
   });
 
-  it('canDeleteInvoice mirrors canEditInvoice', () => {
+  // Nút Hủy là đường kết thúc hoá đơn DUY NHẤT (gôm từ nút Xoá cũ, 09/2026).
+  // RPC cancel_invoice_with_credit_v1 KHÔNG chặn status/paid_amount ở DB,
+  // nên guard này là hàng rào duy nhất — nới nó là mở rộng hành vi thật.
+  it('canCancelInvoice allows only DRAFT/APPROVED with paid_amount=0 for normal users', () => {
     for (const s of allStatuses) {
       const allowed = (s === 'DRAFT' || s === 'APPROVED');
-      expect(canDeleteInvoice({ status: s, paid_amount: 0 })).toBe(allowed);
+      expect(canCancelInvoice({ status: s, paid_amount: 0 })).toBe(allowed);
     }
-    expect(canDeleteInvoice({ status: 'APPROVED', paid_amount: 100 })).toBe(false);
+    expect(canCancelInvoice({ status: 'APPROVED', paid_amount: 100 })).toBe(false);
+    expect(canCancelInvoice({ status: 'DRAFT', paid_amount: 1 })).toBe(false);
+  });
+
+  it('canCancelInvoice for super admin allows every status except CANCELLED', () => {
+    for (const s of allStatuses) {
+      expect(canCancelInvoice({ status: s, paid_amount: 100 }, { isSuper: true }))
+        .toBe(s !== 'CANCELLED');
+    }
+  });
+
+  it('canCancelInvoice always rejects soft-deleted invoices', () => {
+    const deleted = { status: 'APPROVED' as InvoiceStatus, paid_amount: 0, deleted_at: '2026-08-31T16:49:38Z' };
+    expect(canCancelInvoice(deleted)).toBe(false);
+    expect(canCancelInvoice(deleted, { isSuper: true })).toBe(false);
   });
 
   it('canApproveInvoice still returns true only for DRAFT (legacy)', () => {

@@ -20,7 +20,7 @@ import type {
 } from '@/types/invoice';
 import {
   canEditInvoice,
-  canDeleteInvoice,
+  canCancelInvoice,
   roundInvoiceTotal,
   getInvoiceTitle,
   isFirstMonthInvoice,
@@ -28,7 +28,6 @@ import {
 import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
 import { todayISO } from '@/lib/collect';
 import {
-  buildBulkInvoiceCreditLifecycleRpcArgs,
   buildCreditInvoiceCreateRpcArgs,
   capInvoiceCreditApplication,
   buildInvoiceCreditLifecycleRpcArgs,
@@ -959,72 +958,13 @@ export const useUpdateInvoice = () => {
 };
 
 // =============================================
-// useDeleteInvoice - Soft-delete single invoice
-// Requirements: 3.4, 3.5
+// useBulkCancelInvoices - Huỷ nhiều hoá đơn (gôm từ bulk soft-delete, 09/2026)
+// Không còn RPC bulk phía DB: loop cancel_invoice_with_credit_v1 từng hoá đơn
+// (mỗi cái một idempotency key). Mất tính atomic của bulk nhưng mỗi lượt huỷ
+// vốn độc lập; hoá đơn không đủ điều kiện bị BỎ QUA và báo trong toast tổng.
 // =============================================
 
-export const useDeleteInvoice = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationFn: async (invoiceId: string) => {
-      const user = await getSessionUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // Fetch current invoice to check status
-      const { data: current, error: fetchError } = await supabase
-        .from('invoices')
-        .select('status, paid_amount')
-        .eq('id', invoiceId)
-        .single();
-
-      if (fetchError) throw fetchError;
-      if (!canDeleteInvoice({ status: current.status as InvoiceStatus, paid_amount: current.paid_amount })) {
-        throw new Error('Không thể xoá hoá đơn ở trạng thái này');
-      }
-
-      return invokeCustomerCreditRpc(
-        // Generated types intentionally lag until the migration is applied.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
-        // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
-        // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
-        (fn, args) => supabase.rpc(fn, args),
-        'soft_delete_invoice_with_credit_v1',
-        buildInvoiceCreditLifecycleRpcArgs(
-          invoiceId,
-          prepareCustomerCreditRequest('invoice-delete'),
-        ),
-      );
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
-      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice'] });
-
-      toast({
-        title: 'Dữ liệu đã được XOÁ thành công',
-        description: 'Hoá đơn đã được xoá.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi xoá hoá đơn',
-        description: error.message,
-      });
-    },
-  });
-};
-
-// =============================================
-// useBulkDeleteInvoices - Soft-delete multiple invoices
-// Requirements: 3.5
-// =============================================
-
-export const useBulkDeleteInvoices = () => {
+export const useBulkCancelInvoices = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -1033,36 +973,69 @@ export const useBulkDeleteInvoices = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      if (invoiceIds.length === 0) return;
+      if (invoiceIds.length === 0) return { done: 0, skipped: 0, failed: 0 };
 
-      return invokeCustomerCreditRpc(
-        // Generated types intentionally lag until the migration is applied.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
-        // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
-        // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
-        (fn, args) => supabase.rpc(fn, args),
-        'bulk_soft_delete_invoices_with_credit_v1',
-        buildBulkInvoiceCreditLifecycleRpcArgs(
-          invoiceIds,
-          prepareCustomerCreditRequest('invoice-bulk-delete'),
-        ),
+      // RPC cancel KHÔNG guard status/paid ở DB → lọc trước bằng canCancelInvoice.
+      const { data: rows, error: fetchError } = await supabase
+        .from('invoices')
+        .select('id, status, paid_amount, deleted_at')
+        .in('id', invoiceIds);
+      if (fetchError) throw fetchError;
+
+      const eligible = (rows ?? []).filter((row) =>
+        canCancelInvoice({
+          status: row.status as InvoiceStatus,
+          paid_amount: row.paid_amount,
+          deleted_at: row.deleted_at,
+        }),
       );
+
+      let done = 0;
+      let failed = 0;
+      for (const row of eligible) {
+        try {
+          await invokeCustomerCreditRpc(
+            // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
+            // test inject được fake rpc, nên chữ ký không khớp overload đã typed
+            // của supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
+            (fn, args) => supabase.rpc(fn, args),
+            'cancel_invoice_with_credit_v1',
+            buildInvoiceCreditLifecycleRpcArgs(
+              row.id,
+              prepareCustomerCreditRequest('invoice-cancel'),
+            ),
+          );
+          done += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      return { done, skipped: invoiceIds.length - eligible.length, failed };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
+      const { done, skipped, failed } = result ?? { done: 0, skipped: 0, failed: 0 };
+      const extras = [
+        skipped > 0 ? `${skipped} hoá đơn không đủ điều kiện (đã thu tiền/đã huỷ) bị bỏ qua` : '',
+        failed > 0 ? `${failed} hoá đơn lỗi khi huỷ` : '',
+      ].filter(Boolean).join('; ');
       toast({
-        title: 'Dữ liệu đã được XOÁ thành công',
-        description: 'Các hoá đơn đã chọn đã được xoá.',
+        variant: failed > 0 ? 'destructive' : undefined,
+        title: `Đã huỷ ${done} hoá đơn`,
+        description: extras
+          ? `${extras}.`
+          : 'Các hoá đơn đã chuyển vào mục "Đã huỷ" và có thể phục hồi.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Có lỗi xảy ra khi xoá hoá đơn',
+        title: 'Có lỗi xảy ra khi huỷ hoá đơn',
         description: error.message,
       });
     },
@@ -1605,9 +1578,10 @@ export const useBulkCreateMeterReadings = () => {
 // =============================================
 
 // =============================================
-// useRestoreInvoice - CANCELLED → APPROVED (super admin)
-// Khôi phục lại HĐ đã huỷ. RLS đã có policy super_admin bypass nên client
-// chỉ cần update; FE chịu trách nhiệm chỉ render nút này cho super admin.
+// useRestoreInvoice - CANCELLED → APPROVED
+// Khôi phục lại HĐ đã huỷ. RPC restore_invoice_with_credit_v1 chỉ đòi quyền
+// invoices.edit trên toà (không đòi super admin) và tự apply lại credit; FE
+// render nút cho ai có quyền huỷ — để user tự sửa tay lỡ bấm huỷ nhầm.
 // =============================================
 
 export const useRestoreInvoice = () => {
@@ -1693,14 +1667,14 @@ export const useForceCancelInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
       toast({
-        title: 'Đã xoá hoá đơn',
+        title: 'Đã huỷ hoá đơn',
         description: 'Hoá đơn đã được huỷ sau khi kiểm tra payment và hoàn tác credit an toàn.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Có lỗi xảy ra khi xoá hoá đơn',
+        title: 'Có lỗi xảy ra khi huỷ hoá đơn',
         description: error.message,
       });
     },
@@ -1716,9 +1690,24 @@ export const useCancelInvoice = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      // RPC cancel KHÔNG guard status/paid_amount ở DB — đây là hàng rào duy
+      // nhất chặn huỷ hoá đơn đã thu tiền (restore sẽ trả status sai nếu lọt).
+      const { data: current, error: fetchError } = await supabase
+        .from('invoices')
+        .select('status, paid_amount, deleted_at')
+        .eq('id', invoiceId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!canCancelInvoice({
+        status: current.status as InvoiceStatus,
+        paid_amount: current.paid_amount,
+        deleted_at: current.deleted_at,
+      })) {
+        throw new Error('Không thể huỷ hoá đơn ở trạng thái này (đã thu tiền hoặc đã huỷ)');
+      }
+
       return invokeCustomerCreditRpc(
-        // Generated types intentionally lag until the migration is applied.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
         // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
         // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
@@ -1739,7 +1728,7 @@ export const useCancelInvoice = () => {
 
       toast({
         title: 'Hoá đơn đã được huỷ',
-        description: 'Hoá đơn đã chuyển sang trạng thái Đã huỷ.',
+        description: 'Hoá đơn nằm trong mục "Đã huỷ" và có thể phục hồi.',
       });
     },
     onError: (error: Error) => {

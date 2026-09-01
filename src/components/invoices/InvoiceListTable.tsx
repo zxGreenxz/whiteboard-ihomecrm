@@ -20,12 +20,12 @@ import {
   Pencil,
   DollarSign,
   History,
-  Trash2,
+  XCircle,
   Eye,
   RotateCcw,
 } from 'lucide-react';
 import type { InvoiceWithRelations, InvoiceItem } from '@/types/invoice';
-import { canEditInvoice, canDeleteInvoice, getInvoiceTitle } from '@/lib/invoiceUtils';
+import { canEditInvoice, canCancelInvoice, getInvoiceTitle } from '@/lib/invoiceUtils';
 import type { InvoiceColumnVisibility } from './invoiceListColumns';
 
 interface InvoiceListTableProps {
@@ -34,21 +34,23 @@ interface InvoiceListTableProps {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
   onEdit: (invoice: InvoiceWithRelations) => void;
-  onDelete: (invoice: InvoiceWithRelations) => void;
+  /** Huỷ hoá đơn (status → CANCELLED, nằm trong tab "Đã huỷ", phục hồi được).
+   *  Đường kết thúc hoá đơn DUY NHẤT — nút Xoá (soft-delete) đã gỡ 09/2026. */
+  onCancel: (invoice: InvoiceWithRelations) => void;
   onRecordPayment: (invoice: InvoiceWithRelations) => void;
   onViewDetail: (invoice: InvoiceWithRelations) => void;
   onViewPayments?: (invoice: InvoiceWithRelations) => void;
   onViewHistory?: (invoice: InvoiceWithRelations) => void;
-  /** Super admin: phục hồi HĐ đã huỷ. Chỉ render khi callback != undefined. */
+  /** Phục hồi HĐ đã huỷ. Chỉ render khi callback != undefined. */
   onRestore?: (invoice: InvoiceWithRelations) => void;
-  /** Super admin: xoá HĐ ở mọi trạng thái (hard-delete payments + chuyển CANCELLED). */
+  /** Super admin: huỷ HĐ ở mọi trạng thái (kiểm tra payment + hoàn credit ở DB). */
   onForceCancel?: (invoice: InvoiceWithRelations) => void;
   columnVisibility: InvoiceColumnVisibility;
   /** Gate quyền — ẩn các nút action khi user không có quyền. */
   canEdit?: boolean;
-  canDelete?: boolean;
+  canCancel?: boolean;
   canRecordPayment?: boolean;
-  /** Super admin → mở rộng nút Xoá cho mọi HĐ (gọi onForceCancel). */
+  /** Super admin → mở rộng nút Huỷ cho mọi HĐ (gọi onForceCancel). */
   isSuper?: boolean;
 }
 
@@ -119,7 +121,7 @@ const InvoiceListTable = ({
   onToggleSelect,
   onToggleSelectAll,
   onEdit,
-  onDelete,
+  onCancel,
   onRecordPayment,
   onViewDetail,
   onViewPayments,
@@ -128,7 +130,7 @@ const InvoiceListTable = ({
   onForceCancel,
   columnVisibility,
   canEdit = true,
-  canDelete = true,
+  canCancel = true,
   canRecordPayment = true,
   isSuper = false,
 }: InvoiceListTableProps) => {
@@ -339,8 +341,8 @@ const InvoiceListTable = ({
                         <TooltipContent>Lịch sử chỉnh sửa</TooltipContent>
                       </Tooltip>
 
-                      {/* Xoá */}
-                      {canDelete && canDeleteInvoice(invoice, { isSuper }) && (
+                      {/* Huỷ — đường kết thúc hoá đơn duy nhất (nút Xoá đã gỡ 09/2026) */}
+                      {canCancel && canCancelInvoice(invoice, { isSuper }) && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -348,26 +350,28 @@ const InvoiceListTable = ({
                               size="icon"
                               className="h-7 w-7 rounded-full bg-red-100 text-red-600 hover:bg-red-200"
                               onClick={() => {
-                                // Super admin: với HĐ vượt quy tắc thường (đã thu/quá hạn)
-                                // dùng force-cancel flow; với HĐ DRAFT/APPROVED chưa thu thì
-                                // vẫn dùng force-cancel để thống nhất ("đã xoá" = "đã huỷ").
+                                // Super admin: đi force-cancel flow (dialog gõ XOA,
+                                // DB kiểm tra payment); user thường đi cancel thường
+                                // (chỉ DRAFT/APPROVED chưa thu tiền).
                                 if (isSuper && onForceCancel) {
                                   onForceCancel(invoice);
                                 } else {
-                                  onDelete(invoice);
+                                  onCancel(invoice);
                                 }
                               }}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <XCircle className="h-3.5 w-3.5" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            {isSuper ? 'Xoá hoá đơn (chuyển sang Đã huỷ)' : 'Xoá'}
+                            {isSuper
+                              ? 'Huỷ hoá đơn (mọi trạng thái, chuyển sang Đã huỷ)'
+                              : 'Huỷ hoá đơn (chuyển sang Đã huỷ, phục hồi được)'}
                           </TooltipContent>
                         </Tooltip>
                       )}
 
-                      {/* Phục hồi — chỉ super admin, chỉ với HĐ đã huỷ */}
+                      {/* Phục hồi — với HĐ đã huỷ; page gate cho ai có quyền huỷ */}
                       {onRestore && invoice.status === 'CANCELLED' && (
                         <Tooltip>
                           <TooltipTrigger asChild>
