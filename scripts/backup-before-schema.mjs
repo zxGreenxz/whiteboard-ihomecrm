@@ -90,7 +90,7 @@ export function readProjectRef() {
 /**
  * Đọc password pooler từ CLAUDE.local.md.
  *
- * Cùng nguồn mà scripts/openclaw-local-seed.mjs đang dùng — cố ý KHÔNG tạo chỗ
+ * CLAUDE.local.md là nguồn credential DUY NHẤT — cố ý KHÔNG tạo chỗ
  * lưu credential thứ hai.
  */
 export function readPoolerPassword(localMd) {
