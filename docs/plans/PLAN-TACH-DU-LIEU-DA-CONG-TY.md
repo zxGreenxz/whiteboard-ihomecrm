@@ -1,5 +1,7 @@
 # Kế hoạch tách bạch dữ liệu giữa các công ty (multi-tenant isolation)
 
+> **[LỖI THỜI — BỊ THAY THẾ]** Thay bằng: `PLAN-TACH-DU-LIEU-DA-CONG-TY-V2.md`. Nội dung dưới đây có thể sai so với hiện tại.
+
 > Sinh từ cuộc rà soát 30 agent ngày 07/08/2026. Mọi con số trong tài liệu này là **đo thật trên production**
 > bằng vai người dùng thật (SET ROLE + JWT), không phải suy luận từ việc đọc policy. Mỗi phát hiện mức cao
 > trở lên đã bị một agent độc lập cố bác bỏ và phải đo lại được mới giữ.

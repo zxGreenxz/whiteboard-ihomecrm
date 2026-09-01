@@ -1,5 +1,7 @@
 # Kế hoạch triển khai Trung tâm Báo cáo Tài chính & Hiệu quả kinh doanh
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Baseline `c736a29` 20/07. V5 dashboard đã tồn tại (`OwnerDashboardV5`, flags `v5_money`/`v5_coverage`); cutover route legacy `/reports/finance/analysis` CHƯA xác minh. Re-anchor trước khi làm tiếp.
+
 | Thuộc tính | Giá trị |
 |---|---|
 | Baseline code | `HEAD c736a29` |

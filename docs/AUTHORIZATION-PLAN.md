@@ -1,5 +1,7 @@
 # Kế hoạch tổng thể: Multi-tenant Authorization & Financial Approval
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Design baseline phân quyền — runtime đã go-live 15/15 (19/07/2026, xem `docs/authorization/STATUS-2026-07-19-GOLIVE-FULL.md`). Hiện hành: `docs/he-thong/01-phan-quyen-nhan-su.md` + `docs/authorization/README.md`. Giữ làm bằng chứng.
+
 > **Cập nhật 2026-07-20:** đây là thiết kế/audit baseline, không phải status live. Chương trình authorization đã triển khai production với **15/15 canonical writer flags ON** và hộp thư phê duyệt hoạt động; xem [authorization current status](authorization/README.md) và [GO-LIVE evidence](authorization/STATUS-2026-07-19-GOLIVE-FULL.md). Các nhận định NO-GO trong các chương cũ chỉ áp dụng cho snapshot trước cutover.
 
 > **Trạng thái**: Thiết kế để audit trước khi triển khai — **chưa phải migration có thể chạy**  

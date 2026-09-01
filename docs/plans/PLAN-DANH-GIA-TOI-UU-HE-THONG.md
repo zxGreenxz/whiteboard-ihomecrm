@@ -1,5 +1,7 @@
 # Kế hoạch đánh giá và tối ưu toàn hệ thống iHomeCRM
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Khung điều tra/ra-quyết-định tái sử dụng, không phải mô tả tính năng. Các audit trong `../audits/` là sản phẩm của khung này.
+
 > Kế hoạch này chuyển [`docs/prompts/PROMPT-HOI-DONG-PHAN-TICH-THUC-TE.md`](../prompts/PROMPT-HOI-DONG-PHAN-TICH-THUC-TE.md) thành một chương trình kiểm định có thể thực thi cho iHomeCRM. Đây là **kế hoạch điều tra và ra quyết định**, chưa phải báo cáo bug và không tự cho phép sửa code hoặc dữ liệu production.
 
 ## 1. Mục tiêu và quyết định cần đạt

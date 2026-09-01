@@ -1,5 +1,7 @@
 # Đánh giá AI Copilot - 2026-08-13
 
+> **[LỊCH SỬ — snapshot 13/08/2026]** Đánh giá tại thời điểm audit. Hiện hành: `README.md` cùng thư mục + `../he-thong/21-ai-copilot.md`. Giữ làm bằng chứng.
+
 ## Kết luận điều hành
 
 **Chưa production-ready.** Bản triển khai đã có nền tảng backend, permission gate, quota/rate-limit và bộ unit test đáng tin cậy, nhưng ma trận hành vi trên deployment thật còn các blocker trực tiếp:

@@ -28,7 +28,7 @@ Ba cạm bẫy khi đọc bảng trên — bản cũ của tài liệu này dín
    được nhỏ hơn nhiều. Đừng so trực tiếp con số này với số function trong generated types.
 3. **Số file migration ≠ số migration đã deploy.** Repository hiện có 733 file trong
    `supabase/migrations/` + 15 file trong `migrations-archive/`; ledger `schema_migrations` dừng
-   trước schema đang chạy. Xem `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md`
+   trước schema đang chạy. Xem `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05.md`
    Phần VI, và **đừng coi số file là bằng chứng đã deploy**.
 
 Ảnh chụp cũng kiểm luôn ba invariant an toàn (tại 2026-08-06 đều xanh): mọi bảng logic bật RLS,

@@ -1,5 +1,7 @@
 # Phiếu cọc giữ chỗ: ảnh chứng từ, sổ quỹ, và STK người nhận thưởng
 
+> **[LỊCH SỬ — ĐÃ SHIP 20/08/2026]** Migration `20260820090000_sale_bonus_deposit_account_attachments.sql` live. Hiện hành: `docs/he-thong/04-coc-giu-cho.md` + `08-thu-chi-so-quy.md`. Giữ làm bằng chứng.
+
 **Ngày**: 2026-08-20 · **Trạng thái**: đã chốt với chủ dự án
 
 ## Vấn đề

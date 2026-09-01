@@ -1,5 +1,7 @@
 # Hoàn lại khách khi thanh lý — thiết kế
 
+> **[LỊCH SỬ — ĐÃ SHIP 22–28/08/2026]** Migration `20260822093000_termination_customer_refund_items` + `20260822113000_refund_kpi_split` + hardening `20260828090000` live. Hiện hành: `docs/he-thong/16-thanh-ly-hop-dong.md`; runbook `../runbooks/2026-08-28-hoan-coc-runbook.md`. Giữ làm bằng chứng.
+
 > Ngày chốt: 2026-08-22 · Phạm vi: nhánh thanh lý **Khách rời phòng** (move-out)
 
 ## Vấn đề

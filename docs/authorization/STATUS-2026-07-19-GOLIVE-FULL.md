@@ -1,5 +1,7 @@
 # GO-LIVE TOÀN BỘ — 2026-07-19 (hai đợt trong ngày)
 
+> **[LỊCH SỬ — ĐÃ SHIP 19/07/2026]** Bằng chứng go-live phân quyền v3. Hiện hành: `../he-thong/01-phan-quyen-nhan-su.md` + `README.md` cùng thư mục. Giữ làm bằng chứng, không cập nhật nữa.
+
 Chỉ đạo owner: "tổ chức đã dừng để tập trung update toàn bộ lên và dùng luôn,
 sai sót sau đó thì sửa, không bật từ từ" + "bật nốt 4 writer".
 

@@ -1,5 +1,7 @@
 # FINDING: đường "payout qua engine duyệt" chưa sẵn sàng (2026-07-18)
 
+> **[LỊCH SỬ — ĐÃ SHIP 19/07/2026]** Bằng chứng go-live phân quyền v3. Hiện hành: `../he-thong/01-phan-quyen-nhan-su.md` + `README.md` cùng thư mục. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **Lifecycle:** historical audit evidence. Blocker này đã được xử lý trước go-live; trạng thái hiện hành nằm ở [README.md](README.md) và [STATUS-2026-07-19-GOLIVE-FULL.md](STATUS-2026-07-19-GOLIVE-FULL.md). Nội dung bên dưới giữ nguyên để giải thích vì sao các migration `t5_17`–`t5_19` tồn tại.
 
 **Mức độ: BLOCKER cho cả họ money-payout** (salary_payout_v1, distribute_shareholder_profit_v1,

@@ -1,5 +1,7 @@
 # Plan sửa chuỗi hợp đồng - thanh toán - lợi nhuận (2026-07-21)
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Đã ship trong chuỗi V5 07/2026. Hiện hành: `../he-thong/05-hop-dong.md` + `07-hoa-don-thanh-toan.md` + `12-co-dong-loi-nhuan.md`. Giữ làm bằng chứng.
+
 ## Mục tiêu
 
 Sửa xuyên suốt luồng:

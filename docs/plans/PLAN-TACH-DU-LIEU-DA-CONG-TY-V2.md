@@ -1,5 +1,7 @@
 # Kế hoạch tách bạch dữ liệu giữa các công ty — BẢN 2
 
+> **[LỊCH SỬ — ĐÃ SHIP phần lõi]** 304 policy biên giới tổ chức đang live trên production. Hiện hành: `../he-thong/00-tong-quan.md` (ba tổ chức) + Contract §2. Giữ làm bằng chứng.
+
 > Bản 1 ([PLAN-TACH-DU-LIEU-DA-CONG-TY.md](./PLAN-TACH-DU-LIEU-DA-CONG-TY.md)) đã bị review chấm 10 finding.
 > Bản 2 này là kết quả sau khi **kiểm chứng độc lập từng finding trên chính production** — không finding nào
 > được sửa theo chỉ vì review nói vậy, và không finding nào bị bỏ qua chỉ vì bản 1 viết vậy.

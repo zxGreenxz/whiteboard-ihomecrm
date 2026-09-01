@@ -1,5 +1,7 @@
 # Tranche INCOME-EXPENSE — Findings & design fork (2026-07-18)
 
+> **[LỊCH SỬ — ĐÃ SHIP 19/07/2026]** Bằng chứng go-live phân quyền v3. Hiện hành: `../he-thong/01-phan-quyen-nhan-su.md` + `README.md` cùng thư mục. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **Lifecycle:** historical build evidence, không phải trạng thái live. Writer đã go-live sau snapshot này; xem [README.md](README.md). File được giữ vì SQL chuẩn bị vẫn tham chiếu các quyết định thiết kế bên dưới.
 
 > Trạng thái: **DESIGN-BLOCKED** — cần 1 quyết định kiến trúc của owner trước khi

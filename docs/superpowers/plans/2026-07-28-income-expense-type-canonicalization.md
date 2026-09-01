@@ -1,5 +1,7 @@
 # Income/Expense Type Canonicalization Implementation Plan
 
+> **[LỊCH SỬ — ĐÃ SHIP 28/07/2026]** Migration `20260728180000` là canonical. Hiện hành: `docs/he-thong/08-thu-chi-so-quy.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace duplicate organization-level income/expense category IDs with one audited canonical ID and prevent the duplicates from returning.

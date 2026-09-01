@@ -1,5 +1,7 @@
 # Kế hoạch tối ưu kiến trúc, tài liệu và hệ thống agent cho whiteboard-ihomecrm
 
+> **[LỊCH SỬ — snapshot 05/08/2026]** Plan kiến trúc gốc (đã đổi tên bỏ hậu tố " (1)" 02/09/2026). Kiến trúc hiện hành: `docs/CODEBASE_STRUCTURE.md` + `docs/engineering/PROJECT_CONTRACT.md` §1. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **Repository:** `zxGreenxz/whiteboard-ihomecrm`  
 > **Nhánh/commit của bản đánh giá gốc:** `main` / `7849ca219d09ddd509294b2dbb157418a477082d`  
 > **Ngày đánh giá:** 2026-08-05, Asia/Ho_Chi_Minh  

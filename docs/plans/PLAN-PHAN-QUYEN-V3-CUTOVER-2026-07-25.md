@@ -1,5 +1,7 @@
 # PLAN — Chuyển hẳn phân quyền sang mô hình tổ chức, cắt hệ cũ một lần
 
+> **[LỊCH SỬ — ĐÃ SHIP]** Quyền v3 là hệ đang chạy trên production. Hiện hành: `../he-thong/01-phan-quyen-nhan-su.md` + `../authorization/README.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **Bản 5 — 2026-07-26. TOÀN BỘ T1–T7 ĐÃ THI CÔNG XONG.** Xem §0quater.
 > Bản 4 (25/07 khuya): sau thi công T1–T3 + vòng kiểm chứng 179 agent — §0ter.
 > Bản 3 (sau review lần 2): Bản 1 sai 3 chỗ (§0); đính chính thêm 3 điểm + 2 finding mới (§0bis).

@@ -1,5 +1,7 @@
 # iHomeCRM Business Process Atlas — Design
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Đã duyệt phương án, CHƯA bắt đầu triển khai. ("Atlas" ở đây là tên tài liệu quy trình nghiệp vụ — không liên quan công cụ atlas nào khác.)
+
 **Ngày:** 2026-08-13
 
 **Trạng thái:** Đã duyệt phương án kiến trúc, chưa triển khai

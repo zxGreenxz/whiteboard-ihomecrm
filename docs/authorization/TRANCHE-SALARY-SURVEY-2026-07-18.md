@@ -1,5 +1,7 @@
 # Khảo sát domain SALARY (2026-07-18) — chuẩn bị nhịp build
 
+> **[LỊCH SỬ — ĐÃ SHIP 19/07/2026]** Bằng chứng go-live phân quyền v3. Hiện hành: `../he-thong/01-phan-quyen-nhan-su.md` + `README.md` cùng thư mục. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **Lifecycle:** historical build evidence. Writer salary đã được xây dựng và go-live sau snapshot này; xem [README.md](README.md). File được giữ vì SQL `t5_11` tham chiếu trực tiếp.
 
 Verified prod read-only + code `release/meter-domain`. Trạng thái: **SURVEY xong, chưa build. Có 1 design-fork cần owner quyết (giống income-expense).**

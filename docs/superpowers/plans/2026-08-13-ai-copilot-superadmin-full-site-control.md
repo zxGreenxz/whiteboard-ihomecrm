@@ -1,5 +1,7 @@
 # AI Copilot Superadmin Control — Plan LEAN (đã đối chiếu thực tế 2026-08-14)
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Plan LEAN Op1 (chốt 14/08, commit `f54b9025`). Trạng thái phase: A ⚠ từng phần · **B ❌ chưa đủ bằng chứng** · D ⬜ chưa bắt đầu. Chuỗi migration copilot 28–31/08 (`copilot_org_scope`, `draft_writer`, `restricted_category_guard`…) đã ship phần scope/draft — đối chiếu bảng trạng thái trong file trước khi làm tiếp.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: dùng superpowers:subagent-driven-development (khuyến nghị)
 > hoặc superpowers:executing-plans để thực hiện từng task. Các bước dùng checkbox (`- [ ]`) để theo dõi.
 

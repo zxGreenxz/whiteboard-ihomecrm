@@ -6,7 +6,7 @@
 > `CLAUDE.md` và `AGENTS.md` là **adapter mỏng** (cách gọi tool của từng agent). File này là
 > **nguồn duy nhất** cho invariant. Khi hai bên mâu thuẫn, file này thắng.
 >
-> Bối cảnh và lộ trình: `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md`.
+> Bối cảnh và lộ trình: `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05.md`.
 > Trạng thái chương trình đang chạy tới đâu: `tooling/program-status.json`.
 
 ---

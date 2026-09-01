@@ -1,5 +1,7 @@
 # Audit hệ thống AI và lộ trình tối ưu bám sát codebase, web app và nghiệp vụ
 
+> **[LỊCH SỬ — snapshot 20/07/2026]** Audit/roadmap AI bất biến. Hiện hành: `docs/he-thong/21-ai-copilot.md` + `docs/ai-copilot/README.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > Ngày audit: 2026-07-20<br>
 > Repository: `whiteboard-ihomecrm`<br>
 > Nhánh/commit quan sát: `release/meter-domain` / `6acd7b4`<br>

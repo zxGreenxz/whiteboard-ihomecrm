@@ -180,7 +180,7 @@ suite phủ đúng **tám hàm export** (5 của freshness + 3 của hygiene). �
 ## 7. Bẫy đã cắn thật — ghi lại để không lặp
 
 1. **`--skip-embeddings` không còn tồn tại ở GitNexus 1.6.9.** Plan kiến trúc §14 (khối lệnh ở dòng
-   1694 của `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md`) chỉ định cờ này.
+   1694 của `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05.md`) chỉ định cờ này.
    Chạy lại `npx --yes gitnexus@1.6.9 analyze --help` để kiểm: cờ đó **không có trong danh sách**;
    thứ tồn tại là `--embeddings [limit]` — nguyên văn *"Enable embedding generation for semantic
    search (off by default)"*. Tức mặc định đã là hành vi mà plan muốn, và chạy đúng câu lệnh trong

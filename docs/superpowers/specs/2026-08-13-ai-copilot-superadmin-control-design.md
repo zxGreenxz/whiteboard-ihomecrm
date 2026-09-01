@@ -1,5 +1,7 @@
 # AI Copilot Superadmin Full-Site Control - Audit And Target Design
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Thiết kế nền cho plan LEAN. Trạng thái thực thi: xem banner của `../plans/2026-08-13-ai-copilot-superadmin-full-site-control.md`.
+
 **Ngay:** 2026-08-13
 
 **Cap nhat:** 2026-08-28 - doi chieu evaluation, remediation source, rerun test va bang chung release

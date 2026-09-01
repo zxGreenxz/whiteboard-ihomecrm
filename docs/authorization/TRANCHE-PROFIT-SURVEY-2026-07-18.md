@@ -1,5 +1,7 @@
 # Khảo sát domain PROFIT-DISTRIBUTION (2026-07-18)
 
+> **[LỊCH SỬ — ĐÃ SHIP 19/07/2026]** Bằng chứng go-live phân quyền v3. Hiện hành: `../he-thong/01-phan-quyen-nhan-su.md` + `README.md` cùng thư mục. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **Lifecycle:** historical build evidence. Writer profit đã được xây dựng và go-live sau snapshot này; xem [README.md](README.md). File được giữ vì SQL chuẩn bị dùng nó làm nền thiết kế.
 
 Verified prod read-only + code. **SURVEY xong — domain "trần" nhất: CHƯA có writer/flag nào. 2 design-fork cần owner.** Kề salary (TRANCHE-SALARY-SURVEY), dùng chung nền org-decision.

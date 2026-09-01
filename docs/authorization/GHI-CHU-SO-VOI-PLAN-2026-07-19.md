@@ -1,5 +1,7 @@
 # GHI CHÚ TỔNG KIỂM SO VỚI AUTHORIZATION-PLAN.md — 2026-07-19 (tối)
 
+> **[LỊCH SỬ — ĐÃ SHIP 19/07/2026]** Bằng chứng go-live phân quyền v3. Hiện hành: `../he-thong/01-phan-quyen-nhan-su.md` + `README.md` cùng thư mục. Giữ làm bằng chứng, không cập nhật nữa.
+
 **Cách kiểm:** 26 agent song song (9 đối chiếu từng mục plan ↔ code+DB thật · 15 kiểm
 thử lại chức năng bằng REST/psql · 1 hạm đội **30 browser ẩn** trên production ·
 1 agent **phản biện độc lập** tự xác minh lại mọi phát hiện — CONFIRMED/REFUTED).
