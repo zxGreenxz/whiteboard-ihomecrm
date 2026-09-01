@@ -1,5 +1,7 @@
 # Integrated MikroTik Center UI Implementation Plan
 
+> **[LỊCH SỬ — ĐÃ SHIP 07-08/2026]** Tài liệu hiện hành: `docs/he-thong/22-network-center.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a full-screen, high-contrast MikroTik Center route to iHomeCRM with real building integration, exactly two employee permissions, complete fleet/building UI, and safe interactive demo operations.

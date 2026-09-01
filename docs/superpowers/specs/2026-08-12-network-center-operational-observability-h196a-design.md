@@ -1,6 +1,6 @@
 # Network Center Operational Observability And H196A Downstream Design
 
-> **[CÒN SỐNG — trạng thái 02/09/2026, CẦN ĐỐI CHIẾU]** Spec ghi "chưa triển khai" nhưng phần H196A đã ship qua `supabase/migrations/20260829010000_network_center_h196a_downstream.sql` (đường khác với 6 migration plan đặt tên). Tài liệu hiện hành: `docs/he-thong/22-network-center.md`.
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Đã đối chiếu với đĩa: phần **H196A downstream ĐÃ SHIP ĐƯỜNG KHÁC** qua `supabase/migrations/20260829010000_network_center_h196a_downstream.sql` (thiết kế lại INDIRECT_ONLY + chỉ-để-nhìn); phần **observability CHƯA SHIP** (không migration nào sau 12/08 chạm tới, kiểm 02/09). Tài liệu hiện hành: `docs/he-thong/22-network-center.md` (§3b).
 
 **Ngày:** 2026-08-12
 

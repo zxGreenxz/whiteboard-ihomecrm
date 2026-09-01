@@ -1,8 +1,9 @@
 # Trung tâm mạng (Network Center)
 
-> **Reviewed:** 2026-08-06. Route `/network-center`. Quản trị fleet router MikroTik/RouterOS nhiều toà
+> **Reviewed:** 2026-09-02. Route `/network-center`. Quản trị fleet router MikroTik/RouterOS nhiều toà
 > nhà: giám sát liên tục và thực thi **đúng 4 thao tác** đã được đóng khung. Aruba chỉ **phát hiện và
-> hiển thị**, không có credential và không ghi gì.
+> hiển thị**, không có credential và không ghi gì. Router downstream **ZTE H196A** (ship 29/08/2026)
+> cũng chỉ-để-nhìn — xem §3b.
 
 ## 1. Vai trò nghiệp vụ
 
@@ -75,6 +76,26 @@ giờ **13 tháng**, SLA ngày **36 tháng**; Aruba discovery 30 ngày, alias 90
 > frontend: `npm run types:normalize` loại chúng khỏi generated types, và fingerprint catalog cũng bỏ
 > qua chúng. Đừng dùng tổng số bảng trong `pg_class` làm con số thiết kế — xem
 > [docs/DATABASE_SCHEMA.md](../DATABASE_SCHEMA.md).
+
+## 3b. Router downstream ZTE H196A — chỉ-để-nhìn (ship 29/08/2026)
+
+Migration [20260829010000_network_center_h196a_downstream.sql](../../supabase/migrations/20260829010000_network_center_h196a_downstream.sql)
+đưa 5 con ZTE H196A ở toà 950NK vào tầm nhìn, ngang hàng Aruba nhưng theo cơ chế khác:
+
+- **Bằng chứng GIÁN TIẾP (`INDIRECT_ONLY`)**: H196A không khai báo LLDP (`/ip/neighbor` trên router
+  cha rỗng — đo 28/08/2026, chờ 14 lần chu kỳ), nên nguồn sự thật duy nhất là **DHCP lease tĩnh + ARP
+  + bảng bridge host** đọc từ MikroTik cha. Không SSH vào H196A, không credential.
+- **Chỉ-để-nhìn ở tầng dữ liệu, không chỉ ở UI**: `device_kind = 'ZTE_H196A'` với constraint
+  `network_devices_h196a_display_only` (không quyền ghi, không credential) + trigger
+  `network_devices_guard_h196a_parent` **bắt buộc có cha** MikroTik — hàng không cha là hàng không
+  kiểm tra quyền được. 4 thao tác và các RPC ghi vốn lọc `device_kind='MIKROTIK'` nên H196A không lọt.
+- **Định danh**: `external_key = 'mac:<mac chữ thường>'`, cùng luật MAC với Aruba (globally
+  administered unicast — chặn MAC ngẫu nhiên của điện thoại ghi danh thiết bị mới mỗi lượt poll).
+- **Khác Aruba**: không chép bộ chống-chớp-tắt (discovery run/alias/ngưỡng) vì lease tĩnh không chớp
+  tắt; đổi lại có **phán quyết sức khoẻ thật** thay vì `reachable=true` gán cứng.
+- Object chính: `app_private.network_h196a_profiles`, `app_private.network_h196a_quarantine`,
+  `app_private.network_center_h196a_inventory_v1`, RPC đọc `network_center_list_h196a_v1`, lớp bọc
+  `network_center_worker_inventory_v2` (không đụng impl legacy v1 đang phục vụ Aruba).
 
 ## 4. Bật/tắt và phân quyền
 
@@ -154,3 +175,15 @@ Hai cạm bẫy của chính hệ kiểm chứng, đã trả giá thật:
 
 Ngoài ra `check-definer-acl.mjs` và `check-view-invoker.mjs` **cố ý không chạy trong CI** (chúng đọc
 catalog production bằng PAT) — đó là bước local/release-time, không phải thiếu sót.
+
+## 8. Tài liệu liên quan
+
+File này là **nguồn sự thật duy nhất** của Network Center. Các tài liệu khác cùng chủ đề:
+
+- Runbook sống: [infra/network-center-worker/README.md](../../infra/network-center-worker/README.md)
+  (host worker) và [DEMO-ROUTER-RUNBOOK.md](../../infra/network-center-worker/docs/DEMO-ROUTER-RUNBOOK.md)
+  (dựng router).
+- Plan còn sống (một phần đã ship đường khác): `docs/superpowers/plans/2026-08-12-network-center-operational-observability-h196a.md`
+  + spec cùng tên trong `specs/` — đọc banner đầu file trước khi tin nội dung.
+- Lịch sử 07/2026 (đã ship, chỉ làm bằng chứng): 3 plan + 4 spec `*mikrotik-center*` trong
+  `docs/superpowers/` — tất cả mang banner LỊCH SỬ.

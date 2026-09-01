@@ -1,5 +1,7 @@
 # MikroTik Network Center Production Design
 
+> **[LỊCH SỬ — ĐÃ SHIP 07-08/2026]** Tài liệu hiện hành: `docs/he-thong/22-network-center.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 ## Goal
 
 Turn the existing full-screen Network Center UI into a production system for

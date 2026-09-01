@@ -1,5 +1,7 @@
 # iHomeCRM Network Center worker
 
+> Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/22-network-center.md`. File này là runbook host worker.
+
 Worker Node.js riêng cho MikroTik Network Center. Tiến trình này chạy trên VPS,
 gọi Edge API hẹp bằng `x-network-worker-secret`, rồi kết nối SSH tới MikroTik qua
 địa chỉ quản trị WireGuard. Trình duyệt và Supabase không bao giờ nhận private key,

@@ -1,5 +1,7 @@
 # Demo MikroTik — WireGuard/worker runbook
 
+> Tài liệu hệ thống (nguồn sự thật): `docs/he-thong/22-network-center.md`. File này là runbook dựng router demo.
+
 Runbook này dành riêng cho MikroTik dư dùng làm demo. Không áp dụng thẳng lên
 router đang phục vụ nhà trọ. Mục tiêu là giữ đường phục hồi LAN cho tới khi
 WireGuard, SSH key, host-key pin và polling đều đã được xác minh.

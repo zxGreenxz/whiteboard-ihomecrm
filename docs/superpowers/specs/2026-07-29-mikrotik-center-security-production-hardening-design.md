@@ -1,5 +1,7 @@
 # MikroTik Network Center Security Hardening And Production Rollout Design
 
+> **[LỊCH SỬ — ĐÃ SHIP 07-08/2026]** Tài liệu hiện hành: `docs/he-thong/22-network-center.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 ## Mục tiêu
 
 Đưa Network Center hiện có lên production trên iHomeCRM và Vultr theo kiến trúc

@@ -1,6 +1,9 @@
 # Network Center Operational Observability And H196A Downstream Implementation Plan
 
-> **[CÒN SỐNG — trạng thái 02/09/2026, CẦN ĐỐI CHIẾU]** 0/78 checkbox. 6 migration `20260812010000..015000` plan này đặt tên KHÔNG tồn tại trên đĩa; thay vào đó phần H196A đã ship qua `supabase/migrations/20260829010000_network_center_h196a_downstream.sql`. Tài liệu hiện hành: `docs/he-thong/22-network-center.md`.
+> **[CÒN SỐNG — trạng thái 02/09/2026]** 0/78 checkbox tick, và đã đối chiếu với đĩa:
+> **(a) Phần H196A downstream: ĐÃ SHIP ĐƯỜNG KHÁC** qua `supabase/migrations/20260829010000_network_center_h196a_downstream.sql` (kind `ZTE_H196A`, profiles/quarantine, inventory v1, list RPC — thiết kế lại theo hướng INDIRECT_ONLY + chỉ-để-nhìn, KHÔNG theo 6 migration `20260812010000..015000` plan này đặt tên; 6 file đó không tồn tại).
+> **(b) Phần observability (coverage/health/IP/incident/notification/analytics): CHƯA SHIP** — không migration `network_*` nào sau 12/08 chạm tới, kiểm 02/09.
+> Muốn làm tiếp phần (b) phải re-anchor lên schema hiện tại. Tài liệu hiện hành: `docs/he-thong/22-network-center.md` (§3b mô tả cái đã ship thật).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

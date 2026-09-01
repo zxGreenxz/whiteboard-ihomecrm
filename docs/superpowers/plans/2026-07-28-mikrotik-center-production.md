@@ -1,5 +1,7 @@
 # MikroTik Network Center Production Implementation Plan
 
+> **[LỊCH SỬ — ĐÃ SHIP 07-08/2026]** Tài liệu hiện hành: `docs/he-thong/22-network-center.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Preserve the completed Network Center UI and deliver a tenant-safe Supabase control/data plane, live iHomeCRM repository integration, and a dedicated Vultr RouterOS worker verified against the demo router and production deployment.

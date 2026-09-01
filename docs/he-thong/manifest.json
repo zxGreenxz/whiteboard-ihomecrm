@@ -159,7 +159,7 @@
     {
       "file": "22-network-center.md",
       "copilotIngest": true,
-      "reviewed": "2026-08-06",
+      "reviewed": "2026-09-02",
       "requiredPermission": {
         "module": "network_center",
         "action": "view"

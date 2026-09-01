@@ -1,5 +1,7 @@
 # Integrated MikroTik Center Design
 
+> **[LỊCH SỬ — ĐÃ SHIP 07-08/2026]** Tài liệu hiện hành: `docs/he-thong/22-network-center.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 ## Goal
 
 Add a full-screen Network Center to iHomeCRM for monitoring and operating the
