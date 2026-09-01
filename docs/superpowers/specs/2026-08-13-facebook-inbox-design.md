@@ -1,7 +1,7 @@
 # Thiết kế: Facebook Inbox cho iHome CRM — Graph API chính thức
 
 > **Trạng thái**: đã duyệt thiết kế 2026-08-13 (brainstorming với user).
-> **Nguồn tham chiếu**: `docs/superpowers/plans/WEB2-FACEBOOK-FEATURE-SPEC.md` (spec hệ Pancake cũ —
+> **Nguồn tham chiếu**: `docs/superpowers/specs/WEB2-FACEBOOK-FEATURE-SPEC.md` (spec hệ Pancake cũ —
 > dùng làm kho "bất biến đã trả giá bằng bug", KHÔNG port nguyên xi) + 3 đợt nghiên cứu tài liệu
 > chính thức developers.facebook.com (Graph API v26.0, 08/2026).
 

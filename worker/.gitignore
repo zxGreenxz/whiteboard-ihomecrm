@@ -6,3 +6,7 @@ fonts/
 
 # Ảnh do `node worker/kiem-anh.mjs` ghi ra để người vận hành soi bằng mắt.
 kiem-anh-phong-trong.png
+
+# Cookie phiên Zalo của công ty, mã hóa AES-256-GCM (xem lib/session-store.js).
+# Là BÍ MẬT runtime — commit lên git là chuyển sang chế độ "chỉ an toàn nhờ key" vĩnh viễn.
+sessions/
