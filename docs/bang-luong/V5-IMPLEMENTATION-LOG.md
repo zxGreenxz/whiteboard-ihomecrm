@@ -1,5 +1,7 @@
 # V5 — NHẬT KÝ THỰC HIỆN + BẢN ĐỒ REVERT
 
+> **[LỊCH SỬ — ĐÃ SHIP 07/2026]** Bằng chứng S0–S5 + bản đồ revert của V5 gốc — không phải status live. Tài liệu hiện hành: `docs/he-thong/17-luong-thuong.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **Reviewed:** 2026-07-20. Đây là nhật ký triển khai và rollback, không phải bảng trạng thái live; stage/feature flags phải đọc từ UI hoặc DB lúc vận hành.
 
 > Theo dõi từng phase của [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). **Mọi phase đều revert được**:

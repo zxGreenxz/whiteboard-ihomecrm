@@ -1,5 +1,7 @@
 # V5-PLAN-THUC-HIEN.md — PLAN GIAO HÀNG HỆ THỐNG LƯƠNG-THƯỞNG v5
 
+> **[LỊCH SỬ — ĐÃ SHIP 07/2026]** Kế hoạch giao hàng V5 gốc, đã thực thi. Tài liệu hiện hành: `docs/he-thong/17-luong-thuong.md` (đã gồm V5.1 từ 01/09/2026). Giữ làm bằng chứng, không cập nhật nữa.
+
 > **Trạng thái:** plan đã được thực thi; các quyết định từng treo trước S1 đã chốt theo [implementation log](V5-IMPLEMENTATION-LOG.md). Không dùng các câu hỏi lịch sử dưới đây làm chỉ báo rằng hệ thống đang chờ phê duyệt.
 
 > **Tài liệu đi kèm:** `V5-HE-THONG-LUONG-THUONG-THONG-NHAT.md` (đặc tả hợp nhất — nguồn chân lý nghiệp vụ). Plan này là bản thực thi của đội PM/BA/UX/Dev, **đã áp dụng toàn bộ 16 mục sửa từ nghiệm thu chéo** (A1–A4, B5–B11, C12–C16).

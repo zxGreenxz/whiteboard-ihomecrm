@@ -1,5 +1,7 @@
 # V5.1 — Khiên 3 lớp · Phép tích lũy theo năm · Thang streak 2.5tr đỉnh động
 
+> **[LỊCH SỬ — ĐÃ SHIP 26/08/2026, hiệu lực 01/09/2026]** Thiết kế đã lên prod. Tài liệu hiện hành: `docs/he-thong/17-luong-thuong.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 **Ngày:** 2026-08-26 · **Trạng thái:** Chủ đã duyệt thiết kế (hội thoại 26/08) · **Hiệu lực:** 01/09/2026
 
 Thay đổi chính sách lương v5 theo quyết định của chủ, gồm 4 khối. Mọi mô tả "luật cũ"

@@ -1,6 +1,6 @@
 # Bảng lương & Thưởng (Salary · Bonus · V5 "dấu chân")
 
-> **Reviewed:** 2026-07-20. Các forward-fix `20260720120000`–`20260720190000` là một phần của hành vi hiện hành.
+> **Reviewed:** 2026-09-02. Các forward-fix `20260720120000`–`20260720190000` và bộ V5.1 `20260826*` là một phần của hành vi hiện hành. Đây là NGUỒN HIỆN HÀNH duy nhất của hệ lương; các file `docs/bang-luong/V5-*` là đặc tả/bằng chứng thế hệ V5 gốc.
 
 ## 1. Tổng quan & vai trò nghiệp vụ
 

@@ -1,7 +1,11 @@
 # Hệ lương thưởng v5
 
-> **Current through:** 2026-07-20  
+> **Current through:** 2026-09-02  
 > **Lifecycle:** implementation complete; vận hành theo stage/feature flags.
+> **V5.1 hiệu lực 01/09/2026** (khiên 3 lớp · phép năm · pool streak 2.5tr đỉnh động, trần 8.5tr):
+> nguồn hiện hành là [../he-thong/17-luong-thuong.md](../he-thong/17-luong-thuong.md); spec
+> `../superpowers/specs/2026-08-26-v5-khien-3-lop-phep-tich-luy-moc-2tr5-design.md`. Các file V5-*
+> dưới đây thuộc thế hệ V5 gốc — phần khiên/phép/mốc streak đã bị V5.1 thay.
 
 - [../he-thong/17-luong-thuong.md](../he-thong/17-luong-thuong.md) — hành vi code/DB hiện tại, gồm hardening 20/07.
 - [V5-RUNBOOK.md](V5-RUNBOOK.md) — runbook vận hành hiện hành.

@@ -1,5 +1,7 @@
 # V5.1 — Khiên 3 lớp · Phép năm · Thang 2.5tr — Implementation Plan
 
+> **[LỊCH SỬ — ĐÃ SHIP 26/08/2026, hiệu lực 01/09/2026]** Migration `20260826120000` + `20260826123000` + `20260826150000` live prod. Tài liệu hiện hành: `docs/he-thong/17-luong-thuong.md`. Giữ làm bằng chứng, không cập nhật nữa.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Triển khai spec `docs/superpowers/specs/2026-08-26-v5-khien-3-lop-phep-tich-luy-moc-2tr5-design.md` — bộ khiên 3 lớp (free 1 · tháng-hoàn-hảo cap 3 · điểm CN 0.5 vĩnh viễn), phép tích lũy theo năm reset 01/01, pool streak 2.5tr với đỉnh động N_chuẩn, hiệu lực 01/09/2026, tháng 7–8/2026 giữ trọn luật cũ.

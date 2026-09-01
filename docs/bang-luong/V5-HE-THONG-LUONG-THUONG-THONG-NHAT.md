@@ -1,5 +1,7 @@
 # V5 — HỆ THỐNG LƯƠNG-THƯỞNG-KPI THỐNG NHẤT (Chuyên cần + Streak + Coverage + My Day)
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Đặc tả nghiệp vụ V5 gốc — phần lớn còn đúng, NHƯNG cơ chế khiên/phép/mốc streak đã bị **V5.1 thay từ 01/09/2026** (khiên 3 lớp, phép năm, pool 2.5tr đỉnh động). Nguồn hiện hành: `docs/he-thong/17-luong-thuong.md`; spec V5.1: `../superpowers/specs/2026-08-26-v5-khien-3-lop-phep-tich-luy-moc-2tr5-design.md`.
+
 > v5 là đặc tả nghiệp vụ hợp nhất. Hành vi code/DB mới nhất, gồm forward-fix 20–21/07, được tóm tại [../he-thong/17-luong-thuong.md](../he-thong/17-luong-thuong.md); migration mới hơn thắng khi khác đặc tả. Plan giao hàng: [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). Đối chiếu triển khai: [V5-IMPLEMENTATION-LOG.md](V5-IMPLEMENTATION-LOG.md). Worker watchdog trong thiết kế ban đầu đã bị gỡ; fallback live là nút admin chạy lại job. Reviewed 2026-07-21.
 
 ---
