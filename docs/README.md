@@ -1,6 +1,6 @@
 # Trung tâm tài liệu ptcrm
 
-> **Last reviewed:** 2026-07-20  
+> **Last reviewed:** 2026-09-02  
 > Đây là cổng vào duy nhất cho toàn bộ Markdown trong `docs/`. Mỗi nhóm có một index gần nhất; không tạo thêm file status song song khi đã có nguồn current.
 
 ## Bắt đầu từ đâu
@@ -58,9 +58,12 @@
 
 ### Kế hoạch, audit và hồ sơ lịch sử
 
-- [plans/README.md](plans/README.md) — kế hoạch đang hoạt động.
+- [plans/README.md](plans/README.md) — thư mục ĐÓNG BĂNG từ 02/09/2026 (index kèm trạng thái từng
+  plan). **Mọi plan mới đi `docs/superpowers/plans/`** (tên `YYYY-MM-DD-<slug>.md`); spec thiết kế đi
+  `docs/superpowers/specs/`; runbook đi `docs/superpowers/runbooks/`.
 - [prompts/README.md](prompts/README.md) — prompt nghiên cứu tái sử dụng, không phải spec.
-- [audits/README.md](audits/README.md) — audit snapshot 03/07 và 08/07.
+- [audits/README.md](audits/README.md) — index ĐẦY ĐỦ mọi audit snapshot (07/2026 → nay), kèm trạng
+  thái finding.
 - [refactor-2026-07/README.md](refactor-2026-07/README.md) — hồ sơ phase, risk register và bằng chứng refactor.
 
 > **Không có `docs/archive/`, và đó là quyết định chứ không phải thiếu sót.** Plan kiến trúc liệt kê
@@ -82,6 +85,41 @@
 | `redirect` | Biển chỉ đường từ URL tài liệu cũ | hai trang báo cáo công nợ đã chuyển |
 
 Code chạy, generated types, migration mới hơn và runtime production luôn thắng audit/spec cũ. Tài liệu historical phải có banner hoặc nằm trong nhóm evidence.
+
+### Quy ước banner vòng đời (chuẩn hoá 02/09/2026)
+
+Tài liệu plan/spec/status không còn phản ánh hiện tại phải mang đúng MỘT banner ngay dưới tiêu đề H1:
+
+```markdown
+> **[LỊCH SỬ — ĐÃ SHIP <ngày>]** Tài liệu hiện hành: `docs/he-thong/<file>.md`. Giữ làm bằng chứng, không cập nhật nữa.
+```
+
+```markdown
+> **[LỖI THỜI — BỊ THAY THẾ]** Thay bằng: `<đường dẫn file>`. Nội dung dưới đây có thể sai so với hiện tại.
+```
+
+```markdown
+> **[CÒN SỐNG — trạng thái <ngày>]** <phần nào xong, phần nào chưa, chờ gì>
+```
+
+Luật đọc: file có banner **LỊCH SỬ** hoặc **LỖI THỜI** không được coi là mô tả hiện tại — kể cả khi
+nội dung bên trong tự nhận là "hiện hành". Banner **CÒN SỐNG** phải nêu trạng thái theo ngày; quá
+90 ngày không cập nhật thì coi như nghi vấn, xác minh lại bằng code trước khi tin.
+
+## Dành cho AI agent
+
+Thứ tự đọc khi nhận việc trong repo này:
+
+1. **[engineering/PROJECT_CONTRACT.md](engineering/PROJECT_CONTRACT.md)** — luật, đọc trước mọi thứ.
+2. **`docs/he-thong/<chủ đề>`** — hành vi hiện tại của vùng sắp sửa.
+3. **Audit MỚI NHẤT của chủ đề** trong [audits/README.md](audits/README.md) — lỗi đã biết, finding
+   còn mở.
+4. **Plan CÒN SỐNG** (nếu đang làm dở) trong `docs/superpowers/plans/` — trạng thái từng phần.
+
+Cảnh báo: knowledge graph (`.ua/`, GitNexus) có thể cũ hơn tài liệu — Contract §12 xếp ưu tiên
+**contract manifest + SQL harness > GitNexus > UA**; graph nói ngược tài liệu hiện hành thì tin tài
+liệu và ghi lại chỗ lệch. Plan/spec có banner LỊCH SỬ/LỖI THỜI chỉ dùng làm bối cảnh, không dùng làm
+đặc tả để code.
 
 ## Quy tắc duy trì
 

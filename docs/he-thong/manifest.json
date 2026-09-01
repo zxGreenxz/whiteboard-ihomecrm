@@ -64,7 +64,7 @@
     {
       "file": "08-thu-chi-so-quy.md",
       "copilotIngest": true,
-      "reviewed": "2026-07-20",
+      "reviewed": "2026-09-02",
       "requiredPermission": {
         "module": "income_expenses",
         "action": "view"
@@ -129,7 +129,7 @@
     {
       "file": "18-zalo-chat.md",
       "copilotIngest": true,
-      "reviewed": "2026-08-31"
+      "reviewed": "2026-09-02"
     },
     {
       "file": "19-sop-tien-va-so-quy.md",

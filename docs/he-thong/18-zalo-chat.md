@@ -297,7 +297,7 @@ Route khai báo trong [App.tsx](src/App.tsx) với `RequirePermission module="ch
 - [Composer](src/components/chat-zalo/Composer.tsx): Enter để gửi (optimistic bubble + rollback nếu lỗi); [TemplatePicker](src/components/chat-zalo/TemplatePicker.tsx) chèn mẫu tin (chèn `title`). **4 nút emoji / gửi ảnh / đính kèm / ghi âm là trang trí — chưa có handler** (gửi media từ web chưa làm).
 
 **Cột 3 — Panel thông tin** ([InfoPanel](src/components/chat-zalo/InfoPanel.tsx)), 2 tab:
-- **Thông tin**: rẽ nhánh theo `profile.kind` — [TenantInfo](src/components/chat-zalo/TenantInfo.tsx) (phòng/HĐ/công nợ) / [LeadInfo](src/components/chat-zalo/LeadInfo.tsx) / [BrokerInfo](src/components/chat-zalo/BrokerInfo.tsx) đọc từ **snapshot jsonb `profile`**, KHÔNG join live sang customers/contracts; dữ liệu thật hiện luôn rơi vào [ZaloContactInfo](src/components/chat-zalo/ZaloContactInfo.tsx) (danh bạ/nhóm: thành viên, mô tả).
+- **Thông tin**: rẽ nhánh theo `profile.kind` — `TenantInfo` (phòng/HĐ/công nợ) / `LeadInfo` (cả hai là dead code — không được import, đã xóa khỏi repo 02/09/2026) / [BrokerInfo](src/components/chat-zalo/BrokerInfo.tsx) đọc từ **snapshot jsonb `profile`**, KHÔNG join live sang customers/contracts; dữ liệu thật hiện luôn rơi vào [ZaloContactInfo](src/components/chat-zalo/ZaloContactInfo.tsx) (danh bạ/nhóm: thành viên, mô tả).
 - **Tự động hoá** ([AutomationPanel](src/components/chat-zalo/AutomationPanel.tsx)): tóm tắt + 2 công tắc, mở màn cài đặt đầy đủ qua [AutomationSettingsDialog](src/components/chat-zalo/automation/AutomationSettingsDialog.tsx) (cột phải rộng ~330px, không dựng nổi bảng 7 ngày + danh sách người nhận + 5 ô chống spam).
 
   Bản trước của panel này là **UI giả**: "Mỗi giờ · 08–20h", "8 môi giới", "10:00 (52')", bốn từ khoá hằng số, "đã trả lời 24 tin" — không dòng nào đọc từ DB. Cái hại không phải là xấu mà là **nói dối đúng giọng thật**: người dùng bật công tắc, đọc "10:00 (52')" rồi đi làm việc khác, tin không bao giờ tới, và không ai nghi màn hình cả. Quy tắc của bản mới: **mỗi số trên màn phải có nguồn** — giờ gửi/người nhận/chế độ hôm nay/từ khoá/cooldown đọc từ `config`, "lần chạy cuối" đọc từ `zalo_automation_runs`; thiếu nguồn thì viết thẳng "Chưa cấu hình"/"Chưa chạy lần nào" chứ không lấp bằng mặc định cho đẹp.
@@ -319,7 +319,7 @@ Route khai báo trong [App.tsx](src/App.tsx) với `RequirePermission module="ch
 
 **Đi VÀO:**
 - ← **Sale Phòng / Phòng trống**: automation `broadcast_vacant` đọc phòng trống qua `zalo_phong_trong_cho_worker_v1` (cùng định nghĩa "trống" với trang chia sẻ công khai `/r/:token`) rồi vẽ đúng bảng Excel mà Sale vẫn gửi Zalo — dùng lại model bảng của [roomListTable.ts](src/pages/phong-trong/roomListTable.ts), port sang Node ở [worker/lib/room-list-table.js](worker/lib/room-list-table.js).
-- ← Các domain khác hiện **không đọc** bảng `zalo_*` nào (nút "Gửi Zalo" trên hoá đơn ([InvoiceSendActions](src/components/invoices/InvoiceSendActions.tsx)), trang khách hàng… hiện mở deep-link/copy nội dung, không đi qua module chat).
+- ← Các domain khác hiện **không đọc** bảng `zalo_*` nào (nút "Gửi Zalo" trên hoá đơn (`InvoiceSendActions` — dead code, đã xóa 02/09/2026), trang khách hàng… hiện mở deep-link/copy nội dung, không đi qua module chat).
 
 **Ranh giới hạ tầng:** worker là tiến trình ngoài Vercel giữ service-role key, poll queue mỗi 2 giây và có thể bypass RLS. Cookie phiên Zalo nằm trong JSON plaintext ở `worker/sessions/`; giới hạn quyền file/backup/log, dùng tài khoản phụ và xoay phiên nếu lộ. Xem [runbook Zalo](../zalo/README.md).
 
