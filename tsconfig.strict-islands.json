@@ -14,6 +14,8 @@
     "noImplicitOverride": true,
     "noEmit": true
   },
+  "$comment2": "`include` phải RỖNG TƯỜNG MINH: extends kéo include:[\"src\"] từ tsconfig.app.json xuống, và `files` KHÔNG ghi đè `include` (chỉ khoá cùng tên mới đè). Thiếu dòng này thì tsc đo toàn bộ src/ thay vì danh sách đảo — tầng 2 (NUIA) đã vỡ đúng kiểu này 31/08/2026 với 1101 lỗi ma.",
+  "include": [],
   "files": [
     "src/app/capabilities/__tests__/capabilityContract.test.ts",
     "src/app/capabilities/__tests__/capabilityContractDisabled.test.ts",

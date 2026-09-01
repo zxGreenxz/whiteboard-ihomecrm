@@ -170,6 +170,22 @@
       "tu": "20260830163815_zalo_tu_dong_hoa_broadcast_va_auto_reply.sql",
       "thongDiep": "relation \"public.zalo_automation_runs\" does not exist",
       "why": "File nay ALTER bang zalo_automation_runs (them mode stopped) va tao RPC dung khan cap tren do. Bang ay do 20260830163815 tao, ma file do da cascade-dung vi helper quyen v3 cua 20260813100000 chua ra doi tren ban dung lai — day la mat xich thu ba cua cung mot day chuyen. Chet theo, khong phai loi doc lap: tren production ca ba da apply sach (bien nhan ce4b201a92a8cc19 ngay 31/08), va nut da duoc kiem chung bang dry-run dong vai nguoi dung that."
+    },
+    "20260829070000_restore_demo_organization_metadata.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "canonical DEMO organization identity is missing",
+      "why": "Data-fix một-lần: đặt lại is_demo cho org DEMO dddd0000-…-0001, mở đầu bằng khẳng định org đó tồn tại đúng slug/name/status (dòng 10-18). Baseline schema-only có 0 organizations nên khẳng định dừng — đúng việc của chốt đo. Trên production org DEMO có thật và file đã apply sạch 29/08. Cuộn lại không mất object: file chỉ UPDATE, không CREATE gì. Đọc từ log drill thật run 33424301408 (cột ⚠ ngoài diff)."
+    },
+    "20260831162000_update_period_fee_cas_va_don_pay_period_fee.sql": {
+      "kyVong": "cascade",
+      "tu": "supabase/baseline/platform-shim.sql (ALTER DEFAULT PRIVILEGES grant anon) + manifest chụp --no-acl",
+      "thongDiep": "anon chạy được pay_period_fee — ACL trôi",
+      "why": "Selfcheck của file đòi anon KHÔNG chạy được pay_period_fee/get_period_fee_status — hai hàm nó chỉ CREATE OR REPLACE (giữ nguyên ACL sẵn có) chứ không đặt ACL. Trên production ACL đã đúng từ 20260731011000/20260710120100 nên file apply sạch 31/08 (3 migration audit /thanh-toan). Trên bản dựng lại thì baseline chụp --no-acl và platform-shim đặt default privileges GRANT ALL ON FUNCTIONS TO anon, nên hai hàm (ra đời trước cutoff, từ baseline) mang EXECUTE cho anon và selfcheck dừng đúng chỗ đó — artifact của môi trường diễn tập, không phải lỗ ACL thật. 20260901173728 đặt lại ACL tường minh nên các file SAU nó trong timeline không dính nữa; entry này vẫn cần vì 162000 đứng TRƯỚC 173728. Đọc từ log drill thật run 33424301408."
+    },
+    "20260831160000_chu_cong_ty_vao_vai_tenant_owner.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "vai TENANT_OWNER ACTIVE (kỳ vọng 1)",
+      "why": "Data-fix một-lần (audit /thanh-toan 31/08): gắn role_binding vai 'Chủ sở hữu tổ chức' cho user 0520169e-… của org aaaa0000-…-0001, mở đầu bằng chốt đo 'đúng 1 vai TENANT_OWNER ACTIVE' (dòng 49-52). Baseline schema-only có 0 organization_roles nên chốt đo dừng — chạy sạch trên DB rỗng mới là tin xấu. Trên production đã apply sạch 31/08 qua migrate:forward và đo được is_org_owner_v1=TRUE. Cuộn lại không mất object: file chỉ INSERT role_bindings. Đọc từ log drill thật run 33424301408."
     }
   }
 }

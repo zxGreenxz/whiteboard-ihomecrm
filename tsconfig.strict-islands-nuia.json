@@ -2,10 +2,12 @@
   "$comment": "ĐẢO TẦNG 2 — `strict` đầy đủ CỘNG `noUncheckedIndexedAccess`. Cửa chặn chung với tầng 1: npm run gate:strict-islands (nó lặp qua bảng DAO trong scripts/check-strict-islands.mjs). Ratchet một chiều riêng, baseline riêng: tooling/strict-islands-nuia-baseline.json.",
   "$comment2": "VÌ SAO TÁCH TẦNG chứ không nhét cờ này vào tầng 1: đo 12/08/2026 trên đúng 1025 file của tầng 1 thì noUncheckedIndexedAccess thêm 953 lỗi trên 185 file — đắt hơn hẳn toàn bộ phần còn lại của strict. Gộp lại là ép chọn giữa \"khoá 1025 file ở mức thấp\" và \"khoá vài trăm file ở mức cao\"; hai tầng cho cả hai.",
   "$comment3": "CÁCH DỰNG DANH SÁCH (giống tầng 1, và lý do thì giống hệt): tsc báo lỗi cho MỌI file trong program kể cả file chỉ bị IMPORT vào, nên bỏ file lỗi khỏi include KHÔNG làm đảo xanh. Danh sách = include của tầng 1 GIAO với (toàn bộ src/ trừ bao đóng-ngược của 185 file còn lỗi — chúng + mọi file import tới chúng, bắc cầu = 562 file). Bất biến tầng-con-⊆-tầng-cha do chính gate cưỡng chế.",
+  "$comment4": "`include` phải RỖNG TƯỜNG MINH: chuỗi extends kéo include:[\"src\"] từ tsconfig.app.json xuống, và `files` KHÔNG ghi đè `include` (chỉ khoá cùng tên mới đè nhau). Thiếu dòng này thì root set = files ∪ src/ = toàn repo → NUIA áp cho 1297 file thay vì danh sách dưới đây (đã xảy ra 31/08/2026: 1101 lỗi ma làm đỏ CI 2 ngày). Gate check-strict-islands.mjs cũng tự khẳng định root set, nhưng dòng này là hàng rào thứ nhất.",
   "extends": "./tsconfig.strict-islands.json",
   "compilerOptions": {
     "noUncheckedIndexedAccess": true
   },
+  "include": [],
   "files": [
     "src/app/capabilities/__tests__/riskMapCoverage.test.ts",
     "src/app/capabilities/registry.ts",

@@ -325,7 +325,28 @@ export const useUtilityPayments = (billingMonth: string) => {
       // `deleted_at IS NULL` (đã đo 30/07: 5 phiếu utility.bill dạng này) nên
       // filter deleted_at KHÔNG loại được chúng.
       // fetchAllRows: vá cap-1000 (P2-03, audit 31/08) — order kèm tiebreaker id.
-      const data = await fetchAllRows<any>(
+      type UtilityPaymentItem = {
+        income_expense_type_id: string;
+        amount: number | string | null;
+        start_date: string | null;
+        end_date: string | null;
+      };
+      const data = await fetchAllRows<{
+        id: string;
+        building_id: string | null;
+        total_amount: number | string | null;
+        voucher_date: string | null;
+        created_at: string | null;
+        creator_name: string | null;
+        attachments: unknown;
+        utility_account_id: string | null;
+        approval_status: string;
+        building: { name: string } | null;
+        book: { name: string } | null;
+        meter: { provider_code: string | null; utility_type: string | null } | null;
+        // PostgREST trả mảng cho quan hệ 1-n, nhưng dòng dưới vẫn phòng dạng đơn.
+        it: UtilityPaymentItem[] | UtilityPaymentItem | null;
+      }>(
         (from, to) => supabase
           .from('income_expenses')
           .select(`
@@ -350,7 +371,7 @@ export const useUtilityPayments = (billingMonth: string) => {
       if (data === null) throw new Error('Không tải được danh sách phiếu điện nước — thử lại.');
 
       const out: UtilityPaymentRow[] = [];
-      for (const v of data as any[]) {
+      for (const v of data) {
         const items = Array.isArray(v.it) ? v.it : v.it ? [v.it] : [];
         // attachments = jsonb array URL/path (chuẩn hoá string; bỏ phần tử lạ).
         const atts: string[] = (Array.isArray(v.attachments) ? v.attachments : [])
@@ -370,7 +391,8 @@ export const useUtilityPayments = (billingMonth: string) => {
             // nhóm "chưa gắn công tơ" (hiện được, không giấu) thay vì cộng nhầm
             // tiền nước vào thẻ đồng hồ điện.
             account_id: meterType === null || meterType === part.type ? (v.utility_account_id ?? null) : null,
-            building_id: v.building_id,
+            // building_id trên DB nullable; UI nhóm theo chuỗi nên phiếu mồ côi toà về ''.
+            building_id: v.building_id ?? '',
             building_name: v.building?.name ?? '—',
             type: part.type,
             code: meterType === null || meterType === part.type ? (v.meter?.provider_code ?? '') : '',
@@ -523,7 +545,16 @@ export const useUtilityChart = (
         // bị đếm ĐÔI (cả hai nhánh cùng phồng nguyên tổng phiếu), và phiếu nhiều
         // dòng cùng loại trải nhiều tháng bị cộng lặp theo số dòng.
         // fetchAllRows: vá cap-1000 (P2-03) — span nhiều tháng dễ chạm trần nhất.
-        const data = await fetchAllRows<any>(
+        type UtilityChartItem = {
+          income_expense_type_id: string;
+          amount: number | string | null;
+          start_date: string | null;
+        };
+        const data = await fetchAllRows<{
+          id: string;
+          total_amount: number | string | null;
+          it: UtilityChartItem[] | UtilityChartItem | null;
+        }>(
           (from, to) => {
             let q = supabase
               .from('income_expenses')
@@ -540,7 +571,7 @@ export const useUtilityChart = (
           { label: 'utility-chart' },
         );
         if (data === null) throw new Error('Không tải được dữ liệu biểu đồ điện nước — thử lại.');
-        for (const v of data as any[]) {
+        for (const v of data) {
           const items = Array.isArray(v.it) ? v.it : v.it ? [v.it] : [];
           // Suy biến dữ liệu cổ (item chưa mang amount): chia lại theo splitUtilityAmounts
           // sẽ ra 0 — khi đó rơi về total_amount cho ĐÚNG MỘT dòng đầu tiên khớp loại,

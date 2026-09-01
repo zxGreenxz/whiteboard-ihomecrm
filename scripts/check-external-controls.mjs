@@ -345,6 +345,12 @@ export function locPhanOnDinh(report) {
   // `note` là văn xuôi sinh kèm số liệu deployment nên nó cũng trôi; phần kết luận
   // đã nằm ở `status`, vốn được giữ lại.
   if (c.controls) for (const k of Object.keys(c.controls)) delete c.controls[k].note;
+  // `localHead` là NGỮ CẢNH phép đo (commit mà runner đang checkout), không phải
+  // control ngoài repo — nó đổi theo TỪNG commit trên main, giữ lại thì
+  // --so-ban-commit đỏ lại ngay ở push kế tiếp dù không ai bấm gì (đã dính:
+  // snapshot ghim head 7a9f6e50 cũ, góp mặt trong 56 dòng lệch 01/09). Sự tồn
+  // tại của nhánh production đã có control `productionBranchExists` riêng lo.
+  delete c.localHead;
   return c;
 }
 

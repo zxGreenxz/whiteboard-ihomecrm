@@ -141,7 +141,19 @@ export const useSaleBonusVouchers = (period: string, enabled = true) =>
       const { from, to } = monthRange(period);
       // 31/08 (audit P2-02): cùng khuôn fetchAllRows như hàng đợi thanh lý (F8)
       // — vượt 1.000 phiếu/kỳ thì sổ không được im lặng thiếu dòng.
-      const data = await fetchAllRows<any>(
+      const data = await fetchAllRows<{
+        id: string;
+        code: string | null;
+        total_amount: number | string | null;
+        voucher_date: string | null;
+        approval_status: string;
+        posting_status: string | null;
+        notes: string | null;
+        contract_id: string | null;
+        buildings: { name: string } | null;
+        rooms: { name: string } | null;
+        contracts: { contract_number: string } | null;
+      }>(
         (f, t) => supabase
           .from('income_expenses')
           .select(`
@@ -162,7 +174,7 @@ export const useSaleBonusVouchers = (period: string, enabled = true) =>
         { label: 'thanh-toan.saleBonus' },
       );
       if (data === null) throw new Error('Lỗi tải sổ thưởng Sale — thử lại.');
-      return (data as any[]).map((r) => ({
+      return data.map((r) => ({
         id: r.id,
         code: r.code ?? null,
         amount: Number(r.total_amount) || 0,
@@ -202,7 +214,19 @@ export const useDepositLedger = (period: string, enabled = true) =>
       const { from, to } = monthRange(period);
       // `!inner` để chỉ lấy phiếu CÓ dòng cọc; phiếu thu thường không dính vào.
       // 31/08 (audit P2-02): fetchAllRows vá cap-1000, cùng khuôn F8.
-      const data = await fetchAllRows<any>(
+      const data = await fetchAllRows<{
+        id: string;
+        code: string | null;
+        total_amount: number | string | null;
+        voucher_date: string | null;
+        approval_status: string;
+        posting_status: string | null;
+        buildings: { name: string } | null;
+        rooms: { name: string } | null;
+        contracts: { contract_number: string } | null;
+        accounts: { name: string } | null;
+        income_expense_items: { accounting_class: string }[];
+      }>(
         (f, t) => supabase
           .from('income_expenses')
           .select(`
@@ -227,7 +251,7 @@ export const useDepositLedger = (period: string, enabled = true) =>
       if (data === null) throw new Error('Lỗi tải sổ cọc đã thu — thử lại.');
       // !inner nhân bản phiếu theo số dòng cọc — gộp lại theo id.
       const seen = new Map<string, DepositLedgerRow>();
-      for (const r of data as any[]) {
+      for (const r of data) {
         if (seen.has(r.id)) continue;
         seen.set(r.id, {
           id: r.id,

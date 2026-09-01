@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-31T18:10:08.950Z",
+  "generatedAt": "2026-09-01T17:48:44.599Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 446,
+    "ledger-applied": 448,
     "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
@@ -8758,6 +8758,28 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-08-31T17:31:40.177Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260901173727_va_organization_id_null_luong_va_template.sql",
+      "version": "20260901173727",
+      "name": "va_organization_id_null_luong_va_template",
+      "scheme": "timestamp14",
+      "sha256": "38745839b202ed53d4e35f8655f48a3935f532ffed0309da7f1785596ed49441",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-01T17:45:02.907Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260901173728_dong_acl_period_fee_tren_ban_dung_lai.sql",
+      "version": "20260901173728",
+      "name": "dong_acl_period_fee_tren_ban_dung_lai",
+      "scheme": "timestamp14",
+      "sha256": "7449080a106aa08ac898617002c7d882096c217567d95392bcfada34314cafd0",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-01T17:47:47.323Z|bien-nhan-backup"
       ]
     },
     {

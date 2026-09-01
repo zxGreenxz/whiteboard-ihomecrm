@@ -79,7 +79,7 @@ describe('Copilot income/expense write RPC hardening', () => {
 
   it('validates nonce encoding and pins the exact tool and permission', () => {
     const body = executeBody(migration);
-    const formatCheck = body.search(/p_confirmation_nonce\s*!~\s*['\"][\^]?\[0-9a-fA-F\]/i);
+    const formatCheck = body.search(/p_confirmation_nonce\s*!~\s*['"][\^]?\[0-9a-fA-F\]/i);
     const decode = body.indexOf("decode(p_confirmation_nonce, 'hex')");
     expect(formatCheck).toBeGreaterThan(0);
     expect(formatCheck).toBeLessThan(decode);

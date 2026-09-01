@@ -192,12 +192,38 @@ function kiemMotDao(caiDao, viet) {
     timeout: 5 * 60 * 1000,
   });
   let hopNhat;
+  let banHopNhat;
   try {
-    hopNhat = JSON.parse(cfg.stdout).compilerOptions ?? {};
+    banHopNhat = JSON.parse(cfg.stdout);
+    hopNhat = banHopNhat.compilerOptions ?? {};
   } catch {
     console.error("❌ Không đọc được cấu hình hợp nhất từ `tsc --showConfig`.");
     console.error((cfg.stderr || cfg.stdout || "").slice(0, 600));
     process.exit(3);
+  }
+
+  // ---- Root set của tsc phải LÀ danh sách đảo ----
+  // `files` của con KHÔNG ghi đè `include` của cha (extends chỉ đè khoá CÙNG TÊN).
+  // 31/08/2026: hai tsconfig đảo đổi include→files, include:["src"] của
+  // tsconfig.app.json sống lại, tsc lặng lẽ đo 1297 file thay vì 603 — tầng NUIA
+  // đỏ 1101 lỗi mà 0 lỗi nào thuộc vùng khoá. Mọi kết quả đo trên root set sai
+  // đều vô nghĩa (kể cả ratchet --write), nên khẳng định TRƯỚC khi đo.
+  const chuanHoa = (p) => p.replace(/\\/g, "/").replace(/^\.\//, "");
+  const includeHopNhat = Array.isArray(banHopNhat.include) ? banHopNhat.include : [];
+  if (includeHopNhat.length > 0) {
+    console.error(`❌ Cấu hình hợp nhất còn include=${JSON.stringify(includeHopNhat)} — vùng khoá không còn là vùng khoá.`);
+    console.error(`   Thêm "include": [] vào ${TSCONFIG} để chặn include kế thừa qua extends.`);
+    process.exit(1);
+  }
+  const rootSet = new Set((Array.isArray(banHopNhat.files) ? banHopNhat.files : []).map(chuanHoa));
+  const khai = new Set(include.map(chuanHoa));
+  const thua = [...rootSet].filter((p) => !khai.has(p));
+  const thieu = [...khai].filter((p) => !rootSet.has(p));
+  if (thua.length > 0 || thieu.length > 0) {
+    console.error(`❌ tsc đang đo ${rootSet.size} file nhưng danh sách đảo khai ${khai.size} — vùng khoá không còn là vùng khoá.`);
+    for (const p of thua.slice(0, 10)) console.error(`   + ngoài danh sách: ${p}`);
+    for (const p of thieu.slice(0, 10)) console.error(`   - khai mà không đo: ${p}`);
+    process.exit(1);
   }
   // ---- Đảo con phải nằm gọn trong đảo cha ----
   if (caiDao.conCua) {

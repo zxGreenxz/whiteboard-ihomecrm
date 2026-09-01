@@ -97,8 +97,15 @@ jobs:
       # đổi mỗi lần phát hành. Nếu tính cả hai thì job đỏ thường trực, và một job
       # đỏ thường trực là job người ta ngừng đọc — lúc đó control có bị tắt thật
       # cũng không ai thấy.
+      # env PHẢI có mặt Ở CẢ BƯỚC NÀY: bước so sánh cũng ĐO LẠI từ đầu. Thiếu
+      # token thì nó đo ra "unverified" cho mọi control rồi so với snapshot đã
+      # đo CÓ token → lệch ~56 dòng ở MỌI lượt cron (đỏ hệ thống 01/09/2026,
+      # dễ đọc nhầm thành "ai đó bấm dashboard").
       - name: Kiểm soát ngoài repo có đổi so với bản đã commit không
         if: always()
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/check-external-controls.mjs --so-ban-commit
 
       # Hạn của known-gaps thuộc đúng loại control ở workflow này: KHÔNG commit nào

@@ -228,7 +228,10 @@ describe('dongHomNay — mô hình không có đồng hồ', () => {
   // không có gì đỏ và người đọc không có cách nào biết.
   it('nêu ngày theo GIỜ LOCAL, không lệch sang UTC', () => {
     // 01/01/2026 lúc 00:30 giờ VN — `toISOString()` sẽ cho 2025-12-31.
-    const d = new Date(2026, 0, 1, 0, 30);
+    // Mốc phải là UTC tất định: `new Date(2026,0,1,0,30)` là 00:30 giờ MÁY,
+    // ở TZ=Pacific/Kiritimati (UTC+14) nó rơi về 31/12 giờ VN và test đỏ oan
+    // (timezone-gate 31/08). Cùng bài học với ngayLocalKhongUTC.test.ts.
+    const d = new Date('2025-12-31T17:30:00Z');
     const s = dongHomNay(d);
     expect(s).toContain('01/01/2026');
     expect(s).toContain('2026-01');
