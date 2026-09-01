@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-09-01T17:47:44.148Z",
+  "checkedAt": "2026-09-01T17:57:10.810Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubBranchProtection": {
-      "status": "absent",
-      "note": "Nhánh không có branch protection. Repo private trên GitHub Free không dùng được tính năng này — lớp chặn phải nằm ở Vercel (xem kiểm soát vercel-production-branch)."
+      "status": "unverified",
+      "note": "Không có GH_TOKEN/GITHUB_TOKEN và `gh` chưa đăng nhập."
     },
     "vercelProductionBranch": {
       "status": "checked",
@@ -60,7 +60,7 @@
     }
   },
   "localHead": {
-    "head": "a1981d37049ccbc56c3419648397dd8e16069656",
+    "head": "1f18fd81414d5f2153d1e40ee9f08825f41f12f4",
     "branch": "main",
     "hasProductionBranch": true
   }
