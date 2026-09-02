@@ -21,9 +21,9 @@
 | Mức | Tổng | ĐÃ VÁ | CÒN MỞ | KHÔNG CÒN ÁP DỤNG | CHƯA XÁC MINH ĐƯỢC |
 |---|---:|---:|---:|---:|---:|
 | **P1** | 14 | 2 (+9 vá tối 02/09 → **11**) | **3** | 0 | 0 |
-| **P2** | 26 | 1 (+1 vá tối 02/09 → **2**) | **24** | 0 | 0 |
+| **P2** | 26 | 1 (+7 vá tối 02/09 → **8**) | **18** | 0 | 0 |
 | **P3** | 9 | 1 | **8** | 0 | 0 |
-| **Tổng** | **49** | **4 → 13** | **45 → 36** | **0** | **0** |
+| **Tổng** | **49** | **4 → 20** | **45 → 29** | **0** | **0** |
 
 4 finding ĐÃ VÁ tại thời điểm re-anchor: `PZALO-C02` (P1), `FR009-C03` (P1), `FR020-C03` (P2), `FR006-C01` (P3).
 
@@ -219,32 +219,32 @@
 
 ### PANALYTICS-C01 (summary) (P2) — Summary RPC bỏ `view_analytics`
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902090518`: gate `app_private.pra_can_view_analytics_v1` (chủ dữ liệu · super admin · có `sale_phong.view_analytics` trong org của chủ), bỏ `is_admin()`. Dùng `authorized_scope_v3` (STABLE, không khoá) để 7 hàm giữ `STABLE` — tránh 25006. Đo prod: 7/7 hàm có gate mới, 0 hàm còn owner heuristic; chủ công ty vẫn xem được. _(sáng ghi: CÒN MỞ)_
 **Bằng chứng:** Bản **mới nhất** là `supabase/migrations/20260831023938_pra_errors_v2_nhom_loi.sql:268` `CREATE OR REPLACE FUNCTION public.pra_summary(...)`, `:295` `LANGUAGE sql STABLE SECURITY DEFINER`, gate ở `:321-322` `e.owner_id = ANY (public.current_visible_owner_ids()) OR public.is_super_admin() OR public.is_admin()`. Vẫn là **owner heuristic**, không phải `authorize_tenant_action_v3(..., 'sale_phong.view_analytics', ...)`; không `lock_org_for_decision_v1`; vẫn `STABLE` (plan đòi `VOLATILE` để khoá org được). Key `sale_phong.view_analytics` tồn tại trong catalog (`20260713110100_sprint2b_seed_permission_definitions.sql:37`) nhưng **không hàm pra_ nào dùng** (grep `view_analytics` trong `supabase/migrations/*.sql` chỉ ra đúng 1 hit — chính dòng seed).
 
 ### PANALYTICS-C01 (time-series) (P2) — Time-series RPC bỏ `view_analytics`
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902090518`: gate `app_private.pra_can_view_analytics_v1` (chủ dữ liệu · super admin · có `sale_phong.view_analytics` trong org của chủ), bỏ `is_admin()`. Dùng `authorized_scope_v3` (STABLE, không khoá) để 7 hàm giữ `STABLE` — tránh 25006. Đo prod: 7/7 hàm có gate mới, 0 hàm còn owner heuristic; chủ công ty vẫn xem được. _(sáng ghi: CÒN MỞ)_
 **Bằng chứng:** `supabase/migrations/20260621100100_public_room_analytics_reports.sql:85` `pra_timeseries`, `:100` `STABLE SECURITY DEFINER`, gate `:111-112` cùng owner heuristic. Không được định nghĩa lại ở migration 31/08 ⇒ đây là bản hiệu lực.
 
 ### PANALYTICS-C01 (top rooms) (P2) — Top-rooms RPC bỏ `view_analytics`
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902090518`: gate `app_private.pra_can_view_analytics_v1` (chủ dữ liệu · super admin · có `sale_phong.view_analytics` trong org của chủ), bỏ `is_admin()`. Dùng `authorized_scope_v3` (STABLE, không khoá) để 7 hàm giữ `STABLE` — tránh 25006. Đo prod: 7/7 hàm có gate mới, 0 hàm còn owner heuristic; chủ công ty vẫn xem được. _(sáng ghi: CÒN MỞ)_
 **Bằng chứng:** `supabase/migrations/20260621100100_public_room_analytics_reports.sql:133` `pra_top_rooms`, `:152` `STABLE SECURITY DEFINER`, gate `:162-163` owner heuristic. Không có bản mới hơn.
 
 ### PANALYTICS-C01 (funnel) (P2) — Funnel RPC bỏ `view_analytics`
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902090518`: gate `app_private.pra_can_view_analytics_v1` (chủ dữ liệu · super admin · có `sale_phong.view_analytics` trong org của chủ), bỏ `is_admin()`. Dùng `authorized_scope_v3` (STABLE, không khoá) để 7 hàm giữ `STABLE` — tránh 25006. Đo prod: 7/7 hàm có gate mới, 0 hàm còn owner heuristic; chủ công ty vẫn xem được. _(sáng ghi: CÒN MỞ)_
 **Bằng chứng:** `supabase/migrations/20260621100100_public_room_analytics_reports.sql:186` `pra_funnel`, `:199` `STABLE SECURITY DEFINER`, gate `:207-208` owner heuristic. Không có bản mới hơn.
 
 ### PANALYTICS-C01 (token) (P2) — Token analytics RPC bỏ `view_analytics`
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902090518`: gate `app_private.pra_can_view_analytics_v1` (chủ dữ liệu · super admin · có `sale_phong.view_analytics` trong org của chủ), bỏ `is_admin()`. Dùng `authorized_scope_v3` (STABLE, không khoá) để 7 hàm giữ `STABLE` — tránh 25006. Đo prod: 7/7 hàm có gate mới, 0 hàm còn owner heuristic; chủ công ty vẫn xem được. _(sáng ghi: CÒN MỞ)_
 **Bằng chứng:** Bản mới nhất `supabase/migrations/20260831023938_pra_errors_v2_nhom_loi.sql:378` `pra_by_token`, `:396` `STABLE SECURITY DEFINER`, gate `:419-420` owner heuristic. Migration 31/08 có `REVOKE … FROM PUBLIC, anon` (`:455`) — siết ACL, **không** thêm kiểm quyền nghiệp vụ.
 
 ### PANALYTICS-C01 (errors) (P2) — Error analytics RPC bỏ `view_analytics`
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902090518` (gồm cả hàm mới `pra_error_groups` phát sinh sau scan): gate `app_private.pra_can_view_analytics_v1` (chủ dữ liệu · super admin · có `sale_phong.view_analytics` trong org của chủ), bỏ `is_admin()`. Dùng `authorized_scope_v3` (STABLE, không khoá) để 7 hàm giữ `STABLE` — tránh 25006. Đo prod: 7/7 hàm có gate mới, 0 hàm còn owner heuristic; chủ công ty vẫn xem được. _(sáng ghi: CÒN MỞ)_
 **Bằng chứng:** Bản mới nhất `supabase/migrations/20260831023938_pra_errors_v2_nhom_loi.sql:46` `pra_errors`, `:73` `STABLE SECURITY DEFINER`, gate `:102-103` owner heuristic. Cùng file còn thêm hàm **mới** `pra_error_groups` (`:156`, `:181` STABLE, gate `:207-208`) mang y nguyên khuyết tật ⇒ bề mặt finding **rộng thêm một hàm** so với bản scan 12/08.
 
 ### PANALYTICS-C02 (P2) — Anonymous analytics logger tăng trưởng không giới hạn
