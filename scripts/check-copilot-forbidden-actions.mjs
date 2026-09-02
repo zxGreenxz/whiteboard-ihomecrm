@@ -169,6 +169,18 @@ export function validateCopilotActionInventory(tools) {
     // When that table lands, this branch gains one condition (a step-up-consented
     // declaration is allowed) and `forbidden`/`l6Forever` keep failing outright.
     // Until then the policy verdict is documentation, not a weaker gate.
+    // Lời khai lệch với bộ dò là một problem RIÊNG, không phải chuyện nội bộ của
+    // parser. Nó nói lên một trong hai điều, và cả hai đều cần người đọc: hoặc
+    // tool thật sự làm việc bị cấm mà tự khai là nháp, hoặc bộ dò báo động giả và
+    // ACTION_PATTERNS cần sửa. Nuốt im lặng bên nào cũng sai.
+    if (tool.declaredKind !== undefined) {
+      const khai = normalizeKind(tool.declaredKind);
+      if (khai !== kind) {
+        problems.push(
+          `${name}: khai executionKind "${tool.declaredKind}" nhung bo do thay "${kind}" trong than execute — loi khai khong duoc phep de len bo do`,
+        );
+      }
+    }
     if (FORBIDDEN_COPILOT_ACTIONS.includes(kind)) {
       problems.push(`${name}: forbidden executable action "${kind}" (policy: ${ACTION_POLICY.kinds[kind]})`);
     }
@@ -198,19 +210,44 @@ export function inventoryFromCopilotSource(sourceByFile) {
       const block = source.slice(start, end);
       const executeIndex = block.indexOf('execute:');
       const executable = executeIndex >= 0 ? block.slice(executeIndex) : '';
-      let executionKind = 'guidance';
-      const explicit = block.match(/\bexecutionKind\s*:\s*['"]([^'"]+)['"]/iu);
-      if (explicit) executionKind = explicit[1];
-      else {
-        for (const action of FORBIDDEN_COPILOT_ACTIONS) {
-          if (ACTION_PATTERNS[action].test(executable)) {
-            executionKind = action;
-            break;
-          }
+      // THỨ TỰ QUYẾT ĐỊNH — bộ dò THẮNG, chú thích chỉ là gợi ý.
+      //
+      // Bản trước (đo 02/09/2026) có hai đường vòng, và cả hai đều mở bằng cách
+      // THÊM chữ chứ không phải xoá gì:
+      //   (1) heuristic nháp chạy SAU vòng lặp cấm rồi GHI ĐÈ nó. Một tool
+      //       `execute: async () => approve_income_expense_v1({ nonce })` bị chấm
+      //       'approval' đúng một dòng, rồi chữ `nonce` kéo nó về 'draft' và gate
+      //       XANH. Chữ "nonce" ở đây thậm chí là thật — nó vẫn là một lời gọi
+      //       DUYỆT có thật.
+      //   (2) `executionKind: 'draft'` khai tường minh thì nhảy qua cả vòng lặp
+      //       cấm. Tức là tự khai mình vô hại là đủ để không bị soi — đúng thứ
+      //       một cửa như thế này sinh ra để không tin.
+      //
+      // Nay: dò trước. Dò thấy hành động cấm thì đó là kết luận, bất kể chú thích
+      // nói gì; chú thích lệch được GIỮ LẠI (`declaredKind`) để validator báo
+      // thành một problem riêng — lệch giữa lời khai và mã là tín hiệu cần người
+      // đọc, không phải thứ nuốt im lặng.
+      let daDo = null;
+      for (const action of FORBIDDEN_COPILOT_ACTIONS) {
+        if (ACTION_PATTERNS[action].test(executable)) {
+          daDo = action;
+          break;
         }
-        if (/\b(?:preview|draft|nonce|confirmation)\b/iu.test(executable)) executionKind = 'draft';
       }
-      tools.push({ name: matches[index][1], file, executionKind });
+      const explicit = block.match(/\bexecutionKind\s*:\s*['"]([^'"]+)['"]/iu);
+      const khai = explicit ? explicit[1] : null;
+
+      let executionKind;
+      if (daDo) executionKind = daDo;
+      else if (khai) executionKind = khai;
+      // Heuristic nháp chỉ chạy khi KHÔNG dò ra gì và cũng KHÔNG ai khai: nó là
+      // phỏng đoán cuối cùng, không phải quyền phủ quyết.
+      else if (/\b(?:preview|draft|nonce|confirmation)\b/iu.test(executable)) executionKind = 'draft';
+      else executionKind = 'guidance';
+
+      const tool = { name: matches[index][1], file, executionKind };
+      if (daDo && khai && normalizeKind(khai) !== daDo) tool.declaredKind = khai;
+      tools.push(tool);
     }
   }
   return tools;

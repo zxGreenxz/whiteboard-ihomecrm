@@ -209,6 +209,70 @@ test('quét đệ quy .ts dưới các thư mục tool, bỏ __tests__, không c
   );
 });
 
+// ── Đường vòng của chính bộ dò ──────────────────────────────────────────────
+// Đo 02/09/2026: hai cách qua cửa mà KHÔNG phải xoá dòng nào khỏi policy — chỉ
+// cần THÊM chữ vào mã. Cả hai đều là "nới gate bằng cách viết thêm", nên không
+// có mutation test nào ở tầng policy bắt được.
+
+test('đột biến: chữ "nonce" trong thân execute KHÔNG cứu nổi một lời gọi duyệt', () => {
+  // Bản trước chấm 'approval' đúng một dòng rồi heuristic nháp ghi đè thành
+  // 'draft' — mà chữ `nonce` ở đây là THẬT, nó vẫn là một lời gọi duyệt thật.
+  const tools = inventoryFromCopilotSource({
+    'src/copilot/tools/registry.ts':
+      "dt({ name: 'chot_phieu', execute: async () => approve_income_expense_v1({ nonce }) });",
+  });
+  assert.deepEqual(tools.map((tool) => [tool.name, tool.executionKind]), [['chot_phieu', 'approval']]);
+  assert.match(
+    validateCopilotActionInventory(tools).join('\n'),
+    /forbidden executable action "approval"/,
+  );
+});
+
+test('đột biến: khai executionKind "draft" KHÔNG che nổi `.delete(` trong thân execute', () => {
+  // Bản trước: có chú thích tường minh là nhảy qua CẢ vòng lặp cấm. Tự khai mình
+  // vô hại mà được miễn soi thì cửa này không còn là cửa.
+  const tools = inventoryFromCopilotSource({
+    'src/copilot/tools/registry.ts': [
+      "dt({ name: 'don_dep', executionKind: 'draft',",
+      "  execute: async () => supabase.from('hop_dong').delete().eq('id', id) });",
+    ].join('\n'),
+  });
+  assert.deepEqual(tools.map((tool) => tool.executionKind), ['delete']);
+  assert.equal(tools[0].declaredKind, 'draft', 'lời khai lệch phải được GIỮ để báo ra, không nuốt');
+
+  const problems = validateCopilotActionInventory(tools).join('\n');
+  assert.match(problems, /khai executionKind "draft" nhung bo do thay "delete"/);
+  assert.match(problems, /forbidden executable action "delete"/);
+});
+
+test('lời khai KHỚP bộ dò thì không đẻ thêm problem lệch', () => {
+  // Chỉ báo khi LỆCH. Một tool khai đúng thứ nó làm vẫn chỉ có một problem (bị
+  // cấm), không phải hai — nếu không, thông báo sẽ nhiễu và người ta ngừng đọc.
+  const tools = inventoryFromCopilotSource({
+    'src/copilot/tools/registry.ts':
+      "dt({ name: 'xoa_that', executionKind: 'delete', execute: async () => supabase.from('x').delete() });",
+  });
+  assert.equal(tools[0].declaredKind, undefined);
+  const problems = validateCopilotActionInventory(tools);
+  assert.equal(problems.length, 1, 'khai đúng thì chỉ còn MỘT problem: bị cấm');
+  assert.match(problems[0], /forbidden executable action "delete"/);
+});
+
+test('không dò ra gì thì lời khai vẫn được tôn trọng — bộ dò không phát minh ra hành động', () => {
+  const tools = inventoryFromCopilotSource({
+    'src/copilot/tools/registry.ts': [
+      "dt({ name: 'tao_nhap', executionKind: 'draft',",
+      "  execute: async () => rpc('copilot_preview_income_expense_v1', { nonce }) });",
+      "dt({ name: 'chi_dan', executionKind: 'guidance', execute: async () => docSearch(q) });",
+    ].join('\n'),
+  });
+  assert.deepEqual(
+    tools.map((tool) => [tool.name, tool.executionKind]),
+    [['tao_nhap', 'draft'], ['chi_dan', 'guidance']],
+  );
+  assert.deepEqual(validateCopilotActionInventory(tools), []);
+});
+
 test('tool gọi decide_financial_request_v2 bị chấm "approval" dù tên hàm không chứa chữ approve', async (t) => {
   const goc = await mkdtemp(join(tmpdir(), 'copilot-fixture-'));
   t.after(() => rm(goc, { recursive: true, force: true }));
