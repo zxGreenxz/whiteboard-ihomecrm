@@ -6,7 +6,11 @@ import { describe, expect, it } from "vitest";
 // Từ migration 20260902082002, _v1 nằm trong migration thật và legacy bị REVOKE
 // anon; nhánh fallback phải biến mất và không được quay lại.
 
-const source = readFileSync(new URL("../useMeterReadings.ts", import.meta.url), "utf8");
+const full = readFileSync(new URL("../useMeterReadings.ts", import.meta.url), "utf8");
+// Chi soi 2 hook duyet (approve/bulk) — nhanh unapprove co migration rieng.
+const start = full.indexOf("export const useApproveMeterReading");
+const end = full.indexOf("export const useUnapproveMeterReading");
+const source = full.slice(start, end);
 
 describe("useMeterReadings không còn fallback sang RPC duyệt chỉ số legacy", () => {
   it("chỉ gọi *_v1, không có nhánh PGRST202 rơi về approve_meter_reading / bulk_approve_meter_readings", () => {
