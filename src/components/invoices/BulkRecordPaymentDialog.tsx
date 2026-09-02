@@ -517,20 +517,10 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       .from('payment-receipts')
       .upload(fileName, file, { cacheControl: '3600', upsert: false });
     if (error) {
-      const { error: fallbackErr } = await supabase.storage
-        .from('documents')
-        .upload(`receipts/${fileName}`, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-      if (fallbackErr) {
-        console.error('Upload error:', fallbackErr);
-        return null;
-      }
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(`receipts/${fileName}`);
-      return urlData.publicUrl;
+      // KHÔNG fallback: bucket 'documents' không tồn tại trên production
+      // (audit 02/09/2026) — nhánh fallback cũ chỉ che mờ lỗi thật.
+      console.error('Upload error:', error);
+      return null;
     }
     const { data: urlData } = supabase.storage
       .from('payment-receipts')

@@ -2,9 +2,11 @@
 // Upload ảnh chứng từ thanh toán — dùng chung giữa useUploadPaymentReceipt
 // (đính ảnh vào payment đã có) và form thu tiền /thu-tien (đính lúc thu).
 //
-// Bucket chính 'payment-receipts' (private — hiển thị lại qua
+// Bucket 'payment-receipts' (private — hiển thị lại qua
 // StorageImage/useSignedUrl), path {uid}/{ts}_receipt.{ext} khớp policy
-// INSERT theo folder = auth.uid(). Fallback bucket 'documents'.
+// INSERT theo folder = auth.uid(). KHÔNG có fallback: bucket 'documents'
+// từng được dùng làm fallback KHÔNG tồn tại trên production (audit 02/09/2026)
+// nên nhánh đó chỉ che mờ lỗi thật của payment-receipts.
 // =============================================
 
 import { supabase } from '@/integrations/supabase/client';
@@ -21,7 +23,7 @@ export const validateReceiptFile = (file: File): string | null => {
   return null;
 };
 
-/** Upload lên Storage, trả public URL. Throw nếu cả 2 bucket đều fail. */
+/** Upload lên Storage, trả public URL. Throw lỗi thật của bucket nếu fail. */
 export const uploadReceiptToStorage = async (file: File): Promise<string> => {
   const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
@@ -32,19 +34,7 @@ export const uploadReceiptToStorage = async (file: File): Promise<string> => {
   const { error } = await supabase.storage
     .from('payment-receipts')
     .upload(fileName, file, { cacheControl: '3600', upsert: false });
-
-  if (error) {
-    // Fallback bucket nếu payment-receipts không tồn tại / không có quyền.
-    const fallbackPath = `receipts/${fileName}`;
-    const { error: fbErr } = await supabase.storage
-      .from('documents')
-      .upload(fallbackPath, file, { cacheControl: '3600', upsert: false });
-    if (fbErr) throw fbErr;
-    const { data: urlData } = supabase.storage
-      .from('documents')
-      .getPublicUrl(fallbackPath);
-    return urlData.publicUrl;
-  }
+  if (error) throw error;
 
   const { data: urlData } = supabase.storage
     .from('payment-receipts')

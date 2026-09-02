@@ -452,24 +452,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       });
 
     if (error && !isExistingStorageObjectError(error)) {
+      // KHÔNG fallback: bucket 'documents' không tồn tại trên production
+      // (audit 02/09/2026) — nhánh fallback cũ chỉ che mờ lỗi thật.
       console.error('Upload error:', error);
-      // If bucket doesn't exist, try documents bucket
-      const { error: fallbackError } = await supabase.storage
-        .from('documents')
-        .upload(`receipts/${fileName}`, receiptImage, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (fallbackError && !isExistingStorageObjectError(fallbackError)) {
-        console.error('Fallback upload error:', fallbackError);
-        return null;
-      }
-
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(`receipts/${fileName}`);
-      return urlData.publicUrl;
+      return null;
     }
 
     const { data: urlData } = supabase.storage
