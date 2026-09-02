@@ -20,9 +20,9 @@ import type { IncomeExpenseWithRelations, IncomeExpenseBatchSummary } from '@/ho
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import { VoucherStatusBadge } from '@/components/income-expenses/VoucherStatusBadge';
 import {
-  CommissionVoucherNote,
-  laPhieuHoaHong,
-} from '@/components/income-expenses/CommissionVoucherNote';
+  VoucherNote,
+  coGhiChuHeThong,
+} from '@/components/income-expenses/VoucherNote';
 import type { VoucherDisplayInput } from '@/lib/financeV2VoucherState';
 
 const formatVND = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
@@ -185,10 +185,10 @@ function VoucherCard({
         />
         <Row label="Người tạo" value={v.creator_name} />
         <Row label="Hạch toán kết quả kinh doanh" value={kqkdStatusLabel(v)} />
-        {(v.notes || laPhieuHoaHong(v)) && (
+        {(v.notes || coGhiChuHeThong(v)) && (
           <Row
             label="Ghi chú"
-            value={<CommissionVoucherNote voucher={v} fallbackNotes={v.notes} />}
+            value={<VoucherNote voucher={v} fallbackNotes={v.notes} />}
           />
         )}
       </div>

@@ -5,9 +5,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
 import {
-  CommissionVoucherNote,
-  laPhieuHoaHong,
-} from "@/components/income-expenses/CommissionVoucherNote";
+  VoucherNote,
+  coGhiChuHeThong,
+} from "@/components/income-expenses/VoucherNote";
 
 
 interface VoucherRow {
@@ -23,6 +23,7 @@ interface VoucherRow {
   notes: string | null;
   commission_kind?: "broker" | "sale" | null;
   contract_id?: string | null;
+  system_source?: string | null;
   approval_status: string;
   business_result_accounting: boolean | null;
   creator_name: string | null;
@@ -247,10 +248,10 @@ const IncomeExpensePrintPage = () => {
           </tbody>
         </table>
 
-        {(voucher.notes || laPhieuHoaHong(voucher)) && (
+        {(voucher.notes || coGhiChuHeThong(voucher)) && (
           <div style={{ marginTop: 12, fontSize: 13 }}>
             <b>Ghi chú:</b>
-            <CommissionVoucherNote voucher={voucher} fallbackNotes={voucher.notes} />
+            <VoucherNote voucher={voucher} fallbackNotes={voucher.notes} />
           </div>
         )}
 

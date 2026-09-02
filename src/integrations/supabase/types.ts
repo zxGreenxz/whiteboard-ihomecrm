@@ -19994,6 +19994,13 @@ export type Database = {
           source: string
         }[]
       }
+      get_termination_refund_facts_v1: {
+        Args: { p_voucher_ids: string[] }
+        Returns: {
+          facts: Json
+          voucher_id: string
+        }[]
+      }
       get_voucher_cancellation_v1: {
         Args: { p_voucher: string }
         Returns: Json

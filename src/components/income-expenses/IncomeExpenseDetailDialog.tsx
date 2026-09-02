@@ -23,9 +23,9 @@ import {
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
 import {
-  CommissionVoucherNote,
-  laPhieuHoaHong,
-} from "@/components/income-expenses/CommissionVoucherNote";
+  VoucherNote,
+  coGhiChuHeThong,
+} from "@/components/income-expenses/VoucherNote";
 import { supabase } from "@/integrations/supabase/client";
 import { batBuoc } from "@/lib/queryGuard";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
@@ -448,11 +448,11 @@ export function IncomeExpenseDetailDialog({
               label="Hạch toán kết quả kinh doanh"
               value={kqkdStatusLabel(voucher)}
             />
-            {(voucher.notes || laPhieuHoaHong(voucher)) && (
+            {(voucher.notes || coGhiChuHeThong(voucher)) && (
               <Row
                 label="Ghi chú"
                 value={
-                  <CommissionVoucherNote
+                  <VoucherNote
                     voucher={voucher}
                     fallbackNotes={voucher.notes}
                     enabled={open}
