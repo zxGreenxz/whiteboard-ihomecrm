@@ -18731,6 +18731,19 @@ export type Database = {
         Args: { p_from: string; p_organization_id: string; p_to: string }
         Returns: Json
       }
+      copilot_contract_detail_v1: {
+        Args: { p_contract_id: string; p_organization_id: string }
+        Returns: Json
+      }
+      copilot_contract_search_v1: {
+        Args: {
+          p_limit?: number
+          p_organization_id: string
+          p_query?: string
+          p_status?: string
+        }
+        Returns: Json
+      }
       copilot_customer_search_v1: {
         Args: { p_organization_id: string; p_search: string }
         Returns: {
@@ -18807,6 +18820,18 @@ export type Database = {
           revenue: number
         }[]
       }
+      copilot_income_expense_search_v1: {
+        Args: {
+          p_den?: string
+          p_limit?: number
+          p_loai?: string
+          p_organization_id: string
+          p_query?: string
+          p_trang_thai?: string
+          p_tu?: string
+        }
+        Returns: Json
+      }
       copilot_invoice_search_v1: {
         Args: {
           p_billing_month?: string
@@ -18863,6 +18888,10 @@ export type Database = {
       copilot_org_scope_buildings_v1: {
         Args: { p_organization_id: string; p_permission_key: string }
         Returns: string[]
+      }
+      copilot_pending_requests_v1: {
+        Args: { p_limit?: number; p_organization_id: string }
+        Returns: Json
       }
       copilot_preview_income_expense_legacy_v1: {
         Args: { p_organization_id: string; p_payload: Json }

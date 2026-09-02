@@ -535,27 +535,6 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
-    },
-    "supabase/migrations/20260902005030_avatars_bucket_cho_anh_dai_dien.sql": {
-      "sha256": "4d4e0df7aeea6054a6e115fe092dc6b8476661b2c29fc1fb7003fee8ce9945ec",
-      "missingObjects": [
-        "policy:storage.objects.avatars doc cong khai",
-        "policy:storage.objects.avatars ghi theo chu tai khoan",
-        "policy:storage.objects.avatars sua theo chu tai khoan",
-        "policy:storage.objects.avatars xoa theo chu tai khoan"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 02/09/2026 trong phiên vá finding C-01 (audit AUDIT-DB-BANG-MO-COI-VA-PHAN-CHUA-HOAT-DONG-2026-09-02): bucket 'avatars' chưa từng tồn tại trên production nên useProfile.ts upload luôn fail. Policy vắng mặt vì migration CHƯA CHẠY, không phải bị DROP — sẽ apply qua lane migrate:forward ngay trong phiên.",
-      "bangChung": [
-        {
-          "duong_dan": "docs/audits/AUDIT-DB-BANG-MO-COI-VA-PHAN-CHUA-HOAT-DONG-2026-09-02.md",
-          "trich_doan": "C-01 (P2) — Upload avatar hỏng 100%: bucket `avatars` không tồn tại ... storage.buckets production chỉ có 10 bucket ... không có `avatars`"
-        },
-        {
-          "duong_dan": "src/hooks/useProfile.ts",
-          "trich_doan": "await supabase.storage.from('avatars').upload(filePath, file, { cacheControl: '3600', upsert: true })"
-        }
-      ]
     }
   }
 }
