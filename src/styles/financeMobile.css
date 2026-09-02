@@ -90,6 +90,12 @@
 .cm-app .vd-row-l { padding: 10px 12px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; color: var(--ink-3); border-right: 1px solid var(--line-2); }
 .cm-app .vd-row-v { padding: 10px 12px; font-size: 13px; font-weight: 600; color: var(--ink); display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; word-break: break-word; }
 .cm-app .vd-row-v b { font-weight: 700; }
+/* Hàng TRÀN NGANG — bỏ cột nhãn 132px. Dùng cho ô Ghi chú: nội dung là văn bản
+   nhiều dòng kèm khung quyết toán, ép vào 1fr còn ~64% bề ngang màn hình thì
+   mỗi con số vỡ làm hai dòng (đo trên iPhone 14 Pro Max 02/09/2026).
+   display:block thay flex vì nội dung là khối, không phải chuỗi chip. */
+.cm-app .vd-row.vd-row-full { grid-template-columns: 1fr; }
+.cm-app .vd-row.vd-row-full .vd-row-v { display: block; font-weight: 500; }
 .cm-app .vd-tag { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 5px; }
 .cm-app .vd-link { display: inline-flex; align-items: center; gap: 2px; color: #2563eb; font-weight: 700; font-family: var(--mono); font-size: 12.5px; cursor: pointer; border: 0; background: transparent; padding: 0; }
 .cm-app .vd-pay { width: 100%; margin-top: 14px; height: 46px; border: 0; border-radius: 12px; background: #059669; color: #fff; font-family: var(--font); font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; box-shadow: var(--sh-1); }

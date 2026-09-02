@@ -138,3 +138,17 @@
 input:checked + .bc-switch { background: hsl(var(--primary)); }
 input:checked + .bc-switch::after { left: 12px; }
 input:disabled + .bc-switch { opacity: 0.5; }
+
+/* ---- Nút nổi: NHƯỜNG CHỖ khi đang mở phiếu ----
+   Trên điện thoại nút nằm sát mép trái (xem CopilotLauncher), nên khi sheet chi
+   tiết phiếu mở ra nó đè lên ô Ghi chú — ô này giờ tràn hết bề ngang. Nội dung
+   không thể vượt lên trên: nút ở z-9997 còn .cm-stage là stacking context z-0.
+   Vì vậy ẩn nút trong lúc phiếu đang mở, hiện lại khi đóng.
+   Hai dấu hiệu, KHÔNG dùng role="dialog" (popover/dropdown cũng mang role đó,
+   nút sẽ chớp tắt mỗi lần mở bộ lọc):
+     • .sheet-ov               — sheet của app điện thoại (financeMobile.css)
+     • body[data-scroll-locked] — Radix Dialog modal khoá cuộn nền */
+body[data-scroll-locked] .bc-launcher,
+body:has(.sheet-ov) .bc-launcher {
+  display: none;
+}

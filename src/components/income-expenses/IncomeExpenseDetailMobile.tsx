@@ -141,13 +141,16 @@ export function IncomeExpenseDetailMobile({
     label,
     value,
     mono,
+    /** Bỏ cột nhãn, cho giá trị chiếm trọn bề ngang (ô Ghi chú trên điện thoại). */
+    full,
   }: {
     label: string;
     value: React.ReactNode;
     mono?: boolean;
+    full?: boolean;
   }) => (
-    <div className="vd-row">
-      <div className="vd-row-l">{label}</div>
+    <div className={full ? "vd-row vd-row-full" : "vd-row"}>
+      {full ? null : <div className="vd-row-l">{label}</div>}
       <div
         className="vd-row-v"
         style={mono ? { fontFamily: "var(--mono)", fontSize: 13 } : undefined}
@@ -418,6 +421,7 @@ export function IncomeExpenseDetailMobile({
           {(v.notes || coGhiChuHeThong(v)) && (
             <Row
               label="Ghi chú"
+              full
               value={<VoucherNote voucher={v} fallbackNotes={v.notes} />}
             />
           )}

@@ -34,26 +34,38 @@ function SettlementCard({ card }: { card: TerminationCard }) {
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
         Tổng hợp
       </div>
+      {/* Số tiền KHÔNG được xuống dòng: trên màn 430px, nhãn dài ("Cọc cấn vào
+          khấu trừ…") đẩy "618.000 đ" vỡ làm hai hàng, đọc như hai con số. Nhãn
+          co lại (min-w-0), số giữ nguyên khối (shrink-0 + nowrap). */}
       <div className="space-y-1">
         {card.rows.map((r) => (
           <div key={r.label}>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">{r.label}</span>
-              <span className={`font-medium tabular-nums ${toneCls(r.tone)}`}>{formatVND(r.amount)}</span>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0 text-muted-foreground">{r.label}</span>
+              <span
+                className={`shrink-0 whitespace-nowrap font-medium tabular-nums ${toneCls(r.tone)}`}
+              >
+                {formatVND(r.amount)}
+              </span>
             </div>
             {r.sub?.map((s, i) => (
-              <div key={i} className="flex justify-between gap-3 pl-4 text-xs text-muted-foreground">
-                <span>· {s.label}</span>
-                <span className="tabular-nums">{formatVND(s.amount)}</span>
+              <div
+                key={i}
+                className="flex items-baseline justify-between gap-3 pl-4 text-xs text-muted-foreground"
+              >
+                <span className="min-w-0">· {s.label}</span>
+                <span className="shrink-0 whitespace-nowrap tabular-nums">{formatVND(s.amount)}</span>
               </div>
             ))}
           </div>
         ))}
-        <div className="flex justify-between gap-3 border-t border-dashed pt-1">
-          <span className="text-muted-foreground">
+        <div className="flex items-baseline justify-between gap-3 border-t border-dashed pt-1">
+          <span className="min-w-0 text-muted-foreground">
             Tổng khấu trừ <span className="text-xs">(công nợ + phạt + thu thêm)</span>
           </span>
-          <span className="font-medium tabular-nums text-red-600">−{formatVND(card.totalDeductions)}</span>
+          <span className="shrink-0 whitespace-nowrap font-medium tabular-nums text-red-600">
+            −{formatVND(card.totalDeductions)}
+          </span>
         </div>
       </div>
       <div

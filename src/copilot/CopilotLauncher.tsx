@@ -47,7 +47,12 @@ function GatedLauncher() {
       )}
       {!open && (
         <button
-          className="bc-goc bc-launcher fixed bottom-4 right-4 z-[9997]"
+          // Trên ĐIỆN THOẠI nút nằm sát mép TRÁI: góc phải là chỗ của cột thao
+          // tác trong các bảng (thu chi, hoá đơn) và nút z-9997 này đè lên tất
+          // cả — .cm-stage là stacking context z-0 nên không gì trong trang vượt
+          // lên trên được. Từ sm trở lên trả về góc phải: góc trái desktop là
+          // chân sidebar (avatar, chuông thông báo).
+          className="bc-goc bc-launcher fixed bottom-4 left-1 sm:left-auto sm:right-4 z-[9997]"
           title={`Chat với ${TEN_LINH_THU}`}
           onClick={() => setOpen(true)}
           data-testid="copilot-launcher"
