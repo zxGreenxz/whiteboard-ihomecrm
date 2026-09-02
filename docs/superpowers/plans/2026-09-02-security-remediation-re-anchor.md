@@ -21,7 +21,7 @@
 | Mức | Tổng | ĐÃ VÁ | CÒN MỞ | KHÔNG CÒN ÁP DỤNG | CHƯA XÁC MINH ĐƯỢC |
 |---|---:|---:|---:|---:|---:|
 | **P1** | 14 | 2 (+9 vá tối 02/09 → **11**) | **3** | 0 | 0 |
-| **P2** | 26 | 1 | **25** | 0 | 0 |
+| **P2** | 26 | 1 (+1 vá tối 02/09 → **2**) | **24** | 0 | 0 |
 | **P3** | 9 | 1 | **8** | 0 | 0 |
 | **Tổng** | **49** | **4 → 13** | **45 → 36** | **0** | **0** |
 
@@ -42,7 +42,7 @@
 
 ### FR001-C01 (P2) — Public room RPC lộ sale bonus note nội bộ
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** CÒN MỞ — **CHỜ CHỦ QUYẾT (soi lại 02/09 tối)**: trang `/phong-trong` là trang cho ĐỐI TÁC SALE xem theo token (không phải khách thuê cuối) và `PhongTrongSheet.tsx:359-362` cố ý render ô "Thưởng sale" cho họ; comment `supabaseData.ts:58` "KHÔNG gửi khách" nghĩa là khách thuê cuối. Cắt `sale_bonus_note` khỏi RPC là đổi nghiệp vụ bán hàng, không tự làm. Nếu chủ muốn giữ cho sale: chấp nhận rủi ro token 6 ký tự (đóng chung với FR001-C05 bằng token dài + expiry); nếu không: bỏ cột khỏi CTE `rms` + bỏ ô UI.
 **Bằng chứng:** `supabase/migrations/20260731070000_current_date_to_org_today.sql:2701` đưa `rm.sale_bonus_note` vào CTE `rms`, rồi `:2770` `SELECT jsonb_agg(to_jsonb(rms) …)` serialize **cả row** → trường nội bộ lọt thẳng vào payload anon. Không dùng allowlist như plan yêu cầu. `20260820090000_sale_bonus_deposit_account_attachments.sql` không đụng tới cột này.
 **Vị trí mới:** RPC `supabase/migrations/20260731070000_current_date_to_org_today.sql:2657-2770`; client `src/pages/phong-trong/supabaseData.ts:58,174`; render `src/pages/phong-trong/PhongTrongSheet.tsx:359-362`.
 
@@ -193,7 +193,7 @@
 
 ### FR020-C02 (P2) — Authorization explanation thiếu target-org binding
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902084858` (gate `authorize_tenant_action_v3(v_actor, v_org, 'users.view')`, hết `can_v3` không org; đo prod: con_can_v3=false). _(bản re-anchor sáng ghi: CÒN MỞ)_
 **Bằng chứng:** `supabase/migrations/20260725190000_authz_read_rpcs.sql:177` `explain_authorization_v1(p_membership, p_permission_keys, p_building, p_cashbook)`. Hàm **có** derive `v_org` từ membership (`:211-216`), **có** `lock_org_for_decision_v1(v_org)` (`:219`), **có** ràng buộc building/cashbook thuộc `v_org` (`:229-239`). Nhưng gate quyền của actor ở `:224` là `app_private.can_v3('users.view')` — **không truyền org**. `can_v3` (`20260725070000_authz_read_path_v3.sql:356-375`) dùng `authorized_scope_all_v3(p_permission_key)`, tức **hợp nhất mọi org** của actor. ⇒ actor có `users.view` ở org A đọc được giải thích phân quyền của thành viên org B. Biến thể đúng `app_private.authorized_scope_v3(text, uuid)` (có tham số org) tồn tại nhưng không được dùng ở đây.
 **Fix gợi ý:** đổi `:224` sang biến thể nhận `v_org` (`authorized_scope_v3('users.view', v_org)` hoặc `authorize_tenant_action_v3(auth.uid(), v_org, 'users.view', NULL, NULL)`). Chữ ký hàm không đổi.
 

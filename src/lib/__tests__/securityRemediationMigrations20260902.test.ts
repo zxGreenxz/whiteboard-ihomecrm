@@ -45,6 +45,19 @@ describe("20260902084240 — unapprove_meter_reading_v1 vào migration", () => {
   });
 });
 
+describe("20260902084858 — explain_authorization_v1 gate users.view theo đúng org", () => {
+  const sql = mig("20260902084858_explain_authorization_gate_theo_org.sql");
+
+  it("quyết định xem người khác bằng authorize_tenant_action_v3(v_actor, v_org, 'users.view'), hết can_v3 không org", () => {
+    const body = sql.slice(sql.indexOf("as $fn$"), sql.indexOf("$fn$;"));
+    expect(body).toMatch(/authorize_tenant_action_v3\(v_actor, v_org, 'users\.view', null, null\)/);
+    expect(body).not.toMatch(/can_v3\(/);
+    expect(body).toMatch(/if v_user <> v_actor then/);
+    expect(sql).toMatch(/revoke all on function public\.explain_authorization_v1\(uuid, text\[\], uuid, uuid\) from public, anon;/);
+    expect(sql).not.toMatch(/drop function/i);
+  });
+});
+
 describe("20260902082003 — transfer_contract_impl chặn khách khác org", () => {
   const sql = mig("20260902082003_transfer_contract_chan_khach_khac_org.sql");
 
