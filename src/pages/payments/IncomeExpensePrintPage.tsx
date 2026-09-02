@@ -4,6 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
+import {
+  CommissionVoucherNote,
+  laPhieuHoaHong,
+} from "@/components/income-expenses/CommissionVoucherNote";
 
 
 interface VoucherRow {
@@ -17,6 +21,8 @@ interface VoucherRow {
   receive_bank_name: string | null;
   receive_bank_account: string | null;
   notes: string | null;
+  commission_kind?: "broker" | "sale" | null;
+  contract_id?: string | null;
   approval_status: string;
   business_result_accounting: boolean | null;
   creator_name: string | null;
@@ -241,10 +247,11 @@ const IncomeExpensePrintPage = () => {
           </tbody>
         </table>
 
-        {voucher.notes && (
-          <p style={{ marginTop: 12, fontSize: 13 }}>
-            <b>Ghi chú:</b> {voucher.notes}
-          </p>
+        {(voucher.notes || laPhieuHoaHong(voucher)) && (
+          <div style={{ marginTop: 12, fontSize: 13 }}>
+            <b>Ghi chú:</b>
+            <CommissionVoucherNote voucher={voucher} fallbackNotes={voucher.notes} />
+          </div>
         )}
 
         <div className="signatures">

@@ -19,6 +19,10 @@ import type { IncomeExpenseWithRelations, IncomeExpenseBatchSummary } from '@/ho
 // Finance V2 (route-aware §9.6/§12.1): badge composite khi org CANONICAL read-semantics.
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import { VoucherStatusBadge } from '@/components/income-expenses/VoucherStatusBadge';
+import {
+  CommissionVoucherNote,
+  laPhieuHoaHong,
+} from '@/components/income-expenses/CommissionVoucherNote';
 import type { VoucherDisplayInput } from '@/lib/financeV2VoucherState';
 
 const formatVND = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
@@ -181,7 +185,12 @@ function VoucherCard({
         />
         <Row label="Người tạo" value={v.creator_name} />
         <Row label="Hạch toán kết quả kinh doanh" value={kqkdStatusLabel(v)} />
-        {v.notes && <Row label="Ghi chú" value={v.notes} />}
+        {(v.notes || laPhieuHoaHong(v)) && (
+          <Row
+            label="Ghi chú"
+            value={<CommissionVoucherNote voucher={v} fallbackNotes={v.notes} />}
+          />
+        )}
       </div>
 
       {v.items && v.items.length > 0 && (

@@ -91,6 +91,10 @@ function mapVoucherRow(
     account_name: v.account?.name ?? null,
     account_is_virtual: v.account?.is_virtual ?? null,
     system_source: v.system_source ?? null,
+    commission_kind:
+      v.commission_kind === 'broker' || v.commission_kind === 'sale'
+        ? v.commission_kind
+        : null,
     shareholder_id: v.shareholder_id ?? null,
     contract_id: v.contract_id ?? null,
     invoice_id: v.invoice_id ?? null,

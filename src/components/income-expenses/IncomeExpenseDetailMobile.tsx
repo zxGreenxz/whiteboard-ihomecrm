@@ -27,6 +27,10 @@ import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
+import {
+  CommissionVoucherNote,
+  laPhieuHoaHong,
+} from "@/components/income-expenses/CommissionVoucherNote";
 // Finance V2 (§12.2 mobile parity): nút Thu/Chi phiếu đã duyệt + Hoàn tác phiếu
 // đã ghi sổ — chỉ hiện khi org đọc CANONICAL (đối xứng IncomeExpenseList desktop).
 import { useFinanceV2Routes, isCanonicalRead } from "@/lib/financeV2Route";
@@ -411,7 +415,12 @@ export function IncomeExpenseDetailMobile({
             />
           )}
           <Row label="Hạch toán KQKD" value={kqkdStatusLabel(v)} />
-          {v.notes && <Row label="Ghi chú" value={v.notes} />}
+          {(v.notes || laPhieuHoaHong(v)) && (
+            <Row
+              label="Ghi chú"
+              value={<CommissionVoucherNote voucher={v} fallbackNotes={v.notes} />}
+            />
+          )}
         </div>
 
         {isExpense && !isCancelled && v.receive_bank_account && (

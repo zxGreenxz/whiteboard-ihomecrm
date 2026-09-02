@@ -22,6 +22,10 @@ import {
   CopyPlus,
 } from "lucide-react";
 import { PayViaBankAppSheet } from "@/components/income-expenses/PayViaBankAppSheet";
+import {
+  CommissionVoucherNote,
+  laPhieuHoaHong,
+} from "@/components/income-expenses/CommissionVoucherNote";
 import { supabase } from "@/integrations/supabase/client";
 import { batBuoc } from "@/lib/queryGuard";
 import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
@@ -444,7 +448,18 @@ export function IncomeExpenseDetailDialog({
               label="Hạch toán kết quả kinh doanh"
               value={kqkdStatusLabel(voucher)}
             />
-            {voucher.notes && <Row label="Ghi chú" value={voucher.notes} />}
+            {(voucher.notes || laPhieuHoaHong(voucher)) && (
+              <Row
+                label="Ghi chú"
+                value={
+                  <CommissionVoucherNote
+                    voucher={voucher}
+                    fallbackNotes={voucher.notes}
+                    enabled={open}
+                  />
+                }
+              />
+            )}
           </div>
 
           {/* Chi tiền qua app ngân hàng — mobile, phiếu chi có STK người nhận */}

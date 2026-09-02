@@ -145,6 +145,9 @@ export interface IncomeExpenseWithRelations {
   // B4: sổ ảo? (embed accounts.is_virtual) + nguồn sinh phiếu (system_source).
   account_is_virtual: boolean | null;
   system_source: string | null;
+  /** Phiếu hoa hồng môi giới / thưởng nóng Sale (DB suy từ hạng mục). Dùng để
+   *  hiện ghi chú HĐ tính lúc xem (CommissionVoucherNote). */
+  commission_kind: "broker" | "sale" | null;
   shareholder_id: string | null;
   contract_id: string | null;
   // Hoá đơn liên quan — phiếu thu sinh từ thanh toán hoá đơn (deep-link 2 chiều).

@@ -2,19 +2,19 @@
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
     "sourceCallSites": 1331,
-    "catalogFunctions": 1017,
+    "catalogFunctions": 1018,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 265,
+    "calledRpcs": 266,
     "byRisk": {
       "normal": 189,
-      "financial": 76
+      "financial": 77
     },
-    "securityDefiner": 249
+    "securityDefiner": 250
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1751,6 +1751,25 @@
         "src/hooks/useStatBreakdowns.ts"
       ],
       "risk": "normal"
+    },
+    "get_commission_voucher_facts_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_ids uuid[]",
+          "returns": "TABLE(voucher_id uuid, facts jsonb)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCommissionVoucher.ts"
+      ],
+      "risk": "financial"
     },
     "get_contract_stats": {
       "definitions": [

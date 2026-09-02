@@ -17,10 +17,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 265 |
-| Hàm trong catalog (public + api) | 1017 |
+| RPC được gọi từ mã nguồn | 266 |
+| Hàm trong catalog (public + api) | 1018 |
 | File mã nguồn đã quét | 1331 |
-| SECURITY DEFINER | 249 |
+| SECURITY DEFINER | 250 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
@@ -28,9 +28,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 189 | còn lại |
-| tiền | 76 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 77 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 76 RPC chạm TIỀN
+## 77 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -64,6 +64,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `decide_owned_income_expense_v2` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `distribute_shareholder_profit_v1` | ✔ | hooks/income-expenses/specialized.ts |
 | `generate_recurring_vouchers_v2` | ✔ | hooks/income-expenses/recurring.ts |
+| `get_commission_voucher_facts_v1` | ✔ | hooks/useCommissionVoucher.ts |
 | `get_customer_credit_balance_v1` | ✔ | hooks/useInvoices.ts |
 | `get_deposits_report_summary` |  | hooks/reports/financeReports.ts |
 | `get_income_expense_history` |  | hooks/income-expenses/queries.ts |
