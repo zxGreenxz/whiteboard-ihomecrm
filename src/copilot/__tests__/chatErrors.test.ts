@@ -49,6 +49,31 @@ describe('dienGiaiLoiChat', () => {
     expect(dienGiaiLoiChat('organization_required')).toBe(THONG_BAO_CHUA_CHON_TO_CHUC);
   });
 
+  it('sai tổ chức: nói rõ là sai CÔNG TY, không phải hết hạn mức', () => {
+    // Panel ghép `code: message` (LoiModel.code + LoiModel.message), nên chuỗi
+    // thật đi vào đây có cả mã máy lẫn câu tiếng Anh của tầng dưới.
+    expect(dienGiaiLoiChat('organization_forbidden: No access to the selected organization')).toBe(
+      'Bạn không có quyền dùng Copilot trong tổ chức đang chọn.',
+    );
+  });
+
+  it('mã cụ thể thắng phỏng đoán theo mã HTTP', () => {
+    // `organization_forbidden` về trên đường 403. Nếu nhánh /403/ chạy trước thì
+    // người dùng đọc "hết hạn mức hôm nay" và đi xin quota — trong khi việc phải
+    // làm là đổi ô chọn tổ chức.
+    expect(dienGiaiLoiChat('organization_forbidden: HTTP 403')).toBe(
+      'Bạn không có quyền dùng Copilot trong tổ chức đang chọn.',
+    );
+  });
+
+  it('mã LẠ vẫn kéo theo câu gốc, không hiện trơ một token', () => {
+    // Đây là lý do panel gửi CẢ mã lẫn câu. Gửi mỗi `code` thì người dùng đọc
+    // "Lỗi: busy" và không có gì để chụp màn hình gửi đi.
+    const ra = dienGiaiLoiChat('busy: Too many concurrent requests');
+    expect(ra).toContain('Too many concurrent requests');
+    expect(ra).not.toBe('Lỗi: busy');
+  });
+
   it('lỗi lạ vẫn hiện nguyên văn — giấu đi thì không ai gỡ được', () => {
     expect(dienGiaiLoiChat('ECONNRESET')).toBe('Lỗi: ECONNRESET');
   });

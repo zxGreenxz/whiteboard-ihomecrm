@@ -34,6 +34,12 @@ const MA_ROLLOUT_QUAN_TRI = [
  *  thật thường có đuôi mô tả (`rollout_unavailable: công cụ "..." đã bị tắt`). */
 const THEO_MA: readonly [string, string][] = [
   ['organization_required', THONG_BAO_CHUA_CHON_TO_CHUC],
+  // 403 của `reserve_ai_usage`: người dùng KHÔNG có membership ACTIVE trên tổ
+  // chức đang chọn (và cũng không phải super admin ngoài org sandbox). Khác hẳn
+  // `not_permitted` — ở đó tài khoản chưa được cấp quyền Copilot NÓI CHUNG; ở
+  // đây quyền Copilot có thể đủ, chỉ sai công ty. Hai cách sửa khác nhau: một
+  // bên xin cấp entitlement, một bên đổi ô chọn tổ chức.
+  ['organization_forbidden', 'Bạn không có quyền dùng Copilot trong tổ chức đang chọn.'],
   ['organization_mismatch', 'Tổ chức đã đổi, mở lại cuộc trò chuyện.'],
   ['rollout_unavailable', 'Trang/công cụ này chưa được bật cho tổ chức.'],
 ];
@@ -41,10 +47,15 @@ const THEO_MA: readonly [string, string][] = [
 /** Hàm THUẦN — không chạm state, để test được mọi nhánh mà không cần DOM. */
 export function dienGiaiLoiChat(msg: string): string {
   if (MA_ROLLOUT_QUAN_TRI.some((ma) => msg.includes(ma))) return formatCopilotRolloutError(msg);
-  if (/not_entitled|not_permitted|403/.test(msg)) return HET_QUYEN_HOAC_HAN_MUC;
+  // Mã CỤ THỂ đứng trước phỏng đoán theo mã HTTP. Từ khi panel ghép `code: message`
+  // (`organization_forbidden: HTTP 403`), một chuỗi có thể mang cả hai; `403` là
+  // suy đoán từ trạng thái, còn `organization_forbidden` là điều proxy NÓI thẳng.
+  // Để nhánh 403 chạy trước thì lỗi sai-công-ty bị dịch thành "hết hạn mức" —
+  // đúng cái người dùng không cần biết, và sai cái họ cần làm.
   for (const [ma, cau] of THEO_MA) {
     if (msg.includes(ma)) return cau;
   }
+  if (/not_entitled|not_permitted|403/.test(msg)) return HET_QUYEN_HOAC_HAN_MUC;
   // Lỗi lạ hiện nguyên văn: giấu đi thì không ai gỡ được, và người dùng không
   // có gì để chụp màn hình gửi đi.
   return `Lỗi: ${msg}`;

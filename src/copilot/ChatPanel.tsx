@@ -38,6 +38,9 @@ import {
 import { assertUiControlAvailability } from './uiControlAvailability';
 import { lyDoChanUiControl } from './uiControlGate';
 import { dienGiaiLoiChat } from './chatErrors';
+// `LoiModel` là lớp lỗi DUY NHẤT mang mã máy của proxy (`error.code`). Nhập lớp
+// chứ không chỉ nhập kiểu: cần `instanceof` lúc chạy, không phải lúc biên dịch.
+import { LoiModel } from './llmClient';
 import type { ToolCtx } from './tools/registry';
 
 interface Props {
@@ -262,8 +265,20 @@ export default function ChatPanel({ onClose }: Props) {
     setRunning(false);
   };
 
+  // Ném MÃ đi cùng CÂU, không chọn một trong hai.
+  //
+  // `dienGiaiLoiChat` khớp theo chuỗi con, nên nó chỉ dịch được thứ nó nhìn
+  // thấy. Proxy trả mã máy ở `error.code` (`organization_forbidden`) còn `message`
+  // là câu tiếng Anh của tầng dưới ('No access to the selected organization') —
+  // đưa mỗi `message` lên thì mọi mã của proxy đều rơi vào nhánh 'lỗi lạ' và
+  // người dùng đọc một câu tiếng Anh không hành động được. Đưa mỗi `code` lên thì
+  // ngược lại: mã chưa có trong bảng sẽ hiện trơ một token như `busy`, còn tệ hơn.
+  // Ghép `code: message` giữ được cả hai — bảng dịch bắt được mã đã biết, mã chưa
+  // biết vẫn kéo theo câu gốc để người dùng chụp màn hình gửi đi.
   const handleError = (e: unknown) => {
-    setError(dienGiaiLoiChat(e instanceof Error ? e.message : String(e)));
+    const cau = e instanceof Error ? e.message : String(e);
+    const ma = e instanceof LoiModel ? e.code : null;
+    setError(dienGiaiLoiChat(ma ? `${ma}: ${cau}` : cau));
   };
 
   // UI-control: mỗi lệnh ĐỘC LẬP (execute reset history) — không lưu thread.
