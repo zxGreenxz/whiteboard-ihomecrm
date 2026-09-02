@@ -44,11 +44,20 @@ OpenAI-compat với proxy (cần streaming, ảnh, tool song song), còn UI-cont
 - Ghi đi qua nonce server, không còn dựa vào cờ model tự khai: `preview` (`copilot_preview_income_expense_v1`) trả `confirmation_nonce` một lần, lưu ở `app_private.copilot_write_confirmations` (migration `20260814034500`, chỉ lưu digest payload, TTL 5 phút, CAS `consumed_at` chặn dùng lại/song song). `execute` (`copilot_execute_income_expense_v1`, `20260830171108`) tiêu nonce rồi **re-check quyền lại từ đầu** thay vì tin kết quả preview, kèm guard hạng mục (`20260831110236`). Cờ `xac_nhan` do model tạo chỉ còn là tín hiệu UI; bằng chứng ủy quyền thật nằm ở dòng nonce đã bị tiêu trong `copilot_write_confirmations`.
 - `ai_write_audit` append-only: trigger chặn UPDATE/DELETE ở **mọi vai kể cả `service_role`** (`20260814034600`). Phiếu và hạng mục nằm chung một RPC nên nguyên tử với nhau. Idempotency key chặn tạo trùng khi thử lại.
 - Giới hạn hiện tại: chỉ 1 tool ghi (`tao_phieu_thu_chi_nhap`, draft UNAPPROVED), UI-control 3 route pilot.
-- Proxy từ chối `modelId` không có trong `ai_providers.models` của provider (400 `bad_model`); provider `mock` là ngoại lệ vì "model" của nó là kịch bản dev/test. Model đã bật mà khai giá `0` thì vẫn được tính chi phí `0` — hạn mức USD chỉ đúng bằng độ đúng của metadata giá, nên chỉ bật model đã điền giá thật.
+- Proxy từ chối `modelId` không có trong `ai_providers.models` của provider (400 `bad_model`); provider `mock` là ngoại lệ vì "model" của nó là kịch bản dev/test — nhưng đường mock chỉ mở khi deployment đặt env `LLM_PROXY_ALLOW_MOCK=1`, không phải khi có dòng `mock` trong `ai_providers` (xem "Hàng rào của llm-proxy"). Model đã bật mà khai giá `0` thì vẫn được tính chi phí `0` — hạn mức USD chỉ đúng bằng độ đúng của metadata giá, nên chỉ bật model đã điền giá thật.
 - Các bảng/RPC RAG legacy đã bị drop; lịch sử chat hiện nằm ở `ai_chat_threads`/`ai_chat_messages`, không dùng `ai_conversations`/`ai_messages` cũ.
 - Tra tài liệu **chỉ tải** thân những tài liệu phiên có quyền đọc, chứ không tải hết rồi mới lọc. Hệ quả chấp nhận có ý thức: điểm xếp hạng phụ thuộc tập tài liệu của từng người, nên hai người hỏi cùng câu có thể thấy thứ tự kết quả khác nhau.
 - Không tìm được tài liệu thì Copilot nói thẳng, không trả đoạn gần đúng. Câu hỏi chỉ gồm hư từ ("cái này thì sao") bị coi là không có nội dung — cần ít nhất một từ mang nghĩa.
 - Ảnh gửi vào chat **không được lưu**: chúng chỉ tồn tại trong một request. Đọc lại lịch sử sẽ thấy `[ảnh]` chứ không xem lại được ảnh cũ.
+
+## Hàng rào của llm-proxy (02/09/2026)
+
+- **Tổ chức phải được NÓI, không được suy**: mọi request qua proxy gửi header `x-organization-id` (uuid). Thiếu hoặc rác → 400 `organization_required`; có mà người dùng không có membership `ACTIVE` trên org `ACTIVE` đó (và cũng không phải super admin ngoài org sandbox) → 403 `organization_forbidden`. Hàng rào này lặp lại ở RPC `reserve_ai_usage`, không chỉ nằm ở proxy.
+- **Mock chỉ chạy khi deployment bật tường minh**: env `LLM_PROXY_ALLOW_MOCK=1`. KHÔNG đặt biến này trên production — một dòng `mock` trong `ai_providers` tự nó không mở được đường mock.
+- **Body lên upstream theo allowlist trường**: `messages`, `stream`, `stream_options`, `max_tokens`, `temperature`, `top_p`, `tools`, `tool_choice`, `response_format`. Khoá mới của upstream mặc định bị BỎ chứ không mặc định lọt.
+- **Trần kích thước**: body 512 KiB (413 `body_too_large`), 64 message, 4 ảnh, tổng base64 ảnh 6 MB, 8 lượt parse đồng thời.
+- **Đồng hồ stream**: 180s tổng + 30s im lặng. Hết hạn nào cũng đóng stream và finalize ĐÚNG MỘT lần — hai lần finalize là hai lần ghi đè sổ usage.
+- **Thứ tự phát hành BẮT BUỘC**: migration `reserve_ai_usage` → deploy llm-proxy **NGAY** → rồi mới frontend. Đảo thứ tự thì hoặc proxy gọi hàm chưa có, hoặc frontend gửi header mà CORS của proxy chưa cho qua.
 
 ## Vận hành an toàn
 
