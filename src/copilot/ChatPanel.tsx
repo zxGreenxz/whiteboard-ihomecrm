@@ -30,7 +30,11 @@ import { hrefAnToan } from './hrefAnToan';
 import { anhTuDataTransfer, nenAnh, type AnhDaNen } from './anh';
 import { BeChiu, TEN_LINH_THU } from './BeChiu';
 import { useCopilotAvailability, type CopilotAvailabilitySnapshot } from './featureFlags';
-import { quyetDinhGuiTheoAvailability, THONG_BAO_QUYEN_CHUA_TUOI } from './availabilityGate';
+import {
+  quyetDinhGuiTheoAvailability,
+  quyetDinhGuiTheoNguCanh,
+  THONG_BAO_QUYEN_CHUA_TUOI,
+} from './availabilityGate';
 import { assertUiControlAvailability } from './uiControlAvailability';
 import { lyDoChanUiControl } from './uiControlGate';
 import { dienGiaiLoiChat } from './chatErrors';
@@ -388,13 +392,17 @@ export default function ChatPanel({ onClose }: Props) {
    *
    * Snapshot hết hạn KHÔNG làm hỏng lượt chat: registry trả danh sách tool rỗng
    * và Copilot lặng lẽ trả lời như một mô hình chay. Phải chặn ở đây.
+   *
+   * CHƯA CHỌN TỔ CHỨC thì không đi làm mới: query bị `enabled: false` nên
+   * refetch trả null vĩnh viễn. `quyetDinhGuiTheoNguCanh` tách sẵn nhánh đó
+   * và trả về lý do đúng thay vì hẹn người dùng chờ một thứ không đến.
    */
   const quyenCongCuTuoi = async () => {
     let snapshot: CopilotAvailabilitySnapshot | null = availability ?? null;
-    let quyetDinh = quyetDinhGuiTheoAvailability(snapshot, Date.now());
+    let quyetDinh = quyetDinhGuiTheoNguCanh({ organizationId: selectedOrganizationId, snapshot });
     if (quyetDinh.canRefetch) {
       snapshot = (await refetchAvailability()).data ?? null;
-      quyetDinh = quyetDinhGuiTheoAvailability(snapshot, Date.now());
+      quyetDinh = quyetDinhGuiTheoNguCanh({ organizationId: selectedOrganizationId, snapshot });
     }
     return { ...quyetDinh, snapshot };
   };
@@ -411,7 +419,7 @@ export default function ChatPanel({ onClose }: Props) {
     setError('');
     setRunning(true);
     try {
-      // Quyền công cụ phải TƯƠI trước khi gửi, và chặn TRƯỚC khi dọn ô nhập để
+      // Phải có tổ chức, và quyền công cụ phải TƯƠI. Chặn TRƯỚC khi dọn ô nhập để
       // người dùng thử lại được ngay thay vì phải gõ lại câu hỏi.
       const quyen = await quyenCongCuTuoi();
       if (generation !== orgGenerationRef.current) return;

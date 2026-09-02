@@ -3,7 +3,7 @@
 // `organization_required` hay `rollout_unavailable: công cụ "..."` và không biết
 // phải làm gì. Đây đều là những lỗi CÓ HÀNH ĐỘNG SỬA rõ ràng.
 import { describe, expect, it } from 'vitest';
-import { dienGiaiLoiChat } from '../chatErrors';
+import { THONG_BAO_CHUA_CHON_TO_CHUC, dienGiaiLoiChat } from '../chatErrors';
 
 describe('dienGiaiLoiChat', () => {
   it('thiếu tổ chức: bảo thẳng phải chọn tổ chức', () => {
@@ -41,6 +41,12 @@ describe('dienGiaiLoiChat', () => {
     expect(dienGiaiLoiChat('not_permitted')).toBe(
       'Tài khoản chưa được cấp quyền dùng AI Copilot hoặc đã hết hạn mức hôm nay.',
     );
+  });
+
+  it('câu "chưa chọn tổ chức" là HẰNG SỐ dùng chung với cửa gửi, không chép tay', () => {
+    // Cửa gửi trong `availabilityGate` dùng lại đúng hằng số này. Hai bản sao
+    // của cùng một câu sẽ lệch nhau ở lần sửa chữ đầu tiên.
+    expect(dienGiaiLoiChat('organization_required')).toBe(THONG_BAO_CHUA_CHON_TO_CHUC);
   });
 
   it('lỗi lạ vẫn hiện nguyên văn — giấu đi thì không ai gỡ được', () => {

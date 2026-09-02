@@ -8,6 +8,7 @@
 //
 // Chỗ này quyết định: thà chặn lượt gửi kèm một câu tiếng Việt còn hơn trả lời
 // bằng nửa năng lực mà không nói gì.
+import { THONG_BAO_CHUA_CHON_TO_CHUC } from './chatErrors';
 import {
   copilotAvailabilitySnapshotIsFresh,
   type CopilotAvailabilitySnapshot,
@@ -49,4 +50,24 @@ export function quyetDinhGuiTheoAvailability(
     return { guiDuoc: true, canRefetch: false };
   }
   return { guiDuoc: false, canRefetch: true, thongBao: THONG_BAO_QUYEN_CHUA_TUOI };
+}
+
+/**
+ * Cửa gửi có xét cả TỔ CHỨC, không chỉ độ tươi.
+ *
+ * `useCopilotAvailability` bị `enabled: false` khi chưa chọn tổ chức, nên
+ * `refetch()` chạy queryFn rồi trả `null` ngay — làm mới bao nhiêu lần cũng thế.
+ * Đưa nhánh đó vào `quyetDinhGuiTheoAvailability` sẽ ra `canRefetch: true` kèm
+ * câu "thử lại sau vài giây": hẹn một thứ không bao giờ đến, trong khi việc phải
+ * làm hoàn toàn khác — chọn tổ chức.
+ */
+export function quyetDinhGuiTheoNguCanh(nguCanh: {
+  organizationId: string | null;
+  snapshot: CopilotAvailabilitySnapshot | null | undefined;
+  now?: number;
+}): QuyetDinhGui {
+  if (!nguCanh.organizationId) {
+    return { guiDuoc: false, canRefetch: false, thongBao: THONG_BAO_CHUA_CHON_TO_CHUC };
+  }
+  return quyetDinhGuiTheoAvailability(nguCanh.snapshot, nguCanh.now ?? Date.now());
 }

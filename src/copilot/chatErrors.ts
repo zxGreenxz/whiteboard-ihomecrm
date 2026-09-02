@@ -5,6 +5,14 @@
 // thông báo — đó là đổ lỗi lên người đọc.
 import { formatCopilotRolloutError } from './featureFlags';
 
+/**
+ * Chưa chọn tổ chức — dùng chung với cửa gửi trong `availabilityGate`.
+ *
+ * Xuất khẩu chứ không để chuỗi nằm trơ trong bảng bên dưới, vì cửa gửi cần đúng
+ * câu này: hai bản sao của cùng một câu sẽ lệch nhau ở lần sửa chữ đầu tiên.
+ */
+export const THONG_BAO_CHUA_CHON_TO_CHUC = 'Hãy chọn tổ chức trước khi hỏi Copilot.';
+
 const HET_QUYEN_HOAC_HAN_MUC =
   'Tài khoản chưa được cấp quyền dùng AI Copilot hoặc đã hết hạn mức hôm nay.';
 
@@ -25,7 +33,7 @@ const MA_ROLLOUT_QUAN_TRI = [
 /** Mã lỗi → câu tiếng Việt kèm hành động sửa được. Khớp theo chuỗi CON vì lỗi
  *  thật thường có đuôi mô tả (`rollout_unavailable: công cụ "..." đã bị tắt`). */
 const THEO_MA: readonly [string, string][] = [
-  ['organization_required', 'Hãy chọn tổ chức trước khi hỏi Copilot.'],
+  ['organization_required', THONG_BAO_CHUA_CHON_TO_CHUC],
   ['organization_mismatch', 'Tổ chức đã đổi, mở lại cuộc trò chuyện.'],
   ['rollout_unavailable', 'Trang/công cụ này chưa được bật cho tổ chức.'],
 ];
