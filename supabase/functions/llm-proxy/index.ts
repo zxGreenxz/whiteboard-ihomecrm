@@ -13,8 +13,11 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
+// `x-organization-id`: chỗ dành sẵn cho G0-B (chọn công ty đang làm việc). Header
+// phải nằm trong allow-list CORS trước, nếu không preflight chặn ngay ở trình duyệt
+// và lỗi trông như "server không nhận request" chứ không như "thiếu header".
 const ALLOWED_HEADERS =
-  'authorization, x-client-info, apikey, content-type, x-copilot-feature, x-task-id, x-mock-step, x-mock-cost';
+  'authorization, x-client-info, apikey, content-type, x-copilot-feature, x-task-id, x-mock-step, x-mock-cost, x-organization-id';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -95,6 +98,172 @@ function findPricing(models: unknown, modelId: string): ModelPricing | null {
   if (typeof output !== 'number' || !Number.isFinite(output) || output < 0) return null;
   if (mode === 'metered' && (input <= 0 || output <= 0)) return null;
   return { pricing_mode: mode, input_price: input, output_price: output };
+}
+
+// ── Cửa vào: hàm THUẦN, test được không cần mạng ──────────────────────────
+// Toàn bộ khối này cố ý không đụng `Deno`, `fetch` hay `admin` — index.test.ts
+// gọi thẳng vào đây. Không tách sang file riêng được: đường deploy
+// (scripts/deploy-llm-proxy.mjs) chỉ đóng gói ĐÚNG index.ts, một import cạnh
+// bên sẽ chết trên server chứ không chết ở đây.
+
+/** Ước lượng chi phí reservation: prompt chars/4 × giá in + max_tokens × giá out (USD/1M). */
+export function tinhEstCost(pricing: ModelPricing, promptChars: number, maxOut: number): number {
+  return (promptChars / 4 / 1e6) * pricing.input_price + (maxOut / 1e6) * pricing.output_price;
+}
+
+/**
+ * Chi phí ép qua header `x-mock-cost` (dev/test quota/race).
+ *
+ * Bản cũ nhận thẳng `parseFloat(...)`, nên `x-mock-cost: -5` ghi -5 USD vào
+ * `ai_usage_logs` — HOÀN LẠI hạn mức ngày thay vì tiêu nó. Ai gọi được proxy là
+ * tự nạp thêm quota cho mình. Clamp về 0 ở đây, và migration
+ * `20260902123939_copilot_mock_off_finalize_clamp_v1` clamp lần nữa ở DB: header
+ * chỉ là một trong nhiều đường vào cột đó.
+ */
+export function clampMockCost(header: string | null, estCost: number): number {
+  const forced = parseFloat(header ?? '');
+  // NaN (không gửi header / rác) và ±Infinity đều KHÔNG phải "ép giá" — giữ dự toán.
+  if (!Number.isFinite(forced)) return estCost;
+  return Math.max(0, forced);
+}
+
+/** Mock CHỈ chạy khi deployment bật tường minh — xem chú thích ở chỗ gọi. */
+export function mockDuocPhep(
+  getEnv: (key: string) => string | undefined = (key) => Deno.env.get(key),
+): boolean {
+  return getEnv('LLM_PROXY_ALLOW_MOCK') === '1';
+}
+
+/**
+ * Khoá được phép chuyển tiếp lên upstream.
+ *
+ * Bản cũ forward `{ ...body }` (chỉ xoá `n`), tức là mọi khoá client gửi đều tới
+ * upstream: `models`/`route`/`provider` của OpenRouter đổi hẳn model thật sự chạy
+ * — vòng qua bảng giá đã duyệt và qua ước lượng chi phí; `transforms`/`plugins`
+ * bật tính năng tính tiền riêng; `user` gắn định danh tuỳ ý vào tài khoản trả tiền.
+ * Danh sách CHO PHÉP thay vì danh sách cấm: khoá mới của upstream mặc định bị bỏ,
+ * không mặc định lọt.
+ */
+export const TRUONG_BODY_HOP_LE = [
+  'messages',
+  'stream',
+  'stream_options',
+  'max_tokens',
+  'temperature',
+  'top_p',
+  'tools',
+  'tool_choice',
+  'response_format',
+] as const;
+
+export function chonTruongBodyHopLe(body: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of TRUONG_BODY_HOP_LE) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) out[key] = body[key];
+  }
+  return out;
+}
+
+export const GIOI_HAN_BODY_BYTES = 524_288; // 512 KiB
+export const GIOI_HAN_SO_MESSAGE = 64;
+export const GIOI_HAN_SO_ANH = 4;
+export const GIOI_HAN_TONG_ANH_KY_TU = 6 * 1024 * 1024; // 6 MB base64
+
+export interface LoiKichThuoc { status: number; message: string; code: string }
+
+/** Đếm ảnh nhúng trong `messages` (data: URI hoặc URL trong `image_url`). */
+function gomAnh(messages: unknown): { so: number; tongKyTu: number } {
+  let so = 0;
+  let tongKyTu = 0;
+  if (!Array.isArray(messages)) return { so, tongKyTu };
+  for (const message of messages) {
+    const content = (message as { content?: unknown } | null)?.content;
+    if (!Array.isArray(content)) continue;
+    for (const phan of content) {
+      if (!phan || typeof phan !== 'object') continue;
+      const anh = (phan as { image_url?: unknown }).image_url;
+      const url = typeof anh === 'string'
+        ? anh
+        : typeof (anh as { url?: unknown })?.url === 'string'
+          ? (anh as { url: string }).url
+          : null;
+      if (url === null) continue;
+      so += 1;
+      tongKyTu += url.length;
+    }
+  }
+  return { so, tongKyTu };
+}
+
+/**
+ * Trần kích thước đầu vào. `null` = đạt.
+ *
+ * Thứ tự có chủ ý: chặn theo BYTE trước, rồi mới đếm message và ảnh. Hệ quả cần
+ * biết: với trần body 512 KiB, ngưỡng 6 MB ảnh không bao giờ tự chạm được qua
+ * HTTP — nó là lớp thứ hai, để trần body nới ra sau này thì ảnh vẫn có trần
+ * riêng. Ngưỡng SỐ ảnh thì chạm được thật (4 URL http ngắn lọt thoải mái 512 KiB).
+ */
+export function kiemKichThuocBody(text: string, messages: unknown): LoiKichThuoc | null {
+  const soByte = new TextEncoder().encode(text).length;
+  if (soByte > GIOI_HAN_BODY_BYTES) {
+    return { status: 413, message: 'Request body too large', code: 'body_too_large' };
+  }
+  if (Array.isArray(messages) && messages.length > GIOI_HAN_SO_MESSAGE) {
+    return { status: 400, message: `Too many messages (max ${GIOI_HAN_SO_MESSAGE})`, code: 'too_many_messages' };
+  }
+  const anh = gomAnh(messages);
+  if (anh.so > GIOI_HAN_SO_ANH || anh.tongKyTu > GIOI_HAN_TONG_ANH_KY_TU) {
+    return { status: 400, message: `Too many or too large images (max ${GIOI_HAN_SO_ANH})`, code: 'too_many_images' };
+  }
+  return null;
+}
+
+export const TIMEOUT_KET_NOI_MS = 60_000;
+export const TIMEOUT_STREAM_TONG_MS = 180_000;
+export const TIMEOUT_STREAM_IM_MS = 30_000;
+
+export interface DongHoStream {
+  /** Có chunk mới → dời hạn im lặng. Đồng hồ TỔNG không dời. */
+  datLai(): void;
+  /** Dọn cả hai đồng hồ (bắt buộc gọi, kể cả đường lỗi). */
+  don(): void;
+}
+
+/**
+ * Hai đồng hồ cho một stream đang chạy.
+ *
+ * Bản cũ `clearTimeout(timer)` ngay khi upstream trả header, với lý do "stream
+ * sống lâu hơn 60s là bình thường" — đúng, nhưng sau dòng đó KHÔNG còn đồng hồ
+ * nào. Một upstream treo giữa chừng giữ nguyên một reservation `pending` và một
+ * kết nối, vô hạn. Hai hạn khác nhau vì hai kiểu hỏng khác nhau: TỔNG chặn
+ * stream chạy mãi, IM LẶNG chặn stream đứng hình mà chưa đóng.
+ */
+export function taoDongHoStream(
+  khiHetGio: (lyDo: 'tong' | 'im') => void,
+  tongMs: number = TIMEOUT_STREAM_TONG_MS,
+  imMs: number = TIMEOUT_STREAM_IM_MS,
+): DongHoStream {
+  let daBan = false;
+  let dongHoIm: number | undefined;
+  const ban = (lyDo: 'tong' | 'im') => {
+    if (daBan) return;
+    daBan = true;
+    don();
+    khiHetGio(lyDo);
+  };
+  const dongHoTong = setTimeout(() => ban('tong'), tongMs);
+  function don() {
+    clearTimeout(dongHoTong);
+    if (dongHoIm !== undefined) clearTimeout(dongHoIm);
+    dongHoIm = undefined;
+  }
+  const datLai = () => {
+    if (daBan) return;
+    if (dongHoIm !== undefined) clearTimeout(dongHoIm);
+    dongHoIm = setTimeout(() => ban('im'), imMs);
+  };
+  datLai();
+  return { datLai, don };
 }
 
 // ── Mock provider (dev/test — vẫn qua đủ gate reserve/finalize) ────────────
@@ -194,7 +363,11 @@ function mockStreamResponse(
   });
 }
 
-Deno.serve(async (req) => {
+/** Trần parse ĐỒNG THỜI: một instance chỉ giải nén ngần này body cùng lúc. */
+export const TRAN_PARSE_DONG_THOI = 8;
+let dangParse = 0;
+
+export const xuLyYeuCau = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -203,6 +376,13 @@ Deno.serve(async (req) => {
   const path = new URL(req.url).pathname;
   if (!path.endsWith('/chat/completions')) {
     return openaiError(404, `Unknown path: ${path}`, 'not_found');
+  }
+
+  // Trần theo `content-length` TRƯỚC khi đọc byte nào: phép từ chối rẻ nhất, và
+  // nó che luôn vòng gọi getUser bên dưới.
+  const khaiDoDai = Number(req.headers.get('content-length') ?? '');
+  if (Number.isFinite(khaiDoDai) && khaiDoDai > GIOI_HAN_BODY_BYTES) {
+    return openaiError(413, 'Request body too large', 'body_too_large');
   }
 
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
@@ -217,11 +397,44 @@ Deno.serve(async (req) => {
   if (userError || !userData?.user) return openaiError(401, 'Invalid JWT', 'unauthorized');
   const userId = userData.user.id;
 
+  // Đọc + parse body dưới một semaphore: JSON.parse là công việc ĐỒNG BỘ, nó giữ
+  // nguyên isolate. Không có trần này thì vài chục request nặng cùng lúc làm mọi
+  // request khác (kể cả request rẻ) chờ theo — một instance chết vì CPU chứ không
+  // vì hạn mức nào.
   let body: Record<string, unknown>;
+  if (dangParse >= TRAN_PARSE_DONG_THOI) {
+    return openaiError(429, 'Too many concurrent requests, retry later', 'busy');
+  }
+  dangParse += 1;
   try {
-    body = await req.json();
-  } catch {
-    return openaiError(400, 'Invalid JSON body', 'invalid_json');
+    let text: string;
+    try {
+      text = await req.text();
+    } catch {
+      return openaiError(400, 'Invalid JSON body', 'invalid_json');
+    }
+    // Chặn sớm theo KÝ TỰ: mỗi ký tự UTF-8 tốn ít nhất 1 byte, nên vượt trần ký tự
+    // là chắc chắn vượt trần byte. Body không khai content-length (chunked) chỉ
+    // dừng được ở đây, trước khi parse.
+    if (text.length > GIOI_HAN_BODY_BYTES) {
+      return openaiError(413, 'Request body too large', 'body_too_large');
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return openaiError(400, 'Invalid JSON body', 'invalid_json');
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return openaiError(400, 'Invalid JSON body', 'invalid_json');
+    }
+    body = parsed as Record<string, unknown>;
+    const loiKichThuoc = kiemKichThuocBody(text, body.messages);
+    if (loiKichThuoc) {
+      return openaiError(loiKichThuoc.status, loiKichThuoc.message, loiKichThuoc.code);
+    }
+  } finally {
+    dangParse -= 1;
   }
 
   const wantStream = body.stream === true;
@@ -233,6 +446,15 @@ Deno.serve(async (req) => {
   }
   const provider = rawModel.slice(0, sep);
   const modelId = rawModel.slice(sep + 1);
+
+  // Mock đi qua đủ gate, nhưng nó KHÔNG gọi upstream: chi phí do header quyết
+  // định và kịch bản do modelId quyết định. Với một dòng `ai_providers` bật nhầm
+  // (seed gốc đặt `enabled = true`), bất kỳ ai có JWT đều gọi được. Công tắc thật
+  // phải nằm ở DEPLOYMENT — biến môi trường không sửa được từ giao diện admin —
+  // và phải chặn TRƯỚC reserve, kẻo mỗi lần thử là một dòng usage rác.
+  if (provider === 'mock' && !mockDuocPhep()) {
+    return openaiError(403, 'Mock provider is disabled', 'provider_disabled');
+  }
 
   // Provider registry (DB — admin đổi không cần redeploy)
   const { data: prov, error: provError } = await admin
@@ -272,16 +494,11 @@ Deno.serve(async (req) => {
     );
   }
 
-  // Ước lượng chi phí reservation: prompt chars/4 × giá in + max_tokens × giá out (USD/1M)
   const promptChars = JSON.stringify(body.messages ?? []).length;
   const maxOut = Math.min(typeof body.max_tokens === 'number' ? (body.max_tokens as number) : 4096, 4096);
-  let estCost =
-    (promptChars / 4 / 1e6) * pricing.input_price + (maxOut / 1e6) * pricing.output_price;
-  // Dev/test: mock cho phép ép est cost qua header để test quota/race
-  if (provider === 'mock') {
-    const forced = parseFloat(req.headers.get('x-mock-cost') ?? '');
-    if (!Number.isNaN(forced)) estCost = forced;
-  }
+  let estCost = tinhEstCost(pricing, promptChars, maxOut);
+  // Dev/test: mock cho phép ép est cost qua header để test quota/race — đã clamp ≥ 0.
+  if (provider === 'mock') estCost = clampMockCost(req.headers.get('x-mock-cost'), estCost);
 
   // Reserve — TOÀN BỘ gate atomic trong 1 RPC, không cache
   const { data: reservationId, error: reserveError } = await admin.rpc('reserve_ai_usage', {
@@ -303,10 +520,18 @@ Deno.serve(async (req) => {
     return openaiError(500, `Reserve failed: ${msg}`, 'internal');
   }
 
+  // ĐÚNG MỘT LẦN. Reservation là một dòng `pending` đang giữ hạn mức: gọi hai lần
+  // ghi đè số liệu lần trước (một lần abort + một lần flush là ca có thật ở
+  // stream), không gọi lần nào thì dòng đó `pending` vĩnh viễn và hạn mức ngày
+  // không bao giờ nhả. Guard ở đây thay vì ở từng chỗ gọi, để đường mới thêm sau
+  // này cũng được che.
+  let daFinalize = false;
   const finalize = (fields: {
     prompt?: number; completion?: number; total?: number; cached?: number;
     cost: number | null; latency: number; status: string; error?: string;
   }) => {
+    if (daFinalize) return;
+    daFinalize = true;
     const p = admin.rpc('finalize_ai_usage', {
       p_id: reservationId,
       p_prompt_tokens: fields.prompt ?? 0,
@@ -318,7 +543,18 @@ Deno.serve(async (req) => {
       p_status: fields.status,
       p_error: fields.error ?? null,
     }).then(({ error }) => {
-      if (error) console.error('finalize_ai_usage failed:', error.message);
+      // Log CÓ CẤU TRÚC: dòng này là dấu vết duy nhất của một reservation kẹt
+      // `pending`. Văn xuôi thì không lọc được theo reservation trong log viewer.
+      if (error) {
+        console.error(JSON.stringify({
+          evt: 'finalize_failed',
+          reservationId,
+          provider,
+          model: modelId,
+          status: fields.status,
+          err: error.message?.slice(0, 300) ?? null,
+        }));
+      }
     });
     if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
     else void p;
@@ -352,16 +588,13 @@ Deno.serve(async (req) => {
     return openaiError(403, `Provider "${provider}" has no API key configured`, 'provider_disabled');
   }
 
-  // Clamp/normalize per-provider (thay modelPatch — chết sau proxy)
-  const outBody: Record<string, unknown> = { ...body, model: modelId };
-  delete outBody.n;
+  // Clamp/normalize per-provider (thay modelPatch — chết sau proxy).
+  // `model` do proxy đặt, KHÔNG lấy của client: chuỗi client gửi là "provider:model".
+  const outBody: Record<string, unknown> = { ...chonTruongBodyHopLe(body), model: modelId };
   outBody.max_tokens = maxOut;   // Anthropic shim ĐÒI max_tokens — luôn set
-  if (wantStream) {
-    // include_usage để chunk cuối mang usage (chỉ set cho provider chắc chắn hỗ trợ)
-    if (['openrouter', 'openai', 'groq', 'deepseek'].includes(provider)) {
-      outBody.stream_options = { include_usage: true };
-    }
-  }
+  // include_usage để chunk cuối mang usage (chỉ set cho provider chắc chắn hỗ trợ)
+  const daXinUsage = wantStream && ['openrouter', 'openai', 'groq', 'deepseek'].includes(provider);
+  if (daXinUsage) outBody.stream_options = { include_usage: true };
 
   const controller = new AbortController();
   // Client abort (Dừng trong UI) → propagate lên upstream (Phase 4)
@@ -369,7 +602,9 @@ Deno.serve(async (req) => {
     req.signal.addEventListener('abort', () => controller.abort());
   } catch { /* signal không khả dụng — bỏ qua */ }
   // Timeout: non-stream 60s trọn request; stream chỉ áp cho lúc chờ headers
-  const timer = setTimeout(() => controller.abort(), 60_000);
+  // (sau đó chuyển sang cặp đồng hồ tổng/im lặng, xem taoDongHoStream).
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_KET_NOI_MS);
+  let streamDangChay = false;
   try {
     const res = await fetch(`${upstream.baseURL}/chat/completions`, {
       method: 'POST',
@@ -383,7 +618,9 @@ Deno.serve(async (req) => {
     });
 
     if (wantStream) {
-      clearTimeout(timer); // stream sống lâu hơn 60s là bình thường
+      // KHÔNG clearTimeout ở đây nữa: `finally` phía dưới gỡ đồng hồ chờ-header
+      // đúng lúc handler trả về, và cặp đồng hồ stream bên dưới nhận ca ngay
+      // trong cùng lượt đồng bộ này — không có khoảng nào stream chạy không đồng hồ.
       if (!res.ok || !res.body) {
         const errText = await res.text();
         finalize({
@@ -396,16 +633,36 @@ Deno.serve(async (req) => {
         });
       }
       // TEE: pass-through bytes, đồng thời parse SSE tìm chunk usage cuối
+      streamDangChay = true;
       const decoder = new TextDecoder();
       let sseBuf = '';
       let lastUsage: any = null;
-      let finalized = false;
-      const doFinalize = (aborted: boolean) => {
-        if (finalized) return;
-        finalized = true;
-        const realCost =
-          ((lastUsage?.prompt_tokens ?? 0) / 1e6) * pricing.input_price +
-          ((lastUsage?.completion_tokens ?? 0) / 1e6) * pricing.output_price;
+      let soChunkHong = 0;
+      let dieuKhienTee: TransformStreamDefaultController<Uint8Array> | null = null;
+      const doFinalize = (ketCuc: 'ok' | 'client_abort' | 'stream_timeout', chiTiet?: string) => {
+        dongHo.don();
+        const coUsage = lastUsage !== null;
+        // Không có usage mà KHÔNG biết chi phí thật ⇒ ghi theo dự toán, không ghi 0.
+        // Ghi 0 là biếu không một lượt gọi: hạn mức ngày cộng thêm đúng 0 đồng.
+        const realCost = coUsage
+          ? ((lastUsage?.prompt_tokens ?? 0) / 1e6) * pricing.input_price +
+            ((lastUsage?.completion_tokens ?? 0) / 1e6) * pricing.output_price
+          : estCost;
+        // Chỉ coi là hỏng khi ta ĐÃ XIN usage mà vẫn không có: với provider không
+        // hỗ trợ include_usage, thiếu usage là chuyện bình thường, không phải lỗi.
+        const thieuUsage = !coUsage && daXinUsage && ketCuc === 'ok';
+        if (thieuUsage || soChunkHong > 0) {
+          console.error(JSON.stringify({
+            evt: 'usage_parse_failed',
+            reservationId,
+            provider,
+            model: modelId,
+            stream: true,
+            ketCuc,
+            chunk_hong: soChunkHong,
+            co_usage: coUsage,
+          }));
+        }
         finalize({
           prompt: lastUsage?.prompt_tokens ?? 0,
           completion: lastUsage?.completion_tokens ?? 0,
@@ -413,12 +670,21 @@ Deno.serve(async (req) => {
           cached: lastUsage?.prompt_tokens_details?.cached_tokens ?? 0,
           cost: realCost,
           latency: Date.now() - t0,
-          status: 'ok',
-          error: aborted ? 'client_abort' : undefined,
+          status: ketCuc === 'stream_timeout' ? 'stream_timeout' : (thieuUsage ? 'finalize_error' : 'ok'),
+          error: ketCuc === 'ok' ? (thieuUsage ? 'usage_parse_failed' : undefined) : (chiTiet ?? ketCuc),
         });
       };
+      const dongHo = taoDongHoStream((lyDo) => {
+        // Hết giờ: chốt sổ, đóng ĐẸP phía client (terminate → client thấy hết
+        // stream, không thấy kết nối đứt), rồi cắt upstream.
+        doFinalize('stream_timeout', lyDo === 'tong' ? 'wall_clock_180s' : 'idle_30s');
+        try { dieuKhienTee?.terminate(); } catch { /* stream đã đóng — bỏ qua */ }
+        try { controller.abort(); } catch { /* đã abort — bỏ qua */ }
+      });
       const tee = new TransformStream<Uint8Array, Uint8Array>({
+        start(ctrl) { dieuKhienTee = ctrl; },
         transform(chunk, ctrl) {
+          dongHo.datLai();
           ctrl.enqueue(chunk);
           sseBuf += decoder.decode(chunk, { stream: true });
           let nl: number;
@@ -431,14 +697,14 @@ Deno.serve(async (req) => {
             try {
               const parsed = JSON.parse(payload);
               if (parsed?.usage) lastUsage = parsed.usage;
-            } catch { /* chunk dở — bỏ qua */ }
+            } catch { soChunkHong += 1; } // chunk dở — đếm để log, không chặn stream
           }
         },
-        flush() { doFinalize(false); },
+        flush() { doFinalize('ok'); },
       });
       // Client ngắt giữa chừng → vẫn finalize với usage đã gom được
       try {
-        req.signal.addEventListener('abort', () => doFinalize(true));
+        req.signal.addEventListener('abort', () => doFinalize('client_abort'));
       } catch { /* bỏ qua */ }
       return new Response(res.body.pipeThrough(tee), {
         status: 200,
@@ -465,7 +731,36 @@ Deno.serve(async (req) => {
     }
 
     let usage: any = {};
-    try { usage = JSON.parse(text)?.usage ?? {}; } catch { /* giữ {} */ }
+    let loiParse: string | null = null;
+    try {
+      usage = JSON.parse(text)?.usage ?? {};
+    } catch (e) {
+      loiParse = e instanceof Error ? e.message : String(e);
+    }
+    if (loiParse !== null) {
+      // Upstream trả 200 với thân KHÔNG phải JSON: một lượt gọi đã tiêu thật mà ta
+      // không đọc được usage. Bản cũ nuốt lỗi và ghi cost 0 — dòng usage trông
+      // như một lượt gọi miễn phí, và hạn mức ngày không hề nhúc nhích.
+      console.error(JSON.stringify({
+        evt: 'usage_parse_failed',
+        reservationId,
+        provider,
+        model: modelId,
+        stream: false,
+        so_ky_tu: text.length,
+        err: loiParse.slice(0, 300),
+      }));
+      finalize({
+        cost: estCost, // không biết thật ⇒ tính theo dự toán đã reserve, KHÔNG phải 0
+        latency: Date.now() - t0,
+        status: 'finalize_error',
+        error: `usage_parse_failed: ${loiParse.slice(0, 300)}`,
+      });
+      return new Response(text, {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     const realCost =
       ((usage.prompt_tokens ?? 0) / 1e6) * pricing.input_price +
       ((usage.completion_tokens ?? 0) / 1e6) * pricing.output_price;
@@ -488,5 +783,20 @@ Deno.serve(async (req) => {
     return openaiError(502, `Upstream error: ${msg}`, 'upstream_error');
   } finally {
     clearTimeout(timer);
+    // Lưới cuối: reservation đã tạo mà handler thoát chưa chốt sổ thì dòng đó
+    // `pending` vĩnh viễn và hạn mức ngày không nhả. Trừ đường stream — ở đó
+    // handler CỐ Ý trả về trước khi stream chạy xong, và doFinalize chốt sau.
+    if (!daFinalize && !streamDangChay) {
+      finalize({
+        cost: estCost,
+        latency: Date.now() - t0,
+        status: 'finalize_error',
+        error: 'handler thoát mà chưa finalize',
+      });
+    }
   }
-});
+};
+
+if (import.meta.main) {
+  Deno.serve(xuLyYeuCau);
+}

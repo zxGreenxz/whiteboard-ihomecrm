@@ -83,6 +83,25 @@
       "timeoutMinutes": 60
     },
     {
+      "id": "edge-deno-llm-proxy",
+      "runner": "deno",
+      "ciJob": "(chưa có — xem blockedFromCi)",
+      "command": "deno test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env",
+      "runtime": "deno 2.9.4",
+      "risk": "normal",
+      "includes": [
+        "supabase/functions/llm-proxy/index.test.ts"
+      ],
+      "note": "Test hàm thuần của llm-proxy (allowlist body, trần kích thước, clamp mock cost, đồng hồ stream). Tách khỏi suite edge-deno vì suite đó chạy trong workflow network-center-validation, mà workflow ấy lọc theo đường dẫn Network Center — llm-proxy đổi không kích hoạt nó.",
+      "ciJobs": [],
+      "environment": "local",
+      "blockedFromCi": {
+        "reason": "Chưa workflow nào cài Deno cho llm-proxy: ci-gates.yml không có bước Deno, còn network-center-validation.yml lọc đường dẫn Network Center nên thay đổi ở supabase/functions/llm-proxy không kích hoạt nó. Máy viết test cũng không có deno nên chưa ai chạy file này lần nào — khai đúng như vậy thay vì gắn vào một job không chạy nó.",
+        "expiry": "2026-10-31",
+        "exitCondition": "Chạy `deno test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env` một lần trên máy/CI có Deno 2.9.4; xanh thì thêm bước Deno vào job quality-gates của ci-gates.yml (pin denoland/setup-deno như network-center-validation.yml), đổi ciJobs thành job đó và xoá mục này."
+      }
+    },
+    {
       "id": "e2e-fleet",
       "runner": "playwright",
       "ciJob": "(local — cần FLEET_PASS_*, không chạy trên CI)",
