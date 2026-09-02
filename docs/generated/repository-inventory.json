@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 474,
-  "soFileDocBangFs": 159,
-  "tongLoiGoi": 322,
-  "khongPhanLoaiDuoc": 169,
+  "tongSoFileTest": 476,
+  "soFileDocBangFs": 161,
+  "tongLoiGoi": 325,
+  "khongPhanLoaiDuoc": 170,
   "theoLoai": {
     "manifest": {
       "soFile": 18,
@@ -23,7 +23,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 56,
+      "soFile": 57,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -341,6 +341,14 @@
       "loai": {
         "sql": 1,
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/copilot/__tests__/readonlyQueryContracts.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 2
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -670,14 +678,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "src/copilot/__tests__/readonlyQueryContracts.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "ma-nguon": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/hooks/__tests__/realtimeOrchestratorThin.test.ts",
       "soGoi": 1,
       "loai": {},
@@ -884,6 +884,20 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotReadRpcContractsIeApprovalsMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotReadonlyHarnessScan.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/copilotReserveAiUsageOrganizationMigration.test.ts",
