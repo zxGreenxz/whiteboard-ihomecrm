@@ -173,8 +173,9 @@ export const useCommissionPrefill = (contractId: string | null) => {
           .ilike("name", buildingName)
           .is("deleted_at", null)
           .order("is_default", { ascending: false });
-        if (accounts && accounts.length > 0) {
-          defaultAccountId = accounts[0].id;
+        const first = accounts?.[0];
+        if (first) {
+          defaultAccountId = first.id;
         }
       }
 

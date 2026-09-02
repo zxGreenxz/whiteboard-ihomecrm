@@ -129,8 +129,12 @@ function soNgay(a: string, b: string): number | null {
   const pa = /^(\d{4})-(\d{2})-(\d{2})/.exec(a);
   const pb = /^(\d{4})-(\d{2})-(\d{2})/.exec(b);
   if (!pa || !pb) return null;
-  const ua = Date.UTC(+pa[1], +pa[2] - 1, +pa[3]);
-  const ub = Date.UTC(+pb[1], +pb[2] - 1, +pb[3]);
+  // noUncheckedIndexedAccess: nhóm regex là string | undefined dù đã khớp — Number()
+  // nhận cả hai; khớp regex ở trên đã bảo đảm ba nhóm có mặt.
+  const utc = (m: RegExpExecArray) => Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const ua = utc(pa);
+  const ub = utc(pb);
+  if (!Number.isFinite(ua) || !Number.isFinite(ub)) return null;
   return Math.round((ub - ua) / 86_400_000);
 }
 
