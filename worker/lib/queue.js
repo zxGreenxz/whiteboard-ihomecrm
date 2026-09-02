@@ -20,6 +20,7 @@ import { ThreadType } from 'zca-js';
 import { sb, log, sessions, orgOf } from './ctx.js';
 import { upsertMessagesForThread, emojiToZca } from './inbound.js';
 import { sendMediaJob } from './media.js';
+import { validateZaloCommandScope, formatScopeRejection, logScopeRejection, clampHistoryCount } from './scope-guard.js';
 
 async function jobDone(jobId, extra = {}) {
   await sb.from('zalo_send_queue').update({ status: 'sent', processed_at: new Date().toISOString(), ...extra }).eq('id', jobId);
@@ -148,6 +149,16 @@ export async function processJob(job) {
     .update({ status: 'processing' }).eq('id', job.id).eq('status', 'queued').select('id');
   if (claimErr || !claimed || !claimed.length) return;
 
+  // GUARD PHẠM VI (PZALO-C01, re-anchor 02/09/2026): SAU claim, TRƯỚC mọi lời gọi
+  // provider. Job forge (thread/msg/account không thuộc hội thoại của account)
+  // bị fail với REJECTED_SCOPE và KHÔNG chạm Zalo.
+  const scope = await validateZaloCommandScope(job);
+  if (!scope.ok) {
+    logScopeRejection(job, scope);
+    await jobFail(job, formatScopeRejection(scope));
+    return;
+  }
+
   const s = sessions.get(job.account_id);
   if (!s) {
     await jobFail(job, 'Tài khoản chưa kết nối');
@@ -155,26 +166,22 @@ export async function processJob(job) {
   }
   try {
     const p = job.payload || {};
-    let threadId = p.thread_id ? String(p.thread_id) : null;
-    let ttype = p.thread_type || null;
-    if (!threadId && job.conversation_id) {
-      const { data: conv } = await sb.from('zalo_conversations').select('thread_id, thread_type').eq('id', job.conversation_id).single();
-      threadId = conv?.thread_id;
-      ttype = conv?.thread_type;
-    }
+    // thread/type lấy từ hội thoại ĐÃ KIỂM (scope.conv), không tin payload.
+    const threadId = scope.conv ? String(scope.conv.thread_id) : (p.thread_id ? String(p.thread_id) : null);
+    const ttype = scope.conv ? scope.conv.thread_type : (p.thread_type || null);
     const type = ttype === 'group' ? ThreadType.Group : ThreadType.User;
 
     if (p.action === 'react') {
-      await s.api.addReaction(emojiToZca(p.emoji), { data: { msgId: String(p.target_msg_id || ''), cliMsgId: String(p.target_cli_msg_id || '') }, threadId: String(p.thread_id), type });
+      await s.api.addReaction(emojiToZca(p.emoji), { data: { msgId: String(p.target_msg_id || ''), cliMsgId: String(p.target_cli_msg_id || '') }, threadId, type });
       log('reacted', job.id, p.emoji);
       await jobDone(job.id);
     } else if (p.action === 'recall') {
-      await s.api.undo({ msgId: String(p.target_msg_id || ''), cliMsgId: String(p.target_cli_msg_id || '') }, String(p.thread_id), type);
+      await s.api.undo({ msgId: String(p.target_msg_id || ''), cliMsgId: String(p.target_cli_msg_id || '') }, threadId, type);
       log('recalled', job.id);
       await jobDone(job.id);
     } else if (p.action === 'load_history') {
-      const h = await s.api.getGroupChatHistory(String(p.thread_id), Number(p.count) || 50);
-      const n = await upsertMessagesForThread(job.account_id, job.user_id, String(p.thread_id), 'group', h?.groupMsgs || [], s.api);
+      const h = await s.api.getGroupChatHistory(threadId, clampHistoryCount(p.count));
+      const n = await upsertMessagesForThread(job.account_id, job.user_id, threadId, 'group', h?.groupMsgs || [], s.api);
       log('history', job.id, '→', n, 'tin');
       await jobDone(job.id);
     } else if (p.action === 'delete_for_me') {
@@ -184,14 +191,14 @@ export async function processJob(job) {
           cliMsgId: String(p.target_cli_msg_id || ''),
           uidFrom: String(p.target_uid_from || s.ownId || ''),
         },
-        threadId: String(p.thread_id), type,
+        threadId, type,
       }, true);
       log('deleted for me', job.id);
       await jobDone(job.id);
     } else if (p.action === 'seen') {
       await seenJob(s, job, p, type);
     } else if (p.action === 'typing') {
-      try { await s.api.sendTypingEvent(String(p.thread_id), type); } catch (e) { log('typing best-effort', e?.message || e); }
+      try { await s.api.sendTypingEvent(threadId, type); } catch (e) { log('typing best-effort', e?.message || e); }
       await jobDone(job.id);
     } else if (p.action === 'find_user') {
       await findUserJob(s, job, p);

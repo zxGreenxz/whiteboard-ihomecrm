@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1324,
+    "sourceCallSites": 1329,
     "catalogFunctions": 1017,
     "schemas": [
       "public",
@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 267,
+    "calledRpcs": 265,
     "byRisk": {
-      "normal": 191,
+      "normal": 189,
       "financial": 76
     },
-    "securityDefiner": 251
+    "securityDefiner": 249
   },
   "missingOnServer": [],
   "rpcs": {
@@ -137,27 +137,6 @@
       ],
       "risk": "financial"
     },
-    "approve_meter_reading": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_reading_id uuid",
-          "returns": "void",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "anon",
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
-    },
     "approve_meter_reading_v1": {
       "definitions": [
         {
@@ -256,27 +235,6 @@
         "src/hooks/useInvoices.ts"
       ],
       "risk": "financial"
-    },
-    "bulk_approve_meter_readings": {
-      "definitions": [
-        {
-          "schema": "public",
-          "args": "p_reading_ids uuid[]",
-          "returns": "integer",
-          "volatility": "VOLATILE",
-          "securityDefiner": true,
-          "searchPath": "search_path=public",
-          "execRoles": [
-            "anon",
-            "authenticated",
-            "service_role"
-          ]
-        }
-      ],
-      "callers": [
-        "src/hooks/useMeterReadings.ts"
-      ],
-      "risk": "normal"
     },
     "bulk_approve_meter_readings_v1": {
       "definitions": [
@@ -3984,7 +3942,6 @@
           "securityDefiner": true,
           "searchPath": "search_path=public",
           "execRoles": [
-            "anon",
             "authenticated",
             "service_role"
           ]

@@ -1,19 +1,20 @@
 {
   "note": "SECURITY DEFINER functions anon-executable — allowlist baseline (Sprint 6 CI gate). Regenerate intentionally when adding a genuine public endpoint.",
-  "denylistNote": "Hàm ĐÃ CỐ Ý đóng với anon. Gate fail nếu chúng anon-executable trở lại, KỂ CẢ khi nằm trong signatures. Án lệ 07/08/2026: bản vá 20260530000003 bị 20260601000000_remove_tax_fields.sql chép đè một dòng GRANT, lỗ mở lại hơn hai tháng mà gate im lặng vì hàm nằm sẵn trong allowlist.",
+  "denylistNote": "Hàm ĐÃ CỐ Ý đóng với anon. Gate fail nếu chúng anon-executable trở lại, KỂ CẢ khi nằm trong signatures. Án lệ 07/08/2026: bản vá 20260530000003 bị 20260601000000_remove_tax_fields.sql chép đè một dòng GRANT, lỗ mở lại hơn hai tháng mà gate im lặng vì hàm nằm sẵn trong allowlist. CẬP NHẬT 02/09/2026: thêm approve_meter_reading(uuid), bulk_approve_meter_readings(uuid[]), salary_work_ledger(date,uuid) — REVOKE anon qua migration 20260902082002 (PMETER-C01, FR009-C04 bước 1); ba hàm này từng bị allowlist che (re-anchor bảo mật 02/09 §0c).",
   "generated": "2026-08-23",
-  "count": 48,
+  "count": 45,
   "denylist": [
     "get_public_latest_invoice_by_contract(uuid)",
     "building_of_invoice(uuid)",
     "building_of_contract(uuid)",
-    "building_of_payment(uuid)"
+    "building_of_payment(uuid)",
+    "approve_meter_reading(uuid)",
+    "bulk_approve_meter_readings(uuid[])",
+    "salary_work_ledger(date,uuid)"
   ],
   "signatures": [
     "_collector_thu_account(uuid)",
     "_termination_pick_account(uuid,uuid)",
-    "approve_meter_reading(uuid)",
-    "bulk_approve_meter_readings(uuid[])",
     "bulk_create_meter_readings(jsonb)",
     "can_access_building(uuid)",
     "can_access_org_entity(text,text)",
@@ -51,7 +52,6 @@
     "lucky_public_state_v1(uuid,text,text)",
     "lucky_save_payout_v1(text,jsonb)",
     "monthly_building_profit(date,date,uuid)",
-    "salary_work_ledger(date,uuid)",
     "same_team(uuid)",
     "sandbox_org_ids()",
     "soft_delete_customer(uuid)",

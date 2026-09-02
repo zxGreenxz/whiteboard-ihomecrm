@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 449,
-  "soFileDocBangFs": 145,
-  "tongLoiGoi": 307,
-  "khongPhanLoaiDuoc": 163,
+  "tongSoFileTest": 456,
+  "soFileDocBangFs": 150,
+  "tongLoiGoi": 313,
+  "khongPhanLoaiDuoc": 164,
   "theoLoai": {
     "manifest": {
       "soFile": 18,
@@ -19,11 +19,11 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 27,
+      "soFile": 30,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 51,
+      "soFile": 52,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -43,7 +43,10 @@
     "src/copilot/__tests__/toolOrgScope.test.ts",
     "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",
     "src/hooks/__tests__/realtimeTenantBoundary.test.ts",
+    "src/hooks/__tests__/useCustomers.deleteActiveContractGuard.test.ts",
     "src/hooks/__tests__/useManagerSalaryOrganizationScope.test.ts",
+    "src/hooks/__tests__/useMeterReadings.noLegacyFallback.test.ts",
+    "src/hooks/__tests__/useMeters.serviceResolve.test.ts",
     "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
     "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
     "src/lib/__tests__/docsDemoSeedP3.test.ts",
@@ -343,6 +346,14 @@
     },
     {
       "file": "src/copilot/__tests__/toolOrgScope.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/hooks/__tests__/useCustomers.deleteActiveContractGuard.test.ts",
       "soGoi": 2,
       "loai": {
         "ma-nguon": 2
@@ -670,6 +681,22 @@
     },
     {
       "file": "src/hooks/__tests__/useManagerSalaryOrganizationScope.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/hooks/__tests__/useMeterReadings.noLegacyFallback.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/hooks/__tests__/useMeters.serviceResolve.test.ts",
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
@@ -1101,6 +1128,20 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/securityRemediationMigrations20260902.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/softDeleteCustomerGuardMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/contracts/__tests__/errors.test.ts",

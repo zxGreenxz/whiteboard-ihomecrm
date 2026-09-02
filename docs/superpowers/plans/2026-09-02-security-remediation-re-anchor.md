@@ -20,12 +20,19 @@
 
 | Mức | Tổng | ĐÃ VÁ | CÒN MỞ | KHÔNG CÒN ÁP DỤNG | CHƯA XÁC MINH ĐƯỢC |
 |---|---:|---:|---:|---:|---:|
-| **P1** | 14 | 2 | **12** | 0 | 0 |
+| **P1** | 14 | 2 (+9 vá tối 02/09 → **11**) | **3** | 0 | 0 |
 | **P2** | 26 | 1 | **25** | 0 | 0 |
 | **P3** | 9 | 1 | **8** | 0 | 0 |
-| **Tổng** | **49** | **4** | **45** | **0** | **0** |
+| **Tổng** | **49** | **4 → 13** | **45 → 36** | **0** | **0** |
 
-4 finding ĐÃ VÁ: `PZALO-C02` (P1), `FR009-C03` (P1), `FR020-C03` (P2), `FR006-C01` (P3).
+4 finding ĐÃ VÁ tại thời điểm re-anchor: `PZALO-C02` (P1), `FR009-C03` (P1), `FR020-C03` (P2), `FR006-C01` (P3).
+
+**CẬP NHẬT tối 02/09/2026 — 9 finding P1 đã vá ngay sau re-anchor** (đều có bằng chứng đo lại trên production):
+- `PZALO-C01` ×4 (send/react/recall/history): guard worker `worker/lib/scope-guard.js` (`validateZaloCommandScope`, chạy SAU claim TRƯỚC provider; 8 test vitest) — **hiệu lực khi VPS worker cập nhật code** (bước 2–3 của plan: RPC enqueue v2 + revoke DML còn để sau).
+- `PMETER-C01` ×2 + `FR009-C04` bước 1: migration `20260902082002` REVOKE anon/PUBLIC trên `approve_meter_reading(uuid)`, `bulk_approve_meter_readings(uuid[])`, `salary_work_ledger(date,uuid)` (đo lại: anon_exec=false), đưa `_v1` meter vào migration (hết drift PS04), 3 chữ ký vào `denylist` definer-acl.
+- `FR002-C01`: migration `20260902082003` — `transfer_contract_impl` khoá org + khách mới phải cùng org (42501).
+- `PCOMPAT-C01`: migration `20260902082004` — `ie_compat_update_pending_v2` khoá org, tính scope CUỐI, mọi quan hệ phải cùng org, authorize v3 hai lần (toà cũ + toà mới), hết helper STABLE trong đường quyết định.
+- Còn mở P1: `FR009-C05` (đổi nguồn rule thưởng — đổi số tiền, chờ chủ), `FR001-C03` (lucky payout v2), `FR002-C02` (move-out settlement v2) — ba đường tiền, mỗi cái một PR riêng + reconcile.
 
 **Không có finding nào "KHÔNG CÒN ÁP DỤNG."** Việc xoá OpenClaw 30/08 chỉ xoá *file client* mà plan trỏ tới (`src/lib/openclaw-zalo/`, `src/hooks/openclaw-zalo/openClawRpc.ts`, `.e2e-fleet/specs/openclaw-zalo.spec.ts`); mọi đối tượng SQL/queue `zalo_*` mà finding thật sự nói tới **vẫn sống** — migration `20260830085316_xoa_toan_bo_openclaw.sql:161-163` chỉ xoá key quyền `openclaw_zalo.%`, không đụng `chat_zalo.*`.
 
@@ -64,7 +71,7 @@
 
 ### FR002-C01 (P1) — Contract transfer gắn customer khác tổ chức
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902082003` _(bản re-anchor sáng 02/09 ghi: CÒN MỞ)_
 **Bằng chứng:** Migration mới nhất `supabase/migrations/20260728170000_b8_contract_transfer_audit_customers.sql:69`; thân hiệu lực `supabase/baseline/schema.sql:93163-93254`. Kiểm khách hàng duy nhất là `schema.sql:93190` `IF NOT EXISTS (SELECT 1 FROM customers WHERE id = p_new_customer_id)` — **không** so `customers.organization_id` với `v_contract.organization_id`. Không có `lock_org_for_decision_v1`. Wrapper `schema.sql:93142-93148` chỉ gate quyền trên toà của **hợp đồng**, không gate khách hàng. Không có composite FK `(organization_id, customer_id)`.
 **Fix đề xuất:** migration forward `CREATE OR REPLACE` cho `transfer_contract_impl` — pre-read lấy `contract.organization_id`, `PERFORM app_private.lock_org_for_decision_v1(v_org)`, re-read contract `FOR UPDATE` + customer `FOR SHARE` với `organization_id = v_org`, `RAISE … 42501` nếu lệch; enforce ở **cả** wrapper lẫn `_impl`. Chữ ký không đổi ⇒ `CREATE OR REPLACE` an toàn, không cần DROP. **Rủi ro: THẤP–TRUNG BÌNH** — thêm điều kiện chặn, ca hợp lệ cùng org không đổi hành vi; cần quarantine dữ liệu lệch sẵn có trước khi thêm ràng buộc cứng.
 
@@ -118,7 +125,7 @@
 
 ### FR009-C04 (P1) — Salary CASH branch thiếu tenant scope
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — bước 1 xong: migration `20260902082002` REVOKE anon + denylist; bước 2 (`salary_work_ledger_v2` theo org) gộp với FR009-C05 _(bản re-anchor sáng 02/09 ghi: CÒN MỞ)_
 **Bằng chứng:** Bản hiệu lực `supabase/migrations/20260720181000_jobs_completion_time_integrity.sql:138-264`. Nhánh (D) CASH `:245-262`: `FROM public.income_expenses ie … WHERE ie.type='INCOME' AND ie.salary_role='CASH_COLLECTION' AND ie.deleted_at IS NULL AND ie.salary_staff_id IS NOT NULL AND (v_staff IS NULL OR ie.salary_staff_id = v_staff) AND ie.voucher_date BETWEEN v_start AND v_end` — **không `organization_id`, không building scope**. Hàm là `SECURITY DEFINER` nên RLS trên `income_expenses` bị bỏ qua. Admin org A gọi với `p_staff_id = NULL` thấy mọi dòng thu tiền mặt của **mọi org**. `salary_work_ledger_v2` không tồn tại (grep = 0). ACL: `contracts/surfaces/rpc-surface.json` ghi `execRoles: ["anon","authenticated","service_role"]`, `risk: "financial"` — **anon gọi được**. Ba migration lương gần đây (`20260827180000`, `20260827190000`, `20260901173727`) đều **không** đụng hàm này.
 **Fix đề xuất:** hai bước tách bạch. (1) *Chặn ngay, rẻ và không đổi ABI*: migration forward `REVOKE ALL ON FUNCTION public.salary_work_ledger(date,uuid) FROM PUBLIC, anon;` + thêm `salary_work_ledger(date,uuid)` vào `denylist` của `scripts/definer-acl-baseline.json` để không ai mở lại. (2) *Đóng thật*: migration additive `salary_work_ledger_v2(p_organization_id uuid, p_period_month date, p_staff_id uuid DEFAULT NULL)` VOLATILE SECURITY DEFINER, `lock_org_for_decision_v1(p_organization_id)` rồi `authorize_tenant_action_v3(auth.uid(), p_organization_id, 'salary.view', NULL, NULL)`; mọi nhánh JOB/DAY_BONUS/CASH/config/holiday/building/room filter `organization_id = p_organization_id`; cutover `src/hooks/useManagerSalary.ts:145` và thêm org vào query key `:58`. **Rủi ro: bước (1) THẤP** (anon không phải caller hợp lệ — hook luôn gọi có JWT); **bước (2) TRUNG BÌNH** (đổi ABI, phải giữ v1 tới khi adoption = 0).
 
@@ -248,43 +255,43 @@
 
 ### PCOMPAT-C01 (P1) — Pending voucher authorize building cũ, ghi scope mới
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902082004` _(bản re-anchor sáng 02/09 ghi: CÒN MỞ)_
 **Bằng chứng:** Migration mới nhất `supabase/migrations/20260730100000_ie_meta_write_hardening.sql:159`; thân hiệu lực `supabase/baseline/schema.sql:67614-67782`. Authorize theo scope **CŨ**: `:67644` đọc `v_row` trước, rồi `:67683` `ie_can_edit_money_axis_v1(v_row.organization_id, v_row.building_id)`. Ghi scope **MỚI** không tái kiểm: `:67738` `building_id = … v_clean->>'building_id'`; `building_id` nằm trong `v_money_keys` (`:67624`) nên client patch được. Kèm theo `room_id/tenant_id/contract_id/invoice_id/shareholder_id` (`:67739-67743`) cũng ghi không kiểm org. Helper `STABLE` `app_private.ie_can_edit_money_axis_v1` vẫn được dùng làm quyết định (đúng thứ plan cấm), và **không** có `lock_org_for_decision_v1` — chỉ `FOR UPDATE` trên hàng phiếu (`:67644`).
 **Fix đề xuất:** `CREATE OR REPLACE` cho `ie_compat_update_pending_v2(uuid,jsonb,jsonb)` (chữ ký không đổi ⇒ không cần DROP): pre-read chỉ lấy org/lock key → `PERFORM app_private.lock_org_for_decision_v1(v_target_org)` → tính scope **cuối** bằng `COALESCE(p_patch.field, current.field)` cho building/room/tenant/contract/invoice/account → kiểm mọi quan hệ cùng `v_target_org` → gọi `authorize_tenant_action_v3(auth.uid(), v_target_org, 'income_expenses.edit', v_target_building, v_target_account)` **hai lần** (scope cũ và scope mới), deny nếu một trong hai trượt. Bỏ hẳn `ie_can_edit_money_axis_v1` khỏi đường quyết định. **Rủi ro: TRUNG BÌNH** — chỉ siết thêm; ca hợp lệ (sửa phiếu trong cùng toà) không đổi. Cần regression cho ca đổi toà hợp pháp của người có quyền cả hai toà.
 
 ### PMETER-C01 (single) (P1) — Anonymous single meter approval
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902082002` REVOKE anon + `_v1` vào migration + denylist _(bản re-anchor sáng 02/09 ghi: CÒN MỞ)_
 **Bằng chứng:** Thân hiệu lực `supabase/migrations/20250130000004_meter_reading_rpc_functions.sql:21-47` — chỉ kiểm `status`/`deleted_at`, **không** kiểm user/building/org. **Không một dòng GRANT/REVOKE nào** trên hàm này trong `supabase/migrations/`; migration duy nhất chạm tới là `20260601000100_sec_contract_rpc_authz_and_anon_revoke.sql:182` và nó chỉ `ALTER FUNCTION … SET search_path` — cùng file đó revoke anon cho contract RPC ở `:50-52,89-91,124-126,166-168`, tức meter bị **bỏ sót có hệ thống**. Catalog live (`contracts/surfaces/rpc-surface.json`, sinh 02/09, 1017 hàm) ghi `approve_meter_reading` → `securityDefiner: true`, `execRoles: ["anon","authenticated","service_role"]`. Bản vá `approve_meter_reading_v1` **có** authz thật nhưng chỉ tồn tại ở `scripts/authz-prepared/prod-snapshot/PS04_rbac_org_meter_threshold.sql:1473-1491` (script chạy tay), không có migration tương ứng. Hook đi đường an toàn nhưng **có fallback**: `src/hooks/useMeterReadings.ts:548-551` gọi `approve_meter_reading_v1`, gặp `PGRST202` thì rơi về legacy.
 **Fix đề xuất:** migration forward hai việc, rẻ: (1) `REVOKE ALL ON FUNCTION public.approve_meter_reading(uuid) FROM PUBLIC, anon;` và thêm chữ ký vào `denylist` của `scripts/definer-acl-baseline.json`; (2) đưa định nghĩa `approve_meter_reading_v1` từ `scripts/authz-prepared/` **vào một migration thật** để bản khôi phục từ baseline không dựng ra DB thiếu `_v1` (nếu thiếu, hook tự động rơi về legacy không authz — đúng kịch bản tệ nhất). Sau khi `_v1` có migration, bỏ nhánh fallback ở `useMeterReadings.ts:549-551`. **Rủi ro: THẤP** — anon không phải caller hợp lệ của luồng duyệt chỉ số; hook luôn có JWT.
 
 ### PMETER-C01 (bulk) (P1) — Anonymous bulk meter approval
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902082002` REVOKE anon + `_v1` vào migration (giữ partial-success — đổi all-or-nothing để PR riêng) _(bản re-anchor sáng 02/09 ghi: CÒN MỞ)_
 **Bằng chứng:** Thân hiệu lực `supabase/migrations/20250130000004_meter_reading_rpc_functions.sql:58-74` — một `UPDATE meter_readings … WHERE id = ANY(p_reading_ids) AND status='UNAPPROVED' AND deleted_at IS NULL`, **không authorize theo building/org/user**, không lặp từng reading. Catalog live: `execRoles: ["anon","authenticated","service_role"]`. Không có REVOKE trong migrations (chỉ `20260601000100:184` set `search_path`). Bản `_v1` (`scripts/authz-prepared/prod-snapshot/PS04_rbac_org_meter_threshold.sql:1495-1512`) authorize từng reading **nhưng nuốt lỗi**: `exception when insufficient_privilege then null;` rồi `return v_n` ⇒ batch trộn org A/B cho **partial success**, không reject nguyên transaction như plan yêu cầu. Hook: `src/hooks/useMeterReadings.ts:581-584` cùng khuôn fallback PGRST202.
 **Fix đề xuất:** như single, cộng thêm: khi đưa `bulk_approve_meter_readings_v1` vào migration, **đổi `exception when insufficient_privilege then null` thành RAISE** để một deny làm rollback cả batch; thêm trần `c_max_readings_per_call = 200`; lấy distinct org UUID tăng dần rồi `lock_org_for_decision_v1` theo đúng thứ tự đó. **Rủi ro: TRUNG BÌNH** — đổi từ partial-success sang all-or-nothing là **thay đổi hành vi người dùng nhìn thấy** (trước đây duyệt được phần hợp lệ, nay cả lô trượt); cần báo trước và cần UI nói rõ dòng nào chặn.
 
 ### PZALO-C01 (send) (P1) — Forged queue gửi qua account khác
 
-**Trạng thái:** CÒN MỞ (đã thu hẹp về **trong-org**, chưa đóng)
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — guard worker `scope-guard.js` (bước 1/3) _(bản re-anchor sáng 02/09 ghi: CÒN MỞ (đã thu hẹp về **trong-org**, chưa đóng))_
 **Bằng chứng:** Grant DML cho `authenticated` **vẫn còn và chưa từng bị revoke**: `supabase/migrations/20260626000001_zalo_chat_schema.sql:224-226` cấp `SELECT, INSERT, UPDATE, DELETE` trên cả 6 bảng `zalo_*` gồm `zalo_send_queue`; grep `REVOKE.*zalo_send_queue` toàn bộ migrations = **0 hit**. Policy `zalo_send_queue_owner_all` đã bị DROP (`20260813100000:248`) nhưng thay bằng `_org_write` **`FOR ALL`** (`:258-262`, action `send`) + RESTRICTIVE `_org_boundary` (`:222-226`) ⇒ browser role **vẫn DML thẳng vào queue được**, chỉ bị chặn ở biên tenant (nhờ trigger fail-closed `app_private.autofill_org_zalo()` `:141-158`). Worker **không** revalidate: không có `validateZaloCommandScope` (grep = 0); `worker/lib/queue.js:147-149` claim nguyên tử rồi `:158` tin thẳng `payload.thread_id`, `:206` `sendText`. ⇒ user có `chat_zalo.send` tự INSERT job với `account_id` **bất kỳ trong công ty** và `payload.thread_id` **tuỳ ý**.
 **Fix đề xuất:** ba lớp, làm theo thứ tự. (1) *Worker trước* (không cần migration, đảo được ngay): thêm `validateZaloCommandScope(job)` trong `worker/lib/queue.js` **sau** claim `queued→processing` và **trước** mọi lời gọi provider — join lại `job → account → conversation → message`, kiểm `account.organization_id = conversation.organization_id = job.organization_id` và `payload.thread_id = conversation.thread_id`; trượt thì `REJECTED_SCOPE` + audit, không gọi provider. (2) *Enqueue RPC*: migration additive tạo `zalo_send_message_v2(...)` derive toàn bộ khoá ngoại từ row đã khoá. (3) *Containment*: `REVOKE INSERT, UPDATE, DELETE ON public.zalo_send_queue FROM authenticated;` và đổi `_org_write` từ `FOR ALL` thành chỉ `SELECT` — **chỉ sau** khi (2) deploy và client hết ghi thẳng. **Rủi ro: bước (1) THẤP và giá trị cao nhất** (thuần worker, rollback bằng deploy lại); bước (3) CAO nếu làm sớm — hai hook `src/hooks/chat-zalo/useZaloConversationActions.ts:62-66` và `useZaloMedia.ts:118` đang **đọc** queue để poll job, phải giữ một SELECT policy tối thiểu, nếu không sẽ chết luồng tìm SĐT và gửi media.
 
 ### PZALO-C01 (react) (P1) — Forged queue reaction qua account khác
 
-**Trạng thái:** CÒN MỞ (trong-org)
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — guard worker `scope-guard.js`: target_msg_id phải thuộc hội thoại của account _(bản re-anchor sáng 02/09 ghi: CÒN MỞ (trong-org))_
 **Bằng chứng:** Cùng cơ chế queue như trên (grant `20260626000001:224-226` chưa revoke, `_org_write` FOR ALL `20260813100000:258-262`). Payload `{action:'react', target_msg_id, thread_id}` do client tự đặt; `worker/lib/queue.js:167-170` gọi `s.api.addReaction(...)` với `String(p.thread_id)` / `p.target_msg_id` mà **không** kiểm chúng thuộc `job.conversation_id` hay org của `job.account_id`.
 **Fix đề xuất:** cùng `validateZaloCommandScope` của PZALO-C01/send, thêm nhánh riêng: `target_msg_id` phải tồn tại trong `zalo_messages` của đúng `job.conversation_id`. **Rủi ro: THẤP** (thuần worker).
 
 ### PZALO-C01 (recall) (P1) — Forged queue recall qua account khác
 
-**Trạng thái:** CÒN MỞ (trong-org)
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — guard worker `scope-guard.js`: chỉ tin OUT của chính job.user_id _(bản re-anchor sáng 02/09 ghi: CÒN MỞ (trong-org))_
 **Bằng chứng:** `worker/lib/queue.js:171-174` — `s.api.undo({ msgId: p.target_msg_id, cliMsgId: p.target_cli_msg_id }, String(p.thread_id), type)`: thu hồi theo `msgId` thô trong payload, không đối chiếu `zalo_messages` hay org. Forge job vẫn khả thi trong org (cùng grant/policy như trên).
 **Fix đề xuất:** như trên, và guard phải kiểm thêm quyền recall của **actor gốc** (`job.user_id`), không chỉ sự tồn tại của message. **Rủi ro: THẤP** (thuần worker).
 
 ### PZALO-C01 (history) (P1) — Forged queue lấy history khác scope
 
-**Trạng thái:** CÒN MỞ (trong-org) — **và đây là đường vòng qua bản vá FR009-C03**
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — guard worker `scope-guard.js`: chỉ nhóm đã biết, thread từ conversation, count kẹp 1..200 _(bản re-anchor sáng 02/09 ghi: CÒN MỞ (trong-org) — **và đây là đường vòng qua bản vá FR009-C03**)_
 **Bằng chứng:** `worker/lib/queue.js:175-179` — `getGroupChatHistory(String(p.thread_id), p.count)` rồi `upsertMessagesForThread(job.account_id, job.user_id, p.thread_id, 'group', …)`: kéo lịch sử **bất kỳ nhóm nào** account đang đăng nhập thấy được và ghi vào DB, chỉ dựa vào `thread_id` trong payload forge được. Worker lấy job không lọc quyền: `worker/index.js:84-88` chỉ lọc `channel/status/not_before` (`ORG_FILTER` là biến vận hành, không phải authz). RPC `zalo_load_history` đã vá (FR009-C03) nhưng **không chặn được** đường này vì client ghi thẳng queue.
 **Fix đề xuất:** guard phải ép `p.thread_id = conversation.thread_id` của `job.conversation_id` và `conversation.thread_type = 'group'`; clamp `p.count` về `1..200`. **Rủi ro: THẤP** (thuần worker). Ưu tiên cao nhất trong 4 ca PZALO-C01 vì nó vô hiệu hoá một bản vá đã tồn tại.
 

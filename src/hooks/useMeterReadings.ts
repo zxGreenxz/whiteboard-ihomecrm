@@ -543,12 +543,12 @@ export const useApproveMeterReading = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // Canonical approve_meter_reading_v1 (permission-checked qua building);
-      // fallback legacy approve_meter_reading nếu writer chưa deploy (PGRST202).
-      let res = await supabase.rpc("approve_meter_reading_v1" as any, { p_id: id });
-      if (res.error && (res.error as { code?: string }).code === "PGRST202") {
-        res = await supabase.rpc("approve_meter_reading" as any, { p_reading_id: id });
-      }
+      // Canonical approve_meter_reading_v1 (permission-checked qua building).
+      // KHÔNG còn fallback sang legacy approve_meter_reading: từ migration
+      // 20260902082002 _v1 nằm trong migration thật (hết drift PS04) và bản
+      // legacy không authz đã bị REVOKE anon — rơi về nó khi PGRST202 chính là
+      // "tự bỏ authz khi thiếu writer" (PMETER-C01, re-anchor 02/09/2026).
+      const res = await supabase.rpc("approve_meter_reading_v1" as any, { p_id: id });
       if (res.error) {
         toast.error("Không thể duyệt chỉ số");
         throw res.error;
@@ -576,12 +576,10 @@ export const useBulkApproveMeterReadings = () => {
 
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      // Canonical bulk_approve_meter_readings_v1 (per-item permission); fallback
-      // legacy nếu chưa deploy. Cả hai trả integer số chỉ số đã duyệt.
-      let res = await supabase.rpc("bulk_approve_meter_readings_v1" as any, { p_ids: ids });
-      if (res.error && (res.error as { code?: string }).code === "PGRST202") {
-        res = await supabase.rpc("bulk_approve_meter_readings" as any, { p_reading_ids: ids });
-      }
+      // Canonical bulk_approve_meter_readings_v1 (per-item permission), trả
+      // integer số chỉ số đã duyệt. KHÔNG còn fallback legacy — xem ghi chú ở
+      // useApproveMeterReading (PMETER-C01, migration 20260902082002).
+      const res = await supabase.rpc("bulk_approve_meter_readings_v1" as any, { p_ids: ids });
       if (res.error) {
         toast.error("Không thể duyệt hàng loạt chỉ số");
         throw res.error;

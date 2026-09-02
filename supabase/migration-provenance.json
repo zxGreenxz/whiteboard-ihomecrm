@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-02T08:15:26.408Z",
+  "generatedAt": "2026-09-02T08:37:57.071Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 451,
+    "ledger-applied": 454,
     "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
@@ -8813,6 +8813,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-02T08:14:52.881Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260902082002_meter_rpc_revoke_anon_va_v1_vao_migration.sql",
+      "version": "20260902082002",
+      "name": "meter_rpc_revoke_anon_va_v1_vao_migration",
+      "scheme": "timestamp14",
+      "sha256": "4b733e40c6b39ecf5cd2065fd7d95eb1d1213d7866d9ab7de918ebd8c39a763e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-02T08:32:14.405Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260902082003_transfer_contract_chan_khach_khac_org.sql",
+      "version": "20260902082003",
+      "name": "transfer_contract_chan_khach_khac_org",
+      "scheme": "timestamp14",
+      "sha256": "a93401f8ccf1b2a1676388c39b33dd2d6afaeaea9c598b9551f4699f3669d926",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-02T08:34:54.866Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260902082004_ie_compat_update_pending_kiem_scope_moi.sql",
+      "version": "20260902082004",
+      "name": "ie_compat_update_pending_kiem_scope_moi",
+      "scheme": "timestamp14",
+      "sha256": "90b357f9506749f8dd9b0530deb4fb621a8af57035b4003f2a8329becf585745",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-02T08:37:28.777Z|bien-nhan-backup"
       ]
     },
     {
