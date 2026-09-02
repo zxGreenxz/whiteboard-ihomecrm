@@ -140,6 +140,63 @@ const NHAN_MUC_DO_VIEC: Record<string, string> = {
 };
 
 /**
+ * Bốn miền nhạy cảm của G1-C4 — nhãn hiển thị nằm NGOÀI mọi thân `execute`.
+ *
+ * Cùng lý do đã ghi ở đầu file: `check-copilot-forbidden-actions.mjs` cắt mỗi
+ * tool thành một khối từ `name:` tới `name:` kế tiếp rồi dò mẫu hành động bị cấm
+ * trong phần sau `execute:`. Một bảng tra hằng ở đây vừa đọc được, vừa không
+ * đánh lừa cửa chặn.
+ */
+const NHAN_TRANG_THAI_LUONG: Record<string, string> = {
+  DRAFT: 'nháp',
+  LOCKED: 'đã chốt',
+};
+
+const NHAN_TRANG_THAI_LN: Record<string, string> = {
+  DRAFT: 'nháp',
+  LOCKED: 'đã chốt',
+  DISTRIBUTED: 'đã chia',
+};
+
+/** `unallocated_disposition` — phần lợi nhuận chưa chia được xử lý ra sao. */
+const NHAN_XU_LY_CHUA_CHIA: Record<string, string> = {
+  RETAIN: 'giữ lại cho công ty',
+  CARRY_FORWARD: 'chuyển kỳ sau',
+};
+
+/** `network_device_current.health_status` — sức khoẻ router theo lần đo cuối. */
+const NHAN_SUC_KHOE_MANG: Record<string, string> = {
+  HEALTHY: 'bình thường',
+  DEGRADED: 'suy giảm',
+  CRITICAL: 'nguy cấp',
+  OFFLINE: 'mất kết nối',
+  UNKNOWN: 'chưa rõ',
+};
+
+/**
+ * `network_incidents.severity` — đúng ba giá trị mà CHECK constraint của bảng cho
+ * phép (`network_incidents_severity_check`). Khai thêm nhãn cho mức không tồn tại
+ * sẽ đọc như một trạng thái có thật mà không dữ liệu nào sinh ra được.
+ */
+const NHAN_MUC_DO_SU_CO: Record<string, string> = {
+  CRITICAL: 'nguy cấp',
+  WARNING: 'cảnh báo',
+  INFO: 'thông tin',
+};
+
+/** `zalo_conversations.thread_type` / `.kind` — hội thoại với ai. */
+const NHAN_LOAI_HOI_THOAI: Record<string, string> = {
+  User: 'cá nhân',
+  Group: 'nhóm',
+};
+const NHAN_NHOM_HOI_THOAI: Record<string, string> = {
+  tenant: 'khách trọ',
+  lead: 'khách hẹn',
+  partner: 'môi giới',
+  other: 'khác',
+};
+
+/**
  * Tên tool dùng LẠI trong thân `execute` (cho `chotToChuc`).
  *
  * Trùng lặp có chủ ý với `name:` bên dưới: `name` phải là chuỗi viết thẳng vì
@@ -1955,6 +2012,430 @@ export const baoCaoDatCoc = dt({
   },
 });
 
+// ── Bốn miền GÁC QUYỀN RIÊNG: lương · cổ đông · Zalo · mạng (G1-C4) ─────────
+//
+// Mỗi tool dưới đây mang ĐÚNG khoá quyền của màn hình tương ứng — `salary.view`,
+// `shareholder_profit.view`, `chat_zalo.view`, `network_center.view` — và RPC
+// phía server kiểm lại bằng `authorized_scope_v3`. Client không gửi danh sách
+// toà, không gửi danh tính "xem hộ ai", và không có tham số nào để hỏi.
+//
+// VỀ `rolloutKey`: BA TRONG BỐN TRANG KHÔNG CÓ PAGE CONTRACT
+//   `/finance/salary`, `/reports/finance/profit-distribution` và `/network-center`
+//   đều nằm trong `COPILOT_PAGE_EXEMPTIONS` (xem src/app/capabilities/registry.ts),
+//   nên không có khoá rollout riêng cho chúng — và bịa một khoá ở đây sẽ tạo một
+//   hàng trong trang admin mà `set_copilot_feature_flag_v2` từ chối, vì RPC đó chỉ
+//   UPDATE dòng ĐÃ ĐƯỢC SEED (xem featureFlags.ts). Ba tool ấy mượn khoá của trang
+//   canonical gần nhất ĐANG CÓ THẬT:
+//
+//     bang_luong_ky      → `reports.finance`   (bề mặt tài chính gần nhất)
+//     loi_nhuan_co_dong  → `reports.finance`   (trang thật nằm dưới cụm /reports/finance)
+//     trang_thai_mang    → `buildings.list`    (trạng thái mạng là một sự thật THEO TOÀ)
+//     hoi_thoai_zalo     → `chat-zalo.list`    (khoá THẬT của đúng trang đó)
+//
+//   Đây là một sự ghép ĐÔI CÔNG TẮC có thật và phải nói ra: bật rollout báo cáo
+//   tài chính sẽ bật luôn tool bảng lương. Chiều ngược lại — không khai khoá nào
+//   — làm tool TẮT vĩnh viễn (`toolAvailableForRollout` trả false), còn
+//   `rolloutExempt: true` làm nó BẬT vĩnh viễn; với dữ liệu nhạy cảm thế này thì
+//   "bật cùng một cụm" là lựa chọn an toàn nhất trong ba. Cách chữa tận gốc là
+//   một page contract riêng cho ba route đó, và điều kiện của nó là ba route phải
+//   có hàng rào `RequirePermission` ở TẦNG ROUTE trước đã — hôm nay `/finance/salary`
+//   cố tình không có (registry.ts giải thích: trang tự rẽ admin ↔ tự xem).
+//
+// VỀ CHE DỮ LIỆU: tên và số điện thoại đi qua `maskPii`; riêng Zalo, số điện thoại
+// LUÔN bị che một phần bằng `maskPhonePartial` trước khi rời hệ thống, và nội dung
+// tin nhắn cuối — văn bản tự do do người ngoài viết — đi qua `maskPii` rồi mới
+// được in.
+
+interface HangLuong {
+  nhan_vien_id: string;
+  nhan_vien: string | null;
+  trang_thai: string | null;
+  luong_co_ban: number | null;
+  thuong_viec: number | null;
+  thuong_hop_dong: number | null;
+  hoa_hong: number | null;
+  loi_nhuan_dau_tu: number | null;
+  dieu_chinh: number | null;
+  ung_luong: number | null;
+  tien_phong: number | null;
+  tong_gross: number | null;
+  thuc_nhan: number | null;
+  da_tra: number | null;
+}
+
+interface GoiLuong {
+  ky: string;
+  pham_vi: string;
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: {
+    so_nhan_vien: number;
+    tong_gross: number;
+    tong_thuc_nhan: number;
+    tong_thuong: number;
+    tong_khau_tru: number;
+    tong_da_tra: number;
+    so_ky_da_chot: number;
+  } | null;
+  bang_luong: HangLuong[];
+}
+
+export const bangLuongKy = dt({
+  name: 'bang_luong_ky',
+  description:
+    'Bảng lương quản lý một kỳ: lương cơ bản, thưởng việc, thưởng hợp đồng, hoa hồng, ứng lương, tiền phòng, thực nhận. ' +
+    'Nếu bạn chỉ có quyền xem lương của chính mình thì kết quả CHỈ gồm dòng của bạn và câu trả lời nói rõ điều đó. ' +
+    'Dùng khi hỏi "bảng lương tháng này", "lương tháng trước của tôi bao nhiêu", "ai nhận nhiều nhất kỳ này".',
+  inputSchema: z.object({
+    ky: z
+      .string()
+      .regex(/^\d{4}-\d{2}$/)
+      .optional()
+      .describe('Kỳ lương YYYY-MM. Bỏ trống = kỳ mới nhất đang có dữ liệu.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'salary', action: 'view' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bang_luong_ky');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_ky: string | null; p_limit: number },
+      GoiLuong
+    >('copilot_salary_summary_v1', {
+      p_organization_id: orgId,
+      p_ky: args.ky ?? null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải bảng lương: ${error.message}`);
+    const ky = data?.ky ?? args.ky ?? '?';
+    // Server tự nói phạm vi nó đã dùng. Thiếu câu này thì một dòng lương của
+    // riêng người hỏi trông y hệt "cả công ty chỉ có một người".
+    const chiMinhToi = data?.pham_vi !== 'toan_cong_ty';
+    const rows = data?.bang_luong ?? [];
+    if (!rows.length) {
+      return chiMinhToi
+        ? `Kỳ ${ky}: bạn chưa có bảng lương nào.`
+        : `Kỳ ${ky}: chưa có bảng lương nào.`;
+    }
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const tt = r.trang_thai ? (NHAN_TRANG_THAI_LUONG[r.trang_thai] ?? r.trang_thai) : '?';
+      const dc = Number(r.dieu_chinh) || 0;
+      const phanDieuChinh = dc === 0 ? '' : ` — điều chỉnh ${dc > 0 ? '+' : ''}${formatVND(dc)}`;
+      return (
+        `- ${maskPii(r.nhan_vien ?? '(chưa có tên)')} — thực nhận ${formatVND(Number(r.thuc_nhan) || 0)}` +
+        ` (gộp ${formatVND(Number(r.tong_gross) || 0)})` +
+        ` — cơ bản ${formatVND(Number(r.luong_co_ban) || 0)}` +
+        `, thưởng ${formatVND((Number(r.thuong_viec) || 0) + (Number(r.thuong_hop_dong) || 0) + (Number(r.hoa_hong) || 0))}` +
+        `, trừ ${formatVND((Number(r.ung_luong) || 0) + (Number(r.tien_phong) || 0))}${phanDieuChinh}` +
+        ` — đã trả ${formatVND(Number(r.da_tra) || 0)} — ${tt}`
+      );
+    });
+    const tomTat = th
+      ? `Kỳ ${ky} — ${Number(th.so_nhan_vien) || 0} người, tổng thực nhận ${formatVND(Number(th.tong_thuc_nhan) || 0)}` +
+        ` (gộp ${formatVND(Number(th.tong_gross) || 0)}), đã trả ${formatVND(Number(th.tong_da_tra) || 0)}` +
+        `, ${Number(th.so_ky_da_chot) || 0} dòng đã chốt.\n`
+      : '';
+    const nhanPhamVi = chiMinhToi
+      ? 'Bạn chỉ có quyền xem lương của chính mình nên đây là dòng của bạn, không phải cả công ty.\n'
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${nhanPhamVi}${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /finance/salary]`;
+  },
+});
+
+interface HangLoiNhuanToa {
+  toa_nha_id: string;
+  toa_nha: string | null;
+  trang_thai: string | null;
+  loi_nhuan_tinh: number | null;
+  loi_nhuan_sau_dieu_chinh: number | null;
+  luong_quan_ly: number | null;
+  ty_le_co_dong: number | null;
+  da_chia_co_dong: number | null;
+  chua_chia: number | null;
+  xu_ly_phan_chua_chia: string | null;
+  can_tinh_lai: boolean | null;
+}
+
+interface HangCoDong {
+  co_dong_id: string;
+  co_dong: string | null;
+  so_tien: number | null;
+  tong_ty_le: number | null;
+  so_toa: number | null;
+}
+
+interface GoiLoiNhuan {
+  ky: string;
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: {
+    so_toa: number;
+    loi_nhuan_tinh: number;
+    loi_nhuan_sau_dieu_chinh: number;
+    luong_quan_ly: number;
+    da_chia_co_dong: number;
+    chua_chia: number;
+    so_toa_da_chot: number;
+    so_toa_can_tinh_lai: number;
+  } | null;
+  theo_toa: HangLoiNhuanToa[];
+  theo_co_dong: HangCoDong[];
+}
+
+export const loiNhuanCoDong = dt({
+  name: 'loi_nhuan_co_dong',
+  description:
+    'Lợi nhuận cổ đông một kỳ: lợi nhuận từng toà, lương quản lý, phần đã chia cho cổ đông, phần chưa chia, và số tiền của từng cổ đông. ' +
+    'Dùng khi hỏi "cổ đông được chia bao nhiêu", "lợi nhuận tháng này của các toà", "còn bao nhiêu chưa chia".',
+  inputSchema: z.object({
+    ky: z
+      .string()
+      .regex(/^\d{4}-\d{2}$/)
+      .optional()
+      .describe('Kỳ YYYY-MM. Bỏ trống = kỳ mới nhất đang có dữ liệu.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'shareholder_profit', action: 'view' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'loi_nhuan_co_dong');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_ky: string | null; p_limit: number },
+      GoiLoiNhuan
+    >('copilot_shareholder_profit_v1', {
+      p_organization_id: orgId,
+      p_ky: args.ky ?? null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải lợi nhuận cổ đông: ${error.message}`);
+    const ky = data?.ky ?? args.ky ?? '?';
+    const toa = data?.theo_toa ?? [];
+    const coDong = data?.theo_co_dong ?? [];
+    if (!toa.length && !coDong.length) return `Kỳ ${ky}: chưa có số liệu lợi nhuận cổ đông.`;
+    const th = data?.tong_hop;
+    const dongToa = toa.map((r) => {
+      const tt = r.trang_thai ? (NHAN_TRANG_THAI_LN[r.trang_thai] ?? r.trang_thai) : '?';
+      const xuLy = r.xu_ly_phan_chua_chia
+        ? ` — phần chưa chia: ${NHAN_XU_LY_CHUA_CHIA[r.xu_ly_phan_chua_chia] ?? r.xu_ly_phan_chua_chia}`
+        : '';
+      // `is_stale` nghĩa là nguồn đã đổi sau lần tính gần nhất: con số vẫn đọc
+      // được nhưng không còn khớp sổ. Im lặng ở đây là trình bày một số cũ như
+      // số hiện hành.
+      const cu = r.can_tinh_lai ? ' — ⚠ cần tính lại' : '';
+      return (
+        `- ${r.toa_nha ?? '?'} — lợi nhuận ${formatVND(Number(r.loi_nhuan_sau_dieu_chinh) || 0)}` +
+        ` (tính ${formatVND(Number(r.loi_nhuan_tinh) || 0)})` +
+        ` — lương quản lý ${formatVND(Number(r.luong_quan_ly) || 0)}` +
+        ` — chia cổ đông ${formatVND(Number(r.da_chia_co_dong) || 0)} (${pct(r.ty_le_co_dong)})` +
+        ` — chưa chia ${formatVND(Number(r.chua_chia) || 0)}${xuLy} — ${tt}${cu}`
+      );
+    });
+    const dongCoDong = coDong.map(
+      (r) =>
+        `- ${maskPii(r.co_dong ?? '(không tên)')} — ${formatVND(Number(r.so_tien) || 0)}` +
+        ` — ${Number(r.so_toa) || 0} toà`,
+    );
+    const tomTat = th
+      ? `Kỳ ${ky} — ${Number(th.so_toa) || 0} toà, lợi nhuận ${formatVND(Number(th.loi_nhuan_sau_dieu_chinh) || 0)}` +
+        `, đã chia cổ đông ${formatVND(Number(th.da_chia_co_dong) || 0)}` +
+        `, chưa chia ${formatVND(Number(th.chua_chia) || 0)}` +
+        `, ${Number(th.so_toa_da_chot) || 0} toà đã chốt` +
+        `${Number(th.so_toa_can_tinh_lai) ? `, ${th.so_toa_can_tinh_lai} toà cần tính lại` : ''}.\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    const phan = [`${tomTat}${dongToa.length} toà (tối đa ${tran} mỗi lần hỏi):\n${dongToa.join('\n')}`];
+    if (dongCoDong.length) phan.push(`Theo cổ đông:\n${dongCoDong.join('\n')}`);
+    return `${phan.join('\n\n')}\n[link: /reports/finance/profit-distribution]`;
+  },
+});
+
+interface HangHoiThoai {
+  hoi_thoai_id: string;
+  nguoi_nhan: string | null;
+  dien_thoai: string | null;
+  loai: string | null;
+  nhom: string | null;
+  chua_doc: number | null;
+  danh_dau_chua_doc: boolean | null;
+  ghim: boolean | null;
+  phong: string | null;
+  toa_nha: string | null;
+  nhan: string | null;
+  tin_cuoi_luc: string | null;
+  tin_cuoi_chieu: string | null;
+  tin_cuoi: string | null;
+}
+
+interface GoiHoiThoai {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: {
+    so_hoi_thoai: number;
+    so_chua_doc: number;
+    tong_tin_chua_doc: number;
+    so_ghim: number;
+  } | null;
+  hoi_thoai: HangHoiThoai[];
+}
+
+export const hoiThoaiZalo = dt({
+  name: 'hoi_thoai_zalo',
+  description:
+    'Danh sách hội thoại Zalo của công ty: ai, phòng/toà nào, bao nhiêu tin chưa đọc, tin cuối là gì và lúc nào. ' +
+    'Tìm theo TÊN hoặc SỐ ĐIỆN THOẠI của người đối diện — không tìm trong nội dung tin nhắn. Số điện thoại luôn được che bớt. ' +
+    'CHỈ ĐỌC: không gửi, không trả lời, không thu hồi tin nào. ' +
+    'Dùng khi hỏi "Zalo còn ai chưa trả lời", "hội thoại Zalo mới nhất", "khách nào nhắn Zalo hôm nay".',
+  inputSchema: z.object({
+    tu_khoa: z
+      .string()
+      .optional()
+      .describe('Tên hoặc số điện thoại người đối diện. Bỏ trống = không lọc theo chữ.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'chat_zalo', action: 'view' },
+  rolloutKey: 'chat-zalo.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'hoi_thoai_zalo');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_query: string | null; p_limit: number },
+      GoiHoiThoai
+    >('copilot_zalo_conversations_v1', {
+      p_organization_id: orgId,
+      p_query: args.tu_khoa?.trim() ? args.tu_khoa.trim() : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải hội thoại Zalo: ${error.message}`);
+    const rows = data?.hoi_thoai ?? [];
+    if (!rows.length) return 'Không có hội thoại Zalo nào khớp điều kiện.';
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      // SĐT luôn che một phần — kể cả khi người hỏi đã có quyền xem trang chat.
+      // Cái rời hệ thống ở đây không phải màn hình, mà là một chuỗi gửi sang nhà
+      // cung cấp mô hình.
+      const sdt = r.dien_thoai ? ` (${maskPhonePartial(r.dien_thoai)})` : '';
+      const noi = r.phong ? ` — phòng ${r.phong}${r.toa_nha ? ` (${r.toa_nha})` : ''}` : '';
+      const loai = r.loai ? (NHAN_LOAI_HOI_THOAI[r.loai] ?? r.loai) : '';
+      const nhom = r.nhom ? (NHAN_NHOM_HOI_THOAI[r.nhom] ?? r.nhom) : '';
+      const phanLoai = [loai, nhom].filter(Boolean).join('/');
+      const chuaDoc = Number(r.chua_doc) || 0;
+      const dauChuaDoc = chuaDoc > 0 ? ` — ${chuaDoc} tin chưa đọc` : r.danh_dau_chua_doc ? ' — đánh dấu chưa đọc' : '';
+      const chieu = r.tin_cuoi_chieu === 'out' ? 'mình' : 'khách';
+      // Nội dung tin nhắn là văn bản tự do do người ngoài viết: qua maskPii trước.
+      const tin = r.tin_cuoi ? ` — ${chieu}: "${maskPii(r.tin_cuoi)}"` : '';
+      return (
+        `- ${maskPii(r.nguoi_nhan ?? '(không tên)')}${sdt}${phanLoai ? ` [${phanLoai}]` : ''}${noi}` +
+        `${dauChuaDoc}${r.tin_cuoi_luc ? ` — ${r.tin_cuoi_luc}` : ''}${tin}`
+      );
+    });
+    const tomTat = th
+      ? `Toàn phạm vi: ${Number(th.so_hoi_thoai) || 0} hội thoại, ${Number(th.so_chua_doc) || 0} đang chưa đọc ` +
+        `(${Number(th.tong_tin_chua_doc) || 0} tin).\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /chat-zalo]`;
+  },
+});
+
+interface HangSuCoMang {
+  tieu_de: string | null;
+  muc_do: string | null;
+  trang_thai: string | null;
+  mo_luc: string | null;
+}
+
+interface HangMang {
+  toa_nha_id: string;
+  toa_nha: string | null;
+  router: string | null;
+  model: string | null;
+  vong_doi: string | null;
+  ket_noi_duoc: boolean | null;
+  suc_khoe: string | null;
+  thay_lan_cuoi: string | null;
+  phien_ban: string | null;
+  cpu_phan_tram: number | null;
+  pppoe: string | null;
+  so_ket_noi: number | null;
+  su_co_dang_mo: number | null;
+  thiet_bi_dang_ket_noi: number | null;
+  su_co_gan_nhat: HangSuCoMang | null;
+}
+
+interface GoiMang {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: {
+    so_toa: number;
+    so_toa_co_router: number;
+    so_toa_online: number;
+    so_toa_offline: number;
+    tong_su_co_mo: number;
+    tong_thiet_bi_ket_noi: number;
+  } | null;
+  toa_nha: HangMang[];
+}
+
+export const trangThaiMang = dt({
+  name: 'trang_thai_mang',
+  description:
+    'Trạng thái mạng theo toà: router còn kết nối hay không, sức khoẻ thiết bị, số máy khách đang online, số sự cố đang mở và sự cố gần nhất. ' +
+    'CHỈ ĐỌC trạng thái — không khởi động lại, không đổi cấu hình, không chạy thao tác nào trên thiết bị. ' +
+    'Dùng khi hỏi "mạng toà nào đang hỏng", "router có online không", "wifi toà A thế nào".',
+  inputSchema: z.object({
+    toa_nha_id: z
+      .string()
+      .regex(UUID_RE)
+      .optional()
+      .describe('Chỉ xem một toà (UUID). Bỏ trống = mọi toà trong phạm vi.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'network_center', action: 'view' },
+  rolloutKey: 'buildings.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'trang_thai_mang');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_building_id: string | null; p_limit: number },
+      GoiMang
+    >('copilot_network_status_v1', {
+      p_organization_id: orgId,
+      p_building_id: args.toa_nha_id ?? null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải trạng thái mạng: ${error.message}`);
+    const rows = data?.toa_nha ?? [];
+    if (!rows.length) return 'Không có toà nào có dữ liệu mạng trong phạm vi của bạn.';
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      if (!r.router) return `- ${r.toa_nha ?? '?'} — chưa gắn router`;
+      const sk = r.suc_khoe ? (NHAN_SUC_KHOE_MANG[r.suc_khoe] ?? r.suc_khoe) : 'chưa rõ';
+      const trangThai = r.ket_noi_duoc ? 'ĐANG KẾT NỐI' : 'MẤT KẾT NỐI';
+      const cpu = r.cpu_phan_tram === null || r.cpu_phan_tram === undefined ? '' : ` — CPU ${pct(r.cpu_phan_tram)}`;
+      const suCo = Number(r.su_co_dang_mo) || 0;
+      const sc = r.su_co_gan_nhat
+        ? ` — gần nhất: ${r.su_co_gan_nhat.tieu_de ?? '?'}` +
+          ` (${r.su_co_gan_nhat.muc_do ? (NHAN_MUC_DO_SU_CO[r.su_co_gan_nhat.muc_do] ?? r.su_co_gan_nhat.muc_do) : '?'}` +
+          `${r.su_co_gan_nhat.mo_luc ? `, mở ${r.su_co_gan_nhat.mo_luc}` : ''})`
+        : '';
+      return (
+        `- ${r.toa_nha ?? '?'} — ${trangThai} — ${maskPii(r.router)}` +
+        `${r.model ? ` (${r.model})` : ''} — sức khoẻ ${sk}${cpu}` +
+        ` — ${Number(r.thiet_bi_dang_ket_noi) || 0} thiết bị đang nối` +
+        ` — ${suCo} sự cố đang mở${sc}` +
+        `${r.thay_lan_cuoi ? ` — thấy lần cuối ${r.thay_lan_cuoi}` : ''}`
+      );
+    });
+    const tomTat = th
+      ? `Toàn phạm vi: ${Number(th.so_toa) || 0} toà (${Number(th.so_toa_co_router) || 0} có router) — ` +
+        `${Number(th.so_toa_online) || 0} đang kết nối, ${Number(th.so_toa_offline) || 0} mất kết nối, ` +
+        `${Number(th.tong_su_co_mo) || 0} sự cố đang mở, ${Number(th.tong_thiet_bi_ket_noi) || 0} thiết bị online.\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /network-center]`;
+  },
+});
+
 /** Gom lại để registry chèn vào một chỗ. */
 export const TOOL_NGHIEP_VU: DomainTool[] = [
   tyLeLapDay as DomainTool,
@@ -1980,4 +2461,8 @@ export const TOOL_NGHIEP_VU: DomainTool[] = [
   baoCaoLichThuTien as DomainTool,
   baoCaoThuThua as DomainTool,
   baoCaoDatCoc as DomainTool,
+  bangLuongKy as DomainTool,
+  loiNhuanCoDong as DomainTool,
+  hoiThoaiZalo as DomainTool,
+  trangThaiMang as DomainTool,
 ];

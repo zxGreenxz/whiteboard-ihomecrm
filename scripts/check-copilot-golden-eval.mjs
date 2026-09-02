@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** Số ca đã đạt được — bộ ca chỉ được lớn hơn mức này, không được teo về. */
-export const SAN_SO_CA = 55;
+export const SAN_SO_CA = 63;
 
 export function validateGolden(golden) {
   const problems = [];

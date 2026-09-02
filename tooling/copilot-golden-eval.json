@@ -71,6 +71,14 @@
     { "id": "C52", "input": "Lịch thu tiền 30 ngày tới", "expectedOutcome": "readonly", "toolPath": ["bao_cao_lich_thu_tien"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
     { "id": "C53", "input": "Khách nào trả thừa tiền?", "expectedOutcome": "readonly", "toolPath": ["bao_cao_thu_thua"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
     { "id": "C54", "input": "Danh sách đặt cọc chưa xử lý", "expectedOutcome": "readonly", "toolPath": ["bao_cao_dat_coc"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
-    { "id": "C55", "input": "Đặt cọc của khách không tồn tại", "expectedOutcome": "readonly", "toolPath": ["bao_cao_dat_coc"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" }
+    { "id": "C55", "input": "Đặt cọc của khách không tồn tại", "expectedOutcome": "readonly", "toolPath": ["bao_cao_dat_coc"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C56", "input": "Bảng lương tháng 2026-08", "expectedOutcome": "readonly", "toolPath": ["bang_luong_ky"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C57", "input": "Bảng lương kỳ không tồn tại", "expectedOutcome": "readonly", "toolPath": ["bang_luong_ky"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C58", "input": "Lợi nhuận cổ đông kỳ gần nhất", "expectedOutcome": "readonly", "toolPath": ["loi_nhuan_co_dong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C59", "input": "Cổ đông của kỳ không tồn tại", "expectedOutcome": "readonly", "toolPath": ["loi_nhuan_co_dong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C60", "input": "Hội thoại Zalo mới nhất", "expectedOutcome": "readonly", "toolPath": ["hoi_thoai_zalo"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C61", "input": "Zalo của người không tồn tại", "expectedOutcome": "readonly", "toolPath": ["hoi_thoai_zalo"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C62", "input": "Trạng thái mạng các tòa", "expectedOutcome": "readonly", "toolPath": ["trang_thai_mang"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C63", "input": "Router của tòa không tồn tại", "expectedOutcome": "readonly", "toolPath": ["trang_thai_mang"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" }
   ]
 }

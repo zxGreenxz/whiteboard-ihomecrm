@@ -127,6 +127,15 @@ const TOOL_MARKERS = [
   ['bao_cao_lich_thu_tien', /\blich thu tien\b/],
   ['bao_cao_thu_thua', /\bthu thua\b|\btra thua\b/],
   ['bao_cao_dat_coc', /\bdat coc\b/],
+  // G1-C4, bon mien nhay cam. Cung ky luat nhu hai khoi tren — va o day co mot
+  // cai bay rieng cua tieng Viet bo dau: 'so luong' cung fold ve 'luong', nen
+  // marker luong phai di kem 'bang' hoac 'thang', khong duoc dung mot minh.
+  // 'mang' (mang luoi) cung la 'mang' (mang vac) sau khi bo dau, nen trang thai
+  // mang duoc dinh tuyen bang 'router'/'wifi'/ca cum 'trang thai mang'.
+  ['bang_luong_ky', /\bbang luong\b|\bluong thang\b/],
+  ['loi_nhuan_co_dong', /\bco dong\b/],
+  ['hoi_thoai_zalo', /\bzalo\b/],
+  ['trang_thai_mang', /\brouter\b|\bwifi\b|\btrang thai mang\b/],
 ];
 
 /** Independently infer expected tool intent from the natural-language prompt. */

@@ -13,11 +13,12 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**33 tool**: 31 đọc · 1 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**37 tool**: 35 đọc · 1 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
 | `ban_do_he_thong` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
+| `bang_luong_ky` | read | `salary.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_dat_coc` | read | `reports_finance.deposits_report` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_dong_tien` | read | `reports_finance.cash_flow` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_gia_han` | read | `reports_real_estate.renewals_transfers` | `src/copilot/tools/nghiepVuTools.ts` |
@@ -34,10 +35,12 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `cong_no_tong_quan` | read | `invoices.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `cong_viec` | read | `tasks.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `doanh_thu_thang` | read | `reports_finance.analysis` | `src/copilot/tools/registry.ts` |
+| `hoi_thoai_zalo` | read | `chat_zalo.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `hop_cho_duyet` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `hop_dong_sap_het_han` | read | `reports_real_estate.expiring` | `src/copilot/tools/registry.ts` |
 | `huong_dan` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `liet_ke_chu_de` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
+| `loi_nhuan_co_dong` | read | `shareholder_profit.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `mo_trang` | navigate | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `phong_trong` | read | `rooms.view` | `src/copilot/tools/registry.ts` |
 | `so_quy` | read | `cashbooks.view` | `src/copilot/tools/nghiepVuTools.ts` |
@@ -49,6 +52,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `tim_phieu_thu_chi` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `tim_xe` | read | `vehicles.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `ton_kho_vat_tu` | read | `materials.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `trang_thai_mang` | read | `network_center.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `ty_le_lap_day` | read | `reports_real_estate.occupancy` | `src/copilot/tools/nghiepVuTools.ts` |
 
 <!-- COPILOT_TOOL_INVENTORY:END -->

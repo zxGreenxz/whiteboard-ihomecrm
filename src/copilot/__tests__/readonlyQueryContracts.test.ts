@@ -6,6 +6,7 @@ const from = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc, from } }));
 
 const { buildRegistryDefinitions } = await import('../tools/registry');
+const { COPILOT_ROLLOUT_CONTRACTS } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
 const SUPER = { __superadmin: true } as unknown as PermissionsMap;
@@ -1442,6 +1443,462 @@ describe('bao cao — moi tool gac bang CHINH khoa quyen cua trang', () => {
     }
   });
 });
+
+// ── G1-C4: bốn miền gác quyền riêng ─────────────────────────────────────────
+
+describe('bang_luong_ky - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_salary_summary_v1 with the selected org and period', async () => {
+    rpc.mockResolvedValue({ data: null, error: null });
+    await tool('bang_luong_ky').execute({ ky: '2026-08', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_salary_summary_v1', {
+      p_organization_id: ORG,
+      p_ky: '2026-08',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('sends a null period when none is asked for, so the server picks it', async () => {
+    // Client tự đoán "tháng này" là hai nơi cùng quyết định một việc — và một
+    // trong hai chạy ở UTC. Kỳ mặc định do server chọn bằng org_today_v1.
+    rpc.mockResolvedValue({ data: null, error: null });
+    await tool('bang_luong_ky').execute({ so_luong: 20 }, ctx);
+    expect(rpc.mock.calls[0][1].p_ky).toBeNull();
+  });
+
+  it('prints the server totals and every pay component', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        ky: '2026-08',
+        pham_vi: 'toan_cong_ty',
+        gioi_han: 1,
+        so_luong: 1,
+        tong_hop: {
+          so_nhan_vien: 4,
+          tong_gross: 40000000,
+          tong_thuc_nhan: 33000000,
+          tong_thuong: 6000000,
+          tong_khau_tru: 7000000,
+          tong_da_tra: 20000000,
+          so_ky_da_chot: 2,
+        },
+        bang_luong: [
+          {
+            nhan_vien_id: 'u1',
+            nhan_vien: 'Tran Quan Ly',
+            trang_thai: 'LOCKED',
+            luong_co_ban: 8000000,
+            thuong_viec: 1500000,
+            thuong_hop_dong: 500000,
+            hoa_hong: 1000000,
+            loi_nhuan_dau_tu: 0,
+            dieu_chinh: -200000,
+            ung_luong: 2000000,
+            tien_phong: 1000000,
+            tong_gross: 11000000,
+            thuc_nhan: 7800000,
+            da_tra: 5000000,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bang_luong_ky').execute({ so_luong: 1 }, ctx);
+    expect(result).toContain('Tran Quan Ly');
+    expect(result).toContain('đã chốt');
+    // Tổng LÀ của server, tính trên toàn tập — không phải cộng lại từ 1 dòng
+    // vừa bị cắt. `gioi_han: 1` nhưng `so_nhan_vien: 4` chứng minh điều đó.
+    expect(result).toContain('4 người');
+    expect(result).not.toContain('LOCKED');
+  });
+
+  it('says out loud when the answer is only the caller own row', async () => {
+    // Không có câu này thì một dòng lương của riêng người hỏi trông y hệt "cả
+    // công ty chỉ có một người".
+    rpc.mockResolvedValue({
+      data: {
+        ky: '2026-08',
+        pham_vi: 'chi_minh_toi',
+        gioi_han: 20,
+        so_luong: 1,
+        tong_hop: {
+          so_nhan_vien: 1,
+          tong_gross: 11000000,
+          tong_thuc_nhan: 7800000,
+          tong_thuong: 3000000,
+          tong_khau_tru: 3000000,
+          tong_da_tra: 0,
+          so_ky_da_chot: 0,
+        },
+        bang_luong: [
+          {
+            nhan_vien_id: 'u1',
+            nhan_vien: 'Chinh Toi',
+            trang_thai: 'DRAFT',
+            luong_co_ban: 8000000,
+            thuong_viec: 0,
+            thuong_hop_dong: 0,
+            hoa_hong: 3000000,
+            loi_nhuan_dau_tu: 0,
+            dieu_chinh: 0,
+            ung_luong: 3000000,
+            tien_phong: 0,
+            tong_gross: 11000000,
+            thuc_nhan: 7800000,
+            da_tra: 0,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bang_luong_ky').execute({ so_luong: 20 }, ctx);
+    expect(result).toMatch(/ch.nh m.nh/i);
+    // Và chiều ngược lại: khi phạm vi là toàn công ty thì câu cảnh báo KHÔNG
+    // được xuất hiện, nếu không nó chỉ là một câu chú thích luôn-bật vô nghĩa.
+    rpc.mockResolvedValueOnce({
+      data: {
+        ky: '2026-08',
+        pham_vi: 'toan_cong_ty',
+        gioi_han: 20,
+        so_luong: 0,
+        tong_hop: null,
+        bang_luong: [],
+      },
+      error: null,
+    });
+    const toanCongTy = await tool('bang_luong_ky').execute({ so_luong: 20 }, ctx);
+    expect(toanCongTy).not.toMatch(/ch.nh m.nh/i);
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { ky: '2026-08', pham_vi: 'toan_cong_ty', gioi_han: 20, so_luong: 0, tong_hop: null, bang_luong: [] },
+      error: null,
+    });
+    await expect(tool('bang_luong_ky').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /ch.a c. b.ng l..ng/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bang_luong_ky').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('loi_nhuan_co_dong - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_shareholder_profit_v1 with the selected org', async () => {
+    rpc.mockResolvedValue({ data: null, error: null });
+    await tool('loi_nhuan_co_dong').execute({ ky: '2026-07', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_shareholder_profit_v1', {
+      p_organization_id: ORG,
+      p_ky: '2026-07',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('prints per-building and per-shareholder rows, and flags a stale month', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        ky: '2026-07',
+        gioi_han: 1,
+        so_luong: 1,
+        tong_hop: {
+          so_toa: 3,
+          loi_nhuan_tinh: 90000000,
+          loi_nhuan_sau_dieu_chinh: 88000000,
+          luong_quan_ly: 12000000,
+          da_chia_co_dong: 60000000,
+          chua_chia: 16000000,
+          so_toa_da_chot: 2,
+          so_toa_can_tinh_lai: 1,
+        },
+        theo_toa: [
+          {
+            toa_nha_id: 'b1',
+            toa_nha: 'Toa A',
+            trang_thai: 'LOCKED',
+            loi_nhuan_tinh: 40000000,
+            loi_nhuan_sau_dieu_chinh: 39000000,
+            luong_quan_ly: 5000000,
+            ty_le_co_dong: 70,
+            da_chia_co_dong: 27300000,
+            chua_chia: 6700000,
+            xu_ly_phan_chua_chia: 'RETAIN',
+            can_tinh_lai: true,
+          },
+        ],
+        theo_co_dong: [
+          { co_dong_id: 's1', co_dong: 'Nguyen Co Dong', so_tien: 27300000, tong_ty_le: 70, so_toa: 1 },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('loi_nhuan_co_dong').execute({ so_luong: 1 }, ctx);
+    expect(result).toContain('Toa A');
+    expect(result).toContain('Nguyen Co Dong');
+    expect(result).toContain('giữ lại cho công ty');
+    // `is_stale` = nguồn đã đổi sau lần tính gần nhất. Im lặng ở đây là trình bày
+    // một con số cũ như số hiện hành.
+    expect(result).toMatch(/t.nh l.i/i);
+    // Tổng của server trên toàn tập (3 toà) dù danh sách bị cắt còn 1.
+    expect(result).toContain('3 toà');
+    expect(result).not.toContain('LOCKED');
+    expect(result).not.toContain('RETAIN');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { ky: '2026-07', gioi_han: 20, so_luong: 0, tong_hop: null, theo_toa: [], theo_co_dong: [] },
+      error: null,
+    });
+    await expect(tool('loi_nhuan_co_dong').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /ch.a c. s. li.u l.i nhu.n/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('loi_nhuan_co_dong').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('hoi_thoai_zalo - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_zalo_conversations_v1 and never touches a zalo table', async () => {
+    rpc.mockResolvedValue({ data: null, error: null });
+    await tool('hoi_thoai_zalo').execute({ tu_khoa: 'An', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_zalo_conversations_v1', {
+      p_organization_id: ORG,
+      p_query: 'An',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('normalizes a blank search to null instead of an empty LIKE', async () => {
+    rpc.mockResolvedValue({ data: null, error: null });
+    await tool('hoi_thoai_zalo').execute({ tu_khoa: '   ', so_luong: 20 }, ctx);
+    expect(rpc.mock.calls[0][1].p_query).toBeNull();
+  });
+
+  it('ALWAYS masks the phone number and passes the message through maskPii', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 1,
+        so_luong: 1,
+        tong_hop: { so_hoi_thoai: 12, so_chua_doc: 3, tong_tin_chua_doc: 7, so_ghim: 1 },
+        hoi_thoai: [
+          {
+            hoi_thoai_id: 'z1',
+            nguoi_nhan: 'Le Thi Khach',
+            dien_thoai: '0901234567',
+            loai: 'User',
+            nhom: 'tenant',
+            chua_doc: 2,
+            danh_dau_chua_doc: false,
+            ghim: false,
+            phong: 'A101',
+            toa_nha: 'Toa A',
+            nhan: null,
+            tin_cuoi_luc: '2026-09-02T10:00:00Z',
+            tin_cuoi_chieu: 'in',
+            tin_cuoi: 'Em chuyen khoan roi nhe, so 0912345678 do a',
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('hoi_thoai_zalo').execute({ so_luong: 1 }, ctx);
+    expect(result).toContain('Le Thi Khach');
+    expect(result).toContain('090***4567');
+    // Số gốc không được lọt ra, kể cả khi nó nằm TRONG nội dung tin nhắn — nội
+    // dung là văn bản do người ngoài viết, và nó đi thẳng sang nhà cung cấp mô hình.
+    expect(result).not.toContain('0901234567');
+    expect(result).not.toContain('0912345678');
+    expect(result).toContain('cá nhân/khách trọ');
+    expect(result).toContain('12 hội thoại');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: null, hoi_thoai: [] },
+      error: null,
+    });
+    await expect(tool('hoi_thoai_zalo').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. h.i tho.i/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('hoi_thoai_zalo').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('trang_thai_mang - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_network_status_v1 with the selected org and optional building', async () => {
+    rpc.mockResolvedValue({ data: null, error: null });
+    await tool('trang_thai_mang').execute(
+      { toa_nha_id: 'dddd1000-0000-4000-8000-000000000011', so_luong: 20 },
+      ctx,
+    );
+    expect(rpc).toHaveBeenCalledWith('copilot_network_status_v1', {
+      p_organization_id: ORG,
+      p_building_id: 'dddd1000-0000-4000-8000-000000000011',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('prints health, incidents and clients, and names a building with no router', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 2,
+        so_luong: 2,
+        tong_hop: {
+          so_toa: 5,
+          so_toa_co_router: 4,
+          so_toa_online: 3,
+          so_toa_offline: 1,
+          tong_su_co_mo: 2,
+          tong_thiet_bi_ket_noi: 87,
+        },
+        toa_nha: [
+          {
+            toa_nha_id: 'b1',
+            toa_nha: 'Toa A',
+            router: 'RB-A',
+            model: 'hAP ax2',
+            vong_doi: 'ACTIVE',
+            ket_noi_duoc: false,
+            suc_khoe: 'OFFLINE',
+            thay_lan_cuoi: '2026-09-02T08:00:00Z',
+            phien_ban: '7.14',
+            cpu_phan_tram: 12,
+            pppoe: 'up',
+            so_ket_noi: 40,
+            su_co_dang_mo: 2,
+            thiet_bi_dang_ket_noi: 51,
+            su_co_gan_nhat: {
+              tieu_de: 'Router mat ket noi',
+              muc_do: 'CRITICAL',
+              trang_thai: 'OPEN',
+              mo_luc: '2026-09-02T07:30:00Z',
+            },
+          },
+          {
+            toa_nha_id: 'b2',
+            toa_nha: 'Toa B',
+            router: null,
+            model: null,
+            vong_doi: null,
+            ket_noi_duoc: null,
+            suc_khoe: null,
+            thay_lan_cuoi: null,
+            phien_ban: null,
+            cpu_phan_tram: null,
+            pppoe: null,
+            so_ket_noi: null,
+            su_co_dang_mo: 0,
+            thiet_bi_dang_ket_noi: 0,
+            su_co_gan_nhat: null,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('trang_thai_mang').execute({ so_luong: 2 }, ctx);
+    expect(result).toContain('MẤT KẾT NỐI');
+    expect(result).toContain('mất kết nối');
+    expect(result).toContain('nguy cấp');
+    expect(result).toContain('Router mat ket noi');
+    // Toà chưa gắn router phải được NÓI RA. Bỏ nó khỏi danh sách sẽ làm "mạng
+    // toà nào đang hỏng" trả về im lặng cho đúng toà chưa được lắp gì.
+    expect(result).toContain('Toa B — chưa gắn router');
+    expect(result).toContain('5 toà');
+    expect(result).not.toContain('OFFLINE');
+    expect(result).not.toContain('CRITICAL');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: null, toa_nha: [] },
+      error: null,
+    });
+    await expect(tool('trang_thai_mang').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. to. n.o/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('trang_thai_mang').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bon mien nhay cam — khoa quyen va cong tac rollout', () => {
+  it('moi tool gac bang DUNG khoa quyen cua man hinh no doc', () => {
+    // Cấp lương/lợi nhuận/chat riêng tư qua Copilot bằng một quyền RỘNG hơn là mở
+    // cửa sau vòng qua chính hàng rào của màn hình.
+    const MONG_DOI: Record<string, { module: string; action: string }> = {
+      bang_luong_ky: { module: 'salary', action: 'view' },
+      loi_nhuan_co_dong: { module: 'shareholder_profit', action: 'view' },
+      hoi_thoai_zalo: { module: 'chat_zalo', action: 'view' },
+      trang_thai_mang: { module: 'network_center', action: 'view' },
+    };
+    for (const [ten, quyen] of Object.entries(MONG_DOI)) {
+      expect(tool(ten).requiredPermission, ten).toEqual(quyen);
+    }
+  });
+
+  it('rolloutKey nao cung phai la mot contract CO THAT', () => {
+    // Bịa một khoá ở đây tạo một hàng trong trang admin mà
+    // `set_copilot_feature_flag_v2` từ chối (RPC chỉ UPDATE dòng ĐÃ SEED), tức
+    // người vận hành bấm nút và nhận một lỗi không tự chữa được.
+    const khoaCoThat = new Set(COPILOT_ROLLOUT_CONTRACTS.map((c) => c.contractId));
+    for (const ten of ['bang_luong_ky', 'loi_nhuan_co_dong', 'hoi_thoai_zalo', 'trang_thai_mang']) {
+      const khoa = tool(ten).rolloutKey;
+      expect(khoa, `${ten} khong khai rolloutKey`).toBeTruthy();
+      expect(khoaCoThat.has(String(khoa)), `${ten}: rolloutKey "${khoa}" khong co trong contract`).toBe(true);
+    }
+    // Ba trong bốn trang nằm trong COPILOT_PAGE_EXEMPTIONS nên phải mượn khoá của
+    // trang canonical gần nhất; Zalo có khoá THẬT của chính nó. Ghim từng cái để
+    // việc mượn khoá là một quyết định được đọc lại, không phải một mặc định.
+    expect(tool('hoi_thoai_zalo').rolloutKey).toBe('chat-zalo.list');
+    expect(tool('bang_luong_ky').rolloutKey).toBe('reports.finance');
+    expect(tool('loi_nhuan_co_dong').rolloutKey).toBe('reports.finance');
+    expect(tool('trang_thai_mang').rolloutKey).toBe('buildings.list');
+  });
+
+  it('khong tool nao cham vao mot RPC ghi cua Network Center hay Zalo', async () => {
+    const source = await import('node:fs').then(({ readFileSync }) =>
+      readFileSync('src/copilot/tools/nghiepVuTools.ts', 'utf8'),
+    );
+    for (const ten of [
+      'network_center_execute_action_v1',
+      'network_center_ack_incident_v1',
+      'network_center_create_maintenance_v1',
+      'network_center_cancel_maintenance_v1',
+      'network_center_request_snapshot_v1',
+      'network_center_update_settings_v1',
+      'zalo_send',
+      'zalo_broadcast',
+      'zalo_recall',
+    ]) {
+      expect(source, ten).not.toContain(ten);
+    }
+  });
+});
+
 describe('registry source contract', () => {
   it('does not query customers or contracts from the browser tools', async () => {
     const source = await import('node:fs').then(({ readFileSync }) =>
@@ -1477,6 +1934,10 @@ describe('registry source contract', () => {
       'copilot_report_payment_schedule_v1',
       'copilot_report_overpayment_v1',
       'copilot_report_deposits_v1',
+      'copilot_salary_summary_v1',
+      'copilot_shareholder_profit_v1',
+      'copilot_zalo_conversations_v1',
+      'copilot_network_status_v1',
     ]) {
       expect(source, rpcName).toContain(`'${rpcName}'`);
     }
@@ -1496,6 +1957,16 @@ describe('registry source contract', () => {
       'contract_terminations',
       'income_expense_items',
       'income_expense_types',
+      'salary_monthly',
+      'profit_monthly',
+      'profit_allocations',
+      'shareholders',
+      'zalo_conversations',
+      'zalo_messages',
+      'network_devices',
+      'network_device_current',
+      'network_incidents',
+      'network_client_current',
     ]) {
       expect(source, table).not.toMatch(new RegExp(`\\.from\\('${table}'\\)`));
     }

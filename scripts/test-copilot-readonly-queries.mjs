@@ -63,6 +63,21 @@ export const TABLES_OFF_LIMITS_TO_THE_BROWSER = Object.freeze([
   // exactly the leak 20260730101000 closed inside the server functions.
   "income_expense_postings",
   "income_expense_posting_lines",
+  // G1-C4. Payroll reaches its subject through staff_id and its company
+  // through a NULLABLE column; profit reaches the tenant through a building;
+  // a Zalo conversation reaches it through a NULLABLE room; and every network
+  // row is only in scope through the building it belongs to. Four more
+  // relations a browser embed would have to guess.
+  "salary_monthly",
+  "profit_monthly",
+  "profit_allocations",
+  "shareholders",
+  "zalo_conversations",
+  "zalo_messages",
+  "network_devices",
+  "network_device_current",
+  "network_incidents",
+  "network_client_current",
 ]);
 
 /** RPC names that must still be called by LITERAL name from the tool sources. */
@@ -89,6 +104,11 @@ export const REQUIRED_COPILOT_RPCS = Object.freeze([
   "copilot_report_payment_schedule_v1",
   "copilot_report_overpayment_v1",
   "copilot_report_deposits_v1",
+  // G1-C4 — bon mien nhay cam.
+  "copilot_salary_summary_v1",
+  "copilot_shareholder_profit_v1",
+  "copilot_zalo_conversations_v1",
+  "copilot_network_status_v1",
 ]);
 
 /**
@@ -572,6 +592,169 @@ VALUES
   ('ddddb000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-VT-2', 'Voi nuoc', 'cai', 40, 5, 120000),
   ('aaaab000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'CP-P-VT-1', 'Vat tu cong ty khac', 'cai', 1, 99, 1000)
 ON CONFLICT (id) DO NOTHING;
+
+-- G1-C4 surface: the four SENSITIVE domains. The Network Center tables are NOT
+-- declared here — they are created by the real migrations the disposable cluster
+-- replays, so the inserts below run against their actual CHECK constraints and
+-- composite foreign keys. The other four are stubs with the DEPLOYED foreign-key
+-- names, same approach as every block above.
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id uuid PRIMARY KEY,
+  organization_id uuid,
+  full_name text NOT NULL
+);
+
+-- 'user_id' (owner of the payroll row) and 'staff_id' (the person the money
+-- belongs to) are DIFFERENT columns and the fixture makes them differ on purpose:
+-- that difference is the whole point of the own-row assertion below.
+CREATE TABLE IF NOT EXISTS public.salary_monthly (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  user_id uuid NOT NULL,
+  staff_id uuid NOT NULL,
+  period_month date NOT NULL,
+  status text NOT NULL DEFAULT 'DRAFT',
+  gross_total numeric NOT NULL DEFAULT 0,
+  take_home numeric NOT NULL DEFAULT 0,
+  paid numeric NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS public.shareholders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  name text NOT NULL,
+  deleted_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS public.profit_monthly (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  building_id uuid NOT NULL,
+  period_month date NOT NULL,
+  status text NOT NULL DEFAULT 'DRAFT',
+  computed_profit numeric NOT NULL DEFAULT 0,
+  adjusted_profit numeric NOT NULL DEFAULT 0,
+  management_salary numeric NOT NULL DEFAULT 0,
+  shareholder_allocated_amount numeric NOT NULL DEFAULT 0,
+  unallocated_profit numeric NOT NULL DEFAULT 0,
+  is_stale boolean NOT NULL DEFAULT false,
+  CONSTRAINT profit_monthly_building_id_fkey
+    FOREIGN KEY (building_id) REFERENCES public.buildings(id)
+);
+
+CREATE TABLE IF NOT EXISTS public.profit_allocations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  profit_monthly_id uuid NOT NULL,
+  shareholder_id uuid NOT NULL,
+  percent numeric NOT NULL DEFAULT 0,
+  amount numeric NOT NULL DEFAULT 0,
+  CONSTRAINT profit_allocations_profit_monthly_id_fkey
+    FOREIGN KEY (profit_monthly_id) REFERENCES public.profit_monthly(id),
+  CONSTRAINT profit_allocations_shareholder_id_fkey
+    FOREIGN KEY (shareholder_id) REFERENCES public.shareholders(id)
+);
+
+-- 'room_id' stays NULLABLE on purpose: a conversation with no room is the case
+-- copilot_zalo_conversations_v1 has to decide, and a NOT NULL column here would
+-- have made that case untestable.
+CREATE TABLE IF NOT EXISTS public.zalo_conversations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  room_id uuid,
+  peer_name text NOT NULL,
+  peer_phone text,
+  unread_count integer NOT NULL DEFAULT 0,
+  marked_unread boolean NOT NULL DEFAULT false,
+  is_pinned boolean NOT NULL DEFAULT false,
+  last_message_at timestamptz,
+  last_message_text text,
+  CONSTRAINT zalo_conversations_room_id_fkey
+    FOREIGN KEY (room_id) REFERENCES public.rooms(id)
+);
+
+INSERT INTO public.profiles (id, organization_id, full_name)
+VALUES
+  ('ddd10000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'Copilot Demo Manager A'),
+  ('ddd10000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'Copilot Demo Manager B')
+ON CONFLICT (id) DO NOTHING;
+
+-- Manager A OWNS both DEMO payroll rows ('user_id') but is the SUBJECT of only
+-- one ('staff_id'). Reading own-row by 'user_id' therefore returns two rows and
+-- by 'staff_id' returns one — which is exactly the leak the RPC must not have.
+INSERT INTO public.salary_monthly (id, organization_id, user_id, staff_id, period_month, status, gross_total, take_home, paid)
+VALUES
+  ('ddd20000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddd10000-0000-4000-8000-000000000011', 'ddd10000-0000-4000-8000-000000000011', '2026-08-01', 'LOCKED', 11000000, 7800000, 5000000),
+  ('ddd20000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddd10000-0000-4000-8000-000000000011', 'ddd10000-0000-4000-8000-000000000012', '2026-08-01', 'DRAFT',  9000000, 6000000, 0),
+  ('aaa20000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'ddd10000-0000-4000-8000-000000000011', 'ddd10000-0000-4000-8000-000000000011', '2026-08-01', 'DRAFT', 50000000, 44000000, 0)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.shareholders (id, organization_id, name)
+VALUES
+  ('ddd30000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'Copilot Demo Shareholder'),
+  ('aaa30000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'Copilot Production Shareholder')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.profit_monthly (id, organization_id, building_id, period_month, status, computed_profit, adjusted_profit, management_salary, shareholder_allocated_amount, unallocated_profit, is_stale)
+VALUES
+  ('ddd40000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', '2026-07-01', 'LOCKED', 40000000, 39000000, 5000000, 27300000, 6700000, true),
+  ('aaa40000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', '2026-07-01', 'LOCKED', 90000000, 90000000, 9000000, 63000000, 18000000, false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.profit_allocations (id, organization_id, profit_monthly_id, shareholder_id, percent, amount)
+VALUES
+  ('ddd50000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddd40000-0000-4000-8000-000000000011', 'ddd30000-0000-4000-8000-000000000011', 70, 27300000),
+  ('aaa50000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaa40000-0000-4000-8000-000000000011', 'aaa30000-0000-4000-8000-000000000011', 70, 63000000)
+ON CONFLICT (id) DO NOTHING;
+
+-- Four conversations, and the third one is the trap: it belongs to DEMO but its
+-- room belongs to the OTHER company, so a LEFT JOIN alone gives it the same
+-- 'b.id IS NULL' as a conversation with no room at all.
+INSERT INTO public.zalo_conversations (id, organization_id, room_id, peer_name, peer_phone, unread_count, last_message_at, last_message_text)
+VALUES
+  ('ddd60000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd2000-0000-4000-8000-000000000011', 'Copilot Demo Peer Room', '0900000031', 2, clock_timestamp(), 'Tin cuoi cua khach co phong'),
+  ('ddd60000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, NULL, 'Copilot Demo Peer No Room', '0900000032', 0, clock_timestamp(), 'Tin cuoi cua khach chua co phong'),
+  ('ddd60000-0000-4000-8000-000000000013', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'aaaa2000-0000-4000-8000-000000000011', 'Copilot Demo Peer Foreign Room', '0900000033', 5, clock_timestamp(), 'Phong nay thuoc cong ty khac'),
+  ('aaa60000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa2000-0000-4000-8000-000000000011', 'Copilot Production Peer', '0900000034', 9, clock_timestamp(), 'Hoi thoai cong ty khac')
+ON CONFLICT (id) DO NOTHING;
+
+-- Network Center: real tables, real CHECK constraints, real composite FKs. The
+-- ARUBA device exists so the "router" join proves it picks MIKROTIK and not
+-- simply "the first device in the building".
+INSERT INTO public.network_devices (id, organization_id, building_id, device_kind, external_key, display_name, vendor, is_active, lifecycle_status, model)
+VALUES
+  ('ddd70000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'MIKROTIK', 'cp-d-rb-1', 'CP-D-RB-1', 'MikroTik', true, 'ONLINE', 'hAP ax2'),
+  ('aaa70000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', 'MIKROTIK', 'cp-p-rb-1', 'CP-P-RB-1', 'MikroTik', true, 'ONLINE', 'hAP ax2')
+ON CONFLICT (id) DO NOTHING;
+
+-- The access point is inserted in its OWN statement, with its parent already set:
+-- network_center_guard_aruba_parent_v1() rejects an ARUBA row whose parent is not
+-- a MikroTik in the same building, and the parent must therefore exist first.
+INSERT INTO public.network_devices (id, organization_id, building_id, device_kind, external_key, display_name, vendor, is_active, lifecycle_status, model, write_capability, parent_device_id, aruba_stable_key, aruba_identity_source, aruba_discovery_state, aruba_discovery_first_seen_at, aruba_discovery_last_seen_at)
+VALUES
+  ('ddd70000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'ARUBA', 'cp-d-ap-1', 'CP-D-AP-1', 'Aruba', true, 'ONLINE', 'AP-505', false, 'ddd70000-0000-4000-8000-000000000011', 'serial:CPDAP1', 'SERIAL', 'DISCOVERED', clock_timestamp(), clock_timestamp())
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.network_device_current (device_id, organization_id, building_id, observed_at, reachable, health_status, last_seen_at, pppoe_state, connection_count, cpu_pct, update_seq)
+VALUES
+  ('ddd70000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', clock_timestamp(), false, 'OFFLINE', clock_timestamp() - interval '1 hour', 'DOWN', 0, 12, 1),
+  ('aaa70000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', clock_timestamp(), true, 'HEALTHY', clock_timestamp(), 'UP', 40, 8, 1)
+ON CONFLICT (device_id) DO NOTHING;
+
+INSERT INTO public.network_incidents (id, organization_id, building_id, device_id, fingerprint, incident_type, severity, status, title, summary, opened_at, last_observed_at, resolved_at)
+VALUES
+  ('ddd80000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'ddd70000-0000-4000-8000-000000000011', 'cp-d-inc-open-1', 'DEVICE_UNREACHABLE', 'CRITICAL', 'OPEN', 'Router mat ket noi', 'Router khong phan hoi tu 1 gio truoc', clock_timestamp() - interval '1 hour', clock_timestamp(), NULL),
+  ('ddd80000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'ddd70000-0000-4000-8000-000000000011', 'cp-d-inc-done-1', 'DEVICE_UNREACHABLE', 'WARNING', 'RESOLVED', 'Su co da xu ly', 'Da khoi phuc tu hom qua', clock_timestamp() - interval '2 days', clock_timestamp() - interval '1 day', clock_timestamp() - interval '1 day'),
+  ('aaa80000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', 'aaa70000-0000-4000-8000-000000000011', 'cp-p-inc-open-1', 'DEVICE_UNREACHABLE', 'CRITICAL', 'OPEN', 'Su co cong ty khac', 'Khong duoc lot vao cau tra loi cua DEMO', clock_timestamp() - interval '1 hour', clock_timestamp(), NULL)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.network_client_current (id, organization_id, building_id, device_id, session_key, client_fingerprint, connection_type, session_type, first_seen_at, last_seen_at, observed_at, expires_at, update_seq)
+VALUES
+  ('ddd90000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'ddd70000-0000-4000-8000-000000000011', 'cp-d-sess-001', 'cp-d-client-001', 'WIFI', 'DHCP', clock_timestamp() - interval '2 hours', clock_timestamp(), clock_timestamp(), clock_timestamp() + interval '1 hour', 1),
+  ('ddd90000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'ddd70000-0000-4000-8000-000000000011', 'cp-d-sess-002', 'cp-d-client-002', 'ETHERNET', 'DHCP', clock_timestamp() - interval '2 hours', clock_timestamp(), clock_timestamp(), clock_timestamp() + interval '2 hours', 1),
+  ('ddd90000-0000-4000-8000-000000000013', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'ddd70000-0000-4000-8000-000000000011', 'cp-d-sess-003', 'cp-d-client-003', 'WIFI', 'DHCP', clock_timestamp() - interval '5 hours', clock_timestamp() - interval '4 hours', clock_timestamp() - interval '4 hours', clock_timestamp() - interval '3 hours', 1),
+  ('aaa90000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', 'aaa70000-0000-4000-8000-000000000011', 'cp-p-sess-001', 'cp-p-client-001', 'WIFI', 'DHCP', clock_timestamp() - interval '2 hours', clock_timestamp(), clock_timestamp(), clock_timestamp() + interval '1 hour', 1)
+ON CONFLICT (id) DO NOTHING;
 `;
 }
 
@@ -610,7 +793,11 @@ WITH fk_names AS (
       'leads_building_id_fkey',
       'vehicles_building_id_fkey',
       'jobs_building_id_fkey',
-      'meter_readings_building_id_fkey'
+      'meter_readings_building_id_fkey',
+      'profit_monthly_building_id_fkey',
+      'profit_allocations_profit_monthly_id_fkey',
+      'profit_allocations_shareholder_id_fkey',
+      'zalo_conversations_room_id_fkey'
     ])
 ),
 direct_fk AS (
@@ -992,12 +1179,128 @@ cash_lines_seen AS (
     AND p.event_kind IN ('POSTING', 'REVERSAL')
     AND pl.account_id = ANY(ARRAY['ddac0000-0000-4000-8000-000000000011'::uuid])
 ),
+salary_own_by_staff AS (
+  -- Own-row branch of copilot_salary_summary_v1, keyed the way the RPC keys it.
+  SELECT sm.id
+  FROM public.salary_monthly sm
+  WHERE sm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND sm.period_month = '2026-08-01'
+    AND sm.staff_id = 'ddd10000-0000-4000-8000-000000000011'
+),
+salary_own_by_user AS (
+  -- The same branch written the WRONG way round. Manager A owns both DEMO rows,
+  -- so this returns the colleague's pay as well. Two different numbers, and only
+  -- one of them is "your own row".
+  SELECT sm.id
+  FROM public.salary_monthly sm
+  WHERE sm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND sm.period_month = '2026-08-01'
+    AND sm.user_id = 'ddd10000-0000-4000-8000-000000000011'
+),
+salary_org_wide AS (
+  SELECT sm.id, pr.full_name
+  FROM public.salary_monthly sm
+  LEFT JOIN public.profiles pr ON pr.id = sm.staff_id
+  WHERE sm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND sm.period_month = '2026-08-01'
+),
+profit_rows AS (
+  -- Join path of copilot_shareholder_profit_v1: profit_monthly -> buildings, with
+  -- the building set standing in for the server-resolved scope.
+  SELECT pm.id, pm.adjusted_profit
+  FROM public.profit_monthly pm
+  JOIN public.buildings b
+    ON b.id = pm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+   AND b.id = ANY(ARRAY['dddd1000-0000-4000-8000-000000000011'::uuid])
+  WHERE pm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND pm.period_month = '2026-07-01'
+),
+profit_allocation_rows AS (
+  SELECT sh.name, sum(pa.amount) AS amount
+  FROM public.profit_allocations pa
+  JOIN profit_rows pr ON pr.id = pa.profit_monthly_id
+  JOIN public.shareholders sh
+    ON sh.id = pa.shareholder_id
+   AND sh.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND sh.deleted_at IS NULL
+  WHERE pa.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  GROUP BY sh.name
+),
+zalo_rows_org_wide AS (
+  -- Join path of copilot_zalo_conversations_v1 for an ORGANIZATION-wide reader:
+  -- the conversation attached to a room in scope AND the one attached to no room.
+  -- The conversation whose room belongs to the OTHER company must fall out.
+  SELECT c.id
+  FROM public.zalo_conversations c
+  LEFT JOIN public.rooms rm
+    ON rm.id = c.room_id
+   AND rm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND rm.deleted_at IS NULL
+  LEFT JOIN public.buildings b
+    ON b.id = rm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+   AND b.id = ANY(ARRAY['dddd1000-0000-4000-8000-000000000011'::uuid])
+  WHERE c.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND (b.id IS NOT NULL OR (c.room_id IS NULL AND true))
+),
+zalo_rows_building_only AS (
+  -- The same reader WITHOUT an organization-wide grant: the conversation with no
+  -- room disappears, because nobody granted them the company.
+  SELECT c.id
+  FROM public.zalo_conversations c
+  LEFT JOIN public.rooms rm
+    ON rm.id = c.room_id
+   AND rm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND rm.deleted_at IS NULL
+  LEFT JOIN public.buildings b
+    ON b.id = rm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+   AND b.id = ANY(ARRAY['dddd1000-0000-4000-8000-000000000011'::uuid])
+  WHERE c.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND (b.id IS NOT NULL OR (c.room_id IS NULL AND false))
+),
+network_rows AS (
+  -- Join path of copilot_network_status_v1: buildings -> MIKROTIK router ->
+  -- current sample, with the open-incident and active-client counts alongside.
+  SELECT
+    b.id AS building_id,
+    rt.display_name AS router_name,
+    cur.reachable,
+    cur.health_status,
+    (SELECT count(*)
+       FROM public.network_incidents ni
+      WHERE ni.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+        AND ni.building_id = b.id
+        AND ni.status <> 'RESOLVED') AS open_incidents,
+    (SELECT count(*)
+       FROM public.network_client_current nc
+      WHERE nc.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+        AND nc.building_id = b.id
+        AND nc.expires_at > statement_timestamp()) AS active_clients
+  FROM public.buildings b
+  LEFT JOIN public.network_devices rt
+    ON rt.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND rt.building_id = b.id
+   AND rt.device_kind = 'MIKROTIK'
+   AND rt.is_active
+  LEFT JOIN public.network_device_current cur
+    ON cur.device_id = rt.id
+   AND cur.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  WHERE b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND b.deleted_at IS NULL
+    AND b.is_virtual = false
+    AND b.id = ANY(ARRAY['dddd1000-0000-4000-8000-000000000011'::uuid])
+),
 checks AS (
   SELECT 'customers.positive'::text AS case_id, (SELECT count(*) = 1 FROM customer_rows) AS passed
   UNION ALL SELECT 'customers.empty', (SELECT count(*) = 0 FROM customer_empty)
   UNION ALL SELECT 'contracts.positive', (SELECT count(*) = 1 AND max(full_name) = 'Copilot Demo Customer' FROM contract_rows)
   UNION ALL SELECT 'contracts.empty', (SELECT count(*) = 0 FROM contract_empty)
-  UNION ALL SELECT 'schema.fk_names', (SELECT count(*) = 10 FROM fk_names)
+  UNION ALL SELECT 'schema.fk_names', (SELECT count(*) = 14 FROM fk_names)
   UNION ALL SELECT 'schema.direct_relations_absent', (SELECT count(*) = 0 FROM direct_fk)
   UNION ALL SELECT 'tenant.wrong_org_excluded',
     ((SELECT count(*) FROM customer_wrong_org) = 0
@@ -1057,6 +1360,37 @@ checks AS (
   UNION ALL SELECT 'cash_flow.restricted_voucher_excluded_from_day_total',
     ((SELECT max(chi) FROM cash_day_rows) = 6200000
       AND (SELECT chi FROM cash_day_rows_restricted_ok) = 16100000)
+  UNION ALL SELECT 'salary.own_row_is_staff_id_not_user_id',
+    ((SELECT count(*) FROM salary_own_by_staff) = 1
+      AND (SELECT count(*) FROM salary_own_by_user) = 2
+      AND (SELECT max(id::text) FROM salary_own_by_staff) = 'ddd20000-0000-4000-8000-000000000011')
+  UNION ALL SELECT 'salary.org_wide_sees_colleagues_and_not_other_org',
+    ((SELECT count(*) FROM salary_org_wide) = 2
+      AND (SELECT count(*) FROM salary_org_wide WHERE full_name IS NULL) = 0
+      AND NOT EXISTS (SELECT 1 FROM salary_org_wide s WHERE s.id = 'aaa20000-0000-4000-8000-000000000011'))
+  UNION ALL SELECT 'shareholder_profit.building_scoped',
+    ((SELECT count(*) FROM profit_rows) = 1
+      AND (SELECT max(adjusted_profit) FROM profit_rows) = 39000000
+      AND NOT EXISTS (SELECT 1 FROM profit_rows p WHERE p.id = 'aaa40000-0000-4000-8000-000000000011'))
+  UNION ALL SELECT 'shareholder_profit.allocations_follow_the_scoped_months',
+    ((SELECT count(*) FROM profit_allocation_rows) = 1
+      AND (SELECT max(amount) FROM profit_allocation_rows) = 27300000
+      AND NOT EXISTS (SELECT 1 FROM profit_allocation_rows a WHERE a.name = 'Copilot Production Shareholder'))
+  UNION ALL SELECT 'zalo.null_room_needs_org_wide',
+    ((SELECT count(*) FROM zalo_rows_org_wide) = 2
+      AND (SELECT count(*) FROM zalo_rows_building_only) = 1)
+  UNION ALL SELECT 'zalo.foreign_room_is_not_treated_as_no_room',
+    (NOT EXISTS (SELECT 1 FROM zalo_rows_org_wide z WHERE z.id = 'ddd60000-0000-4000-8000-000000000013')
+      AND NOT EXISTS (SELECT 1 FROM zalo_rows_org_wide z WHERE z.id = 'aaa60000-0000-4000-8000-000000000011'))
+  UNION ALL SELECT 'network.router_is_the_mikrotik_not_any_device',
+    ((SELECT count(*) FROM network_rows) = 1
+      AND (SELECT max(router_name) FROM network_rows) = 'CP-D-RB-1'
+      AND (SELECT bool_and(NOT reachable) FROM network_rows)
+      AND (SELECT max(health_status) FROM network_rows) = 'OFFLINE')
+  UNION ALL SELECT 'network.open_incidents_exclude_resolved_and_other_org',
+    ((SELECT max(open_incidents) FROM network_rows) = 1)
+  UNION ALL SELECT 'network.active_clients_exclude_expired_and_other_org',
+    ((SELECT max(active_clients) FROM network_rows) = 2)
 )
 SELECT jsonb_build_object(
   'passed', bool_and(passed),
@@ -1088,7 +1422,7 @@ export function parseCopilotReadonlyQueriesVerdict(output) {
   if (
     verdict.passed !== true ||
     Number(verdict.failed_count) !== 0 ||
-    Number(verdict.assertion_count) !== 32 ||
+    Number(verdict.assertion_count) !== 41 ||
     verdict.assertions.some((assertion) => assertion?.passed !== true)
   ) {
     throw new Error(`Copilot readonly query contract failed: ${JSON.stringify(verdict)}`);

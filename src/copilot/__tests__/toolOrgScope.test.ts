@@ -52,6 +52,13 @@ const TOOL_THEO_CONG_TY = [
   { ten: 'bao_cao_lich_thu_tien', args: { so_ngay: 30, so_luong: 20 } },
   { ten: 'bao_cao_thu_thua', args: { so_luong: 20 } },
   { ten: 'bao_cao_dat_coc', args: { so_luong: 20 } },
+  // G1-C4 — bốn miền nhạy cảm. Ở đây hậu quả của việc gộp sổ hai công ty
+  // không phải một con số lệch mà là lương của người công ty khác, lợi nhuận
+  // của cổ đông công ty khác, hội thoại riêng tư của khách công ty khác.
+  { ten: 'bang_luong_ky', args: { so_luong: 20 } },
+  { ten: 'loi_nhuan_co_dong', args: { so_luong: 20 } },
+  { ten: 'hoi_thoai_zalo', args: { so_luong: 20 } },
+  { ten: 'trang_thai_mang', args: { so_luong: 20 } },
 ];
 
 const tool = (ten: string) => {
