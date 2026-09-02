@@ -96,6 +96,37 @@ const TOOL_MARKERS = [
   ['tim_xe', /\bbien so\b|\btim xe\b/],
   ['cong_viec', /\bcong viec\b/],
   ['ton_kho_vat_tu', /\bvat tu\b|\bton kho\b/],
+  // G1-C3, the ten report tools. Same discipline again, and here it was the hard
+  // part: five of these reports talk about the SAME nouns as an older tool.
+  //
+  //   phong_trong already owns the "phong ... trong" shape, so the vacant-room
+  //   REPORT — the one that answers "how long has it been empty" — is routed by
+  //   "ngay trong" instead. Widening the older marker to share the noun would have
+  //   made every "phong trong" prompt match two tools, and inferMockOutcome() reads
+  //   two tools as multi-intent: the corpus test would call that a routing failure,
+  //   correctly.
+  //   tim_hoa_don owns "hoa don", so the overpayment report is routed by
+  //   "tra thua"/"thu thua" and its prompt never says "hoa don".
+  //   so_quy owns "so quy" and tim_phieu_thu_chi owns "phieu thu"/"phieu chi", so
+  //   the daily cashbook is routed by the whole phrase "thu chi theo ngay".
+  //   coc_dang_giu owns "tien coc"/"coc dang giu" (deposit held ON A CONTRACT); the
+  //   booking-deposit report is a different business object and is routed by
+  //   "dat coc".
+  //   huong_dan owns "huong dan", and C10 is literally "Huong dan thanh ly hop
+  //   dong" — so the termination REPORT needs the qualifier too: "ca thanh ly" or
+  //   "bao cao thanh ly", never the bare verb.
+  ['bao_cao_phong_trong', /\bngay trong\b/],
+  ['bao_cao_gia_han', /\bgia han\b/],
+  ['bao_cao_thanh_ly', /\b(?:ca|bao cao) thanh ly\b/],
+  ['bao_cao_hop_dong_moi', /\bhop dong moi\b/],
+  // 'Ti le' va 'ty le' deu la cach viet thuong gap; bo dau xong chung khac nhau
+  // mot chu cai, nen marker phai nhan ca hai.
+  ['bao_cao_ty_le_chi_phi', /\bt[iy] le chi phi\b/],
+  ['bao_cao_thu_chi_theo_ngay', /\bthu chi theo ngay\b/],
+  ['bao_cao_dong_tien', /\bdong tien\b/],
+  ['bao_cao_lich_thu_tien', /\blich thu tien\b/],
+  ['bao_cao_thu_thua', /\bthu thua\b|\btra thua\b/],
+  ['bao_cao_dat_coc', /\bdat coc\b/],
 ];
 
 /** Independently infer expected tool intent from the natural-language prompt. */

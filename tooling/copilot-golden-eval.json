@@ -59,6 +59,18 @@
     { "id": "C40", "input": "Xe biển số 59P1-12345 của ai?", "expectedOutcome": "readonly", "toolPath": ["tim_xe"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
     { "id": "C41", "input": "Tìm xe biển số không tồn tại", "expectedOutcome": "readonly", "toolPath": ["tim_xe"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
     { "id": "C42", "input": "Tôi còn công việc nào đang làm?", "expectedOutcome": "readonly", "toolPath": ["cong_viec"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
-    { "id": "C43", "input": "Vật tư nào sắp hết?", "expectedOutcome": "readonly", "toolPath": ["ton_kho_vat_tu"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" }
+    { "id": "C43", "input": "Vật tư nào sắp hết?", "expectedOutcome": "readonly", "toolPath": ["ton_kho_vat_tu"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C44", "input": "Báo cáo số ngày trống của từng phòng", "expectedOutcome": "readonly", "toolPath": ["bao_cao_phong_trong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C45", "input": "Số ngày trống ở toà không tồn tại", "expectedOutcome": "readonly", "toolPath": ["bao_cao_phong_trong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C46", "input": "Báo cáo gia hạn và chuyển nhượng quý này", "expectedOutcome": "readonly", "toolPath": ["bao_cao_gia_han"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C47", "input": "Có bao nhiêu ca thanh lý trong tháng 08/2026?", "expectedOutcome": "readonly", "toolPath": ["bao_cao_thanh_ly"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C48", "input": "Ký được bao nhiêu hợp đồng mới tháng 08/2026?", "expectedOutcome": "readonly", "toolPath": ["bao_cao_hop_dong_moi"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C49", "input": "Tỉ lệ chi phí của toà An 6 tháng qua", "expectedOutcome": "readonly", "toolPath": ["bao_cao_ty_le_chi_phi"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C50", "input": "Thu chi theo ngày từ 01/08/2026 đến 31/08/2026", "expectedOutcome": "readonly", "toolPath": ["bao_cao_thu_chi_theo_ngay"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C51", "input": "Dòng tiền theo tháng của năm 2026", "expectedOutcome": "readonly", "toolPath": ["bao_cao_dong_tien"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C52", "input": "Lịch thu tiền 30 ngày tới", "expectedOutcome": "readonly", "toolPath": ["bao_cao_lich_thu_tien"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C53", "input": "Khách nào trả thừa tiền?", "expectedOutcome": "readonly", "toolPath": ["bao_cao_thu_thua"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C54", "input": "Danh sách đặt cọc chưa xử lý", "expectedOutcome": "readonly", "toolPath": ["bao_cao_dat_coc"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C55", "input": "Đặt cọc của khách không tồn tại", "expectedOutcome": "readonly", "toolPath": ["bao_cao_dat_coc"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" }
   ]
 }

@@ -40,6 +40,18 @@ const TOOL_THEO_CONG_TY = [
   { ten: 'tim_xe', args: { so_luong: 20 } },
   { ten: 'cong_viec', args: { so_luong: 20 } },
   { ten: 'ton_kho_vat_tu', args: { so_luong: 20 } },
+  // G1-C3 — mười tool báo cáo. Chúng cộng TIỀN theo kỳ, nên một câu trả lời
+  // gộp sổ hai công ty ở đây là con số sai mà không lỗi nào nổ ra.
+  { ten: 'bao_cao_phong_trong', args: { so_luong: 20 } },
+  { ten: 'bao_cao_gia_han', args: { so_luong: 20 } },
+  { ten: 'bao_cao_thanh_ly', args: { so_luong: 20 } },
+  { ten: 'bao_cao_hop_dong_moi', args: { so_luong: 20 } },
+  { ten: 'bao_cao_ty_le_chi_phi', args: { so_luong: 20 } },
+  { ten: 'bao_cao_thu_chi_theo_ngay', args: { so_luong: 20 } },
+  { ten: 'bao_cao_dong_tien', args: { so_luong: 20 } },
+  { ten: 'bao_cao_lich_thu_tien', args: { so_ngay: 30, so_luong: 20 } },
+  { ten: 'bao_cao_thu_thua', args: { so_luong: 20 } },
+  { ten: 'bao_cao_dat_coc', args: { so_luong: 20 } },
 ];
 
 const tool = (ten: string) => {

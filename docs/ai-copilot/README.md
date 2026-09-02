@@ -13,11 +13,21 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**23 tool**: 21 đọc · 1 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**33 tool**: 31 đọc · 1 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
 | `ban_do_he_thong` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
+| `bao_cao_dat_coc` | read | `reports_finance.deposits_report` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_dong_tien` | read | `reports_finance.cash_flow` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_gia_han` | read | `reports_real_estate.renewals_transfers` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_hop_dong_moi` | read | `reports_real_estate.new_leases` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_lich_thu_tien` | read | `reports_finance.payment_schedule` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_phong_trong` | read | `reports_real_estate.vacant_rooms` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_thanh_ly` | read | `reports_real_estate.terminations` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_thu_chi_theo_ngay` | read | `reports_finance.daily_cashbook` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_thu_thua` | read | `reports_finance.overpayment` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_ty_le_chi_phi` | read | `reports_real_estate.expense_ratio` | `src/copilot/tools/nghiepVuTools.ts` |
 | `chi_so_cong_to` | read | `meter_readings.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `chi_tiet_hop_dong` | read | `contracts.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `coc_dang_giu` | read | `deposits.view` | `src/copilot/tools/nghiepVuTools.ts` |

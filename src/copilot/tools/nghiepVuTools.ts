@@ -20,6 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatVND } from '@/lib/utils';
 import { maskPhonePartial, maskPii } from '../maskPii';
 import { todayISO } from '@/lib/collect';
+import { ngayCuoiThang } from '../temporalContext';
 import { chotToChuc, type DomainTool } from './registry';
 
 const dt = <T,>(t: DomainTool<T>): DomainTool<T> => t;
@@ -1136,6 +1137,819 @@ export const tonKhoVatTu = dt({
   },
 });
 
+// ── Báo cáo BĐS · báo cáo tài chính (G1-C3) ─────────────────────────────────
+//
+// Mười tool dưới đây phơi đúng mười trang báo cáo, mỗi tool gác bằng CHÍNH khoá
+// quyền của trang (`reports_real_estate.*`, `reports_finance.*`) chứ không phải
+// một quyền rộng hơn dễ được cấp hơn — cấp qua Copilot bằng quyền khác là mở một
+// cửa sau vòng qua hàng rào của chính màn hình đó.
+//
+// Cả mười đọc qua RPC `copilot_report_*_v1`, KHÔNG đụng bảng qua PostgREST. Ở
+// đây lý do còn nặng hơn nhóm G1-C1/C2: chính các trang báo cáo mới là chỗ đang
+// đọc thô — `rooms`, `contracts`, `invoices`, `deposits`, `income_expenses` đều
+// được kéo về trình duyệt rồi cộng tay trong JavaScript. Hình dạng đó không sao
+// chép sang tool được, vì biên giới công ty của từng bảng nằm cách một phép nối
+// mà một `select` nhúng quan hệ phải TỰ ĐOÁN.
+
+/** Kỳ YYYY-MM → khoảng ngày. Trả `null` khi không có gì để suy. */
+function khoangKy(ky?: string, tu?: string, den?: string): { tu: string | null; den: string | null } {
+  if (ky) return { tu: `${ky}-01`, den: ngayCuoiThang(ky) };
+  return { tu: tu ?? null, den: den ?? null };
+}
+
+/** Ngày đầu tháng hiện tại, giờ máy — chỉ dùng làm mặc định khi user không nêu kỳ. */
+function dauThangNay(): string {
+  const nay = new Date();
+  return ngayISO(new Date(nay.getFullYear(), nay.getMonth(), 1));
+}
+
+/** 12 tháng gần nhất tính lùi từ hôm nay — mặc định của báo cáo dòng tiền. */
+function dauKy12Thang(): string {
+  const nay = new Date();
+  return ngayISO(new Date(nay.getFullYear(), nay.getMonth() - 11, 1));
+}
+
+const nhanKhoang = (tu: string | null, den: string | null): string =>
+  tu && den ? `${tu} → ${den}` : tu ? `từ ${tu}` : den ? `đến ${den}` : 'toàn bộ';
+
+/** Nhãn hiển thị của hai loại sự kiện trong báo cáo gia hạn / chuyển nhượng. */
+const NHAN_SU_KIEN_HD: Record<string, string> = {
+  RENEWAL: 'gia hạn',
+  TRANSFER: 'chuyển nhượng',
+};
+
+/** Trạng thái phiếu đặt cọc giữ chỗ — mã enum `deposit_status` của DB. */
+const NHAN_TRANG_THAI_COC: Record<string, string> = {
+  PENDING: 'chờ xác nhận',
+  CONFIRMED: 'đã xác nhận',
+  CONVERTED: 'đã vào hợp đồng',
+  REFUNDED: 'đã hoàn',
+  FORFEITED: 'mất cọc',
+};
+const MA_TRANG_THAI_COC: Record<string, string> = {
+  cho_xac_nhan: 'PENDING',
+  da_xac_nhan: 'CONFIRMED',
+  da_vao_hop_dong: 'CONVERTED',
+  da_hoan: 'REFUNDED',
+  mat_coc: 'FORFEITED',
+};
+
+interface HangPhongTrong {
+  phong_id: string;
+  phong: string | null;
+  toa_nha: string | null;
+  tang: number | null;
+  dien_tich: number | null;
+  gia_thue: number | null;
+  tinh_trang: string | null;
+  trong_tu: string | null;
+  so_ngay_trong: number | null;
+}
+
+interface GoiPhongTrong {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: { so_phong_trong: number | null; tien_thue_bo_lo: number | null; so_toa: number | null };
+  phong: HangPhongTrong[];
+}
+
+interface HangSuKienHD {
+  loai: string;
+  so_hop_dong: string | null;
+  khach_hang: string | null;
+  phong: string | null;
+  toa_nha: string | null;
+  ngay: string | null;
+  tien_thue: number | null;
+  ngay_ket_thuc_moi: string | null;
+}
+
+interface GoiSuKienHD {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: {
+    so_su_kien: number | null;
+    so_gia_han: number | null;
+    so_chuyen_nhuong: number | null;
+    tong_tien_thue: number | null;
+  };
+  su_kien: HangSuKienHD[];
+}
+
+interface HangKetThuc {
+  hop_dong_id: string;
+  so_hop_dong: string | null;
+  khach_hang: string | null;
+  phong: string | null;
+  toa_nha: string | null;
+  ngay_ket_thuc: string | null;
+  trang_thai: string | null;
+  kieu_ket_thuc: string | null;
+  tien_thue: number | null;
+  hoan_coc: number | null;
+  so_ngay_o: number | null;
+}
+
+interface GoiKetThuc {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: {
+    so_ca: number | null;
+    so_thanh_ly: number | null;
+    so_het_han: number | null;
+    tong_hoan_coc: number | null;
+    mau_so_hop_dong: number | null;
+    ty_le_phan_tram: number | null;
+  };
+  ca: HangKetThuc[];
+}
+
+interface HangHopDongMoi {
+  hop_dong_id: string;
+  so_hop_dong: string | null;
+  khach_hang: string | null;
+  phong: string | null;
+  toa_nha: string | null;
+  ngay_ky: string | null;
+  ngay_bat_dau: string | null;
+  ngay_ket_thuc: string | null;
+  trang_thai: string | null;
+  tien_thue: number | null;
+  tien_coc: number | null;
+  chu_ky_thanh_toan: string | null;
+  so_thang: number | null;
+}
+
+interface GoiHopDongMoi {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: {
+    so_hop_dong: number | null;
+    tong_tien_thue_thang: number | null;
+    tong_coc: number | null;
+    tong_gia_tri: number | null;
+  };
+  hop_dong: HangHopDongMoi[];
+}
+
+interface GoiTyLeChiPhi {
+  gioi_han: number;
+  so_luong: number;
+  tu: string | null;
+  den: string | null;
+  tong_hop: {
+    tong_thu: number | null;
+    tong_chi: number | null;
+    ty_le_phan_tram: number | null;
+    phieu_han_che_bi_loai: number | null;
+  };
+  theo_thang: { ky: string; thu: number | null; chi: number | null; ty_le_phan_tram: number | null }[];
+  hang_muc: { hang_muc: string | null; chi: number | null }[];
+}
+
+interface GoiThuChiNgay {
+  gioi_han: number;
+  so_luong: number;
+  tu: string | null;
+  den: string | null;
+  tong_hop: {
+    so_ngay_co_phat_sinh: number | null;
+    tong_thu: number | null;
+    tong_chi: number | null;
+    rong: number | null;
+    phieu_han_che_bi_loai: number | null;
+  };
+  theo_ngay: { ngay: string; thu: number | null; chi: number | null; rong: number | null }[];
+}
+
+interface GoiDongTien {
+  gioi_han: number;
+  so_luong: number;
+  tu: string | null;
+  den: string | null;
+  tong_hop: {
+    so_ky: number | null;
+    tong_thu: number | null;
+    tong_chi: number | null;
+    rong: number | null;
+    phieu_han_che_bi_loai: number | null;
+  };
+  theo_thang: { ky: string; thu: number | null; chi: number | null; rong: number | null }[];
+}
+
+interface HangLichThu {
+  hoa_don_id: string;
+  so_hoa_don: string | null;
+  ky: string | null;
+  han_thanh_toan: string | null;
+  so_ngay_con_lai: number | null;
+  tong_tien: number | null;
+  da_tra: number | null;
+  con_lai: number | null;
+  trang_thai: string | null;
+  phong: string | null;
+  toa_nha: string | null;
+  khach_hang: string | null;
+}
+
+interface GoiLichThu {
+  gioi_han: number;
+  so_ngay: number;
+  so_luong: number;
+  tong_hop: {
+    so_hoa_don: number | null;
+    tong_phai_thu: number | null;
+    tong_con_lai: number | null;
+    so_qua_han: number | null;
+    con_lai_qua_han: number | null;
+  };
+  hoa_don: HangLichThu[];
+}
+
+interface HangThuThua {
+  hoa_don_id: string;
+  so_hoa_don: string | null;
+  ky: string | null;
+  tong_tien: number | null;
+  da_tra: number | null;
+  thu_thua: number | null;
+  phong: string | null;
+  toa_nha: string | null;
+  khach_hang: string | null;
+}
+
+interface GoiThuThua {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: { so_hoa_don: number | null; tong_thu_thua: number | null };
+  hoa_don: HangThuThua[];
+}
+
+interface HangDatCoc {
+  coc_id: string;
+  ma: string | null;
+  khach_hang: string | null;
+  phong: string | null;
+  toa_nha: string | null;
+  so_tien: number | null;
+  ngay_coc: string | null;
+  giu_den: string | null;
+  trang_thai: string | null;
+  so_ngay_giu: number | null;
+}
+
+interface GoiDatCoc {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: {
+    so_phieu: number | null;
+    tong_tien: number | null;
+    dang_giu: number | null;
+    da_vao_hop_dong: number | null;
+  };
+  coc: HangDatCoc[];
+}
+
+export const baoCaoPhongTrong = dt({
+  name: 'bao_cao_phong_trong',
+  description:
+    'Báo cáo phòng trống theo góc nhìn KINH DOANH: mỗi phòng trống bao nhiêu NGÀY rồi, trống từ khi nào, ' +
+    'giá thuê đang bỏ lỡ là bao nhiêu. Khác tool phong_trong (danh sách bán hàng, không có số ngày trống). ' +
+    'Dùng khi hỏi "phòng nào bỏ không lâu nhất", "số ngày trống", "đang lỗ bao nhiêu vì phòng chưa cho thuê".',
+  inputSchema: z.object({
+    toa_nha_id: z
+      .string()
+      .regex(UUID_RE)
+      .optional()
+      .describe('UUID toà nhà, nếu biết. Bỏ trống = mọi toà trong phạm vi bạn được xem.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_real_estate', action: 'vacant_rooms' },
+  rolloutKey: 'reports.real-estate',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_phong_trong');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_building_id: string | null; p_limit: number },
+      GoiPhongTrong
+    >('copilot_report_vacant_rooms_v1', {
+      p_organization_id: orgId,
+      p_building_id: args.toa_nha_id ?? null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo phòng trống: ${error.message}`);
+    const rows = data?.phong ?? [];
+    if (!rows.length) return 'Không có phòng nào đang trống trong phạm vi bạn được xem.';
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      const ngay =
+        r.so_ngay_trong === null || r.so_ngay_trong === undefined
+          ? 'chưa từng có hợp đồng kết thúc'
+          : `trống ${r.so_ngay_trong} ngày (từ ${r.trong_tu ?? '?'})`;
+      const dienTich = r.dien_tich ? `, ${r.dien_tich}m²` : '';
+      return `- ${r.phong ?? '?'}${toa} — ${ngay} — giá ${formatVND(Number(r.gia_thue) || 0)}${dienTich}`;
+    });
+    const tomTat = th
+      ? `Toàn phạm vi: ${Number(th.so_phong_trong) || 0} phòng trống ở ${Number(th.so_toa) || 0} toà, ` +
+        `tiền thuê đang bỏ lỡ ${formatVND(Number(th.tien_thue_bo_lo) || 0)}/tháng.\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} phòng (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /reports/real-estate/vacant-rooms]`;
+  },
+});
+
+export const baoCaoGiaHan = dt({
+  name: 'bao_cao_gia_han',
+  description:
+    'Báo cáo GIA HẠN và CHUYỂN NHƯỢNG hợp đồng trong một kỳ: ai gia hạn, ai sang nhượng, phòng nào, giá mới bao nhiêu. ' +
+    'Dùng khi hỏi "tháng này gia hạn được mấy hợp đồng", "có ai sang nhượng không".',
+  inputSchema: z.object({
+    ky: z.string().regex(KY_RE).optional().describe('Kỳ YYYY-MM. Có kỳ thì bỏ qua tu/den.'),
+    tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD'),
+    den: z.string().regex(NGAY_RE).optional().describe('Đến ngày YYYY-MM-DD'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_real_estate', action: 'renewals_transfers' },
+  rolloutKey: 'reports.real-estate',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_gia_han');
+    const khoang = khoangKy(args.ky, args.tu, args.den);
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_tu: string | null; p_den: string | null; p_limit: number },
+      GoiSuKienHD
+    >('copilot_report_renewals_v1', {
+      p_organization_id: orgId,
+      p_tu: khoang.tu,
+      p_den: khoang.den,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo gia hạn: ${error.message}`);
+    const rows = data?.su_kien ?? [];
+    const nhan = nhanKhoang(khoang.tu, khoang.den);
+    if (!rows.length) return `Kỳ ${nhan}: không có hợp đồng nào gia hạn hay sang nhượng.`;
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const loai = NHAN_SU_KIEN_HD[r.loai] ?? r.loai;
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      const moi = r.ngay_ket_thuc_moi ? ` — hạn mới ${r.ngay_ket_thuc_moi}` : '';
+      return (
+        `- [${loai}] ${r.so_hop_dong ?? '?'} — ${r.khach_hang ?? '?'} — phòng ${r.phong ?? '?'}${toa}` +
+        ` — ${r.ngay ?? '?'} — thuê ${formatVND(Number(r.tien_thue) || 0)}${moi}`
+      );
+    });
+    const tomTat = th
+      ? `Kỳ ${nhan}: ${Number(th.so_su_kien) || 0} sự kiện — ${Number(th.so_gia_han) || 0} gia hạn, ` +
+        `${Number(th.so_chuyen_nhuong) || 0} chuyển nhượng.\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /reports/real-estate/renewals-transfers]`;
+  },
+});
+
+export const baoCaoThanhLy = dt({
+  name: 'bao_cao_thanh_ly',
+  description:
+    'Báo cáo hợp đồng KẾT THÚC trong một kỳ: thanh lý và hết hạn, kèm tỉ lệ trên tổng hợp đồng đã vận hành, ' +
+    'kiểu kết thúc, số tiền hoàn cọc và số ngày khách đã ở. ' +
+    'Dùng khi hỏi "tháng này có mấy ca thanh lý", "tỉ lệ khách bỏ đi", "ai vừa trả phòng".',
+  inputSchema: z.object({
+    ky: z.string().regex(KY_RE).optional().describe('Kỳ YYYY-MM. Có kỳ thì bỏ qua tu/den.'),
+    tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD'),
+    den: z.string().regex(NGAY_RE).optional().describe('Đến ngày YYYY-MM-DD'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_real_estate', action: 'terminations' },
+  rolloutKey: 'reports.real-estate',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_thanh_ly');
+    const khoang = khoangKy(args.ky, args.tu, args.den);
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_tu: string | null; p_den: string | null; p_limit: number },
+      GoiKetThuc
+    >('copilot_report_terminations_v1', {
+      p_organization_id: orgId,
+      p_tu: khoang.tu,
+      p_den: khoang.den,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo thanh lý: ${error.message}`);
+    const rows = data?.ca ?? [];
+    const nhan = nhanKhoang(khoang.tu, khoang.den);
+    if (!rows.length) return `Kỳ ${nhan}: không có hợp đồng nào kết thúc.`;
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      const tt = r.trang_thai ? (NHAN_TRANG_THAI_HD[r.trang_thai] ?? r.trang_thai) : '?';
+      const kieu = r.kieu_ket_thuc ? ` — ${r.kieu_ket_thuc}` : '';
+      const hoan = Number(r.hoan_coc) > 0 ? ` — hoàn cọc ${formatVND(Number(r.hoan_coc))}` : '';
+      const oNgay = r.so_ngay_o === null || r.so_ngay_o === undefined ? '' : ` — ở ${r.so_ngay_o} ngày`;
+      return (
+        `- ${r.so_hop_dong ?? r.hop_dong_id.slice(0, 8)} — ${r.khach_hang ?? '?'} — phòng ${r.phong ?? '?'}${toa}` +
+        ` — kết thúc ${r.ngay_ket_thuc ?? '?'} — ${tt}${kieu}${oNgay}${hoan}` +
+        ` [link: /contracts/${r.hop_dong_id}]`
+      );
+    });
+    const tomTat = th
+      ? `Kỳ ${nhan}: ${Number(th.so_ca) || 0} ca kết thúc (${Number(th.so_thanh_ly) || 0} thanh lý, ` +
+        `${Number(th.so_het_han) || 0} hết hạn) trên ${Number(th.mau_so_hop_dong) || 0} hợp đồng đã vận hành ` +
+        `= ${pct(th.ty_le_phan_tram)}. Tổng hoàn cọc ${formatVND(Number(th.tong_hoan_coc) || 0)}.\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /reports/real-estate/terminations]`;
+  },
+});
+
+export const baoCaoHopDongMoi = dt({
+  name: 'bao_cao_hop_dong_moi',
+  description:
+    'Báo cáo hợp đồng MỚI KÝ trong một kỳ: khách nào, phòng nào, giá thuê, tiền cọc, thời hạn và tổng giá trị hợp đồng. ' +
+    'Dùng khi hỏi "tháng này ký được mấy hợp đồng mới", "cho thuê mới bao nhiêu phòng".',
+  inputSchema: z.object({
+    ky: z.string().regex(KY_RE).optional().describe('Kỳ YYYY-MM. Có kỳ thì bỏ qua tu/den.'),
+    tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD (theo ngày ký)'),
+    den: z.string().regex(NGAY_RE).optional().describe('Đến ngày YYYY-MM-DD (theo ngày ký)'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_real_estate', action: 'new_leases' },
+  rolloutKey: 'reports.real-estate',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_hop_dong_moi');
+    const khoang = khoangKy(args.ky, args.tu, args.den);
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_tu: string | null; p_den: string | null; p_limit: number },
+      GoiHopDongMoi
+    >('copilot_report_new_leases_v1', {
+      p_organization_id: orgId,
+      p_tu: khoang.tu,
+      p_den: khoang.den,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo hợp đồng mới: ${error.message}`);
+    const rows = data?.hop_dong ?? [];
+    const nhan = nhanKhoang(khoang.tu, khoang.den);
+    if (!rows.length) return `Kỳ ${nhan}: chưa ký hợp đồng mới nào.`;
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      const tt = r.trang_thai ? (NHAN_TRANG_THAI_HD[r.trang_thai] ?? r.trang_thai) : '?';
+      return (
+        `- ${r.so_hop_dong ?? r.hop_dong_id.slice(0, 8)} — ${r.khach_hang ?? '?'} — phòng ${r.phong ?? '?'}${toa}` +
+        ` — ký ${r.ngay_ky ?? '?'}, thuê ${r.ngay_bat_dau ?? '?'} → ${r.ngay_ket_thuc ?? '?'} (${r.so_thang ?? '?'} tháng)` +
+        ` — ${formatVND(Number(r.tien_thue) || 0)}/tháng, cọc ${formatVND(Number(r.tien_coc) || 0)} — ${tt}` +
+        ` [link: /contracts/${r.hop_dong_id}]`
+      );
+    });
+    const tomTat = th
+      ? `Kỳ ${nhan}: ${Number(th.so_hop_dong) || 0} hợp đồng mới, ` +
+        `${formatVND(Number(th.tong_tien_thue_thang) || 0)}/tháng, cọc ${formatVND(Number(th.tong_coc) || 0)}, ` +
+        `tổng giá trị ${formatVND(Number(th.tong_gia_tri) || 0)}.\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /reports/real-estate/new-leases]`;
+  },
+});
+
+export const baoCaoTyLeChiPhi = dt({
+  name: 'bao_cao_ty_le_chi_phi',
+  description:
+    'Tỉ lệ CHI PHÍ trên tiền thu về, theo từng tháng và theo từng nhóm chi. ' +
+    'Mặc định 6 tháng gần nhất. Chỉ tính phiếu đã ghi nhận, nên đây là tiền THỰC chứ không phải hoá đơn phát hành. ' +
+    'Dùng khi hỏi "chi phí chiếm bao nhiêu phần trăm", "nhóm chi nào tốn nhất", "tháng nào đắt đỏ nhất".',
+  inputSchema: z.object({
+    tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD. Bỏ trống = 6 tháng gần nhất.'),
+    den: z.string().regex(NGAY_RE).optional().describe('Đến ngày YYYY-MM-DD. Bỏ trống = hôm nay.'),
+    toa_nha_id: z.string().regex(UUID_RE).optional().describe('UUID toà nhà, nếu muốn lọc một toà'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số nhóm chi tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_real_estate', action: 'expense_ratio' },
+  rolloutKey: 'reports.real-estate',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_ty_le_chi_phi');
+    const { data, error } = await goiRpcCopilot<
+      {
+        p_organization_id: string;
+        p_tu: string | null;
+        p_den: string | null;
+        p_building_id: string | null;
+        p_limit: number;
+      },
+      GoiTyLeChiPhi
+    >('copilot_report_expense_ratio_v1', {
+      p_organization_id: orgId,
+      p_tu: args.tu ?? null,
+      p_den: args.den ?? null,
+      p_building_id: args.toa_nha_id ?? null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải tỉ lệ chi phí: ${error.message}`);
+    const th = data?.tong_hop;
+    const thang = data?.theo_thang ?? [];
+    const hangMuc = data?.hang_muc ?? [];
+    const nhan = `${data?.tu ?? '?'} → ${data?.den ?? '?'}`;
+    if (!thang.length && !hangMuc.length) return `Kỳ ${nhan}: không có phiếu thu chi nào đã ghi nhận.`;
+    const phan = [
+      `Tỉ lệ chi phí ${nhan}: chi ${formatVND(Number(th?.tong_chi) || 0)} / thu ${formatVND(Number(th?.tong_thu) || 0)}` +
+        ` = ${th?.ty_le_phan_tram === null || th?.ty_le_phan_tram === undefined ? 'chưa tính được (chưa có tiền thu)' : pct(th.ty_le_phan_tram)}`,
+    ];
+    if (Number(th?.phieu_han_che_bi_loai) > 0) {
+      phan.push(
+        `⚠ ${Number(th?.phieu_han_che_bi_loai)} phiếu thuộc hạng mục hạn chế KHÔNG nằm trong các con số trên` +
+          ' (bạn chưa có quyền xem hạng mục hạn chế), nên tổng này chưa đầy đủ.',
+      );
+    }
+    if (thang.length) {
+      phan.push(
+        `\nTheo tháng:\n${thang
+          .map(
+            (m) =>
+              `- ${m.ky}: thu ${formatVND(Number(m.thu) || 0)}, chi ${formatVND(Number(m.chi) || 0)}` +
+              ` — ${m.ty_le_phan_tram === null || m.ty_le_phan_tram === undefined ? '—' : pct(m.ty_le_phan_tram)}`,
+          )
+          .join('\n')}`,
+      );
+    }
+    if (hangMuc.length) {
+      phan.push(
+        `\nNhóm chi lớn nhất (${hangMuc.length}):\n${hangMuc
+          .map((h) => `- ${h.hang_muc ?? '?'}: ${formatVND(Number(h.chi) || 0)}`)
+          .join('\n')}`,
+      );
+    }
+    return `${phan.join('\n')}\n[link: /reports/real-estate/expense-ratio]`;
+  },
+});
+
+export const baoCaoThuChiTheoNgay = dt({
+  name: 'bao_cao_thu_chi_theo_ngay',
+  description:
+    'Sổ quỹ theo NGÀY trong một khoảng: mỗi ngày thu bao nhiêu, chi bao nhiêu, ròng bao nhiêu. ' +
+    'Mặc định từ đầu tháng này tới hôm nay. Khác tool so_quy (số dư theo từng sổ, không tách theo ngày). ' +
+    'Dùng khi hỏi "thu chi theo ngày", "hôm qua thu được bao nhiêu", "ngày nào chi nhiều nhất".',
+  inputSchema: z.object({
+    ky: z.string().regex(KY_RE).optional().describe('Kỳ YYYY-MM. Có kỳ thì bỏ qua tu/den.'),
+    tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD. Bỏ trống = đầu tháng này.'),
+    den: z.string().regex(NGAY_RE).optional().describe('Đến ngày YYYY-MM-DD. Bỏ trống = hôm nay.'),
+    toa_nha_id: z.string().regex(UUID_RE).optional().describe('UUID toà nhà, nếu muốn lọc một toà'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số ngày tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_finance', action: 'daily_cashbook' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_thu_chi_theo_ngay');
+    const khoang = khoangKy(args.ky, args.tu, args.den);
+    const tu = khoang.tu ?? dauThangNay();
+    const den = khoang.den ?? todayISO();
+    const { data, error } = await goiRpcCopilot<
+      {
+        p_organization_id: string;
+        p_tu: string;
+        p_den: string;
+        p_building_id: string | null;
+        p_limit: number;
+      },
+      GoiThuChiNgay
+    >('copilot_report_daily_cashbook_v1', {
+      p_organization_id: orgId,
+      p_tu: tu,
+      p_den: den,
+      p_building_id: args.toa_nha_id ?? null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải sổ quỹ theo ngày: ${error.message}`);
+    const rows = data?.theo_ngay ?? [];
+    if (!rows.length) return `${tu} → ${den}: không có phát sinh thu chi nào đã ghi nhận.`;
+    const th = data?.tong_hop;
+    const phan = [
+      `Thu chi ${tu} → ${den}: thu ${formatVND(Number(th?.tong_thu) || 0)}, chi ${formatVND(Number(th?.tong_chi) || 0)},` +
+        ` ròng ${formatVND(Number(th?.rong) || 0)} trên ${Number(th?.so_ngay_co_phat_sinh) || 0} ngày có phát sinh.`,
+    ];
+    if (Number(th?.phieu_han_che_bi_loai) > 0) {
+      phan.push(
+        `⚠ ${Number(th?.phieu_han_che_bi_loai)} phiếu thuộc hạng mục hạn chế KHÔNG nằm trong các con số trên,` +
+          ' nên tổng này chưa đầy đủ.',
+      );
+    }
+    const tran = data?.gioi_han ?? args.so_luong;
+    phan.push(
+      `\n${rows.length} ngày gần nhất (tối đa ${tran} dòng):\n${rows
+        .map(
+          (d) =>
+            `- ${d.ngay}: thu ${formatVND(Number(d.thu) || 0)}, chi ${formatVND(Number(d.chi) || 0)},` +
+            ` ròng ${formatVND(Number(d.rong) || 0)}`,
+        )
+        .join('\n')}`,
+    );
+    return `${phan.join('\n')}\n[link: /reports/finance/daily-cashbook]`;
+  },
+});
+
+export const baoCaoDongTien = dt({
+  name: 'bao_cao_dong_tien',
+  description:
+    'Dòng tiền gom theo THÁNG: mỗi tháng thu bao nhiêu, chi bao nhiêu, ròng bao nhiêu, kèm tổng cả khoảng. ' +
+    'Mặc định 12 tháng gần nhất. Dùng khi hỏi "dòng tiền năm nay", "tháng nào âm", "xu hướng thu chi".',
+  inputSchema: z.object({
+    ky: z.string().regex(KY_RE).optional().describe('Kỳ YYYY-MM cho MỘT tháng. Có kỳ thì bỏ qua tu/den.'),
+    tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD. Bỏ trống = 12 tháng gần nhất.'),
+    den: z.string().regex(NGAY_RE).optional().describe('Đến ngày YYYY-MM-DD. Bỏ trống = hôm nay.'),
+    toa_nha_id: z.string().regex(UUID_RE).optional().describe('UUID toà nhà, nếu muốn lọc một toà'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số tháng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_finance', action: 'cash_flow' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_dong_tien');
+    const khoang = khoangKy(args.ky, args.tu, args.den);
+    const tu = khoang.tu ?? dauKy12Thang();
+    const den = khoang.den ?? todayISO();
+    const { data, error } = await goiRpcCopilot<
+      {
+        p_organization_id: string;
+        p_tu: string;
+        p_den: string;
+        p_building_id: string | null;
+        p_limit: number;
+      },
+      GoiDongTien
+    >('copilot_report_cash_flow_v1', {
+      p_organization_id: orgId,
+      p_tu: tu,
+      p_den: den,
+      p_building_id: args.toa_nha_id ?? null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải dòng tiền: ${error.message}`);
+    const rows = data?.theo_thang ?? [];
+    if (!rows.length) return `${tu} → ${den}: không có phát sinh thu chi nào đã ghi nhận.`;
+    const th = data?.tong_hop;
+    const phan = [
+      `Dòng tiền ${tu} → ${den}: thu ${formatVND(Number(th?.tong_thu) || 0)}, chi ${formatVND(Number(th?.tong_chi) || 0)},` +
+        ` ròng ${formatVND(Number(th?.rong) || 0)} trên ${Number(th?.so_ky) || 0} tháng.`,
+    ];
+    if (Number(th?.phieu_han_che_bi_loai) > 0) {
+      phan.push(
+        `⚠ ${Number(th?.phieu_han_che_bi_loai)} phiếu thuộc hạng mục hạn chế KHÔNG nằm trong các con số trên,` +
+          ' nên tổng này chưa đầy đủ.',
+      );
+    }
+    const tran = data?.gioi_han ?? args.so_luong;
+    phan.push(
+      `\n${rows.length} tháng (tối đa ${tran} dòng):\n${rows
+        .map(
+          (m) =>
+            `- ${m.ky}: thu ${formatVND(Number(m.thu) || 0)}, chi ${formatVND(Number(m.chi) || 0)},` +
+            ` ròng ${formatVND(Number(m.rong) || 0)}`,
+        )
+        .join('\n')}`,
+    );
+    return `${phan.join('\n')}\n[link: /reports/finance/cash-flow]`;
+  },
+});
+
+export const baoCaoLichThuTien = dt({
+  name: 'bao_cao_lich_thu_tien',
+  description:
+    'Lịch thu tiền: hoá đơn còn nợ đến hạn trong N ngày tới, kèm phần ĐÃ QUÁ HẠN tách riêng. ' +
+    'Trả hạn thanh toán, số ngày còn lại, số còn phải thu, phòng/toà và khách đại diện. ' +
+    'Dùng khi hỏi "sắp tới phải thu ai", "lịch thu tiền tuần này", "nợ nào đã quá hạn".',
+  inputSchema: z.object({
+    so_ngay: z
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .default(30)
+      .describe('Cửa sổ nhìn tới, tính từ hôm nay (trần 365 ngày)'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_finance', action: 'payment_schedule' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_lich_thu_tien');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_so_ngay: number; p_limit: number },
+      GoiLichThu
+    >('copilot_report_payment_schedule_v1', {
+      p_organization_id: orgId,
+      p_so_ngay: args.so_ngay,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải lịch thu tiền: ${error.message}`);
+    const rows = data?.hoa_don ?? [];
+    const soNgay = data?.so_ngay ?? args.so_ngay;
+    if (!rows.length) return `Không có khoản nào phải thu trong ${soNgay} ngày tới.`;
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      const con = Number(r.so_ngay_con_lai);
+      const han = Number.isFinite(con)
+        ? con < 0
+          ? `⚠ quá hạn ${Math.abs(con)} ngày`
+          : `còn ${con} ngày`
+        : '?';
+      return (
+        `- ${r.so_hoa_don ?? r.hoa_don_id.slice(0, 8)} — ${r.khach_hang ?? '?'} — phòng ${r.phong ?? '?'}${toa}` +
+        ` — hạn ${r.han_thanh_toan ?? '?'} (${han}) — còn phải thu ${formatVND(Number(r.con_lai) || 0)}` +
+        `/${formatVND(Number(r.tong_tien) || 0)}`
+      );
+    });
+    const tomTat = th
+      ? `Trong ${soNgay} ngày tới: ${Number(th.so_hoa_don) || 0} hoá đơn còn nợ ${formatVND(Number(th.tong_con_lai) || 0)}` +
+        `, trong đó ${Number(th.so_qua_han) || 0} đã quá hạn (${formatVND(Number(th.con_lai_qua_han) || 0)}).\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /reports/finance/payment-schedule]`;
+  },
+});
+
+export const baoCaoThuThua = dt({
+  name: 'bao_cao_thu_thua',
+  description:
+    'Các hoá đơn KHÁCH ĐÃ TRẢ NHIỀU HƠN số phải trả: trả thừa bao nhiêu, phòng nào, khách nào. ' +
+    'Dùng khi hỏi "ai trả thừa tiền", "tiền thừa đang treo bao nhiêu", "khoản nào cần trả lại khách".',
+  inputSchema: z.object({
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_finance', action: 'overpayment' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_thu_thua');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_limit: number },
+      GoiThuThua
+    >('copilot_report_overpayment_v1', {
+      p_organization_id: orgId,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo tiền thừa: ${error.message}`);
+    const rows = data?.hoa_don ?? [];
+    if (!rows.length) return 'Không có hoá đơn nào khách trả thừa.';
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      return (
+        `- ${r.so_hoa_don ?? r.hoa_don_id.slice(0, 8)} — ${r.khach_hang ?? '?'} — phòng ${r.phong ?? '?'}${toa}` +
+        ` — kỳ ${r.ky ?? '?'} — trả ${formatVND(Number(r.da_tra) || 0)}/${formatVND(Number(r.tong_tien) || 0)}` +
+        ` — thừa ${formatVND(Number(r.thu_thua) || 0)}`
+      );
+    });
+    const tomTat = th
+      ? `Toàn phạm vi: ${Number(th.so_hoa_don) || 0} hoá đơn, tổng trả thừa ${formatVND(Number(th.tong_thu_thua) || 0)}.\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /reports/finance/overpayment]`;
+  },
+});
+
+export const baoCaoDatCoc = dt({
+  name: 'bao_cao_dat_coc',
+  description:
+    'Danh sách phiếu ĐẶT CỌC GIỮ CHỖ (cọc nhận TRƯỚC khi có hợp đồng): khách nào, phòng nào, giữ đến bao giờ, đã bao nhiêu ngày. ' +
+    'Khác tool coc_dang_giu (cọc theo hợp đồng đang thuê). ' +
+    'Dùng khi hỏi "ai đang đặt cọc phòng", "cọc giữ chỗ sắp hết hạn", "cọc nào chưa xác nhận".',
+  inputSchema: z.object({
+    trang_thai: z
+      .enum(['cho_xac_nhan', 'da_xac_nhan', 'da_vao_hop_dong', 'da_hoan', 'mat_coc'])
+      .optional()
+      .describe('Lọc theo tình trạng phiếu cọc. Bỏ trống = mọi tình trạng.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'reports_finance', action: 'deposits_report' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'bao_cao_dat_coc');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_trang_thai: string | null; p_limit: number },
+      GoiDatCoc
+    >('copilot_report_deposits_v1', {
+      p_organization_id: orgId,
+      p_trang_thai: args.trang_thai ? (MA_TRANG_THAI_COC[args.trang_thai] ?? null) : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo đặt cọc: ${error.message}`);
+    const rows = data?.coc ?? [];
+    if (!rows.length) return 'Không có phiếu đặt cọc giữ chỗ nào khớp điều kiện.';
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      const tt = r.trang_thai ? (NHAN_TRANG_THAI_COC[r.trang_thai] ?? r.trang_thai) : '?';
+      const giu = r.giu_den ? ` — giữ đến ${r.giu_den}` : '';
+      const ngay =
+        r.so_ngay_giu === null || r.so_ngay_giu === undefined ? '' : ` — đã ${r.so_ngay_giu} ngày`;
+      return (
+        `- ${r.ma ?? r.coc_id.slice(0, 8)} — ${r.khach_hang ?? '?'} — phòng ${r.phong ?? '?'}${toa}` +
+        ` — ${formatVND(Number(r.so_tien) || 0)} — cọc ngày ${r.ngay_coc ?? '?'}${giu}${ngay} — ${tt}`
+      );
+    });
+    const tomTat = th
+      ? `Toàn phạm vi: ${Number(th.so_phieu) || 0} phiếu, tổng ${formatVND(Number(th.tong_tien) || 0)} — ` +
+        `đang giữ ${formatVND(Number(th.dang_giu) || 0)}, đã vào hợp đồng ${formatVND(Number(th.da_vao_hop_dong) || 0)}.\n`
+      : '';
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${tomTat}${rows.length} dòng (tối đa ${tran} mỗi lần hỏi):\n${dong.join('\n')}\n[link: /reports/finance/deposits]`;
+  },
+});
+
 /** Gom lại để registry chèn vào một chỗ. */
 export const TOOL_NGHIEP_VU: DomainTool[] = [
   tyLeLapDay as DomainTool,
@@ -1151,4 +1965,14 @@ export const TOOL_NGHIEP_VU: DomainTool[] = [
   timXe as DomainTool,
   congViec as DomainTool,
   tonKhoVatTu as DomainTool,
+  baoCaoPhongTrong as DomainTool,
+  baoCaoGiaHan as DomainTool,
+  baoCaoThanhLy as DomainTool,
+  baoCaoHopDongMoi as DomainTool,
+  baoCaoTyLeChiPhi as DomainTool,
+  baoCaoThuChiTheoNgay as DomainTool,
+  baoCaoDongTien as DomainTool,
+  baoCaoLichThuTien as DomainTool,
+  baoCaoThuThua as DomainTool,
+  baoCaoDatCoc as DomainTool,
 ];

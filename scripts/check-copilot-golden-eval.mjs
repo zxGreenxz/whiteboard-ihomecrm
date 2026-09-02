@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** Số ca đã đạt được — bộ ca chỉ được lớn hơn mức này, không được teo về. */
-export const SAN_SO_CA = 43;
+export const SAN_SO_CA = 55;
 
 export function validateGolden(golden) {
   const problems = [];
@@ -37,7 +37,7 @@ export function validateGolden(golden) {
   // 13/08/2026 — nên THÊM một ca mới cũng làm gate đỏ, và cách "sửa" rẻ nhất là
   // đừng thêm ca nào. Một cửa chặn phạt việc mở rộng phạm vi đo là cửa chặn
   // đang làm ngược việc của nó. Nay: tập id phải liên tục từ C01 và chỉ được
-  // LỚN LÊN (sàn 43 = mức đã đạt), tức xoá ca vẫn bị bắt.
+  // LỚN LÊN (sàn 55 = mức đã đạt), tức xoá ca vẫn bị bắt.
   if (cases.length < SAN_SO_CA) {
     problems.push(`cases must keep at least ${SAN_SO_CA} entries (found ${cases.length})`);
   }

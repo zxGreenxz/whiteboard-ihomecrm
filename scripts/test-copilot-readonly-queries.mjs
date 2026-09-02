@@ -47,6 +47,17 @@ export const TABLES_OFF_LIMITS_TO_THE_BROWSER = Object.freeze([
   "vehicles",
   "jobs",
   "materials",
+  // G1-C3. The report pages are where the raw browser reads actually live
+  // today (src/hooks/reports/*): a room is only in scope through its
+  // building, an extension/termination only through its contract, a booking
+  // deposit only through a NULLABLE room, and an expense line only through
+  // its voucher. Every one of those is a relation a browser embed guesses.
+  "rooms",
+  "deposits",
+  "contract_extensions",
+  "contract_terminations",
+  "income_expense_items",
+  "income_expense_types",
 ]);
 
 /** RPC names that must still be called by LITERAL name from the tool sources. */
@@ -62,6 +73,17 @@ export const REQUIRED_COPILOT_RPCS = Object.freeze([
   "copilot_vehicle_search_v1",
   "copilot_tasks_v1",
   "copilot_material_stock_v1",
+  // G1-C3 — the ten report pages.
+  "copilot_report_vacant_rooms_v1",
+  "copilot_report_renewals_v1",
+  "copilot_report_terminations_v1",
+  "copilot_report_new_leases_v1",
+  "copilot_report_expense_ratio_v1",
+  "copilot_report_daily_cashbook_v1",
+  "copilot_report_cash_flow_v1",
+  "copilot_report_payment_schedule_v1",
+  "copilot_report_overpayment_v1",
+  "copilot_report_deposits_v1",
 ]);
 
 /**
@@ -204,7 +226,8 @@ CREATE TABLE IF NOT EXISTS public.contract_customers (
 
 ALTER TABLE public.contracts
   ADD COLUMN IF NOT EXISTS contract_number text,
-  ADD COLUMN IF NOT EXISTS end_date date;
+  ADD COLUMN IF NOT EXISTS end_date date,
+  ADD COLUMN IF NOT EXISTS actual_end_date date;
 
 INSERT INTO public.buildings (id, organization_id, name, code, is_virtual)
 VALUES
@@ -387,6 +410,95 @@ VALUES
   ('dddda000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', 'WATER', '2026-07', 10, 15, 'APPROVED'),
   ('dddda000-0000-4000-8000-000000000013', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', 'ELECTRICITY', '2026-06', 40, 100, 'APPROVED'),
   ('aaaaa000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', NULL, 'ELECTRICITY', '2026-07', 0, 999, 'UNAPPROVED')
+ON CONFLICT (id) DO NOTHING;
+
+
+-- G1-C3 surface: the report pages. Same approach again — only the columns the
+-- scope path needs, and the DEPLOYED foreign-key names.
+ALTER TABLE public.invoices
+  ADD COLUMN IF NOT EXISTS building_id uuid,
+  ADD COLUMN IF NOT EXISTS room_id uuid,
+  ADD COLUMN IF NOT EXISTS due_date date,
+  ADD COLUMN IF NOT EXISTS paid_amount numeric NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS remaining_amount numeric;
+
+CREATE TABLE IF NOT EXISTS public.contract_extensions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  contract_id uuid NOT NULL,
+  extension_date date NOT NULL,
+  new_end_date date,
+  new_rent_price numeric,
+  status text NOT NULL DEFAULT 'APPROVED',
+  CONSTRAINT contract_extensions_contract_id_fkey
+    FOREIGN KEY (contract_id) REFERENCES public.contracts(id)
+);
+
+CREATE TABLE IF NOT EXISTS public.contract_terminations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  contract_id uuid NOT NULL,
+  termination_type text,
+  termination_date date,
+  refund_amount numeric,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CONSTRAINT contract_terminations_contract_id_fkey
+    FOREIGN KEY (contract_id) REFERENCES public.contracts(id)
+);
+
+-- The room_id column stays NULLABLE on purpose: a booking deposit taken before
+-- a room was chosen is the case copilot_report_deposits_v1 has to decide, and a
+-- NOT NULL column here would have made that case untestable.
+CREATE TABLE IF NOT EXISTS public.deposits (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  room_id uuid,
+  tenant_id uuid,
+  code text,
+  amount numeric NOT NULL DEFAULT 0,
+  deposit_date date NOT NULL DEFAULT CURRENT_DATE,
+  hold_until date,
+  status text NOT NULL DEFAULT 'PENDING',
+  deleted_at timestamptz,
+  CONSTRAINT deposits_room_id_fkey
+    FOREIGN KEY (room_id) REFERENCES public.rooms(id)
+);
+
+-- A second DEMO room with NO active contract — the vacant one — plus the ended
+-- contract that dates its vacancy.
+INSERT INTO public.rooms (id, organization_id, building_id, name)
+VALUES ('dddd2000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'CP-D-102')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.contracts (id, organization_id, room_id, status, contract_number, end_date)
+VALUES ('dddd4000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd2000-0000-4000-8000-000000000012', 'TERMINATED', 'CP-ENDED-002', CURRENT_DATE - 30)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.contract_extensions (id, organization_id, contract_id, extension_date, new_end_date, new_rent_price, status)
+VALUES
+  ('ddddc000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd4000-0000-4000-8000-000000000011', CURRENT_DATE - 5, CURRENT_DATE + 370, 5500000, 'APPROVED'),
+  ('ddddc000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd4000-0000-4000-8000-000000000011', CURRENT_DATE - 4, CURRENT_DATE + 380, 5600000, 'DRAFT')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.contract_terminations (id, organization_id, contract_id, termination_type, termination_date, refund_amount)
+VALUES ('ddddd000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd4000-0000-4000-8000-000000000012', 'EARLY', CURRENT_DATE - 30, 1500000)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.deposits (id, organization_id, room_id, code, amount, deposit_date, hold_until, status)
+VALUES
+  ('ddade000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd2000-0000-4000-8000-000000000012', 'CP-D-DC-1', 3000000, CURRENT_DATE - 3, CURRENT_DATE + 7, 'CONFIRMED'),
+  ('ddade000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, NULL, 'CP-D-DC-2', 2000000, CURRENT_DATE - 2, NULL, 'PENDING'),
+  ('aaade000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa2000-0000-4000-8000-000000000011', 'CP-P-DC-1', 9000000, CURRENT_DATE - 1, NULL, 'CONFIRMED')
+ON CONFLICT (id) DO NOTHING;
+
+-- One overdue invoice, one upcoming, one overpaid, and one belonging to the
+-- other company through its building.
+INSERT INTO public.invoices (id, organization_id, contract_id, building_id, room_id, billing_month, due_date, total_amount, paid_amount, remaining_amount, status, invoice_number)
+VALUES
+  ('dddd5000-0000-4000-8000-000000000021', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd4000-0000-4000-8000-000000000012', 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', '2026-06', CURRENT_DATE - 3, 5000000, 2000000, 3000000, 'PARTIAL_PAID', 'CP-DEMO-INV-OVERDUE'),
+  ('dddd5000-0000-4000-8000-000000000022', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd4000-0000-4000-8000-000000000012', 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', '2026-08', CURRENT_DATE + 7, 4000000, 0, 4000000, 'APPROVED', 'CP-DEMO-INV-UPCOMING'),
+  ('dddd5000-0000-4000-8000-000000000023', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd4000-0000-4000-8000-000000000012', 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', '2026-05', CURRENT_DATE - 40, 5000000, 6000000, 0, 'PAID', 'CP-DEMO-INV-OVERPAID'),
+  ('aaaa5000-0000-4000-8000-000000000021', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa4000-0000-4000-8000-000000000011', 'aaaa1000-0000-4000-8000-000000000011', 'aaaa2000-0000-4000-8000-000000000011', '2026-08', CURRENT_DATE + 5, 7000000, 0, 7000000, 'APPROVED', 'CP-PROD-INV-UPCOMING')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.materials (id, organization_id, code, name, unit, on_hand, reorder_level, avg_unit_cost)
@@ -649,6 +761,135 @@ material_rows AS (
   WHERE m.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
     AND m.deleted_at IS NULL
 ),
+vacant_room_rows AS (
+  -- Join path of copilot_report_vacant_rooms_v1: a room is vacant when no ACTIVE
+  -- contract points at it. The room WITH an active contract must not appear.
+  SELECT rm.id, rm.name, ket.effective_end
+  FROM public.rooms rm
+  JOIN public.buildings b
+    ON b.id = rm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  LEFT JOIN LATERAL (
+    SELECT max(COALESCE(ct.actual_end_date, ct.end_date)) AS effective_end
+    FROM public.contracts ct
+    WHERE ct.room_id = rm.id
+      AND ct.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+      AND ct.deleted_at IS NULL
+      AND ct.status IN ('TERMINATED', 'EXPIRED')
+  ) ket ON true
+  WHERE rm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND rm.deleted_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM public.contracts ct2
+      WHERE ct2.room_id = rm.id
+        AND ct2.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+        AND ct2.deleted_at IS NULL
+        AND ct2.status = 'ACTIVE'
+    )
+),
+renewal_rows AS (
+  -- Only APPROVED/COMPLETED extensions count; a DRAFT extension is not a renewal.
+  SELECT ex.id
+  FROM public.contract_extensions ex
+  JOIN public.contracts ct
+    ON ct.id = ex.contract_id
+   AND ct.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND ct.deleted_at IS NULL
+  JOIN public.rooms rm
+    ON rm.id = ct.room_id
+   AND rm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  JOIN public.buildings b
+    ON b.id = rm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  WHERE ex.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND ex.status IN ('APPROVED', 'COMPLETED')
+),
+termination_denominator AS (
+  -- Denominator of the termination rate, inside the SAME building scope as the
+  -- numerator. The other company contract must never reach it.
+  SELECT ct.id
+  FROM public.contracts ct
+  JOIN public.rooms rm
+    ON rm.id = ct.room_id
+   AND rm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  JOIN public.buildings b
+    ON b.id = rm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  WHERE ct.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND ct.deleted_at IS NULL
+    AND ct.status <> 'DRAFT'
+),
+payment_schedule_rows AS (
+  SELECT i.invoice_number, i.due_date
+  FROM public.invoices i
+  JOIN public.buildings b
+    ON b.id = i.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE i.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND i.deleted_at IS NULL
+    AND i.status <> 'CANCELLED'
+    AND i.due_date IS NOT NULL
+    AND i.due_date <= CURRENT_DATE + 30
+    AND COALESCE(i.remaining_amount, i.total_amount - COALESCE(i.paid_amount, 0)) > 0
+),
+overpaid_rows AS (
+  SELECT i.invoice_number
+  FROM public.invoices i
+  JOIN public.buildings b
+    ON b.id = i.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  WHERE i.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND i.deleted_at IS NULL
+    AND COALESCE(i.paid_amount, 0) > i.total_amount
+),
+deposit_rows_org_wide AS (
+  -- Same shape as the lead probe: the deposit attached to a room in scope AND
+  -- the deposit attached to no room at all.
+  SELECT d.id
+  FROM public.deposits d
+  LEFT JOIN public.rooms rm
+    ON rm.id = d.room_id
+   AND rm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  LEFT JOIN public.buildings b
+    ON b.id = rm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE d.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND d.deleted_at IS NULL
+    AND (b.id IS NOT NULL OR (d.room_id IS NULL AND true))
+),
+deposit_rows_building_only AS (
+  SELECT d.id
+  FROM public.deposits d
+  LEFT JOIN public.rooms rm
+    ON rm.id = d.room_id
+   AND rm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  LEFT JOIN public.buildings b
+    ON b.id = rm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE d.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND d.deleted_at IS NULL
+    AND (b.id IS NOT NULL OR (d.room_id IS NULL AND false))
+),
+cash_day_rows AS (
+  -- Daily rollup of copilot_report_daily_cashbook_v1, with the restricted voucher
+  -- excluded the way the RPC excludes it for an actor without restricted_view.
+  SELECT ie.voucher_date AS ngay,
+         sum(ie.total_amount) FILTER (WHERE ie.type = 'EXPENSE') AS chi
+  FROM public.income_expenses ie
+  JOIN public.buildings b
+    ON b.id = ie.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE ie.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND ie.deleted_at IS NULL
+    AND ie.voucher_date BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE
+    AND NOT COALESCE(ie.has_restricted_item, false)
+  GROUP BY ie.voucher_date
+),
 checks AS (
   SELECT 'customers.positive'::text AS case_id, (SELECT count(*) = 1 FROM customer_rows) AS passed
   UNION ALL SELECT 'customers.empty', (SELECT count(*) = 0 FROM customer_empty)
@@ -679,6 +920,33 @@ checks AS (
   UNION ALL SELECT 'materials.below_reorder', (SELECT count(*) = 1 FROM material_rows WHERE on_hand < reorder_level)
   UNION ALL SELECT 'materials.wrong_org_excluded',
     (NOT EXISTS (SELECT 1 FROM material_rows m WHERE m.id = 'aaaab000-0000-4000-8000-000000000011'))
+  UNION ALL SELECT 'vacant_rooms.occupied_excluded',
+    ((SELECT count(*) FROM vacant_room_rows) = 1
+      AND (SELECT max(name) FROM vacant_room_rows) = 'CP-D-102')
+  UNION ALL SELECT 'vacant_rooms.days_vacant_from_last_ended_contract',
+    ((SELECT max(effective_end) FROM vacant_room_rows) = CURRENT_DATE - 30)
+  UNION ALL SELECT 'renewals.draft_extension_excluded', (SELECT count(*) = 1 FROM renewal_rows)
+  UNION ALL SELECT 'terminations.denominator_scoped_to_same_buildings',
+    ((SELECT count(*) FROM termination_denominator) = 2
+      AND NOT EXISTS (SELECT 1 FROM termination_denominator t
+                      WHERE t.id = 'aaaa4000-0000-4000-8000-000000000011'))
+  UNION ALL SELECT 'payment_schedule.overdue_and_upcoming_split',
+    ((SELECT count(*) FROM payment_schedule_rows) = 2
+      AND (SELECT count(*) FROM payment_schedule_rows WHERE due_date < CURRENT_DATE) = 1
+      AND NOT EXISTS (SELECT 1 FROM payment_schedule_rows p
+                      WHERE p.invoice_number = 'CP-PROD-INV-UPCOMING'))
+  UNION ALL SELECT 'payment_schedule.settled_invoice_excluded',
+    (NOT EXISTS (SELECT 1 FROM payment_schedule_rows p
+                 WHERE p.invoice_number = 'CP-DEMO-INV-OVERPAID'))
+  UNION ALL SELECT 'overpayment.positive',
+    ((SELECT count(*) FROM overpaid_rows) = 1
+      AND (SELECT max(invoice_number) FROM overpaid_rows) = 'CP-DEMO-INV-OVERPAID')
+  UNION ALL SELECT 'deposits.null_room_needs_org_wide',
+    ((SELECT count(*) FROM deposit_rows_org_wide) = 2
+      AND (SELECT count(*) FROM deposit_rows_building_only) = 1)
+  UNION ALL SELECT 'cash_flow.restricted_voucher_excluded_from_day_total',
+    ((SELECT count(*) FROM cash_day_rows) = 1
+      AND (SELECT max(chi) FROM cash_day_rows) = 1200000)
 )
 SELECT jsonb_build_object(
   'passed', bool_and(passed),
@@ -710,7 +978,7 @@ export function parseCopilotReadonlyQueriesVerdict(output) {
   if (
     verdict.passed !== true ||
     Number(verdict.failed_count) !== 0 ||
-    Number(verdict.assertion_count) !== 20 ||
+    Number(verdict.assertion_count) !== 29 ||
     verdict.assertions.some((assertion) => assertion?.passed !== true)
   ) {
     throw new Error(`Copilot readonly query contract failed: ${JSON.stringify(verdict)}`);

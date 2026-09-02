@@ -673,6 +673,775 @@ describe('ton_kho_vat_tu - server RPC boundary', () => {
   });
 });
 
+// ── G1-C3: mười tool báo cáo ────────────────────────────────────────────────
+//
+// Mỗi tool được ghim ba thứ: nó gọi ĐÚNG RPC nào với đúng tham số, nó KHÔNG
+// chạm `.from()`, và nó in ra con số TỔNG do server tính chứ không cộng lại từ
+// danh sách đã bị cắt. Điểm thứ ba là điểm dễ trượt nhất: một formatter cộng
+// `rows` thay vì đọc `tong_hop` vẫn "chạy đúng" trên mọi dữ liệu nhỏ hơn trần.
+
+describe('bao_cao_phong_trong - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_report_vacant_rooms_v1 with the selected org and the row cap', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_phong_trong: 0, tien_thue_bo_lo: 0, so_toa: 0 }, phong: [] },
+      error: null,
+    });
+    await tool('bao_cao_phong_trong').execute({ so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_report_vacant_rooms_v1', {
+      p_organization_id: ORG,
+      p_building_id: null,
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('prints the whole-scope total, not a sum of the truncated list', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 1,
+        so_luong: 1,
+        // 9 phòng trong phạm vi, danh sách chỉ trả 1 — con số phải là 9.
+        tong_hop: { so_phong_trong: 9, tien_thue_bo_lo: 45000000, so_toa: 2 },
+        phong: [
+          {
+            phong_id: 'r1',
+            phong: 'A101',
+            toa_nha: 'Toa A',
+            tang: 1,
+            dien_tich: 25,
+            gia_thue: 5000000,
+            tinh_trang: 'AVAILABLE',
+            trong_tu: '2026-07-01',
+            so_ngay_trong: 40,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_phong_trong').execute({ so_luong: 1 }, ctx);
+    expect(result).toContain('9');
+    expect(result).toContain('A101');
+    expect(result).toContain('40');
+    expect(result).toContain('/reports/real-estate/vacant-rooms');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_phong_trong: 0, tien_thue_bo_lo: 0, so_toa: 0 }, phong: [] },
+      error: null,
+    });
+    await expect(tool('bao_cao_phong_trong').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. ph.ng n.o/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_phong_trong').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_gia_han - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('turns ky into a full month window instead of sending it raw', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_su_kien: 0, so_gia_han: 0, so_chuyen_nhuong: 0, tong_tien_thue: 0 }, su_kien: [] },
+      error: null,
+    });
+    await tool('bao_cao_gia_han').execute({ ky: '2026-02', so_luong: 20 }, ctx);
+    // Tháng 2 năm nhuận: 29 ngày. Một hằng số 30/31 ở đây sẽ cắt hoặc nới kỳ.
+    expect(rpc).toHaveBeenCalledWith('copilot_report_renewals_v1', {
+      p_organization_id: ORG,
+      p_tu: '2026-02-01',
+      p_den: '2026-02-28',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('passes tu/den through when no ky is given', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_su_kien: 0, so_gia_han: 0, so_chuyen_nhuong: 0, tong_tien_thue: 0 }, su_kien: [] },
+      error: null,
+    });
+    await tool('bao_cao_gia_han').execute({ tu: '2026-01-01', den: '2026-03-31', so_luong: 20 }, ctx);
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_tu: '2026-01-01', p_den: '2026-03-31' });
+  });
+
+  it('labels the two event kinds in Vietnamese', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 2,
+        tong_hop: { so_su_kien: 2, so_gia_han: 1, so_chuyen_nhuong: 1, tong_tien_thue: 9000000 },
+        su_kien: [
+          {
+            loai: 'RENEWAL',
+            so_hop_dong: 'HD001',
+            khach_hang: 'Nguyen An',
+            phong: 'A101',
+            toa_nha: 'Toa A',
+            ngay: '2026-08-10',
+            tien_thue: 5000000,
+            ngay_ket_thuc_moi: '2027-08-10',
+          },
+          {
+            loai: 'TRANSFER',
+            so_hop_dong: 'HD002',
+            khach_hang: 'Tran Binh',
+            phong: 'B202',
+            toa_nha: 'Toa B',
+            ngay: '2026-08-12',
+            tien_thue: 4000000,
+            ngay_ket_thuc_moi: null,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_gia_han').execute({ ky: '2026-08', so_luong: 20 }, ctx);
+    expect(result).toContain('gia hạn');
+    expect(result).toContain('chuyển nhượng');
+    expect(result).toContain('HD001');
+    expect(result).toContain('/reports/real-estate/renewals-transfers');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_su_kien: 0, so_gia_han: 0, so_chuyen_nhuong: 0, tong_tien_thue: 0 }, su_kien: [] },
+      error: null,
+    });
+    await expect(tool('bao_cao_gia_han').execute({ ky: '2099-01', so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. h.p ..ng n.o/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_gia_han').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_thanh_ly - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_report_terminations_v1 with the month window', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_ca: 0, so_thanh_ly: 0, so_het_han: 0, tong_hoan_coc: 0, mau_so_hop_dong: 0, ty_le_phan_tram: 0 }, ca: [] },
+      error: null,
+    });
+    await tool('bao_cao_thanh_ly').execute({ ky: '2026-08', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_report_terminations_v1', {
+      p_organization_id: ORG,
+      p_tu: '2026-08-01',
+      p_den: '2026-08-31',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('reports the rate the SERVER computed, with its denominator', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 1,
+        so_luong: 1,
+        tong_hop: { so_ca: 7, so_thanh_ly: 5, so_het_han: 2, tong_hoan_coc: 12000000, mau_so_hop_dong: 140, ty_le_phan_tram: 5 },
+        ca: [
+          {
+            hop_dong_id: 'h9',
+            so_hop_dong: 'HD009',
+            khach_hang: 'Le Cuong',
+            phong: 'C303',
+            toa_nha: 'Toa C',
+            ngay_ket_thuc: '2026-08-20',
+            trang_thai: 'TERMINATED',
+            kieu_ket_thuc: 'EARLY',
+            tien_thue: 6000000,
+            hoan_coc: 3000000,
+            so_ngay_o: 210,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_thanh_ly').execute({ ky: '2026-08', so_luong: 1 }, ctx);
+    expect(result).toContain('140');
+    expect(result).toContain('5.0%');
+    expect(result).toContain('đã thanh lý');
+    expect(result).toContain('/contracts/h9');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_ca: 0, so_thanh_ly: 0, so_het_han: 0, tong_hoan_coc: 0, mau_so_hop_dong: 0, ty_le_phan_tram: 0 }, ca: [] },
+      error: null,
+    });
+    await expect(tool('bao_cao_thanh_ly').execute({ ky: '2099-01', so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. h.p ..ng n.o/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_thanh_ly').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_hop_dong_moi - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_report_new_leases_v1 with the signing window', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_hop_dong: 0, tong_tien_thue_thang: 0, tong_coc: 0, tong_gia_tri: 0 }, hop_dong: [] },
+      error: null,
+    });
+    await tool('bao_cao_hop_dong_moi').execute({ ky: '2026-08', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_report_new_leases_v1', {
+      p_organization_id: ORG,
+      p_tu: '2026-08-01',
+      p_den: '2026-08-31',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats safe flat rows with a deep link', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        tong_hop: { so_hop_dong: 3, tong_tien_thue_thang: 15000000, tong_coc: 15000000, tong_gia_tri: 180000000 },
+        hop_dong: [
+          {
+            hop_dong_id: 'h5',
+            so_hop_dong: 'HD005',
+            khach_hang: 'Pham Dung',
+            phong: 'D404',
+            toa_nha: 'Toa D',
+            ngay_ky: '2026-08-02',
+            ngay_bat_dau: '2026-08-05',
+            ngay_ket_thuc: '2027-08-05',
+            trang_thai: 'ACTIVE',
+            tien_thue: 5000000,
+            tien_coc: 5000000,
+            chu_ky_thanh_toan: 'MONTHLY',
+            so_thang: 12,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_hop_dong_moi').execute({ ky: '2026-08', so_luong: 20 }, ctx);
+    expect(result).toContain('HD005');
+    expect(result).toContain('Pham Dung');
+    expect(result).toContain('đang thuê');
+    expect(result).toContain('/contracts/h5');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_hop_dong: 0, tong_tien_thue_thang: 0, tong_coc: 0, tong_gia_tri: 0 }, hop_dong: [] },
+      error: null,
+    });
+    await expect(tool('bao_cao_hop_dong_moi').execute({ ky: '2099-01', so_luong: 20 }, ctx)).resolves.toMatch(
+      /ch.a k. h.p ..ng m.i n.o/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_hop_dong_moi').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_ty_le_chi_phi - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_report_expense_ratio_v1 and lets the server pick the default window', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 0,
+        tu: '2026-03-01',
+        den: '2026-09-02',
+        tong_hop: { tong_thu: 0, tong_chi: 0, ty_le_phan_tram: null, phieu_han_che_bi_loai: 0 },
+        theo_thang: [],
+        hang_muc: [],
+      },
+      error: null,
+    });
+    await tool('bao_cao_ty_le_chi_phi').execute({ so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_report_expense_ratio_v1', {
+      p_organization_id: ORG,
+      p_tu: null,
+      p_den: null,
+      p_building_id: null,
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('says the total is INCOMPLETE when restricted vouchers were excluded', async () => {
+    // Đây là điểm khác biệt giữa "tổng thiếu" và "tổng thiếu mà không ai biết".
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        tu: '2026-03-01',
+        den: '2026-08-31',
+        tong_hop: { tong_thu: 100000000, tong_chi: 30000000, ty_le_phan_tram: 30, phieu_han_che_bi_loai: 4 },
+        theo_thang: [{ ky: '2026-08', thu: 20000000, chi: 6000000, ty_le_phan_tram: 30 }],
+        hang_muc: [{ hang_muc: 'Dien nuoc', chi: 18000000 }],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_ty_le_chi_phi').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('30.0%');
+    expect(result).toContain('Dien nuoc');
+    expect(result).toContain('4');
+    expect(result).toMatch(/ch.a ..y ../i);
+    expect(result).toContain('/reports/real-estate/expense-ratio');
+  });
+
+  it('does not print a ratio when there was no income to divide by', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        tu: '2026-03-01',
+        den: '2026-08-31',
+        tong_hop: { tong_thu: 0, tong_chi: 7000000, ty_le_phan_tram: null, phieu_han_che_bi_loai: 0 },
+        theo_thang: [{ ky: '2026-08', thu: 0, chi: 7000000, ty_le_phan_tram: null }],
+        hang_muc: [],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_ty_le_chi_phi').execute({ so_luong: 20 }, ctx);
+    // Một tỉ lệ "0.0%" ở đây là một lời nói dối: mẫu số bằng 0, không phải tử số.
+    expect(result).not.toContain('0.0%');
+    expect(result).toMatch(/ch.a t.nh ..../i);
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: {
+        gioi_han: 20,
+        so_luong: 0,
+        tu: '2026-03-01',
+        den: '2026-08-31',
+        tong_hop: { tong_thu: 0, tong_chi: 0, ty_le_phan_tram: null, phieu_han_che_bi_loai: 0 },
+        theo_thang: [],
+        hang_muc: [],
+      },
+      error: null,
+    });
+    await expect(tool('bao_cao_ty_le_chi_phi').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. phi.u thu chi/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_ty_le_chi_phi').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_thu_chi_theo_ngay - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('always sends a bounded window, even when the user named none', async () => {
+    // RPC từ chối `p_tu`/`p_den` NULL. Client phải tự chốt kỳ mặc định, và kỳ đó
+    // phải là ngày ĐỊA PHƯƠNG — `toISOString()` lùi một ngày trước 7h sáng giờ VN.
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 0,
+        tu: null,
+        den: null,
+        tong_hop: { so_ngay_co_phat_sinh: 0, tong_thu: 0, tong_chi: 0, rong: 0, phieu_han_che_bi_loai: 0 },
+        theo_ngay: [],
+      },
+      error: null,
+    });
+    await tool('bao_cao_thu_chi_theo_ngay').execute({ so_luong: 20 }, ctx);
+    const args = rpc.mock.calls[0][1];
+    expect(rpc.mock.calls[0][0]).toBe('copilot_report_daily_cashbook_v1');
+    expect(args.p_tu).toMatch(/^\d{4}-\d{2}-01$/);
+    expect(args.p_den).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(args.p_organization_id).toBe(ORG);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats per-day rows and the server period total', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 2,
+        tu: '2026-08-01',
+        den: '2026-08-31',
+        tong_hop: { so_ngay_co_phat_sinh: 12, tong_thu: 90000000, tong_chi: 30000000, rong: 60000000, phieu_han_che_bi_loai: 0 },
+        theo_ngay: [
+          { ngay: '2026-08-31', thu: 5000000, chi: 1000000, rong: 4000000 },
+          { ngay: '2026-08-30', thu: 3000000, chi: 0, rong: 3000000 },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_thu_chi_theo_ngay').execute({ ky: '2026-08', so_luong: 20 }, ctx);
+    expect(result).toContain('2026-08-31');
+    expect(result).toContain('12');
+    expect(result).toContain('/reports/finance/daily-cashbook');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: {
+        gioi_han: 20,
+        so_luong: 0,
+        tu: '2026-08-01',
+        den: '2026-08-31',
+        tong_hop: { so_ngay_co_phat_sinh: 0, tong_thu: 0, tong_chi: 0, rong: 0, phieu_han_che_bi_loai: 0 },
+        theo_ngay: [],
+      },
+      error: null,
+    });
+    await expect(
+      tool('bao_cao_thu_chi_theo_ngay').execute({ ky: '2099-01', so_luong: 20 }, ctx),
+    ).resolves.toMatch(/kh.ng c. ph.t sinh/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_thu_chi_theo_ngay').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_dong_tien - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('defaults to a twelve-month window and never sends a null bound', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 0,
+        tu: null,
+        den: null,
+        tong_hop: { so_ky: 0, tong_thu: 0, tong_chi: 0, rong: 0, phieu_han_che_bi_loai: 0 },
+        theo_thang: [],
+      },
+      error: null,
+    });
+    await tool('bao_cao_dong_tien').execute({ so_luong: 20 }, ctx);
+    const args = rpc.mock.calls[0][1];
+    expect(rpc.mock.calls[0][0]).toBe('copilot_report_cash_flow_v1');
+    expect(args.p_tu).toMatch(/^\d{4}-\d{2}-01$/);
+    expect(args.p_den).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Mười hai tháng, không phải mười hai ngày.
+    expect(new Date(args.p_den).getTime() - new Date(args.p_tu).getTime()).toBeGreaterThan(
+      330 * 24 * 3600 * 1000,
+    );
+  });
+
+  it('formats per-month rows and warns when restricted vouchers were excluded', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 2,
+        tu: '2025-09-01',
+        den: '2026-08-31',
+        tong_hop: { so_ky: 12, tong_thu: 900000000, tong_chi: 300000000, rong: 600000000, phieu_han_che_bi_loai: 2 },
+        theo_thang: [
+          { ky: '2026-07', thu: 70000000, chi: 20000000, rong: 50000000 },
+          { ky: '2026-08', thu: 80000000, chi: 25000000, rong: 55000000 },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_dong_tien').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('2026-08');
+    expect(result).toMatch(/ch.a ..y ../i);
+    expect(result).toContain('/reports/finance/cash-flow');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: {
+        gioi_han: 20,
+        so_luong: 0,
+        tu: '2025-09-01',
+        den: '2026-08-31',
+        tong_hop: { so_ky: 0, tong_thu: 0, tong_chi: 0, rong: 0, phieu_han_che_bi_loai: 0 },
+        theo_thang: [],
+      },
+      error: null,
+    });
+    await expect(tool('bao_cao_dong_tien').execute({ ky: '2099-01', so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. ph.t sinh/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_dong_tien').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_lich_thu_tien - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_report_payment_schedule_v1 with the look-ahead window', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_ngay: 30,
+        so_luong: 0,
+        tong_hop: { so_hoa_don: 0, tong_phai_thu: 0, tong_con_lai: 0, so_qua_han: 0, con_lai_qua_han: 0 },
+        hoa_don: [],
+      },
+      error: null,
+    });
+    await tool('bao_cao_lich_thu_tien').execute({ so_ngay: 30, so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_report_payment_schedule_v1', {
+      p_organization_id: ORG,
+      p_so_ngay: 30,
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('marks an overdue invoice as overdue instead of "còn -3 ngày"', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_ngay: 30,
+        so_luong: 2,
+        tong_hop: { so_hoa_don: 11, tong_phai_thu: 120000000, tong_con_lai: 40000000, so_qua_han: 3, con_lai_qua_han: 9000000 },
+        hoa_don: [
+          {
+            hoa_don_id: 'i1',
+            so_hoa_don: 'INV-1',
+            ky: '2026-07',
+            han_thanh_toan: '2026-08-01',
+            so_ngay_con_lai: -3,
+            tong_tien: 5000000,
+            da_tra: 2000000,
+            con_lai: 3000000,
+            trang_thai: 'PARTIAL_PAID',
+            phong: 'A101',
+            toa_nha: 'Toa A',
+            khach_hang: 'Nguyen An',
+          },
+          {
+            hoa_don_id: 'i2',
+            so_hoa_don: 'INV-2',
+            ky: '2026-08',
+            han_thanh_toan: '2026-09-10',
+            so_ngay_con_lai: 7,
+            tong_tien: 4000000,
+            da_tra: 0,
+            con_lai: 4000000,
+            trang_thai: 'APPROVED',
+            phong: 'B202',
+            toa_nha: 'Toa B',
+            khach_hang: 'Tran Binh',
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_lich_thu_tien').execute({ so_ngay: 30, so_luong: 20 }, ctx);
+    expect(result).toMatch(/qu. h.n 3 ng.y/i);
+    expect(result).toMatch(/c.n 7 ng.y/i);
+    expect(result).toContain('11');
+    expect(result).toContain('/reports/finance/payment-schedule');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: {
+        gioi_han: 20,
+        so_ngay: 30,
+        so_luong: 0,
+        tong_hop: { so_hoa_don: 0, tong_phai_thu: 0, tong_con_lai: 0, so_qua_han: 0, con_lai_qua_han: 0 },
+        hoa_don: [],
+      },
+      error: null,
+    });
+    await expect(
+      tool('bao_cao_lich_thu_tien').execute({ so_ngay: 30, so_luong: 20 }, ctx),
+    ).resolves.toMatch(/kh.ng c. kho.n n.o/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(
+      tool('bao_cao_lich_thu_tien').execute({ so_ngay: 30, so_luong: 20 }, ctx),
+    ).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_thu_thua - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls copilot_report_overpayment_v1 with the selected org and the row cap', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_hoa_don: 0, tong_thu_thua: 0 }, hoa_don: [] },
+      error: null,
+    });
+    await tool('bao_cao_thu_thua').execute({ so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_report_overpayment_v1', {
+      p_organization_id: ORG,
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('prints the server total, not the sum of the shown rows', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 1,
+        so_luong: 1,
+        tong_hop: { so_hoa_don: 6, tong_thu_thua: 7500000 },
+        hoa_don: [
+          {
+            hoa_don_id: 'i7',
+            so_hoa_don: 'INV-7',
+            ky: '2026-08',
+            tong_tien: 5000000,
+            da_tra: 6000000,
+            thu_thua: 1000000,
+            phong: 'A101',
+            toa_nha: 'Toa A',
+            khach_hang: 'Nguyen An',
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_thu_thua').execute({ so_luong: 1 }, ctx);
+    expect(result).toContain('6');
+    expect(result).toContain('INV-7');
+    expect(result).toContain('/reports/finance/overpayment');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_hoa_don: 0, tong_thu_thua: 0 }, hoa_don: [] },
+      error: null,
+    });
+    await expect(tool('bao_cao_thu_thua').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. ho. ..n n.o/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_thu_thua').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao_cao_dat_coc - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('sends the DB enum, never the user-facing Vietnamese key', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_phieu: 0, tong_tien: 0, dang_giu: 0, da_vao_hop_dong: 0 }, coc: [] },
+      error: null,
+    });
+    await tool('bao_cao_dat_coc').execute({ trang_thai: 'da_xac_nhan', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_report_deposits_v1', {
+      p_organization_id: ORG,
+      p_trang_thai: 'CONFIRMED',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('sends null instead of an empty filter', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_phieu: 0, tong_tien: 0, dang_giu: 0, da_vao_hop_dong: 0 }, coc: [] },
+      error: null,
+    });
+    await tool('bao_cao_dat_coc').execute({ so_luong: 20 }, ctx);
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_trang_thai: null });
+  });
+
+  it('labels the deposit state in Vietnamese and reports the held total', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        tong_hop: { so_phieu: 4, tong_tien: 20000000, dang_giu: 12000000, da_vao_hop_dong: 8000000 },
+        coc: [
+          {
+            coc_id: 'd1',
+            ma: 'DC-001',
+            khach_hang: 'Hoang Em',
+            phong: 'A101',
+            toa_nha: 'Toa A',
+            so_tien: 3000000,
+            ngay_coc: '2026-08-20',
+            giu_den: '2026-09-05',
+            trang_thai: 'CONFIRMED',
+            so_ngay_giu: 13,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('bao_cao_dat_coc').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('DC-001');
+    expect(result).toContain('đã xác nhận');
+    expect(result).toContain('13');
+    expect(result).toContain('/reports/finance/deposits');
+  });
+
+  it('preserves empty and error behavior', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, so_luong: 0, tong_hop: { so_phieu: 0, tong_tien: 0, dang_giu: 0, da_vao_hop_dong: 0 }, coc: [] },
+      error: null,
+    });
+    await expect(tool('bao_cao_dat_coc').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /kh.ng c. phi.u ..t c.c/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('bao_cao_dat_coc').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+});
+
+describe('bao cao — moi tool gac bang CHINH khoa quyen cua trang', () => {
+  it('khong tool nao muon quyen rong hon hang rao cua man hinh', () => {
+    // Cấp một báo cáo qua Copilot bằng một quyền RỘNG hơn và dễ được cấp hơn là
+    // mở cửa sau vòng qua chính hàng rào của trang đó — lỗi đã mắc một lần ở
+    // `ty_le_lap_day` (đặt `rooms.view` thay vì `reports_real_estate.occupancy`).
+    const MONG_DOI: Record<string, { module: string; action: string }> = {
+      bao_cao_phong_trong: { module: 'reports_real_estate', action: 'vacant_rooms' },
+      bao_cao_gia_han: { module: 'reports_real_estate', action: 'renewals_transfers' },
+      bao_cao_thanh_ly: { module: 'reports_real_estate', action: 'terminations' },
+      bao_cao_hop_dong_moi: { module: 'reports_real_estate', action: 'new_leases' },
+      bao_cao_ty_le_chi_phi: { module: 'reports_real_estate', action: 'expense_ratio' },
+      bao_cao_thu_chi_theo_ngay: { module: 'reports_finance', action: 'daily_cashbook' },
+      bao_cao_dong_tien: { module: 'reports_finance', action: 'cash_flow' },
+      bao_cao_lich_thu_tien: { module: 'reports_finance', action: 'payment_schedule' },
+      bao_cao_thu_thua: { module: 'reports_finance', action: 'overpayment' },
+      bao_cao_dat_coc: { module: 'reports_finance', action: 'deposits_report' },
+    };
+    for (const [ten, quyen] of Object.entries(MONG_DOI)) {
+      expect(tool(ten).requiredPermission, ten).toEqual(quyen);
+      // Cờ rollout là cờ của trang CANONICAL: chỉ trang canonical được seed cờ
+      // (xem 20260902185838), nên trang con dùng cờ của cụm báo cáo của nó.
+      expect(tool(ten).rolloutKey, ten).toBe(
+        quyen.module === 'reports_finance' ? 'reports.finance' : 'reports.real-estate',
+      );
+    }
+  });
+});
 describe('registry source contract', () => {
   it('does not query customers or contracts from the browser tools', async () => {
     const source = await import('node:fs').then(({ readFileSync }) =>
@@ -698,6 +1467,16 @@ describe('registry source contract', () => {
       'copilot_vehicle_search_v1',
       'copilot_tasks_v1',
       'copilot_material_stock_v1',
+      'copilot_report_vacant_rooms_v1',
+      'copilot_report_renewals_v1',
+      'copilot_report_terminations_v1',
+      'copilot_report_new_leases_v1',
+      'copilot_report_expense_ratio_v1',
+      'copilot_report_daily_cashbook_v1',
+      'copilot_report_cash_flow_v1',
+      'copilot_report_payment_schedule_v1',
+      'copilot_report_overpayment_v1',
+      'copilot_report_deposits_v1',
     ]) {
       expect(source, rpcName).toContain(`'${rpcName}'`);
     }
@@ -711,6 +1490,12 @@ describe('registry source contract', () => {
       'vehicles',
       'jobs',
       'materials',
+      'rooms',
+      'deposits',
+      'contract_extensions',
+      'contract_terminations',
+      'income_expense_items',
+      'income_expense_types',
     ]) {
       expect(source, table).not.toMatch(new RegExp(`\\.from\\('${table}'\\)`));
     }
