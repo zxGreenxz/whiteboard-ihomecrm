@@ -28,7 +28,8 @@ import { useAiProviders, useCopilotEntitlement, useCopilotModel } from './useAiP
 import { hrefAnToan } from './hrefAnToan';
 import { anhTuDataTransfer, nenAnh, type AnhDaNen } from './anh';
 import { BeChiu, TEN_LINH_THU } from './BeChiu';
-import { useCopilotAvailability } from './featureFlags';
+import { useCopilotAvailability, type CopilotAvailabilitySnapshot } from './featureFlags';
+import { quyetDinhGuiTheoAvailability, THONG_BAO_QUYEN_CHUA_TUOI } from './availabilityGate';
 import { assertUiControlAvailability } from './uiControlAvailability';
 import type { ToolCtx } from './tools/registry';
 
@@ -163,7 +164,11 @@ export default function ChatPanel({ onClose }: Props) {
   // mới là thứ đi vào ToolCtx. `null` = chưa chốt, và tool org-scoped sẽ từ chối
   // chạy chứ không lặng lẽ đọc union nhiều công ty.
   const { selectedOrganizationId } = useOrganization();
-  const { data: availability } = useCopilotAvailability(selectedOrganizationId);
+  // `live: true` — panel chat mở lâu; xem chú thích trong useCopilotAvailability.
+  const { data: availability, refetch: refetchAvailability } = useCopilotAvailability(
+    selectedOrganizationId,
+    { live: true },
+  );
   const { data: providers } = useAiProviders();
   const { data: entitlement } = useCopilotEntitlement();
   const { model, setModel, modelLoiThoi } = useCopilotModel();
@@ -254,7 +259,7 @@ export default function ChatPanel({ onClose }: Props) {
   };
 
   // UI-control: mỗi lệnh ĐỘC LẬP (execute reset history) — không lưu thread.
-  const runUiControl = async (text: string) => {
+  const runUiControl = async (text: string, snapshot: CopilotAvailabilitySnapshot) => {
     const organizationId = selectedOrganizationId;
     const generation = orgGenerationRef.current;
     setHistory((h) => [...h, { role: 'user', content: text }]);
@@ -264,13 +269,15 @@ export default function ChatPanel({ onClose }: Props) {
       !isCurrentChatScope(generation, orgGenerationRef.current, organizationId, selectedOrganizationId) ||
       !canUiControl ||
       !organizationId ||
-      !availability ||
-      availability.organizationId !== organizationId
+      snapshot.organizationId !== organizationId
     ) return;
-    assertUiControlAvailability({ pathname: location.pathname, ctx: { perms, organizationId, availability } });
+    assertUiControlAvailability({
+      pathname: location.pathname,
+      ctx: { perms, organizationId, availability: snapshot },
+    });
     const agent = createUiControlAgent({
       providerModel: model,
-      ctx: { perms, organizationId, navigate, availability: availability ?? null },
+      ctx: { perms, organizationId, navigate, availability: snapshot },
     });
     uiAgentRef.current = agent;
     try {
@@ -283,7 +290,7 @@ export default function ChatPanel({ onClose }: Props) {
     }
   };
 
-  const runChat = async (text: string, anh: string[]) => {
+  const runChat = async (text: string, anh: string[], snapshot: CopilotAvailabilitySnapshot) => {
     const organizationId = selectedOrganizationId;
     const generation = orgGenerationRef.current;
     setHistory((h) => [
@@ -308,7 +315,7 @@ export default function ChatPanel({ onClose }: Props) {
       providerModel: model,
       history,
       userText: text,
-      ctx: { perms, organizationId, availability: availability ?? null, threadId: tid, generation } as ToolCtx & {
+      ctx: { perms, organizationId, availability: snapshot, threadId: tid, generation } as ToolCtx & {
         threadId: string | null;
         generation: number;
       },
@@ -338,6 +345,22 @@ export default function ChatPanel({ onClose }: Props) {
     });
   };
 
+  /**
+   * Snapshot quyền công cụ đủ tươi để chạy một lượt — làm mới trước nếu cần.
+   *
+   * Snapshot hết hạn KHÔNG làm hỏng lượt chat: registry trả danh sách tool rỗng
+   * và Copilot lặng lẽ trả lời như một mô hình chay. Phải chặn ở đây.
+   */
+  const quyenCongCuTuoi = async () => {
+    let snapshot: CopilotAvailabilitySnapshot | null = availability ?? null;
+    let quyetDinh = quyetDinhGuiTheoAvailability(snapshot, Date.now());
+    if (quyetDinh.canRefetch) {
+      snapshot = (await refetchAvailability()).data ?? null;
+      quyetDinh = quyetDinhGuiTheoAvailability(snapshot, Date.now());
+    }
+    return { ...quyetDinh, snapshot };
+  };
+
   const send = async () => {
     const text = input.trim();
     if ((!text && !anhKem.length) || running) return;
@@ -347,13 +370,21 @@ export default function ChatPanel({ onClose }: Props) {
     const anh = anhKem.map((a) => a.dataUrl);
     const generation = orgGenerationRef.current;
     touchedRef.current = true;
-    setInput('');
-    setAnhKem([]);
     setError('');
     setRunning(true);
     try {
-      if (uiMode && canUiControl) await runUiControl(cauHoi);
-      else await runChat(cauHoi, anh);
+      // Quyền công cụ phải TƯƠI trước khi gửi, và chặn TRƯỚC khi dọn ô nhập để
+      // người dùng thử lại được ngay thay vì phải gõ lại câu hỏi.
+      const quyen = await quyenCongCuTuoi();
+      if (generation !== orgGenerationRef.current) return;
+      if (!quyen.guiDuoc || !quyen.snapshot) {
+        setError(quyen.thongBao ?? THONG_BAO_QUYEN_CHUA_TUOI);
+        return;
+      }
+      setInput('');
+      setAnhKem([]);
+      if (uiMode && canUiControl) await runUiControl(cauHoi, quyen.snapshot);
+      else await runChat(cauHoi, anh, quyen.snapshot);
     } catch (e) {
       handleError(e);
     } finally {
@@ -440,6 +471,17 @@ export default function ChatPanel({ onClose }: Props) {
       {modelLoiThoi && (
         <div className="border-b bg-[hsl(var(--status-warning-bg))] px-3 py-1.5 text-xs text-[hsl(var(--status-warning-fg))]">
           Model bạn chọn trước đây không còn được bật — đang tạm dùng model mặc định. Chọn lại ở ô trên để lưu.
+        </div>
+      )}
+
+      {/* Quyền công cụ hết hạn thì Copilot lặng lẽ mất sạch tool. Nói ra ngay,
+          nhưng KHÔNG chặn gõ — chỗ chặn là lúc bấm gửi. */}
+      {!!selectedOrganizationId && !quyetDinhGuiTheoAvailability(availability ?? null, Date.now()).guiDuoc && (
+        <div
+          className="border-b bg-[hsl(var(--status-warning-bg))] px-3 py-1.5 text-[11px] text-[hsl(var(--status-warning-fg))]"
+          data-testid="copilot-quyen-chua-tuoi"
+        >
+          Quyền công cụ đang được làm mới…
         </div>
       )}
 

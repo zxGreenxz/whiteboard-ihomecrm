@@ -191,13 +191,30 @@ export async function fetchCopilotAvailability(
   }
 }
 
-/** React Query adapter for the server-owned availability RPC. */
-export function useCopilotAvailability(organizationId: string | null | undefined) {
+/**
+ * React Query adapter for the server-owned availability RPC.
+ *
+ * `live` là cho màn hình MỞ LÂU (panel chat). Snapshot hết hạn sau 60s và
+ * `buildRegistry` trả danh sách tool rỗng khi hết hạn, nên không poll thì Copilot
+ * tự cụt công cụ sau một phút mà không báo gì — bệnh đã đo. Poll 30s là nửa hạn
+ * dùng: luôn có một lượt làm tươi trước khi snapshot chết.
+ *
+ * `refetchIntervalInBackground: false` để tab bị ẩn không nã RPC; lúc quay lại
+ * tab, `refetchOnWindowFocus` mặc định của React Query lo phần làm tươi.
+ *
+ * Trang admin gọi KHÔNG kèm `live` — ở đó snapshot là thứ người dùng chủ động
+ * tải lại, và poll ngầm sẽ đá mất trạng thái đang thao tác.
+ */
+export function useCopilotAvailability(
+  organizationId: string | null | undefined,
+  opts?: { live?: boolean },
+) {
   return useQuery<CopilotAvailabilitySnapshot | null>({
     queryKey: ['copilot-availability', organizationId ?? null],
     enabled: Boolean(organizationId),
     staleTime: 60_000,
     retry: false,
+    ...(opts?.live ? { refetchInterval: 30_000, refetchIntervalInBackground: false } : {}),
     queryFn: async () => {
       if (!organizationId) return null;
       return fetchCopilotAvailability(
