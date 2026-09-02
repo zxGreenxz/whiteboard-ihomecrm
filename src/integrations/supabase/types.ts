@@ -21391,6 +21391,7 @@ export type Database = {
           p_est_cost_usd: number
           p_feature: string
           p_model: string
+          p_organization_id?: string
           p_provider: string
           p_task_id: string
           p_user_id: string

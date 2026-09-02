@@ -3836,7 +3836,7 @@
       "definitions": [
         {
           "schema": "public",
-          "args": "p_user_id uuid, p_feature text, p_provider text, p_model text, p_task_id text, p_est_cost_usd numeric",
+          "args": "p_user_id uuid, p_feature text, p_provider text, p_model text, p_task_id text, p_est_cost_usd numeric, p_organization_id uuid DEFAULT NULL::uuid",
           "returns": "uuid",
           "volatility": "VOLATILE",
           "securityDefiner": true,
