@@ -143,3 +143,84 @@ describe('copilot read RPC migration — contracts, vouchers, pending inbox', ()
     expect(creates).toEqual([]);
   });
 });
+
+// GHIM CHÍNH DÒNG CHỊU LỰC, KHÔNG PHẢI DÒNG GỌI HÀM.
+//
+// Bản đầu của bộ test này chỉ khẳng định `copilot_org_scope_buildings_v1` được
+// GỌI. Đó là một khẳng định rỗng về mặt an ninh: xoá `b.id = ANY(v_buildings)`
+// khỏi mệnh đề JOIN thì lời gọi vẫn còn nguyên, mọi cửa chặn vẫn xanh, và mọi
+// người dùng bị giới hạn theo TOÀ lặng lẽ được nâng lên phạm vi toàn công ty.
+// Cái giá của một lỗ như thế không hiện ra dưới dạng lỗi — nó hiện ra dưới dạng
+// một câu trả lời "hợp lý" chứa sổ của những toà mà người hỏi không được xem.
+//
+// Nên ở đây ghim HAI thứ, cho TỪNG thân hàm:
+//   1. tập toà do server suy ra phải được GÁN vào biến (`v_buildings := …`) rồi
+//      DÙNG trong mệnh đề nối (`= ANY(v_buildings)`);
+//   2. mọi alias bảng có cột `organization_id` phải mang bộ lọc công ty của
+//      chính nó — liệt kê ĐÍCH DANH, vì một danh sách suy ra từ chính file đang
+//      kiểm sẽ teo đi cùng file đó.
+describe('bien gioi thue bao — predicate chiu luc bi ghim tung dong', () => {
+  /** Alias có `organization_id` trong từng thân hàm, liệt kê tay. */
+  const ORG_ALIASES: Record<string, string[]> = {
+    copilot_contract_search_v1: ['ct', 'rm', 'b', 'cc', 'cst', 'cc2', 'cst2'],
+    copilot_contract_detail_v1: ['ct', 'rm', 'b', 'cc', 'cst', 'i'],
+    copilot_income_expense_search_v1: ['ie', 'b', 'acc', 't'],
+  };
+
+  /** Ba hàm trả DANH SÁCH — cả ba ràng kết quả vào tập toà của server. */
+  const SCOPED_BY_BUILDING = [
+    'copilot_contract_search_v1',
+    'copilot_contract_detail_v1',
+    'copilot_income_expense_search_v1',
+  ] as const;
+
+  for (const rpc of SCOPED_BY_BUILDING) {
+    it(`${rpc}: gan tap toa server roi RANG ket qua vao no`, () => {
+      const body = functionBody(rpc);
+      expect(body, rpc).not.toBe('');
+      // Gọi thôi chưa đủ — phải GÁN.
+      expect(body, `${rpc}: khong gan ket qua scope vao v_buildings`).toMatch(
+        /v_buildings\s*:=\s*public\.copilot_org_scope_buildings_v1\(/,
+      );
+      // Và phải DÙNG. Đây là dòng chịu lực của cả biên giới thuê bao.
+      expect(body, `${rpc}: thieu predicate b.id = ANY(v_buildings)`).toMatch(
+        /b\.id\s*=\s*ANY\(v_buildings\)/,
+      );
+    });
+
+    it(`${rpc}: moi alias co organization_id deu mang bo loc cong ty`, () => {
+      const body = functionBody(rpc);
+      for (const alias of ORG_ALIASES[rpc]) {
+        expect(body, `${rpc}: alias "${alias}" thieu organization_id = p_organization_id`).toMatch(
+          new RegExp(String.raw`\b${alias}\.organization_id\s*=\s*p_organization_id\b`),
+        );
+      }
+    });
+  }
+
+  it('income_expense_items KHONG loc cong ty — va do la co y, khong phai bo sot', () => {
+    // `it` chỉ tới được qua `it.income_expense_id = ie.id`, mà `ie` đã bị ràng
+    // vào công ty VÀ vào tập toà. Thêm một bộ lọc nữa ở đây không đóng cửa nào.
+    // Ghim lại để lần sau ai đọc danh sách alias phía trên không tưởng là quên.
+    const body = functionBody('copilot_income_expense_search_v1');
+    expect(body).toMatch(/it\.income_expense_id\s*=\s*ie\.id/);
+    expect(body).not.toMatch(/\bit\.organization_id\b/);
+  });
+
+  it('copilot_pending_requests_v1: khong co tap toa, nen phai loc bang chinh cot cong ty', () => {
+    // Hàm này đọc `list_my_pending_approvals_v1()` — đã lọc theo auth.uid() — nên
+    // nó không có toà để ràng. Hai thứ thay thế: khẳng định biên giới bằng
+    // PERFORM, và lọc công ty ngay trên hàng trả về.
+    const body = functionBody('copilot_pending_requests_v1');
+    expect(body).toMatch(/PERFORM public\.copilot_org_scope_buildings_v1\('income_expenses\.view', p_organization_id\)/);
+    expect(body).toMatch(/\bp\.organization_id\s*=\s*p_organization_id\b/);
+    expect(body).not.toMatch(/ANY\(v_buildings\)/);
+  });
+
+  it('dem du 3 lan xuat hien cua predicate — them mot ham doc moi phai them mot dong', () => {
+    // Sàn chống bỏ quên theo chiều ngược: nếu một hàm đọc thứ tư ra đời và quên
+    // ràng vào v_buildings, con số này không tăng và test đỏ.
+    const lan = migration.match(/b\.id\s*=\s*ANY\(v_buildings\)/g) ?? [];
+    expect(lan).toHaveLength(SCOPED_BY_BUILDING.length);
+  });
+});

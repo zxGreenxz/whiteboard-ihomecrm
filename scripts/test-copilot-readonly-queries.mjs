@@ -50,11 +50,44 @@ export const REQUIRED_COPILOT_RPCS = Object.freeze([
   "copilot_pending_requests_v1",
 ]);
 
-/** Tool sources the static half reads, relative to the repo root. */
+/**
+ * Tool sources the static half reads, relative to the repo root.
+ *
+ * `writeTools.ts` BELONGS HERE even though it is the write tool. Leaving it out
+ * scoped the invariant to fit the code that happened to satisfy it: the one file
+ * allowed to touch these tables was also the one file nobody looked at, so a new
+ * `.from('contracts')` written there would have passed in silence. Its single
+ * legitimate direct read is carried by an explicit exemption below instead.
+ */
 export const TOOL_SOURCE_FILES = Object.freeze([
   "src/copilot/tools/registry.ts",
   "src/copilot/tools/nghiepVuTools.ts",
+  "src/copilot/tools/writeTools.ts",
 ]);
+
+/**
+ * Narrow, per-CALL exemptions from the forbidden-table rule.
+ *
+ * `occurrences` is what makes this an exemption for ONE call instead of a
+ * blanket pass for the file+table pair: a second `.from('income_expenses')` in
+ * writeTools.ts changes the count and fails, exactly like a brand new table
+ * would. An entry whose call has disappeared also fails — a leftover exemption
+ * is a door held open for whoever writes the next query.
+ */
+export const DIRECT_READ_EXEMPTIONS = Object.freeze([
+  Object.freeze({
+    file: "src/copilot/tools/writeTools.ts",
+    table: "income_expenses",
+    occurrences: 1,
+    reason:
+      "doc lai 1 dong vua tao theo id (.select('code').eq('id', id)) de cau tra loi mang ma phieu tra cuu duoc; RLS gac, khong co bo loc nao do client dat",
+  }),
+]);
+
+/** Windows checkouts hand back backslashes; the exemption keys are POSIX. */
+function normalizeFileKey(file) {
+  return String(file).split("\\").join("/");
+}
 
 function sqlLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
@@ -90,15 +123,41 @@ export function assertSourceContract(sourceByFile) {
   }
 
   const cleaned = [];
+  const scannedFiles = new Set(files.map(([file]) => normalizeFileKey(file)));
+  const directReads = new Map();
   for (const [file, raw] of files) {
     const clean = withoutComments(String(raw));
     cleaned.push(clean);
+    const fileKey = normalizeFileKey(file);
     for (const table of TABLES_OFF_LIMITS_TO_THE_BROWSER) {
-      if (new RegExp(`\\.from\\(['"]${table}['"]\\)`, "u").test(clean)) {
+      const hits = clean.match(new RegExp(`\\.from\\(['"]${table}['"]\\)`, "gu")) ?? [];
+      if (hits.length === 0) continue;
+      const key = `${fileKey}::${table}`;
+      directReads.set(key, hits.length);
+      const exemption = DIRECT_READ_EXEMPTIONS.find(
+        (entry) => `${entry.file}::${entry.table}` === key,
+      );
+      if (!exemption) {
         throw new Error(
           `Direct browser read of ${table} in ${file}: its tenant boundary is a join away, use the server RPC`,
         );
       }
+      if (hits.length !== exemption.occurrences) {
+        throw new Error(
+          `Direct browser read of ${table} in ${file}: the exemption covers ${exemption.occurrences} call(s) (${exemption.reason}) but ${hits.length} were found`,
+        );
+      }
+    }
+  }
+
+  // Only provable when the exemption's own file was actually scanned: a caller
+  // handing over a synthetic subset has not looked at it and cannot judge it.
+  for (const entry of DIRECT_READ_EXEMPTIONS) {
+    const key = `${entry.file}::${entry.table}`;
+    if (scannedFiles.has(entry.file) && !directReads.has(key)) {
+      throw new Error(
+        `Stale exemption ${key}: the call it covers is gone, delete the entry instead of leaving the door open`,
+      );
     }
   }
 
