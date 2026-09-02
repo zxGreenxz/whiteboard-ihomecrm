@@ -69,7 +69,7 @@ Không khẩn cấp — 2 bảng rỗng không gây hại, chỉ là rác schema
 
 ## 3. Phần "chưa hoạt động" phát hiện qua đợt rà soát
 
-### C-01 (P2) — Upload avatar hỏng 100%: bucket `avatars` không tồn tại
+### C-01 (P2) — Upload avatar hỏng 100%: bucket `avatars` không tồn tại — **ĐÃ VÁ cùng ngày** (migration `20260902005030_avatars_bucket_cho_anh_dai_dien.sql` apply prod qua migrate:forward, đo lại: bucket public + 4 policy LIVE)
 
 `src/hooks/useProfile.ts:123` gọi `supabase.storage.from('avatars').upload(...)` nhưng
 `storage.buckets` production chỉ có 10 bucket: `customer-id-cards`, `customer-images`,
@@ -79,7 +79,7 @@ Upload ném lỗi ngay → tính năng đổi ảnh đại diện chết từ tr
 **Sửa (chọn 1):** tạo bucket `avatars` (private + policy theo user), HOẶC đổi code sang bucket có
 sẵn (`customer-images` không đúng nghĩa — nên tạo bucket riêng).
 
-### C-02 (P3) — Fallback upload biên lai trỏ bucket `documents` không tồn tại
+### C-02 (P3) — Fallback upload biên lai trỏ bucket `documents` không tồn tại — **ĐÃ VÁ cùng ngày** (commit `f2828765` gỡ 3 nhánh fallback)
 
 `src/lib/receiptUpload.ts:40` + `src/components/invoices/{RecordPaymentDialog,BulkRecordPaymentDialog}.tsx`:
 đường chính upload vào `payment-receipts` (tồn tại ✓); khi lỗi thì fallback sang bucket `documents`
@@ -123,8 +123,7 @@ trong memory dự án). Workaround hiện tại: INSERT thẳng công tơ bằng
 
 ## 5. Khuyến nghị
 
-1. **Plan riêng (nhỏ): sửa C-01 + C-02** — tạo bucket `avatars` + bỏ fallback `documents`. Đây là
-   2 fix hành vi, không thuộc đợt dọn dẹp.
+1. ~~Sửa C-01 + C-02~~ — **XONG cùng ngày 02/09**: bucket `avatars` live (migration `20260902005030`), fallback `documents` đã gỡ (`f2828765`).
 2. **Plan riêng: DROP `legacy_owner_*`** qua `migrate:forward` khi tiện đường một migration khác.
 3. **Gate mới `check-orphan-tables.mjs`** (đề xuất, chưa làm): đối chiếu bảng trong catalog
    production với hợp nhất 5 nguồn tham chiếu (src / edge / worker / infra / prosrc) — chống lặp

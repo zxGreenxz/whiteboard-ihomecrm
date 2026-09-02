@@ -1,7 +1,7 @@
 {
   "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh.",
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-14",
+  "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
   "files": {
     "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
@@ -535,6 +535,27 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
+    },
+    "supabase/migrations/20260902005030_avatars_bucket_cho_anh_dai_dien.sql": {
+      "sha256": "4d4e0df7aeea6054a6e115fe092dc6b8476661b2c29fc1fb7003fee8ce9945ec",
+      "missingObjects": [
+        "policy:storage.objects.avatars doc cong khai",
+        "policy:storage.objects.avatars ghi theo chu tai khoan",
+        "policy:storage.objects.avatars sua theo chu tai khoan",
+        "policy:storage.objects.avatars xoa theo chu tai khoan"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 02/09/2026 trong phiên vá finding C-01 (audit AUDIT-DB-BANG-MO-COI-VA-PHAN-CHUA-HOAT-DONG-2026-09-02): bucket 'avatars' chưa từng tồn tại trên production nên useProfile.ts upload luôn fail. Policy vắng mặt vì migration CHƯA CHẠY, không phải bị DROP — sẽ apply qua lane migrate:forward ngay trong phiên.",
+      "bangChung": [
+        {
+          "duong_dan": "docs/audits/AUDIT-DB-BANG-MO-COI-VA-PHAN-CHUA-HOAT-DONG-2026-09-02.md",
+          "trich_doan": "C-01 (P2) — Upload avatar hỏng 100%: bucket `avatars` không tồn tại ... storage.buckets production chỉ có 10 bucket ... không có `avatars`"
+        },
+        {
+          "duong_dan": "src/hooks/useProfile.ts",
+          "trich_doan": "await supabase.storage.from('avatars').upload(filePath, file, { cacheControl: '3600', upsert: true })"
+        }
+      ]
     }
   }
 }
