@@ -231,7 +231,7 @@ jobs:
           node scripts/check-copilot-forbidden-actions.mjs || loi=1
           exit $loi
 
-      # Lane MOCK của bộ 30 ca vàng — CHẠY THẬT, không mạng, không model, không
+      # Lane MOCK của bộ ca vàng — CHẠY THẬT, không mạng, không model, không
       # credential: nó suy tool/outcome/scenario từ chính câu hỏi rồi đối chiếu
       # với oracle trong corpus. Gate `check-copilot-golden-eval` ở khối trên chỉ
       # xác nhận corpus HỢP LỆ; bước này xác nhận corpus CÒN ĐÚNG.
@@ -240,12 +240,21 @@ jobs:
       # generator riêng sở hữu và một artifact CI ghi lén vào đó sẽ làm gate
       # docs-freshness đỏ ở lần chạy sau, không phải ở lần này.
       #
+      # Việc kiểm báo cáo nằm trong scripts/check-golden-eval-report.mjs (không
+      # còn `node -e` nhúng ở đây): số ca mong đợi suy từ chính
+      # tooling/copilot-golden-eval.json (cases.length), KHÔNG ghi cứng ở đây
+      # hay trong script. Bản trước ghi cứng 30 — con số của bộ ca ngày
+      # 13/08/2026 — nên mỗi lần thêm ca mới (G1-C1 lên 36, G1-C2 lên 43, …) là
+      # CI đỏ vì "khong du 30 ca", và cách "sửa" rẻ nhất là đừng thêm ca. Một cửa
+      # chặn phạt việc mở rộng phạm vi đo là cửa chặn đang làm ngược việc của nó.
+      #
       # Vì sao phải đọc lại báo cáo thay vì tin mã thoát: runner thoát 2 khi
       # `verdict != pass`, mà hôm nay verdict luôn là `blocked` vì SLA độ trễ
-      # đang `pending-owner-approval` (chủ chưa ký số ms nào là đạt). Bước này
-      # tha ĐÚNG một lý do đó và đỏ với mọi lý do khác — 30 ca vẫn phải pass hết.
-      # Khi chủ ký SLA, xoá nhánh tha và để mã thoát nói thẳng.
-      - name: Copilot golden eval — lane mock (30 ca, báo cáo ra $RUNNER_TEMP)
+      # đang `pending-owner-approval` (chủ chưa ký số ms nào là đạt). Script tha
+      # ĐÚNG một lý do đó và đỏ với mọi lý do khác — mọi ca vẫn phải pass hết.
+      # Khi chủ ký SLA, xoá nhánh tha trong check-golden-eval-report.mjs và để
+      # mã thoát của runner nói thẳng.
+      - name: Copilot golden eval — lane mock (báo cáo ra $RUNNER_TEMP)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         env:
           BAO_CAO: ${{ runner.temp }}/copilot-golden-eval-mock.json
@@ -256,24 +265,7 @@ jobs:
             --build-sha "$SHA" \
             --provider-model mock-deterministic \
             --out "$BAO_CAO" > /dev/null || true
-          node -e '
-            const fs = require("node:fs");
-            const bc = JSON.parse(fs.readFileSync(process.env.BAO_CAO, "utf8"));
-            const loi = [];
-            if (bc.aggregate.total !== 30) loi.push("khong du 30 ca: " + bc.aggregate.total);
-            for (const k of ["fail", "partial", "blocked"]) {
-              if (bc.aggregate.counts[k] > 0) loi.push(k + "=" + bc.aggregate.counts[k]);
-            }
-            const THA = "latency SLA is pending owner approval";
-            if (bc.verdict !== "pass" && bc.sla.reason !== THA) {
-              loi.push("verdict=" + bc.verdict + " (" + bc.sla.reason + ")");
-            }
-            if (loi.length) {
-              console.error("Copilot golden eval (lane mock) DO: " + loi.join("; "));
-              process.exit(1);
-            }
-            console.log("Copilot golden eval (lane mock): " + bc.aggregate.counts.pass + "/30 pass; SLA do tre: " + bc.sla.reason + ".");
-          '
+          node scripts/check-golden-eval-report.mjs "$BAO_CAO"
 
       - name: Tải lên báo cáo golden eval (lane mock)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
@@ -411,6 +403,7 @@ jobs:
           scripts/__tests__/backup-luu-tru.test.mjs \
           scripts/__tests__/check-agent-contract.test.mjs \
           scripts/__tests__/check-external-controls.test.mjs \
+          scripts/__tests__/check-golden-eval-report.test.mjs \
           scripts/__tests__/check-graph-governance.test.mjs \
           scripts/__tests__/check-migration-provenance.test.mjs \
           scripts/__tests__/check-no-auto-apply.test.mjs \
@@ -444,6 +437,7 @@ jobs:
           --exclude 'scripts/__tests__/backup-luu-tru.test.mjs'
           --exclude 'scripts/__tests__/check-agent-contract.test.mjs'
           --exclude 'scripts/__tests__/check-external-controls.test.mjs'
+          --exclude 'scripts/__tests__/check-golden-eval-report.test.mjs'
           --exclude 'scripts/__tests__/check-graph-governance.test.mjs'
           --exclude 'scripts/__tests__/check-migration-provenance.test.mjs'
           --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
