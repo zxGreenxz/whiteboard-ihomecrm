@@ -21,9 +21,9 @@
 | Mức | Tổng | ĐÃ VÁ | CÒN MỞ | KHÔNG CÒN ÁP DỤNG | CHƯA XÁC MINH ĐƯỢC |
 |---|---:|---:|---:|---:|---:|
 | **P1** | 14 | 2 (+9 vá tối 02/09 → **11**) | **3** | 0 | 0 |
-| **P2** | 26 | 1 (+7 vá tối 02/09 → **8**) | **18** | 0 | 0 |
+| **P2** | 26 | 1 (+8 vá tối 02/09 → **9**) | **17** | 0 | 0 |
 | **P3** | 9 | 1 | **8** | 0 | 0 |
-| **Tổng** | **49** | **4 → 20** | **45 → 29** | **0** | **0** |
+| **Tổng** | **49** | **4 → 21** | **45 → 28** | **0** | **0** |
 
 4 finding ĐÃ VÁ tại thời điểm re-anchor: `PZALO-C02` (P1), `FR009-C03` (P1), `FR020-C03` (P2), `FR006-C01` (P3).
 
@@ -249,7 +249,7 @@
 
 ### PANALYTICS-C02 (P2) — Anonymous analytics logger tăng trưởng không giới hạn
 
-**Trạng thái:** CÒN MỞ
+**Trạng thái:** **ĐÃ VÁ 02/09/2026** — migration `20260902091449`: ngân sách 5.000 dòng/token/ngày (giờ VN) qua `app_private.public_room_event_budgets` kiểm TRƯỚC khi ghi và kẹp batch theo hạn mức còn lại; retention 90 ngày (`app_private.pra_prune_public_room_events_v1`, sàn 30 ngày) chạy bằng cron `41 3 * * *`. Đo prod sau apply: cron active=1, logger có budget, anon vẫn ghi được trong hạn mức, 16.329 dòng giữ nguyên (dữ liệu cũ nhất 73 ngày nên lần prune đầu xoá 0). _(sáng ghi: CÒN MỞ)_
 **Bằng chứng:** `supabase/migrations/20260831023937_public_room_events_ghi_loi_ben_vung.sql` chỉ vá **độ bền ghi** (sub-transaction mỗi dòng `:74-120`) và clamp metadata (`:78-88`); **không** thêm budget, **không** thêm retention. ACL anon còn nguyên: `:138` `GRANT EXECUTE ON FUNCTION public.log_public_room_events(text, jsonb) TO anon, authenticated`. Giới hạn duy nhất là per-request `:69` `WHERE t.ord <= 50` — không có trần số request/token nên anon lặp lời gọi để ghi vô hạn dòng. `app_private.public_room_event_budgets` = 0 hit; Edge `supabase/functions/public-room-events/` không tồn tại; không có cron/retention 90 ngày.
 **Ghi chú ACL:** `:137` `REVOKE … FROM PUBLIC` **không** cắt `anon` trên Supabase (án lệ đã ghi sổ) — và ở đây `:138` cấp lại `anon` tường minh ngay dòng sau, nên đây là chủ ý, không phải sót.
 
