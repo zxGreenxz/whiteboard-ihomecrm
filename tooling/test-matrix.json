@@ -48,7 +48,8 @@
         "scripts/__tests__/check-rpc-name-literal.test.mjs",
         "scripts/__tests__/check-ts-suppressions.test.mjs",
         "scripts/__tests__/network-center-*.test.mjs",
-        "services/**"
+        "services/**",
+        "scripts/__tests__/check-ts-baseline.test.mjs"
       ],
       "ciJobs": [
         {
@@ -121,7 +122,10 @@
       ],
       "environment": "ci",
       "timeoutMinutes": 60,
-      "note": "Job validate (Linux) chay 21/23 file; job worker-powershell-windows (windows-latest) chay 2 file PowerShell con lai. Chia doi 11/08/2026 — truoc do 2 file do chay tren Linux va DUOC KY VONG FAIL."
+      "note": "Job validate (Linux) chay 21/23 file; job worker-powershell-windows (windows-latest) chay 2 file PowerShell con lai. Chia doi 11/08/2026 — truoc do 2 file do chay tren Linux va DUOC KY VONG FAIL.",
+      "excludes": [
+        "scripts/__tests__/check-ts-baseline.test.mjs"
+      ]
     },
     {
       "id": "node-native",
