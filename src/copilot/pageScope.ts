@@ -65,42 +65,58 @@ const NHAN_THEO_ROUTE: ReadonlyMap<string, string> = (() => {
   return map;
 })();
 
-function mucTuHopDong(page: CopilotPageContract, route: string): MucDieuHuong {
-  return {
-    key: page.key,
-    route,
-    // Không có nhãn thì dùng khoá contract: một mục xấu chữ vẫn tốt hơn một
-    // mục biến mất khỏi danh sách trong im lặng.
-    label: NHAN_THEO_ROUTE.get(route) ?? page.key,
-    module: page.permission.module,
-    action: page.permission.action,
-  };
-}
-
 /**
- * Đích điều hướng của `mo_trang` — sinh từ contract, gộp theo route canonical.
+ * Dựng danh sách đích điều hướng. Tách thành hàm THUẦN để test được LUẬT bằng
+ * fixture: một test nạp registry thật chỉ khẳng định lại dữ liệu của hôm nay.
+ *
+ * FAIL CLOSED — contract có route canonical KHÔNG nằm trong bản đồ nhãn
+ * (`VISIBLE_PAGE_GROUPS`) thì BỊ LOẠI, chứ không "lấy tạm khoá làm nhãn". Bản
+ * đầu rơi về `?? page.key` và đó là một cửa mở: `VISIBLE_PAGE_GROUPS` chính là
+ * bản ĐÃ LỌC trang của sản phẩm CHƯA SHIP, nên vắng mặt ở đó nghĩa là trang
+ * chưa render được. Lọc nhãn mà không lọc thành viên chỉ làm câu chữ đẹp lên
+ * trong khi `mo_trang` vẫn đưa người dùng tới đúng chỗ không hiện gì.
  *
  * Bỏ route có `:param`: `mo_trang` không biết id nào để điền, và điều hướng tới
  * `/contracts/:id` nguyên văn sẽ ra màn 404 kèm câu "✅ Đã mở trang".
  *
  * Hai lượt để kết quả KHÔNG phụ thuộc thứ tự khai trong contract: lượt đầu lấy
  * trang trỏ thẳng route đó (trang danh sách), lượt sau mới lấp bằng trang chi
- * tiết trỏ về cùng canonical. Nếu chỉ chạy một lượt "gặp trước lấy trước" thì
- * đảo hai dòng trong registry là đổi cả khoá enum lẫn quyền kiểm của tool.
+ * tiết trỏ về cùng canonical. Một lượt "gặp trước lấy trước" thì đảo hai dòng
+ * trong registry là đổi cả khoá enum lẫn cặp quyền của tool.
  */
-export const ROUTE_DIEU_HUONG: readonly MucDieuHuong[] = (() => {
+export function taoRouteDieuHuong(
+  hopDong: readonly CopilotPageContract[],
+  nhanTheoRoute: ReadonlyMap<string, string>,
+): MucDieuHuong[] {
   const theoRoute = new Map<string, MucDieuHuong>();
-  const dungDuoc = COPILOT_PAGE_CONTRACTS.filter((page) => !routeCanonical(page).includes(':'));
+  const them = (page: CopilotPageContract, route: string): void => {
+    const label = nhanTheoRoute.get(route);
+    if (label === undefined) return; // fail closed — xem doc comment
+    theoRoute.set(route, {
+      key: page.key,
+      route,
+      label,
+      module: page.permission.module,
+      action: page.permission.action,
+    });
+  };
+  const dungDuoc = hopDong.filter((page) => !routeCanonical(page).includes(':'));
   for (const page of dungDuoc) {
     const route = routeCanonical(page);
-    if (route === page.route && !theoRoute.has(route)) theoRoute.set(route, mucTuHopDong(page, route));
+    if (route === page.route && !theoRoute.has(route)) them(page, route);
   }
   for (const page of dungDuoc) {
     const route = routeCanonical(page);
-    if (!theoRoute.has(route)) theoRoute.set(route, mucTuHopDong(page, route));
+    if (!theoRoute.has(route)) them(page, route);
   }
   return [...theoRoute.values()];
-})();
+}
+
+/** Đích điều hướng của `mo_trang` — sinh từ contract, gộp theo route canonical. */
+export const ROUTE_DIEU_HUONG: readonly MucDieuHuong[] = taoRouteDieuHuong(
+  COPILOT_PAGE_CONTRACTS,
+  NHAN_THEO_ROUTE,
+);
 
 /** Contract có control đã duyệt ⇒ trang đó mới cho page-agent thao tác. */
 const HOP_DONG_CO_CONTROL: readonly CopilotPageContract[] = COPILOT_PAGE_CONTRACTS.filter(

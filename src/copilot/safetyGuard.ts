@@ -3,7 +3,6 @@
 // dùng interactiveBlacklist SỐNG (getFlatTree đọc lại mỗi updateTree) repopulate
 // qua event `beforeUpdate`. Verified spike (docs/ai-copilot/SPIKE-RESULTS.md).
 import type { PageAgent } from 'page-agent';
-import { PILOT_UI_CONTROL_ROUTES } from './pageScope';
 
 // Nút/hành động NGUY HIỂM: agent không được click. Regex text/aria + container
 // cảnh báo + attribute chủ động [data-ai-risk] (gắn dần vào component dùng chung).
@@ -94,11 +93,15 @@ export function makeRouteGuard(allowlist: readonly string[]) {
   };
 }
 
-// Route allowlist khởi điểm cho pilot (chỉ nav + filter). Tắt trên Chat Zalo (F13).
+// KHÔNG khai allowlist route ở file này nữa.
 //
-// SINH TỪ CONTRACT, không còn viết tay: một trang chỉ vào được danh sách này khi
-// contract của nó khai `safeControlIds` — tức có control đã duyệt từng cái, gắn
-// `data-ai-safe`. Nới phạm vi bằng cách sửa dòng này là nới đúng vào chỗ chưa có
-// control nào được duyệt; nới đúng chỗ là khai thêm ở
-// `src/app/capabilities/registry.ts`. Gate: scripts/check-copilot-routes.mjs.
-export const PILOT_ROUTE_ALLOWLIST: readonly string[] = PILOT_UI_CONTROL_ROUTES;
+// Bản trước để lại `export const PILOT_ROUTE_ALLOWLIST = PILOT_UI_CONTROL_ROUTES`
+// như một bí danh cho gọn. Bí danh đó là một cửa mở thật: gate đo giá trị của
+// `PILOT_UI_CONTROL_ROUTES` (bên sản xuất), còn thứ `createAgent` thực sự dùng
+// là cái tên ở đây — nên `= [...PILOT_UI_CONTROL_ROUTES, '/contracts']` sẽ đi
+// qua MỌI gate mà vẫn nới phạm vi đứng của page-agent. Một tên là một chỗ để
+// lệch; giờ chỉ còn đúng một tên: `PILOT_UI_CONTROL_ROUTES` trong pageScope.ts.
+//
+// `makeRouteGuard` ở trên nhận allowlist qua THAM SỐ, không tự đọc hằng nào —
+// người gọi (createAgent) truyền `PILOT_UI_CONTROL_ROUTES` vào, và
+// scripts/check-copilot-routes.mjs canh đúng cái tên đó ở chỗ gọi.

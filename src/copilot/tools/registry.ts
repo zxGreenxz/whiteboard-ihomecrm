@@ -12,7 +12,11 @@ import type { ActionKey, PermissionsMap } from '@/lib/permissions';
 import { formatVND } from '@/lib/utils';
 import { mapPayloadToBuildings, type RpcPayload } from '@/pages/phong-trong/supabaseData';
 import { maskPhonePartial } from '../maskPii';
-import { KHOA_TRANG_UI_CONTROL, ROUTE_DIEU_HUONG } from '../pageScope';
+import {
+  KHOA_TRANG_UI_CONTROL,
+  PILOT_UI_CONTROL_ROUTES,
+  ROUTE_DIEU_HUONG,
+} from '../pageScope';
 import { taoPhieuThuChiNhap } from './writeTools';
 import { TOOL_NGHIEP_VU } from './nghiepVuTools';
 import {
@@ -82,6 +86,17 @@ export interface DomainTool<T = any> {
   requiredPermission?: { module: string; action: ActionKey };
   uiControlOnly?: boolean;
   /**
+   * Tool CHỈ mở trang: không đọc sổ, không ghi, không bấm gì.
+   *
+   * Không phải cờ lọc adapter (nó đi cho CẢ chat lẫn UI-control) mà là NHÃN
+   * PHÂN LOẠI cho bảng tool trong tài liệu. Trước đây bảng đó suy "điều hướng"
+   * từ `uiControlOnly`; khi `mo_trang` mở cho chat thì cách suy ấy sẽ in ra
+   * "0 tool điều hướng" trong lúc tool điều hướng vẫn còn đó — một con số đúng
+   * cú pháp và sai sự thật, đúng loại drift mà gate inventory sinh ra để chặn.
+   */
+  navigationOnly?: boolean;
+
+  /**
    * Tool GHI dữ liệu — chỉ đưa cho chat, KHÔNG đưa cho PageAgent (UI-control).
    *
    * Vì sao phải có cờ này thay vì tin vào prompt: UI-control là chế độ thí điểm
@@ -121,15 +136,27 @@ function assertPerm(tool: DomainTool, ctx: ToolCtx): void {
 // ở đây là bản chép thứ ba của cùng một thứ, và ba bản chép thì bản nào lệch
 // cũng hỏng theo kiểu riêng.
 //
-// VÌ SAO ĐIỀU HƯỚNG MỞ RỘNG HƠN PHẠM VI UI-CONTROL
-//   `mo_trang` chỉ gọi `navigate()`: không đọc sổ, không bấm gì, không ghi gì.
-//   Phạm vi của nó là mọi contract có route tĩnh. Còn `PILOT_ROUTE_ALLOWLIST` —
+// VÌ SAO ĐIỀU HƯỚNG MỞ RỘNG HƠN PHẠM VI UI-CONTROL — VÀ NÓI RA ĐIỀU ĐÓ
+//   `mo_trang` chỉ mở trang: không đọc sổ, không bấm gì, không ghi gì. Phạm vi
+//   của nó là mọi contract có route tĩnh (19). Còn `PILOT_UI_CONTROL_ROUTES` —
 //   nơi page-agent được phép ĐỨNG và thao tác — vẫn chỉ là trang có khai
-//   `safeControlIds`. Hai phạm vi CỐ Ý khác nhau, và hệ quả phải nói trước:
-//   điều hướng ra ngoài pilot GIỮA một task UI-control sẽ bị
-//   `makeUiControlStepGuard` chặn ở bước kế tiếp (`outside_allowlist`) — task dừng
-//   có lý do rõ ràng chứ không phải lọt rào. Đây là đánh đổi ĐÃ BIẾT, không phải
-//   sơ sót: G1-B mới là lúc allowlist UI-control được nới theo cờ.
+//   `safeControlIds` (3). Hai phạm vi CỐ Ý khác nhau.
+//
+//   Hệ quả KHÔNG được để im: trong một task UI-control, đi tới 16 đích còn lại
+//   thì bước kế tiếp chắc chắn dính `outside_allowlist` của
+//   `makeUiControlStepGuard`. Nếu tool chỉ trả "✅ Đã mở trang" thì mô hình
+//   (và người đọc) không có cách nào biết trước, và task đứt gánh trông y hệt
+//   một lỗi. Nên cả `description` LẪN câu trả về đều ghi rõ đích nào thao tác
+//   được, đích nào "chỉ mở trang".
+//
+//   Và vì thế tool này KHÔNG còn `uiControlOnly`: chat là nơi 19 đích có giá
+//   trị thật — ở đó nó trả LINK markdown (đúng luật "chat không tự chuyển
+//   trang"), không gọi `navigate`.
+/** Câu nói thẳng cho đích ngoài pilot — dùng CHUNG cho description và câu trả về. */
+export const CAU_NGOAI_PILOT = 'chỉ mở trang — task thao tác sẽ dừng tại đây';
+
+const ROUTE_THAO_TAC_DUOC = new Set(PILOT_UI_CONTROL_ROUTES);
+
 const MO_TRANG_THEO_KHOA = new Map(ROUTE_DIEU_HUONG.map((m) => [m.key, m]));
 
 /** Khoá đích, dạng tuple để `z.enum` nhận — KHÔNG khai lại bằng tay. */
@@ -602,15 +629,19 @@ export function buildRegistryDefinitions(): DomainTool[] {
     dt({
       name: 'mo_trang',
       description:
-        'Điều hướng người dùng tới một trang trong ứng dụng. CHỈ dùng các trang sau (khoá — nhãn): ' +
-        ROUTE_DIEU_HUONG.map((m) => `${m.key} — ${m.label}`).join('; ') +
+        'Mở một trang trong ứng dụng. Trong chat: trả LINK markdown để người dùng tự bấm. ' +
+        'Trong chế độ thao tác giao diện: chuyển trang thật. Các trang (khoá — nhãn — khả năng): ' +
+        ROUTE_DIEU_HUONG.map(
+          (m) =>
+            `${m.key} — ${m.label} — ${ROUTE_THAO_TAC_DUOC.has(m.route) ? 'thao tác được' : CAU_NGOAI_PILOT}`,
+        ).join('; ') +
         '.',
       inputSchema: z.object({
         trang: z.enum(MO_TRANG_KEYS),
       }),
-      uiControlOnly: true, // chat KHÔNG điều hướng — trả link để user click
-      // Rollout theo ĐÚNG các trang pilot UI-control: tool này chỉ sống trong adapter
-      // page-agent, mà page-agent chỉ dựng được trên những trang đó.
+      navigationOnly: true, // chỉ mở trang/trả link — nhãn phân loại cho bảng tool
+      // Rollout theo ĐÚNG các trang pilot UI-control, giữ nguyên hành vi trước
+      // lát này: snapshot hiện chỉ bật 3 khoá đó.
       rolloutKeys: KHOA_TRANG_UI_CONTROL,
       execute: async (args, ctx) => {
         const target = MO_TRANG_THEO_KHOA.get(args.trang);
@@ -620,9 +651,14 @@ export function buildRegistryDefinitions(): DomainTool[] {
         if (!ctx.perms || !canUse(ctx.perms, target.module, target.action)) {
           throw new Error(`Không có quyền xem trang ${target.label}.`);
         }
-        if (!ctx.navigate) throw new Error('Thiếu navigate — tool này chỉ dùng trong UI-control.');
+        // Chat KHÔNG tự chuyển trang (CHAT_SYSTEM_PROMPT §4): trả deep-link
+        // markdown tới route CANONICAL để người dùng tự quyết định có đi hay không.
+        if (!ctx.navigate) return `[${target.label}](${target.route})`;
         ctx.navigate(target.route);
-        return `✅ Đã mở trang ${target.label} (${target.route}).`;
+        if (ROUTE_THAO_TAC_DUOC.has(target.route)) {
+          return `✅ Đã mở trang ${target.label} (${target.route}).`;
+        }
+        return `✅ Đã mở trang ${target.label} (${target.route}) — ${CAU_NGOAI_PILOT}.`;
       },
     }),
   ];

@@ -7,9 +7,11 @@ import {
   PILOT_UI_CONTROL_ROUTES,
   ROUTE_DIEU_HUONG,
   chiDanTrang,
+  taoRouteDieuHuong,
 } from '../pageScope';
 import { COPILOT_PAGE_CONTRACTS } from '@/app/capabilities/registry';
-import { ALL_PAGE_FEATURES } from '@/lib/permissionPages';
+import type { CopilotPageContract } from '@/app/capabilities/types';
+import { ALL_PAGE_FEATURES, VISIBLE_PAGE_GROUPS } from '@/lib/permissionPages';
 
 describe('ROUTE_DIEU_HUONG — sinh từ page contract', () => {
   it('mở rộng hơn hẳn 3 trang pilot cũ (đo 02/09/2026: 19 route)', () => {
@@ -103,5 +105,67 @@ describe('chiDanTrang — chỉ dẫn theo pageKey', () => {
     expect(chiDanTrang('/khong-ton-tai-o-dau-ca')).toBe(CHI_DAN_NGOAI_PHAM_VI);
     expect(chiDanTrang('/settings/roles')).toBe(CHI_DAN_NGOAI_PHAM_VI);
     expect(CHI_DAN_NGOAI_PHAM_VI).toContain('ngoài phạm vi');
+  });
+});
+
+describe('taoRouteDieuHuong — luật fail closed (kiểm bằng fixture, không bằng dữ liệu hôm nay)', () => {
+  const hopDong = (over: Partial<CopilotPageContract> & { key: string; route: string }): CopilotPageContract => ({
+    mode: 'read',
+    permission: { module: 'rooms', action: 'view' },
+    dataClass: 'internal',
+    batch: 'property',
+    rolloutKey: over.key,
+    safeControlIds: [],
+    ...over,
+  });
+
+  it('contract KHÔNG có trong VISIBLE_PAGE_GROUPS thì KHÔNG vào danh sách điều hướng', () => {
+    // Đây là ca đắt: `VISIBLE_PAGE_GROUPS` chính là bản đã lọc trang của sản
+    // phẩm CHƯA SHIP. Rơi về `?? page.key` (bản đầu) thì mo_trang vẫn mở trang
+    // đó — chỉ khác là nhãn xấu. Lọc nhãn không phải lọc thành viên.
+    const nhan = new Map([['/apartments', 'Căn hộ / Phòng']]);
+    const ra = taoRouteDieuHuong(
+      [hopDong({ key: 'rooms.list', route: '/apartments' }), hopDong({ key: 'chua.ship', route: '/chua-ship' })],
+      nhan,
+    );
+    expect(ra.map((m) => m.route)).toEqual(['/apartments']);
+    expect(ra.map((m) => m.key)).not.toContain('chua.ship');
+  });
+
+  it('bỏ route động, gộp theo canonicalRoute, và trang DANH SÁCH thắng trang chi tiết', () => {
+    const nhan = new Map([['/contracts', 'Hợp đồng']]);
+    const ra = taoRouteDieuHuong(
+      [
+        // Cố ý khai trang chi tiết TRƯỚC: kết quả không được phụ thuộc thứ tự.
+        hopDong({ key: 'contracts.detail', route: '/contracts/:id', canonicalRoute: '/contracts' }),
+        hopDong({ key: 'contracts.list', route: '/contracts' }),
+      ],
+      nhan,
+    );
+    expect(ra).toHaveLength(1);
+    expect(ra[0]!.key).toBe('contracts.list');
+    expect(ra[0]!.route).toBe('/contracts');
+  });
+
+  it('chỉ có trang chi tiết thì vẫn gộp về canonical (không mất đích)', () => {
+    const ra = taoRouteDieuHuong(
+      [hopDong({ key: 'x.detail', route: '/x/:id', canonicalRoute: '/x' })],
+      new Map([['/x', 'X']]),
+    );
+    expect(ra.map((m) => m.route)).toEqual(['/x']);
+  });
+
+  it('lấy module/action từ chính contract, không chết cứng `view`', () => {
+    const ra = taoRouteDieuHuong(
+      [hopDong({ key: 'y.list', route: '/y', permission: { module: 'reports_finance', action: 'analysis' } })],
+      new Map([['/y', 'Y']]),
+    );
+    expect(ra[0]!.module).toBe('reports_finance');
+    expect(ra[0]!.action).toBe('analysis');
+  });
+
+  it('mọi route điều hướng THẬT đều có mặt trong VISIBLE_PAGE_GROUPS', () => {
+    const hienThi = new Set(VISIBLE_PAGE_GROUPS.flatMap((n) => n.pages.map((p) => p.route)));
+    for (const muc of ROUTE_DIEU_HUONG) expect(hienThi.has(muc.route)).toBe(true);
   });
 });

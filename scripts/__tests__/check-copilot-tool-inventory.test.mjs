@@ -27,6 +27,7 @@ const MAU = {
     dt({
       name: 'mo_trang',
       uiControlOnly: true,
+      navigationOnly: true,
       execute: async () => 'z',
     }),
   `,
@@ -58,6 +59,18 @@ test('ĐỘT BIẾN: cờ của tool SAU không được lấn sang tool TRƯỚ
   const liet = ra.find((t) => t.ten === 'liet_ke_chu_de');
   assert.equal(liet.uiControlOnly, false);
   assert.equal(phanLoai(liet), 'read');
+});
+
+test('ĐỘT BIẾN: tool chỉ-mở-trang MỞ CHO CHAT vẫn phải là "điều hướng"', () => {
+  // 02/09/2026: `mo_trang` bỏ `uiControlOnly` để chat dùng được (trả link). Nếu
+  // loại vẫn suy từ cờ lọc adapter thì bảng in "0 điều hướng" — con số đúng cú
+  // pháp, sai sự thật, đúng loại drift mà gate này sinh ra để chặn.
+  const chiChat = { ten: 'mo_trang', uiControlOnly: false, navigationOnly: true, chatOnly: false };
+  assert.equal(phanLoai(chiChat), 'navigate');
+  // Và cờ ghi vẫn thắng: tool GHI không bao giờ bị đọc thành điều hướng.
+  assert.equal(phanLoai({ ten: 'x', chatOnly: true, navigationOnly: true }), 'write');
+  // Đọc được cờ từ mã nguồn thật, không chỉ từ object dựng tay.
+  assert.equal(docTool(MAU).find((x) => x.ten === 'mo_trang').navigationOnly, true);
 });
 
 test('ĐỘT BIẾN: đổi hình dạng khai báo ⇒ đọc ra rỗng, sàn biến nó thành exit 3', () => {

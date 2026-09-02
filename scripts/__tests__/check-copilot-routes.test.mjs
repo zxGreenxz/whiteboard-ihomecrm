@@ -11,8 +11,11 @@ import test from 'node:test';
 
 import {
   SAN_DIEU_HUONG,
+  SAN_PILOT,
   SAN_ROUTE,
+  TEN_ALLOWLIST,
   chuanHoa,
+  docTenAllowlist,
   lechUiControl,
   routesNgoaiHopDong,
 } from '../check-copilot-routes.mjs';
@@ -108,4 +111,37 @@ test('module chỉ có `manage` mà không có `view` phải bị coi là thiế
   const features = new Set(['rooms.manage', 'invoices.view']);
   assert.ok(!features.has('rooms.view'));
   assert.ok(features.has('invoices.view'));
+});
+
+// ── Chỗ RUNTIME đọc allowlist ────────────────────────────────────────────────
+
+test('đọc đúng tên biểu thức làm allowlist mặc định của page-agent', () => {
+  assert.equal(
+    docTenAllowlist('  const allowlist = params.allowlist ?? PILOT_UI_CONTROL_ROUTES;\n'),
+    'PILOT_UI_CONTROL_ROUTES',
+  );
+  assert.equal(TEN_ALLOWLIST, 'PILOT_UI_CONTROL_ROUTES');
+});
+
+test('ĐỘT BIẾN: bí danh ở giữa ⇒ gate bắt, dù mọi con số vẫn xanh', () => {
+  // Đây là lỗ đã bị chỉ ra: gate nạp giá trị của PILOT_UI_CONTROL_ROUTES (bên
+  // SẢN XUẤT), nên `const X = [...PILOT_UI_CONTROL_ROUTES, '/contracts']` rồi
+  // cho createAgent dùng X sẽ nới phạm vi ĐỨNG của page-agent mà không con số
+  // nào đổi. Cách duy nhất bắt được là nhìn vào chỗ runtime thực sự đọc.
+  const ten = docTenAllowlist('const allowlist = params.allowlist ?? PILOT_ROUTE_ALLOWLIST;');
+  assert.equal(ten, 'PILOT_ROUTE_ALLOWLIST');
+  assert.notEqual(ten, TEN_ALLOWLIST);
+});
+
+test('ĐỘT BIẾN: mảng viết tại chỗ ⇒ chuỗi rỗng (vi phạm), không phải null', () => {
+  // Rỗng và null phải khác nhau: rỗng = "đọc được và nó sai" (exit 1),
+  // null = "không đo được" (exit 3). Gộp hai cái thì một bộ đọc hỏng sẽ được
+  // báo cáo như một vi phạm có thật, và ngược lại.
+  assert.equal(docTenAllowlist("const allowlist = params.allowlist ?? ['/apartments', '/contracts'];"), '');
+  assert.equal(docTenAllowlist('const allowlist = params.allowlist;'), null);
+  assert.equal(docTenAllowlist('không có gì ở đây'), null);
+});
+
+test('sàn route UI-control giữ đúng 3 trang pilot làm mức chống-xanh-rỗng', () => {
+  assert.equal(SAN_PILOT, 3);
 });

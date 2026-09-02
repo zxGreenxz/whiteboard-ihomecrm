@@ -13,7 +13,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**14 tool**: 12 đọc · 1 ghi · 1 điều hướng (chỉ UI-control).
+**14 tool**: 12 đọc · 1 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |

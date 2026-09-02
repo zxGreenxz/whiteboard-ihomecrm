@@ -224,7 +224,7 @@ function main() {
 
   // (5) Route trong allowlist của AI Copilot phải TỒN TẠI.
   //
-  // `PILOT_ROUTE_ALLOWLIST` là chốt chặn an ninh: giữa một task, nếu SPA rời khỏi
+  // `PILOT_UI_CONTROL_ROUTES` là chốt chặn an ninh: giữa một task, nếu SPA rời khỏi
   // các route này thì guard ném lỗi và dừng thao tác. Một route chết trong danh
   // sách đó KHÔNG làm gì đỏ — nó chỉ lặng lẽ thu hẹp phạm vi Copilot làm được,
   // hoặc tệ hơn, người ta thêm route thay thế mà quên bỏ route cũ và tưởng phạm

@@ -59,6 +59,7 @@ export function docTool(nguon) {
         ten: moc[i][1],
         tep,
         uiControlOnly: /uiControlOnly:\s*true/.test(khoi),
+        navigationOnly: /navigationOnly:\s*true/.test(khoi),
         chatOnly: /chatOnly:\s*true/.test(khoi),
         quyen:
           (khoi.match(/requiredPermission:\s*\{\s*module:\s*'([^']+)'\s*,\s*action:\s*'([^']+)'/) ?? [])
@@ -70,10 +71,19 @@ export function docTool(nguon) {
   return ra.sort((a, b) => a.ten.localeCompare(b.ten));
 }
 
-/** `read` · `write` · `navigate` — suy từ cờ, không gõ tay. */
+/**
+ * `read` · `write` · `navigate` — suy từ cờ, không gõ tay.
+ *
+ * `navigationOnly` đứng TRƯỚC `uiControlOnly` vì hai cờ trả lời hai câu khác nhau:
+ * `uiControlOnly` là cờ LỌC ADAPTER (tool này không đưa cho chat), còn
+ * `navigationOnly` là BẢN CHẤT tool (chỉ mở trang/trả link). Chúng từng trùng nhau
+ * ở đúng một tool nên suy loại từ cờ lọc vẫn đúng — tới khi `mo_trang` mở cho cả
+ * chat (02/09/2026) thì cách suy đó in ra "0 tool điều hướng" trong lúc tool điều
+ * hướng vẫn còn đó.
+ */
 export function phanLoai(t) {
   if (t.chatOnly) return 'write';
-  if (t.uiControlOnly) return 'navigate';
+  if (t.navigationOnly || t.uiControlOnly) return 'navigate';
   return 'read';
 }
 
@@ -90,7 +100,7 @@ export function dungKhoi(tools) {
     '<!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:',
     '     node scripts/check-copilot-tool-inventory.mjs --write -->',
     '',
-    `**${tools.length} tool**: ${dem.read} đọc · ${dem.write} ghi · ${dem.navigate} điều hướng (chỉ UI-control).`,
+    `**${tools.length} tool**: ${dem.read} đọc · ${dem.write} ghi · ${dem.navigate} điều hướng (chỉ mở trang / trả link).`,
     '',
     '| Tool | Loại | Quyền | Nguồn |',
     '| --- | --- | --- | --- |',

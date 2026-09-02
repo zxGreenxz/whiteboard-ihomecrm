@@ -11,10 +11,8 @@ import { LLM_PROXY_BASE, LOCAL_PROVIDER_BASES, makeCopilotFetch, newTaskId, pars
 import { maskPii } from './maskPii';
 import { UI_CONTROL_SYSTEM_PROMPT } from './systemPromptVi';
 import { pageContext } from './pageContext';
-import {
-  attachDangerStamping,
-  PILOT_ROUTE_ALLOWLIST,
-} from './safetyGuard';
+import { attachDangerStamping } from './safetyGuard';
+import { PILOT_UI_CONTROL_ROUTES } from './pageScope';
 import { buildRegistry, toPageAgentTools, type ToolCtx } from './tools/registry';
 import { copilotPageByRoute } from '@/app/capabilities/registry';
 import { hopDongTuPageContract, taoCongCuDieuKhienAnToan } from './safeControls';
@@ -46,7 +44,7 @@ export function createUiControlAgent(params: {
     ctx: params.ctx,
   });
 
-  const allowlist = params.allowlist ?? PILOT_ROUTE_ALLOWLIST;
+  const allowlist = params.allowlist ?? PILOT_UI_CONTROL_ROUTES;
   const taskId = newTaskId('ui');
   const liveBlacklist: Element[] = [];
 

@@ -13,7 +13,7 @@ import {
   toPageAgentTools,
   listDocTopics,
 } from '../tools/registry';
-import { ROUTE_DIEU_HUONG } from '../pageScope';
+import { PILOT_UI_CONTROL_ROUTES, ROUTE_DIEU_HUONG } from '../pageScope';
 import { makeIdempotencyKey } from '../tools/writeTools';
 import { DANGER_RE, SUBMIT_RE, nhanNguyHiem } from '../safetyGuard';
 import { hrefAnToan } from '../hrefAnToan';
@@ -164,9 +164,12 @@ describe('registry + adapters', () => {
     for (const name of toolGhi) expect(paNames).not.toContain(name);
   });
 
-  it('mo_trang CHỈ có ở adapter UI-control (chat không điều hướng)', () => {
+  it('mo_trang có ở CẢ hai adapter — chat trả link, UI-control chuyển trang', () => {
+    // Đổi 02/09/2026: trước đây `uiControlOnly` khoá tool này khỏi chat, nên 19
+    // đích điều hướng không có người dùng thật nào (page-agent chỉ đứng được ở
+    // 3 trang). Nay chat dùng nó để lấy đúng đường dẫn thay vì đoán.
     const reg = buildRegistryDefinitions();
-    expect(toLlmTools(reg, { perms: SUPER, organizationId: ORG_TEST, availability: AVAILABILITY }).mo_trang).toBeUndefined();
+    expect(toLlmTools(reg, { perms: SUPER, organizationId: ORG_TEST, availability: AVAILABILITY }).mo_trang).toBeDefined();
     expect(toPageAgentTools(reg, { perms: SUPER, organizationId: ORG_TEST, availability: AVAILABILITY }).mo_trang).toBeDefined();
   });
 
@@ -220,6 +223,41 @@ describe('registry + adapters', () => {
     const moTrang = buildRegistryDefinitions().find((t) => t.name === 'mo_trang')!;
     // Description phải kể ĐỦ nhãn: mô hình không gọi tới trang nó không thấy tên.
     for (const muc of ROUTE_DIEU_HUONG) expect(moTrang.description).toContain(muc.label);
+  });
+
+  it('mo_trang trong CHAT: trả link markdown, KHÔNG gọi navigate', async () => {
+    // Luật §4 của CHAT_SYSTEM_PROMPT: chat không tự chuyển trang. Ctx của chat
+    // không có `navigate`, và bản trước NÉM LỖI ở đúng chỗ này.
+    const moTrang = buildRegistryDefinitions().find((t) => t.name === 'mo_trang')!;
+    const out = await moTrang.execute({ trang: 'tasks.list' }, { perms: SUPER, organizationId: ORG_TEST });
+    expect(out).toBe('[Công việc](/tasks)');
+  });
+
+  it('mo_trang: đích NGOÀI pilot nói rõ task thao tác sẽ dừng', async () => {
+    // 16/19 đích không thao tác được. Trả "✅ Đã mở trang" trần thì mô hình
+    // không có cách nào biết trước, và `outside_allowlist` ở bước sau trông y
+    // hệt một lỗi hệ thống.
+    const moTrang = buildRegistryDefinitions().find((t) => t.name === 'mo_trang')!;
+    let navigated = '';
+    const ngoai = await moTrang.execute(
+      { trang: 'tasks.list' },
+      { perms: SUPER, organizationId: ORG_TEST, navigate: (to) => { navigated = to; } },
+    );
+    expect(navigated).toBe('/tasks');
+    expect(ngoai).toContain('chỉ mở trang');
+    expect(PILOT_UI_CONTROL_ROUTES).not.toContain('/tasks');
+
+    const trong = await moTrang.execute(
+      { trang: 'rooms.list' },
+      { perms: SUPER, organizationId: ORG_TEST, navigate: () => {} },
+    );
+    expect(trong).not.toContain('chỉ mở trang');
+  });
+
+  it('description phân biệt đích thao tác được với đích chỉ mở trang', () => {
+    const moTrang = buildRegistryDefinitions().find((t) => t.name === 'mo_trang')!;
+    expect(moTrang.description).toContain('rooms.list — Căn hộ / Phòng — thao tác được');
+    expect(moTrang.description).toContain('tasks.list — Công việc — chỉ mở trang');
   });
 
   it('mo_trang: chặn khi không có quyền module đích', async () => {

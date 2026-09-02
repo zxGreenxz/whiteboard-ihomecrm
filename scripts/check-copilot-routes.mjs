@@ -35,7 +35,7 @@
 // Dùng lại `collectAllRoutes()` của check-route-guards để không chép tay danh
 // sách route. Thoát 0 · 1 vi phạm · 3 KHÔNG ĐO ĐƯỢC.
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +43,7 @@ import { fileURLToPath } from 'node:url';
 import { collectAllRoutes } from './check-route-guards.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const FILE_CREATE_AGENT = join(repoRoot, 'src', 'copilot', 'createAgent.ts');
 
 /** Dưới ngần này route bóc được thì bộ đọc hỏng, không phải app hết route. */
 export const SAN_ROUTE = 100;
@@ -55,6 +56,24 @@ export const SAN_ROUTE = 100;
 export const SAN_DIEU_HUONG = 15;
 /** Dưới ngần này contract thì `COPILOT_PAGE_CONTRACTS` không nạp được. */
 export const SAN_HOP_DONG = 15;
+/** Dưới ngần này route UI-control thì bộ nạp hỏng, không phải pilot bị tắt. */
+export const SAN_PILOT = 3;
+
+/**
+ * TÊN DUY NHẤT được phép làm allowlist mặc định của page-agent.
+ *
+ * VÌ SAO GATE PHẢI ĐO ĐÚNG CHỖ RUNTIME ĐỌC
+ *   Gate nạp giá trị của `PILOT_UI_CONTROL_ROUTES` — BÊN SẢN XUẤT. Nếu ai đó đặt
+ *   một bí danh ở giữa (`const X = [...PILOT_UI_CONTROL_ROUTES, '/contracts']`) rồi
+ *   cho `createAgent` dùng X, thì mọi con số gate đo được vẫn đúng trong khi phạm
+ *   vi ĐỨNG của page-agent đã rộng ra. Đo giá trị bên sản xuất là đo một thứ
+ *   không ai dùng.
+ *
+ *   Nên gate kiểm thêm một điều không suy ra được từ giá trị: chỗ gọi trong
+ *   `createAgent.ts` phải trỏ ĐÚNG CÁI TÊN này, không phải một biến khác và
+ *   không phải một mảng viết tại chỗ.
+ */
+export const TEN_ALLOWLIST = 'PILOT_UI_CONTROL_ROUTES';
 
 /**
  * Route đã chuẩn hoá về dạng so sánh được: bỏ dấu `/` cuối.
@@ -93,6 +112,20 @@ export function lechUiControl(pilot, routeCoControl) {
     thieu: [...dsControl].filter((r) => !dsPilot.has(r)),
     thua: [...dsPilot].filter((r) => !dsControl.has(r)),
   };
+}
+
+/**
+ * Tên biểu thức làm allowlist mặc định trong `createAgent.ts`.
+ *
+ * Trả `null` khi không tìm thấy câu `params.allowlist ?? X` — gọi là KHÔNG ĐO
+ * ĐƯỢC, không phải "không vi phạm". Trả chuỗi rỗng khi vế phải không phải một
+ * định danh trần (ví dụ một mảng viết tại chỗ) — đó là vi phạm.
+ */
+export function docTenAllowlist(nguon) {
+  const m = String(nguon).match(/params\.allowlist\s*\?\?\s*([^;]+);/);
+  if (!m) return null;
+  const ve = m[1].trim();
+  return /^[A-Za-z_$][\w$]*$/.test(ve) ? ve : '';
 }
 
 /**
@@ -166,6 +199,13 @@ function main() {
     );
     process.exit(3);
   }
+  if (!Array.isArray(pv.pilot) || pv.pilot.length < SAN_PILOT) {
+    console.error(
+      `❌ KHÔNG ĐO ĐƯỢC: chỉ nạp được ${pv.pilot?.length ?? 0} route UI-control (sàn ${SAN_PILOT}).`,
+    );
+    console.error('   Bộ nạp hỏng hoặc contract mất `safeControlIds` — đừng đọc thành "allowlist sạch".');
+    process.exit(3);
+  }
   const features = new Set(pv.features ?? []);
   if (features.size < 20) {
     console.error(`❌ KHÔNG ĐO ĐƯỢC: chỉ nạp được ${features.size} feature quyền (sàn 20).`);
@@ -218,6 +258,34 @@ function main() {
         'Một bề mặt Copilot không có contract là bề mặt không ai duyệt: không dataClass, ' +
         'không mode, không rollout key. Khai ở src/app/capabilities/registry.ts.',
     );
+  }
+
+  // Chỗ RUNTIME ĐỌC: `createAgent` phải lấy allowlist từ ĐÚNG một cái tên.
+  const tenAllowlist = docTenAllowlist(readFileSync(FILE_CREATE_AGENT, 'utf8'));
+  if (tenAllowlist === null) {
+    console.error('❌ KHÔNG ĐO ĐƯỢC: không thấy `params.allowlist ?? …` trong createAgent.ts.');
+    console.error('   Chỗ page-agent lấy phạm vi đứng đã đổi hình dạng — đừng đọc thành "không lệch".');
+    process.exit(3);
+  }
+  if (tenAllowlist !== TEN_ALLOWLIST) {
+    van.push(
+      `createAgent.ts lấy allowlist mặc định từ "${tenAllowlist || '<biểu thức tại chỗ>'}" chứ không phải ` +
+        `${TEN_ALLOWLIST}. Gate đo giá trị bên sản xuất, nên một bí danh ở giữa sẽ nới phạm vi ` +
+        'ĐỨNG của page-agent mà mọi con số vẫn xanh.',
+    );
+  }
+
+  // Trang pilot phải ĐẾN ĐƯỢC: control đã duyệt mà không có đích điều hướng thì
+  // luật fail-closed theo VISIBLE_PAGE_GROUPS vừa nuốt mất một trang pilot.
+  const dsDieuHuong = new Set(pv.dieuHuong.map((m) => chuanHoa(m.route)));
+  for (const r of (pv.pilot ?? []).map(chuanHoa)) {
+    if (!dsDieuHuong.has(r)) {
+      van.push(
+        `route UI-control "${r}" KHÔNG nằm trong phạm vi điều hướng. Thường là do trang ` +
+          'rớt khỏi VISIBLE_PAGE_GROUPS (chưa ship) — page-agent đứng ở một trang mà ' +
+          'chính Copilot không thừa nhận là điểm đến.',
+      );
+    }
   }
 
   const lech = lechUiControl(pv.pilot ?? [], pv.hopDongCoControl ?? []);

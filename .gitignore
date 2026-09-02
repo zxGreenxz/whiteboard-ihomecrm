@@ -100,6 +100,10 @@ scripts/.backfill-deposit-plan.json
 # Understand Anything local scratch/runtime (commit graph + fingerprints, not these)
 .ua/intermediate/
 .ua/tmp/
+# Thu muc tam cua cac gate Copilot: chung ghi mot file .ts roi nap qua vite-node
+# de doc gia tri THAT thay vi regex. File bi xoa trong `finally`, nhung thu muc
+# o lai — va mot lan gate chet giua chung se de lai file rac trong `git status`.
+.tmp-copilot-loaders/
 .ua/.trash-*/
 .ua/dashboard-logs/
 .ua/start-dashboard.ps1

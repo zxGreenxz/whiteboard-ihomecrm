@@ -121,7 +121,7 @@ describe('Copilot availability adapters', () => {
     }).mo_trang;
     expect(tool).toBeDefined();
     snapshot.states['page:rooms.list'] = 'disabled';
-    await expect(tool!.execute({ trang: 'phong' }, { signal: new AbortController().signal })).rejects.toThrow(
+    await expect(tool!.execute({ trang: 'rooms.list' }, { signal: new AbortController().signal })).rejects.toThrow(
       /rollout_unavailable/,
     );
     expect(navigated).toBe('');
