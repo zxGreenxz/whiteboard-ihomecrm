@@ -3,6 +3,7 @@
 // dùng interactiveBlacklist SỐNG (getFlatTree đọc lại mỗi updateTree) repopulate
 // qua event `beforeUpdate`. Verified spike (docs/ai-copilot/SPIKE-RESULTS.md).
 import type { PageAgent } from 'page-agent';
+import { PILOT_UI_CONTROL_ROUTES } from './pageScope';
 
 // Nút/hành động NGUY HIỂM: agent không được click. Regex text/aria + container
 // cảnh báo + attribute chủ động [data-ai-risk] (gắn dần vào component dùng chung).
@@ -83,7 +84,7 @@ export function attachDangerStamping(agent: PageAgent, liveBlacklist: Element[])
  * dừng THẬT (page-agent không try-catch quanh hook — verified). Ẩn launcher
  * KHÔNG dừng instance đang chạy nên đây là chốt chặn.
  */
-export function makeRouteGuard(allowlist: string[]) {
+export function makeRouteGuard(allowlist: readonly string[]) {
   return () => {
     const path = window.location.pathname;
     const ok = allowlist.some((a) => path === a || path.startsWith(a + '/'));
@@ -94,4 +95,10 @@ export function makeRouteGuard(allowlist: string[]) {
 }
 
 // Route allowlist khởi điểm cho pilot (chỉ nav + filter). Tắt trên Chat Zalo (F13).
-export const PILOT_ROUTE_ALLOWLIST = ['/apartments', '/invoices', '/customers'];
+//
+// SINH TỪ CONTRACT, không còn viết tay: một trang chỉ vào được danh sách này khi
+// contract của nó khai `safeControlIds` — tức có control đã duyệt từng cái, gắn
+// `data-ai-safe`. Nới phạm vi bằng cách sửa dòng này là nới đúng vào chỗ chưa có
+// control nào được duyệt; nới đúng chỗ là khai thêm ở
+// `src/app/capabilities/registry.ts`. Gate: scripts/check-copilot-routes.mjs.
+export const PILOT_ROUTE_ALLOWLIST: readonly string[] = PILOT_UI_CONTROL_ROUTES;

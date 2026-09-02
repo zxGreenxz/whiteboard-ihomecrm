@@ -12,6 +12,7 @@ import type { ActionKey, PermissionsMap } from '@/lib/permissions';
 import { formatVND } from '@/lib/utils';
 import { mapPayloadToBuildings, type RpcPayload } from '@/pages/phong-trong/supabaseData';
 import { maskPhonePartial } from '../maskPii';
+import { KHOA_TRANG_UI_CONTROL, ROUTE_DIEU_HUONG } from '../pageScope';
 import { taoPhieuThuChiNhap } from './writeTools';
 import { TOOL_NGHIEP_VU } from './nghiepVuTools';
 import {
@@ -112,40 +113,27 @@ function assertPerm(tool: DomainTool, ctx: ToolCtx): void {
   }
 }
 
-// ── Route whitelist cho mo_trang (route CANONICAL — /apartments, không /rooms) ──
+// ── Đích điều hướng cho `mo_trang` ───────────────────────────────────
 //
-// MỘT nguồn, ba thứ dẫn xuất. Trước 11/08/2026 danh sách trang này được viết
-// BỐN lần: khoá của map, `z.enum` của inputSchema, câu `description` gửi cho mô
-// hình, và luật kiểm lúc chạy. Bốn bản chép của một danh sách thì bản nào lệch
-// cũng hỏng theo kiểu riêng — `z.enum` lệch thì tool từ chối một trang có thật,
-// còn `description` lệch thì mô hình không bao giờ gọi tới trang mới thêm.
-// Nay `z.enum` và `description` đều SINH TỪ map; `scripts/check-copilot-routes.mjs`
-// canh nốt hai thứ không suy ra được từ đây: route có tồn tại thật không, và
-// module có phải module quyền thật không.
+// KHÔNG CÒN DANH SÁCH Ở ĐÂY. `ROUTE_DIEU_HUONG` sinh từ `COPILOT_PAGE_CONTRACTS`
+// (xem `src/copilot/pageScope.ts`), nên `z.enum`, câu `description` gửi cho mô
+// hình và luật kiểm lúc chạy đều chỉ còn MỘT nguồn. Trước đó danh sách trang
+// ở đây là bản chép thứ ba của cùng một thứ, và ba bản chép thì bản nào lệch
+// cũng hỏng theo kiểu riêng.
 //
-// DANH SÁCH NÀY PHẢI LÀ TẬP CON của `PILOT_ROUTE_ALLOWLIST` (safetyGuard.ts).
-// Gate `scripts/check-copilot-routes.mjs` canh điều đó.
-//
-// Vì sao ngày 14/08/2026 danh sách rút từ 5 xuống 3: `/contracts` và `/buildings`
-// từng nằm ở đây nhưng KHÔNG có trong allowlist, nên `mo_trang` điều hướng sang
-// rồi `makeRouteGuard` ném lỗi ngay bước kế — hai trang đó trên thực tế đã không
-// dùng được, danh sách chỉ đang nói dối về phạm vi.
-//
-// Và hướng sửa ngược lại (nới allowlist lên 5) đã bị bác bằng khảo sát: hai
-// trang đó có control ĐỔI DỮ LIỆU NGAY mà lớp blacklist không thấy —
-// `<Switch>` bật/tắt trạng thái toà nhà (BuildingListTable) và multiselect gán
-// toà vào khu vực (ManageAreasDialog) đều không có nhãn văn bản nào, còn nhãn
-// "Xoá"/"Thanh lý"/"Nhượng HĐ" trên bảng hợp đồng nằm trong tooltip/`title`
-// chứ không nằm trong `textContent`. Mở phạm vi trước khi có safe-control theo
-// khai báo (Phase C) là mở đúng vào chỗ hàng rào hiện tại không với tới.
-export const MO_TRANG_ROUTES: Record<string, { route: string; module: string; label: string }> = {
-  phong: { route: '/apartments', module: 'rooms', label: 'Căn hộ / Phòng' },
-  hoa_don: { route: '/invoices', module: 'invoices', label: 'Hoá đơn' },
-  khach_hang: { route: '/customers', module: 'customers', label: 'Cư dân' },
-};
+// VÌ SAO ĐIỀU HƯỚNG MỞ RỘNG HƠN PHẠM VI UI-CONTROL
+//   `mo_trang` chỉ gọi `navigate()`: không đọc sổ, không bấm gì, không ghi gì.
+//   Phạm vi của nó là mọi contract có route tĩnh. Còn `PILOT_ROUTE_ALLOWLIST` —
+//   nơi page-agent được phép ĐỨNG và thao tác — vẫn chỉ là trang có khai
+//   `safeControlIds`. Hai phạm vi CỐ Ý khác nhau, và hệ quả phải nói trước:
+//   điều hướng ra ngoài pilot GIỮA một task UI-control sẽ bị
+//   `makeUiControlStepGuard` chặn ở bước kế tiếp (`outside_allowlist`) — task dừng
+//   có lý do rõ ràng chứ không phải lọt rào. Đây là đánh đổi ĐÃ BIẾT, không phải
+//   sơ sót: G1-B mới là lúc allowlist UI-control được nới theo cờ.
+const MO_TRANG_THEO_KHOA = new Map(ROUTE_DIEU_HUONG.map((m) => [m.key, m]));
 
-/** Khoá của whitelist, dạng tuple để `z.enum` nhận — KHÔNG khai lại bằng tay. */
-const MO_TRANG_KEYS = Object.keys(MO_TRANG_ROUTES) as [string, ...string[]];
+/** Khoá đích, dạng tuple để `z.enum` nhận — KHÔNG khai lại bằng tay. */
+const MO_TRANG_KEYS = ROUTE_DIEU_HUONG.map((m) => m.key) as [string, ...string[]];
 
 // ── Docs hướng dẫn (lazy ?raw — không vào bundle chính) ──
 //
@@ -614,16 +602,22 @@ export function buildRegistryDefinitions(): DomainTool[] {
     dt({
       name: 'mo_trang',
       description:
-        `Điều hướng người dùng tới một trang trong ứng dụng. CHỈ dùng các trang: ${MO_TRANG_KEYS.join(', ')}.`,
+        'Điều hướng người dùng tới một trang trong ứng dụng. CHỈ dùng các trang sau (khoá — nhãn): ' +
+        ROUTE_DIEU_HUONG.map((m) => `${m.key} — ${m.label}`).join('; ') +
+        '.',
       inputSchema: z.object({
         trang: z.enum(MO_TRANG_KEYS),
       }),
       uiControlOnly: true, // chat KHÔNG điều hướng — trả link để user click
-      rolloutKeys: ['rooms.list', 'customers.list', 'invoices.list'],
+      // Rollout theo ĐÚNG các trang pilot UI-control: tool này chỉ sống trong adapter
+      // page-agent, mà page-agent chỉ dựng được trên những trang đó.
+      rolloutKeys: KHOA_TRANG_UI_CONTROL,
       execute: async (args, ctx) => {
-        const target = MO_TRANG_ROUTES[args.trang];
-        if (!target) throw new Error(`Trang "${args.trang}" không nằm trong whitelist.`);
-        if (!ctx.perms || !canUse(ctx.perms, target.module, 'view')) {
+        const target = MO_TRANG_THEO_KHOA.get(args.trang);
+        if (!target) throw new Error(`Trang "${args.trang}" không nằm trong phạm vi điều hướng.`);
+        // Quyền lấy từ chính contract (`permission.module`/`.action`) thay vì chết cứng
+        // 'view': trang nào khai action khác sẽ bị kiểm sai nếu chết cứng.
+        if (!ctx.perms || !canUse(ctx.perms, target.module, target.action)) {
           throw new Error(`Không có quyền xem trang ${target.label}.`);
         }
         if (!ctx.navigate) throw new Error('Thiếu navigate — tool này chỉ dùng trong UI-control.');

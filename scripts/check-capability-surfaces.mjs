@@ -76,6 +76,29 @@ export function bocRegistry(nguon) {
   return ra;
 }
 
+/**
+ * Route của các page contract CÓ `safeControlIds` — tức phạm vi UI-control.
+ *
+ * `safeControlIds` luôn đứng SAU `route` trong cùng một lời gọi `page({...})`, nên
+ * `route`/`canonicalRoute` gần nhất ĐỨNG TRƯỚC chính là route của contract đó.
+ * Đọc theo cặp thay vì bắt nguyên khối `page({...})`: thân contract có ngoặc
+ * lồng (`permission: { ... }`) nên một regex không-tham bắt khối sẽ cắt giữa chừng.
+ */
+export function bocRouteUiControl(nguon) {
+  const ra = [];
+  for (const m of nguon.matchAll(/safeControlIds:\s*\[([^\]]*)\]/g)) {
+    if (![...m[1].matchAll(/["'`]([^"'`]+)["'`]/g)].length) continue; // mảng rỗng = không có control
+    const truoc = nguon.slice(0, m.index);
+    const route = [...truoc.matchAll(/(?:^|[^a-zA-Z])route:\s*"([^"]+)"/g)].at(-1)?.[1];
+    const canonical = [...truoc.matchAll(/canonicalRoute:\s*"([^"]+)"/g)];
+    const canonicalIdx = canonical.at(-1)?.index ?? -1;
+    const routeIdx = [...truoc.matchAll(/(?:^|[^a-zA-Z])route:\s*"([^"]+)"/g)].at(-1)?.index ?? -1;
+    if (!route) continue;
+    ra.push(canonicalIdx > routeIdx ? canonical.at(-1)[1] : route);
+  }
+  return ra;
+}
+
 /** Route capability xuất hiện dưới dạng chuỗi trong file consumer ⇒ khai tay. */
 export function timKhaiTay(nguon, route) {
   // Bỏ comment trước khi tìm: một comment giải thích "route /openclaw-zalo bị
@@ -207,14 +230,14 @@ function main() {
   // hoặc tệ hơn, người ta thêm route thay thế mà quên bỏ route cũ và tưởng phạm
   // vi vẫn như cũ.
   //
-  // Plan §7 muốn danh sách này SINH TỪ registry. Chưa làm được: registry hiện phủ
-  // 2/146 route và không biết /apartments, /invoices, /customers. Đã ghi ở
-  // tooling/plan-remaining.json — chặn bởi việc mở rộng registry, không phải bỏ quên.
-  const guard = doc("src/copilot/safetyGuard.ts");
-  const dsRoute = [...guard.matchAll(/PILOT_ROUTE_ALLOWLIST\s*=\s*\[([^\]]*)\]/g)]
-    .flatMap((m) => [...m[1].matchAll(/["'`]([^"'`]+)["'`]/g)].map((x) => x[1]));
+  // TỪ 02/09/2026 danh sách này SINH TỪ page contract (`safeControlIds`), đúng điều
+  // plan §7 muốn — nên đọc thẳng ở nguồn thay vì đọc lại bản dẫn xuất trong
+  // safetyGuard.ts. Giữ kiểu bóc literal (không import module) vì cả file này dựa
+  // trên nó: registry.ts đọc import.meta.env, Node trần import thẳng sẽ nổ.
+  // Phép đối chiếu allowlist ↔ contract là việc của check-copilot-routes.mjs.
+  const dsRoute = bocRouteUiControl(doc("src/app/capabilities/registry.ts"));
   if (dsRoute.length === 0) {
-    viPham.push("Không đọc được PILOT_ROUTE_ALLOWLIST trong src/copilot/safetyGuard.ts — bộ dò hỏng hoặc danh sách đã bị xoá.");
+    viPham.push("Không bóc được route UI-control (contract có `safeControlIds`) trong src/app/capabilities/registry.ts — bộ dò hỏng hoặc danh sách đã bị xoá.");
   }
   for (const r of dsRoute) {
     if (!nguon.some((n) => coRoute(n.s, r))) {

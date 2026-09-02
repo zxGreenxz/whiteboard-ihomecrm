@@ -33,7 +33,7 @@ export interface UiControlAgent {
 export function createUiControlAgent(params: {
   providerModel: string;
   ctx: ToolCtx; // { perms, navigate }
-  allowlist?: string[];
+  allowlist?: readonly string[];
 }): UiControlAgent {
   const parsed = parseProviderModel(params.providerModel);
   if (!parsed) throw new Error(`Model không hợp lệ: "${params.providerModel}"`);

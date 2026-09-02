@@ -1,41 +1,21 @@
 // Đột biến cho check-copilot-routes.
+//
+// Từ 02/09/2026 gate không còn đọc ba danh sách viết tay bằng regex: phạm vi
+// điều hướng và allowlist UI-control đều SINH TỪ `COPILOT_PAGE_CONTRACTS`
+// (src/copilot/pageScope.ts), nên gate nạp giá trị thật qua vite-node rồi đối
+// chiếu với chính contract. Test ở đây khoá các HÀM THUẦN làm phép đối chiếu —
+// phần duy nhất còn có thể im lặng sai.
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  SAN_DIEU_HUONG,
   SAN_ROUTE,
-  SAN_WHITELIST,
   chuanHoa,
-  docAllowlist,
-  docWhitelist,
-  routesNgoaiAllowlist,
+  lechUiControl,
+  routesNgoaiHopDong,
 } from '../check-copilot-routes.mjs';
-
-const MAU = `
-export const MO_TRANG_ROUTES: Record<string, { route: string; module: string; label: string }> = {
-  phong: { route: '/apartments', module: 'rooms', label: 'Căn hộ / Phòng' },
-  hoa_don: { route: '/invoices', module: 'invoices', label: 'Hoá đơn' },
-};
-`;
-
-test('đọc đúng khoá, route và module', () => {
-  assert.deepEqual(docWhitelist(MAU), [
-    { khoa: 'phong', route: '/apartments', module: 'rooms' },
-    { khoa: 'hoa_don', route: '/invoices', module: 'invoices' },
-  ]);
-});
-
-test('ĐỘT BIẾN: đổi tên export ⇒ đọc ra rỗng, và sàn biến nó thành exit 3', () => {
-  // Ca này là lý do sàn tồn tại: một bộ đọc trả rỗng trông y hệt "whitelist sạch".
-  assert.deepEqual(docWhitelist(MAU.replace('MO_TRANG_ROUTES', 'ROUTES_KHAC')), []);
-  assert.ok(SAN_WHITELIST > 0);
-});
-
-test('map rỗng cũng ra rỗng — không nhận nhầm dòng nào ngoài map', () => {
-  const s = `export const MO_TRANG_ROUTES = {\n};\nconst khac = { route: '/x', module: 'y' };`;
-  assert.deepEqual(docWhitelist(s), []);
-});
 
 test('chuẩn hoá bỏ dấu / cuối nhưng giữ gốc', () => {
   assert.equal(chuanHoa('/invoices/'), '/invoices');
@@ -48,60 +28,83 @@ test('sàn route đủ chặt để bắt bộ bóc route hỏng', () => {
   assert.ok(SAN_ROUTE >= 50 && SAN_ROUTE <= 146);
 });
 
-// ── Whitelist điều hướng ⊆ phạm vi route guard ──────────────────────────────
-
-test('đọc được PILOT_ROUTE_ALLOWLIST; đổi tên export ⇒ rỗng (sàn bắt)', () => {
-  assert.deepEqual(
-    docAllowlist(`export const PILOT_ROUTE_ALLOWLIST = ['/apartments', '/invoices'];`),
-    ['/apartments', '/invoices'],
-  );
-  assert.deepEqual(docAllowlist(`export const KHAC = ['/apartments'];`), []);
+test('sàn điều hướng bắt được cả bộ nạp hỏng lẫn phạm vi teo về pilot cũ', () => {
+  // Đo 02/09/2026: 19 route điều hướng sinh từ 47 contract. Sàn phải NẰM TRÊN
+  // con số 3 của ba danh sách tay cũ, nếu không một lần rơi về pilot cũ (hoặc
+  // một bộ nạp trả rỗng) vẫn trông y hệt "phạm vi sạch".
+  assert.ok(SAN_DIEU_HUONG > 3, 'sàn phải cao hơn 3 trang pilot cũ');
+  assert.ok(SAN_DIEU_HUONG <= 19, 'sàn không được cao hơn số đo thật, kẻo gate đỏ vô cớ');
 });
 
-test('chỉ ra đúng route nằm ngoài allowlist', () => {
-  assert.deepEqual(
-    routesNgoaiAllowlist(
-      [{ khoa: 'hop_dong', route: '/contracts', module: 'contracts' }],
-      ['/apartments', '/invoices', '/customers'],
-    ),
-    ['/contracts'],
-  );
-});
+// ── Điều hướng ⊆ contract ────────────────────────────────────────────────────
 
-test('ĐO THẬT 13/08/2026: whitelist 5 vs allowlist 3 ⇒ hụt /contracts và /buildings', () => {
-  // Fixture SINH TỪ số đo thật, không thay cho việc đọc registry — nó cố định
-  // hình dạng lỗi mà gate phải bắt, để lần sau ai rút allowlist xuống là đỏ.
-  const wl = [
-    { khoa: 'phong', route: '/apartments', module: 'rooms' },
-    { khoa: 'hoa_don', route: '/invoices', module: 'invoices' },
-    { khoa: 'khach_hang', route: '/customers', module: 'customers' },
-    { khoa: 'hop_dong', route: '/contracts', module: 'contracts' },
-    { khoa: 'toa_nha', route: '/buildings', module: 'buildings' },
-  ];
-  const thieu = routesNgoaiAllowlist(wl, ['/apartments', '/invoices', '/customers']);
-  assert.deepEqual(thieu, ['/contracts', '/buildings']);
-  // Và khi allowlist phủ đủ thì không còn vi phạm nào.
+test('ĐỘT BIẾN: thêm route TAY ngoài contract ⇒ gate chỉ đúng route đó', () => {
+  // Đây là hình dạng lỗi mà lát G1-A tồn tại để chặn: ai đó thấy thiếu một
+  // trang và nhét thẳng vào danh sách điều hướng thay vì khai contract. Route
+  // đó khi ấy không có `dataClass`, không có `mode`, không có rollout key —
+  // tức là một bề mặt Copilot không ai duyệt.
+  const hopDong = ['/apartments', '/invoices', '/customers', '/tasks'];
   assert.deepEqual(
-    routesNgoaiAllowlist(wl, ['/apartments', '/invoices', '/customers', '/contracts', '/buildings']),
+    routesNgoaiHopDong([{ key: 'tay', route: '/finance/salary' }], hopDong),
+    ['/finance/salary'],
+  );
+  assert.deepEqual(
+    routesNgoaiHopDong([{ key: 'tasks.list', route: '/tasks' }], hopDong),
     [],
   );
 });
 
-test('phủ theo THƯ MỤC, không phải tiền tố chuỗi', () => {
-  // `/build` KHÔNG được phép phủ `/buildings` — guard lúc chạy dùng
-  // `path === a || path.startsWith(a + '/')`, gate phải khớp đúng luật đó.
-  assert.deepEqual(routesNgoaiAllowlist([{ route: '/buildings' }], ['/build']), ['/buildings']);
-  assert.deepEqual(routesNgoaiAllowlist([{ route: '/buildings/12' }], ['/buildings']), []);
+test('so khớp TUYỆT ĐỐI, không phải tiền tố — `/build` không phủ `/buildings`', () => {
+  // Điều hướng trỏ tới một route cụ thể, nên phép so phải là bằng nhau. Nới
+  // thành tiền tố sẽ cho `/finance/salary` lọt qua vì có contract `/finance/cashbooks`.
+  assert.deepEqual(routesNgoaiHopDong([{ route: '/buildings' }], ['/build']), ['/buildings']);
+  assert.deepEqual(routesNgoaiHopDong([{ route: '/finance/salary' }], ['/finance/cashbooks']), [
+    '/finance/salary',
+  ]);
 });
 
 test('dấu / cuối không tạo vi phạm giả', () => {
-  assert.deepEqual(routesNgoaiAllowlist([{ route: '/invoices/' }], ['/invoices']), []);
-  assert.deepEqual(routesNgoaiAllowlist([{ route: '/invoices' }], ['/invoices/']), []);
+  assert.deepEqual(routesNgoaiHopDong([{ route: '/invoices/' }], ['/invoices']), []);
+  assert.deepEqual(routesNgoaiHopDong([{ route: '/invoices' }], ['/invoices/']), []);
+});
+
+test('danh sách rỗng ra rỗng — sàn là thứ bắt ca này, không phải hàm này', () => {
+  assert.deepEqual(routesNgoaiHopDong([], ['/apartments']), []);
+});
+
+// ── Allowlist UI-control == contract có control ──────────────────────────────
+
+test('allowlist UI-control phải KHỚP ĐÚNG tập contract có safeControlIds', () => {
+  const coControl = ['/apartments', '/invoices', '/customers'];
+  assert.deepEqual(lechUiControl(coControl, coControl), { thieu: [], thua: [] });
+});
+
+test('ĐỘT BIẾN: nới allowlist bằng tay ⇒ "thừa"; rút bớt ⇒ "thiếu"', () => {
+  // Hai chiều, không chỉ một. Chỉ kiểm "allowlist ⊆ contract" thì ai đó xoá
+  // `safeControlIds` của một trang mà quên rút allowlist vẫn xanh — và ngược
+  // lại, chỉ kiểm ⊇ thì nới allowlist bằng tay lại lọt. Cả hai đều mở phạm vi
+  // thao tác cho page-agent ở nơi chưa có control nào được duyệt.
+  const coControl = ['/apartments', '/invoices', '/customers'];
+  assert.deepEqual(lechUiControl([...coControl, '/contracts'], coControl), {
+    thieu: [],
+    thua: ['/contracts'],
+  });
+  assert.deepEqual(lechUiControl(['/apartments'], coControl), {
+    thieu: ['/invoices', '/customers'],
+    thua: [],
+  });
+});
+
+test('thứ tự khai không tạo lệch giả', () => {
+  assert.deepEqual(lechUiControl(['/invoices', '/apartments'], ['/apartments', '/invoices']), {
+    thieu: [],
+    thua: [],
+  });
 });
 
 test('module chỉ có `manage` mà không có `view` phải bị coi là thiếu', () => {
-  // Tool gọi canUse(perms, module, 'view'). Kiểm "module có tồn tại" là chưa đủ:
-  // triệu chứng của thiếu `.view` giống hệt gõ sai tên module.
+  // Tool gọi canUse(perms, module, action) theo đúng contract. Kiểm "module có
+  // tồn tại" là chưa đủ: triệu chứng của thiếu action giống hệt gõ sai tên module.
   const features = new Set(['rooms.manage', 'invoices.view']);
   assert.ok(!features.has('rooms.view'));
   assert.ok(features.has('invoices.view'));

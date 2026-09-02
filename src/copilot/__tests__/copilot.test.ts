@@ -12,8 +12,8 @@ import {
   toLlmTools,
   toPageAgentTools,
   listDocTopics,
-  MO_TRANG_ROUTES,
 } from '../tools/registry';
+import { ROUTE_DIEU_HUONG } from '../pageScope';
 import { makeIdempotencyKey } from '../tools/writeTools';
 import { DANGER_RE, SUBMIT_RE, nhanNguyHiem } from '../safetyGuard';
 import { hrefAnToan } from '../hrefAnToan';
@@ -203,21 +203,30 @@ describe('registry + adapters', () => {
   });
 
   it('mo_trang: route CANONICAL /apartments (không /rooms) + gọi navigate', async () => {
-    expect(MO_TRANG_ROUTES.phong.route).toBe('/apartments');
-    expect(Object.values(MO_TRANG_ROUTES).some((r) => r.route === '/rooms')).toBe(false);
+    const phong = ROUTE_DIEU_HUONG.find((m) => m.key === 'rooms.list')!;
+    expect(phong.route).toBe('/apartments');
+    expect(ROUTE_DIEU_HUONG.some((m) => m.route === '/rooms')).toBe(false);
     const reg = buildRegistryDefinitions();
     const moTrang = reg.find((t) => t.name === 'mo_trang')!;
     let navigated = '';
-    const out = await moTrang.execute({ trang: 'phong' }, { perms: SUPER, organizationId: ORG_TEST, navigate: (to) => { navigated = to; } });
+    const out = await moTrang.execute({ trang: 'rooms.list' }, { perms: SUPER, organizationId: ORG_TEST, navigate: (to) => { navigated = to; } });
     expect(navigated).toBe('/apartments');
     expect(out).toContain('/apartments');
+  });
+
+  it('mo_trang: đích SINH TỪ page contract, không phải danh sách tay 3 trang', () => {
+    // Đo 02/09/2026: 19 đích. Trước lát G1-A đúng 3, chép tay ở ba file.
+    expect(ROUTE_DIEU_HUONG.length).toBeGreaterThanOrEqual(15);
+    const moTrang = buildRegistryDefinitions().find((t) => t.name === 'mo_trang')!;
+    // Description phải kể ĐỦ nhãn: mô hình không gọi tới trang nó không thấy tên.
+    for (const muc of ROUTE_DIEU_HUONG) expect(moTrang.description).toContain(muc.label);
   });
 
   it('mo_trang: chặn khi không có quyền module đích', async () => {
     const reg = buildRegistryDefinitions();
     const moTrang = reg.find((t) => t.name === 'mo_trang')!;
     await expect(
-      moTrang.execute({ trang: 'hoa_don' }, { perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST, navigate: () => {} }),
+      moTrang.execute({ trang: 'invoices.list' }, { perms: STAFF_ROOMS_ONLY, organizationId: ORG_TEST, navigate: () => {} }),
     ).rejects.toThrow(/quyền/);
   });
 });
