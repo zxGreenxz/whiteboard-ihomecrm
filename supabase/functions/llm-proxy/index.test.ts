@@ -248,12 +248,20 @@ Deno.test("tinhEstCost đúng công thức prompt chars/4 và max_tokens", async
 });
 
 // ── 5. Đồng hồ stream ──────────────────────────────────────────────────────
+//
+// LUẬT BIÊN CHO MỌI TEST ĐỒNG HỒ Ở MỤC NÀY: khoảng chờ phải ≥ 5× cái ngòi mà nó
+// đang đợi, và cái ngòi KHÔNG được phép bắn phải ≥ 5× nhịp gõ. Lý do là hạt của
+// `setTimeout` trên máy CI không mịn — một nhịp 20ms có thể thành 60ms khi runner
+// đang kẹt, và một biên 2× sẽ đỏ ngẫu nhiên. Test đỏ ngẫu nhiên là test bị tắt.
+// Giá phải trả cho biên rộng chỉ là vài trăm mili-giây cho cả mục.
 
 Deno.test("đồng hồ IM LẶNG bắn khi stream đứng hình", async () => {
   const { taoDongHoStream } = await nap();
   const banRa: string[] = [];
+  // Ngòi im lặng 20ms; chờ 150ms = 7,5× (biên đợi). Hạn tổng 5s ở xa hẳn nên
+  // không có cách nào nó cướp lượt bắn của hạn im lặng.
   const dongHo = taoDongHoStream((lyDo) => banRa.push(lyDo), 5_000, 20);
-  await nghi(80);
+  await nghi(150);
   dongHo.don();
   assertEquals(banRa, ["im"], "không có chunk nào trong 20ms ⇒ hết hạn im lặng");
 });
@@ -262,8 +270,10 @@ Deno.test("mỗi chunk dời hạn im lặng, nhưng KHÔNG dời hạn tổng",
   const { taoDongHoStream } = await nap();
   const banRa: string[] = [];
   const dongHo = taoDongHoStream((lyDo) => banRa.push(lyDo), 120, 200);
-  // 8 nhịp × 20ms = 160ms: vượt hẳn hạn tổng 120ms. Hạn im lặng để 200ms — rộng
-  // hơn nhịp gõ nhiều lần, nên máy CI kẹt một nhịp cũng không bắn nhầm "im".
+  // 8 nhịp × 20ms = 160ms: vượt hẳn hạn tổng 120ms. Hạn im lặng để 200ms = 10×
+  // nhịp gõ — đúng luật biên ở đầu mục, nên máy CI kẹt một nhịp cũng không bắn
+  // nhầm "im". Máy chạy CHẬM chỉ làm hạn tổng chín sớm hơn so với vòng lặp, tức
+  // đẩy kết quả về phía khẳng định, không về phía đỏ ngẫu nhiên.
   for (let i = 0; i < 8; i += 1) {
     await nghi(20);
     dongHo.datLai(); // stream vẫn chảy đều
@@ -275,17 +285,23 @@ Deno.test("mỗi chunk dời hạn im lặng, nhưng KHÔNG dời hạn tổng",
 Deno.test("don() gỡ sạch đồng hồ — không bắn sau khi stream đã đóng", async () => {
   const { taoDongHoStream } = await nap();
   const banRa: string[] = [];
+  // Ngòi 30ms/15ms, chờ 200ms = 6,7× ngòi dài nhất: nếu `don()` sót một đồng hồ
+  // thì trong 200ms nó chắc chắn đã bắn. Chờ ngắn hơn thì "không thấy bắn" có
+  // thể chỉ nghĩa là chưa kịp bắn — một phép đo không chứng minh được điều gì.
   const dongHo = taoDongHoStream((lyDo) => banRa.push(lyDo), 30, 15);
   dongHo.don();
-  await nghi(80);
+  await nghi(200);
   assertEquals(banRa, [], "stream đóng đẹp rồi thì đồng hồ phải câm");
 });
 
 Deno.test("đồng hồ chỉ bắn ĐÚNG MỘT lần", async () => {
   const { taoDongHoStream } = await nap();
   const banRa: string[] = [];
+  // Hai ngòi 25ms/15ms cùng chín trong khoảng chờ 200ms (8× ngòi dài nhất). Chờ
+  // đủ rộng mới đo được ĐÚNG thứ cần đo: không phải "cái thứ hai chưa tới giờ"
+  // mà là "cái thứ hai đã bị `daBan` chặn".
   const dongHo = taoDongHoStream((lyDo) => banRa.push(lyDo), 25, 15);
-  await nghi(120);
+  await nghi(200);
   dongHo.don();
   assertEquals(banRa.length, 1, "hai lần bắn = hai lần finalize = ghi đè sổ usage");
 });
