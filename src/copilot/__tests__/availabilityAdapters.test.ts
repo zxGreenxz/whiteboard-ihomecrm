@@ -12,7 +12,7 @@ describe('Copilot availability adapters', () => {
     const registry = buildRegistryDefinitions();
     expect(registry.length).toBeGreaterThan(0);
     for (const tool of registry) {
-      const hasKeys = Boolean(tool.rolloutKey || tool.rolloutKeys?.length);
+      const hasKeys = Boolean(tool.rolloutKey);
       expect(
         hasKeys || tool.rolloutExempt === true,
         `tool "${tool.name}" is missing rollout metadata`,

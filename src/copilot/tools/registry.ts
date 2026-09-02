@@ -108,10 +108,17 @@ export interface DomainTool<T = any> {
    * không còn nghĩa gì.
    */
   chatOnly?: boolean;
-  /** Optional page contract key controlled by the Copilot rollout snapshot. */
+  /**
+   * Khoá rollout server-owned gác tool này (`page:x` hoặc khoá trần = `page:`).
+   *
+   * MỘT khoá, không phải danh sách. Trường `rolloutKeys` (mọi khoá phải cùng
+   * `enabled`) đã bị gỡ 03/09/2026 cùng người dùng duy nhất của nó —
+   * `mo_trang`. Ý tưởng "tool nhiều trang thì AND mọi cờ trang" nghe hợp lý
+   * nhưng trên thực tế nó buộc những quyết định rollout không liên quan vào
+   * chung một công tắc; tool nào thật sự cần điều kiện kép thì cần một khoá
+   * riêng mô tả đúng điều kiện đó, không phải một phép AND ngầm.
+   */
   rolloutKey?: string;
-  /** Multiple page contracts must all be enabled before a multi-page tool is exposed. */
-  rolloutKeys?: readonly string[];
   /** Explicitly documents tools governed by a different server-side rollout. */
   rolloutExempt?: boolean;
   rolloutExemptionReason?: string;
@@ -677,8 +684,8 @@ export function buildRegistry(availability: CopilotAvailabilitySnapshot | null =
 function toolAvailableForRollout(tool: DomainTool, availability: CopilotAvailabilitySnapshot | null): boolean {
   if (!copilotAvailabilitySnapshotIsFresh(availability)) return false;
   if (tool.rolloutExempt) return true;
-  const keys = tool.rolloutKeys ?? (tool.rolloutKey ? [tool.rolloutKey] : []);
-  return keys.length > 0 && keys.every((key) => copilotAvailability(availability, key) === 'enabled');
+  if (!tool.rolloutKey) return false; // không khai khoá, không miễn trừ ⇒ tắt
+  return copilotAvailability(availability, tool.rolloutKey) === 'enabled';
 }
 
 const LOI_ROLLOUT_ORGANIZATION = 'organization_mismatch';

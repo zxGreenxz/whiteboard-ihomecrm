@@ -185,6 +185,44 @@ describe('COPILOT_ROLLOUT_CONTRACTS sinh từ page contract', () => {
   });
 });
 
+describe('hàng admin đọc ĐÚNG scope của chính nó', () => {
+  it('contract `action` đọc khoá `action:`, không rơi về `page:` cùng tên', () => {
+    // `copilotAvailability` gắn `page:` cho khoá TRẦN. Truyền `contract.contractId`
+    // trần vào đó nghĩa là mọi hàng đều đọc trạng thái scope `page` — vô hại
+    // hôm nay (mọi contract đều `page`), nhưng ngay khi có một contract
+    // `action` thì trang admin hiện sai trạng thái, mời sai bộ nút chuyển
+    // tiếp, và cú bấm cuối chết ở `invalid_rollout_transition`: một lỗi nói về
+    // transition trong khi bệnh nằm ở chỗ đọc.
+    const snapshot: CopilotAvailabilitySnapshot = {
+      revision: 21,
+      fetchedAt: Date.now(),
+      organizationId: ORG,
+      // CÙNG tên contract, HAI scope, HAI trạng thái ngược nhau — chỉ cách này
+      // mới phân biệt được "đọc đúng scope" với "tình cờ trùng giá trị".
+      states: { 'action:x.do': 'enabled', 'page:x.do': 'disabled' },
+    };
+    const rows = rolloutRowsFromAvailability(snapshot, [
+      { scope: 'action', contractId: 'x.do', label: 'Thao tác X' },
+      { scope: 'page', contractId: 'x.do', label: 'Trang X' },
+    ]);
+    expect(rows.find((row) => row.scope === 'action')?.state).toBe('enabled');
+    expect(rows.find((row) => row.scope === 'page')?.state).toBe('disabled');
+    // Và bộ nút chuyển tiếp đi theo trạng thái đọc được — đây là thứ người
+    // vận hành thực sự bấm.
+    expect(copilotRolloutTransitions(rows[0].state)).toEqual(['shadow', 'disabled']);
+  });
+
+  it('mặc định vẫn là danh sách contract thật khi không truyền tham số', () => {
+    const snapshot: CopilotAvailabilitySnapshot = {
+      revision: 22,
+      fetchedAt: Date.now(),
+      organizationId: ORG,
+      states: { 'page:rooms.list': 'enabled' },
+    };
+    expect(rolloutRowsFromAvailability(snapshot)).toHaveLength(COPILOT_ROLLOUT_CONTRACTS.length);
+  });
+});
+
 describe('nhóm rollout theo scope cho trang admin', () => {
   it('giữ nguyên thứ tự trong nhóm, bỏ nhóm rỗng', () => {
     const rows = rolloutRowsFromAvailability({

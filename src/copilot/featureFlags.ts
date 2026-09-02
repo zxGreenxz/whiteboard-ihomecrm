@@ -107,12 +107,27 @@ export interface CopilotAvailabilitySnapshot {
   digest?: string;
 }
 
+/**
+ * Chiếu snapshot server thành hàng cho trang admin.
+ *
+ * `contracts` tham số hoá để test được luật với một contract scope `action` —
+ * danh sách thật hôm nay toàn `page`, nên một test nạp danh sách thật KHÔNG
+ * bao giờ chạm được nhánh sai scope.
+ */
 export function rolloutRowsFromAvailability(
   snapshot: CopilotAvailabilitySnapshot | null | undefined,
+  contracts: readonly CopilotRolloutContract[] = COPILOT_ROLLOUT_CONTRACTS,
 ): CopilotRolloutRow[] {
-  return COPILOT_ROLLOUT_CONTRACTS.map((contract) => ({
+  return contracts.map((contract) => ({
     ...contract,
-    state: copilotAvailability(snapshot, contract.contractId),
+    // Khoá PHẢI mang tiền tố scope của chính hàng. `copilotAvailability` mặc
+    // định gắn `page:` cho khoá trần (xem hàm đó), nên một contract scope
+    // `action` sẽ đọc trạng thái của khoá `page:` cùng tên: trang admin hiện
+    // sai trạng thái, mời sai bộ nút chuyển tiếp, và cú bấm cuối cùng chết ở
+    // `invalid_rollout_transition` — lỗi nói về transition trong khi bệnh nằm
+    // ở chỗ đọc. Hôm nay mọi contract đều `page` nên không ai thấy; đúng lúc
+    // ai đó dùng tới điểm mở rộng `action` thì nó mới lộ.
+    state: copilotAvailability(snapshot, `${contract.scope}:${contract.contractId}`),
     revision: snapshot?.revision ?? 0,
   }));
 }

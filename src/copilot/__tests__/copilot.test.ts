@@ -265,10 +265,11 @@ describe('registry + adapters', () => {
   it('mo_trang gác bằng MỘT khoá copilot.navigation, không bằng bộ khoá 3 trang pilot', () => {
     // Bản trước dùng `rolloutKeys` = 3 trang UI-control, nên tắt rollout của
     // riêng trang Hoá đơn là mất luôn đường dẫn tới 18 trang khác — hai quyết
-    // định khác nhau chung một công tắc.
+    // định khác nhau chung một công tắc. Trường `rolloutKeys` đã bị gỡ khỏi
+    // `DomainTool`, nên "không quay lại được bộ khoá AND" nay là bảo đảm ở
+    // tầng KIỂU, không phải một expect chạy lúc test.
     const moTrang = buildRegistryDefinitions().find((t) => t.name === 'mo_trang')!;
     expect(moTrang.rolloutKey).toBe(KHOA_ROLLOUT_DIEU_HUONG);
-    expect(moTrang.rolloutKeys).toBeUndefined();
 
     const chiDieuHuong = {
       revision: 2,
