@@ -124,7 +124,7 @@ trong memory dự án). Workaround hiện tại: INSERT thẳng công tơ bằng
 ## 5. Khuyến nghị
 
 1. ~~Sửa C-01 + C-02~~ — **XONG cùng ngày 02/09**: bucket `avatars` live (migration `20260902005030`), fallback `documents` đã gỡ (`f2828765`).
-2. **Plan riêng: DROP `legacy_owner_*`** qua `migrate:forward` khi tiện đường một migration khác.
+2. ~~DROP `legacy_owner_*`~~ — **XONG cùng ngày 02/09**: migration `20260902005734_xoa_2_bang_legacy_owner_mo_coi.sql` apply prod (lane backup trước), đo lại pg_class: 2 bảng đã biến mất, catalog fingerprint đổi.
 3. **Gate mới `check-orphan-tables.mjs`** (đề xuất, chưa làm): đối chiếu bảng trong catalog
    production với hợp nhất 5 nguồn tham chiếu (src / edge / worker / infra / prosrc) — chống lặp
    lại kiểu nghi vấn phải điều tra tay như đợt này.

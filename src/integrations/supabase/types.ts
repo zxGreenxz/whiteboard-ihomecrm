@@ -8363,56 +8363,6 @@ export type Database = {
           },
         ]
       }
-      legacy_owner_allowlist: {
-        Row: {
-          created_at: string
-          note: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          note?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          note?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      legacy_owner_organization_map: {
-        Row: {
-          created_at: string
-          evidence: string | null
-          legacy_owner_id: string
-          organization_id: string
-          status: string
-        }
-        Insert: {
-          created_at?: string
-          evidence?: string | null
-          legacy_owner_id: string
-          organization_id: string
-          status?: string
-        }
-        Update: {
-          created_at?: string
-          evidence?: string | null
-          legacy_owner_id?: string
-          organization_id?: string
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "legacy_owner_organization_map_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       lucky_event_rounds: {
         Row: {
           amount: number
