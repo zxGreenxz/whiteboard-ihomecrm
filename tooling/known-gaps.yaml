@@ -128,38 +128,13 @@ gaps:
       Bật PITR khi quy mô tiền/rủi ro đủ lớn để 100 USD/tháng là rẻ; hoặc rà lại sau 6 tháng
       xem RPO 24 giờ còn chấp nhận được không.
 
-  - id: ua-graph-stale
-    where: .ua/ (knowledge-graph.json, fingerprints.json, meta.json) — baseCommit ca31186e, 07/08/2026
-    expires_at: 2026-09-30
-    why: >
-      CẬP NHẬT 08/08/2026 — hai trong ba điều kiện đóng ĐÃ ĐẠT, con số cũ trong mục này đã
-      sai hoàn toàn nên viết lại. Giữ số cũ ở đây thì chính sổ này thành thứ nó sinh ra để
-      chặn: một cảnh báo không còn đúng thì không ai đọc nữa.
-
-      ĐÃ LÀM (commit a58460af + b654ed9d, merge vào main qua PR riêng theo luật #6):
-      dựng lại TOÀN BỘ graph tại ca31186e — 3.042/3.042 file có node, 7.800 node,
-      17.919 cạnh, 5.976/5.976 cạnh imports khớp importMap tất định, 0 node trùng,
-      0 cạnh treo, 0 issue từ validator. Network Center và OpenClaw hết mù: 88 và 364 node,
-      trước là 0 và 0. Manifest đổi toolVersionSource "attested" → "measured" (đọc thẳng
-      package.json của plugin đã chạy), tức khoản nợ "CHƯA ĐƯỢC CHE" của bản ghi cũ đã trả.
-
-      SỐ ĐO 08/08/2026: cũ 25 commit · 1 tiểu hệ vắng mặt (`services/openclaw-media-gateway`).
-
-      CẬP NHẬT 30/08/2026: toàn bộ OpenClaw đã bị XOÁ khỏi repo và database, nên tiểu hệ
-      từng vắng mặt nay không còn tồn tại — nhưng graph lại trôi XA HƠN vì đợt xoá gỡ 654
-      file. Đo lại: 360 commit sau mốc `ca31186e` (ngưỡng 200) và 1.598 file lệch (ngưỡng
-      500). Gap vì thế vẫn mở, chỉ đổi lý do.
-
-      VÌ SAO GAP CHƯA ĐÓNG: policy đặt maxMissingSubsystems = 0, nên đúng một tiểu hệ vắng
-      cũng đủ làm `--nhiem-vu architecture` exit 1. Ngưỡng 0 là CỐ Ý và không nên nới:
-      một hệ con vắng mặt hoàn toàn là loại mù nguy hiểm nhất — graph không báo rằng nó mù.
-    exit_condition: >
-      `npm run gate:graph-freshness -- --nhiem-vu architecture` exit 0. Hai điều kiện kia
-      (refresh trong PR riêng theo luật #6; manifest ghi toolVersion đo THẬT thay vì
-      attested) đã đạt 08/08/2026 — xem tooling/graph-manifests/ua.json.
-      Thực tế: cần một lần refresh sau đợt xoá OpenClaw (30/08/2026) để graph thôi mô tả
-      364 node của một hệ không còn tồn tại. ĐỪNG refresh sau mỗi thay đổi lớn — mỗi lần là
-      một PR riêng 8 MB; gom lại theo đợt.
+# ĐÃ ĐÓNG 02/09/2026 — ua-graph-stale.
+# Rebuild TOÀN BỘ graph UA tại 20c8f391 (commit 00735ac0, đi riêng theo luật #6; gitleaks
+# allowlist đi commit b6d74d20 trước đó). Đo: 3.091/3.091 file có node · 7.864 node · 16.021
+# cạnh · 14 tầng · 18 bước tour · 0 trùng · 0 treo. OpenClaw còn 101 node thuần migration sổ
+# đóng băng (hết 364 node code). `gate:graph-freshness -- --nhiem-vu architecture` → UA FRESH,
+# exit 0 — đúng exit_condition. GitNexus vẫn STALE (63 commit) nhưng chỉ cảnh báo ở nhiệm vụ này;
+# refresh nó bằng `npm run graph:analyze` (parse cache local, không tracked).
 
   - id: contract-type-handwritten-drift
     where: src/hooks/useContracts.ts (2 chỗ `as unknown as ContractWithRelations`)
