@@ -342,7 +342,7 @@ export function isCurrentChatScope(
 async function currentUserId(): Promise<string> {
   const { data } = await supabase.auth.getUser();
   const userId = data.user?.id;
-  if (!userId) throw new Error('ChÆ°a Ä‘Äƒng nháº­p');
+  if (!userId) throw new Error('Chưa đăng nhập');
   return userId;
 }
 
@@ -386,7 +386,7 @@ async function loadOwnedThread(threadId: string, organizationId: string | null) 
  * rằng người dùng thật sự có membership ACTIVE ở tổ chức được khai.
  */
 export async function createThread(title: string, organizationId: string | null): Promise<ThreadRow> {
-  if (!organizationId) throw new Error('Pháº£i chá»n tá»• chá»©c trÆ°á»›c khi lÆ°u chat');
+  if (!organizationId) throw new Error('Phải chọn tổ chức trước khi lưu chat');
   const userId = await currentUserId();
   if (!userId) throw new Error('Chưa đăng nhập');
   const { data, error } = await supabase
@@ -424,7 +424,7 @@ export async function saveMessages(
   organizationId?: string | null,
 ): Promise<void> {
   const parent = await loadOwnedThread(threadId, organizationId ?? null);
-  if (!parent) throw new Error('Thread khong thuoc nguoi dung hoac to chuc dang chon');
+  if (!parent) throw new Error('Thread không thuộc người dùng hoặc tổ chức đang chọn');
   const userId = parent.user_id;
   if (!userId) throw new Error('Chưa đăng nhập');
   const rows = msgs.map((m) => ({

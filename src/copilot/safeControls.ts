@@ -206,15 +206,15 @@ export function giaiSafeControl(
 
 function assertLive(el: HTMLElement, page: HopDongTrangToiThieu, controlId: string, loai: LoaiThaoTac): void {
   if (!el.isConnected) {
-    throw new LoiSafeControl('khong_thay', `Control "${controlId}" khÃ´ng cÃ²n trÃªn trang.`);
+    throw new LoiSafeControl('khong_thay', `Control "${controlId}" không còn trên trang.`);
   }
   if (!hopLoai(el, loai)) {
-    throw new LoiSafeControl('sai_loai', `Control "${controlId}" khÃ´ng nháº­n thao tÃ¡c "${loai}".`);
+    throw new LoiSafeControl('sai_loai', `Control "${controlId}" không nhận thao tác "${loai}".`);
   }
   // Guard against a component being replaced between resolve and act.
   const actual = el.getAttribute(THUOC_TINH_AN_TOAN);
   if (actual !== `${page.key}.${controlId}` && actual !== controlId) {
-    throw new LoiSafeControl('khong_ket_noi', `Control "${controlId}" Ä‘Ã£ thay Ä‘á»•i trong lÃºc thao tÃ¡c.`);
+    throw new LoiSafeControl('khong_ket_noi', `Control "${controlId}" đã thay đổi trong lúc thao tác.`);
   }
 }
 
