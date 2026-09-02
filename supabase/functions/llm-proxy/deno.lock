@@ -1,0 +1,13 @@
+{
+  "version": "5",
+  "remote": {
+    "https://esm.sh/@supabase/auth-js@2.81.1/denonext/auth-js.mjs": "8b0abdc4c66d01c2b173c11fc5b69319510ca8c016d68d920c41c24224aa2592",
+    "https://esm.sh/@supabase/functions-js@2.81.1/denonext/functions-js.mjs": "488e3a6c9751dd7b4433c093a8f685b3fe5d87611ea45efee4b714c95a5a7de1",
+    "https://esm.sh/@supabase/postgrest-js@2.81.1/denonext/postgrest-js.mjs": "beb6ebf3b3de55828c73ad48a1c460049d56e8723999eabb2724fca9a784caf4",
+    "https://esm.sh/@supabase/realtime-js@2.81.1/denonext/realtime-js.mjs": "ab1da99834a5c49c531416cdea3f80454350a84201e27c4b2eddeb49e0d89c06",
+    "https://esm.sh/@supabase/storage-js@2.81.1/denonext/storage-js.mjs": "0cafa1baae143fe173fc2c25f12b664c6d2015076ede935b6043d78c2209078c",
+    "https://esm.sh/@supabase/supabase-js@2.81.1": "bae1ab984623f88e3a3d7552b04f7c9c56978057d8db8cd90726f77c79161713",
+    "https://esm.sh/@supabase/supabase-js@2.81.1/denonext/supabase-js.mjs": "7324705de80fc6b52cfe5a0eff219b000a984d6c2f76ca1babd8cc32f5d4a570",
+    "https://esm.sh/tslib@2.8.1/denonext/tslib.mjs": "c38da5dd6da6281964435002ce204cd586634fe3bdfb24a0ee116f48cf3292e9"
+  }
+}

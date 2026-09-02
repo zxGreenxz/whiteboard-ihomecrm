@@ -16,7 +16,7 @@ declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 // `x-organization-id`: chỗ dành sẵn cho G0-B (chọn công ty đang làm việc). Header
 // phải nằm trong allow-list CORS trước, nếu không preflight chặn ngay ở trình duyệt
 // và lỗi trông như "server không nhận request" chứ không như "thiếu header".
-const ALLOWED_HEADERS =
+export const ALLOWED_HEADERS =
   'authorization, x-client-info, apikey, content-type, x-copilot-feature, x-task-id, x-mock-step, x-mock-cost, x-organization-id';
 
 const corsHeaders = {
@@ -218,6 +218,86 @@ export function kiemKichThuocBody(text: string, messages: unknown): LoiKichThuoc
   return null;
 }
 
+/**
+ * Đọc body với trần BYTE THẬT — không phải trần đo sau khi đã trót nạp hết.
+ *
+ * `req.text()` gom trọn body vào bộ nhớ rồi mới trả chuỗi, nên mọi phép kiểm
+ * `text.length` sau đó là kiểm MUỘN: một request không khai `content-length`
+ * (chunked) lọt qua phép chặn rẻ ở đầu handler và vẫn nằm nguyên trong isolate
+ * trước khi bị 413. Nhân với semaphore 8 luồng thì trần 512 KiB không chặn gì cả.
+ *
+ * Hàm này đếm khi đọc: chunk nào đẩy tổng vượt trần thì DỪNG ngay, không nối vào
+ * chuỗi, và `cancel()` nguồn để phần còn lại không bị kéo về. Bộ nhớ tối đa vì
+ * thế là trần + đúng một chunk, chứ không phải kích thước body.
+ *
+ * `TextDecoder({ stream: true })` giữ ký tự nhiều byte bị cắt ngang biên chunk —
+ * ghép sai chỗ đó tạo ra ký tự thay thế U+FFFD và JSON.parse hỏng ngẫu nhiên
+ * theo cách chia gói của mạng.
+ */
+export async function docBodyCoTran(
+  body: ReadableStream<Uint8Array> | null,
+  gioiHanBytes: number,
+): Promise<{ ok: true; text: string } | { ok: false }> {
+  if (body === null) return { ok: true, text: '' };
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let tong = 0;
+  let text = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      tong += value.byteLength;
+      if (tong > gioiHanBytes) return { ok: false };
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode(); // xả nốt ký tự dở dang cuối luồng
+    return { ok: true, text };
+  } finally {
+    // Gọi cả trên đường thành công (lúc đó là no-op) lẫn đường vượt trần/lỗi.
+    try { await reader.cancel(); } catch { /* nguồn đã đóng hoặc đã lỗi */ }
+  }
+}
+
+/**
+ * Bề mặt TỐI THIỂU của client admin mà handler dùng.
+ *
+ * Khai riêng để test tiêm được một client giả — nếu không, ba thứ đắt nhất của
+ * đợt này (finalize đúng một lần, semaphore nhả trên đường lỗi, cổng mock đứng
+ * TRƯỚC reserve) chỉ được "kiểm" bằng cách đọc lại code.
+ */
+export interface KetQuaRpc { data: unknown; error: { message?: string } | null }
+export interface DongProvider {
+  provider: string;
+  enabled: boolean;
+  models: unknown;
+  data_class: string;
+}
+export interface AdminToiThieu {
+  auth: {
+    getUser(token: string): Promise<{
+      data: { user: { id: string } | null } | null;
+      error: { message?: string } | null;
+    }>;
+  };
+  from(bang: string): {
+    select(cot: string): {
+      eq(cot: string, giaTri: string): {
+        maybeSingle(): Promise<{ data: DongProvider | null; error: { message?: string } | null }>;
+      };
+    };
+  };
+  rpc(ten: string, args: Record<string, unknown>): PromiseLike<KetQuaRpc>;
+}
+
+/** Thứ handler đi mượn của thế giới bên ngoài. Bỏ trống = dùng đồ thật. */
+export interface PhuThuoc {
+  admin?: AdminToiThieu;
+  getEnv?: (key: string) => string | undefined;
+  fetchImpl?: typeof fetch;
+}
+
 export const TIMEOUT_KET_NOI_MS = 60_000;
 export const TIMEOUT_STREAM_TONG_MS = 180_000;
 export const TIMEOUT_STREAM_IM_MS = 30_000;
@@ -244,14 +324,16 @@ export function taoDongHoStream(
   imMs: number = TIMEOUT_STREAM_IM_MS,
 ): DongHoStream {
   let daBan = false;
-  let dongHoIm: number | undefined;
+  // `ReturnType<typeof setTimeout>` chứ không phải `number`: trong Deno nó là
+  // `Timeout`, không phải số như trên trình duyệt — ghim `number` làm type-check đỏ.
+  let dongHoIm: ReturnType<typeof setTimeout> | undefined;
   const ban = (lyDo: 'tong' | 'im') => {
     if (daBan) return;
     daBan = true;
     don();
     khiHetGio(lyDo);
   };
-  const dongHoTong = setTimeout(() => ban('tong'), tongMs);
+  const dongHoTong: ReturnType<typeof setTimeout> = setTimeout(() => ban('tong'), tongMs);
   function don() {
     clearTimeout(dongHoTong);
     if (dongHoIm !== undefined) clearTimeout(dongHoIm);
@@ -366,8 +448,12 @@ function mockStreamResponse(
 /** Trần parse ĐỒNG THỜI: một instance chỉ giải nén ngần này body cùng lúc. */
 export const TRAN_PARSE_DONG_THOI = 8;
 let dangParse = 0;
+/** Chỉ dùng cho test: chứng minh semaphore được nhả cả trên đường lỗi. */
+export const dangParseHienTai = (): number => dangParse;
 
-export const xuLyYeuCau = async (req: Request): Promise<Response> => {
+export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Response> => {
+  const getEnv = deps?.getEnv ?? ((key: string) => Deno.env.get(key));
+  const goiMang = deps?.fetchImpl ?? fetch;
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -388,11 +474,14 @@ export const xuLyYeuCau = async (req: Request): Promise<Response> => {
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!token) return openaiError(401, 'Missing authorization header', 'unauthorized');
 
-  const admin = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  // `??` ngắn mạch: có client tiêm vào thì KHÔNG gọi createClient, nên test không
+  // cần SUPABASE_URL/SERVICE_ROLE_KEY. Một lần ép kiểu duy nhất ở đúng đường nối
+  // này — generic của supabase-js rộng hơn bề mặt handler thật sự dùng.
+  const admin: AdminToiThieu = deps?.admin ?? (createClient(
+    getEnv('SUPABASE_URL')!,
+    getEnv('SUPABASE_SERVICE_ROLE_KEY')!,
     { auth: { persistSession: false, autoRefreshToken: false } },
-  );
+  ) as unknown as AdminToiThieu);
   const { data: userData, error: userError } = await admin.auth.getUser(token);
   if (userError || !userData?.user) return openaiError(401, 'Invalid JWT', 'unauthorized');
   const userId = userData.user.id;
@@ -407,18 +496,15 @@ export const xuLyYeuCau = async (req: Request): Promise<Response> => {
   }
   dangParse += 1;
   try {
-    let text: string;
+    let doc: { ok: true; text: string } | { ok: false };
     try {
-      text = await req.text();
+      doc = await docBodyCoTran(req.body, GIOI_HAN_BODY_BYTES);
     } catch {
+      // Luồng body đứt/lỗi giữa chừng. `finally` bên dưới vẫn nhả semaphore.
       return openaiError(400, 'Invalid JSON body', 'invalid_json');
     }
-    // Chặn sớm theo KÝ TỰ: mỗi ký tự UTF-8 tốn ít nhất 1 byte, nên vượt trần ký tự
-    // là chắc chắn vượt trần byte. Body không khai content-length (chunked) chỉ
-    // dừng được ở đây, trước khi parse.
-    if (text.length > GIOI_HAN_BODY_BYTES) {
-      return openaiError(413, 'Request body too large', 'body_too_large');
-    }
+    if (!doc.ok) return openaiError(413, 'Request body too large', 'body_too_large');
+    const text = doc.text;
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
@@ -452,7 +538,7 @@ export const xuLyYeuCau = async (req: Request): Promise<Response> => {
   // (seed gốc đặt `enabled = true`), bất kỳ ai có JWT đều gọi được. Công tắc thật
   // phải nằm ở DEPLOYMENT — biến môi trường không sửa được từ giao diện admin —
   // và phải chặn TRƯỚC reserve, kẻo mỗi lần thử là một dòng usage rác.
-  if (provider === 'mock' && !mockDuocPhep()) {
+  if (provider === 'mock' && !mockDuocPhep(getEnv)) {
     return openaiError(403, 'Mock provider is disabled', 'provider_disabled');
   }
 
@@ -532,7 +618,9 @@ export const xuLyYeuCau = async (req: Request): Promise<Response> => {
   }) => {
     if (daFinalize) return;
     daFinalize = true;
-    const p = admin.rpc('finalize_ai_usage', {
+    // `Promise.resolve`: `rpc()` khai kiểu PromiseLike, mà `EdgeRuntime.waitUntil`
+    // đòi Promise thật.
+    const p: Promise<void> = Promise.resolve(admin.rpc('finalize_ai_usage', {
       p_id: reservationId,
       p_prompt_tokens: fields.prompt ?? 0,
       p_completion_tokens: fields.completion ?? 0,
@@ -555,7 +643,7 @@ export const xuLyYeuCau = async (req: Request): Promise<Response> => {
           err: error.message?.slice(0, 300) ?? null,
         }));
       }
-    });
+    }));
     if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
     else void p;
   };
@@ -582,7 +670,7 @@ export const xuLyYeuCau = async (req: Request): Promise<Response> => {
     finalize({ cost: 0, latency: 0, status: 'upstream_error', error: 'no upstream route' });
     return openaiError(403, `Provider "${provider}" has no upstream route`, 'provider_disabled');
   }
-  const apiKey = Deno.env.get(upstream.envKey);
+  const apiKey = getEnv(upstream.envKey);
   if (!apiKey) {
     finalize({ cost: 0, latency: 0, status: 'upstream_error', error: 'no api key' });
     return openaiError(403, `Provider "${provider}" has no API key configured`, 'provider_disabled');
@@ -606,7 +694,7 @@ export const xuLyYeuCau = async (req: Request): Promise<Response> => {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_KET_NOI_MS);
   let streamDangChay = false;
   try {
-    const res = await fetch(`${upstream.baseURL}/chat/completions`, {
+    const res = await goiMang(`${upstream.baseURL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -798,5 +886,7 @@ export const xuLyYeuCau = async (req: Request): Promise<Response> => {
 };
 
 if (import.meta.main) {
-  Deno.serve(xuLyYeuCau);
+  // Bọc lambda: Deno truyền `ServeHandlerInfo` làm tham số thứ hai, đừng để nó
+  // rơi vào chỗ của `deps`.
+  Deno.serve((req) => xuLyYeuCau(req));
 }

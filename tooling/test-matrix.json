@@ -86,7 +86,7 @@
       "id": "edge-deno-llm-proxy",
       "runner": "deno",
       "ciJob": "(chưa có — xem blockedFromCi)",
-      "command": "deno test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env",
+      "command": "npx --yes deno@2.9.4 test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env",
       "runtime": "deno 2.9.4",
       "risk": "normal",
       "includes": [
@@ -96,9 +96,9 @@
       "ciJobs": [],
       "environment": "local",
       "blockedFromCi": {
-        "reason": "Chưa workflow nào cài Deno cho llm-proxy: ci-gates.yml không có bước Deno, còn network-center-validation.yml lọc đường dẫn Network Center nên thay đổi ở supabase/functions/llm-proxy không kích hoạt nó. Máy viết test cũng không có deno nên chưa ai chạy file này lần nào — khai đúng như vậy thay vì gắn vào một job không chạy nó.",
+        "reason": "Chưa workflow nào cài Deno cho llm-proxy: ci-gates.yml không có bước Deno, còn network-center-validation.yml lọc đường dẫn Network Center nên thay đổi ở supabase/functions/llm-proxy không kích hoạt nó. Suite CHẠY ĐƯỢC ở local qua npx (27/27 xanh ngày 02/09/2026, Deno 2.9.4) — thứ còn thiếu là một job CI, không phải runtime.",
         "expiry": "2026-10-31",
-        "exitCondition": "Chạy `deno test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env` một lần trên máy/CI có Deno 2.9.4; xanh thì thêm bước Deno vào job quality-gates của ci-gates.yml (pin denoland/setup-deno như network-center-validation.yml), đổi ciJobs thành job đó và xoá mục này."
+        "exitCondition": "Thêm bước Deno vào job quality-gates của ci-gates.yml (pin denoland/setup-deno + deno-version 2.9.4 như network-center-validation.yml) chạy đúng `command` ở trên, rồi đổi ciJobs thành {workflow: .github/workflows/ci-gates.yml, job: quality-gates}, environment thành ci, và xoá mục này."
       }
     },
     {

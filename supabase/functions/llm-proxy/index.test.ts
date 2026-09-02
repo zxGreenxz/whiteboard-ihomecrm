@@ -60,7 +60,23 @@ type ProxyModule = {
     tongMs?: number,
     imMs?: number,
   ) => DongHoStream;
+  docBodyCoTran: (
+    body: ReadableStream<Uint8Array> | null,
+    gioiHanBytes: number,
+  ) => Promise<{ ok: true; text: string } | { ok: false }>;
+  dangParseHienTai: () => number;
+  xuLyYeuCau: (req: Request, deps?: PhuThuocGia) => Promise<Response>;
 };
+
+/**
+ * Bề mặt handler đi mượn. Khai lại ở đây thay vì import type từ index.ts để test
+ * ĐỎ khi index.ts đổi hình dạng — import type sẽ tự trôi theo và im lặng.
+ */
+interface PhuThuocGia {
+  admin?: unknown;
+  getEnv?: (key: string) => string | undefined;
+  fetchImpl?: typeof fetch;
+}
 
 const proxyModule = import("./index.ts").catch(() => null);
 
@@ -236,9 +252,9 @@ Deno.test("đồng hồ IM LẶNG bắn khi stream đứng hình", async () => {
 Deno.test("mỗi chunk dời hạn im lặng, nhưng KHÔNG dời hạn tổng", async () => {
   const { taoDongHoStream } = await nap();
   const banRa: string[] = [];
-  const dongHo = taoDongHoStream((lyDo) => banRa.push(lyDo), 120, 40);
-  // 8 nhịp × 20ms = 160ms: vượt hẳn hạn tổng 120ms để phép thử không phụ thuộc
-  // vào việc setTimeout trả sớm hay muộn vài mili giây.
+  const dongHo = taoDongHoStream((lyDo) => banRa.push(lyDo), 120, 200);
+  // 8 nhịp × 20ms = 160ms: vượt hẳn hạn tổng 120ms. Hạn im lặng để 200ms — rộng
+  // hơn nhịp gõ nhiều lần, nên máy CI kẹt một nhịp cũng không bắn nhầm "im".
   for (let i = 0; i < 8; i += 1) {
     await nghi(20);
     dongHo.datLai(); // stream vẫn chảy đều
@@ -287,4 +303,227 @@ Deno.test("CORS cho phép x-organization-id (G0-B) và giữ nguyên các header
 Deno.test("trần parse đồng thời là 8", async () => {
   const { TRAN_PARSE_DONG_THOI } = await nap();
   assertEquals(TRAN_PARSE_DONG_THOI, 8);
+});
+
+// ── 7. Đọc body có trần THẬT (không phải trần đo sau khi đã nạp hết) ───────
+
+/** Nguồn đếm số chunk đã bơm ra. `highWaterMark: 0` để stream KHÔNG kéo trước. */
+function nguonDem(chunks: Uint8Array[]): { luong: ReadableStream<Uint8Array>; daBom: () => number } {
+  let i = 0;
+  const luong = new ReadableStream<Uint8Array>({
+    pull(ctrl) {
+      if (i >= chunks.length) {
+        ctrl.close();
+        return;
+      }
+      ctrl.enqueue(chunks[i]);
+      i += 1;
+    },
+  }, new CountQueuingStrategy({ highWaterMark: 0 }));
+  return { luong, daBom: () => i };
+}
+
+Deno.test("docBodyCoTran: tổng ĐÚNG BẰNG trần thì qua, và ghép lại đủ byte", async () => {
+  const { docBodyCoTran } = await nap();
+  const chunks = [0, 1, 2, 3, 4].map(() => new TextEncoder().encode("a".repeat(50)));
+  const { luong } = nguonDem(chunks);
+  const kq = await docBodyCoTran(luong, 250);
+  assert(kq.ok, "250 byte trên trần 250 phải qua");
+  assertEquals(kq.ok ? kq.text.length : -1, 250);
+});
+
+Deno.test("docBodyCoTran: vượt trần thì DỪNG NGAY, không kéo nốt phần còn lại", async () => {
+  const { docBodyCoTran } = await nap();
+  // 10 chunk × 100 byte = 1000 byte, trần 250 ⇒ chunk thứ 3 làm tổng thành 300.
+  const chunks = new Array(10).fill(0).map(() => new TextEncoder().encode("b".repeat(100)));
+  const { luong, daBom } = nguonDem(chunks);
+  const kq = await docBodyCoTran(luong, 250);
+  assertEquals(kq.ok, false);
+  // Đây mới là điều phải chứng minh: bộ nhớ dừng ở trần, không ở kích thước body.
+  // Với highWaterMark 0 con số đúng là 3; nới tới 4 để không phụ thuộc vào việc
+  // một bản runtime có kéo trước một chunk hay không.
+  assert(daBom() <= 4, `đã kéo ${daBom()}/10 chunk — trần không chặn được gì`);
+  assert(daBom() < chunks.length, "không được kéo hết body rồi mới báo quá trần");
+});
+
+Deno.test("docBodyCoTran: ký tự nhiều byte bị cắt ngang biên chunk vẫn ghép đúng", async () => {
+  const { docBodyCoTran } = await nap();
+  const goc = "Điện nước tháng 9 — phòng 302 · 1.250.000₫";
+  const byte = new TextEncoder().encode(goc);
+  // Cắt mỗi 3 byte, nên có ký tự bị xẻ đôi giữa hai chunk.
+  const chunks: Uint8Array[] = [];
+  for (let i = 0; i < byte.length; i += 3) chunks.push(byte.slice(i, i + 3));
+  const { luong } = nguonDem(chunks);
+  const kq = await docBodyCoTran(luong, 1024);
+  assert(kq.ok, "body nhỏ phải qua");
+  assertEquals(kq.ok ? kq.text : "", goc, "TextDecoder phải chạy ở chế độ stream");
+  assert(!(kq.ok && kq.text.includes("�")), "không được sinh ký tự thay thế");
+});
+
+Deno.test("docBodyCoTran: body null (không có thân) trả chuỗi rỗng", async () => {
+  const { docBodyCoTran } = await nap();
+  const kq = await docBodyCoTran(null, 10);
+  assert(kq.ok);
+  assertEquals(kq.ok ? kq.text : "x", "");
+});
+
+// ── 8. Handler: cổng mock, finalize một lần, semaphore ─────────────────────
+
+type GoiRpc = { ten: string; args: Record<string, unknown> };
+
+/** Client admin giả: ghi lại mọi lượt gọi RPC để đếm. */
+function adminGia(options?: {
+  provider?: { provider: string; enabled: boolean; models: unknown; data_class: string } | null;
+  reserveLoi?: string;
+}) {
+  const goi: GoiRpc[] = [];
+  const dong = options?.provider === undefined
+    ? { provider: "mock", enabled: true, models: [], data_class: "cloud" }
+    : options.provider;
+  const admin = {
+    auth: {
+      getUser: (_token: string) =>
+        Promise.resolve({
+          data: { user: { id: "11111111-1111-4111-8111-111111111111" } },
+          error: null,
+        }),
+    },
+    from: (_bang: string) => ({
+      select: (_cot: string) => ({
+        eq: (_c: string, _v: string) => ({
+          maybeSingle: () => Promise.resolve({ data: dong, error: null }),
+        }),
+      }),
+    }),
+    rpc: (ten: string, args: Record<string, unknown>) => {
+      goi.push({ ten, args });
+      if (ten === "reserve_ai_usage" && options?.reserveLoi) {
+        return Promise.resolve({ data: null, error: { message: options.reserveLoi } });
+      }
+      if (ten === "reserve_ai_usage") {
+        return Promise.resolve({ data: "22222222-2222-4222-8222-222222222222", error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  const dem = (ten: string) => goi.filter((g) => g.ten === ten).length;
+  return { admin, goi, dem };
+}
+
+const URL_CHAT = "https://proxy.test/functions/v1/llm-proxy/chat/completions";
+
+function yeuCau(body: unknown, headers: Record<string, string> = {}): Request {
+  return new Request(URL_CHAT, {
+    method: "POST",
+    headers: { Authorization: "Bearer jwt-gia", "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+Deno.test("(a) thiếu LLM_PROXY_ALLOW_MOCK: 403 và KHÔNG hề reserve", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, dem } = adminGia();
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "mock:done", messages: [{ role: "user", content: "chào" }] }),
+    { admin, getEnv: () => undefined },
+  );
+  assertEquals(res.status, 403);
+  const than = await res.json();
+  assertEquals(than.error.code, "provider_disabled");
+  // Cổng phải đứng TRƯỚC reserve: nếu sau, mỗi lần thử là một dòng usage rác và
+  // một suất hạn mức bị giữ.
+  assertEquals(dem("reserve_ai_usage"), 0, "đã reserve rồi mới chặn — sai thứ tự");
+  assertEquals(dem("finalize_ai_usage"), 0);
+});
+
+Deno.test("(b) mock được phép: finalize ĐÚNG MỘT lần cho một lượt gọi", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, dem, goi } = adminGia();
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "mock:done", messages: [{ role: "user", content: "chào" }] }),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  assertEquals(res.status, 200);
+  await res.json();
+  assertEquals(dem("reserve_ai_usage"), 1);
+  assertEquals(dem("finalize_ai_usage"), 1, "hai lần finalize là ghi đè sổ usage");
+  const chot = goi.find((g) => g.ten === "finalize_ai_usage");
+  assertEquals(chot?.args.p_status, "ok");
+});
+
+Deno.test("(b2) x-mock-cost âm: reserve nhận 0, không nhận số âm", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, goi } = adminGia();
+  await xuLyYeuCau(
+    yeuCau(
+      { model: "mock:done", messages: [{ role: "user", content: "x" }] },
+      { "x-mock-cost": "-5" },
+    ),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  const dat = goi.find((g) => g.ten === "reserve_ai_usage");
+  assertEquals(dat?.args.p_est_cost_usd, 0, "số âm ở đây HOÀN LẠI hạn mức ngày");
+});
+
+Deno.test("(c) luồng body lỗi: trả 400 và NHẢ semaphore", async () => {
+  const { xuLyYeuCau, dangParseHienTai } = await nap();
+  const { admin } = adminGia();
+  assertEquals(dangParseHienTai(), 0, "phép thử chỉ có nghĩa khi bắt đầu từ 0");
+  const luongLoi = new ReadableStream<Uint8Array>({
+    start(ctrl) {
+      ctrl.error(new Error("mang dut giua chung"));
+    },
+  });
+  const init: RequestInit & { duplex?: string } = {
+    method: "POST",
+    headers: { Authorization: "Bearer jwt-gia", "Content-Type": "application/json" },
+    body: luongLoi,
+    duplex: "half",
+  };
+  const res = await xuLyYeuCau(new Request(URL_CHAT, init), { admin, getEnv: () => undefined });
+  assertEquals(res.status, 400);
+  await res.body?.cancel();
+  // Không nhả thì sau 8 request hỏng, proxy trả 429 cho mọi người, vĩnh viễn.
+  assertEquals(dangParseHienTai(), 0, "semaphore rò — đường lỗi không đi qua finally");
+});
+
+Deno.test("(d) upstream ném: finalize đúng MỘT lần với trạng thái lỗi", async () => {
+  const { xuLyYeuCau, dangParseHienTai } = await nap();
+  const { admin, dem, goi } = adminGia({
+    provider: {
+      provider: "openrouter",
+      enabled: true,
+      models: [{ id: "m1", pricing_mode: "free", input_price: 0, output_price: 0 }],
+      data_class: "cloud",
+    },
+  });
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "openrouter:m1", messages: [{ role: "user", content: "x" }] }),
+    {
+      admin,
+      getEnv: (k) => (k === "OPENROUTER_API_KEY" ? "key-gia" : undefined),
+      fetchImpl: () => Promise.reject(new Error("upstream sap")),
+    },
+  );
+  assertEquals(res.status, 502);
+  await res.json();
+  assertEquals(dem("reserve_ai_usage"), 1);
+  // Cả `catch` lẫn lưới `finally` đều muốn chốt sổ — guard daFinalize phải chặn
+  // lần thứ hai, nếu không dòng usage bị ghi đè.
+  assertEquals(dem("finalize_ai_usage"), 1);
+  const chot = goi.find((g) => g.ten === "finalize_ai_usage");
+  assertEquals(chot?.args.p_status, "upstream_error");
+  assertEquals(dangParseHienTai(), 0);
+});
+
+Deno.test("(e) body vượt trần đi qua HANDLER: 413, không reserve, semaphore sạch", async () => {
+  const { xuLyYeuCau, dangParseHienTai } = await nap();
+  const { admin, dem } = adminGia();
+  const to = { model: "mock:done", messages: [{ role: "user", content: "x".repeat(600_000) }] };
+  const res = await xuLyYeuCau(yeuCau(to), { admin, getEnv: () => "1" });
+  assertEquals(res.status, 413);
+  const than = await res.json();
+  assertEquals(than.error.code, "body_too_large");
+  assertEquals(dem("reserve_ai_usage"), 0);
+  assertEquals(dangParseHienTai(), 0);
 });
