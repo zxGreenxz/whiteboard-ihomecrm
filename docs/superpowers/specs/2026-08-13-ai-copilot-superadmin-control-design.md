@@ -1,5 +1,7 @@
 # AI Copilot Superadmin Full-Site Control - Audit And Target Design
 
+> **[ADR 02/09/2026]** Câu "khong co global consent cho ca plan, ke ca superadmin" ở §12 (dòng ~1028) đã bị **thay** bởi quyết định chủ dự án: xem `../specs/2026-09-02-ai-copilot-batch-consent-adr.md` trước khi đọc §12.
+
 > **[CÒN SỐNG — trạng thái 02/09/2026]** Thiết kế nền cho plan LEAN. Trạng thái thực thi: xem banner của `../plans/2026-08-13-ai-copilot-superadmin-full-site-control.md`.
 
 **Ngay:** 2026-08-13

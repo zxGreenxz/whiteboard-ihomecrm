@@ -1,5 +1,7 @@
 # AI Copilot Superadmin Control — Plan LEAN (đã đối chiếu thực tế 2026-08-14)
 
+> **[CÒN SỐNG — trạng thái 02/09/2026]** bị thay thế về định hướng bởi plan `2026-09-02-ai-copilot-va-nen-den-toan-quyen-muc-3.md` (Mức 2 batch consent → Mức 3); các task Phase A–C vẫn là nguồn bằng chứng lịch sử.
+
 > **[CÒN SỐNG — trạng thái 02/09/2026]** Plan LEAN Op1 (chốt 14/08, commit `f54b9025`). Trạng thái phase: A ⚠ từng phần · **B ❌ chưa đủ bằng chứng** · D ⬜ chưa bắt đầu. Chuỗi migration copilot 28–31/08 (`copilot_org_scope`, `draft_writer`, `restricted_category_guard`…) đã ship phần scope/draft — đối chiếu bảng trạng thái trong file trước khi làm tiếp.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: dùng superpowers:subagent-driven-development (khuyến nghị)

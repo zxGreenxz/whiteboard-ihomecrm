@@ -1,6 +1,6 @@
 # AI Copilot
 
-> **Reviewed:** 2026-07-20
+> **Reviewed:** 2026-09-02
 
 AI Copilot gồm chat nghiệp vụ, UI-control giới hạn và tool domain. Launcher chỉ hiện khi user có session, entitlement còn hiệu lực và quyền tương ứng.
 
@@ -41,8 +41,9 @@ OpenAI-compat với proxy (cần streaming, ảnh, tool song song), còn UI-cont
 
 ## Giới hạn cần biết
 
-- Cờ xác nhận `xac_nhan` của write tool do model tạo theo schema/prompt; chưa có state machine server-side kiểm rằng preview đã được hiển thị và người dùng đã đồng ý ở lượt trước. Không dùng cờ này như bằng chứng ủy quyền độc lập.
-- Write tool chạy ba bước: INSERT `ai_write_audit` (client) → RPC `ie_compat_insert_v2` → UPDATE `entity_id` vào audit (client). Phiếu và hạng mục **nằm chung một RPC nên nguyên tử với nhau**; ba bước thì không nằm chung transaction. Hỏng giữa chừng để lại audit không có `entity_id`, hoặc phiếu đã tạo mà audit chưa trỏ tới — không để lại phiếu thiếu hạng mục. Idempotency key chặn tạo trùng khi thử lại.
+- Ghi đi qua nonce server, không còn dựa vào cờ model tự khai: `preview` (`copilot_preview_income_expense_v1`) trả `confirmation_nonce` một lần, lưu ở `app_private.copilot_write_confirmations` (migration `20260814034500`, chỉ lưu digest payload, TTL 5 phút, CAS `consumed_at` chặn dùng lại/song song). `execute` (`copilot_execute_income_expense_v1`, `20260830171108`) tiêu nonce rồi **re-check quyền lại từ đầu** thay vì tin kết quả preview, kèm guard hạng mục (`20260831110236`). Cờ `xac_nhan` do model tạo chỉ còn là tín hiệu UI; bằng chứng ủy quyền thật nằm ở dòng nonce đã bị tiêu trong `copilot_write_confirmations`.
+- `ai_write_audit` append-only: trigger chặn UPDATE/DELETE ở **mọi vai kể cả `service_role`** (`20260814034600`). Phiếu và hạng mục nằm chung một RPC nên nguyên tử với nhau. Idempotency key chặn tạo trùng khi thử lại.
+- Giới hạn hiện tại: chỉ 1 tool ghi (`tao_phieu_thu_chi_nhap`, draft UNAPPROVED), UI-control 3 route pilot.
 - Proxy từ chối `modelId` không có trong `ai_providers.models` của provider (400 `bad_model`); provider `mock` là ngoại lệ vì "model" của nó là kịch bản dev/test. Model đã bật mà khai giá `0` thì vẫn được tính chi phí `0` — hạn mức USD chỉ đúng bằng độ đúng của metadata giá, nên chỉ bật model đã điền giá thật.
 - Các bảng/RPC RAG legacy đã bị drop; lịch sử chat hiện nằm ở `ai_chat_threads`/`ai_chat_messages`, không dùng `ai_conversations`/`ai_messages` cũ.
 - Tra tài liệu **chỉ tải** thân những tài liệu phiên có quyền đọc, chứ không tải hết rồi mới lọc. Hệ quả chấp nhận có ý thức: điểm xếp hạng phụ thuộc tập tài liệu của từng người, nên hai người hỏi cùng câu có thể thấy thứ tự kết quả khác nhau.
