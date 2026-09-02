@@ -3,6 +3,7 @@
 // profiles.ui_preferences (KHÔNG tạo bảng riêng).
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionUserId } from '@/lib/authSession';
 import { useSetUiPreference, useUiPreferences } from '@/hooks/useUiPreferences';
 import { DEFAULT_MODEL, MODEL_PREF_KEY } from './copilotConfig';
 import { listLocalModels } from './ollama';
@@ -95,15 +96,33 @@ export function useCopilotModel(): { model: string; setModel: (m: string) => voi
   };
 }
 
-/** Entitlement của CHÍNH user (RLS select own) — không có dòng = ẩn launcher. */
+/**
+ * Entitlement của CHÍNH user — không có dòng = ẩn launcher.
+ *
+ * `.eq('user_id', uid)` KHÔNG phải hàng rào (RLS mới là hàng rào), nó là điều
+ * kiện để `.maybeSingle()` có nghĩa. Với người dùng thường, policy "select own"
+ * đã lọc sẵn nên thiếu `.eq` cũng chạy đúng — nhưng SUPER ADMIN thấy MỌI dòng,
+ * và `maybeSingle()` gặp dòng thứ hai là ném PGRST116. Hậu quả không phải một
+ * thông báo lỗi mà là NÚT COPILOT BIẾN MẤT: query throw, `entitlement` về
+ * undefined, `CopilotLauncher` trả null.
+ *
+ * Bảng chỉ cần có hai người được cấp quyền là bẫy này bật.
+ */
 export function useCopilotEntitlement() {
   return useQuery({
     queryKey: ['ai-copilot-entitlement'],
     staleTime: 60_000,
     queryFn: async () => {
+      // Session LOCAL, không round-trip `/auth/v1/user` — cùng lối với các
+      // queryFn khác trong repo (xem `@/lib/authSession`).
+      const userId = await getSessionUserId();
+      // Chưa đăng nhập thì không có gì để hỏi. Trả null (ẩn launcher) chứ không
+      // ném: đây là trạng thái bình thường lúc app vừa dựng, không phải lỗi.
+      if (!userId) return null;
       const { data, error } = await supabase
         .from('ai_copilot_entitlements')
         .select('chat_enabled, ui_control_enabled')
+        .eq('user_id', userId)
         .maybeSingle();
       if (error) throw error;
       return data; // null = không được dùng
