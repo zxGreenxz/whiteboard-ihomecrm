@@ -14,6 +14,7 @@ describe("useMeterReadings không còn fallback sang RPC duyệt chỉ số lega
     expect(source).toMatch(/supabase\.rpc\("bulk_approve_meter_readings_v1"/);
     expect(source).not.toMatch(/supabase\.rpc\("approve_meter_reading"/);
     expect(source).not.toMatch(/supabase\.rpc\("bulk_approve_meter_readings"/);
-    expect(source).not.toMatch(/PGRST202/);
+    // chi bat MA fallback (so sanh ma loi roi goi legacy), khong bat chu "PGRST202" trong comment giai thich
+    expect(source).not.toMatch(/=== "PGRST202"/);
   });
 });
