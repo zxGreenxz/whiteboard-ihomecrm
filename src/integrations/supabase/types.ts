@@ -18867,6 +18867,14 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_network_status_v1: {
+        Args: {
+          p_building_id?: string
+          p_limit?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       copilot_occupancy_upcoming_v1: {
         Args: {
           p_as_of_date: string
@@ -19008,6 +19016,14 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_salary_summary_v1: {
+        Args: { p_ky?: string; p_limit?: number; p_organization_id: string }
+        Returns: Json
+      }
+      copilot_shareholder_profit_v1: {
+        Args: { p_ky?: string; p_limit?: number; p_organization_id: string }
+        Returns: Json
+      }
       copilot_tasks_v1: {
         Args: {
           p_limit?: number
@@ -19017,6 +19033,10 @@ export type Database = {
         Returns: Json
       }
       copilot_vehicle_search_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
+      copilot_zalo_conversations_v1: {
         Args: { p_limit?: number; p_organization_id: string; p_query?: string }
         Returns: Json
       }

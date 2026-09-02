@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 479,
-  "soFileDocBangFs": 163,
-  "tongLoiGoi": 330,
+  "tongSoFileTest": 480,
+  "soFileDocBangFs": 164,
+  "tongLoiGoi": 335,
   "khongPhanLoaiDuoc": 171,
   "theoLoai": {
     "manifest": {
@@ -19,11 +19,11 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 31,
+      "soFile": 32,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 59,
+      "soFile": 60,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -50,6 +50,7 @@
     "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
     "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
     "src/lib/__tests__/copilotReportRpcMigration.test.ts",
+    "src/lib/__tests__/copilotSensitiveRpcMigration.test.ts",
     "src/lib/__tests__/docsDemoSeedP3.test.ts",
     "src/lib/__tests__/financeV2Characterization.test.ts",
     "src/lib/__tests__/ieGuardHandoverScopeMigration.test.ts",
@@ -170,6 +171,14 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/copilot/__tests__/readonlyQueryContracts.test.ts",
+      "soGoi": 4,
+      "loai": {
+        "ma-nguon": 4
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
@@ -355,14 +364,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/copilot/__tests__/readonlyQueryContracts.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "ma-nguon": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/copilot/__tests__/toolOrgScope.test.ts",
       "soGoi": 2,
       "loai": {
@@ -437,6 +438,23 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/copilotRolloutSeedPagesMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotSensitiveRpcMigration.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "sql": 1,
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/lib/__tests__/customerCreditMigration.test.ts",
@@ -919,14 +937,6 @@
     },
     {
       "file": "src/lib/__tests__/copilotReserveAiUsageOrganizationMigration.test.ts",
-      "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/copilotRolloutSeedPagesMigration.test.ts",
       "soGoi": 1,
       "loai": {
         "sql": 1
