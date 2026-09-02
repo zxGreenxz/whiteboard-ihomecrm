@@ -136,9 +136,24 @@ jobs:
       # Kết luận: dọn `data/` là CẦN nhưng KHÔNG ĐỦ; chừng nào mật khẩu còn đi qua
       # `fill()` thì report HTML không thể chứng minh là sạch. Nên CI không sinh nó.
       #
-      # Đầu ra duy nhất được giữ là stdout của reporter `list` (đã đo: không chứa
-      # giá trị đã điền — call log chỉ có selector và thông báo lỗi). Đủ để biết ca
-      # nào đỏ và đỏ ở đâu.
+      # Đầu ra duy nhất được giữ là stdout của reporter `list`, và nó CŨNG KHÔNG
+      # sạch sẵn — đây là đính chính lời khai sai của chính file này: bản 02/09/2026
+      # trước đó ghi "call log chỉ có selector và thông báo lỗi".
+      #   `_fill()` ghi THẲNG giá trị vào call log — playwright-core/lib/coreBundle.js
+      #   dòng 19648: progress.log(  fill("<giá trị>") ). `formatCallLog` nối dòng đó
+      #   vào thông báo lỗi và reporter `list` in ra nguyên văn.
+      #   Xảy ra khi locator PHÂN GIẢI ĐƯỢC rồi `fill` mới timeout — đúng cảnh ô mật
+      #   khẩu bị disabled/che ở auth.ts:52. Đã tái hiện 02/09/2026: dòng 13 của log
+      #   chứa `- fill("Fl33t!…")`.
+      # Nên có HAI lớp, không một:
+      #   - LỚP ĐẦU (lọc che): đặt trên đường ống TRƯỚC `tee`, thay mọi giá trị
+      #     `FLEET_PASS_*` bằng `***`. Thứ nằm trên đĩa sạch ngay từ đầu, nên artifact
+      #     vẫn dùng được để đọc lỗi.
+      #   - LƯỚI (bước guard bên dưới): vẫn grep nguyên văn từng mật khẩu. Lọc che có
+      #     thể sót (giá trị quá ngắn, một đường ghi khác) — guard mới là thứ CHẶN
+      #     upload.
+      # Đừng gỡ lớp nào vì "lớp kia lo rồi": lớp đầu giữ cho log còn đọc được, lưới
+      # giữ cho một lần sót không thành một lần rò.
       #
       # `--output` và thư mục log đặt TƯỜNG MINH trong $RUNNER_TEMP. Không phải cho
       # gọn: Playwright phân giải `playwright-report/`/`test-results/` mặc định
@@ -173,7 +188,31 @@ jobs:
             specs/copilot-draft-matrix.spec.ts \
             --reporter=list \
             --trace=off \
-            --output "$THU_MUC_RAC" 2>&1 | tee "$THU_MUC_TAI_LEN/list.log"
+            --output "$THU_MUC_RAC" 2>&1 | node -e '
+              // Lọc che: thay mọi giá trị FLEET_PASS_* bằng ***, xử theo TỪNG DÒNG.
+              // Dùng split/join chứ KHÔNG regex: mật khẩu chứa `!`, `_`, `-` và quên
+              // escape một metachar là lọc âm thầm sai. So khớp chuỗi thuần thì không
+              // có metachar nào để quên. Dài trước ngắn sau, để một mật khẩu là tiền
+              // tố của mật khẩu khác vẫn bị che trọn.
+              // Bỏ qua giá trị dưới 8 ký tự: một biến đặt nhầm thành "a" sẽ biến cả
+              // log thành ***. Trường hợp đó guard vẫn là lưới.
+              const NL = String.fromCharCode(10);
+              const bi = Object.keys(process.env)
+                .filter((k) => k.startsWith("FLEET_PASS_"))
+                .map((k) => process.env[k])
+                .filter((v) => v && v.length >= 8)
+                .sort((a, b) => b.length - a.length);
+              const che = (s) => { for (const v of bi) s = s.split(v).join("***"); return s; };
+              let du = "";
+              process.stdin.setEncoding("utf8");
+              process.stdin.on("data", (c) => {
+                du += c;
+                const dong = du.split(NL);
+                du = dong.pop();
+                for (const d of dong) process.stdout.write(che(d) + NL);
+              });
+              process.stdin.on("end", () => { if (du) process.stdout.write(che(du) + NL); });
+            ' | tee "$THU_MUC_TAI_LEN/list.log"
 
       # Dọn TRƯỚC guard, guard TRƯỚC upload. Ba bước tách rời để log nói rõ bước
       # nào làm gì; gộp lại thì một lần `rm` hỏng sẽ ẩn trong bước khác.
@@ -221,9 +260,14 @@ jobs:
             exit 0
           fi
           loi=0
-          for ten in FLEET_PASS_CHUNHA FLEET_PASS_KETOAN FLEET_PASS_QUANLY FLEET_PASS_QUANLY2; do
+          dem=0
+          # Tên biến lấy ĐỘNG thay vì chép cứng bốn cái: thêm mật khẩu thứ năm vào
+          # khối `env:` ở trên là guard tự canh luôn. Một danh sách chép tay chính là
+          # cách một secret mới lọt lưới mà không ai thấy.
+          for ten in $(env | cut -d= -f1 | grep "^FLEET_PASS_" | sort -u); do
             mk="${!ten:-}"
             [ -n "$mk" ] || continue
+            dem=$((dem + 1))
             if grep -rqF -- "$mk" "$THU_MUC_TAI_LEN"; then
               echo "::error::artifact chua mat khau DEMO ($ten) — khong upload"
               loi=1
@@ -232,6 +276,15 @@ jobs:
           if grep -rqF -- 'data:application/zip;base64,' "$THU_MUC_TAI_LEN"; then
             echo "::error::artifact chua report nhung zip (grep khong kiem duoc) — khong upload"
             loi=1
+          fi
+          if [ "$dem" -eq 0 ]; then
+            # Không thấy biến FLEET_PASS_* nào ⇒ guard KHÔNG ĐO được gì. Đó KHÔNG phải
+            # là "sạch", nên thoát khác 0 (fail-closed): upload đòi guard success, nên
+            # không có gì rời máy chạy khi phép đo hỏng. Dùng mã 3 để phân biệt với
+            # mã 1 "đã đo và BẮT ĐƯỢC mật khẩu" — hai chuyện rất khác nhau khi đọc log.
+            echo "KHONG DO DUOC: guard khong thay bien FLEET_PASS_* nao trong moi truong."
+            echo "Khong phai da kiem va sach — kiem lai khoi env: cua buoc chay test."
+            exit 3
           fi
           if [ "$loi" -ne 0 ]; then
             rm -rf "$THU_MUC_TAI_LEN"
