@@ -191,6 +191,11 @@
       "kyVong": "dung-vi-du-lieu",
       "thongDiep": "storage.buckets\" does not exist",
       "why": "Tạo bucket avatars cần schema storage của Supabase — baseline CỐ Ý loại schema storage (manifest.excludedSchemas) vì nó thuộc nền tảng, không thuộc app. Trên Supabase project thật schema này luôn có. Cùng lý do với entry 20260813110000 (zalo-media)."
+    },
+    "20260902091449_public_room_events_budget_va_retention.sql": {
+      "kyVong": "dung-vi-du-lieu",
+      "thongDiep": "schema \"cron\" does not exist",
+      "why": "Đăng ký cron retention cần extension pg_cron của nền tảng Supabase — baseline CỐ Ý không chụp (giống schema storage). Trên project thật schema này luôn có. Vì lời gọi cron nằm giữa file nên cả file cuộn lại trên DB diễn tập; phần schema (bảng ngân sách + logger có budget + hàm prune) được dựng lại bởi 20260902092508, file đó bọc phần cron trong to_regnamespace('cron') nên chạy SẠCH ở cả hai môi trường."
     }
   }
 }
