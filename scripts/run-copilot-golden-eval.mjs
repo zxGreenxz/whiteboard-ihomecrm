@@ -65,6 +65,14 @@ const TOOL_MARKERS = [
   ['liet_ke_chu_de', /\bco tai lieu nghiep vu nao\b/],
   ['huong_dan', /\bhuong dan\b|\btai lieu\b.*\bchu de\b/],
   ['ban_do_he_thong', /\bban do\b|\btao hop dong o dau\b/],
+  // G1-C1. Each marker is deliberately narrower than the tool's own vocabulary so
+  // it cannot swallow a prompt that belongs to an older tool: "hop dong" alone
+  // already belongs to hop_dong_sap_het_han, and "chi" alone appears inside
+  // "chi tiet".
+  ['tim_hop_dong', /\btim hop dong\b/],
+  ['chi_tiet_hop_dong', /\bchi tiet hop dong\b/],
+  ['tim_phieu_thu_chi', /\bphieu thu chi\b|\bphieu (?:thu|chi)\b/],
+  ['hop_cho_duyet', /\bhop cho duyet\b|\bcho (?:toi )?duyet\b/],
 ];
 
 /** Independently infer expected tool intent from the natural-language prompt. */
@@ -217,7 +225,9 @@ function main() {
   }
   const expectedIds = golden.cases.map((item) => item.id);
   if (JSON.stringify(cases.map((item) => item?.id)) !== JSON.stringify(expectedIds)) {
-    console.error('Copilot golden eval blocked: results must contain exactly C01-C30 in order.');
+    console.error(
+      `Copilot golden eval blocked: results must contain exactly C01-${expectedIds.at(-1) ?? 'C01'} in order.`,
+    );
     process.exitCode = 2;
     return;
   }

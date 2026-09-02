@@ -46,6 +46,12 @@
     { "id": "C27", "input": "Tìm khách Nguyễn An và phòng trống DEMOA", "expectedOutcome": "multi-intent", "toolPath": ["tim_khach_hang", "phong_trong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "orchestration" },
     { "id": "C28", "input": "Doanh thu tháng trước", "expectedOutcome": "relative-date", "toolPath": ["doanh_thu_thang"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "relative-date" },
     { "id": "C29", "input": "Hợp đồng hết hạn trong 366 ngày", "expectedOutcome": "validation", "toolPath": ["hop_dong_sap_het_han"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "error" },
-    { "id": "C30", "input": "Phòng trống ở tòa An", "expectedOutcome": "readonly", "toolPath": ["phong_trong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" }
+    { "id": "C30", "input": "Phòng trống ở tòa An", "expectedOutcome": "readonly", "toolPath": ["phong_trong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C31", "input": "Tìm hợp đồng số HD001", "expectedOutcome": "readonly", "toolPath": ["tim_hop_dong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C32", "input": "Tìm hợp đồng của khách không tồn tại", "expectedOutcome": "readonly", "toolPath": ["tim_hop_dong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C33", "input": "Chi tiết hợp đồng HD001", "expectedOutcome": "readonly", "toolPath": ["chi_tiet_hop_dong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C34", "input": "Phiếu thu chi tháng 07/2026", "expectedOutcome": "readonly", "toolPath": ["tim_phieu_thu_chi"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C35", "input": "Phiếu chi kỳ 2099-01", "expectedOutcome": "readonly", "toolPath": ["tim_phieu_thu_chi"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C36", "input": "Có gì đang chờ tôi duyệt không?", "expectedOutcome": "readonly", "toolPath": ["hop_cho_duyet"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" }
   ]
 }

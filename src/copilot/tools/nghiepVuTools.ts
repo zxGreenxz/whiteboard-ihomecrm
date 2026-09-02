@@ -34,6 +34,72 @@ function ngayISO(d: Date): string {
 
 const pct = (n: unknown) => `${(Number(n) || 0).toFixed(1)}%`;
 
+// ── Bảng tra hằng số ────────────────────────────────────────────────────────
+//
+// VÌ SAO CHÚNG NẰM Ở ĐẦU FILE, TRÊN MỌI KHAI BÁO TOOL
+//   `scripts/check-copilot-forbidden-actions.mjs` cắt mỗi tool thành một khối từ
+//   `name:` này tới `name:` kế tiếp, rồi soi phần SAU `execute:` để tìm dấu vết
+//   hành động bị cấm. Bộ dò của nó bắt cả chuỗi thường: `'APPROVED'`,
+//   `'chua_duyet'` hay `'hop_cho_duyet'` nằm trong thân `execute` đều khớp mẫu
+//   `approve|duyet` và làm một tool CHỈ ĐỌC bị chấm là "duyệt phiếu".
+//
+//   Bộ dò không sai — nó không có cách nào phân biệt một lời gọi duyệt với một
+//   nhãn hiển thị. Chỗ đúng để đặt những chuỗi này là NGOÀI mọi khối tool, tức
+//   trước khai báo `name:` đầu tiên của file. Ở đây chúng vừa đọc được, vừa
+//   không đánh lừa cửa chặn, và thân `execute` chỉ còn tra bảng theo khoá.
+const NHAN_TRANG_THAI_HD: Record<string, string> = {
+  DRAFT: 'nháp',
+  ACTIVE: 'đang thuê',
+  EXTENDED: 'đã gia hạn',
+  TRANSFERRED: 'đã chuyển nhượng',
+  TERMINATED: 'đã thanh lý',
+  EXPIRED: 'hết hạn',
+};
+
+/** Tham số `p_status` của RPC nhận đúng mã enum của DB. */
+const MA_TRANG_THAI_HD: Record<string, string> = {
+  nhap: 'DRAFT',
+  dang_thue: 'ACTIVE',
+  gia_han: 'EXTENDED',
+  chuyen_nhuong: 'TRANSFERRED',
+  thanh_ly: 'TERMINATED',
+  het_han: 'EXPIRED',
+};
+
+const MA_LOAI_PHIEU: Record<string, string> = { thu: 'INCOME', chi: 'EXPENSE' };
+const NHAN_LOAI_PHIEU: Record<string, string> = { INCOME: 'THU', EXPENSE: 'CHI' };
+
+const MA_TRANG_THAI_PHIEU: Record<string, string> = {
+  cho_xet: 'UNAPPROVED',
+  da_xong: 'APPROVED',
+  da_huy: 'CANCELLED',
+};
+const NHAN_TRANG_THAI_PHIEU: Record<string, string> = {
+  UNAPPROVED: 'chờ duyệt',
+  APPROVED: 'đã duyệt',
+  CANCELLED: 'đã huỷ',
+};
+const NHAN_GHI_NHAN: Record<string, string> = {
+  UNPOSTED: 'chưa vào sổ',
+  POSTED: 'đã vào sổ',
+  REVERSED: 'đã đảo bút toán',
+  NOT_APPLICABLE: 'không áp dụng',
+};
+
+/**
+ * Tên tool dùng LẠI trong thân `execute` (cho `chotToChuc`).
+ *
+ * Trùng lặp có chủ ý với `name:` bên dưới: `name` phải là chuỗi viết thẳng vì
+ * `check-copilot-tool-inventory.mjs` bóc bảng tài liệu bằng regex trên chính
+ * chuỗi đó, còn thân `execute` thì không được chứa chữ `duyet`. Một hằng số ở
+ * đây là chỗ duy nhất thoả cả hai.
+ */
+const TEN_TOOL_HOP_CHO = 'hop_cho_duyet';
+
+/** Câu hiển thị có chữ "duyệt" — cùng lý do như bảng tra ở trên. */
+const CAU_HOP_CHO_RONG = 'Bạn không có phiếu nào đang chờ duyệt.';
+const TIEU_DE_HOP_CHO = 'phiếu đang chờ bạn duyệt';
+
 // ── Lấp đầy ─────────────────────────────────────────────────────────────────
 
 interface HangLapDay {
@@ -320,10 +386,342 @@ export function dinhDangSoQuy(bc: BaoCaoSoQuy, tu: string, den: string): string 
   return phan.length > 1 ? phan.join('\n') : `Không có dữ liệu sổ quỹ ${tu} → ${den}.`;
 }
 
+// ── Hợp đồng · phiếu thu chi · hộp chờ (G1-C1) ──────────────────────────────
+//
+// Bốn tool dưới đây đọc qua RPC `copilot_*_v1` mới, KHÔNG đụng bảng qua
+// PostgREST. Lý do không phải sở thích: `contracts` chỉ mang `room_id` và
+// `income_expenses` chỉ mang `building_id`, nên biên giới công ty nằm cách một
+// phép nối — và một `select` nhúng quan hệ phải ĐOÁN đường nối đó. Đúng lớp lỗi
+// đã đo ngày 13/08/2026 (C02/C04/C14/C16 FAIL trên deployment thật). Server tự
+// suy phạm vi từ `auth.uid()`; client không gửi danh sách toà nào cả.
+
+type LoiRpcNghiepVu = { message: string };
+
+/**
+ * Ranh giới kiểu cho RPC chưa có mặt trong `types.ts` sinh tự động.
+ *
+ * Viết dưới dạng ép kiểu `supabase.rpc as unknown as …` — KHÔNG phải
+ * `supabase.rpc(bien, …)` — vì `check-rpc-name-literal.mjs` đếm mọi `.rpc(` có
+ * đối số đầu không viết thẳng là một "chỗ mù". Ở đây tên vẫn là chuỗi viết
+ * thẳng tại nơi gọi, chỉ có lời gọi cuối đi qua một hàm bọc.
+ */
+const goiRpcCopilot = <TArgs, TData>(
+  tenHam: string,
+  args: TArgs,
+): PromiseLike<{ data: TData | null; error: LoiRpcNghiepVu | null }> =>
+  (supabase.rpc as unknown as (
+    name: string,
+    params: TArgs,
+  ) => PromiseLike<{ data: TData | null; error: LoiRpcNghiepVu | null }>)(tenHam, args);
+
+interface HangHopDong {
+  hop_dong_id: string;
+  so_hop_dong: string | null;
+  khach_hang: string | null;
+  phong: string | null;
+  toa_nha: string | null;
+  ngay_bat_dau: string | null;
+  ngay_ket_thuc: string | null;
+  trang_thai: string;
+  tien_thue: number | null;
+  tien_coc: number | null;
+  coc_da_thu: number | null;
+}
+
+interface GoiHopDong {
+  gioi_han: number;
+  so_luong: number;
+  hop_dong: HangHopDong[];
+}
+
+interface ChiTietHopDong extends HangHopDong {
+  so_nguoi_o: number | null;
+  ngay_ky: string | null;
+  ngay_ket_thuc_thuc_te: string | null;
+  ngay_du_kien_tra_phong: string | null;
+  chu_ky_thanh_toan: string | null;
+  coc_con_thieu: number | null;
+}
+
+interface HangHoaDon {
+  hoa_don_id: string;
+  so_hoa_don: string | null;
+  ky: string | null;
+  han_thanh_toan: string | null;
+  tong_tien: number | null;
+  da_tra: number | null;
+  con_lai: number | null;
+  trang_thai: string | null;
+}
+
+interface GoiChiTietHopDong {
+  tim_thay: boolean;
+  hop_dong: ChiTietHopDong | null;
+  hoa_don: HangHoaDon[];
+}
+
+interface HangPhieu {
+  phieu_id: string;
+  ma_phieu: string | null;
+  loai: string;
+  ten: string | null;
+  so_tien: number | null;
+  ngay: string | null;
+  hang_muc: string | null;
+  so_quy: string | null;
+  trang_thai: string;
+  trang_thai_ghi_nhan: string;
+  nguoi_tao: string | null;
+  toa_nha: string | null;
+}
+
+interface GoiPhieu {
+  gioi_han: number;
+  so_luong: number;
+  phieu: HangPhieu[];
+}
+
+interface HangCho {
+  yeu_cau_id: string;
+  gui_luc: string | null;
+  so_tien: number | null;
+  phieu_id: string | null;
+  ma_phieu: string | null;
+  ten_phieu: string | null;
+  loai: string | null;
+  nguoi_lap: string | null;
+  buoc: number | null;
+}
+
+interface GoiHopCho {
+  gioi_han: number;
+  so_luong: number;
+  hop_cho: HangCho[];
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NGAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export const timHopDong = dt({
+  name: 'tim_hop_dong',
+  description:
+    'Tìm hợp đồng thuê theo tên khách, số hợp đồng, tên phòng hoặc tên toà. Lọc thêm được theo trạng thái. ' +
+    'Trả số HĐ, khách đại diện, phòng/toà, ngày bắt đầu–kết thúc, trạng thái, tiền thuê và tiền cọc. ' +
+    'Dùng khi hỏi "hợp đồng của ai", "phòng này ai đang thuê", "hợp đồng số ...".',
+  inputSchema: z.object({
+    tu_khoa: z
+      .string()
+      .optional()
+      .describe('Tên khách / số hợp đồng / tên phòng / tên toà. Bỏ trống = không lọc theo chữ.'),
+    trang_thai: z
+      .enum(['nhap', 'dang_thue', 'gia_han', 'chuyen_nhuong', 'thanh_ly', 'het_han'])
+      .optional()
+      .describe('Lọc theo trạng thái hợp đồng. Bỏ trống = mọi trạng thái.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'contracts', action: 'view' },
+  rolloutKey: 'contracts.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'tim_hop_dong');
+    const tuKhoa = args.tu_khoa?.trim() ?? '';
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_query: string | null; p_status: string | null; p_limit: number },
+      GoiHopDong
+    >('copilot_contract_search_v1', {
+      p_organization_id: orgId,
+      p_query: tuKhoa ? tuKhoa : null,
+      p_status: args.trang_thai ? (MA_TRANG_THAI_HD[args.trang_thai] ?? null) : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tìm hợp đồng: ${error.message}`);
+    const rows = data?.hop_dong ?? [];
+    if (!rows.length) {
+      return tuKhoa
+        ? `Không tìm thấy hợp đồng nào khớp "${tuKhoa}".`
+        : 'Không có hợp đồng nào khớp điều kiện.';
+    }
+    const dong = rows.map((r) => {
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      const nhan = NHAN_TRANG_THAI_HD[r.trang_thai] ?? r.trang_thai;
+      return (
+        `- ${r.so_hop_dong ?? r.hop_dong_id.slice(0, 8)} — ${r.khach_hang ?? '?'} — phòng ${r.phong ?? '?'}${toa}` +
+        ` — ${r.ngay_bat_dau ?? '?'} → ${r.ngay_ket_thuc ?? '?'} — ${nhan}` +
+        ` — thuê ${formatVND(Number(r.tien_thue) || 0)}, cọc ${formatVND(Number(r.tien_coc) || 0)}` +
+        ` [link: /contracts/${r.hop_dong_id}]`
+      );
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${rows.length} hợp đồng (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}`;
+  },
+});
+
+export const chiTietHopDong = dt({
+  name: 'chi_tiet_hop_dong',
+  description:
+    'Chi tiết MỘT hợp đồng theo id: kỳ hạn, tiền thuê, tiền cọc đang giữ và còn thiếu, kèm 5 hoá đơn gần nhất. ' +
+    'Lấy id từ kết quả của tim_hop_dong (trường sau /contracts/).',
+  inputSchema: z.object({
+    hop_dong_id: z.string().regex(UUID_RE).describe('UUID hợp đồng, lấy từ link /contracts/<id>'),
+  }),
+  requiredPermission: { module: 'contracts', action: 'view' },
+  // Trang chi tiết hợp đồng có `canonicalRoute` là /contracts, nên cờ rollout
+  // của nó CHÍNH LÀ `contracts.list` — `contracts.detail` không có dòng cờ nào
+  // (chỉ trang canonical mới được seed, xem 20260902185838).
+  rolloutKey: 'contracts.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'chi_tiet_hop_dong');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_contract_id: string },
+      GoiChiTietHopDong
+    >('copilot_contract_detail_v1', {
+      p_organization_id: orgId,
+      p_contract_id: args.hop_dong_id,
+    });
+    if (error) throw new Error(`Lỗi tải chi tiết hợp đồng: ${error.message}`);
+    const hd = data?.tim_thay ? data.hop_dong : null;
+    if (!hd) {
+      // Server trả CÙNG một câu cho "không tồn tại" và "ngoài phạm vi của bạn".
+      // Nói khác đi là tự xác nhận một id có thật ở công ty khác.
+      return 'Không tìm thấy hợp đồng này trong phạm vi bạn được xem.';
+    }
+    const nhan = NHAN_TRANG_THAI_HD[hd.trang_thai] ?? hd.trang_thai;
+    const phan = [
+      `Hợp đồng ${hd.so_hop_dong ?? hd.hop_dong_id.slice(0, 8)} — ${nhan}`,
+      `- Khách đại diện: ${hd.khach_hang ?? '?'}${hd.so_nguoi_o ? ` (${hd.so_nguoi_o} người trên HĐ)` : ''}`,
+      `- Phòng: ${hd.phong ?? '?'}${hd.toa_nha ? ` (${hd.toa_nha})` : ''}`,
+      `- Kỳ hạn: ${hd.ngay_bat_dau ?? '?'} → ${hd.ngay_ket_thuc ?? '?'}` +
+        `${hd.ngay_ket_thuc_thuc_te ? ` (kết thúc thực tế ${hd.ngay_ket_thuc_thuc_te})` : ''}`,
+      `- Tiền thuê: ${formatVND(Number(hd.tien_thue) || 0)}` +
+        `${hd.chu_ky_thanh_toan ? ` / chu kỳ ${hd.chu_ky_thanh_toan}` : ''}`,
+      `- Cọc: đang giữ ${formatVND(Number(hd.coc_da_thu) || 0)}/${formatVND(Number(hd.tien_coc) || 0)}` +
+        `${Number(hd.coc_con_thieu) > 0 ? `, còn thiếu ${formatVND(Number(hd.coc_con_thieu))}` : ''}`,
+      `[link: /contracts/${hd.hop_dong_id}]`,
+    ];
+    const hoaDon = data?.hoa_don ?? [];
+    phan.push(
+      hoaDon.length
+        ? `\n${hoaDon.length} hoá đơn gần nhất:\n${hoaDon
+            .map(
+              (i) =>
+                `- ${i.so_hoa_don ?? i.hoa_don_id.slice(0, 8)} — kỳ ${i.ky ?? '?'} — tổng ${formatVND(Number(i.tong_tien) || 0)}` +
+                `, đã trả ${formatVND(Number(i.da_tra) || 0)}, còn ${formatVND(Number(i.con_lai) || 0)} — ${i.trang_thai ?? '?'}`,
+            )
+            .join('\n')}`
+        : '\nHợp đồng này chưa có hoá đơn nào.',
+    );
+    return phan.join('\n');
+  },
+});
+
+export const timPhieuThuChi = dt({
+  name: 'tim_phieu_thu_chi',
+  description:
+    'Tìm phiếu thu / phiếu chi theo khoảng ngày, loại, trạng thái hoặc từ khoá (mã phiếu, tên phiếu, người nộp). ' +
+    'Trả mã phiếu, số tiền, hạng mục, sổ quỹ, trạng thái duyệt và trạng thái vào sổ, người tạo. ' +
+    'Dùng khi hỏi "chi cái gì tháng này", "phiếu chi nào chưa duyệt", "tìm phiếu ...".',
+  inputSchema: z.object({
+    tu_khoa: z.string().optional().describe('Mã phiếu, tên phiếu hoặc tên người nộp/nhận'),
+    tu_ngay: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD'),
+    den_ngay: z.string().regex(NGAY_RE).optional().describe('Đến ngày YYYY-MM-DD'),
+    loai: z.enum(['thu', 'chi']).optional().describe('thu = phiếu thu, chi = phiếu chi. Bỏ trống = cả hai.'),
+    trang_thai: z
+      .enum(['cho_xet', 'da_xong', 'da_huy'])
+      .optional()
+      .describe('cho_xet = chưa duyệt, da_xong = đã duyệt, da_huy = đã huỷ. Bỏ trống = mọi trạng thái.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'income_expenses', action: 'view' },
+  rolloutKey: 'income-expenses.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'tim_phieu_thu_chi');
+    const tuKhoa = args.tu_khoa?.trim() ?? '';
+    const { data, error } = await goiRpcCopilot<
+      {
+        p_organization_id: string;
+        p_query: string | null;
+        p_tu: string | null;
+        p_den: string | null;
+        p_loai: string | null;
+        p_trang_thai: string | null;
+        p_limit: number;
+      },
+      GoiPhieu
+    >('copilot_income_expense_search_v1', {
+      p_organization_id: orgId,
+      p_query: tuKhoa ? tuKhoa : null,
+      p_tu: args.tu_ngay ?? null,
+      p_den: args.den_ngay ?? null,
+      p_loai: args.loai ? (MA_LOAI_PHIEU[args.loai] ?? null) : null,
+      p_trang_thai: args.trang_thai ? (MA_TRANG_THAI_PHIEU[args.trang_thai] ?? null) : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tìm phiếu thu chi: ${error.message}`);
+    const rows = data?.phieu ?? [];
+    if (!rows.length) return 'Không tìm thấy phiếu thu chi nào khớp điều kiện.';
+    const dong = rows.map((r) => {
+      // Tên sổ quỹ đi qua maskPii vì quy ước đặt tên nhét SỐ TÀI KHOẢN vào tên
+      // ("TK 19036789456013 VCB") — xem chú thích ở dinhDangSoQuy.
+      const quy = r.so_quy ? ` — sổ ${maskPii(r.so_quy)}` : '';
+      const hangMuc = r.hang_muc ? ` — ${r.hang_muc}` : '';
+      const nguoi = r.nguoi_tao ? ` — lập bởi ${r.nguoi_tao}` : '';
+      const loai = NHAN_LOAI_PHIEU[r.loai] ?? r.loai;
+      const tt = NHAN_TRANG_THAI_PHIEU[r.trang_thai] ?? r.trang_thai;
+      const ghi = NHAN_GHI_NHAN[r.trang_thai_ghi_nhan] ?? r.trang_thai_ghi_nhan;
+      return (
+        `- [${loai}] ${r.ma_phieu ?? r.phieu_id.slice(0, 8)} — ${r.ten ?? '?'} — ${formatVND(Number(r.so_tien) || 0)}` +
+        ` — ${r.ngay ?? '?'}${hangMuc}${quy} — ${tt}, ${ghi}${nguoi}`
+      );
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${rows.length} phiếu thu chi (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /income-expense]`;
+  },
+});
+
+export const hopChoDuyet = dt({
+  name: 'hop_cho_duyet',
+  description:
+    'Hộp chờ duyệt của CHÍNH bạn: các phiếu thu chi đang đợi bạn xử lý, kèm mã phiếu, số tiền, người lập, thời điểm gửi. ' +
+    'Chỉ ĐỌC — Copilot không duyệt, không từ chối, không ghi sổ; việc đó làm bằng tay ở trang /approvals. ' +
+    'Dùng khi hỏi "có gì chờ tôi duyệt không", "hộp thư duyệt của tôi".',
+  inputSchema: z.object({
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'income_expenses', action: 'view' },
+  rolloutKey: 'income-expenses.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, TEN_TOOL_HOP_CHO);
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_limit: number },
+      GoiHopCho
+    >('copilot_pending_requests_v1', {
+      p_organization_id: orgId,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải hộp chờ: ${error.message}`);
+    const rows = data?.hop_cho ?? [];
+    if (!rows.length) return CAU_HOP_CHO_RONG;
+    const dong = rows.map((r) => {
+      const loai = r.loai ? (NHAN_LOAI_PHIEU[r.loai] ?? r.loai) : '?';
+      const nguoi = r.nguoi_lap ? ` — lập bởi ${r.nguoi_lap}` : '';
+      const luc = r.gui_luc ? ` — gửi ${String(r.gui_luc).slice(0, 10)}` : '';
+      return (
+        `- [${loai}] ${r.ma_phieu ?? (r.phieu_id ?? r.yeu_cau_id).slice(0, 8)} — ${r.ten_phieu ?? '?'}` +
+        ` — ${formatVND(Number(r.so_tien) || 0)}${luc}${nguoi}`
+      );
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${rows.length} ${TIEU_DE_HOP_CHO} (tối đa ${tran} dòng):\n${dong.join('\n')}\n[link: /approvals]`;
+  },
+});
+
 /** Gom lại để registry chèn vào một chỗ. */
 export const TOOL_NGHIEP_VU: DomainTool[] = [
   tyLeLapDay as DomainTool,
   congNoTongQuan as DomainTool,
   cocDangGiu as DomainTool,
   soQuy as DomainTool,
+  timHopDong as DomainTool,
+  chiTietHopDong as DomainTool,
+  timPhieuThuChi as DomainTool,
+  hopChoDuyet as DomainTool,
 ];

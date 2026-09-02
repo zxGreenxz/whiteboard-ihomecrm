@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/** Số ca đã đạt được — bộ ca chỉ được lớn hơn mức này, không được teo về. */
+export const SAN_SO_CA = 30;
+
 export function validateGolden(golden) {
   const problems = [];
   if (golden?.schemaVersion !== 1) problems.push('schemaVersion must be 1');
@@ -30,9 +33,19 @@ export function validateGolden(golden) {
     }
   }
   const cases = Array.isArray(golden?.cases) ? golden.cases : [];
-  const expectedIds = Array.from({ length: 30 }, (_, index) => `C${String(index + 1).padStart(2, '0')}`);
+  // SÀN, KHÔNG PHẢI SỐ CỐ ĐỊNH. Bản trước ghi cứng 30 — con số của bộ ca ngày
+  // 13/08/2026 — nên THÊM một ca mới cũng làm gate đỏ, và cách "sửa" rẻ nhất là
+  // đừng thêm ca nào. Một cửa chặn phạt việc mở rộng phạm vi đo là cửa chặn
+  // đang làm ngược việc của nó. Nay: tập id phải liên tục từ C01 và chỉ được
+  // LỚN LÊN (sàn 30 = mức đã đạt), tức xoá ca vẫn bị bắt.
+  if (cases.length < SAN_SO_CA) {
+    problems.push(`cases must keep at least ${SAN_SO_CA} entries (found ${cases.length})`);
+  }
+  const expectedIds = Array.from({ length: cases.length }, (_, index) => `C${String(index + 1).padStart(2, '0')}`);
   const actualIds = cases.map((item) => item?.id);
-  if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) problems.push('cases must be exactly C01-C30 in order');
+  if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) {
+    problems.push(`cases must be exactly C01-${expectedIds.at(-1) ?? 'C01'} in order`);
+  }
   for (const item of cases) {
     if (!item?.input || !item?.expectedOutcome) problems.push(`${item?.id ?? '<unknown>'}: missing input/outcome`);
     if (!Array.isArray(item?.toolPath)) problems.push(`${item?.id ?? '<unknown>'}: toolPath must be an array`);
