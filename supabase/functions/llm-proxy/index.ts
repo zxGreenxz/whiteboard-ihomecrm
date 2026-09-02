@@ -13,9 +13,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
-// `x-organization-id`: chỗ dành sẵn cho G0-B (chọn công ty đang làm việc). Header
-// phải nằm trong allow-list CORS trước, nếu không preflight chặn ngay ở trình duyệt
-// và lỗi trông như "server không nhận request" chứ không như "thiếu header".
+// `x-organization-id`: công ty đang làm việc (G0-B). Header phải nằm trong
+// allow-list CORS trước, nếu không preflight chặn ngay ở trình duyệt và lỗi trông
+// như "server không nhận request" chứ không như "thiếu header".
 export const ALLOWED_HEADERS =
   'authorization, x-client-info, apikey, content-type, x-copilot-feature, x-task-id, x-mock-step, x-mock-cost, x-organization-id';
 
@@ -125,6 +125,25 @@ export function clampMockCost(header: string | null, estCost: number): number {
   // NaN (không gửi header / rác) và ±Infinity đều KHÔNG phải "ép giá" — giữ dự toán.
   if (!Number.isFinite(forced)) return estCost;
   return Math.max(0, forced);
+}
+
+/**
+ * Công ty đang làm việc, đọc từ header `x-organization-id`.
+ *
+ * Trả `null` cho mọi thứ không phải một uuid: thiếu header, chuỗi rỗng, chuỗi
+ * rác. Chặn hình dạng Ở ĐÂY chứ không để `reserve_ai_usage` chặn, vì một chuỗi
+ * lạ đi tiếp sẽ về dưới dạng lỗi kiểu dữ liệu của Postgres — thông báo đó nói về
+ * `uuid` chứ không nói rằng người dùng chưa chọn công ty, và nó lọt nguyên văn
+ * ra ngoài. Hàm THUẦN để test được: đây là chỗ quyết định, không phải chỗ nối mạng.
+ *
+ * Chuẩn hoá về chữ thường và cắt khoảng trắng: hoa/thường là chuyện của bàn phím,
+ * không phải chuyện của quyền — `p_organization_id` là `uuid` nên Postgres coi
+ * hai dạng là một, và giữ nguyên chỉ làm log khó đối chiếu.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export function docOrganizationId(headers: Headers): string | null {
+  const raw = (headers.get('x-organization-id') ?? '').trim().toLowerCase();
+  return UUID_RE.test(raw) ? raw : null;
 }
 
 /** Mock CHỈ chạy khi deployment bật tường minh — xem chú thích ở chỗ gọi. */
@@ -560,6 +579,17 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
   const feature = req.headers.get('x-copilot-feature') === 'ui_control' ? 'ui_control' : 'chat';
   const taskId = req.headers.get('x-task-id');
 
+  // Công ty phải được NÓI, không được suy. `reserve_ai_usage` ghi thẳng giá trị
+  // này vào `ai_usage_logs.organization_id`; bỏ trống thì trigger
+  // `autofill_org_strict` phải đoán từ `user_id`, và nó chỉ đoán được với người
+  // thuộc đúng MỘT công ty — với người đa tổ chức thì hoặc 500 (23502) hoặc ghi
+  // hạn mức vào công ty họ không chọn. Chặn TRƯỚC reserve: một reservation cho
+  // request không bao giờ chạy vẫn giữ hạn mức ngày suốt 5 phút.
+  const organizationId = docOrganizationId(req.headers);
+  if (!organizationId) {
+    return openaiError(400, 'Organization is required', 'organization_required');
+  }
+
   // Model phải nằm trong danh sách admin đã bật cho provider này.
   // Provider "mock" là ngoại lệ CÓ CHỦ Ý: modelId của nó là kịch bản dev/test
   // ("echo", "navphong", "click3-input-done"…), không phải tên model, nên không
@@ -594,9 +624,18 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
     p_model: modelId,
     p_task_id: taskId,
     p_est_cost_usd: estCost,
+    p_organization_id: organizationId,
   });
   if (reserveError) {
     const msg = reserveError.message ?? '';
+    // Hàng rào thứ hai cho tổ chức: cửa ở trên chỉ kiểm HÌNH DẠNG, còn ai được
+    // làm việc cho công ty nào thì chỉ database biết. Và proxy có thể được deploy
+    // lại từ một bản cũ hơn migration — lúc đó `organization_required` về từ RPC
+    // là thứ duy nhất còn nói đúng chuyện.
+    if (msg.includes('organization_required')) return openaiError(400, 'Organization is required', 'organization_required');
+    // 403 chứ KHÔNG 500: chọn nhầm công ty là chuyện người dùng sửa được, còn
+    // 500 nói server hỏng và LLM class sẽ retry một việc không bao giờ qua.
+    if (msg.includes('organization_forbidden')) return openaiError(403, 'No access to the selected organization', 'organization_forbidden');
     if (msg.includes('copilot_disabled')) return openaiError(403, 'Copilot is disabled', 'copilot_disabled');
     if (msg.includes('not_entitled')) return openaiError(403, 'User is not entitled to use copilot', 'not_entitled');
     if (msg.includes('not_permitted')) return openaiError(403, 'Missing ai_copilot permission', 'not_permitted');

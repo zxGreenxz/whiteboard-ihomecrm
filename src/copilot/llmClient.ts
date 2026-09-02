@@ -171,6 +171,13 @@ export interface ThamSoGoi {
   /** Nhận từng mảnh văn bản khi mô hình trả lời (chỉ gọi ở chế độ stream). */
   onDeltaChu?: (chu: string) => void;
   maxTokens?: number;
+  /**
+   * Công ty đang chọn — đi lên proxy qua `x-organization-id` rồi vào
+   * `reserve_ai_usage`. `null` nghĩa là CHƯA chốt được, không phải "công ty mặc
+   * định": proxy sẽ trả 400 `organization_required`, và đó là câu trả lời đúng.
+   * Nhánh local (Ollama) không dùng trường này — nó không đi qua proxy.
+   */
+  organizationId: string | null;
 }
 
 /** Lỗi mang mã của proxy để chỗ gọi phân biệt hết-hạn-mức với lỗi mạng. */
@@ -213,7 +220,7 @@ export async function goiModelMotLuot(p: ThamSoGoi): Promise<KetQuaLuot> {
   const base = isLocal ? localBase : LLM_PROXY_BASE;
   // local_only (Ollama): browser gọi thẳng localhost, KHÔNG qua proxy nên cũng
   // không gắn JWT — đó là lý do fetch khác nhau ở hai nhánh.
-  const fetchFn = isLocal ? fetch : makeCopilotFetch('chat', newTaskIdChat());
+  const fetchFn = isLocal ? fetch : makeCopilotFetch('chat', newTaskIdChat(), p.organizationId);
 
   const body: Record<string, unknown> = {
     model: isLocal ? parsed.modelId : p.providerModel,

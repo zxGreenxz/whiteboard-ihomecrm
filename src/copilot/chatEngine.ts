@@ -242,6 +242,9 @@ export async function runChatTurn(params: {
       tools: khaiBao,
       signal: params.signal,
       onDeltaChu: params.onDeltaChu,
+      // Công ty đang chọn đi cùng lượt gọi: hạn mức phải ghi vào ĐÚNG công ty
+      // người dùng đang làm việc cho, không phải công ty trigger đoán ra.
+      organizationId: params.ctx.organizationId,
     });
     usage.promptTokens += kq.usage.promptTokens;
     usage.completionTokens += kq.usage.completionTokens;

@@ -488,6 +488,9 @@ function EntitlementsTab() {
 
 function ProvidersTab() {
   const qc = useQueryClient();
+  // "Test key" đi qua đúng đường của người dùng thật — kể cả reserve_ai_usage —
+  // nên nó cũng phải nói mình đang tiêu hạn mức của công ty nào.
+  const { selectedOrganizationId } = useOrganization();
   const { data: rows, isLoading } = useProvidersAdmin(true);
   const [editing, setEditing] = useState<string | null>(null);
   const [modelsDraft, setModelsDraft] = useState('');
@@ -535,7 +538,7 @@ function ProvidersTab() {
     setTesting(r.provider);
     const t0 = Date.now();
     try {
-      const doFetch = makeCopilotFetch('chat', newTaskId('testkey'));
+      const doFetch = makeCopilotFetch('chat', newTaskId('testkey'), selectedOrganizationId);
       const res = await doFetch(`${LLM_PROXY_BASE}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -73,7 +73,7 @@ export function createUiControlAgent(params: {
     model: params.providerModel,
     maxRetries: 2, // retry CHỈ ở client (proxy không retry — F4)
     maxSteps: 25,
-    customFetch: makeCopilotFetch('ui_control', taskId),
+    customFetch: makeCopilotFetch('ui_control', taskId, params.ctx.organizationId),
     transformPageContent: (content: string) => maskPii(content),
     instructions: {
       system: UI_CONTROL_SYSTEM_PROMPT,

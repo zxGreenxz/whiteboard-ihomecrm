@@ -48,8 +48,26 @@ export function parseProviderModel(raw: string): { provider: string; modelId: st
 /**
  * customFetch cho LLM class / PageAgent: gắn JWT TƯƠI mỗi request (F11 — token
  * hết hạn giữa task) + header định danh feature/task cho proxy ghi usage log.
+ *
+ * `organizationId` là công ty ĐANG CHỌN (`OrganizationContext`), đi lên proxy
+ * qua `x-organization-id` rồi vào thẳng `reserve_ai_usage(..., p_organization_id)`.
+ * Trước G0-B không có nó: proxy để trống `organization_id`, và trigger
+ * `autofill_org_strict` phải SUY công ty từ `user_id` — chỉ đoán được khi người
+ * dùng thuộc đúng một công ty, còn với người đa tổ chức thì hoặc lỗi 500 hoặc
+ * ghi hạn mức vào công ty họ không chọn.
+ *
+ * Header đi ở HEADER chứ không phải trong body: body là payload OpenAI-compat do
+ * thư viện dựng, và proxy chỉ chuyển tiếp một allow-list khoá của nó.
+ *
+ * `null` (chưa chốt công ty) thì KHÔNG gắn header và VẪN gọi. Chặn im lặng ở đây
+ * biến "chưa chọn công ty" thành "Copilot không phản hồi"; để server trả 400
+ * `organization_required` thì người dùng đọc được một câu nói đúng chuyện.
  */
-export function makeCopilotFetch(feature: 'chat' | 'ui_control', taskId: string): typeof fetch {
+export function makeCopilotFetch(
+  feature: 'chat' | 'ui_control',
+  taskId: string,
+  organizationId: string | null,
+): typeof fetch {
   return async (input, init) => {
     const { data } = await supabase.auth.getSession();
     const jwt = data.session?.access_token ?? '';
@@ -57,6 +75,7 @@ export function makeCopilotFetch(feature: 'chat' | 'ui_control', taskId: string)
     headers.set('Authorization', `Bearer ${jwt}`);
     headers.set('x-copilot-feature', feature);
     headers.set('x-task-id', taskId);
+    if (organizationId) headers.set('x-organization-id', organizationId);
     return fetch(input, { ...init, headers });
   };
 }

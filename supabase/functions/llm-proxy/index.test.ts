@@ -65,6 +65,7 @@ type ProxyModule = {
     gioiHanBytes: number,
   ) => Promise<{ ok: true; text: string } | { ok: false }>;
   dangParseHienTai: () => number;
+  docOrganizationId: (headers: Headers) => string | null;
   xuLyYeuCau: (req: Request, deps?: PhuThuocGia) => Promise<Response>;
 };
 
@@ -84,7 +85,15 @@ async function nap(): Promise<ProxyModule> {
   const loaded = await proxyModule;
   assert(loaded !== null, "llm-proxy/index.ts phải nạp được (kiểm mạng tới esm.sh nếu đỏ ở đây)");
   const m = loaded as unknown as ProxyModule;
-  for (const ten of ["chonTruongBodyHopLe", "kiemKichThuocBody", "tinhEstCost", "clampMockCost"]) {
+  for (
+    const ten of [
+      "chonTruongBodyHopLe",
+      "kiemKichThuocBody",
+      "tinhEstCost",
+      "clampMockCost",
+      "docOrganizationId",
+    ]
+  ) {
     assertEquals(
       typeof (m as unknown as Record<string, unknown>)[ten],
       "function",
@@ -412,12 +421,21 @@ function adminGia(options?: {
 
 const URL_CHAT = "https://proxy.test/functions/v1/llm-proxy/chat/completions";
 
+/** Công ty giả cho các ca không nói về tổ chức — proxy nay ĐÒI header này. */
+const ORG_GIA = "33333333-3333-4333-8333-333333333333";
+
+// `x-organization-id` nằm trong mặc định, và ca nào muốn thiếu nó thì truyền
+// `{ "x-organization-id": "" }` — Headers bỏ qua giá trị rỗng khi đọc lại nên
+// không cần một cửa hậu riêng cho việc "gỡ header".
 function yeuCau(body: unknown, headers: Record<string, string> = {}): Request {
-  return new Request(URL_CHAT, {
-    method: "POST",
-    headers: { Authorization: "Bearer jwt-gia", "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
+  const h: Record<string, string> = {
+    Authorization: "Bearer jwt-gia",
+    "Content-Type": "application/json",
+    "x-organization-id": ORG_GIA,
+    ...headers,
+  };
+  for (const [k, v] of Object.entries(h)) if (v === "") delete h[k];
+  return new Request(URL_CHAT, { method: "POST", headers: h, body: JSON.stringify(body) });
 }
 
 Deno.test("(a) thiếu LLM_PROXY_ALLOW_MOCK: 403 và KHÔNG hề reserve", async () => {
@@ -526,4 +544,115 @@ Deno.test("(e) body vượt trần đi qua HANDLER: 413, không reserve, semapho
   assertEquals(than.error.code, "body_too_large");
   assertEquals(dem("reserve_ai_usage"), 0);
   assertEquals(dangParseHienTai(), 0);
+});
+
+// ── 9. Tổ chức: header x-organization-id → p_organization_id ───────────────
+//
+// `reserve_ai_usage` nay ĐÒI công ty (migration
+// `20260902132418_copilot_reserve_ai_usage_organization_v1`). Trước đó proxy để
+// trống `organization_id` và trigger `autofill_org_strict` phải SUY từ
+// `user_id`: đúng khi người dùng thuộc một công ty, và sai — hoặc chết 500 —
+// đúng vào kịch bản mà ô chọn công ty của Copilot sinh ra.
+
+Deno.test("docOrganizationId: uuid hợp lệ thì trả về, rác/thiếu thì null", async () => {
+  const { docOrganizationId } = await nap();
+  const h = (v?: string) => new Headers(v === undefined ? {} : { "x-organization-id": v });
+
+  assertEquals(
+    docOrganizationId(h("11111111-2222-4333-8444-555555555555")),
+    "11111111-2222-4333-8444-555555555555",
+  );
+  // Hoa/thường và khoảng trắng thừa là chuyện của bàn phím, không phải của quyền.
+  assertEquals(
+    docOrganizationId(h("  11111111-2222-4333-8444-555555555555  ")),
+    "11111111-2222-4333-8444-555555555555",
+  );
+  assertEquals(
+    docOrganizationId(h("11111111-2222-4333-8444-AAAAAAAAAAAA")),
+    "11111111-2222-4333-8444-aaaaaaaaaaaa",
+  );
+
+  assertEquals(docOrganizationId(h()), null, "thiếu header");
+  assertEquals(docOrganizationId(h("")), null, "header rỗng");
+  assertEquals(docOrganizationId(h("khong-phai-uuid")), null);
+  assertEquals(docOrganizationId(h("11111111-2222-4333-8444-55555555555")), null, "thiếu 1 ký tự");
+  // Chặn ở đây chứ không để DB chặn: một chuỗi lạ đi tiếp là một thông báo lỗi
+  // của Postgres lọt ra ngoài, và nó nói về kiểu dữ liệu chứ không về tổ chức.
+  assertEquals(docOrganizationId(h("' OR 1=1 --")), null);
+});
+
+Deno.test("(f) thiếu x-organization-id: 400 organization_required, KHÔNG reserve", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, dem } = adminGia();
+  const res = await xuLyYeuCau(
+    yeuCau(
+      { model: "mock:done", messages: [{ role: "user", content: "chào" }] },
+      { "x-organization-id": "" },
+    ),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  assertEquals(res.status, 400);
+  const than = await res.json();
+  assertEquals(than.error.code, "organization_required");
+  // Phải chặn TRƯỚC reserve: reserve rồi mới biết thiếu org nghĩa là một dòng
+  // pending giữ hạn mức 5 phút cho một request không bao giờ chạy.
+  assertEquals(dem("reserve_ai_usage"), 0, "đã reserve rồi mới chặn — sai thứ tự");
+  assertEquals(dem("finalize_ai_usage"), 0);
+});
+
+Deno.test("(f2) x-organization-id rác cũng là 400, không đẩy chuỗi lạ xuống DB", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, dem } = adminGia();
+  const res = await xuLyYeuCau(
+    yeuCau(
+      { model: "mock:done", messages: [{ role: "user", content: "chào" }] },
+      { "x-organization-id": "khong-phai-uuid" },
+    ),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  assertEquals(res.status, 400);
+  assertEquals((await res.json()).error.code, "organization_required");
+  assertEquals(dem("reserve_ai_usage"), 0);
+});
+
+Deno.test("(g) org hợp lệ: reserve_ai_usage nhận p_organization_id", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, goi } = adminGia();
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "mock:done", messages: [{ role: "user", content: "chào" }] }),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  assertEquals(res.status, 200);
+  await res.json();
+  const dat = goi.find((g) => g.ten === "reserve_ai_usage");
+  assertEquals(dat?.args.p_organization_id, ORG_GIA);
+});
+
+Deno.test("(h) organization_forbidden từ RPC → 403, không phải 500", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, dem } = adminGia({
+    reserveLoi: 'organization_forbidden',
+  });
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "mock:done", messages: [{ role: "user", content: "chào" }] }),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  // 403 chứ không 500: người dùng chọn nhầm công ty là chuyện của họ sửa được,
+  // còn 500 nói rằng server hỏng và LLM class sẽ retry một việc không bao giờ qua.
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).error.code, "organization_forbidden");
+  assertEquals(dem("finalize_ai_usage"), 0, "reserve hỏng thì chưa có gì để chốt");
+});
+
+Deno.test("(h2) organization_required từ RPC → 400 (hàng rào thứ hai)", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin } = adminGia({ reserveLoi: 'organization_required' });
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "mock:done", messages: [{ role: "user", content: "chào" }] }),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  // Proxy đã chặn ở cửa, nhưng RPC là nơi duy nhất biết chắc — proxy có thể được
+  // deploy lại từ một bản cũ hơn migration.
+  assertEquals(res.status, 400);
+  assertEquals((await res.json()).error.code, "organization_required");
 });
