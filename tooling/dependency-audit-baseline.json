@@ -7,17 +7,22 @@
       "hetHan": "2026-11-30"
     },
     {
+      "vanTay": "co-the-vao-bundle|@xmldom/xmldom|moderate",
+      "lyDo": "Advisory moi xuat hien 02/09/2026 (moderate) o @xmldom/xmldom, keo theo docxtemplater — thu vien sinh file .docx tu MAU do quan tri vien tai len, khong parse XML tu nguoi dung an danh. Ban va doi nang docxtemplater (kiem tuong thich mau bieu hien co) — khong gop vao lat va bao mat Copilot G0. Giam nhe: chi vai quan tri co quyen upload mau; input XML khong den tu web cong khai.",
+      "hetHan": "2026-10-31"
+    },
+    {
       "vanTay": "co-the-vao-bundle|lodash|high",
       "lyDo": "Code injection qua `_.template`. Tới đây qua recharts 2.15.4; bản vá là recharts 3 — đổi major. src/ không gọi lodash trực tiếp (0 import), và không đường nào đưa chuỗi do người dùng nhập vào `_.template`.",
       "hetHan": "2026-11-30"
     },
     {
-      "vanTay": "co-the-vao-bundle|react-router|high",
+      "vanTay": "co-the-vao-bundle|react-router-dom|high",
       "lyDo": "Cùng advisory với @remix-run/router — cùng một bản vá major. Xem mục trên.",
       "hetHan": "2026-11-30"
     },
     {
-      "vanTay": "co-the-vao-bundle|react-router-dom|high",
+      "vanTay": "co-the-vao-bundle|react-router|high",
       "lyDo": "Cùng advisory với @remix-run/router — cùng một bản vá major. Xem mục trên.",
       "hetHan": "2026-11-30"
     },
