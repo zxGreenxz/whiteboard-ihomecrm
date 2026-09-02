@@ -85,21 +85,22 @@
     {
       "id": "edge-deno-llm-proxy",
       "runner": "deno",
-      "ciJob": "(chưa có — xem blockedFromCi)",
-      "command": "npx --yes deno@2.9.4 test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env",
+      "ciJob": "ci-gates / quality-gates",
+      "command": "deno test --config supabase/functions/llm-proxy/deno.json supabase/functions/llm-proxy/index.test.ts --allow-env  (CI dùng denoland/setup-deno 2.9.4; máy dev chưa cài Deno thì thay `deno` bằng `npx --yes deno@2.9.4`)",
       "runtime": "deno 2.9.4",
       "risk": "normal",
       "includes": [
         "supabase/functions/llm-proxy/index.test.ts"
       ],
-      "note": "Test hàm thuần của llm-proxy (allowlist body, trần kích thước, clamp mock cost, đồng hồ stream). Tách khỏi suite edge-deno vì suite đó chạy trong workflow network-center-validation, mà workflow ấy lọc theo đường dẫn Network Center — llm-proxy đổi không kích hoạt nó.",
-      "ciJobs": [],
-      "environment": "local",
-      "blockedFromCi": {
-        "reason": "Chưa workflow nào cài Deno cho llm-proxy: ci-gates.yml không có bước Deno, còn network-center-validation.yml lọc đường dẫn Network Center nên thay đổi ở supabase/functions/llm-proxy không kích hoạt nó. Suite CHẠY ĐƯỢC ở local qua npx (27/27 xanh ngày 02/09/2026, Deno 2.9.4) — thứ còn thiếu là một job CI, không phải runtime.",
-        "expiry": "2026-10-31",
-        "exitCondition": "Thêm bước Deno vào job quality-gates của ci-gates.yml (pin denoland/setup-deno + deno-version 2.9.4 như network-center-validation.yml) chạy đúng `command` ở trên, rồi đổi ciJobs thành {workflow: .github/workflows/ci-gates.yml, job: quality-gates}, environment thành ci, và xoá mục này."
-      }
+      "note": "Test hàm thuần của llm-proxy (allowlist body, trần kích thước, clamp mock cost, đồng hồ stream). Tách khỏi suite edge-deno vì suite đó chạy trong workflow network-center-validation, mà workflow ấy lọc theo đường dẫn Network Center — llm-proxy đổi không kích hoạt nó. Nối vào ci-gates.yml ngày 02/09/2026 (hai bước: cài Deno + chạy test), gỡ blockedFromCi: đo tại chỗ 33/33 xanh với Deno 2.9.4.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/ci-gates.yml",
+          "job": "quality-gates"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 60
     },
     {
       "id": "e2e-fleet",

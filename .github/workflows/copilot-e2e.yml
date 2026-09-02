@@ -1,0 +1,107 @@
+# E2E Copilot — 3 spec chạy trên trình duyệt thật, KHÔNG chạy theo mỗi PR.
+#
+# VÌ SAO TÁCH RA KHỎI ci-gates.yml
+#   Job quality-gates cố ý KHÔNG cần secret nào: nhờ vậy nó xanh trên mọi PR, kể
+#   cả PR từ fork. Ba spec dưới đây cần mật khẩu tài khoản DEMO và một URL trỏ tới
+#   bản build đang chạy — gộp vào đó là biến cửa bắt buộc thành cửa đỏ-vì-thiếu-
+#   credential, và một cửa đỏ thường trực là cửa không ai còn đọc.
+#
+# SECRET PHẢI ĐƯỢC NẠP TAY (Settings → Secrets and variables → Actions)
+#   - FLEET_BASE_URL       : URL bản dựng ĐANG chạy để thử. KHÔNG được là
+#                            https://ptcrm.vercel.app — hai spec ghi dữ liệu gọi
+#                            `chanChayTrenProduction()` và sẽ NÉM nếu thấy
+#                            production (xem .e2e-fleet/specs/buildAttestation.ts).
+#   - FLEET_PASS_CHUNHA    : mật khẩu demo.chunha@username.ihomecrm.local
+#   - FLEET_PASS_KETOAN    : mật khẩu demo.ketoan@username.ihomecrm.local
+#   - FLEET_PASS_QUANLY    : mật khẩu demo.quanly@username.ihomecrm.local
+#   - FLEET_PASS_QUANLY2   : quản lý thứ hai. .e2e-fleet/specs/auth.ts CHƯA có
+#                            khoá cho tài khoản này (02/09/2026) — nối sẵn ở đây
+#                            để spec sau thêm vai đó mà không phải sửa workflow.
+#   Thiếu secret nào thì spec NÉM với thông báo chỉ đúng tên biến, không fail mơ hồ.
+#
+# PHẠM VI GHI: CHỈ ORG DEMO (Contract §8)
+#   Cả ba spec đăng nhập bằng tài khoản demo.* thuộc org DEMO (dddd…0001) và chỉ
+#   ghi trong phạm vi đó. `COPILOT_DRAFT_MATRIX_LIVE=1` mở phần ma trận nháp có
+#   GHI (preview nháp chưa duyệt) — vẫn trong org DEMO. Không có tài khoản của
+#   công ty thật nào trong workflow này.
+#
+# BẢN NÀO ĐANG ĐƯỢC THỬ
+#   Mọi spec Copilot gọi `xacMinhBanBuild()`: nó so `EXPECTED_SOURCE_SHA` với thẻ
+#   <meta name="build-sha"> của trang. Ở đây EXPECTED_SOURCE_SHA = github.sha, nên
+#   FLEET_BASE_URL phải trỏ tới bản dựng TỪ ĐÚNG commit này. Chạy tay thì chọn ref
+#   khớp bản đã deploy; lượt theo lịch chỉ xanh khi bản đang chạy dựng từ HEAD của
+#   nhánh mặc định. Sai bản ⇒ spec NÉM ngay ở test đầu — đó là chủ ý: kết quả E2E
+#   của một bản không rõ danh tính không chứng minh được gì (ca C38, 13/08/2026).
+
+name: Copilot E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 19:00 UTC = 02:00 giờ Việt Nam (UTC+7) — ngoài giờ làm việc.
+    - cron: '0 19 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: copilot-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  copilot-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+
+      - name: Cài dependency (npm ci — khớp package-lock.json)
+        run: npm ci
+
+      # .e2e-fleet KHÔNG có package.json riêng: nó dùng @playwright/test của root
+      # (1.61.1). Chỉ cài chromium — ba spec này không chạy firefox/webkit.
+      - name: Cài Chromium cho Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: 3 spec Copilot (readonly smoke · xác nhận · ma trận nháp)
+        env:
+          FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
+          FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
+          FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
+          FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
+          FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
+          # 2 worker: đủ song song để suite không lê thê, đủ ít để 3 tài khoản
+          # DEMO không tự đá nhau khi cùng ghi nháp trong một org.
+          FLEET_WORKERS: '2'
+          # Mở 2 test ghi nháp trong copilot-draft-matrix.spec.ts. Cờ này nằm
+          # trong spec (`test.skip` khi khác '1') — KHÔNG gỡ cờ, chỉ đặt env.
+          COPILOT_DRAFT_MATRIX_LIVE: '1'
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd .e2e-fleet
+          npx playwright test \
+            specs/copilot-readonly-smoke.spec.ts \
+            specs/copilot-confirmation.spec.ts \
+            specs/copilot-draft-matrix.spec.ts \
+            --reporter=list,html \
+            --trace=retain-on-failure
+
+      # `if: always()`: artifact chỉ có giá trị đúng lúc suite ĐỎ. Bỏ điều kiện
+      # này là giữ lại bằng chứng cho mỗi lần không cần tới nó.
+      - name: Tải lên report + trace
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: copilot-e2e-report
+          path: |
+            .e2e-fleet/playwright-report/
+            .e2e-fleet/test-results/
+          if-no-files-found: warn
+          retention-days: 14

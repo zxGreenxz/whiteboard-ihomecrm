@@ -110,6 +110,15 @@ const GATE_NHANH = [
   "check-doc-counts",
   "check-doc-freshness",
   ["generate-docs-views", "--check"],
+  // copilot-gates — sáu cổng nối vào CI ngày 02/09/2026 (ci-gates.yml, bước
+  // "copilot-gates"). Đủ điều kiện của danh sách này: tĩnh, không mạng, không
+  // credential, cả sáu chạy hết chưa tới 2 giây.
+  "check-copilot-page-contracts",
+  "check-copilot-safe-control-markers",
+  "check-copilot-provider-policy",
+  "check-copilot-e2e-files",
+  "check-copilot-golden-eval",
+  "check-copilot-forbidden-actions",
   // nợ strict mới
   "check-new-modules-strict",
 ];

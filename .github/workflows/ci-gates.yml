@@ -206,6 +206,103 @@ jobs:
           node scripts/check-doc-freshness.mjs || loi=1
           node scripts/generate-docs-views.mjs --check || loi=1
           exit $loi
+
+      # NỐI 02/09/2026 — SÁU cổng Copilot còn lại. Cùng một vết đã ghi ở khối
+      # docs-freshness ngay trên (26/08), lần này gấp sáu: package.json có đủ
+      # script cho chúng, TEST của chúng chạy đều đặn ở bước `node --test` phía
+      # dưới, mà chính các gate thì KHÔNG lệnh CI nào gọi. Test của một cái cửa
+      # chạy hằng ngày trong khi cái cửa không bao giờ đóng.
+      # Tất cả đều tĩnh, không mạng, không credential — cả khối dưới 2 giây.
+      - name: copilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        run: |
+          loi=0
+          # Copilot chỉ được nói về trang mà nó thật sự biết đường tới.
+          node scripts/check-copilot-page-contracts.mjs || loi=1
+          # Marker khai nút nào Copilot được phép bấm hộ người dùng.
+          node scripts/check-copilot-safe-control-markers.mjs || loi=1
+          # Giá + phân lớp dữ liệu từng provider; provider bật mà pricing "unknown" là đỏ.
+          node scripts/check-copilot-provider-policy.mjs || loi=1
+          # 5 spec E2E bắt buộc phải TỒN TẠI — copilot-e2e.yml là nơi chạy chúng.
+          node scripts/check-copilot-e2e-files.mjs || loi=1
+          # Bộ 30 ca vàng: đúng C01–C30, mỗi ca có oracle, SLA khai tường minh.
+          node scripts/check-copilot-golden-eval.mjs || loi=1
+          # Ranh giới L5/L6, đọc từ tooling/copilot-action-policy.json.
+          node scripts/check-copilot-forbidden-actions.mjs || loi=1
+          exit $loi
+
+      # Lane MOCK của bộ 30 ca vàng — CHẠY THẬT, không mạng, không model, không
+      # credential: nó suy tool/outcome/scenario từ chính câu hỏi rồi đối chiếu
+      # với oracle trong corpus. Gate `check-copilot-golden-eval` ở khối trên chỉ
+      # xác nhận corpus HỢP LỆ; bước này xác nhận corpus CÒN ĐÚNG.
+      #
+      # Báo cáo ghi ra $RUNNER_TEMP chứ KHÔNG vào docs/generated/ — thư mục đó do
+      # generator riêng sở hữu và một artifact CI ghi lén vào đó sẽ làm gate
+      # docs-freshness đỏ ở lần chạy sau, không phải ở lần này.
+      #
+      # Vì sao phải đọc lại báo cáo thay vì tin mã thoát: runner thoát 2 khi
+      # `verdict != pass`, mà hôm nay verdict luôn là `blocked` vì SLA độ trễ
+      # đang `pending-owner-approval` (chủ chưa ký số ms nào là đạt). Bước này
+      # tha ĐÚNG một lý do đó và đỏ với mọi lý do khác — 30 ca vẫn phải pass hết.
+      # Khi chủ ký SLA, xoá nhánh tha và để mã thoát nói thẳng.
+      - name: Copilot golden eval — lane mock (30 ca, báo cáo ra $RUNNER_TEMP)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        env:
+          BAO_CAO: ${{ runner.temp }}/copilot-golden-eval-mock.json
+          SHA: ${{ github.sha }}
+        run: |
+          node scripts/run-copilot-golden-eval.mjs \
+            --lane mock \
+            --build-sha "$SHA" \
+            --provider-model mock-deterministic \
+            --out "$BAO_CAO" > /dev/null || true
+          node -e '
+            const fs = require("node:fs");
+            const bc = JSON.parse(fs.readFileSync(process.env.BAO_CAO, "utf8"));
+            const loi = [];
+            if (bc.aggregate.total !== 30) loi.push("khong du 30 ca: " + bc.aggregate.total);
+            for (const k of ["fail", "partial", "blocked"]) {
+              if (bc.aggregate.counts[k] > 0) loi.push(k + "=" + bc.aggregate.counts[k]);
+            }
+            const THA = "latency SLA is pending owner approval";
+            if (bc.verdict !== "pass" && bc.sla.reason !== THA) {
+              loi.push("verdict=" + bc.verdict + " (" + bc.sla.reason + ")");
+            }
+            if (loi.length) {
+              console.error("Copilot golden eval (lane mock) DO: " + loi.join("; "));
+              process.exit(1);
+            }
+            console.log("Copilot golden eval (lane mock): " + bc.aggregate.counts.pass + "/30 pass; SLA do tre: " + bc.sla.reason + ".");
+          '
+
+      - name: Tải lên báo cáo golden eval (lane mock)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: copilot-golden-eval-mock
+          path: ${{ runner.temp }}/copilot-golden-eval-mock.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Suite `edge-deno-llm-proxy` của tooling/test-matrix.json. Nó KHÔNG chạy
+      # được ở network-center-validation.yml: workflow đó lọc `paths:` theo Network
+      # Center nên sửa supabase/functions/llm-proxy không kích hoạt nó. Trước
+      # 02/09/2026 suite này khai `blockedFromCi` — tồn tại trong repo, xanh ở máy
+      # dev, chưa từng chạy trên CI. Đây là bước gỡ miễn trừ đó.
+      - name: Cài Deno cho test Edge llm-proxy
+        if: ${{ !cancelled() }}
+        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+        with:
+          # Pin exact 2.9.4 — cùng bản network-center-validation.yml đang dùng và
+          # cùng bản đã xác minh suite này xanh. `v2.x` sẽ trôi theo patch mới.
+          deno-version: 2.9.4
+
+      - name: Deno test — supabase/functions/llm-proxy
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          deno test --config supabase/functions/llm-proxy/deno.json \
+            supabase/functions/llm-proxy/index.test.ts --allow-env
       - name: Module mới phải strict ngay từ đầu
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-new-modules-strict.mjs

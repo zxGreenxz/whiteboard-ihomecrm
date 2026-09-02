@@ -1,0 +1,14 @@
+{
+  "$comment": "Ranh giới L5/L6 của Copilot, khai bằng DỮ LIỆU thay vì nằm rải trong mã gate. `kinds` liệt kê mọi loại hành động mà một tool KHÔNG được phơi ra dưới dạng executor. `forbidden` = cấm vĩnh viễn, không có đường mở. `step_up_required` = chỉ mở được khi có bằng chứng xác thực bước hai của con người — cơ chế đó CHƯA tồn tại (registry action `consent_required='step_up'` thuộc G3), nên hôm nay gate vẫn chặn y như `forbidden`. `l6Forever` là tập con không bao giờ được hạ cấp; scripts/check-copilot-forbidden-actions.mjs ném lỗi nếu ai đó hạ một mục trong đó xuống khác `forbidden`. Kiểm: npm run gate:copilot-forbidden-actions",
+  "schemaVersion": 1,
+  "kinds": {
+    "approval": "step_up_required",
+    "posting": "step_up_required",
+    "delete": "step_up_required",
+    "permission": "step_up_required",
+    "sql": "forbidden",
+    "secret": "forbidden",
+    "deploy": "forbidden"
+  },
+  "l6Forever": ["sql", "secret", "deploy"]
+}

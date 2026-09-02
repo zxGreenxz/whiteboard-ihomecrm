@@ -32,8 +32,8 @@
       "path": ".github/workflows/ci-gates.yml",
       "node": "24.18.0",
       "note": "Pin exact. Khớp sàn cao nhất (bridge 24.18).",
-      "noteDeno": "ci-gates.yml KHÔNG dùng Deno (job Deno cuối cùng bị xoá 25/08/2026). Deno vẫn dùng ở network-center-validation.yml.",
-      "deno": null
+      "noteDeno": "Deno QUAY LẠI ci-gates.yml ngày 02/09/2026 — bước test Edge cho supabase/functions/llm-proxy (suite edge-deno-llm-proxy). Trước đó job Deno cuối cùng bị xoá 25/08/2026. Pin cùng 2.9.4 với network-center-validation.yml.",
+      "deno": "2.9.4"
     },
     {
       "path": ".github/workflows/network-center-validation.yml",
@@ -46,6 +46,12 @@
       "node": "24.18.0",
       "deno": null,
       "note": "Nang tu 20.20.2 len 24.18.0 ngay 11/08/2026 vi CO BANG CHUNG: 2/3 script cua job nay da chay tren 24.18.0 trong ci-gates hang ngay, script thu ba chi dung node:crypto/fs/path/url. Dong luon known-gap supabase-migrate-node-20-eol thay vi gia han. KHONG phai luat thong nhat version — network-center van o 22 vi worker khai >=20 <23."
+    },
+    {
+      "path": ".github/workflows/copilot-e2e.yml",
+      "node": "24.18.0",
+      "deno": null,
+      "note": "E2E Copilot chay tay + cron 19:00 UTC (02:00 VN). Node theo ci-gates: no chi chay npm ci + Playwright, khong co rang buoc engines rieng. Can secret FLEET_* nen tach khoi quality-gates."
     },
     {
       "path": ".github/workflows/external-controls.yml",
