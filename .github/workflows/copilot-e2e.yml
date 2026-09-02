@@ -17,7 +17,29 @@
 #   - FLEET_PASS_QUANLY2   : quản lý thứ hai. .e2e-fleet/specs/auth.ts CHƯA có
 #                            khoá cho tài khoản này (02/09/2026) — nối sẵn ở đây
 #                            để spec sau thêm vai đó mà không phải sửa workflow.
+#   - VERCEL_AUTOMATION_BYPASS_SECRET : mật khẩu mở khoá bản preview — xem khối
+#                            "PREVIEW BỊ KHOÁ" ngay dưới.
 #   Thiếu secret nào thì spec NÉM với thông báo chỉ đúng tên biến, không fail mơ hồ.
+#
+# PREVIEW BỊ KHOÁ — VÌ SAO PHẢI GỬI HEADER BYPASS
+#   FLEET_BASE_URL hiện trỏ vào alias preview
+#   (https://ihomecrm-git-main-zxgreenxzs-projects.vercel.app), và deployment
+#   preview của Vercel bật **Vercel Authentication**: mọi request không mang
+#   chứng chỉ đều nhận về một trang đăng nhập SSO — kể cả `curl`, kể cả trình
+#   duyệt Playwright. Hệ quả nếu thiếu header: bước đọc SHA nhận trang đăng nhập
+#   (không có thẻ <meta name="build-sha">) và cả suite chết vì một lý do chẳng
+#   liên quan gì tới Copilot — đúng kiểu đỏ thường trực khiến người ta ngừng đọc CI.
+#
+#   Cách mở đúng của Vercel là "Protection Bypass for Automation": một giá trị bí
+#   mật gửi qua header `x-vercel-protection-bypass`. Nó phải đi ở CẢ HAI nơi —
+#   `curl` của bước đọc SHA, và mọi request của trình duyệt
+#   (`extraHTTPHeaders` trong .e2e-fleet/playwright.config.ts). Thiếu một chỗ là
+#   hỏng một nửa: hoặc không đọc được SHA, hoặc đọc được rồi mà trình duyệt vẫn
+#   chỉ thấy trang đăng nhập.
+#
+#   Giá trị này là MẬT KHẨU của bản preview (ai có nó thì mở được mọi deployment
+#   preview của project), nên nó chịu ĐÚNG bộ lọc che và ĐÚNG guard như
+#   FLEET_PASS_* — xem bước chạy test và bước guard bên dưới.
 #
 # PHẠM VI GHI: CHỈ ORG DEMO (Contract §8)
 #   Cả ba spec đăng nhập bằng tài khoản demo.* thuộc org DEMO (dddd…0001) và chỉ
@@ -95,6 +117,9 @@ jobs:
         env:
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
           SHA_NHAP: ${{ inputs.expected_sha }}
+          # Preview bật Vercel Authentication: không có header dựng từ biến này
+          # thì curl nhận trang đăng nhập SSO chứ không nhận index.html.
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${FLEET_BASE_URL:-}" ]; then
@@ -106,11 +131,19 @@ jobs:
             nguon="input expected_sha (chay tay)"
           else
             nguon="the meta build-sha cua $FLEET_BASE_URL"
-            trang=$(curl -fsSL --max-time 60 "$FLEET_BASE_URL/")
+            # Header bypass gui KE CA khi bien rong: mot ban khong bat bao ve se
+            # bo qua header la, con mot ban CO bat ma thieu secret thi that bai
+            # ngay duoi voi thong bao noi dung nguyen nhan.
+            if ! trang=$(curl -fsSL --max-time 60 \
+                  -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET:-}" \
+                  "$FLEET_BASE_URL/"); then
+              echo "::error::curl that bai khi tai $FLEET_BASE_URL/. Neu day la preview co Vercel Authentication thi kiem secret VERCEL_AUTOMATION_BYPASS_SECRET."
+              exit 1
+            fi
             sha=$(printf '%s' "$trang" | grep -o 'build-sha"[[:space:]]*content="[0-9a-f]\{40\}' | head -1 | grep -o '[0-9a-f]\{40\}' || true)
           fi
           if ! printf '%s' "$sha" | grep -qE '^[0-9a-f]{40}$'; then
-            echo "::error::Khong lay duoc build SHA 40 hex (nguon: $nguon). Ban dang chay KHONG khai minh la ai — dung thieu VITE_BUILD_SHA/VERCEL_GIT_COMMIT_SHA."
+            echo "::error::Khong lay duoc build SHA 40 hex (nguon: $nguon). Hai kha nang: (1) ban dang chay KHONG khai minh la ai — thieu VITE_BUILD_SHA/VERCEL_GIT_COMMIT_SHA; (2) request bi Vercel Authentication chan nen tra ve trang dang nhap thay vi index.html — kiem secret VERCEL_AUTOMATION_BYPASS_SECRET."
             exit 1
           fi
           if ! git cat-file -e "$sha^{commit}" 2>/dev/null; then
@@ -168,6 +201,10 @@ jobs:
           FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
           FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
           FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
+          # playwright.config.ts đọc biến này rồi gắn header
+          # `x-vercel-protection-bypass` cho MỌI request của trình duyệt. Không có
+          # nó thì Playwright chỉ thấy trang đăng nhập SSO của Vercel, không thấy app.
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           # 2 worker: đủ song song để suite không lê thê, đủ ít để 3 tài khoản
           # DEMO không tự đá nhau khi cùng ghi nháp trong một org.
           FLEET_WORKERS: '2'
@@ -189,7 +226,11 @@ jobs:
             --reporter=list \
             --trace=off \
             --output "$THU_MUC_RAC" 2>&1 | node -e '
-              // Lọc che: thay mọi giá trị FLEET_PASS_* bằng ***, xử theo TỪNG DÒNG.
+              // Lọc che: thay mọi giá trị BÍ MẬT bằng ***, xử theo TỪNG DÒNG.
+              // Danh sách gồm FLEET_PASS_* VÀ VERCEL_AUTOMATION_BYPASS_SECRET: cái
+              // sau cũng là mật khẩu (ai có nó thì mở được mọi deployment preview),
+              // nên nó phải chịu đúng bộ lọc và đúng guard như mật khẩu DEMO chứ
+              // không phải "chỉ là một header".
               // Dùng split/join chứ KHÔNG regex: mật khẩu chứa `!`, `_`, `-` và quên
               // escape một metachar là lọc âm thầm sai. So khớp chuỗi thuần thì không
               // có metachar nào để quên. Dài trước ngắn sau, để một mật khẩu là tiền
@@ -197,8 +238,9 @@ jobs:
               // Bỏ qua giá trị dưới 8 ký tự: một biến đặt nhầm thành "a" sẽ biến cả
               // log thành ***. Trường hợp đó guard vẫn là lưới.
               const NL = String.fromCharCode(10);
+              const LA_BI_MAT = /^(?:FLEET_PASS_|VERCEL_AUTOMATION_BYPASS_SECRET$)/;
               const bi = Object.keys(process.env)
-                .filter((k) => k.startsWith("FLEET_PASS_"))
+                .filter((k) => LA_BI_MAT.test(k))
                 .map((k) => process.env[k])
                 .filter((v) => v && v.length >= 8)
                 .sort((a, b) => b.length - a.length);
@@ -253,6 +295,7 @@ jobs:
           FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
           FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
           FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -uo pipefail
           if [ ! -d "$THU_MUC_TAI_LEN" ]; then
@@ -261,15 +304,21 @@ jobs:
           fi
           loi=0
           dem=0
-          # Tên biến lấy ĐỘNG thay vì chép cứng bốn cái: thêm mật khẩu thứ năm vào
-          # khối `env:` ở trên là guard tự canh luôn. Một danh sách chép tay chính là
+          dem_pass=0
+          # Tên biến lấy ĐỘNG thay vì chép cứng: thêm một giá trị bí mật vào khối
+          # `env:` ở trên là guard tự canh luôn. Một danh sách chép tay chính là
           # cách một secret mới lọt lưới mà không ai thấy.
-          for ten in $(env | cut -d= -f1 | grep "^FLEET_PASS_" | sort -u); do
+          #
+          # VERCEL_AUTOMATION_BYPASS_SECRET nằm trong CÙNG lưới với mật khẩu DEMO:
+          # nó mở được MỌI deployment preview của project, nên rò nó ra artifact
+          # cũng nghiêm trọng như rò mật khẩu.
+          for ten in $(env | cut -d= -f1 | grep -E "^(FLEET_PASS_|VERCEL_AUTOMATION_BYPASS_SECRET$)" | sort -u); do
             mk="${!ten:-}"
             [ -n "$mk" ] || continue
             dem=$((dem + 1))
+            case "$ten" in FLEET_PASS_*) dem_pass=$((dem_pass + 1)) ;; esac
             if grep -rqF -- "$mk" "$THU_MUC_TAI_LEN"; then
-              echo "::error::artifact chua mat khau DEMO ($ten) — khong upload"
+              echo "::error::artifact chua gia tri bi mat ($ten) — khong upload"
               loi=1
             fi
           done
@@ -277,7 +326,12 @@ jobs:
             echo "::error::artifact chua report nhung zip (grep khong kiem duoc) — khong upload"
             loi=1
           fi
-          if [ "$dem" -eq 0 ]; then
+          if [ "$dem_pass" -eq 0 ]; then
+            # Đếm RIÊNG FLEET_PASS_*, không đếm gộp. Nhìn tổng thì một môi trường chỉ
+            # có mỗi VERCEL_AUTOMATION_BYPASS_SECRET sẽ cho `dem=1` và guard gật đầu —
+            # trong khi bốn mật khẩu DEMO chưa hề được đo. Thêm một secret vào lưới
+            # không được phép làm YẾU phép đo đã có.
+            #
             # Không thấy biến FLEET_PASS_* nào ⇒ guard KHÔNG ĐO được gì. Đó KHÔNG phải
             # là "sạch", nên thoát khác 0 (fail-closed): upload đòi guard success, nên
             # không có gì rời máy chạy khi phép đo hỏng. Dùng mã 3 để phân biệt với
@@ -290,7 +344,7 @@ jobs:
             rm -rf "$THU_MUC_TAI_LEN"
             exit 1
           fi
-          echo "Guard: khong thay mat khau nao trong $THU_MUC_TAI_LEN."
+          echo "Guard: da do $dem gia tri bi mat ($dem_pass mat khau DEMO), khong thay cai nao trong $THU_MUC_TAI_LEN."
 
       # `!cancelled() && guard == success`: vẫn tải lên khi suite ĐỎ (đó là lúc log
       # có giá trị nhất), nhưng KHÔNG tải khi guard chưa chạy hoặc vừa bắt được rò
