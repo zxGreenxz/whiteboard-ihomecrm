@@ -608,17 +608,11 @@ export const useUnapproveMeterReading = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // Canonical unapprove_meter_reading_v1 (permission-checked); thay direct-DML
-      // (cửa hở cũ). Fallback direct-DML chỉ khi writer chưa deploy (PGRST202).
-      let res = await supabase.rpc("unapprove_meter_reading_v1" as any, { p_id: id });
-      if (res.error && (res.error as { code?: string }).code === "PGRST202") {
-        res = await supabase
-          .from("meter_readings")
-          .update({ status: "UNAPPROVED", approved_by: null, approved_at: null } as any)
-          .eq("id", id)
-          .select()
-          .single();
-      }
+      // Canonical unapprove_meter_reading_v1 (permission-checked theo toà). KHÔNG
+      // còn fallback UPDATE thẳng meter_readings: từ migration 20260902084240 _v1
+      // nằm trong migration thật — thiếu writer là lỗi phải lộ ra, không phải
+      // cửa hậu bỏ kiểm quyền (PMETER-C01, re-anchor 02/09/2026).
+      const res = await supabase.rpc("unapprove_meter_reading_v1" as any, { p_id: id });
       if (res.error) {
         toast.error("Không thể bỏ duyệt chỉ số");
         throw res.error;

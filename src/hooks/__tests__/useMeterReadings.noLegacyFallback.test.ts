@@ -7,10 +7,10 @@ import { describe, expect, it } from "vitest";
 // anon; nhánh fallback phải biến mất và không được quay lại.
 
 const full = readFileSync(new URL("../useMeterReadings.ts", import.meta.url), "utf8");
-// Chi soi 2 hook duyet (approve/bulk) — nhanh unapprove co migration rieng.
+// Soi 3 hook duyệt/bỏ duyệt: approve, bulk (migration 20260902082002) và
+// unapprove (migration 20260902084240) — cả ba *_v1 đều đã nằm trong migration thật.
 const start = full.indexOf("export const useApproveMeterReading");
-const end = full.indexOf("export const useUnapproveMeterReading");
-const source = full.slice(start, end);
+const source = full.slice(start);
 
 describe("useMeterReadings không còn fallback sang RPC duyệt chỉ số legacy", () => {
   it("chỉ gọi *_v1, không có nhánh PGRST202 rơi về approve_meter_reading / bulk_approve_meter_readings", () => {
@@ -20,5 +20,10 @@ describe("useMeterReadings không còn fallback sang RPC duyệt chỉ số lega
     expect(source).not.toMatch(/supabase\.rpc\("bulk_approve_meter_readings"/);
     // chi bat MA fallback (so sanh ma loi roi goi legacy), khong bat chu "PGRST202" trong comment giai thich
     expect(source).not.toMatch(/=== "PGRST202"/);
+  });
+
+  it("bỏ duyệt chỉ gọi unapprove_meter_reading_v1, không còn UPDATE thẳng meter_readings", () => {
+    expect(source).toMatch(/supabase\.rpc\("unapprove_meter_reading_v1"/);
+    expect(source).not.toMatch(/\.from\("meter_readings"\)\s*\.update\(\{ status: "UNAPPROVED"/);
   });
 });

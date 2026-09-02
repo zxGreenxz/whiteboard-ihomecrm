@@ -33,6 +33,18 @@ describe("20260902082002 — meter RPC: REVOKE anon + _v1 vào migration", () =>
   });
 });
 
+describe("20260902084240 — unapprove_meter_reading_v1 vào migration", () => {
+  const sql = mig("20260902084240_unapprove_meter_reading_v1_vao_migration.sql");
+
+  it("thân _v1 có authz theo toà, anon bị cắt, không DROP", () => {
+    expect(sql).toMatch(/CREATE OR REPLACE FUNCTION public\.unapprove_meter_reading_v1\(p_id uuid\)/);
+    expect(sql).toMatch(/can_do_on_building\('meter_readings','edit',v_building\)/);
+    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.unapprove_meter_reading_v1\(uuid\) FROM PUBLIC, anon;/);
+    expect(sql).toMatch(/has_function_privilege\('anon', 'public\.unapprove_meter_reading_v1\(uuid\)', 'EXECUTE'\)/);
+    expect(sql).not.toMatch(/DROP FUNCTION/);
+  });
+});
+
 describe("20260902082003 — transfer_contract_impl chặn khách khác org", () => {
   const sql = mig("20260902082003_transfer_contract_chan_khach_khac_org.sql");
 
