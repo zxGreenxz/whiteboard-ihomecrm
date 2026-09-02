@@ -40,6 +40,9 @@ function chain(ketQua: KetQua, goi: [string, unknown[]][]) {
 }
 
 const queryFn = () =>
+  // `useQuery` đã bị mock thành hàm trả lại chính options — không có React nào
+  // chạy ở đây, nên luật thứ tự hook không áp dụng.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   (useCopilotEntitlement() as unknown as { queryFn: () => Promise<unknown> }).queryFn();
 
 beforeEach(() => {

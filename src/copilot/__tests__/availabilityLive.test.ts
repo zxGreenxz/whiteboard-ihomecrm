@@ -15,6 +15,9 @@ const { useCopilotAvailability } = await import('../featureFlags');
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 
 const options = (...args: Parameters<typeof useCopilotAvailability>) =>
+  // `useQuery` đã bị mock thành hàm trả lại chính options — không có React nào
+  // chạy ở đây, nên luật thứ tự hook không áp dụng.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useCopilotAvailability(...args) as unknown as Record<string, unknown>;
 
 describe('useCopilotAvailability — chế độ live', () => {
