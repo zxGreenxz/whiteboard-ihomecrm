@@ -78,6 +78,12 @@ draft/
 .e2e-fleet/node_modules/
 .e2e-fleet/test-results/
 .e2e-fleet/playwright-report/
+# Playwright phan giai playwright-report/ theo thu muc chua package.json GAN NHAT
+# (playwright/lib/util.js:243), ma .e2e-fleet/ khong co package.json — nen bao cao
+# thuc te roi vao GOC REPO, khong phai dong ngay tren. Do 02/09/2026. Bo qua ca hai:
+# index.html cua bao cao nhung report JSON co tieu de buoc `Fill "<gia tri>"`, tuc
+# mat khau DEMO — mot lan `git add` nham la no vao lich su vinh vien.
+playwright-report/
 supabase/.temp/
 test-results/
 

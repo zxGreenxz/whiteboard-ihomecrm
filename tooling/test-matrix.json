@@ -106,14 +106,14 @@
       "id": "e2e-fleet-copilot",
       "runner": "playwright",
       "ciJob": "copilot-e2e / copilot-e2e",
-      "command": "cd .e2e-fleet && FLEET_WORKERS=2 npx playwright test specs/copilot-readonly-smoke.spec.ts specs/copilot-confirmation.spec.ts specs/copilot-draft-matrix.spec.ts --reporter=list,html --trace=off",
+      "command": "cd .e2e-fleet && FLEET_WORKERS=2 npx playwright test specs/copilot-readonly-smoke.spec.ts specs/copilot-confirmation.spec.ts specs/copilot-draft-matrix.spec.ts --reporter=list --trace=off",
       "risk": "normal",
       "includes": [
         ".e2e-fleet/specs/copilot-readonly-smoke.spec.ts",
         ".e2e-fleet/specs/copilot-confirmation.spec.ts",
         ".e2e-fleet/specs/copilot-draft-matrix.spec.ts"
       ],
-      "note": "Ba spec Copilot mà .github/workflows/copilot-e2e.yml chạy thật trên CI (workflow_dispatch + cron 19:00 UTC), sau khi 5 secret FLEET_* được nạp ngày 02/09/2026. Chỉ ghi vào org DEMO. EXPECTED_SOURCE_SHA lấy từ thẻ <meta name=\"build-sha\"> của bản đang chạy chứ không phải github.sha. Không có trace trong artifact — xem known-gap e2e-copilot-khong-co-trace.",
+      "note": "Ba spec Copilot mà .github/workflows/copilot-e2e.yml chạy thật trên CI (workflow_dispatch + cron 19:00 UTC), sau khi 5 secret FLEET_* được nạp ngày 02/09/2026. Chỉ ghi vào org DEMO. EXPECTED_SOURCE_SHA lấy từ thẻ <meta name=\"build-sha\"> của bản đang chạy chứ không phải github.sha. CI KHÔNG sinh HTML report và KHÔNG tải trace lên: cả hai mang mật khẩu DEMO (attachment error-context.md, và tiêu đề bước Fill \"<giá trị>\" nằm trong report JSON nhúng zip ở index.html) — xem known-gap e2e-copilot-khong-co-trace. Artifact duy nhất là log của reporter list, qua bước dọn + guard.",
       "ciJobs": [
         {
           "workflow": ".github/workflows/copilot-e2e.yml",

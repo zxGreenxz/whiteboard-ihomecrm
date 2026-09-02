@@ -151,21 +151,42 @@ gaps:
       dùng kiểu suy ra từ select. Là một lượt riêng vì đụng nhiều consumer của kiểu đó.
 
   - id: e2e-copilot-khong-co-trace
-    where: .github/workflows/copilot-e2e.yml (bước chạy 3 spec + bước upload-artifact)
+    where: .github/workflows/copilot-e2e.yml (bước chạy 3 spec · bước dọn · bước guard · upload-artifact)
     expires_at: 2026-12-31
     why: >
-      Suite E2E Copilot chạy `--trace=off` và artifact CHỈ gồm `playwright-report/`, nên khi
-      một ca đỏ trên CI ta biết ca nào và thông báo lỗi, nhưng KHÔNG có trace để xem lại từng
-      bước. Đó là mất khả năng chẩn đoán, và nó là cố ý: trace của Playwright ghi đối số mọi
-      hành động cùng toàn bộ request, tức `fill()` ô mật khẩu và body `grant_type=password`
-      của GoTrue nằm nguyên trong file. Artifact của Actions tải về được bởi bất kỳ ai đọc
-      được repo và sống 14 ngày — bật trace ở cấu hình đăng nhập hiện tại chính là phát tán
-      mật khẩu DEMO ra ngoài vault. Đăng ký 02/09/2026, cùng lượt đưa suite này lên CI.
+      Suite E2E Copilot trên CI chạy `--reporter=list --trace=off` và KHÔNG sinh HTML report;
+      artifact tải lên chỉ là stdout của reporter list. Mất trace VÀ mất cả report HTML, tức
+      khi một ca đỏ ta chỉ có tên ca + thông báo lỗi, không xem lại được từng bước.
+
+      Đó là cố ý, và lý do mạnh hơn "trace nặng". Đo 02/09/2026 (Playwright 1.61.1, đã đặt
+      `trace: 'off'` và `screenshot: 'off'`) trên một spec vứt đi có `fill()` ô mật khẩu:
+        (1) mỗi test ĐỎ sinh attachment `playwright-report/data/<hash>.md` (error-context.md)
+            chứa ARIA snapshot của trang, trong đó giá trị ô `type="password"` nằm NGUYÊN VĂN;
+        (2) nặng hơn: `index.html` NHÚNG report JSON dưới dạng `data:application/zip;base64,`
+            (deflate), và trong đó có tiêu đề bước `"title":"Fill \"<giá trị>\" locator(...)"`.
+            Nghĩa là mật khẩu có mặt ở MỌI lượt chạy gọi `fill()`, kể cả lượt XANH — và vì đã
+            nén nên `grep` bản rõ trên thư mục report luôn báo SẠCH.
+      Nói cách khác: xoá attachment là CẦN nhưng KHÔNG ĐỦ, và một guard chỉ dựa vào grep sẽ
+      gật đầu rồi tải mật khẩu DEMO lên một artifact sống 14 ngày mà ai đọc được repo cũng
+      tải được. Bản ghi trước (cùng ngày) khẳng định "HTML report không chứa giá trị đã điền"
+      — điều đó SAI, đây là đính chính.
+
+      ĐANG GIẢM THIỂU: không sinh HTML report; bước dọn xoá mọi attachment không phải ảnh rồi
+      xoá hẳn report + test-results; bước guard grep từng mật khẩu VÀ từ chối mọi file có
+      chuỗi `data:application/zip;base64,` (thứ grep không kiểm được thì không được tải lên);
+      upload chỉ chạy khi guard xanh. Đã đóng cả đường rò cục bộ: `playwright-report/` ở GỐC
+      repo (nơi Playwright thật sự ghi, vì `.e2e-fleet/` không có package.json) nay nằm trong
+      .gitignore.
+
+      ÁP DỤNG CHO MỌI SPEC CỦA FLEET, không riêng 3 spec Copilot: cứ spec nào đăng nhập bằng
+      `.fill(mật_khẩu)` thì report của nó mang mật khẩu. Workflow nào sau này tải
+      `playwright-report/` lên PHẢI dùng lại đúng cặp bước dọn + guard này.
     exit_condition: >
-      Đổi cách đăng nhập sang `storageState`: dựng phiên MỘT lần trong global setup (ngoài
-      vùng tracing, không spec nào thấy mật khẩu), các spec nạp lại state đó. Khi mật khẩu
-      không còn đi qua trang nào bên trong trace, bật lại `--trace=retain-on-failure` và tải
-      lên `test-results/`, rồi xoá mục này.
+      Đổi cách đăng nhập sang `storageState`: dựng phiên MỘT lần trong global setup (ngoài mọi
+      vùng ghi hình/ghi bước, không spec nào thấy mật khẩu), các spec chỉ nạp lại state. Khi
+      mật khẩu không còn đi qua `fill()` của bất kỳ spec nào, bật lại `--reporter=list,html` +
+      `--trace=retain-on-failure` và tải lên `playwright-report/`, giữ nguyên guard làm lưới
+      an toàn, rồi xoá mục này.
 
 # ĐÃ ĐÓNG 06/08/2026 — claude-agents-md-still-full.
 # CLAUDE.md 211 -> 62 dòng, AGENTS.md 146 -> 43, chỉ còn phần đặc thù agent

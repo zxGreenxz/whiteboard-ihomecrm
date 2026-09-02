@@ -120,6 +120,32 @@ jobs:
           echo "EXPECTED_SOURCE_SHA=$sha" >> "$GITHUB_ENV"
           echo "Ban dang chay: $sha (nguon: $nguon)"
 
+      # KHÔNG sinh HTML report trên CI — `--reporter=list`, không `html`.
+      #
+      # ĐO 02/09/2026, Playwright 1.61.1, với `trace: 'off'` + `screenshot: 'off'`:
+      #   (1) `playwright-report/data/<hash>.md` (attachment "error-context.md")
+      #       chứa ARIA snapshot của trang, trong đó giá trị ô `type="password"`
+      #       nằm NGUYÊN VĂN: `- textbox "Mat khau": SUPERSECRETPW123`. Sinh ra
+      #       mỗi khi một test đỏ, không phụ thuộc cài đặt trace/screenshot.
+      #   (2) Nặng hơn: `index.html` NHÚNG report JSON dưới dạng
+      #       `data:application/zip;base64,…` (deflate). Trong đó có tiêu đề bước
+      #       `"title":"Fill \"<giá trị>\" locator(...)"` — tức mật khẩu có mặt ở
+      #       MỌI lượt chạy gọi `fill()`, kể cả lượt XANH, chứ không riêng lượt đỏ.
+      #       Vì đã nén, `grep -rF "$mat_khau"` trên thư mục report luôn báo SẠCH.
+      #       Một guard chỉ dựa vào grep sẽ tự tin gật đầu rồi tải mật khẩu lên.
+      # Kết luận: dọn `data/` là CẦN nhưng KHÔNG ĐỦ; chừng nào mật khẩu còn đi qua
+      # `fill()` thì report HTML không thể chứng minh là sạch. Nên CI không sinh nó.
+      #
+      # Đầu ra duy nhất được giữ là stdout của reporter `list` (đã đo: không chứa
+      # giá trị đã điền — call log chỉ có selector và thông báo lỗi). Đủ để biết ca
+      # nào đỏ và đỏ ở đâu.
+      #
+      # `--output` và thư mục log đặt TƯỜNG MINH trong $RUNNER_TEMP. Không phải cho
+      # gọn: Playwright phân giải `playwright-report/`/`test-results/` mặc định
+      # theo thư mục chứa **package.json gần nhất** (playwright/lib/util.js:243),
+      # mà `.e2e-fleet/` KHÔNG có package.json — nên chúng rơi vào GỐC REPO chứ
+      # không phải `.e2e-fleet/`. Bản trước tải lên `.e2e-fleet/playwright-report/`
+      # và sẽ luôn nhận được thư mục rỗng.
       - name: 3 spec Copilot (readonly smoke · xác nhận · ma trận nháp)
         env:
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
@@ -135,35 +161,93 @@ jobs:
           COPILOT_DRAFT_MATRIX_LIVE: '1'
           # EXPECTED_SOURCE_SHA đến từ $GITHUB_ENV của bước trên. Cố ý KHÔNG khai
           # lại ở đây: env cấp-bước sẽ ĐÈ giá trị đó và ta quay về đúng lỗi cũ.
+          THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
+          THU_MUC_RAC: ${{ runner.temp }}/copilot-e2e-artifacts
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p "$THU_MUC_TAI_LEN"
           cd .e2e-fleet
           npx playwright test \
             specs/copilot-readonly-smoke.spec.ts \
             specs/copilot-confirmation.spec.ts \
             specs/copilot-draft-matrix.spec.ts \
-            --reporter=list,html \
-            --trace=off
+            --reporter=list \
+            --trace=off \
+            --output "$THU_MUC_RAC" 2>&1 | tee "$THU_MUC_TAI_LEN/list.log"
 
-      # TRACE TẮT, VÀ CHỈ TẢI LÊN playwright-report/ — đây là quyết định BẢO MẬT,
-      # không phải chuyện tiết kiệm dung lượng.
+      # Dọn TRƯỚC guard, guard TRƯỚC upload. Ba bước tách rời để log nói rõ bước
+      # nào làm gì; gộp lại thì một lần `rm` hỏng sẽ ẩn trong bước khác.
       #
-      # Trace của Playwright ghi lại đối số của mọi hành động và toàn bộ request:
-      # `fill()` vào ô mật khẩu và body `grant_type=password` của GoTrue đều nằm
-      # trong đó. Artifact của Actions tải về được bởi bất kỳ ai đọc được repo và
-      # sống 14 ngày ⇒ trace = mật khẩu DEMO phát tán ra ngoài vault.
-      # `test-results/` là nơi trace/video/screenshot rơi vào nên cũng KHÔNG tải.
-      #
-      # HTML report chỉ có tên bước và thông báo lỗi, không có giá trị đã điền —
-      # đủ để biết ca nào đỏ và đỏ ở đâu. Đổi lại: gỡ lỗi sâu phải chạy lại tại
-      # máy. Đã đăng ký ở tooling/known-gaps.yaml (e2e-copilot-khong-co-trace)
-      # kèm đường nâng cấp: đăng nhập bằng storageState dựng NGOÀI vùng tracing,
-      # rồi mới bật trace lại.
-      - name: Tải lên HTML report (KHÔNG kèm trace — xem chú thích trên)
+      # Lệnh `find … -delete` giữ đúng như review yêu cầu, và chạy trên MỌI vị trí
+      # report có thể rơi vào (xem chú thích package.json ở trên). Sau đó xoá hẳn
+      # cả report lẫn test-results: không thứ nào trong đó được tải lên, và thứ
+      # không tồn tại thì không rò rỉ được.
+      - name: Dọn mọi artifact Playwright có thể mang giá trị đã điền
         if: always()
+        env:
+          THU_MUC_RAC: ${{ runner.temp }}/copilot-e2e-artifacts
+        run: |
+          set -uo pipefail
+          for bc in playwright-report .e2e-fleet/playwright-report; do
+            [ -d "$bc/data" ] || continue
+            truoc=$(find "$bc/data" -type f | wc -l)
+            find "$bc/data" -type f ! -name '*.png' ! -name '*.jpg' ! -name '*.jpeg' ! -name '*.webp' -delete
+            echo "Don attachment $bc/data: $truoc file -> $(find "$bc/data" -type f | wc -l)"
+          done
+          rm -rf playwright-report .e2e-fleet/playwright-report test-results .e2e-fleet/test-results "$THU_MUC_RAC"
+          echo "Da xoa report HTML + test-results (khong buoc nao tai chung len)."
+
+      # Guard: thứ SẮP tải lên phải CHỨNG MINH ĐƯỢC là sạch, không chỉ "trông sạch".
+      # Hai phép, vì một phép không đủ:
+      #   - grep nguyên văn từng mật khẩu ⇒ bắt bản rõ;
+      #   - chặn mọi file có `data:application/zip;base64,` ⇒ bắt thứ grep KHÔNG
+      #     đọc nổi. Report HTML của Playwright nhúng report JSON đã nén ở đúng
+      #     dạng đó, và tiêu đề bước `Fill "<giá trị>"` nằm trong. Cố ý KHÔNG giải
+      #     nén để "kiểm cho kỹ": không chứng minh được sạch thì KHÔNG tải lên.
+      # `grep -q` nên nội dung khớp không bị in ra log.
+      - name: Guard — artifact không được chứa mật khẩu DEMO
+        id: guard
+        if: always()
+        env:
+          THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
+          FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
+          FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
+          FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
+          FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
+        run: |
+          set -uo pipefail
+          if [ ! -d "$THU_MUC_TAI_LEN" ]; then
+            echo "Khong co thu muc tai len — khong co gi de canh."
+            exit 0
+          fi
+          loi=0
+          for ten in FLEET_PASS_CHUNHA FLEET_PASS_KETOAN FLEET_PASS_QUANLY FLEET_PASS_QUANLY2; do
+            mk="${!ten:-}"
+            [ -n "$mk" ] || continue
+            if grep -rqF -- "$mk" "$THU_MUC_TAI_LEN"; then
+              echo "::error::artifact chua mat khau DEMO ($ten) — khong upload"
+              loi=1
+            fi
+          done
+          if grep -rqF -- 'data:application/zip;base64,' "$THU_MUC_TAI_LEN"; then
+            echo "::error::artifact chua report nhung zip (grep khong kiem duoc) — khong upload"
+            loi=1
+          fi
+          if [ "$loi" -ne 0 ]; then
+            rm -rf "$THU_MUC_TAI_LEN"
+            exit 1
+          fi
+          echo "Guard: khong thay mat khau nao trong $THU_MUC_TAI_LEN."
+
+      # `!cancelled() && guard == success`: vẫn tải lên khi suite ĐỎ (đó là lúc log
+      # có giá trị nhất), nhưng KHÔNG tải khi guard chưa chạy hoặc vừa bắt được rò
+      # rỉ. `if: always()` trần sẽ tải lên kể cả sau khi guard đỏ — đúng thứ guard
+      # sinh ra để chặn.
+      - name: Tải lên log của reporter list (đã qua guard)
+        if: ${{ !cancelled() && steps.guard.conclusion == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: copilot-e2e-report
-          path: .e2e-fleet/playwright-report/
+          name: copilot-e2e-log
+          path: ${{ runner.temp }}/copilot-e2e/
           if-no-files-found: warn
           retention-days: 14
