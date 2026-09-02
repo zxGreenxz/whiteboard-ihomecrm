@@ -86,27 +86,27 @@ sẵn (`customer-images` không đúng nghĩa — nên tạo bucket riêng).
 — **không tồn tại**, nên fallback chắc chắn lỗi thêm lần nữa. Fallback chết = mã chết + che mờ lỗi
 gốc. **Sửa:** bỏ nhánh fallback, hiển thị lỗi thật của `payment-receipts`.
 
-### C-03 (P2) — Xóa khách thuê không kiểm hợp đồng đang hiệu lực
+### C-03 (P2) — Xóa khách thuê không kiểm hợp đồng đang hiệu lực — **ĐÃ VÁ 02/09** (guard 3 lớp: `useDeleteCustomer` + `useDeleteTenant` client, và RPC `soft_delete_customer` chặn ở DB qua migration `20260902042935`; phát hiện thêm: `useDeleteTenant` là đường chết 0 caller, đường xóa thật là `useDeleteCustomer`→RPC vốn cũng không kiểm)
 
 `src/hooks/useTenants.ts:194` — `// TODO: Check if tenant has active contracts`. Rủi ro toàn vẹn
 nghiệp vụ: xóa khách đang có HĐ sống.
 
-### C-04 (P3) — UI "Lịch sử chỉnh sửa" hóa đơn chưa làm
+### C-04 (P3) — UI "Lịch sử chỉnh sửa" hóa đơn chưa làm — **TIỀN ĐỀ SAI, ĐÃ DỌN 02/09**: `InvoiceHistoryDialog` (677 dòng, đọc `invoice_audit_log`) đã tồn tại từ commit `11a833c5`; chỉ còn comment TODO chết + nhánh `showTodo` chết — đã gỡ, prop `onViewHistory` thành bắt buộc
 
 `src/components/invoices/InvoiceListTable.tsx:323` — placeholder TODO.
 
-### C-05 (P3) — 2 lỗi TypeScript tồn đọng (baseline)
+### C-05 (P3) — 2 lỗi TypeScript tồn đọng (baseline) — **ĐÃ VÁ 02/09**: cả hai do `tsconfig.app.json` tắt strictNullChecks nên `z.infer` coi mọi field optional; chuẩn hoá tường minh (`toCT01FormData`, map `PreviousDebtSource`) không ép kiểu; `ts-baseline.json` về `[]`; kèm vá gate `check-ts-baseline.mjs` ca tsc 0-lỗi in rỗng (từng bị coi là 'không đọc được') + test node:test nối đủ 3 chỗ CI
 
 `ts-baseline.json`: TS2322 tại `src/components/invoices/GenerateInvoiceDialog.tsx` và
 `src/pages/customers/CT01FormPage.tsx`. Không tăng thêm — gate chặn lỗi mới.
 
-### C-06 (P3) — 3 e2e skip vô điều kiện
+### C-06 (P3) — 3 e2e skip vô điều kiện — **TIỀN ĐỀ SAI MỘT PHẦN, ĐÃ XỬ 02/09**: 2 spec kế toán chỉ skip khi opt-in `FLEET_ACCOUNTING_ALLOW_PREFLIGHT_SKIP=1` (mặc định fail-loud — đúng thiết kế); spec lương skip vì org DEMO thiếu `manager_salary_config` → thêm fixture tự tạo/dọn qua Management SQL (`ensureDemoSalaryConfig`/`cleanupDemoSalaryConfig`), chạy thật headless: 2/2 pass
 
 `.e2e-fleet/specs/accounting-chain.spec.ts:40`, `invoice-collection-v5.spec.ts:47` (pre-deploy
 diagnostic skip), `salary-mobile-period.spec.ts:18` (tài khoản DEMO chưa cấu hình hưởng lương —
 liên quan việc org DEMO mất fixture giữ sổ).
 
-### C-07 (P2) — Nút "Thêm công tơ điện" trên UI hỏng
+### C-07 (P2) — Nút "Thêm công tơ điện" trên UI hỏng — **ĐÃ VÁ 02/09**: `resolveServiceId` nhận diện theo `fee_type` (TIEN_DIEN/TIEN_NUOC) → `code` → `name`, `maybeSingle()` ưu tiên `is_default`, toast chỉ đúng chỗ tạo dịch vụ
 
 Service tên "Điện" đã xóa mềm 10/05/2026 nên `resolveServiceId` luôn throw (án lệ đã ghi nhận
 trong memory dự án). Workaround hiện tại: INSERT thẳng công tơ bằng SQL.

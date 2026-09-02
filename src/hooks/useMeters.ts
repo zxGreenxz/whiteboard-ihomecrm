@@ -31,11 +31,24 @@ export type MetersGroupedByRoom = Record<
 // Pure helper functions (extracted for testability)
 // ============================================================================
 
-/** Mapping from meter_type to service name in the services table */
-const METER_TYPE_TO_SERVICE_NAME: Record<string, string> = {
-  ELECTRICITY: "Điện",
-  WATER: "Nước",
-  GAS: "Gas",
+type FeeType = Database["public"]["Enums"]["fee_type"];
+
+/**
+ * Dấu hiệu nhận diện dịch vụ theo loại công tơ, theo thứ tự ưu tiên:
+ * `fee_type` (cột phân loại đúng nghĩa, bắt buộc ở dialog tạo/sửa dịch vụ) →
+ * `code` → `name` (chỉ để tương thích dữ liệu cũ).
+ *
+ * Khớp TÊN chính xác từng là đường duy nhất và đã gãy thật: dịch vụ "Điện" bị
+ * xoá mềm 10/05/2026, từ đó MỌI lần thêm công tơ điện đều throw dù org vẫn có
+ * dịch vụ điện dưới tên khác (audit 02/09/2026, C-07).
+ */
+const METER_TYPE_TO_SERVICE_MATCH: Record<
+  string,
+  { label: string; feeType?: FeeType; codes: string[]; names: string[] }
+> = {
+  ELECTRICITY: { label: "Tiền điện", feeType: "TIEN_DIEN", codes: ["ELEC", "DIEN"], names: ["Điện", "Tiền điện"] },
+  WATER: { label: "Tiền nước", feeType: "TIEN_NUOC", codes: ["WATER", "NUOC"], names: ["Nước", "Tiền nước"] },
+  GAS: { label: "Gas", codes: ["GAS"], names: ["Gas"] },
 };
 
 /** Pure function to group meters by room_id */
@@ -84,29 +97,44 @@ export function filterMeters(
 
 /**
  * Resolve service_id from meter_type by querying the services table.
- * Throws and shows toast error if no matching service is found.
+ * Thử lần lượt fee_type → code → name trong các dịch vụ ĐANG HOẠT ĐỘNG (ưu tiên
+ * is_default). `maybeSingle()` thay `single()` vì 0 hay nhiều dòng đều không
+ * phải lỗi ở bước dò. Không tìm thấy thì toast chỉ đúng chỗ phải tạo dịch vụ.
  */
 async function resolveServiceId(meterType: string | null | undefined): Promise<string> {
-  const serviceName = meterType ? METER_TYPE_TO_SERVICE_NAME[meterType] : undefined;
-  if (!serviceName) {
+  const match = meterType ? METER_TYPE_TO_SERVICE_MATCH[meterType] : undefined;
+  if (!match) {
     toast.error("Không tìm thấy dịch vụ tương ứng với loại công tơ");
     throw new Error(`No service mapping for meter_type: ${meterType}`);
   }
 
-  const { data, error } = await supabase
-    .from("services")
-    .select("id")
-    .eq("name", serviceName)
-    .is("deleted_at", null)
-    .limit(1)
-    .single();
+  const activeServices = () =>
+    supabase
+      .from("services")
+      .select("id")
+      .is("deleted_at", null)
+      .order("is_default", { ascending: false })
+      .limit(1);
 
-  if (error || !data) {
-    toast.error("Không tìm thấy dịch vụ tương ứng với loại công tơ");
-    throw new Error(`Service not found for meter_type: ${meterType} (name: ${serviceName})`);
+  const feeType = match.feeType;
+  const attempts: Array<() => ReturnType<typeof activeServices>> = [];
+  if (feeType) attempts.push(() => activeServices().eq("fee_type", feeType));
+  attempts.push(() => activeServices().in("code", match.codes));
+  attempts.push(() => activeServices().in("name", match.names));
+
+  for (const attempt of attempts) {
+    const { data, error } = await attempt().maybeSingle();
+    if (error) {
+      toast.error("Không kiểm tra được danh mục dịch vụ");
+      throw error;
+    }
+    if (data?.id) return data.id;
   }
 
-  return data.id;
+  toast.error(
+    `Chưa có dịch vụ "${match.label}" đang hoạt động — vào Cài đặt ▸ Dịch vụ tạo trước khi thêm công tơ.`,
+  );
+  throw new Error(`Service not found for meter_type: ${meterType}`);
 }
 
 // ============================================================================

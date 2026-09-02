@@ -15,7 +15,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useToast } from '@/hooks/use-toast';
 import {
   Pencil,
   DollarSign,
@@ -40,7 +39,7 @@ interface InvoiceListTableProps {
   onRecordPayment: (invoice: InvoiceWithRelations) => void;
   onViewDetail: (invoice: InvoiceWithRelations) => void;
   onViewPayments?: (invoice: InvoiceWithRelations) => void;
-  onViewHistory?: (invoice: InvoiceWithRelations) => void;
+  onViewHistory: (invoice: InvoiceWithRelations) => void;
   /** Phục hồi HĐ đã huỷ. Chỉ render khi callback != undefined. */
   onRestore?: (invoice: InvoiceWithRelations) => void;
   /** Super admin: huỷ HĐ ở mọi trạng thái (kiểm tra payment + hoàn credit ở DB). */
@@ -134,7 +133,6 @@ const InvoiceListTable = ({
   canRecordPayment = true,
   isSuper = false,
 }: InvoiceListTableProps) => {
-  const { toast } = useToast();
   // Double-click header "Đã thanh toán" → đưa các HĐ tô vàng (TK kèm TM/TT)
   // lên đầu danh sách. Double-click lần nữa để tắt.
   const [mixedToTop, setMixedToTop] = useState(false);
@@ -167,10 +165,6 @@ const InvoiceListTable = ({
   }, [mixedToTop, mixedInvoiceIds, invoices]);
   const isAllSelected =
     selectableInvoices.length > 0 && selectedIds.length === selectableInvoices.length;
-
-  const showTodo = (feature: string) => {
-    toast({ title: 'Tính năng đang phát triển', description: feature });
-  };
 
   const v = columnVisibility;
   const visibleColCount =
@@ -320,20 +314,14 @@ const InvoiceListTable = ({
                         </Tooltip>
                       )}
 
-                      {/* Lịch sử chỉnh sửa - TODO */}
+                      {/* Lịch sử chỉnh sửa — InvoiceHistoryDialog đọc invoice_audit_log theo phiên thao tác */}
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                            onClick={() => {
-                              if (onViewHistory) {
-                                onViewHistory(invoice);
-                              } else {
-                                showTodo('Lịch sử chỉnh sửa');
-                              }
-                            }}
+                            onClick={() => onViewHistory(invoice)}
                           >
                             <History className="h-3.5 w-3.5" />
                           </Button>

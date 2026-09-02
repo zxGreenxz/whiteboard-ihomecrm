@@ -1,6 +1,6 @@
 # Kế hoạch triển khai khắc phục bảo mật toàn kho mã
 
-> **[CÒN SỐNG — trạng thái 02/09/2026]** Snapshot 12/08 neo HEAD `931eb9e7`, 0/80 checkbox đã thực hiện. 49 finding (14 P1 · 26 P2 · 9 P3) CHƯA ai xác nhận đóng. Mọi `file:line` trong đây phải re-anchor trước khi dùng — HEAD đã đi 128+ commit.
+> **[CÒN SỐNG — trạng thái 02/09/2026]** Snapshot 12/08 neo HEAD `931eb9e7`, 0/80 checkbox đã thực hiện; HEAD đã đi 190 commit. **Đã re-anchor toàn bộ 49 finding** tại `2026-09-02-security-remediation-re-anchor.md` (4 ĐÃ VÁ · 45 CÒN MỞ, 12 P1) — đọc file đó để biết vị trí mới + hàng đợi fix; mọi `file:line` trong file này đã lỗi thời.
 
 > **Dành cho agent triển khai:** BẮT BUỘC dùng `superpowers:subagent-driven-development` (khuyến nghị) hoặc `superpowers:executing-plans` để thực hiện lần lượt từng task. Mọi bước dùng checkbox `- [ ]` để theo dõi.
 

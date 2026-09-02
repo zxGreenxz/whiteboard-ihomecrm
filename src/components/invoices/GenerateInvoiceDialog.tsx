@@ -630,9 +630,18 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       prepaid_amount: 0,
       previous_debt: data.previous_debt || 0,
       // User chỉnh tay → clear sources để trigger DB không cascade-paid sai.
+      // tsconfig.app.json tắt strictNullChecks nên z.infer coi mọi field là
+      // optional; zod đã bảo đảm giá trị ở runtime — chuẩn hoá hình dạng về
+      // PreviousDebtSource thay vì ép kiểu.
       previous_debt_sources: data.previous_debt_overridden
         ? []
-        : (data.previous_debt_sources ?? []),
+        : (data.previous_debt_sources ?? []).map<PreviousDebtSource>((s) => ({
+            type: s.type ?? 'invoice',
+            id: s.id,
+            contract_id: s.contract_id,
+            amount: s.amount ?? 0,
+            label: s.label ?? '',
+          })),
       items,
     };
 

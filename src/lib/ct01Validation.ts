@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CT01FormData } from '@/types/customer';
 
 // ============================================================
 // CT01 Family Member Schema
@@ -38,3 +39,38 @@ export const ct01Schema = z.object({
 });
 
 export type CT01FormValues = z.infer<typeof ct01Schema>;
+
+/**
+ * tsconfig.app.json tắt strictNullChecks nên z.infer coi MỌI field là optional,
+ * không gán thẳng được vào CT01FormData (field bắt buộc). Zod đã bảo đảm các
+ * field bắt buộc non-empty ở runtime (.min(1)); hàm này chỉ chuẩn hoá hình dạng,
+ * không ép kiểu.
+ */
+export function toCT01FormData(values: CT01FormValues): CT01FormData {
+  return {
+    registration_authority: values.registration_authority ?? '',
+    full_name: values.full_name ?? '',
+    date_of_birth: values.date_of_birth ?? '',
+    gender: values.gender ?? '',
+    id_number: values.id_number ?? '',
+    phone: values.phone,
+    email: values.email,
+    permanent_address: values.permanent_address,
+    temporary_address: values.temporary_address,
+    current_address: values.current_address,
+    occupation_workplace: values.occupation_workplace,
+    household_head_name: values.household_head_name,
+    household_head_relationship: values.household_head_relationship,
+    household_head_id_number: values.household_head_id_number,
+    request_content: values.request_content,
+    family_members: (values.family_members ?? []).map((m) => ({
+      full_name: m.full_name ?? '',
+      date_of_birth: m.date_of_birth ?? '',
+      gender: m.gender ?? '',
+      id_number: m.id_number ?? '',
+      occupation_workplace: m.occupation_workplace ?? '',
+      relationship_to_declarant: m.relationship_to_declarant ?? '',
+      relationship_to_household_head: m.relationship_to_household_head ?? '',
+    })),
+  };
+}

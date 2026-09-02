@@ -5,7 +5,7 @@ import { useCustomer } from '@/hooks/useCustomers';
 import { useCreateCT01Declaration } from '@/hooks/useCT01Declarations';
 import { CT01Form } from '@/components/customers/CT01Form';
 import CT01PrintLayout from '@/components/customers/CT01PrintLayout';
-import type { CT01FormValues } from '@/lib/ct01Validation';
+import { toCT01FormData, type CT01FormValues } from '@/lib/ct01Validation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -20,7 +20,7 @@ export default function CT01FormPage() {
 
   const handleSubmitAndPrint = async (values: CT01FormValues) => {
     if (!id) return;
-    await createDeclaration.mutateAsync({ customerId: id, data: values });
+    await createDeclaration.mutateAsync({ customerId: id, data: toCT01FormData(values) });
     setPrintData(values);
     setTimeout(() => window.print(), 100);
   };

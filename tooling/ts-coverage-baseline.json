@@ -1,4 +1,4 @@
 {
-  "$comment": "Sàn độ phủ typecheck: số file trong src/ mà tsconfig.app.json thực sự soi. CHỈ ĐƯỢC TĂNG. Giảm ⇒ phạm vi đã teo lại, và ratchet lỗi KHÔNG phát hiện được điều đó. Sinh bởi scripts/check-ts-baseline.mjs --write. Ngoại lệ 30/08/2026: hạ 1267→1253 vì XÓA THẬT 14 file openclaw khỏi src/ (cả hệ OpenClaw bị gỡ), không phải teo phạm vi.",
-  "files": 1253
+  "$comment": "Sàn độ phủ typecheck: số file trong src/ mà tsconfig.app.json thực sự soi. CHỈ ĐƯỢC TĂNG. Giảm ⇒ phạm vi đã teo lại, và ratchet lỗi KHÔNG phát hiện được điều đó. Sinh bởi scripts/check-ts-baseline.mjs --write.",
+  "files": 1274
 }

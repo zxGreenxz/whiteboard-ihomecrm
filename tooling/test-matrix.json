@@ -154,7 +154,8 @@
         "scripts/__tests__/check-rpc-layer.test.mjs",
         "scripts/__tests__/check-rpc-name-literal.test.mjs",
         "scripts/__tests__/check-ts-suppressions.test.mjs",
-        "scripts/__tests__/network-center-*.test.mjs"
+        "scripts/__tests__/network-center-*.test.mjs",
+        "scripts/__tests__/check-ts-baseline.test.mjs"
       ],
       "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
       "note2": "ĐÃ XỬ 06/08/2026: 22 file này nay nằm trong --exclude của bước Vitest ở ci-gates.yml, nên chỉ node --test chạy chúng. Trước đó vitest quét phải và fail hết với \"No test suite found\".",

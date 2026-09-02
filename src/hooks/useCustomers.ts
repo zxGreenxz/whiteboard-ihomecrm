@@ -596,6 +596,30 @@ export const useDeleteCustomer = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      // Khách đang có HĐ hiệu lực thì không được xoá. RPC soft_delete_customer
+      // cũng chặn ở DB (migration 20260902042935) — đây là lớp báo sớm cho UI,
+      // không phải hàng rào duy nhất.
+      const { data: links, error: linkError } = await supabase
+        .from("contract_customers")
+        .select("contract_id")
+        .eq("customer_id", id);
+      if (linkError) throw linkError;
+      const contractIds = (links ?? []).map((l) => l.contract_id);
+      if (contractIds.length > 0) {
+        const { data: active, error: activeError } = await supabase
+          .from("contracts")
+          .select("id")
+          .in("id", contractIds)
+          .in("status", ACTIVE_CONTRACT_STATUSES)
+          .is("deleted_at", null);
+        if (activeError) throw activeError;
+        if (active && active.length > 0) {
+          throw new Error(
+            `Không thể xoá khách hàng đang có ${active.length} hợp đồng hiệu lực — thanh lý hoặc kết thúc hợp đồng trước.`,
+          );
+        }
+      }
+
       const { error } = await supabase.rpc('soft_delete_customer' as any, {
         p_customer_id: id,
       });
@@ -608,7 +632,10 @@ export const useDeleteCustomer = () => {
       toast.success("Dữ liệu đã được XOÁ thành công");
     },
     onError: (error: any) => {
-      if (error?.code === "23503") {
+      const message: string = error?.message ?? "";
+      if (message.startsWith("Không thể xoá khách hàng") || message.includes("CUSTOMER_HAS_ACTIVE_CONTRACT")) {
+        toast.error("Không thể xoá khách hàng đang có hợp đồng hiệu lực — thanh lý hoặc kết thúc hợp đồng trước.");
+      } else if (error?.code === "23503") {
         toast.error("Dữ liệu liên quan không tồn tại");
       } else {
         toast.error("Có lỗi xảy ra. Vui lòng thử lại.");

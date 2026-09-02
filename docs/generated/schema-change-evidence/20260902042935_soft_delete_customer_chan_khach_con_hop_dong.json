@@ -1,0 +1,36 @@
+{
+  "file": "supabase/migrations/20260902042935_soft_delete_customer_chan_khach_con_hop_dong.sql",
+  "sha256": "979393d52937d8dc23e830557b0291eec47d9100bc4df3192347758789d18e0c",
+  "appliedAt": "2026-09-02T08:14:52.881Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "authorization": {
+    "loai": "bien-nhan-backup",
+    "chiTiet": "1a74d53af7e81464",
+    "backupFile": "C:\\Users\\Nguyen Tam\\ihomecrm-backups\\ihomecrm-full-2026-09-02T08-12-31-492Z.dump",
+    "backupSha256": "cf712adf5f37b04b3128c21763dc041f6330e0e37b22ffbee975c6eb8d4dad46",
+    "backupCreatedAt": "2026-09-02T08:14:45.005Z",
+    "backupTablesWithData": 508
+  },
+  "actor": "nguyentamca165@gmail.com",
+  "repoCommit": "8f6e6ece0d3e2ad3f1afbdafec20860a112e2ef9",
+  "reviewedBlob": "3ff708ff64276d048d7b3bd98857ffc1751ccbad",
+  "statementBytes": 2947,
+  "normalizedDigest": "4c68f61875331df4103e87e32a81163e2e17381d917d5b44110f6386a1002d88",
+  "catalog": {
+    "before": "be39c78cd1b6b88b45ba6f6bd4f2d574dd9ebe05b27c8e7094697133d9ca9871",
+    "after": "be39c78cd1b6b88b45ba6f6bd4f2d574dd9ebe05b27c8e7094697133d9ca9871",
+    "changed": false,
+    "countsAfter": {
+      "logicalTables": 243,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 1362,
+      "securityDefinerFunctions": 911,
+      "enums": 30,
+      "realtimeTables": 25
+    }
+  },
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+}

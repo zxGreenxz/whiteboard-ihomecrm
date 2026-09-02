@@ -16,6 +16,20 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * tsc với `--pretty false` in RỖNG khi 0 lỗi (không có dòng "Found N errors").
+ * Ca này từng bị coi là "không đọc được" → exit 2, tức gate ĐỎ đúng lúc codebase
+ * sạch nhất (đo 02/09/2026 khi 2 lỗi baseline cuối cùng được sửa). Chỉ chấp nhận
+ * khi tsc THẬT SỰ chạy xong (không res.error), exit 0, và output không có gì
+ * ngoài khoảng trắng — mọi ca khác vẫn fail-closed.
+ */
+export function isSuccessfulCleanTscRun(res, out) {
+  if (!res || res.error) return false;
+  if (res.status !== 0) return false;
+  return typeof out === 'string' && out.trim() === '';
+}
+
+function main() {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const baselinePath = path.join(repoRoot, 'ts-baseline.json');
 const WRITE = process.argv.includes('--write');
@@ -61,7 +75,8 @@ if (res.error) {
   console.error('   Kiểm tra node_modules đã cài chưa (npm ci).');
   process.exit(2);
 }
-if (!foundMatch && !looksLikeRun) {
+const cleanRun = isSuccessfulCleanTscRun(res, out);
+if (!foundMatch && !looksLikeRun && !cleanRun) {
   console.error('❌ tsc không cho ra kết quả đọc được (không thấy "Found N errors").');
   console.error('   KHÔNG coi đây là 0 lỗi. Output nhận được:');
   console.error(out.slice(0, 2000));
@@ -148,7 +163,7 @@ if (foundMatch) {
     console.error('   Regex diagnostic có thể lệch định dạng tsc — dừng để tránh baseline sai.');
     process.exit(2);
   }
-} else if (fingerprints.length === 0) {
+} else if (fingerprints.length === 0 && !cleanRun) {
   // Không có 'Found N' và cũng không parse ra dòng nào dù có "error TS" đâu đó → nghi ngờ.
   console.error('❌ Có dấu hiệu lỗi TS nhưng không parse được dòng nào — dừng (exit 2).');
   console.error(out.slice(0, 2000));
@@ -226,3 +241,6 @@ if (fixedOnes.length > 0) {
 
 console.log(`✅ Tập lỗi TS khớp baseline (${baselineArr.length} fingerprint, đã tính bội số). Không có gì thay đổi.`);
 process.exit(0);
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

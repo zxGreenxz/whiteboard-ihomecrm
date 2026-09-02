@@ -1,11 +1,30 @@
 import { test, expect, devices, type Page } from '@playwright/test';
 import { login, trackConsoleErrors } from './auth';
+import { cleanupDemoSalaryConfig, ensureDemoSalaryConfig } from './accounting-admin';
 
 // Bảng lương cá nhân trên ĐIỆN THOẠI phải chuyển kỳ được như bản desktop.
 test.use({ ...devices['Pixel 7'] });
 
-// Self-view chỉ hiện khi tài khoản CÓ cấu hình hưởng lương. Tài khoản DEMO có thể
-// chưa được cấu hình (không ghi fixture lâu dài vào org DEMO) → skip thay vì đỏ.
+// Self-view chỉ hiện khi tài khoản CÓ cấu hình hưởng lương. Trước 02/09/2026 spec
+// skip khi org DEMO thiếu cấu hình → test "xanh" mà không kiểm gì. Nay fixture
+// tự tạo dòng manager_salary_config cho DEMO quanly (đánh dấu note) và xoá sau,
+// giữ đúng luật "không ghi fixture lâu dài vào org DEMO".
+let fixtureState: 'existing' | 'created' | null = null;
+
+test.beforeAll(async () => {
+  fixtureState = await ensureDemoSalaryConfig();
+  console.log('[salary-mobile-period] cấu hình lương DEMO:', fixtureState);
+});
+
+test.afterAll(async () => {
+  if (fixtureState === 'created') {
+    const deleted = await cleanupDemoSalaryConfig();
+    console.log('[salary-mobile-period] đã dọn fixture:', deleted);
+  }
+});
+
+// Còn giữ để fail-loud rõ nghĩa: nếu fixture đã tạo mà UI vẫn báo chưa cấu hình
+// thì là bug thật (self-view không nhận config), không phải thiếu dữ liệu.
 async function skipIfNoSalaryConfig(page: Page) {
   const empty = page.getByText('chưa được cấu hình hưởng lương');
   const nav = page.getByRole('button', { name: 'Tháng trước' });
@@ -15,7 +34,9 @@ async function skipIfNoSalaryConfig(page: Page) {
     empty.waitFor({ state: 'visible', timeout: 45_000 }),
   ]).catch(() => {});
   if (await empty.isVisible()) {
-    test.skip(true, 'Tài khoản DEMO chưa được cấu hình hưởng lương');
+    throw new Error(
+      `Tài khoản DEMO quanly vẫn báo "chưa được cấu hình hưởng lương" dù fixture=${fixtureState} — self-view không nhận manager_salary_config.`,
+    );
   }
 }
 

@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import type { PaginatedData } from "@/hooks/usePagination";
+import { ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 type TenantInsert = Database["public"]["Tables"]["tenants"]["Insert"];
@@ -191,7 +192,24 @@ export const useDeleteTenant = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      // TODO: Check if tenant has active contracts
+      // Chặn xoá khách đang có hợp đồng hiệu lực (đường legacy contracts.tenant_id;
+      // HĐ mới đi contract_customers → xem useDeleteCustomer).
+      const { data: activeContracts, error: checkError } = await supabase
+        .from("contracts")
+        .select("id")
+        .eq("tenant_id", id)
+        .in("status", ACTIVE_CONTRACT_STATUSES)
+        .is("deleted_at", null)
+        .limit(1);
+      if (checkError) {
+        toast.error("Không kiểm tra được hợp đồng của khách hàng");
+        throw checkError;
+      }
+      if (activeContracts && activeContracts.length > 0) {
+        toast.error("Không thể xóa khách hàng đang có hợp đồng hiệu lực");
+        throw new Error("Tenant has active contracts");
+      }
+
       // Soft delete
       const { error } = await supabase
         .from("tenants")

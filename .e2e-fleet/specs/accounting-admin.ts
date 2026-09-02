@@ -182,6 +182,55 @@ function number(value: number | string | null | undefined): number {
  * Soft-delete sổ quỹ do fixture E2E tạo (đúng cách app xoá sổ). Chỉ nhận tên
  * mang tiền tố fixture và chỉ đụng org DEMO — sổ thật không thể lọt vào.
  */
+const FLEET_SALARY_FIXTURE_NOTE = 'FLEET_FIXTURE salary-mobile-period';
+
+/**
+ * Bảo đảm tài khoản DEMO `quanly` CÓ cấu hình hưởng lương để spec lương chạy được
+ * thay vì skip. Idempotent: có dòng active rồi (dù ai tạo) thì không đụng;
+ * dòng do fixture tạo mang `note` nhận diện để cleanup chỉ xoá đúng nó.
+ * effective_from lùi 3 tháng để nút "Tháng trước" có kỳ để lùi.
+ */
+export async function ensureDemoSalaryConfig(): Promise<'existing' | 'created'> {
+  const rows = await runSql<{ existing: number; created: number }>(`
+WITH staff AS (
+  SELECT id FROM auth.users WHERE email = 'demo.quanly@username.ihomecrm.local'
+), owner AS (
+  SELECT id FROM auth.users WHERE email = 'demo.chunha@username.ihomecrm.local'
+), existing AS (
+  SELECT count(*)::int AS n FROM public.manager_salary_config c, staff
+  WHERE c.staff_id = staff.id AND c.is_active = true
+    AND (c.effective_to IS NULL OR c.effective_to >= date_trunc('month', CURRENT_DATE)::date)
+), ins AS (
+  INSERT INTO public.manager_salary_config
+    (user_id, staff_id, base_salary, default_room_rent, income_goal, role_title, note, effective_from, is_active)
+  SELECT owner.id, staff.id, 8000000, 0, 0, 'Quản lý vận hành (fixture E2E)',
+         ${sqlLiteral(FLEET_SALARY_FIXTURE_NOTE)},
+         (date_trunc('month', CURRENT_DATE) - interval '3 months')::date, true
+  FROM staff, owner, existing
+  WHERE existing.n = 0
+  RETURNING id
+)
+SELECT existing.n AS existing, (SELECT count(*)::int FROM ins) AS created FROM existing;
+`);
+  const row = rows[0];
+  if (!row) throw new Error('ensureDemoSalaryConfig: không đọc được kết quả');
+  return number(row.existing) > 0 ? 'existing' : 'created';
+}
+
+/** Xoá đúng dòng do fixture trên tạo (theo `note`), không đụng cấu hình thật. */
+export async function cleanupDemoSalaryConfig(): Promise<number> {
+  const rows = await runSql<{ deleted: number }>(`
+WITH del AS (
+  DELETE FROM public.manager_salary_config
+  WHERE note = ${sqlLiteral(FLEET_SALARY_FIXTURE_NOTE)}
+    AND staff_id = (SELECT id FROM auth.users WHERE email = 'demo.quanly@username.ihomecrm.local')
+  RETURNING id
+)
+SELECT count(*)::int AS deleted FROM del;
+`);
+  return number(rows[0]?.deleted);
+}
+
 export async function cleanupFleetCashbook(name: string): Promise<void> {
   if (!name.startsWith('E2E Fleet ')) {
     throw new Error(`Từ chối dọn sổ quỹ không thuộc fixture E2E: ${name}`);

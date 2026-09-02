@@ -332,7 +332,7 @@ jobs:
           scripts/__tests__/check-rpc-arg-names.test.mjs \
           scripts/__tests__/check-rpc-layer.test.mjs \
           scripts/__tests__/check-rpc-name-literal.test.mjs \
-          scripts/__tests__/check-ts-suppressions.test.mjs
+          scripts/__tests__/check-ts-suppressions.test.mjs \n          scripts/__tests__/check-ts-baseline.test.mjs
 
       - name: Vitest (root-owned app and script suites)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
@@ -366,6 +366,7 @@ jobs:
           --exclude 'scripts/__tests__/check-rpc-layer.test.mjs'
           --exclude 'scripts/__tests__/check-rpc-name-literal.test.mjs'
           --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs'
+          --exclude 'scripts/__tests__/check-ts-baseline.test.mjs'
 
   # ─────────────────────────────────────────────────────────────────────────
   # Đảo strict — vùng đã sạch không được bẩn lại (job riêng, chạy song song)
