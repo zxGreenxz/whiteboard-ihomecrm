@@ -1609,6 +1609,7 @@ describe('loi_nhuan_co_dong - server RPC boundary', () => {
     rpc.mockResolvedValue({
       data: {
         ky: '2026-07',
+        pham_vi: 'toan_cong_ty',
         gioi_han: 1,
         so_luong: 1,
         tong_hop: {
@@ -1657,7 +1658,15 @@ describe('loi_nhuan_co_dong - server RPC boundary', () => {
 
   it('preserves empty and error behavior', async () => {
     rpc.mockResolvedValueOnce({
-      data: { ky: '2026-07', gioi_han: 20, so_luong: 0, tong_hop: null, theo_toa: [], theo_co_dong: [] },
+      data: {
+        ky: '2026-07',
+        pham_vi: 'toan_cong_ty',
+        gioi_han: 20,
+        so_luong: 0,
+        tong_hop: null,
+        theo_toa: [],
+        theo_co_dong: [],
+      },
       error: null,
     });
     await expect(tool('loi_nhuan_co_dong').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
@@ -1702,7 +1711,7 @@ describe('hoi_thoai_zalo - server RPC boundary', () => {
             hoi_thoai_id: 'z1',
             nguoi_nhan: 'Le Thi Khach',
             dien_thoai: '0901234567',
-            loai: 'User',
+            loai: 'user',
             nhom: 'tenant',
             chua_doc: 2,
             danh_dau_chua_doc: false,
@@ -1845,6 +1854,155 @@ describe('trang_thai_mang - server RPC boundary', () => {
   });
 });
 
+
+describe('nhan zalo phu DUNG tap gia tri ma CHECK constraint cho phep', () => {
+  // Nguồn sự thật là hai CHECK constraint của bảng, chép vào đây kèm chỗ đọc:
+  //   zalo_conversations_thread_type_check  'user' | 'group'
+  //   zalo_conversations_kind_check         'tenant' | 'lead' | 'broker' | 'unknown'
+  // (supabase/baseline/schema.sql:116513-116514)
+  //
+  // Bản đầu khai `User`/`Group` viết hoa và `partner`/`other`: BỐN khoá không
+  // dòng nào khớp được. Không test nào đỏ vì mọi nhãn đều có `?? r.loai` phía
+  // sau — hỏng kiểu này chỉ lộ ra dưới dạng "sao Copilot đọc `tenant` mà không
+  // dịch", tức là không bao giờ lộ ra ở CI.
+  const THREAD_TYPE = ['user', 'group'] as const;
+  const KIND = ['tenant', 'lead', 'broker', 'unknown'] as const;
+
+  async function inRa(loai: string, nhom: string): Promise<string> {
+    rpc.mockReset();
+    from.mockReset();
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        tong_hop: { so_hoi_thoai: 1, so_chua_doc: 0, tong_tin_chua_doc: 0, so_ghim: 0 },
+        hoi_thoai: [
+          {
+            hoi_thoai_id: 'z1',
+            nguoi_nhan: 'Khach',
+            dien_thoai: null,
+            loai,
+            nhom,
+            chua_doc: 0,
+            danh_dau_chua_doc: false,
+            ghim: false,
+            phong: null,
+            toa_nha: null,
+            nhan: null,
+            tin_cuoi_luc: null,
+            tin_cuoi_chieu: 'in',
+            tin_cuoi: null,
+          },
+        ],
+      },
+      error: null,
+    });
+    return tool('hoi_thoai_zalo').execute({ so_luong: 20 }, ctx);
+  }
+
+  for (const loai of THREAD_TYPE) {
+    it(`thread_type "${loai}" co nhan tieng Viet, khong in ma tho`, async () => {
+      const ket = await inRa(loai, 'tenant');
+      expect(ket, loai).not.toContain(loai);
+    });
+  }
+
+  for (const nhom of KIND) {
+    it(`kind "${nhom}" co nhan tieng Viet, khong in ma tho`, async () => {
+      const ket = await inRa('user', nhom);
+      expect(ket, nhom).not.toContain(nhom);
+    });
+  }
+
+  it('khong khai nhan cho gia tri KHONG ton tai trong CHECK constraint', async () => {
+    const nguon = await import('node:fs').then(({ readFileSync }) =>
+      readFileSync('src/copilot/tools/nghiepVuTools.ts', 'utf8'),
+    );
+    const khoi = (ten: string) => {
+      const i = nguon.indexOf(`const ${ten}: Record<string, string> = {`);
+      return nguon.slice(i, nguon.indexOf('};', i));
+    };
+    for (const cheat of ['User:', 'Group:', 'partner:', 'other:']) {
+      expect(khoi('NHAN_LOAI_HOI_THOAI') + khoi('NHAN_NHOM_HOI_THOAI'), cheat).not.toContain(cheat);
+    }
+  });
+});
+
+describe('loi_nhuan_co_dong — pham vi cua chinh minh duoc NOI RA', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  const goi = (phamVi: string) => ({
+    data: {
+      ky: '2026-07',
+      pham_vi: phamVi,
+      gioi_han: 20,
+      so_luong: 1,
+      tong_hop: {
+        so_toa: 1,
+        loi_nhuan_tinh: 40000000,
+        loi_nhuan_sau_dieu_chinh: 39000000,
+        luong_quan_ly: 5000000,
+        da_chia_co_dong: 27300000,
+        chua_chia: 6700000,
+        so_toa_da_chot: 1,
+        so_toa_can_tinh_lai: 0,
+      },
+      theo_toa: [
+        {
+          toa_nha_id: 'b1',
+          toa_nha: 'Toa A',
+          trang_thai: 'LOCKED',
+          loi_nhuan_tinh: 40000000,
+          loi_nhuan_sau_dieu_chinh: 39000000,
+          luong_quan_ly: 5000000,
+          ty_le_co_dong: 70,
+          da_chia_co_dong: 27300000,
+          chua_chia: 6700000,
+          xu_ly_phan_chua_chia: 'RETAIN',
+          can_tinh_lai: false,
+        },
+      ],
+      theo_co_dong: [
+        { co_dong_id: 's1', co_dong: 'Nguyen Co Dong', so_tien: 27300000, tong_ty_le: 70, so_toa: 1 },
+      ],
+    },
+    error: null,
+  });
+
+  it('cổ đông thường: câu trả lời nói rõ đây chỉ là phần của họ', async () => {
+    rpc.mockResolvedValue(goi('chi_minh_toi'));
+    const ket = await tool('loi_nhuan_co_dong').execute({ so_luong: 20 }, ctx);
+    expect(ket).toMatch(/ch.nh m.nh/i);
+  });
+
+  it('người chốt sổ: KHÔNG có câu cảnh báo đó', async () => {
+    // Một câu chú thích luôn-bật là một câu chú thích không ai đọc nữa.
+    rpc.mockResolvedValue(goi('toan_cong_ty'));
+    const ket = await tool('loi_nhuan_co_dong').execute({ so_luong: 20 }, ctx);
+    expect(ket).not.toMatch(/ch.nh m.nh/i);
+  });
+
+  it('rỗng + phạm vi riêng: nói "bạn chưa có phần nào", không nói "công ty chưa có"', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        ky: '2026-07',
+        pham_vi: 'chi_minh_toi',
+        gioi_han: 20,
+        so_luong: 0,
+        tong_hop: null,
+        theo_toa: [],
+        theo_co_dong: [],
+      },
+      error: null,
+    });
+    const ket = await tool('loi_nhuan_co_dong').execute({ so_luong: 20 }, ctx);
+    expect(ket).toMatch(/b.n ch.a c. ph.n/i);
+  });
+});
+
 describe('bon mien nhay cam — khoa quyen va cong tac rollout', () => {
   it('moi tool gac bang DUNG khoa quyen cua man hinh no doc', () => {
     // Cấp lương/lợi nhuận/chat riêng tư qua Copilot bằng một quyền RỘNG hơn là mở
@@ -1870,13 +2028,20 @@ describe('bon mien nhay cam — khoa quyen va cong tac rollout', () => {
       expect(khoa, `${ten} khong khai rolloutKey`).toBeTruthy();
       expect(khoaCoThat.has(String(khoa)), `${ten}: rolloutKey "${khoa}" khong co trong contract`).toBe(true);
     }
-    // Ba trong bốn trang nằm trong COPILOT_PAGE_EXEMPTIONS nên phải mượn khoá của
-    // trang canonical gần nhất; Zalo có khoá THẬT của chính nó. Ghim từng cái để
-    // việc mượn khoá là một quyết định được đọc lại, không phải một mặc định.
+    // Ba trong bốn trang nằm trong COPILOT_PAGE_EXEMPTIONS nên KHÔNG có contract
+    // trang — và ba tool đó có khoá RIÊNG chứ không mượn khoá của trang khác.
+    // Mượn (bản đầu dùng `reports.finance` cho bảng lương) nghĩa là bật rollout
+    // báo cáo tài chính cũng bật luôn tool lương: hai quyết định vận hành không
+    // liên quan trên một công tắc.
     expect(tool('hoi_thoai_zalo').rolloutKey).toBe('chat-zalo.list');
-    expect(tool('bang_luong_ky').rolloutKey).toBe('reports.finance');
-    expect(tool('loi_nhuan_co_dong').rolloutKey).toBe('reports.finance');
-    expect(tool('trang_thai_mang').rolloutKey).toBe('buildings.list');
+    expect(tool('bang_luong_ky').rolloutKey).toBe('copilot.sensitive.salary');
+    expect(tool('loi_nhuan_co_dong').rolloutKey).toBe('copilot.sensitive.shareholder-profit');
+    expect(tool('trang_thai_mang').rolloutKey).toBe('copilot.sensitive.network');
+    // Và không tool nào của lát này được dùng chung khoá với tool khác.
+    const khoa = ['bang_luong_ky', 'loi_nhuan_co_dong', 'hoi_thoai_zalo', 'trang_thai_mang'].map(
+      (ten) => tool(ten).rolloutKey,
+    );
+    expect(new Set(khoa).size).toBe(khoa.length);
   });
 
   it('khong tool nao cham vao mot RPC ghi cua Network Center hay Zalo', async () => {

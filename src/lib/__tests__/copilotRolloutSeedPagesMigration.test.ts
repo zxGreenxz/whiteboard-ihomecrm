@@ -15,10 +15,31 @@ import { describe, expect, it } from 'vitest';
 import {
   COPILOT_ROLLOUT_CONTRACTS,
   KHOA_ROLLOUT_DIEU_HUONG,
+  KHOA_ROLLOUT_LOI_NHUAN_CO_DONG,
+  KHOA_ROLLOUT_LUONG,
+  KHOA_ROLLOUT_MANG,
 } from '@/copilot/featureFlags';
 
 const DUONG_DAN = 'supabase/migrations/20260902185838_copilot_rollout_seed_pages_v1.sql';
 const sql = readFileSync(DUONG_DAN, 'utf8').replace(/\r\n/g, '\n');
+
+/**
+ * Seed KHÔNG còn nằm trong một file duy nhất — và không được phép nằm.
+ *
+ * Ba tool miền nhạy cảm của G1-C4 có ba khoá rollout riêng
+ * (`copilot.sensitive.*`) vì ba trang của chúng nằm trong
+ * `COPILOT_PAGE_EXEMPTIONS` nên không sinh ra được từ `ROUTE_DIEU_HUONG`. Ba
+ * dòng seed ấy phải đi trong migration của CHÍNH lát đó: sửa lại
+ * `20260902185838` là sửa một migration đã apply trên production, thứ mà
+ * `check-migration-provenance` chặn bằng sha256.
+ *
+ * Vì vậy phép so khớp dưới đây là hợp CỦA MỌI FILE SEED. Thêm một khoá vào
+ * `COPILOT_ROLLOUT_CONTRACTS` mà quên seed ở đâu đó vẫn đỏ; đó là toàn bộ giá
+ * trị của test này.
+ */
+const DUONG_DAN_NHAY_CAM =
+  'supabase/migrations/20260902224859_copilot_read_rpc_sensitive_v1.sql';
+const sqlNhayCam = readFileSync(DUONG_DAN_NHAY_CAM, 'utf8').replace(/\r\n/g, '\n');
 
 /**
  * Thân SQL đã bỏ chú thích. Bắt buộc phải bỏ TRƯỚC khi dò khối VALUES: đo bằng
@@ -27,12 +48,20 @@ const sql = readFileSync(DUONG_DAN, 'utf8').replace(/\r\n/g, '\n');
  * sinh ra để canh thì trượt.
  */
 const than = sql.replace(/--.*/g, '');
+const thanNhayCam = sqlNhayCam.replace(/--.*/g, '');
 
-/** Khoá được seed, đọc từ chính khối VALUES (đã bỏ chú thích). */
-const khoaSeed = [...than.matchAll(/\('page',\s*'([^']+)'\s*,\s*'(\w+)'\)/g)].map((m) => ({
-  contractId: m[1],
-  state: m[2],
-}));
+/** Khoá được seed trong MỘT file, đọc từ chính khối VALUES (đã bỏ chú thích). */
+function docSeed(thanSql: string) {
+  return [...thanSql.matchAll(/\('page',\s*'([^']+)'\s*,\s*'(\w+)'\)/g)].map((m) => ({
+    contractId: m[1],
+    state: m[2],
+  }));
+}
+
+const khoaSeedTrang = docSeed(than);
+const khoaSeedNhayCam = docSeed(thanNhayCam);
+/** Hợp của mọi file seed — đây là thứ phải khớp danh sách contract của client. */
+const khoaSeed = [...khoaSeedTrang, ...khoaSeedNhayCam];
 
 describe('seed phủ đúng danh sách contract của client', () => {
   it('mỗi contract scope `page` có đúng một dòng seed', () => {
@@ -49,6 +78,27 @@ describe('seed phủ đúng danh sách contract của client', () => {
     expect(than).toContain("'copilot.navigation'");
   });
 
+  it('ba miền nhạy cảm có cờ RIÊNG, seed trong migration của chính lát đó', () => {
+    // Mượn cờ của trang khác (bản đầu G1-C4 mượn `reports.finance`) nghĩa là bật
+    // rollout báo cáo tài chính cũng bật luôn tool BẢNG LƯƠNG — hai quyết định
+    // vận hành không liên quan trên một công tắc.
+    expect(khoaSeedNhayCam.map((r) => r.contractId)).toEqual([
+      KHOA_ROLLOUT_LUONG,
+      KHOA_ROLLOUT_LOI_NHUAN_CO_DONG,
+      KHOA_ROLLOUT_MANG,
+    ]);
+    // Và Zalo KHÔNG có cờ thứ hai: trang đó đã có contract thật.
+    expect(khoaSeedNhayCam.map((r) => r.contractId)).not.toContain('chat-zalo.list');
+    expect(khoaSeedTrang.map((r) => r.contractId)).toContain('chat-zalo.list');
+  });
+
+  it('không file seed nào khai trùng khoá của file kia', () => {
+    // Hai dòng cùng `contract_id` là hai nút trong trang admin cùng bấm vào một
+    // flag — và `ON CONFLICT DO NOTHING` sẽ giấu chuyện đó đi.
+    const tat = khoaSeed.map((r) => r.contractId);
+    expect(new Set(tat).size).toBe(tat.length);
+  });
+
   it('MỌI dòng seed `disabled`, không có dòng nào bật sẵn', () => {
     // Bật rollout là quyết định vận hành, có CAS revision + lý do + bằng chứng
     // + tham chiếu rollback trong sổ audit. Bật bằng migration là bật không
@@ -56,6 +106,30 @@ describe('seed phủ đúng danh sách contract của client', () => {
     for (const dong of khoaSeed) expect(dong.state, dong.contractId).toBe('disabled');
     expect(than).not.toMatch(/'enabled'/);
     expect(than).not.toMatch(/'shadow'/);
+  });
+});
+
+describe('file seed thứ hai (miền nhạy cảm) giữ đúng hình dạng của file đầu', () => {
+  it('đi đúng cửa transition v2 và trả GUC về rỗng', () => {
+    const iGuc = thanNhayCam.search(
+      /set_config\(\s*'app\.copilot_feature_flag_transition'\s*,\s*'v2'\s*,\s*true\s*\)/i,
+    );
+    const iInsert = thanNhayCam.search(/INSERT\s+INTO\s+public\.copilot_feature_flags/i);
+    const iTra = thanNhayCam.search(
+      /set_config\(\s*'app\.copilot_feature_flag_transition'\s*,\s*''\s*,\s*true\s*\)/i,
+    );
+    expect(iGuc).toBeGreaterThanOrEqual(0);
+    expect(iInsert).toBeGreaterThan(iGuc);
+    expect(iTra).toBeGreaterThan(iInsert);
+  });
+
+  it('ON CONFLICT DO NOTHING, không UPDATE/DELETE cờ nào', () => {
+    expect(thanNhayCam).toMatch(
+      /ON\s+CONFLICT\s*\(\s*scope\s*,\s*contract_id\s*\)\s*DO\s+NOTHING/i,
+    );
+    expect(thanNhayCam).not.toMatch(/DO\s+UPDATE/i);
+    expect(thanNhayCam).not.toMatch(/UPDATE\s+public\.copilot_feature_flags/i);
+    expect(thanNhayCam).not.toMatch(/DELETE\s+FROM\s+public\.copilot_feature_flags/i);
   });
 });
 

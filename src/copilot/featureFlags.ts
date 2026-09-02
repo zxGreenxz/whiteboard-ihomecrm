@@ -19,13 +19,51 @@ export type CopilotFlagState = 'disabled' | 'shadow' | 'enabled';
  * chỉ nhận hai giá trị đó và điều hướng là một bề mặt TRANG, không phải một
  * thao tác ghi.
  */
-export const KHOA_ROLLOUT_DIEU_HUONG = 'copilot.navigation';
-
 export interface CopilotRolloutContract {
   scope: 'page' | 'action';
   contractId: string;
   label: string;
 }
+
+export const KHOA_ROLLOUT_DIEU_HUONG = 'copilot.navigation';
+
+/**
+ * Ba khoá rollout RIÊNG cho ba tool đọc miền nhạy cảm (G1-C4).
+ *
+ * `/finance/salary`, `/reports/finance/profit-distribution` và `/network-center`
+ * đều nằm trong `COPILOT_PAGE_EXEMPTIONS` nên KHÔNG có contract trang. Bản đầu
+ * cho ba tool mượn khoá của trang canonical gần nhất (`reports.finance` hai lần,
+ * `buildings.list` một lần). Nó CHẠY, và nó sai theo đúng cách đo được: bật
+ * rollout báo cáo tài chính khi đó cũng bật luôn tool BẢNG LƯƠNG. Hai quyết định
+ * vận hành không liên quan đi chung một công tắc chính là thứ mà việc gỡ
+ * `rolloutKeys` (03/09) sinh ra để chặn.
+ *
+ * Hai lựa chọn còn lại tệ hơn: không khai khoá nào thì `toolAvailableForRollout`
+ * trả false ⇒ tool CHẾT vĩnh viễn; `rolloutExempt` thì tool SỐNG vĩnh viễn,
+ * không còn công tắc nào.
+ *
+ * Zalo KHÔNG có mặt ở đây: `/chat-zalo` đã có contract thật (`chat-zalo.list`),
+ * và dựng công tắc thứ hai cho cùng một trang là hai dòng cùng quyết định một
+ * việc.
+ *
+ * Mỗi khoá ở đây PHẢI có một dòng seed tương ứng trong migration
+ * `20260902224859`; `copilotRolloutSeedPagesMigration.test.ts` canh cặp đó không
+ * lệch, vì `set_copilot_feature_flag_v2` chỉ UPDATE dòng CÓ SẴN.
+ */
+export const KHOA_ROLLOUT_LUONG = 'copilot.sensitive.salary';
+export const KHOA_ROLLOUT_LOI_NHUAN_CO_DONG = 'copilot.sensitive.shareholder-profit';
+export const KHOA_ROLLOUT_MANG = 'copilot.sensitive.network';
+
+/** Ba contract trên, kèm nhãn tiếng Việt cho trang admin. */
+export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = [
+  { scope: 'page', contractId: KHOA_ROLLOUT_LUONG, label: 'Bảng lương quản lý (Copilot đọc)' },
+  {
+    scope: 'page',
+    contractId: KHOA_ROLLOUT_LOI_NHUAN_CO_DONG,
+    label: 'Lợi nhuận cổ đông (Copilot đọc)',
+  },
+  { scope: 'page', contractId: KHOA_ROLLOUT_MANG, label: 'Trung tâm mạng (Copilot đọc)' },
+];
 
 /**
  * Contract scope `action` — hôm nay RỖNG, và đó là sự thật của bảng flag.
@@ -66,6 +104,12 @@ export function taoRolloutContracts(
     contractId: KHOA_ROLLOUT_DIEU_HUONG,
     label: 'Điều hướng của Copilot (mở trang)',
   });
+  // Ba miền nhạy cảm không sinh ra từ `ROUTE_DIEU_HUONG` được vì ba trang của
+  // chúng nằm trong danh sách miễn trừ — nên chúng được chèn thẳng ở đây, đúng
+  // cách khoá điều hướng được chèn ngay trên.
+  for (const contract of COPILOT_ROLLOUT_MIEN_NHAY_CAM) {
+    theoKhoa.set(contract.contractId, contract);
+  }
   return [...theoKhoa.values(), ...contractAction];
 }
 

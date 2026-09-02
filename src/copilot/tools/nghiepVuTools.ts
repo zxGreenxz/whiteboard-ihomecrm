@@ -21,6 +21,11 @@ import { formatVND } from '@/lib/utils';
 import { maskPhonePartial, maskPii } from '../maskPii';
 import { todayISO } from '@/lib/collect';
 import { ngayCuoiThang } from '../temporalContext';
+import {
+  KHOA_ROLLOUT_LOI_NHUAN_CO_DONG,
+  KHOA_ROLLOUT_LUONG,
+  KHOA_ROLLOUT_MANG,
+} from '../featureFlags';
 import { chotToChuc, type DomainTool } from './registry';
 
 const dt = <T,>(t: DomainTool<T>): DomainTool<T> => t;
@@ -184,16 +189,28 @@ const NHAN_MUC_DO_SU_CO: Record<string, string> = {
   INFO: 'thông tin',
 };
 
-/** `zalo_conversations.thread_type` / `.kind` — hội thoại với ai. */
+/**
+ * `zalo_conversations.thread_type` và `.kind` — ĐÚNG các giá trị mà CHECK
+ * constraint của bảng cho phép, chữ thường:
+ *
+ *   zalo_conversations_thread_type_check  'user' | 'group'
+ *   zalo_conversations_kind_check         'tenant' | 'lead' | 'broker' | 'unknown'
+ *
+ * (`supabase/baseline/schema.sql:116513-116514`.) Bản đầu khai `User`/`Group`
+ * viết hoa và `partner`/`other` — bốn khoá KHÔNG dòng nào khớp được, nên mọi hội
+ * thoại sẽ hiện mã thô như `tenant` thay vì nhãn tiếng Việt, và hai giá trị thật
+ * (`broker`, `unknown`) không bao giờ có nhãn. Test dưới ghim từng giá trị của
+ * CHECK constraint phải có nhãn.
+ */
 const NHAN_LOAI_HOI_THOAI: Record<string, string> = {
-  User: 'cá nhân',
-  Group: 'nhóm',
+  user: 'cá nhân',
+  group: 'nhóm',
 };
 const NHAN_NHOM_HOI_THOAI: Record<string, string> = {
   tenant: 'khách trọ',
   lead: 'khách hẹn',
-  partner: 'môi giới',
-  other: 'khác',
+  broker: 'môi giới',
+  unknown: 'chưa phân loại',
 };
 
 /**
@@ -2019,27 +2036,27 @@ export const baoCaoDatCoc = dt({
 // phía server kiểm lại bằng `authorized_scope_v3`. Client không gửi danh sách
 // toà, không gửi danh tính "xem hộ ai", và không có tham số nào để hỏi.
 //
-// VỀ `rolloutKey`: BA TRONG BỐN TRANG KHÔNG CÓ PAGE CONTRACT
+// VỀ `rolloutKey`: BA TRONG BỐN TRANG KHÔNG CÓ PAGE CONTRACT — NÊN CÓ KHOÁ RIÊNG
 //   `/finance/salary`, `/reports/finance/profit-distribution` và `/network-center`
 //   đều nằm trong `COPILOT_PAGE_EXEMPTIONS` (xem src/app/capabilities/registry.ts),
-//   nên không có khoá rollout riêng cho chúng — và bịa một khoá ở đây sẽ tạo một
-//   hàng trong trang admin mà `set_copilot_feature_flag_v2` từ chối, vì RPC đó chỉ
-//   UPDATE dòng ĐÃ ĐƯỢC SEED (xem featureFlags.ts). Ba tool ấy mượn khoá của trang
-//   canonical gần nhất ĐANG CÓ THẬT:
+//   nên không có contract trang nào cho chúng.
 //
-//     bang_luong_ky      → `reports.finance`   (bề mặt tài chính gần nhất)
-//     loi_nhuan_co_dong  → `reports.finance`   (trang thật nằm dưới cụm /reports/finance)
-//     trang_thai_mang    → `buildings.list`    (trạng thái mạng là một sự thật THEO TOÀ)
-//     hoi_thoai_zalo     → `chat-zalo.list`    (khoá THẬT của đúng trang đó)
+//   Bản đầu cho ba tool MƯỢN khoá của trang canonical gần nhất (`reports.finance`
+//   hai lần, `buildings.list` một lần). Nó chạy, và nó sai theo đúng cách đo
+//   được: bật rollout báo cáo tài chính khi đó cũng bật luôn tool BẢNG LƯƠNG —
+//   hai quyết định vận hành không liên quan đi chung một công tắc, đúng thứ mà
+//   việc gỡ `rolloutKeys` (03/09) sinh ra để chặn.
 //
-//   Đây là một sự ghép ĐÔI CÔNG TẮC có thật và phải nói ra: bật rollout báo cáo
-//   tài chính sẽ bật luôn tool bảng lương. Chiều ngược lại — không khai khoá nào
-//   — làm tool TẮT vĩnh viễn (`toolAvailableForRollout` trả false), còn
-//   `rolloutExempt: true` làm nó BẬT vĩnh viễn; với dữ liệu nhạy cảm thế này thì
-//   "bật cùng một cụm" là lựa chọn an toàn nhất trong ba. Cách chữa tận gốc là
-//   một page contract riêng cho ba route đó, và điều kiện của nó là ba route phải
-//   có hàng rào `RequirePermission` ở TẦNG ROUTE trước đã — hôm nay `/finance/salary`
-//   cố tình không có (registry.ts giải thích: trang tự rẽ admin ↔ tự xem).
+//   Nay ba tool có ba khoá riêng, khai trong `featureFlags.ts` và seed `disabled`
+//   trong chính migration của lát này:
+//
+//     bang_luong_ky      → `copilot.sensitive.salary`
+//     loi_nhuan_co_dong  → `copilot.sensitive.shareholder-profit`
+//     trang_thai_mang    → `copilot.sensitive.network`
+//     hoi_thoai_zalo     → `chat-zalo.list`   (khoá THẬT của đúng trang đó)
+//
+//   Zalo giữ khoá thật của nó: dựng thêm một công tắc cho một trang đã có công
+//   tắc là hai dòng cùng quyết định một việc.
 //
 // VỀ CHE DỮ LIỆU: tên và số điện thoại đi qua `maskPii`; riêng Zalo, số điện thoại
 // LUÔN bị che một phần bằng `maskPhonePartial` trước khi rời hệ thống, và nội dung
@@ -2082,10 +2099,16 @@ interface GoiLuong {
 
 export const bangLuongKy = dt({
   name: 'bang_luong_ky',
+  // Mô tả KHÔNG hứa một đường "chỉ xem lương của mình": `salary.view` chỉ cấp
+  // được ở mức ORGANIZATION (permission_definitions), nên ai gọi được tool này
+  // đều đã có `org_wide` — `canUse` giấu tool khỏi người còn lại. Nhánh own-row
+  // trong RPC vẫn còn và vẫn đúng, nhưng nó là lớp phòng thủ chiều sâu chứ không
+  // phải một tính năng người dùng gặp; hứa nó trong mô tả là hứa một hành vi
+  // không quan sát được.
   description:
     'Bảng lương quản lý một kỳ: lương cơ bản, thưởng việc, thưởng hợp đồng, hoa hồng, ứng lương, tiền phòng, thực nhận. ' +
-    'Nếu bạn chỉ có quyền xem lương của chính mình thì kết quả CHỈ gồm dòng của bạn và câu trả lời nói rõ điều đó. ' +
-    'Dùng khi hỏi "bảng lương tháng này", "lương tháng trước của tôi bao nhiêu", "ai nhận nhiều nhất kỳ này".',
+    'Cần quyền xem bảng lương của công ty. ' +
+    'Dùng khi hỏi "bảng lương tháng này", "ai nhận nhiều nhất kỳ này", "tổng thực nhận kỳ vừa rồi".',
   inputSchema: z.object({
     ky: z
       .string()
@@ -2095,7 +2118,7 @@ export const bangLuongKy = dt({
     so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
   }),
   requiredPermission: { module: 'salary', action: 'view' },
-  rolloutKey: 'reports.finance',
+  rolloutKey: KHOA_ROLLOUT_LUONG,
   execute: async (args, ctx) => {
     const orgId = chotToChuc(ctx, 'bang_luong_ky');
     const { data, error } = await goiRpcCopilot<
@@ -2168,6 +2191,7 @@ interface HangCoDong {
 
 interface GoiLoiNhuan {
   ky: string;
+  pham_vi: string;
   gioi_han: number;
   so_luong: number;
   tong_hop: {
@@ -2188,6 +2212,7 @@ export const loiNhuanCoDong = dt({
   name: 'loi_nhuan_co_dong',
   description:
     'Lợi nhuận cổ đông một kỳ: lợi nhuận từng toà, lương quản lý, phần đã chia cho cổ đông, phần chưa chia, và số tiền của từng cổ đông. ' +
+    'Nếu bạn là cổ đông (hoặc quản lý hưởng lợi nhuận) mà không phải người chốt sổ, kết quả CHỈ gồm phần của chính bạn và câu trả lời nói rõ điều đó. ' +
     'Dùng khi hỏi "cổ đông được chia bao nhiêu", "lợi nhuận tháng này của các toà", "còn bao nhiêu chưa chia".',
   inputSchema: z.object({
     ky: z
@@ -2198,7 +2223,7 @@ export const loiNhuanCoDong = dt({
     so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
   }),
   requiredPermission: { module: 'shareholder_profit', action: 'view' },
-  rolloutKey: 'reports.finance',
+  rolloutKey: KHOA_ROLLOUT_LOI_NHUAN_CO_DONG,
   execute: async (args, ctx) => {
     const orgId = chotToChuc(ctx, 'loi_nhuan_co_dong');
     const { data, error } = await goiRpcCopilot<
@@ -2211,9 +2236,17 @@ export const loiNhuanCoDong = dt({
     });
     if (error) throw new Error(`Lỗi tải lợi nhuận cổ đông: ${error.message}`);
     const ky = data?.ky ?? args.ky ?? '?';
+    // Server tự nói phạm vi nó đã dùng — cùng hợp đồng với bảng lương. Thiếu câu
+    // này thì phần chia của riêng một cổ đông trông y hệt "cả công ty chỉ có một
+    // người được chia".
+    const chiMinhToi = data?.pham_vi !== 'toan_cong_ty';
     const toa = data?.theo_toa ?? [];
     const coDong = data?.theo_co_dong ?? [];
-    if (!toa.length && !coDong.length) return `Kỳ ${ky}: chưa có số liệu lợi nhuận cổ đông.`;
+    if (!toa.length && !coDong.length) {
+      return chiMinhToi
+        ? `Kỳ ${ky}: bạn chưa có phần lợi nhuận nào.`
+        : `Kỳ ${ky}: chưa có số liệu lợi nhuận cổ đông.`;
+    }
     const th = data?.tong_hop;
     const dongToa = toa.map((r) => {
       const tt = r.trang_thai ? (NHAN_TRANG_THAI_LN[r.trang_thai] ?? r.trang_thai) : '?';
@@ -2245,7 +2278,12 @@ export const loiNhuanCoDong = dt({
         `${Number(th.so_toa_can_tinh_lai) ? `, ${th.so_toa_can_tinh_lai} toà cần tính lại` : ''}.\n`
       : '';
     const tran = data?.gioi_han ?? args.so_luong;
-    const phan = [`${tomTat}${dongToa.length} toà (tối đa ${tran} mỗi lần hỏi):\n${dongToa.join('\n')}`];
+    const nhanPhamVi = chiMinhToi
+      ? 'Bạn chỉ được xem phần lợi nhuận của chính mình nên đây là phần của bạn, không phải toàn bộ kỳ.\n'
+      : '';
+    const phan = [
+      `${nhanPhamVi}${tomTat}${dongToa.length} toà (tối đa ${tran} mỗi lần hỏi):\n${dongToa.join('\n')}`,
+    ];
     if (dongCoDong.length) phan.push(`Theo cổ đông:\n${dongCoDong.join('\n')}`);
     return `${phan.join('\n\n')}\n[link: /reports/finance/profit-distribution]`;
   },
@@ -2392,7 +2430,7 @@ export const trangThaiMang = dt({
     so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
   }),
   requiredPermission: { module: 'network_center', action: 'view' },
-  rolloutKey: 'buildings.list',
+  rolloutKey: KHOA_ROLLOUT_MANG,
   execute: async (args, ctx) => {
     const orgId = chotToChuc(ctx, 'trang_thai_mang');
     const { data, error } = await goiRpcCopilot<

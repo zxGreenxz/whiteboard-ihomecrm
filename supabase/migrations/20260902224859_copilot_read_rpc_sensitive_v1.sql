@@ -245,6 +245,9 @@ DECLARE
   v_actor uuid := auth.uid();
   v_buildings uuid[];
   v_org_wide boolean;
+  v_quan_ly boolean;
+  v_co_dong_id uuid;
+  v_quan_ly_ln_id uuid;
   v_today date;
   v_ky date;
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
@@ -264,6 +267,47 @@ BEGIN
   SELECT s.org_wide INTO v_org_wide
     FROM app_private.authorized_scope_v3('shareholder_profit.view', p_organization_id) s;
   v_org_wide := COALESCE(v_org_wide, false);
+
+  -- shareholder_profit.view ALONE DOES NOT MEAN "MAY SEE EVERYONE'S SHARE".
+  --
+  -- 20260713110400 (ledger-applied) inserts a member_permission_overrides row
+  -- granting exactly shareholder_profit.view ALLOW to every ACTIVE membership
+  -- whose user is a shareholders.auth_user_id or a profit_managers.auth_user_id
+  -- — four such memberships exist on production as of 02/09/2026. The key is
+  -- ORGANIZATION-only, so authorized_scope_v3 resolves org_wide = true for those
+  -- people and v_buildings becomes every building of the company.
+  --
+  -- On the SCREEN that grant is harmless, because RLS narrows it again:
+  --   profit_alloc_self_select     shareholder_id = current_shareholder_id()
+  --   profit_monthly_self_select   EXISTS(an allocation of mine on this month)
+  --   profit_monthly_self_manager  EXISTS(a manager allocation of mine)
+  --   pma_self_select              manager_id = current_profit_manager_id()
+  -- A shareholder therefore sees their OWN payout and nothing else.
+  --
+  -- This function is SECURITY DEFINER, so none of those policies run. Without
+  -- the branch below, a shareholder asking Copilot would receive every
+  -- co-shareholder NAME and AMOUNT — strictly wider than their own screen, and
+  -- produced by the very permission that screen gives them.
+  --
+  -- The discriminator is a management key of the SAME page that the override
+  -- does NOT confer: shareholder_profit.lock (close the month) and
+  -- .manage_shareholders (own the shareholder register). Both are active in
+  -- permission_definitions, both are ORGANIZATION-only, and no migration grants
+  -- either of them to a shareholder.
+  SELECT COALESCE(l.org_wide, false) OR COALESCE(m.org_wide, false)
+    INTO v_quan_ly
+    FROM app_private.authorized_scope_v3('shareholder_profit.lock', p_organization_id) l
+    CROSS JOIN app_private.authorized_scope_v3('shareholder_profit.manage_shareholders', p_organization_id) m;
+  v_quan_ly := COALESCE(v_quan_ly, false);
+
+  IF NOT v_quan_ly THEN
+    -- The same two helpers the RLS policies use, so "mine" means the same thing
+    -- in both places. Either may be NULL (a plain member is neither), and NULL
+    -- never equals a row, so the restriction below fails closed.
+    v_co_dong_id := public.current_shareholder_id();
+    v_quan_ly_ln_id := public.current_profit_manager_id();
+  END IF;
+
   v_today := public.org_today_v1(p_organization_id);
 
   -- Same default rule as the payroll: the newest month that exists in scope. A
@@ -278,7 +322,27 @@ BEGIN
        AND b.organization_id = p_organization_id
        AND b.deleted_at IS NULL
        AND b.id = ANY(v_buildings)
-     WHERE pm.organization_id = p_organization_id;
+     WHERE pm.organization_id = p_organization_id
+       -- The DEFAULT period is chosen by a real query against this table, so it
+       -- carries the same restriction as the answer. Without it, the newest
+       -- month of SOMEBODY ELSE decides which month a shareholder is shown.
+       AND (
+         v_quan_ly
+         OR EXISTS (
+           SELECT 1
+           FROM public.profit_allocations pa0
+           WHERE pa0.profit_monthly_id = pm.id
+             AND pa0.organization_id = p_organization_id
+             AND pa0.shareholder_id = v_co_dong_id
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM public.profit_manager_allocations pma0
+           WHERE pma0.profit_monthly_id = pm.id
+             AND pma0.organization_id = p_organization_id
+             AND pma0.manager_id = v_quan_ly_ln_id
+         )
+       );
     v_ky := COALESCE(v_ky, date_trunc('month', v_today)::date);
   END IF;
 
@@ -305,6 +369,24 @@ BEGIN
      AND b.id = ANY(v_buildings)
     WHERE pm.organization_id = p_organization_id
       AND pm.period_month = v_ky
+      -- Mirrors profit_monthly_self_select + profit_monthly_self_manager.
+      AND (
+        v_quan_ly
+        OR EXISTS (
+          SELECT 1
+          FROM public.profit_allocations pa1
+          WHERE pa1.profit_monthly_id = pm.id
+            AND pa1.organization_id = p_organization_id
+            AND pa1.shareholder_id = v_co_dong_id
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM public.profit_manager_allocations pma1
+          WHERE pma1.profit_monthly_id = pm.id
+            AND pma1.organization_id = p_organization_id
+            AND pma1.manager_id = v_quan_ly_ln_id
+        )
+      )
   )
   SELECT
     jsonb_build_object(
@@ -361,6 +443,24 @@ BEGIN
      AND b.id = ANY(v_buildings)
     WHERE pm.organization_id = p_organization_id
       AND pm.period_month = v_ky
+      -- Same restriction as the CTE above; the two must not drift apart.
+      AND (
+        v_quan_ly
+        OR EXISTS (
+          SELECT 1
+          FROM public.profit_allocations pa1
+          WHERE pa1.profit_monthly_id = pm.id
+            AND pa1.organization_id = p_organization_id
+            AND pa1.shareholder_id = v_co_dong_id
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM public.profit_manager_allocations pma1
+          WHERE pma1.profit_monthly_id = pm.id
+            AND pma1.organization_id = p_organization_id
+            AND pma1.manager_id = v_quan_ly_ln_id
+        )
+      )
   ), chia AS (
     SELECT
       sh.id AS shareholder_id,
@@ -375,6 +475,9 @@ BEGIN
      AND sh.organization_id = p_organization_id
      AND sh.deleted_at IS NULL
     WHERE pa.organization_id = p_organization_id
+      -- Mirrors profit_alloc_self_select. THIS is the line that decides whether
+      -- a shareholder sees their co-shareholders' payouts.
+      AND (v_quan_ly OR pa.shareholder_id = v_co_dong_id)
     GROUP BY sh.id, sh.name
   )
   SELECT COALESCE((
@@ -398,6 +501,10 @@ BEGIN
 
   RETURN jsonb_build_object(
     'ky', to_char(v_ky, 'YYYY-MM'),
+    -- Same contract as the payroll: the answer states which branch produced it,
+    -- so a reply built from it can never present one shareholder's own payout as
+    -- the whole distribution.
+    'pham_vi', CASE WHEN v_quan_ly THEN 'toan_cong_ty' ELSE 'chi_minh_toi' END,
     'gioi_han', v_limit,
     'so_luong', jsonb_array_length(v_rows),
     'tong_hop', COALESCE(v_tong_hop, jsonb_build_object(
@@ -718,6 +825,61 @@ COMMENT ON FUNCTION public.copilot_zalo_conversations_v1(uuid, text, integer) IS
 COMMENT ON FUNCTION public.copilot_network_status_v1(uuid, uuid, integer) IS
   'Read-only Network Center status for Copilot: router health, open incidents, connected clients — bound to the SELECTED organization instead of every building the caller can see.';
 
+
+-- Rollout flags: THREE OWN SWITCHES, seeded `disabled` -----------------------
+--
+-- WHY NOT BORROW AN EXISTING PAGE FLAG
+--   /finance/salary, /reports/finance/profit-distribution and /network-center are
+--   all in COPILOT_PAGE_EXEMPTIONS, so none of them has a rollout contract. The
+--   first version of this work pointed the three tools at the nearest canonical
+--   page (`reports.finance` twice, `buildings.list` once). That works, and it is
+--   wrong for one measurable reason: enabling the finance-REPORT rollout would
+--   then also enable the PAYROLL tool. Two unrelated operational decisions on one
+--   switch is precisely what removing `rolloutKeys` on 03/09 was meant to stop.
+--
+--   The other two options were worse: no `rolloutKey` at all makes the tool dead
+--   forever (`toolAvailableForRollout` returns false), and `rolloutExempt` makes
+--   it live forever with no switch at all.
+--
+--   So these three get their own contracts. `set_copilot_feature_flag_v2` only
+--   UPDATEs rows that already exist — a contract named in the client with no row
+--   here is a button in the admin screen that returns `unknown_rollout_contract`
+--   and cannot be fixed by whoever pressed it. The row must exist first.
+--
+--   Zalo is NOT in this list: `/chat-zalo` has a real page contract
+--   (`chat-zalo.list`) seeded by 20260902185838, and inventing a second switch
+--   for the same page would be two rows deciding one thing.
+--
+-- NOTHING IS TURNED ON HERE. All three rows are `disabled`; turning one on is an
+-- operational act through the RPC with CAS revision + reason + evidence +
+-- rollback reference, so the record lands in the audit log instead of inside a
+-- migration under the name "migration".
+
+-- The v2 trigger (`copilot_feature_flags_bump_revision`, 20260829030000) rejects
+-- any INSERT/UPDATE that does not carry this transaction marker; that is what
+-- forces every runtime change through the CAS RPC. A migration seed is the one
+-- remaining legitimate path, so it declares the marker itself.
+SELECT set_config('app.copilot_feature_flag_transition', 'v2', true);
+
+INSERT INTO public.copilot_feature_flags (
+  scope, contract_id, state, reason, evidence_link, rollback_reference
+)
+SELECT
+  v.scope,
+  v.contract_id,
+  v.state,
+  'seed rollout deny-by-default cho 3 tool mien nhay cam (luong, co dong, mang)',
+  'migration:20260902224859_copilot_read_rpc_sensitive_v1',
+  'migration:20260902224859_copilot_read_rpc_sensitive_v1'
+FROM (VALUES
+  ('page', 'copilot.sensitive.salary'            , 'disabled'),  -- Bảng lương quản lý
+  ('page', 'copilot.sensitive.shareholder-profit', 'disabled'),  -- Lợi nhuận cổ đông
+  ('page', 'copilot.sensitive.network'           , 'disabled')   -- Trung tâm mạng
+) AS v(scope, contract_id, state)
+ON CONFLICT (scope, contract_id) DO NOTHING;
+
+SELECT set_config('app.copilot_feature_flag_transition', '', true);
+
 -- Acceptance: catalog only ---------------------------------------------------
 DO $nghiem_thu$
 DECLARE
@@ -771,6 +933,30 @@ BEGIN
   END IF;
   IF to_regprocedure('public.org_today_v1(uuid)') IS NULL THEN
     RAISE EXCEPTION 'org_today_v1 missing — 20260731070000 must run first';
+  END IF;
+  IF to_regprocedure('public.current_shareholder_id()') IS NULL
+     OR to_regprocedure('public.current_profit_manager_id()') IS NULL THEN
+    RAISE EXCEPTION 'shareholder identity helpers missing — the profit module must run first';
+  END IF;
+
+  -- The only non-catalog read in this block, and it reads the flag table this
+  -- migration just seeded — nothing business-shaped. `copilot_feature_flags` is
+  -- created by 20260828170000 in the same forward lane, so an empty database
+  -- still replays this (same property 20260902185838 relies on).
+  SELECT array_agg(k ORDER BY k)
+  INTO v_thieu
+  FROM unnest(ARRAY[
+    'copilot.sensitive.salary',
+    'copilot.sensitive.shareholder-profit',
+    'copilot.sensitive.network'
+  ]) AS k
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.copilot_feature_flags f
+    WHERE f.scope = 'page' AND f.contract_id = k
+  );
+  IF v_thieu IS NOT NULL AND cardinality(v_thieu) > 0 THEN
+    RAISE EXCEPTION 'copilot_rollout_seed_thieu_contract: %', array_to_string(v_thieu, ', ');
   END IF;
 END
 $nghiem_thu$;

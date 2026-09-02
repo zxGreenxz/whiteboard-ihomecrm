@@ -81,7 +81,7 @@ const CO_PHAM_VI_TOA = [
 const ORG_ALIASES: Record<string, string[]> = {
   // `pr` (profiles) is deliberately absent — see the comment on that join.
   copilot_salary_summary_v1: ['sm'],
-  copilot_shareholder_profit_v1: ['pm', 'b', 'pa', 'sh'],
+  copilot_shareholder_profit_v1: ['pm', 'b', 'pa', 'sh', 'pa0', 'pma0', 'pa1', 'pma1'],
   copilot_zalo_conversations_v1: ['c', 'rm', 'b'],
   copilot_network_status_v1: ['b', 'rt', 'cur', 'ni', 'ni2', 'nc'],
 };
@@ -210,8 +210,40 @@ describe('copilot sensitive RPC migration — luong, co dong, zalo, network', ()
     expect(migration).toMatch(/IF to_regrole\('authenticated'\) IS NOT NULL THEN/);
   });
 
-  it('writes nothing, anywhere', () => {
-    expect(migration).not.toMatch(/\b(?:INSERT INTO|UPDATE\s+public\.|DELETE FROM)\b/i);
+  it('writes NOTHING except the three rollout flag rows', () => {
+    // Một lát đọc không được ghi gì vào dữ liệu nghiệp vụ. Ngoại lệ duy nhất là
+    // ba dòng công tắc rollout: `set_copilot_feature_flag_v2` chỉ UPDATE dòng CÓ
+    // SẴN, nên công tắc phải tồn tại trước thì mới có chuyện bật hay không bật.
+    const ghi = migration.match(/\b(?:INSERT INTO|UPDATE\s+public\.|DELETE FROM)\s+[a-z_.]*/gi) ?? [];
+    expect(ghi).toEqual(['INSERT INTO public.copilot_feature_flags']);
+  });
+
+  it('seed cờ đi đúng cửa transition v2, DO NOTHING, và mọi dòng `disabled`', () => {
+    // Trigger `copilot_feature_flags_bump_revision` (20260829030000) RAISE 42501
+    // nếu thiếu dấu transaction này — thiếu nó thì migration chết ngay dòng
+    // INSERT. DO UPDATE thay vì DO NOTHING là khác biệt giữa "thêm công tắc" và
+    // "tắt hết công tắc của người khác".
+    const iGuc = migration.search(
+      /set_config\(\s*'app\.copilot_feature_flag_transition'\s*,\s*'v2'\s*,\s*true\s*\)/i,
+    );
+    const iInsert = migration.search(/INSERT\s+INTO\s+public\.copilot_feature_flags/i);
+    const iTra = migration.search(
+      /set_config\(\s*'app\.copilot_feature_flag_transition'\s*,\s*''\s*,\s*true\s*\)/i,
+    );
+    expect(iGuc).toBeGreaterThanOrEqual(0);
+    expect(iInsert).toBeGreaterThan(iGuc);
+    expect(iTra).toBeGreaterThan(iInsert);
+    expect(migration).toMatch(/ON\s+CONFLICT\s*\(\s*scope\s*,\s*contract_id\s*\)\s*DO\s+NOTHING/i);
+    expect(migration).not.toMatch(/DO\s+UPDATE/i);
+    const seed = [...migration.matchAll(/\('page',\s*'([^']+)'\s*,\s*'(\w+)'\)/g)];
+    expect(seed.map((m) => m[1])).toEqual([
+      'copilot.sensitive.salary',
+      'copilot.sensitive.shareholder-profit',
+      'copilot.sensitive.network',
+    ]);
+    // Bật rollout là quyết định vận hành có CAS + lý do + bằng chứng trong sổ
+    // audit. Bật bằng migration là bật không tên.
+    for (const dong of seed) expect(dong[2], dong[1]).toBe('disabled');
   });
 
   it('cannot reach a Network Center action or a Zalo send, by name', () => {
@@ -233,8 +265,12 @@ describe('copilot sensitive RPC migration — luong, co dong, zalo, network', ()
     // function re-created VOLATILE later would still match the source assertion.
     expect(block).toMatch(/p\.provolatile = 's'/);
     for (const rpc of RPC_MOI) expect(block, rpc).toContain(rpc);
-    // A SELECT against a business table here would break the empty-DB property.
-    expect(block).not.toMatch(/FROM public\.[a-z_]+/i);
+    // A SELECT against a BUSINESS table here would break the empty-DB property.
+    // The flag table is the one exception and it is named explicitly: it is
+    // created by 20260828170000 in the same forward lane, and it is what this
+    // migration just seeded (same property 20260902185838 relies on).
+    const bang = [...block.matchAll(/FROM public\.([a-z_]+)/gi)].map((m) => m[1]);
+    expect(new Set(bang)).toEqual(new Set(['copilot_feature_flags']));
   });
 
   it('is replayable: every DDL statement is CREATE OR REPLACE', () => {
@@ -307,6 +343,75 @@ describe('bien gioi thue bao — predicate chiu luc bi ghim tung ham', () => {
     // lời giải thích đi.
     const body = boCommentSql(functionBody(migration, 'copilot_network_status_v1'));
     expect(body).not.toMatch(/org_wide/);
+  });
+});
+
+
+// CỔ ĐÔNG CHỈ THẤY PHẦN CỦA MÌNH — TRỪ KHI HỌ LÀ NGƯỜI CHỐT SỔ.
+//
+// `20260713110400` (đã apply) cấp `shareholder_profit.view` ALLOW cho MỌI thành
+// viên đang hoạt động là `shareholders.auth_user_id` hoặc
+// `profit_managers.auth_user_id` — 4 thành viên như vậy trên production ngày
+// 02/09/2026. Khoá đó chỉ cấp được ở mức ORGANIZATION nên `authorized_scope_v3`
+// trả `org_wide = true`, và trên MÀN HÌNH điều đó vô hại vì RLS thu hẹp lại
+// (`profit_alloc_self_select`, `profit_monthly_self_select`,
+// `profit_monthly_self_manager`, `pma_self_select`). Hàm này SECURITY DEFINER
+// nên KHÔNG có policy nào chạy: thiếu nhánh dưới đây, một cổ đông hỏi Copilot sẽ
+// nhận TÊN và SỐ TIỀN của mọi cổ đông khác — rộng hơn hẳn màn hình của chính họ.
+describe('loi nhuan co dong — khong phai quan ly thi CHI thay phan cua minh', () => {
+  const body = () => functionBody(migration, 'copilot_shareholder_profit_v1');
+
+  it('phan biet quan ly bang khoa mà override KHONG cap', () => {
+    // `shareholder_profit.view` là thứ override cấp, nên nó KHÔNG phân biệt được
+    // ai là ai. `.lock` và `.manage_shareholders` thì có: không migration nào cấp
+    // chúng cho cổ đông.
+    expect(body()).toMatch(
+      /authorized_scope_v3\('shareholder_profit\.lock', p_organization_id\)/,
+    );
+    expect(body()).toMatch(
+      /authorized_scope_v3\('shareholder_profit\.manage_shareholders', p_organization_id\)/,
+    );
+    expect(body()).toMatch(/v_quan_ly := COALESCE\(v_quan_ly, false\);/);
+  });
+
+  it('lay "chinh minh" bang DUNG hai ham ma RLS dung', () => {
+    expect(body()).toMatch(/v_co_dong_id := public\.current_shareholder_id\(\);/);
+    expect(body()).toMatch(/v_quan_ly_ln_id := public\.current_profit_manager_id\(\);/);
+  });
+
+  it('danh sach phan chia bi rang vao co dong cua chinh actor', () => {
+    // ĐÂY là dòng quyết định một cổ đông có thấy phần của đồng sở hữu hay không.
+    expect(body(), 'thieu rang buoc pa.shareholder_id = v_co_dong_id').toMatch(
+      /AND \(v_quan_ly OR pa\.shareholder_id = v_co_dong_id\)/,
+    );
+  });
+
+  it('thang cung bi rang — soi ca hai duong cua RLS', () => {
+    // `profit_monthly_self_select` (cổ đông) VÀ `profit_monthly_self_manager`
+    // (quản lý hưởng lợi nhuận). Thiếu vế thứ hai thì một profit manager không
+    // phải cổ đông sẽ nhận rỗng ở nơi màn hình cho họ xem.
+    const than = body();
+    expect(than).toMatch(/pa1\.shareholder_id = v_co_dong_id/);
+    expect(than).toMatch(/pma1\.manager_id = v_quan_ly_ln_id/);
+    // Hai CTE `ky` phải mang CÙNG một ràng buộc, không được lệch nhau.
+    expect((than.match(/pa1\.shareholder_id = v_co_dong_id/g) ?? [])).toHaveLength(2);
+    expect((than.match(/pma1\.manager_id = v_quan_ly_ln_id/g) ?? [])).toHaveLength(2);
+    // Và kỳ MẶC ĐỊNH cũng đi qua bộ lọc đó — nếu không, kỳ mới nhất của người
+    // khác quyết định cổ đông được xem tháng nào.
+    expect(than).toMatch(/pa0\.shareholder_id = v_co_dong_id/);
+    expect(than).toMatch(/pma0\.manager_id = v_quan_ly_ln_id/);
+  });
+
+  it('noi ro pham vi trong chinh cau tra loi', () => {
+    expect(body()).toMatch(
+      /'pham_vi', CASE WHEN v_quan_ly THEN 'toan_cong_ty' ELSE 'chi_minh_toi' END/,
+    );
+  });
+
+  it('nghiem thu doi hai ham danh tinh cua RLS ton tai truoc khi tin ket qua', () => {
+    const block = migration.slice(migration.indexOf('DO $nghiem_thu$'));
+    expect(block).toContain('public.current_shareholder_id()');
+    expect(block).toContain('public.current_profit_manager_id()');
   });
 });
 

@@ -642,6 +642,30 @@ CREATE TABLE IF NOT EXISTS public.profit_monthly (
     FOREIGN KEY (building_id) REFERENCES public.buildings(id)
 );
 
+-- The profit-manager twin of the shareholder tables. It exists here because the
+-- self-restriction has TWO arms (profit_monthly_self_select and
+-- profit_monthly_self_manager) and a probe that only builds one of them cannot
+-- tell a missing arm from an empty one.
+CREATE TABLE IF NOT EXISTS public.profit_managers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  auth_user_id uuid,
+  name text NOT NULL,
+  deleted_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS public.profit_manager_allocations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  profit_monthly_id uuid NOT NULL,
+  manager_id uuid NOT NULL,
+  amount numeric NOT NULL DEFAULT 0,
+  CONSTRAINT profit_manager_allocations_profit_monthly_id_fkey
+    FOREIGN KEY (profit_monthly_id) REFERENCES public.profit_monthly(id),
+  CONSTRAINT profit_manager_allocations_manager_id_fkey
+    FOREIGN KEY (manager_id) REFERENCES public.profit_managers(id)
+);
+
 CREATE TABLE IF NOT EXISTS public.profit_allocations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid,
@@ -692,18 +716,28 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.shareholders (id, organization_id, name)
 VALUES
   ('ddd30000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'Copilot Demo Shareholder'),
+  -- The CO-OWNER. 20260713110400 grants shareholder_profit.view to both of them,
+  -- and RLS (profit_alloc_self_select) is what stops each from reading the
+  -- other's payout on the screen. A SECURITY DEFINER function has to do that
+  -- itself, so the fixture needs someone to leak TO.
+  ('ddd30000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'Copilot Demo Co-Shareholder'),
   ('aaa30000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'Copilot Production Shareholder')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.profit_monthly (id, organization_id, building_id, period_month, status, computed_profit, adjusted_profit, management_salary, shareholder_allocated_amount, unallocated_profit, is_stale)
 VALUES
   ('ddd40000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', '2026-07-01', 'LOCKED', 40000000, 39000000, 5000000, 27300000, 6700000, true),
+  -- A NEWER month with no allocation for our shareholder at all. If the default
+  -- period ignored the self-restriction it would land here, and the answer would
+  -- silently be about a month the caller may not read.
+  ('ddd40000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', '2026-08-01', 'DRAFT', 10000000, 10000000, 0, 0, 10000000, false),
   ('aaa40000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', '2026-07-01', 'LOCKED', 90000000, 90000000, 9000000, 63000000, 18000000, false)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.profit_allocations (id, organization_id, profit_monthly_id, shareholder_id, percent, amount)
 VALUES
   ('ddd50000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddd40000-0000-4000-8000-000000000011', 'ddd30000-0000-4000-8000-000000000011', 70, 27300000),
+  ('ddd50000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddd40000-0000-4000-8000-000000000011', 'ddd30000-0000-4000-8000-000000000012', 30, 11700000),
   ('aaa50000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaa40000-0000-4000-8000-000000000011', 'aaa30000-0000-4000-8000-000000000011', 70, 63000000)
 ON CONFLICT (id) DO NOTHING;
 
@@ -797,7 +831,9 @@ WITH fk_names AS (
       'profit_monthly_building_id_fkey',
       'profit_allocations_profit_monthly_id_fkey',
       'profit_allocations_shareholder_id_fkey',
-      'zalo_conversations_room_id_fkey'
+      'zalo_conversations_room_id_fkey',
+      'profit_manager_allocations_profit_monthly_id_fkey',
+      'profit_manager_allocations_manager_id_fkey'
     ])
 ),
 direct_fk AS (
@@ -1228,6 +1264,49 @@ profit_allocation_rows AS (
   WHERE pa.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
   GROUP BY sh.name
 ),
+profit_alloc_rows_shareholder AS (
+  -- The NON-management branch: shareholder ddd3…011 asking for the same month.
+  -- 'v_quan_ly' is false, so the allocation list carries
+  -- 'pa.shareholder_id = v_co_dong_id' — the co-owner must not appear.
+  SELECT sh.name, pa.amount
+  FROM public.profit_allocations pa
+  JOIN profit_rows pr ON pr.id = pa.profit_monthly_id
+  JOIN public.shareholders sh
+    ON sh.id = pa.shareholder_id
+   AND sh.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND sh.deleted_at IS NULL
+  WHERE pa.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND pa.shareholder_id = 'ddd30000-0000-4000-8000-000000000011'
+),
+profit_months_shareholder AS (
+  -- Months a plain shareholder may be shown: mirrors profit_monthly_self_select
+  -- (and its profit-manager twin). The 2026-08 month has no allocation of theirs
+  -- and must fall out — including out of the DEFAULT-period choice.
+  SELECT pm.id, pm.period_month
+  FROM public.profit_monthly pm
+  JOIN public.buildings b
+    ON b.id = pm.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+   AND b.id = ANY(ARRAY['dddd1000-0000-4000-8000-000000000011'::uuid])
+  WHERE pm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND (
+      EXISTS (
+        SELECT 1
+        FROM public.profit_allocations pa1
+        WHERE pa1.profit_monthly_id = pm.id
+          AND pa1.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+          AND pa1.shareholder_id = 'ddd30000-0000-4000-8000-000000000011'
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM public.profit_manager_allocations pma1
+        WHERE pma1.profit_monthly_id = pm.id
+          AND pma1.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+          AND pma1.manager_id = NULL::uuid
+      )
+    )
+),
 zalo_rows_org_wide AS (
   -- Join path of copilot_zalo_conversations_v1 for an ORGANIZATION-wide reader:
   -- the conversation attached to a room in scope AND the one attached to no room.
@@ -1300,7 +1379,7 @@ checks AS (
   UNION ALL SELECT 'customers.empty', (SELECT count(*) = 0 FROM customer_empty)
   UNION ALL SELECT 'contracts.positive', (SELECT count(*) = 1 AND max(full_name) = 'Copilot Demo Customer' FROM contract_rows)
   UNION ALL SELECT 'contracts.empty', (SELECT count(*) = 0 FROM contract_empty)
-  UNION ALL SELECT 'schema.fk_names', (SELECT count(*) = 14 FROM fk_names)
+  UNION ALL SELECT 'schema.fk_names', (SELECT count(*) = 16 FROM fk_names)
   UNION ALL SELECT 'schema.direct_relations_absent', (SELECT count(*) = 0 FROM direct_fk)
   UNION ALL SELECT 'tenant.wrong_org_excluded',
     ((SELECT count(*) FROM customer_wrong_org) = 0
@@ -1372,9 +1451,19 @@ checks AS (
     ((SELECT count(*) FROM profit_rows) = 1
       AND (SELECT max(adjusted_profit) FROM profit_rows) = 39000000
       AND NOT EXISTS (SELECT 1 FROM profit_rows p WHERE p.id = 'aaa40000-0000-4000-8000-000000000011'))
+  UNION ALL SELECT 'shareholder_profit.plain_shareholder_sees_only_own_payout',
+    ((SELECT count(*) FROM profit_alloc_rows_shareholder) = 1
+      AND (SELECT max(amount) FROM profit_alloc_rows_shareholder) = 27300000
+      AND NOT EXISTS (SELECT 1 FROM profit_alloc_rows_shareholder a
+                      WHERE a.name = 'Copilot Demo Co-Shareholder'))
+  UNION ALL SELECT 'shareholder_profit.plain_shareholder_month_set_and_default',
+    ((SELECT count(*) FROM profit_months_shareholder) = 1
+      AND (SELECT max(period_month) FROM profit_months_shareholder) = DATE '2026-07-01'
+      AND (SELECT max(pm.period_month) FROM public.profit_monthly pm
+            WHERE pm.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid) = DATE '2026-08-01')
   UNION ALL SELECT 'shareholder_profit.allocations_follow_the_scoped_months',
-    ((SELECT count(*) FROM profit_allocation_rows) = 1
-      AND (SELECT max(amount) FROM profit_allocation_rows) = 27300000
+    ((SELECT count(*) FROM profit_allocation_rows) = 2
+      AND (SELECT sum(amount) FROM profit_allocation_rows) = 39000000
       AND NOT EXISTS (SELECT 1 FROM profit_allocation_rows a WHERE a.name = 'Copilot Production Shareholder'))
   UNION ALL SELECT 'zalo.null_room_needs_org_wide',
     ((SELECT count(*) FROM zalo_rows_org_wide) = 2
@@ -1422,7 +1511,7 @@ export function parseCopilotReadonlyQueriesVerdict(output) {
   if (
     verdict.passed !== true ||
     Number(verdict.failed_count) !== 0 ||
-    Number(verdict.assertion_count) !== 41 ||
+    Number(verdict.assertion_count) !== 43 ||
     verdict.assertions.some((assertion) => assertion?.passed !== true)
   ) {
     throw new Error(`Copilot readonly query contract failed: ${JSON.stringify(verdict)}`);

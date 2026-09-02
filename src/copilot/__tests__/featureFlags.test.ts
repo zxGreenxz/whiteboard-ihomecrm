@@ -5,6 +5,7 @@ import {
   parseCopilotAvailability,
   filterAvailableContractKeys,
   COPILOT_ROLLOUT_CONTRACTS,
+  COPILOT_ROLLOUT_MIEN_NHAY_CAM,
   COPILOT_ROLLOUT_ACTION_CONTRACTS,
   KHOA_ROLLOUT_DIEU_HUONG,
   taoRolloutContracts,
@@ -107,18 +108,34 @@ describe('Copilot feature flags', () => {
 });
 
 describe('COPILOT_ROLLOUT_CONTRACTS sinh từ page contract', () => {
-  it('có ĐÚNG một dòng cho mỗi đích điều hướng, cộng khoá điều hướng', () => {
+  it('có ĐÚNG một dòng cho mỗi đích điều hướng, cộng điều hướng và 3 miền nhạy cảm', () => {
     // Bản trước chép tay 3 dòng. Vì `set_copilot_feature_flag_v2` chỉ UPDATE
     // dòng CÓ SẴN, một trang thiếu contract là một trang không bao giờ bật
     // được — im lặng, và chỉ lộ ra khi ai đó hỏi "sao trang này không có nút".
+    //
+    // Ba khoá `copilot.sensitive.*` KHÔNG sinh ra từ `ROUTE_DIEU_HUONG` được:
+    // ba trang của chúng nằm trong `COPILOT_PAGE_EXEMPTIONS`. Chúng được chèn
+    // thẳng, đúng cách khoá điều hướng được chèn — và phải có mặt ở đây, nếu
+    // không thì tool tương ứng không bao giờ bật được.
     expect(ROUTE_DIEU_HUONG.length).toBeGreaterThanOrEqual(15); // sàn chống-xanh-rỗng
     const khoaTrang = COPILOT_ROLLOUT_CONTRACTS.filter((c) => c.scope === 'page').map(
       (c) => c.contractId,
     );
+    const nhayCam = COPILOT_ROLLOUT_MIEN_NHAY_CAM.map((c) => c.contractId);
+    expect(nhayCam).toEqual([
+      'copilot.sensitive.salary',
+      'copilot.sensitive.shareholder-profit',
+      'copilot.sensitive.network',
+    ]);
     expect(new Set(khoaTrang)).toEqual(
-      new Set([...ROUTE_DIEU_HUONG.map((m) => m.key), KHOA_ROLLOUT_DIEU_HUONG]),
+      new Set([...ROUTE_DIEU_HUONG.map((m) => m.key), KHOA_ROLLOUT_DIEU_HUONG, ...nhayCam]),
     );
-    expect(khoaTrang.length).toBe(ROUTE_DIEU_HUONG.length + 1);
+    expect(khoaTrang.length).toBe(ROUTE_DIEU_HUONG.length + 1 + nhayCam.length);
+    // Không khoá nhạy cảm nào được trùng tên một trang thật: trùng là hai nút
+    // admin cùng bấm vào một flag.
+    for (const khoa of nhayCam) {
+      expect(ROUTE_DIEU_HUONG.map((m) => m.key), khoa).not.toContain(khoa);
+    }
   });
 
   it('không có contractId trùng — trùng là hai dòng admin cùng bấm vào một flag', () => {
@@ -157,6 +174,7 @@ describe('COPILOT_ROLLOUT_CONTRACTS sinh từ page contract', () => {
       'page:x.list',
       'page:y.list',
       `page:${KHOA_ROLLOUT_DIEU_HUONG}`,
+      ...COPILOT_ROLLOUT_MIEN_NHAY_CAM.map((c) => `page:${c.contractId}`),
       'action:z.do',
     ]);
     expect(contracts.find((c) => c.contractId === 'x.list')?.label).toBe('Trang X');
