@@ -54,7 +54,7 @@ function normalizePrompt(input) {
 // as "no" that make unrelated finance prompts look like multiple tools.
 const TOOL_MARKERS = [
   ['phong_trong', /\bphong\b.*\btrong\b/],
-  ['tim_khach_hang', /\btim khach\b/],
+  ['tim_khach_hang', /\btim khach\b(?! hen\b)/],
   ['tim_hoa_don', /\bhoa don\b|\bcon no (?:thang|ky)\b/],
   ['hop_dong_sap_het_han', /\bhop dong\b.*\b(?:sap het han|het han)\b/],
   ['doanh_thu_thang', /\b(?:doanh thu|kqkd)\b/],
@@ -73,6 +73,29 @@ const TOOL_MARKERS = [
   ['chi_tiet_hop_dong', /\bchi tiet hop dong\b/],
   ['tim_phieu_thu_chi', /\bphieu thu chi\b|\bphieu (?:thu|chi)\b/],
   ['hop_cho_duyet', /\bhop cho duyet\b|\bcho (?:toi )?duyet\b/],
+  // G1-C2. Same discipline as the G1-C1 block above: each marker is narrower
+  // than the tool's own vocabulary, so it cannot swallow a prompt that belongs
+  // to an older tool. "cong to" is not "cong ty" after accent folding, and
+  // "cong viec" is not "cong no".
+  //
+  // Adding these forced ONE correction above. `tim_khach_hang` matched the bare
+  // fragment "tim khach", so "tim khach hen" — a LEAD search — matched BOTH it
+  // and the new lead marker, and inferMockOutcome() then read the prompt as two
+  // intents. The fix is the narrowest one that is still true: exclude exactly the
+  // lead phrase, `(?! hen\b)`.
+  //
+  // The obvious "tidier" fix — requiring the full "tim khach hang" — was written
+  // first and REVERTED: C14 ("Tim khach bang so dien thoai...") and C27 ("Tim
+  // khach Nguyen An va phong trong...") both say "tim khach" without "hang", so
+  // that version silently stopped routing two pinned cases. Narrowing a marker so
+  // it answers for fewer prompts is not weakening the router — but narrowing it
+  // past the prompts it is supposed to answer is, and only the pinned corpus test
+  // in scripts/__tests__/run-copilot-golden-eval.test.mjs said which was which.
+  ['tim_khach_hen', /\bkhach hen\b/],
+  ['chi_so_cong_to', /\bcong to\b/],
+  ['tim_xe', /\bbien so\b|\btim xe\b/],
+  ['cong_viec', /\bcong viec\b/],
+  ['ton_kho_vat_tu', /\bvat tu\b|\bton kho\b/],
 ];
 
 /** Independently infer expected tool intent from the natural-language prompt. */
