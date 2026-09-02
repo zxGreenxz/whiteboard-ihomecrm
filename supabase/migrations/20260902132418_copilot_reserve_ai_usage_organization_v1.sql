@@ -30,6 +30,25 @@
 --   INSERT thiếu `organization_id`. Vá mà để nguyên đường cũ thì không phải vá.
 --   (Án lệ trong repo: overload RPC làm PostgREST chọn nhầm bản.)
 --
+-- VÌ SAO `DEFAULT NULL` CHỨ KHÔNG PHẢI THAM SỐ TRẦN
+--   Đây KHÔNG phải cách đóng cửa sổ 500 giữa migration và deploy proxy — cửa sổ
+--   đó chỉ đóng bằng một việc: deploy llm-proxy NGAY sau khi migration này chạy.
+--   `DEFAULT NULL` giải quyết chuyện khác, và giải quyết hai chuyện:
+--     (1) ĐƯỜNG LÙI CỦA PROXY. Nếu phải rollback llm-proxy về bản 6 tham số sau
+--         khi migration đã chạy, lời gọi 6 tham số vẫn PHÂN GIẢI được sang hàm
+--         này (PostgreSQL điền default cho tham số cuối) thay vì chết PGRST202
+--         "function not found". Nó trả `organization_required` — một lỗi 400 nói
+--         đúng nguyên nhân — chứ không phải 404 nói sai nguyên nhân.
+--     (2) NHÁNH `organization_required` Ở TẦNG RPC MỚI VỚI TỚI ĐƯỢC. Tham số
+--         trần làm PostgREST chặn ngay ở khâu phân giải hàm, nên `RAISE
+--         'organization_required'` bên dưới là mã chết: không lời gọi nào chạm
+--         tới nó. Có default thì hàng rào thứ hai (sau hàng rào header của
+--         proxy) mới thật sự là hàng rào, và test (h2) của proxy mới đo được
+--         thứ có thật.
+--   `DEFAULT NULL` KHÔNG nới lỏng gì: `RAISE 'organization_required'` khi NULL
+--   giữ nguyên và đứng trước mọi thứ khác. Thiếu org vẫn là hỏng, chỉ khác ở
+--   chỗ nó hỏng bằng câu nói đúng sự thật.
+--
 -- QUYỀN TRÊN TỔ CHỨC — BÁM ĐÚNG DANH BẠ ĐÃ CÓ
 --   Điều kiện ở đây chép theo `list_my_copilot_organizations_v1`: công ty phải
 --   `ACTIVE`, người dùng phải có membership `ACTIVE` trên chính nó, HOẶC là super
@@ -69,7 +88,10 @@ CREATE OR REPLACE FUNCTION public.reserve_ai_usage(
   p_model text,
   p_task_id text,
   p_est_cost_usd numeric,
-  p_organization_id uuid
+  -- DEFAULT NULL: lời gọi 6 tham số (proxy bản cũ, hoặc proxy vừa bị rollback)
+  -- vẫn phân giải được sang hàm này và rơi vào `organization_required` bên dưới,
+  -- thay vì chết PGRST202. Xem "VÌ SAO `DEFAULT NULL`" ở đầu file.
+  p_organization_id uuid DEFAULT NULL
 ) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, auth
@@ -90,6 +112,8 @@ BEGIN
   -- (G0-B) a0. Công ty phải được NÓI, không được suy.
   -- Đứng trước mọi thứ khác, kể cả advisory lock: đây là phép kiểm rẻ nhất và
   -- một request thiếu org không đáng giữ khoá của cả ngày.
+  -- Nhánh này SỐNG chứ không phải mã chết: tham số có `DEFAULT NULL` nên lời gọi
+  -- 6 tham số đi tới được đây (thay vì bị chặn ở khâu phân giải hàm).
   IF p_organization_id IS NULL THEN RAISE EXCEPTION 'organization_required'; END IF;
 
   -- (G0-B) a1. …và phải là công ty người dùng được phép làm việc cho.
@@ -195,8 +219,10 @@ END $fn$;
 
 COMMENT ON FUNCTION public.reserve_ai_usage(uuid, text, text, text, text, numeric, uuid) IS
   'Giữ chỗ một lượt gọi AI: kill switch → entitlement → permission → rate → quota 3 cấp → dòng '
-  'pending trong ai_usage_logs. Từ G0-B nhận p_organization_id BẮT BUỘC (công ty người dùng đang '
-  'chọn trên giao diện) — organization_required nếu thiếu, organization_forbidden nếu người dùng '
+  'pending trong ai_usage_logs. Từ G0-B nhận p_organization_id (công ty người dùng đang chọn trên '
+  'giao diện). Tham số khai DEFAULT NULL để lời gọi 6 tham số của proxy bản cũ vẫn phân giải được '
+  '(không PGRST202) nhưng vẫn BẮT BUỘC về nghiệp vụ: organization_required nếu NULL/thiếu, '
+  'organization_forbidden nếu người dùng '
   'không có membership ACTIVE trên org ACTIVE đó và cũng không phải super admin ngoài org sandbox. '
   'Chỉ service_role gọi được; llm-proxy map các mã lỗi này sang HTTP status.';
 
@@ -218,7 +244,12 @@ BEGIN
     RAISE EXCEPTION 'reserve_ai_usage 7 tham so khong ton tai. DUNG.';
   END IF;
 
-  -- (2) Chữ ký CŨ phải biến mất — còn nó là còn đường INSERT thiếu organization_id.
+  -- (2) Chữ ký CŨ phải biến mất khỏi catalog — còn một HÀM 6 tham số riêng là
+  --     còn đường INSERT thiếu organization_id.
+  --     `to_regprocedure` tra khớp ĐÚNG số tham số và không xét DEFAULT, nên
+  --     phép kiểm này vẫn đúng sau khi tham số cuối nhận DEFAULT NULL: catalog
+  --     chỉ còn một hàm 7 tham số, dù LỜI GỌI 6 tham số vẫn phân giải sang nó
+  --     (và rơi vào organization_required) — đó là chủ ý, xem đầu file.
   IF to_regprocedure('public.reserve_ai_usage(uuid, text, text, text, text, numeric)') IS NOT NULL THEN
     RAISE EXCEPTION 'Chu ky 6 tham so van con — overload nay van ghi thieu organization_id. DUNG.';
   END IF;
@@ -248,6 +279,7 @@ COMMIT;
 --   DROP FUNCTION IF EXISTS public.reserve_ai_usage(uuid, text, text, text, text, numeric, uuid);
 --   -- rồi CREATE OR REPLACE lại bản 6 tham số theo 20260710200000:205-306,
 --   -- kèm REVOKE/GRANT cho chữ ký đó.
---   -- Và phải deploy lại llm-proxy bản KHÔNG gửi p_organization_id, nếu không
---   -- mọi lượt gọi chết vì không tìm thấy hàm.
+--   -- Ghi chú: rollback RIÊNG llm-proxy về bản 6 tham số thì KHÔNG cần chạm
+--   -- database — nhờ `DEFAULT NULL`, lời gọi 6 tham số vẫn phân giải sang hàm
+--   -- này và trả organization_required (400), không phải PGRST202 (404).
 -- =============================================================================

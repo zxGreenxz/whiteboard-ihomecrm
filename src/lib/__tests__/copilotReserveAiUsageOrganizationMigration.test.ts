@@ -57,7 +57,32 @@ describe('đổi chữ ký: DROP bản cũ TRƯỚC khi CREATE bản mới', () 
       expect(sql, `chữ ký thiếu ${thamSo}`).toContain(thamSo);
     }
     // Đuôi danh sách tham số: org là tham số CUỐI, thêm vào không xáo thứ tự cũ.
-    expect(sql).toMatch(/p_est_cost_usd\s+numeric\s*,\s*\n\s*p_organization_id\s+uuid\s*\n?\s*\)/i);
+    // (Cho phép chú thích xen giữa — lý do của DEFAULT NULL được ghi ngay tại đó.)
+    expect(sql).toMatch(
+      /p_est_cost_usd\s+numeric\s*,[\s\S]*?p_organization_id\s+uuid\s+DEFAULT\s+NULL\s*\n?\s*\)/i,
+    );
+  });
+
+  it('tham số org khai `DEFAULT NULL` — giữ đường lùi cho proxy bản 6 tham số', () => {
+    // Không phải để đóng cửa sổ 500 giữa migration và deploy (chỉ deploy proxy
+    // NGAY mới đóng được cửa sổ đó). DEFAULT NULL làm hai việc khác:
+    //   - rollback RIÊNG llm-proxy về bản 6 tham số không chết PGRST202
+    //     "function not found", mà rơi vào `organization_required` (400);
+    //   - nhánh `organization_required` ở tầng RPC mới VỚI TỚI ĐƯỢC. Tham số
+    //     trần thì PostgREST chặn ở khâu phân giải hàm và nhánh đó là mã chết.
+    expect(sql).toMatch(/p_organization_id\s+uuid\s+DEFAULT\s+NULL/i);
+    // …và lý do phải nằm trong file, không nằm trong trí nhớ của một người.
+    expect(sql).toMatch(/DEFAULT\s+NULL/);
+    expect(sql).toMatch(/PGRST202/);
+  });
+
+  it('DEFAULT NULL KHÔNG nới lỏng: NULL vẫn RAISE, và đứng trước advisory lock', () => {
+    // Nếu ai đó gỡ `RAISE 'organization_required'` vì "đã có default rồi", hàm
+    // quay lại đúng lỗ ban đầu: INSERT với organization_id NULL.
+    const iRaise = sql.search(/RAISE\s+EXCEPTION\s+'organization_required'/i);
+    const iLock = sql.search(/pg_advisory_xact_lock/i);
+    expect(iRaise).toBeGreaterThanOrEqual(0);
+    expect(iLock).toBeGreaterThan(iRaise);
   });
 
   it('giữ SECURITY DEFINER kèm search_path cố định', () => {
