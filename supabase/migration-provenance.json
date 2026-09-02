@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-02T22:27:02.390Z",
+  "generatedAt": "2026-09-02T22:41:59.472Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 468,
-    "unknown": 75,
+    "ledger-applied": 469,
+    "unknown": 74,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9020,14 +9020,9 @@
       "name": "copilot_report_rpc_v1",
       "scheme": "timestamp14",
       "sha256": "f0b48c425c403adfe04d672e24c7ec5258f779e7f0341d72de1c78017923717a",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_report_vacant_rooms_v1",
-        "function:public.copilot_report_renewals_v1",
-        "function:public.copilot_report_terminations_v1",
-        "function:public.copilot_report_new_leases_v1",
-        "function:public.copilot_report_expense_ratio_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-02T22:39:20.806Z|bien-nhan-backup"
       ]
     },
     {

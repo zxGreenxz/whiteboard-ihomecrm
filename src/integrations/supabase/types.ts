@@ -18923,6 +18923,91 @@ export type Database = {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: Json
       }
+      copilot_report_cash_flow_v1: {
+        Args: {
+          p_building_id?: string
+          p_den: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu: string
+        }
+        Returns: Json
+      }
+      copilot_report_daily_cashbook_v1: {
+        Args: {
+          p_building_id?: string
+          p_den: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu: string
+        }
+        Returns: Json
+      }
+      copilot_report_deposits_v1: {
+        Args: {
+          p_limit?: number
+          p_organization_id: string
+          p_trang_thai?: string
+        }
+        Returns: Json
+      }
+      copilot_report_expense_ratio_v1: {
+        Args: {
+          p_building_id?: string
+          p_den?: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu?: string
+        }
+        Returns: Json
+      }
+      copilot_report_new_leases_v1: {
+        Args: {
+          p_den?: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu?: string
+        }
+        Returns: Json
+      }
+      copilot_report_overpayment_v1: {
+        Args: { p_limit?: number; p_organization_id: string }
+        Returns: Json
+      }
+      copilot_report_payment_schedule_v1: {
+        Args: {
+          p_limit?: number
+          p_organization_id: string
+          p_so_ngay?: number
+        }
+        Returns: Json
+      }
+      copilot_report_renewals_v1: {
+        Args: {
+          p_den?: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu?: string
+        }
+        Returns: Json
+      }
+      copilot_report_terminations_v1: {
+        Args: {
+          p_den?: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu?: string
+        }
+        Returns: Json
+      }
+      copilot_report_vacant_rooms_v1: {
+        Args: {
+          p_building_id?: string
+          p_limit?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       copilot_tasks_v1: {
         Args: {
           p_limit?: number

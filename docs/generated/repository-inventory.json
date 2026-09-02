@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 478,
-  "soFileDocBangFs": 162,
-  "tongLoiGoi": 327,
+  "tongSoFileTest": 479,
+  "soFileDocBangFs": 163,
+  "tongLoiGoi": 330,
   "khongPhanLoaiDuoc": 171,
   "theoLoai": {
     "manifest": {
@@ -19,11 +19,11 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 30,
+      "soFile": 31,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 58,
+      "soFile": 59,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -49,6 +49,7 @@
     "src/hooks/__tests__/useMeters.serviceResolve.test.ts",
     "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
     "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
+    "src/lib/__tests__/copilotReportRpcMigration.test.ts",
     "src/lib/__tests__/docsDemoSeedP3.test.ts",
     "src/lib/__tests__/financeV2Characterization.test.ts",
     "src/lib/__tests__/ieGuardHandoverScopeMigration.test.ts",
@@ -252,6 +253,15 @@
       "soGoi": 3,
       "loai": {
         "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotReportRpcMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 1,
+        "ma-nguon": 2
       },
       "khongPhanLoaiDuoc": 0
     },
