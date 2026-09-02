@@ -14,23 +14,57 @@
 --   is the exact failure measured on 13/08/2026.
 --
 --   The one page that DOES call RPCs — daily cashbook and cash flow, through
---   `cashflow_by_day` / `cashbook_period_totals` — could not be reused either,
---   and the reason is worth writing down. Those functions resolve their scope
---   from `my_org_ids()`: EVERY company the caller belongs to, not the company
---   the Copilot session has selected. On the screen that is correct, because the
---   screen is inside one company already. Called from a tool whose whole contract
+--   `cashflow_by_day_v2` / `cashbook_period_totals_v2` — could not be reused as
+--   they stand, for exactly one reason: they resolve their scope from
+--   `my_org_ids()`, EVERY company the caller belongs to, not the company the
+--   Copilot session has selected. On the screen that is correct, because the
+--   screen is already inside one company. Called from a tool whose whole contract
 --   is "answer for the organization the user picked", it would silently add
---   another company's cash to the total. So the daily/monthly cash rollups are
---   re-derived here, from the same source table and the same APPROVED filter, but
---   bounded by `p_organization_id` and the caller's building scope.
+--   another company's cash to the total.
 --
--- RESTRICTED CATEGORIES ARE A SECOND BOUNDARY
+--   That is the ONLY thing changed about them here. Everything else those two
+--   functions do is reproduced line for line, because it is all load-bearing:
+--
+--     POSTING TRUTH, NOT VOUCHER TRUTH. The cash rollups read
+--     `income_expense_posting_lines` joined to `income_expense_postings` with
+--     `event_kind IN ('POSTING','REVERSAL')`, keyed on `posted_on`, and sum
+--     `signed_amount` (positives = money in, negatives = money out). The first
+--     version of this migration summed `income_expenses.total_amount` filtered
+--     `approval_status = 'APPROVED'` on `voucher_date` instead — a SECOND source
+--     of truth for the same screen, and a wrong one: a voucher posted and then
+--     reversed nets to zero in posting truth and counted in FULL in that version,
+--     and a voucher cancelled after posting counted too. `src/hooks/useCashBook.ts`
+--     documents that exact two-sources-of-truth bug being deleted from this very
+--     screen; re-introducing it behind Copilot would have undone that.
+--
+--     THE CASHBOOK BOUNDARY. `20260730101000` ("Vá LỖ C: ba RPC tổng hợp sổ quỹ
+--     đang rò tồn quỹ") closed a hole where any member could read the exact
+--     balance of a cashbook the UI deliberately shows as "—", by ending every
+--     aggregate with `pl.account_id IN (SELECT cashbook_id FROM
+--     app_private.ie_visible_cashbook_ids_v1())`. A rollup without that predicate
+--     re-opens the hole through a new door. Both functions below carry it, AND
+--     intersect it with `app_private.copilot_scope_cashbooks_v1('cashbooks.view',
+--     p_organization_id)` — the same RBAC cashbook scope `copilot_cashbook_
+--     settlement_v2` (tool `so_quy`) already uses, and the piece that binds the
+--     answer to the SELECTED organization. The two sets answer different
+--     questions (may you read this cashbook's money · is this cashbook inside the
+--     scope you were granted in THIS company), so both are applied.
+--
+-- RESTRICTED CATEGORIES ARE A THIRD BOUNDARY
 --   `income_expenses.has_restricted_item` marks vouchers whose categories need
 --   `income_expenses.restricted_view` on top of the report permission. The three
 --   money rollups below exclude them for a caller without that permission — and
 --   then REPORT how many were excluded (`phieu_han_che_bi_loai`), so the answer
 --   can say the total is partial instead of presenting a short number as the
 --   whole truth. Dropping them silently was the easy choice and the wrong one.
+--
+-- TODAY IS THE ORGANIZATION'S TODAY
+--   No bare `CURRENT_DATE` anywhere below. The server runs UTC and the data lives
+--   at UTC+7, so between 00:00 and 07:00 Vietnam time `CURRENT_DATE` is still
+--   YESTERDAY — which would move an invoice in and out of "overdue" depending on
+--   the hour the question is asked. `20260731070000` converted 78 call sites to
+--   `public.org_today_v1(<org>)` for that reason; these functions use the same
+--   form, resolved once per call after the permission check.
 --
 -- LIMITS
 --   Every function clamps `p_limit` to 1..50 and echoes the clamped value, and
@@ -64,6 +98,7 @@ AS $fn$
 DECLARE
   v_actor uuid := auth.uid();
   v_buildings uuid[];
+  v_today date;
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
   v_tong_hop jsonb;
   v_rows jsonb;
@@ -74,6 +109,7 @@ BEGIN
 
   -- Validates organization, membership, permission and denies. Never trusted input.
   v_buildings := public.copilot_org_scope_buildings_v1('reports_real_estate.vacant_rooms', p_organization_id);
+  v_today := public.org_today_v1(p_organization_id);
   -- A building outside the caller scope answers like an empty report, never like
   -- "exists but not yours".
   IF p_building_id IS NOT NULL AND NOT (p_building_id = ANY(v_buildings)) THEN
@@ -136,7 +172,7 @@ BEGIN
                  'trong_tu', s.effective_end,
                  'so_ngay_trong', CASE
                                     WHEN s.effective_end IS NULL THEN NULL
-                                    ELSE (CURRENT_DATE - s.effective_end)
+                                    ELSE (v_today - s.effective_end)
                                   END
                ) ORDER BY s.rn
              )
@@ -593,7 +629,8 @@ DECLARE
   v_actor uuid := auth.uid();
   v_buildings uuid[];
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
-  v_den date := COALESCE(p_den, CURRENT_DATE);
+  v_today date;
+  v_den date;
   v_tu date;
   v_thay_han_che boolean;
   v_han_che bigint := 0;
@@ -607,9 +644,11 @@ BEGIN
   IF p_tu IS NOT NULL AND p_den IS NOT NULL AND p_tu > p_den THEN
     RAISE EXCEPTION 'invalid_date_window' USING ERRCODE = '22023';
   END IF;
-  v_tu := COALESCE(p_tu, (date_trunc('month', v_den) - interval '5 months')::date);
 
   v_buildings := public.copilot_org_scope_buildings_v1('reports_real_estate.expense_ratio', p_organization_id);
+  v_today := public.org_today_v1(p_organization_id);
+  v_den := COALESCE(p_den, v_today);
+  v_tu := COALESCE(p_tu, (date_trunc('month', v_den) - interval '5 months')::date);
   IF p_building_id IS NOT NULL AND NOT (p_building_id = ANY(v_buildings)) THEN
     v_buildings := ARRAY[]::uuid[];
   END IF;
@@ -703,7 +742,9 @@ BEGIN
                  'ty_le_phan_tram', CASE WHEN g2.thu > 0 THEN round((g2.chi * 100) / g2.thu, 1) ELSE NULL END
                ) ORDER BY g2.ky
              )
-      FROM (SELECT * FROM ky_gop ORDER BY ky LIMIT v_limit) g2
+      -- DESC inside the cap, ascending for display: cutting at `ORDER BY ky`
+      -- would hand back the OLDEST months and drop the ones just asked about.
+      FROM (SELECT * FROM ky_gop ORDER BY ky DESC LIMIT v_limit) g2
     ), '[]'::jsonb),
     COALESCE((
       SELECT jsonb_agg(jsonb_build_object('hang_muc', h.hang_muc, 'chi', h.tien) ORDER BY h.tien DESC, h.hang_muc)
@@ -731,6 +772,11 @@ END
 $fn$;
 
 -- 6. Daily cashbook (so quy theo ngay) ---------------------------------------
+--
+-- Source, signs, event kinds and the cashbook predicate all follow
+-- `public.cashflow_by_day_v2` (20260730101000) exactly; see the header for why
+-- none of that was re-invented. What changes is the tenant bound: the selected
+-- organization instead of `my_org_ids()`.
 CREATE OR REPLACE FUNCTION public.copilot_report_daily_cashbook_v1(
   p_organization_id uuid,
   p_tu date,
@@ -747,6 +793,8 @@ AS $fn$
 DECLARE
   v_actor uuid := auth.uid();
   v_buildings uuid[];
+  v_cashbooks uuid[];
+  v_org_wide boolean := false;
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
   v_thay_han_che boolean;
   v_han_che bigint := 0;
@@ -764,50 +812,59 @@ BEGIN
   IF p_building_id IS NOT NULL AND NOT (p_building_id = ANY(v_buildings)) THEN
     v_buildings := ARRAY[]::uuid[];
   END IF;
+  SELECT COALESCE(s.org_wide, false) INTO v_org_wide
+  FROM app_private.authorized_scope_v3('reports_finance.daily_cashbook', p_organization_id) s;
+  -- Cashbook boundary, both halves. See the header.
+  v_cashbooks := app_private.copilot_scope_cashbooks_v1('cashbooks.view', p_organization_id);
   v_thay_han_che := public.can_view_restricted_ie();
 
-  SELECT count(*)
-    INTO v_han_che
-  FROM public.income_expenses ie
-  JOIN public.buildings b
-    ON b.id = ie.building_id
-   AND b.organization_id = p_organization_id
-   AND b.deleted_at IS NULL
-   AND b.id = ANY(v_buildings)
-  WHERE ie.organization_id = p_organization_id
-    AND ie.deleted_at IS NULL
-    AND ie.approval_status = 'APPROVED'
-    AND ie.voucher_date BETWEEN p_tu AND p_den
-    AND (p_building_id IS NULL OR ie.building_id = p_building_id)
-    AND COALESCE(ie.has_restricted_item, false)
-    AND NOT v_thay_han_che;
-
-  WITH theo_ngay AS (
+  WITH dong AS (
     SELECT
-      ie.voucher_date AS ngay,
-      COALESCE(sum(ie.total_amount) FILTER (WHERE ie.type = 'INCOME'), 0) AS thu,
-      COALESCE(sum(ie.total_amount) FILTER (WHERE ie.type = 'EXPENSE'), 0) AS chi
-    FROM public.income_expenses ie
-    JOIN public.buildings b
+      p.posted_on AS ngay,
+      pl.signed_amount,
+      p.voucher_id,
+      COALESCE(ie.has_restricted_item, false) AS han_che
+    FROM public.income_expense_posting_lines pl
+    JOIN public.income_expense_postings p
+      ON p.id = pl.posting_id
+     AND p.organization_id = pl.organization_id
+    LEFT JOIN public.income_expenses ie
+      ON ie.id = p.voucher_id
+     AND ie.organization_id = p_organization_id
+    LEFT JOIN public.buildings b
       ON b.id = ie.building_id
      AND b.organization_id = p_organization_id
      AND b.deleted_at IS NULL
      AND b.id = ANY(v_buildings)
-    WHERE ie.organization_id = p_organization_id
-      AND ie.deleted_at IS NULL
-      AND ie.approval_status = 'APPROVED'
-      AND ie.voucher_date BETWEEN p_tu AND p_den
+    WHERE pl.organization_id = p_organization_id
+      AND p.event_kind IN ('POSTING', 'REVERSAL')
+      AND p.posted_on BETWEEN p_tu AND p_den
+      AND pl.account_id = ANY(v_cashbooks)
+      AND pl.account_id IN (SELECT v.cashbook_id FROM app_private.ie_visible_cashbook_ids_v1() v)
       AND (p_building_id IS NULL OR ie.building_id = p_building_id)
-      AND (v_thay_han_che OR NOT COALESCE(ie.has_restricted_item, false))
-    GROUP BY ie.voucher_date
+      AND (b.id IS NOT NULL OR (ie.building_id IS NULL AND v_org_wide))
+  ),
+  theo_ngay AS (
+    SELECT
+      d.ngay,
+      COALESCE(sum(d.signed_amount) FILTER (WHERE d.signed_amount > 0), 0) AS thu,
+      COALESCE(sum(-d.signed_amount) FILTER (WHERE d.signed_amount < 0), 0) AS chi
+    FROM dong d
+    WHERE (v_thay_han_che OR NOT d.han_che)
+    GROUP BY d.ngay
+  ),
+  han_che AS (
+    SELECT count(DISTINCT d.voucher_id) AS n
+    FROM dong d
+    WHERE d.han_che AND NOT v_thay_han_che
   )
   SELECT
     jsonb_build_object(
       'so_ngay_co_phat_sinh', count(*),
-      'tong_thu', COALESCE(sum(d.thu), 0),
-      'tong_chi', COALESCE(sum(d.chi), 0),
-      'rong', COALESCE(sum(d.thu), 0) - COALESCE(sum(d.chi), 0),
-      'phieu_han_che_bi_loai', v_han_che
+      'tong_thu', COALESCE(sum(t.thu), 0),
+      'tong_chi', COALESCE(sum(t.chi), 0),
+      'rong', COALESCE(sum(t.thu), 0) - COALESCE(sum(t.chi), 0),
+      'phieu_han_che_bi_loai', (SELECT hc.n FROM han_che hc)
     ),
     COALESCE((
       SELECT jsonb_agg(
@@ -815,22 +872,25 @@ BEGIN
                ORDER BY d2.ngay DESC
              )
       FROM (SELECT * FROM theo_ngay ORDER BY ngay DESC LIMIT v_limit) d2
-    ), '[]'::jsonb)
-  INTO v_tong_hop, v_rows
-  FROM theo_ngay d;
+    ), '[]'::jsonb),
+    (SELECT hc.n FROM han_che hc)
+  INTO v_tong_hop, v_rows, v_han_che
+  FROM theo_ngay t;
 
   RETURN jsonb_build_object(
     'gioi_han', v_limit,
     'so_luong', jsonb_array_length(v_rows),
     'tu', p_tu,
     'den', p_den,
-    'tong_hop', COALESCE(v_tong_hop, jsonb_build_object('so_ngay_co_phat_sinh', 0, 'tong_thu', 0, 'tong_chi', 0, 'rong', 0, 'phieu_han_che_bi_loai', v_han_che)),
+    'tong_hop', COALESCE(v_tong_hop, jsonb_build_object('so_ngay_co_phat_sinh', 0, 'tong_thu', 0, 'tong_chi', 0, 'rong', 0, 'phieu_han_che_bi_loai', COALESCE(v_han_che, 0))),
     'theo_ngay', v_rows
   );
 END
 $fn$;
 
 -- 7. Cash flow rolled up by month (dong tien theo ky) ------------------------
+--
+-- Same source and same boundaries as 6; only the grouping key differs.
 CREATE OR REPLACE FUNCTION public.copilot_report_cash_flow_v1(
   p_organization_id uuid,
   p_tu date,
@@ -847,6 +907,8 @@ AS $fn$
 DECLARE
   v_actor uuid := auth.uid();
   v_buildings uuid[];
+  v_cashbooks uuid[];
+  v_org_wide boolean := false;
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
   v_thay_han_che boolean;
   v_han_che bigint := 0;
@@ -864,42 +926,50 @@ BEGIN
   IF p_building_id IS NOT NULL AND NOT (p_building_id = ANY(v_buildings)) THEN
     v_buildings := ARRAY[]::uuid[];
   END IF;
+  SELECT COALESCE(s.org_wide, false) INTO v_org_wide
+  FROM app_private.authorized_scope_v3('reports_finance.cash_flow', p_organization_id) s;
+  v_cashbooks := app_private.copilot_scope_cashbooks_v1('cashbooks.view', p_organization_id);
   v_thay_han_che := public.can_view_restricted_ie();
 
-  SELECT count(*)
-    INTO v_han_che
-  FROM public.income_expenses ie
-  JOIN public.buildings b
-    ON b.id = ie.building_id
-   AND b.organization_id = p_organization_id
-   AND b.deleted_at IS NULL
-   AND b.id = ANY(v_buildings)
-  WHERE ie.organization_id = p_organization_id
-    AND ie.deleted_at IS NULL
-    AND ie.approval_status = 'APPROVED'
-    AND ie.voucher_date BETWEEN p_tu AND p_den
-    AND (p_building_id IS NULL OR ie.building_id = p_building_id)
-    AND COALESCE(ie.has_restricted_item, false)
-    AND NOT v_thay_han_che;
-
-  WITH theo_thang AS (
+  WITH dong AS (
     SELECT
-      to_char(ie.voucher_date, 'YYYY-MM') AS ky,
-      COALESCE(sum(ie.total_amount) FILTER (WHERE ie.type = 'INCOME'), 0) AS thu,
-      COALESCE(sum(ie.total_amount) FILTER (WHERE ie.type = 'EXPENSE'), 0) AS chi
-    FROM public.income_expenses ie
-    JOIN public.buildings b
+      to_char(p.posted_on, 'YYYY-MM') AS ky,
+      pl.signed_amount,
+      p.voucher_id,
+      COALESCE(ie.has_restricted_item, false) AS han_che
+    FROM public.income_expense_posting_lines pl
+    JOIN public.income_expense_postings p
+      ON p.id = pl.posting_id
+     AND p.organization_id = pl.organization_id
+    LEFT JOIN public.income_expenses ie
+      ON ie.id = p.voucher_id
+     AND ie.organization_id = p_organization_id
+    LEFT JOIN public.buildings b
       ON b.id = ie.building_id
      AND b.organization_id = p_organization_id
      AND b.deleted_at IS NULL
      AND b.id = ANY(v_buildings)
-    WHERE ie.organization_id = p_organization_id
-      AND ie.deleted_at IS NULL
-      AND ie.approval_status = 'APPROVED'
-      AND ie.voucher_date BETWEEN p_tu AND p_den
+    WHERE pl.organization_id = p_organization_id
+      AND p.event_kind IN ('POSTING', 'REVERSAL')
+      AND p.posted_on BETWEEN p_tu AND p_den
+      AND pl.account_id = ANY(v_cashbooks)
+      AND pl.account_id IN (SELECT v.cashbook_id FROM app_private.ie_visible_cashbook_ids_v1() v)
       AND (p_building_id IS NULL OR ie.building_id = p_building_id)
-      AND (v_thay_han_che OR NOT COALESCE(ie.has_restricted_item, false))
-    GROUP BY to_char(ie.voucher_date, 'YYYY-MM')
+      AND (b.id IS NOT NULL OR (ie.building_id IS NULL AND v_org_wide))
+  ),
+  theo_thang AS (
+    SELECT
+      d.ky,
+      COALESCE(sum(d.signed_amount) FILTER (WHERE d.signed_amount > 0), 0) AS thu,
+      COALESCE(sum(-d.signed_amount) FILTER (WHERE d.signed_amount < 0), 0) AS chi
+    FROM dong d
+    WHERE (v_thay_han_che OR NOT d.han_che)
+    GROUP BY d.ky
+  ),
+  han_che AS (
+    SELECT count(DISTINCT d.voucher_id) AS n
+    FROM dong d
+    WHERE d.han_che AND NOT v_thay_han_che
   )
   SELECT
     jsonb_build_object(
@@ -907,16 +977,20 @@ BEGIN
       'tong_thu', COALESCE(sum(m.thu), 0),
       'tong_chi', COALESCE(sum(m.chi), 0),
       'rong', COALESCE(sum(m.thu), 0) - COALESCE(sum(m.chi), 0),
-      'phieu_han_che_bi_loai', v_han_che
+      'phieu_han_che_bi_loai', (SELECT hc.n FROM han_che hc)
     ),
     COALESCE((
       SELECT jsonb_agg(
                jsonb_build_object('ky', m2.ky, 'thu', m2.thu, 'chi', m2.chi, 'rong', m2.thu - m2.chi)
                ORDER BY m2.ky
              )
-      FROM (SELECT * FROM theo_thang ORDER BY ky LIMIT v_limit) m2
-    ), '[]'::jsonb)
-  INTO v_tong_hop, v_rows
+      -- DESC inside the cap, ascending for display. Cutting at `ORDER BY ky`
+      -- returned the OLDEST months of a twelve-month window and dropped the ones
+      -- the question was about.
+      FROM (SELECT * FROM theo_thang ORDER BY ky DESC LIMIT v_limit) m2
+    ), '[]'::jsonb),
+    (SELECT hc.n FROM han_che hc)
+  INTO v_tong_hop, v_rows, v_han_che
   FROM theo_thang m;
 
   RETURN jsonb_build_object(
@@ -924,7 +998,7 @@ BEGIN
     'so_luong', jsonb_array_length(v_rows),
     'tu', p_tu,
     'den', p_den,
-    'tong_hop', COALESCE(v_tong_hop, jsonb_build_object('so_ky', 0, 'tong_thu', 0, 'tong_chi', 0, 'rong', 0, 'phieu_han_che_bi_loai', v_han_che)),
+    'tong_hop', COALESCE(v_tong_hop, jsonb_build_object('so_ky', 0, 'tong_thu', 0, 'tong_chi', 0, 'rong', 0, 'phieu_han_che_bi_loai', COALESCE(v_han_che, 0))),
     'theo_thang', v_rows
   );
 END
@@ -947,6 +1021,7 @@ DECLARE
   v_buildings uuid[];
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
   v_so_ngay integer := least(greatest(coalesce(p_so_ngay, 30), 1), 365);
+  v_today date;
   v_den date;
   v_tong_hop jsonb;
   v_rows jsonb;
@@ -956,7 +1031,8 @@ BEGIN
   END IF;
 
   v_buildings := public.copilot_org_scope_buildings_v1('reports_finance.payment_schedule', p_organization_id);
-  v_den := CURRENT_DATE + v_so_ngay;
+  v_today := public.org_today_v1(p_organization_id);
+  v_den := v_today + v_so_ngay;
 
   WITH lich AS (
     SELECT
@@ -1005,8 +1081,8 @@ BEGIN
       'so_hoa_don', count(*),
       'tong_phai_thu', COALESCE(sum(l.total_amount), 0),
       'tong_con_lai', COALESCE(sum(l.con_lai), 0),
-      'so_qua_han', count(*) FILTER (WHERE l.due_date < CURRENT_DATE),
-      'con_lai_qua_han', COALESCE(sum(l.con_lai) FILTER (WHERE l.due_date < CURRENT_DATE), 0)
+      'so_qua_han', count(*) FILTER (WHERE l.due_date < v_today),
+      'con_lai_qua_han', COALESCE(sum(l.con_lai) FILTER (WHERE l.due_date < v_today), 0)
     ),
     COALESCE((
       SELECT jsonb_agg(
@@ -1015,7 +1091,7 @@ BEGIN
                  'so_hoa_don', s.invoice_number,
                  'ky', s.billing_month,
                  'han_thanh_toan', s.due_date,
-                 'so_ngay_con_lai', (s.due_date - CURRENT_DATE),
+                 'so_ngay_con_lai', (s.due_date - v_today),
                  'tong_tien', s.total_amount,
                  'da_tra', s.paid_amount,
                  'con_lai', s.con_lai,
@@ -1168,6 +1244,7 @@ DECLARE
   v_org_wide boolean := false;
   v_trang_thai text := NULLIF(btrim(upper(coalesce(p_trang_thai, ''))), '');
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
+  v_today date;
   v_tong_hop jsonb;
   v_rows jsonb;
 BEGIN
@@ -1182,6 +1259,7 @@ BEGIN
   v_buildings := public.copilot_org_scope_buildings_v1('reports_finance.deposits_report', p_organization_id);
   SELECT COALESCE(s.org_wide, false) INTO v_org_wide
   FROM app_private.authorized_scope_v3('reports_finance.deposits_report', p_organization_id) s;
+  v_today := public.org_today_v1(p_organization_id);
 
   WITH coc AS (
     SELECT
@@ -1234,7 +1312,7 @@ BEGIN
                  'trang_thai', s.deposit_state,
                  'so_ngay_giu', CASE
                                   WHEN s.deposit_date IS NULL THEN NULL
-                                  ELSE (CURRENT_DATE - s.deposit_date)
+                                  ELSE (v_today - s.deposit_date)
                                 END
                ) ORDER BY s.rn
              )
@@ -1325,9 +1403,9 @@ COMMENT ON FUNCTION public.copilot_report_new_leases_v1(uuid, date, date, intege
 COMMENT ON FUNCTION public.copilot_report_expense_ratio_v1(uuid, date, date, uuid, integer) IS
   'Read-only expense-over-revenue ratio for Copilot; restricted vouchers are excluded and counted, never dropped in silence.';
 COMMENT ON FUNCTION public.copilot_report_daily_cashbook_v1(uuid, date, date, uuid, integer) IS
-  'Read-only daily cash movement for Copilot, bounded by the SELECTED organization instead of my_org_ids().';
+  'Read-only daily cash movement for Copilot: posting truth (cashflow_by_day_v2 shape), visible-cashbook bound, SELECTED organization instead of my_org_ids().';
 COMMENT ON FUNCTION public.copilot_report_cash_flow_v1(uuid, date, date, uuid, integer) IS
-  'Read-only monthly cash-flow rollup for Copilot, bounded by the SELECTED organization instead of my_org_ids().';
+  'Read-only monthly cash-flow rollup for Copilot: posting truth, visible-cashbook bound, SELECTED organization instead of my_org_ids().';
 COMMENT ON FUNCTION public.copilot_report_payment_schedule_v1(uuid, integer, integer) IS
   'Read-only payment schedule for Copilot: unpaid invoices due within N days, overdue ones counted separately.';
 COMMENT ON FUNCTION public.copilot_report_overpayment_v1(uuid, integer) IS
@@ -1369,8 +1447,15 @@ BEGIN
   IF cardinality(v_ho) > 0 THEN
     RAISE EXCEPTION 'copilot report RPC is anon-executable: %', array_to_string(v_ho, ', ');
   END IF;
-  IF to_regprocedure('public.copilot_org_scope_buildings_v1(text, uuid)') IS NULL THEN
-    RAISE EXCEPTION 'copilot org scope helper missing — 20260829090000 must run first';
+  IF to_regprocedure('public.copilot_org_scope_buildings_v1(text, uuid)') IS NULL
+     OR to_regprocedure('app_private.copilot_scope_cashbooks_v1(text, uuid)') IS NULL THEN
+    RAISE EXCEPTION 'copilot scope helpers missing — 20260829090000 must run first';
+  END IF;
+  IF to_regprocedure('app_private.ie_visible_cashbook_ids_v1()') IS NULL THEN
+    RAISE EXCEPTION 'cashbook visibility helper missing — 20260730101000 must run first';
+  END IF;
+  IF to_regprocedure('public.org_today_v1(uuid)') IS NULL THEN
+    RAISE EXCEPTION 'org_today_v1 missing — 20260731070000 must run first';
   END IF;
 END
 $nghiem_thu$;

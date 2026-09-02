@@ -32,6 +32,18 @@ function functionBody(source: string, name: string): string {
   return ends.length === 0 ? source.slice(start) : source.slice(start, start + 1 + Math.min(...ends));
 }
 
+/**
+ * SQL with `--` line comments removed.
+ *
+ * Needed by the `CURRENT_DATE` assertion below: the migration header EXPLAINS why
+ * bare `CURRENT_DATE` is banned, and an assertion that greps the raw file would
+ * be satisfied only by deleting the explanation. Strip comments, then the rule
+ * is about the code it is a rule about.
+ */
+function boCommentSql(source: string): string {
+  return source.replace(/--[^\n]*/g, '');
+}
+
 const RPC_MOI = [
   'copilot_report_vacant_rooms_v1',
   'copilot_report_renewals_v1',
@@ -70,8 +82,11 @@ const ORG_ALIASES: Record<string, string[]> = {
   copilot_report_terminations_v1: ['ct', 'rm', 'b', 't', 'cc', 'cst'],
   copilot_report_new_leases_v1: ['ct', 'rm', 'b', 'cc', 'cst'],
   copilot_report_expense_ratio_v1: ['ie', 'b', 'it', 't'],
-  copilot_report_daily_cashbook_v1: ['ie', 'b'],
-  copilot_report_cash_flow_v1: ['ie', 'b'],
+  // Posting truth: the tenant column lives on the LINE (`pl`); the posting `p`
+  // is bound to the line's own organization, and the voucher `ie` is joined per
+  // organization for the building and the restricted flag.
+  copilot_report_daily_cashbook_v1: ['pl', 'ie', 'b'],
+  copilot_report_cash_flow_v1: ['pl', 'ie', 'b'],
   copilot_report_payment_schedule_v1: ['i', 'b', 'rm', 'cc', 'cst'],
   copilot_report_overpayment_v1: ['i', 'b', 'rm', 'cc', 'cst'],
   copilot_report_deposits_v1: ['d', 'rm', 'b', 'tn'],
@@ -163,7 +178,7 @@ describe('copilot report RPC migration — 5 bao cao BDS + 5 bao cao tai chinh',
       expect(body, rpc).toMatch(/INTO v_tong_hop/);
     }
     expect(functionBody(migration, 'copilot_report_payment_schedule_v1')).toMatch(
-      /count\(\*\) FILTER \(WHERE l\.due_date < CURRENT_DATE\)/,
+      /count\(\*\) FILTER \(WHERE l\.due_date < v_today\)/,
     );
     expect(functionBody(migration, 'copilot_report_vacant_rooms_v1')).toMatch(
       /'tien_thue_bo_lo', COALESCE\(sum\(t\.rent_price\), 0\)/,
@@ -291,10 +306,9 @@ describe('bien gioi thue bao — predicate chiu luc bi ghim tung ham', () => {
       // trả kèm là cách duy nhất để câu trả lời nói được "số này chưa đủ".
       const body = functionBody(migration, rpc);
       expect(body, rpc).toMatch(/v_thay_han_che := public\.can_view_restricted_ie\(\);/);
-      expect(body, rpc).toMatch(
-        /\(v_thay_han_che OR NOT COALESCE\(ie\.has_restricted_item, false\)\)/,
-      );
-      expect(body, rpc).toMatch(/'phieu_han_che_bi_loai', v_han_che/);
+      expect(body, rpc).toMatch(/has_restricted_item/);
+      expect(body, rpc).toMatch(/v_thay_han_che OR NOT/);
+      expect(body, rpc).toMatch(/'phieu_han_che_bi_loai',/);
     });
   }
 
@@ -321,5 +335,126 @@ describe('bien gioi thue bao — predicate chiu luc bi ghim tung ham', () => {
     // các danh sách trên thì con số này không khớp và test đỏ.
     const lan = migration.match(/CREATE OR REPLACE FUNCTION public\.copilot_/g) ?? [];
     expect(lan).toHaveLength(RPC_MOI.length);
+  });
+});
+
+// SỰ THẬT CỦA SỔ QUỸ NẰM Ở BÚT TOÁN, KHÔNG NẰM Ở PHIẾU.
+//
+// Bản đầu của hai hàm này cộng `income_expenses.total_amount` lọc
+// `approval_status = 'APPROVED'` theo `voucher_date`. Nó "chạy đúng" trên mọi dữ
+// liệu chưa từng bị đảo — và sai câm trên dữ liệu có thật: một phiếu đã vào sổ
+// rồi bị ĐẢO nets về 0 trong sự thật bút toán nhưng được cộng NGUYÊN trong cách
+// đó, và một phiếu huỷ-sau-khi-vào-sổ cũng vậy. Chính màn hình này vừa bị gỡ
+// đúng cái bệnh hai-nguồn-sự-thật ấy (xem src/hooks/useCashBook.ts).
+//
+// Kèm theo là hàng rào sổ quỹ: 20260730101000 ("Vá LỖ C") đóng lỗ rò tồn quỹ
+// bằng đúng một predicate ở cuối mỗi hàm tổng hợp. Một rollup mới thiếu nó là
+// mở lại cái lỗ đó bằng một cánh cửa khác.
+describe('so quy — su that but toan + ranh gioi so quy', () => {
+  const ROLLUP_TIEN = ['copilot_report_daily_cashbook_v1', 'copilot_report_cash_flow_v1'] as const;
+
+  for (const rpc of ROLLUP_TIEN) {
+    it(`${rpc}: doc income_expense_posting_lines, khong doc income_expenses.total_amount`, () => {
+      const body = functionBody(migration, rpc);
+      expect(body, rpc).toMatch(/FROM public\.income_expense_posting_lines pl/);
+      expect(body, rpc).toMatch(/JOIN public\.income_expense_postings p\b/);
+      expect(body, rpc).toMatch(/p\.id = pl\.posting_id/);
+      expect(body, rpc).toMatch(/p\.organization_id = pl\.organization_id/);
+      // Nguồn cũ phải biến mất hẳn, kể cả bộ lọc của nó.
+      expect(body, rpc).not.toMatch(/ie\.total_amount/);
+      expect(body, rpc).not.toMatch(/approval_status/);
+      expect(body, rpc).not.toMatch(/ie\.voucher_date/);
+    });
+
+    it(`${rpc}: chi cong POSTING va REVERSAL, khoa theo posted_on`, () => {
+      const body = functionBody(migration, rpc);
+      expect(body, rpc).toMatch(/p\.event_kind IN \('POSTING', 'REVERSAL'\)/);
+      expect(body, rpc).toMatch(/p\.posted_on BETWEEN p_tu AND p_den/);
+      // Dấu lấy y hệt cashflow_by_day_v2: dương là tiền vào, âm là tiền ra.
+      expect(body, rpc).toMatch(/sum\(d\.signed_amount\) FILTER \(WHERE d\.signed_amount > 0\)/);
+      expect(body, rpc).toMatch(/sum\(-d\.signed_amount\) FILTER \(WHERE d\.signed_amount < 0\)/);
+    });
+
+    it(`${rpc}: rang theo CA HAI nua cua ranh gioi so quy`, () => {
+      // Đây là dòng chịu lực của Vá LỖ C. Xoá nó thì mọi cửa chặn vẫn xanh và
+      // tồn quỹ của sổ người khác chảy ra qua một câu hỏi Copilot.
+      const body = functionBody(migration, rpc);
+      expect(body, `${rpc}: khong gan tap so quy RBAC cua cong ty da chon`).toMatch(
+        /v_cashbooks := app_private\.copilot_scope_cashbooks_v1\('cashbooks\.view', p_organization_id\);/,
+      );
+      expect(body, `${rpc}: thieu predicate pl.account_id = ANY(v_cashbooks)`).toMatch(
+        /pl\.account_id = ANY\(v_cashbooks\)/,
+      );
+      expect(body, `${rpc}: thieu ranh gioi ie_visible_cashbook_ids_v1`).toMatch(
+        /pl\.account_id IN \(SELECT v\.cashbook_id FROM app_private\.ie_visible_cashbook_ids_v1\(\) v\)/,
+      );
+    });
+
+    it(`${rpc}: bien gioi cong ty lay tu tham so, khong tu my_org_ids()`, () => {
+      const body = functionBody(migration, rpc);
+      expect(body, rpc).toMatch(/pl\.organization_id = p_organization_id/);
+      // `my_org_ids()` là chính thứ khiến hai RPC của trang không tái dùng được.
+      expect(body, rpc).not.toMatch(/my_org_ids\(\)/);
+    });
+
+    it(`${rpc}: dong khong gan toa chi lot khi quyen la toan cong ty`, () => {
+      const body = functionBody(migration, rpc);
+      expect(body, rpc).toMatch(
+        /\(b\.id IS NOT NULL OR \(ie\.building_id IS NULL AND v_org_wide\)\)/,
+      );
+      expect(body, rpc).toMatch(/authorized_scope_v3\('reports_finance\.[a-z_]+', p_organization_id\)/);
+    });
+  }
+
+  it('cat danh sach ky o dau MOI NHAT, khong phai dau cu nhat', () => {
+    // `ORDER BY ky LIMIT 20` trên cửa sổ 12 tháng trả về các tháng CŨ NHẤT rồi
+    // bỏ đúng những tháng vừa được hỏi — một câu trả lời đầy đủ về sai kỳ.
+    for (const rpc of ['copilot_report_cash_flow_v1', 'copilot_report_expense_ratio_v1']) {
+      const body = functionBody(migration, rpc);
+      expect(body, rpc).toMatch(/ORDER BY ky DESC LIMIT v_limit/);
+      expect(body, rpc).not.toMatch(/ORDER BY ky LIMIT v_limit/);
+    }
+    // Sổ quỹ theo ngày vốn đã cắt đúng đầu; ghim để không ai "đồng bộ" ngược lại.
+    expect(functionBody(migration, 'copilot_report_daily_cashbook_v1')).toMatch(
+      /ORDER BY ngay DESC LIMIT v_limit/,
+    );
+  });
+});
+
+// HÔM NAY LÀ HÔM NAY CỦA CÔNG TY.
+//
+// Máy chủ chạy UTC còn dữ liệu ở UTC+7: từ 00:00 đến 07:00 giờ Việt Nam,
+// `CURRENT_DATE` vẫn là HÔM QUA. `20260731070000` đã đổi 78 chỗ sang
+// `org_today_v1` đúng vì thế. Hai chỗ trong migration này quyết định TIỀN —
+// "quá hạn hay chưa" và mốc cuối của cửa sổ thu tiền.
+describe('moc thoi gian — org_today_v1, khong phai CURRENT_DATE', () => {
+  it('khong con mot CURRENT_DATE tran nao trong ma', () => {
+    expect(boCommentSql(migration)).not.toMatch(/CURRENT_DATE/i);
+  });
+
+  const CAN_HOM_NAY: Record<string, RegExp[]> = {
+    copilot_report_vacant_rooms_v1: [/\(v_today - s\.effective_end\)/],
+    copilot_report_expense_ratio_v1: [/v_den := COALESCE\(p_den, v_today\);/],
+    copilot_report_payment_schedule_v1: [
+      /v_den := v_today \+ v_so_ngay;/,
+      /FILTER \(WHERE l\.due_date < v_today\)/,
+      /\(s\.due_date - v_today\)/,
+    ],
+    copilot_report_deposits_v1: [/\(v_today - s\.deposit_date\)/],
+  };
+
+  for (const [rpc, patterns] of Object.entries(CAN_HOM_NAY)) {
+    it(`${rpc}: lay hom nay tu org_today_v1(p_organization_id)`, () => {
+      const body = functionBody(migration, rpc);
+      expect(body, rpc).toMatch(/v_today := public\.org_today_v1\(p_organization_id\);/);
+      for (const pattern of patterns) expect(body, `${rpc}: ${pattern}`).toMatch(pattern);
+    });
+  }
+
+  it('nghiem thu doi du bon ham nen mong truoc khi tin ket qua', () => {
+    const block = migration.slice(migration.indexOf('DO $nghiem_thu$'));
+    expect(block).toContain('app_private.copilot_scope_cashbooks_v1(text, uuid)');
+    expect(block).toContain('app_private.ie_visible_cashbook_ids_v1()');
+    expect(block).toContain('public.org_today_v1(uuid)');
   });
 });

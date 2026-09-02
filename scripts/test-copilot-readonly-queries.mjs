@@ -58,6 +58,11 @@ export const TABLES_OFF_LIMITS_TO_THE_BROWSER = Object.freeze([
   "contract_terminations",
   "income_expense_items",
   "income_expense_types",
+  // The cash rollups read POSTING truth. A browser query there would have to
+  // decide for itself which cashbooks the caller may see the money of --
+  // exactly the leak 20260730101000 closed inside the server functions.
+  "income_expense_postings",
+  "income_expense_posting_lines",
 ]);
 
 /** RPC names that must still be called by LITERAL name from the tool sources. */
@@ -491,6 +496,66 @@ VALUES
   ('aaade000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa2000-0000-4000-8000-000000000011', 'CP-P-DC-1', 9000000, CURRENT_DATE - 1, NULL, 'CONFIRMED')
 ON CONFLICT (id) DO NOTHING;
 
+-- Posting truth for the two cash rollups. Only the columns the scope path needs,
+-- plus the cashbook the line lands on: the boundary being probed here is
+-- "whose money may this caller see", which lives on the LINE, not on the voucher.
+CREATE TABLE IF NOT EXISTS public.accounts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  name text,
+  deleted_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS public.income_expense_postings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  voucher_id uuid,
+  event_kind text NOT NULL,
+  posted_on date NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.income_expense_posting_lines (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL,
+  posting_id uuid NOT NULL,
+  account_id uuid NOT NULL,
+  signed_amount numeric NOT NULL,
+  CONSTRAINT income_expense_posting_lines_posting_id_fkey
+    FOREIGN KEY (posting_id) REFERENCES public.income_expense_postings(id)
+);
+
+INSERT INTO public.accounts (id, organization_id, name)
+VALUES
+  ('ddac0000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-SO-NHIN-DUOC'),
+  ('ddac0000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-SO-KHONG-NHIN-DUOC'),
+  ('aaac0000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'CP-P-SO')
+ON CONFLICT (id) DO NOTHING;
+
+-- P1 + P2 are the pair that makes posting truth different from voucher truth: a
+-- voucher posted and then REVERSED. Summing the voucher would count it once, in
+-- full; summing the lines nets it to zero.
+INSERT INTO public.income_expense_postings (id, organization_id, voucher_id, event_kind, posted_on)
+VALUES
+  ('ddaf0000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, NULL, 'POSTING',    CURRENT_DATE - 1),
+  ('ddaf0000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, NULL, 'REVERSAL',   CURRENT_DATE - 1),
+  ('ddaf0000-0000-4000-8000-000000000013', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd6000-0000-4000-8000-000000000011', 'POSTING', CURRENT_DATE - 1),
+  ('ddaf0000-0000-4000-8000-000000000014', ${sqlLiteral(DEMO_ORG_ID)}::uuid, NULL, 'POSTING',    CURRENT_DATE - 1),
+  ('ddaf0000-0000-4000-8000-000000000015', ${sqlLiteral(DEMO_ORG_ID)}::uuid, NULL, 'ADJUSTMENT', CURRENT_DATE - 1),
+  ('ddaf0000-0000-4000-8000-000000000016', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd6000-0000-4000-8000-000000000012', 'POSTING', CURRENT_DATE - 1),
+  ('aaaf0000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, NULL, 'POSTING',    CURRENT_DATE - 1)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.income_expense_posting_lines (id, organization_id, posting_id, account_id, signed_amount)
+VALUES
+  ('ddb00000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddaf0000-0000-4000-8000-000000000011', 'ddac0000-0000-4000-8000-000000000011',  5000000),
+  ('ddb00000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddaf0000-0000-4000-8000-000000000012', 'ddac0000-0000-4000-8000-000000000011', -5000000),
+  ('ddb00000-0000-4000-8000-000000000013', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddaf0000-0000-4000-8000-000000000013', 'ddac0000-0000-4000-8000-000000000011', -1200000),
+  ('ddb00000-0000-4000-8000-000000000014', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddaf0000-0000-4000-8000-000000000014', 'ddac0000-0000-4000-8000-000000000012',  9000000),
+  ('ddb00000-0000-4000-8000-000000000015', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddaf0000-0000-4000-8000-000000000015', 'ddac0000-0000-4000-8000-000000000011',  7000000),
+  ('ddb00000-0000-4000-8000-000000000016', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'ddaf0000-0000-4000-8000-000000000016', 'ddac0000-0000-4000-8000-000000000011', -9900000),
+  ('aab00000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaf0000-0000-4000-8000-000000000011', 'aaac0000-0000-4000-8000-000000000011',  3300000)
+ON CONFLICT (id) DO NOTHING;
+
 -- One overdue invoice, one upcoming, one overpaid, and one belonging to the
 -- other company through its building.
 INSERT INTO public.invoices (id, organization_id, contract_id, building_id, room_id, billing_month, due_date, total_amount, paid_amount, remaining_amount, status, invoice_number)
@@ -875,20 +940,57 @@ deposit_rows_building_only AS (
     AND (b.id IS NOT NULL OR (d.room_id IS NULL AND false))
 ),
 cash_day_rows AS (
-  -- Daily rollup of copilot_report_daily_cashbook_v1, with the restricted voucher
-  -- excluded the way the RPC excludes it for an actor without restricted_view.
-  SELECT ie.voucher_date AS ngay,
-         sum(ie.total_amount) FILTER (WHERE ie.type = 'EXPENSE') AS chi
-  FROM public.income_expenses ie
-  JOIN public.buildings b
+  -- Join path of copilot_report_daily_cashbook_v1 AFTER the fix: posting lines,
+  -- POSTING + REVERSAL only, bounded by the cashbooks whose MONEY the caller may
+  -- see. The visible set stands in for the two server helpers.
+  SELECT
+    p.posted_on AS ngay,
+    COALESCE(sum(pl.signed_amount)  FILTER (WHERE pl.signed_amount > 0), 0) AS thu,
+    COALESCE(sum(-pl.signed_amount) FILTER (WHERE pl.signed_amount < 0), 0) AS chi
+  FROM public.income_expense_posting_lines pl
+  JOIN public.income_expense_postings p
+    ON p.id = pl.posting_id
+   AND p.organization_id = pl.organization_id
+  LEFT JOIN public.income_expenses ie
+    ON ie.id = p.voucher_id
+   AND ie.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  LEFT JOIN public.buildings b
     ON b.id = ie.building_id
    AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
    AND b.deleted_at IS NULL
-  WHERE ie.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
-    AND ie.deleted_at IS NULL
-    AND ie.voucher_date BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE
+  WHERE pl.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND p.event_kind IN ('POSTING', 'REVERSAL')
+    AND p.posted_on BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE
+    AND pl.account_id = ANY(ARRAY['ddac0000-0000-4000-8000-000000000011'::uuid])
+    AND (b.id IS NOT NULL OR (ie.building_id IS NULL AND true))
     AND NOT COALESCE(ie.has_restricted_item, false)
-  GROUP BY ie.voucher_date
+  GROUP BY p.posted_on
+),
+cash_day_rows_restricted_ok AS (
+  -- Same reader, but allowed to see restricted categories: the excluded voucher
+  -- reappears. Two numbers that must differ, or the exclusion is not happening.
+  SELECT COALESCE(sum(-pl.signed_amount) FILTER (WHERE pl.signed_amount < 0), 0) AS chi
+  FROM public.income_expense_posting_lines pl
+  JOIN public.income_expense_postings p
+    ON p.id = pl.posting_id
+   AND p.organization_id = pl.organization_id
+  WHERE pl.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND p.event_kind IN ('POSTING', 'REVERSAL')
+    AND p.posted_on BETWEEN CURRENT_DATE - 30 AND CURRENT_DATE
+    AND pl.account_id = ANY(ARRAY['ddac0000-0000-4000-8000-000000000011'::uuid])
+),
+cash_lines_seen AS (
+  -- Every line the scoped query above could have touched, for the exclusion
+  -- checks: an assertion that only looks at totals cannot tell "excluded" from
+  -- "netted against something else".
+  SELECT pl.signed_amount
+  FROM public.income_expense_posting_lines pl
+  JOIN public.income_expense_postings p
+    ON p.id = pl.posting_id
+   AND p.organization_id = pl.organization_id
+  WHERE pl.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND p.event_kind IN ('POSTING', 'REVERSAL')
+    AND pl.account_id = ANY(ARRAY['ddac0000-0000-4000-8000-000000000011'::uuid])
 ),
 checks AS (
   SELECT 'customers.positive'::text AS case_id, (SELECT count(*) = 1 FROM customer_rows) AS passed
@@ -944,9 +1046,17 @@ checks AS (
   UNION ALL SELECT 'deposits.null_room_needs_org_wide',
     ((SELECT count(*) FROM deposit_rows_org_wide) = 2
       AND (SELECT count(*) FROM deposit_rows_building_only) = 1)
-  UNION ALL SELECT 'cash_flow.restricted_voucher_excluded_from_day_total',
+  UNION ALL SELECT 'cash_flow.posting_truth_counts_the_reversal',
     ((SELECT count(*) FROM cash_day_rows) = 1
-      AND (SELECT max(chi) FROM cash_day_rows) = 1200000)
+      AND (SELECT max(thu) FROM cash_day_rows) = 5000000
+      AND (SELECT max(chi) FROM cash_day_rows) = 6200000)
+  UNION ALL SELECT 'cash_flow.invisible_cashbook_and_other_org_excluded',
+    (NOT EXISTS (SELECT 1 FROM cash_lines_seen l WHERE l.signed_amount IN (9000000, 3300000)))
+  UNION ALL SELECT 'cash_flow.non_posting_event_excluded',
+    (NOT EXISTS (SELECT 1 FROM cash_lines_seen l WHERE l.signed_amount = 7000000))
+  UNION ALL SELECT 'cash_flow.restricted_voucher_excluded_from_day_total',
+    ((SELECT max(chi) FROM cash_day_rows) = 6200000
+      AND (SELECT chi FROM cash_day_rows_restricted_ok) = 16100000)
 )
 SELECT jsonb_build_object(
   'passed', bool_and(passed),
@@ -978,7 +1088,7 @@ export function parseCopilotReadonlyQueriesVerdict(output) {
   if (
     verdict.passed !== true ||
     Number(verdict.failed_count) !== 0 ||
-    Number(verdict.assertion_count) !== 29 ||
+    Number(verdict.assertion_count) !== 32 ||
     verdict.assertions.some((assertion) => assertion?.passed !== true)
   ) {
     throw new Error(`Copilot readonly query contract failed: ${JSON.stringify(verdict)}`);

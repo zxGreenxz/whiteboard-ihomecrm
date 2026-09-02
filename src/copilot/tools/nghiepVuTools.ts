@@ -1613,7 +1613,8 @@ export const baoCaoTyLeChiPhi = dt({
   name: 'bao_cao_ty_le_chi_phi',
   description:
     'Tỉ lệ CHI PHÍ trên tiền thu về, theo từng tháng và theo từng nhóm chi. ' +
-    'Mặc định 6 tháng gần nhất. Chỉ tính phiếu đã ghi nhận, nên đây là tiền THỰC chứ không phải hoá đơn phát hành. ' +
+    'Mặc định 6 tháng gần nhất, cắt từ tháng MỚI NHẤT. Tính trên phiếu thu chi ĐÃ DUYỆT theo ngày phiếu — ' +
+    'giống hệt trang Tỉ lệ chi phí, và KHÁC hai báo cáo sổ quỹ (vốn tính theo bút toán đã vào sổ). ' +
     'Dùng khi hỏi "chi phí chiếm bao nhiêu phần trăm", "nhóm chi nào tốn nhất", "tháng nào đắt đỏ nhất".',
   inputSchema: z.object({
     tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD. Bỏ trống = 6 tháng gần nhất.'),
@@ -1683,6 +1684,8 @@ export const baoCaoThuChiTheoNgay = dt({
   name: 'bao_cao_thu_chi_theo_ngay',
   description:
     'Sổ quỹ theo NGÀY trong một khoảng: mỗi ngày thu bao nhiêu, chi bao nhiêu, ròng bao nhiêu. ' +
+    'Tính theo BÚT TOÁN đã vào sổ — đúng nguồn số mà trang Sổ quỹ ngày đang dùng — nên một phiếu đã bị đảo ' +
+    'tự triệt tiêu thay vì được cộng nguyên, và chỉ những sổ quỹ bạn được xem tiền mới góp vào con số này. ' +
     'Mặc định từ đầu tháng này tới hôm nay. Khác tool so_quy (số dư theo từng sổ, không tách theo ngày). ' +
     'Dùng khi hỏi "thu chi theo ngày", "hôm qua thu được bao nhiêu", "ngày nào chi nhiều nhất".',
   inputSchema: z.object({
@@ -1717,7 +1720,7 @@ export const baoCaoThuChiTheoNgay = dt({
     });
     if (error) throw new Error(`Lỗi tải sổ quỹ theo ngày: ${error.message}`);
     const rows = data?.theo_ngay ?? [];
-    if (!rows.length) return `${tu} → ${den}: không có phát sinh thu chi nào đã ghi nhận.`;
+    if (!rows.length) return `${tu} → ${den}: không có phát sinh nào trong sổ quỹ bạn được xem.`;
     const th = data?.tong_hop;
     const phan = [
       `Thu chi ${tu} → ${den}: thu ${formatVND(Number(th?.tong_thu) || 0)}, chi ${formatVND(Number(th?.tong_chi) || 0)},` +
@@ -1747,7 +1750,9 @@ export const baoCaoDongTien = dt({
   name: 'bao_cao_dong_tien',
   description:
     'Dòng tiền gom theo THÁNG: mỗi tháng thu bao nhiêu, chi bao nhiêu, ròng bao nhiêu, kèm tổng cả khoảng. ' +
-    'Mặc định 12 tháng gần nhất. Dùng khi hỏi "dòng tiền năm nay", "tháng nào âm", "xu hướng thu chi".',
+    'Cùng nguồn số với sổ quỹ ngày: bút toán đã vào sổ, giới hạn trong các sổ quỹ bạn được xem tiền. ' +
+    'Mặc định 12 tháng gần nhất, danh sách cắt từ tháng MỚI NHẤT. ' +
+    'Dùng khi hỏi "dòng tiền năm nay", "tháng nào âm", "xu hướng thu chi".',
   inputSchema: z.object({
     ky: z.string().regex(KY_RE).optional().describe('Kỳ YYYY-MM cho MỘT tháng. Có kỳ thì bỏ qua tu/den.'),
     tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD. Bỏ trống = 12 tháng gần nhất.'),
@@ -1780,7 +1785,7 @@ export const baoCaoDongTien = dt({
     });
     if (error) throw new Error(`Lỗi tải dòng tiền: ${error.message}`);
     const rows = data?.theo_thang ?? [];
-    if (!rows.length) return `${tu} → ${den}: không có phát sinh thu chi nào đã ghi nhận.`;
+    if (!rows.length) return `${tu} → ${den}: không có phát sinh nào trong sổ quỹ bạn được xem.`;
     const th = data?.tong_hop;
     const phan = [
       `Dòng tiền ${tu} → ${den}: thu ${formatVND(Number(th?.tong_thu) || 0)}, chi ${formatVND(Number(th?.tong_chi) || 0)},` +
