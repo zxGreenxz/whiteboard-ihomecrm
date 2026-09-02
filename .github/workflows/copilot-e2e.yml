@@ -32,10 +32,19 @@
 #
 #   Cách mở đúng của Vercel là "Protection Bypass for Automation": một giá trị bí
 #   mật gửi qua header `x-vercel-protection-bypass`. Nó phải đi ở CẢ HAI nơi —
-#   `curl` của bước đọc SHA, và mọi request của trình duyệt
-#   (`extraHTTPHeaders` trong .e2e-fleet/playwright.config.ts). Thiếu một chỗ là
-#   hỏng một nửa: hoặc không đọc được SHA, hoặc đọc được rồi mà trình duyệt vẫn
-#   chỉ thấy trang đăng nhập.
+#   `curl` của bước đọc SHA (header dựng ngay trong bước đó), và phía trình duyệt
+#   (.e2e-fleet/global-setup.ts). Thiếu một chỗ là hỏng một nửa: hoặc không đọc
+#   được SHA, hoặc đọc được rồi mà trình duyệt vẫn chỉ thấy trang đăng nhập.
+#
+#   Phía trình duyệt KHÔNG dùng `use.extraHTTPHeaders` (bản 02/09/2026 đã dùng và
+#   sai): Playwright gắn header đó vào MỌI request của context, kể cả `fetch` của
+#   app sang `https://<ref>.supabase.co/functions/v1/llm-proxy` — origin đó
+#   preflight và từ chối `x-vercel-set-bypass-cookie`
+#   ("not allowed by Access-Control-Allow-Headers"), làm 3/7 test Copilot đỏ vì
+#   một lý do chẳng liên quan gì tới Copilot. Cách đang dùng: `globalSetup` đưa
+#   chìa ĐÚNG MỘT LẦN tới origin preview, nhận cookie `_vercel_jwt` (gắn với host
+#   preview), lưu vào storageState. Cookie theo luật same-origin nên không bao giờ
+#   rời host preview.
 #
 #   Giá trị này là MẬT KHẨU của bản preview (ai có nó thì mở được mọi deployment
 #   preview của project), nên nó chịu ĐÚNG bộ lọc che và ĐÚNG guard như
@@ -201,9 +210,9 @@ jobs:
           FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
           FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
           FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
-          # playwright.config.ts đọc biến này rồi gắn header
-          # `x-vercel-protection-bypass` cho MỌI request của trình duyệt. Không có
-          # nó thì Playwright chỉ thấy trang đăng nhập SSO của Vercel, không thấy app.
+          # .e2e-fleet/global-setup.ts đọc biến này, đổi lấy cookie `_vercel_jwt`
+          # một lần rồi cả suite chạy bằng cookie (storageState). Không có nó thì
+          # Playwright chỉ thấy trang đăng nhập SSO của Vercel, không thấy app.
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           # 2 worker: đủ song song để suite không lê thê, đủ ít để 3 tài khoản
           # DEMO không tự đá nhau khi cùng ghi nháp trong một org.

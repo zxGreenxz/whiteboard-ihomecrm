@@ -117,3 +117,7 @@ scripts/.backfill-deposit-plan.json
 
 # Cache incremental cua gate typecheck:baseline (scripts/check-ts-baseline.mjs)
 .tscache/
+
+# Cookie mo khoa preview Vercel (_vercel_jwt) do .e2e-fleet/global-setup.ts sinh ra.
+# Day la CHUNG CHI mo duoc moi deployment preview cua project — khong bao gio commit.
+.e2e-fleet/.auth/

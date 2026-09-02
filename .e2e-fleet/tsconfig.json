@@ -15,6 +15,7 @@
   },
   "include": [
     "specs/**/*.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "global-setup.ts"
   ]
 }
