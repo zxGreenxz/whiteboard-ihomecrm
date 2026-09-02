@@ -53,6 +53,16 @@ keywords = ["key", "api", "token", "secret", "client", "passwd", "password", "au
     # scripts/__tests__/measure-org-leak.test.mjs — bộ đo rò rỉ tổ chức, khai
     # UUID giả lập để kiểm chính bộ đo.
     '''(?i)[:=]\s*['"\x60]?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}['"\x60]?''',
+
+    # Node ID của graph tri thức (.ua/knowledge-graph.json) có dạng
+    # `function:<path>.sql:<tên_hàm>` / `table:<path>.sql:<tên_bảng>`. Khi
+    # <path> chứa chữ "auth"/"token"/"key" (vd
+    # `..._income_cancel_authz_before_noop.sql:cancel_income_voucher_v1`), rule
+    # đọc phần sau dấu `:` cuối như một API key. Đó là ĐỊNH DANH hàm/bảng SQL —
+    # biết tên hàm không cho ai quyền gì. Ca thật đã bắt 02/09/2026 khi rebuild
+    # graph. Mẫu đòi đúng hình `.<đuôi-file>:<định danh>"` nên không nới cho
+    # chuỗi khác.
+    '''(?i)\.[a-z]{1,5}:[a-z0-9_]{10,150}"''',
   ]
 
 [allowlist]
