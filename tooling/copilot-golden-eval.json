@@ -52,6 +52,13 @@
     { "id": "C33", "input": "Chi tiết hợp đồng HD001", "expectedOutcome": "readonly", "toolPath": ["chi_tiet_hop_dong"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
     { "id": "C34", "input": "Phiếu thu chi tháng 07/2026", "expectedOutcome": "readonly", "toolPath": ["tim_phieu_thu_chi"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
     { "id": "C35", "input": "Phiếu chi kỳ 2099-01", "expectedOutcome": "readonly", "toolPath": ["tim_phieu_thu_chi"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
-    { "id": "C36", "input": "Có gì đang chờ tôi duyệt không?", "expectedOutcome": "readonly", "toolPath": ["hop_cho_duyet"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" }
+    { "id": "C36", "input": "Có gì đang chờ tôi duyệt không?", "expectedOutcome": "readonly", "toolPath": ["hop_cho_duyet"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C37", "input": "Khách hẹn nào cần gọi lại?", "expectedOutcome": "readonly", "toolPath": ["tim_khach_hen"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C38", "input": "Tìm khách hẹn tên không tồn tại", "expectedOutcome": "readonly", "toolPath": ["tim_khach_hen"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C39", "input": "Chỉ số công tơ kỳ 2026-07", "expectedOutcome": "readonly", "toolPath": ["chi_so_cong_to"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C40", "input": "Xe biển số 59P1-12345 của ai?", "expectedOutcome": "readonly", "toolPath": ["tim_xe"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C41", "input": "Tìm xe biển số không có thật", "expectedOutcome": "readonly", "toolPath": ["tim_xe"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C42", "input": "Tôi còn công việc nào đang làm?", "expectedOutcome": "readonly", "toolPath": ["cong_viec"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C43", "input": "Vật tư nào sắp hết?", "expectedOutcome": "readonly", "toolPath": ["ton_kho_vat_tu"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" }
   ]
 }

@@ -35,6 +35,11 @@ const TOOL_THEO_CONG_TY = [
   { ten: 'chi_tiet_hop_dong', args: { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011' } },
   { ten: 'tim_phieu_thu_chi', args: { so_luong: 20 } },
   { ten: 'hop_cho_duyet', args: { so_luong: 20 } },
+  { ten: 'tim_khach_hen', args: { so_luong: 20 } },
+  { ten: 'chi_so_cong_to', args: { ky: '2026-07', so_luong: 20 } },
+  { ten: 'tim_xe', args: { so_luong: 20 } },
+  { ten: 'cong_viec', args: { so_luong: 20 } },
+  { ten: 'ton_kho_vat_tu', args: { so_luong: 20 } },
 ];
 
 const tool = (ten: string) => {

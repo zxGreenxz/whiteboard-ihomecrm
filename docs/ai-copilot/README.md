@@ -13,14 +13,16 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**18 tool**: 16 đọc · 1 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**23 tool**: 21 đọc · 1 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
 | `ban_do_he_thong` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
+| `chi_so_cong_to` | read | `meter_readings.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `chi_tiet_hop_dong` | read | `contracts.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `coc_dang_giu` | read | `deposits.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `cong_no_tong_quan` | read | `invoices.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `cong_viec` | read | `tasks.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `doanh_thu_thang` | read | `reports_finance.analysis` | `src/copilot/tools/registry.ts` |
 | `hop_cho_duyet` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `hop_dong_sap_het_han` | read | `reports_real_estate.expiring` | `src/copilot/tools/registry.ts` |
@@ -33,7 +35,10 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `tim_hoa_don` | read | `invoices.view` | `src/copilot/tools/registry.ts` |
 | `tim_hop_dong` | read | `contracts.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `tim_khach_hang` | read | `customers.view` | `src/copilot/tools/registry.ts` |
+| `tim_khach_hen` | read | `leads.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `tim_phieu_thu_chi` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `tim_xe` | read | `vehicles.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `ton_kho_vat_tu` | read | `materials.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `ty_le_lap_day` | read | `reports_real_estate.occupancy` | `src/copilot/tools/nghiepVuTools.ts` |
 
 <!-- COPILOT_TOOL_INVENTORY:END -->

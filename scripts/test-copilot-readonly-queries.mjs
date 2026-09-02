@@ -38,6 +38,15 @@ export const TABLES_OFF_LIMITS_TO_THE_BROWSER = Object.freeze([
   "income_expenses",
   "income_expense_items",
   "approval_requests",
+  // G1-C2. The first four carry a NULLABLE `building_id`, so the browser would
+  // have to decide for itself who a row with no building belongs to; `materials`
+  // carries no building column at all and is company-scoped only. That decision
+  // lives in `authorized_scope_v3`, server-side, and nowhere else.
+  "leads",
+  "meter_readings",
+  "vehicles",
+  "jobs",
+  "materials",
 ]);
 
 /** RPC names that must still be called by LITERAL name from the tool sources. */
@@ -48,6 +57,11 @@ export const REQUIRED_COPILOT_RPCS = Object.freeze([
   "copilot_contract_detail_v1",
   "copilot_income_expense_search_v1",
   "copilot_pending_requests_v1",
+  "copilot_lead_search_v1",
+  "copilot_meter_readings_v1",
+  "copilot_vehicle_search_v1",
+  "copilot_tasks_v1",
+  "copilot_material_stock_v1",
 ]);
 
 /**
@@ -268,6 +282,119 @@ VALUES
   ('dddd6000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'CP-D-PC-2', 'Hang muc han che', 'EXPENSE', 9900000, 'UNAPPROVED', true, CURRENT_DATE),
   ('aaaa6000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', 'CP-P-PC-1', 'Phieu cong ty khac', 'EXPENSE', 3300000, 'APPROVED', false, CURRENT_DATE)
 ON CONFLICT (id) DO NOTHING;
+
+-- G1-C2 surface. Same approach as above: declare only the columns the scope path
+-- needs and keep the DEPLOYED foreign-key names, so the probe exercises the real
+-- constraint. The building_id column stays NULLABLE on purpose in the first four:
+-- the row with no building is the case those RPCs have to decide, and a NOT NULL
+-- column here would have made that case untestable.
+CREATE TABLE IF NOT EXISTS public.leads (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  building_id uuid,
+  room_id uuid,
+  customer_name text NOT NULL,
+  phone text,
+  status text,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  deleted_at timestamptz,
+  CONSTRAINT leads_building_id_fkey
+    FOREIGN KEY (building_id) REFERENCES public.buildings(id)
+);
+
+CREATE TABLE IF NOT EXISTS public.vehicles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  building_id uuid,
+  room_id uuid,
+  customer_id uuid,
+  license_plate text,
+  owner_name text,
+  vehicle_type text NOT NULL DEFAULT 'MOTORBIKE',
+  deleted_at timestamptz,
+  CONSTRAINT vehicles_building_id_fkey
+    FOREIGN KEY (building_id) REFERENCES public.buildings(id)
+);
+
+CREATE TABLE IF NOT EXISTS public.jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  building_id uuid,
+  room_id uuid,
+  assignee_id uuid,
+  code text NOT NULL,
+  title text NOT NULL,
+  status text NOT NULL DEFAULT 'IN_PROGRESS',
+  priority text NOT NULL DEFAULT 'NORMAL',
+  deadline timestamptz,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CONSTRAINT jobs_building_id_fkey
+    FOREIGN KEY (building_id) REFERENCES public.buildings(id)
+);
+
+CREATE TABLE IF NOT EXISTS public.meter_readings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  building_id uuid,
+  room_id uuid,
+  meter_type text NOT NULL,
+  settlement_month text,
+  reading_date date NOT NULL DEFAULT CURRENT_DATE,
+  previous_reading numeric(10,2) NOT NULL DEFAULT 0,
+  current_reading numeric(10,2) NOT NULL,
+  consumption numeric(10,2) GENERATED ALWAYS AS ((current_reading - previous_reading)) STORED,
+  status text NOT NULL DEFAULT 'UNAPPROVED',
+  deleted_at timestamptz,
+  CONSTRAINT meter_readings_building_id_fkey
+    FOREIGN KEY (building_id) REFERENCES public.buildings(id)
+);
+
+CREATE TABLE IF NOT EXISTS public.materials (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  code text,
+  name text NOT NULL,
+  unit text NOT NULL DEFAULT 'cai',
+  on_hand numeric NOT NULL DEFAULT 0,
+  reorder_level numeric NOT NULL DEFAULT 0,
+  avg_unit_cost numeric NOT NULL DEFAULT 0,
+  deleted_at timestamptz
+);
+
+INSERT INTO public.leads (id, organization_id, building_id, room_id, customer_name, phone, status)
+VALUES
+  ('dddd7000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', 'Copilot Demo Lead', '0900000021', 'B2_APPOINTMENT'),
+  ('dddd7000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, NULL, NULL, 'Copilot Demo Lead No Building', '0900000022', 'B1_LEAD'),
+  ('aaaa7000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', NULL, 'Copilot Production Lead', '0900000023', 'B1_LEAD')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.vehicles (id, organization_id, building_id, room_id, license_plate, owner_name, vehicle_type)
+VALUES
+  ('dddd8000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', '59P1-12345', 'Copilot Demo Owner', 'MOTORBIKE'),
+  ('aaaa8000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', NULL, '59P1-99999', 'Copilot Production Owner', 'CAR')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.jobs (id, organization_id, building_id, room_id, code, title, status)
+VALUES
+  ('dddd9000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', 'CP-D-JOB-1', 'Sua voi nuoc', 'IN_PROGRESS'),
+  ('dddd9000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', NULL, 'CP-D-JOB-2', 'Da xong', 'COMPLETED'),
+  ('aaaa9000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', NULL, 'CP-P-JOB-1', 'Viec cong ty khac', 'IN_PROGRESS')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.meter_readings (id, organization_id, building_id, room_id, meter_type, settlement_month, previous_reading, current_reading, status)
+VALUES
+  ('dddda000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', 'ELECTRICITY', '2026-07', 100, 175, 'UNAPPROVED'),
+  ('dddda000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', 'WATER', '2026-07', 10, 15, 'APPROVED'),
+  ('dddda000-0000-4000-8000-000000000013', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'dddd2000-0000-4000-8000-000000000011', 'ELECTRICITY', '2026-06', 40, 100, 'APPROVED'),
+  ('aaaaa000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', NULL, 'ELECTRICITY', '2026-07', 0, 999, 'UNAPPROVED')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.materials (id, organization_id, code, name, unit, on_hand, reorder_level, avg_unit_cost)
+VALUES
+  ('ddddb000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-VT-1', 'Bong den LED', 'cai', 2, 10, 50000),
+  ('ddddb000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-VT-2', 'Voi nuoc', 'cai', 40, 5, 120000),
+  ('aaaab000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'CP-P-VT-1', 'Vat tu cong ty khac', 'cai', 1, 99, 1000)
+ON CONFLICT (id) DO NOTHING;
 `;
 }
 
@@ -302,7 +429,11 @@ WITH fk_names AS (
       'contracts_room_id_fkey',
       'rooms_building_id_fkey',
       'invoices_contract_id_fkey',
-      'income_expenses_building_id_fkey'
+      'income_expenses_building_id_fkey',
+      'leads_building_id_fkey',
+      'vehicles_building_id_fkey',
+      'jobs_building_id_fkey',
+      'meter_readings_building_id_fkey'
     ])
 ),
 direct_fk AS (
@@ -437,12 +568,93 @@ voucher_wrong_org AS (
    AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
   WHERE ie.organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid
 ),
+lead_rows_org_wide AS (
+  -- Join path of copilot_lead_search_v1 for an ORGANIZATION-wide reader: the row
+  -- attached to a building in scope AND the row attached to no building at all.
+  SELECT l.id
+  FROM public.leads l
+  LEFT JOIN public.buildings b
+    ON b.id = l.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE l.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND l.deleted_at IS NULL
+    AND (b.id IS NOT NULL OR (l.building_id IS NULL AND true))
+),
+lead_rows_building_only AS (
+  -- Same reader, but scoped to BUILDINGS: the unattached lead disappears, and
+  -- that is the whole point of carrying org_wide into the predicate.
+  SELECT l.id
+  FROM public.leads l
+  LEFT JOIN public.buildings b
+    ON b.id = l.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE l.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND l.deleted_at IS NULL
+    AND (b.id IS NOT NULL OR (l.building_id IS NULL AND false))
+),
+lead_wrong_org AS (
+  -- A LEFT JOIN on its own would let the other company's lead through as
+  -- "b.id IS NULL". It must not: its building_id is NOT NULL.
+  SELECT l.id
+  FROM public.leads l
+  LEFT JOIN public.buildings b
+    ON b.id = l.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  WHERE l.organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid
+    AND (b.id IS NOT NULL OR (l.building_id IS NULL AND true))
+),
+vehicle_rows AS (
+  SELECT v.license_plate
+  FROM public.vehicles v
+  LEFT JOIN public.buildings b
+    ON b.id = v.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE v.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND v.deleted_at IS NULL
+    AND (b.id IS NOT NULL OR (v.building_id IS NULL AND true))
+    AND lower(coalesce(v.license_plate, '')) LIKE '%59p1-12345%'
+),
+job_open_rows AS (
+  SELECT j.code
+  FROM public.jobs j
+  LEFT JOIN public.buildings b
+    ON b.id = j.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE j.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND (b.id IS NOT NULL OR (j.building_id IS NULL AND true))
+    AND j.status = 'IN_PROGRESS'
+),
+meter_period_rows AS (
+  -- One settlement month only. The June row of the same meter must not leak in,
+  -- or every consumption total the model reports would be double-counted.
+  SELECT mr.meter_type, mr.consumption
+  FROM public.meter_readings mr
+  LEFT JOIN public.buildings b
+    ON b.id = mr.building_id
+   AND b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+   AND b.deleted_at IS NULL
+  WHERE mr.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND mr.deleted_at IS NULL
+    AND mr.settlement_month = '2026-07'
+    AND (b.id IS NOT NULL OR (mr.building_id IS NULL AND true))
+),
+material_rows AS (
+  -- No building column at all: the company column IS the boundary.
+  SELECT m.id, m.on_hand, m.reorder_level
+  FROM public.materials m
+  WHERE m.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+    AND m.deleted_at IS NULL
+),
 checks AS (
   SELECT 'customers.positive'::text AS case_id, (SELECT count(*) = 1 FROM customer_rows) AS passed
   UNION ALL SELECT 'customers.empty', (SELECT count(*) = 0 FROM customer_empty)
   UNION ALL SELECT 'contracts.positive', (SELECT count(*) = 1 AND max(full_name) = 'Copilot Demo Customer' FROM contract_rows)
   UNION ALL SELECT 'contracts.empty', (SELECT count(*) = 0 FROM contract_empty)
-  UNION ALL SELECT 'schema.fk_names', (SELECT count(*) = 6 FROM fk_names)
+  UNION ALL SELECT 'schema.fk_names', (SELECT count(*) = 10 FROM fk_names)
   UNION ALL SELECT 'schema.direct_relations_absent', (SELECT count(*) = 0 FROM direct_fk)
   UNION ALL SELECT 'tenant.wrong_org_excluded',
     ((SELECT count(*) FROM customer_wrong_org) = 0
@@ -454,6 +666,19 @@ checks AS (
     ((SELECT count(*) FROM voucher_restricted) = 1
       AND NOT EXISTS (SELECT 1 FROM voucher_rows v JOIN voucher_restricted r ON r.id = v.id))
   UNION ALL SELECT 'vouchers.wrong_org_excluded', (SELECT count(*) = 0 FROM voucher_wrong_org)
+  UNION ALL SELECT 'leads.null_building_needs_org_wide',
+    ((SELECT count(*) FROM lead_rows_org_wide) = 2
+      AND (SELECT count(*) FROM lead_rows_building_only) = 1)
+  UNION ALL SELECT 'leads.wrong_org_excluded', (SELECT count(*) = 0 FROM lead_wrong_org)
+  UNION ALL SELECT 'vehicles.positive', (SELECT count(*) = 1 AND max(license_plate) = '59P1-12345' FROM vehicle_rows)
+  UNION ALL SELECT 'tasks.open_positive', (SELECT count(*) = 1 AND max(code) = 'CP-D-JOB-1' FROM job_open_rows)
+  UNION ALL SELECT 'meter_readings.period_scoped',
+    ((SELECT count(*) FROM meter_period_rows) = 2
+      AND (SELECT COALESCE(sum(consumption), 0) FROM meter_period_rows WHERE meter_type = 'ELECTRICITY') = 75)
+  UNION ALL SELECT 'materials.positive', (SELECT count(*) = 2 FROM material_rows)
+  UNION ALL SELECT 'materials.below_reorder', (SELECT count(*) = 1 FROM material_rows WHERE on_hand < reorder_level)
+  UNION ALL SELECT 'materials.wrong_org_excluded',
+    (NOT EXISTS (SELECT 1 FROM material_rows m WHERE m.id = 'aaaab000-0000-4000-8000-000000000011'))
 )
 SELECT jsonb_build_object(
   'passed', bool_and(passed),
@@ -485,7 +710,7 @@ export function parseCopilotReadonlyQueriesVerdict(output) {
   if (
     verdict.passed !== true ||
     Number(verdict.failed_count) !== 0 ||
-    Number(verdict.assertion_count) !== 12 ||
+    Number(verdict.assertion_count) !== 20 ||
     verdict.assertions.some((assertion) => assertion?.passed !== true)
   ) {
     throw new Error(`Copilot readonly query contract failed: ${JSON.stringify(verdict)}`);

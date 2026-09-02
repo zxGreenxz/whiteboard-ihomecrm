@@ -18,7 +18,7 @@
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
 import { formatVND } from '@/lib/utils';
-import { maskPii } from '../maskPii';
+import { maskPhonePartial, maskPii } from '../maskPii';
 import { todayISO } from '@/lib/collect';
 import { chotToChuc, type DomainTool } from './registry';
 
@@ -84,6 +84,58 @@ const NHAN_GHI_NHAN: Record<string, string> = {
   POSTED: 'đã vào sổ',
   REVERSED: 'đã đảo bút toán',
   NOT_APPLICABLE: 'không áp dụng',
+};
+
+/** Phễu khách hẹn — mã enum `lead_status` của DB. */
+const NHAN_TRANG_THAI_LEAD: Record<string, string> = {
+  B1_LEAD: 'mới ghi nhận',
+  B2_APPOINTMENT: 'đã hẹn xem',
+  B3_CONSULTATION: 'đang tư vấn',
+  CONVERTED: 'đã chốt',
+  FAILED: 'không thành',
+};
+const MA_TRANG_THAI_LEAD: Record<string, string> = {
+  moi: 'B1_LEAD',
+  da_hen: 'B2_APPOINTMENT',
+  dang_tu_van: 'B3_CONSULTATION',
+  da_chot: 'CONVERTED',
+  khong_thanh: 'FAILED',
+};
+
+/** Trạng thái kiểm của MỘT dòng chỉ số công tơ (cột `status`). */
+const NHAN_TRANG_THAI_CHI_SO: Record<string, string> = {
+  UNAPPROVED: 'chờ duyệt',
+  APPROVED: 'đã duyệt',
+};
+
+const NHAN_LOAI_CONG_TO: Record<string, string> = {
+  ELECTRICITY: 'điện',
+  WATER: 'nước',
+  GAS: 'gas',
+  OTHER: 'khác',
+};
+
+const NHAN_LOAI_XE: Record<string, string> = {
+  MOTORBIKE: 'xe máy',
+  CAR: 'ô tô',
+  BICYCLE: 'xe đạp',
+  ELECTRIC_BIKE: 'xe điện',
+  OTHER: 'khác',
+};
+
+const NHAN_TRANG_THAI_VIEC: Record<string, string> = {
+  IN_PROGRESS: 'đang làm',
+  COMPLETED: 'hoàn thành',
+};
+const MA_TRANG_THAI_VIEC: Record<string, string> = {
+  dang_lam: 'IN_PROGRESS',
+  xong: 'COMPLETED',
+};
+
+const NHAN_MUC_DO_VIEC: Record<string, string> = {
+  URGENT: 'gấp',
+  NORMAL: 'bình thường',
+  LOW: 'thấp',
 };
 
 /**
@@ -714,6 +766,376 @@ export const hopChoDuyet = dt({
   },
 });
 
+// ── Vận hành: khách hẹn · công tơ · xe · công việc · kho (G1-C2) ────────────
+//
+// Năm tool dưới đây đọc qua RPC `copilot_*_v1` mới, KHÔNG đụng bảng qua
+// PostgREST — cùng lý do với nhóm G1-C1. Riêng ở đây biên giới còn mỏng hơn:
+// `leads`, `vehicles` và `jobs` mang `building_id` CÓ THỂ NULL, còn `materials`
+// không có cột toà nào cả. Một `select` từ trình duyệt sẽ phải tự quyết định
+// hàng chưa gắn toà thuộc về ai — quyết định đó nằm ở server, trong
+// `authorized_scope_v3`, không nằm trong tay client.
+
+interface HangKhachHen {
+  khach_hen_id: string;
+  khach_hang: string | null;
+  dien_thoai: string | null;
+  trang_thai: string | null;
+  nguon: string | null;
+  toa_nha: string | null;
+  phong: string | null;
+  ngay_hen: string | null;
+  lien_he_cuoi: string | null;
+  hen_lien_he_toi: string | null;
+  ngan_sach_tu: number | null;
+  ngan_sach_den: number | null;
+  ngay_tao: string | null;
+}
+
+interface GoiKhachHen {
+  gioi_han: number;
+  so_luong: number;
+  khach_hen: HangKhachHen[];
+}
+
+interface HangChiSo {
+  chi_so_id: string;
+  ma_phieu: string | null;
+  toa_nha: string | null;
+  phong: string | null;
+  loai: string | null;
+  chi_so_dau: number | null;
+  chi_so_cuoi: number | null;
+  tieu_thu: number | null;
+  ngay_ghi: string | null;
+  trang_thai: string | null;
+}
+
+interface TongHopChiSo {
+  loai: string | null;
+  so_dong: number | null;
+  tong_tieu_thu: number | null;
+}
+
+interface GoiChiSo {
+  ky: string;
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: TongHopChiSo[];
+  chi_so: HangChiSo[];
+}
+
+interface HangXe {
+  xe_id: string;
+  bien_so: string | null;
+  loai_xe: string | null;
+  mo_ta: string | null;
+  chu_xe: string | null;
+  phong: string | null;
+  toa_nha: string | null;
+  phi_gui: number | null;
+  ma_the: string | null;
+}
+
+interface GoiXe {
+  gioi_han: number;
+  so_luong: number;
+  xe: HangXe[];
+}
+
+interface HangCongViec {
+  cong_viec_id: string;
+  ma: string | null;
+  tieu_de: string | null;
+  trang_thai: string | null;
+  muc_do: string | null;
+  loai: string | null;
+  nguoi_lam: string | null;
+  cua_toi: boolean | null;
+  han: string | null;
+  phong: string | null;
+  toa_nha: string | null;
+}
+
+interface GoiCongViec {
+  gioi_han: number;
+  so_luong: number;
+  cong_viec: HangCongViec[];
+}
+
+interface HangVatTu {
+  vat_tu_id: string;
+  ma: string | null;
+  ten: string | null;
+  nhom: string | null;
+  don_vi: string | null;
+  ton_kho: number | null;
+  muc_dat_lai: number | null;
+  duoi_muc: boolean | null;
+  gia_binh_quan: number | null;
+  gia_tri_ton: number | null;
+}
+
+interface TongHopVatTu {
+  so_mat_hang: number | null;
+  so_mat_hang_thieu: number | null;
+  gia_tri_ton: number | null;
+}
+
+interface GoiVatTu {
+  gioi_han: number;
+  so_luong: number;
+  tong_hop: TongHopVatTu;
+  vat_tu: HangVatTu[];
+}
+
+const KY_RE = /^\d{4}-\d{2}$/;
+
+export const timKhachHen = dt({
+  name: 'tim_khach_hen',
+  description:
+    'Tìm khách hẹn (lead) theo tên hoặc số điện thoại, lọc thêm được theo bước trong phễu. ' +
+    'Trả tên khách, SĐT (che một phần), bước hiện tại, nguồn, toà/phòng quan tâm, ngày hẹn xem và ngày cần liên hệ lại. ' +
+    'Dùng khi hỏi "khách hẹn nào cần gọi lại", "ai đang chờ xem phòng", "tìm lead tên ...".',
+  inputSchema: z.object({
+    tu_khoa: z.string().optional().describe('Tên khách hoặc số điện thoại. Bỏ trống = không lọc theo chữ.'),
+    trang_thai: z
+      .enum(['moi', 'da_hen', 'dang_tu_van', 'da_chot', 'khong_thanh'])
+      .optional()
+      .describe('Bước trong phễu. Bỏ trống = mọi bước.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'leads', action: 'view' },
+  rolloutKey: 'leads.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'tim_khach_hen');
+    const tuKhoa = args.tu_khoa?.trim() ?? '';
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_query: string | null; p_trang_thai: string | null; p_limit: number },
+      GoiKhachHen
+    >('copilot_lead_search_v1', {
+      p_organization_id: orgId,
+      p_query: tuKhoa ? tuKhoa : null,
+      p_trang_thai: args.trang_thai ? (MA_TRANG_THAI_LEAD[args.trang_thai] ?? null) : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tìm khách hẹn: ${error.message}`);
+    const rows = data?.khach_hen ?? [];
+    if (!rows.length) {
+      return tuKhoa
+        ? `Không tìm thấy khách hẹn nào khớp "${tuKhoa}".`
+        : 'Không có khách hẹn nào khớp điều kiện.';
+    }
+    const dong = rows.map((r) => {
+      const buoc = r.trang_thai ? (NHAN_TRANG_THAI_LEAD[r.trang_thai] ?? r.trang_thai) : '?';
+      const noi = [r.phong, r.toa_nha].filter(Boolean).join(' · ');
+      const hen = r.ngay_hen ? ` — hẹn xem ${r.ngay_hen}` : '';
+      const goiLai = r.hen_lien_he_toi ? ` — gọi lại ${r.hen_lien_he_toi}` : '';
+      const ngan =
+        r.ngan_sach_tu || r.ngan_sach_den
+          ? ` — ngân sách ${formatVND(Number(r.ngan_sach_tu) || 0)}–${formatVND(Number(r.ngan_sach_den) || 0)}`
+          : '';
+      return (
+        `- ${r.khach_hang ?? '?'} (${maskPhonePartial(r.dien_thoai)}) — ${buoc}` +
+        `${noi ? ` — quan tâm ${noi}` : ''}${hen}${goiLai}${ngan}`
+      );
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${rows.length} khách hẹn (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /leads]`;
+  },
+});
+
+export const chiSoCongTo = dt({
+  name: 'chi_so_cong_to',
+  description:
+    'Chỉ số công tơ của MỘT kỳ (YYYY-MM): phòng, loại công tơ (điện/nước/gas), chỉ số đầu–cuối, tiêu thụ và tình trạng kiểm. ' +
+    'Kèm tổng tiêu thụ theo từng loại, tính trên TOÀN kỳ chứ không phải trên danh sách đã cắt. ' +
+    'Dùng khi hỏi "tháng này ghi chỉ số chưa", "phòng nào dùng nhiều điện", "chỉ số kỳ ...".',
+  inputSchema: z.object({
+    ky: z.string().regex(KY_RE).describe('Kỳ chốt số dạng YYYY-MM, vd 2026-07'),
+    toa_nha_id: z
+      .string()
+      .regex(UUID_RE)
+      .optional()
+      .describe('UUID toà nhà, nếu biết. Bỏ trống = mọi toà trong phạm vi bạn được xem.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'meter_readings', action: 'view' },
+  rolloutKey: 'meter-readings.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'chi_so_cong_to');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_ky: string; p_building_id: string | null; p_limit: number },
+      GoiChiSo
+    >('copilot_meter_readings_v1', {
+      p_organization_id: orgId,
+      p_ky: args.ky,
+      p_building_id: args.toa_nha_id ?? null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải chỉ số công tơ: ${error.message}`);
+    const rows = data?.chi_so ?? [];
+    if (!rows.length) return `Kỳ ${args.ky} chưa có dòng chỉ số nào trong phạm vi bạn được xem.`;
+    const tongHop = (data?.tong_hop ?? [])
+      .map((t) => {
+        const loai = t.loai ? (NHAN_LOAI_CONG_TO[t.loai] ?? t.loai) : '?';
+        return `${loai}: ${t.so_dong ?? 0} dòng, tiêu thụ ${Number(t.tong_tieu_thu) || 0}`;
+      })
+      .join(' · ');
+    const dong = rows.map((r) => {
+      const loai = r.loai ? (NHAN_LOAI_CONG_TO[r.loai] ?? r.loai) : '?';
+      const tt = r.trang_thai ? (NHAN_TRANG_THAI_CHI_SO[r.trang_thai] ?? r.trang_thai) : '?';
+      const toa = r.toa_nha ? ` (${r.toa_nha})` : '';
+      return (
+        `- phòng ${r.phong ?? '?'}${toa} — ${loai}: ${Number(r.chi_so_dau) || 0} → ${Number(r.chi_so_cuoi) || 0}` +
+        ` = ${Number(r.tieu_thu) || 0} — ghi ${r.ngay_ghi ?? '?'} — ${tt}`
+      );
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return (
+      `Chỉ số kỳ ${args.ky}${tongHop ? ` — toàn kỳ: ${tongHop}` : ''}\n` +
+      `${rows.length} dòng (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /meter-readings]`
+    );
+  },
+});
+
+export const timXe = dt({
+  name: 'tim_xe',
+  description:
+    'Tìm phương tiện theo biển số, tên chủ xe, mã thẻ, tên phòng hoặc tên cư dân. ' +
+    'Trả biển số, loại xe, chủ xe, phòng/toà, phí gửi và mã thẻ. ' +
+    'Dùng khi hỏi "xe biển số ... của ai", "phòng này có mấy xe", "tìm xe của khách ...".',
+  inputSchema: z.object({
+    tu_khoa: z
+      .string()
+      .optional()
+      .describe('Biển số / tên chủ xe / mã thẻ / tên phòng / tên cư dân. Bỏ trống = liệt kê theo toà.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'vehicles', action: 'view' },
+  rolloutKey: 'vehicles.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'tim_xe');
+    const tuKhoa = args.tu_khoa?.trim() ?? '';
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_query: string | null; p_limit: number },
+      GoiXe
+    >('copilot_vehicle_search_v1', {
+      p_organization_id: orgId,
+      p_query: tuKhoa ? tuKhoa : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tìm xe: ${error.message}`);
+    const rows = data?.xe ?? [];
+    if (!rows.length) {
+      return tuKhoa ? `Không tìm thấy xe nào khớp "${tuKhoa}".` : 'Không có xe nào trong phạm vi bạn được xem.';
+    }
+    const dong = rows.map((r) => {
+      const loai = r.loai_xe ? (NHAN_LOAI_XE[r.loai_xe] ?? r.loai_xe) : '?';
+      const noi = [r.phong, r.toa_nha].filter(Boolean).join(' · ');
+      const phi = Number(r.phi_gui) > 0 ? ` — phí gửi ${formatVND(Number(r.phi_gui))}` : '';
+      const the = r.ma_the ? ` — thẻ ${r.ma_the}` : '';
+      const moTa = r.mo_ta ? ` (${r.mo_ta})` : '';
+      return `- ${r.bien_so ?? '?'} — ${loai}${moTa} — ${r.chu_xe ?? '?'}${noi ? ` — ${noi}` : ''}${phi}${the}`;
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${rows.length} xe (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /vehicles]`;
+  },
+});
+
+export const congViec = dt({
+  name: 'cong_viec',
+  description:
+    'Danh sách công việc (phiếu việc) của công ty, việc GIAO CHO BẠN xếp trước. ' +
+    'Trả mã việc, tiêu đề, loại, người làm, hạn, phòng/toà và tình trạng. ' +
+    'Chỉ ĐỌC — Copilot không nhận việc, không đóng việc, không nghiệm thu; việc đó làm ở trang /tasks. ' +
+    'Dùng khi hỏi "tôi còn việc gì", "việc nào quá hạn", "công việc đang làm".',
+  inputSchema: z.object({
+    trang_thai: z
+      .enum(['dang_lam', 'xong'])
+      .optional()
+      .describe('dang_lam = đang thực hiện, xong = đã hoàn thành. Bỏ trống = cả hai.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'tasks', action: 'view' },
+  rolloutKey: 'tasks.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'cong_viec');
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_trang_thai: string | null; p_limit: number },
+      GoiCongViec
+    >('copilot_tasks_v1', {
+      p_organization_id: orgId,
+      p_trang_thai: args.trang_thai ? (MA_TRANG_THAI_VIEC[args.trang_thai] ?? null) : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải công việc: ${error.message}`);
+    const rows = data?.cong_viec ?? [];
+    if (!rows.length) return 'Không có công việc nào khớp điều kiện.';
+    const homNay = todayISO();
+    const dong = rows.map((r) => {
+      const tt = r.trang_thai ? (NHAN_TRANG_THAI_VIEC[r.trang_thai] ?? r.trang_thai) : '?';
+      const mucDo = r.muc_do ? (NHAN_MUC_DO_VIEC[r.muc_do] ?? r.muc_do) : '';
+      const noi = [r.phong, r.toa_nha].filter(Boolean).join(' · ');
+      const quaHan = r.han && r.han.slice(0, 10) < homNay && r.trang_thai !== 'COMPLETED' ? ' ⚠ quá hạn' : '';
+      const han = r.han ? ` — hạn ${r.han.slice(0, 10)}${quaHan}` : '';
+      const nguoi = r.cua_toi ? ' — BẠN làm' : r.nguoi_lam ? ` — ${r.nguoi_lam}` : '';
+      return (
+        `- ${r.ma ?? r.cong_viec_id.slice(0, 8)}: ${r.tieu_de ?? '?'}` +
+        `${r.loai ? ` [${r.loai}]` : ''} — ${tt}${mucDo ? `, ${mucDo}` : ''}${nguoi}${han}` +
+        `${noi ? ` — ${noi}` : ''}`
+      );
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${rows.length} công việc (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /tasks]`;
+  },
+});
+
+export const tonKhoVatTu = dt({
+  name: 'ton_kho_vat_tu',
+  description:
+    'Tồn kho vật tư: số lượng còn, mức đặt lại, mặt hàng đang dưới mức và giá trị tồn. ' +
+    'Mặt hàng thiếu được xếp lên đầu; các con số tổng tính trên TOÀN bộ kết quả khớp, không phải trên danh sách đã cắt. ' +
+    'Dùng khi hỏi "còn bao nhiêu bóng đèn", "vật tư nào sắp hết", "giá trị tồn kho".',
+  inputSchema: z.object({
+    tu_khoa: z.string().optional().describe('Tên hoặc mã vật tư. Bỏ trống = toàn kho.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'materials', action: 'view' },
+  rolloutKey: 'materials.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'ton_kho_vat_tu');
+    const tuKhoa = args.tu_khoa?.trim() ?? '';
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_query: string | null; p_limit: number },
+      GoiVatTu
+    >('copilot_material_stock_v1', {
+      p_organization_id: orgId,
+      p_query: tuKhoa ? tuKhoa : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải tồn kho vật tư: ${error.message}`);
+    const rows = data?.vat_tu ?? [];
+    if (!rows.length) {
+      return tuKhoa ? `Không tìm thấy vật tư nào khớp "${tuKhoa}".` : 'Kho vật tư đang trống.';
+    }
+    const th = data?.tong_hop;
+    const dong = rows.map((r) => {
+      const canh = r.duoi_muc ? ' ⚠ dưới mức đặt lại' : '';
+      const nhom = r.nhom ? ` [${r.nhom}]` : '';
+      return (
+        `- ${r.ma ? `${r.ma} — ` : ''}${r.ten ?? '?'}${nhom}: còn ${Number(r.ton_kho) || 0} ${r.don_vi ?? ''}` +
+        ` (mức đặt lại ${Number(r.muc_dat_lai) || 0})${canh} — giá trị ${formatVND(Number(r.gia_tri_ton) || 0)}`
+      );
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    const tomTat = th
+      ? `Toàn kho khớp điều kiện: ${Number(th.so_mat_hang) || 0} mặt hàng, ` +
+        `${Number(th.so_mat_hang_thieu) || 0} dưới mức đặt lại, giá trị tồn ${formatVND(Number(th.gia_tri_ton) || 0)}.\n`
+      : '';
+    return `${tomTat}${rows.length} vật tư (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /materials]`;
+  },
+});
+
 /** Gom lại để registry chèn vào một chỗ. */
 export const TOOL_NGHIEP_VU: DomainTool[] = [
   tyLeLapDay as DomainTool,
@@ -724,4 +1146,9 @@ export const TOOL_NGHIEP_VU: DomainTool[] = [
   chiTietHopDong as DomainTool,
   timPhieuThuChi as DomainTool,
   hopChoDuyet as DomainTool,
+  timKhachHen as DomainTool,
+  chiSoCongTo as DomainTool,
+  timXe as DomainTool,
+  congViec as DomainTool,
+  tonKhoVatTu as DomainTool,
 ];
