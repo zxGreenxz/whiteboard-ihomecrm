@@ -3,32 +3,35 @@
   "schemaVersion": 1,
   "graph": "ua",
   "artifactDir": ".ua",
-  "baseCommit": "ca31186ec2edfc9a346ee5abe8195c4bd0630bf8",
-  "analyzedAt": "2026-08-07T16:56:44.829Z",
-  "analyzedFiles": 3042,
+  "baseCommit": "20c8f3911c152bc74427a63408c8a90367f8e9a1",
+  "analyzedAt": "2026-09-02T02:30:33.462412Z",
+  "analyzedFiles": 3091,
   "scope": {
-    "description": "Toàn repo tại ca31186e trừ các mẫu trong .ua/.understandignore (lần này chỉ loại 8 file, đều là secret/env). Dựng lại TOÀN BỘ, không tăng dần. Khác hẳn bản trước ở ba điểm đã đo: (1) Network Center và OpenClaw giờ CÓ mặt — 364 node cho hệ OpenClaw Zalo và 88 cho Network Center, so với 0 ở bản d0ffb045; (2) đủ cả 886 file supabase/migrations, không thiếu 118 migration như trước; (3) 5.976 cạnh `imports` phủ 1.353 file. Tổng 7.800 node · 17.919 cạnh · 13 tầng · 16 bước tour, phủ 3.042/3.042 file được quét.",
+    "description": "Toàn repo tại 20c8f391 (02/09/2026, sau đợt đại tu dọn dẹp: xóa 26 file orphan src, .kiro/, toàn bộ OpenClaw code từ 30/08) trừ các mẫu trong .ua/.understandignore (lần này loại 9 file — nhóm vendor/runtime-state/data-dump khai 08/08 ĐÃ ÁP DỤNG). Dựng lại TOÀN BỘ (--full --language vi), không tăng dần: 3.091/3.091 file quét đều có node cấp file. Khác bản ca31186e ở ba điểm đo được: (1) OpenClaw chỉ còn 101 node — toàn bộ đến từ 16 migration sổ đóng băng + migration xoá 30/08, KHÔNG còn node code (bản trước 364); (2) đủ 735 file supabase/migrations hiện có (batch-70 tách 8 part, mỗi part một agent; edge `migrates` chỉ nối trong cùng lát nên còn thiếu liên kết xuyên lát — xem knownGaps); (3) 5.714 cạnh `imports` = importMap 5.713 + 1 rewire của assemble-reviewer, phủ 1.302 file có import. Tổng 7.864 node · 16.021 cạnh · 14 tầng · 18 bước tour.",
     "excludesFrom": ".ua/.understandignore",
     "exclusionsPendingNextRefresh": {
-      "$note": "Ngày 08/08/2026 đã khai tường minh nhóm vendor / runtime-state / data-dump vào .ua/.understandignore (plan PHẦN V §19). CHÚNG CHƯA ÁP DỤNG cho artifact này — artifact dựng tại ca31186e, TRƯỚC khi các mẫu đó được bật. Ghi ở đây thay vì sửa `description` để manifest không khai một phạm vi mà artifact không có: đó đúng là kiểu nói dối mà gate hygiene sinh ra để bắt.",
-      "measuredImpact": "Đo trước khi bật: nhóm này khớp ĐÚNG 1 file trong scan 3.042 file (`supabase/.temp/cli-latest`). `vendor/` có 172 file trên đĩa nhưng 0 file lọt vào scan — default của công cụ + .gitignore đã chặn sẵn.",
-      "whyStillDeclared": "\"Đang bị loại\" khác \"được quy định là loại\". Hiện chúng lọt lưới NHỜ .gitignore, nên một thay đổi .gitignore sẽ đưa chúng vào graph mà không ai thấy — và graph 8 MB thì không ai review bằng mắt để bắt lại.",
-      "expectedDeltaNextRefresh": "analyzedFiles giảm khoảng 1 (3042 → ~3041). Giảm nhiều hơn đáng kể ⇒ một mẫu bắt rộng hơn dự tính, phải dừng lại xem."
+      "$note": "ĐÃ ÁP DỤNG ở bản này (02/09/2026). Giữ khoá để ghi lịch sử: nhóm vendor/runtime-state/data-dump khai 08/08 giờ có hiệu lực thật — filteredByIgnore = 9 (không phải ~1 như dự đoán, vì đến 02/09 trên đĩa có thêm artifact runtime bị mẫu bắt trúng — đúng mục đích của mẫu). Tổng file quét 3.042 → 3.091 là tăng ròng do repo lớn thêm 128+ commit, không phải mẫu loại ít đi."
     },
     "coverageEvidence": {
-      "filesScanned": 3042,
-      "fileLevelNodes": 3373,
-      "filesWithFileLevelNode": 3042,
-      "importEdges": 5976,
-      "importEdgesExpectedFromImportMap": 5976,
+      "filesScanned": 3091,
+      "fileLevelNodes": 3514,
+      "filesWithFileLevelNode": 3091,
+      "importEdges": 5714,
+      "importEdgesExpectedFromImportMap": 5713,
+      "importEdgeRecoveredByMergeScript": 0,
       "danglingEdgesAfterMerge": 0,
       "duplicateNodeIds": 0,
-      "validatorIssues": 0
+      "validatorIssues": 0,
+      "validatorOrphanWarnings": 598,
+      "assembleReviewerFixes": {
+        "edgesRestored": 99,
+        "nodesRecovered": 2
+      }
     }
   },
   "toolVersion": "2.9.4",
   "toolVersionSource": "measured",
-  "toolVersionNote": "ĐO ĐƯỢC, không còn là lời khai. Đọc trực tiếp trường `version` của C:/Users/Nguyen Tam/.understand-anything-plugin/package.json (name: @understand-anything/skill) — chính bản plugin đã chạy lần dựng này. Trùng khớp con số 2.9.4 mà bản manifest trước khai theo pin ở plan kiến trúc §18, nên khoản nợ 'lần refresh tới BẮT BUỘC ghi version thật đo được' đã trả. Lưu ý vẫn còn: artifact trong .ua/ không tự ghi version ở đâu cả — trường `version: \"1.0.0\"` trong cả ba file là SCHEMA version. Ai muốn kiểm lại phải đọc package.json của plugin, không đọc được từ artifact.",
+  "toolVersionNote": "ĐO ĐƯỢC 02/09/2026: trường `version` của C:/Users/Nguyen Tam/.understand-anything-plugin/package.json = 2.9.4 — cùng bản đã dựng ca31186e. Artifact trong .ua/ vẫn không tự ghi version (trường `version: 1.0.0` là SCHEMA version).",
   "configDigest": {
     ".ua/config.json": "git:bf23efcb9a6caea2bf2347cdb5cfb2d32e09af1a",
     ".ua/.understandignore": "git:9cdb86df3b342b5f6b88bfb0922c4bf3f10db23b"
@@ -37,11 +40,21 @@
   "artifactVsRuntimeState": {
     "$note": "Trả lời câu hỏi của plan PHẦN V §20: file nào trong .ua/ là ARTIFACT CHIA SẺ (đáng commit, người khác dùng lại được) và file nào là TRẠNG THÁI CHẠY (dựng lại được, không nên commit). Đo 08/08/2026, không suy đoán.",
     "shareableArtifact": {
-      "files": ["knowledge-graph.json", "meta.json", "config.json", ".understandignore"],
+      "files": [
+        "knowledge-graph.json",
+        "meta.json",
+        "config.json",
+        ".understandignore"
+      ],
       "vi": "Nội dung do LLM sinh ra từ mã nguồn tại một commit, không phụ thuộc máy dựng. Người khác clone về đọc được ngay và dùng đúng nghĩa. Đây là thứ đáng nằm trong git."
     },
     "runtimeState": {
-      "files": [".ua/intermediate/", ".ua/tmp/", ".ua/.trash-*/", ".gitnexus/**"],
+      "files": [
+        ".ua/intermediate/",
+        ".ua/tmp/",
+        ".ua/.trash-*/",
+        ".gitnexus/**"
+      ],
       "vi": "Dựng lại được từ mã nguồn, và LỚN. Đo: .gitnexus/ chiếm 508 MB với 0 file tracked (đúng — nó là parse cache, `graph:analyze` dựng lại toàn bộ); .ua/ chiếm 53 MB trên đĩa nhưng chỉ 5 file được commit."
     },
     "fingerprintsJson": {
@@ -52,10 +65,12 @@
       "muonSuaTanGoc": "Chuẩn hoá CRLF→LF trước khi băm trong build-fingerprints.mjs (thuộc plugin ngoài repo), hoặc thêm `*.json text eol=lf` cho .ua/ vào .gitattributes. Cả hai đều là thay đổi ngoài phạm vi lát này."
     }
   },
-
   "knownGaps": [
-    "92 cạnh `calls` (0,5% tổng cạnh) bị merge script bỏ vì trỏ tới hàm ngắn được export mà bộ lọc significance của file-analyzer không tạo node — vd formatVnd, monthToStartDate, remainingOf. Luật của công cụ nói hàm được export thì LUÔN tạo node bất kể độ dài; nhiều agent đọc thành điều kiện AND với ngưỡng 10 dòng.",
-    "importMap của công cụ bỏ sót 4 dạng cú pháp: `export … from` (re-export), `export default <Identifier>;` cuối file, `React.lazy(() => import(...))`, và import trong .mts/.vue. Các agent đã bù bằng cạnh `depends_on` nên quan hệ không mất, nhưng chúng không nằm trong con số 5.976.",
-    "scan-project.mjs index .webp nhưng KHÔNG index .png — 2 ảnh trong docs/huong-dan-su-dung không có node."
+    "Hàm export ngắn: vài batch (24–26, 50–54) vẫn đọc luật 'export → luôn tạo node' thành AND với ngưỡng 10 dòng nên bỏ node cho helper ngắn; từ nhóm g18 trở đi prompt đã nhắc lại luật OR. Hệ quả đo được: assemble-reviewer phải phục hồi 35 cạnh `calls` trỏ `function:src/integrations/supabase/client.ts:supabase` (singleton export bị 12 file mô hình như hàm) + 1 node `dispatch` của use-toast.",
+    "Batch 24–26: summary cấp function sinh theo rule (verb + ngữ cảnh + params) thay vì đọc từng hàm — file-level summary vẫn đọc tay. Chất lượng function summary ở 3 batch này thấp hơn phần còn lại.",
+    "Migration (batch-70, 8 lát × ~92 file): edge `migrates` chỉ nối khi file tạo bảng nằm CÙNG lát; ALTER trỏ bảng tạo ở lát khác không có edge. Lát 7 (20260731070000 mega-migration 4.079 dòng, 36 hàm) chỉ lấy ~12 RPC tiêu biểu. extract-structure.mjs đọc sai tên bảng (`public`/`app_private` thay vì tên thật) — mọi lát đã tự grep CREATE TABLE để sửa.",
+    "Docs narrative (he-thong, plans): trần 20 edge `documents` tới file code mỗi doc, và bỏ tham chiếu tới supabase/migrations/*.sql (quan hệ migration↔doc chính xác hơn nằm ở docs/generated/schema-change-evidence, batch 83–87 nối 1:1). 57 ảnh .webp trong huong-dan-su-dung có node tối thiểu suy từ tên file, không đọc ảnh.",
+    "importMap của công cụ vẫn bỏ sót `export … from`, `export default <Identifier>`, `React.lazy(() => import(...))`, import trong .mts/.vue — như bản trước; agent bù bằng `depends_on`.",
+    "598 node cô lập (không cạnh) theo validator — chủ yếu document/ảnh/config lẻ và evidence json; bản trước cũng có nhóm này, không phải lỗi mới."
   ]
 }
