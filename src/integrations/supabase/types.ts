@@ -18845,6 +18845,28 @@ export type Database = {
         Args: { p_billing_month?: string; p_organization_id: string }
         Returns: Json
       }
+      copilot_lead_search_v1: {
+        Args: {
+          p_limit?: number
+          p_organization_id: string
+          p_query?: string
+          p_trang_thai?: string
+        }
+        Returns: Json
+      }
+      copilot_material_stock_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
+      copilot_meter_readings_v1: {
+        Args: {
+          p_building_id?: string
+          p_ky: string
+          p_limit?: number
+          p_organization_id: string
+        }
+        Returns: Json
+      }
       copilot_occupancy_upcoming_v1: {
         Args: {
           p_as_of_date: string
@@ -18899,6 +18921,18 @@ export type Database = {
       }
       copilot_preview_income_expense_v1: {
         Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_tasks_v1: {
+        Args: {
+          p_limit?: number
+          p_organization_id: string
+          p_trang_thai?: string
+        }
+        Returns: Json
+      }
+      copilot_vehicle_search_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
         Returns: Json
       }
       create_cash_handover: {

@@ -519,6 +519,7 @@
     "src/copilot/maskPii.ts",
     "src/copilot/ollama.ts",
     "src/copilot/pageContext.ts",
+    "src/copilot/pageScope.ts",
     "src/copilot/safetyGuard.ts",
     "src/copilot/systemPromptVi.ts",
     "src/copilot/tools/nghiepVuTools.ts",
