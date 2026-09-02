@@ -3,6 +3,7 @@
 // Giao diện "Bé Chiu" theo design "Trợ lý AI - Bé Chiu.dc.html".
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   BarChart3, Building2, FileText, ImagePlus, Mic, MicOff, Plus, Receipt, Send, Square, X,
 } from 'lucide-react';
@@ -31,6 +32,8 @@ import { BeChiu, TEN_LINH_THU } from './BeChiu';
 import { useCopilotAvailability, type CopilotAvailabilitySnapshot } from './featureFlags';
 import { quyetDinhGuiTheoAvailability, THONG_BAO_QUYEN_CHUA_TUOI } from './availabilityGate';
 import { assertUiControlAvailability } from './uiControlAvailability';
+import { lyDoChanUiControl } from './uiControlGate';
+import { dienGiaiLoiChat } from './chatErrors';
 import type { ToolCtx } from './tools/registry';
 
 interface Props {
@@ -189,6 +192,8 @@ export default function ChatPanel({ onClose }: Props) {
   const [input, setInput] = useState('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
+  /** Đang nạp lại lịch sử của tổ chức đang chọn — khác hẳn "chưa có gì". */
+  const [dangTaiLichSu, setDangTaiLichSu] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const uiAgentRef = useRef<{ stop: () => Promise<void>; dispose: () => void } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -214,7 +219,9 @@ export default function ChatPanel({ onClose }: Props) {
     setLiveTool(null);
     setDangChay('');
     setRunning(false);
+    setDangTaiLichSu(false);
     if (!selectedOrganizationId) return;
+    setDangTaiLichSu(true);
     void (async () => {
       try {
         const t = await loadLatestThread(selectedOrganizationId);
@@ -226,6 +233,8 @@ export default function ChatPanel({ onClose }: Props) {
         setHistory(msgs);
       } catch {
         /* chưa có thread — bỏ qua */
+      } finally {
+        if (generation === orgGenerationRef.current) setDangTaiLichSu(false);
       }
     })();
     return () => {
@@ -250,12 +259,7 @@ export default function ChatPanel({ onClose }: Props) {
   };
 
   const handleError = (e: unknown) => {
-    const msg = e instanceof Error ? e.message : String(e);
-    setError(
-      /not_entitled|not_permitted|403/.test(msg)
-        ? 'Tài khoản chưa được cấp quyền dùng AI Copilot hoặc đã hết hạn mức hôm nay.'
-        : `Lỗi: ${msg}`,
-    );
+    setError(dienGiaiLoiChat(e instanceof Error ? e.message : String(e)));
   };
 
   // UI-control: mỗi lệnh ĐỘC LẬP (execute reset history) — không lưu thread.
@@ -265,12 +269,23 @@ export default function ChatPanel({ onClose }: Props) {
     setHistory((h) => [...h, { role: 'user', content: text }]);
     setLiveTool('điều khiển trang');
     const { createUiControlAgent } = await import('./createAgent');
-    if (
-      !isCurrentChatScope(generation, orgGenerationRef.current, organizationId, selectedOrganizationId) ||
-      !canUiControl ||
-      !organizationId ||
-      snapshot.organizationId !== organizationId
-    ) return;
+    // Trước đây chỗ này `return` trần: câu hỏi đã hiện trong khung chat rồi
+    // im bặt. Năm điều kiện có năm cách sửa khác nhau nên phải nói ra cái nào.
+    const lyDoChan = lyDoChanUiControl({
+      cungPhamVi: isCurrentChatScope(
+        generation,
+        orgGenerationRef.current,
+        organizationId,
+        selectedOrganizationId,
+      ),
+      coQuyenDieuKhien: canUiControl,
+      organizationId,
+      snapshot,
+    });
+    if (lyDoChan) {
+      setError(lyDoChan);
+      return;
+    }
     assertUiControlAvailability({
       pathname: location.pathname,
       ctx: { perms, organizationId, availability: snapshot },
@@ -287,6 +302,31 @@ export default function ChatPanel({ onClose }: Props) {
     } finally {
       agent.dispose();
       if (uiAgentRef.current === agent) uiAgentRef.current = null;
+    }
+  };
+
+  /**
+   * Lưu lịch sử — thử lại ĐÚNG một lần rồi báo bằng toast.
+   *
+   * Hỏng ở đây không chặn chat (câu trả lời đã hiện rồi), nhưng nuốt im lặng
+   * thì người dùng F5 xong mất nguyên lượt vừa nói mà vẫn tưởng đã lưu.
+   * Một lần thử lại là để đỡ cú mạng chớp nhoáng — ca thường gặp nhất.
+   */
+  const luuLichSuCoThuLai = async (
+    tid: string,
+    msgs: Message[],
+    organizationId: string | null,
+  ): Promise<void> => {
+    try {
+      await saveMessages(tid, msgs, model, organizationId);
+      return;
+    } catch {
+      /* thử lại ngay bên dưới */
+    }
+    try {
+      await saveMessages(tid, msgs, model, organizationId);
+    } catch {
+      toast.error('Không lưu được lịch sử chat.');
     }
   };
 
@@ -340,9 +380,7 @@ export default function ChatPanel({ onClose }: Props) {
     if (!isCurrentChatScope(generation, orgGenerationRef.current, organizationId, selectedOrganizationId)) return;
     setDangChay('');
     setHistory((h) => [...h.slice(0, -1), ...result.newMessages]);
-    void saveMessages(tid, result.newMessages, model, organizationId).catch(() => {
-      /* lưu lịch sử lỗi không chặn chat */
-    });
+    void luuLichSuCoThuLai(tid, result.newMessages, organizationId);
   };
 
   /**
@@ -434,15 +472,22 @@ export default function ChatPanel({ onClose }: Props) {
           <span className="text-[15px] font-bold leading-tight tracking-tight">{TEN_LINH_THU}</span>
           <span className="text-[11px] leading-snug text-muted-foreground">Trợ lý nhỏ xinh của bạn</span>
         </div>
+        {/* Danh sách provider chưa về thì ô này không chọn được gì có nghĩa;
+            để mở là mời người dùng bấm vào một danh sách rỗng. */}
         <select
           className="ml-auto max-w-[132px] cursor-pointer truncate rounded-full border border-[hsl(var(--primary-100))] bg-card px-2.5 py-1 text-[11px] font-semibold text-accent-foreground shadow-sm"
           value={model}
           onChange={(e) => setModel(e.target.value)}
+          disabled={!providers}
           data-testid="copilot-model-select"
         >
-          {/* `model` đã được useCopilotModel thay thế nếu preference lỗi thời,
-              nên nhánh này giờ chỉ còn cho lúc danh sách chưa tải xong. */}
-          {!providers?.some((p) => p.value === model) && <option value={model}>{model}</option>}
+          {!providers && <option value={model}>Đang tải…</option>}
+          {/* `model` đã được useCopilotModel thay thế nếu preference lỗi thời, nên
+              nhánh này chỉ còn cho ca hiếm: danh sách đã về mà model đang chọn
+              không nằm trong đó. */}
+          {!!providers && !providers.some((p) => p.value === model) && (
+            <option value={model}>{model}</option>
+          )}
           {providers?.map((p) => (
             <option key={p.value} value={p.value}>
               {p.label}
@@ -503,7 +548,15 @@ export default function ChatPanel({ onClose }: Props) {
 
       {/* Messages */}
       <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-3.5 text-sm leading-relaxed">
-        {items.length === 0 && !running && (
+        {dangTaiLichSu && items.length === 0 && (
+          <div
+            className="flex h-full items-center justify-center text-xs italic text-muted-foreground"
+            data-testid="copilot-dang-tai-lich-su"
+          >
+            Đang tải lịch sử…
+          </div>
+        )}
+        {items.length === 0 && !running && !dangTaiLichSu && (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-3 text-center">
             <BeChiu size={96} animated smoke blush cuaSo shadow />
             <div className="flex flex-col gap-1.5">
