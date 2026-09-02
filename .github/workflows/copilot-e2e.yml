@@ -25,18 +25,34 @@
 #   GHI (preview nháp chưa duyệt) — vẫn trong org DEMO. Không có tài khoản của
 #   công ty thật nào trong workflow này.
 #
-# BẢN NÀO ĐANG ĐƯỢC THỬ
+# BẢN NÀO ĐANG ĐƯỢC THỬ — VÌ SAO **KHÔNG** DÙNG `github.sha`
 #   Mọi spec Copilot gọi `xacMinhBanBuild()`: nó so `EXPECTED_SOURCE_SHA` với thẻ
-#   <meta name="build-sha"> của trang. Ở đây EXPECTED_SOURCE_SHA = github.sha, nên
-#   FLEET_BASE_URL phải trỏ tới bản dựng TỪ ĐÚNG commit này. Chạy tay thì chọn ref
-#   khớp bản đã deploy; lượt theo lịch chỉ xanh khi bản đang chạy dựng từ HEAD của
-#   nhánh mặc định. Sai bản ⇒ spec NÉM ngay ở test đầu — đó là chủ ý: kết quả E2E
-#   của một bản không rõ danh tính không chứng minh được gì (ca C38, 13/08/2026).
+#   <meta name="build-sha"> của trang (index.html:12 ← VITE_BUILD_SHA, tức commit
+#   mà Vercel đã DỰNG). `github.sha` là HEAD của nhánh lúc workflow chạy — hai số
+#   này chỉ trùng khi nhánh không nhích kể từ lần deploy gần nhất. Bản đầu
+#   (02/09/2026) đặt thẳng `github.sha`, và như vậy lượt cron ĐỎ THEO THIẾT KẾ:
+#   mỗi commit mới vào main làm lượt đêm hôm đó thất bại vì lý do chẳng liên quan
+#   gì tới Copilot — đúng kiểu đỏ thường trực khiến người ta ngừng đọc CI.
+#
+#   Cách đúng là hỏi chính bản đang chạy xem nó là ai, rồi kiểm SHA đó có thuộc
+#   repo này không. Hai việc, hai lý do:
+#     - đọc thẻ meta ⇒ so đúng thứ đang phục vụ người dùng, không phải thứ ta đoán;
+#     - `git cat-file -e` ⇒ một FLEET_BASE_URL trỏ nhầm sang deployment của repo
+#       KHÁC (hoặc một bản dựng từ lịch sử đã bị viết lại) bị chặn NGAY, thay vì
+#       chạy trót lọt rồi báo cáo về một hệ thống khác. Thiếu dữ liệu là THẤT BẠI
+#       chứ không phải "bỏ qua" — cùng luật với buildAttestation.ts.
+#   Chạy tay có thể ép bằng input `expected_sha` (khi đang thử một preview cụ
+#   thể); để trống thì tự dò.
 
 name: Copilot E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: 'SHA 40 hex của bản build đang chạy ở FLEET_BASE_URL. Để trống = tự đọc thẻ <meta name="build-sha"> của trang.'
+        required: false
+        type: string
   schedule:
     # 19:00 UTC = 02:00 giờ Việt Nam (UTC+7) — ngoài giờ làm việc.
     - cron: '0 19 * * *'
@@ -53,7 +69,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # fetch-depth: 0 — bước xác minh phía dưới cần TOÀN BỘ lịch sử để trả lời
+      # được "SHA của bản deploy có thuộc repo này không". Với clone nông thì một
+      # commit hợp lệ nhưng cũ vẫn trượt thành "không thuộc repo": phép kiểm báo
+      # động giả, và một phép kiểm báo động giả sẽ bị tắt.
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
 
       - name: Setup Node 24.18.0
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -69,6 +91,35 @@ jobs:
       - name: Cài Chromium cho Playwright
         run: npx playwright install --with-deps chromium
 
+      - name: Xác định SHA của bản đang chạy ở FLEET_BASE_URL
+        env:
+          FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
+          SHA_NHAP: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FLEET_BASE_URL:-}" ]; then
+            echo "::error::Thieu secret FLEET_BASE_URL — khong biet dang thu ban nao."
+            exit 1
+          fi
+          if [ -n "${SHA_NHAP:-}" ]; then
+            sha="$SHA_NHAP"
+            nguon="input expected_sha (chay tay)"
+          else
+            nguon="the meta build-sha cua $FLEET_BASE_URL"
+            trang=$(curl -fsSL --max-time 60 "$FLEET_BASE_URL/")
+            sha=$(printf '%s' "$trang" | grep -o 'build-sha"[[:space:]]*content="[0-9a-f]\{40\}' | head -1 | grep -o '[0-9a-f]\{40\}' || true)
+          fi
+          if ! printf '%s' "$sha" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::Khong lay duoc build SHA 40 hex (nguon: $nguon). Ban dang chay KHONG khai minh la ai — dung thieu VITE_BUILD_SHA/VERCEL_GIT_COMMIT_SHA."
+            exit 1
+          fi
+          if ! git cat-file -e "$sha^{commit}" 2>/dev/null; then
+            echo "::error::Ban deploy tai $FLEET_BASE_URL dung tu commit $sha, commit nay KHONG thuoc lich su repo nay. FLEET_BASE_URL dang tro nham he thong khac."
+            exit 1
+          fi
+          echo "EXPECTED_SOURCE_SHA=$sha" >> "$GITHUB_ENV"
+          echo "Ban dang chay: $sha (nguon: $nguon)"
+
       - name: 3 spec Copilot (readonly smoke · xác nhận · ma trận nháp)
         env:
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
@@ -82,7 +133,8 @@ jobs:
           # Mở 2 test ghi nháp trong copilot-draft-matrix.spec.ts. Cờ này nằm
           # trong spec (`test.skip` khi khác '1') — KHÔNG gỡ cờ, chỉ đặt env.
           COPILOT_DRAFT_MATRIX_LIVE: '1'
-          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          # EXPECTED_SOURCE_SHA đến từ $GITHUB_ENV của bước trên. Cố ý KHÔNG khai
+          # lại ở đây: env cấp-bước sẽ ĐÈ giá trị đó và ta quay về đúng lỗi cũ.
         run: |
           set -euo pipefail
           cd .e2e-fleet
@@ -91,17 +143,27 @@ jobs:
             specs/copilot-confirmation.spec.ts \
             specs/copilot-draft-matrix.spec.ts \
             --reporter=list,html \
-            --trace=retain-on-failure
+            --trace=off
 
-      # `if: always()`: artifact chỉ có giá trị đúng lúc suite ĐỎ. Bỏ điều kiện
-      # này là giữ lại bằng chứng cho mỗi lần không cần tới nó.
-      - name: Tải lên report + trace
+      # TRACE TẮT, VÀ CHỈ TẢI LÊN playwright-report/ — đây là quyết định BẢO MẬT,
+      # không phải chuyện tiết kiệm dung lượng.
+      #
+      # Trace của Playwright ghi lại đối số của mọi hành động và toàn bộ request:
+      # `fill()` vào ô mật khẩu và body `grant_type=password` của GoTrue đều nằm
+      # trong đó. Artifact của Actions tải về được bởi bất kỳ ai đọc được repo và
+      # sống 14 ngày ⇒ trace = mật khẩu DEMO phát tán ra ngoài vault.
+      # `test-results/` là nơi trace/video/screenshot rơi vào nên cũng KHÔNG tải.
+      #
+      # HTML report chỉ có tên bước và thông báo lỗi, không có giá trị đã điền —
+      # đủ để biết ca nào đỏ và đỏ ở đâu. Đổi lại: gỡ lỗi sâu phải chạy lại tại
+      # máy. Đã đăng ký ở tooling/known-gaps.yaml (e2e-copilot-khong-co-trace)
+      # kèm đường nâng cấp: đăng nhập bằng storageState dựng NGOÀI vùng tracing,
+      # rồi mới bật trace lại.
+      - name: Tải lên HTML report (KHÔNG kèm trace — xem chú thích trên)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: copilot-e2e-report
-          path: |
-            .e2e-fleet/playwright-report/
-            .e2e-fleet/test-results/
+          path: .e2e-fleet/playwright-report/
           if-no-files-found: warn
           retention-days: 14

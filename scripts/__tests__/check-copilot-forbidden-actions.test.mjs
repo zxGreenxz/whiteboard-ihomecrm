@@ -8,6 +8,7 @@ import test from 'node:test';
 import {
   ACTION_PATTERNS,
   FORBIDDEN_COPILOT_ACTIONS,
+  L6_FOREVER,
   collectCopilotSourceFiles,
   inventoryFromCopilotSource,
   readActionPolicy,
@@ -127,6 +128,58 @@ test('đột biến: hạ một mục l6Forever xuống "allowed" thì validator
   // Cùng một đột biến ở dạng khác: giữ giá trị hợp lệ nhưng hạ cấp khỏi forbidden.
   const haCap = { ...goc, kinds: { ...goc.kinds, secret: 'step_up_required' } };
   assert.throws(() => validateActionPolicy(haCap), /secret/);
+});
+
+// ── Đột biến XOÁ, không phải đột biến ĐỔI ───────────────────────────────────
+// Ba test trên chỉ đổi GIÁ TRỊ. Đo 02/09/2026: cách nới gate rẻ nhất không phải
+// đổi giá trị mà là XOÁ dòng — bỏ "delete" khỏi kinds thì FORBIDDEN_COPILOT_ACTIONS
+// (suy từ Object.keys) không còn "delete", bộ dò không bao giờ được gọi, một tool
+// `.delete().eq('id', id)` bị chấm "guidance" và gate XANH. Bất biến vòng tròn:
+// mảng còn lại luôn tự thoả chính nó.
+
+test('đột biến XOÁ kind khỏi policy → NÉM (không để gate mù với loại hành động đó)', () => {
+  const goc = readActionPolicy();
+  for (const bo of ['delete', 'posting', 'approval', 'permission']) {
+    const kinds = { ...goc.kinds };
+    delete kinds[bo];
+    const dotBien = { ...goc, kinds };
+    assert.throws(
+      () => validateActionPolicy(dotBien),
+      new RegExp(bo),
+      `xoá kind "${bo}" phải bị chặn`,
+    );
+  }
+});
+
+test('đột biến XOÁ hai kind cùng lúc: gate phải mù nếu KHÔNG có chiều ngược — chứng minh bằng hành vi', () => {
+  const goc = readActionPolicy();
+  const kinds = { ...goc.kinds };
+  delete kinds.delete;
+  delete kinds.posting;
+  const teo = { ...goc, kinds, l6Forever: [...goc.l6Forever] };
+  assert.throws(() => validateActionPolicy(teo), /delete|posting/);
+
+  // Và đây là HẬU QUẢ nếu policy teo đó lọt được: bộ dò không còn được gọi.
+  // (Gọi thẳng inventory với danh sách kind teo để đo, không đi qua validator.)
+  const nguon = {
+    'src/copilot/tools/x.ts': "dt({ name: 'xoa_hop_dong', execute: async () => supabase.from('c').delete().eq('id', id) });",
+  };
+  const daChan = inventoryFromCopilotSource(nguon);
+  assert.equal(daChan[0].executionKind, 'delete', 'với policy đủ kind, tool này phải bị chấm delete');
+});
+
+test('đột biến TEO l6Forever → NÉM, vì thành viên L6 neo bằng hằng số trong mã', () => {
+  const goc = readActionPolicy();
+  assert.deepEqual([...L6_FOREVER].sort(), ['deploy', 'secret', 'sql']);
+
+  const teo = { ...goc, l6Forever: ['sql'] };
+  assert.throws(() => validateActionPolicy(teo), /l6Forever must be exactly/);
+
+  const rong = { ...goc, l6Forever: [] };
+  assert.throws(() => validateActionPolicy(rong), /l6Forever must be exactly/);
+
+  const phinh = { ...goc, l6Forever: [...goc.l6Forever, 'approval'] };
+  assert.throws(() => validateActionPolicy(phinh), /unexpected: approval/);
 });
 
 test('kind khai trong policy mà thiếu bộ dò cũng bị NÉM', () => {

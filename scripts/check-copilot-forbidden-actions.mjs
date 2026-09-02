@@ -20,6 +20,17 @@ export const POLICY_FILE = join(repoRoot, 'tooling', 'copilot-action-policy.json
 export const POLICY_VERDICTS = Object.freeze(['forbidden', 'step_up_required']);
 
 /**
+ * L6 membership is anchored in CODE, not read back from the file being checked.
+ *
+ * Đo 02/09/2026: bản trước chỉ kiểm "những gì ĐANG có trong l6Forever phải là
+ * forbidden" — một bất biến vòng tròn. Xoá bớt phần tử khỏi mảng JSON thì mảng
+ * còn lại vẫn thoả, validate PASS, và ba ranh giới vĩnh viễn teo đi mà không
+ * test nào đỏ. Một hằng số trong mã là thứ duy nhất mà file dữ liệu không sửa
+ * được: policy phải khớp ĐÚNG tập này, không thiếu và không thừa.
+ */
+export const L6_FOREVER = Object.freeze(['deploy', 'secret', 'sql']);
+
+/**
  * Regex per action kind. A kind declared in the policy but missing here would be
  * a word with no detector behind it, so validateActionPolicy() rejects that.
  *
@@ -58,11 +69,34 @@ export function validateActionPolicy(policy) {
         problems.push(`${kind}: no detector in ACTION_PATTERNS — a kind nobody can detect is a kind that does not exist`);
       }
     }
+    // CHIỀU NGƯỢC — thứ mà bản trước thiếu. FORBIDDEN_COPILOT_ACTIONS suy ra từ
+    // `Object.keys(kinds)` và chính nó là danh sách dùng để dò mã nguồn: xoá một
+    // dòng khỏi JSON làm gate MÙ với loại hành động đó (đo 02/09/2026: bỏ
+    // "delete" thì `.delete().eq(...)` bị chấm "guidance", problems rỗng, gate
+    // XANH). Một bộ dò tồn tại mà không kind nào gọi tới là một cửa đã tháo.
+    for (const kind of Object.keys(ACTION_PATTERNS)) {
+      if (!Object.hasOwn(kinds, kind)) {
+        problems.push(`${kind}: ACTION_PATTERNS has a detector but policy dropped the kind — the gate would go blind to it`);
+      }
+    }
   }
 
   const forever = policy?.l6Forever;
-  if (!Array.isArray(forever) || forever.length === 0) problems.push('l6Forever must be a non-empty array');
+  if (!Array.isArray(forever)) problems.push('l6Forever must be an array');
   else {
+    // So khớp HAI CHIỀU với hằng số trong mã: thiếu một mục là mất một ranh giới
+    // vĩnh viễn, thừa một mục là policy nói về thứ hằng số không công nhận.
+    const thuc = [...forever].map(String).sort();
+    const mong = [...L6_FOREVER].sort();
+    if (JSON.stringify(thuc) !== JSON.stringify(mong)) {
+      const thieu = mong.filter((kind) => !thuc.includes(kind));
+      const thua = thuc.filter((kind) => !mong.includes(kind));
+      problems.push(
+        `l6Forever must be exactly [${mong.join(', ')}] (anchored in code)` +
+          `${thieu.length ? `; missing: ${thieu.join(', ')}` : ''}` +
+          `${thua.length ? `; unexpected: ${thua.join(', ')}` : ''}`,
+      );
+    }
     for (const kind of forever) {
       if (!kinds || !Object.hasOwn(kinds, kind)) problems.push(`${kind}: listed in l6Forever but absent from kinds`);
       else if (kinds[kind] !== 'forbidden') {

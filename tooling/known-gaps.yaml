@@ -150,6 +150,23 @@ gaps:
       Hoà giải ContractWithRelations với kiểu sinh từ types.ts — hoặc bỏ hẳn kiểu viết tay và
       dùng kiểu suy ra từ select. Là một lượt riêng vì đụng nhiều consumer của kiểu đó.
 
+  - id: e2e-copilot-khong-co-trace
+    where: .github/workflows/copilot-e2e.yml (bước chạy 3 spec + bước upload-artifact)
+    expires_at: 2026-12-31
+    why: >
+      Suite E2E Copilot chạy `--trace=off` và artifact CHỈ gồm `playwright-report/`, nên khi
+      một ca đỏ trên CI ta biết ca nào và thông báo lỗi, nhưng KHÔNG có trace để xem lại từng
+      bước. Đó là mất khả năng chẩn đoán, và nó là cố ý: trace của Playwright ghi đối số mọi
+      hành động cùng toàn bộ request, tức `fill()` ô mật khẩu và body `grant_type=password`
+      của GoTrue nằm nguyên trong file. Artifact của Actions tải về được bởi bất kỳ ai đọc
+      được repo và sống 14 ngày — bật trace ở cấu hình đăng nhập hiện tại chính là phát tán
+      mật khẩu DEMO ra ngoài vault. Đăng ký 02/09/2026, cùng lượt đưa suite này lên CI.
+    exit_condition: >
+      Đổi cách đăng nhập sang `storageState`: dựng phiên MỘT lần trong global setup (ngoài
+      vùng tracing, không spec nào thấy mật khẩu), các spec nạp lại state đó. Khi mật khẩu
+      không còn đi qua trang nào bên trong trace, bật lại `--trace=retain-on-failure` và tải
+      lên `test-results/`, rồi xoá mục này.
+
 # ĐÃ ĐÓNG 06/08/2026 — claude-agents-md-still-full.
 # CLAUDE.md 211 -> 62 dòng, AGENTS.md 146 -> 43, chỉ còn phần đặc thù agent
 # (trailer commit, cách gọi công cụ browser) + pointer về Contract.

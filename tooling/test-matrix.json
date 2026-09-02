@@ -103,21 +103,47 @@
       "timeoutMinutes": 60
     },
     {
+      "id": "e2e-fleet-copilot",
+      "runner": "playwright",
+      "ciJob": "copilot-e2e / copilot-e2e",
+      "command": "cd .e2e-fleet && FLEET_WORKERS=2 npx playwright test specs/copilot-readonly-smoke.spec.ts specs/copilot-confirmation.spec.ts specs/copilot-draft-matrix.spec.ts --reporter=list,html --trace=off",
+      "risk": "normal",
+      "includes": [
+        ".e2e-fleet/specs/copilot-readonly-smoke.spec.ts",
+        ".e2e-fleet/specs/copilot-confirmation.spec.ts",
+        ".e2e-fleet/specs/copilot-draft-matrix.spec.ts"
+      ],
+      "note": "Ba spec Copilot mà .github/workflows/copilot-e2e.yml chạy thật trên CI (workflow_dispatch + cron 19:00 UTC), sau khi 5 secret FLEET_* được nạp ngày 02/09/2026. Chỉ ghi vào org DEMO. EXPECTED_SOURCE_SHA lấy từ thẻ <meta name=\"build-sha\"> của bản đang chạy chứ không phải github.sha. Không có trace trong artifact — xem known-gap e2e-copilot-khong-co-trace.",
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/copilot-e2e.yml",
+          "job": "copilot-e2e"
+        }
+      ],
+      "environment": "ci",
+      "timeoutMinutes": 30
+    },
+    {
       "id": "e2e-fleet",
       "runner": "playwright",
-      "ciJob": "(local — cần FLEET_PASS_*, không chạy trên CI)",
+      "ciJob": "(local — phần fleet còn lại chưa có job CI)",
       "command": "cd .e2e-fleet && FLEET_WORKERS=8 npx playwright test specs/<file>.spec.ts",
       "risk": "normal",
       "includes": [
         ".e2e-fleet/specs/**/*.spec.ts"
       ],
-      "note": "Mật khẩu không nằm trong repo nên đây là bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO.",
+      "excludes": [
+        ".e2e-fleet/specs/copilot-readonly-smoke.spec.ts",
+        ".e2e-fleet/specs/copilot-confirmation.spec.ts",
+        ".e2e-fleet/specs/copilot-draft-matrix.spec.ts"
+      ],
+      "note": "Phần fleet CHƯA lên CI: bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO. Ba spec Copilot đã tách sang suite e2e-fleet-copilot nên bị loại ở `excludes` — nếu không, matrix sẽ nói hai suite cùng sở hữu chúng.",
       "ciJobs": [],
       "environment": "local",
       "blockedFromCi": {
-        "reason": "Cần FLEET_PASS_CHUNHA/KETOAN/QUANLY của org DEMO. Mật khẩu không nằm trong repo và chưa được nạp làm GitHub secret, nên CI không đăng nhập được.",
+        "reason": "Credential KHÔNG còn là rào cản: 5 secret FLEET_* đã nạp 02/09/2026 và 3 spec Copilot đang chạy thật ở copilot-e2e.yml. Phần còn lại của fleet vẫn chưa có job nào gọi tới, và một số spec ghi dữ liệu đòi FLEET_BASE_URL trỏ bản preview dựng từ đúng commit đang review — chưa có đường dựng preview đó trong CI. Thiếu là JOB + MÔI TRƯỜNG, không phải mật khẩu.",
         "expiry": "2026-11-30",
-        "exitCondition": "Nạp 3 secret FLEET_PASS_* vào GitHub → thêm job playwright chạy specs trên org DEMO → đổi environment thành ci và xoá mục này."
+        "exitCondition": "Dựng preview theo commit (hoặc chọn một môi trường DEMO cố định non-production) rồi mở rộng copilot-e2e.yml — hoặc thêm workflow fleet riêng — chạy nốt các spec còn lại; chuyển chúng sang suite có `ciJobs` và xoá mục này."
       }
     },
     {
