@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-02T09:28:56.082Z",
+  "generatedAt": "2026-09-02T09:38:42.399Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 460,
+    "ledger-applied": 461,
     "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
@@ -8912,6 +8912,17 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-02T09:28:32.947Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260902092845_forfeit_pair_di_cua_chuyen_trach_khi_duyet_v2.sql",
+      "version": "20260902092845",
+      "name": "forfeit_pair_di_cua_chuyen_trach_khi_duyet_v2",
+      "scheme": "timestamp14",
+      "sha256": "910aab247934cafaf1b857dd67d3d7e4e15150b1e48d33793dcfdf57812129e8",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-02T09:36:06.969Z|bien-nhan-backup"
       ]
     },
     {
