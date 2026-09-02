@@ -21,6 +21,7 @@ import {
   copilotRolloutTransitions,
   formatCopilotRolloutError,
   rolloutRowsFromAvailability,
+  nhomRolloutTheoScope,
   setCopilotFeatureFlagV2,
   useCopilotAvailability,
   type CopilotFlagState,
@@ -251,8 +252,13 @@ function RolloutTab() {
   const [rollbackReference, setRollbackReference] = useState('');
   const [pending, setPending] = useState<string | null>(null);
   const rows = rolloutRowsFromAvailability(availability);
+  const nhom = nhomRolloutTheoScope(rows);
 
-  const transition = async (contractId: string, state: CopilotFlagState) => {
+  const transition = async (
+    scope: 'page' | 'action',
+    contractId: string,
+    state: CopilotFlagState,
+  ) => {
     if (!availability) {
       toast.error('Rollout đang bị khóa: chưa có snapshot server còn hiệu lực.');
       return;
@@ -261,10 +267,14 @@ function RolloutTab() {
       toast.error('Nhập lý do, liên kết bằng chứng và tham chiếu rollback trước.');
       return;
     }
-    setPending(`${contractId}:${state}`);
+    setPending(`${scope}:${contractId}:${state}`);
     try {
       await setCopilotFeatureFlagV2({
-        scope: 'page',
+        // Scope lấy từ CHÍNH hàng đang bấm. Chết cứng 'page' thì một contract
+        // scope `action` sẽ gửi sai khoá và RPC trả `unknown_rollout_contract`
+        // — thông báo đó đọc như "contract không tồn tại", không như "gửi nhầm
+        // scope", nên người vận hành đi tìm sai chỗ.
+        scope,
         contractId,
         state,
         expectedRevision: availability.revision,
@@ -348,37 +358,46 @@ function RolloutTab() {
               <th className="p-2">Chuyển tiếp hợp lệ</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${row.scope}:${row.contractId}`} className="border-t">
-                <td className="p-2">
-                  <div className="font-medium">{row.label}</div>
-                  <div className="font-mono text-xs text-muted-foreground">{row.scope}:{row.contractId}</div>
-                </td>
-                <td className="p-2">
-                  <span className="rounded bg-muted px-2 py-1 text-xs font-medium">{row.state}</span>
-                </td>
-                <td className="p-2">
-                  <div className="flex flex-wrap gap-2">
-                    {copilotRolloutTransitions(row.state).map((nextState) => (
-                      <Button
-                        key={nextState}
-                        size="sm"
-                        variant={nextState === 'disabled' ? 'destructive' : 'outline'}
-                        disabled={!availability || pending !== null || !reason.trim() || !evidenceLink.trim() || !rollbackReference.trim()}
-                        onClick={() => void transition(row.contractId, nextState)}
-                      >
-                        {pending === `${row.contractId}:${nextState}` ? 'Đang lưu…' : nextState}
-                      </Button>
-                    ))}
-                  </div>
-                </td>
+          {nhom.map((group) => (
+            <tbody key={group.scope}>
+              <tr className="border-t bg-muted/30">
+                <th className="p-2 text-left text-xs font-semibold uppercase tracking-wide" colSpan={3}>
+                  {group.nhan} · {group.rows.length} contract
+                </th>
               </tr>
-            ))}
-            {!rows.length && (
+              {group.rows.map((row) => (
+                <tr key={`${row.scope}:${row.contractId}`} className="border-t">
+                  <td className="p-2">
+                    <div className="font-medium">{row.label}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{row.scope}:{row.contractId}</div>
+                  </td>
+                  <td className="p-2">
+                    <span className="rounded bg-muted px-2 py-1 text-xs font-medium">{row.state}</span>
+                  </td>
+                  <td className="p-2">
+                    <div className="flex flex-wrap gap-2">
+                      {copilotRolloutTransitions(row.state).map((nextState) => (
+                        <Button
+                          key={nextState}
+                          size="sm"
+                          variant={nextState === 'disabled' ? 'destructive' : 'outline'}
+                          disabled={!availability || pending !== null || !reason.trim() || !evidenceLink.trim() || !rollbackReference.trim()}
+                          onClick={() => void transition(row.scope, row.contractId, nextState)}
+                        >
+                          {pending === `${row.scope}:${row.contractId}:${nextState}` ? 'Đang lưu…' : nextState}
+                        </Button>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
+          {!rows.length && (
+            <tbody>
               <tr><td className="p-3 text-muted-foreground" colSpan={3}>Chưa có snapshot rollout.</td></tr>
-            )}
-          </tbody>
+            </tbody>
+          )}
         </table>
       </div>
     </div>

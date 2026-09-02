@@ -107,9 +107,7 @@ describe('Copilot availability adapters', () => {
       fetchedAt: Date.now(),
       organizationId: ORG,
       states: {
-        'page:rooms.list': 'enabled' as const,
-        'page:customers.list': 'enabled' as const,
-        'page:invoices.list': 'enabled' as const,
+        'page:copilot.navigation': 'enabled' as const,
       },
     };
     let navigated = '';
@@ -120,7 +118,7 @@ describe('Copilot availability adapters', () => {
       availability: snapshot,
     }).mo_trang;
     expect(tool).toBeDefined();
-    snapshot.states['page:rooms.list'] = 'disabled';
+    snapshot.states['page:copilot.navigation'] = 'disabled';
     await expect(tool!.execute({ trang: 'rooms.list' }, { signal: new AbortController().signal })).rejects.toThrow(
       /rollout_unavailable/,
     );

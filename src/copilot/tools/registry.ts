@@ -13,7 +13,6 @@ import { formatVND } from '@/lib/utils';
 import { mapPayloadToBuildings, type RpcPayload } from '@/pages/phong-trong/supabaseData';
 import { maskPhonePartial } from '../maskPii';
 import {
-  KHOA_TRANG_UI_CONTROL,
   PILOT_UI_CONTROL_ROUTES,
   ROUTE_DIEU_HUONG,
 } from '../pageScope';
@@ -22,6 +21,7 @@ import { TOOL_NGHIEP_VU } from './nghiepVuTools';
 import {
   copilotAvailability,
   copilotAvailabilitySnapshotIsFresh,
+  KHOA_ROLLOUT_DIEU_HUONG,
   type CopilotAvailabilitySnapshot,
 } from '../featureFlags';
 
@@ -640,9 +640,12 @@ export function buildRegistryDefinitions(): DomainTool[] {
         trang: z.enum(MO_TRANG_KEYS),
       }),
       navigationOnly: true, // chỉ mở trang/trả link — nhãn phân loại cho bảng tool
-      // Rollout theo ĐÚNG các trang pilot UI-control, giữ nguyên hành vi trước
-      // lát này: snapshot hiện chỉ bật 3 khoá đó.
-      rolloutKeys: KHOA_TRANG_UI_CONTROL,
+      // MỘT khoá cho cả 19 đích, KHÔNG phải bộ khoá của 3 trang pilot.
+      // Bản trước đòi cả ba trang UI-control cùng `enabled` mới cho điều hướng:
+      // tắt rollout của riêng trang Hoá đơn là mất luôn đường dẫn tới 18 trang
+      // không liên quan. Điều hướng chỉ mở trang/trả link nên nó có công tắc
+      // riêng — xem KHOA_ROLLOUT_DIEU_HUONG.
+      rolloutKey: KHOA_ROLLOUT_DIEU_HUONG,
       execute: async (args, ctx) => {
         const target = MO_TRANG_THEO_KHOA.get(args.trang);
         if (!target) throw new Error(`Trang "${args.trang}" không nằm trong phạm vi điều hướng.`);

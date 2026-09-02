@@ -3,7 +3,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHI_DAN_NGOAI_PHAM_VI,
-  KHOA_TRANG_UI_CONTROL,
   PILOT_UI_CONTROL_ROUTES,
   ROUTE_DIEU_HUONG,
   chiDanTrang,
@@ -65,8 +64,9 @@ describe('ROUTE_DIEU_HUONG — sinh từ page contract', () => {
 describe('PILOT_UI_CONTROL_ROUTES — allowlist thao tác', () => {
   it('đúng 3 trang pilot, và đó là các trang có safeControlIds', () => {
     expect([...PILOT_UI_CONTROL_ROUTES]).toEqual(['/apartments', '/invoices', '/customers']);
-    expect([...KHOA_TRANG_UI_CONTROL]).toEqual(['rooms.list', 'invoices.list', 'customers.list']);
     const coControl = COPILOT_PAGE_CONTRACTS.filter((page) => page.safeControlIds.length > 0);
+    // Khoá rollout mà `uiControlGuard` tra khi page-agent đứng ở ba trang này.
+    expect(coControl.map((page) => page.key)).toEqual(['rooms.list', 'invoices.list', 'customers.list']);
     expect(coControl.map((page) => page.canonicalRoute ?? page.route)).toEqual([
       ...PILOT_UI_CONTROL_ROUTES,
     ]);

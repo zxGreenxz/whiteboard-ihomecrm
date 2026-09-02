@@ -131,8 +131,12 @@ const HOP_DONG_CO_CONTROL: readonly CopilotPageContract[] = COPILOT_PAGE_CONTRAC
  */
 export const PILOT_UI_CONTROL_ROUTES: readonly string[] = HOP_DONG_CO_CONTROL.map(routeCanonical);
 
-/** Khoá rollout của đúng các trang pilot ở trên (server bật/tắt theo khoá này). */
-export const KHOA_TRANG_UI_CONTROL: readonly string[] = HOP_DONG_CO_CONTROL.map((page) => page.key);
+// KHOA_TRANG_UI_CONTROL đã bị gỡ 03/09/2026: người dùng duy nhất của nó là
+// `rolloutKeys` của `mo_trang`, mà điều hướng nay có khoá riêng
+// (`KHOA_ROLLOUT_DIEU_HUONG`). Khoá rollout của TỪNG trang UI-control vẫn được
+// đọc đúng chỗ nó có nghĩa — `uiControlGuard` tra theo `page.key` của contract
+// ứng với pathname hiện tại. Giữ lại một hằng số không ai gác bằng sẽ đọc như
+// một hàng rào, trong khi nó chỉ là một mảng.
 
 /** Câu trả lời khi page-agent đứng ở trang không thuộc pilot. */
 export const CHI_DAN_NGOAI_PHAM_VI = 'Trang này ngoài phạm vi thao tác. Hãy dừng và báo người dùng.';

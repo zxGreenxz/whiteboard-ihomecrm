@@ -1,18 +1,78 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { ROUTE_DIEU_HUONG } from './pageScope';
 
 export type CopilotFlagState = 'disabled' | 'shadow' | 'enabled';
 
-export const COPILOT_ROLLOUT_CONTRACTS = [
-  { scope: 'page' as const, contractId: 'rooms.list', label: 'Danh sách phòng' },
-  { scope: 'page' as const, contractId: 'customers.list', label: 'Danh sách khách hàng' },
-  { scope: 'page' as const, contractId: 'invoices.list', label: 'Danh sách hóa đơn' },
-];
+/**
+ * Khoá rollout của ĐIỀU HƯỚNG (`mo_trang`) — MỘT khoá cho cả 19 đích.
+ *
+ * Vì sao tách khỏi rollout từng trang: điều hướng chỉ `navigate()` (UI-control)
+ * hoặc trả một link markdown (chat). Nó không đọc dữ liệu và không bấm gì, nên
+ * nó không cùng loại rủi ro với UI-control — và gác nó bằng ĐÚNG BỘ khoá của
+ * ba trang pilot có nghĩa là: mở thêm một trang cho page-agent thao tác thì
+ * cũng vô tình mở/đóng luôn khả năng dẫn đường tới 16 trang còn lại. Hai quyết
+ * định khác nhau đi chung một công tắc là cách chắc chắn để một trong hai bị
+ * bật nhầm.
+ *
+ * Khoá này scope `page` (không phải `action`) vì bảng `copilot_feature_flags`
+ * chỉ nhận hai giá trị đó và điều hướng là một bề mặt TRANG, không phải một
+ * thao tác ghi.
+ */
+export const KHOA_ROLLOUT_DIEU_HUONG = 'copilot.navigation';
 
-export interface CopilotRolloutRow {
+export interface CopilotRolloutContract {
   scope: 'page' | 'action';
   contractId: string;
   label: string;
+}
+
+/**
+ * Contract scope `action` — hôm nay RỖNG, và đó là sự thật của bảng flag.
+ *
+ * Seed trên server (`20260828170000`) chỉ có dòng scope `page`; chưa có mã nào
+ * đọc một khoá `action:` nào cả. Khai sẵn tên ở đây sẽ dựng lên một hàng trong
+ * trang admin mà `set_copilot_feature_flag_v2` từ chối với
+ * `unknown_rollout_contract` (RPC chỉ UPDATE dòng CÓ SẴN, không INSERT) —
+ * người vận hành bấm nút và nhận một lỗi không có cách nào tự chữa.
+ *
+ * Thêm một action contract = thêm dòng ở đây VÀ seed dòng tương ứng trong một
+ * migration; test `copilotRolloutSeedPagesMigration` canh cặp đó không lệch.
+ */
+export const COPILOT_ROLLOUT_ACTION_CONTRACTS: readonly CopilotRolloutContract[] = [];
+
+/**
+ * Dựng danh sách contract rollout. Hàm THUẦN để test bằng fixture: test nạp
+ * `ROUTE_DIEU_HUONG` thật chỉ khẳng định lại dữ liệu của hôm nay.
+ *
+ * Nguồn là `ROUTE_DIEU_HUONG` — tức `COPILOT_PAGE_CONTRACTS` đã lọc canonical
+ * (bỏ route `:param`, gộp trang chi tiết về trang danh sách) và đã có nhãn
+ * tiếng Việt từ catalog quyền. Chép tay ba dòng như bản trước có nghĩa là 16
+ * trang còn lại KHÔNG BAO GIỜ bật được: RPC transition chỉ UPDATE dòng có sẵn,
+ * nên một trang thiếu contract là một trang thiếu công tắc.
+ */
+export function taoRolloutContracts(
+  dichDieuHuong: readonly { key: string; label: string }[],
+  contractAction: readonly CopilotRolloutContract[] = COPILOT_ROLLOUT_ACTION_CONTRACTS,
+): CopilotRolloutContract[] {
+  const theoKhoa = new Map<string, CopilotRolloutContract>();
+  for (const muc of dichDieuHuong) {
+    if (!theoKhoa.has(muc.key)) {
+      theoKhoa.set(muc.key, { scope: 'page', contractId: muc.key, label: muc.label });
+    }
+  }
+  theoKhoa.set(KHOA_ROLLOUT_DIEU_HUONG, {
+    scope: 'page',
+    contractId: KHOA_ROLLOUT_DIEU_HUONG,
+    label: 'Điều hướng của Copilot (mở trang)',
+  });
+  return [...theoKhoa.values(), ...contractAction];
+}
+
+export const COPILOT_ROLLOUT_CONTRACTS: readonly CopilotRolloutContract[] =
+  taoRolloutContracts(ROUTE_DIEU_HUONG);
+
+export interface CopilotRolloutRow extends CopilotRolloutContract {
   state: CopilotFlagState;
   revision: number;
 }
@@ -55,6 +115,34 @@ export function rolloutRowsFromAvailability(
     state: copilotAvailability(snapshot, contract.contractId),
     revision: snapshot?.revision ?? 0,
   }));
+}
+
+export interface NhomRollout {
+  scope: 'page' | 'action';
+  nhan: string;
+  rows: CopilotRolloutRow[];
+}
+
+const NHAN_SCOPE: Readonly<Record<'page' | 'action', string>> = {
+  page: 'Trang (page)',
+  action: 'Thao tác (action)',
+};
+
+/**
+ * Gom hàng rollout theo scope cho trang admin.
+ *
+ * Danh sách đi từ 3 dòng lên 20; một bảng phẳng 20 dòng với khoá kỹ thuật
+ * `page:reports.real-estate` bên dưới mỗi nhãn thì người vận hành phải đọc từng
+ * dòng mới biết mình đang bật cái gì. Nhóm rỗng bị bỏ hẳn — một tiêu đề
+ * "Thao tác (action)" không có dòng nào dưới nó chỉ nói dối rằng có thứ để bật.
+ */
+export function nhomRolloutTheoScope(rows: readonly CopilotRolloutRow[]): NhomRollout[] {
+  const nhom: NhomRollout[] = [];
+  for (const scope of ['page', 'action'] as const) {
+    const cua = rows.filter((row) => row.scope === scope);
+    if (cua.length > 0) nhom.push({ scope, nhan: NHAN_SCOPE[scope], rows: cua });
+  }
+  return nhom;
 }
 
 type AvailabilityRpc = (organizationId: string) => PromiseLike<{ data: unknown; error: unknown }>;

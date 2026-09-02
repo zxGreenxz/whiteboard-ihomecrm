@@ -14,6 +14,7 @@ import {
   listDocTopics,
 } from '../tools/registry';
 import { PILOT_UI_CONTROL_ROUTES, ROUTE_DIEU_HUONG } from '../pageScope';
+import { KHOA_ROLLOUT_DIEU_HUONG } from '../featureFlags';
 import { makeIdempotencyKey } from '../tools/writeTools';
 import { DANGER_RE, SUBMIT_RE, nhanNguyHiem } from '../safetyGuard';
 import { hrefAnToan } from '../hrefAnToan';
@@ -32,6 +33,7 @@ const AVAILABILITY = {
     'page:rooms.list': 'enabled' as const,
     'page:customers.list': 'enabled' as const,
     'page:invoices.list': 'enabled' as const,
+    'page:copilot.navigation': 'enabled' as const,
   },
 };
 
@@ -258,6 +260,35 @@ describe('registry + adapters', () => {
     const moTrang = buildRegistryDefinitions().find((t) => t.name === 'mo_trang')!;
     expect(moTrang.description).toContain('rooms.list — Căn hộ / Phòng — thao tác được');
     expect(moTrang.description).toContain('tasks.list — Công việc — chỉ mở trang');
+  });
+
+  it('mo_trang gác bằng MỘT khoá copilot.navigation, không bằng bộ khoá 3 trang pilot', () => {
+    // Bản trước dùng `rolloutKeys` = 3 trang UI-control, nên tắt rollout của
+    // riêng trang Hoá đơn là mất luôn đường dẫn tới 18 trang khác — hai quyết
+    // định khác nhau chung một công tắc.
+    const moTrang = buildRegistryDefinitions().find((t) => t.name === 'mo_trang')!;
+    expect(moTrang.rolloutKey).toBe(KHOA_ROLLOUT_DIEU_HUONG);
+    expect(moTrang.rolloutKeys).toBeUndefined();
+
+    const chiDieuHuong = {
+      revision: 2,
+      fetchedAt: Date.now(),
+      organizationId: ORG_TEST,
+      states: { 'page:copilot.navigation': 'enabled' as const },
+    };
+    const ctx = { perms: SUPER, organizationId: ORG_TEST, availability: chiDieuHuong };
+    // Điều hướng bật, mọi trang tắt: vẫn dẫn đường được, vẫn không đọc gì.
+    expect(toLlmTools(buildRegistryDefinitions(), ctx).mo_trang).toBeDefined();
+    expect(toLlmTools(buildRegistryDefinitions(), ctx).phong_trong).toBeUndefined();
+
+    const tatDieuHuong = {
+      ...chiDieuHuong,
+      states: { 'page:rooms.list': 'enabled' as const },
+    };
+    const ctxTat = { perms: SUPER, organizationId: ORG_TEST, availability: tatDieuHuong };
+    expect(toLlmTools(buildRegistryDefinitions(), ctxTat).mo_trang).toBeUndefined();
+    expect(toPageAgentTools(buildRegistryDefinitions(), ctxTat).mo_trang).toBeUndefined();
+    expect(toLlmTools(buildRegistryDefinitions(), ctxTat).phong_trong).toBeDefined();
   });
 
   it('mo_trang: chặn khi không có quyền module đích', async () => {

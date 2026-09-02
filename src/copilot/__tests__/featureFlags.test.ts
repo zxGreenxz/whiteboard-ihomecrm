@@ -5,11 +5,16 @@ import {
   parseCopilotAvailability,
   filterAvailableContractKeys,
   COPILOT_ROLLOUT_CONTRACTS,
+  COPILOT_ROLLOUT_ACTION_CONTRACTS,
+  KHOA_ROLLOUT_DIEU_HUONG,
+  taoRolloutContracts,
+  nhomRolloutTheoScope,
   rolloutRowsFromAvailability,
   copilotRolloutTransitions,
   formatCopilotRolloutError,
   type CopilotAvailabilitySnapshot,
 } from '../featureFlags';
+import { ROUTE_DIEU_HUONG } from '../pageScope';
 
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 
@@ -98,5 +103,119 @@ describe('Copilot feature flags', () => {
     expect(copilotRolloutTransitions('enabled')).toEqual(['shadow', 'disabled']);
     expect(formatCopilotRolloutError(new Error('copilot_rollout_stale_revision'))).toContain('tải lại');
     expect(formatCopilotRolloutError(new Error('rollout_evidence_required'))).toContain('bằng chứng');
+  });
+});
+
+describe('COPILOT_ROLLOUT_CONTRACTS sinh từ page contract', () => {
+  it('có ĐÚNG một dòng cho mỗi đích điều hướng, cộng khoá điều hướng', () => {
+    // Bản trước chép tay 3 dòng. Vì `set_copilot_feature_flag_v2` chỉ UPDATE
+    // dòng CÓ SẴN, một trang thiếu contract là một trang không bao giờ bật
+    // được — im lặng, và chỉ lộ ra khi ai đó hỏi "sao trang này không có nút".
+    expect(ROUTE_DIEU_HUONG.length).toBeGreaterThanOrEqual(15); // sàn chống-xanh-rỗng
+    const khoaTrang = COPILOT_ROLLOUT_CONTRACTS.filter((c) => c.scope === 'page').map(
+      (c) => c.contractId,
+    );
+    expect(new Set(khoaTrang)).toEqual(
+      new Set([...ROUTE_DIEU_HUONG.map((m) => m.key), KHOA_ROLLOUT_DIEU_HUONG]),
+    );
+    expect(khoaTrang.length).toBe(ROUTE_DIEU_HUONG.length + 1);
+  });
+
+  it('không có contractId trùng — trùng là hai dòng admin cùng bấm vào một flag', () => {
+    const khoa = COPILOT_ROLLOUT_CONTRACTS.map((c) => `${c.scope}:${c.contractId}`);
+    expect(new Set(khoa).size).toBe(khoa.length);
+  });
+
+  it('nhãn là tiếng Việt lấy từ catalog, không phải khoá kỹ thuật', () => {
+    for (const contract of COPILOT_ROLLOUT_CONTRACTS) {
+      expect(contract.label.trim().length, contract.contractId).toBeGreaterThan(0);
+      expect(contract.label, contract.contractId).not.toBe(contract.contractId);
+    }
+    expect(
+      COPILOT_ROLLOUT_CONTRACTS.find((c) => c.contractId === 'rooms.list')?.label,
+    ).toBe('Căn hộ / Phòng');
+  });
+
+  it('khoá điều hướng là scope `page` — bảng flag chỉ nhận page|action', () => {
+    const dieuHuong = COPILOT_ROLLOUT_CONTRACTS.find(
+      (c) => c.contractId === KHOA_ROLLOUT_DIEU_HUONG,
+    );
+    expect(dieuHuong?.scope).toBe('page');
+    expect(KHOA_ROLLOUT_DIEU_HUONG).toBe('copilot.navigation');
+  });
+
+  it('hàm dựng là THUẦN: fixture vào, contract ra, giữ nguyên contract action', () => {
+    const contracts = taoRolloutContracts(
+      [
+        { key: 'x.list', label: 'Trang X' },
+        { key: 'x.list', label: 'Trang X (trùng)' },
+        { key: 'y.list', label: 'Trang Y' },
+      ],
+      [{ scope: 'action', contractId: 'z.do', label: 'Thao tác Z' }],
+    );
+    expect(contracts.map((c) => `${c.scope}:${c.contractId}`)).toEqual([
+      'page:x.list',
+      'page:y.list',
+      `page:${KHOA_ROLLOUT_DIEU_HUONG}`,
+      'action:z.do',
+    ]);
+    expect(contracts.find((c) => c.contractId === 'x.list')?.label).toBe('Trang X');
+  });
+
+  it('danh sách contract action rỗng khớp seed server — không dựng nút bấm hỏng', () => {
+    // Có tên ở đây mà không có dòng trong bảng ⇒ admin bấm và nhận
+    // `unknown_rollout_contract`, không cách nào tự chữa.
+    expect(COPILOT_ROLLOUT_ACTION_CONTRACTS).toEqual([]);
+    expect(COPILOT_ROLLOUT_CONTRACTS.every((c) => c.scope === 'page')).toBe(true);
+  });
+
+  it('khoá vắng mặt trong snapshot ⇒ disabled, không phải "không rõ"', () => {
+    const snapshot: CopilotAvailabilitySnapshot = {
+      revision: 9,
+      fetchedAt: Date.now(),
+      organizationId: ORG,
+      states: { 'page:rooms.list': 'enabled' },
+    };
+    const rows = rolloutRowsFromAvailability(snapshot);
+    expect(rows).toHaveLength(COPILOT_ROLLOUT_CONTRACTS.length);
+    expect(rows.filter((row) => row.state !== 'disabled').map((row) => row.contractId)).toEqual([
+      'rooms.list',
+    ]);
+    expect(rows.find((row) => row.contractId === KHOA_ROLLOUT_DIEU_HUONG)?.state).toBe('disabled');
+  });
+});
+
+describe('nhóm rollout theo scope cho trang admin', () => {
+  it('giữ nguyên thứ tự trong nhóm, bỏ nhóm rỗng', () => {
+    const rows = rolloutRowsFromAvailability({
+      revision: 11,
+      fetchedAt: Date.now(),
+      organizationId: ORG,
+      states: {},
+    });
+    const nhom = nhomRolloutTheoScope(rows);
+    expect(nhom.map((n) => n.scope)).toEqual(['page']); // chưa có contract action nào
+    expect(nhom[0].rows.map((r) => r.contractId)).toEqual(rows.map((r) => r.contractId));
+    expect(nhom[0].nhan).toContain('Trang');
+  });
+
+  it('tách đúng hai nhóm khi có contract action', () => {
+    const rows = [
+      { scope: 'action' as const, contractId: 'z.do', label: 'Z', state: 'disabled' as const, revision: 1 },
+      { scope: 'page' as const, contractId: 'a.list', label: 'A', state: 'enabled' as const, revision: 1 },
+    ];
+    const nhom = nhomRolloutTheoScope(rows);
+    expect(nhom.map((n) => `${n.scope}:${n.rows.length}`)).toEqual(['page:1', 'action:1']);
+  });
+
+  it('tổng số hàng của các nhóm bằng số contract — không nuốt dòng nào', () => {
+    const rows = rolloutRowsFromAvailability({
+      revision: 12,
+      fetchedAt: Date.now(),
+      organizationId: ORG,
+      states: {},
+    });
+    const tong = nhomRolloutTheoScope(rows).reduce((n, g) => n + g.rows.length, 0);
+    expect(tong).toBe(COPILOT_ROLLOUT_CONTRACTS.length);
   });
 });
