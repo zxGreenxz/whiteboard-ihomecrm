@@ -237,7 +237,7 @@ describe('baoCaoNgayGrant', () => {
     const kq = await baoCaoNgayGrant(ORG);
     expect(rpc).toHaveBeenCalledWith('copilot_standing_grants_daily_report_v1', {
       p_organization_id: ORG,
-      p_date: expect.stringMatching(/^d{4}-d{2}-d{2}$/),
+      p_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     });
     expect(kq.ok).toBe(true);
     expect(kq.tongTien).toBe(2_000_000);
