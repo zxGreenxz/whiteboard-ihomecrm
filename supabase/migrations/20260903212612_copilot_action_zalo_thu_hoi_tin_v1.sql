@@ -25,9 +25,25 @@
 -- bang LIEN KET qua noi dung payload ma chinh RPC goc dong goi:
 -- `target_msg_id`/`target_cli_msg_id` = zalo_msg_id/cli_msg_id CUA DUNG tin
 -- nhan dang thu hoi (doc TRUOC khi goi RPC, tu v_before), cong voi cua so
--- thoi gian `created_at >= v_moc` (chup NGAY TRUOC khi goi) lam tieu chi phu.
--- Khong tim thay -> RAISE `external_effect_entity_not_found` TRUOC bat ky ghi
+-- thoi gian `created_at >= moc` (chup TRUOC khi goi) lam tieu chi phu. Khong
+-- tim thay -> RAISE `external_effect_entity_not_found` TRUOC bat ky ghi
 -- audit/ledger nao.
+--
+-- F1 fix round 2 (review) - MOC THOI GIAN SAI HAM: ban fix round 1 dung
+-- `clock_timestamp()` (dong ho THAT, tang lien tuc, ke ca giua cac cau lenh
+-- trong CUNG mot giao dich). Nhung `zalo_send_queue.created_at` MAC DINH
+-- `now()` - `now()`/`transaction_timestamp()` la MOC GIAO DICH, DONG BANG tu
+-- luc BEGIN toi luc COMMIT/ROLLBACK. Wrapper nay da chay qua nhieu cau lenh
+-- (doc phieu dong y, khoa advisory, tra ai_write_audit, doc v_before...)
+-- TRUOC khi toi day, nen `clock_timestamp()` luc do da tien XA hon `now()`
+-- cua chinh giao dich - `created_at >= v_moc` GAN NHU LUON SAI, moi lan goi
+-- deu RAISE `external_effect_entity_not_found` du zalo_recall_message chay
+-- dung. Sua: dung `transaction_timestamp()` (bi danh cua `now()`) - cung mot
+-- gia tri DONG BANG voi cai ma DEFAULT cua created_at dung. KHONG dung them
+-- dieu kien `id > v_max_id`: da doi chieu information_schema production -
+-- `zalo_send_queue.id` la `uuid` (`gen_random_uuid()`), khong phai
+-- bigint/serial don dieu; `id ASC` duoi day chi la tieu chi phu DINH DUOC,
+-- khong phai bang chung thoi gian.
 BEGIN;
 SET LOCAL lock_timeout = '15s';
 
@@ -246,7 +262,9 @@ BEGIN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
 
-  v_moc := clock_timestamp();
+  -- F1 fix round 2: transaction_timestamp() (== now()), KHONG clock_timestamp()
+  -- - xem chu thich dau file.
+  v_moc := transaction_timestamp();
   PERFORM public.zalo_recall_message(v_msg_id);
 
   -- READBACK tang (1): body phai da doi ngay trong DB.
@@ -273,7 +291,7 @@ BEGIN
      AND t.created_at >= v_moc
      AND (t.payload ->> 'target_msg_id') IS NOT DISTINCT FROM (v_before ->> 'zalo_msg_id')
      AND (t.payload ->> 'target_cli_msg_id') IS NOT DISTINCT FROM (v_before ->> 'cli_msg_id')
-   ORDER BY t.created_at ASC
+   ORDER BY t.created_at ASC, t.id ASC
    LIMIT 1;
   IF v_queue_id IS NULL
      OR NULLIF(v_after ->> 'organization_id', '')::uuid IS DISTINCT FROM v_org THEN

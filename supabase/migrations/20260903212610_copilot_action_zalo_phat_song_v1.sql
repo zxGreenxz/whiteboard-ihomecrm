@@ -20,13 +20,33 @@
 -- khac, hoac chinh actor gui tin thu hai) vao CUNG hoi thoai giua luc RPC goc
 -- INSERT va luc wrapper SELECT co the chen mot hang MOI HON, lam entity_id
 -- (va do do ca doi soat sau nay) tro SAI sang tin cua nguoi khac. Sua bang
--- LIEN KET THAT: chup `v_moc := clock_timestamp()` truoc khi goi RPC goc, tim
--- hang `zalo_messages` co `sent_by = actor` (cot DUY NHAT phan anh dung actor
--- - `zalo_send_queue.user_id` la CHU SO HUU HOI THOAI, khong phai actor, da
--- doi chieu than RPC goc) + `body` khop + `sent_at >= v_moc`, roi lay hang
+-- LIEN KET THAT: chup mot moc thoi gian truoc khi goi RPC goc, tim hang
+-- `zalo_messages` co `sent_by = actor` (cot DUY NHAT phan anh dung actor -
+-- `zalo_send_queue.user_id` la CHU SO HUU HOI THOAI, khong phai actor, da
+-- doi chieu than RPC goc) + `body` khop + `sent_at >= moc`, roi lay hang
 -- `zalo_send_queue` LIEN KET qua `message_id` (zalo_broadcast tu dat cot do).
 -- Khong tim thay -> RAISE `external_effect_entity_not_found` TRUOC bat ky ghi
 -- audit/ledger nao (coi la that bai, khong doan 'da_gui' gia).
+--
+-- F1 fix round 2 (review) - MOC THOI GIAN SAI HAM: ban fix round 1 dung
+-- `clock_timestamp()` (dong ho THAT, tang lien tuc, ke ca giua cac cau lenh
+-- trong CUNG mot giao dich). Nhung `zalo_broadcast` dong dau `sent_at` bang
+-- `now()`, va `zalo_send_queue.created_at` mac dinh cung `now()` -
+-- `now()`/`transaction_timestamp()` la MOC GIAO DICH, DONG BANG tu luc BEGIN
+-- toi luc COMMIT/ROLLBACK, khong doi du goi bao nhieu lan trong cung giao
+-- dich. Vi wrapper nay da chay qua nhieu cau lenh (doc phieu dong y, khoa
+-- advisory, tra ai_write_audit, tieu confirmation...) TRUOC khi toi day,
+-- `clock_timestamp()` luc do da tien XA hon `now()` cua chinh giao dich -
+-- nen `sent_at >= v_moc` GAN NHU LUON SAI, va MOI lan goi deu bi RAISE
+-- `external_effect_entity_not_found` du zalo_broadcast chay dung. Sua: dung
+-- `transaction_timestamp()` (bi danh cua `now()`) - cung mot gia tri DONG
+-- BANG voi cai ma callee dung de dong dau, nen `sent_at >= v_moc` LUON dung
+-- (thuc chat la BANG NHAU) cho hang vua duoc chinh giao dich nay tao ra.
+-- KHONG dung them dieu kien `id > v_max_id`: da doi chieu information_schema
+-- production - `zalo_messages.id`/`zalo_send_queue.id` deu la `uuid`
+-- (`gen_random_uuid()`), khong phai bigint/serial don dieu, nen so sanh thu
+-- tu id khong mang y nghia gi ve thoi gian; `id ASC` duoi day chi la tieu chi
+-- phu DINH DUOC (deterministic tie-break), khong phai bang chung thoi gian.
 --
 -- VI SAO external_effect/UNKNOWN_EFFECT - `zalo_broadcast` chi XEP HANG tin
 -- vao `zalo_send_queue` (worker ngoai tien trinh DB moi la nguoi thuc gui qua
@@ -1023,7 +1043,9 @@ BEGIN
   -- hoi thoai" tran - hai buoi gui SONG SONG (nguoi khac, hoac worker khac)
   -- vao CUNG hoi thoai co the chen mot hang MOI HON giua luc RPC goc INSERT
   -- va luc SELECT doc lai, lam entity_id tro sang tin CUA NGUOI KHAC.
-  v_moc := clock_timestamp();
+  -- F1 fix round 2: transaction_timestamp() (== now()), KHONG clock_timestamp()
+  -- - xem chu thich dau file.
+  v_moc := transaction_timestamp();
   v_count := public.zalo_broadcast(ARRAY[v_conv_id], v_body);
   IF COALESCE(v_count, 0) < 1 THEN
     -- RPC goc am tham bo qua (khong quyen/khong ton tai) thay vi RAISE - buoc
@@ -1049,7 +1071,7 @@ BEGIN
      AND m.sent_by = v_actor
      AND m.body = v_body
      AND m.sent_at >= v_moc
-   ORDER BY m.sent_at ASC
+   ORDER BY m.sent_at ASC, m.id ASC
    LIMIT 1;
   IF v_msg_id IS NULL THEN
     -- Khong tim thay tin nhan CUA CHINH giao dich nay - coi la THAT BAI ro
@@ -1061,7 +1083,7 @@ BEGIN
     FROM public.zalo_send_queue t
    WHERE t.message_id = v_msg_id
      AND t.organization_id = v_org
-   ORDER BY t.created_at ASC
+   ORDER BY t.created_at ASC, t.id ASC
    LIMIT 1;
   IF v_queue_id IS NULL
      OR NULLIF(v_after ->> 'organization_id', '')::uuid IS DISTINCT FROM v_org THEN

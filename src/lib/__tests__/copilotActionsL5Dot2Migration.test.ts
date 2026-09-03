@@ -499,12 +499,28 @@ describe('Fix round 1 — F1 (BLOCKING): zalo.broadcast chống race khi đọc 
   const sql = docSqlKhongComment(FILE_ZALO_PHAT_SONG);
   const than = thanHam(sql, 'copilot_execute_zalo_phat_song_v1');
 
-  it('v_moc := clock_timestamp() được chốt TRƯỚC khi gọi zalo_broadcast', () => {
-    const iMoc = than.search(/v_moc := clock_timestamp\(\);/);
+  it('v_moc := transaction_timestamp() được chốt TRƯỚC khi gọi zalo_broadcast', () => {
+    // Fix round 2 (review): clock_timestamp() (đồng hồ THẬT, tăng liên tục kể
+    // cả trong cùng giao dịch) SAI hàm ở đây — zalo_broadcast đóng dấu sent_at
+    // bằng now(), một mốc ĐÓNG BĂNG suốt giao dịch. Vì wrapper đã chạy qua
+    // nhiều câu lệnh trước khi tới đây, clock_timestamp() lúc đó đã vượt xa
+    // now() của chính giao dịch — sent_at >= v_moc gần như LUÔN sai, mọi lần
+    // gọi đều RAISE external_effect_entity_not_found dù RPC gốc chạy đúng.
+    // transaction_timestamp() (bí danh của now()) mới là mốc ĐÚNG.
+    const iMoc = than.search(/v_moc := transaction_timestamp\(\);/);
     const iGoc = than.search(/v_count := public\.zalo_broadcast\(ARRAY\[v_conv_id\], v_body\);/);
     expect(iMoc).toBeGreaterThan(-1);
     expect(iGoc).toBeGreaterThan(-1);
     expect(iMoc).toBeLessThan(iGoc);
+  });
+
+  it('KHÔNG còn clock_timestamp() trong toàn bộ cửa sổ tương quan (từ lúc chốt mốc tới lúc đọc lại xong)', () => {
+    const iMoc = than.search(/v_moc := transaction_timestamp\(\);/);
+    const iDoneReadback = than.indexOf("RAISE EXCEPTION 'external_effect_entity_not_found'", iMoc);
+    const iQueueEnd = than.indexOf('LIMIT 1;', than.indexOf('FROM public.zalo_send_queue t', iMoc)) + 'LIMIT 1;'.length;
+    const cuaSo = than.slice(iMoc, Math.max(iDoneReadback, iQueueEnd));
+    expect(cuaSo).not.toMatch(/clock_timestamp\(\)/);
+    expect(cuaSo).toMatch(/transaction_timestamp\(\)/);
   });
 
   it('KHÔNG còn đọc "mới nhất" trần (ORDER BY created_at DESC) trên zalo_send_queue', () => {
@@ -538,12 +554,22 @@ describe('Fix round 1 — F1 (BLOCKING): zalo.recall_message chống race khi đ
   const sql = docSqlKhongComment(FILE_ZALO_THU_HOI_TIN);
   const than = thanHam(sql, 'copilot_execute_zalo_thu_hoi_tin_v1');
 
-  it('v_moc := clock_timestamp() được chốt TRƯỚC khi gọi zalo_recall_message', () => {
-    const iMoc = than.search(/v_moc := clock_timestamp\(\);/);
+  it('v_moc := transaction_timestamp() được chốt TRƯỚC khi gọi zalo_recall_message', () => {
+    // Fix round 2 (review): zalo_send_queue.created_at mặc định now() — cùng
+    // lý do như zalo.broadcast phía trên, clock_timestamp() ở đây SAI hàm.
+    const iMoc = than.search(/v_moc := transaction_timestamp\(\);/);
     const iGoc = than.search(/PERFORM public\.zalo_recall_message\(v_msg_id\);/);
     expect(iMoc).toBeGreaterThan(-1);
     expect(iGoc).toBeGreaterThan(-1);
     expect(iMoc).toBeLessThan(iGoc);
+  });
+
+  it('KHÔNG còn clock_timestamp() trong toàn bộ cửa sổ tương quan (từ lúc chốt mốc tới lúc đọc lại xong)', () => {
+    const iMoc = than.search(/v_moc := transaction_timestamp\(\);/);
+    const iEnd = than.indexOf("RAISE EXCEPTION 'external_effect_entity_not_found'", iMoc);
+    const cuaSo = than.slice(iMoc, iEnd);
+    expect(cuaSo).not.toMatch(/clock_timestamp\(\)/);
+    expect(cuaSo).toMatch(/transaction_timestamp\(\)/);
   });
 
   it('KHÔNG còn đọc "mới nhất" trần (ORDER BY created_at DESC) trên zalo_send_queue', () => {

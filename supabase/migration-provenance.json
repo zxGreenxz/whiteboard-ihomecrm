@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T22:59:41.254Z",
+  "generatedAt": "2026-09-03T23:16:48.486Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 494,
-    "unknown": 82,
+    "unknown": 91,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9345,7 +9345,7 @@
       "version": "20260903212610",
       "name": "copilot_action_zalo_phat_song_v1",
       "scheme": "timestamp14",
-      "sha256": "1d52b75f16185b86558701aa4137344f0de796f82126197f2a8e3adbb636b69e",
+      "sha256": "45e20d4b37a1d07596b49fdc1570ee75dc9a9934ac27af5c993ba057fb52e1aa",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9358,7 +9358,7 @@
       "version": "20260903212612",
       "name": "copilot_action_zalo_thu_hoi_tin_v1",
       "scheme": "timestamp14",
-      "sha256": "702b2cc1d9360a005412c7ca2930228b99234f4a72e30c4529602ad9368a2d3a",
+      "sha256": "20e951e89306a62ee3a17718c297642fa0ce55f03551a217495fd024ac18a3d9",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9401,6 +9401,125 @@
       "evidence": [],
       "missingObjects": [
         "function:public.copilot_step_up_reset_pin_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224410_copilot_action_invoice_duyet_hang_loat_v1.sql",
+      "version": "20260903224410",
+      "name": "copilot_action_invoice_duyet_hang_loat_v1",
+      "scheme": "timestamp14",
+      "sha256": "6b9bf3f6a99942bc57a7ff65051717d877ddf7092facf79e72a8ad5f8025c970",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_invoice_duyet_hang_loat_v1",
+        "function:public.copilot_execute_invoice_duyet_hang_loat_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224411_copilot_action_contract_gia_han_v1.sql",
+      "version": "20260903224411",
+      "name": "copilot_action_contract_gia_han_v1",
+      "scheme": "timestamp14",
+      "sha256": "ac25b93e1f40ec8f389c4ae6cd9fb16c27cb835e18198b0e951532a2f269a9ce",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_contract_gia_han_v1",
+        "function:public.copilot_execute_contract_gia_han_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224412_copilot_action_contract_chuyen_nhuong_v1.sql",
+      "version": "20260903224412",
+      "name": "copilot_action_contract_chuyen_nhuong_v1",
+      "scheme": "timestamp14",
+      "sha256": "7b1de118848b87e0cce65fca4462025223d401c131a78ab0ecd235a99d25de5f",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_contract_chuyen_nhuong_v1",
+        "function:public.copilot_execute_contract_chuyen_nhuong_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224413_copilot_action_room_chuyen_phong_v1.sql",
+      "version": "20260903224413",
+      "name": "copilot_action_room_chuyen_phong_v1",
+      "scheme": "timestamp14",
+      "sha256": "f8d29b1e5b46019f48f874809d6b8b3be457ddb76e6791427306940812093e55",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_room_chuyen_phong_v1",
+        "function:public.copilot_execute_room_chuyen_phong_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224414_copilot_action_meter_reading_xoa_hang_loat_v1.sql",
+      "version": "20260903224414",
+      "name": "copilot_action_meter_reading_xoa_hang_loat_v1",
+      "scheme": "timestamp14",
+      "sha256": "ef0a09c14821e9de76dca00539de3fc299b282f9f0d1d77f152d6ade3d360220",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_meter_reading_xoa_hang_loat_v1",
+        "function:public.copilot_execute_meter_reading_xoa_hang_loat_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224415_copilot_action_termination_hoan_coc_v1.sql",
+      "version": "20260903224415",
+      "name": "copilot_action_termination_hoan_coc_v1",
+      "scheme": "timestamp14",
+      "sha256": "7cd8429566ceb6aad864967bc47592cf23b0d0bae81ad84242f0fcf960f8d620",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_termination_hoan_coc_v1",
+        "function:public.copilot_execute_termination_hoan_coc_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224416_copilot_action_cashbook_chot_so_v1.sql",
+      "version": "20260903224416",
+      "name": "copilot_action_cashbook_chot_so_v1",
+      "scheme": "timestamp14",
+      "sha256": "6acf7e4e8f61ca43e0305939b1f0bf039de9bb12a9a79bb565dc713bcca612c7",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_cashbook_chot_so_v1",
+        "function:public.copilot_execute_cashbook_chot_so_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224417_copilot_action_salary_chi_luong_v1.sql",
+      "version": "20260903224417",
+      "name": "copilot_action_salary_chi_luong_v1",
+      "scheme": "timestamp14",
+      "sha256": "322aa3e358a8c216f346fbbfdaba984edf3546a32b332e4c3e93c8d9f94985dd",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.copilot_salary_org_of_staff_v1",
+        "function:public.copilot_preview_salary_chi_luong_v1",
+        "function:public.copilot_execute_salary_chi_luong_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903224418_copilot_action_salary_khoa_thang_v1.sql",
+      "version": "20260903224418",
+      "name": "copilot_action_salary_khoa_thang_v1",
+      "scheme": "timestamp14",
+      "sha256": "56db8d619bc12df97dd33190e93a06569307f53d8117e6974ca415e96c14116c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:app_private.copilot_salary_org_of_staff_v1",
+        "function:public.copilot_preview_salary_khoa_thang_v1",
+        "function:public.copilot_execute_salary_khoa_thang_v1"
       ]
     },
     {
