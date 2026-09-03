@@ -62,13 +62,41 @@ SET LOCAL lock_timeout = '15s';
 -- 1. REGISTRY — cot `grantable`
 -- ---------------------------------------------------------------------------
 ALTER TABLE app_private.copilot_action_registry
-  ADD COLUMN IF NOT EXISTS grantable boolean NOT NULL DEFAULT true;
+  ADD COLUMN IF NOT EXISTS grantable boolean NOT NULL DEFAULT false;
 
+-- Fix round 1 (F1, review): FAIL-CLOSED. Ban dau chon DEFAULT true (moi action
+-- seed hien tai deu grantable) roi tinh G5-C se dat false cho nhom phan quyen —
+-- nhung do la mo theo MAC DINH cho moi action TUONG LAI, ke ca mot action ghi
+-- moi duoc them vao ma khong ai nghi toi uy quyen dung. Fail-closed dao nguoc:
+-- MOI action moi la khong-grantable cho toi khi co ai CHU DINH mo, dung khuon
+-- voi enabled/rollout cua chinh registry (seed moi cung bat dau tat).
+--
+-- Allowlist tuong minh ngay duoi day: 6 action L3/L4 nonce_abi_v1/click DANG
+-- CHAY hien tai. 'income_expense.nop_ho_so' (maker_submit_v1, L5) CO CHU Y
+-- khong nam trong danh sach — no khong ghi truc tiep (nop vao hang cho mot
+-- CON NGUOI duyet), nhung uy quyen dung la duong TU DUYET KHONG NGUOI BAM, va
+-- brief G5-B chua ban toi viec do co nen mo cho duong nop-ho-so hay khong; de
+-- ngoai la lua chon an toan hon cho toi khi co quyet dinh ro rang.
 COMMENT ON COLUMN app_private.copilot_action_registry.grantable IS
-  'Action co duoc uy quyen dung (standing grant, G5-B) hay khong. G5-C se dat '
-  'false cho nhom hanh dong phan quyen (cap quyen/moi thanh vien/doi trang '
-  'thai thanh vien) — nhom do khong bao gio duoc tu duyet ma khong co nguoi '
-  'bam, du van uy quyen dung co mo hay khong.';
+  'Action co duoc uy quyen dung (standing grant, G5-B) hay khong. FAIL-CLOSED: '
+  'DEFAULT false — moi action moi (ke ca cac dot sau G5-B) khong grantable cho '
+  'toi khi co ai CHU DINH mo bang UPDATE tuong minh, cung khuon voi enabled. '
+  'G5-C se giu false cho nhom hanh dong phan quyen (cap quyen/moi thanh vien/ '
+  'doi trang thai thanh vien) — nhom do khong bao gio duoc tu duyet ma khong '
+  'co nguoi bam, du van uy quyen dung co mo hay khong.';
+
+-- Allowlist grantable=true: CHỈ 6 action L3/L4 nonce_abi_v1/click hien co.
+UPDATE app_private.copilot_action_registry
+   SET grantable = true
+ WHERE action_id IN (
+   'income_expense.annotate',
+   'reservation.set_hold_terms',
+   'zalo.set_conversation_flags',
+   'meter_reading.create',
+   'reservation_deposit.create',
+   'income_expense.create_draft'
+ )
+   AND NOT grantable;
 
 -- ---------------------------------------------------------------------------
 -- 2. SỔ — thêm ba sự kiện `grant_*` vào CHECK của `event`, thêm cột `amount`.
@@ -169,7 +197,13 @@ BEGIN
     NULLIF(p ->> 'audit_id', '')::uuid,
     -- G5-B: so tien cua canonical.amount khi buoc co truong nay. Khong qua
     -- hex vi day la so, khong phai bang chung bam — di thang qua numeric.
-    NULLIF(p ->> 'amount', '')::numeric
+    -- Fix round 1 (F4, review): GAC bang regex truoc khi ep kieu — mot ep
+    -- ::numeric tho tren chuoi bat ky se NEM 22P02 va cuon nguoc CA GHI SO
+    -- (ham nay tu no la mot INSERT), trong khi so tien chi la mot truong PHU
+    -- cua su kien. Khong khop regex -> NULL ("khong biet duoc"), khong lam
+    -- vo dong ghi.
+    CASE WHEN (p ->> 'amount') ~ '^[0-9]+(\.[0-9]+)?$'
+         THEN (p ->> 'amount')::numeric ELSE NULL END
   )
   RETURNING id INTO v_id;
 
@@ -947,6 +981,10 @@ DECLARE
   v_grant_row        app_private.copilot_standing_grants%ROWTYPE;
   v_reset_used       int;
   v_planned          int;
+  -- Fix round 1 (F3/F4, review): khoa mot pha + so tien co gac.
+  v_needed_actions   text[];
+  v_locked_ids       uuid[];
+  v_amt_txt          text;
   v_final_grant_ids  uuid[];
   v_first_grant_id   uuid;
   v_grant_key        text;
@@ -1232,22 +1270,61 @@ BEGIN
   v_grant_locks := '{}'::jsonb;
 
   IF v_standing_ok THEN
+    -- Fix round 1 (F3, review): KHOA MOT PHA, THEO THU TU id. Truoc day moi
+    -- buoc tu mo mot SELECT ... FOR UPDATE rieng (sap theo expires_at) — hai
+    -- ke hoach song song can hai tap hanh dong GIAO NHAU nhung liet ke buoc
+    -- theo thu tu KHAC nhau se khoa cac hang theo hai trat tu doi nghich,
+    -- dung hinh mau kinh dien cua deadlock (40P01). Gom truoc TOAN BO
+    -- action_id can xet (chi nhung buoc grantable=true), khoa MOT LAN duy
+    -- nhat theo id (mot trat tu toan cuc, khong phu thuoc buoc nao cua ke
+    -- hoach NAY dung truoc) — moi phien luon khoa cung mot tap theo cung mot
+    -- trat tu, nen khong con vong cho tron.
+    v_needed_actions := ARRAY(
+      SELECT DISTINCT (e ->> 'action_id')
+        FROM jsonb_array_elements(v_gom) e
+       WHERE COALESCE((e ->> 'grantable')::boolean, false)
+    );
+
+    IF v_needed_actions IS NOT NULL AND cardinality(v_needed_actions) > 0 THEN
+      SELECT COALESCE(array_agg(g.id ORDER BY g.id), '{}'::uuid[])
+        INTO v_locked_ids
+        FROM app_private.copilot_standing_grants g
+       WHERE g.organization_id = p_organization_id
+         AND g.action_id = ANY(v_needed_actions)
+         AND g.revoked_at IS NULL
+         AND g.expires_at > clock_timestamp()
+       ORDER BY g.id
+       FOR UPDATE;
+    ELSE
+      v_locked_ids := '{}'::uuid[];
+    END IF;
+
     FOR v_j IN 0 .. v_n - 1 LOOP
       v_step_entry := v_gom -> v_j;
+      -- Fix round 1 (F1, review): mot action grantable=false KHONG BAO GIO
+      -- duoc phu, BAT KE executor_kind/consent_required cua no la gi (ke ca
+      -- mot action tuong lai khai direct_l5_v1 hoac consent_required=
+      -- 'step_up') — day la dieu kien DUNG DAU vong lap, truoc bat ky truy
+      -- van grant nao. Cot NOT NULL cua created_with_step_up_id (rang buoc
+      -- bang, khong phai dieu kien o day) da bao dam MOI hang trong
+      -- copilot_standing_grants deu tung di qua xac thuc step-up luc CAP —
+      -- do la ly do mot grant du duoc phep phu ca cac hanh dong ma binh
+      -- thuong doi xac thuc hai lop moi lan duyet: xac thuc do da xay ra MOT
+      -- LAN, luc cap, khong phai bi bo qua.
       IF NOT COALESCE((v_step_entry ->> 'grantable')::boolean, false) THEN
         v_standing_ok := false;
         EXIT;
       END IF;
 
       v_matched_id := NULL;
+      -- Khong con FOR UPDATE o day: hang da duoc khoa tron ven o pha tren,
+      -- doc lai (khong khoa them) van thay dung du lieu da khoa cua chinh
+      -- giao dich nay.
       FOR v_grant_row IN
         SELECT * FROM app_private.copilot_standing_grants g
-         WHERE g.organization_id = p_organization_id
+         WHERE g.id = ANY(v_locked_ids)
            AND g.action_id = (v_step_entry ->> 'action_id')
-           AND g.revoked_at IS NULL
-           AND g.expires_at > clock_timestamp()
          ORDER BY g.expires_at ASC
-         FOR UPDATE
       LOOP
         v_reset_used := CASE WHEN v_grant_row.used_on IS DISTINCT FROM current_date
                               THEN 0 ELSE v_grant_row.used_today END;
@@ -1259,10 +1336,20 @@ BEGIN
         -- Rang buoc chi SO khi han muc co khai. Khai ma buoc khong mang
         -- truong tuong ung la KHONG khop - thieu du lieu khong phai mot
         -- duong tu do.
+        --
+        -- Fix round 1 (F4, review): so tien duoc GAC bang regex truoc khi ep
+        -- kieu. canonical.amount la du lieu SERVER da chot o buoc xem truoc
+        -- nen gan nhu luon la so, nhung mot ep kieu ::numeric tho tren mot
+        -- chuoi bat ky se NEM 22P02 va lam SAP CA GIAO DICH — mot loi hinh
+        -- dang o MOT buoc khong duoc phep keo theo mat ca kha nang lap ke
+        -- hoach. Khong khop regex -> coi nhu "so tien khong biet duoc" ->
+        -- KHONG khop khi grant co khai max_amount (tu choi an toan, khong
+        -- doan).
+        v_amt_txt := (v_step_entry -> 'canonical') ->> 'amount';
         IF v_grant_row.constraints ? 'max_amount' THEN
-          IF NOT ((v_step_entry -> 'canonical') ? 'amount')
-             OR ((v_step_entry -> 'canonical') ->> 'amount')::numeric
-                  > (v_grant_row.constraints ->> 'max_amount')::numeric THEN
+          IF v_amt_txt IS NULL
+             OR v_amt_txt !~ '^[0-9]+(\.[0-9]+)?$'
+             OR v_amt_txt::numeric > (v_grant_row.constraints ->> 'max_amount')::numeric THEN
             CONTINUE;
           END IF;
         END IF;
@@ -1623,6 +1710,28 @@ BEGIN
     IF NOT app_private.copilot_action_flag_allows_v1(
              'copilot.execution_plan', v_plan.organization_id) THEN
       RAISE EXCEPTION 'copilot_feature_disabled' USING ERRCODE = '42501';
+    END IF;
+
+    -- Fix round 1 (F2, review): mot han muc da bi THU HOI GIUA luc tu duyet
+    -- va luc chay khong duoc phep tiep tuc chay ngam. Thu hoi (tung cai hoac
+    -- kill switch "tat ca") phai DUNG duoc mot ke hoach dang o giua chung,
+    -- khong chi chan duoc nhung ke hoach CHUA lap — neu khong, "Thu hoi tat
+    -- ca" tren trang quan tri chi la mot nut trang tri cho cac buoc da kip
+    -- APPROVED truoc do. Chi ap dung cho ke hoach tu duyet theo uy quyen
+    -- dung; duong bam tay/PIN khong mang grant nao de kiem.
+    IF v_plan.consent_kind = 'standing_grant' THEN
+      IF EXISTS (
+        SELECT 1
+          FROM unnest(v_plan.standing_grant_ids) AS gid
+         WHERE NOT EXISTS (
+           SELECT 1 FROM app_private.copilot_standing_grants g
+            WHERE g.id = gid
+              AND g.revoked_at IS NULL
+              AND g.expires_at > clock_timestamp()
+         )
+      ) THEN
+        RAISE EXCEPTION 'grant_revoked' USING ERRCODE = '42501';
+      END IF;
     END IF;
 
     SELECT * INTO v_reg
@@ -2118,13 +2227,38 @@ BEGIN
     END IF;
   END IF;
 
-  -- (10) Hàng seed `income_expense.create_draft` (từ 20260903043956) phải kế
-  -- thừa mặc định `grantable = true` — cột mới không được âm thầm khoá seed cũ.
+  -- (10) Fix round 1 (F1, review): DEFAULT giờ là false (fail-closed) —
+  -- hàng seed `income_expense.create_draft` chỉ còn `grantable = true` vì
+  -- UPDATE allowlist tường minh phía trên, không phải kế thừa DEFAULT nữa.
   IF NOT EXISTS (
     SELECT 1 FROM app_private.copilot_action_registry
      WHERE action_id = 'income_expense.create_draft' AND grantable
   ) THEN
     RAISE EXCEPTION 'seed income_expense.create_draft khong grantable sau G5-B';
+  END IF;
+
+  -- (11) Cả 6 action trong allowlist F1 phải grantable=true — 6 hàng, không
+  -- thiếu không thừa (đếm đúng số, không chỉ EXISTS từng hàng, để một dòng
+  -- rơi khỏi UPDATE cũng bị bắt).
+  IF (
+    SELECT count(*) FROM app_private.copilot_action_registry
+     WHERE action_id IN (
+       'income_expense.annotate', 'reservation.set_hold_terms',
+       'zalo.set_conversation_flags', 'meter_reading.create',
+       'reservation_deposit.create', 'income_expense.create_draft'
+     ) AND grantable
+  ) <> 6 THEN
+    RAISE EXCEPTION 'allowlist F1 khong du 6 action grantable=true';
+  END IF;
+
+  -- (12) `income_expense.nop_ho_so` (maker_submit_v1, L5) PHẢI vẫn
+  -- grantable=false — bằng chứng sống rằng DEFAULT false thật sự fail-closed,
+  -- không phải một action nào đó lỡ nằm trong allowlist.
+  IF EXISTS (
+    SELECT 1 FROM app_private.copilot_action_registry
+     WHERE action_id = 'income_expense.nop_ho_so' AND grantable
+  ) THEN
+    RAISE EXCEPTION 'income_expense.nop_ho_so khong duoc grantable (fail-closed)';
   END IF;
 END
 $nghiem_thu_grant$;

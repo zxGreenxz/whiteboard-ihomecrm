@@ -84,10 +84,46 @@ describe('G5-B — khung migration', () => {
   });
 });
 
-describe('G5-B — cột grantable trên registry', () => {
-  it('boolean NOT NULL DEFAULT true — seed cũ không bị âm thầm khoá', () => {
+describe('G5-B — cột grantable trên registry (Fix round 1, F1: fail-closed)', () => {
+  it('boolean NOT NULL DEFAULT false — moi action MOI khong grantable cho toi khi duoc mo tuong minh', () => {
     expect(migration).toMatch(
-      /ADD COLUMN IF NOT EXISTS grantable boolean NOT NULL DEFAULT true;/,
+      /ADD COLUMN IF NOT EXISTS grantable boolean NOT NULL DEFAULT false;/,
+    );
+    // Khong con DEFAULT true trong toan bo cot nay.
+    expect(migration).not.toMatch(/ADD COLUMN IF NOT EXISTS grantable boolean NOT NULL DEFAULT true;/);
+  });
+
+  it('allowlist tuong minh dung 6 action L3/L4 nonce_abi_v1 hien co, KHONG bao gom nop_ho_so', () => {
+    const khoi = migration.slice(
+      migration.indexOf('UPDATE app_private.copilot_action_registry'),
+      migration.indexOf('AND NOT grantable;') + 20,
+    );
+    expect(khoi).not.toBe('');
+    for (const actionId of [
+      'income_expense.annotate',
+      'reservation.set_hold_terms',
+      'zalo.set_conversation_flags',
+      'meter_reading.create',
+      'reservation_deposit.create',
+      'income_expense.create_draft',
+    ]) {
+      expect(khoi).toContain(`'${actionId}'`);
+    }
+    // L5/maker_submit_v1 KHONG duoc nam trong allowlist mo grantable.
+    expect(khoi).not.toContain('income_expense.nop_ho_so');
+    // UPDATE co dieu kien AND NOT grantable — idempotent, khong ghi lai vo ich.
+    expect(khoi).toContain('AND NOT grantable');
+  });
+
+  it('nghiem thu dem dung 6 hang grantable=true tu allowlist, va nop_ho_so PHAI van false', () => {
+    const nghiemThu = migration.slice(migration.indexOf('DO $nghiem_thu_grant$'));
+    expect(nghiemThu).toContain('<> 6 THEN');
+    expect(nghiemThu).toMatch(
+      /RAISE EXCEPTION 'allowlist F1 khong du 6 action grantable=true'/,
+    );
+    expect(nghiemThu).toContain("action_id = 'income_expense.nop_ho_so' AND grantable");
+    expect(nghiemThu).toMatch(
+      /RAISE EXCEPTION 'income_expense\.nop_ho_so khong duoc grantable \(fail-closed\)'/,
     );
   });
 });
@@ -126,9 +162,14 @@ describe('G5-B — copilot_ledger_append_v1 (CREATE OR REPLACE)', () => {
     migration.indexOf('CREATE TABLE IF NOT EXISTS app_private.copilot_standing_grants ('),
   );
 
-  it('thêm amount vào cả cột INSERT lẫn giá trị VALUES', () => {
+  it('thêm amount vào cả cột INSERT lẫn giá trị VALUES, có gác regex (Fix round 1, F4)', () => {
     expect(body).toMatch(/sqlstate, entity_table, entity_id, audit_id, amount\s*\)/);
-    expect(body).toMatch(/NULLIF\(p ->> 'amount', ''\)::numeric/);
+    // Fix round 1 (F4, review): KHÔNG còn ép kiểu thô NULLIF(...)::numeric —
+    // một chuỗi bất kỳ (không phải số) sẽ ném 22P02 và cuốn ngược cả INSERT.
+    expect(body).not.toMatch(/NULLIF\(p ->> 'amount', ''\)::numeric/);
+    expect(body).toContain("CASE WHEN (p ->> 'amount') ~ '^[0-9]+(");
+    expect(body).toContain(")?$'");
+    expect(body).toContain("THEN (p ->> 'amount')::numeric ELSE NULL END");
   });
 
   it('không đổi điều kiện ngoại lệ tổ chức đã có từ G5-A', () => {
@@ -396,13 +437,31 @@ describe('G5-B — nhánh tự duyệt trong copilot_plan_create_v1', () => {
     expect(body).toMatch(/'grantable',\s*v_reg\.grantable,/);
   });
 
-  it('soát phủ khoá bằng FOR UPDATE NGAY trong vòng lặp soát, không soát-rồi-khoá-sau', () => {
+  it('khóa TOÀN BỘ hạn mức MỘT LẦN, sắp theo id, TRƯỚC vòng lặp so khớp từng bước (Fix round 1, F3)', () => {
     const iSoat = body.indexOf('SELECT standing_grants_enabled INTO v_standing_enabled');
+    const iOrderById = body.indexOf('ORDER BY g.id', iSoat);
     const iForUpdate = body.indexOf('FOR UPDATE', iSoat);
+    const iPerStepLoop = body.indexOf('FOR v_j IN 0 .. v_n - 1 LOOP', iSoat);
     const iApply = body.indexOf('FOR v_grant_key, v_grant_val IN SELECT * FROM jsonb_each_text');
     expect(iSoat).toBeGreaterThan(-1);
-    expect(iForUpdate).toBeGreaterThan(iSoat);
+    expect(iOrderById).toBeGreaterThan(iSoat);
+    expect(iForUpdate).toBeGreaterThan(iOrderById);
+    // Khóa xảy ra TRƯỚC vòng lặp so khớp từng bước — không còn SELECT ...
+    // FOR UPDATE nào bên trong vòng lặp đó nữa.
+    expect(iForUpdate).toBeLessThan(iPerStepLoop);
     expect(iForUpdate).toBeLessThan(iApply);
+  });
+
+  it('vòng lặp so khớp từng bước KHÔNG còn khóa riêng — chỉ đọc lại tập đã khóa (id = ANY(v_locked_ids))', () => {
+    const iPerStepLoop = body.indexOf('FOR v_j IN 0 .. v_n - 1 LOOP');
+    const iApply = body.indexOf('FOR v_grant_key, v_grant_val IN SELECT * FROM jsonb_each_text');
+    const perStep = body.slice(iPerStepLoop, iApply);
+    expect(perStep).toContain('WHERE g.id = ANY(v_locked_ids)');
+    // Vung soat tung buoc KHONG con dieu kien organization_id/revoked_at rieng
+    // -- tat ca da chuyen sang khoi khoa mot pha o TRUOC vong lap nay.
+    expect(perStep).not.toContain('g.organization_id = p_organization_id');
+    expect(perStep).not.toContain('g.revoked_at IS NULL');
+    expect((perStep.match(/FOR UPDATE/g) || []).length).toBe(0);
   });
 
   it('action không grantable làm cả kế hoạch KHÔNG được phủ (v_standing_ok := false)', () => {
@@ -430,13 +489,17 @@ describe('G5-B — nhánh tự duyệt trong copilot_plan_create_v1', () => {
     );
   });
 
-  it('ràng buộc max_amount/building_ids: THIẾU dữ liệu ở canonical là KHÔNG khớp, không phải tự do', () => {
-    expect(body).toMatch(
-      /IF v_grant_row\.constraints \? 'max_amount' THEN\s*\n\s*IF NOT \(\(v_step_entry -> 'canonical'\) \? 'amount'\)/,
-    );
-    expect(body).toMatch(
-      /IF v_grant_row\.constraints \? 'building_ids' THEN\s*\n\s*IF NOT \(\(v_step_entry -> 'canonical'\) \? 'building_id'\)/,
-    );
+  it('ràng buộc max_amount: THIẾU/SAI dạng dữ liệu ở canonical là KHÔNG khớp (Fix round 1, F4: gác regex trước ép kiểu)', () => {
+    expect(body).toContain("v_amt_txt := (v_step_entry -> 'canonical') ->> 'amount';");
+    expect(body).toContain("IF v_grant_row.constraints ? 'max_amount' THEN");
+    expect(body).toContain('IF v_amt_txt IS NULL');
+    expect(body).toContain("v_amt_txt !~ '^[0-9]+(");
+    expect(body).toContain(")?$'");
+  });
+
+  it('ràng buộc building_ids: THIẾU dữ liệu ở canonical là KHÔNG khớp, không phải tự do', () => {
+    expect(body).toContain("IF v_grant_row.constraints ? 'building_ids' THEN");
+    expect(body).toContain("IF NOT ((v_step_entry -> 'canonical') ? 'building_id')");
   });
 
   it('sau khi đủ phủ: tăng used_today, ghi audit(used) + ledger grant_used cho MỖI grant đã khoá', () => {
@@ -477,6 +540,52 @@ describe('G5-B — nhánh amount trong copilot_plan_execute_step_v1', () => {
   it('sự kiện step_done ghi amount từ v_step.canonical (đã chốt ở preview), không từ payload thô', () => {
     const body = than('copilot_plan_execute_step_v1');
     expect(body).toMatch(/'amount',\s*NULLIF\(v_step\.canonical ->> 'amount', ''\),/);
+  });
+});
+
+describe('G5-B — thu hồi giữa chừng chặn được kế hoạch đang chạy (Fix round 1, F2)', () => {
+  const body = than('copilot_plan_execute_step_v1');
+
+  it('kiểm consent_kind=standing_grant NGAY ở đầu TIỀN KIỂM, trước cả registry/policy', () => {
+    const iFlag = body.indexOf('copilot_feature_disabled');
+    const iGrantCheck = body.indexOf("v_plan.consent_kind = 'standing_grant'");
+    const iRegistry = body.indexOf('SELECT * INTO v_reg');
+    expect(iFlag).toBeGreaterThan(-1);
+    expect(iGrantCheck).toBeGreaterThan(iFlag);
+    expect(iRegistry).toBeGreaterThan(iGrantCheck);
+  });
+
+  it('MỌI id trong standing_grant_ids phải còn sống (revoked_at IS NULL AND expires_at > now); một cái chết là RAISE grant_revoked', () => {
+    expect(body).toContain('FROM unnest(v_plan.standing_grant_ids) AS gid');
+    expect(body).toContain('WHERE g.id = gid');
+    expect(body).toContain('AND g.revoked_at IS NULL');
+    expect(body).toContain('AND g.expires_at > clock_timestamp()');
+    expect(body).toMatch(/RAISE EXCEPTION 'grant_revoked' USING ERRCODE = '42501';/);
+  });
+
+  it('CHỈ áp dụng cho consent_kind=standing_grant — đường bấm tay/PIN không có grant nào để kiểm', () => {
+    expect(body).toContain("IF v_plan.consent_kind = 'standing_grant' THEN");
+  });
+
+  it('lỗi grant_revoked đi qua ĐÚNG đường write-rồi-return có sẵn: step BLOCKED, plan FAILED, ledger step_blocked (không phải RAISE trần không ghi gì)', () => {
+    // Khối TIỀN KIỂM bọc trong BEGIN...EXCEPTION WHEN others chung — RAISE ở
+    // đây rơi vào v_su_kien := 'step_blocked' rồi chảy qua đúng nhánh ghi sổ
+    // đã có sẵn (không phải một nhánh RETURN riêng mới viết cho F2).
+    const iGrantCheck = body.indexOf("v_plan.consent_kind = 'standing_grant'");
+    const iExceptionCatch = body.indexOf("v_su_kien := 'step_blocked';", iGrantCheck);
+    expect(iExceptionCatch).toBeGreaterThan(iGrantCheck);
+  });
+});
+
+describe('G5-B — đột biến thứ ba (Fix round 1, F2): bỏ kiểm grant_revoked làm assertion phía trên đỏ', () => {
+  const MOC = "RAISE EXCEPTION 'grant_revoked' USING ERRCODE = '42501';";
+
+  it('gỡ RAISE grant_revoked làm kế hoạch tự duyệt chạy NGẦM sau khi hạn mức đã bị thu hồi', () => {
+    expect(tho).toContain(MOC);
+    const dotBien = tho.replace(MOC, "NULL;");
+    const dotBienSach = boCommentSql(dotBien);
+    const body = thanHam(dotBienSach, 'copilot_plan_execute_step_v1');
+    expect(body).not.toMatch(/RAISE EXCEPTION 'grant_revoked'/);
   });
 });
 
@@ -539,21 +648,22 @@ describe('G5-B — pin phải đỏ khi hàng rào bị bình luận hoá', () =
   });
 });
 
-describe('G5-B — đột biến thứ hai: FOR UPDATE trong vòng lặp soát phủ', () => {
-  // Nếu ai đó bỏ FOR UPDATE khỏi câu SELECT soát grant, race giữa hai kế
-  // hoạch song song lại mở ra — pin này chứng minh assertion "khoá ngay từ
-  // lượt soát" ở trên không xanh rỗng.
-  const MOC = 'ORDER BY g.expires_at ASC\n         FOR UPDATE';
+describe('G5-B — đột biến thứ hai (Fix round 1, F3): FOR UPDATE trong khối khoá một pha', () => {
+  // Nếu ai đó bỏ FOR UPDATE khỏi câu SELECT khoá một pha (ORDER BY g.id),
+  // hai kế hoạch song song lại có thể cùng đọc used_today thấp rồi cùng nghĩ
+  // mình được phủ — pin này chứng minh assertion "khoá TRƯỚC vòng lặp so
+  // khớp" ở trên không xanh rỗng.
+  const MOC = 'ORDER BY g.id\n       FOR UPDATE;';
 
-  it('gỡ FOR UPDATE khỏi vòng lặp soát grant làm assertion phía trên đỏ', () => {
+  it('gỡ FOR UPDATE khỏi khối khoá một pha làm assertion phía trên đỏ', () => {
     expect(tho).toContain(MOC);
-    const dotBien = tho.replace(MOC, 'ORDER BY g.expires_at ASC');
+    const dotBien = tho.replace(MOC, 'ORDER BY g.id;');
     const dotBienSach = boCommentSql(dotBien);
     const body = thanHam(dotBienSach, 'copilot_plan_create_v1');
     const iSoat = body.indexOf('SELECT standing_grants_enabled INTO v_standing_enabled');
     const iForUpdate = body.indexOf('FOR UPDATE', iSoat);
     const iApply = body.indexOf('FOR v_grant_key, v_grant_val IN SELECT * FROM jsonb_each_text');
-    // Không còn FOR UPDATE nào trong đoạn soát -> chỉ số tìm thấy phải nằm
+    // Không còn FOR UPDATE nào trong cả khối soát -> chỉ số tìm thấy phải nằm
     // NGOÀI khoảng [iSoat, iApply), tức là -1 hoặc >= iApply.
     expect(iForUpdate === -1 || iForUpdate >= iApply).toBe(true);
   });

@@ -144,6 +144,15 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['grant_already_revoked', 'Hạn mức uỷ quyền đứng này đã bị thu hồi trước đó.'],
   ['grant_not_found', 'Không tìm thấy hạn mức uỷ quyền đứng này.'],
   ['grant_reason_required', 'Phải nhập lý do trước khi cấp/thu hồi uỷ quyền đứng.'],
+  // Fix round 1 (F2, review): hạn mức bị thu hồi GIỮA lúc kế hoạch đang chạy
+  // dở — `copilot_plan_execute_step_v1` chặn bước kế tiếp ngay khi phát hiện.
+  ['grant_revoked', 'Một hạn mức uỷ quyền đứng đã bị thu hồi giữa lúc kế hoạch đang chạy. Kế hoạch dừng lại; hãy lập lại nếu vẫn cần.'],
+  // Fix round 1 (F3, review): khoá theo thứ tự cố định (id) làm deadlock giữa
+  // hai kế hoạch song song hiếm hơn hẳn, nhưng Postgres vẫn có thể chọn huỷ
+  // MỘT trong hai giao dịch để phá vòng chờ — đây không phải lỗi dữ liệu,
+  // thử lại là đủ.
+  ['deadlock detected', 'Hai thao tác đụng nhau cùng lúc. Hãy thử lại.'],
+  ['40P01', 'Hai thao tác đụng nhau cùng lúc. Hãy thử lại.'],
 
   ['reason_required', 'Phải nhập lý do (ít nhất 3 ký tự) trước khi thao tác.'],
   ['user_required', 'Thiếu mã người dùng cần thao tác.'],

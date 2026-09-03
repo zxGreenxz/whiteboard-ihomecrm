@@ -173,4 +173,25 @@ describe('dienGiaiLoiKeHoach — uỷ quyền đứng (G5-B)', () => {
   it('`grant_expired` và `grant_expires_invalid` là HAI mã khác nhau, không lẫn vào nhau', () => {
     expect(dienGiaiLoiKeHoach('grant_expired')).not.toBe(dienGiaiLoiKeHoach('grant_expires_invalid'));
   });
+
+  // Fix round 1 (F2, review): hạn mức bị thu hồi giữa lúc kế hoạch tự duyệt
+  // đang chạy dở — copilot_plan_execute_step_v1 chặn bước kế tiếp bằng mã này.
+  it('`grant_revoked` có câu riêng, không lẫn với `grant_already_revoked`', () => {
+    const cau = dienGiaiLoiKeHoach('grant_revoked');
+    expect(cau).not.toBe('Lỗi kế hoạch: grant_revoked');
+    expect(cau).not.toContain('grant_revoked');
+    expect(cau).not.toBe(dienGiaiLoiKeHoach('grant_already_revoked'));
+    expect(cau).toContain('kế hoạch');
+  });
+
+  // Fix round 1 (F3, review): khoá theo id làm deadlock hiếm hơn nhưng không
+  // triệt tiêu hẳn — Postgres vẫn có thể huỷ MỘT trong hai giao dịch đụng
+  // nhau để phá vòng chờ. Đây không phải lỗi dữ liệu, thử lại là đủ.
+  it('`deadlock detected`/`40P01` có câu thân thiện, mời thử lại — không phải mã trần', () => {
+    for (const m of ['deadlock detected', '40P01']) {
+      const cau = dienGiaiLoiKeHoach(m);
+      expect(cau, m).not.toBe(`Lỗi kế hoạch: ${m}`);
+      expect(cau, m).toContain('thử lại');
+    }
+  });
 });
