@@ -384,6 +384,169 @@ export const SCHEMA_NETWORK_THUC_THI = z.object({
     .describe('Tên định danh router hiện tại — bắt buộc khi action_type là CYCLE_ACCESS_PORT/REBOOT_ROUTER'),
 });
 
+/**
+ * G5-C3 (nhóm C — tài chính còn lại) — chín action `direct_l5_v1` bọc RPC L5
+ * có sẵn (duyệt hàng loạt, gia hạn/nhượng/chuyển phòng hợp đồng, hoàn cọc
+ * thanh lý, chốt sổ quỹ, chi lương, khoá bảng lương, xoá hàng loạt chỉ số).
+ * Hai action bulk (`invoice_ids`/`ids`) giới hạn TỐI ĐA 50 phần tử — khớp cap
+ * `bulk_too_large` (22023) mà migration wrapper đã ghim.
+ */
+export const SCHEMA_INVOICE_DUYET_HANG_LOAT = z.object({
+  invoice_ids: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(50)
+    .describe('Danh sách ID hoá đơn (DRAFT) cần duyệt cùng lúc, tối đa 50'),
+});
+
+export const SCHEMA_CONTRACT_GIA_HAN = z.object({
+  contract_id: z.string().uuid().describe('ID hợp đồng cần gia hạn'),
+  new_end_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe('Ngày kết thúc mới (YYYY-MM-DD), phải sau ngày kết thúc hiện tại'),
+  new_rent_price: z.number().positive().nullable().optional().describe('Giá thuê mới; bỏ trống = giữ nguyên'),
+  new_deposit: z.number().nonnegative().nullable().optional().describe('Tiền cọc mới; bỏ trống = giữ nguyên'),
+  notes: z.string().max(2000).nullable().optional().describe('Ghi chú kèm gia hạn; bỏ trống = không ghi chú'),
+});
+
+export const SCHEMA_CONTRACT_CHUYEN_NHUONG = z.object({
+  contract_id: z.string().uuid().describe('ID hợp đồng cần nhượng'),
+  new_customer_id: z.string().uuid().describe('ID khách hàng mới nhận nhượng (cùng tổ chức)'),
+  new_rent_price: z.number().positive().nullable().optional().describe('Giá thuê mới; bỏ trống = giữ nguyên'),
+  new_deposit: z.number().nonnegative().nullable().optional().describe('Tiền cọc mới; bỏ trống = giữ nguyên'),
+  transfer_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional()
+    .describe('Ngày nhượng; bỏ trống = hôm nay'),
+  notes: z.string().max(2000).nullable().optional().describe('Ghi chú kèm nhượng; bỏ trống = không ghi chú'),
+});
+
+export const SCHEMA_ROOM_CHUYEN_PHONG = z.object({
+  contract_id: z.string().uuid().describe('ID hợp đồng cần chuyển phòng'),
+  new_room_id: z.string().uuid().describe('ID phòng mới (cùng toà với phòng hiện tại)'),
+  new_rent_price: z.number().positive().nullable().optional().describe('Giá thuê mới; bỏ trống = giữ nguyên'),
+  transfer_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional()
+    .describe('Ngày chuyển phòng; bỏ trống = hôm nay'),
+  notes: z.string().max(2000).nullable().optional().describe('Ghi chú kèm chuyển phòng; bỏ trống = không ghi chú'),
+});
+
+export const SCHEMA_METER_READING_XOA_HANG_LOAT = z.object({
+  ids: z
+    .array(z.string().uuid())
+    .min(1)
+    .max(50)
+    .describe('Danh sách ID chỉ số công tơ cần xoá mềm cùng lúc, tối đa 50'),
+});
+
+export const SCHEMA_TERMINATION_HOAN_COC = z.object({
+  obligation_id: z.string().uuid().describe('ID nghĩa vụ hoàn cọc thanh lý'),
+  account_id: z.string().uuid().nullable().optional().describe('Sổ quỹ THẬT (không ảo) sẽ chi hoàn; bỏ trống = chưa gán sổ quỹ'),
+  force: z
+    .boolean()
+    .optional()
+    .describe('Ép sinh phiếu dù nghĩa vụ đang cảnh báo — CHỈ chủ tổ chức/super admin mới ép được (RPC gốc tự kiểm)'),
+  force_reason: z
+    .string()
+    .min(8)
+    .max(1000)
+    .nullable()
+    .optional()
+    .describe('Lý do ép — bắt buộc khi force=true và nghĩa vụ đang cảnh báo'),
+});
+
+export const SCHEMA_CASHBOOK_CHOT_SO = z.object({
+  request_id: z.string().uuid().describe('ID đề nghị chốt sổ & bàn giao quỹ (đang PENDING)'),
+  counted_balance: z.number().describe('Số tiền ĐÃ ĐẾM — phải khớp CHÍNH XÁC số người đề nghị đã khai'),
+});
+
+export const SCHEMA_SALARY_CHI_LUONG = z.object({
+  staff_id: z.string().uuid().describe('ID nhân viên/quản lý nhận lương'),
+  period_month: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe('Kỳ lương (ngày đầu tháng, YYYY-MM-DD)'),
+  take_home: z.number().positive().describe('Số tiền thực nhận (VND)'),
+  account_id: z.string().uuid().describe('Sổ quỹ sẽ chi lương'),
+  voucher_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional()
+    .describe('Ngày lập phiếu; bỏ trống = hôm nay'),
+  note: z.string().max(2000).nullable().optional().describe('Ghi chú kèm phiếu chi lương'),
+  rent_invoice_id: z
+    .string()
+    .uuid()
+    .nullable()
+    .optional()
+    .describe('ID hoá đơn tiền phòng cấn trừ vào lương (tuỳ chọn)'),
+  rent_amount: z.number().positive().nullable().optional().describe('Số tiền phòng cấn trừ (tuỳ chọn, đi kèm rent_invoice_id)'),
+});
+
+/** Một dòng bảng kê công việc lồng trong `managers[]` của `salary.khoa_thang`. */
+const SCHEMA_SALARY_LEDGER_ITEM = z.object({
+  item_type: z.string().describe('Loại dòng kê (bắt buộc)'),
+  source_id: z.string().uuid().nullable().optional(),
+  occurred_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+  day_label: z.string().nullable().optional(),
+  content: z.string().nullable().optional(),
+  place: z.string().nullable().optional(),
+  job_type_name: z.string().nullable().optional(),
+  is_repair: z.boolean().nullable().optional(),
+  is_contract: z.boolean().nullable().optional(),
+  base_amount: z.number().nullable().optional(),
+  weekend_amount: z.number().nullable().optional(),
+  after_amount: z.number().nullable().optional(),
+  cash_amount: z.number().nullable().optional(),
+  has_photo: z.boolean().nullable().optional(),
+  bonus_amount: z.number().nullable().optional(),
+  reason: z.string().nullable().optional(),
+});
+
+/** Một quản lý trong `managers[]` của `salary.khoa_thang` — mirror `lock_salary_month_v1`. */
+const SCHEMA_SALARY_MANAGER = z.object({
+  staff_id: z.string().uuid().describe('ID quản lý cần chốt khoá'),
+  base_salary: z.number().nonnegative().optional(),
+  work_bonus: z.number().nonnegative().optional(),
+  contract_bonus: z.number().nonnegative().optional(),
+  commission_total: z.number().nonnegative().optional(),
+  investment_profit: z.number().nonnegative().optional(),
+  adjustments_total: z.number().optional(),
+  advances_total: z.number().nonnegative().optional(),
+  room_rent: z.number().nonnegative().optional(),
+  gross_total: z.number().nonnegative().optional(),
+  take_home: z.number().nonnegative().optional(),
+  paid: z.number().nonnegative().optional(),
+  commission_voucher_ids: z
+    .array(z.string().uuid())
+    .optional()
+    .describe('Danh sách phiếu hoa hồng UNAPPROVED sẽ được duyệt kèm khi chốt'),
+  ledger: z.array(SCHEMA_SALARY_LEDGER_ITEM).optional().describe('Bảng kê công việc chốt kèm tháng này'),
+});
+
+export const SCHEMA_SALARY_KHOA_THANG = z.object({
+  period_month: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe('Kỳ lương cần chốt khoá (ngày đầu tháng, YYYY-MM-DD)'),
+  managers: z
+    .array(SCHEMA_SALARY_MANAGER)
+    .min(1)
+    .max(50)
+    .describe('Danh sách quản lý cần chốt khoá cùng lúc, tối đa 50 — mọi người phải cùng tổ chức với người đầu tiên'),
+});
+
 export const SCHEMA_NOP_HO_SO = z.union([
   z.object({
     $ref_step: z
@@ -820,6 +983,133 @@ export const ACTION_CATALOG = {
     previewRpc: 'copilot_preview_network_thuc_thi_v1',
     executeRpc: 'copilot_execute_network_thuc_thi_v1',
     externalEffect: true,
+  },
+  // ───────────────────────────────────────────────────────────────────────
+  // G5-C3 (nhóm C — tài chính còn lại) — CHÍN action `direct_l5_v1` bọc RPC L5
+  // CÓ SẴN (duyệt hàng loạt hoá đơn, gia hạn/nhượng/chuyển phòng hợp đồng,
+  // hoàn cọc thanh lý, chốt sổ quỹ, chi lương, khoá bảng lương, xoá hàng loạt
+  // chỉ số công tơ). Cùng khuôn với G5-C đợt 1: đường vào DUY NHẤT là một bước
+  // trong kế hoạch (`lap_ke_hoach`), KHÔNG tool đơn lẻ nào.
+  // ───────────────────────────────────────────────────────────────────────
+  'invoice.duyet_hang_loat': {
+    actionId: 'invoice.duyet_hang_loat',
+    version: 1,
+    labelVi: 'Duyệt hàng loạt hoá đơn',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    // RPC gốc (`bulk_approve_invoices_v1`) gác bằng `can_edit_invoice_building_v1`
+    // — CÙNG khoá thật như `invoice.duyet` (G5-C đợt 1): `invoices.edit`, KHÔNG
+    // phải `invoices.approve`.
+    permission: { module: 'invoices', action: 'edit' },
+    inputSchema: SCHEMA_INVOICE_DUYET_HANG_LOAT,
+    previewFields: ['toa_nha', 'so_tien', 'hau_qua'],
+    previewRpc: 'copilot_preview_invoice_duyet_hang_loat_v1',
+    executeRpc: 'copilot_execute_invoice_duyet_hang_loat_v1',
+  },
+  'contract.gia_han': {
+    actionId: 'contract.gia_han',
+    version: 1,
+    labelVi: 'Gia hạn hợp đồng',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'contracts', action: 'edit' },
+    inputSchema: SCHEMA_CONTRACT_GIA_HAN,
+    previewFields: ['toa_nha', 'so_hop_dong', 'trang_thai_hien_tai', 'so_tien', 'hau_qua'],
+    previewRpc: 'copilot_preview_contract_gia_han_v1',
+    executeRpc: 'copilot_execute_contract_gia_han_v1',
+  },
+  'contract.chuyen_nhuong': {
+    actionId: 'contract.chuyen_nhuong',
+    version: 1,
+    labelVi: 'Nhượng hợp đồng cho khách hàng khác',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'contracts', action: 'edit' },
+    inputSchema: SCHEMA_CONTRACT_CHUYEN_NHUONG,
+    previewFields: ['toa_nha', 'so_hop_dong', 'ten_khach_hang', 'so_dien_thoai', 'so_tien', 'hau_qua'],
+    previewRpc: 'copilot_preview_contract_chuyen_nhuong_v1',
+    executeRpc: 'copilot_execute_contract_chuyen_nhuong_v1',
+  },
+  'termination.hoan_coc': {
+    actionId: 'termination.hoan_coc',
+    version: 1,
+    labelVi: 'Sinh phiếu hoàn cọc thanh lý',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'income_expenses', action: 'create' },
+    inputSchema: SCHEMA_TERMINATION_HOAN_COC,
+    previewFields: ['toa_nha', 'so_hop_dong', 'so_tien_hoan_thu', 'trang_thai_hien_tai', 'canh_bao', 'hau_qua'],
+    previewRpc: 'copilot_preview_termination_hoan_coc_v1',
+    executeRpc: 'copilot_execute_termination_hoan_coc_v1',
+  },
+  'cashbook.chot_so': {
+    actionId: 'cashbook.chot_so',
+    version: 1,
+    labelVi: 'Xác nhận chốt sổ quỹ & bàn giao',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'cashbooks', action: 'close_confirm' },
+    inputSchema: SCHEMA_CASHBOOK_CHOT_SO,
+    previewFields: ['so_quy', 'so_tien', 'ngay_vao_so', 'hau_qua'],
+    previewRpc: 'copilot_preview_cashbook_chot_so_v1',
+    executeRpc: 'copilot_execute_cashbook_chot_so_v1',
+  },
+  'salary.chi_luong': {
+    actionId: 'salary.chi_luong',
+    version: 1,
+    labelVi: 'Nộp hồ sơ chi lương chờ duyệt',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'salary', action: 'distribute' },
+    inputSchema: SCHEMA_SALARY_CHI_LUONG,
+    previewFields: ['ten_khach_hang', 'so_tien', 'ky_hoa_don', 'so_quy', 'hau_qua'],
+    previewRpc: 'copilot_preview_salary_chi_luong_v1',
+    executeRpc: 'copilot_execute_salary_chi_luong_v1',
+  },
+  'salary.khoa_thang': {
+    actionId: 'salary.khoa_thang',
+    version: 1,
+    labelVi: 'Chốt khoá bảng lương tháng',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'salary', action: 'lock' },
+    inputSchema: SCHEMA_SALARY_KHOA_THANG,
+    previewFields: ['ky_hoa_don', 'canh_bao', 'hau_qua'],
+    previewRpc: 'copilot_preview_salary_khoa_thang_v1',
+    executeRpc: 'copilot_execute_salary_khoa_thang_v1',
+  },
+  'room.chuyen_phong': {
+    actionId: 'room.chuyen_phong',
+    version: 1,
+    labelVi: 'Chuyển phòng cho hợp đồng',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'contracts', action: 'edit' },
+    inputSchema: SCHEMA_ROOM_CHUYEN_PHONG,
+    previewFields: ['toa_nha', 'so_hop_dong', 'phong', 'so_tien', 'hau_qua'],
+    previewRpc: 'copilot_preview_room_chuyen_phong_v1',
+    executeRpc: 'copilot_execute_room_chuyen_phong_v1',
+  },
+  'meter_reading.xoa_hang_loat': {
+    actionId: 'meter_reading.xoa_hang_loat',
+    version: 1,
+    labelVi: 'Xoá hàng loạt chỉ số công tơ',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'meter_readings', action: 'delete' },
+    inputSchema: SCHEMA_METER_READING_XOA_HANG_LOAT,
+    previewFields: ['toa_nha', 'canh_bao', 'hau_qua'],
+    previewRpc: 'copilot_preview_meter_reading_xoa_hang_loat_v1',
+    executeRpc: 'copilot_execute_meter_reading_xoa_hang_loat_v1',
   },
 } as const satisfies Record<string, ActionCatalogEntry>;
 

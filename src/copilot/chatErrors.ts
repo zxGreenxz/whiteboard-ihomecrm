@@ -192,6 +192,21 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['external_effect_entity_not_found', 'Không xác định chắc chắn được đúng bản ghi vừa gửi (Zalo) — dừng lại để tránh đối soát nhầm. Hãy lập lại kế hoạch.'],
   ['external_effect_failed', 'Hiệu ứng ngoài (Zalo/Network Center) đã thất bại thật sự. Kế hoạch dừng lại.'],
 
+  // — G5-C3 (nhóm C — tài chính còn lại) —
+  ['bulk_too_large', 'Danh sách vượt quá 50 mục — hãy chia nhỏ thành nhiều lần.'],
+  ['bulk_partial_failure', 'Chỉ một phần trong danh sách thực hiện được — dừng lại, không làm dở dang. Kiểm tra lại rồi lập kế hoạch mới.'],
+  ['invoice_not_approvable', 'Hoá đơn không còn ở trạng thái chờ duyệt (DRAFT) nữa.'],
+  ['contract_not_renewable', 'Hợp đồng không ở trạng thái còn hiệu lực nên không gia hạn được.'],
+  ['new_end_date_not_after_current', 'Ngày kết thúc mới phải sau ngày kết thúc hiện tại của hợp đồng.'],
+  ['contract_not_transferable', 'Hợp đồng không ở trạng thái còn hiệu lực nên không nhượng/chuyển phòng được.'],
+  ['room_not_same_building', 'Phòng mới phải cùng toà với phòng hiện tại — muốn đổi toà thì thanh lý rồi tạo hợp đồng mới.'],
+  ['room_occupied', 'Phòng mới đã có hợp đồng khác đang hiệu lực.'],
+  ['entity_changed_since_preview', 'Đối tượng đã đổi kể từ lúc xem trước. Hãy lập lại kế hoạch.'],
+  ['obligation_needs_force', 'Nghĩa vụ hoàn cọc đang cảnh báo — chỉ chủ tổ chức/super admin mới ép sinh phiếu được, kèm lý do.'],
+  ['termination_not_approved', 'Hồ sơ thanh lý chưa được duyệt nên chưa sinh phiếu hoàn cọc được.'],
+  ['cashbook_request_not_pending', 'Đề nghị chốt sổ quỹ này không còn ở trạng thái chờ xác nhận.'],
+  ['counted_balance_mismatch', 'Số tiền đã đếm không khớp số người đề nghị đã khai — hai bên phải đếm lại cùng nhau.'],
+
   // — Cửa chung của mọi hành động —
   ['copilot_feature_disabled', 'Tính năng kế hoạch đang tắt cho công ty của bạn.'],
   ['copilot_action_disabled', 'Một hành động trong kế hoạch đang bị tắt bởi quản trị.'],

@@ -499,15 +499,38 @@ const HANH_DONG_L5 = (Object.values(ACTION_CATALOG) as ActionCatalogEntry[]).fil
   (e) => e.risk === 'L5',
 );
 
-describe('G5-C/G5-C2 — 15 action L5 direct_l5_v1: KHÔNG có tool đơn lẻ nào', () => {
-  it('sổ có đúng 15 action L5 kiểu direct_l5_v1 (8 G5-C + 7 G5-C2), tất cả consentRequired=step_up', () => {
+describe('G5-C/G5-C2/G5-C3 — 24 action L5 direct_l5_v1: KHÔNG có tool đơn lẻ nào', () => {
+  it('sổ có đúng 24 action L5 kiểu direct_l5_v1 (8 G5-C + 7 G5-C2 + 9 G5-C3), tất cả consentRequired=step_up', () => {
     // `income_expense.nop_ho_so` (G3) là L5 nhưng `maker_submit_v1` — không đếm
     // vào đây, nó có luật riêng ("nộp hồ sơ", không phải "ghi thẳng").
     const directL5 = HANH_DONG_L5.filter((e) => e.executorKind === 'direct_l5_v1');
-    expect(directL5).toHaveLength(15);
+    expect(directL5).toHaveLength(24);
     for (const entry of directL5) {
       expect(entry.consentRequired, entry.actionId).toBe('step_up');
       expect(entry.risk, entry.actionId).toBe('L5');
+    }
+  });
+
+  it('G5-C3 nhóm C (9 action tài chính còn lại) có mặt, đúng quyền, không pinAlways/externalEffect', () => {
+    const nhomC: Record<string, { module: string; action: string }> = {
+      'invoice.duyet_hang_loat': { module: 'invoices', action: 'edit' },
+      'contract.gia_han': { module: 'contracts', action: 'edit' },
+      'contract.chuyen_nhuong': { module: 'contracts', action: 'edit' },
+      'termination.hoan_coc': { module: 'income_expenses', action: 'create' },
+      'cashbook.chot_so': { module: 'cashbooks', action: 'close_confirm' },
+      'salary.chi_luong': { module: 'salary', action: 'distribute' },
+      'salary.khoa_thang': { module: 'salary', action: 'lock' },
+      'room.chuyen_phong': { module: 'contracts', action: 'edit' },
+      'meter_reading.xoa_hang_loat': { module: 'meter_readings', action: 'delete' },
+    };
+    for (const [id, quyen] of Object.entries(nhomC)) {
+      const entry = ACTION_CATALOG[id as ActionId] as ActionCatalogEntry;
+      expect(entry, id).toBeDefined();
+      expect(entry.executorKind, id).toBe('direct_l5_v1');
+      expect(entry.consentRequired, id).toBe('step_up');
+      expect(entry.permission, id).toEqual(quyen);
+      expect(entry.pinAlways, id).toBeUndefined();
+      expect(entry.externalEffect, id).toBeUndefined();
     }
   });
 
