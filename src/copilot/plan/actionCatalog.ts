@@ -192,6 +192,42 @@ export const SCHEMA_PHIEU_GIU_CHO = z.object({
 });
 
 /**
+ * Input của `nop_ho_so` — action L5 `income_expense.nop_ho_so`.
+ *
+ * HAI HÌNH DẠNG, KHÔNG PHẢI MỘT SCHEMA CÓ HAI TRƯỜNG TUỲ CHỌN. Đúng một trong
+ * hai phải có mặt, và một payload mang cả hai là mơ hồ: server sẽ ưu tiên
+ * `$ref_step` và lặng lẽ bỏ qua `voucher_id`, tức người dùng nộp một phiếu khác
+ * với phiếu họ nghĩ. `z.union` từ chối luôn ở client.
+ *
+ *   `{ $ref_step: n }`   — nộp thực thể mà BƯỚC n của cùng kế hoạch vừa tạo ra.
+ *                          Id chưa tồn tại lúc lập kế hoạch, nên nó chỉ có thể
+ *                          là một tham chiếu; server giải nó từ
+ *                          `outcome.entity_id` của bước n sau khi bước đó DONE.
+ *   `{ voucher_id }`     — nộp một phiếu nháp CÓ SẴN của chính người thao tác.
+ *
+ * KHÔNG có trường nào chọn người duyệt, mức duyệt, hay "tự duyệt luôn". Bộ luật
+ * duyệt của tổ chức quyết định tất cả, và nếu nó tự hạch toán (`AUTO_POST`) thì
+ * `copilot_plan_submit_voucher_v1` ném `copilot_auto_post_forbidden` và cuộn
+ * ngược — đường này chỉ NỘP.
+ */
+export const SCHEMA_NOP_HO_SO = z.union([
+  z.object({
+    $ref_step: z
+      .number()
+      .int()
+      .min(1)
+      .max(8)
+      .describe('Số thứ tự bước TRƯỚC trong cùng kế hoạch đã tạo ra phiếu cần nộp'),
+  }),
+  z.object({
+    voucher_id: z
+      .string()
+      .uuid()
+      .describe('ID phiếu thu/chi nháp có sẵn (của chính bạn, chưa duyệt, chưa hạch toán)'),
+  }),
+]);
+
+/**
  * Sổ hành động — khoá là `action_id` của server, không phải tên tool.
  *
  * Một hành động ở đây KHÔNG tự động sống: `copilot_feature_flags` có một hàng
@@ -324,6 +360,39 @@ export const ACTION_CATALOG = {
     previewRpc: 'copilot_preview_reservation_deposit_v1',
     executeRpc: 'copilot_execute_reservation_deposit_v1',
   },
+  // HÀNH ĐỘNG DUY NHẤT KHÔNG ĐI ĐƯỜNG `nonce_abi_v1`, và cũng là hành động L5
+  // duy nhất của Mức 2.
+  //
+  //   Nó KHÔNG có tool. `taoToolGhiTuCatalog` chỉ dựng tool cho các dòng trong
+  //   `TOOL_GHI`, và `writeToolsHanhDong.test.ts` bắt cứng rằng mọi tool sinh từ
+  //   factory phải là L3/L4 + `nonce_abi_v1` + `click`. Đường vào của hành động
+  //   này là một BƯỚC trong kế hoạch thực thi (`copilot_plan_create_v1`), tức
+  //   nó luôn đi kèm một lần bấm duyệt cấp kế hoạch của người thật.
+  //
+  //   `previewRpc`/`executeRpc` cùng trỏ `copilot_plan_submit_voucher_v1` vì
+  //   `maker_submit_v1` không có cặp preview/execute: máy kế hoạch rẽ theo
+  //   `executorKind` rồi gọi thẳng helper. Hai trường này là MÔ TẢ (và phải
+  //   khớp từng ký tự với hàng seed — `actionCatalog.test.ts` so cả hai), không
+  //   phải thứ client dùng để gọi RPC.
+  'income_expense.nop_ho_so': {
+    actionId: 'income_expense.nop_ho_so',
+    version: 1,
+    labelVi: 'Nộp phiếu thu/chi vào hộp chờ duyệt',
+    risk: 'L5',
+    executorKind: 'maker_submit_v1',
+    // `click`, không phải `step_up`: thứ người dùng đồng ý là NỘP hồ sơ cho một
+    // con người khác duyệt, không phải chi tiền. Người duyệt vẫn phải là người
+    // khác — `decide_financial_voucher` chặn chính người nộp (maker-checker).
+    consentRequired: 'click',
+    // Quyền TẠO, không phải quyền duyệt: helper chỉ nộp được phiếu do chính
+    // người thao tác tạo ra. Đòi `income_expenses.approve` ở đây là bước đầu
+    // tiên trên con đường mà cả kiến trúc L5 dựng ra để chặn.
+    permission: { module: 'income_expenses', action: 'create' },
+    inputSchema: SCHEMA_NOP_HO_SO,
+    previewFields: ['loai', 'nguon', 'phieu', 'so_tien', 'trang_thai'],
+    previewRpc: 'copilot_plan_submit_voucher_v1',
+    executeRpc: 'copilot_plan_submit_voucher_v1',
+  },
 } as const satisfies Record<string, ActionCatalogEntry>;
 
 export type ActionId = keyof typeof ACTION_CATALOG;
@@ -370,6 +439,10 @@ export const NHAN_TRUONG_XEM_TRUOC: Readonly<Record<string, string>> = {
   ngay_ghi: 'Ngày chốt',
   ghi_chu: 'Ghi chú',
   han_giu_cho: 'Hạn giữ chỗ',
+  // Hai trường của bước nộp hồ sơ. `nguon` chỉ có mặt khi bước nộp một thực thể
+  // do BƯỚC TRƯỚC trong cùng kế hoạch tạo ra — người bấm phải thấy nó nộp cái gì.
+  nguon: 'Nguồn',
+  phieu: 'Phiếu',
   // Cảnh báo là một trường XEM TRƯỚC như mọi trường khác, không phải một dòng
   // phụ chú: người bấm phải thấy nó ngay trong bảng, cùng chỗ với con số.
   canh_bao: 'Cảnh báo',
