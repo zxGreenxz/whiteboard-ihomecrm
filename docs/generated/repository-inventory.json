@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 493,
-  "soFileDocBangFs": 168,
-  "tongLoiGoi": 337,
-  "khongPhanLoaiDuoc": 173,
+  "tongSoFileTest": 496,
+  "soFileDocBangFs": 169,
+  "tongLoiGoi": 340,
+  "khongPhanLoaiDuoc": 175,
   "theoLoai": {
     "manifest": {
       "soFile": 18,
@@ -321,6 +321,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "scripts/__tests__/check-raw-rpc-callers.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -360,6 +366,14 @@
       "loai": {
         "sql": 1,
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 2
       },
       "khongPhanLoaiDuoc": 0
     },
@@ -551,12 +565,6 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
-    },
-    {
       "file": "scripts/__tests__/check-copilot-tool-inventory.test.mjs",
       "soGoi": 1,
       "loai": {},
@@ -651,14 +659,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/app/capabilities/__tests__/riskMapCoverage.test.ts",
       "soGoi": 1,
       "loai": {
@@ -720,6 +720,12 @@
     },
     {
       "file": "src/copilot/__tests__/safeControls.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/copilot/plan/__tests__/actionCatalog.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1

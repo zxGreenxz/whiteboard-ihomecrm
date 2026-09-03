@@ -1,7 +1,7 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1379,
+    "sourceCallSites": 1385,
     "catalogFunctions": 1050,
     "schemas": [
       "public",
@@ -9,12 +9,12 @@
     ]
   },
   "counts": {
-    "calledRpcs": 267,
+    "calledRpcs": 270,
     "byRisk": {
-      "normal": 190,
+      "normal": 193,
       "financial": 77
     },
-    "securityDefiner": 251
+    "securityDefiner": 254
   },
   "missingOnServer": [],
   "rpcs": {
@@ -996,6 +996,25 @@
       ],
       "risk": "normal"
     },
+    "copilot_action_ledger_list_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_limit integer DEFAULT 50",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/admin/hanhDongCopilot.ts"
+      ],
+      "risk": "normal"
+    },
     "copilot_available_rooms_v1": {
       "definitions": [
         {
@@ -1781,6 +1800,25 @@
       ],
       "callers": [
         "src/hooks/useContracts.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_copilot_action_policy_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/admin/hanhDongCopilot.ts"
       ],
       "risk": "normal"
     },
@@ -4020,6 +4058,25 @@
       ],
       "callers": [
         "src/hooks/useUtilityBills.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_copilot_action_policy_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_expected_revision bigint, p_max_direct_risk text DEFAULT NULL::text, p_allowed_roles text[] DEFAULT NULL::text[], p_standing_grants_enabled boolean DEFAULT NULL::boolean, p_reason text DEFAULT NULL::text, p_evidence_link text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/admin/hanhDongCopilot.ts"
       ],
       "risk": "normal"
     },
