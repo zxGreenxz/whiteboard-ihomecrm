@@ -36,10 +36,22 @@ export interface DongSoHanhDong {
   errorCode: string | null;
   entityTable: string | null;
   entityId: string | null;
+  /** G3: dòng của một KẾ HOẠCH mang thêm ba cột này (nullable ở mọi dòng cũ). */
+  planId: string | null;
+  stepNo: number | null;
+  planVersion: number | null;
 }
 
 function chuoiHoacNull(gt: unknown): string | null {
   return typeof gt === 'string' && gt.length > 0 ? gt : null;
+}
+
+/** Số nguyên, hoặc `null`. `Number(null)` là `0`, nên `null` phải chặn TRƯỚC. */
+function soHoacNull(gt: unknown): number | null {
+  if (typeof gt === 'number') return Number.isFinite(gt) ? gt : null;
+  if (typeof gt !== 'string' || gt.trim() === '') return null;
+  const n = Number(gt);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
@@ -64,6 +76,9 @@ export function chuanHoaDongSo(gt: unknown): DongSoHanhDong | null {
     errorCode: chuoiHoacNull(r.error_code),
     entityTable: chuoiHoacNull(r.entity_table),
     entityId: chuoiHoacNull(r.entity_id),
+    planId: chuoiHoacNull(r.plan_id),
+    stepNo: soHoacNull(r.step_no),
+    planVersion: soHoacNull(r.plan_version),
   };
 }
 
@@ -174,7 +189,40 @@ const NHAN_SU_KIEN: Readonly<Record<string, string>> = {
   action_previewed: 'Lập bản xem trước',
   action_executed: 'Đã thực thi',
   action_failed: 'Thực thi lỗi',
+  // Bảy sự kiện kế hoạch của G3 — chúng đã nằm trong CHECK của bảng sổ từ G2-A,
+  // nhưng cho tới G3-TS không nhãn nào tồn tại, nên trang quản trị hiện mã trần
+  // (`step_blocked`) cho đúng những dòng mà người trực sự cố cần đọc nhanh nhất.
+  plan_created: 'Lập kế hoạch',
+  plan_approved: 'Người dùng duyệt kế hoạch',
+  step_done: 'Bước đã chạy',
+  step_failed: 'Bước hỏng',
+  step_blocked: 'Bước bị chặn',
+  plan_cancelled: 'Huỷ kế hoạch',
+  plan_expired: 'Kế hoạch quá hạn',
 };
+
+/** Bảy sự kiện thuộc về đường KẾ HOẠCH — nguồn của mục "Kế hoạch gần đây". */
+export const SU_KIEN_KE_HOACH: readonly string[] = [
+  'plan_created',
+  'plan_approved',
+  'step_done',
+  'step_failed',
+  'step_blocked',
+  'plan_cancelled',
+  'plan_expired',
+];
+
+/**
+ * Lọc các dòng sổ thuộc đường kế hoạch.
+ *
+ * Lọc theo DANH SÁCH TÊN, không theo tiền tố `plan_`/`step_`: một tiền tố sẽ
+ * lặng lẽ nuốt mọi sự kiện tương lai có tên bắt đầu như thế (kể cả sự kiện của
+ * một cơ chế khác), và mục "Kế hoạch gần đây" sẽ kể một câu chuyện lẫn lộn mà
+ * không ai thấy sai.
+ */
+export function locSuKienKeHoach(dong: readonly DongSoHanhDong[]): DongSoHanhDong[] {
+  return dong.filter((d) => SU_KIEN_KE_HOACH.includes(d.event));
+}
 
 export function nhanSuKien(event: string): string {
   return NHAN_SU_KIEN[event] ?? event;

@@ -18,6 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
+
 import {
   SO_DONG_SO_MAC_DINH,
   dienGiaiLoiChinhSach,
@@ -25,6 +27,7 @@ import {
   docChinhSachHanhDong,
   docSoHanhDong,
   doiChinhSachHanhDong,
+  locSuKienKeHoach,
   nhanSuKien,
   type ChinhSachHanhDong,
   type DongSoHanhDong,
@@ -74,6 +77,68 @@ export function BangNhatKyHanhDong({ dong }: { dong: readonly DongSoHanhDong[] }
                 </td>
                 <td className="p-2 font-mono text-xs">
                   {d.entityTable ? `${d.entityTable}${d.entityId ? `:${d.entityId.slice(0, 8)}` : ''}` : '—'}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * "Kế hoạch gần đây" — CÙNG một cái sổ, lọc lấy bảy sự kiện của đường kế hoạch.
+ *
+ * VÌ SAO TÁCH RA MỘT BẢNG RIÊNG THAY VÌ ĐỂ NGƯỜI ĐỌC TỰ LỌC MẮT
+ *   Một kế hoạch là một CÂU CHUYỆN nhiều dòng (lập → duyệt → từng bước), và
+ *   trong bảng chung nó nằm xen giữa các dòng của những hành động lẻ. Người
+ *   đang trực một sự cố cần đọc "kế hoạch nào vừa chạy, tới bước nào thì dừng"
+ *   — câu hỏi đó không trả lời được bằng cách nhìn một bảng trộn.
+ *
+ * Cột `Kế hoạch` in 8 ký tự đầu của `plan_id` cộng số bước: đủ để nối các dòng
+ * của cùng một kế hoạch bằng mắt, và không dài tới mức đẩy các cột khác ra khỏi
+ * màn hình.
+ */
+export function BangKeHoachGanDay({ dong }: { dong: readonly DongSoHanhDong[] }) {
+  const cua = locSuKienKeHoach(dong);
+  return (
+    <div className="overflow-x-auto rounded border" data-testid="copilot-admin-plan-table">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-left">
+          <tr>
+            <th className="p-2">Thời gian</th>
+            <th className="p-2">Sự kiện</th>
+            <th className="p-2">Kế hoạch</th>
+            <th className="p-2">Hành động</th>
+            <th className="p-2">Mã lỗi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cua.length === 0 ? (
+            <tr>
+              <td className="p-3 text-muted-foreground" colSpan={5}>
+                Chưa có kế hoạch nào trong sổ của công ty này.
+              </td>
+            </tr>
+          ) : (
+            cua.map((d) => (
+              <tr key={d.id} className="border-t align-top">
+                <td className="whitespace-nowrap p-2 font-mono text-xs">
+                  {dinhDangThoiGian(d.createdAt)}
+                </td>
+                <td className="p-2">{nhanSuKien(d.event)}</td>
+                <td className="p-2 font-mono text-xs">
+                  {d.planId ? d.planId.slice(0, 8) : '—'}
+                  {d.stepNo === null ? '' : ` · bước ${d.stepNo}`}
+                </td>
+                <td className="p-2 font-mono text-xs">{d.actionId ?? '—'}</td>
+                <td className="p-2 font-mono text-xs">
+                  {d.errorCode ? (
+                    <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700">{d.errorCode}</span>
+                  ) : (
+                    '—'
+                  )}
                 </td>
               </tr>
             ))
@@ -201,6 +266,11 @@ export function TheChinhSachHanhDong(props: {
 
 export default function HanhDongTab() {
   const qc = useQueryClient();
+  // Sổ đã tự giới hạn ở server (người thường chỉ thấy dòng của mình), nên mục
+  // này không phải một hàng rào — nó là một mục chỉ có nghĩa với người NHÌN
+  // được cả công ty. Hiện nó cho người thường là hứa một bức tranh toàn cảnh
+  // mà dữ liệu họ nhận được không dựng nổi.
+  const { data: laSuperAdmin } = useIsSuperAdmin();
   const { organizations, selectedOrganizationId, selectOrganization } = useOrganization();
   const [ruiRo, setRuiRo] = useState<MucRuiRoChinhSach | ''>('');
   const [vai, setVai] = useState<string[] | null>(null);
@@ -312,6 +382,19 @@ export default function HanhDongTab() {
         ) : null}
         <BangNhatKyHanhDong dong={soQuery.data ?? []} />
       </div>
+
+      {laSuperAdmin ? (
+        <div className="space-y-2 rounded border p-3">
+          <div>
+            <div className="text-sm font-medium">Kế hoạch gần đây</div>
+            <div className="text-xs text-muted-foreground">
+              Bảy sự kiện của đường kế hoạch (lập · duyệt · từng bước · huỷ · quá hạn), lọc từ
+              chính {SO_DONG_SO_MAC_DINH} dòng sổ ở trên.
+            </div>
+          </div>
+          <BangKeHoachGanDay dong={soQuery.data ?? []} />
+        </div>
+      ) : null}
     </div>
   );
 }

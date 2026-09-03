@@ -25,8 +25,11 @@ const {
   docSoHanhDong,
   doiChinhSachHanhDong,
   nhanSuKien,
+  locSuKienKeHoach,
 } = await import('../hanhDongCopilot');
-const { BangNhatKyHanhDong, TheChinhSachHanhDong } = await import('../HanhDongTab');
+const { BangKeHoachGanDay, BangNhatKyHanhDong, TheChinhSachHanhDong } = await import(
+  '../HanhDongTab'
+);
 
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 
@@ -82,6 +85,10 @@ describe('đọc sổ hành động', () => {
       errorCode: null,
       entityTable: null,
       entityId: null,
+      // G3 nới bảng sổ thêm ba cột; dòng cũ không có chúng vẫn phải đọc được.
+      planId: null,
+      stepNo: null,
+      planVersion: null,
     });
   });
 });
@@ -237,5 +244,55 @@ describe('render', () => {
     );
     expect(html).toContain('BLOCKED');
     expect(html).toMatch(/<button[^>]*disabled/);
+  });
+});
+
+
+// ── G3: mục "Kế hoạch gần đây" ───────────────────────────────────────────────
+//
+// Cùng một cái sổ, lọc lấy bảy sự kiện của đường kế hoạch. Hai điều được đo:
+// nhãn (mã trần `step_blocked` là thứ người trực sự cố phải dịch trong đầu), và
+// PHÉP LỌC (lọc theo danh sách tên, không theo tiền tố — một tiền tố sẽ nuốt
+// mọi sự kiện tương lai có tên bắt đầu như thế).
+const DONG_KE_HOACH = [
+  { ...DONG_SO, id: 'p1', event: 'plan_created', plan_id: '99999999-9999-4999-8999-999999999999', step_no: null, error_code: null },
+  { ...DONG_SO, id: 'p2', event: 'step_failed', plan_id: '99999999-9999-4999-8999-999999999999', step_no: 2, error_code: 'step_failed' },
+  { ...DONG_SO, id: 'p3', event: 'action_executed' },
+  { ...DONG_SO, id: 'p4', event: 'plan_step_tuong_lai_cua_ai_do' },
+];
+
+describe('sổ kế hoạch', () => {
+  it('chuẩn hoá đọc thêm plan_id / step_no và KHÔNG biến null thành 0', () => {
+    const d = chuanHoaDongSo(DONG_KE_HOACH[0])!;
+    expect(d.planId).toBe('99999999-9999-4999-8999-999999999999');
+    expect(d.stepNo).toBeNull();
+    expect(chuanHoaDongSo(DONG_KE_HOACH[1])!.stepNo).toBe(2);
+  });
+
+  it('lọc theo DANH SÁCH TÊN, không theo tiền tố', () => {
+    const cua = locSuKienKeHoach(chuanHoaSo(DONG_KE_HOACH));
+    expect(cua.map((d) => d.id)).toEqual(['p1', 'p2']);
+  });
+
+  it('bảy sự kiện kế hoạch có nhãn tiếng Việt, không hiện mã trần', () => {
+    for (const ma of ['plan_created', 'plan_approved', 'step_done', 'step_failed', 'step_blocked', 'plan_cancelled', 'plan_expired']) {
+      expect(nhanSuKien(ma), ma).not.toBe(ma);
+    }
+  });
+
+  it('bảng vẽ được và nối các dòng cùng một kế hoạch bằng 8 ký tự đầu', () => {
+    const html = renderToStaticMarkup(
+      <BangKeHoachGanDay dong={chuanHoaSo(DONG_KE_HOACH)} />,
+    );
+    expect(html).toContain('copilot-admin-plan-table');
+    expect(html).toContain('99999999');
+    expect(html).toContain('bước 2');
+    expect(html).toContain('Bước hỏng');
+    // Dòng không thuộc đường kế hoạch không được lọt vào bảng này.
+    expect(html).not.toContain('Đã thực thi');
+  });
+
+  it('sổ rỗng nói rõ là rỗng, không vẽ một bảng trắng', () => {
+    expect(renderToStaticMarkup(<BangKeHoachGanDay dong={[]} />)).toContain('Chưa có kế hoạch nào');
   });
 });

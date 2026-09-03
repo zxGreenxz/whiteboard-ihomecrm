@@ -15,6 +15,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import XacNhanPhieuCard from './XacNhanPhieuCard';
+import KeHoachCard, { tinNhanDaDuyet } from './KeHoachCard';
 import { datNguCanhXacNhan } from './confirmationStore';
 import { canUse } from '@/lib/permissionPages';
 import {
@@ -499,6 +500,42 @@ export default function ChatPanel({ onClose }: Props) {
     return { ...quyetDinh, snapshot };
   };
 
+  /**
+   * Người dùng vừa bấm "Duyệt kế hoạch" trên thẻ — báo cho mô hình chạy tiếp.
+   *
+   * Câu gửi đi là một THÔNG BÁO, không phải một cái cổng: không dòng nào trong
+   * ứng dụng đọc nội dung tin nhắn rồi duyệt cái gì. Mô hình (hoặc người dùng)
+   * gõ lại y hệt câu này thì nó cũng chỉ là chữ trong khung chat —
+   * `copilot_plan_approve_v1` đã chạy XONG trước khi hàm này được gọi, và nó
+   * đòi một nonce mà chỉ cú bấm thật trên thẻ đưa tới được.
+   *
+   * Quyền công cụ phải TƯƠI như đường gửi thường: chạy một kế hoạch dưới một
+   * snapshot rollout đã hết hạn là đúng thứ kill switch sinh ra để chặn.
+   */
+  const chayKeHoachSauKhiDuyet = async (planId: string, planVersion: number) => {
+    if (running) return;
+    const generation = orgGenerationRef.current;
+    touchedRef.current = true;
+    setError('');
+    setRunning(true);
+    try {
+      const quyen = await quyenCongCuTuoi();
+      if (generation !== orgGenerationRef.current) return;
+      if (!quyen.guiDuoc || !quyen.snapshot) {
+        setError(quyen.thongBao ?? THONG_BAO_QUYEN_CHUA_TUOI);
+        return;
+      }
+      await runChat(tinNhanDaDuyet(planId, planVersion), [], quyen.snapshot);
+    } catch (e) {
+      handleError(e);
+    } finally {
+      if (generation === orgGenerationRef.current) setLiveTool(null);
+      if (generation === orgGenerationRef.current) setDangChay('');
+      if (generation === orgGenerationRef.current) setRunning(false);
+      if (generation === orgGenerationRef.current) abortRef.current = null;
+    }
+  };
+
   const send = async () => {
     const text = input.trim();
     if ((!text && !anhKem.length) || running) return;
@@ -896,6 +933,40 @@ export default function ChatPanel({ onClose }: Props) {
             }}
           />
         )}
+        {/* Thẻ KẾ HOẠCH. KHÔNG nằm sau `!running`, khác thẻ phiếu: sau khi
+            người dùng bấm duyệt, lượt chạy các bước LÀ một lượt đang chạy —
+            ẩn thẻ lúc đó là giấu đúng bảng trạng thái mà người dùng cần nhìn
+            để biết bước nào đã vào sổ. */}
+        <KeHoachCard
+          organizationId={selectedOrganizationId}
+          threadId={threadId}
+          generation={confirmationGeneration}
+          availability={availability}
+          onDuyet={(planId, planVersion) => {
+            if (
+              !isCurrentChatScope(
+                confirmationGeneration,
+                orgGenerationRef.current,
+                confirmationOrganizationId,
+                selectedOrganizationId,
+              )
+            ) return;
+            if (confirmationThreadId !== threadId) return;
+            void chayKeHoachSauKhiDuyet(planId, planVersion);
+          }}
+          onXong={(thongBao) => {
+            if (
+              !isCurrentChatScope(
+                confirmationGeneration,
+                orgGenerationRef.current,
+                confirmationOrganizationId,
+                selectedOrganizationId,
+              )
+            ) return;
+            if (confirmationThreadId !== threadId) return;
+            setHistory((h) => [...h, { role: 'assistant', content: thongBao }]);
+          }}
+        />
         {error && <div className="rounded bg-red-50 p-2 text-xs text-red-600">{error}</div>}
         <div ref={bottomRef} />
       </div>

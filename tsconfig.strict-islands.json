@@ -537,6 +537,7 @@
     "src/copilot/docs/docSearch.ts",
     "src/copilot/docs/tokenize.ts",
     "src/copilot/featureFlags.ts",
+    "src/copilot/KeHoachCard.tsx",
     "src/copilot/phaseDWriteMatrix.ts",
     "src/copilot/plan/__tests__/actionCatalog.test.ts",
     "src/copilot/plan/actionCatalog.ts",
