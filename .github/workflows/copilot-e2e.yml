@@ -315,10 +315,19 @@ jobs:
       #   (Spec còn một lớp thứ hai: mọi phép đếm sổ đều lọc theo `action_id` +
       #   `entity_id`. Hai lớp, vì lớp này là quy ước còn lớp kia là phép đo.)
       #
+      #   `copilot-plan-batch-consent.spec.ts` (G3-E2E) ở CÙNG bước vì lý do như
+      #   vậy, chỉ nặng hơn: ngoài cùng cái cờ đó, nó còn nới
+      #   `copilot_action_policy.allowed_roles` từ {superadmin} lên
+      #   {superadmin, owner} SUỐT lượt chạy của nó (org DEMO không có ai vừa là
+      #   super admin vừa có quyền ghi — xem khối tiền đề ở đầu spec) rồi trả lại ở
+      #   `afterAll`. Hai spec dùng chung một trạng thái toàn cục thì phải nối
+      #   đuôi, và `FLEET_WORKERS=1` là thứ bảo đảm điều đó: Playwright chạy từng
+      #   file một khi chỉ có một worker.
+      #
       #   `!cancelled()` chứ không phải mặc định: bước trên đỏ KHÔNG được làm ma
       #   trận không chạy — một hàng rào bảo mật không được đo chỉ vì một smoke
       #   test khác vừa hỏng là đúng thứ ta không muốn.
-      - name: Ma trận hành động Copilot (chạy RIÊNG, 1 worker)
+      - name: Hai spec hàng rào ghi Copilot (ma trận hành động + kế hoạch theo lô — chạy RIÊNG, 1 worker)
         if: ${{ !cancelled() }}
         env:
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
@@ -329,11 +338,16 @@ jobs:
           FLEET_PASS_SYSADMIN: ${{ secrets.FLEET_PASS_SYSADMIN }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           FLEET_WORKERS: '1'
-          # Mở ca chat "bỏ qua xác nhận" của copilot-action-matrix.spec.ts. Ca đó
-          # cần một provider mô hình SỐNG, nên nó có thể đỏ khi 9Router chết —
-          # đó là một tín hiệu thật (đường chat không dùng được), không phải
-          # nhiễu. Muốn tách nó khỏi cửa thì đặt '0', đừng sửa spec.
+          # Mở hai ca chat sống: "bỏ qua xác nhận" (ma trận) và "tự duyệt luôn"
+          # (kế hoạch theo lô). Chúng cần một provider mô hình SỐNG, nên có thể đỏ
+          # khi 9Router chết — đó là một tín hiệu thật (đường chat không dùng
+          # được), không phải nhiễu. Muốn tách khỏi cửa thì đặt '0', đừng sửa spec.
           COPILOT_LIVE_MODEL: '1'
+          # Ca 7 của copilot-plan-batch-consent (kế hoạch DRAFT quá hạn) CHỜ THẬT
+          # hơn 5 phút vì không có đường hợp lệ nào lùi `expires_at`. Mặc định
+          # TẮT: 5 phút treo mỗi lượt CI không đáng cho một bất biến đã có test
+          # đơn vị. Đặt '1' khi muốn đo lại trên máy thật.
+          COPILOT_PLAN_EXPIRY_WAIT: '0'
           THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
           THU_MUC_RAC: ${{ runner.temp }}/copilot-e2e-artifacts
           LOC_CHE: ${{ runner.temp }}/che-bi-mat.mjs
@@ -341,7 +355,7 @@ jobs:
           set -uo pipefail
           mkdir -p "$THU_MUC_TAI_LEN"
           cd .e2e-fleet
-          npx playwright test             specs/copilot-action-matrix.spec.ts             --reporter=list             --trace=off             --output "$THU_MUC_RAC" 2>&1 | node "$LOC_CHE"             | tee "$THU_MUC_TAI_LEN/list-ma-tran-hanh-dong.log"
+          npx playwright test             specs/copilot-action-matrix.spec.ts             specs/copilot-plan-batch-consent.spec.ts             --reporter=list             --trace=off             --output "$THU_MUC_RAC" 2>&1 | node "$LOC_CHE"             | tee "$THU_MUC_TAI_LEN/list-hang-rao-ghi.log"
 
       # Dọn TRƯỚC guard, guard TRƯỚC upload. Ba bước tách rời để log nói rõ bước
       # nào làm gì; gộp lại thì một lần `rm` hỏng sẽ ẩn trong bước khác.

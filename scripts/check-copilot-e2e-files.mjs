@@ -13,6 +13,11 @@ export const REQUIRED_COPILOT_SPECS = [
   // phạm vi quyền, kill switch). Bốn spec trên đo phía trình duyệt; spec này đo
   // thứ còn lại khi ai đó bỏ qua trình duyệt hoàn toàn.
   '.e2e-fleet/specs/copilot-action-matrix.spec.ts',
+  // G3-E2E: đồng ý theo LÔ — một phiếu đồng ý cho nhiều bước. Ma trận trên đo
+  // hàng rào của MỘT thao tác ghi; spec này đo thứ chỉ tầng kế hoạch mới hỏng
+  // được: nonce cấp kế hoạch, `plan_digest`, thứ tự tuyến tính, hạn thực thi,
+  // và cầu dao kéo GIỮA một kế hoạch đã duyệt.
+  '.e2e-fleet/specs/copilot-plan-batch-consent.spec.ts',
 ];
 
 export function validateCopilotE2eFiles(root, required = REQUIRED_COPILOT_SPECS) {
