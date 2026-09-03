@@ -184,9 +184,20 @@ const namDayDu = (raw: string): number => (raw.length === 2 ? 2000 + Number(raw)
 
 // ── Các mẫu câu ────────────────────────────────────────────────────────
 //
-// THỨ TỰ LÀ MỘT PHẦN CỦA LUẬT. "3 tháng trước" chứa nguyên cụm "tháng trước";
-// nếu mẫu chung chạy trước thì một câu hỏi về tháng 5 sẽ lặng lẽ trả về tháng 7.
-// Mẫu nào HẸP HƠN phải đứng trước mẫu bao nó.
+// KHỚP THEO VỊ TRÍ TRÁI-SANG-PHẢI, KHÔNG PHẢI THEO THỨ TỰ KHAI BÁO.
+//   Bản đầu thử từng mẫu theo thứ tự ưu tiên trên TOÀN BỘ câu, và thứ tự đó
+//   quyết định kết quả bất kể cụm nào đứng trước trong câu. Hệ quả đo được
+//   (soát 03/09/2026): "doanh thu tháng 7 năm 2024" trả về CẢ NĂM 2024, vì mẫu
+//   năm được thử trước mẫu tháng. Con số trả về lớn gấp mười hai lần con số
+//   người dùng hỏi, và không có gì đỏ.
+//
+//   Nay quét như một bộ tách từ: tìm cụm khớp SỚM NHẤT trong câu, giải nghĩa
+//   nó, rồi nhảy qua phần đã tiêu thụ và quét tiếp. Thứ tự khai báo chỉ còn là
+//   luật phá hoà khi hai mẫu cùng khớp tại CÙNG một vị trí (`tháng 7 năm 2024`
+//   khớp `RE_THANG_SO` tại "tháng", nuốt luôn "năm 2024").
+//
+//   Quét được cả câu cũng là thứ cho phép biết câu có NHIỀU kỳ hay không —
+//   xem `soKyRiengBiet`.
 //
 // Mọi mẫu khớp cả bản CÓ DẤU lẫn KHÔNG DẤU: người gõ nhanh bỏ dấu, và một bộ
 // chuẩn hoá chỉ hiểu tiếng Việt có dấu sẽ im lặng bỏ sót đúng nhóm người dùng
@@ -198,6 +209,8 @@ const RE_KHOANG_DMY =
   /t[ừu]\s*(?:ng[àa]y\s*)?(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?\s*(?:đ[ếe]n|t[ớo]i|–)\s*(?:ng[àa]y\s*)?(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?/i;
 const RE_N_THANG_QUA = /(\d{1,2})\s*th[áa]ng\s*(?:qua|g[âầa]n\s*đ[âaầ]y|g[âầa]n\s*nh[âấầa]t|v[ừu]a\s*qua)/i;
 const RE_N_THANG_TRUOC = /(\d{1,2})\s*th[áa]ng\s*tr[ưu][ớoơ]c/i;
+// Năm đi kèm nhận cả ba cách viết: "tháng 7/2024", "tháng 7-2024", "tháng 7 năm 2024".
+const RE_THANG_SO = /th[áa]ng\s*(\d{1,2})(?:\s*(?:[/\-]|n[ăa]m)\s*(20\d{2}))?/i;
 const RE_QUY_NAY = /qu[ýy]\s*(?:n[àa]y|hi[ệe]n\s*t[ạa]i)/i;
 const RE_QUY_TRUOC = /qu[ýy]\s*(?:tr[ưu][ớoơ]c|r[ồo]i|v[ừu]a\s*r[ồo]i)/i;
 const RE_NAM_CU_THE = /n[ăa]m\s*(20\d{2})\b/i;
@@ -205,9 +218,157 @@ const RE_NAM_NAY = /n[ăa]m\s*(?:nay|n[àa]y|hi[ệe]n\s*t[ạa]i)/i;
 const RE_NAM_TRUOC = /n[ăa]m\s*(?:ngo[áa]i|tr[ưu][ớoơ]c|r[ồo]i)/i;
 const RE_TUAN_NAY = /tu[âầa]n\s*(?:n[àa]y|hi[ệe]n\s*t[ạa]i)/i;
 const RE_TUAN_TRUOC = /tu[âầa]n\s*(?:tr[ưu][ớoơ]c|r[ồo]i|v[ừu]a\s*r[ồo]i)/i;
-const RE_THANG_SO = /th[áa]ng\s*(\d{1,2})(?:\s*[/\-]\s*(20\d{2}))?/i;
 const RE_THANG_NAY = /th[áa]ng\s*(?:n[àa]y|hi[ệe]n\s*t[ạa]i)/i;
 const RE_THANG_TRUOC = /th[áa]ng\s*(?:tr[ưu][ớoơ]c|r[ồo]i|v[ừu]a\s*r[ồo]i)/i;
+
+/** Có một con số ngay trước chỗ khớp không ("12 tháng rồi"). */
+const CO_SO_DUNG_TRUOC = /\d\s*$/;
+
+interface MauKy {
+  re: RegExp;
+  /**
+   * Điều kiện phụ nhìn phần văn bản NGAY TRƯỚC chỗ khớp. Trả `false` ⇒ bỏ chỗ
+   * khớp này và tìm tiếp chỗ sau.
+   */
+  chan?: (truoc: string) => boolean;
+  lay: (m: RegExpExecArray, ctx: CopilotRequestContext) => CopilotResolvedPeriod;
+}
+
+/**
+ * Bảng mẫu, xếp theo ĐỘ HẸP giảm dần (chỉ dùng để phá hoà khi trùng vị trí).
+ *
+ * `RE_THANG_SO` đứng TRƯỚC mọi mẫu năm là có chủ ý: xem chú thích lỗi
+ * "tháng 7 năm 2024" ở đầu mục này.
+ */
+const MAU_KY: readonly MauKy[] = [
+  { re: RE_KHOANG_ISO, lay: (m) => kyKhoang(m[1], m[2]) },
+  {
+    re: RE_KHOANG_DMY,
+    lay: (m, ctx) => {
+      const namHienTai = Number(ctx.kyHienTai.split('-')[0]);
+      const n1 = m[3] ? namDayDu(m[3]) : namHienTai;
+      const n2 = m[6] ? namDayDu(m[6]) : n1;
+      const [d1, m1, d2, m2] = [Number(m[1]), Number(m[2]), Number(m[4]), Number(m[5])];
+      if (!ngayHopLe(n1, m1, d1) || !ngayHopLe(n2, m2, d2)) return null;
+      return kyKhoang(`${n1}-${hai(m1)}-${hai(d1)}`, `${n2}-${hai(m2)}-${hai(d2)}`);
+    },
+  },
+  {
+    re: RE_N_THANG_QUA,
+    lay: (m, ctx) => {
+      const n = Number(m[1]);
+      if (n < 1 || n > 36) return null;
+      const dau = shiftYm(ctx.kyHienTai, -(n - 1));
+      return {
+        kind: 'range',
+        // n = 1 thì khoảng đúng bằng một tháng — vẫn ép được vào tool chỉ nhận tháng.
+        month: n === 1 ? ctx.kyHienTai : null,
+        startDate: `${dau}-01`,
+        endDate: ngayCuoiThang(ctx.kyHienTai),
+        nhan: `${n} tháng gần nhất (${dau} → ${ctx.kyHienTai})`,
+      };
+    },
+  },
+  {
+    re: RE_N_THANG_TRUOC,
+    lay: (m, ctx) => {
+      const n = Number(m[1]);
+      return n >= 1 && n <= 36 ? kyThang(shiftYm(ctx.kyHienTai, -n)) : null;
+    },
+  },
+  {
+    re: RE_THANG_SO,
+    lay: (m, ctx) => {
+      const [namHienTai, thangHienTai] = ctx.kyHienTai.split('-').map(Number);
+      const thang = Number(m[1]);
+      if (thang < 1 || thang > 12) return null;
+      const nam = m[2] ? Number(m[2]) : thang > thangHienTai ? namHienTai - 1 : namHienTai;
+      return kyThang(`${nam}-${hai(thang)}`);
+    },
+  },
+  {
+    re: RE_QUY_NAY,
+    lay: (_m, ctx) => {
+      const [nam, thang] = ctx.kyHienTai.split('-').map(Number);
+      return kyQuy(nam, quyCua(thang));
+    },
+  },
+  {
+    re: RE_QUY_TRUOC,
+    lay: (_m, ctx) => {
+      const [nam, thang] = ctx.kyHienTai.split('-').map(Number);
+      const q = quyCua(thang);
+      return q === 1 ? kyQuy(nam - 1, 4) : kyQuy(nam, q - 1);
+    },
+  },
+  { re: RE_NAM_CU_THE, lay: (m) => kyNam(Number(m[1])) },
+  { re: RE_NAM_NAY, lay: (_m, ctx) => kyNam(Number(ctx.kyHienTai.split('-')[0])) },
+  { re: RE_NAM_TRUOC, lay: (_m, ctx) => kyNam(Number(ctx.kyHienTai.split('-')[0]) - 1) },
+  { re: RE_TUAN_NAY, lay: (_m, ctx) => kyTuan(ctx.ngayHienTai, 0) },
+  { re: RE_TUAN_TRUOC, lay: (_m, ctx) => kyTuan(ctx.ngayHienTai, -1) },
+  { re: RE_THANG_NAY, lay: (_m, ctx) => kyThang(ctx.kyHienTai) },
+  {
+    re: RE_THANG_TRUOC,
+    // "khách ở phòng 12 tháng rồi" KHÔNG phải "tháng trước" — đó là một THỜI
+    // LƯỢNG. Đo 03/09/2026: câu đó ép mọi tool về kỳ tháng trước. Dùng hàm chặn
+    // thay cho lookbehind vì lookbehind độ dài thay đổi vẫn vắng trên Safari cũ,
+    // và một SyntaxError lúc nạp module thì giết cả bundle chứ không chỉ tính
+    // năng này.
+    chan: (truoc) => !CO_SO_DUNG_TRUOC.test(truoc),
+    lay: (_m, ctx) => kyThang(shiftYm(ctx.kyHienTai, -1)),
+  },
+];
+
+/** Chỗ khớp hợp lệ đầu tiên của một mẫu, từ vị trí `tu` trở đi. */
+function khopDauTien(mau: MauKy, text: string, tu: number): RegExpExecArray | null {
+  let batDau = tu;
+  while (batDau <= text.length) {
+    const m = mau.re.exec(text.slice(batDau));
+    if (!m) return null;
+    const viTri = batDau + m.index;
+    if (!mau.chan || mau.chan(text.slice(0, viTri))) {
+      // Trả về chỉ số theo TOÀN chuỗi, không theo lát cắt.
+      const ra = m as RegExpExecArray;
+      ra.index = viTri;
+      return ra;
+    }
+    batDau = viTri + Math.max(1, m[0].length);
+  }
+  return null;
+}
+
+/**
+ * MỌI kỳ được nhắc trong câu, theo thứ tự xuất hiện.
+ *
+ * Cụm khớp nhưng vô nghĩa ("tháng 13", "từ 31/02") bị tiêu thụ và bỏ qua chứ
+ * không rơi xuống mẫu khác — nếu không, "tháng 13" sẽ trượt xuống mẫu "tháng"
+ * chung và trả về một kỳ mà người dùng không hề nói tới.
+ */
+export function quetKyTrongCau(
+  text: string,
+  ctx: CopilotRequestContext,
+): NonNullable<CopilotResolvedPeriod>[] {
+  const ra: NonNullable<CopilotResolvedPeriod>[] = [];
+  let i = 0;
+  while (i < text.length) {
+    let tot: { m: RegExpExecArray; mau: MauKy } | null = null;
+    for (const mau of MAU_KY) {
+      const m = khopDauTien(mau, text, i);
+      if (!m) continue;
+      if (!tot || m.index < tot.m.index) tot = { m, mau };
+    }
+    if (!tot) break;
+    const ky = tot.mau.lay(tot.m, ctx);
+    if (ky) ra.push(ky);
+    i = tot.m.index + Math.max(1, tot.m[0].length);
+  }
+  return ra;
+}
+
+/** Số kỳ KHÁC NHAU trong câu (cùng một kỳ nhắc hai lần vẫn là một). */
+export function soKyRiengBiet(ds: readonly NonNullable<CopilotResolvedPeriod>[]): number {
+  return new Set(ds.map((k) => `${k.kind}|${k.startDate}|${k.endDate}`)).size;
+}
 
 /**
  * Kỳ suy ra từ câu người dùng, hoặc `null` khi câu không nêu kỳ nào.
@@ -220,78 +381,15 @@ const RE_THANG_TRUOC = /th[áa]ng\s*(?:tr[ưu][ớoơ]c|r[ồo]i|v[ừu]a\s*r[�
  * hẹn. Nên N > tháng hiện tại ⇒ lấy năm trước. Chọn sai vẫn HIỆN RA chứ không
  * âm thầm: kỳ đã chốt được nói lại bằng `nhan` trong system prompt, và mọi ghi
  * đè tham số của mô hình đều báo qua `kyBiThayThe`.
+ *
+ * Câu nhắc NHIỀU kỳ thì hàm này chỉ trả kỳ ĐẦU TIÊN — người gọi phải hỏi thêm
+ * `soKyRiengBiet` trước khi ép nó vào tham số tool.
  */
 export function resolveRelativePeriod(
   text: string,
   ctx: CopilotRequestContext,
 ): CopilotResolvedPeriod {
-  const [namHienTai, thangHienTai] = ctx.kyHienTai.split('-').map(Number);
-
-  const iso = RE_KHOANG_ISO.exec(text);
-  if (iso) return kyKhoang(iso[1], iso[2]);
-
-  const dmy = RE_KHOANG_DMY.exec(text);
-  if (dmy) {
-    const n1 = dmy[3] ? namDayDu(dmy[3]) : namHienTai;
-    const n2 = dmy[6] ? namDayDu(dmy[6]) : n1;
-    const d1 = Number(dmy[1]);
-    const m1 = Number(dmy[2]);
-    const d2 = Number(dmy[4]);
-    const m2 = Number(dmy[5]);
-    if (ngayHopLe(n1, m1, d1) && ngayHopLe(n2, m2, d2)) {
-      return kyKhoang(`${n1}-${hai(m1)}-${hai(d1)}`, `${n2}-${hai(m2)}-${hai(d2)}`);
-    }
-  }
-
-  const nQua = RE_N_THANG_QUA.exec(text);
-  if (nQua) {
-    const n = Number(nQua[1]);
-    if (n >= 1 && n <= 36) {
-      const dau = shiftYm(ctx.kyHienTai, -(n - 1));
-      return {
-        kind: 'range',
-        // n = 1 thì khoảng đúng bằng một tháng — vẫn ép được vào tool chỉ nhận tháng.
-        month: n === 1 ? ctx.kyHienTai : null,
-        startDate: `${dau}-01`,
-        endDate: ngayCuoiThang(ctx.kyHienTai),
-        nhan: `${n} tháng gần nhất (${dau} → ${ctx.kyHienTai})`,
-      };
-    }
-  }
-
-  const nTruoc = RE_N_THANG_TRUOC.exec(text);
-  if (nTruoc) {
-    const n = Number(nTruoc[1]);
-    if (n >= 1 && n <= 36) return kyThang(shiftYm(ctx.kyHienTai, -n));
-  }
-
-  if (RE_QUY_NAY.test(text)) return kyQuy(namHienTai, quyCua(thangHienTai));
-  if (RE_QUY_TRUOC.test(text)) {
-    const q = quyCua(thangHienTai);
-    return q === 1 ? kyQuy(namHienTai - 1, 4) : kyQuy(namHienTai, q - 1);
-  }
-
-  const namCuThe = RE_NAM_CU_THE.exec(text);
-  if (namCuThe) return kyNam(Number(namCuThe[1]));
-  if (RE_NAM_NAY.test(text)) return kyNam(namHienTai);
-  if (RE_NAM_TRUOC.test(text)) return kyNam(namHienTai - 1);
-
-  if (RE_TUAN_NAY.test(text)) return kyTuan(ctx.ngayHienTai, 0);
-  if (RE_TUAN_TRUOC.test(text)) return kyTuan(ctx.ngayHienTai, -1);
-
-  const thangSo = RE_THANG_SO.exec(text);
-  if (thangSo) {
-    const m = Number(thangSo[1]);
-    if (m >= 1 && m <= 12) {
-      const nam = thangSo[2] ? Number(thangSo[2]) : m > thangHienTai ? namHienTai - 1 : namHienTai;
-      return kyThang(`${nam}-${hai(m)}`);
-    }
-  }
-
-  if (RE_THANG_NAY.test(text)) return kyThang(ctx.kyHienTai);
-  if (RE_THANG_TRUOC.test(text)) return kyThang(shiftYm(ctx.kyHienTai, -1));
-
-  return null;
+  return quetKyTrongCau(text, ctx)[0] ?? null;
 }
 
 // ── Ép kỳ vào tham số tool ─────────────────────────────────────────────
@@ -362,6 +460,11 @@ export interface KetQuaApKy {
   args: Record<string, unknown>;
   /** Kỳ mô hình tự điền, khi nó khác kỳ chuẩn hoá. */
   kyBiThayThe: string | null;
+  /**
+   * Câu giải thích khi bộ chuẩn hoá CỐ Ý không ép gì — hôm nay chỉ có một lý
+   * do: câu hỏi nhắc nhiều kỳ. Người gọi phải kể lại nó trong kết quả tool.
+   */
+  ghiChu: string | null;
 }
 
 /**
@@ -380,31 +483,58 @@ export function apDungKyTuongDoi(
   args: Record<string, unknown>,
   ky: CopilotResolvedPeriod,
   banDo: Record<string, ThamSoKyCuaTool>,
+  nhieuKy = false,
 ): KetQuaApKy {
   const muc = banDo[tenTool];
-  if (!muc || !ky) return { args, kyBiThayThe: null };
+  if (!muc || !ky) return { args, kyBiThayThe: null, ghiChu: null };
+
+  const daCoChuoi = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+  const GHI_CHU_NHIEU_KY =
+    `Câu hỏi nhắc nhiều kỳ — hệ thống KHÔNG ép kỳ nào, giữ nguyên tham số của mô hình. ` +
+    `Kỳ đầu tiên nhận ra là ${ky.nhan}.`;
 
   if (ky.month && muc.ky) {
     const cu = args[muc.ky];
-    if (cu === ky.month) return { args, kyBiThayThe: null };
+    // NHIỀU KỲ TRONG MỘT CÂU thì kỳ đầu tiên KHÔNG đại diện cho cả lượt.
+    // "so sánh doanh thu tháng 6 và tháng 7" gọi `doanh_thu_thang` hai lần với
+    // hai tham số khác nhau; ép cả hai về 2026-06 cho ra một bảng so sánh mà
+    // hai cột bằng nhau — sai, mà trông y hệt dữ liệu thật. Chỉ LẤP chỗ mô
+    // hình bỏ trống, không bao giờ ghi đè.
+    //
+    // Kiểm TRƯỚC nhánh "trùng kỳ rồi": ghi chú phải đi kèm MỌI lần gọi mà mô
+    // hình tự chọn kỳ, kể cả lần tình cờ trùng kỳ đầu — nếu không, một nửa số
+    // dòng kết quả có lời giải thích còn nửa kia không, và người đọc kết luận
+    // hai lần gọi được xử lý khác nhau.
+    if (nhieuKy && daCoChuoi(cu)) return { args, kyBiThayThe: null, ghiChu: GHI_CHU_NHIEU_KY };
+    if (cu === ky.month) return { args, kyBiThayThe: null, ghiChu: null };
     return {
       args: { ...args, [muc.ky]: ky.month },
-      kyBiThayThe: typeof cu === 'string' && cu ? cu : null,
+      kyBiThayThe: nhieuKy ? null : daCoChuoi(cu) ? cu : null,
+      ghiChu: nhieuKy ? GHI_CHU_NHIEU_KY : null,
     };
   }
 
   if (muc.tu && muc.den) {
     const cuTu = args[muc.tu];
     const cuDen = args[muc.den];
-    if (cuTu === ky.startDate && cuDen === ky.endDate) return { args, kyBiThayThe: null };
+    if (nhieuKy && (daCoChuoi(cuTu) || daCoChuoi(cuDen))) {
+      return { args, kyBiThayThe: null, ghiChu: GHI_CHU_NHIEU_KY };
+    }
+    if (cuTu === ky.startDate && cuDen === ky.endDate) {
+      return { args, kyBiThayThe: null, ghiChu: null };
+    }
     // Tham số THÁNG còn sót lại sẽ THẮNG khoảng ở phía tool (`khoangKy` ưu tiên
     // `ky`), nên với kỳ nhiều tháng phải dọn nó đi — không thì "quý này" lặng lẽ
     // co lại còn một tháng.
     const moi: Record<string, unknown> = { ...args, [muc.tu]: ky.startDate, [muc.den]: ky.endDate };
     if (muc.ky && !ky.month) delete moi[muc.ky];
-    const cu = [cuTu, cuDen].filter((v): v is string => typeof v === 'string' && v.length > 0);
-    return { args: moi, kyBiThayThe: cu.length ? cu.join(' → ') : null };
+    const cu = [cuTu, cuDen].filter(daCoChuoi);
+    return {
+      args: moi,
+      kyBiThayThe: nhieuKy ? null : cu.length ? cu.join(' → ') : null,
+      ghiChu: nhieuKy ? GHI_CHU_NHIEU_KY : null,
+    };
   }
 
-  return { args, kyBiThayThe: null };
+  return { args, kyBiThayThe: null, ghiChu: null };
 }

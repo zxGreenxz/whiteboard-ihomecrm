@@ -18,9 +18,11 @@ import { dongNguCanhTrang } from './banDoHeThong';
 import { buildRegistry, toLlmTools, type ToolCtx } from './tools/registry';
 import {
   apDungKyTuongDoi,
+  quetKyTrongCau,
   quetThamSoKy,
-  resolveRelativePeriod,
+  soKyRiengBiet,
   taoRequestContext,
+  type CopilotResolvedPeriod,
 } from './temporalContext';
 
 /** Kiểu tin nhắn dùng chung trong chat mode (tương thích OpenAI). */
@@ -264,6 +266,30 @@ export function toolSangKhaiBao(
 }
 
 /**
+ * Dòng "kỳ đã chốt" trong system prompt.
+ *
+ * Hai câu KHÁC HẲN nhau tuỳ số kỳ trong câu hỏi. Một kỳ ⇒ hệ thống đã chốt, mô
+ * hình đừng hỏi lại. NHIỀU kỳ ⇒ hệ thống cố ý KHÔNG chốt, và phải NÓI RA điều
+ * đó: câu "hệ thống đã chốt kỳ 2026-06" đặt trước một câu hỏi so sánh tháng 6
+ * với tháng 7 chính là thứ dạy mô hình gọi hai lần với cùng một kỳ.
+ */
+export function dongKy(
+  ds: readonly NonNullable<CopilotResolvedPeriod>[],
+  nhieuKy: boolean,
+): string | null {
+  const dau = ds[0];
+  if (!dau) return null;
+  if (!nhieuKy) {
+    return `Câu hỏi này nói tới kỳ ${dau.nhan} (${dau.startDate} → ${dau.endDate}). Hệ thống đã chốt kỳ đó; đừng hỏi lại người dùng là kỳ nào, và nhắc lại kỳ trong câu trả lời.`;
+  }
+  const ke = [...new Set(ds.map((k) => `${k.nhan} (${k.startDate} → ${k.endDate})`))].join('; ');
+  return (
+    `Câu hỏi này nhắc NHIỀU kỳ: ${ke}. Hệ thống KHÔNG chốt kỳ nào — bạn phải tự điền tham số kỳ ` +
+    'cho TỪNG lần gọi công cụ, mỗi kỳ một lần gọi, rồi trả lời đủ mọi kỳ được hỏi.'
+  );
+}
+
+/**
  * Chạy MỘT lượt chat: user hỏi → (tool*) → mô hình trả lời bằng văn bản.
  *
  * Tool trong cùng một vòng chạy SONG SONG. Mô hình thường xin nhiều thứ một lúc
@@ -318,7 +344,12 @@ export async function runChatTurn(params: {
   // Prompt đã mang ngày hôm nay từ lâu, vậy mà ca C28 (13/08/2026) mô hình vẫn
   // nói không biết ngày và hỏi lại kỳ — một câu văn là gợi ý, không phải hợp đồng.
   const ctxThoiGian = taoRequestContext();
-  const kyTuongDoi = resolveRelativePeriod(params.userText, ctxThoiGian);
+  // Quét TOÀN câu chứ không lấy kỳ đầu tiên rồi thôi: câu so sánh ("doanh thu
+  // tháng 6 và tháng 7") có HAI kỳ, và ép cả lượt về kỳ đầu cho ra một bảng so
+  // sánh mà hai cột bằng nhau — sai, mà trông y hệt dữ liệu thật.
+  const dsKy = quetKyTrongCau(params.userText, ctxThoiGian);
+  const kyTuongDoi = dsKy[0] ?? null;
+  const nhieuKy = soKyRiengBiet(dsKy) > 1;
   // Tool nào nhận kỳ được QUÉT từ khai báo thật, không phải chép tay: bảng chép
   // tay cũ dừng ở 2 tool trong khi registry đã có 37.
   const banDoThamSoKy = quetThamSoKy(
@@ -331,9 +362,7 @@ export async function runChatTurn(params: {
     VI_DU_MAU,
     dongNangLuc(Object.keys(toolMap)),
     dongHomNay(),
-    kyTuongDoi
-      ? `Câu hỏi này nói tới kỳ ${kyTuongDoi.nhan} (${kyTuongDoi.startDate} → ${kyTuongDoi.endDate}). Hệ thống đã chốt kỳ đó; đừng hỏi lại người dùng là kỳ nào, và nhắc lại kỳ trong câu trả lời.`
-      : null,
+    dongKy(dsKy, nhieuKy),
     nguCanh,
   ]
     .filter(Boolean)
@@ -417,16 +446,19 @@ export async function runChatTurn(params: {
           try {
             // Kỳ do MÃ chốt thắng kỳ do mô hình đoán. Báo lại khi ghi đè —
             // sửa im lặng là cách nhanh nhất để không ai biết chỗ này hỏng.
-            const { args: argsKy, kyBiThayThe } = apDungKyTuongDoi(
+            const { args: argsKy, kyBiThayThe, ghiChu } = apDungKyTuongDoi(
               ten,
               args as Record<string, unknown>,
               kyTuongDoi,
               banDoThamSoKy,
+              nhieuKy,
             );
             const parsedArgs = tool.inputSchema.parse(argsKy);
             output = String(await tool.execute(parsedArgs));
             if (kyBiThayThe) {
               output = `(Kỳ đã chuẩn hoá về ${kyTuongDoi!.nhan} theo câu hỏi, thay cho ${kyBiThayThe}.)\n${output}`;
+            } else if (ghiChu) {
+              output = `(${ghiChu})\n${output}`;
             }
           } catch (e) {
             output = `Lỗi khi chạy "${ten}": ${e instanceof Error ? e.message : String(e)}`;

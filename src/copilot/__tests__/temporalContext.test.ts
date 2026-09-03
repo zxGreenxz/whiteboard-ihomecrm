@@ -11,8 +11,10 @@ import { describe, expect, it } from 'vitest';
 import {
   apDungKyTuongDoi,
   ngayCuoiThang,
+  quetKyTrongCau,
   quetThamSoKy,
   resolveRelativePeriod,
+  soKyRiengBiet,
   taoRequestContext,
   vnNgayOf,
   type CopilotRequestContext,
@@ -368,5 +370,158 @@ describe('quy tắc prompt đóng ca C23/C27', () => {
     expect(CHAT_SYSTEM_PROMPT).toMatch(/ĐỦ TỪNG Ý|đủ từng ý/);
     expect(CHAT_SYSTEM_PROMPT).toMatch(/không thao tác được/i);
     expect(CHAT_SYSTEM_PROMPT).toMatch(/link/i);
+  });
+});
+
+describe('"tháng N năm YYYY" là MỘT THÁNG, không phải cả năm', () => {
+  // Bản đầu thử mẫu NĂM trước mẫu THÁNG trên toàn câu, nên "doanh thu tháng 7
+  // năm 2024" trả về cả năm 2024 — con số lớn gấp mười hai lần con số được hỏi,
+  // và không có gì đỏ. Nay quét theo VỊ TRÍ: "tháng" đứng trước "năm".
+  it('"tháng 7 năm 2024" ra 2024-07, không phải năm 2024', () => {
+    const ky = resolveRelativePeriod('doanh thu tháng 7 năm 2024', ctx('2026-08'))!;
+    expect(ky.kind).toBe('month');
+    expect(ky.month).toBe('2024-07');
+    expect(ky.startDate).toBe('2024-07-01');
+    expect(ky.endDate).toBe('2024-07-31');
+  });
+
+  it('"tháng 7/2024" và "tháng 7-2024" cũng vậy', () => {
+    expect(resolveRelativePeriod('doanh thu tháng 7/2024', ctx('2026-08'))?.month).toBe('2024-07');
+    expect(resolveRelativePeriod('doanh thu tháng 7-2024', ctx('2026-08'))?.month).toBe('2024-07');
+  });
+
+  it('"tháng 7" trần vẫn dùng năm hiện tại (tháng đã qua)', () => {
+    const ky = resolveRelativePeriod('doanh thu tháng 7', ctx('2026-08'))!;
+    expect(ky.month).toBe('2026-07');
+  });
+
+  it('"năm 2024" trần vẫn là CẢ NĂM — không bị fix này làm hỏng', () => {
+    const ky = resolveRelativePeriod('doanh thu năm 2024', ctx('2026-08'))!;
+    expect(ky.kind).toBe('year');
+    expect(ky.startDate).toBe('2024-01-01');
+  });
+
+  it('không dấu: "thang 7 nam 2024"', () => {
+    expect(resolveRelativePeriod('doanh thu thang 7 nam 2024', ctx('2026-08'))?.month).toBe('2024-07');
+  });
+});
+
+describe('"N tháng rồi" là THỜI LƯỢNG, không phải "tháng trước"', () => {
+  // "khách ở phòng 12 tháng rồi" từng ép mọi tool về kỳ tháng trước: mẫu
+  // "tháng rồi" khớp ngay bên trong cụm chỉ thời lượng.
+  it('"12 tháng rồi" ⇒ null', () => {
+    expect(resolveRelativePeriod('khách ở phòng 12 tháng rồi', ctx('2026-08'))).toBeNull();
+    expect(resolveRelativePeriod('12 thang roi', ctx('2026-08'))).toBeNull();
+  });
+
+  it('"tháng rồi" (không có số đứng trước) vẫn là tháng trước', () => {
+    expect(resolveRelativePeriod('doanh thu tháng rồi', ctx('2026-08'))?.month).toBe('2026-07');
+    expect(resolveRelativePeriod('tháng vừa rồi thế nào', ctx('2026-08'))?.month).toBe('2026-07');
+  });
+
+  it('"hợp đồng 24 tháng" ⇒ null', () => {
+    expect(resolveRelativePeriod('hợp đồng 24 tháng', ctx('2026-08'))).toBeNull();
+  });
+
+  it('"3 tháng trước" KHÔNG bị chặn nhầm — nó vẫn là một kỳ thật', () => {
+    // Chỉ mẫu "tháng rồi/trước" CHUNG mới bị chặn khi có số đứng trước; mẫu
+    // "N tháng trước" là mẫu riêng và vẫn phải chạy.
+    expect(resolveRelativePeriod('doanh thu 3 tháng trước', ctx('2026-08'))?.month).toBe('2026-05');
+  });
+});
+
+describe('câu hỏi SO SÁNH: nhiều kỳ thì KHÔNG ép kỳ nào', () => {
+  const ban = { doanh_thu_thang: { ky: 'thang' } };
+
+  it('quét ra đủ các kỳ được nhắc, theo thứ tự xuất hiện', () => {
+    const ds = quetKyTrongCau('so sánh doanh thu tháng 6 và tháng 7', ctx('2026-08'));
+    expect(ds.map((k) => k.month)).toEqual(['2026-06', '2026-07']);
+    expect(soKyRiengBiet(ds)).toBe(2);
+  });
+
+  it('"năm nay và năm ngoái" là hai kỳ', () => {
+    const ds = quetKyTrongCau('doanh thu năm nay và năm ngoái', ctx('2026-08'));
+    expect(soKyRiengBiet(ds)).toBe(2);
+    expect(ds.map((k) => k.nhan)).toEqual(['năm 2026', 'năm 2025']);
+  });
+
+  it('"quý này so với quý trước" là hai kỳ', () => {
+    const ds = quetKyTrongCau('quý này so với quý trước', ctx('2026-08'));
+    expect(soKyRiengBiet(ds)).toBe(2);
+  });
+
+  it('ĐỐI CHỨNG: câu một kỳ vẫn chỉ có một kỳ', () => {
+    expect(soKyRiengBiet(quetKyTrongCau('doanh thu tháng trước', ctx('2026-08')))).toBe(1);
+    expect(soKyRiengBiet(quetKyTrongCau('doanh thu tháng 7 năm 2024', ctx('2026-08')))).toBe(1);
+    expect(soKyRiengBiet(quetKyTrongCau('còn phòng trống không', ctx('2026-08')))).toBe(0);
+    // Nhắc cùng một kỳ hai lần vẫn là MỘT kỳ.
+    expect(soKyRiengBiet(quetKyTrongCau('tháng 7 và tháng 7', ctx('2026-08')))).toBe(1);
+  });
+
+  it('nhiều kỳ ⇒ GIỮ tham số của mô hình, kèm ghi chú giải thích', () => {
+    // Ép cả hai lần gọi về kỳ đầu cho ra bảng so sánh hai cột bằng nhau — sai,
+    // mà trông y hệt dữ liệu thật.
+    const ky = resolveRelativePeriod('so sánh doanh thu tháng 6 và tháng 7', ctx('2026-08'));
+    const ra = apDungKyTuongDoi('doanh_thu_thang', { thang: '2026-07' }, ky, ban, true);
+    expect(ra.args.thang).toBe('2026-07');
+    expect(ra.kyBiThayThe).toBeNull();
+    expect(ra.ghiChu).toMatch(/nhi[eề]u k[yỳ]/i);
+  });
+
+  it('nhiều kỳ nhưng mô hình BỎ TRỐNG ⇒ vẫn lấp bằng kỳ đầu, có ghi chú', () => {
+    const ky = resolveRelativePeriod('so sánh doanh thu tháng 6 và tháng 7', ctx('2026-08'));
+    const ra = apDungKyTuongDoi('doanh_thu_thang', {}, ky, ban, true);
+    expect(ra.args.thang).toBe('2026-06');
+    expect(ra.ghiChu).not.toBeNull();
+  });
+
+  it('MỘT kỳ ⇒ vẫn ghi đè như cũ, và không có ghi chú thừa', () => {
+    const ky = resolveRelativePeriod('doanh thu tháng trước', ctx('2026-08'));
+    const ra = apDungKyTuongDoi('doanh_thu_thang', { thang: '2026-08' }, ky, ban, false);
+    expect(ra.args.thang).toBe('2026-07');
+    expect(ra.kyBiThayThe).toBe('2026-08');
+    expect(ra.ghiChu).toBeNull();
+  });
+
+  it('nhiều kỳ ⇒ cặp tu/den mô hình điền cũng được giữ nguyên', () => {
+    const banKhoang = { bao_cao_dong_tien: { ky: 'ky', tu: 'tu', den: 'den' } };
+    const ky = resolveRelativePeriod('so sánh quý này với quý trước', ctx('2026-08'));
+    const ra = apDungKyTuongDoi(
+      'bao_cao_dong_tien',
+      { tu: '2026-04-01', den: '2026-06-30' },
+      ky,
+      banKhoang,
+      true,
+    );
+    expect(ra.args.tu).toBe('2026-04-01');
+    expect(ra.args.den).toBe('2026-06-30');
+    expect(ra.ghiChu).not.toBeNull();
+  });
+});
+
+describe('dongKy — prompt phải nói ĐÚNG là có chốt kỳ hay không', () => {
+  it('một kỳ ⇒ "đã chốt", đừng hỏi lại', async () => {
+    const { dongKy } = await import('../chatEngine');
+    const ds = quetKyTrongCau('doanh thu tháng trước', ctx('2026-08'));
+    const d = dongKy(ds, false)!;
+    expect(d).toContain('đã chốt');
+    expect(d).toContain('tháng 07/2026');
+  });
+
+  it('nhiều kỳ ⇒ nói rõ KHÔNG chốt và kể đủ các kỳ', () => {
+    // Câu "hệ thống đã chốt kỳ 2026-06" đặt trước một câu hỏi so sánh chính là
+    // thứ dạy mô hình gọi cả hai lần với cùng một kỳ.
+    return import('../chatEngine').then(({ dongKy }) => {
+      const ds = quetKyTrongCau('so sánh doanh thu tháng 6 và tháng 7', ctx('2026-08'));
+      const d = dongKy(ds, true)!;
+      expect(d).toMatch(/KH[ÔO]NG ch[ốo]t/);
+      expect(d).toContain('tháng 06/2026');
+      expect(d).toContain('tháng 07/2026');
+    });
+  });
+
+  it('không kỳ nào ⇒ null, không chèn dòng rỗng', async () => {
+    const { dongKy } = await import('../chatEngine');
+    expect(dongKy([], false)).toBeNull();
   });
 });
