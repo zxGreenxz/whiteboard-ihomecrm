@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T03:50:45.141Z",
+  "generatedAt": "2026-09-03T04:47:10.598Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 471,
+    "ledger-applied": 473,
     "unknown": 74,
-    "catalog-proven": 213,
+    "catalog-proven": 212,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -8986,10 +8986,9 @@
       "name": "copilot_rollout_seed_pages_v1",
       "scheme": "timestamp14",
       "sha256": "f2f3569541dde83585778fe2747c0ceb58f8441b4da3a2893bb39d56eeae1611",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T04:25:46.129Z|bien-nhan-backup"
       ]
     },
     {
@@ -9053,9 +9052,25 @@
       "name": "copilot_daily_token_cap_v1",
       "scheme": "timestamp14",
       "sha256": "cf9bb93227cf2d42f7cb0ea04d441f52c1e94eb7ef40a40a173be33bb43bfa4e",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.reserve_ai_usage"
+        "receipt:2026-09-03T04:23:08.662Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903043956_copilot_action_registry_policy_ledger_v1.sql",
+      "version": "20260903043956",
+      "name": "copilot_action_registry_policy_ledger_v1",
+      "scheme": "timestamp14",
+      "sha256": "816b9b8381a613b48a407b8f74fedf1f3983b31c953e1b2f64626f15e405b202",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.copilot_action_registry",
+        "table:app_private.copilot_action_policy",
+        "table:app_private.copilot_action_policy_audit",
+        "table:app_private.copilot_action_ledger",
+        "function:app_private.copilot_action_registry_touch_v1"
       ]
     },
     {
