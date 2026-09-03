@@ -64,6 +64,94 @@ END
 $va_anon_soft_delete_customer$;
 
 -- ---------------------------------------------------------------------------
+-- 0b. HELPER DUNG CHUNG — kiem ngu canh ke hoach THAT (F1, review G5-C dot 1)
+-- ---------------------------------------------------------------------------
+-- Dinh nghia o MIGRATION DAU TIEN cua dot (nay); bay migration con lai CREATE
+-- OR REPLACE lai GIONG HET (idempotent) de moi file van tu chay duoc rieng le
+-- khi cong cu idempotent-check do TUNG FILE tren production HIEN TAI (khong
+-- cong don cac file dry-run khac trong cung phien — xem chu thich cung khuon
+-- o cac migration sau).
+--
+-- Truoc fix nay, execute cua tam action chi kiem "marker co mat hay khong"
+-- (current_setting(...) khac rong) — mot actor CO THE tu dat
+-- set_config('app.copilot_plan_context', '<uuid bat ky>:1', true) roi goi
+-- thang execute_rpc ma khong can mot ke hoach APPROVED nao THAT SU ton tai.
+-- Helper nay doi mot HANG THAT trong app_private.copilot_plans/
+-- copilot_plan_steps khop CA NAM dieu kien: dung plan, dung buoc, dung nguoi,
+-- dung to chuc, dung action_id.
+CREATE OR REPLACE FUNCTION app_private.copilot_l5_plan_context_ok_v1(
+  p_action_id text,
+  p_org       uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, app_private, extensions
+AS $l5_plan_context_ok$
+DECLARE
+  v_marker  text := current_setting('app.copilot_plan_context', true);
+  v_sep     int;
+  v_plan_id uuid;
+  v_step_no int;
+  v_ok      boolean;
+BEGIN
+  IF v_marker IS NULL OR v_marker = '' THEN
+    RETURN false;
+  END IF;
+
+  v_sep := position(':' in v_marker);
+  IF v_sep = 0 THEN
+    RETURN false;
+  END IF;
+
+  BEGIN
+    v_plan_id := substr(v_marker, 1, v_sep - 1)::uuid;
+    v_step_no := substr(v_marker, v_sep + 1)::int;
+  EXCEPTION WHEN others THEN
+    RETURN false;
+  END;
+  IF v_plan_id IS NULL OR v_step_no IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+      FROM app_private.copilot_plans p
+      JOIN app_private.copilot_plan_steps s ON s.plan_id = p.id
+     WHERE p.id = v_plan_id
+       AND s.step_no = v_step_no
+       AND p.user_id = auth.uid()
+       AND p.status = 'APPROVED'
+       AND s.status = 'PENDING'
+       AND s.action_id = p_action_id
+       AND p.organization_id = p_org
+  ) INTO v_ok;
+
+  RETURN COALESCE(v_ok, false);
+END
+$l5_plan_context_ok$;
+
+COMMENT ON FUNCTION app_private.copilot_l5_plan_context_ok_v1(text, uuid) IS
+  'F1 (review G5-C dot 1) — kiem THAT su co mot copilot_plans/copilot_plan_steps APPROVED/PENDING khop actor+org+action_id, khong chi kiem marker co mat. Chi goi noi bo tu cac ham copilot_execute_*_v1 cua direct_l5_v1.';
+
+REVOKE ALL ON FUNCTION app_private.copilot_l5_plan_context_ok_v1(text, uuid)
+  FROM PUBLIC;
+DO $quyen_l5_plan_context_ok$
+BEGIN
+  IF to_regrole('anon') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION app_private.copilot_l5_plan_context_ok_v1(text, uuid) FROM anon;
+  END IF;
+  IF to_regrole('service_role') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION app_private.copilot_l5_plan_context_ok_v1(text, uuid) FROM service_role;
+  END IF;
+  IF to_regrole('authenticated') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION app_private.copilot_l5_plan_context_ok_v1(text, uuid) FROM authenticated;
+  END IF;
+END
+$quyen_l5_plan_context_ok$;
+
+-- ---------------------------------------------------------------------------
 -- 1. XEM TRUOC
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.copilot_preview_customer_xoa_mem_v1(
@@ -205,14 +293,7 @@ DECLARE
   v_cust      public.customers%ROWTYPE;
   v_audit_id  uuid;
   v_ledger_id uuid;
-  v_sqlstate  text;
-  v_message   text;
 BEGIN
-  IF current_setting('app.copilot_plan_context', true) IS NULL
-     OR current_setting('app.copilot_plan_context', true) = '' THEN
-    RAISE EXCEPTION 'l5_requires_plan' USING ERRCODE = '42501';
-  END IF;
-
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
   END IF;
@@ -259,6 +340,17 @@ BEGIN
     RAISE EXCEPTION 'organization_mismatch' USING ERRCODE = '42501';
   END IF;
 
+  -- F1 (review G5-C dot 1, fix round 1): guard L5 KHONG con la kiem
+  -- "marker co mat hay khong" don thuan -- no la mot cau hoi DATABASE THAT:
+  -- dung co dang co mot ke hoach APPROVED, dung buoc PENDING, dung nguoi, dung
+  -- to chuc, dung action_id hay khong. Ca hai chu ky (parse + tra bang) nam
+  -- trong MOT helper dung chung (app_private.copilot_l5_plan_context_ok_v1),
+  -- dinh nghia o migration dau tien cua dot va CREATE OR REPLACE lai giong het
+  -- o day (idempotent -- xem chu thich canh dinh nghia helper phia duoi).
+  IF NOT app_private.copilot_l5_plan_context_ok_v1('customer.xoa_mem', v_org) THEN
+    RAISE EXCEPTION 'l5_requires_plan' USING ERRCODE = '42501';
+  END IF;
+
   v_snapshot := app_private.copilot_action_gate_v1('customer.xoa_mem', v_org);
 
   v_key := 'copilot_action:customer.xoa_mem:' || v_actor::text || ':'
@@ -299,23 +391,15 @@ BEGIN
   BEGIN
     PERFORM public.soft_delete_customer(v_cust_id);
   EXCEPTION WHEN others THEN
-    GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE, v_message = MESSAGE_TEXT;
-    PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
-      'event',               'action_failed',
-      'organization_id',     v_org,
-      'action_id',           'customer.xoa_mem',
-      'permission_key',      'customers.delete',
-      'permission_snapshot', v_snapshot,
-      'consent_kind',        'click',
-      'consent_id',          v_row.id,
-      'payload_digest',      encode(v_hash, 'hex'),
-      'before_digest',       encode(extensions.digest(
-                               convert_to(v_before::text, 'UTF8'), 'sha256'), 'hex'),
-      'entity_table',        'customers',
-      'entity_id',            v_cust_id,
-      'error_code',           v_message,
-      'sqlstate',             v_sqlstate
-    ));
+    -- F2 (review G5-C dot 1, fix round 1): KHONG ghi 'action_failed' o day.
+    -- Nhanh nay LUON bi cuon nguoc: goi truc tiep (ngoai ke hoach) da bi chan
+    -- tu F1 phia tren, va goi qua ke hoach thi than ham nay chay BEN TRONG
+    -- mot BEGIN/EXCEPTION khac cua chinh engine (TANG (3) cua
+    -- copilot_plan_execute_step_v1) -- savepoint ngam cua khoi do cuon lai MOI
+    -- thu ben trong no khi RAISE, ke ca mot INSERT vao so vua chay o day. Dong
+    -- 'step_failed'/'step_blocked' SONG DUY NHAT do CHINH engine ghi o giao
+    -- dich NGOAI, sau khi da rollback ve savepoint do. RAISE lai de engine bat
+    -- duoc va ghi dung dong do.
     RAISE;
   END;
 
@@ -454,6 +538,9 @@ BEGIN
   END LOOP;
   IF cardinality(v_thieu) > 0 THEN
     RAISE EXCEPTION 'thieu ham G5-C customer_xoa_mem: %', array_to_string(v_thieu, ', ');
+  END IF;
+  IF to_regprocedure('app_private.copilot_l5_plan_context_ok_v1(text, uuid)') IS NULL THEN
+    RAISE EXCEPTION 'copilot_l5_plan_context_ok_v1 missing — muc 0b cua migration nay chua chay dung';
   END IF;
 
   IF to_regprocedure('public.soft_delete_customer(uuid)') IS NULL THEN

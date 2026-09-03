@@ -245,31 +245,37 @@ describe.each(CAC_ACTION)('G5-C — action L5 $ten', (ca) => {
     );
   });
 
-  it('thực thi: BƯỚC ĐẦU TIÊN là chặn L5 ngoài kế hoạch (`l5_requires_plan`)', () => {
+  it('thực thi: F1 (fix round 1) — chặn L5 ngoài kế hoạch bằng HÀM DÙNG CHUNG, không chỉ kiểm marker có mặt', () => {
     const t = than(sql, ca.executeRpc);
-    // `current_setting('app.copilot_plan_context', ...)` phải đứng TRƯỚC cả
-    // kiểm đăng nhập — đây là hàng rào ĐẦU TIÊN của toàn thân hàm, không phải
-    // một kiểm chen giữa.
-    const viTriMarker = t.search(/current_setting\('app\.copilot_plan_context', true\)/);
-    const viTriDangNhap = t.search(/IF v_actor IS NULL THEN/);
-    expect(viTriMarker, 'không thấy kiểm app.copilot_plan_context').toBeGreaterThan(-1);
-    expect(viTriDangNhap, 'không thấy kiểm đăng nhập').toBeGreaterThan(-1);
-    expect(viTriMarker).toBeLessThan(viTriDangNhap);
+    // Guard cũ (chỉ đo `current_setting(...)` khác rỗng) đã bị GỠ — một actor tự
+    // đặt `set_config('app.copilot_plan_context', '<uuid bịa>:1', true)` rồi gọi
+    // execute thẳng sẽ KHÔNG còn qua được, vì hàm dùng chung tra một hàng THẬT.
+    expect(t).not.toMatch(
+      /IF current_setting\('app\.copilot_plan_context', true\) IS NULL/,
+    );
     expect(t).toMatch(
-      /IF current_setting\('app\.copilot_plan_context', true\) IS NULL\s*\n\s*OR current_setting\('app\.copilot_plan_context', true\) = ''/,
+      new RegExp(
+        `IF NOT app_private\\.copilot_l5_plan_context_ok_v1\\('${nhuMau(ca.actionId)}', v_org\\) THEN`,
+      ),
     );
     expect(t).toMatch(/RAISE EXCEPTION 'l5_requires_plan' USING ERRCODE = '42501';/);
+    // Đứng SAU khi `v_org` đã được chốt (organization_mismatch) — hàm dùng chung
+    // cần org THẬT của hàng xác nhận, không phải org đọc thẳng từ payload.
+    const viTriOrgMismatch = t.search(/organization_mismatch/);
+    const viTriL5Check = t.search(/copilot_l5_plan_context_ok_v1/);
+    expect(viTriOrgMismatch, 'không thấy organization_mismatch').toBeGreaterThan(-1);
+    expect(viTriL5Check).toBeGreaterThan(viTriOrgMismatch);
   });
 
-  it('thực thi: chuỗi bước đúng thứ tự ABI, marker L5 trước cả nonce, readback SAU RPC gốc', () => {
+  it('thực thi: chuỗi bước đúng thứ tự ABI, readback SAU RPC gốc', () => {
     const t = than(sql, ca.executeRpc);
     thuTuTang(t, [
-      ['chặn L5 ngoài kế hoạch', /l5_requires_plan/],
       ['regex nonce', /p_confirmation_nonce !~ '\^\[0-9a-fA-F\]\{64\}\$'/],
       ['khoá hàng xác nhận', /FOR UPDATE/],
       ['so hợp đồng tool/permission', /confirmation_contract_mismatch/],
       ['so payload_hash', /payload_changed/],
       ['tổ chức của hàng xác nhận', /organization_mismatch/],
+      ['chặn L5 ngoài kế hoạch (F1)', /copilot_l5_plan_context_ok_v1/],
       ['cổng hành động lần hai', new RegExp(`copilot_action_gate_v1\\('${nhuMau(ca.actionId)}'`)],
       ['advisory lock', /pg_advisory_xact_lock\(hashtextextended\(v_key, 0\)\)/],
       ['tra sổ audit', /FROM public\.ai_write_audit a/],
@@ -279,6 +285,15 @@ describe.each(CAC_ACTION)('G5-C — action L5 $ten', (ca) => {
       ['ghi ai_write_audit', /INSERT INTO public\.ai_write_audit/],
       ['ghi sổ hành động', /copilot_ledger_append_v1\(jsonb_build_object\(\s*\n\s*'event',\s*'action_executed'/],
     ]);
+  });
+
+  it('thực thi: F2 (fix round 1) — KHÔNG ghi `action_failed` bên trong EXCEPTION của wrapper (nhánh đó luôn bị cuốn ngược)', () => {
+    const t = than(sql, ca.executeRpc);
+    // Wrapper vẫn RE-RAISE (engine cần lỗi để tự ghi step_failed/step_blocked ở
+    // giao dịch NGOÀI), nhưng không còn tự ghi một dòng sổ chắc chắn bị rollback.
+    expect(t).not.toMatch(/'event',\s*'action_failed'/);
+    expect(t).not.toMatch(/GET STACKED DIAGNOSTICS/);
+    expect(t).toMatch(/EXCEPTION WHEN others THEN\s*\n(\s*--[^\n]*\n)*\s*RAISE;\s*\n\s*END;/);
   });
 
   it('thực thi: `before_digest` LUÔN khác NULL — không có nhánh CASE WHEN NULL (khác action TẠO)', () => {
@@ -309,19 +324,6 @@ describe.each(CAC_ACTION)('G5-C — action L5 $ten', (ca) => {
     expect(khoiRegistry).toMatch(new RegExp(`'${nhuMau(ca.verifyKind)}',`));
   });
 
-  it('thực thi: lỗi của RPC gốc ghi `action_failed` rồi RE-RAISE', () => {
-    const t = than(sql, ca.executeRpc);
-    thuTuTang(t, [
-      ['bắt lỗi', /EXCEPTION WHEN others THEN\s*\n\s*GET STACKED DIAGNOSTICS/],
-      ['ghi sổ thất bại', /'event',\s*'action_failed'/],
-      ['re-raise', /^\s*RAISE;$/m],
-    ]);
-    expect(t).toMatch(/'error_code',\s*v_message/);
-    expect(t).toMatch(/'sqlstate',\s*v_sqlstate/);
-    const iFail = t.search(/'event',\s*'action_failed'/);
-    const khoiFail = t.slice(iFail, t.indexOf('RAISE;', iFail));
-    expect(khoiFail).not.toMatch(/after_digest/);
-  });
 
   it('thực thi: nhánh lặp trả `da_thuc_hien_truoc_do` TRƯỚC khi tiêu nonce, không ghi sổ', () => {
     const t = than(sql, ca.executeRpc);
@@ -424,16 +426,49 @@ describe('G5-C — vá dòng vào ke hoach (`copilot_plan_execute_step_v1`) ch�
     ]);
   });
 
-  it('marker chỉ được đặt MỘT LẦN, ngay trước lời gọi execute_rpc của nhánh direct_l5_v1 (không phải nonce_abi_v1)', () => {
+  it('marker: đặt ĐÚNG MỘT LẦN (dựng) trong nhánh direct_l5_v1, KHÔNG bao giờ ở nonce_abi_v1 (F5, fix round 1: cộng hai lần XOÁ)', () => {
     const t = than(sql, 'copilot_plan_execute_step_v1');
+    // F5 thêm hai lần XOÁ (đường thành công + đường lỗi) cạnh MỘT lần DỰNG có
+    // sẵn từ migration gốc — tổng ba lần gọi set_config trên cùng khoá GUC.
     const soLanMarker = (t.match(/set_config\('app\.copilot_plan_context'/g) ?? []).length;
-    expect(soLanMarker).toBe(1);
-    // Nhánh nonce_abi_v1 (L3/L4) KHÔNG được mang marker — chỉ direct_l5_v1 mới
-    // bị khoá "phải đi qua kế hoạch".
+    expect(soLanMarker).toBe(3);
+    // Nhánh nonce_abi_v1 (L3/L4) KHÔNG được đụng tới marker này ở bất kỳ hình
+    // thức nào (dựng hay xoá) — chỉ direct_l5_v1 mới bị khoá "phải đi qua kế
+    // hoạch".
     const iNonce = t.search(/IF v_reg\.executor_kind = 'nonce_abi_v1' THEN/);
     const iL5 = t.search(/ELSIF v_reg\.executor_kind = 'direct_l5_v1' THEN/);
     const khoiNonce = t.slice(iNonce, iL5);
     expect(khoiNonce).not.toMatch(/set_config\('app\.copilot_plan_context'/);
+  });
+
+
+  it('F5 (fix round 1) — marker được XOÁ ngay sau khi dùng, cả đường THÀNH CÔNG lẫn đường LỖI', () => {
+    const t = than(sql, 'copilot_plan_execute_step_v1');
+    const iL5 = t.search(/ELSIF v_reg\.executor_kind = 'direct_l5_v1' THEN/);
+    const iMaker = t.search(/ELSIF v_reg\.executor_kind = 'maker_submit_v1' THEN/);
+    const khoiL5 = t.slice(iL5, iMaker);
+    thuTuTang(khoiL5, [
+      ['gọi execute_rpc', /EXECUTE format\('SELECT public\.%I\(\$1, \$2\)', v_reg\.execute_rpc\)/],
+      ['xoá marker SAU khi gọi', /PERFORM set_config\('app\.copilot_plan_context', '', true\);/],
+    ]);
+    // Đường LỖI: khối EXCEPTION dùng chung của TẦNG (3) (bắt lỗi từ CẢ BA nhánh
+    // executor_kind) cũng phải xoá marker — không dựa ngầm vào việc SET LOCAL tự
+    // hết hiệu lực cuối giao dịch. Có HAI khối "EXCEPTION WHEN others THEN"
+    // trong cả hàm (TẦNG (2) tiền kiểm, và TẦNG (3) khối con thực thi) — lấy
+    // khối THỨ HAI (TẦNG (3), đứng SAU nhánh L5 vừa cắt ra ở trên).
+    const viTriCacException = [...t.matchAll(/EXCEPTION WHEN others THEN/g)].map((m) => m.index!);
+    expect(viTriCacException.length, 'phải có đúng hai khối EXCEPTION WHEN others').toBe(2);
+    const iExcTang3 = viTriCacException[1];
+    expect(iExcTang3).toBeGreaterThan(iMaker);
+    const khoiExcTang3 = t.slice(iExcTang3, t.indexOf('GET STACKED DIAGNOSTICS', iExcTang3));
+    expect(
+      khoiExcTang3,
+      'EXCEPTION của TẦNG (3) phải xoá marker TRƯỚC GET STACKED DIAGNOSTICS',
+    ).toMatch(/PERFORM set_config\('app\.copilot_plan_context', '', true\);/);
+    // Đúng MỘT lần dựng marker (đặt), và ĐÚNG HAI lần xoá (đường thành công +
+    // đường lỗi) — ba lần set_config tổng cộng.
+    const soLanSetConfig = (t.match(/set_config\('app\.copilot_plan_context'/g) ?? []).length;
+    expect(soLanSetConfig).toBe(3);
   });
 
   it('bảy migration còn lại KHÔNG đụng lại `copilot_plan_execute_step_v1`', () => {
@@ -483,6 +518,104 @@ describe('G5-C — customer.xoa_mem vá bảo mật: REVOKE anon KHỎI RPC GỐ
   });
 });
 
+describe('G5-C — F1 (fix round 1): helper dùng chung `copilot_l5_plan_context_ok_v1`', () => {
+  it('định nghĩa ở migration đầu, CREATE OR REPLACE lại GIỐNG HỆT ở bảy migration còn lại (idempotent)', () => {
+    const dinhNghiaDau = than(doc(FILE_IE_DUYET), 'copilot_l5_plan_context_ok_v1', 'app_private');
+    expect(dinhNghiaDau).not.toBe('');
+    for (const file of [
+      FILE_IE_DUYET_VAO_SO,
+      FILE_IE_VAO_SO,
+      FILE_INVOICE_DUYET,
+      FILE_INVOICE_XOA_MEM,
+      FILE_METER_READING_DUYET,
+      FILE_CONTRACT_DUYET_THANH_LY,
+      FILE_CUSTOMER_XOA_MEM,
+    ]) {
+      const thanFile = than(doc(file), 'copilot_l5_plan_context_ok_v1', 'app_private');
+      expect(thanFile, `${file} thiếu định nghĩa helper`).not.toBe('');
+      expect(thanFile, `${file} định nghĩa helper LỆCH migration đầu`).toBe(dinhNghiaDau);
+    }
+  });
+
+  it('chữ ký `(p_action_id text, p_org uuid) RETURNS boolean`, SECURITY DEFINER + STABLE, REVOKE ALL', () => {
+    const sql = doc(FILE_IE_DUYET);
+    expect(chuKyHam(sql, 'copilot_l5_plan_context_ok_v1', 'app_private')).toBe(
+      'p_action_id text, p_org uuid',
+    );
+    const t = than(sql, 'copilot_l5_plan_context_ok_v1', 'app_private');
+    expect(t).toMatch(/SECURITY DEFINER/);
+    expect(t).toMatch(/STABLE/);
+    expect(sql).toMatch(
+      /REVOKE ALL ON FUNCTION app_private\.copilot_l5_plan_context_ok_v1\(text, uuid\)\s*\n?\s*FROM PUBLIC;/,
+    );
+    for (const vai of ['anon', 'service_role', 'authenticated']) {
+      expect(sql).toMatch(
+        new RegExp(
+          `REVOKE ALL ON FUNCTION app_private\\.copilot_l5_plan_context_ok_v1\\(text, uuid\\) FROM ${vai};`,
+        ),
+      );
+    }
+    // KHÔNG GRANT cho ai — hàm chỉ gọi nội bộ từ các wrapper (SECURITY DEFINER
+    // gọi lẫn nhau không cần EXECUTE riêng cho actor thật).
+    expect(sql).not.toMatch(
+      /GRANT EXECUTE ON FUNCTION app_private\.copilot_l5_plan_context_ok_v1/,
+    );
+  });
+
+  it('helper tra ĐÚNG NĂM điều kiện: đúng plan, đúng bước PENDING, đúng người, đúng org, đúng action_id', () => {
+    const t = than(doc(FILE_IE_DUYET), 'copilot_l5_plan_context_ok_v1', 'app_private');
+    expect(t).toMatch(/FROM app_private\.copilot_plans p/);
+    expect(t).toMatch(/JOIN app_private\.copilot_plan_steps s ON s\.plan_id = p\.id/);
+    expect(t).toMatch(/AND s\.step_no = v_step_no/);
+    expect(t).toMatch(/AND p\.user_id = auth\.uid\(\)/);
+    expect(t).toMatch(/AND p\.status = 'APPROVED'/);
+    expect(t).toMatch(/AND s\.status = 'PENDING'/);
+    expect(t).toMatch(/AND s\.action_id = p_action_id/);
+    expect(t).toMatch(/AND p\.organization_id = p_org/);
+    // Marker rỗng/không parse được (thiếu dấu ':') → false, KHÔNG raise — hàm
+    // này trả boolean để wrapper tự quyết định thông điệp lỗi.
+    expect(t).toMatch(/IF v_marker IS NULL OR v_marker = '' THEN\s*\n\s*RETURN false;/);
+    expect(t).toMatch(/RETURN COALESCE\(v_ok, false\);/);
+  });
+});
+
+describe('G5-C — F3 (fix round 1, LOW): CHECK bậc bảng ép direct_l5_v1 → L5 + step_up + không grantable', () => {
+  const sql = doc(FILE_IE_DUYET);
+
+  it('chỉ ở migration đầu, DO-guard idempotent (kiểm pg_constraint trước khi ADD)', () => {
+    expect(sql).toMatch(
+      /IF NOT EXISTS \(\s*\n\s*SELECT 1 FROM pg_constraint\s*\n\s*WHERE conrelid = 'app_private\.copilot_action_registry'::regclass\s*\n\s*AND conname = 'copilot_action_registry_direct_l5_needs_step_up'/,
+    );
+    expect(sql).toMatch(
+      /ADD CONSTRAINT copilot_action_registry_direct_l5_needs_step_up\s*\n\s*CHECK \(executor_kind <> 'direct_l5_v1'\s*\n\s*OR \(risk = 'L5' AND consent_required = 'step_up' AND grantable = false\)\);/,
+    );
+    for (const file of [
+      FILE_IE_DUYET_VAO_SO,
+      FILE_IE_VAO_SO,
+      FILE_INVOICE_DUYET,
+      FILE_INVOICE_XOA_MEM,
+      FILE_METER_READING_DUYET,
+      FILE_CONTRACT_DUYET_THANH_LY,
+      FILE_CUSTOMER_XOA_MEM,
+    ]) {
+      expect(doc(file)).not.toMatch(/copilot_action_registry_direct_l5_needs_step_up/);
+    }
+  });
+
+  it('đứng TRƯỚC câu INSERT registry của chính migration này — hàng đầu tiên đã phải qua được CHECK', () => {
+    const iConstraint = sql.indexOf('copilot_action_registry_direct_l5_needs_step_up');
+    const iInsert = sql.indexOf('INSERT INTO app_private.copilot_action_registry (');
+    expect(iConstraint).toBeGreaterThan(-1);
+    expect(iInsert).toBeGreaterThan(iConstraint);
+  });
+
+  it('khối nghiệm thu xác nhận constraint tồn tại', () => {
+    const iNghiemThu = sql.indexOf('DO $nghiem_thu$');
+    const khoi = sql.slice(iNghiemThu);
+    expect(khoi).toMatch(/conname = 'copilot_action_registry_direct_l5_needs_step_up'/);
+  });
+});
+
 describe('G5-C — đột biến: bình luận hoá `l5_requires_plan` phải làm test ĐỎ', () => {
   const thoIeDuyet = docSql(FILE_IE_DUYET);
   const MOC = "RAISE EXCEPTION 'l5_requires_plan' USING ERRCODE = '42501';";
@@ -507,9 +640,9 @@ describe('G5-C — đột biến: bình luận hoá `l5_requires_plan` phải l�
 });
 
 describe('G5-C — chính sách vẫn L4: mọi action L5 của đợt này bị runtime từ chối cho tới G5-D', () => {
-  it('registry policy hiện hành (seed từ 20260903043956) vẫn `max_direct_risk` = L4', () => {
+  it('registry policy hiện hành (seed từ 20260903043956) vẫn `max_direct_risk` = L4 (F6, fix round 1: pin CHÍNH XÁC dòng cột, không chỉ chuỗi L4 bất kỳ)', () => {
     const seed = docSqlKhongComment('supabase/migrations/20260903043956_copilot_action_registry_policy_ledger_v1.sql');
-    expect(seed).toMatch(/'L4'/);
+    expect(seed).toMatch(/max_direct_risk\s+text NOT NULL DEFAULT 'L4'/);
   });
 
   it('đường chặn runtime `plan_risk_not_allowed` có thật trong `copilot_plan_create_v1`', () => {
