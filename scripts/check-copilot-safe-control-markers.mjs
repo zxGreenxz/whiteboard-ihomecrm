@@ -14,7 +14,13 @@ import { spawnSync } from 'node:child_process';
  * chết hẳn.
  */
 export function laFileMobile(file) {
-  const ten = String(file).split(/[\/]/u).pop() ?? '';
+  // Tach basename qua `duongDanChuan` — MOT cho duy nhat biet ca hai kieu dau
+  // phan cach. Ban truoc chep lai regex ngay tai day va danh roi nhanh dau
+  // cheo nguoc: tren Windows (`path.join` sinh `\`) ham het tach duoc
+  // basename va do "Mobile" tren CA duong dan, nen mot component desktop nam
+  // duoi thu muc ten `Mobile/` bi xep nham lop mobile — gate xanh gia trong im
+  // lang. Dung chep lai regex.
+  const ten = duongDanChuan(file).split('/').pop() ?? '';
   return /Mobile/u.test(ten);
 }
 

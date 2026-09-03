@@ -123,6 +123,15 @@ test('laFileMobile nhan dien theo TEN FILE, ca hai kieu dau phan cach', () => {
   // Thư mục tên "mobile" KHÔNG đủ: quy ước là tên file, để phân lớp không phụ
   // thuộc chỗ đặt file.
   assert.equal(laFileMobile('src/components/sale-phong/mobile/Analytics.tsx'), false);
+
+  // Bay that: neu tach basename bang regex chi biet dau `/`, thi tren Windows
+  // (`path.join` sinh dau cheo nguoc) ham do "Mobile" tren CA duong dan va
+  // mot component DESKTOP nam duoi thu muc ten `Mobile` bi xep nham lop mobile.
+  // Hai cap duoi day canh dung cho do — ca hai kieu dau phan cach.
+  assert.equal(laFileMobile(String.raw`src\pages\Mobile\RoomListFilters.tsx`), false);
+  assert.equal(laFileMobile('src/pages/Mobile/RoomListFilters.tsx'), false);
+  assert.equal(laFileMobile(String.raw`src\pages\rooms\RoomsMobilePage.tsx`), true);
+  assert.equal(laFileMobile('src/pages/rooms/RoomsMobilePage.tsx'), true);
 });
 
 test('duongDanChuan quy ve dau gach cheo xuoi', () => {
