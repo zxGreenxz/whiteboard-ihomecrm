@@ -102,9 +102,14 @@ BEGIN
   SELECT s.org_wide, s.building_ids
     INTO v_scope
     FROM app_private.authorized_scope_v3('income_expenses.edit', p_organization_id) s;
+  -- Phiếu KHÔNG gắn toà (`building_id IS NULL`) là phiếu mức TỔ CHỨC, và nó đòi
+  -- quyền mức tổ chức — `org_wide`. Bản đầu để nó lọt: điều kiện cũ chỉ chặn khi
+  -- `building_id IS NOT NULL`, nên một người chỉ có quyền ở toà A vẫn sửa được
+  -- phiếu toàn công ty. Không có toà để so KHÔNG phải "không có gì để kiểm", mà
+  -- là "không có phạm vi nào bao được nó" — fail-closed.
   IF NOT COALESCE(v_scope.org_wide, false)
-     AND v_ie.building_id IS NOT NULL
-     AND NOT (v_ie.building_id = ANY(COALESCE(v_scope.building_ids, ARRAY[]::uuid[]))) THEN
+     AND (v_ie.building_id IS NULL
+          OR NOT (v_ie.building_id = ANY(COALESCE(v_scope.building_ids, ARRAY[]::uuid[])))) THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
 
@@ -493,22 +498,67 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app_private, extensions
 AS $vo_thuc_thi_ie$
 DECLARE
+  v_actor      uuid := auth.uid();
+  v_row        app_private.copilot_write_confirmations%ROWTYPE;
   v_org        uuid;
+  v_org_payload uuid;
   v_type_id    uuid;
   v_type       text;
   v_snapshot   jsonb;
   v_result     jsonb;
-  v_confirm_id uuid;
   v_after      jsonb;
   v_entity_id  uuid;
 BEGIN
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
+  END IF;
+  IF p_confirmation_nonce IS NULL
+     OR p_confirmation_nonce !~ '^[0-9a-fA-F]{64}$' THEN
+    RAISE EXCEPTION 'confirmation_required' USING ERRCODE = '42501';
+  END IF;
+
+  -- TỔ CHỨC LẤY TỪ HÀNG XÁC NHẬN, KHÔNG LẤY TỪ PAYLOAD — và đó là lý do khối
+  -- này đứng TRƯỚC cổng.
+  --
+  -- Bản đầu của vỏ này đọc `v_org := p_payload ->> 'organization_id'` rồi hỏi
+  -- cổng ngay. Payload là thứ trình duyệt gửi lên và CHƯA được chứng minh khớp
+  -- `payload_hash` tại thời điểm đó (`legacy` mới là nơi so hash). Nghĩa là một
+  -- lời gọi có thể bắt cổng đo quyền trên MỘT TỔ CHỨC KHÁC với tổ chức đã phát
+  -- nonce: cầm nonce của công ty A, gửi payload ghi công ty B mà người gọi có
+  -- quyền, cổng trả `permission_snapshot` của B, rồi `legacy` mới chặn bằng
+  -- hash. Không ghi được gì sai — nhưng ảnh chụp quyền và dòng sổ sẽ mang tên
+  -- một tổ chức không liên quan, và cổng (kể cả lệnh cấm khẩn cấp) được đo trên
+  -- công ty sai. Sổ mà ghi sai tổ chức thì nó không còn là bằng chứng.
+  --
+  -- Đọc hàng KHÔNG khoá và KHÔNG tiêu: `legacy` vẫn tự `FOR UPDATE` + CAS
+  -- `consumed_at` như cũ. Ở đây chỉ chốt danh tính để cổng đo đúng chỗ.
+  SELECT * INTO v_row
+    FROM app_private.copilot_write_confirmations c
+   WHERE c.nonce_digest = extensions.digest(
+           decode(p_confirmation_nonce, 'hex'), 'sha256');
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'confirmation_not_found' USING ERRCODE = '42501';
+  END IF;
+  IF v_row.user_id IS DISTINCT FROM v_actor THEN
+    RAISE EXCEPTION 'confirmation_not_found' USING ERRCODE = '42501';
+  END IF;
+  IF v_row.tool IS DISTINCT FROM 'tao_phieu_thu_chi_nhap'
+     OR v_row.permission_key IS DISTINCT FROM 'income_expenses.create' THEN
+    RAISE EXCEPTION 'confirmation_contract_mismatch' USING ERRCODE = '42501';
+  END IF;
+
+  v_org := v_row.organization_id;
+
   BEGIN
-    v_org := (p_payload ->> 'organization_id')::uuid;
+    v_org_payload := (p_payload ->> 'organization_id')::uuid;
     v_type_id := (p_payload ->> 'type_id')::uuid;
     v_type := p_payload ->> 'type';
   EXCEPTION WHEN others THEN
     RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
   END;
+  IF v_org_payload IS DISTINCT FROM v_org THEN
+    RAISE EXCEPTION 'organization_mismatch' USING ERRCODE = '42501';
+  END IF;
 
   -- This check runs again after preview and before the delegate can consume
   -- the nonce, so revocation and restricted-category changes take effect now.
@@ -520,43 +570,43 @@ BEGIN
   -- nonce đã phát trước khi sự cố xảy ra.
   v_snapshot := app_private.copilot_action_gate_v1('income_expense.create_draft', v_org);
 
-  -- Đọc id hàng xác nhận TRƯỚC khi `legacy` tiêu nó: sau lời gọi đó hàng vẫn
-  -- còn (chỉ `consumed_at` được đặt), nhưng đọc trước thì không phụ thuộc vào
-  -- chi tiết cài đặt của hàm bên dưới.
-  IF p_confirmation_nonce ~ '^[0-9a-fA-F]{64}$' THEN
-    SELECT c.id INTO v_confirm_id
-      FROM app_private.copilot_write_confirmations c
-     WHERE c.nonce_digest = extensions.digest(
-             decode(p_confirmation_nonce, 'hex'), 'sha256');
-  END IF;
-
   v_result := public.copilot_execute_income_expense_legacy_v1(
     p_confirmation_nonce, p_payload);
 
-  v_entity_id := NULLIF(v_result ->> 'entity_id', '')::uuid;
-  IF v_entity_id IS NOT NULL THEN
-    SELECT to_jsonb(ie) INTO v_after
-      FROM public.income_expenses ie
-     WHERE ie.id = v_entity_id;
-  END IF;
+  -- CHỈ ghi sổ khi đây là lần ghi THẬT.
+  --
+  -- `legacy` trả `da_tao_truoc_do` cho một lượt lặp: không dòng nào của
+  -- `income_expenses` đổi, không `ai_write_audit` nào được thêm. Ghi một dòng
+  -- `action_executed` ở đó là nhét vào sổ một sự kiện chưa từng xảy ra, và ba
+  -- RPC action L3 của cùng đợt này (chúng trả `da_thuc_hien_truoc_do` rồi
+  -- RETURN trước khi tới sổ) sẽ kể một câu chuyện khác cho cùng một tình huống.
+  -- Sổ phải đếm được số lần GHI, không phải số lần BẤM.
+  IF (v_result ->> 'status') = 'da_tao' THEN
+    v_entity_id := NULLIF(v_result ->> 'entity_id', '')::uuid;
+    IF v_entity_id IS NOT NULL THEN
+      SELECT to_jsonb(ie) INTO v_after
+        FROM public.income_expenses ie
+       WHERE ie.id = v_entity_id;
+    END IF;
 
-  PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
-    'event',               'action_executed',
-    'organization_id',     v_org,
-    'action_id',           'income_expense.create_draft',
-    'permission_key',      'income_expenses.create',
-    'permission_snapshot', v_snapshot,
-    'consent_kind',        'click',
-    'consent_id',          v_confirm_id,
-    'payload_digest',      encode(app_private.copilot_payload_hash_v1(p_payload), 'hex'),
-    'after_digest',        CASE WHEN v_after IS NULL THEN NULL
-                                ELSE encode(extensions.digest(
-                                       convert_to(v_after::text, 'UTF8'), 'sha256'), 'hex') END,
-    'entity_table',        'income_expenses',
-    'entity_id',           v_entity_id,
-    'audit_id',            NULLIF(v_result ->> 'audit_id', '')::uuid,
-    'outcome',             jsonb_build_object('status', v_result ->> 'status')
-  ));
+    PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
+      'event',               'action_executed',
+      'organization_id',     v_org,
+      'action_id',           'income_expense.create_draft',
+      'permission_key',      'income_expenses.create',
+      'permission_snapshot', v_snapshot,
+      'consent_kind',        'click',
+      'consent_id',          v_row.id,
+      'payload_digest',      encode(app_private.copilot_payload_hash_v1(p_payload), 'hex'),
+      'after_digest',        CASE WHEN v_after IS NULL THEN NULL
+                                  ELSE encode(extensions.digest(
+                                         convert_to(v_after::text, 'UTF8'), 'sha256'), 'hex') END,
+      'entity_table',        'income_expenses',
+      'entity_id',           v_entity_id,
+      'audit_id',            NULLIF(v_result ->> 'audit_id', '')::uuid,
+      'outcome',             jsonb_build_object('status', v_result ->> 'status')
+    ));
+  END IF;
 
   RETURN v_result;
 END

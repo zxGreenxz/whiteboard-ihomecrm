@@ -85,9 +85,14 @@ BEGIN
   SELECT s.org_wide, s.building_ids
     INTO v_scope
     FROM app_private.authorized_scope_v3('deposits.edit', p_organization_id) s;
+  -- Phiếu KHÔNG gắn toà (`building_id IS NULL`) là phiếu mức TỔ CHỨC, và nó đòi
+  -- quyền mức tổ chức — `org_wide`. Bản đầu để nó lọt: điều kiện cũ chỉ chặn khi
+  -- `building_id IS NOT NULL`, nên một người chỉ có quyền ở toà A vẫn sửa được
+  -- phiếu toàn công ty. Không có toà để so KHÔNG phải "không có gì để kiểm", mà
+  -- là "không có phạm vi nào bao được nó" — fail-closed.
   IF NOT COALESCE(v_scope.org_wide, false)
-     AND v_ie.building_id IS NOT NULL
-     AND NOT (v_ie.building_id = ANY(COALESCE(v_scope.building_ids, ARRAY[]::uuid[]))) THEN
+     AND (v_ie.building_id IS NULL
+          OR NOT (v_ie.building_id = ANY(COALESCE(v_scope.building_ids, ARRAY[]::uuid[])))) THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
 

@@ -275,6 +275,23 @@ describe('G2-D — action `income_expense.annotate` chỉ đụng GHI CHÚ', () 
   });
 });
 
+describe('G2-D — phiếu mức TỔ CHỨC đòi quyền mức tổ chức (fail-closed)', () => {
+  // Bản đầu chỉ chặn khi `building_id IS NOT NULL`, nên một phiếu KHÔNG gắn toà
+  // lọt qua với người chỉ có quyền ở một toà. Không có toà để so KHÔNG phải
+  // "không có gì để kiểm" — nó là "không phạm vi nào bao được phiếu này".
+  for (const ca of CAC_ACTION.filter((x) => x.entityTable !== 'zalo_conversations')) {
+    it(`${ca.ten} — xem trước chặn khi building_id NULL mà không org_wide`, () => {
+      const t = than(doc(ca.file), ca.previewRpc);
+      expect(t).toMatch(/v_ie\.building_id IS NULL/);
+      // Đúng hình dạng "NULL HOẶC không thuộc mảng", không phải "NOT NULL VÀ …".
+      expect(t).toMatch(
+        /AND \(v_ie\.building_id IS NULL\s*\n\s*OR NOT \(v_ie\.building_id = ANY\(/,
+      );
+      expect(t).not.toMatch(/AND v_ie\.building_id IS NOT NULL/);
+    });
+  }
+});
+
 describe('G2-D — cặp writer thu/chi được nối vào cổng + sổ', () => {
   const sql = doc(FILE_IE);
 
@@ -286,19 +303,51 @@ describe('G2-D — cặp writer thu/chi được nối vào cổng + sổ', () =
     ]);
   });
 
-  it('vỏ thực thi gọi cổng TRƯỚC legacy và ghi sổ SAU legacy', () => {
+  it('vỏ thực thi tra hàng xác nhận TRƯỚC cổng, và cổng đo trên tổ chức CỦA HÀNG', () => {
     const t = than(sql, 'copilot_execute_income_expense_v1');
     thuTuTang(t, [
+      ['regex nonce', /p_confirmation_nonce !~ '\^\[0-9a-fA-F\]\{64\}\$'/],
+      ['tra hàng xác nhận', /FROM app_private\.copilot_write_confirmations c/],
+      ['so người gọi', /v_row\.user_id IS DISTINCT FROM v_actor/],
+      ['so hợp đồng tool/permission', /confirmation_contract_mismatch/],
+      ['tổ chức lấy từ hàng', /v_org := v_row\.organization_id;/],
+      ['payload lệch tổ chức', /v_org_payload IS DISTINCT FROM v_org/],
       ['hàng rào hạng mục hạn chế', /copilot_ie_type_allowed_v1\(v_org, v_type, v_type_id\)/],
       ['cổng hành động', /copilot_action_gate_v1\('income_expense\.create_draft', v_org\)/],
       ['uỷ quyền legacy', /copilot_execute_income_expense_legacy_v1\(/],
+      ['chỉ ghi sổ khi ghi thật', /IF \(v_result ->> 'status'\) = 'da_tao' THEN/],
       ['ghi sổ hành động', /copilot_ledger_append_v1\(jsonb_build_object\(/],
       ['sự kiện action_executed', /'event',\s*'action_executed'/],
     ]);
     expect(t).toMatch(/'permission_snapshot',\s*v_snapshot/);
     expect(t).toMatch(/'consent_kind',\s*'click'/);
-    expect(t).toMatch(/'consent_id',\s*v_confirm_id/);
+    expect(t).toMatch(/'consent_id',\s*v_row\.id/);
     expect(t).toMatch(/'audit_id',\s*NULLIF\(v_result ->> 'audit_id', ''\)::uuid/);
+    // TỔ CHỨC KHÔNG ĐƯỢC LẤY TỪ PAYLOAD. `p_payload` chưa được chứng minh khớp
+    // `payload_hash` tại thời điểm cổng chạy (`legacy` mới là nơi so hash), nên
+    // đọc org từ đó là để NGƯỜI GỌI chọn công ty mà cổng sẽ đo — cổng và lệnh
+    // cấm khẩn cấp đo nhầm chỗ, và dòng sổ mang tên một tổ chức không liên quan.
+    expect(t).not.toMatch(/v_org := \(p_payload ->> 'organization_id'\)::uuid;/);
+    expect(t).toMatch(/'organization_id',\s*v_org/);
+  });
+
+  it('lượt LẶP không sinh dòng sổ nào — sổ đếm số lần GHI, không phải số lần BẤM', () => {
+    const t = than(sql, 'copilot_execute_income_expense_v1');
+    const dieuKien = t.indexOf("IF (v_result ->> 'status') = 'da_tao' THEN");
+    const ghiSo = t.indexOf('copilot_ledger_append_v1(');
+    const dongIf = t.lastIndexOf('END IF;');
+    expect(dieuKien).toBeGreaterThan(-1);
+    expect(ghiSo).toBeGreaterThan(dieuKien);
+    expect(dongIf).toBeGreaterThan(ghiSo);
+    // Ba RPC L3 cùng đợt trả `da_thuc_hien_truoc_do` rồi RETURN TRƯỚC khi tới sổ;
+    // vỏ IE phải kể cùng một câu chuyện cho cùng một tình huống.
+    for (const ca of CAC_ACTION) {
+      const tt = than(doc(ca.file), ca.executeRpc);
+      const lap = tt.indexOf("'da_thuc_hien_truoc_do'");
+      const soCuaCa = tt.search(/'event',\s*'action_executed'/);
+      expect(lap).toBeGreaterThan(-1);
+      expect(soCuaCa).toBeGreaterThan(lap);
+    }
   });
 
   it('KHÔNG chép lại thân cũ: hàng rào hạng mục hạn chế của 20260831110236 còn nguyên', () => {
