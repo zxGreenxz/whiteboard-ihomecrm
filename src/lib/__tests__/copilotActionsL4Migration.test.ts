@@ -337,9 +337,10 @@ describe('G2-E — phiếu giữ chỗ ép bất biến CHỜ DUYỆT', () => {
 
   it('readback ném `copilot_draft_invariant_violation` khi trạng thái khác PENDING_APPROVAL', () => {
     const t = than(sql, 'copilot_execute_reservation_deposit_v1');
-    expect(t).toMatch(
-      /IF v_doc_lai\.status IS DISTINCT FROM 'PENDING_APPROVAL' THEN\s*\n\s*RAISE EXCEPTION 'copilot_draft_invariant_violation'/,
-    );
+    // Hình dạng đầy đủ của điều kiện (kèm phép so số tiền của fix#4) được ghim
+    // ở khối `G2-E fix#4`; ở đây chỉ đo rằng trạng thái LÀ một trong các vế.
+    expect(t).toMatch(/IF v_doc_lai.status IS DISTINCT FROM 'PENDING_APPROVAL'/);
+    expect(t).toMatch(/RAISE EXCEPTION 'copilot_draft_invariant_violation'/);
     // Bất biến nháp phải nằm SAU readback (không có gì để so trước đó) và TRƯỚC
     // khi ghi sổ audit — ghi sổ rồi mới kiểm là ghi một sự kiện có thể phải rút.
     thuTuTang(t, [
@@ -416,5 +417,102 @@ describe('G2-E — đột biến: bình luận hoá cổng phải làm test Đ�
   it('bản đã lột bình luận thì KHÔNG khớp nữa — cửa đã đóng', () => {
     expect(boCommentSql(binhLuanHoaCong(thoChiSo))).not.toMatch(PIN);
     expect(doc(FILE_CHI_SO)).toMatch(PIN);
+  });
+});
+
+// ── Fix round 1 (review G2-E) ───────────────────────────────────────────────
+
+describe('G2-E fix#1 — bản xem trước chỉ số công tơ NÓI RA trạng thái thật', () => {
+  const sql = doc(FILE_CHI_SO);
+
+  it('khối preview có `trang_thai` và nó nói ĐÃ DUYỆT, không hứa là nháp', () => {
+    const t = than(sql, 'copilot_preview_meter_reading_v1');
+    expect(t).toMatch(/'trang_thai',\s*'Đã duyệt ngay/);
+    expect(t).toMatch(/KHÔNG phải bản nháp/);
+    // Cấm hình dạng ngược: một chuỗi hứa "chờ duyệt" ở đúng trường này là lời
+    // nói dối tốn kém nhất của cả đợt — người bấm sẽ tưởng còn một bước duyệt.
+    expect(t).not.toMatch(/'trang_thai',\s*'[^']*[Cc]hờ duyệt/);
+  });
+});
+
+describe('G2-E fix#2 — trần và sàn số tiền cọc giữ chỗ', () => {
+  const sql = doc(FILE_GIU_CHO);
+
+  it('hai hằng số khai trong hàm, không đọc từ bảng cấu hình', () => {
+    const t = than(sql, 'copilot_preview_reservation_deposit_v1');
+    expect(t).toMatch(/c_toi_thieu constant numeric := 10000;/);
+    expect(t).toMatch(/c_toi_da\s+constant numeric := 500000000;/);
+    // Một cái van an toàn đọc cấu hình là một cái van nới được mà không cần
+    // review SQL. Cấm mọi đường đọc ngưỡng từ payload hoặc từ một bảng.
+    expect(t).not.toMatch(/p_payload ->> '(min_amount|max_amount|amount_limit)'/);
+  });
+
+  it('chặn ở XEM TRƯỚC, TRƯỚC khi phát nonce — số vô lý không tiêu nonce nào', () => {
+    const t = than(sql, 'copilot_preview_reservation_deposit_v1');
+    expect(t).toMatch(
+      /IF v_so_tien < c_toi_thieu OR v_so_tien > c_toi_da THEN\s*\n\s*RAISE EXCEPTION 'amount_out_of_range' USING ERRCODE = '22023';/,
+    );
+    thuTuTang(t, [
+      ['chặn ngoài khoảng', /amount_out_of_range/],
+      ['sinh nonce', /v_nonce := extensions\.gen_random_bytes\(32\)/],
+      ['ghi hàng xác nhận', /INSERT INTO app_private\.copilot_write_confirmations/],
+    ]);
+  });
+
+  it('hai mốc được ghi trong chú thích đầu file — người đọc không phải suy từ mã', () => {
+    // Bài này CỐ Ý đọc bản CÒN bình luận: nó đo tài liệu, không đo hàng rào.
+    const tho = docSql(FILE_GIU_CHO);
+    expect(tho).toMatch(/TRẦN VÀ SÀN SỐ TIỀN/);
+    expect(tho).toMatch(/10\.000 ₫ ≤ số tiền ≤ 500\.000\.000 ₫/);
+  });
+});
+
+describe('G2-E fix#4 — readback ép GIÁ TRỊ, không chỉ danh tính', () => {
+  it('chỉ số công tơ: so chỉ số (đã làm tròn 2 chữ số) và ngày chốt', () => {
+    const t = than(doc(FILE_CHI_SO), 'copilot_execute_meter_reading_v1');
+    expect(t).toMatch(
+      /IF v_doc_lai\.current_reading IS DISTINCT FROM round\(v_chi_so, 2\)\s*\n\s*OR v_doc_lai\.reading_date IS DISTINCT FROM v_ngay THEN\s*\n\s*RAISE EXCEPTION 'copilot_draft_invariant_violation'/,
+    );
+    // `round(…, 2)` chứ không so thô: cột là numeric(10,2) nên 1234.567 gửi lên
+    // nằm trong bảng thành 1234.57, và so thô sẽ báo động giả ở mọi chỉ số lẻ.
+    expect(t).not.toMatch(/current_reading IS DISTINCT FROM v_chi_so\b/);
+    // Giá trị phải được so TRƯỚC khi ghi sổ audit.
+    thuTuTang(t, [
+      ['readback', /SELECT \* INTO v_doc_lai/],
+      ['ép giá trị', /copilot_draft_invariant_violation/],
+      ['ghi ai_write_audit', /INSERT INTO public\.ai_write_audit/],
+    ]);
+  });
+
+  it('phiếu giữ chỗ: so số tiền cùng lúc với bất biến CHỜ DUYỆT', () => {
+    const t = than(doc(FILE_GIU_CHO), 'copilot_execute_reservation_deposit_v1');
+    expect(t).toMatch(
+      /IF v_doc_lai\.status IS DISTINCT FROM 'PENDING_APPROVAL'\s*\n\s*OR v_doc_lai\.amount IS DISTINCT FROM round\(v_so_tien, 2\) THEN\s*\n\s*RAISE EXCEPTION 'copilot_draft_invariant_violation'/,
+    );
+  });
+});
+
+describe('G2-E fix#3 — `ghi_chu_qua_dai` mang MỘT ngưỡng ở mọi chỗ raise nó', () => {
+  it('mọi migration raise mã này đều chặn ở 5000', () => {
+    // Mã lỗi là hợp đồng với người dùng: `dienGiaiLoiHanhDong` gắn ĐÚNG MỘT câu
+    // tiếng Việt cho nó ("tối đa 5000 ký tự"). Hai chỗ raise cùng mã với hai
+    // ngưỡng khác nhau thì câu đó chỉ đúng với một bên, và bên kia bảo người
+    // dùng cắt bớt một đoạn văn hoàn toàn hợp lệ.
+    const files = [
+      'supabase/migrations/20260903072353_copilot_action_income_expense_annotate_v1.sql',
+      FILE_CHI_SO,
+    ];
+    let soChoRaise = 0;
+    for (const file of files) {
+      const sql = doc(file);
+      const dong = sql.split('\n');
+      for (let i = 0; i < dong.length; i += 1) {
+        if (!dong[i].includes("RAISE EXCEPTION 'ghi_chu_qua_dai'")) continue;
+        soChoRaise += 1;
+        // Điều kiện nằm ở dòng ngay trên câu RAISE.
+        expect(dong[i - 1], `${file}:${i} — ngưỡng phải là 5000`).toMatch(/> 5000 THEN$/);
+      }
+    }
+    expect(soChoRaise, 'không tìm thấy chỗ nào raise ghi_chu_qua_dai').toBe(2);
   });
 });

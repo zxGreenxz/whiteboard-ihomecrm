@@ -45,6 +45,7 @@ import {
 import type { CopilotAvailabilitySnapshot, CopilotFlagState } from '../featureFlags';
 import type { ToolCtx } from '../tools/registry';
 import type { PermissionsMap } from '@/lib/permissions';
+import { CHAT_SYSTEM_PROMPT } from '../systemPromptVi';
 
 const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMap;
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
@@ -419,5 +420,69 @@ describe('G2-E — hai action L4 trong sổ và trong bảng tool', () => {
     );
     expect(dienGiaiLoiHanhDong('chi_so_khong_hop_le', 'X')).toContain('không âm');
     expect(dienGiaiLoiHanhDong('so_tien_khong_hop_le', 'X')).toContain('số dương');
+  });
+});
+
+// ── Fix round 1 (review G2-E) ───────────────────────────────────────────────
+//
+// Điều đắt nhất ở đây không phải một hàng rào kỹ thuật mà là một CÂU NÓI: hệ
+// từng hứa với người dùng rằng "hành động ghi luôn là nháp", trong khi một
+// trong năm đường ghi vào thẳng trạng thái đã duyệt. Lời hứa sai ở đúng chỗ
+// người ta dựa vào nó để bấm là một lỗ, dù không dòng SQL nào sai.
+describe('G2-E fix#1 — trạng thái sau khi ghi được nói ĐÚNG ở mọi tầng', () => {
+  it('mọi hành động TẠO đều có `trang_thai` trong previewFields', () => {
+    // Ba action L3 là sửa-tại-chỗ (không sinh hàng mới) nên không áp; hai action
+    // TẠO của G2-E và đường tạo phiếu thu/chi thì có.
+    for (const id of [
+      'income_expense.create_draft',
+      'meter_reading.create',
+      'reservation_deposit.create',
+    ] as const) {
+      const entry = ACTION_CATALOG[id] as ActionCatalogEntry;
+      expect(
+        [...entry.previewFields],
+        `${id} không nói trạng thái bản ghi sinh ra`,
+      ).toContain('trang_thai');
+    }
+  });
+
+  it('mô tả tool ghi chỉ số nói rõ nó KHÔNG ra bản nháp', () => {
+    const khai = TOOL_GHI.find((k) => k.name === 'ghi_chi_so_cong_to')!;
+    expect(khai.description).toMatch(/ĐÃ DUYỆT/);
+    expect(khai.description).toMatch(/KHÔNG phải bản nháp/);
+  });
+
+  it('prompt không còn hứa MỌI hành động ghi đều ra bản chờ duyệt', () => {
+    // Câu cũ: "thứ ghi ra luôn là bản CHỜ DUYỆT chứ không phải bản đã duyệt".
+    expect(CHAT_SYSTEM_PROMPT).not.toMatch(/luôn là bản CHỜ DUYỆT/);
+    // Câu mới phải giữ được vế ĐÚNG (không ghi gì trước cú bấm) và nói rõ trạng
+    // thái là tuỳ hành động.
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/KHÔNG GHI GÌ CHO TỚI KHI NGƯỜI DÙNG BẤM XÁC NHẬN/);
+    expect(CHAT_SYSTEM_PROMPT).toMatch(/TUỲ TỪNG HÀNH ĐỘNG/);
+  });
+});
+
+describe('G2-E fix#2/#3 — câu tiếng Việt khớp ngưỡng THẬT của server', () => {
+  it('lỗi ngoài khoảng số tiền được dịch, kèm cả hai mốc', () => {
+    const cau = dienGiaiLoiHanhDong('amount_out_of_range', 'Tạo phiếu giữ chỗ');
+    expect(cau).toContain('10.000');
+    expect(cau).toContain('500.000.000');
+  });
+
+  it('câu `ghi_chu_qua_dai` nêu đúng 5000 — con số mà CẢ HAI migration dùng', () => {
+    // Ngưỡng ở tầng SQL do `copilotActionsL4Migration.test.ts` ghim (một ngưỡng
+    // cho mọi chỗ raise mã này). Ở đây chỉ đo rằng câu tiếng Việt nêu cùng số.
+    expect(dienGiaiLoiHanhDong('ghi_chu_qua_dai', 'X')).toContain('5000');
+  });
+
+  it('schema ghi chú chỉ số công tơ cho tới 5000 ký tự, khớp SQL', () => {
+    const schema = ACTION_CATALOG['meter_reading.create'].inputSchema;
+    const nen = {
+      meter_id: '11111111-1111-4111-8111-111111111111',
+      reading_date: '2026-09-01',
+      current_reading: 10,
+    };
+    expect(schema.safeParse({ ...nen, notes: 'a'.repeat(5000) }).success).toBe(true);
+    expect(schema.safeParse({ ...nen, notes: 'a'.repeat(5001) }).success).toBe(false);
   });
 });

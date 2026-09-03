@@ -339,8 +339,10 @@ const KHAI_BAO_TOOL_GHI: readonly KhaiBaoToolGhi[] = [
     description:
       'Lập ĐỀ XUẤT ghi một chỉ số công tơ cho một kỳ. Tool này KHÔNG ghi gì: nó dựng bản xem trước ' +
       '(chỉ số kỳ trước, chỉ số mới, lượng tiêu thụ) và hiện thẻ xác nhận cho người dùng bấm. ' +
-      'Chỉ số truyền vào là số ĐỌC TRÊN MẶT CÔNG TƠ, không phải lượng tiêu thụ. Không đụng hoá đơn ' +
-      'và không gắn được ảnh chứng từ.',
+      'Chỉ số truyền vào là số ĐỌC TRÊN MẶT CÔNG TƠ, không phải lượng tiêu thụ. KHÁC các đường ghi ' +
+      'khác: sau khi người dùng bấm, bản ghi chỉ số vào thẳng trạng thái ĐÃ DUYỆT (như khi chốt ' +
+      'công tơ trên giao diện), KHÔNG phải bản nháp chờ duyệt — nói đúng điều đó, đừng hứa là nháp. ' +
+      'Không đụng hoá đơn và không gắn được ảnh chứng từ.',
     chatOnly: true,
     requiredPermission: { module: 'meter_readings', action: 'create' },
     actionId: 'meter_reading.create',
@@ -406,7 +408,12 @@ const GIAI_THICH_LOI_HANH_DONG: Record<string, string> = {
     'Không tìm thấy đối tượng đó trong công ty đang chọn. Hỏi lại mã/tên chính xác rồi thử lại.',
   payload_invalid: 'Dữ liệu gửi lên không hợp lệ. Kiểm tra lại các trường bắt buộc.',
   ghi_chu_bat_buoc: 'Thiếu nội dung ghi chú mới.',
+  // 5000 là ngưỡng THẬT ở cả hai chỗ raise mã này (income_expense.annotate ở
+  // 20260903072353 và meter_reading.create ở 20260903085155). Một con số ở đây
+  // lệch với SQL sẽ bảo người dùng cắt bớt một đoạn văn hoàn toàn hợp lệ.
   ghi_chu_qua_dai: 'Ghi chú quá dài (tối đa 5000 ký tự).',
+  amount_out_of_range:
+    'Số tiền cọc giữ chỗ phải trong khoảng 10.000 đ — 500.000.000 đ. Hỏi lại người dùng con số đúng (dễ nhầm đơn vị: "2 triệu" là 2.000.000).',
   khong_co_co_nao_doi:
     'Chưa nêu cờ nào cần đổi. Hỏi người dùng muốn ghim, tắt tiếng hay đánh dấu chưa đọc.',
   chi_so_khong_hop_le: 'Chỉ số công tơ phải là số không âm.',

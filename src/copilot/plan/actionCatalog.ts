@@ -170,7 +170,7 @@ export const SCHEMA_GHI_CHI_SO_CONG_TO = z.object({
     .describe('Chỉ số MỚI đọc trên mặt công tơ (không phải lượng tiêu thụ)'),
   notes: z
     .string()
-    .max(2000)
+    .max(5000)
     .nullable()
     .optional()
     .describe('Ghi chú kèm bản ghi; bỏ trống = không ghi chú'),
@@ -185,7 +185,10 @@ export const SCHEMA_GHI_CHI_SO_CONG_TO = z.object({
  */
 export const SCHEMA_PHIEU_GIU_CHO = z.object({
   room_id: z.string().uuid().describe('ID phòng cần giữ chỗ'),
-  amount: z.number().positive().describe('Số tiền cọc giữ chỗ (VND)'),
+  amount: z
+    .number()
+    .positive()
+    .describe('Số tiền cọc giữ chỗ (VND), trong khoảng 10.000 — 500.000.000'),
 });
 
 /**
@@ -299,6 +302,10 @@ export const ACTION_CATALOG = {
       'tieu_thu',
       'ngay_ghi',
       'ghi_chu',
+      // Trường này KHÔNG thừa dù nghe như một hằng số. Ba đường ghi kia ra bản
+      // CHỜ DUYỆT; đường này ghi thẳng ở trạng thái đã duyệt. Người bấm mang
+      // theo giả định của những lần trước, nên thẻ phải nói ra sự khác biệt.
+      'trang_thai',
       'canh_bao',
     ],
     previewRpc: 'copilot_preview_meter_reading_v1',

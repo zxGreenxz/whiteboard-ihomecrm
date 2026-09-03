@@ -17,6 +17,11 @@
 --   toà. `verify_kind` khai `readback_org_creator` chứ không khai `*_draft` —
 --   khai `draft` ở đây là nói dối sổ đăng ký.
 --
+--   VÀ BẢN XEM TRƯỚC PHẢI NÓI RA ĐIỀU ĐÓ. Khối `preview` có trường
+--   `trang_thai` với đúng câu "Đã duyệt ngay…". Một thẻ xác nhận im lặng về
+--   trạng thái sẽ để người bấm mang theo giả định của những đường ghi khác
+--   ("Copilot chỉ lập nháp thôi mà") vào đúng cái nút không có bước duyệt.
+--
 --   Đường lùi: xoá bản ghi chỉ số qua giao diện Chốt công tơ.
 --   `bulk_delete_meter_readings_v1` là thao tác XOÁ (L5), Copilot không cầm.
 --
@@ -110,7 +115,11 @@ BEGIN
   IF v_chi_so < 0 OR v_chi_so::text IN ('NaN', 'Infinity', '-Infinity') THEN
     RAISE EXCEPTION 'chi_so_khong_hop_le' USING ERRCODE = '22023';
   END IF;
-  IF char_length(COALESCE(v_ghi_chu, '')) > 2000 THEN
+  -- 5000, KHÔNG phải một con số khác. `ghi_chu_qua_dai` là MỘT mã lỗi dùng
+  -- chung với `income_expense.annotate` (20260903072353 chặn ở 5000), và một mã
+  -- lỗi mang hai ngưỡng khác nhau thì câu tiếng Việt gắn với nó
+  -- (`GIAI_THICH_LOI_HANH_DONG` trong writeTools.ts) chỉ có thể đúng với một bên.
+  IF char_length(COALESCE(v_ghi_chu, '')) > 5000 THEN
     RAISE EXCEPTION 'ghi_chu_qua_dai' USING ERRCODE = '22023';
   END IF;
 
@@ -188,6 +197,7 @@ BEGIN
       'tieu_thu',     v_chi_so - v_truoc,
       'ngay_ghi',     v_ngay,
       'ghi_chu',      v_ghi_chu,
+      'trang_thai',   'Đã duyệt ngay (như khi chốt công tơ trên giao diện) — KHÔNG phải bản nháp',
       'canh_bao',     v_canh_bao
     )
   );
@@ -366,9 +376,19 @@ BEGIN
     RAISE;
   END;
 
-  -- READBACK — đọc lại từ BẢNG, không tin giá trị RPC gốc trả về. Ba điều phải
-  -- đúng: đúng công ty, đúng người ghi, đúng công tơ. Lệch một điều là cuộn lại
-  -- cả giao dịch chứ không phải ghi một dòng sổ rồi đi tiếp.
+  -- READBACK — đọc lại từ BẢNG, không tin giá trị RPC gốc trả về.
+  --
+  -- HAI TẦNG, HAI MÃ LỖI, và sự phân biệt là có chủ ý:
+  --   · DANH TÍNH sai (công ty / người ghi / công tơ) ⇒
+  --     `copilot_write_readback_mismatch` — bản ghi rơi vào chỗ không ai định.
+  --   · GIÁ TRỊ sai (chỉ số, ngày chốt) ⇒ `copilot_draft_invariant_violation` —
+  --     bản ghi đúng chỗ nhưng KHÁC thứ đã hiện trên thẻ xác nhận, tức cú bấm
+  --     của người dùng đồng ý cho một con số và hệ ghi một con số khác. Đây là
+  --     mã mà cả plan dùng cho "hàng ghi ra không đúng thứ đã hứa".
+  -- Cả hai đều RAISE nên cuộn lại toàn bộ giao dịch.
+  --
+  -- So chỉ số qua `round(…, 2)`: cột là `numeric(10,2)`, nên 1234.567 gửi lên sẽ
+  -- nằm trong bảng thành 1234.57. So thô sẽ báo động giả ở mọi chỉ số lẻ.
   SELECT * INTO v_doc_lai
     FROM public.meter_readings mr
    WHERE mr.id = v_moi.id;
@@ -377,6 +397,10 @@ BEGIN
      OR v_doc_lai.user_id IS DISTINCT FROM v_actor
      OR v_doc_lai.meter_id IS DISTINCT FROM v_meter_id THEN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_doc_lai.current_reading IS DISTINCT FROM round(v_chi_so, 2)
+     OR v_doc_lai.reading_date IS DISTINCT FROM v_ngay THEN
+    RAISE EXCEPTION 'copilot_draft_invariant_violation' USING ERRCODE = 'P0001';
   END IF;
   v_after := to_jsonb(v_doc_lai);
 

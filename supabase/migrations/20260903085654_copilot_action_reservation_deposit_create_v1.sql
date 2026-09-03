@@ -39,6 +39,20 @@
 --   PHIẾU GIỮ CHỖ CÒN HIỆU LỰC của phòng (NULL khi phòng đang trống chỗ giữ) —
 --   đúng cái tiền đề mà ràng buộc EXCLUDE cưỡng chế.
 --
+-- TRẦN VÀ SÀN SỐ TIỀN — 10.000 ₫ ≤ số tiền ≤ 500.000.000 ₫
+--   RPC gốc chỉ đòi `amount > 0` và tròn hai chữ số thập phân. Đủ cho một con
+--   người gõ số vào form; KHÔNG đủ cho một đường mà con số đến từ một mô hình
+--   đọc câu tiếng Việt của khách. Hai kiểu hỏng thật: nhầm đơn vị ("2 triệu"
+--   thành 2.000.000.000) và trượt dấu phẩy. Cả hai vẫn `> 0`, vẫn tròn, vẫn qua
+--   mọi hàng rào hiện có, và hậu quả là một phiếu giữ chỗ khoá phòng kèm một
+--   con số vô nghĩa trong sổ.
+--
+--   Hai mốc là hằng số nghiệp vụ, cố ý ghi thẳng trong hàm chứ không đọc từ
+--   bảng cấu hình: một cái van an toàn đọc cấu hình là một cái van mà người ta
+--   nới được mà không cần review SQL. Nới nó phải đi một migration có tên.
+--   Chặn ở XEM TRƯỚC (trước khi phát nonce) nên một con số vô lý không tiêu
+--   nonce nào và không để lại hàng xác nhận rác. Mã lỗi: `amount_out_of_range`.
+--
 -- HOÀN TÁC
 --   Không có RPC lùi. Huỷ phiếu giữ chỗ qua giao diện Cọc/Giữ chỗ (đổi
 --   `status` sang `CANCELLED`), hoặc để nó tự hết hạn sau 24 giờ.
@@ -75,6 +89,10 @@ DECLARE
   v_nonce     bytea;
   v_canonical jsonb;
   v_canh_bao  text := NULL;
+  -- Xem khối "TRẦN VÀ SÀN SỐ TIỀN" ở đầu file. Đổi hai hằng số này là đổi luật
+  -- nghiệp vụ, nên nó phải đi một migration có tên chứ không phải một dòng cấu hình.
+  c_toi_thieu constant numeric := 10000;
+  c_toi_da    constant numeric := 500000000;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
@@ -101,6 +119,9 @@ BEGIN
      OR v_so_tien::text IN ('NaN', 'Infinity', '-Infinity')
      OR round(v_so_tien, 2) <> v_so_tien THEN
     RAISE EXCEPTION 'so_tien_khong_hop_le' USING ERRCODE = '22023';
+  END IF;
+  IF v_so_tien < c_toi_thieu OR v_so_tien > c_toi_da THEN
+    RAISE EXCEPTION 'amount_out_of_range' USING ERRCODE = '22023';
   END IF;
 
   -- Fail-closed theo TỔ CHỨC: phòng của công ty khác trả về ĐÚNG câu như phòng
@@ -352,9 +373,14 @@ BEGIN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
 
-  -- READBACK — đọc lại từ BẢNG, không tin JSON mà RPC gốc trả về. Bốn điều phải
-  -- đúng, và điều thứ tư là bất biến NHÁP: một phiếu giữ chỗ Copilot tạo ra
-  -- luôn ở trạng thái CHỜ DUYỆT. Lệch một điều là cuộn lại cả giao dịch.
+  -- READBACK — đọc lại từ BẢNG, không tin JSON mà RPC gốc trả về.
+  --
+  -- HAI TẦNG, HAI MÃ LỖI (cùng khuôn với đường chỉ số công tơ):
+  --   · DANH TÍNH sai (công ty / người giữ / phòng) ⇒ `copilot_write_readback_mismatch`.
+  --   · GIÁ TRỊ hoặc TRẠNG THÁI sai (số tiền khác số đã hiện; trạng thái không
+  --     phải CHỜ DUYỆT) ⇒ `copilot_draft_invariant_violation` — hàng ghi ra
+  --     không đúng thứ thẻ xác nhận đã hứa với người bấm.
+  -- Cả hai đều RAISE nên cuộn lại toàn bộ giao dịch.
   SELECT * INTO v_doc_lai
     FROM public.room_reservation_holds h
    WHERE h.id = v_hold_id;
@@ -364,7 +390,8 @@ BEGIN
      OR v_doc_lai.room_id IS DISTINCT FROM v_room_id THEN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
-  IF v_doc_lai.status IS DISTINCT FROM 'PENDING_APPROVAL' THEN
+  IF v_doc_lai.status IS DISTINCT FROM 'PENDING_APPROVAL'
+     OR v_doc_lai.amount IS DISTINCT FROM round(v_so_tien, 2) THEN
     RAISE EXCEPTION 'copilot_draft_invariant_violation' USING ERRCODE = 'P0001';
   END IF;
   v_after := to_jsonb(v_doc_lai);
