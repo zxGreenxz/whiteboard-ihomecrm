@@ -210,6 +210,54 @@ export const SCHEMA_PHIEU_GIU_CHO = z.object({
  * `copilot_plan_submit_voucher_v1` ném `copilot_auto_post_forbidden` và cuộn
  * ngược — đường này chỉ NỘP.
  */
+/**
+ * Input của tám hành động L5 `direct_l5_v1` (G5-C, đợt 1) — bọc RPC L5 có sẵn
+ * (duyệt/vào sổ/xoá mềm). MỖI schema chỉ mang đúng khoá thực thể cần để tra
+ * hàng — không trường nào chọn kết quả (trạng thái sau khi ghi do RPC gốc
+ * quyết, không phải tham số).
+ *
+ * `organization_id` KHÔNG có mặt: nó luôn được bind bởi `chotToChuc`, giống
+ * mọi schema khác trong file này.
+ */
+export const SCHEMA_IE_DUYET = z.object({
+  income_expense_id: z.string().uuid().describe('ID phiếu thu/chi cần duyệt'),
+});
+
+export const SCHEMA_IE_VAO_SO = z.object({
+  income_expense_id: z.string().uuid().describe('ID phiếu thu/chi'),
+  cashbook_id: z.string().uuid().describe('ID sổ quỹ sẽ vào sổ'),
+  posted_on: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe('Ngày vào sổ (YYYY-MM-DD)'),
+});
+
+export const SCHEMA_INVOICE_DUYET = z.object({
+  invoice_id: z.string().uuid().describe('ID hoá đơn cần duyệt'),
+});
+
+export const SCHEMA_INVOICE_XOA_MEM = z.object({
+  invoice_id: z.string().uuid().describe('ID hoá đơn cần xoá mềm'),
+});
+
+export const SCHEMA_METER_READING_DUYET = z.object({
+  meter_reading_id: z.string().uuid().describe('ID chỉ số công tơ cần duyệt'),
+});
+
+export const SCHEMA_CONTRACT_DUYET_THANH_LY = z.object({
+  termination_id: z.string().uuid().describe('ID yêu cầu thanh lý hợp đồng cần duyệt'),
+  note: z
+    .string()
+    .max(2000)
+    .nullable()
+    .optional()
+    .describe('Ghi chú kèm quyết định duyệt; bỏ trống = không ghi chú'),
+});
+
+export const SCHEMA_CUSTOMER_XOA_MEM = z.object({
+  customer_id: z.string().uuid().describe('ID khách hàng cần xoá mềm'),
+});
+
 export const SCHEMA_NOP_HO_SO = z.union([
   z.object({
     $ref_step: z
@@ -393,6 +441,150 @@ export const ACTION_CATALOG = {
     previewRpc: 'copilot_plan_submit_voucher_v1',
     executeRpc: 'copilot_plan_submit_voucher_v1',
   },
+  // ───────────────────────────────────────────────────────────────────────
+  // G5-C (đợt 1) — TÁM hành động L5 `direct_l5_v1`: bọc RPC L5 CÓ SẴN
+  // (duyệt/vào sổ/xoá mềm phiếu thu-chi, hoá đơn, chỉ số công tơ, thanh lý
+  // hợp đồng, khách hàng). KHÔNG có tool đơn lẻ nào cho các dòng này — chúng
+  // KHÔNG nằm trong `TOOL_GHI` (`writeTools.ts`), nên factory
+  // `taoToolGhiTuCatalog` không bao giờ dựng tool cho chúng. Đường vào DUY
+  // NHẤT là một bước trong kế hoạch (`lap_ke_hoach`), đúng như
+  // `income_expense.nop_ho_so` ở trên — PIN step-up là điều kiện để kế hoạch
+  // được `copilot_plan_approve_v1` duyệt trước khi bất kỳ bước L5 nào chạy.
+  //
+  // `previewRpc`/`executeRpc` ở đây là hai RPC THẬT, KHÁC `nop_ho_so`: máy kế
+  // hoạch (`copilot_plan_execute_step_v1`, nhánh `direct_l5_v1`) gọi
+  // `preview_rpc` để lấy nonce MỚI rồi gọi `execute_rpc` với nonce đó — cùng
+  // khuôn với `nonce_abi_v1`, chỉ khác một dòng `set_config` đánh dấu ngữ
+  // cảnh kế hoạch trước khi gọi `execute_rpc` (execute RPC tự chối
+  // `l5_requires_plan` nếu bị gọi ngoài khuôn này).
+  'income_expense.duyet': {
+    actionId: 'income_expense.duyet',
+    version: 1,
+    labelVi: 'Duyệt phiếu thu/chi',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'income_expenses', action: 'approve' },
+    inputSchema: SCHEMA_IE_DUYET,
+    previewFields: ['toa_nha', 'loai_phieu', 'ten_phieu', 'so_tien', 'trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_ie_duyet_v1',
+    executeRpc: 'copilot_execute_ie_duyet_v1',
+  },
+  'income_expense.duyet_vao_so': {
+    actionId: 'income_expense.duyet_vao_so',
+    version: 1,
+    labelVi: 'Duyệt và vào sổ phiếu thu/chi',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'income_expenses', action: 'approve' },
+    inputSchema: SCHEMA_IE_VAO_SO,
+    previewFields: ['toa_nha', 'loai_phieu', 'ten_phieu', 'so_tien', 'so_quy', 'ngay_vao_so', 'hau_qua'],
+    previewRpc: 'copilot_preview_ie_duyet_vao_so_v1',
+    executeRpc: 'copilot_execute_ie_duyet_vao_so_v1',
+  },
+  'income_expense.vao_so': {
+    actionId: 'income_expense.vao_so',
+    version: 1,
+    labelVi: 'Vào sổ phiếu thu/chi đã duyệt',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'income_expenses', action: 'approve' },
+    inputSchema: SCHEMA_IE_VAO_SO,
+    previewFields: ['toa_nha', 'loai_phieu', 'ten_phieu', 'so_tien', 'so_quy', 'ngay_vao_so', 'hau_qua'],
+    previewRpc: 'copilot_preview_ie_vao_so_v1',
+    executeRpc: 'copilot_execute_ie_vao_so_v1',
+  },
+  'invoice.duyet': {
+    actionId: 'invoice.duyet',
+    version: 1,
+    labelVi: 'Duyệt hoá đơn',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    // RPC gốc (`approve_invoice_v1`) gác bằng `can_edit_invoice_building_v1`,
+    // tức khoá THẬT là `invoices.edit` — KHÔNG phải `invoices.approve` (khoá
+    // đó tồn tại trong `permission_definitions` nhưng RPC không đọc nó).
+    permission: { module: 'invoices', action: 'edit' },
+    inputSchema: SCHEMA_INVOICE_DUYET,
+    previewFields: ['toa_nha', 'so_hoa_don', 'ky_hoa_don', 'so_tien', 'trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_invoice_duyet_v1',
+    executeRpc: 'copilot_execute_invoice_duyet_v1',
+  },
+  'invoice.xoa_mem': {
+    actionId: 'invoice.xoa_mem',
+    version: 1,
+    labelVi: 'Xoá mềm hoá đơn',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'invoices', action: 'edit' },
+    inputSchema: SCHEMA_INVOICE_XOA_MEM,
+    previewFields: ['toa_nha', 'so_hoa_don', 'ky_hoa_don', 'so_tien', 'trang_thai_hien_tai', 'hau_qua'],
+    previewRpc: 'copilot_preview_invoice_xoa_mem_v1',
+    executeRpc: 'copilot_execute_invoice_xoa_mem_v1',
+  },
+  'meter_reading.duyet': {
+    actionId: 'meter_reading.duyet',
+    version: 1,
+    labelVi: 'Duyệt chỉ số công tơ',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'meter_readings', action: 'edit' },
+    inputSchema: SCHEMA_METER_READING_DUYET,
+    previewFields: [
+      'toa_nha',
+      'ma_chi_so',
+      'ky_ghi_so',
+      'chi_so_truoc',
+      'chi_so_moi',
+      'trang_thai_hien_tai',
+      'hau_qua',
+      'canh_bao',
+    ],
+    previewRpc: 'copilot_preview_meter_reading_duyet_v1',
+    executeRpc: 'copilot_execute_meter_reading_duyet_v1',
+  },
+  'contract.duyet_thanh_ly': {
+    actionId: 'contract.duyet_thanh_ly',
+    version: 1,
+    labelVi: 'Duyệt thanh lý hợp đồng',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'contracts', action: 'edit' },
+    inputSchema: SCHEMA_CONTRACT_DUYET_THANH_LY,
+    previewFields: [
+      'toa_nha',
+      'phong',
+      'so_hop_dong',
+      'so_tien_hoan_thu',
+      'trang_thai_hien_tai',
+      'hau_qua',
+      'canh_bao',
+    ],
+    previewRpc: 'copilot_preview_contract_duyet_thanh_ly_v1',
+    executeRpc: 'copilot_execute_contract_duyet_thanh_ly_v1',
+  },
+  'customer.xoa_mem': {
+    actionId: 'customer.xoa_mem',
+    version: 1,
+    labelVi: 'Xoá mềm khách hàng',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    // RPC gốc (`soft_delete_customer`) KHÔNG dùng `authorized_scope_v3` —
+    // quyền thật là `(user_id = actor OR is_super_admin())` ngay trên hàng.
+    // `customers.delete` ở đây là bộ lọc SỚM tại cổng hành động, CHẶT HƠN RPC
+    // gốc (an toàn, không nới rộng) — xem chú thích trong migration.
+    permission: { module: 'customers', action: 'delete' },
+    inputSchema: SCHEMA_CUSTOMER_XOA_MEM,
+    previewFields: ['ten_khach_hang', 'so_dien_thoai', 'trang_thai_hien_tai', 'hau_qua'],
+    previewRpc: 'copilot_preview_customer_xoa_mem_v1',
+    executeRpc: 'copilot_execute_customer_xoa_mem_v1',
+  },
 } as const satisfies Record<string, ActionCatalogEntry>;
 
 export type ActionId = keyof typeof ACTION_CATALOG;
@@ -446,6 +638,20 @@ export const NHAN_TRUONG_XEM_TRUOC: Readonly<Record<string, string>> = {
   // Cảnh báo là một trường XEM TRƯỚC như mọi trường khác, không phải một dòng
   // phụ chú: người bấm phải thấy nó ngay trong bảng, cùng chỗ với con số.
   canh_bao: 'Cảnh báo',
+  // G5-C (đợt 1) — tám hành động L5 `direct_l5_v1`.
+  hau_qua: 'Hậu quả',
+  trang_thai_hien_tai: 'Trạng thái hiện tại',
+  loai_phieu: 'Loại phiếu',
+  so_quy: 'Sổ quỹ',
+  ngay_vao_so: 'Ngày vào sổ',
+  so_hoa_don: 'Số hoá đơn',
+  ky_hoa_don: 'Kỳ hoá đơn',
+  ma_chi_so: 'Mã chỉ số',
+  ky_ghi_so: 'Kỳ ghi sổ',
+  so_hop_dong: 'Số hợp đồng',
+  so_tien_hoan_thu: 'Số tiền hoàn/thu thêm khi thanh lý',
+  ten_khach_hang: 'Tên khách hàng',
+  so_dien_thoai: 'Số điện thoại',
 };
 
 /** `permission_key` như server ghi trong sổ đăng ký: `<module>.<action>`. */

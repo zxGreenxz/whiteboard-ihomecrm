@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { boCommentSql, docSql, thanHam } from './helpers/sqlTestUtils';
@@ -26,6 +29,48 @@ const migration = boCommentSql(tho);
  */
 function than(ten: string, schema = 'public'): string {
   const rong = thanHam(migration, ten, schema);
+  const dong = /\n\$[a-z_]*\$;/.exec(rong);
+  return dong ? rong.slice(0, dong.index) : rong;
+}
+
+// ---------------------------------------------------------------------------
+// ĐỊNH NGHĨA SỐNG của `copilot_plan_execute_step_v1` — gate
+// `check-migration-test-liveness.mjs`.
+//
+// G5-C (`20260903190255_copilot_action_ie_duyet_v1.sql`) CREATE OR REPLACE lại
+// đúng hàm này để thêm nhánh `executor_kind = 'direct_l5_v1'` — định nghĩa
+// SỐNG dời sang file đó, muộn hơn migration G5-B ở trên. Đọc thẳng
+// `migration`/`than()` (frozen) cho hàm NÀY sẽ là đo một bản đã bị thay, y hệt
+// lớp lỗi mà `copilotIncomeExpenseRpcHardeningMigration.test.ts` đã ghim
+// trước đó (xem báo cáo G2-D mục 5). Khuôn `liveDefinitionOf()` lấy TỪ
+// `src/lib/__tests__/salaryCompletionDate.test.ts`, viết lại cục bộ ở đây vì
+// không có ích khi kéo thành một helper dùng chung (chỉ một hàm cần).
+const MIG_DIR = 'supabase/migrations';
+const stripComments = (sql: string) => sql.replace(/--[^\n]*/g, '');
+let corpusCache: { file: string; sql: string }[] | null = null;
+function migrationCorpus(): { file: string; sql: string }[] {
+  if (!corpusCache) {
+    corpusCache = readdirSync(MIG_DIR)
+      .filter((f) => f.endsWith('.sql'))
+      .sort()
+      .map((f) => ({ file: f, sql: stripComments(readFileSync(join(MIG_DIR, f), 'utf8')) }));
+  }
+  return corpusCache;
+}
+function liveDefinitionOf(fnName: string): { file: string; sql: string } {
+  const re = new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`, 'i');
+  let hit: { file: string; sql: string } | null = null;
+  for (const m of migrationCorpus()) {
+    if (re.test(m.sql)) hit = m;
+  }
+  if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của public.${fnName}`);
+  return hit;
+}
+/** Thân hàm SỐNG (không phải bản đóng băng của migration G5-B). */
+function thanSong(ten: string): string {
+  const { sql } = liveDefinitionOf(ten);
+  const sach = boCommentSql(sql);
+  const rong = thanHam(sach, ten);
   const dong = /\n\$[a-z_]*\$;/.exec(rong);
   return dong ? rong.slice(0, dong.index) : rong;
 }
@@ -74,13 +119,13 @@ describe('G5-B — khung migration', () => {
     expect(migration).not.toMatch(/DROP TABLE/);
   });
 
-  it('KHÔNG đổi chữ ký ABI của copilot_plan_create_v1/copilot_plan_execute_step_v1', () => {
+  it('KHÔNG đổi chữ ký ABI của copilot_plan_create_v1 (hàm này không bị migration nào sau G5-B định nghĩa lại)', () => {
     expect(migration).toMatch(
       /CREATE OR REPLACE FUNCTION public\.copilot_plan_create_v1\(\s*p_organization_id\s+uuid,\s*p_client_request_id text,\s*p_steps\s+jsonb\s*\)/,
     );
-    expect(migration).toMatch(
-      /CREATE OR REPLACE FUNCTION public\.copilot_plan_execute_step_v1\(\s*p_plan_id\s+uuid,\s*p_step_no\s+int,\s*p_expected_plan_version int,\s*p_organization_id\s+uuid\s*\)/,
-    );
+    // Chữ ký của `copilot_plan_execute_step_v1` được ghim ở khối "định nghĩa
+    // SỐNG" phía dưới (G5-C định nghĩa lại hàm này để thêm nhánh direct_l5_v1
+    // — xem chú thích `liveDefinitionOf`).
   });
 });
 
@@ -536,15 +581,27 @@ describe('G5-B — nhánh tự duyệt trong copilot_plan_create_v1', () => {
   });
 });
 
-describe('G5-B — nhánh amount trong copilot_plan_execute_step_v1', () => {
+describe('G5-B — nhánh amount trong copilot_plan_execute_step_v1 (đọc định nghĩa SỐNG)', () => {
   it('sự kiện step_done ghi amount từ v_step.canonical (đã chốt ở preview), không từ payload thô', () => {
-    const body = than('copilot_plan_execute_step_v1');
+    const body = thanSong('copilot_plan_execute_step_v1');
     expect(body).toMatch(/'amount',\s*NULLIF\(v_step\.canonical ->> 'amount', ''\),/);
+  });
+
+  it('chữ ký ABI KHÔNG đổi ở định nghĩa sống (G5-C chỉ thêm một nhánh, không đổi tham số)', () => {
+    const { sql } = liveDefinitionOf('copilot_plan_execute_step_v1');
+    expect(sql).toMatch(
+      /FUNCTION public\.copilot_plan_execute_step_v1\(p_plan_id uuid, p_step_no integer, p_expected_plan_version integer, p_organization_id uuid\)/,
+    );
+  });
+
+  it('định nghĩa sống mang nhánh direct_l5_v1 (G5-C) — chi tiết đầy đủ do copilotActionsL5Migration.test.ts ghim', () => {
+    const body = thanSong('copilot_plan_execute_step_v1');
+    expect(body).toMatch(/executor_kind = 'direct_l5_v1'/);
   });
 });
 
-describe('G5-B — thu hồi giữa chừng chặn được kế hoạch đang chạy (Fix round 1, F2)', () => {
-  const body = than('copilot_plan_execute_step_v1');
+describe('G5-B — thu hồi giữa chừng chặn được kế hoạch đang chạy (Fix round 1, F2) (đọc định nghĩa SỐNG)', () => {
+  const body = thanSong('copilot_plan_execute_step_v1');
 
   it('kiểm consent_kind=standing_grant NGAY ở đầu TIỀN KIỂM, trước cả registry/policy', () => {
     const iFlag = body.indexOf('copilot_feature_disabled');

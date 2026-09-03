@@ -486,3 +486,77 @@ describe('G2-E fix#2/#3 — câu tiếng Việt khớp ngưỡng THẬT của se
     expect(schema.safeParse({ ...nen, notes: 'a'.repeat(5001) }).success).toBe(false);
   });
 });
+
+// ── G5-C (đợt 1): tám action L5 `direct_l5_v1` ──────────────────────────────
+//
+// Đường vào DUY NHẤT của các action này là một BƯỚC trong kế hoạch
+// (`lap_ke_hoach` → `thuc_thi_buoc`), không phải một tool đơn lẻ như L3/L4.
+// Hai bài dưới đây đo đúng hai mặt của cùng một bất biến: (a) bảng khai báo
+// KHÔNG chứa hàng nào trỏ tới action L5, và (b) ngay cả khi mọi cờ rollout
+// đều `enabled`, không tool nào lọt qua `toLlmTools`/`toPageAgentTools` mang
+// theo một `execute` có thể chạm RPC thực thi L5.
+const HANH_DONG_L5 = (Object.values(ACTION_CATALOG) as ActionCatalogEntry[]).filter(
+  (e) => e.risk === 'L5',
+);
+
+describe('G5-C — tám action L5 direct_l5_v1: KHÔNG có tool đơn lẻ nào', () => {
+  it('sổ có đúng tám action L5 kiểu direct_l5_v1, tất cả consentRequired=step_up', () => {
+    // `income_expense.nop_ho_so` (G3) là L5 nhưng `maker_submit_v1` — không đếm
+    // vào đây, nó có luật riêng ("nộp hồ sơ", không phải "ghi thẳng").
+    const directL5 = HANH_DONG_L5.filter((e) => e.executorKind === 'direct_l5_v1');
+    expect(directL5).toHaveLength(8);
+    for (const entry of directL5) {
+      expect(entry.consentRequired, entry.actionId).toBe('step_up');
+      expect(entry.risk, entry.actionId).toBe('L5');
+    }
+  });
+
+  it('KHÔNG hàng khai báo tool nào (KHAI_BAO_TOOL_GHI) trỏ tới một action L5', () => {
+    const idL5 = new Set(HANH_DONG_L5.map((e) => e.actionId));
+    for (const khai of TOOL_GHI) {
+      expect(idL5.has(khai.actionId), `${khai.name} trỏ tới action L5 ${khai.actionId}`).toBe(
+        false,
+      );
+    }
+  });
+
+  it('buildRegistryDefinitions() không sinh tool nào mang rolloutKey của action L5', () => {
+    const tatCa = buildRegistryDefinitions();
+    for (const entry of HANH_DONG_L5.filter((e) => e.executorKind === 'direct_l5_v1')) {
+      const khoa = khoaRolloutHanhDong(entry.actionId as ActionId);
+      const trung = tatCa.find((t) => t.rolloutKey === khoa);
+      expect(trung, `một tool (${trung?.name}) mang rolloutKey của action L5 ${entry.actionId}`).toBeUndefined();
+    }
+  });
+
+  it('toLlmTools/toPageAgentTools — KHÔNG tool nào (kể cả khi MỌI cờ enabled) có execute chạm RPC thực thi L5', () => {
+    const tatCa = buildRegistryDefinitions();
+    const rpcL5 = HANH_DONG_L5.filter((e) => e.executorKind === 'direct_l5_v1').map(
+      (e) => e.executeRpc,
+    );
+    // Snapshot "mọi cờ đều enabled" — kể cả trường hợp một quản trị viên lỡ tay
+    // bật MỌI contract rollout, tool đơn lẻ cho L5 vẫn không được tồn tại (vì
+    // nó chưa từng được factory dựng ra, không phải vì cờ chặn).
+    const states: Record<string, CopilotFlagState> = {};
+    for (const t of tatCa) if (t.rolloutKey) states[t.rolloutKey] = 'enabled';
+    const snap: CopilotAvailabilitySnapshot = {
+      revision: 99,
+      fetchedAt: Date.now(),
+      organizationId: ORG,
+      states,
+    };
+    const llm = toLlmTools(tatCa, ctxVoi(snap));
+    const page = toPageAgentTools(tatCa, ctxVoi(snap));
+    for (const bo of [llm, page]) {
+      for (const [ten, tool] of Object.entries(bo)) {
+        const thanExecute = tool.execute.toString();
+        for (const rpc of rpcL5) {
+          expect(
+            thanExecute.includes(rpc),
+            `tool "${ten}" chạm RPC thực thi L5 "${rpc}"`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+});
