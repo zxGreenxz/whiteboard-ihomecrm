@@ -182,6 +182,49 @@ export async function doiChinhSachHanhDong(input: DoiChinhSachInput): Promise<Ch
   return chuanHoaChinhSach(data);
 }
 
+// ── PIN step-up (G5-A, điểm nối #3) — mở khoá NGƯỜI KHÁC ────────────────────
+//
+// `trangThaiPin`/`datPin` của CHÍNH người gọi nằm ở `stepUpClient.ts` (dùng
+// chung với `KeHoachCard`); ở ĐÂY chỉ có `moKhoaPinStepUp`, vì mở khoá cho một
+// người dùng KHÁC là việc riêng của super admin, không phải một thao tác tự
+// phục vụ.
+
+export interface KetQuaMoKhoaPin {
+  daMoKhoa: boolean;
+  userId: string;
+}
+
+export function chuanHoaMoKhoaPin(gt: unknown): KetQuaMoKhoaPin | null {
+  if (!gt || typeof gt !== 'object' || Array.isArray(gt)) return null;
+  const r = gt as Record<string, unknown>;
+  const userId = chuoiHoacNull(r.user_id);
+  if (!userId || r.da_mo_khoa !== true) return null;
+  return { daMoKhoa: true, userId };
+}
+
+/** Mã lỗi của `copilot_step_up_unlock_v1` → câu người vận hành đọc được. */
+export function dienGiaiLoiMoKhoaPin(loi: unknown): string {
+  const cau = loi instanceof Error ? loi.message : String(loi ?? '');
+  if (cau.includes('step_up_superadmin_only')) {
+    return 'Chỉ super admin mới mở khoá được PIN của người khác.';
+  }
+  if (cau.includes('reason_required')) return 'Phải nhập lý do (ít nhất 3 ký tự) trước khi mở khoá.';
+  if (cau.includes('user_required')) return 'Thiếu mã người dùng cần mở khoá.';
+  if (cau.includes('pin_not_set')) return 'Người dùng này chưa từng đặt PIN step-up.';
+  if (cau.includes('unauthenticated')) return 'Phiên đăng nhập đã hết hạn, hãy đăng nhập lại.';
+  return `Không mở khoá được: ${cau}`;
+}
+
+/** Mở khoá PIN step-up của MỘT người dùng khác. Chỉ super admin, bắt buộc lý do. */
+export async function moKhoaPinStepUp(userId: string, reason: string): Promise<KetQuaMoKhoaPin | null> {
+  const { data, error } = await supabase.rpc('copilot_step_up_unlock_v1', {
+    p_user_id: userId,
+    p_reason: reason,
+  });
+  if (error) throw new Error(error.message ?? String(error));
+  return chuanHoaMoKhoaPin(data);
+}
+
 /** Nhãn tiếng Việt cho từng loại sự kiện trong sổ. */
 const NHAN_SU_KIEN: Readonly<Record<string, string>> = {
   policy_changed: 'Đổi chính sách',
@@ -199,6 +242,12 @@ const NHAN_SU_KIEN: Readonly<Record<string, string>> = {
   step_blocked: 'Bước bị chặn',
   plan_cancelled: 'Huỷ kế hoạch',
   plan_expired: 'Kế hoạch quá hạn',
+  // Bốn sự kiện PIN step-up (G5-A) — hai đầu (đặt/mở khoá) không thuộc tổ chức
+  // nào, xem cột "Người dùng" thay vì cột công ty ở bảng sổ chung.
+  step_up_pin_set: 'Đặt/đổi PIN step-up',
+  step_up_verified: 'Xác thực PIN thành công',
+  step_up_locked: 'Khoá PIN (sai quá 5 lần)',
+  step_up_unlocked: 'Mở khoá PIN (super admin)',
 };
 
 /** Bảy sự kiện thuộc về đường KẾ HOẠCH — nguồn của mục "Kế hoạch gần đây". */

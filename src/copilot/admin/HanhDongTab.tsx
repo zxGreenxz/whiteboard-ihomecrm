@@ -17,17 +17,23 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { supabase } from '@/integrations/supabase/client';
 
+import { useAuth } from '@/hooks/useAuth';
 import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 
+import { dienGiaiLoiKeHoach } from '../chatErrors';
+import { datPin, trangThaiPin, type TrangThaiPin } from '../plan/stepUpClient';
 import {
   SO_DONG_SO_MAC_DINH,
   dienGiaiLoiChinhSach,
+  dienGiaiLoiMoKhoaPin,
   dinhDangThoiGian,
   docChinhSachHanhDong,
   docSoHanhDong,
   doiChinhSachHanhDong,
   locSuKienKeHoach,
+  moKhoaPinStepUp,
   nhanSuKien,
   type ChinhSachHanhDong,
   type DongSoHanhDong,
@@ -264,6 +270,175 @@ export function TheChinhSachHanhDong(props: {
   );
 }
 
+/**
+ * Mã lỗi của cụm PIN step-up → câu tiếng Việt.
+ *
+ * `reauth_failed` là mã CỤC BỘ của file này (thẻ tự phát ra khi
+ * `signInWithPassword` báo lỗi trước lúc gọi `datPin` — xem chú thích ở
+ * `datPin` trong `stepUpClient.ts` về vì sao re-auth là ranh giới CLIENT).
+ * Mọi mã khác (pin_format/pin_weak/pin_invalid/pin_locked/
+ * step_up_superadmin_only…) nhường cho `dienGiaiLoiKeHoach` — bảng đó đã có
+ * đủ sáu mã của G5-A, không dựng bảng riêng để hai bảng lệch nhau.
+ */
+export function dienGiaiLoiPin(loi: unknown): string {
+  const cau = loi instanceof Error ? loi.message : String(loi ?? '');
+  if (cau === 'reauth_failed') return 'Mật khẩu không đúng — không đổi được PIN.';
+  return dienGiaiLoiKeHoach(cau);
+}
+
+/** Thẻ PIN step-up — cũng THUẦN: mọi thứ động đi qua props. */
+export function TheStepUpPin(props: {
+  trangThai: TrangThaiPin | null;
+  dangTaiTrangThai: boolean;
+  pinHienTai: string;
+  pinMoi: string;
+  matKhau: string;
+  dangDatPin: boolean;
+  onDoiPinHienTai: (gt: string) => void;
+  onDoiPinMoi: (gt: string) => void;
+  onDoiMatKhau: (gt: string) => void;
+  onDatPin: () => void;
+  laSuperAdmin: boolean;
+  moKhoaUserId: string;
+  moKhoaLyDo: string;
+  dangMoKhoa: boolean;
+  onDoiMoKhoaUserId: (gt: string) => void;
+  onDoiMoKhoaLyDo: (gt: string) => void;
+  onMoKhoa: () => void;
+}) {
+  const { trangThai } = props;
+  const duLieuDuDatPin = Boolean(
+    /^[0-9]{4}$/.test(props.pinMoi) && props.matKhau.trim() && (!trangThai?.daDat || props.pinHienTai.trim()),
+  );
+  const duLieuDuMoKhoa = Boolean(props.moKhoaUserId.trim() && props.moKhoaLyDo.trim().length >= 3);
+  const dangKhoa = Boolean(trangThai?.lockedUntil && new Date(trangThai.lockedUntil).getTime() > Date.now());
+  return (
+    <div className="space-y-3 rounded border p-3" data-testid="copilot-admin-pin-card">
+      <div>
+        <div className="text-sm font-medium">PIN step-up</div>
+        <div className="text-xs text-muted-foreground">
+          Lớp xác thực thứ hai cho kế hoạch L5 dưới trần L5. Chỉ super admin đặt/đổi được PIN (v1).
+        </div>
+      </div>
+
+      <div className="text-sm" data-testid="copilot-admin-pin-status">
+        {props.dangTaiTrangThai && !trangThai ? (
+          <span className="text-muted-foreground">Đang tải trạng thái PIN…</span>
+        ) : trangThai ? (
+          <>
+            <span className={trangThai.daDat ? 'text-emerald-700' : 'text-amber-700'}>
+              {trangThai.daDat ? 'Đã đặt PIN.' : 'Chưa đặt PIN.'}
+            </span>
+            {dangKhoa && (
+              <span className="ml-2 rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">
+                Đang khoá tới {dinhDangThoiGian(trangThai.lockedUntil)}
+              </span>
+            )}
+            {!dangKhoa && trangThai.failedAttempts > 0 && (
+              <span className="ml-2 text-xs text-amber-700">
+                {trangThai.failedAttempts} lần sai gần nhất chưa reset
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-muted-foreground">Không đọc được trạng thái PIN.</span>
+        )}
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        {trangThai?.daDat && (
+          <label className="text-sm">
+            PIN hiện tại
+            <Input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              data-testid="copilot-admin-pin-current"
+              value={props.pinHienTai}
+              disabled={props.dangDatPin}
+              onChange={(e) => props.onDoiPinHienTai(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+              placeholder="4 số"
+            />
+          </label>
+        )}
+        <label className="text-sm">
+          PIN mới
+          <Input
+            type="password"
+            inputMode="numeric"
+            maxLength={4}
+            data-testid="copilot-admin-pin-new"
+            value={props.pinMoi}
+            disabled={props.dangDatPin}
+            onChange={(e) => props.onDoiPinMoi(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+            placeholder="4 số"
+          />
+        </label>
+        <label className="text-sm">
+          Mật khẩu (re-auth)
+          <Input
+            type="password"
+            data-testid="copilot-admin-pin-password"
+            value={props.matKhau}
+            disabled={props.dangDatPin}
+            onChange={(e) => props.onDoiMatKhau(e.target.value)}
+            placeholder="Mật khẩu đăng nhập"
+          />
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Server không kiểm được việc re-auth vừa xảy ra — nhập đúng mật khẩu đăng nhập là điều kiện
+        do CHÍNH thẻ này gác, trước khi gọi RPC đặt PIN.
+      </p>
+      <Button
+        size="sm"
+        data-testid="copilot-admin-pin-submit"
+        disabled={!duLieuDuDatPin || props.dangDatPin}
+        onClick={props.onDatPin}
+      >
+        {props.dangDatPin ? 'Đang lưu…' : trangThai?.daDat ? 'Đổi PIN' : 'Đặt PIN'}
+      </Button>
+
+      {props.laSuperAdmin && (
+        <div className="space-y-2 border-t pt-3">
+          <div className="text-sm font-medium">Mở khoá PIN của người dùng khác</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm">
+              Mã người dùng (user_id)
+              <Input
+                data-testid="copilot-admin-pin-unlock-userid"
+                value={props.moKhoaUserId}
+                disabled={props.dangMoKhoa}
+                onChange={(e) => props.onDoiMoKhoaUserId(e.target.value)}
+                placeholder="uuid"
+              />
+            </label>
+            <label className="text-sm">
+              Lý do (bắt buộc)
+              <Input
+                data-testid="copilot-admin-pin-unlock-reason"
+                value={props.moKhoaLyDo}
+                disabled={props.dangMoKhoa}
+                onChange={(e) => props.onDoiMoKhoaLyDo(e.target.value)}
+                placeholder="Ví dụ: người dùng báo bị khoá nhầm"
+              />
+            </label>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="copilot-admin-pin-unlock-submit"
+            disabled={!duLieuDuMoKhoa || props.dangMoKhoa}
+            onClick={props.onMoKhoa}
+          >
+            {props.dangMoKhoa ? 'Đang mở khoá…' : 'Mở khoá'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HanhDongTab() {
   const qc = useQueryClient();
   // Sổ đã tự giới hạn ở server (người thường chỉ thấy dòng của mình), nên mục
@@ -271,11 +446,63 @@ export default function HanhDongTab() {
   // được cả công ty. Hiện nó cho người thường là hứa một bức tranh toàn cảnh
   // mà dữ liệu họ nhận được không dựng nổi.
   const { data: laSuperAdmin } = useIsSuperAdmin();
+  const { data: nguoiDung } = useAuth();
   const { organizations, selectedOrganizationId, selectOrganization } = useOrganization();
   const [ruiRo, setRuiRo] = useState<MucRuiRoChinhSach | ''>('');
   const [vai, setVai] = useState<string[] | null>(null);
   const [lyDo, setLyDo] = useState('');
   const [bangChung, setBangChung] = useState('');
+
+  // ── PIN step-up (G5-A) ─────────────────────────────────────────────────
+  const [pinHienTai, setPinHienTai] = useState('');
+  const [pinMoi, setPinMoi] = useState('');
+  const [matKhauReAuth, setMatKhauReAuth] = useState('');
+  const [moKhoaUserId, setMoKhoaUserId] = useState('');
+  const [moKhoaLyDo, setMoKhoaLyDo] = useState('');
+
+  const trangThaiPinQuery = useQuery({
+    queryKey: ['copilot-step-up-status'],
+    retry: false,
+    queryFn: async () => {
+      const kq = await trangThaiPin();
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq.trangThai;
+    },
+  });
+
+  const datPinMutation = useMutation({
+    mutationFn: async () => {
+      if (!nguoiDung?.email) throw new Error('unauthenticated');
+      // Re-auth BẮT BUỘC trước khi gọi RPC đặt/đổi PIN — server không kiểm
+      // được điều đó (xem chú thích ở `datPin` trong `stepUpClient.ts`).
+      const { error: loiReAuth } = await supabase.auth.signInWithPassword({
+        email: nguoiDung.email,
+        password: matKhauReAuth,
+      });
+      if (loiReAuth) throw new Error('reauth_failed');
+      const kq = await datPin(pinMoi, pinHienTai || undefined);
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq;
+    },
+    onSuccess: async () => {
+      toast.success('Đã lưu PIN step-up.');
+      setPinHienTai('');
+      setPinMoi('');
+      setMatKhauReAuth('');
+      await qc.invalidateQueries({ queryKey: ['copilot-step-up-status'] });
+    },
+    onError: (loi) => toast.error(dienGiaiLoiPin(loi)),
+  });
+
+  const moKhoaMutation = useMutation({
+    mutationFn: () => moKhoaPinStepUp(moKhoaUserId.trim(), moKhoaLyDo.trim()),
+    onSuccess: () => {
+      toast.success('Đã mở khoá PIN của người dùng.');
+      setMoKhoaUserId('');
+      setMoKhoaLyDo('');
+    },
+    onError: (loi) => toast.error(dienGiaiLoiMoKhoaPin(loi)),
+  });
 
   const chinhSachQuery = useQuery({
     queryKey: ['copilot-action-policy'],
@@ -347,6 +574,26 @@ export default function HanhDongTab() {
         onDoiLyDo={setLyDo}
         onDoiBangChung={setBangChung}
         onLuu={() => doiChinhSach.mutate()}
+      />
+
+      <TheStepUpPin
+        trangThai={trangThaiPinQuery.data ?? null}
+        dangTaiTrangThai={trangThaiPinQuery.isLoading}
+        pinHienTai={pinHienTai}
+        pinMoi={pinMoi}
+        matKhau={matKhauReAuth}
+        dangDatPin={datPinMutation.isPending}
+        onDoiPinHienTai={setPinHienTai}
+        onDoiPinMoi={setPinMoi}
+        onDoiMatKhau={setMatKhauReAuth}
+        onDatPin={() => datPinMutation.mutate()}
+        laSuperAdmin={Boolean(laSuperAdmin)}
+        moKhoaUserId={moKhoaUserId}
+        moKhoaLyDo={moKhoaLyDo}
+        dangMoKhoa={moKhoaMutation.isPending}
+        onDoiMoKhoaUserId={setMoKhoaUserId}
+        onDoiMoKhoaLyDo={setMoKhoaLyDo}
+        onMoKhoa={() => moKhoaMutation.mutate()}
       />
 
       <div className="space-y-2 rounded border p-3">

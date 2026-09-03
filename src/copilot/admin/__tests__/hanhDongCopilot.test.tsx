@@ -18,18 +18,20 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc } }));
 const {
   chuanHoaChinhSach,
   chuanHoaDongSo,
+  chuanHoaMoKhoaPin,
   chuanHoaSo,
   dienGiaiLoiChinhSach,
+  dienGiaiLoiMoKhoaPin,
   dinhDangThoiGian,
   docChinhSachHanhDong,
   docSoHanhDong,
   doiChinhSachHanhDong,
+  moKhoaPinStepUp,
   nhanSuKien,
   locSuKienKeHoach,
 } = await import('../hanhDongCopilot');
-const { BangKeHoachGanDay, BangNhatKyHanhDong, TheChinhSachHanhDong } = await import(
-  '../HanhDongTab'
-);
+const { BangKeHoachGanDay, BangNhatKyHanhDong, TheChinhSachHanhDong, TheStepUpPin, dienGiaiLoiPin } =
+  await import('../HanhDongTab');
 
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 
@@ -294,5 +296,139 @@ describe('sổ kế hoạch', () => {
 
   it('sổ rỗng nói rõ là rỗng, không vẽ một bảng trắng', () => {
     expect(renderToStaticMarkup(<BangKeHoachGanDay dong={[]} />)).toContain('Chưa có kế hoạch nào');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G5-A — thẻ PIN step-up
+// ─────────────────────────────────────────────────────────────────────────────
+const USER_ID = '44444444-4444-4444-8444-444444444444';
+
+describe('moKhoaPinStepUp / chuanHoaMoKhoaPin / dienGiaiLoiMoKhoaPin', () => {
+  it('gọi đúng RPC copilot_step_up_unlock_v1 với p_user_id/p_reason', async () => {
+    rpc.mockResolvedValueOnce({ data: { da_mo_khoa: true, user_id: USER_ID }, error: null });
+    const kq = await moKhoaPinStepUp(USER_ID, 'người dùng báo bị khoá nhầm');
+    expect(rpc).toHaveBeenCalledWith('copilot_step_up_unlock_v1', {
+      p_user_id: USER_ID,
+      p_reason: 'người dùng báo bị khoá nhầm',
+    });
+    expect(kq).toEqual({ daMoKhoa: true, userId: USER_ID });
+  });
+
+  it('chuanHoaMoKhoaPin từ chối hình dạng lạ thay vì trả một kết quả giả', () => {
+    expect(chuanHoaMoKhoaPin(null)).toBeNull();
+    expect(chuanHoaMoKhoaPin({ da_mo_khoa: false, user_id: USER_ID })).toBeNull();
+    expect(chuanHoaMoKhoaPin({ da_mo_khoa: true })).toBeNull();
+  });
+
+  it('lỗi RPC ném Error, câu tiếng Việt đúng theo mã', () => {
+    expect(dienGiaiLoiMoKhoaPin(new Error('step_up_superadmin_only'))).toContain('Chỉ super admin');
+    expect(dienGiaiLoiMoKhoaPin(new Error('reason_required'))).toContain('lý do');
+    expect(dienGiaiLoiMoKhoaPin(new Error('pin_not_set'))).toContain('chưa từng đặt PIN');
+  });
+
+  it('server RAISE lỗi ⇒ moKhoaPinStepUp NÉM (không nuốt lỗi)', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'step_up_superadmin_only' } });
+    await expect(moKhoaPinStepUp(USER_ID, 'lý do')).rejects.toThrow('step_up_superadmin_only');
+  });
+});
+
+describe('dienGiaiLoiPin', () => {
+  it('reauth_failed là mã cục bộ của thẻ này, không phải mã server', () => {
+    expect(dienGiaiLoiPin(new Error('reauth_failed'))).toContain('Mật khẩu không đúng');
+  });
+
+  it('mọi mã PIN khác nhường cho dienGiaiLoiKeHoach', () => {
+    expect(dienGiaiLoiPin(new Error('pin_weak'))).toContain('dễ đoán');
+    expect(dienGiaiLoiPin(new Error('pin_format'))).toContain('4 chữ số');
+  });
+});
+
+describe('TheStepUpPin — render thuần', () => {
+  const props = {
+    trangThai: null,
+    dangTaiTrangThai: false,
+    pinHienTai: '',
+    pinMoi: '',
+    matKhau: '',
+    dangDatPin: false,
+    onDoiPinHienTai: () => {},
+    onDoiPinMoi: () => {},
+    onDoiMatKhau: () => {},
+    onDatPin: () => {},
+    laSuperAdmin: false,
+    moKhoaUserId: '',
+    moKhoaLyDo: '',
+    dangMoKhoa: false,
+    onDoiMoKhoaUserId: () => {},
+    onDoiMoKhoaLyDo: () => {},
+    onMoKhoa: () => {},
+  };
+
+  it('vẽ thẻ với testid gốc + ô PIN mới + ô mật khẩu re-auth', () => {
+    const html = renderToStaticMarkup(<TheStepUpPin {...props} />);
+    expect(html).toContain('copilot-admin-pin-card');
+    expect(html).toContain('copilot-admin-pin-new');
+    expect(html).toContain('copilot-admin-pin-password');
+    expect(html).toContain('copilot-admin-pin-submit');
+  });
+
+  it('CHƯA đặt PIN: không hiện ô "PIN hiện tại", nút hiện chữ "Đặt PIN"', () => {
+    const html = renderToStaticMarkup(
+      <TheStepUpPin {...props} trangThai={{ daDat: false, lockedUntil: null, failedAttempts: 0 }} />,
+    );
+    expect(html).not.toContain('copilot-admin-pin-current');
+    expect(html).toContain('Đặt PIN');
+  });
+
+  it('ĐÃ đặt PIN: hiện ô "PIN hiện tại", nút đổi chữ thành "Đổi PIN"', () => {
+    const html = renderToStaticMarkup(
+      <TheStepUpPin {...props} trangThai={{ daDat: true, lockedUntil: null, failedAttempts: 0 }} />,
+    );
+    expect(html).toContain('copilot-admin-pin-current');
+    expect(html).toContain('Đổi PIN');
+  });
+
+  it('đang khoá: hiện mốc hết khoá, KHÔNG hiện dòng "lần sai chưa reset"', () => {
+    const han = new Date(Date.now() + 5 * 60_000).toISOString();
+    const html = renderToStaticMarkup(
+      <TheStepUpPin {...props} trangThai={{ daDat: true, lockedUntil: han, failedAttempts: 0 }} />,
+    );
+    expect(html).toContain('Đang khoá tới');
+    expect(html).not.toContain('lần sai gần nhất');
+  });
+
+  it('không phải super admin ⇒ KHÔNG vẽ cụm mở khoá người khác', () => {
+    const html = renderToStaticMarkup(<TheStepUpPin {...props} laSuperAdmin={false} />);
+    expect(html).not.toContain('copilot-admin-pin-unlock-submit');
+  });
+
+  it('super admin ⇒ vẽ cụm mở khoá với ô mã người dùng + lý do', () => {
+    const html = renderToStaticMarkup(<TheStepUpPin {...props} laSuperAdmin />);
+    expect(html).toContain('copilot-admin-pin-unlock-userid');
+    expect(html).toContain('copilot-admin-pin-unlock-reason');
+    expect(html).toContain('copilot-admin-pin-unlock-submit');
+  });
+
+  it('KHÔNG chuỗi PIN/mật khẩu nào rò vào HTML (chỉ value do props điều khiển)', () => {
+    const html = renderToStaticMarkup(
+      <TheStepUpPin
+        {...props}
+        trangThai={{ daDat: true, lockedUntil: null, failedAttempts: 0 }}
+        pinHienTai="1357"
+        pinMoi="2468"
+        matKhau="mat-khau-bi-mat-xyz"
+      />,
+    );
+    // Giá trị THẬT vẫn phải xuất hiện trong `value=` (đây là input có kiểm
+    // soát bình thường) — điều cấm là PIN/mật khẩu KHÔNG được lộ ở NGOÀI thuộc
+    // tính `value` của đúng ô của nó (ví dụ trong text hiển thị hay testid).
+    expect(html).toContain('value="1357"');
+    expect(html).toContain('value="2468"');
+    expect(html).toContain('value="mat-khau-bi-mat-xyz"');
+    const ngoaiValue = html.replace(/value="[^"]*"/g, '');
+    expect(ngoaiValue).not.toContain('1357');
+    expect(ngoaiValue).not.toContain('2468');
+    expect(ngoaiValue).not.toContain('mat-khau-bi-mat-xyz');
   });
 });

@@ -530,6 +530,8 @@
     "src/copilot/plan/actionCatalog.ts",
     "src/copilot/plan/planClient.ts",
     "src/copilot/plan/__tests__/planClient.test.ts",
+    "src/copilot/plan/stepUpClient.ts",
+    "src/copilot/StepUpPinModal.tsx",
     "src/copilot/providerPolicy.ts",
     "src/copilot/uiControlAvailability.ts",
     "src/copilot/uiControlGate.ts",
