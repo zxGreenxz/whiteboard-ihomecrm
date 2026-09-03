@@ -15,7 +15,32 @@
 //   thêm một chỗ nữa để nó rò ra. Tải lại trang thì mất — đúng, người dùng xem
 //   lại bản xem trước là chuyện rẻ, còn một nonce sống sót qua reload thì không.
 
+/**
+ * LOẠI đề xuất đang chờ — quyết định THẺ NÀO trên giao diện được vẽ nó.
+ *
+ * `phieu` là đường một-bước có sẵn từ G2 (`XacNhanPhieuCard`): một nonce cho
+ * một hành động, `tool` là `action_id`. `ke_hoach` là đường nhiều bước của G3
+ * (`KeHoachCard`): một nonce cho CẢ kế hoạch, `tool` là `lap_ke_hoach` — đúng
+ * chuỗi mà `copilot_plan_approve_v1` đòi trong `confirmation_contract_mismatch`.
+ *
+ * VÌ SAO PHẢI CÓ TRƯỜNG NÀY THAY VÌ SUY TỪ `tool`
+ *   Suy được — hôm nay. `layXacNhanDangCho()` không đối số trả về đề xuất MỚI
+ *   NHẤT, nên khi một kế hoạch vừa được lập, thẻ phiếu sẽ cầm phải nó và cố tra
+ *   `ACTION_CATALOG['lap_ke_hoach']`. Nó trả `null` nên thẻ không vẽ gì — im
+ *   lặng và đúng, nhưng đúng vì một sự trùng hợp, không vì ai quyết định thế.
+ *   Thêm một hành động tên nghe giống là đủ để hai thẻ tranh nhau một nonce.
+ *   Một trường tường minh biến "may mắn" thành "hợp đồng", và mỗi thẻ chỉ thấy
+ *   khe của mình.
+ */
+export type LoaiXacNhan = 'phieu' | 'ke_hoach';
+
 export interface XacNhanDangCho {
+  /**
+   * Loại đề xuất. Vắng mặt = `'phieu'` — mọi nơi gọi có từ trước G3 khai một
+   * đề xuất phiếu, và bắt chúng gõ thêm một trường để giữ nguyên hành vi cũ là
+   * cách chắc chắn nhất để một nơi quên rồi biến mất khỏi giao diện.
+   */
+  kind?: LoaiXacNhan;
   /**
    * `action_id` của hành động đang chờ — khoá tra `ACTION_CATALOG`.
    *
@@ -58,8 +83,27 @@ export interface NguCanhXacNhan {
  * cũ vẫn dùng accessors không đối số để lấy đề xuất mới nhất.
  */
 const dangCho = new Map<string, XacNhanDangCho>();
-let intentMoiNhat: string | null = null;
+/**
+ * Đề xuất mới nhất CỦA TỪNG LOẠI, không phải một con trỏ chung.
+ *
+ * Một con trỏ chung nghĩa là lập kế hoạch xong thì thẻ phiếu mất đường tới đề
+ * xuất phiếu vẫn còn hạn của nó (và ngược lại) — hai đường ghi độc lập lại
+ * giẫm lên nhau chỉ vì cùng dùng một kho nonce.
+ */
+const moiNhatTheoLoai = new Map<LoaiXacNhan, string>();
 let nguCanhHienTai: NguCanhXacNhan | null = null;
+
+/** Loại của một đề xuất; vắng mặt = `'phieu'` (xem chú thích ở `LoaiXacNhan`). */
+function loaiCua(x: XacNhanDangCho): LoaiXacNhan {
+  return x.kind ?? 'phieu';
+}
+
+/** Quên con trỏ "mới nhất" nếu nó đang trỏ vào `key`. */
+function boConTro(key: string): void {
+  for (const [loai, k] of moiNhatTheoLoai) {
+    if (k === key) moiNhatTheoLoai.delete(loai);
+  }
+}
 
 function cungNguCanh(a: NguCanhXacNhan | null, b: NguCanhXacNhan | null): boolean {
   return a?.organizationId === b?.organizationId && a?.threadId === b?.threadId && a?.generation === b?.generation;
@@ -69,7 +113,7 @@ function cungNguCanh(a: NguCanhXacNhan | null, b: NguCanhXacNhan | null): boolea
 export function datNguCanhXacNhan(context: NguCanhXacNhan | null): void {
   if (!cungNguCanh(nguCanhHienTai, context)) {
     dangCho.clear();
-    intentMoiNhat = null;
+    moiNhatTheoLoai.clear();
   }
   nguCanhHienTai = context;
 }
@@ -102,7 +146,7 @@ export function datXacNhanDangCho(
   // Explicit intent keys still provide strict isolation for callers that need it.
   dangCho.delete(intentKey);
   dangCho.set(intentKey, { ...x, organizationId, threadId, ...(generation === undefined ? {} : { generation }), intentKey, hetHanLuc: Date.now() + song });
-  intentMoiNhat = intentKey;
+  moiNhatTheoLoai.set(x.kind ?? 'phieu', intentKey);
 }
 
 /**
@@ -115,15 +159,20 @@ export function layXacNhanDangCho(
   now: number = Date.now(),
   intentKey?: string,
   expectedContext?: Pick<NguCanhXacNhan, 'organizationId' | 'threadId' | 'generation'>,
+  kind: LoaiXacNhan = 'phieu',
 ): XacNhanDangCho | null {
-  const key = intentKey ?? intentMoiNhat;
+  const key = intentKey ?? moiNhatTheoLoai.get(kind) ?? null;
   if (!key) return null;
   const x = dangCho.get(key);
   if (x && x.hetHanLuc <= now) {
     dangCho.delete(key);
-    if (intentMoiNhat === key) intentMoiNhat = null;
+    boConTro(key);
     return null;
   }
+  // LỌC THEO LOẠI kể cả khi nơi gọi tự đưa `intentKey`. Khoá là chuỗi do nơi
+  // gọi dựng, nên không có gì ngăn hai đường ghi vô tình dựng ra cùng một khoá;
+  // thứ chặn được là câu hỏi "đề xuất này có phải loại tôi vẽ được không".
+  if (x && loaiCua(x) !== kind) return null;
   const context = expectedContext ?? nguCanhHienTai;
   if (
     x &&
@@ -147,17 +196,34 @@ export function tieuXacNhan(
   now: number = Date.now(),
   intentKey?: string,
   expectedContext?: Pick<NguCanhXacNhan, 'organizationId' | 'threadId' | 'generation'>,
+  kind: LoaiXacNhan = 'phieu',
 ): XacNhanDangCho | null {
-  const key = intentKey ?? intentMoiNhat;
-  const x = layXacNhanDangCho(now, key ?? undefined, expectedContext);
+  const key = intentKey ?? moiNhatTheoLoai.get(kind) ?? null;
+  const x = layXacNhanDangCho(now, key ?? undefined, expectedContext, kind);
   if (!x) return null;
   if (key) dangCho.delete(key);
-  if (intentMoiNhat === key) intentMoiNhat = null;
+  if (key) boConTro(key);
   return x;
 }
 
-/** Dọn khe — dùng khi người dùng bấm huỷ hoặc rời cuộc trò chuyện. */
-export function xoaXacNhanDangCho(): void {
-  dangCho.clear();
-  intentMoiNhat = null;
+/**
+ * Dọn khe — dùng khi người dùng bấm huỷ hoặc rời cuộc trò chuyện.
+ *
+ * Không đối số = dọn SẠCH (hành vi cũ, dùng khi rời cuộc trò chuyện). Có `kind`
+ * = chỉ dọn loại đó: người dùng bấm Huỷ trên thẻ kế hoạch không được làm bay
+ * một đề xuất phiếu đang chờ họ bấm ở ngay bên cạnh.
+ */
+export function xoaXacNhanDangCho(kind?: LoaiXacNhan): void {
+  if (!kind) {
+    dangCho.clear();
+    moiNhatTheoLoai.clear();
+    return;
+  }
+  for (const [key, x] of [...dangCho]) {
+    if (loaiCua(x) === kind) {
+      dangCho.delete(key);
+      boConTro(key);
+    }
+  }
+  moiNhatTheoLoai.delete(kind);
 }

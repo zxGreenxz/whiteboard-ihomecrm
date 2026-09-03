@@ -88,4 +88,50 @@ describe('confirmationStore', () => {
     expect(tieuXacNhan()?.nonce).toBe(MAU.nonce);
     expect(layXacNhanDangCho()).toBeNull();
   });
+
+  // ── Loại đề xuất (G3) ─────────────────────────────────────────────────────
+  //
+  // HAI THẺ, HAI KHE. Thẻ phiếu và thẻ kế hoạch cùng đọc kho này; nếu chúng
+  // chia nhau MỘT con trỏ "mới nhất" thì lập một kế hoạch sẽ làm thẻ phiếu vẽ
+  // nhầm (hoặc mất) đề xuất phiếu vẫn còn hạn — và ngược lại.
+  const KE_HOACH = {
+    kind: 'ke_hoach' as const,
+    tool: 'lap_ke_hoach',
+    nonce: 'b'.repeat(64),
+    canonical: { plan_id: 'p1', plan_digest: 'c'.repeat(64) },
+    preview: { ke_hoach: { planId: 'p1' } },
+    intentKey: 'ke_hoach:p1',
+  };
+
+  it('hai loại đề xuất KHÔNG vẽ nhầm sang nhau', () => {
+    datXacNhanDangCho(MAU);
+    datXacNhanDangCho(KE_HOACH);
+    // Thẻ phiếu (mặc định `kind: 'phieu'`) vẫn thấy đúng đề xuất phiếu, dù đề
+    // xuất kế hoạch mới hơn.
+    expect(layXacNhanDangCho()?.tool).toBe(MAU.tool);
+    expect(layXacNhanDangCho(Date.now(), undefined, undefined, 'ke_hoach')?.tool).toBe('lap_ke_hoach');
+  });
+
+  it('lọc theo loại kể cả khi nơi gọi tự đưa intentKey', () => {
+    datXacNhanDangCho(KE_HOACH);
+    expect(layXacNhanDangCho(Date.now(), 'ke_hoach:p1')).toBeNull();
+    expect(layXacNhanDangCho(Date.now(), 'ke_hoach:p1', undefined, 'ke_hoach')?.nonce).toBe(KE_HOACH.nonce);
+  });
+
+  it('tiêu đúng loại, không cướp nonce của loại kia', () => {
+    datXacNhanDangCho(MAU);
+    datXacNhanDangCho(KE_HOACH);
+    expect(tieuXacNhan(Date.now(), undefined, undefined, 'ke_hoach')?.nonce).toBe(KE_HOACH.nonce);
+    expect(layXacNhanDangCho(Date.now(), undefined, undefined, 'ke_hoach')).toBeNull();
+    // Đề xuất phiếu KHÔNG bị đụng tới.
+    expect(layXacNhanDangCho()?.nonce).toBe(MAU.nonce);
+  });
+
+  it('huỷ thẻ kế hoạch không làm bay đề xuất phiếu đang chờ', () => {
+    datXacNhanDangCho(MAU);
+    datXacNhanDangCho(KE_HOACH);
+    xoaXacNhanDangCho('ke_hoach');
+    expect(layXacNhanDangCho(Date.now(), undefined, undefined, 'ke_hoach')).toBeNull();
+    expect(layXacNhanDangCho()?.nonce).toBe(MAU.nonce);
+  });
 });

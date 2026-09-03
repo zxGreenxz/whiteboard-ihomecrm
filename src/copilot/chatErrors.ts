@@ -89,3 +89,91 @@ export function dienGiaiLoiChat(msg: string): string {
   // có gì để chụp màn hình gửi đi.
   return `Lỗi: ${msg}`;
 }
+
+// ── Kế hoạch thực thi (G3) ───────────────────────────────────────────────────
+//
+// VÌ SAO MỘT BẢNG RIÊNG, KHÔNG NỐI VÀO `THEO_MA`
+//   Hai bảng trả lời cho hai người đọc khác nhau. `THEO_MA` nói với người đang
+//   CHAT ("chọn công ty đi", "hết hạn mức rồi"); bảng này nói với người đang
+//   đứng trước một THẺ KẾ HOẠCH có nút Duyệt, và câu đúng ở đó luôn phải trả
+//   lời được "kế hoạch của tôi giờ ra sao, tôi lập lại hay chờ?". Trộn hai bảng
+//   là để một mã của kế hoạch rơi vào một câu viết cho khung chat, và ngược lại.
+//
+// MỘT MÃ Ở HAI ĐƯỜNG VỀ
+//   `supabase.rpc` không bao giờ ném. Mã lỗi tới đây theo HAI đường: `data
+//   .error_code` (nhánh server CHỌN ghi trạng thái rồi RETURN — xem quyết định 4
+//   ở đầu migration `20260903100253`) và `error.message` (nhánh RAISE). Hàm này
+//   nhận cả hai vì nó khớp theo chuỗi CON, nên nơi gọi không phải tự tách.
+const THEO_MA_KE_HOACH: readonly [string, string][] = [
+  // — Cửa trước khi lập —
+  ['plan_role_not_allowed', 'Vai của bạn không được phép lập kế hoạch nhiều bước.'],
+  ['plan_risk_not_allowed', 'Kế hoạch có bước vượt trần rủi ro hiện tại. Quản trị phải nâng trần ở trang AI Copilot trước.'],
+  ['plan_step_count', 'Kế hoạch phải có từ 1 đến 8 bước.'],
+  ['plan_steps_invalid', 'Danh sách bước không hợp lệ.'],
+  ['plan_limit', 'Bạn đang có 3 kế hoạch mở. Hãy chạy xong hoặc huỷ bớt rồi lập kế hoạch mới.'],
+  ['client_request_id_reused', 'Mã yêu cầu này đã dùng cho một kế hoạch ở công ty khác. Hãy lập lại.'],
+  ['step_preview_failed', 'Không xem trước được một bước — dữ liệu của bước đó không hợp lệ. Sửa bước rồi lập lại kế hoạch.'],
+  ['step_ref_incompatible', 'Bước nộp hồ sơ đang trỏ tới một bước không tạo ra phiếu thu/chi.'],
+  ['step_ref_invalid', 'Tham chiếu tới bước trước không hợp lệ (phải là một bước ĐỨNG TRƯỚC trong cùng kế hoạch).'],
+  ['step_voucher_invalid', 'Phiếu được chọn để nộp không hợp lệ: phải là phiếu nháp của chính bạn, chưa duyệt.'],
+  ['executor_not_supported', 'Kiểu thực thi của bước này chưa được hỗ trợ ở phiên bản hiện tại.'],
+
+  // — Cửa lúc bấm duyệt —
+  ['plan_digest_mismatch', 'Nội dung kế hoạch đã đổi so với lúc xem. Hãy lập lại kế hoạch.'],
+  ['plan_version_stale', 'Kế hoạch vừa đổi trạng thái ở nơi khác. Tải lại rồi thử lại.'],
+  ['plan_expired', 'Kế hoạch đã quá hạn. Hãy lập lại.'],
+  ['plan_busy', 'Kế hoạch đang chạy ở nơi khác. Chờ vài giây rồi thử lại.'],
+  ['plan_not_draft', 'Kế hoạch này không còn ở trạng thái chờ duyệt.'],
+  ['plan_not_approved', 'Kế hoạch chưa được duyệt nên chưa chạy được bước nào.'],
+  ['plan_not_cancellable', 'Kế hoạch này không huỷ được nữa.'],
+  ['plan_no_pending_step', 'Kế hoạch không còn bước nào đang chờ chạy.'],
+  ['plan_not_found', 'Không tìm thấy kế hoạch này.'],
+  ['step_up_not_implemented', 'Bước này đòi xác thực hai lớp — cơ chế đó chưa mở ở phiên bản hiện tại.'],
+  ['step_up_required', 'Bước này đòi xác thực hai lớp trước khi duyệt.'],
+  ['step_not_permitted', 'Một bước đã mất quyền hoặc bị tắt kể từ lúc lập. Kế hoạch dừng lại; hãy lập lại.'],
+
+  // — Cửa lúc chạy từng bước —
+  ['registry_changed', 'Sổ đăng ký hành động vừa đổi sau khi kế hoạch được duyệt. Hãy lập lại kế hoạch.'],
+  ['policy_changed', 'Chính sách hành động vừa đổi sau khi kế hoạch được duyệt. Hãy lập lại kế hoạch.'],
+  ['payload_changed', 'Dữ liệu của bước đã đổi sau khi duyệt. Hãy lập lại kế hoạch.'],
+  ['ref_step_unresolved', 'Bước trước chưa tạo ra thực thể để bước này tham chiếu.'],
+  ['step_order', 'Các bước phải chạy tuần tự — còn bước trước chưa xong.'],
+  ['copilot_auto_post_forbidden', 'Công ty này đang bật tự động hạch toán, nên Copilot không được nộp hồ sơ. Người có quyền tự làm trên giao diện.'],
+  ['rule_denied', 'Bộ luật duyệt của công ty từ chối hồ sơ này.'],
+  ['copilot_draft_invariant_violation', 'Bản ghi tạo ra không ở trạng thái đã hứa nên đã bị huỷ. Không có gì được ghi.'],
+  ['copilot_write_readback_mismatch', 'Hệ thống đọc lại bản ghi vừa tạo và thấy không khớp nên đã huỷ. Không có gì được ghi.'],
+
+  // — Cửa chung của mọi hành động —
+  ['copilot_feature_disabled', 'Tính năng kế hoạch đang tắt cho công ty của bạn.'],
+  ['copilot_action_disabled', 'Một hành động trong kế hoạch đang bị tắt bởi quản trị.'],
+  ['tenant_emergency_denied', 'Công ty này đang trong lệnh cấm khẩn cấp — mọi thao tác ghi bị chặn.'],
+  ['copilot_policy_missing', 'Chưa có chính sách hành động trong cơ sở dữ liệu — báo quản trị.'],
+  ['organization_mismatch', 'Kế hoạch thuộc công ty khác với công ty đang chọn.'],
+  ['organization_required', THONG_BAO_CHUA_CHON_TO_CHUC],
+  ['not_permitted', 'Bạn không có quyền thực hiện một bước trong kế hoạch này.'],
+  ['entity_not_found', 'Không tìm thấy đối tượng mà một bước trỏ tới.'],
+  ['unauthenticated', 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.'],
+
+  // — Kho nonce —
+  ['confirmation_contract_mismatch', 'Phiếu đồng ý không thuộc kế hoạch này. Hãy lập lại kế hoạch.'],
+  ['confirmation_already_used', 'Kế hoạch này đã được duyệt rồi.'],
+  ['confirmation_expired', 'Phiếu đồng ý đã quá hạn (5 phút). Hãy lập lại kế hoạch.'],
+  ['confirmation_not_found', 'Không tìm thấy phiếu đồng ý hợp lệ. Hãy lập lại kế hoạch.'],
+  ['confirmation_required', 'Thiếu phiếu đồng ý — chỉ giao diện mới mở được cửa này.'],
+];
+
+/**
+ * Mã lỗi của đường kế hoạch → câu người dùng làm được gì với nó.
+ *
+ * Hàm THUẦN, khớp theo chuỗi CON và duyệt theo THỨ TỰ bảng: mã dài đứng trước
+ * mã ngắn lồng trong nó (`step_up_not_implemented` trước `step_up_required`,
+ * `plan_not_draft` trước `plan_not_found`), đúng kỷ luật của `THEO_MA` ở trên.
+ * Mã lạ hiện nguyên văn — giấu đi thì người dùng không có gì để chụp gửi đi.
+ */
+export function dienGiaiLoiKeHoach(msg: string): string {
+  const s = String(msg ?? '');
+  for (const [ma, cau] of THEO_MA_KE_HOACH) {
+    if (s.includes(ma)) return cau;
+  }
+  return `Lỗi kế hoạch: ${s}`;
+}

@@ -540,6 +540,8 @@
     "src/copilot/phaseDWriteMatrix.ts",
     "src/copilot/plan/__tests__/actionCatalog.test.ts",
     "src/copilot/plan/actionCatalog.ts",
+    "src/copilot/plan/planClient.ts",
+    "src/copilot/plan/__tests__/planClient.test.ts",
     "src/copilot/providerPolicy.ts",
     "src/copilot/uiControlAvailability.ts",
     "src/copilot/uiControlGate.ts",
