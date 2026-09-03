@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T13:39:06.682Z",
+  "generatedAt": "2026-09-03T13:57:02.867Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 482,
-    "unknown": 74,
-    "catalog-proven": 213,
+    "ledger-applied": 484,
+    "unknown": 73,
+    "catalog-proven": 212,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -9162,10 +9162,9 @@
       "name": "copilot_feature_flag_stale_format_fix_v1",
       "scheme": "timestamp14",
       "sha256": "5b9560fb491c0d1902b5d46277d3348930f1949f53634da261f0d7e6d8fb3c92",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.set_copilot_feature_flag_v2",
-        "catalog:function:public.copilot_plan_approve_v1"
+        "receipt:2026-09-03T13:54:11.350Z|bien-nhan-backup"
       ]
     },
     {
@@ -9174,10 +9173,9 @@
       "name": "demo_approval_rule_set_seed_v1",
       "scheme": "timestamp14",
       "sha256": "3378f65177408d45452a262fd1d56b1f1a1a28dc0be81496e594e7efe809856b",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T13:56:58.546Z|bien-nhan-backup"
       ]
     },
     {
