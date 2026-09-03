@@ -88,6 +88,22 @@ const TOOL_THEO_CONG_TY = [
     ten: 'dat_co_hoi_thoai_zalo',
     args: { conversation_id: 'aaaa4000-0000-4000-8000-000000000023', pinned: true },
   },
+  // G2-E — hai tool GHI L4. Cùng khuôn với ba tool trên, nhưng hậu quả của một
+  // lượt gộp công ty ở đây nặng hơn: một chỉ số công tơ ghi nhầm công ty đi
+  // thẳng vào hoá đơn kỳ sau, và một phiếu giữ chỗ ghi nhầm công ty khoá phòng
+  // của người khác.
+  {
+    ten: 'ghi_chi_so_cong_to',
+    args: {
+      meter_id: 'aaaa4000-0000-4000-8000-000000000024',
+      reading_date: '2026-09-01',
+      current_reading: 1234,
+    },
+  },
+  {
+    ten: 'tao_phieu_giu_cho',
+    args: { room_id: 'aaaa4000-0000-4000-8000-000000000025', amount: 2000000 },
+  },
 ];
 
 const tool = (ten: string) => {

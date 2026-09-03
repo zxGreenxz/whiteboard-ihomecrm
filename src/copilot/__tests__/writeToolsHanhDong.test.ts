@@ -1,4 +1,4 @@
-// Ba tool ghi L3 sinh từ sổ hành động — factory, kill switch, và thẻ xác nhận
+// Tool ghi sinh từ sổ hành động — factory, kill switch, và thẻ xác nhận
 // tổng quát hoá.
 //
 // BA ĐIỀU FILE NÀY CANH, VÀ VÌ SAO TỪNG ĐIỀU ĐÁNG CANH
@@ -50,8 +50,13 @@ const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMa
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 const NONCE = 'ab'.repeat(32);
 
-/** Ba action L3 của G2-D — nguồn là chính bảng khai báo, không gõ lại tên. */
-const BA_TOOL = KHAI_BAO_TOOL_GHI_DE_DO;
+/**
+ * Mọi tool ghi sinh từ sổ — nguồn là chính bảng khai báo, không gõ lại tên.
+ *
+ * KHÔNG ghim số lượng: G2-D có ba, G2-E thêm hai, và mọi bài dưới đây phải tự
+ * mở rộng theo bảng chứ không phải sửa một con số mỗi đợt.
+ */
+const TOOL_GHI = KHAI_BAO_TOOL_GHI_DE_DO;
 
 function snapshot(trangThai: CopilotFlagState): CopilotAvailabilitySnapshot {
   const states: Record<string, CopilotFlagState> = { 'page:rooms.list': 'enabled' };
@@ -82,11 +87,11 @@ beforeEach(() => {
 describe('factory sinh tool ghi từ sổ hành động', () => {
   it('ba tool có mặt trong registry với đúng tên, đúng khoá rollout', () => {
     const ten = new Set(buildRegistryDefinitions().map((t) => t.name));
-    for (const khai of BA_TOOL) {
+    for (const khai of TOOL_GHI) {
       expect(ten.has(khai.name), `registry thiếu ${khai.name}`).toBe(true);
     }
     for (const tool of TOOL_GHI_HANH_DONG) {
-      const khai = BA_TOOL.find((k) => k.name === tool.name)!;
+      const khai = TOOL_GHI.find((k) => k.name === tool.name)!;
       expect(tool.rolloutKey).toBe(`action:${khai.actionId}`);
       expect(tool.chatOnly).toBe(true);
       // Không miễn trừ rollout: một đường ghi phải tắt được.
@@ -100,7 +105,7 @@ describe('factory sinh tool ghi từ sổ hành động', () => {
     // `writeTools.ts`). Chúng cũng là thứ factory DÙNG lúc chạy, nên nếu chúng
     // lệch `ACTION_CATALOG` thì tool đo quyền theo một khoá còn server gác theo
     // một khoá khác — đúng loại lệch mà bài này tồn tại để bắt.
-    for (const khai of BA_TOOL) {
+    for (const khai of TOOL_GHI) {
       const entry = ACTION_CATALOG[khai.actionId] as ActionCatalogEntry;
       expect(entry, `sổ thiếu ${khai.actionId}`).toBeDefined();
       expect(`${khai.requiredPermission.module}.${khai.requiredPermission.action}`).toBe(
@@ -111,7 +116,7 @@ describe('factory sinh tool ghi từ sổ hành động', () => {
 
   it('tên tool là snake_case tiếng Việt, không chứa động từ bị cấm', () => {
     const CAM = /(approve|duyet|post|ghi_so|delete|xoa|grant|revoke|permission|sql|secret|deploy)/;
-    for (const khai of BA_TOOL) {
+    for (const khai of TOOL_GHI) {
       expect(khai.name).toMatch(/^[a-z][a-z0-9_]*$/);
       expect(khai.name, `${khai.name} chứa động từ bị cấm`).not.toMatch(CAM);
     }
@@ -128,26 +133,26 @@ describe('factory sinh tool ghi từ sổ hành động', () => {
   });
 });
 
-describe('kill switch phạm vi action cho ba tool ghi L3', () => {
-  it('cờ `disabled` ⇒ cả ba biến mất khỏi danh sách gửi mô hình', () => {
+describe('kill switch phạm vi action cho mọi tool ghi', () => {
+  it('cờ `disabled` ⇒ tất cả biến mất khỏi danh sách gửi mô hình', () => {
     const tools = toLlmTools(buildRegistryDefinitions(), ctxVoi(snapshot('disabled')));
-    for (const khai of BA_TOOL) expect(tools[khai.name]).toBeUndefined();
+    for (const khai of TOOL_GHI) expect(tools[khai.name]).toBeUndefined();
     expect(tools.phong_trong).toBeDefined();
   });
 
-  it('cờ `enabled` ⇒ cả ba có mặt', () => {
+  it('cờ `enabled` ⇒ tất cả có mặt', () => {
     const tools = toLlmTools(buildRegistryDefinitions(), ctxVoi(snapshot('enabled')));
-    for (const khai of BA_TOOL) expect(tools[khai.name]).toBeDefined();
+    for (const khai of TOOL_GHI) expect(tools[khai.name]).toBeDefined();
   });
 
   it('cờ `shadow` KHÔNG đủ — chỉ `enabled` mới mở đường ghi', () => {
     const tools = toLlmTools(buildRegistryDefinitions(), ctxVoi(snapshot('shadow')));
-    for (const khai of BA_TOOL) expect(tools[khai.name]).toBeUndefined();
+    for (const khai of TOOL_GHI) expect(tools[khai.name]).toBeUndefined();
   });
 
   it('PageAgent (UI-control) KHÔNG bao giờ cầm tool ghi, dù cờ đang bật', () => {
     const tools = toPageAgentTools(buildRegistryDefinitions(), ctxVoi(snapshot('enabled')));
-    for (const khai of BA_TOOL) expect(tools[khai.name]).toBeUndefined();
+    for (const khai of TOOL_GHI) expect(tools[khai.name]).toBeUndefined();
   });
 });
 
@@ -208,7 +213,7 @@ describe('bước xem trước: nonce rẽ sang bộ nhớ, KHÔNG vào chuỗi 
 
 describe('thẻ xác nhận tổng quát hoá', () => {
   it('gọi ĐÚNG executeRpc của hành động đang chờ', async () => {
-    for (const khai of BA_TOOL) {
+    for (const khai of TOOL_GHI) {
       rpc.mockReset();
       rpc.mockResolvedValue({ data: { status: 'da_thuc_hien' }, error: null });
       datNguCanhXacNhan({ organizationId: ORG, threadId: 'thread-1', generation: 3 });
@@ -315,7 +320,104 @@ describe('tiện ích dựng bản xem trước', () => {
   });
 
   it('factory dùng schema của sổ, không dựng schema riêng', () => {
-    const tool = taoToolGhiTuCatalog(BA_TOOL[0]);
-    expect(tool.inputSchema).toBe(ACTION_CATALOG[BA_TOOL[0].actionId].inputSchema);
+    const tool = taoToolGhiTuCatalog(TOOL_GHI[0]);
+    expect(tool.inputSchema).toBe(ACTION_CATALOG[TOOL_GHI[0].actionId].inputSchema);
+  });
+});
+
+// ── G2-E: hai action L4 ─────────────────────────────────────────────────────
+//
+// L4 khác L3 ở chỗ chúng ĐI VÀO TIỀN (chỉ số công tơ nuôi hoá đơn kỳ sau) hoặc
+// khoá một tài nguyên (phòng đang giữ chỗ thì người khác không đặt được). Ba
+// bài dưới đây đo đúng những chỗ mà một bản sau dễ làm hỏng mà không ai thấy.
+describe('G2-E — hai action L4 trong sổ và trong bảng tool', () => {
+  it('mọi tool ghi sinh từ sổ đều là L3 hoặc L4 — L5 KHÔNG đi đường factory này', () => {
+    // Factory chỉ biết một kiểu đồng ý: `click`. Một hành động L5 đòi `step_up`
+    // (cơ chế của G3) — để nó lọt vào đây nghĩa là mở đường ghi mức cao nhất
+    // bằng đúng một cú bấm thường.
+    for (const khai of TOOL_GHI) {
+      const entry = ACTION_CATALOG[khai.actionId] as ActionCatalogEntry;
+      expect(['L3', 'L4'], `${khai.actionId} có risk ${entry.risk}`).toContain(entry.risk);
+      expect(entry.consentRequired).toBe('click');
+      expect(entry.executorKind).toBe('nonce_abi_v1');
+    }
+  });
+
+  it('hai action L4 của G2-E có mặt, đúng quyền và đúng cặp RPC', () => {
+    expect(ACTION_CATALOG['meter_reading.create'].risk).toBe('L4');
+    expect(khoaQuyenHanhDong(ACTION_CATALOG['meter_reading.create'])).toBe('meter_readings.create');
+    expect(ACTION_CATALOG['meter_reading.create'].executeRpc).toBe(
+      'copilot_execute_meter_reading_v1',
+    );
+    expect(ACTION_CATALOG['reservation_deposit.create'].risk).toBe('L4');
+    expect(khoaQuyenHanhDong(ACTION_CATALOG['reservation_deposit.create'])).toBe(
+      'deposits.create',
+    );
+    expect(ACTION_CATALOG['reservation_deposit.create'].executeRpc).toBe(
+      'copilot_execute_reservation_deposit_v1',
+    );
+    // Hai tool tương ứng phải có trong bảng khai báo (thứ hai gate regex đọc).
+    const ten = new Set(TOOL_GHI.map((k) => k.name));
+    expect(ten.has('ghi_chi_so_cong_to')).toBe(true);
+    expect(ten.has('tao_phieu_giu_cho')).toBe(true);
+  });
+
+  it('schema chỉ số công tơ KHÔNG có trường ảnh, và từ chối chỉ số âm', () => {
+    const schema = ACTION_CATALOG['meter_reading.create'].inputSchema;
+    expect(
+      schema.safeParse({
+        meter_id: '11111111-1111-4111-8111-111111111111',
+        reading_date: '2026-09-01',
+        current_reading: 1234.5,
+      }).success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({
+        meter_id: '11111111-1111-4111-8111-111111111111',
+        reading_date: '2026-09-01',
+        current_reading: -1,
+      }).success,
+    ).toBe(false);
+    // Trường ảnh bị bỏ qua chứ không được nhận: `strip` của zod loại nó khỏi
+    // dữ liệu, nên không có đường nào để nó tới RPC.
+    const ra = schema.safeParse({
+      meter_id: '11111111-1111-4111-8111-111111111111',
+      reading_date: '2026-09-01',
+      current_reading: 10,
+      meter_image_url: 'https://vi-du/anh.jpg',
+    });
+    expect(ra.success).toBe(true);
+    expect(ra.success && 'meter_image_url' in ra.data).toBe(false);
+  });
+
+  it('schema phiếu giữ chỗ chỉ nhận phòng + số tiền dương; hạn giữ chỗ do server quyết', () => {
+    const schema = ACTION_CATALOG['reservation_deposit.create'].inputSchema;
+    expect(
+      schema.safeParse({ room_id: '11111111-1111-4111-8111-111111111111', amount: 2_000_000 })
+        .success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({ room_id: '11111111-1111-4111-8111-111111111111', amount: 0 }).success,
+    ).toBe(false);
+    const ra = schema.safeParse({
+      room_id: '11111111-1111-4111-8111-111111111111',
+      amount: 1,
+      expires_at: '2099-01-01',
+    });
+    expect(ra.success && 'expires_at' in ra.data).toBe(false);
+  });
+
+  it('lỗi bất biến nháp / readback được dịch thành câu nói rõ KHÔNG có gì được ghi', () => {
+    // Hai mã này nổ ra SAU khi RPC gốc đã chạy, và cả giao dịch bị cuộn lại.
+    // Một câu mơ hồ ở đây sẽ khiến mô hình nói "có thể đã tạo, bạn kiểm tra lại"
+    // — đúng câu làm người dùng đi tạo lần thứ hai.
+    expect(dienGiaiLoiHanhDong('copilot_draft_invariant_violation', 'X')).toContain(
+      'Không có gì được ghi',
+    );
+    expect(dienGiaiLoiHanhDong('copilot_write_readback_mismatch', 'X')).toContain(
+      'Không có gì được ghi',
+    );
+    expect(dienGiaiLoiHanhDong('chi_so_khong_hop_le', 'X')).toContain('không âm');
+    expect(dienGiaiLoiHanhDong('so_tien_khong_hop_le', 'X')).toContain('số dương');
   });
 });

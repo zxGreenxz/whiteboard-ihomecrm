@@ -13,7 +13,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**42 tool**: 35 đọc · 6 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**44 tool**: 35 đọc · 8 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
@@ -37,6 +37,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `dat_co_hoi_thoai_zalo` | write | `chat_zalo.view` | `src/copilot/tools/writeTools.ts` |
 | `dat_han_giu_cho` | write | `deposits.edit` | `src/copilot/tools/writeTools.ts` |
 | `doanh_thu_thang` | read | `reports_finance.analysis` | `src/copilot/tools/registry.ts` |
+| `ghi_chi_so_cong_to` | write | `meter_readings.create` | `src/copilot/tools/writeTools.ts` |
 | `ghi_chu_phieu_thu_chi` | write | `income_expenses.edit` | `src/copilot/tools/writeTools.ts` |
 | `ghi_nho` | write | `ai_copilot.view` | `src/copilot/tools/memoryTools.ts` |
 | `hoi_thoai_zalo` | read | `chat_zalo.view` | `src/copilot/tools/nghiepVuTools.ts` |
@@ -49,6 +50,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `phong_trong` | read | `rooms.view` | `src/copilot/tools/registry.ts` |
 | `quen` | write | `ai_copilot.view` | `src/copilot/tools/memoryTools.ts` |
 | `so_quy` | read | `cashbooks.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `tao_phieu_giu_cho` | write | `deposits.create` | `src/copilot/tools/writeTools.ts` |
 | `tao_phieu_thu_chi_nhap` | write | `income_expenses.create` | `src/copilot/tools/writeTools.ts` |
 | `tim_hoa_don` | read | `invoices.view` | `src/copilot/tools/registry.ts` |
 | `tim_hop_dong` | read | `contracts.view` | `src/copilot/tools/nghiepVuTools.ts` |

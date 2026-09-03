@@ -29,6 +29,25 @@ export interface CopilotPageContract {
    * BẮT BUỘC với mọi trang có `safeControlIds`; gate fail-closed khi thiếu.
    */
   markerFileHint?: string;
+  /**
+   * Các `action_id` mà Copilot được cầm TRÊN TRANG NÀY (khoá của
+   * `app_private.copilot_action_registry`, mirror ở
+   * `src/copilot/plan/actionCatalog.ts`).
+   *
+   * BẮT BUỘC — và là điều kiện DUY NHẤT — để một trang `dataClass: "financial"`
+   * được mang `mode: "draft"`. `scripts/check-copilot-page-contracts.mjs` đòi
+   * đủ ba thứ cùng lúc: mode `draft`, mọi id có thật trong sổ hành động, và
+   * `e2eSpec` trỏ tới một spec có thật. Thiếu một là gate đỏ.
+   *
+   * Vì sao không suy ra từ `permission`: một khoá quyền có thể phục vụ nhiều
+   * hành động (`deposits.create` là cả phiếu giữ chỗ lẫn những thứ sau này), nên
+   * suy theo quyền sẽ mở rộng hơn thứ người viết contract định cho phép. Danh
+   * sách phải TƯỜNG MINH.
+   *
+   * `security` KHÔNG bao giờ được nới bằng trường này — quyền và bí mật không
+   * có "bản nháp".
+   */
+  actionIds?: readonly string[];
   e2eSpec?: string;
   exemption?: string;
 }

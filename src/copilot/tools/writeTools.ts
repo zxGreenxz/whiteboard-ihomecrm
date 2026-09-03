@@ -270,7 +270,7 @@ export async function thucThiXacNhan(
 // TOOL GHI SINH TỪ SỔ HÀNH ĐỘNG (G2-D)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Ba action L3 dưới đây dùng CHUNG một thân `execute`: gọi RPC xem trước của
+// Mọi action trong bảng dưới đây dùng CHUNG một thân `execute`: gọi RPC xem trước của
 // `ACTION_CATALOG`, cất nonce vào `confirmationStore`, trả về CHỈ bản xem trước.
 // Không dòng nào trong đó phụ thuộc vào hành động cụ thể, nên viết ba lần là ba
 // cơ hội để chúng lệch nhau — và cái lệch ở đây là cái lệch về BẢO MẬT (một bản
@@ -334,6 +334,27 @@ const KHAI_BAO_TOOL_GHI: readonly KhaiBaoToolGhi[] = [
     requiredPermission: { module: 'chat_zalo', action: 'view' },
     actionId: 'zalo.set_conversation_flags',
   },
+  {
+    name: 'ghi_chi_so_cong_to',
+    description:
+      'Lập ĐỀ XUẤT ghi một chỉ số công tơ cho một kỳ. Tool này KHÔNG ghi gì: nó dựng bản xem trước ' +
+      '(chỉ số kỳ trước, chỉ số mới, lượng tiêu thụ) và hiện thẻ xác nhận cho người dùng bấm. ' +
+      'Chỉ số truyền vào là số ĐỌC TRÊN MẶT CÔNG TƠ, không phải lượng tiêu thụ. Không đụng hoá đơn ' +
+      'và không gắn được ảnh chứng từ.',
+    chatOnly: true,
+    requiredPermission: { module: 'meter_readings', action: 'create' },
+    actionId: 'meter_reading.create',
+  },
+  {
+    name: 'tao_phieu_giu_cho',
+    description:
+      'Lập ĐỀ XUẤT phiếu cọc giữ chỗ cho một phòng. Tool này KHÔNG tạo gì: nó dựng bản xem trước ' +
+      '(phòng, số tiền, hạn giữ chỗ) và hiện thẻ xác nhận cho người dùng bấm. Phiếu tạo ra sau đó ' +
+      'là bản CHỜ DUYỆT, chưa vào sổ quỹ, và tự hết hiệu lực sau 24 giờ.',
+    chatOnly: true,
+    requiredPermission: { module: 'deposits', action: 'create' },
+    actionId: 'reservation_deposit.create',
+  },
 ];
 
 /** Hình dạng chung mà mọi RPC xem trước theo Nonce ABI v1 trả về. */
@@ -388,6 +409,15 @@ const GIAI_THICH_LOI_HANH_DONG: Record<string, string> = {
   ghi_chu_qua_dai: 'Ghi chú quá dài (tối đa 5000 ký tự).',
   khong_co_co_nao_doi:
     'Chưa nêu cờ nào cần đổi. Hỏi người dùng muốn ghim, tắt tiếng hay đánh dấu chưa đọc.',
+  chi_so_khong_hop_le: 'Chỉ số công tơ phải là số không âm.',
+  so_tien_khong_hop_le: 'Số tiền phải là số dương, tối đa hai chữ số thập phân.',
+  // Hai mã dưới đây là hàng rào SAU KHI đã ghi: server đọc lại bản ghi vừa tạo
+  // và thấy nó không đúng hình dạng đã hứa, nên cuộn cả giao dịch. Không có gì
+  // được ghi, nhưng cũng không phải lỗi của người dùng — đừng bảo họ sửa dữ liệu.
+  copilot_draft_invariant_violation:
+    'Bản ghi tạo ra không ở trạng thái CHỜ DUYỆT như hệ thống yêu cầu nên đã bị huỷ. Không có gì được ghi. Báo người dùng liên hệ quản trị.',
+  copilot_write_readback_mismatch:
+    'Hệ thống đọc lại bản ghi vừa tạo và thấy không khớp nên đã huỷ. Không có gì được ghi. Báo người dùng liên hệ quản trị.',
   unauthenticated: 'Phiên đăng nhập đã hết hạn. Bảo người dùng đăng nhập lại.',
 };
 
@@ -490,7 +520,7 @@ export function taoToolGhiTuCatalog(khai: KhaiBaoToolGhi): DomainTool<Record<str
   };
 }
 
-/** Ba tool ghi L3 sinh từ sổ hành động — `registry.ts` trải mảng này vào registry. */
+/** Tool ghi sinh từ sổ hành động (L3 của G2-D + L4 của G2-E) — `registry.ts` trải mảng này vào registry. */
 export const TOOL_GHI_HANH_DONG: DomainTool[] = KHAI_BAO_TOOL_GHI.map(taoToolGhiTuCatalog);
 
 /** Để test đo được bảng khai báo mà không phải bóc lại từ mảng tool đã dựng. */

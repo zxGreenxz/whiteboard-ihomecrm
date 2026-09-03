@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFileSync, rmSync, mkdirSync } from 'node:fs';
+import { writeFileSync, rmSync, mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -43,6 +43,43 @@ function loadContracts(repoRoot) {
   }
 }
 
+/** Đường dẫn tương đối tới mirror TS của sổ đăng ký hành động. */
+export const FILE_ACTION_CATALOG = join('src', 'copilot', 'plan', 'actionCatalog.ts');
+
+/**
+ * Bóc tập `action_id` từ `ACTION_CATALOG` bằng REGEX, không import.
+ *
+ * VÌ SAO REGEX chứ không `vite-node` như hai bộ nạp bên trên: file đó kéo theo
+ * `zod` và `@/lib/permissions`, và bộ nạp của gate này chạy trong worktree có
+ * `node_modules` là junction sang checkout khác. Regex đọc đúng thứ cần — TÊN
+ * hành động — và không phụ thuộc vào việc dựng được cả cây import.
+ *
+ * Chỉ đọc trong khối `export const ACTION_CATALOG = { … } as const`: `actionId`
+ * còn xuất hiện trong `interface ActionCatalogEntry` và trong chú thích, và một
+ * bộ đọc quét cả file sẽ nhặt cả những chỗ đó.
+ *
+ * Trả `null` khi không bóc được gì. Người gọi phải coi `null` là "không biết"
+ * và giữ nguyên luật nghiêm — chứ không phải "không có hành động nào".
+ */
+export function docActionCatalogIds(source) {
+  const text = String(source ?? '');
+  const start = text.indexOf('export const ACTION_CATALOG');
+  if (start < 0) return null;
+  const end = text.indexOf('} as const satisfies', start);
+  if (end < 0) return null;
+  const khoi = text.slice(start, end);
+  const ids = [...khoi.matchAll(/\bactionId\s*:\s*['"]([a-z_]+\.[a-z_]+)['"]/g)].map((m) => m[1]);
+  return ids.length ? new Set(ids) : null;
+}
+
+function loadActionCatalogIds(repoRoot) {
+  try {
+    return docActionCatalogIds(readFileSync(join(repoRoot, FILE_ACTION_CATALOG), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 function loadPermissionKeys(repoRoot) {
   const tmp = join(repoRoot, '.tmp-copilot-loaders', '__copilot_permission_keys.mts');
   const source = [
@@ -62,7 +99,14 @@ function loadPermissionKeys(repoRoot) {
   }
 }
 
-export function validateContracts(contracts, routes = [], exemptions = [], permissionKeys = null, expectedRouteCount = null) {
+export function validateContracts(
+  contracts,
+  routes = [],
+  exemptions = [],
+  permissionKeys = null,
+  expectedRouteCount = null,
+  actionIds = null,
+) {
   const problems = [];
   const keys = new Set();
   const routeSet = new Set();
@@ -88,7 +132,50 @@ export function validateContracts(contracts, routes = [], exemptions = [], permi
     }
     if (!Array.isArray(page?.safeControlIds)) problems.push(`${page.key}: safeControlIds must be an array`);
     if (page?.mode === 'draft' && !page?.e2eSpec) problems.push(`${page.key}: draft requires e2eSpec`);
-    if (['financial', 'security'].includes(page?.dataClass) && !['read', 'navigate'].includes(page?.mode)) {
+
+    // Một trang khai `actionIds` là một trang nói "Copilot ghi được ở đây, và
+    // đây là những hành động nó được cầm". Mọi id phải có trong sổ hành động —
+    // một id không có trong sổ nghĩa là trang quảng cáo một cửa mà server không
+    // biết, và `copilot_action_gate_v1` sẽ từ chối nó với `copilot_action_disabled`.
+    const khaiActionIds = Array.isArray(page?.actionIds) ? page.actionIds : null;
+    if (khaiActionIds) {
+      if (khaiActionIds.length === 0) problems.push(`${page.key}: actionIds must not be empty`);
+      for (const id of khaiActionIds) {
+        if (actionIds && !actionIds.has(id)) {
+          problems.push(`${page.key}: action ${id} is not in ACTION_CATALOG`);
+        }
+      }
+    }
+
+    // NỚI CÓ ĐIỀU KIỆN cho `financial` + `draft`, và chỉ cho nó.
+    //
+    // Luật cũ cấm mọi mode ghi trên trang `financial`/`security`. Nó đúng khi
+    // chưa có cơ chế nào chứng minh một đường ghi đã được rào — nhưng từ G2-A
+    // thì có: mỗi hành động là một hàng trong `copilot_action_registry` với cờ
+    // kill switch riêng, và `ACTION_CATALOG` là bản sao client của sổ đó. Nên
+    // cửa mở ĐÚNG BA điều kiện cùng lúc, và cả ba đều kiểm được ở build time:
+    //   1. mode là `draft` (không phải `filter`/`none` nào khác),
+    //   2. trang khai `actionIds` và MỌI id đều có trong sổ hành động,
+    //   3. trang có `e2eSpec` — có một đường khói đi qua nó bằng trình duyệt.
+    //
+    // `security` KHÔNG được nới: quyền và bí mật không có "bản nháp".
+    //
+    // Fail-closed khi không đọc được sổ (`actionIds === null`): không biết thì
+    // giữ nguyên luật nghiêm, chứ không phải cho qua.
+    const draftDuocPhep =
+      page?.mode === 'draft' &&
+      page?.dataClass === 'financial' &&
+      Boolean(page?.e2eSpec) &&
+      Boolean(actionIds) &&
+      Array.isArray(khaiActionIds) &&
+      khaiActionIds.length > 0 &&
+      khaiActionIds.every((id) => actionIds.has(id));
+
+    if (
+      ['financial', 'security'].includes(page?.dataClass) &&
+      !['read', 'navigate'].includes(page?.mode) &&
+      !draftDuocPhep
+    ) {
       problems.push(`${page.key}: high-risk page must be read or navigate`);
     }
   }
@@ -162,7 +249,17 @@ function main() {
   // OpenClaw removal reduced the current inventory from the historical 113 to
   // 112 non-redirect routes. Keep this baseline explicit so an accidental route
   // loss cannot silently make the accounting gate weaker.
-  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 112);
+  // Sổ hành động: nguồn duy nhất cho phép một trang `financial` mang mode
+  // `draft`. Không đọc được là hỏng gate, không phải "không có action nào" —
+  // im lặng trả tập rỗng sẽ biến luật "chỉ hành động có trong sổ" thành luật
+  // "không hành động nào", tức là gate vẫn xanh trong khi nó đã mù.
+  const actionIds = loadActionCatalogIds(repoRoot);
+  if (!actionIds) {
+    console.error(`Unable to load Copilot action catalog (${FILE_ACTION_CATALOG})`);
+    process.exitCode = 3;
+    return;
+  }
+  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 112, actionIds);
   if (problems.length) {
     console.error(`Copilot page contracts: ${problems.length} problem(s)`);
     for (const problem of problems) console.error(`  - ${problem}`);

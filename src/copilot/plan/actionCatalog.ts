@@ -148,6 +148,47 @@ export const SCHEMA_CO_HOI_THOAI_ZALO = z.object({
 });
 
 /**
+ * Input của `ghi_chi_so_cong_to` — action L4 `meter_reading.create`.
+ *
+ * `current_reading` là chỉ số ĐỌC ĐƯỢC TRÊN MẶT CÔNG TƠ, không phải lượng tiêu
+ * thụ. Lượng tiêu thụ do server tính (mới − trước) và trả trong bản xem trước;
+ * mô hình không gửi nó lên, và cũng không có đường nào gửi.
+ *
+ * KHÔNG có trường ảnh. `create_meter_reading_v1` nhận `p_meter_image_url`,
+ * nhưng RPC bọc luôn truyền NULL: ảnh công tơ là bằng chứng đo đếm, và một mô
+ * hình dựng URL ảnh là một đường đưa nội dung ngoài vào hồ sơ đo.
+ */
+export const SCHEMA_GHI_CHI_SO_CONG_TO = z.object({
+  meter_id: z.string().uuid().describe('ID công tơ cần ghi chỉ số'),
+  reading_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe('Ngày chốt chỉ số (YYYY-MM-DD)'),
+  current_reading: z
+    .number()
+    .nonnegative()
+    .describe('Chỉ số MỚI đọc trên mặt công tơ (không phải lượng tiêu thụ)'),
+  notes: z
+    .string()
+    .max(2000)
+    .nullable()
+    .optional()
+    .describe('Ghi chú kèm bản ghi; bỏ trống = không ghi chú'),
+});
+
+/**
+ * Input của `tao_phieu_giu_cho` — action L4 `reservation_deposit.create`.
+ *
+ * Chỉ hai trường. Hạn giữ chỗ (24 giờ) và trạng thái (`PENDING_APPROVAL`) do
+ * server quyết, không phải tham số: một mô hình chọn được hạn giữ chỗ là một
+ * mô hình chọn được thời điểm phòng mở lại cho người khác.
+ */
+export const SCHEMA_PHIEU_GIU_CHO = z.object({
+  room_id: z.string().uuid().describe('ID phòng cần giữ chỗ'),
+  amount: z.number().positive().describe('Số tiền cọc giữ chỗ (VND)'),
+});
+
+/**
  * Sổ hành động — khoá là `action_id` của server, không phải tên tool.
  *
  * Một hành động ở đây KHÔNG tự động sống: `copilot_feature_flags` có một hàng
@@ -240,6 +281,42 @@ export const ACTION_CATALOG = {
     previewRpc: 'copilot_preview_zalo_conversation_flags_v1',
     executeRpc: 'copilot_execute_zalo_conversation_flags_v1',
   },
+  'meter_reading.create': {
+    actionId: 'meter_reading.create',
+    version: 1,
+    labelVi: 'Ghi chỉ số công tơ',
+    risk: 'L4',
+    executorKind: 'nonce_abi_v1',
+    consentRequired: 'click',
+    permission: { module: 'meter_readings', action: 'create' },
+    inputSchema: SCHEMA_GHI_CHI_SO_CONG_TO,
+    previewFields: [
+      'toa_nha',
+      'phong',
+      'cong_to',
+      'chi_so_truoc',
+      'chi_so_moi',
+      'tieu_thu',
+      'ngay_ghi',
+      'ghi_chu',
+      'canh_bao',
+    ],
+    previewRpc: 'copilot_preview_meter_reading_v1',
+    executeRpc: 'copilot_execute_meter_reading_v1',
+  },
+  'reservation_deposit.create': {
+    actionId: 'reservation_deposit.create',
+    version: 1,
+    labelVi: 'Tạo phiếu giữ chỗ chờ duyệt',
+    risk: 'L4',
+    executorKind: 'nonce_abi_v1',
+    consentRequired: 'click',
+    permission: { module: 'deposits', action: 'create' },
+    inputSchema: SCHEMA_PHIEU_GIU_CHO,
+    previewFields: ['toa_nha', 'phong', 'so_tien', 'han_giu_cho', 'trang_thai', 'canh_bao'],
+    previewRpc: 'copilot_preview_reservation_deposit_v1',
+    executeRpc: 'copilot_execute_reservation_deposit_v1',
+  },
 } as const satisfies Record<string, ActionCatalogEntry>;
 
 export type ActionId = keyof typeof ACTION_CATALOG;
@@ -278,6 +355,17 @@ export const NHAN_TRUONG_XEM_TRUOC: Readonly<Record<string, string>> = {
   tat_tieng_moi: 'Tắt tiếng (mới)',
   chua_doc_cu: 'Đánh dấu chưa đọc (hiện tại)',
   chua_doc_moi: 'Đánh dấu chưa đọc (mới)',
+  phong: 'Phòng',
+  cong_to: 'Công tơ',
+  chi_so_truoc: 'Chỉ số kỳ trước',
+  chi_so_moi: 'Chỉ số mới',
+  tieu_thu: 'Tiêu thụ (mới − trước)',
+  ngay_ghi: 'Ngày chốt',
+  ghi_chu: 'Ghi chú',
+  han_giu_cho: 'Hạn giữ chỗ',
+  // Cảnh báo là một trường XEM TRƯỚC như mọi trường khác, không phải một dòng
+  // phụ chú: người bấm phải thấy nó ngay trong bảng, cùng chỗ với con số.
+  canh_bao: 'Cảnh báo',
 };
 
 /** `permission_key` như server ghi trong sổ đăng ký: `<module>.<action>`. */

@@ -104,7 +104,7 @@ export function nhanNutXacNhan(entry: ActionCatalogEntry): string {
  *
  * MỘT THẺ CHO MỌI HÀNH ĐỘNG (G2-D)
  *   Trước đây thẻ này chỉ biết một hình dạng preview (loại/số tiền/toà/hạng
- *   mục/ngày) và một RPC thực thi ghi chết trong mã. Ba action L3 mới có ba
+ *   mục/ngày) và một RPC thực thi ghi chết trong mã. Các action mới có nhiều
  *   hình dạng preview khác nhau, nên các hàng được vẽ từ `previewFields` của
  *   `ACTION_CATALOG`, và RPC thực thi tra từ cùng chỗ. Nhân bản thẻ này ba lần
  *   sẽ là ba nơi phải nhớ kiểm kill switch, kiểm phạm vi, và tiêu nonce đúng
