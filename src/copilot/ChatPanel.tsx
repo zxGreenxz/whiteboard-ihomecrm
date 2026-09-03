@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  BarChart3, Building2, FileText, ImagePlus, Mic, MicOff, Plus, Receipt, Send, Square, X,
+  BarChart3, Brain, Building2, FileText, ImagePlus, Mic, MicOff, Plus, Receipt, Send, Square, Trash2, X,
 } from 'lucide-react';
 // Kiểu tin nhắn nay do chatEngine sở hữu, không còn lấy từ @page-agent/llms:
 // `Message.content` của thư viện đó là `string | null`, không chứa được tin
@@ -38,6 +38,12 @@ import {
 import { assertUiControlAvailability } from './uiControlAvailability';
 import { lyDoChanUiControl } from './uiControlGate';
 import { dienGiaiLoiChat } from './chatErrors';
+import {
+  boGhiNho,
+  layGhiNho,
+  SO_GHI_NHO_TOI_DA,
+  type GhiNho,
+} from './memoryClient';
 // `LoiModel` là lớp lỗi DUY NHẤT mang mã máy của proxy (`error.code`). Nhập lớp
 // chứ không chỉ nhập kiểu: cần `instanceof` lúc chạy, không phải lúc biên dịch.
 import { LoiModel } from './llmClient';
@@ -201,6 +207,16 @@ export default function ChatPanel({ onClose }: Props) {
   const [error, setError] = useState('');
   /** Đang nạp lại lịch sử của tổ chức đang chọn — khác hẳn "chưa có gì". */
   const [dangTaiLichSu, setDangTaiLichSu] = useState(false);
+  /**
+   * Ghi nhớ dài hạn của chính người dùng trong CÔNG TY ĐANG CHỌN.
+   *
+   * Giữ trong state chứ không đọc lại mỗi lượt: một lượt chat đã tốn một vòng mạng
+   * tới model, thêm một vòng cho danh sách hầu như không đổi là trả độ trễ cho một thứ
+   * không ai sửa sau lưng. Nạp lại đúng hai lúc: đổi công ty, và sau một lượt có gọi
+   * `ghi_nho`/`quen`.
+   */
+  const [ghiNho, setGhiNho] = useState<GhiNho[]>([]);
+  const [moGhiNho, setMoGhiNho] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const uiAgentRef = useRef<{ stop: () => Promise<void>; dispose: () => void } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -247,6 +263,25 @@ export default function ChatPanel({ onClose }: Props) {
     return () => {
       if (orgGenerationRef.current === generation) abortRef.current?.abort();
     };
+  }, [selectedOrganizationId]);
+
+  // Ghi nhớ theo CÔNG TY: đổi công ty thì phải đổi cả danh sách. Giữ lại danh sách
+  // cũ sẽ đưa "toà ưu tiên" của công ty A vào prompt khi đang hỏi về công ty B — một
+  // câu trả lời sai mà không có lỗi nào nổ ra.
+  useEffect(() => {
+    const generation = orgGenerationRef.current;
+    setGhiNho([]);
+    setMoGhiNho(false);
+    if (!selectedOrganizationId) return;
+    void (async () => {
+      try {
+        const ds = await layGhiNho(selectedOrganizationId);
+        if (generation !== orgGenerationRef.current) return;
+        setGhiNho(ds);
+      } catch {
+        /* chưa có ghi nhớ nào, hoặc RPC chưa apply — chat vẫn chạy bình thường */
+      }
+    })();
   }, [selectedOrganizationId]);
 
   useEffect(() => {
@@ -384,6 +419,7 @@ export default function ChatPanel({ onClose }: Props) {
       // (chỉ khoá trong allowlist của `banDoHeThong` được kể lại).
       pathname: location.pathname,
       search: location.search,
+      ghiNho,
       anh,
       onToolEvent: (ev: ChatToolEvent) => {
         if (generation !== orgGenerationRef.current) return;
@@ -403,6 +439,18 @@ export default function ChatPanel({ onClose }: Props) {
     setDangChay('');
     setHistory((h) => [...h.slice(0, -1), ...result.newMessages]);
     void luuLichSuCoThuLai(tid, result.newMessages, organizationId);
+    // Một lượt có gọi tool bộ nhớ thì danh sách trên màn hình đã cũ. Đọc lại từ server
+    // chứ không đoán từ chuỗi tool trả về: server mới biết đã ghì đè hay chạm trần.
+    if (organizationId && result.toolEvents.some((ev) => ev.tool === 'ghi_nho' || ev.tool === 'quen')) {
+      void (async () => {
+        try {
+          const ds = await layGhiNho(organizationId);
+          if (generation === orgGenerationRef.current) setGhiNho(ds);
+        } catch {
+          /* không đọc lại được thì danh sách trên màn hình cũ một lúc, không phải lỗi chặn */
+        }
+      })();
+    }
   };
 
   /**
@@ -479,6 +527,20 @@ export default function ChatPanel({ onClose }: Props) {
     void uiAgentRef.current?.stop();
   };
 
+  /** Bỏ MỘT ghi nhớ từ giao diện. State chỉ đổi sau khi server đã nhận. */
+  const boMotGhiNho = async (khoa: string) => {
+    const organizationId = selectedOrganizationId;
+    if (!organizationId) return;
+    const generation = orgGenerationRef.current;
+    try {
+      await boGhiNho(organizationId, khoa);
+      if (generation !== orgGenerationRef.current) return;
+      setGhiNho((cu) => cu.filter((m) => m.khoa !== khoa));
+    } catch {
+      toast.error('Không bỏ được ghi nhớ này.');
+    }
+  };
+
   const voice = useVoiceInput((text) => setInput((cur) => (cur ? `${cur} ${text}` : text)));
 
   const items = toDisplay(history);
@@ -520,6 +582,25 @@ export default function ChatPanel({ onClose }: Props) {
             </option>
           ))}
         </select>
+        {/* Ghi nhớ dài hạn. Nút luôn hiện, kể cả khi chưa có mục nào: người dùng
+            phải có một chỗ cố định để hỏi "Copilot đang nhớ gì về tôi", và câu trả
+            lời "chưa nhớ gì" cũng là một câu trả lời. */}
+        <button
+          className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--primary-100))] text-accent-foreground transition hover:-translate-y-px hover:bg-[hsl(var(--primary-50))] ${
+            moGhiNho ? 'bg-[hsl(var(--primary-50))]' : 'bg-card'
+          }`}
+          title={`Ghi nhớ (${ghiNho.length}/${SO_GHI_NHO_TOI_DA})`}
+          aria-expanded={moGhiNho}
+          onClick={() => setMoGhiNho((v) => !v)}
+          data-testid="copilot-ghi-nho-toggle"
+        >
+          <Brain className="h-4 w-4" />
+          {ghiNho.length > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-bold leading-none text-primary-foreground">
+              {ghiNho.length}
+            </span>
+          )}
+        </button>
         <button
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--primary-100))] bg-card text-accent-foreground transition hover:-translate-y-px hover:bg-[hsl(var(--primary-50))]"
           title="Cuộc trò chuyện mới"
@@ -536,6 +617,45 @@ export default function ChatPanel({ onClose }: Props) {
           <X className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Mục "Ghi nhớ" — XEM và BỎA, không thêm tay.
+
+          Thêm một mục bằng tay đòi hai ô nhập (khoá và nội dung) và một bộ luật khoá
+          mà người dùng phải học — trong khi nói "nhớ giúp tôi…" trong khung chat làm
+          đúng việc đó mà không cần học gì. Ngược lại, XOÁ thì phải có nút: bảo trợ lý
+          quên một thứ mà phải tin rằng nó đã quên là đúng kiểu kiểm soát mà người dùng
+          không xác minh được. */}
+      {moGhiNho && (
+        <div className="max-h-40 overflow-y-auto border-b bg-muted/40 px-3 py-2" data-testid="copilot-ghi-nho">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+            <Brain className="h-3.5 w-3.5" />
+            Copilot đang nhớ về bạn ({ghiNho.length}/{SO_GHI_NHO_TOI_DA})
+          </div>
+          {ghiNho.length === 0 ? (
+            <div className="text-[11px] italic text-muted-foreground">
+              Chưa nhớ gì. Nói "nhớ giúp tôi: toà ưu tiên là DEMO A" để lưu một điều.
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {ghiNho.map((m) => (
+                <li key={m.khoa} className="flex items-start gap-1.5 text-[11px] leading-snug">
+                  <span className="min-w-0 flex-1 break-words">
+                    <span className="font-semibold">{m.khoa}</span>: {m.noiDung}
+                  </span>
+                  <button
+                    className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-red-50 hover:text-red-600"
+                    title={`Bỏ ghi nhớ "${m.khoa}"`}
+                    onClick={() => void boMotGhiNho(m.khoa)}
+                    data-testid="copilot-ghi-nho-bo"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Model đã lưu không còn được bật: nói ra thay vì lặng lẽ đổi. Người
           dùng cần biết vì sao hôm nay Copilot trả lời khác hôm qua. */}

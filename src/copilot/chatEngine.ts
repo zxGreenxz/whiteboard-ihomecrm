@@ -15,6 +15,7 @@ import type { Json } from '@/integrations/supabase/types';
 import { CHAT_SYSTEM_PROMPT, TU_DIEN_NGHIEP_VU, VI_DU_MAU } from './systemPromptVi';
 import { goiModelMotLuot, type KhaiBaoTool, type TinNhan } from './llmClient';
 import { dongNguCanhTrang } from './banDoHeThong';
+import { dongGhiNho, type GhiNho } from './memoryClient';
 import { buildRegistry, toLlmTools, type ToolCtx } from './tools/registry';
 import {
   apDungKyTuongDoi,
@@ -322,6 +323,14 @@ export async function runChatTurn(params: {
    * placeholder khi ghi lịch sử.
    */
   anh?: string[];
+  /**
+   * Ghi nhớ dài hạn của người dùng trong công ty đang chọn.
+   *
+   * TRUYỀN VÀO chứ không tự đọc: `runChatTurn` là hàm tất định kiểm được bằng
+   * test, và thêm một lời gọi mạng vào đây sẽ biến mọi test của nó thành test có
+   * mạng. Chỗ đọc là `ChatPanel` (một lần mỗi công ty), qua `memoryClient`.
+   */
+  ghiNho?: readonly GhiNho[];
 }): Promise<ChatTurnResult> {
   const registry = buildRegistry(params.ctx.availability);
   const toolMap = toLlmTools(registry, params.ctx);
@@ -363,6 +372,10 @@ export async function runChatTurn(params: {
     dongNangLuc(Object.keys(toolMap)),
     dongHomNay(),
     dongKy(dsKy, nhieuKy),
+    // Ghi nhớ là DỮ LIỆU, không phải mệnh lệnh — câu ranh giới nằm ngay trong
+    // khối, xem `dongGhiNho`. Đặt SAU luật và trước ngữ cảnh trang: nó là thứ
+    // mô tả người dùng, không phải thứ định nghĩa hành vi của trợ lý.
+    dongGhiNho(params.ghiNho ?? []),
     nguCanh,
   ]
     .filter(Boolean)

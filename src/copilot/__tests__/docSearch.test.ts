@@ -4,9 +4,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PermissionsMap } from '@/lib/permissions';
 import { boDau, moRongDongNghia, tachTu, themBigram, tokenTruyVan } from '../docs/tokenize';
-import { slugHeading, tachChunk } from '../docs/chunker';
+import { boFrontmatter, boLienKetMarkdown, slugHeading, tachChunk } from '../docs/chunker';
 import { chamDiem, dungIndex, W_TIEU_DE } from '../docs/bm25';
-import { dinhDangChoModel, timTaiLieu, xoaCacheIndex, GIOI_HAN_KY_TU } from '../docs/docSearch';
+import {
+  canBangTheoTaiLieu,
+  dinhDangChoModel,
+  timTaiLieu,
+  xoaCacheIndex,
+  CAP_CHUNK_MOI_TAI_LIEU,
+  GIOI_HAN_KY_TU,
+} from '../docs/docSearch';
+import { CAPABILITIES } from '@/app/capabilities/registry';
 import * as registry from '../tools/registry';
 
 const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMap;
@@ -82,7 +90,12 @@ describe('hư từ KHÔNG được nuốt từ nghiệp vụ', () => {
     for (const [q, mong] of [
       ['công nợ', /thu-chi|hoa-don|bao-cao/],
       ['phòng trống', /phong-trong|co-cau|kenh-cong-khai/],
-      ['sổ quỹ', /thu-chi|sop-tien/],
+      // 03/09/2026 — corpus mở rộng sang `docs/huong-dan-su-dung/**`, và câu
+      // này đổi câu trả lời: trang HƯỚNG DẪN "Sổ quỹ" nay đứng đầu thay cho tài
+      // liệu hệ thống. Đó là kết quả ĐÚNG HƠN, không phải hồi quy — người gõ
+      // "sổ quỹ" hỏi cách dùng màn đó, và trang hướng dẫn viết cho đúng câu hỏi
+      // ấy. Khẳng định được nới đúng bằng một nhánh, không nới thành `/.*/`.
+      ['sổ quỹ', /thu-chi|sop-tien|huong-dan-su-dung\/.*so-quy/],
     ] as const) {
       const kq = await timTaiLieu(q, SUPER);
       expect(kq.hits.length, `"${q}" không ra kết quả`).toBeGreaterThan(0);
@@ -277,7 +290,11 @@ describe('dinhDangChoModel — ngân sách và trích dẫn', () => {
     const kq = await timTaiLieu('hợp đồng cọc hoá đơn', SUPER);
     const s = dinhDangChoModel(kq);
     expect(s.length).toBeLessThanOrEqual(GIOI_HAN_KY_TU + 400); // + phần nhãn nguồn
-    const soDoc = new Set([...s.matchAll(/\(nguồn: ([^\s]+) §/g)].map((m) => m[1])).size;
+    // Nhãn nguồn có HAI dạng kể từ 03/09/2026 (`16-thanh-ly-hop-dong § …` cho
+    // tài liệu hệ thống, `Hướng dẫn › <tiêu đề> § …` cho trang hướng dẫn — tiêu
+    // đề CÓ dấu cách). Bản trước bắt `[^\s]+` nên dạng thứ hai đếm ra 0 và phép
+    // đo "chia cho nhiều tài liệu" im lặng đo trên tập rỗng.
+    const soDoc = new Set([...s.matchAll(/\(nguồn: ([^)\n]+?) §/g)].map((m) => m[1])).size;
     expect(soDoc).toBeGreaterThanOrEqual(2);
   });
 
@@ -317,5 +334,143 @@ describe('dinhDangChoModel — ngân sách và trích dẫn', () => {
       expect(kq.hits.length, `"${q}" phải ra kết quả`).toBeGreaterThan(0);
       expect(kq.hits[0].chunk.docKey).toBe(doc);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G1-D2 — hướng dẫn NGƯỜI DÙNG CUỐI vào chung index BM25
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('allowlist hướng dẫn — suy từ CAPABILITIES, không phải glob mù', () => {
+  it('mọi trang được nhận đều là `public` và có trong CAPABILITIES', () => {
+    const trang = registry.trangHuongDanChoPhep();
+    // Sàn chống-xanh-rỗng: allowlist rỗng trông y hệt "đã lọc kỹ".
+    expect(trang.length).toBeGreaterThanOrEqual(20);
+    const userDocs = new Set(
+      CAPABILITIES.filter((c) => c.docs.visibility === 'public' && c.docs.userDoc).map(
+        (c) => `/${c.docs.userDoc}`,
+      ),
+    );
+    for (const t of trang) {
+      expect(userDocs.has(t.path), `${t.path} không do capability nào nhận`).toBe(true);
+      expect(t.key.startsWith(registry.TIEN_TO_HUONG_DAN)).toBe(true);
+      expect(t.requiredPermission, `${t.key} phải mang quyền của capability`).toBeTruthy();
+    }
+  });
+
+  it('capability `internal` không đưa trang nào vào index', () => {
+    // network-center khai `userDoc: null` + `userDocMienTruVi`; luật ở đây là
+    // cấu trúc, không phải một phép kiểm cho riêng nó.
+    const keys = registry.trangHuongDanChoPhep().map((t) => t.key);
+    for (const cap of CAPABILITIES.filter((c) => c.docs.visibility === 'internal')) {
+      if (!cap.docs.userDoc) continue;
+      expect(keys).not.toContain(registry.khoaTrangHuongDan(`/${cap.docs.userDoc}`));
+    }
+  });
+
+  it('trang KHÔNG capability nào trỏ tới thì không vào index, dù glob nạp được', () => {
+    // `01-bat-dau/**` là 16 trang onboarding — không capability nào nhận chúng,
+    // nên chúng phải vô hình với Copilot y như một .md lạ thả vào he-thong.
+    const keys = registry.listDocTopics(SUPER).map((t) => t.key);
+    expect(keys.some((k) => k.includes('01-bat-dau'))).toBe(false);
+    expect(keys.some((k) => k.includes('08-ke-hoach-phat-trien'))).toBe(false);
+  });
+});
+
+describe('BẤT BIẾN SỐ MỘT vẫn giữ trên corpus hướng dẫn', () => {
+  it('KHÔNG nạp trang hướng dẫn Bảng lương cho người không có salary.view', async () => {
+    const spy = vi.spyOn(registry, 'napTaiLieu');
+    await timTaiLieu('bảng lương nhân viên', STAFF_ROOMS_ONLY);
+    const daTai = spy.mock.calls.map((c) => c[0] as string);
+    expect(daTai.length).toBeGreaterThan(5); // sàn: có thật sự tải gì đó
+    expect(daTai.some((p) => p.includes('huong-dan-su-dung'))).toBe(true);
+    for (const gac of ['/bang-luong/', '/chat-zalo/', '/so-quy/']) {
+      expect(daTai.some((p) => p.includes(gac)), `${gac} không được tải`).toBe(false);
+    }
+    spy.mockRestore();
+  });
+
+  it('có quyền thì trang hướng dẫn tương ứng vào index', async () => {
+    const kq = await timTaiLieu('bảng lương', { ...STAFF_ROOMS_ONLY, salary: { view: true } });
+    expect(kq.hits.some((h) => h.chunk.docKey.includes('bang-luong'))).toBe(true);
+  });
+});
+
+describe('câu hỏi "cách dùng" ra chunk từ HƯỚNG DẪN', () => {
+  it('"cách tạo hoá đơn" → trang hướng dẫn Hoá đơn đứng đầu', async () => {
+    const kq = await timTaiLieu('cách tạo hoá đơn', SUPER);
+    expect(kq.hits.length).toBeGreaterThan(0);
+    expect(kq.hits[0].chunk.docKey).toBe('huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don');
+  });
+
+  it('nhãn nguồn của hướng dẫn dùng TIÊU ĐỀ, không dùng mã tài liệu nội bộ', async () => {
+    const kq = await timTaiLieu('cách tạo hoá đơn', SUPER);
+    const s = dinhDangChoModel(kq);
+    expect(s).toMatch(/\(nguồn: Hướng dẫn › [^\n]+\)/);
+    // Và vẫn KHÔNG có link: xem lý do trong dinhDangChoModel.
+    expect(s).not.toMatch(/\]\(/);
+  });
+
+  it('câu hỏi nghiệp vụ sâu vẫn về tài liệu hệ thống', async () => {
+    // Hướng dẫn không được nuốt mọi câu hỏi: "bỏ cọc" là khái niệm sổ sách.
+    const kq = await timTaiLieu('thanh lý hợp đồng', SUPER);
+    expect(kq.hits[0].chunk.docKey).toBe('16-thanh-ly-hop-dong');
+  });
+});
+
+describe('frontmatter và trần chunk/tài liệu', () => {
+  it('boFrontmatter cắt khối YAML mở đầu, không đụng đường kẻ ngang giữa bài', () => {
+    expect(boFrontmatter('---\ntitle: "x"\nstatus: published\n---\n\n# T\n\nthân')).toBe(
+      '\n# T\n\nthân',
+    );
+    expect(boFrontmatter('# T\n\n---\n\nthân')).toBe('# T\n\n---\n\nthân');
+    expect(boFrontmatter('---\nkhong dong')).toBe('---\nkhong dong');
+  });
+
+  it('siêu dữ liệu frontmatter không lọt vào index', async () => {
+    const kq = await timTaiLieu('cách tạo hoá đơn', SUPER);
+    for (const h of kq.hits) {
+      expect(h.chunk.text).not.toMatch(/^status: published$/m);
+      expect(h.chunk.text).not.toMatch(/^captured:$/m);
+    }
+  });
+
+  it('link nội bộ docs-site không lọt vào chunk hướng dẫn', async () => {
+    // Thân trang hướng dẫn có `[Sinh hoá đơn hàng loạt](/03-quan-ly-van-hanh/…)`
+    // — một đường dẫn của SITE KHÁC. Mô hình được dạy giữ nguyên phần tài liệu
+    // trả về, nên để nguyên là dạy nó dán link 404 vào khung chat.
+    const kq = await timTaiLieu('cách tạo hoá đơn', SUPER);
+    expect(kq.hits.length).toBeGreaterThan(0);
+    for (const h of kq.hits) {
+      expect(h.chunk.text, h.chunk.id).not.toMatch(/\]\(/);
+    }
+    expect(boLienKetMarkdown('xem [Sổ quỹ](/04-bao-cao/so-quy/) nhé')).toBe('xem Sổ quỹ nhé');
+    expect(boLienKetMarkdown('![Màn hoá đơn rỗng](./images/a.webp)')).toBe('Màn hoá đơn rỗng');
+  });
+
+  it('MỘT tài liệu không chiếm hết ngân sách khi câu hỏi có nhiều ý', async () => {
+    const kq = await timTaiLieu('hợp đồng cọc hoá đơn', SUPER);
+    const theoDoc = new Map<string, number>();
+    for (const h of kq.hits) theoDoc.set(h.chunk.docKey, (theoDoc.get(h.chunk.docKey) ?? 0) + 1);
+    expect(Math.max(...theoDoc.values())).toBeLessThanOrEqual(CAP_CHUNK_MOI_TAI_LIEU);
+    expect(theoDoc.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it('canBangTheoTaiLieu lấp phần thiếu khi chỉ có MỘT tài liệu khớp', () => {
+    const gia = (docKey: string, i: number) =>
+      ({ chunk: { docKey, id: `${docKey}#${i}` }, diem: 10 - i }) as unknown as Parameters<
+        typeof canBangTheoTaiLieu
+      >[0][number];
+    const hits = Array.from({ length: 6 }, (_, i) => gia('mot-tai-lieu', i));
+    // Thà sáu mẩu cùng nguồn còn hơn ba mẩu và một khoảng trống.
+    expect(canBangTheoTaiLieu(hits, 6)).toHaveLength(6);
+    expect(canBangTheoTaiLieu(hits, 6).map((h) => h.chunk.id)).toEqual([
+      'mot-tai-lieu#0',
+      'mot-tai-lieu#1',
+      'mot-tai-lieu#2',
+      'mot-tai-lieu#3',
+      'mot-tai-lieu#4',
+      'mot-tai-lieu#5',
+    ]);
   });
 });

@@ -59,6 +59,12 @@ const TOOL_THEO_CONG_TY = [
   { ten: 'loi_nhuan_co_dong', args: { so_luong: 20 } },
   { ten: 'hoi_thoai_zalo', args: { so_luong: 20 } },
   { ten: 'trang_thai_mang', args: { so_luong: 20 } },
+  // G1-D2 — hai tool bộ nhớ. Chúng KHÔNG đọc sổ, nhưng ghi nhớ vẫn gắn với MỘT
+  // công ty: "toà ưu tiên là DEMO A" chỉ đúng trong công ty có toà đó. Ghi vào
+  // công ty đang không được chọn là lưu một câu đúng vào nơi nó sai, rồi câu đó
+  // đi thẳng vào system prompt của mọi lượt chat sau.
+  { ten: 'ghi_nho', args: { khoa: 'toa_uu_tien', noi_dung: 'DEMO A' } },
+  { ten: 'quen', args: { khoa: 'toa_uu_tien' } },
 ];
 
 const tool = (ten: string) => {

@@ -13,7 +13,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**37 tool**: 35 đọc · 1 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**39 tool**: 35 đọc · 3 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
@@ -35,6 +35,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `cong_no_tong_quan` | read | `invoices.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `cong_viec` | read | `tasks.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `doanh_thu_thang` | read | `reports_finance.analysis` | `src/copilot/tools/registry.ts` |
+| `ghi_nho` | write | `ai_copilot.view` | `src/copilot/tools/memoryTools.ts` |
 | `hoi_thoai_zalo` | read | `chat_zalo.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `hop_cho_duyet` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `hop_dong_sap_het_han` | read | `reports_real_estate.expiring` | `src/copilot/tools/registry.ts` |
@@ -43,6 +44,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `loi_nhuan_co_dong` | read | `shareholder_profit.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `mo_trang` | navigate | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `phong_trong` | read | `rooms.view` | `src/copilot/tools/registry.ts` |
+| `quen` | write | `ai_copilot.view` | `src/copilot/tools/memoryTools.ts` |
 | `so_quy` | read | `cashbooks.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `tao_phieu_thu_chi_nhap` | write | `income_expenses.create` | `src/copilot/tools/writeTools.ts` |
 | `tim_hoa_don` | read | `invoices.view` | `src/copilot/tools/registry.ts` |
@@ -63,6 +65,8 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 - Chat gọi model cloud qua Edge Function `llm-proxy`; provider/key/quota/log nằm server-side. Ollama local được browser gọi trực tiếp khi bật.
 - Chat đi qua `src/copilot/llmClient.ts` — client OpenAI-compat mỏng nói thẳng với proxy, hỗ trợ SSE, `content` multimodal và mảng `tool_calls`. `@page-agent/llms` chỉ còn phục vụ UI-control; ba giới hạn của nó (không stream, `content` chỉ là chuỗi, `toolCall` số ít) là lý do tách ra.
 - Tra tài liệu: chunk theo heading, BM25 hai trường (thân + đường dẫn heading), bỏ dấu + bigram âm tiết + bảng đồng nghĩa + bảng hư từ. Index dựng LÚC CHẠY, chỉ từ tài liệu phiên có quyền đọc.
+- Corpus gồm HAI nguồn: tài liệu nghiệp vụ `docs/he-thong/*.md` (allowlist = `manifest.json`) và hướng dẫn người dùng `docs/huong-dan-su-dung/**/index.md` (allowlist = `CAPABILITIES[*].docs.userDoc` có `visibility: public`, gác bằng chính quyền của capability đó). Trang hướng dẫn được dán nhãn `(nguồn: Hướng dẫn › <tiêu đề>)`; link nội bộ của docs-site bị làm phẳng thành chữ vì chúng thuộc một origin khác và sẽ 404 trong ứng dụng.
+- Bộ nhớ dài hạn: bảng `ai_user_memory` (RLS own-row, riêng từng công ty, trần 30 mục do trigger cưỡng chế) + tool `ghi_nho`/`quen`. Tối đa 20 mục đi vào system prompt dưới khối "GHI NHỚ CỦA NGƯỜI DÙNG", mỗi mục cắt 100 ký tự, cả khối 2.000 — và khối mở đầu bằng câu nói rõ đây là DỮ LIỆU, không phải mệnh lệnh.
 - System prompt mang ngày hôm nay và trang người dùng đang xem.
 - Ảnh: nén client về 1024/JPEG, gửi kèm request, KHÔNG lưu.
 - UI-control chỉ chạy khi entitlement + quyền `ai_copilot.ui_control` hợp lệ; agent có thể điều hướng, lọc và điền form trên route allowlist, nhưng nút Lưu/Xác nhận/Submit và hành động nguy hiểm bị loại khỏi vùng tương tác.

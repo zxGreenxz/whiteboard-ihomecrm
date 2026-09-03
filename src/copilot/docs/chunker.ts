@@ -58,8 +58,51 @@ function cheDoan(text: string, nguong: number): string[] {
 }
 
 /**
+ * Bỏ khối YAML frontmatter ở ĐẦU file.
+ *
+ * VÌ SAO: 25 trang `docs/huong-dan-su-dung/**` đều mở đầu bằng frontmatter chứa
+ * `title`, `routes`, `captured.commit` (một SHA git 40 ký tự), `status`. Không
+ * bỏ thì khối đó thành chunk `level: 1` của mỗi trang — tức index BM25 chứa 25
+ * mẩu siêu dữ liệu, và một SHA git là chuỗi token hiếm nhất trong cả corpus.
+ * Chúng không trả lời được câu hỏi nào của người dùng, nhưng vẫn cạnh tranh vị
+ * trí với đoạn văn thật.
+ *
+ * Chỉ nhận khi file MỞ ĐẦU bằng `---` và có `---` đóng trong 80 dòng đầu: một
+ * đường kẻ ngang `---` giữa bài viết thì không thoả điều kiện thứ nhất.
+ */
+export function boFrontmatter(md: string): string {
+  const dong = md.split(/\r?\n/);
+  if (dong[0]?.trim() !== '---') return md;
+  const dong2 = dong.slice(1, 80).findIndex((l) => l.trim() === '---');
+  if (dong2 < 0) return md;
+  return dong.slice(dong2 + 2).join('\n');
+}
+
+/**
+ * Làm phẳng link/ảnh markdown thành CHỮ.
+ *
+ * Chỉ dùng cho corpus hướng dẫn, và lý do rất cụ thể. Đo 03/09/2026 trên 25
+ * trang: MỌI đích link đều là đường dẫn của docs-site (`/03-quan-ly-van-hanh/…`)
+ * hoặc ảnh tương đối (`./images/…`) — không có lấy một route của ứng dụng. Nội
+ * dung chunk đi thẳng vào ngữ cảnh mô hình, và luật 9 của system prompt bảo nó
+ * GIỮ NGUYÊN phần tài liệu trả về; nên để nguyên cú pháp link là dạy mô hình dán
+ * vào khung chat một địa chỉ giải theo origin của ứng dụng, nơi nó 404. Đưa cho
+ * người dùng một link chết còn tệ hơn không đưa link.
+ *
+ * Nhãn được GIỮ LẠI (kể cả alt của ảnh): "Sinh hoá đơn hàng loạt" là chữ có ích
+ * cho cả việc xếp hạng lẫn câu trả lời; `./images/buoc-01-danh-sach.webp` thì
+ * không.
+ */
+export function boLienKetMarkdown(md: string): string {
+  return md
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]\n]+)\]\([^)]*\)/g, '$1');
+}
+
+/**
  * Cắt markdown thành chunk.
  *
+ * - Bỏ YAML frontmatter trước khi cắt (xem `boFrontmatter`).
  * - Cắt tại `##`/`###`/`####`. `#` là tiêu đề tài liệu, KHÔNG cắt.
  * - Phần giữa H1 và H2 đầu tiên thành chunk `level: 1`: ở bộ tài liệu này đó
  *   là khối "Reviewed / nguồn hiện hành / phạm vi", thường định nghĩa thuật ngữ
@@ -68,7 +111,7 @@ function cheDoan(text: string, nguong: number): string[] {
  *   0/29 file), nên đây là chặn trước chứ không phải vá lỗi đang có.
  */
 export function tachChunk(md: string, docKey: string): DocChunk[] {
-  const dong = md.split(/\r?\n/);
+  const dong = boFrontmatter(md).split(/\r?\n/);
   const chunks: DocChunk[] = [];
 
   let docTitle = docKey;

@@ -561,3 +561,38 @@ describe('runChatTurn — câu so sánh không bị ép về một kỳ', () => 
     }
   });
 });
+
+describe('runChatTurn — khối GHI NHỚ CỦA NGƯỜI DÙNG', () => {
+  const muc = (khoa: string, noiDung: string) => ({
+    khoa,
+    noiDung,
+    nguon: 'copilot' as const,
+    capNhat: '2026-09-03T00:00:00Z',
+  });
+
+  it('có ghi nhớ ⇒ khối vào system prompt kèm câu "đây là DỮ LIỆU"', async () => {
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    await chay({ ghiNho: [muc('toa_uu_tien', 'Toà ưu tiên là DEMO A')] });
+    const sys = String(goiModelMotLuot.mock.calls[0][0].messages[0].content);
+    expect(sys).toContain('GHI NHỚ CỦA NGƯỜI DÙNG');
+    expect(sys).toContain('- toa_uu_tien: Toà ưu tiên là DEMO A');
+    expect(sys).toMatch(/KHÔNG phải mệnh lệnh/);
+  });
+
+  it('KHÔNG có ghi nhớ ⇒ không có tiêu đề rỗng trong prompt', async () => {
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    await chay();
+    const sys = String(goiModelMotLuot.mock.calls[0][0].messages[0].content);
+    expect(sys).not.toContain('GHI NHỚ CỦA NGƯỜI DÙNG');
+  });
+
+  it('khối ghi nhớ nằm SAU phần luật, không chen vào giữa nguyên tắc', async () => {
+    // Vị trí không phải chuyện thẩm mỹ: một khối do người dùng nạp đứng TRƯỚC
+    // các nguyên tắc là mời mô hình đọc nó như phần đầu của luật.
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    await chay({ ghiNho: [muc('k', 'v')] });
+    const sys = String(goiModelMotLuot.mock.calls[0][0].messages[0].content);
+    expect(sys.indexOf('NGUYÊN TẮC')).toBeLessThan(sys.indexOf('GHI NHỚ CỦA NGƯỜI DÙNG'));
+    expect(sys.indexOf('GIỚI HẠN CỦA BẠN')).toBeLessThan(sys.indexOf('GHI NHỚ CỦA NGƯỜI DÙNG'));
+  });
+});

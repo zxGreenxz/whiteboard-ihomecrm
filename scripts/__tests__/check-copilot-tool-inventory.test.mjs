@@ -1,7 +1,10 @@
 // Đột biến cho check-copilot-tool-inventory.
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   MOC_CUOI,
@@ -122,4 +125,29 @@ test('khopBoCRLF: khoi CRLF (Windows checkout) van khop khoi LF (generator)', ()
 
 test('khopBoCRLF: noi dung khac that su van phai lech', () => {
   assert.equal(khopBoCRLF('a\r\nb\r\n', 'a\nc\n'), false);
+});
+
+// ĐỘT BIẾN: gate phải quét CẢ thư mục tool, không phải ba tên file chép tay.
+//
+// Bản trước liệt kê cứng registry/nghiepVuTools/writeTools. File tool thứ tư
+// (`memoryTools.ts`, 03/09/2026) vì thế vô hình: bảng in "37 tool" trong khi
+// registry đã có 39, và gate vẫn XANH — nó so bảng với chính tập file thiếu.
+// Phép đếm dưới đây độc lập với gate: readdir + đếm `name:` trên MỌI file .ts.
+test('DOT BIEN: dem tool phai phu moi file .ts trong src/copilot/tools', () => {
+  const thuMuc = new URL('../../src/copilot/tools/', import.meta.url);
+  const ten = new Set();
+  for (const tep of readdirSync(thuMuc)) {
+    if (!tep.endsWith('.ts') || tep.endsWith('.d.ts')) continue;
+    const van = readFileSync(new URL(tep, thuMuc), 'utf8');
+    for (const m of van.matchAll(/name:\s*'([a-z_][a-z0-9_]*)'/g)) ten.add(m[1]);
+  }
+  assert.ok(ten.size >= SAN_TOOL, `chi thay ${ten.size} tool tren dia`);
+
+  const ra = execFileSync(
+    process.execPath,
+    [fileURLToPath(new URL('../check-copilot-tool-inventory.mjs', import.meta.url))],
+    { encoding: 'utf8' },
+  );
+  const dem = Number(/Registry Copilot: (\d+) tool/.exec(ra)?.[1]);
+  assert.equal(dem, ten.size, 'gate dem thieu tool — co file tool nam ngoai pham vi quet');
 });

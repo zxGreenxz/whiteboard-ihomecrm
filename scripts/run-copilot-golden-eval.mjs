@@ -136,7 +136,26 @@ const TOOL_MARKERS = [
   ['loi_nhuan_co_dong', /\bco dong\b/],
   ['hoi_thoai_zalo', /\bzalo\b/],
   ['trang_thai_mang', /\brouter\b|\bwifi\b|\btrang thai mang\b/],
+  // G1-D2, hai tool bo nho dai han. Cung ky luat: marker HEP hon tu vung cua
+  // chinh tool. Do tren 63 ca dang co (03/09/2026): khong ca nao chua "nho",
+  // "quen" hay "uu tien" sau khi bo dau, nen hai marker nay khong cuop duoc ca
+  // nao cua tool cu. Chung CO Y doi mot cum noi ro y dinh ("nho giup toi",
+  // "dung nho") thay vi tu "nho" tran — "nho" con nghia "be nho"/"nho la", va
+  // mot cau hoi so lieu vo tinh chua tu do khong duoc bien thanh lenh GHI.
+  ['ghi_nho', /\bnho giup toi\b|\bghi nho giup\b|\blan sau cu\b/],
+  ['quen', /\bdung nho\b|\bquen di\b|\bbo ghi nho\b/],
 ];
+
+/**
+ * Cau HOI LAI mot dieu da duoc nho — tra loi tu khoi "GHI NHO CUA NGUOI DUNG"
+ * trong system prompt, KHONG goi tool nao.
+ *
+ * Day la ly do outcome `memory` khong suy duoc tu toolPath: duong dung nhat cua
+ * tinh nang nay la duong KHONG co tool, va mot corpus chi biet do "goi tool nao"
+ * se cham no la 'readonly' — tuc mong doi mot lan doc so, roi bat ky lan chay
+ * that nao tra loi dung (khong goi tool) deu bi tinh la FAIL.
+ */
+const MEMORY_RECALL = /\btoi uu tien\b|\bban (?:dang )?nho gi ve toi\b|\bghi nho cua toi\b/;
 
 /** Independently infer expected tool intent from the natural-language prompt. */
 export function inferMockToolPath(input) {
@@ -154,6 +173,8 @@ export function inferMockOutcome(input) {
   if (/tren trang/.test(text)) return 'ui-control-or-readonly';
   const tools = inferMockToolPath(text);
   if (tools.length > 1) return 'multi-intent';
+  if (tools[0] === 'ghi_nho' || tools[0] === 'quen') return 'memory';
+  if (!tools.length && MEMORY_RECALL.test(text)) return 'memory';
   if (tools[0] === 'huong_dan' || tools[0] === 'liet_ke_chu_de' || tools[0] === 'ban_do_he_thong') {
     return tools[0] === 'ban_do_he_thong' ? 'navigation' : 'knowledge';
   }
@@ -164,6 +185,10 @@ export function inferMockOutcome(input) {
 export function inferMockScenario(input, outcome = inferMockOutcome(input)) {
   if (outcome === 'multi-intent') return 'orchestration';
   if (outcome === 'validation') return 'error';
+  // Ghi mot dieu can nho la mot thao tac binh thuong ('positive'); hoi lai dieu
+  // da nho duoc tra loi tu ngu canh chu khong tu so sach, nen no thuoc cung ho
+  // voi 'knowledge'. Hai nhanh, mot outcome.
+  if (outcome === 'memory') return inferMockToolPath(input).length ? 'positive' : 'knowledge';
   if (/khong ton tai|2099|partial/.test(normalizePrompt(input))) return 'empty';
   if (outcome === 'relative-date') return 'relative-date';
   if (outcome === 'knowledge') return 'knowledge';

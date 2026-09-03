@@ -20,10 +20,11 @@
 // Thoát 0 · 1 vi phạm · 3 KHÔNG ĐO ĐƯỢC.
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  collectCopilotSourceFiles,
   inventoryFromCopilotSource,
   validateCopilotActionInventory,
 } from './check-copilot-forbidden-actions.mjs';
@@ -130,9 +131,22 @@ export const khopBoCRLF = (a, b) => a.replace(/\r\n/g, '\n') === b.replace(/\r\n
 function main() {
   const ghi = process.argv.includes('--write');
 
+  // QUÉT THƯ MỤC, KHÔNG CHÉP TAY BA TÊN FILE.
+  //
+  // Bản trước liệt kê cứng `registry.ts`, `nghiepVuTools.ts`, `writeTools.ts`.
+  // File tool THỨ TƯ vì thế vô hình với bảng kiểm kê trong khi gate vẫn xanh —
+  // đúng loại drift mà gate này sinh ra để chặn, chỉ là ở chính nó. Đo
+  // 03/09/2026: `memoryTools.ts` ra đời và bảng in "37 tool" trong lúc registry
+  // đã có 39. `check-copilot-forbidden-actions` đã chữa đúng lỗi này cho phía
+  // nó (SCAN_ROOTS + đi đệ quy); ở đây dùng lại CHÍNH bộ quét đó để hai gate
+  // không bao giờ nhìn hai tập file khác nhau.
   const nguon = {};
-  for (const tep of ['registry.ts', 'nghiepVuTools.ts', 'writeTools.ts']) {
-    nguon[`src/copilot/tools/${tep}`] = readFileSync(join(THU_MUC_TOOL, tep), 'utf8');
+  for (const duong of collectCopilotSourceFiles([THU_MUC_TOOL])) {
+    nguon[relative(repoRoot, duong).replace(/\\/g, '/')] = readFileSync(duong, 'utf8');
+  }
+  if (Object.keys(nguon).length === 0) {
+    console.error(`❌ KHÔNG ĐO ĐƯỢC: không đọc được file tool nào trong ${THU_MUC_TOOL}.`);
+    process.exit(3);
   }
   const tools = docTool(nguon);
   if (tools.length < SAN_TOOL) {

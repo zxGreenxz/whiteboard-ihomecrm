@@ -109,6 +109,13 @@ export const REQUIRED_COPILOT_RPCS = Object.freeze([
   "copilot_shareholder_profit_v1",
   "copilot_zalo_conversations_v1",
   "copilot_network_status_v1",
+  // G1-D2 — bo nho dai han. Ba ham nay SECURITY INVOKER (RLS own-row lo phan
+  // ranh gioi), nhung chung van thuoc danh sach nay vi ly do THU HAI cua no:
+  // ten RPC phai duoc goi bang chuoi viet thang tu nguon tool, neu khong ba cua
+  // chan bien RPC deu mu voi chung.
+  "copilot_memory_upsert_v1",
+  "copilot_memory_forget_v1",
+  "copilot_memory_list_v1",
 ]);
 
 /**
@@ -124,6 +131,11 @@ export const TOOL_SOURCE_FILES = Object.freeze([
   "src/copilot/tools/registry.ts",
   "src/copilot/tools/nghiepVuTools.ts",
   "src/copilot/tools/writeTools.ts",
+  // `memoryTools.ts` goi RPC qua `memoryClient.ts`, nen ca hai deu duoc quet:
+  // bo file client ra ngoai se de mot duong `.from()` moi viet o do khong ai
+  // nhin — dung lo hong ma viec them `writeTools.ts` vao day da dong lai.
+  "src/copilot/tools/memoryTools.ts",
+  "src/copilot/memoryClient.ts",
 ]);
 
 /**

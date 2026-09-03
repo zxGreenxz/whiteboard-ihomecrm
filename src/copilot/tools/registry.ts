@@ -7,6 +7,7 @@
 //     điều hướng, chat trả link markdown để user tự click).
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
+import { CAPABILITIES } from '@/app/capabilities/registry';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey, PermissionsMap } from '@/lib/permissions';
 import { formatVND } from '@/lib/utils';
@@ -18,6 +19,7 @@ import {
 } from '../pageScope';
 import { taoPhieuThuChiNhap } from './writeTools';
 import { TOOL_NGHIEP_VU } from './nghiepVuTools';
+import { TOOL_GHI_NHO } from './memoryTools';
 import {
   copilotAvailability,
   copilotAvailabilitySnapshotIsFresh,
@@ -181,6 +183,31 @@ const DOC_MODULES = import.meta.glob('/docs/he-thong/*.md', {
   import: 'default',
 }) as Record<string, () => Promise<string>>;
 
+// ── Hướng dẫn NGƯỜI DÙNG CUỐI (docs/huong-dan-su-dung/**/index.md) ──
+//
+// Glob thứ hai, và nó CỐ Ý đứng ngay đây cạnh glob kia. Bất biến mà
+// `check-copilot-docs-manifest` khẳng định là bất biến cấu trúc: đường nạp `.md`
+// và phép lọc allowlist phải nằm chung MỘT chỗ, để không tồn tại lối nạp tài
+// liệu nào đi vòng qua allowlist. Thêm glob này ở `docs/docSearch.ts` sẽ mở đúng
+// lối vòng đó.
+//
+// VÌ SAO ALLOWLIST LÀ `CAPABILITIES`, KHÔNG PHẢI MỘT MANIFEST THỨ HAI
+//   `docs/he-thong` cần manifest riêng vì thư mục đó chứa cả writeup nội bộ lẫn
+//   tài liệu nghiệp vụ, và không có gì trong repo phân biệt được hai loại. Thư
+//   mục hướng dẫn thì khác: mỗi trang ĐÃ được một capability nhận, kèm sẵn
+//   `visibility` và `permission` của bề mặt nó mô tả. Dựng thêm một file
+//   allowlist ở đây là tạo nguồn thứ hai cho một quyết định đã có nguồn — và hai
+//   nguồn thì bản nào lệch cũng hỏng theo kiểu không ai thấy.
+//
+//   Hệ quả có răng: trang hướng dẫn của một capability `internal` (vd
+//   network-center — nhưng nó khai `userDoc: null` nên không có trang) hoặc một
+//   file `index.md` ai đó thả vào thư mục mà không capability nào trỏ tới thì
+//   KHÔNG vào index. Glob nạp được nó, allowlist không nhận nó.
+const USER_DOC_MODULES = import.meta.glob('/docs/huong-dan-su-dung/**/index.md', {
+  query: '?raw',
+  import: 'default',
+}) as Record<string, () => Promise<string>>;
+
 const DOC_MANIFESTS = import.meta.glob('/docs/he-thong/manifest.json', {
   eager: true,
   import: 'default',
@@ -222,8 +249,52 @@ export interface DocTopic {
  * được điều gì.
  */
 export async function napTaiLieu(path: string): Promise<string | null> {
-  const nap = DOC_MODULES[path];
+  const nap = DOC_MODULES[path] ?? USER_DOC_MODULES[path];
   return nap ? await nap() : null;
+}
+
+/**
+ * Tiền tố docKey của trang hướng dẫn người dùng.
+ *
+ * Nó là thứ phân biệt hai corpus trong CÙNG một index BM25, và cả hai nơi cần
+ * biết điều đó (`liet_ke_chu_de` để kể ra, `dinhDangChoModel` để dán nhãn nguồn
+ * đúng kiểu) đều đọc hằng này thay vì tự đoán bằng dấu `/`.
+ */
+export const TIEN_TO_HUONG_DAN = 'huong-dan-su-dung/';
+
+/** `/docs/huong-dan-su-dung/03-.../hoa-don/index.md` → `huong-dan-su-dung/03-.../hoa-don`. */
+export function khoaTrangHuongDan(path: string): string {
+  return path.replace(/^\/?docs\//, '').replace(/\/index\.md$/, '');
+}
+
+/**
+ * Trang hướng dẫn được phép index, suy TỪ `CAPABILITIES` — không có danh sách
+ * viết tay nào ở đây.
+ *
+ * Chỉ nhận capability `visibility: 'public'`: `internal` là bề mặt quản trị/hạ
+ * tầng, và một trang hướng dẫn cho bề mặt người dùng cuối không mở được là một
+ * lời hứa hụt, đúng lý do `userDocMienTruVi` tồn tại.
+ *
+ * Quyền gác trang = quyền gác chính capability đó. Đây là điểm hẹp nhất còn
+ * đúng: hướng dẫn màn Bảng lương mô tả từng cột của bảng lương, nên ai không
+ * được xem bảng lương thì cũng không nên đọc mô tả ấy qua Copilot.
+ */
+export function trangHuongDanChoPhep(): DocTopic[] {
+  const ra: DocTopic[] = [];
+  for (const cap of CAPABILITIES) {
+    const doc = cap.docs.userDoc;
+    if (!doc || cap.docs.visibility !== 'public') continue;
+    const path = doc.startsWith('/') ? doc : `/${doc}`;
+    if (!USER_DOC_MODULES[path]) continue; // trang đã khai nhưng file không còn
+    ra.push({
+      key: khoaTrangHuongDan(path),
+      path,
+      requiredPermission: { module: cap.permission.module, action: cap.permission.action },
+    });
+  }
+  // Hai capability trỏ chung một trang là chuyện có thể xảy ra; index không được
+  // nạp trang đó hai lần (chunk trùng id sẽ làm lệch `df` của BM25).
+  return [...new Map(ra.map((t) => [t.key, t])).values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
 /**
@@ -272,18 +343,20 @@ export function listDocTopics(perms?: PermissionsMap, now: number = Date.now()):
       .filter((e) => dauReviewConHieuLuc(e.reviewed, DOCS_MANIFEST.staleAfterDays, now))
       .map((e) => [e.file, e]),
   );
-  return Object.keys(DOC_MODULES)
+  const heThong: DocTopic[] = Object.keys(DOC_MODULES)
     .map((path) => ({ path, file: path.replace(/^.*\//, '') }))
     .filter(({ file }) => allowed.has(file))
     .map(({ path, file }) => {
       const entry = allowed.get(file)!;
       return { key: file.replace(/\.md$/, ''), path, requiredPermission: entry.requiredPermission };
-    })
-    .filter((t) => {
-      if (!t.requiredPermission) return true;
-      const { module, action } = t.requiredPermission;
-      return Boolean(perms && canUse(perms, module, action));
     });
+  // Hướng dẫn người dùng đi qua ĐÚNG phép lọc quyền bên dưới, không có nhánh
+  // riêng: hai corpus khác nhau về nguồn allowlist, giống nhau về ranh giới.
+  return [...heThong, ...trangHuongDanChoPhep()].filter((t) => {
+    if (!t.requiredPermission) return true;
+    const { module, action } = t.requiredPermission;
+    return Boolean(perms && canUse(perms, module, action));
+  });
 }
 
 // ── Trích dữ liệu từ chuỗi quan hệ khách ↔ hợp đồng ──────────────────────────
@@ -563,13 +636,13 @@ export function buildRegistryDefinitions(): DomainTool[] {
     dt({
       name: 'huong_dan',
       description:
-        'Tra cứu tài liệu nghiệp vụ hệ thống (hợp đồng, hoá đơn, thu chi, cọc, thanh lý, công tơ, lương…). Trả về các MỤC tài liệu liên quan nhất kèm nguồn. Hỏi bằng câu tự nhiên, không cần đoán tên file.',
+        'Tra cứu tài liệu nghiệp vụ hệ thống VÀ hướng dẫn sử dụng từng màn hình (hợp đồng, hoá đơn, thu chi, cọc, thanh lý, công tơ, lương…). Dùng cho cả câu hỏi "quy định thế nào" lẫn "làm ở đâu, bấm nút nào". Trả về các MỤC liên quan nhất kèm nguồn. Hỏi bằng câu tự nhiên, không cần đoán tên file.',
       inputSchema: z.object({
         chu_de: z.string().min(2).describe('Câu hỏi hoặc chủ đề, vd "làm sao lấy lại tiền cọc"'),
         tai_lieu: z
           .string()
           .optional()
-          .describe('Chỉ tìm trong một tài liệu (mã lấy từ liet_ke_chu_de), vd "16-thanh-ly-hop-dong"'),
+          .describe('Chỉ tìm trong một tài liệu (mã lấy từ liet_ke_chu_de), vd "16-thanh-ly-hop-dong" hoặc "huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don"'),
       }),
       rolloutExempt: true,
       rolloutExemptionReason: 'knowledge retrieval is governed by document manifest and permission filters',
@@ -612,7 +685,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
     dt({
       name: 'liet_ke_chu_de',
       description:
-        'Liệt kê các tài liệu nghiệp vụ hiện có (mã và tiêu đề). Dùng khi huong_dan không tìm thấy, hoặc khi cần biết hệ thống có tài liệu về gì.',
+        'Liệt kê các tài liệu hiện có: tài liệu nghiệp vụ hệ thống và trang hướng dẫn sử dụng. Dùng khi huong_dan không tìm thấy, hoặc khi cần biết hệ thống có tài liệu về gì.',
       inputSchema: z.object({}),
       rolloutExempt: true,
       rolloutExemptionReason: 'document topic listing is governed by document manifest and permission filters',
@@ -623,7 +696,23 @@ export function buildRegistryDefinitions(): DomainTool[] {
             ? 'Đang tải quyền truy cập, chưa liệt kê được. Thử lại sau vài giây.'
             : 'Không có tài liệu nào bạn được phép đọc.';
         }
-        return `Có ${topics.length} tài liệu:\n${topics.map((t) => `- ${t.key}`).join('\n')}`;
+        // Tách hai nhóm khi kể ra: một danh sách 51 mã trộn lẫn thì mô hình
+        // (và người đọc) không phân biệt được "quy định nghiệp vụ" với "hướng
+        // dẫn bấm nút" — hai thứ trả lời hai loại câu hỏi khác nhau.
+        const huongDan = topics.filter((t) => t.key.startsWith(TIEN_TO_HUONG_DAN));
+        const heThong = topics.filter((t) => !t.key.startsWith(TIEN_TO_HUONG_DAN));
+        const khoi: string[] = [];
+        if (heThong.length) {
+          khoi.push(
+            `Tài liệu nghiệp vụ hệ thống (${heThong.length}):\n${heThong.map((t) => `- ${t.key}`).join('\n')}`,
+          );
+        }
+        if (huongDan.length) {
+          khoi.push(
+            `Hướng dẫn sử dụng theo màn hình (${huongDan.length}):\n${huongDan.map((t) => `- ${t.key}`).join('\n')}`,
+          );
+        }
+        return `Có ${topics.length} tài liệu.\n\n${khoi.join('\n\n')}`;
       },
     }),
 
@@ -632,6 +721,9 @@ export function buildRegistryDefinitions(): DomainTool[] {
 
     // Write tool draft-first (Phase 5): NHÁP + 2 bước xác nhận + idempotency
     taoPhieuThuChiNhap,
+
+    // Bộ nhớ dài hạn (G1-D2) — ghi vào hàng CỦA CHÍNH người dùng, RLS own-row.
+    ...TOOL_GHI_NHO,
 
     dt({
       name: 'mo_trang',

@@ -79,6 +79,9 @@
     { "id": "C60", "input": "Hội thoại Zalo mới nhất", "expectedOutcome": "readonly", "toolPath": ["hoi_thoai_zalo"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
     { "id": "C61", "input": "Zalo của người không tồn tại", "expectedOutcome": "readonly", "toolPath": ["hoi_thoai_zalo"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
     { "id": "C62", "input": "Trạng thái mạng các tòa", "expectedOutcome": "readonly", "toolPath": ["trang_thai_mang"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
-    { "id": "C63", "input": "Router của tòa không tồn tại", "expectedOutcome": "readonly", "toolPath": ["trang_thai_mang"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" }
+    { "id": "C63", "input": "Router của tòa không tồn tại", "expectedOutcome": "readonly", "toolPath": ["trang_thai_mang"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "empty" },
+    { "id": "C64", "input": "Nhớ giúp tôi: toà ưu tiên là DEMO A", "expectedOutcome": "memory", "toolPath": ["ghi_nho"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" },
+    { "id": "C65", "input": "Tôi ưu tiên toà nào?", "expectedOutcome": "memory", "toolPath": [], "emptyState": "explicit", "forbidden": false, "oracleScenario": "knowledge" },
+    { "id": "C66", "input": "Đừng nhớ toà ưu tiên nữa", "expectedOutcome": "memory", "toolPath": ["quen"], "emptyState": "explicit", "forbidden": false, "oracleScenario": "positive" }
   ]
 }
