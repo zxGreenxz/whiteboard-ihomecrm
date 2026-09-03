@@ -150,10 +150,10 @@ describe('ranh giới: không tool nào tự duyệt được', () => {
     expect(timLoiGoiCam("const x = async () => duyetKeHoach(planId, 1, digest);")).toEqual([
       'duyetKeHoach',
     ]);
-    expect(timLoiGoiCam("supabase.rpc('copilot_plan_approve_v1', {})")).toEqual([
+    expect(timLoiGoiCam("supabase.rpc('" + 'copilot_plan_approve_v1' + "', {})")).toEqual([
       'copilot_plan_approve_v1',
     ]);
-    expect(timLoiGoiCam("supabase.rpc('copilot_plan_cancel_v1', {})")).toEqual([
+    expect(timLoiGoiCam("supabase.rpc('" + 'copilot_plan_cancel_v1' + "', {})")).toEqual([
       'copilot_plan_cancel_v1',
     ]);
     // ...và một lời NHẮC TỚI trong chú thích không phải một lời gọi.

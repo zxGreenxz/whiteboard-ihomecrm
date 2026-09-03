@@ -1202,7 +1202,6 @@
         }
       ],
       "callers": [
-        "src/copilot/__tests__/planTools.test.ts",
         "src/copilot/plan/planClient.ts"
       ],
       "risk": "normal"
@@ -1222,7 +1221,6 @@
         }
       ],
       "callers": [
-        "src/copilot/__tests__/planTools.test.ts",
         "src/copilot/plan/planClient.ts"
       ],
       "risk": "normal"
