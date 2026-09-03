@@ -1,8 +1,8 @@
-# E2E Copilot — 3 spec chạy trên trình duyệt thật, KHÔNG chạy theo mỗi PR.
+# E2E Copilot — 4 spec chạy trên trình duyệt thật, KHÔNG chạy theo mỗi PR.
 #
 # VÌ SAO TÁCH RA KHỎI ci-gates.yml
 #   Job quality-gates cố ý KHÔNG cần secret nào: nhờ vậy nó xanh trên mọi PR, kể
-#   cả PR từ fork. Ba spec dưới đây cần mật khẩu tài khoản DEMO và một URL trỏ tới
+#   cả PR từ fork. Bốn spec dưới đây cần mật khẩu tài khoản DEMO và một URL trỏ tới
 #   bản build đang chạy — gộp vào đó là biến cửa bắt buộc thành cửa đỏ-vì-thiếu-
 #   credential, và một cửa đỏ thường trực là cửa không ai còn đọc.
 #
@@ -14,12 +14,34 @@
 #   - FLEET_PASS_CHUNHA    : mật khẩu demo.chunha@username.ihomecrm.local
 #   - FLEET_PASS_KETOAN    : mật khẩu demo.ketoan@username.ihomecrm.local
 #   - FLEET_PASS_QUANLY    : mật khẩu demo.quanly@username.ihomecrm.local
-#   - FLEET_PASS_QUANLY2   : quản lý thứ hai. .e2e-fleet/specs/auth.ts CHƯA có
-#                            khoá cho tài khoản này (02/09/2026) — nối sẵn ở đây
-#                            để spec sau thêm vai đó mà không phải sửa workflow.
+#   - FLEET_PASS_QUANLY2   : mật khẩu demo.quanly2@username.ihomecrm.local. Khoá
+#                            `quanly2` đã có trong .e2e-fleet/specs/auth.ts từ
+#                            03/09/2026 (G2-F) — ma trận hành động cần một danh
+#                            tính DEMO thứ hai để thử "nonce của người này người
+#                            kia không dùng được".
+#   - FLEET_PASS_SYSADMIN  : mật khẩu tài khoản HỆ THỐNG nguyentamca165@gmail.com
+#                            (THÊM 03/09/2026, G2-F). Đây KHÔNG phải tài khoản
+#                            DEMO. Nó có mặt vì đúng MỘT việc mà không vai nào
+#                            khác làm được: `set_copilot_feature_flag_v2` đòi
+#                            `is_super_admin()`, và hai ca kill switch phải lật
+#                            cờ rollout thật. Đo 03/09/2026: tài khoản này KHÔNG
+#                            có `income_expenses.edit` trên org DEMO, nên nó
+#                            không ghi được gì qua đường Copilot — ma trận dùng
+#                            chính điều đó làm ca "thiếu quyền".
 #   - VERCEL_AUTOMATION_BYPASS_SECRET : mật khẩu mở khoá bản preview — xem khối
 #                            "PREVIEW BỊ KHOÁ" ngay dưới.
 #   Thiếu secret nào thì spec NÉM với thông báo chỉ đúng tên biến, không fail mơ hồ.
+#
+# MA TRẬN HÀNH ĐỘNG LẬT CỜ ROLLOUT THẬT — ĐỌC TRƯỚC KHI SỬA
+#   `copilot-action-matrix.spec.ts` tắt cờ `action:income_expense.create_draft`
+#   khoảng một giây trong hai ca kill switch rồi TỰ bật lại (`disabled → shadow →
+#   enabled`, và `afterAll` bật lại lần nữa cho chắc). Cờ đó được chọn vì nó đang
+#   `enabled` với canary NULL + hạn NULL, nên hoàn nguyên là CHÍNH XÁC từng cột;
+#   lật cờ `income_expense.annotate` (canary DEMO + có hạn) sẽ nới nó thành
+#   bật-toàn-cục-vĩnh-viễn vì `set_copilot_feature_flag_v2` ép hai cột đó về NULL
+#   khi chuyển sang `disabled` và không role nào đọc lại được giá trị cũ.
+#   Trạng thái xấu nhất nếu job chết giữa chừng là `disabled` — fail-CLOSED, nhìn
+#   thấy được ở /settings/ai-copilot → tab Rollout.
 #
 # PREVIEW BỊ KHOÁ — VÌ SAO PHẢI GỬI HEADER BYPASS
 #   FLEET_BASE_URL hiện trỏ vào alias preview
@@ -51,10 +73,16 @@
 #   FLEET_PASS_* — xem bước chạy test và bước guard bên dưới.
 #
 # PHẠM VI GHI: CHỈ ORG DEMO (Contract §8)
-#   Cả ba spec đăng nhập bằng tài khoản demo.* thuộc org DEMO (dddd…0001) và chỉ
+#   Mọi spec đăng nhập bằng tài khoản demo.* thuộc org DEMO (dddd…0001) và chỉ
 #   ghi trong phạm vi đó. `COPILOT_DRAFT_MATRIX_LIVE=1` mở phần ma trận nháp có
-#   GHI (preview nháp chưa duyệt) — vẫn trong org DEMO. Không có tài khoản của
-#   công ty thật nào trong workflow này.
+#   GHI (preview nháp chưa duyệt) — vẫn trong org DEMO.
+#
+#   Ngoại lệ DUY NHẤT về tài khoản là `FLEET_PASS_SYSADMIN` (tài khoản hệ thống,
+#   không thuộc công ty nào), và nó chỉ được dùng để lật cờ rollout — nó KHÔNG
+#   ghi được dữ liệu nghiệp vụ nào vì thiếu quyền, xem khối secret ở trên.
+#   `copilot-action-matrix.spec.ts` ghi vào ĐÚNG ba phiếu nháp DEMO có tên bắt
+#   đầu bằng "E2E G2-F", tra theo tên trước khi tạo nên chạy 100 lượt vẫn đúng
+#   ba phiếu — nó không làm DEMO phình thêm một hàng nào mỗi đêm.
 #
 # BẢN NÀO ĐANG ĐƯỢC THỬ — VÌ SAO **KHÔNG** DÙNG `github.sha`
 #   Mọi spec Copilot gọi `xacMinhBanBuild()`: nó so `EXPECTED_SOURCE_SHA` với thẻ
@@ -203,13 +231,14 @@ jobs:
       # mà `.e2e-fleet/` KHÔNG có package.json — nên chúng rơi vào GỐC REPO chứ
       # không phải `.e2e-fleet/`. Bản trước tải lên `.e2e-fleet/playwright-report/`
       # và sẽ luôn nhận được thư mục rỗng.
-      - name: 3 spec Copilot (readonly smoke · xác nhận · ma trận nháp)
+      - name: 4 spec Copilot (readonly smoke · xác nhận · ma trận nháp · ma trận hành động)
         env:
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
           FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
           FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
           FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
           FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
+          FLEET_PASS_SYSADMIN: ${{ secrets.FLEET_PASS_SYSADMIN }}
           # .e2e-fleet/global-setup.ts đọc biến này, đổi lấy cookie `_vercel_jwt`
           # một lần rồi cả suite chạy bằng cookie (storageState). Không có nó thì
           # Playwright chỉ thấy trang đăng nhập SSO của Vercel, không thấy app.
@@ -220,6 +249,11 @@ jobs:
           # Mở 2 test ghi nháp trong copilot-draft-matrix.spec.ts. Cờ này nằm
           # trong spec (`test.skip` khi khác '1') — KHÔNG gỡ cờ, chỉ đặt env.
           COPILOT_DRAFT_MATRIX_LIVE: '1'
+          # Mở ca chat "bỏ qua xác nhận" của copilot-action-matrix.spec.ts. Ca đó
+          # cần một provider mô hình SỐNG, nên nó có thể đỏ khi 9Router chết —
+          # đó là một tín hiệu thật (đường chat không dùng được), không phải
+          # nhiễu. Muốn tách nó khỏi cửa thì đặt '0', đừng sửa spec.
+          COPILOT_LIVE_MODEL: '1'
           # EXPECTED_SOURCE_SHA đến từ $GITHUB_ENV của bước trên. Cố ý KHÔNG khai
           # lại ở đây: env cấp-bước sẽ ĐÈ giá trị đó và ta quay về đúng lỗi cũ.
           THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
@@ -232,6 +266,7 @@ jobs:
             specs/copilot-readonly-smoke.spec.ts \
             specs/copilot-confirmation.spec.ts \
             specs/copilot-draft-matrix.spec.ts \
+            specs/copilot-action-matrix.spec.ts \
             --reporter=list \
             --trace=off \
             --output "$THU_MUC_RAC" 2>&1 | node -e '
@@ -304,6 +339,7 @@ jobs:
           FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
           FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
           FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
+          FLEET_PASS_SYSADMIN: ${{ secrets.FLEET_PASS_SYSADMIN }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -uo pipefail

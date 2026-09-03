@@ -9,6 +9,10 @@ export const REQUIRED_COPILOT_SPECS = [
   '.e2e-fleet/specs/copilot-readonly-smoke.spec.ts',
   '.e2e-fleet/specs/copilot-golden-readonly.spec.ts',
   '.e2e-fleet/specs/copilot-pageagent-safety.spec.ts',
+  // G2-F: ma trận hàng rào SERVER của đường ghi (nonce, phát lại, song song,
+  // phạm vi quyền, kill switch). Bốn spec trên đo phía trình duyệt; spec này đo
+  // thứ còn lại khi ai đó bỏ qua trình duyệt hoàn toàn.
+  '.e2e-fleet/specs/copilot-action-matrix.spec.ts',
 ];
 
 export function validateCopilotE2eFiles(root, required = REQUIRED_COPILOT_SPECS) {

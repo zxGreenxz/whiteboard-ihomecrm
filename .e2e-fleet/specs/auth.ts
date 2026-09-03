@@ -14,6 +14,17 @@ const EMAILS = {
   chunha: 'demo.chunha@username.ihomecrm.local',
   ketoan: 'demo.ketoan@username.ihomecrm.local',
   quanly: 'demo.quanly@username.ihomecrm.local',
+  // Quản lý THỨ HAI của org DEMO. Secret `FLEET_PASS_QUANLY2` đã có trong
+  // .github/workflows/copilot-e2e.yml từ 02/09/2026 nhưng khoá này thì chưa —
+  // ma trận hành động Copilot cần một danh tính DEMO thứ hai để chứng minh
+  // "nonce của người này người kia không dùng được".
+  quanly2: 'demo.quanly2@username.ihomecrm.local',
+  // Tài khoản HỆ THỐNG (super admin), KHÔNG phải tài khoản DEMO. Chỉ dùng cho
+  // việc duy nhất mà không vai nào khác làm được: lật cờ rollout bằng
+  // `set_copilot_feature_flag_v2` (RPC đó đòi `is_super_admin()`). Đo ngày
+  // 03/09/2026: tài khoản này KHÔNG có `income_expenses.edit` trên org DEMO,
+  // nên nó không ghi được gì qua đường Copilot — đừng dùng nó làm "vai chủ".
+  sysadmin: 'nguyentamca165@gmail.com',
   // Công ty TEST (org cccc…0001) — bản sao dữ liệu công ty thật, xem
   // scripts/clone-org/README.md. Dùng để thử tính năng mới trên dữ liệu thật.
   testchu: 'test.nguyentamca165@username.ihomecrm.local',
@@ -24,6 +35,8 @@ const PASS_ENV = {
   chunha: 'FLEET_PASS_CHUNHA',
   ketoan: 'FLEET_PASS_KETOAN',
   quanly: 'FLEET_PASS_QUANLY',
+  quanly2: 'FLEET_PASS_QUANLY2',
+  sysadmin: 'FLEET_PASS_SYSADMIN',
   testchu: 'FLEET_PASS_TEST',
   testketoan: 'FLEET_PASS_TEST',
 } as const;
