@@ -672,3 +672,31 @@ Deno.test("(h2) organization_required từ RPC → 400 (hàng rào thứ hai)", 
   assertEquals(res.status, 400);
   assertEquals((await res.json()).error.code, "organization_required");
 });
+
+Deno.test("(i) daily_token_quota từ RPC → 403 với mã RIÊNG, không phải 500", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, dem } = adminGia({ reserveLoi: "daily_token_quota" });
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "mock:done", messages: [{ role: "user", content: "chào" }] }),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  // 403 chứ KHÔNG 429, cùng lý do với daily_quota: trần ngày không reset sớm nên
+  // retry theo kiểu rate-limit là gõ cửa một cánh cửa đã khoá đến nửa đêm.
+  assertEquals(res.status, 403);
+  // Mã phải RIÊNG. Rơi về `internal` (500) thì client báo "server hỏng" cho một
+  // chuyện người dùng hiểu và chờ được; gộp vào `daily_quota` thì câu tiếng Việt
+  // nói "hết hạn mức chi phí" trong khi hai provider đang bật đều báo giá 0.
+  assertEquals((await res.json()).error.code, "daily_token_quota");
+  assertEquals(dem("finalize_ai_usage"), 0, "reserve hỏng thì chưa có gì để chốt");
+});
+
+Deno.test("(i2) daily_quota vẫn giữ nguyên mã cũ — cửa token không nuốt cửa USD", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin } = adminGia({ reserveLoi: "daily_quota" });
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "mock:done", messages: [{ role: "user", content: "chào" }] }),
+    { admin, getEnv: (k) => (k === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined) },
+  );
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).error.code, "daily_quota");
+});

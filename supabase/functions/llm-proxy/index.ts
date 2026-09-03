@@ -6,7 +6,7 @@
 //   → non-stream: normalize response → finalize qua waitUntil
 //   → stream (Phase 4): pipe SSE về client, TEE parse usage (stream_options
 //     include_usage) → finalize khi flush; client abort → propagate lên upstream.
-// Lỗi map: copilot_disabled/not_entitled/not_permitted/daily_quota → 403 (non-retryable);
+// Lỗi map: copilot_disabled/not_entitled/not_permitted/daily_quota/daily_token_quota → 403 (non-retryable);
 //          rate_limited → 429; local_only/bad model → 400.
 // Provider "mock" CHỈ dev/test (vẫn qua đủ gate) — tắt bằng ai_providers.enabled.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.81.1';
@@ -640,6 +640,12 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
     if (msg.includes('not_entitled')) return openaiError(403, 'User is not entitled to use copilot', 'not_entitled');
     if (msg.includes('not_permitted')) return openaiError(403, 'Missing ai_copilot permission', 'not_permitted');
     if (msg.includes('rate_limited')) return openaiError(429, 'Rate limit exceeded, retry later', 'rate_limited');
+    // daily_token_quota ĐỨNG TRƯỚC daily_quota. Hôm nay hai chuỗi không lồng
+    // nhau, nhưng chuỗi con là cách khớp mong manh: đổi tên mã một lần là cửa
+    // USD nuốt luôn cửa token, và người dùng đọc "hết hạn mức chi phí" trong khi
+    // hai provider đang bật đều báo giá 0 — họ chưa tiêu một xu nào.
+    // 403 (không 429) cùng lý do với daily_quota: trần ngày không reset sớm.
+    if (msg.includes('daily_token_quota')) return openaiError(403, 'Daily token quota exceeded', 'daily_token_quota');
     // daily_quota → 403 CHỦ Ý (không 429): quota ngày không reset sớm, LLM class retry 429 vô ích
     if (msg.includes('daily_quota')) return openaiError(403, 'Daily USD quota exceeded', 'daily_quota');
     return openaiError(500, `Reserve failed: ${msg}`, 'internal');

@@ -28,6 +28,18 @@ import {
 } from '../featureFlags';
 import { validateDefaultModel, validateProviderModels } from '../providerPolicy';
 import type { ProviderModel } from '../providerPolicy';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  GIA_QUY_UOC_SELF_HOSTED_USD_PER_TOKEN,
+  MUC_CANH_BAO_PHAN_TRAM,
+  chiPhiQuyUocSelfHosted,
+  daChamNguongCanhBao,
+  mocDauNgayVN,
+  tapModelSelfHosted,
+  tinhPhanTramHanMuc,
+  tomTatTokenHomNay,
+} from './hanMucToken';
+import type { DongTokenHomNay } from './hanMucToken';
 
 // ── Data hooks ───────────────────────────────────────────────────────────────
 
@@ -38,6 +50,9 @@ interface SettingsRow {
   daily_usd_cap_user: number;
   daily_usd_cap_tenant: number;
   daily_usd_cap_global: number;
+  // G1-F: hàng rào duy nhất còn cắn khi provider báo giá 0 (`20260903034632`).
+  daily_tokens_cap_user: number;
+  daily_tokens_cap_tenant: number;
 }
 
 const useSettings = () =>
@@ -46,10 +61,20 @@ const useSettings = () =>
     queryFn: async (): Promise<SettingsRow | null> => {
       const { data, error } = await supabase
         .from('ai_copilot_settings')
-        .select('chat_enabled, ui_control_enabled, rate_per_min, daily_usd_cap_user, daily_usd_cap_tenant, daily_usd_cap_global')
+        .select('chat_enabled, ui_control_enabled, rate_per_min, daily_usd_cap_user, daily_usd_cap_tenant, daily_usd_cap_global, daily_tokens_cap_user, daily_tokens_cap_tenant')
         .maybeSingle();
       if (error) throw error;
-      return data as SettingsRow | null;
+      // ÉP KIỂU CÓ CHỦ Ý: `integrations/supabase/types.ts` sinh từ schema
+      // PRODUCTION, mà hai cột cap token chỉ tồn tại sau khi migration
+      // `20260903034632` được apply. Sửa tay artifact máy-sở-hữu để "cho hết
+      // đỏ" sẽ làm job generated-types-drift đỏ ngay lượt CI kế tiếp; cast ở
+      // đúng hai chỗ đọc/ghi, kèm lý do, là cái giá rẻ hơn. Gỡ cast này ngay
+      // sau lần `npm run gen:types` đầu tiên hậu-apply.
+      //
+      // THỨ TỰ PHÁT HÀNH — không đảo được: migration `20260903034632` phải APPLY
+      // TRƯỚC khi web lên. Deploy web trước thì `.select()` này trả 400 "column
+      // does not exist" và CẢ tab Cài đặt chết, không riêng hai ô mới.
+      return (data ?? null) as unknown as SettingsRow | null;
     },
   });
 
@@ -150,6 +175,43 @@ const useUsage = () =>
     },
   });
 
+/**
+ * Token hôm nay (biên ngày VN — CÙNG biên với `reserve_ai_usage`).
+ *
+ * Truy vấn RIÊNG chứ không lọc lại từ `useUsage`: bảng 7 ngày bị `limit(1000)`
+ * cắt, và một ngày bận có thể vượt 1000 dòng — lúc đó thanh hạn mức sẽ báo thiếu
+ * đúng vào ngày người ta cần nó nhất.
+ *
+ * Đọc thẳng bảng qua RLS (giống `useUsage`) chứ không thêm RPC: policy
+ * `ai_usage_logs_select` đã scope sẵn `user_id = tôi OR owner_id = tôi OR super
+ * admin`, nên một RPC SECURITY DEFINER ở đây chỉ chép lại đúng luật đó vào chỗ
+ * thứ hai để hai chỗ lệch nhau về sau.
+ */
+const useTokenHomNay = () =>
+  useQuery({
+    queryKey: ['ai-usage-token-hom-nay'],
+    queryFn: async (): Promise<DongTokenHomNay[]> => {
+      const { data, error } = await supabase
+        .from('ai_usage_logs')
+        .select('user_id, owner_id, total_tokens')
+        .gte('created_at', mocDauNgayVN(new Date()))
+        .limit(5000);
+      if (error) throw error;
+      return (data ?? []) as DongTokenHomNay[];
+    },
+  });
+
+/** Bảng giá model — chỉ để biết model nào `self_hosted`. RLS cho mọi authenticated đọc. */
+const useProvidersGia = () =>
+  useQuery({
+    queryKey: ['ai-providers-gia'],
+    queryFn: async (): Promise<{ provider: string; models: unknown }[]> => {
+      const { data, error } = await supabase.from('ai_providers').select('provider, models');
+      if (error) throw error;
+      return (data ?? []) as { provider: string; models: unknown }[];
+    },
+  });
+
 const useProfileNames = (ids: string[]) =>
   useQuery({
     queryKey: ['profiles-brief', [...ids].sort()],
@@ -172,7 +234,9 @@ function SettingsTab() {
     mutationFn: async (s: SettingsRow) => {
       const { error } = await supabase
         .from('ai_copilot_settings')
-        .update({ ...s, updated_at: new Date().toISOString() })
+        // Cùng lý do với `useSettings`: hai cột cap token chưa có trong
+        // types.ts cho tới khi `20260903034632` được apply.
+        .update({ ...s, updated_at: new Date().toISOString() } as unknown as Record<string, never>)
         .eq('id', true);
       if (error) throw error;
     },
@@ -223,7 +287,33 @@ function SettingsTab() {
           Cap USD/ngày TOÀN HỆ THỐNG
           <Input type="number" step="0.1" value={cur.daily_usd_cap_global} onChange={(e) => set({ daily_usd_cap_global: num(e.target.value) })} />
         </label>
+        <label className="text-sm">
+          Cap TOKEN/ngày mỗi USER
+          <Input
+            type="number"
+            step="10000"
+            min={0}
+            value={cur.daily_tokens_cap_user}
+            onChange={(e) => set({ daily_tokens_cap_user: Math.max(0, Math.round(num(e.target.value))) })}
+          />
+        </label>
+        <label className="text-sm">
+          Cap TOKEN/ngày mỗi TENANT
+          <Input
+            type="number"
+            step="10000"
+            min={0}
+            value={cur.daily_tokens_cap_tenant}
+            onChange={(e) => set({ daily_tokens_cap_tenant: Math.max(0, Math.round(num(e.target.value))) })}
+          />
+        </label>
       </div>
+      <p className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+        <strong>Cap USD hiện KHÔNG cắn.</strong> Hai provider đang bật đều báo giá 0 (OpenRouter
+        model <code>:free</code>, 9Router <code>self_hosted</code>), nên nhân bao nhiêu token cũng ra
+        $0 và ba cap USD không bao giờ chạm. Hàng rào khối lượng thật là hai ô <strong>cap
+        TOKEN</strong> ở trên. Đặt <strong>0 = tắt</strong> hạn mức đó.
+      </p>
       <Button disabled={!draft || save.isPending} onClick={() => cur && save.mutate(cur)}>
         {save.isPending ? 'Đang lưu…' : 'Lưu cài đặt'}
       </Button>
@@ -674,10 +764,71 @@ function ProvidersTab() {
 
 // ── Tab: Sử dụng ─────────────────────────────────────────────────────────────
 
+/**
+ * Một thanh hạn mức token. `phanTram === null` nghĩa là hạn mức TẮT (cap = 0
+ * theo quy ước của `reserve_ai_usage`) — nói thẳng ra chứ KHÔNG vẽ thanh 0%,
+ * vì 0% đọc là "còn nguyên hạn mức", một câu khác hẳn.
+ */
+function ThanhHanMuc({
+  nhan,
+  daDung,
+  cap,
+  ghiChu,
+}: {
+  nhan: string;
+  daDung: number;
+  cap: number;
+  ghiChu?: string;
+}) {
+  const phanTram = tinhPhanTramHanMuc(daDung, cap);
+  const canhBao = daChamNguongCanhBao(phanTram);
+  return (
+    <div className="rounded border p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-sm font-medium">{nhan}</span>
+        {phanTram === null ? (
+          <span className="text-xs text-muted-foreground">Hạn mức đang TẮT (cap = 0)</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {daDung.toLocaleString('vi-VN')} / {cap.toLocaleString('vi-VN')} token · {phanTram}%
+          </span>
+        )}
+      </div>
+      {phanTram !== null && (
+        <div className="mt-2 h-2 w-full overflow-hidden rounded bg-muted">
+          {/* Bề rộng kẹp ở 100 — con số thật vẫn hiện nguyên ở trên, chỉ cái
+              thanh là không tràn ra ngoài khung. */}
+          <div
+            className={canhBao ? 'h-full bg-red-500' : 'h-full bg-emerald-500'}
+            style={{ width: `${Math.min(phanTram, 100)}%` }}
+          />
+        </div>
+      )}
+      {canhBao && (
+        <div className="mt-2 rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+          ⚠ Đã dùng ≥{MUC_CANH_BAO_PHAN_TRAM}% hạn mức token hôm nay. Chạm trần thì Copilot trả lỗi{' '}
+          <code>daily_token_quota</code> đến hết ngày (giờ VN).
+        </div>
+      )}
+      {ghiChu && <div className="mt-1 text-xs text-muted-foreground">{ghiChu}</div>}
+    </div>
+  );
+}
+
 function UsageTab() {
   const { data: rows, isLoading } = useUsage();
   const userIds = useMemo(() => [...new Set((rows ?? []).map((r) => r.user_id))], [rows]);
   const { data: names } = useProfileNames(userIds);
+  const { data: user } = useAuth();
+  const { data: isSuper } = useIsSuperAdmin();
+  const { data: settings } = useSettings();
+  const { data: dongHomNay } = useTokenHomNay();
+  const { data: providersGia } = useProvidersGia();
+  const tomTat = useMemo(
+    () => tomTatTokenHomNay(dongHomNay ?? [], user?.id ?? null, isSuper === true),
+    [dongHomNay, user?.id, isSuper],
+  );
+  const modelSelfHosted = useMemo(() => tapModelSelfHosted(providersGia ?? []), [providersGia]);
 
   if (isLoading) return <Loader2 className="h-5 w-5 animate-spin" />;
   const list = rows ?? [];
@@ -685,6 +836,14 @@ function UsageTab() {
     if (r.cost_usd === null) return null;
     const value = Number(r.cost_usd);
     return Number.isFinite(value) && value >= 0 ? value : null;
+  };
+  // Cột "Quy ước": model self-hosted có giá THẬT bằng 0 (`20260829080000`) nên
+  // cột USD của nó luôn $0.00000 và không so sánh được gì. Gán một đơn giá tượng
+  // trưng để XẾP HẠNG mức tiêu thụ — chỉ để so sánh, KHÔNG PHẢI HOÁ ĐƠN.
+  const chiPhiQuyUoc = (r: UsageRow): string => {
+    if (!modelSelfHosted.has(`${r.provider}:${r.model}`)) return '—';
+    const v = chiPhiQuyUocSelfHosted(r.total_tokens);
+    return v === null ? '—' : `≈$${v.toFixed(5)}`;
   };
   const totalCost = list.reduce<number | null>((s, r) => {
     const value = cost(r);
@@ -703,6 +862,28 @@ function UsageTab() {
 
   return (
     <div className="space-y-4">
+      {settings && (
+        <div className="space-y-2">
+          <div className="text-sm font-medium">Hạn mức token hôm nay (giờ VN)</div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <ThanhHanMuc
+              nhan="Của bạn"
+              daDung={tomTat.cuaToi}
+              cap={settings.daily_tokens_cap_user}
+            />
+            <ThanhHanMuc
+              nhan={isSuper ? 'Tenant của bạn' : 'Đội của bạn'}
+              daDung={tomTat.cuaTenant}
+              cap={settings.daily_tokens_cap_tenant}
+              ghiChu={
+                tomTat.tenantDayDu
+                  ? undefined
+                  : 'Bạn chỉ thấy dòng của chính mình (RLS), nên con số này THẤP hơn tổng thật của đội.'
+              }
+            />
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-3">
         <div className="rounded border p-3"><div className="text-xs text-muted-foreground">Request 7 ngày</div><div className="text-lg font-semibold">{list.length}</div></div>
         <div className="rounded border p-3"><div className="text-xs text-muted-foreground">Tokens</div><div className="text-lg font-semibold">{totalTokens.toLocaleString('vi-VN')}</div></div>
@@ -729,7 +910,7 @@ function UsageTab() {
       <div className="overflow-x-auto rounded border">
         <table className="w-full text-xs">
           <thead className="bg-muted/50 text-left">
-            <tr><th className="p-2">Thời gian</th><th className="p-2">Người dùng</th><th className="p-2">Model</th><th className="p-2">Feature</th><th className="p-2">Tokens</th><th className="p-2">USD</th><th className="p-2">Trạng thái</th></tr>
+            <tr><th className="p-2">Thời gian</th><th className="p-2">Người dùng</th><th className="p-2">Model</th><th className="p-2">Feature</th><th className="p-2">Tokens</th><th className="p-2">USD</th><th className="p-2">Quy ước</th><th className="p-2">Trạng thái</th></tr>
           </thead>
           <tbody>
             {list.slice(0, 50).map((r, i) => (
@@ -740,12 +921,19 @@ function UsageTab() {
                 <td className="p-2">{r.feature}</td>
                 <td className="p-2">{r.total_tokens}</td>
                 <td className="p-2">{formatUsageCost(r.cost_usd, r.reserved_cost_usd)}</td>
+                <td className="p-2 whitespace-nowrap text-muted-foreground">{chiPhiQuyUoc(r)}</td>
                 <td className="p-2">{r.status}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Cột <strong>Quy ước</strong> áp đơn giá {GIA_QUY_UOC_SELF_HOSTED_USD_PER_TOKEN} USD/token cho
+        model <code>self_hosted</code> — <strong>chỉ để so sánh, không phải hoá đơn</strong>. Giá
+        thật của chúng trong <code>ai_providers</code> là 0 (máy của chính công ty), nên cột USD
+        luôn $0 và không xếp hạng được model nào ngốn hơn model nào.
+      </p>
     </div>
   );
 }

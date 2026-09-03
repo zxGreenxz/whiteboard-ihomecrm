@@ -42,6 +42,21 @@ const THEO_MA: readonly [string, string][] = [
   ['organization_forbidden', 'Bạn không có quyền dùng Copilot trong tổ chức đang chọn.'],
   ['organization_mismatch', 'Tổ chức đã đổi, mở lại cuộc trò chuyện.'],
   ['rollout_unavailable', 'Trang/công cụ này chưa được bật cho tổ chức.'],
+  // Hai trần khác nhau, hai câu khác nhau — và `daily_token_quota` phải đứng
+  // TRƯỚC `daily_quota` ở đây. Hôm nay hai chuỗi không lồng nhau ("daily_token_
+  // quota" không chứa "daily_quota"), nhưng bảng này khớp theo chuỗi CON: một
+  // lần đổi tên mã là đủ để câu sau nuốt câu trước mà không ai thấy.
+  [
+    'daily_token_quota',
+    'Hôm nay bạn đã dùng hết hạn mức token Copilot. Thử lại vào ngày mai hoặc liên hệ quản trị.',
+  ],
+  // Trần USD. Trước đây mã này rơi xuống nhánh phỏng đoán `/…|403/` và người
+  // dùng đọc "chưa được cấp quyền HOẶC đã hết hạn mức" — một câu hai vế, không
+  // vế nào chắc, nên chẳng ai biết phải đi xin gì.
+  [
+    'daily_quota',
+    'Hôm nay hệ thống đã dùng hết hạn mức chi phí Copilot. Thử lại vào ngày mai hoặc liên hệ quản trị.',
+  ],
 ];
 
 /** Hàm THUẦN — không chạm state, để test được mọi nhánh mà không cần DOM. */

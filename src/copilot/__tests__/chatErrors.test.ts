@@ -78,6 +78,34 @@ describe('dienGiaiLoiChat', () => {
     expect(dienGiaiLoiChat('ECONNRESET')).toBe('Lỗi: ECONNRESET');
   });
 
+  it('chạm trần TOKEN nói đúng là token, không nói USD', () => {
+    // `daily_token_quota` là mã RIÊNG của cửa mới trong `reserve_ai_usage`
+    // (`20260903034632`). Gộp vào câu "hết hạn mức USD" là nói sai: hai provider
+    // đang bật đều báo giá 0, người dùng chưa tiêu một xu nào.
+    expect(dienGiaiLoiChat('daily_token_quota')).toBe(
+      'Hôm nay bạn đã dùng hết hạn mức token Copilot. Thử lại vào ngày mai hoặc liên hệ quản trị.',
+    );
+    // Proxy ghép `code: message`, nên chuỗi thật thường có đuôi.
+    expect(dienGiaiLoiChat('daily_token_quota: HTTP 403')).toBe(
+      'Hôm nay bạn đã dùng hết hạn mức token Copilot. Thử lại vào ngày mai hoặc liên hệ quản trị.',
+    );
+  });
+
+  it('`daily_quota` (trần USD) có câu RIÊNG, không rơi vào nhánh 403 chung', () => {
+    // Trước đây nó rơi xuống `/not_entitled|not_permitted|403/` và người dùng đọc
+    // "chưa được cấp quyền HOẶC hết hạn mức" — một câu hai vế, không vế nào chắc.
+    expect(dienGiaiLoiChat('daily_quota')).toBe(
+      'Hôm nay hệ thống đã dùng hết hạn mức chi phí Copilot. Thử lại vào ngày mai hoặc liên hệ quản trị.',
+    );
+  });
+
+  it('daily_token_quota KHÔNG bị `daily_quota` nuốt mất', () => {
+    // Hai mã khác nhau, hai cột cấu hình khác nhau. Nếu bảng tra để `daily_quota`
+    // đứng trước và khớp theo chuỗi con thì… may là không khớp — nhưng test này
+    // ghim lại điều đó để một lần đổi tên mã không lặng lẽ gộp hai câu.
+    expect(dienGiaiLoiChat('daily_token_quota')).not.toBe(dienGiaiLoiChat('daily_quota'));
+  });
+
   it('chuỗi rỗng cũng không làm vỡ định dạng', () => {
     expect(dienGiaiLoiChat('')).toBe('Lỗi: ');
   });
