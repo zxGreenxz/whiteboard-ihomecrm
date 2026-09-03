@@ -1,32 +1,37 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+
+import { boCommentSql, chuKyHam, docSql, thanHam } from './helpers/sqlTestUtils';
 
 // G2-A dựng nền ghi có kiểm soát bằng MỘT migration. Test này ghim những mệnh đề
 // mà G3 (kế hoạch thực thi) và G5 (Mức 3 — lật `max_direct_risk` sang L5) sẽ tựa
 // vào: nếu một trong chúng biến mất thì hai giai đoạn sau phải sửa lược đồ, đúng
 // thứ mà file migration sinh ra để tránh.
 //
-// Đây là test ĐỌC FILE, không phải test chạy SQL, nên nó chỉ trả lời được câu
-// "văn bản có còn nói điều đó không". Hành vi thật (trigger có chặn UPDATE không,
-// CHECK có từ chối hàng sai không) được khối nghiệm thu trong chính migration và
-// hai lượt dry-run trên production đo — ghi ra đây để không ai đọc màu xanh của
-// file này thành "đã kiểm chứng trên database".
+// MỌI assertion nội dung chạy trên bản ĐÃ LỘT BÌNH LUẬN.
+//   Bản đầu của file test này soi văn bản THÔ, và đó là một lớp xanh-giả có thật:
+//   đem `-- ` đặt trước cả khối kiểm lệnh cấm khẩn cấp thì hàng rào biến mất khỏi
+//   database mà mọi `expect` vẫn khớp — chuỗi vẫn còn đó, chỉ là Postgres không
+//   đọc nó nữa. Bài kiểm đột biến ở cuối file chứng minh cửa đó nay đã đóng.
+//
+// Đây vẫn là test ĐỌC FILE, nên nó chỉ trả lời "văn bản có còn nói điều đó không".
+// Hành vi thật (trigger có chặn UPDATE không, CHECK có từ chối hàng sai không)
+// do khối nghiệm thu trong chính migration và hai lượt dry-run trên production đo.
 const migrationPath =
   'supabase/migrations/20260903043956_copilot_action_registry_policy_ledger_v1.sql';
 
-const migration = existsSync(migrationPath)
-  ? readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n')
-  : '';
+/** Văn bản thô — CHỈ dùng cho bài kiểm đột biến ở cuối file. */
+const tho = docSql(migrationPath);
+const migration = boCommentSql(tho);
 
-/** Thân một hàm plpgsql: từ CREATE tới hết, đủ để so thứ tự bên trong nó. */
-function functionBody(sql: string, name: string): string {
-  const start = sql.search(
-    new RegExp(`CREATE OR REPLACE FUNCTION ${name}\\s*\\(`, 'i'),
-  );
-  if (start < 0) return '';
-  const rest = sql.slice(start);
-  const end = rest.search(/\n\$[a-z_]+\$;/i);
-  return end < 0 ? rest : rest.slice(0, end);
+/**
+ * Thân chính xác của một hàm: `thanHam` cắt tới khai báo kế tiếp hoặc khối ACL,
+ * rồi ta cắt thêm ở dấu đóng dollar-quote để một `expect(...).not.toMatch(...)`
+ * không vô tình đọc sang hàm sau.
+ */
+function than(ten: string, schema = 'public'): string {
+  const rong = thanHam(migration, ten, schema);
+  const dong = /\n\$[a-z_]*\$;/.exec(rong);
+  return dong ? rong.slice(0, dong.index) : rong;
 }
 
 describe('G2-A — migration nền ghi có kiểm soát', () => {
@@ -81,15 +86,21 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
     expect(migration).toMatch(
       /ADD CONSTRAINT copilot_action_registry_l6_forbidden CHECK/i,
     );
-    const khoi = migration.slice(
-      migration.indexOf('copilot_action_registry_l6_forbidden CHECK'),
-      migration.indexOf('copilot_action_registry_l6_forbidden CHECK') + 600,
-    );
+    const dau = migration.indexOf('copilot_action_registry_l6_forbidden CHECK');
+    const khoi = migration.slice(dau, dau + 600);
     const cam = /'\(sql\|secret\|deploy\|migration\|drop\|truncate\|pg_\)'/g;
     expect(khoi.match(cam)?.length ?? 0).toBe(3);
     expect(khoi).toMatch(/execute_rpc\s*!~/);
     expect(khoi).toMatch(/preview_rpc\s*!~/);
     expect(khoi).toMatch(/COALESCE\(rollback_rpc, ''\)\s*!~/);
+  });
+
+  // Cờ rollout của một action LÀ chính action đó. Khai lệch thì kill switch bấm
+  // một chỗ, tắt một chỗ khác — cửa (b) của gate đi hỏi cờ của action khác.
+  it('buộc flag_contract_id bằng đúng action_id', () => {
+    expect(migration).toMatch(
+      /ADD CONSTRAINT copilot_action_registry_flag_matches_action\s*\n?\s*CHECK \(flag_contract_id = action_id\)/,
+    );
   });
 
   it('dựng ba trigger: hai cái chặn sửa sổ, một cái giữ updated_at', () => {
@@ -106,10 +117,11 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
     // thông điệp phải nói "chi ghi them" để người đọc log hiểu ngay đây là luật
     // chứ không phải lỗi quyền ngẫu nhiên (cùng khuôn ai_write_audit 20260814034600).
     for (const fn of [
-      'app_private\\.copilot_policy_audit_bat_bien_v1',
-      'app_private\\.copilot_action_ledger_bat_bien_v1',
+      'copilot_policy_audit_bat_bien_v1',
+      'copilot_action_ledger_bat_bien_v1',
     ]) {
-      const body = functionBody(migration, fn);
+      const body = than(fn, 'app_private');
+      expect(body, `${fn}: không tách được thân hàm`).not.toBe('');
       expect(body).toMatch(/RAISE EXCEPTION/i);
       expect(body).toMatch(/chi ghi them/);
       expect(body).toMatch(/ERRCODE = '42501'/);
@@ -126,18 +138,15 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
   // ĐIỂM NỐI #2. G5 nâng trần rủi ro bằng cách GỌI RPC này, không bằng migration
   // mới — nên chữ ký sáu tham số và CAS theo revision phải đứng yên.
   it('RPC đổi policy có đúng sáu tham số theo thứ tự đã hẹn', () => {
-    const dau = migration.indexOf(
-      'CREATE OR REPLACE FUNCTION public.set_copilot_action_policy_v1(',
-    );
-    expect(dau).toBeGreaterThan(-1);
-    const chuKy = migration.slice(dau, migration.indexOf(')', dau) + 1);
+    const chuKy = chuKyHam(migration, 'set_copilot_action_policy_v1');
+    expect(chuKy).not.toBe('');
     const thamSo = [
-      'p_expected_revision      bigint',
-      'p_max_direct_risk        text DEFAULT NULL',
-      'p_allowed_roles          text[] DEFAULT NULL',
-      'p_standing_grants_enabled boolean DEFAULT NULL',
-      'p_reason                 text DEFAULT NULL',
-      'p_evidence_link          text DEFAULT NULL',
+      'p_expected_revision bigint',
+      'p_max_direct_risk text default null',
+      'p_allowed_roles text[] default null',
+      'p_standing_grants_enabled boolean default null',
+      'p_reason text default null',
+      'p_evidence_link text default null',
     ];
     let truoc = -1;
     for (const t of thamSo) {
@@ -149,13 +158,10 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
   });
 
   it('CAS revision ném 40001, và lý do + bằng chứng là bắt buộc', () => {
-    const body = functionBody(
-      migration,
-      'public\\.set_copilot_action_policy_v1',
-    );
+    const body = than('set_copilot_action_policy_v1');
+    expect(body).not.toBe('');
     expect(body).toMatch(/is_super_admin\(\)/);
     expect(body).toMatch(/FOR UPDATE/);
-    expect(body).toMatch(/copilot_policy_stale_revision/);
     // 40001 (serialization_failure) là mã mà client hiểu là "đọc lại rồi thử lại",
     // khác hẳn 42501 "anh không có quyền". Đổi mã là đổi hành vi retry của client.
     expect(body).toMatch(
@@ -172,13 +178,60 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
     expect(body).toMatch(/INSERT INTO app_private\.copilot_action_policy_audit/i);
   });
 
+  // Sổ policy riêng KHÔNG thay dòng thời gian chung: G3/G5 dựng lại "chuyện gì đã
+  // xảy ra" từ `copilot_action_ledger`, nên lần lật van phải có mặt ở đó.
+  it('đổi policy cũng ghi một dòng policy_changed vào sổ hành động', () => {
+    const body = than('set_copilot_action_policy_v1');
+    expect(body).toMatch(
+      /PERFORM app_private\.copilot_ledger_append_v1[\s\S]{0,160}'event', 'policy_changed'/,
+    );
+    expect(body).toMatch(/'revision_before', v_cu\.revision/);
+    expect(body).toMatch(/'revision_after', v_moi\.revision/);
+    // Van là hàng toàn hệ thống: KHÔNG được bịa ra một tổ chức cho nó.
+    const goi = body.slice(body.indexOf("'event', 'policy_changed'"));
+    expect(goi).not.toMatch(/'organization_id'/);
+    expect(migration).not.toMatch(/00000000-0000-0000-0000-000000000000/);
+  });
+
+  it('sổ hành động chỉ tha organization_id cho đúng sự kiện policy_changed', () => {
+    expect(migration).toMatch(
+      /ADD CONSTRAINT copilot_action_ledger_org_required\s*\n?\s*CHECK \(organization_id IS NOT NULL OR event = 'policy_changed'\)/,
+    );
+    // Cột phải nullable thì CHECK trên mới là thứ quyết định, chứ không phải
+    // NOT NULL của cột chặn trước.
+    expect(migration).toMatch(
+      /ALTER TABLE app_private\.copilot_action_ledger\s*\n\s*ALTER COLUMN organization_id DROP NOT NULL;/,
+    );
+    const cot = migration.slice(
+      migration.indexOf('CREATE TABLE IF NOT EXISTS app_private.copilot_action_ledger'),
+      migration.indexOf('ALTER TABLE app_private.copilot_action_ledger'),
+    );
+    expect(cot).toMatch(/^\s*organization_id\s+uuid,$/m);
+    expect(cot).not.toMatch(/organization_id\s+uuid NOT NULL/);
+  });
+
+  // Sổ mà ghi sai người thực hiện thì nó không còn là bằng chứng. `user_id` do
+  // người gọi đưa vào là một cửa mạo danh nằm sẵn trong đường ghi bằng chứng.
+  it('đường ghi sổ tự đóng dấu auth.uid() và bỏ qua user_id của người gọi', () => {
+    const body = than('copilot_ledger_append_v1', 'app_private');
+    expect(body).not.toBe('');
+    expect(body).toMatch(/v_uid\s+uuid := auth\.uid\(\);/);
+    expect(body).not.toMatch(/p ->> 'user_id'/);
+    expect(body).toMatch(/unauthenticated[\s\S]{0,80}ERRCODE = '28000'/);
+    expect(body).toMatch(
+      /v_org IS NULL AND v_event IS DISTINCT FROM 'policy_changed'[\s\S]{0,160}copilot_ledger_organization_required/,
+    );
+    // Digest vào dưới dạng hex; ba cột bytea không bao giờ nhận chuỗi thô.
+    for (const c of ['payload_digest', 'before_digest', 'after_digest']) {
+      expect(body).toMatch(new RegExp(`decode\\(NULLIF\\(p ->> '${c}', ''\\), 'hex'\\)`));
+    }
+  });
+
   it('gieo cờ scope=action có dấu giao dịch v2 TRƯỚC khi INSERT', () => {
     const dat = migration.indexOf(
       "set_config('app.copilot_feature_flag_transition', 'v2', true)",
     );
-    const chen = migration.indexOf(
-      'INSERT INTO public.copilot_feature_flags',
-    );
+    const chen = migration.indexOf('INSERT INTO public.copilot_feature_flags');
     const traLai = migration.indexOf(
       "set_config('app.copilot_feature_flag_transition', '', true)",
     );
@@ -240,25 +293,33 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
     expect(migration).toMatch(/IF to_regrole\('service_role'\) IS NOT NULL THEN/);
   });
 
-  it('cổng action kiểm bốn cửa theo đúng thứ tự rẻ-trước-đắt-sau', () => {
-    const body = functionBody(
-      migration,
-      'app_private\\.copilot_action_gate_v1',
-    );
+  // `authorized_scope_v3` (20260829100000) ĐÃ gấp lệnh cấm khẩn cấp vào kết quả
+  // của nó, nên hỏi phạm vi quyền trước sẽ ném `not_permitted` và khối cấm khẩn
+  // cấp phía sau thành mã chết — log nói "thiếu quyền" cho một sự cố mà thật ra
+  // ai đó vừa kéo cầu dao cho cả công ty.
+  it('cổng action hỏi lệnh cấm khẩn cấp TRƯỚC phạm vi quyền', () => {
+    const body = than('copilot_action_gate_v1', 'app_private');
     expect(body).not.toBe('');
     const viTri = {
       registry: body.indexOf('app_private.copilot_action_registry'),
       flag: body.indexOf('public.copilot_feature_flags'),
-      scope: body.indexOf('app_private.authorized_scope_v3'),
       denies: body.indexOf('app_private.tenant_emergency_denies'),
+      scope: body.indexOf('app_private.authorized_scope_v3'),
     };
     for (const [ten, vi] of Object.entries(viTri)) {
       expect(vi, `cổng không đọc ${ten}`).toBeGreaterThan(-1);
     }
     expect(viTri.registry).toBeLessThan(viTri.flag);
-    expect(viTri.flag).toBeLessThan(viTri.scope);
-    expect(viTri.scope).toBeLessThan(viTri.denies);
+    expect(viTri.flag).toBeLessThan(viTri.denies);
+    expect(viTri.denies).toBeLessThan(viTri.scope);
+    // Và mã lỗi phải đi cùng thứ tự đó: cấm khẩn cấp nói đúng tên của nó.
+    expect(body.indexOf('tenant_emergency_denied')).toBeLessThan(
+      body.indexOf('not_permitted'),
+    );
+  });
 
+  it('cổng action kiểm đủ bốn cửa và trả đủ ảnh chụp quyền', () => {
+    const body = than('copilot_action_gate_v1', 'app_private');
     expect(body).toMatch(/copilot_action_disabled[\s\S]{0,200}ERRCODE = '42501'/);
     expect(body).toMatch(/tenant_emergency_denied[\s\S]{0,200}ERRCODE = '42501'/);
     // Cột `permission_key IS NULL` là cách bảng cấm khẩn cấp nói "cấm mọi quyền";
@@ -285,21 +346,15 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
   });
 
   it('RPC bật/tắt capability nhận organization_id làm tham số ĐẦU TIÊN', () => {
-    const dau = migration.indexOf(
-      'CREATE OR REPLACE FUNCTION public.set_copilot_writer_capability_v1(',
-    );
-    expect(dau).toBeGreaterThan(-1);
-    const chuKy = migration.slice(dau, migration.indexOf(')', dau) + 1);
+    const chuKy = chuKyHam(migration, 'set_copilot_writer_capability_v1');
+    expect(chuKy).not.toBe('');
     // Không có tổ chức thì dòng sổ không lọc ra được ở màn hình nào — đó là lý
     // do tham số này đứng trước, thay cho một UUID toàn số 0.
+    expect(chuKy.indexOf('p_organization_id uuid')).toBe(0);
     expect(chuKy.indexOf('p_organization_id uuid')).toBeLessThan(
       chuKy.indexOf('p_capability_key'),
     );
-    expect(chuKy).not.toMatch(/00000000-0000-0000-0000-000000000000/);
-    const body = functionBody(
-      migration,
-      'public\\.set_copilot_writer_capability_v1',
-    );
+    const body = than('set_copilot_writer_capability_v1');
     expect(body).toMatch(/is_super_admin\(\)/);
     expect(body).toMatch(/capability_reason_required/);
     expect(body).toMatch(/capability_not_found[\s\S]{0,120}ERRCODE = 'P0002'/);
@@ -314,16 +369,17 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
   it('mọi hàm SECURITY DEFINER đều ghim search_path', () => {
     const dinhNghia = [
       ...migration.matchAll(
-        /CREATE OR REPLACE FUNCTION\s+([a-z_]+\.[a-z0-9_]+)\s*\(/gi,
+        /CREATE OR REPLACE FUNCTION\s+([a-z_]+)\.([a-z0-9_]+)\s*\(/gi,
       ),
-    ].map((m) => m[1]);
-    expect(dinhNghia.length).toBeGreaterThanOrEqual(9);
-    for (const ten of dinhNghia) {
-      const body = functionBody(migration, ten.replace('.', '\\.'));
-      expect(body, `${ten} không phải SECURITY DEFINER`).toMatch(
+    ].map((m) => ({ schema: m[1], ten: m[2] }));
+    expect(dinhNghia.length).toBeGreaterThanOrEqual(10);
+    for (const { schema, ten } of dinhNghia) {
+      const body = than(ten, schema);
+      expect(body, `${schema}.${ten}: không tách được thân hàm`).not.toBe('');
+      expect(body, `${schema}.${ten} không phải SECURITY DEFINER`).toMatch(
         /SECURITY DEFINER/,
       );
-      expect(body, `${ten} thiếu SET search_path`).toMatch(
+      expect(body, `${schema}.${ten} thiếu SET search_path`).toMatch(
         /SET search_path = pg_catalog, public, app_private/,
       );
     }
@@ -336,10 +392,8 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
     expect(migration).toMatch(
       /CREATE INDEX IF NOT EXISTS idx_copilot_action_ledger_plan_step[\s\S]{0,160}\(plan_id, step_no\)/,
     );
-    const doc = functionBody(
-      migration,
-      'public\\.copilot_action_ledger_list_v1',
-    );
+    const doc = than('copilot_action_ledger_list_v1');
+    expect(doc).not.toBe('');
     // Ba digest là bằng chứng nội bộ; đưa hex 64 ký tự ra trình duyệt chỉ mời
     // người ta thử đoán ngược payload.
     expect(doc).toMatch(
@@ -347,6 +401,9 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
     );
     expect(doc).toMatch(/LEAST\(GREATEST\(COALESCE\(p_limit, 50\), 1\), 200\)/);
     expect(doc).toMatch(/v_super OR l\.user_id = v_actor/);
+    // Dòng policy_changed không thuộc công ty nào; không nhận chúng ở đây là
+    // ghi vào sổ một loại dòng mà không đường nào đọc được.
+    expect(doc).toMatch(/l\.organization_id IS NULL AND v_super/);
     expect(doc).toMatch(/ORDER BY l\.created_at DESC/);
   });
 
@@ -358,10 +415,66 @@ describe('G2-A — migration nền ghi có kiểm soát', () => {
     expect(khoi).toMatch(/pg_constraint/);
     expect(khoi).toMatch(/pg_trigger/);
     expect(khoi).toMatch(/to_regprocedure/);
+    // Sáu CHECK có tên phải nằm trong danh sách nghiệm thu, kể cả hai cái mới.
+    for (const c of [
+      'copilot_action_registry_l5_row_check',
+      'copilot_action_registry_l6_forbidden',
+      'copilot_action_registry_flag_matches_action',
+      'copilot_action_ledger_org_required',
+    ]) {
+      expect(khoi).toMatch(new RegExp(`'${c}'`));
+    }
     // Restore Drill replay lane này lên baseline schema-only: không có tổ chức,
     // không có người dùng. Một phép thử ghi thật ở đây sẽ cuộn cả file.
     expect(khoi).not.toMatch(/INSERT INTO public\.(?!copilot_feature_flags)/);
     expect(khoi).not.toMatch(/FROM public\.organizations/);
     expect(khoi).not.toMatch(/auth\.users/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bài kiểm đột biến — chứng minh các pin ở trên KHÔNG phải màu xanh rỗng.
+//
+// Không sửa file trên đĩa: đột biến chỉ tồn tại trong bộ nhớ của chính test này.
+// ---------------------------------------------------------------------------
+describe('G2-A — pin phải đỏ khi hàng rào bị bình luận hoá', () => {
+  const MOC = 'FROM app_private.tenant_emergency_denies d';
+  const PIN =
+    /d\.permission_key IS NULL OR d\.permission_key = v_reg\.permission_key/;
+
+  /** Đặt `-- ` trước dòng mốc và 4 dòng vị ngữ ngay sau nó. */
+  function binhLuanHoaKhoiCamKhanCap(sql: string): string {
+    const dong = sql.split('\n');
+    const i = dong.findIndex((d) => d.includes(MOC));
+    expect(i, 'không tìm thấy khối cấm khẩn cấp để đột biến').toBeGreaterThan(-1);
+    for (let j = i; j < i + 5 && j < dong.length; j += 1) {
+      dong[j] = `-- ${dong[j]}`;
+    }
+    return dong.join('\n');
+  }
+
+  it('văn bản THÔ vẫn khớp pin sau khi bị bình luận hoá — đó chính là cái lỗ', () => {
+    const dotBien = binhLuanHoaKhoiCamKhanCap(tho);
+    // Postgres đã ngừng đọc hàng rào này, nhưng chuỗi vẫn còn nguyên trên đĩa.
+    expect(dotBien).toMatch(PIN);
+  });
+
+  it('bản đã lột bình luận thì KHÔNG khớp nữa — cửa đã đóng', () => {
+    const dotBien = boCommentSql(binhLuanHoaKhoiCamKhanCap(tho));
+    expect(dotBien).not.toMatch(PIN);
+    // Và bản không đột biến vẫn khớp, để bài kiểm này không xanh vì lý do sai
+    // (ví dụ `boCommentSql` cắt nhầm cả câu lệnh thật).
+    expect(migration).toMatch(PIN);
+  });
+
+  it('một cửa của cổng bị bình luận hoá làm thứ tự bốn cửa sụp', () => {
+    const than_dot = boCommentSql(
+      thanHam(
+        boCommentSql(binhLuanHoaKhoiCamKhanCap(tho)),
+        'copilot_action_gate_v1',
+        'app_private',
+      ),
+    );
+    expect(than_dot.indexOf('app_private.tenant_emergency_denies')).toBe(-1);
   });
 });

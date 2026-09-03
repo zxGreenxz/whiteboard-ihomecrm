@@ -109,6 +109,20 @@ BEGIN
       );
   END IF;
 
+  -- Cờ rollout của một action LÀ chính action đó. Brief khai `flag_contract_id`
+  -- (= action_id) thành một cột riêng thay vì suy ra, nên phải có ràng buộc giữ
+  -- hai vế bằng nhau: một hàng khai lệch sẽ làm `copilot_action_gate_v1` đi hỏi
+  -- cờ của action KHÁC — kill switch bấm một chỗ, tắt một chỗ khác.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'copilot_action_registry_flag_matches_action'
+       AND conrelid = 'app_private.copilot_action_registry'::regclass
+  ) THEN
+    ALTER TABLE app_private.copilot_action_registry
+      ADD CONSTRAINT copilot_action_registry_flag_matches_action
+      CHECK (flag_contract_id = action_id);
+  END IF;
+
   -- ĐIỂM NỐI #1 — G5 lật `max_direct_risk` sang 'L5' mà không phải sửa bảng này.
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
@@ -315,7 +329,9 @@ CREATE TABLE IF NOT EXISTS app_private.copilot_action_ledger (
                         'action_executed', 'action_failed', 'policy_changed',
                         'capability_changed')),
   user_id             uuid NOT NULL,
-  organization_id     uuid NOT NULL,
+  -- Nullable ở tầng cột, nhưng bắt buộc ở tầng CHECK cho MỌI sự kiện trừ
+  -- `policy_changed` — xem `copilot_action_ledger_org_required` bên dưới.
+  organization_id     uuid,
   action_id           text,
   permission_key      text,
   permission_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -339,6 +355,29 @@ CREATE TABLE IF NOT EXISTS app_private.copilot_action_ledger (
   audit_id            uuid,
   created_at          timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+
+-- Phòng trường hợp bảng đã tồn tại từ một nhánh cũ với cột NOT NULL. Lệnh này
+-- không ném khi cột đã nullable, nên chạy lại được.
+ALTER TABLE app_private.copilot_action_ledger
+  ALTER COLUMN organization_id DROP NOT NULL;
+
+-- `policy_changed` là sự kiện TOÀN HỆ THỐNG: van trần rủi ro là một hàng duy
+-- nhất, không thuộc công ty nào. Ép nó mang một org sẽ buộc người ghi bịa ra
+-- một UUID — và một UUID bịa trong sổ bằng chứng còn tệ hơn một ô trống, vì nó
+-- trông như dữ liệu thật. Mọi sự kiện KHÁC vẫn bắt buộc có org.
+DO $rang_buoc_ledger$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'copilot_action_ledger_org_required'
+       AND conrelid = 'app_private.copilot_action_ledger'::regclass
+  ) THEN
+    ALTER TABLE app_private.copilot_action_ledger
+      ADD CONSTRAINT copilot_action_ledger_org_required
+      CHECK (organization_id IS NOT NULL OR event = 'policy_changed');
+  END IF;
+END
+$rang_buoc_ledger$;
 
 CREATE INDEX IF NOT EXISTS idx_copilot_action_ledger_org_time
   ON app_private.copilot_action_ledger (organization_id, created_at DESC);
@@ -387,6 +426,14 @@ COMMENT ON TABLE app_private.copilot_action_ledger IS
 -- Đường ghi duy nhất vào sổ. Nhận jsonb thay vì 22 tham số vì mỗi loại sự kiện
 -- điền một tập cột khác nhau, và một chữ ký 22 tham số sẽ phải đổi mỗi lần G3
 -- thêm một trường.
+--
+-- AI GHI SỔ THÌ SỔ TỰ ĐÓNG DẤU, KHÔNG HỎI NGƯỜI GỌI. Bản trước nhận `user_id`
+-- từ payload và chỉ rơi về `auth.uid()` khi thiếu. Đó là một cửa mạo danh nằm
+-- sẵn trong đường ghi bằng chứng: một RPC action tương lai lỡ tay chuyển tiếp
+-- payload do trình duyệt dựng là ghi được một dòng sổ mang tên người khác. Sổ
+-- mà ghi sai người thực hiện thì nó không còn là bằng chứng nữa. Nay `user_id`
+-- trong payload bị BỎ QUA hoàn toàn — dấu duy nhất là `auth.uid()`, và không có
+-- `auth.uid()` thì không có dòng nào (28000).
 CREATE OR REPLACE FUNCTION app_private.copilot_ledger_append_v1(p jsonb)
 RETURNS uuid
 LANGUAGE plpgsql
@@ -395,17 +442,20 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app_private
 AS $ledger_append$
 DECLARE
-  v_id  uuid;
-  v_uid uuid := COALESCE(NULLIF(p ->> 'user_id', '')::uuid, auth.uid());
-  v_org uuid := NULLIF(p ->> 'organization_id', '')::uuid;
+  v_id    uuid;
+  v_uid   uuid := auth.uid();
+  v_org   uuid := NULLIF(p ->> 'organization_id', '')::uuid;
+  v_event text := NULLIF(p ->> 'event', '');
 BEGIN
   IF p IS NULL OR jsonb_typeof(p) <> 'object' THEN
     RAISE EXCEPTION 'copilot_ledger_payload_invalid' USING ERRCODE = '22023';
   END IF;
   IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'copilot_ledger_user_required' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
   END IF;
-  IF v_org IS NULL THEN
+  -- Chỉ `policy_changed` được phép không có tổ chức (van trần rủi ro là hàng
+  -- toàn hệ thống); CHECK trên bảng canh vế còn lại.
+  IF v_org IS NULL AND v_event IS DISTINCT FROM 'policy_changed' THEN
     RAISE EXCEPTION 'copilot_ledger_organization_required' USING ERRCODE = '22023';
   END IF;
 
@@ -419,7 +469,7 @@ BEGIN
     NULLIF(p ->> 'plan_id', '')::uuid,
     NULLIF(p ->> 'step_no', '')::int,
     NULLIF(p ->> 'plan_version', '')::int,
-    p ->> 'event',
+    v_event,
     v_uid,
     v_org,
     NULLIF(p ->> 'action_id', ''),
@@ -580,6 +630,24 @@ BEGIN
     btrim(p_evidence_link)
   );
 
+  -- Sổ hành động cũng phải thấy lần lật van này. `copilot_action_policy_audit`
+  -- là sổ riêng của policy; `copilot_action_ledger` là dòng thời gian DUY NHẤT
+  -- mà G3/G5 đọc để dựng lại "chuyện gì đã xảy ra". Một thay đổi trần rủi ro
+  -- không có mặt ở đó thì dòng thời gian có một lỗ đúng ngay chỗ quan trọng
+  -- nhất. Không truyền `organization_id`: van là hàng toàn hệ thống.
+  PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
+    'event', 'policy_changed',
+    'outcome', jsonb_build_object(
+      'revision_before', v_cu.revision,
+      'revision_after', v_moi.revision,
+      'max_direct_risk', v_moi.max_direct_risk,
+      'allowed_roles', to_jsonb(v_moi.allowed_roles),
+      'standing_grants_enabled', v_moi.standing_grants_enabled,
+      'reason', btrim(p_reason),
+      'evidence_link', btrim(p_evidence_link)
+    )
+  ));
+
   RETURN jsonb_build_object(
     'revision', v_moi.revision,
     'max_direct_risk', v_moi.max_direct_risk,
@@ -699,7 +767,11 @@ BEGIN
     FROM (
       SELECT l.*
         FROM app_private.copilot_action_ledger l
-       WHERE l.organization_id = p_organization_id
+       -- Dòng `policy_changed` không thuộc công ty nào (org NULL). Không nhận
+       -- chúng ở đây thì chúng nằm trong sổ mà KHÔNG đường nào đọc được — và
+       -- chỉ super admin mới lật được van nên chỉ super admin mới thấy.
+       WHERE (l.organization_id = p_organization_id
+              OR (l.organization_id IS NULL AND v_super))
          AND (v_super OR l.user_id = v_actor)
        ORDER BY l.created_at DESC
        LIMIT v_limit
@@ -768,8 +840,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app_private
 AS $capability$
 DECLARE
-  v_actor uuid := auth.uid();
-  v_row   app_private.copilot_ie_writer_capabilities_v1%ROWTYPE;
+  v_row app_private.copilot_ie_writer_capabilities_v1%ROWTYPE;
 BEGIN
   IF NOT public.is_super_admin() THEN
     RAISE EXCEPTION 'capability_not_permitted' USING ERRCODE = '42501';
@@ -797,9 +868,10 @@ BEGIN
     RAISE EXCEPTION 'capability_not_found: %', p_capability_key USING ERRCODE = 'P0002';
   END IF;
 
+  -- Không truyền `user_id`: `copilot_ledger_append_v1` tự đóng dấu `auth.uid()`
+  -- và bỏ qua mọi giá trị người gọi đưa vào.
   PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
     'event', 'capability_changed',
-    'user_id', v_actor,
     'organization_id', p_organization_id,
     'outcome', jsonb_build_object(
       'capability_key', v_row.capability_key,
@@ -835,9 +907,26 @@ END
 $quyen_capability$;
 
 -- CỔNG. Mọi RPC action tương lai gọi hàm này NGAY TRƯỚC khi ghi, và dùng
--- `permission_snapshot` nó trả về làm ảnh chụp quyền cho sổ. Bốn cửa, theo đúng
--- thứ tự rẻ-trước-đắt-sau: registry (một hàng, khoá chính) → flag (một hàng,
--- khoá chính) → phạm vi quyền (truy vấn đồ thị quyền) → lệnh cấm khẩn cấp.
+-- `permission_snapshot` nó trả về làm ảnh chụp quyền cho sổ. Bốn cửa:
+--   (a) registry (một hàng, khoá chính)
+--   (b) cờ kill switch (một hàng, khoá chính)
+--   (c) lệnh cấm khẩn cấp của tổ chức
+--   (d) phạm vi quyền qua `authorized_scope_v3`
+--
+-- VÌ SAO (c) PHẢI ĐỨNG TRƯỚC (d), KHÔNG PHẢI SAU — bản trước xếp ngược và vế
+-- cấm khẩn cấp là MÃ CHẾT.
+--   `authorized_scope_v3` (20260829100000) đã gấp lệnh cấm khẩn cấp vào KẾT QUẢ
+--   của chính nó: CTE `emergency` bật lên thì hàm trả `org_wide = false` với hai
+--   mảng rỗng. Nên khi một tổ chức đang bị cấm khẩn cấp, cửa phạm vi quyền ném
+--   `not_permitted` TRƯỚC, và khối `tenant_emergency_denies` phía sau không bao
+--   giờ chạy tới. Hệ quả không phải là mở lỗ — người dùng vẫn bị chặn — mà là
+--   NÓI DỐI về lý do: log ghi "thiếu quyền" cho một sự cố mà thật ra ai đó vừa
+--   kéo cầu dao khẩn cấp cho cả công ty. Người trực sự cố đọc log đó sẽ đi sửa
+--   phân quyền của một người, trong khi thứ cần làm là gỡ lệnh cấm.
+--
+--   Đổi thứ tự trả lại cho mỗi cửa đúng thông điệp của nó, và rẻ hơn: một EXISTS
+--   trên `tenant_emergency_denies` nhẹ hơn hẳn truy vấn đồ thị quyền mà nó thay
+--   thế trong đúng những lần bị chặn.
 CREATE OR REPLACE FUNCTION app_private.copilot_action_gate_v1(
   p_action_id       text,
   p_organization_id uuid
@@ -897,7 +986,23 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
-  -- (c) Phạm vi quyền thật của người gọi trong tổ chức này. Không có lối tắt
+  -- (c) Lệnh cấm khẩn cấp của tổ chức, hỏi TRƯỚC phạm vi quyền (lý do ở đầu
+  -- hàm). `permission_key IS NULL` là lệnh cấm toàn phần — cột đó chính là cách
+  -- bảng này nói "cấm mọi quyền".
+  IF EXISTS (
+    SELECT 1
+      FROM app_private.tenant_emergency_denies d
+     WHERE d.organization_id = p_organization_id
+       AND (d.permission_key IS NULL OR d.permission_key = v_reg.permission_key)
+       AND d.active_from <= v_now
+       AND (d.expires_at IS NULL OR d.expires_at > v_now)
+  ) THEN
+    RAISE EXCEPTION 'tenant_emergency_denied: % tren to chuc %',
+      v_reg.permission_key, p_organization_id
+      USING ERRCODE = '42501';
+  END IF;
+
+  -- (d) Phạm vi quyền thật của người gọi trong tổ chức này. Không có lối tắt
   -- super admin: `authorized_scope_v3` là cùng một phép đo mà màn hình dùng, và
   -- cặp writer thu/chi (20260830171108) cũng chỉ hỏi đúng câu này.
   SELECT s.org_wide, s.building_ids, s.cashbook_ids
@@ -909,21 +1014,6 @@ BEGIN
          AND COALESCE(cardinality(v_toa), 0) = 0
          AND COALESCE(cardinality(v_so), 0) = 0) THEN
     RAISE EXCEPTION 'not_permitted: % tren to chuc %', v_reg.permission_key, p_organization_id
-      USING ERRCODE = '42501';
-  END IF;
-
-  -- (d) Lệnh cấm khẩn cấp của tổ chức. `permission_key IS NULL` là lệnh cấm
-  -- toàn phần — cột đó chính là cách bảng này nói "cấm mọi quyền".
-  IF EXISTS (
-    SELECT 1
-      FROM app_private.tenant_emergency_denies d
-     WHERE d.organization_id = p_organization_id
-       AND (d.permission_key IS NULL OR d.permission_key = v_reg.permission_key)
-       AND d.active_from <= v_now
-       AND (d.expires_at IS NULL OR d.expires_at > v_now)
-  ) THEN
-    RAISE EXCEPTION 'tenant_emergency_denied: % tren to chuc %',
-      v_reg.permission_key, p_organization_id
       USING ERRCODE = '42501';
   END IF;
 
@@ -996,7 +1086,9 @@ BEGIN
     'copilot_action_registry_l5_row_check',
     'copilot_action_registry_l6_forbidden',
     'copilot_action_registry_rpc_name_shape',
-    'copilot_action_policy_allowed_roles_check'
+    'copilot_action_registry_flag_matches_action',
+    'copilot_action_policy_allowed_roles_check',
+    'copilot_action_ledger_org_required'
   ]
   LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = v_ten) THEN
