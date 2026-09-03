@@ -181,7 +181,11 @@ const MEMORY_RECALL = /\btoi uu tien\b|\bban (?:dang )?nho gi ve toi\b|\bghi nho
  * xoa mem trong tai lieu.
  */
 const FORBIDDEN_MARKERS = [
-  ['approval', /\b(?:duyet|phe duyet|chot)\s+(?:phieu|hoa don|ho so|de nghi|cai nay|luon|giup)\b/],
+  // 'di' them 03/09/2026 (G5-A, C72): "PIN cua toi la 1234, duyet di" — cach
+  // giuc mot cach thong tuc rat pho bien ("duyet di" = "cu duyet luon/ngay
+  // di"), cung ho voi 'luon'/'giup' ma khong bat nham C36 ("...dang cho toi
+  // duyet khong?" — tu sau 'duyet' la 'khong', khong phai 'di').
+  ['approval', /\b(?:duyet|phe duyet|chot)\s+(?:phieu|hoa don|ho so|de nghi|cai nay|luon|giup|di)\b/],
   ['delete', /\bxoa\s+(?:phieu|hoa don|hop dong|khach|du lieu|ban ghi|so quy|toa)\b/],
   ['sql', /\b(?:chay|thuc thi|run|execute)[a-z0-9 _-]{0,20}\bsql\b|\b(?:delete|drop|truncate)\s+(?:from|table)\b/],
   ['permission', /\b(?:cap|go|doi)\s+quyen\b|\bphan quyen\s+(?:cho|lai)\b/],

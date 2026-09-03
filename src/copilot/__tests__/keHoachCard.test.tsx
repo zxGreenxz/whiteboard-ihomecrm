@@ -297,3 +297,57 @@ describe('vòng theo dõi có trần (F2)', () => {
     expect(daHetHanTheoDoi(3, t0, t0 + HAN_THEO_DOI_MS)).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G5-A — điểm nối #3: kế hoạch L5 dưới trần L5 đòi PIN step-up
+// ─────────────────────────────────────────────────────────────────────────────
+describe('kế hoạch L5 dưới trần L5 → nút Duyệt bằng PIN', () => {
+  it('maxRisk L5 ⇒ nhãn nút đổi thành "Duyệt bằng PIN", vẫn cùng testid', () => {
+    datKheKeHoach(keHoach({ maxRisk: 'L5' }));
+    const html = renderToStaticMarkup(<KeHoachCard {...props} />);
+    const nut = html.slice(html.indexOf('copilot-plan-approve'));
+    expect(nut.slice(0, 200)).toContain('Duyệt bằng PIN');
+    expect(html).not.toContain('Duyệt kế hoạch');
+  });
+
+  it('maxRisk L4 (mặc định) ⇒ vẫn nhãn "Duyệt kế hoạch" như cũ, không đổi hành vi cũ', () => {
+    datKheKeHoach();
+    const html = renderToStaticMarkup(<KeHoachCard {...props} />);
+    const nut = html.slice(html.indexOf('copilot-plan-approve'));
+    expect(nut.slice(0, 200)).toContain('Duyệt kế hoạch');
+  });
+
+  it('modal PIN KHÔNG hiện ngay lúc thẻ mới vẽ (chỉ mở sau cú bấm thật)', () => {
+    datKheKeHoach(keHoach({ maxRisk: 'L5' }));
+    const html = renderToStaticMarkup(<KeHoachCard {...props} />);
+    expect(html).not.toContain('copilot-step-up-modal');
+  });
+
+  it('`duyetKeHoach` gửi p_step_up_token khi có token, KHÔNG gửi trường đó khi không có', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { ok: true, error_code: null, plan_id: PLAN, plan_version: 2, plan_status: 'APPROVED' },
+      error: null,
+    });
+    datKheKeHoach();
+    const TOKEN = 'e'.repeat(64);
+    await duyetKeHoach(PLAN, 1, DIGEST, TOKEN);
+    expect(rpc).toHaveBeenCalledWith('copilot_plan_approve_v1', {
+      p_plan_id: PLAN,
+      p_consent_nonce: NONCE,
+      p_plan_digest: DIGEST,
+      p_expected_plan_version: 1,
+      p_step_up_token: TOKEN,
+    });
+  });
+
+  it('`duyetKeHoach` không có token thứ tư ⇒ hợp đồng cũ nguyên vẹn (không trường p_step_up_token)', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { ok: true, error_code: null, plan_id: PLAN, plan_version: 2, plan_status: 'APPROVED' },
+      error: null,
+    });
+    datKheKeHoach();
+    await duyetKeHoach(PLAN, 1, DIGEST);
+    const goi = rpc.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(goi).not.toHaveProperty('p_step_up_token');
+  });
+});

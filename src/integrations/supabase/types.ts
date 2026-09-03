@@ -19176,6 +19176,19 @@ export type Database = {
         Args: { p_ky?: string; p_limit?: number; p_organization_id: string }
         Returns: Json
       }
+      copilot_step_up_set_pin_v1: {
+        Args: { p_current_pin?: string; p_pin: string }
+        Returns: Json
+      }
+      copilot_step_up_status_v1: { Args: never; Returns: Json }
+      copilot_step_up_unlock_v1: {
+        Args: { p_reason: string; p_user_id: string }
+        Returns: Json
+      }
+      copilot_step_up_verify_v1: {
+        Args: { p_organization_id: string; p_pin: string }
+        Returns: Json
+      }
       copilot_tasks_v1: {
         Args: {
           p_limit?: number

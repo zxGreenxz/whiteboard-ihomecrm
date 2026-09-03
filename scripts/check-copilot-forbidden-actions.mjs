@@ -44,6 +44,13 @@ export const L6_FOREVER = Object.freeze(['deploy', 'secret', 'sql']);
  */
 export const RPC_PHAI_CO_ALLOWLIST = Object.freeze([
   'copilot_plan_approve_v1',
+  // G5-A: RPC phát TOKEN step-up. Một lời gọi tới nó là một lời gọi có thể lấy
+  // được thứ mở cửa `copilot_plan_approve_v1` cho kế hoạch L5 — cùng lớp rủi ro
+  // với chính RPC duyệt, chỉ khác ở chỗ nó là bước ĐẦU của chuỗi hai lớp thay vì
+  // bước cuối. Không tool nào trong `src/copilot/tools/` được phép nhận một PIN
+  // rồi tự gọi hàm này thay người dùng — chỉ `stepUpClient.ts`, sau một cú bấm
+  // "Xác thực" thật trên `StepUpPinModal`.
+  'copilot_step_up_verify_v1',
   // Huỷ cũng TIÊU phiếu đồng ý (và đặt mọi bước còn chờ thành SKIPPED), nên một
   // tool gọi được nó là một tool VỨT BỎ được sự đồng ý của người dùng — cùng
   // ranh giới với duyệt, hướng ngược lại. Không thêm một `kind` mới tên `cancel`

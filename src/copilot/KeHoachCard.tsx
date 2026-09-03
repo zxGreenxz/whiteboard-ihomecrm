@@ -19,6 +19,8 @@ import {
   type BuocKeHoach,
   type KeHoach,
 } from './plan/planClient';
+import { tieuTokenStepUp } from './plan/stepUpClient';
+import StepUpPinModal from './StepUpPinModal';
 
 /** Câu báo khi quản trị đã tắt cơ chế kế hoạch giữa lúc đề xuất còn treo. */
 export const LOI_KE_HOACH_DA_TAT = 'Cơ chế kế hoạch đã bị tắt bởi quản trị.';
@@ -37,6 +39,10 @@ export const HAN_THEO_DOI_MS = 3 * 60_000;
 export const SO_LOI_LIEN_TIEP_TOI_DA = 3;
 
 export const TEXT_HET_HAN_THEO_DOI = 'Hết thời gian theo dõi — xem tiếp ở tab Hành động.';
+
+/** G5-A: token step-up hết hạn/đã dùng giữa lúc modal đóng và lúc bấm Duyệt. */
+export const TEXT_PIN_HET_HAN =
+  'Xác thực PIN đã hết hạn hoặc chưa hoàn tất. Hãy bấm "Duyệt bằng PIN" lại.';
 
 /**
  * Nhịp cho vòng kế tiếp: 1,5s tăng dần tới trần 5s.
@@ -223,6 +229,7 @@ export default function KeHoachCard({
   const [daDuyet, setDaDuyet] = useState(false);
   const [ketThucTheoDoi, setKetThucTheoDoi] = useState<'' | 'het_gio' | 'loi'>('');
   const [loi, setLoi] = useState('');
+  const [hienModalPin, setHienModalPin] = useState(false);
 
   // Nhịp một giây cho khe nhớ: nonce sống 5 phút và thẻ phải biến mất gần như
   // ngay khi nó chết, thay vì mời người dùng bấm vào một lỗi.
@@ -299,6 +306,13 @@ export default function KeHoachCard({
 
   if (!keHoach) return null;
 
+  // ĐIỂM NỐI #3 (G5-A). Kế hoạch có bước L5 dưới trần L5 đòi thêm một token
+  // step-up trước khi `duyetKeHoach` được gọi — xem `stepUpClient.ts`. Tổ chức
+  // dùng để tra/tiêu token PHẢI là tổ chức của CHÍNH kế hoạch: nó là tổ chức mà
+  // `copilot_step_up_verify_v1` đã ràng token vào lúc phát ra.
+  const canPin = keHoach.maxRisk === 'L5';
+  const orgIdChoPin = keHoach.organizationId ?? organizationId;
+
   const bam = async () => {
     if (dangGui || !dangCho) return;
     setDangGui(true);
@@ -318,7 +332,16 @@ export default function KeHoachCard({
       onXong(`⚠️ ${LOI_KE_HOACH_DA_TAT} Hãy bật lại ở trang quản trị AI Copilot rồi lập lại.`);
       return;
     }
-    const kq = await duyetKeHoach(keHoach.planId, keHoach.planVersion, keHoach.planDigest);
+    let token: string | undefined;
+    if (canPin) {
+      token = (orgIdChoPin && tieuTokenStepUp(orgIdChoPin)) || undefined;
+      if (!token) {
+        setDangGui(false);
+        setLoi(TEXT_PIN_HET_HAN);
+        return;
+      }
+    }
+    const kq = await duyetKeHoach(keHoach.planId, keHoach.planVersion, keHoach.planDigest, token);
     setDangGui(false);
     if (!kq.ok) {
       setLoi(kq.thongBao ?? 'Không duyệt được kế hoạch.');
@@ -330,6 +353,18 @@ export default function KeHoachCard({
     const phienBan = kq.planVersion ?? keHoach.planVersion;
     setKeHoach({ ...keHoach, planStatus: 'APPROVED', planVersion: phienBan });
     onDuyet(keHoach.planId, phienBan);
+  };
+
+  const bamNutDuyet = () => {
+    if (dangGui || !dangCho) return;
+    // L5 dưới trần L5: mở modal PIN thay vì duyệt thẳng. `bam()` chỉ chạy SAU
+    // khi modal báo xác thực xong (`onXacThucXong`), lúc đó token đã nằm trong
+    // `confirmationStore` chờ `tieuTokenStepUp` lấy-và-xoá.
+    if (canPin) {
+      setHienModalPin(true);
+      return;
+    }
+    void bam();
   };
 
   const huy = async () => {
@@ -381,11 +416,11 @@ export default function KeHoachCard({
           <button
             type="button"
             data-testid="copilot-plan-approve"
-            onClick={() => void bam()}
+            onClick={bamNutDuyet}
             disabled={dangGui || running}
             className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
           >
-            {dangGui ? 'Đang gửi…' : 'Duyệt kế hoạch'}
+            {dangGui ? 'Đang gửi…' : canPin ? 'Duyệt bằng PIN' : 'Duyệt kế hoạch'}
           </button>
           <button
             type="button"
@@ -397,6 +432,16 @@ export default function KeHoachCard({
             Huỷ
           </button>
         </div>
+      )}
+      {hienModalPin && orgIdChoPin && (
+        <StepUpPinModal
+          organizationId={orgIdChoPin}
+          onXacThucXong={() => {
+            setHienModalPin(false);
+            void bam();
+          }}
+          onHuy={() => setHienModalPin(false)}
+        />
       )}
     </div>
   );

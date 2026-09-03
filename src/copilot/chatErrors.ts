@@ -118,6 +118,17 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['step_voucher_invalid', 'Phiếu được chọn để nộp không hợp lệ: phải là phiếu nháp của chính bạn, chưa duyệt.'],
   ['executor_not_supported', 'Kiểu thực thi của bước này chưa được hỗ trợ ở phiên bản hiện tại.'],
 
+  // — PIN step-up (G5-A, điểm nối #3) — không phân biệt "chưa đặt" khỏi "sai"
+  // theo cùng kỷ luật fail-closed của `copilot_step_up_verify_v1`. Bốn mã dưới
+  // đây khớp theo chuỗi CON nên bắt được cả dạng có số đi kèm
+  // (`pin_invalid:3`, `pin_locked:45`) lẫn dạng trần.
+  ['pin_format', 'Mã PIN phải gồm đúng 4 chữ số.'],
+  ['pin_weak', 'Mã PIN này quá dễ đoán — hãy chọn một dãy số khác.'],
+  ['pin_not_set', 'Bạn chưa đặt mã PIN xác thực hai lớp. Vào trang quản trị AI Copilot để đặt PIN trước.'],
+  ['pin_locked', 'Mã PIN đang bị khoá do nhập sai nhiều lần. Hãy thử lại sau.'],
+  ['pin_invalid', 'Mã PIN không đúng.'],
+  ['step_up_superadmin_only', 'Chỉ super admin mới đặt/đổi/mở khoá được PIN step-up.'],
+
   // — Cửa lúc bấm duyệt —
   ['plan_digest_mismatch', 'Nội dung kế hoạch đã đổi so với lúc xem. Hãy lập lại kế hoạch.'],
   ['plan_version_stale', 'Kế hoạch vừa đổi trạng thái ở nơi khác. Tải lại rồi thử lại.'],

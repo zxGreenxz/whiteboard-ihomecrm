@@ -22,6 +22,11 @@
  * một hành động, `tool` là `action_id`. `ke_hoach` là đường nhiều bước của G3
  * (`KeHoachCard`): một nonce cho CẢ kế hoạch, `tool` là `lap_ke_hoach` — đúng
  * chuỗi mà `copilot_plan_approve_v1` đòi trong `confirmation_contract_mismatch`.
+ * `step_up` (G5-A) là TOKEN xác thực PIN, không phải nonce phiếu/kế hoạch:
+ * `tool` là `step_up`, và `nonce` cầm token hex64 mà
+ * `copilot_step_up_verify_v1` phát ra — dùng lại đúng cơ chế lấy-và-xoá của
+ * kho này để token không nằm lâu hơn một lần bấm và không bao giờ đi qua ngữ
+ * cảnh mô hình, cùng lý do với nonce cấp kế hoạch.
  *
  * VÌ SAO PHẢI CÓ TRƯỜNG NÀY THAY VÌ SUY TỪ `tool`
  *   Suy được — hôm nay. `layXacNhanDangCho()` không đối số trả về đề xuất MỚI
@@ -32,7 +37,7 @@
  *   Một trường tường minh biến "may mắn" thành "hợp đồng", và mỗi thẻ chỉ thấy
  *   khe của mình.
  */
-export type LoaiXacNhan = 'phieu' | 'ke_hoach';
+export type LoaiXacNhan = 'phieu' | 'ke_hoach' | 'step_up';
 
 export interface XacNhanDangCho {
   /**

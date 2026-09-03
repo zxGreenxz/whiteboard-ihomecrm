@@ -134,4 +134,45 @@ describe('confirmationStore', () => {
     expect(layXacNhanDangCho(Date.now(), undefined, undefined, 'ke_hoach')).toBeNull();
     expect(layXacNhanDangCho()?.nonce).toBe(MAU.nonce);
   });
+
+  // ── Loại `step_up` (G5-A) ────────────────────────────────────────────────
+  //
+  // BA THẺ, BA KHE. Token step-up là một đề xuất nữa cùng đi qua kho này
+  // (`stepUpClient.ts`), và nó phải sống độc lập với `phieu` LẪN `ke_hoach` —
+  // xác thực PIN xong không được làm rơi một đề xuất phiếu hay kế hoạch đang
+  // chờ ở hai thẻ khác trên cùng màn hình.
+  const STEP_UP = {
+    kind: 'step_up' as const,
+    tool: 'step_up',
+    nonce: 'e'.repeat(64),
+    canonical: null,
+    preview: {},
+    intentKey: 'step_up:org-1',
+    organizationId: 'org-1',
+  };
+
+  it('ba loại đề xuất cùng tồn tại, không đè lên nhau', () => {
+    datXacNhanDangCho(MAU);
+    datXacNhanDangCho(KE_HOACH);
+    datXacNhanDangCho(STEP_UP);
+    expect(layXacNhanDangCho()?.tool).toBe(MAU.tool);
+    expect(layXacNhanDangCho(Date.now(), undefined, undefined, 'ke_hoach')?.tool).toBe('lap_ke_hoach');
+    expect(layXacNhanDangCho(Date.now(), undefined, undefined, 'step_up')?.nonce).toBe(STEP_UP.nonce);
+  });
+
+  it('tiêu token step-up không cướp nonce của phiếu/kế hoạch', () => {
+    datXacNhanDangCho(MAU);
+    datXacNhanDangCho(KE_HOACH);
+    datXacNhanDangCho(STEP_UP);
+    expect(tieuXacNhan(Date.now(), 'step_up:org-1', undefined, 'step_up')?.nonce).toBe(STEP_UP.nonce);
+    expect(layXacNhanDangCho(Date.now(), 'step_up:org-1', undefined, 'step_up')).toBeNull();
+    expect(layXacNhanDangCho()?.nonce).toBe(MAU.nonce);
+    expect(layXacNhanDangCho(Date.now(), undefined, undefined, 'ke_hoach')?.nonce).toBe(KE_HOACH.nonce);
+  });
+
+  it('token step-up cũng tiêu MỘT lần: lần thứ hai trả null', () => {
+    datXacNhanDangCho(STEP_UP);
+    expect(tieuXacNhan(Date.now(), 'step_up:org-1', undefined, 'step_up')?.nonce).toBe(STEP_UP.nonce);
+    expect(tieuXacNhan(Date.now(), 'step_up:org-1', undefined, 'step_up')).toBeNull();
+  });
 });

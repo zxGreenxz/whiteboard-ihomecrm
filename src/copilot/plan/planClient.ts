@@ -349,11 +349,17 @@ export interface KetQuaDuyet {
  * Không có nonce trong khe ⇒ không gọi RPC. Đó là lý do một dòng chữ do mô hình
  * sinh ra ("kế hoạch đã được người dùng duyệt") không mở được cửa này: nó không
  * đặt được gì vào `confirmationStore`.
+ *
+ * `stepUpToken` (G5-A, điểm nối #3): CHỈ cần cho kế hoạch có bước L5 dưới trần
+ * L5. Nơi gọi lấy nó từ `stepUpClient.tieuTokenStepUp(organizationId)` NGAY
+ * TRƯỚC khi gọi hàm này — cùng kỷ luật lấy-và-xoá với nonce cấp kế hoạch, nên
+ * token cũng không nằm lâu hơn một lần bấm trong bộ nhớ của trình duyệt.
  */
 export async function duyetKeHoach(
   planId: string,
   expectedVersion: number,
   planDigest: string,
+  stepUpToken?: string,
 ): Promise<KetQuaDuyet> {
   const x = tieuXacNhan(Date.now(), khoaYKeHoach(planId), undefined, 'ke_hoach');
   if (!x) {
@@ -371,6 +377,7 @@ export async function duyetKeHoach(
     p_consent_nonce: x.nonce,
     p_plan_digest: planDigest,
     p_expected_plan_version: expectedVersion,
+    ...(stepUpToken ? { p_step_up_token: stepUpToken } : {}),
   });
   const phanHoi = docPhanHoi(data, error);
   const ban = phanHoi.ban ?? {};
