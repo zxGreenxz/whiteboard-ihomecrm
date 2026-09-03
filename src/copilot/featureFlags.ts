@@ -93,9 +93,14 @@ export const KHOA_ROLLOUT_KE_HOACH = `action:${CONTRACT_KE_HOACH}`;
  *
  * Nguồn là catalog chứ không phải một mảng gõ tay: thêm một hành động vào sổ mà
  * quên công tắc của nó là dựng một đường ghi không tắt được — đúng thứ mà kill
- * switch sinh ra để chặn. `actionCatalog.test.ts` canh catalog khớp seed
- * registry; `actionRolloutSeedMigration.test.ts` canh mỗi contract ở đây có một
- * dòng seed cờ.
+ * switch sinh ra để chặn. Cả hai vế do `src/copilot/plan/__tests__/actionCatalog.test.ts`
+ * canh: nó đọc MỌI migration có seed `copilot_action_registry`, so từng trường
+ * của mirror với hàng seed, VÀ đòi mỗi contract ở đây có đúng một dòng seed cờ
+ * scope `action` ở trạng thái `disabled`.
+ *
+ * (Chú thích cũ trỏ vào `actionRolloutSeedMigration.test.ts` — một file chưa bao
+ * giờ tồn tại. Một con trỏ tới tệp không có thật còn tệ hơn không có con trỏ:
+ * người đọc kết luận "đã có ai canh rồi" và đi tiếp.)
  */
 export const COPILOT_ROLLOUT_ACTION_CONTRACTS: readonly CopilotRolloutContract[] = [
   ...Object.values(ACTION_CATALOG).map((entry) => ({

@@ -221,6 +221,51 @@ export function inferMockOutcome(input) {
   return 'readonly';
 }
 
+/**
+ * Cac outcome ma bo suy KHONG ROI VE MAC DINH — tuc runner thuc su nhan ra ca.
+ *
+ * `readonly` co y vang mat: no la nhanh `return` cuoi cung cua `inferMockOutcome`,
+ * dat cho MOI cau khong khop marker nao. Mot cau vo nghia cung ra `readonly`.
+ */
+const OUTCOME_XAC_DINH = new Set([
+  'forbidden',
+  'validation',
+  'ui-control-or-readonly',
+  'multi-intent',
+  'memory',
+  'knowledge',
+  'navigation',
+  'relative-date',
+]);
+
+/**
+ * `emptyState` cua lan chay mock — SUY DOC LAP, khong chep tu corpus.
+ *
+ * VI SAO PHAI SUA: ban truoc gan `emptyState: expected.emptyState`, nen phep so
+ * `emptyState oracle mismatch` trong `validateGoldenCaseResult` LUON dung. Do la
+ * cung mot lop xanh-gia da vá cho `forbidden` ngay 03/09/2026: mot oracle khong
+ * bao gio sai la mot oracle khong do gi.
+ *
+ * NGHIA CUA TRUONG NAY: corpus khai `'explicit'` cho moi ca, va
+ * `check-copilot-golden-eval.mjs:59` da ep dieu do o TANG CORPUS (so voi hang so
+ * `'explicit'`, khong vong tron). Con o TANG CHAY, cau tra loi duy nhat co the
+ * do duoc la: runner co NHAN RA ca nay khong. Mot ca ma bo suy khong nhan ra thi
+ * loi khai "ca nay da mo ta ro trang thai rong" chua duoc kiem chung boi gi ca —
+ * va no van dang duoc cham PASS.
+ *
+ * Nen: `'explicit'` khi bo suy tim duoc mot duong tool, hoac phan loai duoc ca
+ * vao mot outcome KHONG phai nhanh mac dinh. Nguoc lai `'unspecified'`, va phep
+ * so o `validateGoldenCaseResult` se do.
+ *
+ * Do bang dot bien: them mot ca voi cau hoi khong khop marker nao (vd "abc xyz")
+ * thi ham nay tra `'unspecified'` va ca do FAIL — truoc ban va no PASS.
+ */
+export function inferMockEmptyState(input) {
+  const text = normalizePrompt(input);
+  if (inferMockToolPath(text).length > 0) return 'explicit';
+  return OUTCOME_XAC_DINH.has(inferMockOutcome(text)) ? 'explicit' : 'unspecified';
+}
+
 export function inferMockScenario(input, outcome = inferMockOutcome(input)) {
   if (outcome === 'forbidden') return 'forbidden';
   if (outcome === 'multi-intent') return 'orchestration';
@@ -263,7 +308,8 @@ export function runMockGoldenEval(golden) {
       latencyMs: 0,
       toolPath,
       outcome,
-      emptyState: expected.emptyState,
+      // SUY RA, khong chep tu `expected` — xem chu thich o `inferMockEmptyState`.
+      emptyState: inferMockEmptyState(expected.input),
       // SUY RA, khong chep tu `expected`: xem chu thich o FORBIDDEN_MARKERS.
       forbidden: inferMockForbidden(expected.input) !== null,
       oracle: { scenario },
