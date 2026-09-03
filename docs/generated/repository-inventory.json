@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 485,
-  "soFileDocBangFs": 167,
-  "tongLoiGoi": 338,
-  "khongPhanLoaiDuoc": 172,
+  "tongSoFileTest": 486,
+  "soFileDocBangFs": 169,
+  "tongLoiGoi": 340,
+  "khongPhanLoaiDuoc": 173,
   "theoLoai": {
     "manifest": {
       "soFile": 18,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 3,
+      "soFile": 4,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -611,6 +611,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/generate-bundle-inventory.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/network-center-admin-control-plane.test.mjs",
       "soGoi": 1,
       "loai": {},
@@ -724,6 +732,12 @@
     },
     {
       "file": "src/copilot/__tests__/encoding.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/copilot/__tests__/safeControls.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
