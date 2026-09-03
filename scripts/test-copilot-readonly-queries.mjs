@@ -15,6 +15,7 @@
 //   measuring nothing for weeks while still looking like a contract probe.
 //   The contract it should assert TODAY is the stronger one: those tables must
 //   not be read from the browser at all.
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -409,9 +410,21 @@ CREATE TABLE IF NOT EXISTS public.meter_readings (
     FOREIGN KEY (building_id) REFERENCES public.buildings(id)
 );
 
+CREATE TABLE IF NOT EXISTS public.material_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid,
+  name text NOT NULL
+);
+
+-- category_id and material_categories are here because the LIVE half below
+-- executes the SHIPPED body of copilot_material_stock_v1, which LEFT JOINs the
+-- category table. A fixture that only carried the columns the hand-written
+-- replication needed would make the real body fail to parse, and a probe that
+-- cannot run the function proves nothing about the function.
 CREATE TABLE IF NOT EXISTS public.materials (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid,
+  category_id uuid,
   code text,
   name text NOT NULL,
   unit text NOT NULL DEFAULT 'cai',
@@ -602,7 +615,12 @@ INSERT INTO public.materials (id, organization_id, code, name, unit, on_hand, re
 VALUES
   ('ddddb000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-VT-1', 'Bong den LED', 'cai', 2, 10, 50000),
   ('ddddb000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-VT-2', 'Voi nuoc', 'cai', 40, 5, 120000),
-  ('aaaab000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'CP-P-VT-1', 'Vat tu cong ty khac', 'cai', 1, 99, 1000)
+  ('aaaab000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'CP-P-VT-1', 'Vat tu cong ty khac', 'cai', 1, 99, 1000),
+  -- Subject of the LIKE-escape assertions: one name really containing '%' and
+  -- one really containing '_'. Without them, searching for '%' would match
+  -- everything either way and the escape would be untestable.
+  ('ddddb000-0000-4000-8000-000000000013', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-VT-3', 'Xi mang giam 50% con lai', 'bao', 7, 3, 90000),
+  ('ddddb000-0000-4000-8000-000000000014', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'CP-D-VT-4', 'Ong nhua a_b noi', 'cai', 9, 4, 30000)
 ON CONFLICT (id) DO NOTHING;
 
 -- G1-C4 surface: the four SENSITIVE domains. The Network Center tables are NOT
@@ -804,6 +822,224 @@ ON CONFLICT (id) DO NOTHING;
 `;
 }
 
+/** Migration mang bản vá đang được kiểm. */
+export const HARDENING_MIGRATION_PATH =
+  "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql";
+
+/**
+ * Thân nguyên văn của một hàm trong file migration.
+ *
+ * Nửa "live" bên dưới KHÔNG chép lại logic — nó nạp CHÍNH đoạn SQL sắp lên
+ * production rồi gọi thật. Một bản chép tay sẽ trôi khỏi bản gốc đúng vào ngày
+ * bản gốc hỏng, và đó là lúc phép đo cần đúng nhất.
+ */
+export function trichThanHam(source, ten, schema) {
+  const moc = `CREATE OR REPLACE FUNCTION ${schema}.${ten}(`;
+  const start = source.indexOf(moc);
+  if (start < 0) throw new Error(`Không tìm thấy ${schema}.${ten} trong migration`);
+  const ket = source.indexOf("\n$fn$;", start);
+  if (ket < 0) throw new Error(`Không tìm thấy điểm đóng của ${schema}.${ten}`);
+  return source.slice(start, ket + "\n$fn$;".length);
+}
+
+/**
+ * Nửa THỰC THI: chạy đúng thân hàm của migration trên cluster dùng-một-lần.
+ *
+ * VÌ SAO PHẢI STUB BA THỨ
+ *   Cluster này chỉ replay nhóm migration Network Center trên một platform
+ *   bootstrap, nên `authorized_scope_v3`, `copilot_org_scope_buildings_v1` và
+ *   `auth.uid()` thật KHÔNG có ở đây (`auth.uid()` của shim luôn trả NULL, tức
+ *   mọi RPC dừng ở dòng đầu tiên và không dòng nào sau đó được đo).
+ *
+ *   Nên ba thứ đó được thay bằng bản điều khiển bằng GUC — CHỈ ba thứ đó. Thân
+ *   hàm được kiểm là bản nguyên văn của migration, dữ liệu là fixture thật, và
+ *   thứ đang đo chính là điều cần đo: với một phạm vi quyền cho trước, hàm này
+ *   trả gì và có RAISE không.
+ *
+ *   Điều này KHÔNG phủ: bản thân `authorized_scope_v3` (đã có bộ test riêng) và
+ *   việc gấp dấu bằng `extensions.unaccent` (stub dùng nhánh `lower()` — đúng
+ *   nhánh mà migration cài trên cluster không có unaccent).
+ */
+function buildLiveRpcProbeSql(migrationSql) {
+  const likeEscape = trichThanHam(migrationSql, "copilot_like_escape_v1", "app_private");
+  const flagHelper = trichThanHam(migrationSql, "copilot_page_flag_allows_v1", "app_private");
+  const materialStock = trichThanHam(migrationSql, "copilot_material_stock_v1", "public");
+  return `
+CREATE SCHEMA IF NOT EXISTS app_private;
+
+-- Ba stub điều khiển bằng GUC. Không cái nào giả lập luật quyền — chúng chỉ
+-- BƠM một phạm vi đã biết vào, để câu hỏi còn lại là câu hỏi về thân hàm.
+CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid
+  LANGUAGE sql STABLE
+  AS $probe$ SELECT NULLIF(current_setting('copilot.actor', true), '')::uuid $probe$;
+
+CREATE OR REPLACE FUNCTION app_private.authorized_scope_v3(p_permission_key text, p_org uuid)
+RETURNS TABLE(org_wide boolean, building_ids uuid[], cashbook_ids uuid[])
+LANGUAGE sql STABLE
+AS $probe$
+  SELECT
+    COALESCE(NULLIF(current_setting('copilot.org_wide', true), ''), 'false')::boolean,
+    CASE
+      WHEN COALESCE(current_setting('copilot.buildings', true), '') = '' THEN '{}'::uuid[]
+      ELSE string_to_array(current_setting('copilot.buildings', true), ',')::uuid[]
+    END,
+    '{}'::uuid[];
+$probe$;
+
+-- Bản thật KHÔNG raise khi thiếu quyền — nó trả mảng rỗng. Stub giữ đúng nết đó,
+-- vì chính nết đó là lỗ hổng A1 mà hàng rào mới phải bù.
+CREATE OR REPLACE FUNCTION public.copilot_org_scope_buildings_v1(p_permission_key text, p_organization_id uuid)
+RETURNS uuid[]
+LANGUAGE plpgsql STABLE
+AS $probe$
+DECLARE v uuid[];
+BEGIN
+  IF p_organization_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.organizations o WHERE o.id = p_organization_id
+  ) THEN
+    RAISE EXCEPTION 'organization_required' USING ERRCODE = '22023';
+  END IF;
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
+  END IF;
+  SELECT s.building_ids INTO v FROM app_private.authorized_scope_v3(p_permission_key, p_organization_id) s;
+  RETURN COALESCE(v, '{}'::uuid[]);
+END
+$probe$;
+
+-- Nhánh KHÔNG-unaccent của 20260902193151, nguyên văn.
+CREATE OR REPLACE FUNCTION app_private.copilot_fold_text_v1(p_text text)
+RETURNS text LANGUAGE sql STABLE
+AS $probe$ SELECT lower(coalesce($1, '')) $probe$;
+
+CREATE TABLE IF NOT EXISTS public.copilot_feature_flags (
+  scope text NOT NULL,
+  contract_id text NOT NULL,
+  state text NOT NULL DEFAULT 'disabled',
+  canary_org uuid,
+  expires_at timestamptz,
+  PRIMARY KEY (scope, contract_id)
+);
+INSERT INTO public.copilot_feature_flags (scope, contract_id, state, canary_org, expires_at)
+VALUES
+  ('page', 'copilot.sensitive.salary'            , 'disabled', NULL, NULL),
+  ('page', 'copilot.sensitive.shareholder-profit', 'shadow'  , NULL, NULL),
+  ('page', 'copilot.sensitive.network'           , 'enabled' , NULL, NULL),
+  ('page', 'probe.canary.khac'                   , 'enabled' , ${sqlLiteral(PROD_ORG_ID)}::uuid, NULL),
+  ('page', 'probe.canary.dung'                   , 'enabled' , ${sqlLiteral(DEMO_ORG_ID)}::uuid, NULL),
+  ('page', 'probe.het.han'                       , 'enabled' , NULL, now() - interval '1 day')
+ON CONFLICT (scope, contract_id) DO NOTHING;
+
+-- === Ba thân hàm NGUYÊN VĂN từ migration =====================================
+${likeEscape}
+
+${flagHelper}
+
+${materialStock}
+-- =============================================================================
+
+CREATE TEMP TABLE copilot_live_checks (case_id text PRIMARY KEY, passed boolean NOT NULL) ON COMMIT DROP;
+
+DO $live$
+DECLARE
+  v_org uuid := ${sqlLiteral(DEMO_ORG_ID)}::uuid;
+  v_toa text := 'dddd1000-0000-4000-8000-000000000011';
+  v_ra jsonb;
+  v_ma text;
+BEGIN
+  PERFORM set_config('copilot.actor', 'dddd9999-0000-4000-8000-000000000001', true);
+
+  -- A1. Thành viên ACTIVE nhưng KHÔNG có mảnh quyền materials.view nào: bản cũ
+  -- (chỉ PERFORM helper) trả TRỌN kho; bản mới phải RAISE 42501.
+  PERFORM set_config('copilot.org_wide', 'false', true);
+  PERFORM set_config('copilot.buildings', '', true);
+  BEGIN
+    v_ra := public.copilot_material_stock_v1(v_org, NULL, 20);
+    INSERT INTO copilot_live_checks VALUES ('live.material_stock.no_grant_denied', false);
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_ma = RETURNED_SQLSTATE;
+    INSERT INTO copilot_live_checks VALUES ('live.material_stock.no_grant_denied', v_ma = '42501');
+  END;
+
+  -- Cùng một hàm, cùng dữ liệu, chỉ khác phạm vi: org-wide phải ĐỌC ĐƯỢC. Không
+  -- có nhánh này thì "luôn luôn raise" cũng làm assertion trên xanh.
+  PERFORM set_config('copilot.org_wide', 'true', true);
+  v_ra := public.copilot_material_stock_v1(v_org, NULL, 20);
+  INSERT INTO copilot_live_checks VALUES (
+    'live.material_stock.org_wide_reads',
+    (v_ra -> 'tong_hop' ->> 'so_mat_hang')::int = 4
+      AND (v_ra ->> 'so_luong')::int = 4
+      AND NOT (v_ra -> 'vat_tu')::text LIKE '%Vat tu cong ty khac%'
+  );
+
+  -- Mot manh quyen theo TOA cung du de hoi: bang materials khong co truc toa, va
+  -- RLS cua no la ranh gioi CONG TY. Hang rao moi khong duoc chat hon man hinh.
+  PERFORM set_config('copilot.org_wide', 'false', true);
+  PERFORM set_config('copilot.buildings', v_toa, true);
+  v_ra := public.copilot_material_stock_v1(v_org, NULL, 20);
+  INSERT INTO copilot_live_checks VALUES (
+    'live.material_stock.building_grant_reads',
+    (v_ra -> 'tong_hop' ->> 'so_mat_hang')::int = 4
+  );
+
+  -- A6. '%' trong câu tìm phải là KÝ TỰ, không phải ký tự đại diện.
+  v_ra := public.copilot_material_stock_v1(v_org, '50%', 20);
+  INSERT INTO copilot_live_checks VALUES (
+    'live.material_stock.percent_is_literal',
+    (v_ra ->> 'so_luong')::int = 1
+      AND (v_ra -> 'vat_tu' -> 0 ->> 'ma') = 'CP-D-VT-3'
+  );
+  v_ra := public.copilot_material_stock_v1(v_org, 'a_b', 20);
+  INSERT INTO copilot_live_checks VALUES (
+    'live.material_stock.underscore_is_literal',
+    (v_ra ->> 'so_luong')::int = 1
+      AND (v_ra -> 'vat_tu' -> 0 ->> 'ma') = 'CP-D-VT-4'
+  );
+  -- Dấu backslash cuối câu từng làm LIKE ném 22025. Giờ nó chỉ là không-khớp.
+  BEGIN
+    v_ra := public.copilot_material_stock_v1(v_org, 'abc\\', 20);
+    INSERT INTO copilot_live_checks VALUES (
+      'live.material_stock.trailing_backslash_no_22025', (v_ra ->> 'so_luong')::int = 0);
+  EXCEPTION WHEN OTHERS THEN
+    INSERT INTO copilot_live_checks VALUES ('live.material_stock.trailing_backslash_no_22025', false);
+  END;
+
+  -- Tổ chức sai vẫn phải trả 22023, không phải 42501: mã lỗi là thứ giao diện
+  -- dùng để phân biệt "chọn nhầm công ty" với "không có quyền".
+  BEGIN
+    v_ra := public.copilot_material_stock_v1('00000000-0000-4000-8000-000000000000'::uuid, NULL, 20);
+    INSERT INTO copilot_live_checks VALUES ('live.material_stock.bad_org_is_22023', false);
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_ma = RETURNED_SQLSTATE;
+    INSERT INTO copilot_live_checks VALUES ('live.material_stock.bad_org_is_22023', v_ma = '22023');
+  END;
+
+  -- A5. Cửa cờ, năm hướng.
+  INSERT INTO copilot_live_checks VALUES
+    ('live.flag.disabled_denies',
+      app_private.copilot_page_flag_allows_v1('copilot.sensitive.salary', v_org) = false),
+    ('live.flag.shadow_allows',
+      app_private.copilot_page_flag_allows_v1('copilot.sensitive.shareholder-profit', v_org) = true),
+    ('live.flag.enabled_allows',
+      app_private.copilot_page_flag_allows_v1('copilot.sensitive.network', v_org) = true),
+    ('live.flag.missing_row_denies',
+      app_private.copilot_page_flag_allows_v1('copilot.khong.co.dong.nao', v_org) = false),
+    ('live.flag.foreign_canary_denies',
+      app_private.copilot_page_flag_allows_v1('probe.canary.khac', v_org) = false
+        AND app_private.copilot_page_flag_allows_v1('probe.canary.dung', v_org) = true),
+    ('live.flag.expired_denies',
+      app_private.copilot_page_flag_allows_v1('probe.het.han', v_org) = false);
+
+  -- Helper escape: ba ký tự, backslash trước.
+  INSERT INTO copilot_live_checks VALUES
+    ('live.like_escape.three_metacharacters',
+      app_private.copilot_like_escape_v1('a%b_c\\d') = 'a\\%b\\_c\\\\d'
+        AND app_private.copilot_like_escape_v1(NULL) = '');
+END
+$live$;
+`;
+}
+
 function buildCopilotReadonlyQueriesSql({ localProof } = {}) {
   if (!localProof) throw new Error("Copilot query probe requires local cluster proof");
   const proof = `
@@ -813,9 +1049,14 @@ WHERE proof_nonce = ${sqlLiteral(localProof.proofNonce)}
   AND migration_manifest_sha256 = ${sqlLiteral(localProof.migrationManifestSha256)}
   AND migration_count = ${Number(localProof.migrationCount)}
   AND network_center_migration_count = ${Number(localProof.networkCenterMigrationCount)}`;
+  const migrationSql = readFileSync(
+    resolve(fileURLToPath(new URL("../", import.meta.url)), HARDENING_MIGRATION_PATH),
+    "utf8",
+  ).replace(/\r\n/gu, "\n");
   return `BEGIN;
 SET LOCAL statement_timeout = '2min';
 ${buildFixtureSql()}
+${buildLiveRpcProbeSql(migrationSql)}
 
 DO $copilot_preflight$
 BEGIN
@@ -1412,7 +1653,9 @@ checks AS (
   UNION ALL SELECT 'meter_readings.period_scoped',
     ((SELECT count(*) FROM meter_period_rows) = 2
       AND (SELECT COALESCE(sum(consumption), 0) FROM meter_period_rows WHERE meter_type = 'ELECTRICITY') = 75)
-  UNION ALL SELECT 'materials.positive', (SELECT count(*) = 2 FROM material_rows)
+  -- Bốn: hai món gốc, cộng hai món mang ký tự đại diện của LIKE mà nửa THỰC
+  -- THI dùng làm chủ thể cho phép đo escape.
+  UNION ALL SELECT 'materials.positive', (SELECT count(*) = 4 FROM material_rows)
   UNION ALL SELECT 'materials.below_reorder', (SELECT count(*) = 1 FROM material_rows WHERE on_hand < reorder_level)
   UNION ALL SELECT 'materials.wrong_org_excluded',
     (NOT EXISTS (SELECT 1 FROM material_rows m WHERE m.id = 'aaaab000-0000-4000-8000-000000000011'))
@@ -1492,6 +1735,9 @@ checks AS (
     ((SELECT max(open_incidents) FROM network_rows) = 1)
   UNION ALL SELECT 'network.active_clients_exclude_expired_and_other_org',
     ((SELECT max(active_clients) FROM network_rows) = 2)
+  -- Nửa THỰC THI: mười ba dòng dưới đây do chính thân hàm của migration sinh ra,
+  -- không phải do câu SQL chép tay ở trên. Xem buildLiveRpcProbeSql().
+  UNION ALL SELECT case_id, passed FROM copilot_live_checks
 )
 SELECT jsonb_build_object(
   'passed', bool_and(passed),
@@ -1523,7 +1769,7 @@ export function parseCopilotReadonlyQueriesVerdict(output) {
   if (
     verdict.passed !== true ||
     Number(verdict.failed_count) !== 0 ||
-    Number(verdict.assertion_count) !== 43 ||
+    Number(verdict.assertion_count) !== 57 ||
     verdict.assertions.some((assertion) => assertion?.passed !== true)
   ) {
     throw new Error(`Copilot readonly query contract failed: ${JSON.stringify(verdict)}`);
