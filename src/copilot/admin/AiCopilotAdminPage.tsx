@@ -40,6 +40,7 @@ import {
   tomTatTokenHomNay,
 } from './hanMucToken';
 import type { DongTokenHomNay } from './hanMucToken';
+import HanhDongTab from './HanhDongTab';
 
 // ── Data hooks ───────────────────────────────────────────────────────────────
 
@@ -975,12 +976,16 @@ export default function AiCopilotAdminPage() {
           <TabsList>
             <TabsTrigger value="settings">Cài đặt</TabsTrigger>
             <TabsTrigger value="rollout">Rollout</TabsTrigger>
+            <TabsTrigger value="actions">Hành động</TabsTrigger>
             <TabsTrigger value="users">Người dùng</TabsTrigger>
             <TabsTrigger value="providers">Providers</TabsTrigger>
             <TabsTrigger value="usage">Sử dụng</TabsTrigger>
           </TabsList>
           <TabsContent value="settings" className="pt-4"><SettingsTab /></TabsContent>
           <TabsContent value="rollout" className="pt-4"><RolloutTab /></TabsContent>
+          {/* Chính sách + sổ hành động (G2-B). Nằm trong nhánh super admin của
+              trang nên không cần gác thêm ở đây; RPC phía dưới vẫn tự kiểm. */}
+          <TabsContent value="actions" className="pt-4"><HanhDongTab /></TabsContent>
           <TabsContent value="users" className="pt-4"><EntitlementsTab /></TabsContent>
           <TabsContent value="providers" className="pt-4"><ProvidersTab /></TabsContent>
           <TabsContent value="usage" className="pt-4"><UsageTab /></TabsContent>
