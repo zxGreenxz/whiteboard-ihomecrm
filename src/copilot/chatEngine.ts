@@ -12,12 +12,13 @@
 import * as z from 'zod/v4';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
-import { CHAT_SYSTEM_PROMPT } from './systemPromptVi';
+import { CHAT_SYSTEM_PROMPT, TU_DIEN_NGHIEP_VU, VI_DU_MAU } from './systemPromptVi';
 import { goiModelMotLuot, type KhaiBaoTool, type TinNhan } from './llmClient';
 import { dongNguCanhTrang } from './banDoHeThong';
 import { buildRegistry, toLlmTools, type ToolCtx } from './tools/registry';
 import {
   apDungKyTuongDoi,
+  quetThamSoKy,
   resolveRelativePeriod,
   taoRequestContext,
 } from './temporalContext';
@@ -39,7 +40,19 @@ export interface ChatTurnResult {
   newMessages: Message[];
 }
 
-const MAX_TOOL_ROUNDS = 6;
+/**
+ * Trần số vòng gọi tool cho MỘT câu hỏi.
+ *
+ * 6 → 10 (03/09/2026). Sáu vòng đủ cho câu hỏi một ý, nhưng một câu ba ý mà mô
+ * hình hỏi tuần tự (tra hợp đồng → tra hoá đơn của hợp đồng đó → tra sổ quỹ) đã
+ * chạm trần và rơi vào nhánh "đổ dữ liệu thô" — người dùng nhận một đống kết
+ * quả tool thay vì câu trả lời.
+ *
+ * Nới vòng KHÔNG được nới chi phí vô hạn: `CAP_TONG_KET_QUA_TOOL` mới là trần
+ * thật. Vòng đếm số lượt suy nghĩ, ngân sách ký tự đếm lượng dữ liệu — hai thứ
+ * khác nhau, và trước đây chỉ có cái thứ nhất.
+ */
+const MAX_TOOL_ROUNDS = 10;
 
 /**
  * Độ dài "tính theo ký tự" của một `content`.
@@ -55,10 +68,73 @@ export function doDaiNoiDung(content: Message['content']): number {
   return 0;
 }
 
+/** Trần ký tự cho MỘT dòng trong bản tóm tắt. */
+export const CAP_DONG_TOM_TAT = 180;
+/** Trần ký tự cho CẢ bản tóm tắt — nó là phần thêm vào ngân sách, không thay thế nó. */
+export const CAP_TOM_TAT = 2_000;
+
+const dongMot = (s: string): string => s.split('\n').find((d) => d.trim().length > 0) ?? '';
+
+const catDong = (s: string): string =>
+  s.length <= CAP_DONG_TOM_TAT ? s : `${s.slice(0, CAP_DONG_TOM_TAT)}…`;
+
+/**
+ * Rút các lượt cũ thành MỘT khối "Tóm tắt trước đó".
+ *
+ * VÌ SAO TÓM TẮT THAY VÌ CẮT BỎ
+ *   Bản trước, block nào vượt ngân sách thì biến mất hẳn. Hội thoại dài vì thế
+ *   mất trí nhớ đúng lúc nó cần nhất: người dùng hỏi "vậy còn toà kia thì sao"
+ *   sau tám lượt, và mô hình không còn thấy "toà kia" là toà nào. Giữ một dòng
+ *   cho mỗi lượt tốn vài trăm ký tự và giữ được mạch.
+ *
+ * HÀM THUẦN, KHÔNG GỌI MODEL. Tóm tắt bằng một lượt gọi model nữa thì mỗi câu
+ * hỏi dài phải trả thêm một round-trip, kết quả không lặp lại được giữa hai lần
+ * chạy, và một lỗi mạng ở đó làm hỏng lượt chat chính. Ở đây luật rút gọn là
+ * luật cố định: giữ câu hỏi của người dùng, giữ tên công cụ đã chạy, giữ ĐÚNG
+ * MỘT dòng đầu của mỗi kết quả.
+ *
+ * Vai `user` chứ không phải `system`: nhiều nhà cung cấp chỉ chấp nhận `system`
+ * ở vị trí đầu tiên, và một message `system` chen giữa hội thoại là lỗi 400 ở
+ * đúng những lượt dài nhất. Nhãn `[Tóm tắt…]` ở đầu nói rõ đây không phải lời
+ * người dùng vừa nói.
+ */
+export function tomTatLichSu(cu: Message[]): Message | null {
+  const dong: string[] = [];
+  for (const m of cu) {
+    if (m.role === 'user') {
+      const t = dongMot(noiDungDeLuu(m.content) ?? '');
+      if (t) dong.push(`- Người dùng hỏi: ${catDong(t)}`);
+    } else if (m.role === 'assistant' && m.tool_calls?.length) {
+      dong.push(`- Đã tra: ${m.tool_calls.map((tc) => tc.function.name).join(', ')}`);
+    } else if (m.role === 'assistant') {
+      const t = dongMot(noiDungDeLuu(m.content) ?? '');
+      if (t) dong.push(`- Đã trả lời: ${catDong(t)}`);
+    } else if (m.role === 'tool') {
+      const t = dongMot(typeof m.content === 'string' ? m.content : '');
+      if (t) dong.push(`  · ${catDong(t)}`);
+    }
+  }
+  if (!dong.length) return null;
+
+  // Vượt trần thì bỏ từ ĐẦU: lượt gần nhất là lượt còn liên quan tới câu đang hỏi.
+  let than = dong.join('\n');
+  while (than.length > CAP_TOM_TAT && dong.length > 1) {
+    dong.shift();
+    than = dong.join('\n');
+  }
+  return {
+    role: 'user',
+    content: `[Tóm tắt trước đó — các lượt cũ đã rút gọn, không phải lời người dùng vừa nói]\n${than}`,
+  };
+}
+
 /**
  * Cắt history cho context: giữ NGUYÊN VẸN từng "block" (user-message hoặc
  * assistant-tool_calls + các tool-reply của nó) — không bao giờ tách cặp
  * tool_calls ↔ tool (v2.1 F7). System KHÔNG nằm trong history (truyền riêng).
+ *
+ * Phần bị đẩy khỏi ngân sách KHÔNG bị vứt: nó rút thành một khối tóm tắt đứng
+ * trước (`tomTatLichSu`).
  */
 export function buildChatContext(
   history: Message[],
@@ -80,18 +156,45 @@ export function buildChatContext(
 
   const out: Message[][] = [];
   let chars = 0;
-  for (let i = blocks.length - 1; i >= 0 && out.length < maxTurns; i--) {
+  let i = blocks.length - 1;
+  for (; i >= 0 && out.length < maxTurns; i--) {
     const block = blocks[i];
     const blockChars = block.reduce((s, m) => s + doDaiNoiDung(m.content) + JSON.stringify(m.tool_calls ?? '').length, 0);
     if (chars + blockChars > maxChars && out.length > 0) break;
     out.unshift(block);
     chars += blockChars;
   }
-  return out.flat();
+  const giu = out.flat();
+  if (i < 0) return giu; // không block nào rơi ra ⇒ không có gì để tóm tắt
+  const tomTat = tomTatLichSu(blocks.slice(0, i + 1).flat());
+  return tomTat ? [tomTat, ...giu] : giu;
 }
 
 /** Giới hạn ký tự cho MỘT kết quả tool nhét vào ngữ cảnh. */
 const CAP_KET_QUA_TOOL = 12_000;
+
+/**
+ * Trần TỔNG ký tự kết quả tool trong MỘT lượt chat.
+ *
+ * Trần mỗi-kết-quả (12k) không chặn được tổng: mười vòng × ba tool × 12k là
+ * 360k ký tự nhét dần vào ngữ cảnh — vượt cửa sổ của mô hình, và hoá đơn token
+ * tăng theo bình phương vì mọi vòng sau đều gửi lại toàn bộ. Nới
+ * `MAX_TOOL_ROUNDS` mà không có trần này là mở một đường tiêu tiền không đáy.
+ *
+ * Chạm trần thì KHÔNG cắt ngang: mô hình được một vòng cuối kèm lời nhắc trả
+ * lời bằng dữ liệu đã có — im lặng dừng ở giữa là cách chắc chắn nhất để người
+ * dùng nhận một câu trả lời cụt mà không biết vì sao.
+ */
+export const CAP_TONG_KET_QUA_TOOL = 40_000;
+
+/** Dữ liệu thô đã gom, dùng khi mô hình không chốt được câu trả lời. */
+function tomTatKetQua(evs: ChatToolEvent[]): string {
+  return evs.map((ev) => `- ${ev.tool}: ${ev.output.slice(0, 4000)}`).join('\n');
+}
+
+/** Lời nhắc chốt lượt khi ngân sách dữ liệu đã cạn. */
+export const NHAC_HET_NGAN_SACH =
+  '[Hệ thống] Ngân sách dữ liệu công cụ của lượt này đã hết. Không gọi thêm công cụ nữa — trả lời NGAY bằng dữ liệu đã thu được, và nói rõ phần nào chưa tra được.';
 
 /**
  * Nói cho mô hình biết HÔM NAY là ngày mấy.
@@ -179,6 +282,14 @@ export async function runChatTurn(params: {
   /** Đường dẫn trang người dùng đang xem, để hiểu "cái này", "ở đây". */
   pathname?: string;
   /**
+   * `location.search` của trang đó — bộ lọc ĐANG ÁP trên màn hình.
+   *
+   * Không có nó thì mô hình thấy `/invoices` và tra cả tổ chức, trả về một con
+   * số to hơn con số người dùng đang nhìn. Chỉ các khoá trong allowlist của
+   * `banDoHeThong` được kể lại.
+   */
+  search?: string;
+  /**
    * Ảnh kèm theo lượt này, dạng data URL.
    *
    * Chỉ đi vào request; KHÔNG được lưu — `noiDungDeLuu` thay chúng bằng
@@ -194,7 +305,13 @@ export async function runChatTurn(params: {
   // luôn đúng, bắt mô hình gọi tool để biết mình đang ở đâu là thêm một vòng
   // mạng cho một sự thật đã nằm sẵn trong tay.
   const nguCanh = params.pathname
-    ? dongNguCanhTrang(params.pathname, params.ctx.perms)
+    ? dongNguCanhTrang(params.pathname, params.ctx.perms, {
+        search: params.search,
+        // Chỉ tool phiên này THẬT SỰ gọi được: `registry` mới lọc rollout, còn
+        // `toolMap` đã lọc cả quyền. Gợi ý một công cụ người dùng không có
+        // quyền là mời mô hình gọi rồi ăn lỗi trước mặt họ.
+        tools: registry.filter((t) => t.name in toolMap),
+      })
     : null;
 
   // Kỳ tương đối chuẩn hoá BẰNG MÃ trước khi mô hình chạm vào tham số ngày.
@@ -202,13 +319,20 @@ export async function runChatTurn(params: {
   // nói không biết ngày và hỏi lại kỳ — một câu văn là gợi ý, không phải hợp đồng.
   const ctxThoiGian = taoRequestContext();
   const kyTuongDoi = resolveRelativePeriod(params.userText, ctxThoiGian);
+  // Tool nào nhận kỳ được QUÉT từ khai báo thật, không phải chép tay: bảng chép
+  // tay cũ dừng ở 2 tool trong khi registry đã có 37.
+  const banDoThamSoKy = quetThamSoKy(
+    khaiBao.map((k) => ({ name: k.function.name, parameters: k.function.parameters })),
+  );
 
   const heThong = [
     CHAT_SYSTEM_PROMPT,
+    TU_DIEN_NGHIEP_VU,
+    VI_DU_MAU,
     dongNangLuc(Object.keys(toolMap)),
     dongHomNay(),
     kyTuongDoi
-      ? `Câu hỏi này nói tới kỳ ${kyTuongDoi.month} (${kyTuongDoi.startDate} → ${kyTuongDoi.endDate}). Hệ thống đã chốt kỳ đó; đừng hỏi lại người dùng là kỳ nào.`
+      ? `Câu hỏi này nói tới kỳ ${kyTuongDoi.nhan} (${kyTuongDoi.startDate} → ${kyTuongDoi.endDate}). Hệ thống đã chốt kỳ đó; đừng hỏi lại người dùng là kỳ nào, và nhắc lại kỳ trong câu trả lời.`
       : null,
     nguCanh,
   ]
@@ -234,6 +358,7 @@ export async function runChatTurn(params: {
 
   const toolEvents: ChatToolEvent[] = [];
   const usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let tongKyTuTool = 0;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const kq = await goiModelMotLuot({
@@ -296,11 +421,12 @@ export async function runChatTurn(params: {
               ten,
               args as Record<string, unknown>,
               kyTuongDoi,
+              banDoThamSoKy,
             );
             const parsedArgs = tool.inputSchema.parse(argsKy);
             output = String(await tool.execute(parsedArgs));
             if (kyBiThayThe) {
-              output = `(Kỳ đã chuẩn hoá về ${kyTuongDoi!.month} theo câu hỏi, thay cho ${kyBiThayThe}.)\n${output}`;
+              output = `(Kỳ đã chuẩn hoá về ${kyTuongDoi!.nhan} theo câu hỏi, thay cho ${kyBiThayThe}.)\n${output}`;
             }
           } catch (e) {
             output = `Lỗi khi chạy "${ten}": ${e instanceof Error ? e.message : String(e)}`;
@@ -317,12 +443,35 @@ export async function runChatTurn(params: {
     // không nhà cung cấp từ chối cả lượt sau.
     messages.push(...ketQua);
     newMessages.push(...ketQua);
+
+    tongKyTuTool += ketQua.reduce((s, m) => s + doDaiNoiDung(m.content), 0);
+    if (tongKyTuTool >= CAP_TONG_KET_QUA_TOOL) {
+      // Chỉ vào `messages` (thứ gửi cho mô hình), KHÔNG vào `newMessages`: đây
+      // là lời nhắc kỹ thuật của lượt này, không phải một câu người dùng nói —
+      // lưu nó vào lịch sử thì lần sau tải lại hội thoại sẽ thấy một tin nhắn
+      // ma trong khung chat.
+      messages.push({ role: 'user', content: NHAC_HET_NGAN_SACH });
+      const chot = await goiModelMotLuot({
+        providerModel: params.providerModel,
+        messages,
+        tools: khaiBao,
+        signal: params.signal,
+        onDeltaChu: params.onDeltaChu,
+        organizationId: params.ctx.organizationId,
+      });
+      usage.promptTokens += chot.usage.promptTokens;
+      usage.completionTokens += chot.usage.completionTokens;
+      usage.totalTokens += chot.usage.totalTokens;
+      const text = chot.content.trim() || `Kết quả tra cứu:\n${tomTatKetQua(toolEvents)}`;
+      newMessages.push({ role: 'assistant', content: text });
+      return { text, toolEvents, usage, newMessages };
+    }
   }
 
   // Hết vòng mà mô hình vẫn chưa chốt → trả thẳng dữ liệu đã gom, đừng im lặng.
   const fallback =
     toolEvents.length > 0
-      ? `Kết quả tra cứu:\n${toolEvents.map((ev) => `- ${ev.tool}: ${ev.output.slice(0, 4000)}`).join('\n')}`
+      ? `Kết quả tra cứu:\n${tomTatKetQua(toolEvents)}`
       : 'Xin lỗi, tôi chưa trả lời được câu hỏi này (quá số vòng công cụ cho phép).';
   newMessages.push({ role: 'assistant', content: fallback });
   return { text: fallback, toolEvents, usage, newMessages };

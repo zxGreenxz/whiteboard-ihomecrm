@@ -380,7 +380,10 @@ export default function ChatPanel({ onClose }: Props) {
       },
       signal: abort.signal,
       // Cho Copilot biết người dùng đang xem màn hình nào — để hiểu "cái này".
+      // Kèm cả query string: bộ lọc đang áp mới quyết định con số họ đang nhìn
+      // (chỉ khoá trong allowlist của `banDoHeThong` được kể lại).
       pathname: location.pathname,
+      search: location.search,
       anh,
       onToolEvent: (ev: ChatToolEvent) => {
         if (generation !== orgGenerationRef.current) return;

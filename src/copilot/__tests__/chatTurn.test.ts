@@ -183,7 +183,7 @@ describe('runChatTurn — hỏng thì mô hình phải ĐỌC được lỗi', (
     );
     const r = await chay();
     expect(r.text).toContain('Kết quả tra cứu');
-    expect(goiModelMotLuot).toHaveBeenCalledTimes(6); // MAX_TOOL_ROUNDS
+    expect(goiModelMotLuot).toHaveBeenCalledTimes(10); // MAX_TOOL_ROUNDS
   });
 });
 
@@ -310,5 +310,174 @@ describe('structured date and fallback regressions', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('tomTatLichSu — rút lượt cũ, KHÔNG vứt chúng đi', () => {
+  it('giữ câu hỏi người dùng, tên công cụ đã chạy, và MỘT dòng mỗi kết quả', async () => {
+    const { tomTatLichSu } = await import('../chatEngine');
+    const tt = tomTatLichSu([
+      { role: 'user', content: 'Doanh thu toà An Phú tháng 7?' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: 'a', type: 'function', function: { name: 'doanh_thu_thang', arguments: '{}' } }],
+      },
+      { role: 'tool', tool_call_id: 'a', content: 'Doanh thu 128.400.000 đ\nchi tiết dòng 2\nchi tiết dòng 3' },
+      { role: 'assistant', content: 'Doanh thu tháng 7 là 128.400.000 đ.' },
+    ])!;
+    const noi = String(tt.content);
+    expect(noi).toContain('Doanh thu toà An Phú tháng 7?');
+    expect(noi).toContain('doanh_thu_thang');
+    expect(noi).toContain('128.400.000 đ');
+    // Chỉ DÒNG ĐẦU của kết quả tool — tóm tắt không được kéo cả bảng vào.
+    expect(noi).not.toContain('chi tiết dòng 2');
+  });
+
+  it('vai `user` kèm nhãn rõ — không phải `system` chen giữa hội thoại', async () => {
+    // Nhiều nhà cung cấp chỉ nhận `system` ở vị trí đầu tiên; một message
+    // `system` chen giữa là lỗi 400 ở đúng những lượt dài nhất.
+    const { tomTatLichSu } = await import('../chatEngine');
+    const tt = tomTatLichSu([{ role: 'user', content: 'hỏi gì đó' }])!;
+    expect(tt.role).toBe('user');
+    expect(String(tt.content)).toContain('[Tóm tắt trước đó');
+  });
+
+  it('THUẦN và tất định: cùng đầu vào ra cùng kết quả, không gọi model', async () => {
+    const { tomTatLichSu } = await import('../chatEngine');
+    const lich: Parameters<typeof tomTatLichSu>[0] = [
+      { role: 'user', content: 'câu 1' },
+      { role: 'assistant', content: 'đáp 1' },
+    ];
+    const truoc = goiModelMotLuot.mock.calls.length;
+    expect(tomTatLichSu(lich)).toEqual(tomTatLichSu(lich));
+    expect(goiModelMotLuot.mock.calls.length).toBe(truoc);
+  });
+
+  it('tôn trọng trần ký tự, bỏ từ ĐẦU (lượt gần nhất còn liên quan nhất)', async () => {
+    const { tomTatLichSu, CAP_TOM_TAT } = await import('../chatEngine');
+    const nhieu: Parameters<typeof tomTatLichSu>[0] = Array.from({ length: 200 }, (_, i) => ({
+      role: 'user' as const,
+      content: `câu hỏi số ${i}`,
+    }));
+    const noi = String(tomTatLichSu(nhieu)!.content);
+    expect(noi.length).toBeLessThanOrEqual(CAP_TOM_TAT + 200); // + phần nhãn đầu khối
+    expect(noi).toContain('câu hỏi số 199');
+    expect(noi).not.toContain('câu hỏi số 0\n');
+  });
+
+  it('lịch sử rỗng ⇒ null, không chèn khối rỗng vào ngữ cảnh', async () => {
+    const { tomTatLichSu } = await import('../chatEngine');
+    expect(tomTatLichSu([])).toBeNull();
+  });
+});
+
+describe('buildChatContext — phần vượt ngân sách được TÓM TẮT, không bị vứt', () => {
+  it('block bị đẩy ra khỏi maxTurns quay lại dưới dạng một khối tóm tắt', async () => {
+    const { buildChatContext } = await import('../chatEngine');
+    const lich: Parameters<typeof buildChatContext>[0] = [
+      { role: 'user', content: 'toà An Phú có bao nhiêu phòng trống' },
+      { role: 'assistant', content: 'Có 3 phòng.' },
+      { role: 'user', content: 'còn toà kia thì sao' },
+      { role: 'assistant', content: 'Toà Bình Minh có 5.' },
+    ];
+    const ctx = buildChatContext(lich, { maxTurns: 2 });
+    expect(ctx[0].role).toBe('user');
+    expect(String(ctx[0].content)).toContain('[Tóm tắt trước đó');
+    // Đây là điểm của cả thay đổi: "toà kia" vẫn tra được về "An Phú".
+    expect(String(ctx[0].content)).toContain('An Phú');
+    expect(ctx[ctx.length - 1].content).toBe('Toà Bình Minh có 5.');
+  });
+
+  it('không block nào rơi ra ⇒ KHÔNG chèn tóm tắt', async () => {
+    const { buildChatContext } = await import('../chatEngine');
+    const lich: Parameters<typeof buildChatContext>[0] = [
+      { role: 'user', content: 'a' },
+      { role: 'assistant', content: 'b' },
+    ];
+    expect(buildChatContext(lich)).toEqual(lich);
+  });
+});
+
+describe('runChatTurn — trần TỔNG ký tự kết quả tool', () => {
+  const toolTo = async () => {
+    const registryMod = await import('../tools/registry');
+    const z = await import('zod/v4');
+    return vi.spyOn(registryMod, 'toLlmTools').mockReturnValue({
+      to: { description: 'tool trả rất nhiều chữ', inputSchema: z.object({}), execute: async () => 'x'.repeat(30_000) },
+    });
+  };
+
+  it('chạm trần ⇒ nhắc mô hình chốt và trả lời, KHÔNG cắt ngang im lặng', async () => {
+    const { NHAC_HET_NGAN_SACH } = await import('../chatEngine');
+    const spy = await toolTo();
+    try {
+      goiModelMotLuot
+        .mockResolvedValueOnce(luot({ toolCalls: [goiTool('a', 'to', {}), goiTool('b', 'to', {})] }))
+        .mockResolvedValueOnce(luot({ toolCalls: [goiTool('c', 'to', {}), goiTool('d', 'to', {})] }))
+        .mockResolvedValueOnce(luot({ content: 'Đã đủ dữ liệu.' }));
+      const r = await chay();
+      expect(r.text).toBe('Đã đủ dữ liệu.');
+      expect(goiModelMotLuot).toHaveBeenCalledTimes(3); // 2 vòng tool + 1 vòng chốt
+      const cuoi = goiModelMotLuot.mock.calls[2][0].messages;
+      expect(String(cuoi[cuoi.length - 1].content)).toBe(NHAC_HET_NGAN_SACH);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('lời nhắc kỹ thuật KHÔNG được lưu vào lịch sử hội thoại', async () => {
+    // Lưu nó thì lần sau tải lại chat, người dùng thấy một tin nhắn ma mà họ
+    // không hề gõ.
+    const { NHAC_HET_NGAN_SACH } = await import('../chatEngine');
+    const spy = await toolTo();
+    try {
+      goiModelMotLuot
+        .mockResolvedValueOnce(luot({ toolCalls: [goiTool('a', 'to', {}), goiTool('b', 'to', {})] }))
+        .mockResolvedValueOnce(luot({ toolCalls: [goiTool('c', 'to', {}), goiTool('d', 'to', {})] }))
+        .mockResolvedValueOnce(luot({ content: 'Đã đủ dữ liệu.' }));
+      const r = await chay();
+      expect(r.newMessages.some((m) => String(m.content) === NHAC_HET_NGAN_SACH)).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('mô hình vẫn không chốt ở vòng cuối ⇒ đổ dữ liệu thô, không trả rỗng', async () => {
+    const spy = await toolTo();
+    try {
+      goiModelMotLuot.mockResolvedValue(
+        luot({ toolCalls: [goiTool('a', 'to', {}), goiTool('b', 'to', {})] }),
+      );
+      const r = await chay();
+      expect(r.text).toContain('Kết quả tra cứu');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe('runChatTurn — ngữ cảnh trang giàu vào system prompt', () => {
+  it('bộ lọc trên URL đi vào prompt, khoá ngoài allowlist thì không', async () => {
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    await chay({
+      // Ngữ cảnh trang fail-closed theo quyền: perms undefined thì không có
+      // trang nào, nên test này phải cấp đúng quyền xem hoá đơn.
+      ctx: { perms: { invoices: { view: true } }, organizationId: null },
+      pathname: '/invoices',
+      search: '?thang=2026-07&q=Nguyen Van A',
+    });
+    const sys = String(goiModelMotLuot.mock.calls[0][0].messages[0].content);
+    expect(sys).toContain('thang=2026-07');
+    expect(sys).not.toContain('Nguyen Van A');
+  });
+
+  it('từ điển nghiệp vụ và ví dụ mẫu đi kèm MỌI lượt', async () => {
+    goiModelMotLuot.mockResolvedValueOnce(luot({ content: 'ok' }));
+    await chay();
+    const sys = String(goiModelMotLuot.mock.calls[0][0].messages[0].content);
+    expect(sys).toContain('TỪ ĐIỂN NGHIỆP VỤ');
+    expect(sys).toContain('VÍ DỤ MẪU');
+    expect(sys).toContain('(nguồn:');
   });
 });

@@ -23,6 +23,7 @@ import {
   type PermissionPage,
 } from '@/lib/permissionPages';
 import type { PermissionsMap } from '@/lib/permissions';
+import { ROUTE_DIEU_HUONG, type MucDieuHuong } from './pageScope';
 import { boDau } from './docs/tokenize';
 
 export interface TrangKhopBanDo {
@@ -169,12 +170,138 @@ export function trangHienTaiTrong(
   return tot;
 }
 
-/** Một dòng ngữ cảnh nhét vào system prompt cho chat. */
+// ── Ngữ cảnh trang GIÀU: trang + bộ lọc đang áp + công cụ hợp trang ────────
+//
+// Bản đầu chỉ có nhãn trang và route. Nó trả lời được "ở đây" nghĩa là trang
+// nào, nhưng không trả lời được "cái này" khi người dùng đang lọc hoá đơn tháng
+// 7 của một toà: mô hình thấy `/invoices` và tra CẢ tổ chức, ra một con số to
+// hơn con số đang hiện trên màn hình. Hai câu trả lời cùng đúng cú pháp, khác
+// nhau, và người dùng chỉ thấy cái sai.
+
+/**
+ * Khoá query được phép kể lại cho mô hình.
+ *
+ * ALLOWLIST, không phải blocklist — URL của app này mang cả `account_id`,
+ * `org`, và những thứ chưa ai nghĩ tới; một blocklist sẽ luôn chậm hơn URL mới
+ * đúng một sprint. Và cố ý CHỈ nhận bộ lọc CÓ CẤU TRÚC: các khoá tìm kiếm tự do
+ * (`q`, `search`) hay chứa tên/số điện thoại khách, tức PII đi thẳng vào prompt
+ * mà không qua `maskPii`.
+ */
+export const KHOA_LOC_CHO_PHEP: readonly string[] = [
+  'approval_status',
+  'building_id',
+  'den',
+  'from',
+  'handover',
+  'job',
+  'ky',
+  'layer',
+  'loai',
+  'month',
+  'nam',
+  'payment_status',
+  'status',
+  'tab',
+  'thang',
+  'to',
+  'toa',
+  'toa_nha',
+  'trang_thai',
+  'tu',
+  'type',
+  'year',
+];
+
+/** Giá trị dài hơn ngần này là dữ liệu dán vào URL, không phải một bộ lọc. */
+export const DAI_TOI_DA_GIA_TRI_LOC = 80;
+/** Trần số bộ lọc kể ra — ngữ cảnh trang không được nuốt ngân sách prompt. */
+export const SO_LOC_TOI_DA = 6;
+/** Số công cụ gợi ý theo trang. Ba là đủ để dẫn hướng, chưa đủ để thành danh sách. */
+export const SO_TOOL_GOI_Y = 3;
+
+/**
+ * Bộ lọc đang áp, đọc từ query string. Sắp theo TÊN KHOÁ để prompt ổn định:
+ * cùng một màn hình phải sinh cùng một chuỗi, nếu không prompt cache trượt mỗi
+ * lần người dùng bấm lại đúng bộ lọc cũ theo thứ tự khác.
+ */
+export function locTuUrl(search: string | undefined): string[] {
+  if (!search) return [];
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const ra: string[] = [];
+  for (const khoa of [...KHOA_LOC_CHO_PHEP].sort()) {
+    const gt = params.get(khoa);
+    if (gt === null) continue;
+    const sach = gt.trim();
+    if (!sach || sach.length > DAI_TOI_DA_GIA_TRI_LOC) continue;
+    ra.push(`${khoa}=${sach}`);
+    if (ra.length >= SO_LOC_TOI_DA) break;
+  }
+  return ra;
+}
+
+/**
+ * Khoá trang (`invoices.list`) của pathname — cùng khoá mà `rolloutKey` của tool
+ * dùng, nên hai thứ ghép được với nhau mà không cần bảng ánh xạ viết tay.
+ *
+ * Khớp theo route DÀI NHẤT, cùng luật với `trangHienTai`.
+ */
+export function khoaTrangTheoRoute(pathname: string): string | null {
+  let tot: MucDieuHuong | null = null;
+  for (const m of ROUTE_DIEU_HUONG) {
+    const khop = m.route === '/' ? pathname === '/' : pathname.startsWith(m.route);
+    if (!khop) continue;
+    if (!tot || m.route.length > tot.route.length) tot = m;
+  }
+  return tot ? tot.key : null;
+}
+
+/**
+ * Công cụ hợp với trang đang xem, suy từ `rolloutKey` của chính tool.
+ *
+ * Nhận danh sách tool qua THAM SỐ chứ không import registry: người gọi
+ * (`chatEngine`) đã có bộ tool ĐÃ LỌC quyền và rollout của phiên, nên gợi ý
+ * không bao giờ kể tên một công cụ mà phiên này gọi sẽ ăn lỗi. Import thẳng
+ * registry ở đây cũng sẽ kéo `supabase` vào một module vốn chỉ đọc catalog.
+ */
+export function goiYToolTheoTrang(
+  khoaTrang: string | null,
+  tools: readonly { name: string; rolloutKey?: string }[],
+): string[] {
+  if (!khoaTrang) return [];
+  return tools
+    .filter((t) => t.rolloutKey === khoaTrang)
+    .map((t) => t.name)
+    .sort()
+    .slice(0, SO_TOOL_GOI_Y);
+}
+
+export interface TuyChonNguCanhTrang {
+  /** `location.search` — query string của trang đang xem. */
+  search?: string;
+  /** Bộ tool của phiên (đã lọc quyền + rollout). */
+  tools?: readonly { name: string; rolloutKey?: string }[];
+}
+
+/** Ngữ cảnh trang nhét vào system prompt cho chat. */
 export function dongNguCanhTrang(
   pathname: string,
   perms: PermissionsMap | undefined,
+  opts: TuyChonNguCanhTrang = {},
 ): string | null {
   const t = trangHienTai(pathname, perms);
   if (!t) return null;
-  return `NGỮ CẢNH: người dùng đang ở trang "${t.page.label}" (${t.page.route}). Khi họ nói "cái này", "ở đây", "trang này" thì hiểu theo trang đó.`;
+  const dong = [
+    `NGỮ CẢNH: người dùng đang ở trang "${t.page.label}" (${t.page.route}). Khi họ nói "cái này", "ở đây", "trang này" thì hiểu theo trang đó.`,
+  ];
+  const loc = locTuUrl(opts.search);
+  if (loc.length) {
+    dong.push(
+      `Bộ lọc đang áp trên màn hình: ${loc.join(', ')}. Trả lời theo đúng phạm vi này; muốn nói con số rộng hơn thì phải nói rõ là đã bỏ bộ lọc nào.`,
+    );
+  }
+  const goiY = goiYToolTheoTrang(khoaTrangTheoRoute(pathname), opts.tools ?? []);
+  if (goiY.length) {
+    dong.push(`Công cụ hợp với trang này: ${goiY.join(', ')}.`);
+  }
+  return dong.join('\n');
 }
