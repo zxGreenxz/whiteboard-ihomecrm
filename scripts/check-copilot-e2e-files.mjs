@@ -18,6 +18,11 @@ export const REQUIRED_COPILOT_SPECS = [
   // được: nonce cấp kế hoạch, `plan_digest`, thứ tự tuyến tính, hạn thực thi,
   // và cầu dao kéo GIỮA một kế hoạch đã duyệt.
   '.e2e-fleet/specs/copilot-plan-batch-consent.spec.ts',
+  // G5-E: ma trận L5 — PIN step-up, uỷ quyền đứng, ranh giới `direct_l5_v1`.
+  // Hai spec ở trên đo tầng "một phiếu đồng ý", risk ≤ L4; spec này đo tầng
+  // MỨC 3: khoá PIN 5-lần-sai, `plan_risk_not_allowed`/`l5_requires_plan`,
+  // tự duyệt/thu hồi giữa chừng qua uỷ quyền đứng.
+  '.e2e-fleet/specs/copilot-plan-l5-matrix.spec.ts',
 ];
 
 export function validateCopilotE2eFiles(root, required = REQUIRED_COPILOT_SPECS) {

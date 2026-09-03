@@ -324,10 +324,19 @@ jobs:
       #   đuôi, và `FLEET_WORKERS=1` là thứ bảo đảm điều đó: Playwright chạy từng
       #   file một khi chỉ có một worker.
       #
+      #   `copilot-plan-l5-matrix.spec.ts` (G5-E) ĐI CÙNG BƯỚC vì đúng lý do đó,
+      #   nhân ba: nó ĐỌC `copilot_action_policy` (không đụng
+      #   `max_direct_risk`/`standing_grants_enabled`, chỉ đọc để quyết định bỏ
+      #   ca), nới TẠM `allowed_roles` y hệt spec kia ở case 4/5 (uỷ quyền đứng),
+      #   VÀ còn xoay PIN step-up của tài khoản hệ thống (dùng chung bởi MỌI
+      #   spec chạm super admin) cùng bật/tắt tạm một cờ hành động L5 ở case 3.
+      #   Ba spec này phải nối đuôi nhau tuyệt đối — không cái nào được chạy
+      #   song song với hai cái còn lại.
+      #
       #   `!cancelled()` chứ không phải mặc định: bước trên đỏ KHÔNG được làm ma
       #   trận không chạy — một hàng rào bảo mật không được đo chỉ vì một smoke
       #   test khác vừa hỏng là đúng thứ ta không muốn.
-      - name: Hai spec hàng rào ghi Copilot (ma trận hành động + kế hoạch theo lô — chạy RIÊNG, 1 worker)
+      - name: Ba spec hàng rào ghi Copilot (ma trận hành động + kế hoạch theo lô + ma trận L5 — chạy RIÊNG, 1 worker)
         if: ${{ !cancelled() }}
         env:
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
@@ -348,6 +357,12 @@ jobs:
           # TẮT: 5 phút treo mỗi lượt CI không đáng cho một bất biến đã có test
           # đơn vị. Đặt '1' khi muốn đo lại trên máy thật.
           COPILOT_PLAN_EXPIRY_WAIT: '0'
+          # copilot-plan-l5-matrix.spec.ts đọc biến này để biết PIN HIỆN TẠI của
+          # tài khoản hệ thống trước khi xoay sang một PIN ngẫu nhiên cho lượt
+          # chạy (và trả về đúng giá trị này ở afterAll). Không đặt secret riêng
+          # cho CI: mặc định trong mã là '7391' (giá trị controller đã đặt trên
+          # production task G5-D/E) — chỉ cần override ở đây nếu PIN thật đổi.
+          # COPILOT_E2E_PIN_CURRENT: ${{ secrets.COPILOT_E2E_PIN_CURRENT }}
           THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
           THU_MUC_RAC: ${{ runner.temp }}/copilot-e2e-artifacts
           LOC_CHE: ${{ runner.temp }}/che-bi-mat.mjs
@@ -355,7 +370,7 @@ jobs:
           set -uo pipefail
           mkdir -p "$THU_MUC_TAI_LEN"
           cd .e2e-fleet
-          npx playwright test             specs/copilot-action-matrix.spec.ts             specs/copilot-plan-batch-consent.spec.ts             --reporter=list             --trace=off             --output "$THU_MUC_RAC" 2>&1 | node "$LOC_CHE"             | tee "$THU_MUC_TAI_LEN/list-hang-rao-ghi.log"
+          npx playwright test             specs/copilot-action-matrix.spec.ts             specs/copilot-plan-batch-consent.spec.ts             specs/copilot-plan-l5-matrix.spec.ts             --reporter=list             --trace=off             --output "$THU_MUC_RAC" 2>&1 | node "$LOC_CHE"             | tee "$THU_MUC_TAI_LEN/list-hang-rao-ghi.log"
 
       # Dọn TRƯỚC guard, guard TRƯỚC upload. Ba bước tách rời để log nói rõ bước
       # nào làm gì; gộp lại thì một lần `rm` hỏng sẽ ẩn trong bước khác.
