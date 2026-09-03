@@ -423,6 +423,7 @@ jobs:
           scripts/__tests__/check-rpc-arg-names.test.mjs \
           scripts/__tests__/check-rpc-layer.test.mjs \
           scripts/__tests__/check-rpc-name-literal.test.mjs \
+          scripts/__tests__/generate-bundle-inventory.test.mjs \
           scripts/__tests__/check-ts-suppressions.test.mjs \n          scripts/__tests__/check-ts-baseline.test.mjs
 
       - name: Vitest (root-owned app and script suites)
@@ -458,6 +459,7 @@ jobs:
           --exclude 'scripts/__tests__/check-rpc-arg-names.test.mjs'
           --exclude 'scripts/__tests__/check-rpc-layer.test.mjs'
           --exclude 'scripts/__tests__/check-rpc-name-literal.test.mjs'
+          --exclude 'scripts/__tests__/generate-bundle-inventory.test.mjs'
           --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs'
           --exclude 'scripts/__tests__/check-ts-baseline.test.mjs'
 

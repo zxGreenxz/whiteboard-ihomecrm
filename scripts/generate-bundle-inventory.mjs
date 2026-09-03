@@ -15,6 +15,10 @@
 //   Mỗi trang khai `lazy()` phải có CHUNK RIÊNG trong dist/assets. Trang biến mất
 //   khỏi danh sách chunk = nó đã bị gộp vào chỗ khác.
 //
+//   Và chunk ENTRY không được phình quá ngưỡng. "Chunk entry" đọc từ
+//   `dist/index.html` (`<script type="module" src=…>`), KHÔNG suy từ tên file —
+//   xem chú thích ở `fileEntryTuHtml`.
+//
 //   node scripts/generate-bundle-inventory.mjs            # kiểm
 //   node scripts/generate-bundle-inventory.mjs --write    # chốt lại baseline
 //
@@ -29,6 +33,7 @@ import { boChuThichJs } from './lib/bo-chu-thich.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(repoRoot, 'dist', 'assets');
+const INDEX_HTML = join(repoRoot, 'dist', 'index.html');
 const LAZY = join(repoRoot, 'src', 'app', 'lazyPages.ts');
 const BASELINE = join(repoRoot, 'tooling', 'bundle-baseline.json');
 
@@ -56,6 +61,48 @@ export function chunkTrongDist(files, kichThuoc) {
     .filter((f) => f.endsWith('.js'))
     .map((f) => ({ ten: f.replace(/-[A-Za-z0-9_-]{8,}\.js$/, ''), file: f, bytes: kichThuoc(f) }))
     .sort((a, b) => b.bytes - a.bytes);
+}
+
+/**
+ * Chunk ENTRY = đúng những file mà `dist/index.html` nạp bằng
+ * `<script type="module" src="/assets/…js">`. Trả tên FILE (kèm hash).
+ *
+ * VÌ SAO KHÔNG ĐOÁN THEO TÊN NỮA
+ *   Bản đầu lấy `chunks.filter((c) => c.ten === 'index')` — cộng MỌI chunk tên
+ *   `index-*.js`. Vite đặt tên chunk theo BASENAME của module, nên mọi thứ tên
+ *   `index.*` đều rơi vào rổ đó. Ngày 03/09/2026 registry.ts thêm
+ *   `import.meta.glob('/docs/huong-dan-su-dung/**\/index.md')`: 25 chunk raw
+ *   `index-<hash>.js` (0,9–2 kB) ra đời, cộng thêm một trang lazy vốn đã tên
+ *   `index-*` (221 kB) — phép đo nhảy lên 1598 kB và gate đỏ, trong khi entry
+ *   THẬT vẫn 448 kB. Gate đỏ vì phép đo hỏng, không vì bundle hỏng: đúng loại
+ *   báo động giả khiến người ta nới ngưỡng rồi mất luôn cái ratchet.
+ *
+ * `modulepreload` CỐ Ý KHÔNG TÍNH LÀ ENTRY
+ *   Vite phát `<link rel="modulepreload">` cho các vendor chunk (react, query,
+ *   supabase…). Chúng có tải ở lần mở đầu thật, nhưng chúng KHÔNG bao giờ nằm
+ *   trong phép đo cũ (tên `vendor-*`, không phải `index`), nên tính thêm vào
+ *   đây sẽ làm `bytesEntry` nhảy bậc và ngưỡng ratchet cũ mất nghĩa. Thứ gate
+ *   này canh là "một trang lazy vừa bị import thẳng vào entry" — đó là chunk
+ *   entry, không phải danh sách vendor. Kích thước vendor đã có `bytesTong` canh.
+ */
+export function fileEntryTuHtml(html) {
+  const ra = [];
+  for (const m of html.matchAll(/<script\b([^>]*)>/gi)) {
+    const thuocTinh = m[1];
+    if (!/\btype\s*=\s*["']module["']/i.test(thuocTinh)) continue;
+    const src = thuocTinh.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
+    if (!src) continue;
+    // Bỏ query/hash rồi lấy basename: `/assets/index-AAA.js?v=1` → `index-AAA.js`.
+    const file = src[1].split(/[?#]/)[0].split('/').pop();
+    if (file.endsWith('.js')) ra.push(file);
+  }
+  return [...new Set(ra)];
+}
+
+/** Tổng bytes của đúng các chunk có tên file nằm trong `fileEntry`. */
+export function bytesEntry(chunks, fileEntry) {
+  const can = new Set(fileEntry);
+  return chunks.filter((c) => can.has(c.file)).reduce((n, c) => n + c.bytes, 0);
 }
 
 /**
@@ -90,8 +137,25 @@ function main(argv) {
     process.exit(3);
   }
 
-  const entry = chunks.filter((c) => c.ten === 'index');
-  const tongEntry = entry.reduce((n, c) => n + c.bytes, 0);
+  if (!existsSync(INDEX_HTML)) {
+    console.error('❌ KHÔNG ĐO ĐƯỢC: chưa có dist/index.html — không biết chunk nào là entry.');
+    process.exit(3);
+  }
+  const fileEntry = fileEntryTuHtml(readFileSync(INDEX_HTML, 'utf8'));
+  if (fileEntry.length === 0) {
+    console.error('❌ KHÔNG ĐO ĐƯỢC: dist/index.html không có <script type="module" src=…js>.');
+    console.error('   Build hỏng, hoặc Vite đổi cách phát entry — sửa phép đo trước khi kết luận.');
+    process.exit(3);
+  }
+  const coTrongDist = new Set(chunks.map((c) => c.file));
+  const thieu = fileEntry.filter((f) => !coTrongDist.has(f));
+  if (thieu.length > 0) {
+    console.error(`❌ KHÔNG ĐO ĐƯỢC: index.html trỏ chunk không có trong dist/assets: ${thieu.join(', ')}.`);
+    console.error('   dist/ lẫn hai lần build — xoá dist/ rồi build lại.');
+    process.exit(3);
+  }
+
+  const tongEntry = bytesEntry(chunks, fileEntry);
   const tong = chunks.reduce((n, c) => n + c.bytes, 0);
 
   const kiemKe = {

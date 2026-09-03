@@ -49,6 +49,7 @@
         "scripts/__tests__/check-rpc-layer.test.mjs",
         "scripts/__tests__/check-rpc-name-literal.test.mjs",
         "scripts/__tests__/check-ts-suppressions.test.mjs",
+        "scripts/__tests__/generate-bundle-inventory.test.mjs",
         "scripts/__tests__/network-center-*.test.mjs",
         "services/**",
         "scripts/__tests__/check-ts-baseline.test.mjs"
@@ -208,6 +209,7 @@
         "scripts/__tests__/check-rpc-layer.test.mjs",
         "scripts/__tests__/check-rpc-name-literal.test.mjs",
         "scripts/__tests__/check-ts-suppressions.test.mjs",
+        "scripts/__tests__/generate-bundle-inventory.test.mjs",
         "scripts/__tests__/network-center-*.test.mjs",
         "scripts/__tests__/check-ts-baseline.test.mjs"
       ],
