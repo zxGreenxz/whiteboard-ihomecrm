@@ -409,6 +409,7 @@ jobs:
           scripts/__tests__/check-no-auto-apply.test.mjs \
           scripts/__tests__/check-copilot-routes.test.mjs \
           scripts/__tests__/check-copilot-tool-inventory.test.mjs \
+          scripts/__tests__/check-copilot-docs-manifest.test.mjs \
           scripts/__tests__/check-copilot-e2e-files.test.mjs \
           scripts/__tests__/check-copilot-forbidden-actions.test.mjs \
           scripts/__tests__/check-copilot-page-contracts.test.mjs \
@@ -443,6 +444,7 @@ jobs:
           --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-routes.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-tool-inventory.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-docs-manifest.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-e2e-files.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-forbidden-actions.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-page-contracts.test.mjs'
