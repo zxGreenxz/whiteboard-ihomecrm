@@ -18,7 +18,7 @@ import {
   ROUTE_DIEU_HUONG,
 } from '../pageScope';
 import { USER_DOC_MODULES } from './guideCorpus.generated';
-import { taoPhieuThuChiNhap } from './writeTools';
+import { TOOL_GHI_HANH_DONG, taoPhieuThuChiNhap } from './writeTools';
 import { TOOL_NGHIEP_VU } from './nghiepVuTools';
 import { TOOL_GHI_NHO } from './memoryTools';
 import {
@@ -769,6 +769,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
 
     // Write tool draft-first (Phase 5): NHÁP + 2 bước xác nhận + idempotency
     taoPhieuThuChiNhap,
+    ...TOOL_GHI_HANH_DONG,
 
     // Bộ nhớ dài hạn (G1-D2) — ghi vào hàng CỦA CHÍNH người dùng, RLS own-row.
     ...TOOL_GHI_NHO,

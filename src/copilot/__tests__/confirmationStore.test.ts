@@ -8,6 +8,7 @@ import {
 } from '../confirmationStore';
 
 const MAU = {
+  tool: 'income_expense.create_draft',
   nonce: 'a'.repeat(64),
   canonical: { organization_id: 'org', amount: 100000 },
   preview: { so_tien: 100000, toa_nha: 'Toà A' },

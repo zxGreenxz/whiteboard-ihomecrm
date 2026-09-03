@@ -25,18 +25,31 @@ import {
   khoaQuyenHanhDong,
   khoaRolloutHanhDong,
   type ActionCatalogEntry,
+  type ActionId,
 } from '../actionCatalog';
 import { COPILOT_ROLLOUT_ACTION_CONTRACTS } from '@/copilot/featureFlags';
 
 const THU_MUC_MIGRATION = 'supabase/migrations';
 
-/** Migration G2-A — tìm theo hậu tố, không ghim timestamp vào test. */
-function timFileMigration(): string {
-  const khop = readdirSync(THU_MUC_MIGRATION).filter((ten) =>
-    /_copilot_action_registry_policy_ledger_v1\.sql$/.test(ten),
-  );
-  expect(khop, 'không tìm thấy migration sổ đăng ký hành động').toHaveLength(1);
-  return join(THU_MUC_MIGRATION, khop[0]);
+/**
+ * MỌI migration có seed `copilot_action_registry`, không chỉ migration G2-A.
+ *
+ * Bản đầu của test này ghim đúng một file (`*_copilot_action_registry_policy_ledger_v1.sql`).
+ * Từ G2-D mỗi action mới đi một migration RIÊNG — đúng luật "một action, một
+ * file" — nên một bộ đọc chỉ biết file G2-A sẽ thấy seed có 1 hàng trong khi
+ * mirror có 4, và bài "mirror không thừa" sẽ đỏ vì lý do SAI: không phải mirror
+ * thừa, mà là phép đo hụt. Quét theo NỘI DUNG (file nào có câu INSERT ấy) thay
+ * vì theo tên là cách duy nhất không phải sửa test mỗi lần thêm action.
+ */
+function timFileMigration(): string[] {
+  const ra = readdirSync(THU_MUC_MIGRATION)
+    .filter((ten) => ten.endsWith('.sql'))
+    .map((ten) => join(THU_MUC_MIGRATION, ten))
+    .filter((duong) =>
+      /INSERT\s+INTO\s+app_private\.copilot_action_registry/i.test(readFileSync(duong, 'utf8')),
+    );
+  expect(ra.length, 'không tìm thấy migration nào seed sổ đăng ký hành động').toBeGreaterThan(0);
+  return ra;
 }
 
 /**
@@ -92,9 +105,9 @@ export function docSeedRegistry(sql: string): Record<string, string | null>[] {
   const m = than(sql).match(
     /INSERT\s+INTO\s+app_private\.copilot_action_registry\s*\(([\s\S]*?)\)\s*VALUES\s*([\s\S]*?)ON\s+CONFLICT/i,
   );
-  expect(m, 'không dò được câu INSERT seed registry').not.toBeNull();
-  const cot = tachCapNgoaiCung(m![1]).map((x) => x.replace(/\s+/g, ''));
-  const khoiValues = m![2];
+  if (!m) return [];
+  const cot = tachCapNgoaiCung(m[1]).map((x) => x.replace(/\s+/g, ''));
+  const khoiValues = m[2];
   const hang: Record<string, string | null>[] = [];
   // Mỗi tuple `( ... )` ở mức ngoài cùng là một hàng.
   let doSau = 0;
@@ -125,15 +138,20 @@ export function docSeedRegistry(sql: string): Record<string, string | null>[] {
 
 /** Bóc các dòng seed cờ scope `action` của cùng migration. */
 export function docSeedCoAction(sql: string): { contractId: string; state: string }[] {
-  return [...than(sql).matchAll(/\('action',\s*'([^']+)'\s*,\s*'(\w+)'\)/g)].map((m) => ({
+  // KHÔNG đòi dấu `)` ngay sau trạng thái: G2-A seed bằng một danh sách VALUES
+  // rút gọn `('action','x','disabled')`, còn mỗi migration action từ G2-D seed
+  // một tuple ĐẦY ĐỦ sáu cột. Một regex đòi đóng ngoặc sẽ im lặng bỏ qua dạng
+  // thứ hai, và bài "mỗi contract có đúng một dòng seed cờ" sẽ xanh trên một
+  // tập rỗng.
+  return [...than(sql).matchAll(/\(\s*'action',\s*'([^']+)'\s*,\s*'(\w+)'/g)].map((m) => ({
     contractId: m[1],
     state: m[2],
   }));
 }
 
-const sql = readFileSync(timFileMigration(), 'utf8');
-const seed = docSeedRegistry(sql);
-const seedCo = docSeedCoAction(sql);
+const cacFile = timFileMigration();
+const seed = cacFile.flatMap((duong) => docSeedRegistry(readFileSync(duong, 'utf8')));
+const seedCo = cacFile.flatMap((duong) => docSeedCoAction(readFileSync(duong, 'utf8')));
 
 describe('mirror ACTION_CATALOG khớp seed registry của migration G2-A', () => {
   it('bộ đọc thật sự bóc được dữ liệu (chống xanh-rỗng)', () => {
@@ -178,7 +196,7 @@ describe('mirror ACTION_CATALOG khớp seed registry của migration G2-A', () =
   });
 
   it('khoá rollout của hành động luôn mang tiền tố `action:`', () => {
-    for (const id of Object.keys(ACTION_CATALOG)) {
+    for (const id of Object.keys(ACTION_CATALOG) as ActionId[]) {
       expect(khoaRolloutHanhDong(id)).toBe(`action:${id}`);
     }
   });

@@ -86,6 +86,68 @@ export const SCHEMA_TAO_PHIEU_THU_CHI = z.object({
 });
 
 /**
+ * Input của `ghi_chu_phieu_thu_chi` — action L3 `income_expense.annotate`.
+ *
+ * `notes` THAY THẾ toàn bộ ghi chú cũ (`p_note_mode = 'REPLACE'` ở RPC gốc).
+ * Không có đường nào để mô hình gắn/gỡ ảnh chứng từ: `annotate_income_expense_v1`
+ * nhận hai tham số đính kèm, nhưng RPC bọc luôn truyền NULL cho cả hai. Ảnh là
+ * bằng chứng chứng từ, và một mô hình dựng URL ảnh là một đường đưa nội dung
+ * ngoài vào sổ.
+ */
+export const SCHEMA_GHI_CHU_PHIEU_THU_CHI = z.object({
+  voucher_id: z.string().uuid().describe('ID phiếu thu/chi cần sửa ghi chú'),
+  notes: z
+    .string()
+    .max(5000)
+    .describe('Ghi chú MỚI — thay thế toàn bộ ghi chú hiện có của phiếu'),
+});
+
+/**
+ * Input của `dat_han_giu_cho` — action L3 `reservation.set_hold_terms`.
+ *
+ * Cả ba mốc đều nhận `null` với nghĩa "bỏ mốc này"; cả ba cùng `null` là lệnh
+ * XOÁ dòng kỳ hạn — hành vi hợp lệ của RPC gốc, không phải lỗi.
+ */
+export const SCHEMA_HAN_GIU_CHO = z.object({
+  income_expense_id: z.string().uuid().describe('ID phiếu THU cọc giữ chỗ'),
+  hold_until: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional()
+    .describe('Hạn làm hợp đồng (YYYY-MM-DD); null = bỏ mốc này'),
+  topup_due_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional()
+    .describe('Hạn bổ sung cọc (YYYY-MM-DD); null = bỏ mốc này'),
+  deposit_target: z
+    .number()
+    .positive()
+    .nullable()
+    .optional()
+    .describe('Số cọc cần đủ (VND); null = bỏ mốc này'),
+});
+
+/**
+ * Input của `dat_co_hoi_thoai_zalo` — action L3 `zalo.set_conversation_flags`.
+ *
+ * `null`/vắng mặt nghĩa là GIỮ NGUYÊN cờ đó (đúng ngữ nghĩa `COALESCE` của RPC
+ * gốc). Ba cờ đều là cờ hiển thị: không gửi tin, không đổi nội dung hội thoại.
+ */
+export const SCHEMA_CO_HOI_THOAI_ZALO = z.object({
+  conversation_id: z.string().uuid().describe('ID hội thoại Zalo'),
+  pinned: z.boolean().nullable().optional().describe('Ghim hội thoại; bỏ trống = giữ nguyên'),
+  muted: z.boolean().nullable().optional().describe('Tắt tiếng; bỏ trống = giữ nguyên'),
+  marked_unread: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe('Đánh dấu chưa đọc; bỏ trống = giữ nguyên'),
+});
+
+/**
  * Sổ hành động — khoá là `action_id` của server, không phải tên tool.
  *
  * Một hành động ở đây KHÔNG tự động sống: `copilot_feature_flags` có một hàng
@@ -115,9 +177,108 @@ export const ACTION_CATALOG = {
     previewRpc: 'copilot_preview_income_expense_v1',
     executeRpc: 'copilot_execute_income_expense_v1',
   },
+  'income_expense.annotate': {
+    actionId: 'income_expense.annotate',
+    version: 1,
+    labelVi: 'Sửa ghi chú phiếu thu/chi',
+    risk: 'L3',
+    executorKind: 'nonce_abi_v1',
+    consentRequired: 'click',
+    permission: { module: 'income_expenses', action: 'edit' },
+    inputSchema: SCHEMA_GHI_CHU_PHIEU_THU_CHI,
+    previewFields: ['ma_phieu', 'ten_phieu', 'ghi_chu_cu', 'ghi_chu_moi'],
+    previewRpc: 'copilot_preview_income_expense_annotate_v1',
+    executeRpc: 'copilot_execute_income_expense_annotate_v1',
+  },
+  'reservation.set_hold_terms': {
+    actionId: 'reservation.set_hold_terms',
+    version: 1,
+    labelVi: 'Đặt kỳ hạn giữ chỗ cho phiếu cọc',
+    risk: 'L3',
+    executorKind: 'nonce_abi_v1',
+    consentRequired: 'click',
+    permission: { module: 'deposits', action: 'edit' },
+    inputSchema: SCHEMA_HAN_GIU_CHO,
+    previewFields: [
+      'ma_phieu',
+      'ten_phieu',
+      'han_lam_hop_dong_cu',
+      'han_lam_hop_dong_moi',
+      'han_bo_sung_coc_cu',
+      'han_bo_sung_coc_moi',
+      'coc_can_du_cu',
+      'coc_can_du_moi',
+    ],
+    previewRpc: 'copilot_preview_reservation_hold_terms_v1',
+    executeRpc: 'copilot_execute_reservation_hold_terms_v1',
+  },
+  'zalo.set_conversation_flags': {
+    actionId: 'zalo.set_conversation_flags',
+    version: 1,
+    labelVi: 'Đặt cờ hội thoại Zalo (ghim / tắt tiếng / chưa đọc)',
+    risk: 'L3',
+    executorKind: 'nonce_abi_v1',
+    consentRequired: 'click',
+    // `chat_zalo.view`, KHÔNG phải một khoá "edit" nghe hợp lý hơn.
+    // `zalo_set_conversation_flags` tự gác bằng `zalo_can('view', org)`, và
+    // module `chat_zalo` không có khoá `edit` nào trong `permission_definitions`
+    // (đo trên production 03/09/2026: chỉ có view/send/manage_automation/
+    // manage_templates). Khai một khoá không tồn tại sẽ làm cổng hỏi
+    // `authorized_scope_v3` về một quyền không ai có — action chết vĩnh viễn
+    // kèm thông điệp `not_permitted` sai sự thật.
+    permission: { module: 'chat_zalo', action: 'view' },
+    inputSchema: SCHEMA_CO_HOI_THOAI_ZALO,
+    previewFields: [
+      'ten_hoi_thoai',
+      'ghim_cu',
+      'ghim_moi',
+      'tat_tieng_cu',
+      'tat_tieng_moi',
+      'chua_doc_cu',
+      'chua_doc_moi',
+    ],
+    previewRpc: 'copilot_preview_zalo_conversation_flags_v1',
+    executeRpc: 'copilot_execute_zalo_conversation_flags_v1',
+  },
 } as const satisfies Record<string, ActionCatalogEntry>;
 
 export type ActionId = keyof typeof ACTION_CATALOG;
+
+/**
+ * Nhãn tiếng Việt của từng trường trong khối `preview` mà RPC xem trước trả về.
+ *
+ * MỘT bản, dùng chung giữa chuỗi tool gửi cho mô hình và thẻ xác nhận trên giao
+ * diện. Hai bản là hai cách gọi tên cùng một con số, và người dùng đọc bản nào
+ * cũng phải ra cùng một thứ với thứ họ sắp bấm.
+ *
+ * Trường thiếu nhãn sẽ hiện bằng chính tên khoá — xấu nhưng đúng, và
+ * `writeTools.test.ts` bắt cứng việc thiếu để nó không sống lâu.
+ */
+export const NHAN_TRUONG_XEM_TRUOC: Readonly<Record<string, string>> = {
+  loai: 'Loại phiếu',
+  so_tien: 'Số tiền',
+  ten_phieu: 'Tên phiếu',
+  toa_nha: 'Toà',
+  hang_muc: 'Hạng mục',
+  ngay: 'Ngày',
+  trang_thai: 'Trạng thái sau khi tạo',
+  ma_phieu: 'Mã phiếu',
+  ghi_chu_cu: 'Ghi chú hiện tại',
+  ghi_chu_moi: 'Ghi chú mới',
+  han_lam_hop_dong_cu: 'Hạn làm hợp đồng (hiện tại)',
+  han_lam_hop_dong_moi: 'Hạn làm hợp đồng (mới)',
+  han_bo_sung_coc_cu: 'Hạn bổ sung cọc (hiện tại)',
+  han_bo_sung_coc_moi: 'Hạn bổ sung cọc (mới)',
+  coc_can_du_cu: 'Cọc cần đủ (hiện tại)',
+  coc_can_du_moi: 'Cọc cần đủ (mới)',
+  ten_hoi_thoai: 'Hội thoại',
+  ghim_cu: 'Ghim (hiện tại)',
+  ghim_moi: 'Ghim (mới)',
+  tat_tieng_cu: 'Tắt tiếng (hiện tại)',
+  tat_tieng_moi: 'Tắt tiếng (mới)',
+  chua_doc_cu: 'Đánh dấu chưa đọc (hiện tại)',
+  chua_doc_moi: 'Đánh dấu chưa đọc (mới)',
+};
 
 /** `permission_key` như server ghi trong sổ đăng ký: `<module>.<action>`. */
 export function khoaQuyenHanhDong(entry: ActionCatalogEntry): string {
@@ -132,7 +293,15 @@ export function khoaQuyenHanhDong(entry: ActionCatalogEntry): string {
  * thái của `page:income_expense.create_draft` — một hàng không tồn tại, tức
  * luôn `disabled`, và triệu chứng là "tool biến mất mà cờ vẫn đang bật". Hàm
  * này là chỗ DUY NHẤT được dựng chuỗi đó.
+ *
+ * Tham số là `ActionId`, không phải `string` (G2-B review). Kiểu rộng cho phép
+ * gõ nhầm một id không tồn tại — `khoaRolloutHanhDong('income_expense.anotate')`
+ * biên dịch sạch, trả `action:income_expense.anotate`, và tool mang khoá đó thì
+ * KHÔNG BAO GIỜ bật được: `copilotAvailability` không thấy khoá nên trả
+ * `disabled`, còn `set_copilot_feature_flag_v2` từ chối một contract không có
+ * hàng. Triệu chứng là "bật cờ rồi mà tool vẫn mất", và không có gì trong hệ
+ * chỉ vào chỗ gõ sai.
  */
-export function khoaRolloutHanhDong(actionId: string): string {
+export function khoaRolloutHanhDong(actionId: ActionId): string {
   return `action:${actionId}`;
 }

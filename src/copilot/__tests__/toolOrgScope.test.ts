@@ -73,6 +73,21 @@ const TOOL_THEO_CONG_TY = [
   // đi thẳng vào system prompt của mọi lượt chat sau.
   { ten: 'ghi_nho', args: { khoa: 'toa_uu_tien', noi_dung: 'DEMO A' } },
   { ten: 'quen', args: { khoa: 'toa_uu_tien' } },
+  // G2-D — ba tool GHI sinh từ sổ hành động. Chúng chốt công ty ở CẢ hai đầu:
+  // `chotToChuc` chặn trước khi gọi RPC, và RPC xem trước lại từ chối mọi thực
+  // thể có `organization_id` khác. Ở đây đo đúng đầu thứ nhất.
+  {
+    ten: 'ghi_chu_phieu_thu_chi',
+    args: { voucher_id: 'aaaa4000-0000-4000-8000-000000000021', notes: 'ghi chú mới' },
+  },
+  {
+    ten: 'dat_han_giu_cho',
+    args: { income_expense_id: 'aaaa4000-0000-4000-8000-000000000022', hold_until: '2026-10-01' },
+  },
+  {
+    ten: 'dat_co_hoi_thoai_zalo',
+    args: { conversation_id: 'aaaa4000-0000-4000-8000-000000000023', pinned: true },
+  },
 ];
 
 const tool = (ten: string) => {

@@ -11,6 +11,7 @@ import { makeConfirmationIntentKey } from '../tools/writeTools';
 import { thucThiXacNhan } from '../tools/writeTools';
 
 const proposal = {
+  tool: 'income_expense.create_draft',
   nonce: 'a'.repeat(64),
   canonical: { organization_id: 'org-a', amount: 100 },
   preview: { so_tien: 100 },

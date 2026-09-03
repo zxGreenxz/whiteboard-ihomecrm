@@ -16,6 +16,17 @@
 //   lại bản xem trước là chuyện rẻ, còn một nonce sống sót qua reload thì không.
 
 export interface XacNhanDangCho {
+  /**
+   * `action_id` của hành động đang chờ — khoá tra `ACTION_CATALOG`.
+   *
+   * BẮT BUỘC, không mặc định. Từ G2-D có nhiều hơn một đường ghi, và thẻ xác
+   * nhận phải biết nó đang cầm nonce của hành động NÀO để gọi đúng RPC thực
+   * thi. Một giá trị mặc định ở đây sẽ nghĩa là: quên khai `tool` thì thẻ gọi
+   * RPC của hành động khác với cùng cái nonce — server từ chối bằng
+   * `confirmation_contract_mismatch`, nhưng triệu chứng người dùng thấy là
+   * "bấm nút không có gì xảy ra".
+   */
+  tool: string;
   /** Nonce thô do server phát. KHÔNG được đưa vào tin nhắn, log hay URL. */
   nonce: string;
   /** Payload CHUẨN HOÁ mà server đã chốt — gửi lại nguyên vẹn khi thực thi. */
