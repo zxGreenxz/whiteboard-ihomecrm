@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 502,
-  "soFileDocBangFs": 170,
-  "tongLoiGoi": 344,
-  "khongPhanLoaiDuoc": 178,
+  "tongSoFileTest": 506,
+  "soFileDocBangFs": 172,
+  "tongLoiGoi": 347,
+  "khongPhanLoaiDuoc": 180,
   "theoLoai": {
     "manifest": {
       "soFile": 18,
@@ -19,7 +19,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 33,
+      "soFile": 34,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
@@ -39,6 +39,7 @@
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
     "src/contexts/__tests__/OrganizationContext.test.ts",
     "src/copilot/__tests__/confirmationStore.test.ts",
+    "src/copilot/__tests__/keHoachCard.test.tsx",
     "src/copilot/__tests__/pageAgentCompatibility.test.ts",
     "src/copilot/__tests__/readonlyQueryContracts.test.ts",
     "src/copilot/__tests__/toolOrgScope.test.ts",
@@ -392,6 +393,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/copilot/__tests__/keHoachCard.test.tsx",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/copilot/__tests__/toolOrgScope.test.ts",
       "soGoi": 2,
       "loai": {
@@ -726,6 +735,12 @@
     },
     {
       "file": "src/copilot/__tests__/encoding.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/copilot/__tests__/planTools.test.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
