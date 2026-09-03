@@ -18761,6 +18761,10 @@ export type Database = {
         Args: { p_contract_id: string }
         Returns: number
       }
+      copilot_action_ledger_list_v1: {
+        Args: { p_limit?: number; p_organization_id: string }
+        Returns: Json
+      }
       copilot_available_rooms_v1: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -19865,6 +19869,7 @@ export type Database = {
         Args: { p_building_ids?: string[]; p_in30?: string; p_today?: string }
         Returns: Json
       }
+      get_copilot_action_policy_v1: { Args: never; Returns: Json }
       get_customer_credit_balance_v1: {
         Args: { p_contract_id: string }
         Returns: number
@@ -21820,6 +21825,17 @@ export type Database = {
         }
         Returns: Json
       }
+      set_copilot_action_policy_v1: {
+        Args: {
+          p_allowed_roles?: string[]
+          p_evidence_link?: string
+          p_expected_revision: number
+          p_max_direct_risk?: string
+          p_reason?: string
+          p_standing_grants_enabled?: boolean
+        }
+        Returns: Json
+      }
       set_copilot_feature_flag_v1: {
         Args: {
           p_canary_org?: string
@@ -21844,6 +21860,15 @@ export type Database = {
           p_rollback_reference?: string
           p_scope: string
           p_state: string
+        }
+        Returns: Json
+      }
+      set_copilot_writer_capability_v1: {
+        Args: {
+          p_capability_key: string
+          p_enabled: boolean
+          p_organization_id: string
+          p_reason: string
         }
         Returns: Json
       }
