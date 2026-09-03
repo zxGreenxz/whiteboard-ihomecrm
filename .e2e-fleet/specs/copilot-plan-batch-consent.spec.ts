@@ -62,25 +62,34 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
  *       `{superadmin}` + `L4` — nghĩa là một lượt chạy đứt gánh không bị lượt sau
  *       ghi đè bằng một trạng thái đoán.
  *
- *   (2) DEMO KHÔNG CÓ BỘ LUẬT DUYỆT ACTIVE — nên bước `nop_ho_so` KHÔNG THỂ
- *       thành công, và không có đường hợp lệ nào để tạo bộ luật đó.
+ *   (2) [MỘT LỚP ĐÃ VÁ 03/09/2026 — G3-FIX migration `d4d28e0e`, MỘT LỚP MỚI LỘ RA
+ *       CÙNG NGÀY, KHI CHẠY SPEC NÀY THẬT] DEMO TỪNG không có bộ luật duyệt
+ *       ACTIVE nên bước `nop_ho_so` không thể thành công. G3-FIX đã seed đúng
+ *       MỘT `approval_rule_sets` ACTIVE cho DEMO:
  *
- *         approval_rule_sets WHERE organization_id = dddd…0001 → 0 hàng
- *         (toàn hệ thống chỉ có 1 bộ luật, thuộc org aaaa…0001)
+ *         approval_rule_sets WHERE organization_id = dddd…0001 AND status='ACTIVE'
+ *           → 1 hàng (trước G3-FIX: 0 hàng) — xác nhận qua Management API
+ *           (đọc trực tiếp production; KHÔNG qua PostgREST, xem bên dưới)
  *
- *       `submit_financial_voucher` fail-CLOSED: không có rule set ACTIVE thì nó
- *       ném thẳng. Và không có RPC/màn hình nào tạo được bộ luật — chúng chỉ ra
- *       đời từ migration seed, dưới trigger `a00_rule_set_immutable`. Tạo tay
- *       bằng SQL là đúng thứ brief cấm.
+ *       NHƯNG chạy thật lộ ra MỘT LỚP CHẶN THỨ HAI mà G3-FIX không lường tới:
+ *       `submit_financial_voucher` loại chính MAKER khỏi danh sách ứng viên
+ *       duyệt (`AND m.id <> v_mem`, đọc trực tiếp nguồn hàm trên production).
+ *       DEMO chỉ có ĐÚNG MỘT OWNER (chunha), và chunha cũng là tài khoản DUY
+ *       NHẤT có `income_expenses.create` trên DEMO (mục (1) ở trên) — nên MỌI
+ *       phiếu do Copilot tạo đều có maker = approver duy nhất, bị tự loại, còn
+ *       lại 0 ứng viên ⇒ vẫn fail-closed, chỉ khác LÝ DO ("Không có người duyệt
+ *       đủ điều kiện" thay vì "không có rule set ACTIVE"). Nhánh THÀNH CÔNG của
+ *       `nop_ho_so` VẪN CHƯA đo được trên DEMO — cần một quyết định của chủ dự
+ *       án: thêm một thành viên DEMO khác chunha có `income_expenses.approve`.
  *
- *       ⇒ Ca 3 KHÔNG bỏ qua bước 2. Nó ĐO tiền đề trước (`coBoLuatDuyetACTIVE`)
- *       rồi khẳng định đúng một trong hai kết quả:
- *         · có bộ luật  → bước 2 DONE, `approval_requests` PENDING_APPROVAL,
- *                         maker = actor, kế hoạch DONE;
- *         · không có     → bước 2 FAILED, kế hoạch FAILED, KHÔNG hồ sơ duyệt nào
- *                         ra đời, và phiếu của bước 1 VẪN UNAPPROVED/UNPOSTED.
- *       Vế thứ hai không phải "bỏ qua": nó là phép đo fail-closed, và nó vẫn
- *       chứng minh điều quan trọng nhất — Copilot không duyệt được gì.
+ *       Về việc ĐỌC TRƯỚC: `approval_rule_sets` có 0 policy RLS PERMISSIVE (chỉ
+ *       hai policy RESTRICTIVE) nên PostgREST trả RỖNG cho MỌI role
+ *       `authenticated`, kể cả super admin — đo thật bằng cả hai JWT. Và
+ *       `effective_perms_v2` (RPC duy nhất xác nhận được "ai có
+ *       income_expenses.approve") không cấp EXECUTE cho `authenticated`. Tức là
+ *       spec KHÔNG có đường đọc trước đáng tin cho lớp chặn thứ hai — ca 3 vì
+ *       vậy branch theo ĐÚNG kết quả RPC vừa chạy (`r2.ok`), không đoán trước.
+ *       Xem thân ca 3 để biết chi tiết hai lớp và bằng chứng đo được.
  *
  * ────────────────────────────────────────────────────────────────────────────
  * KHOÁ API CÔNG KHAI KHÔNG PHẢI SECRET MỚI
@@ -496,11 +505,12 @@ async function datCo(jwtSys: string, state: 'disabled' | 'shadow' | 'enabled'): 
   // Tối đa hai lượt: `revision` là số đếm TOÀN CỤC nên bất kỳ ai đổi bất kỳ cờ
   // nào giữa lúc đọc và lúc ghi cũng làm CAS trượt.
   //
-  // ⚠ ĐO ĐƯỢC 03/09/2026: khi CAS trượt, `set_copilot_feature_flag_v2` KHÔNG trả
-  //   `copilot_rollout_stale_revision` — nó chết ở chính câu RAISE đó vì
-  //   `format('expected %, current %', …)` thiếu `%s`, nên client nhận SQLSTATE
-  //   22023 "unrecognized format() type specifier". Vòng lặp này vì vậy bắt CẢ
-  //   HAI chuỗi; sửa RPC là việc của một lane khác (xem báo cáo G3-E2E).
+  // [ĐÃ VÁ 03/09/2026 — G3-FIX migration `9fce77db`] `set_copilot_feature_flag_v2`
+  //   từng chết ở chính câu RAISE của nhánh CAS-trượt vì `format('expected %,
+  //   current %', …)` thiếu `%s`, nên client nhận SQLSTATE 22023 "unrecognized
+  //   format() type specifier" thay vì `40001 copilot_rollout_stale_revision`.
+  //   Migration đã sửa `%s`; RPC giờ trả đúng `copilot_rollout_stale_revision`
+  //   khi CAS trượt, nên vòng lặp chỉ còn cần khớp đúng chuỗi đó.
   let kq: KetQuaRpc = { status: 0, body: null };
   for (let i = 0; i < 2; i += 1) {
     const hienTai = await trangThaiCo(jwtSys);
@@ -514,7 +524,7 @@ async function datCo(jwtSys: string, state: 'disabled' | 'shadow' | 'enabled'): 
       ...LY_DO_LAT_CO,
     });
     if (kq.status === 200) return kq;
-    if (!/stale_revision|unrecognized format/.test(loi(kq))) return kq;
+    if (!loi(kq).includes('stale_revision')) return kq;
   }
   return kq;
 }
@@ -526,7 +536,7 @@ async function khoiPhucCo(jwtSys: string): Promise<void> {
     if (cur.state === 'enabled') return;
     const ke = cur.state === 'disabled' ? 'shadow' : 'enabled';
     const kq = await datCo(jwtSys, ke);
-    if (kq.status !== 200 && !/stale_revision|unrecognized format/.test(loi(kq))) {
+    if (kq.status !== 200 && !loi(kq).includes('stale_revision')) {
       throw new Error(`Không bật lại được cờ ${CO_KILL_SWITCH} (${ke}): ${loi(kq)}`);
     }
   }
@@ -660,11 +670,37 @@ async function donKeHoach(jwt: string, planId: string | null): Promise<void> {
   });
 }
 
-/** Bộ luật duyệt ACTIVE của DEMO — tiền đề của bước `nop_ho_so`. */
+/**
+ * Bộ luật duyệt ACTIVE của DEMO — tiền đề của bước `nop_ho_so`.
+ *
+ * ĐO ĐƯỢC 03/09/2026 (phiên chạy spec sau G3-FIX): `approval_rule_sets` KHÔNG
+ * có policy RLS nào PERMISSIVE — chỉ hai policy RESTRICTIVE
+ * (`approval_rule_sets_org_boundary`, `approval_rule_sets_hide_sandbox_admin`).
+ * Postgres không cấp quyền nếu KHÔNG có ít nhất một PERMISSIVE policy, nên
+ * bảng này đọc ra RỖNG qua PostgREST cho MỌI role `authenticated`, kể cả
+ * super admin — kiểm chứng trực tiếp bằng JWT thật của cả `chunha` lẫn tài
+ * khoản hệ thống, cả hai đều nhận `[]` dù `approval_rule_sets` có đúng một
+ * hàng ACTIVE cho DEMO (xem migration `d4d28e0e`). Đây là khoảng trống RLS
+ * CÓ TỪ TRƯỚC, chỉ lộ ra hôm nay vì trước G3-FIX bảng thật sự rỗng nên kết
+ * quả "đọc rỗng" và "sự thật rỗng" trùng nhau một cách tình cờ. Sửa RLS nằm
+ * ngoài phạm vi spec-only của phiên này — bàn giao.
+ *
+ * ⇒ Dùng `approval_rules` làm PROXY: bảng đó CÓ policy PERMISSIVE
+ * (`approval_rules_select_member`) nên đọc được. Không hoàn hảo — cột
+ * `active` của một hàng rule không tự tắt khi `approval_rule_sets` cha bị
+ * RETIRE (đọc `app_private.publish_rule_set_v1`: RETIRE chỉ đổi
+ * `approval_rule_sets.status`/`effective_to`, không đụng `approval_rules`) —
+ * nhưng KHÔNG có đường nào lộ ra ngoài `authenticated` để tạo phiên bản rule
+ * set thứ hai cho DEMO (`publish_rule_set_v1` nằm ở `app_private`), nên trong
+ * đúng môi trường DEMO hôm nay, ba điều kiện dưới đây (fallback +
+ * REQUIRE_APPROVAL + active) là tín hiệu đáng tin — chính là hình dạng hàng
+ * mà migration `d4d28e0e` seed.
+ */
 async function coBoLuatDuyetACTIVE(jwt: string): Promise<boolean> {
   const rows = await docBang(
     jwt,
-    `approval_rule_sets?organization_id=eq.${ORG_DEMO}&status=eq.ACTIVE&select=id&limit=1`,
+    `approval_rules?organization_id=eq.${ORG_DEMO}&active=eq.true&is_fallback=eq.true` +
+      '&effect=eq.REQUIRE_APPROVAL&select=id&limit=1',
   );
   return rows.length > 0;
 }
@@ -836,13 +872,12 @@ test('ca 2 — duyệt bằng nonce + digest đúng ⇒ APPROVED; duyệt lại 
   }
 });
 
-test('ca 3 — chạy tuần tự 2 bước: nháp ra đời, hồ sơ KHÔNG bao giờ được duyệt', async () => {
+test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL nếu có người duyệt khác actor, fail-closed nếu không; Copilot KHÔNG bao giờ tự duyệt', async () => {
   const tienDe = await moVan();
   test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
 
   const jwt = await token('chunha');
   const actor = uidCua(jwt);
-  const coBoLuat = await coBoLuatDuyetACTIVE(jwt);
   let planId: string | null = null;
 
   try {
@@ -897,6 +932,9 @@ test('ca 3 — chạy tuần tự 2 bước: nháp ra đời, hồ sơ KHÔNG ba
     expect(dongB1[0].action_id).toBe(HANH_DONG_TAO);
 
     // ── BƯỚC 2 — nộp hồ sơ (`maker_submit_v1`, `$ref_step: 1`) ──────────────
+    // Đo tiền đề lớp 1 (proxy đọc được, xem docblock hàm) chỉ để làm BẰNG CHỨNG
+    // trong log/lỗi — KHÔNG dùng để chọn nhánh (xem lý do ngay dưới).
+    const coBoLuatProxy = await coBoLuatDuyetACTIVE(jwt);
     const b2 = await chayBuoc(jwt, ke.plan_id, 2, r1.plan_version);
     expect(b2.status, `Chạy bước 2 trả HTTP lạ: ${loi(b2)}`).toBe(200);
     const r2 = b2.body as {
@@ -906,8 +944,38 @@ test('ca 3 — chạy tuần tự 2 bước: nháp ra đời, hồ sơ KHÔNG ba
       step: { status: string; outcome: { entity_id: string; entity_table: string } | null };
     };
 
-    if (coBoLuat) {
-      expect(r2.ok, `Bước 2 hỏng dù DEMO có bộ luật ACTIVE: ${r2.error_code}`).toBe(true);
+    // KHÔNG đoán trước bằng một premise đọc trước (kiểu `coBoLuatDuyetACTIVE`) —
+    // đây là PHÁT HIỆN CHÍNH của lượt chạy 03/09/2026, khác brief đợt này (vốn kỳ
+    // vọng đọc trước rule set là đủ). Hai lớp phải qua chứ không phải một:
+    //
+    //   Lớp 1 — `approval_rule_sets` ACTIVE: G3-FIX (`d4d28e0e`) đã seed đúng một
+    //   hàng cho DEMO. NHƯNG bảng đó có 0 policy RLS PERMISSIVE (chỉ hai policy
+    //   RESTRICTIVE) — Postgres không cấp quyền nếu không có ít nhất một PERMISSIVE,
+    //   nên nó đọc ra RỖNG qua PostgREST cho MỌI role `authenticated`, kể cả super
+    //   admin (đo thật bằng cả JWT `chunha` lẫn tài khoản hệ thống trong phiên
+    //   này). `coBoLuatDuyetACTIVE()` (định nghĩa bên trên) dùng `approval_rules`
+    //   làm proxy đọc được — hàm đó vẫn giữ lại để tài liệu hoá phát hiện này,
+    //   nhưng KHÔNG đủ để quyết định nhánh (xem lớp 2).
+    //
+    //   Lớp 2 — MAKER BỊ LOẠI KHỎI DANH SÁCH DUYỆT: đọc `submit_financial_voucher`
+    //   trực tiếp trên production — câu truy vấn ứng viên có `AND m.id <> v_mem`
+    //   (loại chính membership của người nộp). DEMO chỉ có ĐÚNG MỘT OWNER
+    //   (chunha), và chunha cũng là tài khoản DUY NHẤT có `income_expenses.create`
+    //   trên DEMO (§ tiền đề (1) ở đầu file) — nên MỌI phiếu Copilot tạo đều có
+    //   maker = approver duy nhất, bị loại, còn lại 0 ứng viên ⇒ RAISE
+    //   'Không có người duyệt đủ điều kiện (fail closed)'. `effective_perms_v2`
+    //   (RPC duy nhất xác nhận được điều này từ phía đọc) KHÔNG cấp EXECUTE cho
+    //   role `authenticated`, nên spec không có đường đọc trước đáng tin cho lớp
+    //   này — không có cách nào hợp lệ để biết trước kết quả mà không CHẠY THẬT.
+    //
+    // ⇒ Branch dưới đây theo ĐÚNG kết quả `r2.ok` vừa đo, không đoán. Hôm nay lớp
+    // 2 luôn chặn nên nhánh `else` chạy ổn định — nhưng nếu DEMO có thêm một
+    // thành viên `income_expenses.approve` KHÔNG phải chunha, nhánh `if` sẽ tự
+    // động trở thành nhánh chạy mà không cần sửa spec.
+    if (r2.ok) {
+      // NHÁNH THÀNH CÔNG — chưa quan sát được lần nào trên DEMO tính đến
+      // 03/09/2026 (xem lớp 2 ở trên), nhưng đây vẫn là phép đo ĐÚNG khi lớp 2
+      // được gỡ (ví dụ: có thêm một `income_expenses.approve` khác chunha).
       expect(r2.step.status).toBe('DONE');
       expect(r2.step.outcome?.entity_table).toBe('approval_requests');
       expect(r2.plan_status, 'Hết bước ⇒ kế hoạch DONE').toBe('DONE');
@@ -920,13 +988,18 @@ test('ca 3 — chạy tuần tự 2 bước: nháp ra đời, hồ sơ KHÔNG ba
       expect(hoSo[0].maker_user_id, 'Người nộp phải là chính actor').toBe(actor);
       expect(hoSo[0].organization_id).toBe(ORG_DEMO);
     } else {
-      // FAIL-CLOSED. `submit_financial_voucher` từ chối khi tổ chức chưa có bộ
-      // luật duyệt ACTIVE, và đó là câu trả lời ĐÚNG: không có luật thì không có
-      // ai được chỉ định duyệt, nên không được tạo hồ sơ.
-      expect(r2.ok, 'DEMO không có bộ luật ACTIVE mà bước 2 vẫn báo thành công').toBe(false);
+      // FAIL-CLOSED — trạng thái QUAN SÁT ỔN ĐỊNH trên DEMO hôm nay. Hai lý do
+      // hợp lệ (khớp cả hai vì cả lớp 1 lẫn lớp 2 đều có thể là nguyên nhân tuỳ
+      // thời điểm đo): "không có rule set ACTIVE" (lớp 1, trước G3-FIX) hoặc
+      // "không có người duyệt đủ điều kiện" (lớp 2, sau G3-FIX — đúng thứ đo
+      // được hôm nay). Cả hai đều là câu trả lời ĐÚNG: fail-closed, không có ai
+      // được chỉ định duyệt thì không được tạo hồ sơ.
       expect(r2.step.status).toBe('FAILED');
       expect(r2.plan_status, 'Một bước hỏng phải kéo cả kế hoạch dừng').toBe('FAILED');
-      expect(String(r2.error_code ?? '')).toContain('rule set ACTIVE');
+      expect(
+        String(r2.error_code ?? ''),
+        `lớp 1 (proxy approval_rules) đọc được rule set ACTIVE = ${coBoLuatProxy}`,
+      ).toMatch(/rule set ACTIVE|người duyệt đủ điều kiện/);
       expect(
         await hoSoDuyetCua(jwt, voucherId),
         'Bước 2 thất bại mà vẫn để lại hồ sơ duyệt — khối con không cuốn ngược',
@@ -1107,7 +1180,7 @@ test('ca 6 — kill switch GIỮA kế hoạch đã duyệt ⇒ bước BLOCKED,
   expect(await demPhieuTheoTen(jwt, TEN), 'Cờ đã tắt mà vẫn có phiếu mới ra đời').toBe(demTruoc);
 });
 
-test('ca 7 — kế hoạch DRAFT quá hạn: không duyệt được, không chạy được (chờ thật 5 phút, mặc định BỎ QUA)', async () => {
+test('ca 7 — kế hoạch DRAFT quá hạn: plan_expired, EXPIRED, không chạy được (chờ thật 5 phút, mặc định BỎ QUA)', async () => {
   // KHÔNG có đường hợp lệ nào để lùi `expires_at`: cột nằm ở `app_private`, role
   // `authenticated` không đọc/ghi được, và không có RPC test-only (đúng như thiết
   // kế — một cửa hậu chỉ để test là một cửa hậu). Nên phép đo duy nhất trung thực
@@ -1134,32 +1207,36 @@ test('ca 7 — kế hoạch DRAFT quá hạn: không duyệt được, không ch
     const conLai = new Date(ke.expires_at).getTime() - Date.now();
     await new Promise((r) => setTimeout(r, Math.max(conLai, 0) + 5_000));
 
-    // ĐO ĐƯỢC 03/09/2026 — VÀ NÓ KHÁC THỨ MIGRATION MÔ TẢ.
-    //
-    //   `copilot_plan_approve_v1` có một nhánh GHI-RỒI-RETURN cho kế hoạch quá
-    //   hạn (`ok:false`, `error_code:'plan_expired'`, `plan_status:'EXPIRED'`,
-    //   HTTP 200 — "quyết định 4" ở đầu migration 20260903100253). Nhánh đó
-    //   KHÔNG BAO GIỜ VỚI TỚI được qua đường thường: phiếu đồng ý và kế hoạch
-    //   cùng nhận `clock_timestamp() + interval '5 minutes'` trong CÙNG một lời
-    //   gọi `create`, nên khi kế hoạch hết hạn thì nonce cũng vừa hết hạn — và
-    //   cửa nonce đứng TRƯỚC cửa kế hoạch, nên nó NÉM `confirmation_expired`
-    //   (42501) trước.
-    //
-    //   Không phải lỗ hổng: nó chặt HƠN (ném thay vì ghi rồi trả về) và vẫn
-    //   fail-closed. Nhưng nó có hai hệ quả thật, nên spec ghim SỰ THẬT CHỨ
-    //   KHÔNG GHIM Ý ĐỊNH: kế hoạch nằm lại ở DRAFT chứ không chuyển EXPIRED, và
-    //   sổ không có dòng `plan_expired` nào ở giai đoạn duyệt.
-    //   (Nhánh `plan_expired` của `execute_step` thì VẪN với tới được — ở đó hạn
-    //   là `execute_deadline` 30 phút, và nonce đã bị tiêu từ lúc duyệt.)
+    // [ĐÃ VÁ 03/09/2026 — G3-FIX migration `9fce77db`] Trước khi vá,
+    // `copilot_plan_approve_v1` kiểm cửa NONCE trước cửa KẾ HOẠCH, nên một kế
+    // hoạch quá hạn luôn chết ở `confirmation_expired` (42501) — nhánh
+    // ghi-rồi-RETURN `plan_expired` là mã chết vì phiếu đồng ý và kế hoạch nhận
+    // cùng một hạn 5 phút lúc `create`. Migration dịch khối kiểm nonce xuống SAU
+    // nhánh `plan_expired`, nên giờ cửa KẾ HOẠCH đứng trước: kế hoạch quá hạn ghi
+    // `plan_status = EXPIRED` + một dòng sổ `plan_expired` RỒI MỚI trả về
+    // `ok:false` — HTTP 200, không phải 403.
     const duyet = await duyetKeHoach(jwt, ke.plan_id, ke.consent_nonce as string, ke.plan_digest, 1);
-    expect(duyet.status, `Duyệt kế hoạch quá hạn: ${loi(duyet)}`).toBe(403);
-    expect(maLoi(duyet)).toBe('42501');
-    expect(loi(duyet)).toContain('confirmation_expired');
+    expect(duyet.status, `Duyệt kế hoạch quá hạn phải là ghi-rồi-RETURN (200): ${loi(duyet)}`).toBe(
+      200,
+    );
+    const d = duyet.body as { ok: boolean; error_code: string | null; plan_status: string };
+    expect(d.ok, 'Duyệt được một kế hoạch đã quá hạn').toBe(false);
+    expect(d.error_code).toBe('plan_expired');
+    expect(d.plan_status).toBe('EXPIRED');
 
     const doc = await docKeHoach(jwt, ke.plan_id);
-    expect(doc.plan_status, 'Kế hoạch quá hạn bị duyệt được hoặc bị đánh dấu sai').toBe('DRAFT');
-    expect(doc.steps.map((b) => b.status)).toEqual(['PENDING']);
-    // Điều thật sự quan trọng: hết hạn rồi thì KHÔNG CÒN ĐƯỜNG NÀO chạy được.
+    expect(doc.plan_status, 'Đọc lại phải khớp giá trị approve vừa trả về').toBe('EXPIRED');
+    // Migration cũng đóng luôn bước còn PENDING thành BLOCKED/plan_expired —
+    // không để một bước "chờ" treo lại dưới một kế hoạch đã EXPIRED.
+    expect(doc.steps.map((b) => b.status)).toEqual(['BLOCKED']);
+    expect(doc.steps.map((b) => b.error_code)).toEqual(['plan_expired']);
+    expect(
+      (doc.ledger ?? []).some((e) => e.event === 'plan_expired'),
+      'Kế hoạch EXPIRED mà sổ không có dòng plan_expired',
+    ).toBe(true);
+
+    // Điều thật sự quan trọng vẫn giữ nguyên: hết hạn rồi thì KHÔNG CÒN ĐƯỜNG
+    // NÀO chạy được — kế hoạch EXPIRED không phải APPROVED.
     const chay = await chayBuoc(jwt, ke.plan_id, 1, doc.plan_version);
     expect(chay.status, `Chạy được một bước của kế hoạch chưa duyệt: ${loi(chay)}`).not.toBe(200);
     expect(loi(chay)).toContain('plan_not_approved');
@@ -1196,11 +1273,22 @@ test('ca 8 — hai lượt chạy SONG SONG cùng một bước ⇒ đúng một
       `Phải có ĐÚNG một lượt ghi. a=${a.status}:${loi(a)} b=${b.status}:${loi(b)}`,
     ).toBe(1);
 
-    // Lượt thua: `plan_busy` (thua khoá NOWAIT) hoặc `plan_version_stale` (lượt
-    // thắng đã xong trước khi lượt thua kịp đọc). Cả hai đều là KHÔNG GHI THÊM.
+    // Lượt thua có BA hình dạng hợp lệ tuỳ độ lệch thời gian giữa hai request —
+    // đọc trực tiếp `copilot_plan_execute_step_v1` trên production để xác nhận,
+    // không đoán:
+    //   · `plan_busy` (55P03) — thua khoá `FOR UPDATE NOWAIT`, lượt thắng còn
+    //     đang giữ transaction;
+    //   · `plan_version_stale` — khoá đã nhả, lượt thắng đã tăng version nhưng
+    //     kế hoạch còn bước khác nên `status` vẫn `APPROVED`;
+    //   · `plan_not_approved: dang o DONE` — ĐO ĐƯỢC THẬT 03/09/2026, khoá đã
+    //     nhả VÀ đây là bước DUY NHẤT của kế hoạch nên lượt thắng đưa `status`
+    //     thẳng lên trạng thái cuối (`DONE`); cửa `v_plan.status <> 'APPROVED'`
+    //     đứng NGAY SAU cửa khoá trong RPC, trước cửa version, nên lượt thua đọc
+    //     đủ trễ sẽ vấp cửa này trước. Cả ba đều là KHÔNG GHI THÊM — bằng chứng ở
+    //     assertion audit=1/step_done=1 ngay dưới.
     const thua = [a, b].find((r) => r !== thanhCong[0])!;
     expect(loi(thua), `Lượt thua trả một lỗi lạ: ${loi(thua)}`).toMatch(
-      /plan_busy|plan_version_stale/,
+      /plan_busy|plan_version_stale|plan_not_approved/,
     );
 
     const voucherId = (
