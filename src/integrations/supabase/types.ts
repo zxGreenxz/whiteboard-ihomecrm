@@ -19011,6 +19011,50 @@ export type Database = {
         Args: { p_limit?: number; p_organization_id: string }
         Returns: Json
       }
+      copilot_plan_approve_v1: {
+        Args: {
+          p_consent_nonce: string
+          p_expected_plan_version: number
+          p_plan_digest: string
+          p_plan_id: string
+          p_step_up_token?: string
+        }
+        Returns: Json
+      }
+      copilot_plan_cancel_v1: {
+        Args: {
+          p_expected_plan_version: number
+          p_plan_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      copilot_plan_create_v1: {
+        Args: {
+          p_client_request_id: string
+          p_organization_id: string
+          p_steps: Json
+        }
+        Returns: Json
+      }
+      copilot_plan_execute_step_v1: {
+        Args: {
+          p_expected_plan_version: number
+          p_organization_id: string
+          p_plan_id: string
+          p_step_no: number
+        }
+        Returns: Json
+      }
+      copilot_plan_get_v1: { Args: { p_plan_id: string }; Returns: Json }
+      copilot_plan_reconcile_step_v1: {
+        Args: {
+          p_expected_plan_version: number
+          p_plan_id: string
+          p_step_no: number
+        }
+        Returns: Json
+      }
       copilot_preview_income_expense_annotate_v1: {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: Json

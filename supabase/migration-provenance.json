@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T10:45:29.186Z",
+  "generatedAt": "2026-09-03T11:00:00.384Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 480,
-    "unknown": 75,
+    "ledger-applied": 482,
+    "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9140,14 +9140,9 @@
       "name": "copilot_execution_plan_v1",
       "scheme": "timestamp14",
       "sha256": "d1d9811c9d59a672ed41f9da26c9c5eec3a39001fa85641c53a2c2b82eff6c69",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "table:app_private.copilot_plans",
-        "table:app_private.copilot_plan_steps",
-        "function:app_private.copilot_action_flag_allows_v1",
-        "function:app_private.copilot_plan_registry_revision_v1",
-        "function:app_private.copilot_plan_submit_voucher_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T10:57:33.839Z|bien-nhan-backup"
       ]
     },
     {
@@ -9156,10 +9151,9 @@
       "name": "copilot_action_income_expense_nop_ho_so_v1",
       "scheme": "timestamp14",
       "sha256": "96e303410fe8954dbc05abe7cdcdd3996996e550fd4f2eac1a2d7dba38c6a67c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T10:59:54.270Z|bien-nhan-backup"
       ]
     },
     {
