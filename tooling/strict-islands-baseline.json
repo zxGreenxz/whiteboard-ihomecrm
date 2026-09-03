@@ -1,6 +1,6 @@
 {
   "$comment": "Mức ratchet của đảo \"strict\": TẬP TÊN FILE, không phải số đếm — với số đếm thì xoá một đảo rồi thêm đảo khác là hoà, mà cái bị xoá thường là cái vừa đỏ. Chốt mức mới: npm run gate:strict-islands -- --write",
-  "updatedAt": "2026-09-02",
+  "updatedAt": "2026-09-03",
   "islands": [
     "src/app/capabilities/__tests__/capabilityContract.test.ts",
     "src/app/capabilities/__tests__/capabilityContractDisabled.test.ts",
@@ -497,6 +497,9 @@
     "src/copilot/__tests__/docSearch.test.ts",
     "src/copilot/__tests__/llmClient.test.ts",
     "src/copilot/__tests__/nghiepVuTools.test.ts",
+    "src/copilot/__tests__/pageContextRich.test.ts",
+    "src/copilot/__tests__/systemPromptVi.test.ts",
+    "src/copilot/__tests__/temporalContext.test.ts",
     "src/copilot/admin/AiCopilotAdminPage.tsx",
     "src/copilot/anh.ts",
     "src/copilot/availabilityGate.ts",
@@ -522,6 +525,7 @@
     "src/copilot/pageScope.ts",
     "src/copilot/safetyGuard.ts",
     "src/copilot/systemPromptVi.ts",
+    "src/copilot/temporalContext.ts",
     "src/copilot/tools/nghiepVuTools.ts",
     "src/copilot/tools/registry.ts",
     "src/copilot/tools/writeTools.ts",
