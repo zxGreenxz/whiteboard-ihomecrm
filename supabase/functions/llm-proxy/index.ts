@@ -776,8 +776,26 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
   // `model` do proxy đặt, KHÔNG lấy của client: chuỗi client gửi là "provider:model".
   const outBody: Record<string, unknown> = { ...chonTruongBodyHopLe(body), model: modelId };
   outBody.max_tokens = maxOut;   // Anthropic shim ĐÒI max_tokens — luôn set
-  // include_usage để chunk cuối mang usage (chỉ set cho provider chắc chắn hỗ trợ)
-  const daXinUsage = wantStream && ['openrouter', 'openai', 'groq', 'deepseek'].includes(provider);
+  // `stream_options.include_usage` XIN CHO MỌI PROVIDER, trừ danh sách loại trừ
+  // ngay dưới. Bản cũ làm ngược — allowlist bốn cái "chắc chắn hỗ trợ" — và cái
+  // giá của nó không phải là thiếu số liệu, mà là MỘT LỖ HẠN MỨC:
+  //
+  //   gemini / qwen / anthropic / 9router không được xin usage ⇒ `lastUsage` là
+  //   null ⇒ finalize ghi `total_tokens = 0` cho một stream KẾT THÚC BÌNH THƯỜNG,
+  //   trong khi cap token/ngày (20260903034632) cộng đúng cột đó. `9router` chính
+  //   là `DEFAULT_MODEL`, nên lỗ này mở với ĐA SỐ người dùng, và không cần bấm
+  //   Dừng như lỗ I6 — chỉ cần hỏi bình thường.
+  //
+  // Vì sao đảo chiều an toàn: `stream_options` là trường OpenAI-compat chuẩn, và
+  // `chonTruongBodyHopLe` vốn đã cho phép nó đi qua từ client. Provider không
+  // hiểu trường thì cách hỏng thông thường là BỎ QUA nó (JSON thừa khoá), không
+  // phải 400. Nếu đo được provider nào thật sự trả 400 vì trường này thì thêm tên
+  // vào đây kèm ngày đo và thông điệp lỗi — danh sách phải nêu bằng chứng, không
+  // nêu phỏng đoán, vì mỗi tên trong đây là một provider quay lại ghi 0 token.
+  //
+  // Hôm nay danh sách RỖNG: chưa provider nào bị đo là từ chối.
+  const KHONG_HO_TRO_INCLUDE_USAGE: readonly string[] = [];
+  const daXinUsage = wantStream && !KHONG_HO_TRO_INCLUDE_USAGE.includes(provider);
   if (daXinUsage) outBody.stream_options = { include_usage: true };
 
   const controller = new AbortController();
@@ -835,8 +853,12 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
           ? ((lastUsage?.prompt_tokens ?? 0) / 1e6) * pricing.input_price +
             ((lastUsage?.completion_tokens ?? 0) / 1e6) * pricing.output_price
           : estCost;
-        // Chỉ coi là hỏng khi ta ĐÃ XIN usage mà vẫn không có: với provider không
-        // hỗ trợ include_usage, thiếu usage là chuyện bình thường, không phải lỗi.
+        // Đã XIN usage mà vẫn không có ⇒ đáng ghi log để còn biết provider nào
+        // im lặng. Từ khi `daXinUsage` áp cho mọi provider, đây gần như luôn đi
+        // cùng nhánh ước lượng bên dưới; nó vẫn là biến RIÊNG vì nó trả lời câu
+        // khác: "có nên kêu lên không", chứ không phải "ghi số nào vào sổ".
+        // KHÔNG còn dùng nó làm status 'finalize_error' khi đã ước được — một
+        // lượt chạy xong có nội dung không phải lỗi, nó chỉ thiếu số đo.
         const thieuUsage = !coUsage && daXinUsage && ketCuc === 'ok';
         // (I6) Stream ĐỨT trước khi chunk usage tới — client bấm Dừng, hoặc hết
         // giờ. Bản cũ chốt sổ `total_tokens = 0`, mà cap TOKEN/ngày
@@ -845,7 +867,16 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
         // tiêu thật. Ước ở đây là con số TỐI THIỂU, không phải số đo: prompt theo
         // cùng thước với dự toán lúc reserve, completion theo số ký tự thật đã
         // chảy về client.
-        const uocLuong = !coUsage && ketCuc !== 'ok';
+        //
+        // Và (bổ sung cùng lớp) stream KẾT THÚC BÌNH THƯỜNG mà provider không gửi
+        // chunk usage: cũng không bao giờ được chốt 0 cho một stream CÓ NỘI DUNG.
+        // Hai trường hợp đi chung một bộ ước lượng, chỉ khác cái tên ghi vào sổ.
+        //
+        // `soKyTuTraVe > 0` là điều kiện của nhánh 'ok': một stream rỗng thật
+        // (upstream trả về không chữ nào) thì 0 completion token là SỐ ĐÚNG, và
+        // gọi nó là "ước lượng" chỉ làm bẩn sổ. Nhánh đứt giữa chừng không cần
+        // điều kiện đó — ở đó 0 ký tự vẫn có nghĩa là ta không biết.
+        const uocLuong = !coUsage && (ketCuc !== 'ok' || soKyTuTraVe > 0);
         const promptTokens = uocLuong ? uocTokenTuKyTu(promptChars) : (lastUsage?.prompt_tokens ?? 0);
         const completionTokens = uocLuong ? uocTokenTuKyTu(soKyTuTraVe) : (lastUsage?.completion_tokens ?? 0);
         const totalTokens = uocLuong ? promptTokens + completionTokens : (lastUsage?.total_tokens ?? 0);
@@ -872,10 +903,21 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
           // đọc như số đo. Ghi được: `ai_usage_logs.status` là `text` không CHECK
           // (`20260710200000`), và cả ba cap USD lẫn hai cap token đều cộng theo
           // ngày KHÔNG lọc status — nên giá trị mới vừa lưu được vừa cắn ngay.
+          // Hai tên khác nhau cho hai câu chuyện khác nhau, và cả hai đều nói
+          // thẳng rằng ba cột token là ƯỚC chứ không phải số đo:
+          //   stream_aborted_estimated — client bấm Dừng / hết giờ;
+          //   stream_done_estimated    — chạy xong, provider không gửi usage.
+          // Ghi được: `ai_usage_logs.status` là `text` không CHECK
+          // (`20260710200000`), và cả ba cap USD lẫn hai cap token đều cộng theo
+          // ngày KHÔNG lọc status — nên giá trị mới vừa lưu được vừa cắn ngay.
           status: uocLuong
-            ? 'stream_aborted_estimated'
+            ? (ketCuc === 'ok' ? 'stream_done_estimated' : 'stream_aborted_estimated')
             : (ketCuc === 'stream_timeout' ? 'stream_timeout' : (thieuUsage ? 'finalize_error' : 'ok')),
-          error: ketCuc === 'ok' ? (thieuUsage ? 'usage_parse_failed' : undefined) : (chiTiet ?? ketCuc),
+          // Nhánh 'ok' đã ước được thì KHÔNG gắn `error`: sổ ghi một lượt chạy
+          // xong, chỉ là số token đến từ ước lượng — status đã nói điều đó rồi.
+          error: ketCuc === 'ok'
+            ? (thieuUsage && !uocLuong ? 'usage_parse_failed' : undefined)
+            : (chiTiet ?? ketCuc),
         });
       };
       const dongHo = taoDongHoStream((lyDo) => {

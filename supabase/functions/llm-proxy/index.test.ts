@@ -81,6 +81,12 @@ interface PhuThuocGia {
   fetchImpl?: typeof fetch;
 }
 
+// `UPSTREAMS['9router']` chỉ được đăng ký khi `NINEROUTER_BASE_URL` có mặt LÚC
+// NẠP MODULE (index.ts đọc env ở top-level). Đặt trước dòng import bên dưới là
+// cách duy nhất để ca (k) có provider đó; nó không ảnh hưởng ca nào khác vì
+// không chỗ nào khác trong proxy đọc biến này.
+Deno.env.set("NINEROUTER_BASE_URL", "https://9router-gia.test/v1");
+
 const proxyModule = import("./index.ts").catch(() => null);
 
 async function nap(): Promise<ProxyModule> {
@@ -808,4 +814,117 @@ Deno.test("(j) client abort TRƯỚC chunk usage: finalize ghi token ước lư�
   );
 
   await doc.cancel();
+});
+
+
+// (k) LỖ CÙNG LỚP VỚI (j), NHƯNG KHÔNG CẦN BẤM DỪNG.
+//
+// Bản trước chỉ xin `stream_options.include_usage` cho bốn provider allowlist
+// (openrouter/openai/groq/deepseek). Với gemini, qwen, anthropic và **9router**
+// — mà 9router chính là `DEFAULT_MODEL` của client — upstream không được yêu cầu
+// gửi usage, nên một lượt hỏi BÌNH THƯỜNG, chạy xong, đóng luồng tử tế, vẫn chốt
+// sổ `total_tokens = 0`. Cap token/ngày (20260903034632) cộng đúng cột đó, nên đa
+// số người dùng đi qua hàng rào ấy mà không cộng gì cả — không cần thủ thuật nào.
+Deno.test("(k) stream 9router không gửi usage, kết thúc BÌNH THƯỜNG: vẫn phải chốt token > 0", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, goi, dem } = adminGia({
+    provider: {
+      provider: "9router",
+      enabled: true,
+      // self_hosted, giá 0 — đúng cấu hình thật của 9router, và là lý do cột
+      // TOKEN phải cắn: cột USD không cắn được gì khi giá bằng 0.
+      models: [{ id: "cx/gpt-5.6-sol(max)", pricing_mode: "self_hosted", input_price: 0, output_price: 0 }],
+      data_class: "cloud",
+    },
+  });
+
+  const TIN_NHAN = [{ role: "user", content: "xin chào" }];
+  const MANH = ["Chào ", "bạn ", "nhé"]; // 5 + 4 + 3 = 12 ký tự nội dung
+  const enc = new TextEncoder();
+  const khung = (o: unknown) => enc.encode(`data: ${JSON.stringify(o)}
+
+`);
+
+  // Khác ca (j): upstream ĐÓNG LUỒNG TỬ TẾ sau [DONE]. Không ai bấm Dừng, không
+  // hết giờ — đây là đường hạnh phúc của một provider không gửi usage.
+  const thanUpstream = new ReadableStream<Uint8Array>({
+    start(ctrl) {
+      for (const manh of MANH) {
+        ctrl.enqueue(khung({
+          id: "c1",
+          object: "chat.completion.chunk",
+          model: "cx/gpt-5.6-sol(max)",
+          choices: [{ index: 0, delta: { content: manh }, finish_reason: null }],
+        }));
+      }
+      ctrl.enqueue(khung({
+        id: "c1",
+        object: "chat.completion.chunk",
+        model: "cx/gpt-5.6-sol(max)",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      }));
+      ctrl.enqueue(enc.encode(`data: [DONE]
+
+`));
+      ctrl.close();
+    },
+  });
+
+  let bodyGuiLen: Record<string, unknown> | null = null;
+  const req = new Request(URL_CHAT, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer jwt-gia",
+      "Content-Type": "application/json",
+      "x-organization-id": ORG_GIA,
+    },
+    body: JSON.stringify({ model: "9router:cx/gpt-5.6-sol(max)", stream: true, messages: TIN_NHAN }),
+  });
+
+  const res = await xuLyYeuCau(req, {
+    admin,
+    getEnv: (k) =>
+      k === "NINEROUTER_API_KEY"
+        ? "key-gia"
+        : (k === "NINEROUTER_BASE_URL" ? "https://9router-gia.test/v1" : undefined),
+    fetchImpl: (_url: string | URL | Request, init?: RequestInit) => {
+      bodyGuiLen = JSON.parse(String(init?.body ?? "{}"));
+      return Promise.resolve(
+        new Response(thanUpstream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+      );
+    },
+  });
+  assertEquals(res.status, 200);
+
+  // Đọc hết stream rồi mới xét — finalize chạy lúc flush.
+  const doc = res.body!.getReader();
+  while (true) {
+    const { done } = await doc.read();
+    if (done) break;
+  }
+  await nghi(0);
+
+  // Hàng rào thứ nhất: proxy PHẢI xin usage kể cả với provider ngoài allowlist cũ.
+  assert(
+    (bodyGuiLen as Record<string, unknown> | null)?.stream_options !== undefined,
+    "9router phải được xin stream_options.include_usage — allowlist cũ là gốc của lỗ này",
+  );
+
+  // Hàng rào thứ hai: kể cả khi upstream vẫn im lặng, sổ không được ghi 0.
+  assertEquals(dem("finalize_ai_usage"), 1, "phải chốt sổ đúng một lần");
+  const chot = goi.find((g) => g.ten === "finalize_ai_usage");
+  assertEquals(chot?.args.p_status, "stream_done_estimated");
+  assertEquals(chot?.args.p_completion_tokens, 3); // 12 ký tự / 4, làm tròn LÊN
+  const promptUoc = Math.ceil(JSON.stringify(TIN_NHAN).length / 4);
+  assertEquals(chot?.args.p_prompt_tokens, promptUoc);
+  assertEquals(chot?.args.p_total_tokens, promptUoc + 3);
+  assert(
+    (chot?.args.p_total_tokens as number) > 0,
+    "một stream CÓ NỘI DUNG không bao giờ được chốt 0 token",
+  );
+  // Chạy xong thì KHÔNG phải lỗi: status đã nói token là ước, đừng gắn thêm error.
+  assertEquals(chot?.args.p_error_message ?? null, null);
 });
