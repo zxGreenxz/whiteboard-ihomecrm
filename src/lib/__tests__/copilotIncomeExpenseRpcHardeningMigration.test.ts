@@ -12,6 +12,26 @@ const restrictedGuard = existsSync(restrictedGuardPath)
   ? readFileSync(restrictedGuardPath, 'utf8').replace(/\r\n/g, '\n')
   : '';
 
+// ĐỊNH NGHĨA SỐNG của hai hàm public nằm ở ĐÂY, không phải ở `migrationPath`.
+//
+//   20260830171108 dựng thân gốc.
+//   20260831110236 ĐỔI TÊN thân đó thành `*_legacy_v1` rồi dựng một vỏ kiểm hạng
+//     mục hạn chế mang tên public cũ.
+//   20260903072353 (G2-D) CREATE OR REPLACE lại chính cái vỏ ấy để nó gọi
+//     `copilot_action_gate_v1` ở cả hai đầu và ghi một dòng sổ hành động.
+//
+// Hai nhóm khẳng định trong file này vì thế đo hai thứ khác nhau, và điều đó phải
+// được nói ra: nhóm dựa vào `migration` đo THÂN (nay sống dưới tên `*_legacy_v1`
+// — đổi tên không đổi thân), còn nhóm cuối đo VỎ ĐANG CHẠY.
+// `scripts/check-migration-test-liveness.mjs` canh đúng việc này: thiếu cái ghim
+// dưới đây thì file test nói về `copilot_execute_income_expense_v1` trong khi đọc
+// một migration mà hàm đó không còn sống.
+const actionGatePath =
+  'supabase/migrations/20260903072353_copilot_action_income_expense_annotate_v1.sql';
+const actionGate = existsSync(actionGatePath)
+  ? readFileSync(actionGatePath, 'utf8').replace(/\r\n/g, '\n')
+  : '';
+
 function executeBody(sql: string): string {
   const start = sql.search(
     /CREATE OR REPLACE FUNCTION public\.copilot_execute_income_expense_v1\s*\(/i,
@@ -109,6 +129,27 @@ describe('Copilot income/expense write RPC hardening', () => {
     expect(replay).toMatch(/building_id/i);
     expect(replay).toMatch(/approval_status/i);
     expect(replay).toMatch(/posting_status/i);
+  });
+
+  it('vỏ ĐANG CHẠY của cả hai hàm public đi qua cổng hành động', () => {
+    // Đây là định nghĩa sống (20260903072353). Một migration sau lại
+    // CREATE OR REPLACE hai hàm này mà bỏ cổng thì `check-migration-test-liveness`
+    // chỉ đúng vào đây, và bài này phải được cập nhật cùng lúc.
+    expect(actionGate).not.toBe('');
+    for (const ten of ['copilot_preview_income_expense_v1', 'copilot_execute_income_expense_v1']) {
+      expect(actionGate).toMatch(
+        new RegExp(`CREATE OR REPLACE FUNCTION public\\.${ten}\\b`, 'i'),
+      );
+    }
+    expect(actionGate).toMatch(/copilot_action_gate_v1\(\s*\n?\s*'income_expense\.create_draft'/i);
+    expect(actionGate).toMatch(/copilot_action_gate_v1\('income_expense\.create_draft', v_org\)/i);
+    expect(actionGate).toMatch(/copilot_ledger_append_v1\(/i);
+    // Vỏ vẫn uỷ quyền cho thân cũ và vẫn giữ hàng rào hạng mục hạn chế.
+    expect(actionGate).toMatch(/copilot_preview_income_expense_legacy_v1\(/i);
+    expect(actionGate).toMatch(/copilot_execute_income_expense_legacy_v1\(/i);
+    expect(actionGate).toMatch(/copilot_ie_type_allowed_v1\(/i);
+    // Và KHÔNG dựng lại thân gốc: vỏ không được tự ghi phiếu.
+    expect(actionGate).not.toMatch(/ie_compat_insert_v2\(/i);
   });
 
   it('uses a private transaction capability and fails closed before the writer is ready', () => {
