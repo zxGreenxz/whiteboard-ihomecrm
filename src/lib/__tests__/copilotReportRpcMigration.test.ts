@@ -10,13 +10,21 @@
 // there, every gate is still green, and every building-scoped reader silently
 // gets the whole company's books. That failure never shows up as an error — it
 // shows up as a plausible answer containing other people's money.
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { boCommentSql, docSql } from './helpers/sqlTestUtils';
+
 const migrationPath = 'supabase/migrations/20260902213111_copilot_report_rpc_v1.sql';
-const migration = existsSync(migrationPath)
-  ? readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n')
-  : '';
+
+/**
+ * MỌI assertion nội dung chạy trên bản ĐÃ LỘT BÌNH LUẬN.
+ *
+ * Bản trước chỉ lột comment cho đúng MỘT assertion (`CURRENT_DATE`); phần còn
+ * lại chạy trên văn bản thô, nên một predicate bị bình luận hoá vẫn khớp regex.
+ * Bài kiểm đột biến của luật này ở `sqlTestUtils.test.ts`.
+ */
+const migration = boCommentSql(docSql(migrationPath));
 
 /**
  * Body of one `CREATE OR REPLACE FUNCTION public.<name>` up to the next function
@@ -30,18 +38,6 @@ function functionBody(source: string, name: string): string {
   const acl = rest.search(/^REVOKE ALL ON FUNCTION/mi);
   const ends = [nextFn, acl].filter((index) => index >= 0);
   return ends.length === 0 ? source.slice(start) : source.slice(start, start + 1 + Math.min(...ends));
-}
-
-/**
- * SQL with `--` line comments removed.
- *
- * Needed by the `CURRENT_DATE` assertion below: the migration header EXPLAINS why
- * bare `CURRENT_DATE` is banned, and an assertion that greps the raw file would
- * be satisfied only by deleting the explanation. Strip comments, then the rule
- * is about the code it is a rule about.
- */
-function boCommentSql(source: string): string {
-  return source.replace(/--[^\n]*/g, '');
 }
 
 const RPC_MOI = [
@@ -402,7 +398,11 @@ describe('so quy — su that but toan + ranh gioi so quy', () => {
       expect(body, rpc).toMatch(
         /\(b\.id IS NOT NULL OR \(ie\.building_id IS NULL AND v_org_wide\)\)/,
       );
-      expect(body, rpc).toMatch(/authorized_scope_v3\('reports_finance\.[a-z_]+', p_organization_id\)/);
+      expect(body, rpc).toMatch(
+        new RegExp(
+          String.raw`authorized_scope_v3\('${KHOA_QUYEN[rpc].replace('.', '\\.')}', p_organization_id\)`,
+        ),
+      );
     });
   }
 

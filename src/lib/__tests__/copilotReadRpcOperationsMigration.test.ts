@@ -8,14 +8,19 @@
 // drifted does not replace anything: it creates an OVERLOAD, PostgREST then
 // picks between two functions by argument names, and the old body keeps serving
 // traffic while the diff says it was fixed.
-import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+
+import { boCommentSql, docSql } from './helpers/sqlTestUtils';
 
 const migrationPath =
   'supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql';
-const migration = existsSync(migrationPath)
-  ? readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n')
-  : '';
+
+/**
+ * MỌI assertion nội dung chạy trên bản ĐÃ LỘT BÌNH LUẬN — xem
+ * `sqlTestUtils.test.ts` cho bài kiểm đột biến: một predicate bị `--` phải làm
+ * test đỏ, chứ không được lặng lẽ khớp regex trên văn bản thô.
+ */
+const migration = boCommentSql(docSql(migrationPath));
 
 /** The two migrations whose functions are re-issued here, as they were shipped. */
 const NGUON_CU: Record<string, string> = {
@@ -24,7 +29,7 @@ const NGUON_CU: Record<string, string> = {
 };
 
 function docFile(path: string): string {
-  return existsSync(path) ? readFileSync(path, 'utf8').replace(/\r\n/g, '\n') : '';
+  return boCommentSql(docSql(path));
 }
 
 /**
@@ -323,11 +328,24 @@ describe('chin RPC doc cu — tran hang moi, chu ky y nguyen', () => {
     expect(Object.keys(RPC_CU)).toHaveLength(9);
   });
 
-  it('tran 2000 la tran chong chay loan, khong phai tran hien thi — va noi ro dieu do', () => {
+  it('tran 2000 la tran chong chay loan, khong phai tran hien thi', () => {
     // Nếu con số này bị hạ về 50 cho vui thì `tim_hoa_don` sẽ in "Tìm thấy 50
     // hoá đơn" cho một công ty có 1.143 hoá đơn, và không có gì trong payload
-    // nói rằng con số đó đã bị cắt. Ghim cả con số lẫn lời giải thích.
-    expect(migration).toMatch(/ceiling is 2000 rows/);
-    expect(migration).toMatch(/runaway guard, not a display limit/);
+    // nói rằng con số đó đã bị cắt.
+    //
+    // Bản trước ghim hai CÂU VĂN trong header (`ceiling is 2000 rows`,
+    // `runaway guard, not a display limit`). Một assertion trên chú thích đo
+    // sai thứ: xoá lời giải thích thì test đỏ dù trần vẫn đúng, còn hạ trần
+    // xuống 50 mà giữ lời giải thích thì test xanh. Ghim CHÍNH con số, trên
+    // từng hàm có nó.
+    const tran2000 = Object.entries(RPC_CU).filter(([, meta]) => meta.tran === 'LIMIT 2000');
+    expect(tran2000.length).toBeGreaterThanOrEqual(7);
+    for (const [rpc] of tran2000) {
+      expect(functionBody(migration, rpc), rpc).toContain('LIMIT 2000');
+    }
+    // Và không có hàm nào trong nhóm đó bị hạ xuống trần hiển thị.
+    for (const [rpc] of tran2000) {
+      expect(functionBody(migration, rpc), rpc).not.toMatch(/LIMIT 50\b/);
+    }
   });
 });

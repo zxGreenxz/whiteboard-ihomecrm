@@ -10,13 +10,22 @@
 // shows them a colleague's take-home pay, an owner's profit share, a tenant's
 // private chat, or the state of another company's routers. None of those raise an
 // error. All of them look like a perfectly plausible answer.
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { boCommentSql, docSql } from './helpers/sqlTestUtils';
+
 const migrationPath = 'supabase/migrations/20260902224859_copilot_read_rpc_sensitive_v1.sql';
-const migration = existsSync(migrationPath)
-  ? readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n')
-  : '';
+
+/**
+ * MỌI assertion nội dung chạy trên bản ĐÃ LỘT BÌNH LUẬN.
+ *
+ * Bản trước chỉ lột comment cho hai assertion (`CURRENT_DATE`, "no write RPC");
+ * phần còn lại — kể cả các predicate quyết định một cổ đông có thấy phần của
+ * đồng sở hữu hay không — chạy trên văn bản thô. Bài kiểm đột biến ở
+ * `sqlTestUtils.test.ts`.
+ */
+const migration = boCommentSql(docSql(migrationPath));
 
 /**
  * Body of one `CREATE OR REPLACE FUNCTION public.<name>` up to the next function
@@ -30,18 +39,6 @@ function functionBody(source: string, name: string): string {
   const acl = rest.search(/^REVOKE ALL ON FUNCTION/mi);
   const ends = [nextFn, acl].filter((index) => index >= 0);
   return ends.length === 0 ? source.slice(start) : source.slice(start, start + 1 + Math.min(...ends));
-}
-
-/**
- * SQL with `--` line comments removed.
- *
- * Needed by the `CURRENT_DATE` and "no write RPC" assertions below: the migration
- * header EXPLAINS why both are banned, and an assertion that greps the raw file
- * would be satisfied by deleting the explanation. Strip comments, and then the
- * rule is about the code it is a rule about.
- */
-function boCommentSql(source: string): string {
-  return source.replace(/--[^\n]*/g, '');
 }
 
 const RPC_MOI = [

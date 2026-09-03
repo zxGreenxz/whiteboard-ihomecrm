@@ -4,14 +4,22 @@
 // JWT), so what is checked here is the part that a reviewer forgets first and
 // that no type system catches: the authorization preamble, the row cap, the ACL
 // and the "runs on an empty database" property of the acceptance block.
-import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+
+import { boCommentSql, docSql } from './helpers/sqlTestUtils';
 
 const migrationPath =
   'supabase/migrations/20260902193151_copilot_read_rpc_contracts_ie_approvals_v1.sql';
-const migration = existsSync(migrationPath)
-  ? readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n')
-  : '';
+
+/**
+ * MỌI assertion nội dung chạy trên bản ĐÃ LỘT BÌNH LUẬN.
+ *
+ * Bản trước giữ nguyên văn bản thô, nên một predicate chịu lực bị bình luận hoá
+ * — `-- AND b.id = ANY(v_buildings)` — vẫn khớp regex và test vẫn XANH trong khi
+ * hàng rào thật đã biến mất. `boCommentSql` giữ nguyên số dòng và giữ nguyên nội
+ * dung chuỗi literal; bài kiểm đột biến của chính nó ở `sqlTestUtils.test.ts`.
+ */
+const migration = boCommentSql(docSql(migrationPath));
 
 /** Body of one `CREATE OR REPLACE FUNCTION <name>` up to its closing `$fn$;`. */
 function functionBody(name: string): string {
@@ -22,6 +30,20 @@ function functionBody(name: string): string {
   const end = migration.indexOf('\n$fn$;', start);
   return end < 0 ? migration.slice(start) : migration.slice(start, end + '\n$fn$;'.length);
 }
+
+/**
+ * KHOÁ QUYỀN THEO TỪNG RPC, KHAI TƯỜNG MINH.
+ *
+ * Bản trước dùng một regex `(?:contracts|income_expenses)\.view` chung cho cả bốn
+ * hàm: `copilot_pending_requests_v1` đổi sang `contracts.view` vẫn xanh, dù nó
+ * đọc hộp duyệt thu chi. Bảng tra tay thì đổi khoá là phải sửa test.
+ */
+const KHOA_QUYEN: Record<(typeof RPCS)[number], string> = {
+  copilot_contract_search_v1: 'contracts.view',
+  copilot_contract_detail_v1: 'contracts.view',
+  copilot_income_expense_search_v1: 'income_expenses.view',
+  copilot_pending_requests_v1: 'income_expenses.view',
+};
 
 const RPCS = [
   'copilot_contract_search_v1',
@@ -58,7 +80,9 @@ describe('copilot read RPC migration — contracts, vouchers, pending inbox', ()
       const body = functionBody(rpc);
       expect(body, rpc).toMatch(/p_organization_id uuid/);
       expect(body, rpc).toMatch(
-        /copilot_org_scope_buildings_v1\('(?:contracts|income_expenses)\.view', p_organization_id\)/,
+        new RegExp(
+          String.raw`copilot_org_scope_buildings_v1\('${KHOA_QUYEN[rpc].replace('.', '\\.')}', p_organization_id\)`,
+        ),
       );
       expect(body, rpc).toMatch(/auth\.uid\(\)/);
       expect(body, rpc).toMatch(/not_permitted/);
