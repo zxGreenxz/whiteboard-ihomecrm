@@ -382,20 +382,34 @@ async function xemTruocTaoPhieu(jwt: string, ten: string): Promise<KetQuaRpc> {
 // Cờ rollout — lật và KHÔI PHỤC
 // ---------------------------------------------------------------------------
 
-async function trangThaiCoTrenOrg(
-  jwtSys: string,
-  org: string,
-): Promise<{ revision: number; state: string }> {
+/** Trạng thái cờ + revision TOÀN CỤC, nhìn từ org DEMO. Đọc hỏng ⇒ ĐỎ: mọi
+ *  lượt lật/khôi phục cờ đều dựa vào con số này. */
+async function trangThaiCo(jwtSys: string): Promise<{ revision: number; state: string }> {
   const kq = await goiRpc(jwtSys, 'get_my_copilot_availability_v1', {
-    p_organization_id: org,
+    p_organization_id: ORG_DEMO,
   });
-  expect(kq.status, `Đọc availability (${org}): ${loi(kq)}`).toBe(200);
+  expect(kq.status, `Đọc availability (DEMO): ${loi(kq)}`).toBe(200);
   const body = kq.body as { revision: number; states: Record<string, string> };
   return { revision: body.revision, state: body.states[`action:${CO_KILL_SWITCH}`] };
 }
 
-async function trangThaiCo(jwtSys: string): Promise<{ revision: number; state: string }> {
-  return trangThaiCoTrenOrg(jwtSys, ORG_DEMO);
+/**
+ * Như `trangThaiCo` nhưng cho MỘT ORG BẤT KỲ, và KHÔNG làm đỏ ca khi RPC từ chối.
+ *
+ * Dùng RIÊNG cho phép đo tiền đề. `get_my_copilot_availability_v1` ném `42501`
+ * cho một org **sandbox** (`sandbox_org_ids()`, migration 20260828170000) kể cả
+ * khi người gọi là super admin — và org sandbox vẫn mang `status = 'ACTIVE'`,
+ * nên nó lọt qua bộ lọc `organizations`. Một tiền đề TỰ LÀM ĐỎ CA chính là tiền
+ * đề hỏng: việc của nó là nói "đo được / không đo được", không phải phán xét
+ * hàng rào.
+ */
+async function docCoTrenOrgNeuDuoc(jwtSys: string, org: string): Promise<string | null> {
+  const kq = await goiRpc(jwtSys, 'get_my_copilot_availability_v1', {
+    p_organization_id: org,
+  });
+  if (kq.status !== 200) return null;
+  const body = kq.body as { states?: Record<string, string> };
+  return body.states?.[`action:${CO_KILL_SWITCH}`] ?? null;
 }
 
 /**
@@ -407,43 +421,59 @@ async function trangThaiCo(jwtSys: string): Promise<{ revision: number; state: s
  * `canary_org` KHÔNG đọc được trực tiếp (xem khối "KHOẢNG TRỐNG CỦA NỀN
  * TẢNG" ở đầu file), nên nó được SUY ra: `get_my_copilot_availability_v1` hạ
  * `state` xuống `disabled` cho mọi org KHÁC canary. Hỏi hai org — DEMO và một org
- * ACTIVE bất kỳ khác — mà cả hai cùng thấy `enabled` thì `canary_org IS NULL`. Và
+ * ACTIVE khác — mà cả hai cùng thấy `enabled` thì `canary_org IS NULL`. Và
  * canary NULL kéo theo hạn NULL, vì chính RPC cấm
  * `p_canary_org IS NULL AND p_expires_at IS NOT NULL`.
  *
- * Không tìm được org thứ hai ⇒ KHÔNG CHỨNG MINH ĐƯỢC, nên cũng là bỏ ca —
+ * THỬ TỪNG ORG CHO TỚI KHI CÓ MỘT ORG TRẢ LỜI ĐƯỢC, không lấy đại cái đầu tiên:
+ * org **sandbox** cũng mang `status = 'ACTIVE'` nhưng availability ném `42501`
+ * cho nó kể cả với super admin. `limit=1` không thứ tự nghĩa là một ngày
+ * PostgREST trả đúng hàng sandbox và tiền đề tự làm đỏ hai ca — sai hoàn toàn so
+ * với việc của nó. `order=created_at.asc` để thứ tự thử là tất định giữa các lượt
+ * chạy, chứ không phải để org đầu tiên "đúng" hơn.
+ *
+ * Không org nào trả lời được ⇒ KHÔNG CHỨNG MINH ĐƯỢC, nên cũng là bỏ ca —
  * "không đo được" không phải "an toàn".
  */
 async function tienDeLatCo(jwtSys: string): Promise<{ dat: boolean; lyDo: string }> {
-  const demo = await trangThaiCoTrenOrg(jwtSys, ORG_DEMO);
-  if (demo.state !== 'enabled') {
+  const demo = await docCoTrenOrgNeuDuoc(jwtSys, ORG_DEMO);
+  if (demo !== 'enabled') {
     return {
       dat: false,
-      lyDo: `cờ action:${CO_KILL_SWITCH} đang ở "${demo.state}" chứ không phải "enabled" — `
-        + 'spec không biết phải trả nó về trạng thái nào',
+      lyDo: `cờ action:${CO_KILL_SWITCH} trên DEMO đang ở "${demo ?? 'không đọc được'}" chứ `
+        + 'không phải "enabled" — spec không biết phải trả nó về trạng thái nào',
     };
   }
   const orgs = await docBang(
     jwtSys,
-    `organizations?status=eq.ACTIVE&id=neq.${ORG_DEMO}&select=id&limit=1`,
+    `organizations?status=eq.ACTIVE&id=neq.${ORG_DEMO}&select=id&order=created_at.asc&limit=5`,
   );
-  const orgKhac = orgs[0]?.id as string | undefined;
-  if (!orgKhac) {
+  if (orgs.length === 0) {
     return {
       dat: false,
       lyDo: 'không có org ACTIVE nào khác DEMO để suy ra canary_org — không chứng minh '
         + 'được rằng bật lại là hoàn nguyên chính xác',
     };
   }
-  const khac = await trangThaiCoTrenOrg(jwtSys, orgKhac);
-  if (khac.state !== 'enabled') {
-    return {
-      dat: false,
-      lyDo: `cờ action:${CO_KILL_SWITCH} đang canary/có hạn (org khác thấy "${khac.state}") — `
-        + 'lật nó rồi bật lại sẽ NỚI nó thành bật toàn cục vĩnh viễn',
-    };
+  for (const org of orgs) {
+    const khac = await docCoTrenOrgNeuDuoc(jwtSys, org.id as string);
+    // `null` = org này không trả lời được (sandbox, hoặc bị chặn vì lý do khác).
+    // Đó KHÔNG phải bằng chứng về cờ — thử org kế tiếp.
+    if (khac === null) continue;
+    if (khac !== 'enabled') {
+      return {
+        dat: false,
+        lyDo: `cờ action:${CO_KILL_SWITCH} đang canary/có hạn (org khác thấy "${khac}") — `
+          + 'lật nó rồi bật lại sẽ NỚI nó thành bật toàn cục vĩnh viễn',
+      };
+    }
+    return { dat: true, lyDo: '' };
   }
-  return { dat: true, lyDo: '' };
+  return {
+    dat: false,
+    lyDo: `đã thử ${orgs.length} org ACTIVE khác DEMO, không org nào đọc được availability `
+      + '(sandbox?) — không suy ra được canary_org, nên không lật cờ',
+  };
 }
 
 async function datCo(jwtSys: string, state: 'disabled' | 'shadow' | 'enabled'): Promise<KetQuaRpc> {
