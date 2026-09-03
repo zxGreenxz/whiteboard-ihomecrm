@@ -42,13 +42,51 @@
 --      khoá `15 phút × 2^(lock_level cũ)` rồi tăng `lock_level`; một lần xác
 --      thực ĐÚNG xoá `failed_attempts`/`locked_until` (không đụng `lock_level`
 --      — lịch sử từng bị khoá không biến mất chỉ vì một lần đoán trúng). Mọi
---      nhánh SAI (kể cả nhánh vừa kích hoạt khoá) trả về CÙNG một thông điệp
---      `pin_invalid:<so_lan_con_lai>` — không có nhánh nào nói "PIN chưa từng
---      được đặt" khác với "PIN sai", vì cả hai đều chỉ chạy được sau khi hàng
---      PIN đã `FOUND`. Trường hợp hàng PIN không tồn tại là một mã KHÁC hẳn
---      (`pin_not_set`, chạy trước khi có gì để mà "sai") và trường hợp đang
---      khoá là một mã KHÁC nữa (`pin_locked:<so_giay_con_lai>`, chạy trước khi
---      so PIN) — ba tầng, ba mã, không lẫn vào nhau.
+--      nhánh SAI (kể cả nhánh vừa kích hoạt khoá) trả về CÙNG một mã
+--      `error_code = 'pin_invalid'` kèm `attempts_left` — không có nhánh nào
+--      nói "PIN chưa từng được đặt" khác với "PIN sai", vì cả hai đều chỉ chạy
+--      được sau khi hàng PIN đã `FOUND`. Trường hợp hàng PIN không tồn tại là
+--      một mã KHÁC hẳn (`pin_not_set`, chạy trước khi có gì để mà "sai") và
+--      trường hợp đang khoá là một mã KHÁC nữa (`pin_locked` kèm
+--      `seconds_left`, chạy trước khi so PIN) — ba tầng, ba mã, không lẫn
+--      vào nhau.
+--
+-- FIX ROUND 1 (đánh số F1–F8, sau review đầu) — VÁ MỘT LỖ HIGH THẬT:
+--
+--   F1. GHI-RỒI-RAISE LÀ MỘT LỖ, KHÔNG PHẢI MỘT KHUÔN AN TOÀN. Bản trước
+--       UPDATE bộ đếm/khoá RỒI `RAISE EXCEPTION` trong CÙNG một giao dịch —
+--       Postgres cuộn ngược TOÀN BỘ effect của một RAISE, kể cả UPDATE vừa
+--       chạy ngay trước nó, nên khoá 5-lần KHÔNG BAO GIỜ được ghi xuống đĩa và
+--       PIN 4 số (10.000 tổ hợp) dò được vô hạn lần. `copilot_step_up_verify_
+--       v1`/`copilot_step_up_set_pin_v1` giờ GHI RỒI RETURN cho mọi nhánh có
+--       UPDATE đứng trước — `{ok:false, error_code, attempts_left|
+--       seconds_left}` — RAISE chỉ còn dành cho pre-write (chưa đụng hàng
+--       nào): unauthenticated, organization_required, not_permitted,
+--       pin_not_set, pin_format, pin_weak, step_up_superadmin_only.
+--   F2. `set_pin_v1` VỚI `p_current_pin` SAI giờ đi qua CÙNG bộ đếm/khoá với
+--       `verify_v1`, qua helper dùng chung `app_private.copilot_step_up_ghi_
+--       that_bai_v1` — thiếu nó, đổi PIN là một đường dò PIN không bị đếm,
+--       vô hiệu hoá khoá 5-lần của cửa xác thực chính.
+--   F3. TOKEN STEP-UP TIÊU CÙNG ĐIỂM VỚI NONCE CẤP KẾ HOẠCH trong
+--       `copilot_plan_approve_v1` — không còn tiêu ngay sau khi validate, TRƯỚC
+--       cả kill-switch/policy-check. Bản trước tiêu sớm nghĩa là một RAISE
+--       `copilot_feature_disabled`/`copilot_policy_missing` giữa lúc đó đốt
+--       mất token mà không duyệt được gì, trong khi nonce cấp kế hoạch (không
+--       tiêu sớm) vẫn còn sống — không đối xứng, và người dùng phải xác thực
+--       PIN lại vô ích.
+--   F4. `copilot_step_up_set_pin_v1`/`copilot_step_up_unlock_v1` chuyển từ
+--       gọi ở `hanhDongCopilot.ts` sang gọi TỪ `stepUpClient.ts` — cả hai vào
+--       `rpcAllowlist`, và gate `check-copilot-forbidden-actions.mjs` chỉ soi
+--       `src/copilot/tools/` + `src/copilot/plan/`.
+--   F5. `da_doi` (ledger `step_up_pin_set`) đọc `v_da_ton_tai` (chụp NGAY sau
+--       SELECT), không đọc `FOUND` ở cuối hàm — `FOUND` lúc đó phản ánh câu
+--       `INSERT ... ON CONFLICT` (luôn khớp một hàng) chứ không phải "PIN đã
+--       có từ trước", nên bản trước luôn ghi `da_doi = true`.
+--   F6. `copilot_ledger_append_v1` phục hồi tính NULL-SAFE của điều kiện ngoại
+--       lệ tổ chức (`v_event IS NULL OR v_event NOT IN (...)`), và thêm
+--       `step_up_locked` vào danh sách miễn tổ chức — sự kiện này giờ có thể
+--       kích hoạt từ `set_pin_v1` (không có `p_organization_id`), không chỉ
+--       từ `verify_v1`.
 --
 -- Idempotent: bảng IF NOT EXISTS, ràng buộc DO-guard, RPC CREATE OR REPLACE
 -- cùng chữ ký, ACL tái cấp mỗi lượt.
@@ -154,7 +192,7 @@ BEGIN
     ALTER TABLE app_private.copilot_action_ledger
       ADD CONSTRAINT copilot_action_ledger_org_required
       CHECK (organization_id IS NOT NULL
-             OR event IN ('policy_changed', 'step_up_pin_set', 'step_up_unlocked'));
+             OR event IN ('policy_changed', 'step_up_pin_set', 'step_up_unlocked', 'step_up_locked'));
   END IF;
 END
 $mo_rong_org_required$;
@@ -186,7 +224,13 @@ BEGIN
   -- `step_up_unlocked` là quản trị PIN của MỘT người dùng, không thuộc tổ chức
   -- nào (xem quyết định 1 ở đầu file `20260903150311`). Mọi sự kiện KHÁC vẫn
   -- bắt buộc có tổ chức — CHECK trên bảng canh vế còn lại.
-  IF v_org IS NULL AND v_event NOT IN ('policy_changed', 'step_up_pin_set', 'step_up_unlocked') THEN
+  -- Fix round 1 (F6): 'step_up_locked' gia nhap nhom ngoai le nay (co the
+  -- kich hoat tu set_pin_v1 qua helper dung chung, khong luon co org), va
+  -- dieu kien doi lai thanh NULL-safe -- 'v_event NOT IN (...)' mot minh se
+  -- tra NULL (falsy) khi v_event la NULL, khien mot payload thieu ca event
+  -- lan org lot qua trong im lang thay vi bi chan ro rang o day.
+  IF v_org IS NULL AND (v_event IS NULL OR v_event NOT IN (
+       'policy_changed', 'step_up_pin_set', 'step_up_unlocked', 'step_up_locked')) THEN
     RAISE EXCEPTION 'copilot_ledger_organization_required' USING ERRCODE = '22023';
   END IF;
 
@@ -243,6 +287,98 @@ END
 $thu_hoi_append$;
 
 -- ---------------------------------------------------------------------------
+-- 2b. GHI MOT LAN SAI -- dung CHUNG giua verify_v1 va set_pin_v1 (Fix
+--     round 1, F1+F2). Hai duong deu co the dua ra mot PIN sai (verify: doan
+--     PIN de lay token; set_pin: go sai PIN CU khi doi PIN) va PHAI cung mot
+--     bo dem/khoa -- thieu helper nay, set_pin_v1 la mot duong do PIN KHONG
+--     bi dem, vo hieu hoa khoa 5-lan cua verify_v1.
+--
+--     GHI ROI RETURN, KHONG RAISE -- day la cho va loi HIGH cua vong review
+--     dau. Ban truoc UPDATE bo dem/khoa ROI RAISE EXCEPTION trong CUNG mot
+--     giao dich: Postgres cuon nguoc TOAN BO effect cua mot RAISE, KE CA
+--     UPDATE vua chay ngay truoc no. Khoa khong bao gio duoc ghi xuong dia --
+--     PIN 4 so (10.000 to hop) do duoc vo han lan. Khuon dung la khuon
+--     copilot_plan_approve_v1 da dung tu G3 cho nhanh plan_expired:
+--     UPDATE/ledger TRUOC, RETURN jsonb_build_object(...) SAU -- khong RAISE
+--     nao dung giua mot effect can giu lai va cau tra loi bao effect do.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION app_private.copilot_step_up_ghi_that_bai_v1(
+  p_user_id          uuid,
+  p_organization_id  uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, app_private
+AS $f$
+DECLARE
+  v_now  timestamptz := clock_timestamp();
+  v_row  app_private.copilot_step_up_pins%ROWTYPE;
+  v_left int;
+BEGIN
+  SELECT * INTO v_row
+    FROM app_private.copilot_step_up_pins
+   WHERE user_id = p_user_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    -- Luoi an toan, khong phai duong vao chinh: nguoi goi (verify_v1/
+    -- set_pin_v1) da tu kiem hang PIN ton tai TRUOC khi goi ham nay.
+    RETURN jsonb_build_object('ok', false, 'error_code', 'pin_not_set');
+  END IF;
+
+  IF v_row.failed_attempts + 1 >= 5 THEN
+    -- Cham tran: khoa, tang lock_level, ghi so -- VAN tra cung ma pin_invalid
+    -- nhu moi nhanh sai khac (so lan con lai = 0), khong co ma rieng cho
+    -- "vua moi bi khoa" khac voi "sai".
+    UPDATE app_private.copilot_step_up_pins
+       SET failed_attempts = 0,
+           lock_level      = v_row.lock_level + 1,
+           locked_until    = v_now + (interval '15 minutes'
+                              * power(2::float8, v_row.lock_level::float8)),
+           updated_at      = v_now
+     WHERE user_id = p_user_id;
+
+    PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
+      'event',           'step_up_locked',
+      'organization_id', p_organization_id,
+      'permission_key',  'copilot.step_up',
+      'outcome',         jsonb_build_object('lock_level', v_row.lock_level + 1)));
+
+    RETURN jsonb_build_object('ok', false, 'error_code', 'pin_invalid', 'attempts_left', 0);
+  END IF;
+
+  UPDATE app_private.copilot_step_up_pins
+     SET failed_attempts = failed_attempts + 1,
+         updated_at      = v_now
+   WHERE user_id = p_user_id;
+  v_left := GREATEST(0, 5 - (v_row.failed_attempts + 1));
+
+  RETURN jsonb_build_object('ok', false, 'error_code', 'pin_invalid', 'attempts_left', v_left);
+END
+$f$;
+
+COMMENT ON FUNCTION app_private.copilot_step_up_ghi_that_bai_v1(uuid, uuid) IS
+  'Ghi MOT lan PIN sai (dung chung verify_v1/set_pin_v1): tang bo dem, khoa khi cham 5, GHI ROI '
+  'RETURN -- khong RAISE sau khi da UPDATE, vi RAISE cuon nguoc ca UPDATE vua chay (Fix round 1, F1).';
+
+REVOKE ALL ON FUNCTION app_private.copilot_step_up_ghi_that_bai_v1(uuid, uuid) FROM PUBLIC;
+DO $thu_hoi_ghi_that_bai$
+BEGIN
+  IF to_regrole('anon') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION app_private.copilot_step_up_ghi_that_bai_v1(uuid, uuid) FROM anon;
+  END IF;
+  IF to_regrole('authenticated') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION app_private.copilot_step_up_ghi_that_bai_v1(uuid, uuid) FROM authenticated;
+  END IF;
+  IF to_regrole('service_role') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION app_private.copilot_step_up_ghi_that_bai_v1(uuid, uuid) FROM service_role;
+  END IF;
+END
+$thu_hoi_ghi_that_bai$;
+
+-- ---------------------------------------------------------------------------
 -- 3. ĐẶT/ĐỔI PIN — chỉ super admin (v1). Client BẮT BUỘC re-auth bằng
 --    `supabase.auth.signInWithPassword` NGAY TRƯỚC khi gọi — server KHÔNG kiểm
 --    được điều đó (không có cách nào từ trong RPC biết phiên vừa được làm mới
@@ -260,10 +396,12 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app_private, extensions
 AS $f$
 DECLARE
-  v_actor uuid := auth.uid();
-  v_row   app_private.copilot_step_up_pins%ROWTYPE;
-  v_hash  text;
-  v_now   timestamptz := clock_timestamp();
+  v_actor      uuid := auth.uid();
+  v_row        app_private.copilot_step_up_pins%ROWTYPE;
+  v_da_ton_tai boolean;
+  v_hash       text;
+  v_now        timestamptz := clock_timestamp();
+  v_giay       int;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
@@ -274,8 +412,8 @@ BEGIN
   IF p_pin IS NULL OR p_pin !~ '^[0-9]{4}$' THEN
     RAISE EXCEPTION 'pin_format' USING ERRCODE = '22023';
   END IF;
-  -- Bốn số dễ đoán — cấm ở tầng server vì đây là lớp xác thực thứ hai của
-  -- những hành động rủi ro cao nhất, không phải khoá màn hình điện thoại.
+  -- Bon so de doan -- cam o tang server vi day la lop xac thuc thu hai cua
+  -- nhung hanh dong rui ro cao nhat, khong phai khoa man hinh dien thoai.
   IF p_pin = ANY (ARRAY[
     '0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999',
     '1234', '4321', '2580', '0852'
@@ -287,15 +425,24 @@ BEGIN
     FROM app_private.copilot_step_up_pins
    WHERE user_id = v_actor
    FOR UPDATE;
+  -- Chup NGAY sau SELECT: FOUND cua cau lenh tiep theo (INSERT ... ON
+  -- CONFLICT) se ghi de bien ngam nay -- ban truoc doc lai FOUND o tan duoi
+  -- ledger va luon nhan true (INSERT/UPDATE nao cung khop dung mot hang),
+  -- nen 'da_doi' sai 100% (Fix round 1, F5).
+  v_da_ton_tai := FOUND;
 
-  IF FOUND THEN
+  IF v_da_ton_tai THEN
     IF v_row.locked_until IS NOT NULL AND v_row.locked_until > v_now THEN
-      RAISE EXCEPTION 'pin_locked' USING ERRCODE = '42501';
+      v_giay := GREATEST(1, ceil(extract(epoch FROM (v_row.locked_until - v_now)))::int);
+      RETURN jsonb_build_object('ok', false, 'error_code', 'pin_locked', 'seconds_left', v_giay);
     END IF;
-    -- Đổi PIN đòi PIN CŨ khớp — không nội suy p_current_pin vào thông điệp.
+    -- Doi PIN doi PIN CU khop -- khong noi suy p_current_pin vao thong diep.
+    -- SAI PIN CU o day di qua CUNG bo dem/khoa voi verify_v1 qua helper dung
+    -- chung (Fix round 1, F2): khong co no, doi PIN tro thanh mot duong do
+    -- PIN khong bi dem, vo hieu hoa khoa 5-lan cua cua xac thuc chinh.
     IF p_current_pin IS NULL
        OR extensions.crypt(p_current_pin, v_row.pin_hash) IS DISTINCT FROM v_row.pin_hash THEN
-      RAISE EXCEPTION 'pin_invalid' USING ERRCODE = '42501';
+      RETURN app_private.copilot_step_up_ghi_that_bai_v1(v_actor, NULL);
     END IF;
   END IF;
 
@@ -315,15 +462,16 @@ BEGIN
   PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
     'event',          'step_up_pin_set',
     'permission_key', 'copilot.step_up',
-    'outcome',        jsonb_build_object('da_doi', FOUND)));
+    'outcome',        jsonb_build_object('da_doi', v_da_ton_tai)));
 
-  RETURN jsonb_build_object('da_dat', true, 'updated_at', v_now);
+  RETURN jsonb_build_object('ok', true, 'da_dat', true, 'updated_at', v_now);
 END
 $f$;
 
 COMMENT ON FUNCTION public.copilot_step_up_set_pin_v1(text, text) IS
   'Dat/doi PIN step-up 4 so cua chinh nguoi goi. Chi super admin (v1). Client PHAI re-auth bang '
-  'signInWithPassword truoc khi goi — server khong kiem duoc dieu do, day la ranh gioi CLIENT.';
+  'signInWithPassword truoc khi goi -- server khong kiem duoc dieu do, day la ranh gioi CLIENT. '
+  'Fix round 1: PIN cu sai dung chung bo dem/khoa voi verify_v1 (F2), GHI ROI RETURN khong RAISE (F1).';
 
 REVOKE ALL ON FUNCTION public.copilot_step_up_set_pin_v1(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.copilot_step_up_set_pin_v1(text, text) TO authenticated;
@@ -358,23 +506,22 @@ DECLARE
   v_row   app_private.copilot_step_up_pins%ROWTYPE;
   v_token bytea;
   v_han   timestamptz;
-  v_left  int;
   v_giay  int;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
   END IF;
 
-  -- Khuôn của `copilot_org_scope_buildings_v1` (20260829090000): tổ chức phải
-  -- tồn tại và ACTIVE trước khi hỏi bất cứ điều gì khác.
+  -- Khuon cua copilot_org_scope_buildings_v1 (20260829090000): to chuc phai
+  -- ton tai va ACTIVE truoc khi hoi bat cu dieu gi khac.
   IF p_organization_id IS NULL OR NOT EXISTS (
     SELECT 1 FROM public.organizations o
      WHERE o.id = p_organization_id AND o.status = 'ACTIVE'
   ) THEN
     RAISE EXCEPTION 'organization_required' USING ERRCODE = '22023';
   END IF;
-  -- Thành viên ACTIVE của tổ chức, hoặc super admin. Cùng khuôn membership mà
-  -- `copilot_org_scope_buildings_v1` dùng.
+  -- Thanh vien ACTIVE cua to chuc, hoac super admin. Cung khuon membership ma
+  -- copilot_org_scope_buildings_v1 dung.
   IF NOT public.is_super_admin() AND NOT EXISTS (
     SELECT 1 FROM public.organization_memberships m
      WHERE m.organization_id = p_organization_id
@@ -398,42 +545,21 @@ BEGIN
 
   IF v_row.locked_until IS NOT NULL AND v_row.locked_until > v_now THEN
     v_giay := GREATEST(1, ceil(extract(epoch FROM (v_row.locked_until - v_now)))::int);
-    RAISE EXCEPTION 'pin_locked:%', v_giay USING ERRCODE = '42501';
+    RETURN jsonb_build_object('ok', false, 'error_code', 'pin_locked', 'seconds_left', v_giay);
   END IF;
 
-  -- SO PIN. Không nội suy p_pin vào bất kỳ thông điệp nào — kể cả nhánh lỗi.
+  -- SO PIN. Khong noi suy p_pin vao bat ky thong diep/ket qua nao -- ke ca
+  -- nhanh loi. SAI -> GHI ROI RETURN qua helper dung chung voi set_pin_v1
+  -- (Fix round 1, F1): ban truoc UPDATE bo dem/khoa roi RAISE trong CUNG mot
+  -- giao dich -- RAISE cuon nguoc moi effect truoc no, ke ca UPDATE vua chay,
+  -- nen khoa khong bao gio duoc ghi xuong dia va PIN 4 so do duoc vo han lan.
   IF p_pin IS NULL OR p_pin !~ '^[0-9]{4}$'
      OR extensions.crypt(p_pin, v_row.pin_hash) IS DISTINCT FROM v_row.pin_hash THEN
-    IF v_row.failed_attempts + 1 >= 5 THEN
-      -- Chạm trần: khoá, tăng lock_level, ghi sổ — VẪN trả cùng thông điệp
-      -- pin_invalid như mọi nhánh sai khác (số lần còn lại = 0).
-      UPDATE app_private.copilot_step_up_pins
-         SET failed_attempts = 0,
-             lock_level      = v_row.lock_level + 1,
-             locked_until    = v_now + (interval '15 minutes'
-                                * power(2::float8, v_row.lock_level::float8)),
-             updated_at      = v_now
-       WHERE user_id = v_actor;
-
-      PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
-        'event',           'step_up_locked',
-        'organization_id', p_organization_id,
-        'permission_key',  'copilot.step_up',
-        'outcome',         jsonb_build_object('lock_level', v_row.lock_level + 1)));
-
-      RAISE EXCEPTION 'pin_invalid:0' USING ERRCODE = '42501';
-    END IF;
-
-    UPDATE app_private.copilot_step_up_pins
-       SET failed_attempts = failed_attempts + 1,
-           updated_at      = v_now
-     WHERE user_id = v_actor;
-    v_left := GREATEST(0, 5 - (v_row.failed_attempts + 1));
-    RAISE EXCEPTION 'pin_invalid:%', v_left USING ERRCODE = '42501';
+    RETURN app_private.copilot_step_up_ghi_that_bai_v1(v_actor, p_organization_id);
   END IF;
 
-  -- ĐÚNG. Reset bộ đếm/khoá — KHÔNG reset lock_level: lịch sử từng bị khoá
-  -- không biến mất chỉ vì một lần đoán trúng sau đó.
+  -- DUNG. Reset bo dem/khoa -- KHONG reset lock_level: lich su tung bi khoa
+  -- khong bien mat chi vi mot lan doan trung sau do.
   UPDATE app_private.copilot_step_up_pins
      SET failed_attempts = 0, locked_until = NULL, updated_at = v_now
    WHERE user_id = v_actor;
@@ -453,13 +579,14 @@ BEGIN
     v_han
   );
 
-  -- Sổ KHÔNG mang PIN/token — chỉ mang việc "đã xác thực xong".
+  -- So KHONG mang PIN/token -- chi mang viec "da xac thuc xong".
   PERFORM app_private.copilot_ledger_append_v1(jsonb_build_object(
     'event',           'step_up_verified',
     'organization_id', p_organization_id,
     'permission_key',  'copilot.step_up'));
 
   RETURN jsonb_build_object(
+    'ok',            true,
     'step_up_token', encode(v_token, 'hex'),
     'expires_at',    v_han
   );
@@ -468,8 +595,9 @@ $f$;
 
 COMMENT ON FUNCTION public.copilot_step_up_verify_v1(text, uuid) IS
   'Xac thuc PIN step-up, phat token hex64 dung-mot-lan TTL 5 phut rang buoc vao MOT to chuc qua '
-  'payload_hash. 5 lan sai lien tiep khoa 15p x 2^(lock_level cu). Moi nhanh sai tra cung thong diep '
-  'pin_invalid:<so_lan_con_lai> — khong phan biet ly do sai.';
+  'payload_hash. Fix round 1: moi nhanh that bai (khoa/pin_invalid) GHI ROI RETURN {ok:false, '
+  'error_code, attempts_left|seconds_left} -- khong RAISE sau UPDATE. 5 lan sai lien tiep (dung '
+  'chung voi set_pin_v1 qua copilot_step_up_ghi_that_bai_v1) khoa 15p x 2^(lock_level cu).';
 
 REVOKE ALL ON FUNCTION public.copilot_step_up_verify_v1(text, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.copilot_step_up_verify_v1(text, uuid) TO authenticated;
@@ -779,16 +907,12 @@ BEGIN
       RAISE EXCEPTION 'step_up_required' USING ERRCODE = '42501';
     END IF;
 
-    -- CAS TIÊU TOKEN. Cùng kỷ luật với nonce cấp kế hoạch: đặt điều kiện
-    -- `consumed_at IS NULL` ngay trong WHERE.
-    UPDATE app_private.copilot_write_confirmations
-       SET consumed_at = clock_timestamp()
-     WHERE id = v_step_up.id AND consumed_at IS NULL;
-    IF NOT FOUND THEN
-      RAISE EXCEPTION 'step_up_required' USING ERRCODE = '42501';
-    END IF;
-
-    v_step_up_id := v_step_up.id;
+    -- Fix round 1 (F3): KHONG tieu token o day nua. Tieu no cung mot diem
+    -- voi nonce cap ke hoach (nhanh that bai / nhanh thanh cong ben duoi),
+    -- de mot lan RAISE cua kill-switch/policy-missing GIUA cho nay va do
+    -- khong dot mat token ma khong duyet duoc gi (bug that: ban truoc tieu
+    -- token o day, truoc ca kill-switch, nen mot RAISE ngay sau van thieu
+    -- token du no chua bao gio thuc su chay).
   END IF;
 
   -- Công tắc của cả cơ chế, hỏi LẠI. Tắt giữa lúc lập và lúc bấm là chuyện thật
@@ -865,6 +989,17 @@ BEGIN
        SET consumed_at = clock_timestamp()
      WHERE id = v_conf.id AND consumed_at IS NULL;
 
+    -- Fix round 1 (F3): token step-up (neu co) tieu CUNG luc voi nonce --
+    -- xem chu thich day du o nhanh thanh cong ben duoi.
+    IF v_step_up.id IS NOT NULL THEN
+      UPDATE app_private.copilot_write_confirmations
+         SET consumed_at = clock_timestamp()
+       WHERE id = v_step_up.id AND consumed_at IS NULL;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'step_up_required' USING ERRCODE = '42501';
+      END IF;
+      v_step_up_id := v_step_up.id;
+    END IF;
     UPDATE app_private.copilot_plan_steps
        SET status = 'BLOCKED',
            error_code = CASE WHEN step_no = v_buoc_hong THEN v_ly_do ELSE 'plan_failed' END
@@ -919,6 +1054,21 @@ BEGIN
     RAISE EXCEPTION 'confirmation_already_used' USING ERRCODE = '42501';
   END IF;
 
+  -- Fix round 1 (F3): TIEU token step-up O DAY -- CUNG mot diem voi nonce
+  -- cap ke hoach (ngay tren). Truoc do token chi duoc VALIDATE (SELECT ...
+  -- FOR UPDATE + 7 dieu kien OR), khong bi tieu -- neu khong, mot lan RAISE
+  -- kill-switch/policy-missing O TREN diem nay se dot token ma khong duyet
+  -- duoc gi (nguoi dung phai xac thuc PIN lai tu dau de lay token moi, dung
+  -- luc nonce cap ke hoach VAN CON SONG vi no cung khong bi tieu som).
+  IF v_step_up.id IS NOT NULL THEN
+    UPDATE app_private.copilot_write_confirmations
+       SET consumed_at = clock_timestamp()
+     WHERE id = v_step_up.id AND consumed_at IS NULL;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'step_up_required' USING ERRCODE = '42501';
+    END IF;
+    v_step_up_id := v_step_up.id;
+  END IF;
   v_han := clock_timestamp() + interval '30 minutes';
   UPDATE app_private.copilot_plans
      SET status = 'APPROVED',

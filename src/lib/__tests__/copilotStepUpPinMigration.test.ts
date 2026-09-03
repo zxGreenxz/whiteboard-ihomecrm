@@ -103,7 +103,7 @@ describe('G5-A — sổ: bốn sự kiện mới + ngoại lệ tổ chức', ()
     expect(migration).toMatch(/ADD CONSTRAINT copilot_action_ledger_event_check/);
   });
 
-  it('org_required nới ngoại lệ CHỈ cho step_up_pin_set/step_up_unlocked, KHÔNG cho step_up_verified/step_up_locked', () => {
+  it('org_required nới ngoại lệ cho step_up_pin_set/step_up_unlocked/step_up_locked (Fix round 1: step_up_locked gia nhập vì có thể kích hoạt từ set_pin_v1 qua helper dùng chung), KHÔNG cho step_up_verified', () => {
     const khoi = migration.slice(
       migration.indexOf("ADD CONSTRAINT copilot_action_ledger_org_required"),
       migration.indexOf("ADD CONSTRAINT copilot_action_ledger_org_required") + 300,
@@ -111,14 +111,18 @@ describe('G5-A — sổ: bốn sự kiện mới + ngoại lệ tổ chức', ()
     expect(khoi).toContain("'policy_changed'");
     expect(khoi).toContain("'step_up_pin_set'");
     expect(khoi).toContain("'step_up_unlocked'");
+    expect(khoi).toContain("'step_up_locked'");
     expect(khoi).not.toContain("'step_up_verified'");
-    expect(khoi).not.toContain("'step_up_locked'");
   });
 
-  it('copilot_ledger_append_v1 được thay THÂN để khớp ngoại lệ mới, vẫn REVOKE ALL', () => {
+  it('copilot_ledger_append_v1 được thay THÂN: NULL-safe (Fix round 1, F6) + ngoại lệ step_up_locked, vẫn REVOKE ALL', () => {
     const than_append = than('copilot_ledger_append_v1', 'app_private');
-    expect(than_append).toMatch(
-      /v_org IS NULL AND v_event NOT IN \('policy_changed', 'step_up_pin_set', 'step_up_unlocked'\)/,
+    // NULL-safe: 'v_event NOT IN (...)' MỘT MÌNH không an toàn khi v_event là
+    // NULL (SQL ba-trị làm IF thành falsy trong im lặng) — bản vá phải đứng
+    // trước bằng 'v_event IS NULL OR'.
+    expect(than_append).toContain('v_event IS NULL OR v_event NOT IN (');
+    expect(than_append).toContain(
+      "'policy_changed', 'step_up_pin_set', 'step_up_unlocked', 'step_up_locked'",
     );
     expect(migration).toMatch(
       /REVOKE ALL ON FUNCTION app_private\.copilot_ledger_append_v1\(jsonb\) FROM PUBLIC;/,
@@ -149,14 +153,37 @@ describe('G5-A — copilot_step_up_set_pin_v1: đặt/đổi PIN', () => {
     expect(than_set).toMatch(/RAISE EXCEPTION 'pin_weak' USING ERRCODE = '22023'/);
   });
 
-  it('đã có hàng thì đòi p_current_pin khớp bằng extensions.crypt, đang khoá thì pin_locked (không số giây)', () => {
+  it('đã có hàng (v_da_ton_tai) thì đòi p_current_pin khớp bằng extensions.crypt; sai → GHI-RỒI-RETURN qua helper dùng chung (Fix round 1, F1+F2), KHÔNG RAISE', () => {
     expect(than_set).toMatch(
       /extensions\.crypt\(p_current_pin, v_row\.pin_hash\) IS DISTINCT FROM v_row\.pin_hash/,
     );
-    expect(than_set).toMatch(/RAISE EXCEPTION 'pin_invalid' USING ERRCODE = '42501'/);
-    expect(than_set).toMatch(/RAISE EXCEPTION 'pin_locked' USING ERRCODE = '42501'/);
-    // Không có hậu tố ":" ngay sau 'pin_locked' ở nhánh set-pin — khác verify.
-    expect(than_set).not.toMatch(/'pin_locked:/);
+    // PIN cũ sai KHÔNG còn RAISE 'pin_invalid' — nó RETURN qua
+    // copilot_step_up_ghi_that_bai_v1, hàm dùng chung với verify_v1 để đếm/
+    // khoá đúng (trước Fix round 1, set_pin là một đường dò PIN không bị đếm).
+    expect(than_set).toContain('RETURN app_private.copilot_step_up_ghi_that_bai_v1(v_actor, NULL);');
+    expect(than_set).not.toMatch(/RAISE EXCEPTION 'pin_invalid' USING ERRCODE/);
+  });
+
+  it('đang khoá (đổi PIN): GHI-RỒI-RETURN pin_locked kèm seconds_left, KHÔNG RAISE (Fix round 1, F1)', () => {
+    const doan = than_set.slice(
+      than_set.indexOf('IF v_da_ton_tai THEN'),
+      than_set.indexOf('Doi PIN doi PIN CU khop'),
+    );
+    expect(doan).toContain('v_row.locked_until IS NOT NULL AND v_row.locked_until > v_now');
+    expect(doan).toContain("RETURN jsonb_build_object('ok', false, 'error_code', 'pin_locked', 'seconds_left', v_giay);");
+    expect(doan).not.toMatch(/RAISE EXCEPTION 'pin_locked'/);
+  });
+
+  it('v_da_ton_tai chụp NGAY sau SELECT — không đọc FOUND ở cuối hàm (Fix round 1, F5: bản trước luôn true vì FOUND bị INSERT ghi đè)', () => {
+    const iSelect = than_set.indexOf('SELECT * INTO v_row');
+    const iCapture = than_set.indexOf('v_da_ton_tai := FOUND;');
+    const iInsert = than_set.indexOf('INSERT INTO app_private.copilot_step_up_pins');
+    expect(iSelect).toBeGreaterThan(-1);
+    expect(iCapture).toBeGreaterThan(iSelect);
+    expect(iCapture).toBeLessThan(iInsert);
+    // Ledger dùng biến đã chụp, KHÔNG đọc lại FOUND (vốn sẽ luôn true sau INSERT).
+    expect(than_set).toContain("'outcome',        jsonb_build_object('da_doi', v_da_ton_tai)));");
+    expect(than_set).not.toContain("jsonb_build_object('da_doi', FOUND)");
   });
 
   it('băm bằng extensions.crypt + extensions.gen_salt(\'bf\', 10), UPSERT reset cả lock_level', () => {
@@ -195,28 +222,23 @@ describe('G5-A — copilot_step_up_verify_v1: xác thực + phát token', () => 
     expect(than_verify).toMatch(/RAISE EXCEPTION 'pin_not_set' USING ERRCODE = '42501'/);
   });
 
-  it('đang khoá → pin_locked:<so_giay>, TRƯỚC khi so PIN', () => {
-    const iLocked = than_verify.indexOf("RAISE EXCEPTION 'pin_locked:%'");
+  it('đang khoá → GHI-RỒI-RETURN pin_locked kèm seconds_left (Fix round 1, F1: KHÔNG còn RAISE ở đây), TRƯỚC khi so PIN', () => {
+    const iLocked = than_verify.indexOf(
+      "RETURN jsonb_build_object('ok', false, 'error_code', 'pin_locked', 'seconds_left', v_giay);",
+    );
     const iCrypt = than_verify.indexOf('extensions.crypt(p_pin, v_row.pin_hash)');
     expect(iLocked).toBeGreaterThan(-1);
     expect(iLocked).toBeLessThan(iCrypt);
     expect(than_verify).toContain('v_row.locked_until - v_now');
+    expect(than_verify).not.toMatch(/RAISE EXCEPTION 'pin_locked/);
   });
 
-  it('mọi nhánh sai PIN (kể cả nhánh vừa kích hoạt khoá) đều RAISE pin_invalid:, không có mã riêng cho "không có PIN" sau khi đã có', () => {
-    const soLanRaisePinInvalid = (than_verify.match(/RAISE EXCEPTION 'pin_invalid:/g) ?? []).length;
-    expect(soLanRaisePinInvalid).toBeGreaterThanOrEqual(2);
-    expect(than_verify).not.toMatch(/pin_wrong|pin_mismatch|pin_incorrect/);
-  });
-
-  it('khoá ở lần thất bại thứ 5: reset failed_attempts, tăng lock_level, nhân đôi thời lượng khoá', () => {
-    expect(than_verify).toContain('v_row.failed_attempts + 1 >= 5');
-    expect(than_verify).toContain('failed_attempts = 0');
-    expect(than_verify).toContain('lock_level      = v_row.lock_level + 1');
+  it('sai PIN (kể cả sai hình dạng) → GHI-RỒI-RETURN qua helper dùng chung với set_pin_v1, KHÔNG RAISE trong verify_v1 (Fix round 1, F1)', () => {
     expect(than_verify).toContain(
-      "locked_until    = v_now + (interval '15 minutes'",
+      'RETURN app_private.copilot_step_up_ghi_that_bai_v1(v_actor, p_organization_id);',
     );
-    expect(than_verify).toContain('power(2::float8, v_row.lock_level::float8)');
+    expect(than_verify).not.toMatch(/RAISE EXCEPTION 'pin_invalid/);
+    expect(than_verify).not.toMatch(/pin_wrong|pin_mismatch|pin_incorrect/);
   });
 
   it('thành công KHÔNG reset lock_level — chỉ reset failed_attempts/locked_until', () => {
@@ -247,10 +269,12 @@ describe('G5-A — copilot_step_up_verify_v1: xác thực + phát token', () => 
     );
   });
 
-  it('ghi sổ step_up_verified (có org) và step_up_locked (có org) — không mang PIN/token', () => {
+  it('ghi sổ step_up_verified (có org, đứng NGAY trong verify_v1) — không mang PIN/token', () => {
     expect(than_verify).toContain("'event',           'step_up_verified'");
-    expect(than_verify).toContain("'event',           'step_up_locked'");
     expect(than_verify).not.toMatch(/'event',\s*'step_up_verified'[\s\S]{0,200}p_pin/);
+    // step_up_locked KHÔNG còn nằm trong verify_v1 — nó chuyển sang helper
+    // dùng chung copilot_step_up_ghi_that_bai_v1 (xem describe riêng bên dưới).
+    expect(than_verify).not.toContain("'event',           'step_up_locked'");
   });
 
   it('ACL: authenticated giữ EXECUTE, PUBLIC/anon/service_role bị revoke có guard', () => {
@@ -259,6 +283,54 @@ describe('G5-A — copilot_step_up_verify_v1: xác thực + phát token', () => 
     );
     expect(migration).toMatch(
       /REVOKE ALL ON FUNCTION public\.copilot_step_up_verify_v1\(text, uuid\) FROM PUBLIC;/,
+    );
+  });
+});
+
+describe('G5-A — copilot_step_up_ghi_that_bai_v1: helper dùng CHUNG giữa verify_v1/set_pin_v1 (Fix round 1, F1+F2)', () => {
+  const than_helper = than('copilot_step_up_ghi_that_bai_v1', 'app_private');
+
+  it('thân không rỗng — thanHam cắt được cả tới REVOKE ALL của app_private', () => {
+    expect(than_helper.length).toBeGreaterThan(300);
+  });
+
+  it('không có hàng PIN → RETURN ok:false pin_not_set (lưới an toàn, không RAISE)', () => {
+    expect(than_helper).toContain("RETURN jsonb_build_object('ok', false, 'error_code', 'pin_not_set');");
+  });
+
+  it('chạm trần 5 lần: RESET failed_attempts, TĂNG lock_level, khoá nhân đôi, GHI SỔ step_up_locked, RỒI RETURN attempts_left=0 — KHÔNG RAISE', () => {
+    const iCham = than_helper.indexOf('v_row.failed_attempts + 1 >= 5');
+    expect(iCham).toBeGreaterThan(-1);
+    const doan = than_helper.slice(iCham, than_helper.indexOf('UPDATE app_private.copilot_step_up_pins', iCham + 1));
+    expect(than_helper).toContain('failed_attempts = 0');
+    expect(than_helper).toContain('lock_level      = v_row.lock_level + 1');
+    expect(than_helper).toContain("locked_until    = v_now + (interval '15 minutes'");
+    expect(than_helper).toContain('power(2::float8, v_row.lock_level::float8)');
+    expect(than_helper).toContain("'event',           'step_up_locked'");
+    expect(than_helper).toContain(
+      "RETURN jsonb_build_object('ok', false, 'error_code', 'pin_invalid', 'attempts_left', 0);",
+    );
+    void doan;
+  });
+
+  it('chưa chạm trần: TĂNG failed_attempts rồi RETURN attempts_left tính bằng GREATEST(0, 5 - (n+1))', () => {
+    expect(than_helper).toContain('failed_attempts = failed_attempts + 1');
+    expect(than_helper).toContain('v_left := GREATEST(0, 5 - (v_row.failed_attempts + 1));');
+    expect(than_helper).toContain(
+      "RETURN jsonb_build_object('ok', false, 'error_code', 'pin_invalid', 'attempts_left', v_left);",
+    );
+  });
+
+  it('KHÔNG RAISE nào trong toàn thân helper — mọi nhánh đều GHI-RỒI-RETURN (đúng chỗ vá HIGH của Fix round 1)', () => {
+    expect(than_helper).not.toMatch(/RAISE EXCEPTION/);
+  });
+
+  it('app_private, REVOKE ALL khỏi PUBLIC/anon/authenticated/service_role — KHÔNG grant cho ai (chỉ gọi nội bộ)', () => {
+    expect(migration).toMatch(
+      /REVOKE ALL ON FUNCTION app_private\.copilot_step_up_ghi_that_bai_v1\(uuid, uuid\) FROM PUBLIC;/,
+    );
+    expect(migration).not.toMatch(
+      /GRANT EXECUTE ON FUNCTION app_private\.copilot_step_up_ghi_that_bai_v1/,
     );
   });
 });
@@ -431,6 +503,30 @@ describe('G5-A — PIN/token không bao giờ lọt vào message hay log', () =>
   });
 });
 
+describe('G5-A — Fix round 1, F1: quét CHUNG cả file, không UPDATE bảng PIN nào đứng ngay trước một RAISE (không có DB thật — xem ghi chú xác minh trong báo cáo)', () => {
+  // Bài kiểm TĨNH mạnh nhất có thể viết mà không cần một cụm PostgreSQL thật:
+  // với MỌI khối `UPDATE app_private.copilot_step_up_pins ... ;` trong file,
+  // tìm câu lệnh KẾ TIẾP (bỏ qua khoảng trắng) — nếu đó là `RAISE EXCEPTION`
+  // thì đúng hình dạng lỗi HIGH đã vá (UPDATE rồi RAISE trong cùng giao dịch
+  // = Postgres cuộn ngược UPDATE). Quét toàn file thay vì từng hàm riêng lẻ để
+  // bắt được cả trường hợp thêm một nhánh mới trong tương lai mà quên áp dụng
+  // kỷ luật GHI-RỒI-RETURN.
+  it('không có UPDATE...copilot_step_up_pins nào đứng ngay trước RAISE EXCEPTION', () => {
+    const KHOI_UPDATE = /UPDATE app_private\.copilot_step_up_pins[\s\S]*?;/g;
+    const viTriUpdate = [...migration.matchAll(KHOI_UPDATE)].map((m) => (m.index ?? 0) + m[0].length);
+    expect(viTriUpdate.length).toBeGreaterThanOrEqual(4); // set_pin (2) + helper (2) + verify (thành công, 1) tối thiểu
+    for (const viTri of viTriUpdate) {
+      const tiepTheo = migration.slice(viTri, viTri + 400).trim();
+      // Câu lệnh THẬT SỰ kế tiếp — bỏ qua chú thích và dòng trắng ở đầu đoạn.
+      const dongThuc = tiepTheo
+        .split('\n')
+        .map((d) => d.trim())
+        .find((d) => d.length > 0 && !d.startsWith('--'));
+      expect(dongThuc ?? '', `sau UPDATE tại vị trí ${viTri}`).not.toMatch(/^RAISE EXCEPTION/);
+    }
+  });
+});
+
 describe('G5-A — nghiệm thu catalog-only trong chính file', () => {
   it('khối DO $nghiem_thu$ đọc pg_proc/has_function_privilege/has_table_privilege, không đụng bảng dữ liệu', () => {
     const nghiemThu = migration.slice(migration.indexOf('DO $nghiem_thu$'));
@@ -450,26 +546,36 @@ describe('G5-A — nghiệm thu catalog-only trong chính file', () => {
 // Bài kiểm đột biến — chứng minh các pin ở trên KHÔNG phải màu xanh rỗng.
 // Không sửa file trên đĩa: đột biến chỉ tồn tại trong bộ nhớ của chính test này.
 // ---------------------------------------------------------------------------
-describe('G5-A — pin phải đỏ khi hàng rào bị bình luận hoá', () => {
+describe('G5-A - pin phai do khi hang rao bi binh luan hoa', () => {
   const MOC = 'WHERE id = v_step_up.id AND consumed_at IS NULL';
   const PIN = /WHERE id = v_step_up\.id AND consumed_at IS NULL/;
 
-  function binhLuanHoaCasTieuToken(sql: string): string {
+  // Fix round 1 (F3) dat CAS-tieu-token o HAI diem (nhanh that bai + nhanh
+  // thanh cong, cung diem voi nonce cap ke hoach) -- MOC khop CA HAI dong,
+  // nen dot bien phai binh luan hoa CA HAI de dong tron cua; binh luan mot
+  // dong de lot dong kia la mot lo gia -- pin khi do van xanh vi ban KHONG
+  // binh luan con nguyen o cho khac, khong phai vi hang rao that dung vung.
+  function binhLuanHoaCasTieuToken(sql) {
     const dong = sql.split('\n');
-    const i = dong.findIndex((d) => d.includes(MOC));
-    expect(i, 'không tìm thấy dòng CAS tiêu token step-up để đột biến').toBeGreaterThan(-1);
-    dong[i] = `-- ${dong[i]}`;
+    let daBinhLuan = 0;
+    for (let i = 0; i < dong.length; i += 1) {
+      if (dong[i].includes(MOC)) {
+        dong[i] = '-- ' + dong[i];
+        daBinhLuan += 1;
+      }
+    }
+    expect(daBinhLuan, 'khong tim thay du hai dong CAS tieu token step-up de dot bien').toBe(2);
     return dong.join('\n');
   }
 
-  it('văn bản THÔ vẫn khớp pin sau khi bị bình luận hoá — đó chính là cái lỗ', () => {
+  it('van ban THO van khop pin sau khi bi binh luan hoa -- do chinh la cai lo', () => {
     expect(binhLuanHoaCasTieuToken(tho)).toMatch(PIN);
   });
 
-  it('bản đã lột bình luận thì KHÔNG khớp nữa — cửa đã đóng', () => {
+  it('ban da lot binh luan thi KHONG khop nua -- cua da dong', () => {
     const dotBien = boCommentSql(binhLuanHoaCasTieuToken(tho));
     expect(dotBien).not.toMatch(PIN);
-    // Bản không đột biến vẫn khớp, để bài kiểm này không xanh vì lý do sai.
+    // Ban khong dot bien van khop, de bai kiem nay khong xanh vi ly do sai.
     expect(migration).toMatch(PIN);
   });
 });
