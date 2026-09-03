@@ -293,9 +293,13 @@ export async function baoCaoNgayGrant(
   organizationId: string,
   ngay?: string,
 ): Promise<KetQuaBaoCaoNgay> {
+  // p_date là tham số BẮT BUỘC theo types.ts sinh từ catalog (không DEFAULT) —
+  // thiếu ngày thì lấy ngày hiện tại theo giờ Việt Nam (YYYY-MM-DD).
+  const ngayBaoCao =
+    ngay ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
   const { data, error } = await supabase.rpc('copilot_standing_grants_daily_report_v1', {
     p_organization_id: organizationId,
-    ...(ngay ? { p_date: ngay } : { p_date: null }),
+    p_date: ngayBaoCao,
   });
   if (error) {
     const raw = (error.message ?? String(error)).trim();
