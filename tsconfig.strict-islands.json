@@ -29,6 +29,8 @@
     "src/app/providers/QueryProvider.tsx",
     "src/app/providers/__tests__/AuthCacheSync.test.ts",
     "src/app/providers/__tests__/authCacheSyncStrictMode.test.ts",
+    "src/components/approvals/AiSubmittedBadge.tsx",
+    "src/components/approvals/__tests__/AiSubmittedBadge.test.tsx",
     "src/components/areas/ManageAreasDialog.tsx",
     "src/components/assets/AssetHandoverDialog.tsx",
     "src/components/assets/AssetMaintenanceDialog.tsx",

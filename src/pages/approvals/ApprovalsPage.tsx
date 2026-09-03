@@ -54,6 +54,7 @@ import {
   useRemovePostingAttachment,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
+import { AiSubmittedBadge } from "@/components/approvals/AiSubmittedBadge";
 
 const typeLabel = (type: string | null) => {
   if (type === "INCOME") return { text: "Phiếu thu", className: "bg-emerald-100 text-emerald-700" };
@@ -185,10 +186,11 @@ const ApprovalsPage = () => {
                     <div className="font-bold">{formatVND(r.amount)}</div>
                   </div>
                   <div className="text-sm mt-1">{r.voucher_name ?? "—"}</div>
-                  <div className="text-xs text-muted-foreground mt-1">
+                  <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-1">
                     <Badge variant="outline" className={t.className}>
                       {t.text}
                     </Badge>
+                    <AiSubmittedBadge systemSource={r.system_source} />
                     <span className="ml-2">Bước {r.step_no}</span>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
@@ -264,9 +266,12 @@ const ApprovalsPage = () => {
                       </TableCell>
                       <TableCell className="max-w-xs truncate">{r.voucher_name ?? "—"}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={t.className}>
-                          {t.text}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge variant="outline" className={t.className}>
+                            {t.text}
+                          </Badge>
+                          <AiSubmittedBadge systemSource={r.system_source} />
+                        </div>
                       </TableCell>
                       <TableCell className="text-right font-bold">{formatVND(r.amount)}</TableCell>
                       <TableCell>{r.maker_name ?? "—"}</TableCell>

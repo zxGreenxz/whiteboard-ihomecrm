@@ -23,6 +23,10 @@ export interface PendingApproval {
   organization_id: string | null;
   approval_version: number;
   posting_version: number;
+  // Badge "Do AI nộp" (G4, 2026-09-03): RPC hiện KHÔNG chiếu cột này ra
+  // (xem AiSubmittedBadge.tsx) — luôn null trên production hôm nay, giữ field
+  // để UI tự sáng lên ngay khi RPC được nới thêm cột, không cần đổi FE nữa.
+  system_source: string | null;
 }
 
 // Cache cần invalidate sau khi quyết định: hộp thư duyệt + danh sách phiếu +
@@ -57,6 +61,7 @@ export const usePendingApprovals = () => {
         organization_id: r.organization_id ?? null,
         approval_version: Number(r.approval_version ?? 1),
         posting_version: Number(r.posting_version ?? 1),
+        system_source: r.system_source ?? null,
       }));
     },
   });

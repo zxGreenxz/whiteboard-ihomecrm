@@ -213,7 +213,7 @@ jobs:
       # dưới, mà chính các gate thì KHÔNG lệnh CI nào gọi. Test của một cái cửa
       # chạy hằng ngày trong khi cái cửa không bao giờ đóng.
       # Tất cả đều tĩnh, không mạng, không credential — cả khối dưới 2 giây.
-      - name: copilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval)
+      - name: copilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: |
           loi=0
@@ -234,6 +234,12 @@ jobs:
           # (admin-users, phan-quyen, roadmap) vào chunk JS công khai trên CDN —
           # allowlist chặn TÌM, chỉ đối số này chặn PHÂN PHỐI (án lệ I5, 03/09/2026).
           node scripts/generate-copilot-guide-corpus.mjs --check || loi=1
+          # G4 (03/09/2026): artifact live negative-proofs (wrong-org, cờ bị thu
+          # hồi giữa preview/execute, nonce replay, digest sai, 2 execute đồng
+          # thời, plan cancel) còn tươi (≤14 ngày) và mọi ca pass. Gate CHỈ đọc
+          # docs/generated/copilot-negative-proofs/<sha>.json đã commit — không
+          # tự chạy scripts/copilot-live-negative-proofs.mjs (cần JWT thật).
+          node scripts/check-copilot-negative-proofs.mjs || loi=1
           exit $loi
 
       # Lane MOCK của bộ ca vàng — CHẠY THẬT, không mạng, không model, không
@@ -432,6 +438,7 @@ jobs:
             scripts/__tests__/check-copilot-docs-manifest.test.mjs \
             scripts/__tests__/check-copilot-e2e-files.test.mjs \
             scripts/__tests__/check-copilot-forbidden-actions.test.mjs \
+            scripts/__tests__/check-copilot-negative-proofs.test.mjs \
             scripts/__tests__/check-copilot-page-contracts.test.mjs \
             scripts/__tests__/check-copilot-provider-policy.test.mjs \
             scripts/__tests__/check-copilot-safe-control-markers.test.mjs \
@@ -469,6 +476,7 @@ jobs:
           --exclude 'scripts/__tests__/check-copilot-docs-manifest.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-e2e-files.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-forbidden-actions.test.mjs'
+          --exclude 'scripts/__tests__/check-copilot-negative-proofs.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-page-contracts.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-provider-policy.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-safe-control-markers.test.mjs'

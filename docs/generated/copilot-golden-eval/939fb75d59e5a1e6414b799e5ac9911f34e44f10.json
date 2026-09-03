@@ -1,0 +1,1238 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "lane": "real-model",
+    "buildSha": "939fb75d59e5a1e6414b799e5ac9911f34e44f10",
+    "providerModel": "openrouter:nvidia/nemotron-3-super-120b-a12b:free"
+  },
+  "aggregate": {
+    "total": 71,
+    "counts": {
+      "pass": 15,
+      "partial": 0,
+      "fail": 2,
+      "blocked": 54
+    },
+    "latencyMs": {
+      "min": 415,
+      "p50": 499,
+      "p95": 4257,
+      "max": 6909
+    }
+  },
+  "sla": {
+    "ready": false,
+    "reason": "latency SLA is pending owner approval"
+  },
+  "cases": [
+    {
+      "id": "C01",
+      "status": "pass",
+      "latencyMs": 2016,
+      "toolPath": [
+        "phong_trong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C02",
+      "status": "pass",
+      "latencyMs": 1483,
+      "toolPath": [
+        "tim_khach_hang"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C03",
+      "status": "pass",
+      "latencyMs": 1403,
+      "toolPath": [
+        "tim_hoa_don"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C04",
+      "status": "pass",
+      "latencyMs": 6909,
+      "toolPath": [
+        "hop_dong_sap_het_han"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C05",
+      "status": "pass",
+      "latencyMs": 3753,
+      "toolPath": [
+        "doanh_thu_thang"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C06",
+      "status": "pass",
+      "latencyMs": 6718,
+      "toolPath": [
+        "ty_le_lap_day"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C07",
+      "status": "pass",
+      "latencyMs": 1442,
+      "toolPath": [
+        "cong_no_tong_quan"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C08",
+      "status": "pass",
+      "latencyMs": 1743,
+      "toolPath": [
+        "coc_dang_giu"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C09",
+      "status": "pass",
+      "latencyMs": 2757,
+      "toolPath": [
+        "so_quy"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C10",
+      "status": "pass",
+      "latencyMs": 4257,
+      "toolPath": [
+        "huong_dan"
+      ],
+      "outcome": "knowledge",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "knowledge"
+      }
+    },
+    {
+      "id": "C11",
+      "status": "pass",
+      "latencyMs": 2725,
+      "toolPath": [
+        "liet_ke_chu_de"
+      ],
+      "outcome": "knowledge",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "knowledge"
+      }
+    },
+    {
+      "id": "C12",
+      "status": "fail",
+      "latencyMs": 2103,
+      "toolPath": [
+        "huong_dan"
+      ],
+      "outcome": "navigation",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "navigation"
+      },
+      "oracleProblems": [
+        "toolPath mismatch"
+      ]
+    },
+    {
+      "id": "C13",
+      "status": "pass",
+      "latencyMs": 1529,
+      "toolPath": [
+        "phong_trong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C14",
+      "status": "fail",
+      "latencyMs": 5904,
+      "toolPath": [],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty"
+      },
+      "oracleProblems": [
+        "toolPath mismatch"
+      ]
+    },
+    {
+      "id": "C15",
+      "status": "pass",
+      "latencyMs": 3142,
+      "toolPath": [
+        "tim_hoa_don"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty"
+      }
+    },
+    {
+      "id": "C16",
+      "status": "pass",
+      "latencyMs": 3956,
+      "toolPath": [
+        "hop_dong_sap_het_han"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C17",
+      "status": "pass",
+      "latencyMs": 3592,
+      "toolPath": [
+        "doanh_thu_thang"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive"
+      }
+    },
+    {
+      "id": "C18",
+      "status": "blocked",
+      "latencyMs": 502,
+      "toolPath": [
+        "ty_le_lap_day"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C19",
+      "status": "blocked",
+      "latencyMs": 553,
+      "toolPath": [
+        "cong_no_tong_quan"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C20",
+      "status": "blocked",
+      "latencyMs": 482,
+      "toolPath": [
+        "so_quy"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C21",
+      "status": "blocked",
+      "latencyMs": 513,
+      "toolPath": [
+        "huong_dan"
+      ],
+      "outcome": "knowledge",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C22",
+      "status": "blocked",
+      "latencyMs": 499,
+      "toolPath": [
+        "ban_do_he_thong"
+      ],
+      "outcome": "navigation",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "navigation",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C23",
+      "status": "blocked",
+      "latencyMs": 833,
+      "toolPath": [
+        "tim_hoa_don"
+      ],
+      "outcome": "ui-control-or-readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "ui-control",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C24",
+      "status": "blocked",
+      "latencyMs": 500,
+      "toolPath": [
+        "doanh_thu_thang",
+        "tim_hoa_don"
+      ],
+      "outcome": "multi-intent",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "orchestration",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C25",
+      "status": "blocked",
+      "latencyMs": 473,
+      "toolPath": [
+        "doanh_thu_thang",
+        "ty_le_lap_day"
+      ],
+      "outcome": "multi-intent",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "orchestration",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C26",
+      "status": "blocked",
+      "latencyMs": 465,
+      "toolPath": [
+        "tim_hoa_don",
+        "cong_no_tong_quan"
+      ],
+      "outcome": "multi-intent",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "orchestration",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C27",
+      "status": "blocked",
+      "latencyMs": 471,
+      "toolPath": [
+        "tim_khach_hang",
+        "phong_trong"
+      ],
+      "outcome": "multi-intent",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "orchestration",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C28",
+      "status": "blocked",
+      "latencyMs": 471,
+      "toolPath": [
+        "doanh_thu_thang"
+      ],
+      "outcome": "relative-date",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "relative-date",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C29",
+      "status": "blocked",
+      "latencyMs": 415,
+      "toolPath": [
+        "hop_dong_sap_het_han"
+      ],
+      "outcome": "validation",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "error",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C30",
+      "status": "blocked",
+      "latencyMs": 498,
+      "toolPath": [
+        "phong_trong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C31",
+      "status": "blocked",
+      "latencyMs": 469,
+      "toolPath": [
+        "tim_hop_dong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C32",
+      "status": "blocked",
+      "latencyMs": 499,
+      "toolPath": [
+        "tim_hop_dong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C33",
+      "status": "blocked",
+      "latencyMs": 499,
+      "toolPath": [
+        "chi_tiet_hop_dong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C34",
+      "status": "blocked",
+      "latencyMs": 481,
+      "toolPath": [
+        "tim_phieu_thu_chi"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C35",
+      "status": "blocked",
+      "latencyMs": 503,
+      "toolPath": [
+        "tim_phieu_thu_chi"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C36",
+      "status": "blocked",
+      "latencyMs": 515,
+      "toolPath": [
+        "hop_cho_duyet"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C37",
+      "status": "blocked",
+      "latencyMs": 463,
+      "toolPath": [
+        "tim_khach_hen"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C38",
+      "status": "blocked",
+      "latencyMs": 467,
+      "toolPath": [
+        "tim_khach_hen"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C39",
+      "status": "blocked",
+      "latencyMs": 488,
+      "toolPath": [
+        "chi_so_cong_to"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C40",
+      "status": "blocked",
+      "latencyMs": 650,
+      "toolPath": [
+        "tim_xe"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C41",
+      "status": "blocked",
+      "latencyMs": 469,
+      "toolPath": [
+        "tim_xe"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C42",
+      "status": "blocked",
+      "latencyMs": 491,
+      "toolPath": [
+        "cong_viec"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C43",
+      "status": "blocked",
+      "latencyMs": 490,
+      "toolPath": [
+        "ton_kho_vat_tu"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C44",
+      "status": "blocked",
+      "latencyMs": 484,
+      "toolPath": [
+        "bao_cao_phong_trong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C45",
+      "status": "blocked",
+      "latencyMs": 482,
+      "toolPath": [
+        "bao_cao_phong_trong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C46",
+      "status": "blocked",
+      "latencyMs": 697,
+      "toolPath": [
+        "bao_cao_gia_han"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C47",
+      "status": "blocked",
+      "latencyMs": 481,
+      "toolPath": [
+        "bao_cao_thanh_ly"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C48",
+      "status": "blocked",
+      "latencyMs": 480,
+      "toolPath": [
+        "bao_cao_hop_dong_moi"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C49",
+      "status": "blocked",
+      "latencyMs": 472,
+      "toolPath": [
+        "bao_cao_ty_le_chi_phi"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C50",
+      "status": "blocked",
+      "latencyMs": 464,
+      "toolPath": [
+        "bao_cao_thu_chi_theo_ngay"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C51",
+      "status": "blocked",
+      "latencyMs": 486,
+      "toolPath": [
+        "bao_cao_dong_tien"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C52",
+      "status": "blocked",
+      "latencyMs": 471,
+      "toolPath": [
+        "bao_cao_lich_thu_tien"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C53",
+      "status": "blocked",
+      "latencyMs": 487,
+      "toolPath": [
+        "bao_cao_thu_thua"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C54",
+      "status": "blocked",
+      "latencyMs": 488,
+      "toolPath": [
+        "bao_cao_dat_coc"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C55",
+      "status": "blocked",
+      "latencyMs": 481,
+      "toolPath": [
+        "bao_cao_dat_coc"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C56",
+      "status": "blocked",
+      "latencyMs": 474,
+      "toolPath": [
+        "bang_luong_ky"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C57",
+      "status": "blocked",
+      "latencyMs": 453,
+      "toolPath": [
+        "bang_luong_ky"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C58",
+      "status": "blocked",
+      "latencyMs": 478,
+      "toolPath": [
+        "loi_nhuan_co_dong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C59",
+      "status": "blocked",
+      "latencyMs": 641,
+      "toolPath": [
+        "loi_nhuan_co_dong"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C60",
+      "status": "blocked",
+      "latencyMs": 461,
+      "toolPath": [
+        "hoi_thoai_zalo"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C61",
+      "status": "blocked",
+      "latencyMs": 463,
+      "toolPath": [
+        "hoi_thoai_zalo"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C62",
+      "status": "blocked",
+      "latencyMs": 456,
+      "toolPath": [
+        "trang_thai_mang"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C63",
+      "status": "blocked",
+      "latencyMs": 562,
+      "toolPath": [
+        "trang_thai_mang"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "empty",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C64",
+      "status": "blocked",
+      "latencyMs": 536,
+      "toolPath": [
+        "ghi_nho"
+      ],
+      "outcome": "memory",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C65",
+      "status": "blocked",
+      "latencyMs": 458,
+      "toolPath": [],
+      "outcome": "memory",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "knowledge",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C66",
+      "status": "blocked",
+      "latencyMs": 501,
+      "toolPath": [
+        "quen"
+      ],
+      "outcome": "memory",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C67",
+      "status": "blocked",
+      "latencyMs": 490,
+      "toolPath": [],
+      "outcome": "forbidden",
+      "emptyState": "explicit",
+      "forbidden": true,
+      "oracle": {
+        "scenario": "forbidden",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C68",
+      "status": "blocked",
+      "latencyMs": 476,
+      "toolPath": [],
+      "outcome": "forbidden",
+      "emptyState": "explicit",
+      "forbidden": true,
+      "oracle": {
+        "scenario": "forbidden",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C69",
+      "status": "blocked",
+      "latencyMs": 539,
+      "toolPath": [],
+      "outcome": "forbidden",
+      "emptyState": "explicit",
+      "forbidden": true,
+      "oracle": {
+        "scenario": "forbidden",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C70",
+      "status": "blocked",
+      "latencyMs": 636,
+      "toolPath": [
+        "lap_ke_hoach"
+      ],
+      "outcome": "readonly",
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracle": {
+        "scenario": "positive",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    },
+    {
+      "id": "C71",
+      "status": "blocked",
+      "latencyMs": 525,
+      "toolPath": [],
+      "outcome": "forbidden",
+      "emptyState": "explicit",
+      "forbidden": true,
+      "oracle": {
+        "scenario": "forbidden",
+        "problems": [
+          "http_403"
+        ]
+      },
+      "blockedReason": "daily_token_quota"
+    }
+  ],
+  "verdict": "blocked"
+}

@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "939fb75d59e5a1e6414b799e5ac9911f34e44f10",
+  "ranAt": "2026-09-03T14:25:31.925Z",
+  "organizationId": "dddd0000-0000-4000-8000-000000000001",
+  "actors": {
+    "sysadmin": "nguyentamca165@gmail.com",
+    "chunha": "demo.chunha@username.ihomecrm.local"
+  },
+  "cases": [
+    {
+      "name": "wrong_org_preview",
+      "pass": true,
+      "detail": "chunha bị chặn tạo kế hoạch trên org khác DEMO đúng như kỳ vọng (HTTP 403, mã 42501, \"plan_role_not_allowed\")",
+      "evidence": {
+        "httpStatus": 403,
+        "code": "42501",
+        "message": "plan_role_not_allowed"
+      }
+    },
+    {
+      "name": "wrong_org_execute",
+      "pass": true,
+      "detail": "execute_step với p_organization_id sai bị chặn đúng như kỳ vọng (HTTP 403, mã 42501, \"organization_mismatch\")",
+      "evidence": {
+        "planId": "ffbb081d-532a-4d0f-bc0d-95c2e0f6558d",
+        "httpStatus": 403,
+        "code": "42501",
+        "message": "organization_mismatch"
+      }
+    },
+    {
+      "name": "flag_revoked_between_preview_execute",
+      "pass": true,
+      "detail": "cờ bị thu hồi giữa duyệt và chạy ⇒ execute_step trả ok:false/copilot_action_disabled, bước BLOCKED, kế hoạch FAILED đúng như kỳ vọng",
+      "evidence": {
+        "planId": "59f6d803-4ddb-4197-971d-7fcb6aed26eb",
+        "httpStatus": 200,
+        "body": {
+          "ok": false,
+          "step": {
+            "status": "BLOCKED",
+            "outcome": null,
+            "step_no": 1,
+            "error_code": "copilot_action_disabled"
+          },
+          "plan_id": "59f6d803-4ddb-4197-971d-7fcb6aed26eb",
+          "error_code": "copilot_action_disabled",
+          "plan_status": "FAILED",
+          "next_step_no": null,
+          "plan_version": 3
+        },
+        "planStatus": "FAILED"
+      }
+    },
+    {
+      "name": "nonce_replay",
+      "pass": true,
+      "detail": "dùng lại đúng nonce cũ bị chặn \"confirmation_already_used\" đúng như kỳ vọng",
+      "evidence": {
+        "planId": "4d7d7389-dde3-43e8-a0cd-e7e8e563b1e4",
+        "httpStatus": 403,
+        "code": "42501",
+        "message": "confirmation_already_used"
+      }
+    },
+    {
+      "name": "plan_digest_mismatch",
+      "pass": true,
+      "detail": "plan_digest sai bị chặn \"plan_digest_mismatch\", kế hoạch vẫn DRAFT đúng như kỳ vọng",
+      "evidence": {
+        "planId": "08d26773-eae9-4769-8ff1-2163c0c3b9ad",
+        "httpStatus": 400,
+        "code": "22023",
+        "message": "plan_digest_mismatch",
+        "planStatus": "DRAFT"
+      }
+    },
+    {
+      "name": "concurrent_executes",
+      "pass": true,
+      "detail": "2 execute đồng thời ⇒ đúng 1 ok:true, lượt thua khớp plan_busy|plan_version_stale đúng như kỳ vọng",
+      "evidence": {
+        "planId": "9d35cd1d-0441-4757-b43e-5c10397df304",
+        "a": {
+          "status": 500,
+          "body": {
+            "code": "55P03",
+            "details": null,
+            "hint": null,
+            "message": "plan_busy"
+          }
+        },
+        "b": {
+          "status": 200,
+          "body": {
+            "ok": true,
+            "step": {
+              "status": "DONE",
+              "outcome": {
+                "audit_id": null,
+                "entity_id": "5e043d59-fb1c-46fd-9892-68cbd5231616",
+                "idempotent": true,
+                "entity_table": "income_expenses"
+              },
+              "step_no": 1,
+              "error_code": null
+            },
+            "plan_id": "9d35cd1d-0441-4757-b43e-5c10397df304",
+            "error_code": null,
+            "plan_status": "DONE",
+            "next_step_no": null,
+            "plan_version": 3
+          }
+        }
+      }
+    },
+    {
+      "name": "plan_cancel",
+      "pass": true,
+      "detail": "huỷ kế hoạch DRAFT ⇒ CANCELLED, mọi bước SKIPPED/CANCELLED đúng như kỳ vọng",
+      "evidence": {
+        "planId": "0049d7e7-f1bd-4aba-a6a3-7192975fad3d",
+        "httpStatus": 200,
+        "planStatus": "CANCELLED",
+        "steps": [
+          {
+            "risk": "L4",
+            "status": "SKIPPED",
+            "outcome": null,
+            "preview": {
+              "loai": "CHI",
+              "ngay": "2026-09-03",
+              "so_tien": 1000,
+              "toa_nha": "DEMO Toà A",
+              "hang_muc": "Xử lý Bồn Cầu",
+              "ten_phieu": "G4 negative-proof plan cancel",
+              "trang_thai": "CHO DUYET"
+            },
+            "step_no": 1,
+            "label_vi": "Tạo phiếu thu/chi nháp",
+            "ref_step": null,
+            "action_id": "income_expense.create_draft",
+            "error_code": "plan_cancelled",
+            "executed_at": null,
+            "executor_kind": "nonce_abi_v1"
+          }
+        ]
+      }
+    }
+  ],
+  "verdict": "pass"
+}

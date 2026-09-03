@@ -117,15 +117,20 @@ const GATE_NHANH = [
   "check-doc-counts",
   "check-doc-freshness",
   ["generate-docs-views", "--check"],
-  // copilot-gates — sáu cổng nối vào CI ngày 02/09/2026 (ci-gates.yml, bước
-  // "copilot-gates"). Đủ điều kiện của danh sách này: tĩnh, không mạng, không
-  // credential, cả sáu chạy hết chưa tới 2 giây.
+  // copilot-gates — bảy cổng nối vào CI (ci-gates.yml, bước "copilot-gates").
+  // Đủ điều kiện của danh sách này: tĩnh, không mạng, không credential, cả bảy
+  // chạy hết chưa tới 2 giây. `check-copilot-negative-proofs` (G4, 03/09/2026)
+  // KHÔNG tự chạy live-proofs — nó chỉ đọc artifact JSON đã có sẵn trong repo
+  // (docs/generated/copilot-negative-proofs/<sha>.json) và đòi artifact đó
+  // còn tươi (≤14 ngày) + mọi ca pass; sinh lại artifact là việc chạy tay
+  // `scripts/copilot-live-negative-proofs.mjs` với JWT thật.
   "check-copilot-page-contracts",
   "check-copilot-safe-control-markers",
   "check-copilot-provider-policy",
   "check-copilot-e2e-files",
   "check-copilot-golden-eval",
   "check-copilot-forbidden-actions",
+  "check-copilot-negative-proofs",
   // Corpus hướng dẫn: đối số glob phải khớp allowlist CAPABILITIES từng dòng.
   ["generate-copilot-guide-corpus", "--check"],
   // nợ strict mới
