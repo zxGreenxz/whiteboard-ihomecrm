@@ -4,26 +4,61 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+/**
+ * Biến thể MOBILE của một trang là một file riêng (`*Mobile*.tsx`), nạp lười
+ * theo viewport ≤767px. Trang desktop và trang mobile KHÔNG bao giờ mount cùng
+ * lúc — `RoomsPage`/`InvoicesPage`/`CustomersPage` chọn đúng một nhánh — nên
+ * cùng một marker nằm ở cả hai file là hợp lệ, và bộ giải DOM vẫn chỉ thấy một
+ * phần tử. Hai marker trong CÙNG một lớp (cùng desktop, hoặc cùng mobile) thì
+ * vẫn là đánh dấu sai: lúc đó `giaiSafeControl` ném `nhieu_hon_mot` và control
+ * chết hẳn.
+ */
+export function laFileMobile(file) {
+  const ten = String(file).split(/[\\/]/u).pop() ?? '';
+  return /Mobile/u.test(ten);
+}
+
 export function validateSafeControlMarkers(contracts, sourceByFile) {
-  const expected = new Set();
+  // marker -> khoá trang, để quy marker về trang mà KHÔNG đoán bằng tiền tố
+  // (`reports.finance` là tiền tố của `reports.finance.deposits`).
+  const expected = new Map();
+  const trangCoControl = [];
   for (const page of contracts ?? []) {
-    for (const controlId of page.safeControlIds ?? []) expected.add(`${page.key}.${controlId}`);
+    for (const controlId of page.safeControlIds ?? []) expected.set(`${page.key}.${controlId}`, page.key);
+    if ((page.safeControlIds ?? []).length > 0) trangCoControl.push(page.key);
   }
 
-  const seen = new Map();
+  // Hai bảng tách theo lớp biến thể: một marker được phép xuất hiện tối đa MỘT
+  // lần ở mỗi lớp (desktop / mobile), không phải một lần trên toàn repo.
+  const seen = { desktop: new Map(), mobile: new Map() };
   const problems = [];
   for (const [file, source] of sourceByFile) {
+    const lop = laFileMobile(file) ? 'mobile' : 'desktop';
     const re = /data-ai-safe\s*=\s*["']([^"']+)["']/g;
     for (const match of source.matchAll(re)) {
       const marker = match[1];
       if (!expected.has(marker)) problems.push(`${file}: unknown marker ${marker}`);
-      const previous = seen.get(marker);
+      const previous = seen[lop].get(marker);
       if (previous) problems.push(`duplicate marker ${marker}: ${previous} and ${file}`);
-      seen.set(marker, file);
+      seen[lop].set(marker, file);
     }
   }
-  for (const marker of expected) {
-    if (!seen.has(marker)) problems.push(`missing marker ${marker}`);
+  for (const marker of expected.keys()) {
+    if (!seen.desktop.has(marker) && !seen.mobile.has(marker)) problems.push(`missing marker ${marker}`);
+  }
+
+  // Trên điện thoại, trang desktop KHÔNG mount. Một trang có control an toàn mà
+  // không có marker nào trong biến thể mobile nghĩa là page-agent mù hẳn ở đó
+  // (`giaiSafeControl` ném `khong_thay`) — đúng lỗi mà task G1-E vá. Gate theo
+  // TRANG chứ không theo từng control: có control desktop không có bản mobile
+  // tương đương (bộ lọc tháng của hoá đơn), ép một-một sẽ buộc phải bịa control.
+  const coMarkerMobile = new Set();
+  for (const marker of seen.mobile.keys()) {
+    const key = expected.get(marker);
+    if (key) coMarkerMobile.add(key);
+  }
+  for (const key of trangCoControl) {
+    if (!coMarkerMobile.has(key)) problems.push(`missing mobile marker for page ${key}`);
   }
   return problems;
 }

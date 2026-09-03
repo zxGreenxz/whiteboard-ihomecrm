@@ -228,9 +228,17 @@ export default function InvoicesMobilePage() {
               </select>
             </div>
 
+            {/* Cùng control id với ô tìm của desktop (InvoiceListToolbar) — cùng
+                ngữ nghĩa, hai biến thể không mount cùng lúc. Hai control desktop
+                còn lại (`invoice.month-filter`, `invoice.status-filter`) KHÔNG có
+                bản mobile tương đương: màn này không có bộ chọn tháng, còn hàng
+                chip lọc là trạng thái THANH TOÁN (PAID/OVERDUE…) chứ không phải
+                trạng thái duyệt/huỷ của desktop. Gán bừa sẽ khiến mô hình gửi
+                giá trị không tồn tại — nên để trống và ghi nhận. */}
             <div className="cm-search">
               <Search />
               <input
+                data-ai-safe="invoices.list.invoice.search"
                 placeholder="Tìm mã phòng, số HĐ, tên khách, số tiền…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

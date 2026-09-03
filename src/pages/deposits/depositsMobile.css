@@ -114,10 +114,12 @@
 
 /* ===== Bảng thao tác trượt lên ===== */
 .cm-app .dp-sheet-mask { position: absolute; inset: 0; z-index: 5; background: rgba(15,26,21,.42); display: flex; flex-direction: column; justify-content: flex-end; border: 0; padding: 0; }
-/* Đệm đáy 84px để hàng nút KHÔNG nằm dưới nút nổi Copilot (fixed, 56px, cách
-   đáy 16px, z-index 9997 — nó luôn thắng vì .cm-stage là stacking context
-   z-index 0). Đã đo: nút "Tạo hợp đồng" có trong DOM mà bị che hoàn toàn. */
-.cm-app .dp-sheet { background: #fff; border-radius: 20px 20px 0 0; padding: 8px 16px calc(84px + env(safe-area-inset-bottom)); }
+/* Đệm đáy để hàng nút KHÔNG nằm dưới nút nổi Copilot (fixed, 56px, cách đáy
+   16px, z-index 9997 — nó luôn thắng vì .cm-stage là stacking context z-index
+   0). Đã đo: nút "Tạo hợp đồng" có trong DOM mà bị che hoàn toàn.
+   Con số 84px trước nằm cứng ngay đây; nay đọc từ --copilot-fab-inset
+   (copilot.css) để mọi trang mobile chừa cùng một dải. */
+.cm-app .dp-sheet { background: #fff; border-radius: 20px 20px 0 0; padding: 8px 16px calc(var(--copilot-fab-inset, 84px) + env(safe-area-inset-bottom)); }
 @media (prefers-reduced-motion: no-preference) {
   .cm-app .dp-sheet { animation: dpSheetIn .2s cubic-bezier(.22,.61,.36,1) both; }
   @keyframes dpSheetIn { from { transform: translateY(18px); opacity: .4; } to { transform: none; opacity: 1; } }

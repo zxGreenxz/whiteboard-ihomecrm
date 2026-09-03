@@ -159,9 +159,12 @@ export default function CustomersMobilePage() {
               </select>
             </div>
 
+            {/* Cùng control id với ô tìm của desktop (CustomerListToolbar) —
+                cùng ngữ nghĩa, hai biến thể không mount cùng lúc. */}
             <div className="cm-search">
               <Search />
               <input
+                data-ai-safe="customers.list.customer.search"
                 placeholder="Tìm tên, SĐT, email, CCCD…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

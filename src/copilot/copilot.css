@@ -4,6 +4,21 @@
    — index.css chưa có các token này nên scope vào .bc-goc, theo pattern
    salary.css. */
 
+/* ---- Dải đáy phải chừa cho nút nổi ----
+   Nút cao 56px, ghim cách đáy 16px (`bottom-4` trong CopilotLauncher), cộng
+   12px thở = 84px. Con số này từng nằm rải rác dưới dạng BẢN VÁ ĐIỂM: trang
+   nào đo được lỗi thì trang đó tự chép 84px vào stylesheet của mình
+   (depositsMobile.css), trang chưa ai mở thì vẫn bị che. Mỗi lần chép là một
+   lần con số có thể lệch, và không có chỗ nào để sửa một lần.
+
+   Khai một chỗ, các stylesheet mobile đọc lại bằng
+   `var(--copilot-fab-inset, 84px)`. Fallback là CỐ Ý: file này là CSS chunk nạp
+   lười theo widget Copilot (BeChiu.tsx), nên khi widget chưa nạp thì biến chưa
+   tồn tại — fallback giữ nguyên hành vi cũ thay vì rơi về 0. */
+:root {
+  --copilot-fab-inset: 84px;
+}
+
 .bc-goc {
   --primary-50: 152 50% 96%;
   --primary-100: 152 45% 90%;

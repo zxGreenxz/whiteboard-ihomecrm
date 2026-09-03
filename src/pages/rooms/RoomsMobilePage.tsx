@@ -142,9 +142,19 @@ export default function RoomsMobilePage() {
               </select>
             </div>
 
+            {/* Cùng control id với ô tìm của desktop (RoomListFilters): cùng ngữ
+                nghĩa, và hai biến thể KHÔNG bao giờ mount cùng lúc (RoomsPage
+                chọn đúng một nhánh theo viewport) nên bộ giải vẫn thấy đúng một
+                phần tử. Thiếu marker này thì trên điện thoại page-agent ném
+                `khong_thay` cho chính control mà hợp đồng trang đã hứa. */}
             <div className="cm-search">
               <Search />
-              <input placeholder="Tìm phòng, mã căn hộ…" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <input
+                data-ai-safe="rooms.list.room.search"
+                placeholder="Tìm phòng, mã căn hộ…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
 
             <div className="bm-stats">

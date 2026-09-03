@@ -3,6 +3,7 @@
 // Repo cố ý không cài jsdom, nên test dựng DOM giả tối thiểu: đủ hình dạng để
 // chạy đúng đường thật của bộ giải (querySelectorAll, shadowRoot, iframe), và
 // không cần một trình duyệt để kiểm những luật vốn không phải luật của trình duyệt.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   LoiSafeControl,
@@ -253,5 +254,49 @@ describe('gocDom — quét đủ shadow root và iframe', () => {
     // Copilot không có việc gì bên trong trang của bên thứ ba.
     const frame = el({ tag: 'iframe', iframeDoc: null, throwOnFrame: true });
     expect(() => gocDom(root([frame]) as unknown as Document)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Marker trên BIẾN THỂ MOBILE của 3 trang pilot.
+//
+// Repo cố ý không cài jsdom nên không render được component thật; nhưng thứ cần
+// canh ở đây không phải cách React render, mà là một sự thật TĨNH: file mobile
+// có mang marker hay không. Trên điện thoại (`usePhoneViewport` ≤767px) trang
+// desktop KHÔNG mount, nên marker chỉ nằm ở file desktop là page-agent mù hẳn —
+// `giaiSafeControl` ném `khong_thay` cho đúng control mà hợp đồng trang đã hứa.
+//
+// Gate `check-copilot-safe-control-markers` canh cùng luật ở CI; test này giữ
+// nó trong vòng `vitest` để người sửa 3 file mobile thấy đỏ ngay tại chỗ.
+describe('marker an toàn trên biến thể mobile của 3 trang pilot', () => {
+  const doc = (duongDan: string) => readFileSync(new URL(duongDan, import.meta.url), 'utf8');
+
+  it.each([
+    ['../../pages/rooms/RoomsMobilePage.tsx', 'rooms.list.room.search'],
+    ['../../pages/invoices/InvoicesMobilePage.tsx', 'invoices.list.invoice.search'],
+    ['../../pages/customers/CustomersMobilePage.tsx', 'customers.list.customer.search'],
+  ])('%s mang marker %s', (duongDan, marker) => {
+    expect(doc(duongDan)).toContain(`${THUOC_TINH_AN_TOAN}="${marker}"`);
+  });
+
+  it('giải được marker của trang mobile khi CHỈ biến thể mobile đang mount', () => {
+    // Hai biến thể không bao giờ mount cùng lúc (RoomsPage chọn đúng một nhánh),
+    // nên dù desktop và mobile mang cùng ID, DOM chỉ có một phần tử.
+    const oTim = el({ id: 'rooms.list.room.search', tag: 'input' });
+    const trangPhong = { key: 'rooms.list', safeControlIds: ['room.search', 'room.status-filter'] };
+    expect(giaiSafeControl(trangPhong, 'room.search', 'input', root([oTim]) as unknown as Document)).toBe(oTim);
+  });
+
+  it('nếu CẢ HAI biến thể cùng mount thì ném, không đoán lấy cái đầu', () => {
+    // Hàng rào cuối: quy ước "dùng chung ID" chỉ an toàn vì hai biến thể loại
+    // trừ nhau. Nếu một hôm nào đó chúng cùng mount, phải dừng chứ không bấm bừa.
+    const trangPhong = { key: 'rooms.list', safeControlIds: ['room.search'] };
+    const ds = [el({ id: 'rooms.list.room.search', tag: 'input' }), el({ id: 'rooms.list.room.search', tag: 'input' })];
+    try {
+      giaiSafeControl(trangPhong, 'room.search', 'input', root(ds) as unknown as Document);
+      throw new Error('phải ném');
+    } catch (e) {
+      expect((e as LoiSafeControl).ma).toBe('nhieu_hon_mot');
+    }
   });
 });

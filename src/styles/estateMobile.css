@@ -104,8 +104,15 @@
 .cm-app .mtr-badge.ok { color:#15803d; background:#e6f5ec; border:1px solid #bfe6cd; }
 .cm-app .mtr-badge.no { color:#b45309; background:#fbf1da; border:1px solid #f0dca8; }
 
-/* ===== Floating action button ===== */
-.cm-app .fab { position:absolute; right:16px; bottom:20px; width:56px; height:56px; border-radius:50%; border:0; background:var(--brand); color:#fff; display:grid; place-items:center; cursor:pointer; box-shadow:0 10px 24px rgba(31,122,82,.42); z-index:30; transition:transform .18s; }
+/* ===== Floating action button =====
+   `bottom` neo theo dải đáy đã chừa cho nút Copilot (--copilot-fab-inset, xem
+   copilot.css): FAB cao 56px nằm GỌN trong dải đó, chừa 8px mép trên →
+   84 − 64 = 20px, đúng bằng giá trị cũ nên hôm nay không đổi một pixel nào.
+   Ràng buộc này để dải đổi thì FAB tự lên theo, thay vì lại thành một con số
+   rời phải nhớ sửa. Lưu ý: trên điện thoại nút Copilot ghim mép TRÁI còn FAB ở
+   mép PHẢI nên hai nút không đè nhau theo chiều ngang — đây là ràng buộc giữ
+   nhịp, không phải bản vá một va chạm đang có. */
+.cm-app .fab { position:absolute; right:16px; bottom:calc(var(--copilot-fab-inset, 84px) - 64px); width:56px; height:56px; border-radius:50%; border:0; background:var(--brand); color:#fff; display:grid; place-items:center; cursor:pointer; box-shadow:0 10px 24px rgba(31,122,82,.42); z-index:30; transition:transform .18s; }
 .cm-app .fab:active { transform:scale(.92); }
 .cm-app .fab svg { width:26px; height:26px; transition:transform .2s; }
 .cm-app .fab.open svg { transform:rotate(45deg); }
