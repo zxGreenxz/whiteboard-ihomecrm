@@ -232,8 +232,24 @@ export const DAI_TOI_DA_GIA_TRI_LOC = 80;
  * lớp bảo vệ.
  *
  * Chặn ký tự điều khiển là một nửa; nửa kia là allowlist ký tự bên dưới.
+ *
+ * DÒ THEO CODE POINT, KHÔNG PHẢI REGEX. Bản trước là một character class chứa
+ * ký tự điều khiển, và `no-control-regex` của eslint chặn đúng cách viết đó —
+ * ratchet lint trên CI đỏ vì nó (03/09/2026). Vòng lặp này giữ nguyên hành vi
+ * mà không cần một dòng eslint-disable: tắt một luật để giữ nguyên cách viết cũ
+ * là đổi một cảnh báo lấy không gì cả.
+ *
+ * `for...of` duyệt theo CODE POINT (cặp surrogate đi liền một nhịp), nên một ký
+ * tự ngoài BMP không bị xẻ đôi thành hai nửa trông như rác.
  */
-const RE_KY_TU_DIEU_KHIEN = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/u;
+function coKyTuDieuKhien(s: string): boolean {
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    // C0 · C1 · U+2028 LINE SEPARATOR · U+2029 PARAGRAPH SEPARATOR
+    if (cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f) || cp === 0x2028 || cp === 0x2029) return true;
+  }
+  return false;
+}
 
 /**
  * Bộ ký tự cho phép trong MỘT giá trị bộ lọc.
@@ -252,7 +268,7 @@ const RE_GIA_TRI_LOC_HOP_LE = /^[\w\-.,:/ ]+$/u;
 /** Giá trị có an toàn để nhắc lại trong prompt không. */
 export function giaTriLocAnToan(gt: string): boolean {
   if (!gt || gt.length > DAI_TOI_DA_GIA_TRI_LOC) return false;
-  if (RE_KY_TU_DIEU_KHIEN.test(gt)) return false;
+  if (coKyTuDieuKhien(gt)) return false;
   return RE_GIA_TRI_LOC_HOP_LE.test(gt);
 }
 /** Trần số bộ lọc kể ra — ngữ cảnh trang không được nuốt ngân sách prompt. */
