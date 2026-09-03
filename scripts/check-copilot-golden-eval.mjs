@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** Số ca đã đạt được — bộ ca chỉ được lớn hơn mức này, không được teo về. */
-export const SAN_SO_CA = 66;
+export const SAN_SO_CA = 69;
 
 export function validateGolden(golden) {
   const problems = [];
@@ -24,6 +24,11 @@ export function validateGolden(golden) {
     'navigation',
     'ui-control',
     'relative-date',
+    // G2-B. Mot ca `forbidden` la mot ca ma cau tra loi DUNG la TU CHOI; no
+    // khong thuoc ho voi 'error' (loi xac thuc du lieu) hay 'positive'. Thieu
+    // ten nay thi ba ca cam moi them phai muon mot ten sai, va bao cao doc len
+    // se ke rang he thong da lam dung mot viec no vua tu choi lam.
+    'forbidden',
   ]);
   if (golden?.mockOracle?.deterministic !== true || !Array.isArray(golden?.mockOracle?.requiredScenarios)) {
     problems.push('mockOracle must declare deterministic and requiredScenarios');
