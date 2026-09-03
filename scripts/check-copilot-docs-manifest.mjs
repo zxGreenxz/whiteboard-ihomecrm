@@ -20,6 +20,107 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DOCS_DIR = join(repoRoot, 'docs', 'he-thong');
 const MANIFEST_PATH = join(DOCS_DIR, 'manifest.json');
 const REGISTRY_PATH = join(repoRoot, 'src', 'copilot', 'tools', 'registry.ts');
+const SRC_DIR = join(repoRoot, 'src');
+
+/** File DUY NHẤT được phép nạp corpus hướng dẫn người dùng. */
+export const FILE_NAP_HUONG_DAN = 'src/copilot/tools/registry.ts';
+
+/**
+ * Bỏ comment để gate đọc MÃ, không đọc văn kể lại về mã.
+ *
+ * Án lệ chung của repo, và chính file này đã dính một lần: bản đầu chỉ
+ * `registry.includes('manifest.json')`, mà registry.ts vốn có sẵn chữ đó trong
+ * ba dòng chú thích — xoá SẠCH code lọc manifest vẫn khiến gate xanh.
+ */
+export function boComment(nguon) {
+  return String(nguon)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
+/**
+ * CORPUS HƯỚNG DẪN NGƯỜI DÙNG chỉ được nạp từ MỘT chỗ.
+ *
+ * VÌ SAO LUẬT NÀY TỒN TẠI (03/09/2026)
+ *   `docs/huong-dan-su-dung/**` vào index BM25 với allowlist suy từ
+ *   `CAPABILITIES` — và allowlist đó nằm CẠNH glob, trong registry.ts, cố ý.
+ *   Thêm một `import.meta.glob('/docs/huong-dan-su-dung/…')` ở file khác là mở
+ *   một đường nạp thứ hai KHÔNG đi qua allowlist: mọi trang trong thư mục, kể
+ *   cả trang của capability `internal` hay 16 trang onboarding không capability
+ *   nào nhận, lập tức thành nguồn tư vấn cho người dùng thật.
+ *
+ *   Đây đúng là luật đã có sẵn cho `docs/he-thong` (nạp + lọc manifest phải
+ *   chung một chỗ). Corpus thứ hai ra đời mà không có nửa cưỡng chế nào — gate
+ *   này biết mọi thứ về `he-thong` và KHÔNG BIẾT GÌ về thư mục kia.
+ *
+ * Nhận `{ [đường dẫn]: nguồn }`; trả danh sách file vi phạm.
+ */
+export function timGlobHuongDanNgoaiAllowlist(nguonTheoFile, choPhep = FILE_NAP_HUONG_DAN) {
+  const re = /import\.meta\.glob\(\s*['"`][^'"`]*huong-dan-su-dung[^'"`]*['"`]/;
+  return Object.entries(nguonTheoFile ?? {})
+    .filter(([file]) => file.replace(/\\/g, '/') !== choPhep)
+    .filter(([, nguon]) => re.test(boComment(nguon)))
+    .map(([file]) => file.replace(/\\/g, '/'))
+    .sort();
+}
+
+/**
+ * Thân của `trangHuongDanChoPhep` — hàm dựng allowlist hướng dẫn.
+ *
+ * Cắt tới `export function`/`export async function` KẾ TIẾP ở đầu dòng, để một
+ * phép kiểm ở hàm khác trong cùng file không vô tình "chứng minh" hàm này đúng.
+ */
+export function thanHamAllowlist(registrySource) {
+  const sach = boComment(registrySource);
+  const dau = sach.search(/export function trangHuongDanChoPhep\s*\(/);
+  if (dau < 0) return '';
+  const con = sach.slice(dau + 1);
+  const sau = con.search(/^export (?:async )?function /m);
+  return sau < 0 ? sach.slice(dau) : sach.slice(dau, dau + 1 + sau);
+}
+
+/**
+ * Allowlist hướng dẫn phải THẬT SỰ suy từ `CAPABILITIES`, và lọc đủ hai vế.
+ *
+ * Ba mảnh, cả ba phải cùng có — bỏ mảnh nào cũng đỏ:
+ *   - đọc `CAPABILITIES` (nguồn allowlist, không phải một danh sách viết tay);
+ *   - lọc theo `visibility` = `public` (bề mặt quản trị không hứa gì với người
+ *     dùng cuối, và một trang hướng dẫn cho bề mặt họ không mở được là lời hứa
+ *     hụt);
+ *   - gắn `permission` của capability làm quyền gác trang.
+ *
+ * Mảnh thứ ba là mảnh đắt nhất: bỏ nó thì trang hướng dẫn Bảng lương vào index
+ * cho MỌI người, và triệu chứng là Copilot mô tả từng cột bảng lương cho một
+ * nhân viên phòng — không lỗi nào nổ ra.
+ */
+export function thieuLocNangLuc(registrySource) {
+  const than = thanHamAllowlist(registrySource);
+  if (!than) return ['không tìm thấy `export function trangHuongDanChoPhep(` trong registry.ts'];
+  const thieu = [];
+  if (!/\bCAPABILITIES\b/.test(than)) thieu.push('không đọc `CAPABILITIES`');
+  if (!/\buserDoc\b/.test(than)) thieu.push('không đọc `docs.userDoc`');
+  if (!/visibility\s*!==\s*['"]public['"]|visibility\s*===\s*['"]public['"]/.test(than)) {
+    thieu.push('không lọc theo `docs.visibility === "public"`');
+  }
+  if (!/permission\.module/.test(than) || !/permission\.action/.test(than)) {
+    thieu.push('không gắn `permission` của capability làm quyền gác trang');
+  }
+  return thieu;
+}
+
+/** Mọi file .ts/.tsx dưới `src/`, đệ quy. */
+function lietKeNguon(thuMuc) {
+  const ra = [];
+  const di = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const duong = join(d, e.name);
+      if (e.isDirectory()) di(duong);
+      else if (/\.tsx?$/.test(e.name) && !e.name.endsWith('.d.ts')) ra.push(duong);
+    }
+  };
+  di(thuMuc);
+  return ra;
+}
 
 export function diffManifestAgainstDir(manifest, filesOnDisk) {
   const declared = new Set(manifest.entries.map((e) => e.file));
@@ -105,6 +206,36 @@ function main() {
     problems.push(
       `src/copilot/tools/registry.ts không còn ${thieu.map((d) => d.mo).join(' / ')} ` +
       '(xét trên CODE, bỏ comment) — Copilot có thể đã quay lại đọc mù toàn thư mục.',
+    );
+  }
+
+  // ── Corpus THỨ HAI: docs/huong-dan-su-dung ────────────────────────────────
+  //
+  // Cùng một bất biến, cho một thư mục khác: đường nạp và phép lọc allowlist
+  // phải nằm chung một chỗ. Trước 03/09/2026 gate này biết mọi thứ về
+  // `he-thong` và không biết gì về thư mục kia — tức nửa corpus không được canh.
+  const nguonSrc = {};
+  for (const duong of lietKeNguon(SRC_DIR)) {
+    nguonSrc[relative(repoRoot, duong).replace(/\\/g, '/')] = readFileSync(duong, 'utf8');
+  }
+  if (Object.keys(nguonSrc).length < 100) {
+    problems.push(
+      `KHÔNG ĐO ĐƯỢC: chỉ đọc được ${Object.keys(nguonSrc).length} file trong src/ — ` +
+      'bộ quét hỏng, đừng đọc thành "không ai nạp glob nào".',
+    );
+  }
+  for (const file of timGlobHuongDanNgoaiAllowlist(nguonSrc)) {
+    problems.push(
+      `${file}: nạp \`docs/huong-dan-su-dung\` bằng import.meta.glob.\n` +
+      `    → chỉ ${FILE_NAP_HUONG_DAN} được nạp corpus này, vì allowlist ` +
+      '(CAPABILITIES) nằm ngay cạnh glob ở đó. Đường nạp thứ hai là đường đi vòng qua allowlist.',
+    );
+  }
+  const thieuNangLuc = thieuLocNangLuc(registry);
+  if (thieuNangLuc.length > 0) {
+    problems.push(
+      `trangHuongDanChoPhep() trong registry.ts: ${thieuNangLuc.join('; ')} ` +
+      '(xét trên CODE, bỏ comment).',
     );
   }
 

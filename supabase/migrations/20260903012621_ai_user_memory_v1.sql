@@ -32,6 +32,15 @@
 --      giờ chạm trần — nếu đếm cả nó thì người dùng đủ 30 mục sẽ không sửa được
 --      chính mục họ đang có, một lỗi trông y hệt "hệ thống hỏng".
 --
+--      VÀ TRẦN PHẢI KHOÁ TRƯỚC KHI ĐẾM. "Đếm rồi chèn" là đọc-rồi-ghi: hai tab
+--      của cùng một người chèn gần như đồng thời thì cả hai đếm được 29 rồi cả
+--      hai chèn, ra 31. UNIQUE không cứu vì hai khoá khác nhau, và không lỗi nào
+--      nổ ra — cái trần lặng lẽ thôi là trần. `pg_advisory_xact_lock` theo
+--      (người, công ty) đóng cửa sổ đó mà không bắt hai người khác nhau xếp hàng.
+--
+--   4. KHÔNG KÝ TỰ ĐIỀU KHIỂN TRONG `value`, cưỡng chế bằng CHECK trên bảng chứ
+--      không chỉ trong RPC — cùng lý do với mục 3. Xem đoạn dưới.
+--
 -- VÌ SAO SECURITY INVOKER, KHÔNG PHẢI DEFINER
 --   Ba RPC chỉ đọc/ghi hàng của chính người gọi, và RLS own-row đã nói đúng điều
 --   đó ở tầng thấp nhất. Một hàm DEFINER ở đây sẽ TẮT lớp bảo vệ ấy rồi phải tự
@@ -45,6 +54,15 @@
 --   phía client (khối "GHI NHỚ CỦA NGƯỜI DÙNG" nói rõ đây là dữ liệu) cộng với
 --   trần 500 ký tự ở đây: một đoạn văn dài mới đủ chỗ cho một chỉ thị có sức
 --   thuyết phục.
+--
+--   Lớp thứ ba, và là lớp duy nhất KHÔNG dựa vào chỗ gọi nhớ gọi bộ lọc: CHECK
+--   `ai_user_memory_value_ctrl_chk`. Một ký tự xuống dòng trong `value` dựng ra
+--   một DÒNG MỚI giữa khối luật của system prompt, trông y hệt luật do hệ thống
+--   viết — đúng lỗ hổng mà `giaTriLocAnToan` đã chặn cho đường bộ lọc URL. Bản
+--   đầu của client gom khoảng trắng bằng `.replace(/\s+/g, ' ')`, và `\s` của
+--   JavaScript KHÔNG bao gồm U+0085 (NEL) hay các mã C1 khác, nên chuỗi đó đi
+--   qua nguyên vẹn. Chặn ở tầng dữ liệu thì không có phiên bản client nào quên
+--   được.
 --
 -- NGHIỆM THU CHỈ SOI CATALOG
 --   Khối cuối đọc `pg_class`/`pg_proc`/`pg_policy`/ACL, không đọc dữ liệu, nên
@@ -67,6 +85,22 @@ CREATE TABLE IF NOT EXISTS public.ai_user_memory (
     CHECK (key ~ '^[a-z0-9_]{1,40}$'),
   CONSTRAINT ai_user_memory_value_len_chk
     CHECK (char_length(value) BETWEEN 1 AND 500),
+  -- KÝ TỰ ĐIỀU KHIỂN BỊ CHẶN Ở CHÍNH BẢNG, không chỉ ở RPC.
+  --
+  -- Giá trị ở đây đi thẳng vào system prompt của MỌI lượt chat sau. Một ký tự
+  -- xuống dòng — hay U+0085 (NEL), thứ mà `\s` của JavaScript KHÔNG bắt — dựng
+  -- ra một dòng mới trong khối luật, trông y hệt luật do hệ thống viết. Bảng
+  -- này cấp DML cho `authenticated`, nên một phép kiểm chỉ nằm trong RPC là
+  -- phép kiểm PostgREST đi vòng qua được trong một dòng, y như trần 30 mục.
+  --
+  -- U+2028/U+2029 không thuộc C0/C1 nhưng JavaScript coi chúng là ký tự KẾT
+  -- THÚC DÒNG, nên chúng ngắt dòng y hệt `\n`.
+  CONSTRAINT ai_user_memory_value_ctrl_chk
+    CHECK (
+      value !~ '[\x00-\x1F\x7F-\x9F]'
+      AND position(chr(8232) IN value) = 0
+      AND position(chr(8233) IN value) = 0
+    ),
   CONSTRAINT ai_user_memory_source_chk
     CHECK (source IN ('user', 'copilot'))
 );
@@ -92,6 +126,22 @@ AS $cap$
 DECLARE
   v_khac integer;
 BEGIN
+  -- KHOÁ TRƯỚC KHI ĐẾM — nếu không, trần 30 là một phép đọc rồi ghi (TOCTOU).
+  --
+  -- Hai tab của cùng một người, hai lệnh INSERT gần như đồng thời: cả hai đếm
+  -- được 29 rồi cả hai chèn, ra 31 mục. UNIQUE không cứu được vì hai khoá KHÁC
+  -- nhau, và không lỗi nào nổ ra — chỉ có một cái trần lặng lẽ không phải trần
+  -- nữa. Đây không phải giả thuyết xa vời: `ghi_nho` chạy từ khung chat, và
+  -- người dùng mở nhiều tab là chuyện thường.
+  --
+  -- Khoá theo (người, công ty) chứ không khoá cả bảng: hai người khác nhau, hay
+  -- cùng một người ở hai công ty, không có lý do gì phải xếp hàng sau nhau.
+  -- `pg_advisory_xact_lock` tự nhả khi transaction kết thúc, nên không có đường
+  -- nào rò một cái khoá ra ngoài.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(NEW.user_id::text || ':' || NEW.organization_id::text, 0)
+  );
+
   -- Đếm các khoá KHÁC: upsert một khoá đã tồn tại không được coi là "thêm mục".
   SELECT count(*) INTO v_khac
     FROM public.ai_user_memory m
@@ -151,7 +201,13 @@ $acl_bang$;
 CREATE OR REPLACE FUNCTION public.copilot_memory_upsert_v1(
   p_organization_id uuid,
   p_key text,
-  p_value text
+  p_value text,
+  -- AI viết mục này: người dùng gõ tay ở mục "Ghi nhớ" ('user'), hay Copilot tự
+  -- suy ra từ câu chuyện ('copilot'). Không phải trường trang trí — giao diện
+  -- gắn nhãn theo nó, và khối prompt đánh dấu mục 'copilot' để một câu Copilot
+  -- nghe nhầm rồi tự ghi lại không mang cùng sức nặng với một câu người dùng
+  -- gõ tay. DEFAULT 'copilot' vì đường gọi đông nhất là tool `ghi_nho`.
+  p_source text DEFAULT 'copilot'
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -161,9 +217,10 @@ SET search_path = pg_catalog, public
 AS $fn$
 DECLARE
   v_actor uuid := auth.uid();
-  v_key   text := lower(btrim(coalesce(p_key, '')));
-  v_value text := btrim(coalesce(p_value, ''));
-  v_tong  integer;
+  v_key    text := lower(btrim(coalesce(p_key, '')));
+  v_value  text := btrim(coalesce(p_value, ''));
+  v_source text := lower(btrim(coalesce(p_source, 'copilot')));
+  v_tong   integer;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
@@ -180,9 +237,19 @@ BEGIN
   IF char_length(v_value) < 1 OR char_length(v_value) > 500 THEN
     RAISE EXCEPTION 'noi_dung_khong_hop_le' USING ERRCODE = '22023';
   END IF;
+  -- Cùng luật với CONSTRAINT trên bảng, nhưng nêu ở đây để thông báo lỗi nói
+  -- được bằng tiếng người thay vì ném tên constraint vào mặt người dùng.
+  IF v_value ~ '[\x00-\x1F\x7F-\x9F]'
+     OR position(chr(8232) IN v_value) > 0
+     OR position(chr(8233) IN v_value) > 0 THEN
+    RAISE EXCEPTION 'noi_dung_co_ky_tu_dieu_khien' USING ERRCODE = '22023';
+  END IF;
+  IF v_source NOT IN ('user', 'copilot') THEN
+    RAISE EXCEPTION 'nguon_khong_hop_le' USING ERRCODE = '22023';
+  END IF;
 
   INSERT INTO public.ai_user_memory (user_id, organization_id, key, value, source)
-  VALUES (v_actor, p_organization_id, v_key, v_value, 'copilot')
+  VALUES (v_actor, p_organization_id, v_key, v_value, v_source)
   ON CONFLICT (user_id, organization_id, key) DO UPDATE
      SET value = EXCLUDED.value,
          source = EXCLUDED.source,
@@ -193,7 +260,7 @@ BEGIN
    WHERE m.user_id = v_actor
      AND m.organization_id = p_organization_id;
 
-  RETURN jsonb_build_object('key', v_key, 'value', v_value, 'total', v_tong);
+  RETURN jsonb_build_object('key', v_key, 'value', v_value, 'source', v_source, 'total', v_tong);
 END
 $fn$;
 
@@ -303,31 +370,31 @@ $fn$;
 -- REVOKE FROM PUBLIC KHÔNG cắt `anon` trên Supabase: `anon` và `authenticated`
 -- giữ grant riêng, nên mọi vai được nêu đích danh. `to_regrole` cho phép khối
 -- này chạy trên cluster trần chưa có hai vai đó.
-REVOKE ALL ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.copilot_memory_forget_v1(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.copilot_memory_list_v1(uuid) FROM PUBLIC;
 
 DO $acl$
 BEGIN
   IF to_regrole('anon') IS NOT NULL THEN
-    REVOKE ALL ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text) FROM anon;
+    REVOKE ALL ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text, text) FROM anon;
     REVOKE ALL ON FUNCTION public.copilot_memory_forget_v1(uuid, text) FROM anon;
     REVOKE ALL ON FUNCTION public.copilot_memory_list_v1(uuid) FROM anon;
   END IF;
 
   IF to_regrole('authenticated') IS NOT NULL THEN
-    REVOKE ALL ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text) FROM authenticated;
+    REVOKE ALL ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text, text) FROM authenticated;
     REVOKE ALL ON FUNCTION public.copilot_memory_forget_v1(uuid, text) FROM authenticated;
     REVOKE ALL ON FUNCTION public.copilot_memory_list_v1(uuid) FROM authenticated;
 
-    GRANT EXECUTE ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text) TO authenticated;
+    GRANT EXECUTE ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text, text) TO authenticated;
     GRANT EXECUTE ON FUNCTION public.copilot_memory_forget_v1(uuid, text) TO authenticated;
     GRANT EXECUTE ON FUNCTION public.copilot_memory_list_v1(uuid) TO authenticated;
   END IF;
 END
 $acl$;
 
-COMMENT ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text) IS
+COMMENT ON FUNCTION public.copilot_memory_upsert_v1(uuid, text, text, text) IS
   'Ghi/ghi đè MỘT ghi nhớ của chính người gọi trong công ty đã chọn; trần 30 mục do trigger cưỡng chế.';
 COMMENT ON FUNCTION public.copilot_memory_forget_v1(uuid, text) IS
   'Bỏ MỘT ghi nhớ của chính người gọi theo khoá; khoá không có thì trả found=false, không báo lỗi.';
@@ -370,6 +437,15 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+     WHERE c.conrelid = 'public.ai_user_memory'::regclass
+       AND c.conname = 'ai_user_memory_value_ctrl_chk'
+       AND c.contype = 'c'
+  ) THEN
+    RAISE EXCEPTION 'ai_user_memory control-character CHECK missing — system prompt khong con duoc canh o tang du lieu';
+  END IF;
+
+  IF NOT EXISTS (
     SELECT 1 FROM pg_index i
      WHERE i.indrelid = 'public.ai_user_memory'::regclass
        AND i.indisunique
@@ -384,7 +460,7 @@ BEGIN
   END IF;
 
   FOREACH v_sig IN ARRAY ARRAY[
-    'public.copilot_memory_upsert_v1(uuid, text, text)',
+    'public.copilot_memory_upsert_v1(uuid, text, text, text)',
     'public.copilot_memory_forget_v1(uuid, text)',
     'public.copilot_memory_list_v1(uuid)'
   ]

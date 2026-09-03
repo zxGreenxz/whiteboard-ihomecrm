@@ -40,7 +40,11 @@ import { lyDoChanUiControl } from './uiControlGate';
 import { dienGiaiLoiChat } from './chatErrors';
 import {
   boGhiNho,
+  dienGiaiLoiGhiNho,
+  ghiNhoLen,
+  kiemGhiNho,
   layGhiNho,
+  NHAN_COPILOT_TU_GHI,
   SO_GHI_NHO_TOI_DA,
   type GhiNho,
 } from './memoryClient';
@@ -217,6 +221,8 @@ export default function ChatPanel({ onClose }: Props) {
    */
   const [ghiNho, setGhiNho] = useState<GhiNho[]>([]);
   const [moGhiNho, setMoGhiNho] = useState(false);
+  const [khoaMoi, setKhoaMoi] = useState('');
+  const [noiDungMoi, setNoiDungMoi] = useState('');
   const abortRef = useRef<AbortController | null>(null);
   const uiAgentRef = useRef<{ stop: () => Promise<void>; dispose: () => void } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -541,6 +547,41 @@ export default function ChatPanel({ onClose }: Props) {
     }
   };
 
+  /**
+   * Thêm/sửa MỘT ghi nhớ bằng tay, nguồn `user`.
+   *
+   * VÌ SAO CẦN Ô NHẬP DÙ NÓI "nhớ giúp tôi…" ĐÃ LƯU ĐƯỢC
+   *   Hai đường ghi này khác nhau ở thứ đi vào cột `source`, và cột đó có việc:
+   *   một câu Copilot NGHE NHẦM rồi tự ghi lại không được mang cùng sức nặng với một
+   *   câu người dùng gõ tay. Không có đường gõ tay thì `source` chỉ có một giá trị
+   *   khả dĩ — một cột chết, và nhãn dựa trên nó không phân biệt được gì.
+   *
+   *   Đây cũng là đường SỬA duy nhất: gõ lại cùng một khoá là ghi đè (UNIQUE),
+   *   nên người dùng chữa được một mục Copilot nhớ sai mà không phải bỏ rồi nói lại.
+   */
+  const themGhiNhoTay = async () => {
+    const organizationId = selectedOrganizationId;
+    if (!organizationId) return;
+    const kiem = kiemGhiNho(khoaMoi, noiDungMoi);
+    if (!kiem.ok) {
+      toast.error(kiem.loi ?? '');
+      return;
+    }
+    const generation = orgGenerationRef.current;
+    try {
+      const kq = await ghiNhoLen(organizationId, kiem.khoa, kiem.noiDung, 'user');
+      if (generation !== orgGenerationRef.current) return;
+      setGhiNho((cu) => [
+        { khoa: kq.khoa, noiDung: kq.noiDung, nguon: kq.nguon, capNhat: new Date().toISOString() },
+        ...cu.filter((m) => m.khoa !== kq.khoa),
+      ]);
+      setKhoaMoi('');
+      setNoiDungMoi('');
+    } catch (e) {
+      toast.error(dienGiaiLoiGhiNho(e instanceof Error ? e.message : String(e)));
+    }
+  };
+
   const voice = useVoiceInput((text) => setInput((cur) => (cur ? `${cur} ${text}` : text)));
 
   const items = toDisplay(history);
@@ -641,6 +682,11 @@ export default function ChatPanel({ onClose }: Props) {
                 <li key={m.khoa} className="flex items-start gap-1.5 text-[11px] leading-snug">
                   <span className="min-w-0 flex-1 break-words">
                     <span className="font-semibold">{m.khoa}</span>: {m.noiDung}
+                    {m.nguon === 'copilot' && (
+                      <span className="ml-1 whitespace-nowrap rounded-full bg-muted px-1.5 py-px text-[9px] font-medium text-muted-foreground">
+                        {NHAN_COPILOT_TU_GHI}
+                      </span>
+                    )}
                   </span>
                   <button
                     className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-red-50 hover:text-red-600"
@@ -654,6 +700,39 @@ export default function ChatPanel({ onClose }: Props) {
               ))}
             </ul>
           )}
+          {/* Ô gõ tay. Có mặt vì `source` cần hai giá trị thật mới phân biệt được
+              mục người dùng viết với mục Copilot tự suy ra — và vì đây là đường
+              SỬA duy nhất: gõ lại cùng khoá là ghi đè. */}
+          <div className="mt-2 flex items-center gap-1 border-t pt-2">
+            <input
+              className="w-24 shrink-0 rounded border bg-card px-1.5 py-1 text-[11px] outline-none focus:border-[hsl(var(--ring))]"
+              placeholder="khoá"
+              value={khoaMoi}
+              onChange={(ev) => setKhoaMoi(ev.target.value)}
+              data-testid="copilot-ghi-nho-khoa"
+            />
+            <input
+              className="min-w-0 flex-1 rounded border bg-card px-1.5 py-1 text-[11px] outline-none focus:border-[hsl(var(--ring))]"
+              placeholder="điều cần nhớ"
+              value={noiDungMoi}
+              onChange={(ev) => setNoiDungMoi(ev.target.value)}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Enter') {
+                  ev.preventDefault();
+                  void themGhiNhoTay();
+                }
+              }}
+              data-testid="copilot-ghi-nho-noi-dung"
+            />
+            <button
+              className="shrink-0 rounded bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
+              disabled={!khoaMoi.trim() || !noiDungMoi.trim()}
+              onClick={() => void themGhiNhoTay()}
+              data-testid="copilot-ghi-nho-them"
+            >
+              Lưu
+            </button>
+          </div>
         </div>
       )}
 

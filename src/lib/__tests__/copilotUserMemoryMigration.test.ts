@@ -42,7 +42,7 @@ function thanHam(source: string, name: string): string {
 const sql = boCommentSql(migration);
 
 const RPC = [
-  { ten: 'copilot_memory_upsert_v1', chuKy: 'uuid, text, text' },
+  { ten: 'copilot_memory_upsert_v1', chuKy: 'uuid, text, text, text' },
   { ten: 'copilot_memory_forget_v1', chuKy: 'uuid, text' },
   { ten: 'copilot_memory_list_v1', chuKy: 'uuid' },
 ] as const;
@@ -117,6 +117,18 @@ describe('luật nội dung — khoá, độ dài, nguồn', () => {
   it('CHECK source chỉ nhận user/copilot', () => {
     expect(sql).toMatch(/CHECK \(source IN \('user', 'copilot'\)\)/);
   });
+
+  it('CHECK chặn ký tự điều khiển NGAY TRÊN BẢNG, không chỉ trong RPC', () => {
+    // Bảng cấp DML cho `authenticated`, nên một phép kiểm chỉ nằm trong RPC là
+    // phép kiểm PostgREST đi vòng qua được trong một dòng — y hệt trần 30 mục.
+    // Giá trị này đi thẳng vào system prompt của MỌI lượt chat sau.
+    const ctrl = sql.slice(sql.indexOf('ai_user_memory_value_ctrl_chk'));
+    expect(ctrl).toMatch(/value !~ '\[\\x00-\\x1F\\x7F-\\x9F\]'/);
+    // U+2028/U+2029 không thuộc C0/C1 nhưng JavaScript coi chúng là ký tự kết
+    // thúc dòng — bỏ chúng ra là để hở đúng cái ngắt dòng cần chặn.
+    expect(ctrl).toMatch(/position\(chr\(8232\) IN value\) = 0/);
+    expect(ctrl).toMatch(/position\(chr\(8233\) IN value\) = 0/);
+  });
 });
 
 describe('trần 30 mục — cưỡng chế ở TRIGGER, không chỉ ở RPC', () => {
@@ -137,6 +149,19 @@ describe('trần 30 mục — cưỡng chế ở TRIGGER, không chỉ ở RPC',
 
   it('trần là một CON SỐ trong mã, không phải lời hứa trong chú thích', () => {
     expect(cap.replace(/\s+/g, ' ')).toContain('>= 30');
+  });
+
+  it('KHOÁ trước khi đếm — "đếm rồi chèn" là đọc-rồi-ghi (TOCTOU)', () => {
+    // Hai tab của cùng một người chèn gần như đồng thời: cả hai đếm được 29 rồi
+    // cả hai chèn, ra 31 mục. UNIQUE không cứu vì hai khoá khác nhau, và không
+    // lỗi nào nổ ra — cái trần lặng lẽ thôi là trần.
+    const goiKhoa = cap.indexOf('pg_advisory_xact_lock');
+    const goiDem = cap.indexOf('SELECT count(*)');
+    expect(goiKhoa, 'trigger không khoá trước khi đếm').toBeGreaterThan(0);
+    expect(goiKhoa).toBeLessThan(goiDem);
+    // Khoá theo (người, công ty), KHÔNG khoá cả bảng: hai người khác nhau không
+    // có lý do gì phải xếp hàng sau nhau.
+    expect(cap).toMatch(/hashtextextended\(\s*NEW\.user_id::text \|\| ':' \|\| NEW\.organization_id::text, 0\s*\)/);
   });
 });
 
@@ -195,6 +220,23 @@ describe('ba RPC — SECURITY INVOKER, search_path, ACL tường minh', () => {
     expect(than).toMatch(/updated_at = now\(\)/);
   });
 
+  it('upsert nhận p_source và GHI ĐÚNG giá trị đó, không ghi cứng "copilot"', () => {
+    // `source` là trường có việc: giao diện gắn nhãn theo nó, và khối prompt
+    // đánh dấu mục Copilot tự ghi. Ghi cứng một giá trị biến nó thành cột chết.
+    const than = thanHam(sql, 'copilot_memory_upsert_v1');
+    expect(than).toMatch(/p_source text DEFAULT 'copilot'/);
+    expect(than).toMatch(/v_source NOT IN \('user', 'copilot'\)/);
+    expect(than).toMatch(/nguon_khong_hop_le/);
+    expect(than).toMatch(/VALUES \(v_actor, p_organization_id, v_key, v_value, v_source\)/);
+    expect(than).toMatch(/'source', v_source/);
+  });
+
+  it('upsert từ chối ký tự điều khiển với mã lỗi nói được thành câu', () => {
+    const than = thanHam(sql, 'copilot_memory_upsert_v1');
+    expect(than).toMatch(/noi_dung_co_ky_tu_dieu_khien/);
+    expect(than).toMatch(/v_value ~ '\[\\x00-\\x1F\\x7F-\\x9F\]'/);
+  });
+
   it('forget: khoá không tồn tại KHÔNG phải lỗi', () => {
     const than = thanHam(sql, 'copilot_memory_forget_v1');
     expect(than).toMatch(/'found', v_so > 0/);
@@ -224,6 +266,7 @@ describe('nghiệm thu chỉ soi catalog — chạy được trên DB rỗng', (
     expect(khoi).toMatch(/ai_user_memory_own/);
     expect(khoi).toMatch(/trg_ai_user_memory_cap/);
     expect(khoi).toMatch(/ai_user_memory_owner_key_uidx/);
+    expect(khoi).toMatch(/ai_user_memory_value_ctrl_chk/);
     for (const { ten } of RPC) expect(khoi).toContain(ten);
     expect(khoi).toMatch(/has_function_privilege\('anon'/);
     expect(khoi).toMatch(/has_table_privilege\('anon'/);

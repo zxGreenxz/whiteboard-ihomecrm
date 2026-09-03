@@ -78,7 +78,9 @@ const toolGhiNho: DomainTool<InputGhiNho> = {
     const kiem = kiemGhiNho(args.khoa, args.noi_dung);
     if (!kiem.ok) return kiem.loi ?? CAU_KHONG_CO;
     try {
-      const kq = await ghiNhoLen(orgId, kiem.khoa, kiem.noiDung);
+      // 'copilot' TUỌNG MINH, không dựa vào DEFAULT của RPC: đường gõ tay trong
+      // giao diện ghi 'user', và hai đường phải nói rõ mình là ai ngay tại chỗ gọi.
+      const kq = await ghiNhoLen(orgId, kiem.khoa, kiem.noiDung, 'copilot');
       return `${CAU_DA_NHO}: ${kq.khoa} = ${kq.noiDung} (${kq.tong}/${SO_GHI_NHO_TOI_DA}). ${CAU_NHAC_XEM}`;
     } catch (e) {
       return dienGiaiLoiGhiNho(e instanceof Error ? e.message : String(e));

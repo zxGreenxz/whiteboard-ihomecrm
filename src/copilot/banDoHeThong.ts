@@ -25,6 +25,7 @@ import {
 import type { PermissionsMap } from '@/lib/permissions';
 import { ROUTE_DIEU_HUONG, type MucDieuHuong } from './pageScope';
 import { boDau } from './docs/tokenize';
+import { coKyTuDieuKhien } from './anToanVanBan';
 
 export interface TrangKhopBanDo {
   page: PermissionPage;
@@ -225,31 +226,14 @@ export const DAI_TOI_DA_GIA_TRI_LOC = 80;
  * dựng ra một DÒNG MỚI trong system message, trông y hệt luật số 10 do chính hệ
  * thống viết. Chỉ cần dụ người dùng bấm một link là thêm được luật cho Copilot.
  *
- * U+2028/U+2029 nằm trong danh sách dù không phải C0/C1: JavaScript coi chúng
- * là ký tự KẾT THÚC DÒNG, nên chúng ngắt dòng y hệt một ký tự xuống dòng thật.
- * Bắt gặp ngay trong lúc viết test cho chính lỗ hổng này — allowlist ký tự bên
- * dưới vốn đã chặn, nhưng một lớp bảo vệ chỉ đúng nhờ tình cờ thì không phải
- * lớp bảo vệ.
+ * Phép dò đã DỜI sang `anToanVanBan.ts` (03/09/2026) vì bộ nhớ dài hạn mở đường
+ * THỨ HAI vào cùng system prompt đó. Hai bản chép của một luật an ninh thì bản
+ * nào lệch cũng hỏng — và bản lệch không kêu lên tiếng nào. Chi tiết vì sao
+ * danh sách gồm cả U+2028/U+2029, và vì sao dò theo code point chứ không bằng
+ * regex, nằm ở đầu file đó.
  *
  * Chặn ký tự điều khiển là một nửa; nửa kia là allowlist ký tự bên dưới.
- *
- * DÒ THEO CODE POINT, KHÔNG PHẢI REGEX. Bản trước là một character class chứa
- * ký tự điều khiển, và `no-control-regex` của eslint chặn đúng cách viết đó —
- * ratchet lint trên CI đỏ vì nó (03/09/2026). Vòng lặp này giữ nguyên hành vi
- * mà không cần một dòng eslint-disable: tắt một luật để giữ nguyên cách viết cũ
- * là đổi một cảnh báo lấy không gì cả.
- *
- * `for...of` duyệt theo CODE POINT (cặp surrogate đi liền một nhịp), nên một ký
- * tự ngoài BMP không bị xẻ đôi thành hai nửa trông như rác.
  */
-function coKyTuDieuKhien(s: string): boolean {
-  for (const ch of s) {
-    const cp = ch.codePointAt(0)!;
-    // C0 · C1 · U+2028 LINE SEPARATOR · U+2029 PARAGRAPH SEPARATOR
-    if (cp <= 0x1f || (cp >= 0x7f && cp <= 0x9f) || cp === 0x2028 || cp === 0x2029) return true;
-  }
-  return false;
-}
 
 /**
  * Bộ ký tự cho phép trong MỘT giá trị bộ lọc.

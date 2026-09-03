@@ -19,6 +19,7 @@
 //   Một chỉ thị có sức thuyết phục cần chỗ để giải thích; ba cái trần này không
 //   cho nó chỗ nào.
 import { supabase } from '@/integrations/supabase/client';
+import { boKyTuDieuKhien, coKyTuDieuKhien } from './anToanVanBan';
 import { boDau } from './docs/tokenize';
 
 export interface GhiNho {
@@ -46,6 +47,11 @@ export const LOI_KHOA_RONG =
   'Khoá ghi nhớ trống hoặc không dùng được. Hãy đặt một khoá ngắn không dấu, vd "toa_uu_tien".';
 export const LOI_NOI_DUNG_RONG = 'Nội dung ghi nhớ đang trống — không lưu được.';
 export const LOI_NOI_DUNG_DAI = `Nội dung ghi nhớ dài quá ${DAI_TOI_DA_NOI_DUNG} ký tự. Hãy rút gọn còn một câu.`;
+export const LOI_KY_TU_DIEU_KHIEN =
+  'Nội dung ghi nhớ chứa ký tự điều khiển (xuống dòng, ký tự ẩn) — không lưu được. Hãy viết lại thành một câu chữ thường.';
+
+/** Nhãn cho mục do Copilot tự ghi — dùng CHUNG cho prompt và giao diện. */
+export const NHAN_COPILOT_TU_GHI = 'Copilot tự ghi';
 
 /**
  * Chuẩn hoá khoá do mô hình (hoặc người dùng) đưa vào.
@@ -88,6 +94,14 @@ export function kiemGhiNho(khoaTho: string, noiDungTho: string): KetQuaKiem {
   if (!noiDung) return { ok: false, khoa, noiDung, loi: LOI_NOI_DUNG_RONG };
   if (noiDung.length > DAI_TOI_DA_NOI_DUNG) {
     return { ok: false, khoa, noiDung, loi: LOI_NOI_DUNG_DAI };
+  }
+  // TỪ CHỐI ở đường GHI, không chỉ lọc ở đường đọc. Lọc lúc render là lớp cuối
+  // và nó phải còn đó, nhưng một mục chứa ký tự điều khiển đã nằm trong database
+  // là một quả mìn hẹn giờ: nó chờ đúng chỗ nào đó quên gọi bộ lọc. Chặn tại
+  // đây, chặn ở RPC, và vẫn lọc lúc render — ba lớp, vì đây là đường thẳng nhất
+  // mà người dùng có để ghi chữ vào system prompt của mọi lượt chat sau.
+  if (coKyTuDieuKhien(noiDung)) {
+    return { ok: false, khoa, noiDung, loi: LOI_KY_TU_DIEU_KHIEN };
   }
   return { ok: true, khoa, noiDung };
 }
@@ -141,9 +155,17 @@ export function dongGhiNho(
   for (const m of lay) {
     // Xuống dòng trong một mục sẽ làm nó trông như nhiều mục — và một mục giả
     // trông như một dòng luật là đúng thứ khối này phải chặn.
-    const mot = m.noiDung.replace(/\s+/g, ' ').trim();
+    //
+    // `boKyTuDieuKhien`, KHÔNG phải `.replace(/\s+/g, ' ')`. Bản trước dùng cách
+    // thứ hai và nó trông như đã gom mọi khoảng trắng, nhưng `\s` của JavaScript
+    // không bao gồm U+0085 (NEL) hay các mã C1 khác — `'v' + U+0085 + 'LUAT MOI: …'` đi
+    // qua nguyên vẹn và dựng ra một dòng mới trong system prompt.
+    const mot = boKyTuDieuKhien(m.noiDung);
     const cat = mot.length > DAI_TRONG_PROMPT ? `${mot.slice(0, DAI_TRONG_PROMPT - 1)}…` : mot;
-    const d = `- ${m.khoa}: ${cat}`;
+    // Nói rõ mục nào do CHÍNH người dùng viết, mục nào do Copilot tự suy ra từ
+    // câu chuyện. Một câu Copilot nghe nhầm rồi tự ghi lại không được mang cùng
+    // sức nặng với một câu người dùng gõ tay.
+    const d = `- ${m.khoa}: ${cat}${m.nguon === 'copilot' ? ` (${NHAN_COPILOT_TU_GHI})` : ''}`;
     if (d.length > con) break;
     con -= d.length + 1;
     dong.push(d);
@@ -178,6 +200,7 @@ export async function layGhiNho(organizationId: string): Promise<GhiNho[]> {
 export interface KetQuaGhi {
   khoa: string;
   noiDung: string;
+  nguon: GhiNho['nguon'];
   tong: number;
 }
 
@@ -186,17 +209,24 @@ export async function ghiNhoLen(
   organizationId: string,
   khoa: string,
   noiDung: string,
+  nguon: GhiNho['nguon'] = 'copilot',
 ): Promise<KetQuaGhi> {
   const { data, error } = await goiRpc<
-    { p_organization_id: string; p_key: string; p_value: string },
-    { key?: string; value?: string; total?: number }
+    { p_organization_id: string; p_key: string; p_value: string; p_source: string },
+    { key?: string; value?: string; source?: string; total?: number }
   >('copilot_memory_upsert_v1', {
     p_organization_id: organizationId,
     p_key: khoa,
     p_value: noiDung,
+    p_source: nguon,
   });
   if (error) throw new Error(error.message);
-  return { khoa: data?.key ?? khoa, noiDung: data?.value ?? noiDung, tong: data?.total ?? 0 };
+  return {
+    khoa: data?.key ?? khoa,
+    noiDung: data?.value ?? noiDung,
+    nguon: data?.source === 'user' ? 'user' : 'copilot',
+    tong: data?.total ?? 0,
+  };
 }
 
 export interface KetQuaBo {
@@ -226,6 +256,8 @@ export const GIAI_THICH_LOI: Record<string, string> = {
   not_permitted: 'Bạn không có quyền ghi nhớ trong công ty đang chọn.',
   khoa_khong_hop_le: LOI_KHOA_RONG,
   noi_dung_khong_hop_le: LOI_NOI_DUNG_DAI,
+  noi_dung_co_ky_tu_dieu_khien: LOI_KY_TU_DIEU_KHIEN,
+  nguon_khong_hop_le: 'Nguồn ghi nhớ chỉ nhận "user" hoặc "copilot".',
 };
 
 export function dienGiaiLoiGhiNho(message: string): string {
