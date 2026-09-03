@@ -216,7 +216,7 @@ describe('dsGrant — đọc mảng jsonb thẳng, không bọc {ok, ...}', () =
 });
 
 describe('baoCaoNgayGrant', () => {
-  it('gửi p_date=null khi không truyền ngày, và dựng danh sách kế hoạch + tổng tiền', async () => {
+  it('gửi p_date = ngày hôm nay (VN, YYYY-MM-DD) khi không truyền ngày, và dựng danh sách kế hoạch + tổng tiền', async () => {
     rpc.mockResolvedValueOnce(
       tra({
         date: '2026-09-03',
@@ -237,7 +237,7 @@ describe('baoCaoNgayGrant', () => {
     const kq = await baoCaoNgayGrant(ORG);
     expect(rpc).toHaveBeenCalledWith('copilot_standing_grants_daily_report_v1', {
       p_organization_id: ORG,
-      p_date: null,
+      p_date: expect.stringMatching(/^d{4}-d{2}-d{2}$/),
     });
     expect(kq.ok).toBe(true);
     expect(kq.tongTien).toBe(2_000_000);
