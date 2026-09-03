@@ -106,6 +106,27 @@ describe('dienGiaiLoiChat', () => {
     expect(dienGiaiLoiChat('daily_token_quota')).not.toBe(dienGiaiLoiChat('daily_quota'));
   });
 
+  it('`copilot_feature_disabled` nói ĐÚNG việc: công tắc tắt, không phải thiếu quyền', () => {
+    // Ba RPC miền nhạy cảm RAISE mã này với ERRCODE 42501. Cùng mã SQL với
+    // `not_permitted`, nhưng hai câu chuyện khác nhau và hai người sửa khác nhau.
+    expect(dienGiaiLoiChat('copilot_feature_disabled')).toBe(
+      'Tính năng này đang tắt cho công ty của bạn.',
+    );
+    expect(dienGiaiLoiChat('copilot_feature_disabled: HTTP 403')).toBe(
+      'Tính năng này đang tắt cho công ty của bạn.',
+    );
+  });
+
+  it('`copilot_feature_disabled` KHÔNG bị nhánh 403 chung nuốt mất', () => {
+    // Đây là hồi quy thật sự đáng canh: chuỗi lỗi từ PostgREST hay mang cả mã
+    // HTTP, và nhánh phỏng đoán `/not_entitled|not_permitted|403/` nằm ngay sau
+    // bảng tra. Một lần xếp sai thứ tự là người dùng lại đọc "chưa được cấp
+    // quyền hoặc hết hạn mức" cho một thứ họ không tự sửa được.
+    expect(dienGiaiLoiChat('copilot_feature_disabled: HTTP 403')).not.toBe(
+      dienGiaiLoiChat('not_permitted'),
+    );
+  });
+
   it('chuỗi rỗng cũng không làm vỡ định dạng', () => {
     expect(dienGiaiLoiChat('')).toBe('Lỗi: ');
   });

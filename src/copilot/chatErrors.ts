@@ -42,6 +42,20 @@ const THEO_MA: readonly [string, string][] = [
   ['organization_forbidden', 'Bạn không có quyền dùng Copilot trong tổ chức đang chọn.'],
   ['organization_mismatch', 'Tổ chức đã đổi, mở lại cuộc trò chuyện.'],
   ['rollout_unavailable', 'Trang/công cụ này chưa được bật cho tổ chức.'],
+  // Anh em server-side của `rollout_unavailable`. Từ 03/09/2026 ba RPC miền
+  // nhạy cảm (bảng lương, lợi nhuận cổ đông, trung tâm mạng) tự đọc
+  // `copilot_feature_flags` và RAISE mã này với ERRCODE 42501. Không có dòng
+  // này thì nhánh `/not_permitted|403/` bên dưới sẽ nuốt nó và người dùng đọc
+  // "chưa được cấp quyền hoặc hết hạn mức" — hai câu chuyện sai: quyền của họ
+  // có thể đủ hoàn toàn, thứ đang tắt là công tắc rollout, và người sửa được
+  // là quản trị chứ không phải họ.
+  //
+  // Phải đứng TRƯỚC mọi mục khớp chuỗi con khác không chứa nó — bảng này khớp
+  // theo chuỗi CON và duyệt theo thứ tự.
+  [
+    'copilot_feature_disabled',
+    'Tính năng này đang tắt cho công ty của bạn.',
+  ],
   // Hai trần khác nhau, hai câu khác nhau — và `daily_token_quota` phải đứng
   // TRƯỚC `daily_quota` ở đây. Hôm nay hai chuỗi không lồng nhau ("daily_token_
   // quota" không chứa "daily_quota"), nhưng bảng này khớp theo chuỗi CON: một

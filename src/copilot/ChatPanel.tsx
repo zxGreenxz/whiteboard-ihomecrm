@@ -191,7 +191,7 @@ export default function ChatPanel({ onClose }: Props) {
   );
   const { data: providers } = useAiProviders();
   const { data: entitlement } = useCopilotEntitlement();
-  const { model, setModel, modelLoiThoi } = useCopilotModel();
+  const { model, setModel, modelLoiThoi, modelThayThe } = useCopilotModel();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -740,7 +740,9 @@ export default function ChatPanel({ onClose }: Props) {
           dùng cần biết vì sao hôm nay Copilot trả lời khác hôm qua. */}
       {modelLoiThoi && (
         <div className="border-b bg-[hsl(var(--status-warning-bg))] px-3 py-1.5 text-xs text-[hsl(var(--status-warning-fg))]">
-          Model bạn chọn trước đây không còn được bật — đang tạm dùng model mặc định. Chọn lại ở ô trên để lưu.
+          {modelThayThe
+            ? `Đang dùng tạm ${modelThayThe} vì model đã chọn không khả dụng. Chọn lại ở ô trên để lưu.`
+            : 'Model bạn chọn trước đây không còn được bật — đang tạm dùng model mặc định. Chọn lại ở ô trên để lưu.'}
         </div>
       )}
 
