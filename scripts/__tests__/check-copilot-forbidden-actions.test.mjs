@@ -11,13 +11,16 @@ const XUONG_DONG = String.fromCharCode(10);
 
 import {
   ACTION_PATTERNS,
+  CATALOG_RELATIVE_PATH,
   SCAN_ROOTS,
   FORBIDDEN_COPILOT_ACTIONS,
   L6_FOREVER,
   RPC_PHAI_CO_ALLOWLIST,
   collectCopilotSourceFiles,
+  extractActionCatalogEntries,
   inventoryFromCopilotSource,
   readActionPolicy,
+  validateActionCatalogStepUp,
   validateActionPolicy,
   validateCopilotActionInventory,
   validateRpcAllowlist,
@@ -496,4 +499,146 @@ test('ten RPC nam trong CHU THICH khong bi tinh la mot loi goi', () => {
     'src/copilot/tools/planTools.ts': '// tai lieu: copilot_plan_approve_v1 chi goi tu planClient',
   };
   assert.deepEqual(validateRpcAllowlist(nguon, CHINH_SACH_GIA), []);
+});
+
+// ── G5-D: `step_up_required` chỉ khác `forbidden` ở ACTION_CATALOG ─────────
+//
+// Trước 04/09/2026, một hành động khai `step_up_required` (approval/posting/
+// delete/permission) bị chấm ĐỎ y hệt một hành động `forbidden` — cơ chế thật
+// (registry `consent_required='step_up'`, PIN qua `copilot_plan_approve_v1`)
+// đã tồn tại từ G5-A/G5-C nhưng gate chưa biết đọc nó. `validateActionCatalogStepUp`
+// là nơi DUY NHẤT `step_up_required` có nghĩa khác `forbidden`: một entry của
+// mirror `ACTION_CATALOG` khớp một trong bốn kind đó chỉ xanh khi tự khai
+// đúng `consentRequired: 'step_up'`.
+
+test('extractActionCatalogEntries: ranh gioi entry KHONG nuot dong khoa cua entry ke tiep (regression 04/09/2026)', () => {
+  // Bug that da bat: dung `actionId: '...'` LAP LAI ben trong than de cat bien
+  // lam block cua entry dau keo dai qua het dong khoa `'demo.duyet': {` cua
+  // entry sau — dong do tu no chua "duyet'" va khop pattern approval, lam
+  // mot entry `click` hop le (KHONG duyet gi ca) bi chham nham do.
+  const nguon = [
+    "export const ACTION_CATALOG = {",
+    "  'demo.nop': {",
+    "    actionId: 'demo.nop',",
+    "    labelVi: 'Nộp gì đó chờ duyệt',",
+    "    consentRequired: 'click',",
+    "    previewRpc: 'copilot_preview_demo_nop_v1',",
+    "    executeRpc: 'copilot_execute_demo_nop_v1',",
+    "  },",
+    "  'demo.duyet': {",
+    "    actionId: 'demo.duyet',",
+    "    labelVi: 'Duyệt gì đó',",
+    "    consentRequired: 'step_up',",
+    "    previewRpc: 'copilot_preview_demo_duyet_v1',",
+    "    executeRpc: 'copilot_execute_demo_duyet_v1',",
+    "  },",
+    "};",
+  ].join(XUONG_DONG);
+
+  const entries = extractActionCatalogEntries(nguon);
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].actionId, 'demo.nop');
+  assert.ok(
+    !entries[0].block.includes("demo.duyet': {"),
+    'block cua entry dau khong duoc chua dong khoa ban ghi cua entry sau',
+  );
+  assert.equal(entries[0].consentRequired, 'click');
+  assert.equal(entries[1].actionId, 'demo.duyet');
+  assert.equal(entries[1].consentRequired, 'step_up');
+
+  // Entry 'click' (NOP, khong DUYET) khong bi bao dong gia; entry 'step_up'
+  // khop kind "approval" nhung da khai dung nen cung khong van de gi.
+  assert.deepEqual(validateActionCatalogStepUp(nguon), []);
+});
+
+test('labelVi ke chuyen nghiep vu (chua tu "duyet") khong tu lam gate do mot entry click', () => {
+  const nguon = [
+    "export const ACTION_CATALOG = {",
+    "  'demo.nop_rieng': {",
+    "    actionId: 'demo.nop_rieng',",
+    "    labelVi: 'Nộp phiếu vào hộp chờ duyệt',",
+    "    consentRequired: 'click',",
+    "    previewRpc: 'copilot_plan_submit_voucher_v1',",
+    "    executeRpc: 'copilot_plan_submit_voucher_v1',",
+    "  },",
+    "};",
+  ].join(XUONG_DONG);
+  assert.deepEqual(validateActionCatalogStepUp(nguon), []);
+});
+
+test('DOT BIEN: entry L5 approval trong ACTION_CATALOG ha consentRequired xuong click ⇒ gate DO', () => {
+  const tot = [
+    "export const ACTION_CATALOG = {",
+    "  'demo.duyet_phieu': {",
+    "    actionId: 'demo.duyet_phieu',",
+    "    labelVi: 'Duyệt phiếu demo',",
+    "    risk: 'L5',",
+    "    executorKind: 'direct_l5_v1',",
+    "    consentRequired: 'step_up',",
+    "    previewRpc: 'copilot_preview_demo_duyet_v1',",
+    "    executeRpc: 'copilot_execute_demo_duyet_v1',",
+    "  },",
+    "};",
+  ].join(XUONG_DONG);
+  assert.deepEqual(validateActionCatalogStepUp(tot), []);
+
+  const teo = tot.replace("consentRequired: 'step_up'", "consentRequired: 'click'");
+  const vanDe = validateActionCatalogStepUp(teo);
+  assert.equal(vanDe.length, 1);
+  assert.match(vanDe[0], /demo\.duyet_phieu/);
+  assert.match(vanDe[0], /"approval"/);
+  assert.match(vanDe[0], /step_up_required/);
+});
+
+test('mot entry ACTION_CATALOG kho gan RPC "deploy" (L6) ⇒ gate DO du consentRequired la gi', () => {
+  const nguon = [
+    "export const ACTION_CATALOG = {",
+    "  'demo.trien_khai': {",
+    "    actionId: 'demo.trien_khai',",
+    "    labelVi: 'Việc lạ',",
+    "    consentRequired: 'step_up',",
+    "    executeRpc: 'copilot_execute_deploy_release_v1',",
+    "  },",
+    "};",
+  ].join(XUONG_DONG);
+  const vanDe = validateActionCatalogStepUp(nguon);
+  assert.equal(vanDe.length, 1);
+  assert.match(vanDe[0], /demo\.trien_khai/);
+  assert.match(vanDe[0], /"deploy"/);
+  assert.match(vanDe[0], /forbidden/);
+});
+
+test('actionCatalog.ts THAT trong repo: khong entry nao vi pham step_up_required/forbidden', () => {
+  const path = fileURLToPath(new URL(`../../${CATALOG_RELATIVE_PATH}`, import.meta.url));
+  const src = readFileSync(path, 'utf8');
+  assert.deepEqual(validateActionCatalogStepUp(src), []);
+});
+
+test('DOT BIEN tren file THAT: ha consentRequired cua income_expense.duyet xuong click ⇒ gate DO', () => {
+  // `extractActionCatalogEntries` tra ve block tu ban da STRIP COMMENT — khong
+  // con khop nguyen van voi `src` tho (con comment). Danh dau bien tren CHINH
+  // `src` tho bang cach cat theo khoa ban ghi that su ('income_expense.duyet':
+  // { ... khoa ke tiep), roi chi doi DUY NHAT dong consentRequired trong doan
+  // do — khong dung .replace toan file vi con nhieu dong 'step_up' khac.
+  const path = fileURLToPath(new URL(`../../${CATALOG_RELATIVE_PATH}`, import.meta.url));
+  const src = readFileSync(path, 'utf8');
+  const entries = extractActionCatalogEntries(src);
+  const target = entries.find((entry) => entry.actionId === 'income_expense.duyet');
+  assert.ok(target, 'income_expense.duyet phai co trong catalog that (G5-C)');
+  assert.equal(target.consentRequired, 'step_up');
+
+  const startMarker = "'income_expense.duyet': {";
+  const startIdx = src.indexOf(startMarker);
+  assert.ok(startIdx >= 0, 'khoa ban ghi phai co trong file that');
+  const afterStart = startIdx + startMarker.length;
+  const nextEntryIdx = src.indexOf(`${XUONG_DONG}  '`, afterStart);
+  assert.ok(nextEntryIdx > afterStart, 'phai tim duoc khoa ban ghi cua entry ke tiep de gioi han doan can sua');
+  const rawBlock = src.slice(startIdx, nextEntryIdx);
+  assert.ok(rawBlock.includes("consentRequired: 'step_up'"), 'doan tho phai chua dung dong can doi');
+  const teoBlock = rawBlock.replace("consentRequired: 'step_up'", "consentRequired: 'click'");
+  const teoSrc = src.slice(0, startIdx) + teoBlock + src.slice(nextEntryIdx);
+
+  const vanDe = validateActionCatalogStepUp(teoSrc);
+  assert.equal(vanDe.length, 1);
+  assert.match(vanDe[0], /income_expense\.duyet/);
 });

@@ -229,12 +229,19 @@ export function validateCopilotActionInventory(tools) {
       problems.push(`${name}: unknown execution kind "${tool.executionKind ?? ''}"`);
       continue;
     }
-    // TODO(2026-09-02, G3): kinds marked `step_up_required` fail here EXACTLY like
-    // `forbidden` ones, because the second factor they would require does not exist
-    // yet — the registry action carrying `consent_required='step_up'` is G3 work.
-    // When that table lands, this branch gains one condition (a step-up-consented
-    // declaration is allowed) and `forbidden`/`l6Forever` keep failing outright.
-    // Until then the policy verdict is documentation, not a weaker gate.
+    // G5-D (04/09/2026): registry action mang `consent_required='step_up'` đã có mặt
+    // (G3/G5-A/G5-C), NHƯNG nhánh này vẫn cố ý cho `step_up_required` thất bại y hệt
+    // `forbidden`. Lý do không đổi: một "tool" ở đây là một khai báo `name:` mà MÔ
+    // HÌNH tự gọi được qua `toLlmTools`/`toPageAgentTools` — không có cú bấm PIN nào
+    // xen giữa. Toàn bộ tám hành động L5 `direct_l5_v1` (G5-C) và `nop_ho_so` (G3) cố
+    // tình KHÔNG có tool: đường vào duy nhất của chúng là một BƯỚC trong kế hoạch
+    // (`actionCatalog.ts`), nơi `copilot_plan_approve_v1` đòi token step-up TRƯỚC khi
+    // bước đó được phép chạy. `writeToolsHanhDong.test.ts` (G5-C) ghim đúng bất biến
+    // này ở phía factory. Cho một tool step_up_required "xanh" ở ĐÂY sẽ mở đúng cánh
+    // cửa mà kiến trúc L5 dựng ra để đóng: mô hình tự gọi một hành động cần PIN mà
+    // không ai bấm gì. Việc catalog có đúng `consentRequired: 'step_up'` cho hành
+    // động của nó được kiểm RIÊNG, ở `validateActionCatalogStepUp` bên dưới — đó là
+    // nơi duy nhất mà "step_up_required" thật sự có nghĩa khác "forbidden".
     // Lời khai lệch với bộ dò là một problem RIÊNG, không phải chuyện nội bộ của
     // parser. Nó nói lên một trong hai điều, và cả hai đều cần người đọc: hoặc
     // tool thật sự làm việc bị cấm mà tự khai là nháp, hoặc bộ dò báo động giả và
@@ -361,6 +368,81 @@ export function validateRpcAllowlist(sourceByFile, policy = ACTION_POLICY) {
   return problems;
 }
 
+/**
+ * Đường dẫn (POSIX, tương đối repo root) của mirror TypeScript
+ * `ACTION_CATALOG` — file duy nhất mà `validateActionCatalogStepUp` soi.
+ */
+export const CATALOG_RELATIVE_PATH = 'src/copilot/plan/actionCatalog.ts';
+
+/**
+ * Bóc từng entry của `ACTION_CATALOG` ra khỏi văn bản nguồn — không import
+ * module (script này là node thuần, không có loader TS), cùng lối regex-trên-
+ * văn-bản mà `inventoryFromCopilotSource` đã dùng cho tool.
+ *
+ * Ranh giới một entry là khoá bản ghi `'action.id': {` (mẫu này xuất hiện
+ * ĐÚNG MỘT LẦN cho mỗi trong 15 hành động, đã kiểm bằng grep trên toàn file —
+ * không dùng khoá `actionId: '...'` LẶP LẠI bên trong thân entry để cắt biên,
+ * vì làm vậy khiến block của một entry NUỐT LUÔN dòng khoá bản ghi của entry
+ * KẾ TIẾP (đo thật 04/09/2026: `income_expense.nop_ho_so` bị chấm nhầm
+ * 'approval' vì block của nó kéo dài tới sát chữ `'income_expense.duyet':`
+ * đứng ngay sau — bản thân dòng khoá đó chứa "duyet'", khớp ACTION_PATTERNS).
+ * `labelVi` bị thay bằng chuỗi rỗng TRƯỚC khi so khớp: nhãn tiếng Việt kể
+ * chuyện nghiệp vụ ("Nộp phiếu thu/chi vào hộp CHỜ DUYỆT") và chứa đúng những
+ * từ mà `ACTION_PATTERNS` dò — một entry `click` hợp lệ
+ * (`income_expense.nop_ho_so`, NỘP chứ không DUYỆT) sẽ bị đo sai đối tượng
+ * nếu nhãn không bị cắt trước.
+ */
+export function extractActionCatalogEntries(source) {
+  const stripped = stripComments(String(source)).replace(/labelVi\s*:\s*'[^']*'/gu, "labelVi: ''");
+  const matches = [...stripped.matchAll(/(?:^|\n)\s*'([a-zA-Z0-9_.]+)'\s*:\s*\{/gu)];
+  const entries = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const start = matches[index].index ?? 0;
+    const end = matches[index + 1]?.index ?? stripped.length;
+    const block = stripped.slice(start, end);
+    const consentMatch = block.match(/consentRequired\s*:\s*'([a-z_]+)'/u);
+    entries.push({
+      actionId: matches[index][1],
+      consentRequired: consentMatch ? consentMatch[1] : null,
+      block,
+    });
+  }
+  return entries;
+}
+
+/**
+ * `step_up_required` chỉ thật sự khác `forbidden` ở ĐÚNG MỘT chỗ: mirror
+ * `ACTION_CATALOG`. Với mọi entry mà `ACTION_PATTERNS` dò ra một kind
+ * (approval/posting/delete/permission — bốn kind mang verdict
+ * `step_up_required` trong `tooling/copilot-action-policy.json` hôm nay),
+ * entry đó BẮT BUỘC khai `consentRequired: 'step_up'` — hạ xuống `'click'`
+ * (hay bất kỳ giá trị nào khác) là mở một hành động duyệt/vào-sổ/xoá/cấp-
+ * quyền cho một cú bấm đơn, không PIN. Một kind mang verdict `forbidden`
+ * (L6: sql/secret/deploy) xuất hiện trong catalog là một vi phạm tuyệt đối —
+ * không hành động tài chính/khách hàng nào của catalog này được là L6, và
+ * nếu một ngày có, `consentRequired` không cứu được nó.
+ */
+export function validateActionCatalogStepUp(source, policy = ACTION_POLICY) {
+  const problems = [];
+  const entries = extractActionCatalogEntries(source);
+  for (const entry of entries) {
+    for (const [kind, pattern] of Object.entries(ACTION_PATTERNS)) {
+      if (!pattern.test(entry.block)) continue;
+      const verdict = policy?.kinds?.[kind];
+      if (verdict === 'forbidden') {
+        problems.push(
+          `actionCatalog.${entry.actionId}: khớp kind "${kind}" (policy: forbidden) — hành động L6 không được có mặt trong ACTION_CATALOG`,
+        );
+      } else if (verdict === 'step_up_required' && entry.consentRequired !== 'step_up') {
+        problems.push(
+          `actionCatalog.${entry.actionId}: khớp kind "${kind}" (policy: step_up_required) nhưng consentRequired="${entry.consentRequired ?? '(thiếu)'}" — phải là 'step_up'`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
 /** Directories scanned by the gate, relative to the repo root. */
 export const SCAN_ROOTS = Object.freeze([
   join('src', 'copilot', 'tools'),
@@ -409,9 +491,18 @@ function main() {
   }
   const sourceByFile = Object.fromEntries(files.map((file) => [file, readFileSync(file, 'utf8')]));
   const tools = inventoryFromCopilotSource(sourceByFile);
+  const catalogEntry = Object.entries(sourceByFile).find(([file]) =>
+    thuanDauGach(file).endsWith(CATALOG_RELATIVE_PATH),
+  );
   const problems = [
     ...validateCopilotActionInventory(tools),
     ...validateRpcAllowlist(sourceByFile),
+    // Đổi tên/di chuyển actionCatalog.ts mà không sửa CATALOG_RELATIVE_PATH sẽ
+    // làm phép kiểm dưới đây MÙ (không entry nào để soi = luôn xanh) — báo lỗi
+    // tường minh thay vì im lặng bỏ qua, đúng bài học "allowlist chết" ở trên.
+    ...(catalogEntry
+      ? validateActionCatalogStepUp(catalogEntry[1])
+      : [`${CATALOG_RELATIVE_PATH}: không tìm thấy trong phạm vi quét — phép kiểm step_up_required không đo được gì`]),
   ];
   if (problems.length) {
     console.error(`Copilot forbidden-action gate: ${problems.length} problem(s)`);
