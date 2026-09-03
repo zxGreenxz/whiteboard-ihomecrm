@@ -69,6 +69,17 @@ export const RPC_PHAI_CO_ALLOWLIST = Object.freeze([
   // (AbortController, react-query) nên nó sẽ báo động giả ở hàng chục chỗ không
   // liên quan; câu hỏi thật ở đây là AI ĐƯỢC GỌI — một câu hỏi về FILE.
   'copilot_plan_cancel_v1',
+  // G5-B (điểm nối #4, uỷ quyền đứng): CẤP một hạn mức là cấp cho CHÍNH
+  // COPILOT quyền tự duyệt về sau mà không cần ai bấm nút — một tool tự cấp
+  // được nó là một tool tự mở khoá cho chính mình, cùng lớp rủi ro với
+  // `copilot_plan_approve_v1`. THU HỒI (một cái hoặc kill switch "tất cả")
+  // đóng cửa đó lại nên đứng cùng hàng, dù không đòi step-up như lúc cấp —
+  // một tool tự thu hồi được vẫn là một tool đang chạm vào cơ chế đồng ý mà
+  // nó không được phép chạm. Cả ba chỉ gọi được từ
+  // `src/copilot/plan/standingGrantClient.ts`.
+  'copilot_standing_grant_create_v1',
+  'copilot_standing_grant_revoke_v1',
+  'copilot_standing_grants_revoke_all_v1',
 ]);
 
 /**

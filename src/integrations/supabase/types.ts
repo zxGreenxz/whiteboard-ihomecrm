@@ -19176,6 +19176,38 @@ export type Database = {
         Args: { p_ky?: string; p_limit?: number; p_organization_id: string }
         Returns: Json
       }
+      // G5-B (điểm nối #4, uỷ quyền đứng): 5 chữ ký khai TAY — `gen:types`
+      // không lấy được vì migration `20260903171622_copilot_standing_grants_v1`
+      // chưa apply lên schema sống. PHẢI chạy lại `gen:types` sau khi apply để
+      // xác nhận khớp catalog thật (cùng khoảng hở đã biết của G5-A/G3-T1).
+      copilot_standing_grant_create_v1: {
+        Args: {
+          p_action_id: string
+          p_constraints: Json
+          p_expires_at: string
+          p_max_per_day: number
+          p_organization_id: string
+          p_reason: string
+          p_step_up_token: string
+        }
+        Returns: Json
+      }
+      copilot_standing_grant_revoke_v1: {
+        Args: { p_grant_id: string; p_reason: string }
+        Returns: Json
+      }
+      copilot_standing_grants_daily_report_v1: {
+        Args: { p_date: string | null; p_organization_id: string }
+        Returns: Json
+      }
+      copilot_standing_grants_list_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      copilot_standing_grants_revoke_all_v1: {
+        Args: { p_organization_id: string; p_reason: string }
+        Returns: Json
+      }
       copilot_step_up_set_pin_v1: {
         Args: { p_current_pin?: string; p_pin: string }
         Returns: Json

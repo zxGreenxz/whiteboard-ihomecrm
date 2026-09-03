@@ -27,8 +27,14 @@ const {
   nhanSuKien,
   locSuKienKeHoach,
 } = await import('../hanhDongCopilot');
-const { BangKeHoachGanDay, BangNhatKyHanhDong, TheChinhSachHanhDong, TheStepUpPin, dienGiaiLoiPin } =
-  await import('../HanhDongTab');
+const {
+  BangKeHoachGanDay,
+  BangNhatKyHanhDong,
+  TheChinhSachHanhDong,
+  TheStepUpPin,
+  TheUyQuyenDung,
+  dienGiaiLoiPin,
+} = await import('../HanhDongTab');
 
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 
@@ -393,5 +399,212 @@ describe('TheStepUpPin — render thuần', () => {
     expect(ngoaiValue).not.toContain('1357');
     expect(ngoaiValue).not.toContain('2468');
     expect(ngoaiValue).not.toContain('mat-khau-bi-mat-xyz');
+  });
+});
+
+// G5-B — điểm nối #4: thẻ "Uỷ quyền đứng" trong trang quản trị. Ba thứ đáng
+// đo giống hệt các thẻ khác của trang này: (a) thẻ THUẦN, mọi trạng thái động
+// đi qua props; (b) nút "Cấp hạn mức" khoá khi thiếu dữ liệu bắt buộc (hành
+// động/hạn mức/giờ hết hạn/lý do); (c) nút "Thu hồi tất cả" — kill switch —
+// đòi lý do RIÊNG, dài hơn (≥10 ký tự), và khoá khi không còn hạn mức nào
+// sống để thu hồi.
+describe('TheUyQuyenDung — render thuần', () => {
+  const GRANT_A = 'ffff0000-0000-4000-8000-000000000001';
+  const GRANT_B = 'ffff0000-0000-4000-8000-000000000002';
+
+  const props = {
+    danhSach: [],
+    dangTaiDs: false,
+    danhSachHanhDong: [{ actionId: 'income_expense.create_draft', labelVi: 'Tạo phiếu thu/chi nháp' }],
+    actionId: '',
+    maxPerDay: '1',
+    gioHetHan: '24',
+    maxAmount: '',
+    toaNha: '',
+    lyDoTao: '',
+    dangTao: false,
+    onDoiActionId: () => {},
+    onDoiMaxPerDay: () => {},
+    onDoiGioHetHan: () => {},
+    onDoiMaxAmount: () => {},
+    onDoiToaNha: () => {},
+    onDoiLyDoTao: () => {},
+    onTao: () => {},
+    lyDoThuHoi: '',
+    onDoiLyDoThuHoi: () => {},
+    dangThuHoiId: null,
+    onThuHoi: () => {},
+    lyDoThuHoiTatCa: '',
+    onDoiLyDoThuHoiTatCa: () => {},
+    dangThuHoiTatCa: false,
+    onThuHoiTatCa: () => {},
+    baoCao: null,
+    dangTaiBaoCao: false,
+    coToChuc: true,
+  };
+
+  it('chưa chọn công ty ⇒ chỉ hiện lời nhắc, không hiện form/nút nào', () => {
+    const html = renderToStaticMarkup(<TheUyQuyenDung {...props} coToChuc={false} />);
+    expect(html).toContain('copilot-admin-grant-card');
+    expect(html).not.toContain('copilot-admin-grant-submit');
+    expect(html).not.toContain('copilot-admin-grant-action');
+  });
+
+  it('vẽ đủ form tạo + nút bị KHOÁ khi chưa đủ dữ liệu bắt buộc', () => {
+    const html = renderToStaticMarkup(<TheUyQuyenDung {...props} />);
+    expect(html).toContain('copilot-admin-grant-action');
+    expect(html).toContain('copilot-admin-grant-max-per-day');
+    expect(html).toContain('copilot-admin-grant-expires-hours');
+    expect(html).toContain('copilot-admin-grant-max-amount');
+    expect(html).toContain('copilot-admin-grant-buildings');
+    expect(html).toContain('copilot-admin-grant-reason');
+    // Nút "Cấp hạn mức" disabled khi actionId/lyDoTao còn rỗng.
+    const nut = html.match(/<button[^>]*copilot-admin-grant-submit[^>]*>/)?.[0] ?? '';
+    expect(nut).toContain('disabled=""');
+  });
+
+  it('đủ dữ liệu bắt buộc ⇒ nút "Cấp hạn mức" KHÔNG bị khoá', () => {
+    const html = renderToStaticMarkup(
+      <TheUyQuyenDung
+        {...props}
+        actionId="income_expense.create_draft"
+        maxPerDay="5"
+        gioHetHan="24"
+        lyDoTao="Pilot quý 4"
+      />,
+    );
+    const nut = html.match(/<button[^>]*copilot-admin-grant-submit[^>]*>/)?.[0] ?? '';
+    expect(nut).not.toContain('disabled=""');
+    expect(html).toContain('Cấp hạn mức (cần PIN)');
+  });
+
+  it('bảng danh sách trống ⇒ nói rõ "chưa có hạn mức", không phải bảng rỗng câm lặng', () => {
+    const html = renderToStaticMarkup(<TheUyQuyenDung {...props} />);
+    expect(html).toContain('copilot-admin-grant-table');
+    expect(html).toContain('Chưa có hạn mức nào');
+  });
+
+  it('mỗi hạn mức CÒN hiệu lực có nút Thu hồi; đã thu hồi thì KHÔNG có nút', () => {
+    const html = renderToStaticMarkup(
+      <TheUyQuyenDung
+        {...props}
+        lyDoThuHoi="dọn dẹp"
+        danhSach={[
+          {
+            grantId: GRANT_A,
+            actionId: 'income_expense.create_draft',
+            labelVi: 'Tạo phiếu thu/chi nháp',
+            constraints: {},
+            maxPerDay: 5,
+            usedToday: 1,
+            usedOn: '2026-09-03',
+            expiresAt: '2026-10-01T00:00:00Z',
+            revokedAt: null,
+            revokedBy: null,
+            reason: 'x',
+            granterUserId: 'u1',
+            createdAt: '2026-09-01T00:00:00Z',
+          },
+          {
+            grantId: GRANT_B,
+            actionId: 'income_expense.create_draft',
+            labelVi: 'Tạo phiếu thu/chi nháp',
+            constraints: {},
+            maxPerDay: 5,
+            usedToday: 0,
+            usedOn: null,
+            expiresAt: '2026-09-05T00:00:00Z',
+            revokedAt: '2026-09-02T00:00:00Z',
+            revokedBy: 'u2',
+            reason: 'x',
+            granterUserId: 'u1',
+            createdAt: '2026-09-01T00:00:00Z',
+          },
+        ]}
+      />,
+    );
+    expect((html.match(/data-testid="copilot-admin-grant-revoke"/g) ?? []).length).toBe(1);
+    expect(html).toContain('Còn hiệu lực');
+    expect(html).toContain('Đã thu hồi');
+  });
+
+  it('nút "Thu hồi" của một dòng bị khoá khi CHƯA nhập lý do thu hồi', () => {
+    const html = renderToStaticMarkup(
+      <TheUyQuyenDung
+        {...props}
+        lyDoThuHoi=""
+        danhSach={[
+          {
+            grantId: GRANT_A,
+            actionId: 'income_expense.create_draft',
+            labelVi: 'x',
+            constraints: {},
+            maxPerDay: 5,
+            usedToday: 0,
+            usedOn: null,
+            expiresAt: null,
+            revokedAt: null,
+            revokedBy: null,
+            reason: 'x',
+            granterUserId: null,
+            createdAt: null,
+          },
+        ]}
+      />,
+    );
+    const nut = html.match(/<button[^>]*copilot-admin-grant-revoke[^>]*>/)?.[0] ?? '';
+    expect(nut).toContain('disabled=""');
+  });
+
+  it('kill switch "Thu hồi tất cả" khoá khi lý do < 10 ký tự HOẶC không còn hạn mức sống', () => {
+    const ngan = renderToStaticMarkup(<TheUyQuyenDung {...props} lyDoThuHoiTatCa="ngan" />);
+    const nutNgan = ngan.match(/<button[^>]*copilot-admin-grant-revoke-all[^>]*>/)?.[0] ?? '';
+    expect(nutNgan).toContain('disabled=""');
+
+    const khongConGrant = renderToStaticMarkup(
+      <TheUyQuyenDung {...props} lyDoThuHoiTatCa="Lý do đủ dài để thu hồi tất cả" danhSach={[]} />,
+    );
+    const nutKhongCon = khongConGrant.match(/<button[^>]*copilot-admin-grant-revoke-all[^>]*>/)?.[0] ?? '';
+    expect(nutKhongCon).toContain('disabled=""');
+  });
+
+  it('kill switch mở khi có lý do đủ dài VÀ còn hạn mức sống', () => {
+    const html = renderToStaticMarkup(
+      <TheUyQuyenDung
+        {...props}
+        lyDoThuHoiTatCa="Lý do đủ dài để thu hồi tất cả hạn mức"
+        danhSach={[
+          {
+            grantId: GRANT_A,
+            actionId: 'a',
+            labelVi: 'a',
+            constraints: {},
+            maxPerDay: 1,
+            usedToday: 0,
+            usedOn: null,
+            expiresAt: null,
+            revokedAt: null,
+            revokedBy: null,
+            reason: 'x',
+            granterUserId: null,
+            createdAt: null,
+          },
+        ]}
+      />,
+    );
+    const nut = html.match(/<button[^>]*copilot-admin-grant-revoke-all[^>]*>/)?.[0] ?? '';
+    expect(nut).not.toContain('disabled=""');
+    expect(html).toContain('Thu hồi tất cả (1)');
+  });
+
+  it('báo cáo ngày hiện tổng tiền định dạng VND, mảng rỗng vẫn hiện 0 kế hoạch', () => {
+    const html = renderToStaticMarkup(
+      <TheUyQuyenDung
+        {...props}
+        baoCao={{ ok: true, maLoi: null, thongBao: null, ngay: '2026-09-03', ke: [], tongTien: 0 }}
+      />,
+    );
+    expect(html).toContain('copilot-admin-grant-report');
+    expect(html).toContain('0 kế hoạch tự duyệt');
   });
 });

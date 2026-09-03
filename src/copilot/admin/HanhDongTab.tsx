@@ -23,7 +23,18 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 
 import { dienGiaiLoiKeHoach } from '../chatErrors';
-import { datPin, moKhoaPinStepUp, trangThaiPin, type TrangThaiPin } from '../plan/stepUpClient';
+import { ACTION_CATALOG } from '../plan/actionCatalog';
+import {
+  baoCaoNgayGrant,
+  dsGrant,
+  taoGrant,
+  thuHoiGrant,
+  thuHoiTatCaGrant,
+  type DongGrant,
+  type KetQuaBaoCaoNgay,
+} from '../plan/standingGrantClient';
+import { datPin, moKhoaPinStepUp, tieuTokenStepUp, trangThaiPin, type TrangThaiPin } from '../plan/stepUpClient';
+import StepUpPinModal from '../StepUpPinModal';
 import {
   SO_DONG_SO_MAC_DINH,
   dienGiaiLoiChinhSach,
@@ -226,9 +237,11 @@ export function TheChinhSachHanhDong(props: {
         </fieldset>
       </div>
 
-      {/* Standing grant là cơ chế Mức 3 (G4): chưa có đường THU HỒI nào đo được,
-          nên chưa có nút bật. Hiện trạng thái để người vận hành biết nó đang ở
-          đâu, và khoá lại kèm lý do thay vì giấu đi. */}
+      {/* G5-B đã dựng đủ đường tạo/thu hồi/thu hồi tất cả (thẻ "Uỷ quyền đứng" bên
+          dưới) — cái CÒN THIẾU không phải "đường thu hồi", mà là NÚT BẬT van
+          này: đó là việc của G5-D, để một thứ mở ra cho AI tự duyệt không bị
+          bật bởi một cú bấm không kèm rà soát riêng của nó. Ô này vẫn chỉ-đọc,
+          hiện trạng thái thật để người vận hành biết van đang ở đâu. */}
       <label className="flex items-center gap-2 text-sm text-muted-foreground">
         <input
           type="checkbox"
@@ -437,6 +450,296 @@ export function TheStepUpPin(props: {
   );
 }
 
+/** Tiền tệ VND thô, không dấu phân cách — đủ cho một ô nhập số. */
+function tienSangSo(gt: string): number | undefined {
+  const n = Number(gt.trim());
+  return gt.trim() !== '' && Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/** Danh sách building_id (uuid) phân tách bằng dấu phẩy, hoặc mảng rỗng. */
+function toaSangMang(gt: string): string[] | undefined {
+  const ds = gt
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return ds.length > 0 ? ds : undefined;
+}
+
+/**
+ * Thẻ UỶ QUYỀN ĐỨNG (G5-B, điểm nối #4) — THUẦN, mọi trạng thái động đi qua
+ * props cùng khuôn `TheChinhSachHanhDong`/`TheStepUpPin`.
+ *
+ * BA HÀNH ĐỘNG GHI, BA MỨC XÁC THỰC KHÁC NHAU
+ *   Tạo đòi step-up PIN (mở cửa tự duyệt cho AI thì phải xác thực hai lớp,
+ *   cùng cửa với duyệt L5 dưới trần L5). Thu hồi MỘT hạn mức không đòi gì
+ *   ngoài super admin — đóng một cửa dễ hơn mở. "Thu hồi TẤT CẢ" là kill
+ *   switch riêng của cơ chế này: cùng không đòi PIN (một sự cố cần tắt NGAY,
+ *   không phải lúc để bắt người trực nhớ mật khẩu và bấm thêm một bước), NHƯNG
+ *   đòi một câu lý do đủ dài vì nó ảnh hưởng tới MỌI hạn mức của cả tổ chức.
+ */
+export function TheUyQuyenDung(props: {
+  danhSach: readonly DongGrant[];
+  dangTaiDs: boolean;
+  danhSachHanhDong: readonly { actionId: string; labelVi: string }[];
+  actionId: string;
+  maxPerDay: string;
+  gioHetHan: string;
+  maxAmount: string;
+  toaNha: string;
+  lyDoTao: string;
+  dangTao: boolean;
+  onDoiActionId: (gt: string) => void;
+  onDoiMaxPerDay: (gt: string) => void;
+  onDoiGioHetHan: (gt: string) => void;
+  onDoiMaxAmount: (gt: string) => void;
+  onDoiToaNha: (gt: string) => void;
+  onDoiLyDoTao: (gt: string) => void;
+  onTao: () => void;
+  lyDoThuHoi: string;
+  onDoiLyDoThuHoi: (gt: string) => void;
+  dangThuHoiId: string | null;
+  onThuHoi: (grantId: string) => void;
+  lyDoThuHoiTatCa: string;
+  onDoiLyDoThuHoiTatCa: (gt: string) => void;
+  dangThuHoiTatCa: boolean;
+  onThuHoiTatCa: () => void;
+  baoCao: KetQuaBaoCaoNgay | null;
+  dangTaiBaoCao: boolean;
+  coToChuc: boolean;
+}) {
+  const soNguyen = (gt: string) => {
+    const n = Number(gt.trim());
+    return Number.isInteger(n) && n > 0;
+  };
+  const duLieuDuTao = Boolean(
+    props.actionId && soNguyen(props.maxPerDay) && soNguyen(props.gioHetHan) && props.lyDoTao.trim(),
+  );
+  const duLieuDuThuHoiTatCa = props.lyDoThuHoiTatCa.trim().length >= 10;
+  const conSong = props.danhSach.filter((g) => !g.revokedAt);
+
+  return (
+    <div className="space-y-3 rounded border p-3" data-testid="copilot-admin-grant-card">
+      <div>
+        <div className="text-sm font-medium">Uỷ quyền đứng</div>
+        <div className="text-xs text-muted-foreground">
+          Cấp trước một hạn mức cho MỘT hành động, theo NGÀY, tối đa 30 ngày. Khi van "uỷ quyền
+          đứng" (thẻ Chính sách hành động ở trên) đang mở và mọi bước của một kế hoạch đều được
+          một hạn mức còn hiệu lực phủ, kế hoạch tự duyệt — không ai bấm.
+        </div>
+      </div>
+
+      {!props.coToChuc ? (
+        <div className="text-sm text-muted-foreground">Chọn công ty ở mục sổ hành động bên dưới trước.</div>
+      ) : (
+        <>
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="text-sm">
+              Hành động
+              <select
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                data-testid="copilot-admin-grant-action"
+                value={props.actionId}
+                disabled={props.dangTao}
+                onChange={(e) => props.onDoiActionId(e.target.value)}
+              >
+                <option value="">Chọn hành động</option>
+                {props.danhSachHanhDong.map((a) => (
+                  <option key={a.actionId} value={a.actionId}>
+                    {a.labelVi} ({a.actionId})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Hạn mức mỗi ngày
+              <Input
+                type="number"
+                min={1}
+                max={200}
+                data-testid="copilot-admin-grant-max-per-day"
+                value={props.maxPerDay}
+                disabled={props.dangTao}
+                onChange={(e) => props.onDoiMaxPerDay(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Hết hạn sau (giờ)
+              <Input
+                type="number"
+                min={1}
+                max={720}
+                data-testid="copilot-admin-grant-expires-hours"
+                value={props.gioHetHan}
+                disabled={props.dangTao}
+                onChange={(e) => props.onDoiGioHetHan(e.target.value)}
+                placeholder="tối đa 720 (30 ngày)"
+              />
+            </label>
+            <label className="text-sm">
+              Số tiền tối đa mỗi lần (tuỳ chọn)
+              <Input
+                type="number"
+                min={1}
+                data-testid="copilot-admin-grant-max-amount"
+                value={props.maxAmount}
+                disabled={props.dangTao}
+                onChange={(e) => props.onDoiMaxAmount(e.target.value)}
+                placeholder="Để trống = không giới hạn"
+              />
+            </label>
+            <label className="text-sm md:col-span-2">
+              Chỉ áp dụng cho toà (tuỳ chọn)
+              <Input
+                data-testid="copilot-admin-grant-buildings"
+                value={props.toaNha}
+                disabled={props.dangTao}
+                onChange={(e) => props.onDoiToaNha(e.target.value)}
+                placeholder="building_id (uuid), cách nhau bằng dấu phẩy — để trống = mọi toà"
+              />
+            </label>
+          </div>
+          <label className="block text-sm">
+            Lý do cấp (bắt buộc)
+            <Input
+              data-testid="copilot-admin-grant-reason"
+              value={props.lyDoTao}
+              disabled={props.dangTao}
+              onChange={(e) => props.onDoiLyDoTao(e.target.value)}
+              placeholder="Vì sao cần tự duyệt hành động này"
+            />
+          </label>
+          <Button
+            size="sm"
+            data-testid="copilot-admin-grant-submit"
+            disabled={!duLieuDuTao || props.dangTao}
+            onClick={props.onTao}
+          >
+            {props.dangTao ? 'Đang xác thực PIN…' : 'Cấp hạn mức (cần PIN)'}
+          </Button>
+
+          <div className="border-t pt-3">
+            <div className="mb-2 text-sm font-medium">
+              Hạn mức đang có ({conSong.length} còn hiệu lực / {props.danhSach.length} tổng)
+            </div>
+            <div className="overflow-x-auto rounded border" data-testid="copilot-admin-grant-table">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left">
+                  <tr>
+                    <th className="p-2">Hành động</th>
+                    <th className="p-2">Hạn mức/ngày</th>
+                    <th className="p-2">Đã dùng hôm nay</th>
+                    <th className="p-2">Hết hạn</th>
+                    <th className="p-2">Trạng thái</th>
+                    <th className="p-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.dangTaiDs && props.danhSach.length === 0 ? (
+                    <tr>
+                      <td className="p-3 text-muted-foreground" colSpan={6}>Đang tải…</td>
+                    </tr>
+                  ) : props.danhSach.length === 0 ? (
+                    <tr>
+                      <td className="p-3 text-muted-foreground" colSpan={6}>
+                        Chưa có hạn mức nào cho công ty này.
+                      </td>
+                    </tr>
+                  ) : (
+                    props.danhSach.map((g) => (
+                      <tr key={g.grantId} className="border-t align-top" data-testid="copilot-admin-grant-row">
+                        <td className="p-2 font-mono text-xs">{g.actionId}</td>
+                        <td className="p-2">{g.maxPerDay}</td>
+                        <td className="p-2">{g.usedToday}</td>
+                        <td className="p-2 text-xs">{dinhDangThoiGian(g.expiresAt)}</td>
+                        <td className="p-2 text-xs">
+                          {g.revokedAt ? (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5">Đã thu hồi</span>
+                          ) : (
+                            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
+                              Còn hiệu lực
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-2">
+                          {!g.revokedAt && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              data-testid="copilot-admin-grant-revoke"
+                              disabled={props.dangThuHoiId === g.grantId || !props.lyDoThuHoi.trim()}
+                              onClick={() => props.onThuHoi(g.grantId)}
+                            >
+                              {props.dangThuHoiId === g.grantId ? 'Đang thu hồi…' : 'Thu hồi'}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <label className="mt-2 block text-sm">
+              Lý do thu hồi (dùng cho nút "Thu hồi" của từng dòng ở trên)
+              <Input
+                data-testid="copilot-admin-grant-revoke-reason"
+                value={props.lyDoThuHoi}
+                onChange={(e) => props.onDoiLyDoThuHoi(e.target.value)}
+                placeholder="Vì sao thu hồi hạn mức này"
+              />
+            </label>
+          </div>
+
+          <div className="space-y-2 border-t pt-3">
+            <div className="text-sm font-medium text-red-700">
+              Thu hồi TẤT CẢ hạn mức của công ty này — kill switch
+            </div>
+            <label className="block text-sm">
+              Lý do (bắt buộc, ít nhất 10 ký tự)
+              <Input
+                data-testid="copilot-admin-grant-revoke-all-reason"
+                value={props.lyDoThuHoiTatCa}
+                disabled={props.dangThuHoiTatCa}
+                onChange={(e) => props.onDoiLyDoThuHoiTatCa(e.target.value)}
+                placeholder="Ví dụ: nghi ngờ một hạn mức bị cấp sai phạm vi, tắt hết trong lúc soát"
+              />
+            </label>
+            <Button
+              size="sm"
+              variant="destructive"
+              data-testid="copilot-admin-grant-revoke-all"
+              disabled={!duLieuDuThuHoiTatCa || props.dangThuHoiTatCa || conSong.length === 0}
+              onClick={props.onThuHoiTatCa}
+            >
+              {props.dangThuHoiTatCa ? 'Đang thu hồi…' : `Thu hồi tất cả (${conSong.length})`}
+            </Button>
+          </div>
+
+          <div className="border-t pt-3">
+            <div className="mb-2 text-sm font-medium">Báo cáo ngày</div>
+            {props.dangTaiBaoCao && !props.baoCao ? (
+              <div className="text-sm text-muted-foreground">Đang tải báo cáo…</div>
+            ) : props.baoCao ? (
+              <div className="text-sm" data-testid="copilot-admin-grant-report">
+                <div>
+                  Ngày <span className="font-mono">{props.baoCao.ngay ?? '—'}</span>: {props.baoCao.ke.length} kế
+                  hoạch tự duyệt, tổng tiền{' '}
+                  <span className="font-mono">
+                    {props.baoCao.tongTien !== null ? props.baoCao.tongTien.toLocaleString('vi-VN') : '—'}
+                  </span>{' '}
+                  đ.
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">Không đọc được báo cáo.</div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function HanhDongTab() {
   const qc = useQueryClient();
   // Sổ đã tự giới hạn ở server (người thường chỉ thấy dòng của mình), nên mục
@@ -504,6 +807,115 @@ export default function HanhDongTab() {
       setMoKhoaLyDo('');
     },
     onError: (loi) => toast.error(dienGiaiLoiPin(loi)),
+  });
+
+  // ── Uỷ quyền đứng (G5-B, điểm nối #4) ──────────────────────────────────
+  const [grantActionId, setGrantActionId] = useState('');
+  const [grantMaxPerDay, setGrantMaxPerDay] = useState('1');
+  const [grantGioHetHan, setGrantGioHetHan] = useState('24');
+  const [grantMaxAmount, setGrantMaxAmount] = useState('');
+  const [grantToaNha, setGrantToaNha] = useState('');
+  const [grantLyDoTao, setGrantLyDoTao] = useState('');
+  const [grantHienModalPin, setGrantHienModalPin] = useState(false);
+  const [grantLyDoThuHoi, setGrantLyDoThuHoi] = useState('');
+  const [grantDangThuHoiId, setGrantDangThuHoiId] = useState<string | null>(null);
+  const [grantLyDoThuHoiTatCa, setGrantLyDoThuHoiTatCa] = useState('');
+
+  const danhSachHanhDongGrant = useMemo(
+    () =>
+      Object.values(ACTION_CATALOG).map((a) => ({ actionId: a.actionId, labelVi: a.labelVi })),
+    [],
+  );
+
+  const dsGrantQuery = useQuery({
+    queryKey: ['copilot-standing-grants', selectedOrganizationId ?? null],
+    enabled: Boolean(selectedOrganizationId),
+    retry: false,
+    queryFn: async () => {
+      const kq = await dsGrant(selectedOrganizationId as string);
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq.danhSach;
+    },
+  });
+
+  const baoCaoGrantQuery = useQuery({
+    queryKey: ['copilot-standing-grants-report', selectedOrganizationId ?? null],
+    enabled: Boolean(selectedOrganizationId),
+    retry: false,
+    queryFn: async () => {
+      const kq = await baoCaoNgayGrant(selectedOrganizationId as string);
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq;
+    },
+  });
+
+  /**
+   * Cấp hạn mức: mở modal PIN, `onXacThucXong` mới thật sự gọi `taoGrant` — cùng
+   * khuôn `KeHoachCard.bam()` (modal xong rồi mới `tieuTokenStepUp` + gọi RPC).
+   * KHÔNG dùng `useMutation` ở nhánh mở modal: mutation chỉ chạy SAU khi có token.
+   */
+  const taoGrantMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedOrganizationId) throw new Error('organization_required');
+      const token = tieuTokenStepUp(selectedOrganizationId);
+      if (!token) throw new Error('step_up_required');
+      const han = new Date(Date.now() + Number(grantGioHetHan) * 60 * 60_000).toISOString();
+      const kq = await taoGrant({
+        organizationId: selectedOrganizationId,
+        actionId: grantActionId,
+        constraints: {
+          ...(tienSangSo(grantMaxAmount) === undefined ? {} : { maxAmount: tienSangSo(grantMaxAmount) }),
+          ...(toaSangMang(grantToaNha) === undefined ? {} : { buildingIds: toaSangMang(grantToaNha) }),
+        },
+        maxPerDay: Number(grantMaxPerDay),
+        expiresAt: han,
+        reason: grantLyDoTao.trim(),
+        stepUpToken: token,
+      });
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq;
+    },
+    onSuccess: async () => {
+      toast.success('Đã cấp hạn mức uỷ quyền đứng.');
+      setGrantActionId('');
+      setGrantMaxPerDay('1');
+      setGrantGioHetHan('24');
+      setGrantMaxAmount('');
+      setGrantToaNha('');
+      setGrantLyDoTao('');
+      await qc.invalidateQueries({ queryKey: ['copilot-standing-grants'] });
+    },
+    onError: (loi) => toast.error(dienGiaiLoiKeHoach(loi instanceof Error ? loi.message : String(loi))),
+  });
+
+  const thuHoiGrantMutation = useMutation({
+    mutationFn: async (grantId: string) => {
+      setGrantDangThuHoiId(grantId);
+      const kq = await thuHoiGrant(grantId, grantLyDoThuHoi.trim());
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq;
+    },
+    onSuccess: async () => {
+      toast.success('Đã thu hồi hạn mức.');
+      await qc.invalidateQueries({ queryKey: ['copilot-standing-grants'] });
+    },
+    onError: (loi) => toast.error(dienGiaiLoiKeHoach(loi instanceof Error ? loi.message : String(loi))),
+    onSettled: () => setGrantDangThuHoiId(null),
+  });
+
+  const thuHoiTatCaGrantMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedOrganizationId) throw new Error('organization_required');
+      const kq = await thuHoiTatCaGrant(selectedOrganizationId, grantLyDoThuHoiTatCa.trim());
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq;
+    },
+    onSuccess: async (kq) => {
+      toast.success(`Đã thu hồi ${kq.soLuongThuHoi ?? 0} hạn mức.`);
+      setGrantLyDoThuHoiTatCa('');
+      await qc.invalidateQueries({ queryKey: ['copilot-standing-grants'] });
+    },
+    onError: (loi) => toast.error(dienGiaiLoiKeHoach(loi instanceof Error ? loi.message : String(loi))),
   });
 
   const chinhSachQuery = useQuery({
@@ -597,6 +1009,51 @@ export default function HanhDongTab() {
         onDoiMoKhoaLyDo={setMoKhoaLyDo}
         onMoKhoa={() => moKhoaMutation.mutate()}
       />
+
+      {laSuperAdmin ? (
+        <>
+          <TheUyQuyenDung
+            danhSach={dsGrantQuery.data ?? []}
+            dangTaiDs={dsGrantQuery.isLoading}
+            danhSachHanhDong={danhSachHanhDongGrant}
+            actionId={grantActionId}
+            maxPerDay={grantMaxPerDay}
+            gioHetHan={grantGioHetHan}
+            maxAmount={grantMaxAmount}
+            toaNha={grantToaNha}
+            lyDoTao={grantLyDoTao}
+            dangTao={taoGrantMutation.isPending || grantHienModalPin}
+            onDoiActionId={setGrantActionId}
+            onDoiMaxPerDay={setGrantMaxPerDay}
+            onDoiGioHetHan={setGrantGioHetHan}
+            onDoiMaxAmount={setGrantMaxAmount}
+            onDoiToaNha={setGrantToaNha}
+            onDoiLyDoTao={setGrantLyDoTao}
+            onTao={() => setGrantHienModalPin(true)}
+            lyDoThuHoi={grantLyDoThuHoi}
+            onDoiLyDoThuHoi={setGrantLyDoThuHoi}
+            dangThuHoiId={grantDangThuHoiId}
+            onThuHoi={(grantId) => thuHoiGrantMutation.mutate(grantId)}
+            lyDoThuHoiTatCa={grantLyDoThuHoiTatCa}
+            onDoiLyDoThuHoiTatCa={setGrantLyDoThuHoiTatCa}
+            dangThuHoiTatCa={thuHoiTatCaGrantMutation.isPending}
+            onThuHoiTatCa={() => thuHoiTatCaGrantMutation.mutate()}
+            baoCao={baoCaoGrantQuery.data ?? null}
+            dangTaiBaoCao={baoCaoGrantQuery.isLoading}
+            coToChuc={Boolean(selectedOrganizationId)}
+          />
+          {grantHienModalPin && selectedOrganizationId && (
+            <StepUpPinModal
+              organizationId={selectedOrganizationId}
+              onXacThucXong={() => {
+                setGrantHienModalPin(false);
+                taoGrantMutation.mutate();
+              }}
+              onHuy={() => setGrantHienModalPin(false)}
+            />
+          )}
+        </>
+      ) : null}
 
       <div className="space-y-2 rounded border p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
