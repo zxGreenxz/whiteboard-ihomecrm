@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T20:37:47.380Z",
+  "generatedAt": "2026-09-03T21:08:07.797Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 486,
-    "unknown": 81,
+    "ledger-applied": 494,
+    "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9206,12 +9206,9 @@
       "name": "copilot_action_ie_duyet_v1",
       "scheme": "timestamp14",
       "sha256": "605da66db82aef83b3af5d7235146e7ddda992237c322ea0b2e003e33a452975",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.copilot_l5_plan_context_ok_v1",
-        "function:public.copilot_preview_ie_duyet_v1",
-        "function:public.copilot_execute_ie_duyet_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T20:49:35.786Z|bien-nhan-backup"
       ]
     },
     {
@@ -9220,12 +9217,9 @@
       "name": "copilot_action_ie_duyet_vao_so_v1",
       "scheme": "timestamp14",
       "sha256": "ecf0d1937baac929b1c02776e813b09fb15fb4b158a4430f470266432b1c3b79",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.copilot_l5_plan_context_ok_v1",
-        "function:public.copilot_preview_ie_duyet_vao_so_v1",
-        "function:public.copilot_execute_ie_duyet_vao_so_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T20:52:19.296Z|bien-nhan-backup"
       ]
     },
     {
@@ -9234,12 +9228,9 @@
       "name": "copilot_action_ie_vao_so_v1",
       "scheme": "timestamp14",
       "sha256": "b355257578d74ab8b323d4b710935dba1b04d6284d086ebfc830f9f770b3a565",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.copilot_l5_plan_context_ok_v1",
-        "function:public.copilot_preview_ie_vao_so_v1",
-        "function:public.copilot_execute_ie_vao_so_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T20:55:03.498Z|bien-nhan-backup"
       ]
     },
     {
@@ -9248,12 +9239,9 @@
       "name": "copilot_action_invoice_duyet_v1",
       "scheme": "timestamp14",
       "sha256": "cd8a5f74c4fb987be06f9517914d42cb67e0bc9894dbf36560decf4f618b0970",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.copilot_l5_plan_context_ok_v1",
-        "function:public.copilot_preview_invoice_duyet_v1",
-        "function:public.copilot_execute_invoice_duyet_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T20:57:47.870Z|bien-nhan-backup"
       ]
     },
     {
@@ -9262,12 +9250,9 @@
       "name": "copilot_action_invoice_xoa_mem_v1",
       "scheme": "timestamp14",
       "sha256": "f7011c35bc587006a852a31adba783d4638775e544acb6db20418c8f8cf152bb",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.copilot_l5_plan_context_ok_v1",
-        "function:public.copilot_preview_invoice_xoa_mem_v1",
-        "function:public.copilot_execute_invoice_xoa_mem_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T21:00:32.814Z|bien-nhan-backup"
       ]
     },
     {
@@ -9276,12 +9261,9 @@
       "name": "copilot_action_meter_reading_duyet_v1",
       "scheme": "timestamp14",
       "sha256": "4cee0a9841d2ca7ae99fbd1ba0aa1645c3790eb3c0b0ec1fc5f6d1b1c502d634",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.copilot_l5_plan_context_ok_v1",
-        "function:public.copilot_preview_meter_reading_duyet_v1",
-        "function:public.copilot_execute_meter_reading_duyet_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T21:03:12.545Z|bien-nhan-backup"
       ]
     },
     {
@@ -9290,12 +9272,9 @@
       "name": "copilot_action_contract_duyet_thanh_ly_v1",
       "scheme": "timestamp14",
       "sha256": "d4d5a054c68c4674cc36c4f1a1958023e07882041897a33d1c06d6aeeef23ae7",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.copilot_l5_plan_context_ok_v1",
-        "function:public.copilot_preview_contract_duyet_thanh_ly_v1",
-        "function:public.copilot_execute_contract_duyet_thanh_ly_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T21:05:40.651Z|bien-nhan-backup"
       ]
     },
     {
@@ -9304,12 +9283,9 @@
       "name": "copilot_action_customer_xoa_mem_v1",
       "scheme": "timestamp14",
       "sha256": "e7cbec09b5bcfe8622c460b0d000a2977e5b70880b066f6176754779646cd999",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.copilot_l5_plan_context_ok_v1",
-        "function:public.copilot_preview_customer_xoa_mem_v1",
-        "function:public.copilot_execute_customer_xoa_mem_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T21:08:02.339Z|bien-nhan-backup"
       ]
     },
     {

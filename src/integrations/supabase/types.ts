@@ -18826,6 +18826,26 @@ export type Database = {
           shortfall_short: number
         }[]
       }
+      copilot_execute_contract_duyet_thanh_ly_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_execute_customer_xoa_mem_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_execute_ie_duyet_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_execute_ie_duyet_vao_so_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_execute_ie_vao_so_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
       copilot_execute_income_expense_annotate_v1: {
         Args: { p_confirmation_nonce: string; p_payload: Json }
         Returns: Json
@@ -18835,6 +18855,18 @@ export type Database = {
         Returns: Json
       }
       copilot_execute_income_expense_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_execute_invoice_duyet_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_execute_invoice_xoa_mem_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_execute_meter_reading_duyet_v1: {
         Args: { p_confirmation_nonce: string; p_payload: Json }
         Returns: Json
       }
@@ -19055,6 +19087,26 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_preview_contract_duyet_thanh_ly_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_customer_xoa_mem_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_ie_duyet_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_ie_duyet_vao_so_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_ie_vao_so_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
       copilot_preview_income_expense_annotate_v1: {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: Json
@@ -19064,6 +19116,18 @@ export type Database = {
         Returns: Json
       }
       copilot_preview_income_expense_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_invoice_duyet_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_invoice_xoa_mem_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_meter_reading_duyet_v1: {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: Json
       }
