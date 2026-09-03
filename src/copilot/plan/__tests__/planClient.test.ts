@@ -138,6 +138,36 @@ describe('taoKeHoach', () => {
     expect(kq.daTonTai).toBe(true);
     expect(layXacNhanDangCho(Date.now(), khoaYKeHoach(PLAN), undefined, 'ke_hoach')).toBeNull();
   });
+
+  // G5-B — điểm nối #4: uỷ quyền đứng phủ hết mọi bước. Server trả
+  // `consent_nonce: null` (không nonce nào phát) kèm `tu_duyet_theo_uy_quyen`.
+  it('tự duyệt theo uỷ quyền đứng ⇒ vẫn đặt khe (nonce rỗng) để thẻ đọc được kế hoạch', async () => {
+    const GRANT = 'ffff0000-0000-4000-8000-000000000009';
+    rpc.mockResolvedValueOnce(
+      tra({
+        ...keHoach({
+          plan_status: 'APPROVED',
+          execute_deadline: new Date(Date.now() + 30 * 60_000).toISOString(),
+        }),
+        consent_nonce: null,
+        da_ton_tai: false,
+        tu_duyet_theo_uy_quyen: [GRANT],
+      }),
+    );
+    const kq = await taoKeHoach({ organizationId: ORG, clientRequestId: 'req-3', buoc: [] });
+    expect(kq.maLoi).toBeNull();
+    expect(kq.keHoach?.standingGrantIds).toEqual([GRANT]);
+    expect(kq.keHoach?.planStatus).toBe('APPROVED');
+    const khe = layXacNhanDangCho(Date.now(), khoaYKeHoach(PLAN), undefined, 'ke_hoach');
+    expect(khe?.nonce).toBe('');
+    expect((khe?.preview.ke_hoach as { standingGrantIds: string[] } | undefined)?.standingGrantIds).toEqual([GRANT]);
+  });
+
+  it('kế hoạch DRAFT bình thường ⇒ standingGrantIds là null, không đi nhánh tự duyệt', async () => {
+    rpc.mockResolvedValueOnce(tra({ ...keHoach(), consent_nonce: NONCE, da_ton_tai: false }));
+    const kq = await taoKeHoach({ organizationId: ORG, clientRequestId: 'req-4', buoc: [] });
+    expect(kq.keHoach?.standingGrantIds).toBeNull();
+  });
 });
 
 describe('chuanHoaKeHoach', () => {
@@ -155,6 +185,15 @@ describe('chuanHoaKeHoach', () => {
   it('hình dạng không đọc được ⇒ null, không phải một kế hoạch rỗng', () => {
     expect(chuanHoaKeHoach(null)).toBeNull();
     expect(chuanHoaKeHoach({ plan_id: PLAN })).toBeNull();
+  });
+
+  it('standingGrantIds đọc từ tu_duyet_theo_uy_quyen; mảng rỗng/vắng mặt ⇒ null', () => {
+    const GRANT = 'ffff0000-0000-4000-8000-000000000009';
+    expect(chuanHoaKeHoach({ ...keHoach(), tu_duyet_theo_uy_quyen: [GRANT] })?.standingGrantIds).toEqual([
+      GRANT,
+    ]);
+    expect(chuanHoaKeHoach({ ...keHoach(), tu_duyet_theo_uy_quyen: [] })?.standingGrantIds).toBeNull();
+    expect(chuanHoaKeHoach(keHoach())?.standingGrantIds).toBeNull();
   });
 });
 

@@ -47,6 +47,7 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { from, rpc } }));
 
 const {
   SCHEMA_LAP_KE_HOACH,
+  TEXT_TU_DUYET_UY_QUYEN,
   TOOL_KE_HOACH,
   daDuocDuyet,
   lapKeHoach,
@@ -241,6 +242,35 @@ describe('lap_ke_hoach', () => {
       ctxVoi(snapshot('enabled')),
     );
     expect(text).toContain('vượt trần rủi ro');
+  });
+
+  // G5-B — điểm nối #4: uỷ quyền đứng phủ hết mọi bước ⇒ server trả
+  // `consent_nonce: null` + `tu_duyet_theo_uy_quyen`. Tool phải nói cho mô
+  // hình gọi `thuc_thi_buoc` NGAY, không mời người dùng bấm một cái nút không
+  // tồn tại — và tuyệt đối không đặt nonce nào vào khe (không có gì để tiêu).
+  it('tự duyệt theo uỷ quyền đứng ⇒ nói NGAY gọi thuc_thi_buoc, không mời bấm', async () => {
+    const GRANT = 'ffff0000-0000-4000-8000-000000000009';
+    rpc.mockResolvedValueOnce(
+      tra({
+        ...keHoach({ plan_status: 'APPROVED', execute_deadline: new Date(Date.now() + 30 * 60_000).toISOString() }),
+        consent_nonce: null,
+        da_ton_tai: false,
+        tu_duyet_theo_uy_quyen: [GRANT],
+      }),
+    );
+    const text = await lapKeHoach.execute(
+      {
+        muc_tieu: 'Ghi chỉ số rồi lập phiếu',
+        cac_buoc: [{ hanh_dong: 'income_expense.create_draft', du_lieu: { so_tien: 2_000_000 } }],
+      },
+      ctxVoi(snapshot('enabled')),
+    );
+    expect(text).toContain(TEXT_TU_DUYET_UY_QUYEN);
+    expect(text).toContain(GRANT);
+    expect(text).not.toMatch(/CHỜ NGƯỜI DÙNG BẤM/);
+    expect(text).not.toMatch(/KHÔNG CÓ CÁCH NÀO TỰ LÀM/);
+    // Không nonce nào phát ra — không có gì để `duyetKeHoach` tiêu.
+    expect(layXacNhanDangCho(Date.now(), khoaYKeHoach(PLAN), undefined, 'ke_hoach')?.nonce).toBe('');
   });
 
   it('schema chặn kế hoạch rỗng và kế hoạch quá 8 bước', () => {

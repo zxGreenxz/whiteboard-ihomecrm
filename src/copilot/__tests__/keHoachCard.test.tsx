@@ -33,6 +33,7 @@ const {
   keHoachDaTat,
   keHoachTuKhe,
   nhanRuiRo,
+  nhanTieuDeKeHoach,
   nhanTrangThaiKeHoach,
   nhipTiepTheo,
   tinNhanDaDuyet,
@@ -90,6 +91,7 @@ const keHoach = (them: Partial<KeHoach> = {}): KeHoach => ({
   expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
   executeDeadline: null,
   failureReason: null,
+  standingGrantIds: null,
   steps: [buoc(1), buoc(2, { risk: 'L5', executorKind: 'maker_submit_v1', labelVi: 'Nộp hồ sơ' })],
   ...them,
 });
@@ -177,6 +179,54 @@ describe('thẻ chỉ hiện khi khe `ke_hoach` có đề xuất', () => {
     const html = renderToStaticMarkup(<KeHoachCard {...props} />);
     expect(html).toContain('copilot-plan-card');
     expect(html).not.toContain('copilot-plan-approve');
+  });
+});
+
+// G5-B — điểm nối #4: kế hoạch tới thẳng ở trạng thái APPROVED vì một hạn mức
+// uỷ quyền đứng đã phủ hết mọi bước lúc lập. KHÔNG có cú bấm nào để chờ, nên
+// thẻ phải: (a) nói RÕ nguồn gốc "tự duyệt", khác hẳn câu APPROVED chung
+// chung của đường bấm tay/PIN; (b) không hiện nút Duyệt/Huỷ nào (đường DRAFT
+// không còn áp dụng). Hiệu ứng poll-lại-trạng-thái không đo được ở đây (không
+// có jsdom, `useEffect` không chạy dưới `renderToStaticMarkup`) — xem ghi chú
+// đầu file.
+describe('G5-B — kế hoạch tự duyệt theo uỷ quyền đứng', () => {
+  const GRANT = 'ffff0000-0000-4000-8000-000000000009';
+
+  it('nhanTieuDeKeHoach: chỉ hiện nhãn đặc biệt khi APPROVED VÀ có standingGrantIds', () => {
+    expect(
+      nhanTieuDeKeHoach({ planStatus: 'APPROVED', standingGrantIds: [GRANT] }),
+    ).toBe(`Đã tự duyệt theo uỷ quyền #${GRANT.slice(0, 8)} — đang chạy`);
+    // APPROVED bằng bấm tay/PIN (standingGrantIds null) ⇒ nhãn chung như cũ.
+    expect(nhanTieuDeKeHoach({ planStatus: 'APPROVED', standingGrantIds: null })).toBe(
+      'đã duyệt — đang chạy',
+    );
+    // standingGrantIds có nhưng KHÔNG còn APPROVED (đã DONE) ⇒ nhãn kết thúc,
+    // không phải nhãn tự duyệt — nguồn gốc duyệt không quan trọng bằng kết quả.
+    expect(nhanTieuDeKeHoach({ planStatus: 'DONE', standingGrantIds: [GRANT] })).toBe(
+      'đã chạy xong',
+    );
+  });
+
+  it('thẻ vẽ nhãn tự duyệt NGAY từ lần render đầu, không nút Duyệt/Huỷ nào', () => {
+    datKheKeHoach(
+      keHoach({
+        planStatus: 'APPROVED',
+        standingGrantIds: [GRANT],
+        executeDeadline: new Date(Date.now() + 30 * 60_000).toISOString(),
+      }),
+    );
+    const html = renderToStaticMarkup(<KeHoachCard {...props} />);
+    expect(html).toContain('copilot-plan-card');
+    expect(html).toContain(`Đã tự duyệt theo uỷ quyền #${GRANT.slice(0, 8)} — đang chạy`);
+    expect(html).not.toContain('copilot-plan-approve');
+    expect(html).not.toContain('copilot-plan-cancel');
+  });
+
+  it('kế hoạch APPROVED bình thường (bấm tay/PIN) vẫn dùng nhãn chung, không bịa uỷ quyền', () => {
+    datKheKeHoach(keHoach({ planStatus: 'APPROVED', standingGrantIds: null }));
+    const html = renderToStaticMarkup(<KeHoachCard {...props} />);
+    expect(html).toContain('đã duyệt — đang chạy');
+    expect(html).not.toContain('Đã tự duyệt theo uỷ quyền');
   });
 });
 

@@ -3,7 +3,7 @@
 // `organization_required` hay `rollout_unavailable: công cụ "..."` và không biết
 // phải làm gì. Đây đều là những lỗi CÓ HÀNH ĐỘNG SỬA rõ ràng.
 import { describe, expect, it } from 'vitest';
-import { THONG_BAO_CHUA_CHON_TO_CHUC, dienGiaiLoiChat } from '../chatErrors';
+import { THONG_BAO_CHUA_CHON_TO_CHUC, dienGiaiLoiChat, dienGiaiLoiKeHoach } from '../chatErrors';
 
 describe('dienGiaiLoiChat', () => {
   it('thiếu tổ chức: bảo thẳng phải chọn tổ chức', () => {
@@ -129,5 +129,48 @@ describe('dienGiaiLoiChat', () => {
 
   it('chuỗi rỗng cũng không làm vỡ định dạng', () => {
     expect(dienGiaiLoiChat('')).toBe('Lỗi: ');
+  });
+});
+
+// G5-B — điểm nối #4: 12 mã của uỷ quyền đứng phải có câu riêng, không rơi
+// vào `Lỗi kế hoạch: <mã trần>` của `dienGiaiLoiKeHoach`.
+describe('dienGiaiLoiKeHoach — uỷ quyền đứng (G5-B)', () => {
+  it('mỗi mã grant_*/standing_* có câu tiếng Việt riêng, không phải mã trần', () => {
+    const ma = [
+      'standing_grant_not_permitted',
+      'standing_grants_disabled',
+      'action_not_grantable',
+      'grant_expires_invalid',
+      'grant_expired',
+      'grant_max_per_day_invalid',
+      'grant_limit',
+      'grant_action_required',
+      'grant_constraints_invalid',
+      'grant_already_revoked',
+      'grant_not_found',
+      'grant_reason_required',
+    ];
+    for (const m of ma) {
+      const cau = dienGiaiLoiKeHoach(m);
+      expect(cau, m).not.toBe(`Lỗi kế hoạch: ${m}`);
+      expect(cau, m).not.toContain(m);
+    }
+  });
+
+  it('`standing_grant_not_permitted` không bị `not_permitted` chung nuốt mất — mã dài đứng trước', () => {
+    expect(dienGiaiLoiKeHoach('standing_grant_not_permitted')).not.toBe(
+      dienGiaiLoiKeHoach('not_permitted'),
+    );
+    expect(dienGiaiLoiKeHoach('standing_grant_not_permitted')).toContain('uỷ quyền đứng');
+  });
+
+  it('`grant_reason_required` không bị `reason_required` chung nuốt mất — mã dài đứng trước', () => {
+    expect(dienGiaiLoiKeHoach('grant_reason_required')).not.toBe(
+      dienGiaiLoiKeHoach('reason_required'),
+    );
+  });
+
+  it('`grant_expired` và `grant_expires_invalid` là HAI mã khác nhau, không lẫn vào nhau', () => {
+    expect(dienGiaiLoiKeHoach('grant_expired')).not.toBe(dienGiaiLoiKeHoach('grant_expires_invalid'));
   });
 });

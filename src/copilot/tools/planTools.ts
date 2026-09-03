@@ -117,16 +117,36 @@ export const TEXT_CHO_NGUOI_BAM =
   'và mời họ kiểm tra rồi bấm. Chỉ khi hệ thống báo là người dùng đã bấm, bạn mới gọi ' +
   'thuc_thi_buoc.';
 
+/**
+ * G5-B — điểm nối #4. Câu nói cho nhánh KHÔNG có cú bấm nào: kế hoạch đã tự
+ * duyệt theo uỷ quyền đứng ngay lúc lập. Đối xứng với `TEXT_CHO_NGUOI_BAM`
+ * (một câu là "bạn không làm được", câu kia là "bạn PHẢI làm ngay") — cả hai
+ * đứng NGOÀI thân tool vì cùng lý do: bộ dò của
+ * `scripts/check-copilot-forbidden-actions.mjs` soi cả chuỗi hiển thị, và một
+ * câu chứa "thuc_thi_buoc" bên trong thân `execute:` (thay vì ở đây) sẽ trộn
+ * lẫn giữa "được PHÉP nhắc người dùng gọi" và "tool TỰ gọi" — thứ khiến gate
+ * chấm nhầm là hành động `approval`.
+ */
+export const TEXT_TU_DUYET_UY_QUYEN =
+  'ĐÃ TỰ DUYỆT THEO UỶ QUYỀN ĐỨNG — KHÔNG CÓ CÚ BẤM NÀO ĐỂ CHỜ. Một super admin đã cấp trước hạn ' +
+  'mức cho (các) hành động này và mọi bước đều được phủ, nên hệ thống tự duyệt ngay lúc lập, ' +
+  'không cần người dùng bấm nút. BƯỚC TIẾP THEO CỦA BẠN: gọi thuc_thi_buoc NGAY, không hỏi lại ' +
+  'người dùng và không chờ thêm bất kỳ tín hiệu nào.';
+
 export function moTaKeHoach(mucTieu: string, ke: KeHoach): string {
+  const tuDuyet = ke.planStatus === 'APPROVED' && Boolean(ke.standingGrantIds?.length);
   return [
-    `KẾ HOẠCH ${ke.stepCount} BƯỚC — CHỜ NGƯỜI DÙNG BẤM:`,
+    tuDuyet
+      ? `KẾ HOẠCH ${ke.stepCount} BƯỚC — ĐÃ TỰ DUYỆT THEO UỶ QUYỀN ĐỨNG:`
+      : `KẾ HOẠCH ${ke.stepCount} BƯỚC — CHỜ NGƯỜI DÙNG BẤM:`,
     `- Mục tiêu: ${mucTieu}`,
     `- Mã kế hoạch: ${ke.planId}`,
     `- Mức rủi ro cao nhất: ${ke.maxRisk ?? '—'}`,
+    ...(tuDuyet ? [`- Uỷ quyền đứng: #${(ke.standingGrantIds ?? []).join(', #')}`] : []),
     '',
     ...ke.steps.map((b) => moTaBuoc(b)),
     '',
-    TEXT_CHO_NGUOI_BAM,
+    tuDuyet ? TEXT_TU_DUYET_UY_QUYEN : TEXT_CHO_NGUOI_BAM,
   ].join('\n');
 }
 

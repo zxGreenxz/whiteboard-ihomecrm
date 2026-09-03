@@ -122,6 +122,20 @@ export function nhanTrangThaiKeHoach(trangThai: string): string {
 }
 
 /**
+ * Tiêu đề của thẻ — G5-B: kế hoạch tự duyệt theo uỷ quyền đứng phải nói RÕ đó
+ * KHÔNG PHẢI một cú bấm của người dùng (khác hẳn `APPROVED` thường). Chỉ áp
+ * dụng khi CÒN đang chạy hoặc vừa duyệt — một khi kế hoạch đã DONE/FAILED thì
+ * nhãn trạng thái kết thúc quan trọng hơn nguồn gốc duyệt.
+ */
+export function nhanTieuDeKeHoach(ke: Pick<KeHoach, 'planStatus' | 'standingGrantIds'>): string {
+  if (ke.planStatus === 'APPROVED' && ke.standingGrantIds && ke.standingGrantIds.length > 0) {
+    const idNgan = ke.standingGrantIds[0]?.slice(0, 8) ?? '';
+    return `Đã tự duyệt theo uỷ quyền #${idNgan} — đang chạy`;
+  }
+  return nhanTrangThaiKeHoach(ke.planStatus);
+}
+
+/**
  * Cơ chế kế hoạch có đang bị tắt không.
  *
  * Điều kiện là `!== 'enabled'`, không phải `=== 'disabled'` — cùng lý do với
@@ -230,7 +244,10 @@ export default function KeHoachCard({
     keHoachTuKhe(layXacNhanDangCho(Date.now(), undefined, scope, 'ke_hoach')?.preview),
   );
   const [dangGui, setDangGui] = useState(false);
-  const [daDuyet, setDaDuyet] = useState(false);
+  // G5-B: kế hoạch tới thẳng ở trạng thái APPROVED (uỷ quyền đứng đã phủ hết
+  // các bước lúc lập) không có cú bấm nào để chờ — vòng đọc-lại-trạng-thái
+  // bên dưới phải bắt đầu NGAY từ lúc mount, không đợi `bam()` chạy xong.
+  const [daDuyet, setDaDuyet] = useState(() => keHoach?.planStatus === 'APPROVED');
   const [ketThucTheoDoi, setKetThucTheoDoi] = useState<'' | 'het_gio' | 'loi'>('');
   const [loi, setLoi] = useState('');
   const [hienModalPin, setHienModalPin] = useState(false);
@@ -277,8 +294,19 @@ export default function KeHoachCard({
           }
         } else {
           loiLienTiep = 0;
-          setKeHoach(kq.keHoach);
-          if (keHoachDaKetThuc(kq.keHoach.planStatus)) return;
+          // G5-B: `copilot_plan_get_v1` (đường đọc lại này đi qua) không mang
+          // `tu_duyet_theo_uy_quyen` — trường đó chỉ có ở kết quả của chính
+          // `copilot_plan_create_v1`. Giữ NGUYÊN `standingGrantIds` đã biết từ
+          // lần đọc trước thay vì để mỗi vòng poll xoá nó, kẻo tiêu đề thẻ
+          // nhảy từ "Đã tự duyệt theo uỷ quyền #…" về nhãn APPROVED chung
+          // chung chỉ sau 1,5 giây.
+          const moi = kq.keHoach;
+          setKeHoach((truoc) =>
+            moi.standingGrantIds
+              ? moi
+              : { ...moi, standingGrantIds: truoc?.standingGrantIds ?? null },
+          );
+          if (keHoachDaKetThuc(moi.planStatus)) return;
         }
         vong += 1;
         if (daHetHanTheoDoi(vong, batDau, Date.now())) {
@@ -396,8 +424,8 @@ export default function KeHoachCard({
       data-testid="copilot-plan-card"
       className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm"
     >
-      <div className="mb-2 font-medium text-slate-900">
-        Kế hoạch {keHoach.stepCount} bước — {nhanTrangThaiKeHoach(keHoach.planStatus)}
+      <div className="mb-2 font-medium text-slate-900" data-testid="copilot-plan-title">
+        Kế hoạch {keHoach.stepCount} bước — {nhanTieuDeKeHoach(keHoach)}
       </div>
       <BangBuocKeHoach steps={keHoach.steps} />
       <p className="mb-2 text-xs text-slate-700">

@@ -99,6 +99,15 @@ export interface KeHoach {
   expiresAt: string | null;
   executeDeadline: string | null;
   failureReason: string | null;
+  /**
+   * G5-B — điểm nối #4. Danh sách id hạn mức uỷ quyền đứng đã phủ kế hoạch
+   * này khi nó TỰ DUYỆT ngay lúc lập (`copilot_plan_create_v1` trả
+   * `tu_duyet_theo_uy_quyen`, không phải `consent_nonce`). `null`/mảng rỗng =
+   * kế hoạch đi đường DRAFT/bấm/PIN như trước G5-B — KHÔNG suy ra từ
+   * `planStatus === 'APPROVED'` một mình, vì bấm tay/PIN cũng cho ra trạng
+   * thái đó.
+   */
+  standingGrantIds: string[] | null;
   steps: BuocKeHoach[];
 }
 
@@ -211,8 +220,16 @@ export function chuanHoaKeHoach(gt: unknown): KeHoach | null {
     expiresAt: chuoi(r.expires_at),
     executeDeadline: chuoi(r.execute_deadline),
     failureReason: chuoi(r.failure_reason),
+    standingGrantIds: mangChuoi(r.tu_duyet_theo_uy_quyen),
     steps,
   };
+}
+
+/** Mảng chuỗi khác rỗng, hoặc `null` — dùng cho `tu_duyet_theo_uy_quyen`. */
+function mangChuoi(gt: unknown): string[] | null {
+  if (!Array.isArray(gt)) return null;
+  const ra = gt.filter((x): x is string => typeof x === 'string' && x.length > 0);
+  return ra.length > 0 ? ra : null;
 }
 
 function chuanHoaBuoc(gt: unknown): BuocKeHoach | null {
@@ -304,6 +321,7 @@ export async function taoKeHoach(thamSo: ThamSoTaoKeHoach): Promise<KetQuaTaoKeH
 
   const nonce = chuoi(ban.consent_nonce);
   const daTonTai = ban.da_ton_tai === true;
+  const tuDuyet = keHoach.standingGrantIds !== null;
   if (nonce) {
     const conSong = keHoach.expiresAt ? Date.parse(keHoach.expiresAt) - Date.now() : NaN;
     datXacNhanDangCho(
@@ -322,6 +340,34 @@ export async function taoKeHoach(thamSo: ThamSoTaoKeHoach): Promise<KetQuaTaoKeH
         intentKey: khoaYKeHoach(keHoach.planId),
       },
       Number.isFinite(conSong) && conSong > 0 ? conSong : 5 * 60_000,
+    );
+  } else if (tuDuyet) {
+    // ĐIỂM NỐI #4 (G5-B). Không nonce nào phát ra — kế hoạch đã APPROVED ngay
+    // lúc lập vì mọi bước được một hạn mức uỷ quyền đứng còn hiệu lực phủ.
+    // `KeHoachCard` vẫn cần đọc được kế hoạch này từ khe nhớ để tự vẽ (nó
+    // KHÔNG có đường nào khác tới `KeHoach` vừa dựng), nên khe vẫn được đặt —
+    // chỉ khác `nonce: ''`: không có cú bấm nào để tiêu nó, và
+    // `KeHoachCard` không bao giờ gọi `duyetKeHoach` cho một kế hoạch đã
+    // APPROVED (nút Duyệt chỉ hiện khi `planStatus === 'DRAFT'`). TTL lấy từ
+    // `executeDeadline` (30 phút, đã APPROVED) chứ không phải `expiresAt` (5
+    // phút, hạn của DRAFT) — dùng nhầm hạn 5 phút sẽ làm thẻ biến mất khỏi
+    // khe nhớ giữa lúc các bước còn đang chạy.
+    const conSong = keHoach.executeDeadline
+      ? Date.parse(keHoach.executeDeadline) - Date.now()
+      : NaN;
+    datXacNhanDangCho(
+      {
+        kind: 'ke_hoach',
+        tool: TOOL_KE_HOACH,
+        nonce: '',
+        canonical: { plan_id: keHoach.planId, plan_digest: keHoach.planDigest },
+        preview: { ke_hoach: keHoach as unknown },
+        organizationId: thamSo.organizationId,
+        threadId: thamSo.threadId ?? null,
+        ...(thamSo.generation === undefined ? {} : { generation: thamSo.generation }),
+        intentKey: khoaYKeHoach(keHoach.planId),
+      },
+      Number.isFinite(conSong) && conSong > 0 ? conSong : 30 * 60_000,
     );
   }
 

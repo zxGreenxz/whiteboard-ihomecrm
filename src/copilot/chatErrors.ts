@@ -128,6 +128,23 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['pin_locked', 'Mã PIN đang bị khoá do nhập sai nhiều lần. Hãy thử lại sau.'],
   ['pin_invalid', 'Mã PIN không đúng.'],
   ['step_up_superadmin_only', 'Chỉ super admin mới đặt/đổi/mở khoá được PIN step-up.'],
+
+  // — Uỷ quyền đứng (G5-B, điểm nối #4) — MỌI mã dài chứa một mã chung ở dưới
+  // (`not_permitted`, `reason_required`) phải đứng TRƯỚC mã chung đó trong
+  // mảng này, đúng kỷ luật khớp-chuỗi-con của cả bảng.
+  ['standing_grant_not_permitted', 'Chỉ super admin mới quản lý được uỷ quyền đứng.'],
+  ['standing_grants_disabled', 'Uỷ quyền đứng đang tắt cho công ty của bạn — quản trị phải bật ở trang AI Copilot trước.'],
+  ['action_not_grantable', 'Hành động này không thể cấp uỷ quyền đứng (thuộc nhóm phân quyền).'],
+  ['grant_expires_invalid', 'Hạn dùng của uỷ quyền đứng phải sau bây giờ và không quá 30 ngày.'],
+  ['grant_expired', 'Hạn mức uỷ quyền đứng này đã hết hạn.'],
+  ['grant_max_per_day_invalid', 'Hạn mức mỗi ngày của uỷ quyền đứng phải từ 1 đến 200.'],
+  ['grant_limit', 'Hạn mức ngày của uỷ quyền đứng đã dùng hết cho hôm nay.'],
+  ['grant_action_required', 'Chưa chọn hành động để cấp uỷ quyền đứng.'],
+  ['grant_constraints_invalid', 'Ràng buộc của uỷ quyền đứng không hợp lệ.'],
+  ['grant_already_revoked', 'Hạn mức uỷ quyền đứng này đã bị thu hồi trước đó.'],
+  ['grant_not_found', 'Không tìm thấy hạn mức uỷ quyền đứng này.'],
+  ['grant_reason_required', 'Phải nhập lý do trước khi cấp/thu hồi uỷ quyền đứng.'],
+
   ['reason_required', 'Phải nhập lý do (ít nhất 3 ký tự) trước khi thao tác.'],
   ['user_required', 'Thiếu mã người dùng cần thao tác.'],
 
