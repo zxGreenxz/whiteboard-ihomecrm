@@ -453,6 +453,7 @@ DECLARE
   v_actor uuid := auth.uid();
   v_org_wide boolean := false;
   v_buildings uuid[] := '{}'::uuid[];
+  v_cashbooks uuid[] := '{}'::uuid[];
   v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 50);
   v_rows jsonb;
 BEGIN
@@ -466,15 +467,32 @@ BEGIN
   -- grant for the key. So "PERFORM helper" asserted membership and nothing more:
   -- an emergency DENY on income_expenses.view was invisible here.
   --
-  -- The gate is the scope itself now. No grant anywhere in this organization
-  -- (neither org-wide nor on one building) is a permission error, not an inbox.
-  -- The helper is still called FIRST so a bad organization keeps answering
-  -- 'organization_required' (22023) instead of 'not_permitted' (42501).
+  -- The gate is the scope itself now. The helper is still called FIRST so a bad
+  -- organization keeps answering 'organization_required' (22023) instead of
+  -- 'not_permitted' (42501).
+  --
+  -- ALL THREE AXES, because this key HAS three. `income_expenses.view` declares
+  -- scope_kinds = {ORGANIZATION, AREA, BUILDING, CASHBOOK} (20260713110100:96),
+  -- so a cashier holding it on ONE CASHBOOK and no building is a legitimately
+  -- granted user. Testing only org_wide and buildings would lock exactly that
+  -- person out of their own approval inbox — a fail-closed gate that closes on
+  -- the wrong people is still a bug, and this one would only surface for the
+  -- narrowest role in the company.
+  --
+  -- The other two A1 gates in this migration stay building-only ON PURPOSE:
+  -- `materials.view` is {ORGANIZATION, AREA, BUILDING} and every `salary.*` key
+  -- is {ORGANIZATION}. Neither can ever produce a cashbook edge, so reading one
+  -- there would be a predicate that never fires pretending to be a boundary.
   PERFORM public.copilot_org_scope_buildings_v1('income_expenses.view', p_organization_id);
-  SELECT COALESCE(s.org_wide, false), COALESCE(s.building_ids, '{}'::uuid[])
-    INTO v_org_wide, v_buildings
+  SELECT
+    COALESCE(s.org_wide, false),
+    COALESCE(s.building_ids, '{}'::uuid[]),
+    COALESCE(s.cashbook_ids, '{}'::uuid[])
+    INTO v_org_wide, v_buildings, v_cashbooks
     FROM app_private.authorized_scope_v3('income_expenses.view', p_organization_id) s;
-  IF NOT v_org_wide AND COALESCE(cardinality(v_buildings), 0) = 0 THEN
+  IF NOT v_org_wide
+     AND COALESCE(cardinality(v_buildings), 0) = 0
+     AND COALESCE(cardinality(v_cashbooks), 0) = 0 THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
 
@@ -1570,6 +1588,20 @@ BEGIN
   IF p_ky IS NOT NULL AND p_ky !~ '^[0-9]{4}-[0-9]{2}$' THEN
     RAISE EXCEPTION 'invalid_period' USING ERRCODE = '22023';
   END IF;
+  -- Validates organization, membership and denies. Never trusted input. The
+  -- RETURN VALUE is deliberately not kept: `salary_monthly` has no `building_id`
+  -- column at all (20260628000001), so there is no building predicate for it to
+  -- bind to, and holding a building array that nothing reads would look like a
+  -- boundary that does not exist.
+  -- ORDER MATTERS, AND IT IS THE ORGANIZATION ASSERTION THAT GOES FIRST.
+  -- A caller naming an organization that does not exist (or is not ACTIVE, or
+  -- that they are not a member of) must hear 'organization_required' (22023) —
+  -- the code the panel uses to say "pick a company". If the flag gate ran first
+  -- it would answer 'copilot_feature_disabled' for a bogus organization, which
+  -- is both the wrong instruction for the user and a small oracle: the reply
+  -- would depend on a rollout row instead of on membership.
+  PERFORM public.copilot_org_scope_buildings_v1('salary.view', p_organization_id);
+
   -- A5. Until this migration the three copilot.sensitive.* rollout flags were
   -- checked in TypeScript only, so calling the RPC straight through PostgREST
   -- returned the payroll with the switch still off. The switch now lives on
@@ -1578,13 +1610,6 @@ BEGIN
   IF NOT app_private.copilot_page_flag_allows_v1('copilot.sensitive.salary', p_organization_id) THEN
     RAISE EXCEPTION 'copilot_feature_disabled' USING ERRCODE = '42501';
   END IF;
-
-  -- Validates organization, membership and denies. Never trusted input. The
-  -- RETURN VALUE is deliberately not kept: `salary_monthly` has no `building_id`
-  -- column at all (20260628000001), so there is no building predicate for it to
-  -- bind to, and holding a building array that nothing reads would look like a
-  -- boundary that does not exist.
-  PERFORM public.copilot_org_scope_buildings_v1('salary.view', p_organization_id);
 
   -- A1: salary.view is still required to ask the question at all. The helper
   -- above does NOT enforce that (it returns an empty array for a caller with no
@@ -1750,6 +1775,16 @@ BEGIN
   IF p_ky IS NOT NULL AND p_ky !~ '^[0-9]{4}-[0-9]{2}$' THEN
     RAISE EXCEPTION 'invalid_period' USING ERRCODE = '22023';
   END IF;
+  -- Validates organization, membership, permission and denies. Never trusted input.
+  -- ORDER MATTERS, AND IT IS THE ORGANIZATION ASSERTION THAT GOES FIRST.
+  -- A caller naming an organization that does not exist (or is not ACTIVE, or
+  -- that they are not a member of) must hear 'organization_required' (22023) —
+  -- the code the panel uses to say "pick a company". If the flag gate ran first
+  -- it would answer 'copilot_feature_disabled' for a bogus organization, which
+  -- is both the wrong instruction for the user and a small oracle: the reply
+  -- would depend on a rollout row instead of on membership.
+  v_buildings := public.copilot_org_scope_buildings_v1('shareholder_profit.view', p_organization_id);
+
   -- A5. Until this migration the three copilot.sensitive.* rollout flags were
   -- checked in TypeScript only, so calling the RPC straight through PostgREST
   -- returned shareholder payouts with the switch still off. The switch now lives on
@@ -1758,9 +1793,6 @@ BEGIN
   IF NOT app_private.copilot_page_flag_allows_v1('copilot.sensitive.shareholder-profit', p_organization_id) THEN
     RAISE EXCEPTION 'copilot_feature_disabled' USING ERRCODE = '42501';
   END IF;
-
-  -- Validates organization, membership, permission and denies. Never trusted input.
-  v_buildings := public.copilot_org_scope_buildings_v1('shareholder_profit.view', p_organization_id);
   SELECT s.org_wide INTO v_org_wide
     FROM app_private.authorized_scope_v3('shareholder_profit.view', p_organization_id) s;
   v_org_wide := COALESCE(v_org_wide, false);
@@ -2169,6 +2201,18 @@ BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
+  -- Validates organization, membership, permission and denies. Never trusted
+  -- input. For THIS key the building array is the whole boundary: `org_wide` is
+  -- always false for a permission declaring `required_dimensions = {BUILDING}`.
+  -- ORDER MATTERS, AND IT IS THE ORGANIZATION ASSERTION THAT GOES FIRST.
+  -- A caller naming an organization that does not exist (or is not ACTIVE, or
+  -- that they are not a member of) must hear 'organization_required' (22023) —
+  -- the code the panel uses to say "pick a company". If the flag gate ran first
+  -- it would answer 'copilot_feature_disabled' for a bogus organization, which
+  -- is both the wrong instruction for the user and a small oracle: the reply
+  -- would depend on a rollout row instead of on membership.
+  v_buildings := public.copilot_org_scope_buildings_v1('network_center.view', p_organization_id);
+
   -- A5. Until this migration the three copilot.sensitive.* rollout flags were
   -- checked in TypeScript only, so calling the RPC straight through PostgREST
   -- returned router health with the switch still off. The switch now lives on
@@ -2177,11 +2221,6 @@ BEGIN
   IF NOT app_private.copilot_page_flag_allows_v1('copilot.sensitive.network', p_organization_id) THEN
     RAISE EXCEPTION 'copilot_feature_disabled' USING ERRCODE = '42501';
   END IF;
-
-  -- Validates organization, membership, permission and denies. Never trusted
-  -- input. For THIS key the building array is the whole boundary: `org_wide` is
-  -- always false for a permission declaring `required_dimensions = {BUILDING}`.
-  v_buildings := public.copilot_org_scope_buildings_v1('network_center.view', p_organization_id);
   -- A building outside the caller scope answers like an empty report, never like
   -- "exists but not yours".
   IF p_building_id IS NOT NULL AND NOT (p_building_id = ANY(v_buildings)) THEN

@@ -799,10 +799,22 @@ VALUES
   ('ddd70000-0000-4000-8000-000000000012', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', 'ARUBA', 'cp-d-ap-1', 'CP-D-AP-1', 'Aruba', true, 'ONLINE', 'AP-505', false, 'ddd70000-0000-4000-8000-000000000011', 'serial:CPDAP1', 'SERIAL', 'DISCOVERED', clock_timestamp(), clock_timestamp())
 ON CONFLICT (id) DO NOTHING;
 
+-- now() chứ KHÔNG clock_timestamp() cho cặp observed_at/last_seen_at.
+--
+-- Ràng buộc network_device_current_time_check đòi last_seen_at <= observed_at,
+-- mà trong danh sách cột observed_at đứng TRƯỚC last_seen_at.
+-- clock_timestamp() là VOLATILE: nó nhích lên giữa hai lần đánh giá trong CÙNG
+-- một hàng, nên hàng HEALTHY (hai cột cùng "bây giờ") sinh ra last_seen_at muộn
+-- hơn observed_at đúng một micro-giây và INSERT bị CHECK chặn. Test đỏ hay xanh
+-- tuỳ vào việc hai lần gọi có rơi cùng một micro-giây hay không — đo 03/09/2026:
+-- xanh lúc 12:19, đỏ lúc 13:01, cùng một commit.
+--
+-- now() là STABLE: mọi lần gọi trong một transaction trả CÙNG một giá trị, nên
+-- hàng HEALTHY có last_seen_at = observed_at và ràng buộc luôn đúng.
 INSERT INTO public.network_device_current (device_id, organization_id, building_id, observed_at, reachable, health_status, last_seen_at, pppoe_state, connection_count, cpu_pct, update_seq)
 VALUES
-  ('ddd70000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', clock_timestamp(), false, 'OFFLINE', clock_timestamp() - interval '1 hour', 'DOWN', 0, 12, 1),
-  ('aaa70000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', clock_timestamp(), true, 'HEALTHY', clock_timestamp(), 'UP', 40, 8, 1)
+  ('ddd70000-0000-4000-8000-000000000011', ${sqlLiteral(DEMO_ORG_ID)}::uuid, 'dddd1000-0000-4000-8000-000000000011', now(), false, 'OFFLINE', now() - interval '1 hour', 'DOWN', 0, 12, 1),
+  ('aaa70000-0000-4000-8000-000000000011', ${sqlLiteral(PROD_ORG_ID)}::uuid, 'aaaa1000-0000-4000-8000-000000000011', now(), true, 'HEALTHY', now(), 'UP', 40, 8, 1)
 ON CONFLICT (device_id) DO NOTHING;
 
 INSERT INTO public.network_incidents (id, organization_id, building_id, device_id, fingerprint, incident_type, severity, status, title, summary, opened_at, last_observed_at, resolved_at)

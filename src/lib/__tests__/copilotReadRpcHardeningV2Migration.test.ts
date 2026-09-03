@@ -143,6 +143,21 @@ describe('A1 — PERFORM không phải hàng rào; quyền phải được ĐỌ
   // người không có quyền (nó chỉ raise khi thiếu tổ chức / mất tư cách thành
   // viên), nên "PERFORM helper" khẳng định tư cách thành viên và KHÔNG khẳng
   // định quyền. Ghim cả ba mảnh: đọc scope, gán vào biến, và raise 42501.
+  // CỬA PHẢI ĐỌC ĐÚNG SỐ TRỤC MÀ KHOÁ ĐÓ CÓ.
+  //
+  // `authorized_scope_v3` trả ba trục (org_wide, building_ids, cashbook_ids),
+  // nhưng khoá nào CÓ trục nào là do `permission_definitions.scope_kinds` quyết
+  // định (20260713110100). Đọc THIẾU một trục mà khoá thật sự có = khoá cửa vào
+  // mặt người được cấp hợp lệ; đọc THỪA một trục mà khoá không có = viết một
+  // predicate không bao giờ chạy rồi tưởng đó là hàng rào. Bảng dưới chép từ
+  // migration khai quyền, không suy từ tên khoá.
+  const TRUC_CUA_KHOA: Record<string, { cashbook: boolean }> = {
+    // income_expenses.view = {ORGANIZATION, AREA, BUILDING, CASHBOOK} — :96
+    copilot_pending_requests_v1: { cashbook: true },
+    // materials.view = {ORGANIZATION, AREA, BUILDING}
+    copilot_material_stock_v1: { cashbook: false },
+  };
+
   for (const ham of ['copilot_material_stock_v1', 'copilot_pending_requests_v1'] as const) {
     it(`${ham}: đọc authorized_scope_v3 đúng khoá rồi raise not_permitted khi rỗng`, () => {
       const body = than(ham);
@@ -151,12 +166,27 @@ describe('A1 — PERFORM không phải hàng rào; quyền phải được ĐỌ
       expect(body, `${ham}: không đọc authorized_scope_v3 với khoá của chính trang`).toMatch(
         new RegExp(String.raw`authorized_scope_v3\('${khoa}', p_organization_id\)`),
       );
+      const coSoQuy = TRUC_CUA_KHOA[ham].cashbook;
       expect(body, `${ham}: không GÁN kết quả scope vào biến`).toMatch(
-        /INTO v_org_wide, v_buildings/,
+        coSoQuy ? /INTO v_org_wide, v_buildings, v_cashbooks/ : /INTO v_org_wide, v_buildings/,
       );
-      expect(body, `${ham}: thiếu cửa fail-closed`).toMatch(
-        /IF NOT v_org_wide AND COALESCE\(cardinality\(v_buildings\), 0\) = 0 THEN/,
-      );
+      if (coSoQuy) {
+        // Người giữ MỘT SỔ QUỸ và không toà nào là người được cấp hợp lệ. Cửa
+        // chỉ nhìn org_wide + buildings sẽ khoá đúng thủ quỹ ra khỏi hộp duyệt
+        // của chính họ — fail-closed nhầm người vẫn là một lỗi.
+        expect(body, `${ham}: cửa bỏ quên trục SỔ QUỸ mà khoá này có`).toMatch(
+          /IF NOT v_org_wide\s*\n\s*AND COALESCE\(cardinality\(v_buildings\), 0\) = 0\s*\n\s*AND COALESCE\(cardinality\(v_cashbooks\), 0\) = 0 THEN/,
+        );
+      } else {
+        expect(body, `${ham}: thiếu cửa fail-closed`).toMatch(
+          /IF NOT v_org_wide AND COALESCE\(cardinality\(v_buildings\), 0\) = 0 THEN/,
+        );
+        // Khoá không có trục CASHBOOK thì không được đọc trục đó: một predicate
+        // luôn-rỗng đội lốt hàng rào là thứ khó thấy nhất khi đọc lại.
+        expect(body, `${ham}: đọc trục SỔ QUỸ cho một khoá không có trục đó`).not.toMatch(
+          /v_cashbooks/,
+        );
+      }
       expect(body, ham).toMatch(/RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501'/);
     });
   }
@@ -168,6 +198,8 @@ describe('A1 — PERFORM không phải hàng rào; quyền phải được ĐỌ
     expect(body).toMatch(
       /IF NOT v_xem_duoc AND COALESCE\(cardinality\(v_buildings\), 0\) = 0 THEN/,
     );
+    // Mọi khoá `salary.*` là {ORGANIZATION} — không có trục SỔ QUỸ để đọc.
+    expect(body).not.toMatch(/v_cashbooks/);
   });
 
   it('PERFORM còn lại chỉ để giữ mã lỗi tổ chức, luôn đi kèm một cửa thật', () => {
@@ -304,6 +336,25 @@ describe('A5 — cờ rollout được đọc TRÊN SERVER, deny-by-default', ()
     const goi = sql.match(/copilot_page_flag_allows_v1\('copilot\.sensitive\./g) ?? [];
     expect(goi).toHaveLength(3);
   });
+
+  for (const ham of Object.keys(CO_ROLLOUT)) {
+    it(`${ham}: khẳng định TỔ CHỨC chạy TRƯỚC cửa cờ`, () => {
+      // Một tổ chức không tồn tại / không ACTIVE / không phải của mình phải nghe
+      // `organization_required` (22023) — mã panel dùng để bảo "chọn công ty".
+      // Nếu cửa cờ chạy trước, cùng câu hỏi đó trả `copilot_feature_disabled`:
+      // vừa sai hướng dẫn cho người dùng, vừa là một oracle nhỏ (câu trả lời phụ
+      // thuộc vào một dòng rollout thay vì vào tư cách thành viên).
+      const body = than(ham);
+      const viTriToChuc = body.search(/copilot_org_scope_buildings_v1\(/);
+      const viTriCo = body.search(/copilot_page_flag_allows_v1\(/);
+      expect(viTriToChuc, `${ham}: không có khẳng định tổ chức`).toBeGreaterThan(-1);
+      expect(viTriCo, `${ham}: không có cửa cờ`).toBeGreaterThan(-1);
+      expect(
+        viTriToChuc,
+        `${ham}: cửa cờ đứng TRƯỚC khẳng định tổ chức — tổ chức rác sẽ trả 42501 thay vì 22023`,
+      ).toBeLessThan(viTriCo);
+    });
+  }
 });
 
 describe('A6 — LIKE có escape, cửa sổ ngày có trần, service_role bị cắt', () => {
