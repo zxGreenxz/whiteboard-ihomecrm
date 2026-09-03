@@ -525,3 +525,100 @@ describe('dongKy — prompt phải nói ĐÚNG là có chốt kỳ hay không', 
     expect(dongKy([], false)).toBeNull();
   });
 });
+
+describe('tháng + NĂM TƯƠNG ĐỐI là MỘT kỳ, không phải hai', () => {
+  // Bản trước chỉ nuốt được năm viết bằng số, nên bộ quét theo vị trí cắt
+  // "doanh thu tháng 6 năm ngoái" thành hai kỳ — "tháng 06/2026" và "năm 2025".
+  // Sai gấp đôi: tháng sai năm, VÀ một câu hỏi đơn bị biến thành câu so sánh,
+  // rồi `dongKy` bảo mô hình trả lời cả hai.
+  it('"tháng 6 năm ngoái" ⇒ 2025-06, đúng MỘT kỳ', () => {
+    const ds = quetKyTrongCau('doanh thu tháng 6 năm ngoái', ctx('2026-08'));
+    expect(soKyRiengBiet(ds)).toBe(1);
+    expect(ds[0].kind).toBe('month');
+    expect(ds[0].month).toBe('2025-06');
+    expect(ds[0].startDate).toBe('2025-06-01');
+    expect(ds[0].endDate).toBe('2025-06-30');
+  });
+
+  it('"tháng 7 năm nay" ⇒ 2026-07, đúng MỘT kỳ', () => {
+    const ds = quetKyTrongCau('doanh thu tháng 7 năm nay', ctx('2026-08'));
+    expect(soKyRiengBiet(ds)).toBe(1);
+    expect(ds[0].month).toBe('2026-07');
+  });
+
+  it('"tháng này năm ngoái" ⇒ cùng tháng, lùi một năm', () => {
+    const ds = quetKyTrongCau('tháng này năm ngoái', ctx('2026-08'));
+    expect(soKyRiengBiet(ds)).toBe(1);
+    expect(ds[0].month).toBe('2025-08');
+  });
+
+  it('"tháng trước năm ngoái" ⇒ tháng-trước rồi lùi một năm', () => {
+    // Đúng thứ tự người ta đọc câu: nền là "tháng trước" (2026-07), rồi mới
+    // lùi năm.
+    const ds = quetKyTrongCau('tháng trước năm ngoái', ctx('2026-08'));
+    expect(soKyRiengBiet(ds)).toBe(1);
+    expect(ds[0].month).toBe('2025-07');
+  });
+
+  it('nhận cả "năm trước", "năm rồi", "năm kia" và bản KHÔNG DẤU', () => {
+    expect(resolveRelativePeriod('tháng 6 năm trước', ctx('2026-08'))?.month).toBe('2025-06');
+    expect(resolveRelativePeriod('tháng 6 năm rồi', ctx('2026-08'))?.month).toBe('2025-06');
+    expect(resolveRelativePeriod('tháng 6 năm kia', ctx('2026-08'))?.month).toBe('2024-06');
+    expect(resolveRelativePeriod('thang 6 nam ngoai', ctx('2026-08'))?.month).toBe('2025-06');
+    expect(resolveRelativePeriod('thang truoc nam ngoai', ctx('2026-08'))?.month).toBe('2025-07');
+  });
+
+  it('năm viết bằng SỐ vẫn thắng, và luật "nghiêng về quá khứ" chỉ dùng khi không nêu năm', () => {
+    expect(resolveRelativePeriod('tháng 6 năm 2024', ctx('2026-08'))?.month).toBe('2024-06');
+    // Không nêu năm, tháng đã qua ⇒ năm hiện tại.
+    expect(resolveRelativePeriod('tháng 6', ctx('2026-08'))?.month).toBe('2026-06');
+    // Không nêu năm, tháng CHƯA tới ⇒ năm trước.
+    expect(resolveRelativePeriod('tháng 12', ctx('2026-02'))?.month).toBe('2025-12');
+    // Nhưng nêu "năm nay" thì tháng chưa tới VẪN là năm nay.
+    expect(resolveRelativePeriod('tháng 12 năm nay', ctx('2026-02'))?.month).toBe('2026-12');
+  });
+
+  it('ĐỐI CHỨNG: "tháng 6 và năm ngoái" (có chữ "và") vẫn là HAI kỳ', () => {
+    // Hậu tố năm chỉ được nuốt khi nó dính LIỀN sau cụm tháng. Có "và" xen vào
+    // thì người dùng thật sự đang hỏi hai kỳ.
+    const ds = quetKyTrongCau('doanh thu tháng 6 và năm ngoái', ctx('2026-08'));
+    expect(soKyRiengBiet(ds)).toBe(2);
+    expect(ds.map((k) => k.nhan)).toEqual(['tháng 06/2026', 'năm 2025']);
+  });
+});
+
+describe('"tuần này và tuần trước" là hai kỳ', () => {
+  const banKhoang = { bao_cao_thu_chi_theo_ngay: { ky: 'ky', tu: 'tu', den: 'den' } };
+
+  it('quét ra đúng hai tuần liền nhau', () => {
+    const ds = quetKyTrongCau('so sánh thu chi tuần này và tuần trước', ctx('2026-08', '2026-08-15'));
+    expect(soKyRiengBiet(ds)).toBe(2);
+    expect(ds[0].startDate).toBe('2026-08-10');
+    expect(ds[0].endDate).toBe('2026-08-16');
+    expect(ds[1].startDate).toBe('2026-08-03');
+    expect(ds[1].endDate).toBe('2026-08-09');
+  });
+
+  it('nhiều kỳ ⇒ GIỮ khoảng mô hình tự điền, chỉ kèm ghi chú', () => {
+    const ky = resolveRelativePeriod('tuần này và tuần trước', ctx('2026-08', '2026-08-15'));
+    const ra = apDungKyTuongDoi(
+      'bao_cao_thu_chi_theo_ngay',
+      { tu: '2026-08-03', den: '2026-08-09' },
+      ky,
+      banKhoang,
+      true,
+    );
+    expect(ra.args.tu).toBe('2026-08-03');
+    expect(ra.args.den).toBe('2026-08-09');
+    expect(ra.kyBiThayThe).toBeNull();
+    expect(ra.ghiChu).toMatch(/nhi[eề]u k[yỳ]/i);
+  });
+
+  it('nhiều kỳ nhưng mô hình BỎ TRỐNG ⇒ vẫn lấp bằng kỳ đầu (tuần này)', () => {
+    const ky = resolveRelativePeriod('tuần này và tuần trước', ctx('2026-08', '2026-08-15'));
+    const ra = apDungKyTuongDoi('bao_cao_thu_chi_theo_ngay', {}, ky, banKhoang, true);
+    expect(ra.args.tu).toBe('2026-08-10');
+    expect(ra.args.den).toBe('2026-08-16');
+    expect(ra.ghiChu).not.toBeNull();
+  });
+});

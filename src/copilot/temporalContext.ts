@@ -209,8 +209,46 @@ const RE_KHOANG_DMY =
   /t[ừu]\s*(?:ng[àa]y\s*)?(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?\s*(?:đ[ếe]n|t[ớo]i|–)\s*(?:ng[àa]y\s*)?(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?/i;
 const RE_N_THANG_QUA = /(\d{1,2})\s*th[áa]ng\s*(?:qua|g[âầa]n\s*đ[âaầ]y|g[âầa]n\s*nh[âấầa]t|v[ừu]a\s*qua)/i;
 const RE_N_THANG_TRUOC = /(\d{1,2})\s*th[áa]ng\s*tr[ưu][ớoơ]c/i;
-// Năm đi kèm nhận cả ba cách viết: "tháng 7/2024", "tháng 7-2024", "tháng 7 năm 2024".
-const RE_THANG_SO = /th[áa]ng\s*(\d{1,2})(?:\s*(?:[/\-]|n[ăa]m)\s*(20\d{2}))?/i;
+
+/**
+ * NĂM ĐI KÈM SAU MỘT CỤM THÁNG — phải bị NUỐT VÀO cụm tháng đó.
+ *
+ * "doanh thu tháng 6 năm ngoái" là MỘT kỳ (2025-06), không phải hai. Bản trước
+ * chỉ nuốt được năm viết bằng số ("tháng 6 năm 2024"), nên bộ quét theo vị trí
+ * cắt câu thành hai kỳ — "tháng 06/2026" và "năm 2025" — rồi `dongKy` bảo mô
+ * hình trả lời CẢ HAI. Sai gấp đôi: tháng sai năm, và một câu hỏi đơn bị biến
+ * thành câu hỏi so sánh.
+ *
+ * Hai nhánh, thử theo thứ tự: năm viết bằng số trước ("năm 2024" / "/2024" /
+ * "-2024"), rồi mới tới năm nói tương đối ("năm nay", "năm ngoái", "năm kia").
+ */
+const NAM_TUONG_DOI = '(?:nay|n[àa]y|hi[ệe]n\\s*t[ạa]i|ngo[áa]i|tr[ưu][ớoơ]c|r[ồo]i|kia)';
+/** Nhóm 1 = năm viết bằng số, nhóm 2 = từ chỉ năm tương đối. Cả cụm là TUỲ CHỌN. */
+const HAU_TO_NAM = `(?:\\s*(?:[/\\-]|n[ăa]m)\\s*(20\\d{2})|\\s*n[ăa]m\\s*(${NAM_TUONG_DOI}))?`;
+
+/** "năm nay" ⇒ 0, "năm ngoái|trước|rồi" ⇒ −1, "năm kia" ⇒ −2. */
+function dichNamTuongDoi(tu: string): number {
+  if (/^(?:nay|n[àa]y|hi[ệe]n)/i.test(tu)) return 0;
+  if (/^kia/i.test(tu)) return -2;
+  return -1;
+}
+
+/**
+ * Đổi năm của một kỳ tháng "YYYY-MM" theo hậu tố năm bắt được.
+ *
+ * Không có hậu tố ⇒ giữ nguyên kỳ nền. Nền của "tháng này"/"tháng trước" đã
+ * tính xong trước khi vào đây, nên "tháng trước năm ngoái" là tháng-trước rồi
+ * lùi một năm (ctx 2026-08 ⇒ 2025-07), đúng thứ tự người ta đọc câu đó.
+ */
+function apHauToNam(ymNen: string, namSo?: string, namChu?: string): CopilotResolvedPeriod {
+  const [nam, thang] = ymNen.split('-');
+  if (namSo) return kyThang(`${namSo}-${thang}`);
+  if (namChu) return kyThang(`${Number(nam) + dichNamTuongDoi(namChu)}-${thang}`);
+  return kyThang(ymNen);
+}
+
+// Nhóm 1 = số tháng; nhóm 2 = năm bằng số; nhóm 3 = năm tương đối.
+const RE_THANG_SO = new RegExp(`th[áa]ng\\s*(\\d{1,2})${HAU_TO_NAM}`, 'i');
 const RE_QUY_NAY = /qu[ýy]\s*(?:n[àa]y|hi[ệe]n\s*t[ạa]i)/i;
 const RE_QUY_TRUOC = /qu[ýy]\s*(?:tr[ưu][ớoơ]c|r[ồo]i|v[ừu]a\s*r[ồo]i)/i;
 const RE_NAM_CU_THE = /n[ăa]m\s*(20\d{2})\b/i;
@@ -218,8 +256,12 @@ const RE_NAM_NAY = /n[ăa]m\s*(?:nay|n[àa]y|hi[ệe]n\s*t[ạa]i)/i;
 const RE_NAM_TRUOC = /n[ăa]m\s*(?:ngo[áa]i|tr[ưu][ớoơ]c|r[ồo]i)/i;
 const RE_TUAN_NAY = /tu[âầa]n\s*(?:n[àa]y|hi[ệe]n\s*t[ạa]i)/i;
 const RE_TUAN_TRUOC = /tu[âầa]n\s*(?:tr[ưu][ớoơ]c|r[ồo]i|v[ừu]a\s*r[ồo]i)/i;
-const RE_THANG_NAY = /th[áa]ng\s*(?:n[àa]y|hi[ệe]n\s*t[ạa]i)/i;
-const RE_THANG_TRUOC = /th[áa]ng\s*(?:tr[ưu][ớoơ]c|r[ồo]i|v[ừu]a\s*r[ồo]i)/i;
+// Nhóm 1 = năm bằng số; nhóm 2 = năm tương đối ("tháng này năm ngoái").
+const RE_THANG_NAY = new RegExp(`th[áa]ng\\s*(?:n[àa]y|hi[ệe]n\\s*t[ạa]i)${HAU_TO_NAM}`, 'i');
+const RE_THANG_TRUOC = new RegExp(
+  `th[áa]ng\\s*(?:tr[ưu][ớoơ]c|r[ồo]i|v[ừu]a\\s*r[ồo]i)${HAU_TO_NAM}`,
+  'i',
+);
 
 /** Có một con số ngay trước chỗ khớp không ("12 tháng rồi"). */
 const CO_SO_DUNG_TRUOC = /\d\s*$/;
@@ -282,7 +324,15 @@ const MAU_KY: readonly MauKy[] = [
       const [namHienTai, thangHienTai] = ctx.kyHienTai.split('-').map(Number);
       const thang = Number(m[1]);
       if (thang < 1 || thang > 12) return null;
-      const nam = m[2] ? Number(m[2]) : thang > thangHienTai ? namHienTai - 1 : namHienTai;
+      // Luật "nghiêng về quá khứ" CHỈ áp dụng khi câu không nêu năm nào. Nêu
+      // rồi — bằng số hay bằng chữ — thì năm đó thắng.
+      const nam = m[2]
+        ? Number(m[2])
+        : m[3]
+          ? namHienTai + dichNamTuongDoi(m[3])
+          : thang > thangHienTai
+            ? namHienTai - 1
+            : namHienTai;
       return kyThang(`${nam}-${hai(thang)}`);
     },
   },
@@ -306,7 +356,7 @@ const MAU_KY: readonly MauKy[] = [
   { re: RE_NAM_TRUOC, lay: (_m, ctx) => kyNam(Number(ctx.kyHienTai.split('-')[0]) - 1) },
   { re: RE_TUAN_NAY, lay: (_m, ctx) => kyTuan(ctx.ngayHienTai, 0) },
   { re: RE_TUAN_TRUOC, lay: (_m, ctx) => kyTuan(ctx.ngayHienTai, -1) },
-  { re: RE_THANG_NAY, lay: (_m, ctx) => kyThang(ctx.kyHienTai) },
+  { re: RE_THANG_NAY, lay: (m, ctx) => apHauToNam(ctx.kyHienTai, m[1], m[2]) },
   {
     re: RE_THANG_TRUOC,
     // "khách ở phòng 12 tháng rồi" KHÔNG phải "tháng trước" — đó là một THỜI
@@ -315,7 +365,7 @@ const MAU_KY: readonly MauKy[] = [
     // và một SyntaxError lúc nạp module thì giết cả bundle chứ không chỉ tính
     // năng này.
     chan: (truoc) => !CO_SO_DUNG_TRUOC.test(truoc),
-    lay: (_m, ctx) => kyThang(shiftYm(ctx.kyHienTai, -1)),
+    lay: (m, ctx) => apHauToNam(shiftYm(ctx.kyHienTai, -1), m[1], m[2]),
   },
 ];
 
