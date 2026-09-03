@@ -21,6 +21,7 @@ export const COPILOT_PAGE_CONTRACTS: readonly CopilotPageContract[] = [
     dataClass: "internal",
     batch: "property",
     safeControlIds: ["room.search", "room.status-filter"],
+    markerFileHint: "rooms",
   }),
   page({
     key: "invoices.list",
@@ -30,6 +31,7 @@ export const COPILOT_PAGE_CONTRACTS: readonly CopilotPageContract[] = [
     dataClass: "financial",
     batch: "billing",
     safeControlIds: ["invoice.month-filter", "invoice.status-filter", "invoice.search"],
+    markerFileHint: "invoices",
   }),
   page({
     key: "customers.list",
@@ -39,6 +41,7 @@ export const COPILOT_PAGE_CONTRACTS: readonly CopilotPageContract[] = [
     dataClass: "pii",
     batch: "crm",
     safeControlIds: ["customer.search"],
+    markerFileHint: "customers",
   }),
 
   // Property and inventory read batch. Detail routes are patterns, not IDs.

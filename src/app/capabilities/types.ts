@@ -14,6 +14,21 @@ export interface CopilotPageContract {
   batch: CopilotPageBatch;
   rolloutKey: string;
   safeControlIds: readonly string[];
+
+  /**
+   * Mảnh đường dẫn mà FILE mang marker `data-ai-safe` của trang này phải chứa
+   * (vd `"rooms"` khớp `src/pages/rooms/RoomsMobilePage.tsx` và
+   * `src/components/rooms/RoomListFilters.tsx`).
+   *
+   * VÌ SAO CẦN: gate marker vốn chỉ đối chiếu marker với DANH SÁCH control, nên
+   * `data-ai-safe="rooms.list.room.search"` nằm nhầm trong `CustomersMobilePage`
+   * vẫn xanh — trang Phòng coi như đã có marker, còn trang Khách hàng thì mang
+   * một control không phải của nó. Buộc file phải nằm đúng vùng của trang là
+   * cách rẻ nhất để một marker không thể "đếm hộ" cho trang khác.
+   *
+   * BẮT BUỘC với mọi trang có `safeControlIds`; gate fail-closed khi thiếu.
+   */
+  markerFileHint?: string;
   e2eSpec?: string;
   exemption?: string;
 }

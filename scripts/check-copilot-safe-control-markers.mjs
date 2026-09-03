@@ -14,51 +14,70 @@ import { spawnSync } from 'node:child_process';
  * chết hẳn.
  */
 export function laFileMobile(file) {
-  const ten = String(file).split(/[\\/]/u).pop() ?? '';
+  const ten = String(file).split(/[\/]/u).pop() ?? '';
   return /Mobile/u.test(ten);
 }
 
+/** Chuẩn hoá dấu phân cách để so khớp `markerFileHint` chạy đúng trên cả Windows. */
+export function duongDanChuan(file) {
+  return String(file).split(/[\\/]/u).join('/');
+}
+
 export function validateSafeControlMarkers(contracts, sourceByFile) {
-  // marker -> khoá trang, để quy marker về trang mà KHÔNG đoán bằng tiền tố
+  // marker -> hợp đồng trang, để quy marker về trang mà KHÔNG đoán bằng tiền tố
   // (`reports.finance` là tiền tố của `reports.finance.deposits`).
   const expected = new Map();
   const trangCoControl = [];
+  const problems = [];
   for (const page of contracts ?? []) {
-    for (const controlId of page.safeControlIds ?? []) expected.set(`${page.key}.${controlId}`, page.key);
-    if ((page.safeControlIds ?? []).length > 0) trangCoControl.push(page.key);
+    for (const controlId of page.safeControlIds ?? []) expected.set(`${page.key}.${controlId}`, page);
+    if ((page.safeControlIds ?? []).length === 0) continue;
+    trangCoControl.push(page);
+    // Fail-closed: thiếu `markerFileHint` thì gate KHÔNG có cách nào biết marker
+    // nằm đúng vùng của trang, và "không biết" phải là đỏ chứ không phải bỏ qua.
+    if (!page.markerFileHint) problems.push(`page ${page.key} declares safeControlIds without markerFileHint`);
   }
 
   // Hai bảng tách theo lớp biến thể: một marker được phép xuất hiện tối đa MỘT
   // lần ở mỗi lớp (desktop / mobile), không phải một lần trên toàn repo.
   const seen = { desktop: new Map(), mobile: new Map() };
-  const problems = [];
+  // Chỉ marker nằm ĐÚNG vùng file của trang mới được tính là "trang này đã có
+  // marker" — xem `markerFileHint` trong types.ts.
+  const dungVung = { desktop: new Set(), mobile: new Set() };
   for (const [file, source] of sourceByFile) {
     const lop = laFileMobile(file) ? 'mobile' : 'desktop';
+    const duongDan = duongDanChuan(file);
     const re = /data-ai-safe\s*=\s*["']([^"']+)["']/g;
     for (const match of source.matchAll(re)) {
       const marker = match[1];
-      if (!expected.has(marker)) problems.push(`${file}: unknown marker ${marker}`);
+      const page = expected.get(marker);
+      if (!page) problems.push(`${file}: unknown marker ${marker}`);
       const previous = seen[lop].get(marker);
       if (previous) problems.push(`duplicate marker ${marker}: ${previous} and ${file}`);
       seen[lop].set(marker, file);
+
+      // Không có luật này thì `data-ai-safe="rooms.list.room.search"` đặt nhầm
+      // trong `CustomersMobilePage.tsx` vẫn xanh: trang Phòng coi như đã có
+      // marker, còn trang Khách hàng thì mang một control không phải của nó.
+      if (page?.markerFileHint) {
+        if (duongDan.includes(page.markerFileHint)) dungVung[lop].add(page.key);
+        else problems.push(`${file}: marker ${marker} outside page area "${page.markerFileHint}"`);
+      }
     }
   }
   for (const marker of expected.keys()) {
     if (!seen.desktop.has(marker) && !seen.mobile.has(marker)) problems.push(`missing marker ${marker}`);
   }
 
-  // Trên điện thoại, trang desktop KHÔNG mount. Một trang có control an toàn mà
-  // không có marker nào trong biến thể mobile nghĩa là page-agent mù hẳn ở đó
-  // (`giaiSafeControl` ném `khong_thay`) — đúng lỗi mà task G1-E vá. Gate theo
-  // TRANG chứ không theo từng control: có control desktop không có bản mobile
-  // tương đương (bộ lọc tháng của hoá đơn), ép một-một sẽ buộc phải bịa control.
-  const coMarkerMobile = new Set();
-  for (const marker of seen.mobile.keys()) {
-    const key = expected.get(marker);
-    if (key) coMarkerMobile.add(key);
-  }
-  for (const key of trangCoControl) {
-    if (!coMarkerMobile.has(key)) problems.push(`missing mobile marker for page ${key}`);
+  // Trên điện thoại, trang desktop KHÔNG mount — và ngược lại. Một trang có
+  // control an toàn mà thiếu marker ở MỘT trong hai biến thể nghĩa là page-agent
+  // mù hẳn ở đúng nửa số người dùng đó (`giaiSafeControl` ném `khong_thay`).
+  // Gate theo TRANG chứ không theo từng control: có control desktop không có bản
+  // mobile tương đương (bộ lọc tháng của hoá đơn), ép một-một sẽ buộc phải bịa
+  // control.
+  for (const page of trangCoControl) {
+    if (!dungVung.mobile.has(page.key)) problems.push(`missing mobile marker for page ${page.key}`);
+    if (!dungVung.desktop.has(page.key)) problems.push(`missing desktop marker for page ${page.key}`);
   }
   return problems;
 }

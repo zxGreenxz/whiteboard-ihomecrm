@@ -69,7 +69,11 @@
 .cm-app .mtop-btn svg { width: 15px; height: 15px; }
 .cm-app .mtop-btn.ghost { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); box-shadow: none; }
 
-.cm-app .mbody { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+/* Đệm đáy = dải chừa cho nút nổi Copilot (--copilot-fab-inset, xem copilot.css).
+   Khai LẠI .mbody ở đây (cùng độ đặc hiệu, nạp SAU mobileApp.css) nên dòng này
+   ĐÈ bản gốc — để nguyên 16px thì đúng trang này vẫn bị nút che, mà nhìn vào
+   mobileApp.css lại tưởng đã chữa xong. Giữ hai chỗ cùng đọc một biến. */
+.cm-app .mbody { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; padding: 16px 16px calc(var(--copilot-fab-inset, 84px) + env(safe-area-inset-bottom)); }
 .cm-app .mbody::-webkit-scrollbar { display: none; }
 
 /* ===== Status tabs ===== */
