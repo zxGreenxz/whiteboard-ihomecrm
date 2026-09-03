@@ -18,15 +18,12 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc } }));
 const {
   chuanHoaChinhSach,
   chuanHoaDongSo,
-  chuanHoaMoKhoaPin,
   chuanHoaSo,
   dienGiaiLoiChinhSach,
-  dienGiaiLoiMoKhoaPin,
   dinhDangThoiGian,
   docChinhSachHanhDong,
   docSoHanhDong,
   doiChinhSachHanhDong,
-  moKhoaPinStepUp,
   nhanSuKien,
   locSuKienKeHoach,
 } = await import('../hanhDongCopilot');
@@ -296,40 +293,6 @@ describe('sổ kế hoạch', () => {
 
   it('sổ rỗng nói rõ là rỗng, không vẽ một bảng trắng', () => {
     expect(renderToStaticMarkup(<BangKeHoachGanDay dong={[]} />)).toContain('Chưa có kế hoạch nào');
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// G5-A — thẻ PIN step-up
-// ─────────────────────────────────────────────────────────────────────────────
-const USER_ID = '44444444-4444-4444-8444-444444444444';
-
-describe('moKhoaPinStepUp / chuanHoaMoKhoaPin / dienGiaiLoiMoKhoaPin', () => {
-  it('gọi đúng RPC copilot_step_up_unlock_v1 với p_user_id/p_reason', async () => {
-    rpc.mockResolvedValueOnce({ data: { da_mo_khoa: true, user_id: USER_ID }, error: null });
-    const kq = await moKhoaPinStepUp(USER_ID, 'người dùng báo bị khoá nhầm');
-    expect(rpc).toHaveBeenCalledWith('copilot_step_up_unlock_v1', {
-      p_user_id: USER_ID,
-      p_reason: 'người dùng báo bị khoá nhầm',
-    });
-    expect(kq).toEqual({ daMoKhoa: true, userId: USER_ID });
-  });
-
-  it('chuanHoaMoKhoaPin từ chối hình dạng lạ thay vì trả một kết quả giả', () => {
-    expect(chuanHoaMoKhoaPin(null)).toBeNull();
-    expect(chuanHoaMoKhoaPin({ da_mo_khoa: false, user_id: USER_ID })).toBeNull();
-    expect(chuanHoaMoKhoaPin({ da_mo_khoa: true })).toBeNull();
-  });
-
-  it('lỗi RPC ném Error, câu tiếng Việt đúng theo mã', () => {
-    expect(dienGiaiLoiMoKhoaPin(new Error('step_up_superadmin_only'))).toContain('Chỉ super admin');
-    expect(dienGiaiLoiMoKhoaPin(new Error('reason_required'))).toContain('lý do');
-    expect(dienGiaiLoiMoKhoaPin(new Error('pin_not_set'))).toContain('chưa từng đặt PIN');
-  });
-
-  it('server RAISE lỗi ⇒ moKhoaPinStepUp NÉM (không nuốt lỗi)', async () => {
-    rpc.mockResolvedValueOnce({ data: null, error: { message: 'step_up_superadmin_only' } });
-    await expect(moKhoaPinStepUp(USER_ID, 'lý do')).rejects.toThrow('step_up_superadmin_only');
   });
 });
 

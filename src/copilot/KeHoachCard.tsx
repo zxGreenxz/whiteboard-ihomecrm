@@ -44,6 +44,10 @@ export const TEXT_HET_HAN_THEO_DOI = 'Hết thời gian theo dõi — xem tiếp
 export const TEXT_PIN_HET_HAN =
   'Xác thực PIN đã hết hạn hoặc chưa hoàn tất. Hãy bấm "Duyệt bằng PIN" lại.';
 
+/** Fix round 1 (F8): khong co to chuc thi khong the xac thuc/tieu token step-up. */
+export const TEXT_PIN_THIEU_TO_CHUC =
+  'Không xác định được tổ chức của kế hoạch này — chưa thể duyệt bằng PIN. Hãy tải lại cuộc trò chuyện.';
+
 /**
  * Nhịp cho vòng kế tiếp: 1,5s tăng dần tới trần 5s.
  *
@@ -357,6 +361,10 @@ export default function KeHoachCard({
 
   const bamNutDuyet = () => {
     if (dangGui || !dangCho) return;
+    // Fix round 1 (F8): L5 nhung khong biet to chuc thi khong mo modal duoc
+    // (StepUpPinModal doi organizationId khong rong) — nut da bi disabled
+    // cho truong hop nay, day la lop phong thu thu hai.
+    if (canPin && !orgIdChoPin) return;
     // L5 dưới trần L5: mở modal PIN thay vì duyệt thẳng. `bam()` chỉ chạy SAU
     // khi modal báo xác thực xong (`onXacThucXong`), lúc đó token đã nằm trong
     // `confirmationStore` chờ `tieuTokenStepUp` lấy-và-xoá.
@@ -411,13 +419,18 @@ export default function KeHoachCard({
           bước nào.
         </p>
       )}
+      {conNutBam && canPin && !orgIdChoPin && (
+        <p className="mb-2 text-xs text-red-700" data-testid="copilot-plan-pin-thieu-to-chuc">
+          {TEXT_PIN_THIEU_TO_CHUC}
+        </p>
+      )}
       {conNutBam && (
         <div className="flex gap-2">
           <button
             type="button"
             data-testid="copilot-plan-approve"
             onClick={bamNutDuyet}
-            disabled={dangGui || running}
+            disabled={dangGui || running || (canPin && !orgIdChoPin)}
             className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
           >
             {dangGui ? 'Đang gửi…' : canPin ? 'Duyệt bằng PIN' : 'Duyệt kế hoạch'}

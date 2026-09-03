@@ -23,17 +23,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 
 import { dienGiaiLoiKeHoach } from '../chatErrors';
-import { datPin, trangThaiPin, type TrangThaiPin } from '../plan/stepUpClient';
+import { datPin, moKhoaPinStepUp, trangThaiPin, type TrangThaiPin } from '../plan/stepUpClient';
 import {
   SO_DONG_SO_MAC_DINH,
   dienGiaiLoiChinhSach,
-  dienGiaiLoiMoKhoaPin,
   dinhDangThoiGian,
   docChinhSachHanhDong,
   docSoHanhDong,
   doiChinhSachHanhDong,
   locSuKienKeHoach,
-  moKhoaPinStepUp,
   nhanSuKien,
   type ChinhSachHanhDong,
   type DongSoHanhDong,
@@ -495,13 +493,17 @@ export default function HanhDongTab() {
   });
 
   const moKhoaMutation = useMutation({
-    mutationFn: () => moKhoaPinStepUp(moKhoaUserId.trim(), moKhoaLyDo.trim()),
+    mutationFn: async () => {
+      const kq = await moKhoaPinStepUp(moKhoaUserId.trim(), moKhoaLyDo.trim());
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq;
+    },
     onSuccess: () => {
       toast.success('Đã mở khoá PIN của người dùng.');
       setMoKhoaUserId('');
       setMoKhoaLyDo('');
     },
-    onError: (loi) => toast.error(dienGiaiLoiMoKhoaPin(loi)),
+    onError: (loi) => toast.error(dienGiaiLoiPin(loi)),
   });
 
   const chinhSachQuery = useQuery({

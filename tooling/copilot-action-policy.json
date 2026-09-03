@@ -15,6 +15,8 @@
   "rpcAllowlist": {
     "copilot_plan_approve_v1": ["src/copilot/plan/planClient.ts"],
     "copilot_plan_cancel_v1": ["src/copilot/plan/planClient.ts"],
-    "copilot_step_up_verify_v1": ["src/copilot/plan/stepUpClient.ts"]
+    "copilot_step_up_verify_v1": ["src/copilot/plan/stepUpClient.ts"],
+    "copilot_step_up_set_pin_v1": ["src/copilot/plan/stepUpClient.ts"],
+    "copilot_step_up_unlock_v1": ["src/copilot/plan/stepUpClient.ts"]
   }
 }

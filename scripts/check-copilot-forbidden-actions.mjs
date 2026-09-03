@@ -51,6 +51,17 @@ export const RPC_PHAI_CO_ALLOWLIST = Object.freeze([
   // rồi tự gọi hàm này thay người dùng — chỉ `stepUpClient.ts`, sau một cú bấm
   // "Xác thực" thật trên `StepUpPinModal`.
   'copilot_step_up_verify_v1',
+  // Fix round 1 (F4): hai RPC quản trị PIN cũng phải chỉ gọi được từ MỘT file.
+  // `copilot_step_up_set_pin_v1` ĐẶT PIN — một tool gọi được nó là một tool
+  // TỰ ĐẶT được lớp xác thực thứ hai (chiếm đoạt cơ chế, không chỉ vượt qua
+  // nó). `copilot_step_up_unlock_v1` MỞ KHOÁ sau 5 lần sai — một tool gọi
+  // được nó là một tool tự xoá khoá do chính nó (hoặc kẻ tấn công) gây ra.
+  // Cả hai chỉ được gọi từ `src/copilot/plan/stepUpClient.ts` — KHÔNG phải
+  // `src/copilot/admin/hanhDongCopilot.ts`, dù đó là nơi UI quản trị nằm,
+  // vì `SCAN_ROOTS` của gate này chỉ soi `src/copilot/tools/` +
+  // `src/copilot/plan/`; đặt lời gọi RPC ở `admin/` là đặt nó NGOÀI TẦM SOI.
+  'copilot_step_up_set_pin_v1',
+  'copilot_step_up_unlock_v1',
   // Huỷ cũng TIÊU phiếu đồng ý (và đặt mọi bước còn chờ thành SKIPPED), nên một
   // tool gọi được nó là một tool VỨT BỎ được sự đồng ý của người dùng — cùng
   // ranh giới với duyệt, hướng ngược lại. Không thêm một `kind` mới tên `cancel`

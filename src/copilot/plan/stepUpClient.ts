@@ -1,14 +1,26 @@
 // Máy trạm STEP-UP PIN (G5-A) — xác thực PIN, phát/tiêu token, đặt PIN, đọc
-// trạng thái. Đây là điểm nối #3 của Mức 3: một kế hoạch L5 dưới trần L5 cần
-// một lớp xác thực THỨ HAI trước khi `copilot_plan_approve_v1` chịu duyệt.
+// trạng thái, mở khoá người khác. Đây là điểm nối #3 của Mức 3: một kế hoạch
+// L5 dưới trần L5 cần một lớp xác thực THỨ HAI trước khi
+// `copilot_plan_approve_v1` chịu duyệt.
 //
-// HAI ĐIỀU PHẢI ĐỌC TRƯỚC KHI SỬA FILE NÀY
+// BA ĐIỀU PHẢI ĐỌC TRƯỚC KHI SỬA FILE NÀY
 //
-//   1. `supabase.rpc` KHÔNG BAO GIỜ NÉM — cùng luật với `planClient.ts`. Bốn
-//      RPC ở đây chỉ RAISE trên mọi nhánh lỗi (không có hợp đồng `ok`/
-//      `error_code` kiểu ghi-rồi-RETURN của `copilot_plan_approve_v1`), nên đọc
-//      kết quả ở đây ĐƠN GIẢN hơn planClient: `error` có nghĩa là hỏng,
-//      `data` có nghĩa là xong.
+//   1. `supabase.rpc` KHÔNG BAO GIỜ NÉM — cùng luật với `planClient.ts`. NĂM
+//      RPC ở đây đi HAI đường lỗi khác nhau, và `docKetQua` phải đọc CẢ HAI
+//      (cùng khuôn `docPhanHoi` của `planClient.ts`):
+//        (a) RAISE thuần — pre-write, không hàng nào bị đụng (unauthenticated,
+//            organization_required, not_permitted, pin_not_set, pin_format,
+//            pin_weak, step_up_superadmin_only, reason_required…). Lỗi về
+//            trong `error.message`.
+//        (b) GHI-RỒI-RETURN — nhánh có UPDATE/ledger đứng trước (khoá PIN,
+//            đếm lần sai). Trả `{ok:false, error_code, attempts_left?,
+//            seconds_left?}` trong `data`. Fix round 1 (F1): bản trước RAISE
+//            NGAY SAU một UPDATE trong CÙNG giao dịch — Postgres cuộn ngược
+//            UPDATE đó theo RAISE, nên khoá PIN không bao giờ được ghi xuống
+//            đĩa. `copilot_step_up_verify_v1`/`copilot_step_up_set_pin_v1`
+//            giờ RETURN thay vì RAISE cho hai nhánh này; KHÔNG còn số nào
+//            nhúng trong chuỗi `error.message` (không còn `pin_invalid:<n>`
+//            kiểu cũ) — số lần còn lại/giây khoá nay là TRƯỜNG jsonb riêng.
 //
 //   2. TOKEN KHÔNG BAO GIỜ RA KHỎI ĐÂY THEO ĐƯỜNG CHUỖI CHO MÔ HÌNH. Server
 //      phát nó ĐÚNG MỘT LẦN trong kết quả của `copilot_step_up_verify_v1`;
@@ -17,6 +29,16 @@
 //      "đã xác thực xong hay chưa", không cầm token trong tay. Muốn dùng token
 //      để duyệt kế hoạch phải gọi `tieuTokenStepUp`, hàm lấy-và-xoá trong MỘT
 //      bước — cùng kỷ luật với `tieuXacNhan` cho nonce cấp kế hoạch.
+//
+//   3. `copilot_step_up_set_pin_v1`/`copilot_step_up_unlock_v1` PHẢI gọi TỪ
+//      ĐÂY, không phải từ `hanhDongCopilot.ts` (Fix round 1, F4). Cả hai nằm
+//      trong `rpcAllowlist` của `check-copilot-forbidden-actions.mjs`, và
+//      `SCAN_ROOTS` của gate đó chỉ soi `src/copilot/tools/` +
+//      `src/copilot/plan/` — đặt lời gọi RPC ở `src/copilot/admin/` là đặt nó
+//      ngoài tầm soi, khiến allowlist không đo được gì (một allowlist trỏ vào
+//      file không thật sự gọi RPC là allowlist chết). `HanhDongTab.tsx` import
+//      `moKhoaPinStepUp` từ ĐÂY; `hanhDongCopilot.ts` chỉ còn giữ phần THUẦN
+//      (đọc sổ, đổi chính sách) không liên quan PIN.
 import { supabase } from '@/integrations/supabase/client';
 
 import { dienGiaiLoiKeHoach } from '../chatErrors';
@@ -45,19 +67,6 @@ function so(gt: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * Tách mã lỗi gốc khỏi số đi kèm sau dấu `:` — `pin_invalid:3` → `{ ma:
- * 'pin_invalid', so: 3 }`. Bốn RPC ở đây chỉ RAISE nên mọi lỗi đến qua
- * `error.message`, và hai mã (`pin_invalid`, `pin_locked`) mang số ngay trong
- * thông điệp thay vì một trường riêng — tách ra để giao diện hiện số, không
- * bắt người dùng tự đọc mã kỹ thuật.
- */
-function tachSo(msg: string): { ma: string; so: number | null } {
-  const m = /^([a-z_]+):(-?\d+)$/.exec(msg.trim());
-  if (!m) return { ma: msg.trim(), so: null };
-  return { ma: m[1] ?? msg.trim(), so: Number(m[2]) };
-}
-
 interface KetQuaRpc {
   ok: boolean;
   ma: string | null;
@@ -67,30 +76,46 @@ interface KetQuaRpc {
   ban: Record<string, unknown> | null;
 }
 
-/** Đọc `{ data, error }` của bốn RPC step-up — chúng chỉ RAISE, không có `ok`/`error_code`. */
+/**
+ * Đọc `{ data, error }` của năm RPC step-up — hai đường lỗi (xem quyết định 1
+ * ở đầu file): RAISE thuần (`error`) và GHI-RỒI-RETURN (`data.ok === false`).
+ * Đường thứ hai KHÔNG còn số nhúng trong chuỗi (Fix round 1) — `attempts_left`/
+ * `seconds_left` là trường jsonb riêng, đọc thẳng, không cần tách chuỗi.
+ */
 function docKetQua(data: unknown, error: { message?: string } | null): KetQuaRpc {
   if (error) {
     const raw = (error.message ?? String(error)).trim();
-    const { ma, so: soDiKem } = tachSo(raw);
     return {
       ok: false,
-      ma,
-      soLanConLai: ma === 'pin_invalid' ? soDiKem : null,
-      khoaConGiay: ma === 'pin_locked' ? soDiKem : null,
+      ma: raw || null,
+      soLanConLai: null,
+      khoaConGiay: null,
       thongBao: dienGiaiLoiKeHoach(raw),
       ban: null,
     };
   }
-  return { ok: true, ma: null, soLanConLai: null, khoaConGiay: null, thongBao: null, ban: laBan(data) };
+  const ban = laBan(data);
+  if (ban && ban.ok === false) {
+    const ma = chuoi(ban.error_code);
+    return {
+      ok: false,
+      ma,
+      soLanConLai: so(ban.attempts_left),
+      khoaConGiay: so(ban.seconds_left),
+      thongBao: dienGiaiLoiKeHoach(ma ?? 'phan_hoi_khong_doc_duoc'),
+      ban: null,
+    };
+  }
+  return { ok: true, ma: null, soLanConLai: null, khoaConGiay: null, thongBao: null, ban };
 }
 
 export interface KetQuaXacThucPin {
   ok: boolean;
   maLoi: string | null;
   thongBao: string | null;
-  /** Từ `pin_invalid:<n>` — số lần thử còn lại TRƯỚC lần khoá kế tiếp. */
+  /** Số lần thử còn lại TRƯỚC lần khoá kế tiếp — trường `attempts_left` của RETURN. */
   soLanConLai: number | null;
-  /** Từ `pin_locked:<n>` — số giây còn lại của lần khoá hiện tại. */
+  /** Số giây còn lại của lần khoá hiện tại — trường `seconds_left` của RETURN. */
   khoaConGiay: number | null;
 }
 
@@ -150,6 +175,8 @@ export interface KetQuaDatPin {
   maLoi: string | null;
   thongBao: string | null;
   updatedAt: string | null;
+  /** Đang khoá (do gõ sai PIN cũ nhiều lần) — trường `seconds_left` khi có. */
+  khoaConGiay: number | null;
 }
 
 /**
@@ -166,8 +193,10 @@ export async function datPin(pin: string, currentPin?: string): Promise<KetQuaDa
     ...(currentPin ? { p_current_pin: currentPin } : {}),
   });
   const kq = docKetQua(data, error);
-  if (!kq.ok) return { ok: false, maLoi: kq.ma, thongBao: kq.thongBao, updatedAt: null };
-  return { ok: true, maLoi: null, thongBao: null, updatedAt: chuoi(kq.ban?.updated_at) };
+  if (!kq.ok) {
+    return { ok: false, maLoi: kq.ma, thongBao: kq.thongBao, updatedAt: null, khoaConGiay: kq.khoaConGiay };
+  }
+  return { ok: true, maLoi: null, thongBao: null, updatedAt: chuoi(kq.ban?.updated_at), khoaConGiay: null };
 }
 
 export interface TrangThaiPin {
@@ -198,5 +227,35 @@ export async function trangThaiPin(): Promise<KetQuaTrangThaiPin> {
       lockedUntil: chuoi(ban.locked_until),
       failedAttempts: so(ban.failed_attempts) ?? 0,
     },
+  };
+}
+
+export interface KetQuaMoKhoaPin {
+  ok: boolean;
+  maLoi: string | null;
+  thongBao: string | null;
+  daMoKhoa: boolean;
+  userId: string | null;
+}
+
+/**
+ * Mở khoá PIN step-up của MỘT người dùng khác. Chỉ super admin, bắt buộc lý
+ * do >= 3 ký tự. Gọi RPC TỪ ĐÂY, không từ `hanhDongCopilot.ts` — xem quyết
+ * định 3 ở đầu file.
+ */
+export async function moKhoaPinStepUp(userId: string, reason: string): Promise<KetQuaMoKhoaPin> {
+  const { data, error } = await supabase.rpc('copilot_step_up_unlock_v1', {
+    p_user_id: userId,
+    p_reason: reason,
+  });
+  const kq = docKetQua(data, error);
+  if (!kq.ok) return { ok: false, maLoi: kq.ma, thongBao: kq.thongBao, daMoKhoa: false, userId: null };
+  const ban = kq.ban ?? {};
+  return {
+    ok: true,
+    maLoi: null,
+    thongBao: null,
+    daMoKhoa: ban.da_mo_khoa === true,
+    userId: chuoi(ban.user_id),
   };
 }

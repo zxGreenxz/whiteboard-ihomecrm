@@ -112,7 +112,7 @@ export default function StepUpPinModal({ organizationId, onXacThucXong, onHuy }:
                 oRefs.current[i] = el;
               }}
               data-testid={`copilot-step-up-digit-${i}`}
-              type="text"
+              type="password"
               inputMode="numeric"
               autoComplete={i === 0 ? 'one-time-code' : 'off'}
               maxLength={SO_O}

@@ -128,6 +128,8 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['pin_locked', 'Mã PIN đang bị khoá do nhập sai nhiều lần. Hãy thử lại sau.'],
   ['pin_invalid', 'Mã PIN không đúng.'],
   ['step_up_superadmin_only', 'Chỉ super admin mới đặt/đổi/mở khoá được PIN step-up.'],
+  ['reason_required', 'Phải nhập lý do (ít nhất 3 ký tự) trước khi thao tác.'],
+  ['user_required', 'Thiếu mã người dùng cần thao tác.'],
 
   // — Cửa lúc bấm duyệt —
   ['plan_digest_mismatch', 'Nội dung kế hoạch đã đổi so với lúc xem. Hãy lập lại kế hoạch.'],
