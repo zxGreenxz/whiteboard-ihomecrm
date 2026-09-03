@@ -2,13 +2,13 @@
   "$comment": "SINH BỞI scripts/capture-production-catalog.mjs — không sửa tay. Tài liệu cần số đếm thì đọc file này.",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "serverVersion": "17.6",
-  "capturedAt": "2026-09-02T23:54:11.762Z",
-  "catalogFingerprint": "ce5104600991f6ab1b2cf9c4b6c66b62e973d680c6613eb35ffbc3c0a7270cc6",
+  "capturedAt": "2026-09-03T03:01:58.147Z",
+  "catalogFingerprint": "9e3c38f1d079b221d6bc04fd26fa9cefd81fa7efdf856840e241b6bebc009db9",
   "counts": {
-    "logicalTables": 243,
+    "logicalTables": 244,
     "childPartitions": 92,
     "views": 12,
-    "functions": 1394,
+    "functions": 1398,
     "securityDefinerFunctions": 942,
     "enums": 30,
     "realtimeTables": 25

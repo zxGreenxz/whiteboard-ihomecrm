@@ -542,6 +542,47 @@ export type Database = {
           },
         ]
       }
+      ai_user_memory: {
+        Row: {
+          created_at: string
+          id: string
+          key: string
+          organization_id: string
+          source: string
+          updated_at: string
+          user_id: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key: string
+          organization_id: string
+          source?: string
+          updated_at?: string
+          user_id: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key?: string
+          organization_id?: string
+          source?: string
+          updated_at?: string
+          user_id?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_user_memory_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_write_audit: {
         Row: {
           created_at: string
@@ -18856,6 +18897,23 @@ export type Database = {
       }
       copilot_material_stock_v1: {
         Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
+      copilot_memory_forget_v1: {
+        Args: { p_key: string; p_organization_id: string }
+        Returns: Json
+      }
+      copilot_memory_list_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
+      copilot_memory_upsert_v1: {
+        Args: {
+          p_key: string
+          p_organization_id: string
+          p_source?: string
+          p_value: string
+        }
         Returns: Json
       }
       copilot_meter_readings_v1: {

@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 482,
-  "soFileDocBangFs": 164,
-  "tongLoiGoi": 335,
-  "khongPhanLoaiDuoc": 171,
+  "tongSoFileTest": 485,
+  "soFileDocBangFs": 167,
+  "tongLoiGoi": 338,
+  "khongPhanLoaiDuoc": 172,
   "theoLoai": {
     "manifest": {
       "soFile": 18,
@@ -19,16 +19,17 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "ma-nguon": {
-      "soFile": 32,
+      "soFile": 33,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 60,
+      "soFile": 61,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
   "testDocMaNguon": [
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
+    "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
     "scripts/__tests__/network-center-worker-release-readback.test.mjs",
@@ -560,7 +561,21 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/check-copilot-tool-inventory.test.mjs",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
@@ -945,6 +960,14 @@
     },
     {
       "file": "src/lib/__tests__/copilotSuperadminOrganizationDirectoryMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotUserMemoryMigration.test.ts",
       "soGoi": 1,
       "loai": {
         "sql": 1
