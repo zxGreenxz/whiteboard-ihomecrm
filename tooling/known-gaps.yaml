@@ -150,6 +150,33 @@ gaps:
       Hoà giải ContractWithRelations với kiểu sinh từ types.ts — hoặc bỏ hẳn kiểu viết tay và
       dùng kiểu suy ra từ select. Là một lượt riêng vì đụng nhiều consumer của kiểu đó.
 
+  - id: copilot-plan-reconcile-unknown-effect
+    where: supabase/migrations/20260903100253_copilot_execution_plan_v1.sql (public.copilot_plan_reconcile_step_v1)
+    expires_at: 2027-01-31
+    why: >
+      Máy kế hoạch thực thi (G3) khai `UNKNOWN_EFFECT` là một trạng thái bước hợp lệ, và khai
+      luôn RPC đối soát cho nó — nhưng `copilot_plan_reconcile_step_v1` hiện chỉ
+      `RAISE not_implemented` (0A000). Chữ ký + ACL có từ 03/09/2026 vì thứ đắt nhất khi thêm
+      một RPC không phải thân hàm mà là chữ ký đi vào types.ts, lớp gọi RPC và test.
+
+      Vì sao đây là quyết định chứ không phải thiếu sót: ở Mức 2 KHÔNG action nào có hiệu ứng
+      NGOÀI database. Cả 7 hàng `copilot_action_registry` đều ghi qua Postgres trong một giao
+      dịch, nên một lần timeout luôn kết luận được (giao dịch hoặc commit hoặc rollback) và
+      không bước nào rơi vào `UNKNOWN_EFFECT`. Trạng thái đó chỉ có nghĩa khi Mức 3 mở các
+      action gửi Zalo hoặc đẩy lệnh xuống router — lúc đó một timeout THẬT SỰ không cho biết
+      việc đã xảy ra hay chưa, và phải đọc lại nguồn ngoài mới chốt được.
+
+      Rủi ro trong lúc chờ: một client đọc chữ ký này rồi tưởng đã có đường đối soát. RPC trả
+      `not_implemented` tường minh (chứ không trả kết quả rỗng) chính là để chặn hiểu nhầm đó
+      — im lặng trả `{}` mới là cái bẫy. `.e2e-fleet/specs/copilot-plan-batch-consent.spec.ts`
+      KHÔNG có ca nào cho RPC này, vì chưa có gì để đo.
+    exit_condition: >
+      G5-C viết thân `copilot_plan_reconcile_step_v1` (đọc lại nguồn ngoài, chốt bước thành
+      DONE hoặc FAILED, ghi sổ) CÙNG với action Mức 3 đầu tiên có hiệu ứng ngoài database, và
+      thêm ca E2E dựng đúng cảnh timeout-rồi-đối-soát vào
+      .e2e-fleet/specs/copilot-plan-batch-consent.spec.ts. Không có action ngoài-DB thì không
+      đóng bằng cách viết thân suông — gia hạn kèm lý do.
+
   - id: e2e-copilot-khong-co-trace
     where: .github/workflows/copilot-e2e.yml (bước chạy 3 spec · bước dọn · bước guard · upload-artifact)
     expires_at: 2026-12-31

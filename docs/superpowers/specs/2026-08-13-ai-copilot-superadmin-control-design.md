@@ -1027,7 +1027,14 @@ Quy tac orchestration:
 
 - read/page step co the chay tu dong chi khi dependencies da `succeeded`;
 - moi execute step co intent/consent rieng va readback rieng;
-- khong co global consent cho ca plan, ke ca superadmin;
+- ~~khong co global consent cho ca plan, ke ca superadmin~~ — **THAY bang Quyet dinh 02/09/2026:
+  batch consent theo KE HOACH.** Mot phieu dong y cap ke hoach (`copilot_plan_approve_v1`, nonce
+  32 byte + `plan_digest` giao dien echo lai + CAS `plan_version`) mo duong cho 1..8 buoc DA XEM
+  TRUOC va DA CHOT `canonical`, trong han 30 phut. Day KHONG phai "global consent": no khong bao
+  gom mot payload chua ai nhin thay — moi buoc van co digest rieng, va server kiem lai registry +
+  co + quyen NGAY TRUOC khi ghi tung buoc. Xem `2026-09-02-ai-copilot-batch-consent-adr.md`;
+  hop dong server o `supabase/migrations/20260903100253_copilot_execution_plan_v1.sql`; bang chung
+  chay that o `.e2e-fleet/specs/copilot-plan-batch-consent.spec.ts`.
 - process/browser restart chi resume tu checkpoint server sau revalidation;
 - permission/rollout/provider/doc bi revoke thi pending step thanh `blocked` truoc khi chay;
 - `unknown_effect` dung moi dependent step va vao operator reconciliation queue;

@@ -1,6 +1,6 @@
 # AI Copilot
 
-> **Reviewed:** 2026-09-02
+> **Reviewed:** 2026-09-03
 
 AI Copilot gồm chat nghiệp vụ, UI-control giới hạn và tool domain. Launcher chỉ hiện khi user có session, entitlement còn hiệu lực và quyền tương ứng.
 
@@ -38,6 +38,42 @@ OpenAI-compat với proxy (cần streaming, ảnh, tool song song), còn UI-cont
 - **Trả lời chảy dần** (SSE) và **gọi nhiều công cụ song song** trong một lượt.
 - UI-control: chỉ khi có quyền `ai_copilot.ui_control`; có thể điều hướng, lọc và điền form trong allowlist, nhưng không được bấm Lưu/Xác nhận/Submit hay hành động nguy hiểm. **Không** được cấp tool ghi.
 - Ghi: tạo phiếu thu/chi **nháp** sau preview và xác nhận rõ của người dùng ở lượt kế tiếp; phiếu `UNAPPROVED`, chưa gắn sổ và chưa tác động tiền. Chỉ chat mới có tool này.
+- **Kế hoạch thực thi (03/09/2026)**: super admin có thể xin Copilot lập một *kế hoạch* 1–8 bước đã xem trước, duyệt MỘT lần, rồi chạy tuần tự. Xem mục dưới.
+
+## Kế hoạch thực thi — đồng ý theo lô (03/09/2026)
+
+Một phiếu đồng ý cho một DÃY bước, thay cho một thẻ xác nhận mỗi thao tác. Hợp
+đồng ở `20260903100253_copilot_execution_plan_v1.sql`; lối vào bước L5 ở
+`20260903102931_copilot_action_income_expense_nop_ho_so_v1.sql`.
+
+- **Vòng đời**: `DRAFT` (5 phút) → `APPROVED` (30 phút để chạy hết) →
+  `DONE`/`FAILED`/`CANCELLED`/`EXPIRED`. Bước chạy TUYẾN TÍNH, một lời gọi một
+  bước một giao dịch; một bước hỏng kéo cả kế hoạch dừng, các bước sau thành
+  `BLOCKED`. Không có "bỏ qua rồi chạy tiếp".
+- **Ba thứ mô hình không dựng được** đứng giữa kế hoạch và một lần ghi: nonce cấp
+  kế hoạch (32 byte, server phát ĐÚNG MỘT LẦN, không vào ngữ cảnh mô hình),
+  `plan_digest` mà giao diện echo lại từ màn hình, và CAS trên `plan_version`.
+  `copilot_plan_approve_v1` KHÔNG nằm trong tool nào — chỉ giao diện gọi được.
+- **Đây không phải "global consent"**: kế hoạch chỉ gói được các bước đã chạy xem
+  trước và đã chốt `canonical`; mỗi bước giữ digest riêng, và server kiểm lại
+  registry + cờ rollout + trần rủi ro + phạm vi quyền NGAY TRƯỚC KHI GHI từng
+  bước. Van đổi giữa chừng ⇒ `policy_changed`; cầu dao kéo giữa chừng ⇒ bước
+  `BLOCKED` với `copilot_action_disabled`.
+- **Ai được lập**: `copilot_action_policy.allowed_roles`, seed `{superadmin}`.
+  Trần rủi ro `max_direct_risk` hiện là `L4`, và MIỄN trần cho đúng một cơ chế
+  thực thi — `maker_submit_v1` — vì nó không ghi trực tiếp.
+- **Bước L5 duy nhất**: `income_expense.nop_ho_so` NỘP một phiếu nháp của chính
+  người thao tác vào hàng chờ duyệt và ép hồ sơ dừng ở `PENDING_APPROVAL`. Luật
+  `AUTO_POST` khớp ⇒ `copilot_auto_post_forbidden` và cuốn ngược sạch; luật `DENY`
+  ⇒ `rule_denied`. **Người duyệt vẫn là một con người khác** qua
+  `decide_financial_voucher` (maker-checker chặn chính người nộp). Tổ chức chưa có
+  bộ luật duyệt `ACTIVE` thì bước này fail-CLOSED, không tạo hồ sơ nào.
+- **Đọc lại thay vì đoán**: mất kết nối giữa chừng thì gọi `copilot_plan_get_v1`
+  (chủ kế hoạch hoặc super admin) — nó trả trạng thái thật + 20 dòng sổ, và KHÔNG
+  trả nonce, `canonical`, `payload` hay digest thô của bước.
+- **Chưa có thân**: `copilot_plan_reconcile_step_v1` (đối soát bước
+  `UNKNOWN_EFFECT` với nguồn ngoài) trả `not_implemented` — chữ ký và ACL có sẵn
+  để Mức 3 không phải đổi bề mặt.
 
 ## Giới hạn cần biết
 

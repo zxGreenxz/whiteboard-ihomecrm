@@ -80,6 +80,42 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 - Tool ghi `tao_phieu_thu_chi_nhap` bắt buộc trả bản xem trước và chờ người dùng bấm thẻ xác nhận; kết quả là phiếu `UNAPPROVED`, không gắn sổ.
 - Luồng ghi hiện hành: tool chỉ gọi RPC preview; nonce được giữ trong bộ nhớ trình duyệt và không đi vào model context. Chỉ nút xác nhận của người dùng mới gọi RPC execute; server kiểm payload/nonce và tạo phiếu `UNAPPROVED` cùng audit trong boundary đã harden. Đây là source/static behavior đã có, nhưng vẫn cần negative E2E cho expiry, payload-change, replay và concurrency trước khi coi là release gate hoàn tất.
 
+## Kế hoạch thực thi
+
+Từ 03/09/2026 Copilot có **đồng ý theo lô**: một phiếu đồng ý cho một dãy 1–8 bước
+đã xem trước, thay vì một thẻ xác nhận cho mỗi thao tác. Hợp đồng server nằm ở
+`supabase/migrations/20260903100253_copilot_execution_plan_v1.sql` (6 RPC), lối vào
+`maker_submit_v1` ở `20260903102931_copilot_action_income_expense_nop_ho_so_v1.sql`.
+
+- **Đây không phải "global consent".** Kế hoạch chỉ gói được những bước đã chạy
+  xem trước và đã chốt `canonical`; mỗi bước giữ digest riêng, và server kiểm lại
+  registry + cờ rollout + trần rủi ro + phạm vi quyền **ngay trước khi ghi từng
+  bước**, không chỉ lúc duyệt. Van đổi giữa chừng ⇒ `policy_changed`.
+- **Ba thứ mô hình không dựng được** đứng giữa nó và một lần ghi: nonce cấp kế
+  hoạch (32 byte, server phát đúng một lần, không vào ngữ cảnh mô hình),
+  `plan_digest` mà giao diện echo lại từ màn hình, và CAS trên `plan_version`.
+  `copilot_plan_approve_v1` **không** nằm trong bất kỳ tool nào — chỉ giao diện gọi
+  được, và `scripts/check-copilot-forbidden-actions.mjs` ghim điều đó.
+- **Vai được phép**: `copilot_action_policy.allowed_roles`, seed `{superadmin}`.
+  Hai tool `lap_ke_hoach`/`thuc_thi_buoc` khai `chatOnly` + `superAdminOnly` +
+  `rolloutKey = action:copilot.execution_plan`.
+- **Hạn**: kế hoạch DRAFT sống 5 phút, kế hoạch đã duyệt có 30 phút để chạy hết;
+  quá hạn ⇒ `EXPIRED` và mọi bước còn chờ thành `BLOCKED`. Một bước hỏng kéo cả
+  kế hoạch dừng (`FAILED`), không có "bỏ qua rồi chạy tiếp".
+- **Bước L5 duy nhất là `income_expense.nop_ho_so`** (`maker_submit_v1`): nó NỘP
+  một phiếu nháp của chính người thao tác vào hàng chờ duyệt và ép hồ sơ dừng ở
+  `PENDING_APPROVAL`. Luật `AUTO_POST` khớp ⇒ `copilot_auto_post_forbidden` và cuốn
+  ngược; người duyệt vẫn là một CON NGƯỜI khác qua `decide_financial_voucher`.
+- **Bằng chứng chạy thật**: `.e2e-fleet/specs/copilot-plan-batch-consent.spec.ts`
+  (9 ca trên org DEMO qua PostgREST với JWT phiên thật). Hai khoảng trống của môi
+  trường DEMO được ghi thẳng trong spec: DEMO không có ai vừa là super admin vừa
+  có quyền ghi, và DEMO không có bộ luật duyệt `ACTIVE` nên nhánh thành công của
+  `nop_ho_so` chưa đo được — nhánh fail-closed thì đã đo.
+- **Chưa có thân**: `copilot_plan_reconcile_step_v1` (đối soát bước
+  `UNKNOWN_EFFECT` với nguồn ngoài) chỉ trả `not_implemented` (0A000) — chữ ký và
+  ACL có sẵn để Mức 3 không phải đổi bề mặt. Xem `tooling/known-gaps.yaml` mục
+  `copilot-plan-reconcile-unknown-effect`.
+
 ## Giới hạn đã biết
 
 - Confirmation nonce đã thay cho boolean `xac_nhan` trong input schema. Kho client hiện là một khe global (đề xuất mới đè đề xuất cũ), nên chưa đáp ứng contract key theo conversation/action/payload-hash và chưa có đủ proof replay/concurrency.
