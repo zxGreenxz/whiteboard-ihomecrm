@@ -47,6 +47,17 @@ nhập trong modal UI riêng, `type="password"`, không log). Mọi lượt PIN 
 engine của người khác (qua `income_expense.nop_ho_so`, maker-checker thật) thì `direct_l5_v1`
 KHÔNG dùng — hai đường không trộn.
 
+**Hệ quả vận hành (fix round 1, 04/09/2026, sau review)**: **E2E không bao giờ xoay PIN sản
+xuất.** `copilot_step_up_set_pin_v1` chỉ super admin gọi được và đòi đúng PIN CŨ để đổi — nếu một
+lượt CI đặt một PIN ngẫu nhiên rồi bị giết giữa chừng (crash, timeout, huỷ job), giá trị ngẫu
+nhiên đó chỉ sống trong bộ nhớ tiến trình đã chết và KHÔNG RPC nào phục hồi được nó:
+`copilot_step_up_unlock_v1` chỉ mở khoá bộ đếm, không đặt lại hash. Kết quả là PIN thật của super
+admin trên production bị khoá vĩnh viễn ở một giá trị không ai biết, phải can thiệp tay vào DB.
+`.e2e-fleet/specs/copilot-plan-l5-matrix.spec.ts` đọc PIN thật từ biến môi trường
+`COPILOT_E2E_PIN` (secret CI do controller nạp) và chỉ dùng nó để XÁC THỰC (kể cả các lượt SAI cố
+ý để kích khoá) và MỞ KHOÁ — không bao giờ đặt/đổi. Thiếu biến này thì các case phụ thuộc PIN tự
+bỏ qua kèm lý do, không đoán giá trị và không có mặc định cứng trong mã.
+
 ### 2. L6 (`sql`/`secret`/`deploy`) ở NGOÀI Copilot vĩnh viễn — không đàm phán ở Mức 3
 
 `L6_FOREVER` (`scripts/check-copilot-forbidden-actions.mjs`) neo bằng HẰNG SỐ TRONG MÃ, không đọc

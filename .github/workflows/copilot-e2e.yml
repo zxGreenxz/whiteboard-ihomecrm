@@ -357,12 +357,16 @@ jobs:
           # TẮT: 5 phút treo mỗi lượt CI không đáng cho một bất biến đã có test
           # đơn vị. Đặt '1' khi muốn đo lại trên máy thật.
           COPILOT_PLAN_EXPIRY_WAIT: '0'
-          # copilot-plan-l5-matrix.spec.ts đọc biến này để biết PIN HIỆN TẠI của
-          # tài khoản hệ thống trước khi xoay sang một PIN ngẫu nhiên cho lượt
-          # chạy (và trả về đúng giá trị này ở afterAll). Không đặt secret riêng
-          # cho CI: mặc định trong mã là '7391' (giá trị controller đã đặt trên
-          # production task G5-D/E) — chỉ cần override ở đây nếu PIN thật đổi.
-          # COPILOT_E2E_PIN_CURRENT: ${{ secrets.COPILOT_E2E_PIN_CURRENT }}
+          # copilot-plan-l5-matrix.spec.ts đọc PIN THẬT của tài khoản hệ thống từ
+          # biến này — CHỈ ĐỌC, spec không bao giờ đặt/đổi PIN (fix round 1,
+          # review F1: xoay PIN sản xuất không có đường lùi nếu job bị giết giữa
+          # chừng — copilot_step_up_set_pin_v1 đòi đúng PIN cũ để đổi, và
+          # copilot_step_up_unlock_v1 chỉ mở khoá, không đặt lại hash). Secret
+          # do CONTROLLER nạp (Settings → Secrets → Actions) — CHỈ ở bước
+          # single-worker này, không lộ sang bước 3-spec phía trên. Thiếu secret
+          # ⇒ mọi case phụ thuộc PIN của copilot-plan-l5-matrix tự SKIP kèm lý
+          # do, không làm đỏ CI.
+          COPILOT_E2E_PIN: ${{ secrets.COPILOT_E2E_PIN }}
           THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
           THU_MUC_RAC: ${{ runner.temp }}/copilot-e2e-artifacts
           LOC_CHE: ${{ runner.temp }}/che-bi-mat.mjs

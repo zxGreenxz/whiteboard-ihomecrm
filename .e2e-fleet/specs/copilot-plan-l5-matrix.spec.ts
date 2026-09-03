@@ -64,7 +64,9 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
  *   (case 3 — tự bật/tắt TẠM một cờ hành động, xem lý do an toàn ngay tại chỗ
  *   khai báo `voiHanhDongTam`); và uỷ quyền đứng cho `income_expense.annotate`
  *   (case 4/5 — hành động này là L3, KHÔNG đụng trần rủi ro/cờ L5 chút nào,
- *   chỉ cần `standing_grants_enabled=true`).
+ *   chỉ cần `standing_grants_enabled=true`). Case 1/4/5/6 CÒN phụ thuộc một
+ *   điều thứ ba, độc lập với (A)/(B): biến môi trường `COPILOT_E2E_PIN` phải
+ *   có mặt — thiếu nó thì `test.skip` từng case kèm lý do, xem khối DỌN DẸP.
  *
  * ────────────────────────────────────────────────────────────────────────────
  * KHOÁ API CÔNG KHAI, KHÔNG PHẢI SECRET MỚI — bắt từ request đầu tiên của app,
@@ -75,14 +77,29 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
  *   MỌI spec khác nếu chạy song song) và tạm bật một cờ hành động toàn cục.
  *
  * DỌN DẸP
- *   PIN được XOAY: đặt một PIN MỚI ngẫu nhiên lúc đầu, TRẢ VỀ giá trị đọc từ
- *   `COPILOT_E2E_PIN_CURRENT` (mặc định '7391' — giá trị test mà controller
- *   đã đặt sẵn trên production) ở cuối. Cờ hành động tạm bật trong case 3
- *   được tắt lại trong `finally` của chính ca đó, và `afterAll` là lưới an
- *   toàn thứ hai. Không grant nào bị bỏ sót: mọi grant case này tạo ra đều bị
- *   thu hồi trong `finally`. Phiếu nháp tạo ở case 4/5 để lại UNAPPROVED/
- *   UNPOSTED, gắn tên "E2E G5L5 …", không xoá được qua đường hợp lệ (đúng
- *   khuôn `copilot-plan-batch-consent.spec.ts` đã ghi).
+ *   [FIX ROUND 1, review] KHÔNG BAO GIỜ xoay PIN sản xuất của tài khoản hệ
+ *   thống. Bản trước đặt một PIN MỚI ngẫu nhiên lúc đầu rồi trả về ở cuối —
+ *   nếu tiến trình bị GIẾT giữa chừng, giá trị ngẫu nhiên đó chỉ sống trong
+ *   biến bộ nhớ của phiên Playwright đã chết, và KHÔNG có RPC nào phục hồi
+ *   được: `copilot_step_up_set_pin_v1` đòi đúng PIN CŨ để đổi (chính là PIN
+ *   ngẫu nhiên đã mất), còn `copilot_step_up_unlock_v1` chỉ mở khoá — nó
+ *   KHÔNG đặt lại hash. Kết quả là PIN thật của super admin trên production
+ *   bị khoá vĩnh viễn ở một giá trị không ai biết, phải reset tay qua DB.
+ *
+ *   Spec giờ KHÔNG BAO GIỜ gọi `copilot_step_up_set_pin_v1` — không đặt,
+ *   không đổi, không xoay. PIN THẬT đọc từ biến môi trường `COPILOT_E2E_PIN`
+ *   (secret CI do controller nạp; chạy tay thì tự `export` — KHÔNG đọc từ
+ *   `CLAUDE.local.md`, chỉ đọc env). Case chỉ GỌI SAI PIN (để kích khoá) và
+ *   `copilot_step_up_unlock_v1` (để mở khoá) — cả hai đều không đổi hash.
+ *   Thiếu `COPILOT_E2E_PIN` ⇒ mọi case phụ thuộc PIN tự `test.skip` kèm lý
+ *   do, KHÔNG đoán/KHÔNG dùng giá trị mặc định cứng trong mã.
+ *
+ *   Cờ hành động tạm bật trong case 3 được tắt lại trong `finally` của chính
+ *   ca đó, và `afterAll` là lưới an toàn thứ hai. Không grant nào bị bỏ sót:
+ *   mọi grant case này tạo ra đều bị thu hồi trong `finally`. Phiếu nháp tạo
+ *   ở case 4/5 để lại UNAPPROVED/UNPOSTED, gắn tên "E2E G5L5 …", không xoá
+ *   được qua đường hợp lệ (đúng khuôn `copilot-plan-batch-consent.spec.ts`
+ *   đã ghi).
  *
  * ĐO ĐƯỢC THẬT TRÊN PRODUCTION (04/09/2026, qua Management API, chỉ đọc) — trạng
  * thái mà mọi tiền đề `test.skip` ở trên tính toán dựa vào:
@@ -101,7 +118,7 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
  *   cd .e2e-fleet && FLEET_BASE_URL=<preview của commit đang review> \
  *     EXPECTED_SOURCE_SHA=<sha 40 hex> VERCEL_AUTOMATION_BYPASS_SECRET=... \
  *     FLEET_PASS_CHUNHA=... FLEET_PASS_SYSADMIN=... \
- *     COPILOT_E2E_PIN_CURRENT=7391 \
+ *     COPILOT_E2E_PIN=<PIN thật của sysadmin trên production> \
  *     FLEET_WORKERS=1 COPILOT_LIVE_MODEL=1 \
  *     npx playwright test specs/copilot-plan-l5-matrix.spec.ts
  */
@@ -524,8 +541,9 @@ async function taoPhieuThat(jwt: string, tenPhieu: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// PIN step-up — chỉ super admin gọi được set/unlock. Xoay PIN để KHÔNG phụ
-// thuộc giá trị test cố định mà controller đã đặt sẵn (7391).
+// PIN step-up — CHỈ ĐỌC/XÁC THỰC/MỞ KHOÁ. `copilot_step_up_set_pin_v1` KHÔNG
+// bao giờ được gọi ở đây — xem lý do ở khối DỌN DẸP đầu file (fix round 1,
+// review): xoay PIN sản xuất là một thao tác không có đường lùi an toàn.
 // ---------------------------------------------------------------------------
 
 async function trangThaiPin(jwtSys: string): Promise<{ daDat: boolean; dangKhoa: boolean }> {
@@ -540,19 +558,17 @@ async function moKhoaPin(jwtSys: string, userId: string, reason: string): Promis
   return goiRpc(jwtSys, 'copilot_step_up_unlock_v1', { p_user_id: userId, p_reason: reason });
 }
 
-async function datPin(jwtSys: string, pinMoi: string, pinCu: string | null): Promise<KetQuaRpc> {
-  return goiRpc(jwtSys, 'copilot_step_up_set_pin_v1', { p_pin: pinMoi, p_current_pin: pinCu });
-}
-
 async function xacThucPin(jwtSys: string, pin: string, org: string): Promise<KetQuaRpc> {
   return goiRpc(jwtSys, 'copilot_step_up_verify_v1', { p_pin: pin, p_organization_id: org });
 }
 
-function pinNgauNhien(tranh: string): string {
-  const YEU = new Set(['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '1234', '4321', '2580', '0852']);
+/** Một PIN 4-số CHẮC CHẮN khác `dung` — chỉ dùng để tạo lượt SAI cho case 1
+ *  (kích khoá 5-lần-sai). KHÔNG BAO GIỜ dùng làm PIN thật: spec này không
+ *  đặt/đổi PIN, xem khối DỌN DẸP đầu file. */
+function pinSaiKhac(dung: string): string {
   for (;;) {
     const p = String(1000 + Math.floor(Math.random() * 9000));
-    if (p !== tranh && !YEU.has(p)) return p;
+    if (p !== dung) return p;
   }
 }
 
@@ -585,9 +601,14 @@ async function thuHoiGrant(jwtSys: string, grantId: string, reason: string): Pro
 
 // ---------------------------------------------------------------------------
 
-/** PIN gốc theo env, và PIN xoay cho lượt chạy này — dùng ở beforeAll/afterAll. */
-const PIN_GOC = process.env.COPILOT_E2E_PIN_CURRENT ?? '7391';
-let pinLuotNay: string | null = null;
+/**
+ * PIN THẬT của sysadmin trên production — đọc TỪ ENV DUY NHẤT, không có giá
+ * trị mặc định cứng trong mã (fix round 1, review F1). `COPILOT_E2E_PIN` là
+ * secret CI do controller nạp; chạy tay thì tự `export COPILOT_E2E_PIN=...`
+ * (KHÔNG đọc từ `CLAUDE.local.md` — chỉ đọc biến môi trường thật). Thiếu biến
+ * này ⇒ mọi case phụ thuộc PIN tự `test.skip` kèm lý do (xem từng case).
+ */
+const PIN_MOI_TRUONG = process.env.COPILOT_E2E_PIN || null;
 let sysUid = '';
 /** Grant còn sống do chính spec này tạo — lưới an toàn nếu một ca đỏ giữa chừng. */
 const grantConTonTai = new Set<string>();
@@ -609,18 +630,11 @@ test.afterAll(async () => {
   for (const id of grantConTonTai) {
     await thuHoiGrant(sys, id, 'E2E G5L5 afterAll — don grant con sot');
   }
-  // Mở khoá TRƯỚC khi trả PIN — set_pin_v1 tự chối nếu đang khoá.
+  // Lưới an toàn cuối: MỞ KHOÁ nếu case 1 (hoặc một ca khác) để lại tài khoản
+  // đang khoá. KHÔNG có bước "trả PIN" nào ở đây — spec không bao giờ đặt/đổi
+  // PIN, nên không có gì phải trả về (fix round 1, review F1).
   if (sysUid) {
     await moKhoaPin(sys, sysUid, 'E2E G5L5 afterAll — dam bao khong con khoa');
-  }
-  if (pinLuotNay) {
-    const tra = await datPin(sys, PIN_GOC, pinLuotNay);
-    if (tra.status !== 200 || (tra.body as { ok?: boolean })?.ok !== true) {
-      throw new Error(
-        `KHÔNG TRẢ LẠI ĐƯỢC PIN GỐC (COPILOT_E2E_PIN_CURRENT=${PIN_GOC}): ${loi(tra)}. Đăng nhập ` +
-          'sysadmin và đặt lại PIN tay NGAY qua /settings/ai-copilot.',
-      );
-    }
   }
 });
 
@@ -636,22 +650,21 @@ test('phiên trình duyệt thật khai đúng bản build và để lộ bề m
   expect(loiConsole, `Lỗi console: ${loiConsole.join(' | ')}`).toEqual([]);
 });
 
-test('ca 1 — PIN sai 5 lần liên tiếp ⇒ khoá; mở khoá xong xác thực lại dùng được', async () => {
+test('ca 1 — PIN sai 5 lần liên tiếp ⇒ khoá; mở khoá xong xác thực lại dùng được (PIN thật đọc từ env, KHÔNG xoay)', async () => {
+  test.skip(
+    !PIN_MOI_TRUONG,
+    'Thiếu COPILOT_E2E_PIN (secret CI do controller nạp) — spec không đoán PIN, và cũng không được ' +
+      'phép đặt/đổi PIN sản xuất, xem khối DỌN DẸP đầu file (fix round 1). Bỏ qua mọi case phụ thuộc PIN.',
+  );
+  const pinThat = PIN_MOI_TRUONG as string;
+
   const sys = await token('sysadmin');
   sysUid = uidCua(sys);
 
-  // Mở khoá phòng hờ (idempotent) rồi xoay sang một PIN MỚI ngẫu nhiên — spec
-  // không phụ thuộc giá trị test cố định 7391 mà controller đã đặt sẵn.
+  // Mở khoá phòng hờ (idempotent) — KHÔNG đặt/đổi PIN bao giờ.
   await moKhoaPin(sys, sysUid, 'E2E G5L5 setup — dam bao khong con khoa cu');
-  const moi = pinNgauNhien(PIN_GOC);
-  const dat = await datPin(sys, moi, PIN_GOC);
-  expect(
-    dat.status === 200 && (dat.body as { ok?: boolean }).ok === true,
-    `Xoay PIN thất bại — kiểm COPILOT_E2E_PIN_CURRENT có khớp PIN thật đang đặt trên sysadmin không: ${loi(dat)}`,
-  ).toBe(true);
-  pinLuotNay = moi;
 
-  const sai = pinNgauNhien(moi); // chắc chắn khác PIN vừa đặt
+  const sai = pinSaiKhac(pinThat);
 
   for (let i = 1; i <= 5; i += 1) {
     const kq = await xacThucPin(sys, sai, ORG_DEMO);
@@ -663,7 +676,7 @@ test('ca 1 — PIN sai 5 lần liên tiếp ⇒ khoá; mở khoá xong xác th�
   }
 
   // Lượt thứ 6: đã khoá — kể cả PIN ĐÚNG cũng bị chặn ở đây.
-  const khoa = await xacThucPin(sys, moi, ORG_DEMO);
+  const khoa = await xacThucPin(sys, pinThat, ORG_DEMO);
   expect(khoa.status).toBe(200);
   const bKhoa = khoa.body as { ok: boolean; error_code: string; seconds_left?: number };
   expect(bKhoa.ok).toBe(false);
@@ -673,15 +686,19 @@ test('ca 1 — PIN sai 5 lần liên tiếp ⇒ khoá; mở khoá xong xác th�
   const trangThai = await trangThaiPin(sys);
   expect(trangThai.dangKhoa, 'copilot_step_up_status_v1 phải phản ánh đang khoá').toBe(true);
 
-  // Mở khoá — PIN đúng phải dùng lại được ngay.
+  // Mở khoá — PIN đúng (env) phải dùng lại được ngay. Hash KHÔNG đổi.
   const mo = await moKhoaPin(sys, sysUid, 'E2E G5L5 ca1 — mo khoa sau 5 lan sai co chu dich');
   expect(mo.status, `Mở khoá: ${loi(mo)}`).toBe(200);
   expect((mo.body as { da_mo_khoa?: boolean }).da_mo_khoa).toBe(true);
 
-  const dung = await xacThucPin(sys, moi, ORG_DEMO);
+  const dung = await xacThucPin(sys, pinThat, ORG_DEMO);
   expect(dung.status).toBe(200);
   const bDung = dung.body as { ok: boolean; step_up_token?: string };
-  expect(bDung.ok, `PIN đúng sau mở khoá phải thành công: ${JSON.stringify(dung.body)}`).toBe(true);
+  expect(
+    bDung.ok,
+    `PIN đúng (COPILOT_E2E_PIN) sau mở khoá phải thành công — nếu sai, PIN trong env không khớp PIN ` +
+      `thật đang đặt trên sysadmin: ${JSON.stringify(dung.body)}`,
+  ).toBe(true);
   expect(bDung.step_up_token, 'token step-up phải là 64 hex').toMatch(/^[0-9a-f]{64}$/);
 });
 
@@ -765,17 +782,11 @@ test('ca 4 — uỷ quyền đứng cho income_expense.annotate: kế hoạch kh
     'standing_grants_enabled = false — bật van này thuộc controller (set_copilot_action_policy_v1)',
   );
 
+  test.skip(!PIN_MOI_TRUONG, 'Thiếu COPILOT_E2E_PIN — không tạo được token step-up để cấp grant.');
   sysUid = sysUid || uidCua(sys);
-  // Cần một token step-up còn sống để tạo grant. Nếu case 1 chưa chạy (chạy
-  // lẻ file này) thì tự xoay + xác thực PIN tại đây.
-  if (!pinLuotNay) {
-    await moKhoaPin(sys, sysUid, 'E2E G5L5 ca4 setup');
-    const moi = pinNgauNhien(PIN_GOC);
-    const dat = await datPin(sys, moi, PIN_GOC);
-    expect(dat.status === 200, `Xoay PIN: ${loi(dat)}`).toBe(true);
-    pinLuotNay = moi;
-  }
-  const xt = await xacThucPin(sys, pinLuotNay, ORG_DEMO);
+  // Cần một token step-up còn sống để tạo grant — PIN THẬT đọc từ env, không
+  // đặt/đổi gì (fix round 1).
+  const xt = await xacThucPin(sys, PIN_MOI_TRUONG as string, ORG_DEMO);
   expect(xt.status).toBe(200);
   const token1 = (xt.body as { ok: boolean; step_up_token?: string }).step_up_token;
   expect(token1, 'Cần token step-up hợp lệ để tạo grant').toBeTruthy();
@@ -835,15 +846,9 @@ test('ca 5 — thu hồi uỷ quyền GIỮA kế hoạch đang chạy ⇒ bư�
     'standing_grants_enabled = false — bật van này thuộc controller (set_copilot_action_policy_v1)',
   );
 
+  test.skip(!PIN_MOI_TRUONG, 'Thiếu COPILOT_E2E_PIN — không tạo được token step-up để cấp grant.');
   sysUid = sysUid || uidCua(sys);
-  if (!pinLuotNay) {
-    await moKhoaPin(sys, sysUid, 'E2E G5L5 ca5 setup');
-    const moi = pinNgauNhien(PIN_GOC);
-    const dat = await datPin(sys, moi, PIN_GOC);
-    expect(dat.status === 200, `Xoay PIN: ${loi(dat)}`).toBe(true);
-    pinLuotNay = moi;
-  }
-  const xt = await xacThucPin(sys, pinLuotNay, ORG_DEMO);
+  const xt = await xacThucPin(sys, PIN_MOI_TRUONG as string, ORG_DEMO);
   expect(xt.status).toBe(200);
   const token1 = (xt.body as { ok: boolean; step_up_token?: string }).step_up_token as string;
 
@@ -917,6 +922,7 @@ test('ca 6 — kế hoạch L5 đầy đủ: PIN → APPROVED → execute → re
     co.state !== 'shadow' && co.state !== 'enabled',
     `cờ action:${HANH_DONG_IE_DUYET} đang "${co.state}" — chưa canary/bật cho DEMO`,
   );
+  test.skip(!PIN_MOI_TRUONG, 'Thiếu COPILOT_E2E_PIN — không xác thực PIN được để duyệt kế hoạch L5.');
 
   // TIỀN ĐỀ (B): sysadmin (chỉ tài khoản CÓ THỂ mang PIN) phải có quyền
   // income_expenses.approve trên DEMO. Đo bằng một lời gọi xem-trước THẬT
@@ -934,13 +940,6 @@ test('ca 6 — kế hoạch L5 đầy đủ: PIN → APPROVED → execute → re
   );
 
   sysUid = sysUid || uidCua(sys);
-  if (!pinLuotNay) {
-    await moKhoaPin(sys, sysUid, 'E2E G5L5 ca6 setup');
-    const moi = pinNgauNhien(PIN_GOC);
-    const dat = await datPin(sys, moi, PIN_GOC);
-    expect(dat.status === 200, `Xoay PIN: ${loi(dat)}`).toBe(true);
-    pinLuotNay = moi;
-  }
 
   let planId: string | null = null;
   try {
@@ -964,7 +963,7 @@ test('ca 6 — kế hoạch L5 đầy đủ: PIN → APPROVED → execute → re
     expect(khongToken.status, `Duyệt không token phải bị chặn: ${loi(khongToken)}`).toBe(403);
     expect(loi(khongToken)).toContain('step_up_required');
 
-    const xt = await xacThucPin(sys, pinLuotNay, ORG_DEMO);
+    const xt = await xacThucPin(sys, PIN_MOI_TRUONG as string, ORG_DEMO);
     expect(xt.status).toBe(200);
     const tokenXt = (xt.body as { ok: boolean; step_up_token?: string }).step_up_token as string;
     expect(tokenXt, 'Xác thực PIN phải thành công ở bước này').toBeTruthy();
