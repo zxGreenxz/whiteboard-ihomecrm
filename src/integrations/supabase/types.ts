@@ -389,6 +389,8 @@ export type Database = {
       ai_copilot_settings: {
         Row: {
           chat_enabled: boolean
+          daily_tokens_cap_tenant: number
+          daily_tokens_cap_user: number
           daily_usd_cap_global: number
           daily_usd_cap_tenant: number
           daily_usd_cap_user: number
@@ -400,6 +402,8 @@ export type Database = {
         }
         Insert: {
           chat_enabled?: boolean
+          daily_tokens_cap_tenant?: number
+          daily_tokens_cap_user?: number
           daily_usd_cap_global?: number
           daily_usd_cap_tenant?: number
           daily_usd_cap_user?: number
@@ -411,6 +415,8 @@ export type Database = {
         }
         Update: {
           chat_enabled?: boolean
+          daily_tokens_cap_tenant?: number
+          daily_tokens_cap_user?: number
           daily_usd_cap_global?: number
           daily_usd_cap_tenant?: number
           daily_usd_cap_user?: number

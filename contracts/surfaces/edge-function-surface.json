@@ -32,7 +32,7 @@
       "hasSource": true,
       "deployed": true,
       "status": "ACTIVE",
-      "version": 29,
+      "version": 30,
       "verifyJwt": true,
       "callers": []
     },
