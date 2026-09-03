@@ -2,9 +2,9 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 514,
-  "soFileDocBangFs": 172,
-  "tongLoiGoi": 347,
-  "khongPhanLoaiDuoc": 180,
+  "soFileDocBangFs": 173,
+  "tongLoiGoi": 348,
+  "khongPhanLoaiDuoc": 181,
   "theoLoai": {
     "manifest": {
       "soFile": 18,
@@ -934,6 +934,12 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotFeatureFlagStaleFormatFixMigration.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/copilotMockOffFinalizeClampMigration.test.ts",
