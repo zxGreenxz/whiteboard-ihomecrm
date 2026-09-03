@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T17:09:13.488Z",
+  "generatedAt": "2026-09-03T17:28:47.054Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 485,
-    "unknown": 73,
+    "unknown": 74,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9187,6 +9187,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-03T17:09:06.738Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903171622_copilot_standing_grants_v1.sql",
+      "version": "20260903171622",
+      "name": "copilot_standing_grants_v1",
+      "scheme": "timestamp14",
+      "sha256": "4e8a980d7fa37cbdd9fcc83f2d3a4f09214934154d2f955c61b0f4afc10b2e3f",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.copilot_standing_grants",
+        "table:app_private.copilot_standing_grants_audit",
+        "function:app_private.copilot_standing_grant_guard_v1",
+        "function:app_private.copilot_standing_grants_audit_bat_bien_v1",
+        "function:public.copilot_standing_grant_create_v1"
       ]
     },
     {
