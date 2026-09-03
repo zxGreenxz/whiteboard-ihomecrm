@@ -116,6 +116,19 @@ function findPricing(models: unknown, modelId: string): ModelPricing | null {
  */
 export const KY_TU_MOI_TOKEN = 4;
 
+/**
+ * Giá của một cặp (prompt, completion) tính bằng TOKEN — công thức DUY NHẤT.
+ *
+ * Đường usage thật và đường ước lượng phải đi qua cùng hàm này. Trước đây nhánh
+ * ước lượng rơi về `estCost` (dự toán lúc reserve, tính theo `max_tokens` —
+ * TRẦN chứ không phải lượng sinh thật), nên hai lượt gọi giống hệt nhau ghi hai
+ * con số theo hai công thức khác nhau tuỳ vào việc provider có gửi usage hay
+ * không. Cột `cost_usd` khi đó không so sánh được với chính nó.
+ */
+export function tinhGiaTheoToken(pricing: ModelPricing, promptTokens: number, completionTokens: number): number {
+  return (promptTokens / 1e6) * pricing.input_price + (completionTokens / 1e6) * pricing.output_price;
+}
+
 /** Ước lượng chi phí reservation: prompt chars/4 × giá in + max_tokens × giá out (USD/1M). */
 export function tinhEstCost(pricing: ModelPricing, promptChars: number, maxOut: number): number {
   return (promptChars / KY_TU_MOI_TOKEN / 1e6) * pricing.input_price + (maxOut / 1e6) * pricing.output_price;
@@ -847,12 +860,6 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
       const doFinalize = (ketCuc: 'ok' | 'client_abort' | 'stream_timeout', chiTiet?: string) => {
         dongHo.don();
         const coUsage = lastUsage !== null;
-        // Không có usage mà KHÔNG biết chi phí thật ⇒ ghi theo dự toán, không ghi 0.
-        // Ghi 0 là biếu không một lượt gọi: hạn mức ngày cộng thêm đúng 0 đồng.
-        const realCost = coUsage
-          ? ((lastUsage?.prompt_tokens ?? 0) / 1e6) * pricing.input_price +
-            ((lastUsage?.completion_tokens ?? 0) / 1e6) * pricing.output_price
-          : estCost;
         // Đã XIN usage mà vẫn không có ⇒ đáng ghi log để còn biết provider nào
         // im lặng. Từ khi `daXinUsage` áp cho mọi provider, đây gần như luôn đi
         // cùng nhánh ước lượng bên dưới; nó vẫn là biến RIÊNG vì nó trả lời câu
@@ -880,6 +887,19 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
         const promptTokens = uocLuong ? uocTokenTuKyTu(promptChars) : (lastUsage?.prompt_tokens ?? 0);
         const completionTokens = uocLuong ? uocTokenTuKyTu(soKyTuTraVe) : (lastUsage?.completion_tokens ?? 0);
         const totalTokens = uocLuong ? promptTokens + completionTokens : (lastUsage?.total_tokens ?? 0);
+        // TIỀN ĐI THEO TOKEN VỪA CHỐT, KHÔNG RƠI VỀ DỰ TOÁN.
+        //
+        // Bản trước: có usage ⇒ tính theo usage, không có usage ⇒ `estCost`. Mà
+        // `estCost` tính completion theo `max_tokens` — cái TRẦN người gọi xin,
+        // không phải lượng model sinh ra. Một lượt bị cắt sau ba chữ vẫn bị ghi
+        // giá của một câu trả lời dài hết trần: cột `cost_usd` vừa sai vừa không
+        // so được với các lượt khác, và cap USD/ngày ăn theo con số đó.
+        //
+        // Nay cả hai đường đi qua `tinhGiaTheoToken` với CHÍNH ba cột token vừa
+        // ghi vào sổ, nên `cost_usd` luôn đọc được là "giá của đúng số token ở
+        // dòng này" — dù số token ấy là đo được hay ước lượng (status nói rõ cái
+        // nào). Không còn đường nào ghi 0: `uocLuong` chỉ bật khi có nội dung.
+        const realCost = tinhGiaTheoToken(pricing, promptTokens, completionTokens);
         if (thieuUsage || soChunkHong > 0) {
           console.error(JSON.stringify({
             evt: 'usage_parse_failed',
@@ -899,10 +919,6 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
           cached: lastUsage?.prompt_tokens_details?.cached_tokens ?? 0,
           cost: realCost,
           latency: Date.now() - t0,
-          // `stream_aborted_estimated` nói thẳng rằng ba cột token là ƯỚC, đừng
-          // đọc như số đo. Ghi được: `ai_usage_logs.status` là `text` không CHECK
-          // (`20260710200000`), và cả ba cap USD lẫn hai cap token đều cộng theo
-          // ngày KHÔNG lọc status — nên giá trị mới vừa lưu được vừa cắn ngay.
           // Hai tên khác nhau cho hai câu chuyện khác nhau, và cả hai đều nói
           // thẳng rằng ba cột token là ƯỚC chứ không phải số đo:
           //   stream_aborted_estimated — client bấm Dừng / hết giờ;

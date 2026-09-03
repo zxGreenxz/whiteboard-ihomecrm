@@ -68,3 +68,27 @@ describe('corpus hướng dẫn đưa vào bundle = allowlist CAPABILITIES', () 
     for (const k of khoa) expect(k.endsWith('/index.md')).toBe(true);
   });
 });
+
+// Đảo strict: file do máy sinh vẫn phải là mã strict.
+//
+// `check-new-modules-strict.mjs` so với `origin/main` bằng `git diff --diff-filter=A`,
+// nên nó chỉ thấy file này ĐÚNG MỘT LẦN — ở nhánh khai sinh. Sau khi merge, ai gỡ
+// dòng khai khỏi tsconfig thì không cửa nào kêu nữa. Hai cửa dưới đây khoá nốt
+// khoảng đó: một cửa đọc tsconfig thật, một cửa chứng minh cửa kia biết đỏ.
+describe('guideCorpus.generated.ts nằm trong đảo strict', () => {
+  it('được khai trong tsconfig.strict-islands.json', async () => {
+    const { kiemDaoStrict } = await import('../../../scripts/generate-copilot-guide-corpus.mjs');
+    expect(kiemDaoStrict()).toBeNull();
+  });
+
+  it('cửa đó ĐỎ khi dòng khai bị gỡ — không phải cửa luôn xanh', async () => {
+    const { kiemDaoStrict, FILE_SINH } = await import(
+      '../../../scripts/generate-copilot-guide-corpus.mjs'
+    );
+    const thieu = kiemDaoStrict(() => JSON.stringify({ files: ['src/khac.ts'], include: [] }));
+    expect(thieu).toContain(FILE_SINH);
+    // Khai bằng `include` thay vì `files` vẫn phải được chấp nhận: đó là cách
+    // thông báo lỗi của check-new-modules-strict bảo người ta làm.
+    expect(kiemDaoStrict(() => JSON.stringify({ include: [FILE_SINH] }))).toBeNull();
+  });
+});

@@ -151,6 +151,44 @@ export function dungNguon(duongDan) {
 /** Bỏ CRLF trước khi so — checkout Windows tái tạo file theo `core.autocrlf`. */
 const chuanHoa = (s) => String(s).replace(/\r\n/g, '\n');
 
+/** tsconfig của đảo strict — nơi FILE_SINH bắt buộc phải được khai. */
+export const TSCONFIG_DAO_STRICT = 'tsconfig.strict-islands.json';
+
+/**
+ * File sinh ra PHẢI nằm trong đảo strict, và cửa này canh điều đó.
+ *
+ * Vì sao không để `check-new-modules-strict.mjs` lo một mình: cửa đó so với
+ * `origin/main` bằng `git diff --diff-filter=A`, nên nó chỉ thấy file này ĐÚNG
+ * MỘT LẦN — ở nhánh khai sinh ra nó. Sau khi merge, file không còn "mới" nữa;
+ * lúc đó ai gỡ dòng khai khỏi tsconfig thì không cửa nào kêu, và một file do máy
+ * sinh sẽ lặng lẽ tuột khỏi `strict` mãi mãi.
+ *
+ * Đặt phép kiểm ở CHÍNH generator vì generator là thứ duy nhất luôn chạy cùng
+ * file này: mọi lần `--write` và mọi lần `--check` trên CI đều đi qua đây.
+ *
+ * Trả `null` khi đạt, hoặc câu giải thích khi hỏng.
+ */
+export function kiemDaoStrict(
+  doc = () => readFileSync(join(repoRoot, TSCONFIG_DAO_STRICT), 'utf8'),
+) {
+  let cauHinh;
+  try {
+    cauHinh = JSON.parse(doc());
+  } catch (e) {
+    return `không đọc/parse được ${TSCONFIG_DAO_STRICT}: ${e instanceof Error ? e.message : e}`;
+  }
+  // Đảo khai bằng `files`; `include` để rỗng. Đọc cả hai để một lần đổi cách
+  // khai không biến cửa này thành cửa luôn-xanh.
+  const khai = [
+    ...(Array.isArray(cauHinh.files) ? cauHinh.files : []),
+    ...(Array.isArray(cauHinh.include) ? cauHinh.include : []),
+  ];
+  return khai.includes(FILE_SINH)
+    ? null
+    : `${FILE_SINH} không được khai trong ${TSCONFIG_DAO_STRICT} (files/include) — ` +
+      'thêm dòng đó rồi chạy `npx tsc -p tsconfig.strict-islands.json --noEmit`.';
+}
+
 export function main(argv = process.argv.slice(2)) {
   const kiem = argv.includes('--check');
 
@@ -174,6 +212,13 @@ export function main(argv = process.argv.slice(2)) {
 
   const noiDung = dungNguon(duongDan);
   const dich = join(repoRoot, FILE_SINH);
+
+  // Chạy ở CẢ HAI chế độ: `--write` để người sinh biết ngay, `--check` để CI đỏ.
+  const loiDao = kiemDaoStrict();
+  if (loiDao) {
+    console.error(`❌ ${loiDao}`);
+    process.exit(1);
+  }
 
   if (kiem) {
     const cu = existsSync(dich) ? readFileSync(dich, 'utf8') : '';

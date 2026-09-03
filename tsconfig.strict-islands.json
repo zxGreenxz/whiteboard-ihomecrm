@@ -546,6 +546,7 @@
     "src/copilot/safetyGuard.ts",
     "src/copilot/systemPromptVi.ts",
     "src/copilot/temporalContext.ts",
+    "src/copilot/tools/guideCorpus.generated.ts",
     "src/copilot/tools/nghiepVuTools.ts",
     "src/copilot/tools/memoryTools.ts",
     "src/copilot/tools/registry.ts",

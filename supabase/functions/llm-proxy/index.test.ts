@@ -53,6 +53,7 @@ type ProxyModule = {
   chonTruongBodyHopLe: (body: Record<string, unknown>) => Record<string, unknown>;
   kiemKichThuocBody: (text: string, messages: unknown) => LoiKichThuoc | null;
   tinhEstCost: (pricing: ModelPricing, promptChars: number, maxOut: number) => number;
+  tinhGiaTheoToken: (pricing: ModelPricing, promptTokens: number, completionTokens: number) => number;
   uocTokenTuKyTu: (soKyTu: number) => number;
   demKyTuDelta: (chunk: unknown) => number;
   clampMockCost: (header: string | null, estCost: number) => number;
@@ -98,6 +99,7 @@ async function nap(): Promise<ProxyModule> {
       "chonTruongBodyHopLe",
       "kiemKichThuocBody",
       "tinhEstCost",
+      "tinhGiaTheoToken",
       "clampMockCost",
       "docOrganizationId",
     ]
@@ -927,4 +929,100 @@ Deno.test("(k) stream 9router không gửi usage, kết thúc BÌNH THƯỜNG: v
   );
   // Chạy xong thì KHÔNG phải lỗi: status đã nói token là ước, đừng gắn thêm error.
   assertEquals(chot?.args.p_error_message ?? null, null);
+});
+
+
+// (l) TIỀN PHẢI ĐI THEO TOKEN VỪA CHỐT, KHÔNG RƠI VỀ DỰ TOÁN.
+//
+// Bản trước: không có usage ⇒ `cost` = `estCost`, mà `estCost` tính completion
+// theo `max_tokens` — cái TRẦN người gọi xin, không phải lượng model sinh ra.
+// Một lượt bị cắt sau ba chữ vẫn bị ghi giá của câu trả lời dài hết trần, và
+// cap USD/ngày ăn theo con số đó. Ca này dùng model CÓ GIÁ (khác (j)/(k) giá 0)
+// nên chênh lệch hiện ra thành số.
+Deno.test("(l) token ước lượng thì cost tính theo CHÍNH token đó, không phải estCost", async () => {
+  const { xuLyYeuCau, tinhGiaTheoToken, tinhEstCost } = await nap();
+  const GIA = { pricing_mode: "metered" as const, input_price: 3, output_price: 15 };
+  const { admin, goi } = adminGia({
+    provider: {
+      provider: "openrouter",
+      enabled: true,
+      models: [{ id: "m1", ...GIA }],
+      data_class: "cloud",
+    },
+  });
+
+  const TIN_NHAN = [{ role: "user", content: "xin chào" }];
+  const MANH = ["Chào ", "bạn ", "nhé"]; // 12 ký tự nội dung
+  const enc = new TextEncoder();
+  const khung = (o: unknown) => enc.encode(`data: ${JSON.stringify(o)}
+
+`);
+  const thanUpstream = new ReadableStream<Uint8Array>({
+    start(ctrl) {
+      for (const manh of MANH) {
+        ctrl.enqueue(khung({
+          id: "c1",
+          object: "chat.completion.chunk",
+          model: "m1",
+          choices: [{ index: 0, delta: { content: manh }, finish_reason: null }],
+        }));
+      }
+      ctrl.enqueue(khung({
+        id: "c1",
+        object: "chat.completion.chunk",
+        model: "m1",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+      }));
+      ctrl.enqueue(enc.encode(`data: [DONE]
+
+`));
+      ctrl.close();
+    },
+  });
+
+  const req = new Request(URL_CHAT, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer jwt-gia",
+      "Content-Type": "application/json",
+      "x-organization-id": ORG_GIA,
+    },
+    // KHÔNG gửi usage từ upstream ⇒ đi nhánh ước lượng.
+    body: JSON.stringify({ model: "openrouter:m1", stream: true, messages: TIN_NHAN }),
+  });
+
+  const res = await xuLyYeuCau(req, {
+    admin,
+    getEnv: (k) => (k === "OPENROUTER_API_KEY" ? "key-gia" : undefined),
+    fetchImpl: () =>
+      Promise.resolve(
+        new Response(thanUpstream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+      ),
+  });
+  assertEquals(res.status, 200);
+  const doc = res.body!.getReader();
+  while (true) {
+    const { done } = await doc.read();
+    if (done) break;
+  }
+  await nghi(0);
+
+  const chot = goi.find((g) => g.ten === "finalize_ai_usage");
+  assertEquals(chot?.args.p_status, "stream_done_estimated");
+
+  const promptUoc = Math.ceil(JSON.stringify(TIN_NHAN).length / 4);
+  const giaTheoToken = tinhGiaTheoToken(GIA, promptUoc, 3);
+  assertEquals(chot?.args.p_cost_usd, giaTheoToken);
+
+  // Và phải KHÁC dự toán lúc reserve — nếu hai số trùng nhau thì ca này không
+  // chứng minh được gì, vì `estCost` chính là thứ vừa bị bỏ.
+  const duToan = tinhEstCost(GIA, JSON.stringify(TIN_NHAN).length, chot?.args.p_max_tokens as number ?? 2048);
+  assert(
+    giaTheoToken !== duToan,
+    "fixture hỏng: giá theo token phải khác dự toán thì phép đo mới có nghĩa",
+  );
+  assert((chot?.args.p_cost_usd as number) > 0, "model có giá thì không được ghi 0 đồng");
 });
