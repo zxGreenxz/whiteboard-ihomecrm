@@ -18838,6 +18838,14 @@ export type Database = {
         Args: { p_confirmation_nonce: string; p_payload: Json }
         Returns: Json
       }
+      copilot_execute_meter_reading_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_execute_reservation_deposit_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
       copilot_execute_reservation_hold_terms_v1: {
         Args: { p_confirmation_nonce: string; p_payload: Json }
         Returns: Json
@@ -19012,6 +19020,14 @@ export type Database = {
         Returns: Json
       }
       copilot_preview_income_expense_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_meter_reading_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_reservation_deposit_v1: {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: Json
       }
