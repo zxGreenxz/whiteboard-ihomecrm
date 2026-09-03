@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T08:27:59.490Z",
+  "generatedAt": "2026-09-03T08:43:01.839Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 475,
-    "unknown": 76,
+    "ledger-applied": 478,
+    "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9085,11 +9085,9 @@
       "name": "copilot_action_income_expense_annotate_v1",
       "scheme": "timestamp14",
       "sha256": "c63a5f6adae810b1255e39f032dcdd81c0abd9e4c4b9508b70fe31d6d0909423",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_income_expense_annotate_v1",
-        "function:public.copilot_execute_income_expense_annotate_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T08:37:49.752Z|bien-nhan-backup"
       ]
     },
     {
@@ -9098,11 +9096,9 @@
       "name": "copilot_action_reservation_hold_terms_v1",
       "scheme": "timestamp14",
       "sha256": "d746fa76517edd32af55907a5d5ae4dae0fcaeaedf6d18830561786b54af4933",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_reservation_hold_terms_v1",
-        "function:public.copilot_execute_reservation_hold_terms_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T08:40:32.102Z|bien-nhan-backup"
       ]
     },
     {
@@ -9111,11 +9107,9 @@
       "name": "copilot_action_zalo_conversation_flags_v1",
       "scheme": "timestamp14",
       "sha256": "271c82f92fb80eef9171bc993c89ea6c8524fbdd097d65a6b649043cc6b844bd",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_zalo_conversation_flags_v1",
-        "function:public.copilot_execute_zalo_conversation_flags_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T08:42:56.336Z|bien-nhan-backup"
       ]
     },
     {
