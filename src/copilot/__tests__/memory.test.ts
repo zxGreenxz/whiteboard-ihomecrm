@@ -35,6 +35,14 @@ const {
 } = await import('../memoryClient');
 const { boKyTuDieuKhien, coKyTuDieuKhien } = await import('../anToanVanBan');
 import type { GhiNho } from '../memoryClient';
+
+/**
+ * Ba trường `ToolCtx` không liên quan tới điều đang đo — khai một lần.
+ *
+ * `isSuperAdmin: false` là mặc định CÓ CHỦ Ý: tool `superAdminOnly` phải vắng mặt
+ * trừ khi một ca nói rõ người dùng là super admin.
+ */
+const CTX_NEN = { threadId: null, generation: 0, isSuperAdmin: false };
 const { TOOL_GHI_NHO } = await import('../tools/memoryTools');
 
 const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMap;
@@ -265,7 +273,7 @@ describe('ký tự điều khiển — chặn cả đường ghi lẫn đường
     const t = TOOL_GHI_NHO.find((x) => x.name === 'ghi_nho')!;
     const ra = await t.execute(
       { khoa: 'k', noi_dung: `a${NEL}b` },
-      { perms: SUPER, organizationId: ORG },
+      { ...CTX_NEN, perms: SUPER, organizationId: ORG },
     );
     expect(rpc).not.toHaveBeenCalled();
     expect(ra).toBe(LOI_KY_TU_DIEU_KHIEN);
@@ -294,7 +302,7 @@ describe('nguồn user ↔ copilot — cột `source` có việc thật', () => 
   it('tool ghi_nho khai "copilot" TƯỜNG MINH', async () => {
     rpc.mockResolvedValue({ data: { key: 'k', value: 'v', source: 'copilot', total: 1 }, error: null });
     const t = TOOL_GHI_NHO.find((x) => x.name === 'ghi_nho')!;
-    await t.execute({ khoa: 'k', noi_dung: 'v' }, { perms: SUPER, organizationId: ORG });
+    await t.execute({ khoa: 'k', noi_dung: 'v' }, { ...CTX_NEN, perms: SUPER, organizationId: ORG });
     expect(rpc.mock.calls[0][1].p_source).toBe('copilot');
   });
 
@@ -333,7 +341,7 @@ describe('tool ghi_nho / quen', () => {
   it('CHƯA chọn công ty ⇒ ném organization_required, KHÔNG ra mạng', async () => {
     for (const t of TOOL_GHI_NHO) {
       await expect(
-        t.execute({ khoa: 'k', noi_dung: 'v' }, { perms: SUPER, organizationId: null }),
+        t.execute({ khoa: 'k', noi_dung: 'v' }, { ...CTX_NEN, perms: SUPER, organizationId: null }),
       ).rejects.toThrow(/organization_required/);
     }
     expect(rpc).not.toHaveBeenCalled();
@@ -346,7 +354,7 @@ describe('tool ghi_nho / quen', () => {
     });
     const ra = await ghiNhoTool.execute(
       { khoa: 'Toà ưu tiên', noi_dung: 'DEMO A' },
-      { perms: SUPER, organizationId: ORG },
+      { ...CTX_NEN, perms: SUPER, organizationId: ORG },
     );
     expect(rpc).toHaveBeenCalledWith('copilot_memory_upsert_v1', {
       p_organization_id: ORG,
@@ -361,7 +369,7 @@ describe('tool ghi_nho / quen', () => {
   it('ghi_nho: nội dung quá dài bị chặn TẠI CHỖ, không ra mạng', async () => {
     const ra = await ghiNhoTool.execute(
       { khoa: 'k', noi_dung: 'x'.repeat(DAI_TOI_DA_NOI_DUNG + 1) },
-      { perms: SUPER, organizationId: ORG },
+      { ...CTX_NEN, perms: SUPER, organizationId: ORG },
     );
     expect(rpc).not.toHaveBeenCalled();
     expect(ra).toMatch(/rút gọn/);
@@ -371,14 +379,14 @@ describe('tool ghi_nho / quen', () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'memory_limit_reached' } });
     const ra = await ghiNhoTool.execute(
       { khoa: 'k', noi_dung: 'v' },
-      { perms: SUPER, organizationId: ORG },
+      { ...CTX_NEN, perms: SUPER, organizationId: ORG },
     );
     expect(ra).toMatch(/quên bớt/);
   });
 
   it('quen: khoá không tồn tại KHÔNG phải lỗi', async () => {
     rpc.mockResolvedValue({ data: { key: 'k', found: false, total: 2 }, error: null });
-    const ra = await quenTool.execute({ khoa: 'k' }, { perms: SUPER, organizationId: ORG });
+    const ra = await quenTool.execute({ khoa: 'k' }, { ...CTX_NEN, perms: SUPER, organizationId: ORG });
     expect(ra).toMatch(/Không có ghi nhớ nào theo khoá/);
   });
 
@@ -386,7 +394,7 @@ describe('tool ghi_nho / quen', () => {
     rpc.mockResolvedValue({ data: { key: 'toa_uu_tien', found: true, total: 2 }, error: null });
     const ra = await quenTool.execute(
       { khoa: 'Toà ưu tiên' },
-      { perms: SUPER, organizationId: ORG },
+      { ...CTX_NEN, perms: SUPER, organizationId: ORG },
     );
     expect(rpc).toHaveBeenCalledWith('copilot_memory_forget_v1', {
       p_organization_id: ORG,

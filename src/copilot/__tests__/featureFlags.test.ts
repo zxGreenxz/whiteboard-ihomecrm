@@ -7,7 +7,9 @@ import {
   COPILOT_ROLLOUT_CONTRACTS,
   COPILOT_ROLLOUT_MIEN_NHAY_CAM,
   COPILOT_ROLLOUT_ACTION_CONTRACTS,
+  CONTRACT_KE_HOACH,
   KHOA_ROLLOUT_DIEU_HUONG,
+  KHOA_ROLLOUT_KE_HOACH,
   taoRolloutContracts,
   nhomRolloutTheoScope,
   rolloutRowsFromAvailability,
@@ -16,6 +18,7 @@ import {
   type CopilotAvailabilitySnapshot,
 } from '../featureFlags';
 import { ROUTE_DIEU_HUONG } from '../pageScope';
+import { ACTION_CATALOG, khoaRolloutHanhDong } from '../plan/actionCatalog';
 
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 
@@ -180,11 +183,36 @@ describe('COPILOT_ROLLOUT_CONTRACTS sinh từ page contract', () => {
     expect(contracts.find((c) => c.contractId === 'x.list')?.label).toBe('Trang X');
   });
 
-  it('danh sách contract action rỗng khớp seed server — không dựng nút bấm hỏng', () => {
+  it('danh sách contract action sinh từ catalog — không dựng nút bấm hỏng', () => {
     // Có tên ở đây mà không có dòng trong bảng ⇒ admin bấm và nhận
-    // `unknown_rollout_contract`, không cách nào tự chữa.
-    expect(COPILOT_ROLLOUT_ACTION_CONTRACTS).toEqual([]);
-    expect(COPILOT_ROLLOUT_CONTRACTS.every((c) => c.scope === 'page')).toBe(true);
+    // `unknown_rollout_contract`, không cách nào tự chữa. Cặp contract–seed do
+    // `plan/__tests__/actionCatalog.test.ts` canh trên chính file migration.
+    expect(COPILOT_ROLLOUT_ACTION_CONTRACTS.map((c) => c.contractId)).toEqual([
+      ...Object.keys(ACTION_CATALOG),
+      CONTRACT_KE_HOACH,
+    ]);
+    expect(COPILOT_ROLLOUT_ACTION_CONTRACTS.every((c) => c.scope === 'action')).toBe(true);
+    // Mọi contract action phải có mặt trong danh sách chung — thiếu một dòng là
+    // thiếu một công tắc trên trang admin.
+    for (const contract of COPILOT_ROLLOUT_ACTION_CONTRACTS) {
+      expect(COPILOT_ROLLOUT_CONTRACTS).toContainEqual(contract);
+    }
+  });
+
+  it('khoá rollout hành động mang sẵn tiền tố `action:`', () => {
+    // Khoá trần bị `copilotAvailability` gắn `page:`, tức đi đọc một hàng không
+    // tồn tại ⇒ luôn `disabled`. Triệu chứng là "cờ bật mà tool vẫn mất".
+    const snapshot: CopilotAvailabilitySnapshot = {
+      revision: 12,
+      fetchedAt: Date.now(),
+      organizationId: ORG,
+      states: { 'action:income_expense.create_draft': 'enabled' },
+    };
+    expect(copilotAvailability(snapshot, khoaRolloutHanhDong('income_expense.create_draft'))).toBe(
+      'enabled',
+    );
+    expect(copilotAvailability(snapshot, 'income_expense.create_draft')).toBe('disabled');
+    expect(KHOA_ROLLOUT_KE_HOACH).toBe(`action:${CONTRACT_KE_HOACH}`);
   });
 
   it('khoá vắng mặt trong snapshot ⇒ disabled, không phải "không rõ"', () => {
@@ -250,9 +278,12 @@ describe('nhóm rollout theo scope cho trang admin', () => {
       states: {},
     });
     const nhom = nhomRolloutTheoScope(rows);
-    expect(nhom.map((n) => n.scope)).toEqual(['page']); // chưa có contract action nào
-    expect(nhom[0].rows.map((r) => r.contractId)).toEqual(rows.map((r) => r.contractId));
+    // Từ G2-B luôn có ít nhất một contract action, nên cả hai nhóm đều có dòng.
+    expect(nhom.map((n) => n.scope)).toEqual(['page', 'action']);
+    const contractTheoNhom = nhom.flatMap((n) => n.rows.map((r) => r.contractId));
+    expect(contractTheoNhom).toEqual(rows.map((r) => r.contractId));
     expect(nhom[0].nhan).toContain('Trang');
+    expect(nhom[1].nhan).toContain('Thao tác');
   });
 
   it('tách đúng hai nhóm khi có contract action', () => {

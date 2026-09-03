@@ -12,6 +12,7 @@ import {
 // nhắn kèm ảnh.
 import type { Message } from './chatEngine';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import XacNhanPhieuCard from './XacNhanPhieuCard';
 import { datNguCanhXacNhan } from './confirmationStore';
@@ -51,7 +52,6 @@ import {
 // `LoiModel` là lớp lỗi DUY NHẤT mang mã máy của proxy (`error.code`). Nhập lớp
 // chứ không chỉ nhập kiểu: cần `instanceof` lúc chạy, không phải lúc biên dịch.
 import { LoiModel } from './llmClient';
-import type { ToolCtx } from './tools/registry';
 
 interface Props {
   onClose: () => void;
@@ -177,6 +177,11 @@ const toDisplay = (msgs: Message[]): DisplayItem[] =>
 
 export default function ChatPanel({ onClose }: Props) {
   const { data: perms } = useMyPermissions();
+  // Chỉ để LỌC tool `superAdminOnly` khỏi danh sách gửi cho mô hình. Chưa tải
+  // xong ⇒ `undefined` ⇒ coi như KHÔNG phải super admin: hàng rào thật nằm ở
+  // `is_super_admin()` của server, ở đây fail-closed chỉ để mô hình đừng gọi một tool
+  // mà nó chắc chắn bị từ chối.
+  const { data: laSuperAdmin } = useIsSuperAdmin();
   // Tổ chức đang xem — chỉ CẦN khi người dùng thuộc nhiều tổ chức; database tự
   // suy được cho trường hợp một tổ chức (20260809040000).
   // `selectedOrganizationId` chứ không phải `organization?.id`: hai thứ này đã
@@ -348,11 +353,22 @@ export default function ChatPanel({ onClose }: Props) {
     }
     assertUiControlAvailability({
       pathname: location.pathname,
+      // `UiControlAvailabilityContext` HẸP hơn `ToolCtx` (chỉ perms + org +
+      // availability) và là object literal, nên thêm trường thừa ở đây là lỗi
+      // biên dịch chứ không phải chuyện vô hại.
       ctx: { perms, organizationId, availability: snapshot },
     });
     const agent = createUiControlAgent({
       providerModel: model,
-      ctx: { perms, organizationId, navigate, availability: snapshot },
+      ctx: {
+        perms,
+        organizationId,
+        navigate,
+        availability: snapshot,
+        threadId,
+        generation,
+        isSuperAdmin: !!laSuperAdmin,
+      },
     });
     uiAgentRef.current = agent;
     try {
@@ -415,9 +431,13 @@ export default function ChatPanel({ onClose }: Props) {
       providerModel: model,
       history,
       userText: text,
-      ctx: { perms, organizationId, availability: snapshot, threadId: tid, generation } as ToolCtx & {
-        threadId: string | null;
-        generation: number;
+      ctx: {
+        perms,
+        organizationId,
+        availability: snapshot,
+        threadId: tid,
+        generation,
+        isSuperAdmin: !!laSuperAdmin,
       },
       signal: abort.signal,
       // Cho Copilot biết người dùng đang xem màn hình nào — để hiểu "cái này".

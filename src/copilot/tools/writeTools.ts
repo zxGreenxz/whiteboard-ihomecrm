@@ -25,6 +25,10 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Json } from '@/integrations/supabase/types';
 import { formatVND } from '@/lib/utils';
 import { chotToChuc, type DomainTool } from './registry';
+import {
+  SCHEMA_TAO_PHIEU_THU_CHI,
+  khoaRolloutHanhDong,
+} from '../plan/actionCatalog';
 import { datXacNhanDangCho, layNguCanhXacNhan } from '../confirmationStore';
 
 /** Hash chuỗi ổn định (djb2) — vẫn dùng cho khoá dedupe phía giao diện. */
@@ -74,18 +78,11 @@ export const TEXT_XEM_TRUOC_MAU =
   'nội dung phiếu và mời họ kiểm tra rồi bấm nút. KHÔNG dùng lại tool này cho cùng một phiếu, và ' +
   'KHÔNG có cách nào để bạn tự xác nhận thay người dùng.';
 
-const inputSchema = z.object({
-  loai: z.enum(['thu', 'chi']).describe('thu = phiếu THU, chi = phiếu CHI'),
-  so_tien: z.number().positive().describe('Số tiền VND'),
-  ten_phieu: z.string().min(3).describe('Tên/mô tả phiếu, vd "Chi mua bóng đèn toà X"'),
-  toa_nha: z.string().min(1).describe('Tên toà nhà (khớp gần đúng)'),
-  hang_muc: z.string().min(1).describe('Tên hạng mục thu/chi, vd "Vệ sinh", "Điện"'),
-  ngay: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional()
-    .describe('CHỈ truyền khi người dùng NÓI RÕ ngày cụ thể; bỏ trống = hệ thống tự lấy hôm nay'),
-});
+/**
+ * Schema input nằm ở `plan/actionCatalog.ts` — MỘT bản cho cả tool lẫn sổ đăng
+ * ký hành động. Xem chú thích tại đó về lý do nó không ở lại file này.
+ */
+const inputSchema = SCHEMA_TAO_PHIEU_THU_CHI;
 
 type Input = z.infer<typeof inputSchema>;
 
@@ -135,12 +132,22 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
   // Chat mới được cầm tool này. UI-control (PageAgent) thì KHÔNG — xem chú
   // thích `chatOnly` ở DomainTool.
   chatOnly: true,
-  rolloutExempt: true,
-  rolloutExemptionReason: 'write requires server nonce preview and explicit user confirmation',
+  // CÔNG TẮC THẬT, KHÔNG CÒN MIỄN TRỪ.
+  //
+  // Trước G2-B tool này `rolloutExempt: true` với lý do "đã có nonce + cú bấm
+  // người dùng". Hai lớp đó bảo vệ MỘT lần ghi; chúng không cho ai một cách tắt
+  // đường ghi khi đang có sự cố. Kill switch là câu hỏi khác — "dừng ngay bây
+  // giờ" — và câu đó chỉ trả lời được bằng một hàng cờ mà server sở hữu.
+  //
+  // Hàng `('action','income_expense.create_draft')` seed ở migration
+  // `20260903043956` với trạng thái `disabled`. Nghĩa là ngay sau khi bản này
+  // lên, tool KHÔNG xuất hiện trong danh sách gửi cho mô hình cho tới khi một
+  // super admin bật nó ở tab Rollout. Đó là hành vi đúng của một kill switch,
+  // không phải hồi quy.
+  rolloutKey: khoaRolloutHanhDong('income_expense.create_draft'),
   execute: async (args, ctx) => {
     const orgId = chotToChuc(ctx, 'tao_phieu_thu_chi_nhap');
-    const scopedCtx = ctx as typeof ctx & { threadId?: string | null; generation?: number };
-    const threadId = scopedCtx.threadId ?? null;
+    const threadId = ctx.threadId ?? null;
 
     const { data, error } = await supabase.rpc('copilot_preview_income_expense_v1', {
       p_organization_id: orgId,
@@ -167,7 +174,7 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
       preview: kq.preview as unknown as Record<string, unknown>,
       organizationId: orgId,
       threadId,
-      generation: scopedCtx.generation,
+      generation: ctx.generation,
       intentKey: makeConfirmationIntentKey(orgId, kq.canonical, threadId),
     });
 

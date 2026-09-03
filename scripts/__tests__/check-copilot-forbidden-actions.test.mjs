@@ -4,9 +4,14 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+/** Xuong dong cho fixture, viet gian tiep de than test khong chua escape. */
+const XUONG_DONG = String.fromCharCode(10);
 
 import {
   ACTION_PATTERNS,
+  SCAN_ROOTS,
   FORBIDDEN_COPILOT_ACTIONS,
   L6_FOREVER,
   collectCopilotSourceFiles,
@@ -292,4 +297,69 @@ test('tool gọi decide_financial_request_v2 bị chấm "approval" dù tên hà
   const tools = inventoryFromCopilotSource(sourceByFile);
   assert.deepEqual(tools.map((tool) => [tool.name, tool.executionKind]), [['chot_de_nghi', 'approval']]);
   assert.match(validateCopilotActionInventory(tools).join('\n'), /forbidden executable action "approval"/);
+});
+
+// PHẠM VI QUÉT THẬT — không chỉ `SCAN_ROOTS` nói gì, mà nó CHẠM tới file nào.
+//
+// Mọi bài ở trên gọi `inventoryFromCopilotSource` với một map file dựng sẵn:
+// chúng chứng minh BỘ DÒ đúng, không chứng minh gate nhìn vào thư mục nào.
+// `src/copilot/plan` có tên trong `SCAN_ROOTS` từ trước khi thư mục tồn tại
+// (02/09/2026), nên suốt thời gian đó không có gì nói được rằng nó thật sự được
+// quét — một hằng số trỏ vào hư không trông y hệt một hằng số đúng.
+//
+// KHÔNG gieo file vào cây thật: `check-copilot-tool-inventory` dùng chung
+// `SCAN_ROOTS` và `node --test` chạy các file test SONG SONG, nên một file rác
+// sống vài trăm mili giây trong `src/copilot/plan` sẽ làm bài đo của gate kia
+// đỏ theo cách không ai lần ra được.
+test('SCAN_ROOTS chạm tới file thật trong CẢ src/copilot/tools lẫn src/copilot/plan', () => {
+  const goc = fileURLToPath(new URL('../../', import.meta.url));
+  const duong = collectCopilotSourceFiles(SCAN_ROOTS.map((r) => join(goc, r)))
+    .map((p) => relative(goc, p).split(sep).join('/'));
+  assert.ok(
+    duong.some((p) => p.startsWith('src/copilot/tools/')),
+    'khong quet duoc file nao trong src/copilot/tools',
+  );
+  assert.ok(
+    duong.some((p) => p.startsWith('src/copilot/plan/')),
+    'src/copilot/plan co ten trong SCAN_ROOTS nhung khong file nao duoc quet',
+  );
+  assert.ok(
+    duong.every((p) => !p.includes('/__tests__/')),
+    'file test lot vao pham vi quet — chung dung de do gate, khong phai de gate do',
+  );
+});
+
+// ĐỘT BIẾN Ở TẦNG THƯ MỤC: một hành động DUYỆT đặt trong `plan/` phải đỏ y hệt
+// khi nó nằm trong `tools/`. Chạy trên thư mục tạm nên không đụng cây thật.
+test('file trong thu muc plan goi decide_financial_request_v2 ⇒ gate DO', async (t) => {
+  const goc = await mkdtemp(join(tmpdir(), 'copilot-plan-'));
+  t.after(() => rm(goc, { recursive: true, force: true }));
+  await mkdir(join(goc, 'plan'), { recursive: true });
+  await writeFile(
+    join(goc, 'plan', 'hanhDongTam.ts'),
+    [
+      'export const chotDeNghi = {',
+      "  name: 'chot_de_nghi_tam',",
+      "  description: 'Trong sach se',",
+      "  execute: async () => supabase.rpc('decide_financial_request_v2', { p_decision: 'APPROVED' }),",
+      '};',
+    ].join(XUONG_DONG),
+    'utf8',
+  );
+
+  const sourceByFile = Object.fromEntries(
+    collectCopilotSourceFiles([join(goc, 'tools'), join(goc, 'plan')]).map((p) => [
+      p,
+      readFileSync(p, 'utf8'),
+    ]),
+  );
+  const tools = inventoryFromCopilotSource(sourceByFile);
+  assert.deepEqual(
+    tools.map((tool) => [tool.name, tool.executionKind]),
+    [['chot_de_nghi_tam', 'approval']],
+  );
+  assert.match(
+    validateCopilotActionInventory(tools).join(XUONG_DONG),
+    /forbidden executable action "approval"/,
+  );
 });

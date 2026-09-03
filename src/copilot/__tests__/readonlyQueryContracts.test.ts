@@ -9,9 +9,17 @@ const { buildRegistryDefinitions } = await import('../tools/registry');
 const { COPILOT_ROLLOUT_CONTRACTS } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
+/**
+ * Ba trường `ToolCtx` không liên quan tới điều đang đo — khai một lần.
+ *
+ * `isSuperAdmin: false` là mặc định CÓ CHỦ Ý: tool `superAdminOnly` phải vắng mặt
+ * trừ khi một ca nói rõ người dùng là super admin.
+ */
+const CTX_NEN = { threadId: null, generation: 0, isSuperAdmin: false };
+
 const SUPER = { __superadmin: true } as unknown as PermissionsMap;
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
-const ctx = { perms: SUPER, organizationId: ORG };
+const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG };
 
 const tool = (name: string) => {
   const found = buildRegistryDefinitions().find((candidate) => candidate.name === name);

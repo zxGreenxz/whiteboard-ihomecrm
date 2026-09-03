@@ -13,6 +13,14 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { from, rpc } }));
 const { buildRegistryDefinitions, LOI_THIEU_TO_CHUC } = await import('../tools/registry');
 import type { PermissionsMap } from '@/lib/permissions';
 
+/**
+ * Ba trường `ToolCtx` không liên quan tới điều đang đo — khai một lần.
+ *
+ * `isSuperAdmin: false` là mặc định CÓ CHỦ Ý: tool `superAdminOnly` phải vắng mặt
+ * trừ khi một ca nói rõ người dùng là super admin.
+ */
+const CTX_NEN = { threadId: null, generation: 0, isSuperAdmin: false };
+
 const SUPER = { __superadmin: true } as unknown as PermissionsMap;
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 
@@ -82,7 +90,7 @@ describe('chưa chốt công ty ⇒ từ chối TRƯỚC khi truy vấn', () => 
   for (const { ten, args } of TOOL_THEO_CONG_TY) {
     it(`${ten}: ném ${LOI_THIEU_TO_CHUC} và KHÔNG gọi Supabase`, async () => {
       await expect(
-        tool(ten).execute(args, { perms: SUPER, organizationId: null }),
+        tool(ten).execute(args, { ...CTX_NEN, perms: SUPER, organizationId: null }),
       ).rejects.toThrow(LOI_THIEU_TO_CHUC);
 
       // Điểm mấu chốt: chặn phải xảy ra TRƯỚC truy vấn. Một tool query xong rồi
@@ -96,7 +104,7 @@ describe('chưa chốt công ty ⇒ từ chối TRƯỚC khi truy vấn', () => 
     // Mô hình đọc chuỗi này rồi diễn giải cho người dùng. "organization_required"
     // trần thì nó sẽ tự bịa ra một lời giải thích.
     await expect(
-      tool('so_quy').execute({}, { perms: SUPER, organizationId: null }),
+      tool('so_quy').execute({}, { ...CTX_NEN, perms: SUPER, organizationId: null }),
     ).rejects.toThrow(/chọn công ty/i);
   });
 });
@@ -128,7 +136,7 @@ describe('đã chốt công ty ⇒ tool PostgREST lọc đúng công ty', () => 
 
   it('tim_khach_hang passes selected organization to its RPC', async () => {
     rpc.mockResolvedValue({ data: [], error: null });
-    await tool('tim_khach_hang').execute({ tu_khoa: 'An' }, { perms: SUPER, organizationId: ORG });
+    await tool('tim_khach_hang').execute({ tu_khoa: 'An' }, { ...CTX_NEN, perms: SUPER, organizationId: ORG });
     expect(rpc).toHaveBeenCalledWith('copilot_customer_search_v1', {
       p_organization_id: ORG,
       p_search: 'An',
@@ -137,7 +145,7 @@ describe('đã chốt công ty ⇒ tool PostgREST lọc đúng công ty', () => 
 
   it('hop_dong_sap_het_han passes selected organization to its RPC', async () => {
     rpc.mockResolvedValue({ data: [], error: null });
-    await tool('hop_dong_sap_het_han').execute({ so_ngay: 30 }, { perms: SUPER, organizationId: ORG });
+    await tool('hop_dong_sap_het_han').execute({ so_ngay: 30 }, { ...CTX_NEN, perms: SUPER, organizationId: ORG });
     expect(rpc).toHaveBeenCalledWith(
       'copilot_expiring_contracts_v1',
       expect.objectContaining({ p_organization_id: ORG, p_window_days: 30 }),

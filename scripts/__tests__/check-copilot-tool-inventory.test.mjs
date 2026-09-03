@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
+import { sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -133,13 +134,25 @@ test('khopBoCRLF: noi dung khac that su van phai lech', () => {
 // (`memoryTools.ts`, 03/09/2026) vì thế vô hình: bảng in "37 tool" trong khi
 // registry đã có 39, và gate vẫn XANH — nó so bảng với chính tập file thiếu.
 // Phép đếm dưới đây độc lập với gate: readdir + đếm `name:` trên MỌI file .ts.
-test('DOT BIEN: dem tool phai phu moi file .ts trong src/copilot/tools', () => {
-  const thuMuc = new URL('../../src/copilot/tools/', import.meta.url);
+test('DOT BIEN: dem tool phai phu moi file .ts trong CA HAI thu muc quet', () => {
+  // Hai thu muc, khong phai mot: `src/copilot/plan` vao pham vi quet tu G2-B va
+  // phep dem doc lap nay phai di theo, khong thi no lai xanh tren mot tap file
+  // thieu — dung lop loi no sinh ra de bat.
   const ten = new Set();
-  for (const tep of readdirSync(thuMuc)) {
-    if (!tep.endsWith('.ts') || tep.endsWith('.d.ts')) continue;
-    const van = readFileSync(new URL(tep, thuMuc), 'utf8');
-    for (const m of van.matchAll(/name:\s*'([a-z_][a-z0-9_]*)'/g)) ten.add(m[1]);
+  for (const goc of ['../../src/copilot/tools/', '../../src/copilot/plan/']) {
+    const thuMuc = new URL(goc, import.meta.url);
+    let danhSach;
+    try {
+      danhSach = readdirSync(thuMuc);
+    } catch (loi) {
+      if (loi?.code === 'ENOENT') continue;
+      throw loi;
+    }
+    for (const tep of danhSach) {
+      if (!tep.endsWith('.ts') || tep.endsWith('.d.ts')) continue;
+      const van = readFileSync(new URL(tep, thuMuc), 'utf8');
+      for (const m of van.matchAll(/name:\s*'([a-z_][a-z0-9_]*)'/g)) ten.add(m[1]);
+    }
   }
   assert.ok(ten.size >= SAN_TOOL, `chi thay ${ten.size} tool tren dia`);
 
@@ -150,4 +163,34 @@ test('DOT BIEN: dem tool phai phu moi file .ts trong src/copilot/tools', () => {
   );
   const dem = Number(/Registry Copilot: (\d+) tool/.exec(ra)?.[1]);
   assert.equal(dem, ten.size, 'gate dem thieu tool — co file tool nam ngoai pham vi quet');
+});
+
+// PHAM VI QUET MO SANG src/copilot/plan (G2-B).
+//
+// Gate nay va check-copilot-forbidden-actions gio dung CHUNG SCAN_ROOTS. Neu ai
+// do thu hep lai chi con `tools/`, mot khai bao `name:` trong `plan/` se bi cua
+// cam soi (no van quet plan) ma KHONG bao gio vao bang kiem ke — tai lieu ke mot
+// con so, nguon la mot con so khac.
+test('dem ca tool khai trong src/copilot/plan, khong chi src/copilot/tools', () => {
+  const ra = docTool({
+    ...MAU,
+    'src/copilot/plan/viDuHanhDong.ts': `
+      name: 'tool_trong_plan',
+      requiredPermission: { module: 'income_expenses', action: 'create' },
+      execute: async () => 'w',
+    `,
+  });
+  const muc = ra.find((x) => x.ten === 'tool_trong_plan');
+  assert.ok(muc, 'khai bao trong src/copilot/plan phai duoc dem');
+  assert.equal(muc.tep, 'src/copilot/plan/viDuHanhDong.ts');
+  assert.equal(muc.quyen, 'income_expenses.create');
+  assert.match(dungKhoi(ra), /src\/copilot\/plan\/viDuHanhDong\.ts/);
+});
+
+test('SCAN_ROOTS cua hai gate la MOT — khong the lech nhau', async () => {
+  const { SCAN_ROOTS } = await import('../check-copilot-forbidden-actions.mjs');
+  assert.deepEqual(
+    SCAN_ROOTS.map((goc) => goc.split(sep).join('/')),
+    ['src/copilot/tools', 'src/copilot/plan'],
+  );
 });

@@ -46,6 +46,33 @@ export interface ToolCtx {
   navigate?: (to: string) => void;
   /** Server-fetched page/action availability; absent means legacy callers opt out. */
   availability?: CopilotAvailabilitySnapshot | null;
+  /**
+   * Thread chat hiện tại — `null` khi chưa có thread (lượt đầu, hoặc UI-control).
+   *
+   * Trước G2-B trường này KHÔNG có trong `ToolCtx`: `ChatPanel` nhét nó vào bằng
+   * một phép ép kiểu (`as ToolCtx & { threadId; generation }`) và `writeTools`
+   * lại ép ngược ra để đọc. Hai phép ép ở hai đầu một sợi dây nghĩa là trình
+   * biên dịch không canh sợi dây đó: đổi tên trường ở một đầu thì đầu kia đọc
+   * `undefined` và khoá phạm vi xác nhận âm thầm rỗng đi.
+   */
+  threadId: string | null;
+  /**
+   * Thế hệ ngữ cảnh — tăng mỗi lần đổi công ty hoặc mở thread khác.
+   *
+   * Là thứ phân biệt "kết quả vừa về" với "kết quả của công ty người dùng vừa
+   * rời khỏi". Phần ghi (`confirmationStore`) so trường này trước khi cho tiêu
+   * nonce.
+   */
+  generation: number;
+  /**
+   * `is_super_admin()` của phiên — nguồn là `useIsSuperAdmin()`.
+   *
+   * Chỉ dùng để LỌC BỚT tool khỏi danh sách gửi cho mô hình (`superAdminOnly`).
+   * Nó KHÔNG phải hàng rào: mọi RPC phía dưới tự kiểm lại bằng `is_super_admin()`
+   * của server. Một client nói dối trường này chỉ tự thấy thêm một cái tên tool
+   * rồi ăn 42501 khi gọi.
+   */
+  isSuperAdmin: boolean;
 }
 
 /** Mã lỗi ổn định khi tool có phạm vi công ty bị gọi lúc chưa chốt công ty. */
@@ -125,6 +152,16 @@ export interface DomainTool<T = any> {
   /** Explicitly documents tools governed by a different server-side rollout. */
   rolloutExempt?: boolean;
   rolloutExemptionReason?: string;
+  /**
+   * Tool CHỈ super admin được cầm — lọc khỏi CẢ hai adapter khi
+   * `ctx.isSuperAdmin` không đúng.
+   *
+   * Vì sao lọc ở đây chứ không để RPC từ chối: một tool nằm trong danh sách gửi
+   * cho mô hình là một tool mô hình SẼ gọi, rồi thuật lại lỗi 42501 cho người
+   * dùng như thể hệ thống hỏng. Không đưa cái tên đó ra là cách rẻ nhất để câu
+   * trả lời đúng với quyền thật của người đang hỏi.
+   */
+  superAdminOnly?: boolean;
   execute: (args: T, ctx: ToolCtx) => Promise<string>;
 }
 
@@ -816,6 +853,20 @@ function assertAvailabilityOrganization(
   }
 }
 
+/**
+ * Chặn lần thứ hai, ngay trước khi thân tool chạy.
+ *
+ * Lọc lúc dựng danh sách là để mô hình không THẤY tool; kiểm lại ở đây là để một
+ * tham chiếu đã cầm trong tay (adapter dựng một lần, `ctx` sống lâu hơn) không
+ * còn chạy được sau khi quyền đổi. Cùng khuôn với `assertRollout` và `assertPerm`
+ * ngay cạnh.
+ */
+function assertSuperAdmin(tool: DomainTool, ctx: ToolCtx): void {
+  if (tool.superAdminOnly && !ctx.isSuperAdmin) {
+    throw new Error(`super_admin_required: công cụ "${tool.name}" chỉ dành cho super admin.`);
+  }
+}
+
 function assertRollout(tool: DomainTool, availability: CopilotAvailabilitySnapshot | null | undefined): void {
   if (!toolAvailableForRollout(tool, availability ?? null)) {
     throw new Error(`rollout_unavailable: công cụ "${tool.name}" đã bị tắt hoặc snapshot rollout đã hết hạn.`);
@@ -836,6 +887,7 @@ export function toLlmTools(
     if (!availabilityMatchesOrganization(ctx, effectiveAvailability)) continue;
     if (!toolAvailableForRollout(tool, effectiveAvailability)) continue;
     if (tool.uiControlOnly) continue;
+    if (tool.superAdminOnly && !ctx.isSuperAdmin) continue;
     if (tool.requiredPermission && (!ctx.perms || !canUse(ctx.perms, tool.requiredPermission.module, tool.requiredPermission.action))) {
       continue; // không đưa cho model tool mà user không có quyền
     }
@@ -845,6 +897,7 @@ export function toLlmTools(
       execute: async (args: any) => {
         assertAvailabilityOrganization(ctx, effectiveAvailability);
         assertRollout(tool, effectiveAvailability);
+        assertSuperAdmin(tool, ctx);
         assertPerm(tool, ctx);
         return tool.execute(args, ctx);
       },
@@ -870,6 +923,7 @@ export function toPageAgentTools(
     if (!availabilityMatchesOrganization(ctx, effectiveAvailability)) continue;
     if (!toolAvailableForRollout(tool, effectiveAvailability)) continue;
     if (tool.chatOnly) continue;
+    if (tool.superAdminOnly && !ctx.isSuperAdmin) continue;
     if (tool.requiredPermission && (!ctx.perms || !canUse(ctx.perms, tool.requiredPermission.module, tool.requiredPermission.action))) {
       continue;
     }
@@ -879,6 +933,7 @@ export function toPageAgentTools(
       async execute(args: any) {
         assertAvailabilityOrganization(ctx, effectiveAvailability);
         assertRollout(tool, effectiveAvailability);
+        assertSuperAdmin(tool, ctx);
         assertPerm(tool, ctx);
         return tool.execute(args, ctx);
       },

@@ -7,6 +7,14 @@
 // một ghi chú tự do chứa gì.
 import { describe, expect, it, vi } from 'vitest';
 
+/**
+ * Ba trường `ToolCtx` không liên quan tới điều đang đo — khai một lần.
+ *
+ * `isSuperAdmin: false` là mặc định CÓ CHỦ Ý: tool `superAdminOnly` phải vắng mặt
+ * trừ khi một ca nói rõ người dùng là super admin.
+ */
+const CTX_NEN = { threadId: null, generation: 0, isSuperAdmin: false };
+
 // Giả lập biên mạng để chạy được ĐƯỜNG THẬT của tool, không chỉ hàm định dạng.
 // Cần vì kiểm bằng đột biến đã chỉ ra: test chỉ gọi `dinhDangSoQuy` trực tiếp
 // thì việc tool ngừng dùng hàm đó (quay lại đổ JSON thô) KHÔNG bị bắt.
@@ -95,7 +103,7 @@ describe('so_quy — PII không được rời hệ thống', () => {
     chain.then = (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve);
     from.mockReturnValue(chain);
     rpc.mockResolvedValueOnce({ data: BAO_CAO, error: null });
-    const out = await soQuy.execute({ tu_ngay: '2026-08-01', den_ngay: '2026-08-12' }, { perms: undefined, organizationId: 'aaaa0000-0000-4000-8000-000000000001' });
+    const out = await soQuy.execute({ tu_ngay: '2026-08-01', den_ngay: '2026-08-12' }, { ...CTX_NEN, perms: undefined, organizationId: 'aaaa0000-0000-4000-8000-000000000001' });
     expect(rpc).toHaveBeenCalledWith('copilot_cashbook_settlement_v2', {
       p_from: '2026-08-01',
       p_to: '2026-08-12',

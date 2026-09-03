@@ -7,6 +7,14 @@ import type { CopilotAvailabilitySnapshot } from '../featureFlags';
 const SUPER: PermissionsMap = { __superadmin: true } as unknown as PermissionsMap;
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
 
+/**
+ * Ba trường `ToolCtx` không liên quan tới điều đang đo — khai một lần.
+ *
+ * `isSuperAdmin: false` là mặc định CÓ CHỦ Ý: tool `superAdminOnly` phải vắng mặt
+ * trừ khi một ca nói rõ người dùng là super admin.
+ */
+const CTX_NEN = { threadId: null, generation: 0, isSuperAdmin: false };
+
 describe('Copilot availability adapters', () => {
   it('requires every tool to declare rollout keys or an explicit exemption', () => {
     const registry = buildRegistryDefinitions();
@@ -22,7 +30,7 @@ describe('Copilot availability adapters', () => {
 
   it('fails closed for rollout-controlled page tools when snapshot is missing or stale', () => {
     const stale = { revision: 1, fetchedAt: 0, organizationId: ORG, states: { 'page:rooms.list': 'enabled' as const } };
-    const ctx = { perms: SUPER, organizationId: ORG, availability: stale };
+    const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG, availability: stale };
     const llm = toLlmTools(buildRegistryDefinitions(), ctx);
     const page = toPageAgentTools(buildRegistryDefinitions(), ctx);
     expect(llm.phong_trong).toBeUndefined();
@@ -30,14 +38,14 @@ describe('Copilot availability adapters', () => {
   });
 
   it('fails closed for every tool when availability is explicitly null', () => {
-    const ctx = { perms: SUPER, organizationId: ORG, availability: null };
+    const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG, availability: null };
     expect(Object.keys(toLlmTools(buildRegistryDefinitions(), ctx))).toEqual([]);
     expect(Object.keys(toPageAgentTools(buildRegistryDefinitions(), ctx))).toEqual([]);
     expect(buildRegistry(null)).toEqual([]);
   });
 
   it('fails closed when a caller omits the availability snapshot', () => {
-    const ctx = { perms: SUPER, organizationId: ORG };
+    const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG };
     expect(Object.keys(toLlmTools(buildRegistryDefinitions(), ctx))).toEqual([]);
     expect(Object.keys(toPageAgentTools(buildRegistryDefinitions(), ctx))).toEqual([]);
     expect(buildRegistry()).toEqual([]);
@@ -54,7 +62,7 @@ describe('Copilot availability adapters', () => {
         'page:invoices.list': 'enabled' as const,
       },
     };
-    const ctx = { perms: SUPER, organizationId: ORG, availability: snapshot };
+    const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG, availability: snapshot };
     expect(Object.keys(toLlmTools(buildRegistryDefinitions(), ctx))).toEqual([]);
     expect(Object.keys(toPageAgentTools(buildRegistryDefinitions(), ctx))).toEqual([]);
   });
@@ -66,7 +74,7 @@ describe('Copilot availability adapters', () => {
       organizationId: ORG,
       states: { 'page:rooms.list': 'enabled' as const },
     };
-    const ctx = { perms: SUPER, organizationId: ORG, availability: snapshot };
+    const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG, availability: snapshot };
     const tool = toPageAgentTools(buildRegistryDefinitions(), ctx).phong_trong;
     expect(tool).toBeDefined();
     ctx.organizationId = 'dddd0000-0000-4000-8000-000000000001';
@@ -82,7 +90,7 @@ describe('Copilot availability adapters', () => {
       organizationId: ORG,
       states: { 'page:rooms.list': 'enabled' as const },
     };
-    const ctx = { perms: SUPER, organizationId: ORG, availability: snapshot };
+    const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG, availability: snapshot };
     expect(toLlmTools(buildRegistryDefinitions(), ctx).huong_dan).toBeDefined();
     expect(toLlmTools(buildRegistryDefinitions(), ctx).phong_trong).toBeDefined();
   });
@@ -94,7 +102,7 @@ describe('Copilot availability adapters', () => {
       organizationId: ORG,
       states: { 'page:rooms.list': 'enabled' as const, 'page:customers.list': 'shadow' as const },
     };
-    const ctx = { perms: SUPER, organizationId: ORG, availability: snapshot };
+    const ctx = { ...CTX_NEN, perms: SUPER, organizationId: ORG, availability: snapshot };
     const llm = toLlmTools(buildRegistryDefinitions(), ctx);
     expect(llm.phong_trong).toBeDefined();
     expect(llm.tim_khach_hang).toBeUndefined();
@@ -112,6 +120,7 @@ describe('Copilot availability adapters', () => {
     };
     let navigated = '';
     const tool = toPageAgentTools(buildRegistryDefinitions(), {
+      ...CTX_NEN,
       perms: SUPER,
       organizationId: ORG,
       navigate: (to) => { navigated = to; },

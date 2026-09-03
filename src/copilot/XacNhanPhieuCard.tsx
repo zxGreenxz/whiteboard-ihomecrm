@@ -4,7 +4,45 @@ import { formatVND } from '@/lib/utils';
 import { layXacNhanDangCho, tieuXacNhan, xoaXacNhanDangCho } from './confirmationStore';
 import { layNguCanhXacNhan } from './confirmationStore';
 import { thucThiXacNhan, type ConfirmationExecutionContext } from './tools/writeTools';
-import { copilotAvailabilitySnapshotIsFresh, type CopilotAvailabilitySnapshot } from './featureFlags';
+import {
+  copilotAvailability,
+  copilotAvailabilitySnapshotIsFresh,
+  type CopilotAvailabilitySnapshot,
+} from './featureFlags';
+import { khoaRolloutHanhDong } from './plan/actionCatalog';
+
+/**
+ * Khoá kill switch của hành động này — cùng khoá mà `taoPhieuThuChiNhap` khai
+ * làm `rolloutKey`.
+ *
+ * Kiểm ở ĐÂY nữa, dù danh sách tool đã lọc theo cùng khoá: giữa lúc mô hình lập
+ * đề xuất và lúc người dùng bấm nút có tới 5 phút, và một sự cố xảy ra trong 5
+ * phút đó thì thứ duy nhất còn chặn được là cú kiểm ngay trước khi tiêu nonce.
+ * Snapshot làm tươi mỗi 30 giây nên cờ vừa tắt sẽ tới nơi trước khi hết TTL.
+ */
+export const KHOA_HANH_DONG_TAO_PHIEU = khoaRolloutHanhDong('income_expense.create_draft');
+
+/** Câu báo khi quản trị đã tắt hành động giữa lúc đề xuất còn treo. */
+export const LOI_HANH_DONG_DA_TAT = 'Hành động đã bị tắt bởi quản trị.';
+
+/**
+ * Hành động tạo phiếu có đang đóng không — tách hàm để đo được mà không cần
+ * dựng DOM.
+ *
+ * Điều kiện là `!== 'enabled'`, không phải `=== 'disabled'`. Ba trạng thái, hai
+ * quyết định: `shadow` nghĩa là đang QUAN SÁT chứ chưa cho chạy thật — cả
+ * `rolloutStateAllowsExecution` lẫn `toolAvailableForRollout` đều đòi đúng
+ * `enabled`, nên một cú bấm ghi thật dưới cờ `shadow` sẽ là chỗ DUY NHẤT trong
+ * hệ hiểu `shadow` là "được ghi".
+ *
+ * Snapshot thiếu hoặc hết hạn cũng trả `true`: không đọc được cờ thì không
+ * được ghi.
+ */
+export function hanhDongTaoPhieuDaTat(
+  availability: CopilotAvailabilitySnapshot | null | undefined,
+): boolean {
+  return copilotAvailability(availability, KHOA_HANH_DONG_TAO_PHIEU) !== 'enabled';
+}
 
 interface Props {
   onXong: (thongBao: string) => void;
@@ -70,6 +108,20 @@ export default function XacNhanPhieuCard({ onXong, organizationId, threadId, gen
     ) {
       setDangCho(null);
       setDangGui(false);
+      return;
+    }
+    // Kill switch phạm vi action. Khác năm điều kiện ở trên (phạm vi lệch nhau →
+    // im lặng bỏ thẻ), đây là một quyết định của người vận hành nên phải NÓI RA:
+    // người dùng vừa bấm một cái nút và có quyền biết vì sao không có gì xảy ra.
+    if (hanhDongTaoPhieuDaTat(availability)) {
+      xoaXacNhanDangCho();
+      setLoi(LOI_HANH_DONG_DA_TAT);
+      setDangGui(false);
+      // Đi qua `onXong` chứ không chỉ `setLoi`: thẻ tự ẩn ở nhịp poll kế tiếp
+      // (1 giây) vì đề xuất vừa bị xoá, nên một câu chỉ nằm trong thẻ sẽ biến
+      // mất trước khi đọc xong. `onXong` đẩy nó vào khung chat và nó ở lại đó.
+      setDangCho(null);
+      onXong(`⚠️ ${LOI_HANH_DONG_DA_TAT} Hãy bật lại ở trang quản trị AI Copilot rồi lập lại phiếu.`);
       return;
     }
     const x = tieuXacNhan(Date.now(), undefined, scope);

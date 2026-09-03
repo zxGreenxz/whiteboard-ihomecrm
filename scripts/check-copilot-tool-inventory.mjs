@@ -24,13 +24,22 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  SCAN_ROOTS,
   collectCopilotSourceFiles,
   inventoryFromCopilotSource,
   validateCopilotActionInventory,
 } from './check-copilot-forbidden-actions.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
-const THU_MUC_TOOL = join(repoRoot, 'src', 'copilot', 'tools');
+// HAI THU MUC, KHONG PHAI MOT.
+//
+// `check-copilot-forbidden-actions` quet ca `src/copilot/tools` lan
+// `src/copilot/plan` (SCAN_ROOTS cua no); gate nay truoc G2-B chi quet thu muc
+// dau. Hai gate nhin hai tap file khac nhau la cach chac chan de mot khai bao
+// tool trong `plan/` bi cua cam soi ma khong bao gio vao bang kiem ke — tai
+// lieu ke mot con so, ma nguon la mot con so khac. Danh sach nay dung CHINH
+// SCAN_ROOTS cua gate kia de hai ben khong the lech nhau lan nua.
+const THU_MUC_QUET = SCAN_ROOTS.map((goc) => join(repoRoot, goc));
 const FILE_README = join(repoRoot, 'docs', 'ai-copilot', 'README.md');
 
 export const MOC_DAU = '<!-- COPILOT_TOOL_INVENTORY:START -->';
@@ -141,11 +150,11 @@ function main() {
   // nó (SCAN_ROOTS + đi đệ quy); ở đây dùng lại CHÍNH bộ quét đó để hai gate
   // không bao giờ nhìn hai tập file khác nhau.
   const nguon = {};
-  for (const duong of collectCopilotSourceFiles([THU_MUC_TOOL])) {
+  for (const duong of collectCopilotSourceFiles(THU_MUC_QUET)) {
     nguon[relative(repoRoot, duong).replace(/\\/g, '/')] = readFileSync(duong, 'utf8');
   }
   if (Object.keys(nguon).length === 0) {
-    console.error(`❌ KHÔNG ĐO ĐƯỢC: không đọc được file tool nào trong ${THU_MUC_TOOL}.`);
+    console.error(`❌ KHÔNG ĐO ĐƯỢC: không đọc được file tool nào trong ${THU_MUC_QUET.join(', ')}.`);
     process.exit(3);
   }
   const tools = docTool(nguon);

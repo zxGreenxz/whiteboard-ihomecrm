@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ROUTE_DIEU_HUONG } from './pageScope';
+import { ACTION_CATALOG } from './plan/actionCatalog';
 
 export type CopilotFlagState = 'disabled' | 'shadow' | 'enabled';
 
@@ -66,18 +67,48 @@ export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = 
 ];
 
 /**
- * Contract scope `action` — hôm nay RỖNG, và đó là sự thật của bảng flag.
+ * Contract của KẾ HOẠCH THỰC THI (G3) — công tắc duy nhất cho cả cơ chế plan.
  *
- * Seed trên server (`20260828170000`) chỉ có dòng scope `page`; chưa có mã nào
- * đọc một khoá `action:` nào cả. Khai sẵn tên ở đây sẽ dựng lên một hàng trong
- * trang admin mà `set_copilot_feature_flag_v2` từ chối với
- * `unknown_rollout_contract` (RPC chỉ UPDATE dòng CÓ SẴN, không INSERT) —
- * người vận hành bấm nút và nhận một lỗi không có cách nào tự chữa.
+ * Không sinh ra từ `ACTION_CATALOG` vì nó không phải một hành động: nó là cái
+ * máy chạy nhiều hành động. Tắt nó thì từng hành động lẻ vẫn dùng được qua
+ * đường một-bước hôm nay; tắt một hành động thì kế hoạch nào chạm tới nó cũng
+ * dừng. Hai câu hỏi khác nhau, hai công tắc.
  *
- * Thêm một action contract = thêm dòng ở đây VÀ seed dòng tương ứng trong một
- * migration; test `copilotRolloutSeedPagesMigration` canh cặp đó không lệch.
+ * Hằng số mang SẴN tiền tố `action:` vì nó được truyền thẳng vào
+ * `copilotAvailability()`, nơi khoá trần bị gắn `page:`.
  */
-export const COPILOT_ROLLOUT_ACTION_CONTRACTS: readonly CopilotRolloutContract[] = [];
+export const CONTRACT_KE_HOACH = 'copilot.execution_plan';
+export const KHOA_ROLLOUT_KE_HOACH = `action:${CONTRACT_KE_HOACH}`;
+
+/**
+ * Contract scope `action` — sinh TỪ `ACTION_CATALOG`, không chép tay.
+ *
+ * Cho tới 03/09/2026 danh sách này RỖNG và chú thích cũ giải thích vì sao: bảng
+ * `copilot_feature_flags` chưa có dòng scope `action` nào, mà
+ * `set_copilot_feature_flag_v2` chỉ UPDATE dòng CÓ SẴN — khai tên ở client mà
+ * server không có dòng thì người vận hành bấm nút và nhận `unknown_rollout_contract`,
+ * một lỗi không có cách nào tự chữa. Migration G2-A
+ * (`20260903043956`) đã seed đúng hai dòng đó ở trạng thái `disabled`, nên điều
+ * kiện ấy đã hết.
+ *
+ * Nguồn là catalog chứ không phải một mảng gõ tay: thêm một hành động vào sổ mà
+ * quên công tắc của nó là dựng một đường ghi không tắt được — đúng thứ mà kill
+ * switch sinh ra để chặn. `actionCatalog.test.ts` canh catalog khớp seed
+ * registry; `actionRolloutSeedMigration.test.ts` canh mỗi contract ở đây có một
+ * dòng seed cờ.
+ */
+export const COPILOT_ROLLOUT_ACTION_CONTRACTS: readonly CopilotRolloutContract[] = [
+  ...Object.values(ACTION_CATALOG).map((entry) => ({
+    scope: 'action' as const,
+    contractId: entry.actionId,
+    label: entry.labelVi,
+  })),
+  {
+    scope: 'action',
+    contractId: CONTRACT_KE_HOACH,
+    label: 'Kế hoạch thực thi nhiều bước (Copilot Mức 3)',
+  },
+];
 
 /**
  * Dựng danh sách contract rollout. Hàm THUẦN để test bằng fixture: test nạp
