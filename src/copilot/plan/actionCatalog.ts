@@ -55,6 +55,21 @@ export interface ActionCatalogEntry {
   previewFields: readonly string[];
   previewRpc: string;
   executeRpc: string;
+  /**
+   * G5-C2 (nhóm A — phân quyền). `true` khi registry mang `pin_always=true`:
+   * hành động này KHÔNG BAO GIỜ được uỷ quyền đứng phủ, kể cả nếu cột
+   * `grantable` sau này đổi nghĩa — một hàng rào THỨ HAI, độc lập với
+   * `grantable`. Vắng mặt (undefined) tương đương `false`.
+   */
+  pinAlways?: boolean;
+  /**
+   * G5-C2 (nhóm B — hiệu ứng ngoài). `true` khi registry mang
+   * `verify_kind='external_effect'`: bước sẽ dừng ở `UNKNOWN_EFFECT` (không
+   * `DONE`) ngay sau khi thực thi, chờ `copilot_plan_reconcile_step_v1` đối
+   * soát trạng thái THẬT (Zalo/Network Center) trước khi kế hoạch được coi
+   * là xong. Vắng mặt (undefined) tương đương `false`.
+   */
+  externalEffect?: boolean;
 }
 
 /**
@@ -256,6 +271,117 @@ export const SCHEMA_CONTRACT_DUYET_THANH_LY = z.object({
 
 export const SCHEMA_CUSTOMER_XOA_MEM = z.object({
   customer_id: z.string().uuid().describe('ID khách hàng cần xoá mềm'),
+});
+
+/**
+ * G5-C2 (nhóm A — phân quyền) — bốn action `direct_l5_v1` KHÔNG BAO GIỜ được
+ * uỷ quyền đứng phủ (`grantable=false` + `pin_always=true` ở registry, xem
+ * migration `20260903212600`). PIN step-up bắt buộc mỗi lần, không có
+ * đường tắt nào.
+ */
+export const SCHEMA_MEMBER_CAP_QUYEN = z.object({
+  membership_id: z.string().uuid().describe('ID hồ sơ thành viên cần sửa phân quyền'),
+  expected_version: z
+    .number()
+    .int()
+    .describe('Phiên bản hồ sơ đang đọc — chống ghi đè thay đổi của người khác'),
+  role_bindings: z
+    .array(
+      z.object({
+        role_id: z.string().uuid(),
+        scope_ids: z.array(z.string().uuid()).optional(),
+      }),
+    )
+    .nullable()
+    .optional()
+    .describe('Danh sách vai trò MỚI sẽ thay thế toàn bộ vai trò hiện có; bỏ trống = không đổi vai trò'),
+  overrides: z
+    .array(
+      z.object({
+        permission_key: z.string(),
+        effect: z.enum(['ALLOW', 'DENY']).optional(),
+        reason: z.string().min(1),
+        scope_mode: z.enum(['ORGANIZATION', 'SCOPED']).optional(),
+        scope_ids: z.array(z.string().uuid()).optional(),
+        expires_at: z.string().nullable().optional(),
+      }),
+    )
+    .nullable()
+    .optional()
+    .describe('Danh sách ngoại lệ quyền MỚI sẽ thay thế toàn bộ ngoại lệ hiện có; bỏ trống = không đổi'),
+  reason: z.string().min(1).describe('Lý do thay đổi phân quyền — bắt buộc'),
+});
+
+export const SCHEMA_ROLE_CAP_NHAT = z.object({
+  role_id: z.string().uuid().nullable().optional().describe('ID vai trò cần sửa; bỏ trống = TẠO vai trò mới'),
+  name: z.string().min(1).optional().describe('Tên vai trò (bắt buộc khi tạo mới)'),
+  permissions: z
+    .array(
+      z.object({
+        permission_key: z.string(),
+        effect: z.enum(['ALLOW', 'DENY']).optional(),
+      }),
+    )
+    .nullable()
+    .optional()
+    .describe('Danh sách quyền MỚI của vai trò — thay thế toàn bộ danh sách cũ'),
+  expected_version: z
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe('Phiên bản đang đọc — bắt buộc khi SỬA, bỏ trống khi TẠO mới'),
+  reason: z.string().nullable().optional().describe('Lý do thay đổi (tuỳ chọn)'),
+});
+
+export const SCHEMA_MEMBER_MOI = z.object({
+  email: z.string().email().describe('Email người được mời'),
+  member_type: z
+    .enum(['OWNER', 'STAFF', 'SHAREHOLDER', 'PARTNER', 'SERVICE'])
+    .describe('Loại thành viên'),
+  role_id: z.string().uuid().nullable().optional().describe('Vai trò gán sẵn cho lời mời (tuỳ chọn)'),
+  scope_ids: z.array(z.string().uuid()).optional().describe('Phạm vi gán kèm vai trò (tuỳ chọn)'),
+  expires_days: z.number().int().min(1).max(30).optional().describe('Số ngày lời mời còn hiệu lực (1-30, mặc định 7)'),
+});
+
+export const SCHEMA_MEMBER_TRANG_THAI = z.object({
+  user_id: z.string().uuid().describe('ID người dùng cần đổi trạng thái thành viên'),
+  status: z.enum(['ACTIVE', 'SUSPENDED', 'REVOKED']).describe('Trạng thái mới'),
+  reason: z.string().nullable().optional().describe('Lý do đổi trạng thái (tuỳ chọn)'),
+});
+
+/**
+ * G5-C2 (nhóm B — hiệu ứng ngoài) — ba action `direct_l5_v1` mang
+ * `verify_kind='external_effect'`: bước dừng ở `UNKNOWN_EFFECT` cho tới khi
+ * `copilot_plan_reconcile_step_v1` đối soát trạng thái thật (xem migration
+ * `20260903212610`).
+ */
+export const SCHEMA_ZALO_PHAT_SONG = z.object({
+  conversation_id: z.string().uuid().describe('ID hội thoại Zalo nhận tin'),
+  body: z.string().min(1).describe('Nội dung tin nhắn'),
+});
+
+export const SCHEMA_ZALO_THU_HOI_TIN = z.object({
+  message_id: z.string().uuid().describe('ID tin nhắn (do chính bạn gửi) cần thu hồi'),
+});
+
+export const SCHEMA_NETWORK_THUC_THI = z.object({
+  device_id: z.string().uuid().describe('ID thiết bị MikroTik'),
+  action_type: z
+    .enum(['FLUSH_DNS_CACHE', 'RENEW_DHCP_LEASE', 'CYCLE_ACCESS_PORT', 'REBOOT_ROUTER'])
+    .describe('Loại lệnh'),
+  reason: z.string().min(8).max(1000).describe('Lý do thực thi lệnh (8-1000 ký tự)'),
+  parameters: z
+    .object({
+      interfaceId: z.string().uuid().optional(),
+      durationSeconds: z.number().int().min(5).max(30).optional(),
+    })
+    .optional()
+    .describe('Tham số riêng của CYCLE_ACCESS_PORT; các lệnh khác để trống'),
+  confirmation: z
+    .string()
+    .optional()
+    .describe('Tên định danh router hiện tại — bắt buộc khi action_type là CYCLE_ACCESS_PORT/REBOOT_ROUTER'),
 });
 
 export const SCHEMA_NOP_HO_SO = z.union([
@@ -584,6 +710,116 @@ export const ACTION_CATALOG = {
     previewFields: ['ten_khach_hang', 'so_dien_thoai', 'trang_thai_hien_tai', 'hau_qua'],
     previewRpc: 'copilot_preview_customer_xoa_mem_v1',
     executeRpc: 'copilot_execute_customer_xoa_mem_v1',
+  },
+  // ───────────────────────────────────────────────────────────────────────
+  // G5-C2 (đợt 2) — NHÓM A: bốn action `direct_l5_v1` phân quyền. Registry
+  // `grantable=false` + `pin_always=true` (CHECK ở DB) — không bao giờ được
+  // uỷ quyền đứng phủ, kể cả nếu `grantable` sau này đổi nghĩa.
+  // ───────────────────────────────────────────────────────────────────────
+  'member.update_authorization': {
+    actionId: 'member.update_authorization',
+    version: 1,
+    labelVi: 'Sửa phân quyền thành viên',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'users', action: 'edit' },
+    inputSchema: SCHEMA_MEMBER_CAP_QUYEN,
+    previewFields: ['trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_member_cap_quyen_v1',
+    executeRpc: 'copilot_execute_member_cap_quyen_v1',
+    pinAlways: true,
+  },
+  'role.upsert': {
+    actionId: 'role.upsert',
+    version: 1,
+    labelVi: 'Tạo/sửa vai trò',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'users', action: 'edit' },
+    inputSchema: SCHEMA_ROLE_CAP_NHAT,
+    previewFields: ['ten_phieu', 'trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_role_cap_nhat_v1',
+    executeRpc: 'copilot_execute_role_cap_nhat_v1',
+    pinAlways: true,
+  },
+  'member.invite': {
+    actionId: 'member.invite',
+    version: 1,
+    labelVi: 'Mời thành viên',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'users', action: 'create' },
+    inputSchema: SCHEMA_MEMBER_MOI,
+    previewFields: ['so_dien_thoai', 'loai_phieu', 'trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_member_moi_v1',
+    executeRpc: 'copilot_execute_member_moi_v1',
+    pinAlways: true,
+  },
+  'member.set_status': {
+    actionId: 'member.set_status',
+    version: 1,
+    labelVi: 'Đổi trạng thái thành viên',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'users', action: 'edit' },
+    inputSchema: SCHEMA_MEMBER_TRANG_THAI,
+    previewFields: ['so_dien_thoai', 'trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_member_trang_thai_v1',
+    executeRpc: 'copilot_execute_member_trang_thai_v1',
+    pinAlways: true,
+  },
+  // ───────────────────────────────────────────────────────────────────────
+  // G5-C2 (đợt 2) — NHÓM B: ba action `direct_l5_v1` mang hiệu ứng NGOÀI hệ
+  // (Zalo/Network Center). Registry `verify_kind='external_effect'` — bước
+  // dừng ở `UNKNOWN_EFFECT` ngay sau khi thực thi, `KeHoachCard` phải hiện
+  // badge "hiệu ứng ngoài — đang đối soát" và `planClient` phải tự gọi
+  // `copilot_plan_reconcile_step_v1` cho tới khi biết kết quả thật.
+  // ───────────────────────────────────────────────────────────────────────
+  'zalo.broadcast': {
+    actionId: 'zalo.broadcast',
+    version: 1,
+    labelVi: 'Gửi tin Zalo',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'chat_zalo', action: 'send' },
+    inputSchema: SCHEMA_ZALO_PHAT_SONG,
+    previewFields: ['ten_khach_hang', 'trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_zalo_phat_song_v1',
+    executeRpc: 'copilot_execute_zalo_phat_song_v1',
+    externalEffect: true,
+  },
+  'zalo.recall_message': {
+    actionId: 'zalo.recall_message',
+    version: 1,
+    labelVi: 'Thu hồi tin Zalo',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'chat_zalo', action: 'send' },
+    inputSchema: SCHEMA_ZALO_THU_HOI_TIN,
+    previewFields: ['trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_zalo_thu_hoi_tin_v1',
+    executeRpc: 'copilot_execute_zalo_thu_hoi_tin_v1',
+    externalEffect: true,
+  },
+  'network.execute_action': {
+    actionId: 'network.execute_action',
+    version: 1,
+    labelVi: 'Thực thi lệnh Network Center',
+    risk: 'L5',
+    executorKind: 'direct_l5_v1',
+    consentRequired: 'step_up',
+    permission: { module: 'network_center', action: 'execute' },
+    inputSchema: SCHEMA_NETWORK_THUC_THI,
+    previewFields: ['toa_nha', 'trang_thai_hien_tai', 'hau_qua', 'canh_bao'],
+    previewRpc: 'copilot_preview_network_thuc_thi_v1',
+    executeRpc: 'copilot_execute_network_thuc_thi_v1',
+    externalEffect: true,
   },
 } as const satisfies Record<string, ActionCatalogEntry>;
 

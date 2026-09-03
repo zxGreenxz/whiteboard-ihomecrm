@@ -127,7 +127,7 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['pin_not_set', 'Bạn chưa đặt mã PIN xác thực hai lớp. Vào trang quản trị AI Copilot để đặt PIN trước.'],
   ['pin_locked', 'Mã PIN đang bị khoá do nhập sai nhiều lần. Hãy thử lại sau.'],
   ['pin_invalid', 'Mã PIN không đúng.'],
-  ['step_up_superadmin_only', 'Chỉ super admin mới đặt/đổi/mở khoá được PIN step-up.'],
+  ['step_up_superadmin_only', 'Chỉ super admin mới đặt/đổi/mở khoá/reset được PIN step-up.'],
 
   // — Uỷ quyền đứng (G5-B, điểm nối #4) — MỌI mã dài chứa một mã chung ở dưới
   // (`not_permitted`, `reason_required`) phải đứng TRƯỚC mã chung đó trong
@@ -181,6 +181,14 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['rule_denied', 'Bộ luật duyệt của công ty từ chối hồ sơ này.'],
   ['copilot_draft_invariant_violation', 'Bản ghi tạo ra không ở trạng thái đã hứa nên đã bị huỷ. Không có gì được ghi.'],
   ['copilot_write_readback_mismatch', 'Hệ thống đọc lại bản ghi vừa tạo và thấy không khớp nên đã huỷ. Không có gì được ghi.'],
+  // G5-C2 (nhóm A/B, đợt 2) — `l5_requires_plan` áp cho cả 15 action
+  // `direct_l5_v1` (8 của G5-C + 7 của G5-C2), không riêng đợt này.
+  ['l5_requires_plan', 'Hành động này chỉ chạy được bên trong một kế hoạch đã duyệt — không gọi thẳng được.'],
+  ['cannot_edit_self', 'Không thể tự sửa/xoá quyền của chính mình.'],
+  ['system_role_readonly', 'Vai trò hệ thống không sửa được — hãy nhân bản rồi sửa bản sao.'],
+  // — Đối soát hiệu ứng ngoài (G5-C2, nhóm B) —
+  ['step_not_unknown_effect', 'Bước này không ở trạng thái chờ đối soát — có thể đã được đối soát ở nơi khác.'],
+  ['external_effect_failed', 'Hiệu ứng ngoài (Zalo/Network Center) đã thất bại thật sự. Kế hoạch dừng lại.'],
 
   // — Cửa chung của mọi hành động —
   ['copilot_feature_disabled', 'Tính năng kế hoạch đang tắt cho công ty của bạn.'],

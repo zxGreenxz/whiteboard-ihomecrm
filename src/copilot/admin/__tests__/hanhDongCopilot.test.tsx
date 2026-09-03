@@ -332,6 +332,8 @@ describe('TheStepUpPin — render thuần', () => {
     onDoiMoKhoaUserId: () => {},
     onDoiMoKhoaLyDo: () => {},
     onMoKhoa: () => {},
+    dangReset: false,
+    onReset: () => {},
   };
 
   it('vẽ thẻ với testid gốc + ô PIN mới + ô mật khẩu re-auth', () => {
@@ -377,6 +379,18 @@ describe('TheStepUpPin — render thuần', () => {
     expect(html).toContain('copilot-admin-pin-unlock-userid');
     expect(html).toContain('copilot-admin-pin-unlock-reason');
     expect(html).toContain('copilot-admin-pin-unlock-submit');
+  });
+
+  // Bổ sung G5-C2 — Reset PIN (khác Mở khoá: xoá hẳn PIN khi PIN đã mất).
+  it('super admin ⇒ vẽ luôn nút "Reset PIN", dùng chung ô mã người dùng/lý do với Mở khoá', () => {
+    const html = renderToStaticMarkup(<TheStepUpPin {...props} laSuperAdmin />);
+    expect(html).toContain('copilot-admin-pin-reset-submit');
+    expect(html).toContain('Reset PIN');
+  });
+
+  it('không phải super admin ⇒ KHÔNG vẽ nút Reset PIN', () => {
+    const html = renderToStaticMarkup(<TheStepUpPin {...props} laSuperAdmin={false} />);
+    expect(html).not.toContain('copilot-admin-pin-reset-submit');
   });
 
   it('KHÔNG chuỗi PIN/mật khẩu nào rò vào HTML (chỉ value do props điều khiển)', () => {

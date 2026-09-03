@@ -487,7 +487,7 @@ describe('G2-E fix#2/#3 — câu tiếng Việt khớp ngưỡng THẬT của se
   });
 });
 
-// ── G5-C (đợt 1): tám action L5 `direct_l5_v1` ──────────────────────────────
+// ── G5-C (đợt 1) + G5-C2 (đợt 2): 15 action L5 `direct_l5_v1` ───────────────
 //
 // Đường vào DUY NHẤT của các action này là một BƯỚC trong kế hoạch
 // (`lap_ke_hoach` → `thuc_thi_buoc`), không phải một tool đơn lẻ như L3/L4.
@@ -499,15 +499,35 @@ const HANH_DONG_L5 = (Object.values(ACTION_CATALOG) as ActionCatalogEntry[]).fil
   (e) => e.risk === 'L5',
 );
 
-describe('G5-C — tám action L5 direct_l5_v1: KHÔNG có tool đơn lẻ nào', () => {
-  it('sổ có đúng tám action L5 kiểu direct_l5_v1, tất cả consentRequired=step_up', () => {
+describe('G5-C/G5-C2 — 15 action L5 direct_l5_v1: KHÔNG có tool đơn lẻ nào', () => {
+  it('sổ có đúng 15 action L5 kiểu direct_l5_v1 (8 G5-C + 7 G5-C2), tất cả consentRequired=step_up', () => {
     // `income_expense.nop_ho_so` (G3) là L5 nhưng `maker_submit_v1` — không đếm
     // vào đây, nó có luật riêng ("nộp hồ sơ", không phải "ghi thẳng").
     const directL5 = HANH_DONG_L5.filter((e) => e.executorKind === 'direct_l5_v1');
-    expect(directL5).toHaveLength(8);
+    expect(directL5).toHaveLength(15);
     for (const entry of directL5) {
       expect(entry.consentRequired, entry.actionId).toBe('step_up');
       expect(entry.risk, entry.actionId).toBe('L5');
+    }
+  });
+
+  it('G5-C2 nhóm A (4 action phân quyền) đều pinAlways=true + grantable-independent', () => {
+    const nhomA = ['member.update_authorization', 'role.upsert', 'member.invite', 'member.set_status'];
+    for (const id of nhomA) {
+      const entry = ACTION_CATALOG[id as ActionId] as ActionCatalogEntry;
+      expect(entry, id).toBeDefined();
+      expect(entry.pinAlways, id).toBe(true);
+      expect(entry.executorKind, id).toBe('direct_l5_v1');
+    }
+  });
+
+  it('G5-C2 nhóm B (3 action hiệu ứng ngoài) đều externalEffect=true', () => {
+    const nhomB = ['zalo.broadcast', 'zalo.recall_message', 'network.execute_action'];
+    for (const id of nhomB) {
+      const entry = ACTION_CATALOG[id as ActionId] as ActionCatalogEntry;
+      expect(entry, id).toBeDefined();
+      expect(entry.externalEffect, id).toBe(true);
+      expect(entry.executorKind, id).toBe('direct_l5_v1');
     }
   });
 

@@ -40,6 +40,14 @@ export const SO_LOI_LIEN_TIEP_TOI_DA = 3;
 
 export const TEXT_HET_HAN_THEO_DOI = 'Hết thời gian theo dõi — xem tiếp ở tab Hành động.';
 
+/**
+ * G5-C2 (nhóm B) — badge riêng cho bước `UNKNOWN_EFFECT`: hành động ĐÃ được
+ * gửi (Zalo/Network Center) nhưng kết quả thật chưa xác nhận, khác hẳn "chờ
+ * chạy" (`PENDING`) hay "hỏng" (`FAILED`). Người bấm phải thấy NGAY đây là
+ * một trạng thái TRUNG GIAN, không phải lỗi.
+ */
+export const TEXT_HIEU_UNG_NGOAI_DANG_DOI_SOAT = 'hiệu ứng ngoài — đang đối soát';
+
 /** G5-A: token step-up hết hạn/đã dùng giữa lúc modal đóng và lúc bấm Duyệt. */
 export const TEXT_PIN_HET_HAN =
   'Xác thực PIN đã hết hạn hoặc chưa hoàn tất. Hãy bấm "Duyệt bằng PIN" lại.';
@@ -183,6 +191,14 @@ export function BangBuocKeHoach({ steps }: { steps: readonly BuocKeHoach[] }) {
             <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${mauBadge(b)}`}>
               {nhanRuiRo(b)}
             </span>
+            {b.status === 'UNKNOWN_EFFECT' && (
+              <span
+                data-testid={`copilot-plan-step-${b.stepNo}-hieu-ung-ngoai`}
+                className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
+              >
+                {TEXT_HIEU_UNG_NGOAI_DANG_DOI_SOAT}
+              </span>
+            )}
             <span className="text-slate-500">{nhanTrangThaiBuoc(b.status)}</span>
           </div>
           <div className="mt-0.5">{b.labelVi}</div>

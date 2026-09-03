@@ -33,7 +33,14 @@ import {
   type DongGrant,
   type KetQuaBaoCaoNgay,
 } from '../plan/standingGrantClient';
-import { datPin, moKhoaPinStepUp, tieuTokenStepUp, trangThaiPin, type TrangThaiPin } from '../plan/stepUpClient';
+import {
+  datPin,
+  moKhoaPinStepUp,
+  resetPinStepUp,
+  tieuTokenStepUp,
+  trangThaiPin,
+  type TrangThaiPin,
+} from '../plan/stepUpClient';
 import StepUpPinModal from '../StepUpPinModal';
 import {
   SO_DONG_SO_MAC_DINH,
@@ -316,11 +323,16 @@ export function TheStepUpPin(props: {
   onDoiMoKhoaUserId: (gt: string) => void;
   onDoiMoKhoaLyDo: (gt: string) => void;
   onMoKhoa: () => void;
+  dangReset: boolean;
+  onReset: () => void;
 }) {
   const { trangThai } = props;
   const duLieuDuDatPin = Boolean(
     /^[0-9]{4}$/.test(props.pinMoi) && props.matKhau.trim() && (!trangThai?.daDat || props.pinHienTai.trim()),
   );
+  // Cùng hai ô (user_id/lý do) phục vụ CẢ "Mở khoá" lẫn "Reset PIN" — hai
+  // thao tác cùng nhắm một người dùng, chỉ khác hậu quả (mở khoá đếm/lock,
+  // hay xoá hẳn PIN để họ tự đặt lại). Không dựng cặp ô thứ hai cho gọn.
   const duLieuDuMoKhoa = Boolean(props.moKhoaUserId.trim() && props.moKhoaLyDo.trim().length >= 3);
   const dangKhoa = Boolean(trangThai?.lockedUntil && new Date(trangThai.lockedUntil).getTime() > Date.now());
   return (
@@ -435,15 +447,29 @@ export function TheStepUpPin(props: {
               />
             </label>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid="copilot-admin-pin-unlock-submit"
-            disabled={!duLieuDuMoKhoa || props.dangMoKhoa}
-            onClick={props.onMoKhoa}
-          >
-            {props.dangMoKhoa ? 'Đang mở khoá…' : 'Mở khoá'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="copilot-admin-pin-unlock-submit"
+              disabled={!duLieuDuMoKhoa || props.dangMoKhoa || props.dangReset}
+              onClick={props.onMoKhoa}
+            >
+              {props.dangMoKhoa ? 'Đang mở khoá…' : 'Mở khoá'}
+            </Button>
+            {/* PIN đã MẤT (không phải bị khoá) — "Mở khoá" không giúp gì vì
+                nó giữ nguyên PIN cũ. Reset xoá hẳn PIN để người đó tự đặt
+                PIN mới, không cần PIN cũ. */}
+            <Button
+              size="sm"
+              variant="destructive"
+              data-testid="copilot-admin-pin-reset-submit"
+              disabled={!duLieuDuMoKhoa || props.dangMoKhoa || props.dangReset}
+              onClick={props.onReset}
+            >
+              {props.dangReset ? 'Đang reset…' : 'Reset PIN (mất PIN)'}
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -809,6 +835,21 @@ export default function HanhDongTab() {
     onError: (loi) => toast.error(dienGiaiLoiPin(loi)),
   });
 
+  // Reset PIN (bổ sung G5-C2) — dùng chung ô user_id/lý do với "Mở khoá".
+  const resetPinMutation = useMutation({
+    mutationFn: async () => {
+      const kq = await resetPinStepUp(moKhoaUserId.trim(), moKhoaLyDo.trim());
+      if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
+      return kq;
+    },
+    onSuccess: () => {
+      toast.success('Đã xoá PIN của người dùng — họ có thể tự đặt PIN mới.');
+      setMoKhoaUserId('');
+      setMoKhoaLyDo('');
+    },
+    onError: (loi) => toast.error(dienGiaiLoiPin(loi)),
+  });
+
   // ── Uỷ quyền đứng (G5-B, điểm nối #4) ──────────────────────────────────
   const [grantActionId, setGrantActionId] = useState('');
   const [grantMaxPerDay, setGrantMaxPerDay] = useState('1');
@@ -1008,6 +1049,8 @@ export default function HanhDongTab() {
         onDoiMoKhoaUserId={setMoKhoaUserId}
         onDoiMoKhoaLyDo={setMoKhoaLyDo}
         onMoKhoa={() => moKhoaMutation.mutate()}
+        dangReset={resetPinMutation.isPending}
+        onReset={() => resetPinMutation.mutate()}
       />
 
       {laSuperAdmin ? (

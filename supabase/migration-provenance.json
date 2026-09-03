@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T21:08:07.797Z",
+  "generatedAt": "2026-09-03T22:11:03.021Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 494,
-    "unknown": 73,
+    "unknown": 82,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9286,6 +9286,121 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-03T21:08:02.339Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903212600_copilot_action_member_cap_quyen_v1.sql",
+      "version": "20260903212600",
+      "name": "copilot_action_member_cap_quyen_v1",
+      "scheme": "timestamp14",
+      "sha256": "3504268ede699b2511a3ebfb73f7b86533d5bc33e9382b7c375620c16adbc406",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_member_cap_quyen_v1",
+        "function:public.copilot_execute_member_cap_quyen_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903212603_copilot_action_role_cap_nhat_v1.sql",
+      "version": "20260903212603",
+      "name": "copilot_action_role_cap_nhat_v1",
+      "scheme": "timestamp14",
+      "sha256": "da82bff8d037d8144927c0731e8a4b90cd4c27733d597fd7e13670baebc9518b",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_role_cap_nhat_v1",
+        "function:public.copilot_execute_role_cap_nhat_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903212605_copilot_action_member_moi_v1.sql",
+      "version": "20260903212605",
+      "name": "copilot_action_member_moi_v1",
+      "scheme": "timestamp14",
+      "sha256": "6a90ea1a75936050063c5e6938944150d2f6bfc543c49d7235d627f6d15eb875",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_member_moi_v1",
+        "function:public.copilot_execute_member_moi_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903212607_copilot_action_member_trang_thai_v1.sql",
+      "version": "20260903212607",
+      "name": "copilot_action_member_trang_thai_v1",
+      "scheme": "timestamp14",
+      "sha256": "d7466878ebb113f571ce0a8a5ebf3c61a3dfac0d27cf033356076672cfa37548",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_member_trang_thai_v1",
+        "function:public.copilot_execute_member_trang_thai_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903212610_copilot_action_zalo_phat_song_v1.sql",
+      "version": "20260903212610",
+      "name": "copilot_action_zalo_phat_song_v1",
+      "scheme": "timestamp14",
+      "sha256": "9bf0552729a5b0f29d927665b312dfd0878a6a43694da3cf98762f55e443d112",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_zalo_phat_song_v1",
+        "function:public.copilot_execute_zalo_phat_song_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903212612_copilot_action_zalo_thu_hoi_tin_v1.sql",
+      "version": "20260903212612",
+      "name": "copilot_action_zalo_thu_hoi_tin_v1",
+      "scheme": "timestamp14",
+      "sha256": "3a9aa344056a2d391c8e1c5e81fb1af1988deb241c8ce03ab2af1934e7af5ca1",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_zalo_thu_hoi_tin_v1",
+        "function:public.copilot_execute_zalo_thu_hoi_tin_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903212614_copilot_action_network_thuc_thi_v1.sql",
+      "version": "20260903212614",
+      "name": "copilot_action_network_thuc_thi_v1",
+      "scheme": "timestamp14",
+      "sha256": "ece4db16870fc0e555386089406e1b79fbcca3885d9c7c9e24237ced27f0256c",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_network_thuc_thi_v1",
+        "function:public.copilot_execute_network_thuc_thi_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903220254_demo_l5_e2e_accounts_seed_v1.sql",
+      "version": "20260903220254",
+      "name": "demo_l5_e2e_accounts_seed_v1",
+      "scheme": "timestamp14",
+      "sha256": "f3fd3b644b112452b79f08c53bc472acd7e221d09c932da6d8be2eec5ce5d3a9",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903220855_copilot_step_up_reset_pin_v1.sql",
+      "version": "20260903220855",
+      "name": "copilot_step_up_reset_pin_v1",
+      "scheme": "timestamp14",
+      "sha256": "0c35552f04f7c8be26d6027864da0b3c8dffb1b31bf82ff8bda999e704aa3a89",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_step_up_reset_pin_v1"
       ]
     },
     {

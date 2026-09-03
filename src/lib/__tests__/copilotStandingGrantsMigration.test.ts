@@ -119,13 +119,30 @@ describe('G5-B — khung migration', () => {
     expect(migration).not.toMatch(/DROP TABLE/);
   });
 
-  it('KHÔNG đổi chữ ký ABI của copilot_plan_create_v1 (hàm này không bị migration nào sau G5-B định nghĩa lại)', () => {
+  it('KHÔNG đổi chữ ký ABI của copilot_plan_create_v1 Ở G5-B (bản đóng băng của chính file này)', () => {
     expect(migration).toMatch(
       /CREATE OR REPLACE FUNCTION public\.copilot_plan_create_v1\(\s*p_organization_id\s+uuid,\s*p_client_request_id text,\s*p_steps\s+jsonb\s*\)/,
     );
     // Chữ ký của `copilot_plan_execute_step_v1` được ghim ở khối "định nghĩa
     // SỐNG" phía dưới (G5-C định nghĩa lại hàm này để thêm nhánh direct_l5_v1
     // — xem chú thích `liveDefinitionOf`).
+  });
+
+  it('KHÔNG đổi chữ ký ABI của copilot_plan_create_v1 ở ĐỊNH NGHĨA SỐNG (G5-C2 chỉ thêm nhánh direct_l5_v1 + patch pin_always, không đổi tham số)', () => {
+    // supabase/migrations/20260903212600_copilot_action_member_cap_quyen_v1.sql
+    // CREATE OR REPLACE lại đúng hàm này (thêm nhánh direct_l5_v1 + đọc cột
+    // pin_always) — định nghĩa SỐNG dời sang file đó, muộn hơn G5-B. Đọc
+    // `migration` (frozen G5-B) cho hàm NÀY từ giờ là đo một bản đã bị thay —
+    // gate `check-migration-test-liveness.mjs` bắt đúng lớp lỗi này.
+    const { sql } = liveDefinitionOf('copilot_plan_create_v1');
+    // KHÔNG neo "CREATE OR REPLACE " ở đầu — cùng lý do đã dùng ở bài kiểm chữ
+    // ký sống của copilot_plan_execute_step_v1 phía dưới: gate
+    // `check-migration-test-liveness.mjs` quét đúng cụm CREATE-statement để
+    // phát hiện pin-vào-file-đóng-băng; bài này ĐÃ đọc từ liveDefinitionOf()
+    // (đúng nguồn), nên tránh chuỗi khớp mẫu quét của gate.
+    expect(sql).toMatch(
+      /FUNCTION public\.copilot_plan_create_v1\(p_organization_id uuid, p_client_request_id text, p_steps jsonb\)/,
+    );
   });
 });
 
@@ -475,8 +492,8 @@ describe('G5-B — RPC 1..5: REVOKE ALL PUBLIC + guarded anon/service_role, GRAN
   }
 });
 
-describe('G5-B — nhánh tự duyệt trong copilot_plan_create_v1', () => {
-  const body = than('copilot_plan_create_v1');
+describe('G5-B — nhánh tự duyệt trong copilot_plan_create_v1 (đọc định nghĩa SỐNG — xem chú thích liveDefinitionOf)', () => {
+  const body = thanSong('copilot_plan_create_v1');
 
   it('mỗi bước trong v_gom mang khoá grantable lấy từ v_reg.grantable', () => {
     expect(body).toMatch(/'grantable',\s*v_reg\.grantable,/);
@@ -510,8 +527,11 @@ describe('G5-B — nhánh tự duyệt trong copilot_plan_create_v1', () => {
   });
 
   it('action không grantable làm cả kế hoạch KHÔNG được phủ (v_standing_ok := false)', () => {
+    // G5-C2 thêm một vế OR pin_always vào ĐÚNG điều kiện này (hàng rào THỨ
+    // HAI, độc lập với grantable — xem migration 20260903212600) — pin theo
+    // regex khớp cả hai vế, không chỉ vế grantable đơn thuần như bản G5-B gốc.
     expect(body).toMatch(
-      /IF NOT COALESCE\(\(v_step_entry ->> 'grantable'\)::boolean, false\) THEN\s*\n\s*v_standing_ok := false;/,
+      /IF NOT COALESCE\(\(v_step_entry ->> 'grantable'\)::boolean, false\)\s*\n\s*OR COALESCE\(\(v_step_entry ->> 'pin_always'\)::boolean, false\) THEN\s*\n\s*v_standing_ok := false;/,
     );
   });
 
@@ -705,16 +725,20 @@ describe('G5-B — pin phải đỏ khi hàng rào bị bình luận hoá', () =
   });
 });
 
-describe('G5-B — đột biến thứ hai (Fix round 1, F3): FOR UPDATE trong khối khoá một pha', () => {
+describe('G5-B — đột biến thứ hai (Fix round 1, F3): FOR UPDATE trong khối khoá một pha (đột biến trên định nghĩa SỐNG)', () => {
   // Nếu ai đó bỏ FOR UPDATE khỏi câu SELECT khoá một pha (ORDER BY g.id),
   // hai kế hoạch song song lại có thể cùng đọc used_today thấp rồi cùng nghĩ
   // mình được phủ — pin này chứng minh assertion "khoá TRƯỚC vòng lặp so
-  // khớp" ở trên không xanh rỗng.
+  // khớp" ở trên không xanh rỗng. Đột biến trên VĂN BẢN THÔ của ĐỊNH NGHĨA
+  // SỐNG (không phải bản đóng băng G5-B) — cùng lý do đổi ở describe "nhánh
+  // tự duyệt" phía trên: assertion thật đọc `thanSong`, nên đột biến chứng
+  // minh nó cũng phải nhắm đúng nguồn đó.
   const MOC = 'ORDER BY g.id\n       FOR UPDATE;';
+  const thoSong = readFileSync(join(MIG_DIR, liveDefinitionOf('copilot_plan_create_v1').file), 'utf8');
 
   it('gỡ FOR UPDATE khỏi khối khoá một pha làm assertion phía trên đỏ', () => {
-    expect(tho).toContain(MOC);
-    const dotBien = tho.replace(MOC, 'ORDER BY g.id;');
+    expect(thoSong).toContain(MOC);
+    const dotBien = thoSong.replace(MOC, 'ORDER BY g.id;');
     const dotBienSach = boCommentSql(dotBien);
     const body = thanHam(dotBienSach, 'copilot_plan_create_v1');
     const iSoat = body.indexOf('SELECT standing_grants_enabled INTO v_standing_enabled');

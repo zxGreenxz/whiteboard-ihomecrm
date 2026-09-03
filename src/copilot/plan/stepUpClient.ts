@@ -259,3 +259,33 @@ export async function moKhoaPinStepUp(userId: string, reason: string): Promise<K
     userId: chuoi(ban.user_id),
   };
 }
+
+export interface KetQuaResetPin {
+  ok: boolean;
+  maLoi: string | null;
+  thongBao: string | null;
+  daReset: boolean;
+}
+
+/**
+ * XOÁ HẲN PIN step-up của MỘT người dùng khác (khác `moKhoaPinStepUp` — hàm
+ * đó chỉ mở khoá đếm/lock, giữ nguyên PIN). Dùng khi PIN đã MẤT: người đó
+ * không thể tự đổi PIN qua `datPin` vì luồng đó luôn đòi PIN cũ khớp trước
+ * khi ghi đè. Chỉ super admin, bắt buộc lý do >= 3 ký tự. Gọi RPC TỪ ĐÂY,
+ * không từ `hanhDongCopilot.ts` — xem quyết định 3 ở đầu file.
+ */
+export async function resetPinStepUp(userId: string, reason: string): Promise<KetQuaResetPin> {
+  const { data, error } = await supabase.rpc('copilot_step_up_reset_pin_v1', {
+    p_user_id: userId,
+    p_reason: reason,
+  });
+  const kq = docKetQua(data, error);
+  if (!kq.ok) return { ok: false, maLoi: kq.ma, thongBao: kq.thongBao, daReset: false };
+  const ban = kq.ban ?? {};
+  return {
+    ok: true,
+    maLoi: null,
+    thongBao: null,
+    daReset: ban.da_reset === true,
+  };
+}

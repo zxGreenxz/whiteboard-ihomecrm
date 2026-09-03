@@ -484,6 +484,90 @@ export async function thucThiBuoc(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ĐỐI SOÁT (G5-C2, nhóm B) — bước `UNKNOWN_EFFECT` sau khi thực thi.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface KetQuaDoiSoat {
+  ok: boolean;
+  maLoi: string | null;
+  thongBao: string | null;
+  stepStatus: TrangThaiBuoc | null;
+  planStatus: TrangThaiKeHoach | null;
+  planVersion: number | null;
+  nextStepNo: number | null;
+}
+
+/** Một lần hỏi `copilot_plan_reconcile_step_v1` — KHÔNG tự lặp lại. */
+export async function doiSoatBuoc(
+  planId: string,
+  stepNo: number,
+  expectedVersion: number,
+): Promise<KetQuaDoiSoat> {
+  const { data, error } = await supabase.rpc('copilot_plan_reconcile_step_v1', {
+    p_plan_id: planId,
+    p_step_no: stepNo,
+    p_expected_plan_version: expectedVersion,
+  });
+  const phanHoi = docPhanHoi(data, error);
+  const ban = phanHoi.ban ?? {};
+  const buoc = laBan(ban.step) ?? {};
+  return {
+    ok: phanHoi.maLoi === null,
+    maLoi: phanHoi.maLoi,
+    thongBao: phanHoi.maLoi ? dienGiaiLoiKeHoach(phanHoi.thongDiep ?? phanHoi.maLoi) : null,
+    stepStatus: (chuoi(buoc.status) as TrangThaiBuoc | null) ?? null,
+    planStatus: (chuoi(ban.plan_status) as TrangThaiKeHoach | null) ?? null,
+    planVersion: so(ban.plan_version),
+    nextStepNo: so(ban.next_step_no),
+  };
+}
+
+/** Số lần hỏi lại tối đa sau một bước `UNKNOWN_EFFECT`, cách nhau `NHIP_DOI_SOAT_MS`. */
+export const SO_LAN_DOI_SOAT_TOI_DA = 5;
+export const NHIP_DOI_SOAT_MS = 3_000;
+
+export const TEXT_CHO_HIEU_UNG_NGOAI = 'đang chờ hiệu ứng ngoài';
+
+function doi(ms: number): Promise<void> {
+  return new Promise((giaiQuyet) => setTimeout(giaiQuyet, ms));
+}
+
+/**
+ * Hỏi lại tối đa `SO_LAN_DOI_SOAT_TOI_DA` lần, cách nhau `NHIP_DOI_SOAT_MS`, cho
+ * tới khi bước rời khỏi `UNKNOWN_EFFECT` (DONE/FAILED) hoặc hết lượt.
+ *
+ * Hết lượt mà VẪN `UNKNOWN_EFFECT` KHÔNG phải lỗi — worker ngoài tiến trình DB
+ * (Zalo/Network Center) có thể mất hơn 15 giây. Trả về nguyên trạng, để lại
+ * `TEXT_CHO_HIEU_UNG_NGOAI` cho người gọi tự quyết định hỏi tiếp hay không.
+ */
+export async function doiSoatChoToiDa(
+  planId: string,
+  stepNo: number,
+  expectedVersion: number,
+  tuyChon: { soLan?: number; nhipMs?: number; signal?: AbortSignal } = {},
+): Promise<KetQuaDoiSoat> {
+  const soLan = tuyChon.soLan ?? SO_LAN_DOI_SOAT_TOI_DA;
+  const nhip = tuyChon.nhipMs ?? NHIP_DOI_SOAT_MS;
+  let cuoi: KetQuaDoiSoat = {
+    ok: true,
+    maLoi: null,
+    thongBao: null,
+    stepStatus: 'UNKNOWN_EFFECT',
+    planStatus: null,
+    planVersion: expectedVersion,
+    nextStepNo: null,
+  };
+  for (let i = 0; i < soLan; i += 1) {
+    if (tuyChon.signal?.aborted) return cuoi;
+    await doi(nhip);
+    if (tuyChon.signal?.aborted) return cuoi;
+    cuoi = await doiSoatBuoc(planId, stepNo, cuoi.planVersion ?? expectedVersion);
+    if (!cuoi.ok || cuoi.stepStatus !== 'UNKNOWN_EFFECT') return cuoi;
+  }
+  return cuoi;
+}
+
 /** Ký hiệu "hết giờ chờ" — không phải một lỗi, và tuyệt đối không phải FAILED. */
 const HET_GIO = Symbol('het_gio');
 
@@ -501,7 +585,7 @@ async function choToiDa<T>(viec: PromiseLike<T>, ms: number): Promise<T | typeof
   }
 }
 
-export type LyDoDung = 'xong' | 'loi' | 'het_gio' | 'huy';
+export type LyDoDung = 'xong' | 'loi' | 'het_gio' | 'huy' | 'cho_hieu_ung_ngoai';
 
 export interface KetQuaChay {
   buoc: KetQuaBuoc[];
@@ -599,6 +683,42 @@ export async function chayTuanTu(
       thongBao = kq.thongBao;
       break;
     }
+
+    // G5-C2 (nhóm B) — bước vừa thực thi XONG (ok=true) nhưng mang hiệu ứng
+    // NGOÀI hệ (Zalo/Network Center) còn chưa rõ kết quả. `thucThiBuoc` đã trả
+    // `nextStepNo=null` cho trường hợp này (kế hoạch không nhảy sang DONE khi
+    // còn một bước UNKNOWN_EFFECT — xem engine), nên vòng lặp KHÔNG tự đi
+    // tiếp: hỏi lại tối đa `SO_LAN_DOI_SOAT_TOI_DA` lần, cách nhau
+    // `NHIP_DOI_SOAT_MS`, rồi dừng lại đúng nghĩa "đang chờ", không phải lỗi.
+    if (kq.stepStatus === 'UNKNOWN_EFFECT') {
+      const soat = await doiSoatChoToiDa(planId, stepNo, version, { signal: tuyChon.signal });
+      if (soat.planVersion !== null) version = soat.planVersion;
+      daChay.push({
+        ok: soat.ok,
+        maLoi: soat.maLoi,
+        thongBao: soat.thongBao,
+        stepNo,
+        stepStatus: soat.stepStatus,
+        planStatus: soat.planStatus,
+        planVersion: soat.planVersion,
+        nextStepNo: soat.nextStepNo,
+      });
+      if (!soat.ok) {
+        ketThuc = 'loi';
+        maLoi = soat.maLoi;
+        thongBao = soat.thongBao;
+        break;
+      }
+      if (soat.stepStatus === 'UNKNOWN_EFFECT') {
+        ketThuc = 'cho_hieu_ung_ngoai';
+        maLoi = null;
+        thongBao = TEXT_CHO_HIEU_UNG_NGOAI;
+        break;
+      }
+      stepNo = soat.nextStepNo;
+      continue;
+    }
+
     stepNo = kq.nextStepNo;
   }
 
