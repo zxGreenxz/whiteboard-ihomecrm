@@ -97,10 +97,17 @@ export interface TomTatToken {
    * nhìn thấy dòng của đồng nghiệp và con số này sẽ THẤP hơn sự thật.
    */
   cuaTenant: number;
-  /** Chủ tenant suy từ chính dòng của mình; `null` khi hôm nay chưa gọi lượt nào. */
+  /** Chủ tenant đã suy được; `null` khi không có đường nào suy ra (xem hàm dưới). */
   ownerId: string | null;
   /** `true` khi `cuaTenant` chắc chắn đầy đủ (người xem chính là chủ tenant / super admin). */
   tenantDayDu: boolean;
+  /**
+   * `true` khi `cuaTenant` thật ra là tổng TOÀN HỆ THỐNG, không phải một tenant:
+   * super admin mà không suy được chủ nào thì mọi dòng RLS trả về đều được cộng.
+   * Chỗ vẽ PHẢI đổi nhãn theo cờ này — gọi tổng toàn hệ thống là "tenant của
+   * bạn" là nói sai với đúng người có quyền tin nó nhất.
+   */
+  laToanHeThong: boolean;
 }
 
 /**
@@ -112,18 +119,44 @@ export function tomTatTokenHomNay(
   uid: string | null,
   laSuperAdmin = false,
 ): TomTatToken {
-  if (!uid) return { cuaToi: 0, cuaTenant: 0, ownerId: null, tenantDayDu: false };
-  // Chủ tenant suy từ chính dòng của mình: đó là giá trị database đã ghi, không
-  // phải suy đoán của giao diện.
-  const ownerId = rows.find((r) => r.user_id === uid)?.owner_id ?? null;
+  if (!uid) {
+    return { cuaToi: 0, cuaTenant: 0, ownerId: null, tenantDayDu: false, laToanHeThong: false };
+  }
+
+  // Suy chủ tenant theo HAI đường, chắc chắn giảm dần:
+  //   (1) `owner_id` trên chính dòng của mình — giá trị database đã ghi.
+  //   (2) có dòng nào `owner_id = mình` ⇒ mình LÀ chủ tenant đó. `ai_usage_logs_select`
+  //       chỉ trả dòng `owner_id = auth.uid()` cho đúng người đó, nên đây là suy
+  //       luận từ chính quyền đọc, không phải phỏng đoán.
+  //
+  // Đường (2) là chỗ bản đầu sai: chủ tenant CHƯA chat hôm nay thì không có dòng
+  // nào `user_id = mình`, ownerId rơi về null, tổng ra 0 — thanh xanh 0% và badge
+  // không bao giờ đỏ, trong khi RLS vừa trả về đủ dòng của cả đội đang cháy hạn
+  // mức. Đúng người cần cảnh báo nhất là người không nhận được nó.
+  const ownerId =
+    rows.find((r) => r.user_id === uid)?.owner_id ??
+    (rows.some((r) => r.owner_id === uid) ? uid : null);
+
+  // Super admin không suy được chủ nào (chưa dòng nào trong tầm nhìn gắn với họ)
+  // thì cộng TẤT CẢ dòng RLS trả về — với super admin đó là toàn hệ thống. Một
+  // số 0 giả trình bày như sự thật tệ hơn hẳn một con số rộng hơn cần thiết
+  // NHƯNG có nhãn nói đúng phạm vi (`laToanHeThong`).
+  const laToanHeThong = ownerId === null && laSuperAdmin;
+
   let cuaToi = 0;
   let cuaTenant = 0;
   for (const r of rows) {
     const t = laSoHuuHan(r.total_tokens) && r.total_tokens > 0 ? r.total_tokens : 0;
     if (r.user_id === uid) cuaToi += t;
-    if (ownerId !== null && r.owner_id === ownerId) cuaTenant += t;
+    if (laToanHeThong || (ownerId !== null && r.owner_id === ownerId)) cuaTenant += t;
   }
-  return { cuaToi, cuaTenant, ownerId, tenantDayDu: laSuperAdmin || ownerId === uid };
+  return {
+    cuaToi,
+    cuaTenant,
+    ownerId,
+    tenantDayDu: laSuperAdmin || ownerId === uid,
+    laToanHeThong,
+  };
 }
 
 /**

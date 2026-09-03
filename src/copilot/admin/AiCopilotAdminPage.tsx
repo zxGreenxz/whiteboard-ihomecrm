@@ -187,19 +187,28 @@ const useUsage = () =>
  * admin`, nên một RPC SECURITY DEFINER ở đây chỉ chép lại đúng luật đó vào chỗ
  * thứ hai để hai chỗ lệch nhau về sau.
  */
-const useTokenHomNay = () =>
-  useQuery({
-    queryKey: ['ai-usage-token-hom-nay'],
+const useTokenHomNay = () => {
+  // Mốc ngày nằm TRONG queryKey: một tab mở qua nửa đêm VN sẽ đổi khoá ở lần
+  // render kế tiếp và tự nạp lại cửa sổ ngày mới, thay vì hiển thị mãi tổng của
+  // hôm qua trong khi database đã reset hạn mức.
+  const mocNgay = mocDauNgayVN(new Date());
+  return useQuery({
+    queryKey: ['ai-usage-token-hom-nay', mocNgay],
     queryFn: async (): Promise<DongTokenHomNay[]> => {
       const { data, error } = await supabase
         .from('ai_usage_logs')
         .select('user_id, owner_id, total_tokens')
-        .gte('created_at', mocDauNgayVN(new Date()))
+        .gte('created_at', mocNgay)
+        // ORDER trước LIMIT: không có nó thì 5000 dòng được giữ lại là 5000 dòng
+        // TUỲ Ý, và tổng bị hụt một khoản không đoán được. Có nó thì phần bị cắt
+        // là phần CŨ NHẤT trong ngày — vẫn hụt, nhưng hụt một cách biết trước.
+        .order('created_at', { ascending: false })
         .limit(5000);
       if (error) throw error;
       return (data ?? []) as DongTokenHomNay[];
     },
   });
+};
 
 /** Bảng giá model — chỉ để biết model nào `self_hosted`. RLS cho mọi authenticated đọc. */
 const useProvidersGia = () =>
@@ -872,13 +881,17 @@ function UsageTab() {
               cap={settings.daily_tokens_cap_user}
             />
             <ThanhHanMuc
-              nhan={isSuper ? 'Tenant của bạn' : 'Đội của bạn'}
+              nhan={tomTat.laToanHeThong ? 'Toàn hệ thống' : 'Đội của bạn'}
               daDung={tomTat.cuaTenant}
               cap={settings.daily_tokens_cap_tenant}
               ghiChu={
-                tomTat.tenantDayDu
-                  ? undefined
-                  : 'Bạn chỉ thấy dòng của chính mình (RLS), nên con số này THẤP hơn tổng thật của đội.'
+                tomTat.laToanHeThong
+                  ? // Gọi tổng toàn hệ thống là "tenant của bạn" là nói sai với
+                    // đúng người có quyền tin nó nhất.
+                    'Chưa có lượt gọi nào hôm nay gắn với bạn, nên đây là tổng MỌI tenant bạn nhìn thấy (super admin), không phải một tenant.'
+                  : tomTat.tenantDayDu
+                    ? undefined
+                    : 'Bạn chỉ thấy dòng của chính mình (RLS), nên con số này THẤP hơn tổng thật của đội.'
               }
             />
           </div>

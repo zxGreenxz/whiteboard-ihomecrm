@@ -130,7 +130,71 @@ describe('tomTatTokenHomNay', () => {
 
   it('chưa gọi lượt nào hôm nay: 0 và ownerId null, không nổ', () => {
     const t = tomTatTokenHomNay([], TOI);
-    expect(t).toEqual({ cuaToi: 0, cuaTenant: 0, ownerId: null, tenantDayDu: false });
+    expect(t).toEqual({
+      cuaToi: 0,
+      cuaTenant: 0,
+      ownerId: null,
+      tenantDayDu: false,
+      laToanHeThong: false,
+    });
+  });
+
+  it('CHỦ TENANT chưa chat hôm nay vẫn thấy tổng của đội (F1)', () => {
+    // Ca hỏng của bản đầu: chủ không có dòng nào `user_id = mình`, nên ownerId
+    // rơi về null và tổng ra 0 — thanh xanh 0%, badge không đỏ, trong khi RLS
+    // vừa trả về đủ dòng của cả đội. Đúng người cần cảnh báo nhất là người không
+    // nhận được nó.
+    const doiCuaChu = [
+      { user_id: 'nv-1', owner_id: CHU, total_tokens: 200_000 },
+      { user_id: 'nv-2', owner_id: CHU, total_tokens: 90_000 },
+      { user_id: 'u-la', owner_id: 'u-chu-khac', total_tokens: 9_000 },
+    ];
+    const t = tomTatTokenHomNay(doiCuaChu, CHU);
+    expect(t.cuaToi).toBe(0); // đúng: chủ chưa tiêu token nào hôm nay
+    expect(t.ownerId).toBe(CHU); // suy từ chính quyền đọc, không phải phỏng đoán
+    expect(t.cuaTenant).toBe(290_000); // KHÔNG gồm tenant khác
+    expect(t.tenantDayDu).toBe(true);
+    expect(t.laToanHeThong).toBe(false);
+    // …và badge phải nổ ở mốc 80%.
+    expect(daChamNguongCanhBao(tinhPhanTramHanMuc(t.cuaTenant, 300_000))).toBe(true);
+  });
+
+  it('SUPER ADMIN chưa chat hôm nay: cộng mọi dòng nhìn thấy, và NÓI RÕ đó là toàn hệ thống (F2)', () => {
+    // Super admin thấy hết nhờ RLS. Trả 0 rồi vẫn gắn cờ "đầy đủ" là trình bày
+    // một số 0 GIẢ như sự thật có thẩm quyền — tệ hơn hẳn một con số rộng hơn
+    // cần thiết nhưng có nhãn nói đúng phạm vi.
+    const moiDong = [
+      { user_id: 'nv-1', owner_id: CHU, total_tokens: 200_000 },
+      { user_id: 'u-la', owner_id: 'u-chu-khac', total_tokens: 50_000 },
+    ];
+    const t = tomTatTokenHomNay(moiDong, 'sa-khong-co-dong', true);
+    expect(t.cuaToi).toBe(0);
+    expect(t.ownerId).toBeNull();
+    expect(t.cuaTenant).toBe(250_000);
+    expect(t.tenantDayDu).toBe(true);
+    expect(t.laToanHeThong).toBe(true); // chỗ vẽ PHẢI đổi nhãn theo cờ này
+    expect(daChamNguongCanhBao(tinhPhanTramHanMuc(t.cuaTenant, 300_000))).toBe(true);
+  });
+
+  it('super admin CÓ dòng của mình thì vẫn bó về đúng tenant của họ', () => {
+    // Có đường suy chủ thì dùng đường đó — không nới ra toàn hệ thống chỉ vì
+    // người xem tình cờ là super admin.
+    const t = tomTatTokenHomNay(rows, TOI, true);
+    expect(t.ownerId).toBe(CHU);
+    expect(t.cuaTenant).toBe(550); // KHÔNG cộng 9_000 của tenant khác
+    expect(t.laToanHeThong).toBe(false);
+  });
+
+  it('nhân viên thường KHÔNG bao giờ được nới ra toàn hệ thống', () => {
+    // Cờ toàn-hệ-thống chỉ mở cho super admin; nhân viên không suy được chủ thì
+    // tổng tenant phải là 0 kèm tenantDayDu = false, không phải tổng của người lạ.
+    const t = tomTatTokenHomNay(
+      [{ user_id: 'nguoi-la', owner_id: 'chu-la', total_tokens: 500 }],
+      'toi-khong-co-dong',
+    );
+    expect(t.cuaTenant).toBe(0);
+    expect(t.laToanHeThong).toBe(false);
+    expect(t.tenantDayDu).toBe(false);
   });
 
   it('total_tokens null/âm coi như 0', () => {
