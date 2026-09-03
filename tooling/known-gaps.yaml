@@ -215,6 +215,60 @@ gaps:
       `--trace=retain-on-failure` và tải lên `playwright-report/`, giữ nguyên guard làm lưới
       an toàn, rồi xoá mục này.
 
+  - id: copilot-approval-badge-system-source-not-exposed
+    where: src/components/approvals/AiSubmittedBadge.tsx · src/hooks/useApprovals.ts (PendingApproval.system_source) · public.list_my_pending_approvals_v1
+    expires_at: 2026-12-31
+    why: >
+      Task G4 (03/09/2026) yêu cầu badge "Do AI nộp" trên hộp chờ duyệt khi
+      `approval_requests.system_source = 'AI_COPILOT'` (giá trị do
+      `app_private.copilot_plan_submit_voucher_v1` ghi qua `submit_financial_voucher`,
+      migration `20260903100253_copilot_execution_plan_v1.sql`). Component ĐÃ VIẾT
+      XONG và có test render (renderToStaticMarkup) khoá đúng hành vi — nhưng
+      `public.list_my_pending_approvals_v1()` (RPC mà `usePendingApprovals()` gọi,
+      định nghĩa ở `20260723250000_finance_v2_inbox_org.sql`) KHÔNG chiếu cột
+      `system_source` ra `RETURNS TABLE`, nên field này luôn `null` trên production
+      và badge không bao giờ sáng. Nới thêm MỘT cột vào RETURNS TABLE là một
+      migration — ngoài phạm vi task G4 (ràng buộc "không sửa RPC/không migration").
+      Cũng vì cùng lý do (idempotency key `copilot_plan:<plan>:<step>` được truyền
+      vào `submit_financial_voucher` nhưng KHÔNG được lưu — xem chú thích trong
+      chính migration trên), `plan_id` không truy ngược được từ hồ sơ duyệt, nên
+      prop `planId` của badge luôn `undefined` hôm nay — tooltip chỉ nói "AI nộp
+      hộ", không link được tới kế hoạch.
+    exit_condition: >
+      Một migration DROP/CREATE `list_my_pending_approvals_v1` thêm cột
+      `system_source` (và nếu muốn cả link-tới-plan: lưu `plan_id`/`step_no` vào
+      một cột mới trên `approval_requests` tại lúc `copilot_plan_submit_voucher_v1`
+      gọi `submit_financial_voucher`, vì RPC gốc không dùng `p_idempotency_key`).
+      Sau đó `PendingApproval.system_source`/`planId` tự có giá trị thật, badge tự
+      sáng — không cần đổi gì thêm ở FE.
+
+  - id: copilot-golden-eval-real-lane-daily-quota
+    where: docs/generated/copilot-golden-eval/939fb75d59e5a1e6414b799e5ac9911f34e44f10.json · scripts/generate-copilot-golden-real-results.mjs
+    expires_at: 2026-10-15
+    why: >
+      Task G4 (03/09/2026) chạy lane real-model của bộ 71 ca vàng bằng
+      `openrouter:nvidia/nemotron-3-super-120b-a12b:free` qua `llm-proxy` sản xuất,
+      dùng JWT super admin trên org DEMO. Chỉ đo được 17/71 ca (15 pass, 2 fail —
+      cả hai là mập mờ ranh giới tool/prompt, không phải model kém, xem
+      `docs/he-thong/21-ai-copilot.md` § "Mức 2 đã vận hành") trước khi chạm hạn
+      mức token/ngày của tổ chức DEMO (`daily_token_quota` — HTTP 403, đúng cơ chế
+      quản trị Mức 2 đang hoạt động, không phải lỗi harness): system prompt +
+      37–46 tool schema production nặng hơn nhiều so với ngân sách ngày dành cho
+      một org canary. 54 ca còn lại ghi `status: 'blocked'` trong artifact (không
+      bịa `toolPath` rỗng — dùng đúng `expected.toolPath` làm giá trị trung tính
+      để không tự tạo ra một "toolPath mismatch" giả cho ca chưa từng hỏi được
+      model), nên `verdict` tổng của artifact là `blocked`, trung thực với hiện
+      trạng. Latency SLA (p50/p95) cũng chỉ đo được trên mẫu n=17 thay vì 20 câu
+      brief đề nghị, cùng lý do.
+    exit_condition: >
+      Chạy lại `node scripts/generate-copilot-golden-real-results.mjs` sau khi hạn
+      mức ngày của DEMO reset (kiểm bằng một lượt gọi `chat/completions` nhỏ trước
+      khi chạy hết 71 ca), rồi `node scripts/run-copilot-golden-eval.mjs --lane
+      real-model ...` ghi đè artifact với `verdict: 'pass'`/`'blocked'` dựa trên đủ
+      71 ca đo thật. Nếu hạn mức ngày của DEMO là quá nhỏ cho một lượt eval đầy đủ,
+      cân nhắc nâng riêng hạn mức đó cho org DEMO (quyết định chủ dự án, không tự
+      ý đổi governance cap).
+
 # ĐÃ ĐÓNG 06/08/2026 — claude-agents-md-still-full.
 # CLAUDE.md 211 -> 62 dòng, AGENTS.md 146 -> 43, chỉ còn phần đặc thù agent
 # (trailer commit, cách gọi công cụ browser) + pointer về Contract.
