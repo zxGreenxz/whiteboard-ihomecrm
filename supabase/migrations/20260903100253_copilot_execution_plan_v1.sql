@@ -55,6 +55,27 @@
 --      Mọi nhánh KHÔNG cần ghi gì (thiếu quyền, sai nonce, sai phiên bản, kế
 --      hoạch đang bận) vẫn RAISE như bình thường.
 --
+-- HỢP ĐỒNG TRẢ VỀ — MỌI RPC GHI TRẢ `ok` VÀ `error_code`
+--   Vì quyết định 4 ở trên, một lời gọi THÀNH CÔNG và một lời gọi BỊ TỪ CHỐI có
+--   thể cùng trả HTTP 200 với một jsonb. Nếu hai thứ đó chỉ khác nhau ở việc có
+--   hay không một khoá nào đó thì client sẽ phải đoán — và cái giá của đoán sai
+--   ở đây là "chạy tiếp bước sau một bước hỏng" hoặc "báo thành công giả".
+--
+--   Nên MỌI `RETURN` của `create`/`approve`/`execute_step`/`cancel` (và cả `get`,
+--   cho đồng nhất) mang đúng hai trường phân biệt, luôn có mặt:
+--
+--     ok         boolean  — true CHỈ trên đường thành công
+--     error_code text     — NULL khi ok, ngược lại là mã đọc được
+--                           (`plan_expired`, `policy_changed`, `step_failed`…)
+--
+--   Và tên trạng thái kế hoạch là `plan_status` ở MỌI chỗ — không có chỗ nào gọi
+--   nó là `status` nữa, vì `status` cũng là tên trạng thái của một BƯỚC và hai
+--   thứ đó nằm cạnh nhau trong cùng một kết quả.
+--
+--   Client (T4 `planClient.ts`) rẽ theo `ok`, không rẽ theo exception: exception
+--   chỉ còn cho những nhánh KHÔNG ghi gì (thiếu quyền, sai nonce, sai phiên bản,
+--   kế hoạch đang bận).
+--
 -- MÁY TRẠNG THÁI
 --   Kế hoạch : DRAFT →(duyệt) APPROVED →(bước cuối DONE) DONE
 --              APPROVED →(một bước FAILED/BLOCKED) FAILED
@@ -360,9 +381,23 @@ $thu_hoi_rev$;
 --   không phải sự cố mà là câu trả lời của tổ chức, nhưng nó cũng phải cuốn
 --   ngược: một hồ sơ DENIED nằm lại chỉ làm bẩn hàng chờ.
 --
--- Chữ ký nhận thêm `p_plan_id`/`p_step_no` so với brief (brief viết hai tham số)
--- vì khoá chống-lặp mà chính brief yêu cầu — `copilot_plan:<plan>:<step>` — cần
--- đúng hai giá trị đó. Suy chúng từ đâu khác là bịa.
+-- CHỐNG LẶP THẬT NẰM Ở ĐÂU — KHÔNG NẰM Ở `p_idempotency_key`
+--   `submit_financial_voucher` NHẬN `p_idempotency_key` rồi KHÔNG DÙNG: thân hàm
+--   (20260713130200:62, và bản trên production khớp) không tham chiếu tham số đó
+--   một lần nào. Gọi nó là "khoá chống-lặp" sẽ là mô tả sai một hàng rào không
+--   tồn tại — đúng loại chú thích khiến người sau bỏ qua hàng rào thật.
+--
+--   Hai hàng rào THẬT, cả hai đều ở đây và ở RPC gốc:
+--     · tiền kiểm của helper này: phiếu phải chưa có `approval_requests` nào ở
+--       `PENDING_APPROVAL`/`POSTED` (`voucher_already_submitted`), và phiếu bị
+--       khoá `FOR UPDATE` trước khi đo;
+--     · one-open-request của chính `submit_financial_voucher`: gặp hồ sơ mở sẵn
+--       thì nó trả `{idempotent:true}` với hồ sơ cũ thay vì tạo hồ sơ thứ hai.
+--
+--   Chuỗi `copilot_plan:<plan>:<step>` vẫn được truyền vì nó là thứ DUY NHẤT nối
+--   một hồ sơ với bước kế hoạch sinh ra nó, và nếu RPC gốc bắt đầu dùng tham số
+--   đó thì giá trị đã đúng sẵn. Chữ ký nhận thêm `p_plan_id`/`p_step_no` so với
+--   brief (brief viết hai tham số) chính vì chuỗi này cần đúng hai giá trị đó.
 CREATE OR REPLACE FUNCTION app_private.copilot_plan_submit_voucher_v1(
   p_org      uuid,
   p_voucher  uuid,
@@ -460,7 +495,8 @@ $nop_ho_so$;
 
 COMMENT ON FUNCTION app_private.copilot_plan_submit_voucher_v1(uuid, uuid, uuid, int) IS
   'Nop mot phieu thu/chi nhap CUA CHINH nguoi dang thao tac vao engine duyet qua '
-  'submit_financial_voucher (khoa chong-lap copilot_plan:<plan>:<step>, system_source AI_COPILOT). '
+  'submit_financial_voucher (nhan copilot_plan:<plan>:<step> lam p_idempotency_key — RPC goc HIEN '
+  'KHONG dung tham so do, chong lap that la tien kiem voucher_already_submitted + one-open-request). '
   'Ep ho so dung o PENDING_APPROVAL: POSTED do luat AUTO_POST nem copilot_auto_post_forbidden, '
   'DENY nem rule_denied — ca hai deu de khoi con cua execute_step cuon nguoc.';
 
@@ -495,7 +531,7 @@ AS $tom_tat$
     'plan_id',           p.id,
     'plan_version',      p.version,
     'plan_digest',       encode(p.plan_digest, 'hex'),
-    'status',            p.status,
+    'plan_status',       p.status,
     'organization_id',   p.organization_id,
     'client_request_id', p.client_request_id,
     'max_risk',          p.max_risk,
@@ -640,8 +676,18 @@ BEGIN
     FROM app_private.copilot_plans
    WHERE user_id = v_actor AND client_request_id = p_client_request_id;
   IF FOUND THEN
+    -- CÙNG khoá nhưng KHÁC công ty không phải một lần gửi lại — đó là một khoá
+    -- bị dùng lại. Trả về kế hoạch cũ ở đây sẽ đưa cho người gọi một kế hoạch
+    -- của công ty khác, kèm `plan_digest` của nó, chỉ vì client sinh trùng chuỗi.
+    IF v_cu.organization_id IS DISTINCT FROM p_organization_id THEN
+      RAISE EXCEPTION 'client_request_id_reused' USING ERRCODE = '22023';
+    END IF;
     RETURN app_private.copilot_plan_summary_v1(v_cu.id)
-           || jsonb_build_object('consent_nonce', NULL, 'da_ton_tai', true);
+           || jsonb_build_object(
+                'ok',            true,
+                'error_code',    NULL,
+                'consent_nonce', NULL,
+                'da_ton_tai',    true);
   END IF;
 
   IF p_steps IS NULL OR jsonb_typeof(p_steps) <> 'array' THEN
@@ -755,8 +801,16 @@ BEGIN
           RAISE EXCEPTION 'step_ref_invalid:%', v_i + 1 USING ERRCODE = '22023';
         END IF;
         -- Bước được trỏ tới phải SINH RA đúng loại thực thể mà bước này TIÊU THỤ.
-        IF (v_gom -> (v_ref - 1) ->> 'produces_entity_table')
-             IS DISTINCT FROM v_reg.consumes_ref_table THEN
+        --
+        -- Hai vế NULL phải chặn TRƯỚC phép so. `IS DISTINCT FROM` coi
+        -- `NULL <-> NULL` là BẰNG NHAU, nên một action khai thiếu
+        -- `produces_entity_table` nối được với một action khai thiếu
+        -- `consumes_ref_table` — hai ô trống khớp nhau và chuỗi bước được duyệt
+        -- mà không ai nói được nó nối cái gì vào cái gì.
+        IF v_reg.consumes_ref_table IS NULL
+           OR (v_gom -> (v_ref - 1) ->> 'produces_entity_table') IS NULL
+           OR (v_gom -> (v_ref - 1) ->> 'produces_entity_table')
+                IS DISTINCT FROM v_reg.consumes_ref_table THEN
           RAISE EXCEPTION 'step_ref_incompatible:%', v_i + 1 USING ERRCODE = '22023';
         END IF;
         v_canonical := jsonb_build_object('$ref_step', v_ref);
@@ -863,8 +917,15 @@ BEGIN
     SELECT * INTO v_cu
       FROM app_private.copilot_plans
      WHERE user_id = v_actor AND client_request_id = p_client_request_id;
+    IF v_cu.organization_id IS DISTINCT FROM p_organization_id THEN
+      RAISE EXCEPTION 'client_request_id_reused' USING ERRCODE = '22023';
+    END IF;
     RETURN app_private.copilot_plan_summary_v1(v_cu.id)
-           || jsonb_build_object('consent_nonce', NULL, 'da_ton_tai', true);
+           || jsonb_build_object(
+                'ok',            true,
+                'error_code',    NULL,
+                'consent_nonce', NULL,
+                'da_ton_tai',    true);
   END;
 
   INSERT INTO app_private.copilot_plan_steps (
@@ -916,13 +977,15 @@ BEGIN
     'consent_id',      v_consent_id,
     'payload_digest',  encode(v_plan_digest, 'hex'),
     'outcome', jsonb_build_object(
-      'status',            'DRAFT',
+      'plan_status',       'DRAFT',
       'client_request_id', p_client_request_id,
       'actions',           (SELECT jsonb_agg(e ->> 'action_id') FROM jsonb_array_elements(v_gom) e))
   ));
 
   RETURN app_private.copilot_plan_summary_v1(v_plan_id)
          || jsonb_build_object(
+              'ok',            true,
+              'error_code',    NULL,
               -- Nonce thô ra ĐÚNG MỘT LẦN. Client giữ trong bộ nhớ; nó không vào
               -- ngữ cảnh mô hình, không vào lịch sử chat, không vào URL, không log.
               'consent_nonce', encode(v_nonce, 'hex'),
@@ -1082,15 +1145,28 @@ BEGIN
       'plan_id',         v_plan.id,
       'plan_version',    v_version,
       'permission_key',  'copilot.execution_plan',
+      'consent_id',      v_plan.consent_confirmation_id,
+      'consent_kind',    v_plan.consent_kind,
+      'step_up_id',      v_plan.step_up_confirmation_id,
       'error_code',      'plan_expired',
       'outcome',         jsonb_build_object('giai_doan', 'approve')));
     RETURN jsonb_build_object(
-      'plan_id', v_plan.id, 'plan_version', v_version, 'status', 'EXPIRED',
-      'execute_deadline', NULL, 'error_code', 'plan_expired');
+      'ok',               false,
+      'error_code',       'plan_expired',
+      'plan_id',          v_plan.id,
+      'plan_version',     v_version,
+      'plan_status',      'EXPIRED',
+      'execute_deadline', NULL);
   END IF;
 
   SELECT max_direct_risk, revision INTO v_max_direct, v_policy_rev
     FROM app_private.copilot_action_policy WHERE id;
+  -- Thiếu hàng policy KHÔNG được rơi vào im lặng: `v_max_direct` NULL làm điều
+  -- kiện step-up ngay dưới lặng lẽ sai, và phép so trần rủi ro trong vòng lặp
+  -- cũng thành vô nghĩa. Van trần rủi ro mà biến mất thì đóng cửa, đừng đoán.
+  IF v_max_direct IS NULL OR v_policy_rev IS NULL THEN
+    RAISE EXCEPTION 'copilot_policy_missing' USING ERRCODE = 'P0002';
+  END IF;
 
   -- ĐIỂM NỐI #3 — step-up PIN. Ở v1 (`max_direct_risk = 'L4'`) một kế hoạch L5
   -- chỉ có thể là L5 nhờ `maker_submit_v1`, vốn được miễn trần, nên nhánh này
@@ -1111,18 +1187,47 @@ BEGIN
     RAISE EXCEPTION 'copilot_feature_disabled' USING ERRCODE = '42501';
   END IF;
 
+  -- POLICY ĐƯỢC ÉP LẠI Ở ĐÂY, KHÔNG CHỈ Ở LÚC LẬP.
+  --
+  --   `copilot_action_gate_v1` KHÔNG biết gì về trần rủi ro hay danh sách vai:
+  --   nó đo registry + cờ + cấm khẩn cấp + phạm vi quyền. Nghĩa là nếu policy
+  --   chỉ được ép ở `create`, thì một lần hạ trần L4 → L3 (hoặc bỏ `owner` khỏi
+  --   `allowed_roles`) ở phút thứ 2 KHÔNG chạm được vào một kế hoạch lập ở phút
+  --   0: nó vẫn duyệt được ở phút 3 và chạy tới phút 35. Van mà không có tác
+  --   dụng lên thứ đang chờ chạy thì nó không phải van.
+  --
+  --   Ba vế, và cả ba đi cùng một mã `policy_changed` vì với người bấm chúng là
+  --   một chuyện: luật đã đổi kể từ lúc kế hoạch này được lập.
+  IF v_policy_rev IS DISTINCT FROM v_plan.policy_revision THEN
+    v_ly_do := 'policy_changed';
+  ELSIF NOT app_private.copilot_plan_role_allowed_v1(v_plan.organization_id) THEN
+    v_ly_do := 'policy_changed';
+  END IF;
+
   -- KIỂM LẠI TOÀN BỘ BƯỚC NGAY TRƯỚC KHI DUYỆT. Giữa lúc lập và lúc bấm có tới 5
   -- phút: đủ để ai đó thu quyền, tắt một action, hoặc kéo cầu dao khẩn cấp.
   FOR v_step IN
     SELECT * FROM app_private.copilot_plan_steps
      WHERE plan_id = v_plan.id ORDER BY step_no
   LOOP
+    -- Vế policy ở trên đã chốt lý do thì bước ĐẦU TIÊN mang nó — không chạy tiếp
+    -- vòng lặp để một mã lỗi khác đè lên.
+    IF v_ly_do IS NOT NULL THEN
+      v_buoc_hong := v_step.step_no;
+      EXIT;
+    END IF;
     BEGIN
       SELECT * INTO v_reg
         FROM app_private.copilot_action_registry
        WHERE action_id = v_step.action_id;
       IF NOT FOUND OR NOT v_reg.enabled OR v_reg.version <> v_step.action_version THEN
         v_ly_do := 'registry_changed';
+      -- Trần rủi ro, đo LẠI theo policy của lúc BẤM. Miễn trừ vẫn theo đúng một
+      -- `executor_kind` như ở `create`, không theo mức rủi ro.
+      ELSIF v_reg.executor_kind <> 'maker_submit_v1'
+            AND (CASE v_reg.risk WHEN 'L3' THEN 3 WHEN 'L4' THEN 4 ELSE 5 END)
+              > (CASE v_max_direct WHEN 'L3' THEN 3 WHEN 'L4' THEN 4 ELSE 5 END) THEN
+        v_ly_do := 'policy_changed';
       ELSE
         PERFORM app_private.copilot_action_gate_v1(v_step.action_id, v_plan.organization_id);
       END IF;
@@ -1158,7 +1263,11 @@ BEGIN
            version = version + 1,
            consent_confirmation_id = v_conf.id,
            consent_kind = 'click',
-           failure_reason = 'step_not_permitted:' || v_buoc_hong::text || ':' || v_ly_do,
+           -- Cùng khuôn với `execute_step`: <sự kiện sổ>:<bước>:<mã lỗi thật>.
+           -- Mã lỗi thật là `policy_changed`, `registry_changed`,
+           -- `copilot_action_disabled`, `tenant_emergency_denied`,
+           -- `not_permitted`… — xem khối EXCEPTION ở vòng lặp trên.
+           failure_reason = 'step_blocked:' || v_buoc_hong::text || ':' || v_ly_do,
            updated_at = clock_timestamp()
      WHERE id = v_plan.id
     RETURNING version INTO v_version;
@@ -1174,12 +1283,18 @@ BEGIN
       'permission_key',  'copilot.execution_plan',
       'consent_id',      v_conf.id,
       'consent_kind',    'click',
+      'step_up_id',      v_plan.step_up_confirmation_id,
       'error_code',      v_ly_do,
       'outcome',         jsonb_build_object('giai_doan', 'approve', 'plan_status', 'FAILED')));
 
     RETURN jsonb_build_object(
-      'plan_id', v_plan.id, 'plan_version', v_version, 'status', 'FAILED',
-      'execute_deadline', NULL, 'error_code', v_ly_do, 'step_no', v_buoc_hong);
+      'ok',               false,
+      'error_code',       v_ly_do,
+      'plan_id',          v_plan.id,
+      'plan_version',     v_version,
+      'plan_status',      'FAILED',
+      'execute_deadline', NULL,
+      'step_no',          v_buoc_hong);
   END IF;
 
   -- CAS TIÊU NONCE. `consumed_at IS NULL` trong WHERE là thứ biến hai lần bấm
@@ -1222,13 +1337,16 @@ BEGIN
       'checked_at',        clock_timestamp()),
     'consent_id',      v_conf.id,
     'consent_kind',    'click',
+    'step_up_id',      v_plan.step_up_confirmation_id,
     'payload_digest',  encode(v_plan.plan_digest, 'hex'),
-    'outcome', jsonb_build_object('status', 'APPROVED', 'execute_deadline', v_han)));
+    'outcome', jsonb_build_object('plan_status', 'APPROVED', 'execute_deadline', v_han)));
 
   RETURN jsonb_build_object(
+    'ok',               true,
+    'error_code',       NULL,
     'plan_id',          v_plan.id,
     'plan_version',     v_version,
-    'status',           'APPROVED',
+    'plan_status',      'APPROVED',
     'execute_deadline', v_han);
 END
 $duyet_ke_hoach$;
@@ -1293,6 +1411,8 @@ DECLARE
   v_step        app_private.copilot_plan_steps%ROWTYPE;
   v_reg         app_private.copilot_action_registry%ROWTYPE;
   v_snapshot    jsonb := '{}'::jsonb;
+  v_max_direct  text;
+  v_policy_rev  bigint;
   v_next        int;
   v_version     int;
   v_kq          jsonb;
@@ -1368,17 +1488,19 @@ BEGIN
       'permission_key',  'copilot.execution_plan',
       'consent_id',      v_plan.consent_confirmation_id,
       'consent_kind',    v_plan.consent_kind,
+      'step_up_id',      v_plan.step_up_confirmation_id,
       'error_code',      'plan_expired',
       'outcome',         jsonb_build_object('giai_doan', 'execute')));
     RETURN jsonb_build_object(
+      'ok',           false,
+      'error_code',   'plan_expired',
       'plan_id',      v_plan.id,
       'plan_version', v_version,
       'plan_status',  'EXPIRED',
       'step', jsonb_build_object(
         'step_no', p_step_no, 'status', 'BLOCKED', 'outcome', NULL,
         'error_code', 'plan_expired'),
-      'next_step_no', NULL,
-      'error_code',   'plan_expired');
+      'next_step_no', NULL);
   END IF;
 
   IF p_expected_plan_version IS NULL OR v_plan.version <> p_expected_plan_version THEN
@@ -1428,6 +1550,29 @@ BEGIN
      WHERE action_id = v_step.action_id;
     IF NOT FOUND OR NOT v_reg.enabled OR v_reg.version <> v_step.action_version THEN
       RAISE EXCEPTION 'registry_changed' USING ERRCODE = '42501';
+    END IF;
+
+    -- POLICY, ĐO LẠI NGAY TRƯỚC KHI GHI.
+    --
+    --   `copilot_action_gate_v1` không biết trần rủi ro và không biết danh sách
+    --   vai — nó đo registry + cờ + cấm khẩn cấp + phạm vi quyền. Kế hoạch được
+    --   duyệt xong còn 30 phút để chạy, và trong 30 phút đó van có thể bị hạ.
+    --   Không hỏi lại nghĩa là một lần hạ trần rủi ro không dừng được thứ đang
+    --   chạy dở — đúng lúc người ta hạ trần vì đang có sự cố.
+    --
+    --   Cả ba vế (revision đã đổi / vai không còn được phép / bước vượt trần)
+    --   cùng ném `policy_changed`: với người bấm chúng là một chuyện.
+    SELECT max_direct_risk, revision INTO v_max_direct, v_policy_rev
+      FROM app_private.copilot_action_policy WHERE id;
+    IF v_max_direct IS NULL OR v_policy_rev IS NULL THEN
+      RAISE EXCEPTION 'copilot_policy_missing' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_policy_rev IS DISTINCT FROM v_plan.policy_revision
+       OR NOT app_private.copilot_plan_role_allowed_v1(v_plan.organization_id)
+       OR (v_reg.executor_kind <> 'maker_submit_v1'
+           AND (CASE v_reg.risk WHEN 'L3' THEN 3 WHEN 'L4' THEN 4 ELSE 5 END)
+             > (CASE v_max_direct WHEN 'L3' THEN 3 WHEN 'L4' THEN 4 ELSE 5 END)) THEN
+      RAISE EXCEPTION 'policy_changed' USING ERRCODE = '42501';
     END IF;
 
     v_snapshot := app_private.copilot_action_gate_v1(v_step.action_id, v_plan.organization_id);
@@ -1655,12 +1800,15 @@ BEGIN
       'permission_snapshot', v_snapshot,
       'consent_id',          v_plan.consent_confirmation_id,
       'consent_kind',        v_plan.consent_kind,
+      'step_up_id',          v_plan.step_up_confirmation_id,
       'payload_digest',      encode(v_step.payload_digest, 'hex'),
       'error_code',          v_loi,
       'sqlstate',            v_sqlstate,
-      'outcome', jsonb_build_object(
-        'plan_status', 'FAILED',
-        'chi_tiet',    left(COALESCE(v_chi_tiet, ''), 200))));
+      -- KHÔNG nhét `SQLERRM` thô vào đây. `copilot_plan_get_v1` trả 20 dòng sổ
+      -- cho chủ kế hoạch, nên mọi thứ vào `outcome` là thứ ra tới trình duyệt.
+      -- Thông điệp đầy đủ ở lại `copilot_plan_steps.error_detail` — cột mà
+      -- `copilot_plan_summary_v1` không đọc.
+      'outcome', jsonb_build_object('plan_status', 'FAILED')));
 
     UPDATE app_private.copilot_plan_steps
        SET ledger_id = v_ledger_id
@@ -1681,6 +1829,7 @@ BEGIN
           'permission_key',  'copilot.execution_plan',
           'consent_id',      v_plan.consent_confirmation_id,
           'consent_kind',    v_plan.consent_kind,
+          'step_up_id',      v_plan.step_up_confirmation_id,
           'error_code',      'plan_failed',
           'outcome',         jsonb_build_object('nguyen_nhan_tu_buoc', p_step_no)));
       END LOOP;
@@ -1689,6 +1838,8 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object(
+    'ok',           v_loi IS NULL,
+    'error_code',   v_loi,
     'plan_id',      v_plan.id,
     'plan_version', v_version,
     'plan_status',  v_plan_status,
@@ -1778,7 +1929,7 @@ BEGIN
     ) t;
 
   RETURN app_private.copilot_plan_summary_v1(p_plan_id)
-         || jsonb_build_object('ledger', v_so);
+         || jsonb_build_object('ok', true, 'error_code', NULL, 'ledger', v_so);
 END
 $doc_ke_hoach$;
 
@@ -1891,6 +2042,7 @@ BEGIN
     'permission_key',  'copilot.execution_plan',
     'consent_id',      v_plan.consent_confirmation_id,
     'consent_kind',    v_plan.consent_kind,
+    'step_up_id',      v_plan.step_up_confirmation_id,
     'payload_digest',  encode(v_plan.plan_digest, 'hex'),
     'outcome', jsonb_build_object(
       'ly_do',            v_ly_do,
@@ -1898,9 +2050,11 @@ BEGIN
       'trang_thai_truoc', v_plan.status)));
 
   RETURN jsonb_build_object(
+    'ok',           true,
+    'error_code',   NULL,
     'plan_id',      v_plan.id,
     'plan_version', v_version,
-    'status',       'CANCELLED',
+    'plan_status',  'CANCELLED',
     'skipped',      v_bo_qua);
 END
 $huy_ke_hoach$;

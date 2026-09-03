@@ -156,6 +156,61 @@ describe('G3-T1 — sáu chữ ký RPC public là hợp đồng', () => {
   });
 });
 
+// I3 - HOP DONG TRA VE. Vi quyet dinh "chuyen trang thai da xay ra thi RETURN
+// chu khong RAISE", mot loi goi thanh cong va mot loi goi bi tu choi cung tra
+// HTTP 200 voi mot jsonb. Khong co discriminant thi T4 phai doan, va doan sai o
+// day la "chay tiep sau mot buoc hong" hoac "bao thanh cong gia".
+describe('G3-T1 — mọi RETURN của RPC ghi mang `ok` và `error_code`', () => {
+  const GHI = [
+    'copilot_plan_create_v1',
+    'copilot_plan_approve_v1',
+    'copilot_plan_execute_step_v1',
+    'copilot_plan_cancel_v1',
+    // `get` là STABLE nên không nằm trong "5 RPC ghi", nhưng nó cũng trả `ok`:
+    // T4 gọi nó ngay sau một timeout, và một hình trả về khác kiểu ở đúng lúc
+    // client đang bối rối là chỗ tệ nhất để tiết kiệm hai khoá.
+    'copilot_plan_get_v1',
+  ] as const;
+
+  const RE_RETURN =
+    /RETURN\s+(?:app_private\.copilot_plan_summary_v1\([^)]*\)\s*\|\|\s*)?jsonb_build_object\(([\s\S]{0,400})/g;
+
+  it('mỗi lệnh RETURN trong các RPC đó đều khai `ok` và `error_code`', () => {
+    for (const ten of GHI) {
+      const cacReturn = [...than(ten).matchAll(RE_RETURN)];
+      expect(cacReturn.length, `${ten} không có RETURN nào`).toBeGreaterThan(0);
+      for (const m of cacReturn) {
+        expect(m[1], `${ten}: một RETURN thiếu 'ok'`).toMatch(/'ok',/);
+        expect(m[1], `${ten}: một RETURN thiếu 'error_code'`).toMatch(/'error_code',/);
+      }
+    }
+  });
+
+  it('`ok` true CHỈ trên đường thành công, và đi kèm error_code NULL', () => {
+    const duyet = than('copilot_plan_approve_v1');
+    expect(duyet).toMatch(/'ok',\s*false,\s*'error_code',\s*'plan_expired'/);
+    expect(duyet).toMatch(/'ok',\s*false,\s*'error_code',\s*v_ly_do/);
+    expect(duyet).toMatch(/'ok',\s*true,\s*'error_code',\s*NULL/);
+    // Đuôi của execute trả HTTP 200 cả khi bước hỏng — `ok` là thứ DUY NHẤT
+    // phân biệt, và nó phải suy từ chính biến lỗi, không phải một hằng số.
+    expect(than('copilot_plan_execute_step_v1')).toMatch(
+      /'ok',\s*v_loi IS NULL,\s*'error_code',\s*v_loi/,
+    );
+  });
+
+  it('trạng thái kế hoạch luôn tên `plan_status`, không chỗ nào còn `status`', () => {
+    for (const ten of GHI) {
+      for (const m of [...than(ten).matchAll(RE_RETURN)]) {
+        // `'status'` chỉ được phép xuất hiện bên trong khối `step` (trạng thái
+        // của BƯỚC) — không bao giờ ở mức ngoài cùng của kết quả.
+        const ngoai = m[1].split("'step',")[0];
+        expect(ngoai, `${ten}: còn 'status' ở mức ngoài cùng`).not.toMatch(/'status',/);
+      }
+    }
+    expect(than('copilot_plan_summary_v1', 'app_private')).toMatch(/'plan_status',\s*p\.status/);
+  });
+});
+
 describe('G3-T1 — ACL tường minh từng chữ ký', () => {
   it('sáu RPC public: REVOKE PUBLIC/anon/service_role, GRANT authenticated', () => {
     for (const ten of RPC_PUBLIC) {
@@ -271,6 +326,19 @@ describe('G3-T1 — lập kế hoạch: cửa, chống lặp, nonce mồ côi', 
     expect(t).toMatch(/'n', v_i \+ 1,\s*'a', v_reg\.action_id,\s*'v', v_reg\.version,\s*'d', encode\(v_digest, 'hex'\)/);
   });
 
+  // `IS DISTINCT FROM` coi NULL <-> NULL là BẰNG NHAU, nên hai ô trống khớp nhau
+  // và một chuỗi bước vô nghĩa được duyệt.
+  it('$ref_step từ chối khi một trong hai bảng thực thể là NULL', () => {
+    expect(t).toMatch(
+      /v_reg\.consumes_ref_table IS NULL\s*OR \(v_gom -> \(v_ref - 1\) ->> 'produces_entity_table'\) IS NULL/,
+    );
+    expect(t).toMatch(/step_ref_incompatible/);
+  });
+
+  it('cùng client_request_id nhưng KHÁC công ty là khoá bị dùng lại', () => {
+    expect((t.match(/client_request_id_reused/g) ?? []).length).toBe(2);
+  });
+
   it('giới hạn 1..8 bước và 3 kế hoạch mở', () => {
     expect(t).toMatch(/v_n < 1 OR v_n > 8/);
     expect(t).toMatch(/plan_step_count/);
@@ -299,6 +367,15 @@ describe('G3-T1 — duyệt kế hoạch', () => {
     expect(t).toMatch(/confirmation_contract_mismatch/);
     expect(t).toMatch(/confirmation_already_used/);
     expect(t).toMatch(/confirmation_expired/);
+  });
+
+  it('chỉ CHỦ kế hoạch khoá được hàng, và org của nonce phải khớp org kế hoạch', () => {
+    expect(t).toMatch(
+      /FROM app_private\.copilot_plans p\s*WHERE p\.id = p_plan_id AND p\.user_id = v_actor\s*FOR UPDATE NOWAIT/,
+    );
+    expect(t).toMatch(
+      /v_plan\.organization_id IS DISTINCT FROM v_conf\.organization_id THEN\s*RAISE EXCEPTION 'organization_mismatch'/,
+    );
   });
 
   it('khoá kế hoạch NOWAIT và dịch 55P03 thành plan_busy', () => {
@@ -343,11 +420,35 @@ describe('G3-T1 — duyệt kế hoạch', () => {
     expect(iGate).toBeGreaterThan(iLoop);
     expect(t).toMatch(/registry_changed/);
     expect(t).toMatch(/step_not_permitted/);
-    // Nhánh hỏng tiêu nonce TRƯỚC khi đánh FAILED — để nonce sống tiếp là mở
-    // đường thử lại tới khi lọt.
     expect(iCas).toBeGreaterThan(-1);
     expect(t).toMatch(/'event',\s*'step_blocked'/);
     expect(t).toMatch(/SET status = 'FAILED'/);
+  });
+
+  // Bản trước của bài này chỉ hỏi "có một CAS `consumed_at` ở đâu đó không" — và
+  // câu đó được thoả bởi CAS của nhánh THÀNH CÔNG, nên xoá hẳn lệnh tiêu nonce ở
+  // nhánh hỏng vẫn xanh. Nay đo TRONG nhánh hỏng, và đo thứ tự.
+  it('nhánh hỏng tiêu nonce TRƯỚC khi đánh kế hoạch FAILED', () => {
+    const dau = t.lastIndexOf('IF v_ly_do IS NOT NULL THEN');
+    expect(dau, 'không tìm thấy nhánh hỏng').toBeGreaterThan(-1);
+    const nhanh = t.slice(dau, t.indexOf('v_han :=', dau));
+    expect(nhanh.length, 'không cắt được nhánh hỏng').toBeGreaterThan(0);
+    const iTieu = nhanh.indexOf('SET consumed_at = clock_timestamp()');
+    const iFailed = nhanh.indexOf("SET status = 'FAILED'");
+    expect(iTieu, 'nhánh hỏng KHÔNG tiêu nonce').toBeGreaterThan(-1);
+    expect(iFailed).toBeGreaterThan(-1);
+    expect(iTieu).toBeLessThan(iFailed);
+  });
+
+  // I1 — `copilot_action_gate_v1` KHÔNG biết trần rủi ro và không biết danh sách
+  // vai. Chỉ ép policy ở `create` nghĩa là một lần hạ trần L4→L3 ở phút thứ 2
+  // không chạm được kế hoạch lập ở phút 0: nó vẫn duyệt được và vẫn chạy.
+  it('ép LẠI policy: revision, vai, và trần rủi ro từng bước', () => {
+    expect(t).toMatch(/copilot_policy_missing' USING ERRCODE = 'P0002'/);
+    expect(t).toMatch(/v_policy_rev IS DISTINCT FROM v_plan\.policy_revision/);
+    expect(t).toMatch(/NOT app_private\.copilot_plan_role_allowed_v1\(v_plan\.organization_id\)/);
+    expect(t).toMatch(/v_reg\.executor_kind <> 'maker_submit_v1'[\s\S]{0,240}CASE v_max_direct/);
+    expect((t.match(/v_ly_do := 'policy_changed'/g) ?? []).length).toBe(3);
   });
 
   it('thành công: CAS tiêu nonce, APPROVED, hạn thực thi 30 phút, sổ plan_approved', () => {
@@ -381,6 +482,20 @@ describe('G3-T1 — thực thi một bước', () => {
     expect(t.indexOf("'step_done'")).toBeLessThan(t.indexOf('SET status = v_plan_status'));
   });
 
+  // I2 — không có bài này thì bỏ hẳn `AND p.user_id = v_actor` khỏi câu khoá kế
+  // hoạch vẫn xanh: mọi assertion khác chỉ soi những dòng phía sau nó.
+  it('chỉ CHỦ kế hoạch khoá được hàng', () => {
+    expect(t).toMatch(
+      /FROM app_private\.copilot_plans p\s*WHERE p\.id = p_plan_id AND p\.user_id = v_actor\s*FOR UPDATE NOWAIT/,
+    );
+  });
+
+  it('CAS phiên bản 40001, và cả hai UPDATE kế hoạch đều mang điều kiện CAS', () => {
+    expect(t).toMatch(/plan_version_stale[\s\S]{0,200}ERRCODE = '40001'/);
+    expect((t.match(/AND version = p_expected_plan_version/g) ?? []).length).toBe(2);
+    expect((t.match(/RAISE EXCEPTION 'plan_version_stale'/g) ?? []).length).toBe(2);
+  });
+
   it('tổ chức đi vào như tham số riêng và phải khớp kế hoạch', () => {
     expect(t).toMatch(
       /v_plan\.organization_id IS DISTINCT FROM p_organization_id THEN\s*RAISE EXCEPTION 'organization_mismatch'/,
@@ -391,6 +506,19 @@ describe('G3-T1 — thực thi một bước', () => {
     expect(t).toMatch(/SELECT min\(step_no\) INTO v_next/);
     expect(t).toMatch(/p_step_no IS DISTINCT FROM v_next THEN\s*RAISE EXCEPTION 'step_order/);
     expect(t).toMatch(/step_no < p_step_no AND status <> 'DONE'/);
+  });
+
+  // I1 — 30 phút giữa lúc duyệt và lúc chạy bước cuối. Không hỏi lại policy nghĩa
+  // là một lần hạ trần rủi ro không dừng được thứ đang chạy dở, đúng lúc người ta
+  // hạ trần vì đang có sự cố.
+  it('tiền kiểm ép LẠI policy ngay trước khi ghi', () => {
+    expect(t).toMatch(/copilot_policy_missing' USING ERRCODE = 'P0002'/);
+    expect(t).toMatch(
+      /v_policy_rev IS DISTINCT FROM v_plan\.policy_revision\s*OR NOT app_private\.copilot_plan_role_allowed_v1\(v_plan\.organization_id\)\s*OR \(v_reg\.executor_kind <> 'maker_submit_v1'/,
+    );
+    expect(t).toMatch(/RAISE EXCEPTION 'policy_changed' USING ERRCODE = '42501'/);
+    // Đo TRƯỚC cổng hành động và trước mọi lời gọi RPC.
+    expect(t.indexOf('policy_changed')).toBeLessThan(t.indexOf('v_reg.preview_rpc'));
   });
 
   it('tiền kiểm registry còn khớp ảnh chụp và digest lưu còn khớp canonical', () => {
@@ -431,6 +559,13 @@ describe('G3-T1 — thực thi một bước', () => {
     expect(t).toMatch(/copilot_write_readback_mismatch' USING ERRCODE = 'P0001'/);
     expect(t).toMatch(/'UNAPPROVED'/);
     expect(t).toMatch(/'UNPOSTED'/);
+    // Đọc lại phải ép TỔ CHỨC của hàng vừa ghi, không chỉ ép sự tồn tại.
+    expect(t).toMatch(
+      /NULLIF\(v_after ->> 'organization_id', ''\)::uuid\s*IS DISTINCT FROM v_plan\.organization_id/,
+    );
+    // …và với phiếu nháp, ép cả NGƯỜI TẠO: một phiếu đúng công ty nhưng của
+    // người khác vẫn là một phiếu Copilot không được phép sinh ra.
+    expect(t).toMatch(/NULLIF\(v_after ->> 'user_id', ''\)::uuid IS DISTINCT FROM v_actor/);
   });
 
   it('bước hỏng: FAILED/BLOCKED, kế hoạch FAILED, mọi bước còn chờ BLOCKED, mỗi bước một dòng sổ', () => {
@@ -489,12 +624,24 @@ describe('G3-T1 — nộp hồ sơ duyệt (đường L5 của Mức 2)', () => 
   it('đọc lại approval_requests từ BẢNG, ép maker = chính người thao tác', () => {
     expect(t).toMatch(/FROM public\.approval_requests a WHERE a\.id = v_id/);
     expect(t).toMatch(/v_req\.maker_user_id IS DISTINCT FROM v_actor/);
+    expect(t).toMatch(/v_req\.organization_id IS DISTINCT FROM p_org/);
+    expect(t).toMatch(/v_req\.subject_id IS DISTINCT FROM p_voucher/);
   });
 
   it('không có đường duyệt nào trong thân: chỉ nộp', () => {
     expect(t).not.toMatch(/decide_financial/);
     expect(t).not.toMatch(/_post_financial/);
     expect(t).not.toMatch(/approve_income_expense/);
+  });
+});
+
+describe('G3-T1 — sổ không mang thông điệp lỗi thô ra trình duyệt', () => {
+  it('outcome của step_failed chỉ có plan_status, không có SQLERRM', () => {
+    const t = than('copilot_plan_execute_step_v1');
+    expect(t).not.toMatch(/'chi_tiet',\s*left\(COALESCE\(v_chi_tiet/);
+    // Thông điệp đầy đủ ở lại cột `error_detail` — cột mà `summary_v1` không đọc.
+    expect(t).toMatch(/error_detail = left\(COALESCE\(v_chi_tiet, ''\), 1000\)/);
+    expect(than('copilot_plan_summary_v1', 'app_private')).not.toMatch(/error_detail/);
   });
 });
 
@@ -506,6 +653,11 @@ describe('G3-T1 — đọc, huỷ, đối soát', () => {
     expect(t).toMatch(/- 'payload_digest' - 'before_digest' - 'after_digest'/);
     expect(t).toMatch(/LIMIT 20/);
     expect(t).toMatch(/public\.is_super_admin\(\)/);
+    // Chủ-hoặc-super-admin, và kế hoạch của người khác trả ĐÚNG câu như kế hoạch
+    // không tồn tại. Bỏ vế đầu thì mọi người đọc được mọi kế hoạch.
+    expect(t).toMatch(
+      /v_plan\.user_id IS DISTINCT FROM v_actor AND NOT public\.is_super_admin\(\)\)\s*THEN\s*RAISE EXCEPTION 'plan_not_found' USING ERRCODE = 'P0002'/,
+    );
     // Bản lược bỏ nằm ở MỘT chỗ: `copilot_plan_summary_v1`.
     expect(t).toMatch(/app_private\.copilot_plan_summary_v1\(p_plan_id\)/);
     const s = than('copilot_plan_summary_v1', 'app_private');
@@ -523,7 +675,9 @@ describe('G3-T1 — đọc, huỷ, đối soát', () => {
       /SET consumed_at = clock_timestamp\(\)[\s\S]{0,300}payload_hash = v_plan\.plan_digest[\s\S]{0,120}consumed_at IS NULL/,
     );
     expect(t).toMatch(/'event',\s*'plan_cancelled'/);
-    expect(t).toMatch(/FOR UPDATE NOWAIT/);
+    expect(t).toMatch(
+      /FROM app_private\.copilot_plans p\s*WHERE p\.id = p_plan_id AND p\.user_id = v_actor\s*FOR UPDATE NOWAIT/,
+    );
     expect(t).toMatch(/plan_version_stale/);
   });
 

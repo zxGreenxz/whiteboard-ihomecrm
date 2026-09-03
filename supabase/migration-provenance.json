@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T10:34:11.987Z",
+  "generatedAt": "2026-09-03T10:45:29.186Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -9139,7 +9139,7 @@
       "version": "20260903100253",
       "name": "copilot_execution_plan_v1",
       "scheme": "timestamp14",
-      "sha256": "729587fa83b332259029bd4906f706e27e8d2cc1e18d496a643edcdd2bedb4f0",
+      "sha256": "d1d9811c9d59a672ed41f9da26c9c5eec3a39001fa85641c53a2c2b82eff6c69",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
