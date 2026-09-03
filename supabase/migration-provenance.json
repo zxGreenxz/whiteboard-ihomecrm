@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T06:18:13.051Z",
+  "generatedAt": "2026-09-03T07:32:34.635Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 475,
-    "unknown": 73,
+    "unknown": 76,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9077,6 +9077,45 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-03T06:13:40.428Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903072353_copilot_action_income_expense_annotate_v1.sql",
+      "version": "20260903072353",
+      "name": "copilot_action_income_expense_annotate_v1",
+      "scheme": "timestamp14",
+      "sha256": "b1c7d0105bcbf674fb803b2f8778b8e7df69c7ec8f9e81ecf493aed53c0a54b5",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_income_expense_annotate_v1",
+        "function:public.copilot_execute_income_expense_annotate_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903072912_copilot_action_reservation_hold_terms_v1.sql",
+      "version": "20260903072912",
+      "name": "copilot_action_reservation_hold_terms_v1",
+      "scheme": "timestamp14",
+      "sha256": "abd2f1e9d3fd7e40d0103edf3d0e559edea189f44f946a7ad07a2847b7b0c832",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_reservation_hold_terms_v1",
+        "function:public.copilot_execute_reservation_hold_terms_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903073048_copilot_action_zalo_conversation_flags_v1.sql",
+      "version": "20260903073048",
+      "name": "copilot_action_zalo_conversation_flags_v1",
+      "scheme": "timestamp14",
+      "sha256": "271c82f92fb80eef9171bc993c89ea6c8524fbdd097d65a6b649043cc6b844bd",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_zalo_conversation_flags_v1",
+        "function:public.copilot_execute_zalo_conversation_flags_v1"
       ]
     },
     {
