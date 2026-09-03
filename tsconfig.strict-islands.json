@@ -563,6 +563,7 @@
     "src/copilot/tools/registry.ts",
     "src/copilot/tools/writeTools.ts",
     "src/copilot/useAiProviders.ts",
+    "src/copilot/useHangDoiSauDuyet.ts",
     "src/hooks/__tests__/customerPickerCache.test.ts",
     "src/hooks/__tests__/depositRefundTruth.test.ts",
     "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",

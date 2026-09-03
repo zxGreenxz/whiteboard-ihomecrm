@@ -23,8 +23,43 @@ import {
 /** Câu báo khi quản trị đã tắt cơ chế kế hoạch giữa lúc đề xuất còn treo. */
 export const LOI_KE_HOACH_DA_TAT = 'Cơ chế kế hoạch đã bị tắt bởi quản trị.';
 
-/** Nhịp đọc lại trạng thái sau khi người dùng bấm duyệt. */
+/** Nhịp đọc lại trạng thái sau khi người dùng bấm duyệt — nhịp ĐẦU TIÊN. */
 export const NHIP_POLL_MS = 1500;
+
+/** Trần nhịp: chậm lại dần, nhưng không chậm tới mức thẻ trông như đã chết. */
+export const NHIP_POLL_TOI_DA_MS = 5000;
+
+/** Trần số vòng và trần thời gian theo dõi — kế hoạch nào cũng phải dừng lại. */
+export const SO_VONG_TOI_DA = 120;
+export const HAN_THEO_DOI_MS = 3 * 60_000;
+
+/** Số lần đọc hỏng LIÊN TIẾP trước khi thôi hỏi. */
+export const SO_LOI_LIEN_TIEP_TOI_DA = 3;
+
+export const TEXT_HET_HAN_THEO_DOI = 'Hết thời gian theo dõi — xem tiếp ở tab Hành động.';
+
+/**
+ * Nhịp cho vòng kế tiếp: 1,5s tăng dần tới trần 5s.
+ *
+ * VÌ SAO KHÔNG GIỮ 1,5s MÃI. Các bước chạy ở một lượt chat khác và một bước ghi
+ * có thể mất vài giây; hỏi hai lần một giây suốt ba phút là 120 lời gọi cho một
+ * câu trả lời đổi vài lần. Nhịp giãn dần giữ được cảm giác "đang chạy" ở những
+ * giây đầu (lúc người dùng thật sự đang nhìn) rồi rẻ dần về sau.
+ */
+export function nhipTiepTheo(vong: number): number {
+  return Math.min(NHIP_POLL_TOI_DA_MS, Math.round(NHIP_POLL_MS * Math.pow(1.15, Math.max(0, vong))));
+}
+
+/**
+ * Đã tới lúc thôi theo dõi chưa — theo CẢ hai trần.
+ *
+ * Trần số vòng một mình là không đủ vì nhịp giãn dần: 120 vòng với nhịp tối đa
+ * 5 giây là gần 9 phút, chứ không phải 3 phút như ý định. Trần thời gian một
+ * mình cũng không đủ: đồng hồ hệ thống nhảy (ngủ/thức, đổi múi giờ) là mất trần.
+ */
+export function daHetHanTheoDoi(vong: number, batDauLuc: number, bayGio: number): boolean {
+  return vong >= SO_VONG_TOI_DA || bayGio - batDauLuc >= HAN_THEO_DOI_MS;
+}
 
 /**
  * Nhãn rủi ro hiện trên từng bước.
@@ -143,6 +178,14 @@ interface Props {
   threadId: string | null;
   generation: number;
   availability: CopilotAvailabilitySnapshot | null | undefined;
+  /**
+   * Mô hình có đang viết dở một lượt không.
+   *
+   * Nút Duyệt phải KHOÁ khi đang chạy: đường gửi tin hệ thống từ chối lượt thứ
+   * hai, nên một cú bấm lúc đó tiêu nonce ở server mà không có lượt nào chạy
+   * các bước. Xem chú thích đầu `useHangDoiSauDuyet.ts` cho cả sự cố.
+   */
+  running?: boolean;
 }
 
 /**
@@ -167,6 +210,7 @@ export default function KeHoachCard({
   threadId,
   generation,
   availability,
+  running = false,
 }: Props) {
   const scope = { organizationId, threadId, generation };
   const [dangCho, setDangCho] = useState(() =>
@@ -177,6 +221,7 @@ export default function KeHoachCard({
   );
   const [dangGui, setDangGui] = useState(false);
   const [daDuyet, setDaDuyet] = useState(false);
+  const [ketThucTheoDoi, setKetThucTheoDoi] = useState<'' | 'het_gio' | 'loi'>('');
   const [loi, setLoi] = useState('');
 
   // Nhịp một giây cho khe nhớ: nonce sống 5 phút và thẻ phải biến mất gần như
@@ -193,20 +238,50 @@ export default function KeHoachCard({
 
   const planId = keHoach?.planId ?? null;
 
-  // Sau khi duyệt: đọc trạng thái thật cho tới khi kế hoạch kết thúc.
+  // Sau khi duyệt: đọc trạng thái thật cho tới khi kế hoạch kết thúc — hoặc tới
+  // khi HẾT HẠN THEO DÕI. Ba trần, mỗi cái chặn một kiểu treo khác nhau:
+  //   · kết thúc  ⇒ không còn gì để hỏi;
+  //   · vòng/thời gian ⇒ mô hình không bao giờ gọi `thuc_thi_buoc` (kế hoạch nằm
+  //     APPROVED tới khi `execute_deadline` 30 phút đưa nó về EXPIRED, mà trạng
+  //     thái đó được đánh giá LƯỜI nên tự nó không đổi) — thẻ phải nói ra và chỉ
+  //     chỗ xem tiếp, thay vì quay mãi;
+  //   · lỗi liên tiếp ⇒ mạng/quyền hỏng; hỏi lần thứ tư cũng cùng một câu trả lời.
   useEffect(() => {
     if (!daDuyet || !planId) return;
     let song = true;
-    const t = setInterval(() => {
+    let vong = 0;
+    let loiLienTiep = 0;
+    const batDau = Date.now();
+    let hen: ReturnType<typeof setTimeout> | undefined;
+
+    const hoi = () => {
       void docKeHoach(planId).then((kq) => {
-        if (!song || !kq.keHoach) return;
-        setKeHoach(kq.keHoach);
-        if (keHoachDaKetThuc(kq.keHoach.planStatus)) clearInterval(t);
+        if (!song) return;
+        if (!kq.keHoach) {
+          loiLienTiep += 1;
+          if (loiLienTiep >= SO_LOI_LIEN_TIEP_TOI_DA) {
+            setLoi(kq.thongBao ?? 'Không đọc được trạng thái kế hoạch.');
+            setKetThucTheoDoi('loi');
+            return;
+          }
+        } else {
+          loiLienTiep = 0;
+          setKeHoach(kq.keHoach);
+          if (keHoachDaKetThuc(kq.keHoach.planStatus)) return;
+        }
+        vong += 1;
+        if (daHetHanTheoDoi(vong, batDau, Date.now())) {
+          setKetThucTheoDoi('het_gio');
+          return;
+        }
+        hen = setTimeout(hoi, nhipTiepTheo(vong));
       });
-    }, NHIP_POLL_MS);
+    };
+
+    hen = setTimeout(hoi, NHIP_POLL_MS);
     return () => {
       song = false;
-      clearInterval(t);
+      if (hen !== undefined) clearTimeout(hen);
     };
   }, [daDuyet, planId]);
 
@@ -289,14 +364,25 @@ export default function KeHoachCard({
       {keHoach.failureReason && (
         <p className="mb-2 text-xs text-red-700">Lý do dừng: {keHoach.failureReason}</p>
       )}
+      {ketThucTheoDoi === 'het_gio' && (
+        <p className="mb-2 text-xs text-slate-700" data-testid="copilot-plan-het-theo-doi">
+          {TEXT_HET_HAN_THEO_DOI}
+        </p>
+      )}
       {loi && <p className="mb-2 text-xs text-red-700">{loi}</p>}
+      {conNutBam && running && (
+        <p className="mb-2 text-xs text-slate-700" data-testid="copilot-plan-cho-tro-ly">
+          Chờ trợ lý viết xong rồi bấm — bấm lúc này sẽ tiêu mất phiếu đồng ý mà không chạy được
+          bước nào.
+        </p>
+      )}
       {conNutBam && (
         <div className="flex gap-2">
           <button
             type="button"
             data-testid="copilot-plan-approve"
             onClick={() => void bam()}
-            disabled={dangGui}
+            disabled={dangGui || running}
             className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
           >
             {dangGui ? 'Đang gửi…' : 'Duyệt kế hoạch'}

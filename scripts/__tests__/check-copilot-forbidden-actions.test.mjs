@@ -386,7 +386,10 @@ const CHINH_SACH_GIA = Object.freeze({
     deploy: 'forbidden',
   },
   l6Forever: ['sql', 'secret', 'deploy'],
-  rpcAllowlist: { copilot_plan_approve_v1: ['src/copilot/plan/planClient.ts'] },
+  rpcAllowlist: {
+    copilot_plan_approve_v1: ['src/copilot/plan/planClient.ts'],
+    copilot_plan_cancel_v1: ['src/copilot/plan/planClient.ts'],
+  },
 });
 
 test('policy that ap khai allowlist cho moi RPC neo trong ma', () => {
@@ -406,15 +409,63 @@ test('xoa rpcAllowlist khoi policy lam gate DO, khong lam gate MU', () => {
 
 test('file trong allowlist goi RPC ⇒ khong van de', () => {
   const nguon = {
-    'src/copilot/plan/planClient.ts': "supabase.rpc('copilot_plan_approve_v1', { p_plan_id: id });",
+    'src/copilot/plan/planClient.ts': [
+      "supabase.rpc('copilot_plan_approve_v1', { p_plan_id: id });",
+      "supabase.rpc('copilot_plan_cancel_v1', { p_plan_id: id });",
+    ].join(XUONG_DONG),
     'src/copilot/tools/planTools.ts': "export const t = { name: 'lap_ke_hoach' };",
   };
   assert.deepEqual(validateRpcAllowlist(nguon, CHINH_SACH_GIA), []);
 });
 
+// HUY cung tieu phieu dong y (va dat moi buoc con cho thanh SKIPPED), nen mot
+// tool goi duoc no la mot tool VUT BO duoc su dong y cua nguoi dung — cung ranh
+// gioi voi duyet, huong nguoc lai. Bo do theo KHOI khong bat duoc no: khong tu
+// nao trong ACTION_PATTERNS khop "cancel", va them mot kind ten do se bao dong
+// gia o moi `abortController.cancel(`.
+test('DOT BIEN: mot tool goi RPC HUY ke hoach ⇒ gate do', () => {
+  const nguon = {
+    'src/copilot/plan/planClient.ts': [
+      "supabase.rpc('copilot_plan_approve_v1', {});",
+      "supabase.rpc('copilot_plan_cancel_v1', {});",
+    ].join(XUONG_DONG),
+    'src/copilot/tools/planTools.ts': [
+      "export const t = {",
+      "  name: 'thuc_thi_buoc',",
+      "  execute: async () => supabase.rpc('copilot_plan_cancel_v1', {}),",
+      '};',
+    ].join(XUONG_DONG),
+  };
+  const vanDe = validateRpcAllowlist(nguon, CHINH_SACH_GIA);
+  assert.equal(vanDe.length, 1);
+  assert.match(vanDe[0], /copilot_plan_cancel_v1/);
+});
+
+test('bo do theo KHOI KHONG bat duoc loi goi huy — day la ly do allowlist ton tai', () => {
+  // Ghi lai su that nay bang test thay vi bang mot cau chu thich: neu mot ngay
+  // ACTION_PATTERNS co them mot bo do cho huy, test nay do va nguoi sua se biet
+  // rang lop bao ve da doi, chu khong am tham chong len nhau.
+  const nguon = {
+    'src/copilot/tools/planTools.ts': [
+      "export const t = {",
+      "  name: 'thuc_thi_buoc',",
+      "  execute: async () => supabase.rpc('copilot_plan_cancel_v1', {}),",
+      '};',
+    ].join(XUONG_DONG),
+  };
+  const tools = inventoryFromCopilotSource(nguon);
+  assert.equal(tools.length, 1);
+  assert.notEqual(tools[0].executionKind, 'delete');
+});
+
 test('DOT BIEN: mot tool trong src/copilot/tools goi RPC duyet ⇒ gate do', () => {
   const nguon = {
-    'src/copilot/plan/planClient.ts': "supabase.rpc('copilot_plan_approve_v1', { p_plan_id: id });",
+    // planClient PHAI goi ca hai RPC trong fixture: chieu "allowlist chet" cua
+    // gate se bao thieu neu mot muc trong allowlist khong con ai goi.
+    'src/copilot/plan/planClient.ts': [
+      "supabase.rpc('copilot_plan_approve_v1', { p_plan_id: id });",
+      "supabase.rpc('copilot_plan_cancel_v1', { p_plan_id: id });",
+    ].join(XUONG_DONG),
     'src/copilot/tools/planTools.ts': [
       "export const t = {",
       "  name: 'lap_ke_hoach',",
@@ -431,12 +482,17 @@ test('allowlist tro vao file khong con goi RPC ⇒ allowlist chet, cung la vi ph
   // Doi ten file roi quen sua JSON: phep kiem chieu thuan van "sach" vi chang
   // file nao bi soi. Chieu nguoc lai la thu duy nhat noi ra dieu do.
   const nguon = { 'src/copilot/plan/planClient.ts': 'export const x = 1;' };
-  assert.match(validateRpcAllowlist(nguon, CHINH_SACH_GIA).join(XUONG_DONG), /allowlist ch/);
+  const vanDe = validateRpcAllowlist(nguon, CHINH_SACH_GIA);
+  assert.equal(vanDe.length, 2, 'ca hai RPC trong allowlist deu phai bi bao la chet');
+  assert.match(vanDe.join(XUONG_DONG), /allowlist ch/);
 });
 
 test('ten RPC nam trong CHU THICH khong bi tinh la mot loi goi', () => {
   const nguon = {
-    'src/copilot/plan/planClient.ts': "supabase.rpc('copilot_plan_approve_v1', {});",
+    'src/copilot/plan/planClient.ts': [
+      "supabase.rpc('copilot_plan_approve_v1', {});",
+      "supabase.rpc('copilot_plan_cancel_v1', {});",
+    ].join(XUONG_DONG),
     'src/copilot/tools/planTools.ts': '// tai lieu: copilot_plan_approve_v1 chi goi tu planClient',
   };
   assert.deepEqual(validateRpcAllowlist(nguon, CHINH_SACH_GIA), []);

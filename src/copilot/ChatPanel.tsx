@@ -16,6 +16,7 @@ import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import XacNhanPhieuCard from './XacNhanPhieuCard';
 import KeHoachCard, { tinNhanDaDuyet } from './KeHoachCard';
+import { useHangDoiSauDuyet } from './useHangDoiSauDuyet';
 import { datNguCanhXacNhan } from './confirmationStore';
 import { canUse } from '@/lib/permissionPages';
 import {
@@ -536,6 +537,14 @@ export default function ChatPanel({ onClose }: Props) {
     }
   };
 
+  /**
+   * Cú bấm Duyệt lọt vào lúc mô hình đang viết dở thì XẾP HÀNG, không rơi vào
+   * im lặng: nonce đã tiêu ở server rồi, và không có cách nào phát lại nó.
+   * Nút Duyệt cũng bị khoá khi `running` (xem `KeHoachCard`) — hai lớp, vì lớp
+   * khoá nút không phủ được cú bấm rơi đúng khoảnh khắc `running` vừa bật.
+   */
+  const hangDoiKeHoach = useHangDoiSauDuyet(running, chayKeHoachSauKhiDuyet);
+
   const send = async () => {
     const text = input.trim();
     if ((!text && !anhKem.length) || running) return;
@@ -938,6 +947,7 @@ export default function ChatPanel({ onClose }: Props) {
             ẩn thẻ lúc đó là giấu đúng bảng trạng thái mà người dùng cần nhìn
             để biết bước nào đã vào sổ. */}
         <KeHoachCard
+          running={running}
           organizationId={selectedOrganizationId}
           threadId={threadId}
           generation={confirmationGeneration}
@@ -952,7 +962,7 @@ export default function ChatPanel({ onClose }: Props) {
               )
             ) return;
             if (confirmationThreadId !== threadId) return;
-            void chayKeHoachSauKhiDuyet(planId, planVersion);
+            hangDoiKeHoach.xepHang(planId, planVersion);
           }}
           onXong={(thongBao) => {
             if (

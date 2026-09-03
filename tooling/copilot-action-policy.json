@@ -11,8 +11,9 @@
     "deploy": "forbidden"
   },
   "l6Forever": ["sql", "secret", "deploy"],
-  "$comment2": "rpcAllowlist — RPC nao chi duoc goi tu file nao. `copilot_plan_approve_v1` (G3) tieu nonce cap ke hoach va mo cua cho ca mot day thao tac ghi; no phai o DUNG mot cho, va cho do khong duoc nam trong src/copilot/tools/ (thu muc ma model co the goi qua tool). Bo do theo KHOI cua ACTION_PATTERNS chi soi than `execute:` cua tung tool, nen mot loi goi dat ngoai khoi do se lot; phep quet nay doc CA FILE (da lot binh luan) va vi the manh hon. Danh sach RPC bat buoc co mat duoc neo trong ma: RPC_PHAI_CO_ALLOWLIST o scripts/check-copilot-forbidden-actions.mjs — xoa dong duoi day khong lam gate mu, no lam gate do.",
+  "$comment2": "rpcAllowlist — RPC nao chi duoc goi tu file nao. `copilot_plan_approve_v1` (G3) tieu nonce cap ke hoach va mo cua cho ca mot day thao tac ghi; no phai o DUNG mot cho, va cho do khong duoc nam trong src/copilot/tools/ (thu muc ma model co the goi qua tool). Bo do theo KHOI cua ACTION_PATTERNS chi soi than `execute:` cua tung tool, nen mot loi goi dat ngoai khoi do se lot; phep quet nay doc CA FILE (da lot binh luan) va vi the manh hon. Ke ben no la `copilot_plan_cancel_v1`: huy mot ke hoach cung TIEU phieu dong y (va dat moi buoc con cho thanh SKIPPED), nen mot tool goi duoc no la mot tool vut bo duoc su dong y cua nguoi dung — cung ranh gioi, huong nguoc lai. Khong them mot `kind` moi ten `cancel` vao ACTION_PATTERNS: bo do do khop theo TU, va `cancel(` xuat hien khap noi (AbortController, react-query) nen no se bao dong gia o hang chuc cho khong lien quan; cau hoi that o day la AI DUOC GOI, tuc mot cau hoi ve FILE. Danh sach RPC bat buoc co mat duoc neo trong ma: RPC_PHAI_CO_ALLOWLIST o scripts/check-copilot-forbidden-actions.mjs — xoa dong duoi day khong lam gate mu, no lam gate do.",
   "rpcAllowlist": {
-    "copilot_plan_approve_v1": ["src/copilot/plan/planClient.ts"]
+    "copilot_plan_approve_v1": ["src/copilot/plan/planClient.ts"],
+    "copilot_plan_cancel_v1": ["src/copilot/plan/planClient.ts"]
   }
 }

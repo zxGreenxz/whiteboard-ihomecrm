@@ -25,10 +25,16 @@ const KeHoachCardModule = await import('../KeHoachCard');
 const KeHoachCard = KeHoachCardModule.default;
 const {
   BangBuocKeHoach,
+  HAN_THEO_DOI_MS,
+  NHIP_POLL_MS,
+  NHIP_POLL_TOI_DA_MS,
+  SO_VONG_TOI_DA,
+  daHetHanTheoDoi,
   keHoachDaTat,
   keHoachTuKhe,
   nhanRuiRo,
   nhanTrangThaiKeHoach,
+  nhipTiepTheo,
   tinNhanDaDuyet,
 } = KeHoachCardModule;
 const XacNhanPhieuCard = (await import('../XacNhanPhieuCard')).default;
@@ -237,5 +243,57 @@ describe('kill switch và phạm vi', () => {
     expect(keHoachTuKhe(undefined)).toBeNull();
     expect(keHoachTuKhe({ ke_hoach: 'x' })).toBeNull();
     expect(keHoachTuKhe({ ke_hoach: { planId: PLAN, planVersion: 1 } })?.planId).toBe(PLAN);
+  });
+});
+
+
+describe('nút Duyệt khoá khi trợ lý đang viết (F1)', () => {
+  it('running ⇒ nút disabled kèm câu nói rõ vì sao', () => {
+    // Bấm lúc này sẽ TIÊU nonce ở server trong khi đường gửi tin hệ thống từ
+    // chối lượt thứ hai — thẻ sẽ đứng yên mãi ở "đang chạy".
+    datKheKeHoach();
+    const html = renderToStaticMarkup(<KeHoachCard {...props} running />);
+    expect(html).toContain('copilot-plan-cho-tro-ly');
+    // Khớp THUỘC TÍNH `disabled=""` chứ không phải chữ "disabled": lớp Tailwind
+    // `disabled:opacity-60` nằm ngay trong cùng thẻ, nên phép khớp chuỗi trần
+    // sẽ xanh cả khi nút đang bấm được.
+    const nut = html.slice(html.indexOf('copilot-plan-approve'));
+    expect(nut.slice(0, 300)).toContain('disabled=""');
+  });
+
+  it('rảnh ⇒ nút bấm được và không có câu chờ', () => {
+    datKheKeHoach();
+    const html = renderToStaticMarkup(<KeHoachCard {...props} running={false} />);
+    expect(html).not.toContain('copilot-plan-cho-tro-ly');
+    const nut = html.slice(html.indexOf('copilot-plan-approve'));
+    expect(nut.slice(0, 300)).not.toContain('disabled=""');
+  });
+
+  it('ChatPanel truyền `running` xuống thẻ và đẩy cú bấm qua HÀNG ĐỢI', () => {
+    // Hai vế của cùng một cái chặn. Gọi thẳng `chayKeHoachSauKhiDuyet` từ
+    // `onDuyet` là quay lại đúng sự cố: hàm đó mở đầu bằng `if (running) return`.
+    const ma = readFileSync('src/copilot/ChatPanel.tsx', 'utf8');
+    expect(ma).toContain('running={running}');
+    expect(ma).toContain('hangDoiKeHoach.xepHang(planId, planVersion)');
+    expect(ma).not.toContain('void chayKeHoachSauKhiDuyet(planId, planVersion)');
+  });
+});
+
+describe('vòng theo dõi có trần (F2)', () => {
+  it('nhịp giãn dần từ 1,5s và không vượt trần 5s', () => {
+    expect(nhipTiepTheo(0)).toBe(NHIP_POLL_MS);
+    expect(nhipTiepTheo(1)).toBeGreaterThan(NHIP_POLL_MS);
+    expect(nhipTiepTheo(5)).toBeGreaterThan(nhipTiepTheo(4));
+    expect(nhipTiepTheo(1000)).toBe(NHIP_POLL_TOI_DA_MS);
+  });
+
+  it('dừng theo CẢ hai trần: số vòng và thời gian', () => {
+    const t0 = 1_000_000;
+    expect(daHetHanTheoDoi(1, t0, t0 + 1000)).toBe(false);
+    // Trần số vòng: đủ vòng thì dừng dù đồng hồ mới nhích.
+    expect(daHetHanTheoDoi(SO_VONG_TOI_DA, t0, t0 + 1000)).toBe(true);
+    // Trần thời gian: nhịp giãn dần nên 120 vòng có thể kéo tới ~9 phút — trần
+    // số vòng một mình KHÔNG giữ được ý định "3 phút".
+    expect(daHetHanTheoDoi(3, t0, t0 + HAN_THEO_DOI_MS)).toBe(true);
   });
 });

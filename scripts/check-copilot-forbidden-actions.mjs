@@ -42,7 +42,16 @@ export const L6_FOREVER = Object.freeze(['deploy', 'secret', 'sql']);
  * Neo ở đây, không đọc từ chính file đang kiểm: xoá dòng `rpcAllowlist` khỏi
  * JSON phải làm gate ĐỎ, không phải làm gate MÙ — đúng bài học của `l6Forever`.
  */
-export const RPC_PHAI_CO_ALLOWLIST = Object.freeze(['copilot_plan_approve_v1']);
+export const RPC_PHAI_CO_ALLOWLIST = Object.freeze([
+  'copilot_plan_approve_v1',
+  // Huỷ cũng TIÊU phiếu đồng ý (và đặt mọi bước còn chờ thành SKIPPED), nên một
+  // tool gọi được nó là một tool VỨT BỎ được sự đồng ý của người dùng — cùng
+  // ranh giới với duyệt, hướng ngược lại. Không thêm một `kind` mới tên `cancel`
+  // vào ACTION_PATTERNS: bộ dò đó khớp theo TỪ, và `cancel(` có mặt khắp nơi
+  // (AbortController, react-query) nên nó sẽ báo động giả ở hàng chục chỗ không
+  // liên quan; câu hỏi thật ở đây là AI ĐƯỢC GỌI — một câu hỏi về FILE.
+  'copilot_plan_cancel_v1',
+]);
 
 /**
  * Regex per action kind. A kind declared in the policy but missing here would be

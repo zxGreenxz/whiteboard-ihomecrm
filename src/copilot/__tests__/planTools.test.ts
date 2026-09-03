@@ -13,6 +13,34 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Gate là ESM thuần (.mjs) và chạy được dưới vitest — dùng CHÍNH bộ quét của nó
+// thay vì dựng một bản thứ hai ở đây, để hai bên không bao giờ nhìn hai tập file
+// khác nhau.
+const gate = (await import('../../../scripts/check-copilot-forbidden-actions.mjs')) as {
+  SCAN_ROOTS: readonly string[];
+  collectCopilotSourceFiles: (roots: readonly string[]) => string[];
+};
+
+/** Mọi file .ts trong phạm vi quét của gate, khoá là đường dẫn dạng POSIX. */
+function docNguonTrongPhamVi(): Record<string, string> {
+  const ra: Record<string, string> = {};
+  for (const duong of gate.collectCopilotSourceFiles([...gate.SCAN_ROOTS])) {
+    ra[duong.split(String.fromCharCode(92)).join('/')] = readFileSync(duong, 'utf8');
+  }
+  return ra;
+}
+
+/** Tên bị cấm xuất hiện trong MÃ (đã lột chú thích) của một file dưới tools/. */
+const TEN_CAM = ['duyetKeHoach', 'copilot_plan_approve_v1', 'copilot_plan_cancel_v1'] as const;
+
+function timLoiGoiCam(nguon: string): string[] {
+  const ma = nguon
+    .split(/\r?\n/)
+    .filter((d) => !d.trim().startsWith('//') && !d.trim().startsWith('*'))
+    .join('\n');
+  return TEN_CAM.filter((ten) => ma.includes(ten));
+}
+
 const rpc = vi.hoisted(() => vi.fn());
 const from = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from, rpc } }));
@@ -103,24 +131,33 @@ beforeEach(() => {
 });
 
 describe('ranh giới: không tool nào tự duyệt được', () => {
-  it('không file nào trong src/copilot/tools gọi `copilot_plan_approve_v1`', () => {
-    // Đo trên mã nguồn chứ không trên registry: một lời gọi nằm trong một hàm
-    // phụ ngoài thân `execute` vẫn là mã mà mô hình chạm tới được qua tool.
-    const duong = [
-      'src/copilot/tools/planTools.ts',
-      'src/copilot/tools/writeTools.ts',
-      'src/copilot/tools/registry.ts',
-      'src/copilot/tools/nghiepVuTools.ts',
-      'src/copilot/tools/memoryTools.ts',
-    ];
-    for (const tep of duong) {
-      const ma = readFileSync(tep, 'utf8')
-        .split(/\r?\n/)
-        .filter((d) => !d.trim().startsWith('//') && !d.trim().startsWith('*'))
-        .join('\n');
-      expect(ma, tep).not.toContain('copilot_plan_approve_v1');
-      expect(ma, tep).not.toContain('duyetKeHoach');
+  it('KHÔNG file nào trong phạm vi quét của gate gọi RPC duyệt/huỷ, hay `duyetKeHoach`', async () => {
+    // Danh sách file SUY TỪ CHÍNH phạm vi quét của gate, không chép tay: một
+    // file tool THỨ SÁU ra đời sau bản này phải tự động vào bài đo. Bản trước
+    // liệt kê năm đường dẫn cứng — đúng loại drift mà hai gate copilot sinh ra
+    // để chặn, chỉ là ở chính test canh chúng.
+    const nguon = docNguonTrongPhamVi();
+    const tep = Object.keys(nguon).filter((d) => d.includes('/tools/'));
+    expect(tep.length, 'bộ quét hỏng chứ không phải thư mục tools rỗng').toBeGreaterThanOrEqual(5);
+    for (const d of tep) {
+      expect(timLoiGoiCam(nguon[d] ?? ''), d).toEqual([]);
     }
+  });
+
+  it('BÀI ĐO CHÍNH BỘ DÒ: một file dưới tools/ gọi `duyetKeHoach(` thì bị bắt', () => {
+    // Một bộ dò không bao giờ báo động là một bộ dò không đo gì. Fixture này là
+    // thứ chứng minh vòng lặp ở trên thật sự nhìn thấy vi phạm.
+    expect(timLoiGoiCam("const x = async () => duyetKeHoach(planId, 1, digest);")).toEqual([
+      'duyetKeHoach',
+    ]);
+    expect(timLoiGoiCam("supabase.rpc('copilot_plan_approve_v1', {})")).toEqual([
+      'copilot_plan_approve_v1',
+    ]);
+    expect(timLoiGoiCam("supabase.rpc('copilot_plan_cancel_v1', {})")).toEqual([
+      'copilot_plan_cancel_v1',
+    ]);
+    // ...và một lời NHẮC TỚI trong chú thích không phải một lời gọi.
+    expect(timLoiGoiCam('// duyetKeHoach chỉ sống ở planClient')).toEqual([]);
   });
 
   it('`duyetKeHoach` không phải execute của tool nào trong registry', () => {

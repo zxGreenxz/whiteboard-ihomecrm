@@ -210,7 +210,15 @@ async function taoKeHoachTuTool(
   });
   if (!kq.keHoach) return kq.thongBao ?? 'Không lập được kế hoạch.';
   if (kq.daTonTai) {
-    return `${moTaKeHoach(args.muc_tieu, kq.keHoach)}\n\n(Kế hoạch này đã được lập trước đó — không lập trùng.)`;
+    // Lời gọi TRÙNG `client_request_id`: server trả lại kế hoạch cũ và KHÔNG
+    // phát nonce mới. Nói đúng điều đó — nếu kế hoạch cũ đã được bấm (hoặc đã
+    // hết hạn) thì không còn thẻ nào hiện ra, và một câu "hãy bấm nút bên dưới"
+    // sẽ bảo người dùng đi tìm một cái nút không tồn tại.
+    return (
+      `${moTaKeHoach(args.muc_tieu, kq.keHoach)}\n\n(Kế hoạch này đã tồn tại — không lập trùng. ` +
+      'Thẻ chỉ hiện nếu nó CHƯA được bấm; không thấy thẻ nào nghĩa là nó đã được bấm hoặc đã quá ' +
+      'hạn — nói đúng điều đó với người dùng, đừng mời họ bấm một cái nút không có ở đó.)'
+    );
   }
   return moTaKeHoach(args.muc_tieu, kq.keHoach);
 }
