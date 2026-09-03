@@ -12,6 +12,20 @@
 -- `copilot_write_confirmations` (tool='step_up') CHƯA TIÊU của người đó — một
 -- token step-up cũ (bằng chứng "đã xác thực bằng PIN cũ", còn hiệu lực 5
 -- phút) không nên sống sót qua một lần reset quản trị.
+--
+-- F2 (review G5-C2 fix round 1) — CẤM TỰ RESET (`p_user_id = auth.uid()` →
+-- RAISE `step_up_reset_self_forbidden`). ĐÁNH ĐỔI CÓ CHỦ Ý, GHI RÕ Ở ĐÂY: một
+-- tổ chức chỉ còn ĐÚNG MỘT super admin, người đó mất PIN, không còn ai gọi
+-- được hàm này CHO họ — họ KHÔNG tự phục hồi được qua đường Copilot nữa.
+-- Đường lùi DUY NHẤT trong tình huống đó là người vận hành hạ tầng (không
+-- phải qua RPC) tự tay `DELETE FROM app_private.copilot_step_up_pins WHERE
+-- user_id = '<uid>'` bằng vai trò DB trực tiếp (Management API/psql), rồi
+-- người đó tự `copilot_step_up_set_pin_v1` đặt PIN mới. Chấp nhận sự bất tiện
+-- này vì lựa chọn ngược lại (cho tự reset) xoá đúng cái lớp xác thực thứ hai
+-- mà PIN step-up dựng ra để chống — một actor tự bỏ khoá cho chính mình,
+-- không cần một NGƯỜI THỨ HAI xác nhận. Cần đồng bộ ghi chú này vào ADR của
+-- Mức 3 (`docs/superpowers/specs/*muc-3-adr*`) — nằm ngoài phạm vi sửa của
+-- phiên này (file đó do một phiên song song sở hữu).
 BEGIN;
 SET LOCAL lock_timeout = '15s';
 
@@ -38,7 +52,7 @@ BEGIN
         'plan_cancelled','plan_expired','action_executed','action_failed',
         'policy_changed','capability_changed','step_up_pin_set','step_up_verified',
         'step_up_locked','step_up_unlocked','grant_created','grant_revoked',
-        'grant_used','step_reconciled','step_up_pin_reset']));
+        'grant_used','step_reconciled','step_unknown_effect','step_up_pin_reset']));
   END IF;
 
   IF NOT EXISTS (
@@ -82,6 +96,16 @@ BEGIN
   IF p_user_id IS NULL THEN
     RAISE EXCEPTION 'user_required' USING ERRCODE = '22023';
   END IF;
+  -- F2 (review G5-C2 fix round 1) - CAM TU RESET. Mot super admin DUY NHAT
+  -- (khong con ai khac de goi ham nay cho minh) tu mat PIN roi tu reset cho
+  -- chinh minh la xoa mot lop xac thuc thu hai ma khong can MOT NGUOI THU HAI
+  -- xac nhan - dung diem ma PIN step-up dung ra de chan. Truong hop that su
+  -- roi vao ca nay (chi mot super admin, PIN mat) phai di duong TOAN VEN KHAC
+  -- - nguoi van hanh DB tu tay DELETE app_private.copilot_step_up_pins (ghi
+  -- lai trong ADR/runbook cua doi dieu phoi, khong tu dong hoa o day).
+  IF p_user_id = v_actor THEN
+    RAISE EXCEPTION 'step_up_reset_self_forbidden' USING ERRCODE = '42501';
+  END IF;
   IF p_reason IS NULL OR length(trim(p_reason)) < 3 THEN
     RAISE EXCEPTION 'reason_required' USING ERRCODE = '22023';
   END IF;
@@ -115,7 +139,7 @@ END
 $function$;
 
 COMMENT ON FUNCTION public.copilot_step_up_reset_pin_v1(uuid, text) IS
-  'Super admin XOÁ hẳn PIN step-up của một người dùng (khác unlock — chỉ mở khoá đếm/lock) khi PIN đã mất, để họ tự đặt PIN mới không cần PIN cũ. Dọn token step-up chưa tiêu. Gọi CHỈ từ src/copilot/plan/stepUpClient.ts (rpcAllowlist).';
+  'Super admin XOÁ hẳn PIN step-up của MỘT NGƯỜI KHÁC (khác unlock — chỉ mở khoá đếm/lock) khi PIN đã mất, để họ tự đặt PIN mới không cần PIN cũ. CẤM tự reset (p_user_id=auth.uid() → step_up_reset_self_forbidden). Dọn token step-up chưa tiêu. Gọi CHỈ từ src/copilot/plan/stepUpClient.ts (rpcAllowlist).';
 
 REVOKE ALL ON FUNCTION public.copilot_step_up_reset_pin_v1(uuid, text)
   FROM PUBLIC;

@@ -324,7 +324,13 @@ export function TheStepUpPin(props: {
   onDoiMoKhoaLyDo: (gt: string) => void;
   onMoKhoa: () => void;
   dangReset: boolean;
+  resetXacNhan: string;
+  onDoiResetXacNhan: (gt: string) => void;
   onReset: () => void;
+  /** F2 (review G5-C2 fix round 1): mục tiêu trùng người đang bấm — RPC đã
+   * chặn (`step_up_reset_self_forbidden`), UI khoá nút TRƯỚC để không ai chờ
+   * một vòng round-trip chỉ để thấy lỗi. */
+  laMucTieuChinhMinh: boolean;
 }) {
   const { trangThai } = props;
   const duLieuDuDatPin = Boolean(
@@ -334,6 +340,11 @@ export function TheStepUpPin(props: {
   // thao tác cùng nhắm một người dùng, chỉ khác hậu quả (mở khoá đếm/lock,
   // hay xoá hẳn PIN để họ tự đặt lại). Không dựng cặp ô thứ hai cho gọn.
   const duLieuDuMoKhoa = Boolean(props.moKhoaUserId.trim() && props.moKhoaLyDo.trim().length >= 3);
+  // F6 (review G5-C2 fix round 1): Reset PIN xoá HẲN lớp xác thực thứ hai của
+  // một người khác — đòi thêm một bước gõ tay "RESET" (không chỉ hai ô dùng
+  // chung với Mở khoá) để không ai bấm nhầm nút màu đỏ này.
+  const duLieuDuReset =
+    duLieuDuMoKhoa && props.resetXacNhan.trim() === 'RESET' && !props.laMucTieuChinhMinh;
   const dangKhoa = Boolean(trangThai?.lockedUntil && new Date(trangThai.lockedUntil).getTime() > Date.now());
   return (
     <div className="space-y-3 rounded border p-3" data-testid="copilot-admin-pin-card">
@@ -447,7 +458,7 @@ export function TheStepUpPin(props: {
               />
             </label>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -459,17 +470,34 @@ export function TheStepUpPin(props: {
             </Button>
             {/* PIN đã MẤT (không phải bị khoá) — "Mở khoá" không giúp gì vì
                 nó giữ nguyên PIN cũ. Reset xoá hẳn PIN để người đó tự đặt
-                PIN mới, không cần PIN cũ. */}
+                PIN mới, không cần PIN cũ. Đòi gõ tay "RESET" (F6, review
+                G5-C2 fix round 1) — nút phá huỷ, không để một cú bấm nhầm. */}
+            <label className="text-sm">
+              Gõ "RESET" để xác nhận
+              <Input
+                data-testid="copilot-admin-pin-reset-confirm"
+                value={props.resetXacNhan}
+                disabled={props.dangReset}
+                onChange={(e) => props.onDoiResetXacNhan(e.target.value)}
+                placeholder="RESET"
+              />
+            </label>
             <Button
               size="sm"
               variant="destructive"
               data-testid="copilot-admin-pin-reset-submit"
-              disabled={!duLieuDuMoKhoa || props.dangMoKhoa || props.dangReset}
+              disabled={!duLieuDuReset || props.dangMoKhoa || props.dangReset}
               onClick={props.onReset}
             >
               {props.dangReset ? 'Đang reset…' : 'Reset PIN (mất PIN)'}
             </Button>
           </div>
+          {props.laMucTieuChinhMinh && (
+            <p className="text-xs text-red-700" data-testid="copilot-admin-pin-reset-self-warning">
+              Không tự reset PIN của chính mình được — nhờ một super admin khác, hoặc liên hệ người
+              vận hành hạ tầng nếu bạn là super admin duy nhất.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -786,6 +814,7 @@ export default function HanhDongTab() {
   const [matKhauReAuth, setMatKhauReAuth] = useState('');
   const [moKhoaUserId, setMoKhoaUserId] = useState('');
   const [moKhoaLyDo, setMoKhoaLyDo] = useState('');
+  const [resetXacNhan, setResetXacNhan] = useState('');
 
   const trangThaiPinQuery = useQuery({
     queryKey: ['copilot-step-up-status'],
@@ -836,8 +865,12 @@ export default function HanhDongTab() {
   });
 
   // Reset PIN (bổ sung G5-C2) — dùng chung ô user_id/lý do với "Mở khoá".
+  // F6 (review G5-C2 fix round 1): đòi gõ đúng "RESET" — kiểm LẠI ở đây (không
+  // chỉ ở nút bị disable trên UI), phòng khi ai đó gọi mutate() theo cách
+  // khác (vd. qua devtools).
   const resetPinMutation = useMutation({
     mutationFn: async () => {
+      if (resetXacNhan.trim() !== 'RESET') throw new Error('reset_confirm_required');
       const kq = await resetPinStepUp(moKhoaUserId.trim(), moKhoaLyDo.trim());
       if (!kq.ok) throw new Error(kq.maLoi ?? 'loi_khong_ro');
       return kq;
@@ -846,8 +879,16 @@ export default function HanhDongTab() {
       toast.success('Đã xoá PIN của người dùng — họ có thể tự đặt PIN mới.');
       setMoKhoaUserId('');
       setMoKhoaLyDo('');
+      setResetXacNhan('');
     },
-    onError: (loi) => toast.error(dienGiaiLoiPin(loi)),
+    onError: (loi) => {
+      const cau = loi instanceof Error ? loi.message : String(loi ?? '');
+      if (cau === 'reset_confirm_required') {
+        toast.error('Gõ đúng "RESET" để xác nhận.');
+        return;
+      }
+      toast.error(dienGiaiLoiPin(loi));
+    },
   });
 
   // ── Uỷ quyền đứng (G5-B, điểm nối #4) ──────────────────────────────────
@@ -1050,7 +1091,10 @@ export default function HanhDongTab() {
         onDoiMoKhoaLyDo={setMoKhoaLyDo}
         onMoKhoa={() => moKhoaMutation.mutate()}
         dangReset={resetPinMutation.isPending}
+        resetXacNhan={resetXacNhan}
+        onDoiResetXacNhan={setResetXacNhan}
         onReset={() => resetPinMutation.mutate()}
+        laMucTieuChinhMinh={Boolean(nguoiDung?.id) && moKhoaUserId.trim() === nguoiDung?.id}
       />
 
       {laSuperAdmin ? (

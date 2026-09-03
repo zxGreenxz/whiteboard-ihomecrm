@@ -384,7 +384,7 @@ describe('G5-C2 nhóm B — engine UNKNOWN_EFFECT + copilot_plan_reconcile_step_
 
   it('enum copilot_action_ledger.event mở rộng thêm step_reconciled (idempotent DROP+ADD có điều kiện)', () => {
     expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS copilot_action_ledger_event_check;/);
-    expect(sql).toMatch(/'grant_used','step_reconciled'\]/);
+    expect(sql).toMatch(/'grant_used','step_reconciled','step_unknown_effect'\]/);
   });
 
   it('nghiệm thu cuối file xác nhận cả ba: nhánh external_effect/UNKNOWN_EFFECT, reconcile hết stub, enum có step_reconciled', () => {
@@ -481,5 +481,111 @@ describe('G5-C2 — không đụng chính sách L4 (giữ nguyên "chưa lên va
   it.each(CAC_ACTION)('$ten — không mở max_direct_risk lên L5', (ca) => {
     const sql = docSqlKhongComment(ca.file);
     expect(sql).not.toMatch(/UPDATE app_private\.copilot_action_policy\s+SET max_direct_risk/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix round 1 (review) — F1 (BLOCKING): race ở đường đọc lại entity_id của
+// zalo.broadcast/zalo.recall_message. Bản trước đọc "hàng zalo_send_queue MỚI
+// NHẤT của hội thoại" — một lần gửi/thu hồi SONG SONG khác vào CÙNG hội thoại
+// có thể chen một hàng MỚI HƠN giữa lúc RPC gốc INSERT và lúc wrapper SELECT,
+// làm entity_id (và do đó cả đối soát sau này) trỏ SAI sang tin của người
+// khác. Sửa bằng LIÊN KẾT THẬT thay vì "mới nhất": zalo.broadcast qua
+// message_id (zalo_broadcast tự đặt khi INSERT zalo_send_queue), zalo.recall_
+// message qua target_msg_id/target_cli_msg_id (payload mà chính RPC gốc đóng
+// gói). CẢ HAI đều chốt mốc thời gian `v_moc` TRƯỚC khi gọi RPC gốc.
+// ---------------------------------------------------------------------------
+describe('Fix round 1 — F1 (BLOCKING): zalo.broadcast chống race khi đọc lại entity_id', () => {
+  const sql = docSqlKhongComment(FILE_ZALO_PHAT_SONG);
+  const than = thanHam(sql, 'copilot_execute_zalo_phat_song_v1');
+
+  it('v_moc := clock_timestamp() được chốt TRƯỚC khi gọi zalo_broadcast', () => {
+    const iMoc = than.search(/v_moc := clock_timestamp\(\);/);
+    const iGoc = than.search(/v_count := public\.zalo_broadcast\(ARRAY\[v_conv_id\], v_body\);/);
+    expect(iMoc).toBeGreaterThan(-1);
+    expect(iGoc).toBeGreaterThan(-1);
+    expect(iMoc).toBeLessThan(iGoc);
+  });
+
+  it('KHÔNG còn đọc "mới nhất" trần (ORDER BY created_at DESC) trên zalo_send_queue', () => {
+    expect(than).not.toMatch(/ORDER BY t\.created_at DESC/);
+  });
+
+  it('tìm zalo_messages CỦA CHÍNH giao dịch này: sent_by=actor + body khớp + sent_at >= v_moc', () => {
+    expect(than).toMatch(/m\.sent_by = v_actor/);
+    expect(than).toMatch(/m\.body = v_body/);
+    expect(than).toMatch(/m\.sent_at >= v_moc/);
+  });
+
+  it('KHÔNG lọc zalo_send_queue.user_id = actor — cột đó là chủ sở hữu hội thoại, không phải actor (đã xác minh qua thân RPC gốc)', () => {
+    expect(than).not.toMatch(/t\.user_id = v_actor/);
+  });
+
+  it('lấy hàng outbox LIÊN KẾT qua message_id (không phải "mới nhất của hội thoại")', () => {
+    expect(than).toMatch(/WHERE t\.message_id = v_msg_id/);
+  });
+
+  it('không tìm thấy tin/hàng outbox của CHÍNH giao dịch này → RAISE external_effect_entity_not_found, TRƯỚC khi ghi ai_write_audit/ledger', () => {
+    const soLoi = (than.match(/RAISE EXCEPTION 'external_effect_entity_not_found'/g) ?? []).length;
+    expect(soLoi).toBeGreaterThanOrEqual(2); // một cho v_msg_id, một cho v_queue_id
+    const iLoiCuoi = than.lastIndexOf("RAISE EXCEPTION 'external_effect_entity_not_found'");
+    const iAudit = than.indexOf('INSERT INTO public.ai_write_audit');
+    expect(iLoiCuoi).toBeLessThan(iAudit);
+  });
+});
+
+describe('Fix round 1 — F1 (BLOCKING): zalo.recall_message chống race khi đọc lại entity_id', () => {
+  const sql = docSqlKhongComment(FILE_ZALO_THU_HOI_TIN);
+  const than = thanHam(sql, 'copilot_execute_zalo_thu_hoi_tin_v1');
+
+  it('v_moc := clock_timestamp() được chốt TRƯỚC khi gọi zalo_recall_message', () => {
+    const iMoc = than.search(/v_moc := clock_timestamp\(\);/);
+    const iGoc = than.search(/PERFORM public\.zalo_recall_message\(v_msg_id\);/);
+    expect(iMoc).toBeGreaterThan(-1);
+    expect(iGoc).toBeGreaterThan(-1);
+    expect(iMoc).toBeLessThan(iGoc);
+  });
+
+  it('KHÔNG còn đọc "mới nhất" trần (ORDER BY created_at DESC) trên zalo_send_queue', () => {
+    expect(than).not.toMatch(/ORDER BY t\.created_at DESC/);
+  });
+
+  it('liên kết qua target_msg_id/target_cli_msg_id (IS NOT DISTINCT FROM, an toàn với NULL) + cửa sổ thời gian', () => {
+    expect(than).toMatch(
+      /\(t\.payload ->> 'target_msg_id'\) IS NOT DISTINCT FROM \(v_before ->> 'zalo_msg_id'\)/,
+    );
+    expect(than).toMatch(
+      /\(t\.payload ->> 'target_cli_msg_id'\) IS NOT DISTINCT FROM \(v_before ->> 'cli_msg_id'\)/,
+    );
+    expect(than).toMatch(/t\.created_at >= v_moc/);
+  });
+
+  it('không tìm thấy hàng outbox của CHÍNH giao dịch này → RAISE external_effect_entity_not_found', () => {
+    expect(than).toMatch(/RAISE EXCEPTION 'external_effect_entity_not_found' USING ERRCODE = 'P0001';/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix round 1 (review) — F4 (LOW): sự kiện sổ RIÊNG cho bước UNKNOWN_EFFECT.
+// ---------------------------------------------------------------------------
+describe('Fix round 1 — F4: copilot_plan_execute_step_v1 ghi step_unknown_effect thay vì step_done khi buoc la UNKNOWN_EFFECT', () => {
+  it('event là CASE điều kiện theo v_buoc_status, không còn literal step_done tĩnh ở nhánh thành công', () => {
+    const sql = docSqlKhongComment(FILE_ZALO_PHAT_SONG);
+    const than = thanHam(sql, 'copilot_plan_execute_step_v1');
+    expect(than).toMatch(
+      /'event',\s*CASE WHEN v_buoc_status = 'UNKNOWN_EFFECT'\s*\n\s*THEN 'step_unknown_effect' ELSE 'step_done' END,/,
+    );
+  });
+
+  it("enum copilot_action_ledger.event có cả 'step_reconciled' VÀ 'step_unknown_effect'", () => {
+    const sql = docSqlKhongComment(FILE_ZALO_PHAT_SONG);
+    expect(sql).toMatch(/'grant_used','step_reconciled','step_unknown_effect'\]/);
+  });
+
+  it('hai file còn lại của nhóm B (zalo_thu_hoi_tin, network_thuc_thi) KHÔNG lặp lại patch engine — không có literal step_unknown_effect trong DDL của chúng', () => {
+    for (const file of [FILE_ZALO_THU_HOI_TIN, FILE_NETWORK_THUC_THI]) {
+      const sql = docSqlKhongComment(file);
+      expect(sql, file).not.toMatch(/step_unknown_effect/);
+    }
   });
 });

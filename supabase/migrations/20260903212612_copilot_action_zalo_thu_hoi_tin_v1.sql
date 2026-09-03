@@ -16,6 +16,18 @@
 --
 -- BEFORE_DIGEST khac NULL - day la SUA mot tin nhan DA TON TAI, khong phai
 -- TAO.
+--
+-- F1 (review G5-C2 fix round 1) - RACE O DUONG DOC LAI. Ban dau doc "hang
+-- zalo_send_queue MOI NHAT cua hoi thoai" sau khi goi RPC goc - mot lan
+-- gui/thu hoi SONG SONG khac vao CUNG hoi thoai co the chen mot hang MOI HON,
+-- lam entity_id tro SAI. zalo_send_queue cua nhanh thu hoi KHONG duoc gan
+-- message_id (chi nhanh broadcast moi gan - xem 20260903212610), nen sua
+-- bang LIEN KET qua noi dung payload ma chinh RPC goc dong goi:
+-- `target_msg_id`/`target_cli_msg_id` = zalo_msg_id/cli_msg_id CUA DUNG tin
+-- nhan dang thu hoi (doc TRUOC khi goi RPC, tu v_before), cong voi cua so
+-- thoi gian `created_at >= v_moc` (chup NGAY TRUOC khi goi) lam tieu chi phu.
+-- Khong tim thay -> RAISE `external_effect_entity_not_found` TRUOC bat ky ghi
+-- audit/ledger nao.
 BEGIN;
 SET LOCAL lock_timeout = '15s';
 
@@ -145,6 +157,7 @@ DECLARE
   v_after      jsonb;
   v_audit_id   uuid;
   v_ledger_id  uuid;
+  v_moc        timestamptz;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
@@ -233,6 +246,7 @@ BEGIN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
 
+  v_moc := clock_timestamp();
   PERFORM public.zalo_recall_message(v_msg_id);
 
   -- READBACK tang (1): body phai da doi ngay trong DB.
@@ -244,16 +258,26 @@ BEGIN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
 
-  -- entity cho DOI SOAT la hang outbox tang (2), doc lai MOI NHAT theo cuoc
-  -- hoi thoai nay - RPC goc khong tra id.
+  -- entity cho DOI SOAT la hang outbox tang (2) - LIEN KET THAT qua
+  -- target_msg_id/target_cli_msg_id (F1, review G5-C2 fix round 1), khong
+  -- doan "moi nhat theo hoi thoai". Hai ve IS NOT DISTINCT FROM (khong phai
+  -- =) vi zalo_msg_id/cli_msg_id co the con NULL (tin chua tung dong bo len
+  -- Zalo) o ca hai phia - '=' voi NULL luon la NULL (khong bao gio khop),
+  -- se lam mot tin hop le nhung chua co zalo_msg_id khong bao gio doi soat
+  -- duoc. created_at >= v_moc la tieu chi phu chong trung khi ca hai id deu
+  -- NULL cung luc (nhieu lan thu hoi cung mot tin chua dong bo).
   SELECT id, to_jsonb(t) INTO v_queue_id, v_after
     FROM public.zalo_send_queue t
-   WHERE t.conversation_id = v_conv_id AND t.organization_id = v_org
-   ORDER BY t.created_at DESC, t.id DESC
+   WHERE t.conversation_id = v_conv_id
+     AND t.organization_id = v_org
+     AND t.created_at >= v_moc
+     AND (t.payload ->> 'target_msg_id') IS NOT DISTINCT FROM (v_before ->> 'zalo_msg_id')
+     AND (t.payload ->> 'target_cli_msg_id') IS NOT DISTINCT FROM (v_before ->> 'cli_msg_id')
+   ORDER BY t.created_at ASC
    LIMIT 1;
   IF v_queue_id IS NULL
      OR NULLIF(v_after ->> 'organization_id', '')::uuid IS DISTINCT FROM v_org THEN
-    RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
+    RAISE EXCEPTION 'external_effect_entity_not_found' USING ERRCODE = 'P0001';
   END IF;
 
   INSERT INTO public.ai_write_audit
@@ -293,7 +317,7 @@ END
 $thuc_thi_zalo_thu_hoi_tin$;
 
 COMMENT ON FUNCTION public.copilot_execute_zalo_thu_hoi_tin_v1(text, jsonb) IS
-  'direct_l5_v1/external_effect - tieu nonce, tu choi neu khong chay trong ke hoach, goi lai zalo_recall_message, doc lai zalo_messages.msg_type=sys roi doc hang zalo_send_queue moi nhat lam entity_id. Buoc dung o UNKNOWN_EFFECT.';
+  'direct_l5_v1/external_effect - tieu nonce, tu choi neu khong chay trong ke hoach, goi lai zalo_recall_message, doc lai zalo_messages.msg_type=sys, roi doc hang zalo_send_queue LIEN KET qua target_msg_id/target_cli_msg_id (khong doan moi nhat - F1 fix round 1) lam entity_id. Buoc dung o UNKNOWN_EFFECT.';
 
 REVOKE ALL ON FUNCTION public.copilot_execute_zalo_thu_hoi_tin_v1(text, jsonb)
   FROM PUBLIC;

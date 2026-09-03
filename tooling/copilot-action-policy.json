@@ -19,6 +19,7 @@
     "copilot_step_up_set_pin_v1": ["src/copilot/plan/stepUpClient.ts"],
     "copilot_step_up_unlock_v1": ["src/copilot/plan/stepUpClient.ts"],
     "copilot_step_up_reset_pin_v1": ["src/copilot/plan/stepUpClient.ts"],
+    "copilot_plan_reconcile_step_v1": ["src/copilot/plan/planClient.ts"],
     "copilot_standing_grant_create_v1": ["src/copilot/plan/standingGrantClient.ts"],
     "copilot_standing_grant_revoke_v1": ["src/copilot/plan/standingGrantClient.ts"],
     "copilot_standing_grants_revoke_all_v1": ["src/copilot/plan/standingGrantClient.ts"]

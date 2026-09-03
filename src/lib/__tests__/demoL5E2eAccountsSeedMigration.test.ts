@@ -128,3 +128,48 @@ describe('Idempotent theo Ý NGHĨA, không theo id cứng', () => {
     expect(doan).toMatch(/o\.revoked_at IS NULL/);
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Fix round 1 (review) — F3 (MED-LOW): nghiệm thu phải mirror safe-skip của
+// body, và KHÔNG hardcode tên vai trò.
+// ---------------------------------------------------------------------------
+describe('Fix round 1 — F3: member_type đọc ĐỘNG từ hàng chunha (không còn literal OWNER lệch với comment)', () => {
+  it('SELECT vai trò của chunha lấy luôn m.member_type vào v_chunha_member_type', () => {
+    const seed = migration.slice(migration.indexOf('DO $seed$'), migration.indexOf('$seed$;'));
+    expect(seed).toMatch(/SELECT rb\.role_id, rbs\.scope_id, m\.member_type/);
+    expect(seed).toContain('INTO v_chunha_role_id, v_chunha_scope_id, v_chunha_member_type');
+  });
+
+  it("INSERT organization_memberships dùng v_chunha_member_type — KHÔNG còn literal 'OWNER' tĩnh", () => {
+    const seed = migration.slice(migration.indexOf('DO $seed$'), migration.indexOf('$seed$;'));
+    expect(seed).toMatch(/SELECT ORG, SUPER_ADMIN, v_chunha_member_type, 'ACTIVE',/);
+    expect(seed).not.toMatch(/SELECT ORG, SUPER_ADMIN, 'OWNER', 'ACTIVE',/);
+  });
+});
+
+describe('Fix round 1 — F3: nghiệm thu mirror ĐỦ BA điều kiện bỏ-qua-an-toàn của body (org / super admin / vai trò chunha)', () => {
+  const nghiemThu = migration.slice(migration.indexOf('DO $nghiem_thu$'));
+
+  it('kiểm org tồn tại, RỒI email super admin khớp, RỒI super admin còn hợp lệ, RỒI demo.chunha còn vai trò — mỗi bước NOTICE+RETURN riêng, không RAISE EXCEPTION sớm', () => {
+    const iOrg = nghiemThu.search(/organizations WHERE id = ORG\) THEN\s*\n\s*RAISE NOTICE/);
+    const iEmail = nghiemThu.search(/v_super_email IS DISTINCT FROM 'nguyentamca165@gmail\.com' THEN/);
+    const iSuper = nghiemThu.search(/NOT EXISTS \(SELECT 1 FROM public\.super_admins WHERE user_id = SUPER_ADMIN\) THEN/);
+    const iChunha = nghiemThu.search(/v_chunha_role_id IS NULL THEN\s*\n\s*RAISE NOTICE/);
+    expect(iOrg).toBeGreaterThan(-1);
+    expect(iEmail).toBeGreaterThan(iOrg);
+    expect(iSuper).toBeGreaterThan(iEmail);
+    expect(iChunha).toBeGreaterThan(iSuper);
+  });
+
+  it('tra lại role_id/scope_id của demo.chunha ĐỘNG, giống hệt khối $seed$ (không hardcode tên vai trò)', () => {
+    expect(nghiemThu).toMatch(/u\.email = 'demo\.chunha@username\.ihomecrm\.local'/);
+    expect(nghiemThu).not.toContain("r.name = 'Chủ công ty'");
+    expect(nghiemThu).not.toMatch(/JOIN public\.organization_roles r ON r\.id = rb\.role_id/);
+  });
+
+  it('assertion cuối so khớp role_id + scope_id ĐỘNG (rb.role_id = v_chunha_role_id AND rbs.scope_id = v_chunha_scope_id), không so tên', () => {
+    expect(nghiemThu).toMatch(/rb\.role_id = v_chunha_role_id/);
+    expect(nghiemThu).toMatch(/rbs\.scope_id = v_chunha_scope_id/);
+  });
+});

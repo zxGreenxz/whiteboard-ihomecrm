@@ -11,9 +11,22 @@
 -- CA MANG (co the nhieu to chuc neu actor co quyen o nhieu noi, va tra ve chi
 -- mot con dem - khong the lap lai duoc "id nao thanh cong"). Wrapper CHI nhan
 -- DUNG MOT conversation_id, xac nhan no thuoc DUNG to chuc gan voi ke hoach,
--- roi doc lai hang zalo_send_queue MOI NHAT cua chinh hoi thoai do (cung giao
--- dich, ngay sau khi goi RPC) de co MOT entity_id xac dinh cho doi soat. Day
--- la mot dieu kien THEM, CHAT HON RPC goc, khong noi rong.
+-- roi tim CHINH XAC tin nhan RPC goc vua tao (khong doan "moi nhat") de co
+-- MOT entity_id xac dinh cho doi soat. Day la mot dieu kien THEM, CHAT HON
+-- RPC goc, khong noi rong.
+--
+-- F1 (review G5-C2 fix round 1) - RACE O DUONG DOC LAI. Ban dau doc "hang
+-- zalo_send_queue MOI NHAT cua hoi thoai" - mot lan gui SONG SONG khac (nguoi
+-- khac, hoac chinh actor gui tin thu hai) vao CUNG hoi thoai giua luc RPC goc
+-- INSERT va luc wrapper SELECT co the chen mot hang MOI HON, lam entity_id
+-- (va do do ca doi soat sau nay) tro SAI sang tin cua nguoi khac. Sua bang
+-- LIEN KET THAT: chup `v_moc := clock_timestamp()` truoc khi goi RPC goc, tim
+-- hang `zalo_messages` co `sent_by = actor` (cot DUY NHAT phan anh dung actor
+-- - `zalo_send_queue.user_id` la CHU SO HUU HOI THOAI, khong phai actor, da
+-- doi chieu than RPC goc) + `body` khop + `sent_at >= v_moc`, roi lay hang
+-- `zalo_send_queue` LIEN KET qua `message_id` (zalo_broadcast tu dat cot do).
+-- Khong tim thay -> RAISE `external_effect_entity_not_found` TRUOC bat ky ghi
+-- audit/ledger nao (coi la that bai, khong doan 'da_gui' gia).
 --
 -- VI SAO external_effect/UNKNOWN_EFFECT - `zalo_broadcast` chi XEP HANG tin
 -- vao `zalo_send_queue` (worker ngoai tien trinh DB moi la nguoi thuc gui qua
@@ -23,8 +36,10 @@
 -- `zalo_send_queue` (queued/processing -> con cho; sent -> DONE; failed ->
 -- FAILED).
 --
--- MUC 0 - MO RONG ENUM SO HANH DONG them 'step_reconciled'. Idempotent: chi
--- DROP+ADD lai CHECK khi chua co gia tri moi. Cong voi dam bao cot
+-- MUC 0 - MO RONG ENUM SO HANH DONG them 'step_reconciled' VA
+-- 'step_unknown_effect' (F4, review G5-C2 fix round 1 - buoc UNKNOWN_EFFECT
+-- ghi so bang su kien RIENG, khong dung chung 'step_done' voi buoc DONE
+-- that). Idempotent: chi DROP+ADD lai CHECK khi chua co gia tri moi. Cong voi dam bao cot
 -- pin_always da co (nhom A them, nhung file nay co the duoc kiem doc lap
 -- tren production chua co 20260903212600 - registry INSERT o duoi can cot
 -- do ton tai).
@@ -46,11 +61,16 @@ $them_cot_pin_always$;
 
 DO $mo_rong_ledger_event$
 BEGIN
+  -- F4 (review G5-C2 fix round 1): them ca 'step_unknown_effect' vao CUNG
+  -- dieu kien voi 'step_reconciled' - hai gia tri nay luon di doi (mang moi
+  -- CHOT DUY NHAT ca hai, xem chu thich duoi mang), nen chi can kiem SU CO
+  -- MAT cua mot trong hai la du de biet ca hai da co hay chua.
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
      WHERE conrelid = 'app_private.copilot_action_ledger'::regclass
        AND conname = 'copilot_action_ledger_event_check'
        AND pg_get_constraintdef(oid) LIKE '%step_reconciled%'
+       AND pg_get_constraintdef(oid) LIKE '%step_unknown_effect%'
   ) THEN
     ALTER TABLE app_private.copilot_action_ledger
       DROP CONSTRAINT IF EXISTS copilot_action_ledger_event_check;
@@ -61,7 +81,7 @@ BEGIN
         'plan_cancelled','plan_expired','action_executed','action_failed',
         'policy_changed','capability_changed','step_up_pin_set','step_up_verified',
         'step_up_locked','step_up_unlocked','grant_created','grant_revoked',
-        'grant_used','step_reconciled']));
+        'grant_used','step_reconciled','step_unknown_effect']));
   END IF;
 END
 $mo_rong_ledger_event$;
@@ -390,8 +410,13 @@ BEGIN
            executed_at = clock_timestamp()
      WHERE plan_id = v_plan.id AND step_no = p_step_no;
 
+    -- F4 (review G5-C2 fix round 1): su kien RIENG cho buoc UNKNOWN_EFFECT -
+    -- khong con dung chung 'step_done' (truoc day phan biet DUY NHAT qua
+    -- outcome.step_status, de lan voi buoc DONE that trong bat ky truy van so
+    -- nao loc theo event='step_done').
     v_ledger_id := app_private.copilot_ledger_append_v1(jsonb_build_object(
-      'event',               'step_done',
+      'event',               CASE WHEN v_buoc_status = 'UNKNOWN_EFFECT'
+                                   THEN 'step_unknown_effect' ELSE 'step_done' END,
       'organization_id',     v_plan.organization_id,
       'plan_id',             v_plan.id,
       'step_no',             p_step_no,
@@ -902,6 +927,8 @@ DECLARE
   v_after      jsonb;
   v_audit_id   uuid;
   v_ledger_id  uuid;
+  v_moc        timestamptz;
+  v_msg_id     uuid;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
@@ -991,6 +1018,12 @@ BEGIN
   END IF;
 
   -- before_digest NULL - hanh dong nay GUI TIN MOI, khong co "truoc".
+  -- F1 (review G5-C2 fix round 1): chup MOC THOI GIAN truoc khi goi RPC goc -
+  -- doc lai o duoi PHAI loc theo moc nay, khong duoc doc "hang moi nhat cua
+  -- hoi thoai" tran - hai buoi gui SONG SONG (nguoi khac, hoac worker khac)
+  -- vao CUNG hoi thoai co the chen mot hang MOI HON giua luc RPC goc INSERT
+  -- va luc SELECT doc lai, lam entity_id tro sang tin CUA NGUOI KHAC.
+  v_moc := clock_timestamp();
   v_count := public.zalo_broadcast(ARRAY[v_conv_id], v_body);
   IF COALESCE(v_count, 0) < 1 THEN
     -- RPC goc am tham bo qua (khong quyen/khong ton tai) thay vi RAISE - buoc
@@ -1000,16 +1033,39 @@ BEGIN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
 
-  -- Doc lai hang zalo_send_queue MOI NHAT cua CHINH hoi thoai nay, cung giao
-  -- dich - dung duy nhat de lay mot entity_id xac dinh (RPC goc khong tra id).
+  -- Tim CHINH XAC tin nhan RPC goc vua tao CHO ACTOR NAY (F1, review G5-C2 fix
+  -- round 1) - roi lay hang outbox LIEN KET THAT qua message_id
+  -- (zalo_broadcast tu dat message_id khi INSERT zalo_send_queue - xem than
+  -- RPC goc). KHONG loc zalo_send_queue.user_id = actor: da doi chieu lai
+  -- than RPC goc (ca ban production lan ban 20260626000008) - cot do luon la
+  -- c.user_id (CHU SO HUU HOI THOAI), khong phai actor goi ham. Loc theo cot
+  -- do se tu choi SAI moi lan actor khac chu so huu hoi thoai (vd. admin thao
+  -- tac thay) - mot ca that, khong phai canh hiem. `sent_by` tren zalo_messages
+  -- moi la cot phan anh DUNG actor.
+  SELECT id INTO v_msg_id
+    FROM public.zalo_messages m
+   WHERE m.conversation_id = v_conv_id
+     AND m.organization_id = v_org
+     AND m.sent_by = v_actor
+     AND m.body = v_body
+     AND m.sent_at >= v_moc
+   ORDER BY m.sent_at ASC
+   LIMIT 1;
+  IF v_msg_id IS NULL THEN
+    -- Khong tim thay tin nhan CUA CHINH giao dich nay - coi la THAT BAI ro
+    -- rang (chua ghi audit/ledger nao o day), khong doan 'da_gui' gia.
+    RAISE EXCEPTION 'external_effect_entity_not_found' USING ERRCODE = 'P0001';
+  END IF;
+
   SELECT id, to_jsonb(t) INTO v_queue_id, v_after
     FROM public.zalo_send_queue t
-   WHERE t.conversation_id = v_conv_id AND t.organization_id = v_org
-   ORDER BY t.created_at DESC, t.id DESC
+   WHERE t.message_id = v_msg_id
+     AND t.organization_id = v_org
+   ORDER BY t.created_at ASC
    LIMIT 1;
   IF v_queue_id IS NULL
      OR NULLIF(v_after ->> 'organization_id', '')::uuid IS DISTINCT FROM v_org THEN
-    RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
+    RAISE EXCEPTION 'external_effect_entity_not_found' USING ERRCODE = 'P0001';
   END IF;
 
   INSERT INTO public.ai_write_audit
@@ -1048,7 +1104,7 @@ END
 $thuc_thi_zalo_phat_song$;
 
 COMMENT ON FUNCTION public.copilot_execute_zalo_phat_song_v1(text, jsonb) IS
-  'direct_l5_v1/external_effect - tieu nonce, tu choi neu khong chay trong ke hoach, goi lai zalo_broadcast voi mang MOT phan tu, doc lai hang zalo_send_queue moi nhat cua hoi thoai lam entity_id. Buoc dung o UNKNOWN_EFFECT (khong DONE) - doi soat that o copilot_plan_reconcile_step_v1.';
+  'direct_l5_v1/external_effect - tieu nonce, tu choi neu khong chay trong ke hoach, goi lai zalo_broadcast voi mang MOT phan tu, tim CHINH XAC tin nhan vua tao (sent_by=actor, khong doan moi nhat - F1 fix round 1) roi lay hang zalo_send_queue lien ket qua message_id lam entity_id. Buoc dung o UNKNOWN_EFFECT (khong DONE) - doi soat that o copilot_plan_reconcile_step_v1.';
 
 REVOKE ALL ON FUNCTION public.copilot_execute_zalo_phat_song_v1(text, jsonb)
   FROM PUBLIC;
@@ -1161,8 +1217,9 @@ BEGIN
      WHERE conrelid = 'app_private.copilot_action_ledger'::regclass
        AND conname = 'copilot_action_ledger_event_check'
        AND pg_get_constraintdef(oid) LIKE '%step_reconciled%'
+       AND pg_get_constraintdef(oid) LIKE '%step_unknown_effect%'
   ) THEN
-    RAISE EXCEPTION 'enum copilot_action_ledger.event chua co step_reconciled';
+    RAISE EXCEPTION 'enum copilot_action_ledger.event chua co step_reconciled/step_unknown_effect';
   END IF;
 
   IF to_regrole('anon') IS NOT NULL THEN

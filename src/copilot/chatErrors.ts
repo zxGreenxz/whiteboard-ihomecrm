@@ -128,6 +128,7 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['pin_locked', 'Mã PIN đang bị khoá do nhập sai nhiều lần. Hãy thử lại sau.'],
   ['pin_invalid', 'Mã PIN không đúng.'],
   ['step_up_superadmin_only', 'Chỉ super admin mới đặt/đổi/mở khoá/reset được PIN step-up.'],
+  ['step_up_reset_self_forbidden', 'Không tự reset PIN của chính mình được — cần một super admin khác thực hiện.'],
 
   // — Uỷ quyền đứng (G5-B, điểm nối #4) — MỌI mã dài chứa một mã chung ở dưới
   // (`not_permitted`, `reason_required`) phải đứng TRƯỚC mã chung đó trong
@@ -188,6 +189,7 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['system_role_readonly', 'Vai trò hệ thống không sửa được — hãy nhân bản rồi sửa bản sao.'],
   // — Đối soát hiệu ứng ngoài (G5-C2, nhóm B) —
   ['step_not_unknown_effect', 'Bước này không ở trạng thái chờ đối soát — có thể đã được đối soát ở nơi khác.'],
+  ['external_effect_entity_not_found', 'Không xác định chắc chắn được đúng bản ghi vừa gửi (Zalo) — dừng lại để tránh đối soát nhầm. Hãy lập lại kế hoạch.'],
   ['external_effect_failed', 'Hiệu ứng ngoài (Zalo/Network Center) đã thất bại thật sự. Kế hoạch dừng lại.'],
 
   // — Cửa chung của mọi hành động —

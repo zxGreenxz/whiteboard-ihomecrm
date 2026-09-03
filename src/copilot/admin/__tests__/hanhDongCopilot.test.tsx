@@ -333,7 +333,10 @@ describe('TheStepUpPin — render thuần', () => {
     onDoiMoKhoaLyDo: () => {},
     onMoKhoa: () => {},
     dangReset: false,
+    resetXacNhan: '',
+    onDoiResetXacNhan: () => {},
     onReset: () => {},
+    laMucTieuChinhMinh: false,
   };
 
   it('vẽ thẻ với testid gốc + ô PIN mới + ô mật khẩu re-auth', () => {
@@ -391,6 +394,67 @@ describe('TheStepUpPin — render thuần', () => {
   it('không phải super admin ⇒ KHÔNG vẽ nút Reset PIN', () => {
     const html = renderToStaticMarkup(<TheStepUpPin {...props} laSuperAdmin={false} />);
     expect(html).not.toContain('copilot-admin-pin-reset-submit');
+  });
+
+  // F6 (review G5-C2 fix round 1) — nút phá huỷ đòi gõ tay "RESET".
+  function laNutBiKhoa(html: string, testid: string): boolean {
+    const idx = html.indexOf(`data-testid="${testid}"`);
+    expect(idx, `khong tim thay data-testid="${testid}"`).toBeGreaterThan(-1);
+    // Lùi lại tới thẻ <button mở gần nhất rồi tìm ĐÚNG thuộc tính disabled=""
+    // TRƯỚC dấu '>' — KHÔNG chỉ tìm chuỗi con "disabled": class Tailwind của
+    // Button ("disabled:opacity-50"...) chứa chính chuỗi đó dù nút không hề
+    // bị khoá, nên .includes('disabled') báo dương tính giả.
+    const mo = html.lastIndexOf('<button', idx);
+    const dong = html.indexOf('>', idx);
+    return html.slice(mo, dong).includes('disabled=""');
+  }
+
+  it('đủ user_id + lý do nhưng CHƯA gõ "RESET" ⇒ nút Reset PIN vẫn bị khoá', () => {
+    const html = renderToStaticMarkup(
+      <TheStepUpPin
+        {...props}
+        laSuperAdmin
+        moKhoaUserId="00000000-0000-0000-0000-000000000001"
+        moKhoaLyDo="nguoi dung bao mat PIN"
+        resetXacNhan=""
+      />,
+    );
+    expect(laNutBiKhoa(html, 'copilot-admin-pin-reset-submit')).toBe(true);
+  });
+
+  it('gõ đúng "RESET" + đủ user_id/lý do + KHÔNG phải chính mình ⇒ nút Reset PIN mở khoá', () => {
+    const html = renderToStaticMarkup(
+      <TheStepUpPin
+        {...props}
+        laSuperAdmin
+        moKhoaUserId="00000000-0000-0000-0000-000000000001"
+        moKhoaLyDo="nguoi dung bao mat PIN"
+        resetXacNhan="RESET"
+      />,
+    );
+    expect(laNutBiKhoa(html, 'copilot-admin-pin-reset-submit')).toBe(false);
+  });
+
+  it('mục tiêu là CHÍNH MÌNH (F2) ⇒ nút Reset PIN vẫn khoá dù đã gõ đúng "RESET", và hiện cảnh báo', () => {
+    const html = renderToStaticMarkup(
+      <TheStepUpPin
+        {...props}
+        laSuperAdmin
+        moKhoaUserId="00000000-0000-0000-0000-000000000001"
+        moKhoaLyDo="toi tu reset cho toi"
+        resetXacNhan="RESET"
+        laMucTieuChinhMinh
+      />,
+    );
+    expect(laNutBiKhoa(html, 'copilot-admin-pin-reset-submit')).toBe(true);
+    expect(html).toContain('copilot-admin-pin-reset-self-warning');
+  });
+
+  it('KHÔNG phải mục tiêu chính mình ⇒ KHÔNG hiện cảnh báo tự-reset', () => {
+    const html = renderToStaticMarkup(
+      <TheStepUpPin {...props} laSuperAdmin laMucTieuChinhMinh={false} />,
+    );
+    expect(html).not.toContain('copilot-admin-pin-reset-self-warning');
   });
 
   it('KHÔNG chuỗi PIN/mật khẩu nào rò vào HTML (chỉ value do props điều khiển)', () => {

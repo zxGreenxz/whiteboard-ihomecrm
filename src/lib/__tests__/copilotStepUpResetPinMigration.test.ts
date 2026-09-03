@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { docSqlKhongComment, thanHam, chuKyHam } from './helpers/sqlTestUtils';
+import { docSql, docSqlKhongComment, thanHam, chuKyHam } from './helpers/sqlTestUtils';
 
 // Bổ sung G5-C2 (theo yêu cầu điều phối viên — E2E review: mất PIN thì không
 // có đường phục hồi). `copilot_step_up_reset_pin_v1` khác hẳn
@@ -73,7 +73,7 @@ describe('copilot_step_up_reset_pin_v1 — XOÁ HẲN hàng PIN (khác unlock_v1
 describe('copilot_step_up_reset_pin_v1 — mở rộng enum sổ hành động', () => {
   it("event CHECK thêm 'step_up_pin_reset' (idempotent DROP+ADD có điều kiện)", () => {
     expect(sql).toMatch(/DROP CONSTRAINT IF EXISTS copilot_action_ledger_event_check;/);
-    expect(sql).toMatch(/'step_reconciled','step_up_pin_reset'\]/);
+    expect(sql).toMatch(/'step_reconciled','step_unknown_effect','step_up_pin_reset'\]/);
   });
 
   it("org_required CHECK miễn organization_id cho step_up_pin_reset (giống policy_changed/step_up_pin_set/step_up_unlocked/step_up_locked)", () => {
@@ -113,5 +113,51 @@ describe('copilot_step_up_reset_pin_v1 — nghiệm thu xác nhận enum + ACL',
     expect(than).toMatch(/copilot_action_ledger_event_check/);
     expect(than).toMatch(/copilot_action_ledger_org_required/);
     expect(than).toMatch(/has_function_privilege\('anon', 'public\.copilot_step_up_reset_pin_v1/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix round 1 (review) — F2 (MED): cấm tự reset PIN.
+// ---------------------------------------------------------------------------
+describe('Fix round 1 — F2: cấm tự reset (p_user_id = auth.uid())', () => {
+  const than = thanHam(sql, 'copilot_step_up_reset_pin_v1');
+
+  it('RAISE step_up_reset_self_forbidden khi p_user_id = v_actor', () => {
+    expect(than).toMatch(
+      /IF p_user_id = v_actor THEN\s*\n\s*RAISE EXCEPTION 'step_up_reset_self_forbidden' USING ERRCODE = '42501';/,
+    );
+  });
+
+  it('kiểm tự-reset đứng SAU user_required, TRƯỚC reason_required và TRƯỚC mọi DELETE', () => {
+    const iUser = than.search(/RAISE EXCEPTION 'user_required'/);
+    const iSelf = than.search(/RAISE EXCEPTION 'step_up_reset_self_forbidden'/);
+    const iReason = than.search(/RAISE EXCEPTION 'reason_required'/);
+    const iDelete = than.search(/DELETE FROM app_private\.copilot_step_up_pins/);
+    expect(iUser).toBeGreaterThan(-1);
+    expect(iSelf).toBeGreaterThan(iUser);
+    expect(iReason).toBeGreaterThan(iSelf);
+    expect(iDelete).toBeGreaterThan(iReason);
+  });
+
+  it('header migration ghi rõ đánh đổi (super admin duy nhất mất PIN → cần người vận hành DB, không tự động hoá)', () => {
+    // Đọc bản THÔ (còn bình luận) — ghi chú đánh đổi nằm trong comment đầu
+    // file, đã bị lột mất ở biến `sql` (docSqlKhongComment) dùng cho phần còn lại.
+    const raw = docSql(FILE);
+    expect(raw).toContain('DELETE FROM app_private.copilot_step_up_pins WHERE');
+    expect(raw).toContain("user_id = '<uid>'");
+    expect(raw).toContain('Management API/psql');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fix round 1 (review) — F7: copilot_plan_reconcile_step_v1 vào rpcAllowlist.
+// ---------------------------------------------------------------------------
+describe('Fix round 1 — F7: rpcAllowlist có copilot_plan_reconcile_step_v1 (chỉ src/copilot/plan/planClient.ts)', () => {
+  it('tooling/copilot-action-policy.json khai đúng file cho phép', () => {
+    const raw = docSql('tooling/copilot-action-policy.json');
+    const policy = JSON.parse(raw) as { rpcAllowlist: Record<string, string[]> };
+    expect(policy.rpcAllowlist.copilot_plan_reconcile_step_v1).toEqual([
+      'src/copilot/plan/planClient.ts',
+    ]);
   });
 });

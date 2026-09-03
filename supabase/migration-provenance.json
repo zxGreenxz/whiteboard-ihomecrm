@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T22:11:03.021Z",
+  "generatedAt": "2026-09-03T22:59:41.254Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -9345,7 +9345,7 @@
       "version": "20260903212610",
       "name": "copilot_action_zalo_phat_song_v1",
       "scheme": "timestamp14",
-      "sha256": "9bf0552729a5b0f29d927665b312dfd0878a6a43694da3cf98762f55e443d112",
+      "sha256": "1d52b75f16185b86558701aa4137344f0de796f82126197f2a8e3adbb636b69e",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9358,7 +9358,7 @@
       "version": "20260903212612",
       "name": "copilot_action_zalo_thu_hoi_tin_v1",
       "scheme": "timestamp14",
-      "sha256": "3a9aa344056a2d391c8e1c5e81fb1af1988deb241c8ce03ab2af1934e7af5ca1",
+      "sha256": "702b2cc1d9360a005412c7ca2930228b99234f4a72e30c4529602ad9368a2d3a",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9384,7 +9384,7 @@
       "version": "20260903220254",
       "name": "demo_l5_e2e_accounts_seed_v1",
       "scheme": "timestamp14",
-      "sha256": "f3fd3b644b112452b79f08c53bc472acd7e221d09c932da6d8be2eec5ce5d3a9",
+      "sha256": "2bde6c5ab8c3254be8a7066ed4a088c16fd3bdb6fb9244651484ba66573a965f",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9396,7 +9396,7 @@
       "version": "20260903220855",
       "name": "copilot_step_up_reset_pin_v1",
       "scheme": "timestamp14",
-      "sha256": "0c35552f04f7c8be26d6027864da0b3c8dffb1b31bf82ff8bda999e704aa3a89",
+      "sha256": "72402b2b00f8978ed70b8727fada0d59a8083f9d724ef639027b31e6230efbf2",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
