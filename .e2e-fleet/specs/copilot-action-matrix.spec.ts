@@ -41,6 +41,27 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
  *   trạng thái dọn dẹp mà brief mô tả. Thứ DUY NHẤT phải hoàn nguyên là cờ
  *   rollout — xem `khoiPhucCo` bên dưới.
  *
+ * ⚠ SPEC NÀY PHẢI CHẠY MỘT MÌNH — KHÔNG CÙNG LƯỢT `playwright test` VỚI SPEC KHÁC
+ *   Hai ca kill switch TẮT cờ `action:income_expense.create_draft` ở phạm vi
+ *   TOÀN CỤC khoảng một giây. `copilot-confirmation.spec.ts` ghi đúng action đó
+ *   trên đúng org đó; chạy song song thì cửa sổ một giây kia làm thẻ xác nhận
+ *   của nó không bao giờ hiện, và dòng sổ `action_executed` của nó rơi vào giữa
+ *   hai lượt đếm `soTruoc`/`soSau` ở đây. Cả hai bên cùng đỏ vì một lý do bịa.
+ *   `.github/workflows/copilot-e2e.yml` vì vậy chạy spec này ở MỘT BƯỚC RIÊNG,
+ *   sau ba spec kia, với `FLEET_WORKERS=1`. `test.describe.configure({ mode:
+ *   'serial' })` chỉ xếp hàng TRONG file — nó không biết gì về file khác.
+ *   Lớp thứ hai: mọi phép đếm sổ ở đây đều LỌC theo `action_id` + `entity_id`
+ *   (`dongMoiCua`), nên một dòng lạ không làm hỏng con số ngay cả khi ai đó gộp
+ *   lại. Hai lớp, vì lớp đầu là quy ước còn lớp sau là phép đo.
+ *
+ * KHOẢNG TRỐNG CỦA NỀN TẢNG: `expires_at` KHÔNG ĐỌC ĐƯỢC
+ *   Role `authenticated` không có đường nào đọc `copilot_feature_flags.expires_at`
+ *   (bảng không cấp SELECT cho role nào ngoài postgres/service_role, và
+ *   `get_my_copilot_availability_v1` chỉ trả `state`/`canary_org`/`revision`).
+ *   Đó là lý do spec KHÔNG lật cờ canary — xem khối `CO_KILL_SWITCH`. Nếu sau
+ *   này có một RPC đọc được đủ hàng cờ, ràng buộc đó biến mất và spec có thể lật
+ *   thẳng cờ của hành động đang đo.
+ *
  * CHẠY:
  *   cd .e2e-fleet && FLEET_BASE_URL=<preview của commit đang review> \
  *     EXPECTED_SOURCE_SHA=<sha 40 hex của bản đó> \
@@ -56,12 +77,14 @@ test.describe.configure({ mode: 'serial' });
 
 const ORG_DEMO = 'dddd0000-0000-4000-8000-000000000001';
 /**
- * Một org CÓ THẬT mà tài khoản DEMO không thuộc về. Dùng để chứng minh cửa
- * chặn, và AN TOÀN vì nó fail-closed hai lớp: cờ `income_expense.annotate` gắn
- * canary DEMO nên cổng từ chối mọi org khác TRƯỚC khi hỏi tới quyền — không có
- * đường nào để lượt gọi này ghi được gì vào công ty thật.
+ * Một org KHÔNG PHẢI DEMO. Cố ý là UUID TỔNG HỢP, không phải id công ty thật:
+ * phép đo ở đây là "cửa có đóng không", và cửa đóng ở cùng một chỗ cho mọi org
+ * khác DEMO (cờ `income_expense.annotate` gắn canary DEMO nên
+ * `copilot_action_gate_v1` từ chối TRƯỚC khi hỏi tới quyền). Nhét id công ty
+ * thật vào đây chỉ thêm một đường để một ngày nào đó spec ghi nhầm vào sổ của
+ * người ta, mà không mua thêm được bằng chứng nào.
  */
-const ORG_KHAC = 'aaaa0000-0000-4000-8000-000000000001';
+const ORG_KHAC = 'ffffffff-0000-4000-8000-0000000000ff';
 
 const HANH_DONG = 'income_expense.annotate';
 const RPC_XEM_TRUOC = 'copilot_preview_income_expense_annotate_v1';
@@ -176,6 +199,13 @@ function loi(kq: KetQuaRpc): string {
   return typeof m === 'string' ? m : JSON.stringify(kq.body);
 }
 
+/** SQLSTATE PostgREST trả về. Đo kèm với câu lỗi: một chuỗi khớp `not_permitted`
+ *  có thể đến từ một lỗi hoàn toàn khác, mã thì không. */
+function maLoi(kq: KetQuaRpc): string | undefined {
+  const c = (kq.body as { code?: unknown } | null)?.code;
+  return typeof c === 'string' ? c : undefined;
+}
+
 async function goiRpc(jwt: string, ten: string, args: unknown): Promise<KetQuaRpc> {
   const { goc, apikey } = api();
   const res = await fetch(`${goc}/rest/v1/rpc/${ten}`, {
@@ -284,6 +314,28 @@ async function soHanhDong(jwt: string, gioiHan = 50): Promise<DongSo[]> {
   return kq.body as DongSo[];
 }
 
+/**
+ * Dòng sổ MỚI, đã lọc theo `action_id` (+ `entity_id` nếu có).
+ *
+ * Lọc chứ không so trần hai danh sách: `copilot_action_ledger_list_v1` trả sổ
+ * của cả tổ chức (với super admin) hoặc của cả người dùng (với người thường),
+ * nên một lượt ghi của spec KHÁC — hay của chính con người đang dùng DEMO —
+ * chen vào giữa hai lượt đọc sẽ làm phép đếm sai mà không nói được vì sao. Phép
+ * đo phải hỏi đúng câu nó cần: "hành động NÀY trên phiếu NÀY đã thêm mấy dòng".
+ */
+function dongMoiCua(
+  truoc: DongSo[],
+  sau: DongSo[],
+  loc: { actionId: string; entityId?: string },
+): DongSo[] {
+  return sau.filter(
+    (d) =>
+      !truoc.some((c) => c.id === d.id) &&
+      d.action_id === loc.actionId &&
+      (loc.entityId === undefined || d.entity_id === loc.entityId),
+  );
+}
+
 async function demAudit(jwt: string, phieu: string): Promise<number> {
   const rows = await docBang(
     jwt,
@@ -330,28 +382,91 @@ async function xemTruocTaoPhieu(jwt: string, ten: string): Promise<KetQuaRpc> {
 // Cờ rollout — lật và KHÔI PHỤC
 // ---------------------------------------------------------------------------
 
-async function trangThaiCo(jwtSys: string): Promise<{ revision: number; state: string }> {
+async function trangThaiCoTrenOrg(
+  jwtSys: string,
+  org: string,
+): Promise<{ revision: number; state: string }> {
   const kq = await goiRpc(jwtSys, 'get_my_copilot_availability_v1', {
-    p_organization_id: ORG_DEMO,
+    p_organization_id: org,
   });
-  expect(kq.status, `Đọc availability: ${loi(kq)}`).toBe(200);
+  expect(kq.status, `Đọc availability (${org}): ${loi(kq)}`).toBe(200);
   const body = kq.body as { revision: number; states: Record<string, string> };
   return { revision: body.revision, state: body.states[`action:${CO_KILL_SWITCH}`] };
 }
 
+async function trangThaiCo(jwtSys: string): Promise<{ revision: number; state: string }> {
+  return trangThaiCoTrenOrg(jwtSys, ORG_DEMO);
+}
+
+/**
+ * TIỀN ĐỀ trước khi được phép lật cờ: cờ phải đang `enabled` VÀ KHÔNG
+ * canary-scoped — vì chỉ khi đó việc bật lại (`enabled`, canary NULL, hạn NULL)
+ * mới là hoàn nguyên CHÍNH XÁC. Lật một cờ canary rồi bật lại là NỚI nó thành
+ * bật-toàn-cục-vĩnh-viễn; thà bỏ ca còn hơn.
+ *
+ * `canary_org` KHÔNG đọc được trực tiếp (xem khối "KHOẢNG TRỐNG CỦA NỀN
+ * TẢNG" ở đầu file), nên nó được SUY ra: `get_my_copilot_availability_v1` hạ
+ * `state` xuống `disabled` cho mọi org KHÁC canary. Hỏi hai org — DEMO và một org
+ * ACTIVE bất kỳ khác — mà cả hai cùng thấy `enabled` thì `canary_org IS NULL`. Và
+ * canary NULL kéo theo hạn NULL, vì chính RPC cấm
+ * `p_canary_org IS NULL AND p_expires_at IS NOT NULL`.
+ *
+ * Không tìm được org thứ hai ⇒ KHÔNG CHỨNG MINH ĐƯỢC, nên cũng là bỏ ca —
+ * "không đo được" không phải "an toàn".
+ */
+async function tienDeLatCo(jwtSys: string): Promise<{ dat: boolean; lyDo: string }> {
+  const demo = await trangThaiCoTrenOrg(jwtSys, ORG_DEMO);
+  if (demo.state !== 'enabled') {
+    return {
+      dat: false,
+      lyDo: `cờ action:${CO_KILL_SWITCH} đang ở "${demo.state}" chứ không phải "enabled" — `
+        + 'spec không biết phải trả nó về trạng thái nào',
+    };
+  }
+  const orgs = await docBang(
+    jwtSys,
+    `organizations?status=eq.ACTIVE&id=neq.${ORG_DEMO}&select=id&limit=1`,
+  );
+  const orgKhac = orgs[0]?.id as string | undefined;
+  if (!orgKhac) {
+    return {
+      dat: false,
+      lyDo: 'không có org ACTIVE nào khác DEMO để suy ra canary_org — không chứng minh '
+        + 'được rằng bật lại là hoàn nguyên chính xác',
+    };
+  }
+  const khac = await trangThaiCoTrenOrg(jwtSys, orgKhac);
+  if (khac.state !== 'enabled') {
+    return {
+      dat: false,
+      lyDo: `cờ action:${CO_KILL_SWITCH} đang canary/có hạn (org khác thấy "${khac.state}") — `
+        + 'lật nó rồi bật lại sẽ NỚI nó thành bật toàn cục vĩnh viễn',
+    };
+  }
+  return { dat: true, lyDo: '' };
+}
+
 async function datCo(jwtSys: string, state: 'disabled' | 'shadow' | 'enabled'): Promise<KetQuaRpc> {
-  const hienTai = await trangThaiCo(jwtSys);
-  return goiRpc(jwtSys, 'set_copilot_feature_flag_v2', {
-    p_scope: 'action',
-    p_contract_id: CO_KILL_SWITCH,
-    p_state: state,
-    // CAS trên revision TOÀN CỤC (`copilot_feature_rollout_revision_seq`), không
-    // phải revision của hàng — đọc lại ngay trước mỗi bước, không cache.
-    p_expected_revision: hienTai.revision,
-    p_canary_org: null,
-    p_expires_at: null,
-    ...LY_DO_LAT_CO,
-  });
+  // Thử tối đa hai lượt: `copilot_rollout_stale_revision` nghĩa là có ai đó vừa
+  // đổi MỘT cờ nào đó (revision là số đếm TOÀN CỤC, không riêng cờ này), nên
+  // đọc lại rồi bấm tiếp là đúng — không phải nuốt lỗi.
+  let kq: KetQuaRpc = { status: 0, body: null };
+  for (let i = 0; i < 2; i += 1) {
+    const hienTai = await trangThaiCo(jwtSys);
+    kq = await goiRpc(jwtSys, 'set_copilot_feature_flag_v2', {
+      p_scope: 'action',
+      p_contract_id: CO_KILL_SWITCH,
+      p_state: state,
+      // CAS trên revision TOÀN CỤC (`copilot_feature_rollout_revision_seq`), không
+      // phải revision của hàng — đọc lại ngay trước mỗi bước, không cache.
+      p_expected_revision: hienTai.revision,
+      p_canary_org: null,
+      p_expires_at: null,
+      ...LY_DO_LAT_CO,
+    });
+    if (kq.status === 200 || !loi(kq).includes('stale_revision')) return kq;
+  }
+  return kq;
 }
 
 /**
@@ -440,12 +555,11 @@ test('ca 1 — chủ DEMO: xem trước rồi thực thi ⇒ đúng 1 dòng audi
   expect(await demAudit(jwt, phieu), 'Phải thêm ĐÚNG một dòng ai_write_audit').toBe(auditTruoc + 1);
 
   const soSau = await soHanhDong(jwt);
-  const dongMoi = soSau.filter((d) => !soTruoc.some((c) => c.id === d.id));
+  const dongMoi = dongMoiCua(soTruoc, soSau, { actionId: HANH_DONG, entityId: phieu });
   expect(
     dongMoi.map((d) => d.event),
     'Sổ phải thêm đúng một dòng action_executed',
   ).toEqual(['action_executed']);
-  expect(dongMoi[0].action_id).toBe(HANH_DONG);
   expect(dongMoi[0].id).toBe(kq.ledger_id);
   expect(dongMoi[0].audit_id).toBe(kq.audit_id);
   expect(dongMoi[0].entity_id).toBe(phieu);
@@ -474,7 +588,7 @@ test('ca 2 — quản lý có quyền theo TOÀ: thực thi được, ảnh ch�
   expect(lam.status, `Thực thi (quanly): ${loi(lam)}`).toBe(200);
 
   const soSau = await soHanhDong(jwt);
-  const dongMoi = soSau.filter((d) => !soTruoc.some((c) => c.id === d.id));
+  const dongMoi = dongMoiCua(soTruoc, soSau, { actionId: HANH_DONG, entityId: phieu });
   expect(dongMoi).toHaveLength(1);
   const anh = dongMoi[0].permission_snapshot as Record<string, unknown>;
   expect(anh, 'Dòng sổ thiếu permission_snapshot').toBeTruthy();
@@ -499,6 +613,7 @@ test('ca 3 — thiếu quyền: cổng chặn ở XEM TRƯỚC và sổ không t
   const sys = await token('sysadmin');
   const bChan = await xemTruoc(sys, trongPhamVi, ghiChuRieng('ca3-sysadmin'));
   expect(bChan.status, `Super admin KHÔNG được ghi khi thiếu quyền: ${loi(bChan)}`).toBe(403);
+  expect(maLoi(bChan), 'Phải là 42501 (từ chối quyền), không phải một lỗi khác tình cờ có chữ đó').toBe('42501');
   expect(loi(bChan)).toContain('not_permitted');
 
   // (b) Quản lý ĐÚNG công ty nhưng phiếu nằm ở toà ngoài phạm vi.
@@ -506,14 +621,17 @@ test('ca 3 — thiếu quyền: cổng chặn ở XEM TRƯỚC và sổ không t
   const soTruoc = await soHanhDong(ql);
   const ngoaiToa = await xemTruoc(ql, ngoaiPhamVi, ghiChuRieng('ca3-ngoai-toa'));
   expect(ngoaiToa.status, `Phiếu ngoài phạm vi toà phải bị chặn: ${loi(ngoaiToa)}`).toBe(403);
+  expect(maLoi(ngoaiToa)).toBe('42501');
   expect(loi(ngoaiToa)).toContain('not_permitted');
 
   const soSau = await soHanhDong(ql);
   expect(
-    soSau.filter((d) => !soTruoc.some((c) => c.id === d.id)),
+    dongMoiCua(soTruoc, soSau, { actionId: HANH_DONG }),
     'Xem trước bị từ chối mà vẫn sinh dòng sổ',
   ).toEqual([]);
-  expect(await ghiChuHienTai(chu, ngoaiPhamVi)).not.toContain('ca3-ngoai-toa');
+  // `?? ''`: phiếu neo này có thể còn ghi chú NULL (chưa ca nào annotate nó bao
+  // giờ). `toContain` trên `null` ném TypeError và ca đỏ vì một lý do bịa.
+  expect((await ghiChuHienTai(chu, ngoaiPhamVi)) ?? '').not.toContain('ca3-ngoai-toa');
 });
 
 test('ca 4 — công ty khác và danh tính khác: cả hai cửa đều đóng', async () => {
@@ -540,6 +658,7 @@ test('ca 4 — công ty khác và danh tính khác: cả hai cửa đều đóng
     p_payload: canonicalCua(xem),
   });
   expect(trom.status, `Nonce của người khác phải vô dụng: ${loi(trom)}`).toBe(403);
+  expect(maLoi(trom)).toBe('42501');
   expect(loi(trom)).toContain('confirmation_not_found');
   expect(await ghiChuHienTai(chu, phieu), 'Phiếu bị đổi bởi một lượt gọi lẽ ra bị chặn').toBe(
     truocDo,
@@ -578,6 +697,8 @@ test('ca 5 — payload bị sửa sau khi xem trước ⇒ payload_changed (hash
 test('ca 6 — thu hồi GIỮA xem trước và thực thi ⇒ copilot_action_disabled, không ghi gì', async () => {
   const jwt = await token('chunha');
   const sys = await token('sysadmin');
+  const tienDe = await tienDeLatCo(sys);
+  test.skip(!tienDe.dat, `Không lật cờ được: ${tienDe.lyDo}`);
 
   const duong = duongDemTheoTen(TEN_PHIEU_KILL_SWITCH);
   const demTruoc = (await docBang(jwt, duong)).length;
@@ -595,6 +716,7 @@ test('ca 6 — thu hồi GIỮA xem trước và thực thi ⇒ copilot_action_d
       p_payload: canonicalCua(xem),
     });
     expect(lam.status, `Nonce phát trước khi tắt cờ VẪN ghi được: ${loi(lam)}`).toBe(403);
+    expect(maLoi(lam)).toBe('42501');
     expect(loi(lam)).toContain('copilot_action_disabled');
   } finally {
     await khoiPhucCo(sys);
@@ -623,6 +745,7 @@ test('ca 7 — phát lại: cùng nonce ⇒ đã dùng; nonce mới cùng payloa
     p_payload: canonicalCua(xem1),
   });
   expect(lan2.status, `Bấm lại cùng nonce phải bị chặn: ${loi(lan2)}`).toBe(403);
+  expect(maLoi(lan2)).toBe('42501');
   expect(loi(lan2)).toContain('confirmation_already_used');
 
   // Nonce MỚI, payload y hệt: đây là "người dùng bấm lại từ đầu vì tưởng lượt
@@ -683,6 +806,8 @@ test('ca 9 — kill switch GIỮA PHIÊN: phiên trình duyệt đang mở thấ
 }) => {
   const loiConsole = trackConsoleErrors(page);
   const sys = await token('sysadmin');
+  const tienDe = await tienDeLatCo(sys);
+  test.skip(!tienDe.dat, `Không lật cờ được: ${tienDe.lyDo}`);
 
   await login(page, 'chunha');
   await xacMinhBanBuild(page);

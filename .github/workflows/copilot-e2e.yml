@@ -231,14 +231,55 @@ jobs:
       # mà `.e2e-fleet/` KHÔNG có package.json — nên chúng rơi vào GỐC REPO chứ
       # không phải `.e2e-fleet/`. Bản trước tải lên `.e2e-fleet/playwright-report/`
       # và sẽ luôn nhận được thư mục rỗng.
-      - name: 4 spec Copilot (readonly smoke · xác nhận · ma trận nháp · ma trận hành động)
+      # BỘ LỌC CHE nằm trong MỘT FILE, không phải hai khối `node -e` chép tay.
+      # Từ 03/09/2026 có HAI bước chạy test (lý do ngay dưới), và một bộ lọc bí
+      # mật tồn tại hai bản là một bộ lọc sẽ lệch nhau — bản này được sửa, bản kia
+      # thì không, rồi một ngày log của bước bị quên mang mật khẩu nguyên văn.
+      - name: Sinh bộ lọc che bí mật (dùng chung cho cả hai bước chạy test)
+        env:
+          LOC_CHE: ${{ runner.temp }}/che-bi-mat.mjs
+        run: |
+          set -euo pipefail
+          cat > "$LOC_CHE" <<'HET_LOC'
+          // Lọc che: thay mọi giá trị BÍ MẬT bằng ***, xử theo TỪNG DÒNG.
+          // Danh sách gồm FLEET_PASS_* VÀ VERCEL_AUTOMATION_BYPASS_SECRET: cái
+          // sau cũng là mật khẩu (ai có nó thì mở được mọi deployment preview),
+          // nên nó phải chịu đúng bộ lọc và đúng guard như mật khẩu DEMO chứ
+          // không phải "chỉ là một header".
+          // Dùng split/join chứ KHÔNG regex: mật khẩu chứa `!`, `_`, `-` và quên
+          // escape một metachar là lọc âm thầm sai. So khớp chuỗi thuần thì không
+          // có metachar nào để quên. Dài trước ngắn sau, để một mật khẩu là tiền
+          // tố của mật khẩu khác vẫn bị che trọn.
+          // Bỏ qua giá trị dưới 8 ký tự: một biến đặt nhầm thành "a" sẽ biến cả
+          // log thành ***. Trường hợp đó guard vẫn là lưới.
+          const NL = String.fromCharCode(10);
+          const LA_BI_MAT = /^(?:FLEET_PASS_|VERCEL_AUTOMATION_BYPASS_SECRET$)/;
+          const bi = Object.keys(process.env)
+            .filter((k) => LA_BI_MAT.test(k))
+            .map((k) => process.env[k])
+            .filter((v) => v && v.length >= 8)
+            .sort((a, b) => b.length - a.length);
+          const che = (s) => { for (const v of bi) s = s.split(v).join("***"); return s; };
+          let du = "";
+          process.stdin.setEncoding("utf8");
+          process.stdin.on("data", (c) => {
+            du += c;
+            const dong = du.split(NL);
+            du = dong.pop();
+            for (const d of dong) process.stdout.write(che(d) + NL);
+          });
+          process.stdin.on("end", () => { if (du) process.stdout.write(che(du) + NL); });
+          HET_LOC
+          node --check "$LOC_CHE"
+          echo "Da sinh bo loc che: $LOC_CHE"
+
+      - name: 3 spec Copilot (readonly smoke · xác nhận · ma trận nháp)
         env:
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
           FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
           FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
           FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
           FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
-          FLEET_PASS_SYSADMIN: ${{ secrets.FLEET_PASS_SYSADMIN }}
           # .e2e-fleet/global-setup.ts đọc biến này, đổi lấy cookie `_vercel_jwt`
           # một lần rồi cả suite chạy bằng cookie (storageState). Không có nó thì
           # Playwright chỉ thấy trang đăng nhập SSO của Vercel, không thấy app.
@@ -249,56 +290,58 @@ jobs:
           # Mở 2 test ghi nháp trong copilot-draft-matrix.spec.ts. Cờ này nằm
           # trong spec (`test.skip` khi khác '1') — KHÔNG gỡ cờ, chỉ đặt env.
           COPILOT_DRAFT_MATRIX_LIVE: '1'
+          # EXPECTED_SOURCE_SHA đến từ $GITHUB_ENV của bước trên. Cố ý KHÔNG khai
+          # lại ở đây: env cấp-bước sẽ ĐÈ giá trị đó và ta quay về đúng lỗi cũ.
+          THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
+          THU_MUC_RAC: ${{ runner.temp }}/copilot-e2e-artifacts
+          LOC_CHE: ${{ runner.temp }}/che-bi-mat.mjs
+        run: |
+          set -uo pipefail
+          mkdir -p "$THU_MUC_TAI_LEN"
+          cd .e2e-fleet
+          npx playwright test             specs/copilot-readonly-smoke.spec.ts             specs/copilot-confirmation.spec.ts             specs/copilot-draft-matrix.spec.ts             --reporter=list             --trace=off             --output "$THU_MUC_RAC" 2>&1 | node "$LOC_CHE" | tee "$THU_MUC_TAI_LEN/list.log"
+
+      # MA TRẬN HÀNH ĐỘNG CHẠY MỘT MÌNH — ĐÂY LÀ ĐIỀU KIỆN ĐÚNG ĐẮN, KHÔNG PHẢI SỞ THÍCH
+      #   Hai ca kill switch của spec đó TẮT cờ `action:income_expense.create_draft`
+      #   ở phạm vi TOÀN CỤC khoảng một giây. `copilot-confirmation.spec.ts` ghi
+      #   đúng action đó trên đúng org DEMO. Gộp chung một lượt `playwright test`
+      #   với `FLEET_WORKERS=2` thì hai chuyện xảy ra, cả hai đều là đỏ-vì-lý-do-bịa:
+      #     - thẻ xác nhận của spec kia không bao giờ hiện (server đã từ chối phát
+      #       nonce trong đúng cửa sổ một giây đó);
+      #     - dòng sổ `action_executed` của spec kia rơi vào giữa hai lượt đếm
+      #       `soTruoc`/`soSau` của ma trận.
+      #   `test.describe.configure({ mode: 'serial' })` KHÔNG chữa được: nó chỉ xếp
+      #   hàng trong MỘT file. Cách chữa là một lượt gọi riêng, `FLEET_WORKERS=1`.
+      #   (Spec còn một lớp thứ hai: mọi phép đếm sổ đều lọc theo `action_id` +
+      #   `entity_id`. Hai lớp, vì lớp này là quy ước còn lớp kia là phép đo.)
+      #
+      #   `!cancelled()` chứ không phải mặc định: bước trên đỏ KHÔNG được làm ma
+      #   trận không chạy — một hàng rào bảo mật không được đo chỉ vì một smoke
+      #   test khác vừa hỏng là đúng thứ ta không muốn.
+      - name: Ma trận hành động Copilot (chạy RIÊNG, 1 worker)
+        if: ${{ !cancelled() }}
+        env:
+          FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
+          FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
+          FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
+          FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
+          FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
+          FLEET_PASS_SYSADMIN: ${{ secrets.FLEET_PASS_SYSADMIN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          FLEET_WORKERS: '1'
           # Mở ca chat "bỏ qua xác nhận" của copilot-action-matrix.spec.ts. Ca đó
           # cần một provider mô hình SỐNG, nên nó có thể đỏ khi 9Router chết —
           # đó là một tín hiệu thật (đường chat không dùng được), không phải
           # nhiễu. Muốn tách nó khỏi cửa thì đặt '0', đừng sửa spec.
           COPILOT_LIVE_MODEL: '1'
-          # EXPECTED_SOURCE_SHA đến từ $GITHUB_ENV của bước trên. Cố ý KHÔNG khai
-          # lại ở đây: env cấp-bước sẽ ĐÈ giá trị đó và ta quay về đúng lỗi cũ.
           THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
           THU_MUC_RAC: ${{ runner.temp }}/copilot-e2e-artifacts
+          LOC_CHE: ${{ runner.temp }}/che-bi-mat.mjs
         run: |
           set -uo pipefail
           mkdir -p "$THU_MUC_TAI_LEN"
           cd .e2e-fleet
-          npx playwright test \
-            specs/copilot-readonly-smoke.spec.ts \
-            specs/copilot-confirmation.spec.ts \
-            specs/copilot-draft-matrix.spec.ts \
-            specs/copilot-action-matrix.spec.ts \
-            --reporter=list \
-            --trace=off \
-            --output "$THU_MUC_RAC" 2>&1 | node -e '
-              // Lọc che: thay mọi giá trị BÍ MẬT bằng ***, xử theo TỪNG DÒNG.
-              // Danh sách gồm FLEET_PASS_* VÀ VERCEL_AUTOMATION_BYPASS_SECRET: cái
-              // sau cũng là mật khẩu (ai có nó thì mở được mọi deployment preview),
-              // nên nó phải chịu đúng bộ lọc và đúng guard như mật khẩu DEMO chứ
-              // không phải "chỉ là một header".
-              // Dùng split/join chứ KHÔNG regex: mật khẩu chứa `!`, `_`, `-` và quên
-              // escape một metachar là lọc âm thầm sai. So khớp chuỗi thuần thì không
-              // có metachar nào để quên. Dài trước ngắn sau, để một mật khẩu là tiền
-              // tố của mật khẩu khác vẫn bị che trọn.
-              // Bỏ qua giá trị dưới 8 ký tự: một biến đặt nhầm thành "a" sẽ biến cả
-              // log thành ***. Trường hợp đó guard vẫn là lưới.
-              const NL = String.fromCharCode(10);
-              const LA_BI_MAT = /^(?:FLEET_PASS_|VERCEL_AUTOMATION_BYPASS_SECRET$)/;
-              const bi = Object.keys(process.env)
-                .filter((k) => LA_BI_MAT.test(k))
-                .map((k) => process.env[k])
-                .filter((v) => v && v.length >= 8)
-                .sort((a, b) => b.length - a.length);
-              const che = (s) => { for (const v of bi) s = s.split(v).join("***"); return s; };
-              let du = "";
-              process.stdin.setEncoding("utf8");
-              process.stdin.on("data", (c) => {
-                du += c;
-                const dong = du.split(NL);
-                du = dong.pop();
-                for (const d of dong) process.stdout.write(che(d) + NL);
-              });
-              process.stdin.on("end", () => { if (du) process.stdout.write(che(du) + NL); });
-            ' | tee "$THU_MUC_TAI_LEN/list.log"
+          npx playwright test             specs/copilot-action-matrix.spec.ts             --reporter=list             --trace=off             --output "$THU_MUC_RAC" 2>&1 | node "$LOC_CHE"             | tee "$THU_MUC_TAI_LEN/list-ma-tran-hanh-dong.log"
 
       # Dọn TRƯỚC guard, guard TRƯỚC upload. Ba bước tách rời để log nói rõ bước
       # nào làm gì; gộp lại thì một lần `rm` hỏng sẽ ẩn trong bước khác.
