@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T08:43:01.839Z",
+  "generatedAt": "2026-09-03T08:59:34.158Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 478,
-    "unknown": 73,
+    "unknown": 75,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9110,6 +9110,32 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-03T08:42:56.336Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903085155_copilot_action_meter_reading_create_v1.sql",
+      "version": "20260903085155",
+      "name": "copilot_action_meter_reading_create_v1",
+      "scheme": "timestamp14",
+      "sha256": "ab621e117c18784415098459995a301d4376e8a80ed9617206fd02b66e1d6276",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_meter_reading_v1",
+        "function:public.copilot_execute_meter_reading_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903085654_copilot_action_reservation_deposit_create_v1.sql",
+      "version": "20260903085654",
+      "name": "copilot_action_reservation_deposit_create_v1",
+      "scheme": "timestamp14",
+      "sha256": "0a4c5685023a8e0d6fc5e56270d83da89e44fbb15fff415dedf6e973e6a1664f",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_reservation_deposit_v1",
+        "function:public.copilot_execute_reservation_deposit_v1"
       ]
     },
     {

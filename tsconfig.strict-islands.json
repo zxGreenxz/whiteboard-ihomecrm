@@ -789,6 +789,7 @@
     "src/lib/__tests__/contractStatus.property.test.ts",
     "src/lib/__tests__/contractValidation.property.test.ts",
     "src/lib/__tests__/copilotActionsL3Migration.test.ts",
+    "src/lib/__tests__/copilotActionsL4Migration.test.ts",
     "src/lib/__tests__/currencyFormat.test.ts",
     "src/lib/__tests__/customerCreditApplyGateMigration.test.ts",
     "src/lib/__tests__/customerCreditEnablement.test.ts",
