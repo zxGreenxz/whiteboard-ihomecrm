@@ -10,5 +10,9 @@
     "secret": "forbidden",
     "deploy": "forbidden"
   },
-  "l6Forever": ["sql", "secret", "deploy"]
+  "l6Forever": ["sql", "secret", "deploy"],
+  "$comment2": "rpcAllowlist — RPC nao chi duoc goi tu file nao. `copilot_plan_approve_v1` (G3) tieu nonce cap ke hoach va mo cua cho ca mot day thao tac ghi; no phai o DUNG mot cho, va cho do khong duoc nam trong src/copilot/tools/ (thu muc ma model co the goi qua tool). Bo do theo KHOI cua ACTION_PATTERNS chi soi than `execute:` cua tung tool, nen mot loi goi dat ngoai khoi do se lot; phep quet nay doc CA FILE (da lot binh luan) va vi the manh hon. Danh sach RPC bat buoc co mat duoc neo trong ma: RPC_PHAI_CO_ALLOWLIST o scripts/check-copilot-forbidden-actions.mjs — xoa dong duoi day khong lam gate mu, no lam gate do.",
+  "rpcAllowlist": {
+    "copilot_plan_approve_v1": ["src/copilot/plan/planClient.ts"]
+  }
 }

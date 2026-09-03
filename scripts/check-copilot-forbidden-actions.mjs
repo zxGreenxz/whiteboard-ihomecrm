@@ -31,6 +31,20 @@ export const POLICY_VERDICTS = Object.freeze(['forbidden', 'step_up_required']);
 export const L6_FOREVER = Object.freeze(['deploy', 'secret', 'sql']);
 
 /**
+ * RPC bắt buộc có một allowlist theo TÊN FILE, neo trong mã.
+ *
+ * `copilot_plan_approve_v1` (G3) tiêu nonce cấp kế hoạch: một lời gọi tới nó mở
+ * cửa cho CẢ MỘT DÃY thao tác ghi. Bộ dò theo khối ở dưới chỉ soi phần sau
+ * `execute:` của từng tool, nên một lời gọi đặt ngoài khối đó — một hàm phụ ở
+ * cuối file, một callback — vẫn nằm trong `src/copilot/tools/` (tức vẫn là mã mà
+ * mô hình gọi tới được) mà không bị soi. Phép quét allowlist đọc CẢ FILE.
+ *
+ * Neo ở đây, không đọc từ chính file đang kiểm: xoá dòng `rpcAllowlist` khỏi
+ * JSON phải làm gate ĐỎ, không phải làm gate MÙ — đúng bài học của `l6Forever`.
+ */
+export const RPC_PHAI_CO_ALLOWLIST = Object.freeze(['copilot_plan_approve_v1']);
+
+/**
  * Regex per action kind. A kind declared in the policy but missing here would be
  * a word with no detector behind it, so validateActionPolicy() rejects that.
  *
@@ -101,6 +115,20 @@ export function validateActionPolicy(policy) {
       if (!kinds || !Object.hasOwn(kinds, kind)) problems.push(`${kind}: listed in l6Forever but absent from kinds`);
       else if (kinds[kind] !== 'forbidden') {
         problems.push(`${kind}: l6Forever entries must stay "forbidden" (found "${kinds[kind]}")`);
+      }
+    }
+  }
+
+  const allow = policy?.rpcAllowlist;
+  if (!allow || typeof allow !== 'object' || Array.isArray(allow)) {
+    problems.push('rpcAllowlist must be an object of { rpcName: [file, ...] }');
+  } else {
+    for (const rpc of RPC_PHAI_CO_ALLOWLIST) {
+      const files = allow[rpc];
+      if (!Array.isArray(files) || files.length === 0) {
+        problems.push(`rpcAllowlist.${rpc}: must list at least one file (anchored in code)`);
+      } else if (files.some((file) => typeof file !== 'string' || !file.trim())) {
+        problems.push(`rpcAllowlist.${rpc}: every entry must be a non-empty repo-relative path`);
       }
     }
   }
@@ -253,6 +281,48 @@ export function inventoryFromCopilotSource(sourceByFile) {
   return tools;
 }
 
+/** Đường dẫn Windows → dạng POSIX. `String.fromCharCode(92)` để thân hàm không
+ *  phải mang một dấu gạch chéo ngược nào — thứ đã hỏng hai lần khi sinh file này. */
+function thuanDauGach(duong) {
+  return String(duong).split(String.fromCharCode(92)).join('/');
+}
+
+/**
+ * Ai được gọi RPC nào — phép quét CẢ FILE, không theo khối tool.
+ *
+ * Hai chiều, và cả hai đều cần thiết:
+ *   · File nào gọi một RPC bị hạn chế mà không nằm trong allowlist ⇒ vi phạm.
+ *     Đây là chiều rõ ràng: một tool tiêu được nonce cấp kế hoạch nghĩa là mô
+ *     hình tự duyệt được kế hoạch của chính nó.
+ *   · File nằm trong allowlist mà KHÔNG còn gọi RPC đó ⇒ cũng là vi phạm. Một
+ *     allowlist trỏ vào hư không là một allowlist không đo gì: đổi tên file rồi
+ *     quên sửa JSON thì phép kiểm ở trên vẫn "sạch" vì chẳng file nào bị soi.
+ *
+ * Chú thích bị lột trước khi khớp — một file NHẮC TỚI tên RPC trong tài liệu
+ * của nó không phải là một file GỌI RPC đó.
+ */
+export function validateRpcAllowlist(sourceByFile, policy = ACTION_POLICY) {
+  const problems = [];
+  const allow = policy?.rpcAllowlist ?? {};
+  for (const [rpc, files] of Object.entries(allow)) {
+    const chapNhan = Array.isArray(files) ? files.map((file) => thuanDauGach(file)) : [];
+    const daThay = new Set();
+    for (const [file, raw] of Object.entries(sourceByFile ?? {})) {
+      if (!stripComments(String(raw)).includes(rpc)) continue;
+      const duong = thuanDauGach(file);
+      const khop = chapNhan.find((cho) => duong === cho || duong.endsWith(`/${cho}`));
+      if (khop) daThay.add(khop);
+      else problems.push(`${duong}: gọi "${rpc}" nhưng chỉ ${chapNhan.join(', ') || '(không file nào)'} được phép`);
+    }
+    for (const cho of chapNhan) {
+      if (!daThay.has(cho)) {
+        problems.push(`rpcAllowlist.${rpc}: "${cho}" không còn gọi RPC này — allowlist chết, sửa JSON hoặc kiểm lại phạm vi quét`);
+      }
+    }
+  }
+  return problems;
+}
+
 /** Directories scanned by the gate, relative to the repo root. */
 export const SCAN_ROOTS = Object.freeze([
   join('src', 'copilot', 'tools'),
@@ -301,7 +371,10 @@ function main() {
   }
   const sourceByFile = Object.fromEntries(files.map((file) => [file, readFileSync(file, 'utf8')]));
   const tools = inventoryFromCopilotSource(sourceByFile);
-  const problems = validateCopilotActionInventory(tools);
+  const problems = [
+    ...validateCopilotActionInventory(tools),
+    ...validateRpcAllowlist(sourceByFile),
+  ];
   if (problems.length) {
     console.error(`Copilot forbidden-action gate: ${problems.length} problem(s)`);
     for (const problem of problems) console.error(`  - ${problem}`);

@@ -14,11 +14,13 @@ import {
   SCAN_ROOTS,
   FORBIDDEN_COPILOT_ACTIONS,
   L6_FOREVER,
+  RPC_PHAI_CO_ALLOWLIST,
   collectCopilotSourceFiles,
   inventoryFromCopilotSource,
   readActionPolicy,
   validateActionPolicy,
   validateCopilotActionInventory,
+  validateRpcAllowlist,
 } from '../check-copilot-forbidden-actions.mjs';
 
 const SAFE_TOOLS = [
@@ -362,4 +364,80 @@ test('file trong thu muc plan goi decide_financial_request_v2 ⇒ gate DO', asyn
     validateCopilotActionInventory(tools).join(XUONG_DONG),
     /forbidden executable action "approval"/,
   );
+});
+
+
+// ── G3: allowlist theo TÊN FILE cho `copilot_plan_approve_v1` ────────────────
+//
+// Bo do theo KHOI chi soi phan sau `execute:` cua tung tool. Mot loi goi dat
+// ngoai khoi do — mot ham phu o cuoi file — van nam trong src/copilot/tools/,
+// tuc van la ma ma mo hinh cham toi duoc qua tool, nhung khong bi soi. Phep quet
+// duoi day doc CA FILE.
+
+const CHINH_SACH_GIA = Object.freeze({
+  schemaVersion: 1,
+  kinds: {
+    approval: 'step_up_required',
+    posting: 'step_up_required',
+    delete: 'step_up_required',
+    permission: 'step_up_required',
+    sql: 'forbidden',
+    secret: 'forbidden',
+    deploy: 'forbidden',
+  },
+  l6Forever: ['sql', 'secret', 'deploy'],
+  rpcAllowlist: { copilot_plan_approve_v1: ['src/copilot/plan/planClient.ts'] },
+});
+
+test('policy that ap khai allowlist cho moi RPC neo trong ma', () => {
+  const policy = readActionPolicy();
+  for (const rpc of RPC_PHAI_CO_ALLOWLIST) {
+    assert.ok(Array.isArray(policy.rpcAllowlist?.[rpc]) && policy.rpcAllowlist[rpc].length > 0);
+  }
+});
+
+test('xoa rpcAllowlist khoi policy lam gate DO, khong lam gate MU', () => {
+  const khongCo = { ...CHINH_SACH_GIA };
+  delete khongCo.rpcAllowlist;
+  assert.throws(() => validateActionPolicy(khongCo), /rpcAllowlist/);
+  const rong = { ...CHINH_SACH_GIA, rpcAllowlist: { copilot_plan_approve_v1: [] } };
+  assert.throws(() => validateActionPolicy(rong), /must list at least one file/);
+});
+
+test('file trong allowlist goi RPC ⇒ khong van de', () => {
+  const nguon = {
+    'src/copilot/plan/planClient.ts': "supabase.rpc('copilot_plan_approve_v1', { p_plan_id: id });",
+    'src/copilot/tools/planTools.ts': "export const t = { name: 'lap_ke_hoach' };",
+  };
+  assert.deepEqual(validateRpcAllowlist(nguon, CHINH_SACH_GIA), []);
+});
+
+test('DOT BIEN: mot tool trong src/copilot/tools goi RPC duyet ⇒ gate do', () => {
+  const nguon = {
+    'src/copilot/plan/planClient.ts': "supabase.rpc('copilot_plan_approve_v1', { p_plan_id: id });",
+    'src/copilot/tools/planTools.ts': [
+      "export const t = {",
+      "  name: 'lap_ke_hoach',",
+      "  execute: async () => supabase.rpc('copilot_plan_approve_v1', {}),",
+      '};',
+    ].join(XUONG_DONG),
+  };
+  const vanDe = validateRpcAllowlist(nguon, CHINH_SACH_GIA);
+  assert.equal(vanDe.length, 1);
+  assert.match(vanDe[0], /planTools\.ts: g[^ ]*i "copilot_plan_approve_v1"/);
+});
+
+test('allowlist tro vao file khong con goi RPC ⇒ allowlist chet, cung la vi pham', () => {
+  // Doi ten file roi quen sua JSON: phep kiem chieu thuan van "sach" vi chang
+  // file nao bi soi. Chieu nguoc lai la thu duy nhat noi ra dieu do.
+  const nguon = { 'src/copilot/plan/planClient.ts': 'export const x = 1;' };
+  assert.match(validateRpcAllowlist(nguon, CHINH_SACH_GIA).join(XUONG_DONG), /allowlist ch/);
+});
+
+test('ten RPC nam trong CHU THICH khong bi tinh la mot loi goi', () => {
+  const nguon = {
+    'src/copilot/plan/planClient.ts': "supabase.rpc('copilot_plan_approve_v1', {});",
+    'src/copilot/tools/planTools.ts': '// tai lieu: copilot_plan_approve_v1 chi goi tu planClient',
+  };
+  assert.deepEqual(validateRpcAllowlist(nguon, CHINH_SACH_GIA), []);
 });

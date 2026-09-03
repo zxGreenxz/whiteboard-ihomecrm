@@ -19,6 +19,7 @@ import {
 } from '../pageScope';
 import { USER_DOC_MODULES } from './guideCorpus.generated';
 import { TOOL_GHI_HANH_DONG, taoPhieuThuChiNhap } from './writeTools';
+import { TOOL_KE_HOACH } from './planTools';
 import { TOOL_NGHIEP_VU } from './nghiepVuTools';
 import { TOOL_GHI_NHO } from './memoryTools';
 import {
@@ -770,6 +771,11 @@ export function buildRegistryDefinitions(): DomainTool[] {
     // Write tool draft-first (Phase 5): NHÁP + 2 bước xác nhận + idempotency
     taoPhieuThuChiNhap,
     ...TOOL_GHI_HANH_DONG,
+
+    // Kế hoạch thực thi (G3) — một cú bấm cho MỘT DÃY bước. Hai tool này KHÔNG
+    // duyệt được gì: nút Duyệt sống ở `KeHoachCard`, và nonce cấp kế hoạch chỉ
+    // đi qua `confirmationStore`.
+    ...TOOL_KE_HOACH,
 
     // Bộ nhớ dài hạn (G1-D2) — ghi vào hàng CỦA CHÍNH người dùng, RLS own-row.
     ...TOOL_GHI_NHO,

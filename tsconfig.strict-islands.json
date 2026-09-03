@@ -558,6 +558,7 @@
     "src/copilot/tools/guideCorpus.generated.ts",
     "src/copilot/tools/nghiepVuTools.ts",
     "src/copilot/tools/memoryTools.ts",
+    "src/copilot/tools/planTools.ts",
     "src/copilot/tools/registry.ts",
     "src/copilot/tools/writeTools.ts",
     "src/copilot/useAiProviders.ts",

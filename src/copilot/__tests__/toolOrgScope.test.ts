@@ -104,6 +104,21 @@ const TOOL_THEO_CONG_TY = [
     ten: 'tao_phieu_giu_cho',
     args: { room_id: 'aaaa4000-0000-4000-8000-000000000025', amount: 2000000 },
   },
+  // G3-TS — hai tool KẾ HOẠCH. Chúng không đọc sổ, nhưng một kế hoạch lập ở
+  // công ty A rồi chạy khi người dùng đã đổi sang công ty B là một dãy thao tác
+  // ghi vào đúng công ty sai — và nó chạy sau MỘT cú bấm duy nhất, tức không có
+  // lần bấm thứ hai nào để ai đó kịp nhận ra.
+  {
+    ten: 'lap_ke_hoach',
+    args: {
+      muc_tieu: 'ghi chỉ số rồi lập phiếu',
+      cac_buoc: [{ hanh_dong: 'meter_reading.create', du_lieu: {} }],
+    },
+  },
+  {
+    ten: 'thuc_thi_buoc',
+    args: { ke_hoach_id: 'aaaa4000-0000-4000-8000-000000000026' },
+  },
 ];
 
 const tool = (ten: string) => {

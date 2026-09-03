@@ -144,6 +144,14 @@ const TOOL_MARKERS = [
   // mot cau hoi so lieu vo tinh chua tu do khong duoc bien thanh lenh GHI.
   ['ghi_nho', /\bnho giup toi\b|\bghi nho giup\b|\blan sau cu\b/],
   ['quen', /\bdung nho\b|\bquen di\b|\bbo ghi nho\b/],
+  // G3-TS, tool lap ke hoach. Marker doi CA CUM "lap ke hoach": tu "ke hoach"
+  // tran xuat hien duoc trong mot cau hoi doc binh thuong ("ke hoach thu tien
+  // thang nay the nao"), va bien mot cau HOI thanh mot lenh LAP KE HOACH la
+  // dung loai hong ma ky luat marker o day sinh ra de chan. `thuc_thi_buoc`
+  // KHONG co marker: duong vao cua no la mot tin he thong sau cu bam cua nguoi
+  // dung, khong phai mot cau nguoi dung go — mot marker cho no se noi doi rang
+  // co the goi no thang tu cau hoi.
+  ['lap_ke_hoach', /\blap ke hoach\b/],
 ];
 
 /**
