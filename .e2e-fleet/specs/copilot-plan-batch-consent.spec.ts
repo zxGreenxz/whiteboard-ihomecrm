@@ -58,7 +58,7 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
  *       Trạng thái xấu nhất nếu spec chết giữa chừng: `allowed_roles` còn
  *       `{superadmin, owner}`. Nhìn thấy được ở `/settings/ai-copilot` → tab
  *       Chính sách, và vẫn bị cờ canary chặn ngoài DEMO. `afterAll` hoàn nguyên,
- *       và `chuanBiChinhSach()` từ chối mở nếu trạng thái nền không đúng
+ *       và `moVan()` từ chối mở nếu trạng thái nền không đúng
  *       `{superadmin}` + `L4` — nghĩa là một lượt chạy đứt gánh không bị lượt sau
  *       ghi đè bằng một trạng thái đoán.
  *
@@ -345,58 +345,74 @@ async function datVai(jwt: string, vai: string[]): Promise<KetQuaRpc> {
   return kq;
 }
 
-/** `null` = chưa thử; `{dat:false}` = đã thử và KHÔNG mở được, kèm lý do viết thành câu. */
-let chinhSachDaMo: { dat: boolean; lyDo: string } | null = null;
-/** Chỉ đóng lại nếu chính spec này là bên đã mở. */
-let specDaNoiVai = false;
+/** Có ĐÚNG một lượt mở đang treo hay không. Không memo hoá "đã mở thành công":
+ *  van được mở và ĐÓNG LẠI trong từng ca (xem `moVan`/`dongVan`). */
+let vanDangMo = false;
 
 /**
- * TIỀN ĐỀ + MỞ VAN. Trạng thái nền PHẢI đúng `{superadmin}` và trần `L4`.
+ * MỞ VAN CHO ĐÚNG MỘT CA, và chỉ khi trạng thái nền đúng như lúc thiết kế.
  *
- * Không đòi trạng thái nền chính xác thì `afterAll` không biết trả về đâu: nó sẽ
- * ghi đè `{superadmin}` lên một cấu hình mà chủ hệ thống vừa cố ý đổi. "Không đo
- * được" không phải "an toàn", nhưng ghi đè van an ninh bằng một giá trị đoán thì
- * tệ hơn hẳn.
+ * VÌ SAO MỞ THEO TỪNG CA CHỨ KHÔNG MỘT LẦN CHO CẢ SUITE
+ *   Bản đầu mở ở ca đầu tiên rồi đóng ở `afterAll`. Đo được ngày 03/09/2026:
+ *   tiến trình chạy bị GIẾT giữa suite (không phải ca nào đỏ — cả tiến trình
+ *   biến mất), `afterAll` không bao giờ chạy, và `allowed_roles` nằm ở
+ *   `{superadmin, owner}` cho tới khi có người vào sửa tay. Tệ hơn: lượt chạy
+ *   KẾ TIẾP thấy nền "sai" nên bỏ qua TOÀN BỘ ca — một suite tự tắt trong im
+ *   lặng, đúng thứ nguy hiểm nhất mà một suite an ninh có thể làm.
+ *
+ *   Mở-đóng theo từng ca thu cửa sổ từ "cả lượt chạy" xuống "một ca" (dưới 2
+ *   giây), và mỗi ca có `finally` riêng nên một ca đỏ không kéo theo ca sau.
+ *   `afterAll` vẫn giữ vai trò lưới an toàn cuối.
+ *
+ *   GIÁ PHẢI TRẢ, nói thẳng: 8 ca × 2 lượt lật = 16 hàng
+ *   `copilot_action_policy_audit` và 16 dòng `policy_changed` trong
+ *   `copilot_action_ledger` mỗi lượt chạy. Đó là tiếng ồn trong đúng cuốn sổ mà
+ *   G3/G5 đọc để dựng lại "chuyện gì đã xảy ra". Chấp nhận có ý thức: tiếng ồn
+ *   là BẰNG CHỨNG (mỗi dòng mang `reason` chỉ đúng file spec này), còn một van
+ *   an ninh kẹt mở là THIỆT HẠI. Muốn giảm thì phải giảm số ca cần van, không
+ *   phải nới cửa sổ trở lại.
+ *
+ * NỀN PHẢI ĐÚNG `{superadmin}` + `L4`. Không đòi điều đó thì `dongVan` không
+ * biết trả về đâu: nó sẽ ghi đè `{superadmin}` lên một cấu hình mà chủ hệ thống
+ * vừa cố ý đổi. "Không đo được" không phải "an toàn", nhưng ghi đè một van an
+ * ninh bằng giá trị đoán thì tệ hơn hẳn — nên nền lạ ⇒ BỎ CA kèm lý do viết
+ * thành câu, và `reason` của hàng policy (không đọc được từ role
+ * `authenticated`) là chỗ người trực đọc để biết ai đã để nó lại.
  */
-async function chuanBiChinhSach(): Promise<{ dat: boolean; lyDo: string }> {
-  if (chinhSachDaMo) return chinhSachDaMo;
+async function moVan(): Promise<{ dat: boolean; lyDo: string }> {
   const sys = await token('sysadmin');
   const nen = await docChinhSach(sys);
 
   if (nen.maxDirectRisk !== 'L4') {
-    chinhSachDaMo = {
+    return {
       dat: false,
       lyDo:
         `trần rủi ro đang là "${nen.maxDirectRisk}" chứ không phải "L4" — nền đã đổi so với ` +
         'lúc thiết kế spec, không hoàn nguyên mù được',
     };
-    return chinhSachDaMo;
   }
   if (!(nen.allowedRoles.length === 1 && nen.allowedRoles[0] === 'superadmin')) {
-    chinhSachDaMo = {
+    return {
       dat: false,
       lyDo:
         `allowed_roles đang là [${nen.allowedRoles.join(', ')}] chứ không phải [superadmin] — ` +
-        'spec không biết phải trả van về trạng thái nào nên KHÔNG đụng vào',
+        'spec không biết phải trả van về trạng thái nào nên KHÔNG đụng vào. Nếu đây là dấu vết ' +
+        'của một lượt chạy bị giết giữa chừng thì đặt lại ở /settings/ai-copilot → tab Chính sách.',
     };
-    return chinhSachDaMo;
   }
 
   const mo = await datVai(sys, ['superadmin', 'owner']);
-  if (mo.status !== 200) {
-    chinhSachDaMo = { dat: false, lyDo: `không nới được allowed_roles: ${loi(mo)}` };
-    return chinhSachDaMo;
-  }
-  specDaNoiVai = true;
-  chinhSachDaMo = { dat: true, lyDo: '' };
-  return chinhSachDaMo;
+  if (mo.status !== 200) return { dat: false, lyDo: `không nới được allowed_roles: ${loi(mo)}` };
+  vanDangMo = true;
+  return { dat: true, lyDo: '' };
 }
 
-async function traLaiChinhSach(): Promise<void> {
-  if (!specDaNoiVai || !beMat) return;
+/** Đóng van nếu chính spec này đang giữ nó mở. Idempotent. */
+async function dongVan(): Promise<void> {
+  if (!vanDangMo || !beMat) return;
   const sys = await token('sysadmin');
   const ve = await datVai(sys, ['superadmin']);
-  specDaNoiVai = false;
+  vanDangMo = false;
   if (ve.status !== 200) {
     throw new Error(
       `KHÔNG TRẢ LẠI ĐƯỢC allowed_roles = [superadmin]: ${loi(ve)}. Vào /settings/ai-copilot ` +
@@ -699,7 +715,8 @@ test.afterAll(async () => {
   if (!beMat) return;
   // Cờ trước, van sau: cờ là thứ có bán kính rộng nhất khi kẹt ở `disabled`.
   await khoiPhucCo(await token('sysadmin'));
-  await traLaiChinhSach();
+  // Lưới an toàn cuối: từng ca đã tự đóng van trong `finally` của nó.
+  await dongVan();
 });
 
 test('phiên trình duyệt thật khai đúng bản build và để lộ bề mặt API', async ({ page }) => {
@@ -719,7 +736,7 @@ test('phiên trình duyệt thật khai đúng bản build và để lộ bề m
 });
 
 test('ca 1 — lập kế hoạch 2 bước: DRAFT, nonce ra ĐÚNG MỘT LẦN, đường đọc không lộ bí mật', async () => {
-  const tienDe = await chuanBiChinhSach();
+  const tienDe = await moVan();
   test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
 
   const jwt = await token('chunha');
@@ -773,11 +790,12 @@ test('ca 1 — lập kế hoạch 2 bước: DRAFT, nonce ra ĐÚNG MỘT LẦN,
     expect(keLai.consent_nonce, 'Gửi lại mà server phát nonce THỨ HAI').toBeNull();
   } finally {
     await donKeHoach(jwt, planId);
+    await dongVan();
   }
 });
 
 test('ca 2 — duyệt bằng nonce + digest đúng ⇒ APPROVED; duyệt lại ⇒ confirmation_already_used', async () => {
-  const tienDe = await chuanBiChinhSach();
+  const tienDe = await moVan();
   test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
 
   const jwt = await token('chunha');
@@ -814,11 +832,12 @@ test('ca 2 — duyệt bằng nonce + digest đúng ⇒ APPROVED; duyệt lại 
     expect(doc.plan_version).toBe(2);
   } finally {
     await donKeHoach(jwt, planId);
+    await dongVan();
   }
 });
 
 test('ca 3 — chạy tuần tự 2 bước: nháp ra đời, hồ sơ KHÔNG bao giờ được duyệt', async () => {
-  const tienDe = await chuanBiChinhSach();
+  const tienDe = await moVan();
   test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
 
   const jwt = await token('chunha');
@@ -927,11 +946,12 @@ test('ca 3 — chạy tuần tự 2 bước: nháp ra đời, hồ sơ KHÔNG ba
     expect(daPost, 'Có hồ sơ POSTED — luật AUTO_POST đã lọt qua hàng rào L5').toEqual([]);
   } finally {
     await donKeHoach(jwt, planId);
+    await dongVan();
   }
 });
 
 test('ca 4 — duyệt với digest SAI ⇒ plan_digest_mismatch, kế hoạch vẫn DRAFT và nonce chưa tiêu', async () => {
-  const tienDe = await chuanBiChinhSach();
+  const tienDe = await moVan();
   test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
 
   const jwt = await token('chunha');
@@ -964,11 +984,12 @@ test('ca 4 — duyệt với digest SAI ⇒ plan_digest_mismatch, kế hoạch v
     expect((dung.body as { plan_status: string }).plan_status).toBe('APPROVED');
   } finally {
     await donKeHoach(jwt, planId);
+    await dongVan();
   }
 });
 
 test('ca 5 — huỷ kế hoạch DRAFT ⇒ CANCELLED, bước còn chờ thành SKIPPED, không ghi gì', async () => {
-  const tienDe = await chuanBiChinhSach();
+  const tienDe = await moVan();
   test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
 
   const jwt = await token('chunha');
@@ -1017,6 +1038,7 @@ test('ca 5 — huỷ kế hoạch DRAFT ⇒ CANCELLED, bước còn chờ thành
     expect(loi(duyetSauHuy)).toContain('confirmation_already_used');
   } finally {
     await donKeHoach(jwt, planId);
+    await dongVan();
   }
 
   expect(
@@ -1026,13 +1048,16 @@ test('ca 5 — huỷ kế hoạch DRAFT ⇒ CANCELLED, bước còn chờ thành
 });
 
 test('ca 6 — kill switch GIỮA kế hoạch đã duyệt ⇒ bước BLOCKED, không phiếu nào ra đời', async () => {
-  const tienDeVan = await chuanBiChinhSach();
-  test.skip(!tienDeVan.dat, `Không mở được van chính sách: ${tienDeVan.lyDo}`);
-
+  // Tiền đề CỜ đo TRƯỚC tiền đề VAN, và thứ tự đó không phải tuỳ tiện: `moVan()`
+  // để lại một van đang mở, còn `test.skip()` ném ra ngoài mọi `finally` chưa
+  // vào tới. Hỏi thứ rẻ và không-có-tác-dụng-phụ trước.
   const jwt = await token('chunha');
   const sys = await token('sysadmin');
   const tienDe = await tienDeLatCo(sys);
   test.skip(!tienDe.dat, `Không lật cờ được: ${tienDe.lyDo}`);
+
+  const tienDeVan = await moVan();
+  test.skip(!tienDeVan.dat, `Không mở được van chính sách: ${tienDeVan.lyDo}`);
 
   const TEN = 'E2E G3 kill switch probe';
   const demTruoc = await demPhieuTheoTen(jwt, TEN);
@@ -1076,12 +1101,13 @@ test('ca 6 — kill switch GIỮA kế hoạch đã duyệt ⇒ bước BLOCKED,
     }
   } finally {
     await donKeHoach(jwt, planId);
+    await dongVan();
   }
 
   expect(await demPhieuTheoTen(jwt, TEN), 'Cờ đã tắt mà vẫn có phiếu mới ra đời').toBe(demTruoc);
 });
 
-test('ca 7 — kế hoạch DRAFT quá hạn ⇒ EXPIRED (chờ thật 5 phút, mặc định BỎ QUA)', async () => {
+test('ca 7 — kế hoạch DRAFT quá hạn: không duyệt được, không chạy được (chờ thật 5 phút, mặc định BỎ QUA)', async () => {
   // KHÔNG có đường hợp lệ nào để lùi `expires_at`: cột nằm ở `app_private`, role
   // `authenticated` không đọc/ghi được, và không có RPC test-only (đúng như thiết
   // kế — một cửa hậu chỉ để test là một cửa hậu). Nên phép đo duy nhất trung thực
@@ -1093,7 +1119,7 @@ test('ca 7 — kế hoạch DRAFT quá hạn ⇒ EXPIRED (chờ thật 5 phút, 
   );
   test.setTimeout(9 * 60_000);
 
-  const tienDe = await chuanBiChinhSach();
+  const tienDe = await moVan();
   test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
 
   const jwt = await token('chunha');
@@ -1108,26 +1134,43 @@ test('ca 7 — kế hoạch DRAFT quá hạn ⇒ EXPIRED (chờ thật 5 phút, 
     const conLai = new Date(ke.expires_at).getTime() - Date.now();
     await new Promise((r) => setTimeout(r, Math.max(conLai, 0) + 5_000));
 
-    // HẾT HẠN LÀ GHI-RỒI-RETURN, KHÔNG PHẢI RAISE (quyết định 4 của migration
-    // 20260903100253): HTTP 200 kèm `ok:false`. Một client rẽ theo `error` thay
-    // vì `ok` sẽ báo thành công cho một kế hoạch vừa chết.
+    // ĐO ĐƯỢC 03/09/2026 — VÀ NÓ KHÁC THỨ MIGRATION MÔ TẢ.
+    //
+    //   `copilot_plan_approve_v1` có một nhánh GHI-RỒI-RETURN cho kế hoạch quá
+    //   hạn (`ok:false`, `error_code:'plan_expired'`, `plan_status:'EXPIRED'`,
+    //   HTTP 200 — "quyết định 4" ở đầu migration 20260903100253). Nhánh đó
+    //   KHÔNG BAO GIỜ VỚI TỚI được qua đường thường: phiếu đồng ý và kế hoạch
+    //   cùng nhận `clock_timestamp() + interval '5 minutes'` trong CÙNG một lời
+    //   gọi `create`, nên khi kế hoạch hết hạn thì nonce cũng vừa hết hạn — và
+    //   cửa nonce đứng TRƯỚC cửa kế hoạch, nên nó NÉM `confirmation_expired`
+    //   (42501) trước.
+    //
+    //   Không phải lỗ hổng: nó chặt HƠN (ném thay vì ghi rồi trả về) và vẫn
+    //   fail-closed. Nhưng nó có hai hệ quả thật, nên spec ghim SỰ THẬT CHỨ
+    //   KHÔNG GHIM Ý ĐỊNH: kế hoạch nằm lại ở DRAFT chứ không chuyển EXPIRED, và
+    //   sổ không có dòng `plan_expired` nào ở giai đoạn duyệt.
+    //   (Nhánh `plan_expired` của `execute_step` thì VẪN với tới được — ở đó hạn
+    //   là `execute_deadline` 30 phút, và nonce đã bị tiêu từ lúc duyệt.)
     const duyet = await duyetKeHoach(jwt, ke.plan_id, ke.consent_nonce as string, ke.plan_digest, 1);
-    expect(duyet.status, `Duyệt kế hoạch quá hạn: ${loi(duyet)}`).toBe(200);
-    const d = duyet.body as { ok: boolean; error_code: string; plan_status: string };
-    expect(d.ok).toBe(false);
-    expect(d.error_code).toBe('plan_expired');
-    expect(d.plan_status).toBe('EXPIRED');
+    expect(duyet.status, `Duyệt kế hoạch quá hạn: ${loi(duyet)}`).toBe(403);
+    expect(maLoi(duyet)).toBe('42501');
+    expect(loi(duyet)).toContain('confirmation_expired');
 
     const doc = await docKeHoach(jwt, ke.plan_id);
-    expect(doc.steps.map((b) => b.status)).toEqual(['BLOCKED']);
-    expect(doc.steps[0].error_code).toBe('plan_expired');
+    expect(doc.plan_status, 'Kế hoạch quá hạn bị duyệt được hoặc bị đánh dấu sai').toBe('DRAFT');
+    expect(doc.steps.map((b) => b.status)).toEqual(['PENDING']);
+    // Điều thật sự quan trọng: hết hạn rồi thì KHÔNG CÒN ĐƯỜNG NÀO chạy được.
+    const chay = await chayBuoc(jwt, ke.plan_id, 1, doc.plan_version);
+    expect(chay.status, `Chạy được một bước của kế hoạch chưa duyệt: ${loi(chay)}`).not.toBe(200);
+    expect(loi(chay)).toContain('plan_not_approved');
   } finally {
     await donKeHoach(jwt, planId);
+    await dongVan();
   }
 });
 
 test('ca 8 — hai lượt chạy SONG SONG cùng một bước ⇒ đúng một lượt ghi', async () => {
-  const tienDe = await chuanBiChinhSach();
+  const tienDe = await moVan();
   test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
 
   const jwt = await token('chunha');
@@ -1175,6 +1218,7 @@ test('ca 8 — hai lượt chạy SONG SONG cùng một bước ⇒ đúng một
     ).toHaveLength(1);
   } finally {
     await donKeHoach(jwt, planId);
+    await dongVan();
   }
 });
 
