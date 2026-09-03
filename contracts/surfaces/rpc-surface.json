@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1402,
-    "catalogFunctions": 1066,
+    "sourceCallSites": 1407,
+    "catalogFunctions": 1070,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 275,
+    "calledRpcs": 279,
     "byRisk": {
-      "normal": 198,
+      "normal": 202,
       "financial": 77
     },
-    "securityDefiner": 259
+    "securityDefiner": 263
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1298,6 +1298,82 @@
       ],
       "callers": [
         "src/copilot/tools/writeTools.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_step_up_set_pin_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_pin text, p_current_pin text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/plan/stepUpClient.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_step_up_status_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/plan/stepUpClient.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_step_up_unlock_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user_id uuid, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/plan/stepUpClient.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_step_up_verify_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_pin text, p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/plan/stepUpClient.ts"
       ],
       "risk": "normal"
     },

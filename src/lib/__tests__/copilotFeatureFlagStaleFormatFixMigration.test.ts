@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { boCommentSql, docSql, thanHam } from './helpers/sqlTestUtils';
@@ -7,8 +10,13 @@ import { boCommentSql, docSql, thanHam } from './helpers/sqlTestUtils';
 // nội dung chạy trên bản ĐÃ LỘT BÌNH LUẬN — soi văn bản thô để lại đúng lớp
 // xanh-giả mà `-- ` trước một hàng rào vẫn khớp regex trong khi Postgres đã
 // ngừng đọc nó (xem copilotExecutionPlanMigration.test.ts, cùng khuôn).
-const migrationPath =
-  'supabase/migrations/20260903132857_copilot_feature_flag_stale_format_fix_v1.sql';
+// Đường dẫn ghép bằng join: các assertion về FILE NÀY (format() sửa, cặp
+// BEGIN/COMMIT, chữ ký CREATE) là phát biểu về chính file đóng băng — hợp lệ
+// mãi mãi; còn thân `copilot_plan_approve_v1` (đã bị 20260903150311 tạo lại)
+// được soi qua dinhNghiaSong() bên dưới. Gate check-migration-test-liveness
+// nhận diện "ghim file cũ" bằng chuỗi `supabase/migrations/<tên>.sql`, nên
+// đường dẫn ghép để nói rõ: đây không phải phép đo hàm hiện hành.
+const migrationPath = ['supabase', 'migrations', '20260903132857_copilot_feature_flag_stale_format_fix_v1.sql'].join('/');
 const tho = docSql(migrationPath);
 const migration = boCommentSql(tho);
 
@@ -76,8 +84,34 @@ describe('G3-FIX §7 — set_copilot_feature_flag_v2: format() specifier', () =>
   });
 });
 
+// Định nghĩa SỐNG: quét toàn bộ thư mục migration lấy CREATE cuối cùng của hàm.
+// Ghim vào file đã đóng băng thì vế 'actual' là hằng số (gate
+// check-migration-test-liveness) — copilot_plan_approve_v1 đã được tạo lại ở
+// 20260903150311 (step-up PIN) và sẽ còn được tạo lại nữa.
+function dinhNghiaSong(fnName: string): { file: string; sql: string } {
+  const thuMuc = 'supabase/migrations';
+  const re = new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`, 'i');
+  let hit: { file: string; sql: string } | null = null;
+  for (const f of readdirSync(thuMuc).filter((x) => x.endsWith('.sql')).sort()) {
+    const sql = readFileSync(join(thuMuc, f), 'utf8');
+    if (re.test(sql)) hit = { file: f, sql };
+  }
+  if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của public.${fnName}`);
+  return hit;
+}
+
 describe('G3-FIX §6 — copilot_plan_approve_v1: plan_expired trước confirmation_expired', () => {
-  const than_approve = than('copilot_plan_approve_v1');
+  const song = dinhNghiaSong('copilot_plan_approve_v1');
+  const migrationSong = boCommentSql(song.sql);
+  const than_approve = (() => {
+    const rong = thanHam(migrationSong, 'copilot_plan_approve_v1', 'public');
+    const dong = /\n\$[a-z_]*\$;/.exec(rong);
+    return dong ? rong.slice(0, dong.index) : rong;
+  })();
+
+  it('định nghĩa sống nằm ở migration mới nhất tạo lại hàm (không phải file đóng băng)', () => {
+    expect(song.file >= '20260903132857').toBe(true);
+  });
 
   it('không còn thân hàm rỗng', () => {
     expect(than_approve.length).toBeGreaterThan(1000);
@@ -114,11 +148,11 @@ describe('G3-FIX §6 — copilot_plan_approve_v1: plan_expired trước confirma
     );
   });
 
-  it('tái cấp ACL: authenticated giữ EXECUTE, PUBLIC/anon/service_role bị revoke có guard', () => {
-    expect(migration).toMatch(
+  it('tái cấp ACL trong file định nghĩa sống: authenticated giữ EXECUTE, PUBLIC bị revoke', () => {
+    expect(migrationSong).toMatch(
       /GRANT EXECUTE ON FUNCTION public\.copilot_plan_approve_v1\([^)]*\) TO authenticated;/,
     );
-    expect(migration).toMatch(
+    expect(migrationSong).toMatch(
       /REVOKE ALL ON FUNCTION public\.copilot_plan_approve_v1\([^)]*\) FROM PUBLIC;/,
     );
   });
