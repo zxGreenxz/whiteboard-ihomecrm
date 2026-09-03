@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T13:57:02.867Z",
+  "generatedAt": "2026-09-03T15:10:09.715Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 484,
-    "unknown": 73,
+    "unknown": 74,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9176,6 +9176,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-03T13:56:58.546Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903150311_copilot_step_up_pin_v1.sql",
+      "version": "20260903150311",
+      "name": "copilot_step_up_pin_v1",
+      "scheme": "timestamp14",
+      "sha256": "ddecab2fcded7412957f8921278c6fd7ed49caa9da14a33245f2fed4a1da103d",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:app_private.copilot_step_up_pins",
+        "function:public.copilot_step_up_set_pin_v1",
+        "function:public.copilot_step_up_verify_v1",
+        "function:public.copilot_step_up_status_v1",
+        "function:public.copilot_step_up_unlock_v1"
       ]
     },
     {
