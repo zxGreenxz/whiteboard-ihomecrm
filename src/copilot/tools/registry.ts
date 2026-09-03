@@ -17,6 +17,7 @@ import {
   PILOT_UI_CONTROL_ROUTES,
   ROUTE_DIEU_HUONG,
 } from '../pageScope';
+import { USER_DOC_MODULES } from './guideCorpus.generated';
 import { taoPhieuThuChiNhap } from './writeTools';
 import { TOOL_NGHIEP_VU } from './nghiepVuTools';
 import { TOOL_GHI_NHO } from './memoryTools';
@@ -185,11 +186,25 @@ const DOC_MODULES = import.meta.glob('/docs/he-thong/*.md', {
 
 // ── Hướng dẫn NGƯỜI DÙNG CUỐI (docs/huong-dan-su-dung/**/index.md) ──
 //
-// Glob thứ hai, và nó CỐ Ý đứng ngay đây cạnh glob kia. Bất biến mà
-// `check-copilot-docs-manifest` khẳng định là bất biến cấu trúc: đường nạp `.md`
-// và phép lọc allowlist phải nằm chung MỘT chỗ, để không tồn tại lối nạp tài
-// liệu nào đi vòng qua allowlist. Thêm glob này ở `docs/docSearch.ts` sẽ mở đúng
-// lối vòng đó.
+// Đường nạp corpus thứ hai. Bất biến mà `check-copilot-docs-manifest` khẳng định
+// là bất biến cấu trúc: đường nạp `.md` và phép lọc allowlist phải cùng suy từ
+// MỘT nguồn, để không tồn tại lối nạp tài liệu nào đi vòng qua allowlist. Thêm
+// một `import.meta.glob('/docs/huong-dan-su-dung/…')` ở `docs/docSearch.ts` — hay
+// ở bất kỳ file nào khác — sẽ mở đúng lối vòng đó, và gate bắt cứng.
+//
+// VÌ SAO GLOB KHÔNG CÒN NẰM Ở ĐÂY (án lệ I5 — 03/09/2026)
+//   `import.meta.glob('/docs/huong-dan-su-dung/**/index.md')` là chỉ thị BUILD:
+//   Vite gom NỘI DUNG mọi file khớp vào chunk JS công khai trên CDN. Đo được 104
+//   file khớp trong khi allowlist chỉ nhận 25 — tức `05-cai-dat/admin-users`,
+//   `05-cai-dat/phan-quyen` và cả roadmap `08-ke-hoach-phat-trien/**` được PHÂN
+//   PHỐI cho bất kỳ ai tải bundle, không cần đăng nhập, trong khi docs-site vốn
+//   gác mật khẩu fail-closed.
+//
+//   Phép lọc dưới đây chặn TÌM, không chặn PHÂN PHỐI: nó lọc thứ đã nằm sẵn
+//   trong bundle. Nên danh sách literal chuyển sang `guideCorpus.generated.ts` —
+//   file MÁY SINH từ chính `CAPABILITIES`, có `--check` canh không cho trôi
+//   (scripts/generate-copilot-guide-corpus.mjs). Literal là bắt buộc: Vite phân
+//   tích glob tĩnh và không nhận biến.
 //
 // VÌ SAO ALLOWLIST LÀ `CAPABILITIES`, KHÔNG PHẢI MỘT MANIFEST THỨ HAI
 //   `docs/he-thong` cần manifest riêng vì thư mục đó chứa cả writeup nội bộ lẫn
@@ -202,11 +217,7 @@ const DOC_MODULES = import.meta.glob('/docs/he-thong/*.md', {
 //   Hệ quả có răng: trang hướng dẫn của một capability `internal` (vd
 //   network-center — nhưng nó khai `userDoc: null` nên không có trang) hoặc một
 //   file `index.md` ai đó thả vào thư mục mà không capability nào trỏ tới thì
-//   KHÔNG vào index. Glob nạp được nó, allowlist không nhận nó.
-const USER_DOC_MODULES = import.meta.glob('/docs/huong-dan-su-dung/**/index.md', {
-  query: '?raw',
-  import: 'default',
-}) as Record<string, () => Promise<string>>;
+//   KHÔNG vào index — và từ nay cũng KHÔNG vào bundle.
 
 const DOC_MANIFESTS = import.meta.glob('/docs/he-thong/manifest.json', {
   eager: true,

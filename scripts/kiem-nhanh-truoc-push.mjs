@@ -42,6 +42,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { DANH_SACH_VIEW } from "./generate-docs-views.mjs";
+import { FILE_SINH as FILE_CORPUS_HUONG_DAN } from "./generate-copilot-guide-corpus.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -68,6 +69,12 @@ const TU_CHUA = [
   ["sinh manifest bề mặt Edge", ["scripts/generate-edge-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/edge-function-surface.json"] }],
   ["sinh manifest bề mặt realtime", ["scripts/generate-realtime-surface.mjs"], { mang: true, soHuu: ["contracts/surfaces/realtime-surface.json"] }],
   ["sinh kiểm kê repo (JSON)", ["scripts/generate-repository-inventory.mjs", "--write"], { soHuu: ["docs/generated/repository-inventory.json"] }],
+  // Đối số `import.meta.glob` của corpus hướng dẫn — literal sinh từ CAPABILITIES.
+  // Đây là artifact MÁY SỞ HỮU nằm trong src/, và nó phải tươi TRƯỚC gate: thêm
+  // một capability `public` mà quên sinh lại nghĩa là trang đó không vào bundle
+  // (Copilot mất trang), gỡ một capability mà quên sinh lại nghĩa là trang vẫn
+  // được phân phối công khai (án lệ I5).
+  ["sinh corpus hướng dẫn cho Copilot", ["scripts/generate-copilot-guide-corpus.mjs", "--write"], { soHuu: [FILE_CORPUS_HUONG_DAN] }],
   ["sinh bản .md render từ manifest", ["scripts/generate-docs-views.mjs"], { soHuu: DANH_SACH_VIEW }],
   ["sửa số đếm trong tài liệu", ["scripts/check-doc-counts.mjs", "--fix"], { kieu: "va-tay" }],
   ["dán số baseline từ manifest vào README", ["scripts/check-baseline-doc.mjs", "--fix"], { kieu: "va-tay" }],
@@ -119,6 +126,8 @@ const GATE_NHANH = [
   "check-copilot-e2e-files",
   "check-copilot-golden-eval",
   "check-copilot-forbidden-actions",
+  // Corpus hướng dẫn: đối số glob phải khớp allowlist CAPABILITIES từng dòng.
+  ["generate-copilot-guide-corpus", "--check"],
   // nợ strict mới
   "check-new-modules-strict",
 ];

@@ -22,8 +22,16 @@ const MANIFEST_PATH = join(DOCS_DIR, 'manifest.json');
 const REGISTRY_PATH = join(repoRoot, 'src', 'copilot', 'tools', 'registry.ts');
 const SRC_DIR = join(repoRoot, 'src');
 
-/** File DUY NHẤT được phép nạp corpus hướng dẫn người dùng. */
-export const FILE_NAP_HUONG_DAN = 'src/copilot/tools/registry.ts';
+/**
+ * File DUY NHẤT được phép nạp corpus hướng dẫn người dùng.
+ *
+ * Từ 03/09/2026 (án lệ I5) đây là file MÁY SINH, không còn là registry.ts: đối số
+ * glob giờ là danh sách literal sinh từ `CAPABILITIES`
+ * (scripts/generate-copilot-guide-corpus.mjs). Glob `**` cũ gom NỘI DUNG cả 104
+ * trang vào chunk JS công khai trên CDN trong khi allowlist chỉ nhận 25 —
+ * allowlist chặn TÌM, chỉ đối số glob mới chặn PHÂN PHỐI.
+ */
+export const FILE_NAP_HUONG_DAN = 'src/copilot/tools/guideCorpus.generated.ts';
 
 /**
  * Bỏ comment để gate đọc MÃ, không đọc văn kể lại về mã.
@@ -43,11 +51,13 @@ export function boComment(nguon) {
  *
  * VÌ SAO LUẬT NÀY TỒN TẠI (03/09/2026)
  *   `docs/huong-dan-su-dung/**` vào index BM25 với allowlist suy từ
- *   `CAPABILITIES` — và allowlist đó nằm CẠNH glob, trong registry.ts, cố ý.
+ *   `CAPABILITIES` — và đối số glob CHÍNH LÀ allowlist đó, viết thành literal
+ *   trong `guideCorpus.generated.ts` (máy sinh, `--check` canh).
  *   Thêm một `import.meta.glob('/docs/huong-dan-su-dung/…')` ở file khác là mở
  *   một đường nạp thứ hai KHÔNG đi qua allowlist: mọi trang trong thư mục, kể
  *   cả trang của capability `internal` hay 16 trang onboarding không capability
- *   nào nhận, lập tức thành nguồn tư vấn cho người dùng thật.
+ *   nào nhận, lập tức thành nguồn tư vấn cho người dùng thật — VÀ nội dung của
+ *   chúng vào thẳng bundle công khai.
  *
  *   Đây đúng là luật đã có sẵn cho `docs/he-thong` (nạp + lọc manifest phải
  *   chung một chỗ). Corpus thứ hai ra đời mà không có nửa cưỡng chế nào — gate
@@ -56,12 +66,50 @@ export function boComment(nguon) {
  * Nhận `{ [đường dẫn]: nguồn }`; trả danh sách file vi phạm.
  */
 export function timGlobHuongDanNgoaiAllowlist(nguonTheoFile, choPhep = FILE_NAP_HUONG_DAN) {
-  const re = /import\.meta\.glob\(\s*['"`][^'"`]*huong-dan-su-dung[^'"`]*['"`]/;
+  // Bắt CẢ hai dạng đối số: chuỗi đơn VÀ mảng literal — dạng mà file máy sinh
+  // dùng từ 03/09/2026. Bản đầu chỉ khớp dấu nháy NGAY SAU `(`, nên một
+  // `import.meta.glob([ '/docs/huong-dan-su-dung/…' ])` ở file khác lọt sạch:
+  // đúng lối vòng mà luật này sinh ra để chặn.
+  const re = /import\.meta\.glob\(\s*\[?\s*['"`][^'"`]*huong-dan-su-dung[^'"`]*['"`]/;
   return Object.entries(nguonTheoFile ?? {})
     .filter(([file]) => file.replace(/\\/g, '/') !== choPhep)
     .filter(([, nguon]) => re.test(boComment(nguon)))
     .map(([file]) => file.replace(/\\/g, '/'))
     .sort();
+}
+
+/**
+ * Đối số glob của corpus hướng dẫn phải là ĐƯỜNG DẪN ĐẦY ĐỦ, không ký tự đại diện.
+ *
+ * ÁN LỆ I5 (03/09/2026) — đây là phép kiểm đắt nhất trong file này, vì lỗi nó
+ * chặn KHÔNG có triệu chứng nào ở runtime. `import.meta.glob` là chỉ thị BUILD:
+ * Vite nhúng NỘI DUNG mọi file khớp vào chunk JS, và chunk đó nằm trên CDN, tải
+ * được không cần đăng nhập. Đo hôm đó: `**` khớp 104 trang trong khi allowlist
+ * nhận 25 — `05-cai-dat/admin-users`, `05-cai-dat/phan-quyen`, cả roadmap
+ * `08-ke-hoach-phat-trien/**` được PHÂN PHỐI công khai, còn docs-site thì gác
+ * mật khẩu fail-closed.
+ *
+ * `trangHuongDanChoPhep()` KHÔNG cứu được: nó lọc thứ đã nằm sẵn trong bundle.
+ * Allowlist chặn TÌM; chặn PHÂN PHỐI chỉ có mỗi đối số này.
+ *
+ * Trả danh sách mẫu glob vi phạm (rỗng = sạch).
+ */
+export function timGlobHuongDanCoDaiDien(nguon) {
+  // KHÔNG dùng `boComment` ở đây, và đó là điểm tinh tế duy nhất của hàm này:
+  // chuỗi cần soi CHỨA `/**/` — đúng cú pháp mở-đóng của một block comment. Bộ
+  // bỏ comment nuốt luôn ký tự đại diện rồi trả về một đường dẫn trông sạch, tức
+  // phép kiểm sẽ XANH ở chính ca nó sinh ra để bắt. Lọc theo DÒNG comment (án lệ
+  // `khongPhaiComment` dưới main) không có bẫy đó.
+  const ma = String(nguon)
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .map((l) => l.replace(/\s\/\/[^\n]*$/, ''))
+    .join('\n');
+  const ra = [];
+  for (const m of ma.matchAll(/['"`](\/?docs\/huong-dan-su-dung\/[^'"`]*)['"`]/g)) {
+    if (/[*?{]|\[!/.test(m[1])) ra.push(m[1]);
+  }
+  return [...new Set(ra)].sort();
 }
 
 /**
@@ -227,9 +275,27 @@ function main() {
   for (const file of timGlobHuongDanNgoaiAllowlist(nguonSrc)) {
     problems.push(
       `${file}: nạp \`docs/huong-dan-su-dung\` bằng import.meta.glob.\n` +
-      `    → chỉ ${FILE_NAP_HUONG_DAN} được nạp corpus này, vì allowlist ` +
-      '(CAPABILITIES) nằm ngay cạnh glob ở đó. Đường nạp thứ hai là đường đi vòng qua allowlist.',
+      `    → chỉ ${FILE_NAP_HUONG_DAN} được nạp corpus này, vì đối số glob ở đó ` +
+      'CHÍNH LÀ allowlist (máy sinh từ CAPABILITIES). Đường nạp thứ hai là đường ' +
+      'đi vòng qua allowlist — và nó phân phối luôn nội dung ra bundle công khai.',
     );
+  }
+  // Ký tự đại diện trong chính file được phép nạp: cùng lỗ hổng, khác lối vào.
+  const nguonNapHuongDan = nguonSrc[FILE_NAP_HUONG_DAN];
+  if (nguonNapHuongDan === undefined) {
+    problems.push(
+      `KHÔNG ĐO ĐƯỢC: không đọc được ${FILE_NAP_HUONG_DAN} — ` +
+      'sinh lại bằng `node scripts/generate-copilot-guide-corpus.mjs`.',
+    );
+  } else {
+    for (const mau of timGlobHuongDanCoDaiDien(nguonNapHuongDan)) {
+      problems.push(
+        `${FILE_NAP_HUONG_DAN}: mẫu glob \`${mau}\` còn ký tự đại diện.\n` +
+        '    → glob là chỉ thị BUILD: mọi file khớp bị nhúng NỘI DUNG vào chunk JS ' +
+        'công khai trên CDN, kể cả trang ngoài allowlist (admin-users, phan-quyen, ' +
+        'roadmap). Đối số phải là đường dẫn đầy đủ do generator sinh.',
+      );
+    }
   }
   const thieuNangLuc = thieuLocNangLuc(registry);
   if (thieuNangLuc.length > 0) {

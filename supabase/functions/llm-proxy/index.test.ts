@@ -53,6 +53,8 @@ type ProxyModule = {
   chonTruongBodyHopLe: (body: Record<string, unknown>) => Record<string, unknown>;
   kiemKichThuocBody: (text: string, messages: unknown) => LoiKichThuoc | null;
   tinhEstCost: (pricing: ModelPricing, promptChars: number, maxOut: number) => number;
+  uocTokenTuKyTu: (soKyTu: number) => number;
+  demKyTuDelta: (chunk: unknown) => number;
   clampMockCost: (header: string | null, estCost: number) => number;
   mockDuocPhep: (getEnv?: (key: string) => string | undefined) => boolean;
   taoDongHoStream: (
@@ -699,4 +701,111 @@ Deno.test("(i2) daily_quota vẫn giữ nguyên mã cũ — cửa token không n
   );
   assertEquals(res.status, 403);
   assertEquals((await res.json()).error.code, "daily_quota");
+});
+
+// ── 10. (I6) Stream đứt trước chunk usage: chốt sổ theo ƯỚC LƯỢNG, không ghi 0 ─
+//
+// Lỗ đang vá: `doFinalize` lấy token từ `lastUsage`, mà `lastUsage` chỉ có sau
+// chunk `usage` cuối luồng. Client bấm Dừng (hoặc gọi abort bằng script) ngay sau
+// mảnh nội dung cuối thì proxy chốt `total_tokens = 0` — và cap TOKEN/ngày
+// (`20260903034632`) cộng đúng cột đó. Với provider báo giá 0, ba cap USD không
+// cắn, nên cột token là hàng rào DUY NHẤT còn lại; ghi 0 vào đó là mở cửa hẳn.
+
+Deno.test("demKyTuDelta đếm cả content lẫn tham số tool_calls, bỏ qua chunk lạ", async () => {
+  const { demKyTuDelta } = await nap();
+  assertEquals(demKyTuDelta({ choices: [{ delta: { content: "abcd" } }] }), 4);
+  // Lượt ui_control KHÔNG có `content`: toàn bộ câu trả lời nằm trong tham số
+  // tool. Chỉ đếm `content` là vẫn ước lượng 0 cho đúng luồng tốn token nhất.
+  assertEquals(
+    demKyTuDelta({
+      choices: [{ delta: { tool_calls: [{ function: { name: "AgentOutput", arguments: "{\"a\":1}" } }] } }],
+    }),
+    7,
+  );
+  assertEquals(demKyTuDelta({ choices: [], usage: { total_tokens: 9 } }), 0, "chunk usage không có chữ");
+  assertEquals(demKyTuDelta({}), 0);
+  assertEquals(demKyTuDelta(null), 0);
+  assertEquals(demKyTuDelta({ choices: [{ delta: { content: 123 } }] }), 0, "content không phải chuỗi");
+});
+
+Deno.test("(j) client abort TRƯỚC chunk usage: finalize ghi token ước lượng, không phải 0", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, goi, dem } = adminGia({
+    provider: {
+      provider: "openrouter",
+      enabled: true,
+      // Giá 0 — đúng cấu hình đang chạy, và là lý do cột token phải cắn.
+      models: [{ id: "m1", pricing_mode: "free", input_price: 0, output_price: 0 }],
+      data_class: "cloud",
+    },
+  });
+
+  const TIN_NHAN = [{ role: "user", content: "xin chào" }];
+  const MANH = ["Xin ", "chào ", "bạn"]; // 4 + 5 + 3 = 12 ký tự nội dung
+  const enc = new TextEncoder();
+  const khung = (o: unknown) => enc.encode(`data: ${JSON.stringify(o)}
+
+`);
+  // Upstream phát nội dung rồi ĐỨNG YÊN: không chunk usage, không [DONE], không
+  // đóng luồng — đúng thứ client thấy ngay trước khi bấm Dừng.
+  const thanUpstream = new ReadableStream<Uint8Array>({
+    start(ctrl) {
+      for (const manh of MANH) {
+        ctrl.enqueue(khung({
+          id: "c1",
+          object: "chat.completion.chunk",
+          model: "m1",
+          choices: [{ index: 0, delta: { content: manh }, finish_reason: null }],
+        }));
+      }
+    },
+  });
+
+  const ngat = new AbortController();
+  const req = new Request(URL_CHAT, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer jwt-gia",
+      "Content-Type": "application/json",
+      "x-organization-id": ORG_GIA,
+    },
+    body: JSON.stringify({ model: "openrouter:m1", stream: true, messages: TIN_NHAN }),
+    signal: ngat.signal,
+  });
+
+  const res = await xuLyYeuCau(req, {
+    admin,
+    getEnv: (k) => (k === "OPENROUTER_API_KEY" ? "key-gia" : undefined),
+    fetchImpl: () =>
+      Promise.resolve(
+        new Response(thanUpstream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+      ),
+  });
+  assertEquals(res.status, 200);
+
+  // Nhận trọn phần chữ rồi mới cắt: đây là kịch bản né hạn mức, không phải
+  // kịch bản mạng đứt sớm — client đã lấy được câu trả lời.
+  const doc = res.body!.getReader();
+  for (let i = 0; i < MANH.length; i++) await doc.read();
+  ngat.abort();
+  await nghi(0);
+
+  assertEquals(dem("finalize_ai_usage"), 1, "abort vẫn phải chốt sổ đúng một lần");
+  const chot = goi.find((g) => g.ten === "finalize_ai_usage");
+  assertEquals(chot?.args.p_status, "stream_aborted_estimated");
+  // 12 ký tự / 4, làm tròn LÊN = 3.
+  assertEquals(chot?.args.p_completion_tokens, 3);
+  // Prompt theo CÙNG thước với dự toán lúc reserve (chars/4), không phải thước thứ hai.
+  const promptUoc = Math.ceil(JSON.stringify(TIN_NHAN).length / 4);
+  assertEquals(chot?.args.p_prompt_tokens, promptUoc);
+  assertEquals(chot?.args.p_total_tokens, promptUoc + 3);
+  assert(
+    (chot?.args.p_total_tokens as number) > 0,
+    "ghi 0 token là né hẳn cap token/ngày — cột này là hàng rào cuối khi giá bằng 0",
+  );
+
+  await doc.cancel();
 });

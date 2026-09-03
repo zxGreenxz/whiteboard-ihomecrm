@@ -229,6 +229,11 @@ jobs:
           node scripts/check-copilot-golden-eval.mjs || loi=1
           # Ranh giới L5/L6, đọc từ tooling/copilot-action-policy.json.
           node scripts/check-copilot-forbidden-actions.mjs || loi=1
+          # Corpus hướng dẫn: đối số `import.meta.glob` phải khớp allowlist
+          # CAPABILITIES từng dòng. Glob rộng gom NỘI DUNG trang ngoài allowlist
+          # (admin-users, phan-quyen, roadmap) vào chunk JS công khai trên CDN —
+          # allowlist chặn TÌM, chỉ đối số này chặn PHÂN PHỐI (án lệ I5, 03/09/2026).
+          node scripts/generate-copilot-guide-corpus.mjs --check || loi=1
           exit $loi
 
       # Lane MOCK của bộ ca vàng — CHẠY THẬT, không mạng, không model, không
@@ -396,35 +401,51 @@ jobs:
       # Thêm gate mới dùng `node:test` thì phải sửa BA chỗ: bước này, danh sách
       # `--exclude` của Vitest ngay dưới, và `node-native.includes` trong
       # `tooling/test-matrix.json`. Thiếu một chỗ là test lại thành trang trí.
+      # DÙNG BLOCK SCALAR `|`, ĐỪNG QUAY LẠI `run: node --test A \` MỘT DÒNG.
+      #
+      # Bản cũ viết danh sách bằng plain scalar nhiều dòng, mỗi dòng kết thúc `\`.
+      # YAML GẤP plain scalar thành MỘT dòng, thay xuống dòng bằng dấu cách — nên
+      # bash không hề thấy "nối dòng", nó thấy `A \ B \ C`. Mà `\ ` trong bash là
+      # DẤU CÁCH ĐƯỢC ESCAPE: mọi đối số từ cái thứ hai trở đi mang một dấu cách ở
+      # đầu tên file. `node --test` bỏ qua đường dẫn không tồn tại trong im lặng và
+      # thoát 0 — nên bước này XANH suốt trong khi chỉ chạy 2/29 file (file đầu và
+      # file cuối). Đo 03/09/2026. Chuỗi `\n` viết nhầm ở cuối chỉ là triệu chứng
+      # dễ thấy của cùng một lỗi; nó thành một đối số tên `n`.
+      #
+      # Với block scalar `|` xuống dòng được GIỮ, nên `\` cuối dòng là nối dòng
+      # thật của shell và mọi đường dẫn sạch.
       - name: node --test (script test dùng node:test)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
-        run: node --test scripts/__tests__/apply-reviewed-migration-authorization.test.mjs \
-          scripts/__tests__/apply-reviewed-migration-transaction.test.mjs \
-          scripts/__tests__/backup-luu-tru.test.mjs \
-          scripts/__tests__/check-agent-contract.test.mjs \
-          scripts/__tests__/check-external-controls.test.mjs \
-          scripts/__tests__/check-golden-eval-report.test.mjs \
-          scripts/__tests__/check-graph-governance.test.mjs \
-          scripts/__tests__/check-migration-provenance.test.mjs \
-          scripts/__tests__/check-no-auto-apply.test.mjs \
-          scripts/__tests__/check-copilot-routes.test.mjs \
-          scripts/__tests__/check-copilot-tool-inventory.test.mjs \
-          scripts/__tests__/check-copilot-docs-manifest.test.mjs \
-          scripts/__tests__/check-copilot-e2e-files.test.mjs \
-          scripts/__tests__/check-copilot-forbidden-actions.test.mjs \
-          scripts/__tests__/check-copilot-page-contracts.test.mjs \
-          scripts/__tests__/check-copilot-provider-policy.test.mjs \
-          scripts/__tests__/check-copilot-safe-control-markers.test.mjs \
-          scripts/__tests__/check-csp-build-attestation.test.mjs \
-          scripts/__tests__/run-copilot-golden-eval.test.mjs \
-          scripts/__tests__/check-dependency-audit.test.mjs \
-          scripts/__tests__/check-eslint-baseline.test.mjs \
-          scripts/__tests__/check-realtime-key-ownership.test.mjs \
-          scripts/__tests__/check-rpc-arg-names.test.mjs \
-          scripts/__tests__/check-rpc-layer.test.mjs \
-          scripts/__tests__/check-rpc-name-literal.test.mjs \
-          scripts/__tests__/generate-bundle-inventory.test.mjs \
-          scripts/__tests__/check-ts-suppressions.test.mjs \n          scripts/__tests__/check-ts-baseline.test.mjs
+        run: |
+          node --test \
+            scripts/__tests__/apply-reviewed-migration-authorization.test.mjs \
+            scripts/__tests__/apply-reviewed-migration-transaction.test.mjs \
+            scripts/__tests__/backup-luu-tru.test.mjs \
+            scripts/__tests__/check-agent-contract.test.mjs \
+            scripts/__tests__/check-external-controls.test.mjs \
+            scripts/__tests__/check-golden-eval-report.test.mjs \
+            scripts/__tests__/check-graph-governance.test.mjs \
+            scripts/__tests__/check-migration-provenance.test.mjs \
+            scripts/__tests__/check-no-auto-apply.test.mjs \
+            scripts/__tests__/check-copilot-routes.test.mjs \
+            scripts/__tests__/check-copilot-tool-inventory.test.mjs \
+            scripts/__tests__/check-copilot-docs-manifest.test.mjs \
+            scripts/__tests__/check-copilot-e2e-files.test.mjs \
+            scripts/__tests__/check-copilot-forbidden-actions.test.mjs \
+            scripts/__tests__/check-copilot-page-contracts.test.mjs \
+            scripts/__tests__/check-copilot-provider-policy.test.mjs \
+            scripts/__tests__/check-copilot-safe-control-markers.test.mjs \
+            scripts/__tests__/check-csp-build-attestation.test.mjs \
+            scripts/__tests__/run-copilot-golden-eval.test.mjs \
+            scripts/__tests__/check-dependency-audit.test.mjs \
+            scripts/__tests__/check-eslint-baseline.test.mjs \
+            scripts/__tests__/check-realtime-key-ownership.test.mjs \
+            scripts/__tests__/check-rpc-arg-names.test.mjs \
+            scripts/__tests__/check-rpc-layer.test.mjs \
+            scripts/__tests__/check-rpc-name-literal.test.mjs \
+            scripts/__tests__/generate-bundle-inventory.test.mjs \
+            scripts/__tests__/check-ts-suppressions.test.mjs \
+            scripts/__tests__/check-ts-baseline.test.mjs
 
       - name: Vitest (root-owned app and script suites)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}

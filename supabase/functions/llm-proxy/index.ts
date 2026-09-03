@@ -106,9 +106,60 @@ function findPricing(models: unknown, modelId: string): ModelPricing | null {
 // (scripts/deploy-llm-proxy.mjs) chỉ đóng gói ĐÚNG index.ts, một import cạnh
 // bên sẽ chết trên server chứ không chết ở đây.
 
+/**
+ * Ký tự trên một token — hệ số DUY NHẤT của proxy.
+ *
+ * `tinhEstCost` (dự toán lúc reserve) và `uocTokenTuKyTu` (ước lượng lúc chốt sổ
+ * khi stream đứt) phải đọc chung con số này. Hai hệ số rời nhau nghĩa là một
+ * request bị tính tiền theo thước này và tính token theo thước kia, rồi không ai
+ * đối chiếu được hai cột trong `ai_usage_logs` nữa.
+ */
+export const KY_TU_MOI_TOKEN = 4;
+
 /** Ước lượng chi phí reservation: prompt chars/4 × giá in + max_tokens × giá out (USD/1M). */
 export function tinhEstCost(pricing: ModelPricing, promptChars: number, maxOut: number): number {
-  return (promptChars / 4 / 1e6) * pricing.input_price + (maxOut / 1e6) * pricing.output_price;
+  return (promptChars / KY_TU_MOI_TOKEN / 1e6) * pricing.input_price + (maxOut / 1e6) * pricing.output_price;
+}
+
+/**
+ * Số token ước lượng từ số ký tự — LÀM TRÒN LÊN.
+ *
+ * Lên chứ không xuống: hàm này chỉ được gọi khi ta KHÔNG biết số thật, và nơi
+ * duy nhất dùng nó là hàng rào hạn mức. Làm tròn xuống biến một lượt gọi ngắn
+ * thành 0 token — đúng cái lỗ đang vá.
+ */
+export function uocTokenTuKyTu(soKyTu: number): number {
+  return Math.ceil(Math.max(0, soKyTu) / KY_TU_MOI_TOKEN);
+}
+
+/**
+ * Số ký tự nội dung trợ lý trong MỘT chunk SSE đã parse.
+ *
+ * Đếm cả `delta.content` lẫn `delta.tool_calls[].function.arguments`: lượt
+ * `ui_control` trả TOÀN BỘ nội dung dưới dạng tham số tool (`AgentOutput`), nên
+ * chỉ đếm `content` thì mọi lượt điều khiển giao diện vẫn ước lượng 0 — cùng lỗ
+ * cũ, chỉ hẹp hơn.
+ *
+ * KHÔNG đếm byte SSE thô: bao bì `data: {"id":…,"model":…}` lớn gấp hàng chục lần
+ * phần chữ, ước theo nó là tính oan cho người bấm Dừng thật.
+ */
+export function demKyTuDelta(chunk: unknown): number {
+  const choices = (chunk as { choices?: unknown } | null)?.choices;
+  if (!Array.isArray(choices)) return 0;
+  let tong = 0;
+  for (const lua of choices) {
+    const delta = (lua as { delta?: unknown } | null)?.delta;
+    if (!delta || typeof delta !== 'object') continue;
+    const noiDung = (delta as { content?: unknown }).content;
+    if (typeof noiDung === 'string') tong += noiDung.length;
+    const toolCalls = (delta as { tool_calls?: unknown }).tool_calls;
+    if (!Array.isArray(toolCalls)) continue;
+    for (const tc of toolCalls) {
+      const args = (tc as { function?: { arguments?: unknown } } | null)?.function?.arguments;
+      if (typeof args === 'string') tong += args.length;
+    }
+  }
+  return tong;
 }
 
 /**
@@ -373,7 +424,7 @@ function mockResponse(req: Request, body: Record<string, unknown>, script: strin
   const actions = script.split('-');
   const actionName = actions[Math.min(step, actions.length - 1)] || 'done';
   const promptChars = JSON.stringify(body.messages ?? []).length;
-  const estPromptTokens = Math.ceil(promptChars / 4);
+  const estPromptTokens = uocTokenTuKyTu(promptChars);
   const diag = {
     step,
     auth: req.headers.get('authorization') ? 'yes' : 'no',
@@ -441,7 +492,7 @@ function mockStreamResponse(
   finalize: (f: { prompt?: number; completion?: number; total?: number; cached?: number; cost: number | null; latency: number; status: string; error?: string }) => void,
   t0: number,
 ) {
-  const promptTokens = Math.ceil(JSON.stringify(body.messages ?? []).length / 4);
+  const promptTokens = uocTokenTuKyTu(JSON.stringify(body.messages ?? []).length);
   const enc = new TextEncoder();
   const chunk = (obj: unknown) => enc.encode(`data: ${JSON.stringify(obj)}\n\n`);
   const base = { id: 'mock-stream', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: String(body.model ?? 'mock') };
@@ -771,6 +822,9 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
       let sseBuf = '';
       let lastUsage: any = null;
       let soChunkHong = 0;
+      // Số ký tự nội dung trợ lý ĐÃ chảy về client — nguyên liệu duy nhất để ước
+      // lượng completion khi stream đứt trước chunk usage.
+      let soKyTuTraVe = 0;
       let dieuKhienTee: TransformStreamDefaultController<Uint8Array> | null = null;
       const doFinalize = (ketCuc: 'ok' | 'client_abort' | 'stream_timeout', chiTiet?: string) => {
         dongHo.don();
@@ -784,6 +838,17 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
         // Chỉ coi là hỏng khi ta ĐÃ XIN usage mà vẫn không có: với provider không
         // hỗ trợ include_usage, thiếu usage là chuyện bình thường, không phải lỗi.
         const thieuUsage = !coUsage && daXinUsage && ketCuc === 'ok';
+        // (I6) Stream ĐỨT trước khi chunk usage tới — client bấm Dừng, hoặc hết
+        // giờ. Bản cũ chốt sổ `total_tokens = 0`, mà cap TOKEN/ngày
+        // (`20260903034632`) cộng đúng cột đó: abort ngay sau chunk nội dung cuối
+        // là né hẳn hàng rào ấy, mọi lượt gọi đều "0 token" trong khi upstream đã
+        // tiêu thật. Ước ở đây là con số TỐI THIỂU, không phải số đo: prompt theo
+        // cùng thước với dự toán lúc reserve, completion theo số ký tự thật đã
+        // chảy về client.
+        const uocLuong = !coUsage && ketCuc !== 'ok';
+        const promptTokens = uocLuong ? uocTokenTuKyTu(promptChars) : (lastUsage?.prompt_tokens ?? 0);
+        const completionTokens = uocLuong ? uocTokenTuKyTu(soKyTuTraVe) : (lastUsage?.completion_tokens ?? 0);
+        const totalTokens = uocLuong ? promptTokens + completionTokens : (lastUsage?.total_tokens ?? 0);
         if (thieuUsage || soChunkHong > 0) {
           console.error(JSON.stringify({
             evt: 'usage_parse_failed',
@@ -797,13 +862,19 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
           }));
         }
         finalize({
-          prompt: lastUsage?.prompt_tokens ?? 0,
-          completion: lastUsage?.completion_tokens ?? 0,
-          total: lastUsage?.total_tokens ?? 0,
+          prompt: promptTokens,
+          completion: completionTokens,
+          total: totalTokens,
           cached: lastUsage?.prompt_tokens_details?.cached_tokens ?? 0,
           cost: realCost,
           latency: Date.now() - t0,
-          status: ketCuc === 'stream_timeout' ? 'stream_timeout' : (thieuUsage ? 'finalize_error' : 'ok'),
+          // `stream_aborted_estimated` nói thẳng rằng ba cột token là ƯỚC, đừng
+          // đọc như số đo. Ghi được: `ai_usage_logs.status` là `text` không CHECK
+          // (`20260710200000`), và cả ba cap USD lẫn hai cap token đều cộng theo
+          // ngày KHÔNG lọc status — nên giá trị mới vừa lưu được vừa cắn ngay.
+          status: uocLuong
+            ? 'stream_aborted_estimated'
+            : (ketCuc === 'stream_timeout' ? 'stream_timeout' : (thieuUsage ? 'finalize_error' : 'ok')),
           error: ketCuc === 'ok' ? (thieuUsage ? 'usage_parse_failed' : undefined) : (chiTiet ?? ketCuc),
         });
       };
@@ -830,6 +901,7 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
             try {
               const parsed = JSON.parse(payload);
               if (parsed?.usage) lastUsage = parsed.usage;
+              soKyTuTraVe += demKyTuDelta(parsed);
             } catch { soChunkHong += 1; } // chunk dở — đếm để log, không chặn stream
           }
         },

@@ -16,15 +16,18 @@ import {
   boComment,
   thanHamAllowlist,
   thieuLocNangLuc,
+  timGlobHuongDanCoDaiDien,
   timGlobHuongDanNgoaiAllowlist,
 } from '../check-copilot-docs-manifest.mjs';
 
 const REGISTRY = fileURLToPath(new URL('../../src/copilot/tools/registry.ts', import.meta.url));
 const nguonThat = readFileSync(REGISTRY, 'utf8');
 
+const CORPUS_SINH = fileURLToPath(new URL(`../../${FILE_NAP_HUONG_DAN}`, import.meta.url));
+
 const GLOB = `const M = import.meta.glob('/docs/huong-dan-su-dung/**/index.md', { query: '?raw' });`;
 
-test('glob huong-dan o file KHAC registry.ts bi bat', () => {
+test('glob huong-dan o file KHAC file nap duoc phep bi bat', () => {
   const vp = timGlobHuongDanNgoaiAllowlist({
     'src/copilot/docs/docSearch.ts': GLOB,
     [FILE_NAP_HUONG_DAN]: GLOB,
@@ -32,15 +35,57 @@ test('glob huong-dan o file KHAC registry.ts bi bat', () => {
   assert.deepEqual(vp, ['src/copilot/docs/docSearch.ts']);
 });
 
-test('glob huong-dan o CHINH registry.ts la hop le', () => {
+test('glob huong-dan o CHINH file nap duoc phep la hop le', () => {
   assert.deepEqual(timGlobHuongDanNgoaiAllowlist({ [FILE_NAP_HUONG_DAN]: GLOB }), []);
 });
 
 test('duong dan Windows (backslash) van khop allowlist', () => {
-  // Checkout Windows trả `src\copilot\tools\registry.ts`; so thô sẽ coi chính
-  // file được phép là vi phạm, và gate đỏ ở nơi không có lỗi nào.
+  // Checkout Windows trả `src\copilot\tools\guideCorpus.generated.ts`; so thô sẽ
+  // coi chính file được phép là vi phạm, và gate đỏ ở nơi không có lỗi nào.
   const key = FILE_NAP_HUONG_DAN.split('/').join('\\');
   assert.deepEqual(timGlobHuongDanNgoaiAllowlist({ [key]: GLOB }), []);
+});
+
+test('DOT BIEN: glob dang MANG literal o file khac van bi bat', () => {
+  // Án lệ I5: từ 03/09/2026 đối số hợp lệ là một MẢNG. Regex chỉ khớp dấu nháy
+  // ngay sau `(` sẽ để lọt đúng dạng mà file máy sinh đang dùng — tức ai chép
+  // dạng đó sang file khác là mở lại lối vòng, mà gate không kêu.
+  for (const nguon of [
+    "import.meta.glob(['/docs/huong-dan-su-dung/a/index.md'], { query: '?raw' })",
+    'import.meta.glob(\n  [\n    "/docs/huong-dan-su-dung/b/index.md",\n  ],\n)',
+  ]) {
+    assert.deepEqual(timGlobHuongDanNgoaiAllowlist({ 'src/a.ts': nguon }), ['src/a.ts'], nguon);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// I5 — ký tự đại diện trong đối số glob = PHÂN PHỐI trang ngoài allowlist
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('DOT BIEN: `**` trong doi so glob bi bat', () => {
+  assert.deepEqual(timGlobHuongDanCoDaiDien(GLOB), ['/docs/huong-dan-su-dung/**/index.md']);
+});
+
+test('DOT BIEN: dai dien mot bac `*` cung bi bat', () => {
+  // `05-cai-dat/*/index.md` gom cả admin-users lẫn phan-quyen — hẹp hơn `**`
+  // nhưng vẫn là phân phối trang ngoài allowlist.
+  const nguon = "import.meta.glob(['/docs/huong-dan-su-dung/05-cai-dat/*/index.md'])";
+  assert.deepEqual(timGlobHuongDanCoDaiDien(nguon), ['/docs/huong-dan-su-dung/05-cai-dat/*/index.md']);
+});
+
+test('nhac `**` trong CHU THICH khong phai vi pham', () => {
+  const chiLaChuThich = '// truoc day: /docs/huong-dan-su-dung/**/index.md\nexport const x = 1;';
+  assert.deepEqual(timGlobHuongDanCoDaiDien(chiLaChuThich), []);
+});
+
+test('file corpus MAY SINH hien tai khong con ky tu dai dien', () => {
+  const nguon = readFileSync(CORPUS_SINH, 'utf8');
+  // Sàn chống-xanh-rỗng: file rỗng cũng "không có ký tự đại diện".
+  assert.ok(
+    (nguon.match(/\/docs\/huong-dan-su-dung\//g) ?? []).length >= 20,
+    'file corpus sinh ra phải liệt kê ≥20 trang',
+  );
+  assert.deepEqual(timGlobHuongDanCoDaiDien(nguon), []);
 });
 
 test('DOT BIEN: nhac glob trong CHU THICH khong phai vi pham', () => {

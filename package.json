@@ -123,6 +123,8 @@
     "gate:csp-build-attestation": "node scripts/check-csp-build-attestation.mjs",
     "gate:copilot-golden-eval": "node scripts/check-copilot-golden-eval.mjs",
     "gate:copilot-forbidden-actions": "node scripts/check-copilot-forbidden-actions.mjs",
+    "copilot:guide-corpus": "node scripts/generate-copilot-guide-corpus.mjs --write",
+    "gate:copilot-guide-corpus": "node scripts/generate-copilot-guide-corpus.mjs --check",
     "copilot:golden-eval": "node scripts/run-copilot-golden-eval.mjs",
     "do:strict-null": "node scripts/do-strict-null.mjs",
     "org-inventory:build": "node scripts/build-org-boundary-inventory.mjs --write",
