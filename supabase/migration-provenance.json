@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T18:53:52.619Z",
+  "generatedAt": "2026-09-03T19:44:43.864Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 486,
-    "unknown": 73,
+    "unknown": 81,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9198,6 +9198,110 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-03T18:53:48.767Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903190255_copilot_action_ie_duyet_v1.sql",
+      "version": "20260903190255",
+      "name": "copilot_action_ie_duyet_v1",
+      "scheme": "timestamp14",
+      "sha256": "c4f589602b6af408e5c510777bd22c9f2ad4b8dcf4866265052af2f45c0dd54f",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_ie_duyet_v1",
+        "function:public.copilot_execute_ie_duyet_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903190840_copilot_action_ie_duyet_vao_so_v1.sql",
+      "version": "20260903190840",
+      "name": "copilot_action_ie_duyet_vao_so_v1",
+      "scheme": "timestamp14",
+      "sha256": "d43688787d8165768d53453a50590e84138f85b34781df923823aabe4acd9558",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_ie_duyet_vao_so_v1",
+        "function:public.copilot_execute_ie_duyet_vao_so_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903191400_copilot_action_ie_vao_so_v1.sql",
+      "version": "20260903191400",
+      "name": "copilot_action_ie_vao_so_v1",
+      "scheme": "timestamp14",
+      "sha256": "e4c504d2999f20ecdcb880f7df2e5db990aaa0b8856c7ef24a0a780fbe97f8af",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_ie_vao_so_v1",
+        "function:public.copilot_execute_ie_vao_so_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903191755_copilot_action_invoice_duyet_v1.sql",
+      "version": "20260903191755",
+      "name": "copilot_action_invoice_duyet_v1",
+      "scheme": "timestamp14",
+      "sha256": "e5c90d29d14f183d87a65543c90edf0c2881df3ce1d363e04b7893619dcbd770",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_invoice_duyet_v1",
+        "function:public.copilot_execute_invoice_duyet_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903192041_copilot_action_invoice_xoa_mem_v1.sql",
+      "version": "20260903192041",
+      "name": "copilot_action_invoice_xoa_mem_v1",
+      "scheme": "timestamp14",
+      "sha256": "995278a8808877d10e19ec28aa4615f010fbb288e614f411e525b212138a40ea",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_invoice_xoa_mem_v1",
+        "function:public.copilot_execute_invoice_xoa_mem_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903192331_copilot_action_meter_reading_duyet_v1.sql",
+      "version": "20260903192331",
+      "name": "copilot_action_meter_reading_duyet_v1",
+      "scheme": "timestamp14",
+      "sha256": "cc0bd276449b554fac00fe31b0361f9fb26257fdd812153c7c0cde3800592bad",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_meter_reading_duyet_v1",
+        "function:public.copilot_execute_meter_reading_duyet_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903192634_copilot_action_contract_duyet_thanh_ly_v1.sql",
+      "version": "20260903192634",
+      "name": "copilot_action_contract_duyet_thanh_ly_v1",
+      "scheme": "timestamp14",
+      "sha256": "8b2c0c6d07e09df791e054a98a064235d916806544e05497ff5c6e511f13e223",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_contract_duyet_thanh_ly_v1",
+        "function:public.copilot_execute_contract_duyet_thanh_ly_v1"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260903192942_copilot_action_customer_xoa_mem_v1.sql",
+      "version": "20260903192942",
+      "name": "copilot_action_customer_xoa_mem_v1",
+      "scheme": "timestamp14",
+      "sha256": "72c621cb76291e2344f9a28ab93c188955be9ad20630ab4127c221bd1c07d995",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_preview_customer_xoa_mem_v1",
+        "function:public.copilot_execute_customer_xoa_mem_v1"
       ]
     },
     {
