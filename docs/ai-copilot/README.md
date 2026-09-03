@@ -116,6 +116,55 @@ Từ 03/09/2026 Copilot có **đồng ý theo lô**: một phiếu đồng ý ch
   ACL có sẵn để Mức 3 không phải đổi bề mặt. Xem `tooling/known-gaps.yaml` mục
   `copilot-plan-reconcile-unknown-effect`.
 
+## Mức 3 — PIN step-up, uỷ quyền đứng, ranh giới L5/L6
+
+Quyết định đầy đủ ở ADR
+[2026-09-04-ai-copilot-muc-3-adr.md](../superpowers/specs/2026-09-04-ai-copilot-muc-3-adr.md).
+Tóm tắt: tám hành động `direct_l5_v1` (duyệt/vào sổ/xoá mềm phiếu thu-chi, hoá đơn, chỉ số
+công tơ, thanh lý hợp đồng, khách hàng) chỉ chạy được sau PIN step-up 4 số của SUPER ADMIN
+(`copilot_step_up_verify_v1`, khoá 5-lần-sai leo thang) và trong khuôn một kế hoạch APPROVED
+(`l5_requires_plan` chặn mọi lời gọi trực tiếp); uỷ quyền đứng (standing grant, trần 30 ngày,
+không bao giờ cấp cho hành động phân quyền) cho phép một kế hoạch khớp hạn mức tự duyệt mà
+không cần bấm mỗi lần. L6 (sql/secret/deploy) ở ngoài Copilot vĩnh viễn, không đàm phán.
+**Chưa bật production**: `max_direct_risk` vẫn `L4`, `standing_grants_enabled` vẫn `false` tại
+thời điểm viết — bật van là việc riêng của controller (`set_copilot_action_policy_v1`), có canary
+`disabled → shadow → enabled` cho từng cờ hành động trên DEMO trước.
+
+- **Bằng chứng chạy thật**: `.e2e-fleet/specs/copilot-plan-l5-matrix.spec.ts` — khoá/mở khoá PIN
+  (không phụ thuộc trần rủi ro), `plan_risk_not_allowed` khi trần còn L4, `l5_requires_plan` khi
+  gọi thẳng RPC thực thi ngoài kế hoạch, tự duyệt/thu hồi giữa chừng qua uỷ quyền đứng (chỉ cần
+  `standing_grants_enabled`, không cần trần L5 vì `income_expense.annotate` là L3). Ba case còn
+  lại (kế hoạch L5 đầy đủ, rollback, injection PIN qua chat) SKIP có lý do khi van chưa mở — spec
+  tự đo tiền đề, không đoán.
+- **Hai khoảng trống đã đo, cần đóng trước khi bật production thật** (không thuộc phạm vi code
+  của task này — xem đầu file spec): (1) `copilot_plan_create_v1` (định nghĩa sống mới nhất,
+  G5-B) chưa có nhánh `executor_kind = 'direct_l5_v1'` — một kế hoạch mang bước L5 sẽ NÉM
+  `executor_not_supported` ngay cả sau khi trần rủi ro lên L5, cần một migration mới; (2) trên
+  DEMO không có tài khoản nào vừa là super admin (điều kiện duy nhất được đặt PIN) vừa có quyền
+  ghi tài chính thật — case "kế hoạch L5 đầy đủ" tự đo tiền đề này qua một lời gọi xem-trước thật
+  thay vì giả định.
+
+### Runbook — đối chiếu sổ hành động (`copilot-ledger-audit.mjs`)
+
+```bash
+node scripts/copilot-ledger-audit.mjs --org <uuid> --days 14 \
+  --sysadmin-email <email> --sysadmin-password <mk> [--out <file.json>]
+```
+
+Đếm ba con số trên `app_private.copilot_action_ledger` (qua `copilot_action_ledger_list_v1` +
+`copilot_plan_get_v1`, cộng vài lượt đọc bảng trực tiếp — `ai_write_audit`, bảng đích của
+`entity_table`) trong N ngày gần nhất của một tổ chức: **unintended-write** (một hành động L5
+`step_done` mà `consent_kind` không phải `step_up`/`standing_grant`, hoặc tổ chức của kế hoạch
+lệch tổ chức của dòng sổ), **duplicate** (trùng `idempotency_key` trong `ai_write_audit` — vốn có
+UNIQUE ở tầng bảng nên đúng ra luôn phải là 0), **wrong-org** (tổ chức thật của chính thực thể
+lệch tổ chức của dòng sổ). Exit khác 0 nếu bất kỳ con số nào > 0. `copilot_action_ledger_list_v1`
+chặn ở LIMIT 200 không có offset — script tự cảnh báo khi cửa sổ ngày có thể còn dòng cũ hơn chưa
+đọc tới, xem `truncationWarning` trong report.
+
+Chạy lần đầu cho DEMO (04/09/2026, 14 ngày): `unintendedWrite=0 duplicate=0 wrongOrg=0` trên 200
+dòng sổ (bị tràn LIMIT — DEMO có nhiều lượt E2E mở/đóng van chính sách mỗi lần chạy) + 40 dòng
+`ai_write_audit`. Report đầy đủ: `docs/generated/copilot-ledger-audit/demo-2026-09-04.json`.
+
 ## Giới hạn đã biết
 
 - Confirmation nonce đã thay cho boolean `xac_nhan` trong input schema. Kho client hiện là một khe global (đề xuất mới đè đề xuất cũ), nên chưa đáp ứng contract key theo conversation/action/payload-hash và chưa có đủ proof replay/concurrency.
@@ -132,6 +181,9 @@ Từ 03/09/2026 Copilot có **đồng ý theo lô**: một phiếu đồng ý ch
 - [SPIKE-RESULTS.md](SPIKE-RESULTS.md) — bằng chứng spike ngày 10/07, không phải status vận hành.
 - Tham chiếu hệ thống: [../he-thong/21-ai-copilot.md](../he-thong/21-ai-copilot.md).
 - Audit/plan cập nhật 2026-08-28: [spec](../superpowers/specs/2026-08-13-ai-copilot-superadmin-control-design.md) và [plan](../superpowers/plans/2026-08-13-ai-copilot-superadmin-full-site-control.md).
+- ADR Mức 3 (batch consent → step-up PIN + uỷ quyền đứng, ranh giới L5/L6, kill switch):
+  [2026-09-02-ai-copilot-batch-consent-adr.md](../superpowers/specs/2026-09-02-ai-copilot-batch-consent-adr.md)
+  và [2026-09-04-ai-copilot-muc-3-adr.md](../superpowers/specs/2026-09-04-ai-copilot-muc-3-adr.md).
 
 ## Nguồn sự thật
 

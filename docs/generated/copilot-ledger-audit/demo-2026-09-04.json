@@ -1,0 +1,21 @@
+{
+  "organizationId": "dddd0000-0000-4000-8000-000000000001",
+  "days": 14,
+  "windowSince": "2026-08-20T21:47:14.648Z",
+  "ledgerRowsFetched": 200,
+  "ledgerRowsInWindow": 200,
+  "auditRowsInWindow": 40,
+  "truncationWarning": "copilot_action_ledger_list_v1 tra ve dung 200 dong (tran LIMIT) va dong cu nhat van con trong cua so 14 ngay — co the con dong CU HON chua duoc do. Khong co tham so offset o RPC v1 de doc tiep.",
+  "counts": {
+    "unintendedWrite": 0,
+    "duplicate": 0,
+    "wrongOrg": 0
+  },
+  "unintendedWrite": [],
+  "duplicate": [],
+  "wrongOrg": [],
+  "notes": [
+    "\"user mismatch\" cua unintended-write KHONG do duoc: copilot_plan_summary_v1 (nguon cua copilot_plan_get_v1) khong lo user_id chu ke hoach qua RPC nay. Chi \"org mismatch\" duoc do.",
+    "Danh sach L5 neo tay trong DANH_SACH_L5 (khop actionCatalog.ts dot G5-C 1) — them action L5 moi ma quen cap nhat o day se lam script bo sot, khong bao loi."
+  ]
+}
