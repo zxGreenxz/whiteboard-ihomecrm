@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 517,
+  "tongSoFileTest": 522,
   "soFileDocBangFs": 174,
-  "tongLoiGoi": 349,
-  "khongPhanLoaiDuoc": 182,
+  "tongLoiGoi": 352,
+  "khongPhanLoaiDuoc": 185,
   "theoLoai": {
     "manifest": {
       "soFile": 18,
@@ -164,6 +164,12 @@
         "manifest": 3
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
+      "soGoi": 4,
+      "loai": {},
+      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "src/copilot/__tests__/pageAgentCompatibility.test.ts",
@@ -336,12 +342,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
-      "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
-    },
-    {
       "file": "scripts/__tests__/check-raw-rpc-callers.test.mjs",
       "soGoi": 2,
       "loai": {
@@ -475,6 +475,12 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotStandingGrantsMigration.test.ts",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/customerCreditMigration.test.ts",
@@ -994,12 +1000,6 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/copilotStandingGrantsMigration.test.ts",
-      "soGoi": 1,
-      "loai": {},
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/copilotSuperadminOrganizationDirectoryMigration.test.ts",

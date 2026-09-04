@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1411,
-    "catalogFunctions": 1091,
+    "sourceCallSites": 1415,
+    "catalogFunctions": 1124,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 284,
+    "calledRpcs": 286,
     "byRisk": {
-      "normal": 207,
+      "normal": 209,
       "financial": 77
     },
-    "securityDefiner": 268
+    "securityDefiner": 270
   },
   "missingOnServer": [],
   "rpcs": {
@@ -1282,6 +1282,25 @@
       ],
       "risk": "normal"
     },
+    "copilot_plan_reconcile_step_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_plan_id uuid, p_step_no integer, p_expected_plan_version integer",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/plan/planClient.ts"
+      ],
+      "risk": "normal"
+    },
     "copilot_preview_income_expense_v1": {
       "definitions": [
         {
@@ -1393,6 +1412,25 @@
       ],
       "callers": [
         "src/copilot/plan/standingGrantClient.ts"
+      ],
+      "risk": "normal"
+    },
+    "copilot_step_up_reset_pin_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user_id uuid, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/plan/stepUpClient.ts"
       ],
       "risk": "normal"
     },

@@ -1,0 +1,36 @@
+{
+  "file": "supabase/migrations/20260903224418_copilot_action_salary_khoa_thang_v1.sql",
+  "sha256": "1c26aa02e78f8795aa26eb367d09858f8f40180ac9a96eebef1bc8dbfbe33ba9",
+  "appliedAt": "2026-09-04T00:46:46.695Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "lockName": "ihomecrm:forward-migration:v1",
+  "statementTimeout": "120s",
+  "authorization": {
+    "loai": "bien-nhan-backup",
+    "chiTiet": "2787718734b34e85",
+    "backupFile": "C:\\Users\\Nguyen Tam\\ihomecrm-backups\\ihomecrm-full-2026-09-04T00-44-00-219Z.dump",
+    "backupSha256": "08eaf24328f10cd4971af1435d4430b777bd5780f323bb64664d872fde440857",
+    "backupCreatedAt": "2026-09-04T00:46:41.795Z",
+    "backupTablesWithData": 519
+  },
+  "actor": "nguyentamca165@gmail.com",
+  "repoCommit": "06652ac1481e37cd57b42991bb6dc8bd4f9fb035",
+  "reviewedBlob": "d199794164810137b526427487a3a5dbbf3e7c76",
+  "statementBytes": 33293,
+  "normalizedDigest": "49e7213aad8f8acbeb7746e9e6f4cbbc88d73f4da855c645e5dbdbccf87059bd",
+  "catalog": {
+    "before": "306790c7e60f535df968f7ea9a7a151a30d5e41d17adb190d844b40578f2d9f0",
+    "after": "306790c7e60f535df968f7ea9a7a151a30d5e41d17adb190d844b40578f2d9f0",
+    "changed": false,
+    "countsAfter": {
+      "logicalTables": 244,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 1474,
+      "securityDefinerFunctions": 1017,
+      "enums": 30,
+      "realtimeTables": 25
+    }
+  },
+  "note": "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này."
+}
