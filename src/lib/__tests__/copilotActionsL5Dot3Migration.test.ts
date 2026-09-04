@@ -163,7 +163,7 @@ const CAC_ACTION: readonly CaAction[] = [
     rollbackRpc: 'cancel_income_expense_flex_v1',
     entityTable: 'approval_requests',
     goiRpcGoc:
-      /v_ket := public\.salary_payout_v1\(\s*v_staff_id, v_period, v_take_home, v_account, v_voucher_date, v_note,\s*v_key_goc, v_rent_inv, v_rent_amount\);/,
+      /v_ket := public\.salary_payout_v1\(\s*v_staff_id, v_period, v_take_home, v_account, v_voucher_date, v_note,\s*v_key_goc, NULL::uuid, NULL::numeric\);/,
   },
   {
     ten: 'salary.khoa_thang',
@@ -479,5 +479,165 @@ describe('G5-C3 — rollback ứng viên đã kiểm to_regprocedure trên produ
   ])('%s — registry mang rollback_rpc=NULL kèm rollback_note giải thích', (file) => {
     const sql = docSqlKhongComment(file);
     expect(sql).toMatch(/NULL,\s*\n\s*'[^']+',\s*\n\s*'[a-z_.]+',\s*\n\s*true,\s*\n\s*false,\s*\n\s*false\s*\n\)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// FIX ROUND 1 (review NEEDS_FIX, 2 HIGH + 5 MED/LOW) — ghim từng phát hiện.
+// ─────────────────────────────────────────────────────────────────────────
+describe('G5-C3 Fix round 1 — F1 (HIGH) salary.chi_luong: rent-offset đã gỡ', () => {
+  const sqlPreview = docSqlKhongComment(FILE_SALARY_CHI_LUONG);
+
+  it('preview KHÔNG còn tham chiếu rent_invoice_id/rent_amount', () => {
+    const than = thanHam(sqlPreview, 'copilot_preview_salary_chi_luong_v1');
+    expect(than).not.toMatch(/rent_invoice_id/);
+    expect(than).not.toMatch(/rent_amount/);
+  });
+
+  it('execute gọi salary_payout_v1 với NULL::uuid, NULL::numeric ở hai tham số rent — KHÔNG còn biến v_rent_inv/v_rent_amount', () => {
+    const than = thanHam(sqlPreview, 'copilot_execute_salary_chi_luong_v1');
+    expect(than).toMatch(/NULL::uuid, NULL::numeric\);/);
+    expect(than).not.toMatch(/v_rent_inv\b/);
+    expect(than).not.toMatch(/v_rent_amount\b/);
+  });
+
+  it('execute — readback đòi total_amount của phiếu PHẢI khớp take_home đã chốt', () => {
+    const than = thanHam(sqlPreview, 'copilot_execute_salary_chi_luong_v1');
+    expect(than).toMatch(/v_ie\.total_amount IS DISTINCT FROM v_take_home/);
+  });
+});
+
+describe('G5-C3 Fix round 1 — F2 (HIGH) salary.khoa_thang: tổng server-side + đối soát TOCTOU', () => {
+  const sql = docSqlKhongComment(FILE_SALARY_KHOA_THANG);
+
+  it('preview tính tong_thuc_nhan/so_nhan_vien/tong_hoa_hong/so_phieu_hoa_hong đưa vào CANONICAL (hash-pin)', () => {
+    const than = thanHam(sql, 'copilot_preview_salary_khoa_thang_v1');
+    expect(than).toMatch(/'tong_thuc_nhan',\s*v_tong_thuc_nhan/);
+    expect(than).toMatch(/'so_nhan_vien',\s*v_n/);
+    expect(than).toMatch(/'tong_hoa_hong',\s*v_tong_hoa_hong/);
+    expect(than).toMatch(/'so_phieu_hoa_hong',\s*v_so_phieu_hoa_hong/);
+  });
+
+  it('preview — commission_voucher_ids của từng quản lý bị LỌC lại theo income_expenses THẬT (UNAPPROVED, đúng tổ chức)', () => {
+    const than = thanHam(sql, 'copilot_preview_salary_khoa_thang_v1');
+    expect(than).toMatch(/JOIN public\.income_expenses ie/);
+    expect(than).toMatch(/ie\.approval_status = 'UNAPPROVED'/);
+    expect(than).toMatch(/'commission_voucher_ids', to_jsonb\(v_voucher_ids_that\)/);
+    expect(than).toMatch(/'commission_total',\s*v_hoa_hong_mg/);
+  });
+
+  it('execute — đối soát LẠI (TOCTOU) mỗi quản lý ngay trước khi gọi RPC gốc, từ chối salary_figures_mismatch nếu lệch', () => {
+    const than = thanHam(sql, 'copilot_execute_salary_khoa_thang_v1');
+    const iDoiSoat = than.search(/v_voucher_ids_lai, v_hoa_hong_lai/);
+    const iGoc = than.search(/v_ket := public\.lock_salary_month_v1/);
+    expect(iDoiSoat, 'thiếu vòng đối soát lại').toBeGreaterThan(-1);
+    expect(iGoc).toBeGreaterThan(-1);
+    expect(iDoiSoat).toBeLessThan(iGoc);
+    expect(than).toMatch(/RAISE EXCEPTION 'salary_figures_mismatch' USING ERRCODE = '22023';/);
+  });
+
+  it('execute — ledger amount = tong_thuc_nhan (không phải NULL/thiếu)', () => {
+    const than = thanHam(sql, 'copilot_execute_salary_khoa_thang_v1');
+    expect(than).toMatch(/'amount',\s*v_tong_thuc_nhan,/);
+  });
+
+  it('execute — readback đếm phiếu hoa hồng đã APPROVED phải khớp so_phieu_hoa_hong đã chốt', () => {
+    const than = thanHam(sql, 'copilot_execute_salary_khoa_thang_v1');
+    expect(than).toMatch(/ie\.approval_status = 'APPROVED'/);
+    expect(than).toMatch(/v_voucher_approved IS DISTINCT FROM v_so_phieu_hoa_hong/);
+  });
+});
+
+describe('G5-C3 Fix round 1 — F3 (MED) contract.gia_han/chuyen_nhuong/room.chuyen_phong: trần biên độ giá/cọc + readback', () => {
+  it.each([
+    [FILE_CONTRACT_GIA_HAN, 'copilot_preview_contract_gia_han_v1'],
+    [FILE_CONTRACT_CHUYEN_NHUONG, 'copilot_preview_contract_chuyen_nhuong_v1'],
+    [FILE_ROOM_CHUYEN_PHONG, 'copilot_preview_room_chuyen_phong_v1'],
+  ])('%s — preview RAISE amount_out_of_range khi giá thuê âm hoặc vượt 10x hiện tại', (file, previewRpc) => {
+    const than = thanHam(docSqlKhongComment(file), previewRpc);
+    expect(than).toMatch(/RAISE EXCEPTION 'amount_out_of_range' USING ERRCODE = '22023';/);
+    expect(than).toMatch(/v_new_rent > v_c\.rent_price \* 10/);
+  });
+
+  it('contract.gia_han/chuyen_nhuong — preview cũng chặn tiền cọc ngoài biên độ', () => {
+    for (const file of [FILE_CONTRACT_GIA_HAN, FILE_CONTRACT_CHUYEN_NHUONG]) {
+      const than = thanHam(docSqlKhongComment(file), file === FILE_CONTRACT_GIA_HAN
+        ? 'copilot_preview_contract_gia_han_v1' : 'copilot_preview_contract_chuyen_nhuong_v1');
+      expect(than, file).toMatch(/v_new_deposit > v_c\.total_deposit \* 10/);
+    }
+  });
+
+  it('contract.gia_han — execute readback đòi rent_price/total_deposit khớp canonical', () => {
+    const than = thanHam(docSqlKhongComment(FILE_CONTRACT_GIA_HAN), 'copilot_execute_contract_gia_han_v1');
+    expect(than).toMatch(/v_c\.rent_price IS DISTINCT FROM COALESCE\(v_new_rent, v_rent_before\)/);
+    expect(than).toMatch(/v_c\.total_deposit IS DISTINCT FROM COALESCE\(v_new_deposit, v_deposit_before\)/);
+  });
+
+  it('contract.chuyen_nhuong — execute readback đòi rent_price/total_deposit khớp canonical', () => {
+    const than = thanHam(docSqlKhongComment(FILE_CONTRACT_CHUYEN_NHUONG), 'copilot_execute_contract_chuyen_nhuong_v1');
+    expect(than).toMatch(/v_c\.rent_price IS DISTINCT FROM COALESCE\(v_new_rent, v_rent_before\)/);
+    expect(than).toMatch(/v_c\.total_deposit IS DISTINCT FROM COALESCE\(v_new_deposit, v_deposit_before\)/);
+  });
+
+  it('room.chuyen_phong — execute readback đòi rent_price khớp canonical; preview hiện MÃ/TÊN phòng, không phải UUID trần', () => {
+    const thanExec = thanHam(docSqlKhongComment(FILE_ROOM_CHUYEN_PHONG), 'copilot_execute_room_chuyen_phong_v1');
+    expect(thanExec).toMatch(/v_c\.rent_price IS DISTINCT FROM COALESCE\(v_new_rent, v_rent_before\)/);
+    const thanPrev = thanHam(docSqlKhongComment(FILE_ROOM_CHUYEN_PHONG), 'copilot_preview_room_chuyen_phong_v1');
+    expect(thanPrev).toMatch(/'phong',\s*COALESCE\(v_room\.code, v_room\.name, left\(v_new_room::text, 8\)\)/);
+  });
+});
+
+describe('G5-C3 Fix round 1 — F4 (MED) + F5 (LOW) cashbook.chot_so', () => {
+  const sql = docSqlKhongComment(FILE_CASHBOOK_CHOT_SO);
+
+  it('F4 — preview tính so_du_he_thong/chenh_lech, canonical không đổi (dùng để hiển thị)', () => {
+    const than = thanHam(sql, 'copilot_preview_cashbook_chot_so_v1');
+    expect(than).toMatch(/v_so_du_he_thong := v_r\.system_balance;/);
+    expect(than).toMatch(/v_chenh_lech\s*:= round\(v_counted - v_r\.system_balance, 2\);/);
+    expect(than).toMatch(/'so_du_he_thong',\s*v_so_du_he_thong,/);
+    expect(than).toMatch(/'chenh_lech',\s*v_chenh_lech,/);
+  });
+
+  it('F4 — execute readback đòi phiếu chênh lệch THẬT tồn tại + APPROVED + đúng số tiền khi chênh lệch khác 0', () => {
+    const than = thanHam(sql, 'copilot_execute_cashbook_chot_so_v1');
+    expect(than).toMatch(/IF v_diff_amount <> 0 THEN/);
+    expect(than).toMatch(/ie\.approval_status = 'APPROVED'/);
+    expect(than).toMatch(/ie\.total_amount = abs\(v_diff_amount\)/);
+  });
+
+  it('F4 — ledger amount = |chênh lệch|, không còn là counted_balance', () => {
+    const than = thanHam(sql, 'copilot_execute_cashbook_chot_so_v1');
+    expect(than).toMatch(/'amount',\s*abs\(v_diff_amount\),/);
+  });
+
+  it('F5 — preview kiểm SO QUỸ NÀY nằm trong cashbook_ids hoặc toà mặc định của nó nằm trong building_ids (không chỉ kiểm phạm vi chung chung)', () => {
+    const than = thanHam(sql, 'copilot_preview_cashbook_chot_so_v1');
+    expect(than).toMatch(/v_r\.cashbook_id = ANY\(COALESCE\(v_scope\.cashbook_ids, ARRAY\[\]::uuid\[\]\)\)/);
+    expect(than).toMatch(/v_acc\.quick_default_building_id = ANY\(COALESCE\(v_scope\.building_ids, ARRAY\[\]::uuid\[\]\)\)/);
+  });
+});
+
+describe('G5-C3 Fix round 1 — F6 (LOW) contract.chuyen_nhuong: đại diện hiện tại hash-pin + no_op', () => {
+  const sql = docSqlKhongComment(FILE_CONTRACT_CHUYEN_NHUONG);
+
+  it('preview — RAISE no_op khi khách hàng mới ĐÃ là đại diện hiện tại', () => {
+    const than = thanHam(sql, 'copilot_preview_contract_chuyen_nhuong_v1');
+    expect(than).toMatch(/RAISE EXCEPTION 'no_op' USING ERRCODE = '22023';/);
+  });
+
+  it('canonical mang expected_representative_cu; execute đối soát lại trước khi gọi RPC gốc', () => {
+    const thanPrev = thanHam(sql, 'copilot_preview_contract_chuyen_nhuong_v1');
+    expect(thanPrev).toMatch(/'expected_representative_cu',\s*v_current_rep/);
+    const thanExec = thanHam(sql, 'copilot_execute_contract_chuyen_nhuong_v1');
+    expect(thanExec).toMatch(/v_rep_now IS DISTINCT FROM v_exp_rep_cu/);
+    expect(thanExec).toMatch(/RAISE EXCEPTION 'entity_changed_since_preview' USING ERRCODE = '55000';/);
+  });
+});
+
+describe('G5-C3 Fix round 1 — F7 (LOW) invoice.duyet_hang_loat: ledger amount', () => {
+  it('execute tính v_tong từ v_after (tổng total_amount của các hoá đơn vừa duyệt) và ghi vào so hành động', () => {
+    const than = thanHam(docSqlKhongComment(FILE_INVOICE_DUYET_HANG_LOAT), 'copilot_execute_invoice_duyet_hang_loat_v1');
+    expect(than).toMatch(/SELECT COALESCE\(SUM\(\(e ->> 'total_amount'\)::numeric\), 0\) INTO v_tong/);
+    expect(than).toMatch(/'amount',\s*v_tong,/);
   });
 });

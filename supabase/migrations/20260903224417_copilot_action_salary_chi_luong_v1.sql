@@ -11,6 +11,17 @@
 -- 'salary.distribute', toa_ao, account_id).allowed` — permission_key=
 -- 'salary.distribute'.
 --
+-- FIX ROUND 1 (review, F1 HIGH): DA GO HAN CAN TRU TIEN PHONG (rent-offset)
+-- KHOI ACTION NAY. Nhanh do trong RPC goc (p_rent_invoice_id/p_rent_amount)
+-- tu goi `record_invoice_payment_v3` de tao MOT phieu THU da APPROVED + cap
+-- nhat hoa don — mot tac dung phu TIEN THAT ma preview truoc do KHONG he noi
+-- toi (chi hien 'so_tien'=take_home). Mot AI truyen hai tham so nay se am
+-- tham lam thay doi so du hoa don + ghi mot phieu thu APPROVED ma nguoi duyet
+-- ke hoach khong duoc canh bao. Wrapper v1 GIU LAI hai tham so trong chu ky
+-- RPC goc (khong doi API) nhung LUON truyen NULL/NULL — het duong kich hoat
+-- nhanh do qua Copilot. Muon can tru tien phong thi lam tren giao dien
+-- thuong (khong qua Copilot).
+--
 -- WRITER LA "NOP HO SO", KHONG PHAI GHI THANG: RPC goc tao phieu chi UNAPPROVED
 -- roi goi `submit_financial_request_v1` — tra ve
 -- {salary_voucher_id, approval_request_id, state:'PENDING_APPROVAL', rent_offset?}.
@@ -192,8 +203,6 @@ DECLARE
   v_account      uuid;
   v_voucher_date date;
   v_note         text;
-  v_rent_inv     uuid;
-  v_rent_amount  numeric;
   v_derived_org  uuid;
   v_scope        record;
   v_staff_email  text;
@@ -217,8 +226,6 @@ BEGIN
     v_account      := NULLIF(p_payload ->> 'account_id', '')::uuid;
     v_voucher_date := COALESCE((p_payload ->> 'voucher_date')::date, CURRENT_DATE);
     v_note         := NULLIF(btrim(COALESCE(p_payload ->> 'note', '')), '');
-    v_rent_inv     := NULLIF(p_payload ->> 'rent_invoice_id', '')::uuid;
-    v_rent_amount  := NULLIF(p_payload ->> 'rent_amount', '')::numeric;
   EXCEPTION WHEN others THEN
     RAISE EXCEPTION 'payload_invalid' USING ERRCODE = '22023';
   END;
@@ -259,9 +266,7 @@ BEGIN
     'take_home',         v_take_home,
     'account_id',        v_account,
     'voucher_date',      v_voucher_date,
-    'note',              v_note,
-    'rent_invoice_id',   v_rent_inv,
-    'rent_amount',       v_rent_amount
+    'note',              v_note
   );
   v_nonce := extensions.gen_random_bytes(32);
 
@@ -281,7 +286,7 @@ BEGIN
       'so_tien',        v_take_home,
       'ky_hoa_don',      to_char(v_period, 'MM/YYYY'),
       'so_quy',          v_acc.name,
-      'hau_qua',         'Se tao phieu chi luong UNAPPROVED va NOP vao hang cho duyet (khong tu duyet, khong tu chi tien)'
+      'hau_qua',         'Se tao phieu chi luong UNAPPROVED va NOP vao hang cho duyet (khong tu duyet, khong tu chi tien). KHONG ho tro can tru tien phong qua Copilot — lam tren giao dien thuong neu can.'
     )
   );
 END
@@ -332,8 +337,6 @@ DECLARE
   v_account      uuid;
   v_voucher_date date;
   v_note         text;
-  v_rent_inv     uuid;
-  v_rent_amount  numeric;
   v_key          text;
   v_key_goc      text;
   v_prev         public.ai_write_audit%ROWTYPE;
@@ -392,8 +395,6 @@ BEGIN
     v_account      := (p_payload ->> 'account_id')::uuid;
     v_voucher_date := (p_payload ->> 'voucher_date')::date;
     v_note         := NULLIF(p_payload ->> 'note', '');
-    v_rent_inv     := NULLIF(p_payload ->> 'rent_invoice_id', '')::uuid;
-    v_rent_amount  := NULLIF(p_payload ->> 'rent_amount', '')::numeric;
   EXCEPTION WHEN others THEN
     RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
   END;
@@ -454,7 +455,7 @@ BEGIN
 
   v_ket := public.salary_payout_v1(
     v_staff_id, v_period, v_take_home, v_account, v_voucher_date, v_note,
-    v_key_goc, v_rent_inv, v_rent_amount);
+    v_key_goc, NULL::uuid, NULL::numeric);  -- F1 (review, HIGH): rent-offset da go, LUON NULL
   v_voucher := NULLIF(v_ket ->> 'salary_voucher_id', '')::uuid;
   v_req_id  := NULLIF(v_ket ->> 'approval_request_id', '')::uuid;
   IF v_voucher IS NULL OR v_req_id IS NULL THEN
@@ -467,7 +468,12 @@ BEGIN
   SELECT * INTO v_ie FROM public.income_expenses WHERE id = v_voucher;
   IF NOT FOUND
      OR v_ie.organization_id IS DISTINCT FROM v_org
-     OR v_ie.salary_staff_id IS DISTINCT FROM v_staff_id THEN
+     OR v_ie.salary_staff_id IS DISTINCT FROM v_staff_id
+     -- F1 (review, HIGH): so tien phieu PHAI dung bang take_home da chot o
+     -- canonical — khong con nhanh can tru tien phong nen chi con DUY NHAT
+     -- dong "Tien thuc nhan" (quantity 1, unit_price=take_home), total_amount
+     -- (cot tinh tu items) phai khop chinh xac.
+     OR v_ie.total_amount IS DISTINCT FROM v_take_home THEN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
   SELECT * INTO v_req FROM public.approval_requests WHERE id = v_req_id;

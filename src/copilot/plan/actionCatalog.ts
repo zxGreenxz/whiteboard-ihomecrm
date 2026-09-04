@@ -405,8 +405,8 @@ export const SCHEMA_CONTRACT_GIA_HAN = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .describe('Ngày kết thúc mới (YYYY-MM-DD), phải sau ngày kết thúc hiện tại'),
-  new_rent_price: z.number().positive().nullable().optional().describe('Giá thuê mới; bỏ trống = giữ nguyên'),
-  new_deposit: z.number().nonnegative().nullable().optional().describe('Tiền cọc mới; bỏ trống = giữ nguyên'),
+  new_rent_price: z.number().positive().nullable().optional().describe('Giá thuê mới (0 < giá ≤ 10× giá hiện tại); bỏ trống = giữ nguyên'),
+  new_deposit: z.number().nonnegative().nullable().optional().describe('Tiền cọc mới (0 ≤ cọc ≤ 10× cọc hiện tại); bỏ trống = giữ nguyên'),
   notes: z.string().max(2000).nullable().optional().describe('Ghi chú kèm gia hạn; bỏ trống = không ghi chú'),
 });
 
@@ -481,13 +481,11 @@ export const SCHEMA_SALARY_CHI_LUONG = z.object({
     .optional()
     .describe('Ngày lập phiếu; bỏ trống = hôm nay'),
   note: z.string().max(2000).nullable().optional().describe('Ghi chú kèm phiếu chi lương'),
-  rent_invoice_id: z
-    .string()
-    .uuid()
-    .nullable()
-    .optional()
-    .describe('ID hoá đơn tiền phòng cấn trừ vào lương (tuỳ chọn)'),
-  rent_amount: z.number().positive().nullable().optional().describe('Số tiền phòng cấn trừ (tuỳ chọn, đi kèm rent_invoice_id)'),
+  // Fix round 1 (review, F1 HIGH): rent-offset (rent_invoice_id/rent_amount) đã
+  // BỊ GỠ khỏi action này — nhánh đó trong RPC gốc tự tạo một phiếu THU đã
+  // APPROVED (tác dụng phụ tiền THẬT mà preview cũ không hề nói tới). Wrapper
+  // v1 luôn truyền NULL cho cả hai. Muốn cấn trừ tiền phòng thì làm trên giao
+  // diện thường.
 });
 
 /** Một dòng bảng kê công việc lồng trong `managers[]` của `salary.khoa_thang`. */
@@ -1016,7 +1014,7 @@ export const ACTION_CATALOG = {
     consentRequired: 'step_up',
     permission: { module: 'contracts', action: 'edit' },
     inputSchema: SCHEMA_CONTRACT_GIA_HAN,
-    previewFields: ['toa_nha', 'so_hop_dong', 'trang_thai_hien_tai', 'so_tien', 'hau_qua'],
+    previewFields: ['toa_nha', 'so_hop_dong', 'trang_thai_hien_tai', 'so_tien', 'gia_thue_hien_tai', 'gia_thue_moi', 'coc_hien_tai', 'coc_moi', 'hau_qua'],
     previewRpc: 'copilot_preview_contract_gia_han_v1',
     executeRpc: 'copilot_execute_contract_gia_han_v1',
   },
@@ -1029,7 +1027,7 @@ export const ACTION_CATALOG = {
     consentRequired: 'step_up',
     permission: { module: 'contracts', action: 'edit' },
     inputSchema: SCHEMA_CONTRACT_CHUYEN_NHUONG,
-    previewFields: ['toa_nha', 'so_hop_dong', 'ten_khach_hang', 'so_dien_thoai', 'so_tien', 'hau_qua'],
+    previewFields: ['toa_nha', 'so_hop_dong', 'ten_khach_hang', 'so_dien_thoai', 'so_tien', 'gia_thue_hien_tai', 'gia_thue_moi', 'coc_hien_tai', 'coc_moi', 'hau_qua'],
     previewRpc: 'copilot_preview_contract_chuyen_nhuong_v1',
     executeRpc: 'copilot_execute_contract_chuyen_nhuong_v1',
   },
@@ -1055,7 +1053,7 @@ export const ACTION_CATALOG = {
     consentRequired: 'step_up',
     permission: { module: 'cashbooks', action: 'close_confirm' },
     inputSchema: SCHEMA_CASHBOOK_CHOT_SO,
-    previewFields: ['so_quy', 'so_tien', 'ngay_vao_so', 'hau_qua'],
+    previewFields: ['so_quy', 'so_tien', 'so_du_he_thong', 'chenh_lech', 'ngay_vao_so', 'hau_qua'],
     previewRpc: 'copilot_preview_cashbook_chot_so_v1',
     executeRpc: 'copilot_execute_cashbook_chot_so_v1',
   },
@@ -1081,7 +1079,7 @@ export const ACTION_CATALOG = {
     consentRequired: 'step_up',
     permission: { module: 'salary', action: 'lock' },
     inputSchema: SCHEMA_SALARY_KHOA_THANG,
-    previewFields: ['ky_hoa_don', 'canh_bao', 'hau_qua'],
+    previewFields: ['ky_hoa_don', 'so_nhan_vien', 'tong_thuc_nhan', 'phieu_hoa_hong', 'canh_bao', 'hau_qua'],
     previewRpc: 'copilot_preview_salary_khoa_thang_v1',
     executeRpc: 'copilot_execute_salary_khoa_thang_v1',
   },
@@ -1094,7 +1092,7 @@ export const ACTION_CATALOG = {
     consentRequired: 'step_up',
     permission: { module: 'contracts', action: 'edit' },
     inputSchema: SCHEMA_ROOM_CHUYEN_PHONG,
-    previewFields: ['toa_nha', 'so_hop_dong', 'phong', 'so_tien', 'hau_qua'],
+    previewFields: ['toa_nha', 'so_hop_dong', 'phong', 'so_tien', 'gia_thue_hien_tai', 'gia_thue_moi', 'hau_qua'],
     previewRpc: 'copilot_preview_room_chuyen_phong_v1',
     executeRpc: 'copilot_execute_room_chuyen_phong_v1',
   },
@@ -1178,6 +1176,17 @@ export const NHAN_TRUONG_XEM_TRUOC: Readonly<Record<string, string>> = {
   so_tien_hoan_thu: 'Số tiền hoàn/thu thêm khi thanh lý',
   ten_khach_hang: 'Tên khách hàng',
   so_dien_thoai: 'Số điện thoại',
+  // G5-C3 fix round 1 (review F3/F4/F2) — hiện CẢ HAI giá trị (hiện tại +
+  // đề nghị) thay vì chỉ số cuối cùng, và tổng tiền server-side.
+  gia_thue_hien_tai: 'Giá thuê hiện tại',
+  gia_thue_moi: 'Giá thuê mới',
+  coc_hien_tai: 'Cọc hiện tại',
+  coc_moi: 'Cọc mới',
+  so_du_he_thong: 'Số dư hệ thống',
+  chenh_lech: 'Chênh lệch (đếm được − sổ sách)',
+  tong_thuc_nhan: 'Tổng thực nhận',
+  so_nhan_vien: 'Số nhân viên',
+  phieu_hoa_hong: 'Phiếu hoa hồng',
 };
 
 /** `permission_key` như server ghi trong sổ đăng ký: `<module>.<action>`. */

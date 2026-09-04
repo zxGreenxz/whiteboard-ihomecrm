@@ -146,6 +146,8 @@ DECLARE
   v_r             app_private.cashbook_closure_requests%ROWTYPE;
   v_acc           public.accounts%ROWTYPE;
   v_scope         record;
+  v_so_du_he_thong numeric;
+  v_chenh_lech     numeric;
   v_canonical     jsonb;
   v_nonce         bytea;
 BEGIN
@@ -196,14 +198,26 @@ BEGIN
     RAISE EXCEPTION 'entity_not_found' USING ERRCODE = 'P0002';
   END IF;
 
+  -- F5 (review, LOW): kiem SO QUY NAY co trong pham vi that (cashbook_ids
+  -- hoac toa mac dinh cua no trong building_ids) — khong chi kiem "co pham vi
+  -- gi do" chung chung nhu truoc, cung tinh than voi invoice.duyet_hang_loat
+  -- (20260903224410) doi voi hoa don.
   SELECT s.org_wide, s.building_ids, s.cashbook_ids
     INTO v_scope
     FROM app_private.authorized_scope_v3('cashbooks.close_confirm', p_organization_id) s;
   IF NOT COALESCE(v_scope.org_wide, false)
-     AND COALESCE(cardinality(v_scope.building_ids), 0) = 0
-     AND COALESCE(cardinality(v_scope.cashbook_ids), 0) = 0 THEN
+     AND NOT (v_r.cashbook_id = ANY(COALESCE(v_scope.cashbook_ids, ARRAY[]::uuid[])))
+     AND (v_acc.quick_default_building_id IS NULL
+          OR NOT (v_acc.quick_default_building_id = ANY(COALESCE(v_scope.building_ids, ARRAY[]::uuid[])))) THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
   END IF;
+
+  -- F4 (review, MED): chenh lech server-side — the truoc do KHONG hien tien
+  -- trong khi RPC goc co the tu dong lap MOT phieu thu/chi APPROVED cho phan
+  -- chenh lech (dem duoc vs so sach). Nguoi duyet phai thay con so nay TRUOC
+  -- khi bam duyet.
+  v_so_du_he_thong := v_r.system_balance;
+  v_chenh_lech     := round(v_counted - v_r.system_balance, 2);
 
   v_canonical := jsonb_build_object(
     'organization_id',  p_organization_id,
@@ -225,10 +239,20 @@ BEGIN
     'confirmation_nonce', encode(v_nonce, 'hex'),
     'canonical',          v_canonical,
     'preview', jsonb_build_object(
-      'so_quy',   v_acc.name,
-      'so_tien',  v_counted,
-      'ngay_vao_so', v_r.closed_through,
-      'hau_qua',  format('Se xac nhan ban giao quy tinh den %s, khoa so quy toi ngay do', v_r.closed_through)
+      'so_quy',          v_acc.name,
+      'so_tien',         v_counted,
+      'so_du_he_thong',  v_so_du_he_thong,
+      'chenh_lech',      v_chenh_lech,
+      'ngay_vao_so',     v_r.closed_through,
+      'hau_qua',  format(
+        'Se xac nhan ban giao quy tinh den %s, khoa so quy toi ngay do.%s',
+        v_r.closed_through,
+        CASE WHEN v_chenh_lech <> 0
+             THEN format(' Se tu dong lap MOT phieu %s da DUYET (APPROVED) so tien %s d cho phan chenh lech dem-duoc-vs-so-sach.',
+                          CASE WHEN v_chenh_lech > 0 THEN 'THU (thua quy)' ELSE 'CHI (thieu quy)' END,
+                          abs(v_chenh_lech))
+             ELSE ' Dem khop so sach, khong lap phieu chenh lech nao.' END
+      )
     )
   );
 END
@@ -288,6 +312,10 @@ DECLARE
   v_acc           public.accounts%ROWTYPE;
   v_req_status    text;
   v_closure_ok    boolean;
+  -- F4 (review, MED) - doc soat phieu chenh lech RPC goc tu lap (neu co).
+  v_diff_voucher  uuid;
+  v_diff_amount   numeric;
+  v_diff_ok       boolean;
   v_audit_id      uuid;
   v_ledger_id     uuid;
 BEGIN
@@ -395,6 +423,8 @@ BEGIN
   v_closure_id     := NULLIF(v_ket ->> 'closure_id', '')::bigint;
   v_cashbook_id    := NULLIF(v_ket ->> 'cashbook_id', '')::uuid;
   v_closed_through := NULLIF(v_ket ->> 'closed_through', '')::date;
+  v_diff_voucher   := NULLIF(v_ket ->> 'difference_voucher_id', '')::uuid;
+  v_diff_amount    := COALESCE(NULLIF(v_ket ->> 'difference', '')::numeric, 0);
   IF v_closure_id IS NULL OR v_cashbook_id IS DISTINCT FROM v_r.cashbook_id THEN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
@@ -417,6 +447,25 @@ BEGIN
   ) INTO v_closure_ok;
   IF NOT v_closure_ok THEN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
+  END IF;
+
+  -- F4 (review, MED): chenh lech khac 0 THI PHAI co phieu chenh lech that su
+  -- ton tai, dung to chuc, da APPROVED, dung so tien |chenh lech| — khong tin
+  -- suong "difference_voucher_id" ma RPC goc tra ve.
+  IF v_diff_amount <> 0 THEN
+    IF v_diff_voucher IS NULL THEN
+      RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
+    END IF;
+    SELECT EXISTS (
+      SELECT 1 FROM public.income_expenses ie
+       WHERE ie.id = v_diff_voucher
+         AND ie.organization_id = v_org
+         AND ie.approval_status = 'APPROVED'
+         AND ie.total_amount = abs(v_diff_amount)
+    ) INTO v_diff_ok;
+    IF NOT v_diff_ok THEN
+      RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
+    END IF;
   END IF;
 
   -- entity_table cho ENGINE phai la public.<bang> — dung accounts (so quy),
@@ -455,8 +504,10 @@ BEGIN
     'entity_table',        'accounts',
     'entity_id',            v_r.cashbook_id,
     'audit_id',             v_audit_id,
-    'amount',               v_counted,
-    'outcome',              jsonb_build_object('status', 'da_thuc_hien', 'closure_id', v_closure_id)
+    -- F4 (review, MED): amount = |chenh lech| (tien THAT phat sinh boi phieu
+    -- chenh lech), khong phai so du da dem (khong phai mot khoan tien moi).
+    'amount',               abs(v_diff_amount),
+    'outcome',              jsonb_build_object('status', 'da_thuc_hien', 'closure_id', v_closure_id, 'difference', v_diff_amount, 'difference_voucher_id', v_diff_voucher)
   ));
 
   RETURN jsonb_build_object(

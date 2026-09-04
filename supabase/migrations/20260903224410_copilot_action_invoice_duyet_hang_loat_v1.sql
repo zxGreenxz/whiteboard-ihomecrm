@@ -300,6 +300,7 @@ DECLARE
   v_prev       public.ai_write_audit%ROWTYPE;
   v_before     jsonb;
   v_after      jsonb;
+  v_tong       numeric;
   v_count      int;
   v_id         uuid;
   v_check_after public.invoices%ROWTYPE;
@@ -420,6 +421,10 @@ BEGIN
   SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id) INTO v_after
     FROM public.invoices i
    WHERE i.id = ANY(v_ids);
+  -- F7 (review, LOW): tong tien cho so hanh dong - tinh tu v_after (danh sach
+  -- THAT vua doc lai), khong can them truong canonical rieng.
+  SELECT COALESCE(SUM((e ->> 'total_amount')::numeric), 0) INTO v_tong
+    FROM jsonb_array_elements(v_after) e;
 
   INSERT INTO public.ai_write_audit
     (user_id, tool, idempotency_key, entity_table, entity_id, payload, organization_id)
@@ -444,6 +449,7 @@ BEGIN
     'entity_table',        'invoices',
     'entity_id',            v_ids[1],
     'audit_id',             v_audit_id,
+    'amount',               v_tong,
     'outcome',              jsonb_build_object('status', 'da_thuc_hien', 'so_hoa_don_duyet', v_count)
   ));
 

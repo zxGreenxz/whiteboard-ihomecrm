@@ -143,6 +143,7 @@ DECLARE
   v_new_org     uuid;
   v_toa         text;
   v_scope       record;
+  v_room        public.rooms%ROWTYPE;
   v_canonical   jsonb;
   v_nonce       bytea;
 BEGIN
@@ -183,6 +184,15 @@ BEGIN
     RAISE EXCEPTION 'payload_invalid' USING ERRCODE = '22023';
   END IF;
 
+  -- F3 (review, MED): chan gia thue "ngon tay beo" - am hoac vuot 10x gia
+  -- hien tai deu tu choi (bo qua tran tren neu hien tai la 0).
+  IF v_new_rent IS NOT NULL THEN
+    IF v_new_rent < 0
+       OR (v_c.rent_price > 0 AND v_new_rent > v_c.rent_price * 10) THEN
+      RAISE EXCEPTION 'amount_out_of_range' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
   SELECT r.building_id, b.organization_id INTO v_new_bld, v_new_org
     FROM public.rooms r
     LEFT JOIN public.buildings b ON b.id = r.building_id
@@ -215,6 +225,7 @@ BEGIN
   END IF;
 
   SELECT b.name INTO v_toa FROM public.buildings b WHERE b.id = v_new_bld;
+  SELECT * INTO v_room FROM public.rooms WHERE id = v_new_room;
 
   v_canonical := jsonb_build_object(
     'organization_id',  p_organization_id,
@@ -241,9 +252,17 @@ BEGIN
     'preview', jsonb_build_object(
       'toa_nha',     v_toa,
       'so_hop_dong', COALESCE(v_c.contract_number, left(v_c.id::text, 8)),
-      'phong',       v_new_room::text,
+      -- F3 (review, MED): hien MA/TEN phong, KHONG phai UUID tho.
+      'phong',       COALESCE(v_room.code, v_room.name, left(v_new_room::text, 8)),
       'so_tien',     COALESCE(v_new_rent, v_c.rent_price),
-      'hau_qua',     'Se chuyen hop dong sang phong moi, cung toa nha'
+      'gia_thue_hien_tai', v_c.rent_price,
+      'gia_thue_moi',      COALESCE(v_new_rent, v_c.rent_price),
+      'hau_qua',     format(
+        'Se chuyen hop dong sang phong %s, cung toa nha. Phong cu chuyen ve trong (neu khong con hop dong khac), phong moi chuyen sang da thue.%s',
+        COALESCE(v_room.code, v_room.name, left(v_new_room::text, 8)),
+        CASE WHEN v_new_rent IS NOT NULL AND v_new_rent IS DISTINCT FROM v_c.rent_price
+             THEN format(' Gia thue GHI DE tu %s thanh %s.', v_c.rent_price, v_new_rent) ELSE '' END
+      )
     )
   );
 END
@@ -301,6 +320,7 @@ DECLARE
   v_c           public.contracts%ROWTYPE;
   v_ret         uuid;
   v_room_status text;
+  v_rent_before numeric;
   v_audit_id    uuid;
   v_ledger_id   uuid;
 BEGIN
@@ -399,6 +419,8 @@ BEGIN
     RAISE EXCEPTION 'entity_changed_since_preview' USING ERRCODE = '55000';
   END IF;
   v_before := to_jsonb(v_c);
+  -- F3 (review, MED): chup gia thue TRUOC khi goi RPC goc de doi soat readback.
+  v_rent_before := v_c.rent_price;
 
   v_ret := public.transfer_room(v_contract_id, v_new_room, v_new_rent, v_xfer_date, v_notes);
 
@@ -410,7 +432,9 @@ BEGIN
      OR v_ret IS DISTINCT FROM v_contract_id
      OR v_c.organization_id IS DISTINCT FROM v_org
      OR v_c.room_id IS DISTINCT FROM v_new_room
-     OR v_c.status NOT IN ('ACTIVE', 'EXTENDED') THEN
+     OR v_c.status NOT IN ('ACTIVE', 'EXTENDED')
+     -- F3 (review, MED): rent_price PHAI dung bang canonical.
+     OR v_c.rent_price IS DISTINCT FROM COALESCE(v_new_rent, v_rent_before) THEN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
   SELECT status INTO v_room_status FROM public.rooms WHERE id = v_new_room;

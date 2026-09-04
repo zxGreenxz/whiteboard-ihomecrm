@@ -15,6 +15,21 @@
 -- approve_voucher — wrapper KHONG lam long, chi goi nguyen ven roi doi soat
 -- KET QUA.
 --
+-- FIX ROUND 1 (review, F2 HIGH): the ke hoach TRUOC do KHONG hien mot dong
+-- tien nao trong khi RPC goc dong bang y nguyen so AI/client goi len ("R1: tin
+-- so client" — ghi trong chinh RPC goc) VA tu duyet het phieu hoa hong lien
+-- quan. Sua: preview tu tinh SERVER-SIDE tong_thuc_nhan/so_nhan_vien/
+-- tong_hoa_hong/so_phieu_hoa_hong tu chinh payload + doi chieu commission_
+-- voucher_ids voi income_expenses THAT (loc bo id sai/da huy/da duyet/khac to
+-- chuc, ghi de commission_total bang tong THAT) — cac so nay vao canonical
+-- (hash-pin, khong doi duoc giua preview/execute) VA hien tren the. Execute
+-- doi soat LAI (TOCTOU) dung cung truy van ngay truoc khi goi RPC goc; lech
+-- thi tu choi `salary_figures_mismatch` (22023) thay vi khoa mot con so khong
+-- con dung. Rieng gross_total/take_home/cac khoan thuong khac VAN tin client
+-- (khong co nguon server doc lap — day la gioi han THAT cua RPC goc, khong
+-- phai lo hong moi do wrapper them vao), nhung da duoc hash-pin + hien tren
+-- the de nguoi duyet ke hoach thay so THAT truoc khi bam duyet.
+--
 -- GATE `evaluate_feature_route('salary.lock.v1', org)` — DA XAC MINH tren
 -- production 03/09/2026: `server_feature_flags.mode='ON'` nen tra ve
 -- 'CANONICAL' cho MOI to chuc. Writer da bat that su.
@@ -194,6 +209,14 @@ DECLARE
   v_mg           jsonb;
   v_staff        uuid;
   v_scope        record;
+  -- F2 (review, HIGH) - tong SERVER-SIDE, khong tin so AI/client tu khai.
+  v_take_home_mg     numeric;
+  v_voucher_ids_that  uuid[];
+  v_hoa_hong_mg       numeric;
+  v_managers_that     jsonb;
+  v_tong_thuc_nhan    numeric;
+  v_tong_hoa_hong     numeric;
+  v_so_phieu_hoa_hong int;
   v_canonical    jsonb;
   v_nonce        bytea;
 BEGIN
@@ -241,13 +264,30 @@ BEGIN
   -- Doi chieu SOM: moi quan ly con lai phai co staff_id VA cung to chuc suy ra
   -- tu nhan vien dau tien (RPC goc se tu choi neu lech, nhung chan som cho UX
   -- ro rang hon "Danh sach nhan vien chua nguoi khac to chuc").
+  --
+  -- F2 (review, HIGH): CUNG mot vong lap nay gio tinh THEM so SERVER-SIDE -
+  -- the ke hoach truoc do khong hien mot dong tien nao trong khi RPC goc dong
+  -- bang y nguyen so AI/client goi len VA tu duyet phieu hoa hong. Sua:
+  --   (a) commission_voucher_ids cua TUNG quan ly bi LOC lai chi con id THAT
+  --       ton tai, dung to chuc, con UNAPPROVED (nhung id khac - sai/da huy/
+  --       da duyet/khac to chuc - bi loai am tham, dung y RPC goc "continue"
+  --       tren id khong hop le).
+  --   (b) commission_total cua tung quan ly bi GHI DE bang tong THAT cua cac
+  --       phieu vua loc - KHONG con la so AI tu khai.
+  --   (c) tong_thuc_nhan/tong_hoa_hong/so_phieu_hoa_hong duoc CONG DON server-
+  --       side va dua vao canonical + hien tren the xem truoc.
+  v_tong_thuc_nhan    := 0;
+  v_tong_hoa_hong     := 0;
+  v_so_phieu_hoa_hong := 0;
+  v_managers_that     := '[]'::jsonb;
   FOR v_mg IN SELECT value FROM jsonb_array_elements(v_managers) LOOP
     BEGIN
-      v_staff := NULLIF(v_mg ->> 'staff_id', '')::uuid;
+      v_staff        := NULLIF(v_mg ->> 'staff_id', '')::uuid;
+      v_take_home_mg := COALESCE(NULLIF(v_mg ->> 'take_home', '')::numeric, 0);
     EXCEPTION WHEN others THEN
       RAISE EXCEPTION 'payload_invalid' USING ERRCODE = '22023';
     END;
-    IF v_staff IS NULL THEN
+    IF v_staff IS NULL OR v_take_home_mg < 0 THEN
       RAISE EXCEPTION 'payload_invalid' USING ERRCODE = '22023';
     END IF;
     IF NOT EXISTS (
@@ -256,6 +296,35 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'entity_not_found' USING ERRCODE = 'P0002';
     END IF;
+
+    BEGIN
+      SELECT COALESCE(array_agg(ie.id ORDER BY ie.id), ARRAY[]::uuid[]),
+             COALESCE(SUM(ie.total_amount), 0)
+        INTO v_voucher_ids_that, v_hoa_hong_mg
+        FROM (
+          SELECT t.value
+            FROM jsonb_array_elements_text(COALESCE(v_mg -> 'commission_voucher_ids', '[]'::jsonb)) AS t(value)
+           WHERE t.value ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        ) vid
+        JOIN public.income_expenses ie
+          ON ie.id = vid.value::uuid
+         AND ie.organization_id = p_organization_id
+         AND ie.deleted_at IS NULL
+         AND ie.approval_status = 'UNAPPROVED';
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'payload_invalid' USING ERRCODE = '22023';
+    END;
+
+    v_tong_thuc_nhan    := v_tong_thuc_nhan + v_take_home_mg;
+    v_tong_hoa_hong     := v_tong_hoa_hong + v_hoa_hong_mg;
+    v_so_phieu_hoa_hong := v_so_phieu_hoa_hong + cardinality(v_voucher_ids_that);
+
+    v_managers_that := v_managers_that || jsonb_build_array(
+      v_mg || jsonb_build_object(
+        'commission_voucher_ids', to_jsonb(v_voucher_ids_that),
+        'commission_total',       v_hoa_hong_mg
+      )
+    );
   END LOOP;
 
   SELECT s.org_wide, s.building_ids
@@ -266,10 +335,14 @@ BEGIN
   END IF;
 
   v_canonical := jsonb_build_object(
-    'organization_id', p_organization_id,
-    'period_month',     v_period,
-    'managers',         v_managers,
-    'expected_count',   v_n
+    'organization_id',    p_organization_id,
+    'period_month',        v_period,
+    'managers',            v_managers_that,
+    'expected_count',      v_n,
+    'tong_thuc_nhan',      v_tong_thuc_nhan,
+    'so_nhan_vien',        v_n,
+    'tong_hoa_hong',       v_tong_hoa_hong,
+    'so_phieu_hoa_hong',   v_so_phieu_hoa_hong
   );
   v_nonce := extensions.gen_random_bytes(32);
 
@@ -285,9 +358,12 @@ BEGIN
     'confirmation_nonce', encode(v_nonce, 'hex'),
     'canonical',          v_canonical,
     'preview', jsonb_build_object(
-      'ky_hoa_don', to_char(v_period, 'MM/YYYY'),
-      'canh_bao',   format('Se khoa bang luong cua %s quan ly cho ky nay — khong the sua sau khi khoa', v_n),
-      'hau_qua',    format('Se chot LOCKED bang luong cua %s quan ly, duyet kem cac phieu hoa hong dinh kem', v_n)
+      'ky_hoa_don',       to_char(v_period, 'MM/YYYY'),
+      'so_nhan_vien',     v_n,
+      'tong_thuc_nhan',   v_tong_thuc_nhan,
+      'phieu_hoa_hong',   format('%s phieu - %s d', v_so_phieu_hoa_hong, v_tong_hoa_hong),
+      'canh_bao',         format('Se khoa bang luong cua %s quan ly cho ky nay — khong the sua sau khi khoa', v_n),
+      'hau_qua',          format('Se chot LOCKED bang luong cua %s quan ly (tong thuc nhan %s d), duyet kem %s phieu hoa hong (tong %s d)', v_n, v_tong_thuc_nhan, v_so_phieu_hoa_hong, v_tong_hoa_hong)
     )
   );
 END
@@ -352,6 +428,16 @@ DECLARE
   v_first_sm_id  uuid;
   v_audit_id     uuid;
   v_ledger_id    uuid;
+  -- F2 (review, HIGH) - doi soat lai vao dung luc thuc thi (TOCTOU) + doc lai
+  -- tong da chot o canonical.
+  v_tong_thuc_nhan    numeric;
+  v_so_nhan_vien      int;
+  v_tong_hoa_hong     numeric;
+  v_so_phieu_hoa_hong int;
+  v_voucher_ids_lai   uuid[];
+  v_hoa_hong_lai      numeric;
+  v_voucher_approved  int;
+  v_all_voucher_ids   uuid[] := ARRAY[]::uuid[];
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'unauthenticated' USING ERRCODE = '28000';
@@ -389,13 +475,23 @@ BEGIN
   END IF;
 
   BEGIN
-    v_org      := (p_payload ->> 'organization_id')::uuid;
-    v_period   := (p_payload ->> 'period_month')::date;
-    v_managers := p_payload -> 'managers';
-    v_expected := (p_payload ->> 'expected_count')::int;
+    v_org       := (p_payload ->> 'organization_id')::uuid;
+    v_period    := (p_payload ->> 'period_month')::date;
+    v_managers  := p_payload -> 'managers';
+    v_expected  := (p_payload ->> 'expected_count')::int;
+    -- F2 (review, HIGH): so SERVER-SIDE da chot o canonical luc xem truoc -
+    -- payload_hash da khoa nhung so nay khong doi duoc giua preview/execute.
+    v_tong_thuc_nhan    := (p_payload ->> 'tong_thuc_nhan')::numeric;
+    v_so_nhan_vien      := (p_payload ->> 'so_nhan_vien')::int;
+    v_tong_hoa_hong     := (p_payload ->> 'tong_hoa_hong')::numeric;
+    v_so_phieu_hoa_hong := (p_payload ->> 'so_phieu_hoa_hong')::int;
   EXCEPTION WHEN others THEN
     RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
   END;
+  IF v_tong_thuc_nhan IS NULL OR v_so_nhan_vien IS NULL
+     OR v_tong_hoa_hong IS NULL OR v_so_phieu_hoa_hong IS NULL THEN
+    RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
+  END IF;
   IF v_org IS NULL OR v_period IS NULL
      OR jsonb_typeof(COALESCE(v_managers, 'null'::jsonb)) <> 'array'
      OR v_expected IS NULL OR jsonb_array_length(v_managers) <> v_expected
@@ -430,6 +526,36 @@ BEGIN
       RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
     END IF;
     v_staff_ids := v_staff_ids || v_staff;
+
+    -- F2 (review, HIGH): doi soat LAI (TOCTOU) - dung THAT giua luc xem truoc
+    -- va luc thuc thi co the da doi (mot phieu hoa hong bi huy/duyet o cho
+    -- khac). Xay lai CHINH XAC cung truy van da dung o preview; lech VOI so
+    -- da chot trong payload (canonical) thi tu choi thay vi khoa mot con so
+    -- khong con dung.
+    BEGIN
+      SELECT COALESCE(array_agg(ie.id ORDER BY ie.id), ARRAY[]::uuid[]),
+             COALESCE(SUM(ie.total_amount), 0)
+        INTO v_voucher_ids_lai, v_hoa_hong_lai
+        FROM (
+          SELECT t.value
+            FROM jsonb_array_elements_text(COALESCE(v_mg -> 'commission_voucher_ids', '[]'::jsonb)) AS t(value)
+           WHERE t.value ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        ) vid
+        JOIN public.income_expenses ie
+          ON ie.id = vid.value::uuid
+         AND ie.organization_id = v_org
+         AND ie.deleted_at IS NULL
+         AND ie.approval_status = 'UNAPPROVED';
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
+    END;
+    IF v_voucher_ids_lai IS DISTINCT FROM
+         ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_mg -> 'commission_voucher_ids', '[]'::jsonb))::uuid
+                ORDER BY 1)
+       OR v_hoa_hong_lai IS DISTINCT FROM COALESCE((v_mg ->> 'commission_total')::numeric, 0) THEN
+      RAISE EXCEPTION 'salary_figures_mismatch' USING ERRCODE = '22023';
+    END IF;
+    v_all_voucher_ids := v_all_voucher_ids || v_voucher_ids_lai;
   END LOOP;
 
   v_snapshot := app_private.copilot_action_gate_v1('salary.khoa_thang', v_org);
@@ -490,6 +616,20 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- F2 (review, HIGH): dem lai TOAN BO phieu hoa hong da duoc LOC (server-
+  -- verified) va DOI so THAT su chuyen APPROVED phai khop so da chot
+  -- so_phieu_hoa_hong (RPC goc duyet moi phieu UNAPPROVED trong danh sach).
+  IF cardinality(v_all_voucher_ids) > 0 THEN
+    SELECT count(*) INTO v_voucher_approved
+      FROM public.income_expenses ie
+     WHERE ie.id = ANY(v_all_voucher_ids)
+       AND ie.organization_id = v_org
+       AND ie.approval_status = 'APPROVED';
+    IF v_voucher_approved IS DISTINCT FROM v_so_phieu_hoa_hong THEN
+      RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+
   SELECT id INTO v_first_sm_id
     FROM public.salary_monthly
    WHERE staff_id = v_first_staff AND period_month = v_period;
@@ -524,7 +664,8 @@ BEGIN
     'entity_table',        'salary_monthly',
     'entity_id',            v_first_sm_id,
     'audit_id',             v_audit_id,
-    'outcome',              jsonb_build_object('status', 'da_thuc_hien', 'locked_count', v_locked_count, 'commission_approved', v_ket ->> 'commission_approved')
+    'amount',               v_tong_thuc_nhan,
+    'outcome',              jsonb_build_object('status', 'da_thuc_hien', 'locked_count', v_locked_count, 'commission_approved', v_ket ->> 'commission_approved', 'so_phieu_hoa_hong', v_so_phieu_hoa_hong, 'tong_hoa_hong', v_tong_hoa_hong)
   ));
 
   RETURN jsonb_build_object(

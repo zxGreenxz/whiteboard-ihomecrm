@@ -146,6 +146,7 @@ DECLARE
   v_bld         uuid;
   v_toa         text;
   v_scope       record;
+  v_current_rep uuid;
   v_canonical   jsonb;
   v_nonce       bytea;
 BEGIN
@@ -184,6 +185,21 @@ BEGIN
     RAISE EXCEPTION 'contract_not_transferable' USING ERRCODE = '55000';
   END IF;
 
+  -- F3 (review, MED): chan gia/coc "ngon tay beo" — am hoac vuot 10x gia/coc
+  -- hien tai deu tu choi (bo qua tran tren neu hien tai la 0).
+  IF v_new_rent IS NOT NULL THEN
+    IF v_new_rent < 0
+       OR (v_c.rent_price > 0 AND v_new_rent > v_c.rent_price * 10) THEN
+      RAISE EXCEPTION 'amount_out_of_range' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+  IF v_new_deposit IS NOT NULL THEN
+    IF v_new_deposit < 0
+       OR (v_c.total_deposit > 0 AND v_new_deposit > v_c.total_deposit * 10) THEN
+      RAISE EXCEPTION 'amount_out_of_range' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
   SELECT * INTO v_cust
     FROM public.customers
    WHERE id = v_new_cust
@@ -193,6 +209,17 @@ BEGIN
   END IF;
   IF v_cust.organization_id IS DISTINCT FROM p_organization_id THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE = '42501';
+  END IF;
+
+  -- F6 (review, LOW): dai dien hien tai — dung de doi soat luc thuc thi
+  -- (entity_changed_since_preview neu ai do doi dai dien giua chung), VA de
+  -- chan som truong hop khach hang moi DA la dai dien (khong lam gi ca).
+  SELECT customer_id INTO v_current_rep
+    FROM public.contract_customers
+   WHERE contract_id = v_contract_id AND is_representative
+   LIMIT 1;
+  IF v_current_rep IS NOT NULL AND v_current_rep = v_new_cust THEN
+    RAISE EXCEPTION 'no_op' USING ERRCODE = '22023';
   END IF;
 
   v_bld := (SELECT r.building_id FROM public.rooms r WHERE r.id = v_c.room_id);
@@ -216,7 +243,8 @@ BEGIN
     'new_rent_price',     v_new_rent,
     'new_deposit',        v_new_deposit,
     'transfer_date',      v_xfer_date,
-    'notes',              v_notes
+    'notes',              v_notes,
+    'expected_representative_cu', v_current_rep
   );
   v_nonce := extensions.gen_random_bytes(32);
 
@@ -237,7 +265,18 @@ BEGIN
       'ten_khach_hang', v_cust.full_name,
       'so_dien_thoai',  v_cust.phone,
       'so_tien',        COALESCE(v_new_rent, v_c.rent_price),
-      'hau_qua',        'Se nhuong hop dong sang khach hang moi lam dai dien'
+      -- F3 (review, MED): hien CA HAI gia tri (hien tai + de nghi).
+      'gia_thue_hien_tai', v_c.rent_price,
+      'gia_thue_moi',      COALESCE(v_new_rent, v_c.rent_price),
+      'coc_hien_tai',      v_c.total_deposit,
+      'coc_moi',           COALESCE(v_new_deposit, v_c.total_deposit),
+      'hau_qua',        format(
+        'Se nhuong hop dong sang khach hang moi lam dai dien (ha dai dien cu xuong). %s%s',
+        CASE WHEN v_new_rent IS NOT NULL AND v_new_rent IS DISTINCT FROM v_c.rent_price
+             THEN format('Gia thue GHI DE tu %s thanh %s. ', v_c.rent_price, v_new_rent) ELSE '' END,
+        CASE WHEN v_new_deposit IS NOT NULL AND v_new_deposit IS DISTINCT FROM v_c.total_deposit
+             THEN format('Coc GHI DE tu %s thanh %s.', v_c.total_deposit, v_new_deposit) ELSE '' END
+      )
     )
   );
 END
@@ -295,6 +334,9 @@ DECLARE
   v_c           public.contracts%ROWTYPE;
   v_ret         uuid;
   v_rep_ok      boolean;
+  v_exp_rep_cu     uuid;
+  v_rent_before    numeric;
+  v_deposit_before numeric;
   v_audit_id    uuid;
   v_ledger_id   uuid;
 BEGIN
@@ -341,6 +383,7 @@ BEGIN
     v_new_deposit := NULLIF(p_payload ->> 'new_deposit', '')::numeric;
     v_xfer_date   := (p_payload ->> 'transfer_date')::date;
     v_notes       := NULLIF(p_payload ->> 'notes', '');
+    v_exp_rep_cu  := NULLIF(p_payload ->> 'expected_representative_cu', '')::uuid;
   EXCEPTION WHEN others THEN
     RAISE EXCEPTION 'payload_changed' USING ERRCODE = '42501';
   END;
@@ -389,7 +432,23 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'entity_not_found' USING ERRCODE = 'P0002';
   END IF;
+  -- F6 (review, LOW): dai dien hien tai da doi kể tu luc xem truoc (nguoi khac
+  -- vua nhuong hop dong nay) — tu choi thay vi nhuong tren mot gia dinh cu.
+  DECLARE
+    v_rep_now uuid;
+  BEGIN
+    SELECT customer_id INTO v_rep_now
+      FROM public.contract_customers
+     WHERE contract_id = v_contract_id AND is_representative
+     LIMIT 1;
+    IF v_rep_now IS DISTINCT FROM v_exp_rep_cu THEN
+      RAISE EXCEPTION 'entity_changed_since_preview' USING ERRCODE = '55000';
+    END IF;
+  END;
   v_before := to_jsonb(v_c);
+  -- F3 (review, MED): chup gia/coc TRUOC khi goi RPC goc de doi soat readback.
+  v_rent_before    := v_c.rent_price;
+  v_deposit_before := v_c.total_deposit;
 
   v_ret := public.transfer_contract(v_contract_id, v_new_cust, v_new_rent, v_new_deposit, v_xfer_date, v_notes);
 
@@ -399,7 +458,10 @@ BEGIN
    WHERE id = v_contract_id;
   IF NOT FOUND
      OR v_ret IS DISTINCT FROM v_contract_id
-     OR v_c.organization_id IS DISTINCT FROM v_org THEN
+     OR v_c.organization_id IS DISTINCT FROM v_org
+     -- F3 (review, MED): rent_price/total_deposit PHAI dung bang canonical.
+     OR v_c.rent_price IS DISTINCT FROM COALESCE(v_new_rent, v_rent_before)
+     OR v_c.total_deposit IS DISTINCT FROM COALESCE(v_new_deposit, v_deposit_before) THEN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
   SELECT EXISTS (

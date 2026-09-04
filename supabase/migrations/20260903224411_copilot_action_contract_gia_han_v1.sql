@@ -189,6 +189,22 @@ BEGIN
     RAISE EXCEPTION 'new_end_date_not_after_current' USING ERRCODE = '22023';
   END IF;
 
+  -- F3 (review, MED): chan gia/coc "ngon tay beo" — am hoac vuot 10x gia/coc
+  -- hien tai deu tu choi. Neu gia/coc hien tai la 0 (du lieu bat thuong hiem
+  -- gap) thi bo qua tran tren (10x cua 0 la 0, se chan MOI so duong hop le).
+  IF v_new_rent IS NOT NULL THEN
+    IF v_new_rent < 0
+       OR (v_c.rent_price > 0 AND v_new_rent > v_c.rent_price * 10) THEN
+      RAISE EXCEPTION 'amount_out_of_range' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+  IF v_new_deposit IS NOT NULL THEN
+    IF v_new_deposit < 0
+       OR (v_c.total_deposit > 0 AND v_new_deposit > v_c.total_deposit * 10) THEN
+      RAISE EXCEPTION 'amount_out_of_range' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
   v_bld := (SELECT r.building_id FROM public.rooms r WHERE r.id = v_c.room_id);
 
   SELECT s.org_wide, s.building_ids
@@ -230,7 +246,20 @@ BEGIN
       'so_hop_dong',         COALESCE(v_c.contract_number, left(v_c.id::text, 8)),
       'trang_thai_hien_tai', v_c.status,
       'so_tien',             COALESCE(v_new_rent, v_c.rent_price),
-      'hau_qua',             format('Se gia han hop dong tu %s sang %s', v_c.end_date, v_new_end)
+      -- F3 (review, MED): hien CA HAI gia tri (hien tai + de nghi), khong chi
+      -- so cuoi cung, de nguoi duyet thay ro co gi thay doi.
+      'gia_thue_hien_tai',   v_c.rent_price,
+      'gia_thue_moi',        COALESCE(v_new_rent, v_c.rent_price),
+      'coc_hien_tai',        v_c.total_deposit,
+      'coc_moi',             COALESCE(v_new_deposit, v_c.total_deposit),
+      'hau_qua',             format(
+        'Se gia han hop dong tu %s sang %s. %s%s',
+        v_c.end_date, v_new_end,
+        CASE WHEN v_new_rent IS NOT NULL AND v_new_rent IS DISTINCT FROM v_c.rent_price
+             THEN format('Gia thue GHI DE tu %s thanh %s. ', v_c.rent_price, v_new_rent) ELSE '' END,
+        CASE WHEN v_new_deposit IS NOT NULL AND v_new_deposit IS DISTINCT FROM v_c.total_deposit
+             THEN format('Coc GHI DE tu %s thanh %s.', v_c.total_deposit, v_new_deposit) ELSE '' END
+      )
     )
   );
 END
@@ -288,6 +317,8 @@ DECLARE
   v_c           public.contracts%ROWTYPE;
   v_ret         uuid;
   v_ext_count   int;
+  v_rent_before    numeric;
+  v_deposit_before numeric;
   v_audit_id    uuid;
   v_ledger_id   uuid;
 BEGIN
@@ -388,6 +419,10 @@ BEGIN
     RAISE EXCEPTION 'entity_changed_since_preview' USING ERRCODE = '55000';
   END IF;
   v_before := to_jsonb(v_c);
+  -- F3 (review, MED): chup gia/coc TRUOC khi goi RPC goc de doi soat readback
+  -- (RPC goc dung COALESCE(p_new_x, x_hien_co) - can biet "hien co" LUC NAY).
+  v_rent_before    := v_c.rent_price;
+  v_deposit_before := v_c.total_deposit;
 
   v_ret := public.renew_contract(v_contract_id, v_new_end, v_new_rent, v_new_deposit, v_notes);
 
@@ -399,7 +434,11 @@ BEGIN
      OR v_ret IS DISTINCT FROM v_contract_id
      OR v_c.organization_id IS DISTINCT FROM v_org
      OR v_c.end_date IS DISTINCT FROM v_new_end
-     OR v_c.status NOT IN ('ACTIVE', 'EXTENDED') THEN
+     OR v_c.status NOT IN ('ACTIVE', 'EXTENDED')
+     -- F3 (review, MED): rent_price/total_deposit PHAI dung bang canonical
+     -- (gia/coc moi neu co, giu nguyen gia/coc truoc do neu khong).
+     OR v_c.rent_price IS DISTINCT FROM COALESCE(v_new_rent, v_rent_before)
+     OR v_c.total_deposit IS DISTINCT FROM COALESCE(v_new_deposit, v_deposit_before) THEN
     RAISE EXCEPTION 'copilot_write_readback_mismatch' USING ERRCODE = 'P0001';
   END IF;
   SELECT count(*) INTO v_ext_count

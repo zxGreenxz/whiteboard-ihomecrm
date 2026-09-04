@@ -206,6 +206,10 @@ const THEO_MA_KE_HOACH: readonly [string, string][] = [
   ['termination_not_approved', 'Hồ sơ thanh lý chưa được duyệt nên chưa sinh phiếu hoàn cọc được.'],
   ['cashbook_request_not_pending', 'Đề nghị chốt sổ quỹ này không còn ở trạng thái chờ xác nhận.'],
   ['counted_balance_mismatch', 'Số tiền đã đếm không khớp số người đề nghị đã khai — hai bên phải đếm lại cùng nhau.'],
+  // — G5-C3 fix round 1 (review F2/F3/F6) —
+  ['amount_out_of_range', 'Số tiền đề nghị âm hoặc vượt quá 10 lần số hiện tại — kiểm tra lại rồi thử lại.'],
+  ['salary_figures_mismatch', 'Số liệu lương (phiếu hoa hồng) đã đổi kể từ lúc xem trước — dừng lại thay vì khoá một con số không còn đúng. Hãy lập lại kế hoạch.'],
+  ['no_op', 'Không có gì để làm — đối tượng đã ở đúng trạng thái đề nghị rồi.'],
 
   // — Cửa chung của mọi hành động —
   ['copilot_feature_disabled', 'Tính năng kế hoạch đang tắt cho công ty của bạn.'],

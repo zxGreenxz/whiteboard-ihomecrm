@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-03T23:16:48.486Z",
+  "generatedAt": "2026-09-04T00:07:19.745Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 494,
-    "unknown": 91,
+    "ledger-applied": 503,
+    "unknown": 82,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9294,11 +9294,9 @@
       "name": "copilot_action_member_cap_quyen_v1",
       "scheme": "timestamp14",
       "sha256": "3504268ede699b2511a3ebfb73f7b86533d5bc33e9382b7c375620c16adbc406",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_member_cap_quyen_v1",
-        "function:public.copilot_execute_member_cap_quyen_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:24:02.843Z|bien-nhan-backup"
       ]
     },
     {
@@ -9307,11 +9305,9 @@
       "name": "copilot_action_role_cap_nhat_v1",
       "scheme": "timestamp14",
       "sha256": "da82bff8d037d8144927c0731e8a4b90cd4c27733d597fd7e13670baebc9518b",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_role_cap_nhat_v1",
-        "function:public.copilot_execute_role_cap_nhat_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:26:26.439Z|bien-nhan-backup"
       ]
     },
     {
@@ -9320,11 +9316,9 @@
       "name": "copilot_action_member_moi_v1",
       "scheme": "timestamp14",
       "sha256": "6a90ea1a75936050063c5e6938944150d2f6bfc543c49d7235d627f6d15eb875",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_member_moi_v1",
-        "function:public.copilot_execute_member_moi_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:29:08.809Z|bien-nhan-backup"
       ]
     },
     {
@@ -9333,11 +9327,9 @@
       "name": "copilot_action_member_trang_thai_v1",
       "scheme": "timestamp14",
       "sha256": "d7466878ebb113f571ce0a8a5ebf3c61a3dfac0d27cf033356076672cfa37548",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_member_trang_thai_v1",
-        "function:public.copilot_execute_member_trang_thai_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:31:51.972Z|bien-nhan-backup"
       ]
     },
     {
@@ -9346,11 +9338,9 @@
       "name": "copilot_action_zalo_phat_song_v1",
       "scheme": "timestamp14",
       "sha256": "45e20d4b37a1d07596b49fdc1570ee75dc9a9934ac27af5c993ba057fb52e1aa",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_zalo_phat_song_v1",
-        "function:public.copilot_execute_zalo_phat_song_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:34:42.647Z|bien-nhan-backup"
       ]
     },
     {
@@ -9359,11 +9349,9 @@
       "name": "copilot_action_zalo_thu_hoi_tin_v1",
       "scheme": "timestamp14",
       "sha256": "20e951e89306a62ee3a17718c297642fa0ce55f03551a217495fd024ac18a3d9",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_zalo_thu_hoi_tin_v1",
-        "function:public.copilot_execute_zalo_thu_hoi_tin_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:37:23.944Z|bien-nhan-backup"
       ]
     },
     {
@@ -9372,11 +9360,9 @@
       "name": "copilot_action_network_thuc_thi_v1",
       "scheme": "timestamp14",
       "sha256": "ece4db16870fc0e555386089406e1b79fbcca3885d9c7c9e24237ced27f0256c",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_preview_network_thuc_thi_v1",
-        "function:public.copilot_execute_network_thuc_thi_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:40:12.857Z|bien-nhan-backup"
       ]
     },
     {
@@ -9385,10 +9371,9 @@
       "name": "demo_l5_e2e_accounts_seed_v1",
       "scheme": "timestamp14",
       "sha256": "2bde6c5ab8c3254be8a7066ed4a088c16fd3bdb6fb9244651484ba66573a965f",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:42:57.045Z|bien-nhan-backup"
       ]
     },
     {
@@ -9397,10 +9382,9 @@
       "name": "copilot_step_up_reset_pin_v1",
       "scheme": "timestamp14",
       "sha256": "72402b2b00f8978ed70b8727fada0d59a8083f9d724ef639027b31e6230efbf2",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_step_up_reset_pin_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-03T23:45:42.552Z|bien-nhan-backup"
       ]
     },
     {
@@ -9408,7 +9392,7 @@
       "version": "20260903224410",
       "name": "copilot_action_invoice_duyet_hang_loat_v1",
       "scheme": "timestamp14",
-      "sha256": "6b9bf3f6a99942bc57a7ff65051717d877ddf7092facf79e72a8ad5f8025c970",
+      "sha256": "743ff0450f4f1c0d3d3a3602d09f5c7e8209eb2ec3c109862a20d38a4fd242e2",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9421,7 +9405,7 @@
       "version": "20260903224411",
       "name": "copilot_action_contract_gia_han_v1",
       "scheme": "timestamp14",
-      "sha256": "ac25b93e1f40ec8f389c4ae6cd9fb16c27cb835e18198b0e951532a2f269a9ce",
+      "sha256": "5f4d2a5b0974830bb0c29c25c7f8adbe61f4f152c8d99763bbbb3adff62b44cd",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9434,7 +9418,7 @@
       "version": "20260903224412",
       "name": "copilot_action_contract_chuyen_nhuong_v1",
       "scheme": "timestamp14",
-      "sha256": "7b1de118848b87e0cce65fca4462025223d401c131a78ab0ecd235a99d25de5f",
+      "sha256": "4105768179412d303059626f0ee57d391b611302924b6c08ec8261fca94b76eb",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9447,7 +9431,7 @@
       "version": "20260903224413",
       "name": "copilot_action_room_chuyen_phong_v1",
       "scheme": "timestamp14",
-      "sha256": "f8d29b1e5b46019f48f874809d6b8b3be457ddb76e6791427306940812093e55",
+      "sha256": "fafc043b57b2b1a68be4469c631df82728b8052f82c8f6fbbd667a8cd1428524",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9486,7 +9470,7 @@
       "version": "20260903224416",
       "name": "copilot_action_cashbook_chot_so_v1",
       "scheme": "timestamp14",
-      "sha256": "6acf7e4e8f61ca43e0305939b1f0bf039de9bb12a9a79bb565dc713bcca612c7",
+      "sha256": "2d7c46b4ed202d5156c74cbdb14f30eef259f7b8afb9571e5c1708945c05c31b",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9499,7 +9483,7 @@
       "version": "20260903224417",
       "name": "copilot_action_salary_chi_luong_v1",
       "scheme": "timestamp14",
-      "sha256": "322aa3e358a8c216f346fbbfdaba984edf3546a32b332e4c3e93c8d9f94985dd",
+      "sha256": "c642624ad3a47d3db22ff621b6a5a87071ba5d42fbe7b3ce96ed08ab95e11a2c",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -9513,7 +9497,7 @@
       "version": "20260903224418",
       "name": "copilot_action_salary_khoa_thang_v1",
       "scheme": "timestamp14",
-      "sha256": "56db8d619bc12df97dd33190e93a06569307f53d8117e6974ca415e96c14116c",
+      "sha256": "1c26aa02e78f8795aa26eb367d09858f8f40180ac9a96eebef1bc8dbfbe33ba9",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
