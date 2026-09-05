@@ -106,6 +106,12 @@ export interface KeHoach {
    * kế hoạch đi đường DRAFT/bấm/PIN như trước G5-B — KHÔNG suy ra từ
    * `planStatus === 'APPROVED'` một mình, vì bấm tay/PIN cũng cho ra trạng
    * thái đó.
+   *
+   * Từ 05/09 `copilot_plan_summary_v1` (đường `get` đi qua) cũng trả
+   * `standing_grant_ids`, nên đọc lại một kế hoạch cũ — F5, đổi thiết bị —
+   * vẫn biết nó tiêu uỷ quyền nào. Hai tên khoá là hai đường ghi khác nhau
+   * của cùng một sự thật, không phải hai sự thật: `create` trả tên riêng còn
+   * `get` chiếu qua bản tóm tắt đã redact.
    */
   standingGrantIds: string[] | null;
   steps: BuocKeHoach[];
@@ -220,12 +226,16 @@ export function chuanHoaKeHoach(gt: unknown): KeHoach | null {
     expiresAt: chuoi(r.expires_at),
     executeDeadline: chuoi(r.execute_deadline),
     failureReason: chuoi(r.failure_reason),
-    standingGrantIds: mangChuoi(r.tu_duyet_theo_uy_quyen),
+    standingGrantIds:
+      mangChuoi(r.tu_duyet_theo_uy_quyen) ?? mangChuoi(r.standing_grant_ids),
     steps,
   };
 }
 
-/** Mảng chuỗi khác rỗng, hoặc `null` — dùng cho `tu_duyet_theo_uy_quyen`. */
+/**
+ * Mảng chuỗi khác rỗng, hoặc `null` — dùng cho `tu_duyet_theo_uy_quyen` (kết
+ * quả `create`) và `standing_grant_ids` (bản tóm tắt mà `get` chiếu qua).
+ */
 function mangChuoi(gt: unknown): string[] | null {
   if (!Array.isArray(gt)) return null;
   const ra = gt.filter((x): x is string => typeof x === 'string' && x.length > 0);

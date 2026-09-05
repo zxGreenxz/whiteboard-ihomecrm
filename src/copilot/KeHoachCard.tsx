@@ -310,12 +310,14 @@ export default function KeHoachCard({
           }
         } else {
           loiLienTiep = 0;
-          // G5-B: `copilot_plan_get_v1` (đường đọc lại này đi qua) không mang
-          // `tu_duyet_theo_uy_quyen` — trường đó chỉ có ở kết quả của chính
-          // `copilot_plan_create_v1`. Giữ NGUYÊN `standingGrantIds` đã biết từ
-          // lần đọc trước thay vì để mỗi vòng poll xoá nó, kẻo tiêu đề thẻ
-          // nhảy từ "Đã tự duyệt theo uỷ quyền #…" về nhãn APPROVED chung
-          // chung chỉ sau 1,5 giây.
+          // G5-B: từ 05/09 `copilot_plan_get_v1` cũng mang uỷ quyền đứng
+          // (`standing_grant_ids` trong bản tóm tắt), nên vòng poll thường tự
+          // giữ được nhãn. Phép hợp nhất dưới đây là DÂY AN TOÀN cho hai
+          // trường hợp vẫn có thật: máy chủ chưa kịp nhận migration đó, và kế
+          // hoạch tự duyệt mà bản tóm tắt trả mảng rỗng. Giữ NGUYÊN
+          // `standingGrantIds` đã biết thay vì để mỗi vòng poll xoá nó, kẻo
+          // tiêu đề thẻ nhảy từ "Đã tự duyệt theo uỷ quyền #…" về nhãn
+          // APPROVED chung chung chỉ sau 1,5 giây.
           const moi = kq.keHoach;
           setKeHoach((truoc) =>
             moi.standingGrantIds

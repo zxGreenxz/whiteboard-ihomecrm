@@ -195,6 +195,31 @@ describe('chuanHoaKeHoach', () => {
     expect(chuanHoaKeHoach({ ...keHoach(), tu_duyet_theo_uy_quyen: [] })?.standingGrantIds).toBeNull();
     expect(chuanHoaKeHoach(keHoach())?.standingGrantIds).toBeNull();
   });
+
+  // 05/09: `copilot_plan_summary_v1` — đường mà `copilot_plan_get_v1` chiếu
+  // qua — nay trả `standing_grant_ids`. Đọc lại một kế hoạch tự duyệt sau khi
+  // F5 phải ra đúng danh sách grant, không phụ thuộc bộ nhớ của thẻ nữa.
+  it('standingGrantIds cũng đọc từ standing_grant_ids của đường get', () => {
+    const GRANT = 'ffff0000-0000-4000-8000-00000000000a';
+    expect(chuanHoaKeHoach({ ...keHoach(), standing_grant_ids: [GRANT] })?.standingGrantIds).toEqual([
+      GRANT,
+    ]);
+    expect(chuanHoaKeHoach({ ...keHoach(), standing_grant_ids: [] })?.standingGrantIds).toBeNull();
+    // Đường bấm tay/PIN: cột NOT NULL DEFAULT '{}' nên tóm tắt trả mảng rỗng.
+    expect(
+      chuanHoaKeHoach({ ...keHoach(), tu_duyet_theo_uy_quyen: [], standing_grant_ids: [] })
+        ?.standingGrantIds,
+    ).toBeNull();
+    // Hai khoá cùng có mặt (kết quả `create` sau này cũng chiếu qua tóm tắt):
+    // tên riêng của `create` thắng, và cả hai vốn là cùng một sự thật.
+    expect(
+      chuanHoaKeHoach({
+        ...keHoach(),
+        tu_duyet_theo_uy_quyen: [GRANT],
+        standing_grant_ids: [GRANT],
+      })?.standingGrantIds,
+    ).toEqual([GRANT]);
+  });
 });
 
 describe('duyetKeHoach', () => {
