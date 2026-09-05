@@ -128,11 +128,19 @@ describe('G5-B — khung migration', () => {
     // — xem chú thích `liveDefinitionOf`).
   });
 
-  it('KHÔNG đổi chữ ký ABI của copilot_plan_create_v1 ở ĐỊNH NGHĨA SỐNG (G5-C2 chỉ thêm nhánh direct_l5_v1 + patch pin_always, không đổi tham số)', () => {
-    // supabase/migrations/20260903212600_copilot_action_member_cap_quyen_v1.sql
-    // CREATE OR REPLACE lại đúng hàm này (thêm nhánh direct_l5_v1 + đọc cột
-    // pin_always) — định nghĩa SỐNG dời sang file đó, muộn hơn G5-B. Đọc
-    // `migration` (frozen G5-B) cho hàm NÀY từ giờ là đo một bản đã bị thay —
+  it('KHÔNG đổi chữ ký ABI của copilot_plan_create_v1 ở ĐỊNH NGHĨA SỐNG (G5-C2 thêm direct_l5_v1 + pin_always, G5-E-FIX tách khoá standing grant — không đổi tham số)', () => {
+    // Định nghĩa SỐNG của hàm này đã dời HAI lần, đều muộn hơn G5-B:
+    //   1. supabase/migrations/20260903212600_copilot_action_member_cap_quyen_v1.sql
+    //      — thêm nhánh direct_l5_v1 + đọc cột pin_always.
+    //   2. supabase/migrations/20260905091725_copilot_plan_create_grant_lock_fix_v1.sql
+    //      — tách khối soát phủ standing grant thành ba bước (liệt kê ứng viên →
+    //      PERFORM … FOR UPDATE → đọc lại tập đã khoá), vì bản cũ trộn `array_agg`
+    //      với `FOR UPDATE` trong CÙNG một câu nên Postgres từ chối lúc CHẠY
+    //      (0A000 "FOR UPDATE is not allowed with aggregate functions") — nhánh tự
+    //      duyệt chưa từng chạy nổi trên production. Ghi tên file SỐNG ở đây là
+    //      bắt buộc: `check-migration-test-liveness.mjs` chỉ tha khi test biết
+    //      định nghĩa hiện hành nằm ở đâu.
+    // Đọc `migration` (frozen G5-B) cho hàm NÀY từ giờ là đo một bản đã bị thay —
     // gate `check-migration-test-liveness.mjs` bắt đúng lớp lỗi này.
     const { sql } = liveDefinitionOf('copilot_plan_create_v1');
     // KHÔNG neo "CREATE OR REPLACE " ở đầu — cùng lý do đã dùng ở bài kiểm chữ
