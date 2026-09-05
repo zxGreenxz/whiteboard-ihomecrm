@@ -66,8 +66,9 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
  *   cd .e2e-fleet && FLEET_BASE_URL=<preview của commit đang review> \
  *     EXPECTED_SOURCE_SHA=<sha 40 hex của bản đó> \
  *     VERCEL_AUTOMATION_BYPASS_SECRET=... \
- *     FLEET_PASS_CHUNHA=... FLEET_PASS_QUANLY=... FLEET_PASS_QUANLY2=... \
- *     FLEET_PASS_SYSADMIN=... npx playwright test specs/copilot-action-matrix.spec.ts
+ *     FLEET_PASS_CHUNHA=... FLEET_PASS_KETOAN=... FLEET_PASS_QUANLY=... \
+ *     FLEET_PASS_QUANLY2=... FLEET_PASS_SYSADMIN=... \
+ *     npx playwright test specs/copilot-action-matrix.spec.ts
  */
 
 // Hai ca lật cờ rollout đụng TRẠNG THÁI TOÀN CỤC. Chạy song song thì ca này tắt
@@ -632,21 +633,37 @@ test('ca 2 — quản lý có quyền theo TOÀ: thực thi được, ảnh ch�
   expect(anh.registry_version).toBe(1);
 });
 
-test('ca 3 — thiếu quyền: cổng chặn ở XEM TRƯỚC và sổ không thêm dòng nào', async () => {
+/**
+ * VÌ SAO CA NÀY KHÔNG CÒN DÙNG TÀI KHOẢN HỆ THỐNG LÀM VAI "THIẾU QUYỀN"
+ *   Bản trước có thêm một nhánh (a) lấy `sysadmin` (`nguyentamca165@gmail.com`)
+ *   làm vai bị chặn, dựa trên phép đo 03/09/2026 rằng tài khoản đó KHÔNG có
+ *   `income_expenses.edit` trên DEMO. Phép đo ấy đã HẾT HIỆU LỰC — và hết một
+ *   cách CỐ Ý: `supabase/migrations/20260903220254_demo_l5_e2e_accounts_seed_v1.sql`
+ *   cho tài khoản đó làm THÀNH VIÊN ACTIVE của DEMO mang ĐÚNG vai "Chủ công ty"
+ *   của `demo.chunha`, để một kế hoạch L5 thật chạy được bằng một actor vừa là
+ *   super admin vừa có role_binding thật (không dựa vào lối tắt `is_super_admin()`).
+ *   Nó GIỜ CÓ quyền thật ⇒ xem trước trả 200 ⇒ nhánh (a) đỏ vì TIỀN ĐỀ đã chết,
+ *   không vì hàng rào hỏng. Sửa SPEC, không sửa DB: hàng seed kia là thứ Mức 3 cần.
+ *
+ *   Đo lại bằng SQL CHỈ-ĐỌC trên production 05/09/2026, theo đúng đường
+ *   `app_private.authorized_scope_v3` đi (`role_bindings` → `organization_roles`
+ *   → `role_permissions`, hợp với `member_permission_overrides`): CẢ 8 thành
+ *   viên ACTIVE của DEMO đều có cạnh ALLOW cho `income_expenses.edit`. Khác nhau
+ *   chỉ ở PHẠM VI — chunha/codong/ketoan/kythuat/sale/sysadmin ở mức
+ *   ORGANIZATION, `quanly` chỉ Toà A+B, `quanly2` chỉ Toà C+D. Thêm nữa
+ *   `permission_definitions.required_dimensions` của khoá này là `{BUILDING}`,
+ *   nên `org_wide` LUÔN là false và quyền luôn quy về danh sách toà.
+ *
+ *   Hệ quả: DEMO hiện KHÔNG có danh tính nào "thiếu quyền HẲN". Thứ còn đo được
+ *   là thiếu quyền TRÊN PHIẾU NÀY (ngoài phạm vi toà) — đúng là nhánh ca này
+ *   giữ lại. Nhánh "thiếu HẲN" chuyển sang `ca 3b`, nơi nó tự đo tiền đề.
+ */
+test('ca 3 — ngoài phạm vi toà: cổng chặn ở XEM TRƯỚC và sổ không thêm dòng nào', async () => {
   const chu = await token('chunha');
-  const trongPhamVi = await neoPhieu(chu, NEO_TRONG_PHAM_VI);
   const ngoaiPhamVi = await neoPhieu(chu, NEO_NGOAI_PHAM_VI);
 
-  // (a) Tài khoản HỆ THỐNG: là super admin nhưng KHÔNG có `income_expenses.edit`
-  //     trên DEMO. Cổng hành động cố ý không có lối tắt super admin, nên nó bị
-  //     chặn y như mọi người khác — đây là hàng rào, không phải thiếu sót.
-  const sys = await token('sysadmin');
-  const bChan = await xemTruoc(sys, trongPhamVi, ghiChuRieng('ca3-sysadmin'));
-  expect(bChan.status, `Super admin KHÔNG được ghi khi thiếu quyền: ${loi(bChan)}`).toBe(403);
-  expect(maLoi(bChan), 'Phải là 42501 (từ chối quyền), không phải một lỗi khác tình cờ có chữ đó').toBe('42501');
-  expect(loi(bChan)).toContain('not_permitted');
-
-  // (b) Quản lý ĐÚNG công ty nhưng phiếu nằm ở toà ngoài phạm vi.
+  // Quản lý ĐÚNG công ty và CÓ `income_expenses.edit` — nhưng chỉ trên Toà A+B,
+  // còn phiếu neo này ở Toà D. Cổng phải chặn ngay ở XEM TRƯỚC.
   const ql = await token('quanly');
   const soTruoc = await soHanhDong(ql);
   const ngoaiToa = await xemTruoc(ql, ngoaiPhamVi, ghiChuRieng('ca3-ngoai-toa'));
@@ -662,6 +679,76 @@ test('ca 3 — thiếu quyền: cổng chặn ở XEM TRƯỚC và sổ không t
   // `?? ''`: phiếu neo này có thể còn ghi chú NULL (chưa ca nào annotate nó bao
   // giờ). `toContain` trên `null` ném TypeError và ca đỏ vì một lý do bịa.
   expect((await ghiChuHienTai(chu, ngoaiPhamVi)) ?? '').not.toContain('ca3-ngoai-toa');
+});
+
+/**
+ * Nhánh "thiếu quyền HẲN" — CÓ TIỀN ĐỀ TỰ ĐO, KHÔNG GHIM CỨNG MỘT TÀI KHOẢN
+ *   Ca 3 chỉ chứng minh được "có quyền nhưng HẸP phạm vi". Thứ nó không chứng
+ *   minh: một thành viên của DEMO KHÔNG có cạnh ALLOW nào cho
+ *   `income_expenses.edit` thì bị chặn ở MỌI phiếu, kể cả phiếu ở toà "bình
+ *   thường". Đo ngày 05/09/2026 thì DEMO không còn danh tính nào như vậy (xem
+ *   chú thích ca 3) — nên ca này DÒ tiền đề rồi `test.skip` kèm lý do là SỐ ĐO.
+ *
+ *   Vì sao dò động thay vì ghim một khoá: chính việc ghim cứng `sysadmin` đã làm
+ *   ca 3 đỏ khi phân quyền DEMO đổi. Và vì sao skip CÓ ĐIỀU KIỆN: một
+ *   `test.skip()` vô điều kiện là một ca đã chết mà bảng kết quả vẫn xanh — ngày
+ *   nào DEMO có lại một danh tính thiếu quyền, ca này tự sống lại.
+ *
+ *   Phép phân biệt phải chặt: một danh tính thiếu HẲN quyền bị chặn ở CẢ HAI
+ *   phiếu neo (Toà A và Toà D). Ai bị chặn ở một phiếu mà qua được phiếu kia là
+ *   người CÓ quyền nhưng hẹp phạm vi — đó là ca 3, không phải ca này. Không có
+ *   phép phân biệt này thì `quanly2` (chỉ Toà C+D) sẽ bị dán nhãn "thiếu quyền"
+ *   trong khi nó chỉ đang ở ngoài phạm vi — đúng loại nhầm lẫn đã sinh ra lỗi cũ.
+ *
+ *   Dò bằng XEM TRƯỚC là đọc-an-toàn với phiếu: hàm xem trước chỉ INSERT một
+ *   hàng `app_private.copilot_write_confirmations` (nonce, tự hết hạn) và KHÔNG
+ *   ghi sổ hành động — chỉ THỰC THI mới ghi. Nonce dò ra không bao giờ được bấm.
+ */
+test('ca 3b — thiếu quyền HẲN: chặn ở XEM TRƯỚC bất kể phiếu nào (tự đo tiền đề)', async () => {
+  const chu = await token('chunha');
+  const trongPhamVi = await neoPhieu(chu, NEO_TRONG_PHAM_VI);
+  const ngoaiPhamVi = await neoPhieu(chu, NEO_NGOAI_PHAM_VI);
+
+  const ungVien: UserKey[] = ['ketoan', 'quanly', 'quanly2', 'sysadmin'];
+  const doDuoc: { ai: UserKey; toaA: number; toaD: number }[] = [];
+  for (const ai of ungVien) {
+    const jwt = await token(ai);
+    const a = await xemTruoc(jwt, trongPhamVi, ghiChuRieng(`ca3b-do-${ai}-toaA`));
+    const d = await xemTruoc(jwt, ngoaiPhamVi, ghiChuRieng(`ca3b-do-${ai}-toaD`));
+    doDuoc.push({ ai, toaA: a.status, toaD: d.status });
+  }
+  const thieuHan = doDuoc.find((x) => x.toaA === 403 && x.toaD === 403);
+
+  test.skip(
+    thieuHan === undefined,
+    'Không còn danh tính DEMO nào thiếu HẲN income_expenses.edit — mọi ứng viên ' +
+      `qua được ít nhất một phiếu (${doDuoc
+        .map((x) => `${x.ai}:toàA=${x.toaA}/toàD=${x.toaD}`)
+        .join(' ')}). ` +
+      'Nguyên nhân: 20260903220254_demo_l5_e2e_accounts_seed_v1.sql cho sysadmin vai ' +
+      '"Chủ công ty" của DEMO, và 6/8 thành viên còn lại có ALLOW ở phạm vi ' +
+      'ORGANIZATION. Bật lại ca này bằng cách thêm một thành viên DEMO không có ' +
+      'cạnh ALLOW (hoặc một override DENY phạm vi ORGANIZATION) rồi khai khoá của ' +
+      'nó trong specs/auth.ts và thêm vào `ungVien`.',
+  );
+  if (thieuHan === undefined) return; // không tới được: test.skip ở trên đã dừng ca
+
+  const jwt = await token(thieuHan.ai);
+  const soTruoc = await soHanhDong(jwt);
+  const bChan = await xemTruoc(jwt, trongPhamVi, ghiChuRieng('ca3b'));
+  expect(bChan.status, `Thiếu quyền vẫn xem trước được: ${loi(bChan)}`).toBe(403);
+  expect(
+    maLoi(bChan),
+    'Phải là 42501 (từ chối quyền), không phải một lỗi khác tình cờ có chữ đó',
+  ).toBe('42501');
+  expect(loi(bChan)).toContain('not_permitted');
+
+  const soSau = await soHanhDong(jwt);
+  expect(
+    dongMoiCua(soTruoc, soSau, { actionId: HANH_DONG }),
+    'Xem trước bị từ chối mà vẫn sinh dòng sổ',
+  ).toEqual([]);
+  expect((await ghiChuHienTai(chu, trongPhamVi)) ?? '').not.toContain('ca3b');
 });
 
 test('ca 4 — công ty khác và danh tính khác: cả hai cửa đều đóng', async () => {
