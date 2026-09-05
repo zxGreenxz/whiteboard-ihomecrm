@@ -213,6 +213,25 @@ jobs:
       - name: Network Center managed resources verifier
         run: node scripts/verify-network-center-managed-resources.mjs --local-cluster
 
+      # `verify-network-center-hardening.mjs` bọc MỖI lệnh regression trong hạn
+      # 300s, và regression `edge-owned-worker-principal` chạy suite Deno qua
+      # `npx --yes deno@2.9.4`. `npm exec` không nhìn PATH, nên nó KHÔNG dùng bản
+      # Deno mà `denoland/setup-deno` vừa cài — nó tự tải vào `~/.npm/_npx`
+      # (`@deno/linux-x64-glibc` 104MB giải nén) NGAY TRONG hạn 300s đó.
+      # Bình thường cache npm của setup-node trả sẵn `_npx` nên không ai thấy;
+      # nhưng cache key là hash lockfile và setup-node KHÔNG có restore-keys, nên
+      # chỉ cần đổi package-lock.json là mất trắng cache: run 33823257334
+      # (04/09/2026) log "npm cache is not found" → lệnh vượt hạn, bước verifier
+      # đỏ ở 311s, trong khi CÙNG file test chạy 2s ở bước "Edge function tests".
+      # Tệ hơn, setup-node chỉ lưu cache khi job THÀNH CÔNG (post-if: success),
+      # nên một lần đỏ là đỏ mãi — chạy lại cũng nguội y như cũ.
+      # Nạp sẵn ở bước riêng để hạn 300s chỉ bao thời gian CHẠY TEST. Bước này
+      # vẫn gating (không `|| true`): tải Deno thất bại thì phải đỏ ở đây.
+      - name: Nạp sẵn Deno ghim cho hardening verifier
+        run: |
+          set -euo pipefail
+          npx --yes deno@2.9.4 --version
+
       # Runs the four database-backed wrappers for the previously source-text
       # -only findings. Exits non-zero unless all 14 canonical findings have an
       # executable regression AND an independent legitimate-control assertion.

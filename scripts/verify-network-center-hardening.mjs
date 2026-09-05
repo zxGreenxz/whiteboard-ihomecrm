@@ -91,12 +91,24 @@ export const HARDENING_REGISTRY = Object.freeze({
       ),
     ]),
     finding("worker-secret-unbound", [
+      // Deno phải GHIM 2.9.4 như mọi chỗ khác trong repo (tooling/test-matrix.json
+      // mục `edge-deno`). Lý do không chỉ là nhất quán: `npm exec` KHÔNG nhìn PATH,
+      // nên bản Deno 2.9.4 mà `denoland/setup-deno` đã đặt sẵn trên CI không được
+      // dùng — npx tự cài vào `~/.npm/_npx`, và spec là phần khoá thư mục cache đó
+      // (`deno` với `deno@2.9.4` ra hai chỗ khác nhau). Bản không ghim vừa tải bản
+      // mới bất kỳ, vừa nằm ngoài thư mục mà bước nạp sẵn của workflow làm ấm.
+      // Số đo: run 33823257334 (04/09/2026) log "npm cache is not found" sau khi
+      // lockfile đổi (setup-node đổi key và KHÔNG có restore-keys), lệnh này vượt
+      // hạn 300s → bước đỏ ở 311s; run 33546540974 cùng lệnh chỉ 15s khi cache ấm.
+      // CÙNG file test chạy 2s ở bước "Edge function tests" bằng Deno trên PATH,
+      // tức 300s kia là tiền cài `@deno/linux-x64-glibc` (104MB giải nén), không
+      // phải tiền chạy test. Đo local: cài nguội 7s, chạy ấm 8,3s (22 passed).
       regression(
         "edge-owned-worker-principal",
         "runtime",
         "supabase/functions/network-center-worker/index.test.ts",
         [
-          "npx", "--yes", "deno", "test", "--config",
+          "npx", "--yes", "deno@2.9.4", "test", "--config",
           "supabase/functions/network-center-worker/deno.json",
           "supabase/functions/network-center-worker/index.test.ts", "--allow-env",
         ],
