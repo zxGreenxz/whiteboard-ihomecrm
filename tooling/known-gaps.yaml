@@ -352,3 +352,19 @@ gaps:
 #   - Nửa "tên job chỉ có tác dụng khi bật được required check" là đúng nhưng
 #     KHÔNG phải gap riêng: nó chính là gap `required-checks-khong-cuong-che-duoc`
 #     (còn mở ở trên). Một sự thật không cần hai chỗ đứng trong sổ.
+  - id: notifications-digest-org-null
+    where: cron digest V5 "Tuyến hôm nay" (metadata.v5='digest', channel IN_APP) ghi public.notifications
+    expires_at: 2026-10-31
+    why: >
+      Digest V5 sinh notification KHÔNG điền organization_id. Với user chỉ thuộc một org thì
+      RLS vẫn đúng nhưng gate measure-org-leak coi dòng NULL là "hiển thị cho mọi tổ chức" và
+      CI Gates đỏ (04/09/2026, ngay sau khi tài khoản hệ thống được seed làm thành viên DEMO
+      20260903220254). Đã vá DỮ LIỆU bằng migration 20260904005929 (gán org khi chủ nhân có
+      đúng một membership ACTIVE) — gốc rễ ở đường sinh digest chưa sửa, nên dòng NULL mới có
+      thể xuất hiện lại mỗi sáng cho user đa-org.
+    exit_condition: >
+      ĐÃ ĐÓNG 05/09/2026 bằng migration 20260905082200_v5_digest_notification_organization_id_v1:
+      v5_run_digest lấy organization_id từ toà của việc đầu tiên trong tuyến (lùi về membership
+      ACTIVE duy nhất), và KHÔNG gửi digest khi không quy được org — chỉ một notification mỗi
+      người mỗi ngày vì uq_notif_v5_digest ép vậy. Giữ mục này tới khi measure-org-leak xanh hai
+      lượt liên tiếp trên CI (sáng hôm sau, sau khi cron chạy).
