@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-06T01:01:05.607Z",
+  "generatedAt": "2026-09-06T01:58:56.027Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 517,
+    "ledger-applied": 520,
     "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
@@ -9539,6 +9539,39 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-06T01:00:37.988Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260906010543_copilot_action_salary_khoa_thang_rollback_v1.sql",
+      "version": "20260906010543",
+      "name": "copilot_action_salary_khoa_thang_rollback_v1",
+      "scheme": "timestamp14",
+      "sha256": "37c5cdd2437a5b832fcbcbfe00b603161a48f9f573d5d102e332cf20d20b8b42",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-06T01:34:56.087Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260906012317_copilot_ie_duyet_thang_ba_bac_v1.sql",
+      "version": "20260906012317",
+      "name": "copilot_ie_duyet_thang_ba_bac_v1",
+      "scheme": "timestamp14",
+      "sha256": "830bca78be5cd19657b0d9bf51d40e8655f4d9a5ee18f58ba49162bbe24b6403",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-06T01:37:40.624Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260906014927_demo_e2e_cashbook_custodian_seed_v1.sql",
+      "version": "20260906014927",
+      "name": "demo_e2e_cashbook_custodian_seed_v1",
+      "scheme": "timestamp14",
+      "sha256": "bd45e70e6a415be7002f3476225fd763204fa370b17925961ca357b262f3810e",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-06T01:53:50.728Z|bien-nhan-backup"
       ]
     },
     {

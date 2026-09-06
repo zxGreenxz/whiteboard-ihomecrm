@@ -132,6 +132,12 @@ const HANH_DONG_ANNOTATE = 'income_expense.annotate';
 
 const TOA_NHA = 'DEMO Toà A';
 const HANG_MUC = 'Xử lý Bồn Cầu';
+// Sổ quỹ dùng cho fixture, tra theo TÊN lúc chạy (xem `ganSoQuy`) — không ghim
+// uuid vì sổ quỹ DEMO từng bị đổi tên/tạo lại (memory demo-org-mat-fixture).
+// Phải là sổ quỹ mà CHUNHA (người tạo phiếu) THẤY được: RLS `accounts` lọc theo
+// sổ quỹ được giao giữ, và chunha chỉ thấy "DEMO Quỹ tiền mặt" cùng sổ cấn trừ
+// nội bộ — không thấy "DEMO Quỹ Toà A+B". Sổ cấn trừ là sổ hệ thống, không dùng.
+const SO_QUY = 'DEMO Quỹ tiền mặt';
 
 const LY_DO_GRANT = {
   p_reason: 'E2E G5L5 — do duong tu duyet theo uy quyen dung tren org DEMO; spec tu thu hoi',
@@ -254,6 +260,51 @@ async function docBang(jwt: string, duong: string): Promise<Record<string, unkno
   const chu = await res.text();
   if (!res.ok) throw new Error(`Đọc ${duong} trả HTTP ${res.status}: ${chu.slice(0, 200)}`);
   return JSON.parse(chu) as Record<string, unknown>[];
+}
+
+/**
+ * Gán SỔ QUỸ cho một phiếu vừa được Copilot tạo — bước mà CON NGƯỜI phải làm.
+ *
+ * VÌ SAO FIXTURE PHẢI CÓ BƯỚC NÀY
+ *   `copilot_preview_income_expense_legacy_v1` — nơi duy nhất định nghĩa hợp
+ *   đồng payload của `income_expense.create_draft` — nhận đúng sáu khoá
+ *   `loai/ten_phieu/toa_nha/hang_muc/so_tien/ngay`. KHÔNG có sổ quỹ. Nên MỌI
+ *   phiếu Copilot tạo ra đều có `account_id IS NULL`, và cả hai đường duyệt đều
+ *   từ chối đúng như nhau: `approve_voucher` nói "Phiếu chưa có sổ quỹ — bấm Sửa
+ *   phiếu, chọn sổ quỹ chi tiền rồi mới duyệt được", `approve_income_expense_v1`
+ *   nói câu tương đương. Đó là THIẾT KẾ của một phiếu NHÁP: người xem lại, chọn
+ *   sổ quỹ, rồi mới duyệt.
+ *
+ *   Ca 6 đo hành động DUYỆT, không đo trình tạo nháp. Nên fixture làm đúng cái
+ *   người dùng làm: gọi `update_income_expense_quick` — chính RPC mà màn "Sửa
+ *   phiếu" dùng để chọn sổ quỹ, và chỉ NGƯỜI TẠO gọi được (chunha ở đây). PATCH
+ *   thẳng bảng không đi được: `income_expenses` không GRANT UPDATE cho
+ *   `authenticated` (403 "permission denied for table") — mọi sửa đi qua RPC.
+ */
+async function ganSoQuy(jwt: string, phieuId: string): Promise<string> {
+  // Lọc theo tên Ở PHÍA JS, không nhét tên vào query string. Tên sổ quỹ DEMO có
+  // dấu cộng ("Toà A+B") và `encodeURIComponent` KHÔNG mã hoá `+`, nên PostgREST
+  // đọc nó thành dấu cách rồi trả mảng rỗng — đã dính đúng bẫy đó một lần.
+  const so = await docBang(
+    jwt,
+    `accounts?organization_id=eq.${ORG_DEMO}&deleted_at=is.null&select=id,name`,
+  );
+  const soId = so.find((r) => r.name === SO_QUY)?.id as string | undefined;
+  expect(
+    soId,
+    `Không thấy sổ quỹ "${SO_QUY}" trên DEMO (thấy: ${so.map((r) => r.name).join(' | ')})`,
+  ).toBeTruthy();
+
+  const dat = await goiRpc(jwt, 'update_income_expense_quick', {
+    p_id: phieuId,
+    p_account_id: soId,
+    p_attachments: [],
+    p_notes: null,
+  });
+  expect(dat.status, `Gán sổ quỹ cho phiếu: ${loi(dat)}`).toBe(200);
+  const doclai = await docBang(jwt, `income_expenses?id=eq.${phieuId}&select=id,account_id`);
+  expect(doclai[0]?.account_id, 'Đọc lại phiếu phải thấy sổ quỹ vừa gán').toBe(soId);
+  return soId as string;
 }
 
 // ---------------------------------------------------------------------------
@@ -523,11 +574,19 @@ async function donKeHoach(jwt: string, planId: string | null): Promise<void> {
 }
 
 /** Tạo một phiếu thu/chi nháp THẬT qua đường nonce_abi_v1 bình thường (ngoài
- *  kế hoạch) — dùng làm đối tượng cho các bước income_expense.duyet/annotate. */
+ *  kế hoạch) — dùng làm đối tượng cho các bước income_expense.duyet/annotate.
+ *
+ *  TÊN PHIẾU PHẢI DUY NHẤT MỖI LƯỢT. Khoá idempotency của trình ghi nháp sinh từ
+ *  BĂM PAYLOAD, nên hai lượt cùng tên/số tiền/toà/hạng mục là cùng một khoá. Lượt
+ *  sau sẽ đụng dòng `ai_write_audit` cũ, và nếu phiếu cũ đã bị DUYỆT (đúng việc ca
+ *  6 làm) thì bất biến "nháp UNAPPROVED" không còn đúng nữa ⇒ 400
+ *  `copilot_audit_mismatch`. Đã dính thật: ca 6 xanh lượt đầu rồi đỏ mọi lượt sau
+ *  trong cùng ngày. Thêm hậu tố duy nhất là chữa nguyên nhân, không phải dọn rác. */
 async function taoPhieuThat(jwt: string, tenPhieu: string): Promise<string> {
+  const ten = `${tenPhieu} ${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const xem = await goiRpc(jwt, 'copilot_preview_income_expense_v1', {
     p_organization_id: ORG_DEMO,
-    p_payload: { loai: 'CHI', so_tien: 1000, ten_phieu: tenPhieu, toa_nha: TOA_NHA, hang_muc: HANG_MUC },
+    p_payload: { loai: 'CHI', so_tien: 1000, ten_phieu: ten, toa_nha: TOA_NHA, hang_muc: HANG_MUC },
   });
   expect(xem.status, `Xem trước tạo phiếu: ${loi(xem)}`).toBe(200);
   const b = xem.body as { confirmation_nonce: string; canonical: Record<string, unknown> };
@@ -928,6 +987,9 @@ test('ca 6 — kế hoạch L5 đầy đủ: PIN → APPROVED → execute → re
   // income_expenses.approve trên DEMO. Đo bằng một lời gọi xem-trước THẬT
   // thay vì giả định trạng thái membership.
   const voucherId = await taoPhieuThat(await token('chunha'), 'E2E G5L5 ca6 nhap');
+  // Bước của CON NGƯỜI: chọn sổ quỹ. Trình tạo nháp của Copilot không nhận sổ quỹ
+  // nên không phiếu nào nó tạo duyệt được ngay — xem chú thích `ganSoQuy`.
+  await ganSoQuy(await token('chunha'), voucherId);
   const xemThu = await goiRpc(sys, 'copilot_preview_ie_duyet_v1', {
     p_organization_id: ORG_DEMO,
     p_payload: { income_expense_id: voucherId },
@@ -977,9 +1039,21 @@ test('ca 6 — kế hoạch L5 đầy đủ: PIN → APPROVED → execute → re
 
     const chay = await chayBuoc(sys, ke.plan_id, 1, d.plan_version);
     expect(chay.status, `Chạy bước L5: ${loi(chay)}`).toBe(200);
-    const r = chay.body as { ok: boolean; step: { status: string; outcome: { entity_id: string } } };
-    expect(r.ok).toBe(true);
-    expect(r.step.status).toBe('DONE');
+    // `execute_step` trả 200 kèm `ok:false` cho mọi từ chối nghiệp vụ (ghi sổ rồi
+    // RETURN, xem hợp đồng hàm). Nên một `expect(r.ok).toBe(true)` TRẦN chỉ nói
+    // "false" và người đọc log phải chạy lại mới biết vì sao. In cả mã lỗi cấp kế
+    // hoạch lẫn mã lỗi cấp bước.
+    const r = chay.body as {
+      ok: boolean;
+      error_code?: string | null;
+      step?: { status?: string; error_code?: string | null; outcome?: { entity_id?: string } };
+    };
+    expect(
+      r.ok,
+      `Bước L5 phải chạy được — error_code=${r.error_code ?? 'null'} · ` +
+        `step=${r.step?.status ?? '?'}/${r.step?.error_code ?? 'null'}`,
+    ).toBe(true);
+    expect(r.step?.status).toBe('DONE');
 
     // `copilot_plan_get_v1` lọc sổ theo `plan_id` (đọc thẳng hàm:
     // `WHERE l.plan_id = p_plan_id`). Dòng `action_executed` mà
@@ -1004,8 +1078,17 @@ test('ca 6 — kế hoạch L5 đầy đủ: PIN → APPROVED → execute → re
     expect(step?.consent_kind).toBe('step_up');
     expect(step?.step_up_id, 'step_up_id phải được ghi lại (khác lượt duyệt cũ)').toBeTruthy();
 
-    const phieu = await docBang(sys, `income_expenses?id=eq.${voucherId}&select=id,approval_status`);
-    expect(phieu[0]?.approval_status).toBe('APPROVED');
+    // Đọc lại bằng JWT của NGƯỜI TẠO, không phải của sysadmin. RLS `income_expenses`
+    // KHÔNG phát cho super admin quyền đọc mọi dòng: nó lọc theo người tạo / quyền
+    // theo toà / sổ quỹ đang giữ. Đó là chủ ý của một bảng tiền — super admin hành
+    // động qua RPC đã vét quyền (`approve_voucher` kiểm `is_super_admin()` tường
+    // minh), chứ không được nhìn xuyên bảng. Phép đo ở đây là TRẠNG THÁI của dòng
+    // phiếu, nên đọc bằng ai thấy nó là đủ.
+    const phieu = await docBang(
+      await token('chunha'),
+      `income_expenses?id=eq.${voucherId}&select=id,approval_status,account_id`,
+    );
+    expect(phieu[0]?.approval_status, 'Phiếu phải thật sự APPROVED sau bước L5').toBe('APPROVED');
   } finally {
     await donKeHoach(sys, planId);
   }
