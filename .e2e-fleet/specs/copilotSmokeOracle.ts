@@ -1,7 +1,8 @@
 import { hrefAnToan } from '../../src/copilot/hrefAnToan';
+import { providerFailureReason } from '../../scripts/copilot-golden-browser-evidence.mjs';
 // Pure assertions shared by the real browser smoke and controlled negative tests.
 // A transport or quota failure is failure evidence, never a reason to upgrade models.
-interface Tool { id: string; name: string }
+interface Tool { id: string; name: string; arguments: string }
 interface Stream { tools: Tool[]; text: string; finish: string }
 interface ModelMessage { role: string; content?: unknown; tool_call_id?: string }
 export interface ReadonlyEvidence {
@@ -9,6 +10,15 @@ export interface ReadonlyEvidence {
   answer: string;
   rounds: { body: string; messages: ModelMessage[] }[];
   payload: unknown;
+  buildingScope?: { id: string; name: string };
+}
+export class ModelStreamFailure extends Error {
+  readonly reason: ReturnType<typeof providerFailureReason>;
+  constructor(error: unknown) {
+    const reason = providerFailureReason(error);
+    super(`Provider error in HTTP 200 stream: ${reason}`);
+    this.reason = reason;
+  }
 }
 function requireEvidence(ok: unknown, message: string): asserts ok {
   if (!ok) throw new Error(message);
@@ -24,12 +34,13 @@ export function inspectModelStream(body: string): Stream {
     if (!data) continue;
     if (data === '[DONE]') { done = true; continue; }
     const chunk = JSON.parse(data);
-    requireEvidence(!chunk.error, 'Provider error in HTTP 200 stream');
+    if (chunk.error) throw new ModelStreamFailure(chunk.error);
     for (const choice of chunk.choices ?? []) {
       if (typeof choice.delta?.content === 'string') text += choice.delta.content;
       for (const part of choice.delta?.tool_calls ?? []) {
-        const tool = tools.get(part.index) ?? { id: '', name: '' };
+        const tool = tools.get(part.index) ?? { id: '', name: '', arguments: '' };
         tool.id += part.id ?? ''; tool.name += part.function?.name ?? '';
+        tool.arguments += part.function?.arguments ?? '';
         tools.set(part.index, tool);
       }
       if (choice.finish_reason) finish = choice.finish_reason;
@@ -132,7 +143,33 @@ export function assertReadonlyResult(evidence: ReadonlyEvidence): void {
   requireEvidence(typeof result?.content === 'string' && !/lỗi|error|unavailable|not_permitted/i.test(result.content), 'Missing or failed matching tool result in the next model round');
   const payload = evidence.payload as { buildings?: { id: string; name?: string; address?: string }[]; rooms?: { building_id: string; code?: string; name?: string; id: string; status_public: string }[] } | null;
   requireEvidence(payload && Array.isArray(payload.buildings) && Array.isArray(payload.rooms), 'Missing or invalid read RPC payload');
-  const buildings = new Set(payload.buildings.map(b => b.id));
+  let selectedBuildings = payload.buildings;
+  if (evidence.buildingScope) {
+    const target = evidence.buildingScope;
+    selectedBuildings = payload.buildings.filter(b => b.id === target.id && b.name === target.name);
+    requireEvidence(selectedBuildings.length === 1, 'Requested building identity missing from RPC');
+    const calls = streams.flatMap(s => s.tools).filter(t => t.name === 'phong_trong');
+    requireEvidence(calls.length === 1, 'Building oracle requires exactly one scoped room call');
+    let args: { toa_nha?: unknown };
+    try { args = JSON.parse(calls[0].arguments); }
+    catch { throw new Error('Building tool arguments are not valid JSON'); }
+    requireEvidence(typeof args?.toa_nha === 'string' && args.toa_nha.trim(), 'Building filter is missing from tool arguments');
+    // Match the actual registry filter against the FULL authorized RPC payload.
+    // A common room code cannot prove which building the model requested.
+    const matched = payload.buildings.filter(b => b.name?.toLowerCase().includes((args.toa_nha as string).toLowerCase()));
+    requireEvidence(matched.length === 1 && matched[0].id === target.id, 'Tool arguments resolve to a different or ambiguous building');
+    const normalizeName = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    requireEvidence(hasIdentifier(normalizeName(evidence.prompt), normalizeName(target.name)), 'Submitted prompt is not bound to requested building');
+    requireEvidence(hasIdentifier(normalizeName(evidence.answer), normalizeName(target.name)), 'Answer omits or names a different requested building');
+    for (const other of payload.buildings.filter(b => b.id !== target.id && b.name)) {
+      requireEvidence(!hasIdentifier(normalizeName(evidence.answer), normalizeName(other.name!)), 'Answer includes a different building');
+    }
+    const buildingHeaders = result.content.split(/\r?\n/).filter(line => /^\S.*\):$/.test(line));
+    const hasAvailable = payload.rooms.some(r => r.building_id === target.id && ['free','soon'].includes(r.status_public));
+    const header = `${selectedBuildings[0].name} (${selectedBuildings[0].address ?? ''}):`;
+    requireEvidence(JSON.stringify(buildingHeaders) === JSON.stringify(hasAvailable ? [header] : []), 'Tool result belongs to a different building');
+  }
+  const buildings = new Set(selectedBuildings.map(b => b.id));
   const scoped = payload.rooms.filter(r => buildings.has(r.building_id));
   const code = (room: typeof scoped[number]) => room.code || room.name || room.id.slice(0, 6);
   const free = scoped.filter(r => r.status_public === 'free').map(code);

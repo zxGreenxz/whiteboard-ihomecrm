@@ -10,7 +10,7 @@ const evidence = () => ({ prompt: 'Liệt kê phòng', answer: 'Có 1 phòng tr�
     { body: answer, messages: [{ role: 'user', content: 'Liệt kê phòng' }, { role: 'tool', tool_call_id: 'call-1', content: 'Tổng 1 phòng trống ngay.\n\nDEMO Toà A (Địa chỉ):\n  Trống ngay (1):\n  - A101: 3 triệu/tháng, 20m², tầng 1' }] }], payload: structuredClone(payload) });
 describe('readonly smoke failure oracle', () => {
   it('accepts a complete model/tool cycle with DEMO-consistent answer', () => { expect(() => assertReadonlyResult(evidence())).not.toThrow(); });
-  it('reassembles fragmented tool names', () => { expect(inspectModelStream(call).tools).toEqual([{ id: 'call-1', name: 'phong_trong' }]); });
+  it('reassembles fragmented tool names', () => { expect(inspectModelStream(call).tools).toEqual([{ id: 'call-1', name: 'phong_trong', arguments: '{}' }]); });
   it.each([
     ['empty', 'data: [DONE]\n\n'], ['missing DONE', answer.replace('data: [DONE]', '')],
     ['incomplete', chunk({ content: 'half an answer' }, null) + 'data: [DONE]\n\n'],
@@ -115,5 +115,56 @@ describe('review round 2: table column semantics', () => {
     const valid = table('101').replace('Có 1 phòng trống: A101.', 'Có 1 phòng trống: 101.');
     expect(() => assertReadonlyResult(setAnswer(e, valid))).not.toThrow();
     expect(() => assertReadonlyResult(setAnswer(e, valid + '\n| 999 | 3 | 20 | 1 |'))).toThrow(/room/);
+  });
+});
+
+describe('golden C13: building identity survives duplicate room codes', () => {
+  const scoped = (toolBuilding = 'DEMO Toà A', resultBuilding = 'DEMO Toà A', answerBuilding = 'DEMO Toà A') => {
+    const e = evidence();
+    const prompt = 'Phòng trống ngay tòa DEMO Toà A?';
+    const response = `Tại ${answerBuilding}, phòng 101 đang trống ngay.`;
+    return { ...e, prompt, answer: response,
+      buildingScope: { id: 'a', name: 'DEMO Toà A' },
+      payload: { buildings: [{ id: 'a', name: 'DEMO Toà A', address: 'Địa chỉ A' }], rooms: [
+        { id: 'a101', building_id: 'a', code: '101', status_public: 'free' },
+        { id: 'b101', building_id: 'b', code: '101', status_public: 'free' },
+      ] },
+      rounds: [{ body: chunk({ tool_calls: [{ index: 0, id: 'read-1', function: { name: 'phong_trong', arguments: JSON.stringify({ toa_nha: toolBuilding }) } }] }, 'tool_calls') + 'data: [DONE]\n\n', messages: [{ role: 'user', content: prompt }] },
+        { body: chunk({ content: response }, 'stop') + 'data: [DONE]\n\n', messages: [{ role: 'user', content: prompt },
+          { role: 'tool', tool_call_id: 'read-1', content: `Tổng 1 phòng trống ngay.\n\n${resultBuilding} (Địa chỉ ${resultBuilding.endsWith('B') ? 'B' : 'A'}):\n  Trống ngay (1):\n  - 101: 3 triệu/tháng, 20m², tầng 1` }] }],
+    };
+  };
+  it('accepts the intended building even when another building has the same room code', () => {
+    const e = scoped();
+    e.payload.buildings.push({ id: 'b', name: 'DEMO Toà B', address: 'Địa chỉ B' });
+    expect(() => assertReadonlyResult(e)).not.toThrow();
+  });
+  it.each([
+    ['wrong argument', 'DEMO Toà B', 'DEMO Toà A', 'DEMO Toà A'],
+    ['wrong tool result', 'DEMO Toà A', 'DEMO Toà B', 'DEMO Toà A'],
+    ['wrong answer', 'DEMO Toà A', 'DEMO Toà A', 'DEMO Toà B'],
+    ['all wrong but identical room code', 'DEMO Toà B', 'DEMO Toà B', 'DEMO Toà B'],
+  ])('rejects %s instead of trusting the shared room code', (_, args, result, answer) => {
+    expect(() => assertReadonlyResult(scoped(args, result, answer))).toThrow(/building/i);
+  });
+  it('resolves tool arguments against the full RPC building set, rejecting an ambiguous filter', () => {
+    const e = scoped('DEMO');
+    e.payload.buildings.push({ id: 'b', name: 'DEMO Toà B', address: 'Địa chỉ B' });
+    expect(() => assertReadonlyResult(e)).toThrow(/building/i);
+  });
+  it('rejects missing tool arguments, even when every room code is correct', () => {
+    const e = scoped(); e.rounds[0].body = e.rounds[0].body.replace(/\\"toa_nha\\":\\"DEMO Toà A\\"/, '');
+    expect(() => assertReadonlyResult(e)).toThrow(/building/i);
+  });
+  it('rejects an answer that names the correct and wrong building together', () => {
+    const e = scoped('DEMO Toà A', 'DEMO Toà A', 'DEMO Toà A và DEMO Toà B');
+    e.payload.buildings.push({ id: 'b', name: 'DEMO Toà B', address: 'Địa chỉ B' });
+    expect(() => assertReadonlyResult(e)).toThrow(/different building/i);
+  });
+  it('preserves fragmented building arguments across SSE chunks', () => {
+    const e = scoped();
+    e.rounds[0].body = chunk({ tool_calls: [{ index: 0, id: 'read-1', function: { name: 'phong_trong', arguments: '{"toa_' } }] }, null)
+      + chunk({ tool_calls: [{ index: 0, function: { arguments: 'nha":"DEMO Toà A"}' } }] }, 'tool_calls') + 'data: [DONE]\n\n';
+    expect(() => assertReadonlyResult(e)).not.toThrow();
   });
 });

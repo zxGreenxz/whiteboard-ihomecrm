@@ -5,7 +5,7 @@ import { login, trackConsoleErrors } from './auth';
 import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { COPILOT_TEST_MODEL, pinCopilotTestModel } from './copilotTestModel';
 import { guiVaChoModel } from './copilotModelCycle';
-import { assertReadonlyResult, unexpectedReadonlyMutation } from './copilotSmokeOracle';
+import { assertReadonlyResult, ModelStreamFailure, unexpectedReadonlyMutation } from './copilotSmokeOracle';
 import { bindRoomScenario, createRun, DEMO_ORG, digest, IMPLEMENTED_ORACLES, summarizeRun, transitionCase, writeCheckpoint } from '../../scripts/copilot-golden-browser-evidence.mjs';
 
 const load = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
@@ -115,13 +115,14 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
           expect((await r.allHeaders())['x-organization-id']).toBe(DEMO_ORG);
           expect(r.postDataJSON().model).toBe(COPILOT_TEST_MODEL);
         }
-        assertReadonlyResult({ prompt, answer, rounds, payload: bindRoomScenario(scenario, payload).payload });
+        assertReadonlyResult({ prompt, answer, rounds, payload, buildingScope: bound.buildingScope });
         expect(writes).toBe(0); expect(networkErrors).toBe(0); expect(consoleErrors.length).toBe(0);
         transitionCase(run, c.id, { status: 'pass', timing: {
           startedAt: new Date(started).toISOString(), completedAt: new Date(completed).toISOString(), totalMs: completed-started, humanWaitMs: 0, processingMs: completed-started,
         }, observed: { answerDigest: digest(answer), promptDigest: digest(prompt), promptTemplateDigest: digest(scenario.prompt), bindingDigest: bound.bindingDigest, rpcDigest: digest(payload), modelRounds: rounds.length,
           toolResultLinked: true, finalAnswerMounted: true, readRpc: 'copilot_available_rooms_v1', businessWrites: writes, networkErrors, oracleVersion: c.oracle } });
-      } catch {
+      } catch (error) {
+        if (error instanceof ModelStreamFailure) { fatalProvider = true; reason = error.reason; }
         completed = Date.now();
         transitionCase(run, c.id, { status: reason === 'oracle_failed' ? 'fail' : 'blocked', reason,
           timing: { startedAt: new Date(started).toISOString(), completedAt: new Date(completed).toISOString(), totalMs: completed-started, humanWaitMs: 0, processingMs: completed-started } });

@@ -17,6 +17,9 @@ C13 phân giải duy nhất tên `DEMO Toà A` từ RPC mà actor thực đượ
 dùng ID lịch sử. Oracle so mã phòng và trạng thái rỗng với payload RPC, kiểm tool
 result có sang vòng model sau và câu trả lời cuối thực sự render. Thiếu hoặc trùng
 fixture thì blocked trước khi hỏi model. Không có write nghiệp vụ được phép.
+C13 còn kiểm tham số `toa_nha` phân giải duy nhất về đúng ID tòa trong payload RPC
+đầy đủ, header tòa/địa chỉ trong tool result và tên tòa trong câu trả lời. Mã phòng
+trùng giữa hai tòa không được dùng làm bằng chứng thay cho danh tính tòa.
 
 Các nhóm còn lại cần oracle số liệu riêng theo domain; tài liệu/điều hướng và UI
 cần kiểm đích render/quyền; C64–C66 cần chuỗi memory + readback + phục hồi; C67–C75
@@ -59,6 +62,10 @@ trước khi tạo run mới; không tự xoá/ghi lại fixture để che mất
 Thời gian đo từ gửi đến đáp án cuối qua toàn bộ vòng model/tool; humanWaitMs tách
 riêng (hai ca đọc hiện tại bằng 0). Chỉ pass được tính vào quantile thành công;
 fail/blocked có phân phối riêng. SLA vẫn pending-owner-approval với giá trị null.
+Lỗi có cấu trúc trong SSE HTTP 200 cũng dừng các ca chưa gửi: mã quota thành
+`quota_exhausted`, mã rate-limit thành `rate_exhausted`; chỉ giữ mã phân loại an
+toàn, không giữ thông điệp lỗi upstream. Kiểm hồi quy bằng trình duyệt với server
+local tổng hợp: `node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs`.
 Full report và job live luôn blocked cho tới khi đủ oracle và SLA được chủ duyệt;
 không có miễn trừ như lane mock.
 

@@ -179,7 +179,7 @@
         "canonical-demo-facts-and-empty-state",
         "zero-business-writes"
       ],
-      "prompt": "Phòng trống ngay tòa {{building.name}}? Liệt kê mã tất cả phòng trống ngay, không cần phòng sắp trống; nếu không có, nói rõ không có phòng trống.",
+      "prompt": "Phòng trống ngay tòa {{building.name}}? Nêu rõ tên tòa và liệt kê mã tất cả phòng trống ngay, không cần phòng sắp trống; nếu không có, nói rõ không có phòng trống.",
       "executorStatus": "implemented-unverified-live"
     },
     {

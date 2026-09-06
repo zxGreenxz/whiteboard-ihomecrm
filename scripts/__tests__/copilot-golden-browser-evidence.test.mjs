@@ -110,7 +110,30 @@ test('building room scenario binds exactly one visible DEMO building and retains
   assert.ok(bound.prompt.includes('DEMO Toà A'));
   assert.ok(!bound.prompt.includes('{{'));
   assert.deepEqual(bound.payload.buildings.map(b => b.id), ['a']);
+  assert.deepEqual(bound.buildingScope, { id: 'a', name: 'DEMO Toà A' });
   assert.equal(bound.payload.rooms.length, 2);
   assert.throws(() => evidence.bindRoomScenario(scenario, { ...payload, buildings: [] }), /fixture_unbound/);
   assert.throws(() => evidence.bindRoomScenario(scenario, { ...payload, buildings: [payload.buildings[0], payload.buildings[0]] }), /fixture_unbound/);
+});
+
+test('structured quota and rate errors classify without retaining raw provider text', () => {
+  for (const code of ['quota_exhausted','insufficient_quota','daily_quota','daily_token_quota']) {
+    assert.equal(evidence.providerFailureReason({ code, message: 'private upstream payload' }), 'quota_exhausted');
+  }
+  for (const code of ['rate_limited','rate_limit_exceeded','rate_limit_error']) {
+    assert.equal(evidence.providerFailureReason({ code }), 'rate_exhausted');
+  }
+  assert.equal(evidence.providerFailureReason({ type: 'rate_limit_error' }), 'rate_exhausted');
+  assert.equal(evidence.providerFailureReason({ code: 429 }), 'rate_exhausted');
+  assert.equal(evidence.providerFailureReason({ code: 'unknown', message: 'quota_exhausted in prose is not a structured code' }), 'provider_failed');
+});
+
+test('model identity is explicit and shared with the fleet, not a duplicated cx-only allowlist', () => {
+  for (const providerModel of ['9router:ag/gemini-3.6-flash-high(high)', '9router:ag/gemini-3.7-flash-high(high)', '9router:ag/gemini-3.8-flash(high)']) {
+    const run = evidence.createRun(golden, manifest, { ...attestation, providerModel });
+    assert.equal(run.attestation.providerModel, providerModel);
+  }
+  for (const providerModel of ['', '9router:raw private payload', 'other:ag/model']) {
+    assert.throws(() => evidence.createRun(golden, manifest, { ...attestation, providerModel }), /attestation/);
+  }
 });

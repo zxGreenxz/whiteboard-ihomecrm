@@ -9,13 +9,21 @@ const STATES = ['pending', 'running', 'pass', 'fail', 'blocked'];
 const REASONS = new Set(['oracle_not_implemented', 'fixture_unbound', 'preflight_missing', 'attestation_failed',
   'quota_exhausted', 'rate_exhausted', 'provider_failed', 'browser_failed', 'oracle_failed', 'cleanup_required']);
 export function digest(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
+/** Only structured provider codes, never prose or a retained upstream payload. */
+export function providerFailureReason(error) {
+  const code = String(error?.code ?? error?.type ?? '').toLowerCase();
+  if (['quota_exhausted','quota_exceeded','insufficient_quota','daily_quota','daily_token_quota'].includes(code)) return 'quota_exhausted';
+  if (['429','rate_limited','rate_limit_exceeded','rate_limit_error','too_many_requests','busy'].includes(code)) return 'rate_exhausted';
+  return 'provider_failed';
+}
 export function bindRoomScenario(scenario, payload) {
   if (!Array.isArray(payload?.buildings) || !Array.isArray(payload?.rooms)) throw new Error('fixture_unbound');
   if (scenario.id === 'C01') return { prompt: scenario.prompt, payload, bindingDigest: digest(payload.buildings) };
   if (scenario.id !== 'C13') throw new Error('oracle_not_implemented');
   const buildings = payload.buildings.filter(b => b.name === 'DEMO Toà A');
   if (buildings.length !== 1) throw new Error('fixture_unbound');
-  return { prompt: scenario.prompt.replace('{{building.name}}', buildings[0].name), payload: { ...payload, buildings }, bindingDigest: digest(buildings) };
+  return { prompt: scenario.prompt.replace('{{building.name}}', buildings[0].name), payload: { ...payload, buildings },
+    buildingScope: { id: buildings[0].id, name: buildings[0].name }, bindingDigest: digest(buildings) };
 }
 function keysOnly(value, keys) { return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => keys.includes(key)); }
 function exactIds(a, b) { return JSON.stringify(a?.map(c => c?.id)) === JSON.stringify(b?.map(c => c?.id)); }
@@ -33,7 +41,10 @@ export function validateManifest(golden, manifest) {
 function validAttestation(a) {
   if (!keysOnly(a, ['buildSha','edgeSourceDigest','deployedEdgeSourceDigest','providerModel','organizationId','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest','observedAt','contextId'])) return false;
   return /^[0-9a-f]{40}$/.test(a.buildSha) && a.organizationId === DEMO_ORG
-    && /^9router:cx\/gpt-5\.(?:6-(?:luna|terra)(?:-review)?\(max\)|5(?:-review)?)$/.test(a.providerModel)
+    // Candidate policy lives in copilotTestModel.ts. This evidence layer only
+    // checks safe identity syntax; browser/CLI require the exact selected model.
+    && typeof a.providerModel === 'string' && a.providerModel.length <= 160
+    && /^9router:[a-z0-9][a-z0-9._/-]*(?:\([a-z0-9_-]+\))?$/.test(a.providerModel)
     && ['edgeSourceDigest','deployedEdgeSourceDigest','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest'].every(k => HASH.test(a[k]))
     && a.edgeSourceDigest === a.deployedEdgeSourceDigest && Number.isFinite(Date.parse(a.observedAt))
     && /^[a-zA-Z0-9-]{1,100}$/.test(a.contextId);
