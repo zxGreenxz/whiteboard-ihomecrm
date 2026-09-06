@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-06T20:30:58.928Z",
+  "sourceBase": "a181baa02653c87a902a2eb8b1b5eb5b316dd42e",
+  "sourceCommits": [
+    "cfb68176374e793056dcc333637b37caad1982cb",
+    "fbf14ff53f7c82d05300286b879055c003ca7149"
+  ],
+  "integratedHead": "5e6864f7ee10dbf437a5f4744389f907deb25113",
+  "files": [
+    {
+      "path": ".github/workflows/ci-gates.yml",
+      "gitBlobSha256": "951a250e538a2a07d6fc25757164680da6179df36ee8291db36308ca87019030"
+    },
+    {
+      "path": "scripts/__tests__/copilot-building-deny-scope.test.mjs",
+      "gitBlobSha256": "bf1a9953daa00757cde520d0abdd9b61ea749d9838c3d578ea3bcaccd56d5f07"
+    },
+    {
+      "path": "src/lib/__tests__/copilotOrgScopeSemanticsMigration.test.ts",
+      "gitBlobSha256": "51ea3db09b9e0e04e341cd8846e729f7ab6e0737b094ab822162b643232b1abf"
+    },
+    {
+      "path": "supabase/migrations/20260906201114_copilot_building_deny_scope_v1.sql",
+      "gitBlobSha256": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73"
+    },
+    {
+      "path": "tooling/test-matrix.json",
+      "gitBlobSha256": "93bca647f2852200770f7d6a768a38787bdd0f17cda9e677cd849df73ed09c7a"
+    }
+  ],
+  "migration": {
+    "path": "supabase/migrations/20260906201114_copilot_building_deny_scope_v1.sql",
+    "checkoutSha256": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73",
+    "expectedHelperProsrcSha256": "07747eacc8caa4b119ab5746cca96c49e49916e341d57e251125142df11aa839"
+  },
+  "scope": "Project only the canonical resolver final building_ids through active selected-organization buildings, preserving explicit DENYs. No resolver, grants, owner, ACL, data, flags or ledger changes.",
+  "verification": {
+    "disposableActualSqlRegression": {
+      "passed": 1,
+      "failed": 0,
+      "finalSource": "fbf14ff53f7c82d05300286b879055c003ca7149"
+    },
+    "latestMigrationDefinitionVitest": {
+      "passed": 7,
+      "failed": 0,
+      "source": "cfb68176374e793056dcc333637b37caad1982cb",
+      "unchangedByTestOnlyFollowup": true
+    },
+    "originalDefectRed": "Actual resolver org_wide=true/{A}; old helper {A,B}; assertion failed on denied B.",
+    "mutations": [
+      {
+        "type": "Restore org_wide widening",
+        "before": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73",
+        "mutated": "c10a82d7ef66db574f845e28896b1dafd4e0d7ddcf2936ba80fc8513618fa008",
+        "expectedAndActualExit": 1,
+        "restoredExactDigest": true
+      },
+      {
+        "type": "Return NULL for empty array",
+        "before": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73",
+        "mutated": "f8d060809a0c4d585eab4fda79dfd117def71361e2ec40ef4778ef6ed3df2450",
+        "expectedAndActualExit": 1,
+        "restoredExactDigest": true,
+        "priorTestBlindSpotReproduced": true
+      }
+    ],
+    "independentReviews": {
+      "initial": "Approved with two minor test/report issues",
+      "followup": "Both addressed; final source approved",
+      "noOpenFindings": true
+    },
+    "sourceStaticChecks": [
+      "test-matrix: 542 files, 8 suites, zero orphaned",
+      "migration-test-liveness",
+      "workflow-paths",
+      "no-auto-apply",
+      "node syntax",
+      "staged diff"
+    ],
+    "coordinatorRemotePreflight": {
+      "migrationAppliedTwiceThenRolledBack": true,
+      "stableFunctionsNoLocks": true,
+      "frozenLedgerRows": 372,
+      "frozenLedgerMaxVersion": "20260727095000",
+      "provenance": "184 post-cutoff entries; 626 legacy bytes preserved"
+    }
+  },
+  "limitations": {
+    "liveDataExposureTested": false,
+    "graphSymbolImpact": "UNKNOWN; exact source and 32-caller live catalog attestation used",
+    "liveApply": "pending official lane after current E2E completes",
+    "fullPlanAccepted": false
+  }
+}
