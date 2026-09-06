@@ -95,3 +95,25 @@ describe('supported room result shapes', () => {
     expect(() => assertReadonlyResult(setAnswer(e, 'Hiện không có phòng trống ngay.'))).not.toThrow();
   });
 });
+
+describe('review round 2: table column semantics', () => {
+  const table = (room: string, price = '3', area = '20', floor = '1') =>
+    `Có 1 phòng trống: A101.\n| Mã phòng | Giá (triệu/tháng) | Diện tích (m²) | Tầng |\n|---|---|---|---|\n| ${room} | ${price} | ${area} | ${floor} |`;
+  it('accepts numeric price, area and floor columns in an ordinary Markdown table', () => {
+    expect(() => assertReadonlyResult(setAnswer(evidence(), table('A101')))).not.toThrow();
+  });
+  it.each(['Z999', '999'])('rejects invented room %s in the room column despite valid numeric metadata', room => {
+    expect(() => assertReadonlyResult(setAnswer(evidence(), table(room)))).toThrow(/room/);
+  });
+  it('does not use a room identifier from a price column as evidence of an available room', () => {
+    const text = table('999', 'A101').replace('Có 1 phòng trống: A101.', 'Danh sách phòng trống:');
+    expect(() => assertReadonlyResult(setAnswer(evidence(), text))).toThrow(/room/);
+  });
+  it('accepts numeric room names but rejects another numeric identifier in the same table column', () => {
+    const e = evidence(); e.payload.rooms[0].code = '101';
+    e.rounds[1].messages[1].content = e.rounds[1].messages[1].content.replace('A101', '101');
+    const valid = table('101').replace('Có 1 phòng trống: A101.', 'Có 1 phòng trống: 101.');
+    expect(() => assertReadonlyResult(setAnswer(e, valid))).not.toThrow();
+    expect(() => assertReadonlyResult(setAnswer(e, valid + '\n| 999 | 3 | 20 | 1 |'))).toThrow(/room/);
+  });
+});

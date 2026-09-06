@@ -75,10 +75,32 @@ function assertToolRooms(text: string, free: string[], soon: string[]) {
   sameRooms(rows.free, free, 'tool free');
   sameRooms(rows.soon, soon, 'tool soon');
 }
+/** A Markdown table's price/area/floor cells are not room assertions. Preserve
+ * prose, and project only a declared room/code column when a table has a real
+ * header separator. Unknown table layouts keep the conservative prose checks. */
+function roomColumnText(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const cells = (line: string) => line.trim().replace(/^\||\|$/g, '').split('|').map(cell => cell.trim());
+  let roomColumn = -1;
+  return lines.map((line, index) => {
+    if (!line.includes('|')) { roomColumn = -1; return line; }
+    const row = cells(line);
+    const next = lines[index + 1];
+    if (next?.includes('|') && cells(next).every(cell => /^:?-{3,}:?$/.test(cell))) {
+      roomColumn = row.findIndex(cell => /^(?:mã(?: phòng)?|số phòng|phòng|căn hộ)$/iu.test(cell.replace(/[*_`]/g, '')));
+      return roomColumn >= 0 ? '' : line;
+    }
+    if (roomColumn < 0) return line;
+    if (row.every(cell => /^:?-{3,}:?$/.test(cell))) return '';
+    // Keep explicit room context for numeric identifiers, even a single cell.
+    return `phòng ${row[roomColumn] ?? ''}`;
+  }).join('\n');
+}
 /** Keep ordinary sentences, bullets, tables and links usable, without requiring
  * JSON or a test-only answer template. Match known identifiers at token boundaries
  * and reject novel identifier-shaped tokens, including numeric list entries. */
 function assertAnswerRooms(text: string, free: string[], nonFree: string[], metadata: string) {
+  text = roomColumnText(text);
   for (const code of free) requireEvidence(hasIdentifier(text, code), `Answer missing DEMO room ${code}`);
   for (const code of nonFree.filter(code => !free.includes(code))) {
     requireEvidence(!hasIdentifier(text, code), `Answer includes non-free room ${code}`);
