@@ -4,6 +4,7 @@ import { COPILOT_TEST_MODEL } from './copilotTestModel';
 
 interface ModelCycleExpectation {
   organizationId?: string;
+  completionTimeoutMs?: number;
 }
 
 export async function guiVaChoModel(
@@ -24,7 +25,9 @@ export async function guiVaChoModel(
     expect(await model.finished(), 'Luồng phản hồi mô hình bị đứt').toBeNull();
     // Send returns only after the entire model/tool cycle, not after first delta.
     // This timeout is a test ceiling, not an agreed product SLA.
-    await expect(page.getByTestId('copilot-send')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('copilot-send')).toBeVisible({
+      timeout: expected.completionTimeoutMs ?? 60_000,
+    });
     expect(responses.length, 'Phải quan sát được request mô hình').toBeGreaterThan(0);
     const rounds: ReadonlyEvidence['rounds'] = [];
     for (const r of responses) {

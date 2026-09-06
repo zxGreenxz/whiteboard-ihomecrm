@@ -90,12 +90,14 @@ const cycleCases = [
   { name: 'rejects a stream without DONE', status: 200, body: missingDoneStream, error: /missing DONE/ },
   { name: 'rejects the wrong outbound model', status: 200, body: validStream, outboundModel: '9router:ag/gemini-3.7-flash-high(high)', error: /sai model/ },
   { name: 'rejects the wrong organization header', status: 200, body: validStream, outboundOrganization: 'ffffffff-0000-4000-8000-0000000000ff', error: /sai phạm vi/ },
+  { name: 'rejects a model cycle that does not quiesce before its ceiling', status: 200, body: validStream, sendDelayMs: 300, completionTimeoutMs: 75, error: /toBeVisible/ },
   { name: 'accepts a valid completed cycle', status: 200, body: validStream, rounds: 1 },
 ];
 
 let browser;
 let cycleBundleDir;
 let guiVaChoModel;
+let taoBoThuGomKeHoachChat;
 
 test.before(async () => {
   browser = await chromium.launch({ headless: true });
@@ -115,6 +117,21 @@ test.before(async () => {
     },
   });
   ({ guiVaChoModel } = await import(pathToFileURL(outfile).href));
+  const cleanupOutfile = join(cycleBundleDir, 'copilotPlanCleanup.mjs');
+  await build({
+    configFile: false,
+    logLevel: 'silent',
+    build: {
+      ssr: join(root, '.e2e-fleet', 'specs', 'copilotPlanCleanup.ts'),
+      outDir: cycleBundleDir,
+      emptyOutDir: false,
+      rollupOptions: {
+        external: ['@playwright/test'],
+        output: { entryFileNames: 'copilotPlanCleanup.mjs' },
+      },
+    },
+  });
+  ({ taoBoThuGomKeHoachChat } = await import(pathToFileURL(cleanupOutfile).href));
 });
 
 test.after(async () => {
@@ -138,6 +155,7 @@ for (const scenario of cycleCases) {
         document.querySelector('[data-testid="copilot-send"]').onclick=async()=>{
           ${scenario.sendModel === false ? '' : `const button=document.querySelector('[data-testid="copilot-send"]');button.style.display='none';
           await fetch('/functions/v1/llm-proxy/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','x-organization-id':${JSON.stringify(scenario.outboundOrganization ?? org)}},body:JSON.stringify({model:${JSON.stringify(scenario.outboundModel ?? model)},messages:[{role:'user',content:document.querySelector('[data-testid="copilot-input"]').value}]})}).then(r=>r.text());
+          ${scenario.sendDelayMs ? `await new Promise(resolve=>setTimeout(resolve,${scenario.sendDelayMs}));` : ''}
           button.style.display='block';`}
         };
         </script></body></html>`);
@@ -147,7 +165,10 @@ for (const scenario of cycleCases) {
     page.setDefaultTimeout(500);
     try {
       await page.goto(`http://127.0.0.1:${server.address().port}`);
-      const run = () => guiVaChoModel(page, 'synthetic safety prompt', { organizationId: org });
+      const run = () => guiVaChoModel(page, 'synthetic safety prompt', {
+        organizationId: org,
+        completionTimeoutMs: scenario.completionTimeoutMs,
+      });
       if (scenario.error) await assert.rejects(run, scenario.error);
       else assert.equal((await run()).length, scenario.rounds);
     } finally {
@@ -156,3 +177,218 @@ for (const scenario of cycleCases) {
     }
   });
 }
+
+test('plan cleanup leaves replay/malformed plans and still cancels a proven fresh plan', async () => {
+  const preExistingId = '11111111-1111-4111-8111-111111111111';
+  const freshId = '22222222-2222-4222-8222-222222222222';
+  const malformedId = '44444444-4444-4444-8444-444444444444';
+  const wrongOrgReplayId = '55555555-5555-4555-8555-555555555555';
+  const marker = 'E2E-G3-ownership-controlled';
+  const plans = new Map([
+    [preExistingId, { organization_id: org, plan_status: 'DRAFT', plan_version: 7 }],
+    [freshId, { organization_id: org, plan_status: 'DRAFT', plan_version: 1 }],
+    [malformedId, { organization_id: org, plan_status: 'DRAFT', plan_version: 4 }],
+    [wrongOrgReplayId, { organization_id: 'ffffffff-0000-4000-8000-0000000000ff', plan_status: 'APPROVED', plan_version: 9 }],
+  ]);
+  const cancelled = [];
+  const server = createServer((req, res) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      const path = new URL(req.url, 'http://local').pathname;
+      const body = raw ? JSON.parse(raw) : {};
+      const send = data => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
+      if (path.endsWith('/rpc/copilot_plan_create_v1')) {
+        const replay = body.p_client_request_id === 'controlled-replay';
+        const malformed = body.p_client_request_id === 'controlled-malformed';
+        const wrongOrgReplay = body.p_client_request_id === 'controlled-wrong-org-replay';
+        const plan_id = replay ? preExistingId : malformed ? malformedId : wrongOrgReplay ? wrongOrgReplayId : freshId;
+        if (malformed) return send({ ok: true, plan_id, organization_id: org, plan_status: 'DRAFT', plan_version: plans.get(plan_id).plan_version });
+        const plan = plans.get(plan_id);
+        return send({ ok: true, da_ton_tai: replay || wrongOrgReplay, plan_id, organization_id: plan.organization_id, plan_status: plan.plan_status, plan_version: plan.plan_version });
+      }
+      if (path.endsWith('/rpc/copilot_plan_get_v1')) return send(plans.get(body.p_plan_id));
+      if (path.endsWith('/rpc/copilot_plan_cancel_v1')) {
+        const plan = plans.get(body.p_plan_id);
+        cancelled.push(body.p_plan_id);
+        plan.plan_status = 'CANCELLED';
+        plan.plan_version++;
+        return send({ ok: true, plan_id: body.p_plan_id, plan_status: 'CANCELLED' });
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<!doctype html><html><body>controlled cleanup</body></html>');
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const rpc = async (name, body) => {
+    const response = await page.request.post(`${base}/rest/v1/rpc/${name}`, {
+      headers: { Authorization: `Bearer ${token}` }, data: body,
+    });
+    return { status: response.status(), body: await response.json() };
+  };
+  try {
+    await page.goto(base);
+    const collector = taoBoThuGomKeHoachChat({
+      page, actor, organizationId: org, marker,
+      readPlan: async id => (await rpc('copilot_plan_get_v1', { p_plan_id: id })).body,
+      cancelPlan: (id, version) => rpc('copilot_plan_cancel_v1', { p_plan_id: id, p_expected_plan_version: version }),
+    });
+    const common = { p_organization_id: org, p_steps: [{ ten: `synthetic ${marker}` }] };
+    await page.evaluate(async ({ common, token }) => {
+      const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+      await fetch('/rest/v1/rpc/copilot_plan_create_v1', { method: 'POST', headers, body: JSON.stringify({ ...common, p_client_request_id: 'controlled-replay' }) });
+      await fetch('/rest/v1/rpc/copilot_plan_create_v1', { method: 'POST', headers, body: JSON.stringify({ ...common, p_client_request_id: 'controlled-malformed' }) });
+      await fetch('/rest/v1/rpc/copilot_plan_create_v1', { method: 'POST', headers, body: JSON.stringify({ ...common, p_client_request_id: 'controlled-wrong-org-replay' }) });
+      await fetch('/rest/v1/rpc/copilot_plan_create_v1', { method: 'POST', headers, body: JSON.stringify({ p_organization_id: common.p_organization_id, p_steps: [{ ten: 'model omitted marker' }], p_client_request_id: 'controlled-fresh' }) });
+    }, { common, token });
+    await assert.rejects(
+      () => collector.finish(),
+      error => error.message.includes('không cho biết đây là tạo mới hay phát lại')
+        && error.message.includes('thiếu marker riêng')
+        && error.message.includes('trả về sai tổ chức'),
+    );
+    assert.deepEqual(cancelled, [freshId]);
+    assert.equal(plans.get(preExistingId).plan_status, 'DRAFT');
+    assert.equal(plans.get(malformedId).plan_status, 'DRAFT');
+    assert.equal(plans.get(wrongOrgReplayId).plan_status, 'APPROVED');
+    assert.equal(plans.get(freshId).plan_status, 'CANCELLED');
+  } finally {
+    await page.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('plan cleanup settles a delayed fresh create after model wait failure and stop', async () => {
+  const freshId = '33333333-3333-4333-8333-333333333333';
+  const marker = 'E2E-G3-delayed-controlled';
+  const plan = { organization_id: org, plan_status: 'DRAFT', plan_version: 1 };
+  const cancelled = [];
+  let createCalls = 0;
+  let stopped = false;
+  const server = createServer((req, res) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      const path = new URL(req.url, 'http://local').pathname;
+      const body = raw ? JSON.parse(raw) : {};
+      const send = (data, type = 'application/json') => {
+        res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8` });
+        res.end(typeof data === 'string' ? data : JSON.stringify(data));
+      };
+      if (path.includes('/functions/v1/llm-proxy')) return send(validStream, 'text/event-stream');
+      if (path.endsWith('/rpc/copilot_plan_create_v1')) {
+        createCalls++;
+        return setTimeout(() => send({
+          ok: true, da_ton_tai: false, plan_id: freshId,
+          organization_id: org, plan_status: 'DRAFT', plan_version: plan.plan_version,
+        }), 300);
+      }
+      if (path.endsWith('/rpc/copilot_plan_get_v1')) return send(plan);
+      if (path.endsWith('/rpc/copilot_plan_cancel_v1')) {
+        cancelled.push(body.p_plan_id);
+        plan.plan_status = 'CANCELLED';
+        plan.plan_version++;
+        return send({ ok: true, plan_id: body.p_plan_id, plan_status: 'CANCELLED' });
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<!doctype html><html><body>
+        <div data-testid="copilot-panel"></div>
+        <input data-testid="copilot-input"><button data-testid="copilot-send">Send</button>
+        <button title="Dừng" style="display:none">Stop</button>
+        <script>
+        const auth={Authorization:${JSON.stringify(`Bearer ${token}`)},'Content-Type':'application/json'};
+        const send=document.querySelector('[data-testid="copilot-send"]'), stop=document.querySelector('[title="Dừng"]');
+        stop.onclick=()=>{window.controlledStopped=true;};
+        send.onclick=async()=>{
+          send.style.display='none';stop.style.display='block';
+          await fetch('/functions/v1/llm-proxy/chat/completions',{method:'POST',headers:{...auth,'x-organization-id':${JSON.stringify(org)}},body:JSON.stringify({model:${JSON.stringify(model)},messages:[{role:'user',content:'controlled'}]})}).then(r=>r.text());
+          await fetch('/rest/v1/rpc/copilot_plan_create_v1',{method:'POST',headers:auth,body:JSON.stringify({p_organization_id:${JSON.stringify(org)},p_client_request_id:'controlled-delayed',p_steps:[{ten:${JSON.stringify(marker)}}]})});
+          stop.style.display='none';send.style.display='block';
+        };
+        </script></body></html>`);
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const rpc = async (name, body) => {
+    const response = await page.request.post(`${base}/rest/v1/rpc/${name}`, {
+      headers: { Authorization: `Bearer ${token}` }, data: body,
+    });
+    return { status: response.status(), body: await response.json() };
+  };
+  try {
+    await page.goto(base);
+    const collector = taoBoThuGomKeHoachChat({
+      page, actor, organizationId: org, marker, settleTimeoutMs: 1_000,
+      readPlan: async id => (await rpc('copilot_plan_get_v1', { p_plan_id: id })).body,
+      cancelPlan: (id, version) => rpc('copilot_plan_cancel_v1', { p_plan_id: id, p_expected_plan_version: version }),
+    });
+    await assert.rejects(
+      () => guiVaChoModel(page, 'synthetic safety prompt', { organizationId: org, completionTimeoutMs: 75 }),
+      /toBeVisible/,
+    );
+    const result = await collector.finish(async () => {
+      await page.getByTitle('Dừng', { exact: true }).click();
+      stopped = await page.evaluate(() => window.controlledStopped === true);
+    });
+    assert.equal(stopped, true);
+    assert.equal(createCalls, 1);
+    assert.equal(result.startedRequests, 1);
+    assert.deepEqual(result.freshPlanIds, [freshId]);
+    assert.deepEqual(cancelled, [freshId]);
+    assert.equal(plan.plan_status, 'CANCELLED');
+  } finally {
+    await page.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('plan cleanup reports exact ownership evidence when transport stays unknown', async () => {
+  const marker = 'E2E-G3-unknown-controlled';
+  const clientRequestId = 'controlled-unknown-request';
+  const server = createServer((req, res) => {
+    const path = new URL(req.url, 'http://local').pathname;
+    if (path.endsWith('/rpc/copilot_plan_create_v1')) return;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end('<!doctype html><html><body>unknown transport</body></html>');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const page = await browser.newPage();
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    await page.goto(base);
+    const collector = taoBoThuGomKeHoachChat({
+      page, actor, organizationId: org, marker, settleTimeoutMs: 75,
+      readPlan: async () => { throw new Error('read must not run for unknown transport'); },
+      cancelPlan: async () => { throw new Error('cancel must not run for unknown transport'); },
+    });
+    const started = page.waitForRequest(request => request.url().endsWith('/rpc/copilot_plan_create_v1'));
+    await page.evaluate(({ token, org, marker, clientRequestId }) => {
+      void fetch('/rest/v1/rpc/copilot_plan_create_v1', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          p_organization_id: org,
+          p_client_request_id: clientRequestId,
+          p_steps: [{ ten: marker }],
+        }),
+      });
+    }, { token, org, marker, clientRequestId });
+    await started;
+    await assert.rejects(
+      () => collector.finish(),
+      error => error.message.includes('không được tuyên bố cleanup')
+        && error.message.includes(`actor=${actor}`)
+        && error.message.includes(`organization=${org}`)
+        && error.message.includes(`client_request_id=${clientRequestId}`),
+    );
+    assert.equal(collector.startedCount(), 1);
+  } finally {
+    await page.close();
+    server.closeAllConnections?.();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
