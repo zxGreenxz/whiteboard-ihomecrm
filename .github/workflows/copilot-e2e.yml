@@ -112,6 +112,10 @@ on:
         description: 'SHA 40 hex của bản build đang chạy ở FLEET_BASE_URL. Để trống = tự đọc thẻ <meta name="build-sha"> của trang.'
         required: false
         type: string
+      golden_attestation:
+        description: 'Optional sanitized schema-v2 golden attestation JSON. Runs the full live inventory; incomplete cases/SLA fail the job.'
+        required: false
+        type: string
   schedule:
     # 19:00 UTC = 02:00 giờ Việt Nam (UTC+7) — ngoài giờ làm việc.
     - cron: '0 19 * * *'
@@ -272,6 +276,35 @@ jobs:
           HET_LOC
           node --check "$LOC_CHE"
           echo "Da sinh bo loc che: $LOC_CHE"
+
+      - name: Full golden browser lane (on demand, fail closed)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.golden_attestation != '' }}
+        env:
+          GOLDEN_ATTESTATION_JSON: ${{ inputs.golden_attestation }}
+          FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
+          FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          COPILOT_REVIEWED_EDGE_DIGEST: ${{ vars.COPILOT_REVIEWED_EDGE_DIGEST }}
+          COPILOT_DEPLOYED_EDGE_DIGEST: ${{ vars.COPILOT_DEPLOYED_EDGE_DIGEST }}
+          THU_MUC_TAI_LEN: ${{ runner.temp }}/copilot-e2e
+          LOC_CHE: ${{ runner.temp }}/che-bi-mat.mjs
+        run: |
+          set -euo pipefail
+          mkdir -p "$THU_MUC_TAI_LEN"
+          node --input-type=module <<'GOLDEN' 2>&1 | node "$LOC_CHE" | tee "$THU_MUC_TAI_LEN/golden.log"
+          import { writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { spawnSync } from 'node:child_process';
+          const path = join(process.env.RUNNER_TEMP, 'golden-attestation.json');
+          let attestation;
+          try { attestation = JSON.parse(process.env.GOLDEN_ATTESTATION_JSON); }
+          catch { console.error('Invalid golden attestation JSON'); process.exit(2); }
+          writeFileSync(path, JSON.stringify(attestation), { mode: 0o600 });
+          const result = spawnSync(process.execPath, ['scripts/generate-copilot-golden-real-results.mjs',
+            '--attestation', path, '--results-out', join(process.env.THU_MUC_TAI_LEN, 'golden-checkpoint.json')],
+            { stdio: 'inherit', env: { ...process.env, COPILOT_E2E_MODEL: attestation.providerModel } });
+          process.exit(result.status ?? 2);
+          GOLDEN
 
       - name: 3 spec Copilot (readonly smoke · xác nhận · ma trận nháp)
         env:

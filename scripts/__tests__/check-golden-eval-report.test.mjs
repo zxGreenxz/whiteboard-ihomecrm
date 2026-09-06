@@ -10,6 +10,11 @@ import { LY_DO_THA_SLA, danhGiaBaoCao } from '../check-golden-eval-report.mjs';
 
 const SO_CA = 36;
 
+test('real lane cannot inherit the mock-only SLA exemption or trust aggregate counts', () => {
+  const report = { ...baoCaoThaSla(), provenance: { lane: 'real-model' } };
+  assert.ok(danhGiaBaoCao(report, SO_CA).loi.some(e => /real-model/.test(e)));
+});
+
 /** Báo cáo mẫu: đủ số ca, verdict pass, không lỗi gì. */
 function baoCaoDatChuan(soCa = SO_CA) {
   return {

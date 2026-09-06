@@ -43,6 +43,11 @@ export const LY_DO_THA_SLA = 'latency SLA is pending owner approval';
  */
 export function danhGiaBaoCao(baoCao, soCaMongDoi) {
   const loi = [];
+  // The pending-SLA exemption belongs only to the deterministic mock contract.
+  // Live evidence remains blocked until full oracles and owner SLA are ready.
+  if (baoCao?.provenance?.lane === 'real-model' || baoCao?.lane === 'real-model' || baoCao?.schemaVersion === 2) {
+    return { loi: ['real-model acceptance is blocked: use schema-v2 browser evidence validation; mock SLA exemption is inapplicable'], pass: undefined, total: undefined, reason: undefined };
+  }
   const total = baoCao?.aggregate?.total;
   const counts = baoCao?.aggregate?.counts ?? {};
   const reason = baoCao?.sla?.reason;

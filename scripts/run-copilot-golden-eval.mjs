@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { summarizeRun, validateBrowserRun } from './copilot-golden-browser-evidence.mjs';
 
 const LANES = new Set(['mock', 'real-model']);
 
@@ -396,6 +397,20 @@ function main() {
     return;
   }
   let cases;
+  if (provenance.lane === 'real-model') {
+    const manifest = JSON.parse(readFileSync(join(root, 'tooling', 'copilot-golden-scenarios.json'), 'utf8'));
+    let run;
+    try { run = JSON.parse(readFileSync(String(args.results), 'utf8')); }
+    catch { console.error('Copilot golden eval blocked: actual browser evidence schema v2 file required.'); process.exitCode = 2; return; }
+    const errors = validateBrowserRun(golden, manifest, run);
+    if (run?.attestation?.buildSha !== provenance.buildSha || run?.attestation?.providerModel !== provenance.providerModel) errors.push('CLI provenance differs from browser attestation');
+    if (errors.length) { console.error(`Copilot golden eval blocked: ${errors.join('; ')}`); process.exitCode = 2; return; }
+    const report = { schemaVersion: 2, provenance, evidence: run, aggregate: summarizeRun(run), verdict: 'blocked' };
+    if (args.out) writeFileSync(String(args.out), JSON.stringify(report, null, 2) + '\n');
+    console.log(JSON.stringify(report));
+    process.exitCode = 2;
+    return;
+  }
   if (args.results) {
     cases = JSON.parse(readFileSync(String(args.results), 'utf8'));
   } else if (provenance.lane === 'mock') {
