@@ -108,6 +108,9 @@
   "historicalLedgerBackfilled": false,
   "historicalMissingAuditRowCount": 17,
   "historicalEvidenceComplete": false,
-  "liveReplayVerification": "pending",
-  "scope": "Future replay return includes the validated original audit ID. Historical incomplete links remain incomplete; this receipt is not full plan or canary acceptance."
+  "liveReplayVerification": "passed",
+  "scope": "Future replay return includes the validated original audit ID. Historical incomplete links remain incomplete; this receipt is not full plan or canary acceptance.",
+  "liveReplayEvidence": "docs/generated/copilot-replay-audit-id-live-proof-2026-09-07.json",
+  "liveReplayVerifiedAt": "2026-09-06T19:14:36.227Z",
+  "liveReplayTransport": "Management API single transaction; actual authenticated role claims and real public RPCs; not a browser/PostgREST end-to-end test"
 }

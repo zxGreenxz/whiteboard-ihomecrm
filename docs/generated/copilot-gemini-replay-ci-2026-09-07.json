@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T19:13:36.106Z",
+  "sourceSha": "75042fc1b109ffa635e44e89f21e2f79c33dfb2f",
+  "runs": [
+    {
+      "conclusion": "success",
+      "databaseId": 34053486986,
+      "headSha": "75042fc1b109ffa635e44e89f21e2f79c33dfb2f",
+      "name": "Supabase Migration Validation",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 34053486962,
+      "headSha": "75042fc1b109ffa635e44e89f21e2f79c33dfb2f",
+      "name": "Migration Restore Drill",
+      "status": "completed"
+    },
+    {
+      "conclusion": "success",
+      "databaseId": 34053486924,
+      "headSha": "75042fc1b109ffa635e44e89f21e2f79c33dfb2f",
+      "name": "CI Gates",
+      "status": "completed"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 101541139761,
+      "name": "timezone-gate",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 101541139872,
+      "name": "preflight",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 101541139873,
+      "name": "secret-scan",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 101541139909,
+      "name": "quality-gates",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "docs-freshness (Copilot manifest · số đếm tài liệu)",
+          "conclusion": "success"
+        },
+        {
+          "name": "copilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)",
+          "conclusion": "success"
+        },
+        {
+          "name": "Copilot golden eval — lane mock (báo cáo ra $RUNNER_TEMP)",
+          "conclusion": "success"
+        },
+        {
+          "name": "Cài Deno cho test Edge llm-proxy",
+          "conclusion": "success"
+        },
+        {
+          "name": "Deno test — supabase/functions/llm-proxy",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Cài Deno cho test Edge llm-proxy",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 101541139922,
+      "name": "realtime-and-knowledge-gates",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 101541139924,
+      "name": "strict-islands-gate",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 101541140481,
+      "name": "production-promotion",
+      "conclusion": "skipped",
+      "steps": []
+    },
+    {
+      "id": 101541153150,
+      "name": "security-gates",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 101541153163,
+      "name": "cross-tenant-isolation",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 101541153218,
+      "name": "generated-types-drift",
+      "conclusion": "success",
+      "steps": []
+    },
+    {
+      "id": 101541153966,
+      "name": "reconcile-money",
+      "conclusion": "skipped",
+      "steps": []
+    }
+  ],
+  "exactTestLogLines": [
+    "quality-gates\tdocs-freshness (Copilot manifest · số đếm tài liệu)\t2026-09-06T19:00:54.9493471Z \u001b[36;1mnode scripts/check-copilot-docs-manifest.mjs || loi=1\u001b[0m",
+    "quality-gates\tdocs-freshness (Copilot manifest · số đếm tài liệu)\t2026-09-06T19:00:54.9496059Z \u001b[36;1mnode scripts/check-copilot-routes.mjs || loi=1\u001b[0m",
+    "quality-gates\tdocs-freshness (Copilot manifest · số đếm tài liệu)\t2026-09-06T19:00:54.9497790Z \u001b[36;1mnode scripts/check-copilot-tool-inventory.mjs || loi=1\u001b[0m",
+    "quality-gates\tcopilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)\t2026-09-06T19:00:56.5270881Z \u001b[36;1mnode scripts/check-copilot-page-contracts.mjs || loi=1\u001b[0m",
+    "quality-gates\tcopilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)\t2026-09-06T19:00:56.5271601Z \u001b[36;1mnode scripts/check-copilot-safe-control-markers.mjs || loi=1\u001b[0m",
+    "quality-gates\tcopilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)\t2026-09-06T19:00:56.5272392Z \u001b[36;1mnode scripts/check-copilot-provider-policy.mjs || loi=1\u001b[0m",
+    "quality-gates\tcopilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)\t2026-09-06T19:00:56.5273464Z \u001b[36;1mnode scripts/check-copilot-e2e-files.mjs || loi=1\u001b[0m",
+    "quality-gates\tcopilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)\t2026-09-06T19:00:56.5274142Z \u001b[36;1mnode scripts/check-copilot-golden-eval.mjs || loi=1\u001b[0m",
+    "quality-gates\tcopilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)\t2026-09-06T19:00:56.5274865Z \u001b[36;1mnode scripts/check-copilot-forbidden-actions.mjs || loi=1\u001b[0m",
+    "quality-gates\tDeno test — supabase/functions/llm-proxy\t2026-09-06T19:01:09.5597321Z \u001b[0m\u001b[32mok\u001b[0m | 77 passed | 0 failed \u001b[0m\u001b[38;5;245m(1s)\u001b[0m",
+    "quality-gates\tnode --test (script test dùng node:test)\t2026-09-06T19:02:25.5286534Z \u001b[36;1m  scripts/__tests__/check-copilot-routes.test.mjs \\\u001b[0m",
+    "quality-gates\tnode --test (script test dùng node:test)\t2026-09-06T19:02:25.5286890Z \u001b[36;1m  scripts/__tests__/check-copilot-tool-inventory.test.mjs \\\u001b[0m",
+    "quality-gates\tnode --test (script test dùng node:test)\t2026-09-06T19:02:25.5287251Z \u001b[36;1m  scripts/__tests__/check-copilot-docs-manifest.test.mjs \\\u001b[0m",
+    "quality-gates\tnode --test (script test dùng node:test)\t2026-09-06T19:02:25.5287595Z \u001b[36;1m  scripts/__tests__/check-copilot-e2e-files.test.mjs \\\u001b[0m",
+    "quality-gates\tnode --test (script test dùng node:test)\t2026-09-06T19:02:25.5287953Z \u001b[36;1m  scripts/__tests__/check-copilot-forbidden-actions.test.mjs \\\u001b[0m",
+    "quality-gates\tnode --test (script test dùng node:test)\t2026-09-06T19:02:25.5288691Z \u001b[36;1m  scripts/__tests__/check-copilot-page-contracts.test.mjs \\\u001b[0m",
+    "quality-gates\tnode --test (script test dùng node:test)\t2026-09-06T19:02:25.5289038Z \u001b[36;1m  scripts/__tests__/check-copilot-provider-policy.test.mjs \\\u001b[0m",
+    "quality-gates\tnode --test (script test dùng node:test)\t2026-09-06T19:02:25.5289420Z \u001b[36;1m  scripts/__tests__/check-copilot-safe-control-markers.test.mjs \\\u001b[0m",
+    "quality-gates\tVitest (root-owned app and script suites)\t﻿2026-09-06T19:02:43.0875977Z ##[group]Run npx vitest run src scripts/__tests__ worker/__tests__ --exclude 'services/**' --exclude 'infra/**' --exclude '.e2e-fleet/**' --exclude 'scripts/__tests__/network-center-*.test.mjs' --exclude 'scripts/__tests__/apply-reviewed-migration-authorization.test.mjs' --exclude 'scripts/__tests__/apply-reviewed-migration-transaction.test.mjs' --exclude 'scripts/__tests__/backup-luu-tru.test.mjs' --exclude 'scripts/__tests__/check-agent-contract.test.mjs' --exclude 'scripts/__tests__/check-external-controls.test.mjs' --exclude 'scripts/__tests__/check-golden-eval-report.test.mjs' --exclude 'scripts/__tests__/copilot-golden-browser-evidence.test.mjs' --exclude 'scripts/__tests__/copilot-golden-real-cli.test.mjs' --exclude 'scripts/__tests__/check-graph-governance.test.mjs' --exclude 'scripts/__tests__/check-migration-provenance.test.mjs' --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs' --exclude 'scripts/__tests__/check-copilot-routes.test.mjs' --exclude 'scripts/__tests__/check-copilot-tool-inventory.test.mjs' --exclude 'scripts/__tests__/check-copilot-docs-manifest.test.mjs' --exclude 'scripts/__tests__/check-copilot-e2e-files.test.mjs' --exclude 'scripts/__tests__/check-copilot-forbidden-actions.test.mjs' --exclude 'scripts/__tests__/check-copilot-negative-proofs.test.mjs' --exclude 'scripts/__tests__/check-copilot-page-contracts.test.mjs' --exclude 'scripts/__tests__/check-copilot-provider-policy.test.mjs' --exclude 'scripts/__tests__/check-copilot-safe-control-markers.test.mjs' --exclude 'scripts/__tests__/copilot-ledger-audit.test.mjs' --exclude 'scripts/__tests__/copilot-ledger-audit-rpc.test.mjs' --exclude 'scripts/__tests__/copilot-ledger-replay-audit-id-migration.test.mjs' --exclude 'scripts/__tests__/check-csp-build-attestation.test.mjs' --exclude 'scripts/__tests__/run-copilot-golden-eval.test.mjs' --exclude 'scripts/__tests__/check-dependency-audit.test.mjs' --exclude 'scripts/__tests__/check-eslint-baseline.test.mjs' --exclude 'scripts/__tests__/check-realtime-key-ownership.test.mjs' --exclude 'scripts/__tests__/check-rpc-arg-names.test.mjs' --exclude 'scripts/__tests__/check-rpc-layer.test.mjs' --exclude 'scripts/__tests__/check-rpc-name-literal.test.mjs' --exclude 'scripts/__tests__/generate-bundle-inventory.test.mjs' --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs' --exclude 'scripts/__tests__/check-ts-baseline.test.mjs'",
+    "quality-gates\tVitest (root-owned app and script suites)\t2026-09-06T19:02:43.0889230Z \u001b[36;1mnpx vitest run src scripts/__tests__ worker/__tests__ --exclude 'services/**' --exclude 'infra/**' --exclude '.e2e-fleet/**' --exclude 'scripts/__tests__/network-center-*.test.mjs' --exclude 'scripts/__tests__/apply-reviewed-migration-authorization.test.mjs' --exclude 'scripts/__tests__/apply-reviewed-migration-transaction.test.mjs' --exclude 'scripts/__tests__/backup-luu-tru.test.mjs' --exclude 'scripts/__tests__/check-agent-contract.test.mjs' --exclude 'scripts/__tests__/check-external-controls.test.mjs' --exclude 'scripts/__tests__/check-golden-eval-report.test.mjs' --exclude 'scripts/__tests__/copilot-golden-browser-evidence.test.mjs' --exclude 'scripts/__tests__/copilot-golden-real-cli.test.mjs' --exclude 'scripts/__tests__/check-graph-governance.test.mjs' --exclude 'scripts/__tests__/check-migration-provenance.test.mjs' --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs' --exclude 'scripts/__tests__/check-copilot-routes.test.mjs' --exclude 'scripts/__tests__/check-copilot-tool-inventory.test.mjs' --exclude 'scripts/__tests__/check-copilot-docs-manifest.test.mjs' --exclude 'scripts/__tests__/check-copilot-e2e-files.test.mjs' --exclude 'scripts/__tests__/check-copilot-forbidden-actions.test.mjs' --exclude 'scripts/__tests__/check-copilot-negative-proofs.test.mjs' --exclude 'scripts/__tests__/check-copilot-page-contracts.test.mjs' --exclude 'scripts/__tests__/check-copilot-provider-policy.test.mjs' --exclude 'scripts/__tests__/check-copilot-safe-control-markers.test.mjs' --exclude 'scripts/__tests__/copilot-ledger-audit.test.mjs' --exclude 'scripts/__tests__/copilot-ledger-audit-rpc.test.mjs' --exclude 'scripts/__tests__/copilot-ledger-replay-audit-id-migration.test.mjs' --exclude 'scripts/__tests__/check-csp-build-attestation.test.mjs' --exclude 'scripts/__tests__/run-copilot-golden-eval.test.mjs' --exclude 'scripts/__tests__/check-dependency-audit.test.mjs' --exclude 'scripts/__tests__/check-eslint-baseline.test.mjs' --exclude 'scripts/__tests__/check-realtime-key-ownership.test.mjs' --exclude 'scripts/__tests__/check-rpc-arg-names.test.mjs' --exclude 'scripts/__tests__/check-rpc-layer.test.mjs' --exclude 'scripts/__tests__/check-rpc-name-literal.test.mjs' --exclude 'scripts/__tests__/generate-bundle-inventory.test.mjs' --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs' --exclude 'scripts/__tests__/check-ts-baseline.test.mjs'\u001b[0m"
+  ],
+  "restoreFirstAttempt": {
+    "runId": 34053486962,
+    "failureStage": "before SQL restore",
+    "reason": "PostgreSQL test container connection refused",
+    "rerun": "unchanged failed job rerun succeeded"
+  },
+  "fullOriginalPlanAccepted": false
+}

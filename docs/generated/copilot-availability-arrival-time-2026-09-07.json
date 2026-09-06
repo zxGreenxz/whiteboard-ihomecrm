@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-06T19:48:00.982Z",
+  "evidenceType": "retained_local_source_verification",
+  "sourceCommit": "1ff98fefaa4d9403271c4a38cc97fad22fe02fc9",
+  "integrationCommit": "a181baa02653c87a902a2eb8b1b5eb5b316dd42e",
+  "sourcePath": "src/copilot/featureFlags.ts",
+  "sourceSha256": "e48280d10a8c97c5231799a9c323ecc8c6b588221123442d49b8ba01c3caff41",
+  "behavior": "Validate server availability timestamp at RPC response completion; preserve explicit injected test clock and all existing organization, error, future, and stale guards.",
+  "regression": {
+    "file": "src/copilot/__tests__/featureFlags.test.ts",
+    "before": {
+      "passed": 23,
+      "failed": 2
+    },
+    "after": {
+      "passed": 25,
+      "failed": 0
+    }
+  },
+  "mutation": {
+    "helper": "scripts/dot-bien.mjs",
+    "change": "Date.now() -> Date.now() - 100",
+    "expectedFailureObserved": true,
+    "originalDigestRestored": true
+  },
+  "typecheck": {
+    "app": "passed",
+    "baselineFingerprints": 0,
+    "canonicalE2E": "passed"
+  },
+  "integrationBuild": {
+    "modules": 4993,
+    "elapsedSeconds": 15.67,
+    "bundleChunks": 509,
+    "lazyPages": 97,
+    "status": "passed"
+  },
+  "independentReview": {
+    "agent": "/root/review_golden_foundation",
+    "spec": "approved",
+    "quality": "approved"
+  },
+  "graph": {
+    "gitNexusFreshAtSourceBase": true,
+    "directCallerCount": 1,
+    "risk": "LOW",
+    "limitation": "No resolved process path; stale UA was not used."
+  },
+  "liveFrontendVerification": "pending updated Preview and original workflow",
+  "historicalBannerCauseProven": false,
+  "fullPlanAccepted": false
+}

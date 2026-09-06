@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-09-06T19:14:34.737Z",
+  "finishedAt": "2026-09-06T19:14:36.227Z",
+  "reviewedSha256": "6872120009fb876eb5e2c112de3a2d387aa356ac1c77e8ba481d0f612b083b19",
+  "status": "passed",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "transport": "Management API single transaction; actual authenticated role claims and real public RPCs; not a browser/PostgREST end-to-end test",
+  "proof": {
+    "ok": true,
+    "plan_id": "3df8eb15-36b3-4dea-89f6-f0797a4750e9",
+    "actor_id": "90450d5f-29b6-4897-bdef-cdb5fb53f339",
+    "audit_id": "83f8a7bd-894e-42e8-830f-884794a1c4d4",
+    "entity_id": "9107362c-f267-43d0-91e9-e2591b8f05d3",
+    "transaction": "ROLLBACK",
+    "first_status": "da_tao",
+    "fixture_name": "Ledger replay rollback proof d7fa2f90dbd1470f85e59d864ece5afe",
+    "organization_id": "dddd0000-0000-4000-8000-000000000001",
+    "same_nonce_guard": {
+      "error": "confirmation_already_used",
+      "rejected": true,
+      "sqlstate": "42501"
+    },
+    "plan_replay_status": "da_tao_truoc_do",
+    "direct_replay_status": "da_tao_truoc_do",
+    "plan_outcome_audit_id": "83f8a7bd-894e-42e8-830f-884794a1c4d4",
+    "direct_replay_audit_id": "83f8a7bd-894e-42e8-830f-884794a1c4d4",
+    "direct_replay_idempotent": true,
+    "ledger_events_before_rollback": [
+      {
+        "event": "action_executed",
+        "plan_id": null,
+        "step_no": null,
+        "audit_id": "83f8a7bd-894e-42e8-830f-884794a1c4d4",
+        "entity_id": "9107362c-f267-43d0-91e9-e2591b8f05d3",
+        "idempotent": null
+      },
+      {
+        "event": "plan_created",
+        "plan_id": "3df8eb15-36b3-4dea-89f6-f0797a4750e9",
+        "step_no": null,
+        "audit_id": null,
+        "entity_id": null,
+        "idempotent": null
+      },
+      {
+        "event": "plan_approved",
+        "plan_id": "3df8eb15-36b3-4dea-89f6-f0797a4750e9",
+        "step_no": null,
+        "audit_id": null,
+        "entity_id": null,
+        "idempotent": null
+      },
+      {
+        "event": "step_done",
+        "plan_id": "3df8eb15-36b3-4dea-89f6-f0797a4750e9",
+        "step_no": 1,
+        "audit_id": "83f8a7bd-894e-42e8-830f-884794a1c4d4",
+        "entity_id": "9107362c-f267-43d0-91e9-e2591b8f05d3",
+        "idempotent": true
+      }
+    ],
+    "core_row_deltas_before_rollback": {
+      "copilot_plans": 1,
+      "ai_write_audit": 1,
+      "income_expenses": 1,
+      "copilot_plan_steps": 1,
+      "income_expense_items": 1,
+      "copilot_action_ledger": 4,
+      "copilot_write_confirmations": 4
+    }
+  },
+  "independentPostRollbackSelect": {
+    "vouchers": 0,
+    "items": 0,
+    "audits": 0,
+    "ledger": 0,
+    "plans": 0,
+    "steps": 0
+  },
+  "committedBusinessWrites": 0,
+  "historicalLedgerBackfilled": false,
+  "historicalEvidenceComplete": false,
+  "fullOriginalPlanAccepted": false
+}
