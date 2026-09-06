@@ -76,3 +76,22 @@ chỉ in trạng thái, không in lỗi/DOM/call-log; tắt trace/video/screensh
 artifact Playwright tạm. Checkpoint chỉ nhận danh sách trường an toàn. Nếu tiến
 trình bị kill trước cleanup reporter, cần dọn thư mục tạm theo run; không upload
 các thư mục tạm này.
+
+## Canonical integration checks (2026-09-07)
+
+The earlier ad-hoc TypeScript command used `--allowJs` without the fleet's
+`strict` configuration and was insufficient. Canonical `npm run typecheck:e2e`
+reproduced five errors (missing MJS declarations, implicit callback parameters,
+and optional buildings losing narrowing inside a callback). The evidence module
+now has a concrete `.d.mts` boundary; parsed manifest values are checked before
+use, attestation comes from the validated run, and the building array is captured
+after validation. Fleet strictness and stream acceptance are unchanged.
+
+`npm run gate:test-matrix` first reproduced two missing Vitest exclusions. After
+aligning native membership, it exposed the controlled browser test as an orphan;
+the matrix now declares its existing `copilot-e2e.yml` Node/Chromium execution.
+Final verification: canonical typecheck passed; matrix passed (537 files, 8 suites);
+`npx vitest run src/copilot/__tests__/readonlySmokeOracle.test.ts` passed 47/47;
+`node --test scripts/__tests__/copilot-golden-browser-evidence.test.mjs scripts/__tests__/copilot-golden-real-cli.test.mjs .e2e-fleet/controlled/golden-provider-stop.test.mjs`
+passed 16/16, including two loopback browser provider-stop proofs. No live model
+calls. Full 75-case implementation and SLA remain incomplete/blocked.

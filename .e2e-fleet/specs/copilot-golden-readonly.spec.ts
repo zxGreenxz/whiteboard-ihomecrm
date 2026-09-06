@@ -7,10 +7,21 @@ import { COPILOT_TEST_MODEL, pinCopilotTestModel } from './copilotTestModel';
 import { guiVaChoModel } from './copilotModelCycle';
 import { assertReadonlyResult, ModelStreamFailure, unexpectedReadonlyMutation } from './copilotSmokeOracle';
 import { bindRoomScenario, createRun, DEMO_ORG, digest, IMPLEMENTED_ORACLES, summarizeRun, transitionCase, writeCheckpoint } from '../../scripts/copilot-golden-browser-evidence.mjs';
+import type { CaseReason, GoldenManifest } from '../../scripts/copilot-golden-browser-evidence.mjs';
 
-const load = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
+const load = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));
+function assertManifest(value: unknown): asserts value is GoldenManifest {
+  if (!value || typeof value !== 'object' || !('schemaVersion' in value) || value.schemaVersion !== 1
+    || !('scope' in value) || value.scope !== 'full-corpus' || !('cases' in value) || !Array.isArray(value.cases)
+    || !value.cases.every((c: unknown) => c && typeof c === 'object'
+      && 'id' in c && typeof c.id === 'string' && 'fixture' in c && typeof c.fixture === 'string'
+      && 'oracle' in c && typeof c.oracle === 'string' && 'kind' in c && typeof c.kind === 'string'
+      && 'prompt' in c && typeof c.prompt === 'string' && 'acceptance' in c && Array.isArray(c.acceptance)
+      && c.acceptance.every((item: unknown) => typeof item === 'string'))) throw new Error('Invalid golden manifest');
+}
 const golden = load(fileURLToPath(new URL('../../tooling/copilot-golden-eval.json', import.meta.url)));
 const manifest = load(fileURLToPath(new URL('../../tooling/copilot-golden-scenarios.json', import.meta.url)));
+assertManifest(manifest);
 
 // Full inventory stays visible. An unimplemented executor/oracle is incomplete
 // engineering work, never an environmental skip and never a passing case.
@@ -18,12 +29,12 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
   const output = process.env.COPILOT_GOLDEN_RESULTS;
   const attestationPath = process.env.COPILOT_GOLDEN_ATTESTATION;
   if (!output || !attestationPath) throw new Error('Missing golden results/attestation paths');
-  const attestation = load(attestationPath);
-  const run = createRun(golden, manifest, attestation);
+  const run = createRun(golden, manifest, load(attestationPath));
+  const attestation = run.attestation;
   const save = () => writeCheckpoint(output, run, golden, manifest);
   for (const c of run.cases) if (!IMPLEMENTED_ORACLES.has(c.oracle)) transitionCase(run, c.id, { status: 'blocked', reason: 'oracle_not_implemented' });
   save();
-  let reason = 'preflight_missing';
+  let reason: CaseReason = 'preflight_missing';
   let fatalProvider = false;
   const pending = () => run.cases.filter(c => c.status === 'pending' || c.status === 'running');
   try {
@@ -70,6 +81,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
     for (const c of pending()) {
       if (fatalProvider) { transitionCase(run, c.id, { status: 'blocked', reason }); save(); continue; }
       const scenario = manifest.cases.find(s => s.id === c.id);
+      if (!scenario) throw new Error('Golden scenario missing from manifest');
       let bound;
       try { bound = bindRoomScenario(scenario, fixture); }
       catch { transitionCase(run, c.id, { status: 'blocked', reason: 'fixture_unbound' }); save(); continue; }

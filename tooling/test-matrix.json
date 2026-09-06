@@ -7,6 +7,18 @@
   ],
   "suites": [
     {
+      "id": "copilot-golden-controlled-browser",
+      "runner": "node --test",
+      "ciJob": "copilot-e2e / copilot-e2e",
+      "command": "node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs",
+      "risk": "normal",
+      "includes": [".e2e-fleet/controlled/golden-provider-stop.test.mjs"],
+      "ciJobs": [{ "workflow": ".github/workflows/copilot-e2e.yml", "job": "copilot-e2e" }],
+      "environment": "ci",
+      "timeoutMinutes": 30,
+      "note": "Controlled loopback browser regression after Chromium installation; no live model calls or product-quality pass evidence."
+    },
+    {
       "id": "app-unit",
       "runner": "vitest",
       "ciJob": "quality-gates",
@@ -40,6 +52,8 @@
         "scripts/__tests__/copilot-ledger-audit-rpc.test.mjs",
         "scripts/__tests__/check-csp-build-attestation.test.mjs",
         "scripts/__tests__/run-copilot-golden-eval.test.mjs",
+        "scripts/__tests__/copilot-golden-browser-evidence.test.mjs",
+        "scripts/__tests__/copilot-golden-real-cli.test.mjs",
         "scripts/__tests__/check-dependency-audit.test.mjs",
         "scripts/__tests__/check-eslint-baseline.test.mjs",
         "scripts/__tests__/check-external-controls.test.mjs",
@@ -203,6 +217,8 @@
         "scripts/__tests__/copilot-ledger-audit-rpc.test.mjs",
         "scripts/__tests__/check-csp-build-attestation.test.mjs",
         "scripts/__tests__/run-copilot-golden-eval.test.mjs",
+        "scripts/__tests__/copilot-golden-browser-evidence.test.mjs",
+        "scripts/__tests__/copilot-golden-real-cli.test.mjs",
         "scripts/__tests__/check-dependency-audit.test.mjs",
         "scripts/__tests__/check-eslint-baseline.test.mjs",
         "scripts/__tests__/check-external-controls.test.mjs",

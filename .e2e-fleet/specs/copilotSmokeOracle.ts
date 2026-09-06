@@ -143,7 +143,8 @@ export function assertReadonlyResult(evidence: ReadonlyEvidence): void {
   requireEvidence(typeof result?.content === 'string' && !/lỗi|error|unavailable|not_permitted/i.test(result.content), 'Missing or failed matching tool result in the next model round');
   const payload = evidence.payload as { buildings?: { id: string; name?: string; address?: string }[]; rooms?: { building_id: string; code?: string; name?: string; id: string; status_public: string }[] } | null;
   requireEvidence(payload && Array.isArray(payload.buildings) && Array.isArray(payload.rooms), 'Missing or invalid read RPC payload');
-  let selectedBuildings = payload.buildings;
+  const allBuildings = payload.buildings;
+  let selectedBuildings = allBuildings;
   if (evidence.buildingScope) {
     const target = evidence.buildingScope;
     selectedBuildings = payload.buildings.filter(b => b.id === target.id && b.name === target.name);
@@ -170,7 +171,7 @@ export function assertReadonlyResult(evidence: ReadonlyEvidence): void {
     // building from its canonical name instead of duplicating that formatting.
     // Prefer the longest known name so "A (Annex)" cannot be mistaken for A.
     const headerBuildingIds = buildingHeaders.map(line => {
-      const matches = payload.buildings.filter(b => b.name && line.startsWith(`${b.name} (`))
+      const matches = allBuildings.filter(b => b.name && line.startsWith(`${b.name} (`))
         .sort((a, b) => b.name!.length - a.name!.length);
       return matches.length && matches[0].name !== matches[1]?.name ? matches[0].id : undefined;
     });
