@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   copilotAvailability,
   fetchCopilotAvailability,
@@ -21,6 +21,23 @@ import { ROUTE_DIEU_HUONG } from '../pageScope';
 import { ACTION_CATALOG, khoaRolloutHanhDong } from '../plan/actionCatalog';
 
 const ORG = 'aaaa0000-0000-4000-8000-000000000001';
+const REQUEST_STARTED_AT = 1_700_000_000_000;
+
+function availabilityResponse(fetchedAt: number, organizationId = ORG) {
+  return {
+    data: {
+      revision: 1,
+      fetchedAt,
+      organization_id: organizationId,
+      states: { 'page:rooms.list': 'enabled' },
+    },
+    error: null,
+  };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('Copilot feature flags', () => {
   it('fails closed for missing or stale snapshots', () => {
@@ -74,6 +91,61 @@ describe('Copilot feature flags', () => {
     await expect(fetchCopilotAvailability('org-1', malformed, 1_700_000_000_001)).resolves.toBeNull();
     const failed = async () => ({ data: null, error: new Error('network') });
     await expect(fetchCopilotAvailability('org-1', failed, 200)).resolves.toBeNull();
+  });
+
+  it('validates a snapshot stamped during the RPC against response completion time', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(REQUEST_STARTED_AT);
+    const pending = fetchCopilotAvailability(ORG, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return availabilityResponse(REQUEST_STARTED_AT + 50);
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(pending).resolves.toMatchObject({
+      fetchedAt: REQUEST_STARTED_AT + 50,
+      organizationId: ORG,
+    });
+  });
+
+  it('rejects a snapshot that expires while the availability RPC is in flight', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(REQUEST_STARTED_AT);
+    const pending = fetchCopilotAvailability(ORG, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return availabilityResponse(REQUEST_STARTED_AT - 59_950);
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it('rejects a snapshot stamped after response completion', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(REQUEST_STARTED_AT);
+    const pending = fetchCopilotAvailability(ORG, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return availabilityResponse(REQUEST_STARTED_AT + 101);
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it('rejects a valid snapshot bound to a different organization', async () => {
+    await expect(
+      fetchCopilotAvailability(
+        ORG,
+        async () => availabilityResponse(
+          REQUEST_STARTED_AT,
+          'bbbb0000-0000-4000-8000-000000000002',
+        ),
+        REQUEST_STARTED_AT + 1,
+      ),
+    ).resolves.toBeNull();
   });
 
   it('does not query availability without a selected organization', async () => {

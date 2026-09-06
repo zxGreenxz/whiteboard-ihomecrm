@@ -355,17 +355,22 @@ export function parseCopilotAvailability(value: unknown): CopilotAvailabilitySna
 export async function fetchCopilotAvailability(
   organizationId: string | null | undefined,
   rpc: AvailabilityRpc,
-  now = Date.now(),
+  now?: number,
 ): Promise<CopilotAvailabilitySnapshot | null> {
   if (!organizationId) return null;
   try {
     const { data, error } = await rpc(organizationId);
+    const responseCompletedAt = now ?? Date.now();
     if (error) {
       // Fail closed: an unavailable rollout snapshot must expose no Copilot capability.
       return unavailableCopilotSnapshot();
     }
     const snapshot = parseCopilotAvailability(data);
-    if (!snapshot || snapshot.fetchedAt > now || now - snapshot.fetchedAt > 60_000) return null;
+    if (
+      !snapshot ||
+      snapshot.fetchedAt > responseCompletedAt ||
+      responseCompletedAt - snapshot.fetchedAt > 60_000
+    ) return null;
     if (snapshot.organizationId !== organizationId) return null;
     return snapshot;
   } catch {
