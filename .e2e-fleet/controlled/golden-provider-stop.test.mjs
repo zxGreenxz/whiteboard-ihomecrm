@@ -5,9 +5,11 @@ import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import test from 'node:test';
+import { chromium } from '@playwright/test';
+import { build } from 'vite';
 import { DEMO_ORG as org, digest, validateBrowserRun } from '../../scripts/copilot-golden-browser-evidence.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -74,6 +76,83 @@ for (const [code, reason] of [['quota_exhausted','quota_exhausted'], ['rate_limi
       await new Promise(resolve => server.close(resolve));
       // mkdtemp result under OS temp is the exact directory owned by this test.
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+const validStream = 'data: ' + JSON.stringify({ choices: [{ delta: { content: 'Đã giữ nguyên bước xác nhận.' }, finish_reason: 'stop' }] }) + '\n\ndata: [DONE]\n\n';
+const providerErrorStream = 'data: ' + JSON.stringify({ error: { code: 'quota_exhausted', message: 'synthetic controlled failure' } }) + '\n\ndata: [DONE]\n\n';
+const missingDoneStream = 'data: ' + JSON.stringify({ choices: [{ delta: { content: 'incomplete' }, finish_reason: 'stop' }] }) + '\n\n';
+const cycleCases = [
+  { name: 'rejects no model request', sendModel: false, error: /Timeout .* exceeded/ },
+  { name: 'rejects HTTP 403', status: 403, body: '{}', error: /không hoạt động/ },
+  { name: 'rejects an HTTP 200 provider error', status: 200, body: providerErrorStream, error: /Provider error/ },
+  { name: 'rejects a stream without DONE', status: 200, body: missingDoneStream, error: /missing DONE/ },
+  { name: 'rejects the wrong outbound model', status: 200, body: validStream, outboundModel: '9router:ag/gemini-3.7-flash-high(high)', error: /sai model/ },
+  { name: 'rejects the wrong organization header', status: 200, body: validStream, outboundOrganization: 'ffffffff-0000-4000-8000-0000000000ff', error: /sai phạm vi/ },
+  { name: 'accepts a valid completed cycle', status: 200, body: validStream, rounds: 1 },
+];
+
+let browser;
+let cycleBundleDir;
+let guiVaChoModel;
+
+test.before(async () => {
+  browser = await chromium.launch({ headless: true });
+  cycleBundleDir = mkdtempSync(join(root, '.e2e-fleet', 'controlled', '.model-cycle-'));
+  const outfile = join(cycleBundleDir, 'copilotModelCycle.mjs');
+  await build({
+    configFile: false,
+    logLevel: 'silent',
+    build: {
+      ssr: join(root, '.e2e-fleet', 'specs', 'copilotModelCycle.ts'),
+      outDir: cycleBundleDir,
+      emptyOutDir: false,
+      rollupOptions: {
+        external: ['@playwright/test'],
+        output: { entryFileNames: 'copilotModelCycle.mjs' },
+      },
+    },
+  });
+  ({ guiVaChoModel } = await import(pathToFileURL(outfile).href));
+});
+
+test.after(async () => {
+  await browser?.close();
+  if (cycleBundleDir) rmSync(cycleBundleDir, { recursive: true, force: true });
+});
+
+for (const scenario of cycleCases) {
+  test(`shared model-cycle helper ${scenario.name}`, async () => {
+    const server = createServer((req, res) => {
+      const path = new URL(req.url, 'http://local').pathname;
+      if (path.includes('/functions/v1/llm-proxy')) {
+        res.writeHead(scenario.status ?? 200, { 'Content-Type': 'text/event-stream; charset=utf-8' });
+        return res.end(scenario.body ?? validStream);
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(`<!doctype html><html><body>
+        <div data-testid="copilot-panel"></div>
+        <input data-testid="copilot-input"><button data-testid="copilot-send">Send</button>
+        <script>
+        document.querySelector('[data-testid="copilot-send"]').onclick=async()=>{
+          ${scenario.sendModel === false ? '' : `const button=document.querySelector('[data-testid="copilot-send"]');button.style.display='none';
+          await fetch('/functions/v1/llm-proxy/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','x-organization-id':${JSON.stringify(scenario.outboundOrganization ?? org)}},body:JSON.stringify({model:${JSON.stringify(scenario.outboundModel ?? model)},messages:[{role:'user',content:document.querySelector('[data-testid="copilot-input"]').value}]})}).then(r=>r.text());
+          button.style.display='block';`}
+        };
+        </script></body></html>`);
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const page = await browser.newPage();
+    page.setDefaultTimeout(500);
+    try {
+      await page.goto(`http://127.0.0.1:${server.address().port}`);
+      const run = () => guiVaChoModel(page, 'synthetic safety prompt', { organizationId: org });
+      if (scenario.error) await assert.rejects(run, scenario.error);
+      else assert.equal((await run()).length, scenario.rounds);
+    } finally {
+      await page.close();
+      await new Promise(resolve => server.close(resolve));
     }
   });
 }

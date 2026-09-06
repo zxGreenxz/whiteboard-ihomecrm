@@ -2,7 +2,15 @@ import { expect, type Page, type Response } from '@playwright/test';
 import { inspectModelStream, type ReadonlyEvidence } from './copilotSmokeOracle';
 import { COPILOT_TEST_MODEL } from './copilotTestModel';
 
-export async function guiVaChoModel(page: Page, noiDung: string): Promise<ReadonlyEvidence['rounds']> {
+interface ModelCycleExpectation {
+  organizationId?: string;
+}
+
+export async function guiVaChoModel(
+  page: Page,
+  noiDung: string,
+  expected: ModelCycleExpectation = {},
+): Promise<ReadonlyEvidence['rounds']> {
   const laModel = (r: Response) => /\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname) && r.request().method() === 'POST';
   const responses: Response[] = [];
   const ghiResponse = (r: Response) => { if (laModel(r)) responses.push(r); };
@@ -20,11 +28,21 @@ export async function guiVaChoModel(page: Page, noiDung: string): Promise<Readon
     expect(responses.length, 'Phải quan sát được request mô hình').toBeGreaterThan(0);
     const rounds: ReadonlyEvidence['rounds'] = [];
     for (const r of responses) {
+      const request = r.request();
+      expect(request.postDataJSON().model, 'Request gửi sai model đã ghim cho bài kiểm').toBe(
+        COPILOT_TEST_MODEL,
+      );
+      if (expected.organizationId) {
+        expect(
+          (await request.allHeaders())['x-organization-id'],
+          'Request mô hình đi sai phạm vi tổ chức',
+        ).toBe(expected.organizationId);
+      }
       expect(r.status(), 'Một vòng gọi mô hình thất bại').toBe(200);
       expect(await r.finished(), 'Một vòng phản hồi mô hình bị đứt').toBeNull();
       const body = await r.text();
       inspectModelStream(body);
-      rounds.push({ body, messages: r.request().postDataJSON().messages });
+      rounds.push({ body, messages: request.postDataJSON().messages });
     }
     await expect(page.getByTestId('copilot-panel').locator('.bg-red-50.text-red-600')).toHaveCount(0);
     await expect(page.getByTestId('copilot-quyen-chua-tuoi')).toHaveCount(0);
