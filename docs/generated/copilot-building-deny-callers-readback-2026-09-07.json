@@ -1,0 +1,1316 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06 20:48:38.067683+00",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "sourceSha": "d1d0d64ad3a5ac08c633382c4b82226fbebfedca",
+  "readOnly": true,
+  "scope": "Stored code and function identity only for two foundations and 32 named callers; catalog SELECT only",
+  "businessRpcInvocations": 0,
+  "businessRowsRead": false,
+  "permissionGrantRowsRead": false,
+  "modelCalls": 0,
+  "liveDataExposureTested": false,
+  "callInterpretation": "Direct helper-call syntax in stored function code after removing comments/string literals; no execution or traffic observation",
+  "bodyComparison": "Exact prosrc versus the dollar-quoted body in pinned Git source, with a separately labeled newline-only comparison",
+  "summary": {
+    "expectedCallers": 32,
+    "catalogRows": 34,
+    "presentCallers": 32,
+    "callersWithOneDefinition": 32,
+    "callersContainingDirectHelperCall": 32,
+    "callersMatchingExactSource": 32,
+    "foundationsMatchingExactSource": 2,
+    "discrepancyCount": 0
+  },
+  "foundations": [
+    {
+      "schema": "public",
+      "name": "copilot_org_scope_buildings_v1",
+      "sourceFile": "supabase/migrations/20260906201114_copilot_building_deny_scope_v1.sql",
+      "sourceStartLine": 7,
+      "sourceBlobSha256": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73",
+      "sourceBodySha256": "07747eacc8caa4b119ab5746cca96c49e49916e341d57e251125142df11aa839",
+      "sourceBodyBytes": 1533,
+      "sourceCallBodyLines": [],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068118+00",
+          "oid": "587705",
+          "identity": "copilot_org_scope_buildings_v1(text,uuid)",
+          "identityArguments": "p_permission_key text, p_organization_id uuid",
+          "resultType": "uuid[]",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "07747eacc8caa4b119ab5746cca96c49e49916e341d57e251125142df11aa839",
+          "liveProsrcBytes": 1533,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 0,
+          "directHelperCallBodyLines": [],
+          "exactPriorLiveProsrcMatch": false,
+          "priorMeasuredAt": "2026-09-06T19:40:57.043Z"
+        }
+      ]
+    },
+    {
+      "schema": "app_private",
+      "name": "authorized_scope_v3",
+      "sourceFile": "supabase/migrations/20260829100000_copilot_authorized_scope_revocation_v1.sql",
+      "sourceStartLine": 5,
+      "sourceBlobSha256": "5576e428f489f7f36b7e62619c55b8145e21fc64c3629e723aecfd89a07901d7",
+      "sourceBodySha256": "5b87e1cb8a2f5e7708d8cf7f624beeeb3052dd84ed8accf505d41d72a0c66e26",
+      "sourceBodyBytes": 7322,
+      "sourceCallBodyLines": [],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067683+00",
+          "oid": "337676",
+          "identity": "app_private.authorized_scope_v3(text,uuid)",
+          "identityArguments": "p_permission_key text, p_org uuid",
+          "resultType": "TABLE(org_wide boolean, building_ids uuid[], cashbook_ids uuid[])",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, app_private, public"
+          ],
+          "liveProsrcSha256": "5b87e1cb8a2f5e7708d8cf7f624beeeb3052dd84ed8accf505d41d72a0c66e26",
+          "liveProsrcBytes": 7322,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 0,
+          "directHelperCallBodyLines": [],
+          "exactPriorLiveProsrcMatch": true,
+          "priorMeasuredAt": "2026-09-06T19:40:57.043Z"
+        }
+      ]
+    }
+  ],
+  "callers": [
+    {
+      "schema": "public",
+      "name": "copilot_contract_search_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "211",
+      "immediateUse": "building array",
+      "sourceStartLine": 181,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "9bde31bad4dfbd980e3d531c8b1e79bdfb823f5394b469fa559f718aec5330fc",
+      "sourceBodyBytes": 4664,
+      "sourceCallBodyLines": [
+        20
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067877+00",
+          "oid": "617180",
+          "identity": "copilot_contract_search_v1(uuid,text,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_query text, p_status text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "9bde31bad4dfbd980e3d531c8b1e79bdfb823f5394b469fa559f718aec5330fc",
+          "liveProsrcBytes": 4664,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_contract_detail_v1",
+      "sourceFile": "supabase/migrations/20260902193151_copilot_read_rpc_contracts_ie_approvals_v1.sql",
+      "sourceCallLines": "218",
+      "immediateUse": "building array",
+      "sourceStartLine": 195,
+      "sourceBlobSha256": "96a2c87c745ec055b9b9bb4fb56b2dd4445a74d40c504df0bb20144e6a09480b",
+      "sourceBodySha256": "1eab93bd4e9f18df47c44b7f3136bbc7026de356783f34ba7412f045b943efdd",
+      "sourceBodyBytes": 3837,
+      "sourceCallBodyLines": [
+        15
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067852+00",
+          "oid": "617182",
+          "identity": "copilot_contract_detail_v1(uuid,uuid)",
+          "identityArguments": "p_organization_id uuid, p_contract_id uuid",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "1eab93bd4e9f18df47c44b7f3136bbc7026de356783f34ba7412f045b943efdd",
+          "liveProsrcBytes": 3837,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_income_expense_search_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "352",
+      "immediateUse": "building array",
+      "sourceStartLine": 313,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "99ddad16da9cf5d9b2e827b27f6a972ce85011a0fc3d96ddf1974ecb7dc4a78b",
+      "sourceBodyBytes": 4591,
+      "sourceCallBodyLines": [
+        26
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067943+00",
+          "oid": "617183",
+          "identity": "copilot_income_expense_search_v1(uuid,text,date,date,text,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_query text, p_tu date, p_den date, p_loai text, p_trang_thai text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "99ddad16da9cf5d9b2e827b27f6a972ce85011a0fc3d96ddf1974ecb7dc4a78b",
+          "liveProsrcBytes": 4591,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            26
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_pending_requests_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "486",
+      "immediateUse": "PERFORM validity check; separate resolver check follows",
+      "sourceStartLine": 442,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "254dc8ea41470f9d6cf72b31586e49a41ea18772426e0d4f1d6d36326db68071",
+      "sourceBodyBytes": 3459,
+      "sourceCallBodyLines": [
+        36
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068121+00",
+          "oid": "617185",
+          "identity": "copilot_pending_requests_v1(uuid,integer)",
+          "identityArguments": "p_organization_id uuid, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "254dc8ea41470f9d6cf72b31586e49a41ea18772426e0d4f1d6d36326db68071",
+          "liveProsrcBytes": 3459,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            36
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_lead_search_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "573",
+      "immediateUse": "building array plus separate resolver",
+      "sourceStartLine": 542,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "f53ac2b54c5549b944cd8457e29c7e73c7205ba335e8785e8c79a17032ac9317",
+      "sourceBodyBytes": 3781,
+      "sourceCallBodyLines": [
+        21
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068005+00",
+          "oid": "617388",
+          "identity": "copilot_lead_search_v1(uuid,text,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_query text, p_trang_thai text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "f53ac2b54c5549b944cd8457e29c7e73c7205ba335e8785e8c79a17032ac9317",
+          "liveProsrcBytes": 3781,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_meter_readings_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "685",
+      "immediateUse": "building array plus separate resolver",
+      "sourceStartLine": 657,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "fe634747e3379934182c94e79a5a77ab48a9e03eb3a540409871d4c47cd84d7f",
+      "sourceBodyBytes": 4995,
+      "sourceCallBodyLines": [
+        18
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068052+00",
+          "oid": "617390",
+          "identity": "copilot_meter_readings_v1(uuid,text,uuid,integer)",
+          "identityArguments": "p_organization_id uuid, p_ky text, p_building_id uuid, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "fe634747e3379934182c94e79a5a77ab48a9e03eb3a540409871d4c47cd84d7f",
+          "liveProsrcBytes": 4995,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_vehicle_search_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "822",
+      "immediateUse": "building array plus separate resolver",
+      "sourceStartLine": 798,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "d8986934740c7b19125403888cd1936b4a889f39cf13349fa5daaa70f37ba2a6",
+      "sourceBodyBytes": 4030,
+      "sourceCallBodyLines": [
+        15
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.06902+00",
+          "oid": "617392",
+          "identity": "copilot_vehicle_search_v1(uuid,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_query text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "d8986934740c7b19125403888cd1936b4a889f39cf13349fa5daaa70f37ba2a6",
+          "liveProsrcBytes": 4030,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_tasks_v1",
+      "sourceFile": "supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql",
+      "sourceCallLines": "446",
+      "immediateUse": "building array",
+      "sourceStartLine": 420,
+      "sourceBlobSha256": "64eb82a62c39e2129aa53d8db552e66666486e41ad107d996d1a14999e7f47a6",
+      "sourceBodySha256": "d31e82ec7d09dab6acc3a23c6d61e7fb5448306102d777fb3f8b0b03a90d736d",
+      "sourceBodyBytes": 2782,
+      "sourceCallBodyLines": [
+        17
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068977+00",
+          "oid": "617393",
+          "identity": "copilot_tasks_v1(uuid,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_trang_thai text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "d31e82ec7d09dab6acc3a23c6d61e7fb5448306102d777fb3f8b0b03a90d736d",
+          "liveProsrcBytes": 2782,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_material_stock_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "950",
+      "immediateUse": "PERFORM validity check; separate permission check",
+      "sourceStartLine": 911,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "afe8731c71fbfb8535a1fa29c092ad698ea748d56affd651f448c4fd25076424",
+      "sourceBodyBytes": 4765,
+      "sourceCallBodyLines": [
+        30
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068034+00",
+          "oid": "617394",
+          "identity": "copilot_material_stock_v1(uuid,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_query text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "afe8731c71fbfb8535a1fa29c092ad698ea748d56affd651f448c4fd25076424",
+          "liveProsrcBytes": 4765,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_available_rooms_v1",
+      "sourceFile": "supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql",
+      "sourceCallLines": "636",
+      "immediateUse": "building array",
+      "sourceStartLine": 630,
+      "sourceBlobSha256": "64eb82a62c39e2129aa53d8db552e66666486e41ad107d996d1a14999e7f47a6",
+      "sourceBodySha256": "a9729c232adcd7a88af2963922157e7026a11297a14c517297c5cf312634151a",
+      "sourceBodyBytes": 7215,
+      "sourceCallBodyLines": [
+        4
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067734+00",
+          "oid": "587706",
+          "identity": "copilot_available_rooms_v1(uuid)",
+          "identityArguments": "p_organization_id uuid",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "a9729c232adcd7a88af2963922157e7026a11297a14c517297c5cf312634151a",
+          "liveProsrcBytes": 7215,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_invoice_search_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "1049",
+      "immediateUse": "row building predicate",
+      "sourceStartLine": 1038,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "247c6613f94d8b5ab8f8f9919c064620a70ea5aacb1ec4a5714c7d1c08f16b2a",
+      "sourceBodyBytes": 1823,
+      "sourceCallBodyLines": [
+        9
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067977+00",
+          "oid": "587708",
+          "identity": "copilot_invoice_search_v1(uuid,text,text,text)",
+          "identityArguments": "p_organization_id uuid, p_billing_month text, p_payment_status text, p_search text",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "247c6613f94d8b5ab8f8f9919c064620a70ea5aacb1ec4a5714c7d1c08f16b2a",
+          "liveProsrcBytes": 1823,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_financial_pnl_v1",
+      "sourceFile": "supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql",
+      "sourceCallLines": "769–770",
+      "immediateUse": "nested report building argument",
+      "sourceStartLine": 764,
+      "sourceBlobSha256": "64eb82a62c39e2129aa53d8db552e66666486e41ad107d996d1a14999e7f47a6",
+      "sourceBodySha256": "8be5f097201fb5ee3741917a858d43995fa484ec00d7973b70e828d5762c3b00",
+      "sourceBodyBytes": 400,
+      "sourceCallBodyLines": [
+        3,
+        4
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067941+00",
+          "oid": "587709",
+          "identity": "copilot_financial_pnl_v1(uuid,date,date,boolean)",
+          "identityArguments": "p_organization_id uuid, p_start_date date, p_end_date date, p_accrual boolean",
+          "resultType": "TABLE(month date, building_id uuid, building_name text, is_virtual boolean, revenue numeric, expense numeric, net numeric)",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "8be5f097201fb5ee3741917a858d43995fa484ec00d7973b70e828d5762c3b00",
+          "liveProsrcBytes": 400,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 2,
+          "directHelperCallBodyLines": [
+            3,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_occupancy_v1",
+      "sourceFile": "supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql",
+      "sourceCallLines": "778",
+      "immediateUse": "nested report building argument",
+      "sourceStartLine": 775,
+      "sourceBlobSha256": "64eb82a62c39e2129aa53d8db552e66666486e41ad107d996d1a14999e7f47a6",
+      "sourceBodySha256": "17b23cc3f0e658b02667b04f5e5b1701f2fa1e6d6681373ab9ce5b3957358718",
+      "sourceBodyBytes": 161,
+      "sourceCallBodyLines": [
+        1
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068117+00",
+          "oid": "587710",
+          "identity": "copilot_occupancy_v1(uuid,date,integer)",
+          "identityArguments": "p_organization_id uuid, p_as_of_date date, p_window_days integer",
+          "resultType": "TABLE(building_id uuid, building_name text, total integer, occupied integer, reserved integer, maintenance integer, unavailable integer, available integer, occupancy_pct numeric, committed_pct numeric, missed_revenue numeric, generated_at timestamp with time zone)",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "17b23cc3f0e658b02667b04f5e5b1701f2fa1e6d6681373ab9ce5b3957358718",
+          "liveProsrcBytes": 161,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_occupancy_upcoming_v1",
+      "sourceFile": "supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql",
+      "sourceCallLines": "784",
+      "immediateUse": "nested report building argument",
+      "sourceStartLine": 781,
+      "sourceBlobSha256": "64eb82a62c39e2129aa53d8db552e66666486e41ad107d996d1a14999e7f47a6",
+      "sourceBodySha256": "efc0c8f3dda508d5189b86b844859d58287664d3e53f0eefac8efbb0dbe18dd4",
+      "sourceBodyBytes": 184,
+      "sourceCallBodyLines": [
+        1
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068113+00",
+          "oid": "587711",
+          "identity": "copilot_occupancy_upcoming_v1(uuid,date,integer)",
+          "identityArguments": "p_organization_id uuid, p_as_of_date date, p_window_days integer",
+          "resultType": "TABLE(contract_id uuid, contract_number text, building_id uuid, building_name text, room_id uuid, room_name text, effective_end_date date, days_remaining integer, rent_price numeric, extension_applied boolean)",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "efc0c8f3dda508d5189b86b844859d58287664d3e53f0eefac8efbb0dbe18dd4",
+          "liveProsrcBytes": 184,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_invoice_stats_v1",
+      "sourceFile": "supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql",
+      "sourceCallLines": "789",
+      "immediateUse": "nested report building argument",
+      "sourceStartLine": 787,
+      "sourceBlobSha256": "64eb82a62c39e2129aa53d8db552e66666486e41ad107d996d1a14999e7f47a6",
+      "sourceBodySha256": "1ae1d128e7f504481db8f3386f6f140a829ede93a29f86dc958e1dad84736848",
+      "sourceBodyBytes": 178,
+      "sourceCallBodyLines": [
+        1
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068002+00",
+          "oid": "587712",
+          "identity": "copilot_invoice_stats_v1(uuid,text)",
+          "identityArguments": "p_organization_id uuid, p_billing_month text",
+          "resultType": "json",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "1ae1d128e7f504481db8f3386f6f140a829ede93a29f86dc958e1dad84736848",
+          "liveProsrcBytes": 178,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_deposit_summary_v1",
+      "sourceFile": "supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql",
+      "sourceCallLines": "795",
+      "immediateUse": "nested report building argument",
+      "sourceStartLine": 792,
+      "sourceBlobSha256": "64eb82a62c39e2129aa53d8db552e66666486e41ad107d996d1a14999e7f47a6",
+      "sourceBodySha256": "6ec7437c71a1254aebbb3c67648a60817ed7c9c1e08cbb81866300f871ba06c6",
+      "sourceBodyBytes": 134,
+      "sourceCallBodyLines": [
+        1
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067931+00",
+          "oid": "587713",
+          "identity": "copilot_deposit_summary_v1(uuid)",
+          "identityArguments": "p_organization_id uuid",
+          "resultType": "TABLE(building_id uuid, building_name text, contract_count bigint, expected numeric, held numeric, shortfall_all numeric, shortfall_short numeric, full_count bigint, short_count bigint, first_invoice_count bigint)",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "6ec7437c71a1254aebbb3c67648a60817ed7c9c1e08cbb81866300f871ba06c6",
+          "liveProsrcBytes": 134,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_customer_search_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "1100",
+      "immediateUse": "building array",
+      "sourceStartLine": 1062,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "d569912e95a1451fa209a58fb496ffe681117dbfe6073106d7c17d5af230e5b2",
+      "sourceBodyBytes": 2493,
+      "sourceCallBodyLines": [
+        18
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067896+00",
+          "oid": "587790",
+          "identity": "copilot_customer_search_v1(uuid,text)",
+          "identityArguments": "p_organization_id uuid, p_search text",
+          "resultType": "TABLE(customer_id uuid, customer_name text, phone text, contract_id uuid, contract_number text, contract_status text, room_id uuid, room_name text, building_id uuid, building_name text, is_representative boolean)",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "d569912e95a1451fa209a58fb496ffe681117dbfe6073106d7c17d5af230e5b2",
+          "liveProsrcBytes": 2493,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_expiring_contracts_v1",
+      "sourceFile": "supabase/migrations/20260902203258_copilot_read_rpc_operations_v1.sql",
+      "sourceCallLines": "950",
+      "immediateUse": "building array",
+      "sourceStartLine": 908,
+      "sourceBlobSha256": "64eb82a62c39e2129aa53d8db552e66666486e41ad107d996d1a14999e7f47a6",
+      "sourceBodySha256": "cb29b143d5538a607cb6ae6cfc6ecb7e99275769fe97593746d8470da170c937",
+      "sourceBodyBytes": 2246,
+      "sourceCallBodyLines": [
+        21
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.067934+00",
+          "oid": "587791",
+          "identity": "copilot_expiring_contracts_v1(uuid,date,integer)",
+          "identityArguments": "p_organization_id uuid, p_as_of_date date, p_window_days integer",
+          "resultType": "TABLE(contract_id uuid, contract_number text, customer_name text, end_date date, effective_end_date date, contract_status text, room_id uuid, room_name text, building_id uuid, building_name text, is_representative boolean)",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "cb29b143d5538a607cb6ae6cfc6ecb7e99275769fe97593746d8470da170c937",
+          "liveProsrcBytes": 2246,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_vacant_rooms_v1",
+      "sourceFile": "supabase/migrations/20260902213111_copilot_report_rpc_v1.sql",
+      "sourceCallLines": "111",
+      "immediateUse": "building array",
+      "sourceStartLine": 87,
+      "sourceBlobSha256": "f0b48c425c403adfe04d672e24c7ec5258f779e7f0341d72de1c78017923717a",
+      "sourceBodySha256": "77c6846112c14f4227d9e280b0629e650b99710085656fd305ed65983d2928ec",
+      "sourceBodyBytes": 3387,
+      "sourceCallBodyLines": [
+        15
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068339+00",
+          "oid": "617741",
+          "identity": "copilot_report_vacant_rooms_v1(uuid,uuid,integer)",
+          "identityArguments": "p_organization_id uuid, p_building_id uuid, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "77c6846112c14f4227d9e280b0629e650b99710085656fd305ed65983d2928ec",
+          "liveProsrcBytes": 3387,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_renewals_v1",
+      "sourceFile": "supabase/migrations/20260902213111_copilot_report_rpc_v1.sql",
+      "sourceCallLines": "229",
+      "immediateUse": "building array",
+      "sourceStartLine": 203,
+      "sourceBlobSha256": "f0b48c425c403adfe04d672e24c7ec5258f779e7f0341d72de1c78017923717a",
+      "sourceBodySha256": "544195a900ba6d3a10efde864820ebe7d5e05a31af82d6814f1d1825324d8375",
+      "sourceBodyBytes": 4528,
+      "sourceCallBodyLines": [
+        16
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068293+00",
+          "oid": "617743",
+          "identity": "copilot_report_renewals_v1(uuid,date,date,integer)",
+          "identityArguments": "p_organization_id uuid, p_tu date, p_den date, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "544195a900ba6d3a10efde864820ebe7d5e05a31af82d6814f1d1825324d8375",
+          "liveProsrcBytes": 4528,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_terminations_v1",
+      "sourceFile": "supabase/migrations/20260902213111_copilot_report_rpc_v1.sql",
+      "sourceCallLines": "378",
+      "immediateUse": "building array",
+      "sourceStartLine": 351,
+      "sourceBlobSha256": "f0b48c425c403adfe04d672e24c7ec5258f779e7f0341d72de1c78017923717a",
+      "sourceBodySha256": "9fc0c305972b88116057f9f6a55d435cdf29177d9e428072c6b0a2e4eef93adb",
+      "sourceBodyBytes": 4903,
+      "sourceCallBodyLines": [
+        17
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.06832+00",
+          "oid": "617745",
+          "identity": "copilot_report_terminations_v1(uuid,date,date,integer)",
+          "identityArguments": "p_organization_id uuid, p_tu date, p_den date, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "9fc0c305972b88116057f9f6a55d435cdf29177d9e428072c6b0a2e4eef93adb",
+          "liveProsrcBytes": 4903,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_new_leases_v1",
+      "sourceFile": "supabase/migrations/20260902213111_copilot_report_rpc_v1.sql",
+      "sourceCallLines": "525",
+      "immediateUse": "building array",
+      "sourceStartLine": 499,
+      "sourceBlobSha256": "f0b48c425c403adfe04d672e24c7ec5258f779e7f0341d72de1c78017923717a",
+      "sourceBodySha256": "60959c0159251b3e55a7f9b3aadd766e868c0186599b9133d3fd466bac173a01",
+      "sourceBodyBytes": 3472,
+      "sourceCallBodyLines": [
+        16
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.06824+00",
+          "oid": "617747",
+          "identity": "copilot_report_new_leases_v1(uuid,date,date,integer)",
+          "identityArguments": "p_organization_id uuid, p_tu date, p_den date, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "60959c0159251b3e55a7f9b3aadd766e868c0186599b9133d3fd466bac173a01",
+          "liveProsrcBytes": 3472,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_expense_ratio_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "1201",
+      "immediateUse": "building array",
+      "sourceStartLine": 1168,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "be13cabb9a10bacdd58bbd26cbe8e11f5288405f2ce1ab0c87226f344b869b18",
+      "sourceBodyBytes": 5136,
+      "sourceCallBodyLines": [
+        22
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068212+00",
+          "oid": "617749",
+          "identity": "copilot_report_expense_ratio_v1(uuid,date,date,uuid,integer)",
+          "identityArguments": "p_organization_id uuid, p_tu date, p_den date, p_building_id uuid, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "be13cabb9a10bacdd58bbd26cbe8e11f5288405f2ce1ab0c87226f344b869b18",
+          "liveProsrcBytes": 5136,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_daily_cashbook_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "1366",
+      "immediateUse": "building array plus separate resolver",
+      "sourceStartLine": 1333,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "524330adc23dd7b780931bff3e6e4c345986095203429ee253f97f6b82a3ece5",
+      "sourceBodyBytes": 3723,
+      "sourceCallBodyLines": [
+        22
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068171+00",
+          "oid": "617751",
+          "identity": "copilot_report_daily_cashbook_v1(uuid,date,date,uuid,integer)",
+          "identityArguments": "p_organization_id uuid, p_tu date, p_den date, p_building_id uuid, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "524330adc23dd7b780931bff3e6e4c345986095203429ee253f97f6b82a3ece5",
+          "liveProsrcBytes": 3723,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_cash_flow_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "1480",
+      "immediateUse": "building array plus separate resolver",
+      "sourceStartLine": 1447,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "1d92d3a64be30198a2579d344783ec9253f94d476cbab21d0ed108d58785c502",
+      "sourceBodyBytes": 3828,
+      "sourceCallBodyLines": [
+        22
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068152+00",
+          "oid": "617753",
+          "identity": "copilot_report_cash_flow_v1(uuid,date,date,uuid,integer)",
+          "identityArguments": "p_organization_id uuid, p_tu date, p_den date, p_building_id uuid, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "1d92d3a64be30198a2579d344783ec9253f94d476cbab21d0ed108d58785c502",
+          "liveProsrcBytes": 3828,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_payment_schedule_v1",
+      "sourceFile": "supabase/migrations/20260902213111_copilot_report_rpc_v1.sql",
+      "sourceCallLines": "1033",
+      "immediateUse": "building array",
+      "sourceStartLine": 1008,
+      "sourceBlobSha256": "f0b48c425c403adfe04d672e24c7ec5258f779e7f0341d72de1c78017923717a",
+      "sourceBodySha256": "ad1240da5c964031d9b3dc1ab4825b4d2f57f992c7db431118bd0c2ca29aff5f",
+      "sourceBodyBytes": 3565,
+      "sourceCallBodyLines": [
+        16
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068276+00",
+          "oid": "617755",
+          "identity": "copilot_report_payment_schedule_v1(uuid,integer,integer)",
+          "identityArguments": "p_organization_id uuid, p_so_ngay integer, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "ad1240da5c964031d9b3dc1ab4825b4d2f57f992c7db431118bd0c2ca29aff5f",
+          "liveProsrcBytes": 3565,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_overpayment_v1",
+      "sourceFile": "supabase/migrations/20260902213111_copilot_report_rpc_v1.sql",
+      "sourceCallLines": "1146",
+      "immediateUse": "building array",
+      "sourceStartLine": 1125,
+      "sourceBlobSha256": "f0b48c425c403adfe04d672e24c7ec5258f779e7f0341d72de1c78017923717a",
+      "sourceBodySha256": "6b64349854ca0cd771878af05f81c102e09d2e47b12eb62a1a7a0b20ba50b9cd",
+      "sourceBodyBytes": 2711,
+      "sourceCallBodyLines": [
+        13
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068257+00",
+          "oid": "617757",
+          "identity": "copilot_report_overpayment_v1(uuid,integer)",
+          "identityArguments": "p_organization_id uuid, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "6b64349854ca0cd771878af05f81c102e09d2e47b12eb62a1a7a0b20ba50b9cd",
+          "liveProsrcBytes": 2711,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_report_deposits_v1",
+      "sourceFile": "supabase/migrations/20260902213111_copilot_report_rpc_v1.sql",
+      "sourceCallLines": "1259",
+      "immediateUse": "building array",
+      "sourceStartLine": 1230,
+      "sourceBlobSha256": "f0b48c425c403adfe04d672e24c7ec5258f779e7f0341d72de1c78017923717a",
+      "sourceBodySha256": "1343380ec20963ef00058e502eb51db27c4b292d494be3955ee6edbae99757a6",
+      "sourceBodyBytes": 3370,
+      "sourceCallBodyLines": [
+        20
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068196+00",
+          "oid": "617758",
+          "identity": "copilot_report_deposits_v1(uuid,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_trang_thai text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "1343380ec20963ef00058e502eb51db27c4b292d494be3955ee6edbae99757a6",
+          "liveProsrcBytes": 3370,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_salary_summary_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "1603",
+      "immediateUse": "PERFORM validity check; additional permissions checked",
+      "sourceStartLine": 1563,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "df9d8bca1c62887662b955190c9757566d42701037ea137f94e2e95a03ccf8cd",
+      "sourceBodyBytes": 7675,
+      "sourceCallBodyLines": [
+        31
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068858+00",
+          "oid": "618164",
+          "identity": "copilot_salary_summary_v1(uuid,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_ky text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "df9d8bca1c62887662b955190c9757566d42701037ea137f94e2e95a03ccf8cd",
+          "liveProsrcBytes": 7675,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_shareholder_profit_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "1786",
+      "immediateUse": "building array; additional permissions checked",
+      "sourceStartLine": 1747,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "dde24528b3792315a16227ec0d3f894acebc8d718b4d18fb0d006c422661def5",
+      "sourceBodyBytes": 11975,
+      "sourceCallBodyLines": [
+        30
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068903+00",
+          "oid": "618166",
+          "identity": "copilot_shareholder_profit_v1(uuid,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_ky text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "dde24528b3792315a16227ec0d3f894acebc8d718b4d18fb0d006c422661def5",
+          "liveProsrcBytes": 11975,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_zalo_conversations_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "2076",
+      "immediateUse": "building array plus separate resolver",
+      "sourceStartLine": 2050,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "37419b39d184353084c3ee995fde4d082840b57b65273aa4b43c73448481ddb1",
+      "sourceBodyBytes": 4615,
+      "sourceCallBodyLines": [
+        17
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.06904+00",
+          "oid": "618168",
+          "identity": "copilot_zalo_conversations_v1(uuid,text,integer)",
+          "identityArguments": "p_organization_id uuid, p_query text, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "37419b39d184353084c3ee995fde4d082840b57b65273aa4b43c73448481ddb1",
+          "liveProsrcBytes": 4615,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "public",
+      "name": "copilot_network_status_v1",
+      "sourceFile": "supabase/migrations/20260903050215_copilot_read_rpc_hardening_v2.sql",
+      "sourceCallLines": "2214",
+      "immediateUse": "building array; downstream scope needs dedicated audit",
+      "sourceStartLine": 2183,
+      "sourceBlobSha256": "9b1b9349965fa36b85b88cbb33663c25217020f58899f63d5702ade7d356a507",
+      "sourceBodySha256": "954f973516d601cffa76224a950efaa0a83d82d94181108f3e3156cdb0be203b",
+      "sourceBodyBytes": 5747,
+      "sourceCallBodyLines": [
+        22
+      ],
+      "sourceEncoding": "Exact pinned Git blob; no whitespace, newline or SQL normalization",
+      "liveDefinitions": [
+        {
+          "measuredAt": "2026-09-06 20:48:38.068078+00",
+          "oid": "618170",
+          "identity": "copilot_network_status_v1(uuid,uuid,integer)",
+          "identityArguments": "p_organization_id uuid, p_building_id uuid, p_limit integer",
+          "resultType": "jsonb",
+          "owner": "postgres",
+          "securityDefiner": true,
+          "volatility": "s",
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "liveProsrcSha256": "954f973516d601cffa76224a950efaa0a83d82d94181108f3e3156cdb0be203b",
+          "liveProsrcBytes": 5747,
+          "exactPinnedSourceBodyMatch": true,
+          "newlineNormalizedBodyMatch": true,
+          "directHelperCallCount": 1,
+          "directHelperCallBodyLines": [
+            22
+          ]
+        }
+      ]
+    }
+  ],
+  "discrepancies": []
+}

@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 541,
-  "soFileDocBangFs": 180,
-  "tongLoiGoi": 370,
-  "khongPhanLoaiDuoc": 187,
+  "tongSoFileTest": 542,
+  "soFileDocBangFs": 181,
+  "tongLoiGoi": 371,
+  "khongPhanLoaiDuoc": 189,
   "theoLoai": {
     "manifest": {
       "soFile": 21,
@@ -23,7 +23,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 61,
+      "soFile": 60,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -651,6 +651,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/copilot-building-deny-scope.test.mjs",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "scripts/__tests__/copilot-golden-real-cli.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -1013,10 +1019,8 @@
     {
       "file": "src/lib/__tests__/copilotOrgScopeSemanticsMigration.test.ts",
       "soGoi": 1,
-      "loai": {
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 0
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/copilotProviderPricingMigration.test.ts",

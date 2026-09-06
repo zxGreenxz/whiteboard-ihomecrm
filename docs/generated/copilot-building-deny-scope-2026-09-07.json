@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-06T20:30:58.928Z",
+  "sourceBase": "a181baa02653c87a902a2eb8b1b5eb5b316dd42e",
+  "sourceCommits": [
+    "cfb68176374e793056dcc333637b37caad1982cb",
+    "fbf14ff53f7c82d05300286b879055c003ca7149"
+  ],
+  "integratedHead": "5e6864f7ee10dbf437a5f4744389f907deb25113",
+  "files": [
+    {
+      "path": ".github/workflows/ci-gates.yml",
+      "gitBlobSha256": "951a250e538a2a07d6fc25757164680da6179df36ee8291db36308ca87019030"
+    },
+    {
+      "path": "scripts/__tests__/copilot-building-deny-scope.test.mjs",
+      "gitBlobSha256": "bf1a9953daa00757cde520d0abdd9b61ea749d9838c3d578ea3bcaccd56d5f07"
+    },
+    {
+      "path": "src/lib/__tests__/copilotOrgScopeSemanticsMigration.test.ts",
+      "gitBlobSha256": "51ea3db09b9e0e04e341cd8846e729f7ab6e0737b094ab822162b643232b1abf"
+    },
+    {
+      "path": "supabase/migrations/20260906201114_copilot_building_deny_scope_v1.sql",
+      "gitBlobSha256": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73"
+    },
+    {
+      "path": "tooling/test-matrix.json",
+      "gitBlobSha256": "93bca647f2852200770f7d6a768a38787bdd0f17cda9e677cd849df73ed09c7a"
+    }
+  ],
+  "migration": {
+    "path": "supabase/migrations/20260906201114_copilot_building_deny_scope_v1.sql",
+    "checkoutSha256": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73",
+    "expectedHelperProsrcSha256": "07747eacc8caa4b119ab5746cca96c49e49916e341d57e251125142df11aa839"
+  },
+  "scope": "Project only the canonical resolver final building_ids through active selected-organization buildings, preserving explicit DENYs. No resolver, grants, owner, ACL, data, flags or ledger changes.",
+  "verification": {
+    "disposableActualSqlRegression": {
+      "passed": 1,
+      "failed": 0,
+      "finalSource": "fbf14ff53f7c82d05300286b879055c003ca7149"
+    },
+    "latestMigrationDefinitionVitest": {
+      "passed": 7,
+      "failed": 0,
+      "source": "cfb68176374e793056dcc333637b37caad1982cb",
+      "unchangedByTestOnlyFollowup": true
+    },
+    "originalDefectRed": "Actual resolver org_wide=true/{A}; old helper {A,B}; assertion failed on denied B.",
+    "mutations": [
+      {
+        "type": "Restore org_wide widening",
+        "before": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73",
+        "mutated": "c10a82d7ef66db574f845e28896b1dafd4e0d7ddcf2936ba80fc8513618fa008",
+        "expectedAndActualExit": 1,
+        "restoredExactDigest": true
+      },
+      {
+        "type": "Return NULL for empty array",
+        "before": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73",
+        "mutated": "f8d060809a0c4d585eab4fda79dfd117def71361e2ec40ef4778ef6ed3df2450",
+        "expectedAndActualExit": 1,
+        "restoredExactDigest": true,
+        "priorTestBlindSpotReproduced": true
+      }
+    ],
+    "independentReviews": {
+      "initial": "Approved with two minor test/report issues",
+      "followup": "Both addressed; final source approved",
+      "noOpenFindings": true
+    },
+    "sourceStaticChecks": [
+      "test-matrix: 542 files, 8 suites, zero orphaned",
+      "migration-test-liveness",
+      "workflow-paths",
+      "no-auto-apply",
+      "node syntax",
+      "staged diff"
+    ],
+    "coordinatorRemotePreflight": {
+      "migrationAppliedTwiceThenRolledBack": true,
+      "stableFunctionsNoLocks": true,
+      "frozenLedgerRows": 372,
+      "frozenLedgerMaxVersion": "20260727095000",
+      "provenance": "184 post-cutoff entries; 626 legacy bytes preserved"
+    },
+    "integrationStatic": {
+      "passed": 42,
+      "failed": 0,
+      "seconds": 129,
+      "completedAt": "2026-09-06T20:33:40.520Z"
+    },
+    "remoteCi": [
+      {
+        "name": "CI Gates",
+        "runId": 34058631662,
+        "conclusion": "success",
+        "sha": "d1d0d64ad3a5ac08c633382c4b82226fbebfedca"
+      },
+      {
+        "name": "Migration Restore Drill",
+        "runId": 34058631786,
+        "conclusion": "success",
+        "sha": "d1d0d64ad3a5ac08c633382c4b82226fbebfedca"
+      }
+    ]
+  },
+  "limitations": {
+    "liveDataExposureTested": false,
+    "graphSymbolImpact": "UNKNOWN; exact source and 32-caller live catalog attestation used",
+    "liveApply": "Applied through official lane with fresh full backup; exact live body, unchanged resolver and metadata verified.",
+    "fullPlanAccepted": false
+  },
+  "liveDeployment": {
+    "appliedAt": "2026-09-06T20:46:17.234Z",
+    "readbackAt": "2026-09-06T20:46:17.680Z",
+    "reviewedHead": "d1d0d64ad3a5ac08c633382c4b82226fbebfedca",
+    "draftPr": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/54",
+    "officialReceipt": "docs/generated/schema-change-evidence/20260906201114_copilot_building_deny_scope_v1.json",
+    "readback": {
+      "measuredAt": "2026-09-06T20:46:17.680Z",
+      "mode": "apply",
+      "reviewedHead": "d1d0d64ad3a5ac08c633382c4b82226fbebfedca",
+      "projectRef": "tryymsxyyckgbrmmvozx",
+      "migration": "supabase/migrations/20260906201114_copilot_building_deny_scope_v1.sql",
+      "statementSha256": "2adb98784d82f95ea27f6dd795c8d9087295439e0b9330c00a214f12aca06a73",
+      "cleanByExactBytes": true,
+      "historicalEolArtifact": "supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql",
+      "draftPr": "https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/54",
+      "environment": [
+        {
+          "database": "postgres",
+          "demo_active": true,
+          "real_exists": true
+        }
+      ],
+      "before": [
+        {
+          "schema_name": "app_private",
+          "proname": "authorized_scope_v3",
+          "identity_arguments": "p_permission_key text, p_org uuid",
+          "source_sha256": "5b87e1cb8a2f5e7708d8cf7f624beeeb3052dd84ed8accf505d41d72a0c66e26",
+          "prosecdef": true,
+          "provolatile": "s",
+          "proconfig": [
+            "search_path=pg_catalog, app_private, public"
+          ],
+          "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+          "owner_name": "postgres"
+        },
+        {
+          "schema_name": "public",
+          "proname": "copilot_org_scope_buildings_v1",
+          "identity_arguments": "p_permission_key text, p_organization_id uuid",
+          "source_sha256": "98b002b8548743d4276f7a5931a0f81488803d384320dcaeef5b623ee9bbf306",
+          "prosecdef": true,
+          "provolatile": "s",
+          "proconfig": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "owner_name": "postgres"
+        }
+      ],
+      "activeE2eRuns": 0,
+      "after": [
+        {
+          "schema_name": "app_private",
+          "proname": "authorized_scope_v3",
+          "identity_arguments": "p_permission_key text, p_org uuid",
+          "source_sha256": "5b87e1cb8a2f5e7708d8cf7f624beeeb3052dd84ed8accf505d41d72a0c66e26",
+          "prosecdef": true,
+          "provolatile": "s",
+          "proconfig": [
+            "search_path=pg_catalog, app_private, public"
+          ],
+          "proacl": "{postgres=X/postgres,authenticated=X/postgres}",
+          "owner_name": "postgres"
+        },
+        {
+          "schema_name": "public",
+          "proname": "copilot_org_scope_buildings_v1",
+          "identity_arguments": "p_permission_key text, p_organization_id uuid",
+          "source_sha256": "07747eacc8caa4b119ab5746cca96c49e49916e341d57e251125142df11aa839",
+          "prosecdef": true,
+          "provolatile": "s",
+          "proconfig": [
+            "search_path=pg_catalog, public, app_private"
+          ],
+          "proacl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "owner_name": "postgres"
+        }
+      ],
+      "exactBodyAndMetadataVerified": true,
+      "resolverUnchanged": true,
+      "businessDataChanged": false
+    },
+    "callerAttestation": {
+      "path": "docs/generated/copilot-building-deny-callers-readback-2026-09-07.json",
+      "measuredAt": "2026-09-06 20:48:38.067683+00",
+      "summary": {
+        "expectedCallers": 32,
+        "catalogRows": 34,
+        "presentCallers": 32,
+        "callersWithOneDefinition": 32,
+        "callersContainingDirectHelperCall": 32,
+        "callersMatchingExactSource": 32,
+        "foundationsMatchingExactSource": 2,
+        "discrepancyCount": 0
+      }
+    },
+    "catalogFingerprintNote": "Unchanged aggregate fingerprint does not cover prosrc bodies (capture-production-catalog.mjs:163). Exact function-body SHA-256 plus owner/ACL/config readback verifies this body-only change."
+  }
+}
