@@ -983,15 +983,24 @@ test('ca 6 — kế hoạch L5 đầy đủ: PIN → APPROVED → execute → re
 
     // `copilot_plan_get_v1` lọc sổ theo `plan_id` (đọc thẳng hàm:
     // `WHERE l.plan_id = p_plan_id`). Dòng `action_executed` mà
-    // `copilot_execute_ie_duyet_v1` tự ghi (MANG before_digest/after_digest)
-    // KHÔNG có `plan_id` — nó không lọt qua bộ lọc này. Dòng của KẾ HOẠCH là
-    // `step_done` (do chính `copilot_plan_execute_step_v1` ghi ở "ĐUÔI"), và
-    // dòng đó chỉ mang `after_digest`, không mang `before_digest` — đọc đúng
-    // thân hàm trước khi đoán, đừng kỳ vọng một trường không tồn tại.
+    // `copilot_execute_ie_duyet_v1` tự ghi KHÔNG có `plan_id` — nó không lọt qua
+    // bộ lọc này. Dòng của KẾ HOẠCH là `step_done` (do chính
+    // `copilot_plan_execute_step_v1` ghi ở "ĐUÔI").
+    //
+    // GIÁ TRỊ digest KHÔNG ra tới đây, và đó là chủ ý: `copilot_plan_get_v1` và
+    // `copilot_action_ledger_list_v1` — hai đường đọc sổ duy nhất PostgREST với
+    // tới được — cùng trừ `payload_digest`/`before_digest`/`after_digest` với
+    // cùng một câu lý do ("một hex 64 ký tự trong tay trình duyệt chỉ mời người
+    // ta thử đoán ngược"), và `app_private` không nằm trong `exposed_schemas`.
+    // Thứ bài này cần chứng minh là bước L5 CÓ để lại digest sau-khi-ghi, nên nó
+    // đọc cờ `has_after_digest` (thêm ở 20260905181157) — chứng minh sự CÓ MẶT
+    // mà không tiết lộ giá trị. Đừng "sửa" nó về `after_digest`: hàng rào không
+    // nới cho bài test.
     const doc = await docKeHoach(sys, ke.plan_id);
     const step = doc.ledger?.find((l) => l.event === 'step_done' && l.action_id === HANH_DONG_IE_DUYET);
     expect(step, 'Ledger của kế hoạch phải có dòng step_done cho bước L5').toBeTruthy();
-    expect(step?.after_digest, 'after_digest phải là sha256 hex').toMatch(/^[0-9a-f]{64}$/);
+    expect(step?.has_after_digest, 'Bước L5 phải để lại after_digest trong sổ').toBe(true);
+    expect(step?.after_digest, 'Giá trị digest KHÔNG được ra khỏi máy chủ').toBeUndefined();
     expect(step?.consent_kind).toBe('step_up');
     expect(step?.step_up_id, 'step_up_id phải được ghi lại (khác lượt duyệt cũ)').toBeTruthy();
 

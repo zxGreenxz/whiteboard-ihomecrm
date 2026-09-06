@@ -272,6 +272,41 @@ describe('duyetKeHoach', () => {
     expect(kq.planStatus).toBe('EXPIRED');
     expect(kq.thongBao).toContain('quá hạn');
   });
+
+  // Ca 6 của ma trận L5 đỏ vì vỏ trả về của `copilot_plan_approve_v1` không mang
+  // `consent_kind` (vá ở 20260905181157: một biến `v_consent_kind` cho cả hàng
+  // ghi, dòng sổ và ba vỏ trả về). Client phải CHIẾU khoá đó ra ngoài, chứ không
+  // được suy từ "mình có truyền token hay không" — chỉ máy chủ biết token có
+  // được tiêu thật.
+  it('chiếu `consent_kind` của máy chủ ra `consentKind`, không tự suy', async () => {
+    rpc.mockResolvedValueOnce(tra({ ...keHoach(), consent_nonce: NONCE }));
+    await taoKeHoach({ organizationId: ORG, clientRequestId: 'r', buoc: [] });
+    rpc.mockResolvedValueOnce(
+      tra({
+        ok: true,
+        error_code: null,
+        plan_id: PLAN,
+        plan_version: 2,
+        plan_status: 'APPROVED',
+        consent_kind: 'step_up',
+        execute_deadline: '2026-09-05T10:00:00Z',
+      }),
+    );
+    // KHÔNG truyền token ở đây: nếu client tự suy từ tham số thì nó sẽ ra
+    // 'click'. Giá trị đúng là thứ máy chủ nói.
+    const kq = await duyetKeHoach(PLAN, 1, DIGEST);
+    expect(kq.consentKind).toBe('step_up');
+  });
+
+  it('máy chủ không nói `consent_kind` ⇒ `consentKind` là null, không đoán "click"', async () => {
+    rpc.mockResolvedValueOnce(tra({ ...keHoach(), consent_nonce: NONCE }));
+    await taoKeHoach({ organizationId: ORG, clientRequestId: 'r', buoc: [] });
+    rpc.mockResolvedValueOnce(
+      tra({ ok: false, error_code: 'plan_busy', plan_id: PLAN, plan_version: 1, plan_status: 'DRAFT' }),
+    );
+    const kq = await duyetKeHoach(PLAN, 1, DIGEST);
+    expect(kq.consentKind).toBeNull();
+  });
 });
 
 describe('thucThiBuoc', () => {

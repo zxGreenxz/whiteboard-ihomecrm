@@ -388,12 +388,23 @@ export async function taoKeHoach(thamSo: ThamSoTaoKeHoach): Promise<KetQuaTaoKeH
 // DUYỆT — chỗ DUY NHẤT tiêu nonce cấp kế hoạch
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type LoaiDongY = 'click' | 'step_up' | 'standing_grant';
+
 export interface KetQuaDuyet {
   ok: boolean;
   maLoi: string | null;
   thongBao: string | null;
   planStatus: TrangThaiKeHoach | null;
   planVersion: number | null;
+  /**
+   * Loại đồng ý mà máy chủ ĐÃ ghi cho kế hoạch này: `click` (chỉ bấm duyệt),
+   * `step_up` (kèm token PIN), `standing_grant` (server tự duyệt theo uỷ quyền
+   * đứng — đường đó không đi qua hàm này). Đọc từ vỏ trả về của
+   * `copilot_plan_approve_v1`, nơi nó cùng một biến với giá trị ghi vào hàng
+   * `copilot_plans` và vào dòng sổ — nên đây là sự thật của máy chủ, không phải
+   * suy đoán của client từ việc "có truyền token hay không".
+   */
+  consentKind: LoaiDongY | null;
   executeDeadline: string | null;
 }
 
@@ -425,6 +436,7 @@ export async function duyetKeHoach(
       thongBao: dienGiaiLoiKeHoach('confirmation_not_found'),
       planStatus: null,
       planVersion: null,
+      consentKind: null,
       executeDeadline: null,
     };
   }
@@ -443,6 +455,7 @@ export async function duyetKeHoach(
     thongBao: phanHoi.maLoi ? dienGiaiLoiKeHoach(phanHoi.thongDiep ?? phanHoi.maLoi) : null,
     planStatus: (chuoi(ban.plan_status) as TrangThaiKeHoach | null) ?? null,
     planVersion: so(ban.plan_version),
+    consentKind: (chuoi(ban.consent_kind) as LoaiDongY | null) ?? null,
     executeDeadline: chuoi(ban.execute_deadline),
   };
 }
