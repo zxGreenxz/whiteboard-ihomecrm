@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import yaml from "js-yaml";
 
-import { coExcludeCuaBuoc, jobCuaWorkflow } from "../check-test-matrix.mjs";
+import { coExcludeCuaBuoc, jobCuaWorkflow, lenhCuaBuoc } from "../check-test-matrix.mjs";
 
 const matrix = JSON.parse(readFileSync(new URL("../../tooling/test-matrix.json", import.meta.url), "utf8"));
 const CI = ".github/workflows/ci-gates.yml";
@@ -52,6 +52,19 @@ describe("jobCuaWorkflow", () => {
   });
 });
 
+describe("lenhCuaBuoc", () => {
+  const doc = yaml.load("jobs:\n  demo:\n    steps:\n      - name: Controlled\n        run: node --test a.test.mjs b.test.mjs\n");
+
+  it("trả đúng lệnh của step trong đúng job", () => {
+    expect(lenhCuaBuoc(doc, "demo", "Controlled")).toBe("node --test a.test.mjs b.test.mjs");
+  });
+
+  it("trả null nếu job hoặc step không tồn tại", () => {
+    expect(lenhCuaBuoc(doc, "other", "Controlled")).toBeNull();
+    expect(lenhCuaBuoc(doc, "demo", "Other")).toBeNull();
+  });
+});
+
 describe("bất biến khai báo của test-matrix.json", () => {
   it("mọi suite đều khai ciJobs — thiếu là gate không biết đối chiếu vào đâu", () => {
     for (const s of matrix.suites) {
@@ -73,6 +86,14 @@ describe("bất biến khai báo của test-matrix.json", () => {
     const that = coExcludeCuaBuoc(doc, s.ciVitestStep);
     expect(that, "không tìm thấy bước Vitest — phép đối chiếu đã mất neo").not.toBeNull();
     expect([...s.excludes].sort()).toEqual([...that].sort());
+  });
+
+  it("suite có ciCommandStep khai đúng lệnh đang chạy trong workflow", () => {
+    for (const s of matrix.suites.filter((suite) => suite.ciCommandStep)) {
+      const target = s.ciJobs[0];
+      const doc = yaml.load(readFileSync(new URL(`../../${target.workflow}`, import.meta.url), "utf8"));
+      expect(lenhCuaBuoc(doc, target.job, s.ciCommandStep), s.id).toBe(s.command);
+    }
   });
 
   it("chống-xanh-rỗng: đủ 5 suite và bước Vitest loại ít nhất 9 đường", () => {

@@ -154,8 +154,8 @@ jobs:
       # (1.61.1). Chỉ cài chromium — ba spec này không chạy firefox/webkit.
       - name: Cài Chromium cho Playwright
         run: npx playwright install --with-deps chromium
-      - name: Golden HTTP200 provider-stop regression (local synthetic transport only)
-        run: node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs
+      - name: Controlled Copilot workflow regressions (local synthetic transport only)
+        run: node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs .e2e-fleet/controlled/workflow-safety.test.mjs
 
       - name: Xác định SHA của bản đang chạy ở FLEET_BASE_URL
         env:
@@ -423,10 +423,6 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -uo pipefail
-          if [ ! -d "$THU_MUC_TAI_LEN" ]; then
-            echo "Khong co thu muc tai len — khong co gi de canh."
-            exit 0
-          fi
           status=0
           node scripts/copilot-e2e-artifact-safety.mjs guard "$THU_MUC_TAI_LEN" || status=$?
           if [ "$status" -ne 0 ]; then

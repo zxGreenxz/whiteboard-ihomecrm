@@ -157,6 +157,15 @@ export function jobCuaWorkflow(duong) {
   }
 }
 
+/** Lệnh `run` của một step trong đúng job; null nếu không tìm thấy neo. */
+export function lenhCuaBuoc(doc, tenJob, tenBuoc) {
+  const job = doc?.jobs?.[tenJob];
+  if (!job) return null;
+  const step = (job.steps ?? []).find((candidate) => candidate?.name === tenBuoc);
+  if (!step) return null;
+  return String(step.run ?? '').trim();
+}
+
 function main(argv) {
   const matrix = JSON.parse(readFileSync(MATRIX_PATH, 'utf8'));
   const files = trackedTestFiles(matrix.ignore ?? []);
@@ -204,7 +213,32 @@ function main(argv) {
     }
   }
 
-  // ── Phép kiểm 4: suite không chạy CI phải có LÝ DO và HẠN ──
+  // ── Phép kiểm 4: lệnh suite khai trong matrix phải hiện diện trong CI ───────
+  // Suite chọn ghim `ciCommandStep` phải chứng minh lệnh khai trong matrix thật sự
+  // xuất hiện trong đúng job. Nếu không, một include có thể làm hết "mồ côi"
+  // trên giấy dù workflow không hề chạy file đó.
+  const loiLenhCi = [];
+  for (const s of matrix.suites.filter((suite) => suite.ciCommandStep)) {
+    const target = s.ciJobs?.[0];
+    if (!target) {
+      loiLenhCi.push(`${s.id}: có ciCommandStep nhưng không có ciJobs[0] để đối chiếu.`);
+      continue;
+    }
+    let doc = null;
+    try {
+      doc = yaml.load(readFileSync(join(repoRoot, target.workflow), 'utf8'));
+    } catch {
+      /* job existence check reports the unreadable workflow too */
+    }
+    const actual = doc ? lenhCuaBuoc(doc, target.job, s.ciCommandStep) : null;
+    if (actual === null) {
+      loiLenhCi.push(`${s.id}: không tìm thấy bước \`${s.ciCommandStep}\` trong job \`${target.job}\`.`);
+    } else if (actual !== s.command) {
+      loiLenhCi.push(`${s.id}: lệnh CI của bước \`${s.ciCommandStep}\` không khớp trường \`command\` trong matrix.`);
+    }
+  }
+
+  // ── Phép kiểm 5: suite không chạy CI phải có LÝ DO và HẠN ──
   //
   // "Chạy local thôi" không hạn là cách một suite bảo mật rời khỏi CI vĩnh viễn
   // mà không ai phải quyết định gì.
@@ -226,7 +260,7 @@ function main(argv) {
     if (!b.exitCondition) loiBlocked.push(`${s.id}: thiếu \`exitCondition\` — không có điều kiện thoát thì miễn trừ là vĩnh viễn.`);
   }
 
-  // ── Phép kiểm 5: `excludes` của app-unit phải KHỚP TỪNG CỜ --exclude thật ──
+  // ── Phép kiểm 6: `excludes` của app-unit phải KHỚP TỪNG CỜ --exclude thật ──
   //
   // Trước đây đây chỉ là một câu hứa trong chú thích của matrix. Đo 11/08/2026:
   // matrix khai 8 cờ, CI có 12 — bốn cờ services/infra/.tmp-openclaw-host/.e2e-fleet
@@ -257,7 +291,7 @@ function main(argv) {
     for (const x of thua) loiExclude.push(`matrix khai loại '${x}' nhưng CI không có cờ đó — file đó VẪN chạy trên CI.`);
   }
 
-  const loiKhai = [...loiCiJob, ...loiBlocked, ...loiExclude];
+  const loiKhai = [...loiCiJob, ...loiLenhCi, ...loiBlocked, ...loiExclude];
   if (loiKhai.length > 0) {
     console.error(`❌ ${loiKhai.length} lỗi khai báo trong tooling/test-matrix.json:\n`);
     for (const l of loiKhai) console.error(`  - ${l}`);

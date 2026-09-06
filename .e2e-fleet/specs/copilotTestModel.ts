@@ -120,21 +120,73 @@ export async function waitForCopilotAvailability(
   options: { timeoutMs?: number } = {},
 ): Promise<Response> {
   // Register before the action that can reveal/start Copilot. A visible model
-  // picker is not proof that this separate RPC has returned.
-  const responsePromise = page.waitForResponse(
-    (response) => isDemoAvailability(response, organizationId),
-    { timeout: options.timeoutMs ?? 15_000 },
+  // picker is not proof that this separate RPC has returned. This helper owns
+  // one deadline through trigger completion and the full response body.
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  const availabilityPath = '/rpc/get_my_copilot_availability_v1';
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let settled = false;
+  let triggerDone = false;
+  let responseDone = false;
+  let responseClaimed = false;
+  let completedResponse: Response | undefined;
+  let resolveProof!: (response: Response) => void;
+  let rejectProof!: (error: unknown) => void;
+  const proof = new Promise<Response>((resolve, reject) => {
+    resolveProof = resolve;
+    rejectProof = reject;
+  });
+  const fail = (error: unknown) => {
+    if (settled) return;
+    settled = true;
+    rejectProof(error);
+  };
+  const complete = () => {
+    if (settled || !triggerDone || !responseDone || !completedResponse) return;
+    settled = true;
+    resolveProof(completedResponse);
+  };
+  const onResponse = (response: Response) => {
+    if (settled || responseClaimed || !isDemoAvailability(response, organizationId)) return;
+    responseClaimed = true;
+    void response.finished().then(
+      (transportError) => {
+        if (settled) return;
+        const path = new URL(response.url()).pathname;
+        if (transportError) {
+          fail(new Error(`POST ${path} transport_error status=${response.status()}`));
+          return;
+        }
+        if (!response.ok()) {
+          fail(new Error(`POST ${path} upstream_error status=${response.status()}`));
+          return;
+        }
+        completedResponse = response;
+        responseDone = true;
+        complete();
+      },
+      () => fail(new Error(`POST ${availabilityPath} transport_error`)),
+    );
+  };
+  page.on('response', onResponse);
+  timer = setTimeout(
+    () => fail(new Error(`Timed out after ${timeoutMs}ms waiting for completed response ${availabilityPath}`)),
+    timeoutMs,
   );
+  void Promise.resolve()
+    .then(trigger)
+    .then(
+      () => {
+        triggerDone = true;
+        complete();
+      },
+      fail,
+    );
   try {
-    await trigger();
-  } catch (error) {
-    void responsePromise.catch(() => undefined);
-    throw error;
+    return await proof;
+  } finally {
+    settled = true;
+    if (timer) clearTimeout(timer);
+    page.off('response', onResponse);
   }
-  const response = await responsePromise;
-  const transportError = await response.finished();
-  const path = new URL(response.url()).pathname;
-  if (transportError) throw new Error(`POST ${path} transport_error status=${response.status()}`);
-  if (!response.ok()) throw new Error(`POST ${path} upstream_error status=${response.status()}`);
-  return response;
 }

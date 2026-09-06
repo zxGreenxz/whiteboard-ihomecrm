@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const SECRET_NAME = /^(?:FLEET_PASS_|COPILOT_E2E_PIN$|VERCEL_AUTOMATION_BYPASS_SECRET$)/;
 const JWT_SOURCE = String.raw`(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])`;
-const AUTHORIZATION_SOURCE = String.raw`["']?authorization["']?\s*[:=]\s*["']?(?:Bearer\s+)?[A-Za-z0-9._~+/=-]{8,}`;
+export const AUTHORIZATION_REDACTION_MARKER = '[REDACTED_AUTHORIZATION]';
+const AUTHORIZATION_SOURCE = String.raw`(["']?authorization["']?\s*[:=]\s*)(?:(["'])([^"']*)\2|([^\r\n,}]+))`;
 const ENCODED_REPORT = 'data:application/zip;base64,';
 
 function secretEntries(env) {
@@ -22,13 +23,29 @@ function redactionEntries(env) {
     .sort((left, right) => right.value.length - left.value.length);
 }
 
+function redactAuthorization(text) {
+  return text.replace(
+    new RegExp(AUTHORIZATION_SOURCE, 'giu'),
+    (_match, prefix, quote) => (
+      quote
+        ? `${prefix}${quote}${AUTHORIZATION_REDACTION_MARKER}${quote}`
+        : `${prefix}${AUTHORIZATION_REDACTION_MARKER}`
+    ),
+  );
+}
+
+function hasUnsafeAuthorization(text) {
+  for (const match of text.matchAll(new RegExp(AUTHORIZATION_SOURCE, 'giu'))) {
+    const value = (match[3] ?? match[4] ?? '').trim();
+    if (value !== AUTHORIZATION_REDACTION_MARKER) return true;
+  }
+  return false;
+}
+
 export function redactCopilotE2EText(value, { env = process.env } = {}) {
   let text = String(value);
   for (const secret of redactionEntries(env)) text = text.split(secret.value).join('***');
-  text = text.replace(
-    new RegExp(AUTHORIZATION_SOURCE, 'giu'),
-    (match) => `${match.slice(0, match.search(/(?:Bearer\s+)?[A-Za-z0-9._~+/=-]{8,}$/iu))}[REDACTED]`,
-  );
+  text = redactAuthorization(text);
   return text.replace(new RegExp(JWT_SOURCE, 'gu'), '[REDACTED_JWT]');
 }
 
@@ -92,7 +109,7 @@ export function inspectCopilotE2EArtifactDirectory(directory, { env = process.en
     if (new RegExp(JWT_SOURCE, 'u').test(text)) {
       findings.push({ code: 'dynamic-jwt', file: display, detail: 'JWT-shaped value' });
     }
-    if (new RegExp(AUTHORIZATION_SOURCE, 'iu').test(text)) {
+    if (hasUnsafeAuthorization(text)) {
       findings.push({ code: 'authorization-header', file: display, detail: 'unredacted header' });
     }
     if (content.includes(Buffer.from(ENCODED_REPORT))) {
