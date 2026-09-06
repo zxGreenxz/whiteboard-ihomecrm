@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { doiChieuSo } from '../copilot-ledger-audit.mjs';
 const migration = new URL('../../supabase/migrations/20260906144028_copilot_ledger_audit_read_v1.sql', import.meta.url);
+const forwardMigration = new URL('../../supabase/migrations/20260906170939_copilot_ledger_legacy_identity_v1.sql', import.meta.url);
+const deployedSql = () => readFileSync(migration, 'utf8') + '\n' + readFileSync(forwardMigration, 'utf8');
 const org = 'dddd0000-0000-4000-8000-000000000001';
 const other = 'cccc0000-0000-4000-8000-000000000001';
 const actor = 'dddd2000-0000-4000-8000-000000000001';
@@ -13,7 +15,8 @@ async function setup() {
     CREATE SCHEMA auth; CREATE SCHEMA app_private;
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
     CREATE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql AS $$SELECT current_setting('test.super',true)='yes'$$;
-    CREATE TABLE app_private.copilot_action_registry(action_id text, executor_kind text, risk text, grantable boolean, pin_always boolean, produces_entity_table text);
+    CREATE TABLE app_private.copilot_action_registry(action_id text, executor_kind text, risk text, grantable boolean, pin_always boolean, produces_entity_table text,
+      version int DEFAULT 1, permission_key text, consent_required text, preview_rpc text, execute_rpc text, verify_kind text);
     CREATE TABLE app_private.copilot_plans(id uuid, user_id uuid, organization_id uuid, consent_kind text, step_up_confirmation_id uuid, standing_grant_ids uuid[]);
     CREATE TABLE app_private.copilot_plan_steps(plan_id uuid, step_no int, action_id text, status text, executed_at timestamptz, ledger_id uuid);
     CREATE TABLE app_private.copilot_action_ledger(id uuid, created_at timestamptz, organization_id uuid, user_id uuid, event text, action_id text, plan_id uuid, step_no int, consent_kind text, step_up_id uuid, entity_table text, entity_id uuid, audit_id uuid, outcome jsonb, after_digest bytea);
@@ -21,9 +24,9 @@ async function setup() {
     CREATE TABLE app_private.copilot_standing_grants(id uuid, organization_id uuid, granter_user_id uuid, action_id text, created_at timestamptz, expires_at timestamptz, revoked_at timestamptz);
     CREATE TABLE public.ai_write_audit(id uuid, created_at timestamptz, organization_id uuid, user_id uuid, tool text, entity_table text, entity_id uuid, idempotency_key text, payload jsonb);
     CREATE TABLE public.customers(id uuid, organization_id uuid);
-    INSERT INTO app_private.copilot_action_registry VALUES ('future.new_action','direct_l5_v1','L5',false,false,'customers');
+    INSERT INTO app_private.copilot_action_registry(action_id,executor_kind,risk,grantable,pin_always,produces_entity_table) VALUES ('future.new_action','direct_l5_v1','L5',false,false,'customers');
     SELECT set_config('request.jwt.claim.sub','${actor}',false); SELECT set_config('test.super','yes',false);`);
-  try { await db.exec(readFileSync(migration, 'utf8')); }
+  try { await db.exec(deployedSql()); }
   catch (e) { await db.close(); throw e; }
   return db;
 }
@@ -33,9 +36,20 @@ async function page(db, stream = 'ledger', after = null) {
 test('RPC rejects anonymous and authenticated non-admin callers using actual roles', async () => {
   const db = await setup();
   try {
-    await db.exec(readFileSync(migration, 'utf8')); // Idempotent re-application in this disposable catalog.
+    await db.exec(deployedSql()); // Idempotent re-application in this disposable catalog.
     const acl = (await db.query(`SELECT has_function_privilege('service_role','public.copilot_ledger_audit_page_v1(uuid,timestamptz,timestamptz,text,timestamptz,uuid,integer)','EXECUTE') allowed`)).rows[0];
     assert.equal(acl.allowed,false);
+    for (const role of ['anon','authenticated','service_role']) {
+      const r=(await db.query(`SELECT has_function_privilege($1,'app_private.copilot_audit_action_identity_v1(text,text,uuid)','EXECUTE') allowed`,[role])).rows[0];
+      assert.equal(r.allowed,false,`private resolver inaccessible to ${role}`);
+    }
+    for (const [name,tag,definer] of [['copilot_ledger_audit_page_v1','function',true],['copilot_audit_action_identity_v1','identity',false]]) {
+      const r=(await db.query(`SELECT prosrc,provolatile,prosecdef,proconfig FROM pg_proc WHERE proname=$1`,[name])).rows[0];
+      const body=readFileSync(forwardMigration,'utf8').split(`$${tag}$`)[1];
+      assert.equal(r.prosrc,body,'catalog must contain exact final forward definition');
+      assert.equal(r.provolatile,'s'); assert.equal(r.prosecdef,definer);
+      assert.ok(r.proconfig.some(x=>x.startsWith('search_path=pg_catalog,')));
+    }
     await db.exec('SET ROLE anon'); await assert.rejects(page(db), /permission denied/);
     await db.exec("RESET ROLE; SELECT set_config('test.super','no',false); SET ROLE authenticated");
     await assert.rejects(page(db), /superadmin_required/);
@@ -140,5 +154,105 @@ test('actual external queue/reconciliation shapes inspect consent, origin eviden
     assert.equal((await run()).status,'incomplete','missing origin evidence must not green');
     await db.exec(`RESET ROLE; DELETE FROM app_private.copilot_action_ledger WHERE event='step_unknown_effect'; SET ROLE authenticated;`);
     assert.equal((await run()).status,'incomplete','reconciliation without origin must not green');
+  } finally {await db.close();}
+});
+
+const legacy = 'tao_phieu_thu_chi_nhap';
+const canonical = 'income_expense.create_draft';
+const legacyId = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+async function seedLegacy(db) {
+  await db.exec(`CREATE TABLE public.income_expenses(id uuid, organization_id uuid);
+    INSERT INTO app_private.copilot_action_registry VALUES ('${canonical}','nonce_abi_v1','L4',false,false,'income_expenses',1,'income_expenses.create','click','copilot_preview_income_expense_v1','copilot_execute_income_expense_v1','ie_draft');
+    INSERT INTO public.income_expenses VALUES ('${legacyId(1)}','${org}');
+    INSERT INTO public.ai_write_audit VALUES ('${legacyId(2)}','2026-09-03','${org}','${actor}','${legacy}','income_expenses','${legacyId(1)}','private-key','{"private":"payload"}');
+    INSERT INTO app_private.copilot_action_ledger(id,created_at,organization_id,user_id,event,action_id,entity_table,entity_id,audit_id,consent_kind,after_digest) VALUES
+    ('${legacyId(3)}','2026-09-03','${org}','${actor}','action_executed','${canonical}','income_expenses','${legacyId(1)}','${legacyId(2)}','click',decode('abcd','hex'));
+    SET ROLE authenticated;`);
+}
+const auditClient = db => ({async rpc(jwt,name,a) {return {status:200,body:(await db.query(`SELECT public.copilot_ledger_audit_page_v1($1::uuid,$2::timestamptz,$3::timestamptz,$4,$5::timestamptz,$6::uuid,$7::integer) data`,[a.p_organization_id,a.p_since,a.p_until,a.p_stream,a.p_after_at,a.p_after_id,a.p_limit])).rows[0].data};}});
+const legacyReport = db => doiChieuSo(auditClient(db),'jwt',{org,since:'2026-09-01T00:00:00Z',until:'2026-09-06T00:00:00Z'});
+
+test('legacy identity maps strictly in both directions and preserves raw evidence', async () => {
+  const db=await setup();
+  try {
+    await seedLegacy(db);
+    const a=await page(db,'audit'), l=await page(db);
+    assert.equal(a.total,1); assert.equal(l.total,1);
+    assert.equal(a.rows[0].action_id,canonical,'valid legacy identity must resolve');
+    assert.equal(a.rows[0].audit_tool,legacy); assert.equal(a.rows[0].identity_mapping,'legacy_income_expense_draft_v1');
+    assert.equal(a.rows[0].action_executions,1,'reverse legacy link must match');
+    assert.equal(l.rows[0].audit_matches,true,'forward legacy link must match');
+    assert.equal(l.rows[0].audit_tool,legacy); assert.equal(l.rows[0].identity_mapping,a.rows[0].identity_mapping);
+    const report=await legacyReport(db);
+    assert.equal(report.status,'clean',JSON.stringify(report)); assert.equal(report.knownLegacyL4.auditRows,1);
+    assert.equal(report.directL5Actions.includes(canonical),false); assert.equal(report.canaryDurationVerified,false);
+    assert.equal(JSON.stringify(a).includes('private-key'),false); assert.equal(JSON.stringify(a).includes('payload'),false);
+  } finally {await db.close();}
+});
+
+test('legacy identity unresolved contracts never turn into known coverage', async () => {
+  const db=await setup();
+  try {
+    await seedLegacy(db);
+    for (const [column,value] of [['executor_kind','maker_submit_v1'],['risk','L5'],['version','2'],['permission_key','other.permission'],['consent_required','step_up'],['preview_rpc','other_preview'],['execute_rpc','other_execute'],['verify_kind','readback'],['produces_entity_table','customers']]) {
+      await db.exec(`RESET ROLE; BEGIN; UPDATE app_private.copilot_action_registry SET ${column}='${value}' WHERE action_id='${canonical}'; SET ROLE authenticated;`);
+      assert.equal((await page(db,'audit')).rows[0].action_id,legacy,`incompatible ${column} must remain unresolved`);
+      assert.equal((await page(db)).rows[0].audit_matches,false,`incompatible ${column} cannot link`);
+      assert.equal((await legacyReport(db)).status,'incomplete');
+      await db.exec('ROLLBACK; SET ROLE authenticated');
+    }
+    for (const change of [`DELETE FROM app_private.copilot_action_registry WHERE action_id='${canonical}'`, `UPDATE public.ai_write_audit SET tool='unknown.tool'`, `UPDATE public.ai_write_audit SET entity_table='customers'`, `UPDATE public.ai_write_audit SET entity_id=NULL`]) {
+      await db.exec(`RESET ROLE; BEGIN; ${change}; SET ROLE authenticated;`);
+      const a=(await page(db,'audit')).rows[0];
+      assert.notEqual(a.action_id,canonical); assert.equal(a.identity_mapping,null); assert.equal(a.action_executions,0);
+      assert.equal((await legacyReport(db)).status,'incomplete');
+      await db.exec('ROLLBACK; SET ROLE authenticated');
+    }
+  } finally {await db.close();}
+});
+
+test('legacy exact actor org entity and audit id remain mandatory for both directions', async () => {
+  const db=await setup();
+  try {
+    await seedLegacy(db);
+    for (const [column,value] of [['user_id',other],['organization_id',other],['entity_table','customers'],['entity_id',legacyId(99)],['audit_id',legacyId(99)]]) {
+      await db.exec(`RESET ROLE; BEGIN; UPDATE app_private.copilot_action_ledger SET ${column}='${value}'; SET ROLE authenticated;`);
+      const a=await page(db,'audit'), l=await page(db);
+      assert.equal(a.rows[0].action_executions,0,`reverse ${column} mismatch must not link`);
+      if(l.rows.length) assert.equal(l.rows[0].audit_matches,false,`forward ${column} mismatch must not link`);
+      assert.notEqual((await legacyReport(db)).status,'clean');
+      assert.equal(JSON.stringify(a).includes(other),false);
+      await db.exec('ROLLBACK; SET ROLE authenticated');
+    }
+  } finally {await db.close();}
+});
+
+test('legacy duplicate execution is detected across history while replay needs no new execution', async () => {
+  const db=await setup();
+  try {
+    await seedLegacy(db);
+    await db.exec(`RESET ROLE; UPDATE app_private.copilot_action_ledger SET created_at='2026-08-31';
+      INSERT INTO app_private.copilot_action_ledger(id,created_at,organization_id,user_id,event,action_id,entity_table,entity_id,audit_id,outcome) VALUES
+      ('${legacyId(4)}','2026-09-04','${org}','${actor}','step_done','${canonical}','income_expenses','${legacyId(1)}','${legacyId(2)}','{"idempotent":true}'); SET ROLE authenticated;`);
+    assert.equal((await page(db,'audit')).rows[0].action_executions,1);
+    assert.equal((await legacyReport(db)).counts.duplicate,0,'replay requires no extra execution');
+    await db.exec(`RESET ROLE; INSERT INTO app_private.copilot_action_ledger SELECT '${legacyId(5)}'::uuid,created_at,organization_id,user_id,event,action_id,plan_id,step_no,consent_kind,step_up_id,entity_table,entity_id,audit_id,outcome,after_digest FROM app_private.copilot_action_ledger WHERE id='${legacyId(3)}'; SET ROLE authenticated;`);
+    assert.equal((await page(db,'audit')).rows[0].action_executions,2,'history duplicate must count');
+    assert.equal((await page(db)).rows[0].duplicate_executions,true);
+    assert.equal((await legacyReport(db)).counts.duplicate,1,'same audit violation deduplicated across streams');
+  } finally {await db.close();}
+});
+
+test('pre-wrapper legacy evidence gap is retained without inventing a deployment cutoff', async () => {
+  const db=await setup();
+  try {
+    await seedLegacy(db);
+    await db.exec('RESET ROLE; DELETE FROM app_private.copilot_action_ledger; SET ROLE authenticated');
+    const r=await legacyReport(db);
+    assert.equal(r.auditRowsInWindow,1); assert.equal(r.ledgerRowsInWindow,0);
+    assert.equal(r.status,'incomplete','historical legacy gap must not green');
+    assert.ok(r.incomplete.some(x=>x.reason==='legacy_ledger_evidence_gap_historical_boundary'));
+    assert.equal(r.knownLegacyL4.auditRows,1); assert.equal(r.knownLegacyL4.auditRowsWithoutExecution,1);
+    assert.equal(r.counts.unintendedWrite,0); assert.equal(r.canaryDurationVerified,false);
   } finally {await db.close();}
 });

@@ -102,3 +102,23 @@ test('external queue consent cannot be skipped and pending is not success', asyn
   assert.equal(pending.status,'incomplete','pending effect must not be clean success');
   assert.equal(pending.externalEffects.pending,1);
 });
+
+const legacyRegistry = [...registry,{action_id:'income_expense.create_draft',executor_kind:'nonce_abi_v1',risk:'L4',grantable:false,pin_always:false}];
+const legacyAudit = extra => row(1,{event:undefined,action_id:'income_expense.create_draft',audit_tool:'tao_phieu_thu_chi_nhap',identity_mapping:'legacy_income_expense_draft_v1',duplicate_key:false,step_links:0,...extra});
+test('legacy classification requires explicit server mapping and never adds L5 coverage',async()=>{
+  for(const identity_mapping of [null,undefined,'unknown']) {
+    const r=await doiChieuSo(source([],{registry:legacyRegistry,audit:[legacyAudit({identity_mapping})]}),'jwt',bounds);
+    assert.equal(r.status,'incomplete'); assert.equal(r.knownLegacyL4.auditRows,0);
+  }
+  const r=await doiChieuSo(source([],{registry:legacyRegistry,audit:[legacyAudit({})]}),'jwt',bounds);
+  assert.equal(r.status,'clean'); assert.deepEqual(r.directL5Actions,['future.new_action']);
+  assert.equal(r.knownLegacyL4.auditRows,1); assert.equal(r.canaryDurationVerified,false);
+});
+for(const action_executions of [undefined,'1',0,2,-1,1.2]) test(`legacy historical coverage fails closed: ${action_executions}`,async()=>{
+  const r=await doiChieuSo(source([],{registry:legacyRegistry,audit:[legacyAudit({action_executions})]}),'jwt',bounds);
+  assert.equal(r.status,'incomplete','historical legacy gap must not green');
+});
+test('legacy canonical ledger preserves forward audit actor and org findings',async()=>{
+  const r=await doiChieuSo(source([row(1,{action_id:'income_expense.create_draft',audit_matches:false,audit_actor_matches:false,audit_org_matches:false})],{registry:legacyRegistry}),'jwt',bounds);
+  assert.equal(r.counts.wrongActor,1); assert.equal(r.counts.wrongOrg,1);
+});

@@ -4,7 +4,8 @@ Run `scripts/copilot-ledger-audit.mjs` with an authenticated superadmin account.
 The script logs in through GoTrue using the publishable key in `.env`; business
 data is read only through `copilot_ledger_audit_page_v1`. Service role and Management
 API tokens are not used. Deploy the forward migration
-`20260906144028_copilot_ledger_audit_read_v1.sql` through the reviewed migration lane
+`20260906144028_copilot_ledger_audit_read_v1.sql` and then
+`20260906170939_copilot_ledger_legacy_identity_v1.sql` through the reviewed migration lane
 before running this version. Existing UI RPCs remain compatible.
 
 Set `COPILOT_LEDGER_AUDIT_SYSADMIN_EMAIL` and
@@ -38,6 +39,23 @@ Plan and ledger actor/org, audit references, and authoritative entity org are
 compared without returning other organizations' identities. Only registry-owned
 public entity tables with an organization column can currently be compared;
 missing rows, unsupported entities and unreadable sources are explicit gaps.
+
+The read-side adapter recognizes only `tao_phieu_thu_chi_nhap` as the existing
+`income_expense.create_draft` action. It requires the current version-1 L4 nonce
+registry contract: permission, click consent, preview/execute RPC, verification
+kind, and entity table, plus a non-null entity reference. Raw `audit_tool` stays
+visible alongside `identity_mapping: legacy_income_expense_draft_v1`; unresolved
+names/contracts remain visible and incomplete. Both directions require the same
+audit ID, actor, org and entity. The helper is private with no client execute ACL.
+
+`knownLegacyL4` counts these audit rows separately from dynamic direct-L5 coverage.
+An audit without exactly one matching canonical wrapper execution produces
+`legacy_ledger_evidence_gap_historical_boundary`; zero matches also increment
+`auditRowsWithoutExecution`. This may reflect pre-wrapper history or a genuine
+correlation gap. No deployment time is inferred from filenames, and no history is
+rewritten or row removed. Known identity and matching links do not establish
+historical nonce consent or prove a business effect; direct-L5 consent requirements
+continue unchanged. A legacy replay requires no additional execution event.
 
 `action_executed` is a wrapper event and intentionally records click consent.
 The engine's correlated `step_done` or `step_unknown_effect` carries actual plan consent. Idempotent
@@ -77,10 +95,17 @@ Focused verification:
 
 ```powershell
 node --test scripts/__tests__/copilot-ledger-audit*.test.mjs
+npx vitest run src/copilot/__tests__/ledgerAuditCoverage.test.ts src/copilot/__tests__/writeToolsHanhDong.test.ts --no-cache
 ```
 
-PGlite tests execute the new SQL with real `anon`/`authenticated` roles and a
+PGlite tests execute the original plus forward SQL definitions with real `anon`/`authenticated` roles and a
 read-only transaction against a minimal dependency schema. They do not replay
 the full production catalog or exercise GoTrue/PostgREST. Before deployment,
 run the project catalog, migration-idempotency, generated-types and authenticated
 HTTP preflight gates in an appropriately configured environment.
+
+This source correction does not certify the deployed fixed-window findings.
+After review and official backed-up apply, compare every row in the same immutable
+window, require unchanged stream totals, and reattest function bodies and ACLs.
+Residual gaps and the original all-action exercise/canary durations need separate
+evidence; a corrected name alone cannot satisfy them.

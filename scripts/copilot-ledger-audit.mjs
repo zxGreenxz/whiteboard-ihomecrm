@@ -103,6 +103,7 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
   if (instant(lower) >= instant(upper) || instant(upper) - instant(lower) > 366n * 86400000000n) throw new Error('invalid_window');
   const findings = { unintendedWrite: [], duplicate: [], wrongOrg: [], wrongActor: [], incomplete: [] };
   const externalEffects = { pending: 0, reconciledDone: 0, reconciledFailed: 0 };
+  const knownLegacyL4 = { auditRows: 0, auditRowsWithoutExecution: 0 };
   const add = (kind, reason, r = {}) => findings[kind].push({ reason, id: r.id ?? null, action_id: r.action_id ?? null });
   let registry, registrySignature, missingSteps, ledgerRows = 0, auditRows = 0;
   const seenDuplicates = new Set();
@@ -139,6 +140,15 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
             else if (r.duplicate_key !== false || r.duplicate_executions !== false) add('incomplete', 'audit_duplicate_evidence_missing', r);
             const reg = registry.get(r.action_id);
             if (!reg) add('incomplete', 'audit_action_absent_from_registry', r);
+            if (r.audit_tool === 'tao_phieu_thu_chi_nhap') {
+              if (r.identity_mapping !== 'legacy_income_expense_draft_v1' || r.action_id !== 'income_expense.create_draft' ||
+                  reg?.executor_kind !== 'nonce_abi_v1' || reg?.risk !== 'L4') add('incomplete', 'legacy_identity_unresolved', r);
+              else {
+                knownLegacyL4.auditRows++;
+                if (r.action_executions === 0) knownLegacyL4.auditRowsWithoutExecution++;
+                if (r.action_executions !== 1) add('incomplete', 'legacy_ledger_evidence_gap_historical_boundary', r);
+              }
+            }
             if (reg?.executor_kind === 'direct_l5_v1' && (r.action_executions !== 1 || !Number.isSafeInteger(r.step_links) || r.step_links < 1)) add('incomplete', 'audit_ledger_coverage_gap', r);
             continue;
           }
@@ -166,7 +176,9 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
           else if (!['match', 'not_applicable'].includes(r.entity_evidence)) add('incomplete', `entity_${r.entity_evidence ?? 'missing'}`, r);
           if (r.duplicate_executions === true) duplicate(r);
           else if (r.duplicate_executions !== false) add('incomplete', 'execution_duplicate_evidence_missing', r);
-          if (reg.executor_kind !== 'direct_l5_v1') continue;
+          // The canonical L4 draft also needs exact audit linkage. Its nonce/click
+          // producer is not a direct-L5 plan and cannot count as L5 exercise.
+          if (reg.executor_kind !== 'direct_l5_v1' && r.action_id !== 'income_expense.create_draft') continue;
           if (r.audit_present !== true) add('incomplete', 'audit_missing_historical', r);
           else if (r.audit_matches === false) {
             if (r.audit_org_matches === false) add('wrongOrg', 'audit_org_mismatch', r);
@@ -174,6 +186,7 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
             if (r.audit_org_matches !== false && r.audit_actor_matches !== false) add('incomplete', 'audit_action_or_entity_mismatch', r);
           }
           else if (r.audit_matches !== true) add('incomplete', 'audit_match_evidence_missing', r);
+          if (reg.executor_kind !== 'direct_l5_v1') continue;
           if (r.action_executions !== 1 || !Number.isSafeInteger(r.step_links) || r.step_links < 1) add('incomplete', 'execution_step_coverage_gap', r);
           if (r.has_after_digest !== true) add('incomplete', 'readback_evidence_missing_historical', r);
           // Wrapper events intentionally use click. Consent belongs to the correlated plan step.
@@ -204,10 +217,12 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
     evidenceComplete: counts.incomplete === 0, canaryDurationVerified: false,
     directL5Actions: registry ? [...registry.values()].filter(r => r.executor_kind === 'direct_l5_v1').map(r => r.action_id) : [],
     ledgerRowsFetched: ledgerRows, ledgerRowsInWindow: ledgerRows, auditRowsInWindow: auditRows,
-    counts, ...findings, externalEffects,
+    counts, ...findings, externalEffects, knownLegacyL4,
     notes: ['A bounded historical query does not establish an active canary duration.',
       'Missing historical evidence is incomplete, not a proven unintended write.',
       'Execution records and idempotency are checked; action_executed alone does not prove a new business effect.',
+      'Known legacy L4 identity/linkage does not prove historical nonce consent or business effect, and is not direct L5 coverage.',
+      'Missing legacy execution links remain historical evidence gaps; no deployment cutoff is inferred from migration names.',
       'Registry and entity state are current; this audit does not reconstruct historical policy or arbitrary business effects.'],
   };
 }
