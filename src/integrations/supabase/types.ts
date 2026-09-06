@@ -19021,6 +19021,18 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_ledger_audit_page_v1: {
+        Args: {
+          p_after_at?: string
+          p_after_id?: string
+          p_limit?: number
+          p_organization_id: string
+          p_since: string
+          p_stream?: string
+          p_until: string
+        }
+        Returns: Json
+      }
       copilot_material_stock_v1: {
         Args: { p_limit?: number; p_organization_id: string; p_query?: string }
         Returns: Json
