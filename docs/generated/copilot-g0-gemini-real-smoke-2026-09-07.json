@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T18:47:20.521Z",
+  "model": "9router:ag/gemini-3.6-flash-high(high)",
+  "organizationId": "dddd0000-0000-4000-8000-000000000001",
+  "verifiedCaseCount": 4,
+  "verificationMode": "Latest result per case across two explicitly retained runs",
+  "singleFullRunPassed": false,
+  "modelEscalated": false,
+  "productSlaApproved": false,
+  "fullOriginalPlanAccepted": false,
+  "scope": "G0 confirmation boundaries and one real readonly tool/model cycle only; not the full75case golden evaluation or activecanary",
+  "runs": [
+    {
+      "checkedAt": "2026-09-06T18:23:27.741Z",
+      "sourceSha": "f498ca8015b94397d9943c3870e330cd9a5f107c",
+      "harnessSha": "e1371857e9d98860ff6779487944c02be2231ae4",
+      "edgeVersion": 33,
+      "edgeSourceSha256": "df4d2afe7d5b2f5803f2b2dba4d3eb90472092fdcede343d5dff448620d7c277",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "status": "failed",
+      "discovered": 4,
+      "latencyMeaning": "testDurationMs includes login/setup/cleanup; not response latency or an SLA result",
+      "tests": [
+        {
+          "test": "lập đề xuất phiếu KHÔNG tạo phiếu nào cho tới khi người dùng bấm",
+          "status": "passed",
+          "testDurationMs": 20850,
+          "errors": [],
+          "evidence": []
+        },
+        {
+          "test": "bấm xác nhận tạo ĐÚNG MỘT phiếu chờ duyệt",
+          "status": "passed",
+          "testDurationMs": 12457,
+          "errors": [],
+          "evidence": []
+        },
+        {
+          "test": "mô hình KHÔNG có tool nào để tự xác nhận",
+          "status": "passed",
+          "testDurationMs": 10378,
+          "errors": [],
+          "evidence": []
+        },
+        {
+          "test": "Copilot readonly smoke completes a real DEMO read and assistant answer without business writes",
+          "status": "failed",
+          "testDurationMs": 66679,
+          "errors": [
+            {
+              "firstLine": "Error: expect(locator).toHaveCount(expected) failed",
+              "location": {
+                "file": "copilotModelCycle.ts",
+                "line": 29
+              }
+            }
+          ],
+          "evidence": []
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-06T18:44:57.825Z",
+      "sourceSha": "f498ca8015b94397d9943c3870e330cd9a5f107c",
+      "harnessSha": "2d605589281e8490768a6370fd16f85d900b7dba",
+      "edgeVersion": 34,
+      "edgeSourceSha256": "99c09b46abcf0b9a253b4fdb59877846ae6933d18ee3d8e8b9ea96d25781759c",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "status": "passed",
+      "discovered": 1,
+      "latencyMeaning": "testDurationMs includes login/setup/cleanup; not response latency or an SLA result",
+      "tests": [
+        {
+          "test": "Copilot readonly smoke completes a real DEMO read and assistant answer without business writes",
+          "status": "passed",
+          "testDurationMs": 20602,
+          "errors": [],
+          "evidence": [
+            {
+              "model": "9router:ag/gemini-3.6-flash-high(high)",
+              "organization": "dddd0000-0000-4000-8000-000000000001",
+              "rounds": 2,
+              "readRpc": "copilot_available_rooms_v1",
+              "businessWrites": 0,
+              "assistantCharacters": 396
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "First3confirmationcases passed onEdge33; readonlyretry passed onEdge34 with explicitUTF8header. Both served apppreviewf498ca80.",
+    "The first readonlyfailure was a permissionfreshnessbanner; instrumented retries then exposed charset-related inspector mojibake. Bothfailedattempts remain recorded.",
+    "testDurationMs includeslogin/setup/cleanup and does not measure productSLA.",
+    "All77Deno tests and UTF8handler/body preservation were verified separately."
+  ]
+}

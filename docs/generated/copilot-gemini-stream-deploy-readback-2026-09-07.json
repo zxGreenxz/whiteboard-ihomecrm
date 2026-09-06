@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-09-06T18:43:17.459Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "expectedOrganizations": [
+    "aaaa0000-0000-4000-8000-000000000001",
+    "dddd0000-0000-4000-8000-000000000001"
+  ],
+  "organizationsVerified": true,
+  "slug": "llm-proxy",
+  "reviewedSha": "99d4f078381c871d3ce838ec18bda8cd72ee3f0a",
+  "review": "gemini-stream-normalization-review.md#utf-8-content-type-follow-up",
+  "verifyJwt": true,
+  "files": [
+    {
+      "path": "index.ts",
+      "sha256": "99c09b46abcf0b9a253b4fdb59877846ae6933d18ee3d8e8b9ea96d25781759c"
+    }
+  ],
+  "sourceBundleSha256": "4c063d92fc4990f78e44ce3680e05231768251057dae690a7479aec9e6a8e396",
+  "requestBodySha256": "ab1a6e351e0c745aa0aee966721288674f1fd780e0c6c731cdaeb5935c61c9a0",
+  "requestBodyBytes": 58965,
+  "cleanByExactBytes": true,
+  "gitLineEndingArtifact": "supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql",
+  "before": {
+    "version": 33,
+    "verifyJwt": true,
+    "status": "ACTIVE",
+    "sourceSha256": "df4d2afe7d5b2f5803f2b2dba4d3eb90472092fdcede343d5dff448620d7c277",
+    "bundleSha256": "7b8b968b28ed73290cd76c1a4661eb2c117972844b642d0a87d80b8ef642ccb7"
+  },
+  "mode": "apply",
+  "outcome": "deployed_source_verified",
+  "observedAt": "2026-09-06T18:43:22.558Z",
+  "responseStatus": 201,
+  "requestError": null,
+  "after": {
+    "version": 34,
+    "verifyJwt": true,
+    "status": "ACTIVE",
+    "sourceSha256": "99c09b46abcf0b9a253b4fdb59877846ae6933d18ee3d8e8b9ea96d25781759c",
+    "bundleSha256": "0977f4950b33c7d8444d07736da373c898116654d9c8fcadbee6c8acba55829b"
+  },
+  "exactNormalizedSourceMatch": true
+}

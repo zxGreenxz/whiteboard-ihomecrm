@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T18:56:48.487Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "sourceCommit": "08eba81fcc17eff1839cd500261405c296133dca",
+  "reviewedApplyCommit": "9519ad62f33e0dcd71055552e944f2b2b05f3944",
+  "migrationFile": "supabase/migrations/20260906182318_copilot_ledger_replay_audit_id_v1.sql",
+  "migrationSha256": "d97cc8842030a15418f132cd2895fad976eccf6a63f32541490ecbfb85dd4b8f",
+  "receipt": "docs/generated/schema-change-evidence/20260906182318_copilot_ledger_replay_audit_id_v1.json",
+  "cleanByExactBytes": true,
+  "gitLineEndingArtifact": "supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql",
+  "before": [
+    {
+      "database": "postgres",
+      "demo_exists": true,
+      "real_exists": true,
+      "proname": "copilot_execute_income_expense_legacy_v1",
+      "signature": "copilot_execute_income_expense_legacy_v1(text,jsonb)",
+      "body_sha256": "e55854b4c041ce1191b10d8ebd755d97e513d9459d174857c137e3ae9de79ca4",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ]
+    },
+    {
+      "database": "postgres",
+      "demo_exists": true,
+      "real_exists": true,
+      "proname": "copilot_execute_income_expense_v1",
+      "signature": "copilot_execute_income_expense_v1(text,jsonb)",
+      "body_sha256": "f9fbbf48d594b35c8fca5aa14fad87f9114a8de883fd92284e05ea30bbbc1593",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ]
+    },
+    {
+      "database": "postgres",
+      "demo_exists": true,
+      "real_exists": true,
+      "proname": "copilot_plan_execute_step_v1",
+      "signature": "copilot_plan_execute_step_v1(uuid,integer,integer,uuid)",
+      "body_sha256": "c0b1aaa754fde52b5f680bdef9eb2dc7d80645974bb4f6a196f7f804d6974908",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ]
+    }
+  ],
+  "after": [
+    {
+      "database": "postgres",
+      "demo_exists": true,
+      "real_exists": true,
+      "proname": "copilot_execute_income_expense_legacy_v1",
+      "signature": "copilot_execute_income_expense_legacy_v1(text,jsonb)",
+      "body_sha256": "039be505581e0d968ed8d41160beb6264e515dcffa301a9383678c8e85f4e48e",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ]
+    },
+    {
+      "database": "postgres",
+      "demo_exists": true,
+      "real_exists": true,
+      "proname": "copilot_execute_income_expense_v1",
+      "signature": "copilot_execute_income_expense_v1(text,jsonb)",
+      "body_sha256": "f9fbbf48d594b35c8fca5aa14fad87f9114a8de883fd92284e05ea30bbbc1593",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ]
+    },
+    {
+      "database": "postgres",
+      "demo_exists": true,
+      "real_exists": true,
+      "proname": "copilot_plan_execute_step_v1",
+      "signature": "copilot_plan_execute_step_v1(uuid,integer,integer,uuid)",
+      "body_sha256": "c0b1aaa754fde52b5f680bdef9eb2dc7d80645974bb4f6a196f7f804d6974908",
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "provolatile": "v",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private, extensions"
+      ]
+    }
+  ],
+  "bodyAndMetadataVerified": true,
+  "wrapperAndPlanExecutorUnchanged": true,
+  "historicalLedgerBackfilled": false,
+  "historicalMissingAuditRowCount": 17,
+  "historicalEvidenceComplete": false,
+  "liveReplayVerification": "pending",
+  "scope": "Future replay return includes the validated original audit ID. Historical incomplete links remain incomplete; this receipt is not full plan or canary acceptance."
+}

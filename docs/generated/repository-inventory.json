@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 539,
-  "soFileDocBangFs": 179,
-  "tongLoiGoi": 366,
-  "khongPhanLoaiDuoc": 186,
+  "tongSoFileTest": 541,
+  "soFileDocBangFs": 180,
+  "tongLoiGoi": 370,
+  "khongPhanLoaiDuoc": 187,
   "theoLoai": {
     "manifest": {
       "soFile": 21,
@@ -23,7 +23,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 60,
+      "soFile": 61,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -178,6 +178,14 @@
         "manifest": 4
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/copilot-ledger-replay-audit-id-migration.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/copilot/__tests__/pageAgentCompatibility.test.ts",

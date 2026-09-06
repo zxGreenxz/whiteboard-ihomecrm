@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-09-06T18:21:07.479Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "expectedOrganizations": [
+    "aaaa0000-0000-4000-8000-000000000001",
+    "dddd0000-0000-4000-8000-000000000001"
+  ],
+  "organizationsVerified": true,
+  "slug": "llm-proxy",
+  "reviewedSha": "aef8bb441cea6d7b4dcda0f70a39128fc07ed455",
+  "review": "gemini-stream-normalization-review.md",
+  "verifyJwt": true,
+  "files": [
+    {
+      "path": "index.ts",
+      "sha256": "df4d2afe7d5b2f5803f2b2dba4d3eb90472092fdcede343d5dff448620d7c277"
+    }
+  ],
+  "sourceBundleSha256": "1326478d6eab0b0687c9120d761f70aef94c67745e8b748545fd88c5ea82ec1b",
+  "requestBodySha256": "1158038d1e6b7d2ee3291469b5b0461451974373b2baba03a58afa4dcb1ee970",
+  "requestBodyBytes": 58568,
+  "cleanByExactBytes": true,
+  "gitLineEndingArtifact": "supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql",
+  "before": {
+    "version": 32,
+    "verifyJwt": true,
+    "status": "ACTIVE",
+    "sourceSha256": "4a26f7bc8ad51ba69ea242c584e1f534962fcba0333253d10e79d818713d44b3",
+    "bundleSha256": "41ed690b154bb3e7f80601bb456f0cee4ddcc385c1d543afbe5817c9fd0a5916"
+  },
+  "mode": "apply",
+  "outcome": "preflight_passed"
+}

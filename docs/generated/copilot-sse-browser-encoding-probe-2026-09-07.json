@@ -1,0 +1,23 @@
+{
+  "measuredAt": "2026-09-06T18:34:03.993Z",
+  "fixtureOnly": true,
+  "expected": "Hiện tại có 20 phòng đang trống — Toà A",
+  "cases": [
+    {
+      "path": "/plain",
+      "contentType": "text/event-stream",
+      "browserText": "Hiện tại có 20 phòng đang trống — Toà A",
+      "inspectorText": "Hiá»‡n táº¡i cÃ³ 20 phÃ²ng Ä‘ang trá»‘ng â€” ToÃ  A",
+      "browserMatches": true,
+      "inspectorMatches": false
+    },
+    {
+      "path": "/utf8",
+      "contentType": "text/event-stream; charset=utf-8",
+      "browserText": "Hiện tại có 20 phòng đang trống — Toà A",
+      "inspectorText": "Hiện tại có 20 phòng đang trống — Toà A",
+      "browserMatches": true,
+      "inspectorMatches": true
+    }
+  ]
+}

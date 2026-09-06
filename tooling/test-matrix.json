@@ -50,6 +50,7 @@
         "scripts/__tests__/check-copilot-safe-control-markers.test.mjs",
         "scripts/__tests__/copilot-ledger-audit.test.mjs",
         "scripts/__tests__/copilot-ledger-audit-rpc.test.mjs",
+        "scripts/__tests__/copilot-ledger-replay-audit-id-migration.test.mjs",
         "scripts/__tests__/check-csp-build-attestation.test.mjs",
         "scripts/__tests__/run-copilot-golden-eval.test.mjs",
         "scripts/__tests__/copilot-golden-browser-evidence.test.mjs",
@@ -110,9 +111,10 @@
       "runtime": "deno 2.9.4",
       "risk": "normal",
       "includes": [
-        "supabase/functions/llm-proxy/index.test.ts"
+        "supabase/functions/llm-proxy/index.test.ts",
+        "supabase/functions/llm-proxy/stream-terminal.test.ts"
       ],
-      "note": "Test hàm thuần của llm-proxy (allowlist body, trần kích thước, clamp mock cost, đồng hồ stream). Tách khỏi suite edge-deno vì suite đó chạy trong workflow network-center-validation, mà workflow ấy lọc theo đường dẫn Network Center — llm-proxy đổi không kích hoạt nó. Nối vào ci-gates.yml ngày 02/09/2026 (hai bước: cài Deno + chạy test), gỡ blockedFromCi: đo tại chỗ 33/33 xanh với Deno 2.9.4.",
+      "note": "Test hàm thuần và handler llm-proxy (allowlist body, trần kích thước, clamp mock cost, đồng hồ và terminal stream). Entrypoint index.test.ts import stream-terminal.test.ts nên lệnh CI trên chạy cả hai file. Tách khỏi suite edge-deno vì suite đó chạy trong workflow network-center-validation, mà workflow ấy lọc theo đường dẫn Network Center — llm-proxy đổi không kích hoạt nó. Nối vào ci-gates.yml ngày 02/09/2026 (hai bước: cài Deno + chạy test).",
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
@@ -215,6 +217,7 @@
         "scripts/__tests__/check-copilot-safe-control-markers.test.mjs",
         "scripts/__tests__/copilot-ledger-audit.test.mjs",
         "scripts/__tests__/copilot-ledger-audit-rpc.test.mjs",
+        "scripts/__tests__/copilot-ledger-replay-audit-id-migration.test.mjs",
         "scripts/__tests__/check-csp-build-attestation.test.mjs",
         "scripts/__tests__/run-copilot-golden-eval.test.mjs",
         "scripts/__tests__/copilot-golden-browser-evidence.test.mjs",
