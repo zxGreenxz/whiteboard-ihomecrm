@@ -112,3 +112,33 @@ test('both streams include lower bound and exclude upper bound', async () => {
     await assert.rejects(db.query(`SELECT public.copilot_ledger_audit_page_v1($1::uuid,'2026-09-06','2026-09-01')`,[org]), /invalid_audit_window_or_cursor/);
   } finally {await db.close();}
 });
+test('actual external queue/reconciliation shapes inspect consent, origin evidence and pending status', async () => {
+  const db=await setup();
+  const id=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+  const client={async rpc(jwt,name,a){return {status:200,body:(await db.query(`SELECT public.copilot_ledger_audit_page_v1($1::uuid,$2::timestamptz,$3::timestamptz,$4,$5::timestamptz,$6::uuid,$7::integer) data`,[a.p_organization_id,a.p_since,a.p_until,a.p_stream,a.p_after_at,a.p_after_id,a.p_limit])).rows[0].data};}};
+  const run=()=>doiChieuSo(client,'jwt',{org,since:'2026-09-01T00:00:00Z',until:'2026-09-06T00:00:00Z'});
+  try {
+    await db.exec(`CREATE TABLE public.zalo_send_queue(id uuid,organization_id uuid,status text);
+      UPDATE app_private.copilot_action_registry SET action_id='zalo.phat_song',produces_entity_table='zalo_send_queue';
+      INSERT INTO public.zalo_send_queue VALUES ('${id(1)}','${org}','pending');
+      INSERT INTO app_private.copilot_plans(id,user_id,organization_id,consent_kind,step_up_confirmation_id) VALUES ('${id(2)}','${actor}','${org}','step_up','${id(3)}');
+      INSERT INTO app_private.copilot_write_confirmations VALUES ('${id(3)}','${actor}','${org}','step_up','copilot.step_up','2026-09-02','2026-09-04');
+      INSERT INTO public.ai_write_audit VALUES ('${id(4)}','2026-09-03','${org}','${actor}','zalo.phat_song','zalo_send_queue','${id(1)}','queue-key','{}');
+      INSERT INTO app_private.copilot_action_ledger(id,created_at,organization_id,user_id,event,action_id,plan_id,step_no,consent_kind,step_up_id,entity_table,entity_id,audit_id,outcome,after_digest) VALUES
+      ('${id(5)}','2026-09-03','${org}','${actor}','action_executed','zalo.phat_song',null,null,'click',null,'zalo_send_queue','${id(1)}','${id(4)}','{"status":"da_thuc_hien"}',decode('aa','hex')),
+      ('${id(6)}','2026-09-03 00:00:00.000001+00','${org}','${actor}','step_unknown_effect','zalo.phat_song','${id(2)}',1,'step_up','${id(3)}','zalo_send_queue','${id(1)}','${id(4)}','{"idempotent":false,"step_status":"UNKNOWN_EFFECT"}',decode('aa','hex'));
+      INSERT INTO app_private.copilot_plan_steps VALUES ('${id(2)}',1,'zalo.phat_song','UNKNOWN_EFFECT','2026-09-03','${id(6)}'); SET ROLE authenticated;`);
+    const pending=await run(); assert.equal(pending.status,'incomplete'); assert.equal(pending.externalEffects.pending,1,'pending effect must remain visible');
+    await db.exec(`RESET ROLE; UPDATE public.zalo_send_queue SET status='sent';
+      INSERT INTO app_private.copilot_action_ledger(id,created_at,organization_id,user_id,event,action_id,plan_id,step_no,consent_kind,step_up_id,outcome) VALUES
+      ('${id(7)}','2026-09-04','${org}','${actor}','step_reconciled','zalo.phat_song','${id(2)}',1,'step_up','${id(3)}','{"reconciled_status":"DONE","entity_table":"zalo_send_queue","entity_id":"${id(1)}"}');
+      UPDATE app_private.copilot_plan_steps SET status='DONE',ledger_id='${id(7)}'; SET ROLE authenticated;`);
+    const valid=await run(); assert.equal(valid.status,'clean',`valid reconciliation chain must be clean: ${JSON.stringify(valid)}`); assert.equal(valid.externalEffects.reconciledDone,1);
+    await db.exec(`RESET ROLE; UPDATE app_private.copilot_action_ledger SET consent_kind='click' WHERE event='step_unknown_effect'; SET ROLE authenticated;`);
+    assert.ok((await run()).counts.unintendedWrite>0,'external origin consent must be checked');
+    await db.exec(`RESET ROLE; UPDATE app_private.copilot_action_ledger SET consent_kind='step_up',audit_id=null,after_digest=null WHERE event='step_unknown_effect'; SET ROLE authenticated;`);
+    assert.equal((await run()).status,'incomplete','missing origin evidence must not green');
+    await db.exec(`RESET ROLE; DELETE FROM app_private.copilot_action_ledger WHERE event='step_unknown_effect'; SET ROLE authenticated;`);
+    assert.equal((await run()).status,'incomplete','reconciliation without origin must not green');
+  } finally {await db.close();}
+});

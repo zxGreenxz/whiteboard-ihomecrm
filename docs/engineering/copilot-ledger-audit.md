@@ -40,13 +40,24 @@ public entity tables with an organization column can currently be compared;
 missing rows, unsupported entities and unreadable sources are explicit gaps.
 
 `action_executed` is a wrapper event and intentionally records click consent.
-The engine's correlated `step_done` carries actual plan consent. Idempotent
+The engine's correlated `step_done` or `step_unknown_effect` carries actual plan consent. Idempotent
 engine replays may reference an older audit without another wrapper event.
 The audit checks duplicate audit keys, duplicate wrapper executions for one
 audit, duplicate non-replay completions of a plan step, audit-to-ledger coverage,
-and DONE steps with missing/mismatched ledger pointers. Related immutable audit
+and DONE/UNKNOWN_EFFECT steps with missing/mismatched ledger pointers. Related immutable audit
 and wrapper references may predate the window for replays. A wrapper whose plan
 completion is outside the requested bounds is incomplete: widen the bounds.
+
+External actions first commit queue evidence in `step_unknown_effect`; this is
+not proof of the external effect succeeding. Pending effects are counted in
+`externalEffects.pending` and make the report incomplete. A `step_reconciled`
+event has no top-level audit/entity/digest fields: the RPC links it to exactly
+one earlier queue execution with matching plan/step/action/org, entity reference,
+consent and current step ledger pointer. It reads queue audit/readback evidence
+from that origin, and reports terminal DONE and FAILED separately. A reconciliation
+by a different actor may be legitimate superadmin work; without historical actor
+authorization evidence it is incomplete rather than automatically a wrong-actor
+violation. Include the queue execution and reconciliation in the requested window.
 
 Missing historical plans, confirmations, consent kind or readback digest flags
 are classified as incomplete, not automatically as proven unintended writes.

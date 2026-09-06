@@ -102,6 +102,7 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
   const lower = since ?? new Date(Date.parse(upper) - days * 86400000).toISOString();
   if (instant(lower) >= instant(upper) || instant(upper) - instant(lower) > 366n * 86400000000n) throw new Error('invalid_window');
   const findings = { unintendedWrite: [], duplicate: [], wrongOrg: [], wrongActor: [], incomplete: [] };
+  const externalEffects = { pending: 0, reconciledDone: 0, reconciledFailed: 0 };
   const add = (kind, reason, r = {}) => findings[kind].push({ reason, id: r.id ?? null, action_id: r.action_id ?? null });
   let registry, registrySignature, missingSteps, ledgerRows = 0, auditRows = 0;
   const seenDuplicates = new Set();
@@ -138,17 +139,27 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
             else if (r.duplicate_key !== false || r.duplicate_executions !== false) add('incomplete', 'audit_duplicate_evidence_missing', r);
             const reg = registry.get(r.action_id);
             if (!reg) add('incomplete', 'audit_action_absent_from_registry', r);
-            if (reg?.executor_kind === 'direct_l5_v1' && (r.action_executions !== 1 || r.step_links < 1)) add('incomplete', 'audit_ledger_coverage_gap', r);
+            if (reg?.executor_kind === 'direct_l5_v1' && (r.action_executions !== 1 || !Number.isSafeInteger(r.step_links) || r.step_links < 1)) add('incomplete', 'audit_ledger_coverage_gap', r);
             continue;
           }
           if (r.plan_id) {
             if (r.plan_present !== true) add('incomplete', 'plan_missing_historical', r);
             else for (const [field, kind] of [['plan_actor_matches', 'wrongActor'], ['plan_org_matches', 'wrongOrg']]) {
-              if (r[field] === false) add(kind, field, r);
+              if (r[field] === false) add(r.event === 'step_reconciled' && field === 'plan_actor_matches' ? 'incomplete' : kind, field, r);
               else if (r[field] !== true) add('incomplete', `${field}_missing`, r);
             }
           }
-          if (!['step_done', 'action_executed'].includes(r.event)) continue;
+          if (!['step_done', 'action_executed', 'step_unknown_effect', 'step_reconciled'].includes(r.event)) continue;
+          if (r.event === 'step_unknown_effect') {
+            if (r.external_effect_status === 'pending') { externalEffects.pending++; add('incomplete', 'external_effect_pending', r); }
+            else if (r.external_effect_status !== 'resolved') add('incomplete', 'external_effect_status_missing', r);
+          }
+          if (r.event === 'step_reconciled') {
+            if (r.reconciliation_evidence !== 'valid') add('incomplete', 'reconciliation_chain_missing_or_invalid', r);
+            if (r.external_effect_status === 'DONE') externalEffects.reconciledDone++;
+            else if (r.external_effect_status === 'FAILED') externalEffects.reconciledFailed++;
+            else add('incomplete', 'reconciliation_status_missing', r);
+          }
           const reg = registry.get(r.action_id);
           if (!reg) { add('incomplete', 'action_absent_from_registry', r); continue; }
           if (r.entity_evidence === 'mismatch') add('wrongOrg', 'entity_org_mismatch', r);
@@ -163,10 +174,10 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
             if (r.audit_org_matches !== false && r.audit_actor_matches !== false) add('incomplete', 'audit_action_or_entity_mismatch', r);
           }
           else if (r.audit_matches !== true) add('incomplete', 'audit_match_evidence_missing', r);
-          if (r.action_executions !== 1 || !Number.isInteger(r.step_links) || r.step_links < 1) add('incomplete', 'execution_step_coverage_gap', r);
+          if (r.action_executions !== 1 || !Number.isSafeInteger(r.step_links) || r.step_links < 1) add('incomplete', 'execution_step_coverage_gap', r);
           if (r.has_after_digest !== true) add('incomplete', 'readback_evidence_missing_historical', r);
           // Wrapper events intentionally use click. Consent belongs to the correlated plan step.
-          if (r.event !== 'step_done') continue;
+          if (r.event === 'action_executed') continue;
           const validKind = r.consent_kind === 'step_up' ||
             (r.consent_kind === 'standing_grant' && reg.grantable && !reg.pin_always);
           if (r.consent_kind == null) add('incomplete', 'consent_kind_missing_historical', r);
@@ -193,7 +204,7 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
     evidenceComplete: counts.incomplete === 0, canaryDurationVerified: false,
     directL5Actions: registry ? [...registry.values()].filter(r => r.executor_kind === 'direct_l5_v1').map(r => r.action_id) : [],
     ledgerRowsFetched: ledgerRows, ledgerRowsInWindow: ledgerRows, auditRowsInWindow: auditRows,
-    counts, ...findings,
+    counts, ...findings, externalEffects,
     notes: ['A bounded historical query does not establish an active canary duration.',
       'Missing historical evidence is incomplete, not a proven unintended write.',
       'Execution records and idempotency are checked; action_executed alone does not prove a new business effect.',

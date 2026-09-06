@@ -89,3 +89,16 @@ test('audit stream pages beyond 200 and unknown audit actions cannot green', asy
   const missing = await doiChieuSo(source([], {audit: [row(1,{action_id:'removed.action',duplicate_key:false})]}),'jwt',bounds);
   assert.equal(missing.status,'incomplete');
 });
+for (const step_links of [undefined, 'unknown', '1', -1, 0, 1.2, Number.MAX_SAFE_INTEGER + 1]) {
+  test(`audit rejects malformed step_links ${String(step_links)}`, async () => {
+    const r = await doiChieuSo(source([], { audit: [row(1, {duplicate_key:false,step_links})] }), 'jwt', bounds);
+    assert.equal(r.status, 'incomplete', 'malformed coverage must be incomplete');
+  });
+}
+test('external queue consent cannot be skipped and pending is not success', async () => {
+  const bad = await doiChieuSo(source([row(1,{event:'step_unknown_effect',consent_kind:'click',external_effect_status:'pending'})]),'jwt',bounds);
+  assert.equal(bad.counts.unintendedWrite,1,'external consent must be checked');
+  const pending = await doiChieuSo(source([row(1,{event:'step_unknown_effect',external_effect_status:'pending'})]),'jwt',bounds);
+  assert.equal(pending.status,'incomplete','pending effect must not be clean success');
+  assert.equal(pending.externalEffects.pending,1);
+});
