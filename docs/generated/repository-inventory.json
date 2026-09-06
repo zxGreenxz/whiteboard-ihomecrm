@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 534,
-  "soFileDocBangFs": 175,
-  "tongLoiGoi": 354,
-  "khongPhanLoaiDuoc": 185,
+  "tongSoFileTest": 539,
+  "soFileDocBangFs": 179,
+  "tongLoiGoi": 366,
+  "khongPhanLoaiDuoc": 186,
   "theoLoai": {
     "manifest": {
-      "soFile": 18,
+      "soFile": 21,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -23,7 +23,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "sql": {
-      "soFile": 59,
+      "soFile": 60,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -172,6 +172,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": "scripts/__tests__/copilot-golden-browser-evidence.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 4
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/copilot/__tests__/pageAgentCompatibility.test.ts",
       "soGoi": 4,
       "loai": {
@@ -241,12 +249,37 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "infra/network-center-worker/test/container.test.ts",
       "soGoi": 3,
       "loai": {
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "scripts/__tests__/copilot-ledger-audit-rpc.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "sql": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/copilot-vps-gemini-migration.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 1,
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/gen-supabase-types.test.ts",
@@ -356,14 +389,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 1
-    },
-    {
-      "file": "scripts/__tests__/copilot-ledger-audit-rpc.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/network-center-ingest-domains.test.mjs",
@@ -560,10 +585,8 @@
     {
       "file": ".e2e-fleet/specs/copilot-golden-readonly.spec.ts",
       "soGoi": 1,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": ".e2e-fleet/specs/phong-trong-export-image.spec.ts",
@@ -618,6 +641,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/copilot-golden-real-cli.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/evidence-store.test.mjs",

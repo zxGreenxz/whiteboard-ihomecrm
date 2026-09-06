@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T17:52:59.636Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "reviewedSourceSha": "93d6d2c94bbdc4947227c8fbf23b1afc9ffb6a9f",
+  "applySourceSha": "5cb62d70068f899cc0236fa45367d651430c9f89",
+  "migration": "20260906170939_copilot_ledger_legacy_identity_v1.sql",
+  "functions": [
+    {
+      "nspname": "app_private",
+      "proname": "copilot_audit_action_identity_v1",
+      "signature": "app_private.copilot_audit_action_identity_v1(text,text,uuid)",
+      "provolatile": "s",
+      "prosecdef": false,
+      "proconfig": [
+        "search_path=pg_catalog, app_private"
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "anon_execute": false,
+      "authenticated_execute": false,
+      "service_execute": false,
+      "bodyMatchesReviewedSql": true,
+      "bodySha256": "56900cd5bef363a49faf167a71c406e1c906fa8c31b545efad06ce8319dc7919"
+    },
+    {
+      "nspname": "public",
+      "proname": "copilot_ledger_audit_page_v1",
+      "signature": "copilot_ledger_audit_page_v1(uuid,timestamp with time zone,timestamp with time zone,text,timestamp with time zone,uuid,integer)",
+      "provolatile": "s",
+      "prosecdef": true,
+      "proconfig": [
+        "search_path=pg_catalog, public, app_private"
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "anon_execute": false,
+      "authenticated_execute": true,
+      "service_execute": false,
+      "bodyMatchesReviewedSql": true,
+      "bodySha256": "09423aeca00dac2f74cf8fa509e11368f1ea1a19606fef8637126b40ba524d04"
+    }
+  ],
+  "http": {
+    "anonymous": 401,
+    "nonSuperadmin": 403,
+    "superadmin": 200
+  },
+  "organizationId": "dddd0000-0000-4000-8000-000000000001",
+  "window": {
+    "since": "2026-08-23T00:00:00Z",
+    "until": "2026-09-06T16:30:18.810Z"
+  },
+  "comparison": {
+    "priorReportMeasuredAt": "2026-09-06T16:30:21.506Z",
+    "afterReportMeasuredAt": "2026-09-06T17:50:48.045Z",
+    "ledgerRowsBefore": 632,
+    "ledgerRowsAfter": 632,
+    "auditRowsBefore": 100,
+    "auditRowsAfter": 100,
+    "previousUnmappedAuditRowsVerified": 33,
+    "priorFullRpcRowsCaptured": false,
+    "limitation": "The prior report retained findings and totals only. Full pre-apply RPC pages were not captured; this comparison verifies all 33 named findings and window totals, not byte-for-byte equivalence of all prior rows."
+  },
+  "audit": {
+    "status": "incomplete",
+    "evidenceComplete": false,
+    "canaryDurationVerified": false,
+    "counts": {
+      "unintendedWrite": 0,
+      "duplicate": 0,
+      "wrongOrg": 0,
+      "wrongActor": 0,
+      "incomplete": 34
+    },
+    "knownLegacyL4": {
+      "auditRows": 33,
+      "auditRowsWithoutExecution": 0
+    },
+    "incompleteUniqueLedgerIds": 17,
+    "incompleteReasons": {
+      "audit_missing_historical": 17,
+      "legacy_ledger_evidence_gap_historical_boundary": 17
+    }
+  },
+  "catalog": {
+    "capturedAt": "2026-09-06T17:47:11.399Z",
+    "fingerprint": "96470e534ddf41f8c47e42b94110e268d2b1ea694836b17a8d2fd439739641b5",
+    "counts": {
+      "logicalTables": 244,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 1495,
+      "securityDefinerFunctions": 1037,
+      "enums": 30,
+      "realtimeTables": 25
+    }
+  }
+}

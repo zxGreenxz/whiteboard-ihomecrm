@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T18:04:35.174Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "readOnly": true,
+  "functions": [
+    {
+      "signature": "copilot_execute_income_expense_legacy_v1(text,jsonb)",
+      "bodySha256": "e55854b4c041ce1191b10d8ebd755d97e513d9459d174857c137e3ae9de79ca4",
+      "sourceFile": "supabase/migrations/20260830171108_copilot_income_expense_rpc_hardening_v1.sql",
+      "sourceFunction": "copilot_execute_income_expense_v1",
+      "bodyMatchesSource": true,
+      "replayReturnsValidatedOriginalAuditId": false
+    },
+    {
+      "signature": "copilot_execute_income_expense_v1(text,jsonb)",
+      "bodySha256": "f9fbbf48d594b35c8fca5aa14fad87f9114a8de883fd92284e05ea30bbbc1593",
+      "sourceFile": "supabase/migrations/20260903072353_copilot_action_income_expense_annotate_v1.sql",
+      "sourceFunction": "copilot_execute_income_expense_v1",
+      "bodyMatchesSource": true,
+      "replayReturnsValidatedOriginalAuditId": null
+    },
+    {
+      "signature": "copilot_plan_execute_step_v1(uuid,integer,integer,uuid)",
+      "bodySha256": "c0b1aaa754fde52b5f680bdef9eb2dc7d80645974bb4f6a196f7f804d6974908",
+      "sourceFile": "supabase/migrations/20260903212610_copilot_action_zalo_phat_song_v1.sql",
+      "sourceFunction": "copilot_plan_execute_step_v1",
+      "bodyMatchesSource": true,
+      "replayReturnsValidatedOriginalAuditId": null
+    }
+  ],
+  "conclusion": "The current legacy replay return omits audit_id after validating the original audit. This explains the current producer gap, but does not attest historical deployments for each of the 17 immutable ledger rows. A future-only producer fix must preserve nonce/org/actor checks and must not append an additional execution."
+}

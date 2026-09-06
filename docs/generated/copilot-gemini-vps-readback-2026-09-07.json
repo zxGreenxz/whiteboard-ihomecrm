@@ -1,0 +1,44 @@
+{
+  "checkedAt": "2026-09-06T17:18:33.551Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "reviewedSha": "94939ce88224aa2d8949537c5165968cb3844a74",
+  "migration": "supabase/migrations/20260906165423_copilot_9router_vps_gemini_v1.sql",
+  "migrationSha256": "96b461e6ec866926714d018e8b01a3c4ac5556d860f91f06c6753f3637d22990",
+  "provider": {
+    "provider": "9router",
+    "enabled": true,
+    "label": "9Router (VPS)",
+    "models": [
+      {
+        "id": "ag/gemini-3.6-flash-high(high)",
+        "label": "Gemini 3.6 Flash High (high)",
+        "input_price": 0,
+        "output_price": 0,
+        "pricing_mode": "self_hosted"
+      },
+      {
+        "id": "ag/gemini-3.7-flash-high(high)",
+        "label": "Gemini 3.7 Flash High (high)",
+        "input_price": 0,
+        "output_price": 0,
+        "pricing_mode": "self_hosted"
+      },
+      {
+        "id": "ag/gemini-3.8-flash(high)",
+        "label": "Gemini 3.8 Flash (high)",
+        "input_price": 0,
+        "output_price": 0,
+        "pricing_mode": "self_hosted"
+      }
+    ],
+    "default_model": "ag/gemini-3.6-flash-high(high)",
+    "data_class": "cloud",
+    "organization_id": null,
+    "updated_at": "2026-09-06 17:18:27.143276+00"
+  },
+  "otherProviderRowsUnchanged": 9,
+  "previousDefault": "cx/gpt-5.6-sol(max)",
+  "previousModels": 60,
+  "crmAcceptanceVerified": false,
+  "catalogExpectation": "Data-only provider configuration: unchanged catalog fingerprint is expected; row comparison above proves the data change."
+}
