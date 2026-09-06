@@ -199,7 +199,11 @@ async function asAuthenticated(db) {
   await db.exec('SET ROLE authenticated');
 }
 
-const sorted = (value) => [...(value ?? [])].sort();
+function sorted(value) {
+  assert.ok(Array.isArray(value),
+    `expected SQL uuid[] result, received ${value === null ? 'NULL' : typeof value}`);
+  return [...value].sort();
+}
 
 async function resolveScope(db, org = ids.org, permission = 'services.view') {
   const row = (await db.query(
