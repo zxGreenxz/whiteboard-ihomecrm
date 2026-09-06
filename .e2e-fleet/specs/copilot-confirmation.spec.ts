@@ -2,7 +2,11 @@ import { expect, test, type Page, type Response } from '@playwright/test';
 
 import { login, trackConsoleErrors } from './auth';
 import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
-import { COPILOT_TEST_MODEL as MODEL, pinCopilotTestModel } from './copilotTestModel';
+import {
+  COPILOT_TEST_MODEL as MODEL,
+  pinCopilotTestModel,
+  type CopilotTestModelPin,
+} from './copilotTestModel';
 import { guiVaChoModel } from './copilotModelCycle';
 
 /**
@@ -79,19 +83,31 @@ test.beforeAll(() => {
   chanChayTrenProduction();
 });
 
+const modelPins = new WeakMap<Page, CopilotTestModelPin>();
+
 test.beforeEach(async ({ page }) => {
   // Chỉ ghim preference trong phản hồi đọc của browser context này. Không
   // ghi đè lựa chọn lưu trên server (có thể chưa tồn tại hoặc đã lỗi thời).
   // Mô hình, preview, execute và dữ liệu nghiệp vụ bên dưới đều chạy THẬT.
-  await pinCopilotTestModel(page);
-  await login(page, 'chunha');
-  await xacMinhBanBuild(page);
-  await page.getByTestId('copilot-launcher').click();
-  const picker = page.getByTestId('copilot-model-select');
-  await expect(picker).toBeEnabled();
-  await expect(picker).toHaveValue(MODEL);
-  await expect(page.getByTestId('copilot-dang-tai-lich-su')).toHaveCount(0);
-  await page.getByTitle('Cuộc trò chuyện mới', { exact: true }).click();
+  const modelPin = await pinCopilotTestModel(page);
+  modelPins.set(page, modelPin);
+  try {
+    await login(page, 'chunha');
+    await xacMinhBanBuild(page);
+    await page.getByTestId('copilot-launcher').click();
+    const picker = page.getByTestId('copilot-model-select');
+    await expect(picker).toBeEnabled();
+    await expect(picker).toHaveValue(MODEL);
+    await expect(page.getByTestId('copilot-dang-tai-lich-su')).toHaveCount(0);
+    await page.getByTitle('Cuộc trò chuyện mới', { exact: true }).click();
+  } catch (error) {
+    await modelPin.dispose();
+    throw error;
+  }
+});
+
+test.afterEach(async ({ page }) => {
+  await modelPins.get(page)?.dispose();
 });
 
 test('lập đề xuất phiếu KHÔNG tạo phiếu nào cho tới khi người dùng bấm', async ({ page }) => {

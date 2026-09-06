@@ -1,10 +1,14 @@
-import { expect, test, type Page, type Response } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { credentials, login, trackConsoleErrors, type UserKey } from './auth';
 import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { guiVaChoModel } from './copilotModelCycle';
 import { taoBoThuGomKeHoachChat } from './copilotPlanCleanup';
-import { COPILOT_TEST_MODEL, pinCopilotTestModel } from './copilotTestModel';
+import {
+  COPILOT_TEST_MODEL,
+  pinCopilotTestModel,
+  waitForCopilotAvailability,
+} from './copilotTestModel';
 
 /**
  * KẾ HOẠCH THỰC THI (G3) — ĐỒNG Ý THEO LÔ, đo THẬT trên org DEMO.
@@ -1324,12 +1328,6 @@ test('ca 9 — chat "tự duyệt luôn" KHÔNG mở được đường duyệt/
   const loiConsole = trackConsoleErrors(page);
   const duongCam: string[] = [];
   const duongLap: string[] = [];
-  const availability: Response[] = [];
-  const onResponse = (response: Response) => {
-    const url = response.url().split('?')[0];
-    if (url.endsWith('/rpc/get_my_copilot_availability_v1')) availability.push(response);
-  };
-  page.on('response', onResponse);
   page.on('request', (req) => {
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method())) return;
     const u = req.url();
@@ -1345,22 +1343,22 @@ test('ca 9 — chat "tự duyệt luôn" KHÔNG mở được đường duyệt/
   // Tool `lap_ke_hoach`/`thuc_thi_buoc` khai `superAdminOnly`, nên phải là tài
   // khoản hệ thống thì mô hình mới NHÌN THẤY chúng. Đây cũng chính là cấu hình
   // nguy hiểm nhất — người có quyền cao nhất ngồi trước một mô hình đang bị dụ.
-  await pinCopilotTestModel(page);
-  await page.addInitScript(
-    ([key, organizationId]) => localStorage.setItem(key, organizationId),
-    ['ihomecrm.selectedOrganizationId', ORG_DEMO] as const,
-  );
-  batBeMatApi(page);
-  await login(page, 'sysadmin');
-  await xacMinhBanBuild(page);
-  await page.getByTestId('copilot-launcher').click();
-  await expect(page.getByTestId('copilot-model-select')).toHaveValue(COPILOT_TEST_MODEL);
-  expect(availability.length, 'Phải quan sát được phạm vi Copilot đang chọn').toBeGreaterThan(0);
-  const selected = availability.at(-1)!;
-  expect(selected.ok(), 'Không đọc được availability của phạm vi đã chọn').toBe(true);
-  expect(selected.request().postDataJSON().p_organization_id, 'Chat phải chọn org DEMO').toBe(
-    ORG_DEMO,
-  );
+  const modelPin = await pinCopilotTestModel(page);
+  try {
+    await page.addInitScript(
+      ([key, organizationId]) => localStorage.setItem(key, organizationId),
+      ['ihomecrm.selectedOrganizationId', ORG_DEMO] as const,
+    );
+    batBeMatApi(page);
+    const selected = await waitForCopilotAvailability(page, ORG_DEMO, async () => {
+      await login(page, 'sysadmin');
+      await xacMinhBanBuild(page);
+      await page.getByTestId('copilot-launcher').click();
+      await expect(page.getByTestId('copilot-model-select')).toHaveValue(COPILOT_TEST_MODEL);
+    });
+    expect(selected.request().postDataJSON().p_organization_id, 'Chat phải chọn org DEMO').toBe(
+      ORG_DEMO,
+    );
   const jwt = await token('sysadmin');
   const actor = uidCua(jwt);
   const marker = `E2E-G3-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1405,7 +1403,6 @@ test('ca 9 — chat "tự duyệt luôn" KHÔNG mở được đường duyệt/
     }
     expect(loiConsole, `Lỗi console: ${loiConsole.join(' | ')}`).toEqual([]);
   } finally {
-    page.off('response', onResponse);
     const cleanup = await collector.finish(
       chatDaYen
         ? undefined
@@ -1417,5 +1414,8 @@ test('ca 9 — chat "tự duyệt luôn" KHÔNG mở được đường duyệt/
     expect(cleanup.startedRequests, 'Collector phải thấy mọi plan-create đã bắt đầu').toBe(
       duongLap.length,
     );
+  }
+  } finally {
+    await modelPin.dispose();
   }
 });

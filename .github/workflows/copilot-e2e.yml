@@ -223,12 +223,11 @@ jobs:
       #   khẩu bị disabled/che ở auth.ts:52. Đã tái hiện 02/09/2026: dòng 13 của log
       #   chứa `- fill("Fl33t!…")`.
       # Nên có HAI lớp, không một:
-      #   - LỚP ĐẦU (lọc che): đặt trên đường ống TRƯỚC `tee`, thay mọi giá trị
-      #     `FLEET_PASS_*` bằng `***`. Thứ nằm trên đĩa sạch ngay từ đầu, nên artifact
-      #     vẫn dùng được để đọc lỗi.
-      #   - LƯỚI (bước guard bên dưới): vẫn grep nguyên văn từng mật khẩu. Lọc che có
-      #     thể sót (giá trị quá ngắn, một đường ghi khác) — guard mới là thứ CHẶN
-      #     upload.
+      #   - LỚP ĐẦU (lọc che): đặt trên đường ống TRƯỚC `tee`, thay mật khẩu/PIN/
+      #     bypass đã biết, mọi JWT động và giá trị Authorization. Thứ nằm trên đĩa
+      #     sạch ngay từ đầu, nên artifact vẫn dùng được để đọc lỗi.
+      #   - LƯỚI (bước guard bên dưới): quét lại giá trị chính xác lẫn hình dạng động.
+      #     Lọc che có thể sót — guard mới là thứ CHẶN upload.
       # Đừng gỡ lớp nào vì "lớp kia lo rồi": lớp đầu giữ cho log còn đọc được, lưới
       # giữ cho một lần sót không thành một lần rò.
       #
@@ -247,36 +246,7 @@ jobs:
           LOC_CHE: ${{ runner.temp }}/che-bi-mat.mjs
         run: |
           set -euo pipefail
-          cat > "$LOC_CHE" <<'HET_LOC'
-          // Lọc che: thay mọi giá trị BÍ MẬT bằng ***, xử theo TỪNG DÒNG.
-          // Danh sách gồm FLEET_PASS_* VÀ VERCEL_AUTOMATION_BYPASS_SECRET: cái
-          // sau cũng là mật khẩu (ai có nó thì mở được mọi deployment preview),
-          // nên nó phải chịu đúng bộ lọc và đúng guard như mật khẩu DEMO chứ
-          // không phải "chỉ là một header".
-          // Dùng split/join chứ KHÔNG regex: mật khẩu chứa `!`, `_`, `-` và quên
-          // escape một metachar là lọc âm thầm sai. So khớp chuỗi thuần thì không
-          // có metachar nào để quên. Dài trước ngắn sau, để một mật khẩu là tiền
-          // tố của mật khẩu khác vẫn bị che trọn.
-          // Bỏ qua giá trị dưới 8 ký tự: một biến đặt nhầm thành "a" sẽ biến cả
-          // log thành ***. Trường hợp đó guard vẫn là lưới.
-          const NL = String.fromCharCode(10);
-          const LA_BI_MAT = /^(?:FLEET_PASS_|VERCEL_AUTOMATION_BYPASS_SECRET$)/;
-          const bi = Object.keys(process.env)
-            .filter((k) => LA_BI_MAT.test(k))
-            .map((k) => process.env[k])
-            .filter((v) => v && v.length >= 8)
-            .sort((a, b) => b.length - a.length);
-          const che = (s) => { for (const v of bi) s = s.split(v).join("***"); return s; };
-          let du = "";
-          process.stdin.setEncoding("utf8");
-          process.stdin.on("data", (c) => {
-            du += c;
-            const dong = du.split(NL);
-            du = dong.pop();
-            for (const d of dong) process.stdout.write(che(d) + NL);
-          });
-          process.stdin.on("end", () => { if (du) process.stdout.write(che(du) + NL); });
-          HET_LOC
+          cp scripts/copilot-e2e-artifact-safety.mjs "$LOC_CHE"
           node --check "$LOC_CHE"
           echo "Da sinh bo loc che: $LOC_CHE"
 
@@ -435,14 +405,11 @@ jobs:
           echo "Da xoa report HTML + test-results (khong buoc nao tai chung len)."
 
       # Guard: thứ SẮP tải lên phải CHỨNG MINH ĐƯỢC là sạch, không chỉ "trông sạch".
-      # Hai phép, vì một phép không đủ:
-      #   - grep nguyên văn từng mật khẩu ⇒ bắt bản rõ;
-      #   - chặn mọi file có `data:application/zip;base64,` ⇒ bắt thứ grep KHÔNG
-      #     đọc nổi. Report HTML của Playwright nhúng report JSON đã nén ở đúng
-      #     dạng đó, và tiêu đề bước `Fill "<giá trị>"` nằm trong. Cố ý KHÔNG giải
-      #     nén để "kiểm cho kỹ": không chứng minh được sạch thì KHÔNG tải lên.
-      # `grep -q` nên nội dung khớp không bị in ra log.
-      - name: Guard — artifact không được chứa mật khẩu DEMO
+      # Bộ guard dùng cùng định nghĩa đã test với bộ lọc: giá trị chính xác của
+      # mật khẩu/PIN/bypass, JWT động, Authorization chưa che, và report zip nhúng.
+      # Cố ý KHÔNG giải nén report để "kiểm cho kỹ": không chứng minh được sạch
+      # thì KHÔNG tải lên. Finding chỉ in loại + đường dẫn, không in giá trị khớp.
+      - name: Guard — artifact không được chứa bí mật Copilot E2E
         id: guard
         if: always()
         env:
@@ -452,6 +419,7 @@ jobs:
           FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
           FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
           FLEET_PASS_SYSADMIN: ${{ secrets.FLEET_PASS_SYSADMIN }}
+          COPILOT_E2E_PIN: ${{ secrets.COPILOT_E2E_PIN }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -uo pipefail
@@ -459,49 +427,12 @@ jobs:
             echo "Khong co thu muc tai len — khong co gi de canh."
             exit 0
           fi
-          loi=0
-          dem=0
-          dem_pass=0
-          # Tên biến lấy ĐỘNG thay vì chép cứng: thêm một giá trị bí mật vào khối
-          # `env:` ở trên là guard tự canh luôn. Một danh sách chép tay chính là
-          # cách một secret mới lọt lưới mà không ai thấy.
-          #
-          # VERCEL_AUTOMATION_BYPASS_SECRET nằm trong CÙNG lưới với mật khẩu DEMO:
-          # nó mở được MỌI deployment preview của project, nên rò nó ra artifact
-          # cũng nghiêm trọng như rò mật khẩu.
-          for ten in $(env | cut -d= -f1 | grep -E "^(FLEET_PASS_|VERCEL_AUTOMATION_BYPASS_SECRET$)" | sort -u); do
-            mk="${!ten:-}"
-            [ -n "$mk" ] || continue
-            dem=$((dem + 1))
-            case "$ten" in FLEET_PASS_*) dem_pass=$((dem_pass + 1)) ;; esac
-            if grep -rqF -- "$mk" "$THU_MUC_TAI_LEN"; then
-              echo "::error::artifact chua gia tri bi mat ($ten) — khong upload"
-              loi=1
-            fi
-          done
-          if grep -rqF -- 'data:application/zip;base64,' "$THU_MUC_TAI_LEN"; then
-            echo "::error::artifact chua report nhung zip (grep khong kiem duoc) — khong upload"
-            loi=1
-          fi
-          if [ "$dem_pass" -eq 0 ]; then
-            # Đếm RIÊNG FLEET_PASS_*, không đếm gộp. Nhìn tổng thì một môi trường chỉ
-            # có mỗi VERCEL_AUTOMATION_BYPASS_SECRET sẽ cho `dem=1` và guard gật đầu —
-            # trong khi bốn mật khẩu DEMO chưa hề được đo. Thêm một secret vào lưới
-            # không được phép làm YẾU phép đo đã có.
-            #
-            # Không thấy biến FLEET_PASS_* nào ⇒ guard KHÔNG ĐO được gì. Đó KHÔNG phải
-            # là "sạch", nên thoát khác 0 (fail-closed): upload đòi guard success, nên
-            # không có gì rời máy chạy khi phép đo hỏng. Dùng mã 3 để phân biệt với
-            # mã 1 "đã đo và BẮT ĐƯỢC mật khẩu" — hai chuyện rất khác nhau khi đọc log.
-            echo "KHONG DO DUOC: guard khong thay bien FLEET_PASS_* nao trong moi truong."
-            echo "Khong phai da kiem va sach — kiem lai khoi env: cua buoc chay test."
-            exit 3
-          fi
-          if [ "$loi" -ne 0 ]; then
+          status=0
+          node scripts/copilot-e2e-artifact-safety.mjs guard "$THU_MUC_TAI_LEN" || status=$?
+          if [ "$status" -ne 0 ]; then
             rm -rf "$THU_MUC_TAI_LEN"
-            exit 1
+            exit "$status"
           fi
-          echo "Guard: da do $dem gia tri bi mat ($dem_pass mat khau DEMO), khong thay cai nao trong $THU_MUC_TAI_LEN."
 
       # `!cancelled() && guard == success`: vẫn tải lên khi suite ĐỎ (đó là lúc log
       # có giá trị nhất), nhưng KHÔNG tải khi guard chưa chạy hoặc vừa bắt được rò

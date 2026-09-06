@@ -36,6 +36,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
   save();
   let reason: CaseReason = 'preflight_missing';
   let fatalProvider = false;
+  let modelPin: Awaited<ReturnType<typeof pinCopilotTestModel>> | undefined;
   const pending = () => run.cases.filter(c => c.status === 'pending' || c.status === 'running');
   try {
     chanChayTrenProduction();
@@ -44,7 +45,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
     // The launcher wrapper needs independent reviewed/deployed edge attestation.
     expect(process.env.COPILOT_DEPLOYED_EDGE_DIGEST).toBe(attestation.deployedEdgeSourceDigest);
     expect(process.env.COPILOT_REVIEWED_EDGE_DIGEST).toBe(attestation.edgeSourceDigest);
-    await pinCopilotTestModel(page);
+    modelPin = await pinCopilotTestModel(page);
     reason = 'browser_failed';
     const consoleErrors = trackConsoleErrors(page);
     const availability: Response[] = [];
@@ -145,6 +146,8 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
   } catch {
     for (const c of pending()) transitionCase(run, c.id, { status: 'blocked', reason });
     save();
+  } finally {
+    await modelPin?.dispose();
   }
   // Do not let an incomplete live run look green in CI, even with an approved
   // mock-only SLA exception. The checkpoint is the sanitized diagnostic artifact.
