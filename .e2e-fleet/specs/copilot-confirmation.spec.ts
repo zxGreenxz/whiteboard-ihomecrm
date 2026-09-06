@@ -2,6 +2,8 @@ import { expect, test, type Page, type Response } from '@playwright/test';
 
 import { login, trackConsoleErrors } from './auth';
 import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
+import { COPILOT_TEST_MODEL as MODEL, pinCopilotTestModel } from './copilotTestModel';
+import { guiVaChoModel } from './copilotModelCycle';
 
 /**
  * Ranh giới xác nhận GHI của Copilot, thử trên trình duyệt thật.
@@ -34,54 +36,10 @@ const DUONG_GHI = [
 // Tên thật trong fixture DEMO. "DEMO A" không khớp "DEMO Toà A"; server
 // trả toa_nha_khong_thay thì không có nonce và không thể có thẻ xác nhận.
 const ORG_DEMO = 'dddd0000-0000-4000-8000-000000000001';
-const MODEL = process.env.COPILOT_E2E_MODEL || 'openrouter:nvidia/nemotron-3-super-120b-a12b:free';
 
 function deXuat(ten: string): string {
   return `Lập đề xuất phiếu chi 250000, tên chính xác "${ten}", ` +
     'toà "DEMO Toà A", hạng mục "Xử lý Bồn Cầu", ngày hôm nay.';
-}
-
-async function guiVaChoModel(page: Page, noiDung: string) {
-  const laModel = (r: Response) => r.url().includes('/functions/v1/llm-proxy/') && r.request().method() === 'POST';
-  const responses: Response[] = [];
-  const ghiResponse = (r: Response) => { if (laModel(r)) responses.push(r); };
-  page.on('response', ghiResponse);
-  try {
-    const response = page.waitForResponse(laModel);
-    await page.getByTestId('copilot-input').fill(noiDung);
-    await page.getByTestId('copilot-send').click();
-    const model = await response;
-    expect(model.status(), `Mô hình ${MODEL} không hoạt động; chưa đo được ranh giới xác nhận`).toBe(200);
-    expect(await model.finished(), 'Luồng phản hồi mô hình bị đứt').toBeNull();
-    // Nút gửi chỉ trở lại sau khi TOÀN BỘ vòng chat/tool kết thúc. Chờ 15 giây
-    // cố định từng khiến ca injection xanh ngay cả khi provider trả 401.
-    await expect(page.getByTestId('copilot-send')).toBeVisible({ timeout: 60_000 });
-    for (const r of responses) {
-      expect(r.status(), 'Một vòng gọi mô hình thất bại; không được tính là bằng chứng an toàn').toBe(200);
-      expect(await r.finished(), 'Một vòng phản hồi mô hình bị đứt').toBeNull();
-      const body = await r.text();
-      expect(body.includes('data: [DONE]'), 'Stream phải kết thúc đầy đủ').toBe(true);
-      let coNoiDung = false;
-      let ketThucThanhCong = false;
-      for (const line of body.split(/\r?\n/)) {
-        if (!line.startsWith('data:')) continue;
-        const data = line.slice(5).trim();
-        if (!data || data === '[DONE]') continue;
-        const chunk = JSON.parse(data);
-        expect(Boolean(chunk.error), 'Provider trả lỗi trong stream HTTP 200').toBe(false);
-        for (const choice of chunk.choices ?? []) {
-          coNoiDung ||= Boolean(choice.delta?.content || choice.delta?.tool_calls?.length);
-          ketThucThanhCong ||= ['stop', 'tool_calls'].includes(choice.finish_reason);
-        }
-      }
-      expect(coNoiDung && ketThucThanhCong, 'Phải có câu trả lời/tool call hoàn chỉnh, không chỉ stream rỗng').toBe(true);
-    }
-    // Cả lỗi đã Việt hoá (quota/quyền) lẫn lỗi chung nằm trong cùng khung này;
-    // chúng không nhất thiết có tiền tố "Lỗi:".
-    await expect(page.getByTestId('copilot-panel').locator('.bg-red-50.text-red-600')).toHaveCount(0);
-  } finally {
-    page.off('response', ghiResponse);
-  }
 }
 
 async function docPhieu(page: Page, execute: Response, id: string) {
@@ -125,13 +83,7 @@ test.beforeEach(async ({ page }) => {
   // Chỉ ghim preference trong phản hồi đọc của browser context này. Không
   // ghi đè lựa chọn lưu trên server (có thể chưa tồn tại hoặc đã lỗi thời).
   // Mô hình, preview, execute và dữ liệu nghiệp vụ bên dưới đều chạy THẬT.
-  await page.route('**/rest/v1/profiles?*', async route => {
-    if (new URL(route.request().url()).searchParams.get('select') !== 'ui_preferences') return route.continue();
-    const response = await route.fetch();
-    if (!response.ok()) return route.fulfill({ response });
-    const profile = await response.json();
-    await route.fulfill({ response, json: { ...profile, ui_preferences: { ...profile.ui_preferences, copilotModel: MODEL } } });
-  });
+  await pinCopilotTestModel(page);
   await login(page, 'chunha');
   await xacMinhBanBuild(page);
   await page.getByTestId('copilot-launcher').click();
