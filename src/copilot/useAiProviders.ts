@@ -77,7 +77,7 @@ export function modelConDungDuoc(model: string, options: ModelOption[] | undefin
 }
 
 /**
- * Nhà cung cấp được ưu tiên khi phải chọn tạm một model thay thế.
+ * Nhà cung cấp được ưu tiên khi model mặc định cũng không còn khả dụng.
  *
  * `openrouter` đứng đầu vì nó là đường đám mây có hoá đơn và có SLA; các nhà
  * cung cấp khác xếp sau theo đúng thứ tự khai báo của server.
@@ -87,29 +87,20 @@ const UU_TIEN_NHA_CUNG_CAP: readonly string[] = ['openrouter'];
 /**
  * Model thay thế khi lựa chọn hiện tại không còn nằm trong `options`.
  *
- * VÌ SAO KHÔNG QUAY VỀ `DEFAULT_MODEL`
- *   `DEFAULT_MODEL` là `9router:…`, một endpoint TỰ DỰNG. Ngày 01–03/09/2026 nó
- *   chết hai ngày: sổ proxy ghi 6 lượt `upstream_error` từ 9router và đúng 1 lượt
- *   `ok` từ nemotron. Trong hai ngày đó, ai chưa từng tự chọn model — tức là
- *   người dùng mặc định — bấm gửi rồi ngồi chờ **hết 60 giây timeout**, mỗi lượt.
- *   Bản cũ rơi về `DEFAULT_MODEL` KỂ CẢ khi provider `9router` đã bị tắt trong
- *   `ai_providers`, nghĩa là nó cố tình chọn đúng cái model mà server vừa nói là
- *   không dùng được nữa. "Mặc định" ở đó không còn là một lựa chọn, nó là một
- *   hằng số đã cũ.
+ * Chỉ chọn từ danh sách cloud server vừa trả về. Ưu tiên `DEFAULT_MODEL`
+ * khi nó còn trong danh sách: preference cx cũ sẽ về Gemini 3.6 đã chọn cho
+ * VPS. Nếu mặc định bị gỡ/tắt thì giữ thứ tự dự phòng nhà cung cấp hiện có.
+ * Không chọn localOnly và không tự đổi model vì lỗi mạng, quota hay chất lượng
+ * câu trả lời; hàm này chỉ xử lý preference không còn trong danh mục.
  *
- * Nên bản này chọn từ CHÍNH danh sách server vừa trả về:
- *   - bỏ `localOnly` (Ollama/9Router chạy trên máy người dùng — người ở xa văn
- *     phòng không có gì để gọi, và một model cục bộ là lựa chọn CÓ CHỦ Ý chứ
- *     không phải thứ để rơi vào);
- *   - ưu tiên `openrouter`, rồi tới thứ tự server trả về.
- *
- * `options` rỗng hoặc chưa tải xong ⇒ giữ `DEFAULT_MODEL`: không có gì để thay
- * thì bịa ra một cái tên khác chỉ đổi thông báo lỗi chứ không chữa được gì.
+ * `options` rỗng hoặc chưa tải xong ⇒ null; chưa có model khả dụng để thay.
  */
 export function modelThayThe(options: ModelOption[] | undefined): string | null {
   if (!options?.length) return null;
   const dungDuoc = options.filter((o) => !o.localOnly);
   if (!dungDuoc.length) return null;
+  const macDinh = dungDuoc.find((o) => o.value === DEFAULT_MODEL);
+  if (macDinh) return macDinh.value;
   for (const nhaCungCap of UU_TIEN_NHA_CUNG_CAP) {
     const uuTien = dungDuoc.find((o) => o.provider === nhaCungCap);
     if (uuTien) return uuTien.value;

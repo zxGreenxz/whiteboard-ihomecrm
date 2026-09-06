@@ -1,15 +1,12 @@
 import type { Page } from '@playwright/test';
 
-// Latest user-selected green models in 9Router. This list is a test preference,
+// User-selected Gemini models on the VPS, with 3.6 evaluated first. This is a test preference,
 // not a claim of live response quality. No automatic fallback on transport or
 // quota errors; choose another candidate only after an explicit measured decision.
 export const COPILOT_TEST_MODEL_CANDIDATES = [
-  '9router:cx/gpt-5.6-luna(max)',
-  '9router:cx/gpt-5.6-luna-review(max)',
-  '9router:cx/gpt-5.6-terra(max)',
-  '9router:cx/gpt-5.6-terra-review(max)',
-  '9router:cx/gpt-5.5',
-  '9router:cx/gpt-5.5-review',
+  '9router:ag/gemini-3.6-flash-high(high)',
+  '9router:ag/gemini-3.7-flash-high(high)',
+  '9router:ag/gemini-3.8-flash(high)',
 ] as const;
 export const COPILOT_TEST_MODEL = process.env.COPILOT_E2E_MODEL || COPILOT_TEST_MODEL_CANDIDATES[0];
 export async function pinCopilotTestModel(page: Page): Promise<void> {

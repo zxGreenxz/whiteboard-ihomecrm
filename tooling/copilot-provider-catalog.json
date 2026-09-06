@@ -19,11 +19,13 @@
     {
       "provider": "9router",
       "enabled": true,
-      "default_model": "cx/gpt-5.6-sol(max)",
+      "default_model": "ag/gemini-3.6-flash-high(high)",
       "data_class": "cloud",
       "egress": "cloud",
       "models": [
-        { "id": "cx/gpt-5.6-sol(max)", "pricing_mode": "self_hosted", "input_price": 0, "output_price": 0 }
+        { "id": "ag/gemini-3.6-flash-high(high)", "pricing_mode": "self_hosted", "input_price": 0, "output_price": 0 },
+        { "id": "ag/gemini-3.7-flash-high(high)", "pricing_mode": "self_hosted", "input_price": 0, "output_price": 0 },
+        { "id": "ag/gemini-3.8-flash(high)", "pricing_mode": "self_hosted", "input_price": 0, "output_price": 0 }
       ]
     },
     {

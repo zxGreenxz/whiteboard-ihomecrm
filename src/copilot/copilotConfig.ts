@@ -21,19 +21,15 @@ export const LOCAL_PROVIDER_BASES: Record<string, string> = {
 /**
  * Model mặc định khi user chưa chọn.
  *
- * 9Router là VPS self-host với tài khoản Codex trả phí; effort nằm TRONG tên
- * model (`(max)`), không phải tham số riêng — đó là quy ước của 9Router, đừng
- * đi tìm `reasoning_effort`.
- *
- * Đã đo thật ngày 12/08/2026 trên `cli.chillhome.io.vn`: gọi tool đúng (và trả
- * được nhiều tool call trong một lượt), đọc được ảnh. Model cũ
- * `openrouter:nvidia/nemotron-3-super-120b-a12b:free` là bản miễn phí, giữ lại
- * trong `ai_providers` làm đường lui khi VPS chết.
+ * 9Router trên VPS dùng Gemini qua Antigravity (`ag/`). Mức suy luận nằm
+ * TRONG tên model (`(high)`), theo quy ước của 9Router.
+ * Ưu tiên Gemini 3.6 theo lựa chọn của chủ dự án; chỉ chủ động chọn 3.7/3.8
+ * sau khi đánh giá thấy cần. Không tự nâng model khi lỗi mạng hoặc hết quota.
  *
  * RÀNG BUỘC THỨ TỰ: giá trị này phải CÓ trong `ai_providers.models` của provider
  * `9router` trước khi deploy, vì proxy nay từ chối model ngoài danh sách.
  */
-export const DEFAULT_MODEL = '9router:cx/gpt-5.6-sol(max)';
+export const DEFAULT_MODEL = '9router:ag/gemini-3.6-flash-high(high)';
 
 /** Key trong profiles.ui_preferences lưu model user chọn. */
 export const MODEL_PREF_KEY = 'copilotModel';

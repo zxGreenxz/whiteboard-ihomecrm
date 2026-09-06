@@ -32,8 +32,22 @@ const cucBo: ModelOption = {
   provider: '9router',
   localOnly: true,
 };
+const macDinh: ModelOption = {
+  value: DEFAULT_MODEL,
+  label: 'Model mặc định — 9Router (VPS)',
+  provider: '9router',
+  localOnly: false,
+};
 
 describe('modelThayThe', () => {
+  it('ưu tiên model mặc định còn trong danh sách cloud khi preference cũ bị gỡ', () => {
+    expect(modelThayThe([groq, openrouter, macDinh])).toBe(DEFAULT_MODEL);
+  });
+
+  it('không chọn model mặc định nếu nó chỉ khả dụng cục bộ', () => {
+    expect(modelThayThe([{ ...macDinh, localOnly: true }, openrouter])).toBe(openrouter.value);
+  });
+
   it('chỉ còn openrouter thì chọn đúng model của openrouter', () => {
     expect(modelThayThe([openrouter])).toBe('openrouter:nvidia/nemotron-nano-9b-v2');
   });
