@@ -5,8 +5,14 @@ import { Toaster } from 'sonner';
 import { byId, click, deferred, eventually, fresh, io, mount, resetIo, send, unmount } from './renderHarness';
 import ChatPanel from '../ChatPanel';
 import { LoiModel } from '../llmClient';
+import { renderedAssistantText } from '../../../.e2e-fleet/specs/copilotSmokeOracle';
 
-beforeEach(resetIo);
+beforeEach(async () => {
+  resetIo();
+  // Resolve the mocked dynamic I/O boundary before mounting; its import must
+  // not complete between act blocks under a busy parallel suite.
+  await import('../createAgent');
+});
 afterEach(unmount);
 const panel = () => <><ChatPanel onClose={() => {}} /><Toaster /></>;
 
@@ -96,4 +102,16 @@ describe('mounted ChatPanel G0', () => {
     expect(document.body.textContent).toContain('Không lưu được lịch sử chat.');
     expect(io.save).toHaveBeenCalledTimes(2);
   });
+});
+
+it.each([
+  ['Có 1 phòng trống: [A101](/apartments).', 'Có 1 phòng trống: A101.', 1],
+  ['Có 1 phòng trống: [A101](javascript:evil).', 'Có 1 phòng trống: [A101](javascript:evil).', 0],
+] as const)('smoke normalization matches actual MiniMarkdown for %s', async (text, rendered, links) => {
+  io.turn.mockResolvedValue({ newMessages: [{ role: 'assistant', content: text }], toolEvents: [] });
+  await mount(panel()); await send();
+  const bubble = byId('copilot-panel').querySelector('.flex.justify-start.gap-2 > .bg-muted')!;
+  expect(bubble.textContent).toBe(rendered);
+  expect(bubble.querySelectorAll('a')).toHaveLength(links);
+  expect(renderedAssistantText(text)).toBe(bubble.textContent);
 });
