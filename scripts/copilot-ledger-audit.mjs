@@ -186,7 +186,12 @@ export async function doiChieuSo(client, jwtSys, { org, days = 14, since, until 
             if (r.audit_org_matches !== false && r.audit_actor_matches !== false) add('incomplete', 'audit_action_or_entity_mismatch', r);
           }
           else if (r.audit_matches !== true) add('incomplete', 'audit_match_evidence_missing', r);
-          if (reg.executor_kind !== 'direct_l5_v1') continue;
+          if (reg.executor_kind !== 'direct_l5_v1') {
+            // The audit itself may predate this window. Require its original
+            // canonical execution across history, never an extra replay event.
+            if (r.action_executions !== 1) add('incomplete', 'legacy_ledger_evidence_gap_historical_boundary', r);
+            continue;
+          }
           if (r.action_executions !== 1 || !Number.isSafeInteger(r.step_links) || r.step_links < 1) add('incomplete', 'execution_step_coverage_gap', r);
           if (r.has_after_digest !== true) add('incomplete', 'readback_evidence_missing_historical', r);
           // Wrapper events intentionally use click. Consent belongs to the correlated plan step.

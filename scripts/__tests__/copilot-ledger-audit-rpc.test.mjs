@@ -256,3 +256,35 @@ test('pre-wrapper legacy evidence gap is retained without inventing a deployment
     assert.equal(r.counts.unintendedWrite,0); assert.equal(r.canaryDurationVerified,false);
   } finally {await db.close();}
 });
+
+for (const hasOriginalExecution of [false, true]) test(`legacy replay with audit outside window requires original execution: ${hasOriginalExecution}`, async () => {
+  const db=await setup();
+  try {
+    await seedLegacy(db);
+    await db.exec(`RESET ROLE;
+      UPDATE public.ai_write_audit SET created_at='2026-08-31';
+      UPDATE app_private.copilot_action_ledger SET created_at='2026-08-31';
+      INSERT INTO app_private.copilot_plans(id,user_id,organization_id,consent_kind) VALUES ('${legacyId(10)}','${actor}','${org}','click');
+      INSERT INTO app_private.copilot_action_ledger(id,created_at,organization_id,user_id,event,action_id,plan_id,step_no,entity_table,entity_id,audit_id,outcome,consent_kind) VALUES
+      ('${legacyId(4)}','2026-09-04','${org}','${actor}','step_done','${canonical}','${legacyId(10)}',1,'income_expenses','${legacyId(1)}','${legacyId(2)}','{"idempotent":true}','click');
+      INSERT INTO app_private.copilot_plan_steps VALUES ('${legacyId(10)}',1,'${canonical}','DONE','2026-09-04','${legacyId(4)}');`);
+    if (!hasOriginalExecution) await db.exec(`DELETE FROM app_private.copilot_action_ledger WHERE id='${legacyId(3)}'`);
+    await db.exec('SET ROLE authenticated');
+    const l=await page(db), a=await page(db,'audit'), r=await legacyReport(db);
+    assert.equal(a.total,0); assert.equal(l.total,1); assert.equal(r.auditRowsInWindow,0); assert.equal(r.ledgerRowsInWindow,1);
+    assert.equal(l.rows[0].audit_matches,true); assert.equal(l.rows[0].identity_mapping,'legacy_income_expense_draft_v1');
+    assert.equal(l.rows[0].action_executions,Number(hasOriginalExecution));
+    assert.equal(r.status,hasOriginalExecution ? 'clean' : 'incomplete','out-of-window audit replay must require original execution evidence');
+    assert.equal(r.evidenceComplete,hasOriginalExecution); assert.equal(r.counts.duplicate,0); assert.equal(r.canaryDurationVerified,false);
+    if (!hasOriginalExecution) assert.ok(r.incomplete.some(x=>x.id===legacyId(4) && x.reason==='legacy_ledger_evidence_gap_historical_boundary'));
+    else {
+      // An unrelated historical wrapper is not evidence for this replay.
+      for (const [column,value] of [['user_id',other],['organization_id',other],['entity_id',legacyId(99)],['audit_id',legacyId(99)],['action_id','unknown.tool']]) {
+        await db.exec(`RESET ROLE; BEGIN; UPDATE app_private.copilot_action_ledger SET ${column}='${value}' WHERE id='${legacyId(3)}'; SET ROLE authenticated;`);
+        assert.equal((await page(db)).rows[0].action_executions,0);
+        assert.equal((await legacyReport(db)).status,'incomplete',`wrong historical ${column} must not prove a replay`);
+        await db.exec('ROLLBACK; SET ROLE authenticated');
+      }
+    }
+  } finally {await db.close();}
+});

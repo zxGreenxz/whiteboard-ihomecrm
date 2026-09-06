@@ -56,6 +56,10 @@ correlation gap. No deployment time is inferred from filenames, and no history i
 rewritten or row removed. Known identity and matching links do not establish
 historical nonce consent or prove a business effect; direct-L5 consent requirements
 continue unchanged. A legacy replay requires no additional execution event.
+Its ledger row must still reference exactly one matching original canonical
+execution, even when that execution and the legacy audit both predate the window.
+Missing original execution evidence therefore remains incomplete when the audit
+stream contains no rows for the replay.
 
 `action_executed` is a wrapper event and intentionally records click consent.
 The engine's correlated `step_done` or `step_unknown_effect` carries actual plan consent. Idempotent
