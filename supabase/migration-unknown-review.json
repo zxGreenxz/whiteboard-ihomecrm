@@ -535,6 +535,25 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
+    },
+    "supabase/migrations/20260906144028_copilot_ledger_audit_read_v1.sql": {
+      "sha256": "64c367a471616b0c9f9d61ecc0789e99033e9cb3c826ffcacb67df93c43224e4",
+      "missingObjects": [
+        "function:public.copilot_ledger_audit_page_v1"
+      ],
+      "ketLuan": "chua-apply-forward-moi-da-review",
+      "lyLe": "Migration mới trong nhánh làm việc, chưa apply. Source review a2d05c66 đã đạt; 33 tests và PostgreSQL 17 fixture đạt. Idempotency trên catalog production chạy hai lần rồi ROLLBACK và dry-run lane đạt ngày 06/09/2026. Object thiếu là trạng thái trước triển khai, không phải bằng chứng đã chạy. Chỉ apply qua lane có backup rồi sinh lại provenance.",
+      "bangChung": [
+        {
+          "duong_dan": "docs/engineering/copilot-ledger-audit.md",
+          "trich_doan": "Deploy the forward migration"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260906144028_copilot_ledger_audit_read_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.copilot_ledger_audit_page_v1"
+        }
+      ],
+      "raSoatBoi": "Codex — resume original Copilot plan, 2026-09-06"
     }
   }
 }

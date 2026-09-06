@@ -442,6 +442,8 @@ jobs:
             scripts/__tests__/check-copilot-page-contracts.test.mjs \
             scripts/__tests__/check-copilot-provider-policy.test.mjs \
             scripts/__tests__/check-copilot-safe-control-markers.test.mjs \
+            scripts/__tests__/copilot-ledger-audit.test.mjs \
+            scripts/__tests__/copilot-ledger-audit-rpc.test.mjs \
             scripts/__tests__/check-csp-build-attestation.test.mjs \
             scripts/__tests__/run-copilot-golden-eval.test.mjs \
             scripts/__tests__/check-dependency-audit.test.mjs \
@@ -480,6 +482,8 @@ jobs:
           --exclude 'scripts/__tests__/check-copilot-page-contracts.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-provider-policy.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-safe-control-markers.test.mjs'
+          --exclude 'scripts/__tests__/copilot-ledger-audit.test.mjs'
+          --exclude 'scripts/__tests__/copilot-ledger-audit-rpc.test.mjs'
           --exclude 'scripts/__tests__/check-csp-build-attestation.test.mjs'
           --exclude 'scripts/__tests__/run-copilot-golden-eval.test.mjs'
           --exclude 'scripts/__tests__/check-dependency-audit.test.mjs'
