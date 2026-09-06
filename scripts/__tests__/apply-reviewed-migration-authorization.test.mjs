@@ -7,7 +7,47 @@
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SAN_BANG_CO_DU_LIEU, docManifestBackup } from "../apply-reviewed-migration.mjs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join, resolve, sep } from "node:path";
+import { SAN_BANG_CO_DU_LIEU, docManifestBackup, chupVanTayCatalog } from "../apply-reviewed-migration.mjs";
+
+function catalogFixture(t, collector) {
+  const root = mkdtempSync(join(tmpdir(), 'copilot-catalog-evidence-'));
+  t.after(() => {
+    assert(resolve(root).startsWith(resolve(tmpdir()) + sep));
+    assert(basename(root).startsWith('copilot-catalog-evidence-'));
+    rmSync(root, { recursive: true, force: true });
+  });
+  mkdirSync(join(root, 'scripts'));
+  mkdirSync(join(root, 'docs', 'generated'), { recursive: true });
+  writeFileSync(join(root, 'docs', 'generated', 'database-inventory.json'), JSON.stringify({
+    catalogFingerprint: 'stale-committed-fingerprint', counts: { functions: 1 },
+  }));
+  writeFileSync(join(root, 'scripts', 'capture-production-catalog.mjs'), collector);
+  return root;
+}
+
+test('catalog evidence uses the freshly captured inventory, never the old committed file', (t) => {
+  const root = catalogFixture(t, `
+    import { writeFileSync } from 'node:fs';
+    const live = { catalogFingerprint: 'fresh-live-fingerprint', counts: { functions: 2 } };
+    console.log(JSON.stringify(live));
+    if (process.argv.includes('--write')) {
+      writeFileSync('docs/generated/database-inventory.json', JSON.stringify(live));
+    }
+  `);
+  assert.deepEqual(chupVanTayCatalog({ captureRoot: root }), {
+    ok: true, fingerprint: 'fresh-live-fingerprint', counts: { functions: 2 },
+  });
+});
+
+test('failed catalog capture never falls back to an existing inventory', (t) => {
+  const root = catalogFixture(t, 'process.exit(7);');
+  const result = chupVanTayCatalog({ captureRoot: root });
+  assert.equal(result.ok, false);
+  assert.match(result.vi, /capture thoát 7/);
+});
 
 /** Manifest hợp lệ tối thiểu — bản dump đủ tư cách làm đường lùi. */
 const HOP_LE = {

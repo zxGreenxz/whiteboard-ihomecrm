@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T16:37:17.046Z",
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "reviewedSourceSha": "e32df7bcc1a52c21b3a9e8ed95fd34ef3532ede3",
+  "migration": "20260906144028_copilot_ledger_audit_read_v1.sql",
+  "rpc": {
+    "signature": "copilot_ledger_audit_page_v1(uuid,timestamp with time zone,timestamp with time zone,text,timestamp with time zone,uuid,integer)",
+    "bodyMatchesReviewedSql": true,
+    "bodySha256": "b58d7bf64f485c6d2e928924f237fee8c7b840206c837b2c064b97d7ea8fe7b9",
+    "volatility": "s",
+    "securityDefiner": true,
+    "owner": "postgres",
+    "acl": "{postgres=X/postgres,authenticated=X/postgres}"
+  },
+  "http": {
+    "anonymous": 401,
+    "nonSuperadmin": 403,
+    "superadmin": 200
+  },
+  "organizationId": "dddd0000-0000-4000-8000-000000000001",
+  "auditWindow": {
+    "since": "2026-08-23T00:00:00Z",
+    "until": "2026-09-06T16:30:18.810Z"
+  },
+  "audit": {
+    "status": "incomplete",
+    "evidenceComplete": false,
+    "canaryDurationVerified": false,
+    "registryCount": 31,
+    "directL5ActionCount": 24,
+    "ledgerRows": 632,
+    "auditRows": 100,
+    "counts": {
+      "unintendedWrite": 0,
+      "duplicate": 0,
+      "wrongOrg": 0,
+      "wrongActor": 0,
+      "incomplete": 33
+    },
+    "incompleteReasons": [
+      "audit_action_absent_from_registry"
+    ]
+  },
+  "catalogReadback": {
+    "capturedAt": "2026-09-06T16:35:29.683Z",
+    "fingerprint": "e47d6122772238c045511c5aaec866117d7dbb6781706c6291e8082a51bb74f2",
+    "counts": {
+      "logicalTables": 244,
+      "childPartitions": 92,
+      "views": 12,
+      "functions": 1494,
+      "securityDefinerFunctions": 1037,
+      "enums": 30,
+      "realtimeTables": 25
+    }
+  },
+  "originalApplyCatalogEvidence": {
+    "valid": false,
+    "reason": "Runner invoked print-only catalog capture then read the old committed inventory; original before/after fingerprints are stale and must not support conclusions. This later independent readback does not reconstruct the missing before snapshot."
+  }
+}

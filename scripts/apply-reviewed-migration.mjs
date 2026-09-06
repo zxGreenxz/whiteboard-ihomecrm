@@ -188,16 +188,19 @@ export function docManifestBackup(stdout, docFile = readFileSync, coFile = exist
  *
  * Chi phí đo được: 3,35 giây mỗi lần chụp.
  */
-function chupVanTayCatalog() {
-  const r = spawnSync(process.execPath, [join(repoRoot, "scripts", "capture-production-catalog.mjs")], {
-    cwd: repoRoot,
+export function chupVanTayCatalog({ captureRoot = repoRoot } = {}) {
+  // The collector only persists fresh data with --write. Reading the committed
+  // inventory after its default print-only mode fabricated unchanged evidence.
+  const r = spawnSync(process.execPath, [join(captureRoot, "scripts", "capture-production-catalog.mjs"), "--write"], {
+    cwd: captureRoot,
     encoding: "utf8",
     stdio: "pipe",
+    windowsHide: true,
     timeout: 10 * 60 * 1000,
   });
   if (r.status !== 0) return { ok: false, vi: `capture thoát ${r.status}` };
   try {
-    const j = JSON.parse(readFileSync(join(repoRoot, "docs", "generated", "database-inventory.json"), "utf8"));
+    const j = JSON.parse(readFileSync(join(captureRoot, "docs", "generated", "database-inventory.json"), "utf8"));
     return { ok: true, fingerprint: j.catalogFingerprint, counts: j.counts };
   } catch (e) {
     return { ok: false, vi: `không đọc được inventory: ${e.message}` };
