@@ -14,6 +14,9 @@
 // assert thay vì kéo std, và nạp module bằng dynamic import để lỗi nạp hiện ra
 // thành một thông báo đọc được chứ không phải stack trace của runtime.
 
+// CI invokes this entry point; include the real handler's terminal-stream cases.
+import "./stream-terminal.test.ts";
+
 function assert(condition: unknown, message = "Assertion failed"): asserts condition {
   if (!condition) throw new Error(message);
 }

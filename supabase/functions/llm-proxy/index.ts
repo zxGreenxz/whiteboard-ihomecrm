@@ -431,6 +431,131 @@ export function taoDongHoStream(
   return { datLai, don };
 }
 
+/**
+ * 9Router 0.5.69 Gemini passthrough omits [DONE] (measured 2026-09-06).
+ * Observe only; upstream bytes and accounting remain owned by llm-proxy.
+ * A protocol sentinel does not validate tool arguments or business outcomes.
+ */
+class GeminiStreamTerminal {
+  private readonly decoder = new TextDecoder('utf-8', { fatal: true });
+  private line = '';
+  private data = '';
+  private event = '';
+  private skipLF = false;
+  private eventChars = 0;
+  private invalid = false;
+  private done = false;
+  private finished = false;
+
+  observe(bytes: Uint8Array): void {
+    if (this.invalid) return;
+    try { this.text(this.decoder.decode(bytes, { stream: true })); }
+    catch { this.reject(); } // Invalid UTF-8 must never be repaired into success.
+  }
+
+  /** Call exclusively from normal upstream EOF, never abort/cancel/finally. */
+  finish(): Uint8Array | null {
+    if (this.invalid) return null;
+    try { this.text(this.decoder.decode()); }
+    catch { this.reject(); }
+    if (this.line) this.readLine(); // Complete final data line without newline.
+    this.readEvent();
+    if (this.invalid || this.done || !this.finished) return null;
+    this.done = true;
+    // Separate a final unterminated data line/event without rewriting its bytes.
+    return new TextEncoder().encode('\n\ndata: [DONE]\n\n');
+  }
+
+  private reject(): void {
+    this.invalid = true;
+    this.line = this.data = this.event = '';
+  }
+
+  private text(text: string): void {
+    for (const char of text) {
+      if (this.invalid) return;
+      if (this.skipLF) {
+        this.skipLF = false;
+        if (char === '\n') continue;
+      }
+      // Bound all retained SSE state, including comments and multi-line data.
+      // Oversized frames pass through unchanged but cannot earn a sentinel.
+      if (++this.eventChars > 128 * 1024) { this.reject(); return; }
+      if (char === '\r' || char === '\n') {
+        this.readLine();
+        this.skipLF = char === '\r';
+      } else this.line += char;
+    }
+  }
+
+  private readLine(): void {
+    const line = this.line;
+    this.line = '';
+    if (!line) { this.readEvent(); this.eventChars = 0; return; }
+    if (line.startsWith(':')) return;
+    const colon = line.indexOf(':');
+    const field = colon < 0 ? line : line.slice(0, colon);
+    const raw = colon < 0 ? '' : line.slice(colon + 1);
+    const value = raw.startsWith(' ') ? raw.slice(1) : raw;
+    if (field === 'data') this.data += value + '\n';
+    else if (field === 'event') this.event = value;
+    else if (field !== 'id' && field !== 'retry') this.reject();
+  }
+
+  private readEvent(): void {
+    if (this.invalid) return;
+    if (this.event && this.event !== 'message') { this.reject(); return; }
+    this.event = '';
+    if (!this.data) return;
+    const payload = this.data.trim();
+    this.data = '';
+    if (payload === '[DONE]') { this.done = true; return; }
+    let chunk: unknown;
+    try { chunk = JSON.parse(payload); }
+    catch { this.reject(); return; }
+    if (!record(chunk) || 'error' in chunk || chunk.type === 'error' || !Array.isArray(chunk.choices)) {
+      this.reject(); return;
+    }
+    if (chunk.usage != null) {
+      const usage = chunk.usage;
+      if (!record(usage) || !['prompt_tokens', 'completion_tokens', 'total_tokens'].every(
+        (key) => typeof usage[key] === 'number' && Number.isSafeInteger(usage[key]) && usage[key] >= 0,
+      )) { this.reject(); return; }
+    }
+    // The proxy sends one completion (n is not forwarded). An unfinished second
+    // choice, an error envelope, or later content cannot certify this stream.
+    if (chunk.choices.length === 0) {
+      if (!record(chunk.usage)) this.reject();
+      return;
+    }
+    if (chunk.choices.length !== 1 || this.finished) { this.reject(); return; }
+    const choice: unknown = chunk.choices[0];
+    if (!record(choice) || choice.index !== 0 || !record(choice.delta) || 'error' in choice) {
+      this.reject(); return;
+    }
+    const delta = choice.delta;
+    if ((delta.content != null && typeof delta.content !== 'string') ||
+        (delta.tool_calls != null && !Array.isArray(delta.tool_calls))) {
+      this.reject(); return;
+    }
+    if (Array.isArray(delta.tool_calls) && !delta.tool_calls.every((tool: unknown) => {
+      if (!record(tool) || typeof tool.index !== 'number' || !Number.isSafeInteger(tool.index) || tool.index < 0) return false;
+      if (tool.function == null) return true; // id/type may precede function deltas.
+      return record(tool.function) &&
+        (tool.function.name == null || typeof tool.function.name === 'string') &&
+        (tool.function.arguments == null || typeof tool.function.arguments === 'string');
+    })) { this.reject(); return; }
+    if (choice.finish_reason == null) return;
+    if (choice.finish_reason === 'stop' || choice.finish_reason === 'tool_calls') {
+      this.finished = true;
+    } else this.reject(); // length/content_filter/error are not successful ends.
+  }
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 // ── Mock provider (dev/test — vẫn qua đủ gate reserve/finalize) ────────────
 function mockResponse(req: Request, body: Record<string, unknown>, script: string) {
   const step = parseInt(req.headers.get('x-mock-step') ?? '0', 10) || 0;
@@ -850,9 +975,22 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
       // TEE: pass-through bytes, đồng thời parse SSE tìm chunk usage cuối
       streamDangChay = true;
       const decoder = new TextDecoder();
+      const geminiTerminal = provider === '9router' && modelId.startsWith('ag/gemini-')
+        ? new GeminiStreamTerminal()
+        : null;
       let sseBuf = '';
       let lastUsage: any = null;
       let soChunkHong = 0;
+      const parseUsageLine = (line: string) => {
+        if (!line.startsWith('data:')) return;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') return;
+        try {
+          const parsed = JSON.parse(payload);
+          if (parsed?.usage) lastUsage = parsed.usage;
+          soKyTuTraVe += demKyTuDelta(parsed);
+        } catch { soChunkHong += 1; }
+      };
       // Số ký tự nội dung trợ lý ĐÃ chảy về client — nguyên liệu duy nhất để ước
       // lượng completion khi stream đứt trước chunk usage.
       let soKyTuTraVe = 0;
@@ -948,28 +1086,43 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
         transform(chunk, ctrl) {
           dongHo.datLai();
           ctrl.enqueue(chunk);
+          geminiTerminal?.observe(chunk);
           sseBuf += decoder.decode(chunk, { stream: true });
           let nl: number;
           while ((nl = sseBuf.indexOf('\n')) >= 0) {
             const line = sseBuf.slice(0, nl).trim();
             sseBuf = sseBuf.slice(nl + 1);
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (payload === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(payload);
-              if (parsed?.usage) lastUsage = parsed.usage;
-              soKyTuTraVe += demKyTuDelta(parsed);
-            } catch { soChunkHong += 1; } // chunk dở — đếm để log, không chặn stream
+            parseUsageLine(line);
           }
         },
-        flush() { doFinalize('ok'); },
+        flush(ctrl) {
+          // Only normal upstream EOF reaches flush. Abort/timeout may have
+          // settled accounting already; neither may manufacture success.
+          if (geminiTerminal && !controller.signal.aborted && !req.signal.aborted && !daFinalize) {
+            parseUsageLine((sseBuf + decoder.decode()).trim());
+            sseBuf = '';
+            const terminal = geminiTerminal.finish();
+            if (terminal && soChunkHong === 0) ctrl.enqueue(terminal);
+          }
+          doFinalize('ok');
+        },
       });
       // Client ngắt giữa chừng → vẫn finalize với usage đã gom được
       try {
         req.signal.addEventListener('abort', () => doFinalize('client_abort'));
       } catch { /* bỏ qua */ }
-      return new Response(res.body.pipeThrough(tee), {
+      let responseBody: ReadableStream<Uint8Array>;
+      if (geminiTerminal) {
+        // pipeThrough hides settlement: a network error or readable.cancel()
+        // skips flush. Settle this adapter's reservation on that path as well;
+        // pipeTo still forwards the failure/cancellation to the other side.
+        void res.body.pipeTo(tee.writable).catch(() => {
+          doFinalize('client_abort', 'stream_interrupted');
+          controller.abort();
+        });
+        responseBody = tee.readable;
+      } else responseBody = res.body.pipeThrough(tee);
+      return new Response(responseBody, {
         status: 200,
         headers: {
           ...corsHeaders,
