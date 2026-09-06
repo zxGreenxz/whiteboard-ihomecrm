@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-06T20:06:59.893Z",
+  "reviewedSourceSha": "ae9370781097f741cacec5b64471a6c44d541020",
+  "integrationSha": "2ec556ba66f0ae2df9a66d60db481f90a2126ecd",
+  "files": [
+    {
+      "path": ".e2e-fleet/specs/copilot-action-matrix.spec.ts",
+      "gitBlobSha256": "eb883f6ca5fe68ce201a4deb77fede624e6ee9b9c48b1819f48b97523a78d87c",
+      "exactReviewedIntegrationMatch": true
+    },
+    {
+      "path": ".e2e-fleet/specs/copilot-plan-batch-consent.spec.ts",
+      "gitBlobSha256": "871d5e3d255941b835824f2f1849d97acebe9c2761d67c7e03d86a5837588228",
+      "exactReviewedIntegrationMatch": true
+    },
+    {
+      "path": ".e2e-fleet/specs/copilot-plan-l5-matrix.spec.ts",
+      "gitBlobSha256": "46687e67fe25836c9b16a4a4682efb0a1452acb9dea341a7229ead5903f1dde5",
+      "exactReviewedIntegrationMatch": true
+    },
+    {
+      "path": ".e2e-fleet/specs/copilot-draft-matrix.spec.ts",
+      "gitBlobSha256": "e9f4b85ae50d98ba209d3a77056bdd3836d76b879355b0f1a43ab44346919e00",
+      "exactReviewedIntegrationMatch": true
+    },
+    {
+      "path": ".e2e-fleet/specs/copilotModelCycle.ts",
+      "gitBlobSha256": "cb891b32533e8dfe7522917ea286dcfa0cb4bbaf6247506943b05bc964d59606",
+      "exactReviewedIntegrationMatch": true
+    },
+    {
+      "path": ".e2e-fleet/specs/copilotPlanCleanup.ts",
+      "gitBlobSha256": "465d8ebc41df0edf4dfdada3f71a10eceec0eb2098ef7416798569fe789aaf14",
+      "exactReviewedIntegrationMatch": true
+    },
+    {
+      "path": ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
+      "gitBlobSha256": "bb46af1b2f92358dfe3ce6b7e05bd40e5c8fa933d090068dff8d24ec84bcbf7e",
+      "exactReviewedIntegrationMatch": true
+    }
+  ],
+  "model": "9router:ag/gemini-3.6-flash-high(high)",
+  "modelSelectionMethod": "Browser-only profile-preference GET response rewrite; current workflow has no model override; stored preferences are not changed.",
+  "organizationId": "dddd0000-0000-4000-8000-000000000001",
+  "cases": [
+    "action-matrix case 10",
+    "plan-batch-consent case 9",
+    "plan-l5-matrix case 7",
+    "draft-matrix injection"
+  ],
+  "positiveModelEvidenceRequired": [
+    "actual request",
+    "exact outbound model and organization",
+    "HTTP 200",
+    "completed response",
+    "strict successful SSE and DONE",
+    "no Copilot error or permission banner"
+  ],
+  "cleanup": {
+    "freshCreationRequired": true,
+    "existingReplayNeverNewlyOwned": true,
+    "requestStartTracking": true,
+    "quiesceAndSettleOnFailure": true,
+    "unknownTransportFailsExplicitly": true,
+    "missingMarkerDoesNotStrandOwnedDraft": true,
+    "aggregateErrors": true,
+    "authority": "actor + selected DEMO + ok:true + da_ton_tai:false + DRAFT + UUID",
+    "cancellation": "public copilot_plan_cancel_v1 with current version; verify public CANCELLED readback; no approval/execute cleanup"
+  },
+  "controlledVerification": {
+    "passed": 13,
+    "failed": 0,
+    "runner": "node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs",
+    "externalModelOrDatabaseCalls": 0
+  },
+  "e2eTypecheck": "passed in source worktree",
+  "parsedSpecCount": 4,
+  "parsedTestCount": 33,
+  "mutations": [
+    {
+      "behavior": "exact model guard",
+      "expectedFailureObserved": true,
+      "originalShaPrefix": "37f1138b0244",
+      "restored": true
+    },
+    {
+      "behavior": "fresh versus replay ownership",
+      "expectedFailureObserved": true,
+      "originalShaPrefix": "af3e20aeb12d",
+      "restored": true
+    }
+  ],
+  "independentReview": {
+    "agent": "/root/review_live_injection_proof",
+    "firstRound": "request changes: existing plan ownership and pending responses",
+    "final": "approved; P1/P2 resolved; no remaining actionable findings in scope"
+  },
+  "graphLimitation": "Source worktree not indexed; freshness and impact failed closed. Exact source callers and SQL contracts reviewed; no graph safety claim.",
+  "actualLiveWorkflowVerification": "pending",
+  "actualLiveCleanupVerification": "pending",
+  "fullPlanAccepted": false,
+  "integrationE2eTypecheck": {
+    "sourceSha": "2ec556ba66f0ae2df9a66d60db481f90a2126ecd",
+    "command": "npm run typecheck:e2e",
+    "exitCode": 0
+  },
+  "workflowSerialization": {
+    "sourceSha": "43cee6af6a49b632e817376754ab5a77161c4004",
+    "integrationSha": "fd385cff03bcb6ce8da0ab9afdb4827b5a349c07",
+    "groupPreserved": "copilot-e2e-${{ github.ref }}",
+    "cancelInProgress": false,
+    "parseAndStaticGates": "passed",
+    "independentReview": "/root/review_e2e_serialization: approved"
+  },
+  "integrationPrepush": {
+    "command": "node scripts/kiem-nhanh-truoc-push.mjs",
+    "passed": 42,
+    "failed": 0,
+    "strictIncluded": true,
+    "elapsedSeconds": 105,
+    "completedAt": "2026-09-06T20:10:41.579Z"
+  }
+}
