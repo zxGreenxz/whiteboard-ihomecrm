@@ -125,7 +125,8 @@ permissions:
 
 concurrency:
   group: copilot-e2e-${{ github.ref }}
-  cancel-in-progress: true
+  # Active DEMO fixture cleanup must finish before queued runs begin.
+  cancel-in-progress: false
 
 jobs:
   copilot-e2e:
