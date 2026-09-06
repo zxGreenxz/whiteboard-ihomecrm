@@ -137,3 +137,119 @@ test('model identity is explicit and shared with the fleet, not a duplicated cx-
     assert.throws(() => evidence.createRun(golden, manifest, { ...attestation, providerModel }), /attestation/);
   }
 });
+
+test('building scope rejects missing, non-string and empty IDs from unknown RPC payloads', () => {
+  const scenario = manifest.cases.find(c => c.id === 'C13');
+  for (const id of [undefined, null, 0, 123, {}, ['a'], '', ' ']) {
+    assert.throws(() => evidence.bindRoomScenario(scenario, {
+      buildings: [{ id, name: 'DEMO Toà A' }], rooms: [],
+    }), /fixture_unbound/, `building ID ${JSON.stringify(id)} must not become a typed scope`);
+  }
+  assert.throws(() => evidence.bindRoomScenario(scenario, { buildings: [null], rooms: [] }), /fixture_unbound/);
+});
+
+test('attestation rejects coercible non-string fields before returning a typed run', () => {
+  for (const [field, value] of Object.entries(attestation)) {
+    for (const malformed of [undefined, null, 0, 123, [value], new String(value)]) {
+      assert.throws(() => evidence.createRun(golden, manifest, { ...attestation, [field]: malformed }),
+        /attestation/, `${field} must be a primitive string`);
+    }
+  }
+});
+
+test('unknown manifest inputs cannot create cases with unvalidated scenario fields', () => {
+  for (const field of ['id', 'fixture', 'oracle', 'kind', 'prompt']) {
+    for (const malformed of [undefined, null, 123, [manifest.cases[0][field]], '']) {
+      const changed = structuredClone(manifest), corpus = structuredClone(golden);
+      changed.cases[0][field] = malformed;
+      if (field === 'id') corpus.cases[0].id = malformed;
+      assert.ok(evidence.validateManifest(corpus, changed).length, `${field} must be a nonempty string`);
+      assert.throws(() => evidence.createRun(corpus, changed, {
+        ...attestation, corpusDigest: evidence.digest(corpus), manifestDigest: evidence.digest(changed),
+      }), /manifest/);
+    }
+  }
+  for (const acceptance of [undefined, null, 'claim', [], [123], [null], ['']]) {
+    const changed = structuredClone(manifest); changed.cases[0].acceptance = acceptance;
+    assert.ok(evidence.validateManifest(golden, changed).length, 'acceptance must contain nonempty strings');
+  }
+  for (const malformed of [null, {}, { cases: null }, { cases: [null] }]) {
+    assert.ok(evidence.validateManifest(malformed, manifest).length);
+    assert.ok(evidence.validateBrowserRun(malformed, manifest, {}).length);
+  }
+  const changed = structuredClone(manifest); changed.cases[0] = null;
+  assert.ok(evidence.validateManifest(golden, changed).length);
+  assert.ok(evidence.validateBrowserRun(golden, changed, {}).length);
+});
+
+function passedRoomRun() {
+  const run = evidence.createRun(golden, manifest, attestation);
+  evidence.transitionCase(run, 'C01', { status: 'running' });
+  evidence.transitionCase(run, 'C01', { status: 'pass', timing: {
+    startedAt: '2026-09-06T10:00:00.000Z', completedAt: '2026-09-06T10:00:01.000Z',
+    totalMs: 1000, humanWaitMs: 0, processingMs: 1000,
+  }, observed: {
+    answerDigest: digest, promptDigest: digest, promptTemplateDigest: evidence.digest(manifest.cases[0].prompt),
+    bindingDigest: digest, rpcDigest: digest, modelRounds: 2, toolResultLinked: true, finalAnswerMounted: true,
+    readRpc: 'copilot_available_rooms_v1', businessWrites: 0, networkErrors: 0, oracleVersion: 'available-rooms-v1',
+  } });
+  run.cleanup.push({ caseId: 'C64', fixtureKey: 'memory-fixture', state: 'done', cleanup: 'canonical-memory-delete' });
+  return run;
+}
+
+test('checkpoint validation rejects coercible identity, timing, observation and cleanup fields', () => {
+  const run = passedRoomRun();
+  assert.deepEqual(evidence.validateBrowserRun(golden, manifest, run), []);
+  for (const fields of [
+    ['runId', 'createdAt', 'updatedAt'], ['startedAt', 'completedAt'],
+    ['answerDigest', 'promptDigest', 'promptTemplateDigest', 'bindingDigest', 'rpcDigest'],
+    ['caseId', 'fixtureKey', 'state', 'cleanup'],
+  ]) {
+    for (const field of fields) {
+      const changed = structuredClone(run);
+      const target = fields[0] === 'runId' ? changed : fields[0] === 'startedAt' ? changed.cases[0].timing
+        : fields[0] === 'answerDigest' ? changed.cases[0].observed : changed.cleanup[0];
+      target[field] = [target[field]];
+      assert.ok(evidence.validateBrowserRun(golden, manifest, changed).length, `${field} must reject array coercion`);
+    }
+  }
+  const numeric = structuredClone(run);
+  numeric.cases[0].timing = { startedAt: 0, completedAt: 0, totalMs: 0, humanWaitMs: 0, processingMs: 0 };
+  assert.ok(evidence.validateBrowserRun(golden, manifest, numeric).length, 'numeric timestamps must be rejected');
+  for (const field of ['fixtureKey', 'cleanup']) {
+    const changed = structuredClone(run); changed.cleanup[0][field] = 123;
+    assert.ok(evidence.validateBrowserRun(golden, manifest, changed).length, `${field} must reject numeric IDs`);
+  }
+});
+
+test('checkpoint validation rejects malformed optional fields even on unfinished cases', () => {
+  const run = evidence.createRun(golden, manifest, attestation);
+  for (const [field, malformed] of [['reason', 123], ['reason', null], ['timing', null], ['timing', 0], ['timing', false], ['timing', '']]) {
+    const changed = structuredClone(run); changed.cases[0][field] = malformed;
+    assert.ok(evidence.validateBrowserRun(golden, manifest, changed).length, `${field} must be validated when present`);
+  }
+  const changed = structuredClone(run); changed.cases[0] = null;
+  assert.ok(evidence.validateBrowserRun(golden, manifest, changed).length);
+});
+
+test('valid string boundaries preserve C01, C13 and checkpoint roundtrips', () => {
+  const payload = { buildings: [{ id: 'building-a', name: 'DEMO Toà A' }], rooms: [] };
+  for (const id of ['C01', 'C13']) {
+    const bound = evidence.bindRoomScenario(manifest.cases.find(c => c.id === id), payload);
+    assert.equal(typeof bound.prompt, 'string');
+    assert.match(bound.bindingDigest, /^[a-f0-9]{64}$/);
+    if (id === 'C13') assert.equal(bound.buildingScope.id.toUpperCase(), 'BUILDING-A');
+  }
+  const run = passedRoomRun();
+  assert.ok(Object.values(run.attestation).every(value => typeof value === 'string'));
+  assert.equal(run.attestation.contextId.toUpperCase(), 'ISOLATED-BROWSER-1');
+  const dir = mkdtempSync(join(tmpdir(), 'copilot-typed-evidence-'));
+  try {
+    const path = join(dir, 'run.json');
+    evidence.writeCheckpoint(path, run, golden, manifest);
+    const restored = JSON.parse(readFileSync(path, 'utf8'));
+    assert.deepEqual(evidence.validateBrowserRun(golden, manifest, restored), []);
+    assert.equal(restored.cases[0].timing.startedAt.slice(0, 10), '2026-09-06');
+    assert.equal(evidence.summarizeRun(restored).verdict, 'blocked');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

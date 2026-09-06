@@ -20,26 +20,31 @@ export function bindRoomScenario(scenario, payload) {
   if (!Array.isArray(payload?.buildings) || !Array.isArray(payload?.rooms)) throw new Error('fixture_unbound');
   if (scenario.id === 'C01') return { prompt: scenario.prompt, payload, bindingDigest: digest(payload.buildings) };
   if (scenario.id !== 'C13') throw new Error('oracle_not_implemented');
-  const buildings = payload.buildings.filter(b => b.name === 'DEMO Toà A');
-  if (buildings.length !== 1) throw new Error('fixture_unbound');
+  const buildings = payload.buildings.filter(b => b?.name === 'DEMO Toà A');
+  if (buildings.length !== 1 || !nonemptyString(buildings[0].id)) throw new Error('fixture_unbound');
   return { prompt: scenario.prompt.replace('{{building.name}}', buildings[0].name), payload: { ...payload, buildings },
     buildingScope: { id: buildings[0].id, name: buildings[0].name }, bindingDigest: digest(buildings) };
 }
 function keysOnly(value, keys) { return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => keys.includes(key)); }
+function nonemptyString(value) { return typeof value === 'string' && value.trim().length > 0; }
 function exactIds(a, b) { return JSON.stringify(a?.map(c => c?.id)) === JSON.stringify(b?.map(c => c?.id)); }
 
 export function validateManifest(golden, manifest) {
   const errors = [];
   if (manifest?.schemaVersion !== 1 || manifest?.scope !== 'full-corpus' || !Array.isArray(manifest?.cases)) return ['invalid manifest'];
-  if (!exactIds(golden.cases, manifest.cases) || new Set(manifest.cases.map(c => c.id)).size !== manifest.cases.length) errors.push('manifest must cover every corpus ID exactly once in order');
+  if (!Array.isArray(golden?.cases) || !golden.cases.every(c => nonemptyString(c?.id))) return ['invalid corpus IDs'];
   for (const c of manifest.cases) {
-    if (!c.fixture || !c.oracle || !c.kind || !Array.isArray(c.acceptance) || !c.acceptance.length) errors.push(`${c.id}: fixture and oracle acceptance required`);
+    if (!['id','fixture','oracle','kind','prompt'].every(k => nonemptyString(c?.[k]))
+      || !Array.isArray(c.acceptance) || !c.acceptance.length || !c.acceptance.every(nonemptyString)) errors.push('invalid scenario fields: fixture and oracle acceptance required');
   }
+  if (errors.length) return errors;
+  if (!exactIds(golden.cases, manifest.cases) || new Set(manifest.cases.map(c => c.id)).size !== manifest.cases.length) errors.push('manifest must cover every corpus ID exactly once in order');
   return errors;
 }
 
 function validAttestation(a) {
-  if (!keysOnly(a, ['buildSha','edgeSourceDigest','deployedEdgeSourceDigest','providerModel','organizationId','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest','observedAt','contextId'])) return false;
+  const fields = ['buildSha','edgeSourceDigest','deployedEdgeSourceDigest','providerModel','organizationId','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest','observedAt','contextId'];
+  if (!keysOnly(a, fields) || !fields.every(k => typeof a[k] === 'string')) return false;
   return /^[0-9a-f]{40}$/.test(a.buildSha) && a.organizationId === DEMO_ORG
     // Candidate policy lives in copilotTestModel.ts. This evidence layer only
     // checks safe identity syntax; browser/CLI require the exact selected model.
@@ -61,7 +66,7 @@ export function createRun(golden, manifest, attestation) {
 function validTiming(t) {
   return keysOnly(t, ['startedAt','completedAt','totalMs','humanWaitMs','processingMs'])
     && ['totalMs','humanWaitMs','processingMs'].every(k => Number.isFinite(t[k]) && t[k] >= 0)
-    && Number.isFinite(Date.parse(t.startedAt)) && Number.isFinite(Date.parse(t.completedAt))
+    && ['startedAt','completedAt'].every(k => typeof t[k] === 'string' && Number.isFinite(Date.parse(t[k])))
     && Date.parse(t.completedAt) >= Date.parse(t.startedAt)
     && Math.abs(Date.parse(t.completedAt) - Date.parse(t.startedAt) - t.totalMs) <= 2
     && Math.abs(t.totalMs - t.humanWaitMs - t.processingMs) <= 2;
@@ -71,7 +76,7 @@ function validPass(c) {
   const o = c.observed;
   return ['C01','C13'].includes(c.id) && IMPLEMENTED_ORACLES.has(c.oracle) && validTiming(c.timing)
     && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion'])
-    && ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest'].every(k => HASH.test(o[k]))
+    && ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest'].every(k => typeof o[k] === 'string' && HASH.test(o[k]))
     && Number.isInteger(o.modelRounds) && o.modelRounds >= 2 && o.toolResultLinked === true && o.finalAnswerMounted === true
     && o.readRpc === 'copilot_available_rooms_v1' && o.oracleVersion === c.oracle
     && o.businessWrites === 0 && o.networkErrors === 0;
@@ -79,22 +84,25 @@ function validPass(c) {
 
 export function validateBrowserRun(golden, manifest, run) {
   const errors = validateManifest(golden, manifest);
+  if (errors.length) return errors;
   if (!keysOnly(run, ['schemaVersion','lane','executor','attestation','runId','createdAt','updatedAt','cases','cleanup'])
     || run.schemaVersion !== 2 || run.lane !== 'real-model' || run.executor !== 'attested-chat-panel-v1') return [...errors, 'actual browser evidence schema v2 required; legacy inferred artifacts are invalid'];
   if (!validAttestation(run.attestation) || run.attestation.corpusDigest !== digest(golden) || run.attestation.manifestDigest !== digest(manifest)) errors.push('attestation mismatch');
-  if (!/^[0-9a-f-]{36}$/.test(run.runId) || ![run.createdAt,run.updatedAt].every(t => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(t))) errors.push('invalid run identity/timestamps');
+  if (typeof run.runId !== 'string' || !/^[0-9a-f-]{36}$/.test(run.runId)
+    || ![run.createdAt,run.updatedAt].every(t => typeof t === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(t))) errors.push('invalid run identity/timestamps');
   if (!Array.isArray(run.cases) || !exactIds(golden.cases, run.cases)) return [...errors, 'case IDs missing, duplicated or out of order'];
   for (const [i,c] of run.cases.entries()) {
     if (!keysOnly(c, ['id','oracle','status','reason','timing','observed']) || !STATES.includes(c.status) || c.oracle !== manifest.cases[i].oracle) errors.push(`${c.id}: malformed case`);
+    if (c.reason !== undefined && !REASONS.has(c.reason)) errors.push(`${c.id}: invalid reason`);
     if (['blocked','fail'].includes(c.status) && !REASONS.has(c.reason)) errors.push(`${c.id}: reason required`);
     if (c.status === 'pass' && !validPass(c)) errors.push(`${c.id}: completed browser/oracle evidence required`);
     if (c.status === 'pass' && (c.observed?.promptTemplateDigest !== digest(manifest.cases[i].prompt) || c.observed?.rpcDigest !== run.attestation.fixtureDigest)) errors.push(`${c.id}: observed prompt/fixture differs from attestation`);
     if (c.status !== 'pass' && c.observed !== undefined) errors.push(`${c.id}: unsuccessful case cannot claim actual observations`);
-    if (c.timing && !validTiming(c.timing)) errors.push(`${c.id}: invalid timing`);
+    if (c.timing !== undefined && !validTiming(c.timing)) errors.push(`${c.id}: invalid timing`);
   }
   if (!Array.isArray(run.cleanup) || run.cleanup.some(c => !keysOnly(c, ['caseId','fixtureKey','state','cleanup'])
     || !golden.cases.some(g => g.id === c.caseId) || !['pending','done'].includes(c.state)
-    || !/^[a-z0-9-]{1,100}$/.test(c.fixtureKey) || !/^[a-z0-9-]{1,100}$/.test(c.cleanup))) errors.push('invalid cleanup journal');
+    || !['fixtureKey','cleanup'].every(k => typeof c[k] === 'string' && /^[a-z0-9-]{1,100}$/.test(c[k])))) errors.push('invalid cleanup journal');
   return errors;
 }
 
