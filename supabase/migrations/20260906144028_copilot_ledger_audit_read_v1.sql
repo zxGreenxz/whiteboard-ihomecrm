@@ -1,0 +1,174 @@
+-- G5-E: authenticated superadmin evidence only. No writer, policy or UI RPC changes.
+-- A single JSON envelope prevents the PostgREST row cap from truncating metadata.
+-- Pages use the ORIGINAL timestamp (microseconds) and UUID, ordered ascending.
+-- No global policy events in tenant pages. Cross-org references disclose only match
+-- booleans, never the referenced actor/org, payload, digest or idempotency key.
+BEGIN;
+SET LOCAL lock_timeout = '15s';
+
+CREATE OR REPLACE FUNCTION public.copilot_ledger_audit_page_v1(
+  p_organization_id uuid, p_since timestamptz, p_until timestamptz,
+  p_stream text DEFAULT 'ledger', p_after_at timestamptz DEFAULT NULL,
+  p_after_id uuid DEFAULT NULL, p_limit integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public, app_private
+AS $function$
+DECLARE
+  v_registry jsonb; v_rows jsonb := '[]'::jsonb; v_total bigint; v_gaps bigint;
+  v_row record; v_plan app_private.copilot_plans%ROWTYPE;
+  v_conf app_private.copilot_write_confirmations%ROWTYPE;
+  v_entity text; v_entity_org uuid; v_table text; v_consent text;
+  v_item jsonb; v_actions bigint; v_steps bigint; v_duplicates boolean;
+BEGIN
+  IF auth.uid() IS NULL OR NOT COALESCE(public.is_super_admin(), false) THEN
+    RAISE EXCEPTION 'superadmin_required' USING ERRCODE = '42501';
+  END IF;
+  IF p_organization_id IS NULL OR p_since IS NULL OR p_until IS NULL
+     OR NOT isfinite(p_since) OR NOT isfinite(p_until)
+     OR p_since >= p_until OR p_until - p_since > interval '366 days'
+     OR p_stream IS NULL OR p_stream NOT IN ('ledger', 'audit')
+     OR p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 200
+     OR (p_after_at IS NULL) <> (p_after_id IS NULL)
+     OR (p_after_at IS NOT NULL AND (p_after_at < p_since OR p_after_at >= p_until)) THEN
+    RAISE EXCEPTION 'invalid_audit_window_or_cursor' USING ERRCODE = '22023';
+  END IF;
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'action_id', r.action_id, 'executor_kind', r.executor_kind, 'risk', r.risk,
+    'grantable', r.grantable, 'pin_always', r.pin_always) ORDER BY r.action_id), '[]')
+    INTO v_registry FROM app_private.copilot_action_registry r;
+
+  -- Reverse coverage: a DONE step must point to the matching immutable event.
+  SELECT count(*) INTO v_gaps FROM app_private.copilot_plan_steps s
+    JOIN app_private.copilot_plans p ON p.id = s.plan_id
+   WHERE p.organization_id = p_organization_id AND s.status = 'DONE'
+     AND s.executed_at >= p_since AND s.executed_at < p_until
+     AND NOT EXISTS (SELECT 1 FROM app_private.copilot_action_ledger l
+       WHERE l.id = s.ledger_id AND l.plan_id = s.plan_id AND l.step_no = s.step_no
+         AND l.action_id = s.action_id AND l.event = 'step_done'
+         AND l.organization_id = p.organization_id AND l.user_id = p.user_id);
+
+  IF p_stream = 'audit' THEN
+    SELECT count(*) INTO v_total FROM public.ai_write_audit a
+      WHERE a.organization_id = p_organization_id AND a.created_at >= p_since AND a.created_at < p_until;
+    FOR v_row IN SELECT a.id, a.created_at, a.organization_id, a.tool, a.idempotency_key
+      FROM public.ai_write_audit a
+      WHERE a.organization_id = p_organization_id AND a.created_at >= p_since AND a.created_at < p_until
+        AND (p_after_at IS NULL OR (a.created_at, a.id) > (p_after_at, p_after_id))
+      ORDER BY a.created_at, a.id LIMIT p_limit
+    LOOP
+      SELECT count(*) FILTER (WHERE l.event = 'action_executed'),
+        count(*) FILTER (WHERE l.event = 'step_done' AND l.created_at >= p_since AND l.created_at < p_until)
+        INTO v_actions, v_steps FROM app_private.copilot_action_ledger l
+        WHERE l.audit_id = v_row.id AND l.organization_id = p_organization_id AND l.action_id = v_row.tool;
+      v_rows := v_rows || jsonb_build_array(jsonb_build_object(
+        'id', v_row.id, 'created_at', v_row.created_at, 'organization_id', v_row.organization_id,
+        'action_id', v_row.tool, 'audit_id', v_row.id,
+        'duplicate_key', (SELECT count(*) > 1 FROM public.ai_write_audit a
+           WHERE a.organization_id = p_organization_id AND a.idempotency_key = v_row.idempotency_key),
+        'duplicate_executions', v_actions > 1, 'action_executions', v_actions, 'step_links', v_steps));
+    END LOOP;
+  ELSE
+    SELECT count(*) INTO v_total FROM app_private.copilot_action_ledger l
+      WHERE l.organization_id = p_organization_id AND l.created_at >= p_since AND l.created_at < p_until;
+    FOR v_row IN SELECT l.* FROM app_private.copilot_action_ledger l
+      WHERE l.organization_id = p_organization_id AND l.created_at >= p_since AND l.created_at < p_until
+        AND (p_after_at IS NULL OR (l.created_at, l.id) > (p_after_at, p_after_id))
+      ORDER BY l.created_at, l.id LIMIT p_limit
+    LOOP
+      SELECT * INTO v_plan FROM app_private.copilot_plans p WHERE p.id = v_row.plan_id;
+      v_consent := 'missing';
+      IF v_row.consent_kind = 'step_up' AND v_row.step_up_id IS NOT NULL THEN
+        SELECT * INTO v_conf FROM app_private.copilot_write_confirmations c WHERE c.id = v_row.step_up_id;
+        IF FOUND THEN
+          v_consent := CASE WHEN v_conf.user_id = v_row.user_id
+            AND v_conf.organization_id = v_row.organization_id AND v_conf.tool = 'step_up'
+            AND v_conf.permission_key = 'copilot.step_up' AND v_conf.consumed_at IS NOT NULL
+            AND v_conf.consumed_at <= v_row.created_at AND v_conf.consumed_at < v_conf.expires_at
+            AND v_plan.step_up_confirmation_id = v_conf.id THEN 'valid' ELSE 'invalid' END;
+        END IF;
+      ELSIF v_row.consent_kind = 'standing_grant' AND v_plan.id IS NOT NULL THEN
+        -- Current direct-L5 CHECK prohibits grants. Keep that policy intact.
+        -- Future eligibility still requires the stored actor/org/action/time evidence.
+        IF EXISTS (SELECT 1 FROM app_private.copilot_standing_grants g
+          WHERE g.id = ANY(v_plan.standing_grant_ids) AND g.organization_id = v_row.organization_id
+            AND g.granter_user_id = v_row.user_id AND g.action_id = v_row.action_id
+            AND g.created_at <= v_row.created_at AND g.expires_at > v_row.created_at
+            AND (g.revoked_at IS NULL OR g.revoked_at > v_row.created_at)) THEN
+          v_consent := 'valid';
+        END IF;
+      END IF;
+
+      v_entity := 'not_applicable';
+      IF v_row.event IN ('step_done', 'action_executed') THEN
+        SELECT r.produces_entity_table INTO v_table FROM app_private.copilot_action_registry r WHERE r.action_id = v_row.action_id;
+        IF v_row.entity_table IS NOT NULL OR v_row.entity_id IS NOT NULL OR v_table IS NOT NULL THEN
+          v_entity := 'missing';
+          IF v_row.entity_table IS NOT NULL AND v_row.entity_id IS NOT NULL THEN
+            -- Only a registry-owned public table; no caller-supplied table name.
+            IF v_row.entity_table IS DISTINCT FROM v_table OR v_table !~ '^[a-z_][a-z0-9_]*$' THEN
+              v_entity := 'unsupported';
+            ELSIF EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = to_regclass(format('public.%I', v_table))
+                AND a.attname = 'organization_id' AND NOT a.attisdropped) THEN
+              BEGIN
+                EXECUTE format('SELECT organization_id FROM public.%I WHERE id = $1', v_table)
+                  INTO v_entity_org USING v_row.entity_id;
+                IF v_entity_org IS NOT NULL THEN
+                  v_entity := CASE WHEN v_entity_org = v_row.organization_id THEN 'match' ELSE 'mismatch' END;
+                END IF;
+              EXCEPTION WHEN undefined_table OR undefined_column OR insufficient_privilege OR datatype_mismatch THEN
+                v_entity := 'unreadable';
+              END;
+            ELSE
+              -- No authoritative org column: do not silently call it zero wrong-org.
+              v_entity := 'unsupported';
+            END IF;
+          END IF;
+        END IF;
+      END IF;
+      SELECT count(*) FILTER (WHERE l.event = 'action_executed'),
+        count(*) FILTER (WHERE l.event = 'step_done' AND l.created_at >= p_since AND l.created_at < p_until)
+        INTO v_actions, v_steps FROM app_private.copilot_action_ledger l
+        WHERE l.audit_id = v_row.audit_id AND l.organization_id = p_organization_id AND l.action_id = v_row.action_id;
+      -- step_done can be an idempotent replay referencing the same audit. Only
+      -- duplicate wrapper execution records or duplicate non-replay plan steps count.
+      SELECT v_actions > 1 OR count(*) > 1 INTO v_duplicates FROM app_private.copilot_action_ledger l
+        WHERE l.organization_id = p_organization_id AND l.plan_id = v_row.plan_id
+          AND l.step_no = v_row.step_no AND l.event = 'step_done'
+          AND COALESCE(l.outcome ->> 'idempotent', 'false') <> 'true';
+      v_item := jsonb_build_object(
+        'id', v_row.id, 'created_at', v_row.created_at, 'organization_id', v_row.organization_id,
+        'event', v_row.event, 'action_id', v_row.action_id, 'plan_id', v_row.plan_id, 'step_no', v_row.step_no,
+        'consent_kind', v_row.consent_kind, 'consent_evidence', v_consent,
+        'plan_present', v_plan.id IS NOT NULL,
+        'plan_actor_matches', v_plan.user_id = v_row.user_id,
+        'plan_org_matches', v_plan.organization_id = v_row.organization_id,
+        'plan_consent_matches', v_plan.consent_kind IS NOT DISTINCT FROM v_row.consent_kind,
+        'entity_evidence', v_entity, 'audit_id', v_row.audit_id,
+        'audit_present', EXISTS (SELECT 1 FROM public.ai_write_audit a WHERE a.id = v_row.audit_id),
+        'audit_org_matches', (SELECT a.organization_id = v_row.organization_id FROM public.ai_write_audit a WHERE a.id = v_row.audit_id),
+        'audit_actor_matches', (SELECT a.user_id = v_row.user_id FROM public.ai_write_audit a WHERE a.id = v_row.audit_id),
+        'audit_matches', EXISTS (SELECT 1 FROM public.ai_write_audit a WHERE a.id = v_row.audit_id
+          AND a.organization_id = v_row.organization_id AND a.user_id = v_row.user_id
+          AND a.tool = v_row.action_id AND a.entity_table IS NOT DISTINCT FROM v_row.entity_table
+          AND a.entity_id IS NOT DISTINCT FROM v_row.entity_id),
+        'action_executions', v_actions, 'step_links', v_steps,
+        'duplicate_executions', v_duplicates, 'has_after_digest', v_row.after_digest IS NOT NULL,
+        'idempotent', v_row.outcome -> 'idempotent');
+      v_rows := v_rows || jsonb_build_array(v_item);
+    END LOOP;
+  END IF;
+  RETURN jsonb_build_object('version', 1, 'registry', v_registry, 'rows', v_rows,
+    'total', v_total, 'missing_step_ledger', v_gaps);
+END
+$function$;
+
+REVOKE ALL ON FUNCTION public.copilot_ledger_audit_page_v1(uuid,timestamptz,timestamptz,text,timestamptz,uuid,integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.copilot_ledger_audit_page_v1(uuid,timestamptz,timestamptz,text,timestamptz,uuid,integer) FROM anon;
+REVOKE ALL ON FUNCTION public.copilot_ledger_audit_page_v1(uuid,timestamptz,timestamptz,text,timestamptz,uuid,integer) FROM authenticated;
+REVOKE ALL ON FUNCTION public.copilot_ledger_audit_page_v1(uuid,timestamptz,timestamptz,text,timestamptz,uuid,integer) FROM service_role;
+GRANT EXECUTE ON FUNCTION public.copilot_ledger_audit_page_v1(uuid,timestamptz,timestamptz,text,timestamptz,uuid,integer) TO authenticated;
+COMMENT ON FUNCTION public.copilot_ledger_audit_page_v1(uuid,timestamptz,timestamptz,text,timestamptz,uuid,integer) IS
+  'Read-only superadmin evidence for one explicit org and bounded time window; no payload, digest, token or unrelated organization data. G5-E does not establish canary duration.';
+NOTIFY pgrst, 'reload schema';
+COMMIT;
