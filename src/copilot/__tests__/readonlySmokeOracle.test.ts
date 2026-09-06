@@ -139,6 +139,24 @@ describe('golden C13: building identity survives duplicate room codes', () => {
     e.payload.buildings.push({ id: 'b', name: 'DEMO Toà B', address: 'Địa chỉ B' });
     expect(() => assertReadonlyResult(e)).not.toThrow();
   });
+  it.each(['Khác', 'Quận 1', 'Khu A (phường cũ)'])('accepts the correct building with formatted fallback address %s', address => {
+    const e = scoped();
+    e.payload.buildings[0].address = '';
+    e.rounds[1].messages[1].content = e.rounds[1].messages[1].content.replace('(Địa chỉ A):', `(${address}):`);
+    expect(() => assertReadonlyResult(e)).not.toThrow();
+  });
+  it('still rejects a wrong building when both raw addresses are empty and rendered fallback is Khác', () => {
+    const e = scoped('DEMO Toà A', 'DEMO Toà B');
+    e.payload.buildings[0].address = '';
+    e.payload.buildings.push({ id: 'b', name: 'DEMO Toà B', address: '' });
+    e.rounds[1].messages[1].content = e.rounds[1].messages[1].content.replace('(Địa chỉ B):', '(Khác):');
+    expect(() => assertReadonlyResult(e)).toThrow(/different building/i);
+  });
+  it('does not confuse a known building name suffix with the requested building address', () => {
+    const e = scoped('DEMO Toà A', 'DEMO Toà A (Chi nhánh)');
+    e.payload.buildings.push({ id: 'branch', name: 'DEMO Toà A (Chi nhánh)', address: 'Địa chỉ A' });
+    expect(() => assertReadonlyResult(e)).toThrow(/building/i);
+  });
   it.each([
     ['wrong argument', 'DEMO Toà B', 'DEMO Toà A', 'DEMO Toà A'],
     ['wrong tool result', 'DEMO Toà A', 'DEMO Toà B', 'DEMO Toà A'],

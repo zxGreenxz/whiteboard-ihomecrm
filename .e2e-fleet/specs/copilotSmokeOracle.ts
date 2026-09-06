@@ -166,8 +166,15 @@ export function assertReadonlyResult(evidence: ReadonlyEvidence): void {
     }
     const buildingHeaders = result.content.split(/\r?\n/).filter(line => /^\S.*\):$/.test(line));
     const hasAvailable = payload.rooms.some(r => r.building_id === target.id && ['free','soon'].includes(r.status_public));
-    const header = `${selectedBuildings[0].name} (${selectedBuildings[0].address ?? ''}):`;
-    requireEvidence(JSON.stringify(buildingHeaders) === JSON.stringify(hasAvailable ? [header] : []), 'Tool result belongs to a different building');
+    // The product mapper owns address/district/area/ward fallbacks. Identify the
+    // building from its canonical name instead of duplicating that formatting.
+    // Prefer the longest known name so "A (Annex)" cannot be mistaken for A.
+    const headerBuildingIds = buildingHeaders.map(line => {
+      const matches = payload.buildings.filter(b => b.name && line.startsWith(`${b.name} (`))
+        .sort((a, b) => b.name!.length - a.name!.length);
+      return matches.length && matches[0].name !== matches[1]?.name ? matches[0].id : undefined;
+    });
+    requireEvidence(JSON.stringify(headerBuildingIds) === JSON.stringify(hasAvailable ? [target.id] : []), 'Tool result belongs to a different building');
   }
   const buildings = new Set(selectedBuildings.map(b => b.id));
   const scoped = payload.rooms.filter(r => buildings.has(r.building_id));

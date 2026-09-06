@@ -18,7 +18,8 @@ dùng ID lịch sử. Oracle so mã phòng và trạng thái rỗng với payloa
 result có sang vòng model sau và câu trả lời cuối thực sự render. Thiếu hoặc trùng
 fixture thì blocked trước khi hỏi model. Không có write nghiệp vụ được phép.
 C13 còn kiểm tham số `toa_nha` phân giải duy nhất về đúng ID tòa trong payload RPC
-đầy đủ, header tòa/địa chỉ trong tool result và tên tòa trong câu trả lời. Mã phòng
+đầy đủ, danh tính tòa từ header tool result và tên tòa trong câu trả lời. Địa chỉ
+dự phòng trong header do mapper sản phẩm sở hữu, oracle không dựng lại nó. Mã phòng
 trùng giữa hai tòa không được dùng làm bằng chứng thay cho danh tính tòa.
 
 Các nhóm còn lại cần oracle số liệu riêng theo domain; tài liệu/điều hướng và UI
