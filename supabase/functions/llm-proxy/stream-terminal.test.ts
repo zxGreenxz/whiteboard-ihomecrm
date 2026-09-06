@@ -42,7 +42,12 @@ const STOP = frame({}, "stop", USAGE);
 
 async function handler(
   source: ReadableStream<Uint8Array>,
-  options: { provider?: string; model?: string; signal?: AbortSignal } = {},
+  options: {
+    provider?: string;
+    model?: string;
+    signal?: AbortSignal;
+    contentType?: string | null;
+  } = {},
 ) {
   const { xuLyYeuCau } = await proxy;
   const provider = options.provider ?? "9router";
@@ -109,7 +114,9 @@ async function handler(
         upstreamBody = JSON.parse(String(init?.body));
         return Promise.resolve(
           new Response(source, {
-            headers: { "Content-Type": "text/event-stream" },
+            headers: options.contentType === null
+              ? {}
+              : { "Content-Type": options.contentType ?? "text/event-stream" },
           }),
         );
       },
@@ -163,6 +170,35 @@ function usageUnchanged(calls: Awaited<ReturnType<typeof handler>>["calls"]) {
     11 / 1e6 * 2 + 7 / 1e6 * 4,
     "cost still follows real usage",
   );
+}
+
+for (
+  const [contentType, expected] of [
+    ["text/event-stream", "text/event-stream; charset=utf-8"],
+    [null, "text/event-stream; charset=utf-8"],
+    [
+      "text/event-stream; charset=iso-8859-1",
+      "text/event-stream; charset=utf-8",
+    ],
+    ["application/json; charset=utf-8", "application/json; charset=utf-8"],
+  ] as const
+) {
+  Deno.test(`SSE encoding: upstream ${contentType ?? "missing header"} preserves Unicode bytes with correct response type`, async () => {
+    const input = enc.encode(CONTENT + STOP + "data: [DONE]\n\n");
+    const { res, calls } = await handler(closed(input, 1), { contentType });
+    const output = new Uint8Array(await res.arrayBuffer());
+    equal(
+      Array.from(output),
+      Array.from(input),
+      "UTF-8 response bytes remain identical",
+    );
+    equal(
+      res.headers.get("content-type"),
+      expected,
+      "SSE declares UTF-8 for browser response inspection",
+    );
+    usageUnchanged(calls);
+  });
 }
 
 Deno.test("Gemini terminal: normal stop EOF appends one DONE and preserves bytes/usage", async () => {

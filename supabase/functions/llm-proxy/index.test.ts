@@ -512,6 +512,23 @@ Deno.test("(b2) x-mock-cost âm: reserve nhận 0, không nhận số âm", asyn
   assertEquals(dat?.args.p_est_cost_usd, 0, "số âm ở đây HOÀN LẠI hạn mức ngày");
 });
 
+Deno.test("SSE encoding: mock stream declares UTF-8 and retains Vietnamese deltas", async () => {
+  const { xuLyYeuCau } = await nap();
+  const { admin, dem } = adminGia();
+  const res = await xuLyYeuCau(
+    yeuCau({ model: "mock:done", stream: true, messages: [{ role: "user", content: "chào" }] }),
+    { admin, getEnv: (key) => key === "LLM_PROXY_ALLOW_MOCK" ? "1" : undefined },
+  );
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(await res.arrayBuffer());
+  const content = text.split("\n").filter((line) => line.startsWith("data: {")).map(
+    (line) => JSON.parse(line.slice(5)).choices[0]?.delta?.content ?? "",
+  ).join("");
+  assertEquals(content, "Xin chào từ mock stream.");
+  assertEquals(res.headers.get("content-type"), "text/event-stream; charset=utf-8", "mock SSE declares UTF-8");
+  assertEquals(dem("reserve_ai_usage"), 1);
+  assertEquals(dem("finalize_ai_usage"), 1);
+});
+
 Deno.test("(c) luồng body lỗi: trả 400 và NHẢ semaphore", async () => {
   const { xuLyYeuCau, dangParseHienTai } = await nap();
   const { admin } = adminGia();

@@ -25,6 +25,10 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// Explicit UTF-8 keeps browser response inspection consistent with TextDecoder
+// for Vietnamese SSE (bare text/event-stream was measured to yield mojibake).
+const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
+
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
     status,
@@ -649,7 +653,7 @@ function mockStreamResponse(
   });
   return new Response(stream, {
     status: 200,
-    headers: { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+    headers: { ...corsHeaders, 'Content-Type': SSE_CONTENT_TYPE, 'Cache-Control': 'no-cache' },
   });
 }
 
@@ -1122,11 +1126,14 @@ export const xuLyYeuCau = async (req: Request, deps?: PhuThuoc): Promise<Respons
         });
         responseBody = tee.readable;
       } else responseBody = res.body.pipeThrough(tee);
+      const upstreamContentType = res.headers.get('Content-Type') ?? 'text/event-stream';
       return new Response(responseBody, {
         status: 200,
         headers: {
           ...corsHeaders,
-          'Content-Type': res.headers.get('Content-Type') ?? 'text/event-stream',
+          'Content-Type': upstreamContentType.split(';')[0].trim().toLowerCase() === 'text/event-stream'
+            ? SSE_CONTENT_TYPE
+            : upstreamContentType,
           'Cache-Control': 'no-cache',
         },
       });
