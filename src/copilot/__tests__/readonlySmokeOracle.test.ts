@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { TestCase, TestResult } from '@playwright/test/reporter';
+import GoldenReporter from '../../../.e2e-fleet/goldenReporter';
 import { inspectModelStream, assertReadonlyResult, unexpectedReadonlyMutation, renderedAssistantText } from '../../../.e2e-fleet/specs/copilotSmokeOracle';
 const chunk = (delta: object, finish_reason: string | null) => `data: ${JSON.stringify({ choices: [{ delta, finish_reason }] })}\n\n`;
 const answer = chunk({ content: 'Có 1 phòng trống ngay: A101.' }, 'stop') + 'data: [DONE]\n\n';
@@ -378,4 +380,29 @@ it('accepts canonical ISO range and individually labeled dates', () => {
  for (const term of ['Kỳ hạn từ 2026-01-01 đến 2026-12-31.','Bắt đầu: 1/1/2026; kết thúc: 31/12/2026.']) {
   const e = contractEvidence('C33',true); expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace('Kỳ hạn 01/01/2026 đến 31/12/2026.',term)))).not.toThrow();
  }
+});
+
+describe('golden reporter static diagnostic boundary', () => {
+  it('forwards a fragmented allowlisted diagnostic without worker payloads', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      new GoldenReporter().onTestEnd({} as TestCase, {
+        status: 'failed', stdout: ['private transcript\n{"caseId":"C32",', '"code":"unexpected_contract_tool_calls"}\n'],
+      } as TestResult);
+      expect(log.mock.calls).toEqual([[JSON.stringify({ caseId: 'C32', code: 'unexpected_contract_tool_calls' })], ['golden browser: failed']]);
+    } finally { log.mockRestore(); }
+  });
+  it.each([
+    { caseId: 'C32', code: 'private transcript' },
+    { caseId: 'C32', code: 'unexpected_contract_tool_calls', message: 'private transcript' },
+    { caseId: ['C32'], code: 'unexpected_contract_tool_calls' },
+    { caseId: 'C99', code: 'unexpected_contract_tool_calls' },
+    ['C32', 'unexpected_contract_tool_calls'],
+  ])('suppresses untrusted worker diagnostics %j', value => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      new GoldenReporter().onTestEnd({} as TestCase, { status: 'failed', stdout: [JSON.stringify(value) + '\n'] } as TestResult);
+      expect(log.mock.calls).toEqual([['golden browser: failed']]);
+    } finally { log.mockRestore(); }
+  });
 });

@@ -37,12 +37,15 @@ const CONTRACT_ORACLE_MESSAGES = {
   absent_answer_invented_link: "Absent answer invented link",
 } as const;
 export type ContractOracleFailureCode = keyof typeof CONTRACT_ORACLE_MESSAGES;
+export function isContractOracleFailureCode(value: unknown): value is ContractOracleFailureCode {
+  return typeof value === 'string' && Object.hasOwn(CONTRACT_ORACLE_MESSAGES, value);
+}
 const oracleFailures = new WeakSet<ContractOracleFailure>();
 /** Only the oracle's static codes may cross into live diagnostics. */
 export class ContractOracleFailure extends Error {
   readonly code: ContractOracleFailureCode;
   constructor(code: ContractOracleFailureCode) {
-    if (typeof code !== 'string' || !Object.hasOwn(CONTRACT_ORACLE_MESSAGES, code)) throw new TypeError('Invalid contract oracle failure code');
+    if (!isContractOracleFailureCode(code)) throw new TypeError('Invalid contract oracle failure code');
     super(CONTRACT_ORACLE_MESSAGES[code]);
     this.name = 'ContractOracleFailure'; this.code = code;
     oracleFailures.add(this); Object.freeze(this);
