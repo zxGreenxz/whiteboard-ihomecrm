@@ -144,6 +144,10 @@ function assertFacts(answer:string,f:IncomeApprovalFixture) {
   const pending=Boolean(f.payload.hop_cho), rows=f.payload.phieu ?? f.payload.hop_cho!;
   // In the caller-bound pending inbox, "chờ xử lý" describes the same pending
   // request. It cannot establish voucher approval/posting states in C34/C35.
+  if(pending)for(const match of text.matchAll(/đã (?:được )?xử lý/giu)){
+    const prefix=text.slice(0,match.index);
+    check(/(?:nếu|khi|không|chưa|chẳng)\s*(?:phải\s*)?$/iu.test(prefix),'financial_status');
+  }
   if(pending)text=text.replace(/chờ xử lý/giu,(match:string,offset:number)=>{
     const prefix=text.slice(0,offset);
     check(!/(?:không|chưa|chẳng)(?:\s+(?:còn|phải|là|đang)){0,3}\s*$/iu.test(prefix),'financial_status');

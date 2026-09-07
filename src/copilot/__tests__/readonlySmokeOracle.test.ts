@@ -27,6 +27,15 @@ it('rejects a repeated denial of pending processing after a correct inbox statem
   const e=incomeEvidence('C36');
   expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Phiếu PC001 không còn chờ xử lý.'))).toThrow();
 });
+it('rejects repeated completed processing after a correct pending inbox statement',()=>{
+  const e=incomeEvidence('C36');
+  expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Phiếu PC001 đã xử lý.'))).toThrow();
+});
+it('allows negated and conditional completed processing after a correct pending inbox statement',()=>{
+  const e=incomeEvidence('C36');
+  for(const statement of ['Phiếu PC001 chưa được xử lý.','Nếu đã xử lý thì cần kiểm tra lại.'])
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' '+statement))).not.toThrow();
+});
 function incomeEvidence(id='C34') {
   const scenario={id,fixture:'readonly',kind:'read',acceptance:['facts'],oracle:id==='C34'?'vouchers-2026-07-v1':id==='C35'?'empty-expenses-2099-01-v1':'pending-approval-inbox-v1',prompt:id==='C34'?'Phiếu thu chi tháng 07/2026':id==='C35'?'Phiếu chi kỳ 2099-01':'Có gì đang chờ tôi duyệt không?'};
   const request=incomeApprovalRequest(id), actorDigest='b'.repeat(64);
