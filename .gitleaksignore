@@ -70,3 +70,8 @@ d20c7b93a5c46ebb1547339c6935a516f42a9904:supabase/migrations/20260727090000_open
 # bằng `KEY` và giá trị là chuỗi dài. Đã đổi tên hằng thành `MUTE_PREF` ngay commit sau nên
 # không tái diễn, nhưng lịch sử commit thì không xoá được. Xác minh 21/08/2026.
 6fc823a2ecd0157146a686ed0a9a50c8e2bb6366:src/pages/quayso/AnimalRaceTrack.tsx:generic-api-key:40
+
+# workflow-safety.test.mjs — giá trị VERCEL_AUTOMATION_BYPASS_SECRET giả trong env
+# của test stream/guard cục bộ (synthetic-bypass-secret-456), không có quyền truy cập.
+# Chỉ miễn trừ đúng dòng của commit này; các credential khác trong file vẫn bị quét.
+317c347aadae48a7f4d49283042c0daf7e1d8629:.e2e-fleet/controlled/workflow-safety.test.mjs:generic-api-key:169

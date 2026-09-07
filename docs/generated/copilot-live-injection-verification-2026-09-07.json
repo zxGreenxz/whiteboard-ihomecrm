@@ -234,6 +234,28 @@
       "durationSeconds": 148,
       "completedAt": "2026-09-07T00:24:44.711Z",
       "strictIslands": "deferred to CI per worktree contract"
+    },
+    "ciSecretScan": {
+      "measuredAt": "2026-09-07T00:44:17.643Z",
+      "toolVersion": "8.30.1",
+      "archiveSha256": "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e",
+      "source": "official GitHub release asset digest",
+      "head": "f5de3150c965690feb10138b89d9b399b4c98771",
+      "command": "gitleaks git --redact --no-banner --config .gitleaks.toml --log-opts=origin/main .",
+      "exitCode": 0,
+      "findingCount": 0,
+      "exemption": "317c347aadae48a7f4d49283042c0daf7e1d8629:.e2e-fleet/controlled/workflow-safety.test.mjs:generic-api-key:169",
+      "verification": "Historical line is synthetic-bypass-secret-456, only used in a local synthetic environment passed to the stream redactor and guard.",
+      "ciRun": 34070071923,
+      "originalFindingCount": 1,
+      "review": "Approved: independently verified historical fixture provenance, local-only consumers and exact fingerprint; no broader rule or file exemption.",
+      "prepush": {
+        "command": "npm run gate:truoc-push -- --khong-dao-strict",
+        "passed": 41,
+        "failed": 0,
+        "durationSeconds": 166,
+        "completedAt": "2026-09-07T00:47:40.775Z"
+      }
     }
   }
 }
