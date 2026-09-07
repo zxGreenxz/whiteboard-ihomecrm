@@ -1,13 +1,16 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { Transform } from 'node:stream';
+import { pipeline, Transform } from 'node:stream';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 
 const SECRET_NAME = /^(?:FLEET_PASS_|COPILOT_E2E_PIN$|VERCEL_AUTOMATION_BYPASS_SECRET$)/;
 const JWT_SOURCE = String.raw`(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?![A-Za-z0-9_-])`;
 export const AUTHORIZATION_REDACTION_MARKER = '[REDACTED_AUTHORIZATION]';
-const AUTHORIZATION_SOURCE = String.raw`(["']?authorization["']?\s*[:=]\s*)(?:(["'])([^"']*)\2|([^\r\n,}]+))`;
+// Logs are unstructured: commas, quotes and escapes can all belong to credentials.
+// Suppress the entire physical-line suffix, including adjacent diagnostic fields,
+// instead of guessing where a serialized header value ends.
+const AUTHORIZATION_SOURCE = String.raw`(["']?authorization["']?[ \t]*[:=][ \t]*)([^\r\n]*)`;
 const ENCODED_REPORT = 'data:application/zip;base64,';
 
 function secretEntries(env) {
@@ -26,17 +29,18 @@ function redactionEntries(env) {
 function redactAuthorization(text) {
   return text.replace(
     new RegExp(AUTHORIZATION_SOURCE, 'giu'),
-    (_match, prefix, quote) => (
-      quote
-        ? `${prefix}${quote}${AUTHORIZATION_REDACTION_MARKER}${quote}`
-        : `${prefix}${AUTHORIZATION_REDACTION_MARKER}`
-    ),
+    (_match, prefix, value) => {
+      // A following line may contain the credential. Stop the stream instead of
+      // emitting a trusted marker and then forwarding an unowned continuation.
+      if (!value.trim()) throw new Error('Authorization value is not on the same diagnostic line');
+      return `${prefix}${AUTHORIZATION_REDACTION_MARKER}`;
+    },
   );
 }
 
 function hasUnsafeAuthorization(text) {
   for (const match of text.matchAll(new RegExp(AUTHORIZATION_SOURCE, 'giu'))) {
-    const value = (match[3] ?? match[4] ?? '').trim();
+    const value = match[2].trim();
     if (value !== AUTHORIZATION_REDACTION_MARKER) return true;
   }
   return false;
@@ -54,16 +58,24 @@ export function createCopilotE2ERedactor({ env = process.env } = {}) {
   let remainder = '';
   return new Transform({
     transform(chunk, _encoding, callback) {
-      remainder += decoder.write(chunk);
-      const lines = remainder.split('\n');
-      remainder = lines.pop() ?? '';
-      for (const line of lines) this.push(`${redactCopilotE2EText(line, { env })}\n`);
-      callback();
+      try {
+        remainder += decoder.write(chunk);
+        const lines = remainder.split('\n');
+        remainder = lines.pop() ?? '';
+        for (const line of lines) this.push(`${redactCopilotE2EText(line, { env })}\n`);
+        callback();
+      } catch (error) {
+        callback(error);
+      }
     },
     flush(callback) {
-      remainder += decoder.end();
-      if (remainder) this.push(redactCopilotE2EText(remainder, { env }));
-      callback();
+      try {
+        remainder += decoder.end();
+        if (remainder) this.push(redactCopilotE2EText(remainder, { env }));
+        callback();
+      } catch (error) {
+        callback(error);
+      }
     },
   });
 }
@@ -142,5 +154,10 @@ function runGuard(directory) {
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
 if (invokedPath === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === 'guard') runGuard(process.argv[3] ?? '');
-  else process.stdin.pipe(createCopilotE2ERedactor()).pipe(process.stdout);
+  else pipeline(process.stdin, createCopilotE2ERedactor(), process.stdout, error => {
+    if (error) {
+      console.error('Copilot E2E log redaction failed; output suppressed.');
+      process.exitCode = 1;
+    }
+  });
 }

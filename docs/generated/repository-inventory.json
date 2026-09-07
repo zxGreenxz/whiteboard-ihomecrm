@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 541,
-  "soFileDocBangFs": 180,
-  "tongLoiGoi": 370,
-  "khongPhanLoaiDuoc": 187,
+  "tongSoFileTest": 542,
+  "soFileDocBangFs": 181,
+  "tongLoiGoi": 372,
+  "khongPhanLoaiDuoc": 188,
   "theoLoai": {
     "manifest": {
-      "soFile": 21,
+      "soFile": 22,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -273,6 +273,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
       "file": "scripts/__tests__/copilot-ledger-audit-rpc.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -389,14 +397,6 @@
         "manifest": 2
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/network-center-ingest-domains.test.mjs",
@@ -589,6 +589,14 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": ".e2e-fleet/controlled/workflow-safety.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": ".e2e-fleet/specs/copilot-golden-readonly.spec.ts",

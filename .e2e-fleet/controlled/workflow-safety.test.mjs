@@ -319,6 +319,99 @@ test('artifact redactor and guard cover dynamic credentials across arbitrary chu
   }
 });
 
+test('authorization diagnostics never retain credential suffixes', async (t) => {
+  const { createCopilotE2ERedactor, inspectCopilotE2EArtifactDirectory } = await import(
+    pathToFileURL(artifactSafetyPath).href
+  );
+  const env = { FLEET_PASS_CHUNHA: 'synthetic-suffix-test-password' };
+  const cases = [
+    {
+      name: 'Digest parameters',
+      line: 'Authorization: Digest username="synthetic-user", realm="synthetic-realm", response="synthetic-digest-response"',
+      fragments: ['synthetic-user', 'synthetic-realm', 'synthetic-digest-response'],
+    },
+    {
+      name: 'escaped quote in JSON',
+      line: JSON.stringify({ Authorization: 'Custom synthetic-prefix"synthetic-quoted-suffix' }),
+      fragments: ['synthetic-prefix', 'synthetic-quoted-suffix'],
+    },
+    {
+      name: 'apostrophe in JSON',
+      line: JSON.stringify({ Authorization: "Custom synthetic-prefix'synthetic-apostrophe-suffix" }),
+      fragments: ['synthetic-prefix', 'synthetic-apostrophe-suffix'],
+    },
+    {
+      name: 'partial marker followed by Digest parameters',
+      line: 'Authorization: [REDACTED_AUTHORIZATION], response="synthetic-marker-suffix"',
+      fragments: ['synthetic-marker-suffix'],
+    },
+    {
+      name: 'partial marker followed by a brace',
+      line: 'Authorization: [REDACTED_AUTHORIZATION]}synthetic-brace-suffix',
+      fragments: ['synthetic-brace-suffix'],
+    },
+  ];
+  for (const specimen of cases) {
+    await t.test(specimen.name, async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'copilot-authorization-suffix-'));
+      try {
+        const file = join(dir, 'diagnostic.log');
+        writeFileSync(file, specimen.line);
+        assert.ok(
+          inspectCopilotE2EArtifactDirectory(dir, { env }).findings.some(
+            finding => finding.code === 'authorization-header',
+          ),
+          'guard accepted a partial Authorization redaction',
+        );
+        const input = `before diagnostic\n${specimen.line}\nafter diagnostic`;
+        const output = await runRedactor(createCopilotE2ERedactor, input, env);
+        for (const fragment of specimen.fragments) {
+          assert.equal(output.includes(fragment), false, 'redactor leaked a credential suffix');
+        }
+        assert.ok(output.startsWith('before diagnostic\n'));
+        assert.ok(output.endsWith('\nafter diagnostic'));
+        assert.equal(await runRedactor(createCopilotE2ERedactor, output, env), output);
+        writeFileSync(file, output);
+        assert.deepEqual(inspectCopilotE2EArtifactDirectory(dir, { env }).findings, []);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test('multiline Authorization logs stop before any credential emission', async () => {
+  const { createCopilotE2ERedactor, redactCopilotE2EText } = await import(
+    pathToFileURL(artifactSafetyPath).href
+  );
+  const env = { FLEET_PASS_CHUNHA: 'synthetic-multiline-test-password' };
+  const credential = 'synthetic-next-line-credential';
+  const input = `{\n  "Authorization":\n    "Basic ${credential}"\n}\n`;
+  const bytes = Buffer.from(input);
+  const chunks = Array.from(bytes, (_value, index) => bytes.subarray(index, index + 1));
+  let emitted = '';
+  await assert.rejects(async () => {
+    for await (const chunk of Readable.from(chunks).pipe(createCopilotE2ERedactor({ env }))) {
+      emitted += chunk.toString();
+    }
+  }, /Authorization value is not on the same diagnostic line/);
+  assert.equal(emitted.includes(credential), false);
+  assert.throws(
+    () => redactCopilotE2EText('Authorization:', { env }),
+    /Authorization value is not on the same diagnostic line/,
+  );
+  await assert.rejects(
+    () => runRedactor(createCopilotE2ERedactor, 'Authorization: ', env),
+    /Authorization value is not on the same diagnostic line/,
+  );
+  const cli = spawnSync(process.execPath, [artifactSafetyPath], {
+    input, encoding: 'utf8', env: { ...process.env, ...env }, windowsHide: true,
+  });
+  assert.equal(cli.status, 1);
+  assert.match(cli.stderr, /log redaction failed; output suppressed/);
+  assert.equal(`${cli.stdout}${cli.stderr}`.includes(credential), false);
+});
+
 test('workflow guard wrapper fails closed when its artifact directory is missing', () => {
   const workflow = parse(readFileSync(join(root, '.github', 'workflows', 'copilot-e2e.yml'), 'utf8'));
   const guard = workflow.jobs['copilot-e2e'].steps.find(step => step.id === 'guard');

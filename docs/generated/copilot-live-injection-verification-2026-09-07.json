@@ -120,5 +120,120 @@
     "strictIncluded": true,
     "elapsedSeconds": 105,
     "completedAt": "2026-09-06T20:10:41.579Z"
+  },
+  "workflowSafetyRepair": {
+    "recordedAt": "2026-09-07T00:22:16.359Z",
+    "baseSha": "2caa5438050f68d8fea573138e279e53088c5e5a",
+    "inheritedCommits": [
+      "317c347aadae48a7f4d49283042c0daf7e1d8629",
+      "188201daa9ddfe9b9789f5ddcfbcab6e79250409"
+    ],
+    "originalPlan": "docs/superpowers/plans/2026-09-02-ai-copilot-va-nen-den-toan-quyen-muc-3.md",
+    "originalPlanSha256": "29324d3eb280bb45c6b8c8539451aefc8ae304b0f9da5416b4e31e27149b62bf",
+    "sourceFileSha256": {
+      "scripts/copilot-e2e-artifact-safety.mjs": "70a6b9fc62e929034a550fb11387128b5cecaf332a04004a25e34709a0a22d35",
+      ".e2e-fleet/controlled/workflow-safety.test.mjs": "7cd193cff4a63fa32f5a477689b1c1ef0bc82fd84af56881bd0b633e7da26cd4"
+    },
+    "fixes": [
+      "One availability deadline covers trigger and response body with supervised rejection and observer cleanup.",
+      "Authorization redaction removes the full physical-line suffix, including Digest and escaped quote forms.",
+      "An Authorization label without a same-line value stops log output with exit 1.",
+      "Artifact guard rejects partial safe markers and missing directories.",
+      "Controlled Chromium suite is registered and matrix verifies the exact workflow command."
+    ],
+    "diagnosticsTradeoff": "Same-line fields following Authorization may be suppressed; ambiguous multiline Authorization causes the log pipeline to fail closed.",
+    "controlledVerification": {
+      "command": "node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs .e2e-fleet/controlled/workflow-safety.test.mjs",
+      "exit": 0,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "durationMs": 8093
+    },
+    "typecheck": {
+      "command": "npm run typecheck:e2e",
+      "exitCode": 0
+    },
+    "matrixUnitVerification": {
+      "command": "npx vitest run scripts/__tests__/check-test-matrix-declarations.test.mjs",
+      "passed": 13,
+      "failed": 0
+    },
+    "regressionEvidence": {
+      "suffix": {
+        "command": "node --test --test-name-pattern=\"authorization diagnostics\" .e2e-fleet/controlled/workflow-safety.test.mjs",
+        "exit": 1,
+        "subtests": {
+          "passed": 1,
+          "failed": 4
+        },
+        "failures": [
+          "Digest credential suffix",
+          "escaped quote credential suffix",
+          "partial marker comma accepted",
+          "partial marker brace accepted"
+        ]
+      },
+      "multiline": {
+        "command": "node --test --test-name-pattern=\"multiline Authorization\" .e2e-fleet/controlled/workflow-safety.test.mjs",
+        "exit": 1,
+        "failure": "Missing expected rejection"
+      },
+      "mutationChecks": [
+        {
+          "name": "delimiter truncation",
+          "helperExitCode": 0,
+          "output": "Đột biến: scripts/copilot-e2e-artifact-safety.mjs\n  sha256 d23538624385 → 54182877fd0e  (đã đổi thật)\n  suite : node --test --test-name-pattern=\"authorization diagnostics\" .e2e-fleet/controlled/workflow-safety.test.mjs\n\n\nKhôi phục: sha256 về d23538624385 ✓\n\n✅ ĐẠT — suite đỏ đúng kỳ vọng (exit 1), output có \"redactor leaked a credential suffix\".\n"
+        },
+        {
+          "name": "guard disabled",
+          "helperExitCode": 0,
+          "output": "Đột biến: scripts/copilot-e2e-artifact-safety.mjs\n  sha256 d23538624385 → 711f189fb8cc  (đã đổi thật)\n  suite : node --test --test-name-pattern=\"authorization diagnostics\" .e2e-fleet/controlled/workflow-safety.test.mjs\n\n\nKhôi phục: sha256 về d23538624385 ✓\n\n✅ ĐẠT — suite đỏ đúng kỳ vọng (exit 1), output có \"guard accepted a partial Authorization redaction\".\n"
+        },
+        {
+          "name": "empty header accepted",
+          "helperExitCode": 0,
+          "output": "Đột biến: scripts/copilot-e2e-artifact-safety.mjs\n  sha256 70a6b9fc62e9 → e4c6e17edd5a  (đã đổi thật)\n  suite : node --test --test-name-pattern=\"multiline Authorization\" .e2e-fleet/controlled/workflow-safety.test.mjs\n\n\nKhôi phục: sha256 về 70a6b9fc62e9 ✓\n\n✅ ĐẠT — suite đỏ đúng kỳ vọng (exit 1), output có \"Missing expected rejection\".\n"
+        },
+        {
+          "name": "CLI failure hidden",
+          "helperExitCode": 0,
+          "output": "Đột biến: scripts/copilot-e2e-artifact-safety.mjs\n  sha256 70a6b9fc62e9 → 5e0120379813  (đã đổi thật)\n  suite : node --test --test-name-pattern=\"multiline Authorization\" .e2e-fleet/controlled/workflow-safety.test.mjs\n\n\nKhôi phục: sha256 về 70a6b9fc62e9 ✓\n\n✅ ĐẠT — suite đỏ đúng kỳ vọng (exit 1), output có \"0 !== 1\".\n"
+        }
+      ]
+    },
+    "independentReview": {
+      "r3": "3 Important and 2 Minor findings addressed; Authorization suffix P1 remained.",
+      "r4": "Same-line suffix issue addressed; empty multiline Authorization regression found.",
+      "r5": "Approved: empty-value regression addressed; no new Critical/Important finding. Independently matched both reviewed file hashes."
+    },
+    "graph": {
+      "baseCommit": "188201daa9ddfe9b9789f5ddcfbcab6e79250409",
+      "freshness": "GitNexus fresh; UA warning only",
+      "impact": "redactCopilotE2EText and inspectCopilotE2EArtifactDirectory each have two indexed upstream impacts; shell callers separately checked",
+      "detectChanges": "Two source files, four symbols, zero indexed processes; graph does not attest shell or live behavior."
+    },
+    "quotaReadback": {
+      "checkedAt": "2026-09-07T00:09:27.811Z",
+      "quota": [
+        {
+          "quota_day": "2026-09-07",
+          "daily_tokens_cap_user": 300000,
+          "daily_tokens_cap_tenant": 1500000,
+          "demo_user_tokens_today": 300971
+        }
+      ]
+    },
+    "liveModelRun": "blocked by current daily CRM quota; no new request dispatched",
+    "workflowState": "disabled_manually, verified via GitHub API",
+    "fullPlanAccepted": false,
+    "prepush": {
+      "command": "npm run gate:truoc-push -- --khong-dao-strict",
+      "passed": 41,
+      "failed": 0,
+      "durationSeconds": 148,
+      "completedAt": "2026-09-07T00:24:44.711Z",
+      "strictIslands": "deferred to CI per worktree contract"
+    }
   }
 }
