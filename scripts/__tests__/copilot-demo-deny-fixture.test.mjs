@@ -88,3 +88,19 @@ test('cleanup failure is surfaced alongside callback failure', async () => {
   f.options.run = async () => { throw new Error('case failed'); };
   await assert.rejects(withDemoDenyFixture(f.options), e => e instanceof AggregateError && e.errors.length === 2);
 });
+for (const thrown of [undefined, null, false, 0, '']) {
+  test(`falsy callback throw ${String(thrown)} rejects after restore`, async () => {
+    const f = fixture(); f.options.run = async () => { throw thrown; };
+    let rejected = false;
+    try { await withDemoDenyFixture(f.options); }
+    catch (error) { rejected = true; assert.equal(error, thrown); }
+    assert.equal(rejected, true);
+    assert.deepEqual(f.state.unrevokedOverrides, []);
+  });
+}
+test('falsy callback throw is retained when cleanup also fails', async () => {
+  const f = fixture(); const write = f.transport.updateAuthorization;
+  f.transport.updateAuthorization = async a => { if (!a.p_overrides.length) throw new Error('cleanup denied'); return write(a); };
+  f.options.run = async () => { throw undefined; };
+  await assert.rejects(withDemoDenyFixture(f.options), e => e instanceof AggregateError && e.errors.length === 2 && e.errors[0] === undefined);
+});

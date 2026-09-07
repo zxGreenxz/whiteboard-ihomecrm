@@ -68,6 +68,7 @@ export async function withDemoDenyFixture({ target, adminUserId, transport, run,
     p_expected_version: version, p_role_bindings: null, p_overrides: overrides, p_reason: reason });
   let result;
   let failure;
+  let failed = false;
   try {
     response(await write(originalVersion, [override]), originalVersion + 1);
     evidence.overrideId = owned(await transport.readSnapshot());
@@ -75,7 +76,7 @@ export async function withDemoDenyFixture({ target, adminUserId, transport, run,
     result = await run(Object.freeze({ ...evidence }));
     owned(await transport.readSnapshot());
     check(now() < Date.parse(expiresAt), 'DENY expired during callback');
-  } catch (error) { failure = error; }
+  } catch (error) { failed = true; failure = error; }
   finally {
     try {
       // Also recovers an apply whose response was lost: never adopt a newer CAS.
@@ -92,10 +93,10 @@ export async function withDemoDenyFixture({ target, adminUserId, transport, run,
       }
     } catch (error) {
       const cleanup = new Error('DENY fixture cleanup failed; owned state was not safely restored', { cause: error });
-      throw failure ? new AggregateError([failure, cleanup], 'Acceptance and cleanup failed') : cleanup;
+      throw failed ? new AggregateError([failure, cleanup], 'Acceptance and cleanup failed') : cleanup;
     }
   }
-  if (failure) throw failure;
+  if (failed) throw failure;
   check(evidence.restoredVersion === originalVersion + 2, 'Cleanup lifecycle incomplete');
   return { result, evidence };
 }
