@@ -1016,3 +1016,20 @@ it('accepts one-customer prose with canonical count and masked phone',()=>expect
 
 it('rejects contradictory positive customer claim after grounded absence',()=>{const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' Có khách hàng.','C14'))).toThrow();});
 it('accepts only a canonical customer detail link',()=>expect(()=>assertCustomerResult(customerAnswer('Nguyễn An — phòng G701 (DEMO Toà A). [Xem chi tiết](/customers/'+customerCanonical.customer_id+')'))).not.toThrow());
+
+describe('C14 customer information absence review regression',()=>{
+  it.each(['Tìm thấy thông tin khách hàng.','Có thông tin khách hàng.','Tồn tại thông tin khách hàng.','Tìm thấy thông tin.','Có thông tin.'])('rejects contradictory information result: %s',statement=>{
+    const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' '+statement,'C14'))).toThrow('customer_facts');
+  });
+  it.each(['Không tìm thấy thông tin khách hàng.','Chưa tìm thấy thông tin khách hàng.','Không có thông tin khách hàng.','Chưa có thông tin khách hàng.','Bạn vui lòng cung cấp thông tin chính xác để tôi hỗ trợ tìm kiếm.','Nếu bạn có thông tin khách hàng, vui lòng cung cấp để tôi hỗ trợ tìm kiếm.','Nếu có thông tin khách hàng, bạn vui lòng cung cấp.'])('preserves negated or conditional information request: %s',statement=>{
+    const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' '+statement,'C14'))).not.toThrow();
+  });
+});
+
+it.each(['Không có thông tin khách hàng. Có thông tin khách hàng.','Nếu bạn có thông tin khách hàng, vui lòng cung cấp. Có thông tin khách hàng.','Nếu có thông tin khách hàng, bạn vui lòng cung cấp, tìm thấy thông tin khách hàng.'])('C14 review cannot borrow prior negation or condition: %s',statement=>{
+  const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' '+statement,'C14'))).toThrow('customer_facts');
+});
+
+it.each(['Tìm thấy dữ liệu khách hàng.','Có dữ liệu khách hàng.','Tìm thấy kết quả khách hàng.','Có kết quả khách hàng.'])('C14 review rejects equivalent affirmative information result: %s',statement=>{
+  const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' '+statement,'C14'))).toThrow('customer_facts');
+});

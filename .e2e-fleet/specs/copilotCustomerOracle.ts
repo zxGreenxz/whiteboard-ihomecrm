@@ -25,7 +25,15 @@ function facts(answer:string,stream:string,fixture:CustomerFixture) {
   if(!row) {
     check(/không (?:tìm thấy|có).*khách|khách.*không (?:tồn tại|tìm thấy)/iu.test(text) && text.includes(fixture.query),'customer_facts');
     for(const claim of text.matchAll(/(?:tìm thấy|có|tồn tại)\s+khách/giu))check(/(?:không|chưa)\s*$/.test(text.slice(0,claim.index)),'customer_facts');
-    const rest=text.split(fixture.query).join('');
+    const informationRequest=/(?:^|[.!?\n])\s*nếu(?:\s+bạn)?\s+(?:có|tìm thấy)\s+thông tin(?:\s+khách hàng)?\s*,\s*(?:bạn\s+)?vui lòng cung cấp/giu;
+    const conditionalRequests=[...text.matchAll(informationRequest)];
+    for(const claim of text.matchAll(/(?:tìm thấy|có|tồn tại)\s+(?:thông tin|dữ liệu|kết quả)/giu)) {
+      const negated=/(?:không|chưa)\s*$/.test(text.slice(0,claim.index));
+      check(negated || conditionalRequests.some(request=>claim.index!>=request.index! && claim.index!<request.index!+request[0].length),'customer_facts');
+    }
+    // Only the validated if-information-is-available request may consume "nếu";
+    // arbitrary condition words cannot hide a later affirmative result.
+    const rest=text.split(fixture.query).join('').replace(informationRequest,request=>request.replace('nếu',''));
     check(!/\d|phòng|toà|tòa|hợp đồng|khách hàng\s*[:：]|khách hàng\s+(?:là|tên|có tên)|\]\(|\[link:|https?:|\/[a-z]/iu.test(rest),'customer_facts');
     const absentWords=new Set('không chưa tìm thấy có khách hàng nào khớp với số điện thoại sđt này trong hệ thống dữ liệu hiện tại bạn vui lòng kiểm tra lại hoặc cung cấp thông tin chính xác để tôi hỗ trợ tìm kiếm kết quả theo yêu cầu'.split(' '));
     check((rest.match(/[\p{L}\p{N}]+/gu)??[]).every(w=>absentWords.has(w)),'customer_facts');
