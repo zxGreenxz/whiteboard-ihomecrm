@@ -863,3 +863,22 @@ it('C34 validates daily report navigation in the stream after mounted text strip
     else expect(()=>assertIncomeApprovalResult(e)).toThrow(/identity/);
   }
 });
+
+describe('C34 report date scope',()=>{
+  it.each([
+    'Sổ quỹ 2026-07-31 → 2026-07-01: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ.',
+    'Sổ quỹ ngày 2026-07-01: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ.',
+    'Sổ quỹ ngày 2026-07-20: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ.',
+    'Sổ quỹ 2026-07-01, 2026-07-31: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ.',
+  ])('rejects misplaced period totals: %s',statement=>{
+    const e=dailyEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+'\n'+statement))).toThrow(/daily cashbook facts/);
+  });
+  it.each([
+    'Sổ quỹ 2026-07-01 → 2026-07-31: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ.',
+    'Sổ quỹ tháng 07/2026: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ.',
+    'Sổ quỹ ngày 2026-07-20: thu 9.000 đ, chi 2.000 đ, ròng 7.000 đ.',
+    'Ngày 2026-07-19: thu 0 đ, chi 15.000 đ, ròng -15.000 đ.',
+  ])('accepts independently scoped report facts: %s',statement=>{
+    const e=dailyEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+'\n'+statement))).not.toThrow();
+  });
+});

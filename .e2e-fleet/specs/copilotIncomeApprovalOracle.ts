@@ -248,9 +248,14 @@ function voucherAnswerWithoutDailyFacts(answer:string,f:IncomeApprovalFixture,ca
     check(called && p,'financial_daily_facts');
     check(!/phiếu|\b(?:pc|pt)[-_\d]|\b[0-9a-f]{8}-[0-9a-f-]{27}\b/u.test(text),'financial_daily_facts');
     const dates=[...text.matchAll(/\d{4}-\d{2}-\d{2}/g)].map(m=>m[0]);
-    const daily=/^(?:[-•]\s*)?(?:ngày\s+)?\d{4}-\d{2}-\d{2}\s*:/u.test(text);
+    // A single date always scopes a daily row, including after a cashbook prefix.
+    // Two endpoints prove a period only in the canonical forward direction.
+    const daily=dates.length===1;
     const row=daily?p.theo_ngay.find(r=>r.ngay===dates[0]):undefined;
-    check(daily ? dates.length===1 && row : /sổ quỹ|đã vào sổ/u.test(text) && dates.every(d=>d===p.tu || d===p.den),'financial_daily_facts');
+    const period=dates.length===0 || (dates.length===2 && dates[0]===p.tu && dates[1]===p.den
+      && new RegExp(`${escape(p.tu)}\\s*→\\s*${escape(p.den)}`,'u').test(text));
+    check(daily ? row && !/(?:tháng|kỳ)\s+/u.test(text)
+      : /sổ quỹ|đã vào sổ/u.test(text) && period,'financial_daily_facts');
     if(/(?:không|chưa) có phát sinh/u.test(text)) {
       check(!p.theo_ngay.length && !cashflow && !amounts(text).length,'financial_daily_facts');
       text=text.replace(/(?:không|chưa) có phát sinh/u,'');
