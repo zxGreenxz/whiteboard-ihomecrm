@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-09-07T02:56:16.387Z",
+  "measuredAt": "2026-09-07T06:11:04.539Z",
   "scope": "Continue failed and unrun acceptance cases; preserve previously passed evidence",
   "originalRun": {
     "id": 34058129944,
@@ -9,9 +9,9 @@
     "skipped": 10
   },
   "aggregate": {
-    "accepted": 35,
+    "accepted": 36,
     "total": 37,
-    "method": "Composite evidence across retained runs, including read-only continuation of case 3; not a single green full-suite run"
+    "method": "Composite live evidence across retained runs including read-only continuation of batch case3 and explicit-DENY action ca3b; not a single green full-suite run"
   },
   "repairedLiveCases": [
     "action-matrix ca10 injection",
@@ -69,8 +69,7 @@
     "infrastructureAttempt": "First local cases4–8 attempt failed in browser bootstrap before test operations; only still-unrun cases were retried"
   },
   "remainingPrerequisites": [
-    "action-matrix ca3b: missing fully unprivileged DEMO actor; explicit temporary DENY variant assessed but not executed",
-    "L5 matrix ca2: requires L4 ceiling; current L5 policy intentionally preserved"
+    "L5 matrix ca2: live deployment has L5 ceiling, so L4 prerequisite is inapplicable there; isolated exact-source SQL acceptance recorded separately"
   ],
   "preservedBoundaries": [
     "DEMO business writes only",
@@ -106,6 +105,26 @@
     {
       "file": "acceptance-batch-rpc-4-8-retry-2026-09-07.json",
       "sha256": "1e935fd602819fb149c272b158daca6db30428dd406cca2bd0b8e2bb2401b49f"
+    },
+    {
+      "file": "acceptance-action-ca3b-explicit-deny-2026-09-07.json",
+      "sha256": "49ed62a42bba2e39b2016c122c2940923fe991ef0b1d3ce713b7be5e5daa91c2"
+    },
+    {
+      "file": "acceptance-ca3b-fixture-lifecycle-2026-09-07.json",
+      "sha256": "83fda0a2af1a98e61f9ae1e073970610136b488eb43dae4de7a3a6882503f440"
+    },
+    {
+      "file": "acceptance-ca3b-selection-failure-cleanup-2026-09-07.json",
+      "sha256": "a5ae6c9aaabf3832e7ccf8687c496dc4234f7fcb7bda9d6823d27a072b8ca26e"
+    },
+    {
+      "file": "l4-isolated-sql-task5-final-receipt.json",
+      "sha256": "e8beca3e908e2a8e2e72e13a8f96362030ff78743b699766ee9014ad26c809b0"
+    },
+    {
+      "file": "l4-live-function-parity-2026-09-07.json",
+      "sha256": "18896d511405ae6cb4b99e8a3f0f4c1fdf15a85da95555da409950dfd334a928"
     }
   ],
   "fullPlanAccepted": false,
@@ -121,5 +140,81 @@
     "G1/G2 coverage and real golden executors",
     "Standing grant reports and rollback drills",
     "Actual one-week and two-week canary windows"
-  ]
+  ],
+  "subsequentContinuation": {
+    "actionCa3b": {
+      "previewSha": "14b238e435699b52831f161a0501422936f1e87c",
+      "harnessSha": "cf16267645693c5eb4a91823b00e97d1963997d1",
+      "status": "passed",
+      "fixture": {
+        "variant": "explicit-deny",
+        "reason": "copilot-ca3b-explicit-deny:12028ba3-514f-4392-b00a-10d1fe7741ca",
+        "expiresAt": "2026-09-07T06:11:29.195Z",
+        "membershipId": "a44d5112-eabe-4953-896f-ef0142f177b9",
+        "originalVersion": 3,
+        "appliedVersion": 4,
+        "overrideId": "557f1733-3857-49fd-a0c6-ae5eee24e08f",
+        "restoredVersion": 5
+      },
+      "rolesRestored": true,
+      "testDurationMs": 2542,
+      "variant": "explicit-deny; existing ALLOW edges preserved",
+      "initialSelectionFailure": "Zero tests executed; owned DENY independently verified revoked with roles unchanged; corrected selection discovered one case before mutation"
+    },
+    "isolatedL4": {
+      "scope": "isolated-source-sql-risk-ceiling",
+      "sourceHead": "2e4cda8581e58853ad3cb52a15575f74e56eb4b7",
+      "liveHttpVerified": false,
+      "engine": {
+        "kind": "PGlite",
+        "version": "PostgreSQL 18.3 (PGlite 0.5.4) on wasm32-unknown-linux-gnu, compiled by emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.74 (1092ec30a3fb1d46b1782ff1b4db5094d3d06ae5), 32-bit"
+      },
+      "receipt": "copilot-l4-isolated-acceptance-2026-09-07.json",
+      "catalogMeasuredAt": "2026-09-07T06:02:03.129Z",
+      "functionBodyAndSettingsParity": [
+        {
+          "name": "public.copilot_plan_create_v1",
+          "bodySha256": "85b7f5df3b37058ac19ba4bb6068f11ba8287c7f680cd50a088dc745e2a53f4f",
+          "securityDefiner": true,
+          "config": [
+            "search_path=pg_catalog, public, app_private, extensions"
+          ]
+        },
+        {
+          "name": "public.is_super_admin",
+          "bodySha256": "0b9a91bcb73b74f86a71fc319488eea702d0b74726f340095bacec931ee8b55e",
+          "securityDefiner": true,
+          "config": [
+            "search_path=public"
+          ]
+        },
+        {
+          "name": "app_private.copilot_plan_role_allowed_v1",
+          "bodySha256": "7946f4bf3cf6bd5bfea782fa3244acd0488a45b89fb871ff76c7f0d6d54ae2d6",
+          "securityDefiner": true,
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ]
+        },
+        {
+          "name": "app_private.copilot_action_flag_allows_v1",
+          "bodySha256": "2a308f48ec9bf48437bd0ba509efdcff715e05436501e8c8311320c130a016f0",
+          "securityDefiner": true,
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ]
+        },
+        {
+          "name": "app_private.copilot_plan_registry_revision_v1",
+          "bodySha256": "c8ee1b6071d55d7c98ee7e8f161c02463b0bad69188efd67b92423b6f4a55abe",
+          "securityDefiner": true,
+          "config": [
+            "search_path=pg_catalog, public, app_private"
+          ]
+        }
+      ],
+      "countInterpretation": "Zero persisted fixture rows after rollback; not an independent proof of zero attempted writes",
+      "notCountedAsLiveCase": true
+    }
+  }
 }

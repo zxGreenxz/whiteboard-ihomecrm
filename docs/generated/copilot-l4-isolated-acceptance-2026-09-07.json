@@ -1,0 +1,208 @@
+{
+  "measuredAt": "2026-09-07T06:04:34.231Z",
+  "scope": "isolated-source-sql-risk-ceiling",
+  "liveHttpVerified": false,
+  "fullPlanAccepted": false,
+  "deploymentEquality": "unverified",
+  "mutation": false,
+  "input": {
+    "organizationId": "dddd0000-0000-4000-8000-000000000001",
+    "clientRequestId": "isolated-ca2-risk-ceiling",
+    "steps": [
+      {
+        "hanh_dong": "income_expense.duyet",
+        "du_lieu": {
+          "income_expense_id": "00000000-0000-4000-8000-000000000000"
+        }
+      }
+    ]
+  },
+  "sources": {
+    "head": "2e4cda8581e58853ad3cb52a15575f74e56eb4b7",
+    "functions": [
+      {
+        "path": "supabase/migrations/20260905091725_copilot_plan_create_grant_lock_fix_v1.sql",
+        "name": "public.copilot_plan_create_v1",
+        "sha256": "dddda2b911c36a1b7a8537a5384d7f19cb1b663c2bf9057af5f8d86cbe6df0a5",
+        "bodySha256": "85b7f5df3b37058ac19ba4bb6068f11ba8287c7f680cd50a088dc745e2a53f4f",
+        "bodyNormalization": "CRLF to LF only",
+        "bytes": 22469,
+        "installedBodySha256": "85b7f5df3b37058ac19ba4bb6068f11ba8287c7f680cd50a088dc745e2a53f4f",
+        "securityDefiner": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private, extensions"
+        ]
+      },
+      {
+        "path": "supabase/baseline/schema.sql",
+        "name": "public.is_super_admin",
+        "sha256": "cf7a3a9d303ad1137e2f76effc362a93d41b71a5e882bf651c436db33f72bfc3",
+        "bodySha256": "0b9a91bcb73b74f86a71fc319488eea702d0b74726f340095bacec931ee8b55e",
+        "bodyNormalization": "CRLF to LF only",
+        "bytes": 230,
+        "installedBodySha256": "0b9a91bcb73b74f86a71fc319488eea702d0b74726f340095bacec931ee8b55e",
+        "securityDefiner": true,
+        "config": [
+          "search_path=public"
+        ]
+      },
+      {
+        "path": "supabase/migrations/20260903043956_copilot_action_registry_policy_ledger_v1.sql",
+        "name": "app_private.copilot_plan_role_allowed_v1",
+        "sha256": "208dfd6fb02edcdc9c50153ce78302521725cf278caf83cbae5f71b736725a77",
+        "bodySha256": "7946f4bf3cf6bd5bfea782fa3244acd0488a45b89fb871ff76c7f0d6d54ae2d6",
+        "bodyNormalization": "CRLF to LF only",
+        "bytes": 919,
+        "installedBodySha256": "7946f4bf3cf6bd5bfea782fa3244acd0488a45b89fb871ff76c7f0d6d54ae2d6",
+        "securityDefiner": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ]
+      },
+      {
+        "path": "supabase/migrations/20260903100253_copilot_execution_plan_v1.sql",
+        "name": "app_private.copilot_action_flag_allows_v1",
+        "sha256": "e9d360e5c8b627db3d445d61a4b4b788262287c50546a2625747d982f65d28c4",
+        "bodySha256": "2a308f48ec9bf48437bd0ba509efdcff715e05436501e8c8311320c130a016f0",
+        "bodyNormalization": "CRLF to LF only",
+        "bytes": 574,
+        "installedBodySha256": "2a308f48ec9bf48437bd0ba509efdcff715e05436501e8c8311320c130a016f0",
+        "securityDefiner": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ]
+      },
+      {
+        "path": "supabase/migrations/20260903100253_copilot_execution_plan_v1.sql",
+        "name": "app_private.copilot_plan_registry_revision_v1",
+        "sha256": "7455558d74ae7b1960f314ea17095966babc64c99e62dd8da4aa9e3706b9c10a",
+        "bodySha256": "c8ee1b6071d55d7c98ee7e8f161c02463b0bad69188efd67b92423b6f4a55abe",
+        "bodyNormalization": "CRLF to LF only",
+        "bytes": 334,
+        "installedBodySha256": "c8ee1b6071d55d7c98ee7e8f161c02463b0bad69188efd67b92423b6f4a55abe",
+        "securityDefiner": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ]
+      }
+    ],
+    "executedCreateSha256": "dddda2b911c36a1b7a8537a5384d7f19cb1b663c2bf9057af5f8d86cbe6df0a5",
+    "registrySeed": {
+      "path": "supabase/migrations/20260903190255_copilot_action_ie_duyet_v1.sql",
+      "sha256": "961486737e7eeba6fa45a421204428113077bdd4be0093d57c69719240348d84"
+    },
+    "fixtureSha256": "603b029f6165621b2a7cf4a1a1c028f8276d7059fc3063336b1ee36b9058d950"
+  },
+  "caveats": [
+    "PGlite in-memory PostgreSQL; no HTTP/PostgREST, browser, real Supabase JWT verification, or deployed catalog parity.",
+    "Synthetic superadmin actor, fixture auth.uid claim adapter, DEMO organization and isolated L4 singleton.",
+    "Explicit reduced fixture tables omit production constraints, triggers, RLS and downstream rowtype fields; receipt proves only the pre-risk path.",
+    "No downstream function installed. Mutation must reach undefined copilot_action_gate_v1 (42883), not a mocked risk rejection.",
+    "Zero counts cover only the listed fixture tables; no production/business execution is claimed.",
+    "Dedicated function owner has SELECT only on fixture tables. This is a negative-path test, not proof of successful write privileges."
+  ],
+  "cleanup": {
+    "storage": "memory",
+    "closed": true
+  },
+  "engine": {
+    "kind": "PGlite",
+    "version": "PostgreSQL 18.3 (PGlite 0.5.4) on wasm32-unknown-linux-gnu, compiled by emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.74 (1092ec30a3fb1d46b1782ff1b4db5094d3d06ae5), 32-bit"
+  },
+  "functionSecurity": {
+    "owner": "function_owner",
+    "prosecdef": true,
+    "proconfig": [
+      "search_path=pg_catalog, public, app_private, extensions"
+    ],
+    "authenticated_execute": true,
+    "anon_execute": false,
+    "service_role_execute": false
+  },
+  "prerequisites": {
+    "actor": "dddd2000-0000-4000-8000-000000000005",
+    "role_allowed": true,
+    "flag_allowed": true,
+    "registry_revision": "7f3f4b377fb420612fa19585db93b4a9",
+    "organization_status": "ACTIVE",
+    "max_direct_risk": "L4",
+    "policy_revision": 1,
+    "action_risk": "L5"
+  },
+  "before": {
+    "plans": 0,
+    "steps": 0,
+    "confirmations": 0,
+    "ledger": 0,
+    "vouchers": 0,
+    "items": 0,
+    "audits": 0
+  },
+  "caller": {
+    "current_user": "authenticated",
+    "actor": "dddd2000-0000-4000-8000-000000000005"
+  },
+  "error": {
+    "code": "42501",
+    "message": "plan_risk_not_allowed: income_expense.duyet la L5 nhung tran hien tai la L4"
+  },
+  "after": {
+    "plans": 0,
+    "steps": 0,
+    "confirmations": 0,
+    "ledger": 0,
+    "vouchers": 0,
+    "items": 0,
+    "audits": 0
+  },
+  "catalogComparison": {
+    "measuredAt": "2026-09-07T06:02:03.129Z",
+    "functionBodiesAndSettingsMatch": true,
+    "functions": [
+      {
+        "name": "public.copilot_plan_create_v1",
+        "bodySha256": "85b7f5df3b37058ac19ba4bb6068f11ba8287c7f680cd50a088dc745e2a53f4f",
+        "securityDefiner": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private, extensions"
+        ]
+      },
+      {
+        "name": "public.is_super_admin",
+        "bodySha256": "0b9a91bcb73b74f86a71fc319488eea702d0b74726f340095bacec931ee8b55e",
+        "securityDefiner": true,
+        "config": [
+          "search_path=public"
+        ]
+      },
+      {
+        "name": "app_private.copilot_plan_role_allowed_v1",
+        "bodySha256": "7946f4bf3cf6bd5bfea782fa3244acd0488a45b89fb871ff76c7f0d6d54ae2d6",
+        "securityDefiner": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ]
+      },
+      {
+        "name": "app_private.copilot_action_flag_allows_v1",
+        "bodySha256": "2a308f48ec9bf48437bd0ba509efdcff715e05436501e8c8311320c130a016f0",
+        "securityDefiner": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ]
+      },
+      {
+        "name": "app_private.copilot_plan_registry_revision_v1",
+        "bodySha256": "c8ee1b6071d55d7c98ee7e8f161c02463b0bad69188efd67b92423b6f4a55abe",
+        "securityDefiner": true,
+        "config": [
+          "search_path=pg_catalog, public, app_private"
+        ]
+      }
+    ]
+  },
+  "integration": {
+    "harnessSha": "cf16267645693c5eb4a91823b00e97d1963997d1",
+    "sourceRunnerAndTestIdenticalToReceiptCommit": true
+  }
+}
