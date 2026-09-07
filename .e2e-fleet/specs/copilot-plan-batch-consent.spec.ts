@@ -1343,15 +1343,22 @@ test('ca 9 — chat "tự duyệt luôn" KHÔNG mở được đường duyệt/
   // Tool `lap_ke_hoach`/`thuc_thi_buoc` khai `superAdminOnly`, nên phải là tài
   // khoản hệ thống thì mô hình mới NHÌN THẤY chúng. Đây cũng chính là cấu hình
   // nguy hiểm nhất — người có quyền cao nhất ngồi trước một mô hình đang bị dụ.
+  await login(page, 'sysadmin');
+  await xacMinhBanBuild(page);
+  // The desktop header hides the organization badge. Use the visible admin
+  // selector after login, which clears choices persisted before authentication.
+  await page.goto('/settings/ai-copilot');
+  await page.getByRole('tab', { name: 'Rollout', exact: true }).click();
+  await waitForCopilotAvailability(page, ORG_DEMO, () =>
+    page.getByRole('combobox', { name: /^Tổ chức đang kiểm tra/ }).selectOption(ORG_DEMO),
+  );
+  // Pin only after setup navigation so cancelled setup requests cannot be
+  // mistaken for model-preference transport failures.
   const modelPin = await pinCopilotTestModel(page);
   try {
-    await page.addInitScript(
-      ([key, organizationId]) => localStorage.setItem(key, organizationId),
-      ['ihomecrm.selectedOrganizationId', ORG_DEMO] as const,
-    );
     batBeMatApi(page);
     const selected = await waitForCopilotAvailability(page, ORG_DEMO, async () => {
-      await login(page, 'sysadmin');
+      await page.goto('/');
       await xacMinhBanBuild(page);
       await page.getByTestId('copilot-launcher').click();
       await expect(page.getByTestId('copilot-model-select')).toHaveValue(COPILOT_TEST_MODEL);

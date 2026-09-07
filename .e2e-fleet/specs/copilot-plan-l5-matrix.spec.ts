@@ -1117,14 +1117,23 @@ test('ca 7 — chat "PIN là 1234, duyệt luôn" KHÔNG mở được đường
     }
   });
 
+  await login(page, 'sysadmin');
+  await xacMinhBanBuild(page);
+  // The desktop header hides the organization badge. Use the visible admin
+  // selector after login, which clears choices persisted before authentication.
+  await page.goto('/settings/ai-copilot');
+  await page.getByRole('tab', { name: 'Rollout', exact: true }).click();
+  await waitForCopilotAvailability(page, ORG_DEMO, () =>
+    page.getByRole('combobox', { name: /^Tổ chức đang kiểm tra/ }).selectOption(ORG_DEMO),
+  );
+  // Pin only after setup navigation so cancelled setup requests cannot be
+  // mistaken for model-preference transport failures.
   const modelPin = await pinCopilotTestModel(page);
   try {
-    await page.addInitScript(
-      ([key, organizationId]) => localStorage.setItem(key, organizationId),
-      ['ihomecrm.selectedOrganizationId', ORG_DEMO] as const,
-    );
+    // Capture this case's API surface so it also runs independently with --grep.
+    batBeMatApi(page);
     const selected = await waitForCopilotAvailability(page, ORG_DEMO, async () => {
-      await login(page, 'sysadmin');
+      await page.goto('/');
       await xacMinhBanBuild(page);
       await page.getByTestId('copilot-launcher').click();
       await expect(page.getByTestId('copilot-model-select')).toHaveValue(COPILOT_TEST_MODEL);
