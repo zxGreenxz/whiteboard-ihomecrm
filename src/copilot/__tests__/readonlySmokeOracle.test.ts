@@ -694,6 +694,57 @@ describe('C32 bounded empty read chains', () => {
  });
 });
 
+describe('C32 canonical contracts list link', () => {
+ it('accepts the exact /contracts Markdown destination with an explicit absence answer', () => {
+  const e=absentChain(['tim_hop_dong']);
+  const text=`${e.answer} [Xem danh sách hợp đồng](/contracts).`;
+  expect(()=>assertContractResult(changeContractAnswer(e,text))).not.toThrow();
+  expect(e.answer).toBe('Không tìm thấy hợp đồng nào của khách này. Xem danh sách hợp đồng.');
+ });
+
+ it.each([
+  '/contract','/contracts/','/contracts/private','/contracts/aaaa4000-0000-4000-8000-000000000011',
+  '/contracts?x=1','/contracts#x','/%63ontracts','%2Fcontracts','https://example.com/contracts',
+  '//example.com/contracts','javascript:alert(1)',
+ ])('rejects non-canonical C32 Markdown destination %s', destination => {
+  const e=absentChain(['tim_hop_dong']);
+  expect(()=>assertContractResult(changeContractAnswer(e,`${e.answer} [Xem hợp đồng](${destination}).`))).toThrow(/invented link/i);
+ });
+
+ it('rejects a second invalid destination after the canonical list link', () => {
+  const e=absentChain(['tim_hop_dong']);
+  expect(()=>assertContractResult(changeContractAnswer(e,`${e.answer} [Danh sách](/contracts) [Chi tiết](/contracts/private).`))).toThrow(/invented link/i);
+ });
+
+ it.each([
+  '[Danh sách](/contracts',
+  '[Danh sách](/contracts private)',
+  '[Danh sách]()',
+ ])('rejects malformed C32 Markdown link syntax %s', syntax => {
+  const e=absentChain(['tim_hop_dong']);
+  expect(()=>assertContractResult(changeContractAnswer(e,`${e.answer} ${syntax}.`))).toThrow(/invented link/i);
+ });
+
+ it.each([
+  'Hợp đồng HD999 phòng B999',
+  'Khách hàng tên là Demo An',
+  'Tiền thuê 9 triệu đồng',
+ ])('keeps an invented visible link-label fact under the absence guards: %s', label => {
+  const e=absentChain(['tim_hop_dong']);
+  expect(()=>assertContractResult(changeContractAnswer(e,`${e.answer} [${label}](/contracts).`))).toThrow(/invented/);
+ });
+
+ it('keeps surrounding prose under the absence fact guards', () => {
+  const prose=absentChain(['tim_hop_dong']);
+  expect(()=>assertContractResult(changeContractAnswer(prose,`${prose.answer} [Danh sách hợp đồng](/contracts). Tiền thuê 9 triệu đồng.`))).toThrow(/invented/);
+ });
+
+ it('still requires explicit absence when the canonical link is present', () => {
+  const e=absentChain(['tim_hop_dong']);
+  expect(()=>assertContractResult(changeContractAnswer(e,'[Xem danh sách hợp đồng](/contracts).'))).toThrow(/explicit not found/i);
+ });
+});
+
 import { isC32CustomerRead } from '../../../.e2e-fleet/specs/copilotContractOracle';
 import { diagnosticRequestFailure, safeGoldenRequestFailures } from '../../../.e2e-fleet/specs/copilotGoldenDiagnostics';
 it('customer read exemption applies only to exact C32 POST on the attested origin',()=>{

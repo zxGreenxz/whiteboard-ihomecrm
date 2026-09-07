@@ -268,6 +268,20 @@ export function isC32CustomerRead(caseId: string, method: string, url: string, a
   return caseId === 'C32' && method === 'POST' && parsed.origin === apiOrigin
     && parsed.pathname === '/rest/v1/rpc/copilot_customer_search_v1' && !parsed.search && !parsed.hash;
 }
+/** Match MiniMarkdown's supported syntax, but keep C32's acceptance route
+ * narrower than the product renderer: only the canonical contracts list. */
+function assertC32ListLinks(text: string): void {
+  const supported = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  let unmatched = '';
+  let cursor = 0;
+  for (const link of text.matchAll(supported)) {
+    unmatched += text.slice(cursor, link.index) + link[1];
+    cursor = link.index! + link[0].length;
+    check(link[2] === '/contracts', 'absent_answer_invented_link');
+  }
+  unmatched += text.slice(cursor);
+  check(!/\]\(/.test(unmatched), 'absent_answer_invented_link');
+}
 export function assertContractResult(e: Pick<ReadonlyEvidence,'prompt'|'answer'|'rounds'> & { scenario: GoldenScenario; fixture: ContractFixture; reads: ContractRead[]; actorDigest?: string }): void {
   const rebound = bindContractScenario(e.scenario, e.fixture);
   check(same(rebound.attestation,e.fixture.attestation) && e.prompt === rebound.prompt, 'contract_fixture_prompt_drift');
@@ -298,7 +312,7 @@ export function assertContractResult(e: Pick<ReadonlyEvidence,'prompt'|'answer'|
     if (detail && index === 0) check(e.rounds[calls[1].round].messages.some(m => m.role === 'tool' && m.tool_call_id === call.id && m.content === expectedText), 'detail_did_not_consume_search_identity');
   }
   }
+  if (e.scenario.id === 'C32') assertC32ListLinks(last.text);
   assertFacts(e.answer, e.fixture, detail);
-  if (e.scenario.id === 'C32') check(!/\]\(|\/contracts\//.test(last.text), 'absent_answer_invented_link');
   for (const m of last.text.matchAll(/\/contracts\/([^\s)\]]+)/g)) check(m[1] === e.fixture.contractId, 'answer_linked_wrong_contract');
 }
