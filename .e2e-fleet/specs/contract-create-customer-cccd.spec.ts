@@ -38,7 +38,7 @@ test('contract customer dialog pastes CCCD only for individuals without saving',
   const dialog = page
     .getByRole('dialog')
     .filter({ hasText: 'Nhập thông tin khách hàng cho hệ thống quản lý' });
-  await expect(dialog.getByText('Quét QR CCCD')).toBeVisible();
+  await expect(dialog.getByText('Đọc CCCD')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Quét bằng camera' })).toBeVisible();
 
   const payload =
@@ -67,9 +67,9 @@ test('contract customer dialog pastes CCCD only for individuals without saving',
   expect(customerImageWrites).toBe(0);
 
   await dialog.getByRole('tab', { name: 'Tổ chức' }).click();
-  await expect(dialog.getByText('Quét QR CCCD')).toHaveCount(0);
+  await expect(dialog.getByText('Đọc CCCD')).toHaveCount(0);
   await dialog.getByRole('tab', { name: 'Cá nhân' }).click();
-  await expect(dialog.getByText('Quét QR CCCD')).toBeVisible();
+  await expect(dialog.getByText('Đọc CCCD')).toBeVisible();
   expect(customerWrites).toBe(0);
   expect(customerImageWrites).toBe(0);
   expect(errors).toEqual([]);

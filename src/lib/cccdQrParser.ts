@@ -2,6 +2,8 @@ import type { Candidate } from './qr/types';
 
 export interface CCCDQrData {
   source?: 'qr' | 'ocr';
+  /** Only the explicit complete OCR review/apply action sets this intent. */
+  ocrReviewApplied?: true;
   idNumber: string;
   fullName: string;
   dateOfBirth: string;

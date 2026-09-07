@@ -16,6 +16,15 @@ const qr = {
 } as const;
 
 describe('mapCccdToCustomerFields', () => {
+  it('clears a previous QR or manual issue date only on explicit reviewed OCR apply', () => {
+    for (const oldDate of ['2022-05-06','2025-01-03']) {
+      const previous={id_issue_date:oldDate};
+      const incoming={...qr,source:'ocr' as const,idIssueDate:''};
+      expect({...previous,...mapCccdToCustomerFields(incoming,'display')}.id_issue_date).toBe(oldDate);
+      expect({...previous,...mapCccdToCustomerFields({...incoming,ocrReviewApplied:true},'display')}.id_issue_date).toBe('');
+      expect({...previous,...mapCccdToCustomerFields({...incoming,ocrReviewApplied:true},'database')}.id_issue_date).toBe('');
+    }
+  });
   it('maps QR fields for the contract dialog without losing a leading zero', () => {
     expect(mapCccdToCustomerFields(qr, 'database')).toEqual({
       full_name: 'Nguyễn Minh An',

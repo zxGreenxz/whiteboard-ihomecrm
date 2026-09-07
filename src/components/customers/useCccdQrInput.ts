@@ -16,6 +16,7 @@ export type CccdQrInputStatus =
 type Options = {
   onParsed: (data: CCCDQrData, taskId: number) => void | Promise<void>;
   onTaskStart?: (taskId: number) => void;
+  onFallback?: (file: File, taskId: number) => void;
   createScanner?: () => QrScanner;
   budgetMs?: number;
 };
@@ -45,6 +46,7 @@ function clipboardImage(event: ClipboardEvent): File | null {
 export function useCccdQrInput({
   onParsed,
   onTaskStart,
+  onFallback,
   createScanner: makeScanner = createQrScanner,
   budgetMs = 3000,
 }: Options) {
@@ -62,6 +64,8 @@ export function useCccdQrInput({
   const onTaskStartRef = useRef(onTaskStart);
   onParsedRef.current = onParsed;
   onTaskStartRef.current = onTaskStart;
+  const onFallbackRef = useRef(onFallback);
+  onFallbackRef.current = onFallback;
 
   const [status, setStatus] = useState<CccdQrInputStatus>('idle');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -134,6 +138,7 @@ export function useCccdQrInput({
       disposeScanner();
       setDiagnostics({ code: 'engine-unavailable' });
       setStatus('engine-unavailable');
+      onFallbackRef.current?.(file, taskId);
       return Promise.resolve();
     }
     return scanPromise
@@ -145,10 +150,12 @@ export function useCccdQrInput({
           if (result.status === 'image-invalid' || result.status === 'engine-unavailable') {
             setDiagnostics({ code: result.status, elapsedMs: result.elapsedMs });
             setStatus(result.status);
+            if (result.status === 'engine-unavailable') onFallbackRef.current?.(file, taskId);
             return;
           }
           setDiagnostics({ code: result.status, elapsedMs: result.elapsedMs });
           setStatus('not-found');
+          onFallbackRef.current?.(file, taskId);
           return;
         }
 
@@ -157,6 +164,7 @@ export function useCccdQrInput({
           const classified = selection.status === 'invalid' ? 'not-cccd' : 'ambiguous';
           setDiagnostics({ code: classified, elapsedMs: result.elapsedMs });
           setStatus(classified);
+          if (classified === 'not-cccd') onFallbackRef.current?.(file, taskId);
           return;
         }
         await onParsedRef.current(selection.data, taskId);
@@ -168,6 +176,7 @@ export function useCccdQrInput({
         abortRef.current = null;
         setDiagnostics({ code: 'engine-unavailable' });
         setStatus('engine-unavailable');
+        onFallbackRef.current?.(file, taskId);
       });
   }, [beginGeneration, budgetMs, disposeScanner, getScanner, revokePreview]);
 

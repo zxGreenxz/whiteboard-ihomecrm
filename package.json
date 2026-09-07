@@ -131,8 +131,9 @@
     "gate:org-boundary-inventory": "node scripts/build-org-boundary-inventory.mjs --check",
     "gate:rpc-name-literal": "node scripts/check-rpc-name-literal.mjs",
     "qr:assets": "node scripts/qr/build-wechat-wasm.mjs",
-    "prebuild": "npm run qr:assets",
-    "predev": "npm run qr:assets"
+    "prebuild": "npm run qr:assets && npm run ocr:assets",
+    "predev": "npm run qr:assets && npm run ocr:assets",
+    "ocr:assets": "node scripts/ocr/build-assets.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -175,6 +176,7 @@
     "@zxing/library": "^0.22.0",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
+    "clipper-lib": "6.4.2",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
@@ -183,6 +185,7 @@
     "jsqr": "^1.4.0",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
+    "onnxruntime-web": "1.24.3",
     "page-agent": "^1.11.0",
     "pizzip": "^3.2.0",
     "qr-scanner-wechat": "0.1.3",

@@ -43,6 +43,7 @@ export function mapCccdToCustomerFields(
   put('date_of_birth', data.dateOfBirth);
   put('gender', mapGender(data.gender, genderFormat));
   put('id_issue_date', data.idIssueDate);
+  if (data.source === 'ocr' && data.ocrReviewApplied) fields.id_issue_date = '';
   put('id_issue_place', data.source === 'ocr' ? 'Cục Cảnh sát' : data.idIssuePlace);
   put('detailed_address', data.permanentAddress);
   put('permanent_address', data.permanentAddress);

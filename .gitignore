@@ -128,3 +128,4 @@ scripts/.backfill-deposit-plan.json
 
 # Reproducible, hash-verified self-hosted OpenCV artifacts from pinned npm packages
 public/qr-assets/
+public/ocr-assets/

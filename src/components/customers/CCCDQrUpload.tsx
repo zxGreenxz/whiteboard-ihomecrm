@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import type { CCCDQrData } from '@/lib/cccdQrParser';
 import CCCDQrCameraScanner from './CCCDQrCameraScanner';
 import { useCccdQrInput, type CccdQrInputStatus } from './useCccdQrInput';
+import { useCccdOcr } from './useCccdOcr';
+import CCCDOcrReview from './CCCDOcrReview';
 
 interface CCCDQrUploadProps {
   onParsed: (data: CCCDQrData, taskId: number) => void | Promise<void>;
@@ -30,13 +32,20 @@ export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProp
   const onTaskStartRef = useRef(onTaskStart);
   onParsedRef.current = onParsed;
   onTaskStartRef.current = onTaskStart;
+  const ocr = useCccdOcr(onParsed);
+  const cancelOcr = ocr.cancel;
 
   const handleTaskStart = useCallback((taskId: number) => {
     currentTaskIdRef.current = taskId;
+    cancelOcr();
     setCameraSuccess(false);
     onTaskStartRef.current?.(taskId);
-  }, []);
-  const qr = useCccdQrInput({ onParsed, onTaskStart: handleTaskStart });
+  }, [cancelOcr]);
+  const qr = useCccdQrInput({ onParsed, onTaskStart: handleTaskStart, onFallback: (file, taskId) => {
+    // A full QR OpenCV heap is released before allocating the OCR runtime.
+    qr.disposeScanner();
+    void ocr.start(file, taskId);
+  } });
   const { acceptFile, reset } = qr;
 
   useEffect(() => {
@@ -65,13 +74,13 @@ export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProp
     }
   }, [reset]);
 
-  const error = statusMessage[qr.status];
+  const error = ocr.status === 'idle' ? statusMessage[qr.status] : undefined;
 
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
         <QrCode className="h-4 w-4 text-green-600" />
-        <h3 className="text-sm font-semibold text-gray-700">Quét QR CCCD</h3>
+        <h3 className="text-sm font-semibold text-gray-700">Đọc CCCD</h3>
         <span className="text-xs text-muted-foreground flex-1 min-w-[120px]">
           Camera/upload/Ctrl+V để tự động điền thông tin
         </span>
@@ -80,7 +89,7 @@ export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProp
           size="sm"
           variant="outline"
           className="h-7 gap-1.5 text-xs"
-          onClick={() => setCameraOpen(true)}
+          onClick={() => { qr.reset(); setCameraOpen(true); }}
         >
           <Camera className="h-3.5 w-3.5" />
           Quét bằng camera
@@ -128,6 +137,8 @@ export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProp
                   <span>Đang đọc QR...</span>
                 </div>
               )}
+              {(ocr.status === 'loading' || ocr.status === 'reading') && <div role="status" className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin"/><span>{ocr.status === 'loading' ? 'Đang tải bộ đọc ảnh…' : 'Đang đọc thông tin trên thẻ…'}</span></div>}
+              {ocr.status === 'applied' && <p className="text-green-600">Đã điền thông tin đã kiểm tra.</p>}
               {qr.status === 'success' && (
                 <div className="flex items-center gap-2 text-green-600">
                   <CheckCircle2 className="h-4 w-4" />
@@ -158,6 +169,12 @@ export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProp
           </div>
         )}
       </div>
+
+      {ocr.result?.status === 'review' && <CCCDOcrReview review={ocr.result} onApply={ocr.apply} busy={ocr.status === 'applying'}/>}
+      {ocr.result && ocr.result.status !== 'review' && ocr.result.status !== 'cancelled' && <div role="alert" className="space-y-2 text-sm">
+        <p>{ocr.result.status === 'ambiguous' ? 'Ảnh có nhiều thẻ. Hãy chọn ảnh chỉ có một mặt trước CCCD.' : ocr.result.status === 'image-invalid' ? 'Ảnh không hợp lệ hoặc vượt giới hạn. Hãy chọn ảnh khác.' : ocr.result.status === 'timeout' ? 'Chưa đọc xong ảnh. Hãy thử lại với ảnh thẻ rõ và ngay ngắn.' : 'Chưa tải được bộ đọc ảnh. Kiểm tra kết nối rồi thử lại.'}</p>
+        {(ocr.result.status === 'timeout' || ocr.result.status === 'engine-unavailable') && <Button type="button" variant="outline" onClick={ocr.retry}>Thử đọc ảnh lại</Button>}
+      </div>}
 
       <input
         ref={inputRef}

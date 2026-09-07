@@ -9,11 +9,14 @@ const mocks = vi.hoisted(() => ({
   uploadFile: vi.fn(),
   cameraEffectStarts: 0,
   cameraEffectStops: 0,
+  ocrRead: vi.fn(),
+  ocrDispose: vi.fn(),
 }));
 
 vi.mock('@/lib/qr/client', () => ({
   createQrScanner: () => ({ scan: mocks.scan, dispose: mocks.dispose }),
 }));
+vi.mock('@/lib/ocr/client', () => ({createOcrScanner:()=>({read:mocks.ocrRead,dispose:mocks.ocrDispose})}));
 vi.mock('@/lib/storage', () => ({
   uploadFile: (...args: unknown[]) => mocks.uploadFile(...args),
 }));
@@ -78,6 +81,7 @@ describe('CCCDQrUpload', () => {
       elapsedMs: 12,
     });
     mocks.dispose.mockReset();
+    mocks.ocrRead.mockReset();mocks.ocrDispose.mockReset();
     mocks.uploadFile.mockReset().mockResolvedValue('stored/front.png');
     mocks.cameraEffectStarts = 0;
     mocks.cameraEffectStops = 0;
@@ -106,6 +110,43 @@ describe('CCCDQrUpload', () => {
     expect(mocks.scan).toHaveBeenCalledWith(file, expect.objectContaining({ mode: 'image' }));
     expect(onParsed).toHaveBeenCalledWith(expect.objectContaining({ idNumber: '001234567890' }), 1);
     expect(screen.getByText('Đã tự động điền thông tin CCCD.')).toBeTruthy();
+  });
+
+  it('reviews all five OCR values without autofill, then applies edited values to the shared callback',async()=>{
+    mocks.scan.mockResolvedValue({status:'not-found',elapsedMs:1});
+    mocks.ocrRead.mockResolvedValue({status:'review',elapsedMs:1,data:{source:'ocr',idNumber:'001099999991',fullName:'NGUYỄN THỬ MỘT',dateOfBirth:'2000-02-29',gender:'Nữ',permanentAddress:'12 Đường Thử',idIssuePlace:'Cục Cảnh sát',idIssueDate:''},states:{idNumber:'readable',fullName:'check',dateOfBirth:'readable',gender:'readable',permanentAddress:'check'}});
+    const onParsed=vi.fn();render(<form><CCCDQrUpload onParsed={onParsed}/></form>);
+    const original=new File(['original'],'original.png',{type:'image/png'});
+    fireEvent.change(screen.getByTestId('cccd-qr-file-input'),{target:{files:[original]}});
+    await screen.findByTestId('cccd-ocr-review');expect(onParsed).not.toHaveBeenCalled();
+    expect(mocks.ocrRead).toHaveBeenCalledWith(original,expect.anything());expect(mocks.dispose).toHaveBeenCalled();
+    expect(document.querySelectorAll('form')).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Họ và tên (từ ảnh)'),{target:{value:'NGUYỄN THỬ HAI'}});
+    fireEvent.click(screen.getByRole('button',{name:'Áp dụng thông tin đã kiểm tra'}));
+    await waitFor(()=>expect(onParsed).toHaveBeenCalledWith({source:'ocr',ocrReviewApplied:true,idNumber:'001099999991',fullName:'NGUYỄN THỬ HAI',dateOfBirth:'2000-02-29',gender:'Nữ',permanentAddress:'12 Đường Thử',idIssuePlace:'Cục Cảnh sát',idIssueDate:''},1));
+  });
+  it('does not apply incomplete OCR over previous identity and discards late OCR on replacement',async()=>{
+    mocks.scan.mockResolvedValue({status:'not-found',elapsedMs:1});
+    let deliver!:(value:unknown)=>void;mocks.ocrRead.mockImplementationOnce(()=>new Promise(r=>{deliver=r}));
+    const onParsed=vi.fn();render(<CCCDQrUpload onParsed={onParsed}/>);
+    fireEvent.change(screen.getByTestId('cccd-qr-file-input'),{target:{files:[new File(['old'],'old.png',{type:'image/png'})]}});
+    await waitFor(()=>expect(mocks.ocrRead).toHaveBeenCalledTimes(1));
+    mocks.scan.mockResolvedValue({status:'decoded',elapsedMs:1,candidates:[{text:payload,engine:'native'}]});
+    fireEvent.change(screen.getByTestId('cccd-qr-file-input'),{target:{files:[new File(['new'],'new.png',{type:'image/png'})]}});
+    await waitFor(()=>expect(onParsed).toHaveBeenCalledTimes(1));
+    await act(async()=>deliver({status:'review',elapsedMs:1,data:{source:'ocr',idNumber:'001099999991',fullName:'',dateOfBirth:'',gender:'',permanentAddress:'',idIssueDate:'',idIssuePlace:'Cục Cảnh sát'},states:{idNumber:'readable',fullName:'missing',dateOfBirth:'missing',gender:'missing',permanentAddress:'missing'}}));
+    expect(screen.queryByTestId('cccd-ocr-review')).toBeNull();expect(onParsed).toHaveBeenCalledTimes(1);
+  });
+  it('requires missing fields in preview and reset preserves the previously applied identity',async()=>{
+    const onParsed=vi.fn();render(<CCCDQrUpload onParsed={onParsed}/>);
+    fireEvent.change(screen.getByTestId('cccd-qr-file-input'),{target:{files:[new File(['qr'],'qr.png',{type:'image/png'})]}});
+    await waitFor(()=>expect(onParsed).toHaveBeenCalledTimes(1));
+    mocks.scan.mockResolvedValue({status:'not-found',elapsedMs:1});
+    mocks.ocrRead.mockResolvedValue({status:'review',elapsedMs:1,data:{source:'ocr',idNumber:'001099999991',fullName:'',dateOfBirth:'',gender:'',permanentAddress:'',idIssueDate:'',idIssuePlace:'Cục Cảnh sát'},states:{idNumber:'readable',fullName:'missing',dateOfBirth:'missing',gender:'missing',permanentAddress:'missing'}});
+    fireEvent.change(screen.getByTestId('cccd-qr-file-input'),{target:{files:[new File(['partial'],'partial.png',{type:'image/png'})]}});
+    await screen.findByTestId('cccd-ocr-review');fireEvent.click(screen.getByRole('button',{name:'Áp dụng thông tin đã kiểm tra'}));
+    await screen.findByText('Nhập họ và tên.');expect(onParsed).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button',{name:'Xoá ảnh QR'}));expect(screen.queryByTestId('cccd-ocr-review')).toBeNull();expect(onParsed).toHaveBeenCalledTimes(1);
   });
 
   it('keeps one camera effect after delivery and clears its success on image replacement/reset', async () => {
