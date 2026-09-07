@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "files": {
+    "ch_PP-OCRv5_det_mobile.onnx": {
+      "bytes": 4819576,
+      "sha256": "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae",
+      "source": "https://modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx",
+      "license": "Apache-2.0"
+    },
+    "decoder_int8.onnx": {
+      "bytes": 14850237,
+      "sha256": "58eee71560b782f7009a99934629e67c5cd4996067aac33fbf79d63e855a3047",
+      "source": "scripts/ocr/quantize.py",
+      "license": "MIT model distribution; Apache-2.0 upstream VietOCR"
+    },
+    "encoder_qdq.onnx": {
+      "bytes": 30096697,
+      "sha256": "75279c118ffbb539ee64477bf0b9ded775094834d450206b33de014e2342631d",
+      "source": "scripts/ocr/quantize.py",
+      "license": "MIT model distribution; Apache-2.0 upstream VietOCR"
+    },
+    "latin-dict.json": {
+      "bytes": 3156,
+      "sha256": "f204f829c83e1a39da9ff06006326a6cf2f9d0f8ad88b629312206fd0646576b",
+      "source": "ONNX model metadata character split by newline; prepend CTC blank, append space",
+      "license": "Apache-2.0"
+    },
+    "latin_PP-OCRv5_rec_mobile.onnx": {
+      "bytes": 7904513,
+      "sha256": "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a",
+      "source": "https://modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/latin_PP-OCRv5_rec_mobile.onnx",
+      "license": "Apache-2.0"
+    },
+    "NotoSans.ttf": {
+      "bytes": 2049096,
+      "sha256": "bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d",
+      "source": "https://raw.githubusercontent.com/google/fonts/2984c575fdce412ee02b2baaba67672b9a9434d8/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf",
+      "license": "OFL-1.1"
+    },
+    "vocab.json": {
+      "bytes": 457,
+      "sha256": "b4ec9437ef82d952a65c101ea7ec6748a7168777c2d84cdb6a1bba7540bd163d",
+      "source": "https://huggingface.co/vemines/vietocr-onnx/resolve/049d43e7ba75961d51ab8acad13901f93b08c859/vocab.json",
+      "license": "MIT model distribution; Apache-2.0 upstream VietOCR"
+    }
+  },
+  "runtime": {
+    "package": "onnxruntime-web",
+    "version": "1.24.3",
+    "license": "MIT",
+    "source": "https://github.com/microsoft/onnxruntime/tree/v1.24.3",
+    "files": {
+      "ort.wasm.min.mjs": {
+        "bytes": 49997,
+        "sha256": "d5a6d7bc8ee587648fb3742dde8c0094d17cbd3822a68bbec8ddfcd4f2adb88e"
+      },
+      "ort-wasm-simd-threaded.mjs": {
+        "bytes": 24274,
+        "sha256": "5687566b1bc1c8cf628d76c2ddb16b2a3b81a7997273d4666564880495088e57"
+      },
+      "ort-wasm-simd-threaded.wasm": {
+        "bytes": 12361745,
+        "sha256": "be0e129949062ad50290ef94683fac8be5bb6156f709e030b7a5f1661a2f6c17"
+      }
+    }
+  },
+  "quantization": {
+    "versions": {
+      "onnx": "1.22.0",
+      "onnxruntime": "1.29.0",
+      "Pillow": "12.3.0",
+      "numpy": "2.5.3"
+    },
+    "calibration": "12 fictional generated text lines; no customer images",
+    "originals": {
+      "vgg_encoder.onnx": {
+        "source": "https://huggingface.co/vemines/vietocr-onnx/resolve/049d43e7ba75961d51ab8acad13901f93b08c859/vgg_encoder.onnx",
+        "bytes": 655806,
+        "sha256": "37528399f7f4f166300a7701bfcf648765829211ba00c02b2952831278d5a185"
+      },
+      "vgg_encoder.onnx.data": {
+        "source": "https://huggingface.co/vemines/vietocr-onnx/resolve/049d43e7ba75961d51ab8acad13901f93b08c859/vgg_encoder.onnx.data",
+        "bytes": 113246208,
+        "sha256": "395df00d340fbb987e07315568cf567575cf31f7f962544734fec6ebe7c84b9e"
+      },
+      "vgg_decoder.onnx": {
+        "source": "https://huggingface.co/vemines/vietocr-onnx/resolve/049d43e7ba75961d51ab8acad13901f93b08c859/vgg_decoder.onnx",
+        "bytes": 39588449,
+        "sha256": "a77eb69679c27fa9a1ecc7903bb45b53b52cb37a03cf3d6cd93718c0b3c7aaa9"
+      }
+    }
+  },
+  "clipper": {
+    "package": "clipper-lib",
+    "version": "6.4.2",
+    "license": "BSL-1.0; JSBN license embedded in source",
+    "source": "https://github.com/junmer/clipper-lib"
+  },
+  "licenses": {
+    "Apache-2.0.txt": {
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "Boost-1.0.txt": {
+      "bytes": 1338,
+      "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+    },
+    "clipper-source-with-licenses.js": {
+      "bytes": 203786,
+      "sha256": "a650c6946682edc1a64016f6553eeb5c32ce45eb7ca0ad5d8221961af011d97c"
+    },
+    "NotoSans-OFL.txt": {
+      "bytes": 4396,
+      "sha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a"
+    },
+    "onnxruntime-LICENSE.txt": {
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    "rapidocr-model-card.md": {
+      "bytes": 1140,
+      "sha256": "3dc91bb3cb667df783178917d69b38bfabb8c935596f34243a1c9f0d36916b6e"
+    },
+    "vemines-model-card.md": {
+      "bytes": 21,
+      "sha256": "3e0e15fa0c5cc81675bd69af8eb469d128a725c1a7bfc71f03b7877b7b650567"
+    }
+  },
+  "licenseSources": {
+    "rapidocrModelCard": "https://modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/README.md",
+    "veminesModelCard": "https://huggingface.co/vemines/vietocr-onnx/raw/049d43e7ba75961d51ab8acad13901f93b08c859/README.md",
+    "upstreamVietOCR": "https://github.com/pbcquoc/vietocr/blob/master/LICENSE"
+  }
+}

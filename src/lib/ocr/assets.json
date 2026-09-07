@@ -1,0 +1,59 @@
+{
+  "directory": "/ocr-assets/4c977d9f2626a098",
+  "files": {
+    "ch_PP-OCRv5_det_mobile.onnx": {
+      "bytes": 4819576,
+      "sha256": "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae",
+      "source": "https://modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx",
+      "license": "Apache-2.0"
+    },
+    "decoder_int8.onnx": {
+      "bytes": 14850237,
+      "sha256": "58eee71560b782f7009a99934629e67c5cd4996067aac33fbf79d63e855a3047",
+      "source": "scripts/ocr/quantize.py",
+      "license": "MIT model distribution; Apache-2.0 upstream VietOCR"
+    },
+    "encoder_qdq.onnx": {
+      "bytes": 30096697,
+      "sha256": "75279c118ffbb539ee64477bf0b9ded775094834d450206b33de014e2342631d",
+      "source": "scripts/ocr/quantize.py",
+      "license": "MIT model distribution; Apache-2.0 upstream VietOCR"
+    },
+    "latin-dict.json": {
+      "bytes": 3156,
+      "sha256": "f204f829c83e1a39da9ff06006326a6cf2f9d0f8ad88b629312206fd0646576b",
+      "source": "ONNX model metadata character split by newline; prepend CTC blank, append space",
+      "license": "Apache-2.0"
+    },
+    "latin_PP-OCRv5_rec_mobile.onnx": {
+      "bytes": 7904513,
+      "sha256": "b20bd37c168a570f583afbc8cd7925603890efbcdc000a59e22c269d160b5f5a",
+      "source": "https://modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/latin_PP-OCRv5_rec_mobile.onnx",
+      "license": "Apache-2.0"
+    },
+    "NotoSans.ttf": {
+      "bytes": 2049096,
+      "sha256": "bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d",
+      "source": "https://raw.githubusercontent.com/google/fonts/2984c575fdce412ee02b2baaba67672b9a9434d8/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf",
+      "license": "OFL-1.1"
+    },
+    "vocab.json": {
+      "bytes": 457,
+      "sha256": "b4ec9437ef82d952a65c101ea7ec6748a7168777c2d84cdb6a1bba7540bd163d",
+      "source": "https://huggingface.co/vemines/vietocr-onnx/resolve/049d43e7ba75961d51ab8acad13901f93b08c859/vocab.json",
+      "license": "MIT model distribution; Apache-2.0 upstream VietOCR"
+    },
+    "ort.wasm.min.mjs": {
+      "bytes": 49997,
+      "sha256": "d5a6d7bc8ee587648fb3742dde8c0094d17cbd3822a68bbec8ddfcd4f2adb88e"
+    },
+    "ort-wasm-simd-threaded.mjs": {
+      "bytes": 24274,
+      "sha256": "5687566b1bc1c8cf628d76c2ddb16b2a3b81a7997273d4666564880495088e57"
+    },
+    "ort-wasm-simd-threaded.wasm": {
+      "bytes": 12361745,
+      "sha256": "be0e129949062ad50290ef94683fac8be5bb6156f709e030b7a5f1661a2f6c17"
+    }
+  }
+}

@@ -20,6 +20,8 @@ import CustomerIndividualFields from './CustomerIndividualFields';
 import CustomerOrganizationFields from './CustomerOrganizationFields';
 import CustomerVehiclesSection from './CustomerVehiclesSection';
 import CCCDQrUpload from './CCCDQrUpload';
+import { useEffect, useRef } from 'react';
+import { isCurrentCccdScan, mapCccdToCustomerFields } from '@/lib/cccdCustomerMapping';
 
 interface CustomerFormProps {
   defaultValues?: Partial<CustomerFormData>;
@@ -49,8 +51,28 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
 
   const customerType = form.watch('customer_type');
   const isOrganization = customerType === 'ORGANIZATION';
+  const scanContextRef = useRef({ customerType, active: true, generation: 0, taskId: 0 });
+  if (scanContextRef.current.customerType !== customerType) {
+    scanContextRef.current = {
+      customerType,
+      active: true,
+      generation: scanContextRef.current.generation + 1,
+      taskId: 0,
+    };
+  }
+  const scannerGeneration = scanContextRef.current.generation;
+  useEffect(() => () => {
+    scanContextRef.current.active = false;
+    scanContextRef.current.generation += 1;
+  }, []);
 
   const handleTypeChange = (type: CustomerType) => {
+    scanContextRef.current = {
+      customerType: type,
+      active: true,
+      generation: scanContextRef.current.generation + 1,
+      taskId: 0,
+    };
     form.setValue('customer_type', type);
     // Reset type-specific fields
     if (type === 'ORGANIZATION') {
@@ -58,17 +80,31 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
     }
   };
 
-  const handleCccdParsed = async (data: CCCDQrData) => {
-    if (data.fullName) form.setValue('full_name', data.fullName, { shouldDirty: true });
-    if (data.idNumber) form.setValue('id_number', data.idNumber, { shouldDirty: true });
-    if (data.dateOfBirth) form.setValue('date_of_birth', data.dateOfBirth, { shouldDirty: true });
-    if (data.gender) form.setValue('gender', data.gender, { shouldDirty: true });
-    if (data.idIssueDate) form.setValue('id_issue_date', data.idIssueDate, { shouldDirty: true });
-    if (data.idIssuePlace) form.setValue('id_issue_place', data.idIssuePlace, { shouldDirty: true });
+  const isCurrentTask = (generation: number, taskId: number) => {
+    const current = scanContextRef.current;
+    return current.taskId === taskId
+      && isCurrentCccdScan(generation, current.generation, current.active, current.customerType);
+  };
+
+  const handleCccdParsed = async (data: CCCDQrData, generation: number, taskId: number) => {
+    const current = scanContextRef.current;
+    if (current.taskId !== taskId
+      || !isCurrentCccdScan(generation, current.generation, current.active, current.customerType)) return;
+    const fields = mapCccdToCustomerFields(data, 'display');
+    for (const [name, value] of Object.entries(fields)) {
+      form.setValue(name as keyof CustomerFormData, value, { shouldDirty: true });
+    }
     if (data.permanentAddress) {
-      form.setValue('permanent_address', data.permanentAddress, { shouldDirty: true });
+      if (data.source === 'ocr') return;
+      const beforeLookup = form.getValues([
+        'detailed_address',
+        'province',
+        'district',
+        'ward',
+      ]);
       try {
         const res = await lookupAddressFromText(data.permanentAddress);
+        if (!isCurrentTask(generation, taskId)) return;
         // Seed React Query cache trước để useDistricts/useWards có data ngay sau re-render.
         if (res.provinceCode && res.districts) {
           queryClient.setQueryData(['address', 'districts', res.provinceCode], res.districts);
@@ -76,7 +112,9 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
         if (res.districtCode && res.wards) {
           queryClient.setQueryData(['address', 'wards', res.districtCode], res.wards);
         }
-        if (res.detailedAddress) form.setValue('detailed_address', res.detailedAddress, { shouldDirty: true });
+        if (res.detailedAddress && form.getValues('detailed_address') === beforeLookup[0]) {
+          form.setValue('detailed_address', res.detailedAddress, { shouldDirty: true });
+        }
         // Set tỉnh trước, chờ Radix Select mount SelectItem cho cấp dưới rồi mới set
         // (Radix reset value về '' nếu không khớp SelectItem nào đang mount).
         // setTimeout(0) không đủ trên iOS Safari thật — chờ 2 animation frame để chắc
@@ -86,21 +124,37 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
             requestAnimationFrame(() => requestAnimationFrame(() => r()))
           );
         if (res.provinceCode) {
-          form.setValue('province', res.provinceCode, { shouldDirty: true });
+          if (form.getValues('province') === beforeLookup[1]) {
+            form.setValue('province', res.provinceCode, { shouldDirty: true });
+          }
         }
         if (res.districtCode) {
           await waitFrame();
-          form.setValue('district', res.districtCode, { shouldDirty: true });
+          if (!isCurrentTask(generation, taskId)) return;
+          if (form.getValues('district') === beforeLookup[2]) {
+            form.setValue('district', res.districtCode, { shouldDirty: true });
+          }
         }
         if (res.wardCode) {
           await waitFrame();
-          form.setValue('ward', res.wardCode, { shouldDirty: true });
+          if (!isCurrentTask(generation, taskId)) return;
+          if (form.getValues('ward') === beforeLookup[3]) {
+            form.setValue('ward', res.wardCode, { shouldDirty: true });
+          }
         }
       } catch (e) {
         console.error('Address lookup failed:', e);
       }
     }
   };
+  const handleScannerTaskStart = (taskId: number) => {
+    const current = scanContextRef.current;
+    if (isCurrentCccdScan(scannerGeneration, current.generation, current.active, current.customerType)) {
+      current.taskId = taskId;
+    }
+  };
+  const scannerCallback = (data: CCCDQrData, taskId: number) =>
+    handleCccdParsed(data, scannerGeneration, taskId);
 
   return (
     <Form {...form}>
@@ -130,7 +184,11 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
         {/* QR CCCD scan — chỉ áp dụng cho khách cá nhân */}
         {!isOrganization && (
           <div className="bg-white rounded-lg border p-4">
-            <CCCDQrUpload onParsed={handleCccdParsed} />
+            <CCCDQrUpload
+              key={scannerGeneration}
+              onParsed={scannerCallback}
+              onTaskStart={handleScannerTaskStart}
+            />
           </div>
         )}
 
@@ -146,6 +204,7 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
                 form.setValue('id_images', { ...current, front: url });
               }}
               bucket="customer-images"
+              imagePolicy={isOrganization ? undefined : 'identity-original'}
             />
             {!isOrganization && (
               <>
@@ -157,6 +216,7 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
                     form.setValue('id_images', { ...current, back: url });
                   }}
                   bucket="customer-images"
+                  imagePolicy="identity-original"
                 />
                 <ImageUploadZone
                   label="Hộ chiếu"

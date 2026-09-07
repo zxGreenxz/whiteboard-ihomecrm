@@ -1,49 +1,120 @@
-import { describe, it, expect } from 'vitest';
-import { parseCccdQr } from '../cccdQrParser';
+import { describe, expect, it } from 'vitest';
+import type { Candidate } from '../qr/types';
+import {
+  parseCccdQr,
+  selectCccdCandidate,
+  validateCccdQr,
+} from '../cccdQrParser';
 
-describe('parseCccdQr', () => {
-  it('parse được payload chuẩn 7 trường', () => {
-    const raw =
-      '094095000036|025237827|Trần Bảo Hiệp|10021995|Nam|78H/2, KP3, P.Hiệp Thành, Quận 12, TP.Hồ Chí Minh|13032022';
-    const data = parseCccdQr(raw);
-    expect(data).not.toBeNull();
-    expect(data!.idNumber).toBe('094095000036');
-    expect(data!.fullName).toBe('Trần Bảo Hiệp');
-    expect(data!.dateOfBirth).toBe('1995-02-10');
-    expect(data!.gender).toBe('Nam');
-    expect(data!.permanentAddress).toBe(
-      '78H/2, KP3, P.Hiệp Thành, Quận 12, TP.Hồ Chí Minh'
-    );
-    expect(data!.idIssueDate).toBe('2022-03-13');
-    expect(data!.idIssuePlace).toBe('Cục Cảnh Sát');
+const payload =
+  '001234567890||Nguyễn Minh An|29022000|Nữ|12 Đường Mẫu, Phường Thử|06052022';
+
+const candidate = (text: string, engine: Candidate['engine'] = 'native'): Candidate => ({
+  text,
+  engine,
+});
+
+describe('validateCccdQr', () => {
+  it('keeps leading zeroes and Unicode from a valid seven-field prefix', () => {
+    expect(validateCccdQr(`\uFEFF  ${payload}\r\n`)).toEqual({
+      status: 'valid',
+      data: {
+        idNumber: '001234567890',
+        fullName: 'Nguyễn Minh An',
+        dateOfBirth: '2000-02-29',
+        gender: 'Nữ',
+        permanentAddress: '12 Đường Mẫu, Phường Thử',
+        idIssueDate: '2022-05-06',
+        idIssuePlace: 'Cục Cảnh Sát',
+      },
+    });
   });
 
-  it('normalize "Male" → "Nam", "Female" → "Nữ"', () => {
-    expect(parseCccdQr('1|2|A|01012000|Male|x|01012020')!.gender).toBe('Nam');
-    expect(parseCccdQr('1|2|A|01012000|Female|x|01012020')!.gender).toBe('Nữ');
-    expect(parseCccdQr('1|2|A|01012000|Nữ|x|01012020')!.gender).toBe('Nữ');
+  it('accepts the verified eleven-field shape while ignoring extension meanings', () => {
+    const extended = `${payload}|EXT-A|EXT-B|EXT-C|EXT-D`;
+    expect(validateCccdQr(extended)).toEqual(validateCccdQr(payload));
   });
 
-  it('trả null nếu input rỗng', () => {
-    expect(parseCccdQr('')).toBeNull();
-    expect(parseCccdQr('   ')).toBeNull();
+  it('accepts an empty legacy CMND field', () => {
+    expect(validateCccdQr(payload).status).toBe('valid');
+  });
+
+  it.each([
+    ['Male', 'Nam'],
+    ['Female', 'Nữ'],
+  ])('normalizes the observed %s gender value', (rawGender, expectedGender) => {
+    const raw = payload.replace('|Nữ|', `|${rawGender}|`);
+    const result = validateCccdQr(raw);
+    expect(result.status).toBe('valid');
+    if (result.status === 'valid') expect(result.data.gender).toBe(expectedGender);
+  });
+
+  it.each([
+    ['non-leap February', payload.replace('29022000', '29021999')],
+    ['31 February', payload.replace('29022000', '31022000')],
+    ['invalid issue date', payload.replace('06052022', '31042022')],
+    ['short CCCD', payload.replace('001234567890', '123456789')],
+    ['CCCD with internal whitespace', payload.replace('001234567890', '001234 567890')],
+    ['empty name', payload.replace('Nguyễn Minh An', '')],
+    ['unknown gender', payload.replace('|Nữ|', '|Không rõ|')],
+    ['URL QR', 'https://example.invalid/a|b|c|d|e|f|g'],
+    ['arbitrary seven fields', '1|2|A|01012000|Nam|x|01012020'],
+    ['unsupported extension length', `${payload}|UNKNOWN`],
+  ])('rejects %s', (_label, raw) => {
+    expect(validateCccdQr(raw).status).toBe('invalid');
+  });
+});
+
+describe('selectCccdCandidate', () => {
+  it('returns the only valid CCCD among unrelated QR payloads', () => {
+    expect(selectCccdCandidate([
+      candidate('https://example.invalid/qr'),
+      candidate(payload, 'wechat'),
+    ])).toEqual({ status: 'valid', data: parseCccdQr(payload) });
+  });
+
+  it('does not treat the same payload from two engines as ambiguous', () => {
+    expect(selectCccdCandidate([candidate(payload), candidate(payload, 'zxing-wasm')]).status)
+      .toBe('valid');
+  });
+
+  it('collapses equivalent parsed identities across supported payload shapes', () => {
+    const equivalent = `${payload.replace('|Nữ|', '|Female|')}|EXT-A|EXT-B|EXT-C|EXT-D`;
+    expect(selectCccdCandidate([candidate(payload), candidate(equivalent, 'wechat')])).toEqual({
+      status: 'valid',
+      data: parseCccdQr(payload),
+    });
+  });
+
+  it('returns invalid when decoded QR candidates are not CCCD', () => {
+    expect(selectCccdCandidate([candidate('https://example.invalid/qr')])).toEqual({
+      status: 'invalid',
+    });
+  });
+
+  it('returns ambiguous instead of choosing the first of two CCCDs', () => {
+    const other = payload.replace('001234567890', '009876543210');
+    expect(selectCccdCandidate([candidate(payload), candidate(other)])).toEqual({
+      status: 'ambiguous',
+    });
+  });
+
+  it('keeps the same ID with conflicting identity fields ambiguous', () => {
+    const conflicting = payload
+      .replace('Nguyễn Minh An', 'Nguyễn Minh Bình')
+      .replace('29022000', '01012001')
+      .replace('12 Đường Mẫu, Phường Thử', '99 Đường Khác');
+    expect(selectCccdCandidate([candidate(payload), candidate(conflicting)])).toEqual({
+      status: 'ambiguous',
+    });
+  });
+});
+
+describe('parseCccdQr compatibility', () => {
+  it('returns null for absent input and throws for a non-empty invalid payload', () => {
     expect(parseCccdQr(null)).toBeNull();
     expect(parseCccdQr(undefined)).toBeNull();
-  });
-
-  it('ném lỗi nếu thiếu trường', () => {
-    expect(() => parseCccdQr('only|three|fields')).toThrow();
-  });
-
-  it('ngày không hợp lệ trả về chuỗi rỗng (không ném lỗi)', () => {
-    const d = parseCccdQr('1|2|A|99999999|Nam|x|01012020');
-    expect(d!.dateOfBirth).toBe('');
-    expect(d!.idIssueDate).toBe('2020-01-01');
-  });
-
-  it('ngày sinh ngày 31 tháng 12', () => {
-    expect(parseCccdQr('1|2|A|31121999|Nam|x|01012020')!.dateOfBirth).toBe(
-      '1999-12-31'
-    );
+    expect(parseCccdQr('   ')).toBeNull();
+    expect(() => parseCccdQr('only|three|fields')).toThrow(/CCCD/);
   });
 });

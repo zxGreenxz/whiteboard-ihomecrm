@@ -1,76 +1,105 @@
-// =============================================
-// CCCD QR Code Parser
-// Cấu trúc payload chuẩn (do Bộ Công An phát hành, đọc bằng VNeID/Camera):
-//   <CCCD>|<CMND cũ>|<Họ tên>|<ddMMyyyy ngày sinh>|<Giới tính>|<Địa chỉ thường trú>|<ddMMyyyy ngày cấp>
-// Ví dụ:
-//   094095000036|025237827|Trần Bảo Hiệp|10021995|Nam|78H/2, KP3, P.Hiệp Thành, Quận 12, TP.Hồ Chí Minh|13032022
-// =============================================
+import type { Candidate } from './qr/types';
 
 export interface CCCDQrData {
-  /** Số CCCD (12 chữ số) */
+  source?: 'qr' | 'ocr';
+  /** Only the explicit complete OCR review/apply action sets this intent. */
+  ocrReviewApplied?: true;
   idNumber: string;
-  /** Họ tên đầy đủ */
   fullName: string;
-  /** Ngày sinh ở dạng ISO yyyy-MM-dd (rỗng nếu parse thất bại) */
   dateOfBirth: string;
-  /** "Nam" | "Nữ" | "Khác" — đã normalize từ "Male"/"Female" */
   gender: string;
-  /** Toàn bộ địa chỉ thường trú dạng thô */
   permanentAddress: string;
-  /** Ngày cấp CCCD ở dạng ISO yyyy-MM-dd */
   idIssueDate: string;
-  /** Nơi cấp — mặc định "Cục Cảnh Sát" theo yêu cầu của user */
   idIssuePlace: string;
 }
 
-/** Chuyển "ddMMyyyy" → "yyyy-MM-dd". Trả rỗng nếu không hợp lệ. */
-function parseCccdDate(raw: string): string {
-  const digits = (raw || '').replace(/\D/g, '');
-  if (digits.length !== 8) return '';
-  const dd = digits.slice(0, 2);
-  const mm = digits.slice(2, 4);
-  const yyyy = digits.slice(4, 8);
-  const day = Number(dd);
-  const month = Number(mm);
-  const year = Number(yyyy);
-  if (!day || !month || !year) return '';
-  if (day < 1 || day > 31 || month < 1 || month > 12) return '';
-  return `${yyyy}-${mm}-${dd}`;
+export type CccdQrValidation =
+  | { status: 'valid'; data: CCCDQrData }
+  | { status: 'invalid' };
+
+export type CccdCandidateSelection =
+  | { status: 'valid'; data: CCCDQrData }
+  | { status: 'invalid' | 'ambiguous' };
+
+const SUPPORTED_FIELD_COUNTS = new Set([7, 11]);
+
+function parseCccdDate(raw: string): string | null {
+  if (!/^\d{8}$/.test(raw)) return null;
+  const day = Number(raw.slice(0, 2));
+  const month = Number(raw.slice(2, 4));
+  const year = Number(raw.slice(4, 8));
+  if (year === 0 || month === 0 || day === 0) return null;
+
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) return null;
+
+  return `${raw.slice(4, 8)}-${raw.slice(2, 4)}-${raw.slice(0, 2)}`;
 }
 
-function normalizeGender(raw: string): string {
-  const v = (raw || '').trim().toLowerCase();
-  if (!v) return '';
-  if (v === 'male' || v === 'nam' || v === 'm') return 'Nam';
-  if (v === 'female' || v === 'nữ' || v === 'nu' || v === 'f') return 'Nữ';
-  return 'Khác';
+function normalizeGender(raw: string): string | null {
+  const normalized = raw.toLocaleLowerCase('vi');
+  if (normalized === 'male' || normalized === 'nam' || normalized === 'm') return 'Nam';
+  if (normalized === 'female' || normalized === 'nữ' || normalized === 'nu' || normalized === 'f') return 'Nữ';
+  return null;
 }
 
-/**
- * Parse chuỗi QR CCCD. Ném lỗi nếu định dạng sai (không có dấu `|` hoặc không đủ trường).
- * Trả `null` nếu input rỗng / không phải chuỗi.
- */
-export function parseCccdQr(raw: string | null | undefined): CCCDQrData | null {
-  if (!raw || typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
+/** Validate a decoded payload without repairing or normalizing its identity fields. */
+export function validateCccdQr(raw: string): CccdQrValidation {
+  const payload = raw.trim();
+  if (!payload) return { status: 'invalid' };
 
-  const parts = trimmed.split('|').map((p) => p.trim());
-  if (parts.length < 7) {
-    throw new Error(
-      `Chuỗi QR không đúng định dạng CCCD (cần 7 trường, nhận được ${parts.length})`
-    );
-  }
+  const parts = payload.split('|');
+  if (!SUPPORTED_FIELD_COUNTS.has(parts.length)) return { status: 'invalid' };
 
   const [idNumber, , fullName, dobRaw, genderRaw, permanentAddress, issueRaw] = parts;
+  if (!/^\d{12}$/.test(idNumber)) return { status: 'invalid' };
+  if (!fullName || !fullName.trim() || !permanentAddress || !permanentAddress.trim()) {
+    return { status: 'invalid' };
+  }
+
+  const dateOfBirth = parseCccdDate(dobRaw);
+  const idIssueDate = parseCccdDate(issueRaw);
+  const gender = normalizeGender(genderRaw);
+  if (!dateOfBirth || !idIssueDate || !gender) return { status: 'invalid' };
 
   return {
-    idNumber: idNumber || '',
-    fullName: fullName || '',
-    dateOfBirth: parseCccdDate(dobRaw),
-    gender: normalizeGender(genderRaw),
-    permanentAddress: permanentAddress || '',
-    idIssueDate: parseCccdDate(issueRaw),
-    idIssuePlace: 'Cục Cảnh Sát',
+    status: 'valid',
+    data: {
+      idNumber,
+      fullName,
+      dateOfBirth,
+      gender,
+      permanentAddress,
+      idIssueDate,
+      idIssuePlace: 'Cục Cảnh Sát',
+    },
   };
+}
+
+/** Select one unique valid CCCD and never choose arbitrarily between identities. */
+export function selectCccdCandidate(candidates: Candidate[]): CccdCandidateSelection {
+  const validByIdentity = new Map<string, CCCDQrData>();
+  for (const candidate of candidates) {
+    const validation = validateCccdQr(candidate.text);
+    if (validation.status === 'valid') {
+      validByIdentity.set(JSON.stringify(validation.data), validation.data);
+    }
+  }
+  if (validByIdentity.size === 0) return { status: 'invalid' };
+  if (validByIdentity.size > 1) return { status: 'ambiguous' };
+  return { status: 'valid', data: validByIdentity.values().next().value! };
+}
+
+/** Compatibility adapter for the current camera consumer. */
+export function parseCccdQr(raw: string | null | undefined): CCCDQrData | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const result = validateCccdQr(raw);
+  if (result.status === 'valid') return result.data;
+  throw new Error('Chuỗi QR không đúng định dạng CCCD');
 }

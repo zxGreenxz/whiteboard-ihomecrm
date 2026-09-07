@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,9 @@ import { useCreateCustomer } from "@/hooks/useCustomers";
 import type { Customer } from "@/types/customer";
 import ImageUploadZone from "@/components/customers/ImageUploadZone";
 import CustomerVehiclesSection from "@/components/customers/CustomerVehiclesSection";
+import CCCDQrUpload from "@/components/customers/CCCDQrUpload";
+import type { CCCDQrData } from "@/lib/cccdQrParser";
+import { isCurrentCccdScan, mapCccdToCustomerFields } from "@/lib/cccdCustomerMapping";
 
 const customerSchema = z.object({
   customer_type: z.enum(["INDIVIDUAL", "ORGANIZATION"]),
@@ -102,6 +105,28 @@ interface CreateCustomerDialogProps {
 export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCustomerDialogProps) {
   const createCustomer = useCreateCustomer();
   const [customerType, setCustomerType] = useState<"INDIVIDUAL" | "ORGANIZATION">("INDIVIDUAL");
+  const scanContextRef = useRef({ open, customerType, generation: 0 });
+  if (
+    scanContextRef.current.open !== open ||
+    scanContextRef.current.customerType !== customerType
+  ) {
+    scanContextRef.current = {
+      open,
+      customerType,
+      generation: scanContextRef.current.generation + 1,
+    };
+  }
+  const scannerGeneration = scanContextRef.current.generation;
+  const invalidateScanner = (
+    nextOpen: boolean,
+    nextType: "INDIVIDUAL" | "ORGANIZATION",
+  ) => {
+    scanContextRef.current = {
+      open: nextOpen,
+      customerType: nextType,
+      generation: scanContextRef.current.generation + 1,
+    };
+  };
 
   const form = useForm<CustomerFormValues>({
     resolver: zodResolver(customerSchema),
@@ -143,6 +168,17 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
       vehicles: [],
     },
   });
+
+  const handleCccdParsed = (data: CCCDQrData) => {
+    const current = scanContextRef.current;
+    if (!isCurrentCccdScan(scannerGeneration, current.generation, current.open, current.customerType)) {
+      return;
+    }
+    const fields = mapCccdToCustomerFields(data, "database");
+    for (const [name, value] of Object.entries(fields)) {
+      form.setValue(name as keyof CustomerFormValues, value, { shouldDirty: true });
+    }
+  };
 
   const onSubmit = async (data: CustomerFormValues) => {
     try {
@@ -206,7 +242,13 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) invalidateScanner(false, customerType);
+        onOpenChange(nextOpen);
+      }}
+    >
       <DialogContent className="sm:max-w-[800px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>KHÁCH HÀNG</DialogTitle>
@@ -222,8 +264,10 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
               <Tabs
                 defaultValue="INDIVIDUAL"
                 onValueChange={(value) => {
-                  setCustomerType(value as "INDIVIDUAL" | "ORGANIZATION");
-                  form.setValue("customer_type", value as "INDIVIDUAL" | "ORGANIZATION");
+                  const nextType = value as "INDIVIDUAL" | "ORGANIZATION";
+                  invalidateScanner(open, nextType);
+                  setCustomerType(nextType);
+                  form.setValue("customer_type", nextType);
                 }}
               >
                 <TabsList className="grid w-full grid-cols-2">
@@ -231,6 +275,15 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                   <TabsTrigger value="ORGANIZATION">Tổ chức</TabsTrigger>
                 </TabsList>
               </Tabs>
+
+              {open && customerType === "INDIVIDUAL" && (
+                <div className="rounded-lg border bg-white p-4">
+                  <CCCDQrUpload
+                    key={scannerGeneration}
+                    onParsed={handleCccdParsed}
+                  />
+                </div>
+              )}
 
               {/* Image Upload Section */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -254,6 +307,7 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                     form.setValue("id_images", { ...current, front: url });
                   }}
                   bucket="customer-images"
+                  imagePolicy="identity-original"
                 />
                 <ImageUploadZone
                   label="CCCD mặt sau"
@@ -263,6 +317,7 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                     form.setValue("id_images", { ...current, back: url });
                   }}
                   bucket="customer-images"
+                  imagePolicy="identity-original"
                 />
                 <ImageUploadZone
                   label="Hộ chiếu"

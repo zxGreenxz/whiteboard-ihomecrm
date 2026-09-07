@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "notice": "All payloads and images are synthetic and contain no personal data.",
+  "cases": [
+    { "caseId": "crop-short-m", "sourceGroup": "crop", "payload": "000000000001|TEST01|Nguyễn An|01011990|Nam|Phường Thử Nghiệm|01012022", "ecc": "M", "variant": "crop" },
+    { "caseId": "crop-rotated-q", "sourceGroup": "crop", "payload": "000000000002|TEST02|Trần Mỹ Linh|29022000|Nữ|Số 12, Đường Dữ Liệu Giả, Phường Mẫu, Thành phố Thử Nghiệm|02022023", "ecc": "Q", "variant": "rotated" },
+    { "caseId": "crop-blurred-h", "sourceGroup": "crop", "payload": "000000000003|TEST03|Đỗ Quốc Việt|31121985|Nam|Khu thử nghiệm dài để tạo mã QR phiên bản cao, không phải địa chỉ thật|03032024", "ecc": "H", "variant": "blurred" },
+    { "caseId": "crop-low-contrast", "sourceGroup": "crop", "payload": "000000000001|TEST01|Nguyễn An|01011990|Nam|Phường Thử Nghiệm|01012022", "ecc": "M", "variant": "lowContrast" },
+    { "caseId": "card-corner-jpeg", "sourceGroup": "whole-card", "payload": "000000000002|TEST02|Trần Mỹ Linh|29022000|Nữ|Số 12, Đường Dữ Liệu Giả, Phường Mẫu, Thành phố Thử Nghiệm|02022023", "ecc": "Q", "variant": "cornerCompressed" },
+    { "caseId": "card-no-qr", "sourceGroup": "negative", "payload": null, "ecc": null, "variant": "noQr" }
+  ]
+}

@@ -56,6 +56,10 @@ export default defineConfig(() => ({
     port: 8080,
   },
   plugins: [react(), BUILD_SHA_META_PLUGIN],
+  worker: {
+    // QR worker lazy-loads the WASM reader and jsQR fallback as separate chunks.
+    format: 'es',
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
