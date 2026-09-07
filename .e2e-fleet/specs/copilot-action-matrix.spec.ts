@@ -483,6 +483,7 @@ async function tienDeLatCo(jwtSys: string): Promise<{ dat: boolean; lyDo: string
   };
 }
 
+let soHuuLatCo = false;
 async function datCo(jwtSys: string, state: 'disabled' | 'shadow' | 'enabled'): Promise<KetQuaRpc> {
   // Thử tối đa hai lượt: `copilot_rollout_stale_revision` nghĩa là có ai đó vừa
   // đổi MỘT cờ nào đó (revision là số đếm TOÀN CỤC, không riêng cờ này), nên
@@ -501,6 +502,7 @@ async function datCo(jwtSys: string, state: 'disabled' | 'shadow' | 'enabled'): 
       p_expires_at: null,
       ...LY_DO_LAT_CO,
     });
+    if (kq.status === 200 && state === 'disabled') soHuuLatCo = true;
     if (kq.status === 200 || !loi(kq).includes('stale_revision')) return kq;
   }
   return kq;
@@ -513,9 +515,10 @@ async function datCo(jwtSys: string, state: 'disabled' | 'shadow' | 'enabled'): 
  * tiến trình bị giết, còn `afterAll` thì Playwright vẫn chạy sau khi ca đỏ.
  */
 async function khoiPhucCo(jwtSys: string): Promise<void> {
+  if (!soHuuLatCo) return;
   for (let i = 0; i < 6; i += 1) {
     const cur = await trangThaiCo(jwtSys);
-    if (cur.state === 'enabled') return;
+    if (cur.state === 'enabled') { soHuuLatCo = false; return; }
     const ke = cur.state === 'disabled' ? 'shadow' : 'enabled';
     const kq = await datCo(jwtSys, ke);
     // `stale_revision` = có người khác vừa đổi cờ; đọc lại rồi thử tiếp.
@@ -530,17 +533,32 @@ async function khoiPhucCo(jwtSys: string): Promise<void> {
         '/settings/ai-copilot → tab Rollout → chuyển về enabled NGAY.',
     );
   }
+  soHuuLatCo = false;
 }
 
 // ---------------------------------------------------------------------------
 
-test.beforeAll(() => {
+test.beforeAll(async ({ browser }) => {
   chanChayTrenProduction();
+  // Bootstrap is a hook so selecting only ca 3b never reruns the setup acceptance case.
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const errors = trackConsoleErrors(page);
+  batBeMatApi(page);
+  try {
+    await login(page, 'chunha');
+    await xacMinhBanBuild(page);
+    expect(beMat, 'Không bắt được bề mặt API trong bootstrap').not.toBeNull();
+    expect(api().goc).toMatch(/^https:\/\//);
+    expect(errors, `Lỗi console bootstrap: ${errors.join(' | ')}`).toEqual([]);
+  } finally {
+    await context.close();
+  }
 });
 
 test.afterAll(async () => {
-  // Không có bề mặt API nghĩa là ca đầu chưa chạy xong ⇒ chưa ca nào lật cờ.
-  if (!beMat) return;
+  // Selecting ca 3b alone must never enable a flag this spec did not disable.
+  if (!soHuuLatCo) return;
   await khoiPhucCo(await token('sysadmin'));
 });
 
@@ -714,6 +732,26 @@ test('ca 3b — thiếu quyền HẲN: chặn ở XEM TRƯỚC bất kể phiế
   const chu = await token('chunha');
   const trongPhamVi = await neoPhieu(chu, NEO_TRONG_PHAM_VI);
   const ngoaiPhamVi = await neoPhieu(chu, NEO_NGOAI_PHAM_VI);
+
+  const variant = process.env.COPILOT_CA3B_FIXTURE_VARIANT;
+  if (variant) {
+    expect(variant).toBe('explicit-deny');
+    const actor = process.env.COPILOT_CA3B_ACTOR;
+    expect(actor, 'Fixture này chỉ dành cho actor DEMO quanly2 đã xác minh bên ngoài').toBe('quanly2');
+    test.info().annotations.push({ type: 'fixture-variant', description: 'explicit-deny: ORGANIZATION income_expenses.edit; existing ALLOW edges remain' });
+    const jwt = await token('quanly2');
+    const before = await soHanhDong(jwt);
+    const notes = await Promise.all([ghiChuHienTai(chu, trongPhamVi), ghiChuHienTai(chu, ngoaiPhamVi)]);
+    for (const phieu of [trongPhamVi, ngoaiPhamVi]) {
+      const denied = await xemTruoc(jwt, phieu, ghiChuRieng('ca3b-explicit-deny'));
+      expect(denied.status, `Explicit DENY: ${loi(denied)}`).toBe(403);
+      expect(maLoi(denied)).toBe('42501');
+      expect(loi(denied)).toContain('not_permitted');
+    }
+    expect(await soHanhDong(jwt), 'DENY không được đổi ledger').toEqual(before);
+    expect(await Promise.all([ghiChuHienTai(chu, trongPhamVi), ghiChuHienTai(chu, ngoaiPhamVi)])).toEqual(notes);
+    return;
+  }
 
   const ungVien: UserKey[] = ['ketoan', 'quanly', 'quanly2', 'sysadmin'];
   const doDuoc: { ai: UserKey; toaA: number; toaD: number }[] = [];
