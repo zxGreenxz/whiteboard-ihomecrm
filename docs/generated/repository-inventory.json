@@ -1,11 +1,15 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 543,
-  "soFileDocBangFs": 181,
-  "tongLoiGoi": 373,
+  "tongSoFileTest": 544,
+  "soFileDocBangFs": 182,
+  "tongLoiGoi": 374,
   "khongPhanLoaiDuoc": 188,
   "theoLoai": {
+    "ma-nguon": {
+      "soFile": 35,
+      "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
+    },
     "manifest": {
       "soFile": 22,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
@@ -18,16 +22,13 @@
       "soFile": 3,
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
-    "ma-nguon": {
-      "soFile": 34,
-      "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
-    },
     "sql": {
       "soFile": 61,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
   "testDocMaNguon": [
+    ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
     "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
@@ -597,6 +598,14 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": ".e2e-fleet/specs/copilot-golden-readonly.spec.ts",

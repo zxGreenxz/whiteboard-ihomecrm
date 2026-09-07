@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-07T02:56:16.387Z",
+  "scope": "Continue failed and unrun acceptance cases; preserve previously passed evidence",
+  "originalRun": {
+    "id": 34058129944,
+    "passed": 22,
+    "failed": 5,
+    "skipped": 10
+  },
+  "aggregate": {
+    "accepted": 35,
+    "total": 37,
+    "method": "Composite evidence across retained runs, including read-only continuation of case 3; not a single green full-suite run"
+  },
+  "repairedLiveCases": [
+    "action-matrix ca10 injection",
+    "draft-matrix injection",
+    "readonly smoke",
+    "L5 matrix ca7 chat PIN",
+    "batch-consent ca9 injection"
+  ],
+  "batch": {
+    "ciRun": 34076937570,
+    "sourceSha": "b737904e1c0b4ac5aece81cc99a3a2d3e29deaac",
+    "ciConclusion": "failure retained",
+    "cases1And2": "passed in CI",
+    "case3": {
+      "state": "passed-readback-continuation",
+      "priorFailure": "Direct approval_requests table read hidden by restrictive-only RLS",
+      "continuation": "Official maker pending list and detail APIs on the same already-executed fixture; no repeated business writes",
+      "pendingApproval": true,
+      "voucherUnapprovedAndUnposted": true,
+      "isMaker": true,
+      "canDecide": false,
+      "integratedHelperVerified": true
+    },
+    "cases4Through8": {
+      "state": "passed",
+      "tests": [
+        {
+          "title": "ca 4 — duyệt với digest SAI ⇒ plan_digest_mismatch, kế hoạch vẫn DRAFT và nonce chưa tiêu",
+          "status": "passed",
+          "durationMs": 1060
+        },
+        {
+          "title": "ca 5 — huỷ kế hoạch DRAFT ⇒ CANCELLED, bước còn chờ thành SKIPPED, không ghi gì",
+          "status": "passed",
+          "durationMs": 882
+        },
+        {
+          "title": "ca 6 — kill switch GIỮA kế hoạch đã duyệt ⇒ bước BLOCKED, không phiếu nào ra đời",
+          "status": "passed",
+          "durationMs": 2149
+        },
+        {
+          "title": "ca 7 — kế hoạch DRAFT quá hạn: plan_expired, EXPIRED, không chạy được (chờ thật 5 phút, mặc định BỎ QUA)",
+          "status": "passed",
+          "durationMs": 302604
+        },
+        {
+          "title": "ca 8 — hai lượt chạy SONG SONG cùng một bước ⇒ đúng một lượt ghi",
+          "status": "passed",
+          "durationMs": 1053
+        }
+      ],
+      "processExit": 0
+    },
+    "infrastructureAttempt": "First local cases4–8 attempt failed in browser bootstrap before test operations; only still-unrun cases were retried"
+  },
+  "remainingPrerequisites": [
+    "action-matrix ca3b: missing fully unprivileged DEMO actor; explicit temporary DENY variant assessed but not executed",
+    "L5 matrix ca2: requires L4 ceiling; current L5 policy intentionally preserved"
+  ],
+  "preservedBoundaries": [
+    "DEMO business writes only",
+    "PIN/consent/nonce and maker-checker retained",
+    "No shared policy lowering to force a pass",
+    "No production promotion"
+  ],
+  "receipts": [
+    {
+      "file": "acceptance-remaining-live-2026-09-07.json",
+      "sha256": "d68cae55ddc2fa05ba3b9a7e1f8b6d8e2ddf74f6648dfd4afe5539e542b4ba8b"
+    },
+    {
+      "file": "acceptance-superadmin-remaining-2026-09-07.json",
+      "sha256": "6da36f9cc3d45c718d390177fe13307d263ec466644af924dafd7590b7ee3966"
+    },
+    {
+      "file": "acceptance-batch-injection-2026-09-07.json",
+      "sha256": "9fdf8999d2685f87ec1937b5fe0296c7cae8bbc11cb54eea52c40217f5753baa"
+    },
+    {
+      "file": "batch-remaining-ci-state.json",
+      "sha256": "5eb24ec5dd3dae6da3073063797785feb6acdc4ca8dadedf3cf4dd9fed85fd77"
+    },
+    {
+      "file": "acceptance-maker-readback-continuation-2026-09-07.json",
+      "sha256": "e2fd36b0281fcc625f1708071a7af1323b0d8e06c45662435022fc6650f7705d"
+    },
+    {
+      "file": "acceptance-maker-readback-integrated-helper-2026-09-07.json",
+      "sha256": "5c4be981543a5317e9be30f0b301d6d4cc7a5cb4c2d437615df3a0165bc0bc1f"
+    },
+    {
+      "file": "acceptance-batch-rpc-4-8-retry-2026-09-07.json",
+      "sha256": "1e935fd602819fb149c272b158daca6db30428dd406cca2bd0b8e2bb2401b49f"
+    }
+  ],
+  "fullPlanAccepted": false,
+  "implementationPercentEstimate": {
+    "range": [
+      60,
+      65
+    ],
+    "formalAudit": false,
+    "distinctFromAcceptanceRatio": true
+  },
+  "broaderPlanRemaining": [
+    "G1/G2 coverage and real golden executors",
+    "Standing grant reports and rollback drills",
+    "Actual one-week and two-week canary windows"
+  ]
+}

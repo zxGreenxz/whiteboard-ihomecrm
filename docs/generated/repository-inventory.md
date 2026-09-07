@@ -15,7 +15,7 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **543** file test, **181** file đọc file bằng fs (373 lời gọi)
+- **544** file test, **182** file đọc file bằng fs (374 lời gọi)
 - **188** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
@@ -25,15 +25,16 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 | Loại | Số file | Vì sao đáng/không đáng lo |
 |---|---|---|
 | sql | 61 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
-| ma-nguon | 34 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
+| ma-nguon | 35 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
 | manifest | 22 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
 | tai-lieu | 4 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
-## 34 file đọc MÃ NGUỒN
+## 35 file đọc MÃ NGUỒN
 
 Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.
 
+- `.e2e-fleet/controlled/copilot-approval-readback.test.mjs`
 - `scripts/__tests__/business-performance-gated-data-rollout.test.mjs`
 - `scripts/__tests__/check-copilot-docs-manifest.test.mjs`
 - `scripts/__tests__/gen-supabase-types.test.ts`
