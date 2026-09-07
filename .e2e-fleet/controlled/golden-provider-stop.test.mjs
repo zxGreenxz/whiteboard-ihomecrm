@@ -20,36 +20,73 @@ const fixture = { buildings: [{ id: 'a', name: 'DEMO Toà A' }], rooms: [{ build
 const golden = JSON.parse(readFileSync(join(root, 'tooling/copilot-golden-eval.json')));
 const manifest = JSON.parse(readFileSync(join(root, 'tooling/copilot-golden-scenarios.json')));
 
-for (const [code, reason] of [['quota_exhausted','quota_exhausted'], ['rate_limit_exceeded','rate_exhausted']]) {
-  test(`HTTP200 SSE ${code} sends exactly one model request and blocks remaining executable cases`, async () => {
+for (const [code, reason, readiness] of [
+  ['quota_exhausted','quota_exhausted','ready'],
+  ['rate_limit_exceeded','rate_exhausted','ready'],
+  ['quota_exhausted','quota_exhausted','delayed'],
+  ['quota_exhausted','attestation_failed','never'],
+]) {
+  test(`HTTP200 SSE ${code} with ${readiness} model readiness preserves the preflight and provider stop`, async t => {
     const dir = mkdtempSync(join(tmpdir(), 'golden-controlled-stop-'));
     const attestation = { buildSha: sha, edgeSourceDigest: hash, deployedEdgeSourceDigest: hash, providerModel: model, organizationId: org,
       corpusDigest: digest(golden), manifestDigest: digest(manifest), fixtureDigest: digest(fixture), policyDigest: digest({ permissions: {}, availability: {} }),
       actorDigest: digest(actor), observedAt: new Date().toISOString(), contextId: 'controlled-browser-stop' };
     writeFileSync(join(dir, 'attestation.json'), JSON.stringify(attestation));
     let modelCalls = 0;
+    let prematureModelCalls = 0, prematureCaseStarts = 0, caseStarts = 0, discoveryAborts = 0;
+    let providersReady = readiness === 'ready';
+    const waitingModelResponses = [];
     const server = createServer((req, res) => {
       const path = new URL(req.url, 'http://local').pathname;
       const send = (data, type = 'application/json') => { res.writeHead(200, { 'Content-Type': type + '; charset=utf-8' }); res.end(typeof data === 'string' ? data : JSON.stringify(data)); };
+      if (path === '/controlled-provider-discovery') {
+        // Only the controlled fixture delays/aborts discovery. The real harness
+        // must wait for enabled state, never sleep or exempt request failures.
+        req.on('close', () => { discoveryAborts++; });
+        return;
+      }
+      if (path === '/controlled-provider-ready') {
+        providersReady = true;
+        send({});
+        for (const reply of waitingModelResponses) reply();
+        return;
+      }
+      if (path === '/controlled-case-start') {
+        caseStarts++;
+        if (!providersReady) prematureCaseStarts++;
+        return send({});
+      }
       if (path.endsWith('/rpc/get_my_copilot_availability_v1') || path.endsWith('/rpc/get_my_permissions')) return send({});
       if (path.endsWith('/rpc/copilot_available_rooms_v1')) return send(fixture);
       if (path.includes('/functions/v1/llm-proxy')) {
         modelCalls++;
-        return send('data: ' + JSON.stringify({ error: { code, message: 'synthetic controlled failure' } }) + '\n\ndata: [DONE]\n\n', 'text/event-stream');
+        if (req.headers['x-controlled-selector-disabled'] === 'true') prematureModelCalls++;
+        const reply = () => send('data: ' + JSON.stringify({ error: { code, message: 'synthetic controlled failure' } }) + '\n\ndata: [DONE]\n\n', 'text/event-stream');
+        // Keep an illegally early model cycle open through the discovery abort:
+        // removing the readiness gate then reproduces first-case contamination.
+        if (readiness === 'delayed' && !providersReady) return waitingModelResponses.push(reply);
+        return reply();
       }
       if (path === '/favicon.ico') { res.writeHead(204); return res.end(); }
       if (path === '/login') return send(`<html><head><meta name="build-sha" content="${sha}"></head><body><input aria-label="Tài Khoản"><input aria-label="Mật khẩu"><button onclick="location.href='/apartments'">Đăng nhập</button></body></html>`, 'text/html');
       return send(`<!doctype html><html><head><meta name="build-sha" content="${sha}"></head><body>
         <button data-testid="copilot-launcher" style="display:none">Open</button>
-        <div data-testid="copilot-panel"><select data-testid="copilot-model-select"><option value="${model}">${model}</option></select>
+        <div data-testid="copilot-panel"><select data-testid="copilot-model-select" ${readiness === 'ready' ? '' : 'disabled'}><option value="${model}">${readiness === 'ready' ? model : 'Loading providers'}</option></select>
         <button title="Cuộc trò chuyện mới">New</button><input data-testid="copilot-input"><button data-testid="copilot-send">Send</button></div>
         <script>
         const auth={Authorization:${JSON.stringify('Bearer ' + token)},apikey:'synthetic-key','Content-Type':'application/json'};
+        const selector=document.querySelector('[data-testid="copilot-model-select"]');
+        document.querySelector('[title="Cuộc trò chuyện mới"]').onclick=()=>fetch('/controlled-case-start');
+        document.querySelector('[data-testid="copilot-launcher"]').onclick=async()=>{
+          ${readiness === 'delayed' ? `try { await fetch('/controlled-provider-discovery',{signal:AbortSignal.timeout(1500)}); } catch {}
+          await fetch('/controlled-provider-ready');
+          selector.disabled=false;` : ''}
+        };
         fetch('/rest/v1/rpc/get_my_copilot_availability_v1',{method:'POST',headers:auth,body:JSON.stringify({p_organization_id:${JSON.stringify(org)}})}).then(r=>r.json()).then(()=>document.querySelector('[data-testid="copilot-launcher"]').style.display='block');
         document.querySelector('[data-testid="copilot-send"]').onclick=async()=>{
           const button=document.querySelector('[data-testid="copilot-send"]');button.style.display='none';
           const text=document.querySelector('[data-testid="copilot-input"]').value;
-          await fetch('/functions/v1/llm-proxy/chat/completions',{method:'POST',headers:{...auth,'x-organization-id':${JSON.stringify(org)}},body:JSON.stringify({model:${JSON.stringify(model)},messages:[{role:'user',content:text}]})}).then(r=>r.text());
+          await fetch('/functions/v1/llm-proxy/chat/completions',{method:'POST',headers:{...auth,'x-organization-id':${JSON.stringify(org)},'x-controlled-selector-disabled':String(selector.disabled)},body:JSON.stringify({model:${JSON.stringify(model)},messages:[{role:'user',content:text}]})}).then(r=>r.text());
           button.style.display='block';
         };
         </script></body></html>`, 'text/html');
@@ -59,17 +96,32 @@ for (const [code, reason] of [['quota_exhausted','quota_exhausted'], ['rate_limi
       const env = { ...process.env, FLEET_BASE_URL: `http://127.0.0.1:${server.address().port}`, FLEET_PASS_CHUNHA: 'synthetic-controlled-only',
         EXPECTED_SOURCE_SHA: sha, COPILOT_E2E_MODEL: model, COPILOT_REVIEWED_EDGE_DIGEST: hash, COPILOT_DEPLOYED_EDGE_DIGEST: hash, VERCEL_AUTOMATION_BYPASS_SECRET: '' };
       const child = spawn(process.execPath, ['scripts/generate-copilot-golden-real-results.mjs', '--attestation', join(dir, 'attestation.json'), '--results-out', join(dir, 'results.json')],
-        { cwd: root, env, windowsHide: true, stdio: 'ignore' });
+        { cwd: root, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      let output = '';
+      child.stdout.on('data', chunk => { output += chunk; });
+      child.stderr.on('data', chunk => { output += chunk; });
       const exit = await new Promise((resolve, reject) => { child.on('close', resolve); child.on('error', reject); });
       const run = JSON.parse(readFileSync(join(dir, 'results.json')));
+      const failureLine = output.split(/\r?\n/).find(line => line.startsWith('{"kind":"golden-case-failure"'));
+      const caseFailure = failureLine ? JSON.parse(failureLine) : undefined;
+      t.diagnostic(JSON.stringify({ readiness, modelCalls, prematureModelCalls, caseStarts, prematureCaseStarts, discoveryAborts, caseFailure }));
       assert.equal(exit, 1, 'Full75 live acceptance must remain blocked');
-      assert.equal(modelCalls, 1, 'Quota/rate exhaustion must prevent the next model request');
+      assert.equal(prematureModelCalls, 0, 'Disabled pinned-value placeholder must not permit model submission');
+      assert.equal(prematureCaseStarts, 0, 'No case may start before provider readiness');
+      assert.equal(modelCalls, readiness === 'never' ? 0 : 1, 'Readiness must precede submission; provider exhaustion must prevent another request');
+      assert.equal(caseStarts, readiness === 'never' ? 0 : 1);
+      if (readiness === 'delayed') {
+        assert.equal(discoveryAborts, 1, 'Controlled initialization discovery must actually abort');
+        assert.ok(caseFailure, 'Actual golden harness must emit case diagnostics');
+        assert.equal(caseFailure.networkErrors, 0, 'Initialization abort must settle before case listeners attach');
+      }
       assert.deepEqual(validateBrowserRun(golden, manifest, run), []);
       assert.equal(run.cases.length, 75);
       for (const id of ['C01','C13']) {
         const c = run.cases.find(c => c.id === id);
         assert.equal(c.status, 'blocked'); assert.equal(c.reason, reason);
         assert.equal(c.observed, undefined);
+        if (readiness === 'never') assert.equal(c.timing, undefined, 'Never-enabled UI cannot start a timed case');
       }
       assert.equal(run.cases.find(c => c.id === 'C13').timing, undefined, 'Unsent case must have no measured timing');
     } finally {

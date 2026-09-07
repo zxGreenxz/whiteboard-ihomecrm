@@ -62,6 +62,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
     await xacMinhBanBuild(page);
     await page.goto('/apartments');
     await page.getByTestId('copilot-launcher').click();
+    await expect(page.getByTestId('copilot-model-select')).toBeEnabled();
     await expect(page.getByTestId('copilot-model-select')).toHaveValue(COPILOT_TEST_MODEL);
     await expect(page.getByTestId('copilot-dang-tai-lich-su')).toHaveCount(0);
     page.off('response', onAvailability);
