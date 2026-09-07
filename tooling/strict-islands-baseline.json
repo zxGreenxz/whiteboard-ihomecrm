@@ -1212,6 +1212,14 @@
     "src/lib/qr/preprocess.ts",
     "src/lib/qr/qr.worker.ts",
     "src/lib/qr/types.ts",
-    "src/lib/qr/wechatAdapter.ts"
+    "src/lib/qr/wechatAdapter.ts",
+    "src/lib/ocr/types.ts",
+    "src/lib/ocr/parser.ts",
+    "src/lib/ocr/client.ts",
+    "src/lib/ocr/runtime.ts",
+    "src/lib/ocr/ocr.worker.ts",
+    "src/components/customers/useCccdOcr.ts",
+    "src/components/customers/CCCDOcrReview.tsx",
+    "src/lib/ocr/imageBounds.ts"
   ]
 }

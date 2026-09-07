@@ -84,7 +84,7 @@ Một hợp đồng có thể gắn **nhiều cư dân** (người ở cùng), t
 | Tab **Đã chuyển đi** / **Khách vãng lai** luôn rỗng | Đúng hiện trạng: hệ thống chưa tự chuyển khách sang hai trạng thái này; hầu hết khách nằm ở **Đang thuê**. |
 | Thấy khách thuộc toà ngoài phạm vi dự kiến | Đây phù hợp với quyền đọc hiện tại: `customers.view` là org-wide; bộ lọc toà chỉ là lọc giao diện. Quyền sửa/xoá vẫn cần action tương ứng. |
 | Khách có ở luồng cũ nhưng không thấy/không khớp ở Cư dân | Một số luồng legacy ghi vào `tenants`; `tenants` và `customers` không tự đồng bộ hoàn toàn. Không tạo hồ sơ trùng ngay; đối chiếu SĐT/CCCD và nhờ quản trị hợp nhất đúng nguồn. |
-| Quét QR CCCD không ra kết quả | QR phải là mã ở **mặt sau CCCD gắn chip**; ảnh mờ/nghiêng có thể đọc lỗi. Chụp lại rõ hoặc điền tay. |
+| Quét QR CCCD không ra kết quả | Chọn ảnh mặt thẻ có mã QR. Với ảnh mặt trước, chờ kết quả đọc chữ rồi kiểm tra các trường còn thiếu. Nếu báo nhiều thẻ, dùng ảnh một thẻ; nếu chữ bị che hoặc mờ không đọc được, chụp lại rõ hơn hoặc bổ sung thủ công. |
 
 ::: warning Xoá khách là xoá mềm
 Ấn **Xoá** chỉ ẩn hồ sơ khỏi danh sách chứ **không xoá hẳn** khỏi hệ thống — mọi liên kết hợp đồng, cọc và hoá đơn vẫn được giữ nguyên để không hỏng dữ liệu cũ. Tuy vậy giao diện không có nút khôi phục, nên hãy cân nhắc trước khi xoá.
