@@ -75,3 +75,10 @@ d20c7b93a5c46ebb1547339c6935a516f42a9904:supabase/migrations/20260727090000_open
 # của test stream/guard cục bộ (synthetic-bypass-secret-456), không có quyền truy cập.
 # Chỉ miễn trừ đúng dòng của commit này; các credential khác trong file vẫn bị quét.
 317c347aadae48a7f4d49283042c0daf7e1d8629:.e2e-fleet/controlled/workflow-safety.test.mjs:generic-api-key:169
+
+# L4 isolated acceptance — clientRequestId là mã chống lặp công khai của fixture
+# trong bộ nhớ: isolated-ca2-risk-ceiling. Không có khả năng xác thực/truy cập;
+# dòng runner và bản sao trong receipt là cùng một giá trị, đã đối chiếu trực tiếp.
+# Chỉ miễn trừ hai dòng lịch sử này; file và credential khác vẫn được quét.
+cfecd4cdaa99c1a45dffc9a0d4a7201989386fd7:scripts/copilot-l4-risk-ceiling-acceptance.mjs:generic-api-key:12
+6d77729d99a3facca9d0a2157ab7e2987305aa1f:docs/generated/copilot-l4-isolated-acceptance-2026-09-07.json:generic-api-key:10
