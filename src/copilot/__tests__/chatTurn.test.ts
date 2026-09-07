@@ -260,6 +260,41 @@ describe('dongHomNay — mô hình không có đồng hồ', () => {
 });
 
 describe('toolSangKhaiBao — schema gửi cho mô hình', () => {
+  it('lap_ke_hoach gắn đúng schema du_lieu của nop_ho_so vào chính action đó', async () => {
+    // Lỗi cần bắt: schema quay về record chung, khiến mô hình phải đoán
+    // `income_expense_id` thay vì thấy hai hình dạng hợp lệ của `nop_ho_so`.
+    const { lapKeHoach } = await import('../tools/planTools');
+    const [khaiBao] = toolSangKhaiBao({ lap_ke_hoach: lapKeHoach });
+    const params = khaiBao.function.parameters as {
+      properties: { cac_buoc: { items: { anyOf: Array<Record<string, unknown>> } } };
+    };
+    const bienThe = params.properties.cac_buoc.items.anyOf;
+    const nopHoSo = bienThe.find((item) =>
+      JSON.stringify(item).includes('income_expense.nop_ho_so'),
+    );
+
+    expect(nopHoSo).toMatchObject({
+      type: 'object',
+      properties: {
+        hanh_dong: { const: 'income_expense.nop_ho_so' },
+        du_lieu: {
+          anyOf: [
+            {
+              type: 'object',
+              properties: { $ref_step: { type: 'integer', minimum: 1, maximum: 8 } },
+              required: ['$ref_step'],
+            },
+            {
+              type: 'object',
+              properties: { voucher_id: { type: 'string', format: 'uuid' } },
+              required: ['voucher_id'],
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it('trường có .default() KHÔNG bị xếp vào required', async () => {
     // Nếu lấy schema đầu RA thay vì đầu VÀO, `xac_nhan` thành bắt buộc và mô
     // hình buộc phải tự khai — phá đúng cái mặc-định-an-toàn `xac_nhan=false`

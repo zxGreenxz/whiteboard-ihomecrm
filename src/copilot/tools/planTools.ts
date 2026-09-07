@@ -48,7 +48,24 @@ const MA_CHUA_DUYET = 'plan_not_approved';
 /** Số bước tối đa của một kế hoạch — chính con số server ép (1..8). */
 export const SO_BUOC_TOI_DA = 8;
 
-const DANH_SACH_HANH_DONG = Object.keys(ACTION_CATALOG) as [ActionId, ...ActionId[]];
+type BuocDauVao = {
+  hanh_dong: ActionId;
+  du_lieu: Record<string, unknown>;
+};
+
+/**
+ * Mỗi nhánh lấy schema input ngay từ ACTION_CATALOG. JSON Schema vì thế gắn
+ * đúng `du_lieu` với literal `hanh_dong`, để mô hình không phải đoán payload,
+ * đồng thời runtime vẫn từ chối dữ liệu không thuộc action đã chọn.
+ */
+const CAC_SCHEMA_BUOC = Object.values(ACTION_CATALOG).map((entry) =>
+  z.object({
+    hanh_dong: z.literal(entry.actionId),
+    du_lieu: entry.inputSchema,
+  }),
+) as unknown as readonly [z.ZodType<BuocDauVao>, z.ZodType<BuocDauVao>, ...z.ZodType<BuocDauVao>[]];
+
+const SCHEMA_BUOC_KE_HOACH = z.union(CAC_SCHEMA_BUOC);
 
 export const SCHEMA_LAP_KE_HOACH = z.object({
   muc_tieu: z
@@ -56,16 +73,7 @@ export const SCHEMA_LAP_KE_HOACH = z.object({
     .min(3)
     .describe('Mục tiêu của cả kế hoạch, một câu ngắn người dùng đọc và hiểu được'),
   cac_buoc: z
-    .array(
-      z.object({
-        hanh_dong: z
-          .enum(DANH_SACH_HANH_DONG)
-          .describe('Mã hành động trong sổ đăng ký (không tự bịa tên mới)'),
-        du_lieu: z
-          .record(z.string(), z.unknown())
-          .describe('Dữ liệu của bước, đúng hình dạng input của hành động đó'),
-      }),
-    )
+    .array(SCHEMA_BUOC_KE_HOACH)
     .min(1)
     .max(SO_BUOC_TOI_DA)
     .describe('Các bước theo ĐÚNG thứ tự sẽ chạy; bước sau chỉ chạy khi bước trước xong'),

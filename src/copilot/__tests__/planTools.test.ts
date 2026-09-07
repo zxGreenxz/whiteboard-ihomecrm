@@ -218,6 +218,36 @@ describe('cờ và phạm vi', () => {
 });
 
 describe('lap_ke_hoach', () => {
+  it('kế hoạch create_draft rồi nop_ho_so chuyển nguyên tham chiếu bước hợp lệ tới server', async () => {
+    rpc.mockResolvedValueOnce(tra({ ...keHoach(), consent_nonce: NONCE, da_ton_tai: false }));
+    const cacBuoc = [
+      {
+        hanh_dong: 'income_expense.create_draft' as const,
+        du_lieu: {
+          loai: 'chi' as const,
+          so_tien: 2_000_000,
+          ten_phieu: 'Chi sửa điện',
+          toa_nha: 'A',
+          hang_muc: 'Điện',
+        },
+      },
+      {
+        hanh_dong: 'income_expense.nop_ho_so' as const,
+        du_lieu: { $ref_step: 1 },
+      },
+    ];
+
+    await lapKeHoach.execute(
+      { muc_tieu: 'Tạo phiếu rồi nộp hồ sơ', cac_buoc: cacBuoc },
+      ctxVoi(snapshot('enabled')),
+    );
+
+    expect(rpc).toHaveBeenCalledWith(
+      'copilot_plan_create_v1',
+      expect.objectContaining({ p_steps: cacBuoc }),
+    );
+  });
+
   it('trả bản xem trước + câu nói rõ ai bấm; nonce KHÔNG lọt vào chuỗi', async () => {
     rpc.mockResolvedValueOnce(tra({ ...keHoach(), consent_nonce: NONCE, da_ton_tai: false }));
     const text = await lapKeHoach.execute(
@@ -274,7 +304,16 @@ describe('lap_ke_hoach', () => {
   });
 
   it('schema chặn kế hoạch rỗng và kế hoạch quá 8 bước', () => {
-    const mot = { hanh_dong: 'income_expense.create_draft' as const, du_lieu: {} };
+    const mot = {
+      hanh_dong: 'income_expense.create_draft' as const,
+      du_lieu: {
+        loai: 'chi',
+        so_tien: 2_000_000,
+        ten_phieu: 'Chi sửa điện',
+        toa_nha: 'A',
+        hang_muc: 'Điện',
+      },
+    };
     expect(SCHEMA_LAP_KE_HOACH.safeParse({ muc_tieu: 'x1', cac_buoc: [] }).success).toBe(false);
     expect(
       SCHEMA_LAP_KE_HOACH.safeParse({ muc_tieu: 'muc tieu', cac_buoc: Array(9).fill(mot) }).success,
@@ -289,6 +328,20 @@ describe('lap_ke_hoach', () => {
       SCHEMA_LAP_KE_HOACH.safeParse({
         muc_tieu: 'muc tieu',
         cac_buoc: [{ hanh_dong: 'income_expense.approve', du_lieu: {} }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('du_lieu không thuộc action đã chọn bị schema từ chối trước khi gọi server', () => {
+    expect(
+      SCHEMA_LAP_KE_HOACH.safeParse({
+        muc_tieu: 'Tạo phiếu rồi nộp',
+        cac_buoc: [
+          {
+            hanh_dong: 'income_expense.nop_ho_so',
+            du_lieu: { income_expense_id: 'bbbb0000-0000-4000-8000-000000000002' },
+          },
+        ],
       }).success,
     ).toBe(false);
   });
