@@ -5,6 +5,7 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { guiVaChoModel } from './copilotModelCycle';
 import { taoBoThuGomKeHoachChat } from './copilotPlanCleanup';
 import { danhGiaTienDeBatch } from './copilotBatchPreflight';
+import { docChiTietHoSo, docHoSoChoDuyet } from './copilotApprovalReadback';
 import {
   COPILOT_TEST_MODEL,
   pinCopilotTestModel,
@@ -187,7 +188,7 @@ async function token(who: UserKey): Promise<string> {
   return jwt;
 }
 
-/** `sub` của JWT — dùng để so `maker_user_id`/`user_id` mà không phải tra bảng. */
+/** `sub` của JWT — dùng để so `user_id` mà không phải tra bảng. */
 function uidCua(jwt: string): string {
   const phan = jwt.split('.')[1];
   const chu = Buffer.from(phan.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
@@ -554,14 +555,6 @@ async function phieu(jwt: string, id: string): Promise<Record<string, unknown> |
   return rows[0] ?? null;
 }
 
-async function hoSoDuyetCua(jwt: string, voucherId: string): Promise<Record<string, unknown>[]> {
-  return docBang(
-    jwt,
-    `approval_requests?subject_type=eq.FINANCIAL_VOUCHER&subject_id=eq.${voucherId}` +
-      '&select=id,state,maker_user_id,organization_id,rule_effect',
-  );
-}
-
 /** Số phiếu mang đúng tên này trong DEMO — dấu ngoặc đơn có nghĩa riêng với
  *  PostgREST nên tên được bọc nháy kép. */
 async function demPhieuTheoTen(jwt: string, ten: string): Promise<number> {
@@ -795,13 +788,20 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
       expect(r2.step.outcome?.entity_table).toBe('approval_requests');
       expect(r2.plan_status, 'Hết bước ⇒ kế hoạch DONE').toBe('DONE');
 
-      const hoSo = await hoSoDuyetCua(jwt, voucherId);
+      const hoSo = await docHoSoChoDuyet(goiRpc, jwt, voucherId);
       expect(hoSo, 'Bước 2 DONE mà không có hồ sơ duyệt nào').toHaveLength(1);
-      expect(hoSo[0].state, 'Hồ sơ PHẢI dừng ở PENDING_APPROVAL — AI không được duyệt').toBe(
+      expect(hoSo[0].id).toBe(r2.step.outcome!.entity_id);
+      const chiTiet = await docChiTietHoSo(goiRpc, jwt, r2.step.outcome!.entity_id);
+      expect(chiTiet.id).toBe(hoSo[0].id);
+      expect(chiTiet.subject_type).toBe('FINANCIAL_VOUCHER');
+      expect(chiTiet.subject_id).toBe(voucherId);
+      expect(chiTiet.state, 'Hồ sơ PHẢI dừng ở PENDING_APPROVAL — AI không được duyệt').toBe(
         'PENDING_APPROVAL',
       );
-      expect(hoSo[0].maker_user_id, 'Người nộp phải là chính actor').toBe(actor);
-      expect(hoSo[0].organization_id).toBe(ORG_DEMO);
+      // Cùng JWT đã tạo phiếu DEMO ở trên; detail không công bố maker_user_id/org.
+      expect(chiTiet.is_maker, 'Người nộp phải là chính actor').toBe(true);
+      expect(chiTiet.can_decide, 'Maker không được tự duyệt hồ sơ').toBe(false);
+      expect(chiTiet.rule_effect).toBe('REQUIRE_APPROVAL');
     } else {
       // FAIL-CLOSED: thiếu rule ACTIVE hoặc thiếu checker hợp lệ đều không được
       // để lại hồ sơ duyệt nửa chừng.
@@ -809,7 +809,7 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
       expect(r2.plan_status, 'Một bước hỏng phải kéo cả kế hoạch dừng').toBe('FAILED');
       expect(String(r2.error_code ?? '')).toMatch(/rule set ACTIVE|người duyệt đủ điều kiện/);
       expect(
-        await hoSoDuyetCua(jwt, voucherId),
+        await docHoSoChoDuyet(goiRpc, jwt, voucherId),
         'Bước 2 thất bại mà vẫn để lại hồ sơ duyệt — khối con không cuốn ngược',
       ).toEqual([]);
     }
@@ -823,8 +823,14 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
     expect(pSau!.posting_status, 'Phiếu bị HẠCH TOÁN trong một kế hoạch của Copilot').toBe(
       'UNPOSTED',
     );
-    const daPost = (await hoSoDuyetCua(jwt, voucherId)).filter((h) => h.state === 'POSTED');
-    expect(daPost, 'Có hồ sơ POSTED — luật AUTO_POST đã lọt qua hàng rào L5').toEqual([]);
+    if (r2.ok) {
+      const cuoi = await docChiTietHoSo(goiRpc, jwt, r2.step.outcome!.entity_id);
+      expect(cuoi.id).toBe(r2.step.outcome!.entity_id);
+      expect(cuoi.subject_type).toBe('FINANCIAL_VOUCHER');
+      expect(cuoi.subject_id).toBe(voucherId);
+      expect(cuoi.state, 'Có hồ sơ POSTED — luật AUTO_POST đã lọt qua hàng rào L5')
+        .toBe('PENDING_APPROVAL');
+    }
   } finally {
     await donKeHoach(jwt, planId);
   }
