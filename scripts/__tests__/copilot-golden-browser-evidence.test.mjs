@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import * as evidence from '../copilot-golden-browser-evidence.mjs';
 import { bindContractScenario, contractQuery } from '../copilot-contract-fixtures.mjs';
 
-const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', khach_hang: 'Demo An', phong: 'A101', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', tien_thue: 3000000, tien_coc: 6000000 };
+const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', trang_thai:'ACTIVE', khach_hang: 'Demo An', phong: 'A101', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', tien_thue: 3000000, tien_coc: 6000000 };
 test('contract binding binds exact identity/query and rejects empty, ambiguous or drifting fixtures', () => {
   const scenario = manifest.cases.find(c => c.id === 'C31');
   const searchPayload = { hop_dong: [contractRow], gioi_han: 20, so_luong: 1 };
@@ -324,4 +324,14 @@ test('selection corruption cannot turn omitted cases into passed or erase invent
   const mismatch = structuredClone(run); mismatch.cases[0].status = 'pending';
   assert.ok(evidence.validateBrowserRun(golden,manifest,mismatch).length);
   assert.throws(() => evidence.transitionCase(run,'C01',{status:'running'}), /transition/);
+});
+
+test('contract detail preserves contractual end date separately from the search effective end', () => {
+ const scenario = manifest.cases.find(c => c.id === 'C33');
+ const searchPayload = { hop_dong:[{...contractRow,ngay_ket_thuc:'2026-09-01'}],gioi_han:20,so_luong:1 };
+ const detailPayload = {tim_thay:true,hop_dong:{...contractRow,ngay_ket_thuc_thuc_te:'2026-09-01',coc_da_thu:6000000,coc_con_thieu:0},hoa_don:[]};
+ assert.doesNotThrow(() => bindContractScenario(scenario,{query:'HD001',searchPayload,detailPayload}));
+ for (const change of [{ngay_ket_thuc:'2026-02-30'},{ngay_ket_thuc_thuc_te:'2026-08-01'},{ngay_bat_dau:'2026-02-01'},{trang_thai:'TERMINATED'}]) {
+  assert.throws(() => bindContractScenario(scenario,{query:'HD001',searchPayload,detailPayload:{...detailPayload,hop_dong:{...detailPayload.hop_dong,...change}}}), /fixture_unbound/);
+ }
 });

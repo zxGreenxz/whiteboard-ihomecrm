@@ -340,3 +340,42 @@ it('does not log untyped exceptions, payload-shaped objects, or invalid oracle c
  expect(Object.isFrozen(failure)).toBe(true);
  expect(() => Object.assign(failure,{code:'private payload'})).toThrow();
 });
+it.each([' Hợp đồng đã thanh lý.',' Hợp đồng đã hết hạn.',' Hợp đồng đã chuyển nhượng.'])('rejects explicit lifecycle contradiction against ACTIVE: %s', addition => {
+ const e = contractEvidence('C33',true); expect(() => assertContractResult(changeContractAnswer(e,e.answer + addition))).toThrow(/status/);
+});
+it.each([' Hợp đồng đang thuê.',' Hợp đồng chưa thanh lý.',' Hợp đồng không phải đã thanh lý.',' Nếu gia hạn, cần kiểm tra lại ngày kết thúc.'])('accepts truthful or negated lifecycle statement: %s', addition => {
+ const e = contractEvidence('C33',true); expect(() => assertContractResult(changeContractAnswer(e,e.answer + addition))).not.toThrow();
+});
+it.each([' Hoá đơn INV001 đã thanh toán đầy đủ.',' Hoá đơn INV001 không còn nợ.',' Hoá đơn INV001 đã hủy.'])('rejects contradictory status-only invoice repeat: %s', addition => {
+ const e = contractEvidence('C33',true); expect(() => assertContractResult(changeContractAnswer(e,e.answer + addition))).toThrow(/status/);
+});
+it.each([' Hoá đơn INV001 chưa thanh toán đầy đủ.',' Hoá đơn INV001 đã thanh toán một phần.',' Hoá đơn INV001 chưa hủy.'])('accepts truthful or negated invoice status-only repeat: %s', addition => {
+ const e = contractEvidence('C33',true); expect(() => assertContractResult(changeContractAnswer(e,e.answer + addition))).not.toThrow();
+});
+it.each([
+ ['Kỳ hạn 01/01/2026 đến 31/12/2026.','Kỳ hạn từ 31/12/2026 đến 01/01/2026.'],
+ ['Kỳ hạn 01/01/2026 đến 31/12/2026.','Bắt đầu 31/12/2026, kết thúc 01/01/2026.'],
+])('rejects reversed canonical term labels/range: %s', (from,to) => {
+ const e = contractEvidence('C33',true); expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace(from,to)))).toThrow(/term/);
+});
+it('uses detail contractual term while separately preserving actual end semantics', () => {
+ const e = contractEvidence('C33',true);
+ const search = e.fixture.searchPayload as { hop_dong: (typeof contractRow)[] };
+ const detail = e.fixture.detailPayload as { hop_dong: typeof contractRow & { ngay_ket_thuc_thuc_te?:string }; hoa_don: unknown[] };
+ search.hop_dong[0].ngay_ket_thuc='2026-09-01'; detail.hop_dong.ngay_ket_thuc_thuc_te='2026-09-01';
+ e.fixture = bindContractScenario(e.scenario,{query:e.fixture.query,searchPayload:search,detailPayload:detail});
+ e.rounds[1].messages[1].content = contractToolText(e.fixture);
+ e.rounds.at(-1)!.messages[1].content = contractToolText(e.fixture);
+ e.rounds.at(-1)!.messages.at(-1)!.content = contractToolText(e.fixture,true);
+ expect(() => assertContractResult(changeContractAnswer(e,e.answer + ' Kết thúc thực tế 01/09/2026.'))).not.toThrow();
+ expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace('31/12/2026','01/09/2026')))).toThrow(/term/);
+});
+it('does not treat a date-field label as an asserted expired lifecycle', () => {
+ const e = contractEvidence('C31');
+ expect(() => assertContractResult(changeContractAnswer(e,e.answer + ' Ngày hết hạn theo hợp đồng: 31/12/2026.'))).not.toThrow();
+});
+it('accepts canonical ISO range and individually labeled dates', () => {
+ for (const term of ['Kỳ hạn từ 2026-01-01 đến 2026-12-31.','Bắt đầu: 1/1/2026; kết thúc: 31/12/2026.']) {
+  const e = contractEvidence('C33',true); expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace('Kỳ hạn 01/01/2026 đến 31/12/2026.',term)))).not.toThrow();
+ }
+});

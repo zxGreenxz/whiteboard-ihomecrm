@@ -5,6 +5,8 @@ import { inspectModelStream, renderedAssistantText, type ReadonlyEvidence } from
 
 export interface ContractRead { rpc: string; args: Record<string, unknown>; payload: unknown; ok: boolean }
 const CONTRACT_ORACLE_MESSAGES = {
+  contract_status_mismatch: "Contract lifecycle status contradicts canonical payload",
+  invoice_status_mismatch: "Invoice payment status contradicts canonical payload",
   money_fact_mismatch: "Answer money assigned to wrong fact",
   absent_customer_needs_explicit_not_found: "Absent customer needs explicit not found",
   absent_answer_invented_contract_link_amount: "Absent answer invented contract/link/amount",
@@ -111,6 +113,57 @@ function invoiceSections(text: string, invoices: Row[]) {
     return { ...item, end, text: text.slice(item.start,end) };
   });
 }
+/** Optional status prose is checked only when explicitly asserted. Negated
+ * and conditional statements must not become positive lifecycle claims. */
+function assertStatusClaim(text: string, pattern: string, expected: boolean, code: 'contract_status_mismatch' | 'invoice_status_mismatch') {
+  for (const match of text.matchAll(new RegExp(pattern,'giu'))) {
+    const prefix = text.slice(0,match.index);
+    if (code === 'contract_status_mismatch' && /(?:ngày|mốc|thời điểm)\s*$/iu.test(prefix)) continue;
+    if (/(?:nếu|khi|cần|muốn|có thể|dự kiến|sẽ)\s*(?:(?:hợp đồng|hoá đơn|hóa đơn)\s*)?$/iu.test(prefix)) continue;
+    const negated = /(?:không|chưa)(?:\s+(?:phải|đã|đang|được|còn|bị)){0,3}\s*$/iu.test(prefix);
+    check(negated ? !expected : expected,code);
+  }
+}
+function assertContractStatus(text: string, canonical: unknown) {
+  const patterns: Record<string,string> = {
+    DRAFT: '(?:bản )?nháp|\\bDRAFT\\b', ACTIVE: 'đang thuê|(?:đang|còn) hiệu lực|\\bACTIVE\\b',
+    EXTENDED: '(?:đã )?gia hạn|\\bEXTENDED\\b', TRANSFERRED: '(?:đã )?chuyển nhượng|\\bTRANSFERRED\\b',
+    TERMINATED: '(?:đã )?thanh lý|\\bTERMINATED\\b', EXPIRED: '(?:đã )?hết hạn|\\bEXPIRED\\b',
+  };
+  for (const [state,pattern] of Object.entries(patterns)) assertStatusClaim(text,pattern,state === canonical,'contract_status_mismatch');
+}
+function assertInvoiceStatus(text: string, invoice: Row) {
+  const remaining = Number(invoice.con_lai), paid = Number(invoice.da_tra);
+  const canceled = ['CANCELLED','CANCELED'].includes(String(invoice.trang_thai));
+  assertStatusClaim(text,'(?:đã )?(?:thanh toán|trả|đóng) (?:đầy đủ|toàn bộ|hết|xong)|(?:đã )?tất toán|\\bPAID\\b',remaining === 0 && !canceled,'invoice_status_mismatch');
+  assertStatusClaim(text,'(?:đã )?(?:thanh toán|trả|đóng) một phần|\\bPARTIAL\\b',paid > 0 && remaining > 0 && !canceled,'invoice_status_mismatch');
+  assertStatusClaim(text,'còn (?:dư nợ|nợ)',remaining > 0 && !canceled,'invoice_status_mismatch');
+  assertStatusClaim(text,'(?:đã )?h[ủu]ỷ|(?:đã )?hủy|\\bCANCELLED\\b|\\bCANCELED\\b',canceled,'invoice_status_mismatch');
+  // "Chưa thanh toán đầy đủ" means partial, not zero paid.
+  assertStatusClaim(text,'chưa (?:thanh toán|trả|đóng)(?! (?:đầy đủ|toàn bộ|hết|xong|một phần))|\\bUNPAID\\b',paid === 0 && !canceled,'invoice_status_mismatch');
+}
+const DATE_TOKEN = String.raw`(?:\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4})`;
+function canonicalDate(value: string): string {
+  if (!value.includes('/')) return value;
+  const [day,month,year] = value.split('/');
+  return `${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`;
+}
+function assertTerm(text: string, contract: Row) {
+  const patterns: [string,unknown][] = [
+    ['(?:ngày )?bắt đầu',contract.ngay_bat_dau],
+    ['(?:ngày )?kết thúc(?! thực tế)',contract.ngay_ket_thuc],
+    ['ngày hết hạn(?: theo hợp đồng)?',contract.ngay_ket_thuc],
+    ['(?:ngày )?kết thúc thực tế',contract.ngay_ket_thuc_thuc_te],
+  ];
+  for (const [label,expected] of patterns) {
+    for (const match of text.matchAll(new RegExp(`${label}\\s*[:：]?\\s*(${DATE_TOKEN})`,'giu'))) {
+      check(canonicalDate(match[1]) === expected,'answer_term_differs_from_canonical_dates');
+    }
+  }
+  for (const match of text.matchAll(new RegExp(`(?:kỳ hạn\\s*[:：]?\\s*(?:từ\\s*)?|từ\\s+)(${DATE_TOKEN})\\s*(?:đến|tới|→|–|—|-)\\s*(${DATE_TOKEN})`,'giu'))) {
+    check(canonicalDate(match[1]) === contract.ngay_bat_dau && canonicalDate(match[2]) === contract.ngay_ket_thuc,'answer_term_differs_from_canonical_dates');
+  }
+}
 function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) {
   const row = (fixture.searchPayload as { hop_dong: Row[] }).hop_dong[0];
   const text = normalize(answer);
@@ -135,6 +188,8 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
   const sections = invoiceSections(text,invoices);
   let contractText = text;
   for (const section of [...sections].reverse()) contractText = contractText.slice(0,section.start) + ' ' + contractText.slice(section.end);
+  assertContractStatus(contractText,known.trang_thai);
+  assertTerm(contractText,known);
   assertMoneyFact(contractText, '(?:tiền\\s*)?thuê', known.tien_thue);
   // A nominal deposit can be stated directly or as held/nominal in the
   // product's ordinary compact deposit notation.
@@ -149,6 +204,7 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
     if (Number(known.coc_con_thieu) > 0) required.push(Number(known.coc_con_thieu));
     if (!invoices.length) check(/(?:chưa|không) có ho[áa] đơn|0 ho[áa] đơn/iu.test(text), 'answer_missing_empty_invoice_state');
     for (const i of invoices) {
+      for (const section of sections.filter(section => section.invoice === i)) assertInvoiceStatus(section.text,i);
       const scoped = sections.filter(section => section.invoice === i && (amounts(section.text).length > 0
         || /(?:tổng(?:\s*(?:tiền|cộng|phải trả))?|đã\s*(?:trả|thanh toán|thu)|còn(?:\s*(?:lại|nợ|phải trả|phải thanh toán))?)\s*[:：|–—=-]?\s*\d/iu.test(section.text)));
       check(scoped.length > 0, 'answer_missing_invoice_identity_money');

@@ -3,6 +3,7 @@ import { DEMO_ORG, digest } from './copilot-golden-browser-evidence.mjs';
 export const CONTRACT_CASES = { C31: 'contract-code-v1', C32: 'absent-customer-contract-v1', C33: 'contract-code-detail-v1' };
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const text = value => typeof value === 'string' && value.trim().length > 0;
+const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value;
 const requireFixture = ok => { if (!ok) throw new Error('fixture_unbound'); };
 export function contractQuery(caseId, contextId, listingPayload) {
   requireFixture(Object.hasOwn(CONTRACT_CASES, caseId));
@@ -28,13 +29,19 @@ export function bindContractScenario(scenario, { query, searchPayload, detailPay
   const row = absent ? null : rows[0];
   if (row) {
     requireFixture(text(row.hop_dong_id) && UUID.test(row.hop_dong_id) && row.so_hop_dong === query);
-    requireFixture(['khach_hang','phong','ngay_bat_dau','ngay_ket_thuc'].every(k => text(row[k])));
+    requireFixture(['khach_hang','phong'].every(k => text(row[k])));
+    requireFixture(['ngay_bat_dau','ngay_ket_thuc'].every(k => validDate(row[k])));
+    requireFixture(['DRAFT','ACTIVE','EXTENDED','TRANSFERRED','TERMINATED','EXPIRED'].includes(row.trang_thai));
     requireFixture(['tien_thue','tien_coc'].every(k => typeof row[k] === 'number' && Number.isFinite(row[k]) && row[k] >= 0));
   }
   if (detail) {
     requireFixture(detailPayload?.tim_thay === true && Array.isArray(detailPayload.hoa_don));
     const hd = detailPayload.hop_dong;
-    requireFixture(hd && ['hop_dong_id','so_hop_dong','khach_hang','phong','ngay_bat_dau','ngay_ket_thuc','tien_thue','tien_coc'].every(k => hd[k] === row[k]));
+    requireFixture(hd && ['hop_dong_id','so_hop_dong','khach_hang','phong','ngay_bat_dau','trang_thai','tien_thue','tien_coc'].every(k => hd[k] === row[k]));
+    // Search exposes COALESCE(actual_end_date,end_date); detail exposes both
+    // fields separately (hardening v2 search / original contract detail SQL).
+    requireFixture(validDate(hd.ngay_ket_thuc) && (hd.ngay_ket_thuc_thuc_te == null || validDate(hd.ngay_ket_thuc_thuc_te)));
+    requireFixture(row.ngay_ket_thuc === (hd.ngay_ket_thuc_thuc_te ?? hd.ngay_ket_thuc));
     requireFixture(['coc_da_thu','coc_con_thieu'].every(k => typeof hd[k] === 'number' && Number.isFinite(hd[k]) && hd[k] >= 0));
     requireFixture(detailPayload.hoa_don.every(i => text(i?.hoa_don_id) && UUID.test(i.hoa_don_id)
       && ['tong_tien','da_tra','con_lai'].every(k => typeof i[k] === 'number' && Number.isFinite(i[k]) && i[k] >= 0)));
