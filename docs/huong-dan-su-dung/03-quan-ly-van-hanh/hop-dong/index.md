@@ -44,7 +44,7 @@ Màn **Hợp đồng** là trục vận hành của toàn hệ thống: mỗi h�
 
 **Bước 5**: Muốn **ký hợp đồng mới**, ấn **Thêm** để mở form. Ký hợp đồng đi qua nhiều phần trên cùng một form:
 - **Chọn phòng**: ấn chọn **Toà nhà** rồi **Phòng** (ô Phòng đổ theo toà đã chọn; phòng đang có hợp đồng hiệu lực sẽ không chọn được).
-- **Chọn khách**: ấn chọn **khách đại diện** cho hợp đồng; bật/tắt **Dùng dịch vụ riêng cho hợp đồng** và điền **chỉ số điện / nước ban đầu** lúc nhận phòng.
+- **Chọn khách**: ấn chọn **khách đại diện** cho hợp đồng. Nếu chưa có hồ sơ, bấm **Tạo mới** trong bộ chọn khách. Cửa sổ khách **Cá nhân** có ô **Đọc CCCD** để dán Ctrl+V, kéo thả, chọn ảnh hoặc quét camera giống trang Cư dân. QR điền thông tin vào form; khi chuyển sang đọc chữ từ ảnh, kiểm tra và sửa năm trường rồi bấm **Áp dụng thông tin đã kiểm tra**. Quét không tự lưu khách hay hợp đồng; bổ sung thông tin bắt buộc và lưu hồ sơ để chọn khách vừa tạo. Xem [cách đọc CCCD và kiểm tra địa chỉ](/03-quan-ly-van-hanh/cu-dan/). Sau đó bật/tắt **Dùng dịch vụ riêng cho hợp đồng** và điền **chỉ số điện / nước ban đầu** lúc nhận phòng.
 - **Nhập tiền**: điền **Giá thuê**, **Tổng cọc**, **Đã thu cọc**, **Chu kỳ thanh toán**, mốc tính hoá đơn và **Khuyến mãi tháng đầu** (nếu có).
 - **Xem trước hoá đơn**: form dựng sẵn **hoá đơn cọc + hoá đơn tháng đầu** với các dòng tự sinh; bạn **chỉnh trực tiếp** được (sửa mô tả/đơn giá/số lượng, thêm hoặc xoá dòng) trước khi lưu.
 

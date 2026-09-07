@@ -24,7 +24,7 @@ Với tài khoản `demo.chunha`, `/customers` tải xong ở tab **Đang thuê*
 - Quyền **Cư dân => Xem** (module `customers`, action `view`) để mở màn danh sách.
 - Cần quyền **Thêm** để tạo hồ sơ mới, **Nhập** để nhập từ Excel, **Xuất/In** cho các thao tác tương ứng.
 - Quyền đọc `customers.view` hiện áp dụng **toàn tổ chức**. Bộ lọc toà/phòng được suy ra ở giao diện từ hợp đồng liên quan, không phải hàng rào RLS giới hạn bản ghi khách theo toà.
-- Muốn quét QR CCCD tự điền hồ sơ thì cần ảnh mã QR mặt sau thẻ CCCD gắn chip (chỉ áp dụng cho khách **Cá nhân**).
+- Với khách **Cá nhân**, chuẩn bị ảnh rõ mặt thẻ có mã QR hoặc mặt trước CCCD để đọc thông tin. Bạn có thể dùng ảnh toàn thẻ, không cần tự cắt riêng mã QR.
 :::
 
 ## Hướng dẫn từng bước
@@ -39,7 +39,11 @@ Với tài khoản `demo.chunha`, `/customers` tải xong ở tab **Đang thuê*
 
 **Bước 4**: Muốn thêm khách mới, ấn nút **Thêm**. Hệ thống mở form tạo hồ sơ tại **/customers/new**. Ở đầu form, chọn **Loại khách hàng**: **Cá nhân** (điền **Họ và tên**) hoặc **Tổ chức** (điền **Tên công ty** và **Người đại diện**).
 
-**Bước 5**: Điền các thông tin còn lại. Với khách **Cá nhân**, bạn có thể quét **QR CCCD** (kéo-thả ảnh QR, chọn file, dán Ctrl+V hoặc dùng camera) để hệ thống tự điền **Họ và tên**, **Số CCCD**, **Ngày sinh**, **Giới tính**, **ngày/nơi cấp** và **địa chỉ thường trú**. Số điện thoại là bắt buộc và phải là **10–11 chữ số**.
+**Bước 5**: Với khách **Cá nhân**, chọn hoặc đưa con trỏ vào ô **Đọc CCCD**, rồi dán ảnh bằng **Ctrl+V**. Bạn cũng có thể kéo thả, chọn file hoặc bấm **Quét bằng camera**. Khi đọc được QR CCCD hợp lệ, hệ thống điền thông tin vào form để bạn kiểm tra.
+
+Nếu không đọc được QR trong ảnh, hệ thống thử đọc chữ trên thẻ (OCR). Lần đầu có thể cần chờ tải bộ đọc. Kiểm tra **Số CCCD**, **Họ và tên**, **Ngày sinh**, **Giới tính** và **Nơi thường trú đầy đủ**, sửa chỗ thiếu hoặc sai rồi bấm **Áp dụng thông tin đã kiểm tra**. Nơi cấp mặc định là **Cục Cảnh sát**; ngày cấp chưa đọc được sẽ để trống. Cả **Địa chỉ chi tiết** và **Địa chỉ thường trú** nhận nguyên nội dung nơi thường trú bạn đã kiểm tra, không lấy quê quán.
+
+Đọc CCCD chỉ điền form, chưa lưu khách hàng. Bổ sung số điện thoại bắt buộc (**10–11 chữ số**) và những trường còn lại trước khi lưu. Nếu bộ đọc báo lỗi tải, kiểm tra kết nối rồi bấm **Thử đọc ảnh lại**; nếu ảnh có nhiều thẻ, chọn ảnh chỉ có một mặt trước.
 
 ::: warning Không nhập dữ liệu thật
 Trên bản demo/sandbox, **đừng nhập CCCD, số điện thoại hay ảnh giấy tờ thật** của khách. Hãy dùng dữ liệu giả (ví dụ SĐT `0900 000 098`, số CCCD bịa) để tránh lộ thông tin cá nhân.
