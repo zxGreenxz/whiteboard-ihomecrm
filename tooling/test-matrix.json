@@ -10,11 +10,12 @@
       "id": "copilot-golden-controlled-browser",
       "runner": "node --test",
       "ciJob": "copilot-e2e / copilot-e2e",
-      "command": "node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs .e2e-fleet/controlled/workflow-safety.test.mjs",
+      "command": "node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs .e2e-fleet/controlled/workflow-safety.test.mjs .e2e-fleet/controlled/copilot-batch-preflight.test.mjs",
       "risk": "normal",
       "includes": [
         ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
-        ".e2e-fleet/controlled/workflow-safety.test.mjs"
+        ".e2e-fleet/controlled/workflow-safety.test.mjs",
+        ".e2e-fleet/controlled/copilot-batch-preflight.test.mjs"
       ],
       "ciJobs": [{ "workflow": ".github/workflows/copilot-e2e.yml", "job": "copilot-e2e" }],
       "ciCommandStep": "Controlled Copilot workflow regressions (local synthetic transport only)",

@@ -4,6 +4,7 @@ import { credentials, login, trackConsoleErrors, type UserKey } from './auth';
 import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { guiVaChoModel } from './copilotModelCycle';
 import { taoBoThuGomKeHoachChat } from './copilotPlanCleanup';
+import { danhGiaTienDeBatch } from './copilotBatchPreflight';
 import {
   COPILOT_TEST_MODEL,
   pinCopilotTestModel,
@@ -31,73 +32,13 @@ import {
  *   KHÔNG mượn đường tool-call của mô hình.
  *
  * ────────────────────────────────────────────────────────────────────────────
- * HAI TIỀN ĐỀ CỦA DEMO KHÔNG ĐẠT, VÀ ĐÓ LÀ SỰ THẬT PHẢI ĐỌC TRƯỚC
+ * ACTOR CỦA TÁM CA BATCH
  *
- *   (1) KHÔNG CÓ AI VỪA LÀ SUPER ADMIN VỪA CÓ QUYỀN GHI TRÊN DEMO.
- *       `copilot_action_policy.allowed_roles` seed `{superadmin}`, nên chỉ super
- *       admin lập được kế hoạch. Đo ngày 03/09/2026 trên production:
- *
- *         super_admins            → đúng MỘT tài khoản (nguyentamca165@gmail.com)
- *         tài khoản đó trên DEMO  → KHÔNG có membership nào, và
- *                                   authorized_scope_v3('income_expenses.create', DEMO)
- *                                   = {org_wide:false, building_ids:[], cashbook_ids:[]}
- *
- *       `copilot_action_gate_v1` cố ý KHÔNG có lối tắt super admin (G2-F mục 3),
- *       nên tài khoản hệ thống lập kế hoạch xong sẽ chết ngay ở cổng của bước
- *       đầu tiên. Còn `chunha` — chủ DEMO, CÓ `income_expenses.create` trên 4 toà
- *       — thì chết ở `plan_role_not_allowed` vì không phải super admin.
- *
- *       ⇒ Muốn đo được đường ghi, PHẢI nới đúng một thứ. Spec nới
- *       `allowed_roles` thành `{superadmin, owner}` bằng chính RPC van
- *       (`set_copilot_action_policy_v1`, CAS trên revision, bắt buộc lý do +
- *       bằng chứng) rồi TRẢ LẠI `{superadmin}` ở `afterAll`.
- *
- *       VÌ SAO KHÔNG ĐI ĐƯỜNG "CẤP QUYỀN CHO TÀI KHOẢN HỆ THỐNG TRÊN DEMO":
- *       tài khoản đó chưa có membership, nên phải mời + chấp nhận
- *       (`invite_organization_member_v1` → `accept_organization_invitation_v1`),
- *       tức là thêm một hàng vào DANH SÁCH THÀNH VIÊN của DEMO, đổi luôn org mặc
- *       định của một tài khoản dùng chung, và để lại một membership REVOKED cùng
- *       vệt `authorization_audit_events` sau mỗi lượt CI. Nới `allowed_roles` là
- *       MỘT lời gọi, hoàn nguyên CHÍNH XÁC từng cột, và bán kính thật của nó
- *       trong lúc mở chỉ là "chủ sở hữu của DEMO": mọi org khác vẫn bị
- *       `copilot.execution_plan` chặn vì cờ đó đang canary DEMO.
- *
- *       Trạng thái xấu nhất nếu spec chết giữa chừng: `allowed_roles` còn
- *       `{superadmin, owner}`. Nhìn thấy được ở `/settings/ai-copilot` → tab
- *       Chính sách, và vẫn bị cờ canary chặn ngoài DEMO. `afterAll` hoàn nguyên,
- *       và `moVan()` từ chối mở nếu trạng thái nền không đúng
- *       `{superadmin}` + `L4` — nghĩa là một lượt chạy đứt gánh không bị lượt sau
- *       ghi đè bằng một trạng thái đoán.
- *
- *   (2) [MỘT LỚP ĐÃ VÁ 03/09/2026 — G3-FIX migration `d4d28e0e`, MỘT LỚP MỚI LỘ RA
- *       CÙNG NGÀY, KHI CHẠY SPEC NÀY THẬT] DEMO TỪNG không có bộ luật duyệt
- *       ACTIVE nên bước `nop_ho_so` không thể thành công. G3-FIX đã seed đúng
- *       MỘT `approval_rule_sets` ACTIVE cho DEMO:
- *
- *         approval_rule_sets WHERE organization_id = dddd…0001 AND status='ACTIVE'
- *           → 1 hàng (trước G3-FIX: 0 hàng) — xác nhận qua Management API
- *           (đọc trực tiếp production; KHÔNG qua PostgREST, xem bên dưới)
- *
- *       NHƯNG chạy thật lộ ra MỘT LỚP CHẶN THỨ HAI mà G3-FIX không lường tới:
- *       `submit_financial_voucher` loại chính MAKER khỏi danh sách ứng viên
- *       duyệt (`AND m.id <> v_mem`, đọc trực tiếp nguồn hàm trên production).
- *       DEMO chỉ có ĐÚNG MỘT OWNER (chunha), và chunha cũng là tài khoản DUY
- *       NHẤT có `income_expenses.create` trên DEMO (mục (1) ở trên) — nên MỌI
- *       phiếu do Copilot tạo đều có maker = approver duy nhất, bị tự loại, còn
- *       lại 0 ứng viên ⇒ vẫn fail-closed, chỉ khác LÝ DO ("Không có người duyệt
- *       đủ điều kiện" thay vì "không có rule set ACTIVE"). Nhánh THÀNH CÔNG của
- *       `nop_ho_so` VẪN CHƯA đo được trên DEMO — cần một quyết định của chủ dự
- *       án: thêm một thành viên DEMO khác chunha có `income_expenses.approve`.
- *
- *       Về việc ĐỌC TRƯỚC: `approval_rule_sets` có 0 policy RLS PERMISSIVE (chỉ
- *       hai policy RESTRICTIVE) nên PostgREST trả RỖNG cho MỌI role
- *       `authenticated`, kể cả super admin — đo thật bằng cả hai JWT. Và
- *       `effective_perms_v2` (RPC duy nhất xác nhận được "ai có
- *       income_expenses.approve") không cấp EXECUTE cho `authenticated`. Tức là
- *       spec KHÔNG có đường đọc trước đáng tin cho lớp chặn thứ hai — ca 3 vì
- *       vậy branch theo ĐÚNG kết quả RPC vừa chạy (`r2.ok`), không đoán trước.
- *       Xem thân ca 3 để biết chi tiết hai lớp và bằng chứng đo được.
- *
+ *   Sysadmin có membership ACTIVE trên DEMO, mang cùng role/scope thật với chủ
+ *   DEMO và đồng thời thỏa `allowed_roles = {superadmin}`. Spec dùng đúng actor
+ *   này cho lập/duyệt/chạy/đọc/dọn kế hoạch; không sửa policy hay membership.
+ *   Tiền đề chỉ đọc chấp nhận trần L4 hoặc L5, kiểm policy role và gọi preview
+ *   thật trên DEMO để phát hiện fixture bị thu hồi bằng lỗi cụ thể.
  * ────────────────────────────────────────────────────────────────────────────
  * KHOÁ API CÔNG KHAI KHÔNG PHẢI SECRET MỚI
  *   PostgREST đòi header `apikey`; giá trị đó đã nằm trong bundle công khai của
@@ -105,9 +46,8 @@ import {
  *   `copilot-action-matrix.spec.ts`. Bắt hụt ⇒ NÉM (fail-closed).
  *
  * ⚠ SPEC NÀY PHẢI CHẠY MỘT MÌNH — KHÔNG CÙNG LƯỢT VỚI SPEC KHÁC
- *   Nó đụng HAI trạng thái toàn cục: `copilot_action_policy.allowed_roles` (mở
- *   suốt lượt chạy) và cờ `action:income_expense.create_draft` (tắt khoảng một
- *   giây trong ca kill switch). `copilot-confirmation.spec.ts` và
+ *   Ca 6 tắt cờ `action:income_expense.create_draft` khoảng một giây.
+ *   `copilot-confirmation.spec.ts` và
  *   `copilot-action-matrix.spec.ts` đều dùng đúng cờ đó trên đúng org đó.
  *   `.github/workflows/copilot-e2e.yml` vì vậy chạy spec này CÙNG BƯỚC với ma
  *   trận hành động, `FLEET_WORKERS=1` — một bước, một worker, hai spec nối đuôi.
@@ -126,7 +66,7 @@ import {
  * CHẠY:
  *   cd .e2e-fleet && FLEET_BASE_URL=<preview của commit đang review> \
  *     EXPECTED_SOURCE_SHA=<sha 40 hex> VERCEL_AUTOMATION_BYPASS_SECRET=... \
- *     FLEET_PASS_CHUNHA=... FLEET_PASS_SYSADMIN=... \
+ *     FLEET_PASS_SYSADMIN=... COPILOT_E2E_PIN=... \
  *     FLEET_WORKERS=1 COPILOT_LIVE_MODEL=1 \
  *     npx playwright test specs/copilot-plan-batch-consent.spec.ts
  */
@@ -179,12 +119,7 @@ const TOA_NHA = 'DEMO Toà A';
 
 const TEN_PHIEU_CA3 = 'E2E G3 ke hoach 2 buoc';
 const TEN_PHIEU_CA8 = 'E2E G3 hai luot song song';
-
-const LY_DO_MO_CHINH_SACH = {
-  p_reason:
-    'E2E G3 — do duong ghi cua ke hoach thuc thi tren org DEMO; spec tu tra ve {superadmin} o afterAll',
-  p_evidence_link: '.e2e-fleet/specs/copilot-plan-batch-consent.spec.ts',
-} as const;
+const PIN_MOI_TRUONG = process.env.COPILOT_E2E_PIN || null;
 
 const LY_DO_LAT_CO = {
   p_reason: 'E2E G3 — kiem kill switch GIUA ke hoach da duyet (spec tu bat lai)',
@@ -311,12 +246,7 @@ async function docBang(jwt: string, duong: string): Promise<Record<string, unkno
   return JSON.parse(chu) as Record<string, unknown>[];
 }
 
-// ---------------------------------------------------------------------------
-// Van chính sách — MỞ ở ca đầu tiên cần nó, TRẢ LẠI ở afterAll
-// ---------------------------------------------------------------------------
-
 interface ChinhSach {
-  revision: number;
   maxDirectRisk: string;
   allowedRoles: string[];
 }
@@ -325,116 +255,33 @@ async function docChinhSach(jwt: string): Promise<ChinhSach> {
   const kq = await goiRpc(jwt, 'get_copilot_action_policy_v1', {});
   expect(kq.status, `Đọc chính sách hành động: ${loi(kq)}`).toBe(200);
   const b = kq.body as {
-    revision: number;
     max_direct_risk: string;
     allowed_roles: string[];
   };
-  return { revision: b.revision, maxDirectRisk: b.max_direct_risk, allowedRoles: b.allowed_roles };
+  return { maxDirectRisk: b.max_direct_risk, allowedRoles: b.allowed_roles };
 }
 
-/**
- * Đặt `allowed_roles`, chịu được một lượt CAS trượt.
- *
- * `revision` ở đây là revision của CHÍNH hàng policy (khác hẳn revision toàn cục
- * của cờ rollout), nên nó chỉ trượt khi có người khác đang đổi đúng van này —
- * hiếm, nhưng thử lại một lượt thì rẻ hơn một ca đỏ vì lý do bịa.
- */
-async function datVai(jwt: string, vai: string[]): Promise<KetQuaRpc> {
-  let kq: KetQuaRpc = { status: 0, body: null };
-  for (let i = 0; i < 2; i += 1) {
-    const hienTai = await docChinhSach(jwt);
-    if (
-      hienTai.allowedRoles.length === vai.length &&
-      vai.every((v) => hienTai.allowedRoles.includes(v))
-    ) {
-      return { status: 200, body: { allowed_roles: hienTai.allowedRoles } };
-    }
-    kq = await goiRpc(jwt, 'set_copilot_action_policy_v1', {
-      p_expected_revision: hienTai.revision,
-      p_max_direct_risk: null, // NULL = giữ nguyên. KHÔNG đụng trần rủi ro.
-      p_allowed_roles: vai,
-      p_standing_grants_enabled: null,
-      ...LY_DO_MO_CHINH_SACH,
-    });
-    if (kq.status === 200 || !loi(kq).includes('stale_revision')) return kq;
-  }
-  return kq;
+async function kiemTraTienDeBatch(jwt: string): Promise<void> {
+  const chinhSach = await docChinhSach(jwt);
+  const xem = await goiRpc(jwt, 'copilot_preview_income_expense_v1', {
+    p_organization_id: ORG_DEMO,
+    p_payload: {
+      loai: 'CHI',
+      so_tien: 1000,
+      ten_phieu: 'E2E G3 preflight read-only',
+      toa_nha: TOA_NHA,
+      hang_muc: HANG_MUC,
+    },
+  });
+  const tienDe = danhGiaTienDeBatch(chinhSach, { status: xem.status, detail: loi(xem) });
+  if (!tienDe.dat) throw new Error(`Thiếu fixture batch acceptance: ${tienDe.lyDo}`);
 }
 
-/** Có ĐÚNG một lượt mở đang treo hay không. Không memo hoá "đã mở thành công":
- *  van được mở và ĐÓNG LẠI trong từng ca (xem `moVan`/`dongVan`). */
-let vanDangMo = false;
-
-/**
- * MỞ VAN CHO ĐÚNG MỘT CA, và chỉ khi trạng thái nền đúng như lúc thiết kế.
- *
- * VÌ SAO MỞ THEO TỪNG CA CHỨ KHÔNG MỘT LẦN CHO CẢ SUITE
- *   Bản đầu mở ở ca đầu tiên rồi đóng ở `afterAll`. Đo được ngày 03/09/2026:
- *   tiến trình chạy bị GIẾT giữa suite (không phải ca nào đỏ — cả tiến trình
- *   biến mất), `afterAll` không bao giờ chạy, và `allowed_roles` nằm ở
- *   `{superadmin, owner}` cho tới khi có người vào sửa tay. Tệ hơn: lượt chạy
- *   KẾ TIẾP thấy nền "sai" nên bỏ qua TOÀN BỘ ca — một suite tự tắt trong im
- *   lặng, đúng thứ nguy hiểm nhất mà một suite an ninh có thể làm.
- *
- *   Mở-đóng theo từng ca thu cửa sổ từ "cả lượt chạy" xuống "một ca" (dưới 2
- *   giây), và mỗi ca có `finally` riêng nên một ca đỏ không kéo theo ca sau.
- *   `afterAll` vẫn giữ vai trò lưới an toàn cuối.
- *
- *   GIÁ PHẢI TRẢ, nói thẳng: 8 ca × 2 lượt lật = 16 hàng
- *   `copilot_action_policy_audit` và 16 dòng `policy_changed` trong
- *   `copilot_action_ledger` mỗi lượt chạy. Đó là tiếng ồn trong đúng cuốn sổ mà
- *   G3/G5 đọc để dựng lại "chuyện gì đã xảy ra". Chấp nhận có ý thức: tiếng ồn
- *   là BẰNG CHỨNG (mỗi dòng mang `reason` chỉ đúng file spec này), còn một van
- *   an ninh kẹt mở là THIỆT HẠI. Muốn giảm thì phải giảm số ca cần van, không
- *   phải nới cửa sổ trở lại.
- *
- * NỀN PHẢI ĐÚNG `{superadmin}` + `L4`. Không đòi điều đó thì `dongVan` không
- * biết trả về đâu: nó sẽ ghi đè `{superadmin}` lên một cấu hình mà chủ hệ thống
- * vừa cố ý đổi. "Không đo được" không phải "an toàn", nhưng ghi đè một van an
- * ninh bằng giá trị đoán thì tệ hơn hẳn — nên nền lạ ⇒ BỎ CA kèm lý do viết
- * thành câu, và `reason` của hàng policy (không đọc được từ role
- * `authenticated`) là chỗ người trực đọc để biết ai đã để nó lại.
- */
-async function moVan(): Promise<{ dat: boolean; lyDo: string }> {
-  const sys = await token('sysadmin');
-  const nen = await docChinhSach(sys);
-
-  if (nen.maxDirectRisk !== 'L4') {
-    return {
-      dat: false,
-      lyDo:
-        `trần rủi ro đang là "${nen.maxDirectRisk}" chứ không phải "L4" — nền đã đổi so với ` +
-        'lúc thiết kế spec, không hoàn nguyên mù được',
-    };
-  }
-  if (!(nen.allowedRoles.length === 1 && nen.allowedRoles[0] === 'superadmin')) {
-    return {
-      dat: false,
-      lyDo:
-        `allowed_roles đang là [${nen.allowedRoles.join(', ')}] chứ không phải [superadmin] — ` +
-        'spec không biết phải trả van về trạng thái nào nên KHÔNG đụng vào. Nếu đây là dấu vết ' +
-        'của một lượt chạy bị giết giữa chừng thì đặt lại ở /settings/ai-copilot → tab Chính sách.',
-    };
-  }
-
-  const mo = await datVai(sys, ['superadmin', 'owner']);
-  if (mo.status !== 200) return { dat: false, lyDo: `không nới được allowed_roles: ${loi(mo)}` };
-  vanDangMo = true;
-  return { dat: true, lyDo: '' };
-}
-
-/** Đóng van nếu chính spec này đang giữ nó mở. Idempotent. */
-async function dongVan(): Promise<void> {
-  if (!vanDangMo || !beMat) return;
-  const sys = await token('sysadmin');
-  const ve = await datVai(sys, ['superadmin']);
-  vanDangMo = false;
-  if (ve.status !== 200) {
-    throw new Error(
-      `KHÔNG TRẢ LẠI ĐƯỢC allowed_roles = [superadmin]: ${loi(ve)}. Vào /settings/ai-copilot ` +
-        '→ tab Chính sách và đặt lại NGAY.',
-    );
-  }
+async function xacThucPin(jwt: string, pin: string): Promise<KetQuaRpc> {
+  return goiRpc(jwt, 'copilot_step_up_verify_v1', {
+    p_pin: pin,
+    p_organization_id: ORG_DEMO,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -556,6 +403,14 @@ async function khoiPhucCo(jwtSys: string): Promise<void> {
   }
 }
 
+let coDangBiSpecTat = false;
+
+async function khoiPhucCoNeuCan(jwtSys: string): Promise<void> {
+  if (!coDangBiSpecTat) return;
+  await khoiPhucCo(jwtSys);
+  coDangBiSpecTat = false;
+}
+
 // ---------------------------------------------------------------------------
 // Tiện ích của miền kế hoạch
 // ---------------------------------------------------------------------------
@@ -633,12 +488,14 @@ async function duyetKeHoach(
   nonce: string,
   digest: string,
   version: number,
+  stepUpToken: string | null = null,
 ): Promise<KetQuaRpc> {
   return goiRpc(jwt, 'copilot_plan_approve_v1', {
     p_plan_id: planId,
     p_consent_nonce: nonce,
     p_plan_digest: digest,
     p_expected_plan_version: version,
+    p_step_up_token: stepUpToken,
   });
 }
 
@@ -669,48 +526,16 @@ async function docKeHoach(jwt: string, planId: string): Promise<KeHoachTomTat> {
  */
 async function donKeHoach(jwt: string, planId: string | null): Promise<void> {
   if (!planId) return;
-  const ke = await docKeHoach(jwt, planId).catch(() => null);
-  if (!ke || (ke.plan_status !== 'DRAFT' && ke.plan_status !== 'APPROVED')) return;
-  await goiRpc(jwt, 'copilot_plan_cancel_v1', {
+  const ke = await docKeHoach(jwt, planId);
+  if (ke.plan_status !== 'DRAFT' && ke.plan_status !== 'APPROVED') return;
+  const huy = await goiRpc(jwt, 'copilot_plan_cancel_v1', {
     p_plan_id: planId,
     p_expected_plan_version: ke.plan_version,
     p_reason: 'E2E G3 don dep cuoi ca',
   });
-}
-
-/**
- * Bộ luật duyệt ACTIVE của DEMO — tiền đề của bước `nop_ho_so`.
- *
- * ĐO ĐƯỢC 03/09/2026 (phiên chạy spec sau G3-FIX): `approval_rule_sets` KHÔNG
- * có policy RLS nào PERMISSIVE — chỉ hai policy RESTRICTIVE
- * (`approval_rule_sets_org_boundary`, `approval_rule_sets_hide_sandbox_admin`).
- * Postgres không cấp quyền nếu KHÔNG có ít nhất một PERMISSIVE policy, nên
- * bảng này đọc ra RỖNG qua PostgREST cho MỌI role `authenticated`, kể cả
- * super admin — kiểm chứng trực tiếp bằng JWT thật của cả `chunha` lẫn tài
- * khoản hệ thống, cả hai đều nhận `[]` dù `approval_rule_sets` có đúng một
- * hàng ACTIVE cho DEMO (xem migration `d4d28e0e`). Đây là khoảng trống RLS
- * CÓ TỪ TRƯỚC, chỉ lộ ra hôm nay vì trước G3-FIX bảng thật sự rỗng nên kết
- * quả "đọc rỗng" và "sự thật rỗng" trùng nhau một cách tình cờ. Sửa RLS nằm
- * ngoài phạm vi spec-only của phiên này — bàn giao.
- *
- * ⇒ Dùng `approval_rules` làm PROXY: bảng đó CÓ policy PERMISSIVE
- * (`approval_rules_select_member`) nên đọc được. Không hoàn hảo — cột
- * `active` của một hàng rule không tự tắt khi `approval_rule_sets` cha bị
- * RETIRE (đọc `app_private.publish_rule_set_v1`: RETIRE chỉ đổi
- * `approval_rule_sets.status`/`effective_to`, không đụng `approval_rules`) —
- * nhưng KHÔNG có đường nào lộ ra ngoài `authenticated` để tạo phiên bản rule
- * set thứ hai cho DEMO (`publish_rule_set_v1` nằm ở `app_private`), nên trong
- * đúng môi trường DEMO hôm nay, ba điều kiện dưới đây (fallback +
- * REQUIRE_APPROVAL + active) là tín hiệu đáng tin — chính là hình dạng hàng
- * mà migration `d4d28e0e` seed.
- */
-async function coBoLuatDuyetACTIVE(jwt: string): Promise<boolean> {
-  const rows = await docBang(
-    jwt,
-    `approval_rules?organization_id=eq.${ORG_DEMO}&active=eq.true&is_fallback=eq.true` +
-      '&effect=eq.REQUIRE_APPROVAL&select=id&limit=1',
-  );
-  return rows.length > 0;
+  if (huy.status !== 200 || (huy.body as { ok?: boolean }).ok !== true) {
+    throw new Error(`Không huỷ được kế hoạch ${planId} do spec sở hữu: ${loi(huy)}`);
+  }
 }
 
 async function demAudit(jwt: string, tool: string, entityId: string): Promise<number> {
@@ -750,24 +575,29 @@ async function demPhieuTheoTen(jwt: string, ten: string): Promise<number> {
 
 // ---------------------------------------------------------------------------
 
-test.beforeAll(() => {
+test.beforeAll(async ({ browser }) => {
   chanChayTrenProduction();
+  const page = await browser.newPage();
+  try {
+    batBeMatApi(page);
+    await login(page, 'sysadmin');
+    await xacMinhBanBuild(page);
+    expect(beMat, 'Không bắt được bề mặt API trong bootstrap batch acceptance').not.toBeNull();
+    await kiemTraTienDeBatch(await token('sysadmin'));
+  } finally {
+    await page.close();
+  }
 });
 
 test.afterAll(async () => {
   // Không có bề mặt API nghĩa là ca đầu chưa chạy xong ⇒ chưa ca nào đụng gì.
   if (!beMat) return;
-  // Cờ trước, van sau: cờ là thứ có bán kính rộng nhất khi kẹt ở `disabled`.
-  await khoiPhucCo(await token('sysadmin'));
-  // Lưới an toàn cuối: từng ca đã tự đóng van trong `finally` của nó.
-  await dongVan();
+  await khoiPhucCoNeuCan(await token('sysadmin'));
 });
 
 test('phiên trình duyệt thật khai đúng bản build và để lộ bề mặt API', async ({ page }) => {
   const loiConsole = trackConsoleErrors(page);
-  batBeMatApi(page);
-
-  await login(page, 'chunha');
+  await login(page, 'sysadmin');
   await xacMinhBanBuild(page);
 
   expect(
@@ -780,10 +610,7 @@ test('phiên trình duyệt thật khai đúng bản build và để lộ bề m
 });
 
 test('ca 1 — lập kế hoạch 2 bước: DRAFT, nonce ra ĐÚNG MỘT LẦN, đường đọc không lộ bí mật', async () => {
-  const tienDe = await moVan();
-  test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
-
-  const jwt = await token('chunha');
+  const jwt = await token('sysadmin');
   const khoa = khoaYeuCau('ca1');
   let planId: string | null = null;
 
@@ -834,15 +661,11 @@ test('ca 1 — lập kế hoạch 2 bước: DRAFT, nonce ra ĐÚNG MỘT LẦN,
     expect(keLai.consent_nonce, 'Gửi lại mà server phát nonce THỨ HAI').toBeNull();
   } finally {
     await donKeHoach(jwt, planId);
-    await dongVan();
   }
 });
 
 test('ca 2 — duyệt bằng nonce + digest đúng ⇒ APPROVED; duyệt lại ⇒ confirmation_already_used', async () => {
-  const tienDe = await moVan();
-  test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
-
-  const jwt = await token('chunha');
+  const jwt = await token('sysadmin');
   let planId: string | null = null;
 
   try {
@@ -876,16 +699,24 @@ test('ca 2 — duyệt bằng nonce + digest đúng ⇒ APPROVED; duyệt lại 
     expect(doc.plan_version).toBe(2);
   } finally {
     await donKeHoach(jwt, planId);
-    await dongVan();
   }
 });
 
 test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL nếu có người duyệt khác actor, fail-closed nếu không; Copilot KHÔNG bao giờ tự duyệt', async () => {
-  const tienDe = await moVan();
-  test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
-
-  const jwt = await token('chunha');
+  const jwt = await token('sysadmin');
   const actor = uidCua(jwt);
+  const chinhSach = await docChinhSach(jwt);
+  let stepUpToken: string | null = null;
+  if (chinhSach.maxDirectRisk === 'L5') {
+    test.skip(
+      !PIN_MOI_TRUONG,
+      'Thiếu COPILOT_E2E_PIN — ca 3 cần PIN thật của sysadmin để duyệt kế hoạch hỗn hợp dưới trần L5.',
+    );
+    const xacThuc = await xacThucPin(jwt, PIN_MOI_TRUONG as string);
+    expect(xacThuc.status, `Xác thực PIN sysadmin cho ca 3: ${loi(xacThuc)}`).toBe(200);
+    stepUpToken = (xacThuc.body as { step_up_token?: string }).step_up_token ?? null;
+    expect(stepUpToken, 'Xác thực PIN ca 3 phải trả step_up_token').toBeTruthy();
+  }
   let planId: string | null = null;
 
   try {
@@ -897,7 +728,14 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
     const ke = kq.body as KeHoachTomTat;
     planId = ke.plan_id;
 
-    const duyet = await duyetKeHoach(jwt, ke.plan_id, ke.consent_nonce as string, ke.plan_digest, 1);
+    const duyet = await duyetKeHoach(
+      jwt,
+      ke.plan_id,
+      ke.consent_nonce as string,
+      ke.plan_digest,
+      1,
+      stepUpToken,
+    );
     expect(duyet.status, `Duyệt: ${loi(duyet)}`).toBe(200);
 
     // ── BƯỚC 1 — tạo phiếu nháp ────────────────────────────────────────────
@@ -940,9 +778,6 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
     expect(dongB1[0].action_id).toBe(HANH_DONG_TAO);
 
     // ── BƯỚC 2 — nộp hồ sơ (`maker_submit_v1`, `$ref_step: 1`) ──────────────
-    // Đo tiền đề lớp 1 (proxy đọc được, xem docblock hàm) chỉ để làm BẰNG CHỨNG
-    // trong log/lỗi — KHÔNG dùng để chọn nhánh (xem lý do ngay dưới).
-    const coBoLuatProxy = await coBoLuatDuyetACTIVE(jwt);
     const b2 = await chayBuoc(jwt, ke.plan_id, 2, r1.plan_version);
     expect(b2.status, `Chạy bước 2 trả HTTP lạ: ${loi(b2)}`).toBe(200);
     const r2 = b2.body as {
@@ -952,38 +787,10 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
       step: { status: string; outcome: { entity_id: string; entity_table: string } | null };
     };
 
-    // KHÔNG đoán trước bằng một premise đọc trước (kiểu `coBoLuatDuyetACTIVE`) —
-    // đây là PHÁT HIỆN CHÍNH của lượt chạy 03/09/2026, khác brief đợt này (vốn kỳ
-    // vọng đọc trước rule set là đủ). Hai lớp phải qua chứ không phải một:
-    //
-    //   Lớp 1 — `approval_rule_sets` ACTIVE: G3-FIX (`d4d28e0e`) đã seed đúng một
-    //   hàng cho DEMO. NHƯNG bảng đó có 0 policy RLS PERMISSIVE (chỉ hai policy
-    //   RESTRICTIVE) — Postgres không cấp quyền nếu không có ít nhất một PERMISSIVE,
-    //   nên nó đọc ra RỖNG qua PostgREST cho MỌI role `authenticated`, kể cả super
-    //   admin (đo thật bằng cả JWT `chunha` lẫn tài khoản hệ thống trong phiên
-    //   này). `coBoLuatDuyetACTIVE()` (định nghĩa bên trên) dùng `approval_rules`
-    //   làm proxy đọc được — hàm đó vẫn giữ lại để tài liệu hoá phát hiện này,
-    //   nhưng KHÔNG đủ để quyết định nhánh (xem lớp 2).
-    //
-    //   Lớp 2 — MAKER BỊ LOẠI KHỎI DANH SÁCH DUYỆT: đọc `submit_financial_voucher`
-    //   trực tiếp trên production — câu truy vấn ứng viên có `AND m.id <> v_mem`
-    //   (loại chính membership của người nộp). DEMO chỉ có ĐÚNG MỘT OWNER
-    //   (chunha), và chunha cũng là tài khoản DUY NHẤT có `income_expenses.create`
-    //   trên DEMO (§ tiền đề (1) ở đầu file) — nên MỌI phiếu Copilot tạo đều có
-    //   maker = approver duy nhất, bị loại, còn lại 0 ứng viên ⇒ RAISE
-    //   'Không có người duyệt đủ điều kiện (fail closed)'. `effective_perms_v2`
-    //   (RPC duy nhất xác nhận được điều này từ phía đọc) KHÔNG cấp EXECUTE cho
-    //   role `authenticated`, nên spec không có đường đọc trước đáng tin cho lớp
-    //   này — không có cách nào hợp lệ để biết trước kết quả mà không CHẠY THẬT.
-    //
-    // ⇒ Branch dưới đây theo ĐÚNG kết quả `r2.ok` vừa đo, không đoán. Hôm nay lớp
-    // 2 luôn chặn nên nhánh `else` chạy ổn định — nhưng nếu DEMO có thêm một
-    // thành viên `income_expenses.approve` KHÔNG phải chunha, nhánh `if` sẽ tự
-    // động trở thành nhánh chạy mà không cần sửa spec.
+    // Maker không được tự duyệt. Tùy fixture approver hiện tại, server hoặc tạo
+    // hồ sơ PENDING_APPROVAL cho checker khác actor, hoặc fail closed và cuốn
+    // ngược hồ sơ. Cả hai nhánh đều giữ phiếu UNAPPROVED/UNPOSTED.
     if (r2.ok) {
-      // NHÁNH THÀNH CÔNG — chưa quan sát được lần nào trên DEMO tính đến
-      // 03/09/2026 (xem lớp 2 ở trên), nhưng đây vẫn là phép đo ĐÚNG khi lớp 2
-      // được gỡ (ví dụ: có thêm một `income_expenses.approve` khác chunha).
       expect(r2.step.status).toBe('DONE');
       expect(r2.step.outcome?.entity_table).toBe('approval_requests');
       expect(r2.plan_status, 'Hết bước ⇒ kế hoạch DONE').toBe('DONE');
@@ -996,18 +803,11 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
       expect(hoSo[0].maker_user_id, 'Người nộp phải là chính actor').toBe(actor);
       expect(hoSo[0].organization_id).toBe(ORG_DEMO);
     } else {
-      // FAIL-CLOSED — trạng thái QUAN SÁT ỔN ĐỊNH trên DEMO hôm nay. Hai lý do
-      // hợp lệ (khớp cả hai vì cả lớp 1 lẫn lớp 2 đều có thể là nguyên nhân tuỳ
-      // thời điểm đo): "không có rule set ACTIVE" (lớp 1, trước G3-FIX) hoặc
-      // "không có người duyệt đủ điều kiện" (lớp 2, sau G3-FIX — đúng thứ đo
-      // được hôm nay). Cả hai đều là câu trả lời ĐÚNG: fail-closed, không có ai
-      // được chỉ định duyệt thì không được tạo hồ sơ.
+      // FAIL-CLOSED: thiếu rule ACTIVE hoặc thiếu checker hợp lệ đều không được
+      // để lại hồ sơ duyệt nửa chừng.
       expect(r2.step.status).toBe('FAILED');
       expect(r2.plan_status, 'Một bước hỏng phải kéo cả kế hoạch dừng').toBe('FAILED');
-      expect(
-        String(r2.error_code ?? ''),
-        `lớp 1 (proxy approval_rules) đọc được rule set ACTIVE = ${coBoLuatProxy}`,
-      ).toMatch(/rule set ACTIVE|người duyệt đủ điều kiện/);
+      expect(String(r2.error_code ?? '')).toMatch(/rule set ACTIVE|người duyệt đủ điều kiện/);
       expect(
         await hoSoDuyetCua(jwt, voucherId),
         'Bước 2 thất bại mà vẫn để lại hồ sơ duyệt — khối con không cuốn ngược',
@@ -1027,15 +827,11 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
     expect(daPost, 'Có hồ sơ POSTED — luật AUTO_POST đã lọt qua hàng rào L5').toEqual([]);
   } finally {
     await donKeHoach(jwt, planId);
-    await dongVan();
   }
 });
 
 test('ca 4 — duyệt với digest SAI ⇒ plan_digest_mismatch, kế hoạch vẫn DRAFT và nonce chưa tiêu', async () => {
-  const tienDe = await moVan();
-  test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
-
-  const jwt = await token('chunha');
+  const jwt = await token('sysadmin');
   let planId: string | null = null;
 
   try {
@@ -1065,15 +861,11 @@ test('ca 4 — duyệt với digest SAI ⇒ plan_digest_mismatch, kế hoạch v
     expect((dung.body as { plan_status: string }).plan_status).toBe('APPROVED');
   } finally {
     await donKeHoach(jwt, planId);
-    await dongVan();
   }
 });
 
 test('ca 5 — huỷ kế hoạch DRAFT ⇒ CANCELLED, bước còn chờ thành SKIPPED, không ghi gì', async () => {
-  const tienDe = await moVan();
-  test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
-
-  const jwt = await token('chunha');
+  const jwt = await token('sysadmin');
   const demTruoc = await demPhieuTheoTen(jwt, TEN_PHIEU_CA3);
   let planId: string | null = null;
 
@@ -1119,7 +911,6 @@ test('ca 5 — huỷ kế hoạch DRAFT ⇒ CANCELLED, bước còn chờ thành
     expect(loi(duyetSauHuy)).toContain('confirmation_already_used');
   } finally {
     await donKeHoach(jwt, planId);
-    await dongVan();
   }
 
   expect(
@@ -1129,16 +920,10 @@ test('ca 5 — huỷ kế hoạch DRAFT ⇒ CANCELLED, bước còn chờ thành
 });
 
 test('ca 6 — kill switch GIỮA kế hoạch đã duyệt ⇒ bước BLOCKED, không phiếu nào ra đời', async () => {
-  // Tiền đề CỜ đo TRƯỚC tiền đề VAN, và thứ tự đó không phải tuỳ tiện: `moVan()`
-  // để lại một van đang mở, còn `test.skip()` ném ra ngoài mọi `finally` chưa
-  // vào tới. Hỏi thứ rẻ và không-có-tác-dụng-phụ trước.
-  const jwt = await token('chunha');
-  const sys = await token('sysadmin');
+  const jwt = await token('sysadmin');
+  const sys = jwt;
   const tienDe = await tienDeLatCo(sys);
   test.skip(!tienDe.dat, `Không lật cờ được: ${tienDe.lyDo}`);
-
-  const tienDeVan = await moVan();
-  test.skip(!tienDeVan.dat, `Không mở được van chính sách: ${tienDeVan.lyDo}`);
 
   const TEN = 'E2E G3 kill switch probe';
   const demTruoc = await demPhieuTheoTen(jwt, TEN);
@@ -1155,6 +940,7 @@ test('ca 6 — kill switch GIỮA kế hoạch đã duyệt ⇒ bước BLOCKED,
 
     try {
       const tat = await datCo(sys, 'disabled');
+      if (tat.status === 200) coDangBiSpecTat = true;
       expect(tat.status, `Tắt cờ ${CO_KILL_SWITCH}: ${loi(tat)}`).toBe(200);
       expect((tat.body as { state: string }).state).toBe('disabled');
 
@@ -1178,11 +964,14 @@ test('ca 6 — kill switch GIỮA kế hoạch đã duyệt ⇒ bước BLOCKED,
       // hoạch ở APPROVED sau một lần bị chặn là mời người ta bấm lại.
       expect(r.plan_status).toBe('FAILED');
     } finally {
-      await khoiPhucCo(sys);
+      await khoiPhucCoNeuCan(sys);
     }
   } finally {
-    await donKeHoach(jwt, planId);
-    await dongVan();
+    try {
+      await donKeHoach(jwt, planId);
+    } finally {
+      await khoiPhucCoNeuCan(sys);
+    }
   }
 
   expect(await demPhieuTheoTen(jwt, TEN), 'Cờ đã tắt mà vẫn có phiếu mới ra đời').toBe(demTruoc);
@@ -1200,10 +989,7 @@ test('ca 7 — kế hoạch DRAFT quá hạn: plan_expired, EXPIRED, không ch�
   );
   test.setTimeout(9 * 60_000);
 
-  const tienDe = await moVan();
-  test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
-
-  const jwt = await token('chunha');
+  const jwt = await token('sysadmin');
   let planId: string | null = null;
 
   try {
@@ -1250,15 +1036,11 @@ test('ca 7 — kế hoạch DRAFT quá hạn: plan_expired, EXPIRED, không ch�
     expect(loi(chay)).toContain('plan_not_approved');
   } finally {
     await donKeHoach(jwt, planId);
-    await dongVan();
   }
 });
 
 test('ca 8 — hai lượt chạy SONG SONG cùng một bước ⇒ đúng một lượt ghi', async () => {
-  const tienDe = await moVan();
-  test.skip(!tienDe.dat, `Không mở được van chính sách: ${tienDe.lyDo}`);
-
-  const jwt = await token('chunha');
+  const jwt = await token('sysadmin');
   let planId: string | null = null;
 
   try {
@@ -1314,7 +1096,6 @@ test('ca 8 — hai lượt chạy SONG SONG cùng một bước ⇒ đúng một
     ).toHaveLength(1);
   } finally {
     await donKeHoach(jwt, planId);
-    await dongVan();
   }
 });
 
