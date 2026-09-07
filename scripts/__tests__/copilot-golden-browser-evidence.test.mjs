@@ -348,13 +348,13 @@ test('contract pass requires its exact case oracle, fixture attestation and obse
     const scenario = manifest.cases.find(c => c.id === id), absent = id === 'C32';
     const searchPayload = { hop_dong: absent ? [] : [contractRow], gioi_han: 20, so_luong: absent ? 0 : 1 };
     const detailPayload = id === 'C33' ? { tim_thay: true, hop_dong: { ...contractRow, coc_da_thu: 6000000, coc_con_thieu: 0 }, hoa_don: [] } : undefined;
-    const fixture = bindContractScenario(scenario, { query: absent ? 'GOLDEN_ABSENT_context-1' : 'HD001', searchPayload, detailPayload });
+    const fixture = bindContractScenario(scenario, { query: absent ? 'GOLDEN_ABSENT_context-1' : 'HD001', searchPayload, detailPayload, customerPayload: absent ? [] : undefined });
     const run = evidence.createRun(golden, manifest, { ...attestation, contractFixtures: { [id]: fixture.attestation } }, [id]);
     evidence.transitionCase(run,id,{ status:'running' });
     evidence.transitionCase(run,id,{ status:'pass', timing: { startedAt: '2026-09-06T10:00:00.000Z', completedAt: '2026-09-06T10:00:01.000Z', totalMs:1000, humanWaitMs:0, processingMs:1000 }, observed: {
       answerDigest: digest, promptDigest: evidence.digest(fixture.prompt), promptTemplateDigest: evidence.digest(scenario.prompt), bindingDigest: fixture.bindingDigest,
       fixtureDigest: evidence.digest(fixture.attestation), queryDigest: fixture.attestation.queryDigest, identityDigest: fixture.attestation.identityDigest,
-      searchDigest: fixture.attestation.searchDigest, ...(detailPayload ? { detailDigest: fixture.attestation.detailDigest } : {}),
+      searchDigest: fixture.attestation.searchDigest, ...(absent ? {contractCalls:1,customerCalls:0} : {}), ...(detailPayload ? { detailDigest: fixture.attestation.detailDigest } : {}),
       rpcDigest: evidence.digest(detailPayload ?? searchPayload), modelRounds: id === 'C33' ? 3 : 2, toolResultLinked:true, finalAnswerMounted:true,
       readRpc: id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1', businessWrites:0, networkErrors:0, oracleVersion: scenario.oracle,
     } });
@@ -365,6 +365,17 @@ test('contract pass requires its exact case oracle, fixture attestation and obse
     for (const key of ['fixtureDigest','bindingDigest','queryDigest','identityDigest','searchDigest','rpcDigest','readRpc','oracleVersion','toolResultLinked']) {
       const bad = structuredClone(run); bad.cases.find(c => c.id === id).observed[key] = key === 'toolResultLinked' ? false : 'c'.repeat(64);
       assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length, `${id} ${key}`);
+    }
+    if (absent) {
+      const observed=run.cases.find(c=>c.id===id).observed;
+      const multi=structuredClone(run); Object.assign(multi.cases.find(c=>c.id===id).observed,{contractCalls:3,customerCalls:2,customerDigest:fixture.attestation.customerDigest});
+      assert.deepEqual(evidence.validateBrowserRun(golden,manifest,multi),[]);
+      for(const patch of [{contractCalls:0},{contractCalls:11},{customerCalls:-1},{customerCalls:1},{customerDigest:fixture.attestation.customerDigest},{contractCalls:'1'},{customerCalls:0.5}]) {
+        const bad=structuredClone(run); Object.assign(bad.cases.find(c=>c.id===id).observed,patch); assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length);
+      }
+      const wrong=structuredClone(multi); wrong.cases.find(c=>c.id===id).observed.customerDigest='b'.repeat(64); assert.ok(evidence.validateBrowserRun(golden,manifest,wrong).length);
+      const absentFixture=structuredClone(run); delete absentFixture.attestation.contractFixtures.C32.customerDigest; assert.ok(evidence.validateBrowserRun(golden,manifest,absentFixture).length);
+      assert.equal(observed.customerCalls,0);
     }
     const missing = structuredClone(run); delete missing.attestation.contractFixtures;
     assert.ok(evidence.validateBrowserRun(golden,manifest,missing).length);
@@ -395,4 +406,12 @@ test('contract detail preserves contractual end date separately from the search 
  for (const change of [{ngay_ket_thuc:'2026-02-30'},{ngay_ket_thuc_thuc_te:'2026-08-01'},{ngay_bat_dau:'2026-02-01'},{trang_thai:'TERMINATED'}]) {
   assert.throws(() => bindContractScenario(scenario,{query:'HD001',searchPayload,detailPayload:{...detailPayload,hop_dong:{...detailPayload.hop_dong,...change}}}), /fixture_unbound/);
  }
+});
+
+test('C32 customer preflight is a required empty array and attested digest', () => {
+ const scenario=manifest.cases.find(c=>c.id==='C32');
+ const input={query:'GOLDEN_ABSENT_context-1',searchPayload:{gioi_han:20,so_luong:0,hop_dong:[]}};
+ for(const customerPayload of [undefined,null,{},[{name:'not empty'}]]) assert.throws(()=>bindContractScenario(scenario,{...input,customerPayload}),/fixture_unbound/);
+ const fixture=bindContractScenario(scenario,{...input,customerPayload:[]});
+ assert.equal(fixture.attestation.customerDigest,evidence.digest([]));
 });

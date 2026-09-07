@@ -3,7 +3,7 @@ import { bindContractScenario, type ContractFixture } from '../../scripts/copilo
 import type { GoldenScenario } from '../../scripts/copilot-golden-browser-evidence.mjs';
 import { inspectModelStream, renderedAssistantText, type ReadonlyEvidence } from './copilotSmokeOracle';
 
-export interface ContractRead { rpc: string; args: Record<string, unknown>; payload: unknown; ok: boolean }
+export interface ContractRead { rpc: string; args: Record<string, unknown>; payload: unknown; ok: boolean; actorDigest?: string; exactEndpoint?: boolean }
 const CONTRACT_ORACLE_MESSAGES = {
   contract_status_mismatch: "Contract lifecycle status contradicts canonical payload",
   invoice_status_mismatch: "Invoice payment status contradicts canonical payload",
@@ -34,6 +34,7 @@ const CONTRACT_ORACLE_MESSAGES = {
   canonical_contract_rpc_drift: "Canonical contract RPC drift",
   missing_or_wrong_linked_contract_tool_result: "Missing or wrong linked contract tool result",
   detail_did_not_consume_search_identity: "Detail did not consume search identity",
+  absent_answer_invented_customer_facts: "Absent answer invented customer facts",
   absent_answer_invented_link: "Absent answer invented link",
 } as const;
 export type ContractOracleFailureCode = keyof typeof CONTRACT_ORACLE_MESSAGES;
@@ -175,6 +176,12 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
     check(!/\/contracts\/|\]\(|\bHD[-_\d]|\b[0-9a-f]{8}-[0-9a-f-]{27}\b/iu.test(answer) && !amounts(answer).length, 'absent_answer_invented_contract_link_amount');
     check(!/(?:tiền\s*)?(?:thuê|cọc|tổng(?: tiền)?|đã trả|còn thiếu|còn lại)\s*[:：]?\s*\d/iu.test(text), 'absent_answer_invented_monetary_fact');
     check(!/hợp đồng\s+(?:số|mã)\s*[:#]?\s*\S+|phòng\s+[\p{L}\p{N}]*\d/iu.test(text), 'absent_answer_invented_contract_facts');
+    const withoutQuery = text.replaceAll(normalize(fixture.query), '');
+    check(!/(?:sđt|số điện thoại|mã khách hàng|địa chỉ)\s*[:：]\s*[^.;!?]+|khách hàng\s+(?:tên là|có tên là|là)\s+[^.;!?]+/iu.test(withoutQuery), 'absent_answer_invented_customer_facts');
+    for (const match of withoutQuery.matchAll(/khách hàng\s*[:：]\s*([^.;!?]*)/giu)) {
+      const value = match[1].replace(/["“”'‘’]/g,'').trim();
+      check(!value || /^(?:không|chưa) (?:tìm thấy|có)/iu.test(value), 'absent_answer_invented_customer_facts');
+    }
     return;
   }
   for (const field of ['so_hop_dong','khach_hang','phong']) check(token(text, normalize(String(row[field]))), 'answer_missing_canonical_identity');
@@ -223,7 +230,45 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
   const actual = amounts(text);
   check(required.every(n => actual.includes(n)) && actual.every(n => required.includes(n)), 'answer_money_differs_from_canonical_payload');
 }
-export function assertContractResult(e: Pick<ReadonlyEvidence,'prompt'|'answer'|'rounds'> & { scenario: GoldenScenario; fixture: ContractFixture; reads: ContractRead[] }): void {
+/** C32 is a bounded repeated read workflow; each call consumes a distinct
+ * canonical RPC response, with its own ID linked into a later model request. */
+function assertAbsentChain(e: Parameters<typeof assertContractResult>[0], calls: {id:string;name:string;arguments:string;round:number}[]) {
+  check(calls.length >= 1 && calls.length <= 10 && calls.some(c => c.name === 'tim_hop_dong')
+    && calls.every(c => ['tim_hop_dong','tim_khach_hang'].includes(c.name)), 'unexpected_contract_tool_calls');
+  check(calls.every(c => typeof c.id === 'string' && c.id.trim().length > 0) && new Set(calls.map(c => c.id)).size === calls.length, 'wrong_contract_identity_chain');
+  check(e.reads.length === calls.length, 'unexpected_contract_rpc_count');
+  check(typeof e.actorDigest === 'string' && /^[a-f0-9]{64}$/.test(e.actorDigest), 'wrong_contract_rpc_org_query_identity');
+  for (const name of ['tim_hop_dong','tim_khach_hang']) {
+    const customer = name === 'tim_khach_hang';
+    const rpcName = customer ? 'copilot_customer_search_v1' : 'copilot_contract_search_v1';
+    const reads = e.reads.filter(r => r.rpc === rpcName);
+    check(reads.length === calls.filter(c => c.name === name).length, 'unexpected_contract_rpc_count');
+    for (const read of reads) {
+      const args = customer ? {p_organization_id:DEMO_ORG,p_search:e.fixture.query} : {p_organization_id:DEMO_ORG,p_query:e.fixture.query,p_status:null,p_limit:20};
+      check(read.ok && read.exactEndpoint === true && read.actorDigest === e.actorDigest && same(read.args,args), 'wrong_contract_rpc_org_query_identity');
+      check(same(read.payload,customer ? e.fixture.customerPayload : e.fixture.searchPayload), 'canonical_contract_rpc_drift');
+    }
+  }
+  for (const call of calls) {
+    let args: Record<string,unknown> | undefined;
+    try { const parsed: unknown = JSON.parse(call.arguments); if(parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args=parsed as Record<string,unknown>; } catch { /* static check below */ }
+    const customer = call.name === 'tim_khach_hang';
+    check(args && typeof args.tu_khoa === 'string' && args.tu_khoa.trim() === e.fixture.query
+      && Object.keys(args).every(k => (customer ? ['tu_khoa'] : ['tu_khoa','trang_thai','so_luong']).includes(k))
+      && (customer || (args.trang_thai === undefined && (args.so_luong === undefined || args.so_luong === 20))), 'wrong_contract_tool_query_identity');
+    const expected = customer ? `Không tìm thấy khách hàng nào khớp "${e.fixture.query}".` : contractToolText(e.fixture);
+    const messages = e.rounds.flatMap((r,round) => r.messages.filter(m => m.role === 'tool' && m.tool_call_id === call.id).map(m => ({...m,round})));
+    check(messages.length > 0 && messages.every(m => m.round > call.round && m.content === expected), 'missing_or_wrong_linked_contract_tool_result');
+  }
+  check(e.rounds.every(r => r.messages.filter(m => m.role === 'tool').every(m => calls.some(c => c.id === m.tool_call_id))), 'missing_or_wrong_linked_contract_tool_result');
+}
+/** Exact C32-only exception; endpoint variants remain mutations. */
+export function isC32CustomerRead(caseId: string, method: string, url: string, apiOrigin: string): boolean {
+  const parsed = new URL(url);
+  return caseId === 'C32' && method === 'POST' && parsed.origin === apiOrigin
+    && parsed.pathname === '/rest/v1/rpc/copilot_customer_search_v1' && !parsed.search && !parsed.hash;
+}
+export function assertContractResult(e: Pick<ReadonlyEvidence,'prompt'|'answer'|'rounds'> & { scenario: GoldenScenario; fixture: ContractFixture; reads: ContractRead[]; actorDigest?: string }): void {
   const rebound = bindContractScenario(e.scenario, e.fixture);
   check(same(rebound.attestation,e.fixture.attestation) && e.prompt === rebound.prompt, 'contract_fixture_prompt_drift');
   const detail = e.scenario.id === 'C33';
@@ -233,6 +278,9 @@ export function assertContractResult(e: Pick<ReadonlyEvidence,'prompt'|'answer'|
   check(last.finish === 'stop' && last.text.trim() && e.answer.trim() === renderedAssistantText(last.text), 'mounted_answer_differs_from_final_stream');
   check(e.rounds[0].messages.some(m => m.role === 'user' && m.content === e.prompt), 'submitted_prompt_not_in_model_request');
   const calls = streams.flatMap((s, round) => s.tools.map(t => ({ ...t, round })));
+  if (e.scenario.id === 'C32') {
+    assertAbsentChain(e,calls);
+  } else {
   check(calls.length === (detail ? 2 : 1), 'unexpected_contract_tool_calls');
   const names = detail ? ['tim_hop_dong','chi_tiet_hop_dong'] : ['tim_hop_dong'];
   check(e.reads.length === names.length, 'unexpected_contract_rpc_count');
@@ -248,6 +296,7 @@ export function assertContractResult(e: Pick<ReadonlyEvidence,'prompt'|'answer'|
     const messages = e.rounds.slice(call.round + 1).flatMap(r => r.messages).filter(m => m.role === 'tool' && m.tool_call_id === call.id);
     check(messages.length > 0 && messages.every(m => typeof m.content === 'string' && m.content.trim() === expectedText.trim()), 'missing_or_wrong_linked_contract_tool_result');
     if (detail && index === 0) check(e.rounds[calls[1].round].messages.some(m => m.role === 'tool' && m.tool_call_id === call.id && m.content === expectedText), 'detail_did_not_consume_search_identity');
+  }
   }
   assertFacts(e.answer, e.fixture, detail);
   if (e.scenario.id === 'C32') check(!/\]\(|\/contracts\//.test(last.text), 'absent_answer_invented_link');

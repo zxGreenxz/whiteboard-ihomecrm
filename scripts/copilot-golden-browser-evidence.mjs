@@ -75,7 +75,7 @@ function validIncomeApprovalFixtures(fixtures, actorDigest) {
 }
 function validContractFixtures(fixtures) {
   return keysOnly(fixtures, Object.keys(CONTRACT_MAPPING)) && Object.entries(fixtures).every(([id,f]) => {
-    const hashes = ['queryDigest','identityDigest','searchDigest', ...(id === 'C33' ? ['detailDigest'] : [])];
+    const hashes = ['queryDigest','identityDigest','searchDigest', ...(id === 'C33' ? ['detailDigest'] : id === 'C32' ? ['customerDigest'] : [])];
     return keysOnly(f, ['kind','organizationId', ...hashes]) && f.kind === CONTRACT_MAPPING[id][1]
       && f.organizationId === DEMO_ORG && hashes.every(k => typeof f[k] === 'string' && HASH.test(f[k]));
   });
@@ -112,7 +112,7 @@ function validPass(c, attestation) {
   const fixture = contract ? attestation?.contractFixtures?.[c.id] : attestation?.incomeApprovalFixtures?.[c.id];
   const correctMapping = mapping ? c.oracle === mapping[0] : c.oracle === ({ C01: 'available-rooms-v1', C13: 'available-rooms-building-v1' })[c.id];
   return correctMapping && validTiming(c.timing)
-    && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion', ...(contract ? ['fixtureDigest','queryDigest','identityDigest','searchDigest','detailDigest'] : financial ? ['fixtureDigest','queryDigest','identityDigest','responseDigest'] : [])])
+    && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion', ...(contract ? ['fixtureDigest','queryDigest','identityDigest','searchDigest','detailDigest', ...(c.id === 'C32' ? ['customerDigest','contractCalls','customerCalls'] : [])] : financial ? ['fixtureDigest','queryDigest','identityDigest','responseDigest'] : [])])
     && ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest'].every(k => typeof o[k] === 'string' && HASH.test(o[k]))
     && Number.isInteger(o.modelRounds) && o.modelRounds >= 2 && o.toolResultLinked === true && o.finalAnswerMounted === true
     && o.readRpc === (mapping ? mapping[2] : 'copilot_available_rooms_v1') && o.oracleVersion === c.oracle
@@ -120,6 +120,7 @@ function validPass(c, attestation) {
       && o.fixtureDigest === digest(fixture) && o.bindingDigest === digest(fixture)
       && ['queryDigest','identityDigest','searchDigest'].every(k => o[k] === fixture[k])
       && (c.id === 'C33' ? o.detailDigest === fixture.detailDigest && o.modelRounds >= 3 : o.detailDigest === undefined)
+      && (c.id !== 'C32' || (Number.isInteger(o.contractCalls) && o.contractCalls >= 1 && Number.isInteger(o.customerCalls) && o.customerCalls >= 0 && o.contractCalls + o.customerCalls <= 10 && (o.customerCalls > 0 ? o.customerDigest === fixture.customerDigest : o.customerDigest === undefined)))
       && o.rpcDigest === (fixture.detailDigest ?? fixture.searchDigest)))
     && (!financial || (fixture && validIncomeApprovalFixtures({[c.id]:fixture},attestation.actorDigest)
       && o.fixtureDigest === digest(fixture) && o.bindingDigest === digest(fixture)

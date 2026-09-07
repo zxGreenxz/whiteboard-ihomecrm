@@ -2,7 +2,7 @@ import type { FullConfig, Reporter, TestCase, TestResult } from '@playwright/tes
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
-import { safeGoldenCallDiagnostics } from './specs/copilotGoldenDiagnostics';
+import { safeGoldenCallDiagnostics, safeGoldenRequestFailures } from './specs/copilotGoldenDiagnostics';
 import { isContractOracleFailureCode } from './specs/copilotContractOracle';
 import { isIncomeApprovalOracleFailureCode } from './specs/copilotIncomeApprovalOracle';
 // Playwright call logs may contain fill values and private assertion payloads.
@@ -17,6 +17,8 @@ export default class GoldenReporter implements Reporter {
     for (const line of result.stdout.map(chunk => chunk.toString()).join('').split(/\r?\n/)) {
       try {
         const value: unknown = JSON.parse(line);
+        const failed = safeGoldenRequestFailures(value);
+        if (failed) { console.log(JSON.stringify(failed)); continue; }
         const calls = safeGoldenCallDiagnostics(value);
         if (calls) { console.log(JSON.stringify(calls)); continue; }
         if (value && typeof value === 'object' && !Array.isArray(value) && 'kind' in value && value.kind === 'golden-case-failure') {

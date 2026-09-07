@@ -70,3 +70,35 @@ export function safeGoldenCallDiagnostics(value: unknown): GoldenCallDiagnostics
   }
   return { kind: 'golden-call-diagnostics', caseId: value.caseId, tools: [...value.tools], calls, truncated: value.truncated };
 }
+
+const RESOURCES = ['document','stylesheet','image','media','font','script','texttrack','xhr','fetch','eventsource','websocket','manifest','other'] as const;
+const ORIGINS = ['attested_api','app','other'] as const;
+const FAILURES = ['aborted','timeout','connection','other'] as const;
+export interface GoldenRequestFailure {
+  endpoint: DiagnosticEndpoint; resource: typeof RESOURCES[number]; origin: typeof ORIGINS[number]; failure: typeof FAILURES[number];
+}
+export interface GoldenRequestFailures {
+  kind: 'golden-request-failures'; caseId: string; count: number; failures: GoldenRequestFailure[]; truncated: boolean;
+}
+export function diagnosticRequestFailure(url: string, resource: string, errorText: string | undefined, apiOrigin: string, appOrigin: string): GoldenRequestFailure {
+  let origin: GoldenRequestFailure['origin'] = 'other';
+  try { const actual=new URL(url).origin; origin=actual===apiOrigin?'attested_api':actual===appOrigin?'app':'other'; } catch { /* static fallback */ }
+  const failure: GoldenRequestFailure['failure'] = errorText === 'net::ERR_ABORTED' ? 'aborted'
+    : ['net::ERR_TIMED_OUT','net::ERR_CONNECTION_TIMED_OUT'].includes(errorText ?? '') ? 'timeout'
+    : ['net::ERR_CONNECTION_RESET','net::ERR_CONNECTION_REFUSED','net::ERR_CONNECTION_CLOSED','net::ERR_CONNECTION_ABORTED','net::ERR_NAME_NOT_RESOLVED','net::ERR_INTERNET_DISCONNECTED'].includes(errorText ?? '') ? 'connection' : 'other';
+  return {endpoint:diagnosticEndpoint(url),resource:RESOURCES.includes(resource as typeof RESOURCES[number])?resource as typeof RESOURCES[number]:'other',origin,failure};
+}
+export function safeGoldenRequestFailures(value: unknown): GoldenRequestFailures | undefined {
+  if (!exactKeys(value,['kind','caseId','count','failures','truncated']) || value.kind !== 'golden-request-failures'
+    || typeof value.caseId !== 'string' || !/^C(?:0[1-9]|[1-6]\d|7[0-5])$/.test(value.caseId)
+    || typeof value.count !== 'number' || !Number.isSafeInteger(value.count) || value.count < 0
+    || !Array.isArray(value.failures) || value.failures.length !== Math.min(value.count,60)
+    || value.truncated !== (value.count > 60)) return;
+  const failures: GoldenRequestFailure[] = [];
+  for (const item of value.failures) {
+    if (!exactKeys(item,['endpoint','resource','origin','failure']) || typeof item.endpoint !== 'string' || !endpointNames.has(item.endpoint)
+      || !RESOURCES.includes(item.resource as typeof RESOURCES[number]) || !ORIGINS.includes(item.origin as typeof ORIGINS[number]) || !FAILURES.includes(item.failure as typeof FAILURES[number])) return;
+    failures.push({endpoint:item.endpoint as DiagnosticEndpoint,resource:item.resource as typeof RESOURCES[number],origin:item.origin as typeof ORIGINS[number],failure:item.failure as typeof FAILURES[number]});
+  }
+  return {kind:'golden-request-failures',caseId:value.caseId,count:value.count,failures,truncated:value.truncated as boolean};
+}

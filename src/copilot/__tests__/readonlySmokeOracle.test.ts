@@ -353,7 +353,7 @@ function contractEvidence(id = 'C31', withInvoice = false) {
   const searchPayload = { gioi_han: 20, so_luong: absent ? 0 : 1, hop_dong: absent ? [] : [structuredClone(contractRow)] };
   const invoice = { hoa_don_id: 'bbbb4000-0000-4000-8000-000000000011', so_hoa_don: 'INV001', ky: '2026-09', tong_tien: 4000000, da_tra: 2000000, con_lai: 2000000, trang_thai: 'PARTIAL' };
   const detailPayload = detail ? { tim_thay: true, hop_dong: structuredClone(contractRow), hoa_don: withInvoice ? [invoice] : [] } : undefined;
-  const fixture = bindContractScenario(scenario, { query, searchPayload, detailPayload });
+  const fixture = bindContractScenario(scenario, { query, searchPayload, detailPayload, customerPayload: absent ? [] : undefined });
   const tool = (name: string, args: object, id: string) => chunk({ tool_calls: [{ index: 0, id, function: { name, arguments: JSON.stringify(args) } }] }, 'tool_calls') + 'data: [DONE]\n\n';
   let text = absent ? 'Không tìm thấy hợp đồng nào của khách này.' : `Hợp đồng HD001 — Demo An — phòng A101. Kỳ hạn 01/01/2026 đến 31/12/2026. Tiền thuê 3 triệu đồng, cọc 6 triệu đồng.${detail ? ' Đang giữ 5 triệu đồng, còn thiếu 1 triệu đồng. Chưa có hoá đơn nào.' : ''}`;
   if (withInvoice) text = text.replace('Chưa có hoá đơn nào.', 'Hoá đơn INV001 kỳ 2026-09: tổng 4 triệu đồng, đã trả 2 triệu đồng, còn 2 triệu đồng.');
@@ -362,9 +362,9 @@ function contractEvidence(id = 'C31', withInvoice = false) {
   const searchResult = { role: 'tool', tool_call_id: 'search-1', content: contractToolText(fixture) };
   if (detail) rounds.push({ body: tool('chi_tiet_hop_dong', { hop_dong_id: contractRow.hop_dong_id }, 'detail-1'), messages: [...messages, searchResult] });
   rounds.push({ body: chunk({ content: text }, 'stop') + 'data: [DONE]\n\n', messages: [...messages, searchResult, ...(detail ? [{ role: 'tool', tool_call_id: 'detail-1', content: contractToolText(fixture,true) }] : [])] });
-  const reads = [{ rpc: 'copilot_contract_search_v1', ok: true, args: { p_organization_id: DEMO_ORG, p_query: query, p_status: null, p_limit: 20 } as Record<string,unknown>, payload: searchPayload as unknown }];
-  if (detail) reads.push({ rpc: 'copilot_contract_detail_v1', ok: true, args: { p_organization_id: DEMO_ORG, p_contract_id: contractRow.hop_dong_id }, payload: detailPayload });
-  return { scenario, fixture, prompt: fixture.prompt, answer: text, rounds, reads };
+  const reads = [{ rpc: 'copilot_contract_search_v1', ok: true, args: { p_organization_id: DEMO_ORG, p_query: query, p_status: null, p_limit: 20 } as Record<string,unknown>, payload: searchPayload as unknown, actorDigest: 'a'.repeat(64), exactEndpoint: true }];
+  if (detail) reads.push({ rpc: 'copilot_contract_detail_v1', ok: true, args: { p_organization_id: DEMO_ORG, p_contract_id: contractRow.hop_dong_id }, payload: detailPayload, actorDigest: 'a'.repeat(64), exactEndpoint: true });
+  return { scenario, fixture, prompt: fixture.prompt, answer: text, rounds, reads, actorDigest: 'a'.repeat(64) };
 }
 function changeContractAnswer(e: ReturnType<typeof contractEvidence>, text: string) {
   e.answer = renderedAssistantText(text); e.rounds.at(-1)!.body = chunk({ content: text }, 'stop') + 'data: [DONE]\n\n';
@@ -636,4 +636,93 @@ describe('golden reporter call metadata boundary', () => {
    expect(log.mock.calls).toEqual([['golden browser: failed']]);
   } finally {log.mockRestore();}
  });
+});
+
+function absentChain(names = ['tim_hop_dong','tim_khach_hang','tim_hop_dong','tim_khach_hang','tim_hop_dong']) {
+ const e = contractEvidence('C32');
+ const messages: {role:string;content:string;tool_call_id?:string}[] = [{role:'user',content:e.prompt}];
+ e.rounds = []; e.reads = [];
+ for (const [i,name] of names.entries()) {
+  const id = `absent-${i}`;
+  e.rounds.push({messages:[...messages],body:chunk({tool_calls:[{index:0,id,function:{name,arguments:JSON.stringify({tu_khoa:` ${e.fixture.query} `})}}]},'tool_calls')+'data: [DONE]\n\n'});
+  const customer = name === 'tim_khach_hang';
+  messages.push({role:'tool',tool_call_id:id,content:customer ? `Không tìm thấy khách hàng nào khớp "${e.fixture.query}".` : contractToolText(e.fixture)});
+  e.reads.push({rpc:customer?'copilot_customer_search_v1':'copilot_contract_search_v1',ok:true,args:customer?{p_organization_id:DEMO_ORG,p_search:e.fixture.query}:{p_organization_id:DEMO_ORG,p_query:e.fixture.query,p_status:null,p_limit:20},payload:customer?[]:e.fixture.searchPayload,actorDigest:e.actorDigest,exactEndpoint:true});
+ }
+ e.rounds.push({messages,body:chunk({content:e.answer},'stop')+'data: [DONE]\n\n'});
+ return e;
+}
+describe('C32 bounded empty read chains', () => {
+ it.each([['alternating',undefined],['single',['tim_hop_dong']],['repeated contract',['tim_hop_dong','tim_hop_dong']],['customer first',['tim_khach_hang','tim_hop_dong']]])('accepts %s with distinct actual reads', (_label,names) => {
+  const e=absentChain(names as string[]|undefined); e.reads.reverse(); expect(()=>assertContractResult(e)).not.toThrow();
+ });
+ it.each(['query','org','actor','endpoint','payload','extra-arg','missing-read','missing-result','orphan','duplicate-id','unknown-tool','no-contract','overflow'])('rejects %s', mutation => {
+  const e=absentChain();
+  if(mutation==='query') e.reads[1].args.p_search='wrong';
+  if(mutation==='org') e.reads[1].args.p_organization_id='wrong';
+  if(mutation==='actor') e.reads[1].actorDigest='b'.repeat(64);
+  if(mutation==='endpoint') e.reads[1].exactEndpoint=false;
+  if(mutation==='payload') e.reads[1].payload=[{name:'invented'}];
+  if(mutation==='extra-arg') e.reads[1].args.p_limit=20;
+  if(mutation==='missing-read') e.reads.pop();
+  if(mutation==='missing-result') for(const r of e.rounds) r.messages=r.messages.filter(m=>m.tool_call_id!=='absent-1');
+  if(mutation==='orphan') e.rounds.at(-1)!.messages.push({role:'tool',tool_call_id:'orphan',content:'empty'});
+  if(mutation==='duplicate-id') e.rounds[1].body=e.rounds[1].body.replace('absent-1','absent-0');
+  if(mutation==='unknown-tool') e.rounds[1].body=e.rounds[1].body.replace('tim_khach_hang','phong_trong');
+  if(mutation==='no-contract') {expect(()=>assertContractResult(absentChain(['tim_khach_hang']))).toThrow();return;}
+  if(mutation==='overflow') {expect(()=>assertContractResult(absentChain(Array(11).fill('tim_hop_dong')))).toThrow();return;}
+  expect(()=>assertContractResult(e)).toThrow();
+ });
+ it.each(['golden_absent_context-1','GOLDEN ABSENT context-1','GOLDEN_ABSENT_context-2'])('rejects rewritten tool query %s', query => {
+  const e=absentChain(); e.rounds[1].body=e.rounds[1].body.replace(e.fixture.query,query); expect(()=>assertContractResult(e)).toThrow();
+ });
+});
+
+import { isC32CustomerRead } from '../../../.e2e-fleet/specs/copilotContractOracle';
+import { diagnosticRequestFailure, safeGoldenRequestFailures } from '../../../.e2e-fleet/specs/copilotGoldenDiagnostics';
+it('customer read exemption applies only to exact C32 POST on the attested origin',()=>{
+ const url='https://api.example/rest/v1/rpc/copilot_customer_search_v1';
+ expect(isC32CustomerRead('C32','POST',url,'https://api.example')).toBe(true);
+ for(const [id,method,other] of [['C31','POST',url],['C33','POST',url],['C32','GET',url],['C32','POST',url+'?x=1'],['C32','POST',url+'#x'],['C32','POST',url+'/'],['C32','POST',url.replace('api.example','other.example')]]) expect(isC32CustomerRead(id,method,other,'https://api.example')).toBe(false);
+});
+it('failed request metadata maps exact static enums without raw values',()=>{
+ expect(diagnosticRequestFailure('https://api.example/functions/v1/llm-proxy?token=private','fetch','net::ERR_ABORTED','https://api.example','https://app.example')).toEqual({endpoint:'model',resource:'fetch',origin:'attested_api',failure:'aborted'});
+ expect(diagnosticRequestFailure('https://app.example/private.png','image','net::ERR_TIMED_OUT','https://api.example','https://app.example')).toEqual({endpoint:'other',resource:'image',origin:'app',failure:'timeout'});
+ expect(diagnosticRequestFailure('https://private.example/secret','private','secret error','https://api.example','https://app.example')).toEqual({endpoint:'other',resource:'other',origin:'other',failure:'other'});
+});
+it('failed request reporter rejects raw fields and dishonest truncation',()=>{
+ const item={endpoint:'model',resource:'fetch',origin:'attested_api',failure:'aborted'};
+ const event={kind:'golden-request-failures',caseId:'C32',count:1,failures:[item],truncated:false};
+ expect(safeGoldenRequestFailures(event)).toEqual(event);
+ for(const mutation of [{...event,count:2},{...event,truncated:true},{...event,url:'secret'},{...event,failures:[{...item,failure:'secret'}]},{...event,failures:[{...item,origin:'https://secret'}]},{...event,failures:[{...item,resource:'private'}]},{...event,failures:[{...item,endpoint:'secret'}]},{...event,failures:[{...item,errorText:'private'}]},{...event,failures:Array(61).fill(item),count:61}]) expect(safeGoldenRequestFailures(mutation)).toBeUndefined();
+ expect(safeGoldenRequestFailures({...event,failures:Array(60).fill(item),count:61,truncated:true})).toBeDefined();
+});
+
+it('C32 accepts parallel reads without inventing tool ordering',()=>{
+ const e=absentChain(['tim_hop_dong','tim_khach_hang']);
+ const body=chunk({tool_calls:['tim_hop_dong','tim_khach_hang'].map((name,index)=>({index,id:`absent-${index}`,function:{name,arguments:JSON.stringify({tu_khoa:e.fixture.query})}}))},'tool_calls')+'data: [DONE]\n\n';
+ e.rounds=[{body,messages:[{role:'user',content:e.prompt}]},e.rounds.at(-1)!];
+ e.reads.reverse(); expect(()=>assertContractResult(e)).not.toThrow();
+});
+it('C32 rejects substitutions and malformed tool arguments despite matching RPCs',()=>{
+ for(const args of ['null','[]','{bad',JSON.stringify({tu_khoa:'GOLDEN_ABSENT_context-1',unknown:true})]) {
+  const e=absentChain(['tim_hop_dong']); e.rounds[0].body=chunk({tool_calls:[{index:0,id:'absent-0',function:{name:'tim_hop_dong',arguments:args}}]},'tool_calls')+'data: [DONE]\n\n';
+  expect(()=>assertContractResult(e)).toThrow();
+ }
+ const e=absentChain(); e.rounds.at(-1)!.messages.find(m=>m.tool_call_id==='absent-1')!.content=contractToolText(e.fixture); expect(()=>assertContractResult(e)).toThrow();
+});
+it('request failure reporter reconstructs safe metadata and suppresses private fields',()=>{
+ const event={kind:'golden-request-failures',caseId:'C32',count:1,failures:[{endpoint:'model',resource:'fetch',origin:'attested_api',failure:'aborted'}],truncated:false};
+ const log=vi.spyOn(console,'log').mockImplementation(()=>undefined);
+ try {
+  new GoldenReporter().onTestEnd({} as TestCase,{status:'failed',stdout:[JSON.stringify(event)+'\n'+JSON.stringify({...event,errorText:'secret'})+'\n']} as TestResult);
+  expect(log.mock.calls).toEqual([[JSON.stringify(event)],['golden browser: failed']]);
+ }finally{log.mockRestore();}
+});
+
+it.each([' Khách hàng: Demo An.',' Khách hàng tên là Demo An.',' SĐT: 0901234567.',' Mã khách hàng: CUSTOMERX.'])('C32 rejects invented customer facts: %s',addition=>{
+ const e=absentChain(); expect(()=>assertContractResult(changeContractAnswer(e,e.answer+addition))).toThrow();
+});
+it('C32 permits absence and query repetition without requiring customer tool use',()=>{
+ const e=absentChain(['tim_hop_dong']); expect(()=>assertContractResult(changeContractAnswer(e,`Không tìm thấy hợp đồng của khách hàng "${e.fixture.query}". Không tìm thấy khách hàng này.`))).not.toThrow();
 });

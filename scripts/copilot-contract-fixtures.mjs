@@ -19,10 +19,11 @@ export function contractQuery(caseId, contextId, listingPayload) {
   requireFixture(candidates.length > 0);
   return candidates[0].so_hop_dong;
 }
-export function bindContractScenario(scenario, { query, searchPayload, detailPayload }) {
+export function bindContractScenario(scenario, { query, searchPayload, detailPayload, customerPayload }) {
   requireFixture(Object.hasOwn(CONTRACT_CASES, scenario?.id) && scenario.oracle === CONTRACT_CASES[scenario.id]);
   requireFixture(text(query) && query === query.trim() && Array.isArray(searchPayload?.hop_dong));
   const absent = scenario.id === 'C32', detail = scenario.id === 'C33';
+  requireFixture(absent ? Array.isArray(customerPayload) && customerPayload.length === 0 : customerPayload === undefined);
   const rows = searchPayload.hop_dong;
   requireFixture(searchPayload.so_luong === rows.length && searchPayload.gioi_han === 20);
   requireFixture(absent ? /^GOLDEN_ABSENT_[a-zA-Z0-9-]{1,100}$/.test(query) && rows.length === 0 : rows.length === 1);
@@ -53,7 +54,7 @@ export function bindContractScenario(scenario, { query, searchPayload, detailPay
   const attestation = {
     kind: absent ? 'contract-absent' : detail ? 'contract-detail' : 'contract-search', organizationId: DEMO_ORG,
     queryDigest: digest(query), identityDigest: digest({ organizationId: DEMO_ORG, contractId: row?.hop_dong_id ?? null, code: row?.so_hop_dong ?? null }),
-    searchDigest: digest(searchPayload), ...(detail ? { detailDigest: digest(detailPayload) } : {}),
+    searchDigest: digest(searchPayload), ...(absent ? { customerDigest: digest(customerPayload) } : {}), ...(detail ? { detailDigest: digest(detailPayload) } : {}),
   };
-  return { prompt, query, contractId: row?.hop_dong_id, bindingDigest: digest(attestation), attestation, searchPayload, detailPayload };
+  return { prompt, query, contractId: row?.hop_dong_id, bindingDigest: digest(attestation), attestation, searchPayload, detailPayload, customerPayload };
 }
