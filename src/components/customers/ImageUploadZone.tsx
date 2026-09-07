@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { Upload, X, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { imageValidation } from '@/lib/vehicleValidation';
-import { uploadFile } from '@/lib/storage';
+import { uploadFile, type UploadImagePolicy } from '@/lib/storage';
 import { StorageImage } from '@/components/ui/storage-image';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
@@ -16,6 +16,7 @@ interface ImageUploadZoneProps {
   accept?: string;
   maxSizeMB?: number;
   bucket?: string;
+  imagePolicy?: UploadImagePolicy;
   /** Cho phép chọn / kéo thả / dán nhiều ảnh cùng lúc. */
   multiple?: boolean;
   /**
@@ -34,12 +35,14 @@ export default function ImageUploadZone({
   accept = 'image/png,image/jpeg,image/jpg',
   maxSizeMB = 10,
   bucket = 'customer-images',
+  imagePolicy,
   multiple = false,
   onAddMany,
 }: ImageUploadZoneProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isClipboardHover, setIsClipboardHover] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -89,7 +92,9 @@ export default function ImageUploadZone({
           // Hậu tố index để không trùng path khi upload nhiều file trong cùng ms.
           const path = `${user.id}/${Date.now()}-${i}.${ext}`;
           try {
-            urls.push(await uploadFile(bucket, path, file));
+            urls.push(imagePolicy
+              ? await uploadFile(bucket, path, file, { imagePolicy })
+              : await uploadFile(bucket, path, file));
           } catch (err) {
             console.error('Upload error:', err);
             toast.error(
@@ -111,7 +116,7 @@ export default function ImageUploadZone({
         setUploadingCount(0);
       }
     },
-    [bucket, multiple, onAddMany, onChange, validateFile]
+    [bucket, imagePolicy, multiple, onAddMany, onChange, validateFile]
   );
 
   const handleDrop = useCallback(
@@ -150,6 +155,14 @@ export default function ImageUploadZone({
     enabled: !value && !isUploading,
     multiple,
   });
+  const handleClipboardMouseEnter = useCallback(() => {
+    setIsClipboardHover(true);
+    pasteHandlers.onMouseEnter();
+  }, [pasteHandlers.onMouseEnter]);
+  const handleClipboardMouseLeave = useCallback(() => {
+    setIsClipboardHover(false);
+    pasteHandlers.onMouseLeave();
+  }, [pasteHandlers.onMouseLeave]);
 
   return (
     <div className="space-y-1.5">
@@ -171,11 +184,14 @@ export default function ImageUploadZone({
         </div>
       ) : (
         <div
+          data-clipboard-image-paste-target="upload"
+          data-clipboard-image-paste-active={isClipboardHover && !isUploading ? 'true' : undefined}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => inputRef.current?.click()}
-          {...pasteHandlers}
+          onMouseEnter={handleClipboardMouseEnter}
+          onMouseLeave={handleClipboardMouseLeave}
           className={cn(
             'flex flex-col items-center justify-center w-full h-32 rounded-lg border-2 border-dashed cursor-pointer transition-colors',
             isDragOver

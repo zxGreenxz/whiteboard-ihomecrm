@@ -1,111 +1,71 @@
-import { useCallback, useRef, useState } from 'react';
-import { QrCode, Loader2, X, CheckCircle2, AlertCircle, Camera } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
-import { parseCccdQr, type CCCDQrData } from '@/lib/cccdQrParser';
-import { decodeQrFromFile } from '@/lib/qrDecoder';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, Camera, CheckCircle2, Loader2, QrCode, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import type { CCCDQrData } from '@/lib/cccdQrParser';
 import CCCDQrCameraScanner from './CCCDQrCameraScanner';
+import { useCccdQrInput, type CccdQrInputStatus } from './useCccdQrInput';
 
 interface CCCDQrUploadProps {
-  onParsed: (data: CCCDQrData) => void;
+  onParsed: (data: CCCDQrData, taskId: number) => void | Promise<void>;
+  onTaskStart?: (taskId: number) => void;
 }
 
-export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
-  const [isDecoding, setIsDecoding] = useState(false);
+const statusMessage: Partial<Record<CccdQrInputStatus, string>> = {
+  'image-invalid': 'Ảnh không hợp lệ hoặc định dạng chưa được hỗ trợ.',
+  'engine-unavailable': 'Bộ đọc QR chưa sẵn sàng. Vui lòng thử lại.',
+  'not-found': 'Không tìm thấy mã QR trong ảnh.',
+  'not-cccd': 'Mã QR trong ảnh không phải QR CCCD hợp lệ.',
+  ambiguous: 'Ảnh có nhiều QR CCCD. Vui lòng chọn ảnh chỉ có một thẻ.',
+};
+
+export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraSuccess, setCameraSuccess] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  const currentTaskIdRef = useRef(0);
+  const onParsedRef = useRef(onParsed);
+  const onTaskStartRef = useRef(onTaskStart);
+  onParsedRef.current = onParsed;
+  onTaskStartRef.current = onTaskStart;
 
-  const handleFile = useCallback(
-    async (file: File) => {
-      if (!file.type.startsWith('image/')) {
-        setError('File không phải ảnh');
-        return;
-      }
-      setError(null);
-      setSuccess(false);
-      setIsDecoding(true);
-      const previewUrl = URL.createObjectURL(file);
-      setPreview(previewUrl);
+  const handleTaskStart = useCallback((taskId: number) => {
+    currentTaskIdRef.current = taskId;
+    setCameraSuccess(false);
+    onTaskStartRef.current?.(taskId);
+  }, []);
+  const qr = useCccdQrInput({ onParsed, onTaskStart: handleTaskStart });
+  const { acceptFile, reset } = qr;
 
-      try {
-        const qrText = await decodeQrFromFile(file);
-        if (!qrText) {
-          setError('Không phát hiện được mã QR trong ảnh');
-          toast.error('Không phát hiện được mã QR. Thử ảnh rõ nét hơn hoặc dùng camera.');
-          return;
-        }
-        const parsed = parseCccdQr(qrText);
-        if (!parsed) {
-          setError('QR rỗng');
-          return;
-        }
-        onParsed(parsed);
-        setSuccess(true);
-        toast.success('Đã đọc thông tin từ QR CCCD');
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Lỗi khi đọc QR';
-        setError(msg);
-        toast.error(msg);
-      } finally {
-        setIsDecoding(false);
-      }
-    },
-    [onParsed]
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file) void handleFile(file);
-    },
-    [handleFile]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
   }, []);
 
-  const handleDragLeave = useCallback(() => setIsDragOver(false), []);
+  const handleDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    const file = event.dataTransfer.files[0];
+    if (file) void acceptFile(file);
+  }, [acceptFile]);
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) void handleFile(file);
-      if (inputRef.current) inputRef.current.value = '';
-    },
-    [handleFile]
-  );
+  const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) void acceptFile(file);
+    event.target.value = '';
+  }, [acceptFile]);
 
-  const handleReset = useCallback(() => {
-    if (preview) URL.revokeObjectURL(preview);
-    setPreview(null);
-    setSuccess(false);
-    setError(null);
-  }, [preview]);
+  const handleCameraParsed = useCallback(async (data: CCCDQrData) => {
+    const taskId = reset();
+    await onParsedRef.current(data, taskId);
+    if (mountedRef.current && currentTaskIdRef.current === taskId) {
+      setCameraSuccess(true);
+    }
+  }, [reset]);
 
-  const handleCameraParsed = useCallback(
-    (data: CCCDQrData) => {
-      onParsed(data);
-      setSuccess(true);
-      setError(null);
-      setPreview(null);
-    },
-    [onParsed]
-  );
-
-  const pasteHandlers = useClipboardImagePaste({
-    onFiles: (files) => void handleFile(files[0]),
-    enabled: !isDecoding,
-  });
+  const error = statusMessage[qr.status];
 
   return (
     <div className="space-y-2">
@@ -127,68 +87,81 @@ export default function CCCDQrUpload({ onParsed }: CCCDQrUploadProps) {
         </Button>
       </div>
 
-      {preview ? (
-        <div className="flex items-start gap-3">
-          <div className="relative w-32 h-32 rounded-lg border overflow-hidden bg-gray-50 shrink-0">
-            <img src={preview} alt="QR" className="w-full h-full object-contain" />
-            <button
-              type="button"
-              onClick={handleReset}
-              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1"
-              aria-label="Xoá ảnh QR"
-            >
-              <X className="h-3 w-3" />
-            </button>
+      <div
+        ref={qr.zoneRef}
+        data-testid="cccd-qr-zone"
+        data-clipboard-image-paste-target="qr"
+        tabIndex={0}
+        role="button"
+        aria-label="Chọn hoặc dán ảnh QR CCCD"
+        onMouseEnter={qr.onMouseEnter}
+        onMouseLeave={qr.onMouseLeave}
+        onDrop={handleDrop}
+        onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
+        onDragLeave={() => setIsDragOver(false)}
+        onClick={(event) => {
+          event.currentTarget.focus();
+          inputRef.current?.click();
+        }}
+        className={cn(
+          'w-full min-h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors',
+          isDragOver ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50',
+        )}
+      >
+        {qr.previewUrl ? (
+          <div className="flex items-start gap-3 p-2">
+            <div className="relative w-24 h-24 rounded-md border overflow-hidden bg-white shrink-0">
+              <img src={qr.previewUrl} alt="QR CCCD đang xử lý" className="w-full h-full object-contain" />
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); qr.reset(); }}
+                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1"
+                aria-label="Xoá ảnh QR"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+            <div className="flex-1 text-sm pt-1">
+              {qr.status === 'decoding' && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Đang đọc QR...</span>
+                </div>
+              )}
+              {qr.status === 'success' && (
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Đã tự động điền thông tin CCCD.</span>
+                </div>
+              )}
+              {error && (
+                <div className="flex items-center gap-2 text-red-600">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{error}</span>
+                </div>
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">Dán hoặc chọn ảnh khác để thay thế.</p>
+            </div>
           </div>
-          <div className="flex-1 text-sm">
-            {isDecoding && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Đang đọc QR...</span>
-              </div>
-            )}
-            {success && !isDecoding && (
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>Đã tự động điền các trường thông tin bên dưới.</span>
-              </div>
-            )}
-            {error && (
-              <div className="flex items-center gap-2 text-red-600">
-                <AlertCircle className="h-4 w-4" />
-                <span>{error}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onClick={() => inputRef.current?.click()}
-          {...pasteHandlers}
-          className={cn(
-            'flex flex-col items-center justify-center w-full h-28 rounded-lg border-2 border-dashed cursor-pointer transition-colors',
-            isDragOver
-              ? 'border-green-500 bg-green-50'
-              : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-          )}
-        >
-          <QrCode className="h-6 w-6 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground mt-1">
-            Kéo thả, click hoặc Ctrl+V ảnh chứa mã QR CCCD
-          </span>
-          {success && (
-            <span className="mt-1 text-xs text-green-600 flex items-center gap-1">
-              <CheckCircle2 className="h-3 w-3" /> Đã đọc QR từ camera
+        ) : (
+          <div className="flex h-28 flex-col items-center justify-center">
+            <QrCode className="h-6 w-6 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground mt-1">
+              Kéo thả, click hoặc Ctrl+V ảnh chứa mã QR CCCD
             </span>
-          )}
-        </div>
-      )}
+            {cameraSuccess && (
+              <span className="mt-1 text-xs text-green-600 flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" /> Đã đọc QR từ camera
+              </span>
+            )}
+            {error && <span className="mt-1 text-xs text-red-600">{error}</span>}
+          </div>
+        )}
+      </div>
 
       <input
         ref={inputRef}
+        data-testid="cccd-qr-file-input"
         type="file"
         accept="image/png,image/jpeg,image/jpg,image/webp"
         onChange={handleFileChange}

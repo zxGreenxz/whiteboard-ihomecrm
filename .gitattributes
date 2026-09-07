@@ -52,3 +52,6 @@ supabase/functions/** text eol=lf
 # normalise anything under it. These rules sit AFTER the eol=lf rules on purpose -
 # later patterns win, and `*.sql` above would otherwise rewrite line endings for
 # any .sql file the vendor tree carries and break its recorded SHA-256.
+
+# Hash-verified WeChat model attribution must retain identical checkout bytes.
+scripts/qr/licenses/*.txt text eol=lf

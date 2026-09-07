@@ -6,6 +6,25 @@ import { uploadToR2, signR2 } from "./storage/r2Client";
 
 export { sanitizeStorageFileName } from "./storageKey";
 
+export type UploadImagePolicy = 'default' | 'identity-original';
+
+export interface UploadFileOptions {
+  imagePolicy?: UploadImagePolicy;
+}
+
+const IDENTITY_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const IDENTITY_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg']);
+
+function identityOriginal(file: File): File {
+  if (!IDENTITY_IMAGE_MIME_TYPES.has(file.type)) {
+    throw new Error('Identity images must be PNG or JPEG files');
+  }
+  if (file.size > IDENTITY_IMAGE_MAX_BYTES) {
+    throw new Error('Identity images must not exceed 10MB');
+  }
+  return file;
+}
+
 /**
  * Upload a file to Supabase Storage
  * @param bucket - The storage bucket name
@@ -16,11 +35,15 @@ export { sanitizeStorageFileName } from "./storageKey";
 export async function uploadFile(
   bucket: string,
   path: string,
-  file: File
+  file: File,
+  options: UploadFileOptions = {},
 ): Promise<string> {
   // Nén ảnh trước khi upload (giảm kho + băng thông egress). Nếu nén ra WebP thì
-  // đổi đuôi key cho khớp content-type; non-image giữ nguyên file & key.
-  const toUpload = await compressImage(file);
+  // đổi đuôi key cho khớp content-type; non-image giữ nguyên file & key. Ảnh
+  // giấy tờ được kiểm tra rồi lưu đúng bytes gốc để không làm mất chi tiết QR.
+  const toUpload = options.imagePolicy === 'identity-original'
+    ? identityOriginal(file)
+    : await compressImage(file);
   let key = path;
   if (toUpload !== file && toUpload.type === "image/webp") {
     key = path.replace(/\.[^./]+$/, "") + ".webp";

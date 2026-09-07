@@ -153,6 +153,8 @@
     "src/components/customers/AddressCascadingDropdowns.tsx",
     "src/components/customers/CCCDQrCameraScanner.tsx",
     "src/components/customers/CCCDQrUpload.tsx",
+    "src/components/customers/__tests__/CCCDQrUpload.test.tsx",
+    "src/components/customers/__tests__/useCccdQrInput.test.tsx",
     "src/components/customers/CT01FamilyMembersTable.tsx",
     "src/components/customers/CT01Form.tsx",
     "src/components/customers/CT01PrintLayout.tsx",
@@ -170,6 +172,7 @@
     "src/components/customers/CustomerVehiclesSection.tsx",
     "src/components/customers/DeleteCustomerDialog.tsx",
     "src/components/customers/ImageUploadZone.tsx",
+    "src/components/customers/useCccdQrInput.ts",
     "src/components/dashboard/AlertsList.tsx",
     "src/components/dashboard/DebtChart.tsx",
     "src/components/dashboard/OccupancyChart.tsx",
@@ -921,6 +924,7 @@
     "src/lib/cashAccount.ts",
     "src/lib/cashbookClosing.ts",
     "src/lib/cccdAddressLookup.ts",
+    "src/lib/cccdCustomerMapping.ts",
     "src/lib/cccdQrParser.ts",
     "src/lib/changeAccounts.test.ts",
     "src/lib/changeAccounts.ts",
@@ -1216,7 +1220,16 @@
     "src/types/room.ts",
     "src/types/scripts-mjs.d.ts",
     "src/types/vehicle.ts",
-    "src/vite-env.d.ts"
+    "src/vite-env.d.ts",
+    "src/lib/qr/candidates.ts",
+    "src/lib/qr/client.ts",
+    "src/lib/qr/engines.ts",
+    "src/lib/qr/opencvRuntime.ts",
+    "src/lib/qr/pipeline.ts",
+    "src/lib/qr/preprocess.ts",
+    "src/lib/qr/qr.worker.ts",
+    "src/lib/qr/types.ts",
+    "src/lib/qr/wechatAdapter.ts"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }
