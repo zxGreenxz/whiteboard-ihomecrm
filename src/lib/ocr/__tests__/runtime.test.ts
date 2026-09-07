@@ -1,5 +1,66 @@
 import { it, expect, vi } from "vitest";
-import { readOcrCard } from "../runtime";
+import { readFileSync } from "node:fs";
+import { webcrypto } from "node:crypto";
+import { gzipSync } from "node:zlib";
+import { assetBytes, readOcrCard } from "../runtime";
+
+it("validates the decoded stream when gzip Content-Length describes compressed bytes", async () => {
+  const bytes = readFileSync("vendor/cccd-ocr/latin-dict.json");
+  const compressed = gzipSync(bytes);
+  expect(compressed.length).not.toBe(bytes.length);
+  const fetch = vi.fn(
+    async () =>
+      new Response(bytes, {
+        headers: {
+          "Content-Encoding": "gzip",
+          "Content-Length": String(compressed.length),
+        },
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  vi.stubGlobal("crypto", webcrypto);
+  try {
+    expect(new Uint8Array(await assetBytes("latin-dict.json"))).toEqual(
+      new Uint8Array(bytes),
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it.each(["oversize", "short", "corrupt"])(
+  "still rejects a %s decoded asset with a compressed transfer header",
+  async (kind) => {
+    const original = readFileSync("vendor/cccd-ocr/latin-dict.json");
+    const bytes =
+      kind === "oversize"
+        ? Buffer.concat([original, Buffer.from([0])])
+        : kind === "short"
+          ? original.subarray(1)
+          : Buffer.from(original);
+    if (kind === "corrupt") bytes[0] ^= 1;
+    const fetch = vi.fn(
+      async () =>
+        new Response(bytes, {
+          headers: {
+            "Content-Encoding": "gzip",
+            "Content-Length": "90",
+          },
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("crypto", webcrypto);
+    try {
+      await expect(assetBytes("latin-dict.json")).rejects.toThrow(
+        kind === "corrupt" ? "digest mismatch" : "size mismatch",
+      );
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
 
 it("releases every CV allocation and input tensor when detector inference rejects", async () => {
   const mats: Mat[] = [],

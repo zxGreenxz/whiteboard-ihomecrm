@@ -5,6 +5,7 @@ import { initializeOpenCv } from "../qr/opencvRuntime";
 import {
   parseOcrFields,
   selectOcrFields,
+  isOcrLineClipped,
   type OcrLine,
   type OcrReview,
 } from "./parser";
@@ -33,7 +34,7 @@ function loadOrt(): Promise<typeof Ort> {
   });
   return ortModule;
 }
-async function assetBytes(
+export async function assetBytes(
   name: keyof typeof assets.files,
 ): Promise<ArrayBuffer> {
   const expected = assets.files[name];
@@ -48,11 +49,8 @@ async function assetBytes(
         await response.body?.cancel();
         throw Error("OCR asset unavailable");
       }
-      const contentLength = response.headers.get("content-length");
-      if (contentLength !== null && Number(contentLength) !== expected.bytes) {
-        await response.body?.cancel();
-        throw Error("OCR asset size mismatch");
-      }
+      // Fetch exposes decoded bytes; HTTP Content-Length may instead describe
+      // gzip/Brotli transfer bytes. Bound and verify the decoded stream below.
       const reader = response.body?.getReader();
       if (!reader) throw Error("OCR asset stream unavailable");
       const bytes = new Uint8Array(expected.bytes);
@@ -480,7 +478,10 @@ export async function readOcrCard(
           check();
           const prediction = Object.values(output)[0],
             data = prediction.data;
-          if (prediction.dims[prediction.dims.length - 1] !== 233 || !(data instanceof Float32Array))
+          if (
+            prediction.dims[prediction.dims.length - 1] !== 233 ||
+            !(data instanceof Float32Array)
+          )
             throw Error("OCR decoder shape");
           const offset = data.length - 233;
           for (let j = 1; j < 233; j++)
@@ -512,7 +513,16 @@ export async function readOcrCard(
           out = { ...reverse, reverse: true };
       }
       drop(part);
-      rows.push({ ...out, box });
+      rows.push({
+        ...out,
+        box,
+        truncated:
+          out.truncated ||
+          isOcrLineClipped(box, {
+            width: source.cols,
+            height: source.rows,
+          }),
+      });
     }
     return rows;
   }

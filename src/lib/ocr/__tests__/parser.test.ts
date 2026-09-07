@@ -76,6 +76,35 @@ describe("OCR anchored five-field parsing", () => {
       parseOcrFields(input, { width: 1200, height: 550 }).data.permanentAddress,
     ).toBe("");
   });
+  it("rejects complementary fields on spatially separate partial fronts", () => {
+    for (const offset of [
+      [1300, 0],
+      [0, 650],
+    ]) {
+      const input = lines().map((r, i) =>
+        i < 3
+          ? r
+          : {
+              ...r,
+              box: r.box.map(([x, y]) => [
+                x + offset[0],
+                y + offset[1],
+              ]) as OcrLine["box"],
+            },
+      );
+      const result = parseOcrFields(input, { width: 2500, height: 1400 });
+      expect(result.status).toBe("ambiguous");
+      expect(Object.values(result.states)).toEqual(Array(5).fill("missing"));
+    }
+  });
+  it("does not trust normally terminated text whose detected crop touches the image edge", () => {
+    const input = lines();
+    input[7] = row("Phường An Bình, Thành phố Thử", 400, 300, 890);
+    const result = parseOcrFields(input, { width: 1200, height: 550 });
+    expect(result.data.permanentAddress).toBe("");
+    expect(result.states.permanentAddress).toBe("missing");
+    expect(result.data.idNumber).toBe("001099999991");
+  });
   it("does not capture unrelated below-label dates or distant text", () => {
     const input = lines();
     input[6].text = "Nơi thường trú / Place of residence:";

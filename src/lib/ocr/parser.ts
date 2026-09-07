@@ -36,6 +36,17 @@ const bounds = (r: OcrLine) => ({
   top: Math.min(...r.box.map((p) => p[1])),
   bottom: Math.max(...r.box.map((p) => p[1])),
 });
+/** Expanded detector boxes clamped to a raster edge cannot establish that the
+ * entire printed line survived. Treat this uncertainty as missing, even when
+ * the recognizer emitted its normal end token. */
+export const isOcrLineClipped = (box: OcrLine["box"], size: Size): boolean => {
+  // The detector can omit the cut glyph at the boundary and finish just inside
+  // it. Reserve half a text-line height of context; an absent margin cannot
+  // establish that this is the full printed line.
+  const height = Math.max(...box.map((p) => p[1])) - Math.min(...box.map((p) => p[1]));
+  const margin = Math.max(2, height / 2);
+  return box.some(([x, y]) => x <= margin || y <= margin || x >= size.width - 1 - margin || y >= size.height - 1 - margin);
+};
 const literalId = (s: string) =>
   /^(?:(?:SO\s*\/\s*)?NO\.?\s*:?\s*|SO\s*:?\s*)?(\d{12})$/.exec(
     foldOcr(s.trim()),
@@ -92,6 +103,34 @@ export function selectOcrFields(
       status: "ambiguous",
       selected: { id: [], name: [], dob: [], sex: [], address: [] },
     };
+  // Every identity anchor must fit one upright card's field column. Normalize
+  // by detected line height, not the whole image: a collage's empty space must
+  // never expand the ownership envelope. Missing duplicate labels on another
+  // front therefore cannot donate complementary fields to the first front.
+  const owners = [
+    selected.id[0],
+    labels.name[0],
+    labels.dob[0],
+    labels.sex[0],
+    labels.address[0],
+  ]
+    .filter((index): index is number => index !== undefined)
+    .map((index) => bounds(lines[index]));
+  if (owners.length > 1) {
+    const heights = owners.map((b) => b.bottom - b.top).sort((a, b) => a - b);
+    const scale = Math.max(8, heights[Math.floor(heights.length / 2)]);
+    const lefts = owners.map((b) => b.left);
+    const centers = owners.map((b) => (b.top + b.bottom) / 2);
+    if (
+      Math.max(...lefts) - Math.min(...lefts) > 6 * scale ||
+      Math.max(...centers) - Math.min(...centers) > 18 * scale ||
+      centers.some((y, i) => i > 0 && y < centers[i - 1] - 2 * scale)
+    )
+      return {
+        status: "ambiguous",
+        selected: { id: [], name: [], dob: [], sex: [], address: [] },
+      };
+  }
   for (const key of Object.keys(labels) as (keyof typeof labels)[]) {
     const index = labels[key][0];
     if (index === undefined) continue;
@@ -109,7 +148,7 @@ export function selectOcrFields(
           s.i !== index &&
           (s.b.top + s.b.bottom) / 2 - center > height * 0.25 &&
           (s.b.top + s.b.bottom) / 2 - center < Math.max(3 * height, 90) &&
-          Math.abs(s.b.left - b.left) < size.width * 0.09,
+          Math.abs(s.b.left - b.left) < Math.min(size.width * 0.09, 6 * height),
       )
       .sort((a, b) => a.b.top - b.b.top);
     let lastBottom = b.bottom;
@@ -165,7 +204,11 @@ export function parseOcrFields(lines: OcrLine[], size: Size): OcrReview {
   if (status === "ambiguous") return { status, data, states };
   const get = (kind: Kind) => selected[kind].map((i) => lines[i]);
   const usable = (rows: OcrLine[]) =>
-    rows.length > 0 && rows.every((r) => !r.truncated && r.text.length <= 500);
+    rows.length > 0 &&
+    rows.every(
+      (r) =>
+        !r.truncated && !isOcrLineClipped(r.box, size) && r.text.length <= 500,
+    );
   const ids = get("id");
   if (usable(ids)) data.idNumber = literalId(ids[0].text);
   const names = get("name");
@@ -184,7 +227,7 @@ export function parseOcrFields(lines: OcrLine[], size: Size): OcrReview {
       data.fullName = text;
   }
   const dob = get("dob")[0];
-  if (dob && !dob.truncated) {
+  if (dob && usable([dob])) {
     const tail =
       foldOcr(dob.text)
         .split(/NGAY SINH|DATE OF BIRTH/)
@@ -196,7 +239,7 @@ export function parseOcrFields(lines: OcrLine[], size: Size): OcrReview {
       );
   }
   const sex = get("sex")[0];
-  if (sex && !sex.truncated) {
+  if (sex && usable([sex])) {
     const tail =
       foldOcr(sex.text)
         .split(/QUOC TICH|NATIONALITY/)[0]

@@ -3,6 +3,8 @@ import { createServer } from "node:http";
 import { resolve, extname, sep } from "node:path";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
+import { gzipSync } from "node:zlib";
+const reviewFixesOnly = process.argv.includes("--review-fixes-only");
 const root = process.cwd(),
   dist = resolve(root, "dist");
 const config = JSON.parse(await readFile("vercel.json", "utf8"));
@@ -15,6 +17,7 @@ const worker = (await readdir(resolve(dist, "assets"))).find((name) =>
 assert.ok(worker, "Build first");
 const assets = JSON.parse(await readFile("src/lib/ocr/assets.json", "utf8"));
 let failModel = false;
+let compressedJsonResponses = 0;
 const requests = [];
 const server = createServer(async (req, res) => {
   res.setHeader("Content-Security-Policy", csp);
@@ -53,7 +56,14 @@ const server = createServer(async (req, res) => {
               ? "text/javascript"
               : "application/octet-stream",
     );
-    res.end(await readFile(file));
+    const bytes = await readFile(file);
+    if (extname(file) === ".json") {
+      const compressed = gzipSync(bytes);
+      res.setHeader("Content-Encoding", "gzip");
+      res.setHeader("Content-Length", compressed.length);
+      compressedJsonResponses++;
+      res.end(compressed);
+    } else res.end(bytes);
   } catch {
     res.statusCode = 404;
     res.end();
@@ -84,7 +94,7 @@ try {
     document.fonts.add(font);
     window.serial = 0;
     window.worker = new Worker("/assets/" + worker, { type: "module" });
-    window.read = async (angle = 0, budgetMs = 30000) => {
+    window.read = async (angle = 0, budgetMs = 30000, clipped = false) => {
       const source = new OffscreenCanvas(1400, 850),
         ctx = source.getContext("2d");
       ctx.fillStyle = "#fff";
@@ -103,15 +113,23 @@ try {
       text("Quê quán / Place of origin: Hà Nội", 505);
       text("Nơi thường trú / Place of residence:", 565);
       text("Số 27, Đường Thử Nghiệm,", 620);
-      text("Phường Hòa Bình, Thành phố Hà Nội", 670);
+      text(
+        clipped
+          ? "Phường Hòa Bình, Thành phố Hà Nội, Đường Hoa Sen"
+          : "Phường Hòa Bình, Thành phố Hà Nội",
+        670,
+      );
+      // Crop actual raster pixels through the last printed address line. Other
+      // fields remain inside the frame; no fabricated OCR/truncated flag.
+      const cardWidth = clipped ? 1050 : 1400;
       const rotated = new OffscreenCanvas(
-          angle % 180 ? 850 : 1400,
-          angle % 180 ? 1400 : 850,
+          angle % 180 ? 850 : cardWidth,
+          angle % 180 ? cardWidth : 850,
         ),
         rc = rotated.getContext("2d");
       rc.translate(rotated.width / 2, rotated.height / 2);
       rc.rotate((angle * Math.PI) / 180);
-      rc.drawImage(source, -700, -425);
+      rc.drawImage(source, -cardWidth / 2, -425);
       const image = rc.getImageData(0, 0, rotated.width, rotated.height),
         requestId = ++window.serial,
         start = performance.now();
@@ -147,9 +165,12 @@ try {
   };
   await page.evaluate(bootstrap, { worker, assets });
   const rows = [];
-  for (const angle of (process.argv.includes("--recovery-only") || process.argv.includes("--cancel-only"))
+  for (const angle of process.argv.includes("--recovery-only") ||
+  process.argv.includes("--cancel-only")
     ? []
-    : [0, 90, 180, 270]) {
+    : reviewFixesOnly
+      ? [0]
+      : [0, 90, 180, 270]) {
     const result = await page.evaluate((angle) => window.read(angle), angle);
     assert.equal(result.status, "review", `orientation ${angle} status`);
     const expected = {
@@ -177,9 +198,33 @@ try {
       JSON.stringify({ angle, matches }),
     );
   }
+  let clippedAddress = null;
+  if (reviewFixesOnly) {
+    const result = await page.evaluate(() => window.read(0, 30000, true));
+    assert.equal(result.status, "review");
+    assert.equal(result.data.permanentAddress, "");
+    assert.equal(result.states.permanentAddress, "missing");
+    assert.equal(result.data.idNumber, "001099999993");
+    assert.equal(result.data.fullName, "ĐỖ THỊ THỬ");
+    assert.equal(result.data.dateOfBirth, "2000-02-29");
+    assert.equal(result.data.gender, "Nữ");
+    clippedAddress = {
+      missing: true,
+      otherFourExact: true,
+      wallMs: Math.round(result.wallMs),
+    };
+    assert.ok(
+      compressedJsonResponses >= 2,
+      "Actual worker must initialize through gzip dictionaries",
+    );
+  }
   let offline = { status: "not-run" },
     timeout = { status: "not-run" };
-  if (!process.argv.includes("--recovery-only") && !process.argv.includes("--cancel-only")) {
+  if (
+    !reviewFixesOnly &&
+    !process.argv.includes("--recovery-only") &&
+    !process.argv.includes("--cancel-only")
+  ) {
     await page.context().setOffline(true);
     offline = await page.evaluate(() => window.read());
     assert.equal(offline.data.idNumber, "001099999993");
@@ -187,43 +232,73 @@ try {
     timeout = await page.evaluate(() => window.read(0, 1));
     assert.equal(timeout.status, "timeout");
   }
-  let cancelHeavy=null;
-  if(!process.argv.includes('--recovery-only')){
-    cancelHeavy=await page.evaluate(()=>new Promise((resolve,reject)=>{
-      const requestId=++window.serial,source=new ImageData(new Uint8ClampedArray(2000*2000*4).fill(255),2000,2000);
-      const watchdog=setTimeout(()=>{window.worker.terminate();reject(Error('Cancel probe did not reach reading'));},30000);
-      window.worker.onmessage=({data})=>{
-        if(data.requestId!==requestId)return;
-        if(data.type==='result'){clearTimeout(watchdog);reject(Error('Heavy request completed before cancel'));}
-        if(data.type==='progress'&&data.stage==='reading'){
-          const started=performance.now();setTimeout(()=>{clearTimeout(watchdog);window.worker.terminate();resolve({reachedReading:true,cancelMs:Math.round(performance.now()-started)});},40);
-        }
-      };
-      window.worker.postMessage({type:'read',requestId,source,budgetMs:30000},[source.data.buffer]);
-    }));
-    assert.equal(cancelHeavy.reachedReading,true);assert.ok(cancelHeavy.cancelMs<1000);
+  let cancelHeavy = null;
+  if (!reviewFixesOnly && !process.argv.includes("--recovery-only")) {
+    cancelHeavy = await page.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          const requestId = ++window.serial,
+            source = new ImageData(
+              new Uint8ClampedArray(2000 * 2000 * 4).fill(255),
+              2000,
+              2000,
+            );
+          const watchdog = setTimeout(() => {
+            window.worker.terminate();
+            reject(Error("Cancel probe did not reach reading"));
+          }, 30000);
+          window.worker.onmessage = ({ data }) => {
+            if (data.requestId !== requestId) return;
+            if (data.type === "result") {
+              clearTimeout(watchdog);
+              reject(Error("Heavy request completed before cancel"));
+            }
+            if (data.type === "progress" && data.stage === "reading") {
+              const started = performance.now();
+              setTimeout(() => {
+                clearTimeout(watchdog);
+                window.worker.terminate();
+                resolve({
+                  reachedReading: true,
+                  cancelMs: Math.round(performance.now() - started),
+                });
+              }, 40);
+            }
+          };
+          window.worker.postMessage(
+            { type: "read", requestId, source, budgetMs: 30000 },
+            [source.data.buffer],
+          );
+        }),
+    );
+    assert.equal(cancelHeavy.reachedReading, true);
+    assert.ok(cancelHeavy.cancelMs < 1000);
   }
   await page.evaluate(() => window.worker.terminate());
-  const recovery = await browser.newPage({ bypassCSP: false });
-  await recovery.goto(origin);
-  await recovery.evaluate(bootstrap, { worker, assets });
-  failModel = true;
-  const failure = await recovery.evaluate(() => window.read());
-  assert.equal(failure.status, "engine-unavailable");
-  failModel = false;
-  const retry = await recovery.evaluate(() => window.read());
-  assert.equal(
-    retry.status,
-    "review",
-    JSON.stringify({
-      status: retry.status,
-      wallMs: retry.wallMs,
-      initMs: retry.initMs,
-      modelRequests: requests.filter((p) => p.endsWith(".onnx")).length,
-    }),
-  );
-  assert.equal(retry.data.idNumber, "001099999993");
-  await recovery.close();
+  let failure = { status: "not-run" },
+    retry = { status: "not-run" };
+  if (!reviewFixesOnly) {
+    const recovery = await browser.newPage({ bypassCSP: false });
+    await recovery.goto(origin);
+    await recovery.evaluate(bootstrap, { worker, assets });
+    failModel = true;
+    failure = await recovery.evaluate(() => window.read());
+    assert.equal(failure.status, "engine-unavailable");
+    failModel = false;
+    retry = await recovery.evaluate(() => window.read());
+    assert.equal(
+      retry.status,
+      "review",
+      JSON.stringify({
+        status: retry.status,
+        wallMs: retry.wallMs,
+        initMs: retry.initMs,
+        modelRequests: requests.filter((p) => p.endsWith(".onnx")).length,
+      }),
+    );
+    assert.equal(retry.data.idNumber, "001099999993");
+    await recovery.close();
+  }
   for (const pathname of [
     ...new Set(requests.filter((p) => p.endsWith(".wasm"))),
   ])
@@ -261,6 +336,8 @@ try {
       uniqueAssetRequests: new Set(requests).size,
       errors,
       cancelHeavy,
+      compressedJsonResponses,
+      clippedAddress,
     }),
   );
 } finally {
