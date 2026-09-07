@@ -447,6 +447,8 @@ jobs:
             scripts/__tests__/copilot-ledger-audit.test.mjs \
             scripts/__tests__/copilot-ledger-audit-rpc.test.mjs \
             scripts/__tests__/copilot-ledger-replay-audit-id-migration.test.mjs \
+            scripts/__tests__/copilot-l4-risk-ceiling-acceptance.test.mjs \
+            scripts/__tests__/copilot-demo-deny-fixture.test.mjs \
             scripts/__tests__/check-csp-build-attestation.test.mjs \
             scripts/__tests__/run-copilot-golden-eval.test.mjs \
             scripts/__tests__/check-dependency-audit.test.mjs \
@@ -490,6 +492,8 @@ jobs:
           --exclude 'scripts/__tests__/copilot-ledger-audit.test.mjs'
           --exclude 'scripts/__tests__/copilot-ledger-audit-rpc.test.mjs'
           --exclude 'scripts/__tests__/copilot-ledger-replay-audit-id-migration.test.mjs'
+          --exclude 'scripts/__tests__/copilot-l4-risk-ceiling-acceptance.test.mjs'
+          --exclude 'scripts/__tests__/copilot-demo-deny-fixture.test.mjs'
           --exclude 'scripts/__tests__/check-csp-build-attestation.test.mjs'
           --exclude 'scripts/__tests__/run-copilot-golden-eval.test.mjs'
           --exclude 'scripts/__tests__/check-dependency-audit.test.mjs'
