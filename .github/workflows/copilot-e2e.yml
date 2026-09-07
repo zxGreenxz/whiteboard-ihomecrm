@@ -116,6 +116,14 @@ on:
         description: 'Optional sanitized schema-v2 golden attestation JSON. Runs the full live inventory; incomplete cases/SLA fail the job.'
         required: false
         type: string
+      acceptance_scope:
+        description: 'full: scheduled suite; batch-remaining: only unaccepted batch cases 1–8, including real expiry wait.'
+        required: false
+        type: choice
+        default: full
+        options:
+          - full
+          - batch-remaining
   schedule:
     # 19:00 UTC = 02:00 giờ Việt Nam (UTC+7) — ngoài giờ làm việc.
     - cron: '0 19 * * *'
@@ -133,6 +141,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Validate acceptance selection
+        id: acceptance-inputs
+        env:
+          ACCEPTANCE_SCOPE: ${{ inputs.acceptance_scope }}
+          GOLDEN_ATTESTATION_JSON: ${{ inputs.golden_attestation }}
+        run: |
+          case "${ACCEPTANCE_SCOPE:-full}" in
+            full) ;;
+            batch-remaining)
+              if [ -n "${GOLDEN_ATTESTATION_JSON:-}" ]; then
+                echo "::error::Batch continuation cannot be combined with the full golden lane."
+                exit 1
+              fi
+              ;;
+            *) echo "::error::Unknown acceptance scope."; exit 1 ;;
+          esac
       # fetch-depth: 0 — bước xác minh phía dưới cần TOÀN BỘ lịch sử để trả lời
       # được "SHA của bản deploy có thuộc repo này không". Với clone nông thì một
       # commit hợp lệ nhưng cũ vẫn trượt thành "không thuộc repo": phép kiểm báo
@@ -280,6 +304,7 @@ jobs:
           GOLDEN
 
       - name: 3 spec Copilot (readonly smoke · xác nhận · ma trận nháp)
+        if: ${{ inputs.acceptance_scope != 'batch-remaining' }}
         env:
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
           FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
@@ -343,8 +368,9 @@ jobs:
       #   trận không chạy — một hàng rào bảo mật không được đo chỉ vì một smoke
       #   test khác vừa hỏng là đúng thứ ta không muốn.
       - name: Ba spec hàng rào ghi Copilot (ma trận hành động + kế hoạch theo lô + ma trận L5 — chạy RIÊNG, 1 worker)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.acceptance-inputs.outcome == 'success' }}
         env:
+          ACCEPTANCE_SCOPE: ${{ inputs.acceptance_scope }}
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
           FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
           FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
@@ -380,7 +406,28 @@ jobs:
           set -uo pipefail
           mkdir -p "$THU_MUC_TAI_LEN"
           cd .e2e-fleet
-          npx playwright test             specs/copilot-action-matrix.spec.ts             specs/copilot-plan-batch-consent.spec.ts             specs/copilot-plan-l5-matrix.spec.ts             --reporter=list             --trace=off             --output "$THU_MUC_RAC" 2>&1 | node "$LOC_CHE"             | tee "$THU_MUC_TAI_LEN/list-hang-rao-ghi.log"
+          case "${ACCEPTANCE_SCOPE:-full}" in
+            full)
+              specs=(specs/copilot-action-matrix.spec.ts specs/copilot-plan-batch-consent.spec.ts specs/copilot-plan-l5-matrix.spec.ts)
+              selection=()
+              ;;
+            batch-remaining)
+              if [ -z "${COPILOT_E2E_PIN:-}" ]; then
+                echo "::error::COPILOT_E2E_PIN is required to accept the mixed L5 batch case."
+                exit 1
+              fi
+              specs=(specs/copilot-plan-batch-consent.spec.ts)
+              selection=(--grep 'ca [1-8] —')
+              export COPILOT_PLAN_EXPIRY_WAIT=1
+              ;;
+            *)
+              echo "::error::Unknown acceptance scope."
+              exit 1
+              ;;
+          esac
+          npx playwright test "${specs[@]}" "${selection[@]}" \
+            --reporter=list --trace=off --output "$THU_MUC_RAC" 2>&1 \
+            | node "$LOC_CHE" | tee "$THU_MUC_TAI_LEN/list-hang-rao-ghi.log"
 
       # Dọn TRƯỚC guard, guard TRƯỚC upload. Ba bước tách rời để log nói rõ bước
       # nào làm gì; gộp lại thì một lần `rm` hỏng sẽ ẩn trong bước khác.

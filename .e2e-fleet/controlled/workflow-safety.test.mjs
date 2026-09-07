@@ -432,3 +432,62 @@ test('workflow guard wrapper fails closed when its artifact directory is missing
   assert.equal(cli.status, 1, `${cli.stdout}\n${cli.stderr}`);
   assert.match(`${cli.stdout}${cli.stderr}`, /missing-directory/);
 });
+
+test('workflow continuation selects only the eight remaining batch cases and preserves failures', () => {
+  const workflow = parse(readFileSync(join(root, '.github', 'workflows', 'copilot-e2e.yml'), 'utf8'));
+  const input = workflow.on.workflow_dispatch.inputs.acceptance_scope;
+  assert.deepEqual(input?.options, ['full', 'batch-remaining']);
+  assert.equal(input.default, 'full');
+  const steps = workflow.jobs['copilot-e2e'].steps;
+  const smoke = steps.find(step => step.name?.startsWith('3 spec Copilot'));
+  assert.match(smoke.if, /inputs.acceptance_scope != 'batch-remaining'/);
+  const batch = steps.find(step => step.name?.startsWith('Ba spec hàng rào'));
+  assert.equal(batch.env.ACCEPTANCE_SCOPE, '${{ inputs.acceptance_scope }}');
+  assert.match(batch.if, /steps.acceptance-inputs.outcome == 'success'/);
+  const validation = steps.find(step => step.id === 'acceptance-inputs');
+  assert.equal(steps[0], validation, 'reject invalid selection before any live work');
+  const dir = mkdtempSync(join(tmpdir(), 'copilot-selection-'));
+  const filter = join(dir, 'filter.cjs');
+  writeFileSync(filter, 'process.stdin.pipe(process.stdout);');
+  const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+  const execute = (scope, pin = 'synthetic-selection-pin', exitCode = '0') => spawnSync(bash, ['-c',
+    'npx() { printf "expiry=%s\\n" "$COPILOT_PLAN_EXPIRY_WAIT"; printf "arg=%s\\n" "$@"; return "$SYNTHETIC_EXIT"; };\n' + batch.run,
+  ], { cwd: root, encoding: 'utf8', windowsHide: true, env: {
+    ...process.env, ACCEPTANCE_SCOPE: scope, COPILOT_E2E_PIN: pin,
+    COPILOT_PLAN_EXPIRY_WAIT: '0', SYNTHETIC_EXIT: exitCode,
+    THU_MUC_TAI_LEN: dir, THU_MUC_RAC: join(dir, 'artifacts'), LOC_CHE: filter,
+  } });
+  try {
+    for (const [scope, golden, expected] of [
+      ['batch-remaining', '{}', 1], ['arbitrary-selection', '', 1],
+      ['batch-remaining', '', 0], ['full', '{}', 0], ['', '', 0],
+    ]) {
+      const checked = spawnSync(bash, ['-c', validation.run], { cwd: root, encoding: 'utf8',
+        windowsHide: true, env: { ...process.env, ACCEPTANCE_SCOPE: scope, GOLDEN_ATTESTATION_JSON: golden } });
+      assert.equal(checked.status, expected, checked.stderr);
+    }
+    const selected = execute('batch-remaining');
+    assert.equal(selected.status, 0, selected.stderr);
+    assert.match(selected.stdout, /expiry=1/);
+    assert.match(selected.stdout, /arg=specs\/copilot-plan-batch-consent.spec.ts/);
+    assert.match(selected.stdout, /arg=--grep\narg=ca \[1-8\] —/);
+    assert.doesNotMatch(selected.stdout, /specs\/copilot-(action|plan-l5)-matrix/);
+    assert.equal(execute('batch-remaining', 'synthetic-selection-pin', '7').status, 7);
+    for (const scope of ['', 'full']) {
+      const normal = execute(scope);
+      assert.equal(normal.status, 0, normal.stderr);
+      assert.match(normal.stdout, /expiry=0/);
+      assert.match(normal.stdout, /specs\/copilot-action-matrix.spec.ts/);
+      assert.match(normal.stdout, /specs\/copilot-plan-l5-matrix.spec.ts/);
+      assert.doesNotMatch(normal.stdout, /arg=--grep/);
+    }
+    const unknown = execute('arbitrary-selection');
+    assert.notEqual(unknown.status, 0);
+    assert.doesNotMatch(unknown.stdout, /arg=/);
+    const missingPin = execute('batch-remaining', '');
+    assert.notEqual(missingPin.status, 0);
+    assert.doesNotMatch(missingPin.stdout, /arg=/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
