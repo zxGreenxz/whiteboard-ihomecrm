@@ -179,7 +179,7 @@ jobs:
       - name: Cài Chromium cho Playwright
         run: npx playwright install --with-deps chromium
       - name: Controlled Copilot workflow regressions (local synthetic transport only)
-        run: node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs .e2e-fleet/controlled/workflow-safety.test.mjs
+        run: node --test .e2e-fleet/controlled/golden-provider-stop.test.mjs .e2e-fleet/controlled/workflow-safety.test.mjs .e2e-fleet/controlled/copilot-batch-preflight.test.mjs
 
       - name: Xác định SHA của bản đang chạy ở FLEET_BASE_URL
         env:
