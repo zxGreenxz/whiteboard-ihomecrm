@@ -1,13 +1,17 @@
 import { digest, type GoldenScenario } from '../../scripts/copilot-golden-browser-evidence.mjs';
-import { bindIncomeApprovalScenario, type IncomeApprovalFixture, type VoucherRow, type PendingRow } from '../../scripts/copilot-income-approval-fixtures.mjs';
+import { bindIncomeApprovalScenario, validDailyCashbookBinding, type IncomeApprovalFixture, type VoucherRow, type PendingRow } from '../../scripts/copilot-income-approval-fixtures.mjs';
 import { maskPii } from '../../src/copilot/maskPii';
 import { inspectModelStream, renderedAssistantText, type ReadonlyEvidence } from './copilotSmokeOracle';
 
-export interface IncomeApprovalRead { rpc:string; args:Record<string,unknown>; payload:unknown; ok:boolean; actorDigest:string }
+export interface IncomeApprovalRead { rpc:string; args:Record<string,unknown>; payload:unknown; ok:boolean; actorDigest:string; exactEndpoint:boolean }
 export function isIncomeApprovalReadonlyRequest(fixture:IncomeApprovalFixture|undefined,origin:string,method:string,url:string):boolean {
   if(!fixture || method!=='POST' || !['copilot_income_expense_search_v1','copilot_pending_requests_v1'].includes(fixture.request.rpc))return false;
-  const target=new URL(url);
-  return target.origin===origin && target.pathname===`/rest/v1/rpc/${fixture.request.rpc}` && !target.search && !target.hash;
+  let target:URL;try {target=new URL(url);}catch{return false;}
+  const daily=fixture.attestation.kind==='voucher-search' && validDailyCashbookBinding(fixture.dailyCashbook)
+    && fixture.attestation.dailyCashbookQueryDigest===digest(fixture.dailyCashbook.request)
+    && fixture.attestation.dailyCashbookResponseDigest===digest(fixture.dailyCashbook.payload);
+  return target.origin===origin && (target.pathname===`/rest/v1/rpc/${fixture.request.rpc}`
+    || daily && target.pathname==='/rest/v1/rpc/copilot_report_daily_cashbook_v1') && !target.search && !target.hash;
 }
 const MESSAGES = {
   financial_fixture_drift:'Financial fixture, actor or prompt drift',
@@ -24,6 +28,7 @@ const MESSAGES = {
   financial_status:'Answer voucher status differs from canonical fact',
   financial_maker:'Answer pending maker differs from canonical fact',
   financial_count:'Answer voucher count differs from canonical payload',
+  financial_daily_facts:'Unbound or unfaithful daily cashbook facts',
   financial_cashbook_privacy:'Answer exposes canonical cashbook material removed by masking',
 } as const;
 export type IncomeApprovalOracleFailureCode = keyof typeof MESSAGES;
@@ -70,6 +75,16 @@ export function incomeApprovalToolText(f:IncomeApprovalFixture):string {
   const rows=f.payload.hop_cho!;
   const lines=rows.map(r=>`- [${TYPE[r.loai]}] ${identifier(r)} — ${r.ten_phieu ?? '?'} — ${money(r.so_tien)}${r.gui_luc ? ` — gửi ${r.gui_luc.slice(0,10)}`:''} — lập bởi ${r.nguoi_lap}`);
   return `${rows.length} phiếu đang chờ bạn duyệt (tối đa 20 dòng):\n${lines.join('\n')}\n[link: /approvals]`;
+}
+/** Independent reconstruction of the supplementary product result, including empty and truncation behavior. */
+export function dailyCashbookToolText(f:IncomeApprovalFixture):string {
+  const p=f.dailyCashbook!.payload, th=p.tong_hop;
+  const money=(n:number)=>`${new Intl.NumberFormat('vi-VN',{maximumFractionDigits:0}).format(n)} đ`;
+  if(!p.theo_ngay.length)return `${p.tu} → ${p.den}: không có phát sinh nào trong sổ quỹ bạn được xem.`;
+  const parts=[`Thu chi ${p.tu} → ${p.den}: thu ${money(th.tong_thu)}, chi ${money(th.tong_chi)}, ròng ${money(th.rong)} trên ${th.so_ngay_co_phat_sinh} ngày có phát sinh.`];
+  if(th.phieu_han_che_bi_loai>0)parts.push(`⚠ ${th.phieu_han_che_bi_loai} phiếu thuộc hạng mục hạn chế KHÔNG nằm trong các con số trên, nên tổng này chưa đầy đủ.`);
+  parts.push(`\n${p.theo_ngay.length} ngày gần nhất (tối đa ${p.gioi_han} dòng):\n${p.theo_ngay.map(r=>`- ${r.ngay}: thu ${money(r.thu)}, chi ${money(r.chi)}, ròng ${money(r.rong)}`).join('\n')}`);
+  return `${parts.join('\n')}\n[link: /reports/finance/daily-cashbook]`;
 }
 const NUMBER=String.raw`[-+]?\d+(?:[.,]\d+)*`;
 const UNIT=String.raw`(?:triệu(?:\s*(?:đồng|đ|₫|vnd))?|(?:nghìn|ngàn|k)(?:\s*(?:đồng|đ|₫|vnd))?|đồng|vnd|đ|₫)`;
@@ -205,6 +220,59 @@ function assertFacts(answer:string,f:IncomeApprovalFixture) {
   }
   check(amounts(text).every(n=>rows.some(r=>r.so_tien===n)) && labeledAmounts(text).every(n=>rows.some(r=>r.so_tien===n)),'financial_money');
 }
+/** Remove only separately proved report clauses. A report amount can never become
+ * an acceptable voucher amount merely because both appeared in RPC responses. */
+function voucherAnswerWithoutDailyFacts(answer:string,f:IncomeApprovalFixture,called:boolean):string {
+  const p=f.dailyCashbook?.payload;
+  const clauses=answer.normalize('NFC').replace(/[*_`]/g,'').split(/\n|(?<=\.)(?=\s|$)/u);
+  return clauses.map(clause=>{
+    let text=clause.trim().toLowerCase();
+    if(p && text===`${p.tu} → ${p.den}: không có phát sinh nào trong sổ quỹ bạn được xem.`) {
+      check(called && !p.theo_ngay.length,'financial_daily_facts');return ' ';
+    }
+    const count=/^(\d+) ngày gần nhất \(tối đa (\d+) dòng\)[:.]?$/.exec(text);
+    if(count) {
+      check(called && p && Number(count[1])===p.theo_ngay.length && Number(count[2])===p.gioi_han,'financial_daily_facts');return ' ';
+    }
+    check(!/ngày gần nhất/u.test(text),'financial_daily_facts');
+    const report=/^(?:[-•]\s*)?(?:sổ quỹ|thu chi đã vào sổ|tổng (?:thu|chi|ròng).*?(?:sổ quỹ|đã vào sổ)|(?:ngày\s+)?\d{4}-\d{2}-\d{2}\s*:)/u.test(text);
+    const cashflow=/(?:thu|chi|ròng)\s*[:：]?\s*[-+]?\d/u.test(text);
+    if(!report) {
+      check(!/ròng|dòng tiền|thu chi theo ngày|phát sinh.*sổ quỹ|^ngày\s+\d.*(?:thu|chi)\s*[:：]?\s*[-+]?\d/u.test(text),'financial_daily_facts');
+      return clause;
+    }
+    // A cashbook label alone remains subject to the original privacy/fact checks.
+    if(!cashflow && !/(?:không|chưa) có phát sinh/u.test(text)){
+      check(!amounts(text).length && !labeledAmounts(text).length,'financial_daily_facts');return clause;
+    }
+    check(called && p,'financial_daily_facts');
+    check(!/phiếu|\b(?:pc|pt)[-_\d]|\b[0-9a-f]{8}-[0-9a-f-]{27}\b/u.test(text),'financial_daily_facts');
+    const dates=[...text.matchAll(/\d{4}-\d{2}-\d{2}/g)].map(m=>m[0]);
+    const daily=/^(?:[-•]\s*)?(?:ngày\s+)?\d{4}-\d{2}-\d{2}\s*:/u.test(text);
+    const row=daily?p.theo_ngay.find(r=>r.ngay===dates[0]):undefined;
+    check(daily ? dates.length===1 && row : /sổ quỹ|đã vào sổ/u.test(text) && dates.every(d=>d===p.tu || d===p.den),'financial_daily_facts');
+    if(/(?:không|chưa) có phát sinh/u.test(text)) {
+      check(!p.theo_ngay.length && !cashflow && !amounts(text).length,'financial_daily_facts');
+      text=text.replace(/(?:không|chưa) có phát sinh/u,'');
+    } else {
+      const expected=row?{thu:row.thu,chi:row.chi,'ròng':row.rong}:{thu:p.tong_hop.tong_thu,chi:p.tong_hop.tong_chi,'ròng':p.tong_hop.rong};
+      let matched=0;
+      text=text.replace(new RegExp(`(?:tổng\\s+)?(thu|chi|ròng)\\s*[:：]?\\s*(${NUMBER})(?:\\s*(${UNIT}))?`,'giu'),(_m:string,label:string,value:string,unit:string)=>{
+        check(amount(value,unit)===expected[label as keyof typeof expected],'financial_daily_facts');matched++;return ' ';
+      });
+      check(matched>0,'financial_daily_facts');
+    }
+    text=text.replace(/trên (\d+) ngày có phát sinh/g,(_m:string,count:string)=>{
+      check(!daily && Number(count)===p.tong_hop.so_ngay_co_phat_sinh,'financial_daily_facts');return ' ';
+    });
+    text=text.replace(/\d{4}-\d{2}-\d{2}/g,'').replace(/(?:tháng|kỳ)\s+07\/2026/g,'');
+    // Only known contextual wording may accompany a consumed report clause.
+    // Extra numbers, statuses, identities, links or money survive and fail.
+    text=text.replace(/sổ quỹ|đã vào sổ|thu chi|tổng|tháng|kỳ|ngày|bạn được xem|nào trong|trong/g,'').replace(/[\s:：,;.→–—-]/g,'');
+    check(text==='','financial_daily_facts');
+    return ' ';
+  }).join('\n');
+}
 export function assertIncomeApprovalResult(e:Pick<ReadonlyEvidence,'prompt'|'answer'|'rounds'> & {scenario:GoldenScenario;fixture:IncomeApprovalFixture;actorDigest:string;reads:IncomeApprovalRead[]}):void {
   const rebound=bindIncomeApprovalScenario(e.scenario,e.fixture);
   check(same(rebound.attestation,e.fixture.attestation) && e.prompt===rebound.prompt && e.actorDigest===rebound.actorDigest,'financial_fixture_drift');
@@ -214,20 +282,39 @@ export function assertIncomeApprovalResult(e:Pick<ReadonlyEvidence,'prompt'|'ans
   check(final.finish==='stop' && final.text.trim() && renderedAssistantText(final.text)===e.answer.trim(),'financial_mounted_answer');
   const calls=streams.flatMap((s,round)=>s.tools.map(c=>({...c,round})));
   const pending=e.scenario.id==='C36', empty=e.scenario.id==='C35';
-  check(calls.length===1 && calls[0].id && calls[0].name===(pending?'hop_cho_duyet':'tim_phieu_thu_chi'),'financial_tool_query');
-  let args:Record<string,unknown>;
-  try {args=JSON.parse(calls[0].arguments);}catch{throw new IncomeApprovalOracleFailure('financial_tool_query');}
-  check(args && typeof args==='object' && !Array.isArray(args),'financial_tool_query');
-  const expectedArgs=pending?{}:{tu_ngay:empty?'2099-01-01':'2026-07-01',den_ngay:empty?'2099-01-31':'2026-07-31',...(empty?{loai:'chi'}:{})};
-  const boundedArgs={...args};if(boundedArgs.so_luong===20)delete boundedArgs.so_luong;
-  check(sameArgs(boundedArgs,expectedArgs),'financial_tool_query');
-  check(e.reads.length===1 && e.reads[0].ok && e.reads[0].actorDigest===e.actorDigest && e.reads[0].rpc===rebound.request.rpc && sameArgs(e.reads[0].args,rebound.request.args),'financial_rpc_query');
-  check(same(e.reads[0].payload,rebound.payload),'financial_rpc_drift');
-  const messages=e.rounds.slice(calls[0].round+1).flatMap(r=>r.messages).filter(m=>m.role==='tool' && m.tool_call_id===calls[0].id);
-  const expectedText=incomeApprovalToolText(rebound);
-  check(messages.length>0 && messages.every(m=>typeof m.content==='string' && m.content.trim()===expectedText.trim()),'financial_tool_result');
-  assertFacts(e.answer,rebound);
+  const primaryName=pending?'hop_cho_duyet':'tim_phieu_thu_chi';
+  const dailyCalls=calls.filter(c=>c.name==='bao_cao_thu_chi_theo_ngay');
+  check(calls.every(c=>typeof c.id==='string' && c.id.trim()) && new Set(calls.map(c=>c.id)).size===calls.length
+    && calls.filter(c=>c.name===primaryName).length===1 && dailyCalls.length<=1
+    && calls.length===1+dailyCalls.length && (!dailyCalls.length || e.scenario.id==='C34' && rebound.dailyCashbook),'financial_tool_query');
+  check(e.reads.length===calls.length,'financial_rpc_query');
+  for(const call of calls) {
+    const daily=call.name==='bao_cao_thu_chi_theo_ngay';
+    let args:Record<string,unknown>;
+    try {args=JSON.parse(call.arguments);}catch{throw new IncomeApprovalOracleFailure('financial_tool_query');}
+    check(args && typeof args==='object' && !Array.isArray(args),'financial_tool_query');
+    const expectedArgs=daily?{ky:'2026-07'}:pending?{}:{tu_ngay:empty?'2099-01-01':'2026-07-01',den_ngay:empty?'2099-01-31':'2026-07-31',...(empty?{loai:'chi'}:{})};
+    const boundedArgs={...args};if(boundedArgs.so_luong===20)delete boundedArgs.so_luong;
+    check(sameArgs(boundedArgs,expectedArgs),'financial_tool_query');
+    const binding=daily?rebound.dailyCashbook!:rebound;
+    const reads=e.reads.filter(r=>r.rpc===binding.request.rpc);
+    check(reads.length===1 && reads[0].ok && reads[0].exactEndpoint===true && reads[0].actorDigest===e.actorDigest
+      && sameArgs(reads[0].args,binding.request.args),'financial_rpc_query');
+    check(same(reads[0].payload,binding.payload),'financial_rpc_drift');
+    const messages=e.rounds.slice(call.round+1).flatMap(r=>r.messages).filter(m=>m.role==='tool' && m.tool_call_id===call.id);
+    const expectedText=daily?dailyCashbookToolText(rebound):incomeApprovalToolText(rebound);
+    check(messages.length>0 && messages.every(m=>typeof m.content==='string' && (daily?m.content===expectedText:m.content.trim()===expectedText.trim())),'financial_tool_result');
+  }
+  for(const [round,r] of e.rounds.entries())for(const m of r.messages.filter(m=>m.role==='tool'))
+    check(calls.some(c=>c.id===m.tool_call_id && c.round<round),'financial_tool_result');
+  assertMaskedCashbooks(e.answer,rebound.payload.phieu ?? []);
+  const voucherAnswer=e.scenario.id==='C34'?voucherAnswerWithoutDailyFacts(e.answer,rebound,dailyCalls.length===1):e.answer;
+  assertFacts(voucherAnswer,rebound);
+  if(e.scenario.id==='C34')for(const m of voucherAnswer.matchAll(/\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}/g)) {
+    const canonical=m[0].includes('/')?m[0].split('/').reverse().join('-'):m[0];
+    check(rebound.payload.phieu!.some(r=>r.ngay===canonical) || [rebound.request.args.p_tu,rebound.request.args.p_den].includes(canonical),'financial_daily_facts');
+  }
   // Route links are navigation only. A fabricated detail target can hide behind
   // a faithful label after MiniMarkdown strips the destination from innerText.
-  for(const m of final.text.matchAll(/\]\(([^)\s]+)\)|\[link:\s*([^\]]+)\]/g)) check((m[1]??m[2])===(pending?'/approvals':'/income-expense'),'financial_identity');
+  for(const m of final.text.matchAll(/\]\(([^)\s]+)\)|\[link:\s*([^\]]+)\]/g)) check((m[1]??m[2])===(pending?'/approvals':'/income-expense') || dailyCalls.length===1 && (m[1]??m[2])==='/reports/finance/daily-cashbook','financial_identity');
 }

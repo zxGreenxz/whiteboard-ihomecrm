@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as evidence from '../copilot-golden-browser-evidence.mjs';
 import { bindContractScenario, contractQuery } from '../copilot-contract-fixtures.mjs';
-import { bindIncomeApprovalScenario, incomeApprovalRequest } from '../copilot-income-approval-fixtures.mjs';
+import { bindIncomeApprovalScenario, incomeApprovalRequest, dailyCashbookRequest } from '../copilot-income-approval-fixtures.mjs';
 
 const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', trang_thai:'ACTIVE', khach_hang: 'Demo An', phong: 'A101', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', tien_thue: 3000000, tien_coc: 6000000 };
 test('contract binding binds exact identity/query and rejects empty, ambiguous or drifting fixtures', () => {
@@ -414,4 +414,33 @@ test('C32 customer preflight is a required empty array and attested digest', () 
  for(const customerPayload of [undefined,null,{},[{name:'not empty'}]]) assert.throws(()=>bindContractScenario(scenario,{...input,customerPayload}),/fixture_unbound/);
  const fixture=bindContractScenario(scenario,{...input,customerPayload:[]});
  assert.equal(fixture.attestation.customerDigest,evidence.digest([]));
+});
+
+const dailyFixtureInput=()=>({request:dailyCashbookRequest(),payload:{gioi_han:20,so_luong:2,tu:'2026-07-01',den:'2026-07-31',tong_hop:{tong_thu:9000,tong_chi:17000,rong:-8000,so_ngay_co_phat_sinh:2,phieu_han_che_bi_loai:0},theo_ngay:[{ngay:'2026-07-20',thu:9000,chi:2000,rong:7000},{ngay:'2026-07-19',thu:0,chi:15000,rong:-15000}]}});
+test('C34 daily binding validates full posted report independently from unposted vouchers',()=>{
+  const scenario=manifest.cases.find(c=>c.id==='C34'), primary=financialInput('C34');
+  const bind=dailyCashbook=>bindIncomeApprovalScenario(scenario,{...primary,dailyCashbook});
+  const input=dailyFixtureInput(), bound=bind(input), before=bindIncomeApprovalScenario(scenario,primary);
+  assert.equal(bound.attestation.dailyCashbookQueryDigest,evidence.digest(input.request));
+  assert.equal(bound.attestation.dailyCashbookResponseDigest,evidence.digest(input.payload));
+  for(const k of ['queryDigest','identityDigest','responseDigest'])assert.equal(bound.attestation[k],before.attestation[k]);
+  const changes=[v=>{v.request.rpc='copilot_other_v1'},v=>{v.extra=1},v=>{v.payload.extra=1},v=>{delete v.payload.den},v=>{v.payload.so_luong=3},v=>{v.payload.gioi_han=50},v=>{v.payload.tu='2026-06-01'},v=>{v.payload.den='2026-08-01'},v=>{v.payload.tong_hop.tong_thu=-1},v=>{v.payload.tong_hop.tong_chi=Infinity},v=>{v.payload.tong_hop.rong=8000},v=>{v.payload.tong_hop.so_ngay_co_phat_sinh=1},v=>{v.payload.tong_hop.phieu_han_che_bi_loai=-1},v=>{v.payload.theo_ngay[0].thu='9000'},v=>{v.payload.theo_ngay[0].rong=0},v=>{v.payload.theo_ngay[0].ngay='2026-08-01'},v=>{v.payload.theo_ngay[1].ngay='2026-07-20'},v=>{v.payload.theo_ngay.reverse()}];
+  for(const mutate of changes){const bad=dailyFixtureInput();mutate(bad);assert.throws(()=>bind(bad),/fixture_unbound/);}
+  for(const [k,v] of [['p_organization_id','other'],['p_tu','2026-06-01'],['p_den','2026-07-30'],['p_building_id','aaaaaaaa-0000-4000-8000-000000000001'],['p_limit',50],['extra',true]]){const bad=dailyFixtureInput();bad.request.args[k]=v;assert.throws(()=>bind(bad),/fixture_unbound/);}
+  for(const id of ['C35','C36'])assert.throws(()=>bindIncomeApprovalScenario(manifest.cases.find(c=>c.id===id),{...financialInput(id),dailyCashbook:input}),/fixture_unbound/);
+  const empty=dailyFixtureInput();empty.payload.theo_ngay=[];empty.payload.so_luong=0;Object.assign(empty.payload.tong_hop,{tong_thu:0,tong_chi:0,rong:0,so_ngay_co_phat_sinh:0});assert.doesNotThrow(()=>bind(empty));
+  const truncated=dailyFixtureInput();truncated.payload.theo_ngay=Array.from({length:20},(_,i)=>({ngay:`2026-07-${String(31-i).padStart(2,'0')}`,thu:1,chi:2,rong:-1}));truncated.payload.so_luong=20;truncated.payload.tong_hop.so_ngay_co_phat_sinh=31;assert.doesNotThrow(()=>bind(truncated));
+});
+test('C34 daily evidence pairs attestation hashes and conditional call digest without changing primary proof',()=>{
+  const scenario=manifest.cases.find(c=>c.id==='C34'), f=bindIncomeApprovalScenario(scenario,{...financialInput('C34'),dailyCashbook:dailyFixtureInput()}).attestation;
+  const run=evidence.createRun(golden,manifest,{...attestation,incomeApprovalFixtures:{C34:f}},['C34']);
+  evidence.transitionCase(run,'C34',{status:'running'});
+  evidence.transitionCase(run,'C34',{status:'pass',timing:{startedAt:'2026-09-06T10:00:00.000Z',completedAt:'2026-09-06T10:00:01.000Z',totalMs:1000,humanWaitMs:0,processingMs:1000},observed:{answerDigest:digest,promptDigest:evidence.digest(scenario.prompt),promptTemplateDigest:evidence.digest(scenario.prompt),bindingDigest:evidence.digest(f),fixtureDigest:evidence.digest(f),queryDigest:f.queryDigest,identityDigest:f.identityDigest,responseDigest:f.responseDigest,rpcDigest:f.responseDigest,modelRounds:2,toolResultLinked:true,finalAnswerMounted:true,readRpc:incomeApprovalRequest('C34').rpc,businessWrites:0,networkErrors:0,oracleVersion:scenario.oracle,dailyCashbookCalls:1,dailyCashbookDigest:f.dailyCashbookResponseDigest}});
+  assert.deepEqual(evidence.validateBrowserRun(golden,manifest,run),[]);
+  for(const mutate of [r=>{delete r.attestation.incomeApprovalFixtures.C34.dailyCashbookQueryDigest},r=>{delete r.attestation.incomeApprovalFixtures.C34.dailyCashbookResponseDigest},r=>{r.attestation.incomeApprovalFixtures.C34.dailyCashbookResponseDigest='c'.repeat(64)},r=>{r.cases[33].observed.dailyCashbookCalls=2},r=>{delete r.cases[33].observed.dailyCashbookCalls},r=>{delete r.cases[33].observed.dailyCashbookDigest},r=>{r.cases[33].observed.dailyCashbookCalls=0},r=>{r.cases[33].observed.rpcDigest=f.dailyCashbookResponseDigest},r=>{r.cases[33].observed.networkErrors=1}]){const bad=structuredClone(run);mutate(bad);assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length);}
+  const unused=structuredClone(run);unused.cases[33].observed.dailyCashbookCalls=0;delete unused.cases[33].observed.dailyCashbookDigest;assert.deepEqual(evidence.validateBrowserRun(golden,manifest,unused),[]);
+  for(const id of ['C35','C36']) {
+    const fixture=bindIncomeApprovalScenario(manifest.cases.find(c=>c.id===id),financialInput(id)).attestation;
+    assert.throws(()=>evidence.createRun(golden,manifest,{...attestation,incomeApprovalFixtures:{[id]:{...fixture,dailyCashbookQueryDigest:f.dailyCashbookQueryDigest,dailyCashbookResponseDigest:f.dailyCashbookResponseDigest}}},[id]));
+  }
 });

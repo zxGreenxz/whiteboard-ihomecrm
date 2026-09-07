@@ -24,6 +24,7 @@ export interface Attestation {
 }
 export interface IncomeApprovalFixtureAttestation {
   kind:'voucher-search'|'voucher-empty'|'pending-inbox'; organizationId:typeof DEMO_ORG;
+  dailyCashbookQueryDigest?:string; dailyCashbookResponseDigest?:string;
   actorDigest:string; queryDigest:string; identityDigest:string; responseDigest:string;
 }
 export interface Timing {
@@ -33,6 +34,7 @@ export interface Observation {
   answerDigest: string; promptDigest: string; promptTemplateDigest: string; bindingDigest: string;
   rpcDigest: string; modelRounds: number; toolResultLinked: true; finalAnswerMounted: true;
   fixtureDigest?: string; queryDigest?: string; identityDigest?: string; searchDigest?: string; detailDigest?: string; responseDigest?:string; customerDigest?: string;
+  dailyCashbookCalls?:0|1; dailyCashbookDigest?:string;
   contractCalls?: number; customerCalls?: number;
   readRpc: 'copilot_available_rooms_v1' | 'copilot_contract_search_v1' | 'copilot_contract_detail_v1' | 'copilot_income_expense_search_v1' | 'copilot_pending_requests_v1'; businessWrites: number; networkErrors: number; oracleVersion: string;
 }

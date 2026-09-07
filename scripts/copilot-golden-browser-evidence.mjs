@@ -69,7 +69,8 @@ const INCOME_APPROVAL_MAPPING = {
 };
 function validIncomeApprovalFixtures(fixtures, actorDigest) {
   return keysOnly(fixtures,Object.keys(INCOME_APPROVAL_MAPPING)) && Object.entries(fixtures).every(([id,f]) =>
-    keysOnly(f,['kind','organizationId','actorDigest','queryDigest','identityDigest','responseDigest'])
+    keysOnly(f,['kind','organizationId','actorDigest','queryDigest','identityDigest','responseDigest',...(id==='C34'?['dailyCashbookQueryDigest','dailyCashbookResponseDigest']:[])])
+    && (f.dailyCashbookQueryDigest===undefined && f.dailyCashbookResponseDigest===undefined || id==='C34' && ['dailyCashbookQueryDigest','dailyCashbookResponseDigest'].every(k=>typeof f[k]==='string' && HASH.test(f[k])))
     && f.kind === INCOME_APPROVAL_MAPPING[id][1] && f.organizationId === DEMO_ORG && f.actorDigest === actorDigest
     && ['actorDigest','queryDigest','identityDigest','responseDigest'].every(k=>typeof f[k] === 'string' && HASH.test(f[k])));
 }
@@ -112,7 +113,7 @@ function validPass(c, attestation) {
   const fixture = contract ? attestation?.contractFixtures?.[c.id] : attestation?.incomeApprovalFixtures?.[c.id];
   const correctMapping = mapping ? c.oracle === mapping[0] : c.oracle === ({ C01: 'available-rooms-v1', C13: 'available-rooms-building-v1' })[c.id];
   return correctMapping && validTiming(c.timing)
-    && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion', ...(contract ? ['fixtureDigest','queryDigest','identityDigest','searchDigest','detailDigest', ...(c.id === 'C32' ? ['customerDigest','contractCalls','customerCalls'] : [])] : financial ? ['fixtureDigest','queryDigest','identityDigest','responseDigest'] : [])])
+    && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion', ...(contract ? ['fixtureDigest','queryDigest','identityDigest','searchDigest','detailDigest', ...(c.id === 'C32' ? ['customerDigest','contractCalls','customerCalls'] : [])] : financial ? ['fixtureDigest','queryDigest','identityDigest','responseDigest',...(c.id==='C34'?['dailyCashbookCalls','dailyCashbookDigest']:[])] : [])])
     && ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest'].every(k => typeof o[k] === 'string' && HASH.test(o[k]))
     && Number.isInteger(o.modelRounds) && o.modelRounds >= 2 && o.toolResultLinked === true && o.finalAnswerMounted === true
     && o.readRpc === (mapping ? mapping[2] : 'copilot_available_rooms_v1') && o.oracleVersion === c.oracle
@@ -124,7 +125,10 @@ function validPass(c, attestation) {
       && o.rpcDigest === (fixture.detailDigest ?? fixture.searchDigest)))
     && (!financial || (fixture && validIncomeApprovalFixtures({[c.id]:fixture},attestation.actorDigest)
       && o.fixtureDigest === digest(fixture) && o.bindingDigest === digest(fixture)
-      && ['queryDigest','identityDigest','responseDigest'].every(k=>o[k] === fixture[k]) && o.rpcDigest === fixture.responseDigest))
+      && ['queryDigest','identityDigest','responseDigest'].every(k=>o[k] === fixture[k]) && o.rpcDigest === fixture.responseDigest
+      && (c.id!=='C34' || (o.dailyCashbookCalls===undefined && fixture.dailyCashbookResponseDigest===undefined && o.dailyCashbookDigest===undefined
+        || o.dailyCashbookCalls===0 && o.dailyCashbookDigest===undefined
+        || o.dailyCashbookCalls===1 && typeof fixture.dailyCashbookResponseDigest==='string' && o.dailyCashbookDigest===fixture.dailyCashbookResponseDigest))))
     && o.businessWrites === 0 && o.networkErrors === 0;
 }
 

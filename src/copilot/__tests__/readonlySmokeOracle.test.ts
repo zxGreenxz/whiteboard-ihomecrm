@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TestCase, TestResult } from '@playwright/test/reporter';
 import GoldenReporter from '../../../.e2e-fleet/goldenReporter';
-import { assertIncomeApprovalResult, IncomeApprovalOracleFailure, incomeApprovalOracleDiagnostic, incomeApprovalFixtureFailureReason, isIncomeApprovalOracleFailureCode, isIncomeApprovalReadonlyRequest } from '../../../.e2e-fleet/specs/copilotIncomeApprovalOracle';
+import { assertIncomeApprovalResult, dailyCashbookToolText, IncomeApprovalOracleFailure, incomeApprovalOracleDiagnostic, incomeApprovalFixtureFailureReason, isIncomeApprovalOracleFailureCode, isIncomeApprovalReadonlyRequest } from '../../../.e2e-fleet/specs/copilotIncomeApprovalOracle';
 import { bindIncomeApprovalScenario, incomeApprovalRequest } from '../../../scripts/copilot-income-approval-fixtures.mjs';
 import { inspectModelStream, assertReadonlyResult, unexpectedReadonlyMutation, renderedAssistantText } from '../../../.e2e-fleet/specs/copilotSmokeOracle';
 const chunk = (delta: object, finish_reason: string | null) => `data: ${JSON.stringify({ choices: [{ delta, finish_reason }] })}\n\n`;
@@ -58,7 +58,7 @@ function incomeEvidence(id='C34') {
   const messages: FixtureMessage[]=[{role:'user',content:scenario.prompt}];
   const rounds=[{body:chunk({tool_calls:[{index:0,id:'ie-read-1',function:{name:id==='C36'?'hop_cho_duyet':'tim_phieu_thu_chi',arguments:JSON.stringify(toolArgs)}}]},'tool_calls')+'data: [DONE]\n\n',messages},
     {body:chunk({content:text},'stop')+'data: [DONE]\n\n',messages:[...messages,{role:'tool',tool_call_id:'ie-read-1',content:toolText}]}];
-  return {scenario,fixture,prompt:scenario.prompt,answer:text,rounds,actorDigest,reads:[{rpc:request.rpc as string,args:{...request.args} as Record<string,unknown>,payload:structuredClone(data) as unknown,ok:true,actorDigest}]};
+  return {scenario,fixture,prompt:scenario.prompt,answer:text,rounds,actorDigest,reads:[{rpc:request.rpc as string,args:{...request.args} as Record<string,unknown>,payload:structuredClone(data) as unknown,ok:true,exactEndpoint:true,actorDigest}]};
 }
 function changeIncomeAnswer(e:ReturnType<typeof incomeEvidence>,text:string) {
   e.answer=text;e.rounds.at(-1)!.body=chunk({content:text},'stop')+'data: [DONE]\n\n';return e;
@@ -741,4 +741,125 @@ it.each([' Khách hàng: Demo An.',' Khách hàng tên là Demo An.',' SĐT: 090
 });
 it('C32 permits absence and query repetition without requiring customer tool use',()=>{
  const e=absentChain(['tim_hop_dong']); expect(()=>assertContractResult(changeContractAnswer(e,`Không tìm thấy hợp đồng của khách hàng "${e.fixture.query}". Không tìm thấy khách hàng này.`))).not.toThrow();
+});
+
+const dailyRequest = {rpc:'copilot_report_daily_cashbook_v1' as const,args:{p_organization_id:'dddd0000-0000-4000-8000-000000000001',p_tu:'2026-07-01',p_den:'2026-07-31',p_building_id:null,p_limit:20}};
+const dailyPayload = {gioi_han:20,so_luong:2,tu:'2026-07-01',den:'2026-07-31',tong_hop:{tong_thu:9000,tong_chi:17000,rong:-8000,so_ngay_co_phat_sinh:2,phieu_han_che_bi_loai:0},theo_ngay:[{ngay:'2026-07-20',thu:9000,chi:2000,rong:7000},{ngay:'2026-07-19',thu:0,chi:15000,rong:-15000}]};
+const dailyText='Thu chi 2026-07-01 → 2026-07-31: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ trên 2 ngày có phát sinh.\n\n2 ngày gần nhất (tối đa 20 dòng):\n- 2026-07-20: thu 9.000 đ, chi 2.000 đ, ròng 7.000 đ\n- 2026-07-19: thu 0 đ, chi 15.000 đ, ròng -15.000 đ\n[link: /reports/finance/daily-cashbook]';
+function dailyEvidence() {
+  const e=incomeEvidence();
+  e.fixture=bindIncomeApprovalScenario(e.scenario,{...e.fixture,dailyCashbook:{request:structuredClone(dailyRequest),payload:structuredClone(dailyPayload)}});
+  const primary=inspectModelStream(e.rounds[0].body).tools[0];
+  e.rounds[0].body=chunk({tool_calls:[{index:0,id:primary.id,function:{name:primary.name,arguments:primary.arguments}},{index:1,id:'daily-1',function:{name:'bao_cao_thu_chi_theo_ngay',arguments:'{"ky":"2026-07"}'}}]},'tool_calls')+'data: [DONE]\n\n';
+  e.rounds[1].messages.push({role:'tool',tool_call_id:'daily-1',content:dailyText});
+  e.reads.push({rpc:dailyRequest.rpc,args:{...dailyRequest.args},payload:structuredClone(dailyPayload),ok:true,exactEndpoint:true,actorDigest:e.actorDigest});
+  return e;
+}
+describe('C34 supplementary daily cashbook',()=>{
+  it('accepts independently bound primary plus parallel daily tool results',()=>expect(()=>assertIncomeApprovalResult(dailyEvidence())).not.toThrow());
+  it('accepts response arrival in reverse order',()=>{const e=dailyEvidence();e.reads.reverse();expect(()=>assertIncomeApprovalResult(e)).not.toThrow();});
+  it('accepts labeled posted report totals and dates independently of voucher amounts',()=>{
+    const e=dailyEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+'\nSổ quỹ đã vào sổ tháng 07/2026: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ.\nNgày 2026-07-20: thu 9.000 đ, chi 2.000 đ, ròng 7.000 đ.'))).not.toThrow();
+  });
+  it('checks daily actor',()=>{const e=dailyEvidence();e.reads[1].actorDigest='c'.repeat(64);expect(()=>assertIncomeApprovalResult(e)).toThrow();});
+  it('checks full actual daily payload',()=>{const e=dailyEvidence();e.reads[1].payload={...dailyPayload,unexpected:1};expect(()=>assertIncomeApprovalResult(e)).toThrow();});
+  it('checks later exact linked daily result',()=>{const e=dailyEvidence();e.rounds[1].messages.pop();expect(()=>assertIncomeApprovalResult(e)).toThrow();});
+  it('exempts only the C34 bound daily endpoint',()=>{
+    const origin='https://demo.supabase.co', url=origin+'/rest/v1/rpc/copilot_report_daily_cashbook_v1';
+    expect(isIncomeApprovalReadonlyRequest(dailyEvidence().fixture,origin,'POST',url)).toBe(true);
+    for(const f of [incomeEvidence().fixture,incomeEvidence('C35').fixture,incomeEvidence('C36').fixture])expect(isIncomeApprovalReadonlyRequest(f,origin,'POST',url)).toBe(false);
+    for(const [method,target] of [['GET',url],['POST',url+'?x=1'],['POST',url+'#hash'],['POST',url+'/extra'],['POST',url.replace('demo.','evil.')],['POST',url.replace('daily_cashbook','other_report')]])expect(isIncomeApprovalReadonlyRequest(dailyEvidence().fixture,origin,method,target)).toBe(false);
+  });
+});
+
+function setDailyCalls(e:ReturnType<typeof dailyEvidence>,calls:{id:string;name:string;arguments:string}[]) {
+  e.rounds[0].body=chunk({tool_calls:calls.map((c,index)=>({index,id:c.id,function:{name:c.name,arguments:c.arguments}}))},'tool_calls')+'data: [DONE]\n\n';
+}
+describe('C34 supplementary proof adversarial cases',()=>{
+  it.each(['missing primary','duplicate daily','third tool','duplicate IDs','empty ID','unknown tool'])('rejects %s',mode=>{
+    const e=dailyEvidence(), calls=inspectModelStream(e.rounds[0].body).tools;
+    if(mode==='missing primary')calls.shift();if(mode==='duplicate daily')calls.push({...calls[1],id:'daily-2'});if(mode==='third tool')calls.push({id:'third',name:'so_quy',arguments:'{}'});if(mode==='duplicate IDs')calls[1].id=calls[0].id;if(mode==='empty ID')calls[1].id=' ';if(mode==='unknown tool')calls[1].name='other';
+    setDailyCalls(e,calls);expect(()=>assertIncomeApprovalResult(e)).toThrow();
+  });
+  it.each([{ky:'2026-08'},{tu:'2026-07-01',den:'2026-07-31'},{ky:'2026-07',toa_nha_id:null},{ky:'2026-07',so_luong:50},{ky:'2026-07',extra:1}])('rejects supplementary raw arguments %j',args=>{
+    const e=dailyEvidence(),calls=inspectModelStream(e.rounds[0].body).tools;calls[1].arguments=JSON.stringify(args);setDailyCalls(e,calls);expect(()=>assertIncomeApprovalResult(e)).toThrow();
+  });
+  it('accepts explicit default limits and reversed parallel call order',()=>{const e=dailyEvidence(),calls=inspectModelStream(e.rounds[0].body).tools;calls[1].arguments='{"ky":"2026-07","so_luong":20}';calls.reverse();setDailyCalls(e,calls);expect(()=>assertIncomeApprovalResult(e)).not.toThrow();});
+  it('accepts sequential daily then primary calls with later results',()=>{
+    const e=dailyEvidence(),calls=inspectModelStream(e.rounds[0].body).tools,final=e.rounds[1];
+    setDailyCalls(e,[calls[1]]);
+    e.rounds.splice(1,0,{body:chunk({tool_calls:[{index:0,id:calls[0].id,function:{name:calls[0].name,arguments:calls[0].arguments}}]},'tool_calls')+'data: [DONE]\n\n',messages:[e.rounds[0].messages[0],final.messages[2]]});
+    expect(()=>assertIncomeApprovalResult(e)).not.toThrow();
+  });
+  it.each(['missing response','duplicate response','failed response','endpoint','wrong result','orphan result','premature result','digest drift'])('rejects %s',mode=>{
+    const e=dailyEvidence();
+    if(mode==='missing response')e.reads.pop();if(mode==='duplicate response')e.reads[1]=structuredClone(e.reads[0]);if(mode==='failed response')e.reads[1].ok=false;if(mode==='endpoint')e.reads[1].exactEndpoint=false;if(mode==='wrong result')e.rounds[1].messages[2].content+=' forged';if(mode==='orphan result')e.rounds[1].messages.push({role:'tool',tool_call_id:'orphan',content:'other'});if(mode==='premature result'){e.rounds[0].messages.push(e.rounds[1].messages.pop()!);}if(mode==='digest drift')e.fixture.attestation.dailyCashbookResponseDigest='c'.repeat(64);
+    expect(()=>assertIncomeApprovalResult(e)).toThrow();
+  });
+  it.each(['p_organization_id','p_tu','p_den','p_building_id','p_limit','extra'])('rejects wrong daily RPC %s',key=>{const e=dailyEvidence();e.reads[1].args[key]='wrong';expect(()=>assertIncomeApprovalResult(e)).toThrow();});
+  it.each([
+    'Sổ quỹ đã vào sổ tháng 07/2026: thu 1.000 đ, chi 11.000 đ, ròng -10.000 đ.',
+    'Sổ quỹ đã vào sổ tháng 07/2026: thu 9.000 đ, chi 17.000 đ, ròng 8.000 đ.',
+    'Ngày 2026-07-19: thu 9.000 đ, chi 2.000 đ, ròng 7.000 đ.',
+    'Ngày 2026-07-18: thu 0 đ, chi 15.000 đ, ròng -15.000 đ.',
+    'Sổ quỹ đã vào sổ tháng 07/2026: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ, khác 1.000 đ.',
+    'Sổ quỹ đã vào sổ phiếu PC001: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ.',
+    'Tổng thu 9.000 đ, tổng chi 17.000 đ.',
+    'Dòng tiền ròng 1.000 đ.',
+    'Ngày 2026-07-20: thu 1.000 đ.',
+    'Ngày 2026-07-12 chi 1.000 đ.',
+    'Sổ quỹ: 1.000 đ.',
+    'Sổ quỹ tháng 07/2026: chưa có phát sinh.',
+  ])('rejects unfaithful or unscoped daily claims %s',text=>{const e=dailyEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+'\n'+text))).toThrow();});
+  it('does not allow report money to replace voucher money',()=>{const e=dailyEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('11.000 đồng','17.000 đồng')))).toThrow();});
+  it('does not allow report facts without an actual daily call',()=>{const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+'\nSổ quỹ đã vào sổ tháng 07/2026: thu 1.000 đ.'))).toThrow();});
+  it('rejects unknown daily report links',()=>{const e=dailyEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' [báo cáo](/reports/finance/daily-cashbook/private)'))).toThrow();});
+  it('diagnoses only the exact daily endpoint and never leaks query strings',()=>{expect(diagnosticEndpoint('https://demo/rest/v1/rpc/copilot_report_daily_cashbook_v1?secret=hidden')).toBe('daily_cashbook');expect(diagnosticEndpoint('https://demo/rest/v1/rpc/copilot_report_daily_cashbook_v1/extra')).toBe('other_rpc');});
+});
+
+describe('C34 daily report limit and empty rendering',()=>{
+  it('reconstructs restricted and truncated report counts without summing displayed rows',()=>{
+    const e=dailyEvidence(),p=structuredClone(dailyPayload);p.tong_hop.so_ngay_co_phat_sinh=31;p.tong_hop.phieu_han_che_bi_loai=3;
+    e.fixture=bindIncomeApprovalScenario(e.scenario,{...e.fixture,dailyCashbook:{request:dailyRequest,payload:p}});
+    expect(dailyCashbookToolText(e.fixture)).toBe(dailyText.replace('trên 2 ngày','trên 31 ngày').replace('\n\n2 ngày','\n⚠ 3 phiếu thuộc hạng mục hạn chế KHÔNG nằm trong các con số trên, nên tổng này chưa đầy đủ.\n\n2 ngày'));
+    e.reads[1].payload=p;e.rounds[1].messages[2].content=dailyCashbookToolText(e.fixture);
+    const text=e.answer+'\nSổ quỹ đã vào sổ tháng 07/2026: thu 9.000 đ, chi 17.000 đ, ròng -8.000 đ trên 31 ngày có phát sinh.\n2 ngày gần nhất (tối đa 20 dòng):\nNgày 2026-07-20: thu 9.000 đ, chi 2.000 đ, ròng 7.000 đ.';
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,text))).not.toThrow();
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,text.replace('31 ngày','2 ngày')))).toThrow();
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,text.replace('2 ngày gần nhất','31 ngày gần nhất')))).toThrow();
+  });
+  it('reconstructs exact empty text and proves an explicit empty report independently',()=>{
+    const e=dailyEvidence(),p=structuredClone(dailyPayload);p.theo_ngay=[];p.so_luong=0;p.tong_hop={tong_thu:0,tong_chi:0,rong:0,so_ngay_co_phat_sinh:0,phieu_han_che_bi_loai:0};
+    e.fixture=bindIncomeApprovalScenario(e.scenario,{...e.fixture,dailyCashbook:{request:dailyRequest,payload:p}});
+    expect(dailyCashbookToolText(e.fixture)).toBe('2026-07-01 → 2026-07-31: không có phát sinh nào trong sổ quỹ bạn được xem.');
+    e.reads[1].payload=p;e.rounds[1].messages[2].content=dailyCashbookToolText(e.fixture);
+    const original=e.answer;
+    for(const statement of ['Sổ quỹ tháng 07/2026: không có phát sinh.','Sổ quỹ tháng 07/2026: chưa có phát sinh.','2026-07-01 → 2026-07-31: không có phát sinh nào trong sổ quỹ bạn được xem.'])expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,original+'\n'+statement))).not.toThrow();
+  });
+  it('matches the product whole-dong rendering for finite fractional report values',()=>{
+    const e=dailyEvidence(),p=structuredClone(dailyPayload);p.tong_hop.tong_thu=9000.4;p.tong_hop.rong=p.tong_hop.tong_thu-p.tong_hop.tong_chi;
+    e.fixture=bindIncomeApprovalScenario(e.scenario,{...e.fixture,dailyCashbook:{request:dailyRequest,payload:p}});
+    expect(dailyCashbookToolText(e.fixture)).toBe(dailyText);
+  });
+  it.each(['C35','C36'])('does not allow C34 supplementary tools in %s',id=>{
+    const e=incomeEvidence(id),calls=inspectModelStream(e.rounds[0].body).tools;calls.push({id:'daily-1',name:'bao_cao_thu_chi_theo_ngay',arguments:'{"ky":"2026-07"}'});setDailyCalls(e,calls);expect(()=>assertIncomeApprovalResult(e)).toThrow();
+  });
+});
+
+it('C34 keeps a preflighted daily fixture optional when only the primary was actually called',()=>{
+  const e=dailyEvidence(),calls=inspectModelStream(e.rounds[0].body).tools;setDailyCalls(e,[calls[0]]);e.reads.pop();e.rounds[1].messages.pop();expect(()=>assertIncomeApprovalResult(e)).not.toThrow();
+});
+it('C34 daily exemption rejects missing or drifting binding digests',()=>{
+  for(const key of ['dailyCashbookQueryDigest','dailyCashbookResponseDigest'] as const) {
+    const f=dailyEvidence().fixture;f.attestation[key]='c'.repeat(64);expect(isIncomeApprovalReadonlyRequest(f,'https://demo','POST','https://demo/rest/v1/rpc/copilot_report_daily_cashbook_v1')).toBe(false);
+    delete f.attestation[key];expect(isIncomeApprovalReadonlyRequest(f,'https://demo','POST','https://demo/rest/v1/rpc/copilot_report_daily_cashbook_v1')).toBe(false);
+  }
+});
+
+it('C34 validates daily report navigation in the stream after mounted text strips link destinations',()=>{
+  for(const route of ['/reports/finance/daily-cashbook','/reports/finance/daily-cashbook/private']) {
+    const e=dailyEvidence(),text=e.answer+'\n[link: '+route+']';changeIncomeAnswer(e,text);e.answer=renderedAssistantText(text);
+    if(route==='/reports/finance/daily-cashbook')expect(()=>assertIncomeApprovalResult(e)).not.toThrow();
+    else expect(()=>assertIncomeApprovalResult(e)).toThrow(/identity/);
+  }
 });

@@ -12,6 +12,7 @@ export function diagnosticToolName(value: unknown): string {
   return typeof value === 'string' && knownTools.has(value) ? value : 'other';
 }
 const ENDPOINTS = {
+  '/rest/v1/rpc/copilot_report_daily_cashbook_v1': 'daily_cashbook',
   '/rest/v1/rpc/copilot_available_rooms_v1': 'available_rooms',
   '/rest/v1/rpc/copilot_contract_search_v1': 'contract_search',
   '/rest/v1/rpc/copilot_contract_detail_v1': 'contract_detail',
