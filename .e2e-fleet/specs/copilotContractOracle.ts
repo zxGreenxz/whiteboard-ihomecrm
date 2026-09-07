@@ -4,7 +4,53 @@ import type { GoldenScenario } from '../../scripts/copilot-golden-browser-eviden
 import { inspectModelStream, renderedAssistantText, type ReadonlyEvidence } from './copilotSmokeOracle';
 
 export interface ContractRead { rpc: string; args: Record<string, unknown>; payload: unknown; ok: boolean }
-const check: (ok: unknown, message: string) => asserts ok = (ok, message) => { if (!ok) throw new Error(message); };
+const CONTRACT_ORACLE_MESSAGES = {
+  money_fact_mismatch: "Answer money assigned to wrong fact",
+  absent_customer_needs_explicit_not_found: "Absent customer needs explicit not found",
+  absent_answer_invented_contract_link_amount: "Absent answer invented contract/link/amount",
+  absent_answer_invented_monetary_fact: "Absent answer invented monetary fact",
+  absent_answer_invented_contract_facts: "Absent answer invented contract facts",
+  answer_missing_canonical_identity: "Answer missing canonical identity",
+  answer_linked_wrong_contract: "Answer linked wrong contract",
+  answer_invented_contract_identifier: "Answer invented contract identifier",
+  answer_term_differs_from_canonical_dates: "Answer term differs from canonical dates",
+  answer_rent_deposit_missing: "Answer rent/deposit missing",
+  answer_deposit_ratio_money_differs: "Answer deposit ratio money differs",
+  answer_missing_empty_invoice_state: "Answer missing empty invoice state",
+  answer_missing_invoice_identity_money: "Answer missing invoice identity/money",
+  answer_invoice_period_differs: "Answer invoice period differs",
+  answer_money_differs_from_canonical_payload: "Answer money differs from canonical payload",
+  contract_fixture_prompt_drift: "Contract fixture/prompt drift",
+  missing_complete_contract_model_cycle: "Missing complete contract model cycle",
+  mounted_answer_differs_from_final_stream: "Mounted answer differs from final stream",
+  submitted_prompt_not_in_model_request: "Submitted prompt not in model request",
+  unexpected_contract_tool_calls: "Unexpected contract tool calls",
+  unexpected_contract_rpc_count: "Unexpected contract RPC count",
+  wrong_contract_identity_chain: "Wrong contract identity chain",
+  wrong_contract_tool_query_identity: "Wrong contract tool query/identity",
+  wrong_contract_rpc_org_query_identity: "Wrong contract RPC org/query/identity",
+  canonical_contract_rpc_drift: "Canonical contract RPC drift",
+  missing_or_wrong_linked_contract_tool_result: "Missing or wrong linked contract tool result",
+  detail_did_not_consume_search_identity: "Detail did not consume search identity",
+  absent_answer_invented_link: "Absent answer invented link",
+} as const;
+export type ContractOracleFailureCode = keyof typeof CONTRACT_ORACLE_MESSAGES;
+const oracleFailures = new WeakSet<ContractOracleFailure>();
+/** Only the oracle's static codes may cross into live diagnostics. */
+export class ContractOracleFailure extends Error {
+  readonly code: ContractOracleFailureCode;
+  constructor(code: ContractOracleFailureCode) {
+    if (typeof code !== 'string' || !Object.hasOwn(CONTRACT_ORACLE_MESSAGES, code)) throw new TypeError('Invalid contract oracle failure code');
+    super(CONTRACT_ORACLE_MESSAGES[code]);
+    this.name = 'ContractOracleFailure'; this.code = code;
+    oracleFailures.add(this); Object.freeze(this);
+  }
+}
+export function contractOracleDiagnostic(caseId: string, error: unknown): { caseId: string; code: ContractOracleFailureCode } | undefined {
+  if (!['C31','C32','C33'].includes(caseId) || !(error instanceof ContractOracleFailure) || !oracleFailures.has(error)) return;
+  return { caseId, code: error.code };
+}
+const check: (ok: unknown, code: ContractOracleFailureCode) => asserts ok = (ok, code) => { if (!ok) throw new ContractOracleFailure(code); };
 const same = (a: unknown, b: unknown) => digest(a) === digest(b);
 type Row = Record<string, string | number | null>;
 const money = (value: unknown) => `${new Intl.NumberFormat('vi-VN').format(Number(value) || 0)} đ`;
@@ -46,7 +92,7 @@ const MONEY_VALUE = String.raw`([0-9]+(?:[.,][0-9]+)*)\s*(triệu|tr|nghìn|ngà
 function assertMoneyFact(text: string, label: string, expected: unknown, optional = false) {
   const value = String.raw`[0-9]+(?:[.,][0-9]+)*(?:\s*(?:triệu|tr|nghìn|ngàn|k|đồng|vnd|vnđ|₫|đ)(?!\p{L})(?:\s*đồng)?)?`;
   const matches = [...text.matchAll(new RegExp(`(?:${label})\\s*(?:[:：|–—=-]\\s*)?${value}`, 'giu'))];
-  check((optional || matches.length > 0) && matches.every(m => (amounts(m[0])[0] ?? Number(m[0].match(/[0-9]+(?:[.,][0-9]+)*/)?.[0].replace(/[.,]/g,''))) === Number(expected)), 'Answer money assigned to wrong fact');
+  check((optional || matches.length > 0) && matches.every(m => (amounts(m[0])[0] ?? Number(m[0].match(/[0-9]+(?:[.,][0-9]+)*/)?.[0].replace(/[.,]/g,''))) === Number(expected)), 'money_fact_mismatch');
 }
 function invoiceSections(text: string, invoices: Row[]) {
   const found = invoices.flatMap(invoice => {
@@ -69,22 +115,22 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
   const row = (fixture.searchPayload as { hop_dong: Row[] }).hop_dong[0];
   const text = normalize(answer);
   if (!row) {
-    check(/không (?:tìm thấy|có).*hợp đồng|hợp đồng.*không (?:tồn tại|tìm thấy)/iu.test(text), 'Absent customer needs explicit not found');
-    check(!/\/contracts\/|\]\(|\bHD[-_\d]|\b[0-9a-f]{8}-[0-9a-f-]{27}\b/iu.test(answer) && !amounts(answer).length, 'Absent answer invented contract/link/amount');
-    check(!/(?:tiền\s*)?(?:thuê|cọc|tổng(?: tiền)?|đã trả|còn thiếu|còn lại)\s*[:：]?\s*\d/iu.test(text), 'Absent answer invented monetary fact');
-    check(!/hợp đồng\s+(?:số|mã)\s*[:#]?\s*\S+|phòng\s+[\p{L}\p{N}]*\d/iu.test(text), 'Absent answer invented contract facts');
+    check(/không (?:tìm thấy|có).*hợp đồng|hợp đồng.*không (?:tồn tại|tìm thấy)/iu.test(text), 'absent_customer_needs_explicit_not_found');
+    check(!/\/contracts\/|\]\(|\bHD[-_\d]|\b[0-9a-f]{8}-[0-9a-f-]{27}\b/iu.test(answer) && !amounts(answer).length, 'absent_answer_invented_contract_link_amount');
+    check(!/(?:tiền\s*)?(?:thuê|cọc|tổng(?: tiền)?|đã trả|còn thiếu|còn lại)\s*[:：]?\s*\d/iu.test(text), 'absent_answer_invented_monetary_fact');
+    check(!/hợp đồng\s+(?:số|mã)\s*[:#]?\s*\S+|phòng\s+[\p{L}\p{N}]*\d/iu.test(text), 'absent_answer_invented_contract_facts');
     return;
   }
-  for (const field of ['so_hop_dong','khach_hang','phong']) check(token(text, normalize(String(row[field]))), `Answer missing canonical ${field}`);
-  for (const m of answer.matchAll(/\/contracts\/([^\s)\]]+)/g)) check(m[1] === row.hop_dong_id, 'Answer linked wrong contract');
-  for (const m of text.matchAll(/\bHD[-_A-Z0-9]+\b/giu)) check(token(String(row.so_hop_dong),m[0]), 'Answer invented contract identifier');
+  for (const field of ['so_hop_dong','khach_hang','phong']) check(token(text, normalize(String(row[field]))), 'answer_missing_canonical_identity');
+  for (const m of answer.matchAll(/\/contracts\/([^\s)\]]+)/g)) check(m[1] === row.hop_dong_id, 'answer_linked_wrong_contract');
+  for (const m of text.matchAll(/\bHD[-_A-Z0-9]+\b/giu)) check(token(String(row.so_hop_dong),m[0]), 'answer_invented_contract_identifier');
   const known = detail ? (fixture.detailPayload as { hop_dong: Row }).hop_dong : row;
   for (const date of [known.ngay_bat_dau, known.ngay_ket_thuc]) {
     const [y,m,d] = String(date).split('-');
-    check(token(text,date) || token(text,`${d}/${m}/${y}`) || token(text,`${Number(d)}/${Number(m)}/${y}`), 'Answer term differs from canonical dates');
+    check(token(text,date) || token(text,`${d}/${m}/${y}`) || token(text,`${Number(d)}/${Number(m)}/${y}`), 'answer_term_differs_from_canonical_dates');
   }
   const required = [Number(known.tien_thue), Number(known.tien_coc)];
-  check(amounts(text).includes(required[0]) && amounts(text).includes(required[1]), 'Answer rent/deposit missing');
+  check(amounts(text).includes(required[0]) && amounts(text).includes(required[1]), 'answer_rent_deposit_missing');
   const invoices = detail ? (fixture.detailPayload as { hoa_don: Row[] }).hoa_don : [];
   const sections = invoiceSections(text,invoices);
   let contractText = text;
@@ -93,7 +139,7 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
   // A nominal deposit can be stated directly or as held/nominal in the
   // product's ordinary compact deposit notation.
   const depositRatio = [...contractText.matchAll(new RegExp(`cọc[^;]{0,30}?(?:đang giữ|đã thu)\\s*${MONEY_VALUE}\\s*/\\s*${MONEY_VALUE}`, 'giu'))];
-  if (depositRatio.length) check(depositRatio.every(m => same(amounts(m[0]),[Number(known.coc_da_thu),Number(known.tien_coc)])), 'Answer deposit ratio money differs');
+  if (depositRatio.length) check(depositRatio.every(m => same(amounts(m[0]),[Number(known.coc_da_thu),Number(known.tien_coc)])), 'answer_deposit_ratio_money_differs');
   const nominalText = contractText.replace(/(?:đang giữ|đã thu|đã nộp)\s*(?:tiền\s*)?cọc/giu, 'đã thu');
   assertMoneyFact(nominalText, '(?:tiền\\s*)?cọc(?:\\s*(?:yêu cầu|theo hợp đồng|phải đóng))?', known.tien_coc, depositRatio.length > 0);
   if (detail) {
@@ -101,12 +147,13 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
     assertMoneyFact(contractText, '(?:cọc\\s*)?còn thiếu', known.coc_con_thieu, Number(known.coc_con_thieu) === 0);
     required.push(Number(known.coc_da_thu));
     if (Number(known.coc_con_thieu) > 0) required.push(Number(known.coc_con_thieu));
-    if (!invoices.length) check(/(?:chưa|không) có ho[áa] đơn|0 ho[áa] đơn/iu.test(text), 'Answer missing empty invoice state');
+    if (!invoices.length) check(/(?:chưa|không) có ho[áa] đơn|0 ho[áa] đơn/iu.test(text), 'answer_missing_empty_invoice_state');
     for (const i of invoices) {
-      const scoped = sections.filter(section => section.invoice === i && amounts(section.text).length > 0);
-      check(scoped.length > 0, 'Answer missing invoice identity/money');
+      const scoped = sections.filter(section => section.invoice === i && (amounts(section.text).length > 0
+        || /(?:tổng(?:\s*(?:tiền|cộng|phải trả))?|đã\s*(?:trả|thanh toán|thu)|còn(?:\s*(?:lại|nợ|phải trả|phải thanh toán))?)\s*[:：|–—=-]?\s*\d/iu.test(section.text)));
+      check(scoped.length > 0, 'answer_missing_invoice_identity_money');
       for (const section of scoped) {
-        if (i.ky) check(token(section.text,i.ky), 'Answer invoice period differs');
+        if (i.ky) check(token(section.text.replace(/kỳ(?=\d)/giu, 'kỳ '),i.ky), 'answer_invoice_period_differs');
         assertMoneyFact(section.text, 'tổng(?:\\s*(?:tiền|cộng|phải trả))?', i.tong_tien);
         assertMoneyFact(section.text, 'đã\\s*(?:trả|thanh toán|thu)', i.da_tra);
         assertMoneyFact(section.text, 'còn(?:\\s*(?:lại|nợ|phải trả|phải thanh toán))?', i.con_lai);
@@ -115,35 +162,35 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
     }
   }
   const actual = amounts(text);
-  check(required.every(n => actual.includes(n)) && actual.every(n => required.includes(n)), 'Answer money differs from canonical payload');
+  check(required.every(n => actual.includes(n)) && actual.every(n => required.includes(n)), 'answer_money_differs_from_canonical_payload');
 }
 export function assertContractResult(e: Pick<ReadonlyEvidence,'prompt'|'answer'|'rounds'> & { scenario: GoldenScenario; fixture: ContractFixture; reads: ContractRead[] }): void {
   const rebound = bindContractScenario(e.scenario, e.fixture);
-  check(same(rebound.attestation,e.fixture.attestation) && e.prompt === rebound.prompt, 'Contract fixture/prompt drift');
+  check(same(rebound.attestation,e.fixture.attestation) && e.prompt === rebound.prompt, 'contract_fixture_prompt_drift');
   const detail = e.scenario.id === 'C33';
   const streams = e.rounds.map(r => inspectModelStream(r.body));
-  check(streams.length >= (detail ? 3 : 2), 'Missing complete contract model cycle');
+  check(streams.length >= (detail ? 3 : 2), 'missing_complete_contract_model_cycle');
   const last = streams.at(-1)!;
-  check(last.finish === 'stop' && last.text.trim() && e.answer.trim() === renderedAssistantText(last.text), 'Mounted answer differs from final stream');
-  check(e.rounds[0].messages.some(m => m.role === 'user' && m.content === e.prompt), 'Submitted prompt not in model request');
+  check(last.finish === 'stop' && last.text.trim() && e.answer.trim() === renderedAssistantText(last.text), 'mounted_answer_differs_from_final_stream');
+  check(e.rounds[0].messages.some(m => m.role === 'user' && m.content === e.prompt), 'submitted_prompt_not_in_model_request');
   const calls = streams.flatMap((s, round) => s.tools.map(t => ({ ...t, round })));
-  check(calls.length === (detail ? 2 : 1), 'Unexpected contract tool calls');
+  check(calls.length === (detail ? 2 : 1), 'unexpected_contract_tool_calls');
   const names = detail ? ['tim_hop_dong','chi_tiet_hop_dong'] : ['tim_hop_dong'];
-  check(e.reads.length === names.length, 'Unexpected contract RPC count');
+  check(e.reads.length === names.length, 'unexpected_contract_rpc_count');
   for (const [index,name] of names.entries()) {
     const call = calls[index]; const rpc = e.reads[index];
-    check(call.name === name && call.id && (index === 0 || call.round > calls[0].round), 'Wrong contract identity chain');
+    check(call.name === name && call.id && (index === 0 || call.round > calls[0].round), 'wrong_contract_identity_chain');
     const args = JSON.parse(call.arguments);
-    check(index === 0 ? args.tu_khoa?.trim() === e.fixture.query && args.trang_thai === undefined && (args.so_luong === undefined || args.so_luong === 20) : args.hop_dong_id === e.fixture.contractId, 'Wrong contract tool query/identity');
+    check(index === 0 ? args.tu_khoa?.trim() === e.fixture.query && args.trang_thai === undefined && (args.so_luong === undefined || args.so_luong === 20) : args.hop_dong_id === e.fixture.contractId, 'wrong_contract_tool_query_identity');
     const expectedArgs = index === 0 ? { p_organization_id: DEMO_ORG, p_query: e.fixture.query, p_status: null, p_limit: 20 } : { p_organization_id: DEMO_ORG, p_contract_id: e.fixture.contractId };
-    check(rpc.ok && rpc.rpc === (index === 0 ? 'copilot_contract_search_v1' : 'copilot_contract_detail_v1') && same(rpc.args, expectedArgs), 'Wrong contract RPC org/query/identity');
-    check(same(rpc.payload,index === 0 ? e.fixture.searchPayload : e.fixture.detailPayload), 'Canonical contract RPC drift');
+    check(rpc.ok && rpc.rpc === (index === 0 ? 'copilot_contract_search_v1' : 'copilot_contract_detail_v1') && same(rpc.args, expectedArgs), 'wrong_contract_rpc_org_query_identity');
+    check(same(rpc.payload,index === 0 ? e.fixture.searchPayload : e.fixture.detailPayload), 'canonical_contract_rpc_drift');
     const expectedText = contractToolText(e.fixture,index === 1);
     const messages = e.rounds.slice(call.round + 1).flatMap(r => r.messages).filter(m => m.role === 'tool' && m.tool_call_id === call.id);
-    check(messages.length > 0 && messages.every(m => typeof m.content === 'string' && m.content.trim() === expectedText.trim()), 'Missing or wrong linked contract tool result');
-    if (detail && index === 0) check(e.rounds[calls[1].round].messages.some(m => m.role === 'tool' && m.tool_call_id === call.id && m.content === expectedText), 'Detail did not consume search identity');
+    check(messages.length > 0 && messages.every(m => typeof m.content === 'string' && m.content.trim() === expectedText.trim()), 'missing_or_wrong_linked_contract_tool_result');
+    if (detail && index === 0) check(e.rounds[calls[1].round].messages.some(m => m.role === 'tool' && m.tool_call_id === call.id && m.content === expectedText), 'detail_did_not_consume_search_identity');
   }
   assertFacts(e.answer, e.fixture, detail);
-  if (e.scenario.id === 'C32') check(!/\]\(|\/contracts\//.test(last.text), 'Absent answer invented link');
-  for (const m of last.text.matchAll(/\/contracts\/([^\s)\]]+)/g)) check(m[1] === e.fixture.contractId, 'Answer linked wrong contract');
+  if (e.scenario.id === 'C32') check(!/\]\(|\/contracts\//.test(last.text), 'absent_answer_invented_link');
+  for (const m of last.text.matchAll(/\/contracts\/([^\s)\]]+)/g)) check(m[1] === e.fixture.contractId, 'answer_linked_wrong_contract');
 }

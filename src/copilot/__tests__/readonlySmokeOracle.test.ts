@@ -186,7 +186,7 @@ describe('golden C13: building identity survives duplicate room codes', () => {
     expect(() => assertReadonlyResult(e)).not.toThrow();
   });
 });
-import { assertContractResult, contractToolText } from '../../../.e2e-fleet/specs/copilotContractOracle';
+import { assertContractResult, contractToolText, ContractOracleFailure, contractOracleDiagnostic } from '../../../.e2e-fleet/specs/copilotContractOracle';
 import { bindContractScenario } from '../../../scripts/copilot-contract-fixtures.mjs';
 import { DEMO_ORG } from '../../../scripts/copilot-golden-browser-evidence.mjs';
 const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', khach_hang: 'Demo An', phong: 'A101', toa_nha: 'DEMO Toà A', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', trang_thai: 'ACTIVE', tien_thue: 3000000, tien_coc: 6000000, coc_da_thu: 5000000, coc_con_thieu: 1000000 };
@@ -311,4 +311,32 @@ it('accepts invoice facts before the contract facts without imposing answer orde
  const invoiceStart = e.answer.indexOf('Hoá đơn INV001');
  const reordered = e.answer.slice(invoiceStart) + '\n' + e.answer.slice(0,invoiceStart);
  expect(() => assertContractResult(changeContractAnswer(e,reordered))).not.toThrow();
+});
+it.each([
+ 'Hoá đơn INV001 kỳ 2026-09: tổng 2000000, đã trả 4000000, còn 2000000.',
+ 'Hoá đơn INV001 kỳ2026-09: tổng2000000, đãtrả4000000, còn2000000.',
+])('rejects currencyless repeated invoice section: %s', repeated => {
+ const e = contractEvidence('C33',true);
+ expect(() => assertContractResult(changeContractAnswer(e,e.answer + ' ' + repeated))).toThrow(/money/);
+});
+it('accepts a repeated complete invoice with consistent labeled values without currency units', () => {
+ const e = contractEvidence('C33',true);
+ expect(() => assertContractResult(changeContractAnswer(e,e.answer + ' Hoá đơn INV001 kỳ 2026-09: tổng4000000, đãtrả2000000, còn2000000.'))).not.toThrow();
+});
+
+it('exposes only a typed static oracle code for live diagnostics', () => {
+ const e = contractEvidence('C33',true);
+ let failure: unknown;
+ try { assertContractResult(changeContractAnswer(e,e.answer.replace('tổng 4 triệu','tổng 2 triệu'))); } catch (error) { failure = error; }
+ expect(failure).toBeInstanceOf(ContractOracleFailure);
+ expect(contractOracleDiagnostic('C33',failure)).toEqual({ caseId:'C33',code:'money_fact_mismatch' });
+ expect(JSON.stringify(contractOracleDiagnostic('C33',failure))).not.toMatch(/INV001|HD001|Demo An|triệu/);
+});
+it('does not log untyped exceptions, payload-shaped objects, or invalid oracle codes', () => {
+ for (const error of [new Error('private JWT and customer payload'),Object.assign(Object.create(ContractOracleFailure.prototype),{code:'money_fact_mismatch',message:'raw'}),{code:'money_fact_mismatch',message:'raw'},'raw',null]) expect(contractOracleDiagnostic('C33',error)).toBeUndefined();
+ expect(contractOracleDiagnostic('PRIVATE_CUSTOMER',new ContractOracleFailure('money_fact_mismatch'))).toBeUndefined();
+ for (const code of ['private payload',['money_fact_mismatch'],null,{toString:() => 'money_fact_mismatch'}]) expect(() => new ContractOracleFailure(code as never)).toThrow('Invalid contract oracle failure code');
+ const failure = new ContractOracleFailure('money_fact_mismatch');
+ expect(Object.isFrozen(failure)).toBe(true);
+ expect(() => Object.assign(failure,{code:'private payload'})).toThrow();
 });

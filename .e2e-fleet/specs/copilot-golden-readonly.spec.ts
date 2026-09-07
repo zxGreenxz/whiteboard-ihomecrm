@@ -7,7 +7,7 @@ import { COPILOT_TEST_MODEL, pinCopilotTestModel } from './copilotTestModel';
 import { guiVaChoModel } from './copilotModelCycle';
 import { assertReadonlyResult, ModelStreamFailure, unexpectedReadonlyMutation } from './copilotSmokeOracle';
 import { bindContractScenario, contractQuery, CONTRACT_CASES, type ContractFixture } from '../../scripts/copilot-contract-fixtures.mjs';
-import { assertContractResult, type ContractRead } from './copilotContractOracle';
+import { assertContractResult, contractOracleDiagnostic, type ContractRead } from './copilotContractOracle';
 import { bindRoomScenario, createRun, DEMO_ORG, digest, IMPLEMENTED_ORACLES, summarizeRun, transitionCase, writeCheckpoint } from '../../scripts/copilot-golden-browser-evidence.mjs';
 import type { CaseReason, GoldenManifest } from '../../scripts/copilot-golden-browser-evidence.mjs';
 
@@ -168,6 +168,8 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
           toolResultLinked: true, finalAnswerMounted: true, readRpc: contract ? (c.id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1') : 'copilot_available_rooms_v1',
           ...(contract ? { fixtureDigest: digest(contract.attestation), queryDigest: contract.attestation.queryDigest, identityDigest: contract.attestation.identityDigest, searchDigest: contract.attestation.searchDigest, ...(contract.attestation.detailDigest ? { detailDigest: contract.attestation.detailDigest } : {}) } : {}), businessWrites: writes, networkErrors, oracleVersion: c.oracle } });
       } catch (error) {
+        const diagnostic = contractOracleDiagnostic(c.id,error);
+        if (diagnostic) console.log(JSON.stringify(diagnostic));
         if (error instanceof ModelStreamFailure) { fatalProvider = true; reason = error.reason; }
         completed = Date.now();
         transitionCase(run, c.id, { status: reason === 'oracle_failed' ? 'fail' : 'blocked', reason,
