@@ -147,7 +147,10 @@ describe('uploadFile image policy', () => {
     const uploadedBytes = new Uint8Array(await uploadedFile.arrayBuffer());
     expect(uploadedPath).toBe('customer/cccd-front.png');
     expect(uploadedFile.type).toBe('image/png');
-    expect(uploadedBytes).toEqual(new Uint8Array(originalBytes));
+    expect(uploadedBytes.byteLength).toBe(originalBytes.byteLength);
+    // Compare every byte natively: deep equality enumerates this 1.6 MB array
+    // in JavaScript and can exhaust the unchanged 5-second CI test deadline.
+    expect(Buffer.from(uploadedBytes.buffer, uploadedBytes.byteOffset, uploadedBytes.byteLength).equals(originalBytes)).toBe(true);
     expect(decodeQr(uploadedBytes)).toBe(PAYLOAD);
   });
 
