@@ -188,7 +188,9 @@ function assertFacts(answer:string,f:IncomeApprovalFixture) {
   for(const [i,o] of occurrences.entries()) {
     const section=text.slice(o.start,occurrences[i+1]?.start ?? text.length), row=o.row;
     const actual=[...amounts(section),...labeledAmounts(section)];
-    assertType(section,row,actual.length>0);
+    // A single returned row gives an introductory type exactly one referent.
+    // Multiple rows still require their own type claims to avoid cross-row swaps.
+    assertType(rows.length===1 ? introduction+' '+section : section,row,actual.length>0);
     assertMaker(section,row);
     // Every mention carrying facts must bind those facts to this voucher. A
     // trailing link-only mention is permitted only after a full row was given.

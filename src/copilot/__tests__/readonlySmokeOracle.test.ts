@@ -15,6 +15,16 @@ const evidence = () => ({ prompt: 'Liệt kê phòng', answer: 'Có 1 phòng tr�
 
 const ieVoucher = {phieu_id:'aaaa4000-0000-4000-8000-000000000021',ma_phieu:'PC001',loai:'EXPENSE',ten:'Sửa chữa',so_tien:11000,ngay:'2026-07-12',hang_muc:'Sửa nhà',so_quy:'TK 1234567890123',trang_thai:'UNAPPROVED',trang_thai_ghi_nhan:'UNPOSTED',nguoi_tao:'Demo An',toa_nha:'DEMO Toà A'};
 const ieIncome = {...ieVoucher,phieu_id:'aaaa4000-0000-4000-8000-000000000023',ma_phieu:'PT002',loai:'INCOME',ten:'Thu khác',so_tien:1000,trang_thai:'CANCELLED',nguoi_tao:'Demo Bình'};
+it('binds an introductory voucher type to the sole pending row',()=>{
+  const e=incomeEvidence('C36');
+  const text=e.answer.replace('Có 1 phiếu đang chờ bạn duyệt:','Có 1 phiếu chi đang chờ bạn duyệt:').replace('PC001 — phiếu chi,','PC001 —');
+  expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,text))).not.toThrow();
+  expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,text.replace('1 phiếu chi','1 phiếu thu')))).toThrow();
+});
+it('does not use a global introductory type for multiple voucher rows',()=>{
+  const e=incomeEvidence();
+  expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,'Phiếu chi: '+e.answer.replace('PC001 — phiếu chi,','PC001 —')))).toThrow();
+});
 it('accepts pending inbox wording chờ xử lý tied to the actual pending RPC',()=>{
   const e=incomeEvidence('C36');
   expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('đang chờ bạn duyệt','đang chờ xử lý')))).not.toThrow();
