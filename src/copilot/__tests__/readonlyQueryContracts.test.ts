@@ -317,11 +317,14 @@ describe('tim_phieu_thu_chi - server RPC boundary', () => {
     expect(result).toContain('/income-expense');
   });
 
-  it('preserves empty and error behavior', async () => {
+  it('returns explicit absence with the canonical cashbook route for an empty result', async () => {
     rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, phieu: [] }, error: null });
-    await expect(tool('tim_phieu_thu_chi').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
-      /kh.ng t.m th.y/i,
+    await expect(tool('tim_phieu_thu_chi').execute({ so_luong: 20 }, ctx)).resolves.toBe(
+      'Không tìm thấy phiếu thu chi nào khớp điều kiện.\n[link: /income-expense]',
     );
+  });
+
+  it('preserves RPC error behavior', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
     await expect(tool('tim_phieu_thu_chi').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
   });

@@ -62,7 +62,7 @@ const POSTING={UNPOSTED:'chưa vào sổ',POSTED:'đã vào sổ',REVERSED:'đã
 export function incomeApprovalToolText(f:IncomeApprovalFixture):string {
   if (f.payload.phieu) {
     const rows=f.payload.phieu;
-    if(!rows.length)return 'Không tìm thấy phiếu thu chi nào khớp điều kiện.';
+    if(!rows.length)return 'Không tìm thấy phiếu thu chi nào khớp điều kiện.\n[link: /income-expense]';
     const lines=rows.map(r=>`- [${TYPE[r.loai]}] ${identifier(r)} — ${r.ten ?? '?'} — ${money(r.so_tien)} — ${r.ngay}`
       +`${r.hang_muc ? ` — ${r.hang_muc}`:''}${r.so_quy ? ` — sổ ${maskPii(r.so_quy)}`:''} — ${APPROVAL[r.trang_thai]}, ${POSTING[r.trang_thai_ghi_nhan]}${r.nguoi_tao ? ` — lập bởi ${r.nguoi_tao}`:''}`);
     return `${rows.length} phiếu thu chi (tối đa 20 dòng mỗi lần hỏi):\n${lines.join('\n')}\n[link: /income-expense]`;

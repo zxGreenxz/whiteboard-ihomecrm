@@ -784,7 +784,7 @@ export const timPhieuThuChi = dt({
     });
     if (error) throw new Error(`Lỗi tìm phiếu thu chi: ${error.message}`);
     const rows = data?.phieu ?? [];
-    if (!rows.length) return 'Không tìm thấy phiếu thu chi nào khớp điều kiện.';
+    if (!rows.length) return 'Không tìm thấy phiếu thu chi nào khớp điều kiện.\n[link: /income-expense]';
     const dong = rows.map((r) => {
       // Tên sổ quỹ đi qua maskPii vì quy ước đặt tên nhét SỐ TÀI KHOẢN vào tên
       // ("TK 19036789456013 VCB") — xem chú thích ở dinhDangSoQuy.

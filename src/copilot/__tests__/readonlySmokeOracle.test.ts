@@ -52,7 +52,7 @@ function incomeEvidence(id='C34') {
   const data=id==='C36'?{gioi_han:20,so_luong:1,hop_cho:[{yeu_cau_id:'aaaa4000-0000-4000-8000-000000000024',lan_gui:1,gui_luc:'2026-09-07T00:00:00+00:00',so_tien:11000,phieu_id:ieVoucher.phieu_id,ma_phieu:'PC001',ten_phieu:'Sửa chữa',loai:'EXPENSE',nguoi_lap:' Demo An ',buoc:1}]}:{gioi_han:20,so_luong:id==='C35'?0:2,phieu:id==='C35'?[]:[ieVoucher,ieIncome]};
   const fixture=bindIncomeApprovalScenario(scenario,{request,payload:data,actorDigest});
   const toolArgs=id==='C36'?{}:{tu_ngay:id==='C35'?'2099-01-01':'2026-07-01',den_ngay:id==='C35'?'2099-01-31':'2026-07-31',...(id==='C35'?{loai:'chi'}:{})};
-  const toolText=id==='C35'?'Không tìm thấy phiếu thu chi nào khớp điều kiện.':id==='C36'?'1 phiếu đang chờ bạn duyệt (tối đa 20 dòng):\n- [CHI] PC001 — Sửa chữa — 11.000 đ — gửi 2026-09-07 — lập bởi  Demo An \n[link: /approvals]':'2 phiếu thu chi (tối đa 20 dòng mỗi lần hỏi):\n- [CHI] PC001 — Sửa chữa — 11.000 đ — 2026-07-12 — Sửa nhà — sổ TK [STK đã ẩn] — chờ duyệt, chưa vào sổ — lập bởi Demo An\n- [THU] PT002 — Thu khác — 1.000 đ — 2026-07-12 — Sửa nhà — sổ TK [STK đã ẩn] — đã huỷ, chưa vào sổ — lập bởi Demo Bình\n[link: /income-expense]';
+  const toolText=id==='C35'?'Không tìm thấy phiếu thu chi nào khớp điều kiện.\n[link: /income-expense]':id==='C36'?'1 phiếu đang chờ bạn duyệt (tối đa 20 dòng):\n- [CHI] PC001 — Sửa chữa — 11.000 đ — gửi 2026-09-07 — lập bởi  Demo An \n[link: /approvals]':'2 phiếu thu chi (tối đa 20 dòng mỗi lần hỏi):\n- [CHI] PC001 — Sửa chữa — 11.000 đ — 2026-07-12 — Sửa nhà — sổ TK [STK đã ẩn] — chờ duyệt, chưa vào sổ — lập bởi Demo An\n- [THU] PT002 — Thu khác — 1.000 đ — 2026-07-12 — Sửa nhà — sổ TK [STK đã ẩn] — đã huỷ, chưa vào sổ — lập bởi Demo Bình\n[link: /income-expense]';
   const text=id==='C35'?'Không tìm thấy phiếu chi nào trong tháng 01/2099.':id==='C36'?'Có 1 phiếu đang chờ bạn duyệt: PC001 — phiếu chi, số tiền 11.000 đồng, lập bởi Demo An. Bạn có thể xem tại trang phê duyệt.':'Có 2 phiếu tháng 07/2026:\nPC001 — phiếu chi, 11.000 đồng, chờ duyệt, chưa vào sổ.\nPT002 — phiếu thu, 1.000 đồng, đã huỷ, chưa vào sổ.';
   const messages=[{role:'user',content:scenario.prompt}];
   const rounds=[{body:chunk({tool_calls:[{index:0,id:'ie-read-1',function:{name:id==='C36'?'hop_cho_duyet':'tim_phieu_thu_chi',arguments:JSON.stringify(toolArgs)}}]},'tool_calls')+'data: [DONE]\n\n',messages},
@@ -64,6 +64,11 @@ function changeIncomeAnswer(e:ReturnType<typeof incomeEvidence>,text:string) {
 }
 describe('income approval golden actual facts',()=>{
   it.each(['C34','C35','C36'])('accepts %s exact actor/RPC/tool/answer chain',id=>expect(()=>assertIncomeApprovalResult(incomeEvidence(id))).not.toThrow());
+  it('rejects the unsupported plural cashbook route in the actual C35 tool chain',()=>{
+    const e=incomeEvidence('C35');
+    e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.replace('/income-expense','/income-expenses');
+    expect(()=>assertIncomeApprovalResult(e)).toThrow(/linked financial tool result/i);
+  });
   it.each(['p_organization_id','p_tu','p_den','p_loai','p_query','p_trang_thai','p_limit'])('rejects observed filter drift %s',key=>{
     const e=incomeEvidence();e.reads[0].args[key]='wrong';expect(()=>assertIncomeApprovalResult(e)).toThrow();
   });
