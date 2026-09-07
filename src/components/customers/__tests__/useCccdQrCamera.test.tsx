@@ -48,9 +48,10 @@ function harness(overrides: Record<string, unknown> = {}) {
   const createScanner = vi.fn(() => ({ scan, dispose } as QrScanner));
   const captureBitmap = vi.fn().mockResolvedValue({ width: 100, height: 100, close: vi.fn() } as unknown as ImageBitmap);
   const captureFile = vi.fn().mockResolvedValue(new File(['card'], 'cccd-camera.jpg', { type: 'image/jpeg' }));
+  const selectSharpFrame = vi.fn(async (capture: () => Promise<ImageBitmap>) => capture());
   return {
     video, videoRef, containerRef, firstTrack, firstStream, getUserMedia, enumerateDevices,
-    scan, dispose, createScanner, captureBitmap, captureFile,
+    scan, dispose, createScanner, captureBitmap, captureFile, selectSharpFrame,
     options: {
       open: true,
       videoRef,
@@ -62,6 +63,7 @@ function harness(overrides: Record<string, unknown> = {}) {
       createScanner,
       captureBitmap,
       captureFile,
+      selectSharpFrame,
       beep: vi.fn(),
       vibrate: vi.fn(),
       ...overrides,
@@ -199,6 +201,26 @@ describe('useCccdQrCamera lifecycle', () => {
     expect(h.captureBitmap.mock.calls[2]?.[2]).toBe(true);
   });
 
+  it('runs a fast ROI attempt after a slow deep scan completes', async () => {
+    let clock = 0;
+    let finishDeep!: (value: ScanResult) => void;
+    const h = harness({ now: () => clock });
+    h.scan
+      .mockResolvedValueOnce({ status: 'not-found', elapsedMs: 1 })
+      .mockImplementationOnce(() => new Promise((resolve) => { finishDeep = resolve; }))
+      .mockResolvedValue({ status: 'not-found', elapsedMs: 1 });
+    renderHook(() => useCccdQrCamera(h.options));
+    await settle();
+    clock = 900;
+    await act(async () => { vi.advanceTimersByTime(140); await Promise.resolve(); await Promise.resolve(); });
+    expect(h.scan.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ mode: 'camera-deep' }));
+    clock = 1777;
+    await act(async () => { finishDeep({ status: 'not-found', elapsedMs: 877 }); await Promise.resolve(); });
+    clock = 1917;
+    await act(async () => { vi.advanceTimersByTime(140); await Promise.resolve(); await Promise.resolve(); });
+    expect(h.scan.mock.calls[2]?.[1]).toEqual(expect.objectContaining({ mode: 'camera-fast' }));
+  });
+
   it('delivers one valid identity through the latest callback and closes only the current session', async () => {
     const h = harness();
     h.scan.mockResolvedValueOnce({ status: 'decoded', candidates: [{ engine: 'native', text: '001234567890||NGUYỄN MINH AN|29022000|Nữ|12 Đường Mẫu|06052022' }], elapsedMs: 10 });
@@ -255,5 +277,23 @@ describe('useCccdQrCamera lifecycle', () => {
     expect(() => result.current.captureCard()).toThrow('canvas unavailable');
     expect(h.firstTrack.stop).toHaveBeenCalledTimes(1);
     expect(h.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('enters a recoverable error after capture failure and starts a fresh stream on retry', async () => {
+    const h = harness();
+    const secondTrack = track();
+    h.getUserMedia.mockResolvedValueOnce(h.firstStream).mockResolvedValueOnce(stream(secondTrack));
+    h.captureFile.mockRejectedValueOnce(new Error('encoding failed')).mockResolvedValueOnce(new File(['card'], 'retry.jpg', { type: 'image/jpeg' }));
+    const { result } = renderHook(() => useCccdQrCamera(h.options));
+    await settle();
+    await act(async () => { await expect(result.current.captureCard()).rejects.toThrow('encoding failed'); });
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toContain('chụp ảnh thẻ');
+    act(() => result.current.retry());
+    await settle();
+    expect(result.current.status).toBe('scanning');
+    expect(h.getUserMedia).toHaveBeenCalledTimes(2);
+    await expect(result.current.captureCard()).resolves.toEqual(expect.objectContaining({ name: 'retry.jpg' }));
+    expect(secondTrack.stop).toHaveBeenCalledTimes(1);
   });
 });

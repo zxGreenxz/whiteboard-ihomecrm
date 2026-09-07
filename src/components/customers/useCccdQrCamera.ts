@@ -5,6 +5,7 @@ import {
   captureFullFrameFile,
   captureVideoBitmap,
   nextCameraScan,
+  selectSharpCameraFrame,
 } from '@/lib/qr/cameraFrame';
 import type { QrScanner } from '@/lib/qr/types';
 
@@ -31,6 +32,7 @@ type Options = {
   createScanner?: () => QrScanner;
   captureBitmap?: typeof captureVideoBitmap;
   captureFile?: typeof captureFullFrameFile;
+  selectSharpFrame?: typeof selectSharpCameraFrame;
   now?: () => number;
   beep?: () => void;
   vibrate?: () => void;
@@ -92,12 +94,25 @@ export function useCccdQrCamera(options: Options) {
   const captureCard = useCallback(() => {
     const video = optionsRef.current.videoRef.current;
     if (!video) return Promise.reject(new Error('Camera frame is not ready'));
+    let pending: Promise<File>;
     try {
-      return (optionsRef.current.captureFile ?? captureFullFrameFile)(video);
-    } finally {
+      pending = (optionsRef.current.captureFile ?? captureFullFrameFile)(video);
+    } catch (caught) {
       release();
-      setStatus('idle');
+      setError('Không thể chụp ảnh thẻ. Vui lòng khởi động lại camera.');
+      setStatus('error');
+      throw caught;
     }
+    release();
+    const releasedSession = sessionRef.current;
+    setStatus('idle');
+    return pending.catch((caught: unknown) => {
+      if (sessionRef.current === releasedSession) {
+        setError('Không thể chụp ảnh thẻ. Vui lòng khởi động lại camera.');
+        setStatus('error');
+      }
+      throw caught;
+    });
   }, [release]);
 
   useEffect(() => {
@@ -206,12 +221,14 @@ export function useCccdQrCamera(options: Options) {
         const now = clock();
         const plan = nextCameraScan(now, lastDeepAt, deepFullFrame);
         if (plan.mode === 'camera-deep') {
-          lastDeepAt = now;
           deepFullFrame = !deepFullFrame;
         }
         let bitmap: ImageBitmap;
         try {
-          bitmap = await (optionsRef.current.captureBitmap ?? captureVideoBitmap)(frameVideo, container, plan.fullFrame);
+          const capture = () => (optionsRef.current.captureBitmap ?? captureVideoBitmap)(frameVideo, container, plan.fullFrame);
+          bitmap = plan.mode === 'camera-deep'
+            ? await (optionsRef.current.selectSharpFrame ?? selectSharpCameraFrame)(capture, { signal: controller.signal })
+            : await capture();
         } catch {
           if (current()) schedule(() => { void scanNext(); });
           return;
@@ -221,6 +238,7 @@ export function useCccdQrCamera(options: Options) {
         try { result = await scanner.scan(bitmap, { mode: plan.mode, budgetMs: plan.budgetMs, signal: controller.signal }); }
         catch { fail('Bộ đọc QR camera chưa sẵn sàng. Vui lòng thử lại.'); return; }
         if (!current()) return;
+        if (plan.mode === 'camera-deep') lastDeepAt = clock();
         if (result.status === 'decoded') {
           const selection = selectCccdCandidate(result.candidates);
           if (selection.status === 'ambiguous') {

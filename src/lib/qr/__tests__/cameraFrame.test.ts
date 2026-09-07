@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { mapObjectCoverRectToVideo, nextCameraScan } from '../cameraFrame';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  mapObjectCoverRectToVideo,
+  measureLaplacianSharpness,
+  nextCameraScan,
+  selectSharpCameraFrame,
+} from '../cameraFrame';
 
 describe('camera frame geometry', () => {
   it('maps a square portrait container through landscape object-cover cropping', () => {
@@ -35,5 +40,52 @@ describe('camera scan cadence', () => {
   it('alternates deep ROI and full-frame scans without changing the deep budget', () => {
     expect(nextCameraScan(900, 0, false)).toEqual({ mode: 'camera-deep', fullFrame: false, budgetMs: 1500 });
     expect(nextCameraScan(1800, 900, true)).toEqual({ mode: 'camera-deep', fullFrame: true, budgetMs: 1500 });
+  });
+});
+
+function bitmap(name: string) {
+  return { name, width: 16, height: 16, close: vi.fn() } as unknown as ImageBitmap & { name: string };
+}
+
+describe('bounded sharp-frame selection', () => {
+  it('measures crisp alternating edges above a flat or gradual frame', () => {
+    const rgba = (values: number[]) => new Uint8ClampedArray(values.flatMap((value) => [value, value, value, 255]));
+    const flat = rgba(Array(25).fill(120));
+    const gradual = rgba(Array.from({ length: 25 }, (_, index) => index * 8));
+    const crisp = rgba(Array.from({ length: 25 }, (_, index) => (index + Math.floor(index / 5)) % 2 ? 255 : 0));
+    expect(measureLaplacianSharpness(crisp, 5, 5)).toBeGreaterThan(measureLaplacianSharpness(gradual, 5, 5));
+    expect(measureLaplacianSharpness(gradual, 5, 5)).toBeGreaterThanOrEqual(measureLaplacianSharpness(flat, 5, 5));
+  });
+
+  it('retains only the sharpest bounded candidate and closes every discarded bitmap', async () => {
+    const blurred = bitmap('blurred');
+    const sharp = bitmap('sharp');
+    const middling = bitmap('middling');
+    const candidates = [blurred, sharp, middling];
+    const selected = await selectSharpCameraFrame(
+      async () => candidates.shift()!,
+      { samples: 3, intervalMs: 0, score: (candidate) => ({ blurred: 1, sharp: 9, middling: 4 })[(candidate as typeof blurred).name] ?? 0 },
+    );
+    expect(selected).toBe(sharp);
+    expect(blurred.close).toHaveBeenCalledTimes(1);
+    expect(middling.close).toHaveBeenCalledTimes(1);
+    expect(sharp.close).not.toHaveBeenCalled();
+  });
+
+  it('closes the retained candidate when selection is cancelled', async () => {
+    vi.useFakeTimers();
+    const retained = bitmap('retained');
+    const controller = new AbortController();
+    const selecting = selectSharpCameraFrame(async () => retained, {
+      samples: 3,
+      intervalMs: 50,
+      signal: controller.signal,
+      score: () => 1,
+    });
+    await Promise.resolve();
+    controller.abort();
+    await expect(selecting).rejects.toMatchObject({ name: 'AbortError' });
+    expect(retained.close).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
