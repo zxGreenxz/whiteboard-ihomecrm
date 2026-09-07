@@ -1220,6 +1220,12 @@
     "src/lib/ocr/ocr.worker.ts",
     "src/components/customers/useCccdOcr.ts",
     "src/components/customers/CCCDOcrReview.tsx",
-    "src/lib/ocr/imageBounds.ts"
+    "src/lib/ocr/imageBounds.ts",
+    "src/lib/qr/cameraFrame.ts",
+    "src/lib/qr/__tests__/cameraFrame.test.ts",
+    "src/components/customers/useCccdQrCamera.ts",
+    "src/components/customers/__tests__/useCccdQrCamera.test.tsx",
+    "src/components/customers/__tests__/CCCDQrCameraScanner.test.tsx",
+    "src/components/customers/__tests__/CCCDQrCameraRecovery.test.tsx"
   ]
 }
