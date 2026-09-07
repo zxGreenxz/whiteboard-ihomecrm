@@ -83,6 +83,37 @@ describe('income approval golden actual facts',()=>{
     const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Tổng cộng: 12.000 đồng. Tổng thu: 1.000 đồng. Tổng chi: 11.000 đồng.'))).not.toThrow();
     const bad=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(bad,bad.answer+' Tổng cộng: 1.000 đồng.'))).toThrow();
   });
+  it.each(['before','after'])('rejects wrong common total equal to one row amount %s the voucher list',position=>{
+    const e=incomeEvidence(), total='Tổng tiền: 11.000 đồng. ';
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,position==='before'?total+e.answer:e.answer+' '+total))).toThrow();
+  });
+  it.each(['before','after'])('accepts the correct common total %s the voucher list',position=>{
+    const e=incomeEvidence(), total='Tổng tiền: 12.000 đồng. ';
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,position==='before'?total+e.answer:e.answer+' '+total))).not.toThrow();
+  });
+  it.each(['không phải phiếu chi','không phải là phiếu chi','chẳng phải phiếu chi'])('rejects explicit denial of the canonical voucher type: %s',type=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('phiếu chi',type)))).toThrow();
+  });
+  it('allows truthful opposite-type denial only alongside a positive canonical type',()=>{
+    const good=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(good,good.answer.replace('phiếu chi','phiếu chi, không phải phiếu thu')))).not.toThrow();
+    const missing=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(missing,missing.answer.replace('phiếu chi','không phải phiếu thu')))).toThrow();
+  });
+  it('preserves negation when the voucher type label precedes its identity',()=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('PC001 — phiếu chi','không phải phiếu chi PC001 —')))).toThrow();
+    const positive=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(positive,positive.answer.replace('PC001 — phiếu chi','Phiếu chi PC001 —')))).not.toThrow();
+  });
+  it.each(['Sổ quỹ TK 1234567890123.','Sổ quỹ TK 1234 5678 90123.'])('rejects canonical cashbook material stripped by the tool masker in mounted prose: %s',addition=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' '+addition))).toThrow();
+  });
+  it('accepts the canonical masked cashbook label in mounted prose',()=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Sổ quỹ TK [STK đã ẩn].'))).not.toThrow();
+  });
+  it('does not treat a canonical numeric cashbook reference left intact by maskPii as removed material',()=>{
+    const e=incomeEvidence();const data=structuredClone(e.fixture.payload);data.phieu!.forEach(row=>{row.so_quy='Quỹ số 12345678';});
+    e.fixture=bindIncomeApprovalScenario(e.scenario,{request:e.fixture.request,payload:data,actorDigest:e.actorDigest});e.reads[0].payload=data;
+    e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.replaceAll('TK [STK đã ẩn]','Quỹ số 12345678');
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Sổ quỹ Quỹ số 12345678.'))).not.toThrow();
+  });
   it.each([' PC999: 1000 đồng.',' Mã phiếu: XYZ-9.',' Phiếu XYZ-9.',' Tổng tiền: 1000.',' Số tiền: 0.',' Tiền chi: 9000.',' Giá trị phiếu: 9000.',' Có 1 phiếu.',' Có một phiếu.',' Có vài phiếu.',' Phiếu đã duyệt.',' Đã ghi sổ.'])('rejects empty-query hallucination %s',addition=>{
     const e=incomeEvidence('C35');expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+addition))).toThrow();
   });

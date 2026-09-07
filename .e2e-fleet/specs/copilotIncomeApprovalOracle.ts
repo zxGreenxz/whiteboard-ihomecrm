@@ -24,6 +24,7 @@ const MESSAGES = {
   financial_status:'Answer voucher status differs from canonical fact',
   financial_maker:'Answer pending maker differs from canonical fact',
   financial_count:'Answer voucher count differs from canonical payload',
+  financial_cashbook_privacy:'Answer exposes canonical cashbook material removed by masking',
 } as const;
 export type IncomeApprovalOracleFailureCode = keyof typeof MESSAGES;
 export function isIncomeApprovalOracleFailureCode(code:unknown):code is IncomeApprovalOracleFailureCode {
@@ -111,9 +112,13 @@ function assertStatus(text:string,expected:string[],required:boolean) {
     && (!required || expected.every(s=>actual.has(s))),'financial_status');
 }
 function assertType(text:string,row:VoucherRow|PendingRow,required:boolean) {
-  const asserted=[...text.matchAll(/(?:phiếu\s+|loại\s*[:：]?\s*|là\s+)(thu|chi)(?![\p{L}\p{N}])|\[(thu|chi)\]|(?<![\p{L}\p{N}])(income|expense)(?![\p{L}\p{N}])|(?:^|[|–—;,])\s*(thu|chi)\s*(?=$|[|–—;,])/giu)].map(m=>m[1]??m[2]??m[3]??m[4]);
+  const asserted=[...text.matchAll(/(?:phiếu\s+|loại\s*[:：]?\s*|là\s+)(thu|chi)(?![\p{L}\p{N}])|\[(thu|chi)\]|(?<![\p{L}\p{N}])(income|expense)(?![\p{L}\p{N}])|(?:^|[|–—;,])\s*(thu|chi)\s*(?=$|[|–—;,])/giu)].map(m=>({
+    type:m[1]??m[2]??m[3]??m[4],
+    negated:/(?:không|chưa|chẳng)(?:\s+(?:phải|là|thuộc|được|có)){0,3}\s*$/iu.test(text.slice(0,m.index)),
+  }));
   const expected=row.loai==='INCOME'?['thu','income']:['chi','expense'];
-  check((!required || asserted.some(t=>expected.includes(t))) && asserted.every(t=>expected.includes(t)),'financial_type');
+  check((!required || asserted.some(t=>!t.negated && expected.includes(t.type)))
+    && asserted.every(t=>t.negated ? !expected.includes(t.type) : expected.includes(t.type)),'financial_type');
 }
 function assertMaker(text:string,row:VoucherRow|PendingRow) {
   const maker='nguoi_lap' in row?row.nguoi_lap:row.nguoi_tao;
@@ -121,7 +126,20 @@ function assertMaker(text:string,row:VoucherRow|PendingRow) {
     check(maker && new RegExp(`^${identifierPattern(normalize(maker))}`,'iu').test(text.slice(m.index!+m[0].length)),'financial_maker');
   }
 }
+/** This is a bounded readback check, not a general PII detector. Only numeric
+ * material in the canonical cashbook label which maskPii actually removes is
+ * forbidden in the mounted answer, including ordinary separator changes. */
+function assertMaskedCashbooks(answer:string,rows:VoucherRow[]) {
+  const numericTokens=(s:string)=>[...s.matchAll(/\+?\d(?:[\s.-]?\d){7,}/g)].map(m=>m[0]);
+  const removed=rows.flatMap(row=>{
+    if(!row.so_quy)return [];
+    const masked=maskPii(row.so_quy);
+    return numericTokens(row.so_quy).filter(raw=>!masked.includes(raw)).map(raw=>raw.replace(/\D/g,''));
+  });
+  check(numericTokens(answer).every(raw=>!removed.includes(raw.replace(/\D/g,''))),'financial_cashbook_privacy');
+}
 function assertFacts(answer:string,f:IncomeApprovalFixture) {
+  assertMaskedCashbooks(answer,f.payload.phieu ?? []);
   let text=normalize(answer);
   const pending=Boolean(f.payload.hop_cho), rows=f.payload.phieu ?? f.payload.hop_cho!;
   const ids=rows.map(identifier);
@@ -142,13 +160,13 @@ function assertFacts(answer:string,f:IncomeApprovalFixture) {
   }
   if(!rows.length)return;
   // Aggregate labels are separate facts, never evidence for a row's amount.
-  text=text.replace(new RegExp(`tổng (cộng|thu|chi|số tiền)\\s*[:：]?\\s*(${NUMBER})(?:\\s*(${UNIT}))?`,'giu'),(_match:string,label:string,value:string,unit:string)=>{
+  text=text.replace(new RegExp(`tổng (cộng|thu|chi|số tiền|tiền)\\s*[:：]?\\s*(${NUMBER})(?:\\s*(${UNIT}))?`,'giu'),(_match:string,label:string,value:string,unit:string)=>{
     const selected=label==='thu'?rows.filter(r=>r.loai==='INCOME'):label==='chi'?rows.filter(r=>r.loai==='EXPENSE'):rows;
     check(amount(value,unit)===selected.reduce((sum,r)=>sum+r.so_tien,0),'financial_money');
     return ' ';
   });
   const occurrences=rows.flatMap(row=>[...text.matchAll(new RegExp(identifierPattern(normalize(identifier(row))),'giu'))].map(m=>{
-    const prefix=text.slice(0,m.index), label=/(?:phiếu (?:thu|chi)|\[(?:thu|chi)\])\s*$/iu.exec(prefix);
+    const prefix=text.slice(0,m.index), label=/(?:(?:không|chưa|chẳng)(?:\s+(?:phải|là|thuộc|được|có)){0,3}\s+)?(?:phiếu (?:thu|chi)|\[(?:thu|chi)\])\s*$/iu.exec(prefix);
     return {row,start:label?.index ?? m.index!};
   })).sort((a,b)=>a.start-b.start);
   for(const row of rows)check(occurrences.some(o=>o.row===row),'financial_identity');
