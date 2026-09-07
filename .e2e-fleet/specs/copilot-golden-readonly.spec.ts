@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { login, trackConsoleErrors } from './auth';
 import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { COPILOT_TEST_MODEL, pinCopilotTestModel } from './copilotTestModel';
-import { guiVaChoModel } from './copilotModelCycle';
+import { guiVaChoModel, type ModelCycleStage } from './copilotModelCycle';
 import { assertReadonlyResult, ModelStreamFailure, unexpectedReadonlyMutation } from './copilotSmokeOracle';
 import { bindContractScenario, contractQuery, CONTRACT_CASES, type ContractFixture } from '../../scripts/copilot-contract-fixtures.mjs';
 import { assertContractResult, contractOracleDiagnostic, type ContractRead } from './copilotContractOracle';
@@ -111,6 +111,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       const assistant = page.getByTestId('copilot-panel').locator('.flex.justify-start.gap-2 > .bg-muted');
       await expect(assistant).toHaveCount(0);
       const reads: Response[] = [], modelRequests: Request[] = [];
+      const modelHttpStatuses: number[] = [];
       let writes = 0, networkErrors = 0;
       const onRequest = (r: Request) => {
         const contractRead = contract && new URL(r.url()).origin === api && r.method() === 'POST' && /\/rest\/v1\/rpc\/copilot_contract_(search|detail)_v1$/.test(new URL(r.url()).pathname);
@@ -118,6 +119,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname)) modelRequests.push(r);
       };
       const onResponse = (r: Response) => {
+        if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname)) modelHttpStatuses.push(r.status());
         if (/\/(rest|functions)\/v1\//.test(r.url()) && !r.ok()) networkErrors += 1;
         if (/\/rpc\/copilot_(available_rooms|contract_search|contract_detail)_v1$/.test(r.url().split('?')[0])) reads.push(r);
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname) && !r.ok()) {
@@ -130,17 +132,20 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       transitionCase(run, c.id, { status: 'running' }); save();
       const started = Date.now();
       let completed = started;
+      let phase: ModelCycleStage | 'idle' | 'mounted' | 'oracle' = 'idle';
       reason = 'browser_failed';
       try {
         // C01's intent is immediate availability. This explicit clarification is
         // declared in the scenario manifest, never derived from expected fields.
         const prompt = bound.prompt;
-        const rounds = await guiVaChoModel(page, prompt);
+        const rounds = await guiVaChoModel(page, prompt, { onStage: stage => { phase = stage; } });
+        phase = 'mounted';
         completed = Date.now();
         await page.waitForLoadState('networkidle');
         await expect(assistant.last()).toBeVisible();
         const answer = await assistant.last().innerText();
         reason = 'oracle_failed';
+        phase = 'oracle';
         let rpcDigest: string;
         for (const r of modelRequests) {
           expect((await r.allHeaders())['x-organization-id']).toBe(DEMO_ORG);
@@ -168,6 +173,9 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
           toolResultLinked: true, finalAnswerMounted: true, readRpc: contract ? (c.id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1') : 'copilot_available_rooms_v1',
           ...(contract ? { fixtureDigest: digest(contract.attestation), queryDigest: contract.attestation.queryDigest, identityDigest: contract.attestation.identityDigest, searchDigest: contract.attestation.searchDigest, ...(contract.attestation.detailDigest ? { detailDigest: contract.attestation.detailDigest } : {}) } : {}), businessWrites: writes, networkErrors, oracleVersion: c.oracle } });
       } catch (error) {
+        console.log(JSON.stringify({ kind: 'golden-case-failure', caseId: c.id, phase,
+          modelRequests: modelRequests.length, readResponses: reads.length, modelHttpStatuses,
+          businessWrites: writes, networkErrors, consoleErrors: consoleErrors.length }));
         const diagnostic = contractOracleDiagnostic(c.id,error);
         if (diagnostic) console.log(JSON.stringify(diagnostic));
         if (error instanceof ModelStreamFailure) { fatalProvider = true; reason = error.reason; }

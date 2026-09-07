@@ -15,6 +15,19 @@ export default class GoldenReporter implements Reporter {
     for (const line of result.stdout.map(chunk => chunk.toString()).join('').split(/\r?\n/)) {
       try {
         const value: unknown = JSON.parse(line);
+        if (value && typeof value === 'object' && !Array.isArray(value) && 'kind' in value && value.kind === 'golden-case-failure') {
+          const fields = ['kind','caseId','phase','modelRequests','readResponses','modelHttpStatuses','businessWrites','networkErrors','consoleErrors'];
+          const data = value as Record<string, unknown>;
+          if (Object.keys(data).length !== fields.length || !Object.keys(data).every(key => fields.includes(key))
+            || typeof data.caseId !== 'string' || !/^C(?:0[1-9]|[1-6]\d|7[0-5])$/.test(data.caseId)
+            || typeof data.phase !== 'string' || !['idle','input','send','response','stream','completion','rounds','panel','mounted','oracle'].includes(data.phase)
+            || !['modelRequests','readResponses','businessWrites','networkErrors','consoleErrors'].every(key => typeof data[key] === 'number' && Number.isInteger(data[key]) && Number(data[key]) >= 0 && Number(data[key]) <= 1000)
+            || !Array.isArray(data.modelHttpStatuses) || data.modelHttpStatuses.length > 20 || !data.modelHttpStatuses.every(status => Number.isInteger(status) && status >= 100 && status <= 599)) continue;
+          console.log(JSON.stringify({ kind: 'golden-case-failure', caseId: data.caseId, phase: data.phase,
+            modelRequests: data.modelRequests, readResponses: data.readResponses, modelHttpStatuses: data.modelHttpStatuses,
+            businessWrites: data.businessWrites, networkErrors: data.networkErrors, consoleErrors: data.consoleErrors }));
+          continue;
+        }
         if (!value || typeof value !== 'object' || Array.isArray(value)
           || Object.keys(value).length !== 2 || !('caseId' in value) || !('code' in value)
           || typeof value.caseId !== 'string' || !['C31','C32','C33'].includes(value.caseId) || !isContractOracleFailureCode(value.code)) continue;

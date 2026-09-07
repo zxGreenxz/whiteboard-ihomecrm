@@ -406,3 +406,28 @@ describe('golden reporter static diagnostic boundary', () => {
     } finally { log.mockRestore(); }
   });
 });
+
+describe('golden reporter failure metadata boundary', () => {
+  const diagnostic = { kind: 'golden-case-failure', caseId: 'C32', phase: 'send', modelRequests: 0, readResponses: 0, modelHttpStatuses: [], businessWrites: 0, networkErrors: 0, consoleErrors: 0 };
+  it('retains only bounded phase and counters for a failed browser case', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      new GoldenReporter().onTestEnd({} as TestCase, { status: 'failed', stdout: [JSON.stringify(diagnostic) + '\n'] } as TestResult);
+      expect(log.mock.calls).toEqual([[JSON.stringify(diagnostic)], ['golden browser: failed']]);
+    } finally { log.mockRestore(); }
+  });
+  it.each([
+    { ...diagnostic, phase: 'private transcript' },
+    { ...diagnostic, modelRequests: 'private transcript' },
+    { ...diagnostic, modelHttpStatuses: ['private transcript'] },
+    { ...diagnostic, modelHttpStatuses: [200, 9999] },
+    { ...diagnostic, message: 'private transcript' },
+    { ...diagnostic, businessWrites: -1 },
+  ])('suppresses unsafe failure metadata %j', value => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      new GoldenReporter().onTestEnd({} as TestCase, { status: 'failed', stdout: [JSON.stringify(value) + '\n'] } as TestResult);
+      expect(log.mock.calls).toEqual([['golden browser: failed']]);
+    } finally { log.mockRestore(); }
+  });
+});
