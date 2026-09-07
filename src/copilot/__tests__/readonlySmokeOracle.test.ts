@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TestCase, TestResult } from '@playwright/test/reporter';
 import GoldenReporter from '../../../.e2e-fleet/goldenReporter';
+import { assertIncomeApprovalResult, IncomeApprovalOracleFailure, incomeApprovalOracleDiagnostic, incomeApprovalFixtureFailureReason, isIncomeApprovalOracleFailureCode, isIncomeApprovalReadonlyRequest } from '../../../.e2e-fleet/specs/copilotIncomeApprovalOracle';
+import { bindIncomeApprovalScenario, incomeApprovalRequest } from '../../../scripts/copilot-income-approval-fixtures.mjs';
 import { inspectModelStream, assertReadonlyResult, unexpectedReadonlyMutation, renderedAssistantText } from '../../../.e2e-fleet/specs/copilotSmokeOracle';
 const chunk = (delta: object, finish_reason: string | null) => `data: ${JSON.stringify({ choices: [{ delta, finish_reason }] })}\n\n`;
 const answer = chunk({ content: 'Có 1 phòng trống ngay: A101.' }, 'stop') + 'data: [DONE]\n\n';
@@ -10,6 +12,106 @@ const payload = { buildings: [{ id: 'b1' }], rooms: [{ id: 'r1', building_id: 'b
 const evidence = () => ({ prompt: 'Liệt kê phòng', answer: 'Có 1 phòng trống ngay: A101.',
   rounds: [{ body: call, messages: [{ role: 'user', content: 'Liệt kê phòng' }] },
     { body: answer, messages: [{ role: 'user', content: 'Liệt kê phòng' }, { role: 'tool', tool_call_id: 'call-1', content: 'Tổng 1 phòng trống ngay.\n\nDEMO Toà A (Địa chỉ):\n  Trống ngay (1):\n  - A101: 3 triệu/tháng, 20m², tầng 1' }] }], payload: structuredClone(payload) });
+
+const ieVoucher = {phieu_id:'aaaa4000-0000-4000-8000-000000000021',ma_phieu:'PC001',loai:'EXPENSE',ten:'Sửa chữa',so_tien:11000,ngay:'2026-07-12',hang_muc:'Sửa nhà',so_quy:'TK 1234567890123',trang_thai:'UNAPPROVED',trang_thai_ghi_nhan:'UNPOSTED',nguoi_tao:'Demo An',toa_nha:'DEMO Toà A'};
+const ieIncome = {...ieVoucher,phieu_id:'aaaa4000-0000-4000-8000-000000000023',ma_phieu:'PT002',loai:'INCOME',ten:'Thu khác',so_tien:1000,trang_thai:'CANCELLED',nguoi_tao:'Demo Bình'};
+function incomeEvidence(id='C34') {
+  const scenario={id,fixture:'readonly',kind:'read',acceptance:['facts'],oracle:id==='C34'?'vouchers-2026-07-v1':id==='C35'?'empty-expenses-2099-01-v1':'pending-approval-inbox-v1',prompt:id==='C34'?'Phiếu thu chi tháng 07/2026':id==='C35'?'Phiếu chi kỳ 2099-01':'Có gì đang chờ tôi duyệt không?'};
+  const request=incomeApprovalRequest(id), actorDigest='b'.repeat(64);
+  const data=id==='C36'?{gioi_han:20,so_luong:1,hop_cho:[{yeu_cau_id:'aaaa4000-0000-4000-8000-000000000024',lan_gui:1,gui_luc:'2026-09-07T00:00:00+00:00',so_tien:11000,phieu_id:ieVoucher.phieu_id,ma_phieu:'PC001',ten_phieu:'Sửa chữa',loai:'EXPENSE',nguoi_lap:' Demo An ',buoc:1}]}:{gioi_han:20,so_luong:id==='C35'?0:2,phieu:id==='C35'?[]:[ieVoucher,ieIncome]};
+  const fixture=bindIncomeApprovalScenario(scenario,{request,payload:data,actorDigest});
+  const toolArgs=id==='C36'?{}:{tu_ngay:id==='C35'?'2099-01-01':'2026-07-01',den_ngay:id==='C35'?'2099-01-31':'2026-07-31',...(id==='C35'?{loai:'chi'}:{})};
+  const toolText=id==='C35'?'Không tìm thấy phiếu thu chi nào khớp điều kiện.':id==='C36'?'1 phiếu đang chờ bạn duyệt (tối đa 20 dòng):\n- [CHI] PC001 — Sửa chữa — 11.000 đ — gửi 2026-09-07 — lập bởi  Demo An \n[link: /approvals]':'2 phiếu thu chi (tối đa 20 dòng mỗi lần hỏi):\n- [CHI] PC001 — Sửa chữa — 11.000 đ — 2026-07-12 — Sửa nhà — sổ TK [STK đã ẩn] — chờ duyệt, chưa vào sổ — lập bởi Demo An\n- [THU] PT002 — Thu khác — 1.000 đ — 2026-07-12 — Sửa nhà — sổ TK [STK đã ẩn] — đã huỷ, chưa vào sổ — lập bởi Demo Bình\n[link: /income-expense]';
+  const text=id==='C35'?'Không tìm thấy phiếu chi nào trong tháng 01/2099.':id==='C36'?'Có 1 phiếu đang chờ bạn duyệt: PC001 — phiếu chi, số tiền 11.000 đồng, lập bởi Demo An. Bạn có thể xem tại trang phê duyệt.':'Có 2 phiếu tháng 07/2026:\nPC001 — phiếu chi, 11.000 đồng, chờ duyệt, chưa vào sổ.\nPT002 — phiếu thu, 1.000 đồng, đã huỷ, chưa vào sổ.';
+  const messages=[{role:'user',content:scenario.prompt}];
+  const rounds=[{body:chunk({tool_calls:[{index:0,id:'ie-read-1',function:{name:id==='C36'?'hop_cho_duyet':'tim_phieu_thu_chi',arguments:JSON.stringify(toolArgs)}}]},'tool_calls')+'data: [DONE]\n\n',messages},
+    {body:chunk({content:text},'stop')+'data: [DONE]\n\n',messages:[...messages,{role:'tool',tool_call_id:'ie-read-1',content:toolText}]}];
+  return {scenario,fixture,prompt:scenario.prompt,answer:text,rounds,actorDigest,reads:[{rpc:request.rpc as string,args:{...request.args} as Record<string,unknown>,payload:structuredClone(data) as unknown,ok:true,actorDigest}]};
+}
+function changeIncomeAnswer(e:ReturnType<typeof incomeEvidence>,text:string) {
+  e.answer=text;e.rounds.at(-1)!.body=chunk({content:text},'stop')+'data: [DONE]\n\n';return e;
+}
+describe('income approval golden actual facts',()=>{
+  it.each(['C34','C35','C36'])('accepts %s exact actor/RPC/tool/answer chain',id=>expect(()=>assertIncomeApprovalResult(incomeEvidence(id))).not.toThrow());
+  it.each(['p_organization_id','p_tu','p_den','p_loai','p_query','p_trang_thai','p_limit'])('rejects observed filter drift %s',key=>{
+    const e=incomeEvidence();e.reads[0].args[key]='wrong';expect(()=>assertIncomeApprovalResult(e)).toThrow();
+  });
+  it('rejects changed actor, fixture payload and a tool result never consumed',()=>{
+    const actor=incomeEvidence('C36');actor.actorDigest='c'.repeat(64);expect(()=>assertIncomeApprovalResult(actor)).toThrow();
+    const drift=incomeEvidence();drift.reads[0].payload={gioi_han:20,so_luong:0,phieu:[]};expect(()=>assertIncomeApprovalResult(drift)).toThrow();
+    const lost=incomeEvidence();lost.rounds[1].messages=[{role:'user',content:lost.prompt}];expect(()=>assertIncomeApprovalResult(lost)).toThrow();
+    const wrong=incomeEvidence();wrong.rounds[1].messages[1].tool_call_id='other';expect(()=>assertIncomeApprovalResult(wrong)).toThrow();
+    const raw=incomeEvidence();raw.rounds[1].messages[1].content=raw.rounds[1].messages[1].content.replace('[STK đã ẩn]','1234567890123');expect(()=>assertIncomeApprovalResult(raw)).toThrow();
+  });
+  it('rejects a successful read carrying another authenticated actor',()=>{
+    const e=incomeEvidence('C36');e.reads[0].actorDigest='c'.repeat(64);expect(()=>assertIncomeApprovalResult(e)).toThrow();
+  });
+  it('only exempts the current scenario exact known endpoint at the attested origin',()=>{
+    const f=incomeEvidence().fixture, origin='https://demo.supabase.co';
+    expect(isIncomeApprovalReadonlyRequest(f,origin,'POST',origin+'/rest/v1/rpc/copilot_income_expense_search_v1')).toBe(true);
+    for(const [method,url] of [['DELETE',origin+'/rest/v1/rpc/copilot_income_expense_search_v1'],['POST','https://other.supabase.co/rest/v1/rpc/copilot_income_expense_search_v1'],['POST',origin+'/rest/v1/rpc/copilot_pending_requests_v1'],['POST',origin+'/rest/v1/rpc/copilot_income_expense_search_v1/extra'],['POST',origin+'/rest/v1/rpc/copilot_income_expense_search_v1?other=1'],['POST',origin+'/rest/v1/rpc/ie_compat_cancel_v2']])expect(isIncomeApprovalReadonlyRequest(f,origin,method,url)).toBe(false);
+    expect(isIncomeApprovalReadonlyRequest(undefined,origin,'POST',origin+'/rest/v1/rpc/copilot_income_expense_search_v1')).toBe(false);
+  });
+  it('emits only static typed financial diagnostic codes',()=>{
+    const e=incomeEvidence();let failure:unknown;
+    try{assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('11.000 đồng','12.000 đồng')));}catch(error){failure=error;}
+    expect(incomeApprovalOracleDiagnostic('C34',failure)).toEqual({caseId:'C34',code:'financial_money'});
+    for(const error of [new Error('private payload'),{code:'financial_money'},Object.assign(Object.create(IncomeApprovalOracleFailure.prototype),{code:'financial_money'})])expect(incomeApprovalOracleDiagnostic('C34',error)).toBeUndefined();
+    expect(incomeApprovalOracleDiagnostic('private-case',failure)).toBeUndefined();
+    expect(isIncomeApprovalOracleFailureCode('financial_money')).toBe(true);
+    for(const code of ['private payload',null,['financial_money'],{}])expect(isIncomeApprovalOracleFailureCode(code)).toBe(false);
+  });
+  it('classifies snapshot drift as a blocked fixture while answer corruption remains an oracle failure',()=>{
+    const e=incomeEvidence('C36');e.reads[0].payload={gioi_han:20,so_luong:0,hop_cho:[]};let failure:unknown;
+    try{assertIncomeApprovalResult(e);}catch(error){failure=error;}
+    expect(incomeApprovalFixtureFailureReason(failure)).toBe('fixture_unbound');
+    expect(incomeApprovalFixtureFailureReason(new IncomeApprovalOracleFailure('financial_money'))).toBeUndefined();
+    expect(incomeApprovalFixtureFailureReason(new Error('financial_rpc_drift'))).toBeUndefined();
+  });
+  it.each([
+    ['11.000 đồng','1.000 đồng'],['PC001','PC0010'],['phiếu chi','phiếu thu'],['chờ duyệt','đã duyệt'],['đã huỷ','đã duyệt'],['chưa vào sổ','đã vào sổ'],
+  ])('rejects per-voucher corrupt facts %s -> %s',(from,to)=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace(from,to)))).toThrow();
+  });
+  it('rejects money swapped between two voucher identities even though global amounts are unchanged',()=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('11.000 đồng','SWAP').replace('1.000 đồng','11.000 đồng').replace('SWAP','1.000 đồng')))).toThrow();
+  });
+  it('accepts faithful labeled prose, bare amounts and bullet prefixes',()=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,'Có 2 phiếu:\n- Phiếu chi PC001, số tiền: 11000; chưa duyệt; chưa ghi sổ.\n- [THU] PT002, số tiền: 1000; đã hủy; chưa hạch toán.'))).not.toThrow();
+  });
+  it('checks faithful aggregate totals separately from each voucher amount',()=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Tổng cộng: 12.000 đồng. Tổng thu: 1.000 đồng. Tổng chi: 11.000 đồng.'))).not.toThrow();
+    const bad=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(bad,bad.answer+' Tổng cộng: 1.000 đồng.'))).toThrow();
+  });
+  it.each([' PC999: 1000 đồng.',' Mã phiếu: XYZ-9.',' Phiếu XYZ-9.',' Tổng tiền: 1000.',' Số tiền: 0.',' Tiền chi: 9000.',' Giá trị phiếu: 9000.',' Có 1 phiếu.',' Có một phiếu.',' Có vài phiếu.',' Phiếu đã duyệt.',' Đã ghi sổ.'])('rejects empty-query hallucination %s',addition=>{
+    const e=incomeEvidence('C35');expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+addition))).toThrow();
+  });
+  it.each(['đã được duyệt','đã vào sổ','đã từ chối','đã hủy','APPROVED','REJECTED'])('rejects pending inbox decision claim %s',addition=>{
+    const e=incomeEvidence('C36');expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Phiếu '+addition+'.'))).toThrow();
+  });
+  it('rejects wrong inbox maker and amount and permits explicit no-decision language',()=>{
+    const e=incomeEvidence('C36');expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('Demo An','Demo Bình')))).toThrow();
+    const good=incomeEvidence('C36');expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(good,good.answer+' Phiếu chưa được duyệt. Bạn có thể duyệt hoặc từ chối bằng tay.'))).not.toThrow();
+  });
+  it.each([' PC001 là phiếu thu.',' PC001 không chờ duyệt.',' PC001 đã được ghi sổ.',' PC001 số tiền: 11000, phiếu chi, chờ duyệt, chưa vào sổ; người lập: Người Khác.'])('rejects contradictory repeated voucher facts %s',addition=>{
+    const e=incomeEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+addition))).toThrow();
+  });
+  it('does not mistake the maker name for a voucher type assertion',()=>{
+    const e=incomeEvidence('C36');const data=structuredClone(e.fixture.payload);data.hop_cho![0].nguoi_lap='Demo Thu';
+    e.fixture=bindIncomeApprovalScenario(e.scenario,{request:e.fixture.request,payload:data,actorDigest:e.actorDigest});e.reads[0].payload=data;
+    e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.replace(' Demo An ','Demo Thu');
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('Demo An','Demo Thu')))).not.toThrow();
+  });
+  it('does not infer an unposted state from pending approval alone',()=>{
+    const e=incomeEvidence('C36');expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' PC001 chưa ghi sổ.'))).toThrow();
+  });
+  it('accepts pending code fallback from the actual request identity',()=>{
+    const e=incomeEvidence('C36');const data=structuredClone(e.fixture.payload);data.hop_cho![0].ma_phieu=null;data.hop_cho![0].phieu_id=null;
+    e.fixture=bindIncomeApprovalScenario(e.scenario,{request:e.fixture.request,payload:data,actorDigest:e.actorDigest});e.reads[0].payload=data;
+    e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.replace('PC001','aaaa4000');
+    expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('PC001','aaaa4000')))).not.toThrow();
+  });
+});
 describe('readonly smoke failure oracle', () => {
   it('accepts a complete model/tool cycle with DEMO-consistent answer', () => { expect(() => assertReadonlyResult(evidence())).not.toThrow(); });
   it('reassembles fragmented tool names', () => { expect(inspectModelStream(call).tools).toEqual([{ id: 'call-1', name: 'phong_trong', arguments: '{}' }]); });

@@ -473,7 +473,7 @@
         "zero-business-writes"
       ],
       "prompt": "Phiếu thu chi tháng 07/2026",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C35",
@@ -487,7 +487,7 @@
         "zero-business-writes"
       ],
       "prompt": "Phiếu chi kỳ 2099-01",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C36",
@@ -501,7 +501,7 @@
         "zero-business-writes"
       ],
       "prompt": "Có gì đang chờ tôi duyệt không?",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C37",

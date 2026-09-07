@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as evidence from '../copilot-golden-browser-evidence.mjs';
 import { bindContractScenario, contractQuery } from '../copilot-contract-fixtures.mjs';
+import { bindIncomeApprovalScenario, incomeApprovalRequest } from '../copilot-income-approval-fixtures.mjs';
 
 const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', trang_thai:'ACTIVE', khach_hang: 'Demo An', phong: 'A101', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', tien_thue: 3000000, tien_coc: 6000000 };
 test('contract binding binds exact identity/query and rejects empty, ambiguous or drifting fixtures', () => {
@@ -43,6 +44,66 @@ const attestation = {
   fixtureDigest: digest, policyDigest: digest, actorDigest: digest,
   observedAt: '2026-09-06T10:00:00.000Z', contextId: 'isolated-browser-1',
 };
+
+const voucherRow = { phieu_id:'aaaa4000-0000-4000-8000-000000000021',ma_phieu:'PC001',loai:'EXPENSE',ten:'Demo repair',so_tien:11000,ngay:'2026-07-12',hang_muc:'Repair',so_quy:'Cash',trang_thai:'UNAPPROVED',trang_thai_ghi_nhan:'UNPOSTED',nguoi_tao:'Demo An',toa_nha:'DEMO Toà A' };
+const pendingRow = { yeu_cau_id:'aaaa4000-0000-4000-8000-000000000022',lan_gui:1,gui_luc:'2026-09-07T00:00:00+00:00',so_tien:1000,phieu_id:voucherRow.phieu_id,ma_phieu:'PC001',ten_phieu:'Demo repair',loai:'EXPENSE',nguoi_lap:'Demo An',buoc:1 };
+const financialInput = id => ({ request: incomeApprovalRequest(id), actorDigest:attestation.actorDigest,
+  payload:{gioi_han:20,so_luong:id === 'C35' ? 0 : 1,[id === 'C36' ? 'hop_cho' : 'phieu']:id === 'C35' ? [] : [id === 'C36' ? pendingRow : voucherRow]} });
+test('financial fixtures bind exact actor/query and preserve cancelled history rather than accepting empty positives', () => {
+  assert.deepEqual(incomeApprovalRequest('C34'), {rpc:'copilot_income_expense_search_v1',args:{p_organization_id:evidence.DEMO_ORG,p_query:null,p_tu:'2026-07-01',p_den:'2026-07-31',p_loai:null,p_trang_thai:null,p_limit:20}});
+  assert.deepEqual(incomeApprovalRequest('C35'), {rpc:'copilot_income_expense_search_v1',args:{p_organization_id:evidence.DEMO_ORG,p_query:null,p_tu:'2099-01-01',p_den:'2099-01-31',p_loai:'EXPENSE',p_trang_thai:null,p_limit:20}});
+  assert.deepEqual(incomeApprovalRequest('C36'), {rpc:'copilot_pending_requests_v1',args:{p_organization_id:evidence.DEMO_ORG,p_limit:20}});
+  for (const id of ['C34','C35','C36']) {
+    const scenario = manifest.cases.find(c => c.id === id), input = financialInput(id);
+    const bound = bindIncomeApprovalScenario(scenario,input);
+    assert.equal(bound.prompt,scenario.prompt);
+    assert.equal(bound.attestation.queryDigest,evidence.digest(input.request));
+    assert.equal(bound.attestation.responseDigest,evidence.digest(input.payload));
+    assert.equal(bound.attestation.actorDigest,attestation.actorDigest);
+    for (const [key,value] of [['p_organization_id','other'],['p_limit',50],['p_query','other'],['p_loai','INCOME'],['p_tu','2026-06-01'],['p_den','2026-07-30'],['p_trang_thai','APPROVED']]) {
+      const bad = structuredClone(input); bad.request.args[key]=value;
+      assert.throws(() => bindIncomeApprovalScenario(scenario,bad),/fixture_unbound/);
+    }
+    for (const badActor of ['',null,[],{toString:()=>attestation.actorDigest}]) assert.throws(() => bindIncomeApprovalScenario(scenario,{...input,actorDigest:badActor}),/fixture_unbound/);
+    const bad = structuredClone(input); bad.payload[id === 'C36' ? 'hop_cho' : 'phieu'] = id === 'C35' ? [voucherRow] : []; bad.payload.so_luong = id === 'C35' ? 1 : 0;
+    assert.throws(() => bindIncomeApprovalScenario(scenario,bad),/fixture_unbound/);
+  }
+  const scenario = manifest.cases.find(c=>c.id === 'C34'), input=financialInput('C34');
+  for (const change of [{so_tien:'11000'},{so_tien:-1},{ngay:'2026-02-30'},{ngay:'2026-08-01'},{phieu_id:'bad'},{trang_thai:'PENDING_APPROVAL'},{trang_thai_ghi_nhan:'invented'}]) {
+    assert.throws(()=>bindIncomeApprovalScenario(scenario,{...input,payload:{...input.payload,phieu:[{...voucherRow,...change}]}}),/fixture_unbound/);
+  }
+  const cancelled=bindIncomeApprovalScenario(scenario,{...input,payload:{...input.payload,phieu:[{...voucherRow,trang_thai:'CANCELLED'}]}});
+  assert.equal(cancelled.payload.phieu[0].trang_thai,'CANCELLED');
+  assert.throws(()=>bindIncomeApprovalScenario(scenario,{...input,payload:{...input.payload,so_luong:2,phieu:[voucherRow,voucherRow]}}),/fixture_unbound/);
+});
+
+test('income/approval passes require actor-bound per-case hashes and exact observation schema', () => {
+  const fixtures=Object.fromEntries(['C34','C35','C36'].map(id=>[id,bindIncomeApprovalScenario(manifest.cases.find(c=>c.id===id),financialInput(id)).attestation]));
+  const run=evidence.createRun(golden,manifest,{...attestation,incomeApprovalFixtures:fixtures},['C34','C35','C36']);
+  for (const id of ['C34','C35','C36']) {
+    const f=fixtures[id], scenario=manifest.cases.find(c=>c.id===id);
+    evidence.transitionCase(run,id,{status:'running'});
+    evidence.transitionCase(run,id,{status:'pass',timing:{startedAt:'2026-09-06T10:00:00.000Z',completedAt:'2026-09-06T10:00:01.000Z',totalMs:1000,humanWaitMs:0,processingMs:1000},observed:{answerDigest:digest,promptDigest:evidence.digest(scenario.prompt),promptTemplateDigest:evidence.digest(scenario.prompt),bindingDigest:evidence.digest(f),fixtureDigest:evidence.digest(f),queryDigest:f.queryDigest,identityDigest:f.identityDigest,responseDigest:f.responseDigest,rpcDigest:f.responseDigest,modelRounds:2,toolResultLinked:true,finalAnswerMounted:true,readRpc:incomeApprovalRequest(id).rpc,businessWrites:0,networkErrors:0,oracleVersion:scenario.oracle}});
+    for(const key of ['fixtureDigest','bindingDigest','queryDigest','identityDigest','responseDigest','rpcDigest','readRpc','oracleVersion','toolResultLinked']) {
+      const bad=structuredClone(run); bad.cases.find(c=>c.id===id).observed[key]='c'.repeat(64);
+      assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length,`${id} ${key}`);
+    }
+    for (const key of ['organizationId','actorDigest','kind','responseDigest']) {
+      const bad=structuredClone(run); bad.attestation.incomeApprovalFixtures[id][key]='c'.repeat(64);
+      assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length);
+    }
+    const missing=structuredClone(run); delete missing.attestation.incomeApprovalFixtures[id];
+    assert.ok(evidence.validateBrowserRun(golden,manifest,missing).length);
+    const raw=structuredClone(run); raw.attestation.incomeApprovalFixtures[id].payload={private:'raw'};
+    assert.ok(evidence.validateBrowserRun(golden,manifest,raw).length);
+    const wrongField=structuredClone(run); wrongField.cases.find(c=>c.id===id).observed.searchDigest=digest;
+    assert.ok(evidence.validateBrowserRun(golden,manifest,wrongField).length);
+  }
+  assert.deepEqual(evidence.validateBrowserRun(golden,manifest,run),[]);
+  assert.equal(evidence.summarizeRun(run).selectedVerdict,'pass');
+  assert.equal(evidence.summarizeRun(run).fullPlanAccepted,false);
+  assert.equal(run.cases.length,75);
+});
 
 test('manifest accounts for every original case and distinguishes unfinished domain oracles', () => {
   assert.deepEqual(evidence.validateManifest(golden, manifest), []);

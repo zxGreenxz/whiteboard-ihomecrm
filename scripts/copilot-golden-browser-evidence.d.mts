@@ -16,10 +16,15 @@ export interface ContractFixtureAttestation {
 }
 export interface Attestation {
   contractFixtures?: Partial<Record<'C31' | 'C32' | 'C33', ContractFixtureAttestation>>;
+  incomeApprovalFixtures?: Partial<Record<'C34' | 'C35' | 'C36', IncomeApprovalFixtureAttestation>>;
   buildSha: string; edgeSourceDigest: string; deployedEdgeSourceDigest: string;
   providerModel: string; organizationId: typeof DEMO_ORG; corpusDigest: string;
   manifestDigest: string; fixtureDigest: string; policyDigest: string;
   actorDigest: string; observedAt: string; contextId: string;
+}
+export interface IncomeApprovalFixtureAttestation {
+  kind:'voucher-search'|'voucher-empty'|'pending-inbox'; organizationId:typeof DEMO_ORG;
+  actorDigest:string; queryDigest:string; identityDigest:string; responseDigest:string;
 }
 export interface Timing {
   startedAt: string; completedAt: string; totalMs: number; humanWaitMs: number; processingMs: number;
@@ -27,8 +32,8 @@ export interface Timing {
 export interface Observation {
   answerDigest: string; promptDigest: string; promptTemplateDigest: string; bindingDigest: string;
   rpcDigest: string; modelRounds: number; toolResultLinked: true; finalAnswerMounted: true;
-  fixtureDigest?: string; queryDigest?: string; identityDigest?: string; searchDigest?: string; detailDigest?: string;
-  readRpc: 'copilot_available_rooms_v1' | 'copilot_contract_search_v1' | 'copilot_contract_detail_v1'; businessWrites: number; networkErrors: number; oracleVersion: string;
+  fixtureDigest?: string; queryDigest?: string; identityDigest?: string; searchDigest?: string; detailDigest?: string; responseDigest?:string;
+  readRpc: 'copilot_available_rooms_v1' | 'copilot_contract_search_v1' | 'copilot_contract_detail_v1' | 'copilot_income_expense_search_v1' | 'copilot_pending_requests_v1'; businessWrites: number; networkErrors: number; oracleVersion: string;
 }
 export interface BrowserCase {
   id: string; oracle: string; status: CaseStatus; reason?: CaseReason; timing?: Timing; observed?: Observation;
