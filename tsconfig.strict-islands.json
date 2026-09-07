@@ -1238,7 +1238,12 @@
     "src/lib/ocr/clipper.d.ts",
     "src/components/customers/useCccdOcr.ts",
     "src/components/customers/CCCDOcrReview.tsx",
-    "src/lib/ocr/imageBounds.ts"
+    "src/lib/ocr/imageBounds.ts",
+    "src/lib/qr/cameraFrame.ts",
+    "src/lib/qr/__tests__/cameraFrame.test.ts",
+    "src/components/customers/useCccdQrCamera.ts",
+    "src/components/customers/__tests__/useCccdQrCamera.test.tsx",
+    "src/components/customers/__tests__/CCCDQrCameraScanner.test.tsx"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }

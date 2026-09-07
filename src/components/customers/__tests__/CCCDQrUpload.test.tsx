@@ -25,7 +25,7 @@ vi.mock('@/lib/authSession', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../CCCDQrCameraScanner', () => ({
-  default: ({ open, onParsed }: {
+  default: ({ open, onParsed, onCapture }: {
     open: boolean;
     onParsed: (data: {
       idNumber: string;
@@ -36,6 +36,7 @@ vi.mock('../CCCDQrCameraScanner', () => ({
       idIssueDate: string;
       idIssuePlace: string;
     }) => void;
+    onCapture: (file: File) => void;
   }) => {
     React.useEffect(() => {
       if (!open) return undefined;
@@ -43,9 +44,10 @@ vi.mock('../CCCDQrCameraScanner', () => ({
       return () => { mocks.cameraEffectStops += 1; };
     }, [open, onParsed]);
     if (!open) return null;
-    return React.createElement('button', {
-      type: 'button',
-      onClick: () => onParsed({
+    return React.createElement(React.Fragment, null,
+      React.createElement('button', {
+        type: 'button',
+        onClick: () => onParsed({
         idNumber: '001234567890',
         fullName: 'Nguyễn Minh An',
         dateOfBirth: '2000-02-29',
@@ -53,8 +55,13 @@ vi.mock('../CCCDQrCameraScanner', () => ({
         permanentAddress: '12 Đường Mẫu',
         idIssueDate: '2022-05-06',
         idIssuePlace: 'Cục Cảnh Sát',
-      }),
-    }, 'Deliver camera result');
+        }),
+      }, 'Deliver camera result'),
+      React.createElement('button', {
+        type: 'button',
+        onClick: () => onCapture(new File(['full-card'], 'camera.jpg', { type: 'image/jpeg' })),
+      }, 'Capture full card'),
+    );
   },
 }));
 
@@ -174,6 +181,34 @@ describe('CCCDQrUpload', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Xoá ảnh QR' }));
     expect(screen.queryByText('Đã đọc QR từ camera')).toBeNull();
+  });
+
+  it('sends one camera full-card capture through the shared upload and OCR owner', async () => {
+    mocks.scan.mockResolvedValue({ status: 'not-found', elapsedMs: 2 });
+    mocks.ocrRead.mockResolvedValue({
+      status: 'review', elapsedMs: 1,
+      data: { source: 'ocr', idNumber: '001099999991', fullName: 'NGUYỄN THỬ', dateOfBirth: '2000-02-29', gender: 'Nữ', permanentAddress: '12 Đường Thử', idIssuePlace: 'Cục Cảnh sát', idIssueDate: '' },
+      states: { idNumber: 'readable', fullName: 'check', dateOfBirth: 'readable', gender: 'readable', permanentAddress: 'check' },
+    });
+    render(<CCCDQrUpload onParsed={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Quét bằng camera' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Capture full card' }));
+    await waitFor(() => expect(mocks.scan).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'camera.jpg' }),
+      expect.objectContaining({ mode: 'image' }),
+    ));
+    await screen.findByTestId('cccd-ocr-review');
+    expect(mocks.dispose).toHaveBeenCalled();
+    expect(mocks.ocrRead).toHaveBeenCalledWith(expect.objectContaining({ name: 'camera.jpg' }), expect.anything());
+  });
+
+  it('releases an existing upload scanner before opening the camera worker', async () => {
+    mocks.scan.mockReturnValueOnce(new Promise(() => {}));
+    render(<CCCDQrUpload onParsed={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('cccd-qr-file-input'), { target: { files: [new File(['qr'], 'pending.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(mocks.scan).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Quét bằng camera' }));
+    expect(mocks.dispose).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the QR listener from stealing pastes owned by either hovered ID image upload', async () => {

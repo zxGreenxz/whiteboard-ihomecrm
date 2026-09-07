@@ -74,6 +74,11 @@ export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProp
     }
   }, [reset]);
 
+  const handleCameraCapture = useCallback(async (file: File) => {
+    setCameraOpen(false);
+    await acceptFile(file);
+  }, [acceptFile]);
+
   const error = ocr.status === 'idle' ? statusMessage[qr.status] : undefined;
 
   return (
@@ -89,7 +94,7 @@ export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProp
           size="sm"
           variant="outline"
           className="h-7 gap-1.5 text-xs"
-          onClick={() => { qr.reset(); setCameraOpen(true); }}
+          onClick={() => { qr.reset(); qr.disposeScanner(); setCameraOpen(true); }}
         >
           <Camera className="h-3.5 w-3.5" />
           Quét bằng camera
@@ -189,6 +194,7 @@ export default function CCCDQrUpload({ onParsed, onTaskStart }: CCCDQrUploadProp
         open={cameraOpen}
         onOpenChange={setCameraOpen}
         onParsed={handleCameraParsed}
+        onCapture={handleCameraCapture}
       />
     </div>
   );
