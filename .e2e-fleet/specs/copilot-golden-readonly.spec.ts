@@ -5,7 +5,8 @@ import { login, trackConsoleErrors } from './auth';
 import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { COPILOT_TEST_MODEL, pinCopilotTestModel } from './copilotTestModel';
 import { guiVaChoModel, type ModelCycleStage } from './copilotModelCycle';
-import { assertReadonlyResult, ModelStreamFailure, unexpectedReadonlyMutation } from './copilotSmokeOracle';
+import { assertReadonlyResult, inspectModelStream, ModelStreamFailure, unexpectedReadonlyMutation } from './copilotSmokeOracle';
+import { diagnosticEndpoint, diagnosticToolName, type GoldenCallDiagnostic } from './copilotGoldenDiagnostics';
 import { bindContractScenario, contractQuery, CONTRACT_CASES, type ContractFixture } from '../../scripts/copilot-contract-fixtures.mjs';
 import { assertContractResult, contractOracleDiagnostic, type ContractRead } from './copilotContractOracle';
 import { bindRoomScenario, createRun, DEMO_ORG, digest, IMPLEMENTED_ORACLES, summarizeRun, transitionCase, writeCheckpoint } from '../../scripts/copilot-golden-browser-evidence.mjs';
@@ -112,13 +113,24 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       await expect(assistant).toHaveCount(0);
       const reads: Response[] = [], modelRequests: Request[] = [];
       const modelHttpStatuses: number[] = [];
+      const callDiagnostics = new Map<Request,GoldenCallDiagnostic>();
+      const toolDiagnostics: string[] = [];
+      let diagnosticsTruncated = false;
       let writes = 0, networkErrors = 0;
       const onRequest = (r: Request) => {
         const contractRead = contract && new URL(r.url()).origin === api && r.method() === 'POST' && /\/rest\/v1\/rpc\/copilot_contract_(search|detail)_v1$/.test(new URL(r.url()).pathname);
-        if (!contractRead && unexpectedReadonlyMutation(r.method(), r.url())) writes += 1;
+        const countedAsMutation = !contractRead && unexpectedReadonlyMutation(r.method(), r.url());
+        if (countedAsMutation) writes += 1;
+        const observedRead = /\/rpc\/copilot_(available_rooms|contract_search|contract_detail)_v1$/.test(new URL(r.url()).pathname);
+        if (countedAsMutation || observedRead) {
+          if (callDiagnostics.size < 60) callDiagnostics.set(r,{ endpoint: diagnosticEndpoint(r.url()), httpStatus: null, countedAsMutation });
+          else diagnosticsTruncated = true;
+        }
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname)) modelRequests.push(r);
       };
       const onResponse = (r: Response) => {
+        const diagnostic = callDiagnostics.get(r.request());
+        if (diagnostic) diagnostic.httpStatus = r.status();
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname)) modelHttpStatuses.push(r.status());
         if (/\/(rest|functions)\/v1\//.test(r.url()) && !r.ok()) networkErrors += 1;
         if (/\/rpc\/copilot_(available_rooms|contract_search|contract_detail)_v1$/.test(r.url().split('?')[0])) reads.push(r);
@@ -139,6 +151,10 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         // declared in the scenario manifest, never derived from expected fields.
         const prompt = bound.prompt;
         const rounds = await guiVaChoModel(page, prompt, { onStage: stage => { phase = stage; } });
+        for (const round of rounds) for (const tool of inspectModelStream(round.body).tools) {
+          if (toolDiagnostics.length < 40) toolDiagnostics.push(diagnosticToolName(tool.name));
+          else diagnosticsTruncated = true;
+        }
         phase = 'mounted';
         completed = Date.now();
         await page.waitForLoadState('networkidle');
@@ -173,6 +189,8 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
           toolResultLinked: true, finalAnswerMounted: true, readRpc: contract ? (c.id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1') : 'copilot_available_rooms_v1',
           ...(contract ? { fixtureDigest: digest(contract.attestation), queryDigest: contract.attestation.queryDigest, identityDigest: contract.attestation.identityDigest, searchDigest: contract.attestation.searchDigest, ...(contract.attestation.detailDigest ? { detailDigest: contract.attestation.detailDigest } : {}) } : {}), businessWrites: writes, networkErrors, oracleVersion: c.oracle } });
       } catch (error) {
+        console.log(JSON.stringify({ kind: 'golden-call-diagnostics', caseId: c.id, tools: toolDiagnostics,
+          calls: [...callDiagnostics.values()], truncated: diagnosticsTruncated }));
         console.log(JSON.stringify({ kind: 'golden-case-failure', caseId: c.id, phase,
           modelRequests: modelRequests.length, readResponses: reads.length, modelHttpStatuses,
           businessWrites: writes, networkErrors, consoleErrors: consoleErrors.length }));

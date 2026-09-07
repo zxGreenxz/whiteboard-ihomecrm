@@ -2,6 +2,7 @@ import type { FullConfig, Reporter, TestCase, TestResult } from '@playwright/tes
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
+import { safeGoldenCallDiagnostics } from './specs/copilotGoldenDiagnostics';
 import { isContractOracleFailureCode } from './specs/copilotContractOracle';
 // Playwright call logs may contain fill values and private assertion payloads.
 // Persist only the allowlisted checkpoint; never print error messages/attachments.
@@ -10,11 +11,13 @@ export default class GoldenReporter implements Reporter {
   onBegin(config: FullConfig) { this.output = config.projects.map(p => p.outputDir); }
   onTestEnd(_test: TestCase, result: TestResult) {
     // Worker console output is otherwise swallowed by this custom reporter.
-    // Rebuild only the two allowlisted static diagnostic fields; never forward
+    // Rebuild only validated static diagnostic fields and bounded call metadata; never forward
     // raw stdout, assertion messages, attachments, or arbitrary JSON properties.
     for (const line of result.stdout.map(chunk => chunk.toString()).join('').split(/\r?\n/)) {
       try {
         const value: unknown = JSON.parse(line);
+        const calls = safeGoldenCallDiagnostics(value);
+        if (calls) { console.log(JSON.stringify(calls)); continue; }
         if (value && typeof value === 'object' && !Array.isArray(value) && 'kind' in value && value.kind === 'golden-case-failure') {
           const fields = ['kind','caseId','phase','modelRequests','readResponses','modelHttpStatuses','businessWrites','networkErrors','consoleErrors'];
           const data = value as Record<string, unknown>;

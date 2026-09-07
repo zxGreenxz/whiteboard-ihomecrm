@@ -431,3 +431,43 @@ describe('golden reporter failure metadata boundary', () => {
     } finally { log.mockRestore(); }
   });
 });
+
+import { diagnosticToolName, diagnosticEndpoint } from '../../../.e2e-fleet/specs/copilotGoldenDiagnostics';
+describe('golden call diagnostics expose only source-known names and fixed endpoints', () => {
+ it('classifies registry tool names and maps everything else to other', () => {
+  for (const name of ['tim_hop_dong','chi_tiet_hop_dong','tim_khach_hang','phong_trong','ghi_nho','lap_ke_hoach']) expect(diagnosticToolName(name)).toBe(name);
+  for (const name of ['private transcript','tim_hop_dong jwt',[],{},null,17]) expect(diagnosticToolName(name)).toBe('other');
+ });
+ it('does not preserve raw endpoint identifiers, query strings, or credentials', () => {
+  expect(diagnosticEndpoint('https://demo/rest/v1/rpc/copilot_customer_search_v1?private=secret')).toBe('customer_search');
+  expect(diagnosticEndpoint('https://demo/rest/v1/rpc/copilot_contract_search_v1')).toBe('contract_search');
+  expect(diagnosticEndpoint('https://demo/rest/v1/rpc/private_customer_name')).toBe('other_rpc');
+  expect(diagnosticEndpoint('https://demo/functions/v1/private_secret')).toBe('other_edge');
+  expect(diagnosticEndpoint('https://demo/rest/v1/private_table?token=secret')).toBe('other_rest');
+  for (const url of [null,[],{},'not a URL']) expect(diagnosticEndpoint(url)).toBe('other');
+ });
+});
+describe('golden reporter call metadata boundary', () => {
+ const diagnostic = { kind:'golden-call-diagnostics',caseId:'C32',tools:['tim_hop_dong','tim_khach_hang','other'],calls:[{endpoint:'contract_search',httpStatus:200,countedAsMutation:false},{endpoint:'customer_search',httpStatus:403,countedAsMutation:true},{endpoint:'other_rpc',httpStatus:null,countedAsMutation:true}],truncated:false };
+ it.each([false,true])('retains bounded exact names, endpoint classes and HTTP statuses with truncated=%s', truncated => {
+  const log = vi.spyOn(console,'log').mockImplementation(() => undefined);
+  try {
+   new GoldenReporter().onTestEnd({} as TestCase,{status:'failed',stdout:[JSON.stringify({...diagnostic,truncated})+'\n']} as TestResult);
+   expect(log.mock.calls).toEqual([[JSON.stringify({...diagnostic,truncated})],['golden browser: failed']]);
+  } finally {log.mockRestore();}
+ });
+ it.each([
+  {...diagnostic,tools:['private transcript']}, {...diagnostic,tools:[['tim_hop_dong']]},
+  {...diagnostic,tools:Array(41).fill('tim_hop_dong')}, {...diagnostic,calls:Array(61).fill(diagnostic.calls[0])},
+  {...diagnostic,calls:[{...diagnostic.calls[0],endpoint:'copilot_private_customer_v1'}]},
+  {...diagnostic,calls:[{...diagnostic.calls[0],httpStatus:'403'}]}, {...diagnostic,calls:[{...diagnostic.calls[0],httpStatus:999}]},
+  {...diagnostic,calls:[{...diagnostic.calls[0],countedAsMutation:1}]}, {...diagnostic,calls:[{...diagnostic.calls[0],url:'https://private'}]},
+  {...diagnostic,caseId:'private'}, {...diagnostic,truncated:'yes'}, {...diagnostic,args:{private:'data'}},
+ ])('rejects malformed or arbitrary diagnostic strings %j', value => {
+  const log = vi.spyOn(console,'log').mockImplementation(() => undefined);
+  try {
+   new GoldenReporter().onTestEnd({} as TestCase,{status:'failed',stdout:[JSON.stringify(value)+'\n']} as TestResult);
+   expect(log.mock.calls).toEqual([['golden browser: failed']]);
+  } finally {log.mockRestore();}
+ });
+});
