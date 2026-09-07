@@ -15,6 +15,18 @@ const evidence = () => ({ prompt: 'Liệt kê phòng', answer: 'Có 1 phòng tr�
 
 const ieVoucher = {phieu_id:'aaaa4000-0000-4000-8000-000000000021',ma_phieu:'PC001',loai:'EXPENSE',ten:'Sửa chữa',so_tien:11000,ngay:'2026-07-12',hang_muc:'Sửa nhà',so_quy:'TK 1234567890123',trang_thai:'UNAPPROVED',trang_thai_ghi_nhan:'UNPOSTED',nguoi_tao:'Demo An',toa_nha:'DEMO Toà A'};
 const ieIncome = {...ieVoucher,phieu_id:'aaaa4000-0000-4000-8000-000000000023',ma_phieu:'PT002',loai:'INCOME',ten:'Thu khác',so_tien:1000,trang_thai:'CANCELLED',nguoi_tao:'Demo Bình'};
+it('accepts pending inbox wording chờ xử lý tied to the actual pending RPC',()=>{
+  const e=incomeEvidence('C36');
+  expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('đang chờ bạn duyệt','đang chờ xử lý')))).not.toThrow();
+});
+it.each(['không còn chờ xử lý','không chờ xử lý','đã xử lý','nếu chờ xử lý','chờ xử lý nhưng đã duyệt'])('rejects non-pending inbox assertion %s',phrase=>{
+  const e=incomeEvidence('C36');
+  expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer.replace('đang chờ bạn duyệt',phrase)))).toThrow();
+});
+it('rejects a repeated denial of pending processing after a correct inbox statement',()=>{
+  const e=incomeEvidence('C36');
+  expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Phiếu PC001 không còn chờ xử lý.'))).toThrow();
+});
 function incomeEvidence(id='C34') {
   const scenario={id,fixture:'readonly',kind:'read',acceptance:['facts'],oracle:id==='C34'?'vouchers-2026-07-v1':id==='C35'?'empty-expenses-2099-01-v1':'pending-approval-inbox-v1',prompt:id==='C34'?'Phiếu thu chi tháng 07/2026':id==='C35'?'Phiếu chi kỳ 2099-01':'Có gì đang chờ tôi duyệt không?'};
   const request=incomeApprovalRequest(id), actorDigest='b'.repeat(64);

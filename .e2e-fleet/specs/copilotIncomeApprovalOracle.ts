@@ -142,6 +142,13 @@ function assertFacts(answer:string,f:IncomeApprovalFixture) {
   assertMaskedCashbooks(answer,f.payload.phieu ?? []);
   let text=normalize(answer);
   const pending=Boolean(f.payload.hop_cho), rows=f.payload.phieu ?? f.payload.hop_cho!;
+  // In the caller-bound pending inbox, "chờ xử lý" describes the same pending
+  // request. It cannot establish voucher approval/posting states in C34/C35.
+  if(pending)text=text.replace(/chờ xử lý/giu,(match:string,offset:number)=>{
+    const prefix=text.slice(0,offset);
+    check(!/(?:không|chưa|chẳng)(?:\s+(?:còn|phải|là|đang)){0,3}\s*$/iu.test(prefix),'financial_status');
+    return /(?:nếu|khi|muốn|có thể|sẽ)\s*(?:đang\s*)?$/iu.test(prefix)?match:'chờ duyệt';
+  });
   const ids=rows.map(identifier);
   if(!rows.length) {
     check(/(?:không|chưa) (?:tìm thấy|có).*phiếu (?:thu chi|chi)|phiếu chi.*không (?:tồn tại|tìm thấy)/iu.test(text),'financial_empty_answer');
