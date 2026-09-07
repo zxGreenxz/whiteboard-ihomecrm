@@ -45,6 +45,8 @@ Khi dùng camera mà QR chưa đọc được, đưa toàn bộ mặt trước t
 
 Nếu không đọc được QR trong ảnh, hệ thống thử đọc chữ trên thẻ (OCR). Lần đầu có thể cần chờ tải bộ đọc. Kiểm tra **Số CCCD**, **Họ và tên**, **Ngày sinh**, **Giới tính** và **Nơi thường trú đầy đủ**, sửa chỗ thiếu hoặc sai rồi bấm **Áp dụng thông tin đã kiểm tra**. Nơi cấp mặc định là **Cục Cảnh sát**; ngày cấp chưa đọc được sẽ để trống. Cả **Địa chỉ chi tiết** và **Địa chỉ thường trú** nhận nguyên nội dung nơi thường trú bạn đã kiểm tra, không lấy quê quán.
 
+Nếu chọn nhầm ảnh khi hệ thống đang đọc, chọn hoặc dán ảnh khác vào ô **Đọc CCCD**. Lượt đọc cũ sẽ được huỷ; kiểm tra thông tin của ảnh mới trước khi áp dụng.
+
 Đọc CCCD chỉ điền form, chưa lưu khách hàng. Bổ sung số điện thoại bắt buộc (**10–11 chữ số**) và những trường còn lại trước khi lưu. Nếu bộ đọc báo lỗi tải, kiểm tra kết nối rồi bấm **Thử đọc ảnh lại**; nếu ảnh có nhiều thẻ, chọn ảnh chỉ có một mặt trước.
 
 ::: warning Không nhập dữ liệu thật
