@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { safeGoldenCallDiagnostics } from './specs/copilotGoldenDiagnostics';
 import { isContractOracleFailureCode } from './specs/copilotContractOracle';
+import { isIncomeApprovalOracleFailureCode } from './specs/copilotIncomeApprovalOracle';
 // Playwright call logs may contain fill values and private assertion payloads.
 // Persist only the allowlisted checkpoint; never print error messages/attachments.
 export default class GoldenReporter implements Reporter {
@@ -33,7 +34,10 @@ export default class GoldenReporter implements Reporter {
         }
         if (!value || typeof value !== 'object' || Array.isArray(value)
           || Object.keys(value).length !== 2 || !('caseId' in value) || !('code' in value)
-          || typeof value.caseId !== 'string' || !['C31','C32','C33'].includes(value.caseId) || !isContractOracleFailureCode(value.code)) continue;
+          || typeof value.caseId !== 'string') continue;
+        const contractCode = ['C31','C32','C33'].includes(value.caseId) && isContractOracleFailureCode(value.code);
+        const financialCode = ['C34','C35','C36'].includes(value.caseId) && isIncomeApprovalOracleFailureCode(value.code);
+        if (!contractCode && !financialCode) continue;
         console.log(JSON.stringify({ caseId: value.caseId, code: value.code }));
       } catch { /* Non-diagnostic worker output stays private. */ }
     }

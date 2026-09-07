@@ -516,6 +516,14 @@ it('accepts canonical ISO range and individually labeled dates', () => {
 });
 
 describe('golden reporter static diagnostic boundary', () => {
+  it.each(['C34','C35','C36'])('forwards only financial static codes for %s', caseId => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const value = { caseId, code: 'financial_cashbook_privacy' };
+    try {
+      new GoldenReporter().onTestEnd({} as TestCase, { status: 'failed', stdout: [JSON.stringify(value) + '\n'] } as TestResult);
+      expect(log.mock.calls).toEqual([[JSON.stringify(value)], ['golden browser: failed']]);
+    } finally { log.mockRestore(); }
+  });
   it('forwards a fragmented allowlisted diagnostic without worker payloads', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
@@ -526,6 +534,10 @@ describe('golden reporter static diagnostic boundary', () => {
     } finally { log.mockRestore(); }
   });
   it.each([
+    { caseId: 'C32', code: 'financial_money' },
+    { caseId: 'C35', code: 'unexpected_contract_tool_calls' },
+    { caseId: 'C36', code: 'financial_private_payload' },
+    { caseId: 'C34', code: 'financial_money', message: 'private payload' },
     { caseId: 'C32', code: 'private transcript' },
     { caseId: 'C32', code: 'unexpected_contract_tool_calls', message: 'private transcript' },
     { caseId: ['C32'], code: 'unexpected_contract_tool_calls' },
