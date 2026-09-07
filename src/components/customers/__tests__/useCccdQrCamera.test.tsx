@@ -257,6 +257,9 @@ describe('useCccdQrCamera lifecycle', () => {
     expect(result.current.status).toBe('ambiguous');
     expect(h.options.onAmbiguous).toHaveBeenCalledTimes(1);
     expect(h.options.onParsed).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(140); });
+    expect(result.current.status).toBe('scanning');
+    expect(h.getUserMedia).toHaveBeenCalledTimes(1);
   });
 
   it('captures one full frame after releasing camera resources', async () => {
@@ -268,6 +271,37 @@ describe('useCccdQrCamera lifecycle', () => {
     expect(h.firstTrack.stop).toHaveBeenCalledTimes(1);
     expect(h.dispose).toHaveBeenCalledTimes(1);
     expect(file.name).toBe('cccd-camera.jpg');
+  });
+
+  it.each(['device', 'retry', 'close', 'unmount'] as const)('cancels delayed capture success after %s replaces its session', async (replacement) => {
+    let deliver!: (file: File) => void;
+    const h = harness();
+    const nextTrack = track();
+    const nextStream = stream(nextTrack);
+    h.getUserMedia.mockResolvedValueOnce(h.firstStream).mockResolvedValue(nextStream);
+    h.captureFile.mockReturnValueOnce(new Promise<File>((resolve) => { deliver = resolve; }));
+    const { result, rerender, unmount } = renderHook(({ open }) => useCccdQrCamera({ ...h.options, open }), { initialProps: { open: true } });
+    await settle();
+    let pending!: Promise<File>;
+    act(() => { pending = result.current.captureCard(); });
+    const outcome = pending.then(() => 'stale-file', (error: Error) => error.name);
+    act(() => {
+      if (replacement === 'device') result.current.selectDevice('front');
+      else if (replacement === 'retry') result.current.retry();
+      else if (replacement === 'close') rerender({ open: false });
+      else unmount();
+    });
+    await settle();
+    await act(async () => { deliver(new File(['old'], 'old.jpg')); await pending.catch(() => undefined); });
+    expect(await outcome).toBe('AbortError');
+    expect(h.options.onParsed).not.toHaveBeenCalled();
+    expect(h.options.onClose).not.toHaveBeenCalled();
+    if (replacement === 'device' || replacement === 'retry') {
+      expect(result.current.status).toBe('scanning');
+      expect(h.video.srcObject).toBe(nextStream);
+      expect(nextTrack.stop).not.toHaveBeenCalled();
+      expect(result.current.error).toBe('');
+    }
   });
 
   it('releases camera resources when full-frame capture throws synchronously', async () => {

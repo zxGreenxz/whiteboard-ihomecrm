@@ -41,6 +41,8 @@ Với tài khoản `demo.chunha`, `/customers` tải xong ở tab **Đang thuê*
 
 **Bước 5**: Với khách **Cá nhân**, chọn hoặc đưa con trỏ vào ô **Đọc CCCD**, rồi dán ảnh bằng **Ctrl+V**. Bạn cũng có thể kéo thả, chọn file hoặc bấm **Quét bằng camera**. Khi đọc được QR CCCD hợp lệ, hệ thống điền thông tin vào form để bạn kiểm tra.
 
+Khi dùng camera mà QR chưa đọc được, đưa toàn bộ mặt trước thẻ, nhất là dòng nơi thường trú, vào hình xem trước rồi bấm **Đọc chữ trên thẻ**. Camera sẽ chụp một ảnh để đọc thông tin và mở bước xem lại bên dưới. Nếu chụp lỗi, bấm **Thử lại** để mở camera lại.
+
 Nếu không đọc được QR trong ảnh, hệ thống thử đọc chữ trên thẻ (OCR). Lần đầu có thể cần chờ tải bộ đọc. Kiểm tra **Số CCCD**, **Họ và tên**, **Ngày sinh**, **Giới tính** và **Nơi thường trú đầy đủ**, sửa chỗ thiếu hoặc sai rồi bấm **Áp dụng thông tin đã kiểm tra**. Nơi cấp mặc định là **Cục Cảnh sát**; ngày cấp chưa đọc được sẽ để trống. Cả **Địa chỉ chi tiết** và **Địa chỉ thường trú** nhận nguyên nội dung nơi thường trú bạn đã kiểm tra, không lấy quê quán.
 
 Đọc CCCD chỉ điền form, chưa lưu khách hàng. Bổ sung số điện thoại bắt buộc (**10–11 chữ số**) và những trường còn lại trước khi lưu. Nếu bộ đọc báo lỗi tải, kiểm tra kết nối rồi bấm **Thử đọc ảnh lại**; nếu ảnh có nhiều thẻ, chọn ảnh chỉ có một mặt trước.

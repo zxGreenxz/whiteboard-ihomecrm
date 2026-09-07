@@ -63,3 +63,35 @@ the original source image.
 Android and physical Safari measurements remain required before broad rollout.
 Private development learned cases take more than the original 350 ms camera-deep
 budget on Windows; camera scheduling must use measured budgets and one active job.
+
+The six-case fictional fixture benchmark is reproducible with:
+
+```powershell
+npm run qr:assets
+node scripts/qr/benchmark.mjs --fixed
+node scripts/qr/benchmark.mjs --baseline-ref 1d6523fb
+node scripts/qr/benchmark.mjs --baseline --baseline-ref 1d6523fb
+node scripts/qr/verify-benchmark.mjs
+```
+
+These commands require the Playwright Chromium browser installed locally
+(`npx playwright install chromium`). The explicit verifier is separate from the
+portable Vitest tests in `scripts/__tests__/qr-benchmark.test.mjs`.
+
+The fixed lane uses a Vite ES-module build of the current shared scanner, its
+emitted worker/chunks/WASM and self-hosted QR models, served on loopback under the
+exact production CSP. It reuses one scanner across cases, with the image facade's
+3000 ms decode budget and first-candidate interpretation, and disposes it at the
+end. It retains structured engine-unavailable/timeout statuses instead of folding
+them into a normal miss. A finite outer deadline also covers image/module loading.
+Historical baseline refs must contain the old self-contained decoder; a worker-era
+facade is rejected rather than resolved against the current source tree. Baseline
+and fixed results remain labeled separately. JSONL rows contain no QR payloads.
+Infrastructure failures exit 1; ordinary baseline accuracy misses stay in the rows.
+
+Arguments and the baseline are validated before any fixture/browser allocation.
+Fixtures, generated browser scratch and benchmark build files belong to one temp
+directory, removed on success or setup failure. The explicit verifier covers both
+CLI lanes, setup/cleanup failures and blocked worker loading with finite failure
+rows. These synthetic checks do not establish private-corpus accuracy or physical
+device performance.

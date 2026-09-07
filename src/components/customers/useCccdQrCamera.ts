@@ -106,7 +106,11 @@ export function useCccdQrCamera(options: Options) {
     release();
     const releasedSession = sessionRef.current;
     setStatus('idle');
-    return pending.catch((caught: unknown) => {
+    return pending.then((file) => {
+      if (sessionRef.current !== releasedSession) throw new DOMException('Camera capture replaced', 'AbortError');
+      return file;
+    }).catch((caught: unknown) => {
+      if (sessionRef.current !== releasedSession) throw new DOMException('Camera capture replaced', 'AbortError');
       if (sessionRef.current === releasedSession) {
         setError('Không thể chụp ảnh thẻ. Vui lòng khởi động lại camera.');
         setStatus('error');
@@ -114,6 +118,10 @@ export function useCccdQrCamera(options: Options) {
       throw caught;
     });
   }, [release]);
+
+  // A capture releases the scan session before encoding finishes, so the scan
+  // effect's conditional cleanup alone cannot invalidate it on unmount.
+  useEffect(() => () => release(), [release]);
 
   useEffect(() => {
     if (!options.open) {
@@ -244,6 +252,8 @@ export function useCccdQrCamera(options: Options) {
           if (selection.status === 'ambiguous') {
             setStatus('ambiguous');
             optionsRef.current.onAmbiguous?.();
+            schedule(() => { void scanNext(); });
+            return;
           } else if (selection.status === 'valid') {
             setStatus('detected');
             release(false, false);
@@ -258,7 +268,7 @@ export function useCccdQrCamera(options: Options) {
             return;
           }
         }
-        if (current() && status === 'ambiguous') setStatus('scanning');
+        if (current()) setStatus('scanning');
         schedule(() => { void scanNext(); });
       };
       void scanNext();

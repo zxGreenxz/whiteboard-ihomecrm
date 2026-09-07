@@ -31,7 +31,7 @@ function beepOk() {
     oscillator.connect(gain).connect(context.destination);
     oscillator.start();
     oscillator.stop(context.currentTime + 0.2);
-    setTimeout(() => { void context.close(); }, 400);
+    setTimeout(() => { void context.close().catch(() => { /* Audio cleanup is optional; a close rejection must not disrupt QR delivery. */ }); }, 400);
   } catch { /* Audio feedback is optional. */ }
 }
 
@@ -77,10 +77,11 @@ export default function CCCDQrCameraScanner({ open, onOpenChange, onParsed, onCa
       await onCaptureRef.current(file);
       if (generation !== captureGenerationRef.current || !openRef.current) return;
       onOpenChange(false);
-    } catch {
+    } catch (caught) {
       if (generation !== captureGenerationRef.current || !openRef.current) return;
-      setCaptureError('Không chụp được ảnh thẻ. Vui lòng thử lại.');
       setCapturing(false);
+      if ((caught instanceof DOMException || caught instanceof Error) && caught.name === 'AbortError') return;
+      setCaptureError('Không chụp được ảnh thẻ. Vui lòng thử lại.');
     }
   };
 
@@ -131,7 +132,12 @@ export default function CCCDQrCameraScanner({ open, onOpenChange, onParsed, onCa
             </Button>
             {camera.devices.length > 1 && (
               <label className="block text-xs text-muted-foreground">Camera
-                <select className="mt-1 h-9 w-full rounded-md border bg-white px-2 text-sm" value={camera.settings?.deviceId ?? ''} onChange={(event) => camera.selectDevice(event.target.value)}>
+                <select className="mt-1 h-9 w-full rounded-md border bg-white px-2 text-sm" value={camera.settings?.deviceId ?? ''} onChange={(event) => {
+                  ++captureGenerationRef.current;
+                  setCapturing(false);
+                  setCaptureError('');
+                  camera.selectDevice(event.target.value);
+                }}>
                   {camera.devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}
                 </select>
               </label>

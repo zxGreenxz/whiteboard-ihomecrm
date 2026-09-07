@@ -25,7 +25,7 @@ vi.mock('@/lib/authSession', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('../CCCDQrCameraScanner', () => ({
-  default: ({ open, onParsed, onCapture }: {
+  default: function MockCccdQrCameraScanner({ open, onParsed, onCapture }: {
     open: boolean;
     onParsed: (data: {
       idNumber: string;
@@ -37,7 +37,7 @@ vi.mock('../CCCDQrCameraScanner', () => ({
       idIssuePlace: string;
     }) => void;
     onCapture: (file: File) => void;
-  }) => {
+  }) {
     React.useEffect(() => {
       if (!open) return undefined;
       mocks.cameraEffectStarts += 1;

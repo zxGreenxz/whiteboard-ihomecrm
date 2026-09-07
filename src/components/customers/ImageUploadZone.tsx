@@ -150,19 +150,19 @@ export default function ImageUploadZone({
     setError(null);
   }, [onChange]);
 
-  const pasteHandlers = useClipboardImagePaste({
+  const { onMouseEnter: onPasteMouseEnter, onMouseLeave: onPasteMouseLeave } = useClipboardImagePaste({
     onFiles: (files) => handleUpload(files),
     enabled: !value && !isUploading,
     multiple,
   });
   const handleClipboardMouseEnter = useCallback(() => {
     setIsClipboardHover(true);
-    pasteHandlers.onMouseEnter();
-  }, [pasteHandlers.onMouseEnter]);
+    onPasteMouseEnter();
+  }, [onPasteMouseEnter]);
   const handleClipboardMouseLeave = useCallback(() => {
     setIsClipboardHover(false);
-    pasteHandlers.onMouseLeave();
-  }, [pasteHandlers.onMouseLeave]);
+    onPasteMouseLeave();
+  }, [onPasteMouseLeave]);
 
   return (
     <div className="space-y-1.5">
