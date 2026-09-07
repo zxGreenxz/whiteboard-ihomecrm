@@ -23,3 +23,14 @@ test('legacy generator rejects scope truncation without making any network reque
   assert.equal(result.status, 2);
   assert.match(result.stderr, /full-corpus/);
 });
+
+test('explicit case selection rejects empty, unknown and duplicate IDs before browser setup', () => {
+  for (const value of ['', 'C31,C31','C99','C31,',' C31','C31, C32']) {
+    const result = spawnSync(process.execPath,['scripts/generate-copilot-golden-real-results.mjs','--case-ids',value,'--results-out','unused.json','--attestation','missing.json'], { encoding:'utf8' });
+    assert.equal(result.status,2); assert.match(result.stderr,/Invalid --case-ids selection/); assert.equal(result.stdout.trim(),'');
+  }
+});
+test('known explicit selection proceeds only to required attestation preflight', () => {
+  const result = spawnSync(process.execPath,['scripts/generate-copilot-golden-real-results.mjs','--case-ids','C31,C32,C33','--results-out','unused.json','--attestation','missing.json'], { encoding:'utf8' });
+  assert.equal(result.status,2); assert.match(result.stderr,/Missing --results-out or --attestation/); assert.equal(result.stdout.trim(),'');
+});

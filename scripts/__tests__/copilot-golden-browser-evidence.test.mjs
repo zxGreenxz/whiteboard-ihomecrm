@@ -4,6 +4,34 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as evidence from '../copilot-golden-browser-evidence.mjs';
+import { bindContractScenario, contractQuery } from '../copilot-contract-fixtures.mjs';
+
+const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', khach_hang: 'Demo An', phong: 'A101', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', tien_thue: 3000000, tien_coc: 6000000 };
+test('contract binding binds exact identity/query and rejects empty, ambiguous or drifting fixtures', () => {
+  const scenario = manifest.cases.find(c => c.id === 'C31');
+  const searchPayload = { hop_dong: [contractRow], gioi_han: 20, so_luong: 1 };
+  assert.equal(contractQuery('C31', 'context-1', searchPayload), 'HD001');
+  const bound = bindContractScenario(scenario, { query: 'HD001', searchPayload });
+  assert.equal(bound.prompt, 'Tìm hợp đồng số HD001');
+  assert.equal(bound.attestation.searchDigest, evidence.digest(searchPayload));
+  assert.equal(bound.attestation.identityDigest, evidence.digest({ organizationId: evidence.DEMO_ORG, contractId: contractRow.hop_dong_id, code: 'HD001' }));
+  for (const rows of [[], [contractRow,contractRow], [{ ...contractRow, so_hop_dong: 'HD002' }], [{ ...contractRow, hop_dong_id: 'bad' }]]) {
+    assert.throws(() => bindContractScenario(scenario, { query: 'HD001', searchPayload: { ...searchPayload, hop_dong: rows } }), /fixture_unbound/);
+  }
+  const absent = contractQuery('C32', 'context-1');
+  assert.equal(absent, 'GOLDEN_ABSENT_context-1');
+  assert.throws(() => bindContractScenario(manifest.cases.find(c => c.id === 'C32'), { query: absent, searchPayload }), /fixture_unbound/);
+  assert.throws(() => bindContractScenario(manifest.cases.find(c => c.id === 'C33'), { query: 'HD001', searchPayload, detailPayload: { tim_thay: true, hop_dong: { ...contractRow, hop_dong_id: 'bbbb4000-0000-4000-8000-000000000011' }, hoa_don: [] } }), /fixture_unbound/);
+});
+
+test('explicit selection retains every case and cannot imply full plan acceptance', () => {
+  const run = evidence.createRun(golden, manifest, attestation, ['C31','C32','C33']);
+  assert.equal(run.cases.length, 75);
+  assert.equal(run.cases.filter(c => c.status === 'not_selected').length, 72);
+  assert.equal(evidence.summarizeRun(run).fullPlanAccepted, false);
+  assert.deepEqual(run.selection, { mode: 'selected', caseIds: ['C31','C32','C33'] });
+  for (const ids of [[], ['C31','C31'], ['C99'], 'C31']) assert.throws(() => evidence.createRun(golden, manifest, attestation, ids), /selection/);
+});
 
 const golden = JSON.parse(readFileSync(new URL('../../tooling/copilot-golden-eval.json', import.meta.url)));
 const manifest = JSON.parse(readFileSync(new URL('../../tooling/copilot-golden-scenarios.json', import.meta.url)));
@@ -252,4 +280,48 @@ test('valid string boundaries preserve C01, C13 and checkpoint roundtrips', () =
     assert.equal(restored.cases[0].timing.startedAt.slice(0, 10), '2026-09-06');
     assert.equal(evidence.summarizeRun(restored).verdict, 'blocked');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('contract pass requires its exact case oracle, fixture attestation and observed RPC hashes', () => {
+  for (const id of ['C31','C32','C33']) {
+    const scenario = manifest.cases.find(c => c.id === id), absent = id === 'C32';
+    const searchPayload = { hop_dong: absent ? [] : [contractRow], gioi_han: 20, so_luong: absent ? 0 : 1 };
+    const detailPayload = id === 'C33' ? { tim_thay: true, hop_dong: { ...contractRow, coc_da_thu: 6000000, coc_con_thieu: 0 }, hoa_don: [] } : undefined;
+    const fixture = bindContractScenario(scenario, { query: absent ? 'GOLDEN_ABSENT_context-1' : 'HD001', searchPayload, detailPayload });
+    const run = evidence.createRun(golden, manifest, { ...attestation, contractFixtures: { [id]: fixture.attestation } }, [id]);
+    evidence.transitionCase(run,id,{ status:'running' });
+    evidence.transitionCase(run,id,{ status:'pass', timing: { startedAt: '2026-09-06T10:00:00.000Z', completedAt: '2026-09-06T10:00:01.000Z', totalMs:1000, humanWaitMs:0, processingMs:1000 }, observed: {
+      answerDigest: digest, promptDigest: evidence.digest(fixture.prompt), promptTemplateDigest: evidence.digest(scenario.prompt), bindingDigest: fixture.bindingDigest,
+      fixtureDigest: evidence.digest(fixture.attestation), queryDigest: fixture.attestation.queryDigest, identityDigest: fixture.attestation.identityDigest,
+      searchDigest: fixture.attestation.searchDigest, ...(detailPayload ? { detailDigest: fixture.attestation.detailDigest } : {}),
+      rpcDigest: evidence.digest(detailPayload ?? searchPayload), modelRounds: id === 'C33' ? 3 : 2, toolResultLinked:true, finalAnswerMounted:true,
+      readRpc: id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1', businessWrites:0, networkErrors:0, oracleVersion: scenario.oracle,
+    } });
+    assert.deepEqual(evidence.validateBrowserRun(golden,manifest,run),[]);
+    assert.equal(evidence.summarizeRun(run).selectedVerdict,'pass');
+    assert.equal(evidence.summarizeRun(run).verdict,'blocked');
+    assert.equal(evidence.summarizeRun(run).fullPlanAccepted,false);
+    for (const key of ['fixtureDigest','bindingDigest','queryDigest','identityDigest','searchDigest','rpcDigest','readRpc','oracleVersion','toolResultLinked']) {
+      const bad = structuredClone(run); bad.cases.find(c => c.id === id).observed[key] = key === 'toolResultLinked' ? false : 'c'.repeat(64);
+      assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length, `${id} ${key}`);
+    }
+    const missing = structuredClone(run); delete missing.attestation.contractFixtures;
+    assert.ok(evidence.validateBrowserRun(golden,manifest,missing).length);
+    const org = structuredClone(run); org.attestation.contractFixtures[id].organizationId = 'other';
+    assert.ok(evidence.validateBrowserRun(golden,manifest,org).length);
+    const raw = structuredClone(run); raw.attestation.contractFixtures[id].customer = 'raw';
+    assert.ok(evidence.validateBrowserRun(golden,manifest,raw).length);
+    const swap = structuredClone(run); swap.cases.find(c => c.id === id).oracle = 'available-rooms-v1';
+    assert.ok(evidence.validateBrowserRun(golden,manifest,swap).length);
+  }
+});
+test('selection corruption cannot turn omitted cases into passed or erase inventory', () => {
+  const run = evidence.createRun(golden,manifest,attestation,['C31']);
+  assert.deepEqual(evidence.validateBrowserRun(golden,manifest,run),[]);
+  for (const selection of [null,{}, { mode:'selected',caseIds:[] }, { mode:'selected',caseIds:['C31','C31'] }, { mode:'selected',caseIds:['C31','C01'] }]) {
+    assert.ok(evidence.validateBrowserRun(golden,manifest,{ ...run,selection }).length);
+  }
+  const mismatch = structuredClone(run); mismatch.cases[0].status = 'pending';
+  assert.ok(evidence.validateBrowserRun(golden,manifest,mismatch).length);
+  assert.throws(() => evidence.transitionCase(run,'C01',{status:'running'}), /transition/);
 });

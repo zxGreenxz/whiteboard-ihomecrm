@@ -377,7 +377,7 @@
     },
     {
       "id": "C32",
-      "input": "Tìm hợp đồng của khách không tồn tại",
+      "input": "Tìm hợp đồng của khách không tồn tại ({{absent_customer.name}})",
       "expectedOutcome": "readonly",
       "toolPath": [
         "tim_hop_dong"

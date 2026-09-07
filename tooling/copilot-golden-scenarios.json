@@ -431,7 +431,7 @@
         "zero-business-writes"
       ],
       "prompt": "Tìm hợp đồng số {{contract.code}}",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C32",
@@ -444,8 +444,8 @@
         "canonical-demo-facts-and-empty-state",
         "zero-business-writes"
       ],
-      "prompt": "Tìm hợp đồng của khách không tồn tại",
-      "executorStatus": "not-implemented"
+      "prompt": "Tìm hợp đồng của khách {{absent_customer.name}}",
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C33",
@@ -459,7 +459,7 @@
         "zero-business-writes"
       ],
       "prompt": "Chi tiết hợp đồng {{contract.code}}",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C34",

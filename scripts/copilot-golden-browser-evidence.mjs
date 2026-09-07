@@ -3,9 +3,9 @@ import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, writeFileSync } 
 import { dirname } from 'node:path';
 
 export const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
-export const IMPLEMENTED_ORACLES = new Set(['available-rooms-v1', 'available-rooms-building-v1']);
+export const IMPLEMENTED_ORACLES = new Set(['available-rooms-v1', 'available-rooms-building-v1', 'contract-code-v1', 'absent-customer-contract-v1', 'contract-code-detail-v1']);
 const HASH = /^[0-9a-f]{64}$/;
-const STATES = ['pending', 'running', 'pass', 'fail', 'blocked'];
+const STATES = ['pending', 'running', 'pass', 'fail', 'blocked', 'not_selected'];
 const REASONS = new Set(['oracle_not_implemented', 'fixture_unbound', 'preflight_missing', 'attestation_failed',
   'quota_exhausted', 'rate_exhausted', 'provider_failed', 'browser_failed', 'oracle_failed', 'cleanup_required']);
 export function digest(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
@@ -44,7 +44,7 @@ export function validateManifest(golden, manifest) {
 
 function validAttestation(a) {
   const fields = ['buildSha','edgeSourceDigest','deployedEdgeSourceDigest','providerModel','organizationId','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest','observedAt','contextId'];
-  if (!keysOnly(a, fields) || !fields.every(k => typeof a[k] === 'string')) return false;
+  if (!keysOnly(a, [...fields, 'contractFixtures']) || !fields.every(k => typeof a[k] === 'string')) return false;
   return /^[0-9a-f]{40}$/.test(a.buildSha) && a.organizationId === DEMO_ORG
     // Candidate policy lives in copilotTestModel.ts. This evidence layer only
     // checks safe identity syntax; browser/CLI require the exact selected model.
@@ -52,15 +52,36 @@ function validAttestation(a) {
     && /^9router:[a-z0-9][a-z0-9._/-]*(?:\([a-z0-9_-]+\))?$/.test(a.providerModel)
     && ['edgeSourceDigest','deployedEdgeSourceDigest','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest'].every(k => HASH.test(a[k]))
     && a.edgeSourceDigest === a.deployedEdgeSourceDigest && Number.isFinite(Date.parse(a.observedAt))
-    && /^[a-zA-Z0-9-]{1,100}$/.test(a.contextId);
+    && /^[a-zA-Z0-9-]{1,100}$/.test(a.contextId)
+    && (a.contractFixtures === undefined || validContractFixtures(a.contractFixtures));
 }
 
-export function createRun(golden, manifest, attestation) {
+const CONTRACT_MAPPING = {
+  C31: ['contract-code-v1', 'contract-search', 'copilot_contract_search_v1'],
+  C32: ['absent-customer-contract-v1', 'contract-absent', 'copilot_contract_search_v1'],
+  C33: ['contract-code-detail-v1', 'contract-detail', 'copilot_contract_detail_v1'],
+};
+function validContractFixtures(fixtures) {
+  return keysOnly(fixtures, Object.keys(CONTRACT_MAPPING)) && Object.entries(fixtures).every(([id,f]) => {
+    const hashes = ['queryDigest','identityDigest','searchDigest', ...(id === 'C33' ? ['detailDigest'] : [])];
+    return keysOnly(f, ['kind','organizationId', ...hashes]) && f.kind === CONTRACT_MAPPING[id][1]
+      && f.organizationId === DEMO_ORG && hashes.every(k => typeof f[k] === 'string' && HASH.test(f[k]));
+  });
+}
+export function selectCaseIds(manifest, ids) {
+  if (ids === undefined) return manifest.cases.map(c => c.id);
+  if (!Array.isArray(ids) || !ids.length || new Set(ids).size !== ids.length
+    || ids.some(id => typeof id !== 'string' || !manifest.cases.some(c => c.id === id))) throw new Error('invalid case selection');
+  return manifest.cases.filter(c => ids.includes(c.id)).map(c => c.id);
+}
+
+export function createRun(golden, manifest, attestation, caseIds) {
   if (validateManifest(golden, manifest).length || !validAttestation(attestation)
     || attestation.corpusDigest !== digest(golden) || attestation.manifestDigest !== digest(manifest)) throw new Error('invalid attestation or manifest');
-  return { schemaVersion: 2, lane: 'real-model', executor: 'attested-chat-panel-v1', attestation,
+  const selected = selectCaseIds(manifest, caseIds);
+  return { ...(caseIds === undefined ? {} : { selection: { mode: 'selected', caseIds: selected } }), schemaVersion: 2, lane: 'real-model', executor: 'attested-chat-panel-v1', attestation,
     runId: randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    cases: manifest.cases.map(c => ({ id: c.id, oracle: c.oracle, status: 'pending' })), cleanup: [] };
+    cases: manifest.cases.map(c => ({ id: c.id, oracle: c.oracle, status: selected.includes(c.id) ? 'pending' : 'not_selected' })), cleanup: [] };
 }
 
 function validTiming(t) {
@@ -72,31 +93,49 @@ function validTiming(t) {
     && Math.abs(t.totalMs - t.humanWaitMs - t.processingMs) <= 2;
 }
 
-function validPass(c) {
+function validPass(c, attestation) {
   const o = c.observed;
-  return ['C01','C13'].includes(c.id) && IMPLEMENTED_ORACLES.has(c.oracle) && validTiming(c.timing)
-    && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion'])
+  const mapping = CONTRACT_MAPPING[c.id];
+  const contract = Boolean(mapping);
+  const fixture = attestation?.contractFixtures?.[c.id];
+  const correctMapping = contract ? c.oracle === mapping[0] : c.oracle === ({ C01: 'available-rooms-v1', C13: 'available-rooms-building-v1' })[c.id];
+  return correctMapping && validTiming(c.timing)
+    && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion', ...(contract ? ['fixtureDigest','queryDigest','identityDigest','searchDigest','detailDigest'] : [])])
     && ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest'].every(k => typeof o[k] === 'string' && HASH.test(o[k]))
     && Number.isInteger(o.modelRounds) && o.modelRounds >= 2 && o.toolResultLinked === true && o.finalAnswerMounted === true
-    && o.readRpc === 'copilot_available_rooms_v1' && o.oracleVersion === c.oracle
+    && o.readRpc === (contract ? mapping[2] : 'copilot_available_rooms_v1') && o.oracleVersion === c.oracle
+    && (!contract || (fixture && validContractFixtures({ [c.id]: fixture })
+      && o.fixtureDigest === digest(fixture) && o.bindingDigest === digest(fixture)
+      && ['queryDigest','identityDigest','searchDigest'].every(k => o[k] === fixture[k])
+      && (c.id === 'C33' ? o.detailDigest === fixture.detailDigest && o.modelRounds >= 3 : o.detailDigest === undefined)
+      && o.rpcDigest === (fixture.detailDigest ?? fixture.searchDigest)))
     && o.businessWrites === 0 && o.networkErrors === 0;
 }
 
 export function validateBrowserRun(golden, manifest, run) {
   const errors = validateManifest(golden, manifest);
   if (errors.length) return errors;
-  if (!keysOnly(run, ['schemaVersion','lane','executor','attestation','runId','createdAt','updatedAt','cases','cleanup'])
+  if (!keysOnly(run, ['schemaVersion','lane','executor','attestation','runId','createdAt','updatedAt','cases','cleanup','selection'])
     || run.schemaVersion !== 2 || run.lane !== 'real-model' || run.executor !== 'attested-chat-panel-v1') return [...errors, 'actual browser evidence schema v2 required; legacy inferred artifacts are invalid'];
   if (!validAttestation(run.attestation) || run.attestation.corpusDigest !== digest(golden) || run.attestation.manifestDigest !== digest(manifest)) errors.push('attestation mismatch');
   if (typeof run.runId !== 'string' || !/^[0-9a-f-]{36}$/.test(run.runId)
     || ![run.createdAt,run.updatedAt].every(t => typeof t === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(t))) errors.push('invalid run identity/timestamps');
   if (!Array.isArray(run.cases) || !exactIds(golden.cases, run.cases)) return [...errors, 'case IDs missing, duplicated or out of order'];
+  let selected = manifest.cases.map(c => c.id);
+  if (run.selection !== undefined) {
+    try {
+      if (!keysOnly(run.selection, ['mode','caseIds']) || run.selection.mode !== 'selected') throw new Error();
+      selected = selectCaseIds(manifest, run.selection.caseIds);
+      if (JSON.stringify(selected) !== JSON.stringify(run.selection.caseIds)) throw new Error();
+    } catch { errors.push('invalid case selection'); }
+  }
   for (const [i,c] of run.cases.entries()) {
+    if ((c.status === 'not_selected') === selected.includes(c.id)) errors.push(`${c.id}: selection/status mismatch`);
     if (!keysOnly(c, ['id','oracle','status','reason','timing','observed']) || !STATES.includes(c.status) || c.oracle !== manifest.cases[i].oracle) errors.push(`${c.id}: malformed case`);
     if (c.reason !== undefined && !REASONS.has(c.reason)) errors.push(`${c.id}: invalid reason`);
     if (['blocked','fail'].includes(c.status) && !REASONS.has(c.reason)) errors.push(`${c.id}: reason required`);
-    if (c.status === 'pass' && !validPass(c)) errors.push(`${c.id}: completed browser/oracle evidence required`);
-    if (c.status === 'pass' && (c.observed?.promptTemplateDigest !== digest(manifest.cases[i].prompt) || c.observed?.rpcDigest !== run.attestation.fixtureDigest)) errors.push(`${c.id}: observed prompt/fixture differs from attestation`);
+    if (c.status === 'pass' && !validPass(c, run.attestation)) errors.push(`${c.id}: completed browser/oracle evidence required`);
+    if (c.status === 'pass' && (c.observed?.promptTemplateDigest !== digest(manifest.cases[i].prompt) || (!CONTRACT_MAPPING[c.id] && c.observed?.rpcDigest !== run.attestation.fixtureDigest))) errors.push(`${c.id}: observed prompt/fixture differs from attestation`);
     if (c.status !== 'pass' && c.observed !== undefined) errors.push(`${c.id}: unsuccessful case cannot claim actual observations`);
     if (c.timing !== undefined && !validTiming(c.timing)) errors.push(`${c.id}: invalid timing`);
   }
@@ -108,10 +147,10 @@ export function validateBrowserRun(golden, manifest, run) {
 
 export function transitionCase(run, id, update) {
   const c = run.cases.find(c => c.id === id);
-  const transitions = { pending: ['running','blocked'], running: ['pass','fail','blocked'], blocked: [], pass: [], fail: [] };
+  const transitions = { pending: ['running','blocked'], running: ['pass','fail','blocked'], blocked: [], pass: [], fail: [], not_selected: [] };
   if (!c || !transitions[c.status]?.includes(update.status)) throw new Error('invalid case transition');
   const next = { ...c, ...update };
-  if (next.status === 'pass' && !validPass(next)) throw new Error('completed browser/oracle evidence required');
+  if (next.status === 'pass' && !validPass(next, run.attestation)) throw new Error('completed browser/oracle evidence required');
   if (['blocked','fail'].includes(next.status) && !REASONS.has(next.reason)) throw new Error('invalid reason');
   Object.assign(c, update); run.updatedAt = new Date().toISOString();
 }
@@ -145,7 +184,11 @@ function quantiles(values) {
 export function summarizeRun(run) {
   const counts = Object.fromEntries(STATES.map(s => [s, run.cases.filter(c => c.status === s).length]));
   const times = predicate => run.cases.filter(c => predicate(c) && Number.isFinite(c.timing?.totalMs)).map(c => c.timing.totalMs);
-  return { total: run.cases.length, counts, latencyMs: quantiles(times(c => c.status === 'pass')),
+  const selectedCases = run.cases.filter(c => c.status !== 'not_selected');
+  return { fullPlanAccepted: false, selectedScope: run.selection ?? { mode: 'full-corpus', caseIds: run.cases.map(c => c.id) },
+    selectedCounts: Object.fromEntries(STATES.filter(s => s !== 'not_selected').map(s => [s, selectedCases.filter(c => c.status === s).length])),
+    selectedVerdict: selectedCases.length > 0 && selectedCases.every(c => c.status === 'pass') ? 'pass' : 'blocked',
+    total: run.cases.length, counts, latencyMs: quantiles(times(c => c.status === 'pass')),
     unsuccessfulLatencyMs: quantiles(times(c => c.status !== 'pass')),
     sla: { status: 'pending-owner-approval', p50: null, p95: null, max: null },
     verdict: 'blocked' }; // Owner SLA approval is still absent, even if every oracle passes.

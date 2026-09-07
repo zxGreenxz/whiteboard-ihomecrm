@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inspectModelStream, assertReadonlyResult, unexpectedReadonlyMutation } from '../../../.e2e-fleet/specs/copilotSmokeOracle';
+import { inspectModelStream, assertReadonlyResult, unexpectedReadonlyMutation, renderedAssistantText } from '../../../.e2e-fleet/specs/copilotSmokeOracle';
 const chunk = (delta: object, finish_reason: string | null) => `data: ${JSON.stringify({ choices: [{ delta, finish_reason }] })}\n\n`;
 const answer = chunk({ content: 'Có 1 phòng trống ngay: A101.' }, 'stop') + 'data: [DONE]\n\n';
 const call = chunk({ tool_calls: [{ index: 0, id: 'call-1', function: { name: 'phong_', arguments: '' } }] }, null) +
@@ -186,3 +186,80 @@ describe('golden C13: building identity survives duplicate room codes', () => {
     expect(() => assertReadonlyResult(e)).not.toThrow();
   });
 });
+import { assertContractResult, contractToolText } from '../../../.e2e-fleet/specs/copilotContractOracle';
+import { bindContractScenario } from '../../../scripts/copilot-contract-fixtures.mjs';
+import { DEMO_ORG } from '../../../scripts/copilot-golden-browser-evidence.mjs';
+const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', khach_hang: 'Demo An', phong: 'A101', toa_nha: 'DEMO Toà A', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', trang_thai: 'ACTIVE', tien_thue: 3000000, tien_coc: 6000000, coc_da_thu: 5000000, coc_con_thieu: 1000000 };
+function contractEvidence(id = 'C31', withInvoice = false) {
+  const absent = id === 'C32', detail = id === 'C33';
+  const query = absent ? 'GOLDEN_ABSENT_context-1' : 'HD001';
+  const scenario = { id, fixture: 'contract', kind: 'read', acceptance: ['facts'], oracle: absent ? 'absent-customer-contract-v1' : detail ? 'contract-code-detail-v1' : 'contract-code-v1', prompt: absent ? 'Tìm hợp đồng của khách {{absent_customer.name}}' : `${detail ? 'Chi tiết' : 'Tìm'} hợp đồng {{contract.code}}` };
+  const searchPayload = { gioi_han: 20, so_luong: absent ? 0 : 1, hop_dong: absent ? [] : [structuredClone(contractRow)] };
+  const invoice = { hoa_don_id: 'bbbb4000-0000-4000-8000-000000000011', so_hoa_don: 'INV001', ky: '2026-09', tong_tien: 4000000, da_tra: 2000000, con_lai: 2000000, trang_thai: 'PARTIAL' };
+  const detailPayload = detail ? { tim_thay: true, hop_dong: structuredClone(contractRow), hoa_don: withInvoice ? [invoice] : [] } : undefined;
+  const fixture = bindContractScenario(scenario, { query, searchPayload, detailPayload });
+  const tool = (name: string, args: object, id: string) => chunk({ tool_calls: [{ index: 0, id, function: { name, arguments: JSON.stringify(args) } }] }, 'tool_calls') + 'data: [DONE]\n\n';
+  let text = absent ? 'Không tìm thấy hợp đồng nào của khách này.' : `Hợp đồng HD001 — Demo An — phòng A101. Kỳ hạn 01/01/2026 đến 31/12/2026. Tiền thuê 3 triệu đồng, cọc 6 triệu đồng.${detail ? ' Đang giữ 5 triệu đồng, còn thiếu 1 triệu đồng. Chưa có hoá đơn nào.' : ''}`;
+  if (withInvoice) text = text.replace('Chưa có hoá đơn nào.', 'Hoá đơn INV001 kỳ 2026-09: tổng 4 triệu đồng, đã trả 2 triệu đồng, còn 2 triệu đồng.');
+  const messages = [{ role: 'user', content: fixture.prompt }];
+  const rounds = [{ body: tool('tim_hop_dong', { tu_khoa: query }, 'search-1'), messages }];
+  const searchResult = { role: 'tool', tool_call_id: 'search-1', content: contractToolText(fixture) };
+  if (detail) rounds.push({ body: tool('chi_tiet_hop_dong', { hop_dong_id: contractRow.hop_dong_id }, 'detail-1'), messages: [...messages, searchResult] });
+  rounds.push({ body: chunk({ content: text }, 'stop') + 'data: [DONE]\n\n', messages: [...messages, searchResult, ...(detail ? [{ role: 'tool', tool_call_id: 'detail-1', content: contractToolText(fixture,true) }] : [])] });
+  const reads = [{ rpc: 'copilot_contract_search_v1', ok: true, args: { p_organization_id: DEMO_ORG, p_query: query, p_status: null, p_limit: 20 } as Record<string,unknown>, payload: searchPayload as unknown }];
+  if (detail) reads.push({ rpc: 'copilot_contract_detail_v1', ok: true, args: { p_organization_id: DEMO_ORG, p_contract_id: contractRow.hop_dong_id }, payload: detailPayload });
+  return { scenario, fixture, prompt: fixture.prompt, answer: text, rounds, reads };
+}
+function changeContractAnswer(e: ReturnType<typeof contractEvidence>, text: string) {
+  e.answer = renderedAssistantText(text); e.rounds.at(-1)!.body = chunk({ content: text }, 'stop') + 'data: [DONE]\n\n';
+  return e;
+}
+describe('contract golden actual RPC and linked-result oracle', () => {
+  it.each(['C31','C32','C33'])('accepts %s canonical fixture and actual tool chain', id => expect(() => assertContractResult(contractEvidence(id))).not.toThrow());
+  it.each(['C31','C32','C33'])('rejects %s missing later-round tool result', id => {
+    const e = contractEvidence(id); e.rounds.at(-1)!.messages = [{ role: 'user', content: e.prompt }];
+    expect(() => assertContractResult(e)).toThrow(/linked|consume/);
+  });
+  it.each(['p_organization_id','p_query'])('rejects wrong search %s', key => {
+    const e = contractEvidence(); e.reads[0].args[key] = 'wrong'; expect(() => assertContractResult(e)).toThrow(/RPC/);
+  });
+  it('rejects wrong detail identity, reordered reads, and fixture drift', () => {
+    const e = contractEvidence('C33'); e.reads[1].args.p_contract_id = 'bbbb4000-0000-4000-8000-000000000011';
+    expect(() => assertContractResult(e)).toThrow(/RPC/);
+    const reversed = contractEvidence('C33'); reversed.reads.reverse(); expect(() => assertContractResult(reversed)).toThrow(/RPC/);
+    const drift = contractEvidence(); drift.reads[0].payload = { hop_dong: [] }; expect(() => assertContractResult(drift)).toThrow(/drift/);
+  });
+  it('rejects a correct detail tool called before consuming search identity', () => {
+    const e = contractEvidence('C33'); e.rounds[1].messages = [{ role: 'user', content: e.prompt }];
+    expect(() => assertContractResult(e)).toThrow(/consume/);
+  });
+  it('rejects forged tool body and wrong linked call ID', () => {
+    const e = contractEvidence(); e.rounds[1].messages[1].content += ' Other private data';
+    expect(() => assertContractResult(e)).toThrow(/linked/);
+    const other = contractEvidence(); other.rounds[1].messages[1] = { role: 'tool', content: contractToolText(other.fixture), tool_call_id: 'other-call' };
+    expect(() => assertContractResult(other)).toThrow(/linked/);
+  });
+  it.each([['HD001','HD002'], ['Demo An','Other Customer'], ['A101','B101'], ['3 triệu','9 triệu'], ['6 triệu','8 triệu'], ['31/12/2026','31/12/2027']])('rejects wrong mounted fact %s', (from,to) => {
+    const e = contractEvidence(); expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace(from,to)))).toThrow();
+  });
+  it.each([' Hợp đồng HD999 phòng B999.', ' [HD999](/contracts/other)', ' Tiền thuê 9 triệu đồng.'])('rejects absent-query hallucination %s', addition => {
+    const e = contractEvidence('C32'); expect(() => assertContractResult(changeContractAnswer(e,e.answer + addition))).toThrow(/invented/);
+  });
+  it('rejects missing invoice empty state and deposit held fact', () => {
+    for (const part of ['Chưa có hoá đơn nào.', 'Đang giữ 5 triệu đồng,']) {
+      const e = contractEvidence('C33'); expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace(part,'')))).toThrow();
+    }
+  });
+});
+
+ it('contract detail validates actual invoice identity, period and money', () => {
+   expect(() => assertContractResult(contractEvidence('C33',true))).not.toThrow();
+   for (const [from,to] of [['INV001','INV002'],['2026-09','2026-08'],['tổng 4 triệu','tổng 9 triệu']]) {
+     const e = contractEvidence('C33',true); expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace(from,to)))).toThrow();
+   }
+ });
+ it('contract money labels cannot be swapped or accompanied by invented identities', () => {
+   const e = contractEvidence();
+   expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace('thuê 3 triệu đồng, cọc 6 triệu đồng','thuê 6 triệu đồng, cọc 3 triệu đồng')))).toThrow(/money/);
+   const extra = contractEvidence(); expect(() => assertContractResult(changeContractAnswer(extra,extra.answer + ' Hợp đồng HD002.'))).toThrow(/identifier/);
+ });

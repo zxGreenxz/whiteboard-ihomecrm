@@ -6,6 +6,8 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { COPILOT_TEST_MODEL, pinCopilotTestModel } from './copilotTestModel';
 import { guiVaChoModel } from './copilotModelCycle';
 import { assertReadonlyResult, ModelStreamFailure, unexpectedReadonlyMutation } from './copilotSmokeOracle';
+import { bindContractScenario, contractQuery, CONTRACT_CASES, type ContractFixture } from '../../scripts/copilot-contract-fixtures.mjs';
+import { assertContractResult, type ContractRead } from './copilotContractOracle';
 import { bindRoomScenario, createRun, DEMO_ORG, digest, IMPLEMENTED_ORACLES, summarizeRun, transitionCase, writeCheckpoint } from '../../scripts/copilot-golden-browser-evidence.mjs';
 import type { CaseReason, GoldenManifest } from '../../scripts/copilot-golden-browser-evidence.mjs';
 
@@ -29,10 +31,11 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
   const output = process.env.COPILOT_GOLDEN_RESULTS;
   const attestationPath = process.env.COPILOT_GOLDEN_ATTESTATION;
   if (!output || !attestationPath) throw new Error('Missing golden results/attestation paths');
-  const run = createRun(golden, manifest, load(attestationPath));
+  const caseIds = process.env.COPILOT_GOLDEN_CASE_IDS;
+  const run = createRun(golden, manifest, load(attestationPath), caseIds ? caseIds.split(',') : undefined);
   const attestation = run.attestation;
   const save = () => writeCheckpoint(output, run, golden, manifest);
-  for (const c of run.cases) if (!IMPLEMENTED_ORACLES.has(c.oracle)) transitionCase(run, c.id, { status: 'blocked', reason: 'oracle_not_implemented' });
+  for (const c of run.cases) if (c.status === 'pending' && !IMPLEMENTED_ORACLES.has(c.oracle)) transitionCase(run, c.id, { status: 'blocked', reason: 'oracle_not_implemented' });
   save();
   let reason: CaseReason = 'preflight_missing';
   let fatalProvider = false;
@@ -83,8 +86,26 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       if (fatalProvider) { transitionCase(run, c.id, { status: 'blocked', reason }); save(); continue; }
       const scenario = manifest.cases.find(s => s.id === c.id);
       if (!scenario) throw new Error('Golden scenario missing from manifest');
-      let bound;
-      try { bound = bindRoomScenario(scenario, fixture); }
+      let bound: ReturnType<typeof bindRoomScenario> | ContractFixture;
+      let contract: ContractFixture | undefined;
+      try {
+        if (Object.hasOwn(CONTRACT_CASES, c.id)) {
+          const read = async (rpc: string, data: Record<string, unknown>): Promise<unknown> => {
+            const response = await page.request.post(`${api}/rest/v1/rpc/${rpc}`, { headers: auth, data });
+            expect(response.ok()).toBe(true); return response.json();
+          };
+          const listing = c.id === 'C32' ? undefined : await read('copilot_contract_search_v1', { p_organization_id: DEMO_ORG, p_query: null, p_status: null, p_limit: 50 });
+          const query = contractQuery(c.id, attestation.contextId, listing);
+          const searchPayload = await read('copilot_contract_search_v1', { p_organization_id: DEMO_ORG, p_query: query, p_status: null, p_limit: 20 });
+          // Bind search first to validate a unique UUID before requesting detail.
+          const searchScenario = c.id === 'C33' ? { ...scenario, id: 'C31', oracle: CONTRACT_CASES.C31 } : scenario;
+          const searched = bindContractScenario(searchScenario, { query, searchPayload });
+          const detailPayload = c.id === 'C33' ? await read('copilot_contract_detail_v1', { p_organization_id: DEMO_ORG, p_contract_id: searched.contractId }) : undefined;
+          contract = bindContractScenario(scenario, { query, searchPayload, detailPayload });
+          expect(digest(contract.attestation)).toBe(digest(attestation.contractFixtures?.[c.id as 'C31'|'C32'|'C33']));
+          bound = contract;
+        } else bound = bindRoomScenario(scenario, fixture);
+      }
       catch { transitionCase(run, c.id, { status: 'blocked', reason: 'fixture_unbound' }); save(); continue; }
       await page.getByTitle('Cuộc trò chuyện mới', { exact: true }).click();
       const assistant = page.getByTestId('copilot-panel').locator('.flex.justify-start.gap-2 > .bg-muted');
@@ -92,12 +113,13 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       const reads: Response[] = [], modelRequests: Request[] = [];
       let writes = 0, networkErrors = 0;
       const onRequest = (r: Request) => {
-        if (unexpectedReadonlyMutation(r.method(), r.url())) writes += 1;
+        const contractRead = contract && new URL(r.url()).origin === api && r.method() === 'POST' && /\/rest\/v1\/rpc\/copilot_contract_(search|detail)_v1$/.test(new URL(r.url()).pathname);
+        if (!contractRead && unexpectedReadonlyMutation(r.method(), r.url())) writes += 1;
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname)) modelRequests.push(r);
       };
       const onResponse = (r: Response) => {
         if (/\/(rest|functions)\/v1\//.test(r.url()) && !r.ok()) networkErrors += 1;
-        if (r.url().split('?')[0].endsWith('/rpc/copilot_available_rooms_v1')) reads.push(r);
+        if (/\/rpc\/copilot_(available_rooms|contract_search|contract_detail)_v1$/.test(r.url().split('?')[0])) reads.push(r);
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname) && !r.ok()) {
           fatalProvider = true;
           reason = r.status() === 429 ? 'rate_exhausted' : r.status() === 403 ? 'quota_exhausted' : 'provider_failed';
@@ -119,21 +141,32 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         await expect(assistant.last()).toBeVisible();
         const answer = await assistant.last().innerText();
         reason = 'oracle_failed';
-        expect(reads).toHaveLength(1);
-        expect(reads[0].ok()).toBe(true);
-        expect(reads[0].request().postDataJSON().p_organization_id).toBe(DEMO_ORG);
-        const payload = await reads[0].json();
-        expect(digest(payload)).toBe(digest(fixture));
+        let rpcDigest: string;
         for (const r of modelRequests) {
           expect((await r.allHeaders())['x-organization-id']).toBe(DEMO_ORG);
           expect(r.postDataJSON().model).toBe(COPILOT_TEST_MODEL);
         }
-        assertReadonlyResult({ prompt, answer, rounds, payload, buildingScope: bound.buildingScope });
+        if (contract) {
+          for (const r of reads) expect(new URL(r.url()).origin).toBe(api);
+          const observedReads: ContractRead[] = await Promise.all(reads.map(async r => ({ rpc: new URL(r.url()).pathname.split('/').at(-1)!, args: r.request().postDataJSON(), payload: await r.json(), ok: r.ok() })));
+          assertContractResult({ scenario, fixture: contract, prompt, answer, rounds, reads: observedReads });
+          rpcDigest = digest(contract.detailPayload ?? contract.searchPayload);
+        } else {
+          expect(reads).toHaveLength(1);
+          expect(reads[0].ok()).toBe(true);
+          expect(reads[0].url().split('?')[0].endsWith('/rpc/copilot_available_rooms_v1')).toBe(true);
+          expect(reads[0].request().postDataJSON().p_organization_id).toBe(DEMO_ORG);
+          const payload = await reads[0].json();
+          expect(digest(payload)).toBe(digest(fixture));
+          assertReadonlyResult({ prompt, answer, rounds, payload, buildingScope: 'buildingScope' in bound ? bound.buildingScope : undefined });
+          rpcDigest = digest(payload);
+        }
         expect(writes).toBe(0); expect(networkErrors).toBe(0); expect(consoleErrors.length).toBe(0);
         transitionCase(run, c.id, { status: 'pass', timing: {
           startedAt: new Date(started).toISOString(), completedAt: new Date(completed).toISOString(), totalMs: completed-started, humanWaitMs: 0, processingMs: completed-started,
-        }, observed: { answerDigest: digest(answer), promptDigest: digest(prompt), promptTemplateDigest: digest(scenario.prompt), bindingDigest: bound.bindingDigest, rpcDigest: digest(payload), modelRounds: rounds.length,
-          toolResultLinked: true, finalAnswerMounted: true, readRpc: 'copilot_available_rooms_v1', businessWrites: writes, networkErrors, oracleVersion: c.oracle } });
+        }, observed: { answerDigest: digest(answer), promptDigest: digest(prompt), promptTemplateDigest: digest(scenario.prompt), bindingDigest: bound.bindingDigest, rpcDigest, modelRounds: rounds.length,
+          toolResultLinked: true, finalAnswerMounted: true, readRpc: contract ? (c.id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1') : 'copilot_available_rooms_v1',
+          ...(contract ? { fixtureDigest: digest(contract.attestation), queryDigest: contract.attestation.queryDigest, identityDigest: contract.attestation.identityDigest, searchDigest: contract.attestation.searchDigest, ...(contract.attestation.detailDigest ? { detailDigest: contract.attestation.detailDigest } : {}) } : {}), businessWrites: writes, networkErrors, oracleVersion: c.oracle } });
       } catch (error) {
         if (error instanceof ModelStreamFailure) { fatalProvider = true; reason = error.reason; }
         completed = Date.now();
@@ -151,5 +184,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
   }
   // Do not let an incomplete live run look green in CI, even with an approved
   // mock-only SLA exception. The checkpoint is the sanitized diagnostic artifact.
-  expect(summarizeRun(run).verdict, 'Full live evidence and owner SLA are not complete; inspect checkpoint').toBe('pass');
+  const summary = summarizeRun(run);
+  console.log(JSON.stringify({ selectedScope: summary.selectedScope, selectedCounts: summary.selectedCounts, selectedVerdict: summary.selectedVerdict, fullPlanAccepted: summary.fullPlanAccepted, fullCorpusVerdict: summary.verdict }));
+  expect(run.selection ? summary.selectedVerdict : summary.verdict, 'Live evidence incomplete; selected green never implies fullPlanAccepted').toBe('pass');
 });
