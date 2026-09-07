@@ -28,7 +28,7 @@
         "zero-business-writes"
       ],
       "prompt": "Tìm khách hàng Nguyễn An",
-      "executorStatus": "not-implemented"
+      "executorStatus": "blocked-fixture-lifecycle"
     },
     {
       "id": "C03",
@@ -194,7 +194,7 @@
         "zero-business-writes"
       ],
       "prompt": "Tìm khách bằng số điện thoại {{absent.syntheticPhone}}",
-      "executorStatus": "not-implemented",
+      "executorStatus": "implemented-unverified-live",
       "clarificationPrompt": "Tìm khách bằng số điện thoại"
     },
     {

@@ -14,7 +14,11 @@ export interface ContractFixtureAttestation {
   kind: 'contract-search' | 'contract-absent' | 'contract-detail'; organizationId: typeof DEMO_ORG;
   queryDigest: string; identityDigest: string; searchDigest: string; detailDigest?: string; customerDigest?: string;
 }
+export interface CustomerFixtureAttestation {
+  kind:'customer-search'|'customer-absent';organizationId:typeof DEMO_ORG;actorDigest:string;contextDigest:string;queryDigest:string;identityDigest:string;responseDigest:string;
+}
 export interface Attestation {
+  customerFixtures?:Partial<Record<'C02'|'C14',CustomerFixtureAttestation>>;
   contractFixtures?: Partial<Record<'C31' | 'C32' | 'C33', ContractFixtureAttestation>>;
   incomeApprovalFixtures?: Partial<Record<'C34' | 'C35' | 'C36', IncomeApprovalFixtureAttestation>>;
   buildSha: string; edgeSourceDigest: string; deployedEdgeSourceDigest: string;
@@ -35,8 +39,9 @@ export interface Observation {
   rpcDigest: string; modelRounds: number; toolResultLinked: true; finalAnswerMounted: true;
   fixtureDigest?: string; queryDigest?: string; identityDigest?: string; searchDigest?: string; detailDigest?: string; responseDigest?:string; customerDigest?: string;
   dailyCashbookCalls?:0|1; dailyCashbookDigest?:string;
+  contextDigest?:string;
   contractCalls?: number; customerCalls?: number;
-  readRpc: 'copilot_available_rooms_v1' | 'copilot_contract_search_v1' | 'copilot_contract_detail_v1' | 'copilot_income_expense_search_v1' | 'copilot_pending_requests_v1'; businessWrites: number; networkErrors: number; oracleVersion: string;
+  readRpc: 'copilot_customer_search_v1' | 'copilot_available_rooms_v1' | 'copilot_contract_search_v1' | 'copilot_contract_detail_v1' | 'copilot_income_expense_search_v1' | 'copilot_pending_requests_v1'; businessWrites: number; networkErrors: number; oracleVersion: string;
 }
 export interface BrowserCase {
   id: string; oracle: string; status: CaseStatus; reason?: CaseReason; timing?: Timing; observed?: Observation;

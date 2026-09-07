@@ -1,3 +1,5 @@
+import { bindCustomerScenario,customerQuery,CUSTOMER_CASES,type CustomerFixture } from '../../scripts/copilot-customer-fixtures.mjs';
+import { assertCustomerResult,customerOracleDiagnostic,isGoldenCustomerRead,type CustomerRead } from './copilotCustomerOracle';
 import { expect, test, type Request, type Response } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -90,11 +92,22 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       if (fatalProvider) { transitionCase(run, c.id, { status: 'blocked', reason }); save(); continue; }
       const scenario = manifest.cases.find(s => s.id === c.id);
       if (!scenario) throw new Error('Golden scenario missing from manifest');
-      let bound: ReturnType<typeof bindRoomScenario> | ContractFixture | IncomeApprovalFixture;
+      let bound: ReturnType<typeof bindRoomScenario> | ContractFixture | IncomeApprovalFixture | CustomerFixture;
       let contract: ContractFixture | undefined;
       let financial: IncomeApprovalFixture | undefined;
+      let customer: CustomerFixture | undefined;
       try {
-        if (Object.hasOwn(CONTRACT_CASES, c.id)) {
+        if (Object.prototype.hasOwnProperty.call(CUSTOMER_CASES,c.id)) {
+          // C02 oracle/schema are ready; provisioning and cleanup must receive a
+          // separate lifecycle review before enabling its browser execution.
+          if(c.id==='C02')throw new Error('fixture_unbound');
+          const query=customerQuery(c.id,attestation.contextId);
+          const response=await page.request.post(`${api}/rest/v1/rpc/copilot_customer_search_v1`,{headers:auth,data:{p_organization_id:DEMO_ORG,p_search:query}});
+          expect(response.ok()).toBe(true);
+          customer=bindCustomerScenario(scenario,{query,contextId:attestation.contextId,actorDigest:attestation.actorDigest,payload:await response.json()});
+          expect(digest(customer.attestation)).toBe(digest(attestation.customerFixtures?.C14));
+          bound=customer;
+        } else if (Object.hasOwn(CONTRACT_CASES, c.id)) {
           const read = async (rpc: string, data: Record<string, unknown>): Promise<unknown> => {
             const response = await page.request.post(`${api}/rest/v1/rpc/${rpc}`, { headers: auth, data });
             expect(response.ok()).toBe(true); return response.json();
@@ -141,7 +154,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       const onRequest = (r: Request) => {
         const contractRead = contract && new URL(r.url()).origin === api && r.method() === 'POST' && /\/rest\/v1\/rpc\/copilot_contract_(search|detail)_v1$/.test(new URL(r.url()).pathname);
         const financialRead = isIncomeApprovalReadonlyRequest(financial,api,r.method(),r.url());
-        const customerRead = isC32CustomerRead(c.id,r.method(),r.url(),api);
+        const customerRead = isC32CustomerRead(c.id,r.method(),r.url(),api) || isGoldenCustomerRead(c.id,r.method(),r.url(),api);
         const countedAsMutation = !contractRead && !financialRead && !customerRead && unexpectedReadonlyMutation(r.method(), r.url());
         if (countedAsMutation) writes += 1;
         const observedRead = /\/rpc\/copilot_(available_rooms|contract_search|contract_detail)_v1$/.test(new URL(r.url()).pathname);
@@ -157,7 +170,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname)) modelHttpStatuses.push(r.status());
         if (/\/(rest|functions)\/v1\//.test(r.url()) && !r.ok()) networkErrors += 1;
         if (/\/rpc\/copilot_(available_rooms|contract_search|contract_detail|income_expense_search|pending_requests|report_daily_cashbook)_v1$/.test(r.url().split('?')[0])
-          || (c.id === 'C32' && new URL(r.url()).pathname.startsWith('/rest/v1/rpc/copilot_customer_search_v1'))) reads.push(r);
+          || (['C02','C14','C32'].includes(c.id) && new URL(r.url()).pathname.startsWith('/rest/v1/rpc/copilot_customer_search_v1'))) reads.push(r);
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname) && !r.ok()) {
           fatalProvider = true;
           reason = r.status() === 429 ? 'rate_exhausted' : r.status() === 403 ? 'quota_exhausted' : 'provider_failed';
@@ -196,7 +209,15 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
           expect((await r.allHeaders())['x-organization-id']).toBe(DEMO_ORG);
           expect(r.postDataJSON().model).toBe(COPILOT_TEST_MODEL);
         }
-        if (contract) {
+        if (customer) {
+          const observedReads:CustomerRead[]=await Promise.all(reads.map(async r=>{
+            const headers=await r.request().allHeaders();let actorDigest:string|undefined;
+            try{const jwt=headers.authorization.replace(/^Bearer /i,'');actorDigest=digest(JSON.parse(Buffer.from(jwt.split('.')[1],'base64url').toString()).sub);}catch{/* static oracle rejects missing actor */}
+            return {rpc:new URL(r.url()).pathname.split('/').at(-1)!,args:r.request().postDataJSON(),payload:await r.json(),ok:r.ok(),actorDigest,exactEndpoint:isGoldenCustomerRead(c.id,r.request().method(),r.url(),api)};
+          }));
+          assertCustomerResult({scenario,fixture:customer,actorDigest:attestation.actorDigest,prompt,answer,rounds,reads:observedReads});
+          rpcDigest=digest(customer.payload);
+        } else if (contract) {
           for (const r of reads) expect(new URL(r.url()).origin).toBe(api);
           const observedReads: ContractRead[] = await Promise.all(reads.map(async r => {
             const url = new URL(r.url());
@@ -244,7 +265,8 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         transitionCase(run, c.id, { status: 'pass', timing: {
           startedAt: new Date(started).toISOString(), completedAt: new Date(completed).toISOString(), totalMs: completed-started, humanWaitMs: 0, processingMs: completed-started,
         }, observed: { answerDigest: digest(answer), promptDigest: digest(prompt), promptTemplateDigest: digest(scenario.prompt), bindingDigest: bound.bindingDigest, rpcDigest, modelRounds: rounds.length,
-          toolResultLinked: true, finalAnswerMounted: true, readRpc: financial ? financial.request.rpc : contract ? (c.id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1') : 'copilot_available_rooms_v1',
+          toolResultLinked: true, finalAnswerMounted: true, readRpc: customer ? 'copilot_customer_search_v1' : financial ? financial.request.rpc : contract ? (c.id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1') : 'copilot_available_rooms_v1',
+          ...(customer ? {fixtureDigest:customer.bindingDigest,queryDigest:customer.attestation.queryDigest,identityDigest:customer.attestation.identityDigest,responseDigest:customer.attestation.responseDigest,contextDigest:customer.attestation.contextDigest}:{}),
           ...(financial ? {fixtureDigest:digest(financial.attestation),queryDigest:financial.attestation.queryDigest,identityDigest:financial.attestation.identityDigest,responseDigest:financial.attestation.responseDigest}:{}),
           ...(contract ? { fixtureDigest: digest(contract.attestation), queryDigest: contract.attestation.queryDigest, identityDigest: contract.attestation.identityDigest, searchDigest: contract.attestation.searchDigest, ...(contract.attestation.detailDigest ? { detailDigest: contract.attestation.detailDigest } : {}) } : {}), ...absentCounts, ...dailyCounts, businessWrites: writes, networkErrors, oracleVersion: c.oracle } });
       } catch (error) {
@@ -254,7 +276,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         console.log(JSON.stringify({ kind: 'golden-case-failure', caseId: c.id, phase,
           modelRequests: modelRequests.length, readResponses: reads.length, modelHttpStatuses,
           businessWrites: writes, networkErrors, consoleErrors: consoleErrors.length }));
-        const diagnostic = contractOracleDiagnostic(c.id,error) ?? incomeApprovalOracleDiagnostic(c.id,error);
+        const diagnostic = customerOracleDiagnostic(c.id,error) ?? contractOracleDiagnostic(c.id,error) ?? incomeApprovalOracleDiagnostic(c.id,error);
         if (diagnostic) console.log(JSON.stringify(diagnostic));
         reason = incomeApprovalFixtureFailureReason(error) ?? reason;
         if (error instanceof ModelStreamFailure) { fatalProvider = true; reason = error.reason; }

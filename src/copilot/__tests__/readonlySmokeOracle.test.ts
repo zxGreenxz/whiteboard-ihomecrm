@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { bindCustomerScenario, customerQuery } from '../../../scripts/copilot-customer-fixtures.mjs';
+import { assertCustomerResult, customerToolText, isGoldenCustomerRead } from '../../../.e2e-fleet/specs/copilotCustomerOracle';
 import type { TestCase, TestResult } from '@playwright/test/reporter';
 import GoldenReporter from '../../../.e2e-fleet/goldenReporter';
 import { assertIncomeApprovalResult, dailyCashbookToolText, IncomeApprovalOracleFailure, incomeApprovalOracleDiagnostic, incomeApprovalFixtureFailureReason, isIncomeApprovalOracleFailureCode, isIncomeApprovalReadonlyRequest } from '../../../.e2e-fleet/specs/copilotIncomeApprovalOracle';
@@ -933,3 +935,84 @@ describe('C34 report date scope',()=>{
     const e=dailyEvidence();expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+'\n'+statement))).not.toThrow();
   });
 });
+
+const customerCanonical = {customer_id:'aaaa4000-0000-4000-8000-000000000071',customer_name:'Nguyễn An',phone:'0001234567',contract_id:'aaaa4000-0000-4000-8000-000000000072',contract_number:'HD-GOLDEN',contract_status:'TERMINATED',room_id:'aaaa4000-0000-4000-8000-000000000073',room_name:'G701',building_id:'aaaa4000-0000-4000-8000-000000000074',building_name:'DEMO Toà A',is_representative:true};
+function customerEvidence(id='C02') {
+  const scenario={id,fixture:id==='C02'?'customer-nguyen-an':'absent-synthetic-phone',kind:'read',acceptance:['facts'],oracle:id==='C02'?'customer-nguyen-an-v1':'absent-synthetic-phone-v1',prompt:id==='C02'?'Tìm khách hàng Nguyễn An':'Tìm khách bằng số điện thoại {{absent.syntheticPhone}}'};
+  const contextId='customer-context-1',actorDigest='b'.repeat(64),query=customerQuery(id,contextId);
+  const input={query,contextId,actorDigest,payload:id==='C02'?[structuredClone(customerCanonical)]:[],ownedCustomerId:id==='C02'?customerCanonical.customer_id:undefined};
+  const fixture=bindCustomerScenario(scenario,input);
+  expect(fixture).toBeDefined();
+  const text=id==='C02'?'Nguyễn An — 000***4567 — phòng G701 (DEMO Toà A)':'Không tìm thấy khách hàng nào khớp "'+query+'".';
+  const messages:FixtureMessage[]=[{role:'user',content:fixture.prompt}];
+  const rounds=[{body:chunk({tool_calls:[{index:0,id:'customer-call-1',function:{name:'tim_khach_',arguments:'{"tu_khoa":'}}]},null)+chunk({tool_calls:[{index:0,function:{name:'hang',arguments:JSON.stringify(query)+'}'}}]},'tool_calls')+'data: [DONE]\n\n',messages},
+    {body:chunk({content:text},'stop')+'data: [DONE]\n\n',messages:[...messages,{role:'tool',tool_call_id:'customer-call-1',content:customerToolText(fixture)}]}];
+  return {scenario,fixture,actorDigest,prompt:fixture.prompt,answer:text,rounds,reads:[{rpc:'copilot_customer_search_v1',args:{p_organization_id:DEMO_ORG,p_search:query} as Record<string,unknown>,payload:structuredClone(input.payload) as unknown,ok:true,actorDigest,exactEndpoint:true}]};
+}
+function customerAnswer(text:string,id='C02') {const e=customerEvidence(id);e.answer=renderedAssistantText(text);e.rounds[1].body=chunk({content:text},'stop')+'data: [DONE]\n\n';return e;}
+describe('bounded customer golden executor',()=>{
+  it.each(['C02','C14'])('accepts complete fragmented tool cycle %s',id=>expect(()=>assertCustomerResult(customerEvidence(id))).not.toThrow());
+  it('binds C14 deterministic context query and C02 fixed name',()=>{
+    expect(customerQuery('C14','context-1')).toMatch(/^000\d{7}$/);expect(customerQuery('C14','context-1')).not.toBe(customerQuery('C14','context-2'));expect(customerQuery('C02','context-1')).toBe('Nguyễn An');
+  });
+  it.each(['empty','ambiguous','wrong-name','extra-key','bad-id','raw-type','phone-short','wrong-owner','wrong-context','nonempty-absent'])('rejects customer fixture %s',mode=>{
+    const e=customerEvidence(mode==='wrong-context'||mode==='nonempty-absent'?'C14':'C02');const input:Parameters<typeof bindCustomerScenario>[1]={...e.fixture,payload:structuredClone(e.fixture.payload)};
+    if(mode==='empty')input.payload=[];
+    if(mode==='ambiguous')input.payload=[customerCanonical,customerCanonical];
+    if(mode==='wrong-name')input.payload=[{...customerCanonical,customer_name:'Nguyễn Bình'}];
+    if(mode==='extra-key')input.payload=[{...customerCanonical,extra:true}];
+    if(mode==='bad-id')input.payload=[{...customerCanonical,room_id:'bad'}];
+    if(mode==='raw-type')input.payload=[{...customerCanonical,is_representative:'true'}];
+    if(mode==='phone-short')input.payload=[{...customerCanonical,phone:'123'}];
+    if(mode==='wrong-owner')input.ownedCustomerId=customerCanonical.room_id;
+    if(mode==='wrong-context')input.contextId='another-context';
+    if(mode==='nonempty-absent')input.payload=[customerCanonical];
+    expect(()=>bindCustomerScenario(e.scenario,input)).toThrow('fixture_unbound');
+  });
+  it.each(['actor','org','query','rpc','endpoint','failed','payload','repeat','tool-name','tool-args','orphan','altered','early','missing-id','extra-tool','mounted','raw-result'])('rejects customer cycle mutation %s',mode=>{
+    const e=customerEvidence();
+    if(mode==='actor')e.reads[0].actorDigest='c'.repeat(64);
+    if(mode==='org')e.reads[0].args.p_organization_id=customerCanonical.customer_id;
+    if(mode==='query')e.reads[0].args.p_search='%';
+    if(mode==='rpc')e.reads[0].rpc='copilot_contract_search_v1';
+    if(mode==='endpoint')e.reads[0].exactEndpoint=false;
+    if(mode==='failed')e.reads[0].ok=false;
+    if(mode==='payload')e.reads[0].payload=[{...customerCanonical,contract_number:'OTHER'}];
+    if(mode==='repeat')e.reads.push(e.reads[0]);
+    if(mode==='tool-name')e.rounds[0].body=e.rounds[0].body.replace('tim_khach_','tim_hoa_');
+    if(mode==='tool-args')e.rounds[0].body=e.rounds[0].body.replace('Nguyễn An','Nguyễn');
+    if(mode==='orphan')e.rounds[1].messages[1].tool_call_id='other-id';
+    if(mode==='altered')e.rounds[1].messages[1].content+=' invented';
+    if(mode==='early')e.rounds[0].messages.push(e.rounds[1].messages.pop()!);
+    if(mode==='missing-id')e.rounds[0].body=e.rounds[0].body.replace('customer-call-1','');
+    if(mode==='extra-tool')e.rounds[0].body=e.rounds[0].body.replace('data: [DONE]',chunk({tool_calls:[{index:1,id:'second',function:{name:'tim_khach_hang',arguments:'{}'}}]},'tool_calls')+'data: [DONE]');
+    if(mode==='mounted')e.answer+=' different';
+    if(mode==='raw-result')e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.replace('000***4567',customerCanonical.phone);
+    expect(()=>assertCustomerResult(e)).toThrow();
+  });
+  it.each(['Nguyễn Bình — 000***4567 — phòng G701 (DEMO Toà A)','Nguyễn An — 000***4567 — phòng G702 (DEMO Toà A)','Nguyễn An — 000***4567 — phòng G701 (DEMO Toà B)','Nguyễn An — 000***4568 — phòng G701 (DEMO Toà A)','Nguyễn An — 0001234567 — phòng G701 (DEMO Toà A)','Nguyễn An — phòng G701 (DEMO Toà A). Khách hàng: Nguyễn Bình','Nguyễn An — phòng G701 (DEMO Toà A). Hợp đồng HD999','Nguyễn An — phòng G701 (DEMO Toà A). Không tìm thấy khách hàng.'])('rejects wrong or invented customer fact %s',text=>expect(()=>assertCustomerResult(customerAnswer(text))).toThrow());
+  it('rejects noncanonical links and PII in later model input',()=>{
+    expect(()=>assertCustomerResult(customerAnswer('Nguyễn An — phòng G701 (DEMO Toà A) [x](/customers/wrong)'))).toThrow();
+    const e=customerEvidence();e.rounds[1].messages.push({role:'assistant',content:customerCanonical.phone});expect(()=>assertCustomerResult(e)).toThrow();
+  });
+  it.each(['generic','wrong-phone','identity','link','location'])('rejects absent customer invention %s',mode=>{
+    const e=customerEvidence('C14');let text=e.answer;
+    if(mode==='generic')text='Không tìm thấy khách hàng.';
+    if(mode==='wrong-phone')text=text.replace(e.fixture.query,'0009999999');
+    if(mode==='identity')text+=' Khách hàng: Nguyễn Bình.';
+    if(mode==='link')text+=' [x](/customers/unknown)';
+    if(mode==='location')text+=' Phòng G701.';
+    expect(()=>assertCustomerResult(customerAnswer(text,'C14'))).toThrow();
+  });
+  it('allows only exact customer read endpoints for C02/C14',()=>{
+    const origin='https://fixture.invalid',path='/rest/v1/rpc/copilot_customer_search_v1';
+    for(const id of ['C02','C14'])expect(isGoldenCustomerRead(id,'POST',origin+path,origin)).toBe(true);
+    for(const [id,method,url] of [['C01','POST',origin+path],['C32','POST',origin+path],['C14','GET',origin+path],['C14','POST',origin+path+'?x=1'],['C14','POST',origin+path+'#x'],['C14','POST',origin+path+'/'],['C14','POST','https://other.invalid'+path]])expect(isGoldenCustomerRead(id,method,url,origin)).toBe(false);
+  });
+});
+
+it('rejects an unlabelled invented identity after exact C14 absence',()=>{const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' Nguyễn Bình.','C14'))).toThrow();});
+it('accepts one-customer prose with canonical count and masked phone',()=>expect(()=>assertCustomerResult(customerAnswer('Tìm thấy 1 khách hàng: Nguyễn An — 000***4567 — phòng G701 (DEMO Toà A).'))).not.toThrow());
+
+it('rejects contradictory positive customer claim after grounded absence',()=>{const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' Có khách hàng.','C14'))).toThrow();});
+it('accepts only a canonical customer detail link',()=>expect(()=>assertCustomerResult(customerAnswer('Nguyễn An — phòng G701 (DEMO Toà A). [Xem chi tiết](/customers/'+customerCanonical.customer_id+')'))).not.toThrow());

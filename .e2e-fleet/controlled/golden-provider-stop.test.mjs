@@ -444,3 +444,55 @@ test('plan cleanup reports exact ownership evidence when transport stays unknown
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+// The actual registered browser executor, with loopback synthetic transport.
+// A controlled pass is harness proof only; it is never a live model result.
+test('C14 registered customer cycle passes while C02 stays blocked before fixture lifecycle',async()=>{
+  const {bindCustomerScenario,customerQuery}=await import('../../scripts/copilot-customer-fixtures.mjs');
+  const dir=mkdtempSync(join(tmpdir(),'golden-controlled-customer-'));
+  const contextId='controlled-customer',query=customerQuery('C14',contextId),scenario=manifest.cases.find(c=>c.id==='C14');
+  const bound=bindCustomerScenario(scenario,{query,contextId,actorDigest:digest(actor),payload:[]});
+  const attestation={buildSha:sha,edgeSourceDigest:hash,deployedEdgeSourceDigest:hash,providerModel:model,organizationId:org,corpusDigest:digest(golden),manifestDigest:digest(manifest),fixtureDigest:digest(fixture),policyDigest:digest({permissions:{},availability:{}}),actorDigest:digest(actor),observedAt:new Date().toISOString(),contextId,customerFixtures:{C14:bound.attestation}};
+  writeFileSync(join(dir,'attestation.json'),JSON.stringify(attestation));
+  const text=`Không tìm thấy khách hàng nào khớp "${query}".`;
+  let modelCalls=0,customerReads=0;
+  const sse=(delta,finish_reason)=>'data: '+JSON.stringify({choices:[{delta,finish_reason}]})+'\n\ndata: [DONE]\n\n';
+  const server=createServer(async(req,res)=>{
+    const path=new URL(req.url,'http://local').pathname;
+    const send=(data,type='application/json')=>{res.writeHead(200,{'Content-Type':type+'; charset=utf-8'});res.end(typeof data==='string'?data:JSON.stringify(data));};
+    if(path.endsWith('/rpc/get_my_copilot_availability_v1')||path.endsWith('/rpc/get_my_permissions'))return send({});
+    if(path.endsWith('/rpc/copilot_available_rooms_v1'))return send(fixture);
+    if(path.endsWith('/rpc/copilot_customer_search_v1')){customerReads++;return send([]);}
+    if(path.includes('/functions/v1/llm-proxy')){modelCalls++;return send(modelCalls===1?sse({tool_calls:[{index:0,id:'customer-controlled-call',function:{name:'tim_khach_hang',arguments:JSON.stringify({tu_khoa:query})}}]},'tool_calls'):sse({content:text},'stop'),'text/event-stream');}
+    if(path==='/favicon.ico'){res.writeHead(204);return res.end();}
+    if(path==='/login')return send(`<html><head><meta name="build-sha" content="${sha}"></head><body><input aria-label="Tài Khoản"><input aria-label="Mật khẩu"><button onclick="location.href='/apartments'">Đăng nhập</button></body></html>`,'text/html');
+    return send(`<!doctype html><html><head><meta name="build-sha" content="${sha}"></head><body>
+      <button data-testid="copilot-launcher" style="display:none">Open</button><div data-testid="copilot-panel"><select data-testid="copilot-model-select"><option value="${model}">${model}</option></select><button title="Cuộc trò chuyện mới">New</button><input data-testid="copilot-input"><button data-testid="copilot-send">Send</button><div id="answer"></div></div>
+      <script>
+      const auth={Authorization:${JSON.stringify('Bearer '+token)},apikey:'synthetic-key','Content-Type':'application/json'};
+      fetch('/rest/v1/rpc/get_my_copilot_availability_v1',{method:'POST',headers:auth,body:JSON.stringify({p_organization_id:${JSON.stringify(org)}})}).then(r=>r.json()).then(()=>document.querySelector('[data-testid="copilot-launcher"]').style.display='block');
+      document.querySelector('[data-testid="copilot-send"]').onclick=async()=>{
+        const button=document.querySelector('[data-testid="copilot-send"]');button.style.display='none';
+        const prompt=document.querySelector('[data-testid="copilot-input"]').value,messages=[{role:'user',content:prompt}];
+        const modelRequest=()=>fetch('/functions/v1/llm-proxy/chat/completions',{method:'POST',headers:{...auth,'x-organization-id':${JSON.stringify(org)}},body:JSON.stringify({model:${JSON.stringify(model)},messages})}).then(r=>r.text());
+        await modelRequest();
+        await fetch('/rest/v1/rpc/copilot_customer_search_v1',{method:'POST',headers:auth,body:JSON.stringify({p_organization_id:${JSON.stringify(org)},p_search:${JSON.stringify(query)}})}).then(r=>r.json());
+        messages.push({role:'tool',tool_call_id:'customer-controlled-call',content:${JSON.stringify(text)}});await modelRequest();
+        document.querySelector('#answer').innerHTML='<div class="flex justify-start gap-2"><div class="bg-muted"></div></div>';
+        document.querySelector('.bg-muted').textContent=${JSON.stringify(text)};button.style.display='block';
+      };
+      </script></body></html>`,'text/html');
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try{
+    const env={...process.env,FLEET_BASE_URL:`http://127.0.0.1:${server.address().port}`,FLEET_PASS_CHUNHA:'synthetic-controlled-only',EXPECTED_SOURCE_SHA:sha,COPILOT_E2E_MODEL:model,COPILOT_REVIEWED_EDGE_DIGEST:hash,COPILOT_DEPLOYED_EDGE_DIGEST:hash,VERCEL_AUTOMATION_BYPASS_SECRET:''};
+    const child=spawn(process.execPath,['scripts/generate-copilot-golden-real-results.mjs','--attestation',join(dir,'attestation.json'),'--results-out',join(dir,'results.json'),'--case-ids','C02,C14'],{cwd:root,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+    let output='';child.stdout.on('data',c=>{output+=c;});child.stderr.on('data',c=>{output+=c;});
+    const exit=await new Promise((resolve,reject)=>{child.on('close',resolve);child.on('error',reject);});
+    const run=JSON.parse(readFileSync(join(dir,'results.json')));
+    assert.equal(exit,1,'C02 unfinished fixture must retain incomplete selection');
+    assert.equal(run.cases.find(c=>c.id==='C02').reason,'fixture_unbound');assert.equal(run.cases.find(c=>c.id==='C02').timing,undefined);
+    assert.equal(run.cases.find(c=>c.id==='C14').status,'pass',output);assert.equal(modelCalls,2);assert.equal(customerReads,2);
+    assert.equal(run.cases.find(c=>c.id==='C01').status,'not_selected');assert.equal(run.cases.find(c=>c.id==='C13').status,'not_selected');assert.equal(run.cases.length,75);assert.deepEqual(validateBrowserRun(golden,manifest,run),[]);
+  }finally{await new Promise(resolve=>server.close(resolve));rmSync(dir,{recursive:true,force:true});}
+});

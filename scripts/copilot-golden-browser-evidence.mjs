@@ -3,7 +3,7 @@ import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, writeFileSync } 
 import { dirname } from 'node:path';
 
 export const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
-export const IMPLEMENTED_ORACLES = new Set(['available-rooms-v1', 'available-rooms-building-v1', 'contract-code-v1', 'absent-customer-contract-v1', 'contract-code-detail-v1', 'vouchers-2026-07-v1', 'empty-expenses-2099-01-v1', 'pending-approval-inbox-v1']);
+export const IMPLEMENTED_ORACLES = new Set(['customer-nguyen-an-v1', 'absent-synthetic-phone-v1', 'available-rooms-v1', 'available-rooms-building-v1', 'contract-code-v1', 'absent-customer-contract-v1', 'contract-code-detail-v1', 'vouchers-2026-07-v1', 'empty-expenses-2099-01-v1', 'pending-approval-inbox-v1']);
 const HASH = /^[0-9a-f]{64}$/;
 const STATES = ['pending', 'running', 'pass', 'fail', 'blocked', 'not_selected'];
 const REASONS = new Set(['oracle_not_implemented', 'fixture_unbound', 'preflight_missing', 'attestation_failed',
@@ -44,7 +44,7 @@ export function validateManifest(golden, manifest) {
 
 function validAttestation(a) {
   const fields = ['buildSha','edgeSourceDigest','deployedEdgeSourceDigest','providerModel','organizationId','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest','observedAt','contextId'];
-  if (!keysOnly(a, [...fields, 'contractFixtures', 'incomeApprovalFixtures']) || !fields.every(k => typeof a[k] === 'string')) return false;
+  if (!keysOnly(a, [...fields, 'contractFixtures', 'incomeApprovalFixtures', 'customerFixtures']) || !fields.every(k => typeof a[k] === 'string')) return false;
   return /^[0-9a-f]{40}$/.test(a.buildSha) && a.organizationId === DEMO_ORG
     // Candidate policy lives in copilotTestModel.ts. This evidence layer only
     // checks safe identity syntax; browser/CLI require the exact selected model.
@@ -53,10 +53,22 @@ function validAttestation(a) {
     && ['edgeSourceDigest','deployedEdgeSourceDigest','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest'].every(k => HASH.test(a[k]))
     && a.edgeSourceDigest === a.deployedEdgeSourceDigest && Number.isFinite(Date.parse(a.observedAt))
     && /^[a-zA-Z0-9-]{1,100}$/.test(a.contextId)
+    && (a.customerFixtures === undefined || validCustomerFixtures(a.customerFixtures,a.actorDigest,a.contextId))
     && (a.contractFixtures === undefined || validContractFixtures(a.contractFixtures))
     && (a.incomeApprovalFixtures === undefined || validIncomeApprovalFixtures(a.incomeApprovalFixtures,a.actorDigest));
 }
 
+const CUSTOMER_MAPPING = { C02:['customer-nguyen-an-v1','customer-search','copilot_customer_search_v1'], C14:['absent-synthetic-phone-v1','customer-absent','copilot_customer_search_v1'] };
+function validCustomerFixtures(fixtures,actorDigest,contextId) {
+  const hashes=['actorDigest','contextDigest','queryDigest','identityDigest','responseDigest'];
+  return keysOnly(fixtures,Object.keys(CUSTOMER_MAPPING)) && Object.entries(fixtures).every(([id,f])=>
+    keysOnly(f,['kind','organizationId',...hashes]) && f.kind===CUSTOMER_MAPPING[id][1] && f.organizationId===DEMO_ORG
+    && f.actorDigest===actorDigest && f.contextDigest===digest(contextId) && hashes.every(k=>typeof f[k]==='string' && HASH.test(f[k]))
+    // Independently reconstruct the only allowed queries and known absent
+    // payload; matching arbitrary digest strings cannot establish absence.
+    && f.queryDigest===digest({p_organization_id:DEMO_ORG,p_search:id==='C02'?'Nguyễn An':`000${String(parseInt(digest(contextId).slice(0,12),16)%10000000).padStart(7,'0')}`})
+    && (id!=='C14' || f.responseDigest===digest([]) && f.identityDigest===digest({organizationId:DEMO_ORG,actorDigest,rows:[]})));
+}
 const CONTRACT_MAPPING = {
   C31: ['contract-code-v1', 'contract-search', 'copilot_contract_search_v1'],
   C32: ['absent-customer-contract-v1', 'contract-absent', 'copilot_contract_search_v1'],
@@ -108,12 +120,12 @@ function validTiming(t) {
 
 function validPass(c, attestation) {
   const o = c.observed;
-  const mapping = CONTRACT_MAPPING[c.id] ?? INCOME_APPROVAL_MAPPING[c.id];
-  const contract = Boolean(CONTRACT_MAPPING[c.id]), financial = Boolean(INCOME_APPROVAL_MAPPING[c.id]);
-  const fixture = contract ? attestation?.contractFixtures?.[c.id] : attestation?.incomeApprovalFixtures?.[c.id];
+  const mapping = CONTRACT_MAPPING[c.id] ?? INCOME_APPROVAL_MAPPING[c.id] ?? CUSTOMER_MAPPING[c.id];
+  const contract = Boolean(CONTRACT_MAPPING[c.id]), financial = Boolean(INCOME_APPROVAL_MAPPING[c.id]), customer = Boolean(CUSTOMER_MAPPING[c.id]);
+  const fixture = customer ? attestation?.customerFixtures?.[c.id] : contract ? attestation?.contractFixtures?.[c.id] : attestation?.incomeApprovalFixtures?.[c.id];
   const correctMapping = mapping ? c.oracle === mapping[0] : c.oracle === ({ C01: 'available-rooms-v1', C13: 'available-rooms-building-v1' })[c.id];
   return correctMapping && validTiming(c.timing)
-    && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion', ...(contract ? ['fixtureDigest','queryDigest','identityDigest','searchDigest','detailDigest', ...(c.id === 'C32' ? ['customerDigest','contractCalls','customerCalls'] : [])] : financial ? ['fixtureDigest','queryDigest','identityDigest','responseDigest',...(c.id==='C34'?['dailyCashbookCalls','dailyCashbookDigest']:[])] : [])])
+    && keysOnly(o, ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion', ...(customer ? ['fixtureDigest','queryDigest','identityDigest','responseDigest','contextDigest'] : contract ? ['fixtureDigest','queryDigest','identityDigest','searchDigest','detailDigest', ...(c.id === 'C32' ? ['customerDigest','contractCalls','customerCalls'] : [])] : financial ? ['fixtureDigest','queryDigest','identityDigest','responseDigest',...(c.id==='C34'?['dailyCashbookCalls','dailyCashbookDigest']:[])] : [])])
     && ['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest'].every(k => typeof o[k] === 'string' && HASH.test(o[k]))
     && Number.isInteger(o.modelRounds) && o.modelRounds >= 2 && o.toolResultLinked === true && o.finalAnswerMounted === true
     && o.readRpc === (mapping ? mapping[2] : 'copilot_available_rooms_v1') && o.oracleVersion === c.oracle
@@ -129,6 +141,9 @@ function validPass(c, attestation) {
       && (c.id!=='C34' || (o.dailyCashbookCalls===undefined && fixture.dailyCashbookResponseDigest===undefined && o.dailyCashbookDigest===undefined
         || o.dailyCashbookCalls===0 && o.dailyCashbookDigest===undefined
         || o.dailyCashbookCalls===1 && typeof fixture.dailyCashbookResponseDigest==='string' && o.dailyCashbookDigest===fixture.dailyCashbookResponseDigest))))
+    && (!customer || (fixture && validCustomerFixtures({[c.id]:fixture},attestation.actorDigest,attestation.contextId)
+      && o.modelRounds===2 && o.fixtureDigest===digest(fixture) && o.bindingDigest===digest(fixture)
+      && ['queryDigest','identityDigest','responseDigest','contextDigest'].every(k=>o[k]===fixture[k]) && o.rpcDigest===fixture.responseDigest))
     && o.businessWrites === 0 && o.networkErrors === 0;
 }
 
@@ -155,7 +170,7 @@ export function validateBrowserRun(golden, manifest, run) {
     if (c.reason !== undefined && !REASONS.has(c.reason)) errors.push(`${c.id}: invalid reason`);
     if (['blocked','fail'].includes(c.status) && !REASONS.has(c.reason)) errors.push(`${c.id}: reason required`);
     if (c.status === 'pass' && !validPass(c, run.attestation)) errors.push(`${c.id}: completed browser/oracle evidence required`);
-    if (c.status === 'pass' && (c.observed?.promptTemplateDigest !== digest(manifest.cases[i].prompt) || (!CONTRACT_MAPPING[c.id] && !INCOME_APPROVAL_MAPPING[c.id] && c.observed?.rpcDigest !== run.attestation.fixtureDigest))) errors.push(`${c.id}: observed prompt/fixture differs from attestation`);
+    if (c.status === 'pass' && (c.observed?.promptTemplateDigest !== digest(manifest.cases[i].prompt) || (!CONTRACT_MAPPING[c.id] && !INCOME_APPROVAL_MAPPING[c.id] && !CUSTOMER_MAPPING[c.id] && c.observed?.rpcDigest !== run.attestation.fixtureDigest))) errors.push(`${c.id}: observed prompt/fixture differs from attestation`);
     if (c.status !== 'pass' && c.observed !== undefined) errors.push(`${c.id}: unsuccessful case cannot claim actual observations`);
     if (c.timing !== undefined && !validTiming(c.timing)) errors.push(`${c.id}: invalid timing`);
   }

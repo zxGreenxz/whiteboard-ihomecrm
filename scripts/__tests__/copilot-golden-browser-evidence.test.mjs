@@ -4,6 +4,10 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as evidence from '../copilot-golden-browser-evidence.mjs';
+test('registers the bounded customer executor family', () => {
+  assert.equal(evidence.IMPLEMENTED_ORACLES.has('customer-nguyen-an-v1'), true);
+  assert.equal(evidence.IMPLEMENTED_ORACLES.has('absent-synthetic-phone-v1'), true);
+});
 import { bindContractScenario, contractQuery } from '../copilot-contract-fixtures.mjs';
 import { bindIncomeApprovalScenario, incomeApprovalRequest, dailyCashbookRequest } from '../copilot-income-approval-fixtures.mjs';
 
@@ -443,4 +447,35 @@ test('C34 daily evidence pairs attestation hashes and conditional call digest wi
     const fixture=bindIncomeApprovalScenario(manifest.cases.find(c=>c.id===id),financialInput(id)).attestation;
     assert.throws(()=>evidence.createRun(golden,manifest,{...attestation,incomeApprovalFixtures:{[id]:{...fixture,dailyCashbookQueryDigest:f.dailyCashbookQueryDigest,dailyCashbookResponseDigest:f.dailyCashbookResponseDigest}}},[id]));
   }
+});
+
+const customerBinder=await import('../copilot-customer-fixtures.mjs');
+test('customer evidence binds case, actor, context and every digest without widening retained schemas',()=>{
+  for(const id of ['C02','C14']) {
+    const scenario=manifest.cases.find(c=>c.id===id),contextId=attestation.contextId;
+    const row={customer_id:'aaaa4000-0000-4000-8000-000000000071',customer_name:'Nguyễn An',phone:'0001234567',contract_id:'aaaa4000-0000-4000-8000-000000000072',contract_number:'HD-GOLDEN',contract_status:'TERMINATED',room_id:'aaaa4000-0000-4000-8000-000000000073',room_name:'G701',building_id:'aaaa4000-0000-4000-8000-000000000074',building_name:'DEMO Toà A',is_representative:true};
+    const bound=customerBinder.bindCustomerScenario(scenario,{query:customerBinder.customerQuery(id,contextId),contextId,actorDigest:attestation.actorDigest,payload:id==='C02'?[row]:[],ownedCustomerId:id==='C02'?row.customer_id:undefined});
+    assert.equal(JSON.stringify(bound.attestation).includes(row.phone),false);
+    const att={...attestation,customerFixtures:{[id]:bound.attestation}};
+    const run=evidence.createRun(golden,manifest,att,[id]);
+    evidence.transitionCase(run,id,{status:'running'});
+    const observed={answerDigest:digest,promptDigest:evidence.digest(bound.prompt),promptTemplateDigest:evidence.digest(scenario.prompt),bindingDigest:bound.bindingDigest,rpcDigest:bound.attestation.responseDigest,fixtureDigest:bound.bindingDigest,queryDigest:bound.attestation.queryDigest,identityDigest:bound.attestation.identityDigest,responseDigest:bound.attestation.responseDigest,contextDigest:bound.attestation.contextDigest,modelRounds:2,toolResultLinked:true,finalAnswerMounted:true,readRpc:'copilot_customer_search_v1',businessWrites:0,networkErrors:0,oracleVersion:scenario.oracle};
+    evidence.transitionCase(run,id,{status:'pass',timing:{startedAt:'2026-09-06T10:00:00.000Z',completedAt:'2026-09-06T10:00:01.000Z',totalMs:1000,humanWaitMs:0,processingMs:1000},observed});
+    assert.deepEqual(evidence.validateBrowserRun(golden,manifest,run),[]);
+    for(const key of ['fixtureDigest','queryDigest','identityDigest','responseDigest','contextDigest']) {
+      const missing=structuredClone(run);delete missing.cases.find(c=>c.id===id).observed[key];assert.ok(evidence.validateBrowserRun(golden,manifest,missing).length);
+      const wrong=structuredClone(run);wrong.cases.find(c=>c.id===id).observed[key]='c'.repeat(64);assert.ok(evidence.validateBrowserRun(golden,manifest,wrong).length);
+    }
+    for(const field of ['actorDigest','contextDigest','kind']) {
+      const wrong=structuredClone(run);wrong.attestation.customerFixtures[id][field]=field==='kind'?(id==='C02'?'customer-absent':'customer-search'):'c'.repeat(64);assert.ok(evidence.validateBrowserRun(golden,manifest,wrong).length);
+    }
+    const wrong=structuredClone(run);wrong.cases.find(c=>c.id===id).observed.customerCalls=1;assert.ok(evidence.validateBrowserRun(golden,manifest,wrong).length);
+    assert.equal(run.cases.length,75);assert.equal(run.cases.find(c=>c.id==='C01').status,'not_selected');assert.equal(run.cases.find(c=>c.id==='C13').status,'not_selected');
+  }
+});
+
+test('customer attestation cannot relabel a nonempty payload as synthetic absence',()=>{
+  const contextId=attestation.contextId,scenario=manifest.cases.find(c=>c.id==='C14');
+  const bound=customerBinder.bindCustomerScenario(scenario,{query:customerBinder.customerQuery('C14',contextId),contextId,actorDigest:attestation.actorDigest,payload:[]});
+  for(const field of ['queryDigest','identityDigest','responseDigest'])assert.throws(()=>evidence.createRun(golden,manifest,{...attestation,customerFixtures:{C14:{...bound.attestation,[field]:'c'.repeat(64)}}},['C14']));
 });
