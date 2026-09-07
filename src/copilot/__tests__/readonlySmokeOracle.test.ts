@@ -263,3 +263,52 @@ describe('contract golden actual RPC and linked-result oracle', () => {
    expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace('thuê 3 triệu đồng, cọc 6 triệu đồng','thuê 6 triệu đồng, cọc 3 triệu đồng')))).toThrow(/money/);
    const extra = contractEvidence(); expect(() => assertContractResult(changeContractAnswer(extra,extra.answer + ' Hợp đồng HD002.'))).toThrow(/identifier/);
  });
+
+it.each([
+ ['tổng 4 triệu đồng, đã trả 2 triệu đồng', 'tổng 2 triệu đồng, đã trả 4 triệu đồng'],
+ ['Đang giữ 5 triệu đồng, còn thiếu 1 triệu đồng', 'Đang giữ 1 triệu đồng, còn thiếu 5 triệu đồng'],
+])('rejects contract detail semantic money swap: %s', (from,to) => {
+ const e = contractEvidence('C33',true);
+ expect(() => assertContractResult(changeContractAnswer(e,e.answer.replace(from,to)))).toThrow(/money/);
+});
+it('rejects money reassignment between individual invoices', () => {
+ const e = contractEvidence('C33',true);
+ const detail = e.fixture.detailPayload as { hop_dong: typeof contractRow; hoa_don: Record<string,unknown>[]; tim_thay: boolean };
+ detail.hoa_don.push({ ...detail.hoa_don[0], hoa_don_id:'cccc4000-0000-4000-8000-000000000011', so_hoa_don:'INV002', ky:'2026-08', tong_tien:6000000, da_tra:1000000, con_lai:5000000 });
+ e.fixture = bindContractScenario(e.scenario,{ query:e.fixture.query,searchPayload:e.fixture.searchPayload,detailPayload:detail });
+ e.rounds.at(-1)!.messages.at(-1)!.content = contractToolText(e.fixture,true);
+ const correct = e.answer + ' Hoá đơn INV002 kỳ 2026-08: tổng 6 triệu đồng, đã trả 1 triệu đồng, còn 5 triệu đồng.';
+ expect(() => assertContractResult(changeContractAnswer(e,correct))).not.toThrow();
+ const swapped = correct.replace('INV001 kỳ 2026-09: tổng 4 triệu đồng, đã trả 2 triệu đồng, còn 2 triệu đồng','INV001 kỳ 2026-09: tổng 6 triệu đồng, đã trả 1 triệu đồng, còn 5 triệu đồng').replace('INV002 kỳ 2026-08: tổng 6 triệu đồng, đã trả 1 triệu đồng, còn 5 triệu đồng','INV002 kỳ 2026-08: tổng 4 triệu đồng, đã trả 2 triệu đồng, còn 2 triệu đồng');
+ expect(() => assertContractResult(changeContractAnswer(e,swapped))).toThrow(/money/);
+});
+it('absent customer rejects invented monetary facts without a currency suffix', () => {
+ const e = contractEvidence('C32'); expect(() => assertContractResult(changeContractAnswer(e,e.answer + ' Tiền thuê: 9000000.'))).toThrow(/invented/);
+});
+it('accepts equivalent labeled monetary prose with punctuation, units and reordered invoice facts', () => {
+ const e = contractEvidence('C33',true);
+ const text = e.answer.replace('Tiền thuê 3 triệu đồng, cọc 6 triệu đồng.', 'Tiền thuê: 3.000.000 đ; tiền cọc yêu cầu: 6.000.000 VND.')
+   .replace('Đang giữ 5 triệu đồng, còn thiếu 1 triệu đồng.', 'Đã thu cọc: 5.000.000 ₫; cọc còn thiếu: 1.000.000 đồng.')
+   .replace('tổng 4 triệu đồng, đã trả 2 triệu đồng, còn 2 triệu đồng.', 'còn lại: 2.000.000 đ; đã thanh toán: 2.000.000 đ; tổng tiền: 4.000.000 đ.');
+ expect(() => assertContractResult(changeContractAnswer(e,text))).not.toThrow();
+});
+it('accepts canonical held/nominal deposit notation but rejects swapped ratio', () => {
+ const e = contractEvidence('C33',true);
+ const text = e.answer.replace('cọc 6 triệu đồng. Đang giữ 5 triệu đồng,', 'cọc: đang giữ 5 triệu đồng/6 triệu đồng,');
+ expect(() => assertContractResult(changeContractAnswer(e,text))).not.toThrow();
+ expect(() => assertContractResult(changeContractAnswer(e,text.replace('5 triệu đồng/6 triệu đồng','6 triệu đồng/5 triệu đồng')))).toThrow(/money/);
+});
+it('rejects contradictory repeat monetary assertions, even after a correct assertion', () => {
+ const e = contractEvidence('C33',true);
+ expect(() => assertContractResult(changeContractAnswer(e,e.answer + ' Tổng tiền: 2 triệu đồng.'))).toThrow(/money/);
+});
+it('rejects a contradictory repeated labeled value without a currency suffix', () => {
+ const e = contractEvidence('C33',true);
+ expect(() => assertContractResult(changeContractAnswer(e,e.answer + ' Tổng tiền: 2000000.'))).toThrow(/money/);
+});
+it('accepts invoice facts before the contract facts without imposing answer order', () => {
+ const e = contractEvidence('C33',true);
+ const invoiceStart = e.answer.indexOf('Hoá đơn INV001');
+ const reordered = e.answer.slice(invoiceStart) + '\n' + e.answer.slice(0,invoiceStart);
+ expect(() => assertContractResult(changeContractAnswer(e,reordered))).not.toThrow();
+});

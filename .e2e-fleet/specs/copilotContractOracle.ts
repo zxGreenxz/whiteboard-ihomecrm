@@ -40,12 +40,38 @@ function amounts(text: string): number[] {
     return /triệu|^tr$|nghìn|ngàn|^k$/.test(unit) ? Number(m[1].replace(',', '.')) * (/triệu|^tr$/.test(unit) ? 1e6 : 1e3) : Number(m[1].replace(/[.,]/g, ''));
   });
 }
+const MONEY_VALUE = String.raw`([0-9]+(?:[.,][0-9]+)*)\s*(triệu|tr|nghìn|ngàn|k|đồng|vnd|vnđ|₫|đ)(?!\p{L})(?:\s*đồng)?`;
+/** A value must immediately follow its semantic label. Other fields or another
+ * invoice cannot supply it. Every repeated assertion must agree, not just one. */
+function assertMoneyFact(text: string, label: string, expected: unknown, optional = false) {
+  const value = String.raw`[0-9]+(?:[.,][0-9]+)*(?:\s*(?:triệu|tr|nghìn|ngàn|k|đồng|vnd|vnđ|₫|đ)(?!\p{L})(?:\s*đồng)?)?`;
+  const matches = [...text.matchAll(new RegExp(`(?:${label})\\s*(?:[:：|–—=-]\\s*)?${value}`, 'giu'))];
+  check((optional || matches.length > 0) && matches.every(m => (amounts(m[0])[0] ?? Number(m[0].match(/[0-9]+(?:[.,][0-9]+)*/)?.[0].replace(/[.,]/g,''))) === Number(expected)), 'Answer money assigned to wrong fact');
+}
+function invoiceSections(text: string, invoices: Row[]) {
+  const found = invoices.flatMap(invoice => {
+    const code = String(invoice.so_hoa_don ?? String(invoice.hoa_don_id).slice(0,8));
+    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return [...text.matchAll(new RegExp(`(?<![\\p{L}\\p{N}_/-])${escaped}(?![\\p{L}\\p{N}_/-])`, 'giu'))]
+      .map(m => ({ invoice, start: m.index! }));
+  }).sort((a,b) => a.start - b.start);
+  return found.map((item,index) => {
+    const next = found[index+1]?.start ?? text.length;
+    const candidate = text.slice(item.start,next);
+    // A later explicitly labeled contract section is not part of this invoice.
+    // This keeps invoice-first answers usable without borrowing their money.
+    const boundary = /(?:tiền thuê|(?:đã thu|đã nộp)(?: tiền)? cọc|(?:tiền )?cọc|đang giữ|kỳ hạn|khách đại diện|phòng:|hợp đồng\s+)/iu.exec(candidate);
+    const end = boundary ? item.start + boundary.index : next;
+    return { ...item, end, text: text.slice(item.start,end) };
+  });
+}
 function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) {
   const row = (fixture.searchPayload as { hop_dong: Row[] }).hop_dong[0];
   const text = normalize(answer);
   if (!row) {
     check(/không (?:tìm thấy|có).*hợp đồng|hợp đồng.*không (?:tồn tại|tìm thấy)/iu.test(text), 'Absent customer needs explicit not found');
     check(!/\/contracts\/|\]\(|\bHD[-_\d]|\b[0-9a-f]{8}-[0-9a-f-]{27}\b/iu.test(answer) && !amounts(answer).length, 'Absent answer invented contract/link/amount');
+    check(!/(?:tiền\s*)?(?:thuê|cọc|tổng(?: tiền)?|đã trả|còn thiếu|còn lại)\s*[:：]?\s*\d/iu.test(text), 'Absent answer invented monetary fact');
     check(!/hợp đồng\s+(?:số|mã)\s*[:#]?\s*\S+|phòng\s+[\p{L}\p{N}]*\d/iu.test(text), 'Absent answer invented contract facts');
     return;
   }
@@ -59,18 +85,32 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
   }
   const required = [Number(known.tien_thue), Number(known.tien_coc)];
   check(amounts(text).includes(required[0]) && amounts(text).includes(required[1]), 'Answer rent/deposit missing');
-  for (const [label, value] of [['thuê', known.tien_thue], ['cọc', known.tien_coc]] as const) {
-    const slices = [...text.matchAll(new RegExp(`${label}[^;\\n]{0,100}`, 'giu'))].map(m => m[0]);
-    check(slices.some(s => label === 'thuê' ? amounts(s)[0] === Number(value) : amounts(s).slice(0,2).includes(Number(value))), 'Answer money assigned to wrong fact');
-  }
+  const invoices = detail ? (fixture.detailPayload as { hoa_don: Row[] }).hoa_don : [];
+  const sections = invoiceSections(text,invoices);
+  let contractText = text;
+  for (const section of [...sections].reverse()) contractText = contractText.slice(0,section.start) + ' ' + contractText.slice(section.end);
+  assertMoneyFact(contractText, '(?:tiền\\s*)?thuê', known.tien_thue);
+  // A nominal deposit can be stated directly or as held/nominal in the
+  // product's ordinary compact deposit notation.
+  const depositRatio = [...contractText.matchAll(new RegExp(`cọc[^;]{0,30}?(?:đang giữ|đã thu)\\s*${MONEY_VALUE}\\s*/\\s*${MONEY_VALUE}`, 'giu'))];
+  if (depositRatio.length) check(depositRatio.every(m => same(amounts(m[0]),[Number(known.coc_da_thu),Number(known.tien_coc)])), 'Answer deposit ratio money differs');
+  const nominalText = contractText.replace(/(?:đang giữ|đã thu|đã nộp)\s*(?:tiền\s*)?cọc/giu, 'đã thu');
+  assertMoneyFact(nominalText, '(?:tiền\\s*)?cọc(?:\\s*(?:yêu cầu|theo hợp đồng|phải đóng))?', known.tien_coc, depositRatio.length > 0);
   if (detail) {
+    assertMoneyFact(contractText, '(?:đang giữ|đã thu|đã nộp)(?:\\s*(?:tiền )?cọc)?', known.coc_da_thu);
+    assertMoneyFact(contractText, '(?:cọc\\s*)?còn thiếu', known.coc_con_thieu, Number(known.coc_con_thieu) === 0);
     required.push(Number(known.coc_da_thu));
     if (Number(known.coc_con_thieu) > 0) required.push(Number(known.coc_con_thieu));
-    const invoices = (fixture.detailPayload as { hoa_don: Row[] }).hoa_don;
     if (!invoices.length) check(/(?:chưa|không) có ho[áa] đơn|0 ho[áa] đơn/iu.test(text), 'Answer missing empty invoice state');
     for (const i of invoices) {
-      check(token(text, i.so_hoa_don ?? String(i.hoa_don_id).slice(0,8)), 'Answer missing invoice identity');
-      if (i.ky) check(token(text,i.ky), 'Answer missing invoice period');
+      const scoped = sections.filter(section => section.invoice === i && amounts(section.text).length > 0);
+      check(scoped.length > 0, 'Answer missing invoice identity/money');
+      for (const section of scoped) {
+        if (i.ky) check(token(section.text,i.ky), 'Answer invoice period differs');
+        assertMoneyFact(section.text, 'tổng(?:\\s*(?:tiền|cộng|phải trả))?', i.tong_tien);
+        assertMoneyFact(section.text, 'đã\\s*(?:trả|thanh toán|thu)', i.da_tra);
+        assertMoneyFact(section.text, 'còn(?:\\s*(?:lại|nợ|phải trả|phải thanh toán))?', i.con_lai);
+      }
       required.push(Number(i.tong_tien),Number(i.da_tra),Number(i.con_lai));
     }
   }
