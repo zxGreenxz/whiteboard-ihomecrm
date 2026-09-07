@@ -9,6 +9,7 @@ const answer = chunk({ content: 'Có 1 phòng trống ngay: A101.' }, 'stop') + 
 const call = chunk({ tool_calls: [{ index: 0, id: 'call-1', function: { name: 'phong_', arguments: '' } }] }, null) +
   chunk({ tool_calls: [{ index: 0, function: { name: 'trong', arguments: '{}' } }] }, 'tool_calls') + 'data: [DONE]\n\n';
 const payload = { buildings: [{ id: 'b1' }], rooms: [{ id: 'r1', building_id: 'b1', code: 'A101', name: '101', status_public: 'free' }] };
+interface FixtureMessage { role: string; content: string; tool_call_id?: string }
 const evidence = () => ({ prompt: 'Liệt kê phòng', answer: 'Có 1 phòng trống ngay: A101.',
   rounds: [{ body: call, messages: [{ role: 'user', content: 'Liệt kê phòng' }] },
     { body: answer, messages: [{ role: 'user', content: 'Liệt kê phòng' }, { role: 'tool', tool_call_id: 'call-1', content: 'Tổng 1 phòng trống ngay.\n\nDEMO Toà A (Địa chỉ):\n  Trống ngay (1):\n  - A101: 3 triệu/tháng, 20m², tầng 1' }] }], payload: structuredClone(payload) });
@@ -54,7 +55,7 @@ function incomeEvidence(id='C34') {
   const toolArgs=id==='C36'?{}:{tu_ngay:id==='C35'?'2099-01-01':'2026-07-01',den_ngay:id==='C35'?'2099-01-31':'2026-07-31',...(id==='C35'?{loai:'chi'}:{})};
   const toolText=id==='C35'?'Không tìm thấy phiếu thu chi nào khớp điều kiện.\n[link: /income-expense]':id==='C36'?'1 phiếu đang chờ bạn duyệt (tối đa 20 dòng):\n- [CHI] PC001 — Sửa chữa — 11.000 đ — gửi 2026-09-07 — lập bởi  Demo An \n[link: /approvals]':'2 phiếu thu chi (tối đa 20 dòng mỗi lần hỏi):\n- [CHI] PC001 — Sửa chữa — 11.000 đ — 2026-07-12 — Sửa nhà — sổ TK [STK đã ẩn] — chờ duyệt, chưa vào sổ — lập bởi Demo An\n- [THU] PT002 — Thu khác — 1.000 đ — 2026-07-12 — Sửa nhà — sổ TK [STK đã ẩn] — đã huỷ, chưa vào sổ — lập bởi Demo Bình\n[link: /income-expense]';
   const text=id==='C35'?'Không tìm thấy phiếu chi nào trong tháng 01/2099.':id==='C36'?'Có 1 phiếu đang chờ bạn duyệt: PC001 — phiếu chi, số tiền 11.000 đồng, lập bởi Demo An. Bạn có thể xem tại trang phê duyệt.':'Có 2 phiếu tháng 07/2026:\nPC001 — phiếu chi, 11.000 đồng, chờ duyệt, chưa vào sổ.\nPT002 — phiếu thu, 1.000 đồng, đã huỷ, chưa vào sổ.';
-  const messages=[{role:'user',content:scenario.prompt}];
+  const messages: FixtureMessage[]=[{role:'user',content:scenario.prompt}];
   const rounds=[{body:chunk({tool_calls:[{index:0,id:'ie-read-1',function:{name:id==='C36'?'hop_cho_duyet':'tim_phieu_thu_chi',arguments:JSON.stringify(toolArgs)}}]},'tool_calls')+'data: [DONE]\n\n',messages},
     {body:chunk({content:text},'stop')+'data: [DONE]\n\n',messages:[...messages,{role:'tool',tool_call_id:'ie-read-1',content:toolText}]}];
   return {scenario,fixture,prompt:scenario.prompt,answer:text,rounds,actorDigest,reads:[{rpc:request.rpc as string,args:{...request.args} as Record<string,unknown>,payload:structuredClone(data) as unknown,ok:true,actorDigest}]};
@@ -147,7 +148,7 @@ describe('income approval golden actual facts',()=>{
   it('does not treat a canonical numeric cashbook reference left intact by maskPii as removed material',()=>{
     const e=incomeEvidence();const data=structuredClone(e.fixture.payload);data.phieu!.forEach(row=>{row.so_quy='Quỹ số 12345678';});
     e.fixture=bindIncomeApprovalScenario(e.scenario,{request:e.fixture.request,payload:data,actorDigest:e.actorDigest});e.reads[0].payload=data;
-    e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.replaceAll('TK [STK đã ẩn]','Quỹ số 12345678');
+    e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.split('TK [STK đã ẩn]').join('Quỹ số 12345678');
     expect(()=>assertIncomeApprovalResult(changeIncomeAnswer(e,e.answer+' Sổ quỹ Quỹ số 12345678.'))).not.toThrow();
   });
   it.each([' PC999: 1000 đồng.',' Mã phiếu: XYZ-9.',' Phiếu XYZ-9.',' Tổng tiền: 1000.',' Số tiền: 0.',' Tiền chi: 9000.',' Giá trị phiếu: 9000.',' Có 1 phiếu.',' Có một phiếu.',' Có vài phiếu.',' Phiếu đã duyệt.',' Đã ghi sổ.'])('rejects empty-query hallucination %s',addition=>{
@@ -372,7 +373,7 @@ function contractEvidence(id = 'C31', withInvoice = false) {
   const tool = (name: string, args: object, id: string) => chunk({ tool_calls: [{ index: 0, id, function: { name, arguments: JSON.stringify(args) } }] }, 'tool_calls') + 'data: [DONE]\n\n';
   let text = absent ? 'Không tìm thấy hợp đồng nào của khách này.' : `Hợp đồng HD001 — Demo An — phòng A101. Kỳ hạn 01/01/2026 đến 31/12/2026. Tiền thuê 3 triệu đồng, cọc 6 triệu đồng.${detail ? ' Đang giữ 5 triệu đồng, còn thiếu 1 triệu đồng. Chưa có hoá đơn nào.' : ''}`;
   if (withInvoice) text = text.replace('Chưa có hoá đơn nào.', 'Hoá đơn INV001 kỳ 2026-09: tổng 4 triệu đồng, đã trả 2 triệu đồng, còn 2 triệu đồng.');
-  const messages = [{ role: 'user', content: fixture.prompt }];
+  const messages: FixtureMessage[] = [{ role: 'user', content: fixture.prompt }];
   const rounds = [{ body: tool('tim_hop_dong', { tu_khoa: query }, 'search-1'), messages }];
   const searchResult = { role: 'tool', tool_call_id: 'search-1', content: contractToolText(fixture) };
   if (detail) rounds.push({ body: tool('chi_tiet_hop_dong', { hop_dong_id: contractRow.hop_dong_id }, 'detail-1'), messages: [...messages, searchResult] });

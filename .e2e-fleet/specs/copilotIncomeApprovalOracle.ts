@@ -28,7 +28,7 @@ const MESSAGES = {
 } as const;
 export type IncomeApprovalOracleFailureCode = keyof typeof MESSAGES;
 export function isIncomeApprovalOracleFailureCode(code:unknown):code is IncomeApprovalOracleFailureCode {
-  return typeof code === 'string' && Object.hasOwn(MESSAGES,code);
+  return typeof code === 'string' && Object.prototype.hasOwnProperty.call(MESSAGES,code);
 }
 const failures = new WeakSet<IncomeApprovalOracleFailure>();
 export class IncomeApprovalOracleFailure extends Error {

@@ -37,7 +37,7 @@ export function diagnosticEndpoint(value: unknown): DiagnosticEndpoint {
   if (typeof value !== 'string') return 'other';
   let path: string;
   try { path = new URL(value).pathname; } catch { return 'other'; }
-  if (Object.hasOwn(ENDPOINTS,path)) return ENDPOINTS[path as keyof typeof ENDPOINTS];
+  if (Object.prototype.hasOwnProperty.call(ENDPOINTS,path)) return ENDPOINTS[path as keyof typeof ENDPOINTS];
   return path.startsWith('/rest/v1/rpc/') ? 'other_rpc' : path.startsWith('/functions/v1/') ? 'other_edge' : path.startsWith('/rest/v1/') ? 'other_rest' : 'other';
 }
 export interface GoldenCallDiagnostic {

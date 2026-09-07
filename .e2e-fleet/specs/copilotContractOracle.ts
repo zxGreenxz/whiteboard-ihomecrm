@@ -39,7 +39,7 @@ const CONTRACT_ORACLE_MESSAGES = {
 } as const;
 export type ContractOracleFailureCode = keyof typeof CONTRACT_ORACLE_MESSAGES;
 export function isContractOracleFailureCode(value: unknown): value is ContractOracleFailureCode {
-  return typeof value === 'string' && Object.hasOwn(CONTRACT_ORACLE_MESSAGES, value);
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(CONTRACT_ORACLE_MESSAGES, value);
 }
 const oracleFailures = new WeakSet<ContractOracleFailure>();
 /** Only the oracle's static codes may cross into live diagnostics. */
@@ -176,7 +176,7 @@ function assertFacts(answer: string, fixture: ContractFixture, detail: boolean) 
     check(!/\/contracts\/|\]\(|\bHD[-_\d]|\b[0-9a-f]{8}-[0-9a-f-]{27}\b/iu.test(answer) && !amounts(answer).length, 'absent_answer_invented_contract_link_amount');
     check(!/(?:tiền\s*)?(?:thuê|cọc|tổng(?: tiền)?|đã trả|còn thiếu|còn lại)\s*[:：]?\s*\d/iu.test(text), 'absent_answer_invented_monetary_fact');
     check(!/hợp đồng\s+(?:số|mã)\s*[:#]?\s*\S+|phòng\s+[\p{L}\p{N}]*\d/iu.test(text), 'absent_answer_invented_contract_facts');
-    const withoutQuery = text.replaceAll(normalize(fixture.query), '');
+    const withoutQuery = text.split(normalize(fixture.query)).join('');
     check(!/(?:sđt|số điện thoại|mã khách hàng|địa chỉ)\s*[:：]\s*[^.;!?]+|khách hàng\s+(?:tên là|có tên là|là)\s+[^.;!?]+/iu.test(withoutQuery), 'absent_answer_invented_customer_facts');
     for (const match of withoutQuery.matchAll(/khách hàng\s*[:：]\s*([^.;!?]*)/giu)) {
       const value = match[1].replace(/["“”'‘’]/g,'').trim();
