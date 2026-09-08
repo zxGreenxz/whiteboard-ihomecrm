@@ -19109,6 +19109,14 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_notification_feed_v1: {
+        Args: {
+          p_limit?: number
+          p_organization_id: string
+          p_unread_only?: boolean
+        }
+        Returns: Json
+      }
       copilot_occupancy_upcoming_v1: {
         Args: {
           p_as_of_date: string
