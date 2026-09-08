@@ -43,7 +43,7 @@ Chưa apply migration lên production, chưa push main/promote. Migration mới
 được ghi rõ là chưa apply trong migration-unknown-review.json; generated types
 lấy từ catalog hiện hành. RPC báo cáo mới dùng boundary typed + Zod.
 
-Theo AGENTS.md, thay đổi tiền mở draft PR để có mắt người trước main. Sau review
+Đã mở draft PR #55; chủ dự án yêu cầu hoàn tất và triển khai production. Sau review
 cần lane `migrate:forward` có backup, sinh lại types/provenance/catalog, kiểm RPC
 bằng HTTP và kiểm đồng thời hai kết nối trên DEMO. Harness rollback đã kiểm
 stale-paid và idempotency, nhưng không chứng minh cạnh tranh hai kết nối với
@@ -53,8 +53,13 @@ Graph freshness high-risk: GitNexus trong ngưỡng; UA cũ được cảnh báo
 detect-changes trả rỗng trên chỉ mục trước các file mới, không được coi là chứng
 minh không ảnh hưởng. Việc truy luồng dùng thêm code, SQL harness và review.
 
-`catalog:check` còn đỏ do inventory đã commit khác catalog đang chạy:
-`96470e534ddf41f8…` → `117dd95134ed49b8…`. Chưa apply migration của nhánh này;
-không ghi đè inventory để che drift. Cần đối chiếu các rollout khác trước phát hành.
+Catalog đã đối chiếu sau rebase: `117dd95134ed49b8…` khớp inventory trên main
+và evidence `20260908033918_copilot_action_room_pass_active_v1.json`. Drift so với
+base cũ `96470e534ddf41f8…` đến từ rollout đó; không phải migration của nhánh này.
 Kiểm catalog an toàn độc lập: không object hở RLS/search_path, 12/12 view
 security_invoker, không hàm đọc chạm khoá dòng.
+
+Restore-drill PR phát hiện ACL rộng từ baseline `--no-acl`. Bổ sung thu hồi ACL
+của `record_invoice_collection_v5` đúng hợp đồng cũ (chỉ authenticated);
+harness `--repeat-migration --simulate-restore-acl` đỏ trước sửa, xanh sau sửa,
+tất cả trong transaction DEMO rollback.

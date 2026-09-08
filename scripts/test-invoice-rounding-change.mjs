@@ -8,10 +8,15 @@ import { runQuery, fixtureInvoiceSql, actAsFixtureActorSql } from './lib/v5-coll
 const migrationPath = process.argv[2];
 const body = migrationPath ? stripMigrationTransactionControl(readFileSync(resolve(migrationPath), 'utf8'), migrationPath) : '';
 const migration = process.argv.includes('--repeat-migration') ? body + '\n' + body : body;
+// The schema-only restore baseline omits ACLs and recreates default grants.
+// Reproduce that starting state only inside this rollback transaction.
+const simulateRestoreAcl = process.argv.includes('--simulate-restore-acl');
+if (simulateRestoreAcl && !body) throw new Error('Restore ACL probe requires a migration');
 if (/^\s*(BEGIN|COMMIT|ROLLBACK)\s*;/im.test(migration)) throw new Error('Migration must not control transactions');
 const sql = `BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';
+${simulateRestoreAcl ? "GRANT EXECUTE ON FUNCTION public.record_invoice_collection_v5(uuid,date,jsonb,text,boolean,text,text,numeric,text) TO anon;" : ''}
 ${migration}
 ${fixtureInvoiceSql({marker:'[E2E-V5-HARNESS:rounding-change]',billingMonth:'2093-09',rent:4805000,deposit:0})}
 SELECT set_config('v5h.foreign_building',(SELECT id::text FROM public.buildings

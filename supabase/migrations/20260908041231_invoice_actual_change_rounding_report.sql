@@ -1072,6 +1072,13 @@ BEGIN
 END;
 $report$;
 
+-- Reassert the existing writer ACL: schema-only restores omit ACLs and can
+-- inherit broad platform defaults even though the live writer is restricted.
+REVOKE ALL ON FUNCTION public.record_invoice_collection_v5(uuid,date,jsonb,text,boolean,text,text,numeric,text)
+  FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.record_invoice_collection_v5(uuid,date,jsonb,text,boolean,text,text,numeric,text)
+  TO authenticated;
+
 REVOKE ALL ON FUNCTION public.get_invoice_rounding_report_v1(text,uuid,uuid,integer,integer)
   FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.get_invoice_rounding_report_v1(text,uuid,uuid,integer,integer)

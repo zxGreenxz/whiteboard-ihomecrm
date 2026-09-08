@@ -21,7 +21,7 @@
 
 **Files:** `src/types/invoice.ts`, `src/hooks/useInvoices.ts`, `src/components/invoices/EditInvoiceDialog.tsx`, các form tạo/sửa dùng chung cần parity; tests dưới `src/components/invoices/__tests__/` và `src/hooks/__tests__/`.
 
-**Interface:** `accounting_class?: 'REVENUE' | 'DEPOSIT'` trên `InvoiceItem`/`InvoiceFormItem`; trả trường này trong projection, giữ trong decomposition và gửi `p_items[].accounting_class` trong canonical và fallback. Hạng mục mới chọn “Tiền cọc” tạo `type:'OTHER', accounting_class:'DEPOSIT'`; lựa chọn khác là REVENUE, không dò tên tự do.
+**Interface:** `accounting_class?: 'REVENUE' | 'DEPOSIT' | 'NON_PNL'` trên `InvoiceItem`/`InvoiceFormItem`; schema hiện có NON_PNL nên phải bảo toàn cả lớp này. Trả trường trong projection, giữ trong decomposition và gửi `p_items[].accounting_class` trong canonical và fallback. Hạng mục mới chọn “Tiền cọc” tạo `type:'OTHER', accounting_class:'DEPOSIT'`; lựa chọn doanh thu mới là REVENUE, không dò tên tự do.
 
 - [ ] Chuyển reproduction notes-only đã đỏ thành regression: item đầu vào OTHER/DEPOSIT2.200.000, chỉ đổi ghi chú, payload phải giữ class/name/amount.
 - [ ] Kiểm xóa/thêm lại bằng lựa chọn Tiền cọc; sửa số tiền; dòng doanh thu bình thường; giữ phân loại qua hook và fallback; không tự biến dòng có chữ cọc thành DEPOSIT.
@@ -94,3 +94,4 @@ expect(after.deposit505).toBe(4926000);
 ## Execution ledger
 
 - 08/09/2026: user authorizes detailed plan, implementation and production; PR55 contains completed rounding feature. Deposit cause proven by live READ ONLY audit + two DEMO rollback scenarios; no deposit fix or production apply yet.
+- 08/09/2026: user selects GPT-6 Astra Medium; implementation agents handed off existing worktrees to fresh agents explicitly configured with that model/effort. Backup preflight full519 TABLE DATA entries,28.9MB, no excludeddata, manifest outsidegit. Rounding restore-drill exposed omitted writerACL reset; reproducedRED under rollback and patched explicitREVOKE/GRANT, fullrollbackmatrixGREEN.
