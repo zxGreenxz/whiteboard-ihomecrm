@@ -634,7 +634,7 @@ export const timHopDong = dt({
   description:
     'Tìm hợp đồng thuê theo tên khách, số hợp đồng, tên phòng hoặc tên toà. Lọc thêm được theo trạng thái. ' +
     'Trả số HĐ, khách đại diện, phòng/toà, ngày bắt đầu–kết thúc, trạng thái, tiền thuê và tiền cọc. ' +
-    'Dùng khi hỏi "hợp đồng của ai", "phòng này ai đang thuê", "hợp đồng số ...".',
+    'Dùng khi hỏi "hợp đồng của ai", "phòng này ai đang thuê", "hợp đồng số ..." hoặc bước liên quan cần thiết cho ý đã hỏi. Không tự dùng làm bước thay thế khi tra khách hàng rỗng.',
   inputSchema: z.object({
     tu_khoa: z
       .string()
@@ -970,7 +970,7 @@ export const timKhachHen = dt({
   description:
     'Tìm khách hẹn (lead) theo tên hoặc số điện thoại, lọc thêm được theo bước trong phễu. ' +
     'Trả tên khách, SĐT (che một phần), bước hiện tại, nguồn, toà/phòng quan tâm, ngày hẹn xem và ngày cần liên hệ lại. ' +
-    'Dùng khi hỏi "khách hẹn nào cần gọi lại", "ai đang chờ xem phòng", "tìm lead tên ...".',
+    'Dùng khi hỏi "khách hẹn nào cần gọi lại", "ai đang chờ xem phòng", "tìm lead tên ..." hoặc bước liên quan cần thiết cho ý đã hỏi. Không tự dùng làm bước thay thế khi tra khách hàng rỗng.',
   inputSchema: z.object({
     tu_khoa: z.string().optional().describe('Tên khách hoặc số điện thoại. Bỏ trống = không lọc theo chữ.'),
     trang_thai: z
@@ -2324,7 +2324,7 @@ export const hoiThoaiZalo = dt({
     'Danh sách hội thoại Zalo của công ty: ai, phòng/toà nào, bao nhiêu tin chưa đọc, tin cuối là gì và lúc nào. ' +
     'Tìm theo TÊN hoặc SỐ ĐIỆN THOẠI của người đối diện — không tìm trong nội dung tin nhắn. Số điện thoại luôn được che bớt. ' +
     'CHỈ ĐỌC: không gửi, không trả lời, không thu hồi tin nào. ' +
-    'Dùng khi hỏi "Zalo còn ai chưa trả lời", "hội thoại Zalo mới nhất", "khách nào nhắn Zalo hôm nay".',
+    'Dùng khi hỏi "Zalo còn ai chưa trả lời", "hội thoại Zalo mới nhất", "khách nào nhắn Zalo hôm nay" hoặc bước liên quan cần thiết cho ý đã hỏi. Không tự dùng làm bước thay thế khi tra khách hàng rỗng.',
   inputSchema: z.object({
     tu_khoa: z
       .string()

@@ -527,7 +527,7 @@ export function buildRegistryDefinitions(): DomainTool[] {
 
     dt({
       name: 'tim_khach_hang',
-      description: 'Tìm khách hàng/cư dân theo tên hoặc SĐT. Trả về tên, SĐT (che một phần), phòng đang thuê.',
+      description: 'Tra hồ sơ khách hàng/cư dân theo tên hoặc SĐT, giữ nguyên điều kiện người dùng yêu cầu. Trả tên, SĐT (che một phần), phòng đang thuê. Rỗng thành công hoàn tất ý tra khách trong phạm vi được xem; không tự chuyển sang khách hẹn hay hội thoại.',
       inputSchema: z.object({ tu_khoa: z.string().min(1).describe('Tên hoặc SĐT') }),
       requiredPermission: { module: 'customers', action: 'view' },
       rolloutKey: 'customers.list',

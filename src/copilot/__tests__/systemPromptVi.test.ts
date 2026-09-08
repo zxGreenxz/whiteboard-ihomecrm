@@ -99,3 +99,36 @@ describe('ngân sách prompt', () => {
     expect(tinh.length).toBeGreaterThan(3_000);
   });
 });
+
+// These assertions guard model-facing instructions, not model obedience.
+describe('phạm vi tra cứu được yêu cầu', () => {
+  it('coi rỗng thành công là câu trả lời trong phạm vi đã tra, không phải lỗi hay vắng mặt toàn hệ thống', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('thành công nhưng không có bản ghi khớp');
+    expect(CHAT_SYSTEM_PROMPT).toContain('không suy ra người đó không tồn tại ở nơi khác');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Lỗi công cụ/quyền truy cập không phải kết quả không tìm thấy');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Không tự đổi từ khóa, bỏ điều kiện, lặp lại truy vấn tương đương hoặc dò sang loại hồ sơ khác');
+  });
+
+  it('giữ nhiều ý, bước liên quan và hỏi lại khi ngữ cảnh chưa giải quyết được mơ hồ', () => {
+    expect(CHAT_SYSTEM_PROMPT).toContain('Chỉ mở rộng khi người dùng yêu cầu hoặc cần bước liên quan để hoàn thành một ý họ đã hỏi');
+    expect(CHAT_SYSTEM_PROMPT).toContain('kết quả rỗng tự nó không tạo ra nhu cầu đó');
+    expect(CHAT_SYSTEM_PROMPT).toContain('ngữ cảnh chưa giải quyết được, hỏi ngắn gọn trước khi tra rộng');
+    expect(CHAT_SYSTEM_PROMPT).toContain('Ngữ cảnh trang không thay phạm vi người dùng đã nêu');
+    expect(CHAT_SYSTEM_PROMPT).toContain('ý này rỗng hoặc lỗi KHÔNG huỷ các ý còn lại');
+    expect(CHAT_SYSTEM_PROMPT).toContain('nhiều ý độc lập người dùng đã hỏi');
+  });
+
+  it('từ điển và ví dụ phân biệt hồ sơ khách với lead, hợp đồng và hội thoại', () => {
+    expect(TU_DIEN_NGHIEP_VU).toContain('Khách hàng/cư dân là hồ sơ khách đã đăng ký');
+    expect(TU_DIEN_NGHIEP_VU).toContain('khách hẹn (lead) là khách tiềm năng/hẹn xem');
+    expect(TU_DIEN_NGHIEP_VU).toContain('hội thoại Zalo là trao đổi của công ty');
+    const empty = VI_DU_MAU.split('\n').find((line) => line.includes('Tìm hồ sơ khách hàng theo thông tin liên hệ tôi cung cấp'));
+    expect(empty).toContain('tim_khach_hang');
+    expect(empty).toContain('giữ nguyên điều kiện');
+    expect(empty).toContain('trong phạm vi bạn được xem');
+    expect(empty).not.toContain('tim_khach_hen');
+    const multiple = VI_DU_MAU.split('\n').find((line) => line.includes('Tìm cả hồ sơ khách hàng và khách hẹn'));
+    expect(multiple).toContain('tim_khach_hang và tim_khach_hen');
+    expect(multiple).toContain('kể cả khi một bên rỗng');
+  });
+});

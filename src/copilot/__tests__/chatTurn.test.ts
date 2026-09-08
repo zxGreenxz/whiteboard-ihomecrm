@@ -7,6 +7,7 @@
 // cung cấp từ chối nguyên lượt sau, và triệu chứng hiện ra ở một chỗ khác hẳn.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { KetQuaLuot } from '../llmClient';
+import { CHAT_SYSTEM_PROMPT, TU_DIEN_NGHIEP_VU, VI_DU_MAU } from '../systemPromptVi';
 
 /**
  * Ba trường `ToolCtx` không liên quan tới điều đang đo — khai một lần.
@@ -17,6 +18,8 @@ import type { KetQuaLuot } from '../llmClient';
 const CTX_NEN = { threadId: null, generation: 0, isSuperAdmin: false };
 
 const goiModelMotLuot = vi.hoisted(() => vi.fn());
+const rpc = vi.hoisted(() => vi.fn());
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc } }));
 vi.mock('../llmClient', async (goc) => ({
   ...(await goc<typeof import('../llmClient')>()),
   goiModelMotLuot,
@@ -62,7 +65,72 @@ const chay = (over: Partial<Parameters<typeof runChatTurn>[0]> = {}) =>
     ...over,
   });
 
-beforeEach(() => goiModelMotLuot.mockReset());
+beforeEach(() => {
+  goiModelMotLuot.mockReset();
+  rpc.mockReset();
+});
+
+describe('runChatTurn — truyền phạm vi tra khách tới mô hình', () => {
+  it('gửi chính sách và bốn tool phân biệt ở lượt đầu và sau kết quả rỗng, giữ nguyên tiêu chí và tool result', async () => {
+    // The RPC and model are external boundaries. Registry, prompt composition,
+    // tool execution and tool-message delivery remain production code.
+    // A scripted second response ends this transport test; it is not evidence
+    // that a live model obeys the instruction or selects the right tool.
+    const requests: Parameters<typeof import('../llmClient').goiModelMotLuot>[0][] = [];
+    rpc.mockResolvedValue({ data: [], error: null, count: null, status: 200, statusText: 'OK' });
+    goiModelMotLuot.mockImplementation(async (request) => {
+      requests.push(structuredClone({ ...request, signal: undefined, onDeltaChu: undefined }));
+      return requests.length === 1
+        ? luot({ toolCalls: [goiTool('customer_lookup', 'tim_khach_hang', { tu_khoa: 'Mai Lan' })] })
+        : luot({ content: 'Kết thúc phản hồi giả lập.' });
+    });
+    try {
+      await chay({
+        userText: 'Tìm hồ sơ khách hàng tên Mai Lan',
+        pathname: '/leads',
+        ctx: {
+          ...CTX_NEN,
+          organizationId: AVAILABILITY.organizationId,
+          perms: { customers: { view: true }, leads: { view: true }, contracts: { view: true }, chat_zalo: { view: true } },
+          availability: {
+            ...AVAILABILITY,
+            states: { ...AVAILABILITY.states, 'page:leads.list': 'enabled', 'page:contracts.list': 'enabled', 'page:chat-zalo.list': 'enabled' },
+          },
+        },
+      });
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        const system = request.messages.find((message) => message.role === 'system')?.content;
+        for (const productionExport of [CHAT_SYSTEM_PROMPT, TU_DIEN_NGHIEP_VU, VI_DU_MAU]) {
+          expect(system).toContain(productionExport);
+        }
+        expect(system).toContain('thành công nhưng không có bản ghi khớp');
+        expect(system).toContain('Ngữ cảnh trang không thay phạm vi người dùng đã nêu');
+        expect(request.messages.find((message) => message.role === 'user')?.content).toBe('Tìm hồ sơ khách hàng tên Mai Lan');
+        const descriptions = Object.fromEntries(request.tools!.map((tool) => [tool.function.name, tool.function.description]));
+        expect(descriptions.tim_khach_hang).toContain('Rỗng thành công hoàn tất ý tra khách trong phạm vi được xem');
+        expect(descriptions.tim_khach_hang).toContain('giữ nguyên điều kiện');
+        for (const [name, domain] of [['tim_khach_hen', 'khách hẹn (lead)'], ['tim_hop_dong', 'hợp đồng thuê'], ['hoi_thoai_zalo', 'hội thoại Zalo']]) {
+          expect(descriptions[name]).toContain(domain);
+          expect(descriptions[name]).toContain('Không tự dùng làm bước thay thế khi tra khách hàng rỗng');
+          expect(descriptions[name]).toContain('bước liên quan cần thiết cho ý đã hỏi');
+        }
+      }
+      expect(requests[0].messages.filter((message) => message.role === 'tool')).toEqual([]);
+      expect(rpc).toHaveBeenCalledExactlyOnceWith('copilot_customer_search_v1', {
+        p_organization_id: AVAILABILITY.organizationId, p_search: 'Mai Lan',
+      });
+      expect(requests[1].messages.find((message) => message.tool_calls?.length)?.tool_calls).toEqual([
+        goiTool('customer_lookup', 'tim_khach_hang', { tu_khoa: 'Mai Lan' }),
+      ]);
+      expect(requests[1].messages.filter((message) => message.role === 'tool')).toEqual([
+        { role: 'tool', tool_call_id: 'customer_lookup', content: 'Không tìm thấy khách hàng nào khớp "Mai Lan".' },
+      ]);
+    } finally {
+      rpc.mockReset();
+    }
+  });
+});
 
 describe('runChatTurn — trả lời thẳng bằng văn bản', () => {
   it('không gọi tool thì content chính là câu trả lời', async () => {
