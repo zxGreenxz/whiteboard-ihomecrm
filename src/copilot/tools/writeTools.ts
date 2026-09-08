@@ -305,6 +305,16 @@ interface KhaiBaoToolGhi {
 
 const KHAI_BAO_TOOL_GHI: readonly KhaiBaoToolGhi[] = [
   {
+    name: 'doi_trang_thai_tin_phong_nho_sale',
+    description:
+      'Lập ĐỀ XUẤT công khai hoặc ẩn một tin phòng khách nhờ sale đã tồn tại. ' +
+      'Bản xem trước hiển thị phòng, toà và trạng thái công khai cũ/mới; người dùng tự bấm xác nhận. ' +
+      'active=true công khai tin; active=false ẩn tin khỏi danh sách công khai.',
+    chatOnly: true,
+    requiredPermission: { module: 'sale_phong', action: 'manage_pass_listings' },
+    actionId: 'room_pass.set_active',
+  },
+  {
     name: 'ghi_chu_phieu_thu_chi',
     description:
       'Lập ĐỀ XUẤT sửa GHI CHÚ của một phiếu thu/chi đã có. Tool này KHÔNG sửa gì: nó dựng bản xem ' +
@@ -407,6 +417,8 @@ const GIAI_THICH_LOI_HANH_DONG: Record<string, string> = {
   entity_not_found:
     'Không tìm thấy đối tượng đó trong công ty đang chọn. Hỏi lại mã/tên chính xác rồi thử lại.',
   payload_invalid: 'Dữ liệu gửi lên không hợp lệ. Kiểm tra lại các trường bắt buộc.',
+  room_pass_listings_room_active_uniq:
+    'Phòng này đã có tin khác đang công khai. Hãy kiểm tra và ẩn tin đó trước khi lập đề xuất mới.',
   ghi_chu_bat_buoc: 'Thiếu nội dung ghi chú mới.',
   // 5000 là ngưỡng THẬT ở cả hai chỗ raise mã này (income_expense.annotate ở
   // 20260903072353 và meter_reading.create ở 20260903085155). Một con số ở đây
@@ -583,6 +595,10 @@ export async function thucThiXacNhanHanhDong(
     }
     if (m.includes('copilot_action_disabled')) {
       return '⚠️ Hành động đã bị tắt bởi quản trị. Hãy bật lại ở trang quản trị AI Copilot rồi lập lại.';
+    }
+    if (tool === 'room_pass.set_active') {
+      const known = Object.entries(GIAI_THICH_LOI_HANH_DONG).find(([code]) => m.includes(code));
+      return known?.[1] ?? 'Chưa xác minh được kết quả đổi trạng thái tin. Hãy kiểm tra trạng thái hiện tại trước khi thử lại.';
     }
     throw new Error(`Lỗi khi ${entry.labelVi.toLowerCase()}: ${m}`);
   }

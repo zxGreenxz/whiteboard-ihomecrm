@@ -85,6 +85,40 @@ beforeEach(() => {
   datNguCanhXacNhan(null);
 });
 
+it("room-pass consent routes safe canonical and translates publication conflict", async () => {
+  const canonical = {
+    organization_id: ORG,
+    listing_id: "dddd4000-0000-4000-8000-000000000001",
+    active: true,
+    before_active: false,
+    before_revision: "opaque",
+  };
+  datNguCanhXacNhan({
+    organizationId: ORG,
+    threadId: "thread-1",
+    generation: 3,
+  });
+  rpc.mockResolvedValueOnce({
+    data: null,
+    error: {
+      message:
+        'duplicate key value violates unique constraint "room_pass_listings_room_active_uniq"',
+    },
+  });
+  const result = await thucThiXacNhanTheoTool(
+    "room_pass.set_active",
+    NONCE,
+    canonical,
+    { organizationId: ORG, threadId: "thread-1", generation: 3 },
+  );
+  expect(rpc).toHaveBeenCalledWith("copilot_execute_room_pass_active_v1", {
+    p_confirmation_nonce: NONCE,
+    p_payload: canonical,
+  });
+  expect(result).toContain("đã có tin khác đang công khai");
+  expect(result).not.toContain("room_pass_listings_room_active_uniq");
+});
+
 describe('factory sinh tool ghi từ sổ hành động', () => {
   it('ba tool có mặt trong registry với đúng tên, đúng khoá rollout', () => {
     const ten = new Set(buildRegistryDefinitions().map((t) => t.name));

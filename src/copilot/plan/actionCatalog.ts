@@ -23,6 +23,11 @@ import * as z from 'zod/v4';
 
 import type { ActionKey } from '@/lib/permissions';
 
+export const SCHEMA_ROOM_PASS_ACTIVE = z.object({
+  listing_id: z.string().uuid().describe('ID tin phòng khách nhờ sale đã tồn tại'),
+  active: z.boolean().describe('true = công khai tin; false = ẩn tin khỏi danh sách công khai'),
+});
+
 /**
  * Mức rủi ro theo thang của plan Copilot: L3 đọc-ghi nhẹ, L4 ghi nháp có xác
  * nhận, L5 ghi thẳng. L6 (deploy/secret/sql) KHÔNG có mặt ở đây và không bao
@@ -605,6 +610,19 @@ export const ACTION_CATALOG = {
     previewRpc: 'copilot_preview_income_expense_annotate_v1',
     executeRpc: 'copilot_execute_income_expense_annotate_v1',
   },
+  'room_pass.set_active': {
+    actionId: 'room_pass.set_active',
+    version: 1,
+    labelVi: 'Đổi trạng thái công khai tin phòng nhờ sale',
+    risk: 'L3',
+    executorKind: 'nonce_abi_v1',
+    consentRequired: 'click',
+    permission: { module: 'sale_phong', action: 'manage_pass_listings' },
+    inputSchema: SCHEMA_ROOM_PASS_ACTIVE,
+    previewFields: ['toa_nha', 'phong', 'trang_thai_cu', 'trang_thai_moi'],
+    previewRpc: 'copilot_preview_room_pass_active_v1',
+    executeRpc: 'copilot_execute_room_pass_active_v1',
+  },
   'reservation.set_hold_terms': {
     actionId: 'reservation.set_hold_terms',
     version: 1,
@@ -1131,6 +1149,8 @@ export const NHAN_TRUONG_XEM_TRUOC: Readonly<Record<string, string>> = {
   hang_muc: 'Hạng mục',
   ngay: 'Ngày',
   trang_thai: 'Trạng thái sau khi tạo',
+  trang_thai_cu: 'Đang công khai tin',
+  trang_thai_moi: 'Công khai tin sau khi xác nhận',
   ma_phieu: 'Mã phiếu',
   ghi_chu_cu: 'Ghi chú hiện tại',
   ghi_chu_moi: 'Ghi chú mới',
