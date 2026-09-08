@@ -58,7 +58,8 @@ const INVOICE_LIST_SELECT = `
     )
   ),
   building:buildings!invoices_building_id_fkey (id, name, name_sort, default_account_id_tt, default_account_id_tk),
-  room:rooms!invoices_room_id_fkey (id, name, name_sort),  invoice_items (id, type, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
+  room:rooms!invoices_room_id_fkey (id, name, name_sort),
+  invoice_items (id, type, accounting_class, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
   payments (id, amount, payment_date, payment_method, notes, receipt_image_url, collection_id, reversed_at)
 `;
 
@@ -668,6 +669,7 @@ export const useCreateInvoice = () => {
         p_items: items.map((item) => ({
           service_id: item.service_id || null,
           type: item.type,
+          accounting_class: item.accounting_class,
           description: item.description,
           unit_price: item.unit_price,
           quantity: item.quantity,
@@ -721,7 +723,8 @@ export const useCreateInvoice = () => {
           user_id: user.id,
           contract_id: invoiceFields.contract_id,
           building_id: invoiceFields.building_id,
-          room_id: invoiceFields.room_id,          invoice_number,
+          room_id: invoiceFields.room_id,
+          invoice_number,
           billing_month: invoiceFields.billing_month,
           issue_date: invoiceFields.issue_date,
           due_date: invoiceFields.due_date,
@@ -752,6 +755,7 @@ export const useCreateInvoice = () => {
           invoice_id: invoice.id,
           service_id: item.service_id || null,
           type: item.type as any,
+          accounting_class: item.accounting_class,
           description: item.description,
           unit_price: item.unit_price,
           quantity: item.quantity,
@@ -856,6 +860,7 @@ export const useUpdateInvoice = () => {
         p_items: items.map((item) => ({
           service_id: item.service_id || null,
           type: item.type,
+          accounting_class: item.accounting_class,
           description: item.description,
           unit_price: item.unit_price,
           quantity: item.quantity,
@@ -883,7 +888,8 @@ export const useUpdateInvoice = () => {
         .update({
           contract_id: invoiceFields.contract_id,
           building_id: invoiceFields.building_id,
-          room_id: invoiceFields.room_id,          billing_month: invoiceFields.billing_month,
+          room_id: invoiceFields.room_id,
+          billing_month: invoiceFields.billing_month,
           issue_date: invoiceFields.issue_date,
           due_date: invoiceFields.due_date,
           subtotal,
@@ -916,6 +922,7 @@ export const useUpdateInvoice = () => {
           invoice_id: id,
           service_id: item.service_id || null,
           type: item.type as any,
+          accounting_class: item.accounting_class,
           description: item.description,
           unit_price: item.unit_price,
           quantity: item.quantity,

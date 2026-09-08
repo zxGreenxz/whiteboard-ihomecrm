@@ -94,6 +94,7 @@ export interface InvoiceItem {
   invoice_id: string;
   service_id: string | null;
   type: InvoiceItemType;
+  accounting_class?: 'REVENUE' | 'DEPOSIT' | 'NON_PNL';
   description: string;
   unit_price: number;
   quantity: number;
@@ -210,6 +211,7 @@ export interface InvoiceFormData {
 export interface InvoiceFormItem {
   service_id?: string | null;
   type: InvoiceItemType;
+  accounting_class?: 'REVENUE' | 'DEPOSIT' | 'NON_PNL';
   description: string;
   unit_price: number;
   quantity: number;

@@ -45,7 +45,8 @@ interface EditInvoiceDialogProps {
 }
 
 const customItemSchema = z.object({
-  type: z.enum(['SERVICE', 'OTHER']),
+  type: z.enum(['RENT', 'SERVICE', 'OTHER']),
+  accounting_class: z.enum(['REVENUE', 'DEPOSIT', 'NON_PNL']).optional(),
   description: z.string().min(1, 'Vui lòng nhập mô tả'),
   quantity: z.number().min(0.0001, 'Số lượng phải > 0'),
   unit_price: z.number().min(0),
@@ -94,7 +95,8 @@ function decomposeItems(invoice: InvoiceWithRelations) {
   let occupants = 1;
   let pdv = 0;
   const custom: Array<{
-    type: 'SERVICE' | 'OTHER';
+    type: 'RENT' | 'SERVICE' | 'OTHER';
+    accounting_class?: 'REVENUE' | 'DEPOSIT' | 'NON_PNL';
     description: string;
     quantity: number;
     unit_price: number;
@@ -103,11 +105,13 @@ function decomposeItems(invoice: InvoiceWithRelations) {
 
   for (const it of invoice.invoice_items ?? []) {
     const desc = (it.description || '').toLowerCase();
-    if (it.type === 'RENT') {
+    // Non-revenue items must not be flattened into revenue fields by type or label.
+    const isRevenue = !it.accounting_class || it.accounting_class === 'REVENUE';
+    if (isRevenue && it.type === 'RENT') {
       rent = Number(it.unit_price) || 0;
       continue;
     }
-    if (it.type === 'SERVICE') {
+    if (isRevenue && it.type === 'SERVICE') {
       if (desc.includes('điện')) {
         electric = (it.unit_price || 0) * (it.quantity || 1);
         prev = Number(it.previous_reading) || 0;
@@ -126,7 +130,8 @@ function decomposeItems(invoice: InvoiceWithRelations) {
     }
     // fallback: custom item
     custom.push({
-      type: (it.type === 'SERVICE' ? 'SERVICE' : 'OTHER') as 'SERVICE' | 'OTHER',
+      type: it.type === 'RENT' || it.type === 'SERVICE' ? it.type : 'OTHER',
+      accounting_class: it.accounting_class,
       description: it.description,
       quantity: Number(it.quantity) || 1,
       unit_price: Number(it.unit_price) || 0,
@@ -333,6 +338,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
     let order = 0;
     items.push({
       type: 'RENT',
+      accounting_class: 'REVENUE',
       description: `Tiền thuê`,
       unit_price: data.rent_price,
       quantity: 1,
@@ -344,6 +350,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       items.push({
         service_id: defaults.elecServiceId,
         type: 'SERVICE',
+        accounting_class: 'REVENUE',
         description: `Tiền điện (${data.prev_reading} → ${data.current_reading ?? data.prev_reading})`,
         unit_price: cons > 0 ? data.electric_amount / cons : data.electric_amount,
         quantity: cons > 0 ? cons : 1,
@@ -359,6 +366,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       items.push({
         service_id: defaults.waterServiceId,
         type: 'SERVICE',
+        accounting_class: 'REVENUE',
         description: `Tiền nước (${data.occupants} người)`,
         unit_price:
           data.occupants > 0 ? data.water_amount / data.occupants : data.water_amount,
@@ -371,6 +379,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       items.push({
         service_id: defaults.pdvServiceId,
         type: 'SERVICE',
+        accounting_class: 'REVENUE',
         description: 'Phí dịch vụ',
         unit_price: data.pdv_amount,
         quantity: 1,
@@ -381,7 +390,8 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
     for (const ci of data.custom_items || []) {
       items.push({
         service_id: ci.service_id || null,
-        type: ci.type as any,
+        type: ci.type,
+        accounting_class: ci.accounting_class,
         description: ci.description,
         unit_price: ci.unit_price,
         quantity: ci.quantity,
@@ -577,6 +587,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
                 onClick={() =>
                   appendCustom({
                     type: 'OTHER',
+                    accounting_class: 'REVENUE',
                     description: '',
                     quantity: 1,
                     unit_price: 0,
@@ -608,10 +619,14 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
                         <tr key={field.id}>
                           <td className="p-1 border">
                             <Select
-                              value={row?.type || 'OTHER'}
-                              onValueChange={(v) =>
-                                setValue(`custom_items.${idx}.type` as const, v as any)
-                              }
+                              value={row?.accounting_class === 'DEPOSIT' ? 'DEPOSIT' : row?.type === 'SERVICE' ? 'SERVICE' : 'OTHER'}
+                              onValueChange={(v) => {
+                                setValue(`custom_items.${idx}.type`, v === 'SERVICE' ? 'SERVICE' : 'OTHER');
+                                setValue(`custom_items.${idx}.accounting_class`, v === 'DEPOSIT' ? 'DEPOSIT' : 'REVENUE');
+                                if (v === 'DEPOSIT' && !row?.description.trim()) {
+                                  setValue(`custom_items.${idx}.description`, 'Tiền cọc');
+                                }
+                              }}
                             >
                               <SelectTrigger className="h-8 w-[110px]">
                                 <SelectValue />
@@ -619,6 +634,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
                               <SelectContent>
                                 <SelectItem value="SERVICE">Dịch vụ</SelectItem>
                                 <SelectItem value="OTHER">Khác</SelectItem>
+                                <SelectItem value="DEPOSIT">Tiền cọc</SelectItem>
                               </SelectContent>
                             </Select>
                           </td>
@@ -657,6 +673,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
+                              aria-label="Xóa khoản thu"
                               onClick={() => removeCustom(idx)}
                             >
                               <Trash2 className="h-3.5 w-3.5 text-red-600" />

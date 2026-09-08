@@ -53,6 +53,7 @@ interface GenerateInvoiceDialogProps {
 
 const customItemSchema = z.object({
   type: z.enum(['SERVICE', 'OTHER']),
+  accounting_class: z.enum(['REVENUE', 'DEPOSIT', 'NON_PNL']).optional(),
   description: z.string().min(1, 'Vui lòng nhập mô tả'),
   quantity: z.number().min(0.0001, 'Số lượng phải > 0'),
   unit_price: z.number().min(0),
@@ -546,6 +547,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     let order = 0;
     items.push({
       type: 'RENT',
+      accounting_class: 'REVENUE',
       description:
         `Tiền thuê căn hộ ${roomData?.name || ''}`.trim() + prorateLabel,
       unit_price: rentAmount,
@@ -560,6 +562,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       items.push({
         service_id: pricing.elecServiceId,
         type: 'SERVICE',
+        accounting_class: 'REVENUE',
         description: `Tiền điện (${data.prev_reading} → ${data.current_reading ?? data.prev_reading})`,
         unit_price: cons > 0 ? data.electric_amount / cons : data.electric_amount,
         quantity: cons > 0 ? cons : 1,
@@ -575,6 +578,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       items.push({
         service_id: pricing.waterServiceId,
         type: 'SERVICE',
+        accounting_class: 'REVENUE',
         description: `Tiền nước (${data.occupants} người)` + prorateLabel,
         unit_price: waterAmount,
         quantity: 1,
@@ -588,6 +592,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       items.push({
         service_id: pricing.pdvServiceId,
         type: 'SERVICE',
+        accounting_class: 'REVENUE',
         description: 'Phí dịch vụ' + prorateLabel,
         unit_price: pdvAmount,
         quantity: 1,
@@ -600,7 +605,8 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     for (const ci of data.custom_items || []) {
       items.push({
         service_id: ci.service_id || null,
-        type: ci.type as any,
+        type: ci.type,
+        accounting_class: ci.accounting_class,
         description: ci.description,
         unit_price: ci.unit_price,
         quantity: ci.quantity,
@@ -1000,6 +1006,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                     onClick={() =>
                       appendCustom({
                         type: 'OTHER',
+                        accounting_class: 'REVENUE',
                         description: '',
                         quantity: 1,
                         unit_price: 0,
@@ -1031,10 +1038,14 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                             <tr key={field.id}>
                               <td className="p-1 border">
                                 <Select
-                                  value={row?.type || 'OTHER'}
-                                  onValueChange={(v) =>
-                                    setValue(`custom_items.${idx}.type` as const, v as any)
-                                  }
+                                  value={row?.accounting_class === 'DEPOSIT' ? 'DEPOSIT' : row?.type || 'OTHER'}
+                                  onValueChange={(v) => {
+                                    setValue(`custom_items.${idx}.type`, v === 'SERVICE' ? 'SERVICE' : 'OTHER');
+                                    setValue(`custom_items.${idx}.accounting_class`, v === 'DEPOSIT' ? 'DEPOSIT' : 'REVENUE');
+                                    if (v === 'DEPOSIT' && !row?.description.trim()) {
+                                      setValue(`custom_items.${idx}.description`, 'Tiền cọc');
+                                    }
+                                  }}
                                 >
                                   <SelectTrigger className="h-8 w-[110px]">
                                     <SelectValue />
@@ -1042,6 +1053,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                                   <SelectContent>
                                     <SelectItem value="SERVICE">Dịch vụ</SelectItem>
                                     <SelectItem value="OTHER">Khác</SelectItem>
+                                    <SelectItem value="DEPOSIT">Tiền cọc</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </td>
@@ -1080,6 +1092,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
+                                  aria-label="Xóa khoản thu"
                                   onClick={() => removeCustom(idx)}
                                 >
                                   <Trash2 className="h-3.5 w-3.5 text-red-600" />
