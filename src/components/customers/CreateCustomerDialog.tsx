@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useRef, useState } from "react";
+import CustomerAdministrativeAddress from "./CustomerAdministrativeAddress";
 import {
   Dialog,
   DialogContent,
@@ -409,7 +410,7 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                       <FormItem>
                         <FormLabel>Giới tính</FormLabel>
                         <FormControl>
-                          <SearchableSelect
+                          <SearchableSelect modal
                             aria-label="Giới tính"
                             value={field.value}
                             onValueChange={field.onChange}
@@ -538,6 +539,14 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                     )}
                   />
                 </div>
+
+                <CustomerAdministrativeAddress
+                  province={form.watch("province")}
+                  district={form.watch("district")}
+                  ward={form.watch("ward")}
+                  detailedAddress={form.watch("detailed_address")}
+                  permanentAddress={form.watch("permanent_address")}
+                />
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
@@ -681,7 +690,7 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                       <FormItem>
                         <FormLabel>Nhóm khách hàng</FormLabel>
                         <FormControl>
-                          <SearchableSelect
+                          <SearchableSelect modal
                             aria-label="Nhóm khách hàng"
                             value={field.value}
                             onValueChange={field.onChange}

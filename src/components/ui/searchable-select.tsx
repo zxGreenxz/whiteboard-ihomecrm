@@ -49,6 +49,10 @@ export interface SearchableSelectProps {
   disabled?: boolean;
   /** Bật/tắt ô tìm kiếm. Mặc định true (cho phép gõ để lọc nhanh). */
   searchable?: boolean;
+  /** Search labels/keywords only when storage enums would produce unrelated matches. */
+  searchByLabel?: boolean;
+  /** Keep scrolling/focus inside the popup when used within modal forms. */
+  modal?: boolean;
   align?: "start" | "center" | "end";
   id?: string;
   "aria-label"?: string;
@@ -102,6 +106,8 @@ export function SearchableSelect({
   contentClassName,
   disabled,
   searchable = true,
+  searchByLabel = false,
+  modal = false,
   align = "start",
   id,
   "aria-label": ariaLabel,
@@ -171,6 +177,7 @@ export function SearchableSelect({
 
   return (
     <Popover
+      modal={modal}
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
@@ -205,7 +212,7 @@ export function SearchableSelect({
         className={cn("w-[--radix-popover-trigger-width] p-0", contentClassName)}
         style={{ width: "var(--radix-popover-trigger-width)" }}
       >
-        <Command filter={searchableSelectFilter}>
+        <Command filter={searchByLabel ? (_value, search, keywords) => searchableSelectFilter('', search, keywords) : searchableSelectFilter}>
           {searchable && (
             <CommandInput
               placeholder={searchPlaceholder}

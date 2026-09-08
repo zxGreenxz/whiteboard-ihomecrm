@@ -30,7 +30,7 @@ export default function CustomerAdministrativeAddress({ province, district, ward
     <section aria-label="Địa chỉ hành chính mới" className="space-y-3 border-t pt-4">
       <h3 className="text-sm font-semibold text-green-700">Địa chỉ hành chính mới</h3>
       {hasChoice && (
-        <SearchableSelect
+        <SearchableSelect modal
           aria-label="Chọn địa chỉ cũ để chuyển đổi"
           value={preferredSource}
           onValueChange={setPreferredSource}

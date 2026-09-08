@@ -48,6 +48,7 @@ describe('searchable customer fields', () => {
     render(<FieldHarness />);
     fireEvent.click(screen.getByRole('combobox', { name: 'Loại phương tiện 1' }));
     fireEvent.change(screen.getByPlaceholderText('Tìm loại phương tiện...'), { target: { value: 'o to' } });
+    expect(screen.queryByRole('option', { name: 'Xe máy' })).toBeNull();
     fireEvent.click(screen.getByRole('option', { name: 'Ô tô' }));
     expect(screen.getByLabelText('vehicle-value').textContent).toBe('CAR');
   });

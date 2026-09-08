@@ -51,7 +51,7 @@ function AddressField({
   return (
     <div className="space-y-1.5">
       <label htmlFor={id} className="text-sm font-medium text-gray-700">{label}</label>
-      <SearchableSelect
+      <SearchableSelect modal
         id={id}
         aria-label={label}
         value={value ?? ''}

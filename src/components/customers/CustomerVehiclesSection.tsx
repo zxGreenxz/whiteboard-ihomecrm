@@ -45,11 +45,12 @@ export default function CustomerVehiclesSection() {
               <FormItem>
                 {index === 0 && <FormLabel>Loại phương tiện</FormLabel>}
                 <FormControl>
-                  <SearchableSelect
+                  <SearchableSelect modal
                     aria-label={`Loại phương tiện ${index + 1}`}
                     value={f.value || ''}
                     onValueChange={f.onChange}
                     options={VEHICLE_TYPE_OPTIONS}
+                    searchByLabel
                     placeholder="Chọn loại"
                     searchPlaceholder="Tìm loại phương tiện..."
                   />

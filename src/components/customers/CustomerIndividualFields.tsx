@@ -148,7 +148,7 @@ export default function CustomerIndividualFields() {
             <FormItem>
               <FormLabel>Giới tính</FormLabel>
               <FormControl>
-                <SearchableSelect
+                <SearchableSelect modal
                   aria-label="Giới tính"
                   value={field.value ?? ''}
                   onValueChange={field.onChange}
