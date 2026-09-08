@@ -66,6 +66,7 @@ export const KHOA_ROLLOUT_LOAI_CONG_VIEC = 'copilot.job-types.directory';
 export const KHOA_ROLLOUT_DANH_SACH_TANG = 'copilot.floors.directory';
 export const KHOA_ROLLOUT_DANH_SACH_HOTLINE = 'copilot.hotlines.directory';
 export const KHOA_ROLLOUT_DINH_MUC_DICH_VU = 'copilot.service-quotas.directory';
+export const KHOA_ROLLOUT_BAO_TRI_TAI_SAN = 'copilot.assets.maintenance.directory';
 
 /** Ba contract trên, kèm nhãn tiếng Việt cho trang admin. */
 export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = [
@@ -127,6 +128,11 @@ export const COPILOT_ROLLOUT_DOC_RIENG: readonly CopilotRolloutContract[] = [
     scope: 'page',
     contractId: KHOA_ROLLOUT_DINH_MUC_DICH_VU,
     label: 'Danh sách định mức dịch vụ (Copilot đọc)',
+  },
+  {
+    scope: 'page',
+    contractId: KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
+    label: 'Lịch sử bảo trì tài sản (Copilot đọc)',
   },
 ];
 

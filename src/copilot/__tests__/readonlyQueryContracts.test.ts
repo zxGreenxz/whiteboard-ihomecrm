@@ -20,6 +20,7 @@ const {
   KHOA_ROLLOUT_DANH_SACH_TANG,
   KHOA_ROLLOUT_DANH_SACH_HOTLINE,
   KHOA_ROLLOUT_DINH_MUC_DICH_VU,
+  KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -2994,5 +2995,50 @@ describe('danh_sach_dinh_muc_dich_vu - server RPC boundary', () => {
     expect(tool('danh_sach_dinh_muc_dich_vu').rolloutKey).toBe(KHOA_ROLLOUT_DINH_MUC_DICH_VU);
     expect(tool('danh_sach_dinh_muc_dich_vu').requiredPermission).toEqual({ module: 'service_quotas', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DINH_MUC_DICH_VU)).toBe(true);
+  });
+});
+
+describe('danh_sach_bao_tri_tai_san - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization maintenance RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, bao_tri: [] }, error: null });
+    await tool('danh_sach_bao_tri_tai_san').execute({ tu_khoa: '  Máy bơm  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_asset_maintenance_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Máy bơm',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only asset, date and maintenance state', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 1, bao_tri: [{
+        ma: 'BT-A1B2C3D4', tai_san: 'Máy bơm tầng hầm', ngay: '2026-09-08', trang_thai: 'IN_PROGRESS',
+        cost: 980000, notes: 'Số điện thoại thợ 0900000000', assigned_to: 'staff-private-id', user_id: 'creator-private-id',
+      }] },
+      error: null,
+    });
+    const result = await tool('danh_sach_bao_tri_tai_san').execute({ so_luong: 20 }, ctx);
+    for (const visible of ['BT-A1B2C3D4', 'Máy bơm tầng hầm', '2026-09-08', 'đang xử lý']) expect(result).toContain(visible);
+    expect(result).toContain('/assets');
+    for (const privateValue of ['980000', 'Số điện thoại thợ', 'staff-private-id', 'creator-private-id']) expect(result).not.toContain(privateValue);
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, bao_tri: [] }, error: null });
+    await expect(tool('danh_sach_bao_tri_tai_san').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có lịch sử bảo trì/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_bao_tri_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated maintenance rollout key with assets.view permission', () => {
+    expect(tool('danh_sach_bao_tri_tai_san').rolloutKey).toBe(KHOA_ROLLOUT_BAO_TRI_TAI_SAN);
+    expect(tool('danh_sach_bao_tri_tai_san').requiredPermission).toEqual({ module: 'assets', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_BAO_TRI_TAI_SAN)).toBe(true);
   });
 });

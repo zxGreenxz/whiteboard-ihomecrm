@@ -30,6 +30,7 @@ import {
   KHOA_ROLLOUT_DANH_SACH_TANG,
   KHOA_ROLLOUT_DANH_SACH_HOTLINE,
   KHOA_ROLLOUT_DINH_MUC_DICH_VU,
+  KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
@@ -653,6 +654,17 @@ type CopilotServiceQuotaDirectoryPayload = {
   }>;
 };
 
+type CopilotAssetMaintenanceDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  bao_tri?: Array<{
+    ma: string;
+    tai_san: string;
+    ngay: string;
+    trang_thai: string | null;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -1158,6 +1170,41 @@ export function buildRegistryDefinitions(): DomainTool[] {
           return '- ' + quota.ma + ' — ' + quota.ten + ' · ' + tierText;
         });
         return 'Có ' + rows.length + ' định mức dịch vụ (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/service-quotas]';
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_bao_tri_tai_san',
+      description:
+        'Liệt kê lịch sử bảo trì của tài sản trong phạm vi được xem: mã ngắn, tài sản, ngày và trạng thái. Không đọc chi phí, ghi chú hay người được giao.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên hoặc mã tài sản'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số bản ghi tối đa'),
+      }),
+      requiredPermission: { module: 'assets', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_bao_tri_tai_san');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotAssetMaintenanceDirectoryPayload
+        >('copilot_asset_maintenance_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải lịch sử bảo trì tài sản: ' + error.message);
+        const rows = Array.isArray(data?.bao_tri) ? data.bao_tri : [];
+        if (!rows.length) return 'Không có lịch sử bảo trì tài sản nào trong phạm vi bạn được xem.';
+        const status: Record<string, string> = {
+          PENDING: 'chờ xử lý',
+          IN_PROGRESS: 'đang xử lý',
+          COMPLETED: 'hoàn thành',
+        };
+        const lines = rows.map((record) =>
+          '- ' + record.ma + ' — ' + record.tai_san + ' · ' + record.ngay + ' · ' + (status[record.trang_thai ?? ''] ?? 'không rõ trạng thái'),
+        );
+        return 'Có ' + rows.length + ' bản ghi bảo trì (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /assets]';
       },
     }),
 

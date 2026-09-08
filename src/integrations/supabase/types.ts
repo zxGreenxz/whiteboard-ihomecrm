@@ -18773,6 +18773,10 @@ export type Database = {
         Args: { p_limit?: number; p_organization_id: string; p_query?: string }
         Returns: Json
       }
+      copilot_asset_maintenance_directory_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
       copilot_asset_type_directory_v1: {
         Args: { p_limit?: number; p_organization_id: string; p_query?: string }
         Returns: Json
