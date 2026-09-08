@@ -62,6 +62,7 @@ export const KHOA_ROLLOUT_THANH_VIEN_VAI_TRO = 'copilot.members-roles.directory'
 export const KHOA_ROLLOUT_KHO_TAI_SAN = 'copilot.warehouses.directory';
 export const KHOA_ROLLOUT_NHA_CUNG_CAP = 'copilot.suppliers.directory';
 export const KHOA_ROLLOUT_LOAI_TAI_SAN = 'copilot.asset-types.directory';
+export const KHOA_ROLLOUT_LOAI_CONG_VIEC = 'copilot.job-types.directory';
 
 /** Ba contract trên, kèm nhãn tiếng Việt cho trang admin. */
 export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = [
@@ -103,6 +104,11 @@ export const COPILOT_ROLLOUT_DOC_RIENG: readonly CopilotRolloutContract[] = [
     scope: 'page',
     contractId: KHOA_ROLLOUT_LOAI_TAI_SAN,
     label: 'Danh sách loại tài sản (Copilot đọc)',
+  },
+  {
+    scope: 'page',
+    contractId: KHOA_ROLLOUT_LOAI_CONG_VIEC,
+    label: 'Danh sách loại công việc (Copilot đọc)',
   },
 ];
 

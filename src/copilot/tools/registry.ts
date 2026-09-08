@@ -30,6 +30,7 @@ import {
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
+  KHOA_ROLLOUT_LOAI_CONG_VIEC,
   KHOA_ROLLOUT_NHA_CUNG_CAP,
   KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
   KHOA_ROLLOUT_THONG_BAO,
@@ -597,6 +598,20 @@ type CopilotAssetTypeDirectoryPayload = {
   }>;
 };
 
+type CopilotJobTypeDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  loai_cong_viec?: Array<{
+    ma: string;
+    ten: string;
+    bo_phan: string | null;
+    nhom: string | null;
+    han_lien_he_phut: number | null;
+    han_tiep_nhan_phut: number | null;
+    han_hoan_thanh_phut: number | null;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -970,6 +985,39 @@ export function buildRegistryDefinitions(): DomainTool[] {
         const rows = Array.isArray(data?.loai_tai_san) ? data.loai_tai_san : [];
         if (!rows.length) return 'Không có loại tài sản nào trong phạm vi bạn được xem.';
         return 'Có ' + rows.length + ' loại tài sản (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + rows.map((assetType) => '- ' + assetType.ma + ' — ' + assetType.ten).join('\n') + '\n[link: /settings/categories/asset-types]';
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_loai_cong_viec',
+      description:
+        'Liệt kê cấu hình loại công việc trong công ty đang chọn: mã ngắn, tên, bộ phận, nhóm và các mốc SLA. Không đọc mô tả nội bộ, tự động gán, tiền thưởng hay định danh người tạo.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên loại công việc, bộ phận hoặc nhóm'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số loại công việc tối đa'),
+      }),
+      requiredPermission: { module: 'task_types', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_LOAI_CONG_VIEC,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_loai_cong_viec');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotJobTypeDirectoryPayload
+        >('copilot_job_type_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải danh sách loại công việc: ' + error.message);
+        const rows = Array.isArray(data?.loai_cong_viec) ? data.loai_cong_viec : [];
+        if (!rows.length) return 'Không có loại công việc nào trong phạm vi bạn được xem.';
+        const minutes = (value: number | null) => value && value > 0 ? String(value) + ' phút' : 'không quy định';
+        const lines = rows.map((jobType) => {
+          const context = [jobType.bo_phan, jobType.nhom].filter(Boolean).join(' · ');
+          const deadlines = 'liên hệ ' + minutes(jobType.han_lien_he_phut) + ', tiếp nhận ' + minutes(jobType.han_tiep_nhan_phut) + ', hoàn thành ' + minutes(jobType.han_hoan_thanh_phut);
+          return '- ' + jobType.ma + ' — ' + jobType.ten + (context ? ' · ' + context : '') + ' · ' + deadlines;
+        });
+        return 'Có ' + rows.length + ' loại công việc (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/task-types]';
       },
     }),
 

@@ -16,6 +16,7 @@ const {
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_NHA_CUNG_CAP,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
+  KHOA_ROLLOUT_LOAI_CONG_VIEC,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -2764,5 +2765,68 @@ describe('danh_sach_loai_tai_san - server RPC boundary', () => {
     expect(tool('danh_sach_loai_tai_san').rolloutKey).toBe(KHOA_ROLLOUT_LOAI_TAI_SAN);
     expect(tool('danh_sach_loai_tai_san').requiredPermission).toEqual({ module: 'asset_types', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_LOAI_TAI_SAN)).toBe(true);
+  });
+});
+
+describe('danh_sach_loai_cong_viec - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization job-type RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, loai_cong_viec: [] }, error: null });
+    await tool('danh_sach_loai_cong_viec').execute({ tu_khoa: '  Sửa điện  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_job_type_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Sửa điện',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats visible configuration while ignoring private descriptions, automation and ownership fields', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        loai_cong_viec: [{
+          ma: 'LCV-A1B2C3D4',
+          ten: 'Sửa điện',
+          bo_phan: 'Kỹ thuật',
+          nhom: 'Bảo trì',
+          han_lien_he_phut: 15,
+          han_tiep_nhan_phut: 30,
+          han_hoan_thanh_phut: 120,
+          description: 'Ghi chú nội bộ',
+          auto_assign: true,
+          bonus_amount: 100000,
+          user_id: 'creator-private-id',
+          organization_id: 'foreign-org-id',
+        }],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_loai_cong_viec').execute({ so_luong: 20 }, ctx);
+    for (const visible of ['LCV-A1B2C3D4', 'Sửa điện', 'Kỹ thuật', 'Bảo trì', '15 phút', '30 phút', '120 phút']) {
+      expect(result).toContain(visible);
+    }
+    expect(result).toContain('/settings/categories/task-types');
+    for (const privateValue of ['Ghi chú nội bộ', 'creator-private-id', 'foreign-org-id', '100000']) {
+      expect(result).not.toContain(privateValue);
+    }
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, loai_cong_viec: [] }, error: null });
+    await expect(tool('danh_sach_loai_cong_viec').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có loại công việc/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_loai_cong_viec').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated job-type rollout key with task_types.view permission', () => {
+    expect(tool('danh_sach_loai_cong_viec').rolloutKey).toBe(KHOA_ROLLOUT_LOAI_CONG_VIEC);
+    expect(tool('danh_sach_loai_cong_viec').requiredPermission).toEqual({ module: 'task_types', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_LOAI_CONG_VIEC)).toBe(true);
   });
 });
