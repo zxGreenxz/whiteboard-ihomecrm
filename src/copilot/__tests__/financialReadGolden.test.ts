@@ -7,12 +7,30 @@ import { digest, DEMO_ORG } from '../../../scripts/copilot-golden-browser-eviden
 // Controlled canonical transport data only; these are never live fixture receipts.
 import * as binder from '../../../scripts/copilot-financial-read-fixtures.mjs';
 import * as oracle from '../../../.e2e-fleet/specs/copilotFinancialReadOracle';
+const statsRpc = vi.hoisted(() => vi.fn());
+vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: statsRpc } }));
+const { TOOL_NGHIEP_VU } = await import('../tools/nghiepVuTools');
 const scenario = (id: string) => JSON.parse(readFileSync('tooling/copilot-golden-scenarios.json','utf8')).cases.find((c:{id:string})=>c.id===id);
 const actorDigest = 'b'.repeat(64);
 const invoice = {id:'aaaa4000-0000-4000-8000-000000000081',invoice_number:'INV-G701',billing_month:'2026-07',total_amount:12000,status:'UNPAID',building_id:'aaaa4000-0000-4000-8000-000000000082',building_name:'DEMO Toà A',room_id:'aaaa4000-0000-4000-8000-000000000083',room_name:'G701'};
 const pnl = {month:'2026-07-01',building_id:invoice.building_id,building_name:invoice.building_name,is_virtual:false,revenue:18000,expense:7000,net:11000};
 const stats = {total_amount:12000,total_paid:2000,total_remaining:10000,total_refunded:0,total_count:1,rent_amount:9000,electric_amount:1000,water_amount:1000,pdv_amount:1000,total_collected:2000,payment_tm:1000,payment_tk:1000,payment_tt:0,payment_ct:0,change_amount:0,deposit_collected:0};
 const ids=['C03','C05','C15','C17','C19','C24','C26'];
+describe('independent stats transport matches the registered tool', () => {
+  it.each(['C19', 'C26'])('derives exact %s bytes independently, including reordered RPC keys', async id => {
+    for (const reverse of [false, true]) {
+      const v = input(id);
+      if (reverse) v.roles.stats.payload = Object.fromEntries(Object.entries(v.roles.stats.payload).reverse());
+      const fixture = binder.bindFinancialReadScenario(scenario(id), v);
+      statsRpc.mockResolvedValue({ data: v.roles.stats.payload, error: null });
+      const actual = await TOOL_NGHIEP_VU.find(t => t.name === 'cong_no_tong_quan')!.execute(
+        { thang: v.roles.stats.request.args.p_billing_month },
+        { organizationId: DEMO_ORG, perms: undefined, threadId: null, generation: 0, isSuperAdmin: false },
+      );
+      expect(actual).toBe(oracle.financialToolText(fixture, 'stats'));
+    }
+  });
+});
 function input(id:string) {
   const period=['C15','C19'].includes(id)?'2099-01':'2026-07';
   const roles:Record<string,{request:{rpc:string;args:Record<string,unknown>};payload:unknown}>={};
@@ -59,7 +77,7 @@ describe('financial canonical binder',()=>{
 
 const invoiceText='Tìm thấy 1 hoá đơn (hiện 10 đầu):\n- HĐ INV-G701 — phòng G701 (DEMO Toà A) — kỳ 2026-07 — tổng 12.000 đ — trạng thái UNPAID';
 const pnlText=(accrual=false)=>`KQKD tháng 2026-07 (${accrual?'dồn tích':'tiền mặt'}):\nTỔNG: doanh thu 18.000 đ, chi phí 7.000 đ, lợi nhuận 11.000 đ\n- DEMO Toà A: thu 18.000 đ, chi 7.000 đ, ròng 11.000 đ`;
-const statsText=(empty=false)=>`Thống kê hoá đơn kỳ ${empty?'2099-01':'2026-07'}:\n- total_amount: ${empty?'0':'12.000'} đ\n- total_paid: ${empty?'0':'2.000'} đ\n- total_remaining: ${empty?'0':'10.000'} đ\n- total_refunded: 0 đ\n- total_count: ${empty?'0':'1'} đ\n- rent_amount: ${empty?'0':'9.000'} đ\n- electric_amount: ${empty?'0':'1.000'} đ\n- water_amount: ${empty?'0':'1.000'} đ\n- pdv_amount: ${empty?'0':'1.000'} đ\n- total_collected: ${empty?'0':'2.000'} đ\n- payment_tm: ${empty?'0':'1000'}\n- payment_tk: ${empty?'0':'1000'}\n- payment_tt: 0\n- payment_ct: 0\n- change_amount: 0 đ\n- deposit_collected: 0`;
+const statsText=(empty=false)=>`Thống kê hoá đơn kỳ ${empty?'2099-01':'2026-07'}: ${empty?'0':'1'} hóa đơn.\nTổng phải thu: ${empty?'0':'12.000'} đ; đã trả: ${empty?'0':'2.000'} đ; còn nợ: ${empty?'0':'10.000'} đ.\n${empty?'Không có hóa đơn và không có công nợ trong phạm vi truy vấn này.\n':''}- total_amount: ${empty?'0':'12.000'} đ\n- total_paid: ${empty?'0':'2.000'} đ\n- total_remaining: ${empty?'0':'10.000'} đ\n- total_refunded: 0 đ\n- total_count: ${empty?'0':'1'}\n- rent_amount: ${empty?'0':'9.000'} đ\n- electric_amount: ${empty?'0':'1.000'} đ\n- water_amount: ${empty?'0':'1.000'} đ\n- pdv_amount: ${empty?'0':'1.000'} đ\n- total_collected: ${empty?'0':'2.000'} đ\n- payment_tm: ${empty?'0':'1.000'} đ\n- payment_tk: ${empty?'0':'1.000'} đ\n- payment_tt: 0 đ\n- payment_ct: 0 đ\n- change_amount: 0 đ\n- deposit_collected: 0 đ`;
 const statsAnswer=(empty=false)=>`Công nợ kỳ ${empty?'2099-01':'2026-07'}: ${empty?'0':'1'} hóa đơn.\nTổng phải thu: ${empty?'0':'12.000'} đ; đã trả: ${empty?'0':'2.000'} đ; còn nợ: ${empty?'0':'10.000'} đ.${empty?' Không có hóa đơn và không có công nợ.':''}`;
 const chunk=(delta:object,finish_reason:string)=>`data: ${JSON.stringify({choices:[{delta,finish_reason}]})}\n\ndata: [DONE]\n\n`;
 function financialEvidence(id='C24',reverse=false) {

@@ -78,8 +78,7 @@ export function classifyFinancialRead(fixture:FinancialReadFixture|undefined,api
 }
 const money=(v:number)=>`${new Intl.NumberFormat('vi-VN',{maximumFractionDigits:0}).format(v)} đ`;
 const displayed=(v:number)=>Number(new Intl.NumberFormat('en-US',{useGrouping:false,maximumFractionDigits:0}).format(v));
-/** Independent rendering contract. The stats formatter's count-as-currency bug
- * is reproduced ONLY for transport equality; answer count semantics stay typed. */
+/** Independent rendering contract; final-answer semantics are checked separately. */
 export function financialToolText(fixture:FinancialReadFixture,role:FinancialRole):string {
   if(role==='invoice') {
     const rows=fixture.roles.invoice!.payload;
@@ -91,7 +90,10 @@ export function financialToolText(fixture:FinancialReadFixture,role:FinancialRol
     return [`KQKD tháng 2026-07 (${request.args.p_accrual?'dồn tích':'tiền mặt'}):`,`TỔNG: doanh thu ${money(rev)}, chi phí ${money(exp)}, lợi nhuận ${money(rev-exp)}`,...payload.map(r=>`- ${r.building_name}: thu ${money(r.revenue)}, chi ${money(r.expense)}, ròng ${money(r.net)}`)].join('\n');
   }
   const {request,payload}=fixture.roles.stats!;
-  return `Thống kê hoá đơn kỳ ${request.args.p_billing_month}:\n${Object.entries(payload).map(([k,v])=>`- ${k}: ${/amount|total|paid|unpaid|revenue|debt|thu|no/i.test(k)?money(v):JSON.stringify(v)}`).join('\n')}`;
+  const scope=request.args.p_billing_month===undefined?'trong phạm vi được phép của công ty đã chọn':`kỳ ${request.args.p_billing_month}`;
+  const lines=[`Thống kê hoá đơn ${scope}: ${payload.total_count} hóa đơn.`,`Tổng phải thu: ${money(payload.total_amount)}; đã trả: ${money(payload.total_paid)}; còn nợ: ${money(payload.total_remaining)}.`];
+  if(payload.total_count===0 && payload.total_remaining===0)lines.push('Không có hóa đơn và không có công nợ trong phạm vi truy vấn này.');
+  return [...lines,...Object.entries(payload).map(([k,v])=>`- ${k}: ${k==='total_count'?String(v):money(v)}`)].join('\n');
 }
 const normal=(s:string)=>s.normalize('NFC').replace(/\*\*|`/g,'').replace(/hoá/giu,'hóa').toLowerCase();
 const escape=(s:string)=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');

@@ -325,6 +325,30 @@ export const tyLeLapDay = dt({
 
 // ── Công nợ ─────────────────────────────────────────────────────────────────
 
+// Canonical get_invoice_statistics_v2 response: these 15 aggregates are money;
+// total_count is an independent unitless count. Never infer units from key text.
+const TRUONG_TIEN_THONG_KE_HD = {
+  total_amount: z.number().finite(),
+  total_paid: z.number().finite(),
+  total_remaining: z.number().finite(),
+  total_refunded: z.number().finite(),
+  rent_amount: z.number().finite(),
+  electric_amount: z.number().finite(),
+  water_amount: z.number().finite(),
+  pdv_amount: z.number().finite(),
+  total_collected: z.number().finite(),
+  payment_tm: z.number().finite(),
+  payment_tk: z.number().finite(),
+  payment_tt: z.number().finite(),
+  payment_ct: z.number().finite(),
+  change_amount: z.number().finite(),
+  deposit_collected: z.number().finite(),
+};
+const THONG_KE_HD_SCHEMA = z.strictObject({
+  ...TRUONG_TIEN_THONG_KE_HD,
+  total_count: z.number().finite().nonnegative().refine(Number.isInteger),
+});
+
 export const congNoTongQuan = dt({
   name: 'cong_no_tong_quan',
   description:
@@ -346,15 +370,25 @@ export const congNoTongQuan = dt({
       ...(args.thang === undefined ? {} : { p_billing_month: args.thang }),
     });
     if (error) throw new Error(`Lỗi tải thống kê hoá đơn: ${error.message}`);
-    if (!data) return 'Không có dữ liệu hoá đơn.';
-    // RPC trả `json` — hình dạng do server quyết. In theo cặp khoá/giá trị và
-    // để mô hình tự diễn giải, thay vì đoán tên trường rồi hiển thị rỗng.
-    const o = data as unknown as Record<string, unknown>;
-    const tien = /amount|total|paid|unpaid|revenue|debt|thu|no/i;
-    const dong = Object.entries(o).map(([k, v]) =>
-      typeof v === 'number' && tien.test(k) ? `- ${k}: ${formatVND(v)}` : `- ${k}: ${JSON.stringify(v)}`,
+    const parsed = THONG_KE_HD_SCHEMA.safeParse(data);
+    if (!parsed.success) throw new Error('Dữ liệu thống kê hoá đơn không hợp lệ.');
+    const o = parsed.data;
+    // Zod orders parsed keys by the schema. Retain RPC key order after validation.
+    const dong = (Object.keys(data) as (keyof typeof o)[]).map(k =>
+      `- ${k}: ${Object.prototype.hasOwnProperty.call(TRUONG_TIEN_THONG_KE_HD, k) ? formatVND(o[k]) : String(o[k])}`,
     );
-    return `Thống kê hoá đơn${args.thang ? ` kỳ ${args.thang}` : ''}:\n${dong.join('\n')}`;
+    const phamVi = args.thang === undefined
+      ? 'trong phạm vi được phép của công ty đã chọn'
+      : `kỳ ${args.thang}`;
+    const tomTat = [
+      `Thống kê hoá đơn ${phamVi}: ${o.total_count} hóa đơn.`,
+      `Tổng phải thu: ${formatVND(o.total_amount)}; đã trả: ${formatVND(o.total_paid)}; còn nợ: ${formatVND(o.total_remaining)}.`,
+    ];
+    // Deposits are independent: absence of invoices/debt must not erase them.
+    if (o.total_count === 0 && o.total_remaining === 0) {
+      tomTat.push('Không có hóa đơn và không có công nợ trong phạm vi truy vấn này.');
+    }
+    return [...tomTat, ...dong].join('\n');
   },
 });
 
