@@ -18781,6 +18781,10 @@ export type Database = {
         Args: { p_limit?: number; p_organization_id: string; p_query?: string }
         Returns: Json
       }
+      copilot_auto_debt_status_v1: {
+        Args: { p_limit?: number; p_organization_id: string }
+        Returns: Json
+      }
       copilot_available_rooms_v1: {
         Args: { p_organization_id: string }
         Returns: Json

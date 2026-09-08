@@ -13,7 +13,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**63 tool**: 51 đọc · 11 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**64 tool**: 52 đọc · 11 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
@@ -78,6 +78,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `tim_phieu_thu_chi` | read | `income_expenses.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `tim_xe` | read | `vehicles.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `ton_kho_vat_tu` | read | `materials.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `trang_thai_gach_no_tu_dong` | read | `auto_debt.view` | `src/copilot/tools/registry.ts` |
 | `trang_thai_mang` | read | `network_center.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `ty_le_lap_day` | read | `reports_real_estate.occupancy` | `src/copilot/tools/nghiepVuTools.ts` |
 

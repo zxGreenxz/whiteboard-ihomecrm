@@ -32,6 +32,7 @@ import {
   KHOA_ROLLOUT_DINH_MUC_DICH_VU,
   KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
   KHOA_ROLLOUT_DANH_SACH_TOA_NHA,
+  KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG,
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
@@ -679,6 +680,17 @@ type CopilotBuildingDirectoryPayload = {
   }>;
 };
 
+type CopilotAutoDebtStatusPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  cau_hinh?: Array<{
+    pham_vi: string;
+    trang_thai: boolean;
+    da_cau_hinh_tai_khoan: boolean;
+    da_cau_hinh_quy_tac: boolean;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -1229,6 +1241,41 @@ export function buildRegistryDefinitions(): DomainTool[] {
           (building.so_tang ?? 0) + ' tầng · ' + (building.so_phong ?? 0) + ' phòng',
         );
         return 'Có ' + rows.length + ' toà nhà (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /buildings]';
+      },
+    }),
+
+    dt({
+      name: 'trang_thai_gach_no_tu_dong',
+      description:
+        'Cho biết trạng thái cấu hình gạch nợ tự động trong công ty đang chọn: bật hay tắt, đã có tài khoản và quy tắc hay chưa. Không đọc số tài khoản, luật đối soát, người tạo hoặc mã nội bộ.',
+      inputSchema: z.object({
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số cấu hình tối đa'),
+      }),
+      requiredPermission: { module: 'auto_debt', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'trang_thai_gach_no_tu_dong');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_limit: number },
+          CopilotAutoDebtStatusPayload
+        >('copilot_auto_debt_status_v1', {
+          p_organization_id: orgId,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải trạng thái gạch nợ tự động: ' + error.message);
+        const rows = Array.isArray(data?.cau_hinh) ? data.cau_hinh : [];
+        if (!rows.length) return 'Không có cấu hình gạch nợ tự động nào trong công ty đang chọn.';
+        const phamVi: Record<string, string> = {
+          TOAN_CONG_TY: 'toàn công ty',
+          THEO_TOA_NHA: 'theo toà nhà',
+        };
+        const lines = rows.map((config) =>
+          '- ' + (phamVi[config.pham_vi] ?? 'cấu hình') + ' · ' +
+          (config.trang_thai ? 'đang bật' : 'đã tắt') + ' · ' +
+          (config.da_cau_hinh_tai_khoan ? 'đã có tài khoản' : 'chưa có tài khoản') + ' · ' +
+          (config.da_cau_hinh_quy_tac ? 'đã có quy tắc' : 'chưa có quy tắc'),
+        );
+        return 'Có ' + rows.length + ' cấu hình gạch nợ tự động (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/auto-debt]';
       },
     }),
 

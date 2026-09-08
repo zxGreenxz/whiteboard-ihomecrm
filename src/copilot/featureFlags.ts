@@ -68,6 +68,7 @@ export const KHOA_ROLLOUT_DANH_SACH_HOTLINE = 'copilot.hotlines.directory';
 export const KHOA_ROLLOUT_DINH_MUC_DICH_VU = 'copilot.service-quotas.directory';
 export const KHOA_ROLLOUT_BAO_TRI_TAI_SAN = 'copilot.assets.maintenance.directory';
 export const KHOA_ROLLOUT_DANH_SACH_TOA_NHA = 'copilot.buildings.directory';
+export const KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG = 'copilot.auto-debt.status';
 
 /** Ba contract trên, kèm nhãn tiếng Việt cho trang admin. */
 export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = [
@@ -135,6 +136,11 @@ export const COPILOT_ROLLOUT_DOC_RIENG: readonly CopilotRolloutContract[] = [
     scope: 'page',
     contractId: KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
     label: 'Lịch sử bảo trì tài sản (Copilot đọc)',
+  },
+  {
+    scope: 'page',
+    contractId: KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG,
+    label: 'Trạng thái gạch nợ tự động (Copilot đọc)',
   },
 ];
 

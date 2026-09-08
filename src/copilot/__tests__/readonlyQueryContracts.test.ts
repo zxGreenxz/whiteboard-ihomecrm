@@ -22,6 +22,7 @@ const {
   KHOA_ROLLOUT_DINH_MUC_DICH_VU,
   KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
   KHOA_ROLLOUT_DANH_SACH_TOA_NHA,
+  KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -3087,5 +3088,53 @@ describe('danh_sach_toa_nha - server RPC boundary', () => {
     expect(tool('danh_sach_toa_nha').rolloutKey).toBe(KHOA_ROLLOUT_DANH_SACH_TOA_NHA);
     expect(tool('danh_sach_toa_nha').requiredPermission).toEqual({ module: 'buildings', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DANH_SACH_TOA_NHA)).toBe(true);
+  });
+});
+
+describe('trang_thai_gach_no_tu_dong - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization status RPC with its bounded limit', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, cau_hinh: [] }, error: null });
+    await tool('trang_thai_gach_no_tu_dong').execute({ so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_auto_debt_status_v1', {
+      p_organization_id: ORG,
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only configuration state without account numbers, matching rules, or identifiers', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        cau_hinh: [{
+          pham_vi: 'THEO_TOA_NHA', trang_thai: true, da_cau_hinh_tai_khoan: true, da_cau_hinh_quy_tac: false,
+          bank_account: '123456789', matching_rules: { secret: true }, user_id: 'private-owner', id: 'private-id',
+        }],
+      },
+      error: null,
+    });
+    const result = await tool('trang_thai_gach_no_tu_dong').execute({ so_luong: 20 }, ctx);
+    for (const visible of ['theo toà nhà', 'đang bật', 'đã có tài khoản', 'chưa có quy tắc']) expect(result).toContain(visible);
+    expect(result).toContain('/settings/categories/auto-debt');
+    for (const privateValue of ['123456789', 'secret', 'private-owner', 'private-id']) expect(result).not.toContain(privateValue);
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, cau_hinh: [] }, error: null });
+    await expect(tool('trang_thai_gach_no_tu_dong').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có cấu hình/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('trang_thai_gach_no_tu_dong').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses a dedicated rollout key with auto_debt.view permission', () => {
+    expect(tool('trang_thai_gach_no_tu_dong').rolloutKey).toBe(KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG);
+    expect(tool('trang_thai_gach_no_tu_dong').requiredPermission).toEqual({ module: 'auto_debt', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG)).toBe(true);
   });
 });
