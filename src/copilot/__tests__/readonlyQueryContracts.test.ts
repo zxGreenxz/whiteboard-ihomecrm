@@ -14,6 +14,7 @@ const {
   KHOA_ROLLOUT_DANH_SACH_SALE,
   KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
   KHOA_ROLLOUT_KHO_TAI_SAN,
+  KHOA_ROLLOUT_NHA_CUNG_CAP,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -2650,5 +2651,62 @@ describe('danh_sach_kho_tai_san - server RPC boundary', () => {
     expect(tool('danh_sach_kho_tai_san').rolloutKey).toBe(KHOA_ROLLOUT_KHO_TAI_SAN);
     expect(tool('danh_sach_kho_tai_san').requiredPermission).toEqual({ module: 'warehouses', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_KHO_TAI_SAN)).toBe(true);
+  });
+});
+
+describe('danh_sach_nha_cung_cap - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization supplier RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, nha_cung_cap: [] }, error: null });
+    await tool('danh_sach_nha_cung_cap').execute({ tu_khoa: '  Điện nước An Phát  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_supplier_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Điện nước An Phát',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only the supplier alias and name, ignoring contact and ownership fields', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        nha_cung_cap: [{
+          ma: 'NCC-A1B2C3D4',
+          ten: 'Điện nước An Phát',
+          phone: '0900000000',
+          email: 'private@example.test',
+          address: 'Địa chỉ riêng',
+          user_id: 'creator-private-id',
+          organization_id: 'foreign-org-id',
+        }],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_nha_cung_cap').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('NCC-A1B2C3D4');
+    expect(result).toContain('Điện nước An Phát');
+    expect(result).toContain('/settings/categories/suppliers');
+    for (const privateValue of ['0900000000', 'private@example.test', 'Địa chỉ riêng', 'creator-private-id', 'foreign-org-id']) {
+      expect(result).not.toContain(privateValue);
+    }
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, nha_cung_cap: [] }, error: null });
+    await expect(tool('danh_sach_nha_cung_cap').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có nhà cung cấp/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_nha_cung_cap').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated supplier rollout key with suppliers.view permission', () => {
+    expect(tool('danh_sach_nha_cung_cap').rolloutKey).toBe(KHOA_ROLLOUT_NHA_CUNG_CAP);
+    expect(tool('danh_sach_nha_cung_cap').requiredPermission).toEqual({ module: 'suppliers', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_NHA_CUNG_CAP)).toBe(true);
   });
 });
