@@ -37,7 +37,7 @@ assert.equal(session.user?.id,pre.actor_id,'JWT must belong to the DEMO owner');
 const token=session.access_token;
 async function rpc(name,body){
  const response=await fetch(`${origin}/rest/v1/rpc/${name}`,{method:'POST',
-  headers:{apikey:key,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+  headers:{apikey:key,Authorization:`Bearer ${token}`,'Content-Type':'application/json','Content-Profile':'public','Accept-Profile':'public'},
   body:JSON.stringify(body),signal:AbortSignal.timeout(45000)});
  const data=await response.json();
  return {ok:response.ok,status:response.status,data};
@@ -67,7 +67,7 @@ try {
   const pair=await Promise.all([rpc('record_invoice_collection_v5',{...payload,p_idempotency_key:keyA}),
    rpc('record_invoice_collection_v5',{...payload,p_idempotency_key:keyB})]);
   const winners=pair.filter(r=>r.ok),losers=pair.filter(r=>!r.ok);
-  assert.equal(winners.length,scenario==='same-key'?2:1,`${scenario}: unexpected HTTP winners ${pair.map(r=>r.status)}`);
+  assert.equal(winners.length,scenario==='same-key'?2:1,`${scenario}: unexpected HTTP winners ${pair.map(r=>`${r.status}:${r.data.code ?? "ok"}:${r.data.message ?? ""}`).join(" | ")}`);
   if(scenario==='same-key') assert.deepEqual(winners[0].data,winners[1].data,'Concurrent retry changed response');
   else assert(losers.every(r=>r.data.code==='40001' || (r.data.code==='55000' && /Trạng thái.*PAID/.test(r.data.message))),
    'Competing collection failed for an unexpected reason');
