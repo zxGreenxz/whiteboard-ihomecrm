@@ -18785,6 +18785,10 @@ export type Database = {
         Args: { p_organization_id: string }
         Returns: Json
       }
+      copilot_building_directory_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
       copilot_cashbook_settlement_v1: {
         Args: {
           p_building_ids?: string[]

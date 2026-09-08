@@ -21,6 +21,7 @@ const {
   KHOA_ROLLOUT_DANH_SACH_HOTLINE,
   KHOA_ROLLOUT_DINH_MUC_DICH_VU,
   KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
+  KHOA_ROLLOUT_DANH_SACH_TOA_NHA,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -3040,5 +3041,51 @@ describe('danh_sach_bao_tri_tai_san - server RPC boundary', () => {
     expect(tool('danh_sach_bao_tri_tai_san').rolloutKey).toBe(KHOA_ROLLOUT_BAO_TRI_TAI_SAN);
     expect(tool('danh_sach_bao_tri_tai_san').requiredPermission).toEqual({ module: 'assets', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_BAO_TRI_TAI_SAN)).toBe(true);
+  });
+});
+
+describe('danh_sach_toa_nha - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization building RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, toa_nha: [] }, error: null });
+    await tool('danh_sach_toa_nha').execute({ tu_khoa: '  Toà A  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_building_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Toà A',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only building identity, operational type, state and capacity', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 1, toa_nha: [{
+        ma: 'TOA-A1B2C3D4', ten: 'Toà A', loai: 'APARTMENT', trang_thai: 'ACTIVE', so_tang: 9, so_phong: 120,
+        street_address: '12 Đường Riêng', public_contact_phone: '0900000000', latitude: 10.7,
+        longitude: 106.7, description: 'Ghi chú nội bộ', user_id: 'creator-private-id', organization_id: 'foreign-org-id',
+      }] },
+      error: null,
+    });
+    const result = await tool('danh_sach_toa_nha').execute({ so_luong: 20 }, ctx);
+    for (const visible of ['TOA-A1B2C3D4', 'Toà A', 'căn hộ', 'đang hoạt động', '9 tầng', '120 phòng']) expect(result).toContain(visible);
+    expect(result).toContain('/buildings');
+    for (const privateValue of ['12 Đường Riêng', '0900000000', '10.7', '106.7', 'Ghi chú nội bộ', 'creator-private-id', 'foreign-org-id']) expect(result).not.toContain(privateValue);
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, toa_nha: [] }, error: null });
+    await expect(tool('danh_sach_toa_nha').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có toà nhà/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_toa_nha').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses a dedicated building rollout key with buildings.view permission', () => {
+    expect(tool('danh_sach_toa_nha').rolloutKey).toBe(KHOA_ROLLOUT_DANH_SACH_TOA_NHA);
+    expect(tool('danh_sach_toa_nha').requiredPermission).toEqual({ module: 'buildings', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DANH_SACH_TOA_NHA)).toBe(true);
   });
 });

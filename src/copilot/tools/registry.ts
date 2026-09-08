@@ -31,6 +31,7 @@ import {
   KHOA_ROLLOUT_DANH_SACH_HOTLINE,
   KHOA_ROLLOUT_DINH_MUC_DICH_VU,
   KHOA_ROLLOUT_BAO_TRI_TAI_SAN,
+  KHOA_ROLLOUT_DANH_SACH_TOA_NHA,
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
@@ -665,6 +666,19 @@ type CopilotAssetMaintenanceDirectoryPayload = {
   }>;
 };
 
+type CopilotBuildingDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  toa_nha?: Array<{
+    ma: string;
+    ten: string;
+    loai: string;
+    trang_thai: string;
+    so_tang: number | null;
+    so_phong: number | null;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -1170,6 +1184,51 @@ export function buildRegistryDefinitions(): DomainTool[] {
           return '- ' + quota.ma + ' — ' + quota.ten + ' · ' + tierText;
         });
         return 'Có ' + rows.length + ' định mức dịch vụ (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/service-quotas]';
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_toa_nha',
+      description:
+        'Liệt kê toà nhà trong phạm vi được xem: mã ngắn, tên, loại, trạng thái, số tầng và số phòng. Không đọc địa chỉ, liên hệ, toạ độ, mô tả hay định danh người tạo.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên, mã, loại hoặc trạng thái toà nhà'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số toà nhà tối đa'),
+      }),
+      requiredPermission: { module: 'buildings', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_DANH_SACH_TOA_NHA,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_toa_nha');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotBuildingDirectoryPayload
+        >('copilot_building_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải danh sách toà nhà: ' + error.message);
+        const rows = Array.isArray(data?.toa_nha) ? data.toa_nha : [];
+        if (!rows.length) return 'Không có toà nhà nào trong phạm vi bạn được xem.';
+        const loai: Record<string, string> = {
+          APARTMENT: 'căn hộ',
+          DORMITORY: 'ký túc xá',
+          HOUSE: 'nhà cho thuê',
+          OFFICE: 'văn phòng',
+          SLEEPBOX: 'sleepbox',
+          HOMESTAY: 'homestay',
+        };
+        const trangThai: Record<string, string> = {
+          ACTIVE: 'đang hoạt động',
+          INACTIVE: 'ngừng',
+          MAINTENANCE: 'đang bảo trì',
+        };
+        const lines = rows.map((building) =>
+          '- ' + building.ma + ' — ' + building.ten + ' · ' + (loai[building.loai] ?? building.loai) + ' · ' +
+          (trangThai[building.trang_thai] ?? building.trang_thai) + ' · ' +
+          (building.so_tang ?? 0) + ' tầng · ' + (building.so_phong ?? 0) + ' phòng',
+        );
+        return 'Có ' + rows.length + ' toà nhà (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /buildings]';
       },
     }),
 
