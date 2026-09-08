@@ -371,7 +371,9 @@ export const congNoTongQuan = dt({
     });
     if (error) throw new Error(`Lỗi tải thống kê hoá đơn: ${error.message}`);
     const parsed = THONG_KE_HD_SCHEMA.safeParse(data);
-    if (!parsed.success) throw new Error('Dữ liệu thống kê hoá đơn không hợp lệ.');
+    if (!parsed.success || data === null || typeof data !== 'object') {
+      throw new Error('Dữ liệu thống kê hoá đơn không hợp lệ.');
+    }
     const o = parsed.data;
     // Zod orders parsed keys by the schema. Retain RPC key order after validation.
     const dong = (Object.keys(data) as (keyof typeof o)[]).map(k =>
