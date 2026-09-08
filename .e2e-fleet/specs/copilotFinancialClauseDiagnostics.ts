@@ -150,8 +150,8 @@ function assessFinancialClauses(facts: FinancialClauseRequiredFacts, counts: Fin
         : 'neutral_or_grounded_only';
 }
 function addTemplate(ids: Set<string>, ...templateIds: string[]) { for (const id of templateIds) { if (!(FINANCIAL_CLAUSE_CATALOG.templateIds as readonly string[]).includes(id)) throw new Error('financial_clause_template_invalid'); ids.add(id); } }
-function support(facts: FinancialClauseRequiredFacts, key: string | undefined) { if (key && Object.hasOwn(facts, key) && facts[key] !== 'contradicted') facts[key] = 'supported'; }
-function contradict(facts: FinancialClauseRequiredFacts, key: string | undefined) { if (key && Object.hasOwn(facts, key)) facts[key] = 'contradicted'; }
+function support(facts: FinancialClauseRequiredFacts, key: string | undefined) { if (key && Object.prototype.hasOwnProperty.call(facts, key) && facts[key] !== 'contradicted') facts[key] = 'supported'; }
+function contradict(facts: FinancialClauseRequiredFacts, key: string | undefined) { if (key && Object.prototype.hasOwnProperty.call(facts, key)) facts[key] = 'contradicted'; }
 function expectedPeriod(value: string) { return (FINANCIAL_CLAUSE_CATALOG.periods as readonly string[]).includes(value); }
 
 function splitClauses(answer: string): { clauses: string[]; ambiguous: boolean } {
