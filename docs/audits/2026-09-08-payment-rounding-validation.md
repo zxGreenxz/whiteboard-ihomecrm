@@ -73,3 +73,5 @@ Sau cả ba migration, đối chiếu chỉ đọc tiếp tục xanh:1.035 phi�
 5.058.848.013đ;20 sổ thực khớp,3.362 posting lines khớp2.959.174.007đ. Đây là số đo
 tại thời điểm kiểm, không khẳng định sổ sách đang vận hành đứng yên. Riêng bốn phiếu
 điều chỉnh giữ nguyên23.560.000đ theo từng snapshot trước/sau.
+
+Production frontend verified at13:23ICT: SHA `2bdd567635a2ef8c68a37a350bb7cbc6f19c536f`, VercelREADY, domainHTTP200 with exactbuild-sha. Main CI Gates34193730796, migrationvalidation34193730808 and restoredrill34193730833SUCCESS; promotion checked13jobs/122steps for hidden failures. Headless liveDEMO report opened separately at1280x900 and375x812: RPC200 twice, no page errors, no money writes. Evidence: `2026-09-08-payment-deposit-production-release.json`.

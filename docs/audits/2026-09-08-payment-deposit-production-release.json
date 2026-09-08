@@ -1,0 +1,51 @@
+{
+  "checkedAt": "2026-09-08T06:23:14.931Z",
+  "base": "https://ptcrm.vercel.app",
+  "sha": "2bdd567635a2ef8c68a37a350bb7cbc6f19c536f",
+  "role": "DEMO owner",
+  "reportRpcStatuses": [
+    200,
+    200
+  ],
+  "pageErrors": [],
+  "views": [
+    {
+      "width": 1280,
+      "height": 900,
+      "reportVisible": true
+    },
+    {
+      "width": 375,
+      "height": 812,
+      "reportVisible": true
+    }
+  ],
+  "writes": false,
+  "productionDeployment": {
+    "sha": "2bdd567635a2ef8c68a37a350bb7cbc6f19c536f",
+    "ref": "production",
+    "state": "READY",
+    "ancestorOfMain": true
+  },
+  "mainCi": {
+    "gates": 34193730796,
+    "migrationValidation": 34193730808,
+    "restoreDrill": 34193730833,
+    "conclusion": "success"
+  },
+  "promotion": {
+    "jobs": 13,
+    "steps": 122,
+    "failedSteps": 0,
+    "pendingSteps": 0,
+    "skippedJobs": [
+      "production-promotion (main branch)",
+      "reconcile-money (CI credentials condition; both live reconcile scripts passed locally)"
+    ]
+  },
+  "dataVerification": "2026-09-08-deposit-production-verification.json",
+  "notes": [
+    "Mobile viewport switch remounts the invoice page; smoke opens the report separately at each viewport.",
+    "INV-2026-00622 completed settlement retained; one OPEN restored-deposit settlement review remains."
+  ]
+}

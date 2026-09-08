@@ -1,11 +1,11 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-09-01T17:57:10.810Z",
+  "checkedAt": "2026-09-08T06:23:44.917Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubBranchProtection": {
-      "status": "unverified",
-      "note": "Không có GH_TOKEN/GITHUB_TOKEN và `gh` chưa đăng nhập."
+      "status": "absent",
+      "note": "Nhánh không có branch protection. Repo private trên GitHub Free không dùng được tính năng này — lớp chặn phải nằm ở Vercel (xem kiểm soát vercel-production-branch)."
     },
     "vercelProductionBranch": {
       "status": "checked",
@@ -41,18 +41,33 @@
       "status": "checked",
       "envVarNames": [
         {
+          "key": "VITE_SUPABASE_PUBLISHABLE_KEY",
+          "target": "preview+production",
+          "type": "plain"
+        },
+        {
+          "key": "VITE_SUPABASE_URL",
+          "target": "preview+production",
+          "type": "plain"
+        },
+        {
+          "key": "GOONG_API_KEY",
+          "target": "preview+production",
+          "type": "sensitive"
+        },
+        {
           "key": "CRON_SECRET",
           "target": "production",
           "type": "sensitive"
         }
       ],
       "productionDeployment": {
-        "sha": "79363ab13959dc42125ffed9925a99e67638d377",
+        "sha": "2bdd567635a2ef8c68a37a350bb7cbc6f19c536f",
         "ref": "production",
         "state": "READY",
         "ancestorOfMain": true
       },
-      "note": "1 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 79363ab13959 từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
+      "note": "4 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 2bdd567635a2 từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
     },
     "productionBranchExists": {
       "status": "present",
@@ -60,8 +75,8 @@
     }
   },
   "localHead": {
-    "head": "1f18fd81414d5f2153d1e40ee9f08825f41f12f4",
-    "branch": "main",
+    "head": "2bdd567635a2ef8c68a37a350bb7cbc6f19c536f",
+    "branch": "codex/payment-rounding-20260908",
     "hasProductionBranch": true
   }
 }

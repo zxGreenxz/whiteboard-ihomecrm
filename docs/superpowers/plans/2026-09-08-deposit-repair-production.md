@@ -87,9 +87,9 @@ expect(after.deposit505).toBe(4926000);
 - [x] Apply lần lượt migration chống mất cọc + nguồn tính cọc, tiền thối/báo cáo, rồi history repair qua `npm run migrate:forward <file> --apply`; mỗi lần ghi evidence và pre/post catalog.
 - [x] Sau apply, regenerate types/provenance/surfaces/catalog/unknown-review cho đúng live; các generated changes commit và gate lại.
 - [x] Kiểm RPC qua HTTP và hai kết nối DEMO cùng invoice: chỉ một lần thu được tính, stale/retry trả kết quả đúng; cleanup fixtures.
-- [ ] Push main theo authorization hiện tại, chờ đầy đủ gate CI/preview xanh rồi promote production đúng SHA. Không tính skipped/continue-on-error là pass.
-- [ ] Xác minh domain production phục vụ SHA mới; truy vấn READ ONLY:5014.2m/3053.6m/5054.926m, cảnh báo cọc đúng, các điều kiện khác giữ nguyên; đối chiếu cash/KQKD trước/sau, report bỏ qua và hoàn tác DEMO.
-- [ ] Báo người dùng mã phát hành, số chứng từ đã điều chỉnh, vị trí báo cáo và kết quả đối chiếu. Nếu còn blocker thực tế, báo chính xác trạng thái đã/chưa triển khai thay vì tuyên bố hoàn tất.
+- [x] Push main theo authorization hiện tại, chờ đầy đủ gate CI/preview xanh rồi promote production đúng SHA. Không tính skipped/continue-on-error là pass.
+- [x] Xác minh domain production phục vụ SHA mới; truy vấn READ ONLY:5014.2m/3053.6m/5054.926m, cảnh báo cọc đúng, các điều kiện khác giữ nguyên; đối chiếu cash/KQKD trước/sau, report bỏ qua và hoàn tác DEMO.
+- [x] Báo người dùng mã phát hành, số chứng từ đã điều chỉnh, vị trí báo cáo và kết quả đối chiếu. Nếu còn blocker thực tế, báo chính xác trạng thái đã/chưa triển khai thay vì tuyên bố hoàn tất.
 
 ## Execution ledger
 
@@ -99,3 +99,5 @@ expect(after.deposit505).toBe(4926000);
 - 08/09/2026: Tasks1–2 integrated and independently reviewed (054f8a10/899795bf);133 tests across11 suites green. Full static+strict42 gates green, integrated static41 green; source writer repeated DEMO rollback and both mutations green/red as required. Catalog matches current main rollout117dd951, no unexplained drift. Production remains unchanged pending history review and rollout.
 
 - 08/09/2026: All3migrations permanently applied through forwardlane, each freshbackup519TABLEDATA. AfterverifierPASS4audit/11.3m; affectedrealcash23.56m unchanged;5014.2m/3053.6m/5054.926m. HTTPsame/different-key+reversalPASS; realDEMObrowser notes-edit and5m/change200k/waiver5kPASS, cleanfixture/archivedcashbookledger0. PRsource7e878997allgatesgreen (includingrestore/timezones); generatedtypes/surfaces and finalmainrelease remain.
+
+- 08/09/2026 13:23 ICT: release2bdd567635a2ef8c68a37a350bb7cbc6f19c536f promoted after13jobs/122steps had no failure or pending step. Main CI34193730796, migrationvalidation34193730808 and restoredrill34193730833 SUCCESS. Production domain HTTP200 embeds exactSHA; Vercel READY. Headless DEMO report desktop1280x900/mobile375x812: RPC200 twice, no page errors, no money writes. Read-only afterverifier repeats PASS. Completion report includes the separate completed-settlement review for00622; no automatic refund or commission approval.
