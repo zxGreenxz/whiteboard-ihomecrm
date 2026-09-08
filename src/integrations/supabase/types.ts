@@ -19510,6 +19510,10 @@ export type Database = {
         Args: { p_limit?: number; p_organization_id: string; p_query?: string }
         Returns: Json
       }
+      copilot_warehouse_directory_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
       copilot_zalo_conversations_v1: {
         Args: { p_limit?: number; p_organization_id: string; p_query?: string }
         Returns: Json
