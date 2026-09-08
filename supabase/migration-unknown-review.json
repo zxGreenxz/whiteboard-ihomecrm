@@ -535,6 +535,24 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
+    },
+    "supabase/migrations/20260908124611_copilot_asset_type_directory_v1.sql": {
+      "sha256": "a3337b96c4232fc92c2bc130a91ec1a46a55851c6e42e353d07526fb001fc34b",
+      "missingObjects": [
+        "function:public.copilot_asset_type_directory_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Migration mới chưa được đưa vào production. RPC chỉ trả mã dẫn xuất và tên loại tài sản, buộc selected organization, asset_types.view và rollout mặc định disabled. Sau migrate:forward --apply, catalog phải có function này; provenance sẽ chuyển ledger-applied và entry tạm thời này phải được gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260908124611_copilot_asset_type_directory_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.copilot_asset_type_directory_v1("
+        },
+        {
+          "duong_dan": "supabase/migrations/20260908124611_copilot_asset_type_directory_v1.sql",
+          "trich_doan": "'copilot.asset-types.directory',\n  'disabled'"
+        }
+      ]
     }
   }
 }

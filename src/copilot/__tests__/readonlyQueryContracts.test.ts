@@ -15,6 +15,7 @@ const {
   KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_NHA_CUNG_CAP,
+  KHOA_ROLLOUT_LOAI_TAI_SAN,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -2708,5 +2709,60 @@ describe('danh_sach_nha_cung_cap - server RPC boundary', () => {
     expect(tool('danh_sach_nha_cung_cap').rolloutKey).toBe(KHOA_ROLLOUT_NHA_CUNG_CAP);
     expect(tool('danh_sach_nha_cung_cap').requiredPermission).toEqual({ module: 'suppliers', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_NHA_CUNG_CAP)).toBe(true);
+  });
+});
+
+describe('danh_sach_loai_tai_san - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization asset-type RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, loai_tai_san: [] }, error: null });
+    await tool('danh_sach_loai_tai_san').execute({ tu_khoa: '  Thiết bị điện  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_asset_type_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Thiết bị điện',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only the derived type alias and name, ignoring descriptions and ownership fields', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        loai_tai_san: [{
+          ma: 'LTS-A1B2C3D4',
+          ten: 'Thiết bị điện',
+          description: 'Ghi chú nội bộ',
+          user_id: 'creator-private-id',
+          organization_id: 'foreign-org-id',
+        }],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_loai_tai_san').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('LTS-A1B2C3D4');
+    expect(result).toContain('Thiết bị điện');
+    expect(result).toContain('/settings/categories/asset-types');
+    for (const privateValue of ['Ghi chú nội bộ', 'creator-private-id', 'foreign-org-id']) {
+      expect(result).not.toContain(privateValue);
+    }
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, loai_tai_san: [] }, error: null });
+    await expect(tool('danh_sach_loai_tai_san').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có loại tài sản/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_loai_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated asset-type rollout key with asset_types.view permission', () => {
+    expect(tool('danh_sach_loai_tai_san').rolloutKey).toBe(KHOA_ROLLOUT_LOAI_TAI_SAN);
+    expect(tool('danh_sach_loai_tai_san').requiredPermission).toEqual({ module: 'asset_types', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_LOAI_TAI_SAN)).toBe(true);
   });
 });

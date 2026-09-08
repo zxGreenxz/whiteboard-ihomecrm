@@ -29,6 +29,7 @@ import {
   KHOA_ROLLOUT_DANH_SACH_SALE,
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_KHO_TAI_SAN,
+  KHOA_ROLLOUT_LOAI_TAI_SAN,
   KHOA_ROLLOUT_NHA_CUNG_CAP,
   KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
   KHOA_ROLLOUT_THONG_BAO,
@@ -587,6 +588,15 @@ type CopilotSupplierDirectoryPayload = {
   }>;
 };
 
+type CopilotAssetTypeDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  loai_tai_san?: Array<{
+    ma: string;
+    ten: string;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -933,6 +943,33 @@ export function buildRegistryDefinitions(): DomainTool[] {
         const rows = Array.isArray(data?.nha_cung_cap) ? data.nha_cung_cap : [];
         if (!rows.length) return 'Không có nhà cung cấp nào trong phạm vi bạn được xem.';
         return 'Có ' + rows.length + ' nhà cung cấp (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + rows.map((supplier) => '- ' + supplier.ma + ' — ' + supplier.ten).join('\n') + '\n[link: /settings/categories/suppliers]';
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_loai_tai_san',
+      description:
+        'Liệt kê loại tài sản trong công ty đang chọn. Chỉ cho biết mã ngắn và tên loại; không đọc mô tả nội bộ hay định danh người tạo.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên loại tài sản'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số loại tài sản tối đa'),
+      }),
+      requiredPermission: { module: 'asset_types', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_LOAI_TAI_SAN,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_loai_tai_san');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotAssetTypeDirectoryPayload
+        >('copilot_asset_type_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải danh sách loại tài sản: ' + error.message);
+        const rows = Array.isArray(data?.loai_tai_san) ? data.loai_tai_san : [];
+        if (!rows.length) return 'Không có loại tài sản nào trong phạm vi bạn được xem.';
+        return 'Có ' + rows.length + ' loại tài sản (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + rows.map((assetType) => '- ' + assetType.ma + ' — ' + assetType.ten).join('\n') + '\n[link: /settings/categories/asset-types]';
       },
     }),
 
