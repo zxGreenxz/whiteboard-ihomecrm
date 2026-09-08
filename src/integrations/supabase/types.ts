@@ -19024,6 +19024,10 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_hotline_directory_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
       copilot_income_expense_search_v1: {
         Args: {
           p_den?: string

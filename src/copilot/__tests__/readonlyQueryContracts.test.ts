@@ -18,6 +18,7 @@ const {
   KHOA_ROLLOUT_LOAI_TAI_SAN,
   KHOA_ROLLOUT_LOAI_CONG_VIEC,
   KHOA_ROLLOUT_DANH_SACH_TANG,
+  KHOA_ROLLOUT_DANH_SACH_HOTLINE,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -2888,5 +2889,63 @@ describe('danh_sach_tang - server RPC boundary', () => {
     expect(tool('danh_sach_tang').rolloutKey).toBe(KHOA_ROLLOUT_DANH_SACH_TANG);
     expect(tool('danh_sach_tang').requiredPermission).toEqual({ module: 'categories', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DANH_SACH_TANG)).toBe(true);
+  });
+});
+
+describe('danh_sach_hotline - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization hotline RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, hotline: [] }, error: null });
+    await tool('danh_sach_hotline').execute({ tu_khoa: '  CSKH Toà A  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_hotline_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'CSKH Toà A',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only a public hotline name, phone and state without internal or ownership fields', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        hotline: [{
+          ma: 'HOT-A1B2C3D4',
+          ten: 'CSKH Toà A',
+          so_dien_thoai: '0900000000',
+          trang_thai: true,
+          description: 'Ghi chú trực nội bộ',
+          user_id: 'creator-private-id',
+          organization_id: 'foreign-org-id',
+        }],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_hotline').execute({ so_luong: 20 }, ctx);
+    for (const visible of ['HOT-A1B2C3D4', 'CSKH Toà A', '0900000000', 'đang hoạt động']) {
+      expect(result).toContain(visible);
+    }
+    expect(result).toContain('/settings/categories/hotlines');
+    for (const privateValue of ['Ghi chú trực nội bộ', 'creator-private-id', 'foreign-org-id']) {
+      expect(result).not.toContain(privateValue);
+    }
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, hotline: [] }, error: null });
+    await expect(tool('danh_sach_hotline').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có hotline/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_hotline').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated hotline rollout key with hotline.view permission', () => {
+    expect(tool('danh_sach_hotline').rolloutKey).toBe(KHOA_ROLLOUT_DANH_SACH_HOTLINE);
+    expect(tool('danh_sach_hotline').requiredPermission).toEqual({ module: 'hotline', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DANH_SACH_HOTLINE)).toBe(true);
   });
 });

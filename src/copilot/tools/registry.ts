@@ -28,6 +28,7 @@ import {
   KHOA_ROLLOUT_CONG_TO,
   KHOA_ROLLOUT_DANH_SACH_SALE,
   KHOA_ROLLOUT_DANH_SACH_TANG,
+  KHOA_ROLLOUT_DANH_SACH_HOTLINE,
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
@@ -625,6 +626,17 @@ type CopilotFloorDirectoryPayload = {
   }>;
 };
 
+type CopilotHotlineDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  hotline?: Array<{
+    ma: string;
+    ten: string;
+    so_dien_thoai: string;
+    trang_thai: boolean;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -1063,6 +1075,36 @@ export function buildRegistryDefinitions(): DomainTool[] {
           return '- ' + floor.ma + ' — tầng ' + floor.so_tang + ' · ' + name + ' · ' + status + ' · ' + floor.toa_nha;
         });
         return 'Có ' + rows.length + ' tầng (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/floors]';
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_hotline',
+      description:
+        'Liệt kê hotline của công ty đang chọn: mã ngắn, tên, số điện thoại và trạng thái. Không đọc ghi chú nội bộ hay định danh người tạo.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên hoặc số điện thoại hotline'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số hotline tối đa'),
+      }),
+      requiredPermission: { module: 'hotline', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_DANH_SACH_HOTLINE,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_hotline');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotHotlineDirectoryPayload
+        >('copilot_hotline_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải danh sách hotline: ' + error.message);
+        const rows = Array.isArray(data?.hotline) ? data.hotline : [];
+        if (!rows.length) return 'Không có hotline nào trong công ty đang chọn.';
+        const lines = rows.map((hotline) =>
+          '- ' + hotline.ma + ' — ' + hotline.ten + ' · ' + hotline.so_dien_thoai + ' · ' + (hotline.trang_thai ? 'đang hoạt động' : 'ngừng'),
+        );
+        return 'Có ' + rows.length + ' hotline (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/hotlines]';
       },
     }),
 
