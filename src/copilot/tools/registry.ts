@@ -25,6 +25,7 @@ import { TOOL_GHI_NHO } from './memoryTools';
 import {
   copilotAvailability,
   copilotAvailabilitySnapshotIsFresh,
+  KHOA_ROLLOUT_CONG_TO,
   KHOA_ROLLOUT_DIEU_HUONG,
   type CopilotAvailabilitySnapshot,
 } from '../featureFlags';
@@ -485,6 +486,49 @@ type CopilotAreaDirectoryPayload = {
   }>;
 };
 
+type CopilotMeterDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  cong_to?: Array<{
+    cong_to_id: string;
+    ma: string;
+    ten: string | null;
+    loai: string;
+    trang_thai: string;
+    chi_so_dau: number | null;
+    ngay_lap: string | null;
+    toa_nha: string;
+    phong: string | null;
+    chi_so_moi_nhat: {
+      ky: string | null;
+      chi_so_cuoi: number;
+      ngay_ghi: string;
+      trang_thai: string;
+    } | null;
+  }>;
+};
+
+const MA_LOAI_CONG_TO = {
+  dien: 'ELECTRICITY',
+  nuoc: 'WATER',
+  gas: 'GAS',
+  khac: 'OTHER',
+} as const;
+
+const NHAN_LOAI_CONG_TO: Record<string, string> = {
+  ELECTRICITY: 'Điện',
+  WATER: 'Nước',
+  GAS: 'Gas',
+  OTHER: 'Khác',
+};
+
+const NHAN_TRANG_THAI_CONG_TO: Record<string, string> = {
+  ACTIVE: 'đang dùng',
+  INACTIVE: 'ngưng dùng',
+  BROKEN: 'hỏng',
+  REMOVED: 'đã tháo',
+};
+
 /** Typed boundary for the customer/contract RPCs before generated types are refreshed. */
 const callCopilotRpc = <TArgs, TData>(
   functionName: string,
@@ -526,6 +570,49 @@ export function buildRegistryDefinitions(): DomainTool[] {
           return `- ${area.ten}${code} — ${area.so_toa} toà: ${buildings} [link: /buildings]`;
         });
         return `Có ${data?.so_luong ?? rows.length} khu vực (hiện ${rows.length}):\n${lines.join('\n')}`;
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_cong_to',
+      description:
+        'Liệt kê công tơ điện, nước, gas hoặc khác trong các toà bạn được xem; cho biết vị trí, trạng thái và chỉ số gần nhất. Dùng khi hỏi công tơ nào đang dùng, công tơ của phòng/toà hoặc cần tìm theo mã công tơ.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Mã, tên công tơ, phòng hoặc toà nhà'),
+        loai: z.enum(['dien', 'nuoc', 'gas', 'khac']).optional().describe('Lọc theo loại công tơ'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số công tơ tối đa'),
+      }),
+      requiredPermission: { module: 'meters', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_CONG_TO,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_cong_to');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_meter_type: string | null; p_limit: number },
+          CopilotMeterDirectoryPayload
+        >('copilot_meter_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_meter_type: args.loai ? MA_LOAI_CONG_TO[args.loai] : null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error(`Lỗi tải công tơ: ${error.message}`);
+        const rows = Array.isArray(data?.cong_to) ? data.cong_to : [];
+        if (!rows.length) return 'Hiện không có công tơ nào trong phạm vi bạn được xem.';
+        const lines = rows.map((meter) => {
+          const loai = NHAN_LOAI_CONG_TO[meter.loai] ?? meter.loai;
+          const trangThai = NHAN_TRANG_THAI_CONG_TO[meter.trang_thai] ?? meter.trang_thai;
+          const ten = meter.ten ? ` — ${meter.ten}` : '';
+          const viTri = [meter.phong ? `phòng ${meter.phong}` : 'công tơ dùng chung', meter.toa_nha]
+            .filter(Boolean)
+            .join(' · ');
+          const chiSo = meter.chi_so_moi_nhat
+            ? ` — chỉ số ${meter.chi_so_moi_nhat.ky ?? '?'}: ${Number(meter.chi_so_moi_nhat.chi_so_cuoi) || 0}`
+            : meter.chi_so_dau !== null
+              ? ` — chỉ số đầu: ${Number(meter.chi_so_dau) || 0}`
+              : '';
+          return `- ${meter.ma}${ten} — ${loai}, ${trangThai}${viTri ? ` — ${viTri}` : ''}${chiSo}`;
+        });
+        return `${rows.length} công tơ (tối đa ${data?.gioi_han ?? args.so_luong} dòng mỗi lần hỏi):\n${lines.join('\n')}\n[link: /settings/meters]`;
       },
     }),
 

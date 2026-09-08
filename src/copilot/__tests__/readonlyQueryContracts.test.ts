@@ -6,7 +6,11 @@ const from = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc, from } }));
 
 const { buildRegistryDefinitions } = await import('../tools/registry');
-const { COPILOT_ROLLOUT_CONTRACTS, KHOA_ROLLOUT_KHU_VUC } = await import('../featureFlags');
+const {
+  COPILOT_ROLLOUT_CONTRACTS,
+  KHOA_ROLLOUT_KHU_VUC,
+  KHOA_ROLLOUT_CONG_TO,
+} = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
 /**
@@ -70,6 +74,68 @@ describe('danh_sach_khu_vuc - server RPC boundary', () => {
   it('uses its own rollout key instead of borrowing the buildings switch', () => {
     expect(tool('danh_sach_khu_vuc').rolloutKey).toBe(KHOA_ROLLOUT_KHU_VUC);
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_KHU_VUC)).toBe(true);
+  });
+});
+
+describe('danh_sach_cong_to - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the scoped meter directory RPC with selected organization, safe type filter and cap', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, cong_to: [] }, error: null });
+    await tool('danh_sach_cong_to').execute({ tu_khoa: '  CT-N01  ', loai: 'nuoc', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_meter_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'CT-N01',
+      p_meter_type: 'WATER',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only operational meter and latest-reading facts', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        cong_to: [
+          {
+            cong_to_id: 'm1',
+            ma: 'CT-N01',
+            ten: 'Nước phòng 101',
+            loai: 'WATER',
+            trang_thai: 'ACTIVE',
+            chi_so_dau: 10,
+            ngay_lap: '2026-01-01',
+            toa_nha: 'Toà A',
+            phong: '101',
+            chi_so_moi_nhat: { ky: '2026-08', chi_so_cuoi: 28, ngay_ghi: '2026-08-31', trang_thai: 'APPROVED' },
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_cong_to').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('CT-N01');
+    expect(result).toContain('Nước');
+    expect(result).toContain('phòng 101');
+    expect(result).toContain('28');
+    expect(result).toContain('/settings/meters');
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, cong_to: [] }, error: null });
+    await expect(tool('danh_sach_cong_to').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có công tơ/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_cong_to').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses a dedicated rollout key with the meters.view permission', () => {
+    expect(tool('danh_sach_cong_to').rolloutKey).toBe(KHOA_ROLLOUT_CONG_TO);
+    expect(tool('danh_sach_cong_to').requiredPermission).toEqual({ module: 'meters', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_CONG_TO)).toBe(true);
   });
 });
 
