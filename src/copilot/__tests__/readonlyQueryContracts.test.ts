@@ -11,6 +11,7 @@ const {
   KHOA_ROLLOUT_THONG_BAO,
   KHOA_ROLLOUT_KHU_VUC,
   KHOA_ROLLOUT_CONG_TO,
+  KHOA_ROLLOUT_DANH_SACH_SALE,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -198,6 +199,74 @@ describe('thong_bao_gan_day - server RPC boundary', () => {
     expect(tool('thong_bao_gan_day').rolloutKey).toBe(KHOA_ROLLOUT_THONG_BAO);
     expect(tool('thong_bao_gan_day').requiredPermission).toEqual({ module: 'notifications', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_THONG_BAO)).toBe(true);
+  });
+});
+
+describe('danh_sach_phong_sale - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the scoped sale-listing RPC with a selected organization and bounded filters', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, phong_sale: [] }, error: null });
+    await tool('danh_sach_phong_sale').execute(
+      { tu_khoa: '  A101  ', loai_danh_sach: 'khach_nho_sale', so_luong: 20 },
+      ctx,
+    );
+    expect(rpc).toHaveBeenCalledWith('copilot_sale_listing_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'A101',
+      p_listing_kind: 'PASS',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only safe sale availability facts and never customer contact or policy text', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 2,
+        phong_sale: [
+          {
+            phong_id: 'r1', ma: 'A101', ten: '101', toa_nha: 'Toà A', tang: 1,
+            gia_thue: 5200000, tien_coc: 5200000, dien_tich: 28, loai_phong: 'Studio',
+            trang_thai_sale: 'AVAILABLE', ngay_trong: null,
+          },
+          {
+            phong_id: 'r2', ma: 'B202', ten: '202', toa_nha: 'Toà B', tang: 2,
+            gia_thue: 6100000, tien_coc: 6100000, dien_tich: 32, loai_phong: '1PN',
+            trang_thai_sale: 'PASS', ngay_trong: '2026-10-01',
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_phong_sale').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('A101');
+    expect(result).toContain('trống ngay');
+    expect(result).toContain('B202');
+    expect(result).toContain('khách nhờ sale');
+    expect(result).toContain('2026-10-01');
+    expect(result).toContain('/sale-phong');
+    expect(result).not.toContain('0901234567');
+    expect(result).not.toContain('chính sách riêng');
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, phong_sale: [] }, error: null });
+    await expect(tool('danh_sach_phong_sale').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /không có phòng sale/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_phong_sale').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated sale rollout key and sale_phong.view permission', () => {
+    expect(tool('danh_sach_phong_sale').rolloutKey).toBe(KHOA_ROLLOUT_DANH_SACH_SALE);
+    expect(tool('danh_sach_phong_sale').requiredPermission).toEqual({ module: 'sale_phong', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DANH_SACH_SALE)).toBe(true);
   });
 });
 

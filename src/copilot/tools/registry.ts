@@ -26,6 +26,7 @@ import {
   copilotAvailability,
   copilotAvailabilitySnapshotIsFresh,
   KHOA_ROLLOUT_CONG_TO,
+  KHOA_ROLLOUT_DANH_SACH_SALE,
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_THONG_BAO,
   type CopilotAvailabilitySnapshot,
@@ -521,6 +522,23 @@ type CopilotNotificationFeedPayload = {
   }>;
 };
 
+type CopilotSaleListingDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  phong_sale?: Array<{
+    ma: string | null;
+    ten: string;
+    toa_nha: string;
+    tang: number;
+    gia_thue: number;
+    tien_coc: number;
+    dien_tich: number | null;
+    loai_phong: string | null;
+    trang_thai_sale: string;
+    ngay_trong: string | null;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -554,6 +572,16 @@ const NHAN_LOAI_THONG_BAO: Record<string, string> = {
   ACTION_REQUIRED: 'Cần xử lý',
   APPROVAL_RESULT: 'Kết quả duyệt',
   CUSTOM: 'Thông báo',
+};
+
+const MA_LOAI_DANH_SACH_SALE = {
+  trong_ngay: 'AVAILABLE',
+  khach_nho_sale: 'PASS',
+} as const;
+
+const NHAN_TRANG_THAI_SALE: Record<string, string> = {
+  AVAILABLE: 'trống ngay',
+  PASS: 'khách nhờ sale',
 };
 
 /** Typed boundary for the customer/contract RPCs before generated types are refreshed. */
@@ -680,6 +708,46 @@ export function buildRegistryDefinitions(): DomainTool[] {
           'Có ' + unread + ' thông báo chưa đọc. Hiển thị ' + rows.length + ' dòng ' +
           '(tối đa ' + (data?.gioi_han ?? args.so_luong) + '):\n' + lines.join('\n') + '\n[link: /notifications]'
         );
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_phong_sale',
+      description:
+        'Liệt kê phòng đang trống ngay hoặc phòng khách đang nhờ sale trong các toà bạn được xem. Chỉ cho biết vị trí, giá, diện tích, loại phòng và ngày trống dự kiến; không đọc thông tin liên hệ khách hay chính sách sale.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Mã/tên phòng hoặc tên toà nhà'),
+        loai_danh_sach: z.enum(['trong_ngay', 'khach_nho_sale']).optional().describe('Lọc phòng trống ngay hoặc phòng khách nhờ sale'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số phòng tối đa'),
+      }),
+      requiredPermission: { module: 'sale_phong', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_DANH_SACH_SALE,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_phong_sale');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_listing_kind: string | null; p_limit: number },
+          CopilotSaleListingDirectoryPayload
+        >('copilot_sale_listing_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_listing_kind: args.loai_danh_sach ? MA_LOAI_DANH_SACH_SALE[args.loai_danh_sach] : null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải danh sách phòng sale: ' + error.message);
+        const rows = Array.isArray(data?.phong_sale) ? data.phong_sale : [];
+        if (!rows.length) return 'Không có phòng sale nào trong phạm vi bạn được xem.';
+        const lines = rows.map((room) => {
+          const ma = room.ma || room.ten;
+          const trangThai = NHAN_TRANG_THAI_SALE[room.trang_thai_sale] ?? 'đang cập nhật';
+          const dacDiem = [
+            `tầng ${room.tang}`,
+            room.dien_tich == null ? null : `${room.dien_tich}m²`,
+            room.loai_phong,
+          ].filter(Boolean).join(' · ');
+          const ngayTrong = room.ngay_trong ? ` · dự kiến trống ${room.ngay_trong}` : '';
+          return `- ${ma} — ${room.toa_nha} · ${trangThai} · thuê ${formatVND(room.gia_thue)} · cọc ${formatVND(room.tien_coc)}${dacDiem ? ` · ${dacDiem}` : ''}${ngayTrong}`;
+        });
+        return `Có ${rows.length} phòng sale (tối đa ${data?.gioi_han ?? args.so_luong} dòng mỗi lần hỏi):\n${lines.join('\n')}\n[link: /sale-phong]`;
       },
     }),
 
