@@ -63,6 +63,22 @@ export function createRoomPassTransport({ baseUrl, apikey, jwt, actorId, fetchIm
   };
 }
 
+// Only the actual wrapper's bounded HTTP failure envelope is diagnostic evidence.
+// A request/network error, raw text, truncated JSON or a code quoted in CONTEXT
+// cannot establish that the SQL transaction ended with a known denial.
+function managementDenial(error) {
+  const raw = typeof error?.message === 'string' ? error.message : '';
+  const envelope = /^Supabase database query failed \(([45][0-9]{2})\): ([\s\S]+)$/.exec(raw);
+  if (!envelope || envelope[2].length >= 4000) return undefined;
+  try {
+    const body = JSON.parse(envelope[2]);
+    if (!body || Array.isArray(body) || typeof body.message !== 'string') return undefined;
+    const firstLine = body.message.split(/\r?\n/, 1)[0];
+    const diagnostic = /^ERROR:[ \t]+(?:42501|P0002):[ \t]+([a-z_]+)[ \t]*$/.exec(firstLine);
+    return diagnostic && DENIALS.includes(diagnostic[1]) ? diagnostic[1] : undefined;
+  } catch { return undefined; }
+}
+
 /** Management transport is supplied by root (executeManagementQuery precedent).
  * It is used for separate authenticated transactions and exact administrative
  * fixtures. HTTP failure is unknown unless a recognizable server SQL error is
@@ -78,8 +94,7 @@ export function createRoomPassManagementTransport({ executeManagementQuery, conf
         requireThat(Array.isArray(rows), 'management_response_invalid');
         return rows;
       } catch (error) {
-        const raw = typeof error?.message === 'string' ? error.message : '';
-        const code = DENIALS.find(value => new RegExp(`(?:ERROR:|\\b42501:|\\bP0002:)\\s*(?:[A-Z0-9]{5}:\\s*)?${value}(?:\\s|$|\\")`).test(raw));
+        const code = managementDenial(error);
         const safe = new Error(code ?? 'management_unknown');
         if (code) safe.response = { status: 403, body: { message: code } };
         throw safe;

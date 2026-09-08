@@ -43,3 +43,77 @@ test('runner establishes holder barrier, then first nonce lock, then contender a
   assert.ok(events.indexOf('observe-3') < events.indexOf('after-wait'));
   assert.equal(result.state, 'settled'); assert.equal(result.outcomes.length, 3);
 });
+
+const { executeManagementQuery } = await import('../apply-accounting-rollout.mjs');
+const { createRoomPassManagementTransport } = await import('../lib/copilot-room-pass-transport.mjs');
+const config = { pat: 'synthetic-token', projectRef: 'synthetic-project' };
+
+test('actual Management wrapper decodes SQL diagnostic JSON and keeps uncertain boundaries unknown', async t => {
+  let next, calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { calls += 1; if (next instanceof Error) throw next; return next; });
+  const transport = createRoomPassManagementTransport({ executeManagementQuery, config });
+  const body = message => JSON.stringify({ message });
+  for (const [raw, status, expected] of [
+    [body('ERROR: 42501: confirmation_already_used\nCONTEXT: fixture secret'), 400, 'confirmation_already_used'],
+    [body('ERROR: P0002: entity_not_found\nCONTEXT: fixture secret'), 500, 'entity_not_found'],
+    [body('ERROR: 42501: confirmation_expired'), 400, 'confirmation_expired'],
+    [body('ERROR: 42501: tenant_emergency_denied\r\nCONTEXT: fixture secret'), 400, 'tenant_emergency_denied'],
+    [body('ERROR: 57014: confirmation_already_used'), 400, 'management_unknown'],
+    [body('ERROR: 57014: canceling statement due to statement timeout\nCONTEXT: ERROR: 42501: confirmation_already_used'), 400, 'management_unknown'],
+    [body('CONTEXT: ERROR: 42501: confirmation_already_used'), 400, 'management_unknown'],
+    [body('ERROR: 42501: not_permitted_extra\nCONTEXT: confirmation_already_used'), 400, 'management_unknown'],
+    [body('ERROR: 42501: confirmation_already_used extra'), 400, 'management_unknown'],
+    ['ERROR: 42501: confirmation_already_used', 400, 'management_unknown'],
+    ['{"message":"ERROR: 42501: confirmation_already_used', 400, 'management_unknown'],
+    [body('ERROR: 42501: confirmation_already_used\nCONTEXT: ' + 'x'.repeat(4100)), 400, 'management_unknown'],
+    [JSON.stringify({ unrelated: 'ERROR: 42501: confirmation_already_used' }), 400, 'management_unknown'],
+    [body('ERROR: 42501: confirmation_already_used'), 200, 'management_unknown'],
+  ]) {
+    next = new Response(raw, { status });
+    await assert.rejects(transport.query('SELECT synthetic'), error => {
+      assert.equal(error.message, expected);
+      assert.equal(error.response?.body?.message, expected === 'management_unknown' ? undefined : expected);
+      assert.doesNotMatch(JSON.stringify(error), /fixture secret|synthetic-token|CONTEXT|SELECT/);
+      return true;
+    });
+  }
+  for (const message of ['network disconnected', 'AbortError: timeout', 'ERROR: 42501: confirmation_already_used', 'Supabase database query failed (400): ' + body('ERROR: 42501: confirmation_already_used')]) {
+    next = new Error(message);
+    await assert.rejects(transport.query('SELECT synthetic'), { message: 'management_unknown' });
+  }
+  next = { ok: false, status: 400, text: async () => { throw new Error('body interrupted'); } };
+  await assert.rejects(transport.query('SELECT synthetic'), { message: 'management_unknown' });
+  assert.equal(calls, 19, 'one HTTP request per query; no retries');
+});
+
+test('session settlement distinguishes actual wrapped SQL denial from diagnostic text in CONTEXT', async t => {
+  for (const known of [true, false]) {
+    let finishFetch;
+    const started = [], handles = [];
+    t.mock.method(globalThis, 'fetch', () => new Promise(resolve => { finishFetch = resolve; }));
+    const management = createRoomPassManagementTransport({ executeManagementQuery, config });
+    const actor = '11111111-1111-4111-8111-111111111111';
+    const runner = { run: { actorId: actor, runId: actor, organizationId: 'dddd0000-0000-4000-8000-000000000001', marker: 'fixture',
+      fixtures: { building: { id: actor }, room: { id: actor }, listing: { id: actor } }, scenarios: [] },
+      ownedListing: async () => {}, save: async () => {} };
+    const transport = { query: async sql => {
+      if (sql.startsWith('BEGIN;')) {
+        const tag = sql.match(/application_name = '([^']+)'/)[1]; started.push(tag);
+        if (tag.endsWith('-h')) return new Promise(resolve => handles.push(resolve));
+        return management.query(sql);
+      }
+      return started.map((tag, index) => ({ tag, pid: 10 + index, xid: String(100 + index), state: 'active', transaction_started: '2026-09-08T00:00:00Z',
+        ...(index === 0 ? { wait_event: 'PgSleep' } : { wait_event_type: 'Lock', blocking_pids: [10] }) }));
+    } };
+    const promise = api.runLockCase({ runner, transport, name: 'wrapped_denial', proposal: { confirmation_nonce: 'a'.repeat(64), canonical: { organization_id: runner.run.organizationId, listing_id: actor } },
+      afterWait: async () => {
+        handles.forEach(resolve => resolve([]));
+        finishFetch(new Response(JSON.stringify({ message: known ? 'ERROR: 42501: confirmation_already_used\nCONTEXT: private sql' : 'ERROR: 57014: timeout\nCONTEXT: ERROR: 42501: confirmation_already_used' }), { status: 400 }));
+      } });
+    if (known) assert.equal((await promise).state, 'settled');
+    else await assert.rejects(promise, /session_settlement_unverified/);
+    assert.deepEqual(runner.run.scenarios[0].outcomes, ['ok', known ? 'confirmation_already_used' : 'session_unknown']);
+    assert.doesNotMatch(JSON.stringify(runner.run.scenarios), /private sql|CONTEXT|synthetic-token/);
+    t.mock.restoreAll();
+  }
+});
