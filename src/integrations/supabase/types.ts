@@ -18765,6 +18765,10 @@ export type Database = {
         Args: { p_limit?: number; p_organization_id: string }
         Returns: Json
       }
+      copilot_area_directory_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
       copilot_available_rooms_v1: {
         Args: { p_organization_id: string }
         Returns: Json
@@ -18990,6 +18994,23 @@ export type Database = {
           net: number
           revenue: number
         }[]
+      }
+      copilot_g3_owned_voucher_history_proof_v1: {
+        Args: {
+          p_attempt_id: string
+          p_case_id: number
+          p_client_request_id: string
+          p_digest_schema_version: number
+          p_expected_approval_version: number
+          p_expected_ownership_digest: string
+          p_expected_posting_version: number
+          p_expected_state_digest: string
+          p_organization_id: string
+          p_phase: string
+          p_plan_id: string
+          p_voucher_id: string
+        }
+        Returns: Json
       }
       copilot_income_expense_search_v1: {
         Args: {

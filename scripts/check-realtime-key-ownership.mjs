@@ -45,6 +45,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boChuThichJs } from './lib/bo-chu-thich.mjs';
+import { worktreeViteLoaderPath } from './lib/worktree-vite-loader.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -186,12 +187,12 @@ export function gocKeyBiBanVao(vanBanTheoFile) {
 
 /** Nạp descriptor thật qua vite-node và trả tập gốc key nó bắn vào. */
 function docKeyTuHub() {
-  const tmp = join(repoRoot, 'node_modules', '.cache', '__realtime-keys.ts');
+  const tmp = worktreeViteLoaderPath(repoRoot, '__realtime-keys.mts');
   mkdirSync(dirname(tmp), { recursive: true });
   writeFileSync(
     tmp,
     [
-      'import { SYNC_ENTRIES } from "../../src/hooks/realtime";',
+      'import { SYNC_ENTRIES } from "../src/hooks/realtime";',
       'const goc = new Set<string>();',
       'for (const e of SYNC_ENTRIES) for (const k of e.keys) if (typeof k[0] === "string") goc.add(k[0] as string);',
       'console.log(JSON.stringify([...goc]));',
@@ -202,7 +203,7 @@ function docKeyTuHub() {
     // Đường dẫn TƯƠNG ĐỐI + shell:true: npx trên Windows là npx.cmd (Node từ
     // chối spawn .cmd khi shell:false), mà shell:true lại không bọc nháy đối số
     // — đường dẫn tuyệt đối "C:\Users\Nguyen Tam\…" sẽ bị cắt ở dấu cách.
-    return spawnSync('npx', ['vite-node', 'node_modules/.cache/__realtime-keys.ts'], {
+    return spawnSync('npx', ['vite-node', '.tmp-vite-loaders/__realtime-keys.mts'], {
       cwd: repoRoot,
       encoding: 'utf8',
       shell: true,

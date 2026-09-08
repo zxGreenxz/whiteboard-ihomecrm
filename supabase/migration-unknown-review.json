@@ -535,44 +535,6 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
-    },
-    "supabase/migrations/20260908080403_copilot_g3_owned_voucher_history_proof_v1.sql": {
-      "sha256": "d5f279a1587d083210873979f7c651f238e80ecf0cdedaa574d27f17b2286107",
-      "missingObjects": [
-        "function:public.copilot_g3_owned_voucher_history_proof_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Đây là migration mới, đã được review độc lập và compile bằng dry-run forward-only trên catalog production rồi ROLLBACK. Hàm vắng mặt là điều được mong đợi vì chưa có lần `migrate:forward --apply`; không có migration sau DROP hoặc thay thế nó. Hệ G3 vẫn bị chặn kích hoạt cho tới khi đầy đủ nghiệm thu runtime trên DEMO và các blocker atomic cancellation/history được giải quyết. Khi migration được apply, provenance phải chuyển sang catalog-proven và hồ sơ này sẽ trở thành thừa.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260908080403_copilot_g3_owned_voucher_history_proof_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.copilot_g3_owned_voucher_history_proof_v1("
-        },
-        {
-          "duong_dan": "scripts/apply-reviewed-migration.mjs:372-405",
-          "trich_doan": "Chế độ : DRY-RUN (bọc ROLLBACK); runner dựng transaction rollback trước khi gửi Management API, nên compile không tạo object bền vững."
-        }
-      ],
-      "raSoatBoi": "Codex independent source review Task21, 2026-09-08"
-    },
-    "supabase/migrations/20260908085839_copilot_area_directory_v1.sql": {
-      "sha256": "04aa36824627a1d5204e11fdc0c2d6d99285fa53b57cb35556c367e42e7da440",
-      "missingObjects": [
-        "function:public.copilot_area_directory_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Đây là migration mới cho công cụ đọc danh mục khu vực. Hàm vắng mặt trên production vì chưa có lần migrate:forward --apply; không có migration sau DROP hoặc thay thế nó. Dry-run forward-only đã compile trên catalog production và ROLLBACK, nên không để lại object bền vững. Khóa rollout copilot.areas.directory được seed disabled; công cụ chưa thể hoạt động cho người dùng cho đến khi migration được apply và rollout được bật theo nghiệm thu. Khi migration được apply, provenance phải chuyển sang catalog-proven và hồ sơ này sẽ trở thành thừa.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260908085839_copilot_area_directory_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.copilot_area_directory_v1("
-        },
-        {
-          "duong_dan": "scripts/apply-reviewed-migration.mjs:372-405",
-          "trich_doan": "Chế độ : DRY-RUN (bọc ROLLBACK); runner dựng transaction rollback trước khi gửi Management API, nên compile không tạo object bền vững."
-        }
-      ],
-      "raSoatBoi": "Codex source review, 2026-09-08"
     }
   }
 }

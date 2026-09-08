@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-08T09:09:39.590Z",
+  "generatedAt": "2026-09-08T09:29:31.614Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 528,
-    "unknown": 75,
+    "ledger-applied": 530,
+    "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9626,7 +9626,7 @@
       "sha256": "12e66d6ebf1bede6852c77ce28a4c8d44544aab63653788fd1abf53f349710ce",
       "state": "ledger-applied",
       "evidence": [
-        "receipt:2026-09-08T04:20:50.605Z|bien-nhan-backup"
+        "receipt:2026-09-08T09:22:45.673Z|bien-nhan-backup"
       ]
     },
     {
@@ -9668,10 +9668,9 @@
       "name": "copilot_g3_owned_voucher_history_proof_v1",
       "scheme": "timestamp14",
       "sha256": "d5f279a1587d083210873979f7c651f238e80ecf0cdedaa574d27f17b2286107",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_g3_owned_voucher_history_proof_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-08T09:25:45.535Z|bien-nhan-backup"
       ]
     },
     {
@@ -9680,10 +9679,9 @@
       "name": "copilot_area_directory_v1",
       "scheme": "timestamp14",
       "sha256": "04aa36824627a1d5204e11fdc0c2d6d99285fa53b57cb35556c367e42e7da440",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:public.copilot_area_directory_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-08T09:29:14.020Z|bien-nhan-backup"
       ]
     },
     {

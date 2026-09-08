@@ -16,8 +16,10 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { permissionLoaderPath } from './lib/permission-catalog-loader.mjs';
 
 const root = new URL('..', import.meta.url);
+const repoRoot = fileURLToPath(root);
 
 let pat = process.env.SUPABASE_PAT;
 if (!pat) {
@@ -57,9 +59,10 @@ if (!res.ok) {
 const dbKeys = new Set((await res.json()).map((r) => r.key));
 
 // Đọc catalog FE qua vite-node để không phải tự parse TypeScript. vite-node
-// không nhận cờ -e nên phải qua file tạm; đặt trong node_modules/.cache để
-// alias và tsconfig của dự án vẫn áp dụng (ngoài cây dự án thì import hỏng).
-const tmp = fileURLToPath(new URL('node_modules/.cache/__perm-keys.ts', root));
+// không nhận cờ -e nên phải qua file tạm. Loader phải nằm trong worktree: nếu
+// node_modules là junction, Vite sẽ resolve importer sang checkout khác và
+// relative import sẽ đi lạc khỏi source đang được gate kiểm.
+const tmp = permissionLoaderPath(repoRoot);
 mkdirSync(dirname(tmp), { recursive: true });
 // Dump CẢ HAI bề mặt: catalog thô (ALL) và catalog SAU bộ lọc hiển thị
 // (VISIBLE_PAGE_GROUPS — thứ PermissionPicker thật sự render), cộng danh sách
@@ -74,7 +77,7 @@ mkdirSync(dirname(tmp), { recursive: true });
 // mà phải BẮT PHẢI KHAI: giấu có khai thì đọc được và cãi được, giấu không khai
 // thì không.
 writeFileSync(tmp, [
-  "import { ALL_PAGE_FEATURES, VISIBLE_PAGE_GROUPS, UNSHIPPED_PAGE_KEYS, featureKey } from '../../src/lib/permissionPages';",
+  "import { ALL_PAGE_FEATURES, VISIBLE_PAGE_GROUPS, UNSHIPPED_PAGE_KEYS, featureKey } from '../src/lib/permissionPages';",
   'const all = [...new Set(ALL_PAGE_FEATURES.map(featureKey))];',
   'const visible = [...new Set(VISIBLE_PAGE_GROUPS.flatMap((g) => g.pages.flatMap((p) => p.features.map(featureKey))))];',
   'console.log(JSON.stringify({ all, visible, unshipped: [...UNSHIPPED_PAGE_KEYS] }));',
@@ -90,8 +93,8 @@ try {
   // `cwd` đã trỏ đúng gốc repo, và đường dẫn tương đối thì không có dấu cách.
   // (Không bỏ được `shell: true`: `npx` trên Windows là `npx.cmd`, mà Node từ chối
   // spawn file .cmd khi shell:false — EINVAL, bản vá bảo mật.)
-  dump = spawnSync('npx', ['vite-node', 'node_modules/.cache/__perm-keys.ts'], {
-    cwd: fileURLToPath(root),
+  dump = spawnSync('npx', ['vite-node', '.tmp-permission-catalog/__perm-keys.mts'], {
+    cwd: repoRoot,
     encoding: 'utf8',
     shell: true,
   });

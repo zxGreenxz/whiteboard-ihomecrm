@@ -29,6 +29,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hoiCatalog, pat } from "./generate-rpc-surface.mjs";
+import { worktreeViteLoaderPath } from "./lib/worktree-vite-loader.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const DUONG_DAN_RT = join("contracts", "surfaces", "realtime-surface.json");
@@ -55,12 +56,12 @@ export const SQL_REALTIME = `
  * Repo đã có bốn ca "test kiểm bản chép thay vì kiểm code thật".
  */
 export function docHubTables() {
-  const tmp = join(repoRoot, "node_modules", ".cache", "__rt-surface.ts");
+  const tmp = worktreeViteLoaderPath(repoRoot, "__rt-surface.mts");
   mkdirSync(dirname(tmp), { recursive: true });
   writeFileSync(
     tmp,
     [
-      'import { REALTIME_SYNC_TABLES } from "../../src/lib/realtime/syncTables";',
+      'import { REALTIME_SYNC_TABLES } from "../src/lib/realtime/syncTables";',
       "console.log(JSON.stringify([...REALTIME_SYNC_TABLES]));",
     ].join("\n"),
     "utf8",
@@ -69,7 +70,7 @@ export function docHubTables() {
     // Đường dẫn TƯƠNG ĐỐI + shell:true: npx trên Windows là npx.cmd (Node từ chối
     // spawn .cmd khi shell:false), mà shell:true không bọc nháy đối số — đường dẫn
     // repo có dấu cách. Cùng bẫy đã cắn ba gate khác.
-    const r = spawnSync("npx", ["vite-node", "node_modules/.cache/__rt-surface.ts"], {
+    const r = spawnSync("npx", ["vite-node", ".tmp-vite-loaders/__rt-surface.mts"], {
       cwd: repoRoot,
       encoding: "utf8",
       shell: true,
@@ -140,15 +141,15 @@ export function nạpHangDanhSach(docFile, danhSachFile) {
   }
   if (nguon.length === 0) return { hang: {}, nguon };
 
-  const tmp = join(repoRoot, "node_modules", ".cache", "__rt-consts.ts");
+  const tmp = worktreeViteLoaderPath(repoRoot, "__rt-consts.mts");
   mkdirSync(dirname(tmp), { recursive: true });
   const imports = nguon
-    .map((n, i) => `import { ${n.ten} as c${i} } from "../../${n.file.replace(/\.tsx?$/, "")}";`)
+    .map((n, i) => `import { ${n.ten} as c${i} } from "../${n.file.replace(/\.tsx?$/, "")}";`)
     .join("\n");
   const body = `console.log(JSON.stringify({${nguon.map((n, i) => `${JSON.stringify(n.file)}: [...c${i}]`).join(",")}}));`;
   writeFileSync(tmp, `${imports}\n${body}\n`, "utf8");
   try {
-    const r = spawnSync("npx", ["vite-node", "node_modules/.cache/__rt-consts.ts"], {
+    const r = spawnSync("npx", ["vite-node", ".tmp-vite-loaders/__rt-consts.mts"], {
       cwd: repoRoot,
       encoding: "utf8",
       shell: true,

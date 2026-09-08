@@ -22,6 +22,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { worktreeViteLoaderPath } from "./lib/worktree-vite-loader.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -52,12 +53,12 @@ function docDanhSachHub() {
   // Đọc CHÍNH module nguồn qua vite-node, không chép tay danh sách sang đây —
   // repo này đã có bốn ca "test kiểm bản chép thay vì kiểm code thật", và một
   // bản chép trong gate là cách chắc chắn để gate xanh trong khi code đã đổi.
-  const tmp = join(repoRoot, "node_modules", ".cache", "__realtime-tables.ts");
+  const tmp = worktreeViteLoaderPath(repoRoot, "__realtime-tables.mts");
   mkdirSync(dirname(tmp), { recursive: true });
   writeFileSync(
     tmp,
     [
-      'import { REALTIME_SYNC_TABLES } from "../../src/lib/realtime/syncTables";',
+      'import { REALTIME_SYNC_TABLES } from "../src/lib/realtime/syncTables";',
       "console.log(JSON.stringify([...REALTIME_SYNC_TABLES]));",
     ].join("\n"),
     "utf8",
@@ -67,7 +68,7 @@ function docDanhSachHub() {
     // chối spawn .cmd khi shell:false), mà shell:true lại không bọc nháy đối số
     // — đường dẫn tuyệt đối "C:\Users\Nguyen Tam\…" sẽ bị cắt ở dấu cách.
     // Cùng bẫy đã cắn check-permission-catalog.mjs.
-    return spawnSync("npx", ["vite-node", "node_modules/.cache/__realtime-tables.ts"], {
+    return spawnSync("npx", ["vite-node", ".tmp-vite-loaders/__realtime-tables.mts"], {
       cwd: repoRoot,
       encoding: "utf8",
       shell: true,
