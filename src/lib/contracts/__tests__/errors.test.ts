@@ -42,6 +42,7 @@ describe("phân loại lỗi ở biên RPC/Edge", () => {
 
   it.each([
     ["42501", "permission"],
+    ["22000", "validation"],
     ["22023", "validation"],
     ["55000", "conflict"],
     ["23505", "conflict"],
@@ -53,6 +54,12 @@ describe("phân loại lỗi ở biên RPC/Edge", () => {
     ["PGRST116", "not_found"],
   ])("%s ⇒ %s", (code, mong) => {
     expect(classifyDbError({ code })).toBe(mong);
+  });
+
+  it("invoice total mismatch requires correcting input, never automatic retry", () => {
+    const category = classifyDbError({ code: "22000" });
+    expect(isUserActionable(category)).toBe(true);
+    expect(isRetryable(category)).toBe(false);
   });
 
   it("lấy được code cả khi lỗi bị bọc một lớp", () => {

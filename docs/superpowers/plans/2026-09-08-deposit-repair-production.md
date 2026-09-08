@@ -23,11 +23,11 @@
 
 **Interface:** `accounting_class?: 'REVENUE' | 'DEPOSIT' | 'NON_PNL'` trên `InvoiceItem`/`InvoiceFormItem`; schema hiện có NON_PNL nên phải bảo toàn cả lớp này. Trả trường trong projection, giữ trong decomposition và gửi `p_items[].accounting_class` trong canonical và fallback. Hạng mục mới chọn “Tiền cọc” tạo `type:'OTHER', accounting_class:'DEPOSIT'`; lựa chọn doanh thu mới là REVENUE, không dò tên tự do.
 
-- [ ] Chuyển reproduction notes-only đã đỏ thành regression: item đầu vào OTHER/DEPOSIT2.200.000, chỉ đổi ghi chú, payload phải giữ class/name/amount.
-- [ ] Kiểm xóa/thêm lại bằng lựa chọn Tiền cọc; sửa số tiền; dòng doanh thu bình thường; giữ phân loại qua hook và fallback; không tự biến dòng có chữ cọc thành DEPOSIT.
-- [ ] Sửa type/projection/schema/decompose/payload/selector; truy vết mọi callsite dùng cùng hook tạo và sửa để không còn đường mất metadata.
-- [ ] Kiểm rendering vẫn rõ tên, không hiện thuật ngữ kế toán cho người thu; chạy test/strict và mutation bỏ class để xác nhận regression đỏ.
-- [ ] Commit explicit files và gửi review package.
+- [x] Chuyển reproduction notes-only đã đỏ thành regression: item đầu vào OTHER/DEPOSIT2.200.000, chỉ đổi ghi chú, payload phải giữ class/name/amount.
+- [x] Kiểm xóa/thêm lại bằng lựa chọn Tiền cọc; sửa số tiền; dòng doanh thu bình thường; giữ phân loại qua hook và fallback; không tự biến dòng có chữ cọc thành DEPOSIT.
+- [x] Sửa type/projection/schema/decompose/payload/selector; truy vết mọi callsite dùng cùng hook tạo và sửa để không còn đường mất metadata.
+- [x] Kiểm rendering vẫn rõ tên, không hiện thuật ngữ kế toán cho người thu; chạy test/strict và mutation bỏ class để xác nhận regression đỏ.
+- [x] Commit explicit files và gửi review package.
 
 ```ts
 expect(submitted.items.find(i => i.description === 'Tiền cọc'))
@@ -40,11 +40,11 @@ expect(submitted.items.find(i => i.description === 'Tiền cọc'))
 
 **Interface:** Giữ chữ ký `update_invoice_v1`/writer tạo và JSON `p_items`; đọc/lưu/validate accounting_class. Client cũ thiếu trường không được âm thầm hạ DEPOSIT: bảo toàn từ nguồn hiện có khi nhận diện duy nhất; trường hợp mơ hồ phải từ chối trước thay đổi. `contract_deposit_sources_v1`/`resolve_signed_contract_deposit_basis_v1` tính phần cọc của phiếu gộp, không lấy cả tổng phiếu.
 
-- [ ] Lấy định nghĩa live, ghi precondition digest; dùng probe DEMO hiện có làm RED cho notes-only và explicit DEPOSIT.
-- [ ] Test class không hợp lệ, cross-org/toà, invoice đã thanh toán, dữ liệu cũ thiếu field, deposit/new revenue, nhiều dòng trùng tên gây mơ hồ.
-- [ ] Patch writer nhỏ nhất, giữ toàn bộ guard/lock của bản live; kiểm writer tạo dùng cùng JSON để không còn đường mất cọc.
-- [ ] Tái hiện basis phòng505 bằng DEMO: holding2m + mixed receipt8m có deposit2.926m phải netHeld4.926m, không10m. Kiểm standalone cọc, partial, reversal/refund/forfeit, cancelled/unapproved và liên kết không đếm đôi.
-- [ ] Apply migration hai lần trong DEMO rollback; role authenticated; kiểm mutation bỏ trường/đếm toàn phiếu bị bắt; commit migration và harness riêng.
+- [x] Lấy định nghĩa live, ghi precondition digest; dùng probe DEMO hiện có làm RED cho notes-only và explicit DEPOSIT.
+- [x] Test class không hợp lệ, cross-org/toà, invoice đã thanh toán, dữ liệu cũ thiếu field, deposit/new revenue, nhiều dòng trùng tên gây mơ hồ.
+- [x] Patch writer nhỏ nhất, giữ toàn bộ guard/lock của bản live; kiểm writer tạo dùng cùng JSON để không còn đường mất cọc.
+- [x] Tái hiện basis phòng505 bằng DEMO: holding2m + mixed receipt8m có deposit2.926m phải netHeld4.926m, không10m. Kiểm standalone cọc, partial, reversal/refund/forfeit, cancelled/unapproved và liên kết không đếm đôi.
+- [x] Apply migration hai lần trong DEMO rollback; role authenticated; kiểm mutation bỏ trường/đếm toàn phiếu bị bắt; commit migration và harness riêng.
 
 ```sql
 -- In a DEMO transaction after update_invoice_v1(...):
@@ -95,3 +95,5 @@ expect(after.deposit505).toBe(4926000);
 
 - 08/09/2026: user authorizes detailed plan, implementation and production; PR55 contains completed rounding feature. Deposit cause proven by live READ ONLY audit + two DEMO rollback scenarios; no deposit fix or production apply yet.
 - 08/09/2026: user selects GPT-6 Astra Medium; implementation agents handed off existing worktrees to fresh agents explicitly configured with that model/effort. Backup preflight full519 TABLE DATA entries,28.9MB, no excludeddata, manifest outsidegit. Rounding restore-drill exposed omitted writerACL reset; reproducedRED under rollback and patched explicitREVOKE/GRANT, fullrollbackmatrixGREEN.
+
+- 08/09/2026: Tasks1–2 integrated and independently reviewed (054f8a10/899795bf);133 tests across11 suites green. Full static+strict42 gates green, integrated static41 green; source writer repeated DEMO rollback and both mutations green/red as required. Catalog matches current main rollout117dd951, no unexplained drift. Production remains unchanged pending history review and rollout.

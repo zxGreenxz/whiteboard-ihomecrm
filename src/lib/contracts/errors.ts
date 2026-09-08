@@ -71,6 +71,7 @@ const MA_SQLSTATE: Readonly<Record<string, ErrorCategory>> = {
   "28000": "permission", // invalid_authorization_specification
 
   // Đầu vào
+  "22000": "validation", // invoice writers reject client totals that differ from server totals
   "22023": "validation", // invalid_parameter_value — mã kiểm đầu vào bận nhất
   "23514": "validation", // check_violation
   "23502": "validation", // not_null_violation
