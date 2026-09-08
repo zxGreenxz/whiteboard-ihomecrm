@@ -13,6 +13,7 @@ const {
   KHOA_ROLLOUT_CONG_TO,
   KHOA_ROLLOUT_DANH_SACH_SALE,
   KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
+  KHOA_ROLLOUT_KHO_TAI_SAN,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -2590,5 +2591,64 @@ describe('registry source contract', () => {
     ]) {
       expect(source, table).not.toMatch(new RegExp(`\\.from\\('${table}'\\)`));
     }
+  });
+});
+
+describe('danh_sach_kho_tai_san - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization warehouse RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, kho: [] }, error: null });
+    await tool('danh_sach_kho_tai_san').execute({ tu_khoa: '  Tầng hầm A  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_warehouse_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Tầng hầm A',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats warehouse and authorized building facts without identifiers or creator details', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        kho: [
+          {
+            ma: 'KHO-A1B2C3D4',
+            ten: 'Kho vật tư A',
+            vi_tri: 'Tầng hầm B1',
+            toa_nha: 'Toà A',
+            user_id: 'creator-private-id',
+            organization_id: 'foreign-org-id',
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_kho_tai_san').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('KHO-A1B2C3D4');
+    expect(result).toContain('Kho vật tư A');
+    expect(result).toContain('Tầng hầm B1');
+    expect(result).toContain('Toà A');
+    expect(result).toContain('/settings/categories/warehouses');
+    expect(result).not.toContain('creator-private-id');
+    expect(result).not.toContain('foreign-org-id');
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, kho: [] }, error: null });
+    await expect(tool('danh_sach_kho_tai_san').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có kho/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_kho_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated warehouse rollout key with warehouses.view permission', () => {
+    expect(tool('danh_sach_kho_tai_san').rolloutKey).toBe(KHOA_ROLLOUT_KHO_TAI_SAN);
+    expect(tool('danh_sach_kho_tai_san').requiredPermission).toEqual({ module: 'warehouses', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_KHO_TAI_SAN)).toBe(true);
   });
 });

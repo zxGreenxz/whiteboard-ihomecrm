@@ -25,8 +25,8 @@
     "sampling": "Với bucket catalog-proven: duyệt quy tắc một lần + random sample n≈30."
   },
   "knownLimits": [
-    "55/73 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
-    "18 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
+    "55/74 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
+    "19 file unknown còn lại thì NGƯỢC LẠI: chúng CÓ CREATE object, nhưng object đó KHÔNG có trong catalog production. Đây không phải 'thiếu bằng chứng' mà là bằng chứng NGƯỢC, và nó có đúng hai cách đọc — (a) file đã chạy rồi object bị migration SAU thay thế/đổi tên (ví dụ án lệ: policy 'users can manage own templates' của 016_* bị đợt tổng rà RLS thay bằng bộ '<bảng>_select_rbac'), hoặc (b) file CHƯA TỪNG CHẠY, tức production đang thiếu thứ repo tưởng đã có. Phân biệt hai cách đọc này phải làm THỦ CÔNG cho từng file: tìm migration sau đó DROP/RENAME object; không tìm ra thì phải kiểm code sản xuất xem có ai gọi object vắng mặt không.",
     "catalog-proven yếu hơn ledger-applied: nó chứng minh object TỒN TẠI, không chứng minh CHÍNH FILE NÀY tạo ra nó. Một file khác cùng tạo object trùng tên sẽ cho kết quả giống hệt.",
     "42 version bị trùng (94 file) — vì vậy khoá định danh là (version, name, sha256), không phải version.",
     "Ledger dừng ở 20260727095000 trong khi production có thay đổi muộn hơn. Đừng dùng max(version) của ledger làm trạng thái schema."
@@ -123,6 +123,13 @@
       "why": "CREATE TEMP TABLE _truoc … ON COMMIT DROP để đo trạng thái TRƯỚC/SAU. Bảng tạm chỉ rụng lúc COMMIT, mà cửa này ROLLBACK, nên lần dán thứ hai gặp lại bảng cũ và chết với 42P07. Chạy lại THẬT (hai transaction riêng) không vướng.",
       "ghiChu": "Đây là mục thứ BA cùng lớp (sau _nt ở 20260811030000 và 20260811050000). Ba lần cùng một nguyên nhân là dấu hiệu nên đổi PHÉP ĐO của cửa, không phải khai thêm ngoại lệ: so trạng thái trên database dùng-một-lần thay vì dán đôi trong một transaction.",
       "exitCondition": "Biến mất khi cửa đổi phép đo sang database dùng-một-lần (TEMP TABLE ON COMMIT DROP sẽ hết bị buộc tội sai). Vế cũ \"hoặc khi cutoff dời qua 20260812020000\" đã VÔ HIỆU từ 25/08/2026: sổ tooling/idempotent-verified.json khoá theo sha256 nay làm đúng việc của cutoff (file bất biến đã đo đạt thì không đo lại) mà không phá hợp đồng khôi phục baseline+forward-lane — còn dời cutoff thì phá. Xem header check-forward-migration-idempotent.mjs."
+    },
+    {
+      "file": "20260903224418_copilot_action_salary_khoa_thang_v1.sql",
+      "lop": "kiểm cũ mâu thuẫn với migration sau — replay đơn lẻ trên trạng thái mới phải ngã",
+      "why": "File đã ledger-applied seed `salary.khoa_thang` bằng ON CONFLICT DO NOTHING rồi self-check rollback_rpc IS NULL. Migration sau `20260906010543_copilot_action_salary_khoa_thang_rollback_v1.sql` cập nhật rollback_rpc thành unlock_salary_month_v1 khi hàm tồn tại, để runbook nói đúng đường lùi production. Khi cửa dán lại file cũ trên trạng thái sau migration 06/09, seed không ghi đè nên assertion cũ ném `seed registry salary.khoa_thang sai hinh hoac thieu`. Đây là mâu thuẫn thứ tự migration đã được đo lặp lại, không phải lỗi của migration kho mới.",
+      "heQua": "Không sửa file 20260903224418: provenance xác nhận ledger-applied và policy forward-only giữ byte lịch sử. Forward lane từ baseline chạy file cũ trước migration cập nhật nên vẫn đúng; chỉ phép đo reapply từng file trên catalog mới phải ghi nhận ngoại lệ này.",
+      "exitCondition": "Biến mất khi gate chuyển từ dán lại migration lịch sử trên trạng thái mới sang dựng baseline rồi replay theo thứ tự, hoặc khi lịch sử ledger-applied được lưu dưới dạng snapshot không reapply đơn lẻ. Không được gỡ chỉ vì file tạm xanh: gate bắt buộc file còn ném đúng lỗi này."
     }
   ]
 }

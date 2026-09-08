@@ -28,6 +28,7 @@ import {
   KHOA_ROLLOUT_CONG_TO,
   KHOA_ROLLOUT_DANH_SACH_SALE,
   KHOA_ROLLOUT_DIEU_HUONG,
+  KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
   KHOA_ROLLOUT_THONG_BAO,
   type CopilotAvailabilitySnapshot,
@@ -565,6 +566,17 @@ type CopilotMemberRoleDirectoryPayload = {
   }>;
 };
 
+type CopilotWarehouseDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  kho?: Array<{
+    ma: string;
+    ten: string;
+    vi_tri: string | null;
+    toa_nha: string | null;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -853,6 +865,37 @@ export function buildRegistryDefinitions(): DomainTool[] {
           ? `Tổ chức có ${summary.thanh_vien ?? 0} thành viên, ${summary.dang_hoat_dong ?? 0} đang hoạt động, ${summary.chua_gan_vai_tro ?? 0} chưa gán vai trò.`
           : `Hiển thị ${members.length} thành viên.`;
         return `${head}\n\nThành viên:\n${memberLines.join('\n') || '- Không có thành viên khớp bộ lọc.'}\n\nMẫu vai trò:\n${roleLines.join('\n') || '- Chưa có vai trò nào.'}\n[link: /settings/members]`;
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_kho_tai_san',
+      description:
+        'Liệt kê kho tài sản trong công ty đang chọn và các toà bạn được xem. Chỉ cho biết mã ngắn, tên kho, vị trí và toà nhà; không đọc định danh tổ chức hay thông tin người tạo.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên kho, vị trí hoặc tên toà nhà'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số kho tối đa'),
+      }),
+      requiredPermission: { module: 'warehouses', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_KHO_TAI_SAN,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_kho_tai_san');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotWarehouseDirectoryPayload
+        >('copilot_warehouse_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải danh sách kho tài sản: ' + error.message);
+        const rows = Array.isArray(data?.kho) ? data.kho : [];
+        if (!rows.length) return 'Không có kho tài sản nào trong phạm vi bạn được xem.';
+        const lines = rows.map((warehouse) => {
+          const viTri = [warehouse.vi_tri, warehouse.toa_nha].filter(Boolean).join(' · ');
+          return `- ${warehouse.ma} — ${warehouse.ten}${viTri ? ` · ${viTri}` : ''}`;
+        });
+        return `Có ${rows.length} kho tài sản (tối đa ${data?.gioi_han ?? args.so_luong} dòng mỗi lần hỏi):\n${lines.join('\n')}\n[link: /settings/categories/warehouses]`;
       },
     }),
 
