@@ -47,6 +47,9 @@ function facts(answer:string,stream:string,fixture:CustomerFixture) {
   }
   check(!/không (?:tìm thấy|có).*khách|khách.*không (?:tồn tại|tìm thấy)/iu.test(text),'customer_facts');
   for(const value of [row.customer_name,row.room_name,row.building_name])check(text.includes(normal(value)),'customer_facts');
+  // Bind criterion metadata to the exact query, not another grounded row atom.
+  const escapedQuery=normal(fixture.query).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  text=text.replace(new RegExp(`(?<![\\p{L}\\p{N}])từ (?:khóa|khoá)\\s*[:：]?\\s*["“]?${escapedQuery}["”]?(?=$|[\\s.,:;!?])`,'gu'),'');
   const masked=`${row.phone.slice(0,3)}***${row.phone.slice(-4)}`;
   // Consume grounded atoms before inspecting remaining prose. Unrecognized
   // names, identifiers, amounts and locations cannot borrow a correct atom.

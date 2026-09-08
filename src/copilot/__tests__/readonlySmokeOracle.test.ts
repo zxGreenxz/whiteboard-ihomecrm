@@ -970,6 +970,12 @@ describe('bounded customer golden executor',()=>{
   it('accepts bound positive customer with exact source annotation',()=>{
     const e=customerEvidence();expect(()=>assertCustomerResult(customerAnswer(e.answer+' (nguồn: tim_khach_hang)'))).not.toThrow();
   });
+  it.each(['khóa','khoá'])('accepts exact grounded customer criterion label từ %s',spelling=>{
+    const e=customerEvidence();expect(()=>assertCustomerResult(customerAnswer(`Tìm thấy 1 hồ sơ khách hàng khớp với từ ${spelling} Nguyễn An:\n${e.answer}\n(nguồn: tim_khach_hang)`))).not.toThrow();
+    expect(()=>assertCustomerResult(customerAnswer(`Tìm thấy 1 hồ sơ khách hàng khớp với từ ${spelling} Nguyễn Bình:\n${e.answer}`))).toThrow('customer_facts');
+    for(const quote of ['"Nguyễn An"','“Nguyễn An”'])expect(()=>assertCustomerResult(customerAnswer(`Tìm thấy 1 hồ sơ khách hàng khớp với từ ${spelling}: ${quote}.\n${e.answer}`))).not.toThrow();
+    for(const wrong of ['G701','DEMO Toà A','000***5960'])expect(()=>assertCustomerResult(customerAnswer(`Tìm thấy 1 hồ sơ khách hàng khớp với từ ${spelling} ${wrong}:\n${e.answer}`))).toThrow('customer_facts');
+  });
   it.each(['Có hồ sơ khách hàng.','Tìm thấy hồ sơ khách hàng.','Có hồ sơ khách hàng trong phạm vi bạn được xem.','Trong phạm vi bạn được xem có khách hàng.','(nguồn: tim_khach_hen)','(nguồn: tim_khach_hang Có khách hàng)'])('scoped prose cannot hide affirmative facts or wrong source %s',statement=>{
     const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' '+statement,'C14'))).toThrow('customer_facts');
   });
