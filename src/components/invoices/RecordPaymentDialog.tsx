@@ -39,7 +39,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { toast } from 'sonner';
 import { deriveInvoiceDepositDue } from '@/lib/paymentRecordRpc';
-import { deriveOverpayPolicy } from '@/lib/collectPlan';
+import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
 import { todayISO } from '@/lib/collect';
 
 interface RecordPaymentDialogProps {
@@ -361,6 +361,12 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   // Auto-compute phần dư cho mọi phương thức. TT/TK không đủ TM để hoàn sẽ được
   // giữ thành credit bắt buộc; TM vẫn giữ mặc định hoàn như trước.
+  const paymentMethodsKey = (watchedLines ?? []).map(line => line.payment_method).join(',');
+  useEffect(() => {
+    setChangeUserEdited(false);
+    setValue('change_amount', overpayPolicy.overpay);
+  }, [totalPaid, tmTotal, invoice?.id, watchedKeepAsCredit, paymentMethodsKey, overpayPolicy.overpay, setValue]);
+
   useEffect(() => {
     if (changeUserEdited) return;
     setValue('change_amount', overpayPolicy.overpay);
@@ -475,12 +481,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       );
       const overpay = Math.max(totalAcrossLines - outstandingAmount, 0);
       const submittedChange = data.change_amount || 0;
-      if (Math.abs(submittedChange - overpay) >= 0.01) {
-        toast.error('Tiền dư phải đúng bằng phần khách đưa vượt số còn phải thu', {
-          description: `Phần dư thực tế là ${formatVN(overpay)}đ.`,
-        });
-        return;
-      }
       const submitPolicy = deriveOverpayPolicy({
         total: totalAcrossLines,
         amountTm: tmTotal,
@@ -489,15 +489,19 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       });
       const keepAsCredit = overpay > 0
         && (submitPolicy.mustKeepAsCredit || !!data.keep_as_credit);
-      if (overpay > 0 && !keepAsCredit && tmTotal < overpay) {
-        toast.error('Tiền mặt TM của lần thu này không đủ để hoàn phần tiền dư');
+      const checked = planCollect({ lines: data.payment_lines.map(l => ({ method: l.payment_method, amount: l.amount })),
+        remaining: outstandingAmount, hasContract: !!invoice.contract_id, keepAsCredit,
+        changeAmount: keepAsCredit ? undefined : submittedChange });
+      if (checked.ok === false) {
+        toast.error(checked.error);
         return;
       }
+      const actualChange = keepAsCredit ? 0 : submittedChange;
       if (keepAsCredit && !invoice.contract_id) {
         toast.error('Hóa đơn không gắn hợp đồng nên không thể giữ tiền dư làm credit');
         return;
       }
-      if (overpay > 0 && !keepAsCredit && !data.change_account_id) {
+      if (actualChange > 0 && !data.change_account_id) {
         toast.error('Vui lòng chọn sổ ghi nhận tiền thối');
         return;
       }
@@ -509,7 +513,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         return;
       }
       if (
-        overpay > 0
+        actualChange > 0
         && !keepAsCredit
         && accountVirtuality.get(data.change_account_id ?? '') !== true
       ) {
@@ -518,7 +522,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       }
 
       const depositDue = deriveInvoiceDepositDue(invoice as any);
-      const appliedAmount = Math.min(totalAcrossLines, outstandingAmount);
+      const appliedAmount = Math.min(totalAcrossLines - actualChange, outstandingAmount);
       const residualAfter = outstandingAmount - appliedAmount;
       const revenueDue = Math.max((invoice.total_amount || 0) - depositDue, 0);
       const depositAfter = Math.max(
@@ -554,6 +558,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         payment_lines: data.payment_lines,
         payment_date: data.payment_date,
         keep_as_credit: keepAsCredit,
+        actual_change_amount: actualChange,
         change_account_id: data.change_account_id ?? null,
         rounding_account_id: roundingAccountId || null,
         notes: data.notes?.trim() || null,
@@ -590,11 +595,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             account_id: line.account_id,
             account_is_virtual: accountVirtuality.get(line.account_id) ?? null,
             change_account_id:
-              overpay > 0 && !keepAsCredit && line.payment_method === 'TM'
+              actualChange > 0 && line.payment_method === 'TM'
                 ? (data.change_account_id ?? null)
                 : null,
             change_account_is_virtual:
-              overpay > 0 && !keepAsCredit && line.payment_method === 'TM'
+              actualChange > 0 && line.payment_method === 'TM'
                 ? accountVirtuality.get(data.change_account_id ?? '') ?? null
                 : null,
             rounding_account_id:
@@ -604,9 +609,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 ? accountVirtuality.get(roundingAccountId) ?? null
                 : null,
           })),
-          overpay_action: overpay > 0
-            ? (keepAsCredit ? 'CREDIT' : 'REFUND')
-            : 'REJECT',
+          overpay_action: keepAsCredit ? 'CREDIT' : actualChange > 0 ? 'REFUND' : 'REJECT',
+          actual_change_amount: actualChange > 0 && actualChange !== overpay ? actualChange : undefined,
           allow_rounding: applyRounding,
           notes: data.notes?.trim() || null,
           receipt_image_url: receiptImageUrl,
@@ -642,7 +646,12 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   };
 
   const overpayAmount = Math.max(totalPaid - outstandingAmount, 0);
-  const previewAppliedAmount = Math.min(totalPaid, outstandingAmount);
+  const previewActualChange = watchedKeepAsCredit ? 0 : (watchedChangeAmount || 0);
+  const previewPlan = planCollect({ lines: (watchedLines ?? []).map(l => ({ method: l.payment_method, amount: l.amount })),
+    remaining: outstandingAmount, hasContract: !!invoice.contract_id, keepAsCredit: watchedKeepAsCredit,
+    changeAmount: watchedKeepAsCredit ? undefined : previewActualChange });
+  const previewError = previewPlan.ok === false && totalPaid > 0 ? previewPlan.error : null;
+  const previewAppliedAmount = Math.max(0, Math.min(totalPaid - previewActualChange, outstandingAmount));
   const newPaidAmount = (invoice.paid_amount || 0) + previewAppliedAmount;
   const newOutstanding = (invoice.total_amount || 0) - newPaidAmount;
   // Áp dụng làm tròn tự động: residual > 0 và < 10K → coi như đã thanh toán
@@ -667,7 +676,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     totalPaid > 0 &&
     !roundingBlockedByDeposit;
   const roundingAmount = willRound ? newOutstanding : 0;
-  const willBePaid = newOutstanding <= 0 || willRound;
+  const willBePaid = !previewError && (newOutstanding <= 0 || willRound);
   const willBePartialPaid = newPaidAmount > 0 && newOutstanding > 0 && !willRound;
 
   const isProcessing = recordMutation.isPending || isUploading;
@@ -770,6 +779,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   <Label htmlFor="change_amount">Tiền thối</Label>
                   <Input
                     id="change_amount"
+                    aria-label="Tiền thối thực tế"
+                    disabled={watchedKeepAsCredit}
                     type="text"
                     inputMode="numeric"
                     value={formatVN(watchedChangeAmount || 0)}
@@ -1110,6 +1121,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 <Label htmlFor="change_amount_multi">Tiền thối</Label>
                 <Input
                   id="change_amount_multi"
+                  aria-label="Tiền thối thực tế"
+                  disabled={watchedKeepAsCredit}
                   type="text"
                   inputMode="numeric"
                   value={formatVN(watchedChangeAmount || 0)}
@@ -1267,14 +1280,17 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 <div className="flex justify-between">
                   <span className="text-gray-700">Còn lại:</span>
                   <span className={`font-medium ${newOutstanding > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
-                    {formatCurrency(Math.max(0, newOutstanding))}
+                    {formatCurrency(willRound ? 0 : Math.max(0, newOutstanding))}
                   </span>
                 </div>
-                {overpayAmount > 0 && (
+                {(previewActualChange > 0 || overpayAmount > 0) && (
                   <div className="flex justify-between">
-                    <span className="text-gray-700">Tiền thừa:</span>
-                    <span className="font-medium text-blue-600">{formatCurrency(overpayAmount)}</span>
+                    <span className="text-gray-700">{watchedKeepAsCredit ? 'Giữ nợ khách:' : 'Tiền thực thối:'}</span>
+                    <span className="font-medium text-blue-600">{formatCurrency(watchedKeepAsCredit ? overpayAmount : previewActualChange)}</span>
                   </div>
+                )}
+                {willRound && !previewError && (
+                  <div className="flex justify-between text-amber-700"><span>Khoản bỏ qua:</span><b>{formatCurrency(roundingAmount)}</b></div>
                 )}
                 <div className="flex justify-between border-t pt-2">
                   <span className="text-gray-700">Trạng thái mới:</span>
@@ -1299,7 +1315,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       : overpayAmount > 0
                         ? watchedKeepAsCredit
                           ? `Hóa đơn sẽ được thanh toán đủ và giữ ${formatCurrency(overpayAmount)} làm credit trừ kỳ sau.`
-                          : `Hóa đơn sẽ được thanh toán đủ và thối lại ${formatCurrency(overpayAmount)} qua sổ đã chọn.`
+                          : `Hóa đơn sẽ được thanh toán đủ và thối lại ${formatCurrency(previewActualChange)} qua sổ đã chọn.`
                         : 'Hóa đơn sẽ được đánh dấu là đã thanh toán đầy đủ'}
                   </AlertDescription>
                 </Alert>
@@ -1314,6 +1330,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               )}
             </div>
           )}
+
+          {previewError && <Alert variant="destructive"><AlertDescription>{previewError}</AlertDescription></Alert>}
 
           {/* Notes */}
           <div className="space-y-2">
@@ -1337,7 +1355,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
             </Button>
             <Button
               type="submit"
-              disabled={isProcessing || totalPaid <= 0}
+              disabled={isProcessing || totalPaid <= 0 || !!previewError}
             >
               {isProcessing ? (
                 <>

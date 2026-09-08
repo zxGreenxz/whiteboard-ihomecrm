@@ -139,6 +139,7 @@ export const useDeletePayment = () => {
       for (const key of [
         ['invoice-payments-summary'],
         ['invoices'],
+        ['invoice-rounding-report'],
         ['invoice'],
         ['payments'],
         ['invoice-statistics'],

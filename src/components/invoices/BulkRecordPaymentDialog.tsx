@@ -48,7 +48,7 @@ import {
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { useInvoice } from '@/hooks/useInvoices';
 import { canEditInvoice } from '@/lib/invoiceUtils';
-import { deriveOverpayPolicy } from '@/lib/collectPlan';
+import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
 import type { InvoiceStatus } from '@/types/invoice';
 import EditInvoiceDialog from './EditInvoiceDialog';
 import PaymentsSummaryDialog from './PaymentsSummaryDialog';
@@ -314,9 +314,10 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       // Auto-recompute change_amount nếu user chưa override
       const sumChanged =
         'amount_tm' in patch || 'amount_tk' in patch || 'amount_tt' in patch;
-      if (sumChanged && !row.change_user_edited) {
+      if (sumChanged || 'keep_as_credit' in patch) {
         const total = row.amount_tm + row.amount_tk + row.amount_tt;
         row.change_amount = Math.max(0, total - row.remaining);
+        row.change_user_edited = false;
       }
       if (sumChanged) {
         const total = row.amount_tm + row.amount_tk + row.amount_tt;
@@ -440,16 +441,12 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             error: `Tiền nhận thực (${fmt(net)}đ) > Còn lại (${fmt(r.remaining)}đ). Nhập tiền thối nếu khách trả dư.`,
           };
         }
-        if (Math.abs(r.change_amount - overpay) >= 0.01) {
+        const checked = planCollect({ lines: [{ method: 'TM', amount: r.amount_tm }, { method: 'TK', amount: r.amount_tk }, { method: 'TT', amount: r.amount_tt }],
+          remaining: r.remaining, hasContract: r.has_contract, keepAsCredit: r.keep_as_credit,
+          changeAmount: r.keep_as_credit ? undefined : r.change_amount });
+        if (checked.ok === false) {
           bad = true;
-          return {
-            ...r,
-            error: `Tiền dư phải đúng ${fmt(overpay)}đ (phần khách đưa vượt còn phải thu).`,
-          };
-        }
-        if (overpay > r.amount_tm && !r.keep_as_credit) {
-          bad = true;
-          return { ...r, error: 'TM của lần thu này không đủ để hoàn phần tiền dư.' };
+          return { ...r, error: checked.error };
         }
         if (r.keep_as_credit && overpay > 0 && !r.has_contract) {
           bad = true;
@@ -936,6 +933,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                         type="text"
                         inputMode="numeric"
                         value={formatVN(r.change_amount)}
+                        aria-label="Tiền thối thực tế"
+                        disabled={r.keep_as_credit}
                         onChange={(e) =>
                           updateRow(i, {
                             change_amount: parseVN(e.target.value),
@@ -1049,7 +1048,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                           }
                         >
                           <CheckCircle className="h-3.5 w-3.5" />
-                          {willRound ? 'Đủ (làm tròn)' : 'Đủ'}
+                          {willRound ? `Đủ · bỏ qua ${fmt(residualAfter)}đ` : 'Đủ'}
                         </span>
                       ) : willBePartial ? (
                         <span className="text-amber-600">Một phần</span>

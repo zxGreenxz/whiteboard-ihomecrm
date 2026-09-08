@@ -42,6 +42,9 @@ export interface QuickCollectArgs {
   method?: CollectMethod;
   /** Giữ phần dư thành "nợ khách" (excess_amounts) thay vì thối lại. */
   keepAsCredit?: boolean;
+  changeAmount?: number;
+  /** Không bỏ qua khoản thiếu khi hoá đơn còn tiền cọc. Backend kiểm lại dữ liệu mới. */
+  allowRounding?: boolean;
   notes?: string;
   /** Ảnh chứng từ đã upload (public URL). */
   receiptImageUrl?: string | null;
@@ -128,6 +131,8 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
     amount,
     method = 'TM',
     keepAsCredit,
+    changeAmount,
+    allowRounding,
     notes,
     receiptImageUrl,
     paymentDate,
@@ -143,6 +148,8 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
       lines: rawLines,
       remaining,
       keepAsCredit,
+      changeAmount,
+      allowRounding,
       hasContract: !!invoice.contract_id,
       cap: !isMulti,
     });

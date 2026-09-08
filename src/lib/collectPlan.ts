@@ -5,18 +5,15 @@
 // thối + cờ nợ khách + làm tròn, kèm validate. KHÔNG fetch/side-effect →
 // test được độc lập. useQuickCollect dùng kết quả này để dựng phiếu thu.
 //
-// Quy tắc tiền (đối chiếu RecordPaymentDialog + useBulkRecordPayment):
-//  - Chỉ TIỀN MẶT (TM) mới được thu dư (để thối lại hoặc giữ nợ khách);
-//    TK/TT không được vượt còn-phải-thu.
-//  - change (thối/nợ khách) = đúng phần dư = max(0, tổng − remaining),
-//    luôn ≤ tổng TM. Ép bằng phần dư để excess_amounts (credit) khớp với
-//    overpay thực → không cấn tiền 2 lần (remaining âm là trơ).
-//  - Nợ khách (keepAsCredit) cần hoá đơn có hợp đồng (excess_amounts.contract_id).
-//  - Làm tròn: chỉ khi thu THIẾU 0 < residual < ngưỡng (mặc định 10K).
-//  - cap = đường 1-chạm (Thu đủ/keypad): cap tổng về remaining, không thối.
+// Tiền thối mặc định bằng phần dư; tiền thực thối có thể lớn hơn để bỏ tiền lẻ.
+// Chỉ TM được hoàn tiền. TK/TT thu dư phải giữ credit nếu TM không đủ để thối.
+// Credit phải đúng phần dư, có hợp đồng; không kết hợp với tiền thực thối.
+// Làm tròn dựa trên thực thu SAU thối: 0 < thiếu < 10K, không bỏ qua nợ cọc.
+// cap là đường một chạm không nhập tiền thối: cap tổng về remaining.
 // =============================================
 
 import type { CollectMethod } from './cashAccount';
+import { collectionSettlement, COLLECTION_ROUNDING_THRESHOLD } from './collectionSettlement';
 
 export interface CollectPlanLine {
   method: CollectMethod;
@@ -27,10 +24,13 @@ export interface CollectPlanInput {
   lines: CollectPlanLine[];
   remaining: number;
   keepAsCredit?: boolean;
+  /** Actual cash returned; undefined uses the suggested overpayment. */
+  changeAmount?: number;
   hasContract?: boolean;
   /** Đường 1-chạm: cap tổng ≤ remaining, không thối/credit. */
   cap?: boolean;
   roundingThreshold?: number;
+  allowRounding?: boolean;
 }
 
 export interface CollectPlan {
@@ -47,7 +47,7 @@ export type CollectPlanResult =
   | { ok: true; plan: CollectPlan }
   | { ok: false; error: string };
 
-export const DEFAULT_ROUNDING_THRESHOLD = 10_000;
+export const DEFAULT_ROUNDING_THRESHOLD = COLLECTION_ROUNDING_THRESHOLD;
 
 export interface OverpayPolicyInput {
   total: number;
@@ -124,7 +124,7 @@ export function planCollect(input: CollectPlanInput): CollectPlanResult {
       plan: {
         amountTm: tm, amountTk: tk, amountTt: tt,
         change: 0, keepAsCredit: false,
-        rounding: residualC > 0 && residualC < TH ? residualC : 0,
+        rounding: input.allowRounding !== false && residualC > 0 && residualC < TH ? residualC : 0,
       },
     };
   }
@@ -135,10 +135,10 @@ export function planCollect(input: CollectPlanInput): CollectPlanResult {
     remaining,
     hasContract: !!input.hasContract,
   });
-  const change = policy.overpay;
+  const suggestedChange = policy.overpay;
   // Không đủ TM để hoàn phần dư thì lần thu này bắt buộc giữ credit. Khi TM đủ,
   // giữ mặc định hoàn tiền nhưng vẫn cho người dùng chủ động chọn credit.
-  const keepAsCredit = change > 0 && (policy.mustKeepAsCredit || !!input.keepAsCredit);
+  const keepAsCredit = suggestedChange > 0 && (policy.mustKeepAsCredit || !!input.keepAsCredit);
   if (keepAsCredit && !input.hasContract) {
     return {
       ok: false,
@@ -148,13 +148,21 @@ export function planCollect(input: CollectPlanInput): CollectPlanResult {
     };
   }
 
-  const residual = remaining - total; // < 0 khi thu dư → không làm tròn
+  let settlement: ReturnType<typeof collectionSettlement>;
+  try {
+    settlement = collectionSettlement({ gross: total, cash: tm, remaining,
+      action: keepAsCredit ? 'CREDIT' : (input.changeAmount ?? suggestedChange) > 0 ? 'REFUND' : 'REJECT',
+      actualChange: input.changeAmount,
+      allowRounding: input.allowRounding !== false, roundingThreshold: TH });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Số tiền không hợp lệ' };
+  }
   return {
     ok: true,
     plan: {
       amountTm: tm, amountTk: tk, amountTt: tt,
-      change, keepAsCredit,
-      rounding: residual > 0 && residual < TH ? residual : 0,
+      change: keepAsCredit ? settlement.credit : settlement.change, keepAsCredit,
+      rounding: settlement.rounding,
     },
   };
 }

@@ -15,7 +15,8 @@ import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { validateReceiptFile } from '@/lib/receiptUpload';
 import type { CollectMethod } from '@/lib/cashAccount';
 import { fmtFull, fmtShort, todayISO } from '@/lib/collect';
-import { deriveOverpayPolicy } from '@/lib/collectPlan';
+import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
+import { ChangeAmountInput } from './ChangeAmountInput';
 
 const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
 const parseVN = (s: string): number => {
@@ -33,6 +34,7 @@ interface PayLine {
 export interface PayFormSubmit {
   lines: PayLine[];
   keepAsCredit: boolean;
+  changeAmount?: number;
   paymentDate: string;
   /** CHƯA upload — drawer upload trước khi gọi collect. */
   receiptFile: File | null;
@@ -56,6 +58,7 @@ interface Props {
   changeAccountName?: string;
   /** Hoá đơn có hợp đồng → cho phép "Nợ khách". */
   canCredit: boolean;
+  allowRounding?: boolean;
   /** Sổ quỹ chọn được cho dòng TK (sổ thật cùng org với hoá đơn). */
   bookOptions?: Array<{ id: string; name: string }>;
   /** Sổ TK mặc định của toà — điền sẵn khi dòng chuyển sang TK. */
@@ -71,6 +74,7 @@ export function CollectPayForm({
   methodAvailable,
   changeAccountName,
   canCredit,
+  allowRounding = true,
   bookOptions = [],
   defaultTkBookId = '',
   onChange,
@@ -80,6 +84,7 @@ export function CollectPayForm({
 
   const [lines, setLines] = useState<PayLine[]>([{ method: firstMethod, amount: remaining }]);
   const [keepAsCredit, setKeepAsCredit] = useState(false);
+  const [customChange, setCustomChange] = useState<number | null>(null);
   const [paymentDate, setPaymentDate] = useState(todayISO());
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState('');
@@ -132,8 +137,17 @@ export function CollectPayForm({
     hasContract: canCredit,
   });
   const overpay = policy.overpay;
+  const effectiveCredit = overpay > 0 && (policy.mustKeepAsCredit || keepAsCredit);
+  const actualChange = effectiveCredit ? 0 : (customChange ?? overpay);
+  const checked = planCollect({ lines, remaining, hasContract: canCredit, keepAsCredit: effectiveCredit,
+    changeAmount: effectiveCredit ? undefined : actualChange, allowRounding });
+  const error = checked.ok === false && total > 0 ? checked.error : null;
+  const rounding = checked.ok === true ? checked.plan.rounding : 0;
   const canAddLine = lines.length < available.length;
-  const canSubmit = total > 0 && (!policy.mustKeepAsCredit || canCredit);
+  const canSubmit = total > 0 && checked.ok === true;
+
+  const methodsKey = lines.map(line => line.method).join(',');
+  useEffect(() => { setCustomChange(null); }, [total, tmTotal, remaining, effectiveCredit, methodsKey]);
 
   useEffect(() => {
     if (policy.mustKeepAsCredit) {
@@ -151,13 +165,13 @@ export function CollectPayForm({
   useEffect(() => {
     onChange({
       total,
-      overpay,
-      keepAsCredit: keepAsCredit && overpay > 0,
+      overpay: effectiveCredit ? overpay : actualChange,
+      keepAsCredit: effectiveCredit,
       canSubmit,
-      payload: canSubmit ? { lines, keepAsCredit, paymentDate, receiptFile } : null,
+      payload: canSubmit ? { lines, keepAsCredit: effectiveCredit, changeAmount: effectiveCredit ? undefined : actualChange, paymentDate, receiptFile } : null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [total, overpay, keepAsCredit, canSubmit, lines, paymentDate, receiptFile]);
+  }, [total, overpay, actualChange, effectiveCredit, canSubmit, lines, paymentDate, receiptFile]);
 
   // Phương thức chọn được cho 1 dòng = available chưa dùng ở dòng khác + chính nó.
   // Luôn union method hiện tại để <select> không bao giờ có value ngoài options.
@@ -204,7 +218,7 @@ export function CollectPayForm({
     enabled: !receiptPreview,
   });
 
-  const netToInvoice = total - overpay; // phần thực áp vào hóa đơn; dư giữ thành credit
+  const netToInvoice = Math.min(total - actualChange, remaining);
 
   return (
     <div className="pf-form">
@@ -296,13 +310,13 @@ export function CollectPayForm({
       {/* Cảnh báo / tiền thối / nợ khách */}
       {policy.mustKeepAsCredit && !canCredit ? (
         <p className="pf-hint err">Hóa đơn không có hợp đồng nên không thể giữ tiền dư TT/TK để trừ kỳ sau.</p>
-      ) : overpay > 0 ? (
+      ) : overpay > 0 || tmTotal > 0 ? (
         <div className="pf-change">
           <div className="pf-change-row">
             <span>{keepAsCredit ? 'Giữ nợ khách' : 'Tiền thối'}</span>
-            <b>{fmtFull(overpay)}</b>
+            {effectiveCredit ? <b>{fmtFull(overpay)}</b> : <ChangeAmountInput value={actualChange} onChange={setCustomChange} />}
           </div>
-          {canCredit && (
+          {canCredit && overpay > 0 && (
             <label className="pf-credit">
               <input
                 type="checkbox"
@@ -320,10 +334,13 @@ export function CollectPayForm({
           <p className="pf-hint">
             {keepAsCredit
               ? `Thu đủ ${fmtFull(netToInvoice)} cho hoá đơn, giữ ${fmtFull(overpay)} làm credit trừ kỳ sau.`
-              : `Thối lại khách ${fmtFull(overpay)}${changeAccountName ? ` · ghi sổ "${changeAccountName}"` : ''}.`}
+              : `Thối lại khách ${fmtFull(actualChange)}${changeAccountName ? ` · ghi sổ "${changeAccountName}"` : ''}.`}
           </p>
         </div>
       ) : null}
+      {rounding > 0 && <p className="kp-warn round">Bỏ qua {fmtFull(rounding)} — tính đóng đủ, lưu vào thống kê.</p>}
+      {error && <p className="pf-hint err" role="alert">{error}</p>}
+      {!error && total > 0 && rounding === 0 && remaining - netToInvoice > 0 && <p className="kp-warn under">Còn nợ {fmtFull(remaining - netToInvoice)}</p>}
 
       <label className="pf-row">
         <span className="pf-lbl">Ngày thanh toán</span>

@@ -1,9 +1,9 @@
 import type { Database, Json } from "@/integrations/supabase/types";
+import { collectionSettlement } from './collectionSettlement';
 
 export type PaymentMethod = Database["public"]["Enums"]["payment_method"];
 
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
-const ROUNDING_THRESHOLD = 10_000;
 
 function normalizeIdempotencyKey(idempotencyKey: string): string {
   const normalized = idempotencyKey.trim();
@@ -40,6 +40,7 @@ export interface InvoiceCollectionTenderInput {
   rounding_account_id?: string | null;
   rounding_account_is_virtual?: boolean | null;
   receipt_number?: string | null;
+  requested_change_amount?: number;
 }
 
 export interface RecordInvoiceCollectionInput {
@@ -48,6 +49,8 @@ export interface RecordInvoiceCollectionInput {
   tenders: InvoiceCollectionTenderInput[];
   overpay_action: CollectionOverpayAction;
   allow_rounding: boolean;
+  /** Client total, allocated to TM tenders when building the existing V5 payload. */
+  actual_change_amount?: number;
   notes?: string | null;
   receipt_image_url?: string | null;
   expected_paid_amount: number;
@@ -91,6 +94,7 @@ function normalizeTender(tender: InvoiceCollectionTenderInput): InvoiceCollectio
     change_account_id: tender.change_account_id?.trim() || null,
     rounding_account_id: tender.rounding_account_id?.trim() || null,
     receipt_number: tender.receipt_number?.trim() || null,
+    ...(tender.requested_change_amount === undefined ? {} : { requested_change_amount: tender.requested_change_amount }),
   };
 }
 
@@ -109,10 +113,34 @@ function normalizeCollectionInput(
   if (!(["REJECT", "REFUND", "CREDIT"] as string[]).includes(input.overpay_action)) {
     throw new Error("overpay_action không hợp lệ");
   }
+  let tenders = input.tenders.map(normalizeTender);
+  if (input.actual_change_amount !== undefined) {
+    const change = input.actual_change_amount;
+    const cash = tenders.filter(t => t.payment_method === 'TM').reduce((s,t) => s + t.gross_amount, 0);
+    if (input.overpay_action !== 'REFUND' || !isMoney(change, true) || change > cash) {
+      throw new Error('Tiền thối thực tế không hợp lệ hoặc vượt tiền mặt TM');
+    }
+    let left = change;
+    tenders = tenders.map(t => ({ ...t }));
+    for (const tender of [...tenders].reverse()) {
+      if (tender.payment_method !== 'TM') continue;
+      tender.requested_change_amount = Math.min(left, tender.gross_amount);
+      left = Math.round((left - tender.requested_change_amount) * 100) / 100;
+    }
+  }
+  if (tenders.some(t => t.requested_change_amount !== undefined)) {
+    for (const t of tenders) {
+      if (input.overpay_action !== 'REFUND'
+        || (t.payment_method !== 'TM' && t.requested_change_amount !== undefined)
+        || (t.payment_method === 'TM' && (!isMoney(t.requested_change_amount!, true) || t.requested_change_amount! > t.gross_amount))) {
+        throw new Error('Tiền thối từng dòng TM không hợp lệ');
+      }
+    }
+  }
   return {
     ...input,
     invoice_id: input.invoice_id.trim(),
-    tenders: input.tenders.map(normalizeTender),
+    tenders,
     notes: input.notes?.trim() || null,
     receipt_image_url: input.receipt_image_url?.trim() || null,
   };
@@ -200,35 +228,14 @@ export function planInvoiceCollection(
   const tmTotal = normalized.tenders
     .filter((tender) => tender.payment_method === "TM")
     .reduce((sum, tender) => sum + tender.gross_amount, 0);
-  const appliedTotal = Math.min(grossTotal, remaining);
-  if (appliedTotal <= 0) throw new Error("Hóa đơn không còn số tiền có thể thu");
-
-  const overpay = Math.max(grossTotal - remaining, 0);
-  let changeTotal = 0;
-  let creditTotal = 0;
-  if (overpay > 0) {
-    if (normalized.overpay_action === "REFUND") changeTotal = overpay;
-    else if (normalized.overpay_action === "CREDIT") {
-      if (input.has_contract === false) {
-        throw new Error("Không thể giữ credit cho hóa đơn không có hợp đồng");
-      }
-      creditTotal = overpay;
-    } else {
-      throw new Error("Số thu vượt còn phải thu; chọn thối lại hoặc giữ credit");
-    }
-    if (normalized.overpay_action === "REFUND" && tmTotal < overpay) {
-      throw new Error("Phần thu dư phải nằm trong dòng tiền mặt TM");
-    }
-  } else if (normalized.overpay_action !== "REJECT") {
-    throw new Error("Chỉ chọn thối lại hoặc giữ credit khi thực sự có tiền dư");
+  if (normalized.overpay_action === 'CREDIT' && input.has_contract === false) {
+    throw new Error('Không thể giữ credit cho hóa đơn không có hợp đồng');
   }
-
-  const residual = remaining - appliedTotal;
-  const roundingTotal = normalized.allow_rounding
-    && residual > 0
-    && residual < ROUNDING_THRESHOLD
-    ? residual
-    : 0;
+  const hasExplicitChange = normalized.tenders.some(t => t.requested_change_amount !== undefined);
+  const settlement = collectionSettlement({ gross: grossTotal, cash: tmTotal, remaining,
+    action: normalized.overpay_action, allowRounding: normalized.allow_rounding,
+    actualChange: hasExplicitChange ? normalized.tenders.reduce((s,t) => s + (t.requested_change_amount ?? 0), 0) : undefined });
+  const { applied: appliedTotal, change: changeTotal, credit: creditTotal, rounding: roundingTotal } = settlement;
   const revenueDue = Math.max(input.invoice_total_amount - depositDue, 0);
   const depositAfter = Math.max(
     Math.min(depositDue, normalized.expected_paid_amount + appliedTotal - revenueDue),
@@ -252,7 +259,7 @@ export function planInvoiceCollection(
         .slice(lineIndex + 1)
         .filter((later) => later.payment_method === "TM")
         .reduce((sum, later) => sum + later.gross_amount, 0);
-      lineChange = Math.min(tender.gross_amount, Math.max(changeTotal - laterTmTotal, 0));
+      lineChange = tender.requested_change_amount ?? Math.min(tender.gross_amount, Math.max(changeTotal - laterTmTotal, 0));
       changeLeft -= lineChange;
     }
     if (creditLeft > 0) {
@@ -280,11 +287,6 @@ export function planInvoiceCollection(
     const revenueAmount = applied - depositAmount;
     paidCursor = nextPaidCursor;
 
-    const lineRounding = lineIndex === lastLineIndex ? roundingTotal : 0;
-    if (lineRounding > 0 && !tender.rounding_account_id) {
-      throw new Error("Thiếu sổ quỹ làm tròn tiền thiếu");
-    }
-
     return {
       ...tender,
       line_index: lineIndex,
@@ -292,11 +294,20 @@ export function planInvoiceCollection(
       applied_amount: applied,
       change_amount: lineChange,
       credit_amount: lineCredit,
-      rounding_amount: lineRounding,
+      rounding_amount: 0,
       revenue_amount: revenueAmount,
       deposit_amount: depositAmount,
     };
   });
+
+  if (roundingTotal > 0) {
+    const roundingAccount = normalized.tenders[lastLineIndex]?.rounding_account_id;
+    if (!roundingAccount) throw new Error('Thiếu sổ quỹ làm tròn tiền thiếu');
+    // A fully refunded last TM has no payment row. Keep rounding on actual money.
+    const target = [...planned].reverse().find(t => t.applied_amount > 0)!;
+    target.rounding_amount = roundingTotal;
+    target.rounding_account_id = roundingAccount;
+  }
 
   if (
     Math.abs(remainingApply) >= 0.01

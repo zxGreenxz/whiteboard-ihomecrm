@@ -95,10 +95,10 @@ export const useInvoiceItemsLite = (invoiceId?: string) =>
     queryFn: async () => {
       const { data, error } = await (supabase
         .from('invoice_items')
-        .select('id, description, amount, sort_order') as any)
+        .select('id, description, amount, sort_order, type, accounting_class') as any)
         .eq('invoice_id', invoiceId!)
         .order('sort_order', { ascending: true });
       if (error) throw error;
-      return (data || []) as { id: string; description: string | null; amount: number }[];
+      return (data || []) as { id: string; description: string | null; amount: number; type: string; accounting_class: string | null }[];
     },
   });

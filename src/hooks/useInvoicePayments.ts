@@ -33,6 +33,7 @@ export const useRecordPaymentRPC = () => {
         tenders: data.tenders,
         overpay_action: data.overpay_action,
         allow_rounding: data.allow_rounding,
+        actual_change_amount: data.actual_change_amount,
         notes: data.notes ?? null,
         receipt_image_url: data.receipt_image_url ?? null,
         expected_paid_amount: data.expected_paid_amount,
@@ -56,6 +57,7 @@ export const useRecordPaymentRPC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-rounding-report'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });

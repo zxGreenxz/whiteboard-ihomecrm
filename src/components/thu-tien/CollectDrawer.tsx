@@ -14,6 +14,7 @@ import {
 } from '@/lib/collect';
 import { useQuickCollect } from '@/hooks/useQuickCollect';
 import { useInvoiceItemsLite } from '@/hooks/useCollectionReport';
+import { deriveInvoiceDepositDue } from '@/lib/paymentRecordRpc';
 import {
   useDeletePayment,
   useCollectionReversalEligibility,
@@ -76,12 +77,13 @@ export function CollectDrawer({
 
   const compact = mode === 'keypad';
   // Chi tiết hoá đơn nạp lazy — list /thu-tien không còn kéo invoice_items.
-  const { data: lazyItems = [] } = useInvoiceItemsLite(
-    !compact && invoice ? invoice.id : undefined,
+  const { data: lazyItems = [], isLoading: loadingItems, isError: itemsError } = useInvoiceItemsLite(
+    invoice ? invoice.id : undefined,
   );
   // entered = null → mặc định "điền sẵn đúng số còn phải thu"; chuỗi = số (nghìn) tự nhập.
   const [entered, setEntered] = useState<string | null>(null);
   const [keepAsCredit, setKeepAsCredit] = useState(false);
+  const [changeAmount, setChangeAmount] = useState<number | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [uploading, setUploading] = useState(false);
   // Trạng thái form thu (báo lên từ CollectPayForm) — nút xanh dưới cùng submit.
@@ -90,6 +92,7 @@ export function CollectDrawer({
   useEffect(() => {
     setEntered(null);
     setKeepAsCredit(false);
+    setChangeAmount(null);
     setPayState(null);
     setNoteDraft(invoice?.notes ?? '');
   }, [invoice?.id, mode]);
@@ -107,6 +110,8 @@ export function CollectDrawer({
   // Tên sổ thối org-scoped theo HĐ đang mở (invoice đã chắc chắn non-null tại đây).
   const changeAccountName = changeAccountNameFor(invoice);
   const remaining = remainingOf(invoice);
+  const allowRounding = !loadingItems && !itemsError
+    && deriveInvoiceDepositDue({ ...invoice, invoice_items: lazyItems }) === 0;
   const st = collectStatus(invoice);
   const meta = STATUS_META[st];
   const rep = repCustomer(invoice);
@@ -128,14 +133,16 @@ export function CollectDrawer({
     if (enteredVal <= 0) return;
     try {
       const res =
-        enteredVal > remaining
+        enteredVal > remaining || (changeAmount ?? 0) > 0
           ? await collect({
               invoice,
+              allowRounding,
               lines: [{ method: 'TM' as const, amount: enteredVal }],
               keepAsCredit: keepAsCredit && !!invoice.contract_id,
+              changeAmount: keepAsCredit ? undefined : changeAmount ?? undefined,
               notes: noteDraft,
             })
-          : await collect({ invoice, amount: enteredVal, notes: noteDraft });
+          : await collect({ invoice, amount: enteredVal, notes: noteDraft, allowRounding });
       if (res.failures.length === 0) onClose();
     } catch (e) {
       toast.error((e as Error).message);
@@ -175,7 +182,7 @@ export function CollectDrawer({
     TT: !!accountIdFor(invoice, 'TT'),
   } as Record<CollectMethod, boolean>;
 
-  const runPayForm = async ({ lines, keepAsCredit, paymentDate, receiptFile }: PayFormSubmit) => {
+  const runPayForm = async ({ lines, keepAsCredit, changeAmount, paymentDate, receiptFile }: PayFormSubmit) => {
     try {
       let url: string | null = null;
       if (receiptFile) {
@@ -192,8 +199,10 @@ export function CollectDrawer({
       }
       await collect({
         invoice,
+        allowRounding,
         lines,
         keepAsCredit,
+        changeAmount,
         notes: noteDraft,
         receiptImageUrl: url,
         paymentDate,
@@ -210,14 +219,19 @@ export function CollectDrawer({
     }
   };
 
-  const keypad = (
+  const keypad = loadingItems || itemsError ? (
+    <p role="status" className="pf-hint">{itemsError ? 'Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.' : 'Đang tải chi tiết hóa đơn…'}</p>
+  ) : (
     <CollectKeypad
       remaining={remaining}
       entered={entered}
-      onEntered={setEntered}
+      onEntered={value => { setEntered(value); setChangeAmount(null); }}
+      changeAmount={changeAmount}
+      onChangeAmount={setChangeAmount}
       keepAsCredit={keepAsCredit}
-      onKeepAsCreditChange={setKeepAsCredit}
+      onKeepAsCreditChange={value => { setKeepAsCredit(value); setChangeAmount(null); }}
       canCredit={!!invoice.contract_id}
+      allowRounding={allowRounding}
       changeAccountName={changeAccountName}
       confirming={isCollecting}
       onConfirm={submitKeypad}
@@ -275,16 +289,17 @@ export function CollectDrawer({
                 <div className="ib-lbl">Ghi chú</div>
                 <NoteEditor value={noteDraft} onChange={setNoteDraft} onBlur={saveNote} />
               </div>
-              <CollectPayForm
+              {loadingItems || itemsError ? <p role="status" className="pf-hint">{itemsError ? 'Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.' : 'Đang tải chi tiết hóa đơn…'}</p> : <CollectPayForm
                 key={invoice.id}
                 remaining={remaining}
                 methodAvailable={methodAvailable}
                 changeAccountName={changeAccountName}
                 canCredit={!!invoice.contract_id}
+                allowRounding={allowRounding}
                 bookOptions={accountOptionsFor(invoice)}
                 defaultTkBookId={accountIdFor(invoice, 'TK')}
                 onChange={setPayState}
-              />
+              />}
             </>
           )}
 

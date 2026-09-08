@@ -1,6 +1,7 @@
 import { Delete } from 'lucide-react';
 import { fmtFull, fmtShort } from '@/lib/collect';
-import { DEFAULT_ROUNDING_THRESHOLD } from '@/lib/collectPlan';
+import { DEFAULT_ROUNDING_THRESHOLD, planCollect } from '@/lib/collectPlan';
+import { ChangeAmountInput } from './ChangeAmountInput';
 
 interface Props {
   remaining: number;
@@ -19,6 +20,9 @@ interface Props {
   canCredit: boolean;
   /** Tên sổ "…Thối" để hiển thị; '' nếu chưa có. */
   changeAccountName?: string;
+  changeAmount: number | null;
+  onChangeAmount: (value: number | null) => void;
+  allowRounding?: boolean;
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -39,6 +43,9 @@ export function CollectKeypad({
   onKeepAsCreditChange,
   canCredit,
   changeAccountName,
+  changeAmount,
+  onChangeAmount,
+  allowRounding = true,
 }: Props) {
   const pristine = entered === null;
   const enteredVal = pristine
@@ -46,12 +53,16 @@ export function CollectKeypad({
     : (parseInt(entered, 10) || 0) * 1000;
 
   const overpay = Math.max(0, enteredVal - remaining);
-  const shortfall = Math.max(0, remaining - enteredVal);
+  const credit = overpay > 0 && keepAsCredit && canCredit;
+  const actualChange = credit ? 0 : (changeAmount ?? overpay);
+  const checked = planCollect({ lines: [{ method: 'TM', amount: enteredVal }], remaining,
+    hasContract: canCredit, keepAsCredit: credit, changeAmount: credit ? undefined : actualChange, allowRounding });
+  const error = checked.ok === false && enteredVal > 0 ? checked.error : null;
+  const shortfall = Math.max(0, remaining - (enteredVal - actualChange));
   // Thiếu < ngưỡng làm tròn → DB tự làm tròn coi như thu đủ.
-  const willRound = shortfall > 0 && shortfall < DEFAULT_ROUNDING_THRESHOLD;
-  const isFull = enteredVal > 0 && overpay === 0 && (shortfall === 0 || willRound);
-  const isUnder = shortfall >= DEFAULT_ROUNDING_THRESHOLD;
-  const credit = keepAsCredit && canCredit;
+  const willRound = allowRounding && !error && shortfall > 0 && shortfall < DEFAULT_ROUNDING_THRESHOLD;
+  const isFull = !error && enteredVal > 0 && (shortfall === 0 || willRound);
+  const isUnder = shortfall > 0 && !willRound;
 
   // Bấm phím số: pristine → bắt đầu chuỗi mới (tự xoá số điền sẵn).
   const press = (d: string) => {
@@ -75,16 +86,16 @@ export function CollectKeypad({
       )}
       {willRound && (
         <p className="kp-warn round">
-          Thiếu {fmtFull(shortfall)} — làm tròn, coi như thu đủ.
+          Bỏ qua {fmtFull(shortfall)} — tính đóng đủ, lưu vào thống kê.
         </p>
       )}
-      {overpay > 0 && (
+      {enteredVal > 0 && (
         <div className="pf-change kp-change">
           <div className="pf-change-row">
             <span>{credit ? 'Giữ nợ khách' : 'Tiền thối'}</span>
-            <b>{fmtFull(overpay)}</b>
+            {credit ? <b>{fmtFull(overpay)}</b> : <ChangeAmountInput value={actualChange} onChange={onChangeAmount} disabled={confirming} />}
           </div>
-          {canCredit && (
+          {canCredit && overpay > 0 && (
             <label className="pf-credit">
               <input
                 type="checkbox"
@@ -97,10 +108,11 @@ export function CollectKeypad({
           <p className="pf-hint">
             {credit
               ? `Thu đủ ${fmtFull(remaining)} cho hoá đơn, giữ ${fmtFull(overpay)} làm credit trừ kỳ sau.`
-              : `Thối lại khách ${fmtFull(overpay)}${changeAccountName ? ` · ghi sổ "${changeAccountName}"` : ''}.`}
+              : `Thối lại khách ${fmtFull(actualChange)}${changeAccountName ? ` · ghi sổ "${changeAccountName}"` : ''}.`}
           </p>
         </div>
       )}
+      {error && <p className="pf-hint err" role="alert">{error}</p>}
 
       <div className="kp-presets">
         <span className="kp-preset due" onClick={() => onEntered(null)}>
@@ -126,7 +138,7 @@ export function CollectKeypad({
       <button
         type="button"
         className={'kp-confirm' + (isFull ? ' full' : '')}
-        disabled={enteredVal <= 0 || confirming}
+        disabled={enteredVal <= 0 || confirming || !!error}
         onClick={onConfirm}
       >
         {confirming
@@ -134,10 +146,10 @@ export function CollectKeypad({
           : isFull
             ? `Thu đủ ${fmtShort(enteredVal)}`
             : `Xác nhận thu ${fmtShort(enteredVal)}`}
-        {overpay > 0 && (
+        {(overpay > 0 || actualChange > 0) && (
           <small>
             {credit ? 'nợ khách ' : 'thối '}
-            {fmtShort(overpay)}
+            {fmtShort(credit ? overpay : actualChange)}
           </small>
         )}
       </button>

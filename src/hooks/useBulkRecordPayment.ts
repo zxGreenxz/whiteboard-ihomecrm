@@ -17,7 +17,7 @@ import {
   type InvoiceCollectionPlanningInput,
   type InvoiceCollectionTenderInput,
 } from '@/lib/paymentRecordRpc';
-import { deriveOverpayPolicy } from '@/lib/collectPlan';
+import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
 
 export interface BulkPaymentItem {
   invoice_id: string;
@@ -26,7 +26,7 @@ export interface BulkPaymentItem {
   amount_tm: number;
   amount_tk: number;
   amount_tt: number;
-  /** Must equal the actual overpay; it is REFUND unless keep_as_credit=true. */
+  /** Actual cash change, or exact overpayment when keep_as_credit=true. */
   change_amount: number;
   account_id: string;
   accounts?: Partial<Record<'TM' | 'TK' | 'TT', string>>;
@@ -121,7 +121,7 @@ export const useBulkRecordPayment = () => {
             const { data: invoice, error: invoiceError } = await (supabase
               .from('invoices')
               .select(
-                'id, invoice_number, total_amount, paid_amount, contract_id, previous_debt_sources, invoice_items(type, description, amount)',
+                'id, invoice_number, total_amount, paid_amount, contract_id, previous_debt_sources, invoice_items(type, description, amount, accounting_class)',
               )
               .eq('id', item.invoice_id)
               .single() as any);
@@ -141,11 +141,6 @@ export const useBulkRecordPayment = () => {
             const remaining = Math.max(totalAmount - paidAmount, 0);
             const grossTotal = grossLines.reduce((sum, line) => sum + line.gross_amount, 0);
             const overpay = Math.max(grossTotal - remaining, 0);
-            if (Math.abs((Number(item.change_amount) || 0) - overpay) >= 0.01) {
-              throw new Error(
-                `Tiền dư phải đúng phần vượt còn phải thu (${overpay.toLocaleString('vi-VN')}đ)`,
-              );
-            }
             const overpayPolicy = deriveOverpayPolicy({
               total: grossTotal,
               amountTm: Number(item.amount_tm) || 0,
@@ -154,10 +149,18 @@ export const useBulkRecordPayment = () => {
             });
             const keepAsCredit = overpay > 0
               && (overpayPolicy.mustKeepAsCredit || !!item.keep_as_credit);
+            if (keepAsCredit && item.change_amount !== overpay) {
+              throw new Error('Tiền giữ nợ khách phải đúng bằng phần dư');
+            }
+            const actualChange = keepAsCredit ? 0 : item.change_amount;
+            const checked = planCollect({ lines: grossLines.map(l => ({ method: l.payment_method, amount: l.gross_amount })),
+              remaining, hasContract: !!invoice.contract_id, keepAsCredit,
+              changeAmount: keepAsCredit ? undefined : actualChange });
+            if (checked.ok === false) throw new Error(checked.error);
             if (keepAsCredit && !invoice.contract_id) {
               throw new Error('Hóa đơn không gắn hợp đồng nên không thể giữ credit');
             }
-            if (overpay > 0 && !keepAsCredit && !item.change_account_id) {
+            if (actualChange > 0 && !item.change_account_id) {
               throw new Error('Thiếu sổ quỹ tiền thối');
             }
 
@@ -179,9 +182,10 @@ export const useBulkRecordPayment = () => {
               ),
             );
 
-            const allowRounding = (Number(item.rounding_amount) || 0) > 0;
+            const allowRounding = (Number(item.rounding_amount) || 0) > 0
+              && deriveInvoiceDepositDue(invoice) === 0;
             if (
-              overpay > 0
+              actualChange > 0
               && !keepAsCredit
               && accountVirtuality.get(item.change_account_id ?? '') !== true
             ) {
@@ -207,11 +211,11 @@ export const useBulkRecordPayment = () => {
                 account_id: accountId,
                 account_is_virtual: accountIsVirtual,
                 change_account_id:
-                  overpay > 0 && !keepAsCredit && line.payment_method === 'TM'
+                  actualChange > 0 && line.payment_method === 'TM'
                     ? item.change_account_id
                     : null,
                 change_account_is_virtual:
-                  overpay > 0 && !keepAsCredit && line.payment_method === 'TM'
+                  actualChange > 0 && line.payment_method === 'TM'
                     ? accountVirtuality.get(item.change_account_id ?? '') ?? null
                     : null,
                 rounding_account_id:
@@ -229,9 +233,8 @@ export const useBulkRecordPayment = () => {
               invoice_id: item.invoice_id,
               collection_date: params.payment_date,
               tenders,
-              overpay_action: overpay > 0
-                ? (keepAsCredit ? 'CREDIT' : 'REFUND')
-                : 'REJECT',
+              overpay_action: keepAsCredit ? 'CREDIT' : actualChange > 0 ? 'REFUND' : 'REJECT',
+              actual_change_amount: actualChange > 0 && actualChange !== overpay ? actualChange : undefined,
               allow_rounding: allowRounding,
               notes: item.notes?.trim() || null,
               receipt_image_url: item.receipt_image_url ?? null,
@@ -277,6 +280,7 @@ export const useBulkRecordPayment = () => {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-rounding-report'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });

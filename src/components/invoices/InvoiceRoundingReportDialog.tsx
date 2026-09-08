@@ -70,7 +70,7 @@ export default function InvoiceRoundingReportDialog({ open, onOpenChange, billin
             <label htmlFor={`${id}-collector`} className="grid gap-1 text-sm font-medium">Người thu
               <Controller name="collectorId" control={control} render={({ field }) => <select {...field} id={`${id}-collector`} className="h-10 min-w-0 rounded-md border bg-background px-3" onChange={(event) => { field.onChange(event); setPage(0); }}>
                 <option value="">Tất cả người thu</option>
-                {data?.by_collector.filter((collector) => collector.collector_id !== null).map((collector) => <option key={collector.collector_id} value={collector.collector_id}>{collector.collector_name || 'Chưa rõ tên'}</option>)}
+                {data?.by_collector.map((collector) => collector.collector_id === null ? null : <option key={collector.collector_id} value={collector.collector_id}>{collector.collector_name || 'Chưa rõ tên'}</option>)}
               </select>} />
             </label>
           </div>
