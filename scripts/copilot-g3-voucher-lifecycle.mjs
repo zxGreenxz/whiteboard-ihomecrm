@@ -1,5 +1,5 @@
 /** Owned DEMO G3 fixtures. Import-safe; credentials and transports are supplied by the caller. */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { digest } from './copilot-golden-browser-evidence.mjs';
@@ -12,6 +12,23 @@ const copy = value => structuredClone(value);
 const actions = n => n === 3 ? ['income_expense.create_draft', 'income_expense.nop_ho_so'] : ['income_expense.create_draft'];
 const timestamp = value => Number.isFinite(Date.parse(value));
 const freshAt = (value, start, now) => timestamp(value) && Date.parse(value) >= Date.parse(start) - 5000 && Date.parse(value) <= now + 5000;
+const HISTORY_PROOF_KEYS = ['schemaVersion', 'attemptId', 'caseId', 'organizationId', 'planId', 'voucherId', 'phase', 'checkedAt', 'expectedSnapshotMatched', 'approvalVersion', 'postingVersion', 'ownershipVerified', 'postingHistoryComplete', 'zeroPostingHistory', 'noActivePosting', 'noRecognitionAdjustment', 'noUnexpectedFinancialLink', 'cancelledUnpostedVerified'];
+const sha256 = value => createHash('sha256').update(value, 'utf8').digest('hex');
+function decimal15x2(value) {
+  ensure(typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 9999999999999.99, 'g3_history_proof_invalid');
+  const cents = Math.round(value * 100);
+  ensure(Number.isSafeInteger(cents) && Math.abs(value * 100 - cents) <= 1e-7, 'g3_history_proof_invalid');
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+}
+export function g3OwnershipDigest(voucher) {
+  const item = Array.isArray(voucher?.items) && voucher.items.length === 1 ? voucher.items[0] : null;
+  ensure(voucher && item && UUID.test(voucher.id) && UUID.test(voucher.organization_id) && UUID.test(voucher.user_id) && UUID.test(voucher.building_id) && UUID.test(item.id) && UUID.test(item.income_expense_type_id) && item.income_expense_id === voucher.id && item.description === voucher.name && item.quantity === 1 && item.unit_price === voucher.total_amount, 'g3_history_proof_invalid');
+  return sha256(['g3-owned-v1', voucher.id, voucher.organization_id, voucher.user_id, voucher.name, voucher.type, decimal15x2(voucher.total_amount), voucher.building_id, voucher.voucher_date, item.income_expense_type_id, item.id, String(item.quantity), decimal15x2(item.unit_price)].join('|'));
+}
+export function g3StateDigest(voucher, ownershipDigest) {
+  ensure(voucher && HASH.test(ownershipDigest) && Number.isSafeInteger(voucher.approval_version) && Number.isSafeInteger(voucher.posting_version), 'g3_history_proof_invalid');
+  return sha256(['g3-owned-state-v1', ownershipDigest, voucher.approval_status, voucher.review_state, voucher.posting_status, voucher.cancellation_kind ?? '<null>', voucher.active_posting_id_v2 ?? '<null>', voucher.reversed_by_posting_id ?? '<null>', String(voucher.approval_version), String(voucher.posting_version)].join('|'));
+}
 function atomic(path, value) {
   const temp = `${path}.${randomUUID()}.tmp`, fd = openSync(temp, 'wx', 0o600);
   try { writeFileSync(fd, JSON.stringify(value, null, 2)); fsyncSync(fd); } finally { closeSync(fd); }
@@ -73,7 +90,17 @@ export function createG3FileStore({ directory }) {
 function validateCanonical(c, a) {
   ensure(c && Object.keys(c).length === 7 && c.organization_id === G3_DEMO && c.type === 'EXPENSE' && c.name === a.marker && c.amount === 1000 && UUID.test(c.building_id) && UUID.test(c.type_id) && /^\d{4}-\d{2}-\d{2}$/.test(c.voucher_date), 'g3_payload');
 }
-const rpcNames = new Set(['copilot_preview_income_expense_v1', 'copilot_plan_create_v1', 'copilot_plan_approve_v1', 'copilot_plan_execute_step_v1', 'copilot_plan_cancel_v1', 'copilot_plan_get_v1', 'copilot_ledger_audit_page_v1', 'withdraw_financial_request_v1', 'cancel_income_expense_flex_v1', 'get_income_expense_detail_v2', 'list_ie_accounting_standard_v1', 'list_my_pending_approvals_compat_v2', 'get_approval_request_detail_compat_v2']);
+function historyProofRequest(input) {
+  const { attempt, planId, voucherId, ownershipDigest, stateDigest, approvalVersion, postingVersion, phase } = input ?? {};
+  ensure(attempt && digest(attempt) === digest(createG3Attempt(attempt)) && UUID.test(planId) && UUID.test(voucherId) && HASH.test(ownershipDigest) && HASH.test(stateDigest) && Number.isSafeInteger(approvalVersion) && approvalVersion >= 1 && Number.isSafeInteger(postingVersion) && postingVersion >= 1 && ['before_cancel', 'cancelled'].includes(phase), 'g3_history_proof_invalid');
+  return { p_organization_id: G3_DEMO, p_attempt_id: attempt.attemptId, p_case_id: attempt.caseNo, p_client_request_id: attempt.requestKey, p_plan_id: planId, p_voucher_id: voucherId, p_digest_schema_version: 1, p_expected_ownership_digest: ownershipDigest, p_expected_state_digest: stateDigest, p_expected_approval_version: approvalVersion, p_expected_posting_version: postingVersion, p_phase: phase };
+}
+function validateHistoryProof(value, input) {
+  const request = historyProofRequest(input);
+  ensure(value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === HISTORY_PROOF_KEYS.length && HISTORY_PROOF_KEYS.every(key => Object.hasOwn(value, key)) && value.schemaVersion === 1 && value.attemptId === request.p_attempt_id && value.caseId === request.p_case_id && value.organizationId === request.p_organization_id && value.planId === request.p_plan_id && value.voucherId === request.p_voucher_id && value.phase === request.p_phase && timestamp(value.checkedAt) && value.expectedSnapshotMatched === true && value.approvalVersion === request.p_expected_approval_version && value.postingVersion === request.p_expected_posting_version && value.ownershipVerified === true && value.postingHistoryComplete === true && value.zeroPostingHistory === true && value.noActivePosting === true && value.noRecognitionAdjustment === true && value.noUnexpectedFinancialLink === true && value.cancelledUnpostedVerified === (request.p_phase === 'cancelled'), 'g3_history_proof_invalid');
+  return value;
+}
+const rpcNames = new Set(['copilot_preview_income_expense_v1', 'copilot_plan_create_v1', 'copilot_plan_approve_v1', 'copilot_plan_execute_step_v1', 'copilot_plan_cancel_v1', 'copilot_plan_get_v1', 'copilot_ledger_audit_page_v1', 'copilot_g3_owned_voucher_history_proof_v1', 'withdraw_financial_request_v1', 'cancel_income_expense_flex_v1', 'get_income_expense_detail_v2', 'list_ie_accounting_standard_v1', 'list_my_pending_approvals_compat_v2', 'get_approval_request_detail_compat_v2']);
 export function createG3AppClient({ apiOrigin, actorId, credentialProvider, fetch, readPending, readRequest, verifyHistory }) {
   ensure(new URL(apiOrigin).origin === apiOrigin && apiOrigin.startsWith('https://') && UUID.test(actorId), 'g3_transport_origin');
   async function transport(path, method, args) {
@@ -91,9 +118,8 @@ export function createG3AppClient({ apiOrigin, actorId, credentialProvider, fetc
     readPending: readPending ?? (async voucherId => { const rows = await read('list_my_pending_approvals_compat_v2', {}); ensure(Array.isArray(rows), 'g3_pending_shape'); return rows.filter(r => r.subject_type === 'FINANCIAL_VOUCHER' && r.subject_id === voucherId); }),
     readRequest: readRequest ?? (requestId => read('get_approval_request_detail_compat_v2', { p_request_id: requestId })),
     async readAudit(voucherId) { ensure(UUID.test(voucherId), 'g3_read_id'); const r = await transport(`ai_write_audit?organization_id=eq.${G3_DEMO}&tool=eq.tao_phieu_thu_chi_nhap&entity_id=eq.${voucherId}&select=entity_id,entity_table,organization_id,user_id,payload`, 'GET'); ensure(r.status === 200 && Array.isArray(r.body), 'g3_audit_read'); return r.body; },
-    // Complete posting/effect history is NOT established by an RLS-filtered postings SELECT.
-    // Supply a reviewed, scoped read-only authority adapter; unavailable remains unresolved.
-    verifyHistory: verifyHistory ?? (async () => null),
+    // Complete posting/effect history is not established by an RLS-filtered postings SELECT.
+    verifyHistory: verifyHistory ?? (async input => validateHistoryProof(await read('copilot_g3_owned_voucher_history_proof_v1', historyProofRequest(input)), input)),
     async discoverPlans(a) {
       const until = new Date().toISOString(), ids = new Set(), cursors = new Set(); let afterAt = null, afterId = null, count = 0, total;
       for (let page = 0; page < 100; page++) {
@@ -118,6 +144,14 @@ export function openG3Lifecycle({ attempt, store, client, recovery = false, now 
   if (recovery) { j.business = 'interrupted'; j.state = 'cleanup_unknown'; j.lockReleased = false; delete j.receiptDigest; }
   const pending = new Set(); let closing = false;
   const persist = () => store.save(j);
+  async function verifyBoundHistory(voucher, phase) {
+    const ownershipDigest = g3OwnershipDigest(voucher);
+    const input = { attempt: copy(attempt), planId: j.planId, voucherId: j.voucherId, ownershipDigest, stateDigest: g3StateDigest(voucher, ownershipDigest), approvalVersion: voucher.approval_version, postingVersion: voucher.posting_version, phase };
+    const history = await client.verifyHistory(input);
+    validateHistoryProof(history, input);
+    ensure(freshAt(history.checkedAt, new Date(now() - 60000).toISOString(), now()), 'g3_history_authority_required');
+    return history;
+  }
   persist();
   async function invoke(kind, name, args, step) {
     store.assertOwner(); const op = { kind, ...(step === undefined ? {} : { step }), outcome: 'intent' }; j.operations.push(op); persist();
@@ -240,6 +274,7 @@ export function openG3Lifecycle({ attempt, store, client, recovery = false, now 
             requests = await client.readPending(j.voucherId); ensure(requests.length === 0, 'g3_pending_after_withdraw'); persist();
           } else ensure(requests.length === 0, 'g3_request_unowned');
           v = await ownedVoucher(j.operations.some(op => op.kind === 'cancel'));
+          const beforeHistory = v.approval_status === 'CANCELLED' ? null : await verifyBoundHistory(v, 'before_cancel');
           if (v.approval_status !== 'CANCELLED') {
             ensure(!j.operations.some(op => op.kind === 'cancel'), 'g3_cancel_unresolved');
             try { const r = await invoke('cancel', 'cancel_income_expense_flex_v1', { p_voucher: j.voucherId, p_reason: `G3 cleanup ${attempt.marker}`, p_expected_approval_version: j.approvalVersion, p_expected_posting_version: j.postingVersion }); ensure(r.status === 200 && r.body?.id === j.voucherId && r.body.changed === true && r.body.cancellation_kind === 'CANCELLED_UNPOSTED' && r.body.reversal_posting_id === null, 'g3_cancel_response'); } catch (error) { if (j.operations.at(-1)?.outcome !== 'unknown') throw error; }
@@ -247,9 +282,8 @@ export function openG3Lifecycle({ attempt, store, client, recovery = false, now 
           v = await ownedVoucher(true); ensure(v.approval_status === 'CANCELLED', 'g3_cancel_readback');
           const op = j.operations.find(op => op.kind === 'cancel'); ensure(op, 'g3_cancel_not_owned'); if (['unknown', 'intent'].includes(op.outcome)) op.outcome = 'reconciled';
           j.terminal = { voucherId: j.voucherId, approvalStatus: v.approval_status, reviewState: v.review_state, postingStatus: v.posting_status, cancellationKind: v.cancellation_kind, approvalVersion: v.approval_version, postingVersion: v.posting_version, requestId: j.requestId ?? null, requestState: j.requestId ? 'CANCELLED' : null, voucherDigest: digest(v) }; persist();
-          const history = await client.verifyHistory({ attempt: copy(attempt), voucherId: j.voucherId, voucherDigest: digest(v) });
-          ensure(history?.kind === 'g3-history-authority-v1' && history.complete === true && history.organizationId === G3_DEMO && history.voucherId === j.voucherId && history.voucherDigest === digest(v) && history.postingCount === 0 && history.linkedEffectCount === 0 && HASH.test(history.authorityDigest) && freshAt(history.measuredAt, new Date(now() - 60000).toISOString(), now()), 'g3_history_authority_required');
-          j.history = { complete: true, authorityDigest: history.authorityDigest, proofDigest: digest(history) }; persist();
+          const terminalHistory = await verifyBoundHistory(v, 'cancelled');
+          j.history = { complete: true, authorityDigest: digest(beforeHistory ?? terminalHistory), proofDigest: digest(terminalHistory) }; persist();
         }
         ensure(j.operations.every(op => ['success', 'rejected', 'reconciled'].includes(op.outcome)), 'g3_unsettled_write'); return await finalReceipt();
       } catch { j.state = 'cleanup_unknown'; j.lockReleased = false; delete j.receiptDigest; try { persist(); } catch { /* existing journal/lock or absent released receipt blocks admission */ } throw new Error('g3_cleanup_unresolved'); }

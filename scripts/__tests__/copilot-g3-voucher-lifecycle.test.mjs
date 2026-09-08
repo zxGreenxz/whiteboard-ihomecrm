@@ -70,7 +70,7 @@ function harness(caseNo = 3, options = {}) {
     async readVoucher() { return clone(voucher); }, async readPending() { return request?.state === 'PENDING_APPROVAL' ? [clone(request)] : []; }, async readRequest() { return clone(request); },
     async readMode() { return [{ organization_id: org, strict_mode: false }]; },
     async readAudit() { return [{ entity_id: id(2), entity_table: 'income_expenses', organization_id: org, user_id: actor, payload: canonical }]; },
-    async verifyHistory(input) { return { kind: 'g3-history-authority-v1', complete: true, organizationId: org, voucherId: id(2), voucherDigest: input.voucherDigest, postingCount: 0, linkedEffectCount: 0, measuredAt: new Date().toISOString(), authorityDigest: 'c'.repeat(64) }; },
+    async verifyHistory(input) { return { schemaVersion: 1, attemptId: input.attempt.attemptId, caseId: input.attempt.caseNo, organizationId: org, planId: input.planId, voucherId: id(2), phase: input.phase, checkedAt: new Date().toISOString(), expectedSnapshotMatched: true, approvalVersion: input.approvalVersion, postingVersion: input.postingVersion, ownershipVerified: true, postingHistoryComplete: true, zeroPostingHistory: true, noActivePosting: true, noRecognitionAdjustment: true, noUnexpectedFinancialLink: true, cancelledUnpostedVerified: input.phase === 'cancelled' }; },
   };
   if (options.rest) {
     const model = client;
@@ -107,6 +107,14 @@ test('case 3 withdraws exact pending request before CAS cancel and persists rele
   assert.equal(readFileSync(join(h.directory, 'journal.json'), 'utf8').includes('never-persist-this'), false);
 });
 test('expected submit failure cleans voucher with no request mutation', async () => { const h = harness(3, { submitFails: true }); await execute(h); await h.lifecycle.cleanup(); assert.deepEqual(cleanupCalls(h), ['cancel_income_expense_flex_v1']); });
+test('ownership digest pins DECIMAL(15,2) monetary values with PostgreSQL scale', async () => {
+  const h = harness(8);
+  await execute(h, 1);
+  const voucher = { ...h.voucher, total_amount: 1000, items: [{ ...h.voucher.items[0], unit_price: 1000 }] };
+  const expected = (await import('node:crypto')).createHash('sha256').update(['g3-owned-v1', voucher.id, voucher.organization_id, voucher.user_id, voucher.name, voucher.type, '1000.00', voucher.building_id, voucher.voucher_date, voucher.items[0].income_expense_type_id, voucher.items[0].id, '1', '1000.00'].join('|'), 'utf8').digest('hex');
+  assert.equal(module.g3OwnershipDigest(voucher), expected);
+  assert.throws(() => module.g3OwnershipDigest({ ...voucher, total_amount: 1000.001, items: [{ ...voucher.items[0], unit_price: 1000.001 }] }), /g3_history_proof_invalid/);
+});
 test('case 8 waits for both issued transports before cleanup, keeps one create', async () => {
   let release; const hold = new Promise(resolve => { release = resolve; }); const h = harness(8, { hold });
   await execute(h, 0); const pair = h.lifecycle.executePair(1, 2); const cleaning = h.lifecycle.cleanup();
@@ -129,6 +137,17 @@ test('business assertion failure still cleans and retains failure alongside clea
   const broken = harness(8, { cancelRejects: true }); await assert.rejects(broken.lifecycle.run(async () => { await execute(broken, 1); throw Error('original'); }), error => error instanceof AggregateError && error.errors[0].message === 'original' && error.errors[1].message === 'g3_cleanup_unresolved');
 });
 test('missing authoritative history never masquerades as RLS proof or finalized acceptance', async () => { const h = harness(8); await execute(h, 1); h.client.verifyHistory = async () => null; await assert.rejects(h.lifecycle.cleanup()); assert.notEqual(h.store.load().state, 'finalized'); });
+test('cleanup binds both pre-cancel and cancelled history proofs to the exact owned snapshot', async () => {
+  const h = harness(3); const inputs = [];
+  h.client.verifyHistory = async input => {
+    inputs.push(structuredClone(input));
+    return { schemaVersion: 1, attemptId: input.attempt.attemptId, caseId: input.attempt.caseNo, organizationId: org, planId: input.planId, voucherId: input.voucherId, phase: input.phase, checkedAt: new Date().toISOString(), expectedSnapshotMatched: true, approvalVersion: input.approvalVersion, postingVersion: input.postingVersion, ownershipVerified: true, postingHistoryComplete: true, zeroPostingHistory: true, noActivePosting: true, noRecognitionAdjustment: true, noUnexpectedFinancialLink: true, cancelledUnpostedVerified: input.phase === 'cancelled' };
+  };
+  await execute(h); await h.lifecycle.cleanup();
+  assert.deepEqual(inputs.map(input => input.phase), ['before_cancel', 'cancelled']);
+  assert.ok(inputs.every(input => input.planId === id(1) && input.voucherId === id(2) && /^[a-f0-9]{64}$/.test(input.ownershipDigest) && /^[a-f0-9]{64}$/.test(input.stateDigest)));
+  assert.deepEqual(inputs.map(input => [input.approvalVersion, input.postingVersion]), [[1, 1], [2, 1]]);
+});
 test('final write and lock release failures retain unresolved ownership and block new setup', async () => {
   for (const failure of ['save', 'release']) { const h = harness(8); await execute(h, 1); const original = h.store[failure]; h.store[failure] = (...args) => { if (failure === 'release' || args[0].state === 'finalized') throw Error('disk failure'); return original(...args); }; await assert.rejects(h.lifecycle.cleanup()); assert.notEqual(h.store.load().state, 'finalized'); assert.throws(() => module.openG3Lifecycle({ attempt: h.attempt, client: h.client, store: module.createG3FileStore({ directory: h.directory }) })); }
 });
@@ -142,6 +161,18 @@ test('REST adapter uses authenticated public RPC contract and preserves exact au
   const client = module.createG3AppClient({ apiOrigin: 'https://test.supabase.co', actorId: actor, credentialProvider: async () => ({ actorId: actor, accessToken: 'test-token', apikey: 'test-key' }), fetch: async (url, init) => { calls.push({ url, init }); return { status: 200, ok: true, json: async () => ({ id: id(2) }) }; } });
   await client.rpc('cancel_income_expense_flex_v1', { p_voucher: id(2), p_reason: 'g3 cleanup', p_expected_approval_version: 1, p_expected_posting_version: 1 });
   assert.equal(calls[0].url, 'https://test.supabase.co/rest/v1/rpc/cancel_income_expense_flex_v1'); assert.equal(calls[0].init.method, 'POST'); assert.equal(calls[0].init.headers.Authorization, 'Bearer test-token'); assert.equal(calls[0].init.headers['Content-Profile'], 'public'); assert.equal(JSON.parse(calls[0].init.body).p_expected_posting_version, 1);
+});
+test('default history adapter binds the exact owned cancelled snapshot and rejects a lookalike proof', async () => {
+  const attempt = module.createG3Attempt({ actorId: actor, caseNo: 8, sourceSha: sha, buildSha: sha, runId: '100', runAttempt: '1', workflow: 'copilot-e2e.yml' });
+  const input = { attempt, planId: id(7), voucherId: id(8), ownershipDigest: 'b'.repeat(64), stateDigest: 'c'.repeat(64), approvalVersion: 2, postingVersion: 1, phase: 'cancelled' };
+  const proof = { schemaVersion: 1, attemptId: attempt.attemptId, caseId: 8, organizationId: org, planId: id(7), voucherId: id(8), phase: 'cancelled', checkedAt: '2026-09-08T00:00:00.000Z', expectedSnapshotMatched: true, approvalVersion: 2, postingVersion: 1, ownershipVerified: true, postingHistoryComplete: true, zeroPostingHistory: true, noActivePosting: true, noRecognitionAdjustment: true, noUnexpectedFinancialLink: true, cancelledUnpostedVerified: true };
+  const calls = [];
+  const client = module.createG3AppClient({ apiOrigin: 'https://test.supabase.co', actorId: actor, credentialProvider: async () => ({ actorId: actor, accessToken: 'test-token', apikey: 'test-key' }), fetch: async (url, init) => { calls.push({ url, init }); return { status: 200, ok: true, json: async () => proof }; } });
+  assert.deepEqual(await client.verifyHistory(input), proof);
+  assert.equal(calls.length, 1); assert.equal(calls[0].url, 'https://test.supabase.co/rest/v1/rpc/copilot_g3_owned_voucher_history_proof_v1');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { p_organization_id: org, p_attempt_id: attempt.attemptId, p_case_id: 8, p_client_request_id: attempt.requestKey, p_plan_id: id(7), p_voucher_id: id(8), p_digest_schema_version: 1, p_expected_ownership_digest: 'b'.repeat(64), p_expected_state_digest: 'c'.repeat(64), p_expected_approval_version: 2, p_expected_posting_version: 1, p_phase: 'cancelled' });
+  proof.organizationId = id(9);
+  await assert.rejects(client.verifyHistory(input), /g3_history_proof_invalid/);
 });
 test('real REST lifecycle preserves withdrawal then dual-CAS cancellation and both version changes', async () => { const h = harness(3, { rest: true }); await execute(h); await h.lifecycle.cleanup(); assert.deepEqual(cleanupCalls(h), ['withdraw_financial_request_v1', 'cancel_income_expense_flex_v1']); assert.equal(h.request.version, 2); assert.equal(h.voucher.approval_version, 2); });
 test('lost create with absent or duplicate discovery stays unresolved and never retries creation', async () => {

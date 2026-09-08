@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-08T06:03:44.534Z",
+  "generatedAt": "2026-09-08T08:24:27.231Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 528,
-    "unknown": 73,
+    "unknown": 74,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9660,6 +9660,18 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-08T06:02:47.065Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260908080403_copilot_g3_owned_voucher_history_proof_v1.sql",
+      "version": "20260908080403",
+      "name": "copilot_g3_owned_voucher_history_proof_v1",
+      "scheme": "timestamp14",
+      "sha256": "d5f279a1587d083210873979f7c651f238e80ecf0cdedaa574d27f17b2286107",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "function:public.copilot_g3_owned_voucher_history_proof_v1"
       ]
     },
     {
