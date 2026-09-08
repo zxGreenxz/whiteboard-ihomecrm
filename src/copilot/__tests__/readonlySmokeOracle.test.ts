@@ -953,6 +953,26 @@ function customerEvidence(id='C02') {
 }
 function customerAnswer(text:string,id='C02') {const e=customerEvidence(id);e.answer=renderedAssistantText(text);e.rounds[1].body=chunk({content:text},'stop')+'data: [DONE]\n\n';return e;}
 describe('bounded customer golden executor',()=>{
+  it.each(['C02','C14'])('forwards only static customer diagnostic for %s',caseId=>{
+    const log=vi.spyOn(console,'log').mockImplementation(()=>undefined);
+    try{
+      const event={caseId,code:'customer_facts'};
+      const unsafe=[{...event,code:'PRIVATE_PHONE'},{...event,payload:'PRIVATE_PHONE'},{caseId:'C01',code:'customer_facts'}];
+      new GoldenReporter().onTestEnd({} as TestCase,{status:'failed',stdout:[[event,...unsafe].map(x=>JSON.stringify(x)).join('\n')]} as TestResult);
+      expect(log.mock.calls.map(([s])=>s)).toEqual([JSON.stringify(event),'golden browser: failed']);
+    }finally{log.mockRestore();}
+  });
+  it('accepts scoped empty lookup with exact source and criterion',()=>{
+    const e=customerEvidence('C14');
+    expect(()=>assertCustomerResult(customerAnswer(`Không tìm thấy hồ sơ khách hàng khớp "${e.fixture.query}" trong phạm vi bạn được xem. (nguồn: tim_khach_hang)`,'C14'))).not.toThrow();
+    expect(()=>assertCustomerResult(customerAnswer(e.answer+' Trong phạm vi bạn được xem.','C14'))).not.toThrow();
+  });
+  it('accepts bound positive customer with exact source annotation',()=>{
+    const e=customerEvidence();expect(()=>assertCustomerResult(customerAnswer(e.answer+' (nguồn: tim_khach_hang)'))).not.toThrow();
+  });
+  it.each(['Có hồ sơ khách hàng.','Tìm thấy hồ sơ khách hàng.','Có hồ sơ khách hàng trong phạm vi bạn được xem.','Trong phạm vi bạn được xem có khách hàng.','(nguồn: tim_khach_hen)','(nguồn: tim_khach_hang Có khách hàng)'])('scoped prose cannot hide affirmative facts or wrong source %s',statement=>{
+    const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' '+statement,'C14'))).toThrow('customer_facts');
+  });
   it.each(['C02','C14'])('accepts complete fragmented tool cycle %s',id=>expect(()=>assertCustomerResult(customerEvidence(id))).not.toThrow());
   it('binds C14 deterministic context query and C02 fixed name',()=>{
     expect(customerQuery('C14','context-1')).toMatch(/^000\d{7}$/);expect(customerQuery('C14','context-1')).not.toBe(customerQuery('C14','context-2'));expect(customerQuery('C02','context-1')).toBe('Nguyễn An');

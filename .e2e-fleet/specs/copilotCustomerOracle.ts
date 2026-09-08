@@ -4,6 +4,7 @@ import { inspectModelStream,renderedAssistantText,type ReadonlyEvidence } from '
 export interface CustomerRead {rpc:string;args:Record<string,unknown>;payload:unknown;ok:boolean;actorDigest?:string;exactEndpoint:boolean}
 const codes=['customer_binding','customer_cycle','customer_mounted','customer_prompt','customer_tool','customer_read','customer_payload','customer_linked_result','customer_pii','customer_facts','customer_link'] as const;
 type Code=typeof codes[number];
+export function isCustomerOracleFailureCode(value:unknown):value is Code{return typeof value==='string'&&(codes as readonly string[]).includes(value);}
 const failures=new WeakSet<CustomerOracleFailure>();
 class CustomerOracleFailure extends Error {readonly code:Code;constructor(code:Code){super(code);this.code=code;failures.add(this);Object.freeze(this);}}
 const check:(ok:unknown,code:Code)=>asserts ok=(ok,code)=>{if(!ok)throw new CustomerOracleFailure(code);};
@@ -21,8 +22,13 @@ function facts(answer:string,stream:string,fixture:CustomerFixture) {
   const row=fixture.payload[0];
   const urls=[...stream.matchAll(/\]\(([^)]+)\)|\[link:\s*([^\]]+)\]|(?:https?:\/\/[^\s)\]]+)|(?:\/(?:customers|contracts|apartments)[^\s)\]]*)/giu)];
   for(const match of urls)check(Boolean(row) && (match[1]??match[2]??match[0])===`/customers/${row.customer_id}`,'customer_link');
-  let text=normal(answer).replace(/\*\*(.*?)\*\*/g,'$1').replace(/[`_]/g,'');
+  // Exact annotation of the already-proven tool is metadata, not a new fact.
+  let text=normal(answer).replace(/\(\s*nguồn:\s*tim_khach_hang\s*\)/gu,'').replace(/\*\*(.*?)\*\*/g,'$1').replace(/[`_]/g,'');
   if(!row) {
+    // Consume only the scope qualifier and a negated profile noun phrase.
+    // Do not add their individual words to the bag: that admits "Có hồ sơ".
+    text=text.replace(/(?<![\p{L}\p{N}])trong phạm vi bạn được xem(?![\p{L}\p{N}])/gu,'')
+      .replace(/(?<![\p{L}\p{N}])(không|chưa) (tìm thấy|có) hồ sơ khách hàng(?![\p{L}\p{N}])/gu,'$1 $2 khách hàng');
     check(/không (?:tìm thấy|có).*khách|khách.*không (?:tồn tại|tìm thấy)/iu.test(text) && text.includes(fixture.query),'customer_facts');
     for(const claim of text.matchAll(/(?:tìm thấy|có|tồn tại)\s+khách/giu))check(/(?:không|chưa)\s*$/.test(text.slice(0,claim.index)),'customer_facts');
     const informationRequest=/(?:^|[.!?\n])\s*nếu(?:\s+bạn)?\s+(?:có|tìm thấy)\s+thông tin(?:\s+khách hàng)?\s*,\s*(?:bạn\s+)?vui lòng cung cấp/giu;
