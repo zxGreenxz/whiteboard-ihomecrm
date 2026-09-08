@@ -6,7 +6,7 @@ const from = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc, from } }));
 
 const { buildRegistryDefinitions } = await import('../tools/registry');
-const { COPILOT_ROLLOUT_CONTRACTS } = await import('../featureFlags');
+const { COPILOT_ROLLOUT_CONTRACTS, KHOA_ROLLOUT_KHU_VUC } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
 /**
@@ -26,6 +26,52 @@ const tool = (name: string) => {
   if (!found) throw new Error(`missing tool ${name}`);
   return found;
 };
+
+describe('danh_sach_khu_vuc - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the scoped directory RPC with the selected organization, bounded query and cap', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, khu_vuc: [] }, error: null });
+    await tool('danh_sach_khu_vuc').execute({ tu_khoa: '  Quan 1  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_area_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Quan 1',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only area and accessible building facts', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        khu_vuc: [{ khu_vuc_id: 'a1', ma: 'Q1', ten: 'Quận 1', so_toa: 2, toa_nha: ['A', 'B'] }],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_khu_vuc').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('Quận 1');
+    expect(result).toContain('Q1');
+    expect(result).toContain('A, B');
+    expect(result).toContain('/buildings');
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, khu_vuc: [] }, error: null });
+    await expect(tool('danh_sach_khu_vuc').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có khu vực/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_khu_vuc').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses its own rollout key instead of borrowing the buildings switch', () => {
+    expect(tool('danh_sach_khu_vuc').rolloutKey).toBe(KHOA_ROLLOUT_KHU_VUC);
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_KHU_VUC)).toBe(true);
+  });
+});
 
 describe('tim_khach_hang - server RPC boundary', () => {
   beforeEach(() => {

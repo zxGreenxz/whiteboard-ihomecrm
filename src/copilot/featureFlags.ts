@@ -54,6 +54,7 @@ export const KHOA_ROLLOUT_DIEU_HUONG = 'copilot.navigation';
 export const KHOA_ROLLOUT_LUONG = 'copilot.sensitive.salary';
 export const KHOA_ROLLOUT_LOI_NHUAN_CO_DONG = 'copilot.sensitive.shareholder-profit';
 export const KHOA_ROLLOUT_MANG = 'copilot.sensitive.network';
+export const KHOA_ROLLOUT_KHU_VUC = 'copilot.areas.directory';
 
 /** Ba contract trên, kèm nhãn tiếng Việt cho trang admin. */
 export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = [
@@ -64,6 +65,11 @@ export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = 
     label: 'Lợi nhuận cổ đông (Copilot đọc)',
   },
   { scope: 'page', contractId: KHOA_ROLLOUT_MANG, label: 'Trung tâm mạng (Copilot đọc)' },
+];
+
+/** Khu vực dùng chung route /buildings nhưng có quyền và rollout riêng. */
+export const COPILOT_ROLLOUT_DOC_RIENG: readonly CopilotRolloutContract[] = [
+  { scope: 'page', contractId: KHOA_ROLLOUT_KHU_VUC, label: 'Danh mục khu vực (Copilot đọc)' },
 ];
 
 /**
@@ -144,6 +150,9 @@ export function taoRolloutContracts(
   // chúng nằm trong danh sách miễn trừ — nên chúng được chèn thẳng ở đây, đúng
   // cách khoá điều hướng được chèn ngay trên.
   for (const contract of COPILOT_ROLLOUT_MIEN_NHAY_CAM) {
+    theoKhoa.set(contract.contractId, contract);
+  }
+  for (const contract of COPILOT_ROLLOUT_DOC_RIENG) {
     theoKhoa.set(contract.contractId, contract);
   }
   return [...theoKhoa.values(), ...contractAction];

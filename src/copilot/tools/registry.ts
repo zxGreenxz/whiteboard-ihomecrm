@@ -473,6 +473,18 @@ type CopilotExpiringContractRow = {
   building_name: string | null;
 };
 
+type CopilotAreaDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  khu_vuc?: Array<{
+    khu_vuc_id: string;
+    ma: string | null;
+    ten: string;
+    so_toa: number;
+    toa_nha: string[];
+  }>;
+};
+
 /** Typed boundary for the customer/contract RPCs before generated types are refreshed. */
 const callCopilotRpc = <TArgs, TData>(
   functionName: string,
@@ -486,6 +498,37 @@ const callCopilotRpc = <TArgs, TData>(
 /** Build the complete definition set for inventory and adapter filtering. */
 export function buildRegistryDefinitions(): DomainTool[] {
   const tools: DomainTool[] = [
+    dt({
+      name: 'danh_sach_khu_vuc',
+      description: 'Liệt kê khu vực và các toà nhà bạn được xem trong từng khu. Dùng khi hỏi khu vực, nhóm toà hoặc toà thuộc khu nào.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên hoặc mã khu vực'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số khu vực tối đa'),
+      }),
+      requiredPermission: { module: 'areas', action: 'view' },
+      rolloutKey: 'copilot.areas.directory',
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_khu_vuc');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotAreaDirectoryPayload
+        >('copilot_area_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error(`Lỗi tải khu vực: ${error.message}`);
+        const rows = Array.isArray(data?.khu_vuc) ? data.khu_vuc : [];
+        if (!rows.length) return 'Hiện không có khu vực nào trong phạm vi bạn được xem.';
+        const lines = rows.map((area) => {
+          const code = area.ma ? ` (${area.ma})` : '';
+          const buildings = area.toa_nha.join(', ') || 'chưa có toà';
+          return `- ${area.ten}${code} — ${area.so_toa} toà: ${buildings} [link: /buildings]`;
+        });
+        return `Có ${data?.so_luong ?? rows.length} khu vực (hiện ${rows.length}):\n${lines.join('\n')}`;
+      },
+    }),
+
     dt({
       name: 'phong_trong',
       description:
