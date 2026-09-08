@@ -2,13 +2,7 @@ import { useFormContext } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { DateInput } from '@/components/ui/date-input';
 import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   FormField,
   FormItem,
@@ -153,18 +147,20 @@ export default function CustomerIndividualFields() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Giới tính</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn giới tính" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="Nam">Nam</SelectItem>
-                  <SelectItem value="Nữ">Nữ</SelectItem>
-                  <SelectItem value="Khác">Khác</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormControl>
+                <SearchableSelect modal
+                  aria-label="Giới tính"
+                  value={field.value ?? ''}
+                  onValueChange={field.onChange}
+                  placeholder="Chọn giới tính"
+                  searchPlaceholder="Tìm giới tính..."
+                  options={[
+                    { value: 'Nam', label: 'Nam' },
+                    { value: 'Nữ', label: 'Nữ' },
+                    { value: 'Khác', label: 'Khác' },
+                  ]}
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}

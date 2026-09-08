@@ -34,6 +34,7 @@
       "includes": [
         "src/**/*.test.ts",
         "src/**/*.test.tsx",
+        "src/lib/__tests__/customerAddressConversionApi.test.js",
         "scripts/__tests__/**/*.test.mjs",
         "scripts/__tests__/**/*.test.ts",
         "worker/__tests__/**/*.test.js"

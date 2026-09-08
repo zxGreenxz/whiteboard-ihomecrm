@@ -61,6 +61,16 @@ Trên bản demo/sandbox, **đừng nhập CCCD, số điện thoại hay ảnh 
 Một hợp đồng có thể gắn **nhiều cư dân** (người ở cùng), trong đó **một người là đại diện** đứng tên. Việc gắn nhiều khách và chọn ai đại diện được thực hiện **khi ký hợp đồng** (xem [Hợp đồng](/03-quan-ly-van-hanh/hop-dong/)), không phải trên màn Cư dân. Ở trang chi tiết khách, cờ **Đại diện** cho biết khách đó có phải người đứng tên hợp đồng hay không.
 :::
 
+### Tìm địa chỉ và đối chiếu địa giới mới
+
+Trang tạo khách hàng và popup **Tạo mới khách hàng** trong Hợp đồng dùng chung danh mục **Tỉnh/Thành phố → Quận/Huyện → Xã/Phường** theo địa chỉ cũ. Bấm vào dropdown rồi gõ để tìm nhanh; có thể gõ không dấu, ví dụ `cau giay`. Khi đổi tỉnh hoặc quận, chọn lại các cấp phía dưới. Nếu lỗi tải dữ liệu, bấm nút tải lại tương ứng.
+
+Các dropdown **Giới tính**, **Nhóm khách hàng** và **Loại phương tiện** cũng có ô tìm kiếm khi xuất hiện trong form.
+
+Bên dưới phần địa chỉ có khung **Địa chỉ hành chính mới**. Kiểm tra địa chỉ cũ đang dùng rồi bấm **Tra địa chỉ mới**. Mặc định hệ thống lấy địa chỉ thường trú; nếu địa chỉ theo tỉnh/quận/phường khác, bạn có thể chọn nguồn muốn tra. Kết quả hiển thị địa chỉ, tỉnh/thành phố và phường/xã mới để đối chiếu. Nếu có nhiều gợi ý, đối chiếu từng kết quả với địa chỉ của khách.
+
+Kết quả tra cứu hiển thị riêng và không tự thay đổi địa chỉ trong hồ sơ. Khi sửa địa chỉ cũ, tra lại để lấy kết quả mới. Nếu chưa tìm được, bổ sung địa chỉ rõ hơn rồi thử lại.
+
 ## Các tính năng khác trên màn hình
 
 | Nút / Bộ lọc | Công dụng |

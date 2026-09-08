@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useRef, useState } from "react";
+import CustomerAdministrativeAddress from "./CustomerAdministrativeAddress";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,8 @@ import { useCreateCustomer } from "@/hooks/useCustomers";
 import type { Customer } from "@/types/customer";
 import ImageUploadZone from "@/components/customers/ImageUploadZone";
 import CustomerVehiclesSection from "@/components/customers/CustomerVehiclesSection";
+import AddressCascadingDropdowns from "@/components/customers/AddressCascadingDropdowns";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import CCCDQrUpload from "@/components/customers/CCCDQrUpload";
 import type { CCCDQrData } from "@/lib/cccdQrParser";
 import { isCurrentCccdScan, mapCccdToCustomerFields } from "@/lib/cccdCustomerMapping";
@@ -406,18 +409,20 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Giới tính</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn giới tính" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="MALE">Nam</SelectItem>
-                            <SelectItem value="FEMALE">Nữ</SelectItem>
-                            <SelectItem value="OTHER">Khác</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <SearchableSelect modal
+                            aria-label="Giới tính"
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            placeholder="Chọn giới tính"
+                            searchPlaceholder="Tìm giới tính..."
+                            options={[
+                              { value: "MALE", label: "Nam" },
+                              { value: "FEMALE", label: "Nữ" },
+                              { value: "OTHER", label: "Khác" },
+                            ]}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -473,75 +478,22 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="province"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Tỉnh/Thành Phố</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn Tỉnh/Thành phố" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="HN">Hà Nội</SelectItem>
-                            <SelectItem value="HCM">TP. Hồ Chí Minh</SelectItem>
-                            <SelectItem value="DN">Đà Nẵng</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="district"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Quận/Huyện</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn quận/huyện" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="district1">Quận 1</SelectItem>
-                            <SelectItem value="district2">Quận 2</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                <AddressCascadingDropdowns
+                  provinceValue={form.watch("province")}
+                  districtValue={form.watch("district")}
+                  wardValue={form.watch("ward")}
+                  onProvinceChange={(value) =>
+                    form.setValue("province", value, { shouldDirty: true })
+                  }
+                  onDistrictChange={(value) =>
+                    form.setValue("district", value, { shouldDirty: true })
+                  }
+                  onWardChange={(value) =>
+                    form.setValue("ward", value, { shouldDirty: true })
+                  }
+                />
 
                 <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="ward"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Xã/Phường</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Chọn phường/xã" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="ward1">Phường 1</SelectItem>
-                            <SelectItem value="ward2">Phường 2</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
 
                   <FormField
                     control={form.control}
@@ -587,6 +539,14 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                     )}
                   />
                 </div>
+
+                <CustomerAdministrativeAddress
+                  province={form.watch("province")}
+                  district={form.watch("district")}
+                  ward={form.watch("ward")}
+                  detailedAddress={form.watch("detailed_address")}
+                  permanentAddress={form.watch("permanent_address")}
+                />
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
@@ -729,17 +689,19 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Nhóm khách hàng</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Nhóm khách hàng" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="vip">VIP</SelectItem>
-                            <SelectItem value="regular">Thường</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <SearchableSelect modal
+                            aria-label="Nhóm khách hàng"
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            placeholder="Nhóm khách hàng"
+                            searchPlaceholder="Tìm nhóm khách hàng..."
+                            options={[
+                              { value: "vip", label: "VIP" },
+                              { value: "regular", label: "Thường" },
+                            ]}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}

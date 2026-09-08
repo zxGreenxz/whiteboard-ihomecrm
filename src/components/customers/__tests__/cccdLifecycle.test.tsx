@@ -153,7 +153,10 @@ describe("actual CCCD component lifecycle", () => {
 
     cleanup();
     b.imageZones.length = 0;
-    render(<CreateCustomerDialog open onOpenChange={vi.fn()} />);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<CreateCustomerDialog open onOpenChange={vi.fn()} />, {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
     expect(new Set(b.imageZones.filter((zone) => zone.imagePolicy === "identity-original").map((zone) => zone.label)))
       .toEqual(new Set(["CCCD mặt trước", "CCCD mặt sau"]));
     expect(b.imageZones.find((zone) => zone.label === "Ảnh đại diện")?.imagePolicy).toBeUndefined();
@@ -176,7 +179,10 @@ describe("actual CCCD component lifecycle", () => {
   });
   it("rejects retained dialog callback after close/reopen", async () => {
     const cb = vi.fn();
-    const v = render(<CreateCustomerDialog open onOpenChange={cb} />);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const v = render(<CreateCustomerDialog open onOpenChange={cb} />, {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
     const stale = b.callbacks[0];
     v.rerender(<CreateCustomerDialog open={false} onOpenChange={cb} />);
     v.rerender(<CreateCustomerDialog open onOpenChange={cb} />);

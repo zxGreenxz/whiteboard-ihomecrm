@@ -2,13 +2,7 @@ import { useFormContext, useFieldArray } from 'react-hook-form';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   FormField,
   FormItem,
@@ -50,20 +44,17 @@ export default function CustomerVehiclesSection() {
             render={({ field: f }) => (
               <FormItem>
                 {index === 0 && <FormLabel>Loại phương tiện</FormLabel>}
-                <Select onValueChange={f.onChange} value={f.value || ''}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn loại" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {VEHICLE_TYPE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FormControl>
+                  <SearchableSelect modal
+                    aria-label={`Loại phương tiện ${index + 1}`}
+                    value={f.value || ''}
+                    onValueChange={f.onChange}
+                    options={VEHICLE_TYPE_OPTIONS}
+                    searchByLabel
+                    placeholder="Chọn loại"
+                    searchPlaceholder="Tìm loại phương tiện..."
+                  />
+                </FormControl>
               </FormItem>
             )}
           />
