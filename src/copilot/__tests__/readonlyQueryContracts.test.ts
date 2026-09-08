@@ -19,6 +19,7 @@ const {
   KHOA_ROLLOUT_LOAI_CONG_VIEC,
   KHOA_ROLLOUT_DANH_SACH_TANG,
   KHOA_ROLLOUT_DANH_SACH_HOTLINE,
+  KHOA_ROLLOUT_DINH_MUC_DICH_VU,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -2947,5 +2948,51 @@ describe('danh_sach_hotline - server RPC boundary', () => {
     expect(tool('danh_sach_hotline').rolloutKey).toBe(KHOA_ROLLOUT_DANH_SACH_HOTLINE);
     expect(tool('danh_sach_hotline').requiredPermission).toEqual({ module: 'hotline', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DANH_SACH_HOTLINE)).toBe(true);
+  });
+});
+
+describe('danh_sach_dinh_muc_dich_vu - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization quota RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, dinh_muc: [] }, error: null });
+    await tool('danh_sach_dinh_muc_dich_vu').execute({ tu_khoa: '  Điện sinh hoạt  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_service_quota_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Điện sinh hoạt',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only quota names and tier price configuration', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, so_luong: 1, dinh_muc: [{
+        ma: 'DM-A1B2C3D4', ten: 'Điện sinh hoạt',
+        bac: [{ so_bac: 1, tu: 0, den: 50, don_gia: 3000 }, { so_bac: 2, tu: 50, den: null, don_gia: 4000 }],
+        description: 'Ghi chú nội bộ', user_id: 'creator-private-id', organization_id: 'foreign-org-id',
+      }] },
+      error: null,
+    });
+    const result = await tool('danh_sach_dinh_muc_dich_vu').execute({ so_luong: 20 }, ctx);
+    for (const visible of ['DM-A1B2C3D4', 'Điện sinh hoạt', 'bậc 1', '0–50', '3.000', 'bậc 2', 'từ 50', '4.000']) expect(result).toContain(visible);
+    expect(result).toContain('/settings/categories/service-quotas');
+    for (const privateValue of ['Ghi chú nội bộ', 'creator-private-id', 'foreign-org-id']) expect(result).not.toContain(privateValue);
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, dinh_muc: [] }, error: null });
+    await expect(tool('danh_sach_dinh_muc_dich_vu').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có định mức/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_dinh_muc_dich_vu').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated quota rollout key with service_quotas.view permission', () => {
+    expect(tool('danh_sach_dinh_muc_dich_vu').rolloutKey).toBe(KHOA_ROLLOUT_DINH_MUC_DICH_VU);
+    expect(tool('danh_sach_dinh_muc_dich_vu').requiredPermission).toEqual({ module: 'service_quotas', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DINH_MUC_DICH_VU)).toBe(true);
   });
 });

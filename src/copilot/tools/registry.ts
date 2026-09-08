@@ -29,6 +29,7 @@ import {
   KHOA_ROLLOUT_DANH_SACH_SALE,
   KHOA_ROLLOUT_DANH_SACH_TANG,
   KHOA_ROLLOUT_DANH_SACH_HOTLINE,
+  KHOA_ROLLOUT_DINH_MUC_DICH_VU,
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
@@ -637,6 +638,21 @@ type CopilotHotlineDirectoryPayload = {
   }>;
 };
 
+type CopilotServiceQuotaDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  dinh_muc?: Array<{
+    ma: string;
+    ten: string;
+    bac?: Array<{
+      so_bac: number;
+      tu: number;
+      den: number | null;
+      don_gia: number;
+    }>;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -1105,6 +1121,43 @@ export function buildRegistryDefinitions(): DomainTool[] {
           '- ' + hotline.ma + ' — ' + hotline.ten + ' · ' + hotline.so_dien_thoai + ' · ' + (hotline.trang_thai ? 'đang hoạt động' : 'ngừng'),
         );
         return 'Có ' + rows.length + ' hotline (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/hotlines]';
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_dinh_muc_dich_vu',
+      description:
+        'Liệt kê định mức dịch vụ của công ty đang chọn: mã ngắn, tên và các bậc giá. Không đọc ghi chú nội bộ hay định danh người tạo.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên định mức dịch vụ'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số định mức tối đa'),
+      }),
+      requiredPermission: { module: 'service_quotas', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_DINH_MUC_DICH_VU,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_dinh_muc_dich_vu');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotServiceQuotaDirectoryPayload
+        >('copilot_service_quota_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải danh sách định mức dịch vụ: ' + error.message);
+        const rows = Array.isArray(data?.dinh_muc) ? data.dinh_muc : [];
+        if (!rows.length) return 'Không có định mức dịch vụ nào trong công ty đang chọn.';
+        const lines = rows.map((quota) => {
+          const tiers = Array.isArray(quota.bac) ? quota.bac : [];
+          const tierText = tiers.length
+            ? tiers.map((tier) => {
+              const range = tier.den === null ? 'từ ' + tier.tu : tier.tu + '–' + tier.den;
+              return 'bậc ' + tier.so_bac + ': ' + range + ' · ' + new Intl.NumberFormat('vi-VN').format(tier.don_gia);
+            }).join('; ')
+            : 'chưa có bậc giá';
+          return '- ' + quota.ma + ' — ' + quota.ten + ' · ' + tierText;
+        });
+        return 'Có ' + rows.length + ' định mức dịch vụ (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/service-quotas]';
       },
     }),
 
