@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 593,
-  "soFileDocBangFs": 191,
-  "tongLoiGoi": 393,
-  "khongPhanLoaiDuoc": 194,
+  "tongSoFileTest": 595,
+  "soFileDocBangFs": 194,
+  "tongLoiGoi": 399,
+  "khongPhanLoaiDuoc": 195,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 37,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 26,
+      "soFile": 28,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -293,6 +293,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": "scripts/__tests__/copilot-g3-writer-admission.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/copilot-ledger-audit-rpc.test.mjs",
       "soGoi": 3,
       "loai": {
@@ -420,6 +428,14 @@
     },
     {
       "file": "scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/copilot-g3-voucher-lifecycle.test.mjs",
       "soGoi": 2,
       "loai": {
         "manifest": 2
@@ -644,6 +660,12 @@
     },
     {
       "file": ".e2e-fleet/specs/copilot-golden-readonly.spec.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": ".e2e-fleet/specs/copilot-plan-batch-consent.spec.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
