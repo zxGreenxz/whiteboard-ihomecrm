@@ -1,0 +1,27 @@
+# G3 cases 3 and 8: owned fixture lifecycle
+
+These cases allocate a UUID marker in the financial payload before preview and plan creation. The same marker binds the client request key, authenticated actor, DEMO organization, normalized payload digest, source/build and workflow run identity. Historical G3 display names are never cleanup targets.
+
+The lifecycle saves operation intent before dispatch. It retains response IDs before subsequent assertions, validates authoritative plan/step/ledger ownership and the exact voucher payload, and waits for every issued transport, including both concurrent case 8 executes. Business failures still run cleanup. Unknown effects remain unresolved; a transport timeout is not rollback evidence.
+
+Cleanup stops executable owned plan steps, withdraws the exact owned pending maker request where present, and cancels the unchanged manual unposted voucher with both approval and posting versions through `cancel_income_expense_flex_v1`. It verifies request version advancement, `CANCELLED / RESOLVED / UNPOSTED / CANCELLED_UNPOSTED`, unchanged posting version and the retained entity. No direct business SQL, approval, posting, deletion or fallback cancellation route is used.
+
+The exclusive file store has no age-based lock takeover. It retains finalized attempts and unresolved journals. Recovery accepts the same attempt only and cannot create, approve or execute. A dead owner's lock must be explicitly quarantined after establishing that the process is stopped; never discard its journal. Recovery records an interrupted business attempt, not a passing test. Final persistence and successful lock release are required; missing released receipts block a successor even when cancellation committed.
+
+## Authority still required before activation
+
+`get_income_expense_detail_v2` returns an authorized voucher and its items. It does not prove complete posting or linked-effect history. An empty RLS-filtered postings query is not such proof. `createG3AppClient.verifyHistory` therefore defaults to unavailable. A reviewed read-only adapter must provide `g3-history-authority-v1`, exact DEMO/voucher/digest binding, fresh measurement, zero posting and linked-effect counts, and an authority digest. Until that adapter exists, canonical cleanup can complete but the journal stays unresolved and acceptance/admission fails.
+
+The pre/post REST reads and the existing two CAS counters do **not** constitute an atomic full-row ownership check. The flex cancellation RPC can reverse posted vouchers; this lifecycle does not prove that every racing identity/state change advances those counters. Scheduled activation additionally requires a reviewed guarded cleanup path or proof covering all relevant writers. The workflow must remain disabled until both the history authority and this atomic guarantee have been implemented and independently verified. Controlled tests are source evidence, not live acceptance.
+
+## Retained CI admission
+
+The workflow serializes all refs under `copilot-e2e-demo-writer` and keeps Playwright retries at zero. Admission reads the complete GitHub workflow run history and selects the immediate predecessor across refs. A newer run that has already started, an incomplete history, a rerun attempt, or a missing/expired/failed/cancelled predecessor artifact blocks creation.
+
+A successful predecessor must supply two validated finalized lifecycle receipts, for cases 3 and 8, bound to its exact run, attempt and source. Then the next run is admitted automatically. A green older run is never substituted. Bootstrap or reconciliation of a failed predecessor requires an explicit reviewed receipt bound to that exact predecessor, its source and artifact evidence, the newly reviewed source, and complete settlement/history and external-operator exclusion. Set `COPILOT_G3_RECONCILIATION_JSON` plus its `digest()` in `COPILOT_G3_RECONCILIATION_DIGEST` only from reviewed evidence; there is no missing-history bootstrap. Remove that one-use reconciliation after its bound successor completes. `COPILOT_G3_REVIEWED_SOURCE_SHA` must match the executing source.
+
+Before writers run, `admission.json` is validated, secret-scanned and uploaded as a separate retained intent artifact. Sanitized journals live at `$RUNNER_TEMP/copilot-e2e/g3`, outside Playwright output/trash. A fixed-schema check and the existing secret guard precede journal publication, including ordinary test failures. Hard cancellation may prevent upload; the next runner treats that missing final artifact as unresolved. Artifacts expire after 90 days, after which explicit reconciliation is required.
+
+Local operators must use the same operational admission identity and shared journal directory, supplying `COPILOT_G3_JOURNAL_DIR` and its `admission.json` via `COPILOT_G3_ADMISSION_FILE`, together with the bound GitHub run/source/build identity. A different directory or marker must not bypass an unresolved predecessor. GitHub concurrency cannot itself exclude an external operator; the operational admission rule applies to both.
+
+Source commands: `node --test scripts/__tests__/copilot-g3-voucher-lifecycle.test.mjs scripts/__tests__/copilot-g3-writer-admission.test.mjs`, `npm run typecheck:e2e`, and `npm run gate:test-matrix`. The admission CLI has only `prepare` (read-only GitHub checks and local artifact creation) and `collect` (schema validation/publication bundle); it has no business-write or recovery entry point.

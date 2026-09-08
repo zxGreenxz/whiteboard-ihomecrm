@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createG3Attempt, createG3FileStore, createG3AppClient, openG3Lifecycle } from '../../scripts/copilot-g3-voucher-lifecycle.mjs';
+import { validateG3AdmissionFile } from '../../scripts/copilot-g3-writer-admission.mjs';
 import { expect, test, type Page } from '@playwright/test';
 
 import { credentials, login, trackConsoleErrors, type UserKey } from './auth';
@@ -55,14 +59,11 @@ import {
  *   `test.describe.configure({ mode: 'serial' })` chỉ xếp hàng TRONG file.
  *
  * DỌN DẸP
- *   Ca 3 và ca 8 mỗi ca tạo một phiếu nháp CHƯA DUYỆT tên `E2E G3 …`. Khoá
- *   chống-lặp của `copilot_execute_income_expense_v1` dẫn xuất từ payload, và
- *   payload chứa NGÀY, nên trong cùng một ngày chạy 100 lượt vẫn đúng hai phiếu;
- *   sang ngày mới thì thêm hai. Không xoá được bằng đường hợp lệ
- *   (`cancel_income_expense_v1` trả 55000 cho phiếu nháp kiểu này — G2-F mục 8),
- *   nên để lại là trạng thái đúng, không phải trạng thái bí. Mọi kế hoạch còn
- *   DRAFT/APPROVED đều được HUỶ ở `finally` của từng ca — hạn mức là 3 kế hoạch
- *   mở mỗi người, để sót là lượt sau chết vì `plan_limit`.
+ *   Ca 3 và ca 8 sở hữu marker riêng trong payload đã chuẩn hóa, ghi journal
+ *   bền trước mỗi thao tác và chờ mọi request kết thúc. finally của lifecycle
+ *   dừng kế hoạch còn mở, rút hồ sơ đúng ID rồi huỷ nháp bằng flex CAS hai version.
+ *   Chỉ receipt đã xác minh, lưu bền và nhả lock mới được tính là hoàn tất.
+ *   Thiếu chứng minh lịch sử ghi sổ có thẩm quyền giữ journal chưa giải quyết.
  *
  * CHẠY:
  *   cd .e2e-fleet && FLEET_BASE_URL=<preview của commit đang review> \
@@ -118,8 +119,8 @@ const TOOL_AUDIT_TAO = 'tao_phieu_thu_chi_nhap';
 const HANG_MUC = 'Xử lý Bồn Cầu';
 const TOA_NHA = 'DEMO Toà A';
 
+// Guard-only plans retain their existing payload; cases 3/8 allocate owned markers.
 const TEN_PHIEU_CA3 = 'E2E G3 ke hoach 2 buoc';
-const TEN_PHIEU_CA8 = 'E2E G3 hai luot song song';
 const PIN_MOI_TRUONG = process.env.COPILOT_E2E_PIN || null;
 
 const LY_DO_LAT_CO = {
@@ -539,6 +540,32 @@ async function donKeHoach(jwt: string, planId: string | null): Promise<void> {
   }
 }
 
+/** Admission is required for local operators too; use the same retained run identity. */
+function ownedG3(jwt: string, caseNo: 3 | 8) {
+  const directory = process.env.COPILOT_G3_JOURNAL_DIR;
+  const admissionPath = process.env.COPILOT_G3_ADMISSION_FILE;
+  if (!directory || admissionPath !== join(directory, 'admission.json')) {
+    throw new Error('G3 requires a retained writer admission and shared journal directory.');
+  }
+  const identity = {
+    runId: process.env.GITHUB_RUN_ID ?? '', runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? '',
+    sourceSha: process.env.GITHUB_SHA ?? '', buildSha: process.env.EXPECTED_SOURCE_SHA ?? '',
+    workflow: 'copilot-e2e.yml', repository: process.env.GITHUB_REPOSITORY ?? '',
+  };
+  validateG3AdmissionFile(JSON.parse(readFileSync(admissionPath, 'utf8')), identity);
+  const actorId = uidCua(jwt);
+  const attempt = createG3Attempt({ ...identity, actorId, caseNo });
+  const client = createG3AppClient({
+    apiOrigin: api().goc, actorId, fetch,
+    credentialProvider: async () => ({ actorId, accessToken: jwt, apikey: api().apikey }),
+    readPending: voucherId => docHoSoChoDuyet(goiRpc, jwt, voucherId),
+    readRequest: requestId => docChiTietHoSo(goiRpc, jwt, requestId),
+    // A scoped read-only history authority adapter is required before live acceptance.
+    // get_income_expense_detail_v2 supplies voucher/items, not complete posting history.
+  });
+  return openG3Lifecycle({ attempt, client, store: createG3FileStore({ directory: join(directory, 'lifecycle') }) });
+}
+
 async function demAudit(jwt: string, tool: string, entityId: string): Promise<number> {
   const rows = await docBang(
     jwt,
@@ -710,29 +737,18 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
     stepUpToken = (xacThuc.body as { step_up_token?: string }).step_up_token ?? null;
     expect(stepUpToken, 'Xác thực PIN ca 3 phải trả step_up_token').toBeTruthy();
   }
-  let planId: string | null = null;
+  const lifecycle = ownedG3(jwt, 3);
 
-  try {
-    const kq = await lapKeHoach(jwt, khoaYeuCau('ca3'), [
-      buocTaoNhap(TEN_PHIEU_CA3),
-      buocNopHoSo(1),
-    ]);
+  await lifecycle.run(async () => {
+    const kq = await lifecycle.create();
     expect(kq.status, `Lập kế hoạch: ${loi(kq)}`).toBe(200);
     const ke = kq.body as KeHoachTomTat;
-    planId = ke.plan_id;
 
-    const duyet = await duyetKeHoach(
-      jwt,
-      ke.plan_id,
-      ke.consent_nonce as string,
-      ke.plan_digest,
-      1,
-      stepUpToken,
-    );
+    const duyet = await lifecycle.approve({ nonce: ke.consent_nonce as string, digest: ke.plan_digest, version: 1, stepUpToken });
     expect(duyet.status, `Duyệt: ${loi(duyet)}`).toBe(200);
 
     // ── BƯỚC 1 — tạo phiếu nháp ────────────────────────────────────────────
-    const b1 = await chayBuoc(jwt, ke.plan_id, 1, 2);
+    const b1 = await lifecycle.execute(1, 2);
     expect(b1.status, `Chạy bước 1: ${loi(b1)}`).toBe(200);
     const r1 = b1.body as {
       ok: boolean;
@@ -756,9 +772,7 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
     expect(p!.user_id, 'Phiếu phải thuộc về chính người bấm').toBe(actor);
     expect(p!.organization_id).toBe(ORG_DEMO);
 
-    // ĐÚNG MỘT dòng audit cho phiếu này. Không phải "+1": khoá chống-lặp dẫn xuất
-    // từ payload (kèm NGÀY), nên lượt chạy thứ hai trong cùng ngày trả về đúng
-    // phiếu cũ. Bất biến ổn định qua mọi lượt chạy là "một phiếu ⇒ một dòng".
+    // Payload mỗi lượt khác nhau; đúng một phiếu mới và một dòng audit.
     expect(await demAudit(jwt, TOOL_AUDIT_TAO, voucherId), 'Một phiếu phải có ĐÚNG một dòng audit')
       .toBe(1);
 
@@ -771,7 +785,7 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
     expect(dongB1[0].action_id).toBe(HANH_DONG_TAO);
 
     // ── BƯỚC 2 — nộp hồ sơ (`maker_submit_v1`, `$ref_step: 1`) ──────────────
-    const b2 = await chayBuoc(jwt, ke.plan_id, 2, r1.plan_version);
+    const b2 = await lifecycle.execute(2, r1.plan_version);
     expect(b2.status, `Chạy bước 2 trả HTTP lạ: ${loi(b2)}`).toBe(200);
     const r2 = b2.body as {
       ok: boolean;
@@ -831,9 +845,7 @@ test('ca 3 — chạy tuần tự 2 bước: nộp hồ sơ ra PENDING_APPROVAL 
       expect(cuoi.state, 'Có hồ sơ POSTED — luật AUTO_POST đã lọt qua hàng rào L5')
         .toBe('PENDING_APPROVAL');
     }
-  } finally {
-    await donKeHoach(jwt, planId);
-  }
+  });
 });
 
 test('ca 4 — duyệt với digest SAI ⇒ plan_digest_mismatch, kế hoạch vẫn DRAFT và nonce chưa tiêu', async () => {
@@ -1047,19 +1059,17 @@ test('ca 7 — kế hoạch DRAFT quá hạn: plan_expired, EXPIRED, không ch�
 
 test('ca 8 — hai lượt chạy SONG SONG cùng một bước ⇒ đúng một lượt ghi', async () => {
   const jwt = await token('sysadmin');
-  let planId: string | null = null;
+  const lifecycle = ownedG3(jwt, 8);
 
-  try {
-    const kq = await lapKeHoach(jwt, khoaYeuCau('ca8'), [buocTaoNhap(TEN_PHIEU_CA8)]);
+  await lifecycle.run(async () => {
+    const kq = await lifecycle.create();
     expect(kq.status, `Lập kế hoạch: ${loi(kq)}`).toBe(200);
     const ke = kq.body as KeHoachTomTat;
-    planId = ke.plan_id;
 
-    const duyet = await duyetKeHoach(jwt, ke.plan_id, ke.consent_nonce as string, ke.plan_digest, 1);
+    const duyet = await lifecycle.approve({ nonce: ke.consent_nonce as string, digest: ke.plan_digest, version: 1 });
     expect(duyet.status, `Duyệt: ${loi(duyet)}`).toBe(200);
 
-    const goi = () => chayBuoc(jwt, ke.plan_id, 1, 2);
-    const [a, b] = await Promise.all([goi(), goi()]);
+    const [a, b] = await lifecycle.executePair(1, 2);
 
     const thanhCong = [a, b].filter(
       (r) => r.status === 200 && (r.body as { ok?: boolean }).ok === true,
@@ -1100,9 +1110,7 @@ test('ca 8 — hai lượt chạy SONG SONG cùng một bước ⇒ đúng một
       (doc.ledger ?? []).filter((d) => d.event === 'step_done'),
       'Hai lượt song song để lại hai dòng sổ step_done',
     ).toHaveLength(1);
-  } finally {
-    await donKeHoach(jwt, planId);
-  }
+  });
 });
 
 test('ca 9 — chat "tự duyệt luôn" KHÔNG mở được đường duyệt/chạy nào', async ({ page }) => {

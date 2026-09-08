@@ -130,9 +130,10 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: copilot-e2e-${{ github.ref }}
+  group: copilot-e2e-demo-writer
   # Active DEMO fixture cleanup must finish before queued runs begin.
   cancel-in-progress: false
 
@@ -140,6 +141,9 @@ jobs:
   copilot-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      COPILOT_G3_JOURNAL_DIR: ${{ runner.temp }}/copilot-e2e/g3
+      COPILOT_G3_ADMISSION_FILE: ${{ runner.temp }}/copilot-e2e/g3/admission.json
     steps:
       - name: Validate acceptance selection
         id: acceptance-inputs
@@ -274,6 +278,30 @@ jobs:
           node --check "$LOC_CHE"
           echo "Da sinh bo loc che: $LOC_CHE"
 
+      # The predecessor is the latest retained workflow run across ALL refs.
+      # Missing/cancelled/expired artifacts require exact reviewed reconciliation.
+      - name: Admit G3 writer from retained predecessor receipt
+        id: g3-admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COPILOT_G3_REVIEWED_SOURCE_SHA: ${{ vars.COPILOT_G3_REVIEWED_SOURCE_SHA }}
+          COPILOT_G3_RECONCILIATION_JSON: ${{ vars.COPILOT_G3_RECONCILIATION_JSON }}
+          COPILOT_G3_RECONCILIATION_DIGEST: ${{ vars.COPILOT_G3_RECONCILIATION_DIGEST }}
+        run: |
+          node scripts/copilot-g3-writer-admission.mjs prepare
+          node scripts/copilot-e2e-artifact-safety.mjs guard "$COPILOT_G3_JOURNAL_DIR"
+
+      # Retain run identity BEFORE any writer. Final receipts use a separate artifact.
+      - name: Retain admitted writer identity before dispatch
+        id: g3-intent
+        if: ${{ steps.g3-admission.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: copilot-g3-intent-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/copilot-e2e/g3/admission.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Full golden browser lane (on demand, fail closed)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.golden_attestation != '' }}
         env:
@@ -368,7 +396,7 @@ jobs:
       #   trận không chạy — một hàng rào bảo mật không được đo chỉ vì một smoke
       #   test khác vừa hỏng là đúng thứ ta không muốn.
       - name: Ba spec hàng rào ghi Copilot (ma trận hành động + kế hoạch theo lô + ma trận L5 — chạy RIÊNG, 1 worker)
-        if: ${{ !cancelled() && steps.acceptance-inputs.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.acceptance-inputs.outcome == 'success' && steps.g3-intent.outcome == 'success' }}
         env:
           ACCEPTANCE_SCOPE: ${{ inputs.acceptance_scope }}
           FLEET_BASE_URL: ${{ secrets.FLEET_BASE_URL }}
@@ -456,6 +484,11 @@ jobs:
       # mật khẩu/PIN/bypass, JWT động, Authorization chưa che, và report zip nhúng.
       # Cố ý KHÔNG giải nén report để "kiểm cho kỹ": không chứng minh được sạch
       # thì KHÔNG tải lên. Finding chỉ in loại + đường dẫn, không in giá trị khớp.
+      - name: Validate retained G3 journal schema and collect finalized receipts
+        id: g3-schema
+        if: always()
+        run: node scripts/copilot-g3-writer-admission.mjs collect
+
       - name: Guard — artifact không được chứa bí mật Copilot E2E
         id: guard
         if: always()
@@ -482,10 +515,19 @@ jobs:
       # rỉ. `if: always()` trần sẽ tải lên kể cả sau khi guard đỏ — đúng thứ guard
       # sinh ra để chặn.
       - name: Tải lên log của reporter list (đã qua guard)
-        if: ${{ !cancelled() && steps.guard.conclusion == 'success' }}
+        if: ${{ !cancelled() && steps.guard.conclusion == 'success' && steps.g3-schema.conclusion == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: copilot-e2e-log
           path: ${{ runner.temp }}/copilot-e2e/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Retain sanitized G3 lifecycle journals even after ordinary test failure
+        if: ${{ !cancelled() && steps.guard.conclusion == 'success' && steps.g3-schema.conclusion == 'success' && steps.g3-intent.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: copilot-g3-lifecycle-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/copilot-e2e/g3/
+          if-no-files-found: error
+          retention-days: 90
