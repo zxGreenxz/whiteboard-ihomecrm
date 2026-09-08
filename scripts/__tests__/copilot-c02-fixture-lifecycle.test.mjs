@@ -44,6 +44,25 @@ function harness() {
     return { plan, preflight, client, store, directory, calls, modes, host, existing, customers: () => customers, associations: () => associations, lateCustomer, lateAssociation };
 }
 const opened = h => lifecycle.openC02Lifecycle(h);
+test('recovery after crash before first write cannot setup and cleans the unstarted journal', async () => {
+    const h = harness();
+    const initial = await opened(h);
+    assert.equal(initial.journal().state, 'preflight');
+    assert.equal(initial.journal().customer, 'not_started');
+    assert.equal(initial.journal().association, 'not_started');
+    renameSync(join(h.directory, 'lock.json'), join(h.directory, 'operator-quarantined-lock.json'));
+    // A recovery path cannot rely on the initial preflight still being current.
+    h.preflight.measuredAt = '2020-01-01T00:00:00Z';
+    const recovered = await lifecycle.openC02Lifecycle({ ...h, store: lifecycle.createC02FileStore({ directory: h.directory }), recovery: true });
+    await assert.rejects(recovered.setup(), /setup_already_started/);
+    assert.deepEqual(h.calls, []);
+    const receipt = await recovered.cleanup();
+    assert.equal(receipt.state, 'finalized');
+    assert.equal(receipt.customerSoftDeleted, false);
+    assert.equal(receipt.retainedSyntheticTombstone, false);
+    assert.deepEqual(h.calls, []);
+    assert.deepEqual(h.associations(), h.existing);
+});
 test('owned append cleanup retains tombstone and preserves whole original host and occupants', async () => {
     const h = harness(), run = await opened(h);
     await run.setup();

@@ -172,7 +172,7 @@ export async function openC02Lifecycle({ plan, preflight, client, store, recover
     async function preserve(association) { const snapshot = await client.readSnapshot(plan); requireState(digest(snapshot.host) === journal.hostDigest, 'host_drift'); const rows = ordered(snapshot.associations); requireState(digest(association ? rows.filter(r => r.id !== plan.associationId) : rows) === journal.associationsDigest && (!association || rows.filter(r => r.id === plan.associationId).length === 1 && digest(rows.find(r => r.id === plan.associationId)) === digest(association)), 'association_drift'); }
     const api = { journal: () => copy(journal),
         async setup() {
-            requireState(journal.customer === 'not_started' && journal.association === 'not_started' && journal.state === 'preflight', 'setup_already_started');
+            requireState(!recovery && journal.customer === 'not_started' && journal.association === 'not_started' && journal.state === 'preflight', 'setup_already_started');
             try {
                 requireState(await mutation('customer', () => client.createCustomer(customerInsert(plan), plan)) === 'success', 'customer_create_unsettled');
                 const customer = uniqueOwned(await client.readCustomers(plan), customerInsert(plan));
