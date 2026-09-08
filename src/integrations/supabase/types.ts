@@ -19045,6 +19045,10 @@ export type Database = {
         Args: { p_billing_month?: string; p_organization_id: string }
         Returns: Json
       }
+      copilot_job_type_directory_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
       copilot_lead_search_v1: {
         Args: {
           p_limit?: number
