@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 569,
   "soFileDocBangFs": 186,
-  "tongLoiGoi": 380,
+  "tongLoiGoi": 381,
   "khongPhanLoaiDuoc": 191,
   "theoLoai": {
     "ma-nguon": {
@@ -168,6 +168,14 @@
       "khongPhanLoaiDuoc": 2
     },
     {
+      "file": ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
+      "soGoi": 4,
+      "loai": {
+        "manifest": 4
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
       "soGoi": 4,
       "loai": {},
@@ -257,14 +265,6 @@
         "sql": 2
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": ".e2e-fleet/controlled/golden-provider-stop.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "manifest": 3
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "infra/network-center-worker/test/container.test.ts",

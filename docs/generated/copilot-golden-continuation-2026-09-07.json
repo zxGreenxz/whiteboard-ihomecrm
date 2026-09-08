@@ -1,0 +1,391 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-07T09:43:36.547Z",
+  "scope": "Retained separate selective real-model golden attempts; not one complete acceptance run",
+  "originalCaseCount": 75,
+  "passedCases": [
+    {
+      "caseId": "C01",
+      "status": "pass",
+      "reason": null,
+      "processingMs": 7654,
+      "contextId": "521226c5-5fad-4e43-8449-de793bdfc5cf",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc"
+    },
+    {
+      "caseId": "C13",
+      "status": "pass",
+      "reason": null,
+      "processingMs": 5428,
+      "contextId": "ff036038-5523-45a6-b064-602ff5748014",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc"
+    },
+    {
+      "caseId": "C31",
+      "status": "pass",
+      "reason": null,
+      "processingMs": 8883,
+      "contextId": "1e57b410-5a18-46f6-8295-a8536e0379bd",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881"
+    },
+    {
+      "caseId": "C32",
+      "status": "pass",
+      "reason": null,
+      "processingMs": 7815,
+      "contextId": "0edfb9a8-f3be-4af5-a742-a085b01950c4",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc"
+    },
+    {
+      "caseId": "C33",
+      "status": "pass",
+      "reason": null,
+      "processingMs": 9218,
+      "contextId": "1e57b410-5a18-46f6-8295-a8536e0379bd",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881"
+    },
+    {
+      "caseId": "C34",
+      "status": "pass",
+      "reason": null,
+      "processingMs": 7813,
+      "contextId": "58fb7d59-75ef-43ce-b131-978d4f69a465",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc"
+    },
+    {
+      "caseId": "C35",
+      "status": "pass",
+      "reason": null,
+      "processingMs": 8090,
+      "contextId": "91cde31e-f3dc-49b6-b816-f51001f2af97",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc"
+    },
+    {
+      "caseId": "C36",
+      "status": "pass",
+      "reason": null,
+      "processingMs": 5105,
+      "contextId": "93e85f12-e5aa-4361-be41-20d9778b3078",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc"
+    }
+  ],
+  "unacceptedSelectedCases": [],
+  "runs": [
+    {
+      "contextId": "1e57b410-5a18-46f6-8295-a8536e0379bd",
+      "startedAt": "2026-09-07T07:07:43.768Z",
+      "finishedAt": "2026-09-07T07:08:33.890Z",
+      "harnessSha": "b41870225a2335da5bd1a9fe8c8dadbe961048b0",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "contract-golden-run-1e57b410-5a18-46f6-8295-a8536e0379bd.json",
+      "selected": [
+        {
+          "caseId": "C31",
+          "status": "pass",
+          "reason": null,
+          "processingMs": 8883
+        },
+        {
+          "caseId": "C32",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 14953
+        },
+        {
+          "caseId": "C33",
+          "status": "pass",
+          "reason": null,
+          "processingMs": 9218
+        }
+      ]
+    },
+    {
+      "contextId": "5d4e5d7c-49e4-4058-aa76-7bce4fac9619",
+      "startedAt": "2026-09-07T07:15:35.350Z",
+      "finishedAt": "2026-09-07T07:16:01.583Z",
+      "harnessSha": "5f5ae0997881c616bfe509f58f81448321c0546d",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "contract-golden-run-5d4e5d7c-49e4-4058-aa76-7bce4fac9619.json",
+      "selected": [
+        {
+          "caseId": "C32",
+          "status": "blocked",
+          "reason": "browser_failed",
+          "processingMs": 20018
+        }
+      ]
+    },
+    {
+      "contextId": "181e0170-8af2-44e6-8c9d-e3f35ba42078",
+      "startedAt": "2026-09-07T07:23:04.114Z",
+      "finishedAt": "2026-09-07T07:23:22.405Z",
+      "harnessSha": "a3737bf646e2b78dbb718459ea8b1b88fdf3487c",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "contract-golden-run-181e0170-8af2-44e6-8c9d-e3f35ba42078.json",
+      "selected": [
+        {
+          "caseId": "C32",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 10212
+        }
+      ]
+    },
+    {
+      "contextId": "4c8b9b1b-84c0-482e-9e88-821010388402",
+      "startedAt": "2026-09-07T07:39:05.174Z",
+      "finishedAt": "2026-09-07T07:39:36.468Z",
+      "harnessSha": "3af3202f8ff2f99389acc8005be33e4540c43d36",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "contract-golden-run-4c8b9b1b-84c0-482e-9e88-821010388402.json",
+      "selected": [
+        {
+          "caseId": "C32",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 18520
+        }
+      ]
+    },
+    {
+      "contextId": "a1ae8b17-a7d4-4245-b12d-185f39edfc64",
+      "startedAt": "2026-09-07T07:48:27.719Z",
+      "finishedAt": "2026-09-07T07:48:51.426Z",
+      "harnessSha": "04f0e33627d637fe657740544ad037a84964337c",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "income-approval-run-a1ae8b17-a7d4-4245-b12d-185f39edfc64.json",
+      "selected": [
+        {
+          "caseId": "C34",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 8216
+        },
+        {
+          "caseId": "C35",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 4970
+        },
+        {
+          "caseId": "C36",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 4902
+        }
+      ]
+    },
+    {
+      "contextId": "93462b1d-f5f6-4413-8446-be2ad9ce0117",
+      "startedAt": "2026-09-07T07:53:06.868Z",
+      "finishedAt": "2026-09-07T07:53:19.712Z",
+      "harnessSha": "04f0e33627d637fe657740544ad037a84964337c",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881",
+      "model": "9router:ag/gemini-3.7-flash-high(high)",
+      "sourceReceipt": "income-approval-run-93462b1d-f5f6-4413-8446-be2ad9ce0117.json",
+      "selected": [
+        {
+          "caseId": "C35",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 6666
+        }
+      ]
+    },
+    {
+      "contextId": "4a8cb60e-a789-4cbf-86ee-6af29c71c6b6",
+      "startedAt": "2026-09-07T08:00:47.114Z",
+      "finishedAt": "2026-09-07T08:01:18.441Z",
+      "harnessSha": "3857907551123e19d932425176babd9d2a8885b9",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "income-approval-run-4a8cb60e-a789-4cbf-86ee-6af29c71c6b6.json",
+      "selected": [
+        {
+          "caseId": "C36",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 9459
+        }
+      ]
+    },
+    {
+      "contextId": "4f1f8902-7a05-4411-a64c-29bed508f781",
+      "startedAt": "2026-09-07T08:07:45.113Z",
+      "finishedAt": "2026-09-07T08:08:24.235Z",
+      "harnessSha": "19e2d9c49b5b2b9fddad64804f5da06ad6ce7d7f",
+      "buildSha": "85c261cab33426420afba21264c7c94238205881",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "contract-golden-run-4f1f8902-7a05-4411-a64c-29bed508f781.json",
+      "selected": [
+        {
+          "caseId": "C32",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 26323
+        }
+      ]
+    },
+    {
+      "contextId": "93e85f12-e5aa-4361-be41-20d9778b3078",
+      "startedAt": "2026-09-07T08:37:29.870Z",
+      "finishedAt": "2026-09-07T08:38:12.054Z",
+      "harnessSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "income-approval-run-93e85f12-e5aa-4361-be41-20d9778b3078.json",
+      "selected": [
+        {
+          "caseId": "C35",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 11037
+        },
+        {
+          "caseId": "C36",
+          "status": "pass",
+          "reason": null,
+          "processingMs": 5105
+        }
+      ]
+    },
+    {
+      "contextId": "ff036038-5523-45a6-b064-602ff5748014",
+      "startedAt": "2026-09-07T08:38:55.850Z",
+      "finishedAt": "2026-09-07T08:40:31.826Z",
+      "harnessSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "room-golden-run-ff036038-5523-45a6-b064-602ff5748014.json",
+      "selected": [
+        {
+          "caseId": "C01",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 8390
+        },
+        {
+          "caseId": "C13",
+          "status": "pass",
+          "reason": null,
+          "processingMs": 5428
+        }
+      ]
+    },
+    {
+      "contextId": "d2616892-16b1-4ce2-8901-4122d2cef521",
+      "startedAt": "2026-09-07T08:56:28.135Z",
+      "finishedAt": "2026-09-07T08:57:02.044Z",
+      "harnessSha": "ba0bbd5f659ae768bd3c8cf82a10eeba2d2d4bf6",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "income-approval-run-d2616892-16b1-4ce2-8901-4122d2cef521.json",
+      "selected": [
+        {
+          "caseId": "C35",
+          "status": "blocked",
+          "reason": "browser_failed",
+          "processingMs": 20012
+        }
+      ]
+    },
+    {
+      "contextId": "521226c5-5fad-4e43-8449-de793bdfc5cf",
+      "startedAt": "2026-09-07T08:58:14.366Z",
+      "finishedAt": "2026-09-07T08:58:39.598Z",
+      "harnessSha": "ba0bbd5f659ae768bd3c8cf82a10eeba2d2d4bf6",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "room-golden-run-521226c5-5fad-4e43-8449-de793bdfc5cf.json",
+      "selected": [
+        {
+          "caseId": "C01",
+          "status": "pass",
+          "reason": null,
+          "processingMs": 7654
+        }
+      ]
+    },
+    {
+      "contextId": "91cde31e-f3dc-49b6-b816-f51001f2af97",
+      "startedAt": "2026-09-07T08:59:44.630Z",
+      "finishedAt": "2026-09-07T09:00:01.040Z",
+      "harnessSha": "ba0bbd5f659ae768bd3c8cf82a10eeba2d2d4bf6",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "income-approval-run-91cde31e-f3dc-49b6-b816-f51001f2af97.json",
+      "selected": [
+        {
+          "caseId": "C35",
+          "status": "pass",
+          "reason": null,
+          "processingMs": 8090
+        }
+      ]
+    },
+    {
+      "contextId": "8830e6a4-3a94-42ec-aa52-b1de32132d65",
+      "startedAt": "2026-09-07T09:08:35.040Z",
+      "finishedAt": "2026-09-07T09:09:00.157Z",
+      "harnessSha": "aaca55f2a3c89fe3118f52eeba8cf339bca1d14c",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.7-flash-high(high)",
+      "sourceReceipt": "contract-golden-run-8830e6a4-3a94-42ec-aa52-b1de32132d65.json",
+      "selected": [
+        {
+          "caseId": "C32",
+          "status": "fail",
+          "reason": "oracle_failed",
+          "processingMs": 10749
+        }
+      ]
+    },
+    {
+      "contextId": "58fb7d59-75ef-43ce-b131-978d4f69a465",
+      "startedAt": "2026-09-07T09:10:43.577Z",
+      "finishedAt": "2026-09-07T09:10:57.887Z",
+      "harnessSha": "aaca55f2a3c89fe3118f52eeba8cf339bca1d14c",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "income-approval-run-58fb7d59-75ef-43ce-b131-978d4f69a465.json",
+      "selected": [
+        {
+          "caseId": "C34",
+          "status": "pass",
+          "reason": null,
+          "processingMs": 7813
+        }
+      ]
+    },
+    {
+      "contextId": "0edfb9a8-f3be-4af5-a742-a085b01950c4",
+      "startedAt": "2026-09-07T09:42:30.483Z",
+      "finishedAt": "2026-09-07T09:42:51.738Z",
+      "harnessSha": "4722f6cc5d713386bf5c6ce6dddd2071798b7d06",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.7-flash-high(high)",
+      "sourceReceipt": "contract-golden-run-0edfb9a8-f3be-4af5-a742-a085b01950c4.json",
+      "selected": [
+        {
+          "caseId": "C32",
+          "status": "pass",
+          "reason": null,
+          "processingMs": 7815
+        }
+      ]
+    }
+  ],
+  "fullCorpusAccepted": false,
+  "fullPlanAccepted": false,
+  "latencySlaStatus": "pending-owner-approval",
+  "limitations": [
+    "Passes come from different retained builds and contexts.",
+    "Unselected and unimplemented cases are not counted as accepted.",
+    "Functional case timing is observed, not an approved full-corpus latency SLA."
+  ]
+}
