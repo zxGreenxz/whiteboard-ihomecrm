@@ -19498,6 +19498,10 @@ export type Database = {
         Args: { p_organization_id: string; p_pin: string }
         Returns: Json
       }
+      copilot_supplier_directory_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
       copilot_tasks_v1: {
         Args: {
           p_limit?: number

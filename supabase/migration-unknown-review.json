@@ -535,24 +535,6 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
-    },
-    "supabase/migrations/20260908122057_copilot_supplier_directory_v1.sql": {
-      "sha256": "184073650a618701f97b3713e581b55f3655d9e511cf5c636be6aad9df9e6ef7",
-      "missingObjects": [
-        "function:public.copilot_supplier_directory_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Migration mới chưa được đưa vào production. RPC chỉ trả mã dẫn xuất và tên nhà cung cấp, buộc selected organization, suppliers.view, owner boundary và rollout mặc định disabled. Sau migrate:forward --apply, catalog phải có function này; provenance sẽ chuyển catalog-proven và entry tạm thời này phải được gỡ.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260908122057_copilot_supplier_directory_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.copilot_supplier_directory_v1("
-        },
-        {
-          "duong_dan": "supabase/migrations/20260908122057_copilot_supplier_directory_v1.sql",
-          "trich_doan": "'copilot.suppliers.directory',\n  'disabled'"
-        }
-      ]
     }
   }
 }
