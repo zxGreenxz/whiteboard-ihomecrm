@@ -431,6 +431,7 @@ jobs:
             scripts/__tests__/check-external-controls.test.mjs \
             scripts/__tests__/check-golden-eval-report.test.mjs \
             scripts/__tests__/copilot-golden-browser-evidence.test.mjs \
+            scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs \
             scripts/__tests__/copilot-golden-real-cli.test.mjs \
             scripts/__tests__/check-graph-governance.test.mjs \
             scripts/__tests__/check-migration-provenance.test.mjs \
@@ -476,6 +477,7 @@ jobs:
           --exclude 'scripts/__tests__/check-external-controls.test.mjs'
           --exclude 'scripts/__tests__/check-golden-eval-report.test.mjs'
           --exclude 'scripts/__tests__/copilot-golden-browser-evidence.test.mjs'
+          --exclude 'scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs'
           --exclude 'scripts/__tests__/copilot-golden-real-cli.test.mjs'
           --exclude 'scripts/__tests__/check-graph-governance.test.mjs'
           --exclude 'scripts/__tests__/check-migration-provenance.test.mjs'

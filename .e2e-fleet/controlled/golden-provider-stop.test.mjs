@@ -447,14 +447,17 @@ test('plan cleanup reports exact ownership evidence when transport stays unknown
 
 // The actual registered browser executor, with loopback synthetic transport.
 // A controlled pass is harness proof only; it is never a live model result.
-test('C14 registered customer cycle passes while C02 stays blocked before fixture lifecycle',async()=>{
+for(const caseId of ['C14','C02'])test(`${caseId} registered customer cycle requires bound fixture evidence`,async()=>{
   const {bindCustomerScenario,customerQuery}=await import('../../scripts/copilot-customer-fixtures.mjs');
   const dir=mkdtempSync(join(tmpdir(),'golden-controlled-customer-'));
-  const contextId='controlled-customer',query=customerQuery('C14',contextId),scenario=manifest.cases.find(c=>c.id==='C14');
-  const bound=bindCustomerScenario(scenario,{query,contextId,actorDigest:digest(actor),payload:[]});
-  const attestation={buildSha:sha,edgeSourceDigest:hash,deployedEdgeSourceDigest:hash,providerModel:model,organizationId:org,corpusDigest:digest(golden),manifestDigest:digest(manifest),fixtureDigest:digest(fixture),policyDigest:digest({permissions:{},availability:{}}),actorDigest:digest(actor),observedAt:new Date().toISOString(),contextId,customerFixtures:{C14:bound.attestation}};
+  const contextId='controlled-customer',query=customerQuery(caseId,contextId),scenario=manifest.cases.find(c=>c.id===caseId);
+  const row={customer_id:'aaaa4000-0000-4000-8000-000000000071',customer_name:'Nguyễn An',phone:customerQuery('C14',contextId),contract_id:'10b1a785-6344-4598-812c-6dc6e98837ed',contract_number:'HD-GOLDEN',contract_status:'TERMINATED',room_id:'aaaa4000-0000-4000-8000-000000000073',room_name:'G701',building_id:'aaaa4000-0000-4000-8000-000000000074',building_name:'DEMO Toà A',is_representative:false};
+  const payload=caseId==='C02'?[row]:[];
+  const ownership={kind:'owned-c02-v1',state:'ready',organizationId:org,implementationSha:sha,customerId:row.customer_id,associationId:'aaaa4000-0000-4000-8000-000000000075',hostId:row.contract_id,roomId:row.room_id,buildingId:row.building_id,actorDigest:digest(actor),contextDigest:digest(contextId),phoneDigest:digest(row.phone),markerDigest:digest(`COPILOT_C02_${contextId}_${row.customer_id}`),hostDigest:hash,associationsDigest:hash,customerDigest:hash,associationDigest:hash,responseDigest:digest(payload),reviewDigest:hash};
+  const bound=bindCustomerScenario(scenario,{query,contextId,actorDigest:digest(actor),payload,ownership:caseId==='C02'?ownership:undefined});
+  const attestation={buildSha:sha,edgeSourceDigest:hash,deployedEdgeSourceDigest:hash,providerModel:model,organizationId:org,corpusDigest:digest(golden),manifestDigest:digest(manifest),fixtureDigest:digest(fixture),policyDigest:digest({permissions:{},availability:{}}),actorDigest:digest(actor),observedAt:new Date().toISOString(),contextId,customerFixtures:{[caseId]:bound.attestation}};
   writeFileSync(join(dir,'attestation.json'),JSON.stringify(attestation));
-  const text=`Không tìm thấy khách hàng nào khớp "${query}".`;
+  const text=caseId==='C02'?`- Nguyễn An — ${row.phone.slice(0,3)}***${row.phone.slice(-4)} — phòng G701 (DEMO Toà A) [link: /customers/${row.customer_id}]`:`Không tìm thấy khách hàng nào khớp "${query}".`;
   let modelCalls=0,customerReads=0;
   const sse=(delta,finish_reason)=>'data: '+JSON.stringify({choices:[{delta,finish_reason}]})+'\n\ndata: [DONE]\n\n';
   const server=createServer(async(req,res)=>{
@@ -462,7 +465,7 @@ test('C14 registered customer cycle passes while C02 stays blocked before fixtur
     const send=(data,type='application/json')=>{res.writeHead(200,{'Content-Type':type+'; charset=utf-8'});res.end(typeof data==='string'?data:JSON.stringify(data));};
     if(path.endsWith('/rpc/get_my_copilot_availability_v1')||path.endsWith('/rpc/get_my_permissions'))return send({});
     if(path.endsWith('/rpc/copilot_available_rooms_v1'))return send(fixture);
-    if(path.endsWith('/rpc/copilot_customer_search_v1')){customerReads++;return send([]);}
+    if(path.endsWith('/rpc/copilot_customer_search_v1')){customerReads++;return send(payload);}
     if(path.includes('/functions/v1/llm-proxy')){modelCalls++;return send(modelCalls===1?sse({tool_calls:[{index:0,id:'customer-controlled-call',function:{name:'tim_khach_hang',arguments:JSON.stringify({tu_khoa:query})}}]},'tool_calls'):sse({content:text},'stop'),'text/event-stream');}
     if(path==='/favicon.ico'){res.writeHead(204);return res.end();}
     if(path==='/login')return send(`<html><head><meta name="build-sha" content="${sha}"></head><body><input aria-label="Tài Khoản"><input aria-label="Mật khẩu"><button onclick="location.href='/apartments'">Đăng nhập</button></body></html>`,'text/html');
@@ -486,13 +489,13 @@ test('C14 registered customer cycle passes while C02 stays blocked before fixtur
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try{
     const env={...process.env,FLEET_BASE_URL:`http://127.0.0.1:${server.address().port}`,FLEET_PASS_CHUNHA:'synthetic-controlled-only',EXPECTED_SOURCE_SHA:sha,COPILOT_E2E_MODEL:model,COPILOT_REVIEWED_EDGE_DIGEST:hash,COPILOT_DEPLOYED_EDGE_DIGEST:hash,VERCEL_AUTOMATION_BYPASS_SECRET:''};
-    const child=spawn(process.execPath,['scripts/generate-copilot-golden-real-results.mjs','--attestation',join(dir,'attestation.json'),'--results-out',join(dir,'results.json'),'--case-ids','C02,C14'],{cwd:root,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+    const child=spawn(process.execPath,['scripts/generate-copilot-golden-real-results.mjs','--attestation',join(dir,'attestation.json'),'--results-out',join(dir,'results.json'),'--case-ids',caseId==='C02'?'C02':'C02,C14'],{cwd:root,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
     let output='';child.stdout.on('data',c=>{output+=c;});child.stderr.on('data',c=>{output+=c;});
     const exit=await new Promise((resolve,reject)=>{child.on('close',resolve);child.on('error',reject);});
     const run=JSON.parse(readFileSync(join(dir,'results.json')));
-    assert.equal(exit,1,'C02 unfinished fixture must retain incomplete selection');
-    assert.equal(run.cases.find(c=>c.id==='C02').reason,'fixture_unbound');assert.equal(run.cases.find(c=>c.id==='C02').timing,undefined);
-    assert.equal(run.cases.find(c=>c.id==='C14').status,'pass',output);assert.equal(modelCalls,2);assert.equal(customerReads,2);
+    assert.equal(exit,caseId==='C02'?0:1,output);
+    if(caseId==='C14'){assert.equal(run.cases.find(c=>c.id==='C02').reason,'fixture_unbound');assert.equal(run.cases.find(c=>c.id==='C02').timing,undefined);}
+    assert.equal(run.cases.find(c=>c.id===caseId).status,'pass',output);assert.equal(modelCalls,2);assert.equal(customerReads,2);
     assert.equal(run.cases.find(c=>c.id==='C01').status,'not_selected');assert.equal(run.cases.find(c=>c.id==='C13').status,'not_selected');assert.equal(run.cases.length,75);assert.deepEqual(validateBrowserRun(golden,manifest,run),[]);
   }finally{await new Promise(resolve=>server.close(resolve));rmSync(dir,{recursive:true,force:true});}
 });

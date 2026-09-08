@@ -362,7 +362,7 @@ describe('golden C13: building identity survives duplicate room codes', () => {
 });
 import { assertContractResult, contractToolText, ContractOracleFailure, contractOracleDiagnostic } from '../../../.e2e-fleet/specs/copilotContractOracle';
 import { bindContractScenario } from '../../../scripts/copilot-contract-fixtures.mjs';
-import { DEMO_ORG } from '../../../scripts/copilot-golden-browser-evidence.mjs';
+import { DEMO_ORG, digest, type C02Ownership } from '../../../scripts/copilot-golden-browser-evidence.mjs';
 const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', khach_hang: 'Demo An', phong: 'A101', toa_nha: 'DEMO Toà A', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', trang_thai: 'ACTIVE', tien_thue: 3000000, tien_coc: 6000000, coc_da_thu: 5000000, coc_con_thieu: 1000000 };
 function contractEvidence(id = 'C31', withInvoice = false) {
   const absent = id === 'C32', detail = id === 'C33';
@@ -936,14 +936,16 @@ describe('C34 report date scope',()=>{
   });
 });
 
-const customerCanonical = {customer_id:'aaaa4000-0000-4000-8000-000000000071',customer_name:'Nguyễn An',phone:'0001234567',contract_id:'aaaa4000-0000-4000-8000-000000000072',contract_number:'HD-GOLDEN',contract_status:'TERMINATED',room_id:'aaaa4000-0000-4000-8000-000000000073',room_name:'G701',building_id:'aaaa4000-0000-4000-8000-000000000074',building_name:'DEMO Toà A',is_representative:true};
+const customerCanonical = {customer_id:'aaaa4000-0000-4000-8000-000000000071',customer_name:'Nguyễn An',phone:'0006175960',contract_id:'10b1a785-6344-4598-812c-6dc6e98837ed',contract_number:'HD-GOLDEN',contract_status:'TERMINATED',room_id:'aaaa4000-0000-4000-8000-000000000073',room_name:'G701',building_id:'aaaa4000-0000-4000-8000-000000000074',building_name:'DEMO Toà A',is_representative:false};
 function customerEvidence(id='C02') {
   const scenario={id,fixture:id==='C02'?'customer-nguyen-an':'absent-synthetic-phone',kind:'read',acceptance:['facts'],oracle:id==='C02'?'customer-nguyen-an-v1':'absent-synthetic-phone-v1',prompt:id==='C02'?'Tìm khách hàng Nguyễn An':'Tìm khách bằng số điện thoại {{absent.syntheticPhone}}'};
   const contextId='customer-context-1',actorDigest='b'.repeat(64),query=customerQuery(id,contextId);
-  const input={query,contextId,actorDigest,payload:id==='C02'?[structuredClone(customerCanonical)]:[],ownedCustomerId:id==='C02'?customerCanonical.customer_id:undefined};
+  const row=customerCanonical;
+  const ownership:C02Ownership={kind:'owned-c02-v1',state:'ready',organizationId:DEMO_ORG,implementationSha:'a'.repeat(40),customerId:row.customer_id,associationId:'aaaa4000-0000-4000-8000-000000000075',hostId:row.contract_id,roomId:row.room_id,buildingId:row.building_id,actorDigest,contextDigest:digest(contextId),phoneDigest:digest(row.phone),markerDigest:digest(`COPILOT_C02_${contextId}_${row.customer_id}`),hostDigest:'c'.repeat(64),associationsDigest:'c'.repeat(64),customerDigest:'c'.repeat(64),associationDigest:'c'.repeat(64),responseDigest:digest([row]),reviewDigest:'c'.repeat(64)};
+  const input={query,contextId,actorDigest,payload:id==='C02'?[structuredClone(customerCanonical)]:[],ownership:id==='C02'?ownership:undefined};
   const fixture=bindCustomerScenario(scenario,input);
   expect(fixture).toBeDefined();
-  const text=id==='C02'?'Nguyễn An — 000***4567 — phòng G701 (DEMO Toà A)':'Không tìm thấy khách hàng nào khớp "'+query+'".';
+  const text=id==='C02'?'Nguyễn An — 000***5960 — phòng G701 (DEMO Toà A)':'Không tìm thấy khách hàng nào khớp "'+query+'".';
   const messages:FixtureMessage[]=[{role:'user',content:fixture.prompt}];
   const rounds=[{body:chunk({tool_calls:[{index:0,id:'customer-call-1',function:{name:'tim_khach_',arguments:'{"tu_khoa":'}}]},null)+chunk({tool_calls:[{index:0,function:{name:'hang',arguments:JSON.stringify(query)+'}'}}]},'tool_calls')+'data: [DONE]\n\n',messages},
     {body:chunk({content:text},'stop')+'data: [DONE]\n\n',messages:[...messages,{role:'tool',tool_call_id:'customer-call-1',content:customerToolText(fixture)}]}];
@@ -964,7 +966,7 @@ describe('bounded customer golden executor',()=>{
     if(mode==='bad-id')input.payload=[{...customerCanonical,room_id:'bad'}];
     if(mode==='raw-type')input.payload=[{...customerCanonical,is_representative:'true'}];
     if(mode==='phone-short')input.payload=[{...customerCanonical,phone:'123'}];
-    if(mode==='wrong-owner')input.ownedCustomerId=customerCanonical.room_id;
+    if(mode==='wrong-owner')input.ownership={...input.ownership!,customerId:customerCanonical.room_id};
     if(mode==='wrong-context')input.contextId='another-context';
     if(mode==='nonempty-absent')input.payload=[customerCanonical];
     expect(()=>bindCustomerScenario(e.scenario,input)).toThrow('fixture_unbound');
@@ -987,10 +989,10 @@ describe('bounded customer golden executor',()=>{
     if(mode==='missing-id')e.rounds[0].body=e.rounds[0].body.replace('customer-call-1','');
     if(mode==='extra-tool')e.rounds[0].body=e.rounds[0].body.replace('data: [DONE]',chunk({tool_calls:[{index:1,id:'second',function:{name:'tim_khach_hang',arguments:'{}'}}]},'tool_calls')+'data: [DONE]');
     if(mode==='mounted')e.answer+=' different';
-    if(mode==='raw-result')e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.replace('000***4567',customerCanonical.phone);
+    if(mode==='raw-result')e.rounds[1].messages[1].content=e.rounds[1].messages[1].content.replace('000***5960',customerCanonical.phone);
     expect(()=>assertCustomerResult(e)).toThrow();
   });
-  it.each(['Nguyễn Bình — 000***4567 — phòng G701 (DEMO Toà A)','Nguyễn An — 000***4567 — phòng G702 (DEMO Toà A)','Nguyễn An — 000***4567 — phòng G701 (DEMO Toà B)','Nguyễn An — 000***4568 — phòng G701 (DEMO Toà A)','Nguyễn An — 0001234567 — phòng G701 (DEMO Toà A)','Nguyễn An — phòng G701 (DEMO Toà A). Khách hàng: Nguyễn Bình','Nguyễn An — phòng G701 (DEMO Toà A). Hợp đồng HD999','Nguyễn An — phòng G701 (DEMO Toà A). Không tìm thấy khách hàng.'])('rejects wrong or invented customer fact %s',text=>expect(()=>assertCustomerResult(customerAnswer(text))).toThrow());
+  it.each(['Nguyễn Bình — 000***5960 — phòng G701 (DEMO Toà A)','Nguyễn An — 000***5960 — phòng G702 (DEMO Toà A)','Nguyễn An — 000***5960 — phòng G701 (DEMO Toà B)','Nguyễn An — 000***4568 — phòng G701 (DEMO Toà A)','Nguyễn An — 0006175960 — phòng G701 (DEMO Toà A)','Nguyễn An — phòng G701 (DEMO Toà A). Khách hàng: Nguyễn Bình','Nguyễn An — phòng G701 (DEMO Toà A). Hợp đồng HD999','Nguyễn An — phòng G701 (DEMO Toà A). Không tìm thấy khách hàng.'])('rejects wrong or invented customer fact %s',text=>expect(()=>assertCustomerResult(customerAnswer(text))).toThrow());
   it('rejects noncanonical links and PII in later model input',()=>{
     expect(()=>assertCustomerResult(customerAnswer('Nguyễn An — phòng G701 (DEMO Toà A) [x](/customers/wrong)'))).toThrow();
     const e=customerEvidence();e.rounds[1].messages.push({role:'assistant',content:customerCanonical.phone});expect(()=>assertCustomerResult(e)).toThrow();
@@ -1012,7 +1014,7 @@ describe('bounded customer golden executor',()=>{
 });
 
 it('rejects an unlabelled invented identity after exact C14 absence',()=>{const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' Nguyễn Bình.','C14'))).toThrow();});
-it('accepts one-customer prose with canonical count and masked phone',()=>expect(()=>assertCustomerResult(customerAnswer('Tìm thấy 1 khách hàng: Nguyễn An — 000***4567 — phòng G701 (DEMO Toà A).'))).not.toThrow());
+it('accepts one-customer prose with canonical count and masked phone',()=>expect(()=>assertCustomerResult(customerAnswer('Tìm thấy 1 khách hàng: Nguyễn An — 000***5960 — phòng G701 (DEMO Toà A).'))).not.toThrow());
 
 it('rejects contradictory positive customer claim after grounded absence',()=>{const e=customerEvidence('C14');expect(()=>assertCustomerResult(customerAnswer(e.answer+' Có khách hàng.','C14'))).toThrow();});
 it('accepts only a canonical customer detail link',()=>expect(()=>assertCustomerResult(customerAnswer('Nguyễn An — phòng G701 (DEMO Toà A). [Xem chi tiết](/customers/'+customerCanonical.customer_id+')'))).not.toThrow());

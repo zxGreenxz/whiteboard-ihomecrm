@@ -98,14 +98,15 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       let customer: CustomerFixture | undefined;
       try {
         if (Object.prototype.hasOwnProperty.call(CUSTOMER_CASES,c.id)) {
-          // C02 oracle/schema are ready; provisioning and cleanup must receive a
-          // separate lifecycle review before enabling its browser execution.
-          if(c.id==='C02')throw new Error('fixture_unbound');
+          // Root owns provisioning and final cleanup. A name/ID cannot enable C02;
+          // require its reviewed ownership proof before even issuing the read.
+          const expectedCustomer=attestation.customerFixtures?.[c.id as 'C02'|'C14'];
+          if(c.id==='C02'&&!expectedCustomer?.ownership)throw new Error('fixture_unbound');
           const query=customerQuery(c.id,attestation.contextId);
           const response=await page.request.post(`${api}/rest/v1/rpc/copilot_customer_search_v1`,{headers:auth,data:{p_organization_id:DEMO_ORG,p_search:query}});
           expect(response.ok()).toBe(true);
-          customer=bindCustomerScenario(scenario,{query,contextId:attestation.contextId,actorDigest:attestation.actorDigest,payload:await response.json()});
-          expect(digest(customer.attestation)).toBe(digest(attestation.customerFixtures?.C14));
+          customer=bindCustomerScenario(scenario,{query,contextId:attestation.contextId,actorDigest:attestation.actorDigest,payload:await response.json(),...(c.id==='C02'?{ownership:expectedCustomer?.ownership}:{})});
+          expect(digest(customer.attestation)).toBe(digest(expectedCustomer));
           bound=customer;
         } else if (Object.hasOwn(CONTRACT_CASES, c.id)) {
           const read = async (rpc: string, data: Record<string, unknown>): Promise<unknown> => {

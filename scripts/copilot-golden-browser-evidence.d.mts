@@ -14,8 +14,16 @@ export interface ContractFixtureAttestation {
   kind: 'contract-search' | 'contract-absent' | 'contract-detail'; organizationId: typeof DEMO_ORG;
   queryDigest: string; identityDigest: string; searchDigest: string; detailDigest?: string; customerDigest?: string;
 }
+export interface C02Ownership {
+  kind:'owned-c02-v1';state:'ready';organizationId:typeof DEMO_ORG;implementationSha:string;
+  customerId:string;associationId:string;hostId:string;roomId:string;buildingId:string;
+  actorDigest:string;contextDigest:string;phoneDigest:string;markerDigest:string;hostDigest:string;associationsDigest:string;
+  customerDigest:string;associationDigest:string;responseDigest:string;reviewDigest:string;
+}
+export function validC02Ownership(value:unknown,binding:{actorDigest:string;contextDigest:string;responseDigest:string}):value is C02Ownership;
 export interface CustomerFixtureAttestation {
   kind:'customer-search'|'customer-absent';organizationId:typeof DEMO_ORG;actorDigest:string;contextDigest:string;queryDigest:string;identityDigest:string;responseDigest:string;
+  ownership?:C02Ownership;
 }
 export interface Attestation {
   customerFixtures?:Partial<Record<'C02'|'C14',CustomerFixtureAttestation>>;

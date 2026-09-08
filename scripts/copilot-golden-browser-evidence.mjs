@@ -59,15 +59,28 @@ function validAttestation(a) {
 }
 
 const CUSTOMER_MAPPING = { C02:['customer-nguyen-an-v1','customer-search','copilot_customer_search_v1'], C14:['absent-synthetic-phone-v1','customer-absent','copilot_customer_search_v1'] };
+/** Structural binding only: the trusted operator issues this after fresh owned-row reads. */
+export function validC02Ownership(o,{actorDigest,contextDigest,responseDigest}) {
+  const ids=['customerId','associationId','hostId','roomId','buildingId'];
+  const hashes=['actorDigest','contextDigest','phoneDigest','markerDigest','hostDigest','associationsDigest','customerDigest','associationDigest','responseDigest','reviewDigest'];
+  const fields=['kind','state','organizationId','implementationSha',...ids,...hashes];
+  return keysOnly(o,fields)&&fields.every(k=>typeof o[k]==='string')
+    && o.kind==='owned-c02-v1'&&o.state==='ready'&&o.organizationId===DEMO_ORG
+    && o.hostId==='10b1a785-6344-4598-812c-6dc6e98837ed'
+    && ids.every(k=>/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(o[k]))
+    && new Set(ids.map(k=>o[k])).size===ids.length
+    && hashes.every(k=>HASH.test(o[k]))&&/^[a-f0-9]{40}$/.test(o.implementationSha)
+    && o.actorDigest===actorDigest&&o.contextDigest===contextDigest&&o.responseDigest===responseDigest;
+}
 function validCustomerFixtures(fixtures,actorDigest,contextId) {
   const hashes=['actorDigest','contextDigest','queryDigest','identityDigest','responseDigest'];
   return keysOnly(fixtures,Object.keys(CUSTOMER_MAPPING)) && Object.entries(fixtures).every(([id,f])=>
-    keysOnly(f,['kind','organizationId',...hashes]) && f.kind===CUSTOMER_MAPPING[id][1] && f.organizationId===DEMO_ORG
+    keysOnly(f,['kind','organizationId',...hashes,...(id==='C02'?['ownership']:[])]) && f.kind===CUSTOMER_MAPPING[id][1] && f.organizationId===DEMO_ORG
     && f.actorDigest===actorDigest && f.contextDigest===digest(contextId) && hashes.every(k=>typeof f[k]==='string' && HASH.test(f[k]))
     // Independently reconstruct the only allowed queries and known absent
     // payload; matching arbitrary digest strings cannot establish absence.
     && f.queryDigest===digest({p_organization_id:DEMO_ORG,p_search:id==='C02'?'Nguyễn An':`000${String(parseInt(digest(contextId).slice(0,12),16)%10000000).padStart(7,'0')}`})
-    && (id!=='C14' || f.responseDigest===digest([]) && f.identityDigest===digest({organizationId:DEMO_ORG,actorDigest,rows:[]})));
+    && (id==='C02'?validC02Ownership(f.ownership,f):f.responseDigest===digest([]) && f.identityDigest===digest({organizationId:DEMO_ORG,actorDigest,rows:[]})));
 }
 const CONTRACT_MAPPING = {
   C31: ['contract-code-v1', 'contract-search', 'copilot_contract_search_v1'],
