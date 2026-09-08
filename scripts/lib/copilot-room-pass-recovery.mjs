@@ -46,6 +46,8 @@ export async function recoverRoomPassRun({ run, journalPath, transport, manageme
   for (const op of run.operations.filter(value => ['intent', 'unknown'].includes(value.state))) await terminal(runner, op.id, terminalEvidence);
   for (const s of run.scenarios.filter(value => ['intent', 'unknown'].includes(value.state))) await terminal(runner, `session:${s.name}`, terminalEvidence);
   if (run.browser && run.browser.state !== 'settled') await terminal(runner, `browser:${run.runId}`, terminalEvidence);
+  if (run.controls?.pending) await terminal(runner, runner.pendingControlKey(), terminalEvidence);
+  if (run.controls?.pending) await runner.reconcilePendingControl({ terminal: true, evidenceDigest: terminalEvidence[runner.pendingControlKey()] });
   for (const s of run.scenarios) if (['intent', 'unknown'].includes(s.state)) s.state = 'reconciled_terminal';
   if (run.browser) run.browser.state = 'settled';
   for (const op of run.operations.filter(value => ['intent', 'unknown'].includes(value.state))) {

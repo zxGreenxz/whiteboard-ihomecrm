@@ -296,3 +296,81 @@ test('flag read adapter is exact and read only when ordinary flag SELECT is unav
   await assert.rejects(runner.readFlag(), /flag_revision_invalid/);
   assert.equal(run.organizationId, api.DEMO);
 }));
+
+for (const state of ['shadow', 'enabled', 'disabled', 'rejected']) test('recovery reconciles post-CAS readback failure: ' + state, async () => fixture(async ({ run, runner, transport, journalPath }) => {
+  let flag = { scope: 'action', contract_id: api.ACTION, state: 'disabled', canary_org: null, expires_at: null,
+    revision: 8, updated_by: ACTOR, reason: 'initial', evidence_link: 'initial', rollback_reference: 'initial' };
+  let failRead = false;
+  const request = transport.request;
+  transport.verifyTerminal = async () => true;
+  transport.readFlag = async () => { if (failRead) { failRead = false; throw new Error('read_failed'); } return { flag: structuredClone(flag), globalRevision: flag.revision }; };
+  transport.request = async (ctx, req) => {
+    if (req.rpc !== 'set_copilot_feature_flag_v2') return request(ctx, req);
+    if (state === 'rejected') return { status: 409, body: { message: 'copilot_rollout_stale_revision' } };
+    flag = { ...flag, state: req.args.p_state, revision: flag.revision + 1, canary_org: req.args.p_canary_org,
+      expires_at: req.args.p_expires_at, reason: req.args.p_reason, evidence_link: req.args.p_evidence_link, rollback_reference: req.args.p_rollback_reference };
+    failRead = true;
+    return { status: 200, body: structuredClone(flag) };
+  };
+  await runner.captureControl();
+  if (state === 'enabled' || state === 'disabled') {
+    flag = { ...flag, state: 'shadow', canary_org: api.DEMO, expires_at: new Date(Date.now() + 600000).toISOString() };
+    run.controls.current = structuredClone(flag);
+  }
+  await assert.rejects(runner.transitionFlag(state === 'rejected' ? 'shadow' : state,
+    state === 'disabled' ? null : new Date(Date.now() + 600000).toISOString()));
+  const op = run.operations.at(-1);
+  assert.equal(op.state, state === 'rejected' ? 'rejected' : 'acknowledged');
+  const evidence = { ['operator:' + run.runId]: 'a'.repeat(64), [op.id]: 'b'.repeat(64) };
+  await assert.rejects(recoverRoomPassRun({ run, journalPath, transport, terminalEvidence: { ['operator:' + run.runId]: 'a'.repeat(64) } }), /terminal_evidence_required/);
+  // Subsequent disable has a successful readback; only the original CAS loses it.
+  const originalRequest = transport.request;
+  transport.request = async (ctx, req) => { const result = await originalRequest(ctx, req); failRead = false; return result; };
+  const committed = structuredClone(flag);
+  flag = { ...flag, revision: flag.revision + 1, reason: 'concurrent operator' };
+  await assert.rejects(recoverRoomPassRun({ run, journalPath, transport, terminalEvidence: evidence }), /control_recovery_ownership_invalid/);
+  assert.ok(run.controls.pending);
+  flag = committed;
+  const result = await recoverRoomPassRun({ run, journalPath, transport, terminalEvidence: evidence });
+  assert.equal(result.controlsRestored, true); assert.equal(flag.state, 'disabled');
+  assert.equal(run.controls.pending, undefined);
+  assert.equal(op.state, state === 'rejected' ? 'reconciled_absent' : 'reconciled_committed');
+}));
+
+async function browserGuardModule() {
+  const { transpileModule, ModuleKind, ScriptTarget } = await import('typescript');
+  const source = await readFile(new URL('../../.e2e-fleet/specs/copilotRoomPassGuard.ts', import.meta.url), 'utf8');
+  const { outputText } = transpileModule(source, { compilerOptions: { module: ModuleKind.ESNext, target: ScriptTarget.ES2022 } });
+  return import('data:text/javascript;base64,' + Buffer.from(outputText).toString('base64'));
+}
+test('browser guard delegates reads, owns chat and denies every unexpected business mutation', async () => {
+  const { createRoomPassBrowserGuard } = await browserGuardModule();
+  const listingId = '22222222-2222-4222-8222-222222222222';
+  const guard = createRoomPassBrowserGuard({ actorId: ACTOR, listingId, organizationId: api.DEMO });
+  const request = (path, method = 'POST', body = {}) => ({ url: () => 'https://fixture.invalid/rest/v1/' + path, method: () => method, postDataJSON: () => body });
+  const dispatch = async req => { const calls = []; await guard.route({ request: () => req, fallback: async () => calls.push('fallback'), abort: async () => calls.push('abort') }); return calls; };
+  assert.deepEqual(await dispatch(request('profiles?select=ui_preferences', 'GET')), ['fallback']);
+  const preview = { p_organization_id: api.DEMO, p_payload: { listing_id: listingId, active: true } };
+  assert.deepEqual(await dispatch(request('rpc/copilot_preview_room_pass_active_v1', 'POST', preview)), ['fallback']);
+  assert.deepEqual(await dispatch(request('rpc/copilot_preview_room_pass_active_v1', 'POST', { ...preview, p_organization_id: ACTOR })), ['abort']);
+  assert.deepEqual(await dispatch(request('rpc/get_my_copilot_availability_v1', 'POST', { p_organization_id: api.DEMO })), ['fallback']);
+  assert.deepEqual(await dispatch(request('rpc/get_my_copilot_availability_v1', 'POST', { p_organization_id: ACTOR })), ['abort']);
+  for (const path of ['income_expenses','ai_write_audit','rpc/ie_compat_insert_v2','rpc/create_income_expense_v1','rpc/copilot_execute_income_expense_v1','rpc/unknown_future_write']) {
+    assert.deepEqual(await dispatch(request(path, 'POST', { organization_id: ACTOR })), ['abort']);
+  }
+  assert.deepEqual(await dispatch(request('ai_chat_messages', 'POST', [{ user_id: ACTOR, organization_id: api.DEMO, thread_id: ACTOR }])), ['abort']);
+  const chat = request('ai_chat_threads', 'POST', { user_id: ACTOR, organization_id: api.DEMO, title: 'owned' });
+  assert.deepEqual(await dispatch(chat), ['fallback']);
+  guard.observeThread(chat, { id: ACTOR });
+  assert.deepEqual(await dispatch(request('ai_chat_messages', 'POST', [{ user_id: ACTOR, organization_id: api.DEMO, thread_id: ACTOR, role: 'user', content: 'fixture' }])), ['fallback']);
+  assert.deepEqual(await dispatch(request('ai_chat_threads', 'PATCH', { organization_id: api.DEMO })), ['abort']);
+  assert.deepEqual(await dispatch(request('ai_chat_threads', 'POST', { user_id: ACTOR, organization_id: ACTOR })), ['abort']);
+  const canonical = { organization_id: api.DEMO, listing_id: listingId, active: true };
+  guard.setProposal({ canonical, nonce: 'a'.repeat(64) });
+  const execute = request('rpc/copilot_execute_room_pass_active_v1', 'POST', { p_payload: canonical, p_confirmation_nonce: 'a'.repeat(64) });
+  assert.deepEqual(await dispatch(execute), ['abort']); guard.click();
+  assert.deepEqual(await dispatch(execute), ['fallback']);
+  assert.deepEqual(await dispatch(execute), ['abort']);
+  assert.equal(guard.counters().acceptedExecutions, 1);
+  assert.ok(guard.counters().illegalWrites >= 10);
+});

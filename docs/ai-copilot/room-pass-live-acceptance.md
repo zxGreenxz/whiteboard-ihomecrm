@@ -29,3 +29,11 @@ Unknown transport/process outcomes block further business writes. recoverRoomPas
 ## Verification limits
 
 Injected transport tests exercise safety oracles, journaling, cleanup and observed-session orchestration. Local PGlite exercises exact emergency fixture SQL/CAS only. Root must review administrative SQL, wire real transports and independently verify browser/process evidence before any live run. This source delivery does not prove live concurrency, real browser completion, deployed behavior, or acceptance of the wider project.
+
+## R1 recovery and browser regressions
+
+Pending flag reconciliation is independent of the HTTP acknowledgement: a successful CAS followed by failed readback still requires verified terminal evidence under pending.operationId (or control:<runId> if execution never acquired an operation ID). Exact old/intended metadata and revision are checked before adoption. A rejected CAS can reconcile only to the unchanged old row. Acknowledged CAS cannot be treated as absent. Concurrent changes remain an operator conflict. Pending controls also retain the journal lease.
+
+The browser guard chains reads through route.fallback so the actual model pin remains active. Mutating REST calls default to denial, with explicit exceptions for scoped availability/auth reads, exact owned room-pass preview, fresh actor/DEMO chat thread creation and messages belonging to a thread created by this browser. Only one exact nonce/payload executor is allowed after click; all other direct/domain/RPC writes are counted and aborted. Unknown necessary runtime calls require source review of the allowlist, not a broad bypass.
+
+Run node scripts/check-room-pass-browser-loopback.mjs for the real headless Chromium route-order regression. It binds only 127.0.0.1, rejects external origins, imports the actual model-pin and guard helpers, and proves financial writes never reach its synthetic server. It requires a locally installed Playwright Chromium; it does not load fleet credentials or invoke a model. CI Node tests exercise the guard behavior without requiring Chromium.

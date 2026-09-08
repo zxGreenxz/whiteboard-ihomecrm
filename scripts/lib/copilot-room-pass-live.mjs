@@ -75,7 +75,7 @@ export class RoomPassRun {
   async releaseLease() {
     if (!this.lease) return;
     await this.lease.close(); this.lease = null;
-    if (!this.run.operations.some(op => ['unknown', 'intent'].includes(op.state))
+    if (!this.run.controls?.pending && !this.run.operations.some(op => ['unknown', 'intent'].includes(op.state))
       && !this.run.scenarios.some(s => ['unknown', 'intent'].includes(s.state))
       && (!this.run.browser || this.run.browser.state === 'settled')) await unlink(`${this.path}.lock`);
   }
@@ -98,19 +98,7 @@ export class RoomPassRun {
         && (building ? row.user_id === this.run.actorId : row.building_id === this.run.fixtures.building.id)), 'recovery_ownership_invalid');
       op.state = rows.length ? 'reconciled_committed' : 'reconciled_absent';
     } else if (op.name === 'flag_transition') {
-      const pending = this.run.controls?.pending;
-      requireThat(pending, 'control_reconciliation_required');
-      const { flag } = await this.readFlag();
-      if (digest(flag) === digest(this.run.controls.current)) op.state = 'reconciled_absent';
-      else {
-        requireThat(flag.state === pending.p_state && flag.canary_org === pending.p_canary_org
-          && (flag.expires_at === null ? null : Date.parse(flag.expires_at)) === (pending.p_expires_at === null ? null : Date.parse(pending.p_expires_at))
-          && flag.updated_by === this.run.actorId && flag.reason === pending.p_reason
-          && flag.evidence_link === pending.p_evidence_link && flag.rollback_reference === pending.p_rollback_reference
-          && flag.revision === pending.p_expected_revision + 1, 'control_recovery_ownership_invalid');
-        this.run.controls.current = structuredClone(flag); op.state = 'reconciled_committed';
-      }
-      delete this.run.controls.pending;
+      await this.reconcilePendingControl({ terminal, evidenceDigest });
     } else {
       // A terminal execute/cleanup is reconciled by the same exact owned readback,
       // then fresh compensation (never resubmit its nonce). Control CAS is separate.
@@ -118,6 +106,30 @@ export class RoomPassRun {
       op.state = 'reconciled_terminal';
     }
     op.terminalEvidenceDigest = evidenceDigest; this.run.status = 'recovery_required'; await this.save();
+  }
+  pendingControlKey() {
+    return this.run.controls?.pending?.operationId ?? `control:${this.run.runId}`;
+  }
+  async reconcilePendingControl({ terminal, evidenceDigest }) {
+    const pending = this.run.controls?.pending;
+    requireThat(pending && terminal === true && /^[0-9a-f]{64}$/.test(evidenceDigest), 'terminal_evidence_required');
+    const operationId = this.pendingControlKey();
+    requireThat(await this.transport.verifyTerminal(this.context, { operationId, evidenceDigest }) === true, 'terminal_evidence_unverified');
+    const op = this.run.operations.find(value => value.id === pending.operationId);
+    requireThat(!pending.operationId || (op?.name === 'flag_transition' && op.target === ACTION), 'control_operation_invalid');
+    const { flag } = await this.readFlag();
+    const absent = digest(flag) === digest(this.run.controls.current);
+    if (absent) requireThat(op?.state !== 'acknowledged', 'control_recovery_ownership_invalid');
+    else {
+      requireThat(op && op.state !== 'rejected' && flag.state === pending.p_state && flag.canary_org === pending.p_canary_org
+        && (flag.expires_at === null ? null : Date.parse(flag.expires_at)) === (pending.p_expires_at === null ? null : Date.parse(pending.p_expires_at))
+        && flag.updated_by === this.run.actorId && flag.reason === pending.p_reason
+        && flag.evidence_link === pending.p_evidence_link && flag.rollback_reference === pending.p_rollback_reference
+        && flag.revision === pending.p_expected_revision + 1, 'control_recovery_ownership_invalid');
+      this.run.controls.current = structuredClone(flag);
+    }
+    if (op) { op.state = absent ? 'reconciled_absent' : 'reconciled_committed'; op.terminalEvidenceDigest = evidenceDigest; }
+    delete this.run.controls.pending; this.run.status = 'recovery_required'; await this.save();
   }
   async identity() {
     const identity = await this.transport.identity(this.context);
@@ -152,6 +164,7 @@ export class RoomPassRun {
     await this.save();
   }
   async transitionFlag(state, expiresAt = null, restoreMetadata = false) {
+    requireThat(!this.run.controls?.pending, 'control_reconciliation_required');
     requireThat(this.run.controls && ['disabled', 'shadow', 'enabled'].includes(state), 'control_invalid');
     const observed = await this.readFlag(), expected = this.run.controls.current;
     requireThat(digest(observed.flag) === digest(expected), 'control_concurrent_change');
@@ -199,6 +212,7 @@ export class RoomPassRun {
     requireThat(disabling || !this.run.operations.some(op => op.state === 'unknown' || op.state === 'intent'), 'unsettled_operation');
     await this.identity();
     const op = { id: randomUUID(), name, target, state: 'intent', startedAt: new Date().toISOString() };
+    if (name === 'flag_transition' && this.run.controls?.pending) this.run.controls.pending.operationId = op.id;
     this.run.operations.push(op); await this.save();
     let response;
     try { response = await mutation(); }
