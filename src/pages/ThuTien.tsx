@@ -33,6 +33,7 @@ import { RoomLifecycleSheet } from '@/components/thu-tien/room-lifecycle/RoomLif
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import InvoiceRoundingReportButton from '@/components/invoices/InvoiceRoundingReportButton';
 
 // Kỳ mặc định GHIM giờ Việt Nam (audit 31/08 P2-04) — cùng key kỳ với
 // /thanh-toan nên hai trang phải cùng một cách tính.
@@ -360,6 +361,7 @@ const ThuTien = () => {
               onOpenReport={openReport}
             />
             <TimeFilter value={timeFilter} counts={timeCounts} onChange={setTimeFilter} />
+            <InvoiceRoundingReportButton billingMonth={billingMonth} buildingId={buildingId} className="mb-3 w-full" />
             {timeFilter === 'date' && (
               <DatePanel
                 mode={dateMode}

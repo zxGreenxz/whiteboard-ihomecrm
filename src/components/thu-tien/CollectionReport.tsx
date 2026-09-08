@@ -10,6 +10,7 @@ import {
   fmtBillingMonth,
 } from '@/lib/collect';
 import type { InvoiceWithRelations } from '@/types/invoice';
+import InvoiceRoundingReportButton from '@/components/invoices/InvoiceRoundingReportButton';
 
 interface Props {
   show: boolean;
@@ -157,6 +158,7 @@ export function CollectionReport({ show, onClose, buildings, defaultBuildingId, 
         <div className="rp-topbar">
           <div>
             <div className="rp-title">Báo cáo thu tiền</div>
+            <InvoiceRoundingReportButton billingMonth={billingMonth} buildingId={bSel === 'all' ? undefined : bSel} />
             <div className="rp-sub">
               {scopeName} · {timeName}
               {mSel !== 'all' ? ` · ${mSel}` : ''}

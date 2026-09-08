@@ -42,6 +42,7 @@ import SuperAdminForceDeleteDialog from '@/components/invoices/SuperAdminForceDe
 import InvoiceDetailModal from '@/components/invoices/InvoiceDetailModal';
 import ChangeBreakdownDialog from '@/components/invoices/ChangeBreakdownDialog';
 import DepositBreakdownDialog from '@/components/invoices/DepositBreakdownDialog';
+import InvoiceRoundingReportButton from '@/components/invoices/InvoiceRoundingReportButton';
 
 const InvoicesDesktopPage = () => {
   // Filters — giữ qua F5 trong cùng tab (sessionStorage)
@@ -338,6 +339,9 @@ const InvoicesDesktopPage = () => {
 
           {/* Filters */}
           <InvoiceListFilters filters={filters} onFiltersChange={handleFiltersChange} />
+          <div className="mb-3 flex justify-end">
+            <InvoiceRoundingReportButton billingMonth={filters.billing_month} buildingId={filters.building_id || (filters.building_ids?.length === 1 ? filters.building_ids[0] : undefined)} />
+          </div>
 
           {/* Toolbar */}
           <InvoiceListToolbar

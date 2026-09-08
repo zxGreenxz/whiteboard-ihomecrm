@@ -25,6 +25,7 @@ import InvoiceStatsSummary, { type StatMethodKey } from "@/components/invoices/I
 import GenerateInvoiceDialog from "@/components/invoices/GenerateInvoiceDialog";
 import ChangeBreakdownDialog from "@/components/invoices/ChangeBreakdownDialog";
 import DepositBreakdownDialog from "@/components/invoices/DepositBreakdownDialog";
+import InvoiceRoundingReportButton from "@/components/invoices/InvoiceRoundingReportButton";
 
 const compact = (n: number) => {
   const a = Math.abs(n);
@@ -184,6 +185,7 @@ export default function InvoicesMobilePage() {
           </div>
 
           <div className="mbody">
+            <InvoiceRoundingReportButton buildingId={buildingId} className="mb-3 w-full" />
             <div className="lfilter">
               {STAT_TABS.map((t) => (
                 <button
