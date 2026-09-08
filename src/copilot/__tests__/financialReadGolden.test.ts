@@ -7,6 +7,7 @@ import { digest, DEMO_ORG } from '../../../scripts/copilot-golden-browser-eviden
 // Controlled canonical transport data only; these are never live fixture receipts.
 import * as binder from '../../../scripts/copilot-financial-read-fixtures.mjs';
 import * as oracle from '../../../.e2e-fleet/specs/copilotFinancialReadOracle';
+import * as financialClauseDiagnostics from '../../../.e2e-fleet/specs/copilotFinancialClauseDiagnostics';
 const statsRpc = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: statsRpc } }));
 const { TOOL_NGHIEP_VU } = await import('../tools/nghiepVuTools');
@@ -139,6 +140,99 @@ describe('financial fact diagnostics',()=>{
     }finally{log.mockRestore();}
     expect(oracle.financialReadDiagnostic('C15',new Error('financial_facts'))).toBeUndefined();
     expect(oracle.financialReadDiagnostic('C15',{code:'financial_facts',factRule:'period_required',failureKind:'missing'})).toBeUndefined();
+  });
+});
+describe('financial clause diagnostics',()=>{
+  const completeC19='Công nợ kỳ 2099-01: 0 hóa đơn.\nTổng phải thu: 0 đ; đã trả: 0 đ; còn nợ: 0 đ.\nKhông có hóa đơn và không có công nợ.';
+  it('scans a later C19 conflict after an early unclassified clause',async()=>{
+    const answer='Nội dung chưa được nhận diện.\nCông nợ kỳ 2099-01: 0 hóa đơn.\nTổng phải thu: 0 đ; đã trả: 0 đ; còn nợ: 0 đ.\nKhông có hóa đơn và không có công nợ.\nTiền điện: 1 đ.';
+    expect(financialClauseDiagnostics.analyzeFinancialClauses({caseId:'C19',answer})).toMatchObject({
+      assessment:'recognized_contradiction',
+      requiredFacts:{period:'supported',invoiceAbsence:'supported',debtAbsence:'supported',invoiceCount:'supported',totalDue:'supported',totalPaid:'supported',totalRemaining:'supported'},
+    });
+  });
+  it('preserves a recognized_contradiction category in the validated record and emitted diagnostic',()=>{
+    const binding={caseId:'C19' as const,contextId:'11111111-1111-4111-8111-111111111111',harnessSha:'a'.repeat(40),buildSha:'b'.repeat(40),fixtureBindingDigest:'c'.repeat(64)};
+    const answer=`${completeC19}\nTiền điện: 1 đ.`;
+    const record=financialClauseDiagnostics.createFinancialClauseDiagnostic({...binding,answer});
+    expect(record).toMatchObject({assessment:'recognized_contradiction',categories:{explicit_field_or_period_conflict:1}});
+    const validator=(financialClauseDiagnostics as unknown as { isFinancialClauseDiagnostic: (value: unknown) => boolean }).isFinancialClauseDiagnostic;
+    expect(validator({...record,assessment:'neutral_or_grounded_only'})).toBe(false);
+    const original=new Error('financial_facts');let emitted:unknown;
+    expect(()=>financialClauseDiagnostics.diagnoseFinancialFactFailure({...binding,answer,error:original,failureCode:'financial_facts'},value=>{emitted=value;})).toThrow(original);
+    expect(emitted).toMatchObject({assessment:'recognized_contradiction',categories:{explicit_field_or_period_conflict:1}});
+  });
+  it('rethrows the exact original financial_facts failure after the authenticated diagnostic path',()=>{
+    const original=new Error('financial_facts'),emitted:unknown[]=[];
+    const preserve=(financialClauseDiagnostics as unknown as { diagnoseFinancialFactFailure: (input: object, emit: (record: unknown)=>void) => never }).diagnoseFinancialFactFailure;
+    let caught:unknown;
+    try { preserve({caseId:'C19',answer:'Không có hóa đơn và không có công nợ.',error:original,failureCode:'financial_facts',contextId:'11111111-1111-4111-8111-111111111111',harnessSha:'a'.repeat(40),buildSha:'b'.repeat(40),fixtureBindingDigest:'c'.repeat(64)},record=>emitted.push(record)); } catch (error) { caught=error; }
+    expect(caught).toBe(original);expect(emitted).toHaveLength(1);
+  });
+  it('does not emit for a prior oracle failure and preserves the original error when emission fails',()=>{
+    const binding={caseId:'C19' as const,answer:'Không có hóa đơn và không có công nợ.',contextId:'11111111-1111-4111-8111-111111111111',harnessSha:'a'.repeat(40),buildSha:'b'.repeat(40),fixtureBindingDigest:'c'.repeat(64)};
+    for(const failureCode of ['financial_binding','financial_payload',undefined]){
+      const original=new Error(String(failureCode));let calls=0,caught:unknown;
+      try{financialClauseDiagnostics.diagnoseFinancialFactFailure({...binding,error:original,failureCode},()=>{calls+=1;});}catch(error){caught=error;}
+      expect(caught).toBe(original);expect(calls).toBe(0);
+    }
+    const original=new Error('financial_facts'),emitterFailure=new Error('emitter_failure');let caught:unknown;
+    try{financialClauseDiagnostics.diagnoseFinancialFactFailure({...binding,error:original,failureCode:'financial_facts'},()=>{throw emitterFailure;});}catch(error){caught=error;}
+    expect(caught).toBe(original);
+  });
+  it('keeps C15 partial scope separate from an ordinary empty-invoice statement',()=>{
+    expect(financialClauseDiagnostics.analyzeFinancialClauses({caseId:'C15',answer:'Không tìm thấy hóa đơn nào khớp điều kiện thanh toán một phần (partial) kỳ 2099-01.'})).toMatchObject({assessment:'neutral_or_grounded_only',requiredFacts:{period:'supported',partialScope:'supported',invoiceAbsence:'supported'}});
+    expect(financialClauseDiagnostics.analyzeFinancialClauses({caseId:'C15',answer:'Không có hóa đơn kỳ 2099-01.'})).toMatchObject({assessment:'incomplete_required_facts',requiredFacts:{period:'supported',partialScope:'missing_or_unrecognized',invoiceAbsence:'supported'}});
+  });
+  it('keeps count and explicit invoice/debt absence as separate C19 requirements',()=>{
+    expect(financialClauseDiagnostics.analyzeFinancialClauses({caseId:'C19',answer:'Công nợ kỳ 2099-01: 0 hóa đơn.\nTổng phải thu: 0 đ; đã trả: 0 đ; còn nợ: 0 đ.'})).toMatchObject({assessment:'incomplete_required_facts',requiredFacts:{invoiceCount:'supported',invoiceAbsence:'missing_or_unrecognized',debtAbsence:'missing_or_unrecognized'}});
+  });
+  it.each([
+    ['later nonzero field',`${completeC19}\nTiền điện: 1 đ.`],
+    ['wrong count unit',`${completeC19}\nSố hóa đơn: 0 đ.`],
+    ['wrong period',`${completeC19}\nCông nợ kỳ 2026-07: 0 hóa đơn.`],
+  ])('classifies %s as a contradiction',(_name,answer)=>{
+    expect(financialClauseDiagnostics.analyzeFinancialClauses({caseId:'C19',answer})).toMatchObject({assessment:'recognized_contradiction'});
+  });
+  it.each([
+    'Khách hàng PRIVATE-MARKER.',
+    'Dạ, Khách hàng PRIVATE-MARKER.',
+    'Nếu có hóa đơn thì sẽ kiểm tra.',
+    'Dạ?',
+    'Không có hóa đơn nhưng tiền điện: 1 đ.',
+    'Không có hóa đơn và không có công nợ?',
+    '“Không có hóa đơn và không có công nợ.”',
+    '| Công nợ | 0 đ |',
+  ])('keeps ambiguous or fabricated prose semantically unknown: %s',answer=>{
+    expect(financialClauseDiagnostics.analyzeFinancialClauses({caseId:'C19',answer})).toMatchObject({assessment:'semantic_unknown',allClausesAccounted:false});
+  });
+  it('rejects financial_clause_binding_invalid and PRIVATE-MARKER from a strict static record',()=>{
+    const binding={contextId:'11111111-1111-4111-8111-111111111111',harnessSha:'a'.repeat(40),buildSha:'b'.repeat(40),fixtureBindingDigest:'c'.repeat(64)};
+    expect(financialClauseDiagnostics.analyzeFinancialClauses({caseId:'C19',answer:'Dạ.\n'.repeat(65)})).toMatchObject({status:'bounded_overflow'});
+    const record=financialClauseDiagnostics.createFinancialClauseDiagnostic({...binding,caseId:'C19',answer:'PRIVATE-MARKER'});
+    expect(Object.keys(record).sort()).toEqual(['allClausesAccounted','ambiguousSegmentation','assessment','buildSha','catalogDigest','catalogVersion','caseId','categories','clauseCount','contextId','fixtureBindingDigest','harnessSha','kind','matchedTemplateIds','ownershipBasis','requiredFacts','schemaVersion','unclassifiedClauseCount'].sort());
+    expect(JSON.stringify(record)).not.toContain('PRIVATE-MARKER');
+    const validator=(financialClauseDiagnostics as unknown as { isFinancialClauseDiagnostic: (value: unknown) => boolean }).isFinancialClauseDiagnostic;
+    expect(validator(record)).toBe(true);expect(validator({...record,answer:'PRIVATE-MARKER'})).toBe(false);
+    expect(()=>financialClauseDiagnostics.createFinancialClauseDiagnostic({...binding,contextId:'unbound',caseId:'C19',answer:completeC19})).toThrow('financial_clause_binding_invalid');
+  });
+  it('pins the catalog version, parser policy, and concrete field aliases in its digest input',()=>{
+    expect(financialClauseDiagnostics.FINANCIAL_CLAUSE_CATALOG).toMatchObject({
+      version:1,
+      segmentation:{normalization:'NFC',droppedDelimiters:['\n',';','!'],questionDelimiter:'?',terminalPeriod:'.',digitPattern:'[0-9]'},
+      numericPolicy:'v1:integer-zero-or-explicit-conflict',
+    });
+    expect(financialClauseDiagnostics.FINANCIAL_CLAUSE_CATALOG.fieldAliases).toContainEqual({id:'total_amount',aliases:['tổng phải thu','total_amount'],requiredFact:'totalDue',kind:'money'});
+    expect(financialClauseDiagnostics.FINANCIAL_CLAUSE_CATALOG.fieldAliases).toContainEqual({id:'total_count',aliases:['số hóa đơn','total_count'],requiredFact:'invoiceCount',kind:'count'});
+    expect(financialClauseDiagnostics.FINANCIAL_CLAUSE_CATALOG).toMatchObject({
+      recognitionRules:{noInvoice:expect.any(String),courtesy:expect.any(String),followupPeriod:expect.any(String)},
+      fieldClaim:{number:expect.any(String),unit:expect.any(String)},
+      segmentation:{droppedDelimiters:['\n',';','!'],questionDelimiter:'?'},
+    });
+    expect(financialClauseDiagnostics.FINANCIAL_CLAUSE_CATALOG.templateIds).toEqual(expect.arrayContaining(['no_invoice','typed_conflict','zero_named_field_total_amount']));
+    const changed=structuredClone(financialClauseDiagnostics.FINANCIAL_CLAUSE_CATALOG);
+    changed.recognitionRules.noInvoice += '|unreviewed';
+    expect((financialClauseDiagnostics as unknown as { financialClauseCatalogDigest: (value: unknown) => string }).financialClauseCatalogDigest(changed)).not.toBe(financialClauseDiagnostics.FINANCIAL_CLAUSE_CATALOG_DIGEST);
   });
 });
 describe('independent financial oracle',()=>{

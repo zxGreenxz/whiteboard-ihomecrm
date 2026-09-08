@@ -17,6 +17,7 @@ import { bindRoomScenario, createRun, DEMO_ORG, digest, IMPLEMENTED_ORACLES, sum
 import type { CaseReason, GoldenManifest } from '../../scripts/copilot-golden-browser-evidence.mjs';
 import { bindFinancialReadScenario, financialReadRequests, financialRoleDigest, FINANCIAL_READ_CASES, type FinancialReadFixture, type FinancialReadCaseId } from '../../scripts/copilot-financial-read-fixtures.mjs';
 import { assertFinancialReadResult, classifyFinancialRead, financialReadDiagnostic, financialReadFailureReason, isFinancialModelEndpoint, type FinancialRead, type FinancialReadObservation } from './copilotFinancialReadOracle';
+import { diagnoseFinancialFactFailure } from './copilotFinancialClauseDiagnostics';
 
 const load = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));
 function assertManifest(value: unknown): asserts value is GoldenManifest {
@@ -39,6 +40,8 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
   const attestationPath = process.env.COPILOT_GOLDEN_ATTESTATION;
   if (!output || !attestationPath) throw new Error('Missing golden results/attestation paths');
   const caseIds = process.env.COPILOT_GOLDEN_CASE_IDS;
+  const harnessSha = process.env.COPILOT_HARNESS_SHA;
+  if (!harnessSha || !/^[a-f0-9]{40}$/.test(harnessSha)) throw new Error('Missing attested harness SHA');
   const run = createRun(golden, manifest, load(attestationPath), caseIds ? caseIds.split(',') : undefined);
   const attestation = run.attestation;
   const save = () => writeCheckpoint(output, run, golden, manifest);
@@ -244,7 +247,17 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
             const args=r.request().postDataJSON();
             return {rpc:new URL(r.url()).pathname.split('/').at(-1)!,args,payload:await r.json(),status:r.status(),actorDigest,exactEndpoint:Boolean(classifyFinancialRead(financialReadFixture,api,r.request().method(),r.url(),args)),modelRound:financialReadRounds.get(r.request())??-1};
           }));
-          financialReads=assertFinancialReadResult({scenario,fixture:financialReadFixture,actorDigest:attestation.actorDigest,prompt,answer,rounds,reads:observedReads,businessWrites:writes,networkErrors,consoleErrors:consoleErrors.length});
+          try {
+            financialReads=assertFinancialReadResult({scenario,fixture:financialReadFixture,actorDigest:attestation.actorDigest,prompt,answer,rounds,reads:observedReads,businessWrites:writes,networkErrors,consoleErrors:consoleErrors.length});
+          } catch (error) {
+            const diagnostic = financialReadDiagnostic(c.id, error);
+            if ((c.id === 'C15' || c.id === 'C19') && diagnostic?.code === 'financial_facts') {
+              diagnoseFinancialFactFailure({ caseId: c.id, answer, error, failureCode: diagnostic.code,
+                contextId: attestation.contextId, harnessSha, buildSha: attestation.buildSha,
+                fixtureBindingDigest: financialReadFixture.bindingDigest }, record => console.log(JSON.stringify(record)));
+            }
+            throw error;
+          }
           rpcDigest=financialRoleDigest(financialReadFixture.attestation);
         } else if (customer) {
           const observedReads:CustomerRead[]=await Promise.all(reads.map(async r=>{
