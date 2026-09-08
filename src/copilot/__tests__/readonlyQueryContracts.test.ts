@@ -796,6 +796,69 @@ describe('danh_sach_tai_san - server RPC boundary', () => {
   });
 });
 
+describe('danh_sach_dich_vu - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the scoped service RPC with selected organization, trimmed query and row cap', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, dich_vu: [] }, error: null });
+    await tool('danh_sach_dich_vu').execute({ tu_khoa: '  Nước  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_service_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Nước',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats service prices only for accessible active building links', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        dich_vu: [
+          {
+            dich_vu_id: 's1',
+            ma: 'NUOC',
+            ten: 'Nước sinh hoạt',
+            loai_phi: 'TIEN_NUOC',
+            cach_tinh_gia: 'DON_GIA_BIEN_DONG',
+            don_vi: 'm³',
+            gia_mac_dinh: 12000,
+            bat_buoc: true,
+            toa_ap_dung: [{ toa_nha: 'Toà A', gia_ap_dung: 15000 }],
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_dich_vu').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('NUOC');
+    expect(result).toContain('Nước sinh hoạt');
+    expect(result).toContain('Toà A');
+    expect(result).toContain('15.000');
+    expect(result).toContain('/services');
+    expect(result).not.toMatch(/mô tả|quota/i);
+  });
+
+  it('keeps empty and RPC-error behavior explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, dich_vu: [] }, error: null });
+    await expect(tool('danh_sach_dich_vu').execute({ tu_khoa: 'none', so_luong: 20 }, ctx)).resolves.toMatch(
+      /không tìm thấy dịch vụ/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_dich_vu').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the existing services page rollout and its own view permission', () => {
+    expect(tool('danh_sach_dich_vu').rolloutKey).toBe('services.list');
+    expect(tool('danh_sach_dich_vu').requiredPermission).toEqual({ module: 'services', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === 'services.list')).toBe(true);
+  });
+});
+
 // ── G1-C3: mười tool báo cáo ────────────────────────────────────────────────
 //
 // Mỗi tool được ghim ba thứ: nó gọi ĐÚNG RPC nào với đúng tham số, nó KHÔNG

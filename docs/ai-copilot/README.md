@@ -13,7 +13,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**49 tool**: 37 đọc · 11 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**50 tool**: 38 đọc · 11 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
@@ -34,6 +34,7 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 | `coc_dang_giu` | read | `deposits.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `cong_no_tong_quan` | read | `invoices.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `cong_viec` | read | `tasks.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `danh_sach_dich_vu` | read | `services.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `danh_sach_khu_vuc` | read | `areas.view` | `src/copilot/tools/registry.ts` |
 | `danh_sach_tai_san` | read | `assets.view` | `src/copilot/tools/nghiepVuTools.ts` |
 | `dat_co_hoi_thoai_zalo` | write | `chat_zalo.view` | `src/copilot/tools/writeTools.ts` |

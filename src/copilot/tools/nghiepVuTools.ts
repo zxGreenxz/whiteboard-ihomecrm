@@ -137,6 +137,22 @@ const NHAN_TINH_TRANG_TAI_SAN: Record<string, string> = {
   BROKEN: 'hỏng',
 };
 
+const NHAN_LOAI_PHI_DICH_VU: Record<string, string> = {
+  TIEN_PHI_DICH_VU: 'phí dịch vụ',
+  TIEN_DIEN: 'tiền điện',
+  TIEN_NUOC: 'tiền nước',
+  TIEN_PHI_KHAC: 'phí khác',
+  TIEN_VE_SINH: 'phí vệ sinh',
+};
+
+const NHAN_CACH_TINH_GIA_DICH_VU: Record<string, string> = {
+  DON_GIA_CO_DINH_THANG: 'đơn giá cố định theo tháng',
+  DON_GIA_CO_DINH_DONG_HO: 'đơn giá cố định theo đồng hồ',
+  DON_GIA_BIEN_DONG: 'đơn giá biến động',
+  DON_GIA_THEO_NGUOI: 'đơn giá theo người',
+  DON_GIA_THEO_PHONG: 'đơn giá theo phòng',
+};
+
 const NHAN_TRANG_THAI_BAO_TRI: Record<string, string> = {
   SCHEDULED: 'đã lên lịch',
   IN_PROGRESS: 'đang thực hiện',
@@ -986,6 +1002,24 @@ interface GoiTaiSan {
   tai_san: HangTaiSan[];
 }
 
+interface HangDichVu {
+  dich_vu_id: string;
+  ma: string | null;
+  ten: string | null;
+  loai_phi: string | null;
+  cach_tinh_gia: string | null;
+  don_vi: string | null;
+  gia_mac_dinh: number | null;
+  bat_buoc: boolean | null;
+  toa_ap_dung: { toa_nha?: string | null; gia_ap_dung?: number | null }[];
+}
+
+interface GoiDichVu {
+  gioi_han: number;
+  so_luong: number;
+  dich_vu: HangDichVu[];
+}
+
 interface HangCongViec {
   cong_viec_id: string;
   ma: string | null;
@@ -1226,6 +1260,49 @@ export const danhSachTaiSan = dt({
     });
     const tran = data?.gioi_han ?? args.so_luong;
     return `${rows.length} tài sản (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /assets]`;
+  },
+});
+
+export const danhSachDichVu = dt({
+  name: 'danh_sach_dich_vu',
+  description:
+    'Tra cứu dịch vụ theo mã, tên hoặc toà nhà. Trả loại phí, cách tính, đơn giá mặc định và đơn giá đang áp dụng ở từng toà trong phạm vi được xem. ' +
+    'Dùng khi hỏi "toà này tính nước thế nào", "dịch vụ nào đang áp dụng", "giá điện ở ...".',
+  inputSchema: z.object({
+    tu_khoa: z.string().optional().describe('Mã, tên dịch vụ hoặc tên toà nhà. Bỏ trống = liệt kê trong phạm vi được xem.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'services', action: 'view' },
+  rolloutKey: 'services.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'danh_sach_dich_vu');
+    const tuKhoa = args.tu_khoa?.trim() ?? '';
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_query: string | null; p_limit: number },
+      GoiDichVu
+    >('copilot_service_directory_v1', {
+      p_organization_id: orgId,
+      p_query: tuKhoa ? tuKhoa : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải dịch vụ: ${error.message}`);
+    const rows = data?.dich_vu ?? [];
+    if (!rows.length) {
+      return tuKhoa ? `Không tìm thấy dịch vụ nào khớp "${tuKhoa}".` : 'Không có dịch vụ nào trong phạm vi bạn được xem.';
+    }
+    const dong = rows.map((r) => {
+      const loaiPhi = r.loai_phi ? (NHAN_LOAI_PHI_DICH_VU[r.loai_phi] ?? r.loai_phi) : '?';
+      const cachTinh = r.cach_tinh_gia ? (NHAN_CACH_TINH_GIA_DICH_VU[r.cach_tinh_gia] ?? r.cach_tinh_gia) : '?';
+      const donVi = r.don_vi ? `/${r.don_vi}` : '';
+      const toa = r.toa_ap_dung
+        .map((t) => `${t.toa_nha ?? '?'}: ${formatVND(Number(t.gia_ap_dung) || 0)}${donVi}`)
+        .join(' · ');
+      return `- ${r.ma ? `${r.ma} — ` : ''}${r.ten ?? '?'} — ${loaiPhi}, ${cachTinh}` +
+        ` — giá mặc định ${formatVND(Number(r.gia_mac_dinh) || 0)}${donVi}` +
+        `${r.bat_buoc ? ' — bắt buộc' : ''}${toa ? ` — áp dụng: ${toa}` : ''}`;
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${rows.length} dịch vụ (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /services]`;
   },
 });
 
@@ -2600,6 +2677,7 @@ export const TOOL_NGHIEP_VU: DomainTool[] = [
   chiSoCongTo as DomainTool,
   timXe as DomainTool,
   danhSachTaiSan as DomainTool,
+  danhSachDichVu as DomainTool,
   congViec as DomainTool,
   tonKhoVatTu as DomainTool,
   baoCaoPhongTrong as DomainTool,
