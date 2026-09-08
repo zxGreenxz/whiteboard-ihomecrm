@@ -5,6 +5,13 @@ import { stripMigrationTransactionControl } from './apply-accounting-rollout.mjs
 
 const file = process.argv.slice(2).find(x=>!x.startsWith('--')) || 'supabase/migrations/20260908052713_repair_invoice_deposit_classification_history.sql';
 const source = readFileSync(file,'utf8');
+// Optional integration proof: definitions compile in the same rollback transaction.
+// Usage: --with-release-migrations=path/to/rounding.sql,path/to/writer.sql
+const releaseArgument = process.argv.find(x=>x.startsWith('--with-release-migrations='));
+const releaseMigrationSql = releaseArgument ? releaseArgument.split('=').slice(1).join('=').split(',').map(path=>{
+ if(!/202609080(41231_invoice_actual_change_rounding_report|51659_invoice_deposit_classification)\.sql$/.test(path)) throw new Error('Only reviewed rounding/writer release definitions may be prepended');
+ return stripMigrationTransactionControl(readFileSync(path,'utf8'),path);
+}).join('\n') : '';
 let repair = stripMigrationTransactionControl(source,file)
   .replaceAll('d502976f-c0eb-4585-ad00-67caf8b017e6','271b01f7-fa19-4607-b07a-982db43999ea')
   .replaceAll('c053bbcd-37ae-4986-92d4-008a5223baf7','65fb6162-c49e-419c-a576-5da6adaff187')
@@ -83,6 +90,7 @@ END $negative$;
 `;
 const sql = `BEGIN;
 SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='120s';
+${releaseMigrationSql}
 CREATE TEMP TABLE history_fixture_manifest(ordinal integer PRIMARY KEY,data jsonb);
 GRANT SELECT ON history_fixture_manifest TO authenticated;
 CREATE TEMP TABLE history_guard_before AS SELECT oid,pg_get_functiondef(oid) definition FROM pg_proc WHERE oid IN
