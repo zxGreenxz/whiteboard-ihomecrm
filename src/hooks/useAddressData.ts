@@ -39,9 +39,10 @@ function parseDistricts(value: unknown): District[] {
   if (!isRecord(value) || !Array.isArray(value.districts)) {
     throw new Error('Dữ liệu địa chỉ không hợp lệ');
   }
-  const base = parseNamedCodes(value.districts);
+  const districts = value.districts;
+  const base = parseNamedCodes(districts);
   if (
-    !value.districts.every(
+    !districts.every(
       (item) => isRecord(item) && typeof item.province_code === 'number',
     )
   ) {
@@ -49,7 +50,7 @@ function parseDistricts(value: unknown): District[] {
   }
   return base.map((item, index) => ({
     ...item,
-    province_code: (value.districts[index] as Record<string, unknown>).province_code as number,
+    province_code: (districts[index] as Record<string, unknown>).province_code as number,
   }));
 }
 
@@ -57,9 +58,10 @@ function parseWards(value: unknown): Ward[] {
   if (!isRecord(value) || !Array.isArray(value.wards)) {
     throw new Error('Dữ liệu địa chỉ không hợp lệ');
   }
-  const base = parseNamedCodes(value.wards);
+  const wards = value.wards;
+  const base = parseNamedCodes(wards);
   if (
-    !value.wards.every(
+    !wards.every(
       (item) => isRecord(item) && typeof item.district_code === 'number',
     )
   ) {
@@ -67,7 +69,7 @@ function parseWards(value: unknown): Ward[] {
   }
   return base.map((item, index) => ({
     ...item,
-    district_code: (value.wards[index] as Record<string, unknown>).district_code as number,
+    district_code: (wards[index] as Record<string, unknown>).district_code as number,
   }));
 }
 

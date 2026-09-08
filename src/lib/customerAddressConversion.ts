@@ -48,7 +48,9 @@ export async function convertCustomerAddress(address: string, signal: AbortSigna
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
     body: JSON.stringify({ address }), signal,
   });
-  const payload: unknown = await response.json().catch(() => null);
+  const payload: unknown = await response.json().catch(() => {
+    throw new Error('Phản hồi tra địa chỉ không hợp lệ. Vui lòng thử lại.');
+  });
   if (!response.ok) {
     const code = z.object({ code: z.string() }).safeParse(payload);
     throw new Error((code.success && errors[code.data.code]) || errors.PROVIDER_UNAVAILABLE);
