@@ -44,7 +44,16 @@ export default function CustomerVehiclesSection() {
             render={({ field: f }) => (
               <FormItem>
                 {index === 0 && <FormLabel>Loại phương tiện</FormLabel>}
-                <FormControl><SearchableSelect aria-label={`Loại phương tiện ${index + 1}`} value={f.value || ''} onValueChange={f.onChange} options={VEHICLE_TYPE_OPTIONS} placeholder="Chọn loại" searchPlaceholder="Tìm loại phương tiện..." /></FormControl>
+                <FormControl>
+                  <SearchableSelect
+                    aria-label={`Loại phương tiện ${index + 1}`}
+                    value={f.value || ''}
+                    onValueChange={f.onChange}
+                    options={VEHICLE_TYPE_OPTIONS}
+                    placeholder="Chọn loại"
+                    searchPlaceholder="Tìm loại phương tiện..."
+                  />
+                </FormControl>
               </FormItem>
             )}
           />

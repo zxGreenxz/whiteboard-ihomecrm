@@ -408,7 +408,20 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Giới tính</FormLabel>
-                        <FormControl><SearchableSelect aria-label="Giới tính" value={field.value} onValueChange={field.onChange} placeholder="Chọn giới tính" searchPlaceholder="Tìm giới tính..." options={[{ value: 'MALE', label: 'Nam' }, { value: 'FEMALE', label: 'Nữ' }, { value: 'OTHER', label: 'Khác' }]} /></FormControl>
+                        <FormControl>
+                          <SearchableSelect
+                            aria-label="Giới tính"
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            placeholder="Chọn giới tính"
+                            searchPlaceholder="Tìm giới tính..."
+                            options={[
+                              { value: "MALE", label: "Nam" },
+                              { value: "FEMALE", label: "Nữ" },
+                              { value: "OTHER", label: "Khác" },
+                            ]}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -468,9 +481,15 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                   provinceValue={form.watch("province")}
                   districtValue={form.watch("district")}
                   wardValue={form.watch("ward")}
-                  onProvinceChange={(value) => form.setValue("province", value, { shouldDirty: true })}
-                  onDistrictChange={(value) => form.setValue("district", value, { shouldDirty: true })}
-                  onWardChange={(value) => form.setValue("ward", value, { shouldDirty: true })}
+                  onProvinceChange={(value) =>
+                    form.setValue("province", value, { shouldDirty: true })
+                  }
+                  onDistrictChange={(value) =>
+                    form.setValue("district", value, { shouldDirty: true })
+                  }
+                  onWardChange={(value) =>
+                    form.setValue("ward", value, { shouldDirty: true })
+                  }
                 />
 
                 <div className="grid grid-cols-2 gap-4">
@@ -661,7 +680,19 @@ export function CreateCustomerDialog({ open, onOpenChange, onCreated }: CreateCu
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Nhóm khách hàng</FormLabel>
-                        <FormControl><SearchableSelect aria-label="Nhóm khách hàng" value={field.value} onValueChange={field.onChange} placeholder="Nhóm khách hàng" searchPlaceholder="Tìm nhóm khách hàng..." options={[{ value: 'vip', label: 'VIP' }, { value: 'regular', label: 'Thường' }]} /></FormControl>
+                        <FormControl>
+                          <SearchableSelect
+                            aria-label="Nhóm khách hàng"
+                            value={field.value}
+                            onValueChange={field.onChange}
+                            placeholder="Nhóm khách hàng"
+                            searchPlaceholder="Tìm nhóm khách hàng..."
+                            options={[
+                              { value: "vip", label: "VIP" },
+                              { value: "regular", label: "Thường" },
+                            ]}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -147,7 +147,20 @@ export default function CustomerIndividualFields() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Giới tính</FormLabel>
-              <FormControl><SearchableSelect aria-label="Giới tính" value={field.value ?? ''} onValueChange={field.onChange} placeholder="Chọn giới tính" searchPlaceholder="Tìm giới tính..." options={[{ value: 'Nam', label: 'Nam' }, { value: 'Nữ', label: 'Nữ' }, { value: 'Khác', label: 'Khác' }]} /></FormControl>
+              <FormControl>
+                <SearchableSelect
+                  aria-label="Giới tính"
+                  value={field.value ?? ''}
+                  onValueChange={field.onChange}
+                  placeholder="Chọn giới tính"
+                  searchPlaceholder="Tìm giới tính..."
+                  options={[
+                    { value: 'Nam', label: 'Nam' },
+                    { value: 'Nữ', label: 'Nữ' },
+                    { value: 'Khác', label: 'Khác' },
+                  ]}
+                />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}

@@ -1,31 +1,138 @@
 import { useQuery } from '@tanstack/react-query';
-export interface Province { code: number; name: string }
-export interface District { code: number; name: string; province_code: number }
-export interface Ward { code: number; name: string; district_code: number }
-const API_BASE = 'https://provinces.open-api.vn/api';
-async function requestJson<T>(path: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { signal });
-  if (!response.ok) throw new Error(`Không thể tải dữ liệu địa chỉ (${response.status})`);
-  return response.json() as Promise<T>;
+export interface Province {
+  code: number;
+  name: string;
 }
+export interface District {
+  code: number;
+  name: string;
+  province_code: number;
+}
+export interface Ward {
+  code: number;
+  name: string;
+  district_code: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseNamedCodes(value: unknown): Array<{ code: number; name: string }> {
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (item) =>
+        isRecord(item) && typeof item.code === 'number' && typeof item.name === 'string',
+    )
+  ) {
+    throw new Error('Dữ liệu địa chỉ không hợp lệ');
+  }
+  return value.map((item) => ({ code: item.code as number, name: item.name as string }));
+}
+
+function parseProvinces(value: unknown): Province[] {
+  return parseNamedCodes(value);
+}
+
+function parseDistricts(value: unknown): District[] {
+  if (!isRecord(value) || !Array.isArray(value.districts)) {
+    throw new Error('Dữ liệu địa chỉ không hợp lệ');
+  }
+  const base = parseNamedCodes(value.districts);
+  if (
+    !value.districts.every(
+      (item) => isRecord(item) && typeof item.province_code === 'number',
+    )
+  ) {
+    throw new Error('Dữ liệu địa chỉ không hợp lệ');
+  }
+  return base.map((item, index) => ({
+    ...item,
+    province_code: (value.districts[index] as Record<string, unknown>).province_code as number,
+  }));
+}
+
+function parseWards(value: unknown): Ward[] {
+  if (!isRecord(value) || !Array.isArray(value.wards)) {
+    throw new Error('Dữ liệu địa chỉ không hợp lệ');
+  }
+  const base = parseNamedCodes(value.wards);
+  if (
+    !value.wards.every(
+      (item) => isRecord(item) && typeof item.district_code === 'number',
+    )
+  ) {
+    throw new Error('Dữ liệu địa chỉ không hợp lệ');
+  }
+  return base.map((item, index) => ({
+    ...item,
+    district_code: (value.wards[index] as Record<string, unknown>).district_code as number,
+  }));
+}
+
+const API_BASE = 'https://provinces.open-api.vn/api';
+
+async function requestJson(path: string, signal: AbortSignal): Promise<unknown> {
+  const response = await fetch(`${API_BASE}${path}`, { signal });
+  if (!response.ok) {
+    throw new Error(`Không thể tải dữ liệu địa chỉ (${response.status})`);
+  }
+  return response.json() as Promise<unknown>;
+}
+
 export const useProvinces = () => {
-  const q = useQuery<Province[], Error>({ queryKey: ['address', 'provinces'], queryFn: async ({ signal }) => {
-    const data = await requestJson<Province[]>('/p/', signal);
-    return data.map(({ code, name }) => ({ code, name }));
-  }, staleTime: Infinity, gcTime: Infinity });
-  return { provinces: q.data ?? [], isLoading: q.isLoading, error: q.error, retry: q.refetch };
+  const query = useQuery<Province[], Error>({
+    queryKey: ['address', 'provinces'],
+    queryFn: async ({ signal }) => parseProvinces(await requestJson('/p/', signal)),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  return {
+    provinces: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    retry: query.refetch,
+  };
 };
+
 export const useDistricts = (provinceCode?: string | null) => {
-  const q = useQuery<District[], Error>({ queryKey: ['address', 'districts', provinceCode], queryFn: async ({ signal }) => {
-    const data = await requestJson<{ districts?: District[] }>(`/p/${provinceCode}?depth=2`, signal);
-    return (data.districts ?? []).map(({ code, name, province_code }) => ({ code, name, province_code }));
-  }, enabled: Boolean(provinceCode), staleTime: Infinity, gcTime: Infinity });
-  return { districts: q.data ?? [], isLoading: q.isLoading, error: q.error, retry: q.refetch };
+  const query = useQuery<District[], Error>({
+    queryKey: ['address', 'districts', provinceCode],
+    queryFn: async ({ signal }) => {
+      const payload = await requestJson(`/p/${provinceCode}?depth=2`, signal);
+      return parseDistricts(payload);
+    },
+    enabled: Boolean(provinceCode),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  return {
+    districts: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    retry: query.refetch,
+  };
 };
+
 export const useWards = (districtCode?: string | null) => {
-  const q = useQuery<Ward[], Error>({ queryKey: ['address', 'wards', districtCode], queryFn: async ({ signal }) => {
-    const data = await requestJson<{ wards?: Ward[] }>(`/d/${districtCode}?depth=2`, signal);
-    return (data.wards ?? []).map(({ code, name, district_code }) => ({ code, name, district_code }));
-  }, enabled: Boolean(districtCode), staleTime: Infinity, gcTime: Infinity });
-  return { wards: q.data ?? [], isLoading: q.isLoading, error: q.error, retry: q.refetch };
+  const query = useQuery<Ward[], Error>({
+    queryKey: ['address', 'wards', districtCode],
+    queryFn: async ({ signal }) => {
+      const payload = await requestJson(`/d/${districtCode}?depth=2`, signal);
+      return parseWards(payload);
+    },
+    enabled: Boolean(districtCode),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  return {
+    wards: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error,
+    retry: query.refetch,
+  };
 };

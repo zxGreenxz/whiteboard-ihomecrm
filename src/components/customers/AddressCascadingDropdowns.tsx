@@ -1,18 +1,145 @@
-import { SearchableSelect, type SearchableSelectOption } from '@/components/ui/searchable-select';
-import { useProvinces, useDistricts, useWards } from '@/hooks/useAddressData';
 import { useId } from 'react';
-interface Props { provinceValue?: string | null; districtValue?: string | null; wardValue?: string | null; onProvinceChange: (value: string) => void; onDistrictChange: (value: string) => void; onWardChange: (value: string) => void }
-const optionsWithUnknown = (items: Array<{ code: number; name: string }>, value?: string | null): SearchableSelectOption[] => {
+import { SearchableSelect, type SearchableSelectOption } from '@/components/ui/searchable-select';
+import { useDistricts, useProvinces, useWards } from '@/hooks/useAddressData';
+
+interface AddressCascadingDropdownsProps {
+  provinceValue?: string | null;
+  districtValue?: string | null;
+  wardValue?: string | null;
+  onProvinceChange: (value: string) => void;
+  onDistrictChange: (value: string) => void;
+  onWardChange: (value: string) => void;
+}
+
+interface AddressFieldProps {
+  id: string;
+  label: string;
+  value?: string | null;
+  options: SearchableSelectOption[];
+  loading: boolean;
+  error: Error | null;
+  retry: () => unknown;
+  disabled: boolean;
+  placeholder: string;
+  searchPlaceholder: string;
+  onChange: (value: string) => void;
+}
+
+function optionsWithUnknown(
+  items: Array<{ code: number; name: string }>,
+  value?: string | null,
+): SearchableSelectOption[] {
   const options = items.map(({ code, name }) => ({ value: String(code), label: name }));
-  return value && !options.some((option) => option.value === value) ? [{ value, label: value }, ...options] : options;
-};
-export default function AddressCascadingDropdowns(props: Props) {
+  return value && !options.some((option) => option.value === value)
+    ? [{ value, label: value }, ...options]
+    : options;
+}
+
+function AddressField({
+  id,
+  label,
+  value,
+  options,
+  loading,
+  error,
+  retry,
+  disabled,
+  placeholder,
+  searchPlaceholder,
+  onChange,
+}: AddressFieldProps) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-gray-700">{label}</label>
+      <SearchableSelect
+        id={id}
+        aria-label={label}
+        value={value ?? ''}
+        onValueChange={onChange}
+        options={options}
+        disabled={disabled || loading}
+        placeholder={loading ? 'Đang tải...' : placeholder}
+        searchPlaceholder={searchPlaceholder}
+        contentClassName="z-[100]"
+      />
+      {error && (
+        <div role="status" className="space-y-1 text-xs text-red-600">
+          <p>Không tải được {label.toLocaleLowerCase('vi-VN')}.</p>
+          <button
+            type="button"
+            className="underline"
+            aria-label={`Tải lại ${label.toLocaleLowerCase('vi-VN')}`}
+            onClick={() => void retry()}
+          >
+            Tải lại
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AddressCascadingDropdowns({
+  provinceValue,
+  districtValue,
+  wardValue,
+  onProvinceChange,
+  onDistrictChange,
+  onWardChange,
+}: AddressCascadingDropdownsProps) {
   const idPrefix = useId();
-  const pq = useProvinces(); const dq = useDistricts(props.provinceValue); const wq = useWards(props.districtValue);
-  const fields = [
-    { label: 'Tỉnh/Thành phố', value: props.provinceValue, options: optionsWithUnknown(pq.provinces, props.provinceValue), loading: pq.isLoading, error: pq.error, retry: pq.retry, placeholder: 'Chọn Tỉnh/TP', search: 'Tìm tỉnh/thành phố...', disabled: false, change: (v: string) => { props.onProvinceChange(v); props.onDistrictChange(''); props.onWardChange(''); } },
-    { label: 'Quận/Huyện', value: props.districtValue, options: optionsWithUnknown(dq.districts, props.districtValue), loading: dq.isLoading, error: dq.error, retry: dq.retry, placeholder: 'Chọn Quận/Huyện', search: 'Tìm quận/huyện...', disabled: !props.provinceValue, change: (v: string) => { props.onDistrictChange(v); props.onWardChange(''); } },
-    { label: 'Xã/Phường', value: props.wardValue, options: optionsWithUnknown(wq.wards, props.wardValue), loading: wq.isLoading, error: wq.error, retry: wq.retry, placeholder: 'Chọn Xã/Phường', search: 'Tìm xã/phường...', disabled: !props.districtValue, change: props.onWardChange },
-  ];
-  return <div className="grid grid-cols-1 gap-4 md:grid-cols-3">{fields.map((field, index) => { const id = `${idPrefix}-${index}`; return <div className="space-y-1.5" key={field.label}><label htmlFor={id} className="text-sm font-medium text-gray-700">{field.label}</label><SearchableSelect id={id} aria-label={field.label} value={field.value ?? ''} onValueChange={field.change} options={field.options} disabled={field.disabled || field.loading} placeholder={field.loading ? 'Đang tải...' : field.placeholder} searchPlaceholder={field.search} contentClassName="z-[100]" />{field.error && <button type="button" className="text-xs text-red-600 underline" onClick={() => void field.retry()}>Tải lại dữ liệu</button>}</div>; })}</div>;
+  const provincesQuery = useProvinces();
+  const districtsQuery = useDistricts(provinceValue);
+  const wardsQuery = useWards(districtValue);
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <AddressField
+        id={`${idPrefix}-province`}
+        label="Tỉnh/Thành phố"
+        value={provinceValue}
+        options={optionsWithUnknown(provincesQuery.provinces, provinceValue)}
+        loading={provincesQuery.isLoading}
+        error={provincesQuery.error}
+        retry={provincesQuery.retry}
+        disabled={false}
+        placeholder="Chọn Tỉnh/TP"
+        searchPlaceholder="Tìm tỉnh/thành phố..."
+        onChange={(value) => {
+          onProvinceChange(value);
+          onDistrictChange('');
+          onWardChange('');
+        }}
+      />
+      <AddressField
+        id={`${idPrefix}-district`}
+        label="Quận/Huyện"
+        value={districtValue}
+        options={optionsWithUnknown(districtsQuery.districts, districtValue)}
+        loading={districtsQuery.isLoading}
+        error={districtsQuery.error}
+        retry={districtsQuery.retry}
+        disabled={!provinceValue}
+        placeholder="Chọn Quận/Huyện"
+        searchPlaceholder="Tìm quận/huyện..."
+        onChange={(value) => {
+          onDistrictChange(value);
+          onWardChange('');
+        }}
+      />
+      <AddressField
+        id={`${idPrefix}-ward`}
+        label="Xã/Phường"
+        value={wardValue}
+        options={optionsWithUnknown(wardsQuery.wards, wardValue)}
+        loading={wardsQuery.isLoading}
+        error={wardsQuery.error}
+        retry={wardsQuery.retry}
+        disabled={!districtValue}
+        placeholder="Chọn Xã/Phường"
+        searchPlaceholder="Tìm xã/phường..."
+        onChange={onWardChange}
+      />
+    </div>
+  );
 }
