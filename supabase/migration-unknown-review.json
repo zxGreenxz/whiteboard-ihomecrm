@@ -535,6 +535,25 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
+    },
+    "supabase/migrations/20260908094448_copilot_asset_directory_v1.sql": {
+      "sha256": "902856572955f154a2b15f70f5a443eb3dc507503d9ece5744ee08fa1cdb0834",
+      "missingObjects": [
+        "function:public.copilot_asset_directory_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Đây là migration mới cho công cụ đọc danh mục tài sản theo phạm vi toà nhà. Hàm vắng mặt trên production vì chưa có lần migrate:forward --apply; không có migration sau DROP hoặc thay thế nó. Dry-run forward-only đã compile trên catalog production và ROLLBACK, nên không để lại object bền vững. Công cụ dùng khóa rollout assets.list hiện còn disabled; người dùng không thể gọi cho đến khi migration được áp dụng và rollout được bật theo nghiệm thu. Khi migration được apply, provenance phải chuyển sang catalog-proven và hồ sơ này sẽ trở thành thừa.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260908094448_copilot_asset_directory_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.copilot_asset_directory_v1("
+        },
+        {
+          "duong_dan": "scripts/apply-reviewed-migration.mjs:372-405",
+          "trich_doan": "Chế độ : DRY-RUN (bọc ROLLBACK); runner dựng transaction rollback trước khi gửi Management API, nên compile không tạo object bền vững."
+        }
+      ],
+      "raSoatBoi": "Codex source review, 2026-09-08"
     }
   }
 }

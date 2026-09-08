@@ -129,6 +129,21 @@ const NHAN_LOAI_XE: Record<string, string> = {
   OTHER: 'khác',
 };
 
+const NHAN_TINH_TRANG_TAI_SAN: Record<string, string> = {
+  NEW: 'mới',
+  GOOD: 'tốt',
+  FAIR: 'khá',
+  POOR: 'kém',
+  BROKEN: 'hỏng',
+};
+
+const NHAN_TRANG_THAI_BAO_TRI: Record<string, string> = {
+  SCHEDULED: 'đã lên lịch',
+  IN_PROGRESS: 'đang thực hiện',
+  COMPLETED: 'hoàn tất',
+  CANCELLED: 'đã huỷ',
+};
+
 const NHAN_TRANG_THAI_VIEC: Record<string, string> = {
   IN_PROGRESS: 'đang làm',
   COMPLETED: 'hoàn thành',
@@ -953,6 +968,24 @@ interface GoiXe {
   xe: HangXe[];
 }
 
+interface HangTaiSan {
+  tai_san_id: string;
+  ma: string | null;
+  ten: string | null;
+  nhom: string | null;
+  tinh_trang: string | null;
+  so_luong: number | null;
+  toa_nha: string | null;
+  phong: string | null;
+  bao_tri_gan_nhat: { trang_thai?: string | null; ngay?: string | null } | null;
+}
+
+interface GoiTaiSan {
+  gioi_han: number;
+  so_luong: number;
+  tai_san: HangTaiSan[];
+}
+
 interface HangCongViec {
   cong_viec_id: string;
   ma: string | null;
@@ -1150,6 +1183,49 @@ export const timXe = dt({
     });
     const tran = data?.gioi_han ?? args.so_luong;
     return `${rows.length} xe (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /vehicles]`;
+  },
+});
+
+export const danhSachTaiSan = dt({
+  name: 'danh_sach_tai_san',
+  description:
+    'Tra cứu tài sản theo mã, tên, nhóm hoặc phòng. Trả mã, tên, nhóm, tình trạng, số lượng, vị trí và lần bảo trì gần nhất. ' +
+    'Dùng khi hỏi "tài sản ở phòng này", "máy bơm còn dùng tốt không", "tìm tài sản ...".',
+  inputSchema: z.object({
+    tu_khoa: z.string().optional().describe('Mã, tên, nhóm hoặc tên phòng. Bỏ trống = liệt kê trong phạm vi được xem.'),
+    so_luong: z.number().int().min(1).max(50).default(20).describe('Số dòng tối đa (trần 50)'),
+  }),
+  requiredPermission: { module: 'assets', action: 'view' },
+  rolloutKey: 'assets.list',
+  execute: async (args, ctx) => {
+    const orgId = chotToChuc(ctx, 'danh_sach_tai_san');
+    const tuKhoa = args.tu_khoa?.trim() ?? '';
+    const { data, error } = await goiRpcCopilot<
+      { p_organization_id: string; p_query: string | null; p_limit: number },
+      GoiTaiSan
+    >('copilot_asset_directory_v1', {
+      p_organization_id: orgId,
+      p_query: tuKhoa ? tuKhoa : null,
+      p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải tài sản: ${error.message}`);
+    const rows = data?.tai_san ?? [];
+    if (!rows.length) {
+      return tuKhoa ? `Không tìm thấy tài sản nào khớp "${tuKhoa}".` : 'Không có tài sản nào trong phạm vi bạn được xem.';
+    }
+    const dong = rows.map((r) => {
+      const nhom = r.nhom ? ` [${r.nhom}]` : '';
+      const tinhTrang = r.tinh_trang ? (NHAN_TINH_TRANG_TAI_SAN[r.tinh_trang] ?? r.tinh_trang) : '?';
+      const noi = [r.phong, r.toa_nha].filter(Boolean).join(' · ');
+      const baoTri = r.bao_tri_gan_nhat?.ngay
+        ? ` — bảo trì gần nhất ${r.bao_tri_gan_nhat.ngay}` +
+          `${r.bao_tri_gan_nhat.trang_thai ? ` (${NHAN_TRANG_THAI_BAO_TRI[r.bao_tri_gan_nhat.trang_thai] ?? r.bao_tri_gan_nhat.trang_thai})` : ''}`
+        : '';
+      return `- ${r.ma ? `${r.ma} — ` : ''}${r.ten ?? '?'}${nhom}: ${tinhTrang} — số lượng ${Number(r.so_luong) || 0}` +
+        `${noi ? ` — ${noi}` : ''}${baoTri}`;
+    });
+    const tran = data?.gioi_han ?? args.so_luong;
+    return `${rows.length} tài sản (tối đa ${tran} dòng mỗi lần hỏi):\n${dong.join('\n')}\n[link: /assets]`;
   },
 });
 
@@ -2523,6 +2599,7 @@ export const TOOL_NGHIEP_VU: DomainTool[] = [
   timKhachHen as DomainTool,
   chiSoCongTo as DomainTool,
   timXe as DomainTool,
+  danhSachTaiSan as DomainTool,
   congViec as DomainTool,
   tonKhoVatTu as DomainTool,
   baoCaoPhongTrong as DomainTool,

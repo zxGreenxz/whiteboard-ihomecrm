@@ -731,6 +731,71 @@ describe('ton_kho_vat_tu - server RPC boundary', () => {
   });
 });
 
+describe('danh_sach_tai_san - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the scoped asset RPC with selected organization, trimmed query and row cap', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, tai_san: [] }, error: null });
+    await tool('danh_sach_tai_san').execute({ tu_khoa: '  Máy bơm  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_asset_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Máy bơm',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only safe inventory, placement, condition and latest-maintenance facts', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        tai_san: [
+          {
+            tai_san_id: 'a1',
+            ma: 'TS-001',
+            ten: 'Máy bơm nước',
+            nhom: 'Thiết bị',
+            tinh_trang: 'GOOD',
+            so_luong: 2,
+            toa_nha: 'Toà A',
+            phong: 'A101',
+            bao_tri_gan_nhat: { trang_thai: 'COMPLETED', ngay: '2026-09-01' },
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_tai_san').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('TS-001');
+    expect(result).toContain('Máy bơm nước');
+    expect(result).toContain('Thiết bị');
+    expect(result).toContain('Toà A');
+    expect(result).toContain('A101');
+    expect(result).toContain('2026-09-01');
+    expect(result).toContain('/assets');
+    expect(result).not.toMatch(/giá mua|nhà cung cấp|mô tả|ảnh/i);
+  });
+
+  it('keeps empty and RPC-error behavior explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, tai_san: [] }, error: null });
+    await expect(tool('danh_sach_tai_san').execute({ tu_khoa: 'none', so_luong: 20 }, ctx)).resolves.toMatch(
+      /không tìm thấy tài sản/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_tai_san').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the existing assets page rollout and its own view permission', () => {
+    expect(tool('danh_sach_tai_san').rolloutKey).toBe('assets.list');
+    expect(tool('danh_sach_tai_san').requiredPermission).toEqual({ module: 'assets', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === 'assets.list')).toBe(true);
+  });
+});
+
 // ── G1-C3: mười tool báo cáo ────────────────────────────────────────────────
 //
 // Mỗi tool được ghim ba thứ: nó gọi ĐÚNG RPC nào với đúng tham số, nó KHÔNG
