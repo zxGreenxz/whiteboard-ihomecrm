@@ -42,7 +42,7 @@
         "zero-business-writes"
       ],
       "prompt": "Hóa đơn 2026-07 chưa thanh toán",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C04",
@@ -70,7 +70,7 @@
         "zero-business-writes"
       ],
       "prompt": "Doanh thu tháng 2026-07",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C06",
@@ -209,7 +209,7 @@
         "zero-business-writes"
       ],
       "prompt": "Hóa đơn 2099-01 trạng thái partial",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C16",
@@ -237,7 +237,7 @@
         "zero-business-writes"
       ],
       "prompt": "KQKD dồn tích 2026-07",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C18",
@@ -265,7 +265,7 @@
         "zero-business-writes"
       ],
       "prompt": "Công nợ kỳ 2099-01",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C20",
@@ -333,7 +333,7 @@
         "zero-business-writes"
       ],
       "prompt": "Doanh thu 07/2026 còn nợ tháng đó?",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C25",
@@ -361,7 +361,7 @@
         "zero-business-writes"
       ],
       "prompt": "Hóa đơn chưa thu và tổng công nợ 07/2026",
-      "executorStatus": "not-implemented"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C27",

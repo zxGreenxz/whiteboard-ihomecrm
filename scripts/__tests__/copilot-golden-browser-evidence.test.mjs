@@ -10,6 +10,29 @@ test('registers the bounded customer executor family', () => {
 });
 import { bindContractScenario, contractQuery } from '../copilot-contract-fixtures.mjs';
 import { bindIncomeApprovalScenario, incomeApprovalRequest, dailyCashbookRequest } from '../copilot-income-approval-fixtures.mjs';
+import { bindFinancialReadScenario, financialReadRequests, financialRoleDigest } from '../copilot-financial-read-fixtures.mjs';
+
+test('financial family receipts require exact roles, bound full payloads, actors and later linked results',()=>{
+  const invoice={id:'aaaa4000-0000-4000-8000-000000000081',invoice_number:'INV-G701',billing_month:'2026-07',total_amount:12000,status:'UNPAID',building_id:'aaaa4000-0000-4000-8000-000000000082',building_name:'DEMO Toà A',room_id:'aaaa4000-0000-4000-8000-000000000083',room_name:'G701'};
+  const stats={total_amount:12000,total_paid:2000,total_remaining:10000,total_refunded:0,total_count:1,rent_amount:9000,electric_amount:1000,water_amount:1000,pdv_amount:1000,total_collected:2000,payment_tm:1000,payment_tk:1000,payment_tt:0,payment_ct:0,change_amount:0,deposit_collected:0};
+  for(const id of ['C03','C05','C15','C17','C19','C24','C26']) {
+    const scenario=manifest.cases.find(c=>c.id===id),requests=financialReadRequests(id);
+    const roles=Object.fromEntries(Object.entries(requests).map(([role,request])=>[role,{request,payload:role==='invoice'?(id==='C15'?[]:[invoice]):role==='pnl'?[{month:'2026-07-01',building_id:invoice.building_id,building_name:invoice.building_name,is_virtual:false,revenue:18000,expense:7000,net:11000}]:id==='C19'?Object.fromEntries(Object.keys(stats).map(k=>[k,0])):stats}]));
+    const b=bindFinancialReadScenario(scenario,{organizationId:evidence.DEMO_ORG,actorDigest:attestation.actorDigest,appOrigin:'https://golden.example',apiOrigin:'https://demo.supabase.co',roles});
+    const run=evidence.createRun(golden,manifest,{...attestation,financialReadFixtures:{[id]:b.attestation}},[id]);
+    evidence.transitionCase(run,id,{status:'running'});
+    const observed={answerDigest:digest,promptDigest:evidence.digest(scenario.prompt),promptTemplateDigest:evidence.digest(scenario.prompt),bindingDigest:b.bindingDigest,fixtureDigest:b.bindingDigest,rpcDigest:financialRoleDigest(b.attestation),modelRounds:2,toolResultLinked:true,finalAnswerMounted:true,readRpc:'financial-read-roles-v1',businessWrites:0,networkErrors:0,oracleVersion:scenario.oracle,financialReads:Object.entries(b.attestation.roles).map(([role,r])=>({role,rpc:r.rpc,argsDigest:r.argsDigest,responseDigest:r.responseDigest,factDigest:r.factDigest,actorDigest:attestation.actorDigest,httpStatus:200,exactEndpoint:true,toolCallId:`call-${role}`,modelRound:0,resultRound:1}))};
+    evidence.transitionCase(run,id,{status:'pass',timing:{startedAt:'2026-09-06T10:00:00.000Z',completedAt:'2026-09-06T10:00:01.000Z',totalMs:1000,humanWaitMs:0,processingMs:1000},observed});
+    assert.deepEqual(evidence.validateBrowserRun(golden,manifest,run),[]);
+    const mutations=[o=>{o.rpcDigest=Object.values(b.attestation.roles)[0].responseDigest},o=>{o.financialReads.pop()},o=>{o.financialReads.push(o.financialReads[0])},o=>{o.financialReads[0].httpStatus=201},o=>{o.financialReads[0].exactEndpoint=false},o=>{o.financialReads[0].actorDigest='c'.repeat(64)},o=>{o.financialReads[0].modelRound=1},o=>{o.financialReads[0].resultRound=0},o=>{o.financialReads[0].toolCallId=''},o=>{o.businessWrites=1},o=>{o.networkErrors=1},o=>{o.finalAnswerMounted=false},o=>{o.promptDigest=digest}];
+    for(const field of ['argsDigest','responseDigest','factDigest'])mutations.push(o=>{o.financialReads[0][field]='c'.repeat(64)});
+    mutations.push(o=>{o.financialReads[0]={role:'__proto__',actorDigest:attestation.actorDigest,httpStatus:200,exactEndpoint:true,toolCallId:'call-unknown',modelRound:0,resultRound:1}});
+    for(const mutate of mutations){const bad=structuredClone(run);mutate(bad.cases.find(c=>c.id===id).observed);assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length);}
+    for(const field of ['actorDigest','kind','roles']){const bad=structuredClone(run);delete bad.attestation.financialReadFixtures[id][field];assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length);}
+    const failed=structuredClone(run);failed.cases.find(c=>c.id===id).status='blocked';failed.cases.find(c=>c.id===id).reason='fixture_unbound';assert.ok(evidence.validateBrowserRun(golden,manifest,failed).length);
+    assert.equal(run.cases.length,75);assert.equal(run.cases.filter(c=>c.status==='not_selected').length,74);
+  }
+});
 
 const contractRow = { hop_dong_id: 'aaaa4000-0000-4000-8000-000000000011', so_hop_dong: 'HD001', trang_thai:'ACTIVE', khach_hang: 'Demo An', phong: 'A101', ngay_bat_dau: '2026-01-01', ngay_ket_thuc: '2026-12-31', tien_thue: 3000000, tien_coc: 6000000 };
 test('contract binding binds exact identity/query and rejects empty, ambiguous or drifting fixtures', () => {

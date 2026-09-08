@@ -26,6 +26,7 @@ export interface CustomerFixtureAttestation {
   ownership?:C02Ownership;
 }
 export interface Attestation {
+  financialReadFixtures?:Partial<Record<import('./copilot-financial-read-fixtures.mjs').FinancialReadCaseId,import('./copilot-financial-read-fixtures.mjs').FinancialReadAttestation>>;
   customerFixtures?:Partial<Record<'C02'|'C14',CustomerFixtureAttestation>>;
   contractFixtures?: Partial<Record<'C31' | 'C32' | 'C33', ContractFixtureAttestation>>;
   incomeApprovalFixtures?: Partial<Record<'C34' | 'C35' | 'C36', IncomeApprovalFixtureAttestation>>;
@@ -43,13 +44,14 @@ export interface Timing {
   startedAt: string; completedAt: string; totalMs: number; humanWaitMs: number; processingMs: number;
 }
 export interface Observation {
+  financialReads?:import('../.e2e-fleet/specs/copilotFinancialReadOracle').FinancialReadObservation[];
   answerDigest: string; promptDigest: string; promptTemplateDigest: string; bindingDigest: string;
   rpcDigest: string; modelRounds: number; toolResultLinked: true; finalAnswerMounted: true;
   fixtureDigest?: string; queryDigest?: string; identityDigest?: string; searchDigest?: string; detailDigest?: string; responseDigest?:string; customerDigest?: string;
   dailyCashbookCalls?:0|1; dailyCashbookDigest?:string;
   contextDigest?:string;
   contractCalls?: number; customerCalls?: number;
-  readRpc: 'copilot_customer_search_v1' | 'copilot_available_rooms_v1' | 'copilot_contract_search_v1' | 'copilot_contract_detail_v1' | 'copilot_income_expense_search_v1' | 'copilot_pending_requests_v1'; businessWrites: number; networkErrors: number; oracleVersion: string;
+  readRpc: 'financial-read-roles-v1' | 'copilot_customer_search_v1' | 'copilot_available_rooms_v1' | 'copilot_contract_search_v1' | 'copilot_contract_detail_v1' | 'copilot_income_expense_search_v1' | 'copilot_pending_requests_v1'; businessWrites: number; networkErrors: number; oracleVersion: string;
 }
 export interface BrowserCase {
   id: string; oracle: string; status: CaseStatus; reason?: CaseReason; timing?: Timing; observed?: Observation;

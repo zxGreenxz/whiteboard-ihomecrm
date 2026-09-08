@@ -1,14 +1,15 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { FINANCIAL_READ_CASES, financialRoleDigest, validFinancialReadAttestation } from './copilot-financial-read-fixtures.mjs';
+import { randomUUID } from 'node:crypto';
+import { DEMO_ORG, digest } from './copilot-golden-primitives.mjs';
+export { DEMO_ORG, digest } from './copilot-golden-primitives.mjs';
 import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const DEMO_ORG = 'dddd0000-0000-4000-8000-000000000001';
-export const IMPLEMENTED_ORACLES = new Set(['customer-nguyen-an-v1', 'absent-synthetic-phone-v1', 'available-rooms-v1', 'available-rooms-building-v1', 'contract-code-v1', 'absent-customer-contract-v1', 'contract-code-detail-v1', 'vouchers-2026-07-v1', 'empty-expenses-2099-01-v1', 'pending-approval-inbox-v1']);
+export const IMPLEMENTED_ORACLES = new Set([...Object.values(FINANCIAL_READ_CASES), 'customer-nguyen-an-v1', 'absent-synthetic-phone-v1', 'available-rooms-v1', 'available-rooms-building-v1', 'contract-code-v1', 'absent-customer-contract-v1', 'contract-code-detail-v1', 'vouchers-2026-07-v1', 'empty-expenses-2099-01-v1', 'pending-approval-inbox-v1']);
 const HASH = /^[0-9a-f]{64}$/;
 const STATES = ['pending', 'running', 'pass', 'fail', 'blocked', 'not_selected'];
 const REASONS = new Set(['oracle_not_implemented', 'fixture_unbound', 'preflight_missing', 'attestation_failed',
   'quota_exhausted', 'rate_exhausted', 'provider_failed', 'browser_failed', 'oracle_failed', 'cleanup_required']);
-export function digest(value) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
 /** Only structured provider codes, never prose or a retained upstream payload. */
 export function providerFailureReason(error) {
   const code = String(error?.code ?? error?.type ?? '').toLowerCase();
@@ -44,7 +45,7 @@ export function validateManifest(golden, manifest) {
 
 function validAttestation(a) {
   const fields = ['buildSha','edgeSourceDigest','deployedEdgeSourceDigest','providerModel','organizationId','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest','observedAt','contextId'];
-  if (!keysOnly(a, [...fields, 'contractFixtures', 'incomeApprovalFixtures', 'customerFixtures']) || !fields.every(k => typeof a[k] === 'string')) return false;
+  if (!keysOnly(a, [...fields, 'contractFixtures', 'incomeApprovalFixtures', 'customerFixtures', 'financialReadFixtures']) || !fields.every(k => typeof a[k] === 'string')) return false;
   return /^[0-9a-f]{40}$/.test(a.buildSha) && a.organizationId === DEMO_ORG
     // Candidate policy lives in copilotTestModel.ts. This evidence layer only
     // checks safe identity syntax; browser/CLI require the exact selected model.
@@ -53,6 +54,7 @@ function validAttestation(a) {
     && ['edgeSourceDigest','deployedEdgeSourceDigest','corpusDigest','manifestDigest','fixtureDigest','policyDigest','actorDigest'].every(k => HASH.test(a[k]))
     && a.edgeSourceDigest === a.deployedEdgeSourceDigest && Number.isFinite(Date.parse(a.observedAt))
     && /^[a-zA-Z0-9-]{1,100}$/.test(a.contextId)
+    && (a.financialReadFixtures === undefined || (keysOnly(a.financialReadFixtures,Object.keys(FINANCIAL_READ_CASES)) && Object.entries(a.financialReadFixtures).every(([id,f])=>validFinancialReadAttestation(id,f,a.actorDigest))))
     && (a.customerFixtures === undefined || validCustomerFixtures(a.customerFixtures,a.actorDigest,a.contextId))
     && (a.contractFixtures === undefined || validContractFixtures(a.contractFixtures))
     && (a.incomeApprovalFixtures === undefined || validIncomeApprovalFixtures(a.incomeApprovalFixtures,a.actorDigest));
@@ -131,7 +133,27 @@ function validTiming(t) {
     && Math.abs(t.totalMs - t.humanWaitMs - t.processingMs) <= 2;
 }
 
+function validFinancialPass(c,attestation) {
+  const o=c.observed,f=attestation?.financialReadFixtures?.[c.id];
+  if(!validFinancialReadAttestation(c.id,f,attestation?.actorDigest) || c.oracle!==FINANCIAL_READ_CASES[c.id] || !validTiming(c.timing)
+    || !keysOnly(o,['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','modelRounds','toolResultLinked','finalAnswerMounted','readRpc','businessWrites','networkErrors','oracleVersion','fixtureDigest','financialReads'])
+    || !['answerDigest','promptDigest','promptTemplateDigest','bindingDigest','rpcDigest','fixtureDigest'].every(k=>typeof o[k]==='string' && HASH.test(o[k]))
+    || o.promptDigest!==o.promptTemplateDigest || o.bindingDigest!==digest(f) || o.fixtureDigest!==digest(f) || o.rpcDigest!==financialRoleDigest(f)
+    || !Number.isInteger(o.modelRounds) || o.modelRounds<2 || o.modelRounds>3 || o.toolResultLinked!==true || o.finalAnswerMounted!==true
+    || o.readRpc!=='financial-read-roles-v1' || o.oracleVersion!==c.oracle || o.businessWrites!==0 || o.networkErrors!==0
+    || !Array.isArray(o.financialReads) || o.financialReads.length!==Object.keys(f.roles).length)return false;
+  if(new Set(o.financialReads.map(r=>r?.role)).size!==o.financialReads.length || new Set(o.financialReads.map(r=>r?.toolCallId)).size!==o.financialReads.length)return false;
+  return o.financialReads.every(r=>{
+    const role=Object.hasOwn(f.roles,r?.role)?f.roles[r.role]:undefined;
+    return role && keysOnly(r,['role','rpc','argsDigest','responseDigest','factDigest','actorDigest','httpStatus','exactEndpoint','toolCallId','modelRound','resultRound'])
+      && r.rpc===role.rpc && ['argsDigest','responseDigest','factDigest'].every(k=>r[k]===role[k]) && r.actorDigest===attestation.actorDigest
+      && r.httpStatus===200 && r.exactEndpoint===true && nonemptyString(r.toolCallId) && r.toolCallId.length<=200
+      && Number.isInteger(r.modelRound) && r.modelRound>=0 && Number.isInteger(r.resultRound) && r.resultRound>r.modelRound && r.resultRound<o.modelRounds;
+  });
+}
+
 function validPass(c, attestation) {
+  if(Object.hasOwn(FINANCIAL_READ_CASES,c.id))return validFinancialPass(c,attestation);
   const o = c.observed;
   const mapping = CONTRACT_MAPPING[c.id] ?? INCOME_APPROVAL_MAPPING[c.id] ?? CUSTOMER_MAPPING[c.id];
   const contract = Boolean(CONTRACT_MAPPING[c.id]), financial = Boolean(INCOME_APPROVAL_MAPPING[c.id]), customer = Boolean(CUSTOMER_MAPPING[c.id]);
@@ -183,7 +205,7 @@ export function validateBrowserRun(golden, manifest, run) {
     if (c.reason !== undefined && !REASONS.has(c.reason)) errors.push(`${c.id}: invalid reason`);
     if (['blocked','fail'].includes(c.status) && !REASONS.has(c.reason)) errors.push(`${c.id}: reason required`);
     if (c.status === 'pass' && !validPass(c, run.attestation)) errors.push(`${c.id}: completed browser/oracle evidence required`);
-    if (c.status === 'pass' && (c.observed?.promptTemplateDigest !== digest(manifest.cases[i].prompt) || (!CONTRACT_MAPPING[c.id] && !INCOME_APPROVAL_MAPPING[c.id] && !CUSTOMER_MAPPING[c.id] && c.observed?.rpcDigest !== run.attestation.fixtureDigest))) errors.push(`${c.id}: observed prompt/fixture differs from attestation`);
+    if (c.status === 'pass' && (c.observed?.promptTemplateDigest !== digest(manifest.cases[i].prompt) || (!CONTRACT_MAPPING[c.id] && !INCOME_APPROVAL_MAPPING[c.id] && !CUSTOMER_MAPPING[c.id] && !Object.hasOwn(FINANCIAL_READ_CASES,c.id) && c.observed?.rpcDigest !== run.attestation.fixtureDigest))) errors.push(`${c.id}: observed prompt/fixture differs from attestation`);
     if (c.status !== 'pass' && c.observed !== undefined) errors.push(`${c.id}: unsuccessful case cannot claim actual observations`);
     if (c.timing !== undefined && !validTiming(c.timing)) errors.push(`${c.id}: invalid timing`);
   }

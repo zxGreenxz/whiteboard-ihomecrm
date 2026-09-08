@@ -15,6 +15,8 @@ import { bindIncomeApprovalScenario, incomeApprovalRequest, dailyCashbookRequest
 import { assertIncomeApprovalResult, incomeApprovalOracleDiagnostic, incomeApprovalFixtureFailureReason, isIncomeApprovalReadonlyRequest, type IncomeApprovalRead } from './copilotIncomeApprovalOracle';
 import { bindRoomScenario, createRun, DEMO_ORG, digest, IMPLEMENTED_ORACLES, summarizeRun, transitionCase, writeCheckpoint } from '../../scripts/copilot-golden-browser-evidence.mjs';
 import type { CaseReason, GoldenManifest } from '../../scripts/copilot-golden-browser-evidence.mjs';
+import { bindFinancialReadScenario, financialReadRequests, financialRoleDigest, FINANCIAL_READ_CASES, type FinancialReadFixture, type FinancialReadCaseId } from '../../scripts/copilot-financial-read-fixtures.mjs';
+import { assertFinancialReadResult, classifyFinancialRead, financialReadDiagnostic, financialReadFailureReason, type FinancialRead, type FinancialReadObservation } from './copilotFinancialReadOracle';
 
 const load = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));
 function assertManifest(value: unknown): asserts value is GoldenManifest {
@@ -92,12 +94,25 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       if (fatalProvider) { transitionCase(run, c.id, { status: 'blocked', reason }); save(); continue; }
       const scenario = manifest.cases.find(s => s.id === c.id);
       if (!scenario) throw new Error('Golden scenario missing from manifest');
-      let bound: ReturnType<typeof bindRoomScenario> | ContractFixture | IncomeApprovalFixture | CustomerFixture;
+      let bound: ReturnType<typeof bindRoomScenario> | ContractFixture | IncomeApprovalFixture | CustomerFixture | FinancialReadFixture;
       let contract: ContractFixture | undefined;
       let financial: IncomeApprovalFixture | undefined;
       let customer: CustomerFixture | undefined;
+      let financialReadFixture: FinancialReadFixture | undefined;
       try {
-        if (Object.prototype.hasOwnProperty.call(CUSTOMER_CASES,c.id)) {
+        if (Object.hasOwn(FINANCIAL_READ_CASES,c.id)) {
+          const expected=attestation.financialReadFixtures?.[c.id as FinancialReadCaseId];
+          if(!expected)throw new Error('fixture_unbound');
+          const roles:Record<string,{request:unknown;payload:unknown}>={};
+          for(const [role,request] of Object.entries(financialReadRequests(c.id))) {
+            const response=await page.request.post(`${api}/rest/v1/rpc/${request.rpc}`,{headers:auth,data:request.args});
+            expect(response.status()).toBe(200);
+            roles[role]={request,payload:await response.json()};
+          }
+          financialReadFixture=bindFinancialReadScenario(scenario,{organizationId:DEMO_ORG,actorDigest:digest(subject),appOrigin:new URL(page.url()).origin,apiOrigin:api,roles});
+          expect(digest(financialReadFixture.attestation)).toBe(digest(expected));
+          bound=financialReadFixture;
+        } else if (Object.prototype.hasOwnProperty.call(CUSTOMER_CASES,c.id)) {
           // Root owns provisioning and final cleanup. A name/ID cannot enable C02;
           // require its reviewed ownership proof before even issuing the read.
           const expectedCustomer=attestation.customerFixtures?.[c.id as 'C02'|'C14'];
@@ -144,6 +159,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
       const assistant = page.getByTestId('copilot-panel').locator('.flex.justify-start.gap-2 > .bg-muted');
       await expect(assistant).toHaveCount(0);
       const reads: Response[] = [], modelRequests: Request[] = [];
+      const financialReadRounds=new Map<Request,number>();
       const modelHttpStatuses: number[] = [];
       const callDiagnostics = new Map<Request,GoldenCallDiagnostic>();
       const toolDiagnostics: string[] = [];
@@ -156,10 +172,13 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         const contractRead = contract && new URL(r.url()).origin === api && r.method() === 'POST' && /\/rest\/v1\/rpc\/copilot_contract_(search|detail)_v1$/.test(new URL(r.url()).pathname);
         const financialRead = isIncomeApprovalReadonlyRequest(financial,api,r.method(),r.url());
         const customerRead = isC32CustomerRead(c.id,r.method(),r.url(),api) || isGoldenCustomerRead(c.id,r.method(),r.url(),api);
-        const countedAsMutation = !contractRead && !financialRead && !customerRead && unexpectedReadonlyMutation(r.method(), r.url());
+        let financialRole:ReturnType<typeof classifyFinancialRead>;
+        try{financialRole=classifyFinancialRead(financialReadFixture,api,r.method(),r.url(),r.postDataJSON());}catch{/* malformed bodies are writes */}
+        if(financialRole)financialReadRounds.set(r,modelRequests.length-1);
+        const countedAsMutation = !contractRead && !financialRead && !customerRead && !financialRole && unexpectedReadonlyMutation(r.method(), r.url());
         if (countedAsMutation) writes += 1;
         const observedRead = /\/rpc\/copilot_(available_rooms|contract_search|contract_detail)_v1$/.test(new URL(r.url()).pathname);
-        if (countedAsMutation || observedRead || financialRead || customerRead) {
+        if (countedAsMutation || observedRead || financialRead || customerRead || financialRole) {
           if (callDiagnostics.size < 60) callDiagnostics.set(r,{ endpoint: diagnosticEndpoint(r.url()), httpStatus: null, countedAsMutation });
           else diagnosticsTruncated = true;
         }
@@ -171,6 +190,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname)) modelHttpStatuses.push(r.status());
         if (/\/(rest|functions)\/v1\//.test(r.url()) && !r.ok()) networkErrors += 1;
         if (/\/rpc\/copilot_(available_rooms|contract_search|contract_detail|income_expense_search|pending_requests|report_daily_cashbook)_v1$/.test(r.url().split('?')[0])
+          || (financialReadFixture && /\/rest\/v1\/rpc\/copilot_(invoice_search|financial_pnl|invoice_stats)_v1/.test(new URL(r.url()).pathname))
           || (['C02','C14','C32'].includes(c.id) && new URL(r.url()).pathname.startsWith('/rest/v1/rpc/copilot_customer_search_v1'))) reads.push(r);
         if (/\/functions\/v1\/llm-proxy(?:\/|$)/.test(new URL(r.url()).pathname) && !r.ok()) {
           fatalProvider = true;
@@ -204,13 +224,31 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         reason = 'oracle_failed';
         phase = 'oracle';
         let rpcDigest: string;
+        let financialReads:FinancialReadObservation[]|undefined;
         let dailyCounts:{dailyCashbookCalls:0|1;dailyCashbookDigest?:string}|undefined;
         let absentCounts: { contractCalls: number; customerCalls: number; customerDigest?: string } | undefined;
         for (const r of modelRequests) {
           expect((await r.allHeaders())['x-organization-id']).toBe(DEMO_ORG);
           expect(r.postDataJSON().model).toBe(COPILOT_TEST_MODEL);
+          if(financialReadFixture) {
+            const u=new URL(r.url());
+            expect(u.origin).toBe(api);expect(u.pathname).toBe('/functions/v1/llm-proxy');expect(u.search).toBe('');expect(u.hash).toBe('');
+            expect(r.method()).toBe('POST');
+            const jwt=(await r.allHeaders()).authorization.replace(/^Bearer /i,'');
+            expect(digest(JSON.parse(Buffer.from(jwt.split('.')[1],'base64url').toString()).sub)).toBe(attestation.actorDigest);
+          }
         }
-        if (customer) {
+        if(financialReadFixture) {
+          expect(modelRequests.length).toBe(rounds.length);expect(modelHttpStatuses).toEqual(rounds.map(()=>200));
+          const observedReads:FinancialRead[]=await Promise.all(reads.map(async r=>{
+            const h=await r.request().allHeaders();let actorDigest:string|undefined;
+            try{actorDigest=digest(JSON.parse(Buffer.from(h.authorization.replace(/^Bearer /i,'').split('.')[1],'base64url').toString()).sub);}catch{/* oracle rejects missing actor */}
+            const args=r.request().postDataJSON();
+            return {rpc:new URL(r.url()).pathname.split('/').at(-1)!,args,payload:await r.json(),status:r.status(),actorDigest,exactEndpoint:Boolean(classifyFinancialRead(financialReadFixture,api,r.request().method(),r.url(),args)),modelRound:financialReadRounds.get(r.request())??-1};
+          }));
+          financialReads=assertFinancialReadResult({scenario,fixture:financialReadFixture,actorDigest:attestation.actorDigest,prompt,answer,rounds,reads:observedReads,businessWrites:writes,networkErrors,consoleErrors:consoleErrors.length});
+          rpcDigest=financialRoleDigest(financialReadFixture.attestation);
+        } else if (customer) {
           const observedReads:CustomerRead[]=await Promise.all(reads.map(async r=>{
             const headers=await r.request().allHeaders();let actorDigest:string|undefined;
             try{const jwt=headers.authorization.replace(/^Bearer /i,'');actorDigest=digest(JSON.parse(Buffer.from(jwt.split('.')[1],'base64url').toString()).sub);}catch{/* static oracle rejects missing actor */}
@@ -266,7 +304,8 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         transitionCase(run, c.id, { status: 'pass', timing: {
           startedAt: new Date(started).toISOString(), completedAt: new Date(completed).toISOString(), totalMs: completed-started, humanWaitMs: 0, processingMs: completed-started,
         }, observed: { answerDigest: digest(answer), promptDigest: digest(prompt), promptTemplateDigest: digest(scenario.prompt), bindingDigest: bound.bindingDigest, rpcDigest, modelRounds: rounds.length,
-          toolResultLinked: true, finalAnswerMounted: true, readRpc: customer ? 'copilot_customer_search_v1' : financial ? financial.request.rpc : contract ? (c.id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1') : 'copilot_available_rooms_v1',
+          toolResultLinked: true, finalAnswerMounted: true, readRpc: financialReadFixture ? 'financial-read-roles-v1' : customer ? 'copilot_customer_search_v1' : financial ? financial.request.rpc : contract ? (c.id === 'C33' ? 'copilot_contract_detail_v1' : 'copilot_contract_search_v1') : 'copilot_available_rooms_v1',
+          ...(financialReadFixture?{fixtureDigest:financialReadFixture.bindingDigest,financialReads}:{}),
           ...(customer ? {fixtureDigest:customer.bindingDigest,queryDigest:customer.attestation.queryDigest,identityDigest:customer.attestation.identityDigest,responseDigest:customer.attestation.responseDigest,contextDigest:customer.attestation.contextDigest}:{}),
           ...(financial ? {fixtureDigest:digest(financial.attestation),queryDigest:financial.attestation.queryDigest,identityDigest:financial.attestation.identityDigest,responseDigest:financial.attestation.responseDigest}:{}),
           ...(contract ? { fixtureDigest: digest(contract.attestation), queryDigest: contract.attestation.queryDigest, identityDigest: contract.attestation.identityDigest, searchDigest: contract.attestation.searchDigest, ...(contract.attestation.detailDigest ? { detailDigest: contract.attestation.detailDigest } : {}) } : {}), ...absentCounts, ...dailyCounts, businessWrites: writes, networkErrors, oracleVersion: c.oracle } });
@@ -277,9 +316,9 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
         console.log(JSON.stringify({ kind: 'golden-case-failure', caseId: c.id, phase,
           modelRequests: modelRequests.length, readResponses: reads.length, modelHttpStatuses,
           businessWrites: writes, networkErrors, consoleErrors: consoleErrors.length }));
-        const diagnostic = customerOracleDiagnostic(c.id,error) ?? contractOracleDiagnostic(c.id,error) ?? incomeApprovalOracleDiagnostic(c.id,error);
+        const diagnostic = financialReadDiagnostic(c.id,error) ?? customerOracleDiagnostic(c.id,error) ?? contractOracleDiagnostic(c.id,error) ?? incomeApprovalOracleDiagnostic(c.id,error);
         if (diagnostic) console.log(JSON.stringify(diagnostic));
-        reason = incomeApprovalFixtureFailureReason(error) ?? reason;
+        reason = financialReadFailureReason(error) ?? incomeApprovalFixtureFailureReason(error) ?? reason;
         if (error instanceof ModelStreamFailure) { fatalProvider = true; reason = error.reason; }
         completed = Date.now();
         transitionCase(run, c.id, { status: reason === 'oracle_failed' ? 'fail' : 'blocked', reason,
