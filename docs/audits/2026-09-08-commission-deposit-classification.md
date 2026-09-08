@@ -64,3 +64,20 @@ Phòng 305/80DS3 có cảnh báo thiếu cọc sai, nhưng điều kiện **đ�
 Ở hợp đồng phòng 505, `resolve_signed_contract_deposit_basis_v1` trả **netHeld = 10.000.000đ**, do hàm nguồn `contract_deposit_sources_v1` lấy cả tổng phiếu 8.000.000đ khi phiếu có một hạng mục cọc, rồi cộng phiếu giữ chỗ 2.000.000đ. Bộ dữ kiện ghi chú hoa hồng dùng tổng **hạng mục cọc** nên vẫn hiện đúng **4.926.000đ**.
 
 Đây là sai lệch riêng của bộ tính cơ sở tiền cọc, khác nguyên nhân phân loại ở phòng 501. Chỉ ghi nhận số đo và nguồn trong JSON; chưa mở rộng sửa hoặc kết luận ảnh hưởng đến mọi nơi gọi hàm này.
+
+## Tái hiện chính xác khi chỉ sửa ghi chú — 11:51 ngày 08/09
+
+**Tên “Tiền cọc”, loại hiển thị “Khác” và số tiền không đổi; trường phân loại kế toán phía sau bị mất khi bấm lưu.** Lịch sử xóa/thêm dòng là thao tác tự động của hàm lưu: hàm luôn viết lại toàn bộ dòng, kể cả chỉ sửa ghi chú. Không có bằng chứng để kết luận người dùng đã tự xóa khoản cọc hoặc chọn sai loại.
+
+Đã gọi đúng hàm `update_invoice_v1` đang chạy, dưới role `authenticated` của chủ nhà DEMO. Hai hóa đơn thử có doanh thu 5.290.000đ và cọc 2.200.000đ, tổng 7.490.000đ; mỗi lần chỉ thay ghi chú. Không tạo/sửa hàm hay thay cơ chế phân quyền.
+
+| Phép thử | Yêu cầu gửi tới máy chủ | Trước lưu | Sau lưu |
+|---|---|---|---|
+| Payload như giao diện hiện tại | Không có `accounting_class`; tên/số tiền giữ nguyên | `OTHER / DEPOSIT`, “Tiền cọc”, 2.200.000đ | `OTHER / REVENUE`, “Tiền cọc”, 2.200.000đ |
+| Gửi rõ lớp kế toán | Có `accounting_class: DEPOSIT`; tên/số tiền giữ nguyên | `OTHER / DEPOSIT`, “Tiền cọc”, 2.200.000đ | `OTHER / REVENUE`, “Tiền cọc”, 2.200.000đ |
+
+Hai điểm lỗi đã được phân biệt: giao diện không bảo toàn trường phân loại trong dữ liệu gửi; máy chủ cũng không đọc/lưu trường đó **ngay cả khi có gửi rõ**. Vì vậy chỉ thêm trường ở giao diện chưa đủ sửa luồng đang chạy. Mặc định cột trên live là `'REVENUE'::text`; MD5 hàm live: `c18b3cdb867d5883e4800a269fe1459e`.
+
+[Bằng chứng đầy đủ](2026-09-08-invoice-edit-deposit-proof.json) gồm JSON yêu cầu, dữ liệu trước/sau, toàn bộ định nghĩa hàm live, mặc định cột và trích trường gốc trong lịch sử phòng 501. [SQL tái hiện](2026-09-08-invoice-edit-deposit.probe.sql) là phép quan sát lỗi hiện tại, không nằm trong bộ test tự chạy. Chạy toàn bộ batch qua harness Management Query DEMO; hai tình huống trả `BUG_REPRODUCED`. Sau khi sửa lỗi, kỳ vọng phép quan sát này phải dừng vì không còn tái hiện lỗi cũ.
+
+Toàn bộ hai phép thử nằm trong `BEGIN / ROLLBACK`. Truy vấn `READ ONLY` độc lập sau đó xác nhận **0 hóa đơn fixture còn tồn tại**. Không thay dữ liệu tổ chức thật hoặc trạng thái phiếu hoa hồng.

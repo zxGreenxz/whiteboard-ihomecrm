@@ -1,0 +1,233 @@
+{
+  "captured_at": "2026-09-08T04:51:57.071Z",
+  "mode": "DEMO_BEGIN_ROLLBACK_NO_DDL",
+  "catalog": {
+    "signature": "update_invoice_v1(uuid,uuid,uuid,uuid,text,date,date,numeric,numeric,numeric,numeric,jsonb,numeric,text,boolean,jsonb,uuid,text)",
+    "definition": "CREATE OR REPLACE FUNCTION public.update_invoice_v1(p_invoice_id uuid, p_contract_id uuid, p_building_id uuid, p_room_id uuid, p_billing_month text, p_issue_date date, p_due_date date, p_subtotal numeric, p_discount_amount numeric, p_total_amount numeric, p_previous_debt numeric, p_items jsonb, p_prepaid_amount numeric DEFAULT 0, p_discount_notes text DEFAULT NULL::text, p_electricity_prev_overridden boolean DEFAULT false, p_previous_debt_sources jsonb DEFAULT '[]'::jsonb, p_template_id uuid DEFAULT NULL::uuid, p_notes text DEFAULT NULL::text)\n RETURNS invoices\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'app_private'\nAS $function$\ndeclare\n  v_actor uuid := auth.uid();\n  v_row public.invoices%rowtype;\n  v_org uuid;\n  it jsonb; v_idx int := 0;\n  v_total_calc numeric(15,2);\nbegin\n  if v_actor is null then raise exception 'Chưa đăng nhập' using errcode='42501'; end if;\n  if p_items is not null and jsonb_typeof(p_items) <> 'array' then\n    raise exception 'p_items phải là JSON array'; end if;\n\n  select * into v_row from public.invoices\n   where id = p_invoice_id and deleted_at is null for update;\n  if not found then\n    raise exception 'Không tìm thấy hoá đơn hoặc bạn không có quyền' using errcode='42501'; end if;\n  v_org := v_row.organization_id;\n\n  -- SERVER mirror canEditInvoice: (DRAFT|APPROVED) AND paid_amount=0. Dùng errcode\n  -- mặc định (P0001, KHÔNG fallback) → lỗi hiện thẳng như legacy hook, không rơi\n  -- xuống đường legacy để lách guard.\n  if v_row.status not in ('DRAFT'::invoice_status, 'APPROVED'::invoice_status)\n     or coalesce(v_row.paid_amount,0) <> 0 then\n    raise exception 'Không thể chỉnh sửa hoá đơn ở trạng thái này';\n  end if;\n\n  -- quyền edit theo toà HIỆN TẠI của hoá đơn.\n  if not app_private.can_edit_invoice_building_v1(v_row.building_id) then\n    raise exception 'Không có quyền chỉnh sửa hoá đơn này' using errcode='42501'; end if;\n\n  -- Nếu ĐỔI toà → chặn cross-org + đòi quyền edit trên toà đích. (Đổi phòng cũng\n  -- verify thuộc toà đích/cùng org, mirror ràng buộc create.)\n  if p_building_id is distinct from v_row.building_id then\n    perform 1 from public.buildings b\n     where b.id=p_building_id and b.deleted_at is null and b.organization_id=v_org;\n    if not found then\n      raise exception 'Toà đích không thuộc tổ chức của hoá đơn' using errcode='42501'; end if;\n    if not app_private.can_edit_invoice_building_v1(p_building_id) then\n      raise exception 'Không có quyền chỉnh sửa sang toà này' using errcode='42501'; end if;\n  end if;\n  if p_room_id is not null then\n    perform 1 from public.rooms r\n     where r.id=p_room_id and r.deleted_at is null\n       and r.building_id=p_building_id and r.organization_id=v_org;\n    if not found then\n      raise exception 'Phòng không thuộc toà/tổ chức' using errcode='42501'; end if;\n  end if;\n\n  -- recalc total + assert (làm tròn trên p_subtotal, giống create).\n  v_total_calc := app_private.round_invoice_total_v1(\n    coalesce(p_subtotal,0) - coalesce(p_discount_amount,0) + coalesce(p_previous_debt,0));\n\n  if v_total_calc is distinct from p_total_amount then\n    raise exception\n      'Tổng tiền client (%) khác tổng server làm tròn (%) [subtotal=%, discount=%, nợ cũ=%]',\n      p_total_amount, v_total_calc, coalesce(p_subtotal,0),\n      coalesce(p_discount_amount,0), coalesce(p_previous_debt,0)\n      using errcode='22000';\n  end if;\n\n  update public.invoices\n     set contract_id                 = p_contract_id,\n         building_id                 = p_building_id,\n         room_id                     = p_room_id,\n         billing_month               = p_billing_month,\n         issue_date                  = p_issue_date,\n         due_date                    = p_due_date,\n         subtotal                    = coalesce(p_subtotal,0),\n         discount_amount             = coalesce(p_discount_amount,0),\n         discount_notes              = p_discount_notes,\n         electricity_prev_overridden = coalesce(p_electricity_prev_overridden,false),\n         total_amount                = p_total_amount,\n         prepaid_amount              = coalesce(p_prepaid_amount,0),\n         previous_debt               = coalesce(p_previous_debt,0),\n         previous_debt_sources       = coalesce(p_previous_debt_sources,'[]'::jsonb),\n         notes                       = p_notes,\n         template_id                 = p_template_id\n   where id = p_invoice_id\n   returning * into v_row;\n\n  -- replace items (delete-all rồi insert lại, mirror legacy).\n  delete from public.invoice_items where invoice_id = p_invoice_id;\n  if p_items is not null then\n    for it in select value from jsonb_array_elements(p_items) loop\n      v_idx := v_idx + 1;\n      insert into public.invoice_items\n        (invoice_id, organization_id, service_id, type, description, unit_price,\n         quantity, coefficient, amount, previous_reading, current_reading,\n         from_date, to_date, sort_order)\n      values (\n        p_invoice_id, v_org,\n        nullif(it->>'service_id','')::uuid,\n        coalesce(nullif(it->>'type','')::invoice_item_type, 'OTHER'::invoice_item_type),\n        it->>'description',\n        coalesce((it->>'unit_price')::numeric,0),\n        coalesce((it->>'quantity')::numeric,1),\n        coalesce((it->>'coefficient')::numeric,1),\n        coalesce((it->>'amount')::numeric,\n          coalesce((it->>'unit_price')::numeric,0)\n          * coalesce((it->>'quantity')::numeric,1)\n          * coalesce((it->>'coefficient')::numeric,1)),\n        nullif(it->>'previous_reading','')::numeric,\n        nullif(it->>'current_reading','')::numeric,\n        nullif(it->>'from_date','')::date,\n        nullif(it->>'to_date','')::date,\n        coalesce((it->>'sort_order')::int, v_idx)\n      );\n    end loop;\n  end if;\n\n  return v_row;\nend;\n$function$\n",
+    "definition_md5": "c18b3cdb867d5883e4800a269fe1459e"
+  },
+  "results": [
+    {
+      "after": [
+        {
+          "id": "5e72cc28-9112-473c-8ec2-b1f1ed7f476f",
+          "type": "RENT",
+          "amount": 5290000,
+          "description": "Harness revenue",
+          "accounting_class": "REVENUE"
+        },
+        {
+          "id": "5fb1bfa2-22aa-49e4-8590-6487d9c59830",
+          "type": "OTHER",
+          "amount": 2200000,
+          "description": "Tiền cọc",
+          "accounting_class": "REVENUE"
+        }
+      ],
+      "before": [
+        {
+          "id": "e65d2324-2652-4de5-8440-c5ba59123af4",
+          "type": "RENT",
+          "amount": 5290000,
+          "description": "Harness revenue",
+          "accounting_class": "REVENUE"
+        },
+        {
+          "id": "3b0dba24-652f-42ae-85fc-b77bd8890878",
+          "type": "OTHER",
+          "amount": 2200000,
+          "description": "Tiền cọc",
+          "accounting_class": "DEPOSIT"
+        }
+      ],
+      "status": "BUG_REPRODUCED",
+      "request": {
+        "p_items": [
+          {
+            "type": "RENT",
+            "amount": 5290000,
+            "to_date": null,
+            "quantity": 1,
+            "from_date": null,
+            "service_id": null,
+            "sort_order": 1,
+            "unit_price": 5290000,
+            "coefficient": 1,
+            "description": "Harness revenue",
+            "current_reading": null,
+            "previous_reading": null
+          },
+          {
+            "type": "OTHER",
+            "amount": 2200000,
+            "to_date": null,
+            "quantity": 1,
+            "from_date": null,
+            "service_id": null,
+            "sort_order": 2,
+            "unit_price": 2200000,
+            "coefficient": 1,
+            "description": "Tiền cọc",
+            "current_reading": null,
+            "previous_reading": null
+          }
+        ],
+        "p_notes": "[E2E-V5-HARNESS:invoice-edit-classification-false] only notes edited",
+        "p_room_id": "2dfa2c7a-574b-4ee8-9509-e7932ed5d0ea",
+        "p_due_date": "2093-12-10",
+        "p_subtotal": 7490000,
+        "p_invoice_id": "919daf70-8a39-4596-aeee-cc3345d88eae",
+        "p_issue_date": "2093-12-01",
+        "p_building_id": "26436f3b-be40-4c8c-9708-2ce8ab838eef",
+        "p_contract_id": "011def1b-f1d2-4844-b8c0-44bf0267bec4",
+        "p_template_id": null,
+        "p_total_amount": 7490000,
+        "p_billing_month": "2093-12",
+        "p_previous_debt": 0,
+        "p_discount_notes": null,
+        "p_prepaid_amount": 0,
+        "p_discount_amount": 0,
+        "p_previous_debt_sources": [],
+        "p_electricity_prev_overridden": false
+      },
+      "scenario": "frontend_payload_note_only",
+      "organization_id": "dddd0000-0000-4000-8000-000000000001"
+    },
+    {
+      "after": [
+        {
+          "id": "754cbb5a-e620-4fbd-b25a-ddd44728fa39",
+          "type": "RENT",
+          "amount": 5290000,
+          "description": "Harness revenue",
+          "accounting_class": "REVENUE"
+        },
+        {
+          "id": "4a5c5dd1-e5bb-4a61-93e2-a24d57ba5672",
+          "type": "OTHER",
+          "amount": 2200000,
+          "description": "Tiền cọc",
+          "accounting_class": "REVENUE"
+        }
+      ],
+      "before": [
+        {
+          "id": "90c4fb08-5200-4892-975f-26024939565c",
+          "type": "RENT",
+          "amount": 5290000,
+          "description": "Harness revenue",
+          "accounting_class": "REVENUE"
+        },
+        {
+          "id": "14ee6e57-9b10-4d02-9ec9-087694ccd592",
+          "type": "OTHER",
+          "amount": 2200000,
+          "description": "Tiền cọc",
+          "accounting_class": "DEPOSIT"
+        }
+      ],
+      "status": "BUG_REPRODUCED",
+      "request": {
+        "p_items": [
+          {
+            "type": "RENT",
+            "amount": 5290000,
+            "to_date": null,
+            "quantity": 1,
+            "from_date": null,
+            "service_id": null,
+            "sort_order": 1,
+            "unit_price": 5290000,
+            "coefficient": 1,
+            "description": "Harness revenue",
+            "current_reading": null,
+            "accounting_class": "REVENUE",
+            "previous_reading": null
+          },
+          {
+            "type": "OTHER",
+            "amount": 2200000,
+            "to_date": null,
+            "quantity": 1,
+            "from_date": null,
+            "service_id": null,
+            "sort_order": 2,
+            "unit_price": 2200000,
+            "coefficient": 1,
+            "description": "Tiền cọc",
+            "current_reading": null,
+            "accounting_class": "DEPOSIT",
+            "previous_reading": null
+          }
+        ],
+        "p_notes": "[E2E-V5-HARNESS:invoice-edit-classification-true] only notes edited",
+        "p_room_id": "2dfa2c7a-574b-4ee8-9509-e7932ed5d0ea",
+        "p_due_date": "2094-01-10",
+        "p_subtotal": 7490000,
+        "p_invoice_id": "5ace9b06-6c85-4c1b-a3d1-f2714f6fff4c",
+        "p_issue_date": "2094-01-01",
+        "p_building_id": "26436f3b-be40-4c8c-9708-2ce8ab838eef",
+        "p_contract_id": "011def1b-f1d2-4844-b8c0-44bf0267bec4",
+        "p_template_id": null,
+        "p_total_amount": 7490000,
+        "p_billing_month": "2094-01",
+        "p_previous_debt": 0,
+        "p_discount_notes": null,
+        "p_prepaid_amount": 0,
+        "p_discount_amount": 0,
+        "p_previous_debt_sources": [],
+        "p_electricity_prev_overridden": false
+      },
+      "scenario": "explicit_accounting_class_ignored",
+      "organization_id": "dddd0000-0000-4000-8000-000000000001"
+    }
+  ],
+  "accounting_class_default": "'REVENUE'::text",
+  "rollback_verification": {
+    "checked_at": "2026-09-08T04:53:37.978Z",
+    "remaining_demo_fixture_count": 0,
+    "invoice_ids": [
+      "919daf70-8a39-4596-aeee-cc3345d88eae",
+      "5ace9b06-6c85-4c1b-a3d1-f2714f6fff4c"
+    ]
+  },
+  "production_501_raw_field_excerpts": [
+    {
+      "created_at": "2026-08-31 03:20:42.620072+00",
+      "action": "INSERT",
+      "entity_id": "377576a7-d0a2-48ee-aaea-72b0208fdc2c",
+      "before": null,
+      "after": {
+        "type": "OTHER",
+        "description": "Tiền cọc",
+        "amount": 2200000,
+        "accounting_class": "DEPOSIT"
+      }
+    },
+    {
+      "created_at": "2026-08-31 03:32:21.425123+00",
+      "action": "DELETE",
+      "entity_id": "377576a7-d0a2-48ee-aaea-72b0208fdc2c",
+      "before": {
+        "type": "OTHER",
+        "description": "Tiền cọc",
+        "amount": 2200000,
+        "accounting_class": "DEPOSIT"
+      },
+      "after": null
+    },
+    {
+      "created_at": "2026-08-31 03:32:21.425123+00",
+      "action": "INSERT",
+      "entity_id": "508994eb-b45f-450b-9253-a44bb66f9ff8",
+      "before": null,
+      "after": {
+        "type": "OTHER",
+        "description": "Tiền cọc",
+        "amount": 2200000,
+        "accounting_class": "REVENUE"
+      }
+    }
+  ],
+  "production_501_raw_field_verification": "Exact original field names/values re-read from invoice_audit_log in a separate READ ONLY transaction on 2026-09-08; customer/actor metadata excluded."
+}
