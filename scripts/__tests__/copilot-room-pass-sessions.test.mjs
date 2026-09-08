@@ -108,7 +108,7 @@ test('session settlement distinguishes actual wrapped SQL denial from diagnostic
     const promise = api.runLockCase({ runner, transport, name: 'wrapped_denial', proposal: { confirmation_nonce: 'a'.repeat(64), canonical: { organization_id: runner.run.organizationId, listing_id: actor } },
       afterWait: async () => {
         handles.forEach(resolve => resolve([]));
-        finishFetch(new Response(JSON.stringify({ message: known ? 'ERROR: 42501: confirmation_already_used\nCONTEXT: private sql' : 'ERROR: 57014: timeout\nCONTEXT: ERROR: 42501: confirmation_already_used' }), { status: 400 }));
+        finishFetch(new Response(JSON.stringify({ message: known ? 'Failed to run sql query: ERROR: 42501: confirmation_already_used\nCONTEXT: private sql' : 'ERROR: 57014: timeout\nCONTEXT: ERROR: 42501: confirmation_already_used' }), { status: 400 }));
       } });
     if (known) assert.equal((await promise).state, 'settled');
     else await assert.rejects(promise, /session_settlement_unverified/);
@@ -116,4 +116,32 @@ test('session settlement distinguishes actual wrapped SQL denial from diagnostic
     assert.doesNotMatch(JSON.stringify(runner.run.scenarios), /private sql|CONTEXT|synthetic-token/);
     t.mock.restoreAll();
   }
+});
+
+// Exact supported wire prefix verified by root's SELECT-only shape preflight.
+test('actual wrapper accepts full Failed to run sql query envelope for all room-pass denials', async t => {
+  let message, calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => { calls += 1; return new Response(JSON.stringify({ message }), { status: 400 }); });
+  const transport = createRoomPassManagementTransport({ executeManagementQuery, config });
+  const codes = ['confirmation_already_used', 'payload_changed', 'confirmation_expired', 'entity_not_found', 'copilot_action_disabled', 'tenant_emergency_denied', 'not_permitted'];
+  for (const code of codes) {
+    message = 'Failed to run sql query: ERROR: ' + (code === 'entity_not_found' ? 'P0002' : '42501') + ': ' + code + '\nCONTEXT: private fixture SQL';
+    await assert.rejects(transport.query('SELECT synthetic'), error => {
+      assert.equal(error.message, code);
+      assert.deepEqual(error.response, { status: 403, body: { message: code } });
+      assert.doesNotMatch(JSON.stringify(error), /private fixture|CONTEXT|synthetic/);
+      return true;
+    });
+  }
+  for (const invalid of [
+    'CONTEXT: Failed to run sql query: ERROR: 42501: confirmation_already_used',
+    'Failed to run sql query: ERROR: 57014: timeout\nCONTEXT: ERROR: 42501: confirmation_already_used',
+    'Failed to run sql query: Failed to run sql query: ERROR: 42501: confirmation_already_used',
+    'unrelated Failed to run sql query: ERROR: 42501: confirmation_already_used',
+    'Failed to run sql query: ERROR: 42501: confirmation_already_used extra',
+  ]) {
+    message = invalid;
+    await assert.rejects(transport.query('SELECT synthetic'), { message: 'management_unknown' });
+  }
+  assert.equal(calls, 12, 'one HTTP request per case');
 });

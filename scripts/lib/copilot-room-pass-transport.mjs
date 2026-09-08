@@ -74,7 +74,7 @@ function managementDenial(error) {
     const body = JSON.parse(envelope[2]);
     if (!body || Array.isArray(body) || typeof body.message !== 'string') return undefined;
     const firstLine = body.message.split(/\r?\n/, 1)[0];
-    const diagnostic = /^ERROR:[ \t]+(?:42501|P0002):[ \t]+([a-z_]+)[ \t]*$/.exec(firstLine);
+    const diagnostic = /^(?:Failed to run sql query: )?ERROR:[ \t]+(?:42501|P0002):[ \t]+([a-z_]+)[ \t]*$/.exec(firstLine);
     return diagnostic && DENIALS.includes(diagnostic[1]) ? diagnostic[1] : undefined;
   } catch { return undefined; }
 }
