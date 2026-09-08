@@ -18,7 +18,12 @@
         ".e2e-fleet/controlled/copilot-batch-preflight.test.mjs",
         ".e2e-fleet/controlled/copilot-approval-readback.test.mjs"
       ],
-      "ciJobs": [{ "workflow": ".github/workflows/copilot-e2e.yml", "job": "copilot-e2e" }],
+      "ciJobs": [
+        {
+          "workflow": ".github/workflows/copilot-e2e.yml",
+          "job": "copilot-e2e"
+        }
+      ],
       "ciCommandStep": "Controlled Copilot workflow regressions (local synthetic transport only)",
       "environment": "ci",
       "timeoutMinutes": 30,
@@ -61,6 +66,8 @@
         "scripts/__tests__/copilot-l4-risk-ceiling-acceptance.test.mjs",
         "scripts/__tests__/copilot-demo-deny-fixture.test.mjs",
         "scripts/__tests__/copilot-room-pass-active.test.mjs",
+        "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
+        "scripts/__tests__/copilot-room-pass-sessions.test.mjs",
         "scripts/__tests__/check-csp-build-attestation.test.mjs",
         "scripts/__tests__/run-copilot-golden-eval.test.mjs",
         "scripts/__tests__/copilot-golden-browser-evidence.test.mjs",
@@ -157,6 +164,24 @@
       "timeoutMinutes": 30
     },
     {
+      "id": "e2e-room-pass-live-acceptance",
+      "runner": "playwright",
+      "ciJob": "(local — reviewed Task17 operator only)",
+      "command": "cd .e2e-fleet && FLEET_WORKERS=1 npx playwright test specs/copilot-room-pass-consent.spec.ts --reporter=list --trace=off",
+      "risk": "normal",
+      "includes": [
+        ".e2e-fleet/specs/copilot-room-pass-consent.spec.ts"
+      ],
+      "note": "Requires the reviewed Task17 owned DEMO fixture journal and bounded canary. Operator dispatch only; never evidence from source tests.",
+      "ciJobs": [],
+      "environment": "local",
+      "blockedFromCi": {
+        "reason": "Requires explicit operator admission, owned fixture lifecycle and transient DEMO canary; standalone CI cannot own restoration.",
+        "expiry": "2026-11-30",
+        "exitCondition": "Add an independently reviewed orchestrator that owns setup, browser process terminal evidence and cleanup before scheduling CI."
+      }
+    },
+    {
       "id": "e2e-fleet",
       "runner": "playwright",
       "ciJob": "(local — phần fleet còn lại chưa có job CI)",
@@ -168,7 +193,8 @@
       "excludes": [
         ".e2e-fleet/specs/copilot-readonly-smoke.spec.ts",
         ".e2e-fleet/specs/copilot-confirmation.spec.ts",
-        ".e2e-fleet/specs/copilot-draft-matrix.spec.ts"
+        ".e2e-fleet/specs/copilot-draft-matrix.spec.ts",
+        ".e2e-fleet/specs/copilot-room-pass-consent.spec.ts"
       ],
       "note": "Phần fleet CHƯA lên CI: bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO. Ba spec Copilot đã tách sang suite e2e-fleet-copilot nên bị loại ở `excludes` — nếu không, matrix sẽ nói hai suite cùng sở hữu chúng.",
       "ciJobs": [],
@@ -232,6 +258,8 @@
         "scripts/__tests__/copilot-l4-risk-ceiling-acceptance.test.mjs",
         "scripts/__tests__/copilot-demo-deny-fixture.test.mjs",
         "scripts/__tests__/copilot-room-pass-active.test.mjs",
+        "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
+        "scripts/__tests__/copilot-room-pass-sessions.test.mjs",
         "scripts/__tests__/check-csp-build-attestation.test.mjs",
         "scripts/__tests__/run-copilot-golden-eval.test.mjs",
         "scripts/__tests__/copilot-golden-browser-evidence.test.mjs",
