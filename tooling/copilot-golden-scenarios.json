@@ -28,7 +28,7 @@
         "zero-business-writes"
       ],
       "prompt": "Tìm khách hàng Nguyễn An",
-      "executorStatus": "blocked-fixture-lifecycle"
+      "executorStatus": "implemented-unverified-live"
     },
     {
       "id": "C03",
