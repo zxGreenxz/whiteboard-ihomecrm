@@ -27,6 +27,7 @@ import {
   copilotAvailabilitySnapshotIsFresh,
   KHOA_ROLLOUT_CONG_TO,
   KHOA_ROLLOUT_DANH_SACH_SALE,
+  KHOA_ROLLOUT_DANH_SACH_TANG,
   KHOA_ROLLOUT_DIEU_HUONG,
   KHOA_ROLLOUT_KHO_TAI_SAN,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
@@ -612,6 +613,18 @@ type CopilotJobTypeDirectoryPayload = {
   }>;
 };
 
+type CopilotFloorDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  tang?: Array<{
+    ma: string;
+    so_tang: number;
+    ten: string | null;
+    trang_thai: string | null;
+    toa_nha: string;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -1018,6 +1031,38 @@ export function buildRegistryDefinitions(): DomainTool[] {
           return '- ' + jobType.ma + ' — ' + jobType.ten + (context ? ' · ' + context : '') + ' · ' + deadlines;
         });
         return 'Có ' + rows.length + ' loại công việc (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/task-types]';
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_tang',
+      description:
+        'Liệt kê tầng trong công ty đang chọn và các toà bạn được xem: mã ngắn, số tầng, tên, trạng thái và toà nhà. Không đọc mô tả nội bộ hay định danh người tạo.',
+      inputSchema: z.object({
+        tu_khoa: z.string().max(100).optional().describe('Tên tầng, số tầng hoặc tên toà nhà'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số tầng tối đa'),
+      }),
+      requiredPermission: { module: 'categories', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_DANH_SACH_TANG,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_tang');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_query: string | null; p_limit: number },
+          CopilotFloorDirectoryPayload
+        >('copilot_floor_directory_v1', {
+          p_organization_id: orgId,
+          p_query: args.tu_khoa?.trim() || null,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải danh sách tầng: ' + error.message);
+        const rows = Array.isArray(data?.tang) ? data.tang : [];
+        if (!rows.length) return 'Không có tầng nào trong phạm vi bạn được xem.';
+        const lines = rows.map((floor) => {
+          const name = floor.ten || 'Tầng ' + floor.so_tang;
+          const status = floor.trang_thai === 'active' ? 'đang hoạt động' : 'ngừng';
+          return '- ' + floor.ma + ' — tầng ' + floor.so_tang + ' · ' + name + ' · ' + status + ' · ' + floor.toa_nha;
+        });
+        return 'Có ' + rows.length + ' tầng (tối đa ' + (data?.gioi_han ?? args.so_luong) + ' dòng mỗi lần hỏi):\n' + lines.join('\n') + '\n[link: /settings/categories/floors]';
       },
     }),
 

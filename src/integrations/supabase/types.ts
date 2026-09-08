@@ -19003,6 +19003,10 @@ export type Database = {
           revenue: number
         }[]
       }
+      copilot_floor_directory_v1: {
+        Args: { p_limit?: number; p_organization_id: string; p_query?: string }
+        Returns: Json
+      }
       copilot_g3_owned_voucher_history_proof_v1: {
         Args: {
           p_attempt_id: string

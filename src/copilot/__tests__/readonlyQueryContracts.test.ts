@@ -17,6 +17,7 @@ const {
   KHOA_ROLLOUT_NHA_CUNG_CAP,
   KHOA_ROLLOUT_LOAI_TAI_SAN,
   KHOA_ROLLOUT_LOAI_CONG_VIEC,
+  KHOA_ROLLOUT_DANH_SACH_TANG,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -2828,5 +2829,64 @@ describe('danh_sach_loai_cong_viec - server RPC boundary', () => {
     expect(tool('danh_sach_loai_cong_viec').rolloutKey).toBe(KHOA_ROLLOUT_LOAI_CONG_VIEC);
     expect(tool('danh_sach_loai_cong_viec').requiredPermission).toEqual({ module: 'task_types', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_LOAI_CONG_VIEC)).toBe(true);
+  });
+});
+
+describe('danh_sach_tang - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization floor RPC with a trimmed bounded query', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, tang: [] }, error: null });
+    await tool('danh_sach_tang').execute({ tu_khoa: '  Toà A  ', so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_floor_directory_v1', {
+      p_organization_id: ORG,
+      p_query: 'Toà A',
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only floor number, name, state and authorized building', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        tang: [{
+          ma: 'TANG-A1B2C3D4',
+          so_tang: 3,
+          ten: 'Tầng 3',
+          trang_thai: 'active',
+          toa_nha: 'Toà A',
+          description: 'Ghi chú nội bộ',
+          user_id: 'creator-private-id',
+          organization_id: 'foreign-org-id',
+        }],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_tang').execute({ so_luong: 20 }, ctx);
+    for (const visible of ['TANG-A1B2C3D4', 'Tầng 3', 'đang hoạt động', 'Toà A']) {
+      expect(result).toContain(visible);
+    }
+    expect(result).toContain('/settings/categories/floors');
+    for (const privateValue of ['Ghi chú nội bộ', 'creator-private-id', 'foreign-org-id']) {
+      expect(result).not.toContain(privateValue);
+    }
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, tang: [] }, error: null });
+    await expect(tool('danh_sach_tang').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có tầng/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_tang').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated floor rollout key with categories.view permission', () => {
+    expect(tool('danh_sach_tang').rolloutKey).toBe(KHOA_ROLLOUT_DANH_SACH_TANG);
+    expect(tool('danh_sach_tang').requiredPermission).toEqual({ module: 'categories', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DANH_SACH_TANG)).toBe(true);
   });
 });
