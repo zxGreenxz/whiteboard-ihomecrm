@@ -10,6 +10,20 @@ const result = { source: 'goong-v2' as const, candidates: [{ id: 'fixture', prov
   formattedAddress: '91 Trung Kính, Yên Hòa, Hà Nội', oldAddress: 'Trung Hòa, Cầu Giấy, Hà Nội' }] };
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.useRealTimers(); });
 describe('AdministrativeAddressPreview', () => {
+  it('can retry A after cancelling its pending lookup by switching A to B and back', async () => {
+    let resolveOld!: (value: typeof result) => void;
+    convert.mockImplementationOnce(() => new Promise(r => { resolveOld = r; })).mockResolvedValue(result);
+    const view = render(<AdministrativeAddressPreview address="A" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Tra địa chỉ mới' }));
+    view.rerender(<AdministrativeAddressPreview address="B" />);
+    view.rerender(<AdministrativeAddressPreview address="A" />);
+    const button = screen.getByRole('button', { name: 'Tra địa chỉ mới' });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => resolveOld(result));
+    expect(screen.queryByText(result.candidates[0].formattedAddress)).toBeNull();
+    fireEvent.click(button);
+    expect(await screen.findByText(result.candidates[0].formattedAddress)).toBeTruthy();
+  });
   it('converts only on request and displays the result separately with its source', async () => {
     convert.mockResolvedValue(result);
     render(<AdministrativeAddressPreview address="91 Trung Kính, Trung Hòa, Cầu Giấy, Hà Nội" />);

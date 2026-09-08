@@ -5,6 +5,10 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { auth: {
 } } }));
 afterEach(() => vi.unstubAllGlobals());
 describe('customer address conversion', () => {
+  it('keeps house numbers, wards and districts distinct even when their numbers match', () => {
+    expect(assembleLegacyAddress('3', ['Phường 3', 'Quận 3', 'Thành phố Hồ Chí Minh']))
+      .toBe('3, Phường 3, Quận 3, Thành phố Hồ Chí Minh');
+  });
   it('builds an old address using names instead of codes and keeps slash house numbers', () => {
     expect(assembleLegacyAddress('12/3 Đường Mẫu', ['Phường 1', 'Quận 3', 'Thành phố Hồ Chí Minh']))
       .toBe('12/3 Đường Mẫu, Phường 1, Quận 3, Thành phố Hồ Chí Minh');

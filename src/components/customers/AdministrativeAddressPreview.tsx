@@ -15,7 +15,10 @@ export default function AdministrativeAddressPreview({ address }: { address: str
       request.current = null;
     }
   };
-  useEffect(() => cancel, [address]);
+  useEffect(() => {
+    setPreview(null);
+    return cancel;
+  }, [address]);
   const visible = preview?.address === address ? preview : null;
   const valid = address.trim().length > 0 && address.length <= 600;
 

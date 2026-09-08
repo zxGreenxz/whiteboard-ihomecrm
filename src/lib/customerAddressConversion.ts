@@ -12,8 +12,15 @@ const conversionSchema = z.object({
 export type AddressConversion = z.infer<typeof conversionSchema>;
 
 export function assembleLegacyAddress(detail: string, units: string[]): string {
+  // Preserve administrative level: house 3, Phường 3 and Quận 3 are distinct.
   const normalize = (value: string) => normalizeVietnamese(value).replace(/\./g, ' ')
-    .replace(/^(thanh pho|thi tran|thi xa|tinh|tp|quan|huyen|phuong|xa)\s+/, '').replace(/\s+/g, ' ').trim();
+    .replace(/\s+/g, ' ').trim()
+    .replace(/^tp\s+/, 'thanh pho ')
+    .replace(/^p\s+/, 'phuong ')
+    .replace(/^q\s+/, 'quan ')
+    .replace(/^h\s+/, 'huyen ')
+    .replace(/^tx\s+/, 'thi xa ')
+    .replace(/^tt\s+/, 'thi tran ');
   const parts = detail.split(',').map(p => p.trim()).filter(Boolean);
   for (const unit of units.filter(Boolean)) {
     if (!parts.some(part => normalize(part) === normalize(unit))) parts.push(unit);
