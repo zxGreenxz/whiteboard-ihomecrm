@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 569,
-  "soFileDocBangFs": 186,
-  "tongLoiGoi": 381,
+  "tongSoFileTest": 570,
+  "soFileDocBangFs": 187,
+  "tongLoiGoi": 383,
   "khongPhanLoaiDuoc": 191,
   "theoLoai": {
     "ma-nguon": {
@@ -11,7 +11,7 @@
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 23,
+      "soFile": 24,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -402,6 +402,14 @@
     },
     {
       "file": "scripts/__tests__/check-raw-rpc-callers.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs",
       "soGoi": 2,
       "loai": {
         "manifest": 2
