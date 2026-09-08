@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "measuredAt": "2026-09-08T02:10:47.942Z",
+  "measuredAt": "2026-09-08T02:40:13.092Z",
   "scope": "Retained separate selective real-model golden attempts; not one complete acceptance run",
   "originalCaseCount": 75,
   "passedCases": [
@@ -70,6 +70,14 @@
     }
   ],
   "unacceptedSelectedCases": [
+    {
+      "caseId": "C02",
+      "status": "fail",
+      "reason": null,
+      "processingMs": 7020,
+      "contextId": "4fbd261f-ed97-48d7-a8c5-645444db5e67",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc"
+    },
     {
       "caseId": "C14",
       "status": "fail",
@@ -453,6 +461,23 @@
           "status": "fail",
           "reason": "oracle_failed",
           "processingMs": 12360
+        }
+      ]
+    },
+    {
+      "contextId": "4fbd261f-ed97-48d7-a8c5-645444db5e67",
+      "startedAt": "2026-09-08T02:38:40.170Z",
+      "finishedAt": "2026-09-08T02:39:13.377Z",
+      "harnessSha": "b8d216caa2606a32faa1dde668ded8b052e54768",
+      "buildSha": "657ada8e51b2f241356eb3702acee33f1ee29ddc",
+      "model": "9router:ag/gemini-3.6-flash-high(high)",
+      "sourceReceipt": "customer-golden-run-4fbd261f-ed97-48d7-a8c5-645444db5e67.json",
+      "selected": [
+        {
+          "caseId": "C02",
+          "status": "fail",
+          "reason": null,
+          "processingMs": 7020
         }
       ]
     }
