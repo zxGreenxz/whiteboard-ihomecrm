@@ -1,0 +1,666 @@
+{
+  "captured_at": "2026-09-08T04:45:13.141Z",
+  "mode": "PRODUCTION_READ_ONLY",
+  "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+  "scope": "Non-deleted, non-cancelled commission vouchers; current non-deposit invoice lines with audit-proven same-transaction DEPOSIT deletion and REVENUE reinsertion of equal description/amount. No customer names or phones.",
+  "population": {
+    "commission_vouchers": 137,
+    "commission_contracts": 107,
+    "unapproved": 60
+  },
+  "scan": {
+    "rows": [
+      {
+        "room": "102",
+        "building": "102LVT",
+        "invoice_id": "ef9e4144-2eed-44d0-ba6d-fec8da116e36",
+        "commissions": null,
+        "contract_id": "dfb76f81-0e69-4664-b4ed-0d63e1c173db",
+        "paid_amount": 3900000,
+        "deposit_paid": 0,
+        "total_amount": 3900000,
+        "billing_month": "2026-09",
+        "total_deposit": 3900000,
+        "invoice_number": "INV-2026-00622",
+        "invoice_status": "PAID",
+        "audit_confirmed": true,
+        "contract_number": "HD-2026-00301",
+        "contract_status": "TERMINATED",
+        "deposit_remaining": 3900000,
+        "paid_misclassified": 3900000,
+        "misclassified_amount": 3900000
+      },
+      {
+        "room": "501",
+        "building": "102LVT",
+        "invoice_id": "6fc16297-7b1b-4b35-8d5a-2b98ae753f70",
+        "commissions": [
+          {
+            "id": "e3883071-c1c4-4ed0-aa3b-4f3c1b4180a0",
+            "code": "PC2608155",
+            "kind": "broker",
+            "amount": 2940000,
+            "status": "UNAPPROVED"
+          }
+        ],
+        "contract_id": "6d504199-ed9c-467a-ac5f-c8cac680f544",
+        "paid_amount": 7490000,
+        "deposit_paid": 2000000,
+        "total_amount": 7490000,
+        "billing_month": "2026-09",
+        "total_deposit": 4200000,
+        "invoice_number": "INV-2026-00802",
+        "invoice_status": "PAID",
+        "audit_confirmed": true,
+        "contract_number": "HD-2026-00316",
+        "contract_status": "ACTIVE",
+        "deposit_remaining": 2200000,
+        "paid_misclassified": 2200000,
+        "misclassified_amount": 2200000
+      },
+      {
+        "room": "203",
+        "building": "111PVC",
+        "invoice_id": "00cea782-247f-4634-94a3-2de7ea331aa4",
+        "commissions": null,
+        "contract_id": "3ac21d3f-26af-4459-8dc9-e4f43ffd85f1",
+        "paid_amount": 7450000,
+        "deposit_paid": 0,
+        "total_amount": 7450000,
+        "billing_month": "2026-08",
+        "total_deposit": 3600000,
+        "invoice_number": "INV-2026-00598",
+        "invoice_status": "PAID",
+        "audit_confirmed": true,
+        "contract_number": "HD-2026-00287",
+        "contract_status": "ACTIVE",
+        "deposit_remaining": 3600000,
+        "paid_misclassified": 3600000,
+        "misclassified_amount": 3600000
+      },
+      {
+        "room": "305",
+        "building": "80DS3",
+        "invoice_id": "80b0b20e-994a-4f6e-ab2a-274934366097",
+        "commissions": [
+          {
+            "id": "a26e334a-ba23-4565-ae39-42e4de74e25f",
+            "code": "PC2608062",
+            "kind": "broker",
+            "amount": 2160000,
+            "status": "UNAPPROVED"
+          }
+        ],
+        "contract_id": "890c9f1b-554d-44be-be2a-7bbd375e1379",
+        "paid_amount": 4720000,
+        "deposit_paid": 2000000,
+        "total_amount": 4720000,
+        "billing_month": "2026-09",
+        "total_deposit": 3600000,
+        "invoice_number": "INV-2026-00823",
+        "invoice_status": "PAID",
+        "audit_confirmed": true,
+        "contract_number": "HD-2026-00322",
+        "contract_status": "ACTIVE",
+        "deposit_remaining": 1600000,
+        "paid_misclassified": 1600000,
+        "misclassified_amount": 1600000
+      }
+    ],
+    "invoice_count": 4,
+    "commission_contracts": 2
+  },
+  "commission_facts": [
+    {
+      "id": "ee266051-f0ae-441b-9ecc-8e033818f0ed",
+      "facts": {
+        "today": "2026-09-08",
+        "months": 5,
+        "status": "ACTIVE",
+        "room_id": "0c664ae7-f5a4-449a-83ce-60499da2a45c",
+        "end_date": "2027-02-28",
+        "room_name": "505",
+        "rent_price": 5000000,
+        "start_date": "2026-09-07",
+        "building_id": "59c6fc2c-2369-4ec8-b253-1ac64abb2f45",
+        "contract_id": "ee266051-f0ae-441b-9ecc-8e033818f0ed",
+        "seq_in_year": 2,
+        "signed_date": "2026-09-07",
+        "deposit_paid": 4926000,
+        "building_name": "102LVT",
+        "seven_days_ok": false,
+        "total_deposit": 5000000,
+        "deposit_enough": false,
+        "contract_number": "HD-2026-00359",
+        "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+        "seven_days_date": "2026-09-14",
+        "deposit_vouchers": [
+          {
+            "id": "8b6f5bf8-711e-4b64-8f35-c0498538fecc",
+            "code": "PT2609083",
+            "type": "INCOME",
+            "is_combined": false,
+            "total_amount": 2000000,
+            "voucher_date": "2026-09-06",
+            "deposit_amount": 2000000
+          },
+          {
+            "id": "952333ac-229c-4fc1-af43-f1c1cc5b0a48",
+            "code": "PT2609084",
+            "type": "INCOME",
+            "is_combined": true,
+            "total_amount": 8000000,
+            "voucher_date": "2026-09-07",
+            "deposit_amount": 2926000
+          }
+        ],
+        "expected_move_out_date": null
+      }
+    },
+    {
+      "id": "6d504199-ed9c-467a-ac5f-c8cac680f544",
+      "facts": {
+        "today": "2026-09-08",
+        "months": 11,
+        "status": "ACTIVE",
+        "room_id": "dccadcae-8bc9-4002-bfda-0b9a6f6768f3",
+        "end_date": "2027-08-30",
+        "room_name": "501",
+        "rent_price": 4200000,
+        "start_date": "2026-08-31",
+        "building_id": "59c6fc2c-2369-4ec8-b253-1ac64abb2f45",
+        "contract_id": "6d504199-ed9c-467a-ac5f-c8cac680f544",
+        "seq_in_year": 2,
+        "signed_date": "2026-08-31",
+        "deposit_paid": 2000000,
+        "building_name": "102LVT",
+        "seven_days_ok": true,
+        "total_deposit": 4200000,
+        "deposit_enough": false,
+        "contract_number": "HD-2026-00316",
+        "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+        "seven_days_date": "2026-09-07",
+        "deposit_vouchers": [
+          {
+            "id": "fd456133-ddb9-462a-821b-3a555a619461",
+            "code": "PT2608076",
+            "type": "INCOME",
+            "is_combined": false,
+            "total_amount": 2000000,
+            "voucher_date": "2026-08-26",
+            "deposit_amount": 2000000
+          }
+        ],
+        "expected_move_out_date": null
+      }
+    },
+    {
+      "id": "890c9f1b-554d-44be-be2a-7bbd375e1379",
+      "facts": {
+        "today": "2026-09-08",
+        "months": 11,
+        "status": "ACTIVE",
+        "room_id": "c4d992cc-c4e6-4d11-ae1f-8cd3c92d8022",
+        "end_date": "2027-08-30",
+        "room_name": "305",
+        "rent_price": 3600000,
+        "start_date": "2026-09-05",
+        "building_id": "6e02bd65-41f2-4e5e-b755-12b65846f785",
+        "contract_id": "890c9f1b-554d-44be-be2a-7bbd375e1379",
+        "seq_in_year": 2,
+        "signed_date": "2026-08-31",
+        "deposit_paid": 2000000,
+        "building_name": "80DS3",
+        "seven_days_ok": false,
+        "total_deposit": 3600000,
+        "deposit_enough": false,
+        "contract_number": "HD-2026-00322",
+        "organization_id": "aaaa0000-0000-4000-8000-000000000001",
+        "seven_days_date": "2026-09-12",
+        "deposit_vouchers": [
+          {
+            "id": "ee822f96-4f06-4de9-93eb-a976e3481c8a",
+            "code": "PT2608085",
+            "type": "INCOME",
+            "is_combined": false,
+            "total_amount": 2000000,
+            "voucher_date": "2026-08-31",
+            "deposit_amount": 2000000
+          }
+        ],
+        "expected_move_out_date": null
+      }
+    }
+  ],
+  "deposit_item_audit": [
+    {
+      "invoice_id": "00cea782-247f-4634-94a3-2de7ea331aa4",
+      "entity_id": "9ef0a2c3-aa87-4bd7-851f-58b0b346a84a",
+      "created_at": "2026-08-01 02:53:02.249205+00",
+      "entity": "item",
+      "action": "INSERT",
+      "before_class": null,
+      "after_class": "DEPOSIT",
+      "before_amount": null,
+      "after_amount": "3600000.00",
+      "before_description": null,
+      "after_description": "Tiền cọc"
+    },
+    {
+      "invoice_id": "00cea782-247f-4634-94a3-2de7ea331aa4",
+      "entity_id": "9ef0a2c3-aa87-4bd7-851f-58b0b346a84a",
+      "created_at": "2026-08-01 03:25:15.370952+00",
+      "entity": "item",
+      "action": "DELETE",
+      "before_class": "DEPOSIT",
+      "after_class": null,
+      "before_amount": "3600000.00",
+      "after_amount": null,
+      "before_description": "Tiền cọc",
+      "after_description": null
+    },
+    {
+      "invoice_id": "00cea782-247f-4634-94a3-2de7ea331aa4",
+      "entity_id": "cccf5341-fc43-40cc-9c33-da5a3954ceb2",
+      "created_at": "2026-08-01 03:25:15.370952+00",
+      "entity": "item",
+      "action": "INSERT",
+      "before_class": null,
+      "after_class": "REVENUE",
+      "before_amount": null,
+      "after_amount": "3600000.00",
+      "before_description": null,
+      "after_description": "Tiền cọc"
+    },
+    {
+      "invoice_id": "6fc16297-7b1b-4b35-8d5a-2b98ae753f70",
+      "entity_id": "377576a7-d0a2-48ee-aaea-72b0208fdc2c",
+      "created_at": "2026-08-31 03:20:42.620072+00",
+      "entity": "item",
+      "action": "INSERT",
+      "before_class": null,
+      "after_class": "DEPOSIT",
+      "before_amount": null,
+      "after_amount": "2200000.00",
+      "before_description": null,
+      "after_description": "Tiền cọc"
+    },
+    {
+      "invoice_id": "6fc16297-7b1b-4b35-8d5a-2b98ae753f70",
+      "entity_id": "377576a7-d0a2-48ee-aaea-72b0208fdc2c",
+      "created_at": "2026-08-31 03:32:21.425123+00",
+      "entity": "item",
+      "action": "DELETE",
+      "before_class": "DEPOSIT",
+      "after_class": null,
+      "before_amount": "2200000.00",
+      "after_amount": null,
+      "before_description": "Tiền cọc",
+      "after_description": null
+    },
+    {
+      "invoice_id": "6fc16297-7b1b-4b35-8d5a-2b98ae753f70",
+      "entity_id": "508994eb-b45f-450b-9253-a44bb66f9ff8",
+      "created_at": "2026-08-31 03:32:21.425123+00",
+      "entity": "item",
+      "action": "INSERT",
+      "before_class": null,
+      "after_class": "REVENUE",
+      "before_amount": null,
+      "after_amount": "2200000.00",
+      "before_description": null,
+      "after_description": "Tiền cọc"
+    },
+    {
+      "invoice_id": "80b0b20e-994a-4f6e-ab2a-274934366097",
+      "entity_id": "97675b01-06ef-4260-bb4e-4a055b78c15d",
+      "created_at": "2026-08-31 09:36:09.608994+00",
+      "entity": "item",
+      "action": "INSERT",
+      "before_class": null,
+      "after_class": "DEPOSIT",
+      "before_amount": null,
+      "after_amount": "1600000.00",
+      "before_description": null,
+      "after_description": "Tiền cọc"
+    },
+    {
+      "invoice_id": "80b0b20e-994a-4f6e-ab2a-274934366097",
+      "entity_id": "97675b01-06ef-4260-bb4e-4a055b78c15d",
+      "created_at": "2026-08-31 16:08:47.510378+00",
+      "entity": "item",
+      "action": "DELETE",
+      "before_class": "DEPOSIT",
+      "after_class": null,
+      "before_amount": "1600000.00",
+      "after_amount": null,
+      "before_description": "Tiền cọc",
+      "after_description": null
+    },
+    {
+      "invoice_id": "80b0b20e-994a-4f6e-ab2a-274934366097",
+      "entity_id": "bac6c197-99d1-4ce7-a3ce-a06f7fe1f4ac",
+      "created_at": "2026-08-31 16:08:47.510378+00",
+      "entity": "item",
+      "action": "INSERT",
+      "before_class": null,
+      "after_class": "REVENUE",
+      "before_amount": null,
+      "after_amount": "1600000.00",
+      "before_description": null,
+      "after_description": "Tiền cọc"
+    },
+    {
+      "invoice_id": "ef9e4144-2eed-44d0-ba6d-fec8da116e36",
+      "entity_id": "0724af81-cd4c-4cb7-819e-1b82edbc8663",
+      "created_at": "2026-08-17 10:48:58.625654+00",
+      "entity": "item",
+      "action": "INSERT",
+      "before_class": null,
+      "after_class": "DEPOSIT",
+      "before_amount": null,
+      "after_amount": "3900000.00",
+      "before_description": null,
+      "after_description": "Tiền cọc"
+    },
+    {
+      "invoice_id": "ef9e4144-2eed-44d0-ba6d-fec8da116e36",
+      "entity_id": "0724af81-cd4c-4cb7-819e-1b82edbc8663",
+      "created_at": "2026-09-04 03:34:40.590263+00",
+      "entity": "item",
+      "action": "DELETE",
+      "before_class": "DEPOSIT",
+      "after_class": null,
+      "before_amount": "3900000.00",
+      "after_amount": null,
+      "before_description": "Tiền cọc",
+      "after_description": null
+    },
+    {
+      "invoice_id": "ef9e4144-2eed-44d0-ba6d-fec8da116e36",
+      "entity_id": "f78e9a06-4432-4492-b1a2-65a0c42c42cb",
+      "created_at": "2026-09-04 03:34:40.590263+00",
+      "entity": "item",
+      "action": "INSERT",
+      "before_class": null,
+      "after_class": "REVENUE",
+      "before_amount": null,
+      "after_amount": "3900000.00",
+      "before_description": null,
+      "after_description": "Tiền cọc"
+    }
+  ],
+  "receipts": [
+    {
+      "id": "fd456133-ddb9-462a-821b-3a555a619461",
+      "code": "PT2608076",
+      "contract_id": "6d504199-ed9c-467a-ac5f-c8cac680f544",
+      "invoice_id": null,
+      "payment_id": null,
+      "payment_collection_id": null,
+      "voucher_date": "2026-08-26",
+      "created_at": "2026-08-31 03:20:42.620072+00",
+      "total_amount": "2000000.00",
+      "approval_status": "APPROVED",
+      "posting_status": "POSTED",
+      "system_source": "contract.create.v2",
+      "items": [
+        {
+          "id": "bdc5f570-0bf3-4c4f-8b6c-c73bcb14e5a7",
+          "type": "Tiền Cọc",
+          "class": "DEPOSIT",
+          "amount": 2000000
+        }
+      ]
+    },
+    {
+      "id": "e3883071-c1c4-4ed0-aa3b-4f3c1b4180a0",
+      "code": "PC2608155",
+      "contract_id": "6d504199-ed9c-467a-ac5f-c8cac680f544",
+      "invoice_id": null,
+      "payment_id": null,
+      "payment_collection_id": null,
+      "voucher_date": "2026-08-31",
+      "created_at": "2026-08-31 03:22:17.561869+00",
+      "total_amount": "2940000.00",
+      "approval_status": "UNAPPROVED",
+      "posting_status": "UNPOSTED",
+      "system_source": "contract.commission",
+      "items": [
+        {
+          "id": "84536613-a744-4e88-95de-799b86aabe72",
+          "type": "Hoa hồng môi giới",
+          "class": "PNL",
+          "amount": 2940000
+        }
+      ]
+    },
+    {
+      "id": "b15ae57c-554f-43cb-b7a7-4f13ea4f424b",
+      "code": "PT2609024",
+      "contract_id": "6d504199-ed9c-467a-ac5f-c8cac680f544",
+      "invoice_id": "6fc16297-7b1b-4b35-8d5a-2b98ae753f70",
+      "payment_id": "e9b79959-9e89-422f-84bf-32382ba40dd0",
+      "payment_collection_id": "3c98d08b-918c-4add-89c0-6aeedcf405bc",
+      "voucher_date": "2026-08-31",
+      "created_at": "2026-09-04 10:33:27.035754+00",
+      "total_amount": "7490000.00",
+      "approval_status": "APPROVED",
+      "posting_status": "POSTED",
+      "system_source": "invoice.collection.v5",
+      "items": [
+        {
+          "id": "786c94ce-2d31-45b2-90ab-ecd5bf5b94be",
+          "type": "Thu tiền hoá đơn",
+          "class": "PNL",
+          "amount": 7490000
+        }
+      ]
+    },
+    {
+      "id": "ee822f96-4f06-4de9-93eb-a976e3481c8a",
+      "code": "PT2608085",
+      "contract_id": "890c9f1b-554d-44be-be2a-7bbd375e1379",
+      "invoice_id": null,
+      "payment_id": null,
+      "payment_collection_id": null,
+      "voucher_date": "2026-08-31",
+      "created_at": "2026-08-31 09:36:09.608994+00",
+      "total_amount": "2000000.00",
+      "approval_status": "APPROVED",
+      "posting_status": "POSTED",
+      "system_source": "contract.create.v2",
+      "items": [
+        {
+          "id": "c66bcc7a-88f5-4313-8b06-bedf69fd2b5b",
+          "type": "Tiền Cọc",
+          "class": "DEPOSIT",
+          "amount": 2000000
+        }
+      ]
+    },
+    {
+      "id": "a26e334a-ba23-4565-ae39-42e4de74e25f",
+      "code": "PC2608062",
+      "contract_id": "890c9f1b-554d-44be-be2a-7bbd375e1379",
+      "invoice_id": null,
+      "payment_id": null,
+      "payment_collection_id": null,
+      "voucher_date": "2026-08-31",
+      "created_at": "2026-08-31 09:36:19.64805+00",
+      "total_amount": "2160000.00",
+      "approval_status": "UNAPPROVED",
+      "posting_status": "UNPOSTED",
+      "system_source": "contract.commission",
+      "items": [
+        {
+          "id": "d3153dc3-6d41-4ea9-93ac-ddf4db5e778b",
+          "type": "Hoa hồng môi giới",
+          "class": "PNL",
+          "amount": 2160000
+        }
+      ]
+    },
+    {
+      "id": "a73b9603-109f-455e-94cf-a260e61271e4",
+      "code": "PT2609051",
+      "contract_id": "890c9f1b-554d-44be-be2a-7bbd375e1379",
+      "invoice_id": "80b0b20e-994a-4f6e-ab2a-274934366097",
+      "payment_id": "eea6701a-1a3f-4683-be04-bb133d2ccff8",
+      "payment_collection_id": "4b91c426-00bb-435c-936a-9561b2a41b80",
+      "voucher_date": "2026-09-06",
+      "created_at": "2026-09-06 05:45:53.363966+00",
+      "total_amount": "4720000.00",
+      "approval_status": "APPROVED",
+      "posting_status": "POSTED",
+      "system_source": "invoice.collection.v5",
+      "items": [
+        {
+          "id": "d8838ccb-d67e-4e97-a929-00795645af0e",
+          "type": "Thu tiền hoá đơn",
+          "class": "PNL",
+          "amount": 4720000
+        }
+      ]
+    },
+    {
+      "id": "8b6f5bf8-711e-4b64-8f35-c0498538fecc",
+      "code": "PT2609083",
+      "contract_id": "ee266051-f0ae-441b-9ecc-8e033818f0ed",
+      "invoice_id": null,
+      "payment_id": null,
+      "payment_collection_id": null,
+      "voucher_date": "2026-09-06",
+      "created_at": "2026-09-07 09:10:11.658447+00",
+      "total_amount": "2000000.00",
+      "approval_status": "APPROVED",
+      "posting_status": "POSTED",
+      "system_source": "contract.create.v2",
+      "items": [
+        {
+          "id": "fe5385b0-cb56-47ec-b7e2-fbb46c04afc8",
+          "type": "Tiền Cọc",
+          "class": "DEPOSIT",
+          "amount": 2000000
+        }
+      ]
+    },
+    {
+      "id": "7f621386-9980-4088-9af0-e83b9b262703",
+      "code": "PC2609018",
+      "contract_id": "ee266051-f0ae-441b-9ecc-8e033818f0ed",
+      "invoice_id": null,
+      "payment_id": null,
+      "payment_collection_id": null,
+      "voucher_date": "2026-09-07",
+      "created_at": "2026-09-07 09:10:24.555742+00",
+      "total_amount": "2500000.00",
+      "approval_status": "UNAPPROVED",
+      "posting_status": "UNPOSTED",
+      "system_source": "contract.commission",
+      "items": [
+        {
+          "id": "41d0b6eb-c327-4f29-8682-c4087ea6352e",
+          "type": "Hoa hồng môi giới",
+          "class": "PNL",
+          "amount": 2500000
+        }
+      ]
+    },
+    {
+      "id": "952333ac-229c-4fc1-af43-f1c1cc5b0a48",
+      "code": "PT2609084",
+      "contract_id": "ee266051-f0ae-441b-9ecc-8e033818f0ed",
+      "invoice_id": "1e3a8b53-f0da-4312-b54e-430f36c41656",
+      "payment_id": "7d89b42d-ae53-41ef-9b73-eaeba49c1602",
+      "payment_collection_id": "286d89ee-a98f-4451-9fc2-9a0e5fd9791f",
+      "voucher_date": "2026-09-07",
+      "created_at": "2026-09-07 11:55:41.768814+00",
+      "total_amount": "8000000.00",
+      "approval_status": "APPROVED",
+      "posting_status": "POSTED",
+      "system_source": "invoice.collection.v5",
+      "items": [
+        {
+          "id": "1ac3126f-1c23-46c6-8a08-2ccb86b44e59",
+          "type": "Thu tiền hoá đơn",
+          "class": "PNL",
+          "amount": 5074000
+        },
+        {
+          "id": "f20ad745-604b-4060-b16c-4e53e9228a6e",
+          "type": "Tiền Cọc",
+          "class": "DEPOSIT",
+          "amount": 2926000
+        }
+      ]
+    }
+  ],
+  "function_fingerprints": [
+    {
+      "proname": "commission_contract_facts_v1",
+      "definition_md5": "042939d8db10b3f2ad922c88961e54f1"
+    },
+    {
+      "proname": "contract_deposit_sources_v1",
+      "definition_md5": "670dcef06ff381f27b303be4da18b391"
+    },
+    {
+      "proname": "create_contract_v2",
+      "definition_md5": "db6be0113e792be7d494c3c58c8340e5"
+    },
+    {
+      "proname": "resolve_signed_contract_deposit_basis_v1",
+      "definition_md5": "3f53e08745f9eb7f6ba304ce88ae2f03"
+    },
+    {
+      "proname": "update_invoice_v1",
+      "definition_md5": "c18b3cdb867d5883e4800a269fe1459e"
+    }
+  ],
+  "separate_unremediated_mixed_voucher_basis": {
+    "asOf": "2026-09-08T04:45:09.060199+00:00",
+    "counts": {
+      "total": 2,
+      "excluded": 0,
+      "realCash": 2,
+      "recognized": 0
+    },
+    "netHeld": 10000000,
+    "sources": [
+      {
+        "code": "PT2609083",
+        "amount": 2000000,
+        "bucket": "REAL_CASH",
+        "direction": "IN",
+        "isVirtual": false,
+        "voucherId": "8b6f5bf8-711e-4b64-8f35-c0498538fecc",
+        "voucherDate": "2026-09-06",
+        "signedAmount": 2000000,
+        "systemSource": "contract.create.v2",
+        "excludeReason": null
+      },
+      {
+        "code": "PT2609084",
+        "amount": 8000000,
+        "bucket": "REAL_CASH",
+        "direction": "IN",
+        "isVirtual": false,
+        "voucherId": "952333ac-229c-4fc1-af43-f1c1cc5b0a48",
+        "voucherDate": "2026-09-07",
+        "signedAmount": 8000000,
+        "systemSource": "invoice.collection.v5",
+        "excludeReason": null
+      }
+    ],
+    "contractId": "ee266051-f0ae-441b-9ecc-8e033818f0ed",
+    "basisReason": null,
+    "basisStatus": "OK",
+    "fingerprint": "5703e2cb156c504ba2bf32dce83908d8",
+    "realPostedIn": 10000000,
+    "organizationId": "aaaa0000-0000-4000-8000-000000000001",
+    "postedReleaseOut": 0,
+    "recognizedHistoricalIn": 0
+  },
+  "reproduction_scan_sql": "WITH bad AS (\n SELECT i.id invoice_id,i.contract_id,i.invoice_number,i.billing_month,i.total_amount,i.paid_amount,i.status invoice_status,\n   it.id item_id,it.description,it.amount,\n   EXISTS(SELECT 1 FROM public.invoice_audit_log inserted\n     JOIN public.invoice_audit_log removed ON removed.invoice_id=inserted.invoice_id AND removed.created_at=inserted.created_at\n       AND removed.entity='item' AND removed.action='DELETE' AND removed.before->>'accounting_class'='DEPOSIT'\n       AND removed.before->>'description'=inserted.after->>'description'\n       AND (removed.before->>'amount')::numeric=(inserted.after->>'amount')::numeric\n     WHERE inserted.entity_id=it.id AND inserted.action='INSERT' AND inserted.entity='item'\n       AND inserted.after->>'accounting_class'='REVENUE') AS audit_confirmed\n FROM public.invoice_items it JOIN public.invoices i ON i.id=it.invoice_id\n WHERE i.organization_id='aaaa0000-0000-4000-8000-000000000001' AND i.deleted_at IS NULL AND i.status <> 'CANCELLED'\n   AND it.accounting_class <> 'DEPOSIT' AND it.amount>0\n), grouped AS (\n SELECT invoice_id,contract_id,invoice_number,billing_month,total_amount,paid_amount,invoice_status,\n   sum(amount) misclassified_amount,bool_or(audit_confirmed) audit_confirmed\n FROM bad WHERE audit_confirmed GROUP BY invoice_id,contract_id,invoice_number,billing_month,total_amount,paid_amount,invoice_status\n), affected AS (\n SELECT g.*, c.contract_number,c.status contract_status,c.total_deposit,c.deposit_paid,c.deposit_remaining,\n   b.name building,r.name room,\n   GREATEST(LEAST(g.misclassified_amount,g.paid_amount-(g.total_amount-g.misclassified_amount)),0) AS paid_misclassified,\n   (SELECT jsonb_agg(jsonb_build_object('id',ie.id,'code',ie.code,'status',ie.approval_status,'kind',ie.commission_kind,'amount',ie.total_amount))\n      FROM public.income_expenses ie WHERE ie.contract_id=c.id AND ie.deleted_at IS NULL AND ie.approval_status <> 'CANCELLED'\n        AND (ie.system_source='contract.commission' OR ie.commission_kind IN ('broker','sale'))) AS commissions\n FROM grouped g JOIN public.contracts c ON c.id=g.contract_id AND c.deleted_at IS NULL\n JOIN public.rooms r ON r.id=c.room_id JOIN public.buildings b ON b.id=r.building_id\n)\nSELECT jsonb_build_object('invoice_count',(SELECT count(*) FROM affected),'commission_contracts',(SELECT count(DISTINCT contract_id) FROM affected WHERE commissions IS NOT NULL),\n 'rows',(SELECT jsonb_agg(to_jsonb(a) ORDER BY building,room) FROM affected a)) AS scan;\r\n"
+}
