@@ -1,104 +1,31 @@
-import { useQuery } from "@tanstack/react-query";
-
-// =============================================
-// Vietnamese Administrative Data Hooks
-// Uses provinces.open-api.vn for province/district/ward data
-// Requirements: 2.5
-// =============================================
-
-interface Province {
-  code: number;
-  name: string;
+import { useQuery } from '@tanstack/react-query';
+export interface Province { code: number; name: string }
+export interface District { code: number; name: string; province_code: number }
+export interface Ward { code: number; name: string; district_code: number }
+const API_BASE = 'https://provinces.open-api.vn/api';
+async function requestJson<T>(path: string, signal: AbortSignal): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, { signal });
+  if (!response.ok) throw new Error(`Không thể tải dữ liệu địa chỉ (${response.status})`);
+  return response.json() as Promise<T>;
 }
-
-interface District {
-  code: number;
-  name: string;
-  province_code: number;
-}
-
-interface Ward {
-  code: number;
-  name: string;
-  district_code: number;
-}
-
-const API_BASE = "https://provinces.open-api.vn/api";
-
-// =============================================
-// useProvinces - Load all provinces
-// =============================================
-
 export const useProvinces = () => {
-  const { data, isLoading } = useQuery({
-    queryKey: ["address", "provinces"],
-    queryFn: async (): Promise<Province[]> => {
-      const res = await fetch(`${API_BASE}/p/`);
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data || []).map((p: any) => ({
-        code: p.code,
-        name: p.name,
-      }));
-    },
-    staleTime: Infinity, // Administrative data doesn't change
-    gcTime: Infinity,
-  });
-
-  return { provinces: data || [], isLoading };
+  const q = useQuery<Province[], Error>({ queryKey: ['address', 'provinces'], queryFn: async ({ signal }) => {
+    const data = await requestJson<Province[]>('/p/', signal);
+    return data.map(({ code, name }) => ({ code, name }));
+  }, staleTime: Infinity, gcTime: Infinity });
+  return { provinces: q.data ?? [], isLoading: q.isLoading, error: q.error, retry: q.refetch };
 };
-
-// =============================================
-// useDistricts - Load districts for a province
-// =============================================
-
-// Nhận cả `null`: mã tỉnh/huyện đến từ bản ghi khách hàng, nơi "chưa chọn" là
-// `null`. Thân hàm đã có `if (!provinceCode) return []` nên `null` chạy y hệt
-// `undefined` — kiểu chỉ đang mô tả hẹp hơn thực tế.
 export const useDistricts = (provinceCode?: string | null) => {
-  const { data, isLoading } = useQuery({
-    queryKey: ["address", "districts", provinceCode],
-    queryFn: async (): Promise<District[]> => {
-      if (!provinceCode) return [];
-      const res = await fetch(`${API_BASE}/p/${provinceCode}?depth=2`);
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.districts || []).map((d: any) => ({
-        code: d.code,
-        name: d.name,
-        province_code: d.province_code,
-      }));
-    },
-    enabled: !!provinceCode,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-
-  return { districts: data || [], isLoading };
+  const q = useQuery<District[], Error>({ queryKey: ['address', 'districts', provinceCode], queryFn: async ({ signal }) => {
+    const data = await requestJson<{ districts?: District[] }>(`/p/${provinceCode}?depth=2`, signal);
+    return (data.districts ?? []).map(({ code, name, province_code }) => ({ code, name, province_code }));
+  }, enabled: Boolean(provinceCode), staleTime: Infinity, gcTime: Infinity });
+  return { districts: q.data ?? [], isLoading: q.isLoading, error: q.error, retry: q.refetch };
 };
-
-// =============================================
-// useWards - Load wards for a district
-// =============================================
-
 export const useWards = (districtCode?: string | null) => {
-  const { data, isLoading } = useQuery({
-    queryKey: ["address", "wards", districtCode],
-    queryFn: async (): Promise<Ward[]> => {
-      if (!districtCode) return [];
-      const res = await fetch(`${API_BASE}/d/${districtCode}?depth=2`);
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.wards || []).map((w: any) => ({
-        code: w.code,
-        name: w.name,
-        district_code: w.district_code,
-      }));
-    },
-    enabled: !!districtCode,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-
-  return { wards: data || [], isLoading };
+  const q = useQuery<Ward[], Error>({ queryKey: ['address', 'wards', districtCode], queryFn: async ({ signal }) => {
+    const data = await requestJson<{ wards?: Ward[] }>(`/d/${districtCode}?depth=2`, signal);
+    return (data.wards ?? []).map(({ code, name, district_code }) => ({ code, name, district_code }));
+  }, enabled: Boolean(districtCode), staleTime: Infinity, gcTime: Infinity });
+  return { wards: q.data ?? [], isLoading: q.isLoading, error: q.error, retry: q.refetch };
 };
