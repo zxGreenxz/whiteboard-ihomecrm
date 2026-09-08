@@ -19083,6 +19083,15 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_meter_directory_v1: {
+        Args: {
+          p_limit?: number
+          p_meter_type?: string
+          p_organization_id: string
+          p_query?: string
+        }
+        Returns: Json
+      }
       copilot_meter_readings_v1: {
         Args: {
           p_building_id?: string
