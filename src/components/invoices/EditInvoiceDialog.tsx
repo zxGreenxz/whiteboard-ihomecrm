@@ -428,7 +428,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
@@ -439,9 +439,9 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="min-w-0 space-y-4">
           {/* Dates */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1">
               <Label>Kỳ thanh toán *</Label>
               <Input
@@ -470,8 +470,8 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
           </div>
 
           {/* Structured row */}
-          <div className="border rounded-md overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="min-w-0 border rounded-md overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-slate-100">
                 <tr className="text-xs uppercase">
                   <th className="p-2 border text-right">Giá phòng</th>
@@ -599,8 +599,8 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
               </Button>
             </div>
             {customFields.length > 0 && (
-              <div className="border rounded-md overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="min-w-0 border rounded-md overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
                   <thead className="bg-slate-50 text-xs uppercase">
                     <tr>
                       <th className="p-2 border text-left">Loại</th>
@@ -721,7 +721,7 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
               <Label htmlFor="previous_debt" className="text-red-800 shrink-0">
                 Nợ cũ kỳ trước:
               </Label>
-              <div className="flex items-center gap-1 w-56">
+              <div className="flex min-w-0 items-center gap-1 w-56">
                 <CurrencyInput
                   className={`h-9 text-right ${watchedPreviousDebt > 0 ? 'text-red-700 font-medium' : ''}`}
                   suffix={false}
