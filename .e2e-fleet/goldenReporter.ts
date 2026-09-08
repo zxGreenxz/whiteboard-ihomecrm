@@ -6,8 +6,7 @@ import { safeGoldenCallDiagnostics, safeGoldenRequestFailures } from './specs/co
 import { isContractOracleFailureCode } from './specs/copilotContractOracle';
 import { isIncomeApprovalOracleFailureCode } from './specs/copilotIncomeApprovalOracle';
 import { isCustomerOracleFailureCode } from './specs/copilotCustomerOracle';
-import { isFinancialReadFailureCode } from './specs/copilotFinancialReadOracle';
-import { FINANCIAL_READ_CASES } from '../scripts/copilot-financial-read-fixtures.mjs';
+import { safeFinancialReadDiagnostic } from './specs/copilotFinancialReadOracle';
 // Playwright call logs may contain fill values and private assertion payloads.
 // Persist only the allowlisted checkpoint; never print error messages/attachments.
 export default class GoldenReporter implements Reporter {
@@ -24,6 +23,8 @@ export default class GoldenReporter implements Reporter {
         if (failed) { console.log(JSON.stringify(failed)); continue; }
         const calls = safeGoldenCallDiagnostics(value);
         if (calls) { console.log(JSON.stringify(calls)); continue; }
+        const financialRead = safeFinancialReadDiagnostic(value);
+        if (financialRead) { console.log(JSON.stringify(financialRead)); continue; }
         if (value && typeof value === 'object' && !Array.isArray(value) && 'kind' in value && value.kind === 'golden-case-failure') {
           const fields = ['kind','caseId','phase','modelRequests','readResponses','modelHttpStatuses','businessWrites','networkErrors','consoleErrors'];
           const data = value as Record<string, unknown>;
@@ -43,8 +44,7 @@ export default class GoldenReporter implements Reporter {
         const contractCode = ['C31','C32','C33'].includes(value.caseId) && isContractOracleFailureCode(value.code);
         const financialCode = ['C34','C35','C36'].includes(value.caseId) && isIncomeApprovalOracleFailureCode(value.code);
         const customerCode = ['C02','C14'].includes(value.caseId) && isCustomerOracleFailureCode(value.code);
-        const financialReadCode = Object.prototype.hasOwnProperty.call(FINANCIAL_READ_CASES,value.caseId) && isFinancialReadFailureCode(value.code);
-        if (!contractCode && !financialCode && !customerCode && !financialReadCode) continue;
+        if (!contractCode && !financialCode && !customerCode) continue;
         console.log(JSON.stringify({ caseId: value.caseId, code: value.code }));
       } catch { /* Non-diagnostic worker output stays private. */ }
     }

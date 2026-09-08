@@ -73,6 +73,56 @@ function financialEvidence(id='C24',reverse=false) {
     reads:definitions.map(d=>({...fixture.roles[d.role].request,payload:fixture.roles[d.role].payload,status:200,actorDigest,exactEndpoint:true,modelRound:0})),businessWrites:0,networkErrors:0,consoleErrors:0};
 }
 function withAnswer(e:ReturnType<typeof financialEvidence>,answer:string) { e.answer=answer;e.rounds.at(-1)!.body=chunk({content:answer},'stop');return e; }
+describe('financial fact diagnostics',()=>{
+  it.each([
+    ['C15','period_required','missing',(s:string)=>s.replace('2099-01','')],
+    ['C15','period_conflict','mismatch',(s:string)=>s+' 2026-07'],
+    ['C15','link_forbidden','unsupported',(s:string)=>s+' https://private.test'],
+    ['C15','atom_marker_forbidden','unsupported',(s:string)=>s+' factatom'],
+    ['C15','claim_binding','unsupported',(s:string)=>s+' Tổng phải thu: 0 đ.'],
+    ['C19','claim_money','mismatch',(s:string)=>s+' Tiền điện: 1 đ.'],
+    ['C19','claim_count','unit',(s:string)=>s+' Số hóa đơn: 0 đ.'],
+    ['C19','claim_count','mismatch',(s:string)=>s+' Số hóa đơn: 1.'],
+    ['C15','claim_limit','mismatch',(s:string)=>s+' (hiện 10 đầu)'],
+    ['C19','absence_required','missing',(s:string)=>s.replace(' Không có hóa đơn và không có công nợ.','')],
+    ['C15','partial_scope_required','missing',(s:string)=>s.replace('thanh toán một phần (partial) ','')],
+    ['C19','empty_count','missing',(s:string)=>s.replace('0 hóa đơn','')],
+    ['C19','empty_due','missing',(s:string)=>s.replace('Tổng phải thu: 0 đ; ','')],
+    ['C19','empty_paid','missing',(s:string)=>s.replace('đã trả: 0 đ; ','')],
+    ['C19','empty_remaining','missing',(s:string)=>s.replace('còn nợ: 0 đ.','')],
+    ['C19','empty_debt_absence','missing',(s:string)=>s.replace(' và không có công nợ','')],
+  ] as const)('reports first failure %s %s without changing rejection',(id,factRule,failureKind,change)=>{
+    const e=financialEvidence(id);let caught:unknown;
+    try{oracle.assertFinancialReadResult(withAnswer(e,change(e.answer)));}catch(error){caught=error;}
+    expect(caught).toBeInstanceOf(Error);expect((caught as Error).message).toBe('financial_facts');
+    expect(oracle.financialReadDiagnostic(id,caught)).toEqual({caseId:id,code:'financial_facts',factRule,failureKind});
+  });
+  it.each([
+    [' Có dữ liệu.',false,false,true],[' 9',true,false,false],[' $',false,true,false],[' ９',false,false,true],
+  ] as const)('reports only residual categories for %s',(addition,hasResidualDigits,hasResidualCurrency,hasResidualWords)=>{
+    const e=financialEvidence('C15');let caught:unknown;
+    try{oracle.assertFinancialReadResult(withAnswer(e,e.answer+addition));}catch(error){caught=error;}
+    expect(oracle.financialReadDiagnostic('C15',caught)).toEqual({caseId:'C15',code:'financial_facts',factRule:'residual_grammar',failureKind:'unsupported',hasResidualDigits,hasResidualCurrency,hasResidualWords});
+  });
+  it('forwards exact diagnostic shapes and rejects arbitrary or misplaced fields',()=>{
+    const valid=[{caseId:'C15',code:'financial_facts',factRule:'period_required',failureKind:'missing'},
+      {caseId:'C19',code:'financial_facts',factRule:'residual_grammar',failureKind:'unsupported',hasResidualDigits:false,hasResidualCurrency:false,hasResidualWords:true},
+      {caseId:'C15',code:'financial_facts'},{caseId:'C03',code:'financial_payload'}];
+    const denied=[...['answer','message','stack','token','args','amount','url'].map(key=>({...valid[0],[key]:'private'})),
+      {...valid[0],caseId:'C02'},{...valid[0],code:'financial_payload'},{...valid[0],factRule:'private prose'},
+      {...valid[0],factRule:'__proto__'},{...valid[0],failureKind:'private prose'}, {...valid[0],failureKind:'mismatch'},
+      {...valid[0],hasResidualWords:true},{...valid[1],hasResidualDigits:'false'},{...valid[1],hasResidualWords:undefined},
+      {...valid[1],hasResidualWords:false},{...valid[0],failureKind:undefined},
+      {caseId:'C15',code:'financial_facts',factRule:'residual_grammar',failureKind:'unsupported'}];
+    const log=vi.spyOn(console,'log').mockImplementation(()=>undefined);
+    try{
+      new GoldenReporter().onTestEnd({} as TestCase,{status:'failed',stdout:[[...valid,...denied].map(x=>JSON.stringify(x)).join('\n')]} as TestResult);
+      expect(log.mock.calls).toEqual([...valid.map(v=>[JSON.stringify(v)]),['golden browser: failed']]);
+    }finally{log.mockRestore();}
+    expect(oracle.financialReadDiagnostic('C15',new Error('financial_facts'))).toBeUndefined();
+    expect(oracle.financialReadDiagnostic('C15',{code:'financial_facts',factRule:'period_required',failureKind:'missing'})).toBeUndefined();
+  });
+});
 describe('independent financial oracle',()=>{
   it.each([
     ['C05','Doanh thu: 7.000 đ.'],['C05','Doanh thu: 7.000.'],['C05','Chi phí: 18.000 đ.'],

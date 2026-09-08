@@ -1,21 +1,58 @@
 import { z } from 'zod';
 import { digest, type GoldenScenario } from '../../scripts/copilot-golden-browser-evidence.mjs';
-import { bindFinancialReadScenario, sameFinancialArgs, type FinancialReadFixture, type FinancialRole, type FinancialRpc } from '../../scripts/copilot-financial-read-fixtures.mjs';
+import { bindFinancialReadScenario, sameFinancialArgs, FINANCIAL_READ_CASES, type FinancialReadFixture, type FinancialRole, type FinancialRpc } from '../../scripts/copilot-financial-read-fixtures.mjs';
 import { inspectModelStream, renderedAssistantText, type ReadonlyEvidence } from './copilotSmokeOracle';
 
 export interface FinancialRead {rpc:string;args:Record<string,unknown>;payload:unknown;status:number;actorDigest?:string;exactEndpoint:boolean;modelRound:number}
 export interface FinancialReadObservation {role:FinancialRole;rpc:FinancialRpc;argsDigest:string;responseDigest:string;factDigest:string;actorDigest:string;httpStatus:200;exactEndpoint:true;toolCallId:string;modelRound:number;resultRound:number}
 export interface FinancialReadEvidence extends Pick<ReadonlyEvidence,'prompt'|'answer'|'rounds'> {scenario:GoldenScenario;fixture:FinancialReadFixture;actorDigest:string;reads:FinancialRead[];businessWrites:number;networkErrors:number;consoleErrors:number}
 const CODES=['financial_binding','financial_cycle','financial_mounted','financial_prompt','financial_tool','financial_read','financial_payload','financial_link','financial_facts','financial_guards'] as const;
+const FACT_RULES={
+  period_required:['missing'],period_conflict:['mismatch'],link_forbidden:['unsupported'],atom_marker_forbidden:['unsupported'],
+  claim_binding:['unsupported'],claim_money:['missing','mismatch'],claim_count:['missing','mismatch','unit'],claim_limit:['mismatch'],residual_grammar:['unsupported'],
+  stats_raw:['mismatch','unit'],absence_required:['missing'],partial_scope_required:['missing'],
+  empty_count:['missing','mismatch','unit'],empty_due:['missing','mismatch'],empty_paid:['missing','mismatch'],empty_remaining:['missing','mismatch'],empty_debt_absence:['missing'],
+  empty_nonzero:['mismatch'],empty_entity:['unsupported'],empty_affirmative:['mismatch'],
+  positive_absence:['mismatch'],invoice_header:['missing'],invoice_limit:['mismatch'],invoice_row:['missing'],invoice_negation:['mismatch'],invoice_identity:['mismatch'],invoice_status:['mismatch'],invoice_status_conflict:['mismatch'],invoice_unknown:['unsupported'],
+  pnl_basis:['mismatch'],pnl_basis_negation:['mismatch'],pnl_cash_claim:['mismatch'],pnl_totals:['missing'],pnl_row:['missing'],stats_header:['missing'],
+} as const;
+type FactRule=keyof typeof FACT_RULES;
+type FailureKind=typeof FACT_RULES[FactRule][number];
+type ResidualFlags={hasResidualDigits:boolean;hasResidualCurrency:boolean;hasResidualWords:boolean};
+type FactDetail={factRule:FactRule;failureKind:FailureKind}&Partial<ResidualFlags>;
+type FinancialDiagnostic={caseId:string;code:Code}&Partial<FactDetail>;
 type Code=typeof CODES[number];
 export function isFinancialReadFailureCode(value:unknown):value is Code {
   return typeof value==='string' && CODES.some(code=>code===value);
 }
 const failures=new WeakSet<FinancialReadFailure>();
-class FinancialReadFailure extends Error {constructor(readonly code:Code){super(code);failures.add(this);Object.freeze(this);}}
+class FinancialReadFailure extends Error {constructor(readonly code:Code,readonly detail?:FactDetail){super(code);if(detail)Object.freeze(detail);failures.add(this);Object.freeze(this);}}
 const check:(ok:unknown,code:Code)=>asserts ok=(ok,code)=>{if(!ok)throw new FinancialReadFailure(code);};
-export function financialReadDiagnostic(caseId:string,error:unknown):{caseId:string;code:Code}|undefined {
-  if(error instanceof FinancialReadFailure && failures.has(error))return {caseId,code:error.code};
+const fact:(ok:unknown,factRule:FactRule,failureKind:FailureKind,residual?:ResidualFlags)=>asserts ok=(ok,factRule,failureKind,residual)=>{
+  if(!ok)throw new FinancialReadFailure('financial_facts',{factRule,failureKind,...residual});
+};
+export function financialReadDiagnostic(caseId:string,error:unknown):FinancialDiagnostic|undefined {
+  if(error instanceof FinancialReadFailure && failures.has(error))return {caseId,code:error.code,...error.detail};
+}
+/** Reconstruct static diagnostics only. No arbitrary keys or text cross stdout. */
+export function safeFinancialReadDiagnostic(value:unknown):FinancialDiagnostic|undefined {
+  if(!value || typeof value!=='object' || Array.isArray(value))return;
+  const v=value as Record<string,unknown>,keys=Object.keys(v);
+  if(typeof v.caseId!=='string' || !Object.prototype.hasOwnProperty.call(FINANCIAL_READ_CASES,v.caseId) || !isFinancialReadFailureCode(v.code))return;
+  if(keys.length===2 && keys.every(k=>['caseId','code'].includes(k)))return {caseId:v.caseId,code:v.code};
+  if(v.code!=='financial_facts' || typeof v.factRule!=='string' || !Object.prototype.hasOwnProperty.call(FACT_RULES,v.factRule))return;
+  const factRule=v.factRule as FactRule;
+  if(typeof v.failureKind!=='string' || !(FACT_RULES[factRule] as readonly string[]).includes(v.failureKind))return;
+  const base={caseId:v.caseId,code:v.code,factRule,failureKind:v.failureKind as FailureKind};
+  const fields=['caseId','code','factRule','failureKind'];
+  if(factRule==='residual_grammar') {
+    const flags=['hasResidualDigits','hasResidualCurrency','hasResidualWords'];fields.push(...flags);
+    if(!flags.every(k=>typeof v[k]==='boolean') || !flags.some(k=>v[k]===true))return;
+    if(keys.length!==fields.length || !keys.every(k=>fields.includes(k)))return;
+    return {...base,hasResidualDigits:v.hasResidualDigits as boolean,hasResidualCurrency:v.hasResidualCurrency as boolean,hasResidualWords:v.hasResidualWords as boolean};
+  }
+  if(keys.length!==fields.length || !keys.every(k=>fields.includes(k)))return;
+  return base;
 }
 export function financialReadFailureReason(error:unknown):'fixture_unbound'|undefined {
   if(error instanceof FinancialReadFailure && failures.has(error) && ['financial_binding','financial_payload'].includes(error.code))return 'fixture_unbound';
@@ -63,21 +100,21 @@ const monetary=String.raw`(-?\d+(?:[.,]\d+)*)\s*(triệu|tr|nghìn|ngàn|k|đồ
 function amount(raw:string,unit:string) {
   return /triệu|^tr$|nghìn|ngàn|^k$/.test(unit)?Number(raw.replace(',','.'))*(/triệu|^tr$/.test(unit)?1e6:1e3):Number(raw.replace(/\./g,'').replace(',','.'));
 }
-function moneyFact(s:string,label:string,value:number) {
+function moneyFact(s:string,label:string,value:number,rule:FactRule='claim_money') {
   const matches=[...s.matchAll(new RegExp(`(?:${label})\\s*(?:[:：|–—=-]\\s*)?${monetary}`,'gu'))];
-  check(matches.length>0 && matches.every(m=>amount(m[1],m[2])===displayed(value)),'financial_facts');
+  fact(matches.length>0 && matches.every(m=>amount(m[1],m[2])===displayed(value)),rule,matches.length?'mismatch':'missing');
 }
-function countFact(s:string,value:number) {
+function countFact(s:string,value:number,rule:FactRule='claim_count') {
   const matches=[...s.matchAll(/(?<![\d.,])([0-9]+)\s+hóa đơn/gu)];
-  check(matches.length>0 && matches.every(m=>Number(m[1])===value),'financial_facts');
-  check(!/\d+\s*(?:đ|đồng|vnd|vnđ|₫)\s*hóa đơn/u.test(s),'financial_facts');
+  fact(matches.length>0 && matches.every(m=>Number(m[1])===value),rule,matches.length?'mismatch':'missing');
+  fact(!/\d+\s*(?:đ|đồng|vnd|vnđ|₫)\s*hóa đơn/u.test(s),rule,'unit');
 }
 /** Close every extra claim, not just the required core rows. A monetary atom
  * belongs to one labelled field in its invoice/building/company scope. Once
  * grounded atoms are consumed, only bounded connective/clarification prose may
  * remain; an unknown name or bare number cannot borrow a correct core fact. */
 function closeFinancialClaims(text:string,fixture:FinancialReadFixture,empty:boolean) {
-  check(!/\b(?:factatom|invoiceatom|roomatom|statusatom|periodatom|buildingatom)\b/u.test(text),'financial_facts');
+  fact(!/\b(?:factatom|invoiceatom|roomatom|statusatom|periodatom|buildingatom)\b/u.test(text),'atom_marker_forbidden','unsupported');
   const invoices=fixture.roles.invoice?.payload??[],buildings=fixture.roles.pnl?.payload??[],stats=fixture.roles.stats?.payload;
   const revenue=buildings.reduce((sum,r)=>sum+r.revenue,0),expense=buildings.reduce((sum,r)=>sum+r.expense,0);
   const totals=buildings.length?{revenue,expense,net:revenue-expense}:undefined;
@@ -100,19 +137,19 @@ function closeFinancialClaims(text:string,fixture:FinancialReadFixture,empty:boo
     }
     const pattern=new RegExp(`(?<![\\p{L}\\p{N}_])(${Object.keys(labels).sort((a,b)=>b.length-a.length).map(escape).join('|')})\\s*(?:[:：|–—=-]\\s*)?(?:(?:là|đạt|bằng)\\s*)?(-?\\d+(?:[.,]\\d+)*)(?:\\s*(triệu|tr|nghìn|ngàn|k|đồng|vnd|vnđ|₫|đ)(?!\\p{L}))?`,'gu');
     let rest=line.replace(pattern,(_match,label:string,raw:string,unit:string|undefined)=>{
-      const expected=labels[label];check(expected.value!==undefined,'financial_facts');
-      if(expected.count)check(!unit && /^\d+$/.test(raw) && Number(raw)===expected.value,'financial_facts');
+      const expected=labels[label];fact(expected.value!==undefined,'claim_binding','unsupported');
+      if(expected.count)fact(!unit && /^\d+$/.test(raw) && Number(raw)===expected.value,'claim_count',unit?'unit':'mismatch');
       else {
         const actual=unit?amount(raw,unit):Number(raw.replace(/\.(?=\d{3}(?:\D|$))/g,'').replace(',','.'));
-        check(actual===(expected.raw && !unit?expected.value:displayed(expected.value)),'financial_facts');
+        fact(actual===(expected.raw && !unit?expected.value:displayed(expected.value)),'claim_money','mismatch');
       }
       return ' factatom ';
     });
     rest=rest.replace(/(?<![\d.,])(\d+)\s+hóa đơn/gu,(_match,count:string)=>{
       const value=stats && /công nợ|thống kê|tổng số/u.test(line)?stats.total_count:fixture.roles.invoice?invoices.length:stats?.total_count;
-      check(value!==undefined && Number(count)===value,'financial_facts');return ' factatom ';
+      fact(value!==undefined && Number(count)===value,'claim_count','mismatch');return ' factatom ';
     });
-    rest=rest.replace(/\(?hiện 10 đầu\)?/gu,()=>{check(invoices.length>0,'financial_facts');return ' factatom ';});
+    rest=rest.replace(/\(?hiện 10 đầu\)?/gu,()=>{fact(invoices.length>0,'claim_limit','mismatch');return ' factatom ';});
     for(const row of invoices.slice(0,10)) {
       rest=replaceAtom(rest,row.invoice_number??row.id.slice(0,8),'invoiceatom');
       rest=replaceAtom(rest,row.room_name,'roomatom');rest=replaceAtom(rest,row.status,'statusatom');
@@ -135,79 +172,82 @@ function closeFinancialClaims(text:string,fixture:FinancialReadFixture,empty:boo
     // financial labels without a value, result/data assertions and digits are
     // intentionally absent, so unconsumed facts cannot silently survive.
     const connective=new Set('factatom invoiceatom roomatom statusatom periodatom tổng tìm thấy kỳ tháng trạng thái chưa thanh toán thu tiền mặt dồn tích và là có trong này theo hiện tại'.split(' '));
-    check(!/[\d$%€£¥]/u.test(rest) && (rest.match(/[\p{L}\p{N}_]+/gu)??[]).every(word=>connective.has(word)),'financial_facts');
+    fact(!/[\d$%€£¥]/u.test(rest) && (rest.match(/[\p{L}\p{N}_]+/gu)??[]).every(word=>connective.has(word)),'residual_grammar','unsupported',{
+      hasResidualDigits:/\d/u.test(rest),hasResidualCurrency:/[$%€£¥]/u.test(rest),
+      hasResidualWords:(rest.match(/[\p{L}\p{N}_]+/gu)??[]).some(word=>!/^[0-9]+$/u.test(word) && !connective.has(word)),
+    });
   }
 }
 function assertFacts(answer:string,fixture:FinancialReadFixture) {
   const s=normal(answer),empty=fixture.roles.invoice?.payload.length===0 || fixture.roles.stats?.payload.total_count===0;
   const period=empty?'2099-01':'2026-07';
-  check(token(s,period) || token(s,empty?'01/2099':'07/2026'),'financial_facts');
-  for(const month of s.matchAll(/\b\d{4}-\d{2}\b|\b\d{2}\/\d{4}\b/gu))check([period,empty?'01/2099':'07/2026'].includes(month[0]),'financial_facts');
-  check(!/\]\(|\[link:|https?:|\/(?:contracts|invoices|customers)\//u.test(s),'financial_facts');
+  fact(token(s,period) || token(s,empty?'01/2099':'07/2026'),'period_required','missing');
+  for(const month of s.matchAll(/\b\d{4}-\d{2}\b|\b\d{2}\/\d{4}\b/gu))fact([period,empty?'01/2099':'07/2026'].includes(month[0]),'period_conflict','mismatch');
+  fact(!/\]\(|\[link:|https?:|\/(?:contracts|invoices|customers)\//u.test(s),'link_forbidden','unsupported');
   const absence=/(?:không|chưa) (?:tìm thấy|có|còn)[^.\n]*(?:hóa đơn|công nợ|dữ liệu|doanh thu)/u;
   closeFinancialClaims(s,fixture,empty);
   if(fixture.roles.stats)for(const [key,value] of Object.entries(fixture.roles.stats.payload)) {
     const pattern=new RegExp(`\\b${key}\\s*[:：=]\\s*(-?\\d+(?:[.,]\\d+)*)(?:\\s*(triệu|tr|nghìn|ngàn|k|đồng|vnd|vnđ|₫|đ)(?!\\p{L}))?`,'gu');
     for(const m of s.matchAll(pattern)) {
-      if(key==='total_count')check(!m[2] && /^\d+$/.test(m[1]) && Number(m[1])===value,'financial_facts');
+      if(key==='total_count')fact(!m[2] && /^\d+$/.test(m[1]) && Number(m[1])===value,'stats_raw',m[2]?'unit':'mismatch');
       else {
         const parsed=m[2]?amount(m[1],m[2]):Number(m[1].replace(/\.(?=\d{3}(?:\D|$))/g,'').replace(',','.'));
-        check(parsed===(m[2]?displayed(value):value),'financial_facts');
+        fact(parsed===(m[2]?displayed(value):value),'stats_raw','mismatch');
       }
     }
   }
   if(empty) {
-    check(absence.test(s),'financial_facts');
-    if(fixture.roles.invoice)check(/partial|thanh toán một phần|thu một phần/u.test(s),'financial_facts');
+    fact(absence.test(s),'absence_required','missing');
+    if(fixture.roles.invoice)fact(/partial|thanh toán một phần|thu một phần/u.test(s),'partial_scope_required','missing');
     if(fixture.roles.stats) {
-      countFact(s,0);moneyFact(s,'tổng phải thu|total_amount',0);moneyFact(s,'đã trả|đã thu|total_paid',0);moneyFact(s,'còn nợ|công nợ|total_remaining',0);
-      check(/(?:không|chưa) (?:có|còn) (?:công )?nợ/u.test(s),'financial_facts');
+      countFact(s,0,'empty_count');moneyFact(s,'tổng phải thu|total_amount',0,'empty_due');moneyFact(s,'đã trả|đã thu|total_paid',0,'empty_paid');moneyFact(s,'còn nợ|công nợ|total_remaining',0,'empty_remaining');
+      fact(/(?:không|chưa) (?:có|còn) (?:công )?nợ/u.test(s),'empty_debt_absence','missing');
     }
     const rest=s.split(period).join('').split(empty?'01/2099':'07/2026').join('');
-    check(!/[1-9]/u.test(rest) && !/phòng|tòa|toà|hợp đồng|mã hóa đơn/u.test(rest),'financial_facts');
-    for(const claim of rest.matchAll(/(?:có|tìm thấy|còn)\s+(?:hóa đơn|công nợ|nợ)/gu))check(/(?:không|chưa)\s*$/.test(rest.slice(0,claim.index)) || /^\s*:\s*0\s*đ/u.test(rest.slice(claim.index!+claim[0].length)),'financial_facts');
+    fact(!/[1-9]/u.test(rest) && !/phòng|tòa|toà|hợp đồng|mã hóa đơn/u.test(rest),/[1-9]/u.test(rest)?'empty_nonzero':'empty_entity',/[1-9]/u.test(rest)?'mismatch':'unsupported');
+    for(const claim of rest.matchAll(/(?:có|tìm thấy|còn)\s+(?:hóa đơn|công nợ|nợ)/gu))fact(/(?:không|chưa)\s*$/.test(rest.slice(0,claim.index)) || /^\s*:\s*0\s*đ/u.test(rest.slice(claim.index!+claim[0].length)),'empty_affirmative','mismatch');
     return;
   }
-  check(!absence.test(s),'financial_facts');
+  fact(!absence.test(s),'positive_absence','mismatch');
   const lines=s.split('\n');
   if(fixture.roles.invoice) {
     const rows=fixture.roles.invoice.payload;
     // Stats count can differ from unpaid list count: isolate the list header.
     const header=lines.find(line=>/(?:tìm thấy|danh sách|chưa thu|chưa thanh toán|hiện)/u.test(line) && /\d+\s+hóa đơn/u.test(line));
-    check(header,'financial_facts');countFact(header,rows.length);
-    if(rows.length>10)check(/10\s*(?:đầu|hóa đơn đầu)|(?:đầu tiên|hiển thị|hiện)\s*10/u.test(s) && !/đầy đủ|toàn bộ danh sách/u.test(s),'financial_facts');
+    fact(header,'invoice_header','missing');countFact(header,rows.length);
+    if(rows.length>10)fact(/10\s*(?:đầu|hóa đơn đầu)|(?:đầu tiên|hiển thị|hiện)\s*10/u.test(s) && !/đầy đủ|toàn bộ danh sách/u.test(s),'invoice_limit','mismatch');
     for(const row of rows.slice(0,10)) {
       const code=row.invoice_number??row.id.slice(0,8),matching=lines.filter(line=>token(line,code));
-      check(matching.length>0,'financial_facts');
+      fact(matching.length>0,'invoice_row','missing');
       for(const line of matching) {
-        check(!/không|nếu|giả sử/u.test(line),'financial_facts');
-        check([row.room_name,row.building_name,row.billing_month].every(v=>token(line,v)),'financial_facts');
+        fact(!/không|nếu|giả sử/u.test(line),'invoice_negation','mismatch');
+        fact([row.room_name,row.building_name,row.billing_month].every(v=>token(line,v)),'invoice_identity','mismatch');
         moneyFact(line,'tổng(?: tiền)?|số tiền',row.total_amount);
-        check(token(line,row.status) || /chưa (?:thu|thanh toán)/u.test(line),'financial_facts');
-        check(!/\bpaid\b|partial|đã (?:thu|trả|thanh toán)|hủy|huỷ/u.test(line),'financial_facts');
+        fact(token(line,row.status) || /chưa (?:thu|thanh toán)/u.test(line),'invoice_status','mismatch');
+        fact(!/\bpaid\b|partial|đã (?:thu|trả|thanh toán)|hủy|huỷ/u.test(line),'invoice_status_conflict','mismatch');
       }
     }
-    for(const id of s.matchAll(/(?:hđ|hóa đơn)\s+([\p{L}\p{N}][\p{L}\p{N}_/-]*\d[\p{L}\p{N}_/-]*)/gu))check(rows.slice(0,10).some(r=>normal(r.invoice_number??r.id.slice(0,8))===id[1]),'financial_facts');
+    for(const id of s.matchAll(/(?:hđ|hóa đơn)\s+([\p{L}\p{N}][\p{L}\p{N}_/-]*\d[\p{L}\p{N}_/-]*)/gu))fact(rows.slice(0,10).some(r=>normal(r.invoice_number??r.id.slice(0,8))===id[1]),'invoice_unknown','unsupported');
   }
   if(fixture.roles.pnl) {
     const {request,payload}=fixture.roles.pnl,basis=request.args.p_accrual?'dồn tích':'tiền mặt';
-    check(s.includes(basis) && !s.includes(request.args.p_accrual?'tiền mặt':'dồn tích'),'financial_facts');
-    for(const line of lines.filter(line=>line.includes(basis)))check(!/không|nếu|giả sử/u.test(line),'financial_facts');
-    check(!/tiền (?:đã )?thu được|tiền thực thu|đã thu tiền mặt/u.test(s),'financial_facts');
+    fact(s.includes(basis) && !s.includes(request.args.p_accrual?'tiền mặt':'dồn tích'),'pnl_basis','mismatch');
+    for(const line of lines.filter(line=>line.includes(basis)))fact(!/không|nếu|giả sử/u.test(line),'pnl_basis_negation','mismatch');
+    fact(!/tiền (?:đã )?thu được|tiền thực thu|đã thu tiền mặt/u.test(s),'pnl_cash_claim','mismatch');
     const totals=lines.filter(line=>/tổng.*doanh thu/u.test(line));
-    check(totals.length>0,'financial_facts');
+    fact(totals.length>0,'pnl_totals','missing');
     const rev=payload.reduce((sum,r)=>sum+r.revenue,0),exp=payload.reduce((sum,r)=>sum+r.expense,0);
     for(const line of totals){moneyFact(line,'doanh thu',rev);moneyFact(line,'chi phí',exp);moneyFact(line,'lợi nhuận',rev-exp);}
     for(const row of payload) {
       const matching=lines.filter(line=>token(line,row.building_name) && /(?:thu|doanh thu)\s*[:：|]?\s*\d/u.test(line) && /(?:chi|chi phí)\s*[:：|]?\s*\d/u.test(line) && /(?:ròng|lợi nhuận)\s*[:：|]?\s*-?\d/u.test(line));
-      check(matching.length>0,'financial_facts');
+      fact(matching.length>0,'pnl_row','missing');
       for(const line of matching){moneyFact(line,'doanh thu|thu',row.revenue);moneyFact(line,'chi phí|chi',row.expense);moneyFact(line,'lợi nhuận|ròng',row.net);}
     }
   }
   if(fixture.roles.stats) {
     const stats=fixture.roles.stats.payload;
     const head=lines.find(line=>/(?:công nợ|thống kê)/u.test(line) && /\d+\s+hóa đơn/u.test(line));
-    check(head,'financial_facts');countFact(head,stats.total_count);
+    fact(head,'stats_header','missing');countFact(head,stats.total_count);
     moneyFact(s,'tổng phải thu|total_amount',stats.total_amount);moneyFact(s,'đã trả|đã thu|total_paid',stats.total_paid);moneyFact(s,'còn nợ|tổng công nợ|total_remaining',stats.total_remaining);
   }
 }
