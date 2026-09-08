@@ -56,9 +56,14 @@ BEGIN/ROLLBACK; bốn phiếu thu qua RPC canonical dưới role authenticated.
 - Mutation bỏ UPDATE class: test đỏ vì không khôi phục cọc; nguồn migration không bị mutate.
 - `node --check` harness và `git diff --check`: pass.
 
-Không apply production trong tác vụ này. Root phải review và dùng lane có backup.
+Đã apply production qua lane có backup đầy đủ519 TABLE DATA entries; biên nhận ở
+`docs/generated/schema-change-evidence/20260908052713_repair_invoice_deposit_classification_history.json`.
+Verifier `--after` xanh:4audit/11.3m khôi phục,23.56m cash giữ nguyên,5014.2m/3053.6m,
+5054.926m còn thiếu74k. SettlementCOMPLETED và phiếu hoàn1.8915m giữ nguyên, đúng1exceptionOPEN.
+Kết quả đã lọc PII: `2026-09-08-deposit-production-verification.json`.
 Schema-only restore được no-op chỉ khi organizations, contracts, invoices, payments và
 income_expenses đều rỗng. Database có dữ liệu thiếu một cohort vẫn bị từ chối (DEMO negative
 đã kiểm). Restore drill schema-only thật do CI nhánh tích hợp xác minh.
 Graph freshness high-risk tại worktree: FAIL GitNexus MISSING; graph impact không có index;
 không đọc graph cũ để kết luận. Gate graph ở nhánh tích hợp vẫn là yêu cầu trước phát hành.
+Nhánh tích hợp đã reindex và chạy gate high-risk xanh; graph không thay thế SQL/harness.

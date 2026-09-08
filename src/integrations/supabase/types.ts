@@ -20352,6 +20352,16 @@ export type Database = {
         }[]
       }
       get_income_expense_stats_v2: { Args: { p_filters?: Json }; Returns: Json }
+      get_invoice_rounding_report_v1: {
+        Args: {
+          p_billing_month: string
+          p_building_id?: string
+          p_collector_id?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: Json
+      }
       get_invoice_statistics_v2: {
         Args: {
           p_billing_month?: string

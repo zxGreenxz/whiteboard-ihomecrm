@@ -59,11 +59,11 @@ WHERE invoice_id = fixture_invoice_id AND description = 'Tiền cọc';
 
 **Input:** audit `2026-09-08-commission-deposit-classification.json` và probe. **Output:** đúng classification invoice/payment-voucher items, các tổng dẫn xuất cọc/KQKD và ghi chú hoa hồng; cash/posting tổng/số phiếu không đổi. Migration repeat-safe và ràng buộc ID + org + before amounts/classes + audit event.
 
-- [ ] Đọc lại cohort hiện tại và dòng ledger/đóng kỳ/thanh lý. Cohort đã biết: INV-2026-00802 (501/102LVT2.2m),00823 (305/80DS3 1.6m),00622 (102/102LVT3.9m, đã thanh lý),00598 (203/111PVC3.6m). Không mở rộng chỉ dựa tên.
-- [ ] Thiết kế điều chỉnh bằng cơ chế lifecycle/audit hiện có, không tắt trigger chung. Nếu cần helper one-off, scope exactcohort + actor và rút execute public/anon; không mở đường sửa tiền tuỳ ý.
-- [ ] Khôi phục cọc dựa audit trước khi mất class, phân bổ lại phần PNL/DEPOSIT của phiếu tương ứng; bảo toàn gross/net/change, trạng thái, ngày và sổ. Đối chiếu nghĩa vụ thanh lý/refund trước khi recompute hợp đồng đã thanh lý.
-- [ ] DEMO clone cấu trúc tối thiểu từng loại; chạy trước/sau/repeat, assert cash không đổi, tổng hạng mục bằng phiếu, không trùng receipt/deposit, settlement/refund không đổi ngoài reclassification; rollback mọi fixture.
-- [ ] Khóa/preconditions trước backfill, ghi bằng chứng before/after bền vững, kiểm migration chạy lại không đổi. Review độc lập trước apply thật.
+- [x] Đọc lại cohort hiện tại và dòng ledger/đóng kỳ/thanh lý. Cohort đã biết: INV-2026-00802 (501/102LVT2.2m),00823 (305/80DS3 1.6m),00622 (102/102LVT3.9m, đã thanh lý),00598 (203/111PVC3.6m). Không mở rộng chỉ dựa tên.
+- [x] Thiết kế điều chỉnh bằng cơ chế lifecycle/audit hiện có, không tắt trigger chung. Nếu cần helper one-off, scope exactcohort + actor và rút execute public/anon; không mở đường sửa tiền tuỳ ý.
+- [x] Khôi phục cọc dựa audit trước khi mất class, phân bổ lại phần PNL/DEPOSIT của phiếu tương ứng; bảo toàn gross/net/change, trạng thái, ngày và sổ. Đối chiếu nghĩa vụ thanh lý/refund trước khi recompute hợp đồng đã thanh lý.
+- [x] DEMO clone cấu trúc tối thiểu từng loại; chạy trước/sau/repeat, assert cash không đổi, tổng hạng mục bằng phiếu, không trùng receipt/deposit, settlement/refund không đổi ngoài reclassification; rollback mọi fixture.
+- [x] Khóa/preconditions trước backfill, ghi bằng chứng before/after bền vững, kiểm migration chạy lại không đổi. Review độc lập trước apply thật.
 
 ```ts
 expect(after.cashByAccount).toEqual(before.cashByAccount);
@@ -75,18 +75,18 @@ expect(after.deposit505).toBe(4926000);
 
 ## Task 4 — Tích hợp và review
 
-- [ ] Cherry-pick từng deliverable đã review vào PR55; cập nhật docs và tên PR theo phạm vi cuối, giữ lịch sử review.
-- [ ] Rebase origin/main; conflict máy sinh lấy main rồi generate; chạy 119 rounding tests cùng regression cọc, strict/noUnchecked, ESLint ratchet, build và bundle.
-- [ ] Kiểm tương tác Thu tiền/Hoá đơn và sửa ghi chú trong browser headless; test quyền/billing period/collector report. Role thật DEMO, không fixture trên org thật.
-- [ ] Chạy graph freshness/impact/detect-changes, migration/provenance/unknown-review, catalog guards, reconcile-money v1/v2 và cross-review SQL/frontend/history riêng.
-- [ ] Đọc CI PR55, sửa gate đỏ thuộc thay đổi; điều tra catalog drift có bằng chứng thay vì ghi đè snapshot cho xanh.
+- [x] Cherry-pick từng deliverable đã review vào PR55; cập nhật docs và tên PR theo phạm vi cuối, giữ lịch sử review.
+- [x] Rebase origin/main; conflict máy sinh lấy main rồi generate; chạy 119 rounding tests cùng regression cọc, strict/noUnchecked, ESLint ratchet, build và bundle.
+- [x] Kiểm tương tác Thu tiền/Hoá đơn và sửa ghi chú trong browser headless; test quyền/billing period/collector report. Role thật DEMO, không fixture trên org thật.
+- [x] Chạy graph freshness/impact/detect-changes, migration/provenance/unknown-review, catalog guards, reconcile-money v1/v2 và cross-review SQL/frontend/history riêng.
+- [x] Đọc CI PR55, sửa gate đỏ thuộc thay đổi; điều tra catalog drift có bằng chứng thay vì ghi đè snapshot cho xanh.
 
 ## Task 5 — Triển khai và xác minh production
 
-- [ ] Chốt reviewed SHA sạch và backup lane; kiểm project/org/environment đúng. Kiểm bản dump đọc được, đủ dữ liệu và có manifest/digest. Nếu guard backup lỗi, điều tra nguyên nhân, không bỏ qua.
-- [ ] Apply lần lượt migration chống mất cọc + nguồn tính cọc, tiền thối/báo cáo, rồi history repair qua `npm run migrate:forward <file> --apply`; mỗi lần ghi evidence và pre/post catalog.
-- [ ] Sau apply, regenerate types/provenance/surfaces/catalog/unknown-review cho đúng live; các generated changes commit và gate lại.
-- [ ] Kiểm RPC qua HTTP và hai kết nối DEMO cùng invoice: chỉ một lần thu được tính, stale/retry trả kết quả đúng; cleanup fixtures.
+- [x] Chốt reviewed SHA sạch và backup lane; kiểm project/org/environment đúng. Kiểm bản dump đọc được, đủ dữ liệu và có manifest/digest. Nếu guard backup lỗi, điều tra nguyên nhân, không bỏ qua.
+- [x] Apply lần lượt migration chống mất cọc + nguồn tính cọc, tiền thối/báo cáo, rồi history repair qua `npm run migrate:forward <file> --apply`; mỗi lần ghi evidence và pre/post catalog.
+- [x] Sau apply, regenerate types/provenance/surfaces/catalog/unknown-review cho đúng live; các generated changes commit và gate lại.
+- [x] Kiểm RPC qua HTTP và hai kết nối DEMO cùng invoice: chỉ một lần thu được tính, stale/retry trả kết quả đúng; cleanup fixtures.
 - [ ] Push main theo authorization hiện tại, chờ đầy đủ gate CI/preview xanh rồi promote production đúng SHA. Không tính skipped/continue-on-error là pass.
 - [ ] Xác minh domain production phục vụ SHA mới; truy vấn READ ONLY:5014.2m/3053.6m/5054.926m, cảnh báo cọc đúng, các điều kiện khác giữ nguyên; đối chiếu cash/KQKD trước/sau, report bỏ qua và hoàn tác DEMO.
 - [ ] Báo người dùng mã phát hành, số chứng từ đã điều chỉnh, vị trí báo cáo và kết quả đối chiếu. Nếu còn blocker thực tế, báo chính xác trạng thái đã/chưa triển khai thay vì tuyên bố hoàn tất.
@@ -97,3 +97,5 @@ expect(after.deposit505).toBe(4926000);
 - 08/09/2026: user selects GPT-6 Astra Medium; implementation agents handed off existing worktrees to fresh agents explicitly configured with that model/effort. Backup preflight full519 TABLE DATA entries,28.9MB, no excludeddata, manifest outsidegit. Rounding restore-drill exposed omitted writerACL reset; reproducedRED under rollback and patched explicitREVOKE/GRANT, fullrollbackmatrixGREEN.
 
 - 08/09/2026: Tasks1–2 integrated and independently reviewed (054f8a10/899795bf);133 tests across11 suites green. Full static+strict42 gates green, integrated static41 green; source writer repeated DEMO rollback and both mutations green/red as required. Catalog matches current main rollout117dd951, no unexplained drift. Production remains unchanged pending history review and rollout.
+
+- 08/09/2026: All3migrations permanently applied through forwardlane, each freshbackup519TABLEDATA. AfterverifierPASS4audit/11.3m; affectedrealcash23.56m unchanged;5014.2m/3053.6m/5054.926m. HTTPsame/different-key+reversalPASS; realDEMObrowser notes-edit and5m/change200k/waiver5kPASS, cleanfixture/archivedcashbookledger0. PRsource7e878997allgatesgreen (includingrestore/timezones); generatedtypes/surfaces and finalmainrelease remain.

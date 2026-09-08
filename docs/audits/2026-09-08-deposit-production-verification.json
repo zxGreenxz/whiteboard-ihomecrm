@@ -1,0 +1,110 @@
+{
+  "mode": "after",
+  "invoices": [
+    {
+      "pnl": 3850000,
+      "kqkd": 3850000,
+      "class": "DEPOSIT",
+      "total": 7450000,
+      "deposit": 3600000,
+      "invoice": "INV-2026-00598",
+      "classification_ok": true,
+      "snapshot_invariants_ok": true
+    },
+    {
+      "pnl": 0,
+      "kqkd": 0,
+      "class": "DEPOSIT",
+      "total": 3900000,
+      "deposit": 3900000,
+      "invoice": "INV-2026-00622",
+      "classification_ok": true,
+      "snapshot_invariants_ok": true
+    },
+    {
+      "pnl": 5290000,
+      "kqkd": 5290000,
+      "class": "DEPOSIT",
+      "total": 7490000,
+      "deposit": 2200000,
+      "invoice": "INV-2026-00802",
+      "classification_ok": true,
+      "snapshot_invariants_ok": true
+    },
+    {
+      "pnl": 3120000,
+      "kqkd": 3120000,
+      "class": "DEPOSIT",
+      "total": 4720000,
+      "deposit": 1600000,
+      "invoice": "INV-2026-00823",
+      "classification_ok": true,
+      "snapshot_invariants_ok": true
+    }
+  ],
+  "contracts": [
+    {
+      "room": "501",
+      "deposit": 4200000,
+      "net_held": 4200000,
+      "shortfall": 0,
+      "expected_ok": true,
+      "seven_days_ok": true,
+      "deposit_enough": true,
+      "seven_days_date": "2026-09-07"
+    },
+    {
+      "room": "305",
+      "deposit": 3600000,
+      "net_held": 3600000,
+      "shortfall": 0,
+      "expected_ok": true,
+      "seven_days_ok": false,
+      "deposit_enough": true,
+      "seven_days_date": "2026-09-12"
+    },
+    {
+      "room": "505",
+      "deposit": 4926000,
+      "net_held": 4926000,
+      "shortfall": 74000,
+      "expected_ok": true,
+      "seven_days_ok": false,
+      "deposit_enough": false,
+      "seven_days_date": "2026-09-14"
+    }
+  ],
+  "settlement": {
+    "refund": -58500,
+    "status": "COMPLETED",
+    "rent_refund": 1950000,
+    "pending_posting": "UNPOSTED",
+    "pending_approval": "UNAPPROVED",
+    "open_exception_count": 1,
+    "pending_refund_amount": 1891500
+  },
+  "audit_count": 4,
+  "affected_real_cash": [
+    {
+      "now": 11390000,
+      "before": 11390000,
+      "unchanged": true,
+      "account_id": "c9df0934-c934-4015-a913-010c6a27fb8b"
+    },
+    {
+      "now": 7450000,
+      "before": 7450000,
+      "unchanged": true,
+      "account_id": "5f31529d-f031-4510-8409-bbd9e29f1c4b"
+    },
+    {
+      "now": 4720000,
+      "before": 4720000,
+      "unchanged": true,
+      "account_id": "dc45114c-734f-45aa-9946-bed05e0c9051"
+    }
+  ],
+  "audit_deposit_total": 11300000,
+  "verifiedAt": "2026-09-08T06:05:44.2679511Z",
+  "reviewedRelease": "7e8789972f36f033a7b07552d360df26d6594f44"
+}

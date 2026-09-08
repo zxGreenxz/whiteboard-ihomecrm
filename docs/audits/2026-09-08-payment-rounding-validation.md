@@ -39,15 +39,20 @@ Báo cáo Khoản bỏ qua lọc kỳ hoá đơn/người thu/toà, tổng hợp
 
 ## Triển khai và khoảng trống
 
-Chưa apply migration lên production, chưa push main/promote. Migration mới
-được ghi rõ là chưa apply trong migration-unknown-review.json; generated types
-lấy từ catalog hiện hành. RPC báo cáo mới dùng boundary typed + Zod.
+Migration đã apply production qua `migrate:forward` với bản dump đầy đủ 519 TABLE DATA
+entries. Evidence `docs/generated/schema-change-evidence/20260908041231_invoice_actual_change_rounding_report.json`.
+Live writer hash và report ACL khớp bản review; canonical types có RPC mới.
 
-Đã mở draft PR #55; chủ dự án yêu cầu hoàn tất và triển khai production. Sau review
-cần lane `migrate:forward` có backup, sinh lại types/provenance/catalog, kiểm RPC
-bằng HTTP và kiểm đồng thời hai kết nối trên DEMO. Harness rollback đã kiểm
-stale-paid và idempotency, nhưng không chứng minh cạnh tranh hai kết nối với
-hàm chưa triển khai vì DDL chưa commit không hiển thị sang kết nối thứ hai.
+HTTP bằng JWT DEMO: cùng key trả hai kết quả giống nhau nhưng chỉ một collection;
+khác key chỉ một yêu cầu thắng. Mỗi ca đúng một payment, thực thu3m/thối200k/bỏ qua8k,
+đúng một dòng báo cáo. Đảo qua HTTP loại dòng báo cáo và đưa ledger về0; fixture dọn sạch.
+Harness cần Content-Profile/Accept-Profile public để khớp Supabase client.
+
+Browser headless dùng frontend tích hợp và backend thật: khách đưa5m/thối200k trên
+hoá đơn4.805m → RPC200, paid_amount4.8m, rounding5k, statusPAID. Không lỗi console.
+Đảo qua canonical RPC; invoice fixture dọn sạch, sổ fixture archive theo lifecycle và
+ledger net0. Đây là app UI + backend thật trên DEMO, bổ sung cho component fixture ở trên.
+Việc phát hành frontend được xác minh riêng bằng CI/main và build-sha trên domain production.
 
 Graph freshness high-risk: GitNexus trong ngưỡng; UA cũ được cảnh báo. Graph
 detect-changes trả rỗng trên chỉ mục trước các file mới, không được coi là chứng
@@ -63,3 +68,8 @@ Restore-drill PR phát hiện ACL rộng từ baseline `--no-acl`. Bổ sung thu
 của `record_invoice_collection_v5` đúng hợp đồng cũ (chỉ authenticated);
 harness `--repeat-migration --simulate-restore-acl` đỏ trước sửa, xanh sau sửa,
 tất cả trong transaction DEMO rollback.
+
+Sau cả ba migration, đối chiếu chỉ đọc tiếp tục xanh:1.035 phiếu, SQL=JWT/RLS=phân trang
+5.058.848.013đ;20 sổ thực khớp,3.362 posting lines khớp2.959.174.007đ. Đây là số đo
+tại thời điểm kiểm, không khẳng định sổ sách đang vận hành đứng yên. Riêng bốn phiếu
+điều chỉnh giữ nguyên23.560.000đ theo từng snapshot trước/sau.
