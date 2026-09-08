@@ -28,6 +28,7 @@ import {
   KHOA_ROLLOUT_CONG_TO,
   KHOA_ROLLOUT_DANH_SACH_SALE,
   KHOA_ROLLOUT_DIEU_HUONG,
+  KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
   KHOA_ROLLOUT_THONG_BAO,
   type CopilotAvailabilitySnapshot,
 } from '../featureFlags';
@@ -539,6 +540,31 @@ type CopilotSaleListingDirectoryPayload = {
   }>;
 };
 
+type CopilotMemberRoleDirectoryPayload = {
+  gioi_han?: number;
+  so_luong?: number;
+  tong_hop?: {
+    thanh_vien?: number;
+    dang_hoat_dong?: number;
+    chua_gan_vai_tro?: number;
+  };
+  thanh_vien?: Array<{
+    ma_thanh_vien: string;
+    loai: string;
+    trang_thai: string;
+    vai_tro: string[];
+    so_quyen_hieu_luc: number;
+  }>;
+  vai_tro?: Array<{
+    ten: string;
+    he_thong: boolean;
+    trang_thai: string;
+    so_thanh_vien: number;
+    so_quyen_cho_phep: number;
+    so_quyen_cam: number;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -582,6 +608,34 @@ const MA_LOAI_DANH_SACH_SALE = {
 const NHAN_TRANG_THAI_SALE: Record<string, string> = {
   AVAILABLE: 'trống ngay',
   PASS: 'khách nhờ sale',
+};
+
+const MA_TRANG_THAI_THANH_VIEN = {
+  dang_hoat_dong: 'ACTIVE',
+  duoc_moi: 'INVITED',
+  tam_dung: 'SUSPENDED',
+} as const;
+
+const MA_LOAI_THANH_VIEN = {
+  chu_cong_ty: 'OWNER',
+  nhan_vien: 'STAFF',
+  co_dong: 'SHAREHOLDER',
+  doi_tac: 'PARTNER',
+  dich_vu: 'SERVICE',
+} as const;
+
+const NHAN_TRANG_THAI_THANH_VIEN: Record<string, string> = {
+  ACTIVE: 'đang hoạt động',
+  INVITED: 'được mời',
+  SUSPENDED: 'tạm dừng',
+};
+
+const NHAN_LOAI_THANH_VIEN: Record<string, string> = {
+  OWNER: 'chủ công ty',
+  STAFF: 'nhân viên',
+  SHAREHOLDER: 'cổ đông',
+  PARTNER: 'đối tác',
+  SERVICE: 'dịch vụ',
 };
 
 /** Typed boundary for the customer/contract RPCs before generated types are refreshed. */
@@ -748,6 +802,57 @@ export function buildRegistryDefinitions(): DomainTool[] {
           return `- ${ma} — ${room.toa_nha} · ${trangThai} · thuê ${formatVND(room.gia_thue)} · cọc ${formatVND(room.tien_coc)}${dacDiem ? ` · ${dacDiem}` : ''}${ngayTrong}`;
         });
         return `Có ${rows.length} phòng sale (tối đa ${data?.gioi_han ?? args.so_luong} dòng mỗi lần hỏi):\n${lines.join('\n')}\n[link: /sale-phong]`;
+      },
+    }),
+
+    dt({
+      name: 'danh_sach_thanh_vien_vai_tro',
+      description:
+        'Liệt kê trạng thái thành viên và mẫu vai trò của công ty đang chọn. Thành viên được hiển thị bằng mã ẩn danh cùng loại, trạng thái, vai trò và số quyền hiệu lực; không đọc tên, email hoặc danh sách quyền chi tiết.',
+      inputSchema: z.object({
+        trang_thai: z.enum(['dang_hoat_dong', 'duoc_moi', 'tam_dung']).optional().describe('Lọc trạng thái thành viên'),
+        loai_thanh_vien: z.enum(['chu_cong_ty', 'nhan_vien', 'co_dong', 'doi_tac', 'dich_vu']).optional().describe('Lọc loại thành viên'),
+        chi_chua_gan_vai_tro: z.boolean().default(false).describe('Chỉ lấy thành viên chưa có vai trò hiệu lực'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số thành viên và vai trò tối đa'),
+      }),
+      requiredPermission: { module: 'users', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'danh_sach_thanh_vien_vai_tro');
+        const { data, error } = await callCopilotRpc<
+          {
+            p_organization_id: string;
+            p_member_status: string | null;
+            p_member_type: string | null;
+            p_only_without_roles: boolean;
+            p_limit: number;
+          },
+          CopilotMemberRoleDirectoryPayload
+        >('copilot_member_role_directory_v1', {
+          p_organization_id: orgId,
+          p_member_status: args.trang_thai ? MA_TRANG_THAI_THANH_VIEN[args.trang_thai] : null,
+          p_member_type: args.loai_thanh_vien ? MA_LOAI_THANH_VIEN[args.loai_thanh_vien] : null,
+          p_only_without_roles: args.chi_chua_gan_vai_tro,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải thành viên và vai trò: ' + error.message);
+        const members = Array.isArray(data?.thanh_vien) ? data.thanh_vien : [];
+        const roles = Array.isArray(data?.vai_tro) ? data.vai_tro : [];
+        if (!members.length && !roles.length) return 'Không có thành viên hoặc vai trò nào trong phạm vi bạn được xem.';
+        const memberLines = members.map((member) => {
+          const loai = NHAN_LOAI_THANH_VIEN[member.loai] ?? member.loai;
+          const trangThai = NHAN_TRANG_THAI_THANH_VIEN[member.trang_thai] ?? member.trang_thai;
+          const rolesText = member.vai_tro.length ? member.vai_tro.join(', ') : 'chưa gán vai trò';
+          return `- ${member.ma_thanh_vien} — ${loai}, ${trangThai} — ${rolesText} — ${member.so_quyen_hieu_luc} quyền hiệu lực`;
+        });
+        const roleLines = roles.map((role) =>
+          `- ${role.ten}${role.he_thong ? ' (hệ thống)' : ''} — ${role.so_thanh_vien} thành viên · ${role.so_quyen_cho_phep} quyền cho phép${role.so_quyen_cam ? ` · ${role.so_quyen_cam} quyền cấm` : ''}`,
+        );
+        const summary = data?.tong_hop;
+        const head = summary
+          ? `Tổ chức có ${summary.thanh_vien ?? 0} thành viên, ${summary.dang_hoat_dong ?? 0} đang hoạt động, ${summary.chua_gan_vai_tro ?? 0} chưa gán vai trò.`
+          : `Hiển thị ${members.length} thành viên.`;
+        return `${head}\n\nThành viên:\n${memberLines.join('\n') || '- Không có thành viên khớp bộ lọc.'}\n\nMẫu vai trò:\n${roleLines.join('\n') || '- Chưa có vai trò nào.'}\n[link: /settings/members]`;
       },
     }),
 

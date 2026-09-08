@@ -12,6 +12,7 @@ const {
   KHOA_ROLLOUT_KHU_VUC,
   KHOA_ROLLOUT_CONG_TO,
   KHOA_ROLLOUT_DANH_SACH_SALE,
+  KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
 } = await import('../featureFlags');
 import type { PermissionsMap } from '@/lib/permissions';
 
@@ -267,6 +268,78 @@ describe('danh_sach_phong_sale - server RPC boundary', () => {
     expect(tool('danh_sach_phong_sale').rolloutKey).toBe(KHOA_ROLLOUT_DANH_SACH_SALE);
     expect(tool('danh_sach_phong_sale').requiredPermission).toEqual({ module: 'sale_phong', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_DANH_SACH_SALE)).toBe(true);
+  });
+});
+
+describe('danh_sach_thanh_vien_vai_tro - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the selected-organization member-role RPC with bounded non-PII filters', async () => {
+    rpc.mockResolvedValue({ data: { gioi_han: 20, so_luong: 0, thanh_vien: [], vai_tro: [] }, error: null });
+    await tool('danh_sach_thanh_vien_vai_tro').execute(
+      { trang_thai: 'dang_hoat_dong', loai_thanh_vien: 'nhan_vien', chi_chua_gan_vai_tro: true, so_luong: 20 },
+      ctx,
+    );
+    expect(rpc).toHaveBeenCalledWith('copilot_member_role_directory_v1', {
+      p_organization_id: ORG,
+      p_member_status: 'ACTIVE',
+      p_member_type: 'STAFF',
+      p_only_without_roles: true,
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats the redacted member-role state and never leaks names, email or permission keys', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        so_luong: 1,
+        tong_hop: { thanh_vien: 4, dang_hoat_dong: 3, chua_gan_vai_tro: 1 },
+        thanh_vien: [
+          {
+            ma_thanh_vien: 'TV-A1B2C3D4', loai: 'STAFF', trang_thai: 'ACTIVE',
+            vai_tro: ['Quản lý toà'], so_quyen_hieu_luc: 12,
+            email: 'private@example.com', full_name: 'Nguyễn Bí Mật', permission_key: 'users.edit',
+          },
+        ],
+        vai_tro: [
+          {
+            ten: 'Quản lý toà', he_thong: false, trang_thai: 'ACTIVE',
+            so_thanh_vien: 2, so_quyen_cho_phep: 12, so_quyen_cam: 1,
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('danh_sach_thanh_vien_vai_tro').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('TV-A1B2C3D4');
+    expect(result).toContain('nhân viên');
+    expect(result).toContain('đang hoạt động');
+    expect(result).toContain('Quản lý toà');
+    expect(result).toContain('12 quyền hiệu lực');
+    expect(result).toContain('/settings/members');
+    expect(result).not.toContain('private@example.com');
+    expect(result).not.toContain('Nguyễn Bí Mật');
+    expect(result).not.toContain('users.edit');
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({ data: { gioi_han: 20, so_luong: 0, thanh_vien: [], vai_tro: [] }, error: null });
+    await expect(tool('danh_sach_thanh_vien_vai_tro').execute({ so_luong: 20 }, ctx)).resolves.toMatch(
+      /không có thành viên/i,
+    );
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('danh_sach_thanh_vien_vai_tro').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses the dedicated member-role rollout key and users.view permission', () => {
+    expect(tool('danh_sach_thanh_vien_vai_tro').rolloutKey).toBe(KHOA_ROLLOUT_THANH_VIEN_VAI_TRO);
+    expect(tool('danh_sach_thanh_vien_vai_tro').requiredPermission).toEqual({ module: 'users', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_THANH_VIEN_VAI_TRO)).toBe(true);
   });
 });
 

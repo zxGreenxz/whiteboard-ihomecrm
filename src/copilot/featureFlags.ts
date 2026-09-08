@@ -58,6 +58,7 @@ export const KHOA_ROLLOUT_KHU_VUC = 'copilot.areas.directory';
 export const KHOA_ROLLOUT_CONG_TO = 'copilot.meters.directory';
 export const KHOA_ROLLOUT_THONG_BAO = 'copilot.notifications.feed';
 export const KHOA_ROLLOUT_DANH_SACH_SALE = 'copilot.sale-listings.directory';
+export const KHOA_ROLLOUT_THANH_VIEN_VAI_TRO = 'copilot.members-roles.directory';
 
 /** Ba contract trên, kèm nhãn tiếng Việt cho trang admin. */
 export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = [
@@ -79,6 +80,11 @@ export const COPILOT_ROLLOUT_DOC_RIENG: readonly CopilotRolloutContract[] = [
     scope: 'page',
     contractId: KHOA_ROLLOUT_DANH_SACH_SALE,
     label: 'Danh sách phòng sale và phòng pass (Copilot đọc)',
+  },
+  {
+    scope: 'page',
+    contractId: KHOA_ROLLOUT_THANH_VIEN_VAI_TRO,
+    label: 'Danh sách thành viên và mẫu vai trò (Copilot đọc)',
   },
 ];
 
