@@ -287,6 +287,13 @@ jobs:
           COPILOT_G3_REVIEWED_SOURCE_SHA: ${{ vars.COPILOT_G3_REVIEWED_SOURCE_SHA }}
           COPILOT_G3_RECONCILIATION_JSON: ${{ vars.COPILOT_G3_RECONCILIATION_JSON }}
           COPILOT_G3_RECONCILIATION_DIGEST: ${{ vars.COPILOT_G3_RECONCILIATION_DIGEST }}
+          FLEET_PASS_CHUNHA: ${{ secrets.FLEET_PASS_CHUNHA }}
+          FLEET_PASS_KETOAN: ${{ secrets.FLEET_PASS_KETOAN }}
+          FLEET_PASS_QUANLY: ${{ secrets.FLEET_PASS_QUANLY }}
+          FLEET_PASS_QUANLY2: ${{ secrets.FLEET_PASS_QUANLY2 }}
+          FLEET_PASS_SYSADMIN: ${{ secrets.FLEET_PASS_SYSADMIN }}
+          COPILOT_E2E_PIN: ${{ secrets.COPILOT_E2E_PIN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           node scripts/copilot-g3-writer-admission.mjs prepare
           node scripts/copilot-e2e-artifact-safety.mjs guard "$COPILOT_G3_JOURNAL_DIR"
