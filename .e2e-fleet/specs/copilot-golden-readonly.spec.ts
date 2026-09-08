@@ -16,7 +16,7 @@ import { assertIncomeApprovalResult, incomeApprovalOracleDiagnostic, incomeAppro
 import { bindRoomScenario, createRun, DEMO_ORG, digest, IMPLEMENTED_ORACLES, summarizeRun, transitionCase, writeCheckpoint } from '../../scripts/copilot-golden-browser-evidence.mjs';
 import type { CaseReason, GoldenManifest } from '../../scripts/copilot-golden-browser-evidence.mjs';
 import { bindFinancialReadScenario, financialReadRequests, financialRoleDigest, FINANCIAL_READ_CASES, type FinancialReadFixture, type FinancialReadCaseId } from '../../scripts/copilot-financial-read-fixtures.mjs';
-import { assertFinancialReadResult, classifyFinancialRead, financialReadDiagnostic, financialReadFailureReason, type FinancialRead, type FinancialReadObservation } from './copilotFinancialReadOracle';
+import { assertFinancialReadResult, classifyFinancialRead, financialReadDiagnostic, financialReadFailureReason, isFinancialModelEndpoint, type FinancialRead, type FinancialReadObservation } from './copilotFinancialReadOracle';
 
 const load = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));
 function assertManifest(value: unknown): asserts value is GoldenManifest {
@@ -231,9 +231,7 @@ test('full golden corpus executes attested ChatPanel observations', async ({ pag
           expect((await r.allHeaders())['x-organization-id']).toBe(DEMO_ORG);
           expect(r.postDataJSON().model).toBe(COPILOT_TEST_MODEL);
           if(financialReadFixture) {
-            const u=new URL(r.url());
-            expect(u.origin).toBe(api);expect(u.pathname).toBe('/functions/v1/llm-proxy');expect(u.search).toBe('');expect(u.hash).toBe('');
-            expect(r.method()).toBe('POST');
+            expect(isFinancialModelEndpoint(api,r.method(),r.url())).toBe(true);
             const jwt=(await r.allHeaders()).authorization.replace(/^Bearer /i,'');
             expect(digest(JSON.parse(Buffer.from(jwt.split('.')[1],'base64url').toString()).sub)).toBe(attestation.actorDigest);
           }

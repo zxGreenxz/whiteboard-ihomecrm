@@ -20,6 +20,13 @@ export function financialReadDiagnostic(caseId:string,error:unknown):{caseId:str
 export function financialReadFailureReason(error:unknown):'fixture_unbound'|undefined {
   if(error instanceof FinancialReadFailure && failures.has(error) && ['financial_binding','financial_payload'].includes(error.code))return 'fixture_unbound';
 }
+/** Financial model evidence must come from the exact proxy wire endpoint. */
+export function isFinancialModelEndpoint(apiOrigin:string,method:string,url:string):boolean {
+  try {
+    const parsed=new URL(url);
+    return method==='POST' && parsed.origin===apiOrigin && parsed.pathname==='/functions/v1/llm-proxy/chat/completions' && !parsed.search && !parsed.hash;
+  }catch{return false;}
+}
 /** Only the selected fixture's exact endpoint AND argument set is a read exemption. */
 export function classifyFinancialRead(fixture:FinancialReadFixture|undefined,apiOrigin:string,method:string,url:string,args:unknown):FinancialRole|undefined {
   if(!fixture || method!=='POST' || apiOrigin!==fixture.apiOrigin)return;
