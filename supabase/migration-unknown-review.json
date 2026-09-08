@@ -535,25 +535,6 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
-    },
-    "supabase/migrations/20260908101105_copilot_service_directory_v1.sql": {
-      "sha256": "8f49f5ca97742d3006a326fce457c9c3edbdb5e0db1afb8d5d2f28ccb314fa5f",
-      "missingObjects": [
-        "function:public.copilot_service_directory_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Đây là migration mới cho công cụ đọc danh mục dịch vụ và đơn giá theo toà nhà. Hàm vắng mặt trên production vì chưa có lần migrate:forward --apply; không có migration sau DROP hoặc thay thế nó. Dry-run forward-only đã compile trên catalog production và ROLLBACK, nên không để lại object bền vững. Công cụ dùng khóa rollout services.list hiện còn disabled; người dùng không thể gọi cho đến khi migration được áp dụng và rollout được bật theo nghiệm thu. Khi migration được apply, provenance phải chuyển sang catalog-proven và hồ sơ này sẽ trở thành thừa.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260908101105_copilot_service_directory_v1.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.copilot_service_directory_v1("
-        },
-        {
-          "duong_dan": "scripts/apply-reviewed-migration.mjs:372-405",
-          "trich_doan": "Chế độ : DRY-RUN (bọc ROLLBACK); runner dựng transaction rollback trước khi gửi Management API, nên compile không tạo object bền vững."
-        }
-      ],
-      "raSoatBoi": "Codex source review, 2026-09-08"
     }
   }
 }
