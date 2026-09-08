@@ -16,6 +16,7 @@ import type { CCCDQrData } from '@/lib/cccdQrParser';
 import { lookupAddressFromText } from '@/lib/cccdAddressLookup';
 import ImageUploadZone from './ImageUploadZone';
 import AddressCascadingDropdowns from './AddressCascadingDropdowns';
+import CustomerAdministrativeAddress from './CustomerAdministrativeAddress';
 import CustomerIndividualFields from './CustomerIndividualFields';
 import CustomerOrganizationFields from './CustomerOrganizationFields';
 import CustomerVehiclesSection from './CustomerVehiclesSection';
@@ -287,6 +288,16 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
               )}
             />
           </div>
+        </div>
+
+        <div className="bg-white rounded-lg border p-4">
+          <CustomerAdministrativeAddress
+            province={form.watch('province')}
+            district={form.watch('district')}
+            ward={form.watch('ward')}
+            detailedAddress={form.watch('detailed_address')}
+            permanentAddress={form.watch('permanent_address')}
+          />
         </div>
 
         {/* Thông tin khác */}
