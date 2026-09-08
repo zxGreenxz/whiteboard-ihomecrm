@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 589,
-  "soFileDocBangFs": 189,
-  "tongLoiGoi": 385,
-  "khongPhanLoaiDuoc": 192,
+  "tongSoFileTest": 593,
+  "soFileDocBangFs": 191,
+  "tongLoiGoi": 393,
+  "khongPhanLoaiDuoc": 194,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 36,
+      "soFile": 37,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 25,
+      "soFile": 26,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -31,6 +31,7 @@
     ".e2e-fleet/controlled/copilot-approval-readback.test.mjs",
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
     "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
+    "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
     "scripts/__tests__/network-center-worker-release-readback.test.mjs",
@@ -115,6 +116,15 @@
       "loai": {
         "tai-lieu": 5,
         "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "manifest": 5,
+        "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 1
     },
@@ -634,6 +644,12 @@
     },
     {
       "file": ".e2e-fleet/specs/copilot-golden-readonly.spec.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": ".e2e-fleet/specs/copilot-room-pass-consent.spec.ts",
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
