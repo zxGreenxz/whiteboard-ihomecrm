@@ -15,6 +15,29 @@ const report = {
 };
 
 describe('invoice rounding report boundary', () => {
+  it('preserves valid two-decimal money in rows and server summaries', () => {
+    const result = parseInvoiceRoundingReport({ ...report,
+      rows: [{ ...row, gross_amount: 5_000_000.25, change_amount: 200_000.75,
+        applied_amount: 4_799_999.50, rounding_amount: 5_000.50 }],
+      total_amount: 120_000.29,
+      by_collector: [{ ...report.by_collector[0], total_amount: 120_000.29 }],
+    });
+    expect(result.rows[0]).toMatchObject({ gross_amount: 5_000_000.25,
+      change_amount: 200_000.75, applied_amount: 4_799_999.50, rounding_amount: 5_000.50 });
+    expect(result.total_amount).toBe(120_000.29);
+    expect(result.by_collector[0].total_amount).toBe(120_000.29);
+  });
+
+  it.each([
+    { ...report, rows: [{ ...row, rounding_amount: 5_000.001 }] },
+    { ...report, total_amount: 120_000.001 },
+    { ...report, by_collector: [{ ...report.by_collector[0], total_amount: 120_000.001 }] },
+    { ...report, invoice_count: 49.5 },
+    { ...report, by_collector: [{ ...report.by_collector[0], total_count: 51.5 }] },
+  ])('rejects excess monetary precision and fractional counts', (invalid) => {
+    expect(() => parseInvoiceRoundingReport(invalid)).toThrow();
+  });
+
   it('keeps server totals and distinct invoice count across a partial page', () => {
     const result = parseInvoiceRoundingReport(report);
     expect(result.rows).toHaveLength(1);

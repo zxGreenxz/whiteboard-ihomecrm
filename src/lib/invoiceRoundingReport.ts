@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-const money = z.number().finite().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const count = money;
+const money = z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER)
+  .refine((value) => Math.round(value * 100) / 100 === value, 'Money must have at most two decimals');
+const count = z.number().finite().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const nullableId = z.string().uuid().nullable();
 const roundingRow = z.object({
