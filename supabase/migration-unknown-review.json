@@ -4,6 +4,24 @@
   "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
   "files": {
+    "supabase/migrations/20260908105446_copilot_notification_feed_v1.sql": {
+      "sha256": "e26f4bb9a7b6174ab930b83428a81640eb3cb3b47f4a4e9d9f7654133f563f6f",
+      "missingObjects": [
+        "function:public.copilot_notification_feed_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "Đây là forward migration mới cho feed thông báo riêng của người gọi trong công ty đã chọn, chưa đi qua lane apply. Catalog production chưa có hàm nên provenance xếp unknown; dry-run chính thức của migrate:forward đã chạy thành công trong transaction ROLLBACK. Sau khi apply, catalog sẽ có hàm và hồ sơ tạm này phải được gỡ trước khi sinh lại provenance.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260908105446_copilot_notification_feed_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION public.copilot_notification_feed_v1(p_organization_id uuid, p_unread_only boolean DEFAULT false, p_limit integer DEFAULT 20)"
+        },
+        {
+          "duong_dan": "supabase/migration-provenance.json",
+          "trich_doan": "version 20260908105446 có state unknown và missingObjects function:public.copilot_notification_feed_v1 trước khi apply."
+        }
+      ]
+    },
     "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
       "sha256": "6b53c7ae47840ef998a1530b3619001e8092ef532f3832ad8f2a67e3a8d6280f",
       "missingObjects": [

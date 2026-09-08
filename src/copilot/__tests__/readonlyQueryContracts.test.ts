@@ -8,6 +8,7 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc, from } }));
 const { buildRegistryDefinitions } = await import('../tools/registry');
 const {
   COPILOT_ROLLOUT_CONTRACTS,
+  KHOA_ROLLOUT_THONG_BAO,
   KHOA_ROLLOUT_KHU_VUC,
   KHOA_ROLLOUT_CONG_TO,
 } = await import('../featureFlags');
@@ -136,6 +137,67 @@ describe('danh_sach_cong_to - server RPC boundary', () => {
     expect(tool('danh_sach_cong_to').rolloutKey).toBe(KHOA_ROLLOUT_CONG_TO);
     expect(tool('danh_sach_cong_to').requiredPermission).toEqual({ module: 'meters', action: 'view' });
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_CONG_TO)).toBe(true);
+  });
+});
+
+describe('thong_bao_gan_day - server RPC boundary', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    from.mockReset();
+  });
+
+  it('calls the own-notification RPC with the selected organization and bounded unread filter', async () => {
+    rpc.mockResolvedValue({
+      data: { gioi_han: 20, tong_chua_doc: 0, so_luong: 0, thong_bao: [] },
+      error: null,
+    });
+    await tool('thong_bao_gan_day').execute({ chi_chua_doc: true, so_luong: 20 }, ctx);
+    expect(rpc).toHaveBeenCalledWith('copilot_notification_feed_v1', {
+      p_organization_id: ORG,
+      p_unread_only: true,
+      p_limit: 20,
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('formats only notification category, read state and time', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        gioi_han: 20,
+        tong_chua_doc: 1,
+        so_luong: 1,
+        thong_bao: [
+          {
+            thong_bao_id: 'n1',
+            loai: 'ACTION_REQUIRED',
+            trang_thai: 'PENDING',
+            thoi_diem: '2026-09-08T10:00:00Z',
+          },
+        ],
+      },
+      error: null,
+    });
+    const result = await tool('thong_bao_gan_day').execute({ so_luong: 20 }, ctx);
+    expect(result).toContain('Cần xử lý');
+    expect(result).toContain('chưa đọc');
+    expect(result).toContain('1 thông báo chưa đọc');
+    expect(result).toContain('/notifications');
+  });
+
+  it('keeps empty and RPC-error results explicit', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { gioi_han: 20, tong_chua_doc: 0, so_luong: 0, thong_bao: [] },
+      error: null,
+    });
+    await expect(tool('thong_bao_gan_day').execute({ so_luong: 20 }, ctx)).resolves.toMatch(/không có thông báo/i);
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc failed' } });
+    await expect(tool('thong_bao_gan_day').execute({ so_luong: 20 }, ctx)).rejects.toThrow('rpc failed');
+  });
+
+  it('uses a dedicated rollout key with the notifications.view permission', () => {
+    expect(tool('thong_bao_gan_day').rolloutKey).toBe(KHOA_ROLLOUT_THONG_BAO);
+    expect(tool('thong_bao_gan_day').requiredPermission).toEqual({ module: 'notifications', action: 'view' });
+    expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_THONG_BAO)).toBe(true);
   });
 });
 

@@ -27,6 +27,7 @@ import {
   copilotAvailabilitySnapshotIsFresh,
   KHOA_ROLLOUT_CONG_TO,
   KHOA_ROLLOUT_DIEU_HUONG,
+  KHOA_ROLLOUT_THONG_BAO,
   type CopilotAvailabilitySnapshot,
 } from '../featureFlags';
 
@@ -508,6 +509,18 @@ type CopilotMeterDirectoryPayload = {
   }>;
 };
 
+type CopilotNotificationFeedPayload = {
+  gioi_han?: number;
+  tong_chua_doc?: number;
+  so_luong?: number;
+  thong_bao?: Array<{
+    thong_bao_id: string;
+    loai: string;
+    trang_thai: string | null;
+    thoi_diem: string;
+  }>;
+};
+
 const MA_LOAI_CONG_TO = {
   dien: 'ELECTRICITY',
   nuoc: 'WATER',
@@ -527,6 +540,20 @@ const NHAN_TRANG_THAI_CONG_TO: Record<string, string> = {
   INACTIVE: 'ngưng dùng',
   BROKEN: 'hỏng',
   REMOVED: 'đã tháo',
+};
+
+const NHAN_LOAI_THONG_BAO: Record<string, string> = {
+  NEW_INVOICE: 'Hóa đơn mới',
+  PAYMENT_REMINDER: 'Nhắc thanh toán',
+  OVERDUE_INVOICE: 'Hóa đơn quá hạn',
+  CONTRACT_EXPIRING: 'Hợp đồng sắp hết hạn',
+  ISSUE_RESOLVED: 'Yêu cầu đã xử lý',
+  GENERAL_ANNOUNCEMENT: 'Thông báo chung',
+  DEPOSIT_SHORTFALL: 'Thiếu tiền cọc',
+  SALARY_BONUS: 'Lương thưởng',
+  ACTION_REQUIRED: 'Cần xử lý',
+  APPROVAL_RESULT: 'Kết quả duyệt',
+  CUSTOM: 'Thông báo',
 };
 
 /** Typed boundary for the customer/contract RPCs before generated types are refreshed. */
@@ -613,6 +640,46 @@ export function buildRegistryDefinitions(): DomainTool[] {
           return `- ${meter.ma}${ten} — ${loai}, ${trangThai}${viTri ? ` — ${viTri}` : ''}${chiSo}`;
         });
         return `${rows.length} công tơ (tối đa ${data?.gioi_han ?? args.so_luong} dòng mỗi lần hỏi):\n${lines.join('\n')}\n[link: /settings/meters]`;
+      },
+    }),
+
+    dt({
+      name: 'thong_bao_gan_day',
+      description:
+        'Liệt kê các thông báo trong hộp thư của chính bạn, theo công ty đang chọn. Chỉ cho biết loại, trạng thái đã đọc và thời điểm; không đọc nội dung thông báo.',
+      inputSchema: z.object({
+        chi_chua_doc: z.boolean().default(false).describe('Chỉ lấy thông báo chưa đọc'),
+        so_luong: z.number().int().min(1).max(50).default(20).describe('Số thông báo tối đa'),
+      }),
+      requiredPermission: { module: 'notifications', action: 'view' },
+      rolloutKey: KHOA_ROLLOUT_THONG_BAO,
+      execute: async (args, ctx) => {
+        const orgId = chotToChuc(ctx, 'thong_bao_gan_day');
+        const { data, error } = await callCopilotRpc<
+          { p_organization_id: string; p_unread_only: boolean; p_limit: number },
+          CopilotNotificationFeedPayload
+        >('copilot_notification_feed_v1', {
+          p_organization_id: orgId,
+          p_unread_only: args.chi_chua_doc,
+          p_limit: args.so_luong,
+        });
+        if (error) throw new Error('Lỗi tải thông báo: ' + error.message);
+        const rows = Array.isArray(data?.thong_bao) ? data.thong_bao : [];
+        if (!rows.length) {
+          return args.chi_chua_doc
+            ? 'Không có thông báo chưa đọc nào trong công ty đang chọn.'
+            : 'Không có thông báo nào trong công ty đang chọn.';
+        }
+        const lines = rows.map((notification) => {
+          const loai = NHAN_LOAI_THONG_BAO[notification.loai] ?? 'Thông báo';
+          const trangThai = notification.trang_thai === 'READ' ? 'đã đọc' : 'chưa đọc';
+          return '- ' + loai + ' — ' + trangThai + ' — ' + notification.thoi_diem;
+        });
+        const unread = data?.tong_chua_doc ?? 0;
+        return (
+          'Có ' + unread + ' thông báo chưa đọc. Hiển thị ' + rows.length + ' dòng ' +
+          '(tối đa ' + (data?.gioi_han ?? args.so_luong) + '):\n' + lines.join('\n') + '\n[link: /notifications]'
+        );
       },
     }),
 

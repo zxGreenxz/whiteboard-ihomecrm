@@ -56,6 +56,7 @@ export const KHOA_ROLLOUT_LOI_NHUAN_CO_DONG = 'copilot.sensitive.shareholder-pro
 export const KHOA_ROLLOUT_MANG = 'copilot.sensitive.network';
 export const KHOA_ROLLOUT_KHU_VUC = 'copilot.areas.directory';
 export const KHOA_ROLLOUT_CONG_TO = 'copilot.meters.directory';
+export const KHOA_ROLLOUT_THONG_BAO = 'copilot.notifications.feed';
 
 /** Ba contract trên, kèm nhãn tiếng Việt cho trang admin. */
 export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = [
@@ -72,6 +73,7 @@ export const COPILOT_ROLLOUT_MIEN_NHAY_CAM: readonly CopilotRolloutContract[] = 
 export const COPILOT_ROLLOUT_DOC_RIENG: readonly CopilotRolloutContract[] = [
   { scope: 'page', contractId: KHOA_ROLLOUT_KHU_VUC, label: 'Danh mục khu vực (Copilot đọc)' },
   { scope: 'page', contractId: KHOA_ROLLOUT_CONG_TO, label: 'Danh mục công tơ (Copilot đọc)' },
+  { scope: 'page', contractId: KHOA_ROLLOUT_THONG_BAO, label: 'Thông báo của tôi (Copilot đọc)' },
 ];
 
 /**
