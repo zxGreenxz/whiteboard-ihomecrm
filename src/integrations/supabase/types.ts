@@ -18926,6 +18926,10 @@ export type Database = {
         Args: { p_confirmation_nonce: string; p_payload: Json }
         Returns: Json
       }
+      copilot_execute_room_pass_active_v1: {
+        Args: { p_confirmation_nonce: string; p_payload: Json }
+        Returns: Json
+      }
       copilot_execute_salary_chi_luong_v1: {
         Args: { p_confirmation_nonce: string; p_payload: Json }
         Returns: Json
@@ -19260,6 +19264,10 @@ export type Database = {
         Returns: Json
       }
       copilot_preview_room_chuyen_phong_v1: {
+        Args: { p_organization_id: string; p_payload: Json }
+        Returns: Json
+      }
+      copilot_preview_room_pass_active_v1: {
         Args: { p_organization_id: string; p_payload: Json }
         Returns: Json
       }
