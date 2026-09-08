@@ -375,6 +375,103 @@ const runPlan = (db, id) =>
       [id, org],
     )
     .then((r) => r.rows[0].result);
+
+test("post-lock boundary rejects emergency activation and flag expiry after transaction start", async () => {
+  const db = await setup();
+  try {
+    const cases = [
+      [
+        "UPDATE copilot_feature_flags SET expires_at=clock_timestamp()",
+        /copilot_action_disabled/,
+      ],
+      [
+        `INSERT INTO app_private.tenant_emergency_denies(organization_id,permission_key,active_from)
+        VALUES('${org}',NULL,clock_timestamp())`,
+        /tenant_emergency_denied/,
+      ],
+      [
+        `INSERT INTO app_private.tenant_emergency_denies(organization_id,permission_key,active_from,expires_at)
+        VALUES('${org}','sale_phong.manage_pass_listings',clock_timestamp(),clock_timestamp()+interval '1 day')`,
+        /tenant_emergency_denied/,
+      ],
+    ];
+    for (const [transition, expected] of cases) {
+      const p = await preview(db);
+      await db.exec("BEGIN");
+      try {
+        // Separate the wall clock from transaction start even on coarse clocks.
+        // This is a temporal-predicate probe, not a concurrent-session test.
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        await db.exec(transition);
+        // Assert in PostgreSQL: JS Date truncates PostgreSQL microseconds.
+        assert.equal(
+          (
+            await db.query(`SELECT EXISTS(
+          SELECT 1 FROM copilot_feature_flags WHERE expires_at>transaction_timestamp() AND expires_at<=clock_timestamp()
+          UNION ALL SELECT 1 FROM app_private.tenant_emergency_denies WHERE active_from>transaction_timestamp() AND active_from<=clock_timestamp()
+        ) matches`)
+          ).rows[0].matches,
+          true,
+        );
+        await db.exec("SAVEPOINT before_execute");
+        await assert.rejects(execute(db, p), expected);
+        await db.exec("ROLLBACK TO SAVEPOINT before_execute");
+        assert.deepEqual(await state(db), {
+          active: false,
+          audits: 0,
+          ledger: 0,
+        });
+        assert.equal(
+          (
+            await db.query(
+              `SELECT consumed_at FROM app_private.copilot_write_confirmations
+          WHERE nonce_digest=extensions.digest(decode($1,'hex'),'sha256')`,
+              [p.confirmation_nonce],
+            )
+          ).rows[0].consumed_at,
+          null,
+        );
+      } finally {
+        await db.exec("ROLLBACK");
+      }
+    }
+  } finally {
+    await db.close();
+  }
+});
+
+test("wall-clock emergency checks retain future, expired and unrelated permission/org exclusions", async () => {
+  const db = await setup();
+  try {
+    const cases = [
+      `INSERT INTO app_private.tenant_emergency_denies(organization_id,active_from) VALUES('${org}',clock_timestamp()+interval '1 day')`,
+      `INSERT INTO app_private.tenant_emergency_denies(organization_id,active_from,expires_at) VALUES('${org}',clock_timestamp(),clock_timestamp())`,
+      `INSERT INTO app_private.tenant_emergency_denies(organization_id,permission_key,active_from) VALUES('${org}','other.permission',clock_timestamp())`,
+      `INSERT INTO app_private.tenant_emergency_denies(organization_id,active_from) VALUES('${other}',clock_timestamp())`,
+      `UPDATE copilot_feature_flags SET expires_at=clock_timestamp()+interval '1 day'`,
+    ];
+    for (const transition of cases) {
+      const p = await preview(db);
+      await db.exec("BEGIN");
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        await db.exec(transition);
+        const result = await execute(db, p);
+        assert.equal(result.active, true);
+        assert.deepEqual(await state(db), {
+          active: true,
+          audits: 1,
+          ledger: 1,
+        });
+      } finally {
+        await db.exec("ROLLBACK");
+      }
+    }
+  } finally {
+    await db.close();
+  }
+});
+
 test("actual generic plan step re-previews unchanged canonical, reads back and CAS-rejects repeated execution", async () => {
   const db = await setup();
   try {

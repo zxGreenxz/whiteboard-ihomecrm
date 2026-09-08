@@ -21,6 +21,7 @@ DECLARE
   v_revision text;
   v_scope record;
   v_snapshot jsonb;
+  v_now timestamptz;
 BEGIN
   v_snapshot := app_private.copilot_action_gate_v1('room_pass.set_active', p_organization_id);
   IF NOT COALESCE(app_private.copilot_plan_role_allowed_v1(p_organization_id),false) THEN
@@ -60,6 +61,32 @@ BEGIN
      OR NOT COALESCE(public.can_manage_pass_listing(v_building_id,v_listing.user_id),false) THEN
     RAISE EXCEPTION 'not_permitted' USING ERRCODE='42501';
   END IF;
+  -- The shared gate uses transaction-start now(). After any lock wait, a
+  -- scheduled deny may have started or a flag may have expired since then.
+  -- Keep that gate and add this action-local wall-clock boundary, without
+  -- changing other actions' policy. No relationship lock is acquired below.
+  v_now := clock_timestamp();
+  IF NOT EXISTS (
+    SELECT 1 FROM app_private.copilot_action_registry r
+      JOIN public.copilot_feature_flags f
+        ON f.scope='action' AND f.contract_id=r.flag_contract_id
+    WHERE r.action_id='room_pass.set_active' AND r.enabled
+      AND f.state IN ('shadow','enabled')
+      AND (f.canary_org IS NULL OR f.canary_org=p_organization_id)
+      AND (f.expires_at IS NULL OR f.expires_at>v_now)
+  ) THEN
+    RAISE EXCEPTION 'copilot_action_disabled' USING ERRCODE='42501';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM app_private.tenant_emergency_denies d
+    WHERE d.organization_id=p_organization_id
+      AND (d.permission_key IS NULL OR d.permission_key='sale_phong.manage_pass_listings')
+      AND d.active_from<=v_now
+      AND (d.expires_at IS NULL OR d.expires_at>v_now)
+  ) THEN
+    RAISE EXCEPTION 'tenant_emergency_denied' USING ERRCODE='42501';
+  END IF;
+  v_snapshot := v_snapshot || jsonb_build_object('temporal_checked_at',v_now);
   -- Opaque revision includes xmin AND ctid: even same-transaction ABA changes
   -- tuple identity when the canonical setter's now() timestamp stays identical.
   -- Physical rewrites may conservatively expire pending consent; re-preview it.
