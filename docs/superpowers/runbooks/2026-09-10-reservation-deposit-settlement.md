@@ -61,3 +61,13 @@ Review giao diện tìm thêm lỗi truy vấn cột tính toán như cột th�
 - `gate:sandbox-leak` đạt: 146 bảng đọc được, rò rỉ 0; 18 bảng còn lại không cấp SELECT. Số liệu công ty thật không đổi giữa hai snapshot. Baseline được chụp sau migration, nên không dùng nó để khẳng định số liệu trước migration.
 - External controls đã kiểm bằng API: cả app và docs theo nhánh `production`; GitHub private Free không có branch protection như giới hạn đã khai trong Contract.
 - PR nháp #57 đã mở và review độc lập phần tiền/quyền hoàn tất. Người dùng đã cho phép đưa lên production; app sẽ được promote sau khi các gate trên main đạt và sẽ được kiểm tra lại đúng SHA trên domain production.
+
+## Lỗi phát hành phát hiện trên main
+
+PR #57 gộp vào `0364a6a825c1a4db68b2a8c2be27c7ec56e4f3f1`. CI `34394725428`, job `102611509728` chặn tại idempotency: chạy lại migration đã áp ném `42P07`, bảng `reservation_deposit_settlements` đã tồn tại. Đây là lỗi migration thật đã bỏ sót trước apply, không phải lỗi giả của CI. Production giữ bản cũ trong lúc xử lý.
+
+Giữ nguyên file SQL và digest đã áp. Theo tiền lệ lỗi lịch sử bất biến trong migration-policy, ghi ngoại lệ ghim filename, SHA-256, lỗi SQL cụ thể và evidence có backup; kết quả phải là **EXEMPT**, không phải chứng minh raw migration chạy lặp được. Lỗi khác, digest khác hoặc bằng chứng không khớp vẫn chặn. Gate phải kiểm ngoại lệ này cả khi diff không thêm migration và không được lấy cache để che lỗi mới.
+
+Không chạy lại file đã áp, không sửa cutoff hoặc ledger. Phục hồi từ baseline chưa có tính năng cần quy trình phục hồi một lần được review riêng; lane thông thường sau khi siết sẽ từ chối file này ngay cả trên baseline sạch. Trường hợp không chắc commit đã xảy ra phải đối chiếu catalog/biên nhận. Lần sửa SQL tiếp theo dùng migration mới. Lane apply được bổ sung kiểm hai lượt ROLLBACK trước khi áp và không nhận ngoại lệ ở chốt này, để lỗi tương tự không được đưa vào lịch sử mới.
+
+Sửa chốt đã được review độc lập tại `2033544967d68b91bd68a53ef4180e7231f6d832` (tích hợp thành `899f847c`): Vitest **31/31**, Node authorization/transaction **18/18** đạt. Đo scoped trên database thật với diff thêm **0 migration** vẫn kiểm lại đúng file và trả **0 idempotent PASS / 1 EXEMPT**; không dựa vào cache. Chốt trước apply thử riêng cùng file trả HTTP 400/42P07 và chỉ gửi transaction ROLLBACK, chứng minh ngoại lệ không cho phép re-apply. Không apply SQL trong đợt sửa này, digest migration giữ nguyên.
