@@ -519,6 +519,14 @@ File: [BanGiaoCycleReport.tsx](src/pages/reports/finance/BanGiaoCycleReport.tsx)
 
 ---
 
+### Bỏ cọc giữ chỗ chưa có hợp đồng
+
+Thao tác **Xử lý bỏ cọc** trên phiếu thu cọc giữ nguyên chứng từ nhận tiền ban đầu. Phần giữ lại được chuyển thành doanh thu bằng cặp phiếu nội bộ cùng ngày xử lý: `reservation.forfeit_offset` là chi cọc ngoài KQKD; `reservation.forfeit_revenue` là thu doanh thu có hạng mục `PNL`. Cả hai có `NON_CASH` / `NOT_APPLICABLE`, không tạo dòng tiền quỹ.
+
+Khoản hoàn sau chỉ là nghĩa vụ phải trả. Khi chọn **Hoàn tiền**, hệ thống tạo phiếu chi `reservation.refund`, duyệt và ghi sổ trong cùng giao dịch sau khi kiểm quyền và kỳ khóa. Phiếu hoàn có hạng mục `DEPOSIT`, không làm tăng chi phí KQKD. Hoàn ngay ghi tiền ra trong hôm nay; hoàn sau dùng ngày chi được chọn. Ghi nhận doanh thu và thực chi có thể thuộc hai ngày khác nhau.
+
+Phiếu nguồn và cặp nội bộ được bảo vệ khỏi sửa tiền, đổi sổ, xóa hoặc dùng lại cho hợp đồng. Phiếu hoàn có thể đảo theo quyền đảo sổ quỹ hiện hành; khoản phải hoàn được tính lại từ posting còn hiệu lực. Chi tiết thao tác và ví dụ ở [Cọc giữ chỗ](04-coc-giu-cho.md).
+
 ## 6. Liên kết sang domain khác (vào / ra)
 
 **Vào domain này (tiền đáp xuống thu chi):**

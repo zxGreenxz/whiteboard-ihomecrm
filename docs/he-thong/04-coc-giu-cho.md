@@ -25,6 +25,23 @@ Trang `/deposits` ([DepositsPage.tsx](src/pages/deposits/DepositsPage.tsx)) là 
 
 ---
 
+## Xử lý bỏ cọc giữ chỗ chưa có hợp đồng
+
+Tại **Phiếu giữ chỗ** hoặc chi tiết phiếu thu, chọn **Xử lý bỏ cọc**. Phiếu phải có tiền cọc đã thực nhận, chưa gắn hoặc dùng cho hợp đồng và chưa từng được xử lý. Người thao tác cần quyền xử lý cọc và duyệt thu chi tại tòa nhà.
+
+- **Bỏ toàn bộ:** để “Hoàn lại khách” bằng 0. Toàn bộ cọc thành doanh thu, không phát sinh thu hoặc chi tiền mới.
+- **Giữ một phần:** nhập số hoàn lại; phần giữ lại được tính tự động. Có thể hoàn toàn bộ và giữ lại 0đ.
+- **Hoàn ngay:** chọn sổ quỹ thực và xác nhận đã trả tiền cho khách. Chỉ người có quyền chi trên sổ đó thực hiện được. Ngày chi là hôm nay, độc lập với ngày ghi nhận bỏ cọc.
+- **Hoàn sau:** ghi số tiền còn phải trả vào **Chờ hoàn**. Khi trả tiền, chọn **Hoàn tiền** và xác nhận sổ quỹ, ngày chi. Bản đầu trả toàn bộ số còn phải hoàn trong một lần.
+
+Phiếu thu gốc giữ nguyên ngày nhận, số tiền, hạng mục cọc và cách tính KQKD. Hệ thống thêm hồ sơ `reservation_deposit_settlements`; phần giữ lại có cặp phiếu nội bộ `reservation.forfeit_offset` / `reservation.forfeit_revenue`. Chỉ chân doanh thu tính KQKD; cả hai không làm thay đổi tiền quỹ. Phiếu `reservation.refund` chỉ được tạo khi thực chi, có hạng mục cọc và không tính thành chi phí KQKD.
+
+Ngay sau xử lý, **toàn bộ cọc nguồn hết khả dụng cho hợp đồng mới**, kể cả còn chờ hoàn. Phòng được trả về Trống nếu không có cọc khác, hợp đồng đang hiệu lực, trạng thái không cho thuê hoặc khóa giữ chỗ còn hiệu lực. Khóa giữ chỗ không có liên kết xác định với phiếu nguồn được giữ nguyên. Lịch sử vẫn tra cứu được; không sửa tiền, xóa hoặc đảo phiếu nguồn đã xử lý.
+
+Trạng thái hoàn căn cứ vào bút toán chi còn hiệu lực. Nếu phiếu hoàn bị đảo qua thao tác tài chính hiện hành, khoản phải hoàn mở lại; lần hoàn mới có phiếu riêng, giữ lịch sử lần cũ. Gửi lại yêu cầu sau lỗi kết nối không làm chi thêm lần nữa.
+
+Ví dụ: cọc 3.000.000đ, giữ 2.000.000đ, hoàn sau 1.000.000đ → cọc khả dụng 0đ, doanh thu 2.000.000đ, chờ hoàn 1.000.000đ, quỹ chưa đổi. Khi hoàn: quỹ giảm 1.000.000đ, doanh thu vẫn 2.000.000đ.
+
 ## 2. Cấu trúc dữ liệu
 
 ### 2.1. Bảng `deposits` — Phiếu giữ chỗ trước hợp đồng (LEGACY, ĐÃ CHẾT)

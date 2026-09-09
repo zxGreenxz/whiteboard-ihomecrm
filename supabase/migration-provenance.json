@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-09T15:23:19.420Z",
+  "generatedAt": "2026-09-09T17:51:10.686Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 548,
-    "unknown": 73,
+    "unknown": 74,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9880,6 +9880,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-09T15:22:19.616Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260909172332_reservation_deposit_settlement_v1.sql",
+      "version": "20260909172332",
+      "name": "reservation_deposit_settlement_v1",
+      "scheme": "timestamp14",
+      "sha256": "32008e7d10b730ceef4840fb307288e033be5d868842597ed30f27136e6da2e6",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.reservation_deposit_settlements",
+        "table:public.reservation_settlement_vouchers",
+        "table:app_private.reservation_settlement_write_tokens",
+        "table:app_private.reservation_refund_operations",
+        "function:app_private.reservation_deposit_is_settled_v1"
       ]
     },
     {
