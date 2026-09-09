@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 616,
   "soFileDocBangFs": 195,
-  "tongLoiGoi": 400,
-  "khongPhanLoaiDuoc": 197,
+  "tongLoiGoi": 402,
+  "khongPhanLoaiDuoc": 198,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 37,
@@ -326,6 +326,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/copilot/plan/__tests__/actionCatalog.test.ts",
       "soGoi": 3,
       "loai": {},
@@ -355,6 +363,14 @@
         "sql": 3
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/copilotRolloutSeedPagesMigration.test.ts",
+      "soGoi": 3,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts",
@@ -478,14 +494,6 @@
       "khongPhanLoaiDuoc": 1
     },
     {
-      "file": "scripts/__tests__/run-copilot-golden-eval.test.mjs",
-      "soGoi": 2,
-      "loai": {
-        "manifest": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
       "file": "src/copilot/__tests__/keHoachCard.test.tsx",
       "soGoi": 2,
       "loai": {
@@ -550,14 +558,6 @@
       "soGoi": 2,
       "loai": {
         "ma-nguon": 2
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "src/lib/__tests__/copilotRolloutSeedPagesMigration.test.ts",
-      "soGoi": 2,
-      "loai": {
-        "sql": 2
       },
       "khongPhanLoaiDuoc": 0
     },

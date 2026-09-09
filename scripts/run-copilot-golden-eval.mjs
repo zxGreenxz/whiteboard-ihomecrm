@@ -137,6 +137,25 @@ const TOOL_MARKERS = [
   ['loi_nhuan_co_dong', /\bco dong\b/],
   ['hoi_thoai_zalo', /\bzalo\b/],
   ['trang_thai_mang', /\brouter\b|\bwifi\b|\btrang thai mang\b/],
+  // G1 directory facts use specific nouns, separate from readings, inventory
+  // transactions and report prompts already covered above.
+  ['danh_sach_khu_vuc', /\bliet ke khu vuc\b/],
+  ['danh_sach_cong_to', /\bdanh muc thiet bi do\b/],
+  ['thong_bao_gan_day', /\bthong bao gan day\b/],
+  ['danh_sach_phong_sale', /\btin phong nho sale\b/],
+  ['danh_sach_thanh_vien_vai_tro', /\bdanh sach thanh vien\b/],
+  ['danh_sach_kho_tai_san', /\bdanh muc kho tai san\b/],
+  ['danh_sach_nha_cung_cap', /\bdanh muc nha cung cap\b/],
+  ['danh_sach_loai_tai_san', /\bdanh muc loai tai san\b/],
+  ['danh_sach_loai_cong_viec', /\bdanh muc loai viec\b/],
+  ['danh_sach_tang', /\bdanh muc tang\b/],
+  ['danh_sach_hotline', /\bdanh muc hotline\b/],
+  ['danh_sach_dinh_muc_dich_vu', /\bdinh muc dich vu\b/],
+  ['danh_sach_toa_nha', /\bdanh muc toa nha\b/],
+  ['trang_thai_gach_no_tu_dong', /\btrang thai gach no tu dong\b/],
+  ['danh_sach_bao_tri_tai_san', /\blich su bao tri tai san\b/],
+  ['danh_sach_tai_san', /\bkiem ke tai san\b/],
+  ['danh_sach_dich_vu', /\bdanh muc dich vu\b/],
   // G1-D2, hai tool bo nho dai han. Cung ky luat: marker HEP hon tu vung cua
   // chinh tool. Do tren 63 ca dang co (03/09/2026): khong ca nao chua "nho",
   // "quen" hay "uu tien" sau khi bo dau, nen hai marker nay khong cuop duoc ca

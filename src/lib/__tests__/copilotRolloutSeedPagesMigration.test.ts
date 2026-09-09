@@ -10,7 +10,7 @@
 //   Hai danh sách này ở hai ngôn ngữ khác nhau (TS và SQL) nên không có gì bắt
 //   chúng khớp ngoài test này. Đây đúng là lớp lỗi đã đo ở G1-A với ba danh
 //   sách route chép tay.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   COPILOT_ROLLOUT_CONTRACTS,
@@ -52,7 +52,7 @@ const thanNhayCam = sqlNhayCam.replace(/--.*/g, '');
 
 /** Khoá được seed trong MỘT file, đọc từ chính khối VALUES (đã bỏ chú thích). */
 function docSeed(thanSql: string) {
-  return [...thanSql.matchAll(/\('page',\s*'([^']+)'\s*,\s*'(\w+)'\)/g)].map((m) => ({
+  return [...thanSql.matchAll(/\(\s*'page',\s*'([^']+)'\s*,\s*'(\w+)'\s*[,)]/g)].map((m) => ({
     contractId: m[1],
     state: m[2],
   }));
@@ -61,7 +61,15 @@ function docSeed(thanSql: string) {
 const khoaSeedTrang = docSeed(than);
 const khoaSeedNhayCam = docSeed(thanNhayCam);
 /** Hợp của mọi file seed — đây là thứ phải khớp danh sách contract của client. */
-const khoaSeed = [...khoaSeedTrang, ...khoaSeedNhayCam];
+const khoaSeed = readdirSync('supabase/migrations')
+  .filter((name) => name.endsWith('.sql') && name >= '20260902185838')
+  .flatMap((name) => {
+    const body = readFileSync(`supabase/migrations/${name}`, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '');
+    // Only actual INSERT statements count, never validation arrays/comments.
+    return [...body.matchAll(/INSERT\s+INTO\s+public\.copilot_feature_flags\b[\s\S]*?;/gi)]
+      .flatMap(([statement]) => docSeed(statement));
+  });
 
 describe('seed phủ đúng danh sách contract của client', () => {
   it('mỗi contract scope `page` có đúng một dòng seed', () => {

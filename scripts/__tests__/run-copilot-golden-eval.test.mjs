@@ -45,6 +45,19 @@ test('classifies every pinned corpus prompt without broad Vietnamese regex match
   }
 });
 
+test('G1 directory and status readers each retain a mock golden case', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const golden = JSON.parse(await readFile(new URL('../../tooling/copilot-golden-eval.json', import.meta.url), 'utf8'));
+  const covered = new Set(golden.cases.flatMap((entry) => entry.toolPath));
+  for (const name of [
+    'danh_sach_khu_vuc', 'danh_sach_cong_to', 'thong_bao_gan_day', 'danh_sach_phong_sale',
+    'danh_sach_thanh_vien_vai_tro', 'danh_sach_kho_tai_san', 'danh_sach_nha_cung_cap',
+    'danh_sach_loai_tai_san', 'danh_sach_loai_cong_viec', 'danh_sach_tang', 'danh_sach_hotline',
+    'danh_sach_dinh_muc_dich_vu', 'danh_sach_toa_nha', 'trang_thai_gach_no_tu_dong',
+    'danh_sach_bao_tri_tai_san', 'danh_sach_tai_san', 'danh_sach_dich_vu',
+  ]) assert.ok(covered.has(name), `missing G1 golden: ${name}`);
+});
+
 // ── Ca `forbidden`: oracle phai SUY RA, khong duoc chep tu corpus ────────────
 //
 // Truoc 03/09/2026 `runMockGoldenEval` gan `actual.forbidden = expected.forbidden`,

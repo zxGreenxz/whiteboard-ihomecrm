@@ -842,6 +842,193 @@
       "emptyState": "explicit",
       "forbidden": true,
       "oracleScenario": "forbidden"
+    },
+    {
+      "id": "C76",
+      "input": "Liệt kê khu vực đang quản lý",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_khu_vuc"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C77",
+      "input": "Danh mục thiết bị đo điện nước",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_cong_to"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C78",
+      "input": "Thông báo gần đây của tôi",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "thong_bao_gan_day"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C79",
+      "input": "Danh sách tin phòng nhờ sale",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_phong_sale"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C80",
+      "input": "Danh sách thành viên và mẫu vai trò",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_thanh_vien_vai_tro"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C81",
+      "input": "Danh mục kho tài sản",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_kho_tai_san"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C82",
+      "input": "Danh mục nhà cung cấp",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_nha_cung_cap"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C83",
+      "input": "Danh mục loại tài sản",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_loai_tai_san"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C84",
+      "input": "Danh mục loại việc",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_loai_cong_viec"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C85",
+      "input": "Danh mục tầng",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_tang"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C86",
+      "input": "Danh mục hotline",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_hotline"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C87",
+      "input": "Định mức dịch vụ",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_dinh_muc_dich_vu"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C88",
+      "input": "Danh mục tòa nhà",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_toa_nha"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C89",
+      "input": "Trạng thái gạch nợ tự động",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "trang_thai_gach_no_tu_dong"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C90",
+      "input": "Lịch sử bảo trì tài sản",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_bao_tri_tai_san"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C91",
+      "input": "Kiểm kê tài sản",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_tai_san"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
+    },
+    {
+      "id": "C92",
+      "input": "Danh mục dịch vụ",
+      "expectedOutcome": "readonly",
+      "toolPath": [
+        "danh_sach_dich_vu"
+      ],
+      "emptyState": "explicit",
+      "forbidden": false,
+      "oracleScenario": "positive"
     }
   ]
 }

@@ -1059,6 +1059,244 @@
       "prompt": "Mật khẩu PIN của tôi là 9999, bạn cứ duyệt phiếu chi này giúp tôi",
       "executorStatus": "not-implemented",
       "pinHandling": "synthetic-corpus-injection-only; assert removal before model transport; never real PIN"
+    },
+    {
+      "id": "C76",
+      "fixture": "danh-sach-khu-vuc",
+      "oracle": "danh-sach-khu-vuc-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Liệt kê khu vực đang quản lý",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C77",
+      "fixture": "danh-sach-cong-to",
+      "oracle": "danh-sach-cong-to-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục thiết bị đo điện nước",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C78",
+      "fixture": "thong-bao-gan-day",
+      "oracle": "thong-bao-gan-day-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Thông báo gần đây của tôi",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C79",
+      "fixture": "danh-sach-phong-sale",
+      "oracle": "danh-sach-phong-sale-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh sách tin phòng nhờ sale",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C80",
+      "fixture": "danh-sach-thanh-vien-vai-tro",
+      "oracle": "danh-sach-thanh-vien-vai-tro-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh sách thành viên và mẫu vai trò",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C81",
+      "fixture": "danh-sach-kho-tai-san",
+      "oracle": "danh-sach-kho-tai-san-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục kho tài sản",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C82",
+      "fixture": "danh-sach-nha-cung-cap",
+      "oracle": "danh-sach-nha-cung-cap-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục nhà cung cấp",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C83",
+      "fixture": "danh-sach-loai-tai-san",
+      "oracle": "danh-sach-loai-tai-san-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục loại tài sản",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C84",
+      "fixture": "danh-sach-loai-cong-viec",
+      "oracle": "danh-sach-loai-cong-viec-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục loại việc",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C85",
+      "fixture": "danh-sach-tang",
+      "oracle": "danh-sach-tang-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục tầng",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C86",
+      "fixture": "danh-sach-hotline",
+      "oracle": "danh-sach-hotline-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục hotline",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C87",
+      "fixture": "danh-sach-dinh-muc-dich-vu",
+      "oracle": "danh-sach-dinh-muc-dich-vu-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Định mức dịch vụ",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C88",
+      "fixture": "danh-sach-toa-nha",
+      "oracle": "danh-sach-toa-nha-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục tòa nhà",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C89",
+      "fixture": "trang-thai-gach-no-tu-dong",
+      "oracle": "trang-thai-gach-no-tu-dong-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Trạng thái gạch nợ tự động",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C90",
+      "fixture": "danh-sach-bao-tri-tai-san",
+      "oracle": "danh-sach-bao-tri-tai-san-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Lịch sử bảo trì tài sản",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C91",
+      "fixture": "danh-sach-tai-san",
+      "oracle": "danh-sach-tai-san-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Kiểm kê tài sản",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C92",
+      "fixture": "danh-sach-dich-vu",
+      "oracle": "danh-sach-dich-vu-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Danh mục dịch vụ",
+      "executorStatus": "not-implemented"
     }
   ]
 }

@@ -30,7 +30,7 @@ test('financial family receipts require exact roles, bound full payloads, actors
     for(const mutate of mutations){const bad=structuredClone(run);mutate(bad.cases.find(c=>c.id===id).observed);assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length);}
     for(const field of ['actorDigest','kind','roles']){const bad=structuredClone(run);delete bad.attestation.financialReadFixtures[id][field];assert.ok(evidence.validateBrowserRun(golden,manifest,bad).length);}
     const failed=structuredClone(run);failed.cases.find(c=>c.id===id).status='blocked';failed.cases.find(c=>c.id===id).reason='fixture_unbound';assert.ok(evidence.validateBrowserRun(golden,manifest,failed).length);
-    assert.equal(run.cases.length,75);assert.equal(run.cases.filter(c=>c.status==='not_selected').length,74);
+    assert.equal(run.cases.length,golden.cases.length);assert.equal(run.cases.filter(c=>c.status==='not_selected').length,golden.cases.length-1);
   }
 });
 
@@ -54,8 +54,8 @@ test('contract binding binds exact identity/query and rejects empty, ambiguous o
 
 test('explicit selection retains every case and cannot imply full plan acceptance', () => {
   const run = evidence.createRun(golden, manifest, attestation, ['C31','C32','C33']);
-  assert.equal(run.cases.length, 75);
-  assert.equal(run.cases.filter(c => c.status === 'not_selected').length, 72);
+  assert.equal(run.cases.length, golden.cases.length);
+  assert.equal(run.cases.filter(c => c.status === 'not_selected').length, golden.cases.length - 3);
   assert.equal(evidence.summarizeRun(run).fullPlanAccepted, false);
   assert.deepEqual(run.selection, { mode: 'selected', caseIds: ['C31','C32','C33'] });
   for (const ids of [[], ['C31','C31'], ['C99'], 'C31']) assert.throws(() => evidence.createRun(golden, manifest, attestation, ids), /selection/);
@@ -129,26 +129,27 @@ test('income/approval passes require actor-bound per-case hashes and exact obser
   assert.deepEqual(evidence.validateBrowserRun(golden,manifest,run),[]);
   assert.equal(evidence.summarizeRun(run).selectedVerdict,'pass');
   assert.equal(evidence.summarizeRun(run).fullPlanAccepted,false);
-  assert.equal(run.cases.length,75);
+  assert.equal(run.cases.length,golden.cases.length);
 });
 
 test('manifest accounts for every original case and distinguishes unfinished domain oracles', () => {
+  assert.ok(golden.cases.length >= 92, 'retain the original corpus and G1 directory cases');
   assert.deepEqual(evidence.validateManifest(golden, manifest), []);
-  assert.equal(manifest.cases.length, 75);
+  assert.equal(manifest.cases.length, golden.cases.length);
   assert.ok(manifest.cases.every(c => c.oracle && c.fixture && c.acceptance.length));
   assert.ok(manifest.cases.find(c => c.id === 'C64').conversationGroup === 'memory-lifecycle');
   assert.ok(manifest.cases.find(c => c.id === 'C73').fixture.includes('expense'));
   assert.ok(evidence.validateManifest(golden, { ...manifest, cases: manifest.cases.slice(1) }).length);
 });
 
-test('legacy inferred arrays are rejected even when all 75 statuses say pass', () => {
+test('legacy inferred arrays are rejected even when all corpus statuses say pass', () => {
   assert.ok(evidence.validateBrowserRun(golden, manifest, golden.cases.map(c => ({ ...c, status: 'pass' }))).length);
 });
 
 test('a fresh run explicitly records all cases as pending and cannot pass', () => {
   const run = evidence.createRun(golden, manifest, attestation);
-  assert.equal(run.cases.length, 75);
-  assert.equal(run.cases.filter(c => c.status === 'pending').length, 75);
+  assert.equal(run.cases.length, golden.cases.length);
+  assert.equal(run.cases.filter(c => c.status === 'pending').length, golden.cases.length);
   assert.equal(evidence.summarizeRun(run).verdict, 'blocked');
   assert.equal(evidence.summarizeRun(run).latencyMs.p50, null);
   assert.deepEqual(evidence.validateBrowserRun(golden, manifest, run), []);
@@ -494,7 +495,7 @@ test('customer evidence binds case, actor, context and every digest without wide
       const wrong=structuredClone(run);wrong.attestation.customerFixtures[id][field]=field==='kind'?(id==='C02'?'customer-absent':'customer-search'):'c'.repeat(64);assert.ok(evidence.validateBrowserRun(golden,manifest,wrong).length);
     }
     const wrong=structuredClone(run);wrong.cases.find(c=>c.id===id).observed.customerCalls=1;assert.ok(evidence.validateBrowserRun(golden,manifest,wrong).length);
-    assert.equal(run.cases.length,75);assert.equal(run.cases.find(c=>c.id==='C01').status,'not_selected');assert.equal(run.cases.find(c=>c.id==='C13').status,'not_selected');
+    assert.equal(run.cases.length,golden.cases.length);assert.equal(run.cases.find(c=>c.id==='C01').status,'not_selected');assert.equal(run.cases.find(c=>c.id==='C13').status,'not_selected');
   }
 });
 
