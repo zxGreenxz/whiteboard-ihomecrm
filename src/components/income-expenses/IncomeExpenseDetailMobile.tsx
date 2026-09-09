@@ -38,6 +38,7 @@ import {
   useIncomeExpenseHistory,
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
+import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 
 interface Props {
   voucher: IncomeExpenseWithRelations;
@@ -90,6 +91,7 @@ export function IncomeExpenseDetailMobile({
 }: Props) {
   const navigate = useNavigate();
   const [paySheetOpen, setPaySheetOpen] = useState(false);
+  const [settlementOpen, setSettlementOpen] = useState(false);
   // Xem ảnh đính kèm ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
@@ -97,6 +99,9 @@ export function IncomeExpenseDetailMobile({
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
+  const canSettleReservation = v.type === "INCOME" && !v.contract_id &&
+    v.approval_status === "APPROVED" && v.items.some((item) => item.is_deposit) &&
+    canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
   const { data: history = [] } = useIncomeExpenseHistory(v.id);
 
   const invoiceId = v.invoice_id ?? null;
@@ -537,6 +542,9 @@ export function IncomeExpenseDetailMobile({
         onOpenChange={setPaySheetOpen}
         voucher={v}
       />
+
+      {canSettleReservation && <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>}
+      {canSettleReservation && <ReservationSettlementDialog voucherId={v.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
 
       <AttachmentLightbox
         attachments={v.attachments ?? []}

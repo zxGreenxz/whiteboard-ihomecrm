@@ -42,6 +42,7 @@ import { format } from "date-fns";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatVND } from "@/lib/utils";
+import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 
 interface Props {
   open: boolean;
@@ -98,6 +99,7 @@ export function IncomeExpenseDetailDialog({
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
+  const [settlementOpen, setSettlementOpen] = useState(false);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
   const { data: perms } = useMyPermissions();
@@ -154,6 +156,9 @@ export function IncomeExpenseDetailDialog({
     isCreator,
     canEdit: canUse(perms, "income_expenses", "edit"),
   });
+  const canSettleReservation = voucher.type === "INCOME" && !voucher.contract_id &&
+    voucher.approval_status === "APPROVED" && voucher.items.some((item) => item.is_deposit) &&
+    canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
 
   return (
     <>
@@ -585,8 +590,11 @@ export function IncomeExpenseDetailDialog({
               </div>
             </>
           )}
+          {canSettleReservation && <Button variant="outline" className="mt-4 w-full" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</Button>}
         </DialogContent>
       </Dialog>
+
+      {canSettleReservation && <ReservationSettlementDialog voucherId={voucher.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
 
       {/* Sheet chọn app ngân hàng để chi tiền */}
       <PayViaBankAppSheet

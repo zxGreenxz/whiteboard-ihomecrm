@@ -183,12 +183,12 @@ export function buildDepositWorkQueue(input: BuildWorkQueueInput): DepositTaskGr
   // thiếu 3tr, và thẻ đỏ sẽ không bao giờ rời hàng đợi.
   const paidByRoom = new Map<string, number>();
   for (const v of reservations) {
-    if (v.approval_status === "CANCELLED" || !v.room_id) continue;
+    if (v.settlement_status === "SETTLED" || v.approval_status === "CANCELLED" || !v.room_id) continue;
     paidByRoom.set(v.room_id, (paidByRoom.get(v.room_id) ?? 0) + v.total_amount);
   }
 
   for (const v of reservations) {
-    if (v.approval_status === "CANCELLED") continue;
+    if (v.settlement_status === "SETTLED" || v.approval_status === "CANCELLED") continue;
     const terms = holdTerms[v.id];
     const holdUntil = terms?.holdUntil ?? null;
     const topupDue = terms?.topupDueDate ?? null;

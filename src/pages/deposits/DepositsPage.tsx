@@ -36,6 +36,7 @@ import {
   useHeldDepositSummary,
   useDepositRefundsForfeits,
   useRefundForfeitSummary,
+  useReservationDepositSettlementSummary,
   summarizeRefundForfeit,
   type HeldDepositRow,
   type BuildingDepositSummary,
@@ -69,6 +70,8 @@ import {
   RefundReconcileCard,
   ReservationBreakdownCard,
 } from "./DepositSidePanel";
+import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
+import { ReservationPendingRefundList } from "@/components/deposits/ReservationPendingRefundList";
 
 // Trạng thái phiếu giữ chỗ (theo approval_status của phiếu thu cọc mồ côi).
 const RESV_STATUS = {
@@ -131,6 +134,8 @@ const DepositsDesktop = () => {
   const approveVoucher = useApproveVoucher();
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [deadlineTarget, setDeadlineTarget] = useState<HoldDeadlineTarget | null>(null);
+  const [settlementVoucherId, setSettlementVoucherId] = useState<string | null>(null);
+  const canSettleDeposit = canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
 
   // Bộ lọc toà nhà dùng chung cho mọi tab ([] = tất cả toà).
   const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:deposits:buildingIds", []);
@@ -163,6 +168,7 @@ const DepositsDesktop = () => {
   // KPI "Đã hoàn cọc" = TIỀN THẬT ĐÃ RA KHỎI KÉT (quyết định của chủ 30/07,
   // §1ter.1) ⇒ phải lấy từ server, xem khối chú thích ở `refundKpi` bên dưới.
   const { data: rfSummary } = useRefundForfeitSummary(buildingIds);
+  const { data: reservationSettlementSummary } = useReservationDepositSettlementSummary(buildingIds);
 
   // Lọc theo toà nhà (client-side) cho dashboard.
   const heldFiltered = useMemo(
@@ -403,6 +409,8 @@ const DepositsDesktop = () => {
             )}
           </div>
         </Card>
+        {reservationSettlementSummary && <Card className="grid gap-3 p-4 text-sm sm:grid-cols-3"><div><span className="text-muted-foreground">Doanh thu bỏ cọc giữ chỗ</span><div className="font-bold">{formatCurrency(reservationSettlementSummary.retainedAmount)} · {reservationSettlementSummary.retainedCount} phiếu</div></div><div><span className="text-muted-foreground">Phải hoàn khách</span><div className="font-bold text-amber-700">{formatCurrency(reservationSettlementSummary.refundPendingAmount)} · {reservationSettlementSummary.refundPendingCount} khoản</div></div><div><span className="text-muted-foreground">Đã hoàn khách</span><div className="font-bold text-emerald-700">{formatCurrency(reservationSettlementSummary.refundPaidAmount)} · {reservationSettlementSummary.refundPaidCount} khoản</div></div></Card>}
+        <ReservationPendingRefundList buildingIds={buildingIds} />
 
         {/* ===== HAI PILL: bàn xử lý ↔ sổ cọc đầy đủ ===== */}
         <div className="flex max-w-2xl gap-3">
@@ -897,6 +905,7 @@ const DepositsDesktop = () => {
                             <Badge className={st?.color || ""}>{st?.label || r.approval_status}</Badge>
                           </TableCell>
                           <TableCell>
+                            <div className="flex flex-wrap gap-2">
                             {canConvertDeposit &&
                               r.approval_status === "APPROVED" &&
                               r.room_id && (
@@ -904,6 +913,10 @@ const DepositsDesktop = () => {
                                   Tạo HĐ
                                 </Button>
                               )}
+                            {canSettleDeposit && r.approval_status === "APPROVED" && (
+                              <Button size="sm" variant="outline" onClick={() => setSettlementVoucherId(r.id)}>Xử lý bỏ cọc</Button>
+                            )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -918,6 +931,7 @@ const DepositsDesktop = () => {
 
         {/* Dialogs */}
         <CreateDepositDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+        <ReservationSettlementDialog voucherId={settlementVoucherId} open={!!settlementVoucherId} onOpenChange={(next) => !next && setSettlementVoucherId(null)} />
         <HoldDeadlineDialog
           target={deadlineTarget}
           onOpenChange={(open) => !open && setDeadlineTarget(null)}

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
+export { useReservationSettlementSummary as useReservationDepositSettlementSummary } from '@/hooks/useReservationSettlement';
 
 // Ngưỡng làm tròn: chênh cọc < 10.000đ coi như đủ (khớp PREVIOUS_DEBT_ROUND_THRESHOLD).
 export const DEPOSIT_SHORTFALL_THRESHOLD = 10000;

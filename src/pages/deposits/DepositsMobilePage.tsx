@@ -34,6 +34,8 @@ import {
   type DepositTask,
   type DepositTaskTone,
 } from "@/lib/depositWorkQueue";
+import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
+import { ReservationPendingRefundList } from "@/components/deposits/ReservationPendingRefundList";
 
 /**
  * Quản lý Cọc — màn hình app full-screen trên điện thoại (bản 2b của handoff
@@ -124,6 +126,7 @@ export default function DepositsMobilePage() {
   const [contractOpen, setContractOpen] = useState(false);
   const [prefill, setPrefill] = useState<ContractPrefill | null>(null);
   const [deadlineTarget, setDeadlineTarget] = useState<HoldDeadlineTarget | null>(null);
+  const [settlementVoucherId, setSettlementVoucherId] = useState<string | null>(null);
 
   useCopilotPageContext('deposits.list', { view, status: view === 'ledger' ? ledgerFilter : undefined });
   const approveVoucher = useApproveVoucher();
@@ -549,6 +552,9 @@ export default function DepositsMobilePage() {
                         Tạo hợp đồng
                       </button>
                     )}
+                  {canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve") && openTask.voucherId && openTask.kind !== "PENDING_APPROVAL" && (
+                    <button type="button" onClick={() => { setSettlementVoucherId(openTask.voucherId); closeSheet(); }}>Xử lý bỏ cọc</button>
+                  )}
                 </div>
               </div>
             </div>
@@ -557,6 +563,8 @@ export default function DepositsMobilePage() {
       </div>
 
       <CreateDepositDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <div className="px-4 pb-4"><ReservationPendingRefundList /></div>
+      <ReservationSettlementDialog voucherId={settlementVoucherId} open={!!settlementVoucherId} onOpenChange={(next) => !next && setSettlementVoucherId(null)} />
       <HoldDeadlineDialog
         target={deadlineTarget}
         onOpenChange={(open) => !open && setDeadlineTarget(null)}
