@@ -21,7 +21,12 @@
  */
 export function hrefAnToan(raw: string): string | null {
   const href = raw.trim();
-  if (href.startsWith('/') && !href.startsWith('//')) return href;
+  if (href.startsWith('/')) {
+    // Browsers normalize backslashes and strip control characters before
+    // resolving a URL; /\\host or /<tab>/host can become an external //host.
+    const hasUnsafeCharacter = [...href].some(char => char === '\\' || char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+    return !href.startsWith('//') && !hasUnsafeCharacter ? href : null;
+  }
   try {
     return new URL(href).protocol === 'https:' ? href : null;
   } catch {

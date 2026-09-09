@@ -565,6 +565,9 @@ describe('hrefAnToan — link do MÔ HÌNH sinh, không phải link ta viết', 
 
   it('CHẶN URL giao thức-tương đối `//host` — trông như đường dẫn nội bộ nhưng ra ngoài', () => {
     expect(hrefAnToan('//evil.example/x')).toBeNull();
+    expect(hrefAnToan('/\\evil.example/x')).toBeNull();
+    expect(hrefAnToan('/\t/evil.example/x')).toBeNull();
+    expect(hrefAnToan('/invoices?status=unpaid#list')).toBe('/invoices?status=unpaid#list');
   });
 
   it('CHẶN chuỗi không phải URL (mô hình bịa) thay vì render mù', () => {
