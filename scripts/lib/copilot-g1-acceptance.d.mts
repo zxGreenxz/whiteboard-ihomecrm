@@ -1,0 +1,16 @@
+export const DEMO: string;
+export const G1_ROUTES: { key: string; route: string; heading: string }[];
+export const MOBILE_MARKERS: Record<string, string>;
+export const G1_CASES: string[];
+export const G1_FLAG_KEYS: string[];
+export type G1Admission = { sourceSha: string; buildSha: string; actorId: string; organizationId: string; baseUrl: string; supabaseOrigin: string; model: string; checkedAt: string; flags: { scope: string; contract_id: string; state: string; revision: number; canary_org: string; expires_at: string }[]; [key: string]: unknown };
+export type G1Receipt = { schemaVersion: number; runId: string; admission: G1Admission; admissionDigest: string; createdAt: string; proofs: { proof: { caseId: string; [key: string]: unknown }; digest: string }[]; attempts: Record<string, unknown>[]; status: string };
+export function digest(value: unknown): string;
+export function admissionDigest(value: G1Admission): string;
+export function validateAdmission(value: G1Admission, now?: number): void;
+export function createReceipt(value: G1Admission, now?: number): G1Receipt;
+export function validateReceipt(receipt: G1Receipt, admission: G1Admission, now?: number): void;
+export function addProof(receipt: G1Receipt, proof: Record<string, unknown>, now?: number): void;
+export function pendingCases(receipt: G1Receipt): string[];
+export function admissionFromBaseline(config: Record<string, unknown>, rawBaseline: string, availability: unknown, user: unknown, isSuperAdmin: unknown, authorization: unknown, now?: number): G1Admission;
+export function navigationEvidence(streams: unknown[], rounds: unknown[], target: { key: string; route: string }): Record<string, unknown>;
