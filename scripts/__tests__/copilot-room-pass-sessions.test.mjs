@@ -5,6 +5,12 @@ test('requires observed acquired row lock and an executor wait, not overlapping 
   assert.equal(typeof api.observeBarrier, 'function');
 });
 
+test('each authenticated participant assigns its transaction ID before a possible row-lock wait', () => {
+  const sql = api.authenticatedTransaction({ actorId: '11111111-1111-4111-8111-111111111111', applicationName: 'rp17-xid-proof', body: 'SELECT owned_action_that_waits();' });
+  assert.ok(sql.indexOf('SELECT txid_current()') > sql.indexOf('SET LOCAL ROLE authenticated'));
+  assert.ok(sql.indexOf('SELECT txid_current()') < sql.indexOf('SELECT owned_action_that_waits()'));
+});
+
 test('PgSleep holder then lock waiter requires distinct backend AND transaction IDs and real blocker edge', async () => {
   let tick = 0;
   const holder = { tag: 'rp17-holder', pid: 10, xid: '100', state: 'active', wait_event: 'PgSleep', transaction_started: '2026-09-08T00:00:00Z' };

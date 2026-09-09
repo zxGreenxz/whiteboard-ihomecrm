@@ -28,6 +28,11 @@ test('owned room-pass proposal waits for click; cancellation preserves state', a
   const listingId: string = run.fixtures.listing.id;
   const pin = await pinCopilotTestModel(page);
   const guard = createRoomPassBrowserGuard({ actorId: run.actorId, listingId, organizationId: DEMO });
+  const failedRestRequests = new Set<string>();
+  page.on('requestfailed', request => {
+    const path = new URL(request.url()).pathname;
+    if (/^\/rest\/v1\/(?:rpc\/)?[a-z0-9_]+$/.test(path)) failedRestRequests.add(`${request.method()} ${path}`);
+  });
   let previews = 0;
   let readback: (() => Promise<boolean>) | undefined;
   await page.route('**/rest/v1/**', route => guard.route(route));
@@ -56,12 +61,21 @@ test('owned room-pass proposal waits for click; cancellation preserves state', a
     };
   });
   try {
-    await page.addInitScript(([key, organizationId]) => localStorage.setItem(key, organizationId),
-      ['ihomecrm.selectedOrganizationId', DEMO] as const);
+    await page.addInitScript(({ organizationId, actorId }) => {
+      localStorage.setItem('ihomecrm.selectedOrganizationId', organizationId);
+      // This fresh browser must not start the dashboard's daily notification
+      // writer on the real account. Defer that unrelated background job using
+      // its existing browser-local throttle; every REST write stays guarded.
+      localStorage.setItem(`schedNotif:lastRun:${actorId}`, String(Date.now()));
+    }, { organizationId: DEMO, actorId: run.actorId });
     const selected = await waitForCopilotAvailability(page, DEMO, async () => {
-      await login(page, 'sysadmin'); await xacMinhBanBuild(page);
+      await login(page, 'sysadmin');
+      // The unauthenticated organization bootstrap clears a persisted choice.
+      // Reapply the init script with the authenticated session before opening
+      // Copilot; the actual scoped availability response below proves selection.
+      await page.reload(); await xacMinhBanBuild(page);
       await page.getByTestId('copilot-launcher').click();
-    });
+    }, { timeoutMs: 45_000 });
     expect(selected.request().postDataJSON().p_organization_id).toBe(DEMO);
     await expect(page.getByTestId('copilot-model-select')).toHaveValue(COPILOT_TEST_MODEL);
     await expect(page.getByTestId('copilot-dang-tai-lich-su')).toHaveCount(0);
@@ -70,7 +84,8 @@ test('owned room-pass proposal waits for click; cancellation preserves state', a
     await guiVaChoModel(page, prompt, { organizationId: DEMO });
     await expect(page.getByTestId('copilot-confirm-card')).toBeVisible({ timeout: 60_000 });
     await expect.poll(() => previews).toBe(1);
-    expect(guard.counters().writes === 0 && guard.counters().illegalWrites === 0, 'Write attempt before consent').toBe(true);
+    expect(guard.counters().writes === 0 && guard.counters().illegalWrites === 0,
+      `Write attempt before consent; failed REST paths: ${[...failedRestRequests].sort().join(', ')}`).toBe(true);
     expect(await readback!(), 'Initial owned listing must be hidden').toBe(false);
     await page.getByTestId('copilot-confirm-cancel').click();
     await expect(page.getByTestId('copilot-confirm-card')).toBeHidden();

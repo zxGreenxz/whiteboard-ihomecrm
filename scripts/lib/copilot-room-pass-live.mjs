@@ -54,7 +54,9 @@ export const DENIALS = Object.freeze(['confirmation_already_used', 'payload_chan
 export function responseCode(response) {
   if (response?.status >= 200 && response.status < 300) return 'ok';
   const message = response?.body?.message;
-  if (typeof message === 'string') for (const code of DENIALS) if (message === code) return code;
+  if (typeof message === 'string') for (const code of DENIALS) {
+    if (message === code || message.startsWith(`${code}:`)) return code;
+  }
   if (response?.body?.code === '23505' && typeof message === 'string'
     && message.includes('"room_pass_listings_room_active_uniq"')) return 'unique_conflict';
   return 'request_rejected';
@@ -176,6 +178,8 @@ export class RoomPassRun {
       p_evidence_link: restoreMetadata ? this.run.controls.prior.evidence_link : 'scripts/copilot-room-pass-live-acceptance.mjs',
       p_rollback_reference: restoreMetadata ? this.run.controls.prior.rollback_reference : `room-pass-journal:${this.run.runId}` };
     // Persist exact intended CAS (safe control metadata only), including old row.
+    this.run.controls.restored = false;
+    delete this.run.controls.restoration;
     this.run.controls.pending = { ...args }; await this.save();
     const response = await this.mutate('flag_transition', ACTION, { method: 'POST', rpc: 'set_copilot_feature_flag_v2', args });
     requireThat(responseCode(response) === 'ok', responseCode(response) === 'copilot_rollout_stale_revision' ? 'control_cas_stale' : 'control_transition_failed');

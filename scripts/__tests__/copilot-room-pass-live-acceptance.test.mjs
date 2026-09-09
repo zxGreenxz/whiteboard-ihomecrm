@@ -7,8 +7,10 @@ import { PGlite } from '@electric-sql/pglite';
 import { readRoomPassFlag, createEmergencyFixture, removeEmergencyFixture, assertDeniedUnchanged, assertLinkedExecution, withScopeRevocation } from '../lib/copilot-room-pass-admin-fixtures.mjs';
 import { createRoomPassTransport } from '../lib/copilot-room-pass-transport.mjs';
 import { recoverRoomPassRun } from '../lib/copilot-room-pass-recovery.mjs';
+import { loadAcceptedHistory } from '../lib/copilot-room-pass-resume.mjs';
 
 const api = await import('../lib/copilot-room-pass-live.mjs').catch(() => ({}));
+const acceptance = await import('../copilot-room-pass-live-acceptance.mjs').catch(() => ({}));
 const ACTOR = '11111111-1111-4111-8111-111111111111';
 async function fixture(fn) {
   const dir = await mkdtemp(join(tmpdir(), 'room-pass-test-'));
@@ -37,6 +39,19 @@ async function fixture(fn) {
 }
 test('exposes an import-safe fixture journal before any transport is configured', () => {
   assert.equal(typeof api.prepareRoomPassRun, 'function');
+});
+
+test('resume accepts only a contiguous, passed prefix of the required acceptance cases', () => {
+  const passed = acceptance.REQUIRED_CASES.slice(0, 6).map(name => ({ name, status: 'pass' }));
+  assert.deepEqual(acceptance.acceptedCasePrefix(passed), acceptance.REQUIRED_CASES.slice(0, 6));
+  assert.throws(
+    () => acceptance.acceptedCasePrefix([passed[0], { name: 'scope_revoked', status: 'pass' }]),
+    /resume_cases_invalid/,
+  );
+  assert.throws(
+    () => acceptance.acceptedCasePrefix([{ name: passed[0].name, status: 'fail' }]),
+    /resume_cases_invalid/,
+  );
 });
 
 test('unknown committed setup is journaled before request and never creates a duplicate or starts cleanup', async () => fixture(async ({ runner, run, transport, state, journalPath }) => {
@@ -103,10 +118,33 @@ test('flag CAS never adopts someone else’s newer action revision or enables gl
   assert.equal(calls.length, 2);
 }));
 
+test('reopening a restored control invalidates its durable restoration claim before CAS', async () => fixture(async ({ runner, transport, run, journalPath }) => {
+  let flag = { scope: 'action', contract_id: api.ACTION, state: 'disabled', canary_org: null, expires_at: null,
+    revision: 8, updated_by: ACTOR, reason: 'initial', evidence_link: 'initial', rollback_reference: 'initial' };
+  transport.readFlag = async () => ({ flag: structuredClone(flag), globalRevision: flag.revision });
+  transport.request = async (_, req) => {
+    const saved = JSON.parse(await readFile(journalPath, 'utf8'));
+    assert.equal(saved.controls.restored, false);
+    assert.equal(saved.controls.restoration, undefined);
+    flag = { ...flag, state: req.args.p_state, revision: flag.revision + 1, canary_org: req.args.p_canary_org,
+      expires_at: req.args.p_expires_at, reason: req.args.p_reason, evidence_link: req.args.p_evidence_link,
+      rollback_reference: req.args.p_rollback_reference };
+    return { status: 200, body: structuredClone(flag) };
+  };
+  await runner.enable(); await runner.restoreControl();
+  assert.equal(run.controls.restored, true);
+  await runner.enable();
+  assert.equal(run.controls.restored, false);
+  assert.equal(run.controls.current.state, 'enabled');
+  await runner.restoreControl();
+  assert.equal(run.controls.restored, true);
+}));
+
 test('contact values and arbitrary RPC errors cannot become evidence', () => {
   assert.equal(api.responseCode({ status: 400, body: { message: 'Bearer secret nonce x' } }), 'request_rejected');
   assert.equal(api.responseCode({ status: 403, body: { message: 'payload_changed secret' } }), 'request_rejected');
   assert.equal(api.responseCode({ status: 403, body: { message: 'payload_changed' } }), 'payload_changed');
+  assert.equal(api.responseCode({ status: 403, body: { message: 'copilot_action_disabled: room_pass.set_active' } }), 'copilot_action_disabled');
 });
 
 test('administrative emergency CAS removes only its exact owned row and refuses changed state', async () => fixture(async ({ runner, run }) => {
@@ -201,6 +239,23 @@ test('recovery will not read or write while any original operation lacks verifie
   const evidence = { [`operator:${run.runId}`]: 'a'.repeat(64), [ACTOR]: 'b'.repeat(64) };
   await assert.rejects(recoverRoomPassRun({ run, journalPath, transport, management: {}, terminalEvidence: evidence }), /terminal_evidence_unverified/);
   assert.equal(state.requests.length, 0); assert.equal(run.operations[0].state, 'unknown');
+}));
+
+test('verified session recovery preserves evidence needed to continue earlier passes', async () => fixture(async ({ run, runner, transport, journalPath }) => {
+  const flag = { scope: 'action', contract_id: api.ACTION, state: 'disabled', canary_org: null, expires_at: null, revision: 8 };
+  transport.readFlag = async () => ({ flag, globalRevision: 8 });
+  transport.verifyTerminal = async () => true;
+  await runner.captureControl();
+  run.admission = { sourceSha: 'a'.repeat(40), buildSha: 'a'.repeat(40), organizationId: api.DEMO,
+    actorId: ACTOR, reviewed: true, administrativeFixtureReviewed: true };
+  run.results = acceptance.REQUIRED_CASES.slice(0, 6).map((name, i) => ({ name, status: 'pass', ...(i < 3 ? { count: 4 } : {}) }));
+  run.scenarios.push({ name: 'same_nonce_sessions', state: 'unknown' });
+  const terminalEvidence = { ['operator:' + run.runId]: 'a'.repeat(64), 'session:same_nonce_sessions': 'b'.repeat(64) };
+  await recoverRoomPassRun({ run, journalPath, transport, management: {}, terminalEvidence });
+  assert.equal(run.scenarios[0].terminalEvidenceDigest, terminalEvidence['session:same_nonce_sessions']);
+  const history = await loadAcceptedHistory({ resume: { journalPaths: [journalPath] }, admission: run.admission, runId: ACTOR });
+  assert.equal(history.results.length, 6);
+  assert.equal(history.results.some(r => r.name === 'same_nonce_sessions'), false);
 }));
 
 test('an unrelated surviving room blocks parent deletion', async () => fixture(async ({ runner, state, run }) => {
@@ -350,11 +405,31 @@ test('browser guard delegates reads, owns chat and denies every unexpected busin
   const request = (path, method = 'POST', body = {}) => ({ url: () => 'https://fixture.invalid/rest/v1/' + path, method: () => method, postDataJSON: () => body });
   const dispatch = async req => { const calls = []; await guard.route({ request: () => req, fallback: async () => calls.push('fallback'), abort: async () => calls.push('abort') }); return calls; };
   assert.deepEqual(await dispatch(request('profiles?select=ui_preferences', 'GET')), ['fallback']);
+  assert.deepEqual(await dispatch(request('rpc/get_my_permissions')), ['fallback']);
+  assert.deepEqual(await dispatch(request('rpc/get_my_permissions', 'POST', { organization_id: ACTOR })), ['abort']);
+  for (const [rpc, args] of Object.entries({
+    is_super_admin: {}, business_performance_organizations_v1: {},
+    get_dashboard_summary: { p_building_id: null },
+    get_contract_stats: { p_building_ids: null, p_today: '2026-09-09', p_in30: '2026-10-09' },
+    get_income_expense_layer_stats: { p_start_date: '2026-09-01', p_end_date: '2026-09-30', p_kqkd_only: true },
+    get_invoice_statistics_v2: { p_building_id: null, p_start_date: '2026-09-01', p_end_date: '2026-09-30' },
+    invoice_active_payment_methods: { p_invoice_ids: [listingId] },
+    revenue_by_month: { p_start: '2026-01-01', p_end: '2026-09-30', p_building_id: null },
+  })) {
+    const before = guard.counters();
+    assert.deepEqual(await dispatch(request('rpc/' + rpc, 'POST', args)), ['fallback'], rpc);
+    assert.deepEqual(guard.counters(), before, `${rpc} is a read, not a business write`);
+    assert.deepEqual(await dispatch(request('rpc/' + rpc, 'POST', { ...args, p_execute: true })), ['abort'], `${rpc} rejects unknown args`);
+    assert.deepEqual(await dispatch(request('rpc/' + rpc, 'PATCH', args)), ['abort'], `${rpc} rejects other methods`);
+  }
   const preview = { p_organization_id: api.DEMO, p_payload: { listing_id: listingId, active: true } };
   assert.deepEqual(await dispatch(request('rpc/copilot_preview_room_pass_active_v1', 'POST', preview)), ['fallback']);
   assert.deepEqual(await dispatch(request('rpc/copilot_preview_room_pass_active_v1', 'POST', { ...preview, p_organization_id: ACTOR })), ['abort']);
   assert.deepEqual(await dispatch(request('rpc/get_my_copilot_availability_v1', 'POST', { p_organization_id: api.DEMO })), ['fallback']);
   assert.deepEqual(await dispatch(request('rpc/get_my_copilot_availability_v1', 'POST', { p_organization_id: ACTOR })), ['abort']);
+  assert.deepEqual(await dispatch(request('rpc/copilot_memory_list_v1', 'POST', { p_organization_id: api.DEMO })), ['fallback']);
+  assert.deepEqual(await dispatch(request('rpc/copilot_memory_list_v1', 'POST', { p_organization_id: ACTOR })), ['abort']);
+  assert.deepEqual(await dispatch(request('rpc/copilot_memory_list_v1', 'POST', { p_organization_id: api.DEMO, p_content: 'unexpected' })), ['abort']);
   for (const path of ['income_expenses','ai_write_audit','rpc/ie_compat_insert_v2','rpc/create_income_expense_v1','rpc/copilot_execute_income_expense_v1','rpc/unknown_future_write']) {
     assert.deepEqual(await dispatch(request(path, 'POST', { organization_id: ACTOR })), ['abort']);
   }

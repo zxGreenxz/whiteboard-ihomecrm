@@ -8,15 +8,21 @@ import { actionSnapshot, assertDeniedUnchanged, assertLinkedExecution, createEme
   withScopeRevocation } from './lib/copilot-room-pass-admin-fixtures.mjs';
 import { runLockCase } from './lib/copilot-room-pass-sessions.mjs';
 
-export const REQUIRED_CASES = Object.freeze(['fresh_consent_toggles', 'nonce_replay', 'stale_second_nonce', 'aba', 'conflict_atomicity',
-  'disallowed_role_preview', 'scope_revoked', 'other_building_scope', 'flag_revoked', 'global_emergency', 'scoped_emergency', 'future_emergency',
-  'expired_emergency', 'unrelated_permission_emergency', 'plan_execute', 'plan_repreview', 'plan_cancel', 'browser_consent',
-  'same_nonce_sessions', 'parent_relationship_race', 'listing_revision_race', 'nonce_expiry_wait', 'flag_expiry_wait',
-  'global_emergency_wait', 'scoped_emergency_wait']);
+import { REQUIRED_CASES, acceptedCasePrefix, loadAcceptedHistory } from './lib/copilot-room-pass-resume.mjs';
+export { REQUIRED_CASES, acceptedCasePrefix };
+
+function alreadyPassed(runner, name) {
+  return runner.run.results?.some(result => result.name === name && result.status === 'pass') === true;
+}
 
 async function record(runner, name, proof) {
-  requireThat(REQUIRED_CASES.includes(name), 'case_invalid');
-  (runner.run.results ??= []).push({ name, status: 'pass', ...proof }); await runner.save();
+  await recordGroup(runner, [name], proof);
+}
+async function recordGroup(runner, names, proof) {
+  requireThat(names.every(name => REQUIRED_CASES.includes(name) && !alreadyPassed(runner, name)), 'case_invalid');
+  const next = [...(runner.run.results ?? []), ...names.map(name => ({ name, status: 'pass', ...proof }))];
+  acceptedCasePrefix(next);
+  runner.run.results = next; await runner.save();
 }
 async function waitUntil(timestamp, progress = async () => {}) {
   requireThat(Number.isFinite(timestamp) && timestamp - Date.now() <= 305_000, 'wait_deadline_invalid');
@@ -53,6 +59,7 @@ async function plans(runner, management) {
     return result.body;
   };
   for (const kind of ['plan_execute', 'plan_repreview', 'plan_cancel']) {
+    if (alreadyPassed(runner, kind)) continue;
     await runner.domainSet(false);
     const plan = await create(kind);
     try {
@@ -79,7 +86,7 @@ async function plans(runner, management) {
         const after = await actionSnapshot(runner, management), final = await get(plan.plan_id);
         if (kind === 'plan_repreview') {
           requireThat(responseCode(executed) === 'ok' && final.plan_status === 'FAILED'
-            && final.steps?.[0]?.status === 'BLOCKED' && final.steps[0].error_code === 'payload_changed'
+            && final.steps?.[0]?.status === 'FAILED' && final.steps[0].error_code === 'payload_changed'
             && digest(before.listing) === digest(after.listing) && digest(before.audits) === digest(after.audits)
             && digest(before.ledger) === digest(after.ledger), 'plan_repreview_not_atomic');
         } else {
@@ -102,6 +109,10 @@ async function plans(runner, management) {
           args: { p_plan_id: plan.plan_id, p_expected_plan_version: latest.plan_version, p_reason: runner.run.marker } })) === 'ok', 'plan_cleanup_failed');
         requireThat((await get(plan.plan_id)).plan_status === 'CANCELLED', 'plan_cleanup_unverified');
       }
+      requireThat(['DRAFT', 'APPROVED', 'DONE', 'FAILED', 'CANCELLED', 'EXPIRED'].includes(latest.plan_status), 'plan_terminal_unverified');
+      const ownedPlan = runner.run.fixtures.plans.find(value => value.id === plan.plan_id);
+      requireThat(ownedPlan, 'plan_ownership_unverified');
+      ownedPlan.status = 'terminal'; await runner.save();
     }
   }
 }
@@ -110,11 +121,13 @@ async function plans(runner, management) {
  * Root must supply source/build admission, ordinary authenticated transports,
  * reviewed administrative fixture transport and a terminal real browser result. */
 export async function runRoomPassAcceptance({ run, journalPath, transport, management, adminTransport, adminActorId,
-  disallowedTransport, disallowedActorId, browser, admission, progress = async () => {} }) {
+  disallowedTransport, disallowedActorId, browser, admission, resume, progress = async () => {} }) {
   requireThat(admission?.reviewed === true && /^[0-9a-f]{40}$/.test(admission.sourceSha)
     && /^[0-9a-f]{40}$/.test(admission.buildSha) && admission.organizationId === DEMO
     && admission.actorId === run.actorId && admission.administrativeFixtureReviewed === true
     && typeof browser === 'function', 'live_admission_required');
+  const history = await loadAcceptedHistory({ resume, admission, runId: run.runId });
+  requireThat(!run.results?.length, 'resume_evidence_invalid');
   const runner = new RoomPassRun({ run, journalPath, transport });
   requireThat(UUID.test(disallowedActorId) && disallowedActorId !== run.actorId, 'disallowed_actor_required');
   const otherContext = { ...runner.context, actorId: disallowedActorId };
@@ -129,47 +142,65 @@ export async function runRoomPassAcceptance({ run, journalPath, transport, manag
     && responseCode(otherAuth) === 'ok' && otherAuth.body.isPlatformAdmin === false
     && otherAuth.body.permissions?.['sale_phong.manage_pass_listings'] === true, 'role_policy_preflight_failed');
   await runner.acquireLease();
+  if (history) {
+    const { results, ...lineage } = history;
+    run.priorAcceptance = lineage;
+    run.results = results;
+  }
   run.admission = { sourceSha: admission.sourceSha, buildSha: admission.buildSha, organizationId: DEMO,
     actorId: run.actorId, reviewed: true, administrativeFixtureReviewed: true }; await runner.save();
   let failure = null;
   try {
     await runner.setup(); await runner.enable(); run.status = 'accepting'; await runner.save();
-    for (const active of [true, false, true, false]) {
-      const first = await runner.preview(active), second = await runner.preview(active);
-      requireThat(digest(first.canonical) === digest(second.canonical) && first.confirmation_nonce !== second.confirmation_nonce, 'preview_nondeterministic');
-      const before = await actionSnapshot(runner, management, first), result = await runner.execute(first);
-      requireThat(responseCode(result) === 'ok', 'toggle_failed');
-      const after = await actionSnapshot(runner, management, first); assertLinkedExecution(before, after, result.body);
-      requireThat(responseCode(await runner.execute(first)) === 'confirmation_already_used'
-        && digest(after) === digest(await actionSnapshot(runner, management, first)), 'replay_not_atomic');
-      await deny(runner, management, second, ['payload_changed']);
+    if (!alreadyPassed(runner, 'fresh_consent_toggles')) {
+      for (const active of [true, false, true, false]) {
+        const first = await runner.preview(active), second = await runner.preview(active);
+        requireThat(digest(first.canonical) === digest(second.canonical) && first.confirmation_nonce !== second.confirmation_nonce, 'preview_nondeterministic');
+        const before = await actionSnapshot(runner, management, first), result = await runner.execute(first);
+        requireThat(responseCode(result) === 'ok', 'toggle_failed');
+        const after = await actionSnapshot(runner, management, first); assertLinkedExecution(before, after, result.body);
+        requireThat(responseCode(await runner.execute(first)) === 'confirmation_already_used'
+          && digest(after) === digest(await actionSnapshot(runner, management, first)), 'replay_not_atomic');
+        await deny(runner, management, second, ['payload_changed']);
+      }
+      await recordGroup(runner, ['fresh_consent_toggles', 'nonce_replay', 'stale_second_nonce'], { count: 4 });
     }
-    for (const name of ['fresh_consent_toggles', 'nonce_replay', 'stale_second_nonce']) await record(runner, name, { count: 4 });
-    const aba = await runner.preview(true); await runner.domainSet(true); await runner.domainSet(false);
-    await deny(runner, management, aba, ['payload_changed']); await record(runner, 'aba', {});
-    const conflict = await runner.preview(true); await runner.createCompetitor();
-    try { await runner.domainSet(true, run.fixtures.competitor.id); await deny(runner, management, conflict, ['unique_conflict']); }
-    finally { await runner.deleteCompetitor(); }
-    await record(runner, 'conflict_atomicity', {});
-    const deniedRole = await disallowedTransport.request(otherContext, { method: 'POST', rpc: 'copilot_preview_room_pass_active_v1',
-      args: { p_organization_id: DEMO, p_payload: { listing_id: run.fixtures.listing.id, active: true } } });
-    requireThat(responseCode(deniedRole) === 'not_permitted', 'role_boundary_missing'); await record(runner, 'disallowed_role_preview', {});
-    const scoped = await runner.preview(true);
-    await withScopeRevocation(runner, management, adminTransport, adminActorId, async () => {
-      const auth = await runner.rpc('get_authorization_context_v1', { p_organization_id: DEMO });
-      const scope = auth.body?.scopeSets?.[auth.body?.scopes?.['sale_phong.manage_pass_listings']];
-      requireThat(responseCode(auth) === 'ok' && scope?.orgWide === false
-        && !scope.buildingIds.includes(run.fixtures.building.id) && scope.buildingIds.includes(run.fixtures.scopeBuilding.id), 'building_scope_ids_unproven');
-      const deniedPreview = await runner.mutate('preview_denied', run.fixtures.listing.id, { method: 'POST', rpc: 'copilot_preview_room_pass_active_v1',
+    if (!alreadyPassed(runner, 'aba')) {
+      const aba = await runner.preview(true); await runner.domainSet(true); await runner.domainSet(false);
+      await deny(runner, management, aba, ['payload_changed']); await record(runner, 'aba', {});
+    }
+    if (!alreadyPassed(runner, 'conflict_atomicity')) {
+      const conflict = await runner.preview(true); await runner.createCompetitor();
+      try { await runner.domainSet(true, run.fixtures.competitor.id); await deny(runner, management, conflict, ['unique_conflict']); }
+      finally { await runner.deleteCompetitor(); }
+      await record(runner, 'conflict_atomicity', {});
+    }
+    if (!alreadyPassed(runner, 'disallowed_role_preview')) {
+      const deniedRole = await disallowedTransport.request(otherContext, { method: 'POST', rpc: 'copilot_preview_room_pass_active_v1',
         args: { p_organization_id: DEMO, p_payload: { listing_id: run.fixtures.listing.id, active: true } } });
-      requireThat(responseCode(deniedPreview) === 'not_permitted', 'building_scope_preview_not_denied');
-      await deny(runner, management, scoped, ['not_permitted']);
-    });
-    await record(runner, 'scope_revoked', {}); await record(runner, 'other_building_scope', {});
-    const flag = await runner.preview(true); await runner.transitionFlag('disabled');
-    try { await deny(runner, management, flag, ['copilot_action_disabled']); } finally { await runner.enable(); }
-    await record(runner, 'flag_revoked', {});
+      requireThat(responseCode(deniedRole) === 'not_permitted', 'role_boundary_missing'); await record(runner, 'disallowed_role_preview', {});
+    }
+    if (!alreadyPassed(runner, 'scope_revoked')) {
+      const scoped = await runner.preview(true);
+      await withScopeRevocation(runner, management, adminTransport, adminActorId, async () => {
+        const auth = await runner.rpc('get_authorization_context_v1', { p_organization_id: DEMO });
+        const scope = auth.body?.scopeSets?.[auth.body?.scopes?.['sale_phong.manage_pass_listings']];
+        requireThat(responseCode(auth) === 'ok' && scope?.orgWide === false
+          && !scope.buildingIds.includes(run.fixtures.building.id) && scope.buildingIds.includes(run.fixtures.scopeBuilding.id), 'building_scope_ids_unproven');
+        const deniedPreview = await runner.mutate('preview_denied', run.fixtures.listing.id, { method: 'POST', rpc: 'copilot_preview_room_pass_active_v1',
+          args: { p_organization_id: DEMO, p_payload: { listing_id: run.fixtures.listing.id, active: true } } });
+        requireThat(responseCode(deniedPreview) === 'not_permitted', 'building_scope_preview_not_denied');
+        await deny(runner, management, scoped, ['not_permitted']);
+      });
+      await recordGroup(runner, ['scope_revoked', 'other_building_scope'], {});
+    }
+    if (!alreadyPassed(runner, 'flag_revoked')) {
+      const flag = await runner.preview(true); await runner.transitionFlag('disabled');
+      try { await deny(runner, management, flag, ['copilot_action_disabled']); } finally { await runner.enable(); }
+      await record(runner, 'flag_revoked', {});
+    }
     for (const [name, permission] of [['global_emergency', null], ['scoped_emergency', 'sale_phong.manage_pass_listings']]) {
+      if (alreadyPassed(runner, name)) continue;
       const proposal = await runner.preview(true), emergency = await createEmergencyFixture(runner, management, { permission });
       try { await deny(runner, management, proposal, ['tenant_emergency_denied', 'not_permitted']); }
       finally { await removeEmergencyFixture(runner, management, emergency); }
@@ -177,6 +208,7 @@ export async function runRoomPassAcceptance({ run, journalPath, transport, manag
     }
     for (const [name, options] of [['future_emergency', { delayMs: 30_000 }], ['expired_emergency', { durationMs: 1_000 }],
       ['unrelated_permission_emergency', { permission: 'rooms.view' }]]) {
+      if (alreadyPassed(runner, name)) continue;
       const emergency = await createEmergencyFixture(runner, management, options);
       try {
         if (name === 'expired_emergency') await waitUntil(Date.parse(emergency.row.expires_at) + 100, progress);
@@ -186,22 +218,24 @@ export async function runRoomPassAcceptance({ run, journalPath, transport, manag
       await record(runner, name, {});
     }
     await plans(runner, management);
-    await runner.enable({ renew: true });
-    await runner.domainSet(false);
-    const browserBefore = await actionSnapshot(runner, management);
-    run.browser = { state: 'intent', runId: run.runId }; await runner.save();
-    const receipt = await browser({ journalPath, runId: run.runId, actorId: run.actorId, listingId: run.fixtures.listing.id, sourceSha: admission.sourceSha, buildSha: admission.buildSha });
-    if (receipt?.terminal === true) { run.browser.state = 'settled'; await runner.save(); }
-    requireThat(receipt?.terminal === true && receipt.exitCode === 0 && receipt.runId === run.runId
-      && receipt.buildSha === admission.buildSha && receipt.noWriteBeforeClick === true && receipt.noWriteOnCancel === true
-      && receipt.executedOnce === true, 'browser_evidence_invalid');
-    const browserAfter = await actionSnapshot(runner, management);
-    const browserAudit = browserAfter.audits.filter(row => !browserBefore.audits.some(old => old.id === row.id));
-    const browserLedger = browserAfter.ledger.filter(row => !browserBefore.ledger.some(old => old.id === row.id));
-    requireThat(browserAfter.listing.active === true && browserAfter.audits.length === browserBefore.audits.length + 1
-      && browserAfter.ledger.length === browserBefore.ledger.length + 1 && browserAudit.length === 1 && browserLedger.length === 1
-      && browserLedger[0].audit_id === browserAudit[0].id && browserAudit[0].idempotency_key === `copilot_action:${ACTION}:${browserLedger[0].consent_id}`, 'browser_action_unverified');
-    await record(runner, 'browser_consent', { buildSha: admission.buildSha });
+    if (!alreadyPassed(runner, 'browser_consent')) {
+      await runner.enable({ renew: true });
+      await runner.domainSet(false);
+      const browserBefore = await actionSnapshot(runner, management);
+      run.browser = { state: 'intent', runId: run.runId }; await runner.save();
+      const receipt = await browser({ journalPath, runId: run.runId, actorId: run.actorId, listingId: run.fixtures.listing.id, sourceSha: admission.sourceSha, buildSha: admission.buildSha });
+      if (receipt?.terminal === true) { run.browser.state = 'settled'; await runner.save(); }
+      requireThat(receipt?.terminal === true && receipt.exitCode === 0 && receipt.runId === run.runId
+        && receipt.buildSha === admission.buildSha && receipt.noWriteBeforeClick === true && receipt.noWriteOnCancel === true
+        && receipt.executedOnce === true, 'browser_evidence_invalid');
+      const browserAfter = await actionSnapshot(runner, management);
+      const browserAudit = browserAfter.audits.filter(row => !browserBefore.audits.some(old => old.id === row.id));
+      const browserLedger = browserAfter.ledger.filter(row => !browserBefore.ledger.some(old => old.id === row.id));
+      requireThat(browserAfter.listing.active === true && browserAfter.audits.length === browserBefore.audits.length + 1
+        && browserAfter.ledger.length === browserBefore.ledger.length + 1 && browserAudit.length === 1 && browserLedger.length === 1
+        && browserLedger[0].audit_id === browserAudit[0].id && browserAudit[0].idempotency_key === `copilot_action:${ACTION}:${browserLedger[0].consent_id}`, 'browser_action_unverified');
+      await record(runner, 'browser_consent', { buildSha: admission.buildSha });
+    }
     await runSessionCases(runner, management, progress);
     requireThat(digest((await runner.rpc('get_copilot_action_policy_v1', {})).body) === digest(policy.body), 'policy_changed_during_acceptance');
   } catch (error) {
@@ -226,6 +260,7 @@ async function runSessionCases(runner, management, progress) {
   await runner.enable({ renew: true });
   for (const [name, change, expected] of [['same_nonce_sessions', 'none', 'confirmation_already_used'],
     ['parent_relationship_race', 'room_parent_changed', 'entity_not_found'], ['listing_revision_race', 'listing_revision', 'payload_changed']]) {
+    if (alreadyPassed(runner, name)) continue;
     await runner.domainSet(false);
     const proposal = await runner.preview(true), before = await actionSnapshot(runner, management, proposal);
     try {
@@ -249,23 +284,28 @@ async function runSessionCases(runner, management, progress) {
       }
     }
   }
-  await runner.domainSet(false);
-  const expiring = await runner.preview(true), expiryBefore = await actionSnapshot(runner, management, expiring);
-  await waitUntil(Date.parse(expiryBefore.consent.expires_at) - 10_000, progress);
-  const expiry = await runLockCase({ runner, transport: management, proposal: expiring, name: 'nonce_expiry_wait', seconds: 20 });
-  requireThat(expiry.outcomes[1] === 'confirmation_expired', 'nonce_expiry_missing');
-  assertDeniedUnchanged(expiryBefore, await actionSnapshot(runner, management, expiring));
-  await record(runner, 'nonce_expiry_wait', { barrier: expiry.barrier });
+  if (!alreadyPassed(runner, 'nonce_expiry_wait')) {
+    await runner.domainSet(false);
+    const expiring = await runner.preview(true), expiryBefore = await actionSnapshot(runner, management, expiring);
+    await waitUntil(Date.parse(expiryBefore.consent.expires_at) - 10_000, progress);
+    const expiry = await runLockCase({ runner, transport: management, proposal: expiring, name: 'nonce_expiry_wait', seconds: 20 });
+    requireThat(expiry.outcomes[1] === 'confirmation_expired', 'nonce_expiry_missing');
+    assertDeniedUnchanged(expiryBefore, await actionSnapshot(runner, management, expiring));
+    await record(runner, 'nonce_expiry_wait', { barrier: expiry.barrier });
+  }
   // Shadow is an allowed action state. Its short DEMO expiry starts before the
   // request; the acquired-lock barrier proves it expires while execute is waiting.
-  await runner.transitionFlag('shadow', new Date(Date.now() + 12_000).toISOString());
-  const flag = await runner.preview(true), flagBefore = await actionSnapshot(runner, management, flag);
-  const flagWait = await runLockCase({ runner, transport: management, proposal: flag, name: 'flag_expiry_wait' });
-  requireThat(flagWait.outcomes[1] === 'copilot_action_disabled', 'flag_expiry_missing');
-  assertDeniedUnchanged(flagBefore, await actionSnapshot(runner, management, flag));
-  await runner.transitionFlag('enabled', new Date(Date.now() + 900_000).toISOString());
-  await record(runner, 'flag_expiry_wait', { barrier: flagWait.barrier });
+  if (!alreadyPassed(runner, 'flag_expiry_wait')) {
+    await runner.transitionFlag('shadow', new Date(Date.now() + 12_000).toISOString());
+    const flag = await runner.preview(true), flagBefore = await actionSnapshot(runner, management, flag);
+    const flagWait = await runLockCase({ runner, transport: management, proposal: flag, name: 'flag_expiry_wait' });
+    requireThat(flagWait.outcomes[1] === 'copilot_action_disabled', 'flag_expiry_missing');
+    assertDeniedUnchanged(flagBefore, await actionSnapshot(runner, management, flag));
+    await runner.transitionFlag('enabled', new Date(Date.now() + 900_000).toISOString());
+    await record(runner, 'flag_expiry_wait', { barrier: flagWait.barrier });
+  }
   for (const [name, permission] of [['global_emergency_wait', null], ['scoped_emergency_wait', 'sale_phong.manage_pass_listings']]) {
+    if (alreadyPassed(runner, name)) continue;
     const proposal = await runner.preview(true), before = await actionSnapshot(runner, management, proposal);
     let emergency;
     try {

@@ -1,0 +1,546 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-09T14:49:50.846Z",
+  "scope": "Task17 room_pass.set_active live acceptance only",
+  "runtime": {
+    "sourceSha": "a6ea784a9ab1f8443ae715691a192b42d47edebb",
+    "buildSha": "a6ea784a9ab1f8443ae715691a192b42d47edebb",
+    "organizationId": "dddd0000-0000-4000-8000-000000000001"
+  },
+  "result": {
+    "accepted": 25,
+    "required": 25,
+    "fullRoomPassAcceptance": true,
+    "fullPlanAccepted": false
+  },
+  "method": "Composite durable original live proofs; passed cases retained through fully validated journal ancestry, with 7 concurrent/expiry cases completed in the terminal final run.",
+  "cases": [
+    {
+      "name": "fresh_consent_toggles",
+      "status": "pass",
+      "count": 4,
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "2ec4ad86-d530-41bd-98bf-618a9a737cbc",
+        "journalDigest": "b2692ec85e4d28059c67a63b0633c07c88bbaa3e730f8f356f8ad9e10764b682"
+      }
+    },
+    {
+      "name": "nonce_replay",
+      "status": "pass",
+      "count": 4,
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "2ec4ad86-d530-41bd-98bf-618a9a737cbc",
+        "journalDigest": "b2692ec85e4d28059c67a63b0633c07c88bbaa3e730f8f356f8ad9e10764b682"
+      }
+    },
+    {
+      "name": "stale_second_nonce",
+      "status": "pass",
+      "count": 4,
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "2ec4ad86-d530-41bd-98bf-618a9a737cbc",
+        "journalDigest": "b2692ec85e4d28059c67a63b0633c07c88bbaa3e730f8f356f8ad9e10764b682"
+      }
+    },
+    {
+      "name": "aba",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "2ec4ad86-d530-41bd-98bf-618a9a737cbc",
+        "journalDigest": "b2692ec85e4d28059c67a63b0633c07c88bbaa3e730f8f356f8ad9e10764b682"
+      }
+    },
+    {
+      "name": "conflict_atomicity",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "2ec4ad86-d530-41bd-98bf-618a9a737cbc",
+        "journalDigest": "b2692ec85e4d28059c67a63b0633c07c88bbaa3e730f8f356f8ad9e10764b682"
+      }
+    },
+    {
+      "name": "disallowed_role_preview",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "2ec4ad86-d530-41bd-98bf-618a9a737cbc",
+        "journalDigest": "b2692ec85e4d28059c67a63b0633c07c88bbaa3e730f8f356f8ad9e10764b682"
+      }
+    },
+    {
+      "name": "scope_revoked",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "bb486dd0-1ab2-46ff-89fd-6b5644e15b07",
+        "journalDigest": "39cf05637029a6ae9743e72bcc8d4778aed158e69dd79df2ecede831882d06b4"
+      }
+    },
+    {
+      "name": "other_building_scope",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "bb486dd0-1ab2-46ff-89fd-6b5644e15b07",
+        "journalDigest": "39cf05637029a6ae9743e72bcc8d4778aed158e69dd79df2ecede831882d06b4"
+      }
+    },
+    {
+      "name": "flag_revoked",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "a19a0482-f5ca-4f23-aee0-97cd5c633505",
+        "journalDigest": "7425455d683ebd9233b4631381875f7357344e467770dd921aa0520dddb33571"
+      }
+    },
+    {
+      "name": "global_emergency",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "a19a0482-f5ca-4f23-aee0-97cd5c633505",
+        "journalDigest": "7425455d683ebd9233b4631381875f7357344e467770dd921aa0520dddb33571"
+      }
+    },
+    {
+      "name": "scoped_emergency",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "a19a0482-f5ca-4f23-aee0-97cd5c633505",
+        "journalDigest": "7425455d683ebd9233b4631381875f7357344e467770dd921aa0520dddb33571"
+      }
+    },
+    {
+      "name": "future_emergency",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "a19a0482-f5ca-4f23-aee0-97cd5c633505",
+        "journalDigest": "7425455d683ebd9233b4631381875f7357344e467770dd921aa0520dddb33571"
+      }
+    },
+    {
+      "name": "expired_emergency",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "a19a0482-f5ca-4f23-aee0-97cd5c633505",
+        "journalDigest": "7425455d683ebd9233b4631381875f7357344e467770dd921aa0520dddb33571"
+      }
+    },
+    {
+      "name": "unrelated_permission_emergency",
+      "status": "pass",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "a19a0482-f5ca-4f23-aee0-97cd5c633505",
+        "journalDigest": "7425455d683ebd9233b4631381875f7357344e467770dd921aa0520dddb33571"
+      }
+    },
+    {
+      "name": "plan_execute",
+      "status": "pass",
+      "planId": "fd15263f-2bff-4684-8dee-fb8b9798ad3e",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "a19a0482-f5ca-4f23-aee0-97cd5c633505",
+        "journalDigest": "7425455d683ebd9233b4631381875f7357344e467770dd921aa0520dddb33571"
+      }
+    },
+    {
+      "name": "plan_repreview",
+      "status": "pass",
+      "planId": "b4fd8f08-1293-47b3-a103-8905a804139e",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "d76d3cdd-a09f-4dda-bd7d-093a595e6e33",
+        "journalDigest": "21305c5e0aece40935c3d400d9b58cb5aa45437095c401f149167058b07c48e3"
+      }
+    },
+    {
+      "name": "plan_cancel",
+      "status": "pass",
+      "planId": "a2beb36b-b87d-4368-ab64-da405dad5fad",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "d76d3cdd-a09f-4dda-bd7d-093a595e6e33",
+        "journalDigest": "21305c5e0aece40935c3d400d9b58cb5aa45437095c401f149167058b07c48e3"
+      }
+    },
+    {
+      "name": "browser_consent",
+      "status": "pass",
+      "buildSha": "a6ea784a9ab1f8443ae715691a192b42d47edebb",
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "36f3678a-8986-4a67-8d70-c3dd8caeebd4",
+        "journalDigest": "054948f8ed9b728204dfc00ee45ec3393f83c6dfa17834dda252108d7bb08a63"
+      }
+    },
+    {
+      "name": "same_nonce_sessions",
+      "status": "pass",
+      "barrier": {
+        "holder": {
+          "pid": 1028028,
+          "xid": "27340826",
+          "transactionStarted": "2026-09-09 14:41:27.16778+00"
+        },
+        "executors": [
+          {
+            "pid": 1028031,
+            "xid": "27340827",
+            "transactionStarted": "2026-09-09 14:41:27.78559+00",
+            "blockers": [
+              1028028
+            ]
+          },
+          {
+            "pid": 1028036,
+            "xid": "27340828",
+            "transactionStarted": "2026-09-09 14:41:28.433645+00",
+            "blockers": [
+              1028031
+            ]
+          }
+        ]
+      },
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "1e86e6d8-d55d-4045-bd94-3c500b575a45",
+        "journalDigest": "4a08d17999e8b08b2ef19805e113f7f9392b22f92eb3dcfec8b6b0ce29367309"
+      }
+    },
+    {
+      "name": "parent_relationship_race",
+      "status": "pass",
+      "barrier": {
+        "holder": {
+          "pid": 1028376,
+          "xid": "27340832",
+          "transactionStarted": "2026-09-09 14:41:53.254532+00"
+        },
+        "executors": [
+          {
+            "pid": 1028379,
+            "xid": "27340833",
+            "transactionStarted": "2026-09-09 14:41:54.043956+00",
+            "blockers": [
+              1028376
+            ]
+          }
+        ]
+      },
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "1e86e6d8-d55d-4045-bd94-3c500b575a45",
+        "journalDigest": "4a08d17999e8b08b2ef19805e113f7f9392b22f92eb3dcfec8b6b0ce29367309"
+      }
+    },
+    {
+      "name": "listing_revision_race",
+      "status": "pass",
+      "barrier": {
+        "holder": {
+          "pid": 1028400,
+          "xid": "27340845",
+          "transactionStarted": "2026-09-09 14:42:20.737852+00"
+        },
+        "executors": [
+          {
+            "pid": 1028403,
+            "xid": "27340846",
+            "transactionStarted": "2026-09-09 14:42:21.617029+00",
+            "blockers": [
+              1028400
+            ]
+          }
+        ]
+      },
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "1e86e6d8-d55d-4045-bd94-3c500b575a45",
+        "journalDigest": "4a08d17999e8b08b2ef19805e113f7f9392b22f92eb3dcfec8b6b0ce29367309"
+      }
+    },
+    {
+      "name": "nonce_expiry_wait",
+      "status": "pass",
+      "barrier": {
+        "holder": {
+          "pid": 1028493,
+          "xid": "27340882",
+          "transactionStarted": "2026-09-09 14:47:32.484207+00"
+        },
+        "executors": [
+          {
+            "pid": 1028497,
+            "xid": "27340883",
+            "transactionStarted": "2026-09-09 14:47:33.271214+00",
+            "blockers": [
+              1028493
+            ]
+          }
+        ]
+      },
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "1e86e6d8-d55d-4045-bd94-3c500b575a45",
+        "journalDigest": "4a08d17999e8b08b2ef19805e113f7f9392b22f92eb3dcfec8b6b0ce29367309"
+      }
+    },
+    {
+      "name": "flag_expiry_wait",
+      "status": "pass",
+      "barrier": {
+        "holder": {
+          "pid": 1028518,
+          "xid": "27340895",
+          "transactionStarted": "2026-09-09 14:48:01.43616+00"
+        },
+        "executors": [
+          {
+            "pid": 1028522,
+            "xid": "27340896",
+            "transactionStarted": "2026-09-09 14:48:02.412983+00",
+            "blockers": [
+              1028518
+            ]
+          }
+        ]
+      },
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "1e86e6d8-d55d-4045-bd94-3c500b575a45",
+        "journalDigest": "4a08d17999e8b08b2ef19805e113f7f9392b22f92eb3dcfec8b6b0ce29367309"
+      }
+    },
+    {
+      "name": "global_emergency_wait",
+      "status": "pass",
+      "barrier": {
+        "holder": {
+          "pid": 1028543,
+          "xid": "27340900",
+          "transactionStarted": "2026-09-09 14:48:27.62494+00"
+        },
+        "executors": [
+          {
+            "pid": 1028547,
+            "xid": "27340901",
+            "transactionStarted": "2026-09-09 14:48:28.35962+00",
+            "blockers": [
+              1028543
+            ]
+          }
+        ]
+      },
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "1e86e6d8-d55d-4045-bd94-3c500b575a45",
+        "journalDigest": "4a08d17999e8b08b2ef19805e113f7f9392b22f92eb3dcfec8b6b0ce29367309"
+      }
+    },
+    {
+      "name": "scoped_emergency_wait",
+      "status": "pass",
+      "barrier": {
+        "holder": {
+          "pid": 1028556,
+          "xid": "27340907",
+          "transactionStarted": "2026-09-09 14:48:52.876258+00"
+        },
+        "executors": [
+          {
+            "pid": 1028559,
+            "xid": "27340908",
+            "transactionStarted": "2026-09-09 14:48:53.506538+00",
+            "blockers": [
+              1028556
+            ]
+          }
+        ]
+      },
+      "source": "prior_terminal_journal",
+      "origin": {
+        "runId": "1e86e6d8-d55d-4045-bd94-3c500b575a45",
+        "journalDigest": "4a08d17999e8b08b2ef19805e113f7f9392b22f92eb3dcfec8b6b0ce29367309"
+      }
+    }
+  ],
+  "cleanup": {
+    "fixtureCleanup": {
+      "status": "done",
+      "retainedParentTombstones": 3
+    },
+    "controlsRestored": true,
+    "flagState": "disabled",
+    "canaryOrg": null,
+    "expiresAt": null
+  },
+  "journals": [
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T214109.json",
+      "runId": "1e86e6d8-d55d-4045-bd94-3c500b575a45",
+      "digest": "4a08d17999e8b08b2ef19805e113f7f9392b22f92eb3dcfec8b6b0ce29367309"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T213610.json",
+      "runId": "36f3678a-8986-4a67-8d70-c3dd8caeebd4",
+      "digest": "054948f8ed9b728204dfc00ee45ec3393f83c6dfa17834dda252108d7bb08a63"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T213400.json",
+      "runId": "bb1b2296-6e3a-4b1f-9712-07dc4623bb02",
+      "digest": "4eebcffea3c9e006c2774395f99b33f13d4af658d566109dcc71b96aec3c14fd"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T213144.json",
+      "runId": "ae9c08c8-100d-4407-b6cd-4ad85fab3342",
+      "digest": "943376cad0087a710a5ecbc7423d40c3e062d8dee81de62f6bd108b8ccf674ca"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T210402.json",
+      "runId": "10c9cb6c-d142-4e04-939d-2e517e86c37f",
+      "digest": "c9466d3826f93e9734f25d4cd58b8d2ebc8dddbfac30743a2af35d77c459e3d0"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T001633.json",
+      "runId": "4fbb9a1a-c4c7-4ee3-87c1-7eba7c319661",
+      "digest": "3fb800d069dadea582497c3e8176b34ebf57e3f95be445e12fb69a84f0ac4124"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T001431.json",
+      "runId": "c47018f2-7cdb-4efb-9d32-d011d4a1a906",
+      "digest": "d3438b35c878817ca3c9fb1a9383e2e67bebc9640c520f3991fc4ec33bdf49c2"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T000615.json",
+      "runId": "c151cfd9-b4ce-42f5-a38e-8d011220ac5c",
+      "digest": "bd9dbb6b455b8f331ccad6124cbdd7cb23140710bbc9d27eea90e7bf60d96003"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T000405.json",
+      "runId": "f3efd676-ca91-48d2-a166-2fb8febe3369",
+      "digest": "83ab5051c4a1133f9b514699dbb243b718c0b671cc58c17af5433962fc30e6c4"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260909T000153.json",
+      "runId": "7c583557-8393-4a92-83f2-03397a02b8b1",
+      "digest": "3b7d203ba22781c55e3be7072078525503d380e9b72ac1ef42d5756311a6a34e"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260908T235934.json",
+      "runId": "949f3bd5-cb3b-4c15-8988-e607b9e7acde",
+      "digest": "3d8efc7e8e2fc4a8996b07c7783d7cc954d8d2cd7e9b2fc117d3399875f457c9"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260908T235540.json",
+      "runId": "d76d3cdd-a09f-4dda-bd7d-093a595e6e33",
+      "digest": "21305c5e0aece40935c3d400d9b58cb5aa45437095c401f149167058b07c48e3"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260908T235055.json",
+      "runId": "a19a0482-f5ca-4f23-aee0-97cd5c633505",
+      "digest": "7425455d683ebd9233b4631381875f7357344e467770dd921aa0520dddb33571"
+    },
+    {
+      "file": "room-pass-live-acceptance-resume-a6ea784-20260908T234819.json",
+      "runId": "bb486dd0-1ab2-46ff-89fd-6b5644e15b07",
+      "digest": "39cf05637029a6ae9743e72bcc8d4778aed158e69dd79df2ecede831882d06b4"
+    },
+    {
+      "file": "room-pass-live-acceptance-a6ea784-20260908T2315.json",
+      "runId": "2ec4ad86-d530-41bd-98bf-618a9a737cbc",
+      "digest": "b2692ec85e4d28059c67a63b0633c07c88bbaa3e730f8f356f8ad9e10764b682"
+    }
+  ],
+  "sourceFiles": [
+    {
+      "file": "scripts/copilot-room-pass-live-acceptance.mjs",
+      "sha256": "587958fe0842d31855fe420651617a8cf2c3fea5e0ae097f586804a003e42cf5"
+    },
+    {
+      "file": "scripts/lib/copilot-room-pass-live.mjs",
+      "sha256": "3796b3e0b5cd772c3c273b290524e6cb501ac9ca7c0bc5e2ab9fa558d078b0cb"
+    },
+    {
+      "file": "scripts/lib/copilot-room-pass-resume.mjs",
+      "sha256": "346436f422f32f1cf62a0aaedb6a54f19b444be0e91323df7d1b9ac00ca818fc"
+    },
+    {
+      "file": "scripts/lib/copilot-room-pass-sessions.mjs",
+      "sha256": "d28291c8b1e4e034413f4d8e657380cc351568f1759872a48739f3e835d7de2d"
+    },
+    {
+      "file": "scripts/lib/copilot-room-pass-transport.mjs",
+      "sha256": "cd0e36d1ccac6f1829945eeed1ee2c1f11af70c724b1ae1a65e74b869e1a15b2"
+    },
+    {
+      "file": "scripts/lib/copilot-room-pass-admin-fixtures.mjs",
+      "sha256": "6ee648458a4cbc9db7e2a759267be5ded0338b585f796b9f2f78d9c1723b8433"
+    },
+    {
+      "file": "scripts/lib/copilot-room-pass-recovery.mjs",
+      "sha256": "9c5b63e7374ab9b4ca5184fb161de5213b0f41b65d4ea911b1c2433e96a4972f"
+    },
+    {
+      "file": ".e2e-fleet/specs/copilot-room-pass-consent.spec.ts",
+      "sha256": "3f02e02a1d92324e07f8b0dd2591964bfecfecaaac1f34bcae410ed80d3cc15a"
+    },
+    {
+      "file": ".e2e-fleet/specs/copilotRoomPassGuard.ts",
+      "sha256": "a109885a91923d4f4096516a7cf47c116fb48f875932804629808963551ce2a0"
+    },
+    {
+      "file": ".e2e-fleet/specs/copilotTestModel.ts",
+      "sha256": "7e0b9270f0aca161399baf000697ddbf0ef468b0080c0aec1e9bd364744bb3e6"
+    },
+    {
+      "file": ".e2e-fleet/specs/copilotModelCycle.ts",
+      "sha256": "06490b4c01748e28c0bbe72cf7aa946cf6e1f41d75065e6be3e17614cd71faac"
+    },
+    {
+      "file": ".e2e-fleet/specs/buildAttestation.ts",
+      "sha256": "8cf867b7883ddbf724bfabccb9b8e607abf26ff6fa9449fbc108416ec69d45b1"
+    },
+    {
+      "file": "scripts/apply-accounting-rollout.mjs",
+      "sha256": "e2e4ca68502dc0ddf8650a9f826a6da7cbd2f23dafed0a987ad42b1313b04774"
+    },
+    {
+      "file": "supabase/migrations/20260908162757_authz_scope_org_wide_scoped_deny_v1.sql",
+      "sha256": "b1e7b80eb0efadf8006dec6d854f222e7de736b9c2ebfe314873c57da1e26f7b"
+    }
+  ],
+  "operatorFiles": [
+    {
+      "file": "run-room-pass-live-acceptance.mjs",
+      "sha256": "095af2ff5ffd360ace989ecb09e223071af99c476fc945a88dc57e3b3167022f"
+    },
+    {
+      "file": "room-pass-browser-runner.mjs",
+      "sha256": "7038d2eb534fb22a1b8db42b61c20a503034e1f6fbfc454155c367997dd99177"
+    },
+    {
+      "file": "room-pass-browser-proof.mjs",
+      "sha256": "fe3f514b7ae3d929f56d1255f64d93dbe189ed2f6cd330ed28e87682c30ce2bd"
+    },
+    {
+      "file": "room-pass-safe-reporter.mjs",
+      "sha256": "80b5692d57b10d1b757fbf3c144b5707970c7390b8da12b9f222bdd134034cfc"
+    }
+  ],
+  "limitations": [
+    "Journal and operator files are local operator evidence, not stored in Git.",
+    "App build SHA and source file digests identify different layers: runtime app and the corrected local acceptance harness.",
+    "This result does not prove completion of the broader Copilot plan, all golden cases, or production rollout."
+  ]
+}

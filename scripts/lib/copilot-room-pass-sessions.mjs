@@ -12,6 +12,9 @@ SET LOCAL lock_timeout = '${timeoutSeconds - 1}s';
 SET LOCAL application_name = ${sqlText(applicationName)};
 SELECT set_config('request.jwt.claims', ${sqlJson({ sub: actorId, role: 'authenticated', organization_id: DEMO })}::text, true);
 SET LOCAL ROLE authenticated;
+-- Assign before waiting on a locked nonce: a read-only waiter can otherwise
+-- have backend_xid NULL, hiding its distinct transaction from the observer.
+SELECT txid_current();
 DO $identity$ BEGIN
   IF auth.uid() IS DISTINCT FROM ${sqlUuid(actorId)} OR
     public.get_authorization_context_v1(${sqlUuid(DEMO)})->>'organizationId' IS DISTINCT FROM ${sqlText(DEMO)}

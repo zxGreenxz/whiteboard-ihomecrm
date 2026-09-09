@@ -508,6 +508,7 @@ test("actual plan re-preview refuses changed state and rolls back a conflicting 
     );
     const result = await runPlan(db, stale);
     assert.equal(result.ok, false);
+    assert.equal(result.step.status, "FAILED");
     assert.equal(result.step.error_code, "payload_changed");
     assert.deepEqual(await state(db), { active: false, audits: 0, ledger: 1 });
     const conflict = await createPlan(db, true);

@@ -4,8 +4,19 @@ type Proposal = { canonical: Record<string, unknown>; nonce: string };
 type RequestShape = Pick<Request, 'url' | 'method' | 'postDataJSON'>;
 const DEMO = 'dddd0000-0000-4000-8000-000000000001';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const identityReads = new Set(['list_my_copilot_organizations_v1', 'is_org_owner_self_v1', 'is_company_owner_self_v1', 'get_copilot_action_policy_v1']);
-const scopedReads = new Set(['get_authorization_context_v1', 'get_my_copilot_availability_v1']);
+const identityReads = new Set(['get_my_permissions', 'is_super_admin', 'business_performance_organizations_v1', 'list_my_copilot_organizations_v1', 'is_org_owner_self_v1', 'is_company_owner_self_v1', 'get_copilot_action_policy_v1']);
+const scopedReads = new Set(['get_authorization_context_v1', 'get_my_copilot_availability_v1', 'copilot_memory_list_v1']);
+// Login opens the dashboard. These reviewed reporting RPCs use POST for SELECTs;
+// counting them as writes would fail consent proof before Copilot even opens.
+// Keep explicit signatures, with no generic read-name or arbitrary-RPC exemption.
+const dashboardReads: Record<string, string[]> = {
+  get_dashboard_summary: ['p_building_id'],
+  get_contract_stats: ['p_building_ids', 'p_today', 'p_in30'],
+  get_income_expense_layer_stats: ['p_building_ids', 'p_room_ids', 'p_account_id', 'p_type', 'p_start_date', 'p_end_date', 'p_approval', 'p_creator_id', 'p_amount', 'p_amount_tol', 'p_verified', 'p_item_type_ids', 'p_voucher_ids', 'p_sources', 'p_source_manual', 'p_internal_sources', 'p_kqkd_only'],
+  get_invoice_statistics_v2: ['p_building_id', 'p_room_id', 'p_status', 'p_start_date', 'p_end_date', 'p_billing_month', 'p_payment_status', 'p_building_ids'],
+  invoice_active_payment_methods: ['p_invoice_ids'],
+  revenue_by_month: ['p_start', 'p_end', 'p_building_id'],
+};
 const keysOnly = (row: Record<string, unknown>, keys: string[]) => Object.keys(row).every(key => keys.includes(key));
 
 /** Fail closed for every mutating REST request, including new domain RPCs.
@@ -37,6 +48,7 @@ export function createRoomPassBrowserGuard({ actorId, listingId, organizationId 
         const data = req.postDataJSON(), rpc = url.pathname.startsWith('/rest/v1/rpc/') ? url.pathname.slice('/rest/v1/rpc/'.length) : '';
         if (method === 'POST' && data && !Array.isArray(data)) {
           if (identityReads.has(rpc)) safe = Object.keys(data).length === 0;
+          if (Object.hasOwn(dashboardReads, rpc)) safe = keysOnly(data, dashboardReads[rpc]);
           if (scopedReads.has(rpc)) safe = data.p_organization_id === DEMO && keysOnly(data, ['p_organization_id']);
           if (rpc === 'copilot_preview_room_pass_active_v1') safe = data.p_organization_id === DEMO
             && data.p_payload?.listing_id === listingId && data.p_payload?.active === true
