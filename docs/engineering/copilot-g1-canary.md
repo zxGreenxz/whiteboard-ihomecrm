@@ -90,8 +90,10 @@ node node_modules/@playwright/test/cli.js test --config .e2e-fleet/playwright.co
 
 The existing pinned Gemini preference is rewritten only in this browser's profile
 read response. The existing browser-local scheduled-notification throttle is set
-for the supplied actor before login and on authenticated reload. Neither operation
-changes a server setting. Use `COPILOT_E2E_MODEL` only for an explicitly selected
+for the supplied actor before login and on authenticated reload. The existing
+`invoices:overdue-checked-at` session throttle also defers the invoice page's
+background overdue writer. These local settings are refreshed on every document
+load; neither changes a server setting. Use `COPILOT_E2E_MODEL` only for an explicitly selected
 supported Gemini candidate; there is no automatic fallback.
 
 Receipts contain case IDs, flags, identities, geometry, request path/status
@@ -125,7 +127,31 @@ The explicit POST read signatures currently cover:
 | `get_dashboard_summary`, `revenue_by_month` | `src/hooks/useDashboard.ts` |
 | `get_contract_stats` | `src/hooks/useContracts.ts:472` |
 | `get_invoice_statistics_v2`, `invoice_active_payment_methods` | `src/hooks/useInvoices.ts` |
-| `get_income_expense_layer_stats` | Existing reviewed dashboard read signature in `copilotRoomPassGuard.ts` |
+| `get_income_expense_layer_stats` | Reviewed dashboard signature plus `p_posting` from `src/hooks/income-expenses/queries.ts:640`; read filter extension in `supabase/migrations/20260724080000_finance_v2_stats_posting_filter.sql` |
+| `get_my_context` | `src/hooks/useMyContext.ts:32`; SELECT-only body in `supabase/migrations/20260516000011_get_my_context_default_area.sql:10` |
+| `get_my_assignments`, `is_admin`, `my_org_ids` | `src/hooks/useMyBuildingScope.ts:48`, `src/hooks/useIsAdmin.ts:19`, `src/hooks/useIncomeExpenseTypes.ts:80`; read bodies in migrations `20260611110000_staff_assignments_area_scope.sql:293`, `20260710150000_tenant_isolation_hardening.sql:58`, `20260713121000_sprint3b_org_autofill_and_boundary.sql:16` |
+| `get_customer_stats` | `src/hooks/useCustomers.ts:347`; SQL aggregate in `supabase/migrations/20260705210000_stats_rpc_contract_customer.sql:70` |
+| `get_reservation_deposit_summary`, `get_held_deposit_summary` | `src/hooks/useDeposits.ts:193`, `src/hooks/useDepositDashboard.ts:32`; SQL aggregates in `supabase/migrations/20260710170000_money_aggregate_rpcs.sql:79` and `:37` |
+| `get_refund_forfeit_summary` | `src/hooks/useDepositDashboard.ts:140`; SELECT-only CTE aggregate in `supabase/migrations/20260822113000_refund_kpi_split_deposit_vs_other.sql:37` |
+| `get_meter_reading_stats` | `src/hooks/useMeterReadings.ts:241`; RETURN QUERY SELECT in `supabase/migrations/20250130000004_meter_reading_rpc_functions.sql:85` |
+| `get_meters_without_readings_v2` | Closed `MeterReadingForm` mounts `src/hooks/useMeters.ts:263`; SELECT-only delegate in `supabase/migrations/20260528000002_rbac_batch_c_rpc_v2.sql:160` and `get_meters_without_readings` in `20250130000004_meter_reading_rpc_functions.sql` |
+| `ie_form_buildings` | Closed `IncomeExpenseForm` mounts `src/hooks/useIncomeExpenseFormScope.ts:40`; SELECT-only scoped body in `supabase/migrations/20260801090000_ie_form_lists_org_isolation.sql:53` |
+| `get_acceptance_geofence_config` | Closed `TaskCompleteDialog` mounts `src/hooks/useAcceptanceGeofence.ts:30`; settings SELECT in `supabase/migrations/20260628000001_acceptance_geofence.sql:33` |
+| `list_my_cashbook_access_v2`, `list_cashbook_visibility_v2` | `src/hooks/income-expenses/financeV2Mutations.ts:223` and `:248`; SELECT bodies in migrations `20260723110000_finance_v2_rls_canary.sql:246`, `20260724160000_finance_v2_cashbook_visibility_flags.sql:23` |
+| `get_finance_v2_client_flags_v1` | `src/lib/financeV2Route.ts:63`; `supabase/migrations/20260730110000_ie_accounting_standard_toggle.sql:255`, using the SELECT-only resolver in `20260723170000_finance_v2_readonly_txn_fix.sql:21` |
+| `zalo_get_crm_summary` | Mounted first linked conversation's CRM panel, `src/hooks/chat-zalo/useZaloCrmProfile.ts:24`; auth-scoped SELECT body in `supabase/migrations/20260813130000_zalo_gan_hoi_thoai_crm.sql:281` |
+
+The route import audit includes eagerly mounted closed forms and RPC wrapper
+calls. Only the inspected RPC names and argument keys above are admitted; every
+added signature has unknown-argument and GET-execution negatives. Zalo sticker
+search creates an asynchronous job, so it remains blocked along with presence,
+mark-read and history loading. Receipt failures retain only a bounded `g1_` code
+or a known timeout category; provider prose and raw server errors are omitted.
+
+DEMO admission binds Copilot tools, flags, chat persistence and memory. Legacy
+page queries keep their existing server authorization/RLS behavior, and several
+have no organization argument. Rendered-route proofs do not certify that every
+legacy page dataset is filtered by the Copilot organization selector.
 
 There is no caller-supplied POST allowlist. If another route requires a POST read,
 inspect the exact source and SQL body, add its argument signature and a negative

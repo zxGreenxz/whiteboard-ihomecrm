@@ -7,7 +7,7 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { COPILOT_TEST_MODEL, pinCopilotTestModel, waitForCopilotAvailability } from './copilotTestModel';
 import { guiVaChoModel } from './copilotModelCycle';
 import { inspectModelStream } from './copilotSmokeOracle';
-import { createG1Guard, type G1Request } from '../../scripts/lib/copilot-g1-guard.mjs';
+import { createG1Guard, initializeG1Browser, type G1Request } from '../../scripts/lib/copilot-g1-guard.mjs';
 import { DEMO, G1_ROUTES, MOBILE_MARKERS, admissionDigest, admissionFromBaseline, createReceipt, validateReceipt,
   addProof, pendingCases, navigationEvidence, knowledgeEvidence, safeG1Failure, type G1Receipt } from '../../scripts/lib/copilot-g1-acceptance.mjs';
 
@@ -86,10 +86,7 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     page.on('requestfailed', request => {
       if (checkNetwork && new URL(request.url()).pathname.startsWith('/rest/v1/')) networkFailures.add(`${request.method()} ${new URL(request.url()).pathname}`);
     });
-    await page.addInitScript(({ actorId, organizationId }) => {
-      localStorage.setItem('ihomecrm.selectedOrganizationId', organizationId);
-      localStorage.setItem(`schedNotif:lastRun:${actorId}`, String(Date.now()));
-    }, config);
+    await page.addInitScript(initializeG1Browser, config);
     await page.setViewportSize({ width: 1440, height: 1000 });
     const available = await waitForCopilotAvailability(page, DEMO, async () => {
       await login(page, 'sysadmin'); await page.reload(); await xacMinhBanBuild(page); await panel(page);
