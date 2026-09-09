@@ -2,12 +2,12 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 624,
-  "soFileDocBangFs": 198,
-  "tongLoiGoi": 411,
+  "soFileDocBangFs": 199,
+  "tongLoiGoi": 413,
   "khongPhanLoaiDuoc": 203,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 38,
+      "soFile": 39,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -15,7 +15,7 @@
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 5,
+      "soFile": 6,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -32,6 +32,7 @@
     "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
     "scripts/__tests__/check-copilot-docs-manifest.test.mjs",
     "scripts/__tests__/copilot-g1-acceptance.test.mjs",
+    "scripts/__tests__/copilot-g1-guard.test.mjs",
     "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
     "scripts/__tests__/gen-supabase-types.test.ts",
     "scripts/__tests__/generate-repository-inventory.test.mjs",
@@ -471,6 +472,15 @@
       "loai": {
         "ma-nguon": 1,
         "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/copilot-g1-guard.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "tai-lieu": 1,
+        "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
     },
