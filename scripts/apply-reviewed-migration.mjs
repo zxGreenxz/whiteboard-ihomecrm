@@ -350,6 +350,18 @@ export async function kiemTraHaiLuotTruocApply(sql, { pat, ref, fetchImpl = fetc
   return { ...result, query };
 }
 
+export function kiemTraCoApplySom(argv, env = process.env) {
+  if (!argv.includes("--apply")) return { ok: true };
+  const boQuaBackup = argv.includes("--khong-backup");
+  const tokenNguoi = env.IHOMECRM_PROMOTION_TOKEN;
+  if (boQuaBackup && !tokenNguoi) return { ok: false, vi: "khong-token" };
+  if (boQuaBackup) {
+    const lyDo = argv[argv.indexOf("--khong-backup") + 1];
+    if (!lyDo || lyDo.startsWith("--")) return { ok: false, vi: "thieu-ly-do" };
+  }
+  return { ok: true, boQuaBackup, tokenNguoi };
+}
+
 export function checkGuards(file, { policy, provenance }) {
   const problems = [];
   const name = basename(file);
@@ -419,6 +431,22 @@ async function main(argv) {
 
   let giayPhep = null; // { loai, chiTiet } — ghi vào evidence
 
+  const coApply = kiemTraCoApplySom(argv);
+  if (!coApply.ok) {
+    if (coApply.vi === "khong-token") {
+      console.error(
+        "\n❌ --khong-backup mà không có IHOMECRM_PROMOTION_TOKEN.\n" +
+          "   Lane tự phát giấy phép DỰA TRÊN bản backup vừa tạo; bỏ backup thì không còn gì để dựa.\n" +
+          "   Hai đường không dùng chung được: hoặc để lane chạy backup (tự động hoàn toàn),\n" +
+          "   hoặc bỏ backup và tự chịu trách nhiệm bằng token của mình.",
+      );
+    } else {
+      console.error("❌ --khong-backup phải kèm lý do: --khong-backup \"vì sao bỏ qua\".");
+    }
+    return 1;
+  }
+  const { boQuaBackup = false, tokenNguoi } = coApply;
+
   const pat = readPat();
   if (!pat) {
     console.error("❌ Không tìm thấy PAT.");
@@ -464,18 +492,6 @@ async function main(argv) {
     // Giấy phép tự phát là BIÊN NHẬN, không phải bí mật: nó là digest buộc bản
     // migration vào đúng bản backup vừa tạo. Giá trị của nó nằm ở chỗ KHÔNG thể
     // có nó mà không có bản dump tương ứng.
-    const tokenNguoi = process.env.IHOMECRM_PROMOTION_TOKEN;
-    const boQuaBackup = argv.includes("--khong-backup");
-
-    if (!tokenNguoi && boQuaBackup) {
-      console.error(
-        "\n❌ --khong-backup mà không có IHOMECRM_PROMOTION_TOKEN.\n" +
-          "   Lane tự phát giấy phép DỰA TRÊN bản backup vừa tạo; bỏ backup thì không còn gì để dựa.\n" +
-          "   Hai đường không dùng chung được: hoặc để lane chạy backup (tự động hoàn toàn),\n" +
-          "   hoặc bỏ backup và tự chịu trách nhiệm bằng token của mình.",
-      );
-      return 1;
-    }
     if (tokenNguoi) {
       console.log("⚠ Có promotion token của người — sẽ GHI THẬT lên production.");
       giayPhep = { loai: "token-nguoi", chiTiet: createHash("sha256").update(tokenNguoi).digest("hex").slice(0, 16) };
@@ -497,10 +513,6 @@ async function main(argv) {
     // — bỏ qua được, nhưng không im lặng.
     if (boQuaBackup) {
       const lyDo = argv[argv.indexOf("--khong-backup") + 1];
-      if (!lyDo || lyDo.startsWith("--")) {
-        console.error("❌ --khong-backup phải kèm lý do: --khong-backup \"vì sao bỏ qua\".");
-        return 1;
-      }
       console.warn(`⚠ BỎ QUA BACKUP theo yêu cầu — lý do: ${lyDo}`);
       console.warn("  Nếu apply hỏng, đường lùi gần nhất là backup hằng ngày của Supabase (tới ~24h dữ liệu).");
     } else {

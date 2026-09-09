@@ -148,13 +148,18 @@ export function laMienTruPinned(entry) {
 export function docLoiSql(text) {
   try {
     const body = JSON.parse(text);
-    return { sqlState: String(body.code ?? body.sqlState ?? ""), message: String(body.message ?? "") };
+    if (body.code || body.sqlState) {
+      return { sqlState: String(body.code ?? body.sqlState), message: String(body.message ?? "") };
+    }
+    const wrapped = /^Failed to run sql query: ERROR:  +([0-9A-Z]{5}): ([^\r\n]+)\r?\n?$/.exec(String(body.message ?? ""));
+    if (wrapped) return { sqlState: wrapped[1], message: wrapped[2] };
+    return { sqlState: "", message: String(body.message ?? "") };
   } catch {
     return { sqlState: "", message: String(text) };
   }
 }
 
-export function kiemMienTruPinned({ entry, file, digest, failureText, root = repoRoot, read = readFileSync }) {
+export function kiemMienTruPinned({ entry, file, digest, failureText, actualProjectRef, root = repoRoot, read = readFileSync }) {
   const required = ["sha256", "expectedSqlState", "expectedMessage", "appliedEvidencePath"];
   const missing = required.filter((field) => typeof entry?.[field] !== "string" || entry[field].length === 0);
   if (missing.length) return { ok: false, vi: `ngoại lệ pinned thiếu ${missing.join(", ")}` };
@@ -174,7 +179,7 @@ export function kiemMienTruPinned({ entry, file, digest, failureText, root = rep
   const loaiGiayPhep = evidence.authorization?.loai;
   if (
     !Number.isFinite(Date.parse(evidence.appliedAt))
-    || typeof evidence.projectRef !== "string" || evidence.projectRef.length === 0
+    || typeof actualProjectRef !== "string" || evidence.projectRef !== actualProjectRef
     || !["bien-nhan-backup", "token-nguoi"].includes(loaiGiayPhep)
     || typeof evidence.authorization?.chiTiet !== "string" || evidence.authorization.chiTiet.length === 0
   ) {
@@ -374,6 +379,7 @@ async function main() {
     if (pinned.has(f)) {
       const pinnedResult = danhGiaMienTruPinned({
         entry: mienTru.get(f), file: f, digest: digest.get(f), failureText: kq.text, queryOk: kq.ok,
+        actualProjectRef: ref,
       });
       if (!pinnedResult.ok) {
         hong.push({ f, vi: pinnedResult.vi });

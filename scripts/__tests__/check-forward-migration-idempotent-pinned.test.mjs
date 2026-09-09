@@ -18,15 +18,16 @@ const evidence = {
   authorization: { loai: "bien-nhan-backup", chiTiet: "16d825" },
 };
 const failureText = JSON.stringify({ code: "42P07", message: entry.expectedMessage });
+const actualProjectRef = evidence.projectRef;
 const read = () => JSON.stringify(evidence);
 
 describe("ngoại lệ idempotency pinned", () => {
   it("chỉ EXEMPT khi digest, lỗi SQL và evidence đều khớp chính xác", () => {
-    expect(kiemMienTruPinned({ entry, file, digest, failureText, root: "C:/repo", read })).toMatchObject({ ok: true });
+    expect(kiemMienTruPinned({ entry, file, digest, failureText, actualProjectRef, root: "C:/repo", read })).toMatchObject({ ok: true });
   });
 
   it("không đổi ngoại lệ pinned thành PASS khi migration bất ngờ chạy lại được", () => {
-    expect(danhGiaMienTruPinned({ entry, file, digest, failureText: "", queryOk: true, root: "C:/repo", read })).toMatchObject({
+    expect(danhGiaMienTruPinned({ entry, file, digest, failureText: "", queryOk: true, actualProjectRef, root: "C:/repo", read })).toMatchObject({
       ok: false, vi: expect.stringMatching(/không được coi là idempotent PASS/),
     });
   });
@@ -36,19 +37,30 @@ describe("ngoại lệ idempotency pinned", () => {
     ["SQLSTATE", { failureText: JSON.stringify({ code: "42703", message: entry.expectedMessage }) }, /lỗi thực tế/],
     ["message", { failureText: JSON.stringify({ code: "42P07", message: "khác" }) }, /lỗi thực tế/],
   ])("từ chối khi %s lệch pin", (_name, changed, expected) => {
-    expect(kiemMienTruPinned({ entry, file, digest, failureText, root: "C:/repo", read, ...changed })).toMatchObject({ ok: false, vi: expect.stringMatching(expected) });
+    expect(kiemMienTruPinned({ entry, file, digest, failureText, actualProjectRef, root: "C:/repo", read, ...changed })).toMatchObject({ ok: false, vi: expect.stringMatching(expected) });
   });
 
   it("từ chối path traversal", () => {
-    expect(kiemMienTruPinned({ entry: { ...entry, appliedEvidencePath: "../evidence.json" }, file, digest, failureText, root: "C:/repo", read })).toMatchObject({ ok: false, vi: expect.stringMatching(/không an toàn/) });
+    expect(kiemMienTruPinned({ entry: { ...entry, appliedEvidencePath: "../evidence.json" }, file, digest, failureText, actualProjectRef, root: "C:/repo", read })).toMatchObject({ ok: false, vi: expect.stringMatching(/không an toàn/) });
   });
 
   it("từ chối evidence thiếu giấy phép apply thật", () => {
     const readBad = () => JSON.stringify({ ...evidence, authorization: { loai: "tu-khai" } });
-    expect(kiemMienTruPinned({ entry, file, digest, failureText, root: "C:/repo", read: readBad })).toMatchObject({ ok: false, vi: expect.stringMatching(/dấu mốc apply thật/) });
+    expect(kiemMienTruPinned({ entry, file, digest, failureText, actualProjectRef, root: "C:/repo", read: readBad })).toMatchObject({ ok: false, vi: expect.stringMatching(/dấu mốc apply thật/) });
+  });
+
+  it("từ chối evidence của project khác", () => {
+    expect(kiemMienTruPinned({ entry, file, digest, failureText, actualProjectRef: "project-khac", root: "C:/repo", read })).toMatchObject({ ok: false, vi: expect.stringMatching(/dấu mốc apply thật/) });
   });
 
   it("đọc đúng lỗi JSON của Management API", () => {
     expect(docLoiSql(failureText)).toEqual({ sqlState: "42P07", message: entry.expectedMessage });
+  });
+
+  it("đọc đúng wrapper lỗi một dòng thực tế và không nuốt DETAIL", () => {
+    const actual = JSON.stringify({ message: `Failed to run sql query: ERROR:  42P07: ${entry.expectedMessage}\n` });
+    expect(docLoiSql(actual)).toEqual({ sqlState: "42P07", message: entry.expectedMessage });
+    const withDetail = JSON.stringify({ message: `Failed to run sql query: ERROR:  42P07: ${entry.expectedMessage}\nDETAIL: extra\n` });
+    expect(docLoiSql(withDetail).sqlState).toBe("");
   });
 });

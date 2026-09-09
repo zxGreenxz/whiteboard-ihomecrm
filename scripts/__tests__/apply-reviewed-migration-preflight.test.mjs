@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { kiemTraHaiLuotTruocApply } from "../apply-reviewed-migration.mjs";
+import { kiemTraCoApplySom, kiemTraHaiLuotTruocApply } from "../apply-reviewed-migration.mjs";
 
 describe("kiểm tra hai lượt bắt buộc trước apply", () => {
   it("gửi đúng hai thân migration và luôn ROLLBACK", async () => {
@@ -21,6 +21,20 @@ describe("kiểm tra hai lượt bắt buộc trước apply", () => {
     const fetchImpl = vi.fn(async () => ({ ok: false, status: 400, text: async () => "second pass failed" }));
     await expect(kiemTraHaiLuotTruocApply("SELECT 1;", { pat: "p", ref: "r", fetchImpl })).resolves.toMatchObject({
       ok: false, status: 400, body: "second pass failed",
+    });
+  });
+});
+
+describe("cửa quyền chạy trước khi kết nối production", () => {
+  it("từ chối bỏ backup thiếu token trước khi caller có thể chạy preflight", () => {
+    expect(kiemTraCoApplySom(["node", "file.sql", "--apply", "--khong-backup", "khẩn"], {})).toEqual({
+      ok: false, vi: "khong-token",
+    });
+  });
+
+  it("từ chối lý do rỗng ngay cả khi có token", () => {
+    expect(kiemTraCoApplySom(["node", "file.sql", "--apply", "--khong-backup"], { IHOMECRM_PROMOTION_TOKEN: "x" })).toEqual({
+      ok: false, vi: "thieu-ly-do",
     });
   });
 });
