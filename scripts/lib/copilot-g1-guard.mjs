@@ -36,11 +36,20 @@ export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl
   }
   function safe(r) {
     const u = new URL(r.url), method = r.method, data = r.body;
-    if (u.origin !== supabaseOrigin) return u.origin === baseUrl && ['GET', 'HEAD', 'OPTIONS'].includes(method);
+    if (u.origin !== supabaseOrigin) {
+      // index.html's four font families and ollama.ts's local discovery endpoint.
+      // No completion/model-management endpoint on localhost is admitted.
+      const readEndpoint = (u.origin === 'https://fonts.googleapis.com' && u.pathname === '/css2')
+        || (u.origin === 'https://fonts.gstatic.com' && /^\/s\/(baloo2|bevietnampro|lora|spacemono)\/v\d+\/[A-Za-z0-9_-]+\.(woff2|woff|ttf)$/.test(u.pathname))
+        || (u.origin === 'http://localhost:11434' && u.pathname === '/api/tags');
+      if (readEndpoint) return method === 'GET'
+        || (method === 'OPTIONS' && r.headers?.['access-control-request-method'] === 'GET');
+      return u.origin === baseUrl && ['GET', 'HEAD', 'OPTIONS'].includes(method);
+    }
     if (method === 'OPTIONS') return true;
     if (u.pathname.startsWith('/auth/v1/')) return ['GET', 'HEAD'].includes(method)
       || (method === 'POST' && u.pathname === '/auth/v1/token' && ['password', 'refresh_token'].includes(u.searchParams.get('grant_type')));
-    if (u.pathname === '/functions/v1/llm-proxy') return method === 'POST' && r.headers?.['x-organization-id'] === DEMO;
+    if (u.pathname === '/functions/v1/llm-proxy/chat/completions') return method === 'POST' && r.headers?.['x-organization-id'] === DEMO;
     const rpc = /^\/rest\/v1\/rpc\/([a-z0-9_]+)$/.exec(u.pathname)?.[1];
     if (rpc) {
       if (method !== 'POST' || !Object.hasOwn(G1_READ_RPCS, rpc) || !keysOnly(data, G1_READ_RPCS[rpc])) return false;
@@ -55,7 +64,7 @@ export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl
     return false;
   }
   return {
-    allow(r) { const ok = safe(r); if (!ok) blocked.push(`${r.method} ${new URL(r.url).pathname}`); return ok; },
+    allow(r) { const ok = safe(r); if (!ok) { const u = new URL(r.url); blocked.push(`${r.method} ${u.origin}${u.pathname}`); } return ok; },
     observeThread(r, body, status) { if (status >= 200 && status < 300 && threadCreation(r) && uuid.test(body?.id)) threads.add(body.id); },
     counters: () => ({ chatWrites, blockedWrites: blocked.length, blocked: [...new Set(blocked)], ownedThreadIds: [...threads] }),
   };

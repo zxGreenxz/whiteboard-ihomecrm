@@ -118,6 +118,16 @@ non-read activity. GET/HEAD table reads use the existing room-pass boundary;
 GET RPC execution is denied. Cross-origin mutating requests and unknown Edge
 functions are denied. A blocked request or failed REST response fails the attempt.
 
+The model POST endpoint is exactly `/functions/v1/llm-proxy/chat/completions`
+(`src/copilot/llmClient.ts:240`), on the admitted Supabase origin with the DEMO
+header. External GET exceptions are `https://fonts.googleapis.com/css2`, font
+files below `https://fonts.gstatic.com/s/` for only the four families declared in
+`index.html:58` (Baloo 2, Be Vietnam Pro, Lora, Space Mono), and exactly
+`http://localhost:11434/api/tags` (`src/copilot/ollama.ts:30`). OPTIONS is permitted
+on those same read URLs only when its requested method is GET. Local model
+execution or model-management writes stay blocked. Blocked diagnostics retain
+only method, origin and pathname, excluding userinfo, query, fragment and headers.
+
 The explicit POST read signatures currently cover:
 
 | Read RPCs | Source reviewed |

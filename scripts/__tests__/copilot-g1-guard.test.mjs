@@ -1,10 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
 import { createG1Guard, initializeG1Browser } from '../lib/copilot-g1-guard.mjs';
 const actorId = '10000000-0000-4000-8000-000000000001', org = 'dddd0000-0000-4000-8000-000000000001';
 const origin = 'https://project.supabase.co', baseUrl = 'https://reviewed-preview.vercel.app';
 const req = (path, body = {}, method = 'POST') => ({ url: origin + path, method, body, headers: { 'x-organization-id': org } });
+
+test('model transport admits the shipped exact completion endpoint only for DEMO', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  const endpoint = '/functions/v1/llm-proxy/chat/completions';
+  assert.equal(guard.allow(req(endpoint)), true);
+  for (const request of [req('/functions/v1/llm-proxy'), req(`${endpoint}/extra`), req(endpoint, {}, 'GET'),
+    { ...req(endpoint), headers: { 'x-organization-id': actorId } },
+    { ...req(endpoint), url: `https://other.example${endpoint}` }])
+    assert.equal(guard.allow(request), false, request.url);
+});
+
+test('only source-reviewed font and local model discovery reads are admitted', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  const fontUrl = readFileSync('index.html', 'utf8').match(/href="(https:\/\/fonts.googleapis.com\/css2[^\"]+)"/)[1];
+  const localUrl = readFileSync('src/copilot/ollama.ts', 'utf8').match(/fetchJson\('(http:\/\/localhost:11434\/api\/tags)'/)[1];
+  for (const url of [fontUrl, localUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2']) {
+    assert.equal(guard.allow({ url, method: 'GET' }), true, url);
+    assert.equal(guard.allow({ url, method: 'OPTIONS', headers: { 'access-control-request-method': 'GET' } }), true, url);
+    assert.equal(guard.allow({ url, method: 'OPTIONS', headers: { 'access-control-request-method': 'POST' } }), false, url);
+    assert.equal(guard.allow({ url, method: 'OPTIONS' }), false, url);
+  }
+  for (const url of [fontUrl, localUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2',
+    'http://localhost:11434/api/pull', 'http://localhost:11435/api/tags', 'http://127.0.0.1:11434/api/tags',
+    'https://fonts.googleapis.com/unknown', 'https://fonts.gstatic.com/s/unreviewed/v1/file.woff2',
+    'https://fonts.gstatic.com/upload', 'https://other.example/api/tags']) {
+    assert.equal(guard.allow({ url, method: 'POST' }), false, url);
+    if (![fontUrl, localUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2'].includes(url))
+      assert.equal(guard.allow({ url, method: 'GET' }), false, url);
+    if (![fontUrl, localUrl, 'https://fonts.gstatic.com/s/bevietnampro/v12/fixture.woff2'].includes(url))
+      assert.equal(guard.allow({ url, method: 'OPTIONS', headers: { 'access-control-request-method': 'GET' } }), false, url);
+  }
+});
+
+test('blocked diagnostics keep method, origin and path but never credentials, queries, fragments or headers', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  guard.allow({ url: 'https://user:PRIVATE@unknown.example:8443/api/tags?token=PRIVATE#PRIVATE', method: 'POST', headers: { authorization: 'Bearer PRIVATE' } });
+  assert.deepEqual(guard.counters().blocked, ['POST https://unknown.example:8443/api/tags']);
+});
 
 test('mounted route reads use only inspected signatures; overloads and write-like neighbors stay denied', () => {
   const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
