@@ -2,7 +2,7 @@
 // + UI-control experimental Phase 3 (toggle "Điều khiển trang").
 // Giao diện "Bé Chiu" theo design "Trợ lý AI - Bé Chiu.dc.html".
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   BarChart3, Brain, Building2, FileText, ImagePlus, Mic, MicOff, Plus, Receipt, Send, Square, Trash2, X,
@@ -116,7 +116,7 @@ function useVoiceInput(onText: (text: string) => void) {
   return { supported, listening, toggle };
 }
 
-/** Render markdown TỐI GIẢN: xuống dòng + link [text](/route) → <a>. */
+/** Render markdown tối giản; route nội bộ giữ chat và request lưu trong cùng document. */
 function MiniMarkdown({ text }: { text: string }) {
   const parts: (string | { label: string; href: string })[] = [];
   const re = /\[([^\]]+)\]\(([^)\s]+)\)/g;
@@ -136,6 +136,10 @@ function MiniMarkdown({ text }: { text: string }) {
       {parts.map((p, i) =>
         typeof p === 'string' ? (
           <span key={i}>{p}</span>
+        ) : p.href.startsWith('/') ? (
+          <Link key={i} to={p.href} className="font-medium text-primary underline">
+            {p.label}
+          </Link>
         ) : (
           <a key={i} href={p.href} className="font-medium text-primary underline" target={p.href.startsWith('http') ? '_blank' : undefined} rel="noreferrer">
             {p.label}

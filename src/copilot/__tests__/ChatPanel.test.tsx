@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Toaster } from 'sonner';
+import { useLocation } from 'react-router-dom';
 import { byId, click, deferred, eventually, fresh, io, mount, resetIo, send, unmount } from './renderHarness';
 import ChatPanel from '../ChatPanel';
 import { LoiModel } from '../llmClient';
@@ -15,6 +16,53 @@ beforeEach(async () => {
 });
 afterEach(unmount);
 const panel = () => <><ChatPanel onClose={() => {}} /><Toaster /></>;
+
+function CurrentRoute() {
+  const location = useLocation();
+  return <output data-testid="current-route">{location.pathname}{location.search}{location.hash}</output>;
+}
+
+it('navigates internal answer links in the mounted router while history persistence is pending', async () => {
+  const saved = deferred<void>();
+  io.save.mockReturnValue(saved.promise);
+  io.turn.mockResolvedValue({ newMessages: [{ role: 'assistant', content: '[Mở hóa đơn](/invoices?status=unpaid#list)' }], toolEvents: [] });
+  await mount(<>{panel()}<CurrentRoute /></>);
+  await send();
+  expect(io.save).toHaveBeenCalledTimes(1);
+  const originalPanel = byId('copilot-panel');
+  const link = originalPanel.querySelector<HTMLAnchorElement>('a[href="/invoices?status=unpaid#list"]')!;
+  const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+  let routerHandled = false;
+  // Observe React's handler before preventing native navigation in jsdom. A
+  // native anchor fails this assertion without an unrelated jsdom URL error.
+  const observeClick = (clickEvent: Event) => { routerHandled = clickEvent.defaultPrevented; clickEvent.preventDefault(); };
+  document.addEventListener('click', observeClick, { once: true });
+  await act(async () => { link.dispatchEvent(event); });
+  expect(routerHandled).toBe(true);
+  expect(byId('current-route').textContent).toBe('/invoices?status=unpaid#list');
+  expect(byId('copilot-panel')).toBe(originalPanel);
+  expect(originalPanel.textContent).toContain('Mở hóa đơn');
+  expect(io.latest).toHaveBeenCalledTimes(1);
+  expect(io.turn).toHaveBeenCalledTimes(1);
+  await act(async () => saved.resolve());
+  expect(io.save).toHaveBeenCalledTimes(1);
+});
+
+it('preserves external answer links as native new-tab anchors', async () => {
+  io.turn.mockResolvedValue({ newMessages: [{ role: 'assistant', content: '[Tài liệu](https://example.com/help?topic=rooms#read)' }], toolEvents: [] });
+  await mount(<>{panel()}<CurrentRoute /></>);
+  await send();
+  const link = byId('copilot-panel').querySelector<HTMLAnchorElement>('a')!;
+  expect(link.getAttribute('href')).toBe('https://example.com/help?topic=rooms#read');
+  expect(link.target).toBe('_blank');
+  expect(link.rel).toBe('noreferrer');
+  let routerHandled = true;
+  const observeClick = (event: Event) => { routerHandled = event.defaultPrevented; event.preventDefault(); };
+  document.addEventListener('click', observeClick, { once: true });
+  await act(async () => { link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })); });
+  expect(routerHandled).toBe(false);
+  expect(byId('current-route').textContent).toBe('/apartments');
+});
 
 describe('mounted ChatPanel G0', () => {
   it('keeps the question and blocks model I/O when availability remains stale after refetch', async () => {
