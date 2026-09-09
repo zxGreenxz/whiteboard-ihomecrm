@@ -72,7 +72,8 @@ function validateProof(p, a) {
       && p.panelVisible === true && Number.isSafeInteger(p.itemCount) && p.itemCount >= 0 && p.deleteControlCount === p.itemCount, 'g1_memory_proof_invalid');
   } else {
     requireThat(p.tool === 'huong_dan' && p.toolResultObserved === true && p.authorizedSource === true && p.citationRendered === true
-      && /^huong-dan-su-dung\/[a-z0-9/-]+$/.test(p.sourceKey) && HASH.test(p.toolResultDigest) && HASH.test(p.streamDigest), 'g1_knowledge_proof_invalid');
+      && p.sourceKey === 'huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don' && HASH.test(p.citationDigest)
+      && HASH.test(p.toolResultDigest) && HASH.test(p.streamDigest), 'g1_knowledge_proof_invalid');
   }
 }
 export function validateReceipt(receipt, admission, now = Date.now()) {
@@ -133,4 +134,29 @@ export function navigationEvidence(streams, rounds, target) {
     }
   }
   throw new Error('g1_navigation_tool_result_missing');
+}
+export function knowledgeEvidence(streams, rounds, sourceKey, renderedAssistant) {
+  requireThat(streams.at(-1)?.finish === 'stop', 'g1_knowledge_model_unfinished');
+  requireThat(sourceKey === 'huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don', 'g1_guide_source_invalid');
+  for (let i = 0; i < streams.length; i++) for (const call of streams[i].tools ?? []) {
+    if (call.name !== 'huong_dan' || !call.id) continue;
+    let args; try { args = JSON.parse(call.arguments); } catch { continue; }
+    if (args.tai_lieu !== sourceKey) continue;
+    const reply = rounds.slice(i + 1).flatMap(r => r.messages).find(m => m.role === 'tool' && m.tool_call_id === call.id);
+    if (typeof reply?.content !== 'string') continue;
+    // nhanNguon() renders a guide's human title, not its docKey. Bind docKey in
+    // the actual tool arguments and require the real citation in its reply and
+    // the mounted assistant bubble (never the user prompt / whole panel).
+    const citations = reply.content.match(/\(nguồn: Hướng dẫn › Hoá đơn — danh sách & tạo lẻ(?: § [^)\n]+)?\)/g) ?? [];
+    const citation = citations.find(c => streams.at(-1)?.text?.includes(c) && renderedAssistant.includes(c));
+    if (!citation) continue;
+    return { tool: 'huong_dan', toolResultObserved: true, sourceKey, authorizedSource: true, citationRendered: true,
+      citationDigest: digest(citation), toolResultDigest: digest(reply.content), streamDigest: digest(streams) };
+  }
+  throw new Error('g1_authorized_guide_citation_missing');
+}
+export function safeG1Failure(error) {
+  if (typeof error?.message === 'string' && /^g1_[a-z0-9_]{1,80}$/.test(error.message)) return error.message;
+  if (error?.name === 'TimeoutError') return 'g1_browser_timeout';
+  return 'g1_assertion_or_transport_failure';
 }

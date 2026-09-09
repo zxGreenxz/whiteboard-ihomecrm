@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import vm from 'node:vm';
-import { G1_ROUTES, G1_CASES, DEMO, admissionDigest, validateAdmission, createReceipt, validateReceipt, addProof, pendingCases, digest, admissionFromBaseline, navigationEvidence } from '../lib/copilot-g1-acceptance.mjs';
+import { G1_ROUTES, G1_CASES, DEMO, admissionDigest, validateAdmission, createReceipt, validateReceipt, addProof, pendingCases, digest, admissionFromBaseline, navigationEvidence, knowledgeEvidence, safeG1Failure } from '../lib/copilot-g1-acceptance.mjs';
 
 const now = Date.parse('2026-09-09T01:00:00Z');
 const actorId = '10000000-0000-4000-8000-000000000001';
@@ -64,6 +64,23 @@ test('navigation evidence requires a current real tool call followed by its succ
   assert.equal(navigationEvidence(streams, rounds, target).toolResultObserved, true);
   assert.throws(() => navigationEvidence(streams, [{ messages: [] }, { messages: [] }], target));
   assert.throws(() => navigationEvidence(streams, [{ messages: [] }, { messages: [{ role: 'tool', tool_call_id: 'call-1', content: 'Lỗi: không có quyền' }] }], target));
+});
+test('guide proof follows the actual human-readable citation, bound to tai_lieu and the rendered assistant', () => {
+  const source = 'huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don';
+  const citation = '(nguồn: Hướng dẫn › Hoá đơn — danh sách & tạo lẻ § Cách làm việc)';
+  assert.equal(readFileSync('docs/huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don/index.md', 'utf8').includes('# Hoá đơn — danh sách & tạo lẻ'), true);
+  const streams = [{ tools: [{ id: 'guide-1', name: 'huong_dan', arguments: JSON.stringify({ chu_de: 'lọc hoá đơn', tai_lieu: source }) }] }, { tools: [], finish: 'stop', text: `Dùng bộ lọc kỳ. ${citation}` }];
+  const rounds = [{ messages: [] }, { messages: [{ role: 'tool', tool_call_id: 'guide-1', content: `${citation}\nDùng bộ lọc kỳ.` }] }];
+  assert.equal(knowledgeEvidence(streams, rounds, source, `Dùng bộ lọc kỳ. ${citation}`).authorizedSource, true);
+  assert.throws(() => knowledgeEvidence(streams, rounds, source, `User prompt mentions ${source} and nguồn only`));
+  assert.throws(() => knowledgeEvidence([streams[0], { tools: [], finish: 'stop', text: 'Dùng bộ lọc kỳ.' }], rounds, source, citation));
+  assert.throws(() => knowledgeEvidence(streams, [{ messages: [] }, { messages: [] }], source, citation));
+});
+test('failure diagnostics retain only bounded harness codes and timeout category, never raw errors', () => {
+  assert.equal(safeG1Failure(new Error('g1_flag_baseline_drift')), 'g1_flag_baseline_drift');
+  assert.equal(safeG1Failure({ name: 'TimeoutError', message: 'secret locator value' }), 'g1_browser_timeout');
+  for (const message of ['Supabase error: Bearer PRIVATE', 'g1_error followed by PRIVATE', 'bad model transcript'])
+    assert.equal(safeG1Failure(new Error(message)), 'g1_assertion_or_transport_failure');
 });
 test('resume retains passed proof bytes, skips only verified cases and rejects changed admission or forged labels', () => {
   const a = admission(), receipt = createReceipt(a, now);

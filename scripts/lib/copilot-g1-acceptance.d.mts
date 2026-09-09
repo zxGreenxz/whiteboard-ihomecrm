@@ -14,3 +14,5 @@ export function addProof(receipt: G1Receipt, proof: Record<string, unknown>, now
 export function pendingCases(receipt: G1Receipt): string[];
 export function admissionFromBaseline(config: Record<string, unknown>, rawBaseline: string, availability: unknown, user: unknown, isSuperAdmin: unknown, authorization: unknown, now?: number): G1Admission;
 export function navigationEvidence(streams: unknown[], rounds: unknown[], target: { key: string; route: string }): Record<string, unknown>;
+export function knowledgeEvidence(streams: unknown[], rounds: unknown[], sourceKey: string, renderedAssistant: string): Record<string, unknown>;
+export function safeG1Failure(error: unknown): string;

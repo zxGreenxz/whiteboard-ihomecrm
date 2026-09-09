@@ -9,7 +9,7 @@ import { guiVaChoModel } from './copilotModelCycle';
 import { inspectModelStream } from './copilotSmokeOracle';
 import { createG1Guard, type G1Request } from '../../scripts/lib/copilot-g1-guard.mjs';
 import { DEMO, G1_ROUTES, MOBILE_MARKERS, admissionDigest, admissionFromBaseline, createReceipt, validateReceipt,
-  addProof, pendingCases, digest, navigationEvidence, type G1Receipt } from '../../scripts/lib/copilot-g1-acceptance.mjs';
+  addProof, pendingCases, navigationEvidence, knowledgeEvidence, safeG1Failure, type G1Receipt } from '../../scripts/lib/copilot-g1-acceptance.mjs';
 
 const SOURCE_KEY = 'huong-dan-su-dung/03-quan-ly-van-hanh/hoa-don';
 const requireThat = (ok: unknown, code: string): void => { if (!ok) throw new Error(code); };
@@ -153,18 +153,9 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
       await panel(page);
       const rounds = await guiVaChoModel(page, `Dùng huong_dan với tai_lieu="${SOURCE_KEY}": cách xem và lọc hoá đơn trên màn hình? Chỉ giải thích và giữ nguyên nguồn.`, { organizationId: DEMO });
       const streams = rounds.map(r => inspectModelStream(r.body));
-      requireThat(streams.at(-1)?.finish === 'stop', 'g1_knowledge_model_unfinished');
-      let result: string | undefined;
-      for (let i = 0; i < streams.length; i++) for (const call of streams[i].tools) {
-        if (call.name !== 'huong_dan' || JSON.parse(call.arguments).tai_lieu !== SOURCE_KEY) continue;
-        const reply = rounds.slice(i + 1).flatMap(r => r.messages).find(m => m.role === 'tool' && m.tool_call_id === call.id);
-        if (typeof reply?.content === 'string' && reply.content.includes(SOURCE_KEY) && /nguồn/i.test(reply.content)) result = reply.content;
-      }
-      requireThat(result, 'g1_authorized_guide_tool_result_missing');
-      const answer = await page.getByTestId('copilot-panel').innerText();
-      requireThat(answer.includes(SOURCE_KEY) && /nguồn/i.test(answer), 'g1_guide_citation_not_rendered');
-      await record({ caseId: 'knowledge', tool: 'huong_dan', toolResultObserved: true, sourceKey: SOURCE_KEY,
-        authorizedSource: true, citationRendered: true, toolResultDigest: digest(result), streamDigest: digest(streams) });
+      const assistant = page.getByTestId('copilot-panel').locator('.flex.justify-start.gap-2 > .bg-muted').last();
+      await expect(assistant).toBeVisible();
+      await record({ caseId: 'knowledge', ...knowledgeEvidence(streams, rounds, SOURCE_KEY, await assistant.innerText()) });
     }
     if (pendingCases(receipt).includes('memory')) {
       stage = 'memory'; attempt.stage = stage; save(receiptPath, receipt);
@@ -209,12 +200,13 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     await page.close(); await Promise.all([...observers]);
     requireThat(guard.counters().blockedWrites === 0 && networkFailures.size === 0 && pageErrors === 0, 'g1_teardown_failure');
     attempt.status = 'complete'; receipt.status = 'complete';
-  } catch {
-    if (attempt) attempt.status = 'failed';
+  } catch (error) {
+    const code = safeG1Failure(error);
+    if (attempt) { attempt.status = 'failed'; attempt.failureCode = code; }
     if (receipt) receipt.status = 'partial';
     // Detailed safe paths are in the receipt. Never serialize provider prose,
     // Supabase errors, auth headers, profile data or model request payloads.
-    throw new Error(`G1 attempt failed at ${stage}; inspect the sanitized receipt and pending case IDs.`);
+    throw new Error(`G1 attempt failed at ${stage}: ${code}; inspect the sanitized receipt and pending case IDs.`);
   } finally {
     checkNetwork = false;
     if (receipt && attempt) {
