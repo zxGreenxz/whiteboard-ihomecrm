@@ -329,7 +329,7 @@ npx playwright test specs/reservation-deposit-settlement.spec.ts
 - [x] Mutation testing ba invariant tiền/quyền: bỏ NOT settled guard, cho refund>deposit, bỏ org/building authorizer. Mỗi mutation phải đỏ đúng test tương ứng; dùng scripts/dot-bien.mjs, ghi digest/exit code và hoàn nguyên.
 - [x] Cập nhật docs nghiệp vụ và manifest; ghi rõ feature mới chưa-HĐ, tách ngày doanh thu/ngày chi. Chạy docs:check:links; cập nhật file runbook chứa baseline, số ca, tổng tiền, gate và khoảng trống còn lại.
 - [x] Mở draft PR với số đo và gate; review độc lập phần tiền, quyền, SQL trước merge. Migration dùng forward lane/backup theo Contract, không direct-write production. Không tự backfill cọc cũ thành bỏ cọc.
-- [ ] Sau backend xanh, kiểm UI preview bằng DEMO rồi phát hành theo Contract. Feature lỗi thì ẩn entry point mới; không xóa settlement đã ghi. Sửa SQL bằng forward migration.
+- [x] Sau backend xanh, kiểm UI preview bằng DEMO rồi phát hành theo Contract. Production tại `90d89b28` đã đạt 6/6 ca browser; bằng chứng và ngoại lệ migration lịch sử được ghi trong runbook. Feature lỗi thì ẩn entry point mới; không xóa settlement đã ghi. Sửa SQL bằng forward migration.
 
 ## Self-review của plan
 

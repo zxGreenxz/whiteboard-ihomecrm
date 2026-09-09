@@ -1,6 +1,6 @@
 # Bằng chứng triển khai xử lý bỏ cọc giữ chỗ
 
-Trạng thái: đã hiện thực và kiểm thử; schema đã áp qua lane có backup. Người dùng đã yêu cầu hoàn tất toàn bộ plan và đưa lên production. Đang hoàn tất kiểm tra phát hành; chưa promote app.
+Trạng thái: đã hoàn tất plan và phát hành tính năng lên production tại `90d89b2829bf65391b1def4e2b19c2e5dfac04e6`. Sáu ca browser trên domain production đã đạt; dữ liệu thử đã dọn và đối soát sau phát hành khớp. Ngoại lệ migration đã áp được ghi riêng bên dưới, không coi là idempotent PASS.
 
 ## Phạm vi và căn cứ
 
@@ -60,7 +60,7 @@ Review giao diện tìm thêm lỗi truy vấn cột tính toán như cột th�
 - Đối soát cuối sau toàn bộ ca DEMO: V1 **PASS**, ba nguồn SQL/RPC dưới RLS/phân trang khớp trên **1.068 dòng**; V2 **PASS**, **20 sổ thực / 3.435 posting lines**. Đây là lần đo mới, không thay số liệu lịch sử sau migration. Kiểm cleanup độc lập trả **0 phòng / 0 phiếu** mang marker fixture; trigger sở hữu vẫn `ENABLE ALWAYS`.
 - `gate:sandbox-leak` đạt: 146 bảng đọc được, rò rỉ 0; 18 bảng còn lại không cấp SELECT. Số liệu công ty thật không đổi giữa hai snapshot. Baseline được chụp sau migration, nên không dùng nó để khẳng định số liệu trước migration.
 - External controls đã kiểm bằng API: cả app và docs theo nhánh `production`; GitHub private Free không có branch protection như giới hạn đã khai trong Contract.
-- PR nháp #57 đã mở và review độc lập phần tiền/quyền hoàn tất. Người dùng đã cho phép đưa lên production; app sẽ được promote sau khi các gate trên main đạt và sẽ được kiểm tra lại đúng SHA trên domain production.
+- PR #57 và bản sửa quy trình phát hành #58 đã gộp sau review độc lập. Người dùng đã cho phép đưa lên production; việc promote và kiểm tra đúng SHA trên domain production đã hoàn tất, xem bằng chứng cuối dưới đây.
 
 ## Lỗi phát hành phát hiện trên main
 
@@ -71,3 +71,12 @@ Giữ nguyên file SQL và digest đã áp. Theo tiền lệ lỗi lịch sử b
 Không chạy lại file đã áp, không sửa cutoff hoặc ledger. Phục hồi từ baseline chưa có tính năng cần quy trình phục hồi một lần được review riêng; lane thông thường sau khi siết sẽ từ chối file này ngay cả trên baseline sạch. Trường hợp không chắc commit đã xảy ra phải đối chiếu catalog/biên nhận. Lần sửa SQL tiếp theo dùng migration mới. Lane apply được bổ sung kiểm hai lượt ROLLBACK trước khi áp và không nhận ngoại lệ ở chốt này, để lỗi tương tự không được đưa vào lịch sử mới.
 
 Sửa chốt đã được review độc lập tại `2033544967d68b91bd68a53ef4180e7231f6d832` (tích hợp thành `899f847c`): Vitest **31/31**, Node authorization/transaction **18/18** đạt. Đo scoped trên database thật với diff thêm **0 migration** vẫn kiểm lại đúng file và trả **0 idempotent PASS / 1 EXEMPT**; không dựa vào cache. Chốt trước apply thử riêng cùng file trả HTTP 400/42P07 và chỉ gửi transaction ROLLBACK, chứng minh ngoại lệ không cho phép re-apply. Không apply SQL trong đợt sửa này, digest migration giữ nguyên.
+
+## Xác minh production
+
+- Commit tính năng phát hành: `90d89b2829bf65391b1def4e2b19c2e5dfac04e6`, sau PR #57/#58. Cổng promote đã kiểm **12 job / 111 bước**, không có bước fail bị `continue-on-error` che, rồi fast-forward nhánh production.
+- [CI main 34396714392](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/34396714392) **SUCCESS**: Vitest **467 file / 7.291 ca**, Node **620/620**; quality, strict, timezone, secret, realtime, types, security và cách ly tenant đạt. Restore drill main `34396714303` đạt. Job reconcile trên CI được bỏ qua vì thiếu test credentials của workflow; đối soát V1/V2 thực tế tại máy trước và sau phát hành đều đạt, không tính job bị bỏ qua là đã chạy.
+- Vercel deployment `dpl_6oBCPsch4wy7QJYdrWFeb5tped3m` **READY**, branch production, đúng SHA trên. Domain kiểm: [ptcrm.vercel.app](https://ptcrm.vercel.app). Cả app và docs vẫn theo nhánh production; hai preview trước promote đã đạt.
+- Browser headless trên domain production, đăng nhập DEMO với `FLEET_EXPECT_BUILD_SHA` đúng SHA: **6/6 trong 1,8 phút**. Bao gồm form hợp đồng cũ, người thiếu quyền, ledger/preview/cancel, hai client Realtime, báo cáo KQKD/cashflow đúng kỳ và mất response sau commit rồi tải lại.
+- Sau browser: cleanup độc lập **0 phòng / 0 phiếu fixture**, trigger sở hữu vẫn `ENABLE ALWAYS`; reconcile V1/V2 **PASS**, sandbox **PASS**, số liệu công ty thật không xê dịch so với snapshot. CI production `34397369973` và restore drill production `34397370023` đều **SUCCESS**.
+- Bản cập nhật checklist/biên bản sau phát hành chỉ thay tài liệu trong `docs/superpowers/`, không thay mã ứng dụng hoặc schema đã được kiểm trên production.
