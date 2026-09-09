@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-09-08T06:23:44.917Z",
+  "checkedAt": "2026-09-09T18:02:30.832Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubBranchProtection": {
@@ -62,12 +62,12 @@
         }
       ],
       "productionDeployment": {
-        "sha": "2bdd567635a2ef8c68a37a350bb7cbc6f19c536f",
+        "sha": "5333340f2d66a1c2699aa0de573cf0e36b06a38c",
         "ref": "production",
         "state": "READY",
         "ancestorOfMain": true
       },
-      "note": "4 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 2bdd567635a2 từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
+      "note": "4 env var (CHỈ tên + target, không lấy giá trị). Production đang chạy 5333340f2d66 từ nhánh \"production\", state READY. SHA đó NẰM TRÊN origin/main — đúng hợp đồng."
     },
     "productionBranchExists": {
       "status": "present",
@@ -75,8 +75,8 @@
     }
   },
   "localHead": {
-    "head": "2bdd567635a2ef8c68a37a350bb7cbc6f19c536f",
-    "branch": "codex/payment-rounding-20260908",
+    "head": "6b3d6cb4c6012a50acc6f89ea814da22c6e9ab03",
+    "branch": "codex/reservation-deposit-settlement-plan-20260910",
     "hasProductionBranch": true
   }
 }

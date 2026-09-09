@@ -13739,6 +13739,195 @@ export type Database = {
           },
         ]
       }
+      reservation_deposit_settlements: {
+        Row: {
+          basis_fingerprint: string
+          building_id: string
+          created_at: string
+          created_by: string
+          deposit_amount: number
+          id: string
+          idempotency_key: string
+          offset_voucher_id: string | null
+          organization_id: string
+          reason_code: string
+          reason_text: string
+          refund_amount: number
+          refund_voucher_id: string | null
+          request_hash: string
+          reservation_hold_id: string | null
+          retained_amount: number
+          revenue_voucher_id: string | null
+          room_id: string | null
+          settlement_date: string
+          source_voucher_id: string
+        }
+        Insert: {
+          basis_fingerprint: string
+          building_id: string
+          created_at?: string
+          created_by: string
+          deposit_amount: number
+          id?: string
+          idempotency_key: string
+          offset_voucher_id?: string | null
+          organization_id: string
+          reason_code: string
+          reason_text?: string
+          refund_amount: number
+          refund_voucher_id?: string | null
+          request_hash: string
+          reservation_hold_id?: string | null
+          retained_amount: number
+          revenue_voucher_id?: string | null
+          room_id?: string | null
+          settlement_date: string
+          source_voucher_id: string
+        }
+        Update: {
+          basis_fingerprint?: string
+          building_id?: string
+          created_at?: string
+          created_by?: string
+          deposit_amount?: number
+          id?: string
+          idempotency_key?: string
+          offset_voucher_id?: string | null
+          organization_id?: string
+          reason_code?: string
+          reason_text?: string
+          refund_amount?: number
+          refund_voucher_id?: string | null
+          request_hash?: string
+          reservation_hold_id?: string | null
+          retained_amount?: number
+          revenue_voucher_id?: string | null
+          room_id?: string | null
+          settlement_date?: string
+          source_voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_deposit_settlements_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_offset_voucher_id_fkey"
+            columns: ["offset_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_offset_voucher_id_fkey"
+            columns: ["offset_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_offset_voucher_id_fkey"
+            columns: ["offset_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_refund_voucher_id_fkey"
+            columns: ["refund_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_refund_voucher_id_fkey"
+            columns: ["refund_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_refund_voucher_id_fkey"
+            columns: ["refund_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_reservation_hold_id_fkey"
+            columns: ["reservation_hold_id"]
+            isOneToOne: false
+            referencedRelation: "room_reservation_holds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_revenue_voucher_id_fkey"
+            columns: ["revenue_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_revenue_voucher_id_fkey"
+            columns: ["revenue_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_revenue_voucher_id_fkey"
+            columns: ["revenue_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_source_voucher_id_fkey"
+            columns: ["source_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_source_voucher_id_fkey"
+            columns: ["source_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_deposit_settlements_source_voucher_id_fkey"
+            columns: ["source_voucher_id"]
+            isOneToOne: true
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
       reservation_hold_deadlines: {
         Row: {
           created_at: string
@@ -13798,6 +13987,66 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      reservation_settlement_vouchers: {
+        Row: {
+          created_at: string
+          kind: string
+          organization_id: string
+          settlement_id: string
+          voucher_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          organization_id: string
+          settlement_id: string
+          voucher_id: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          organization_id?: string
+          settlement_id?: string
+          voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_settlement_vouchers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_settlement_vouchers_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: false
+            referencedRelation: "reservation_deposit_settlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_settlement_vouchers_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_settlement_vouchers_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_settlement_vouchers_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: true
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
           },
         ]
       }
@@ -20672,6 +20921,20 @@ export type Database = {
         Args: { p_building_ids?: string[] }
         Returns: Json
       }
+      get_reservation_settlement_summary_v1: {
+        Args: { p_building_ids?: string[] }
+        Returns: Json
+      }
+      get_reservation_settlements_v1: {
+        Args: {
+          p_building_ids?: string[]
+          p_cursor?: Json
+          p_limit?: number
+          p_refund_state?: string
+          p_source_voucher_id?: string
+        }
+        Returns: Json
+      }
       get_room_cash_lifecycle_v1: {
         Args: { p_from?: string; p_room_id: string; p_to?: string }
         Returns: Json
@@ -21655,6 +21918,7 @@ export type Database = {
         }
         Returns: Json
       }
+      pay_reservation_refund_v1: { Args: { p_input: Json }; Returns: Json }
       pay_utility_bill: {
         Args: {
           p_account_holder?: string
@@ -21837,6 +22101,10 @@ export type Database = {
           p_room_id: string
           p_service_kind: string
         }
+        Returns: Json
+      }
+      preview_reservation_settlement_v1: {
+        Args: { p_voucher_id: string }
         Returns: Json
       }
       preview_special_fees_v1: {
@@ -22479,6 +22747,7 @@ export type Database = {
         }
         Returns: Json
       }
+      settle_reservation_deposit_v1: { Args: { p_input: Json }; Returns: Json }
       shared_account_ids: { Args: never; Returns: string[] }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

@@ -442,4 +442,75 @@ if(process.env.RESERVATION_TEST_HTTP_URL) {
     assert.equal(paid.status,200,JSON.stringify(paid.data));assert.equal(paid.data.refundState,'PAID');assert.equal(await f.money(),before-1000000);
     const denied=await call('rpc/preview_reservation_settlement_v1',{p_voucher_id:f.id},'b163f4b1-455d-4ef4-bf18-18bf2d2a5c7f');assert.equal(denied.status,403);
   },{commitFixture:true}));
+
+  if (process.env.RESERVATION_TEST_BROWSER_URL) {
+    const appUrl = new URL(process.env.RESERVATION_TEST_BROWSER_URL);
+    assert.ok(['127.0.0.1', 'localhost'].includes(appUrl.hostname));
+    const { chromium, expect } = await import('@playwright/test');
+    for (const scenario of [
+      { label: 'full forfeiture', refund: 0, mode: 'NONE' },
+      { label: 'partial immediate refund', refund: 1000000, mode: 'NOW' },
+      { label: 'partial deferred refund then actual payment', refund: 1000000, mode: 'LATER' },
+      { label: 'full refund on mobile', refund: 3000000, mode: 'NOW', mobile: true },
+    ]) test('Browser real RPC: ' + scenario.label, async () => fixture(async f => {
+      const before = await f.money();
+      const browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage({ viewport: scenario.mobile ? { width: 390, height: 844 } : { width: 1280, height: 1000 } });
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.route('**/rest/v1/**', async route => {
+        const source = new URL(route.request().url());
+        const path = source.pathname.split('/rest/v1/')[1];
+        // Forward only to loopback, replacing auth with this fixture's local JWT.
+        const response = await page.request.fetch(new URL(path + source.search, httpUrl).toString(), {
+          method: route.request().method(),
+          headers: { Authorization: 'Bearer ' + localJwt(actor), 'Content-Type': 'application/json' },
+          data: route.request().postData() ?? undefined,
+        });
+        await route.fulfill({ response });
+      });
+      // No request to the shared backend may escape the explicit local REST route.
+      await page.route('**/auth/v1/**', route => route.abort());
+      try {
+        const entry = new URL('/.e2e-fleet/fixtures/reservation-settlement-app.html', appUrl);
+        entry.searchParams.set('voucher', f.id);
+        await page.goto(entry.toString());
+        const dialog = page.getByRole('dialog', { name: 'Xử lý bỏ cọc', exact: true });
+        await expect(dialog.getByLabel('Hoàn lại khách')).toBeVisible();
+        // Cancel/reopen must make no settlement and reset the form.
+        await dialog.getByLabel('Hoàn lại khách').fill('123');
+        await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+        assert.equal((await f.db.query('SELECT count(*) FROM public.reservation_deposit_settlements WHERE source_voucher_id=$1',[f.id])).rows[0].count, '0');
+        await page.getByRole('button', { name: 'Mở xử lý', exact: true }).click();
+        await expect(dialog.getByLabel('Hoàn lại khách')).toHaveValue('0');
+        if (scenario.refund) {
+          await dialog.getByLabel('Hoàn lại khách').fill(String(scenario.refund));
+          await dialog.getByLabel('Cách hoàn').selectOption(scenario.mode);
+          if (scenario.mode === 'NOW') {
+            await dialog.getByLabel('Sổ quỹ đã chi').selectOption(f.scope.account);
+            await dialog.getByRole('checkbox', { name: 'Xác nhận đã trả tiền cho khách' }).check();
+          }
+        }
+        await dialog.getByRole('button', { name: 'Xác nhận xử lý', exact: true }).click();
+        await expect(dialog).not.toBeVisible();
+        const sourceList = await call('rpc/get_reservation_settlements_v1', { p_source_voucher_id: f.id });
+        const result = sourceList.data.rows[0];
+        assert.equal(result.retainedAmount, 3000000 - scenario.refund);
+        assert.equal(await f.money(), before - (scenario.mode === 'NOW' ? scenario.refund : 0));
+        assert.equal((await f.preview()).canSettle, false);
+        if (scenario.mode === 'LATER') {
+          await page.getByRole('button', { name: 'Hoàn tiền', exact: true }).click();
+          const refund = page.getByRole('dialog', { name: 'Hoàn tiền cọc', exact: true });
+          await refund.getByLabel('Sổ quỹ đã chi').selectOption(f.scope.account);
+          await refund.getByRole('checkbox', { name: 'Xác nhận đã trả toàn bộ tiền hoàn' }).check();
+          await refund.getByRole('button', { name: 'Ghi nhận hoàn tiền', exact: true }).click();
+          await expect(refund).not.toBeVisible();
+          assert.equal(await f.money(), before - scenario.refund);
+          await expect(page.getByRole('button', { name: 'Hoàn tiền', exact: true })).not.toBeVisible();
+        }
+        await expect(page.getByRole('alert')).toHaveCount(0);
+        assert.deepEqual(errors, []);
+      } finally { await browser.close(); }
+    }, { commitFixture: true }));
+  }
 }
