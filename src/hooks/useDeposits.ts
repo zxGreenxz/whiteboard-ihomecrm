@@ -166,7 +166,9 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
       );
       if (data === null) throw new Error('Lỗi tải cọc giữ chỗ');
 
-      const neededSettlementSources = new Set((data ?? []).filter((voucher: any) => voucher.settled).map((voucher: any) => voucher.id as string));
+      const neededSettlementSources = new Set((data ?? [])
+        .filter((voucher: { id: string; settled?: unknown }) => voucher.settled)
+        .map((voucher: { id: string }) => voucher.id));
       const settlementBySource = new Map<string, NonNullable<ReservationDepositRow['settlement']>>();
       let settlementCursor = null;
       while (neededSettlementSources.size > settlementBySource.size) {

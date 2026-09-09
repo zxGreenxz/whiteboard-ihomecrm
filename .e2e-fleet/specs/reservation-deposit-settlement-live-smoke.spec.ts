@@ -19,6 +19,9 @@ test('DEMO: reservation ledger, live preview and cancel without money writes', a
       (url.searchParams.get('select') || '').includes('reservation_deposit_settlements');
   });
   await page.goto('/deposits');
+  if (process.env.FLEET_EXPECT_BUILD_SHA) {
+    await expect(page.locator('meta[name="build-sha"]')).toHaveAttribute('content', process.env.FLEET_EXPECT_BUILD_SHA);
+  }
   expect((await ledgerResponse).status()).toBe(200);
   await page.getByRole('button', { name: /^Sổ cọc đầy đủ/ }).click();
   await page.getByRole('tab', { name: 'Phiếu giữ chỗ', exact: true }).click();

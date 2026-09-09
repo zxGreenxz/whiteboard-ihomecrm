@@ -8,6 +8,8 @@
 
 **Tech Stack:** React, TypeScript, React Query, React Hook Form, Zod, shadcn/ui, Supabase PostgreSQL, Vitest, Playwright headless.
 
+**Triển khai:** Sau khi người dùng yêu cầu hiện thực plan, tính năng đã được xây dựng và kiểm thử. Trạng thái phát hành, số đo và các điều chỉnh so với checklist dự kiến nằm tại [runbook](../runbooks/2026-09-10-reservation-deposit-settlement.md).
+
 ## Global Constraints
 
 - Thiết kế nghiệp vụ: [spec](../specs/2026-09-10-reservation-deposit-settlement-design.md); ràng buộc chung: [PROJECT_CONTRACT](../../engineering/PROJECT_CONTRACT.md).
