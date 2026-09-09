@@ -33,7 +33,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildTransaction } from "./apply-reviewed-migration.mjs";
 
@@ -131,13 +131,67 @@ export function docCutoff() {
  *   mất luôn khả năng chặn lớp lỗi THẬT. Nên: khai tên, khai lý do, và bắt mỗi
  *   mục phải còn hỏng thật thì mới được tính.
  *
- * Danh sách này CHỈ ĐƯỢC TEO. Mục khai mà file đã chạy lại được ⇒ chính nó là
- * lỗi (xem phần kiểm ở main): để lại một miễn trừ thừa là mở sẵn cửa cho lần
- * sau có người viết đúng file đó theo kiểu không chạy lại được.
+ * Danh sách legacy này CHỈ ĐƯỢC TEO. Ngoại lệ pinned mới chỉ dành cho migration
+ * bất biến đã apply có bằng chứng review; không bao giờ miễn kiểm file mới chưa
+ * apply. Mục pinned luôn bị đo lại và phải ngã đúng digest + SQLSTATE + message.
  */
 export function docMienTru() {
   const p = JSON.parse(readFileSync(join(repoRoot, "supabase", "migration-policy.json"), "utf8"));
   return new Map((p.idempotencyExceptions ?? []).map((x) => [x.file, x]));
+}
+
+export function laMienTruPinned(entry) {
+  return ["sha256", "expectedSqlState", "expectedMessage", "appliedEvidencePath"]
+    .some((field) => Object.hasOwn(entry ?? {}, field));
+}
+
+export function docLoiSql(text) {
+  try {
+    const body = JSON.parse(text);
+    return { sqlState: String(body.code ?? body.sqlState ?? ""), message: String(body.message ?? "") };
+  } catch {
+    return { sqlState: "", message: String(text) };
+  }
+}
+
+export function kiemMienTruPinned({ entry, file, digest, failureText, root = repoRoot, read = readFileSync }) {
+  const required = ["sha256", "expectedSqlState", "expectedMessage", "appliedEvidencePath"];
+  const missing = required.filter((field) => typeof entry?.[field] !== "string" || entry[field].length === 0);
+  if (missing.length) return { ok: false, vi: `ngoại lệ pinned thiếu ${missing.join(", ")}` };
+  if (entry.sha256 !== digest) return { ok: false, vi: "sha256 ngoại lệ không khớp migration" };
+  const path = entry.appliedEvidencePath;
+  const safePrefix = ["docs", "generated", "schema-change-evidence"].join(sep) + sep;
+  const normalized = normalize(path);
+  if (isAbsolute(path) || path.includes("\\") || normalized.startsWith(`..${sep}`) || !normalized.startsWith(safePrefix)) {
+    return { ok: false, vi: "appliedEvidencePath không an toàn hoặc ngoài thư mục evidence" };
+  }
+  let evidence;
+  try { evidence = JSON.parse(read(join(root, normalized), "utf8")); }
+  catch (error) { return { ok: false, vi: `không đọc được evidence: ${error.message}` }; }
+  if (evidence.file !== `supabase/migrations/${file}` || evidence.sha256 !== entry.sha256) {
+    return { ok: false, vi: "evidence không khớp file/digest ngoại lệ" };
+  }
+  const loaiGiayPhep = evidence.authorization?.loai;
+  if (
+    !Number.isFinite(Date.parse(evidence.appliedAt))
+    || typeof evidence.projectRef !== "string" || evidence.projectRef.length === 0
+    || !["bien-nhan-backup", "token-nguoi"].includes(loaiGiayPhep)
+    || typeof evidence.authorization?.chiTiet !== "string" || evidence.authorization.chiTiet.length === 0
+  ) {
+    return { ok: false, vi: "evidence thiếu dấu mốc apply thật" };
+  }
+  const failure = docLoiSql(failureText);
+  if (failure.sqlState !== entry.expectedSqlState || failure.message !== entry.expectedMessage) {
+    return { ok: false, vi: `lỗi thực tế không khớp pin (nhận ${failure.sqlState}: ${failure.message})` };
+  }
+  return { ok: true, evidence };
+}
+
+export function danhGiaMienTruPinned(args) {
+  if (args.queryOk) {
+    return { ok: false, vi: "ngoại lệ pinned không còn ném đúng lỗi đã pin; không được coi là idempotent PASS" };
+  }
+  return kiemMienTruPinned(args);
 }
 
 /** File .sql có version 14 chữ số LỚN HƠN cutoff. */
@@ -171,6 +225,11 @@ export function locTheoMoc(filesSauCutoff, diffPaths) {
   return filesSauCutoff.filter((f) => ten.has(f));
 }
 
+export function themMienTruPinned(filesSauCutoff, filesThemMoi, mienTru) {
+  const pinned = filesSauCutoff.filter((f) => laMienTruPinned(mienTru.get(f)));
+  return [...new Set([...filesThemMoi, ...pinned])].sort();
+}
+
 async function chaySql(ref, token, sql) {
   const r = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
     method: "POST",
@@ -201,6 +260,7 @@ async function main() {
     ? timFileSauCutoff(readdirSync(DIR), cutoff)
     : [process.argv[i + 1].split(/[\\/]/).pop()];
   const mienTru = docMienTru();
+  const filesSauCutoff = [...files];
   const daKhop = new Set();
 
   // ── --tu-moc: chỉ đo migration THÊM MỚI trong diff của push này (28/08/2026)
@@ -227,9 +287,11 @@ async function main() {
         ["diff", "--name-only", "--diff-filter=A", `${moc.moc}..HEAD`, "--", "supabase/migrations"],
         { cwd: repoRoot, encoding: "utf8" },
       ).split("\n").filter(Boolean);
-      files = locTheoMoc(files, diffAdded);
+      const added = locTheoMoc(files, diffAdded);
+      const pinnedExceptions = filesSauCutoff.filter((f) => laMienTruPinned(mienTru.get(f)));
+      files = themMienTruPinned(filesSauCutoff, added, mienTru);
       theoMoc = true;
-      console.log(`Phạm vi --tu-moc ${moc.moc}..HEAD: ${files.length} migration THÊM MỚI trong diff.`);
+      console.log(`Phạm vi --tu-moc ${moc.moc}..HEAD: ${added.length} migration THÊM MỚI · ${pinnedExceptions.length} ngoại lệ pinned bắt buộc đo lại.`);
       if (files.length === 0) {
         console.log("✅ Diff không thêm migration mới — kết luận idempotent của các file cũ còn nguyên");
         console.log("   (sổ chứng nhận sha256 + luật immutable của policy che chúng). Không có gì để đo.");
@@ -258,7 +320,11 @@ async function main() {
   }
   const digest = new Map(files.map((f) => [f, bam(readFileSync(join(DIR, f), "utf8"))]));
   const so = boQuaSo ? {} : docSo();
-  const { phaiDo, daChung } = chiaTheoSo(files, digest, so);
+  const daChia = chiaTheoSo(files, digest, so);
+  // Ngoại lệ pinned không được biến thành cache PASS: luôn đo lại lỗi thật.
+  const pinned = new Set(files.filter((f) => laMienTruPinned(mienTru.get(f))));
+  const phaiDo = [...new Set([...daChia.phaiDo, ...pinned])];
+  const daChung = daChia.daChung.filter((f) => !pinned.has(f));
 
   // Sổ có mục cho file KHÔNG còn trong tầm quét ⇒ sổ đang tả một thế giới khác.
   // Không chặn, nhưng phải nói ra: một cuốn sổ lệch trong im lặng là cửa tự mở.
@@ -305,7 +371,20 @@ async function main() {
       process.exit(3);
     }
 
-    if (kq.ok) {
+    if (pinned.has(f)) {
+      const pinnedResult = danhGiaMienTruPinned({
+        entry: mienTru.get(f), file: f, digest: digest.get(f), failureText: kq.text, queryOk: kq.ok,
+      });
+      if (!pinnedResult.ok) {
+        hong.push({ f, vi: pinnedResult.vi });
+        console.log(`  ✗ ${f}\n      ${pinnedResult.vi}`);
+      } else {
+        const mt = mienTru.get(f);
+        daKhop.add(f);
+        console.log(`  ~ ${f}  (EXEMPT đã kiểm: ${mt.lop})`);
+        chungMoi.push([f, "mien-tru"]);
+      }
+    } else if (kq.ok) {
       console.log(`  ✓ ${f}`);
       chungMoi.push([f, "chay-lai-duoc"]);
     } else {
@@ -319,7 +398,7 @@ async function main() {
       const mt = mienTru.get(f);
       if (mt) {
         daKhop.add(f);
-        console.log(`  ~ ${f}  (miễn trừ: ${mt.lop})`);
+        console.log(`  ~ ${f}  (EXEMPT legacy: ${mt.lop})`);
         chungMoi.push([f, "mien-tru"]);
       } else {
         hong.push({ f, vi });
@@ -392,7 +471,8 @@ async function main() {
 
   const doThucTe = dsChay.length;
   console.log(`
-✅ ${doThucTe}/${doThucTe} migration đo lần này chạy lại được lần hai mà không hỏng.`);
+✅ ${doThucTe - daKhop.size}/${doThucTe} migration đo lần này chạy lại được lần hai mà không hỏng.`);
+  if (daKhop.size > 0) console.log(`   EXEMPT có bằng chứng/ngoại lệ legacy: ${daKhop.size} — KHÔNG tính là idempotent PASS.`);
   if (daChung.length > 0) {
     console.log(`   ${daChung.length} file bỏ qua vì sha256 khớp sổ chứng nhận (nội dung không đổi từ lần đo đạt).`);
   }

@@ -334,6 +334,22 @@ export function buildTransaction(sql, { rollback = false, lanChay = 1 } = {}) {
   return out;
 }
 
+export async function chayTruyVanQuanTri({ pat, ref, query, fetchImpl = fetch }) {
+  const res = await fetchImpl(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${pat}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
+/** Cửa bắt buộc trước apply: chạy hai lượt trong cùng transaction rồi rollback. */
+export async function kiemTraHaiLuotTruocApply(sql, { pat, ref, fetchImpl = fetch }) {
+  const query = buildTransaction(sql, { rollback: true, lanChay: 2 });
+  const result = await chayTruyVanQuanTri({ pat, ref, query, fetchImpl });
+  return { ...result, query };
+}
+
 export function checkGuards(file, { policy, provenance }) {
   const problems = [];
   const name = basename(file);
@@ -402,6 +418,24 @@ async function main(argv) {
   console.log(`Chế độ : ${doApply ? "APPLY THẬT" : "DRY-RUN (bọc ROLLBACK)"}`);
 
   let giayPhep = null; // { loai, chiTiet } — ghi vào evidence
+
+  const pat = readPat();
+  if (!pat) {
+    console.error("❌ Không tìm thấy PAT.");
+    return 1;
+  }
+  const ref = projectRef();
+
+  if (doApply) {
+    console.log("→ Kiểm tra migration hai lượt trong transaction ROLLBACK trước khi backup/apply…");
+    const preflight = await kiemTraHaiLuotTruocApply(sql, { pat, ref });
+    if (!preflight.ok) {
+      console.error(`❌ Kiểm tra idempotency trước apply thất bại (HTTP ${preflight.status}) — chưa backup, chưa apply.`);
+      console.error(preflight.body.slice(0, 1500));
+      return 1;
+    }
+    console.log("✔ Hai lượt đều đạt và transaction đã ROLLBACK.");
+  }
 
   if (doApply) {
     // ─── GIẤY PHÉP APPLY ─────────────────────────────────────────────────────
@@ -526,13 +560,6 @@ async function main(argv) {
     console.log(`Giấy phép: ${giayPhep.loai} · ${giayPhep.chiTiet}`);
   }
 
-  const pat = readPat();
-  if (!pat) {
-    console.error("❌ Không tìm thấy PAT.");
-    return 1;
-  }
-  const ref = projectRef();
-
   // Chụp catalog TRƯỚC — chỉ khi apply thật. Dry-run không đổi gì nên chụp là
   // lãng phí 3,35 giây và tạo ra một bản inventory không tương ứng lần chạy nào.
   const vanTayTruoc = doApply ? chupVanTayCatalog() : null;
@@ -541,12 +568,8 @@ async function main(argv) {
   }
 
   const started = Date.now();
-  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${pat}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query: transaction }),
-  });
-  const body = await res.text();
+  const res = await chayTruyVanQuanTri({ pat, ref, query: transaction });
+  const body = res.body;
 
   if (!res.ok) {
     console.error(`❌ ${doApply ? "Apply" : "Dry-run"} thất bại (HTTP ${res.status}).`);
