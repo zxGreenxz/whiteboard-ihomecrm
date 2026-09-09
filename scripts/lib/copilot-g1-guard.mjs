@@ -17,7 +17,29 @@ export const G1_READ_RPCS = {
   get_meter_reading_stats: ['p_building_id', 'p_month'], get_meters_without_readings_v2: ['p_building_id', 'p_room_id', 'p_meter_type', 'p_month'],
   ie_form_buildings: [], get_acceptance_geofence_config: [], list_my_cashbook_access_v2: [], list_cashbook_visibility_v2: [], get_finance_v2_client_flags_v1: [],
   zalo_get_crm_summary: ['p_conversation_id'],
+  can_flex_cancel_v1: ['p_ids'], can_cancel_income_voucher_v1: ['p_ids'], list_cashbook_closings_v1: ['p_cashbook'],
 };
+// Only buckets rendered by the canonical route/list and shared layout. Dialog-only
+// meter/job attachments and all upload/list/delete endpoints remain unadmitted.
+const STORAGE_READ_BUCKETS = new Set(['income-expense-attachments', 'payment-receipts', 'avatars', 'zalo-media']);
+const mediaResource = r => ['image', 'media'].includes(r.resourceType);
+const zaloCdn = u => u.protocol === 'https:' && !u.port && /^(?:[a-z0-9-]+\.)+zdn\.vn$/.test(u.hostname);
+function objectPath(value) {
+  if (typeof value !== 'string' || !value.length || value.length > 1024) return false;
+  // Reject traversal hidden by URL encoding as well as raw traversal. These are
+  // existing object keys, never absolute URLs or server endpoint overrides.
+  let decoded; try { decoded = decodeURIComponent(value); } catch { return false; }
+  return !/[\u0000-\u001f\u007f\\:%?#]/.test(decoded)
+    && decoded.split('/').every(segment => segment && segment !== '.' && segment !== '..');
+}
+export function safeG1RequestEndpoint(request) {
+  const u = new URL(request.url);
+  if (u.pathname.startsWith('/storage/v1/')) {
+    const bucket = /^\/storage\/v1\/object\/(?:upload\/sign|sign|public|authenticated|list)\/([a-z0-9-]+)(?:\/|$)/.exec(u.pathname);
+    return `${request.method} ${u.origin}${bucket ? bucket[0].replace(/\/$/, '') : '/storage/v1'}`;
+  }
+  return `${request.method} ${u.origin}${zaloCdn(u) ? '' : u.pathname}`;
+}
 // Serialized by Playwright; use browser globals only, with no module closure.
 // Reuse the application's existing local throttles to defer unrelated writers.
 export function initializeG1Browser({ actorId, organizationId }) {
@@ -32,8 +54,7 @@ const NET_FAILURE_CODES = new Set(['net::ERR_ABORTED', 'net::ERR_FAILED', 'net::
   'net::ERR_BLOCKED_BY_RESPONSE', 'net::ERR_CERT_AUTHORITY_INVALID', 'net::ERR_CERT_DATE_INVALID',
   'net::ERR_SSL_PROTOCOL_ERROR', 'net::ERR_EMPTY_RESPONSE', 'net::ERR_ADDRESS_UNREACHABLE']);
 export function safeG1RequestFailure(request, errorText) {
-  const u = new URL(request.url);
-  return `${request.method} ${u.origin}${u.pathname} ${NET_FAILURE_CODES.has(errorText) ? errorText : 'g1_network_failure_unknown'}`;
+  return `${safeG1RequestEndpoint(request)} ${NET_FAILURE_CODES.has(errorText) ? errorText : 'g1_network_failure_unknown'}`;
 }
 function validNumericContentRange(value) {
   const match = typeof value === 'string' && /^(\*|(\d+)-(\d+))\/(\d+)$/.exec(value);
@@ -59,6 +80,9 @@ export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl
   function safe(r) {
     const u = new URL(r.url), method = r.method, data = r.body;
     if (u.origin !== supabaseOrigin) {
+      // CSP and useSignedMediaUrl/ZaloAvatar admit this CDN for rendered media;
+      // arbitrary fetches, scripts, documents and other methods remain blocked.
+      if (zaloCdn(u)) return method === 'GET' && mediaResource(r);
       // index.html's four font families and ollama.ts's local discovery endpoint.
       // No completion/model-management endpoint on localhost is admitted.
       const readEndpoint = (u.origin === 'https://fonts.googleapis.com' && u.pathname === '/css2')
@@ -72,9 +96,18 @@ export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl
     if (u.pathname.startsWith('/auth/v1/')) return ['GET', 'HEAD'].includes(method)
       || (method === 'POST' && u.pathname === '/auth/v1/token' && ['password', 'refresh_token'].includes(u.searchParams.get('grant_type')));
     if (u.pathname === '/functions/v1/llm-proxy/chat/completions') return method === 'POST' && r.headers?.['x-organization-id'] === DEMO;
+    const storageSign = /^\/storage\/v1\/object\/sign\/([a-z0-9-]+)$/.exec(u.pathname);
+    if (storageSign) return method === 'POST' && STORAGE_READ_BUCKETS.has(storageSign[1])
+      && keysOnly(data, ['expiresIn', 'paths']) && data.expiresIn === 3600
+      && Array.isArray(data.paths) && data.paths.length > 0 && data.paths.length <= 100 && data.paths.every(objectPath);
+    const storageObject = /^\/storage\/v1\/object\/(?:sign|public)\/([a-z0-9-]+)\/(.+)$/.exec(u.pathname);
+    if (storageObject) return method === 'GET' && mediaResource(r) && STORAGE_READ_BUCKETS.has(storageObject[1]) && objectPath(storageObject[2]);
     const rpc = /^\/rest\/v1\/rpc\/([a-z0-9_]+)$/.exec(u.pathname)?.[1];
     if (rpc) {
       if (method !== 'POST' || !Object.hasOwn(G1_READ_RPCS, rpc) || !keysOnly(data, G1_READ_RPCS[rpc])) return false;
+      if (['can_flex_cancel_v1', 'can_cancel_income_voucher_v1'].includes(rpc))
+        return Array.isArray(data.p_ids) && data.p_ids.length > 0 && data.p_ids.length <= 20 && data.p_ids.every(id => typeof id === 'string' && uuid.test(id));
+      if (rpc === 'list_cashbook_closings_v1') return data.p_cashbook == null || (typeof data.p_cashbook === 'string' && uuid.test(data.p_cashbook));
       return !G1_READ_RPCS[rpc].includes('p_organization_id') || data.p_organization_id === DEMO;
     }
     if (/^\/rest\/v1\/[a-z0-9_]+$/.test(u.pathname) && ['GET', 'HEAD'].includes(method)) return true;
@@ -88,7 +121,7 @@ export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl
   return {
     allow(r, requestKey) {
       const ok = safe(r), u = new URL(r.url);
-      if (!ok) blocked.push(`${r.method} ${u.origin}${u.pathname}`);
+      if (!ok) blocked.push(safeG1RequestEndpoint(r));
       else if (requestKey !== undefined && u.origin === supabaseOrigin && r.method === 'POST'
         && ['/rest/v1/ai_chat_threads', '/rest/v1/ai_chat_messages'].includes(u.pathname)) pendingChatWrites.add(requestKey);
       if (ok && requestKey !== undefined && u.origin === supabaseOrigin && r.method === 'HEAD'

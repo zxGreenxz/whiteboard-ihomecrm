@@ -1,13 +1,13 @@
 import { closeSync, existsSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { expect, test, type Page, type Request } from '@playwright/test';
 import { login } from './auth';
 import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { COPILOT_TEST_MODEL, pinCopilotTestModel, waitForCopilotAvailability } from './copilotTestModel';
 import { guiVaChoModel } from './copilotModelCycle';
 import { inspectModelStream } from './copilotSmokeOracle';
-import { createG1Guard, initializeG1Browser, safeG1RequestFailure, type G1Request } from '../../scripts/lib/copilot-g1-guard.mjs';
+import { createG1Guard, initializeG1Browser, safeG1RequestEndpoint, safeG1RequestFailure, type G1Request } from '../../scripts/lib/copilot-g1-guard.mjs';
 import { DEMO, G1_ROUTES, MOBILE_MARKERS, admissionDigest, admissionFromBaseline, createReceipt, validateReceipt,
   addProof, pendingCases, navigationEvidence, knowledgeEvidence, safeG1Failure, type G1Receipt } from '../../scripts/lib/copilot-g1-acceptance.mjs';
 
@@ -23,7 +23,7 @@ function save(path: string, receipt: G1Receipt): void {
 }
 async function shape(request: Request): Promise<G1Request> {
   let body: unknown; try { body = request.postDataJSON(); } catch { /* GET / invalid payload */ }
-  return { url: request.url(), method: request.method(), body, headers: await request.allHeaders() };
+  return { url: request.url(), method: request.method(), body, headers: await request.allHeaders(), resourceType: request.resourceType() };
 }
 async function panel(page: Page): Promise<void> {
   if (!await page.getByTestId('copilot-panel').isVisible()) await page.getByTestId('copilot-launcher').click();
@@ -53,6 +53,12 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
   requireThat(config.organizationId === DEMO && config.sourceSha === process.env.EXPECTED_SOURCE_SHA
     && config.baseUrl === process.env.FLEET_BASE_URL, 'g1_config_identity_mismatch');
   const baselinePath = absoluteEnv('FLEET_G1_FLAGS'), receiptPath = absoluteEnv('FLEET_G1_RECEIPT');
+  const harnessCommit = process.env.FLEET_G1_HARNESS_SHA;
+  requireThat(harnessCommit && /^[a-f0-9]{40}$/.test(harnessCommit), 'g1_harness_commit_required');
+  const harnessFileDigests = Object.fromEntries([
+    ['spec', './copilot-g1-canary.spec.ts'], ['guard', '../../scripts/lib/copilot-g1-guard.mjs'],
+    ['acceptance', '../../scripts/lib/copilot-g1-acceptance.mjs'],
+  ].map(([key, path]) => [key, createHash('sha256').update(readFileSync(new URL(path, import.meta.url))).digest('hex')]));
   const rawBaseline = readFileSync(baselinePath, 'utf8');
   let receipt: G1Receipt | undefined = existsSync(receiptPath) ? JSON.parse(readFileSync(receiptPath, 'utf8')) : undefined;
   if (receipt) validateReceipt(receipt, receipt.admission);
@@ -78,7 +84,8 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     page.on('response', response => {
       const path = new URL(response.url()).pathname;
       guard.observeHeadCount(response.request(), response.status(), response.headers()['content-range']);
-      if (checkNetwork && path.startsWith('/rest/v1/') && !response.ok()) networkFailures.add(`${response.status()} ${response.request().method()} ${path}`);
+      if (checkNetwork && (path.startsWith('/rest/v1/') || path.startsWith('/storage/v1/')) && !response.ok())
+        networkFailures.add(`${response.status()} ${safeG1RequestEndpoint({ url: response.url(), method: response.request().method() })}`);
       if (path !== '/rest/v1/ai_chat_threads' || response.request().method() !== 'POST') return;
       const observing = (async () => { guard.observeThread(await shape(response.request()), await response.json(), response.status()); })()
         .catch(() => { networkFailures.add('POST /rest/v1/ai_chat_threads identity_readback_failed'); });
@@ -86,7 +93,8 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     });
     page.on('requestfinished', request => guard.finished(request));
     page.on('requestfailed', request => {
-      if (checkNetwork && new URL(request.url()).pathname.startsWith('/rest/v1/')
+      const path = new URL(request.url()).pathname;
+      if (checkNetwork && (path.startsWith('/rest/v1/') || path.startsWith('/storage/v1/'))
         && !guard.classifyHeadCountAbort(request, request.failure()?.errorText))
         networkFailures.add(safeG1RequestFailure({ method: request.method(), url: request.url() }, request.failure()?.errorText));
       guard.finished(request);
@@ -125,7 +133,7 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     };
     const admission = await refreshAdmission();
     if (receipt) validateReceipt(receipt, admission); else receipt = createReceipt(admission);
-    attempt = { startedAt: new Date().toISOString(), flagEvidenceDigest: admission.flagEvidenceDigest,
+    attempt = { startedAt: new Date().toISOString(), harnessCommit, harnessFileDigests, flagEvidenceDigest: admission.flagEvidenceDigest,
       availabilityDigest: admission.availabilityDigest, availabilityRevision: admission.availabilityRevision, status: 'running' };
     receipt.attempts.push(attempt); save(receiptPath, receipt); await settleRequests(); checkNetwork = true;
     const record = async (proof: Record<string, unknown>) => {

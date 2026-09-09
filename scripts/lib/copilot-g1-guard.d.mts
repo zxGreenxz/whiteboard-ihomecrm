@@ -1,7 +1,8 @@
-export type G1Request = { url: string; method: string; body?: unknown; headers?: Record<string, string> };
+export type G1Request = { url: string; method: string; body?: unknown; headers?: Record<string, string>; resourceType?: string };
 export const G1_READ_RPCS: Record<string, string[]>;
 export function initializeG1Browser(input: { actorId: string; organizationId: string }): void;
 export function safeG1RequestFailure(request: Pick<G1Request, 'url' | 'method'>, errorText?: string): string;
+export function safeG1RequestEndpoint(request: Pick<G1Request, 'url' | 'method'>): string;
 export type G1HeaderCompleteCountRead = { requestOrdinal: number; method: string; origin: string; pathname: string; status: number; code: string; contentRangeDigest: string };
 export function createG1Guard(input: { actorId: string; organizationId: string; supabaseOrigin: string; baseUrl: string }): {
   allow(request: G1Request, requestKey?: unknown): boolean;

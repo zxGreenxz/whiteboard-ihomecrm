@@ -140,6 +140,89 @@ test('mounted route reads use only inspected signatures; overloads and write-lik
     assert.equal(guard.allow(req(`/rest/v1/rpc/${name}`)), false, name);
 });
 
+test('voucher eligibility is limited to the mounted first page of UUIDs, and cashbook inbox remains a read', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  for (const name of ['can_flex_cancel_v1', 'can_cancel_income_voucher_v1']) {
+    assert.equal(guard.allow(req(`/rest/v1/rpc/${name}`, { p_ids: [actorId] })), true);
+    for (const body of [{}, { p_ids: [] }, { p_ids: actorId }, { p_ids: ['invalid'] },
+      { p_ids: Array(21).fill(actorId) }, { p_ids: [actorId], p_write: true }])
+      assert.equal(guard.allow(req(`/rest/v1/rpc/${name}`, body)), false);
+    assert.equal(guard.allow(req(`/rest/v1/rpc/${name}`, { p_ids: [actorId] }, 'GET')), false);
+  }
+  for (const body of [{}, { p_cashbook: null }, { p_cashbook: actorId }])
+    assert.equal(guard.allow(req('/rest/v1/rpc/list_cashbook_closings_v1', body)), true);
+  for (const body of [{ p_cashbook: 'invalid' }, { p_cashbook: actorId, p_write: true }])
+    assert.equal(guard.allow(req('/rest/v1/rpc/list_cashbook_closings_v1', body)), false);
+  assert.equal(guard.allow(req('/rest/v1/rpc/list_cashbook_closings_v1', {}, 'GET')), false);
+  for (const name of ['flex_cancel_income_expense_v1', 'cancel_income_voucher_v1', 'close_cashbook_v1'])
+    assert.equal(guard.allow(req(`/rest/v1/rpc/${name}`, { p_ids: [actorId] })), false);
+});
+
+const storageBuckets = ['income-expense-attachments', 'payment-receipts', 'avatars', 'zalo-media'];
+test('storage only signs bounded existing object paths through the reviewed batch SDK endpoint', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  const body = { expiresIn: 3600, paths: ['owner/fixture image.png'] };
+  for (const bucket of storageBuckets) {
+    const path = `/storage/v1/object/sign/${bucket}`;
+    assert.equal(guard.allow(req(path, body)), true, bucket);
+    assert.equal(guard.allow(req(path, { ...body, paths: Array(100).fill('fixture.png') })), true);
+    for (const invalid of [{ ...body, expiresIn: 7200 }, { ...body, expiresIn: '3600' },
+      { ...body, paths: [] }, { ...body, paths: Array(101).fill('fixture.png') }, { ...body, paths: [null] },
+      { ...body, paths: ['../private'] }, { ...body, paths: ['owner/../private'] }, { ...body, paths: ['/absolute'] },
+      { ...body, paths: ['https://other.example/object'] }, { ...body, paths: ['owner\\private'] },
+      { ...body, paths: ['owner\u0000private'] }, { ...body, paths: ['%2e%2e/private'] },
+      { ...body, upsert: true }, { ...body, download: true }])
+      assert.equal(guard.allow(req(path, invalid)), false, JSON.stringify(invalid));
+    assert.equal(guard.allow(req(`${path}/fixture.png`, { expiresIn: 3600 })), false);
+    assert.equal(guard.allow({ ...req(path, body), url: `https://other.example${path}` }), false);
+    for (const method of ['PUT', 'PATCH', 'DELETE']) assert.equal(guard.allow(req(path, body, method)), false);
+  }
+  for (const path of ['/storage/v1/object/sign/unreviewed', '/storage/v1/object/sign/meter-images', '/storage/v1/object/sign/job-attachments', '/storage/v1/object/upload/sign/avatars',
+    '/storage/v1/object/list/avatars', '/storage/v1/object/avatars', '/storage/v1/bucket'])
+    assert.equal(guard.allow(req(path, body)), false, path);
+});
+
+test('mounted object reads are same-backend known-bucket image/media GETs, never downloads or uploads', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  for (const bucket of storageBuckets) for (const mode of ['sign', 'public']) {
+    const path = `/storage/v1/object/${mode}/${bucket}/owner/fixture%20image.png?token=PRIVATE`;
+    for (const resourceType of ['image', 'media']) assert.equal(guard.allow({ ...req(path, {}, 'GET'), resourceType }), true);
+    for (const resourceType of ['fetch', 'xhr', 'document', undefined])
+      assert.equal(guard.allow({ ...req(path, {}, 'GET'), resourceType }), false);
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'])
+      assert.equal(guard.allow({ ...req(path, {}, method), resourceType: 'image' }), false);
+  }
+  for (const path of ['/storage/v1/object/public/unreviewed/file.png', '/storage/v1/object/authenticated/avatars/file.png',
+    '/storage/v1/render/image/public/avatars/file.png', '/storage/v1/object/public/avatars/owner/%252e%252e/private'])
+    assert.equal(guard.allow({ ...req(path, {}, 'GET'), resourceType: 'image' }), false, path);
+});
+
+test('Zalo CDN reads use the shipped CSP host boundary and image/media resource types only', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  for (const resourceType of ['image', 'media'])
+    assert.equal(guard.allow({ url: 'https://avatar.zdn.vn/PRIVATE?token=PRIVATE', method: 'GET', resourceType }), true);
+  for (const url of ['https://zdn.vn/PRIVATE', 'https://evilzdn.vn/PRIVATE', 'https://avatar.zdn.vn.evil.example/PRIVATE',
+    'http://avatar.zdn.vn/PRIVATE', 'https://avatar.zdn.vn:444/PRIVATE'])
+    assert.equal(guard.allow({ url, method: 'GET', resourceType: 'image' }), false, url);
+  for (const resourceType of ['fetch', 'xhr', 'script', 'document', undefined])
+    assert.equal(guard.allow({ url: 'https://avatar.zdn.vn/PRIVATE', method: 'GET', resourceType }), false);
+  for (const method of ['POST', 'PUT', 'DELETE', 'OPTIONS'])
+    assert.equal(guard.allow({ url: 'https://avatar.zdn.vn/PRIVATE', method, resourceType: 'image' }), false);
+});
+
+test('storage and CDN diagnostics omit all object paths and query values', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  const requests = [req('/storage/v1/object/sign/payment-receipts/PRIVATE/file.png?token=PRIVATE'),
+    req('/storage/v1/object/upload/sign/avatars/PRIVATE.png'),
+    { url: 'https://avatar.zdn.vn/PRIVATE/file.png?token=PRIVATE', method: 'POST' }];
+  for (const r of requests) {
+    assert.equal(guard.allow(r), false);
+    assert.equal(safeG1RequestFailure(r, 'net::ERR_FAILED').includes('PRIVATE'), false);
+  }
+  assert.deepEqual(guard.counters().blocked, [`POST ${origin}/storage/v1/object/sign/payment-receipts`,
+    `POST ${origin}/storage/v1/object/upload/sign/avatars`, 'POST https://avatar.zdn.vn']);
+});
+
 test('browser bootstrap reuses existing local throttles without executing server or business actions', () => {
   const local = new Map(), session = new Map(), now = 1788969600000;
   vm.runInNewContext(`(${initializeG1Browser.toString()})(input)`, {

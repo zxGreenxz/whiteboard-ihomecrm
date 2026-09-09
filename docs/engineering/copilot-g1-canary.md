@@ -81,6 +81,7 @@ attempts only when the newly verified selected 20 rows remain identical.
 $env:FLEET_G1_LIVE = '1'
 $env:FLEET_WORKERS = '1'
 $env:EXPECTED_SOURCE_SHA = '<exact reviewed SHA>'
+$env:FLEET_G1_HARNESS_SHA = '<full commit of the clean reviewed harness checkout>'
 $env:FLEET_BASE_URL = 'https://<exact-reviewed-preview-host>'
 $env:FLEET_G1_CONFIG = 'C:/path/to/g1-config.json'
 $env:FLEET_G1_FLAGS = 'C:/path/to/g1-flags-preflight.json'
@@ -179,6 +180,8 @@ The explicit POST read signatures currently cover:
 | `list_my_cashbook_access_v2`, `list_cashbook_visibility_v2` | `src/hooks/income-expenses/financeV2Mutations.ts:223` and `:248`; SELECT bodies in migrations `20260723110000_finance_v2_rls_canary.sql:246`, `20260724160000_finance_v2_cashbook_visibility_flags.sql:23` |
 | `get_finance_v2_client_flags_v1` | `src/lib/financeV2Route.ts:63`; `supabase/migrations/20260730110000_ie_accounting_standard_toggle.sql:255`, using the SELECT-only resolver in `20260723170000_finance_v2_readonly_txn_fix.sql:21` |
 | `zalo_get_crm_summary` | Mounted first linked conversation's CRM panel, `src/hooks/chat-zalo/useZaloCrmProfile.ts:24`; auth-scoped SELECT body in `supabase/migrations/20260813130000_zalo_gan_hoi_thoai_crm.sql:281` |
+| `can_flex_cancel_v1`, `can_cancel_income_voucher_v1` | `src/hooks/income-expenses/flexMutations.ts:108` and `incomeVoucherCancel.ts:112`; exact `{p_ids: uuid[]}`, 1–20 IDs from the mounted desktop first page (`IncomeExpensePage.tsx:178`, mobile first page is 15). Reader bodies in migrations `20260730200000_plan_hardening_wave2.sql`, `20260730210000_plan_hardening_wave3.sql`, `20260730220000_voucher_change_log_and_creator_cancel.sql` and `20260802160000_income_slice_audit_fixes.sql`; the flex reader's VOLATILE declaration permits authorization `FOR SHARE` locks, not voucher writes. |
+| `list_cashbook_closings_v1` | Mounted cashbook closing inbox, `src/hooks/useCashbookClosing.ts:187`; optional UUID/null `p_cashbook`, STABLE auth-scoped SELECT body in migration `20260730170000_cashbook_closing_ritual.sql:499` |
 
 The route import audit includes eagerly mounted closed forms and RPC wrapper
 calls. Only the inspected RPC names and argument keys above are admitted; every
@@ -186,6 +189,9 @@ added signature has unknown-argument and GET-execution negatives. Zalo sticker
 search creates an asynchronous job, so it remains blocked along with presence,
 mark-read and history loading. Receipt failures retain only a bounded `g1_` code
 or a known timeout category; provider prose and raw server errors are omitted.
+`20260730280000_stable_fn_row_lock_regression.sql` additionally checks that readers
+which transitively take row locks use VOLATILE; that declaration alone is not
+evidence of a business write.
 
 DEMO admission binds Copilot tools, flags, chat persistence and memory. Legacy
 page queries keep their existing server authorization/RLS behavior, and several
@@ -197,6 +203,48 @@ inspect the exact source and SQL body, add its argument signature and a negative
 guard test, then resume. Names beginning with `get`/`list` are not proof of safety.
 The guard never permits `mark_overdue_invoices_v1`, `zalo_mark_read`, chat presence
 writers, financial approval, or business mutations to make a page pass.
+
+The storage exception covers only `income-expense-attachments`, `payment-receipts`,
+`avatars` and `zalo-media` on the attested Supabase origin. `signedUrlBatcher.ts`
+uses batches of 1–100 existing paths with `SIGNED_URL_TTL = 3600` from `storage.ts`.
+The installed `@supabase/storage-js` `StorageFileApi.createSignedUrls` sends exactly
+`POST /storage/v1/object/sign/<bucket>` with `{expiresIn, paths}` and requires
+object SELECT permission. The guard checks that exact shape, TTL, batch bound and
+relative object paths. It rejects unknown buckets, single-object signing,
+listing, upload signing, uploads, updates and deletes. Object reads admit only
+GET image/media resources at `/object/sign/<bucket>/<path>` or the existing
+`/object/public/<bucket>/<path>` fallback; server storage authorization still
+determines whether private objects can be signed. The legacy page-scope caveat
+above applies to attachment rows as well. Storage HTTP/network failures block
+acceptance, and diagnostics preserve the bucket without object names or tokens.
+
+The source audit follows `IncomeExpenseList.AttachmentPreview` and
+`thu-tien/UtilityReceiptThumb` through `StorageImage`/`useSignedUrl`; the two
+financial buckets originate in `AttachmentUpload.tsx` and
+`invoices/RecordPaymentDialog.tsx`. Header/Sidebar read profile avatars from
+`useProfile.ts`'s `avatars` bucket. Chat Zalo's `useSignedMediaUrl` signs existing
+`zalo-media` objects, and `ZaloAvatar` renders external avatar URLs. The shipped
+`vercel.json` CSP permits `https://*.zdn.vn` for image/media; the harness admits
+that exact host boundary only for HTTPS GET image/media requests (no custom
+ports, fetch/XHR, scripts, documents or POST). Those diagnostics retain origin
+only. Private R2 buckets are currently empty in `storage/r2Config.ts`; no R2
+signing or upload endpoint is admitted.
+
+Canonical cashbooks, report roots, meter, Thu Tien and tasks need no additional
+storage reads beyond the shared layout. Meter/job attachment previews and
+cashbook detail/blocker/balance/history queries require unopened dialogs, so
+they remain outside this navigation acceptance. Report-root organization reads,
+meter stats/unrecorded reads and task geofence reads were already allowlisted.
+
+An operator may resume the same attested product build using a reviewed harness
+fix without repeating passed cases. The operator must verify a clean harness
+checkout and that its diff from the product commit contains only the explicitly
+reviewed harness/docs files, then set `FLEET_G1_HARNESS_SHA` to its full commit.
+Each new attempt records `harnessCommit` and SHA-256 file-byte digests for the
+spec, guard and acceptance module. These fields do not change admission or old
+proofs. Product SHA, organization, actor, model, flag revisions and expiry must
+still match the existing receipt. Earlier proof/attempt provenance is preserved;
+the operator's final release evidence distinguishes product and harness commits.
 
 The memory case proves an authenticated DEMO list read, panel visibility, and one
 delete control per returned item, including the empty state. It does not click
