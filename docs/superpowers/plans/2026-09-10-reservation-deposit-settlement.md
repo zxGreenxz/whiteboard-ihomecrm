@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Thiết kế nghiệp vụ: [spec](../specs/2026-09-10-reservation-deposit-settlement-design.md); ràng buộc chung: [PROJECT_CONTRACT](../../engineering/PROJECT_CONTRACT.md).
-- Phạm vi phiên lập plan: hai file Markdown; không chạy migration, không sửa sản phẩm, không xác nhận đã test chức năng.
+- Phạm vi ban đầu là lập plan. Người dùng sau đó đã yêu cầu hiện thực và hoàn tất toàn bộ plan để đưa lên production; bằng chứng thực hiện nằm trong runbook.
 - Base khảo sát: 1d6523fb; base worktree plan: 4285b214. Đọc lại SQL live trước khi viết migration.
 - V1 mỗi lần xử lý một phiếu; cho phép giữ 0đ và hoàn toàn bộ; hoàn sau chi toàn bộ số còn nợ một lần.
 - Hoàn sau chỉ ghi nghĩa vụ, tạo phiếu chi tại thời điểm hoàn; không tạo phiếu sổ ảo để lách yêu cầu sổ thật.
@@ -172,8 +172,8 @@ $$;
 ~~~
 Revoke PUBLIC/anon/authenticated; caller writer chịu kiểm quyền. Guard cấm các đường sửa/xóa/gắn/đảo phiếu nguồn đã settle, kể cả item, link table và lifecycle APIs; metadata ghi chú an toàn vẫn theo quyền hiện hành.
 - [ ] Implement preview: quyền trước dữ liệu, phân loại cọc, nguồn tiền signed/posting, hợp đồng/link, kỳ khóa; trả fingerprint căn cứ. Phân biệt blocker khiến không settle được và ràng buộc khiến phòng chưa trống.
-- [ ] Implement settle theo thứ tự: authorize → khóa phòng → khóa phiếu → kiểm/replay operation → kiểm fingerprint và số tiền → insert settlement → tạo cặp noncash phần giữ lại → NOW gọi helper hoàn tiền, LATER không ghi tiền → đóng hold xác định được → reconcile phòng → response. RPC có lock phải VOLATILE.
-- [ ] Hai chân tạo tự động: EXPENSE/DEPOSIT reservation.forfeit_offset có kqkd_amount=0; INCOME/REVENUE reservation.forfeit_revenue tính KQKD bằng retained_amount. Cả hai NON_CASH/NOT_APPLICABLE, cùng ngày và liên kết settlement, đi qua năng lực writer riêng phạm vi hẹp. Đối chiếu số dư thật v1/v2 đều không đổi. Cấm sửa account/posting mode để biến chúng thành giao dịch tiền.
+- [ ] Implement settle theo thứ tự: authorize → khóa phòng → khóa tổ chức → khóa phiếu → kiểm/replay operation → kiểm fingerprint và số tiền → insert settlement → tạo cặp noncash phần giữ lại → NOW gọi helper hoàn tiền, LATER không ghi tiền → đóng hold xác định được → reconcile phòng → response. RPC có lock phải VOLATILE.
+- [ ] Hai chân tạo tự động: EXPENSE/DEPOSIT reservation.forfeit_offset có kqkd_amount=0; INCOME/PNL reservation.forfeit_revenue tính KQKD bằng retained_amount. Cả hai NON_CASH/NOT_APPLICABLE, cùng ngày và liên kết settlement, đi qua năng lực writer riêng phạm vi hẹp. Đối chiếu số dư thật v1/v2 đều không đổi. Cấm sửa account/posting mode để biến chúng thành giao dịch tiền.
 - [ ] Trình tự tiền dùng phép tính:
 ~~~ts
 const retainedAmount = depositAmount - refundAmount;
@@ -343,4 +343,4 @@ npx playwright test specs/reservation-deposit-settlement.spec.ts
 - [x] DTO và tên RPC thống nhất; các tên mới là hợp đồng thiết kế, không khẳng định đã tồn tại.
 - [x] Test/gate trong các task là công việc triển khai tương lai, chưa được báo cáo là đã chạy.
 
-Kế hoạch này hoàn thành phần chuẩn bị để trao đổi. Không tự coi việc người dùng chọn “hỗ trợ cả 2” là lệnh chạy migration hoặc đưa tính năng lên production.
+Checklist trên lưu thứ tự công việc dự kiến; runbook ghi bằng chứng thực hiện, thay đổi artifact tương đương và trạng thái phát hành. Việc triển khai và phát hành dựa trên các yêu cầu rõ ràng sau đó của người dùng, không suy từ lựa chọn “hỗ trợ cả 2”.

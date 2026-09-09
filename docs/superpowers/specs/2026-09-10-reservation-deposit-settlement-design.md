@@ -1,6 +1,6 @@
 # Bỏ cọc giữ chỗ chưa gắn hợp đồng — thiết kế
 
-Ngày: 2026-09-10. Trạng thái: thiết kế để rà soát, chưa triển khai.
+Ngày: 2026-09-10. Trạng thái: đã hiện thực; bằng chứng xác minh và trạng thái phát hành tại [runbook](../runbooks/2026-09-10-reservation-deposit-settlement.md).
 
 Người dùng đã chọn: xử lý bỏ toàn bộ hoặc giữ một phần; phần trả lại khách hỗ trợ cả hoàn ngay và hoàn sau.
 
@@ -81,14 +81,14 @@ Với cọc 3 triệu, giữ 2 triệu và hoàn 1 triệu:
 |---|---|---:|---:|---:|
 | Phiếu thu gốc | INCOME / DEPOSIT, giữ nguyên | 3.000.000đ | 0đ | Giữ lần nhận tiền gốc |
 | Giảm cọc do khách bỏ | EXPENSE / DEPOSIT, nội bộ | 2.000.000đ | 0đ | 0đ |
-| Doanh thu bỏ cọc | INCOME / REVENUE, nội bộ | 2.000.000đ | +2.000.000đ | 0đ |
+| Doanh thu bỏ cọc | INCOME / PNL, nội bộ | 2.000.000đ | +2.000.000đ | 0đ |
 | Phiếu chi hoàn khi thực trả | EXPENSE / DEPOSIT, tiền thật | 1.000.000đ | 0đ | −1.000.000đ |
 
 Hai dòng nội bộ là cặp đối ứng cùng số tiền giữ lại, cùng ngày xử lý, cùng hồ sơ. Chỉ chân doanh thu mới bật tính KQKD; chân giảm cọc luôn ngoài KQKD. Cả hai khai NON_CASH / NOT_APPLICABLE, dùng sổ nội bộ theo chuẩn hiện hành, không có cash posting và không làm thay đổi số dư quỹ thật ở cả mô hình v1/v2.
 
 Hoàn sau: sau cặp đối ứng vẫn còn khoản phải trả khách 1 triệu, dù toàn bộ phiếu nguồn không còn dùng để giữ phòng hay ký hợp đồng. Khi trả tiền, phiếu chi giảm đúng khoản phải trả này. Không lấy tiền hoàn làm chi phí để trừ doanh thu 2 triệu.
 
-Các bút toán do server tự tạo sau một lần xác nhận, không thêm thao tác lập phiếu thủ công. Đây là phương án thiết kế đang trao đổi; chưa thực hiện thay đổi dữ liệu.
+Các bút toán do server tự tạo sau một lần xác nhận, không thêm thao tác lập phiếu thủ công. Hạng mục doanh thu dùng giá trị `PNL` của hệ thống.
 
 ### 4.2. Hồ sơ và các bất biến
 
@@ -117,7 +117,7 @@ Dùng deposits.refund theo phạm vi tòa nhà cho xử lý cọc; việc ghi nh
 
 RPC kiểm lại quyền trên mọi lần gọi, kể cả replay idempotency; không trả hồ sơ của tổ chức khác. Bảng chỉ mở SELECT theo quyền tòa/tổ chức; ghi qua writer chuyên trách, có policy ẩn sandbox admin.
 
-Preview trả fingerprint của căn cứ tiền. Commit đọc lại, khóa phòng → phiếu nguồn → hồ sơ/phiếu hoàn, kiểm fingerprint. Dùng cùng thứ tự khóa ở tạo hợp đồng, bỏ cọc, nhận giữ chỗ; chứng minh bằng test hai session. Một bên thắng thì bên kia nhận xung đột có nghĩa nghiệp vụ.
+Preview trả fingerprint của căn cứ tiền. Commit đọc lại, khóa phòng → tổ chức → phiếu nguồn → hồ sơ/phiếu hoàn, kiểm fingerprint. Dùng cùng thứ tự khóa ở tạo hợp đồng, bỏ cọc, nhận giữ chỗ; chứng minh bằng test hai session. Một bên thắng thì bên kia nhận xung đột có nghĩa nghiệp vụ.
 
 Hoàn ngay thất bại bất kỳ bước nào phải rollback cả xử lý cọc và tiền. Hoàn sau thành công thì việc nhận tiền hoàn sau là giao dịch độc lập.
 
