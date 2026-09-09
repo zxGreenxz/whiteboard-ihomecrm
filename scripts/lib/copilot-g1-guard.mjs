@@ -1,4 +1,4 @@
-import { DEMO } from './copilot-g1-acceptance.mjs';
+import { DEMO, digest } from './copilot-g1-acceptance.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const keysOnly = (row, keys) => row && !Array.isArray(row) && typeof row === 'object' && Object.keys(row).every(k => keys.includes(k));
 // Reviewed read RPC signatures. Never infer safety from get/list/copilot names.
@@ -35,10 +35,21 @@ export function safeG1RequestFailure(request, errorText) {
   const u = new URL(request.url);
   return `${request.method} ${u.origin}${u.pathname} ${NET_FAILURE_CODES.has(errorText) ? errorText : 'g1_network_failure_unknown'}`;
 }
+function validNumericContentRange(value) {
+  const match = typeof value === 'string' && /^(\*|(\d+)-(\d+))\/(\d+)$/.exec(value);
+  if (!match) return false;
+  const total = Number(match[4]);
+  if (!Number.isSafeInteger(total) || total < 0) return false;
+  if (match[1] === '*') return true;
+  const first = Number(match[2]), last = Number(match[3]);
+  return Number.isSafeInteger(first) && Number.isSafeInteger(last) && first <= last && last < total;
+}
 export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl }) {
   if (organizationId !== DEMO || !uuid.test(actorId)) throw new Error('g1_guard_identity_invalid');
   const threads = new Set();
   const pendingChatWrites = new Set();
+  const headCounts = new Map(), headerCompleteCountReads = [];
+  let headRequestOrdinal = 0;
   let chatWrites = 0;
   const blocked = [];
   function threadCreation(r) {
@@ -80,10 +91,29 @@ export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl
       if (!ok) blocked.push(`${r.method} ${u.origin}${u.pathname}`);
       else if (requestKey !== undefined && u.origin === supabaseOrigin && r.method === 'POST'
         && ['/rest/v1/ai_chat_threads', '/rest/v1/ai_chat_messages'].includes(u.pathname)) pendingChatWrites.add(requestKey);
+      if (ok && requestKey !== undefined && u.origin === supabaseOrigin && r.method === 'HEAD'
+        && /^\/rest\/v1\/[a-z0-9_]+$/.test(u.pathname)
+        && typeof r.headers?.prefer === 'string' && r.headers.prefer.split(',').some(v => v.trim() === 'count=exact'))
+        headCounts.set(requestKey, { requestOrdinal: ++headRequestOrdinal, method: 'HEAD', origin: u.origin, pathname: u.pathname });
       return ok;
     },
-    finished(requestKey) { pendingChatWrites.delete(requestKey); },
+    finished(requestKey) { pendingChatWrites.delete(requestKey); headCounts.delete(requestKey); },
+    observeHeadCount(requestKey, status, contentRange) {
+      const read = headCounts.get(requestKey);
+      if (!read) return;
+      // An HTTP HEAD count payload is entirely in these successful headers.
+      // Same Request identity is required; a later request cannot repair it.
+      read.contentRangeDigest = status === 200 && validNumericContentRange(contentRange) ? digest(contentRange) : undefined;
+    },
+    classifyHeadCountAbort(requestKey, code) {
+      const read = headCounts.get(requestKey);
+      if (code !== 'net::ERR_ABORTED' || !read?.contentRangeDigest) return false;
+      headerCompleteCountReads.push({ ...read, status: 200, code });
+      headCounts.delete(requestKey);
+      return true;
+    },
     observeThread(r, body, status) { if (status >= 200 && status < 300 && threadCreation(r) && uuid.test(body?.id)) threads.add(body.id); },
-    counters: () => ({ chatWrites, pendingChatWrites: pendingChatWrites.size, blockedWrites: blocked.length, blocked: [...new Set(blocked)], ownedThreadIds: [...threads] }),
+    counters: () => ({ chatWrites, pendingChatWrites: pendingChatWrites.size, blockedWrites: blocked.length, blocked: [...new Set(blocked)], ownedThreadIds: [...threads],
+      headerCompleteCountReadAborts: headerCompleteCountReads.length, headerCompleteCountReads: headerCompleteCountReads.map(r => ({ ...r })) }),
   };
 }

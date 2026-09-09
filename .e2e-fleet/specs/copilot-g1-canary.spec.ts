@@ -77,6 +77,7 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     });
     page.on('response', response => {
       const path = new URL(response.url()).pathname;
+      guard.observeHeadCount(response.request(), response.status(), response.headers()['content-range']);
       if (checkNetwork && path.startsWith('/rest/v1/') && !response.ok()) networkFailures.add(`${response.status()} ${response.request().method()} ${path}`);
       if (path !== '/rest/v1/ai_chat_threads' || response.request().method() !== 'POST') return;
       const observing = (async () => { guard.observeThread(await shape(response.request()), await response.json(), response.status()); })()
@@ -85,9 +86,10 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     });
     page.on('requestfinished', request => guard.finished(request));
     page.on('requestfailed', request => {
-      guard.finished(request);
-      if (checkNetwork && new URL(request.url()).pathname.startsWith('/rest/v1/'))
+      if (checkNetwork && new URL(request.url()).pathname.startsWith('/rest/v1/')
+        && !guard.classifyHeadCountAbort(request, request.failure()?.errorText))
         networkFailures.add(safeG1RequestFailure({ method: request.method(), url: request.url() }, request.failure()?.errorText));
+      guard.finished(request);
     });
     const settleRequests = async () => {
       await page.waitForLoadState('networkidle', { timeout: 20_000 });

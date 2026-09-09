@@ -128,12 +128,34 @@ on those same read URLs only when its requested method is GET. Local model
 execution or model-management writes stay blocked. Blocked diagnostics retain
 only method, origin and pathname, excluding userinfo, query, fragment and headers.
 Request failures additionally retain only a vetted `net::ERR_*` code (unknown
-prose becomes `g1_network_failure_unknown`). Every measured REST failure,
-including `net::ERR_ABORTED`, remains blocking. Before measurement starts,
+prose becomes `g1_network_failure_unknown`). Measured REST failures remain
+blocking except the narrowly evidenced completed HEAD-count case below. Before measurement starts,
 navigation clicks/mobile visits, and teardown, the spec waits for network idle,
 all admitted owned chat writes to emit `requestfinished`, and thread identity
 readbacks to complete. A model's completed answer alone does not prove its
 asynchronous chat persistence has finished; the receipt records pending writes.
+
+The operator's isolated headless experiment on the same preview origin used
+three sequential notification HEAD reads, without the app, model, or navigation.
+All three fetch promises fulfilled with HTTP 200 and a valid numeric
+`Content-Range`. Consuming `response.text()` produced `requestfinished`; leaving
+the response headers-only, as PostgrestBuilder does for HEAD, then collecting
+garbage produced same-Request HTTP 200 followed by `net::ERR_ABORTED` in all three
+cases. Operator receipts are `g1-head-diagnostic.json` and
+`g1-head-diagnostic-unconsumed.json`. The installed
+`@supabase/postgrest-js/src/PostgrestBuilder.ts:486` skips body consumption for HEAD
+and obtains the exact count from the response header.
+
+Accordingly, a HEAD abort is classified as a completed count read only when that
+same Request was admitted on the attested Supabase table endpoint with
+`Prefer: count=exact`, its HTTP 200 response supplied a valid numeric
+`Content-Range`, and the later failure code is exactly `net::ERR_ABORTED`. HTTP
+206, missing or invalid headers, a different Request, non-HEAD requests, RPCs and
+all other error codes remain blocking. The receipt retains
+`headerCompleteCountReadAborts` and individual `headerCompleteCountReads` with
+request ordinal, origin/path, status, error code and a count-header digest. It
+does not store notification counts, query values or raw headers. This does not
+alter application fetch behavior or classify chat writes as complete.
 
 The explicit POST read signatures currently cover:
 

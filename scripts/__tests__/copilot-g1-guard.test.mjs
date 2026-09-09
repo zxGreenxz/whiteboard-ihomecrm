@@ -56,6 +56,47 @@ test('request failures retain only vetted net codes and always remain failure di
   }
 });
 
+const countHead = () => ({ ...req('/rest/v1/notifications?user_id=eq.PRIVATE', {}, 'HEAD'), headers: { prefer: 'count=exact' } });
+test('same admitted exact-count HEAD can classify only its observed HTTP 200 header-complete abort', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl }), key = {}, r = countHead();
+  assert.equal(guard.allow(r, key), true);
+  assert.equal(guard.classifyHeadCountAbort(key, 'net::ERR_ABORTED'), false);
+  guard.observeHeadCount(key, 200, '*/42');
+  assert.equal(guard.classifyHeadCountAbort({}, 'net::ERR_ABORTED'), false);
+  assert.equal(guard.classifyHeadCountAbort(key, 'net::ERR_ABORTED'), true);
+  assert.equal(guard.classifyHeadCountAbort(key, 'net::ERR_ABORTED'), false);
+  const counters = guard.counters();
+  assert.equal(counters.headerCompleteCountReadAborts, 1);
+  assert.deepEqual(counters.headerCompleteCountReads.map(r => [r.requestOrdinal, r.method, r.origin, r.pathname, r.status, r.code]),
+    [[1, 'HEAD', origin, '/rest/v1/notifications', 200, 'net::ERR_ABORTED']]);
+  assert.match(counters.headerCompleteCountReads[0].contentRangeDigest, /^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(counters).includes('PRIVATE'), false);
+});
+
+test('HEAD count classification rejects bad headers, statuses, other failures and already finished requests', () => {
+  for (const [status, range, code] of [[200, undefined, 'net::ERR_ABORTED'], [200, '*/unknown', 'net::ERR_ABORTED'],
+    [200, '*/-1', 'net::ERR_ABORTED'], [200, '*/9007199254740992', 'net::ERR_ABORTED'],
+    [200, '0-42/42', 'net::ERR_ABORTED'], [500, '*/42', 'net::ERR_ABORTED'], [206, '0-9/42', 'net::ERR_ABORTED'],
+    [200, '*/42', 'net::ERR_CONNECTION_RESET'], [200, '*/42', 'net::ERR_TIMED_OUT']]) {
+    const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl }), key = {};
+    guard.allow(countHead(), key); guard.observeHeadCount(key, status, range);
+    assert.equal(guard.classifyHeadCountAbort(key, code), false, `${status} ${range} ${code}`);
+  }
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl }), key = {};
+  guard.allow(countHead(), key); guard.observeHeadCount(key, 200, '*/0'); guard.finished(key);
+  assert.equal(guard.classifyHeadCountAbort(key, 'net::ERR_ABORTED'), false);
+});
+
+test('HEAD classification never promotes POSTs, RPC execution, unknown origins or non-count reads', () => {
+  for (const r of [req('/rest/v1/ai_chat_messages'), req('/rest/v1/notifications', {}, 'GET'),
+    req('/rest/v1/rpc/get_my_permissions', {}, 'HEAD'), { ...countHead(), url: 'https://other.example/rest/v1/notifications' },
+    { ...countHead(), headers: {} }, { ...countHead(), headers: { prefer: 'count=planned' } }]) {
+    const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl }), key = {};
+    guard.allow(r, key); guard.observeHeadCount(key, 200, '*/42');
+    assert.equal(guard.classifyHeadCountAbort(key, 'net::ERR_ABORTED'), false);
+  }
+});
+
 test('owned chat writes remain pending through response headers and identity readback until requestfinished', () => {
   const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
   const key = {}, threadId = '20000000-0000-4000-8000-000000000001';
