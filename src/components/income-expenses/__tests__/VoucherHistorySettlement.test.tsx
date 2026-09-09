@@ -14,9 +14,9 @@ vi.mock("@/hooks/useReservationSettlement", () => ({
     depositAmount: 100, retainedAmount: 60, refundAmount: 40, refundedAmount: 40, refundRemaining: 0,
     refundState: "PAID", roomReleased: true, roomBlockers: [], revenueVoucherId: "10000000-0000-4000-8000-000000000003",
     offsetVoucherId: "10000000-0000-4000-8000-000000000004", refundVoucherId: "10000000-0000-4000-8000-000000000005",
-    settlementDate: "2026-09-10", reasonCode: "OTHER", reasonText: "Khách chuyển nơi ở",
+    reasonCode: "OTHER", reasonText: "Khách chuyển nơi ở",
   } }),
-  useReservationSettlementAudit: () => ({ data: { actorName: "Nguyễn Quản lý" } }),
+  useReservationSettlementAudit: () => ({ data: { actorName: "Nguyễn Quản lý", settlementDate: "2026-09-10" } }),
 }));
 vi.mock("@/components/deposits/ReservationSettlementStatus", () => ({ ReservationSettlementStatus: () => <div>Đã hoàn</div> }));
 
@@ -25,6 +25,7 @@ describe("VoucherHistoryDialog settlement history", () => {
   it("shows actor, reason, and navigable source and generated vouchers", () => {
     render(<MemoryRouter><VoucherHistoryDialog open onOpenChange={() => {}} voucher={{ id: "10000000-0000-4000-8000-000000000002", code: "PT-01" }} /></MemoryRouter>);
     expect(screen.getByText(/Nguyễn Quản lý/)).toBeTruthy();
+    expect(screen.getByText(/2026-09-10/)).toBeTruthy();
     expect(screen.getByText(/Khách chuyển nơi ở/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Phiếu nhận ban đầu" }).getAttribute("href")).toContain("000000000002");
     expect(screen.getByRole("link", { name: "Phiếu hoàn tiền" }).getAttribute("href")).toContain("000000000005");

@@ -193,7 +193,7 @@ export function useReservationSettlementAudit(settlementId: string | null, enabl
       if (error || !data) throw new Error("Không đọc được dấu vết xử lý cọc.");
       const audit = settlementAuditSchema.parse(data);
       const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", audit.created_by).maybeSingle();
-      return { ...audit, actorName: profile?.full_name ?? null };
+      return { ...audit, settlementDate: audit.settlement_date, actorName: profile?.full_name ?? null };
     },
   });
 }

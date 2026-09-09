@@ -32,10 +32,10 @@ export function isStaleOrphanDepositError(error: unknown) {
   );
 }
 
-export function refreshStaleOrphanDeposits(error: unknown, refetch: () => unknown) {
-  if (!isStaleOrphanDepositError(error)) return false;
-  void refetch();
-  return true;
+export async function refreshStaleOrphanDeposits(error: unknown, refetch: () => Promise<{ error?: unknown }>) {
+  if (!isStaleOrphanDepositError(error)) return "not-stale" as const;
+  const result = await refetch();
+  return result.error ? "failed" as const : "refreshed" as const;
 }
 
 /**
@@ -365,10 +365,13 @@ export function useContractSubmit({
               setCommissionContractId(contract.id);
             }
           },
-          onError: (error) => {
-            if (!refreshStaleOrphanDeposits(error, refetchOrphanDepositVouchers)) return;
+          onError: async (error) => {
+            const refreshState = await refreshStaleOrphanDeposits(error, refetchOrphanDepositVouchers);
+            if (refreshState === "not-stale") return;
             toast.error("Danh sách cọc giữ chỗ đã thay đổi", {
-              description: "Đã tải lại cọc của phòng. Thông tin hợp đồng bạn nhập vẫn được giữ; hãy kiểm tra phần cọc rồi lưu lại.",
+              description: refreshState === "refreshed"
+                ? "Đã tải lại cọc của phòng. Thông tin hợp đồng bạn nhập vẫn được giữ; hãy kiểm tra phần cọc rồi lưu lại."
+                : "Chưa tải lại được danh sách cọc. Thông tin hợp đồng bạn nhập vẫn được giữ; hãy kiểm tra kết nối rồi thử tải lại.",
             });
           },
         },

@@ -52,6 +52,8 @@ describe("reservation settlement RPC DTOs", () => {
     [{ message: "Phiếu cọc đã thay đổi; hãy tải lại trước khi xử lý", code: "40001" }, "Phiếu đã thay đổi. Hãy tải lại trước khi xử lý."],
     [{ message: "Phiếu cọc chưa nhận tiền, đã được dùng hoặc đang ở kỳ khóa; hãy tải lại", details: '["NOT_RECEIVED"]' }, "Phiếu chưa có bằng chứng tiền đã vào quỹ."],
     [{ message: "internal ledger failure", details: '["PERIOD_LOCKED"]' }, "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa."],
+    [{ message: "Sổ quỹ đã chốt tới sau ngày 10/09/2026 — không ghi sổ được. Mở lại kỳ hoặc chọn ngày khác." }, "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa."],
+    [{ message: "Kỳ ghi nhận 09/2026 đã khoá — không ghi sổ được." }, "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa."],
   ])("maps safe server errors without exposing technical text", (error, expected) => {
     expect(reservationSettlementErrorMessage(error)).toBe(expected);
   });

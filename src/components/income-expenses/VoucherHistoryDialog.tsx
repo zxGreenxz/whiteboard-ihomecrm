@@ -82,6 +82,7 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
   const settlementAudit = useReservationSettlementAudit(reservationSettlement?.id ?? null, open);
   const settlementReasonCode = reservationSettlement && "reasonCode" in reservationSettlement ? String(reservationSettlement.reasonCode) : settlementAudit.data?.reason_code;
   const settlementReasonText = reservationSettlement && "reasonText" in reservationSettlement ? String(reservationSettlement.reasonText ?? "") : settlementAudit.data?.reason_text;
+  const settlementDate = reservationSettlement && "settlementDate" in reservationSettlement ? String(reservationSettlement.settlementDate) : settlementAudit.data?.settlementDate;
 
   const entries = humanizeChangeLog(changeLog);
   const kind = cancellationKindText(cancellation?.cancellation_kind);
@@ -176,7 +177,7 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
         {reservationSettlement && <section className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
           <h3 className="text-sm font-semibold">Xử lý cọc giữ chỗ liên quan</h3>
           <ReservationSettlementStatus settlement={reservationSettlement} />
-          {"settlementDate" in reservationSettlement && <p className="text-xs text-muted-foreground">Ngày xử lý: {String(reservationSettlement.settlementDate)} · Người xử lý: {settlementAudit.data?.actorName || "(không rõ)"}</p>}
+          {settlementDate && <p className="text-xs text-muted-foreground">Ngày xử lý: {settlementDate} · Người xử lý: {settlementAudit.data?.actorName || "(không rõ)"}</p>}
           {settlementReasonCode && <p className="text-sm">Lý do: <b>{settlementReasonCode === "CHANGED_MIND" ? "Khách đổi ý" : settlementReasonCode === "NO_SHOW" ? "Không đến ký hợp đồng" : settlementReasonText || "Khác"}</b>{settlementReasonText && settlementReasonCode !== "OTHER" ? ` — ${settlementReasonText}` : ""}</p>}
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
             <Link className="text-blue-700 underline" to={`/income-expense/voucher/${reservationSettlement.sourceVoucherId}`}>Phiếu nhận ban đầu</Link>

@@ -15,12 +15,16 @@ describe("useContractSubmit", () => {
     expect(isStaleOrphanDepositError(new Error("Phiếu cọc đã xử lý bỏ cọc; không được dùng lại"))).toBe(true);
     expect(isStaleOrphanDepositError(new Error("Lỗi kết nối"))).toBe(false);
   });
-  it("refetches orphan deposits only for a stale settlement rejection", () => {
-    const refetch = vi.fn();
-    expect(refreshStaleOrphanDeposits(new Error("Phiếu cọc đã xử lý bỏ cọc; không được dùng lại"), refetch)).toBe(true);
+  it("refetches orphan deposits only for a stale settlement rejection", async () => {
+    const refetch = vi.fn().mockResolvedValue({ error: null });
+    await expect(refreshStaleOrphanDeposits(new Error("Phiếu cọc đã xử lý bỏ cọc; không được dùng lại"), refetch)).resolves.toBe("refreshed");
     expect(refetch).toHaveBeenCalledOnce();
-    expect(refreshStaleOrphanDeposits(new Error("Mất kết nối"), refetch)).toBe(false);
+    await expect(refreshStaleOrphanDeposits(new Error("Mất kết nối"), refetch)).resolves.toBe("not-stale");
     expect(refetch).toHaveBeenCalledOnce();
+  });
+  it("does not claim stale deposits were refreshed when refetch fails", async () => {
+    const refetch = vi.fn().mockResolvedValue({ error: new Error("offline") });
+    await expect(refreshStaleOrphanDeposits(new Error("Phiếu cọc đã được dùng cho nghiệp vụ khác"), refetch)).resolves.toBe("failed");
   });
   it("rejects an empty end billing date after normalization", () => {
     const setError = vi.fn();
