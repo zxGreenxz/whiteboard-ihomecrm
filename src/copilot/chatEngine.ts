@@ -316,6 +316,7 @@ export async function runChatTurn(params: {
    * `banDoHeThong` được kể lại.
    */
   search?: string;
+  activeContext?: import('./activePageContext').ActivePageContext;
   /**
    * Ảnh kèm theo lượt này, dạng data URL.
    *
@@ -342,6 +343,7 @@ export async function runChatTurn(params: {
   const nguCanh = params.pathname
     ? dongNguCanhTrang(params.pathname, params.ctx.perms, {
         search: params.search,
+        activeContext: params.activeContext,
         // Chỉ tool phiên này THẬT SỰ gọi được: `registry` mới lọc rollout, còn
         // `toolMap` đã lọc cả quyền. Gợi ý một công cụ người dùng không có
         // quyền là mời mô hình gọi rồi ăn lỗi trước mặt họ.

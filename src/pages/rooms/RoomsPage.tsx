@@ -22,6 +22,7 @@ import type { BuildingWithRelations } from '@/types/building';
 import { useQueryClient } from '@tanstack/react-query';
 import { compareBuildingThenRoom } from '@/lib/roomSort';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 
 function RoomsDesktop() {
   const [searchParams] = useSearchParams();
@@ -44,6 +45,9 @@ function RoomsDesktop() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<RoomWithRelations | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  useCopilotPageContext('rooms.list', {
+    building_ids: buildingIds, floor_id: floorFilter, status: statusFilter, search: searchTerm,
+  });
 
   // Sync building filter with URL param on mount
   useEffect(() => {

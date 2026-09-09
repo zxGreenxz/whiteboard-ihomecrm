@@ -14,6 +14,7 @@ import type { Message } from './chatEngine';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { readActivePageContext } from './activePageContext';
 import XacNhanPhieuCard from './XacNhanPhieuCard';
 import KeHoachCard, { tinNhanDaDuyet } from './KeHoachCard';
 import { useHangDoiSauDuyet } from './useHangDoiSauDuyet';
@@ -410,6 +411,7 @@ export default function ChatPanel({ onClose }: Props) {
 
   const runChat = async (text: string, anh: string[], snapshot: CopilotAvailabilitySnapshot) => {
     const organizationId = selectedOrganizationId;
+    const activeContext = readActivePageContext({ ...location, organizationId });
     const generation = orgGenerationRef.current;
     setHistory((h) => [
       ...h,
@@ -447,6 +449,7 @@ export default function ChatPanel({ onClose }: Props) {
       // (chỉ khoá trong allowlist của `banDoHeThong` được kể lại).
       pathname: location.pathname,
       search: location.search,
+      activeContext,
       ghiNho,
       anh,
       onToolEvent: (ev: ChatToolEvent) => {

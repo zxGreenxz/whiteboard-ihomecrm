@@ -34,6 +34,7 @@ import {
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useProfile } from '@/hooks/useProfile';
 import { useMyBuildingScope } from '@/hooks/useMyBuildingScope';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
@@ -132,6 +133,7 @@ function ContractsDesktopPage() {
     [debouncedSearch, buildingIds, roomFilter, lifecycleFilter, activeStatFilter, monthFilter]
   );
 
+  useCopilotPageContext('contracts.list', pagedFilters, detailModalOpen ? detailContract : null);
   const { data: pagedContracts, isLoading, isError, error, refetch } = useContractsPaged(pagedFilters, {
     page,
     pageSize,

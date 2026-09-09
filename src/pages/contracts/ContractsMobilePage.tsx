@@ -10,6 +10,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useRenewedContractIds } from '@/hooks/useRenewedContracts';
 import { canUse } from '@/lib/permissionPages';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { MOBILE_FIRST_PAGE_SIZE } from '@/lib/listPageSizes';
 import { uniqueRoomNames, compareBuildingThenRoom } from '@/lib/roomSort';
 import { getRepresentativeName } from '@/lib/contractCustomerHelpers';
@@ -100,6 +101,10 @@ export default function ContractsMobilePage() {
   const lifecycle: ContractLifecycleFilter =
     stat === 'TERMINATED' ? 'TERMINATED' : 'ACTIVE';
   const buildingIds = buildingId ? [buildingId] : undefined;
+  useCopilotPageContext('contracts.list', {
+    search: debounced || undefined, building_ids: buildingIds,
+    room_name: roomName !== 'all' ? roomName : undefined, lifecycle, stat,
+  });
 
   const { data: paged, isLoading, isError, refetch } = useContractsPaged(
     {
