@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { createG1Guard, initializeG1Browser } from '../lib/copilot-g1-guard.mjs';
+import { createG1Guard, initializeG1Browser, safeG1RequestFailure } from '../lib/copilot-g1-guard.mjs';
 const actorId = '10000000-0000-4000-8000-000000000001', org = 'dddd0000-0000-4000-8000-000000000001';
 const origin = 'https://project.supabase.co', baseUrl = 'https://reviewed-preview.vercel.app';
 const req = (path, body = {}, method = 'POST') => ({ url: origin + path, method, body, headers: { 'x-organization-id': org } });
@@ -43,6 +43,35 @@ test('blocked diagnostics keep method, origin and path but never credentials, qu
   const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
   guard.allow({ url: 'https://user:PRIVATE@unknown.example:8443/api/tags?token=PRIVATE#PRIVATE', method: 'POST', headers: { authorization: 'Bearer PRIVATE' } });
   assert.deepEqual(guard.counters().blocked, ['POST https://unknown.example:8443/api/tags']);
+});
+
+test('request failures retain only vetted net codes and always remain failure diagnostics', () => {
+  const r = { ...req('/rest/v1/notifications?token=PRIVATE#PRIVATE', {}, 'HEAD'), headers: { authorization: 'Bearer PRIVATE' } };
+  assert.equal(safeG1RequestFailure(r, 'net::ERR_ABORTED'), `HEAD ${origin}/rest/v1/notifications net::ERR_ABORTED`);
+  assert.equal(safeG1RequestFailure(r, 'net::ERR_CONNECTION_RESET'), `HEAD ${origin}/rest/v1/notifications net::ERR_CONNECTION_RESET`);
+  for (const text of ['PRIVATE provider prose', 'net::ERR_PRIVATE_TOKEN', 'net::ERR_ABORTED PRIVATE', undefined]) {
+    const result = safeG1RequestFailure(r, text);
+    assert.equal(result.endsWith('g1_network_failure_unknown'), true);
+    assert.equal(result.includes('PRIVATE'), false);
+  }
+});
+
+test('owned chat writes remain pending through response headers and identity readback until requestfinished', () => {
+  const guard = createG1Guard({ actorId, organizationId: org, supabaseOrigin: origin, baseUrl });
+  const key = {}, threadId = '20000000-0000-4000-8000-000000000001';
+  const creation = req('/rest/v1/ai_chat_threads', { user_id: actorId, organization_id: org, title: 'G1' });
+  assert.equal(guard.allow(creation, key), true);
+  assert.equal(guard.counters().pendingChatWrites, 1);
+  guard.observeThread(creation, { id: threadId }, 201);
+  assert.equal(guard.counters().pendingChatWrites, 1);
+  guard.finished(key); assert.equal(guard.counters().pendingChatWrites, 0);
+  const first = {}, second = {};
+  const message = req('/rest/v1/ai_chat_messages', [{ user_id: actorId, organization_id: org, thread_id: threadId, role: 'user', content: 'G1' }]);
+  guard.allow(message, first); guard.allow(message, second);
+  guard.finished(first); assert.equal(guard.counters().pendingChatWrites, 1);
+  guard.finished(second); assert.equal(guard.counters().pendingChatWrites, 0);
+  guard.allow(req('/rest/v1/notifications'), {});
+  assert.equal(guard.counters().pendingChatWrites, 0);
 });
 
 test('mounted route reads use only inspected signatures; overloads and write-like neighbors stay denied', () => {

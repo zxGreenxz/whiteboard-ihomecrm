@@ -7,7 +7,7 @@ import { chanChayTrenProduction, xacMinhBanBuild } from './buildAttestation';
 import { COPILOT_TEST_MODEL, pinCopilotTestModel, waitForCopilotAvailability } from './copilotTestModel';
 import { guiVaChoModel } from './copilotModelCycle';
 import { inspectModelStream } from './copilotSmokeOracle';
-import { createG1Guard, initializeG1Browser, type G1Request } from '../../scripts/lib/copilot-g1-guard.mjs';
+import { createG1Guard, initializeG1Browser, safeG1RequestFailure, type G1Request } from '../../scripts/lib/copilot-g1-guard.mjs';
 import { DEMO, G1_ROUTES, MOBILE_MARKERS, admissionDigest, admissionFromBaseline, createReceipt, validateReceipt,
   addProof, pendingCases, navigationEvidence, knowledgeEvidence, safeG1Failure, type G1Receipt } from '../../scripts/lib/copilot-g1-acceptance.mjs';
 
@@ -73,7 +73,7 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     page.on('pageerror', () => { pageErrors += 1; });
     await page.route('**/*', async route => {
       if (new URL(route.request().url()).pathname === '/rest/v1/ai_chat_messages' && route.request().method() === 'POST') await Promise.all([...observers]);
-      if (guard.allow(await shape(route.request()))) await route.fallback(); else await route.abort();
+      if (guard.allow(await shape(route.request()), route.request())) await route.fallback(); else await route.abort();
     });
     page.on('response', response => {
       const path = new URL(response.url()).pathname;
@@ -83,9 +83,20 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
         .catch(() => { networkFailures.add('POST /rest/v1/ai_chat_threads identity_readback_failed'); });
       observers.add(observing); void observing.then(() => observers.delete(observing));
     });
+    page.on('requestfinished', request => guard.finished(request));
     page.on('requestfailed', request => {
-      if (checkNetwork && new URL(request.url()).pathname.startsWith('/rest/v1/')) networkFailures.add(`${request.method()} ${new URL(request.url()).pathname}`);
+      guard.finished(request);
+      if (checkNetwork && new URL(request.url()).pathname.startsWith('/rest/v1/'))
+        networkFailures.add(safeG1RequestFailure({ method: request.method(), url: request.url() }, request.failure()?.errorText));
     });
+    const settleRequests = async () => {
+      await page.waitForLoadState('networkidle', { timeout: 20_000 });
+      // A completed model cycle can precede async owned chat persistence.
+      // HTTP response headers and thread identity readback do not prove the
+      // full write request finished. Never waive this wait or ignore aborts.
+      await expect.poll(() => guard.counters().pendingChatWrites, { timeout: 20_000 }).toBe(0);
+      await Promise.all([...observers]);
+    };
     await page.addInitScript(initializeG1Browser, config);
     await page.setViewportSize({ width: 1440, height: 1000 });
     const available = await waitForCopilotAvailability(page, DEMO, async () => {
@@ -114,7 +125,7 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
     if (receipt) validateReceipt(receipt, admission); else receipt = createReceipt(admission);
     attempt = { startedAt: new Date().toISOString(), flagEvidenceDigest: admission.flagEvidenceDigest,
       availabilityDigest: admission.availabilityDigest, availabilityRevision: admission.availabilityRevision, status: 'running' };
-    receipt.attempts.push(attempt); save(receiptPath, receipt); checkNetwork = true;
+    receipt.attempts.push(attempt); save(receiptPath, receipt); await settleRequests(); checkNetwork = true;
     const record = async (proof: Record<string, unknown>) => {
       const current = await refreshAdmission(); validateReceipt(receipt!, current);
       await Promise.all([...observers]);
@@ -139,7 +150,7 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
         const toolProof = navigationEvidence(streams, rounds, target);
         await panel(page);
         const link = page.getByTestId('copilot-panel').locator(`a[href="${target.route}"]`).last();
-        await expect(link).toBeVisible(); await link.click();
+        await expect(link).toBeVisible(); await settleRequests(); await link.click();
         if (await page.getByTestId('copilot-panel').isVisible()) await page.getByTestId('copilot-close').click();
         await renderedRoute(page, target);
         await record({ caseId: `route:${target.key}`, ...toolProof, clickedHref: target.route, route: target.route, rendered: true, heading: target.heading });
@@ -171,6 +182,7 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
       // Navigation has its independent real-tool proofs above. These direct
       // visits only measure the mobile component, never navigation success.
       await page.setViewportSize({ width: 375, height: 812 });
+      await settleRequests();
       await page.goto(G1_ROUTES.find(r => r.key === key)!.route);
       await xacMinhBanBuild(page);
       if (await page.getByTestId('copilot-panel').isVisible()) await page.getByTestId('copilot-close').click();
@@ -191,9 +203,10 @@ test('G1 DEMO canary: canonical navigation, mobile controls, authorized knowledg
       });
       await record({ caseId: `mobile:${key}`, marker, width: 375, height: 812, visibleCount: 1, editable: true, filledAndCleared: true, ...geometry });
     }
-    await page.waitForLoadState('networkidle'); await Promise.all([...observers]);
+    await settleRequests();
     requireThat(guard.counters().blockedWrites === 0 && networkFailures.size === 0 && pendingCases(receipt).length === 0, 'g1_acceptance_incomplete');
     stage = 'teardown'; await pin.dispose(); pin = undefined;
+    await settleRequests();
     await page.close(); await Promise.all([...observers]);
     requireThat(guard.counters().blockedWrites === 0 && networkFailures.size === 0 && pageErrors === 0, 'g1_teardown_failure');
     attempt.status = 'complete'; receipt.status = 'complete';

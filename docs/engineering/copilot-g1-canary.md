@@ -127,6 +127,13 @@ files below `https://fonts.gstatic.com/s/` for only the four families declared i
 on those same read URLs only when its requested method is GET. Local model
 execution or model-management writes stay blocked. Blocked diagnostics retain
 only method, origin and pathname, excluding userinfo, query, fragment and headers.
+Request failures additionally retain only a vetted `net::ERR_*` code (unknown
+prose becomes `g1_network_failure_unknown`). Every measured REST failure,
+including `net::ERR_ABORTED`, remains blocking. Before measurement starts,
+navigation clicks/mobile visits, and teardown, the spec waits for network idle,
+all admitted owned chat writes to emit `requestfinished`, and thread identity
+readbacks to complete. A model's completed answer alone does not prove its
+asynchronous chat persistence has finished; the receipt records pending writes.
 
 The explicit POST read signatures currently cover:
 

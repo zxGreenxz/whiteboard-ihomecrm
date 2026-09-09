@@ -25,9 +25,20 @@ export function initializeG1Browser({ actorId, organizationId }) {
   localStorage.setItem(`schedNotif:lastRun:${actorId}`, String(Date.now()));
   sessionStorage.setItem('invoices:overdue-checked-at', String(Date.now()));
 }
+const NET_FAILURE_CODES = new Set(['net::ERR_ABORTED', 'net::ERR_FAILED', 'net::ERR_TIMED_OUT',
+  'net::ERR_CONNECTION_CLOSED', 'net::ERR_CONNECTION_RESET', 'net::ERR_CONNECTION_REFUSED',
+  'net::ERR_CONNECTION_ABORTED', 'net::ERR_NAME_NOT_RESOLVED', 'net::ERR_INTERNET_DISCONNECTED',
+  'net::ERR_NETWORK_CHANGED', 'net::ERR_HTTP2_PROTOCOL_ERROR', 'net::ERR_BLOCKED_BY_CLIENT',
+  'net::ERR_BLOCKED_BY_RESPONSE', 'net::ERR_CERT_AUTHORITY_INVALID', 'net::ERR_CERT_DATE_INVALID',
+  'net::ERR_SSL_PROTOCOL_ERROR', 'net::ERR_EMPTY_RESPONSE', 'net::ERR_ADDRESS_UNREACHABLE']);
+export function safeG1RequestFailure(request, errorText) {
+  const u = new URL(request.url);
+  return `${request.method} ${u.origin}${u.pathname} ${NET_FAILURE_CODES.has(errorText) ? errorText : 'g1_network_failure_unknown'}`;
+}
 export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl }) {
   if (organizationId !== DEMO || !uuid.test(actorId)) throw new Error('g1_guard_identity_invalid');
   const threads = new Set();
+  const pendingChatWrites = new Set();
   let chatWrites = 0;
   const blocked = [];
   function threadCreation(r) {
@@ -64,8 +75,15 @@ export function createG1Guard({ actorId, organizationId, supabaseOrigin, baseUrl
     return false;
   }
   return {
-    allow(r) { const ok = safe(r); if (!ok) { const u = new URL(r.url); blocked.push(`${r.method} ${u.origin}${u.pathname}`); } return ok; },
+    allow(r, requestKey) {
+      const ok = safe(r), u = new URL(r.url);
+      if (!ok) blocked.push(`${r.method} ${u.origin}${u.pathname}`);
+      else if (requestKey !== undefined && u.origin === supabaseOrigin && r.method === 'POST'
+        && ['/rest/v1/ai_chat_threads', '/rest/v1/ai_chat_messages'].includes(u.pathname)) pendingChatWrites.add(requestKey);
+      return ok;
+    },
+    finished(requestKey) { pendingChatWrites.delete(requestKey); },
     observeThread(r, body, status) { if (status >= 200 && status < 300 && threadCreation(r) && uuid.test(body?.id)) threads.add(body.id); },
-    counters: () => ({ chatWrites, blockedWrites: blocked.length, blocked: [...new Set(blocked)], ownedThreadIds: [...threads] }),
+    counters: () => ({ chatWrites, pendingChatWrites: pendingChatWrites.size, blockedWrites: blocked.length, blocked: [...new Set(blocked)], ownedThreadIds: [...threads] }),
   };
 }
