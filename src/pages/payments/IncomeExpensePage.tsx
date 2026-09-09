@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -309,6 +310,7 @@ const IncomeExpenseDesktopPage = () => {
     room_ids: parsedSearch.roomIds ?? filters.room_ids,
   };
 
+  useCopilotPageContext('income-expenses.list', { ...effectiveFilters, search: parsedSearch.text, view: viewMode }, detailVoucher);
   // keepPreviousData: màn danh sách phân trang — giữ trang cũ để bảng không nhảy
   // về skeleton mỗi lần đổi trang/filter (opt-in ở consumer, xem useIncomeExpenses).
   const { data: listResult, isLoading } = useIncomeExpenses(

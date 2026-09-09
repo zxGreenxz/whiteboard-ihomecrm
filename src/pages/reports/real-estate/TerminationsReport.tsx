@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import MainLayout from "@/components/layout/MainLayout";
 import { XCircle, AlertCircle, TrendingDown, Percent } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -29,6 +30,7 @@ export default function TerminationsReport() {
     to: new Date(),
   });
 
+  useCopilotPageContext('reports.real-estate.terminations', { building_id: buildingId, from: dateRange?.from, to: dateRange?.to });
   const { data: buildings } = useBuildings();
   const { data: reportData, isLoading } = useTerminationsReport(
     dateRange?.from, dateRange?.to, buildingId

@@ -2,6 +2,7 @@ export interface ActivePageContext {
   filters: readonly string[];
   incompleteFilters: boolean;
   entityId?: string;
+  unresolvedEntity?: boolean;
 }
 
 export interface ActivePageScope {

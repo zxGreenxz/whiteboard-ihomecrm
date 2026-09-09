@@ -86,4 +86,24 @@ describe('mounted effective page state', () => {
     });
     expect(locDangAp({ date_range: { start: 'private', end: '2026-09-09' } })).toEqual({ filters: [], incompleteFilters: true });
   });
+
+  it('keeps local calendar dates, numeric horizons and accounting switches in active reports', () => {
+    expect(locDangAp({ from: new Date(2026, 8, 1), to: new Date(2026, 8, 9), days: 30, accrual: false })).toEqual({
+      filters: ['accrual=false', 'days=30', 'from=2026-09-01', 'to=2026-09-09'], incompleteFilters: false,
+    });
+    expect(locDangAp({ from: new Date(NaN), days: Infinity, password: 123 })).toEqual({ filters: [], incompleteFilters: true });
+  });
+
+  it('publishes a report on its explicit route alias and never borrows it on another report', () => {
+    function Report() {
+      current = useLocation();
+      useCopilotPageContext(['reports.real-estate.vacant', 'reports.real-estate.vacant-alias'], { building_id: id });
+      return null;
+    }
+    const mounted = render(<MemoryRouter initialEntries={['/reports/real-estate/vacant']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Report /></MemoryRouter>);
+    expect(read()?.filters).toEqual([`building_id=${id}`]);
+    mounted.unmount();
+    render(<MemoryRouter initialEntries={['/reports/finance']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Report /></MemoryRouter>);
+    expect(read()).toBeUndefined();
+  });
 });

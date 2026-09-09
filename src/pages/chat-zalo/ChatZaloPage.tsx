@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
@@ -97,6 +98,7 @@ export default function ChatZaloPage() {
   const base = conversations.find((c) => c.id === effectiveId);
   const active = base ? { ...base, messages } : undefined;
 
+  useCopilotPageContext('chat-zalo.list', { status: filter, search, account_ids: selIds, label_id: selectedLabel }, active);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const selSet = new Set(selIds);

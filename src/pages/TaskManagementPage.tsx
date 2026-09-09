@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -77,6 +78,7 @@ function TaskManagementDesktopPage() {
   const pagination = usePagination(isMobile ? 50 : 20);
 
   // Data hooks
+  useCopilotPageContext('tasks.list', { ...appliedFilters, stat: statusFilter, tab: activeTab, search: searchQuery }, isDetailOpen ? selectedJob : null);
   const { data: allJobs = [], isLoading, isError, error, refetch } = useJobs(appliedFilters);
   const deleteJob = useDeleteJob();
 

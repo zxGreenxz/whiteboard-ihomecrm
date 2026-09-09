@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo } from "react";
 import { Percent, TrendingUp, DollarSign, Calendar } from "lucide-react";
 import { startOfMonth, endOfMonth, subMonths } from "date-fns";
@@ -62,6 +63,7 @@ export default function ExpenseRatioReport() {
   const [category, setCategory] = usePersistedState<string | undefined>("flt:rpt-expense-ratio:category", undefined);
   const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-expense-ratio:buildingId", undefined);
 
+  useCopilotPageContext('reports.real-estate.expense-ratio', { building_id: buildingId, category, from: dateRange?.from, to: dateRange?.to });
   const { data: buildings } = useBuildings({ includeVirtual: true });
   const { data: categoriesList } = useIncomeExpenseTypeCategories("expense");
   const { data, isLoading } = useExpenseRatioReport(

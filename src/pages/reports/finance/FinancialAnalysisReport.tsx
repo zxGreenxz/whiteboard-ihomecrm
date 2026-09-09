@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight, LineChart } from "lucide-react";
@@ -74,6 +75,10 @@ export default function FinancialAnalysisReport() {
       accrual,
     };
   }, [monthStr, buildingIds, accrual]);
+  useCopilotPageContext('reports.finance.analysis', {
+    month: filters.ym, building_ids: filters.buildingIds, accrual: filters.accrual,
+    from: filters.periodStart, to: filters.periodEnd,
+  });
 
   return (
     <MainLayout>

@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -35,6 +36,7 @@ export default function DepositsReport() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
+  useCopilotPageContext('reports.finance.deposits', { building_ids: buildingIds, status: statusFilter });
   const { data: deposits = [], isLoading } = useDepositsReport();
   // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc.
   const { data: summary } = useDepositsReportSummary(statusFilter, buildingIds);

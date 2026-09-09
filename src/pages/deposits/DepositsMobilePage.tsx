@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus } from "lucide-react";
@@ -124,6 +125,7 @@ export default function DepositsMobilePage() {
   const [prefill, setPrefill] = useState<ContractPrefill | null>(null);
   const [deadlineTarget, setDeadlineTarget] = useState<HoldDeadlineTarget | null>(null);
 
+  useCopilotPageContext('deposits.list', { view, status: view === 'ledger' ? ledgerFilter : undefined });
   const approveVoucher = useApproveVoucher();
   const { data: held = [], isLoading: heldLoading } = useHeldDeposits();
   const { data: reservations = [], isLoading: resvLoading } = useReservationDeposits();

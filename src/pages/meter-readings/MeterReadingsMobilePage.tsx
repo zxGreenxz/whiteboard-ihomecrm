@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, FileSpreadsheet, Zap, Droplet, ChevronRight, X, Gauge } from "lucide-react";
@@ -65,6 +66,7 @@ export default function MeterReadingsMobilePage() {
   const { data: buildingsData = [] } = useBuildings();
   const buildings = buildingsData as BuildingWithRelations[];
 
+  useCopilotPageContext('meter-readings.list', { building_id: filters.building_id, meter_type: filters.meter_type, month: filters.month, status: filters.status });
   const { data: listResult, isLoading } = useMeterReadingsList(
     {
       building_id: filters.building_id ?? undefined,

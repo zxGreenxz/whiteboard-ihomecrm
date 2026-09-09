@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -142,6 +143,7 @@ const DepositsDesktop = () => {
   const [searchQuery, setSearchQuery] = usePersistedState("flt:deposits:search", "");
   const [onlyShort, setOnlyShort] = usePersistedState("flt:deposits:onlyShort", false);
 
+  useCopilotPageContext('deposits.list', { building_ids: buildingIds, view, tab: view === 'ledger' ? tab : undefined, ...(view === 'ledger' && tab === 'holds' ? { approval_status: statusFilter, search: searchQuery } : {}), ...(view === 'ledger' && tab === 'rooms' ? { only_short: onlyShort } : {}) });
   const { data: held = [], isLoading: heldLoading } = useHeldDeposits();
   const { data: refunds = [], isLoading: refundsLoading } =
     useDepositRefundsForfeits();

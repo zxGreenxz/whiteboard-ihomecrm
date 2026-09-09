@@ -362,6 +362,9 @@ export function dongNguCanhTrang(
   if (activeContext?.incompleteFilters) {
     dong.push('Phạm vi bộ lọc chưa đầy đủ: có tìm kiếm hoặc bộ lọc riêng tư/quá dài không được gửi. Không coi kết quả tra toàn trang là đúng tập đang hiển thị; cần làm rõ phạm vi trước khi so số liệu.');
   }
+  if (activeContext?.unresolvedEntity) {
+    dong.push('Có chi tiết đang mở nhưng chưa xác minh được định danh thuộc tổ chức hiện tại. Không đoán bản ghi từ lịch sử hoặc bộ lọc; cần làm rõ bản ghi trước khi trả lời về nó.');
+  }
   const goiY = goiYToolTheoTrang(khoaTrangTheoRoute(pathname), opts.tools ?? []);
   if (goiY.length) {
     dong.push(`Công cụ hợp với trang này: ${goiY.join(', ')}.`);
@@ -372,6 +375,11 @@ export function dongNguCanhTrang(
 const KHOA_LOC_STATE = new Set([
   ...KHOA_LOC_CHO_PHEP, 'building_ids', 'room_id', 'room_ids', 'contract_id',
   'billing_month', 'view_status', 'payment_method', 'lifecycle', 'stat', 'statFilter', 'floor_id',
+  'category_id', 'condition', 'fee_type', 'meter_type', 'vehicle_type', 'low_stock', 'only_short',
+  'days', 'as_of_date', 'vacancy_days', 'accrual', 'view', 'account_id', 'account_ids', 'manager_id',
+  'job_type_id', 'priority', 'assignee_id', 'start_date', 'end_date', 'date_field', 'time_range',
+  'cash_book_id', 'income_type_id', 'expense_type_id', 'creator_id', 'is_checked', 'business_result_only',
+  'period_start_month', 'period_end_month', 'label_id',
 ]);
 
 /** Structured active filters only; an omitted filter is signalled, never silently widened. */
@@ -389,7 +397,13 @@ export function locDangAp(filters: object): ActivePageContext {
       } else incompleteFilters = true;
       continue;
     }
-    const values = Array.isArray(value) ? value : [value];
+    const values = (Array.isArray(value) ? value : [value]).map((v) => {
+      if ((key === 'from' || key === 'to') && v instanceof Date && Number.isFinite(v.getTime())) {
+        return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+      }
+      if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) return String(v);
+      return v;
+    });
     if (!KHOA_LOC_STATE.has(key) || values.length > 8 || result.length >= SO_LOC_TOI_DA
       || !values.every((v) => typeof v === 'string' && giaTriLocAnToan(v))) {
       incompleteFilters = true;

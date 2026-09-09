@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { toast } from 'sonner';
 import { Search, Car, SlidersHorizontal } from 'lucide-react';
@@ -59,6 +60,7 @@ function VehiclesDesktopPage() {
     [extraFilters, searchQuery]
   );
 
+  useCopilotPageContext('vehicles.list', filters);
   // Data fetching
   const { data: vehiclesData, isLoading } = useVehicles(filters, { page, pageSize });
   const vehicles = vehiclesData?.data ?? [];

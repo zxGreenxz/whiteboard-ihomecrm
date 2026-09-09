@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 // Báo cáo Lấp đầy v2 (Phase 8) — dữ liệu 100% từ RPC server-side
 // (useOccupancyDashboard). Snapshot 5 nhóm + trend 12 tháng + sắp trống 30/60
 // + doanh thu bỏ lỡ. Định nghĩa metric: OCCUPANCY_METRIC_DEFINITIONS (đi kèm export).
@@ -43,6 +44,7 @@ export default function OccupancyReport() {
   const [asOfDate, setAsOfDate] = useState<string>(todayStr());
   const [vacancyWindow, setVacancyWindow] = useState<30 | 60>(30);
 
+  useCopilotPageContext('reports.real-estate.occupancy', { building_ids: buildingIds, as_of_date: asOfDate, vacancy_days: vacancyWindow });
   const snapshot = useOccupancySnapshot(asOfDate, buildingIds);
   const vacancy = useUpcomingVacancy(asOfDate, vacancyWindow, buildingIds);
   const trend = useOccupancyTrend12m(buildingIds);

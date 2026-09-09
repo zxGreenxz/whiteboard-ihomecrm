@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Search, Building2, Home, Pencil, X } from "lucide-react";
@@ -40,6 +41,7 @@ export default function BuildingsMobilePage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editBuilding, setEditBuilding] = useState<BuildingWithRelations | undefined>(undefined);
 
+  useCopilotPageContext('buildings.list', { search }, detail);
   const { data: buildingsData = [], isLoading } = useBuildings();
   const buildings = buildingsData as BuildingWithRelations[];
   const { data: allRooms = [] } = useRooms();

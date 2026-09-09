@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -24,6 +25,7 @@ export default function OverpaymentReport() {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(10);
 
+  useCopilotPageContext('reports.finance.overpayment', { building_ids: buildingIds });
   const { data: overpayments = [], isLoading } = useOverpaymentReport();
   // Tổng tiền: RPC SQL aggregate (miễn nhiễm cap-1000), theo đúng bộ lọc toà.
   const { data: summary } = useOverpaymentSummary(buildingIds);

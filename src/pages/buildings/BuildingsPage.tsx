@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePhoneViewport } from '@/hooks/use-mobile';
@@ -45,6 +46,7 @@ function BuildingsDesktop() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editBuilding, setEditBuilding] = useState<BuildingWithRelations | undefined>(undefined);
   // Dialog quản lý khu vực (nhãn nhóm toà) — thay thế trang /areas cũ.
+  useCopilotPageContext('buildings.list', { search: searchTerm, status: statusFilter, building_ids: buildingIds });
   const [manageAreasOpen, setManageAreasOpen] = useState(false);
 
   // Phạm vi cho thẻ thống kê: lọc theo tìm kiếm + toà nhà (KHÔNG theo bộ lọc trạng thái).

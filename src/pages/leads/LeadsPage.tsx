@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Plus, Search, Download, UserPlus } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
@@ -34,6 +35,7 @@ const LeadsPage = () => {
   const [selectedLead, setSelectedLead] = useState<LeadWithRelations | null>(null);
   const [searchTerm, setSearchTerm] = usePersistedState("flt:leads:search", "");
 
+  useCopilotPageContext('leads.list', { search: searchTerm }, detailDialogOpen ? selectedLead : null);
   const { data: leads = [], isLoading } = useLeads();
   const deleteMutation = useDeleteLead();
   const { data: perms } = useMyPermissions();

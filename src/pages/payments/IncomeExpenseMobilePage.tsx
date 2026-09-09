@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -354,6 +355,7 @@ export default function IncomeExpenseMobilePage() {
     room_ids: parsed.roomIds ?? filters.room_ids,
   };
 
+  useCopilotPageContext('income-expenses.list', { ...effectiveFilters, search: parsed.text, view: viewMode }, detailVoucher);
   // keepPreviousData: màn danh sách phân trang — giữ trang cũ để danh sách không
   // nháy skeleton mỗi lần "Tải thêm"/đổi filter (opt-in, xem useIncomeExpenses).
   const { data: listResult, isLoading } = useIncomeExpenses(

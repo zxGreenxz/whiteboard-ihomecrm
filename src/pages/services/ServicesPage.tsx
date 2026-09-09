@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import {
@@ -45,6 +46,7 @@ export default function ServicesPage() {
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
 
+  useCopilotPageContext('services.list', { building_id: buildingFilter, fee_type: feeTypeFilter });
   const { data: services, isLoading } = useServices({
     building_id: buildingFilter || undefined,
     fee_type: feeTypeFilter || undefined,

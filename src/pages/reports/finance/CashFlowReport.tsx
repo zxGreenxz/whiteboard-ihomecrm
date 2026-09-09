@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
@@ -33,6 +34,7 @@ export default function CashFlowReport() {
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
 
+  useCopilotPageContext('reports.finance.cash-flow', { year, building_id: buildingId, from: startDate, to: endDate });
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
   const { data: byDay = [], isLoading } = useCashFlowByDay(startDate, endDate, {
     building_id: buildingId === "all" ? undefined : buildingId,

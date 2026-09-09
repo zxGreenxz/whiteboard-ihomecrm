@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState, lazy, Suspense } from "react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
@@ -59,6 +60,7 @@ const CashbooksDesktop = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [detailAcc, setDetailAcc] = useState<AccountWithBalance | null>(null);
 
+  useCopilotPageContext('cashbooks.list', { search: searchQuery }, detailAcc);
   const handleAdd = useCallback(() => {
     setEditing(null);
     setFormOpen(true);

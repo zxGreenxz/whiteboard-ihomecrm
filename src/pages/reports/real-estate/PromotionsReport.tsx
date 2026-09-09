@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { Tag, TrendingDown, Gift, DollarSign } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -20,6 +21,7 @@ export default function PromotionsReport() {
   const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-promotions:buildingId", undefined);
   const [dateRange, setDateRange] = usePersistedDateRange("flt:rpt-promotions:dateRange", undefined);
 
+  useCopilotPageContext('reports.real-estate.promotions', { building_id: buildingId, from: dateRange?.from, to: dateRange?.to });
   const { data: buildings } = useBuildings();
   const { data: promotions, isLoading } = usePromotionsReport(
     dateRange?.from, dateRange?.to, buildingId

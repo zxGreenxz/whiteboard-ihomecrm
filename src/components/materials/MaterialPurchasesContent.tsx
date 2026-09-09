@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { Fragment, useState } from 'react';
 import { Plus, Pencil, Trash2, MoreHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,7 @@ export default function MaterialPurchasesContent() {
   const [editing, setEditing] = useState<MaterialPurchaseWithItems | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MaterialPurchaseWithItems | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  useCopilotPageContext('materials.purchases', {}, expanded.size === 1 ? purchases.find((row) => expanded.has(row.id)) : null);
 
   const toggleExpanded = (id: string) => {
     setExpanded((prev) => {

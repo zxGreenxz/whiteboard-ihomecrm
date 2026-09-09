@@ -10,20 +10,22 @@ import { isContextEntityId, publishActivePageContext } from '@/copilot/activePag
  * Missing scope or a stale row after organization switch is deliberately omitted.
  */
 export function useCopilotPageContext(
-  pageKey: string,
+  pageKey: string | readonly string[],
   filters: object,
   entity?: { id: string; organization_id?: string | null } | null,
 ): void {
   const location = useLocation();
   const { selectedOrganizationId } = useOrganization();
+  const keys = typeof pageKey === 'string' ? [pageKey] : pageKey;
+  const matchesPage = keys.includes(copilotPageByRoute(location.pathname)?.key ?? '');
   const context = locDangAp(filters);
   const entityId = entity?.organization_id === selectedOrganizationId && isContextEntityId(entity?.id)
     ? entity.id : undefined;
   // Serialize the small, sanitized projection: fresh filter objects with the same
   // values need not republish; private search text never enters this snapshot.
-  const serialized = JSON.stringify({ ...context, entityId });
+  const serialized = JSON.stringify({ ...context, entityId, ...(entity && !entityId ? { unresolvedEntity: true } : {}) });
   useLayoutEffect(() => {
-    if (!selectedOrganizationId || copilotPageByRoute(location.pathname)?.key !== pageKey) return;
+    if (!selectedOrganizationId || !matchesPage) return;
     return publishActivePageContext({ ...location, organizationId: selectedOrganizationId }, JSON.parse(serialized));
-  }, [location.pathname, location.search, location.key, pageKey, selectedOrganizationId, serialized]);
+  }, [location.pathname, location.search, location.key, matchesPage, selectedOrganizationId, serialized]);
 }

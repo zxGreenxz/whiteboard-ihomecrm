@@ -44,4 +44,10 @@ describe('current page prompt', () => {
     expect(prompt).toContain(`id=${id}`);
     expect(prompt).toContain('chưa đầy đủ');
   });
+
+  it('does not silently guess a selected entity whose organization could not be verified', () => {
+    expect(dongNguCanhTrang('/customers', perms, {
+      activeContext: { filters: [], incompleteFilters: false, unresolvedEntity: true },
+    })).toContain('chưa xác minh');
+  });
 });

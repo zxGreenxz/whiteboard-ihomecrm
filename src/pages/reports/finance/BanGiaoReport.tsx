@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 // =============================================
 // Báo cáo Bàn giao tiền & Đối soát sổ — cho CHỦ theo dõi:
 //  - Theo TỪNG sổ: đã thu / đã chi (kỳ) · đã bàn giao cho chủ · CÒN PHẢI NỘP
@@ -48,6 +49,7 @@ export default function BanGiaoReport() {
   const from = dateRange?.from ? toDate(dateRange.from) : '';
   const to = dateRange?.to ? toDate(dateRange.to) : '';
 
+  useCopilotPageContext('reports.finance.handover', { from, to });
   const { data, isLoading } = useSettlementReport(from, to);
   const { data: perms } = useMyPermissions();
   const canReconcile = canUse(perms, 'reports_finance', 'reconcile');

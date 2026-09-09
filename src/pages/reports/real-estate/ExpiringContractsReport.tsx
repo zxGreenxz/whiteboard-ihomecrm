@@ -1,3 +1,4 @@
+import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import MainLayout from "@/components/layout/MainLayout";
 import { Home, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { ReportLayout } from "@/components/reports/ReportLayout";
@@ -28,6 +29,7 @@ export default function ExpiringContractsReport() {
   const [buildingId, setBuildingId] = usePersistedState<string | undefined>("flt:rpt-expiring:buildingId", undefined);
   const [floorId, setFloorId] = usePersistedState<string | undefined>("flt:rpt-expiring:floorId", undefined);
 
+  useCopilotPageContext(['reports.real-estate.expiring', 'reports.real-estate.expiring-alias'], { days: daysFilter, building_id: buildingId, floor_id: floorId });
   const { data: buildings } = useBuildings();
   const { data: floors } = useFloors(buildingId);
   const { data: contracts, isLoading } = useExpiringContractsReport(
