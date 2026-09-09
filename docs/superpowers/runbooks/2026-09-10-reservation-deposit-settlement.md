@@ -31,6 +31,8 @@ Trạng thái: đã hiện thực và kiểm thử; schema đã áp qua lane có
 - Playwright trên DEMO dùng chung: ngày ghi nhận cuối tháng trước, hoàn ngay vào tháng hiện tại; gọi hai basis của `business_performance_pnl_v1` và `cashflow_by_day_v2` dưới role authenticated. Doanh thu tăng đúng phần giữ lại ở kỳ xử lý; chỉ ngày thực chi có dòng tiền ra; offset và hoàn cọc không tăng chi phí KQKD. Ca này đạt.
 - Playwright trên DEMO dùng chung: server đã commit nhưng response bị ngắt; tải lại vẫn chỉ một settlement, nguồn giữ nguyên tiền và cờ KQKD, quỹ không tăng. Ca này đạt.
 - Kiểm tra bổ sung tại `19916cf2`: toàn bộ Vitest **465 file / 7.275 ca đạt**; typecheck baseline 0 fingerprint và typecheck E2E đạt. Build **4.798 module / 15,02 giây**; bundle **518 chunk, entry 220 kB, 97 trang lazy** đạt, có chunk dialog xử lý cọc và lịch sử.
+- Bộ ba ca DEMO Realtime / báo cáo / mất response chạy lại cùng lượt đạt **3/3 trong 1 phút**. Bộ `.e2e-fleet/specs/reservation-contract-recovery.spec.ts` đạt **2/2 trong 23,3 giây**: form hợp đồng đang mở gặp source đã settle thì server chặn, UI chờ tải lại cọc rồi giữ nguyên ghi chú đang nhập; tài khoản kế toán DEMO thiếu quyền không thấy nút xử lý. Đã kiểm lỗi console mong đợi của lần server từ chối, không có lỗi khác.
+- Trước phát hành: `gate:truoc-push` **42/42 đạt trong 100 giây**, lint 0 lỗi mới, `docs:check:links` **260 file / 0 lỗi**. Catalog, stable-fn-locks, definer-acl và view-invoker chạy lại đều đạt; **12/12 view** có security_invoker.
 
 ## Chạy lại và dọn dữ liệu thử
 
@@ -55,6 +57,7 @@ Review giao diện tìm thêm lỗi truy vấn cột tính toán như cột th�
 - Schema đã apply lúc `2026-09-09T17:56:14.163Z` qua `npm run migrate:forward ... --apply`, biên nhận backup `16d825b80277f7e4`. Backup đầy đủ 519 bảng có dữ liệu, 27,8 MB; evidence ở `docs/generated/schema-change-evidence/20260909172332_reservation_deposit_settlement_v1.json`. Không sửa dữ liệu tổ chức thật và không backfill cọc cũ.
 - Catalog sau apply: `f70937dcaf8f4f6ba935c8a7f4251fab32bbd2ca59ce2c7d3ca966f837dc2652`; canonical types và manifest bề mặt sinh lại từ database thật.
 - Sau apply: `gate:stable-fn-locks`, `gate:definer-acl`, `gate:approver-provenance`, `catalog:check`, `gate:realtime-descriptors` đều đạt. Đối soát V2 khớp 20 sổ thực và 3.434 dòng posting qua 4 trang. Không đưa số tiền công ty vào tài liệu kiểm thử.
+- Đối soát cuối sau toàn bộ ca DEMO: V1 **PASS**, ba nguồn SQL/RPC dưới RLS/phân trang khớp trên **1.068 dòng**; V2 **PASS**, **20 sổ thực / 3.435 posting lines**. Đây là lần đo mới, không thay số liệu lịch sử sau migration. Kiểm cleanup độc lập trả **0 phòng / 0 phiếu** mang marker fixture; trigger sở hữu vẫn `ENABLE ALWAYS`.
 - `gate:sandbox-leak` đạt: 146 bảng đọc được, rò rỉ 0; 18 bảng còn lại không cấp SELECT. Số liệu công ty thật không đổi giữa hai snapshot. Baseline được chụp sau migration, nên không dùng nó để khẳng định số liệu trước migration.
 - External controls đã kiểm bằng API: cả app và docs theo nhánh `production`; GitHub private Free không có branch protection như giới hạn đã khai trong Contract.
 - PR nháp #57 đã mở và review độc lập phần tiền/quyền hoàn tất. Người dùng đã cho phép đưa lên production; app sẽ được promote sau khi các gate trên main đạt và sẽ được kiểm tra lại đúng SHA trên domain production.
