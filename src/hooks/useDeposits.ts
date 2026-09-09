@@ -6,7 +6,7 @@ import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import type { Database } from '@/integrations/supabase/types';
 import { invokeReservationSettlementRpc, reservationSettlementListArgs, reservationSettlementListSchema, reservationSettlementSchema, type ReservationSettlementRpcInvoker } from '@/lib/reservationSettlementRpc';
 
-const settlementRpc = supabase.rpc.bind(supabase) as unknown as ReservationSettlementRpcInvoker;
+const settlementRpc = (supabase.rpc as unknown as ReservationSettlementRpcInvoker).bind(supabase);
 export const RESERVATION_SETTLED_EMBED = 'settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey ( id )';
 
 type Deposit = Database['public']['Tables']['deposits']['Row'];
