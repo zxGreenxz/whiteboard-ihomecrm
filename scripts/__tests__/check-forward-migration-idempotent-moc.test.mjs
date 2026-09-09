@@ -11,7 +11,11 @@
 // an toàn là rơi về quét toàn bộ.
 import { describe, expect, it } from "vitest";
 
-import { giaiMoc, locTheoMoc } from "../check-forward-migration-idempotent.mjs";
+import {
+  giaiMoc,
+  locTheoMoc,
+  themMienTruPinned,
+} from "../check-forward-migration-idempotent.mjs";
 
 describe("giaiMoc", () => {
   const coRef = (r) => r === "abc123";
@@ -53,5 +57,27 @@ describe("locTheoMoc", () => {
   it("đường dẫn diff dùng backslash Windows vẫn khớp", () => {
     const diff = ["supabase\\migrations\\20260828160000_c.sql"];
     expect(locTheoMoc(sauCutoff, diff)).toEqual(["20260828160000_c.sql"]);
+  });
+});
+
+describe("themMienTruPinned", () => {
+  it("scoped diff rỗng vẫn đo ngoại lệ pinned", () => {
+    const files = ["20260909172332_reservation_deposit_settlement_v1.sql", "20260910120000_khac.sql"];
+    const policy = new Map([[files[0], {
+      sha256: "a",
+      expectedSqlState: "42P07",
+      expectedMessage: "relation already exists",
+      appliedEvidencePath: "docs/generated/schema-change-evidence/x.json",
+    }]]);
+
+    expect(themMienTruPinned(files, [], policy)).toEqual([files[0]]);
+  });
+
+  it("giữ migration mới cùng ngoại lệ pinned mà không lặp", () => {
+    const pinned = "20260909172332_reservation_deposit_settlement_v1.sql";
+    const policy = new Map([[pinned, {
+      sha256: "a", expectedSqlState: "42P07", expectedMessage: "x", appliedEvidencePath: "docs/generated/schema-change-evidence/x.json",
+    }]]);
+    expect(themMienTruPinned([pinned], [pinned], policy)).toEqual([pinned]);
   });
 });

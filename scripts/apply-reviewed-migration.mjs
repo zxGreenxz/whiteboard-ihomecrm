@@ -334,6 +334,34 @@ export function buildTransaction(sql, { rollback = false, lanChay = 1 } = {}) {
   return out;
 }
 
+export async function chayTruyVanQuanTri({ pat, ref, query, fetchImpl = fetch }) {
+  const res = await fetchImpl(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${pat}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  return { ok: res.ok, status: res.status, body: await res.text() };
+}
+
+/** Cửa bắt buộc trước apply: chạy hai lượt trong cùng transaction rồi rollback. */
+export async function kiemTraHaiLuotTruocApply(sql, { pat, ref, fetchImpl = fetch }) {
+  const query = buildTransaction(sql, { rollback: true, lanChay: 2 });
+  const result = await chayTruyVanQuanTri({ pat, ref, query, fetchImpl });
+  return { ...result, query };
+}
+
+export function kiemTraCoApplySom(argv, env = process.env) {
+  if (!argv.includes("--apply")) return { ok: true };
+  const boQuaBackup = argv.includes("--khong-backup");
+  const tokenNguoi = env.IHOMECRM_PROMOTION_TOKEN;
+  if (boQuaBackup && !tokenNguoi) return { ok: false, vi: "khong-token" };
+  if (boQuaBackup) {
+    const lyDo = argv[argv.indexOf("--khong-backup") + 1];
+    if (!lyDo || lyDo.startsWith("--")) return { ok: false, vi: "thieu-ly-do" };
+  }
+  return { ok: true, boQuaBackup, tokenNguoi };
+}
+
 export function checkGuards(file, { policy, provenance }) {
   const problems = [];
   const name = basename(file);
@@ -403,6 +431,40 @@ async function main(argv) {
 
   let giayPhep = null; // { loai, chiTiet } — ghi vào evidence
 
+  const coApply = kiemTraCoApplySom(argv);
+  if (!coApply.ok) {
+    if (coApply.vi === "khong-token") {
+      console.error(
+        "\n❌ --khong-backup mà không có IHOMECRM_PROMOTION_TOKEN.\n" +
+          "   Lane tự phát giấy phép DỰA TRÊN bản backup vừa tạo; bỏ backup thì không còn gì để dựa.\n" +
+          "   Hai đường không dùng chung được: hoặc để lane chạy backup (tự động hoàn toàn),\n" +
+          "   hoặc bỏ backup và tự chịu trách nhiệm bằng token của mình.",
+      );
+    } else {
+      console.error("❌ --khong-backup phải kèm lý do: --khong-backup \"vì sao bỏ qua\".");
+    }
+    return 1;
+  }
+  const { boQuaBackup = false, tokenNguoi } = coApply;
+
+  const pat = readPat();
+  if (!pat) {
+    console.error("❌ Không tìm thấy PAT.");
+    return 1;
+  }
+  const ref = projectRef();
+
+  if (doApply) {
+    console.log("→ Kiểm tra migration hai lượt trong transaction ROLLBACK trước khi backup/apply…");
+    const preflight = await kiemTraHaiLuotTruocApply(sql, { pat, ref });
+    if (!preflight.ok) {
+      console.error(`❌ Kiểm tra idempotency trước apply thất bại (HTTP ${preflight.status}) — chưa backup, chưa apply.`);
+      console.error(preflight.body.slice(0, 1500));
+      return 1;
+    }
+    console.log("✔ Hai lượt đều đạt và transaction đã ROLLBACK.");
+  }
+
   if (doApply) {
     // ─── GIẤY PHÉP APPLY ─────────────────────────────────────────────────────
     //
@@ -430,18 +492,6 @@ async function main(argv) {
     // Giấy phép tự phát là BIÊN NHẬN, không phải bí mật: nó là digest buộc bản
     // migration vào đúng bản backup vừa tạo. Giá trị của nó nằm ở chỗ KHÔNG thể
     // có nó mà không có bản dump tương ứng.
-    const tokenNguoi = process.env.IHOMECRM_PROMOTION_TOKEN;
-    const boQuaBackup = argv.includes("--khong-backup");
-
-    if (!tokenNguoi && boQuaBackup) {
-      console.error(
-        "\n❌ --khong-backup mà không có IHOMECRM_PROMOTION_TOKEN.\n" +
-          "   Lane tự phát giấy phép DỰA TRÊN bản backup vừa tạo; bỏ backup thì không còn gì để dựa.\n" +
-          "   Hai đường không dùng chung được: hoặc để lane chạy backup (tự động hoàn toàn),\n" +
-          "   hoặc bỏ backup và tự chịu trách nhiệm bằng token của mình.",
-      );
-      return 1;
-    }
     if (tokenNguoi) {
       console.log("⚠ Có promotion token của người — sẽ GHI THẬT lên production.");
       giayPhep = { loai: "token-nguoi", chiTiet: createHash("sha256").update(tokenNguoi).digest("hex").slice(0, 16) };
@@ -463,10 +513,6 @@ async function main(argv) {
     // — bỏ qua được, nhưng không im lặng.
     if (boQuaBackup) {
       const lyDo = argv[argv.indexOf("--khong-backup") + 1];
-      if (!lyDo || lyDo.startsWith("--")) {
-        console.error("❌ --khong-backup phải kèm lý do: --khong-backup \"vì sao bỏ qua\".");
-        return 1;
-      }
       console.warn(`⚠ BỎ QUA BACKUP theo yêu cầu — lý do: ${lyDo}`);
       console.warn("  Nếu apply hỏng, đường lùi gần nhất là backup hằng ngày của Supabase (tới ~24h dữ liệu).");
     } else {
@@ -526,13 +572,6 @@ async function main(argv) {
     console.log(`Giấy phép: ${giayPhep.loai} · ${giayPhep.chiTiet}`);
   }
 
-  const pat = readPat();
-  if (!pat) {
-    console.error("❌ Không tìm thấy PAT.");
-    return 1;
-  }
-  const ref = projectRef();
-
   // Chụp catalog TRƯỚC — chỉ khi apply thật. Dry-run không đổi gì nên chụp là
   // lãng phí 3,35 giây và tạo ra một bản inventory không tương ứng lần chạy nào.
   const vanTayTruoc = doApply ? chupVanTayCatalog() : null;
@@ -541,12 +580,8 @@ async function main(argv) {
   }
 
   const started = Date.now();
-  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${pat}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query: transaction }),
-  });
-  const body = await res.text();
+  const res = await chayTruyVanQuanTri({ pat, ref, query: transaction });
+  const body = res.body;
 
   if (!res.ok) {
     console.error(`❌ ${doApply ? "Apply" : "Dry-run"} thất bại (HTTP ${res.status}).`);

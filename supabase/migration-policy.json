@@ -59,6 +59,7 @@
       "exitCondition": "Không có — ghi nhận vĩnh viễn, xem mục trên."
     }
   ],
+  "idempotencyExceptionRule": "Không miễn lỗi chạy lặp cho migration chưa áp. Lỗi thật phát hiện sau khi file đã áp và bất biến chỉ được ghi nhận qua review độc lập, ghim file/sha256/lỗi SQL/biên nhận áp; gate phải đo lại và báo EXEMPT, không báo idempotent PASS. Không sửa byte lịch sử hoặc tự ghi sổ chứng nhận chạy lại được. Lane áp migration phải kiểm hai lượt ROLLBACK trước khi áp, không dùng ngoại lệ để cho phép re-apply.",
   "idempotencyExceptions": [
     {
       "file": "20260807190100_gd1_doi_ten_np_org_boundary.sql",
@@ -130,6 +131,19 @@
       "why": "File đã ledger-applied seed `salary.khoa_thang` bằng ON CONFLICT DO NOTHING rồi self-check rollback_rpc IS NULL. Migration sau `20260906010543_copilot_action_salary_khoa_thang_rollback_v1.sql` cập nhật rollback_rpc thành unlock_salary_month_v1 khi hàm tồn tại, để runbook nói đúng đường lùi production. Khi cửa dán lại file cũ trên trạng thái sau migration 06/09, seed không ghi đè nên assertion cũ ném `seed registry salary.khoa_thang sai hinh hoac thieu`. Đây là mâu thuẫn thứ tự migration đã được đo lặp lại, không phải lỗi của migration kho mới.",
       "heQua": "Không sửa file 20260903224418: provenance xác nhận ledger-applied và policy forward-only giữ byte lịch sử. Forward lane từ baseline chạy file cũ trước migration cập nhật nên vẫn đúng; chỉ phép đo reapply từng file trên catalog mới phải ghi nhận ngoại lệ này.",
       "exitCondition": "Biến mất khi gate chuyển từ dán lại migration lịch sử trên trạng thái mới sang dựng baseline rồi replay theo thứ tự, hoặc khi lịch sử ledger-applied được lưu dưới dạng snapshot không reapply đơn lẻ. Không được gỡ chỉ vì file tạm xanh: gate bắt buộc file còn ném đúng lỗi này."
+    },
+    {
+      "file": "20260909172332_reservation_deposit_settlement_v1.sql",
+      "sha256": "32008e7d10b730ceef4840fb307288e033be5d868842597ed30f27136e6da2e6",
+      "expectedSqlState": "42P07",
+      "expectedMessage": "relation \"reservation_deposit_settlements\" already exists",
+      "appliedEvidencePath": "docs/generated/schema-change-evidence/20260909172332_reservation_deposit_settlement_v1.json",
+      "ciEvidence": "https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/34394725428/job/102611509728",
+      "lop": "KHÔNG idempotent thật — lỗi phát hiện sau khi áp, file bất biến có biên nhận backup",
+      "why": "CREATE TABLE/INDEX/FUNCTION/POLICY/TRIGGER chưa có bảo vệ khi chạy lặp. CI main 0364a6a8 phát hiện 42P07 trước khi phát hành giao diện. File đã áp qua forward lane lúc 2026-09-09T17:56:14.163Z với backup 16d825b80277f7e4; sửa byte hoặc ghi chứng nhận chạy lại được sẽ làm sai lịch sử. Review độc lập xác nhận cần ghi nhận lỗi lịch sử theo tiền lệ 20260807190100, không thể sửa lần chạy lại của chính file này bằng migration sau.",
+      "heQua": "Không re-apply file này trên schema đã có các object. Phục hồi baseline chưa chứa tính năng cần quy trình phục hồi một lần được review riêng; lane thông thường với chốt hai lượt sẽ từ chối file này ngay cả trên baseline sạch. Khi mất phản hồi sau commit, đối chiếu catalog và biên nhận trước khi quyết định bước tiếp theo. Thay đổi SQL tiếp theo phải dùng migration mới.",
+      "baiHoc": "Kiểm idempotency đã bị bỏ sót trước apply; thêm kiểm hai lượt ROLLBACK bắt buộc vào lane trước các lần apply tiếp theo, không cho ngoại lệ lịch sử vượt chốt đó.",
+      "exitCondition": "Giữ bản ghi lịch sử và digest. Chỉ thay cơ chế kiểm khi có quy trình phục hồi được review thay thế; không đổi cutoff, không di chuyển/xóa file và không báo raw migration đã idempotent."
     }
   ]
 }
