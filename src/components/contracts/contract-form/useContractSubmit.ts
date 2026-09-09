@@ -23,6 +23,21 @@ interface UseContractSubmitParams {
   onCreated?: (contractId: string) => void;
 }
 
+export function isStaleOrphanDepositError(error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as { message?: unknown } | null)?.message ?? "");
+  const normalized = message.toLocaleLowerCase("vi");
+  return normalized.includes("phiếu cọc") && (
+    normalized.includes("đã xử lý bỏ cọc") || normalized.includes("đã được dùng") ||
+    normalized.includes("đã gắn hợp đồng") || normalized.includes("không còn")
+  );
+}
+
+export function refreshStaleOrphanDeposits(error: unknown, refetch: () => unknown) {
+  if (!isStaleOrphanDepositError(error)) return false;
+  void refetch();
+  return true;
+}
+
 /**
  * Submit orchestration for contract edit and atomic V2 creation.
  */
@@ -45,6 +60,7 @@ export function useContractSubmit({
     typedDepositTotal,
     approvedOrphanTotal,
     orphanDepositVouchers,
+    refetchOrphanDepositVouchers,
     invoiceItems,
     firstInvoiceDiscount,
     depositRows,
@@ -348,6 +364,12 @@ export function useContractSubmit({
               onCreated?.(contract.id);
               setCommissionContractId(contract.id);
             }
+          },
+          onError: (error) => {
+            if (!refreshStaleOrphanDeposits(error, refetchOrphanDepositVouchers)) return;
+            toast.error("Danh sách cọc giữ chỗ đã thay đổi", {
+              description: "Đã tải lại cọc của phòng. Thông tin hợp đồng bạn nhập vẫn được giữ; hãy kiểm tra phần cọc rồi lưu lại.",
+            });
           },
         },
       );

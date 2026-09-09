@@ -227,7 +227,7 @@ export function useContractFormState({
   //  - chỉ tính phiếu ĐÃ DUYỆT vào "đã đặt cọc" (recompute chỉ cộng APPROVED);
   //  - KHÔNG tạo lại phiếu cho các dòng này (tránh double-count deposit_paid).
   const startDateWatch = form.watch("start_date");
-  const { data: orphanDepositVouchers = [] } = useOrphanDepositVouchers(
+  const { data: orphanDepositVouchers = [], refetch: refetchOrphanDepositVouchers } = useOrphanDepositVouchers(
     !isEditMode && open ? selectedRoomId || undefined : undefined,
     startDateWatch || undefined,
   );
@@ -769,6 +769,7 @@ export function useContractFormState({
     buildingActiveServices,
     buildingServicesAsSelected,
     orphanDepositVouchers,
+    refetchOrphanDepositVouchers,
     approvedOrphanTotal,
     typedDepositTotal,
     // state

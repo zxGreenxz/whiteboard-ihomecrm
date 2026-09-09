@@ -170,7 +170,7 @@ export type ReservationSettlementRpcName =
 export type ReservationSettlementRpcInvoker = (
   name: ReservationSettlementRpcName,
   args: Record<string, unknown>,
-) => PromiseLike<{ data: unknown; error: { message?: string | null } | null }>;
+) => PromiseLike<{ data: unknown; error: { message?: string | null; code?: string | null; details?: string | null; hint?: string | null } | null }>;
 
 const SETTLEMENT_ERROR_MESSAGES: ReadonlyArray<readonly [string, string]> = [
   ["PERMISSION_DENIED", "Bạn chưa đủ quyền thực hiện thao tác này."],
@@ -182,9 +182,17 @@ const SETTLEMENT_ERROR_MESSAGES: ReadonlyArray<readonly [string, string]> = [
   ["DEPOSIT_CLASS_MISMATCH", "Hạng mục cọc chưa thống nhất, cần đối chiếu trước."],
 ];
 
-export function reservationSettlementErrorMessage(message?: string | null) {
-  const matched = SETTLEMENT_ERROR_MESSAGES.find(([code]) => message?.includes(code));
-  return matched?.[1] ?? "Không thể xử lý cọc giữ chỗ. Vui lòng thử lại.";
+export function reservationSettlementErrorMessage(error?: string | { message?: string | null; code?: string | null; details?: string | null; hint?: string | null } | null) {
+  const message = typeof error === "string" ? error : [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(" ");
+  const matched = SETTLEMENT_ERROR_MESSAGES.find(([code]) => message.includes(code));
+  if (matched) return matched[1];
+  const normalized = message.toLocaleLowerCase("vi");
+  if (normalized.includes("không có quyền") || normalized.includes("không phải người giữ") || error && typeof error !== "string" && error.code === "42501") return "Bạn chưa đủ quyền thực hiện thao tác này.";
+  if (normalized.includes("đã thay đổi") || normalized.includes("nội dung khác") || error && typeof error !== "string" && error.code === "40001") return "Phiếu đã thay đổi. Hãy tải lại trước khi xử lý.";
+  if (normalized.includes("kỳ khóa") || normalized.includes("kỳ đã khóa")) return "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa.";
+  if (normalized.includes("chưa nhận tiền")) return "Phiếu chưa có bằng chứng tiền đã vào quỹ.";
+  if (normalized.includes("đã được dùng") || normalized.includes("đã xử lý bỏ cọc")) return "Phiếu cọc đã được dùng cho nghiệp vụ khác.";
+  return "Không thể xử lý cọc giữ chỗ. Vui lòng thử lại.";
 }
 
 export function createReservationIdempotencyStore(prefix: string, createId: () => string = () => crypto.randomUUID()) {
@@ -212,7 +220,7 @@ export async function invokeReservationSettlementRpc<S extends z.ZodTypeAny>(
   schema: S,
 ): Promise<z.output<S>> {
   const { data, error } = await rpc(name, args);
-  if (error) throw new Error(reservationSettlementErrorMessage(error.message));
+  if (error) throw new Error(reservationSettlementErrorMessage(error));
   const parsed = schema.safeParse(data);
   if (!parsed.success) throw new Error("Dữ liệu xử lý cọc chưa hợp lệ. Hãy tải lại và thử lại.");
   return parsed.data;

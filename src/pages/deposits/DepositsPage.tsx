@@ -252,12 +252,12 @@ const DepositsDesktop = () => {
       shortfall,
       shortCount,
       // Tiền hoàn ĐÃ RA KÉT — gồm CẢ phiếu không nối được hồ sơ thanh lý (D2).
-      refundTotal: rfReconciles ? rfSummary!.refundTotal : refundKpi.refundTotal,
-      refundCount: rfReconciles ? rfSummary!.refundCount : refundKpi.refundCount,
-      forfeitTotal: refundKpi.forfeitTotal,
-      forfeitCount: refundKpi.forfeitCount,
+      refundTotal: (rfReconciles ? rfSummary!.refundTotal : refundKpi.refundTotal) + (reservationSettlementSummary?.refundPaidAmount ?? 0),
+      refundCount: (rfReconciles ? rfSummary!.refundCount : refundKpi.refundCount) + (reservationSettlementSummary?.refundPaidCount ?? 0),
+      forfeitTotal: refundKpi.forfeitTotal + (reservationSettlementSummary?.retainedAmount ?? 0),
+      forfeitCount: refundKpi.forfeitCount + (reservationSettlementSummary?.retainedCount ?? 0),
     };
-  }, [heldAgg, refundKpi, rfSummary, rfReconciles]);
+  }, [heldAgg, refundKpi, rfSummary, rfReconciles, reservationSettlementSummary]);
 
   // Giữ chỗ đang giữ (phiếu thu cọc mồ côi đã duyệt) — RPC aggregate.
   const holdingAmount = resvSummary?.holdingAmount ?? 0;
@@ -394,11 +394,11 @@ const DepositsDesktop = () => {
             <span>
               Đã hoàn cọc (tiền đã ra khỏi két){" "}
               <strong className="text-foreground">{formatCurrency(kpi.refundTotal)}</strong> ·{" "}
-              {kpi.refundCount} phiếu
+              {kpi.refundCount} khoản
             </span>
             <span>
               Đã bỏ cọc <strong className="text-red-600">{formatCurrency(kpi.forfeitTotal)}</strong> ·{" "}
-              {kpi.forfeitCount} lần
+              {kpi.forfeitCount} nghiệp vụ
             </span>
             {rfReconciles && (rfSummary?.orphanCount ?? 0) > 0 && (
               <span className="inline-flex items-start gap-1.5 rounded-md bg-red-50 px-2 py-1.5 font-semibold leading-snug text-red-600">

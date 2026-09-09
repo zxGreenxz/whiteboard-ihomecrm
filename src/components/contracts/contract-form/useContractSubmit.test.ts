@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ContractFormData } from "@/lib/contractValidation";
-import { useContractSubmit } from "./useContractSubmit";
+import { isStaleOrphanDepositError, refreshStaleOrphanDeposits, useContractSubmit } from "./useContractSubmit";
 import type { ContractFormState } from "./useContractFormState";
 
 vi.mock("sonner", () => ({
@@ -11,6 +11,17 @@ vi.mock("sonner", () => ({
 }));
 
 describe("useContractSubmit", () => {
+  it("recognizes a stale orphan deposit rejected after settlement", () => {
+    expect(isStaleOrphanDepositError(new Error("Phiếu cọc đã xử lý bỏ cọc; không được dùng lại"))).toBe(true);
+    expect(isStaleOrphanDepositError(new Error("Lỗi kết nối"))).toBe(false);
+  });
+  it("refetches orphan deposits only for a stale settlement rejection", () => {
+    const refetch = vi.fn();
+    expect(refreshStaleOrphanDeposits(new Error("Phiếu cọc đã xử lý bỏ cọc; không được dùng lại"), refetch)).toBe(true);
+    expect(refetch).toHaveBeenCalledOnce();
+    expect(refreshStaleOrphanDeposits(new Error("Mất kết nối"), refetch)).toBe(false);
+    expect(refetch).toHaveBeenCalledOnce();
+  });
   it("rejects an empty end billing date after normalization", () => {
     const setError = vi.fn();
     const createContract = { mutate: vi.fn() };

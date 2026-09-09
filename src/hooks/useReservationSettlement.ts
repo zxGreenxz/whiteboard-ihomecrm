@@ -27,6 +27,16 @@ const settlementLegTable = bindReservationSettlementLegTable(supabase as unknown
 const settlementLegSchema = z.object({
   settlement: z.object({ sourceVoucherId: z.string().uuid() }),
 }).nullable();
+const settlementAuditSchema = z.object({
+  created_by: z.string().uuid(),
+  reason_code: z.string(),
+  reason_text: z.string(),
+  source_voucher_id: z.string().uuid(),
+  revenue_voucher_id: z.string().uuid().nullable(),
+  offset_voucher_id: z.string().uuid().nullable(),
+  refund_voucher_id: z.string().uuid().nullable(),
+  settlement_date: z.string(),
+});
 
 export const SETTLEMENT_LEG_SELECT = "settlement:reservation_deposit_settlements!inner(sourceVoucherId:source_voucher_id)";
 
@@ -47,6 +57,7 @@ const affectedQueryKeys = [
   ["reservation-deposits"], ["orphan-deposit-vouchers"], ["deposit-dashboard"],
   ["reservation-settlement-preview"],
   ["reservation-settlement-by-voucher"],
+  ["reservation-settlement-audit"],
   ["reservation-settlements"], ["reservation-settlement-summary"],
   ["rooms"], ["contracts"], ["phong-trong"], ["financial-analysis"],
   ["business-performance"], ["cash-flow-by-day"], ["accounts-with-balance"],
@@ -166,6 +177,23 @@ export function useReservationSettlementForVoucher(voucherId: string | null, ena
       );
       if (sourceMatch.rows[0]) return sourceMatch.rows[0];
       return findSettlementByLeg(voucherId);
+    },
+  });
+}
+
+export function useReservationSettlementAudit(settlementId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["reservation-settlement-audit", settlementId],
+    enabled: enabled && !!settlementId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("reservation_deposit_settlements")
+        .select("created_by,reason_code,reason_text,source_voucher_id,revenue_voucher_id,offset_voucher_id,refund_voucher_id,settlement_date")
+        .eq("id", settlementId!)
+        .maybeSingle();
+      if (error || !data) throw new Error("Không đọc được dấu vết xử lý cọc.");
+      const audit = settlementAuditSchema.parse(data);
+      const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", audit.created_by).maybeSingle();
+      return { ...audit, actorName: profile?.full_name ?? null };
     },
   });
 }

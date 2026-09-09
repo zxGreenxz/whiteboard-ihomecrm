@@ -47,6 +47,14 @@ describe("reservation settlement RPC DTOs", () => {
     await expect(invokeReservationSettlementRpc(rpc, "get_reservation_settlement_summary_v1", {}, reservationSettlementSummarySchema))
       .rejects.toThrow("Dữ liệu xử lý cọc chưa hợp lệ. Hãy tải lại và thử lại.");
   });
+  it.each([
+    [{ message: "Không có quyền xử lý phiếu cọc này", code: "42501" }, "Bạn chưa đủ quyền thực hiện thao tác này."],
+    [{ message: "Phiếu cọc đã thay đổi; hãy tải lại trước khi xử lý", code: "40001" }, "Phiếu đã thay đổi. Hãy tải lại trước khi xử lý."],
+    [{ message: "Phiếu cọc chưa nhận tiền, đã được dùng hoặc đang ở kỳ khóa; hãy tải lại", details: '["NOT_RECEIVED"]' }, "Phiếu chưa có bằng chứng tiền đã vào quỹ."],
+    [{ message: "internal ledger failure", details: '["PERIOD_LOCKED"]' }, "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa."],
+  ])("maps safe server errors without exposing technical text", (error, expected) => {
+    expect(reservationSettlementErrorMessage(error)).toBe(expected);
+  });
   it("sends the source voucher filter before pagination", () => {
     expect(reservationSettlementListArgs({
       sourceVoucherId: settlement.sourceVoucherId,
