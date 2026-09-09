@@ -71,21 +71,21 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ReservationSettlementDialog (mock RPC transport, real UI)", () => {
-  it("submits the full retained deposit with NONE and no cashbook", () => {
+  it("submits the full retained deposit with NONE and no cashbook", async () => {
     render(<ReservationSettlementDialog voucherId="00000000-0000-4000-8000-000000000001" open onOpenChange={(v) => state.closeCalls.push(v)} />);
     fireEvent.click(screen.getByRole("button", { name: "Xác nhận xử lý" }));
-    expect(state.settleCalls[0]).toMatchObject({ refundAmount: 0, refundMode: "NONE", refundAccountId: null });
+    await waitFor(() => expect(state.settleCalls[0]).toMatchObject({ refundAmount: 0, refundMode: "NONE", refundAccountId: null }));
   });
 
-  it("supports a partial deferred refund without an actual-payment confirmation", () => {
+  it("supports a partial deferred refund without an actual-payment confirmation", async () => {
     render(<ReservationSettlementDialog voucherId="00000000-0000-4000-8000-000000000001" open onOpenChange={() => {}} />);
     fireEvent.change(screen.getByLabelText("Hoàn lại khách"), { target: { value: "1000000" } });
     fireEvent.change(screen.getByLabelText("Cách hoàn"), { target: { value: "LATER" } });
     fireEvent.click(screen.getByRole("button", { name: "Xác nhận xử lý" }));
-    expect(state.settleCalls[0]).toMatchObject({ refundAmount: 1_000_000, refundMode: "LATER", refundAccountId: null });
+    await waitFor(() => expect(state.settleCalls[0]).toMatchObject({ refundAmount: 1_000_000, refundMode: "LATER", refundAccountId: null }));
   });
 
-  it("requires a custodian cashbook and actual-payment checkbox for NOW", () => {
+  it("requires a custodian cashbook and actual-payment checkbox for NOW", async () => {
     render(<ReservationSettlementDialog voucherId="00000000-0000-4000-8000-000000000001" open onOpenChange={() => {}} />);
     fireEvent.change(screen.getByLabelText("Hoàn lại khách"), { target: { value: "1000000" } });
     const submit = screen.getByRole("button", { name: "Xác nhận xử lý" });
@@ -94,7 +94,7 @@ describe("ReservationSettlementDialog (mock RPC transport, real UI)", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Xác nhận đã trả tiền cho khách" }));
     expect(submit).toHaveProperty("disabled", false);
     fireEvent.click(submit);
-    expect(state.settleCalls[0]).toMatchObject({ refundMode: "NOW", refundAccountId: "00000000-0000-4000-8000-000000000010" });
+    await waitFor(() => expect(state.settleCalls[0]).toMatchObject({ refundMode: "NOW", refundAccountId: "00000000-0000-4000-8000-000000000010" }));
   });
 
   it("blocks invalid amounts and server/permission blockers", () => {

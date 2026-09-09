@@ -46,3 +46,9 @@ export const reservationSettlementFormSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reasonText"], message: "Nhập lý do" });
   }
 });
+
+export const reservationRefundPaymentSchema = z.object({
+  accountId: z.string().uuid("Chọn sổ quỹ đã chi"),
+  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Chọn ngày chi"),
+});
+export type ReservationRefundPaymentValues = z.infer<typeof reservationRefundPaymentSchema>;

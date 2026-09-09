@@ -7,7 +7,9 @@ import {
   reservationSettlementPreviewSchema,
   reservationSettlementSchema,
   reservationSettlementSummarySchema,
+  invokeReservationSettlementRpc,
 } from "../reservationSettlementRpc";
+import { bindReservationSettlementLegTable, SETTLEMENT_LEG_SELECT } from "@/hooks/useReservationSettlement";
 
 const settlement = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -26,6 +28,18 @@ const settlement = {
 } as const;
 
 describe("reservation settlement RPC DTOs", () => {
+  it("binds the leg-table client and selects persisted columns only", () => {
+    const client = { marker: "bound", from(this: { marker: string }, table: string) { return `${this.marker}:${table}`; } };
+    const from = bindReservationSettlementLegTable(client);
+    expect(from("reservation_settlement_vouchers") as unknown).toBe("bound:reservation_settlement_vouchers");
+    expect(SETTLEMENT_LEG_SELECT).toBe("settlement:reservation_deposit_settlements!inner(sourceVoucherId:source_voucher_id)");
+    expect(SETTLEMENT_LEG_SELECT).not.toMatch(/refund_remaining|refund_state|room_blockers|room_released/);
+  });
+  it("hides response validation internals from users", async () => {
+    const rpc = async () => ({ data: { invalid_field: true }, error: null });
+    await expect(invokeReservationSettlementRpc(rpc, "get_reservation_settlement_summary_v1", {}, reservationSettlementSummarySchema))
+      .rejects.toThrow("Dữ liệu xử lý cọc chưa hợp lệ. Hãy tải lại và thử lại.");
+  });
   it("sends the source voucher filter before pagination", () => {
     expect(reservationSettlementListArgs({
       sourceVoucherId: settlement.sourceVoucherId,

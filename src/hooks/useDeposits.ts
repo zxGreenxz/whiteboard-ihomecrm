@@ -4,6 +4,10 @@ import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import type { Database } from '@/integrations/supabase/types';
+import { invokeReservationSettlementRpc, reservationSettlementListArgs, reservationSettlementListSchema, reservationSettlementSchema, type ReservationSettlementRpcInvoker } from '@/lib/reservationSettlementRpc';
+
+const settlementRpc = supabase.rpc.bind(supabase) as unknown as ReservationSettlementRpcInvoker;
+export const RESERVATION_SETTLED_EMBED = 'settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey ( id )';
 
 type Deposit = Database['public']['Tables']['deposits']['Row'];
 type DepositInsert = Database['public']['Tables']['deposits']['Insert'];
@@ -143,12 +147,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
                approval_status, building_id, room_id,
                building:buildings!income_expenses_building_id_fkey ( id, name ),
                room:rooms!income_expenses_room_id_fkey ( id, name ),
-               settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey (
-                 id, depositAmount:deposit_amount, retainedAmount:retained_amount,
-                 refundAmount:refund_amount, refundedAmount:refunded_amount,
-                 refundRemaining:refund_remaining, refundState:refund_state,
-                 roomReleased:room_released
-               ),
+               ${RESERVATION_SETTLED_EMBED},
                income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
             )
             .is('contract_id', null)
@@ -167,6 +166,24 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
       );
       if (data === null) throw new Error('Lỗi tải cọc giữ chỗ');
 
+      const neededSettlementSources = new Set((data ?? []).filter((voucher: any) => voucher.settled).map((voucher: any) => voucher.id as string));
+      const settlementBySource = new Map<string, NonNullable<ReservationDepositRow['settlement']>>();
+      let settlementCursor = null;
+      while (neededSettlementSources.size > settlementBySource.size) {
+        const result = reservationSettlementListSchema.parse(await invokeReservationSettlementRpc(settlementRpc, 'get_reservation_settlements_v1', reservationSettlementListArgs({ buildingIds, cursor: settlementCursor }), reservationSettlementListSchema));
+        for (const row of result.rows) {
+          if (neededSettlementSources.has(row.sourceVoucherId)) {
+            const settlement = reservationSettlementSchema.parse(row);
+            settlementBySource.set(row.sourceVoucherId, {
+              id: settlement.id!, depositAmount: settlement.depositAmount!, retainedAmount: settlement.retainedAmount!,
+              refundAmount: settlement.refundAmount!, refundedAmount: settlement.refundedAmount!, refundRemaining: settlement.refundRemaining!,
+              refundState: settlement.refundState!, roomReleased: settlement.roomReleased!,
+            });
+          }
+        }
+        if (!result.nextCursor) break;
+        settlementCursor = result.nextCursor;
+      }
       // !inner có thể nhân dòng nếu phiếu có >1 item cọc → dedupe theo id.
       const seen = new Set<string>();
       const rows: ReservationDepositRow[] = [];
@@ -192,16 +209,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
           room_id: v.room?.id ?? v.room_id ?? null,
           room_name: v.room?.name ?? null,
           settlement_status: v.settled ? 'SETTLED' : 'UNSETTLED',
-          settlement: v.settled ? {
-            id: v.settled.id,
-            depositAmount: Number(v.settled.depositAmount),
-            retainedAmount: Number(v.settled.retainedAmount),
-            refundAmount: Number(v.settled.refundAmount),
-            refundedAmount: Number(v.settled.refundedAmount),
-            refundRemaining: Number(v.settled.refundRemaining),
-            refundState: v.settled.refundState,
-            roomReleased: Boolean(v.settled.roomReleased),
-          } : null,
+          settlement: settlementBySource.get(v.id) ?? null,
         });
       }
       return rows;

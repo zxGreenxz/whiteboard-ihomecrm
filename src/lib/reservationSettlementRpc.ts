@@ -209,5 +209,7 @@ export async function invokeReservationSettlementRpc<S extends z.ZodTypeAny>(
 ): Promise<z.output<S>> {
   const { data, error } = await rpc(name, args);
   if (error) throw new Error(reservationSettlementErrorMessage(error.message));
-  return schema.parse(data);
+  const parsed = schema.safeParse(data);
+  if (!parsed.success) throw new Error("Dữ liệu xử lý cọc chưa hợp lệ. Hãy tải lại và thử lại.");
+  return parsed.data;
 }

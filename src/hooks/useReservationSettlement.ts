@@ -17,25 +17,36 @@ import {
 import { useRef } from "react";
 import { z } from "zod";
 
-const rpc = supabase.rpc.bind(supabase) as unknown as ReservationSettlementRpcInvoker;
+const rpc = (supabase.rpc as unknown as ReservationSettlementRpcInvoker).bind(supabase);
 type LegQueryResult = { data: unknown; error: { message?: string | null } | null };
 type LegQuery = { select: (columns: string) => { eq: (column: "voucher_id", value: string) => { maybeSingle: () => PromiseLike<LegQueryResult> } } };
-const settlementLegTable = (supabase.from as unknown as (table: "reservation_settlement_vouchers") => LegQuery);
-const settlementLegSchema = z.object({ settlement: reservationSettlementSchema }).nullable();
+export function bindReservationSettlementLegTable(client: { from: (table: string) => unknown }) {
+  return (client.from as unknown as (table: "reservation_settlement_vouchers") => LegQuery).bind(client);
+}
+const settlementLegTable = bindReservationSettlementLegTable(supabase as unknown as { from: (table: string) => unknown });
+const settlementLegSchema = z.object({
+  settlement: z.object({ sourceVoucherId: z.string().uuid() }),
+}).nullable();
+
+export const SETTLEMENT_LEG_SELECT = "settlement:reservation_deposit_settlements!inner(sourceVoucherId:source_voucher_id)";
 
 async function findSettlementByLeg(voucherId: string) {
   const { data, error } = await settlementLegTable("reservation_settlement_vouchers")
-    .select("settlement:reservation_deposit_settlements!inner(id,sourceVoucherId:source_voucher_id,depositAmount:deposit_amount,retainedAmount:retained_amount,refundAmount:refund_amount,refundedAmount:refunded_amount,refundRemaining:refund_remaining,refundState:refund_state,roomReleased:room_released,roomBlockers:room_blockers,revenueVoucherId:revenue_voucher_id,offsetVoucherId:offset_voucher_id,refundVoucherId:refund_voucher_id)")
+    .select(SETTLEMENT_LEG_SELECT)
     .eq("voucher_id", voucherId)
     .maybeSingle();
-  if (error) throw new Error(error.message || "Không đọc được hồ sơ xử lý cọc");
-  return settlementLegSchema.parse(data)?.settlement ?? null;
+  if (error) throw new Error("Không đọc được hồ sơ xử lý cọc. Hãy tải lại và thử lại.");
+  const sourceVoucherId = settlementLegSchema.parse(data)?.settlement.sourceVoucherId;
+  if (!sourceVoucherId) return null;
+  const result = reservationSettlementListSchema.parse(await invokeReservationSettlementRpc(rpc, "get_reservation_settlements_v1", reservationSettlementListArgs({ sourceVoucherId }), reservationSettlementListSchema));
+  return result.rows[0] ? reservationSettlementSchema.parse(result.rows[0]) : null;
 }
 
 const affectedQueryKeys = [
   ["income-expenses"], ["ie-history"], ["voucher-change-log"],
   ["reservation-deposits"], ["orphan-deposit-vouchers"], ["deposit-dashboard"],
   ["reservation-settlement-preview"],
+  ["reservation-settlement-by-voucher"],
   ["reservation-settlements"], ["reservation-settlement-summary"],
   ["rooms"], ["contracts"], ["phong-trong"], ["financial-analysis"],
   ["business-performance"], ["cash-flow-by-day"], ["accounts-with-balance"],

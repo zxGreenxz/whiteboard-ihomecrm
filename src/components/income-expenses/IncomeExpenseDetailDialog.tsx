@@ -33,6 +33,7 @@ import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIncomeExpenseHistory } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
@@ -146,9 +147,11 @@ export function IncomeExpenseDetailDialog({
   const isCancelled = voucher.approval_status === "CANCELLED";
   const isUnapproved = voucher.approval_status === "UNAPPROVED";
   const isExpense = voucher.type === "EXPENSE";
+  const settlement = useReservationSettlementForVoucher(voucher.id, voucher.type === "INCOME" && !voucher.contract_id && voucher.items.some((item) => item.is_deposit));
+  const monetaryActionsAllowed = !settlement.isLoading && !settlement.data;
   const isCreator =
     !!currentUserId && voucher.user_id === currentUserId;
-  const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
+  const showFullEdit = monetaryActionsAllowed && !!onEdit && (isUnapproved || isAdmin);
   const showQuickEdit = canShowAnnotateAction({
     hasHandler: !!onQuickEdit,
     isUnapproved,
@@ -156,7 +159,7 @@ export function IncomeExpenseDetailDialog({
     isCreator,
     canEdit: canUse(perms, "income_expenses", "edit"),
   });
-  const canSettleReservation = voucher.type === "INCOME" && !voucher.contract_id &&
+  const canSettleReservation = monetaryActionsAllowed && voucher.type === "INCOME" && !voucher.contract_id &&
     voucher.approval_status === "APPROVED" && voucher.items.some((item) => item.is_deposit) &&
     canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
 
@@ -257,7 +260,7 @@ export function IncomeExpenseDetailDialog({
                   <Undo2 className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {!isCancelled && onCancel && (
+              {monetaryActionsAllowed && !isCancelled && onCancel && (
                 <Button
                   size="icon"
                   variant="default"

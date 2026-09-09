@@ -1256,7 +1256,14 @@
     "src/hooks/useInvoiceRoundingReport.ts",
     "src/lib/invoiceRoundingReport.ts",
     "src/lib/invoiceRoundingReportRepository.ts",
-    "src/lib/collectionSettlement.ts"
+    "src/lib/collectionSettlement.ts",
+    "src/components/deposits/ReservationPendingRefundList.tsx",
+    "src/components/deposits/ReservationRefundDialog.tsx",
+    "src/components/deposits/ReservationSettlementDialog.tsx",
+    "src/components/deposits/ReservationSettlementStatus.tsx",
+    "src/hooks/useReservationSettlement.ts",
+    "src/lib/reservationSettlementForm.ts",
+    "src/lib/reservationSettlementRpc.ts"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }

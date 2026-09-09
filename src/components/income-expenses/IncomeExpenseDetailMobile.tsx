@@ -23,6 +23,7 @@ import { formatPeriod } from "@/lib/monthPeriod";
 import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
@@ -99,7 +100,9 @@ export function IncomeExpenseDetailMobile({
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
-  const canSettleReservation = v.type === "INCOME" && !v.contract_id &&
+  const settlement = useReservationSettlementForVoucher(v.id, v.type === "INCOME" && !v.contract_id && v.items.some((item) => item.is_deposit));
+  const monetaryActionsAllowed = !settlement.isLoading && !settlement.data;
+  const canSettleReservation = monetaryActionsAllowed && v.type === "INCOME" && !v.contract_id &&
     v.approval_status === "APPROVED" && v.items.some((item) => item.is_deposit) &&
     canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
   const { data: history = [] } = useIncomeExpenseHistory(v.id);
@@ -133,7 +136,7 @@ export function IncomeExpenseDetailMobile({
   const isExpense = v.type === "EXPENSE";
   const accent = v.type === "INCOME" ? "#1f9d57" : "#d6453f";
   const isCreator = !!currentUserId && v.user_id === currentUserId;
-  const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
+  const showFullEdit = monetaryActionsAllowed && !!onEdit && (isUnapproved || isAdmin);
   const showQuickEdit = canShowAnnotateAction({
     hasHandler: !!onQuickEdit,
     isUnapproved,
@@ -258,7 +261,7 @@ export function IncomeExpenseDetailMobile({
                   <RotateCcw size={15} />
                 </button>
               )}
-            {!isCancelled && onCancel && (
+            {monetaryActionsAllowed && !isCancelled && onCancel && (
               <button
                 className="vd-act"
                 style={{ background: "#f97316" }}
