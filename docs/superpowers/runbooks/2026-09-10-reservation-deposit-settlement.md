@@ -22,6 +22,8 @@ Trạng thái: đã hiện thực và kiểm thử; schema đã áp qua lane có
 - Ba đột biến **bảo vệ phiếu nguồn / chia số giữ lại / kiểm quyền** đều làm đúng test đỏ; đã khôi phục SHA-256 migration về tiền tố `32008e7d10b7`. Công cụ `scripts/dot-bien.mjs` trả 0 cả ba lần.
 - `migrate:forward` dry-run trên catalog dùng chung đạt, đã ROLLBACK (1 giây), sau đó apply thành công bằng chính migration đã review.
 - Vitest: **60/60 ca**, gồm biểu mẫu, trạng thái, mở/đóng chi tiết từ phiếu null, bảo vệ ba loại phiếu nội bộ, lỗi tra cứu và preview cọc chưa đủ điều kiện. Các lỗi hồi quy mới đã được tái hiện đỏ trước khi sửa.
+- Bộ kiểm đồng bộ dùng chung: **31/31 ca**. CI lượt đầu phát hiện danh sách bảng mong đợi chưa bổ sung `reservation_deposit_settlements`; đã tái hiện tại máy và cập nhật. Hai ca bổ sung kiểm cache cọc, hàng chờ hoàn và lịch sử phiếu thật sự bị đánh dấu cần tải lại sau sự kiện settlement hoặc thu chi, không ảnh hưởng cache khách hàng.
+- `gate:timezone` sau cập nhật: **5.888/5.888 ca** ở mỗi múi giờ UTC, Asia/Ho_Chi_Minh, Pacific/Kiritimati và Pacific/Midway; cùng 353 file và cùng kết quả.
 - Playwright headless với component/hook thật và PostgREST/PostgreSQL riêng: **4/4 ca** bỏ toàn bộ, hoàn một phần ngay, hoàn sau rồi chi, hoàn toàn bộ trên màn hình điện thoại. Mỗi ca kiểm lại số quỹ và trạng thái từ database. Chặn service worker, WebSocket và mọi request ra ngoài; chỉ chuyển REST sang loopback với JWT thử. Không mock kết quả RPC.
 - Playwright đăng nhập DEMO trên **bản build thật**: **1/1 ca** mở Sổ cọc → Phiếu giữ chỗ → preview → đóng, kiểm HTTP 200 và không gọi hai writer. Đã kiểm thẻ build SHA `77818d77cd124af756e8d44e1fe0c57a9ef5020c`. Phiếu cũ có cọc hợp lệ bằng 0 được hiển thị lý do chặn, không lỗi màn hình.
 - `typecheck:baseline`: 0 fingerprint; `typecheck:e2e`: đạt; lint ratchet: 0 lỗi mới. Build Node 24: 4.798 module, 14,71 giây. `gate:truoc-push`: **42/42 gate**, gồm strict islands, đạt trong 106 giây.
@@ -39,7 +41,7 @@ Teardown đã hoàn tất: xóa database HTTP/browser, xác nhận không còn d
 
 Đã sửa các phát hiện: cọc nguồn lẻ VND bị làm tròn; thứ tự khóa tổ chức/phòng; bỏ sót hold APPROVED; quyền chi trên NOW replay; ngày chi NOW bị gắn với ngày doanh thu. Reviewer độc lập xác nhận không còn blocker tiền/quyền trong migration tại SHA `39744488f131eb8c5d1f50322192524cc837840a`, digest `32008e7d10b730ceef4840fb307288e033be5d868842597ed30f27136e6da2e6`.
 
-Review giao diện tìm thêm lỗi truy vấn cột tính toán như cột thật, mất context của Supabase client, hook sau early return, bảo vệ thao tác tiền và invalidation lịch sử. Đã sửa, tái kiểm thử và reviewer độc lập xác nhận **không còn blocker đã phát hiện** tại SHA `77818d77cd124af756e8d44e1fe0c57a9ef5020c`. SQL không đổi so với bản đã review/applied. Thay đổi sau SHA này chỉ sửa kiểu callback phục vụ lint và bổ sung bằng chứng kiểm thử.
+Review giao diện tìm thêm lỗi truy vấn cột tính toán như cột thật, mất context của Supabase client, hook sau early return, bảo vệ thao tác tiền và invalidation lịch sử. Đã sửa, tái kiểm thử và reviewer độc lập xác nhận **không còn blocker đã phát hiện** tại SHA `77818d77cd124af756e8d44e1fe0c57a9ef5020c`. SQL không đổi so với bản đã review/applied. Thay đổi sau SHA này chỉ sửa kiểu callback phục vụ lint, cập nhật kiểm thử đồng bộ và bổ sung bằng chứng kiểm thử.
 
 ## Phát hành
 

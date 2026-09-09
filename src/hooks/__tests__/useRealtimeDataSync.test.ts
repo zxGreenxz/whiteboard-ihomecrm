@@ -264,6 +264,31 @@ describe("useRealtimeDataSync report invalidation", () => {
     }
   });
 
+  it.each(["reservation_deposit_settlements", "income_expenses"])(
+    "%s refreshes reservation balances, refund queue and source history",
+    (table) => {
+      const queryKeys = [
+        ["reservation-deposits", "building-a"],
+        ["reservation-settlements", "building-a", "PENDING"],
+        ["reservation-settlement-summary", "building-a"],
+        ["reservation-settlement-preview", "voucher-a"],
+        ["reservation-settlement-by-voucher", "voucher-a"],
+        ["orphan-deposit-vouchers", "room-a"],
+      ];
+      for (const key of queryKeys) harness.queryClient.setQueryData(key, []);
+      const unrelatedKey = ["customers", "building-a"];
+      harness.queryClient.setQueryData(unrelatedKey, []);
+
+      useRealtimeDataSync();
+      triggerTable(table);
+
+      for (const key of queryKeys) {
+        expect(harness.queryClient.getQueryState(key)?.isInvalidated, key[0]).toBe(true);
+      }
+      expect(harness.queryClient.getQueryState(unrelatedKey)?.isInvalidated).toBe(false);
+    },
+  );
+
   it("registers every realtime table exactly once per mount", () => {
     useRealtimeDataSync();
 
@@ -276,7 +301,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     // tính chất hành vi — mỗi bảng một handler độc lập — nên nó chỉ tạo ra một
     // cách làm vỡ test mà không có lỗi nào: P1.8 tách descriptor theo miền
     // (finance/contracts/operations), thứ tự nối đổi, test đỏ trong khi không mất
-    // một bảng nào. Hai tính chất THẬT SỰ cần chốt vẫn nguyên: đủ 13 bảng, và
+    // một bảng nào. Hai tính chất THẬT SỰ cần chốt vẫn nguyên: đủ các bảng, và
     // mỗi bảng đúng MỘT lần (dòng expect cuối).
     expect([...registeredTables].sort()).toEqual([
       "invoices",
@@ -303,6 +328,8 @@ describe("useRealtimeDataSync report invalidation", () => {
       // Publication: 20260828130000_realtime_building_fee_tables.sql.
       "building_fee_accounts",
       "building_utility_accounts",
+      // Xử lý bỏ cọc phải cập nhật hàng chờ hoàn và lịch sử trên máy khác.
+      "reservation_deposit_settlements",
     ].sort());
     expect(new Set(registeredTables).size).toBe(registeredTables.length);
   });
