@@ -19385,6 +19385,15 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_report_collection_cycle_v1: {
+        Args: {
+          p_den?: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu?: string
+        }
+        Returns: Json
+      }
       copilot_report_daily_cashbook_v1: {
         Args: {
           p_building_id?: string
@@ -19413,6 +19422,15 @@ export type Database = {
         }
         Returns: Json
       }
+      copilot_report_handover_v1: {
+        Args: {
+          p_den?: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu?: string
+        }
+        Returns: Json
+      }
       copilot_report_new_leases_v1: {
         Args: {
           p_den?: string
@@ -19431,6 +19449,16 @@ export type Database = {
           p_limit?: number
           p_organization_id: string
           p_so_ngay?: number
+        }
+        Returns: Json
+      }
+      copilot_report_promotions_v1: {
+        Args: {
+          p_building_id?: string
+          p_den?: string
+          p_limit?: number
+          p_organization_id: string
+          p_tu?: string
         }
         Returns: Json
       }
