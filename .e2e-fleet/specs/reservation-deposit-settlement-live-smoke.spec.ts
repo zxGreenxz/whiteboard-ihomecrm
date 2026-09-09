@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { login, trackConsoleErrors } from './auth';
 
-// Read-only smoke against the deployed RPCs with the DEMO owner. Money writes
-// are blocked in the browser; SQL/HTTP integration tests exercise settlement.
+// Read-only smoke against deployed RPCs with the DEMO owner. The two new writer
+// RPCs are blocked in the browser; isolated integration tests exercise writes.
+test.use({ serviceWorkers: 'block' });
 test('DEMO: reservation ledger, live preview and cancel without money writes', async ({ page }) => {
   const errors = trackConsoleErrors(page);
   const moneyWrites: string[] = [];

@@ -455,7 +455,11 @@ if(process.env.RESERVATION_TEST_HTTP_URL) {
     ]) test('Browser real RPC: ' + scenario.label, async () => fixture(async f => {
       const before = await f.money();
       const browser = await chromium.launch({ headless: true });
-      const page = await browser.newPage({ viewport: scenario.mobile ? { width: 390, height: 844 } : { width: 1280, height: 1000 } });
+      const context = await browser.newContext({ serviceWorkers: 'block', viewport: scenario.mobile ? { width: 390, height: 844 } : { width: 1280, height: 1000 } });
+      await context.route('**/*', route => new URL(route.request().url()).origin === appUrl.origin
+        ? route.continue() : route.abort('blockedbyclient'));
+      const page = await context.newPage();
+      await page.routeWebSocket('**/*', socket => socket.close());
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/rest/v1/**', async route => {
@@ -469,8 +473,6 @@ if(process.env.RESERVATION_TEST_HTTP_URL) {
         });
         await route.fulfill({ response });
       });
-      // No request to the shared backend may escape the explicit local REST route.
-      await page.route('**/auth/v1/**', route => route.abort());
       try {
         const entry = new URL('/.e2e-fleet/fixtures/reservation-settlement-app.html', appUrl);
         entry.searchParams.set('voucher', f.id);
