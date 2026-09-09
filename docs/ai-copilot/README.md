@@ -5,6 +5,15 @@
 
 ## Tool đang chạy
 
+Các báo cáo khuyến mại, bàn giao tiền và chu kỳ thu nhận kỳ tháng hoặc khoảng ngày;
+mỗi danh sách tối đa 50 dòng, tổng vẫn tính trên toàn phạm vi được phép.
+Bàn giao tiền và chu kỳ thu cần quyền báo cáo toàn công ty vì một sổ có thể gộp tiền
+từ nhiều toà; có DENY theo toà/sổ thì RPC từ chối thay vì trả tổng thiếu kiểm soát.
+Quyền xem sổ quỹ tiếp tục giới hạn các sổ được đọc. Chu kỳ thu chỉ đọc bàn giao của
+chính người gọi và công nợ các toà họ quản lý. Phiên bản này giữ cách tính của trang
+gốc: bàn giao theo phiếu đã duyệt, chu kỳ thu theo `payment_receipt_events`, loại CT
+khỏi tiền thu thực nhưng vẫn tính tiền cấn trừ khi dựng công nợ tại từng mốc.
+
 Bảng dưới sinh từ `src/copilot/tools/**` — gate `npm run gate:copilot-tools` bắt mọi
 sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file này.
 
@@ -13,16 +22,19 @@ sai lệch, kể cả một con số tool gõ tay ở chỗ khác trong file nà
 <!-- KHỐI NÀY SINH TỰ ĐỘNG. Đừng sửa tay:
      node scripts/check-copilot-tool-inventory.mjs --write -->
 
-**64 tool**: 52 đọc · 11 ghi · 1 điều hướng (chỉ mở trang / trả link).
+**67 tool**: 55 đọc · 11 ghi · 1 điều hướng (chỉ mở trang / trả link).
 
 | Tool | Loại | Quyền | Nguồn |
 | --- | --- | --- | --- |
 | `ban_do_he_thong` | read | — (lọc theo từng kết quả) | `src/copilot/tools/registry.ts` |
 | `bang_luong_ky` | read | `salary.view` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_ban_giao` | read | `reports_finance.handover_report` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_chu_ky_thu` | read | `reports_finance.collection_cycle` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_dat_coc` | read | `reports_finance.deposits_report` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_dong_tien` | read | `reports_finance.cash_flow` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_gia_han` | read | `reports_real_estate.renewals_transfers` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_hop_dong_moi` | read | `reports_real_estate.new_leases` | `src/copilot/tools/nghiepVuTools.ts` |
+| `bao_cao_khuyen_mai` | read | `reports_real_estate.promotions` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_lich_thu_tien` | read | `reports_finance.payment_schedule` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_phong_trong` | read | `reports_real_estate.vacant_rooms` | `src/copilot/tools/nghiepVuTools.ts` |
 | `bao_cao_thanh_ly` | read | `reports_real_estate.terminations` | `src/copilot/tools/nghiepVuTools.ts` |

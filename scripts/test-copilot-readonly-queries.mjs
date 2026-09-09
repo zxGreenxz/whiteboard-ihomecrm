@@ -105,6 +105,9 @@ export const REQUIRED_COPILOT_RPCS = Object.freeze([
   "copilot_report_payment_schedule_v1",
   "copilot_report_overpayment_v1",
   "copilot_report_deposits_v1",
+  "copilot_report_promotions_v1",
+  "copilot_report_handover_v1",
+  "copilot_report_collection_cycle_v1",
   // G1-C4 — bon mien nhay cam.
   "copilot_salary_summary_v1",
   "copilot_shareholder_profit_v1",

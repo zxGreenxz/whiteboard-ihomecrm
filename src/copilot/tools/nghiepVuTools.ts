@@ -2663,6 +2663,110 @@ export const trangThaiMang = dt({
   },
 });
 
+const thamSoBaoCaoBoSung = z.object({
+  ky: z.string().regex(KY_RE).optional().describe('Kỳ YYYY-MM; bỏ qua tu/den khi có kỳ.'),
+  tu: z.string().regex(NGAY_RE).optional().describe('Từ ngày YYYY-MM-DD'),
+  den: z.string().regex(NGAY_RE).optional().describe('Đến ngày YYYY-MM-DD'),
+  so_luong: z.number().int().min(1).max(50).default(20),
+});
+
+interface GoiBaoCaoBoSung {
+  gioi_han: number;
+  tu?: string;
+  den?: string;
+  pham_vi?: string;
+  tong_hop: Record<string, number>;
+  khuyen_mai?: Array<{ so_hop_dong: string; toa_nha: string; phong: string; ten: string; giam_gia: number; thuc_thue: number }>;
+  so_quy?: Array<{ ten: string; da_thu: number; da_chi: number; da_ban_giao: number; dang_giu: number }>;
+  phien?: Array<{ ma: string; ngay: string; rong: number }>;
+  doi_soat?: Array<{ so_quy: string; ngay: string; chenh_lech: number }>;
+  toa_nha?: Array<{ ten: string; da_thu: number; chua_thu: number }>;
+  moc_ban_giao?: Array<{ ma: string; ngay: string; rong: number; thu_trong_doan: number; chua_thu_tai_moc: number }>;
+  hien_tai?: { thu_trong_doan: number; chua_thu: number };
+}
+
+const baoCaoKhuyenMai = dt({
+  name: 'bao_cao_khuyen_mai',
+  description: 'Báo cáo khuyến mại hợp đồng theo ngày ký: giảm cố định/phần trăm, tiền giảm và tiền thuê thực sau giảm.',
+  inputSchema: thamSoBaoCaoBoSung.extend({ toa_nha_id: z.string().uuid().optional() }),
+  requiredPermission: { module: 'reports_real_estate', action: 'promotions' },
+  rolloutKey: 'reports.real-estate',
+  execute: async (args, ctx) => {
+    const org = chotToChuc(ctx, 'bao_cao_khuyen_mai');
+    const k = khoangKy(args.ky, args.tu, args.den);
+    const { data, error } = await goiRpcCopilot<{
+      p_organization_id: string; p_tu: string | null; p_den: string | null; p_building_id: string | null; p_limit: number;
+    }, GoiBaoCaoBoSung>('copilot_report_promotions_v1', {
+      p_organization_id: org, p_tu: k.tu, p_den: k.den, p_building_id: args.toa_nha_id ?? null, p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo khuyến mại: ${error.message}`);
+    const rows = data?.khuyen_mai ?? [];
+    const th = data?.tong_hop;
+    const text = rows.length ? [
+      `Kỳ ${nhanKhoang(k.tu, k.den)}: ${th?.so_hop_dong ?? 0} hợp đồng; tổng giảm ${formatVND(th?.tong_giam_gia ?? 0)}.`,
+      `Hiển thị ${rows.length} dòng, tối đa ${data?.gioi_han ?? args.so_luong}; tổng tính toàn phạm vi.`,
+      ...rows.map(r => `- ${maskPii(r.so_hop_dong ?? '?')} — ${maskPii(r.toa_nha ?? '?')}, phòng ${maskPii(r.phong ?? '?')}: giảm ${formatVND(r.giam_gia)}, thực thuê ${formatVND(r.thuc_thue)}.`),
+    ].join('\n') : 'Không có hợp đồng khuyến mại trong phạm vi và kỳ này.';
+    return `${text}\n(nguồn: Báo cáo khuyến mại) [link: /reports/real-estate/promotions]`;
+  },
+});
+
+const baoCaoBanGiao = dt({
+  name: 'bao_cao_ban_giao',
+  description: 'Báo cáo bàn giao tiền và đối soát: thu/chi kỳ, tiền đã bàn giao, số dư hiện tại, phiên bàn giao và chênh lệch kiểm đếm trong các sổ được xem. Cần quyền báo cáo toàn công ty.',
+  inputSchema: thamSoBaoCaoBoSung,
+  requiredPermission: { module: 'reports_finance', action: 'handover_report' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const org = chotToChuc(ctx, 'bao_cao_ban_giao');
+    const k = khoangKy(args.ky, args.tu, args.den);
+    const { data, error } = await goiRpcCopilot<{
+      p_organization_id: string; p_tu: string | null; p_den: string | null; p_limit: number;
+    }, GoiBaoCaoBoSung>('copilot_report_handover_v1', {
+      p_organization_id: org, p_tu: k.tu, p_den: k.den, p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo bàn giao: ${error.message}`);
+    const rows = data?.so_quy ?? [];
+    const th = data?.tong_hop;
+    const text = rows.length ? [
+      `Kỳ ${nhanKhoang(data?.tu ?? k.tu, data?.den ?? k.den)}: thu ${formatVND(th?.da_thu ?? 0)}, chi ${formatVND(th?.da_chi ?? 0)}, đã bàn giao ${formatVND(th?.da_ban_giao ?? 0)}, đang giữ hiện tại ${formatVND(th?.dang_giu ?? 0)}.`,
+      `Tổng trên ${th?.so_so_quy ?? 0} sổ được xem; mỗi danh sách tối đa ${data?.gioi_han ?? args.so_luong} dòng.`,
+      ...rows.map(r => `- ${maskPii(r.ten)}: thu ${formatVND(r.da_thu)}, chi ${formatVND(r.da_chi)}, bàn giao ${formatVND(r.da_ban_giao)}, đang giữ ${formatVND(r.dang_giu)}.`),
+      ...(data?.phien ?? []).map(r => `- Phiên ${maskPii(r.ma ?? '?')} (${r.ngay}): ròng ${formatVND(r.rong)}.`),
+      ...(data?.doi_soat ?? []).map(r => `- Đối soát ${maskPii(r.so_quy)} (${r.ngay}): chênh lệch ${formatVND(r.chenh_lech)}.`),
+    ].join('\n') : 'Không có dữ liệu bàn giao trong các sổ được xem.';
+    return `${text}\n(nguồn: Báo cáo bàn giao tiền) [link: /reports/finance/ban-giao]`;
+  },
+});
+
+const baoCaoChuKyThu = dt({
+  name: 'bao_cao_chu_ky_thu',
+  description: 'Báo cáo chu kỳ thu → bàn giao của chính bạn: tiền thu thực trong kỳ, công nợ các toà bạn quản lý, từng mốc bàn giao và chưa thu tại mốc. Cần quyền báo cáo toàn công ty.',
+  inputSchema: thamSoBaoCaoBoSung,
+  requiredPermission: { module: 'reports_finance', action: 'collection_cycle' },
+  rolloutKey: 'reports.finance',
+  execute: async (args, ctx) => {
+    const org = chotToChuc(ctx, 'bao_cao_chu_ky_thu');
+    const k = khoangKy(args.ky, args.tu, args.den);
+    const { data, error } = await goiRpcCopilot<{
+      p_organization_id: string; p_tu: string | null; p_den: string | null; p_limit: number;
+    }, GoiBaoCaoBoSung>('copilot_report_collection_cycle_v1', {
+      p_organization_id: org, p_tu: k.tu, p_den: k.den, p_limit: args.so_luong,
+    });
+    if (error) throw new Error(`Lỗi tải báo cáo chu kỳ thu: ${error.message}`);
+    const rows = data?.toa_nha ?? [];
+    const th = data?.tong_hop;
+    const text = rows.length || data?.moc_ban_giao?.length ? [
+      `Kỳ ${nhanKhoang(data?.tu ?? k.tu, data?.den ?? k.den)}: thu thực ${formatVND(th?.da_thu_trong_ky ?? 0)}, đã bàn giao ${formatVND(th?.da_ban_giao ?? 0)}, chưa thu hiện tại ${formatVND(th?.chua_thu_hien_tai ?? 0)}.`,
+      `Các toà bạn quản lý trong phạm vi được cấp quyền; bàn giao của chính bạn trong các sổ được xem. Tổng trên ${th?.so_toa ?? 0} toà, ${th?.so_moc ?? 0} mốc; mỗi danh sách tối đa ${data?.gioi_han ?? args.so_luong} dòng.`,
+      ...rows.map(r => `- ${maskPii(r.ten)}: đã thu ${formatVND(r.da_thu)}, chưa thu ${formatVND(r.chua_thu)}.`),
+      ...(data?.moc_ban_giao ?? []).map(r => `- ${maskPii(r.ma ?? '?')} (${r.ngay}): bàn giao ${formatVND(r.rong)}, thu trong đoạn ${formatVND(r.thu_trong_doan)}, chưa thu tại mốc ${formatVND(r.chua_thu_tai_moc)}.`),
+      `Đoạn hiện tại: thu ${formatVND(data?.hien_tai?.thu_trong_doan ?? 0)}, chưa thu ${formatVND(data?.hien_tai?.chua_thu ?? 0)}.`,
+    ].join('\n') : 'Không có dữ liệu chu kỳ thu trong các toà được cấp quyền.';
+    return `${text}\n(nguồn: Báo cáo chu kỳ thu → bàn giao) [link: /reports/finance/thu-ban-giao]`;
+  },
+});
+
 /** Gom lại để registry chèn vào một chỗ. */
 export const TOOL_NGHIEP_VU: DomainTool[] = [
   tyLeLapDay as DomainTool,
@@ -2690,6 +2794,9 @@ export const TOOL_NGHIEP_VU: DomainTool[] = [
   baoCaoLichThuTien as DomainTool,
   baoCaoThuThua as DomainTool,
   baoCaoDatCoc as DomainTool,
+  baoCaoKhuyenMai as DomainTool,
+  baoCaoBanGiao as DomainTool,
+  baoCaoChuKyThu as DomainTool,
   bangLuongKy as DomainTool,
   loiNhuanCoDong as DomainTool,
   hoiThoaiZalo as DomainTool,

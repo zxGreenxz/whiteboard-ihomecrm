@@ -3138,3 +3138,31 @@ describe('trang_thai_gach_no_tu_dong - server RPC boundary', () => {
     expect(COPILOT_ROLLOUT_CONTRACTS.some((entry) => entry.contractId === KHOA_ROLLOUT_TRANG_THAI_GACH_NO_TU_DONG)).toBe(true);
   });
 });
+
+describe('remaining G1 reports — selected organization, period and permission', () => {
+  const reports = [
+    ['bao_cao_khuyen_mai', 'promotions', 'reports_real_estate', 'promotions', '/reports/real-estate/promotions'],
+    ['bao_cao_ban_giao', 'handover', 'reports_finance', 'handover_report', '/reports/finance/ban-giao'],
+    ['bao_cao_chu_ky_thu', 'collection_cycle', 'reports_finance', 'collection_cycle', '/reports/finance/thu-ban-giao'],
+  ] as const;
+  beforeEach(() => rpc.mockReset());
+  for (const [name, suffix, module, action, route] of reports) {
+    it(`${name}: bounded RPC uses selected org and full month, including leap day`, async () => {
+      const t = tool(name);
+      expect(t.requiredPermission).toEqual({ module, action });
+      rpc.mockResolvedValue({ data: { gioi_han: 2, tong_hop: {} }, error: null });
+      const result = await t.execute(t.inputSchema.parse({ ky: '2028-02', so_luong: 2 }), ctx);
+      expect(rpc).toHaveBeenCalledWith(`copilot_report_${suffix}_v1`, expect.objectContaining({
+        p_organization_id: ORG, p_tu: '2028-02-01', p_den: '2028-02-29', p_limit: 2,
+      }));
+      expect(result).toContain(route);
+      expect(result).toMatch(/không có|Không có/);
+    });
+    it(`${name}: errors remain errors and invalid limits are rejected`, async () => {
+      const t = tool(name);
+      expect(() => t.inputSchema.parse({ so_luong: 51 })).toThrow();
+      rpc.mockResolvedValue({ data: null, error: { message: 'not_permitted' } });
+      await expect(t.execute(t.inputSchema.parse({}), ctx)).rejects.toThrow('not_permitted');
+    });
+  }
+});

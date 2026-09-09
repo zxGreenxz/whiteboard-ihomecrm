@@ -127,6 +127,9 @@ const TOOL_MARKERS = [
   ['bao_cao_dong_tien', /\bdong tien\b/],
   ['bao_cao_lich_thu_tien', /\blich thu tien\b/],
   ['bao_cao_thu_thua', /\bthu thua\b|\btra thua\b/],
+  ['bao_cao_khuyen_mai', /\bbao cao khuyen mai\b/],
+  ['bao_cao_ban_giao', /\bbao cao ban giao tien\b/],
+  ['bao_cao_chu_ky_thu', /\bbao cao chu ky thu\b/],
   ['bao_cao_dat_coc', /\bdat coc\b/],
   // G1-C4, bon mien nhay cam. Cung ky luat nhu hai khoi tren — va o day co mot
   // cai bay rieng cua tieng Viet bo dau: 'so luong' cung fold ve 'luong', nen

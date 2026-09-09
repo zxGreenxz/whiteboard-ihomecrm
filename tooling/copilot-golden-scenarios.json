@@ -1297,6 +1297,48 @@
       ],
       "prompt": "Danh mục dịch vụ",
       "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C93",
+      "fixture": "report-promotions-demo",
+      "oracle": "report-promotions-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Báo cáo khuyến mại tháng 9 năm 2026",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C94",
+      "fixture": "report-handover-demo",
+      "oracle": "report-handover-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Báo cáo bàn giao tiền tháng 9 năm 2026",
+      "executorStatus": "not-implemented"
+    },
+    {
+      "id": "C95",
+      "fixture": "report-collection-cycle-demo",
+      "oracle": "report-collection-cycle-v1",
+      "kind": "read",
+      "acceptance": [
+        "completed-final-answer",
+        "matched-tool-result-in-later-round",
+        "canonical-demo-facts-and-empty-state",
+        "zero-business-writes"
+      ],
+      "prompt": "Báo cáo chu kỳ thu tháng 9 năm 2026",
+      "executorStatus": "not-implemented"
     }
   ]
 }

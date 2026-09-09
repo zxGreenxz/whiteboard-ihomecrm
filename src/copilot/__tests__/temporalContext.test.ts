@@ -257,6 +257,12 @@ describe('quetThamSoKy — nối MỌI tool có tham số kỳ, không phải ha
     expect(ban.doanh_thu_thang?.ky).toBe('thang');
     expect(ban.tim_hoa_don?.ky).toBe('thang');
     expect(ban.bao_cao_dong_tien?.tu).toBe('tu');
+    for (const name of ['bao_cao_khuyen_mai', 'bao_cao_ban_giao', 'bao_cao_chu_ky_thu']) {
+      expect(ban[name]).toEqual({ ky: 'ky', tu: 'tu', den: 'den' });
+      const quarter = resolveRelativePeriod('quý này', ctx('2026-08'));
+      const resolved = apDungKyTuongDoi(name, { ky: '2026-08' }, quarter, ban);
+      expect(resolved.args).toEqual({ tu: '2026-07-01', den: '2026-09-30' });
+    }
     expect(ban.tim_phieu_thu_chi?.tu).toBe('tu_ngay');
     expect(ban.phong_trong).toBeUndefined();
   });
