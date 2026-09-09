@@ -26,7 +26,7 @@ import {
   formatMoney,
   humanizeChangeLog,
 } from "./voucherHistoryFormat";
-import { useReservationSettlements } from "@/hooks/useReservationSettlement";
+import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { ReservationSettlementStatus } from "@/components/deposits/ReservationSettlementStatus";
 
 export interface VoucherHistoryTarget {
@@ -76,10 +76,8 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
     useVoucherCancellation(voucherId);
   const { data: changeLog, isLoading: loadingLog, error: logError } =
     useVoucherChangeLog(voucherId);
-  const reservationSettlements = useReservationSettlements({ enabled: open && !!voucherId });
-  const reservationSettlement = reservationSettlements.data?.rows.find((row) =>
-    voucherId != null && [row.sourceVoucherId, row.revenueVoucherId, row.offsetVoucherId, row.refundVoucherId].includes(voucherId),
-  );
+  const reservationSettlementQuery = useReservationSettlementForVoucher(voucherId, open);
+  const reservationSettlement = reservationSettlementQuery.data;
 
   const entries = humanizeChangeLog(changeLog);
   const kind = cancellationKindText(cancellation?.cancellation_kind);
@@ -171,7 +169,7 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
         </section>
 
         {/* ── Nhật ký thay đổi trước / sau ────────────────────────────────── */}
-        {reservationSettlement && <section className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3"><h3 className="text-sm font-semibold">Xử lý cọc giữ chỗ liên quan</h3><ReservationSettlementStatus settlement={reservationSettlement} /><p className="text-xs text-muted-foreground">Phiếu nhận ban đầu: {reservationSettlement.voucherCode || reservationSettlement.sourceVoucherId} · ngày xử lý {reservationSettlement.settlementDate}</p></section>}
+        {reservationSettlement && <section className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3"><h3 className="text-sm font-semibold">Xử lý cọc giữ chỗ liên quan</h3><ReservationSettlementStatus settlement={reservationSettlement} />{"voucherCode" in reservationSettlement && "settlementDate" in reservationSettlement && <p className="text-xs text-muted-foreground">Phiếu nhận ban đầu: {String(reservationSettlement.voucherCode || reservationSettlement.sourceVoucherId)} · ngày xử lý {String(reservationSettlement.settlementDate)}</p>}</section>}
         <section className="space-y-3 rounded-lg border border-zinc-200 p-3">
           <h3 className="text-sm font-semibold">Nhật ký thay đổi</h3>
 

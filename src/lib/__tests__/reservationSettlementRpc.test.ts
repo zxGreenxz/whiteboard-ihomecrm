@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  reservationSettlementListArgs,
+  reservationSettlementErrorMessage,
+  createReservationIdempotencyStore,
   reservationSettlementListSchema,
   reservationSettlementPreviewSchema,
   reservationSettlementSchema,
@@ -23,6 +26,35 @@ const settlement = {
 } as const;
 
 describe("reservation settlement RPC DTOs", () => {
+  it("sends the source voucher filter before pagination", () => {
+    expect(reservationSettlementListArgs({
+      sourceVoucherId: settlement.sourceVoucherId,
+      refundState: "PENDING",
+    })).toEqual({
+      p_building_ids: null,
+      p_refund_state: "PENDING",
+      p_cursor: null,
+      p_limit: 50,
+      p_source_voucher_id: settlement.sourceVoucherId,
+    });
+  });
+
+  it("turns server codes into a short business message", () => {
+    expect(reservationSettlementErrorMessage("[PERIOD_LOCKED] cashbook_closed_through_v1 failed"))
+      .toBe("Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa.");
+    expect(reservationSettlementErrorMessage("select * from private_table"))
+      .toBe("Không thể xử lý cọc giữ chỗ. Vui lòng thử lại.");
+  });
+
+  it("keeps a key for ambiguous retry and retires it after confirmed success", () => {
+    const generated = ["uuid-1", "uuid-2"];
+    const store = createReservationIdempotencyStore("refund", () => generated.shift()!);
+    const payload = { settlementId: "s1", accountId: "a1", paidOn: "2026-09-10" };
+    expect(store.keyFor(payload)).toBe("refund:uuid-1");
+    expect(store.keyFor(payload)).toBe("refund:uuid-1");
+    store.retire(payload);
+    expect(store.keyFor(payload)).toBe("refund:uuid-2");
+  });
   it("rejects a settlement whose retained and refund amounts exceed the deposit", () => {
     expect(() => reservationSettlementSchema.parse({
       ...settlement,

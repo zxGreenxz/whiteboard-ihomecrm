@@ -3,10 +3,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAccounts } from "@/hooks/useAccounts";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useCustodianCashbooksV2 } from "@/hooks/income-expenses/financeV2Mutations";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { can } from "@/lib/permissions";
 import { vnTodayISO } from "@/lib/vnDate";
@@ -23,9 +23,8 @@ export function ReservationSettlementDialog({ voucherId, open, onOpenChange }: {
 }) {
   const preview = useReservationSettlementPreview(voucherId, open);
   const settle = useSettleReservationDeposit();
-  const { data: accounts = [] } = useAccounts({ enabled: open });
+  const { data: realAccounts = [] } = useCustodianCashbooksV2(open);
   const { data: perms } = useMyPermissions();
-  const realAccounts = accounts.filter((account) => account.is_virtual === false);
   const hasSettlementPermission = can(perms, "deposits", "refund") && can(perms, "income_expenses", "approve");
   const [refundAmount, setRefundAmount] = useState(0);
   const [refundMode, setRefundMode] = useState<RefundMode>("NONE");
@@ -33,11 +32,12 @@ export function ReservationSettlementDialog({ voucherId, open, onOpenChange }: {
   const [reasonCode, setReasonCode] = useState<SettlementReason>("CHANGED_MIND");
   const [reasonText, setReasonText] = useState("");
   const [settlementDate, setSettlementDate] = useState(vnTodayISO());
+  const [confirmedPaid, setConfirmedPaid] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setRefundAmount(0); setRefundMode("NONE"); setAccountId(null);
-    setReasonCode("CHANGED_MIND"); setReasonText(""); setSettlementDate(vnTodayISO());
+    setReasonCode("CHANGED_MIND"); setReasonText(""); setSettlementDate(vnTodayISO()); setConfirmedPaid(false);
   }, [open, voucherId]);
 
   useEffect(() => {
@@ -80,14 +80,15 @@ export function ReservationSettlementDialog({ voucherId, open, onOpenChange }: {
       <div className="rounded-md bg-muted p-3 text-sm"><b>{preview.data.voucherCode || "Phiếu giữ chỗ"}</b><div>{preview.data.payerName || "—"} · {preview.data.buildingName || "—"}{preview.data.roomName ? ` / ${preview.data.roomName}` : ""}</div><div className="mt-2 text-base font-bold">Cọc thực nhận: {formatCurrency(preview.data.depositAmount)}</div></div>
       {blockerMessage && <Alert variant="destructive"><AlertDescription>{blockerMessage}</AlertDescription></Alert>}
       {!hasSettlementPermission && <Alert><AlertDescription>Cần quyền Hoàn / bỏ cọc và Duyệt thu chi để xác nhận.</AlertDescription></Alert>}
-      <div><Label>Hoàn lại khách</Label><Input type="number" min={0} max={preview.data.depositAmount} step={1} value={refundAmount} onChange={(e) => setRefundAmount(Number(e.target.value))} /></div>
+      <div><Label htmlFor="reservation-refund-amount">Hoàn lại khách</Label><Input id="reservation-refund-amount" type="number" min={0} max={preview.data.depositAmount} step={1} value={refundAmount} onChange={(e) => setRefundAmount(Number(e.target.value))} /></div>
       <div className="rounded-md border p-3"><span className="text-muted-foreground">Giữ lại → doanh thu</span><b className="float-right">{split ? formatCurrency(split.retainedAmount) : "—"}</b></div>
-      {refundAmount > 0 && <div><Label>Cách hoàn</Label><Select value={refundMode} onValueChange={(value) => setRefundMode(value as RefundMode)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{preview.data.canRefundNow && <SelectItem value="NOW">Hoàn ngay — tôi đã trả tiền cho khách</SelectItem>}<SelectItem value="LATER">Hoàn sau — ghi nhận phải trả</SelectItem></SelectContent></Select>{!preview.data.canRefundNow && <p className="mt-1 text-xs text-muted-foreground">Bạn chưa có quyền thực chi; có thể ghi nhận Hoàn sau.</p>}</div>}
-      {refundMode === "NOW" && <div><Label>Sổ quỹ đã chi</Label><Select value={accountId ?? ""} onValueChange={setAccountId}><SelectTrigger><SelectValue placeholder="Chọn sổ quỹ" /></SelectTrigger><SelectContent>{realAccounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></div>}
-      <div><Label>Ngày xử lý</Label><Input type="date" min={preview.data.voucherDate} max={vnTodayISO()} value={settlementDate} onChange={(e) => setSettlementDate(e.target.value)} /></div>
-      <div><Label>Lý do</Label><Select value={reasonCode} onValueChange={(value) => setReasonCode(value as SettlementReason)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="CHANGED_MIND">Khách đổi ý</SelectItem><SelectItem value="NO_SHOW">Không đến ký hợp đồng</SelectItem><SelectItem value="OTHER">Khác</SelectItem></SelectContent></Select></div>
-      {reasonCode === "OTHER" && <div><Label>Nội dung lý do</Label><Input value={reasonText} onChange={(e) => setReasonText(e.target.value)} /></div>}
-      <Button className="w-full" disabled={!preview.data.canSettle || !hasSettlementPermission || !split || settle.isPending} onClick={submit}>Xác nhận xử lý</Button>
+      {refundAmount > 0 && <div><Label htmlFor="reservation-refund-mode">Cách hoàn</Label><select id="reservation-refund-mode" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={refundMode} onChange={(event) => setRefundMode(event.target.value as RefundMode)}>{preview.data.canRefundNow && <option value="NOW">Hoàn ngay — tôi đã trả tiền cho khách</option>}<option value="LATER">Hoàn sau — ghi nhận phải trả</option></select>{!preview.data.canRefundNow && <p className="mt-1 text-xs text-muted-foreground">Bạn chưa có quyền thực chi; có thể ghi nhận Hoàn sau.</p>}</div>}
+      {refundMode === "NOW" && <div><Label htmlFor="reservation-refund-account">Sổ quỹ đã chi</Label><select id="reservation-refund-account" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={accountId ?? ""} onChange={(event) => setAccountId(event.target.value || null)}><option value="">Chọn sổ quỹ</option>{realAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>}
+      {refundMode === "NOW" && <label className="flex items-start gap-2 text-sm"><Checkbox checked={confirmedPaid} onCheckedChange={(value) => setConfirmedPaid(value === true)} aria-label="Xác nhận đã trả tiền cho khách" /><span>Tôi xác nhận đã trả tiền cho khách. Khoản hoàn được ghi nhận hôm nay, dù ngày xử lý doanh thu sớm hơn.</span></label>}
+      <div><Label htmlFor="reservation-settlement-date">Ngày xử lý</Label><Input id="reservation-settlement-date" type="date" min={preview.data.voucherDate} max={vnTodayISO()} value={settlementDate} onChange={(e) => setSettlementDate(e.target.value)} /></div>
+      <div><Label htmlFor="reservation-reason-code">Lý do</Label><select id="reservation-reason-code" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={reasonCode} onChange={(event) => setReasonCode(event.target.value as SettlementReason)}><option value="CHANGED_MIND">Khách đổi ý</option><option value="NO_SHOW">Không đến ký hợp đồng</option><option value="OTHER">Khác</option></select></div>
+      {reasonCode === "OTHER" && <div><Label htmlFor="reservation-reason-text">Nội dung lý do</Label><Input id="reservation-reason-text" value={reasonText} onChange={(e) => setReasonText(e.target.value)} /></div>}
+      <Button className="w-full" disabled={!preview.data.canSettle || !hasSettlementPermission || !split || (refundMode === "NOW" && !confirmedPaid) || settle.isPending} onClick={submit}>Xác nhận xử lý</Button>
     </div>}
   </DialogContent></Dialog>;
 }

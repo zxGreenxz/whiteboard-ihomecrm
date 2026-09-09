@@ -902,18 +902,18 @@ const DepositsDesktop = () => {
                           <TableCell className="text-right">{formatCurrency(r.total_amount)}</TableCell>
                           <TableCell>{r.voucher_date ? formatDate(r.voucher_date) : "-"}</TableCell>
                           <TableCell>
-                            <Badge className={st?.color || ""}>{st?.label || r.approval_status}</Badge>
+                            {r.settlement ? <div className="space-y-1"><Badge variant="secondary">{r.settlement.retainedAmount === 0 ? (r.settlement.refundState === "PAID" ? "Đã hoàn cọc" : "Chờ hoàn cọc") : r.settlement.refundAmount > 0 ? "Đã bỏ cọc một phần" : "Đã bỏ cọc"}</Badge>{r.settlement.refundRemaining > 0 && <div className="text-xs text-amber-700">Chờ hoàn {formatCurrency(r.settlement.refundRemaining)}</div>}</div> : <Badge className={st?.color || ""}>{st?.label || r.approval_status}</Badge>}
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-2">
-                            {canConvertDeposit &&
+                            {r.settlement_status === "UNSETTLED" && canConvertDeposit &&
                               r.approval_status === "APPROVED" &&
                               r.room_id && (
                                 <Button size="sm" onClick={() => handleConvertReservation(r)}>
                                   Tạo HĐ
                                 </Button>
                               )}
-                            {canSettleDeposit && r.approval_status === "APPROVED" && (
+                            {r.settlement_status === "UNSETTLED" && canSettleDeposit && r.approval_status === "APPROVED" && (
                               <Button size="sm" variant="outline" onClick={() => setSettlementVoucherId(r.id)}>Xử lý bỏ cọc</Button>
                             )}
                             </div>

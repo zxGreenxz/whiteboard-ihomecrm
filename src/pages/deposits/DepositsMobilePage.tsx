@@ -13,6 +13,7 @@ import {
   useHeldDeposits,
   useHeldDepositSummary,
   useRefundForfeitSummary,
+  useReservationDepositSettlementSummary,
 } from "@/hooks/useDepositDashboard";
 import { useReservationDeposits } from "@/hooks/useDeposits";
 import { useReservationHoldDeadlines } from "@/hooks/useReservationHoldDeadlines";
@@ -134,6 +135,7 @@ export default function DepositsMobilePage() {
   const { data: reservations = [], isLoading: resvLoading } = useReservationDeposits();
   const { data: heldAgg = [] } = useHeldDepositSummary();
   const { data: rfSummary } = useRefundForfeitSummary();
+  const { data: settlementSummary } = useReservationDepositSettlementSummary();
   const { data: holdTerms = {} } = useReservationHoldDeadlines();
 
   const kpi = useMemo(() => {
@@ -188,7 +190,7 @@ export default function DepositsMobilePage() {
       id: `v:${r.id}`,
       kind: "HOLD" as const,
       dot:
-        r.approval_status === "APPROVED"
+        r.settlement_status === "SETTLED" ? "#7c3aed" : r.approval_status === "APPROVED"
           ? "#159a57"
           : r.approval_status === "UNAPPROVED"
             ? "#d9a514"
@@ -196,7 +198,11 @@ export default function DepositsMobilePage() {
       head: `P.${r.room_name ?? "—"} · ${r.building_name}`,
       sub: `${r.payer_name ?? "—"}${r.code ? ` · ${r.code}` : ""}`,
       amount: r.total_amount,
-      meta: formatISODayMonth(r.voucher_date),
+      meta: r.settlement
+        ? r.settlement.retainedAmount === 0
+          ? r.settlement.refundState === "PAID" ? "Đã hoàn cọc" : `Chờ hoàn ${formatMoneyShort(r.settlement.refundRemaining)}`
+          : r.settlement.refundAmount > 0 ? "Đã bỏ cọc một phần" : "Đã bỏ cọc"
+        : formatISODayMonth(r.voucher_date),
       to: null as string | null,
     }));
     const all = [...shortRows, ...resvRows];
@@ -302,6 +308,8 @@ export default function DepositsMobilePage() {
                 </div>
               )}
             </div>
+
+            {settlementSummary && <div className="mx-4 mb-3 grid grid-cols-3 gap-2 rounded-xl border bg-white p-3 text-center text-xs"><div><span className="text-muted-foreground">Giữ lại</span><b className="mt-1 block">{formatMoneyShort(settlementSummary.retainedAmount)}</b></div><div><span className="text-muted-foreground">Chờ hoàn</span><b className="mt-1 block text-amber-700">{formatMoneyShort(settlementSummary.refundPendingAmount)}</b></div><div><span className="text-muted-foreground">Đã hoàn</span><b className="mt-1 block text-emerald-700">{formatMoneyShort(settlementSummary.refundPaidAmount)}</b></div></div>}
 
             <div className="dp-seg">
               <button

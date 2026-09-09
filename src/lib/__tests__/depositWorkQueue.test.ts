@@ -39,6 +39,7 @@ function resvRow(over: Partial<ReservationDepositRow> = {}): ReservationDepositR
     voucher_date: "2026-08-14",
     approval_status: "APPROVED",
     settlement_status: "UNSETTLED",
+    settlement: null,
     building_id: "b1",
     building_name: "78 Cách Mạng Tháng 8",
     room_id: "r1",

@@ -122,6 +122,21 @@ export type ReservationSettlementSummary = z.infer<typeof reservationSettlementS
 export type ReservationSettlementListRow = z.infer<typeof reservationSettlementListRowSchema>;
 export type ReservationSettlementCursor = z.infer<typeof reservationSettlementCursorSchema>;
 
+export function reservationSettlementListArgs(input?: {
+  buildingIds?: string[];
+  refundState?: RefundState | null;
+  cursor?: ReservationSettlementCursor | null;
+  sourceVoucherId?: string | null;
+}) {
+  return {
+    p_building_ids: input?.buildingIds?.length ? input.buildingIds : null,
+    p_refund_state: input?.refundState ?? null,
+    p_cursor: input?.cursor ?? null,
+    p_limit: 50,
+    p_source_voucher_id: input?.sourceVoucherId ?? null,
+  };
+}
+
 export interface SettleReservationInput {
   voucherId: string;
   refundAmount: number;
@@ -153,13 +168,46 @@ export type ReservationSettlementRpcInvoker = (
   args: Record<string, unknown>,
 ) => PromiseLike<{ data: unknown; error: { message?: string | null } | null }>;
 
-export async function invokeReservationSettlementRpc<T>(
+const SETTLEMENT_ERROR_MESSAGES: ReadonlyArray<readonly [string, string]> = [
+  ["PERMISSION_DENIED", "Bạn chưa đủ quyền thực hiện thao tác này."],
+  ["NOT_CUSTODIAN", "Bạn không phải Người giữ sổ quỹ đã chọn."],
+  ["PERIOD_LOCKED", "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa."],
+  ["SOURCE_CHANGED", "Phiếu đã thay đổi. Hãy tải lại trước khi xử lý."],
+  ["NOT_RECEIVED", "Phiếu chưa có bằng chứng tiền đã vào quỹ."],
+  ["ALREADY_USED", "Phiếu cọc đã được dùng cho nghiệp vụ khác."],
+  ["DEPOSIT_CLASS_MISMATCH", "Hạng mục cọc chưa thống nhất, cần đối chiếu trước."],
+];
+
+export function reservationSettlementErrorMessage(message?: string | null) {
+  const matched = SETTLEMENT_ERROR_MESSAGES.find(([code]) => message?.includes(code));
+  return matched?.[1] ?? "Không thể xử lý cọc giữ chỗ. Vui lòng thử lại.";
+}
+
+export function createReservationIdempotencyStore(prefix: string, createId: () => string = () => crypto.randomUUID()) {
+  const keys = new Map<string, string>();
+  const signatureOf = (payload: object) => JSON.stringify(payload);
+  return {
+    keyFor(payload: object) {
+      const signature = signatureOf(payload);
+      const current = keys.get(signature);
+      if (current) return current;
+      const next = `${prefix}:${createId()}`;
+      keys.set(signature, next);
+      return next;
+    },
+    retire(payload: object) {
+      keys.delete(signatureOf(payload));
+    },
+  };
+}
+
+export async function invokeReservationSettlementRpc<S extends z.ZodTypeAny>(
   rpc: ReservationSettlementRpcInvoker,
   name: ReservationSettlementRpcName,
   args: Record<string, unknown>,
-  schema: z.ZodType<T>,
-): Promise<T> {
+  schema: S,
+): Promise<z.output<S>> {
   const { data, error } = await rpc(name, args);
-  if (error) throw new Error(error.message || "Không thể xử lý cọc giữ chỗ");
+  if (error) throw new Error(reservationSettlementErrorMessage(error.message));
   return schema.parse(data);
 }

@@ -51,7 +51,7 @@ export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) =>
         .select(
           `id, code, name, total_amount, voucher_date, approval_status,
            income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) ),
-           reservation_deposit_settlements ( id )`,
+           settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey ( id )`,
         )
         .is('contract_id', null)
         .is('deleted_at', null)
@@ -59,7 +59,7 @@ export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) =>
         .eq('room_id', roomId)
         .in('approval_status', ['APPROVED', 'UNAPPROVED'])
         .eq('income_expense_items.income_expense_types.is_deposit', true)
-        .is('reservation_deposit_settlements.id', null);
+        .is('settled', null);
 
       if (startDate) {
         const d = new Date(startDate);
@@ -107,6 +107,16 @@ export interface ReservationDepositRow {
   room_name: string | null;
   /** Trạng thái nghiệp vụ riêng; không dùng approval_status để biểu diễn bỏ cọc. */
   settlement_status: 'UNSETTLED' | 'SETTLED';
+  settlement: {
+    id: string;
+    depositAmount: number;
+    retainedAmount: number;
+    refundAmount: number;
+    refundedAmount: number;
+    refundRemaining: number;
+    refundState: 'NOT_REQUIRED' | 'PENDING' | 'PAID';
+    roomReleased: boolean;
+  } | null;
 }
 
 /**
@@ -133,7 +143,12 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
                approval_status, building_id, room_id,
                building:buildings!income_expenses_building_id_fkey ( id, name ),
                room:rooms!income_expenses_room_id_fkey ( id, name ),
-               reservation_deposit_settlements ( id ),
+               settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey (
+                 id, depositAmount:deposit_amount, retainedAmount:retained_amount,
+                 refundAmount:refund_amount, refundedAmount:refunded_amount,
+                 refundRemaining:refund_remaining, refundState:refund_state,
+                 roomReleased:room_released
+               ),
                income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
             )
             .is('contract_id', null)
@@ -141,7 +156,6 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
             .eq('type', 'INCOME')
             .in('approval_status', ['APPROVED', 'UNAPPROVED', 'CANCELLED'])
             .eq('income_expense_items.income_expense_types.is_deposit', true)
-            .is('reservation_deposit_settlements.id', null)
             .order('voucher_date', { ascending: false })
             .order('id', { ascending: true });
           if (buildingIds && buildingIds.length > 0) {
@@ -177,7 +191,17 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
           building_name: v.building?.name ?? '—',
           room_id: v.room?.id ?? v.room_id ?? null,
           room_name: v.room?.name ?? null,
-          settlement_status: 'UNSETTLED',
+          settlement_status: v.settled ? 'SETTLED' : 'UNSETTLED',
+          settlement: v.settled ? {
+            id: v.settled.id,
+            depositAmount: Number(v.settled.depositAmount),
+            retainedAmount: Number(v.settled.retainedAmount),
+            refundAmount: Number(v.settled.refundAmount),
+            refundedAmount: Number(v.settled.refundedAmount),
+            refundRemaining: Number(v.settled.refundRemaining),
+            refundState: v.settled.refundState,
+            roomReleased: Boolean(v.settled.roomReleased),
+          } : null,
         });
       }
       return rows;
