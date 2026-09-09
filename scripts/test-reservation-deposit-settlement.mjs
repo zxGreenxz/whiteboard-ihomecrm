@@ -465,10 +465,13 @@ if(process.env.RESERVATION_TEST_HTTP_URL) {
       await page.route('**/rest/v1/**', async route => {
         const source = new URL(route.request().url());
         const path = source.pathname.split('/rest/v1/')[1];
+        const originalHeaders = route.request().headers();
+        const transportHeaders = Object.fromEntries(['accept', 'prefer', 'range', 'range-unit', 'accept-profile', 'content-profile']
+          .filter(name => originalHeaders[name]).map(name => [name, originalHeaders[name]]));
         // Forward only to loopback, replacing auth with this fixture's local JWT.
         const response = await page.request.fetch(new URL(path + source.search, httpUrl).toString(), {
           method: route.request().method(),
-          headers: { Authorization: 'Bearer ' + localJwt(actor), 'Content-Type': 'application/json' },
+          headers: { ...transportHeaders, Authorization: 'Bearer ' + localJwt(actor), 'Content-Type': 'application/json' },
           data: route.request().postData() ?? undefined,
         });
         await route.fulfill({ response });

@@ -35,7 +35,7 @@ const roomBlockSchema = z.enum([
 
 export const reservationSettlementPreviewSchema = z.object({
   voucherId: uuid,
-  depositAmount: money.refine((value) => value > 0),
+  depositAmount: money,
   fingerprint: z.string().min(1),
   canSettle: z.boolean(),
   canRefundNow: z.boolean(),
@@ -53,6 +53,10 @@ export const reservationSettlementPreviewSchema = z.object({
   roomName: z.string().nullable(),
   buildingName: z.string().nullable(),
   voucherDate: isoDate,
+}).superRefine((value, ctx) => {
+  if (value.canSettle && (value.depositAmount <= 0 || value.blockers.length > 0)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Eligible preview needs a positive unblocked deposit" });
+  }
 });
 
 export const reservationSettlementSchema = z.object({

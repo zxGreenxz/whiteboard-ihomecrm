@@ -142,13 +142,16 @@ export function IncomeExpenseDetailDialog({
     if (!open) setLightboxIdx(null);
   }, [open]);
 
+  const isSettlementLeg = voucher?.system_source?.startsWith("reservation.") ?? false;
+  const needsSettlementLookup = isSettlementLeg || !!(voucher?.type === "INCOME" && !voucher.contract_id && voucher.items.some((item) => item.is_deposit));
+  const settlement = useReservationSettlementForVoucher(voucher?.id ?? null, open && needsSettlementLookup);
+  const monetaryActionsAllowed = !isSettlementLeg && (!needsSettlementLookup || (settlement.isSuccess && !settlement.data));
+
   if (!voucher) return null;
 
   const isCancelled = voucher.approval_status === "CANCELLED";
   const isUnapproved = voucher.approval_status === "UNAPPROVED";
   const isExpense = voucher.type === "EXPENSE";
-  const settlement = useReservationSettlementForVoucher(voucher.id, voucher.type === "INCOME" && !voucher.contract_id && voucher.items.some((item) => item.is_deposit));
-  const monetaryActionsAllowed = !settlement.isLoading && !settlement.data;
   const isCreator =
     !!currentUserId && voucher.user_id === currentUserId;
   const showFullEdit = monetaryActionsAllowed && !!onEdit && (isUnapproved || isAdmin);
@@ -232,7 +235,7 @@ export function IncomeExpenseDetailDialog({
                   <Pencil className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {isUnapproved && onApprove && (
+              {monetaryActionsAllowed && isUnapproved && onApprove && (
                 <Button
                   size="icon"
                   variant="default"
@@ -246,7 +249,7 @@ export function IncomeExpenseDetailDialog({
                   <CheckCircle2 className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
+              {monetaryActionsAllowed && isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
                 <Button
                   size="icon"
                   variant="default"

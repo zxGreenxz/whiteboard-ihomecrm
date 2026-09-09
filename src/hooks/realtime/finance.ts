@@ -39,6 +39,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["reservation-settlements"],
       ["reservation-settlement-summary"],
       ["reservation-settlement-preview"],
+      ["reservation-settlement-by-voucher"],
       ["dashboard-summary"],
       // --- màn nghiệp vụ đọc income_expenses bằng key riêng (Nhóm A) ---
       ["utility-payments"], // "Đóng điện nước" — trạng thái đã đóng
@@ -93,6 +94,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["reservation-settlements"],
       ["reservation-settlement-summary"],
       ["reservation-settlement-preview"],
+      ["reservation-settlement-by-voucher"],
       ["reservation-deposits"],
       ["orphan-deposit-vouchers"],
       ["deposit-dashboard"],

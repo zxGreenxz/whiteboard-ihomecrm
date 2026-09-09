@@ -28,6 +28,13 @@ const settlement = {
 } as const;
 
 describe("reservation settlement RPC DTOs", () => {
+  it("accepts a blocked preview with zero eligible deposit but never a usable zero deposit", () => {
+    const preview = { voucherId: settlement.sourceVoucherId, depositAmount: 0, fingerprint: "basis:v1",
+      canSettle: false, canRefundNow: false, blockers: ["NOT_RECEIVED"], roomBlockers: [],
+      voucherCode: null, payerName: null, roomName: null, buildingName: null, voucherDate: "2026-09-01" };
+    expect(reservationSettlementPreviewSchema.safeParse(preview).success).toBe(true);
+    expect(reservationSettlementPreviewSchema.safeParse({ ...preview, canSettle: true, blockers: [] }).success).toBe(false);
+  });
   it("binds the leg-table client and selects persisted columns only", () => {
     const client = { marker: "bound", from(this: { marker: string }, table: string) { return `${this.marker}:${table}`; } };
     const from = bindReservationSettlementLegTable(client);

@@ -52,7 +52,7 @@ export function ReservationSettlementDialog({ voucherId, open, onOpenChange }: {
   }, [refundAmount, preview.data?.canRefundNow, refundMode]);
 
   const split = useMemo(() => {
-    if (!preview.data) return null;
+    if (!preview.data || preview.data.depositAmount <= 0) return null;
     if (!Number.isSafeInteger(refundAmount) || refundAmount < 0 || refundAmount > preview.data.depositAmount) return null;
     return calculateReservationSplit(preview.data.depositAmount, refundAmount);
   }, [preview.data, refundAmount]);
