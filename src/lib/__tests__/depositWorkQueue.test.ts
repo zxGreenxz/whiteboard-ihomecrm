@@ -38,6 +38,8 @@ function resvRow(over: Partial<ReservationDepositRow> = {}): ReservationDepositR
     total_amount: 2_000_000,
     voucher_date: "2026-08-14",
     approval_status: "APPROVED",
+    settlement_status: "UNSETTLED",
+    settlement: null,
     building_id: "b1",
     building_name: "78 Cách Mạng Tháng 8",
     room_id: "r1",
@@ -146,6 +148,15 @@ describe("buildDepositWorkQueue — phiếu giữ chỗ", () => {
       today: TODAY,
       held: [],
       reservations: [resvRow({ approval_status: "CANCELLED" })],
+    });
+    expect(groups).toEqual([]);
+  });
+
+  it("phiếu đã xử lý bỏ cọc không quay lại hàng đợi ký hợp đồng", () => {
+    const groups = buildDepositWorkQueue({
+      today: TODAY,
+      held: [],
+      reservations: [resvRow({ settlement_status: "SETTLED" })],
     });
     expect(groups).toEqual([]);
   });

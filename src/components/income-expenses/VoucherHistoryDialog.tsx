@@ -26,6 +26,9 @@ import {
   formatMoney,
   humanizeChangeLog,
 } from "./voucherHistoryFormat";
+import { useReservationSettlementAudit, useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
+import { Link } from "react-router-dom";
+import { ReservationSettlementStatus } from "@/components/deposits/ReservationSettlementStatus";
 
 export interface VoucherHistoryTarget {
   id: string;
@@ -74,6 +77,12 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
     useVoucherCancellation(voucherId);
   const { data: changeLog, isLoading: loadingLog, error: logError } =
     useVoucherChangeLog(voucherId);
+  const reservationSettlementQuery = useReservationSettlementForVoucher(voucherId, open);
+  const reservationSettlement = reservationSettlementQuery.data;
+  const settlementAudit = useReservationSettlementAudit(reservationSettlement?.id ?? null, open);
+  const settlementReasonCode = reservationSettlement && "reasonCode" in reservationSettlement ? String(reservationSettlement.reasonCode) : settlementAudit.data?.reason_code;
+  const settlementReasonText = reservationSettlement && "reasonText" in reservationSettlement ? String(reservationSettlement.reasonText ?? "") : settlementAudit.data?.reason_text;
+  const settlementDate = reservationSettlement && "settlementDate" in reservationSettlement ? String(reservationSettlement.settlementDate) : settlementAudit.data?.settlementDate;
 
   const entries = humanizeChangeLog(changeLog);
   const kind = cancellationKindText(cancellation?.cancellation_kind);
@@ -165,6 +174,18 @@ const VoucherHistoryDialog = ({ open, onOpenChange, voucher }: Props) => {
         </section>
 
         {/* ── Nhật ký thay đổi trước / sau ────────────────────────────────── */}
+        {reservationSettlement && <section className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+          <h3 className="text-sm font-semibold">Xử lý cọc giữ chỗ liên quan</h3>
+          <ReservationSettlementStatus settlement={reservationSettlement} />
+          {settlementDate && <p className="text-xs text-muted-foreground">Ngày xử lý: {settlementDate} · Người xử lý: {settlementAudit.data?.actorName || "(không rõ)"}</p>}
+          {settlementReasonCode && <p className="text-sm">Lý do: <b>{settlementReasonCode === "CHANGED_MIND" ? "Khách đổi ý" : settlementReasonCode === "NO_SHOW" ? "Không đến ký hợp đồng" : settlementReasonText || "Khác"}</b>{settlementReasonText && settlementReasonCode !== "OTHER" ? ` — ${settlementReasonText}` : ""}</p>}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <Link className="text-blue-700 underline" to={`/income-expense/voucher/${reservationSettlement.sourceVoucherId}`}>Phiếu nhận ban đầu</Link>
+            {reservationSettlement.revenueVoucherId && <Link className="text-blue-700 underline" to={`/income-expense/voucher/${reservationSettlement.revenueVoucherId}`}>Phiếu doanh thu</Link>}
+            {reservationSettlement.offsetVoucherId && <Link className="text-blue-700 underline" to={`/income-expense/voucher/${reservationSettlement.offsetVoucherId}`}>Phiếu cấn cọc</Link>}
+            {reservationSettlement.refundVoucherId && <Link className="text-blue-700 underline" to={`/income-expense/voucher/${reservationSettlement.refundVoucherId}`}>Phiếu hoàn tiền</Link>}
+          </div>
+        </section>}
         <section className="space-y-3 rounded-lg border border-zinc-200 p-3">
           <h3 className="text-sm font-semibold">Nhật ký thay đổi</h3>
 

@@ -4,6 +4,10 @@ import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import type { Database } from '@/integrations/supabase/types';
+import { invokeReservationSettlementRpc, reservationSettlementListArgs, reservationSettlementListSchema, reservationSettlementSchema, type ReservationSettlementRpcInvoker } from '@/lib/reservationSettlementRpc';
+
+const settlementRpc = (supabase.rpc as unknown as ReservationSettlementRpcInvoker).bind(supabase);
+export const RESERVATION_SETTLED_EMBED = 'settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey ( id )';
 
 type Deposit = Database['public']['Tables']['deposits']['Row'];
 type DepositInsert = Database['public']['Tables']['deposits']['Insert'];
@@ -50,14 +54,16 @@ export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) =>
         .from('income_expenses')
         .select(
           `id, code, name, total_amount, voucher_date, approval_status,
-           income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
+           income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) ),
+           settled:reservation_deposit_settlements!reservation_deposit_settlements_source_voucher_id_fkey ( id )`,
         )
         .is('contract_id', null)
         .is('deleted_at', null)
         .eq('type', 'INCOME')
         .eq('room_id', roomId)
         .in('approval_status', ['APPROVED', 'UNAPPROVED'])
-        .eq('income_expense_items.income_expense_types.is_deposit', true);
+        .eq('income_expense_items.income_expense_types.is_deposit', true)
+        .is('settled', null);
 
       if (startDate) {
         const d = new Date(startDate);
@@ -103,6 +109,18 @@ export interface ReservationDepositRow {
   building_name: string;
   room_id: string | null;
   room_name: string | null;
+  /** Trạng thái nghiệp vụ riêng; không dùng approval_status để biểu diễn bỏ cọc. */
+  settlement_status: 'UNSETTLED' | 'SETTLED';
+  settlement: {
+    id: string;
+    depositAmount: number;
+    retainedAmount: number;
+    refundAmount: number;
+    refundedAmount: number;
+    refundRemaining: number;
+    refundState: 'NOT_REQUIRED' | 'PENDING' | 'PAID';
+    roomReleased: boolean;
+  } | null;
 }
 
 /**
@@ -129,6 +147,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
                approval_status, building_id, room_id,
                building:buildings!income_expenses_building_id_fkey ( id, name ),
                room:rooms!income_expenses_room_id_fkey ( id, name ),
+               ${RESERVATION_SETTLED_EMBED},
                income_expense_items!inner ( id, amount, income_expense_types!inner ( is_deposit ) )`,
             )
             .is('contract_id', null)
@@ -147,6 +166,26 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
       );
       if (data === null) throw new Error('Lỗi tải cọc giữ chỗ');
 
+      const neededSettlementSources = new Set((data ?? [])
+        .filter((voucher: { id: string; settled?: unknown }) => voucher.settled)
+        .map((voucher: { id: string }) => voucher.id));
+      const settlementBySource = new Map<string, NonNullable<ReservationDepositRow['settlement']>>();
+      let settlementCursor = null;
+      while (neededSettlementSources.size > settlementBySource.size) {
+        const result = reservationSettlementListSchema.parse(await invokeReservationSettlementRpc(settlementRpc, 'get_reservation_settlements_v1', reservationSettlementListArgs({ buildingIds, cursor: settlementCursor }), reservationSettlementListSchema));
+        for (const row of result.rows) {
+          if (neededSettlementSources.has(row.sourceVoucherId)) {
+            const settlement = reservationSettlementSchema.parse(row);
+            settlementBySource.set(row.sourceVoucherId, {
+              id: settlement.id!, depositAmount: settlement.depositAmount!, retainedAmount: settlement.retainedAmount!,
+              refundAmount: settlement.refundAmount!, refundedAmount: settlement.refundedAmount!, refundRemaining: settlement.refundRemaining!,
+              refundState: settlement.refundState!, roomReleased: settlement.roomReleased!,
+            });
+          }
+        }
+        if (!result.nextCursor) break;
+        settlementCursor = result.nextCursor;
+      }
       // !inner có thể nhân dòng nếu phiếu có >1 item cọc → dedupe theo id.
       const seen = new Set<string>();
       const rows: ReservationDepositRow[] = [];
@@ -171,6 +210,8 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
           building_name: v.building?.name ?? '—',
           room_id: v.room?.id ?? v.room_id ?? null,
           room_name: v.room?.name ?? null,
+          settlement_status: v.settled ? 'SETTLED' : 'UNSETTLED',
+          settlement: settlementBySource.get(v.id) ?? null,
         });
       }
       return rows;

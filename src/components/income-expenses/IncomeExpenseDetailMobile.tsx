@@ -23,6 +23,7 @@ import { formatPeriod } from "@/lib/monthPeriod";
 import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,6 +39,7 @@ import {
   useIncomeExpenseHistory,
   type IncomeExpenseWithRelations,
 } from "@/hooks/useIncomeExpenses";
+import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 
 interface Props {
   voucher: IncomeExpenseWithRelations;
@@ -90,6 +92,7 @@ export function IncomeExpenseDetailMobile({
 }: Props) {
   const navigate = useNavigate();
   const [paySheetOpen, setPaySheetOpen] = useState(false);
+  const [settlementOpen, setSettlementOpen] = useState(false);
   // Xem ảnh đính kèm ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
@@ -97,6 +100,14 @@ export function IncomeExpenseDetailMobile({
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
+  const isSettlementLeg = v.system_source?.startsWith("reservation.") ?? false;
+  const needsSettlementLookup = isSettlementLeg || (v.type === "INCOME" && !v.contract_id && v.items.some((item) => item.is_deposit));
+  const settlement = useReservationSettlementForVoucher(v.id, needsSettlementLookup);
+  const monetaryActionsAllowed = !isSettlementLeg && (!needsSettlementLookup || (settlement.isSuccess && !settlement.data));
+  const canReverseSettlementRefund = v.system_source === "reservation.refund" && settlement.isSuccess && !!settlement.data;
+  const canSettleReservation = monetaryActionsAllowed && v.type === "INCOME" && !v.contract_id &&
+    v.approval_status === "APPROVED" && v.items.some((item) => item.is_deposit) &&
+    canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
   const { data: history = [] } = useIncomeExpenseHistory(v.id);
 
   const invoiceId = v.invoice_id ?? null;
@@ -128,7 +139,7 @@ export function IncomeExpenseDetailMobile({
   const isExpense = v.type === "EXPENSE";
   const accent = v.type === "INCOME" ? "#1f9d57" : "#d6453f";
   const isCreator = !!currentUserId && v.user_id === currentUserId;
-  const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
+  const showFullEdit = monetaryActionsAllowed && !!onEdit && (isUnapproved || isAdmin);
   const showQuickEdit = canShowAnnotateAction({
     hasHandler: !!onQuickEdit,
     isUnapproved,
@@ -203,7 +214,7 @@ export function IncomeExpenseDetailMobile({
                 <Pencil size={15} />
               </button>
             )}
-            {isUnapproved && onApprove && (
+            {monetaryActionsAllowed && isUnapproved && onApprove && (
               <button
                 className="vd-act"
                 style={{ background: "#16a34a" }}
@@ -218,7 +229,7 @@ export function IncomeExpenseDetailMobile({
             )}
             {/* V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ (CUSTODIAN, không
                 cần quyền duyệt); phiếu ĐÃ HOÀN TÁC cũng Thu/Chi LẠI được. */}
-            {onPostApproved &&
+            {monetaryActionsAllowed && onPostApproved &&
               !isCancelled &&
               v.approval_status === "APPROVED" &&
               postingStatus !== "POSTED" &&
@@ -237,7 +248,7 @@ export function IncomeExpenseDetailMobile({
                 </button>
               )}
             {/* Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ. */}
-            {onReversePosting &&
+            {(monetaryActionsAllowed || canReverseSettlementRefund) && onReversePosting &&
               !isCancelled &&
               postingStatus === "POSTED" &&
               canonicalV2 && (
@@ -253,7 +264,7 @@ export function IncomeExpenseDetailMobile({
                   <RotateCcw size={15} />
                 </button>
               )}
-            {!isCancelled && onCancel && (
+            {monetaryActionsAllowed && !isCancelled && onCancel && (
               <button
                 className="vd-act"
                 style={{ background: "#f97316" }}
@@ -537,6 +548,9 @@ export function IncomeExpenseDetailMobile({
         onOpenChange={setPaySheetOpen}
         voucher={v}
       />
+
+      {canSettleReservation && <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>}
+      {canSettleReservation && <ReservationSettlementDialog voucherId={v.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
 
       <AttachmentLightbox
         attachments={v.attachments ?? []}

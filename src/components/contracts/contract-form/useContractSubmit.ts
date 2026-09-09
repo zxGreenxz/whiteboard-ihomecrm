@@ -23,6 +23,21 @@ interface UseContractSubmitParams {
   onCreated?: (contractId: string) => void;
 }
 
+export function isStaleOrphanDepositError(error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as { message?: unknown } | null)?.message ?? "");
+  const normalized = message.toLocaleLowerCase("vi");
+  return normalized.includes("phiếu cọc") && (
+    normalized.includes("đã xử lý bỏ cọc") || normalized.includes("đã được dùng") ||
+    normalized.includes("đã gắn hợp đồng") || normalized.includes("không còn")
+  );
+}
+
+export async function refreshStaleOrphanDeposits(error: unknown, refetch: () => Promise<{ error?: unknown }>) {
+  if (!isStaleOrphanDepositError(error)) return "not-stale" as const;
+  const result = await refetch();
+  return result.error ? "failed" as const : "refreshed" as const;
+}
+
 /**
  * Submit orchestration for contract edit and atomic V2 creation.
  */
@@ -45,6 +60,7 @@ export function useContractSubmit({
     typedDepositTotal,
     approvedOrphanTotal,
     orphanDepositVouchers,
+    refetchOrphanDepositVouchers,
     invoiceItems,
     firstInvoiceDiscount,
     depositRows,
@@ -348,6 +364,15 @@ export function useContractSubmit({
               onCreated?.(contract.id);
               setCommissionContractId(contract.id);
             }
+          },
+          onError: async (error) => {
+            const refreshState = await refreshStaleOrphanDeposits(error, refetchOrphanDepositVouchers);
+            if (refreshState === "not-stale") return;
+            toast.error("Danh sách cọc giữ chỗ đã thay đổi", {
+              description: refreshState === "refreshed"
+                ? "Đã tải lại cọc của phòng. Thông tin hợp đồng bạn nhập vẫn được giữ; hãy kiểm tra phần cọc rồi lưu lại."
+                : "Chưa tải lại được danh sách cọc. Thông tin hợp đồng bạn nhập vẫn được giữ; hãy kiểm tra kết nối rồi thử tải lại.",
+            });
           },
         },
       );

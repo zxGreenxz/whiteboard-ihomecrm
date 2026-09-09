@@ -13,6 +13,7 @@ import {
   useHeldDeposits,
   useHeldDepositSummary,
   useRefundForfeitSummary,
+  useReservationDepositSettlementSummary,
 } from "@/hooks/useDepositDashboard";
 import { useReservationDeposits } from "@/hooks/useDeposits";
 import { useReservationHoldDeadlines } from "@/hooks/useReservationHoldDeadlines";
@@ -34,6 +35,8 @@ import {
   type DepositTask,
   type DepositTaskTone,
 } from "@/lib/depositWorkQueue";
+import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
+import { ReservationPendingRefundList } from "@/components/deposits/ReservationPendingRefundList";
 
 /**
  * Quản lý Cọc — màn hình app full-screen trên điện thoại (bản 2b của handoff
@@ -124,6 +127,7 @@ export default function DepositsMobilePage() {
   const [contractOpen, setContractOpen] = useState(false);
   const [prefill, setPrefill] = useState<ContractPrefill | null>(null);
   const [deadlineTarget, setDeadlineTarget] = useState<HoldDeadlineTarget | null>(null);
+  const [settlementVoucherId, setSettlementVoucherId] = useState<string | null>(null);
 
   useCopilotPageContext('deposits.list', { view, status: view === 'ledger' ? ledgerFilter : undefined });
   const approveVoucher = useApproveVoucher();
@@ -131,6 +135,7 @@ export default function DepositsMobilePage() {
   const { data: reservations = [], isLoading: resvLoading } = useReservationDeposits();
   const { data: heldAgg = [] } = useHeldDepositSummary();
   const { data: rfSummary } = useRefundForfeitSummary();
+  const { data: settlementSummary } = useReservationDepositSettlementSummary();
   const { data: holdTerms = {} } = useReservationHoldDeadlines();
 
   const kpi = useMemo(() => {
@@ -185,7 +190,7 @@ export default function DepositsMobilePage() {
       id: `v:${r.id}`,
       kind: "HOLD" as const,
       dot:
-        r.approval_status === "APPROVED"
+        r.settlement_status === "SETTLED" ? "#7c3aed" : r.approval_status === "APPROVED"
           ? "#159a57"
           : r.approval_status === "UNAPPROVED"
             ? "#d9a514"
@@ -193,7 +198,11 @@ export default function DepositsMobilePage() {
       head: `P.${r.room_name ?? "—"} · ${r.building_name}`,
       sub: `${r.payer_name ?? "—"}${r.code ? ` · ${r.code}` : ""}`,
       amount: r.total_amount,
-      meta: formatISODayMonth(r.voucher_date),
+      meta: r.settlement
+        ? r.settlement.retainedAmount === 0
+          ? r.settlement.refundState === "PAID" ? "Đã hoàn cọc" : `Chờ hoàn ${formatMoneyShort(r.settlement.refundRemaining)}`
+          : r.settlement.refundAmount > 0 ? "Đã bỏ cọc một phần" : "Đã bỏ cọc"
+        : formatISODayMonth(r.voucher_date),
       to: null as string | null,
     }));
     const all = [...shortRows, ...resvRows];
@@ -299,6 +308,8 @@ export default function DepositsMobilePage() {
                 </div>
               )}
             </div>
+
+            {settlementSummary && <div className="mx-4 mb-3 grid grid-cols-3 gap-2 rounded-xl border bg-white p-3 text-center text-xs"><div><span className="text-muted-foreground">Giữ lại</span><b className="mt-1 block">{formatMoneyShort(settlementSummary.retainedAmount)}</b></div><div><span className="text-muted-foreground">Chờ hoàn</span><b className="mt-1 block text-amber-700">{formatMoneyShort(settlementSummary.refundPendingAmount)}</b></div><div><span className="text-muted-foreground">Đã hoàn</span><b className="mt-1 block text-emerald-700">{formatMoneyShort(settlementSummary.refundPaidAmount)}</b></div></div>}
 
             <div className="dp-seg">
               <button
@@ -549,6 +560,9 @@ export default function DepositsMobilePage() {
                         Tạo hợp đồng
                       </button>
                     )}
+                  {canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve") && openTask.voucherId && openTask.kind !== "PENDING_APPROVAL" && (
+                    <button type="button" onClick={() => { setSettlementVoucherId(openTask.voucherId); closeSheet(); }}>Xử lý bỏ cọc</button>
+                  )}
                 </div>
               </div>
             </div>
@@ -557,6 +571,8 @@ export default function DepositsMobilePage() {
       </div>
 
       <CreateDepositDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <div className="px-4 pb-4"><ReservationPendingRefundList /></div>
+      <ReservationSettlementDialog voucherId={settlementVoucherId} open={!!settlementVoucherId} onOpenChange={(next) => !next && setSettlementVoucherId(null)} />
       <HoldDeadlineDialog
         target={deadlineTarget}
         onOpenChange={(open) => !open && setDeadlineTarget(null)}

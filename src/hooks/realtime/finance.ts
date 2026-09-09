@@ -36,6 +36,10 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["income-expenses"],
       ["deposit-dashboard"],
       ["reservation-deposits"],
+      ["reservation-settlements"],
+      ["reservation-settlement-summary"],
+      ["reservation-settlement-preview"],
+      ["reservation-settlement-by-voucher"],
       ["dashboard-summary"],
       // --- màn nghiệp vụ đọc income_expenses bằng key riêng (Nhóm A) ---
       ["utility-payments"], // "Đóng điện nước" — trạng thái đã đóng
@@ -80,6 +84,25 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["tt-sale-bonus"],
       ["tt-deposit-ledger"],
       ["utility-chart"],
+    ],
+    domain: "income-expenses",
+  },
+
+  {
+    table: "reservation_deposit_settlements",
+    keys: [
+      ["reservation-settlements"],
+      ["reservation-settlement-summary"],
+      ["reservation-settlement-preview"],
+      ["reservation-settlement-by-voucher"],
+      ["reservation-deposits"],
+      ["orphan-deposit-vouchers"],
+      ["deposit-dashboard"],
+      ["rooms"],
+      ["phong-trong"],
+      ["contracts"],
+      ["ie-history"],
+      ["voucher-change-log"],
     ],
     domain: "income-expenses",
   },

@@ -36,6 +36,7 @@ import {
   useHeldDepositSummary,
   useDepositRefundsForfeits,
   useRefundForfeitSummary,
+  useReservationDepositSettlementSummary,
   summarizeRefundForfeit,
   type HeldDepositRow,
   type BuildingDepositSummary,
@@ -69,6 +70,8 @@ import {
   RefundReconcileCard,
   ReservationBreakdownCard,
 } from "./DepositSidePanel";
+import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
+import { ReservationPendingRefundList } from "@/components/deposits/ReservationPendingRefundList";
 
 // Trạng thái phiếu giữ chỗ (theo approval_status của phiếu thu cọc mồ côi).
 const RESV_STATUS = {
@@ -131,6 +134,8 @@ const DepositsDesktop = () => {
   const approveVoucher = useApproveVoucher();
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [deadlineTarget, setDeadlineTarget] = useState<HoldDeadlineTarget | null>(null);
+  const [settlementVoucherId, setSettlementVoucherId] = useState<string | null>(null);
+  const canSettleDeposit = canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
 
   // Bộ lọc toà nhà dùng chung cho mọi tab ([] = tất cả toà).
   const [buildingIds, setBuildingIds] = usePersistedState<string[]>("flt:deposits:buildingIds", []);
@@ -163,6 +168,7 @@ const DepositsDesktop = () => {
   // KPI "Đã hoàn cọc" = TIỀN THẬT ĐÃ RA KHỎI KÉT (quyết định của chủ 30/07,
   // §1ter.1) ⇒ phải lấy từ server, xem khối chú thích ở `refundKpi` bên dưới.
   const { data: rfSummary } = useRefundForfeitSummary(buildingIds);
+  const { data: reservationSettlementSummary } = useReservationDepositSettlementSummary(buildingIds);
 
   // Lọc theo toà nhà (client-side) cho dashboard.
   const heldFiltered = useMemo(
@@ -246,12 +252,12 @@ const DepositsDesktop = () => {
       shortfall,
       shortCount,
       // Tiền hoàn ĐÃ RA KÉT — gồm CẢ phiếu không nối được hồ sơ thanh lý (D2).
-      refundTotal: rfReconciles ? rfSummary!.refundTotal : refundKpi.refundTotal,
-      refundCount: rfReconciles ? rfSummary!.refundCount : refundKpi.refundCount,
-      forfeitTotal: refundKpi.forfeitTotal,
-      forfeitCount: refundKpi.forfeitCount,
+      refundTotal: (rfReconciles ? rfSummary!.refundTotal : refundKpi.refundTotal) + (reservationSettlementSummary?.refundPaidAmount ?? 0),
+      refundCount: (rfReconciles ? rfSummary!.refundCount : refundKpi.refundCount) + (reservationSettlementSummary?.refundPaidCount ?? 0),
+      forfeitTotal: refundKpi.forfeitTotal + (reservationSettlementSummary?.retainedAmount ?? 0),
+      forfeitCount: refundKpi.forfeitCount + (reservationSettlementSummary?.retainedCount ?? 0),
     };
-  }, [heldAgg, refundKpi, rfSummary, rfReconciles]);
+  }, [heldAgg, refundKpi, rfSummary, rfReconciles, reservationSettlementSummary]);
 
   // Giữ chỗ đang giữ (phiếu thu cọc mồ côi đã duyệt) — RPC aggregate.
   const holdingAmount = resvSummary?.holdingAmount ?? 0;
@@ -388,11 +394,11 @@ const DepositsDesktop = () => {
             <span>
               Đã hoàn cọc (tiền đã ra khỏi két){" "}
               <strong className="text-foreground">{formatCurrency(kpi.refundTotal)}</strong> ·{" "}
-              {kpi.refundCount} phiếu
+              {kpi.refundCount} khoản
             </span>
             <span>
               Đã bỏ cọc <strong className="text-red-600">{formatCurrency(kpi.forfeitTotal)}</strong> ·{" "}
-              {kpi.forfeitCount} lần
+              {kpi.forfeitCount} nghiệp vụ
             </span>
             {rfReconciles && (rfSummary?.orphanCount ?? 0) > 0 && (
               <span className="inline-flex items-start gap-1.5 rounded-md bg-red-50 px-2 py-1.5 font-semibold leading-snug text-red-600">
@@ -403,6 +409,8 @@ const DepositsDesktop = () => {
             )}
           </div>
         </Card>
+        {reservationSettlementSummary && <Card className="grid gap-3 p-4 text-sm sm:grid-cols-3"><div><span className="text-muted-foreground">Doanh thu bỏ cọc giữ chỗ</span><div className="font-bold">{formatCurrency(reservationSettlementSummary.retainedAmount)} · {reservationSettlementSummary.retainedCount} phiếu</div></div><div><span className="text-muted-foreground">Phải hoàn khách</span><div className="font-bold text-amber-700">{formatCurrency(reservationSettlementSummary.refundPendingAmount)} · {reservationSettlementSummary.refundPendingCount} khoản</div></div><div><span className="text-muted-foreground">Đã hoàn khách</span><div className="font-bold text-emerald-700">{formatCurrency(reservationSettlementSummary.refundPaidAmount)} · {reservationSettlementSummary.refundPaidCount} khoản</div></div></Card>}
+        <ReservationPendingRefundList buildingIds={buildingIds} />
 
         {/* ===== HAI PILL: bàn xử lý ↔ sổ cọc đầy đủ ===== */}
         <div className="flex max-w-2xl gap-3">
@@ -894,16 +902,21 @@ const DepositsDesktop = () => {
                           <TableCell className="text-right">{formatCurrency(r.total_amount)}</TableCell>
                           <TableCell>{r.voucher_date ? formatDate(r.voucher_date) : "-"}</TableCell>
                           <TableCell>
-                            <Badge className={st?.color || ""}>{st?.label || r.approval_status}</Badge>
+                            {r.settlement ? <div className="space-y-1"><Badge variant="secondary">{r.settlement.retainedAmount === 0 ? (r.settlement.refundState === "PAID" ? "Đã hoàn cọc" : "Chờ hoàn cọc") : r.settlement.refundAmount > 0 ? "Đã bỏ cọc một phần" : "Đã bỏ cọc"}</Badge>{r.settlement.refundRemaining > 0 && <div className="text-xs text-amber-700">Chờ hoàn {formatCurrency(r.settlement.refundRemaining)}</div>}</div> : <Badge className={st?.color || ""}>{st?.label || r.approval_status}</Badge>}
                           </TableCell>
                           <TableCell>
-                            {canConvertDeposit &&
+                            <div className="flex flex-wrap gap-2">
+                            {r.settlement_status === "UNSETTLED" && canConvertDeposit &&
                               r.approval_status === "APPROVED" &&
                               r.room_id && (
                                 <Button size="sm" onClick={() => handleConvertReservation(r)}>
                                   Tạo HĐ
                                 </Button>
                               )}
+                            {r.settlement_status === "UNSETTLED" && canSettleDeposit && r.approval_status === "APPROVED" && (
+                              <Button size="sm" variant="outline" onClick={() => setSettlementVoucherId(r.id)}>Xử lý bỏ cọc</Button>
+                            )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -918,6 +931,7 @@ const DepositsDesktop = () => {
 
         {/* Dialogs */}
         <CreateDepositDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+        <ReservationSettlementDialog voucherId={settlementVoucherId} open={!!settlementVoucherId} onOpenChange={(next) => !next && setSettlementVoucherId(null)} />
         <HoldDeadlineDialog
           target={deadlineTarget}
           onOpenChange={(open) => !open && setDeadlineTarget(null)}

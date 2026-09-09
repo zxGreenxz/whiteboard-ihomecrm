@@ -29,6 +29,9 @@ export const VOUCHER_SOURCES: Record<string, VoucherSourceMeta> = {
   "invoice.payment": { label: "Thu tiền hoá đơn", group: "Hoá đơn" },
   "contract.deposit": { label: "Thu cọc hợp đồng", group: "Cọc" },
   "deposit.reservation": { label: "Cọc giữ chỗ", group: "Cọc" },
+  "reservation.forfeit_offset": { label: "Giảm cọc bỏ giữ chỗ (nội bộ)", group: "Cọc", internal: true },
+  "reservation.forfeit_revenue": { label: "Doanh thu bỏ cọc giữ chỗ", group: "Cọc", internal: true },
+  "reservation.refund": { label: "Hoàn cọc giữ chỗ", group: "Cọc" },
   "contract.commission": { label: "Hoa hồng/thưởng sale", group: "Hợp đồng" },
 
   "termination.offset": { label: "Cấn cọc thanh lý (nội bộ)", group: "Thanh lý", internal: true },

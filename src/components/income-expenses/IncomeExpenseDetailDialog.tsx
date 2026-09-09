@@ -33,6 +33,7 @@ import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIncomeExpenseHistory } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
@@ -42,6 +43,7 @@ import { format } from "date-fns";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatVND } from "@/lib/utils";
+import { ReservationSettlementDialog } from "@/components/deposits/ReservationSettlementDialog";
 
 interface Props {
   open: boolean;
@@ -98,6 +100,7 @@ export function IncomeExpenseDetailDialog({
 }: Props) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
+  const [settlementOpen, setSettlementOpen] = useState(false);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
   const { data: perms } = useMyPermissions();
@@ -139,6 +142,11 @@ export function IncomeExpenseDetailDialog({
     if (!open) setLightboxIdx(null);
   }, [open]);
 
+  const isSettlementLeg = voucher?.system_source?.startsWith("reservation.") ?? false;
+  const needsSettlementLookup = isSettlementLeg || !!(voucher?.type === "INCOME" && !voucher.contract_id && voucher.items.some((item) => item.is_deposit));
+  const settlement = useReservationSettlementForVoucher(voucher?.id ?? null, open && needsSettlementLookup);
+  const monetaryActionsAllowed = !isSettlementLeg && (!needsSettlementLookup || (settlement.isSuccess && !settlement.data));
+
   if (!voucher) return null;
 
   const isCancelled = voucher.approval_status === "CANCELLED";
@@ -146,7 +154,7 @@ export function IncomeExpenseDetailDialog({
   const isExpense = voucher.type === "EXPENSE";
   const isCreator =
     !!currentUserId && voucher.user_id === currentUserId;
-  const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
+  const showFullEdit = monetaryActionsAllowed && !!onEdit && (isUnapproved || isAdmin);
   const showQuickEdit = canShowAnnotateAction({
     hasHandler: !!onQuickEdit,
     isUnapproved,
@@ -154,6 +162,9 @@ export function IncomeExpenseDetailDialog({
     isCreator,
     canEdit: canUse(perms, "income_expenses", "edit"),
   });
+  const canSettleReservation = monetaryActionsAllowed && voucher.type === "INCOME" && !voucher.contract_id &&
+    voucher.approval_status === "APPROVED" && voucher.items.some((item) => item.is_deposit) &&
+    canUse(perms, "deposits", "refund") && canUse(perms, "income_expenses", "approve");
 
   return (
     <>
@@ -224,7 +235,7 @@ export function IncomeExpenseDetailDialog({
                   <Pencil className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {isUnapproved && onApprove && (
+              {monetaryActionsAllowed && isUnapproved && onApprove && (
                 <Button
                   size="icon"
                   variant="default"
@@ -238,7 +249,7 @@ export function IncomeExpenseDetailDialog({
                   <CheckCircle2 className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
+              {monetaryActionsAllowed && isAdmin && !isUnapproved && !isCancelled && onUnapprove && (
                 <Button
                   size="icon"
                   variant="default"
@@ -252,7 +263,7 @@ export function IncomeExpenseDetailDialog({
                   <Undo2 className="h-4 w-4 text-white" />
                 </Button>
               )}
-              {!isCancelled && onCancel && (
+              {monetaryActionsAllowed && !isCancelled && onCancel && (
                 <Button
                   size="icon"
                   variant="default"
@@ -585,8 +596,11 @@ export function IncomeExpenseDetailDialog({
               </div>
             </>
           )}
+          {canSettleReservation && <Button variant="outline" className="mt-4 w-full" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</Button>}
         </DialogContent>
       </Dialog>
+
+      {canSettleReservation && <ReservationSettlementDialog voucherId={voucher.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
 
       {/* Sheet chọn app ngân hàng để chi tiền */}
       <PayViaBankAppSheet

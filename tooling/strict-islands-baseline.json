@@ -1,7 +1,9 @@
 {
   "$comment": "Mức ratchet của đảo \"strict\": TẬP TÊN FILE, không phải số đếm — với số đếm thì xoá một đảo rồi thêm đảo khác là hoà, mà cái bị xoá thường là cái vừa đỏ. Chốt mức mới: npm run gate:strict-islands -- --write",
-  "updatedAt": "2026-09-08",
+  "updatedAt": "2026-09-09",
   "islands": [
+    "src/copilot/activePageContext.ts",
+    "src/hooks/useCopilotPageContext.ts",
     "src/components/customers/AdministrativeAddressPreview.tsx",
     "src/components/customers/CustomerAdministrativeAddress.tsx",
     "src/lib/customerAddressConversion.ts",
@@ -1236,6 +1238,13 @@
     "src/hooks/useInvoiceRoundingReport.ts",
     "src/lib/invoiceRoundingReport.ts",
     "src/lib/invoiceRoundingReportRepository.ts",
-    "src/lib/collectionSettlement.ts"
+    "src/lib/collectionSettlement.ts",
+    "src/components/deposits/ReservationPendingRefundList.tsx",
+    "src/components/deposits/ReservationRefundDialog.tsx",
+    "src/components/deposits/ReservationSettlementDialog.tsx",
+    "src/components/deposits/ReservationSettlementStatus.tsx",
+    "src/hooks/useReservationSettlement.ts",
+    "src/lib/reservationSettlementForm.ts",
+    "src/lib/reservationSettlementRpc.ts"
   ]
 }
