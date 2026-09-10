@@ -86,11 +86,14 @@ for (const mobile of [false, true]) test(`DEMO: refund proof and direct receipt 
   } finally {
     releaseUpload();
     // Only this test's randomly named DEMO upload is eligible for deletion.
-    if (uploadUrl && authorization && uploadUrl.includes(`e2e-reservation-proof-${roomId}`)) {
-      const url = new URL(uploadUrl), prefix = url.pathname.split('/income-expense-attachments/')[1];
-      const removed = await page.request.delete(`${url.origin}/storage/v1/object/income-expense-attachments`, { headers: { authorization, apikey: apiKey }, data: { prefixes: [decodeURIComponent(prefix)] } });
-      expect(removed.ok()).toBe(true);
+    try {
+      if (uploadUrl && authorization && uploadUrl.includes(`e2e-reservation-proof-${roomId}`)) {
+        const url = new URL(uploadUrl), prefix = url.pathname.split('/income-expense-attachments/')[1];
+        const removed = await page.request.delete(`${url.origin}/storage/v1/object/income-expense-attachments`, { headers: { authorization, apikey: apiKey }, data: { prefixes: [decodeURIComponent(prefix)] } });
+        expect(removed.ok()).toBe(true);
+      }
+    } finally {
+      await cleanupReservationLiveFixture(marker, roomId);
     }
-    await cleanupReservationLiveFixture(marker, roomId);
   }
 });
