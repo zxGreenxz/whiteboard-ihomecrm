@@ -1,0 +1,24 @@
+{
+  "checkedAt": "2026-09-10T05:39:00Z",
+  "base": "https://ptcrm.vercel.app",
+  "sha": "10c48a5a049fbb4fde1c3bfc46bce8305010edc3",
+  "role": "DEMO owner; DEMO accountant observer",
+  "productionDeployment": {
+    "id": "dpl_CFVeKX7HQb9Qc5fp1jS4NqhoTZ6S",
+    "sha": "10c48a5a049fbb4fde1c3bfc46bce8305010edc3",
+    "branch": "production",
+    "state": "READY"
+  },
+  "mainCi": { "runId": 34441044387, "conclusion": "success" },
+  "productionCi": { "runId": 34441566106, "restoreDrill": 34441566149, "conclusion": "success" },
+  "schemaCi": { "sha": "5f91152f1f54b10034c61dc850375f6ff8541aa2", "restoreDrill": 34440606907, "migrationValidation": 34440606902, "conclusion": "success", "unchangedInReleaseCommit": true },
+  "promotion": { "jobs": 11, "steps": 99, "failedSteps": 0, "pendingSteps": 0, "skippedJobs": ["production-promotion (main)", "reconcile-money (missing CI test credentials; verified locally)"] },
+  "browser": { "headless": true, "buildShaAsserted": true, "preview": { "passed": 2, "failed": 0, "seconds": 59.6 }, "production": { "passed": 2, "failed": 0, "seconds": 58.9 }, "viewports": ["desktop", "mobile"], "financialJsonUnchangedPerAppend": true, "alreadyOpenObserverRealtime": true, "refundProofVisibleOnSource": true },
+  "storageHttp": { "signAndDownload": "pass", "overwriteDenied": true, "upsertDenied": true, "deletePreservedObject": true, "downloadSha256Unchanged": true },
+  "cleanup": { "checkedAt": "2026-09-10T05:37:32.197Z", "rooms": 0, "sourceVouchers": 0, "supplements": 0, "files": 0, "storageLinks": 0, "checkedImmutableTriggersEnabled": 5 },
+  "reconcile": { "legacy": "pass", "v2": "pass", "postRelease": true },
+  "tenantSnapshot": { "accessibleTablesChecked": 147, "testOrgLeaks": 0, "selectDeniedTables": 18, "liveBusinessDataChangedDuringWindow": true, "wholeRealOrganizationUnchangedClaimed": false },
+  "schema": { "file": "20260910042229_income_expense_supplements_v1.sql", "sha256": "f9b9cd69b86e0783c3a1de5810e99b4a8881cc1e2bb212bc90dab79542f0864b", "appliedAt": "2026-09-10T05:02:14.062Z", "backupTablesWithData": 523 },
+  "localVerification": { "sqlTests": 15, "vitestFiles": 474, "vitestTests": 7317, "prePushGates": 42, "typecheckNewErrors": 0, "lintNewErrors": 0 },
+  "knownUnrelatedCheck": { "gate": "check-ie-guard-gates", "finding": "STOP_RECURRING branch", "guardMd5BeforeAndAfter": "fb01ae8c9de7b283d19ade8195eba726", "countedAsPassing": false }
+}
