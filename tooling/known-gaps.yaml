@@ -1,22 +1,5 @@
-# Sổ đăng ký các khoảng trống ĐÃ BIẾT và cố ý chưa gating.
-#
-# Vì sao cần: một bước `continue-on-error: true` hay một suite chỉ chạy được trên
-# Windows là quyết định hợp lý tại thời điểm đó — nhưng không có ngày hết hạn thì
-# nó thành vĩnh viễn, và sau vài tháng không ai còn nhớ nó là quyết định hay là
-# thứ bị bỏ quên. Mỗi mục dưới đây phải có ngày hết hạn; quá hạn thì
-# scripts/check-known-gaps.mjs kêu, và cách xử là ĐÓNG nó hoặc GIA HẠN CÓ LÝ DO,
-# không phải xoá dòng cho yên.
-#
-# Cố ý giữ schema tối thiểu: id / expires_at / why / exit_condition. Bỏ `owner`
-# (repo một người) và `evidence` (optional) — thêm field chỉ làm người ta lười
-# cập nhật.
-#
-# Trường tuỳ chọn duy nhất: `loai: chap-nhan-vinh-vien` (26/08/2026) — cho gap
-# mà điều kiện đóng là QUYẾT ĐỊNH THƯƠNG MẠI (nâng tier GitHub, bật PITR trả
-# phí), không phải việc kỹ thuật ai đó quên. Nó chỉ tắt tiếng nhắc-trước-30-ngày;
-# vẫn phải có expires_at (đến hạn thì rà lại quyết định) và quá hạn vẫn kêu.
-#
-# Kiểm: npm run gate:known-gaps
+# Khoảng trống đang mở: lý do, hạn rà lại và điều kiện đóng.
+# Kiểm định kỳ bằng node scripts/check-known-gaps.mjs --strict; lịch sử mục đã đóng ở Git.
 
 schemaVersion: 1
 gaps:
@@ -38,9 +21,8 @@ gaps:
           chặn; thiếu token thì exit 3 chứ không phải xanh.
       Kêu sau vẫn hơn không biết: nó biến một sự kiện vô hình thành một dòng đỏ có người đọc.
 
-      CHƯA TỰ XÁC MINH ĐƯỢC: `check-external-controls.mjs` báo branchProtection
-      `status: unverified` vì máy chạy không có GH_TOKEN. Tức khẳng định "Free không có
-      branch protection" hiện dựa trên một lần đo trước đó, chưa có bằng chứng chạy lại.
+      Script kiểm control đọc metadata nhánh để xác minh absence khi protection API bị 403.
+      Xác minh không có protection không thay thế việc cưỡng chế required checks.
     exit_condition: >
       Nâng gói (Team/Pro) hoặc chuyển repo sang public ⇒ bật branch protection với required
       checks cho main và production, rồi chạy `check-external-controls.mjs` KÈM GH_TOKEN để
@@ -111,14 +93,6 @@ gaps:
     exit_condition: >
       Bật PITR khi quy mô tiền/rủi ro đủ lớn để 100 USD/tháng là rẻ; hoặc rà lại sau 6 tháng
       xem RPO 24 giờ còn chấp nhận được không.
-
-# ĐÃ ĐÓNG 02/09/2026 — ua-graph-stale.
-# Rebuild TOÀN BỘ graph UA tại 20c8f391 (commit 00735ac0, đi riêng theo luật #6; gitleaks
-# allowlist đi commit b6d74d20 trước đó). Đo: 3.091/3.091 file có node · 7.864 node · 16.021
-# cạnh · 14 tầng · 18 bước tour · 0 trùng · 0 treo. OpenClaw còn 101 node thuần migration sổ
-# đóng băng (hết 364 node code). `gate:graph-freshness -- --nhiem-vu architecture` → UA FRESH,
-# exit 0 — đúng exit_condition. GitNexus vẫn STALE (63 commit) nhưng chỉ cảnh báo ở nhiệm vụ này;
-# refresh nó bằng `npm run graph:analyze` (parse cache local, không tracked).
 
   - id: contract-type-handwritten-drift
     where: src/hooks/useContracts.ts (2 chỗ `as unknown as ContractWithRelations`)
@@ -253,89 +227,6 @@ gaps:
       cân nhắc nâng riêng hạn mức đó cho org DEMO (quyết định chủ dự án, không tự
       ý đổi governance cap).
 
-# ĐÃ ĐÓNG 06/08/2026 — claude-agents-md-still-full.
-# CLAUDE.md 211 -> 62 dòng, AGENTS.md 146 -> 43, chỉ còn phần đặc thù agent
-# (trailer commit, cách gọi công cụ browser) + pointer về Contract.
-# Trước khi cắt đã đối chiếu CƠ HỌC từng chi tiết vận hành với Contract và phát
-# hiện `deno.lock` chưa được nhắc ở đâu — nếu cắt trước rồi kiểm sau thì tri thức
-# đó biến mất không dấu vết. Vì vậy MUST_MENTION của check-agent-contract nâng từ
-# 16 lên 29 invariant, và đã đột biến để chắc nó bắt được.
-
-
-
-# ĐÃ ĐÓNG 07/08/2026 — baseline-not-verified-on-supabase.
-#
-# Đã diễn tập thật trên một Supabase project trắng (PostgreSQL 17.6, cùng bản
-# chính với production) do chủ dự án cấp. Kết quả cuối: bảng 439/439 ·
-# view 14/14 · policy 1193/1193 · trigger 493/493.
-#
-# NHƯNG lần chạy ĐẦU TIÊN thất bại, và đó mới là giá trị của việc diễn tập:
-#   → policy chỉ dựng được 922/1193 (mất 271, tức mất phần lớn hàng rào RLS)
-#   → 249 lỗi 'role "…" does not exist'
-# Nguyên nhân: pg_dump --schema-only KHÔNG dump role (role thuộc cấp cluster),
-# nên baseline tham chiếu 7 role riêng của ứng dụng mà không tạo chúng.
-#
-# Ghi chú CŨ của mục này nói lỗi khi restore lên Postgres trần "đều do target
-# thiếu role của Supabase — trên project Supabase thật thì chúng có sẵn". Vế
-# đầu đúng, SUY LUẬN SAU SAI: các role thiếu là role của CHÍNH ỨNG DỤNG
-# (openclaw_function_owner, ie_canonical_writer…), Supabase không có sẵn. Chỉ
-# diễn tập thật mới phân biệt được hai điều đó.
-#
-# Và manifest luôn ghi đủ số đếm (439 bảng, 1193 policy) vì nó đếm trên FILE,
-# không đếm trên KẾT QUẢ khôi phục — nên trên giấy baseline lúc nào cũng đầy đủ.
-#
-# ĐÃ SỬA: supabase/baseline/roles.sql (sinh bởi capture-schema-baseline.mjs),
-# và quy trình khôi phục ba bước ghi ở supabase/baseline/README.md — roles.sql
-# trước, rồi schema.sql HAI LƯỢT (lượt 2 dựng nốt object tham chiếu tiến, ví dụ
-# public.rooms có cột sinh phụ thuộc public.room_sort_key).
-# Chạy lại bất cứ lúc nào: node scripts/dien-tap-khoi-phuc-baseline.mjs --dich "…"
-
-# ĐÃ ĐÓNG 06/08/2026 — buildingfilterselect-test-failing.
-# Nguyên nhân: commit 5b14e9a0 thêm option `includeVirtual` nhưng không sửa test;
-# hai test đó chỉ nói về cờ `enabled` lại so khớp TOÀN BỘ đối số nên vỡ theo.
-# Đã tách theo mối quan tâm (objectContaining) + thêm 2 test phủ `includeVirtual`
-# vốn ship không kèm test nào. 4/4 xanh, kiểm bằng đột biến hai chiều.
-# Giữ lại ghi chú này thay vì xoá trắng: biết một gap ĐÃ từng tồn tại và đóng thế
-# nào có ích hơn là để nó biến mất không dấu vết.
-
-
-# ĐÃ ĐÓNG 26/08/2026 — network-center-validation-chua-tung-xanh.
-# Ghi chú "FAIL 50/50 lần" là bản chụp sáng 13/08; hai lỗi nêu trong mục đã được
-# chữa ngay tối hôm đó. Đo lại 26/08 qua GitHub API: 12 lần success liên tiếp
-# trên main từ 13/08 19:38 (run gần nhất 25/08 vẫn xanh) — exit_condition
-# (`gh run list --limit 1` trả conclusion=success) ĐÃ ĐẠT từ lâu, chỉ là sổ này
-# không ai cập nhật. Bài học giữ lại: một known-gap mô tả "trạng thái đo được"
-# thì phải đo lại trước khi tin, y như mọi con số khác trong tài liệu.
-
-
-# ĐÃ ĐÓNG 26/08/2026 — supabase-cli-replay-broken.
-# Cả hai chỗ mang phép đo bất khả thi đều đã RA KHỎI CI, nên gap hết chỗ đứng:
-#   (1) bước "Measure the historical Supabase replay" trong
-#       network-center-validation.yml — GỠ 26/08 khi tối giản workflow (nó
-#       continue-on-error, dựng nguyên Supabase Docker stack ×2 shard chỉ để in
-#       ra thất bại đã biết trước — mục tốn máy nhất repo, giá trị 0);
-#   (2) bước "Diễn tập reset toàn bộ lịch sử" trong job openclaw-sql-gates —
-#       job đó đã xoá 25/08 khi OpenClaw nghỉ hưu khỏi CI.
-# Sự thật gốc KHÔNG đổi và vẫn được ghi ở header của
-# scripts/network-center-disposable-db.mjs: replay toàn bộ lịch sử migration
-# qua Supabase CLI từ database trắng không thể thành công (4 nguyên nhân độc
-# lập). Môi trường mới dựng từ baseline + forward lane (xem
-# supabase/baseline/README.md), không replay lịch sử — đúng exit_condition đã
-# khai ("khi đó bước đo này hết lý do tồn tại").
-
-
-# ĐÃ ĐÓNG 26/08/2026 — ci-gates-mot-job-thay-vi-ba.
-# Mục này đăng ký việc "ba nhóm gate tĩnh là ba STEP trong một job thay vì ba
-# JOB như Plan §31 đặt tên". Hai nửa lập luận của nó đã đi hai ngả:
-#   - Nửa "ba runner khởi động thì không lấy lại gì" bị chính repo BÁC BỎ bằng
-#     số đo 25/08/2026: hai bước nặng (đảo strict 2m38s, múi giờ 2m06s) đã tách
-#     thành job riêng `strict-islands-gate` + `timezone-gate` chạy song song,
-#     rút quality-gates từ 8m40s xuống ~3m30s. Với bước NẶNG, runner thứ hai
-#     lấy lại được rất nhiều; với 30 gate tĩnh dưới-một-giây thì gộp một job
-#     vẫn đúng — và đó là hiện trạng, không còn gì "treo lơ lửng".
-#   - Nửa "tên job chỉ có tác dụng khi bật được required check" là đúng nhưng
-#     KHÔNG phải gap riêng: nó chính là gap `required-checks-khong-cuong-che-duoc`
-#     (còn mở ở trên). Một sự thật không cần hai chỗ đứng trong sổ.
   - id: notifications-digest-org-null
     where: cron digest V5 "Tuyến hôm nay" (metadata.v5='digest', channel IN_APP) ghi public.notifications
     expires_at: 2026-10-31

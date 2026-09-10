@@ -1,5 +1,5 @@
 {
-  "$comment": "Bản đồ rủi ro theo đường dẫn — THAY cho .github/CODEOWNERS. Repo này có đúng một owner, nên CODEOWNERS không tạo ra được reviewer thứ hai và cũng không enforce được trên GitHub Free. Giá trị thật của nó là cho agent và người biết file nào nhạy cảm và phải chạy gate gì; thứ đó nên là dữ liệu máy đọc được, không phải một file cơ chế không hoạt động. Dùng bởi: PR template, quyết định có cần cross-review hay không (PROJECT_CONTRACT §12), và người viết commit.",
+  "$comment": "Phạm vi rủi ro, gate tối thiểu và review độc lập theo PROJECT_CONTRACT §3. Một file có thể khớp nhiều tier.",
   "schemaVersion": 1,
   "tiers": {
     "money": {
@@ -103,7 +103,7 @@
     },
     "product-surface": {
       "label": "Bề mặt sản phẩm",
-      "why": "Route, nav, launcher và permission page phải khớp nhau; lịch sử đã có ca route được gác nhưng tile và sidebar bị bỏ sót. — CẬP NHẬT 11/08/2026: tier này trỏ `src/App.tsx` vì đó từng là nơi khai route. App.tsx nay có 0 dòng `path=` (route đã dời sang src/app/routes/**, 11 file theo domain), nên tier đang canh một chỗ trống: sửa route KHÔNG rơi vào tier nào. Thêm src/app/routes/** và src/app/capabilities/**. Giữ App.tsx trong danh sách vì nó vẫn là chỗ dựng cây provider.",
+      "why": "Route, nav, launcher và permission page phải khớp nhau; kiểm cả cây provider, routes và capabilities.",
       "crossReview": false,
       "gates": [
         "npm run typecheck:baseline",
@@ -146,7 +146,7 @@
   },
   "notes": [
     "Một file có thể thuộc nhiều tier — lấy tier NGHIÊM NHẤT khớp được.",
-    "crossReview=true nghĩa là thay đổi nên được một agent thứ hai soi độc lập trước khi promote (PROJECT_CONTRACT §12). Vì chủ dự án không làm chốt review, đây là lớp phòng thủ thay thế — nhưng chỉ áp cho ba tier cao nhất, bắt buộc cho mọi thay đổi sẽ làm mọi việc chậm gấp đôi mà không tăng an toàn tương xứng.",
+    "crossReview=true: một agent thứ hai review độc lập trước khi promote (PROJECT_CONTRACT §3). Chỉ áp dụng cho các tier được đánh dấu.",
     "Danh sách gate ở đây là TỐI THIỂU, không phải đầy đủ: luôn chạy thêm test của chính domain đang sửa."
   ]
 }

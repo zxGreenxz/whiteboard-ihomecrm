@@ -1,26 +1,5 @@
-# CI Gates — bật tự động các cổng kiểm chất lượng/bảo mật hiện chỉ chạy TAY
-# (P1 từ đợt tổng kiểm authorization). Không sửa/tạo gì khác ngoài file này.
-#
-# Job "quality-gates" là bắt buộc, chạy trên mọi PR/push KHÔNG cần secret nào
-# (typecheck/lint/build/vitest) và KHÔNG dùng continue-on-error — lệnh fail thì
-# job fail. Nhờ vậy CI XANH ngay khi merge file này, không đỏ vì thiếu secret.
-#
-# Các gate cần Supabase PAT / Management API / tài khoản test được tách RIÊNG,
-# chỉ chạy trên refs/heads/main qua push hoặc workflow_dispatch, và chỉ khi
-# maintainer đã cấu hình secret. PR và release/* chỉ chạy các gate không secret.
-# Job "preflight" đọc secret ra output cho các job optional `needs: preflight`.
-#
-# Secrets cần cấu hình (Settings → Secrets and variables → Actions):
-#   - SUPABASE_PAT            : Supabase Management API personal access token
-#                                → BẬT "security-gates" (definer-acl, view-invoker)
-#                                + cross-tenant-isolation + (cùng test creds) reconcile.
-#   - SUPABASE_ACCESS_TOKEN   : access token cho Supabase CLI (job gen:types drift —
-#                                cùng cơ chế .github/workflows/supabase-migrate.yml).
-#   - SUPABASE_TEST_EMAIL / SUPABASE_TEST_PASSWORD : tài khoản test (JWT thật, RLS)
-#                                dùng cho reconcile-money (nguồn B/C).
-#
-# GỢI Ý: thêm SUPABASE_PAT sớm để 2 gate ACL/view-invoker (chống drift quyền anon
-# + lộ view xuyên-tenant) có hiệu lực trên push/manual của refs/heads/main.
+# Main/PR: kiểm chất lượng; gate có credential chỉ chạy trên main.
+# Production: xác minh bằng chứng CI của đúng SHA sau push. Promote qua script trước khi push.
 
 name: CI Gates
 
@@ -30,9 +9,6 @@ on:
   push:
     branches:
       - main
-      # `production` là nhánh Vercel phát hành. Trước đây nó KHÔNG được theo dõi,
-      # nên một push thẳng vào đó không kích hoạt gate nào — đúng nhánh nguy hiểm
-      # nhất lại là nhánh duy nhất không ai canh.
       - production
       - 'release/*'
 
@@ -44,10 +20,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # Preflight: kiểm secret nào đã cấu hình, xuất ra output cho các job optional.
-  # (Không thể dùng secrets.* trong `if:` cấp job → phải qua bước này.)
-  # ─────────────────────────────────────────────────────────────────────────
   preflight:
     if: >-
       github.ref == 'refs/heads/main' &&
@@ -70,32 +42,14 @@ jobs:
           echo "has_cli_token=$([ -n "$CLI" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_test_creds=$([ -n "$PAT" ] && [ -n "$TE" ] && [ -n "$TP" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Gate bắt buộc (KHÔNG cần secret): typecheck, lint, build, test.
-  # Luôn chạy, xanh được ngay — không phụ thuộc PAT.
-  # ─────────────────────────────────────────────────────────────────────────
   quality-gates:
     runs-on: ubuntu-latest
-    # KHÔNG chạy lại trên nhánh `production`.
-    #
-    # Promote là fast-forward một commit ĐÃ xanh trên main. Chạy lại toàn bộ
-    # workflow ở đó tốn thêm ~12 phút mỗi lần phát hành mà không trả lời thêm
-    # câu hỏi nào: job `production-promotion` bên dưới đã cưỡng chế cả hai vế
-    # — commit phải nằm trên main (check-production-promotion.mjs) VÀ kết luận
-    # gate của đúng SHA đó phải xanh ở mức BƯỚC (promote-to-production.mjs).
-    # Một push thẳng vào production mà không qua main vẫn bị chặn ở đó.
     if: github.ref != 'refs/heads/production'
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-          # fetch-depth: 0 — checkout mặc định là SHALLOW (chỉ 1 commit).
-          # check-graph-hygiene.mjs phải duyệt lịch sử các commit đụng .ua/ để
-          # cưỡng chế luật "refresh graph đi PR riêng" (Contract §12 luật #6), và
-          # check-graph-freshness.mjs đo độ lệch từ baseCommit của graph. Với
-          # repo nông, cả hai thoát 3 ("không kiểm được ≠ đạt") thay vì im lặng
-          # cho qua — nhưng như vậy thì gate không bao giờ thật sự chạy trên CI.
           fetch-depth: 0
 
       - name: Setup Node 24.18.0
@@ -114,38 +68,6 @@ jobs:
       - name: Organization backup envelope regressions (no credentials)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node --test scripts/org-context-repair/sealed-artifact.test.mjs
-
-      # ─── MỘT LƯỢT PHƠI HẾT LỖI ───────────────────────────────────────────
-      # Từ đây xuống, mọi bước gate mang điều kiện `!cancelled()` + caidat xanh:
-      # một bước đỏ KHÔNG chặn các bước sau chạy nữa. Job vẫn ĐỎ nếu bất kỳ bước
-      # nào đỏ — đây không phải continue-on-error (Contract §3 cấm tính nó là
-      # xanh), chỉ là bỏ kiểu dừng-ở-lỗi-đầu-tiên.
-      #
-      # Vì sao: ngày 13/08/2026 một đợt tính năng cần 5 VÒNG sửa-push-chờ kéo 19
-      # tiếng, vì mỗi lượt chạy chỉ lộ đúng MỘT bước đỏ rồi giấu các bước sau
-      # (restore drill → idempotent → docs-freshness → docs-freshness → đảo
-      # strict). Tổng thời gian máy chạy cả ngày chưa tới một giờ; phần còn lại
-      # là số vòng. Chạy hết các bước độc lập thì một lượt push thấy đủ mọi lỗi.
-      #
-      # Ngoại lệ duy nhất: bước "Bundle" cần dist/ nên chỉ chạy khi "Build" xanh.
-      # Các khối gộp nhiều script cũng gom lỗi (`|| loi=1` … `exit $loi`) thay vì
-      # `bash -e` chết ở script đầu — cùng lý do, tầng trong của cùng một luật.
-      # ─────────────────────────────────────────────────────────────────────
-
-      # BA NHÓM GATE TĨNH theo plan §31 — nhưng là ba STEP, không phải ba JOB.
-      #
-      # Plan §0.6 muốn gộp 8 job thành 3 để "giảm bề mặt bảo trì và số nơi có thể
-      # kẹt merge". Repo đi xa hơn: gộp về MỘT job. Tinh thần đã đạt, chỉ thiếu
-      # phần đặt tên — mà tên job chỉ có giá trị khi bật được required check, và
-      # điều đó bất khả ở tier hiện tại (repo private trên GitHub Free — đo ở
-      # docs/generated/external-controls.json).
-      #
-      # Chia thành ba step CÓ TÊN thì được đúng phần giá trị còn lại mà không tốn
-      # gì: giao diện PR chỉ ra ngay NHÓM nào đỏ, thay vì một khối 19 lệnh mà
-      # phải mở log mới biết cái nào. Ba runner khởi động thì không.
-      #
-      # Việc cố ý KHÔNG tách thành job riêng đã đăng ký ở tooling/known-gaps.yaml
-      # (ci-gates-mot-job-thay-vi-ba) — để deliverable không treo lơ lửng.
 
       - name: contract-gates (luật agent · bề mặt sản phẩm · runtime pin · known-gap hết hạn)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
@@ -185,11 +107,6 @@ jobs:
           node scripts/check-migration-test-liveness.mjs || loi=1
           exit $loi
 
-      # Tách riêng vì bước này GỌI RA MẠNG (npm audit + npm ls đọc registry).
-      # Gộp vào "Contract gates" thì một lượt registry hỏng sẽ làm cả khối gate
-      # tĩnh đỏ theo, và người đọc log không biết cái nào thật sự vi phạm.
-      # Gate tự thoát 3 khi không hỏi được registry — 3 nghĩa là KHÔNG ĐO ĐƯỢC,
-      # không phải "sạch".
       - name: Lỗ hổng phụ thuộc — phân tầng theo tầm với, mỗi mục có hạn ký nhận
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-dependency-audit.mjs
@@ -211,12 +128,6 @@ jobs:
           node scripts/generate-docs-views.mjs --check || loi=1
           exit $loi
 
-      # NỐI 02/09/2026 — SÁU cổng Copilot còn lại. Cùng một vết đã ghi ở khối
-      # docs-freshness ngay trên (26/08), lần này gấp sáu: package.json có đủ
-      # script cho chúng, TEST của chúng chạy đều đặn ở bước `node --test` phía
-      # dưới, mà chính các gate thì KHÔNG lệnh CI nào gọi. Test của một cái cửa
-      # chạy hằng ngày trong khi cái cửa không bao giờ đóng.
-      # Tất cả đều tĩnh, không mạng, không credential — cả khối dưới 2 giây.
       - name: copilot-gates (ranh giới L5/L6 · hợp đồng trang · điều khiển an toàn · provider · E2E · golden eval · negative-proofs)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: |
@@ -246,29 +157,6 @@ jobs:
           node scripts/check-copilot-negative-proofs.mjs || loi=1
           exit $loi
 
-      # Lane MOCK của bộ ca vàng — CHẠY THẬT, không mạng, không model, không
-      # credential: nó suy tool/outcome/scenario từ chính câu hỏi rồi đối chiếu
-      # với oracle trong corpus. Gate `check-copilot-golden-eval` ở khối trên chỉ
-      # xác nhận corpus HỢP LỆ; bước này xác nhận corpus CÒN ĐÚNG.
-      #
-      # Báo cáo ghi ra $RUNNER_TEMP chứ KHÔNG vào docs/generated/ — thư mục đó do
-      # generator riêng sở hữu và một artifact CI ghi lén vào đó sẽ làm gate
-      # docs-freshness đỏ ở lần chạy sau, không phải ở lần này.
-      #
-      # Việc kiểm báo cáo nằm trong scripts/check-golden-eval-report.mjs (không
-      # còn `node -e` nhúng ở đây): số ca mong đợi suy từ chính
-      # tooling/copilot-golden-eval.json (cases.length), KHÔNG ghi cứng ở đây
-      # hay trong script. Bản trước ghi cứng 30 — con số của bộ ca ngày
-      # 13/08/2026 — nên mỗi lần thêm ca mới (G1-C1 lên 36, G1-C2 lên 43, …) là
-      # CI đỏ vì "khong du 30 ca", và cách "sửa" rẻ nhất là đừng thêm ca. Một cửa
-      # chặn phạt việc mở rộng phạm vi đo là cửa chặn đang làm ngược việc của nó.
-      #
-      # Vì sao phải đọc lại báo cáo thay vì tin mã thoát: runner thoát 2 khi
-      # `verdict != pass`, mà hôm nay verdict luôn là `blocked` vì SLA độ trễ
-      # đang `pending-owner-approval` (chủ chưa ký số ms nào là đạt). Script tha
-      # ĐÚNG một lý do đó và đỏ với mọi lý do khác — mọi ca vẫn phải pass hết.
-      # Khi chủ ký SLA, xoá nhánh tha trong check-golden-eval-report.mjs và để
-      # mã thoát của runner nói thẳng.
       - name: Copilot golden eval — lane mock (báo cáo ra $RUNNER_TEMP)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         env:
@@ -291,17 +179,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # Suite `edge-deno-llm-proxy` của tooling/test-matrix.json. Nó KHÔNG chạy
-      # được ở network-center-validation.yml: workflow đó lọc `paths:` theo Network
-      # Center nên sửa supabase/functions/llm-proxy không kích hoạt nó. Trước
-      # 02/09/2026 suite này khai `blockedFromCi` — tồn tại trong repo, xanh ở máy
-      # dev, chưa từng chạy trên CI. Đây là bước gỡ miễn trừ đó.
       - name: Cài Deno cho test Edge llm-proxy
         if: ${{ !cancelled() }}
         uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
         with:
-          # Pin exact 2.9.4 — cùng bản network-center-validation.yml đang dùng và
-          # cùng bản đã xác minh suite này xanh. `v2.x` sẽ trôi theo patch mới.
           deno-version: 2.9.4
 
       - name: Deno test — supabase/functions/llm-proxy
@@ -314,63 +195,14 @@ jobs:
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-new-modules-strict.mjs
 
-      # BAO CAO, khong phai cua chan: in tier rui ro + gate bat buoc cua PR nay.
-      # No KHONG kiem duoc ban da chay cac gate do hay chua — khong co dau vet nao
-      # trong repo de doc. Muc dich la de nguoi review thay ngay minh dang nhin gi.
       - name: Phan loai rui ro thay doi (bao cao)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-risk-classifier.mjs
-
 
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: npm run typecheck:baseline
 
-      # ĐÃ GỠ: `npx tsc --noEmit -p tsconfig.app.json` chạy TRẦN.
-      #
-      # Bước đó đòi 0 lỗi, trong khi ts-baseline.json khai đúng 2 lỗi đã biết —
-      # tức nó mâu thuẫn với chính cơ chế mà TÊN nó trỏ người đọc tới. Nó chưa
-      # bao giờ xanh: quality-gates 0/167 lần xanh trong toàn bộ lịch sử GitHub
-      # còn giữ cho nhánh main (từ 07/08/2026), và trước hôm nay nó còn chưa
-      # từng ĐƯỢC CHẠY vì các bước đứng trước luôn đỏ sớm hơn.
-      #
-      # NGUYÊN NHÂN GỐC của cả 2 lỗi là MỘT, và nó không nằm ở hai file kia:
-      # tsconfig.app.json đặt `"strict": false`, kéo theo strictNullChecks tắt.
-      # Zod 3 nói rõ nó cần strictNullChecks; thiếu cờ đó thì `z.infer` thoái
-      # hoá và MỌI khoá của schema suy ra thành optional — kể cả khoá khai
-      # `z.string().min(1)`. Đó đúng là hình dạng trong thông báo lỗi:
-      # `{ label?: string; type?: …; amount?: number }` cho một schema mà cả ba
-      # khoá đều bắt buộc. Nên "sửa hai lỗi này" thực chất là "bật strict cho
-      # toàn app" — đúng cuộc di trú mà check-strict-islands.mjs đang làm dần
-      # theo từng vùng, không phải việc kèm vào một PR khác.
-      #
-      # KHÔNG MẤT GÌ khi gỡ. Bước "Typecheck baseline" ngay trên chạy CHÍNH XÁC
-      # cùng lệnh biên dịch (tsc --noEmit -p tsconfig.app.json, xem
-      # scripts/check-ts-baseline.mjs) rồi kiểm chặt hơn ba tầng: đối chiếu
-      # multiset fingerprint để một lỗi cũ không cấp phép cho lỗi mới cùng dạng,
-      # cross-check số dòng parse được với "Found N errors" của tsc để phát hiện
-      # parser trôi, và một SÀN ĐỘ PHỦ chặn việc thu hẹp include/exclude cho đỡ
-      # lỗi. Ratchet chỉ đi một chiều: baseline đã teo còn 2 mục.
-      #
-      # Bước này sẽ quay lại — dưới dạng khẳng định ts-baseline.json RỖNG — khi
-      # đảo strict phủ hết src/. Lúc đó nó mới nói được điều nó đang tự nhận.
-
-      # Đổi từ `npm run lint` TRẦN sang ratchet.
-      #
-      # Bước cũ đòi ESLint sạch tuyệt đối trên vùng repo tự sở hữu. Đo 12/08/2026
-      # trên đúng bộ ignore này: 1714 file, **1201 lỗi** — 1179 trong đó là
-      # @typescript-eslint/no-explicit-any. Không PR nào dọn nổi 1201 lỗi, nên
-      # cửa đó chỉ có hai kết cục: đỏ vĩnh viễn hoặc bị tắt; cả hai đều mất khả
-      # năng chặn lỗi MỚI, tức mất đúng thứ nó sinh ra để giữ.
-      #
-      # Nó đang là kết cục thứ nhất mà không ai thấy: bước này CHƯA TỪNG CHẠY.
-      # quality-gates 0/167 lần xanh trong toàn bộ lịch sử GitHub còn giữ cho
-      # main (từ 07/08/2026), và job luôn dừng ở một bước đứng trước.
-      #
-      # Ratchet giữ nguyên phép đo (cùng lệnh, cùng bộ ignore) nhưng đổi câu hỏi
-      # từ "có lỗi không" sang "có lỗi MỚI không", cộng một sàn độ phủ để việc
-      # nới `ignores` không làm cửa xanh lên. Cùng khuôn với ts-baseline, và
-      # multiset giữ trùng lặp nên `any` thứ 92 trong một file đã có 91 vẫn đỏ.
       - name: Lint root-owned code (ratchet — chặn lỗi MỚI, nợ cũ khai ở eslint-baseline.json)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node scripts/check-eslint-baseline.mjs
@@ -380,50 +212,10 @@ jobs:
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: npm run build
 
-      # Kiểm ngay sau build, khi dist/ còn nguyên. 99 trang khai lazy(); chỉ cần
-      # MỘT chỗ import thẳng một trang là nó bị gộp vào chunk entry và người dùng
-      # tải thêm vài trăm KB ở lần mở đầu. Không có gì hỏng — build xanh, test
-      # xanh, giao diện đúng — nên không ai phát hiện trừ khi có phép đo này.
-      # Cần dist/ nguyên vẹn nên là bước DUY NHẤT điều kiện theo Build, không theo caidat.
       - name: Bundle không có hồi quy eager-import
         if: ${{ !cancelled() && steps.build.conclusion == 'success' }}
         run: node scripts/generate-bundle-inventory.mjs
 
-      # Keep root discovery inside root-owned suites.
-      # scripts/__tests__/network-center-*.test.mjs dùng API `node:test`, KHÔNG
-      # phải Vitest. Chúng do `node --test` chạy trong workflow network-center.
-      # Để Vitest quét thì cả 22 file fail với "No test suite found in file" —
-      # đo được 06/08/2026. Job này khi đó đỏ vì lý do chẳng liên quan gì tới
-      # chất lượng code, và một CI đỏ thường trực là thứ khiến người ta ngừng
-      # đọc kết quả CI.
-      # Những file này dùng API `node:test`, KHÔNG phải Vitest. Trước 11/08/2026
-      # matrix xếp chúng vào suite Vitest và CI không loại trừ — nên bước Vitest
-      # ĐỎ vì chúng, và đồng thời KHÔNG lệnh nào chạy chúng. File test tồn tại
-      # trong repo mà chưa từng được thi hành: tệ hơn không có test, vì nhìn vào
-      # thư mục thì thấy "đã có test".
-      #
-      # VÀ VẾT ĐÓ ĐÃ TÁI DIỄN: 7 file dưới (từ `check-copilot-routes` trở xuống)
-      # là gate viết sau ngày 11/08, mỗi cái lại dùng `node:test` mà không ai nối
-      # vào đây. Đo 12/08/2026: chúng chứa 77 test, tất cả đều xanh, và tất cả đều
-      # CHƯA TỪNG chạy trong CI. `npm run gate:test-matrix` là thứ phát hiện ra —
-      # nó đã đỏ sẵn, chỉ là chưa ai đọc.
-      #
-      # Thêm gate mới dùng `node:test` thì phải sửa BA chỗ: bước này, danh sách
-      # `--exclude` của Vitest ngay dưới, và `node-native.includes` trong
-      # `tooling/test-matrix.json`. Thiếu một chỗ là test lại thành trang trí.
-      # DÙNG BLOCK SCALAR `|`, ĐỪNG QUAY LẠI `run: node --test A \` MỘT DÒNG.
-      #
-      # Bản cũ viết danh sách bằng plain scalar nhiều dòng, mỗi dòng kết thúc `\`.
-      # YAML GẤP plain scalar thành MỘT dòng, thay xuống dòng bằng dấu cách — nên
-      # bash không hề thấy "nối dòng", nó thấy `A \ B \ C`. Mà `\ ` trong bash là
-      # DẤU CÁCH ĐƯỢC ESCAPE: mọi đối số từ cái thứ hai trở đi mang một dấu cách ở
-      # đầu tên file. `node --test` bỏ qua đường dẫn không tồn tại trong im lặng và
-      # thoát 0 — nên bước này XANH suốt trong khi chỉ chạy 2/29 file (file đầu và
-      # file cuối). Đo 03/09/2026. Chuỗi `\n` viết nhầm ở cuối chỉ là triệu chứng
-      # dễ thấy của cùng một lỗi; nó thành một đối số tên `n`.
-      #
-      # Với block scalar `|` xuống dòng được GIỮ, nên `\` cuối dòng là nối dòng
-      # thật của shell và mọi đường dẫn sạch.
       - name: node --test (script test dùng node:test)
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: |
@@ -530,15 +322,6 @@ jobs:
           --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs'
           --exclude 'scripts/__tests__/check-ts-baseline.test.mjs'
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Đảo strict — vùng đã sạch không được bẩn lại (job riêng, chạy song song)
-  #
-  # Tách ra khỏi quality-gates ngày 25/08/2026 vì lý do thời gian, KHÔNG phải vì hạ chuẩn:
-  # bước này vẫn đỏ y như cũ khi vi phạm, chỉ là nó chạy SONG SONG thay vì nối đuôi.
-  # Đo trên run 32868528271: quality-gates 8m40s, trong đó đảo strict 2m38s + múi giờ
-  # 2m06s = 4m44s, tức quá nửa. Hai bước đó không phụ thuộc gì vào các bước còn lại.
-  # Chi phí thêm: ~25 giây dựng runner cho mỗi job — đổi lấy ~4 phút wall-clock.
-  # ─────────────────────────────────────────────────────────────────────────
   strict-islands-gate:
     if: github.ref != 'refs/heads/production'
     runs-on: ubuntu-latest
@@ -560,24 +343,9 @@ jobs:
       - name: Cài dependency (npm ci — khớp package-lock.json)
         run: npm ci
 
-      # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +
-      # biên dịch 247 file), tốn hàng chục giây — trong khi cả khối trên chạy dưới
-      # một giây. Gộp vào sẽ làm mất tín hiệu "khối gate tĩnh nhanh".
       - name: Đảo strict — vùng đã sạch không được bẩn lại
         run: node scripts/check-strict-islands.mjs
 
-      # Chặn NỢ MỚI — khác gate trên, vốn canh nợ CŨ không bẩn lại.
-      # Cần lịch sử git (diff với merge-base), nên job này phải checkout fetch-depth: 0.
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Ổn định múi giờ (job riêng, chạy song song)
-  #
-  # Tách ra khỏi quality-gates ngày 25/08/2026 vì lý do thời gian, KHÔNG phải vì hạ chuẩn:
-  # bước này vẫn đỏ y như cũ khi vi phạm, chỉ là nó chạy SONG SONG thay vì nối đuôi.
-  # Đo trên run 32868528271: quality-gates 8m40s, trong đó đảo strict 2m38s + múi giờ
-  # 2m06s = 4m44s, tức quá nửa. Hai bước đó không phụ thuộc gì vào các bước còn lại.
-  # Chi phí thêm: ~25 giây dựng runner cho mỗi job — đổi lấy ~4 phút wall-clock.
-  # ─────────────────────────────────────────────────────────────────────────
   timezone-gate:
     if: github.ref != 'refs/heads/production'
     runs-on: ubuntu-latest
@@ -599,16 +367,6 @@ jobs:
       - name: Cài dependency (npm ci — khớp package-lock.json)
         run: npm ci
 
-      # Runner này chạy UTC còn dữ liệu và người dùng ở UTC+7, nên một lỗi ngày
-      # tháng có thể XANH ở đây và SAI trên máy người dùng — hoặc ngược lại. Bước
-      # này chạy lại nhóm src/lib + src/hooks dưới 4 múi giờ (UTC-11 → UTC+14) và
-      # đòi kết quả GIỐNG HỆT.
-      # Nó đã chứng minh giá trị ngay lần chạy đầu: bắt được useOccupancyTrend12m
-      # đưa chuỗi chỉ-có-ngày qua `new Date()` rồi đọc bằng getMonth() — biểu đồ
-      # lấp đầy lệch một tháng ở mọi múi giờ âm. Cả 2810 test đều xanh ở UTC lẫn
-      # UTC+7 nên không cách nào thấy nếu không thử ở múi giờ âm.
-      # ~48 giây (4 lượt × 12s) nên KHÔNG gộp vào bước "Contract gates" vốn dành
-      # cho các kiểm tra dưới một giây.
       - name: Ổn định múi giờ (chạy lại test ngày/tiền ở UTC-11 → UTC+14)
         run: npm run gate:timezone
 
@@ -624,9 +382,6 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-          # Full history để gate idempotent tính diff từ github.event.before
-          # (mốc scoped 28/08/2026). Job này timeout 20 phút, fetch full chỉ
-          # thêm vài giây — rẻ hơn hẳn logic fetch-lẻ SHA kèm fallback.
           fetch-depth: 0
 
       - name: Setup Node
@@ -641,68 +396,36 @@ jobs:
       - name: Cài dependency
         run: npm ci
 
-      # Gate ACL (AUTHORIZATION-PLAN §9.3 điểm 9): chặn SECURITY DEFINER function
-      # mới anon-executable ngoài allowlist baseline (chống drift quyền anon).
       - name: Definer ACL drift (SECURITY DEFINER anon-executable)
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-definer-acl.mjs
 
-      # Gate view: mọi VIEW public phải security_invoker=true — án lệ
-      # CREATE OR REPLACE VIEW làm rớt cờ này, lộ dữ liệu tenant khác.
       - name: View security_invoker (chống lộ dữ liệu xuyên tenant qua view)
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-view-invoker.mjs
 
-      # Gate provenance (AUTHORIZATION-PLAN §20-10): phiếu APPROVED thiếu
-      # approver mà cũng thiếu system_source = có writer legacy sống lại ngoài
-      # đường canonical. Bắt regress thay vì để số liệu audit trôi âm thầm.
       - name: Approver provenance (chống writer legacy tạo phiếu tự-duyệt)
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-approver-provenance.mjs
 
-      # Khoá quyền có trong DB mà FE không có nhãn = quyền VÔ HÌNH: không ai
-      # cấp/thu hồi được từ bảng phân quyền. Ngày 26/07 đã đo lệch đúng 11 khoá.
-      # Chiều ngược lại (nhãn trỏ khoá không có) thì tick vào là bị RPC từ chối.
       - name: Catalog quyền FE khớp permission_definitions
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-permission-catalog.mjs
 
-
-      # Ledger supabase_migrations phải ĐỨNG YÊN: forward-only lane cố ý không
-      # backfill nó, nên mọi thay đổi nghĩa là ai đó đã dùng đường khác. Quan
-      # trọng vì migration-provenance.json xếp 351 file là `ledger-applied` DỰA
-      # TRÊN bảng này — viết lại bảng thì 351 khẳng định xuất xứ mất căn cứ mà
-      # không có lỗi nào phát ra.
       - name: Sổ ledger migration không bị viết lại
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-migration-ledger-frozen.mjs
 
-      # Migration sau cutoff phải chạy lại được lần hai. Re-apply xảy ra khi apply
-      # hỏng giữa chừng, khi dựng lại môi trường từ baseline + forward lane, và khi
-      # hợp thức hoá một thay đổi đã đi đường tắt — cả ba đều là lúc người ta vội.
-      # Chạy trên production nhưng KHÔNG ghi: hai lượt trong một transaction, ROLLBACK.
-      #
-      # --tu-moc (28/08/2026): chỉ đo migration THÊM MỚI trong diff của push này —
-      # trước đây file dở của phiên A bị đem đo trong lượt CI do phiên B kích hoạt.
-      # File cũ đã có sổ chứng nhận sha256 + luật immutable che. Mốc hỏng (before
-      # toàn 0, commit bị GC sau force-push) hoặc workflow_dispatch (before rỗng)
-      # thì script tự rơi về quét toàn bộ — chạy tay = đo thật, khớp triết lý
-      # bước schema_doi của generated-types-local-drift.
       - name: Migration forward chạy lại được lần hai (idempotent)
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-forward-migration-idempotent.mjs --tu-moc "${{ github.event.before }}"
 
-      # BA BIÊN mà hợp đồng chỉ là MỘT CHUỖI, và không trình biên dịch nào kiểm
-      # được: tên RPC, slug Edge Function, tên bảng realtime. types.ts có kiểu RPC
-      # nhưng chỉ che phần src/ được tsc soi — Edge Function chạy Deno, services/
-      # và infra/ nằm ngoài hoàn toàn. Manifest sinh từ HAI nguồn (call site +
-      # catalog live) theo plan §P1.7, và đỏ khi hai nguồn không giao nhau đúng.
       - name: Bề mặt RPC · Edge · realtime khớp catalog live
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
@@ -735,39 +458,16 @@ jobs:
           # ở đây (job đã có PAT sẵn) là cách rẻ nhất giữ nguồn còn sống.
           node scripts/check-stable-fn-locks.mjs
 
-      # MỌI bảng có organization_id phải có một chỗ đứng: đã rào, đang chờ vá ở
-      # một giai đoạn có tên, hoặc miễn trừ CÓ LÝ DO ĐO ĐƯỢC VÀ CÓ HẠN. Nhóm thứ
-      # tư — "chưa ai nhận" — là thứ gate này sinh ra để tìm.
-      #
-      # Khuyết tật gốc của cả chuyện tách dữ liệu: 20260713121000_sprint3b gắn
-      # biên giới theo DANH SÁCH VIẾT TAY 28 bảng, nên mọi bảng ra đời sau đều
-      # thiếu — âm thầm hơn một năm, tới lúc đo mới lòi ra 272 bảng không có ranh
-      # giới nào giữa các công ty. Event trigger org_boundary_tu_dong chặn ở tầng
-      # database; gate này là lưới vét, và cũng là chỗ canh sổ miễn trừ quá hạn.
       - name: Mọi bảng có organization_id đều có chỗ đứng
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/build-org-boundary-inventory.mjs --check
 
-      # Đo rò xuyên tổ chức bằng VAI NGƯỜI DÙNG THẬT (SET ROLE + JWT), chỉ đọc,
-      # mọi truy vấn bọc ROLLBACK.
-      #
-      # CHẶN theo vị từ =0, KHÔNG theo số dòng tuyệt đối: dữ liệu nghiệp vụ thay
-      # đổi hằng ngày nên chốt "phải đúng 224 dòng" sẽ đỏ giả liên tục rồi bị tắt
-      # đi — và khi ấy rò thật cũng không ai thấy. "visible_foreign = 0" thì tất
-      # định vĩnh viễn.
-      #
-      # Ba mã thoát có ý nghĩa khác nhau: 0 sạch · 1 CÓ RÒ · 3 bốn chốt chống ảo
-      # giác hỏng, tức số đo không đáng tin (nguy hiểm hơn có rò, vì nó im lặng).
       - name: Không rò dữ liệu xuyên tổ chức (đo bằng vai người dùng thật)
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/measure-org-leak.mjs
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.
-  # Cần SUPABASE_ACCESS_TOKEN (Supabase CLI).
-  # ─────────────────────────────────────────────────────────────────────────
   generated-types-drift:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -816,10 +516,6 @@ jobs:
             && echo "✅ types.ts khớp schema DB — không trôi." \
             || { echo "❌ types.ts TRÔI so với schema thật — chạy: npm run gen:types (script tự ghi + tự thêm header, KHÔNG redirect)"; exit 1; }
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Optional: đối chiếu tiền 3 nguồn độc lập (bug class cap-1000 PostgREST).
-  # Cần SUPABASE_PAT + tài khoản test thật (JWT/RLS).
-  # ─────────────────────────────────────────────────────────────────────────
   reconcile-money:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -845,8 +541,6 @@ jobs:
       - name: Cài dependency (cần @supabase/supabase-js)
         run: npm ci
 
-      # VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY đọc từ file .env đã
-      # commit trong repo (anon key công khai theo thiết kế) — không cần secret.
       - name: Đối chiếu tiền — 3 nguồn độc lập (SQL SUM / RPC RLS / phân trang FE)
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
@@ -854,10 +548,6 @@ jobs:
           SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
         run: node scripts/reconcile-money.mjs
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Optional: ma trận âm bản cách ly tenant (integration test chống rò rỉ
-  # xuyên-tenant). Cần SUPABASE_PAT. Thao tác trong BEGIN…ROLLBACK.
-  # ─────────────────────────────────────────────────────────────────────────
   cross-tenant-isolation:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -884,20 +574,6 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/test-cross-tenant.mjs
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Quét secret TOÀN LỊCH SỬ.
-  #
-  # Đợt 0a #3 của plan đòi việc này. Nó ĐÃ được chạy một lần (số liệu ghi ở
-  # tooling/program-status.json) nhưng không để lại artifact và không có cơ chế
-  # chạy lại — tức là một lần kiểm, không phải một cửa chặn. Bằng chứng chứng
-  # minh nó SẠCH LÚC ĐÓ không chứng minh nó SẠCH BÂY GIỜ; đây đúng là kiểu hỏng
-  # đã cắn hai lần trong ngày 07/08 (backup đứt âm thầm, baseline chưa từng
-  # restore thật).
-  #
-  # Cài binary pin theo VERSION + SHA256 thay vì dùng gitleaks-action: action v2
-  # đòi GITLEAKS_LICENSE cho tổ chức, và một cửa chặn phụ thuộc giấy phép bên thứ
-  # ba là một cửa chặn sẽ tắt vào ngày không ai muốn.
-  # ─────────────────────────────────────────────────────────────────────────
   secret-scan:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/production'
@@ -905,8 +581,6 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          # BẮT BUỘC: quét toàn lịch sử. Checkout nông chỉ thấy một commit, và
-          # gitleaks sẽ báo "no leaks found" — xanh rỗng, đúng thứ tệ nhất.
           fetch-depth: 0
           persist-credentials: false
 
@@ -932,55 +606,11 @@ jobs:
       - name: Quét toàn lịch sử
         run: /tmp/gitleaks git --redact --no-banner --config .gitleaks.toml .
 
-      # Artifact graph là một loại rủi ro RIÊNG, không nằm trong bước trên.
-      #
-      # `gitleaks git` quét COMMIT. Nó bắt secret bị commit — nhưng
-      # .ua/knowledge-graph.json là 8 MB văn bản do LLM sinh ra sau khi đọc toàn
-      # repo (kể cả fixture, seed, migration có dữ liệu mẫu), rồi được commit và
-      # push công khai. Hai thứ gitleaks KHÔNG bắt:
-      #   - PII khách hàng (số điện thoại, email) — không có luật nào cho nó
-      #   - và diff 8 MB JSON thì không ai review bằng mắt để bù lại
-      # Đo thật 08/08/2026: gitleaks trả "no leaks found" trên .ua/, trong khi
-      # cần một phép kiểm riêng cho trường văn bản. Đặt ở job này vì binary
-      # gitleaks đã có sẵn — tải lần nữa ở job khác là lãng phí và dễ lệch version.
       - name: Secret + PII trên artifact graph (.ua/)
         env:
           GITLEAKS_BIN: /tmp/gitleaks
         run: node scripts/check-graph-secrets.mjs
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Ba cửa chặn về TRI THỨC (graph UA/GitNexus) gom về một chỗ có tên.
-  #
-  # Trước 11/08/2026 chúng nằm rải ở ba bước của hai job khác nhau, nên không
-  # đọc được "phần tri thức có xanh không" mà phải đi tìm từng bước một.
-  #
-  # KHÔNG gom `check-graph-secrets.mjs` vào đây, và đó là quyết định chứ không
-  # phải bỏ sót: nó cần binary gitleaks, mà binary đó đã được tải trong job
-  # `security-gates`. Tải lần thứ hai vừa lãng phí vừa dễ lệch version — chú
-  # thích tại chỗ đó đã cân nhắc và kết luận vậy từ trước. Ở đây chỉ ghi con trỏ.
-  # ─────────────────────────────────────────────────────────────────────────
-  # Hợp đồng realtime: bảng hub lắng nghe phải nằm trong publication thật.
-  #
-  # VÌ SAO TÁCH RA KHỎI `security-gates` (11/08/2026)
-  #   Bước này trước nằm trong security-gates, mà job đó có
-  #   `if: github.ref == refs/heads/main && (push || workflow_dispatch)`. Nghĩa là
-  #   trên PULL REQUEST nó KHÔNG BAO GIỜ chạy — phép kiểm chỉ nói cho ta biết sau
-  #   khi thay đổi đã vào main. Với một lỗi IM LẶNG (subscribe câm: Supabase không
-  #   đẩy sự kiện, không lỗi, không cảnh báo, giao diện chỉ ngừng tự cập nhật) thì
-  #   biết sau khi merge gần như là không biết.
-  #
-  #   Đây cũng không phải phép kiểm BẢO MẬT — nó là hợp đồng đúng/sai. Nằm trong
-  #   security-gates chỉ vì ở đó sẵn có PAT.
-  #
-  # THIẾU PAT ⇒ ĐỎ, không phải bỏ qua
-  #   Repo này private và mọi PR đến từ nhánh trong CÙNG repo, nên secret luôn có.
-  #   Không có PAT nghĩa là secret bị gỡ hoặc hết hạn — đó là chuyện phải biết,
-  #   không phải điều kiện bình thường để im lặng cho qua. Script tự thoát 3.
-  # 26/08/2026 — gộp từ HAI job (`realtime-contract-gates` + job này). Mỗi job
-  # từng trả một lượt checkout + setup Node + `npm ci` (~60–90 giây máy) chỉ để
-  # chạy tổng cộng 3 script vài giây. Gộp lại tiết kiệm nguyên một lượt dựng
-  # runner mỗi run mà không mất phép đo nào — ba step vẫn nguyên tên, vẫn đỏ
-  # độc lập như cũ. `fetch-depth: 0` giữ theo yêu cầu của cặp graph.
   realtime-and-knowledge-gates:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/production'
@@ -988,10 +618,6 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          # check-graph-hygiene duyệt TOÀN LỊCH SỬ các commit đụng .ua/ để cưỡng
-          # chế luật "refresh graph đi PR riêng" (Contract §12 luật #6), và
-          # check-graph-freshness đo độ lệch từ baseCommit. Checkout nông làm cả
-          # hai thành "không kiểm được" (exit 3), không phải "đạt".
           fetch-depth: 0
           persist-credentials: false
 
@@ -1007,26 +633,11 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-realtime-descriptors.mjs
 
-      # Vệ sinh graph — CHẶN. Ba phép kiểm: manifest khớp artifact, refresh đi PR
-      # riêng, và graph KHÔNG được đè bản luật quy định chính nó (Contract,
-      # CLAUDE.md, AGENTS.md, AI_RULES.md).
       - name: Vệ sinh graph (manifest · PR riêng · không đè Contract)
         run: node scripts/check-graph-hygiene.mjs
 
-      # Độ mới graph — CỐ Ý KHÔNG CHẶN. Plan kiến trúc (dòng 119, 2271) đã chốt UA
-      # freshness không phải required check: graph 4 MB commit vào repo, refresh là
-      # cả một PR, nên đỏ CI mỗi khi nó cũ sẽ khiến người ta tắt gate đi. Chế độ mặc
-      # định (không cờ --nhiem-vu) in đủ số đo rồi thoát 0 khi graph cũ; nó CHỈ đỏ
-      # khi artifact hỏng hoặc không tự nhất quán — tức "không kết luận được".
-      # Cửa chặn cứng nằm ở máy dev, theo nhiệm vụ (Contract §12 luật #1, #2).
       - name: Độ mới graph (báo cáo — chỉ đỏ khi artifact hỏng)
         run: node scripts/check-graph-freshness.mjs
-  # ─────────────────────────────────────────────────────────────────────────
-  # Nhánh `production` là thứ Vercel phát hành. Push thẳng vào đó = phát hành mã
-  # chưa từng qua CI của main. Branch protection KHÔNG bật được (repo private
-  # trên GitHub Free — đo ở docs/generated/external-controls.json), nên cửa chặn
-  # khả thi duy nhất là kêu SAU push. Kêu sau vẫn hơn không biết.
-  # ─────────────────────────────────────────────────────────────────────────
   production-promotion:
     if: github.ref == 'refs/heads/production' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -1043,25 +654,12 @@ jobs:
       - name: Mọi commit đang phát hành đều đã qua main
         run: node scripts/check-production-promotion.mjs
 
-      # Cửa chặn thứ hai, và là cửa duy nhất đọc KẾT LUẬN GATE.
-      #
-      # check-production-promotion chỉ hỏi "commit này đã có trên main chưa" —
-      # nó không hỏi gate của commit đó có xanh không. Bước dưới đọc kết luận ở
-      # mức BƯỚC, nên một bước fail bị continue-on-error nuốt (job vẫn báo
-      # success, trang Checks vẫn màu xanh) vẫn bị chặn.
-      #
-      # Thiếu token ⇒ exit 3 và job đỏ: "không hỏi được CI" KHÁC "CI xanh".
-      # Chờ tối đa 7 phút nếu CI cùng SHA còn chạy; lỗi thật vẫn dừng ngay.
-      # Đây là kiểm tra SAU push, không thay thế preflight trước khi phát hành.
       - name: Kết luận gate của commit đang phát hành
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/promote-to-production.mjs --sha "${{ github.sha }}" --wait-seconds 420
 
-
   organization-impact-review:
-    # Exact-head source review for the organization repair and backup prerequisite.
-    # No production credentials or graph database are uploaded.
     if: >-
       github.event_name == 'pull_request' &&
       (github.head_ref == 'fix/superadmin-org-repair-stable' ||
