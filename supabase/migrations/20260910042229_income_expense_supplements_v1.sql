@@ -2,7 +2,84 @@
 -- UPDATE, accounting capability, financial guard replacement or legacy RPC change.
 BEGIN;
 
-CREATE TABLE public.income_expense_supplements (
+-- The protected lane executes the candidate twice in one rollback transaction.
+-- Existing table/index names are accepted only when their complete shape agrees;
+-- IF NOT EXISTS alone could silently reuse an unrelated or weakened object.
+DO $shape$
+DECLARE spec record; relation_id oid; actual jsonb; previous_path text:=current_setting('search_path');
+BEGIN
+  PERFORM set_config('search_path','pg_catalog,public,app_private',true);
+  FOR spec IN SELECT * FROM (VALUES
+    ('public.income_expense_supplements',
+      '["id:uuid:true:gen_random_uuid()","organization_id:uuid:true:-","income_expense_id:uuid:true:-","note:text:false:-","attachments:jsonb:true:''[]''::jsonb","actor_id:uuid:true:-","actor_name:text:true:-","created_at:timestamp with time zone:true:clock_timestamp()"]'::jsonb,
+      '["CHECK (((NULLIF(btrim(note), ''''::text) IS NOT NULL) OR (jsonb_array_length(attachments) > 0)))","CHECK (((jsonb_typeof(attachments) = ''array''::text) AND (jsonb_array_length(attachments) <= 20)))","CHECK (((note IS NULL) OR (length(note) <= 5000)))","FOREIGN KEY (income_expense_id) REFERENCES income_expenses(id) ON DELETE RESTRICT","FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT","PRIMARY KEY (id)"]'::jsonb),
+    ('app_private.ie_supplement_requests',
+      '["income_expense_id:uuid:true:-","actor_id:uuid:true:-","idempotency_key:text:true:-","request_payload:jsonb:true:-","supplement_id:uuid:true:-"]'::jsonb,
+      '["CHECK (((length(idempotency_key) >= 1) AND (length(idempotency_key) <= 200)))","FOREIGN KEY (income_expense_id) REFERENCES income_expenses(id) ON DELETE RESTRICT","FOREIGN KEY (supplement_id) REFERENCES income_expense_supplements(id) ON DELETE RESTRICT","PRIMARY KEY (income_expense_id, actor_id, idempotency_key)"]'::jsonb),
+    ('app_private.ie_supplement_objects',
+      '["supplement_id:uuid:true:-","object_id:uuid:true:-","bucket_id:text:true:-","object_name:text:true:-"]'::jsonb,
+      '["FOREIGN KEY (object_id) REFERENCES storage.objects(id) ON DELETE RESTRICT","FOREIGN KEY (supplement_id) REFERENCES income_expense_supplements(id) ON DELETE RESTRICT","PRIMARY KEY (supplement_id, object_id)"]'::jsonb)
+  ) expected(name,columns,constraints) LOOP
+    relation_id:=to_regclass(spec.name);
+    IF relation_id IS NULL THEN CONTINUE; END IF;
+    IF NOT EXISTS(SELECT 1 FROM pg_class WHERE oid=relation_id AND relkind='r' AND NOT relispartition
+        AND relowner=current_user::regrole AND (spec.name<>'public.income_expense_supplements' OR relrowsecurity))
+      OR EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=relation_id AND attnum>0
+        AND (attisdropped OR attidentity<>'' OR attgenerated<>'' OR attacl IS NOT NULL)) THEN
+      RAISE EXCEPTION 'Supplement schema mismatch: table %',spec.name USING ERRCODE='55000';
+    END IF;
+    SELECT jsonb_agg(a.attname||':'||format_type(a.atttypid,a.atttypmod)||':'||a.attnotnull||':'||COALESCE(pg_get_expr(d.adbin,d.adrelid),'-') ORDER BY a.attnum)
+      INTO actual FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+      WHERE a.attrelid=relation_id AND a.attnum>0 AND NOT a.attisdropped;
+    IF actual IS DISTINCT FROM spec.columns THEN
+      RAISE EXCEPTION 'Supplement schema mismatch: columns %',spec.name USING ERRCODE='55000';
+    END IF;
+    SELECT jsonb_agg(pg_get_constraintdef(oid) ORDER BY pg_get_constraintdef(oid)) INTO actual
+      FROM pg_constraint WHERE conrelid=relation_id;
+    IF actual IS DISTINCT FROM spec.constraints THEN
+      RAISE EXCEPTION 'Supplement schema mismatch: constraints %',spec.name USING ERRCODE='55000';
+    END IF;
+    -- Unknown policies could OR around our SELECT predicate. Unknown custom
+    -- triggers/rules or grants could also create behavior this migration did not review.
+    IF EXISTS(SELECT 1 FROM pg_policy WHERE polrelid=relation_id AND
+      (spec.name<>'public.income_expense_supplements' OR polname NOT IN
+        ('income_expense_supplements_select','income_expense_supplements_hide_sandbox_admin','income_expense_supplements_org_boundary')))
+      OR EXISTS(SELECT 1 FROM pg_policy WHERE polrelid=relation_id
+        AND polname='income_expense_supplements_org_boundary' AND polpermissive)
+      OR EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid=relation_id AND NOT tgisinternal AND tgname<>ALL(
+        CASE spec.name WHEN 'public.income_expense_supplements' THEN ARRAY['ie_supplement_immutable','ie_supplement_no_truncate']
+          WHEN 'app_private.ie_supplement_objects' THEN ARRAY['ie_supplement_objects_immutable','ie_supplement_objects_no_truncate']
+          ELSE ARRAY['ie_supplement_requests_immutable'] END))
+      OR EXISTS(SELECT 1 FROM pg_rewrite WHERE ev_class=relation_id)
+      OR EXISTS(SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl,acldefault('r',c.relowner))) acl
+        WHERE c.oid=relation_id AND acl.grantee<>c.relowner AND NOT
+          (spec.name='public.income_expense_supplements' AND acl.grantee='authenticated'::regrole AND acl.privilege_type='SELECT' AND NOT acl.is_grantable)) THEN
+      RAISE EXCEPTION 'Supplement schema mismatch: policies/triggers/ACL %',spec.name USING ERRCODE='55000';
+    END IF;
+    IF EXISTS(SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid WHERE i.indrelid=relation_id
+      AND c.relname<>ALL(CASE spec.name
+        WHEN 'public.income_expense_supplements' THEN ARRAY['income_expense_supplements_pkey','income_expense_supplements_voucher_order','income_expense_supplements_org']
+        WHEN 'app_private.ie_supplement_objects' THEN ARRAY['ie_supplement_objects_pkey','ie_supplement_objects_path','ie_supplement_objects_id']
+        ELSE ARRAY['ie_supplement_requests_pkey'] END)) THEN
+      RAISE EXCEPTION 'Supplement schema mismatch: unexpected index %',spec.name USING ERRCODE='55000';
+    END IF;
+  END LOOP;
+  FOR spec IN SELECT * FROM (VALUES
+    ('public.income_expense_supplements_voucher_order','CREATE INDEX income_expense_supplements_voucher_order ON public.income_expense_supplements USING btree (income_expense_id, created_at, id)'),
+    ('public.income_expense_supplements_org','CREATE INDEX income_expense_supplements_org ON public.income_expense_supplements USING btree (organization_id)'),
+    ('app_private.ie_supplement_objects_path','CREATE INDEX ie_supplement_objects_path ON app_private.ie_supplement_objects USING btree (bucket_id, object_name)'),
+    ('app_private.ie_supplement_objects_id','CREATE INDEX ie_supplement_objects_id ON app_private.ie_supplement_objects USING btree (object_id)')
+  ) expected(name,definition) LOOP
+    relation_id:=to_regclass(spec.name);
+    IF relation_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_index WHERE indexrelid=relation_id
+      AND indisvalid AND indisready AND pg_get_indexdef(indexrelid)=spec.definition) THEN
+      RAISE EXCEPTION 'Supplement schema mismatch: index %',spec.name USING ERRCODE='55000';
+    END IF;
+  END LOOP;
+  PERFORM set_config('search_path',previous_path,true);
+END $shape$;
+
+CREATE TABLE IF NOT EXISTS public.income_expense_supplements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE RESTRICT,
   income_expense_id uuid NOT NULL REFERENCES public.income_expenses(id) ON DELETE RESTRICT,
@@ -15,13 +92,13 @@ CREATE TABLE public.income_expense_supplements (
   CHECK (jsonb_typeof(attachments)='array' AND jsonb_array_length(attachments)<=20),
   CHECK (NULLIF(btrim(note),'') IS NOT NULL OR jsonb_array_length(attachments)>0)
 );
-CREATE INDEX income_expense_supplements_voucher_order ON public.income_expense_supplements(income_expense_id,created_at,id);
-CREATE INDEX income_expense_supplements_org ON public.income_expense_supplements(organization_id);
+CREATE INDEX IF NOT EXISTS income_expense_supplements_voucher_order ON public.income_expense_supplements(income_expense_id,created_at,id);
+CREATE INDEX IF NOT EXISTS income_expense_supplements_org ON public.income_expense_supplements(organization_id);
 ALTER TABLE public.income_expense_supplements ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.income_expense_supplements FROM PUBLIC,anon,authenticated,service_role;
 GRANT SELECT ON public.income_expense_supplements TO authenticated;
 
-CREATE TABLE app_private.ie_supplement_requests (
+CREATE TABLE IF NOT EXISTS app_private.ie_supplement_requests (
   income_expense_id uuid NOT NULL REFERENCES public.income_expenses(id) ON DELETE RESTRICT,
   actor_id uuid NOT NULL,
   idempotency_key text NOT NULL CHECK(length(idempotency_key) BETWEEN 1 AND 200),
@@ -30,18 +107,18 @@ CREATE TABLE app_private.ie_supplement_requests (
   PRIMARY KEY(income_expense_id,actor_id,idempotency_key)
 );
 -- Actual object identities avoid reparsing JSON for every Storage policy check.
-CREATE TABLE app_private.ie_supplement_objects (
+CREATE TABLE IF NOT EXISTS app_private.ie_supplement_objects (
   supplement_id uuid NOT NULL REFERENCES public.income_expense_supplements(id) ON DELETE RESTRICT,
   object_id uuid NOT NULL REFERENCES storage.objects(id) ON DELETE RESTRICT,
   bucket_id text NOT NULL,
   object_name text NOT NULL,
   PRIMARY KEY(supplement_id,object_id)
 );
-CREATE INDEX ie_supplement_objects_path ON app_private.ie_supplement_objects(bucket_id,object_name);
-CREATE INDEX ie_supplement_objects_id ON app_private.ie_supplement_objects(object_id);
+CREATE INDEX IF NOT EXISTS ie_supplement_objects_path ON app_private.ie_supplement_objects(bucket_id,object_name);
+CREATE INDEX IF NOT EXISTS ie_supplement_objects_id ON app_private.ie_supplement_objects(object_id);
 REVOKE ALL ON app_private.ie_supplement_requests,app_private.ie_supplement_objects FROM PUBLIC,anon,authenticated,service_role;
 
-CREATE FUNCTION app_private.ie_supplement_can_read_v1(p_voucher uuid)
+CREATE OR REPLACE FUNCTION app_private.ie_supplement_can_read_v1(p_voucher uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
   SELECT EXISTS(SELECT 1 FROM public.income_expenses v WHERE v.id=p_voucher
     AND auth.uid() IS NOT NULL AND v.deleted_at IS NULL
@@ -64,33 +141,40 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,
 $$;
 REVOKE ALL ON FUNCTION app_private.ie_supplement_can_read_v1(uuid) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION app_private.ie_supplement_can_read_v1(uuid) TO authenticated;
+DROP POLICY IF EXISTS income_expense_supplements_select ON public.income_expense_supplements;
 CREATE POLICY income_expense_supplements_select ON public.income_expense_supplements FOR SELECT TO authenticated
   USING(app_private.ie_supplement_can_read_v1(income_expense_id));
+DROP POLICY IF EXISTS income_expense_supplements_hide_sandbox_admin ON public.income_expense_supplements;
 CREATE POLICY income_expense_supplements_hide_sandbox_admin ON public.income_expense_supplements AS RESTRICTIVE FOR SELECT TO authenticated
   USING(NOT((SELECT public.is_super_admin()) AND COALESCE(organization_id=ANY(public.sandbox_org_ids()),false)));
 
-CREATE FUNCTION app_private.ie_supplement_immutable_v1()
+CREATE OR REPLACE FUNCTION app_private.ie_supplement_immutable_v1()
 RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$
 BEGIN RAISE EXCEPTION 'Nội dung bổ sung đã lưu không được sửa hoặc xóa' USING ERRCODE='55000'; END $$;
 REVOKE ALL ON FUNCTION app_private.ie_supplement_immutable_v1() FROM PUBLIC,anon,authenticated,service_role;
+DROP TRIGGER IF EXISTS ie_supplement_immutable ON public.income_expense_supplements;
 CREATE TRIGGER ie_supplement_immutable BEFORE UPDATE OR DELETE ON public.income_expense_supplements
   FOR EACH ROW EXECUTE FUNCTION app_private.ie_supplement_immutable_v1();
+DROP TRIGGER IF EXISTS ie_supplement_no_truncate ON public.income_expense_supplements;
 CREATE TRIGGER ie_supplement_no_truncate BEFORE TRUNCATE ON public.income_expense_supplements
   FOR EACH STATEMENT EXECUTE FUNCTION app_private.ie_supplement_immutable_v1();
+DROP TRIGGER IF EXISTS ie_supplement_objects_immutable ON app_private.ie_supplement_objects;
 CREATE TRIGGER ie_supplement_objects_immutable BEFORE UPDATE OR DELETE ON app_private.ie_supplement_objects
   FOR EACH ROW EXECUTE FUNCTION app_private.ie_supplement_immutable_v1();
+DROP TRIGGER IF EXISTS ie_supplement_objects_no_truncate ON app_private.ie_supplement_objects;
 CREATE TRIGGER ie_supplement_objects_no_truncate BEFORE TRUNCATE ON app_private.ie_supplement_objects
   FOR EACH STATEMENT EXECUTE FUNCTION app_private.ie_supplement_immutable_v1();
+DROP TRIGGER IF EXISTS ie_supplement_requests_immutable ON app_private.ie_supplement_requests;
 CREATE TRIGGER ie_supplement_requests_immutable BEFORE UPDATE OR DELETE ON app_private.ie_supplement_requests
   FOR EACH ROW EXECUTE FUNCTION app_private.ie_supplement_immutable_v1();
 
-CREATE FUNCTION app_private.ie_storage_is_supplement_v1(p_bucket text,p_name text)
+CREATE OR REPLACE FUNCTION app_private.ie_storage_is_supplement_v1(p_bucket text,p_name text)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,app_private AS $$
   SELECT EXISTS(SELECT 1 FROM app_private.ie_supplement_objects WHERE bucket_id=p_bucket AND object_name=p_name);
 $$;
 REVOKE ALL ON FUNCTION app_private.ie_storage_is_supplement_v1(text,text) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION app_private.ie_storage_is_supplement_v1(text,text) TO authenticated;
-CREATE FUNCTION app_private.ie_supplement_storage_can_read_v1(p_bucket text,p_name text)
+CREATE OR REPLACE FUNCTION app_private.ie_supplement_storage_can_read_v1(p_bucket text,p_name text)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,app_private,public AS $$
   -- Existing bucket/org policies still apply. A supplemental proof additionally
   -- needs a visible parent; a shared object may be read via any visible parent.
@@ -103,16 +187,19 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,
 $$;
 REVOKE ALL ON FUNCTION app_private.ie_supplement_storage_can_read_v1(text,text) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION app_private.ie_supplement_storage_can_read_v1(text,text) TO authenticated;
+DROP POLICY IF EXISTS ie_supplement_storage_parent_read ON storage.objects;
 CREATE POLICY ie_supplement_storage_parent_read ON storage.objects AS RESTRICTIVE FOR SELECT TO authenticated
   USING(app_private.ie_supplement_storage_can_read_v1(bucket_id,name));
+DROP POLICY IF EXISTS ie_supplement_storage_no_delete ON storage.objects;
 CREATE POLICY ie_supplement_storage_no_delete ON storage.objects AS RESTRICTIVE FOR DELETE TO authenticated
   USING(NOT app_private.ie_storage_is_supplement_v1(bucket_id,name));
+DROP POLICY IF EXISTS ie_supplement_storage_no_replace ON storage.objects;
 CREATE POLICY ie_supplement_storage_no_replace ON storage.objects AS RESTRICTIVE FOR UPDATE TO authenticated
   USING(NOT app_private.ie_storage_is_supplement_v1(bucket_id,name))
   WITH CHECK(NOT app_private.ie_storage_is_supplement_v1(bucket_id,name));
 -- Storage service paths can bypass RLS. Keep object identity/content metadata and
 -- the tenant link immutable at the database boundary as well as client policies.
-CREATE FUNCTION app_private.ie_supplement_storage_guard_v1()
+CREATE OR REPLACE FUNCTION app_private.ie_supplement_storage_guard_v1()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,app_private AS $$
 BEGIN
   IF TG_TABLE_SCHEMA='storage' THEN
@@ -126,12 +213,14 @@ BEGIN
   RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app_private.ie_supplement_storage_guard_v1() FROM PUBLIC,anon,authenticated,service_role;
+DROP TRIGGER IF EXISTS a00_ie_supplement_storage_guard ON storage.objects;
 CREATE TRIGGER a00_ie_supplement_storage_guard BEFORE UPDATE OR DELETE ON storage.objects
   FOR EACH ROW EXECUTE FUNCTION app_private.ie_supplement_storage_guard_v1();
+DROP TRIGGER IF EXISTS a00_ie_supplement_link_guard ON app_private.storage_object_links;
 CREATE TRIGGER a00_ie_supplement_link_guard BEFORE UPDATE OR DELETE ON app_private.storage_object_links
   FOR EACH ROW EXECUTE FUNCTION app_private.ie_supplement_storage_guard_v1();
 
-CREATE FUNCTION public.append_income_expense_supplement_v1(p_voucher uuid,p_note text DEFAULT NULL,
+CREATE OR REPLACE FUNCTION public.append_income_expense_supplement_v1(p_voucher uuid,p_note text DEFAULT NULL,
   p_attachments jsonb DEFAULT '[]',p_idempotency_key text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
 DECLARE v public.income_expenses; membership uuid; key text; narrative text; refs jsonb; payload jsonb;
@@ -206,6 +295,11 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.append_income_expense_supplement_v1(uuid,text,jsonb,text) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.append_income_expense_supplement_v1(uuid,text,jsonb,text) TO authenticated;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.income_expense_supplements;
+DO $publication$ BEGIN
+  IF NOT EXISTS(SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime'
+    AND schemaname='public' AND tablename='income_expense_supplements') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.income_expense_supplements;
+  END IF;
+END $publication$;
 
 COMMIT;

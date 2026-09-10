@@ -10,11 +10,12 @@ if (!['127.0.0.1','localhost','[::1]'].includes(new URL(url).hostname)) throw ne
 const migration = new URL('../supabase/migrations/20260910042229_income_expense_supplements_v1.sql', import.meta.url);
 const org='dddd0000-0000-4000-8000-000000000001', actor='de6f33f3-349f-4bec-bd3d-106192f6715e';
 const prefix=`https://tryymsxyyckgbrmmvozx.supabase.co/storage/v1/object/public/income-expense-attachments/${actor}/`;
+const migrationBody=()=>readFileSync(migration,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,'');
 async function fixture(run,{connectionString=url,committed=false}={}) {
   const db=new pg.Client({connectionString}); await db.connect();
   try {
     await db.query('BEGIN');
-    if(existsSync(migration)) await db.query(readFileSync(migration,'utf8').replace(/^BEGIN;$/m,'').replace(/^COMMIT;$/m,''));
+    if(existsSync(migration)) await db.query(migrationBody());
     await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[actor]);
     const scope=(await db.query("SELECT r.id room,r.building_id building,a.id account FROM public.rooms r JOIN public.buildings b ON b.id=r.building_id JOIN public.accounts a ON a.organization_id=b.organization_id WHERE b.organization_id=$1 AND NOT b.is_virtual AND NOT a.is_virtual AND b.deleted_at IS NULL AND a.deleted_at IS NULL LIMIT 1",[org])).rows[0];
     assert.ok(scope);
@@ -40,6 +41,31 @@ test('arbitrary supplemental narrative preserves the entire header and money sta
   assert.equal(entry.actor_id,actor);assert.equal(entry.actor_name,'DEMO Chủ Nhà');assert.ok(entry.created_at);
   assert.equal(entry.note,'[Hoàn trả thanh lý]\n[CẤN CỌC BỎ CỌC x]\n mô tả tự do ');
   assert.deepEqual(await f.snapshot(),before);
+}));
+test('protected migration replay preserves saved evidence and reestablishes all invariants',()=>fixture(async f=>{
+  const proof=await f.upload();await f.asActor();const key=randomUUID();const first=await f.append('Before replay',[proof],key);
+  const before=await f.snapshot();await f.db.query(migrationBody());await f.asActor();
+  const retry=await f.append('Before replay',[proof],key);assert.equal(retry.id,first.id);assert.equal(retry.changed,false);
+  assert.equal((await f.db.query('SELECT count(*)::int n FROM public.income_expense_supplements WHERE income_expense_id=$1',[f.id])).rows[0].n,1);
+  await f.reject(()=>f.db.query('DELETE FROM public.income_expense_supplements WHERE id=$1',[first.id]),'42501');
+  assert.deepEqual(await f.snapshot(),before);
+  await f.reject(()=>f.db.query("UPDATE storage.objects SET name=name||'.replace' WHERE name=$1",[proof.split('/income-expense-attachments/')[1]]),'55000');
+}));
+test('migration replay refuses an incompatible existing table, index or extra read policy',()=>fixture(async f=>{
+  await f.db.query('RESET ROLE');
+  for(const drift of [
+    'ALTER TABLE public.income_expense_supplements ALTER COLUMN actor_name DROP NOT NULL',
+    'ALTER TABLE public.income_expense_supplements DROP CONSTRAINT income_expense_supplements_note_check',
+    'DROP INDEX public.income_expense_supplements_voucher_order; CREATE INDEX income_expense_supplements_voucher_order ON public.income_expense_supplements(actor_id)',
+    'CREATE POLICY unexpected_read ON public.income_expense_supplements FOR SELECT TO authenticated USING(true)',
+    'GRANT UPDATE ON public.income_expense_supplements TO authenticated',
+    'GRANT UPDATE(note) ON public.income_expense_supplements TO authenticated',
+    'CREATE UNIQUE INDEX unexpected_actor_unique ON public.income_expense_supplements(actor_id)',
+  ]) {
+    await f.db.query('SAVEPOINT drift');await f.db.query(drift);
+    await assert.rejects(()=>f.db.query(migrationBody()),e=>e.code==='55000'&&e.message.includes('Supplement schema mismatch'));
+    await f.db.query('ROLLBACK TO SAVEPOINT drift');
+  }
 }));
 test('same request replays once and conflicting payload is rejected',()=>fixture(async f=>{
   const key=randomUUID(),a=await f.append('first',[],key),b=await f.append('first',[],key);
