@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -261,6 +262,7 @@ export default function DepositsMobilePage() {
           </div>
 
           <div className="mbody dp-body" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             {/* Dải KPI — số viết tắt để lọt một dòng trên máy hẹp; số chính xác
                 nằm ở bảng thao tác và ở desktop. */}
             <div className="dp-kpi">

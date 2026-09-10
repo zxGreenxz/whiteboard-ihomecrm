@@ -117,7 +117,7 @@ export default function InspectionRunner({
     try {
       const uid = authUser?.id ?? (await getSessionUserId()) ?? "anon";
       const upload = () =>
-        uploadFile("job-attachments", `${uid}/inspections/${sess.session_id}/${Date.now()}-${cameraSlot}.jpg`, result.file);
+        uploadFile("job-attachments", `${uid}/inspections/${sess.session_id}/${Date.now()}-${cameraSlot}.jpg`, result.file, { organization: { table: "buildings", id: buildingId } });
       let url: string;
       try {
         url = await upload();

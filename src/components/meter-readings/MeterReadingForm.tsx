@@ -238,7 +238,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
         return;
       }
       const path = `${currentUser.id}/readings/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
-      const url = await uploadFile(STORAGE_BUCKET, path, file);
+      const url = await uploadFile(STORAGE_BUCKET, path, file, { organization: { table: "buildings", id: watchBuildingId } });
       form.setValue(`readings.${index}.meter_image_url`, url);
     } catch (error) {
       console.error('Image upload error:', error);

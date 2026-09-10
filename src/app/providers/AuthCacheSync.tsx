@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { syncAuthQueryCache } from "@/lib/authQueryCache";
+import { syncWorkingOrganizationUser } from "@/lib/workingOrganization";
 
 /**
  * Đăng ký listener auth và trả về hàm huỷ.
@@ -17,6 +18,7 @@ import { syncAuthQueryCache } from "@/lib/authQueryCache";
  */
 export function subscribeAuthCacheSync(queryClient: QueryClient): () => void {
   const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    syncWorkingOrganizationUser(session?.user.id ?? null);
     syncAuthQueryCache(queryClient, event, session);
   });
 

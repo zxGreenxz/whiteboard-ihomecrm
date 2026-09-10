@@ -73,7 +73,7 @@ export function IncomeExpenseQuickEditDialog({ open, onOpenChange, voucher }: Pr
           {previous.isError && <p role="alert" className="text-sm text-destructive">Chưa tải được các lần bổ sung. Hãy đóng và mở lại phiếu.</p>}
         </section>
         <div className="space-y-2"><Label>Ảnh / chứng từ bổ sung</Label>
-          <AttachmentUpload attachments={attachments} onChange={urls => form.setValue('attachments', urls, { shouldValidate: true })}
+          <AttachmentUpload organization={{ table: "income_expenses", id: voucher.id }} attachments={attachments} onChange={urls => form.setValue('attachments', urls, { shouldValidate: true })}
             userId={user?.id ?? ''} disabled={busy} onUploadingChange={setUploading} maxFiles={20} deleteOnRemove={false} />
           {form.formState.errors.attachments && <p role="alert" className="text-sm text-destructive">{form.formState.errors.attachments.message}</p>}
         </div>

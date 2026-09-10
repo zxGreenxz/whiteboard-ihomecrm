@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Plus, Search, Map as MapIcon, Pencil, X } from "lucide-react";
@@ -125,6 +126,7 @@ export default function RoomsMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             <div className="lfilter">
               {TABS.map((t) => (
                 <button key={t.id} className={"lchip" + (status === t.id ? " on" : "")} onClick={() => setStatus(t.id)}>

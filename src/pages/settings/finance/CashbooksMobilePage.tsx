@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -154,6 +155,7 @@ export default function CashbooksMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             {/* Đợt 6 — hộp thư chờ ký + đường ra biên bản. Tự ẩn khi rỗng. */}
             <CashbookClosingInbox variant="mobile" autoOpenRequestId={confirmRequestId} />
 

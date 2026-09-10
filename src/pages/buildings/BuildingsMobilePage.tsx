@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -116,6 +117,7 @@ export default function BuildingsMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             <div className="bm-stats">
               <div className="bm-stat" style={{ "--bmc": "#1b1813" } as React.CSSProperties}>
                 <div className="n">{stats.total}</div>

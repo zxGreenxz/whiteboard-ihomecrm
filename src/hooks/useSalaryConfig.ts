@@ -1,3 +1,4 @@
+import { requireWorkingOrganization } from '@/lib/workingOrganization';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -104,6 +105,7 @@ export const useSaveManagerConfig = () => {
         if (!input.staff_id) throw new Error("Chưa chọn nhân viên");
         const { error } = await supabase.from("manager_salary_config").insert({
           user_id: user.id,
+          organization_id: requireWorkingOrganization(),
           staff_id: input.staff_id,
           base_salary: input.base_salary,
           default_room_rent: input.default_room_rent,
@@ -129,7 +131,7 @@ export const useBonusRules = () => {
   return useQuery({
     queryKey: ["salary-bonus-rules"],
     queryFn: async () => {
-      const { data } = await (supabase.from("salary_bonus_rules").select("id, user_id, rules") as any).limit(1).maybeSingle();
+      const { data } = await (supabase.from("salary_bonus_rules").select("id, user_id, rules") as any).eq("organization_id", requireWorkingOrganization()).limit(1).maybeSingle();
       if (!data) return { id: null as string | null, rules: { ...DEFAULT_RULES } };
       // staffMonths sống chung trong jsonb `rules` nhưng KHÔNG thuộc SalaryRules —
       // tách ra để form quy tắc không lưu nhầm (xem useStaffMonthOverrides).
@@ -145,7 +147,7 @@ export const useSaveBonusRules = () => {
     mutationFn: async (rules: SalaryRules) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
-      const { data: existing } = await (supabase.from("salary_bonus_rules").select("id, rules") as any).limit(1).maybeSingle();
+      const { data: existing } = await (supabase.from("salary_bonus_rules").select("id, rules") as any).eq("organization_id", requireWorkingOrganization()).limit(1).maybeSingle();
       // GIỮ staffMonths (cài đặt tháng hiển thị) khi lưu lại quy tắc thưởng.
       const staffMonths = ((existing as any)?.rules?.staffMonths) || {};
       const merged = { ...rules, staffMonths };
@@ -153,7 +155,7 @@ export const useSaveBonusRules = () => {
         const { error } = await supabase.from("salary_bonus_rules").update({ rules: merged }).eq("id", (existing as any).id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("salary_bonus_rules").insert({ user_id: user.id, rules: merged });
+        const { error } = await supabase.from("salary_bonus_rules").insert({ user_id: user.id, organization_id: requireWorkingOrganization(), rules: merged });
         if (error) throw error;
       }
     },
@@ -186,7 +188,7 @@ export const useAddHoliday = () => {
     mutationFn: async ({ holiday_date, name }: { holiday_date: string; name?: string }) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
-      const { error } = await supabase.from("salary_holidays").insert({ user_id: user.id, holiday_date, name: name ?? null });
+      const { error } = await supabase.from("salary_holidays").insert({ user_id: user.id, organization_id: requireWorkingOrganization(), holiday_date, name: name ?? null });
       if (error) throw error;
     },
     onSuccess: () => {
@@ -221,7 +223,7 @@ export const useStaffMonthOverrides = () => {
   return useQuery({
     queryKey: ["salary-staff-months"],
     queryFn: async () => {
-      const { data } = await (supabase.from("salary_bonus_rules").select("rules") as any).limit(1).maybeSingle();
+      const { data } = await (supabase.from("salary_bonus_rules").select("rules") as any).eq("organization_id", requireWorkingOrganization()).limit(1).maybeSingle();
       return (((data as any)?.rules?.staffMonths) || {}) as Record<string, boolean>;
     },
   });
@@ -234,7 +236,7 @@ export const useSaveStaffMonthOverride = () => {
     mutationFn: async ({ ym, value }: { ym: string; value: boolean | null }) => {
       const user = await getSessionUser();
       if (!user) throw new Error("Chưa đăng nhập");
-      const { data: row } = await (supabase.from("salary_bonus_rules").select("id, rules") as any).limit(1).maybeSingle();
+      const { data: row } = await (supabase.from("salary_bonus_rules").select("id, rules") as any).eq("organization_id", requireWorkingOrganization()).limit(1).maybeSingle();
       const rules: any = { ...((row as any)?.rules || {}) };
       const sm: Record<string, boolean> = { ...(rules.staffMonths || {}) };
       if (value === null) delete sm[ym]; else sm[ym] = value;
@@ -243,7 +245,7 @@ export const useSaveStaffMonthOverride = () => {
         const { error } = await supabase.from("salary_bonus_rules").update({ rules }).eq("id", (row as any).id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("salary_bonus_rules").insert({ user_id: user.id, rules });
+        const { error } = await supabase.from("salary_bonus_rules").insert({ user_id: user.id, organization_id: requireWorkingOrganization(), rules });
         if (error) throw error;
       }
     },

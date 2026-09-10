@@ -114,6 +114,7 @@ export default function CustomerFormPage() {
       icon={isEdit ? Pencil : UserPlus}
     >
       <CustomerForm
+        customerId={customer?.id}
         defaultValues={defaultValues}
         onSubmit={handleSubmit}
         isSubmitting={isSubmitting}

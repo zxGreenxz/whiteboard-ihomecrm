@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 // Tab "Quản trị viên" — bản MOBILE (QUEST). Import từ thiết kế claude.ai/design
 // "Bảng lương quản lý - Mobile.dc.html": theme tối tím-vàng, 4 tab dưới đáy
 // (Lương / Cá nhân / Bảng kê / Cấu hình). DÙNG CHUNG dữ liệu + callback với bản
@@ -847,6 +848,7 @@ export default function SalaryAdminMobile(props: AdminMobileProps) {
         style={{ height: "100dvh", background: "radial-gradient(80% 30% at 50% 0%, #241a44 0%, transparent 55%), #17132A" }}>
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden"
           style={{ WebkitOverflowScrolling: "touch", paddingTop: "env(safe-area-inset-top)" }}>
+          <div className="flex justify-end bg-background px-3 py-2"><OrganizationBadge /></div>
           {loading ? (
             <LoadingScreen period={period} {...headerNav} />
           ) : managers.length === 0 && tab !== "config" && pendingLeaves.length === 0 ? (

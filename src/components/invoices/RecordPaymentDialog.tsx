@@ -1,3 +1,4 @@
+import { storageUploadMetadata } from '@/lib/storageOrganization';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -455,6 +456,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       .upload(fileName, receiptImage, {
         cacheControl: '3600',
         upsert: false,
+        metadata: await storageUploadMetadata('payment-receipts', { table: 'invoices', id: invoice!.id }),
       });
 
     if (error && !isExistingStorageObjectError(error)) {

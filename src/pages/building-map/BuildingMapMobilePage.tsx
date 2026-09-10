@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Search, Boxes, X } from "lucide-react";
@@ -155,6 +156,7 @@ export default function BuildingMapMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             <div className="cm-filterbar">
               <select
                 className="cm-select"

@@ -561,6 +561,9 @@ function EntitlementsTab() {
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Quyền dùng Copilot áp dụng cho tài khoản ở mọi công ty. Quyền xem và sửa dữ liệu vẫn theo phân quyền của từng công ty.
+      </p>
       <div className="flex max-w-md gap-2">
         <Input placeholder="Email user cần cấp quyền…" value={email} onChange={(e) => setEmail(e.target.value)} />
         <Button disabled={!email.trim() || add.isPending} onClick={() => add.mutate(email)}>Cấp quyền</Button>

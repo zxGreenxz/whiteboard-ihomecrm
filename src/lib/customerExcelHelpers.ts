@@ -1,3 +1,4 @@
+import { storageUploadMetadata } from '@/lib/storageOrganization';
 /**
  * Customer Excel Import/Export Helpers
  * Matches exact column structure from the "DANH SÁCH CƯ DÂN" template
@@ -507,7 +508,7 @@ async function downloadAndUploadImage(
 
     const { error } = await supabase.storage
       .from('customer-images')
-      .upload(storagePath, blob, { contentType, upsert: true });
+      .upload(storagePath, blob, { contentType, upsert: true, metadata: await storageUploadMetadata("customer-images") });
 
     if (error) {
       console.warn('Upload failed:', storagePath, error.message);

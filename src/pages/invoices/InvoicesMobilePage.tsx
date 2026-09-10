@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Search, ChevronDown, X, BarChart3 } from "lucide-react";
@@ -187,6 +188,7 @@ export default function InvoicesMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             <InvoiceRoundingReportButton buildingId={buildingId} className="mb-3 w-full" />
             <div className="lfilter">
               {STAT_TABS.map((t) => (

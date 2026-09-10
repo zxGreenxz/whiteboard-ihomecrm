@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { toast } from "sonner";
+import { requireWorkingOrganization } from "@/lib/workingOrganization";
 
 // --- Types ---
 
@@ -172,6 +173,7 @@ export const useCreateAccount = () => {
       // client tự xoá lock_date và sửa initial_amount — tức tự đổi số dư sổ
       // quỹ mà không sinh một phiếu hay posting nào.
       const canonical = await supabase.rpc("create_cashbook_v1", {
+        p_organization_id: requireWorkingOrganization(),
         p_name: values.name,
         p_initial_amount: values.initial_amount,
         p_initial_date: values.initial_date,

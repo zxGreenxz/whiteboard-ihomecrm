@@ -269,7 +269,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
     const err = validateReceiptFile(file);
     if (err) { toast.error(err); return; }
     setBatchUploading(true);
-    try { const url = await uploadReceiptToStorage(file); setBatchAtts((a) => [...a, url]); toast.success('Đã thêm ảnh phiếu tổng'); }
+    try { const url = await uploadReceiptToStorage(file, { table: 'buildings', ids: batchLines.map(line => line.buildingId).filter(Boolean) }); setBatchAtts((a) => [...a, url]); toast.success('Đã thêm ảnh phiếu tổng'); }
     catch (ex) { toast.error('Không tải được ảnh: ' + (ex as Error).message); }
     finally { setBatchUploading(false); }
   };

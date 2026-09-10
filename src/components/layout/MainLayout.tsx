@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import NotificationBell from './NotificationBell';
+import OrganizationBadge from './OrganizationBadge';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useAuth } from '@/hooks/useAuth';
 import { SIDEBAR_EASING, useSidebarState } from './useSidebarState';
@@ -91,10 +92,11 @@ const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBl
 
         {/* Main Content Area */}
         <main className="min-w-0 flex-1 overflow-x-hidden">
+          <div className="flex h-10 items-center justify-end px-4 lg:px-6"><OrganizationBadge /></div>
           {fullBleed ? (
             /* Full-height: không breadcrumbs/padding; cố định = viewport (desktop)
                hoặc viewport - header mobile */
-            <div className="h-[calc(100vh-4rem)] overflow-hidden lg:h-screen">{children}</div>
+            <div className="h-[calc(100vh-6.5rem)] overflow-hidden lg:h-[calc(100vh-2.5rem)]">{children}</div>
           ) : (
             /* Page Content (breadcrumbs removed) */
             <div className="p-4 lg:p-6">

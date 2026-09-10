@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -577,6 +578,7 @@ export default function IncomeExpenseMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             {/* Tìm kiếm + nút lọc */}
             <div className="tksearch">
               <div className="tksearch-in">
@@ -1289,6 +1291,7 @@ export default function IncomeExpenseMobilePage() {
             <div className="space-y-2">
               <Label>Hình ảnh đính kèm</Label>
               <AttachmentUpload
+                organization={approveTarget ? { table: "income_expenses", id: approveTarget.id } : undefined}
                 attachments={approveAttachments}
                 onChange={setApproveAttachments}
                 userId={authUser?.id ?? approveTarget?.user_id ?? ""}

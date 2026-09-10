@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { processLock } from '@supabase/auth-js';
 import type { Database } from './types';
+import { createOrganizationFetch } from '@/lib/workingOrganization';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -10,6 +11,7 @@ const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 // import { supabase } from "@/integrations/supabase/client";
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  global: { fetch: createOrganizationFetch(SUPABASE_URL) },
   auth: {
     // localStorage không tồn tại trong môi trường node (vitest import chain)
     storage: typeof localStorage !== 'undefined' ? localStorage : undefined,

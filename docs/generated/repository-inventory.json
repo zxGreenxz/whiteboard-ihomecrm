@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 645,
-  "soFileDocBangFs": 200,
-  "tongLoiGoi": 417,
-  "khongPhanLoaiDuoc": 204,
+  "tongSoFileTest": 652,
+  "soFileDocBangFs": 203,
+  "tongLoiGoi": 432,
+  "khongPhanLoaiDuoc": 207,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 29,
+      "soFile": 30,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 62,
+      "soFile": 65,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -132,6 +132,15 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/org-context-repair/working-organization.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "sql": 6,
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
       "soGoi": 7,
       "loai": {},
@@ -151,6 +160,16 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 4
+    },
+    {
+      "file": "scripts/org-context-repair/sealed-artifact.test.mjs",
+      "soGoi": 6,
+      "loai": {
+        "manifest": 2,
+        "ma-nguon": 1,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/accountingRolloutSafety.test.ts",
@@ -351,14 +370,12 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "scripts/org-context-repair/sealed-artifact.test.mjs",
+      "file": "scripts/attachment-access/durable-fix.test.mjs",
       "soGoi": 3,
       "loai": {
-        "manifest": 1,
-        "ma-nguon": 1,
-        "sql": 1
+        "sql": 2
       },
-      "khongPhanLoaiDuoc": 0
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/copilot/plan/__tests__/actionCatalog.test.ts",
@@ -537,6 +554,14 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/org-context-repair/storage-upload.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "sql": 2
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "src/copilot/__tests__/keHoachCard.test.tsx",

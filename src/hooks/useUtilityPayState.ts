@@ -205,7 +205,9 @@ export function useUtilityPayState(
     if (err) { toast.error(err); return; }
     setUploadingKey(k);
     try {
-      const url = await uploadReceiptToStorage(file);
+      const buildingId = k.startsWith('syn:') ? k.split(':')[1] : Object.entries(byBuilding).find(([, meters]) => meters.some(m => m.id === k))?.[0];
+      if (!buildingId) throw new Error('Không xác định được toà nhà của ảnh chứng từ.');
+      const url = await uploadReceiptToStorage(file, { table: 'buildings', id: buildingId });
       setAttach((a) => ({ ...a, [k]: url }));
       toast.success('Đã đính kèm ảnh phiếu');
     } catch (ex) {
@@ -213,7 +215,7 @@ export function useUtilityPayState(
     } finally {
       setUploadingKey(null);
     }
-  }, []);
+  }, [byBuilding]);
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';

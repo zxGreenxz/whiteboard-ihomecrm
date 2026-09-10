@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -214,6 +215,7 @@ export default function TasksMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             <div className="tksearch">
               <div className="tksearch-in">
                 <Search />

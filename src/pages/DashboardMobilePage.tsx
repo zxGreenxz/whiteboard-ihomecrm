@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -185,6 +186,7 @@ export default function DashboardMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             <div className="dash-toprow">
               <div className="dash-period">
                 <Calendar size={15} />

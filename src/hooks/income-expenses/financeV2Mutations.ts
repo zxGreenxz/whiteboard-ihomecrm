@@ -336,7 +336,7 @@ export function useAttachPostingEvidence() {
       let url: string | null = null;
       let loiTai: unknown = null;
       try {
-        url = await uploadFile(bucket, path, file);
+        url = await uploadFile(bucket, path, file, { organization: { table: "income_expenses", id: opts.voucherId } });
       } catch (e) {
         loiTai = e;
       }

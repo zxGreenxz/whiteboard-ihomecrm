@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -128,6 +129,7 @@ export default function VehiclesMobilePage() {
           </div>
 
           <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
             {showFilter && (
               <div className="fpanel">
                 <div className="fsearchbar">

@@ -11,6 +11,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
+import { storageUploadMetadata, type StorageOrganizationSource } from '@/lib/storageOrganization';
 
 /** Trả message lỗi nếu file không hợp lệ, null nếu OK. */
 export const validateReceiptFile = (file: File): string | null => {
@@ -24,7 +25,8 @@ export const validateReceiptFile = (file: File): string | null => {
 };
 
 /** Upload lên Storage, trả public URL. Throw lỗi thật của bucket nếu fail. */
-export const uploadReceiptToStorage = async (file: File): Promise<string> => {
+export const uploadReceiptToStorage = async (file: File, organization?: StorageOrganizationSource): Promise<string> => {
+  const metadata = await storageUploadMetadata('payment-receipts', organization);
   const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
@@ -33,7 +35,7 @@ export const uploadReceiptToStorage = async (file: File): Promise<string> => {
 
   const { error } = await supabase.storage
     .from('payment-receipts')
-    .upload(fileName, file, { cacheControl: '3600', upsert: false });
+    .upload(fileName, file, { cacheControl: '3600', upsert: false, metadata });
   if (error) throw error;
 
   const { data: urlData } = supabase.storage

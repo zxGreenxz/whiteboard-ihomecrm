@@ -48,7 +48,7 @@ export default function AccountOrganizationCard({ variant = 'desktop' }: { varia
           ? 'Chưa tải được danh sách công ty. Lựa chọn đã lưu vẫn được giữ lại.'
           : isOrphan
             ? 'Tài khoản chưa có công ty khả dụng. Liên hệ quản trị viên để được cấp quyền.'
-            : 'Copilot dùng công ty đang chọn. Lựa chọn tự lưu trên trình duyệt này và được giữ khi chuyển trang hoặc mở lại web, cho đến khi bạn đổi công ty.'}
+            : 'Thao tác tạo mới và quản trị dùng công ty đang chọn. Lựa chọn được lưu riêng cho tài khoản này. Đổi công ty sẽ tải lại dữ liệu và biểu mẫu; hãy lưu phần đang nhập trước khi đổi.'}
       </p>
       {isError && <Button type="button" variant="outline" size="sm" onClick={() => void refetchOrganizations()}>Thử lại</Button>}
     </div>

@@ -42,7 +42,7 @@ export function ReservationRefundDialog({ settlementId, amount, open, onOpenChan
       <div><Label htmlFor="reservation-pay-account">Sổ quỹ đã chi</Label><select id="reservation-pay-account" className="h-10 w-full rounded-md border bg-background px-3 text-sm" {...form.register("accountId")}><option value="">Chọn sổ quỹ bạn đang giữ</option>{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
       {accounts.length === 0 && <p className="text-sm text-amber-700">Bạn cần là Người giữ ít nhất một sổ quỹ để hoàn tiền.</p>}
       <div><Label htmlFor="reservation-refund-paid-on">Ngày chi</Label><Input id="reservation-refund-paid-on" type="date" max={vnTodayISO()} {...form.register("paidOn")} /></div>
-      <ReservationRefundAttachments attachments={refundAttachments} onChange={(urls) => form.setValue("refundAttachments", urls, { shouldDirty: true })} disabled={pay.isPending} onUploadingChange={setUploading} />
+      {settlementId && <ReservationRefundAttachments organization={{ table: "reservation_deposit_settlements", id: settlementId }} attachments={refundAttachments} onChange={(urls) => form.setValue("refundAttachments", urls, { shouldDirty: true })} disabled={pay.isPending} onUploadingChange={setUploading} />}
       <label className="flex items-center gap-2 text-sm"><Checkbox checked={confirmedPaid} onCheckedChange={(value) => setConfirmedPaid(value === true)} aria-label="Xác nhận đã trả toàn bộ tiền hoàn" />Tôi xác nhận đã trả toàn bộ tiền hoàn cho khách.</label>
       <Button className="w-full" disabled={!accountId || !confirmedPaid || uploading || pay.isPending} onClick={submit}>Ghi nhận hoàn tiền</Button>
     </fieldset>

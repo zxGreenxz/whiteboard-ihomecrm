@@ -26,6 +26,7 @@ import { isCurrentCccdScan, mapCccdToCustomerFields } from '@/lib/cccdCustomerMa
 
 interface CustomerFormProps {
   defaultValues?: Partial<CustomerFormData>;
+  customerId?: string;
   onSubmit: (data: CustomerFormData) => void;
   isSubmitting: boolean;
 }
@@ -35,7 +36,7 @@ interface CustomerFormProps {
  * Main form with React Hook Form + Zod resolver.
  * Sections: Hình ảnh, Thông tin chung, Địa chỉ, Thông tin khác, Thông tin xe.
  */
-export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: CustomerFormProps) {
+export default function CustomerForm({ defaultValues, onSubmit, isSubmitting, customerId }: CustomerFormProps) {
   const queryClient = useQueryClient();
   const form = useForm<CustomerFormData>({
     resolver: zodResolver(customerSchema),
@@ -198,6 +199,7 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
           <h3 className="text-sm font-semibold text-gray-700">Hình ảnh</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <ImageUploadZone
+              organization={customerId ? { table: "customers", id: customerId } : undefined}
               label={isOrganization ? 'Đăng ký kinh doanh' : 'CCCD mặt trước'}
               value={form.watch('id_images')?.front}
               onChange={(url) => {
@@ -210,6 +212,7 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
             {!isOrganization && (
               <>
                 <ImageUploadZone
+              organization={customerId ? { table: "customers", id: customerId } : undefined}
                   label="CCCD mặt sau"
                   value={form.watch('id_images')?.back}
                   onChange={(url) => {
@@ -220,6 +223,7 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
                   imagePolicy="identity-original"
                 />
                 <ImageUploadZone
+              organization={customerId ? { table: "customers", id: customerId } : undefined}
                   label="Hộ chiếu"
                   value={form.watch('id_images')?.passport}
                   onChange={(url) => {
