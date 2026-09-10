@@ -152,6 +152,13 @@ DELETE FROM public.income_expenses WHERE id IN(SELECT id FROM _reservation_fixtu
 DELETE FROM public.room_price_history WHERE room_id IN(SELECT id FROM _reservation_fixture_rooms);
 DELETE FROM public.rooms WHERE id IN(SELECT id FROM _reservation_fixture_rooms);
 SET LOCAL session_replication_role=origin;
+-- Storage HTTP deletion removes the file; its private organization link is
+-- retained separately. Remove only this fixture's deleted DEMO upload link.
+DELETE FROM app_private.storage_object_links l
+WHERE l.bucket_id='income-expense-attachments' AND l.owner_user_id='${OWNER}'
+  AND (l.organization_id='${RESERVATION_DEMO_ORG}' OR l.organization_id IS NULL)
+  AND l.object_name ~ ${literal(`^${OWNER}/[0-9]+-e2e-reservation-proof-${roomId}[.]png$`)}
+  AND NOT EXISTS(SELECT 1 FROM storage.objects o WHERE o.bucket_id=l.bucket_id AND o.name=l.object_name);
 DO $verify$ DECLARE k record; leftover boolean; BEGIN
   -- Every incoming FK to a removed identity must be clear, even when a future
   -- writer adds another child table unknown to the explicit deletion list.

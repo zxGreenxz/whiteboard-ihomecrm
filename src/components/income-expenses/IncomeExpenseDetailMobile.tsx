@@ -175,8 +175,9 @@ export function IncomeExpenseDetailMobile({
   return (
     // stopPropagation: khi sheet này lồng trong sheet khác (vd phiếu con trong
     // chi tiết phiếu tổng), chạm nền KHÔNG được nổi bọt lên overlay cha → tránh
-    // đóng luôn cả 2 lớp.
-    <div className="sheet-ov" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+    // đóng luôn cả 2 lớp. Dialog portal vẫn nổi bọt theo cây React; chỉ chạm
+    // trực tiếp nền này mới đóng chi tiết, không đóng khi thao tác dialog con.
+    <div className="sheet-ov" onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-grab" />
         <div className="vd-hd">

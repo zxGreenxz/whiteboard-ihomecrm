@@ -15,7 +15,7 @@ async function openSource(page: Page, marker: string, mobile: boolean) {
   else await page.getByRole('row').filter({ hasText: marker }).getByTitle('Xem chi tiết', { exact: true }).click();
 }
 
-for (const mobile of [false, true]) test(`DEMO: refund proof and direct receipt details (${mobile ? 'mobile' : 'desktop'})`, async ({ page }, testInfo) => {
+for (const mobile of [false, true]) test(`DEMO: refund proof and direct receipt details (${mobile ? 'mobile' : 'desktop'})`, async ({ page, browser }, testInfo) => {
   test.setTimeout(180_000);
   await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
   const marker = `[E2E-RESERVATION:${randomUUID()}]`, roomId = randomUUID();
@@ -81,6 +81,21 @@ for (const mobile of [false, true]) test(`DEMO: refund proof and direct receipt 
     await expect(creator).not.toContainText('—');
     await expect(page.getByRole('region', { name: 'Thông tin xử lý bỏ cọc' }).getByRole('button', { name: 'Xem chứng từ hoàn tiền 1' })).toBeVisible();
     await expect(page.locator('img').filter({ visible: true }).first()).toBeVisible();
+    if (!mobile) {
+      // A second staff login must sign and render the actual private proof too.
+      const observer = await browser.newContext({ baseURL: new URL(page.url()).origin });
+      try {
+        await observer.addCookies((await page.context().cookies()).filter((cookie) => cookie.name === '_vercel_jwt'));
+        const staffPage = await observer.newPage();
+        await login(staffPage, 'ketoan');
+        await staffPage.goto(`/income-expense/voucher/${settled.refundVoucherId}`);
+        const staffProof = staffPage.getByRole('region', { name: 'Thông tin xử lý bỏ cọc' });
+        await expect(staffProof.getByRole('button', { name: 'Xem chứng từ hoàn tiền 1' })).toBeVisible();
+        await expect.poll(() => staffProof.locator('img').first().evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+      } finally {
+        await observer.close();
+      }
+    }
     expect(await inspectReservationLiveFixture(marker, roomId)).toMatchObject({ settlements: 1, effective_paid: mobile ? 3000000 : 1000000, source_amount: 3000000, source_pnl: false });
     expect(consoleErrors).toEqual([]);
   } finally {

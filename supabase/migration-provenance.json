@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-10T02:22:18.492Z",
+  "generatedAt": "2026-09-10T02:30:02.155Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 549,
-    "unknown": 74,
+    "ledger-applied": 550,
+    "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9899,11 +9899,9 @@
       "name": "reservation_refund_evidence_and_creator_v1",
       "scheme": "timestamp14",
       "sha256": "91bf3d5206d8159b12855f8b2f438f85eb5d4fc42280c1736e8243cfa56daa51",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.reservation_refund_attachments_v1",
-        "function:app_private.reservation_bind_refund_evidence_v1"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-10T02:29:36.055Z|bien-nhan-backup"
       ]
     },
     {
