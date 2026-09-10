@@ -45,6 +45,14 @@ Nguyên tắc cần nhớ: **email trong trang này là email hiển thị trong
 
 ## Các tính năng khác trên màn hình
 
+### Chọn công ty làm việc
+
+Trên cả máy tính và điện thoại, mở **Tài khoản** → **Công ty làm việc** (ngay dưới ảnh đại diện), rồi chọn **Công ty đang chọn** trong dropdown. Copilot dùng công ty này để xác định phạm vi dữ liệu.
+
+Lựa chọn được lưu ngay trên trình duyệt đang dùng, không cần bấm **Lưu thay đổi**. Chuyển trang, tải lại hoặc đóng rồi mở web vẫn giữ công ty đã chọn cho đến khi bạn đổi. Mỗi trình duyệt/thiết bị lưu riêng; xoá dữ liệu trình duyệt sẽ xoá lựa chọn. Nếu công ty không còn khả dụng hoặc tài khoản bị gỡ quyền, hệ thống yêu cầu chọn lại trong danh sách hiện có (chỉ còn một công ty thì tự chọn công ty đó).
+
+Nếu tải danh sách bị lỗi, bấm **Thử lại**; lựa chọn đã lưu không bị xoá vì lỗi tải. Nếu Copilot nhắc chọn tổ chức, bấm **Mở Tài khoản để chọn công ty** ngay trong khung chat.
+
 | Nút / Ô | Công dụng |
 | --- | --- |
 | **Ảnh đại diện** (vòng tròn) | Nhấn để chọn file, hoặc rê chuột lên rồi **Ctrl+V** để dán ảnh. JPG/PNG, tối đa 2MB. |

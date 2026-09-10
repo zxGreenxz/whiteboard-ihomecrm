@@ -17,6 +17,7 @@
   "$comment2": "LÔ 94 — nở 246 → 1025 file. Cách đo (quan trọng, đừng đo lại kiểu khác): tsc báo lỗi cho MỌI file trong program, kể cả file chỉ bị IMPORT vào chứ không nằm trong include. Nên \"bỏ file lỗi khỏi include\" KHÔNG làm đảo xanh — bằng chứng: 2 file OpenClaw đã lọc khỏi include vẫn hiện lỗi vì bị import. Danh sách này = toàn bộ src/ TRỪ bao đóng-ngược của 6 file còn lỗi (chúng + mọi file import tới chúng, bắc cầu = 157 file) TRỪ toàn bộ openclaw-zalo (không đụng theo yêu cầu user).",
   "include": [],
   "files": [
+    "src/components/account/AccountOrganizationCard.tsx",
     "src/copilot/activePageContext.ts",
     "src/hooks/useCopilotPageContext.ts",
     "src/components/customers/AdministrativeAddressPreview.tsx",

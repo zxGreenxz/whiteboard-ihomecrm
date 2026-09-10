@@ -90,6 +90,8 @@ describe('mounted ChatPanel G0', () => {
   it('shows the organization action instead of refetching forever when no organization is selected', async () => {
     io.org = null; await mount(panel()); await send();
     expect(document.body.textContent).toMatch(/chọn (công ty|tổ chức)/i);
+    const link = byId('copilot-panel').querySelector<HTMLAnchorElement>('a[href="/account/profile"]');
+    expect(link?.textContent).toBe('Mở Tài khoản để chọn công ty');
     expect(io.refetch).not.toHaveBeenCalled(); expect(io.turn).not.toHaveBeenCalled();
   });
   it('renders structured proxy code in Vietnamese even when its English message has no code', async () => {

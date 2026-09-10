@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useClipboardImagePaste } from "@/hooks/useClipboardImagePaste";
 import PushNotificationSettings from "@/components/notifications/PushNotificationSettings";
 import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
+import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
 
 function ProfileDesktop() {
   const { data: profile, isLoading } = useProfile();
@@ -140,6 +141,8 @@ function ProfileDesktop() {
             </div>
           </CardContent>
         </Card>
+
+        <AccountOrganizationCard />
 
         {/* Profile Info Section */}
         <Card>

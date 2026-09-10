@@ -984,7 +984,16 @@ export default function ChatPanel({ onClose }: Props) {
             setHistory((h) => [...h, { role: 'assistant', content: thongBao }]);
           }}
         />
-        {error && <div className="rounded bg-red-50 p-2 text-xs text-red-600">{error}</div>}
+        {error && (
+          <div className="rounded bg-red-50 p-2 text-xs text-red-600">
+            {error}
+            {!selectedOrganizationId && (
+              <Link to="/account/profile" className="mt-1 block font-medium underline">
+                Mở Tài khoản để chọn công ty
+              </Link>
+            )}
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 

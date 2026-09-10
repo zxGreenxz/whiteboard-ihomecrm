@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
-import { getSessionUser } from '@/lib/authSession';
+import { useAuth } from '@/hooks/useAuth';
 
 /**
  * Khái niệm "tổ chức hiện tại" cho frontend — GĐ9 của kế hoạch tách dữ liệu.
@@ -56,6 +56,8 @@ export interface OrganizationState {
   /** Có nhiều hơn một tổ chức — nơi duy nhất đáng hiện bộ chuyển đổi. */
   isMultiOrg: boolean;
   isLoading: boolean;
+  isError: boolean;
+  refetchOrganizations: () => Promise<void>;
   /**
    * Đã nạp xong VÀ không thuộc tổ chức nào. Tách khỏi `organization === null`
    * vì hai trạng thái đó cần hiển thị khác nhau: đang nạp thì chờ, không thuộc
@@ -129,11 +131,11 @@ export function useOrganization(): OrganizationState {
 }
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['my-organizations'],
+  const { data: user, isLoading: authLoading, isError: authError } = useAuth();
+  const { data, isLoading: directoryLoading, isSuccess, isError: directoryError, refetch } = useQuery({
+    queryKey: ['my-organizations', user?.id ?? null],
+    enabled: !!user,
     queryFn: async (): Promise<Organization[]> => {
-      const user = await getSessionUser();
-      if (!user) return [];
       const { data: rpc, error } = await supabase.rpc('list_my_copilot_organizations_v1');
       if (error) throw error;
       return parseOrganizations(rpc);
@@ -142,6 +144,9 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     // useMyContext để hai nguồn không lệch nhau giữa chừng.
     staleTime: 5 * 60 * 1000,
   });
+  const isLoading = authLoading || (!!user && directoryLoading);
+  const isError = authError || directoryError;
+  const refetchOrganizations = useCallback(async () => { await refetch(); }, [refetch]);
 
   // Chỉ lưu ID, không lưu cả bản ghi tổ chức: một bản chép trong localStorage sẽ
   // cũ đi (đổi tên, bị gỡ quyền) mà không có gì làm nó mới lại, và giao diện sẽ
@@ -157,16 +162,17 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   const organizations = useMemo(() => data ?? [], [data]);
   const selectedOrganizationId = resolveSelectedOrganizationId(organizations, luuId);
 
-  // Lựa chọn đã lưu không còn hợp lệ thì DỌN, đừng để rác trỏ vào công ty cũ.
+  // Chỉ lưu/dọn sau khi tải THÀNH CÔNG. Mất mạng hoặc đăng xuất không có
+  // nghĩa công ty đã lưu bị gỡ khỏi danh bạ. Lưu cả lựa chọn tự động khi chỉ
+  // có một công ty, để sau này thêm công ty mới vẫn giữ công ty đang dùng.
   useEffect(() => {
-    if (isLoading) return;
-    if (luuId && !organizations.some((o) => o.id === luuId)) {
-      try {
-        localStorage.removeItem(KHOA_LUU);
-      } catch { /* xem chú thích khởi tạo */ }
-      datLuuId(null);
-    }
-  }, [isLoading, luuId, organizations]);
+    if (!isSuccess || selectedOrganizationId === luuId) return;
+    try {
+      if (selectedOrganizationId) localStorage.setItem(KHOA_LUU, selectedOrganizationId);
+      else localStorage.removeItem(KHOA_LUU);
+    } catch { /* xem chú thích khởi tạo */ }
+    datLuuId(selectedOrganizationId);
+  }, [isSuccess, luuId, selectedOrganizationId]);
 
   const selectOrganization = useCallback(
     (id: string) => {
@@ -189,10 +195,12 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       selectOrganization,
       isMultiOrg: organizations.length > 1,
       isLoading,
-      isOrphan: !isLoading && organizations.length === 0,
+      isError,
+      refetchOrganizations,
+      isOrphan: isSuccess && organizations.length === 0,
       canChonToChuc: !isLoading && organizations.length > 1 && selectedOrganizationId === null,
     };
-  }, [organizations, selectedOrganizationId, selectOrganization, isLoading]);
+  }, [organizations, selectedOrganizationId, selectOrganization, isLoading, isError, refetchOrganizations, isSuccess]);
 
   return (
     <OrganizationContext.Provider value={value}>

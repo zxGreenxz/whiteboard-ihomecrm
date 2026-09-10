@@ -10,6 +10,7 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { isPushSupported, isSubscribed, enablePush, disablePush } from "@/lib/push";
 import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
+import AccountOrganizationCard from "@/components/account/AccountOrganizationCard";
 import { toast } from "sonner";
 
 const APP_VERSION = "5.2.0";
@@ -171,6 +172,8 @@ export default function AccountMobilePage() {
               </button>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" style={{ display: "none" }} onChange={onAvatarPick} />
             </div>
+
+            <AccountOrganizationCard variant="mobile" />
 
             {/* Thông tin cá nhân */}
             <div className="cd-card">
