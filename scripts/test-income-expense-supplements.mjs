@@ -89,6 +89,29 @@ test('fabricated host, missing object, wrong owner and cross-org link reject the
   await f.asActor();await f.reject(()=>f.append('wrong tenant',[good]),'22023');
   assert.equal((await f.db.query('SELECT count(*)::int n FROM public.income_expense_supplements WHERE income_expense_id=$1',[f.id])).rows[0].n,0);
 }));
+test('supplement storage read follows parent visibility and allows a shared accessible parent',()=>fixture(async f=>{
+  const staff='fb0651bb-1cbd-4016-b0bf-3611dae49a63';
+  const proof=await f.upload(),legacy=await f.upload();await f.asActor();await f.append(null,[proof]);
+  const proofPath=proof.split('/income-expense-attachments/')[1],legacyPath=legacy.split('/income-expense-attachments/')[1];
+  const visible=async(path)=>(await f.db.query("SELECT id FROM storage.objects WHERE bucket_id='income-expense-attachments' AND name=$1",[path])).rowCount;
+  // Give the ordinary legacy object its normal org binding so the test isolates
+  // the new parent gate from existing organization/quarantine Storage policies.
+  await f.db.query('RESET ROLE');await f.db.query('UPDATE app_private.storage_object_links SET organization_id=$2 WHERE object_name=$1',[legacyPath,org]);
+  await f.asActor(staff);assert.equal((await f.db.query('SELECT public.can_view_restricted_ie() value')).rows[0].value,false);
+  assert.equal(await visible(proofPath),1);assert.equal(await visible(legacyPath),1);
+  await f.db.query('RESET ROLE');await f.db.query('SET LOCAL session_replication_role=replica');
+  await f.db.query('UPDATE public.income_expenses SET has_restricted_item=true WHERE id=$1',[f.id]);await f.db.query('SET LOCAL session_replication_role=origin');
+  await f.asActor(staff);
+  assert.equal((await f.db.query('SELECT id FROM public.income_expense_supplements WHERE income_expense_id=$1',[f.id])).rowCount,0);
+  assert.equal(await visible(proofPath),0,'restricted supplemental proof must not leak through Storage SELECT');
+  assert.equal(await visible(legacyPath),1,'unreferenced legacy Storage visibility remains unchanged');
+  await f.asActor();assert.equal(await visible(proofPath),1,'authorized parent reader retains proof access');
+  const other=randomUUID();await f.db.query('RESET ROLE');await f.db.query('SET LOCAL session_replication_role=replica');
+  await f.db.query("INSERT INTO public.income_expenses(id,user_id,organization_id,type,name,building_id,room_id,account_id,total_amount,approval_status,posting_mode,posting_status,voucher_date) SELECT $2,user_id,organization_id,type,'Accessible shared proof',building_id,room_id,account_id,total_amount,approval_status,posting_mode,posting_status,voucher_date FROM public.income_expenses WHERE id=$1",[f.id,other]);
+  await f.db.query('SET LOCAL session_replication_role=origin');await f.asActor();await f.append('Shared proof',[proof],randomUUID(),other);
+  await f.asActor(staff);assert.equal(await visible(proofPath),1,'any accessible referencing parent permits shared proof');
+  await f.asActor(randomUUID());assert.equal(await visible(proofPath),0,'unrelated actor gains no access from sharing');
+}));
 test('direct ledger mutations and anonymous/service-role execute are denied',()=>fixture(async f=>{
   const r=await f.append();
   for(const sql of ['UPDATE public.income_expense_supplements SET note=\'tamper\' WHERE id=$1','DELETE FROM public.income_expense_supplements WHERE id=$1']) await f.reject(()=>f.db.query(sql,[r.id]),'42501');
@@ -147,8 +170,9 @@ test('simultaneous independent and same-key appends serialize without losing nar
       const key=randomUUID(),same=await Promise.all([send('retry',key),send('retry',key)]);assert.equal(same[0].id,same[1].id);assert.equal(same.filter(r=>r.changed).length,1);
       assert.deepEqual(await f.snapshot(),before);
       assert.equal((await f.db.query('SELECT count(*)::int n FROM public.income_expense_supplements WHERE income_expense_id=$1',[f.id])).rows[0].n,3);
+      const proof=await f.upload();await f.asActor();await f.append('Readonly proof',[proof]);
       const reader=new pg.Client({connectionString:target.toString()});await reader.connect();
-      try {await reader.query('BEGIN READ ONLY');await reader.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[actor]);await reader.query('SET LOCAL ROLE authenticated');assert.equal((await reader.query('SELECT id,organization_id,income_expense_id,note,attachments,actor_id,actor_name,created_at FROM public.income_expense_supplements WHERE income_expense_id=ANY($1::uuid[]) ORDER BY created_at,id LIMIT 1000 OFFSET 0',[[f.id]])).rowCount,3);await reader.query('COMMIT');}finally{await reader.end();}
+      try {await reader.query('BEGIN READ ONLY');await reader.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[actor]);await reader.query('SET LOCAL ROLE authenticated');assert.equal((await reader.query('SELECT id,organization_id,income_expense_id,note,attachments,actor_id,actor_name,created_at FROM public.income_expense_supplements WHERE income_expense_id=ANY($1::uuid[]) ORDER BY created_at,id LIMIT 1000 OFFSET 0',[[f.id]])).rowCount,4);assert.equal((await reader.query("SELECT id FROM storage.objects WHERE bucket_id='income-expense-attachments' AND name=$1",[proof.split('/income-expense-attachments/')[1]])).rowCount,1);await reader.query('COMMIT');}finally{await reader.end();}
     },{connectionString:target.toString(),committed:true});
   } finally {await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);await admin.end();}
 });

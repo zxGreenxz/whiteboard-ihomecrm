@@ -90,6 +90,21 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,
 $$;
 REVOKE ALL ON FUNCTION app_private.ie_storage_is_supplement_v1(text,text) FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION app_private.ie_storage_is_supplement_v1(text,text) TO authenticated;
+CREATE FUNCTION app_private.ie_supplement_storage_can_read_v1(p_bucket text,p_name text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,app_private,public AS $$
+  -- Existing bucket/org policies still apply. A supplemental proof additionally
+  -- needs a visible parent; a shared object may be read via any visible parent.
+  -- No storage.objects query here: that would recurse into this SELECT policy.
+  SELECT NOT app_private.ie_storage_is_supplement_v1(p_bucket,p_name)
+    OR EXISTS(SELECT 1 FROM app_private.ie_supplement_objects o
+      JOIN public.income_expense_supplements s ON s.id=o.supplement_id
+      WHERE o.bucket_id=p_bucket AND o.object_name=p_name
+        AND app_private.ie_supplement_can_read_v1(s.income_expense_id));
+$$;
+REVOKE ALL ON FUNCTION app_private.ie_supplement_storage_can_read_v1(text,text) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION app_private.ie_supplement_storage_can_read_v1(text,text) TO authenticated;
+CREATE POLICY ie_supplement_storage_parent_read ON storage.objects AS RESTRICTIVE FOR SELECT TO authenticated
+  USING(app_private.ie_supplement_storage_can_read_v1(bucket_id,name));
 CREATE POLICY ie_supplement_storage_no_delete ON storage.objects AS RESTRICTIVE FOR DELETE TO authenticated
   USING(NOT app_private.ie_storage_is_supplement_v1(bucket_id,name));
 CREATE POLICY ie_supplement_storage_no_replace ON storage.objects AS RESTRICTIVE FOR UPDATE TO authenticated
