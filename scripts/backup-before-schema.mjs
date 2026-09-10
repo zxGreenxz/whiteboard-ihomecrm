@@ -79,6 +79,14 @@ function findPgDump() {
   return null;
 }
 
+export function pgPassLine(host, port, database, user, password) {
+  const fields = [host, port, database, user, password].map(String);
+  if (fields.some((field) => /[\r\n\0]/u.test(field))) {
+    throw new Error("Database connection fields cannot contain line breaks or NUL.");
+  }
+  return fields.map((field) => field.replace(/\\/g, "\\\\").replace(/:/g, "\\:")).join(":") + "\n";
+}
+
 export function readProjectRef() {
   try {
     return readFileSync(join(repoRoot, "supabase", ".temp", "project-ref"), "utf8").trim();
@@ -188,7 +196,7 @@ function main(argv) {
     localMd = "";
   }
 
-  const password = process.env.SUPABASE_DB_PASSWORD?.trim() || readPoolerPassword(localMd);
+  const password = process.env.SUPABASE_DB_PASSWORD || readPoolerPassword(localMd);
   if (!password) {
     console.error("❌ Không tìm thấy password pooler (SUPABASE_DB_PASSWORD hoặc CLAUDE.local.md).");
     return 1;
@@ -206,7 +214,7 @@ function main(argv) {
   // PGPASSFILE tạm: password KHÔNG bao giờ lên command line (mọi tiến trình
   // trên máy đọc được danh sách process kèm tham số).
   const passFile = join(tmpdir(), `.pgpass-ihomecrm-${process.pid}`);
-  writeFileSync(passFile, `${POOLER_HOST}:${POOLER_PORT}:postgres:${user}:${password}\n`, {
+  writeFileSync(passFile, pgPassLine(POOLER_HOST, POOLER_PORT, "postgres", user, password), {
     encoding: "utf8",
     mode: 0o600,
   });

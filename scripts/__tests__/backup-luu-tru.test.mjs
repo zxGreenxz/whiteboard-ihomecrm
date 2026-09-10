@@ -6,7 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { chonBanCanXoa } from "../backup-before-schema.mjs";
+import { chonBanCanXoa, pgPassLine } from "../backup-before-schema.mjs";
 import { banMoiNhat } from "../check-backup-freshness.mjs";
 
 const ten = (iso) => `ihomecrm-full-${iso}.dump`;
@@ -59,5 +59,21 @@ describe("banMoiNhat — tìm bản mới nhất và tuổi của nó", () => {
     const f = ["ihomecrm-schema-2026-08-07.dump", ten("2026-08-01")];
     const r = banMoiNhat(f, () => ({ mtimeMs: bayGio, size: 1 }), bayGio);
     assert.equal(r.ten, ten("2026-08-01"));
+  });
+});
+
+
+describe("pgPassLine — preserve PostgreSQL password bytes", () => {
+  it("escapes colon and backslash without trimming the password", () => {
+    const password = "  example:with\\slash  ";
+    assert.equal(pgPassLine("host", 5432, "postgres", "user", password),
+      "host:5432:postgres:user:  example\\:with\\\\slash  \n");
+  });
+
+  it("rejects injected lines before creating a password file", () => {
+    for (const password of ["one\ntwo", "one\rtwo", "one\0two"]) {
+      assert.throws(() => pgPassLine("host", 5432, "postgres", "user", password),
+        /cannot contain line breaks or NUL/);
+    }
   });
 });
