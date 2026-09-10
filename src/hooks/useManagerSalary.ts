@@ -1,4 +1,4 @@
-import { requireWorkingOrganization } from '@/lib/workingOrganization';
+import { resolveSalaryPeriodOrganization as orgOfStaff, validateSalaryLockOrganization } from '@/lib/salaryOrganization';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
@@ -576,43 +576,6 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
 // nên một dòng lương thiếu nhãn org sẽ hiển thị cho MỌI công ty. Đã xảy ra thật:
 // 4 khoản thưởng tay + 2 salary_monthly nhập ngày 27/08/2026 rơi ra NULL và làm đỏ
 // gate measure-org-leak. Thà ném lỗi còn hơn ghi một dòng tiền không có biên giới.
-async function orgOfStaff(staffId: string, periodMonth: string): Promise<string> {
-  const { data: monthly, error: monthlyError } = await supabase.from("salary_monthly").select("organization_id").eq("staff_id", staffId).eq("period_month", periodMonth).maybeSingle();
-  if (monthlyError) throw monthlyError;
-  if (monthly) {
-    if (!monthly.organization_id) throw new Error("Bảng lương chưa có công ty rõ ràng");
-    return monthly.organization_id;
-  }
-  const selectedOrganizationId = requireWorkingOrganization();
-  const { data: cfg, error: configError } = await supabase
-    .from("manager_salary_config")
-    .select("organization_id")
-    .eq("staff_id", staffId)
-    .eq("organization_id", selectedOrganizationId)
-    .not("organization_id", "is", null)
-    .eq("is_active", true)
-    .lte("effective_from", periodMonth)
-    .or(`effective_to.is.null,effective_to.gte.${periodMonth}`)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (configError) throw configError;
-  if (cfg?.organization_id) return cfg.organization_id;
-
-  const { data: mem, error: membershipError } = await supabase
-    .from("organization_memberships")
-    .select("organization_id")
-    .eq("user_id", staffId)
-    .eq("organization_id", selectedOrganizationId)
-    .eq("status", "ACTIVE")
-    .limit(1)
-    .maybeSingle();
-  if (membershipError) throw membershipError;
-  if (mem?.organization_id) return mem.organization_id;
-
-  throw new Error("Không xác định được tổ chức của nhân viên — không thể ghi dòng lương");
-}
-
 async function ensureMonthly(ownerId: string, staffId: string, periodMonth: string): Promise<string> {
   const { data: existing } = await (supabase
     .from("salary_monthly")
@@ -719,27 +682,6 @@ export const useToggleJobExcluded = () => {
     onError: (e: any) => toast.error(e?.message || "Không thể cập nhật"),
   });
 };
-
-export async function validateSalaryLockOrganization(
-  managers: ReadonlyArray<Pick<SalManager, "id" | "commissionItems">>, periodMonth: string,
-): Promise<{ organizationId: string; commVoucherIds: string[] }> {
-  const organizations = await Promise.all(managers.map(m => orgOfStaff(m.id, periodMonth)));
-  const organizationId = organizations[0];
-  if (!organizationId || organizations.some(id => id !== organizationId)) {
-    throw new Error("Danh sách bảng lương phải thuộc cùng một công ty.");
-  }
-  const commVoucherIds = Array.from(new Set(managers.flatMap(m =>
-    (m.commissionItems || []).map(x => x.voucherId).filter((id): id is string => !!id))));
-  if (commVoucherIds.length) {
-    const { data: vouchers, error } = await supabase.from("income_expenses")
-      .select("id, organization_id").in("id", commVoucherIds);
-    if (error) throw error;
-    if (vouchers?.length !== commVoucherIds.length || vouchers.some(v => v.organization_id !== organizationId)) {
-      throw new Error("Phiếu hoa hồng không thuộc công ty của bảng lương hoặc không còn quyền truy cập.");
-    }
-  }
-  return { organizationId, commVoucherIds };
-}
 
 // Chốt tháng: upsert salary_monthly LOCKED (đóng băng số) + snapshot bảng kê.
 export const useLockSalaryMonth = () => {

@@ -514,6 +514,7 @@
     "src/contexts/OrganizationContext.tsx",
     "src/lib/workingOrganization.ts",
     "src/lib/storageOrganization.ts",
+    "src/lib/salaryOrganization.ts",
     "src/contexts/__tests__/OrganizationContext.test.ts",
     "src/copilot/ChatPanel.tsx",
     "src/copilot/CopilotLauncher.tsx",

@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { validateSalaryLockOrganization } from "../useManagerSalary";
-import type { SalManager } from "@/lib/managerSalary";
+import { validateSalaryLockOrganization, type SalaryLockSubject } from "@/lib/salaryOrganization";
 
 const database = vi.hoisted(() => ({ from: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: database }));
@@ -32,9 +31,9 @@ describe("useManagerSalary legacy fallback organization scope", () => {
 describe("salary lock batch preflight", () => {
   const orgA = "dddd0000-0000-4000-8000-000000000001";
   const orgB = "cccc0000-0000-4000-8000-000000000001";
-  type Manager = Pick<SalManager, "id" | "commissionItems">;
+  type Manager = SalaryLockSubject;
   const manager = (id: string, voucherId?: string): Manager => ({
-    id, commissionItems: voucherId ? [{ voucherId } as NonNullable<SalManager["commissionItems"]>[number]] : [],
+    id, commissionItems: voucherId ? [{ voucherId }] : [],
   });
   function replies(values: Array<{ data: unknown; error: unknown }>) {
     database.from.mockImplementation(() => {
@@ -48,7 +47,7 @@ describe("salary lock batch preflight", () => {
       return chain;
     });
   }
-  beforeEach(() => database.from.mockReset());
+  beforeEach(() => { database.from.mockReset(); });
 
   it("rejects mixed persisted salary companies before touching commission vouchers", async () => {
     replies([{ data: { organization_id: orgA }, error: null }, { data: { organization_id: orgB }, error: null }]);
