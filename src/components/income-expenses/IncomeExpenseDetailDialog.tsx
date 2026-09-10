@@ -13,6 +13,7 @@ import {
   Printer,
   FileText,
   Pencil,
+  FilePlus2,
   CheckCircle2,
   ExternalLink,
   Banknote,
@@ -36,6 +37,7 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
+import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useAuth } from "@/hooks/useAuth";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
@@ -52,8 +54,7 @@ interface Props {
   voucher: IncomeExpenseWithRelations | null;
   onCancel?: (id: string, type?: string | null) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
-  /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho creator của
-   *  phiếu đã ghi nhận/đã huỷ, không cần super admin. */
+  /** Append-only narrative/evidence, independent of the financial edit form. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
   /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
@@ -136,7 +137,7 @@ export function IncomeExpenseDetailDialog({
     },
   });
 
-  const attachments = voucher?.attachments ?? [];
+  const attachments = getVoucherDisplayAttachments(voucher ?? {});
   const [settlementLightboxOpen, setSettlementLightboxOpen] = useState(false);
   const isLightboxOpen = lightboxIdx !== null || settlementLightboxOpen;
 
@@ -222,19 +223,15 @@ export function IncomeExpenseDetailDialog({
                 <Button
                   size="icon"
                   variant="default"
-                  className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
-                  // ĐỢT C: sổ quỹ chỉ sửa được ở phiếu THU.
-                  title={
-                    voucher.type === "INCOME"
-                      ? "Sửa sổ quỹ / hình ảnh / ghi chú"
-                      : "Sửa hình ảnh / ghi chú"
-                  }
+                  className="h-8 w-8 bg-sky-600 hover:bg-sky-700"
+                  title="Bổ sung chứng từ / ghi chú"
+                  aria-label="Bổ sung chứng từ / ghi chú"
                   onClick={() => {
                     onQuickEdit!(voucher);
                     onOpenChange(false);
                   }}
                 >
-                  <Pencil className="h-4 w-4 text-white" />
+                  <FilePlus2 className="h-4 w-4 text-white" />
                 </Button>
               )}
               {monetaryActionsAllowed && isUnapproved && onApprove && (
@@ -523,11 +520,11 @@ export function IncomeExpenseDetailDialog({
           )}
 
           {/* Đính kèm */}
-          {voucher.attachments && voucher.attachments.length > 0 && (
+          {attachments.length > 0 && (
             <>
               <SectionTitle>Đính kèm</SectionTitle>
               <div className="flex flex-wrap gap-3">
-                {voucher.attachments.map((url, idx) => (
+                {attachments.map((url, idx) => (
                   <button
                     type="button"
                     key={url}

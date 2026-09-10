@@ -116,6 +116,8 @@ export interface IncomeExpenseItem {
 
 
 export interface IncomeExpenseWithRelations {
+  /** Display-only additions; never merge into raw notes/attachments sent to money writers. */
+  supplements?: import('@/lib/incomeExpenseSupplement').IncomeExpenseSupplement[];
   id: string;
   user_id: string;
   /** Finance V2 (§12.1): org để resolve route + 4 trục trạng thái + version CAS. */

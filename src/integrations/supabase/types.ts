@@ -5871,6 +5871,68 @@ export type Database = {
           },
         ]
       }
+      income_expense_supplements: {
+        Row: {
+          actor_id: string
+          actor_name: string
+          attachments: Json
+          created_at: string
+          id: string
+          income_expense_id: string
+          note: string | null
+          organization_id: string
+        }
+        Insert: {
+          actor_id: string
+          actor_name: string
+          attachments?: Json
+          created_at?: string
+          id?: string
+          income_expense_id: string
+          note?: string | null
+          organization_id: string
+        }
+        Update: {
+          actor_id?: string
+          actor_name?: string
+          attachments?: Json
+          created_at?: string
+          id?: string
+          income_expense_id?: string
+          note?: string | null
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expense_supplements_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_supplements_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_supplements_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "income_expense_supplements_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       income_expense_templates: {
         Row: {
           code: string | null
@@ -18263,6 +18325,15 @@ export type Database = {
       }
       append_fee_attachment: {
         Args: { p_url: string; p_voucher_id: string }
+        Returns: Json
+      }
+      append_income_expense_supplement_v1: {
+        Args: {
+          p_attachments?: Json
+          p_idempotency_key?: string
+          p_note?: string
+          p_voucher: string
+        }
         Returns: Json
       }
       apply_customer_credit_v1: {

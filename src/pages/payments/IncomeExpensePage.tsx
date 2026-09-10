@@ -41,6 +41,7 @@ import IncomeExpenseList from "@/components/income-expenses/IncomeExpenseList";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseDetailDialog from "@/components/income-expenses/IncomeExpenseDetailDialog";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
+import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import IncomeExpenseVerifyDialog from "@/components/income-expenses/IncomeExpenseVerifyDialog";
 import IncomeExpenseImportDialog from "@/components/income-expenses/IncomeExpenseImportDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
@@ -331,6 +332,7 @@ const IncomeExpenseDesktopPage = () => {
     );
 
   const vouchers = listResult?.data ?? [];
+  const detailSupplements = useIncomeExpenseSupplements(detailVoucher?.id, !!detailVoucher);
   const totalCount = listResult?.totalCount ?? 0;
   const batches = batchResult?.data ?? [];
   const batchTotalCount = batchResult?.totalCount ?? 0;
@@ -868,7 +870,7 @@ const IncomeExpenseDesktopPage = () => {
         onOpenChange={(o) => {
           if (!o) setDetailVoucher(null);
         }}
-        voucher={detailVoucher}
+        voucher={detailVoucher ? { ...detailVoucher, supplements: detailSupplements.data ?? detailVoucher.supplements } : null}
         onCancel={handleCancelVoucher}
         onRestore={handleRestoreVoucher}
         onEdit={handleEditVoucher}

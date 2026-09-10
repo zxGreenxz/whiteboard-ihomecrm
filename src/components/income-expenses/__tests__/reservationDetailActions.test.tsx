@@ -29,12 +29,19 @@ const source = {
 function fixture(voucher: IncomeExpenseWithRelations | null, client: QueryClient) {
   return <QueryClientProvider client={client}><MemoryRouter><IncomeExpenseDetailDialog
     open={!!voucher} voucher={voucher} onOpenChange={() => {}}
-    onEdit={() => {}} onCancel={() => {}} onUnapprove={() => {}}
+    onEdit={() => {}} onQuickEdit={() => {}} onCancel={() => {}} onUnapprove={() => {}}
   /></MemoryRouter></QueryClientProvider>;
 }
 afterEach(() => { cleanup(); state.data = null; state.error = null; state.isSuccess = true; state.isLoading = false; });
 
 describe('reservation voucher detail lifecycle', () => {
+  it('admin sees separate edit and add-document actions', () => {
+    render(fixture(source, new QueryClient()));
+    const supplement = screen.getByRole('button', { name: 'Bổ sung chứng từ / ghi chú' });
+    const edit = screen.getByTitle('Sửa phiếu (Super Admin)');
+    expect(supplement.querySelector('svg')?.classList.contains('lucide-file-plus2')).toBe(true);
+    expect(edit.querySelector('svg')?.classList.contains('lucide-pencil')).toBe(true);
+  });
   it('opens and closes from a null voucher without changing hook order', () => {
     const client = new QueryClient();
     const view = render(fixture(null, client));
@@ -47,6 +54,7 @@ describe('reservation voucher detail lifecycle', () => {
     expect(screen.queryByTitle('Huỷ phiếu')).toBeNull();
     expect(screen.queryByTitle(/Huỷ duyệt/)).toBeNull();
     expect(screen.queryByTitle('Sửa phiếu (Super Admin)')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Bổ sung chứng từ / ghi chú' })).toBeTruthy();
   });
   it('does not offer money actions when settlement lookup failed', () => {
     state.error = new Error('lookup failed'); state.isSuccess = false;

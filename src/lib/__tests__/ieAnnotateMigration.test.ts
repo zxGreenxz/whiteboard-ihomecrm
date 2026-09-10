@@ -121,12 +121,12 @@ describe("Đợt 2 — ai thấy nút bổ sung chứng từ", () => {
     expect(canShowAnnotateAction(base)).toBe(false);
   });
 
-  it("phiếu Chờ duyệt dùng form sửa đầy đủ, không dùng nút này", () => {
-    expect(canShowAnnotateAction({ ...base, isCreator: true, isUnapproved: true })).toBe(false);
+  it("phiếu Chờ duyệt vẫn bổ sung được bằng thao tác riêng", () => {
+    expect(canShowAnnotateAction({ ...base, isCreator: true, isUnapproved: true })).toBe(true);
   });
 
-  it("admin đã có nút sửa đầy đủ", () => {
-    expect(canShowAnnotateAction({ ...base, isCreator: true, isAdmin: true })).toBe(false);
+  it("admin có nút bổ sung ngay cả khi không phải người tạo", () => {
+    expect(canShowAnnotateAction({ ...base, isAdmin: true })).toBe(true);
   });
 
   it("không có handler thì không hiện", () => {

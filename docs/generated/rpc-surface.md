@@ -17,10 +17,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 286 |
-| Hàm trong catalog (public + api) | 1154 |
-| File mã nguồn đã quét | 1540 |
-| SECURITY DEFINER | 270 |
+| RPC được gọi từ mã nguồn | 287 |
+| Hàm trong catalog (public + api) | 1155 |
+| File mã nguồn đã quét | 1547 |
+| SECURITY DEFINER | 271 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
@@ -28,9 +28,9 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 209 | còn lại |
-| tiền | 77 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 78 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 77 RPC chạm TIỀN
+## 78 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -38,6 +38,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | RPC | DEFINER | Nơi gọi |
 |---|---|---|
 | `annotate_income_expense_v1` | ✔ | hooks/income-expenses/annotateMutations.ts |
+| `append_income_expense_supplement_v1` | ✔ | hooks/income-expenses/supplements.ts |
 | `approve_income_expense_v1` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `approve_invoice_v1` | ✔ | hooks/useInvoices.ts |
 | `approve_voucher` | ✔ | hooks/income-expenses/statusMutations.ts |

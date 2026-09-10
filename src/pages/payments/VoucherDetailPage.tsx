@@ -2,12 +2,12 @@
 // VoucherDetailPage — trang chi tiết 1 phiếu thu/chi (mở tab mới từ link
 // "phiếu thu"). Nếu phiếu nằm trong 1 đợt (phiếu tổng) thì chia đôi khung:
 // trái = chi tiết phiếu, phải = chi tiết phiếu tổng (kèm danh sách phiếu con).
-// Read-only — chỉ hiển thị + in; sửa/huỷ làm ở trang /income-expense.
+// Hiển thị, in và bổ sung mô tả; sửa/huỷ làm ở trang /income-expense.
 // =============================================
 
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Printer, FileText, Layers } from 'lucide-react';
+import { ArrowLeft, Printer, FileText, FilePlus2, Layers } from 'lucide-react';
 import { format } from 'date-fns';
 import { useVoucherWithBatch } from '@/hooks/useVoucherDetail';
 import { useReservationSettlementForVoucher } from '@/hooks/useReservationSettlement';
@@ -26,6 +26,13 @@ import {
   coGhiChuHeThong,
 } from '@/components/income-expenses/VoucherNote';
 import type { VoucherDisplayInput } from '@/lib/financeV2VoucherState';
+import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
+import { useAuth } from '@/hooks/useAuth';
+import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
+import { canShowAnnotateAction } from '@/lib/voucherAnnotate';
+import IncomeExpenseQuickEditDialog from '@/components/income-expenses/IncomeExpenseQuickEditDialog';
 
 const formatVND = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
 const isPdf = (url: string) =>
@@ -133,6 +140,7 @@ function VoucherCard({
   onOpenLightbox: (urls: string[], idx: number) => void;
 }) {
   const isExpense = v.type === 'EXPENSE';
+  const attachments = getVoucherDisplayAttachments(v);
   const needsSettlement = !!v.system_source?.startsWith('reservation.') || (v.type === 'INCOME' && !v.contract_id && v.items.some((item) => item.is_deposit));
   const settlement = useReservationSettlementForVoucher(v.id, needsSettlement);
   return (
@@ -228,10 +236,10 @@ function VoucherCard({
         </>
       )}
 
-      {v.attachments && v.attachments.length > 0 && (
+      {attachments.length > 0 && (
         <>
           <SectionTitle>Đính kèm</SectionTitle>
-          <Attachments urls={v.attachments} onOpen={onOpenLightbox} />
+          <Attachments urls={attachments} onOpen={onOpenLightbox} />
         </>
       )}
     </div>
@@ -353,6 +361,13 @@ export default function VoucherDetailPage() {
   const { data, isLoading } = useVoucherWithBatch(id);
   const voucher = data?.voucher ?? null;
   const batch = data?.batch ?? null;
+  const { data: user } = useAuth();
+  const { data: isAdmin = false } = useIsAdmin();
+  const { data: permissions } = useMyPermissions();
+  const [supplementOpen, setSupplementOpen] = useState(false);
+  const canSupplement = !!voucher && canShowAnnotateAction({ hasHandler: true,
+    isUnapproved: voucher.approval_status === 'UNAPPROVED', isAdmin,
+    isCreator: !!user?.id && voucher.user_id === user.id, canEdit: canUse(permissions, 'income_expenses', 'edit') });
 
   // Lightbox dùng chung cho cả 2 khung — set danh sách + index khi click.
   const [lightbox, setLightbox] = useState<{ urls: string[]; index: number | null }>({
@@ -379,6 +394,12 @@ export default function VoucherDetailPage() {
             </h1>
           </div>
           {voucher && (
+            <div className="flex items-center gap-2 shrink-0">
+            {canSupplement && <button type="button" onClick={() => setSupplementOpen(true)}
+              aria-label="Bổ sung chứng từ / ghi chú" title="Bổ sung chứng từ / ghi chú"
+              className="inline-flex items-center gap-1.5 h-8 px-2 rounded-md border text-sky-600 hover:bg-sky-50 text-sm">
+              <FilePlus2 className="h-4 w-4" /><span className="hidden sm:inline">Bổ sung</span>
+            </button>}
             <button
               type="button"
               onClick={() =>
@@ -394,6 +415,7 @@ export default function VoucherDetailPage() {
               <Printer className="h-4 w-4" />
               In phiếu
             </button>
+            </div>
           )}
         </div>
       </div>
@@ -433,6 +455,7 @@ export default function VoucherDetailPage() {
         index={lightbox.index}
         onIndexChange={(idx) => setLightbox((s) => ({ ...s, index: idx }))}
       />
+      <IncomeExpenseQuickEditDialog open={supplementOpen} onOpenChange={setSupplementOpen} voucher={voucher} />
     </div>
   );
 }

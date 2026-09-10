@@ -27,12 +27,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { canShowAnnotateAction } from '@/lib/voucherAnnotate';
+import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import {
   Eye,
   Ban,
   Receipt,
   Pencil,
+  FilePlus2,
   CheckCircle2,
   BadgeCheck,
   FileText as FileIcon,
@@ -78,8 +80,7 @@ interface IncomeExpenseListProps {
   /** Dừng lặp lại cho 1 phiếu gốc (repeat_cycle != NONE, không phải phiếu con). */
   onStopRecurring?: (id: string) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
-  /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho người tạo phiếu
-   *  trên phiếu đã ghi nhận/đã huỷ, không cần super admin. */
+  /** Append-only narrative/evidence; available independently of financial edits. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
   /** Finance V2 §12.3: CUSTODIAN Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (không cần
@@ -325,8 +326,7 @@ const IncomeExpenseList = ({
             });
             const isInternal = layer === 'INTERNAL';
             // Nháp: cây bút mở full form (giữ nguyên flow cũ).
-            // Đã ghi nhận/đã huỷ: super admin vẫn mở full form; creator
-            // (không phải admin) mở dialog sửa nhanh 3 field.
+            // Bổ sung chứng từ dùng thao tác riêng cho mọi trạng thái.
             const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
             // Đợt 2: không còn giới hạn ở NGƯỜI TẠO — kế toán/quản lý có quyền
             // sửa thu chi cũng đính hộ được chứng từ (server là nơi chốt).
@@ -398,22 +398,17 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
-                    {/* Sửa nhanh (3 field) — cho creator của phiếu đã ghi nhận/đã huỷ */}
+                    {/* Bổ sung độc lập với quyền/trạng thái sửa phiếu. */}
                     {showQuickEdit && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                        className="h-8 w-8 text-sky-600 hover:text-sky-700 hover:bg-sky-50"
                         onClick={() => onQuickEdit!(voucher)}
-                        // ĐỢT C: sổ quỹ chỉ sửa được ở phiếu THU; câu cũ ghi
-                        // "Sửa sổ quỹ" cho cả phiếu chi là hứa hão.
-                        title={
-                          voucher.type === 'INCOME'
-                            ? 'Sửa sổ quỹ / hình ảnh / ghi chú'
-                            : 'Sửa hình ảnh / ghi chú'
-                        }
+                        title="Bổ sung chứng từ / ghi chú"
+                        aria-label="Bổ sung chứng từ / ghi chú"
                       >
-                        <Pencil className="h-4 w-4" />
+                        <FilePlus2 className="h-4 w-4" />
                       </Button>
                     )}
 
@@ -588,7 +583,7 @@ const IncomeExpenseList = ({
                       )}
 
                     {/* Ảnh đính kèm — thumbnail + hover xem full-size */}
-                    <AttachmentPreview urls={voucher.attachments ?? []} />
+                    <AttachmentPreview urls={getVoucherDisplayAttachments(voucher)} />
 
                     {/* Tên người kiểm — hiện ở cuối ô thao tác khi đã kiểm */}
                     {isVerified && voucher.verified_by_name && (

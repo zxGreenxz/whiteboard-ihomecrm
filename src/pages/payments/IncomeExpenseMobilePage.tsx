@@ -70,6 +70,7 @@ import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
 import IncomeExpenseBatchForm from "@/components/income-expenses/IncomeExpenseBatchForm";
 import IncomeExpenseQuickEditDialog from "@/components/income-expenses/IncomeExpenseQuickEditDialog";
+import { useIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
 import IncomeExpenseBatchListMobile from "@/components/income-expenses/IncomeExpenseBatchListMobile";
 import IncomeExpenseBatchDetailMobile from "@/components/income-expenses/IncomeExpenseBatchDetailMobile";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
@@ -376,6 +377,7 @@ export default function IncomeExpenseMobilePage() {
     useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true });
 
   const vouchers = listResult?.data ?? [];
+  const detailSupplements = useIncomeExpenseSupplements(detailVoucher?.id, !!detailVoucher);
   const totalCount = listResult?.totalCount ?? 0;
   const batches = batchResult?.data ?? [];
   const batchTotalCount = batchResult?.totalCount ?? 0;
@@ -893,7 +895,7 @@ export default function IncomeExpenseMobilePage() {
           {/* Chi tiết phiếu — bottom sheet */}
           {detailVoucher && (
             <IncomeExpenseDetailMobile
-              voucher={detailVoucher}
+              voucher={{ ...detailVoucher, supplements: detailSupplements.data ?? detailVoucher.supplements }}
               onClose={() => setDetailVoucher(null)}
               onEdit={(v) => setEditingVoucher(v)}
               onQuickEdit={(v) => setQuickEditVoucher(v)}

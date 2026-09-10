@@ -20,6 +20,7 @@ export const REALTIME_SYNC_TABLES = [
   "invoices",
   "income_expenses",
   "reservation_deposit_settlements",
+  "income_expense_supplements",
   "contracts",
   "rooms",
   "buildings",

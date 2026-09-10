@@ -16,12 +16,13 @@ import {
   laPhieuTraKhachThanhLy,
   type TerminationVoucherRef,
 } from "@/components/income-expenses/TerminationRefundNote";
+import { formatSupplementAuthor, type IncomeExpenseSupplement } from '@/lib/incomeExpenseSupplement';
 
-export type VoucherNoteRef = CommissionVoucherRef & TerminationVoucherRef;
+export type VoucherNoteRef = CommissionVoucherRef & TerminationVoucherRef & { supplements?: IncomeExpenseSupplement[] };
 
 /** Phiếu có ghi chú hệ thống tính lúc xem ⇒ luôn hiện Row Ghi chú. */
 export const coGhiChuHeThong = (v: VoucherNoteRef): boolean =>
-  laPhieuHoaHong(v) || laPhieuTraKhachThanhLy(v);
+  laPhieuHoaHong(v) || laPhieuTraKhachThanhLy(v) || !!v.supplements?.length;
 
 interface Props {
   voucher: VoucherNoteRef;
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export function VoucherNote({ voucher, fallbackNotes, enabled = true }: Props) {
+  const original = () => {
   if (laPhieuHoaHong(voucher)) {
     return <CommissionVoucherNote voucher={voucher} fallbackNotes={fallbackNotes} enabled={enabled} />;
   }
@@ -38,6 +40,15 @@ export function VoucherNote({ voucher, fallbackNotes, enabled = true }: Props) {
   }
   const notes = fallbackNotes?.trim() || null;
   return notes ? <div className="whitespace-pre-line">{notes}</div> : null;
+  };
+  return <div className="space-y-2">{original()}<VoucherSupplementNotes supplements={voucher.supplements ?? []} /></div>;
+}
+
+export function VoucherSupplementNotes({ supplements }: { supplements: IncomeExpenseSupplement[] }) {
+  return <>{supplements.map(s => <div key={s.id} className="space-y-1 border-t pt-2" data-testid="voucher-supplement-note">
+    <div className="whitespace-pre-wrap break-words text-sm">{s.note || `Bổ sung ${s.attachments.length} ảnh / chứng từ.`}</div>
+    <div className="text-xs text-muted-foreground">{formatSupplementAuthor(s)}</div>
+  </div>)}</>;
 }
 
 export default VoucherNote;

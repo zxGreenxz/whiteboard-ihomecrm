@@ -1,20 +1,20 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1540,
-    "catalogFunctions": 1154,
+    "sourceCallSites": 1547,
+    "catalogFunctions": 1155,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 286,
+    "calledRpcs": 287,
     "byRisk": {
       "normal": 209,
-      "financial": 77
+      "financial": 78
     },
-    "securityDefiner": 270
+    "securityDefiner": 271
   },
   "missingOnServer": [],
   "rpcs": {
@@ -76,6 +76,25 @@
         "src/hooks/usePeriodFees.ts"
       ],
       "risk": "normal"
+    },
+    "append_income_expense_supplement_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_note text DEFAULT NULL::text, p_attachments jsonb DEFAULT '[]'::jsonb, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/supplements.ts"
+      ],
+      "risk": "financial"
     },
     "approve_contract_termination_v1": {
       "definitions": [

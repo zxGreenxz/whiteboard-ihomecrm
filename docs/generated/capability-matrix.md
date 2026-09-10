@@ -64,10 +64,10 @@ không gắn với `git push`.
 
 | Chỉ số | Giá trị |
 |---|---|
-| Bảng được publish | 27 |
-| Hub nghiệp vụ lắng nghe | 16 |
+| Bảng được publish | 28 |
+| Hub nghiệp vụ lắng nghe | 17 |
 | **Hub nghe mà KHÔNG publish** (subscribe câm) | **0** |
-| `REPLICA IDENTITY = DEFAULT` | 27/27 |
+| `REPLICA IDENTITY = DEFAULT` | 28/28 |
 
 `DEFAULT` nghĩa là payload `UPDATE`/`DELETE` chỉ mang **khoá chính**. Code đọc cột
 khác từ payload đó nhận `undefined` — không lỗi, chỉ là một nhánh đi sai đường.

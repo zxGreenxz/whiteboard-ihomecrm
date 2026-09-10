@@ -7,6 +7,7 @@ import { getAllIeTypesCached, type IeTypeLite } from "@/lib/ieTypesCache";
 import { AMOUNT_SEARCH_TOLERANCE } from "@/lib/roomCodeSearch";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { hydrateReservationCreators, type CreatorVoucher } from "./reservationCreators";
+import { hydrateIncomeExpenseSupplements } from './supplements';
 import type {
   IncomeExpenseFilters,
   IncomeExpenseItem,
@@ -538,7 +539,7 @@ export const incomeExpensesListQuery = (
 
       // Search đã áp dụng server-side ở trên — count là tổng khớp thật.
       return {
-        data: mapped,
+        data: await hydrateIncomeExpenseSupplements(mapped),
         totalCount: count || 0,
       };
     },
@@ -973,9 +974,10 @@ export const useIncomeExpenseBatches = (
 
       // 5. Map vouchers → IncomeExpenseWithRelations
       const voucherMap = new Map<string, IncomeExpenseWithRelations>();
-      for (const v of await hydrateReservationCreators(vouchers)) {
+      for (const v of await hydrateIncomeExpenseSupplements(await hydrateReservationCreators(vouchers))) {
         voucherMap.set(v.id, {
           id: v.id,
+          supplements: v.supplements,
           user_id: v.user_id,
           organization_id: v.organization_id ?? null,
           posting_mode: v.posting_mode ?? null,

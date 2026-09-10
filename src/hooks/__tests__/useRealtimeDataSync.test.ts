@@ -292,6 +292,16 @@ describe("useRealtimeDataSync report invalidation", () => {
     },
   );
 
+  it('supplements refresh visible notes/photos without invalidating money reports', () => {
+    const keys = [['income-expense-supplements', 'voucher'], ['income-expenses'],
+      ['voucher-with-batch', 'voucher'], ['income-expense', 'print', 'voucher'], ['reservation-refund-evidence', 'settlement']];
+    for (const key of keys) harness.queryClient.setQueryData(key, []);
+    harness.queryClient.setQueryData(['business-performance', 'pnl'], []);
+    useRealtimeDataSync(); triggerTable('income_expense_supplements');
+    for (const key of keys) expect(harness.queryClient.getQueryState(key)?.isInvalidated, key[0]).toBe(true);
+    expect(harness.queryClient.getQueryState(['business-performance', 'pnl'])?.isInvalidated).toBe(false);
+  });
+
   it("registers every realtime table exactly once per mount", () => {
     useRealtimeDataSync();
 
@@ -333,6 +343,7 @@ describe("useRealtimeDataSync report invalidation", () => {
       "building_utility_accounts",
       // Xử lý bỏ cọc phải cập nhật hàng chờ hoàn và lịch sử trên máy khác.
       "reservation_deposit_settlements",
+      "income_expense_supplements",
     ].sort());
     expect(new Set(registeredTables).size).toBe(registeredTables.length);
   });

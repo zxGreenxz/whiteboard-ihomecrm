@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   X,
   Pencil,
+  FilePlus2,
   CheckCircle2,
   Ban,
   Printer,
@@ -27,6 +28,7 @@ import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useReservationSettlementForVoucher } from "@/hooks/useReservationSettlement";
 import { canUse } from "@/lib/permissionPages";
 import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
+import { getVoucherDisplayAttachments } from '@/lib/incomeExpenseSupplement';
 import { useAuth } from "@/hooks/useAuth";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
 import {
@@ -92,6 +94,7 @@ export function IncomeExpenseDetailMobile({
   onReversePosting,
 }: Props) {
   const navigate = useNavigate();
+  const attachments = getVoucherDisplayAttachments(v);
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const [settlementOpen, setSettlementOpen] = useState(false);
   // Xem ảnh đính kèm ngay trên trang (overlay), KHÔNG mở tab mới.
@@ -206,14 +209,15 @@ export function IncomeExpenseDetailMobile({
             {showQuickEdit && (
               <button
                 className="vd-act"
-                style={{ background: "#f59e0b" }}
-                aria-label="Sửa nhanh"
+                style={{ background: "#0284c7" }}
+                aria-label="Bổ sung chứng từ / ghi chú"
+                title="Bổ sung chứng từ / ghi chú"
                 onClick={() => {
                   onQuickEdit!(v);
                   onClose();
                 }}
               >
-                <Pencil size={15} />
+                <FilePlus2 size={15} />
               </button>
             )}
             {monetaryActionsAllowed && isUnapproved && onApprove && (
@@ -476,13 +480,13 @@ export function IncomeExpenseDetailMobile({
           </>
         )}
 
-        {v.attachments && v.attachments.length > 0 && (
+        {attachments.length > 0 && (
           <>
             <div className="vd-sec">
               <span className="vd-sec-t">Đính kèm</span>
             </div>
             <div className="vd-atts">
-              {v.attachments.map((url, idx) => (
+              {attachments.map((url, idx) => (
                 <button
                   type="button"
                   key={url}
@@ -558,7 +562,7 @@ export function IncomeExpenseDetailMobile({
       {canSettleReservation && <ReservationSettlementDialog voucherId={v.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
 
       <AttachmentLightbox
-        attachments={v.attachments ?? []}
+        attachments={attachments}
         index={lightboxIdx}
         onIndexChange={setLightboxIdx}
       />

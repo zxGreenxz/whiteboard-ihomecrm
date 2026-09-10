@@ -1,9 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { formatVND } from "@/lib/utils";
+import { hydrateIncomeExpenseSupplements } from '@/hooks/income-expenses/supplements';
+import { getVoucherDisplayAttachments, type IncomeExpenseSupplement } from '@/lib/incomeExpenseSupplement';
+import { StorageImage } from '@/components/ui/storage-image';
 import {
   VoucherNote,
   coGhiChuHeThong,
@@ -11,6 +14,8 @@ import {
 
 
 interface VoucherRow {
+  supplements?: IncomeExpenseSupplement[];
+  attachments?: string[];
   id: string;
   code: string;
   type: "INCOME" | "EXPENSE";
@@ -66,20 +71,28 @@ const useVoucherForPrint = (id: string | undefined) =>
         console.error(error);
         return null;
       }
-      return data as VoucherRow;
+      const [voucher] = await hydrateIncomeExpenseSupplements([data as VoucherRow]);
+      return voucher ?? null;
     },
   });
 
 const IncomeExpensePrintPage = () => {
   const { id } = useParams<{ id: string }>();
   const { data: voucher, isLoading } = useVoucherForPrint(id);
+  const [loadedImages, setLoadedImages] = useState<Set<string>>(() => new Set());
+  const printedVoucher = useRef<string | null>(null);
+  const attachments = getVoucherDisplayAttachments(voucher ?? {});
+  const imagesReady = attachments.filter(url => !/\.pdf(?:$|[?#])/i.test(url)).every(url => loadedImages.has(url));
 
   useEffect(() => {
-    if (voucher) {
-      const t = setTimeout(() => window.print(), 500);
+    if (voucher && imagesReady && printedVoucher.current !== voucher.id) {
+      const t = setTimeout(() => {
+        printedVoucher.current = voucher.id;
+        window.print();
+      }, 500);
       return () => clearTimeout(t);
     }
-  }, [voucher]);
+  }, [voucher, imagesReady]);
 
   if (isLoading) {
     return <div className="p-8 text-center">Đang tải...</div>;
@@ -170,7 +183,7 @@ const IncomeExpensePrintPage = () => {
           Đóng
         </button>
         <span className="ml-auto text-xs text-zinc-500">
-          (Trang sẽ tự động mở hộp thoại in.)
+          {imagesReady ? '(Trang sẽ tự động mở hộp thoại in.)' : 'Đang tải chứng từ để in…'}
         </span>
       </div>
 
@@ -255,6 +268,14 @@ const IncomeExpensePrintPage = () => {
           </div>
         )}
 
+        {attachments.length > 0 && <div style={{ marginTop: 12 }}>
+          <b>Chứng từ đính kèm:</b>
+          <div className="flex flex-wrap gap-2 mt-2">{attachments.map((url, index) =>
+            /\.pdf(?:$|[?#])/i.test(url) ? <span key={url}>Chứng từ PDF {index + 1}</span> :
+              <StorageImage key={url} value={url} alt={`Chứng từ ${index + 1}`} loading="eager"
+                onLoad={() => setLoadedImages(previous => new Set(previous).add(url))}
+                className="h-36 max-w-48 object-contain" />)}</div>
+        </div>}
         <div className="signatures">
           <div>
             <b>{isIncome ? "Người nộp" : "Người nhận"}</b>

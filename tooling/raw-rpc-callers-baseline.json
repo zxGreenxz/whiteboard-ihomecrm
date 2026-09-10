@@ -31,6 +31,7 @@
     "src/hooks/income-expenses/statusMutations.ts::unapprove_voucher",
     "src/hooks/income-expenses/statusMutations.ts::verify_income_expense",
     "src/hooks/income-expenses/statusMutations.ts::verify_income_expense_v1",
+    "src/hooks/income-expenses/supplements.ts::append_income_expense_supplement_v1",
     "src/hooks/salary-v5/useSalaryV5Admin.ts::get_salary_v5_config",
     "src/hooks/salary-v5/useSalaryV5Admin.ts::set_salary_v5_config",
     "src/hooks/salary-v5/useSalaryV5Admin.ts::v5_apply_lock_adjustments",

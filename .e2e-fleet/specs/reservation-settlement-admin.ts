@@ -29,6 +29,63 @@ export interface ReservationLiveFixture {
   building_id: string; voucher_code: string; today: string;
 }
 
+/** Complete owned-fixture snapshot: supplementation must leave this byte-equivalent. */
+export async function snapshotReservationFinancialRows(marker: string, roomId: string) {
+  const q = checked(marker, roomId);
+  const [snapshot] = await sql<{ snapshot: unknown }>(`WITH owned AS (
+    SELECT v.id FROM public.income_expenses v JOIN public.rooms r ON r.id=v.room_id
+    WHERE r.id=${q.room} AND r.organization_id='${RESERVATION_DEMO_ORG}' AND r.description=${q.marker}
+      AND v.organization_id='${RESERVATION_DEMO_ORG}'
+  ), postings AS (SELECT p.id FROM public.income_expense_postings p JOIN owned v ON v.id=p.voucher_id)
+  SELECT jsonb_build_object(
+    'headers',(SELECT jsonb_agg(to_jsonb(v) ORDER BY v.id) FROM public.income_expenses v JOIN owned o ON o.id=v.id),
+    'items',(SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id) FROM public.income_expense_items i JOIN owned o ON o.id=i.income_expense_id),
+    'postings',(SELECT jsonb_agg(to_jsonb(p) ORDER BY p.id) FROM public.income_expense_postings p JOIN postings o ON o.id=p.id),
+    'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id) FROM public.income_expense_posting_lines l JOIN postings p ON p.id=l.posting_id)
+  ) AS snapshot`, true);
+  if (!snapshot) throw new Error('Missing owned voucher snapshot');
+  return snapshot.snapshot;
+}
+
+/** Test-only cleanup for immutable additions on this exact owned DEMO room. */
+export async function cleanupReservationSupplementFixture(marker: string, roomId: string) {
+  const q = checked(marker, roomId);
+  await sql(`BEGIN; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='30s';
+    CREATE TEMP TABLE _owned_supplements ON COMMIT DROP AS
+    SELECT s.id FROM public.income_expense_supplements s JOIN public.income_expenses v ON v.id=s.income_expense_id
+      JOIN public.rooms r ON r.id=v.room_id
+    WHERE r.id=${q.room} AND r.description=${q.marker} AND r.organization_id='${RESERVATION_DEMO_ORG}'
+      AND v.organization_id='${RESERVATION_DEMO_ORG}' AND s.organization_id='${RESERVATION_DEMO_ORG}';
+    DO $guard$ BEGIN
+      IF EXISTS(SELECT 1 FROM public.income_expense_supplements s JOIN _owned_supplements o ON o.id=s.id
+        WHERE s.actor_id IS DISTINCT FROM '${OWNER}'::uuid) THEN RAISE EXCEPTION 'Unrelated supplement actor; refuse cleanup'; END IF;
+      IF (SELECT count(*) FROM pg_trigger WHERE tgenabled='O' AND
+        (tgrelid='public.income_expense_supplements'::regclass AND tgname='ie_supplement_immutable'
+         OR tgrelid='app_private.ie_supplement_objects'::regclass AND tgname='ie_supplement_objects_immutable'
+         OR tgrelid='app_private.ie_supplement_requests'::regclass AND tgname='ie_supplement_requests_immutable'))<>3
+        THEN RAISE EXCEPTION 'Unexpected supplement trigger mode'; END IF;
+    END $guard$;
+    ALTER TABLE app_private.ie_supplement_requests DISABLE TRIGGER ie_supplement_requests_immutable;
+    ALTER TABLE app_private.ie_supplement_objects DISABLE TRIGGER ie_supplement_objects_immutable;
+    ALTER TABLE public.income_expense_supplements DISABLE TRIGGER ie_supplement_immutable;
+    DELETE FROM app_private.ie_supplement_requests WHERE supplement_id IN(SELECT id FROM _owned_supplements);
+    DELETE FROM app_private.ie_supplement_objects WHERE supplement_id IN(SELECT id FROM _owned_supplements);
+    DELETE FROM public.income_expense_supplements WHERE id IN(SELECT id FROM _owned_supplements);
+    ALTER TABLE app_private.ie_supplement_requests ENABLE TRIGGER ie_supplement_requests_immutable;
+    ALTER TABLE app_private.ie_supplement_objects ENABLE TRIGGER ie_supplement_objects_immutable;
+    ALTER TABLE public.income_expense_supplements ENABLE TRIGGER ie_supplement_immutable;
+    COMMIT;`);
+}
+
+export async function cleanupReservationSupplementOrphanLinks(marker: string, roomId: string) {
+  checked(marker, roomId);
+  await sql(`DELETE FROM app_private.storage_object_links l
+    WHERE l.bucket_id='income-expense-attachments' AND l.owner_user_id='${OWNER}'
+      AND (l.organization_id='${RESERVATION_DEMO_ORG}' OR l.organization_id IS NULL)
+      AND l.object_name ~ ${literal(`^${OWNER}/[0-9]+-e2e-reservation-proof-${roomId}-supp[.]png$`)}
+      AND NOT EXISTS(SELECT 1 FROM storage.objects o WHERE o.bucket_id=l.bucket_id AND o.name=l.object_name);`);
+}
+
 // A fresh DEMO room and an actual receipt through the application's writer for
 // undated items. No posting/provenance is fabricated or permission changed.
 export async function createReservationLiveFixture(marker: string, roomId: string, receiptDaysAgo: 0 | 2 | 'PREVIOUS_MONTH' = 0): Promise<ReservationLiveFixture> {
