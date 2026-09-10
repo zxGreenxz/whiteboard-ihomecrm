@@ -33,22 +33,16 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-        run: node scripts/check-external-controls.mjs
+        run: node scripts/check-external-controls.mjs --so-ban-commit --write --output "$RUNNER_TEMP/external-controls.json"
 
       - name: Lưu bằng chứng thành artifact
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: external-controls-${{ github.run_id }}
-          path: docs/generated/external-controls.json
+          path: ${{ runner.temp }}/external-controls.json
+          if-no-files-found: error
           retention-days: 90
-
-      - name: Kiểm soát ngoài repo có đổi so với bản đã commit không
-        if: always()
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-        run: node scripts/check-external-controls.mjs --so-ban-commit
 
       - name: Hạn của known-gaps (cưỡng chế, chỉ ở lượt chạy định kỳ)
         if: always()

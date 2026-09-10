@@ -34,9 +34,20 @@ describe("external-controls workflow credentials", () => {
     [{ GH_TOKEN: "scoped-reader", GITHUB_TOKEN: "limited-runner" }, "scoped-reader"],
     [{ GITHUB_TOKEN: "limited-runner" }, "limited-runner"],
     [{}, ""],
-  ])("both measurements use the configured reader, then the runner fallback: %j", (secrets, expected) => {
-    expect(readers).toHaveLength(2);
-    expect(readers.map((step) => resolve(step.env.GH_TOKEN, secrets))).toEqual([expected, expected]);
+  ])("one measurement uses the configured reader, then the runner fallback: %j", (secrets, expected) => {
+    expect(readers).toHaveLength(1);
+    expect(readers.map((step) => resolve(step.env.GH_TOKEN, secrets))).toEqual([expected]);
+  });
+
+  it("compares and writes one measurement before the evidence upload, including on drift", () => {
+    const steps = workflow.jobs["external-controls"].steps;
+    expect(readers[0].run).toBe('node scripts/check-external-controls.mjs --so-ban-commit --write --output "$RUNNER_TEMP/external-controls.json"');
+    expect(readers[0]["continue-on-error"]).not.toBe(true);
+    const upload = steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"));
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(readers[0]));
+    expect(upload.if).toBe("always()");
+    expect(upload.with.path).toBe("${{ runner.temp }}/external-controls.json");
+    expect(upload.with["if-no-files-found"]).toBe("error");
   });
 });
 

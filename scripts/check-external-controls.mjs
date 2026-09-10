@@ -9,6 +9,7 @@
 //
 //   node scripts/check-external-controls.mjs              # kiểm, in trạng thái
 //   node scripts/check-external-controls.mjs --write      # ghi docs/generated/external-controls.json
+//   --so-ban-commit --write --output <path>               # so bản chuẩn, ghi artifact riêng
 //
 // Credential: GH_TOKEN/GITHUB_TOKEN (hoặc `gh auth login`), VERCEL_TOKEN.
 // THIẾU credential KHÔNG phải là pass — kết quả sẽ là "unverified", và
@@ -387,6 +388,12 @@ export function lechSoVoiCommit(vuaDo, daCommit) {
 
 async function main(argv) {
   const args = new Set(argv.slice(2));
+  const outputIndex = argv.indexOf('--output');
+  const output = outputIndex === -1 ? OUT : argv[outputIndex + 1];
+  if (!output || output.startsWith('--') || (outputIndex !== -1 && !args.has('--write'))) {
+    console.error('❌ --output cần đường dẫn và --write.');
+    return 3;
+  }
 
   const protection = await readBranchProtection();
   const vercel = await vercelProductionBranch();
@@ -430,34 +437,39 @@ async function main(argv) {
     ([, c]) => c.status === 'failed' || c.status === 'hollow',
   );
 
-  if (args.has('--write')) {
-    mkdirSync(dirname(OUT), { recursive: true });
-    writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-    console.log(`\n✅ Đã ghi ${OUT.replace(repoRoot, '.')}`);
-  }
-
   // So với bản đã commit. Chỉ có nghĩa ở lượt chạy ĐỊNH KỲ: không commit nào làm
   // một cài đặt trên dashboard đổi, nên bản đã commit là mốc duy nhất để biết ai
-  // đó vừa bấm gì.
+  // đó vừa bấm gì. So TRƯỚC khi --write thay bản gốc; vẫn lưu bằng chứng khi đỏ.
+  let comparisonExit = 0;
   if (args.has('--so-ban-commit')) {
     let daCommit;
     try {
       daCommit = JSON.parse(readFileSync(OUT, 'utf8'));
     } catch (error) {
       console.error(`\n❌ KHÔNG SO ĐƯỢC: không đọc được bản đã commit (${error.message}).`);
-      return 3;
+      comparisonExit = 3;
     }
-    const lech = lechSoVoiCommit(report, daCommit);
-    if (lech.length > 0) {
-      console.error(`\n❌ Kiểm soát ngoài repo đã ĐỔI so với bản đã commit (${lech.length} chỗ):\n`);
-      for (const l of lech.slice(0, 20)) console.error(`  - ${l}`);
-      if (lech.length > 20) console.error(`  … còn ${lech.length - 20}`);
-      console.error('\n  Không commit nào làm những cài đặt này đổi — nghĩa là có người bấm vào dashboard.');
-      console.error('  Xem kỹ từng dòng, rồi chạy `--write` và commit nếu đó là thay đổi có chủ đích.');
-      return 1;
+    if (comparisonExit === 0) {
+      const lech = lechSoVoiCommit(report, daCommit);
+      if (lech.length > 0) {
+        console.error(`\n❌ Kiểm soát ngoài repo đã ĐỔI so với bản đã commit (${lech.length} chỗ):\n`);
+        for (const l of lech.slice(0, 20)) console.error(`  - ${l}`);
+        if (lech.length > 20) console.error(`  … còn ${lech.length - 20}`);
+        console.error('\n  Không commit nào làm những cài đặt này đổi — nghĩa là có người bấm vào dashboard.');
+        console.error('  Xem kỹ từng dòng, rồi chạy `--write` và commit nếu đó là thay đổi có chủ đích.');
+        comparisonExit = 1;
+      } else {
+        console.log('\n✅ Cấu hình kiểm soát không đổi so với bản đã commit.');
+      }
     }
-    console.log('\n✅ Cấu hình kiểm soát không đổi so với bản đã commit.');
   }
+
+  if (args.has('--write')) {
+    mkdirSync(dirname(output), { recursive: true });
+    writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    console.log(`\n✅ Đã ghi ${output.replace(repoRoot, '.')}`);
+  }
+  if (comparisonExit !== 0) return comparisonExit;
 
   // Control ĐANG TẮT thì exit 1, khác hẳn "chưa xác minh được".
   //
