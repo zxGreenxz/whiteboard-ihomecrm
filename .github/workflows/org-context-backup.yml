@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   backup:
-    if: github.ref == 'refs/heads/main' && github.repository == 'zxGreenxz/whiteboard-ihomecrm' && github.event.repository.private
+    if: github.ref == 'refs/heads/main' && github.repository == 'zxGreenxz/whiteboard-ihomecrm' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -32,9 +32,8 @@ jobs:
         env:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           RECIPIENT_PUBLIC_KEY: ${{ inputs.recipient_public_key }}
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
         run: |
-          node --input-type=module -e "import {assertContext,recipientKey} from './scripts/org-context-repair/sealed-artifact.mjs'; assertContext({sha:process.env.GITHUB_SHA,expectedSha:process.env.EXPECTED_SHA,ref:process.env.GITHUB_REF,repository:process.env.GITHUB_REPOSITORY,isPrivate:process.env.REPOSITORY_PRIVATE}); recipientKey(process.env.RECIPIENT_PUBLIC_KEY);"
+          node --input-type=module -e "import {assertContext,recipientKey} from './scripts/org-context-repair/sealed-artifact.mjs'; assertContext({sha:process.env.GITHUB_SHA,expectedSha:process.env.EXPECTED_SHA,ref:process.env.GITHUB_REF,repository:process.env.GITHUB_REPOSITORY,eventName:process.env.GITHUB_EVENT_NAME}); recipientKey(process.env.RECIPIENT_PUBLIC_KEY);"
       - name: Pull pinned PostgreSQL client
         run: docker pull postgres:17.6
       - name: Verify sealed artifact regression tests before using credentials
@@ -45,7 +44,6 @@ jobs:
         env:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           RECIPIENT_PUBLIC_KEY: ${{ inputs.recipient_public_key }}
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/org-context-repair/capture-backup.mjs

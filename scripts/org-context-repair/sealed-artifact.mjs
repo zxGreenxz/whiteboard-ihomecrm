@@ -7,9 +7,9 @@ export function recipientKey(encoded){
   if(key.asymmetricKeyType!=='rsa'||key.asymmetricKeyDetails.modulusLength<3072)throw new Error('RSA recipient key of at least 3072 bits required');
   return key;
 }
-export function assertContext({sha,expectedSha,ref,repository,isPrivate}){
-  if(!validSha(sha)||sha!==expectedSha||ref!=='refs/heads/main'||repository!=='zxGreenxz/whiteboard-ihomecrm'||isPrivate!=='true'){
-    throw new Error('Maintenance requires the pinned main commit of the private project');
+export function assertContext({sha,expectedSha,ref,repository,eventName}){
+  if(!validSha(sha)||sha!==expectedSha||ref!=='refs/heads/main'||repository!=='zxGreenxz/whiteboard-ihomecrm'||eventName!=='workflow_dispatch'){
+    throw new Error('Maintenance requires manual dispatch of the pinned main commit of the project');
   }
 }
 export function sealFiles(files,publicKey,{sha,projectRef}){

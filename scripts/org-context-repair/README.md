@@ -4,7 +4,7 @@ The requested end state is to restore the affected iHome CRM images, make organi
 
 ## Manual backup preflight
 
-`Organization context backup` runs only by manual dispatch on the exact reviewed `main` commit in the private `zxGreenxz/whiteboard-ihomecrm` repository. It uses the already configured `SUPABASE_DB_PASSWORD` and `SUPABASE_PAT` in place; it never exports those credentials.
+`Organization context backup` runs only by manual dispatch on the exact reviewed `main` commit in the `zxGreenxz/whiteboard-ihomecrm` repository. It uses the already configured `SUPABASE_DB_PASSWORD` and `SUPABASE_PAT` in place; it never exports those credentials.
 
 Inputs:
 

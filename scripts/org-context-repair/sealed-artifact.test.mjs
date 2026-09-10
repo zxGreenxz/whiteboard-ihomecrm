@@ -25,10 +25,10 @@ test('backup is confidential, authenticated and restored byte-for-byte only for 
  const envelope={...result.envelope,ciphertextSha256:createHash('sha256').update(corrupt).digest('hex')};
  assert.throws(()=>unsealFiles(corrupt,envelope,pair.privateKey,identity.sha));
 });
-test('unreviewed commits, public repos, foreign branches and unsafe filenames are rejected',()=>{
- const valid={sha:identity.sha,expectedSha:identity.sha,ref:'refs/heads/main',repository:'zxGreenxz/whiteboard-ihomecrm',isPrivate:'true'};
+test('unreviewed commits, automatic events, foreign branches and unsafe filenames are rejected',()=>{
+ const valid={sha:identity.sha,expectedSha:identity.sha,ref:'refs/heads/main',repository:'zxGreenxz/whiteboard-ihomecrm',eventName:'workflow_dispatch'};
  assert.doesNotThrow(()=>assertContext(valid));
- for(const changes of [{sha:'b'.repeat(40)},{isPrivate:'false'},{ref:'refs/heads/production'},{repository:'fork/whiteboard'}])assert.throws(()=>assertContext({...valid,...changes}));
+ for(const changes of [{sha:'b'.repeat(40)},{eventName:'pull_request'},{ref:'refs/heads/production'},{repository:'fork/whiteboard'}])assert.throws(()=>assertContext({...valid,...changes}));
  for(const name of ['../backup.dump','C:/backup.dump','dir\\backup.dump'])assert.throws(()=>sealFiles([{name,bytes:'x'}],pair.publicKey,identity));
  assert.throws(()=>sealFiles([{name:'x',bytes:'a'},{name:'x',bytes:'b'}],pair.publicKey,identity));
  const small=generateKeyPairSync('rsa',{modulusLength:2048}).publicKey.export({type:'spki',format:'pem'});

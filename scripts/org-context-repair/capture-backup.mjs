@@ -10,7 +10,7 @@ import { assertContext, recipientKey, sealFiles } from './sealed-artifact.mjs';
 import { docManifestBackup, chayTruyVanQuanTri } from '../apply-reviewed-migration.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-assertContext({sha:process.env.GITHUB_SHA,expectedSha:process.env.EXPECTED_SHA,ref:process.env.GITHUB_REF,repository:process.env.GITHUB_REPOSITORY,isPrivate:process.env.REPOSITORY_PRIVATE});
+assertContext({sha:process.env.GITHUB_SHA,expectedSha:process.env.EXPECTED_SHA,ref:process.env.GITHUB_REF,repository:process.env.GITHUB_REPOSITORY,eventName:process.env.GITHUB_EVENT_NAME});
 if(process.platform!=='linux')throw new Error('This entry point runs on the Linux maintenance runner');
 const recipient=recipientKey(process.env.RECIPIENT_PUBLIC_KEY??'');
 if(!process.env.SUPABASE_DB_PASSWORD||!process.env.SUPABASE_PAT)throw new Error('Configured Supabase credentials are required');
