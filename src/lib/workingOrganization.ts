@@ -9,26 +9,39 @@ let pendingRequests = 0;
 export const organizationStorageKey = (userId: string) => `ihomecrm.selectedOrganizationId:${userId}`;
 
 export function readWorkingOrganization(userId: string | null): string | null {
-  if (!userId || typeof localStorage === 'undefined') return null;
+  if (!userId) return null;
   try {
+    if (typeof localStorage === 'undefined') return null;
     const value = localStorage.getItem(organizationStorageKey(userId));
     return value && UUID.test(value) ? value : null;
-  } catch { return null; }
+  } catch (error) {
+    // Browser privacy settings may disable persistence. Require a fresh choice
+    // in memory; unexpected failures must remain visible.
+    if (error instanceof DOMException && ['SecurityError', 'QuotaExceededError'].includes(error.name)) return null;
+    throw error;
+  }
 }
 
 export function syncWorkingOrganizationUser(userId: string | null): void {
   if (userId === activeUserId) return;
+  activeUserId = null;
+  activeOrganizationId = null;
+  const organizationId = readWorkingOrganization(userId);
   activeUserId = userId;
-  activeOrganizationId = readWorkingOrganization(userId);
+  activeOrganizationId = organizationId;
 }
 
 export function setWorkingOrganization(userId: string, organizationId: string | null): void {
   activeUserId = userId;
   activeOrganizationId = organizationId && UUID.test(organizationId) ? organizationId : null;
   try {
+    if (typeof localStorage === 'undefined') return;
     if (activeOrganizationId) localStorage.setItem(organizationStorageKey(userId), activeOrganizationId);
     else localStorage.removeItem(organizationStorageKey(userId));
-  } catch { /* An in-memory choice still works when browser storage is disabled. */ }
+  } catch (error) {
+    // Disabled/full storage must not prevent this session's explicit choice.
+    if (!(error instanceof DOMException) || !['SecurityError', 'QuotaExceededError'].includes(error.name)) throw error;
+  }
 }
 
 export const getWorkingOrganization = (): string | null => activeOrganizationId;

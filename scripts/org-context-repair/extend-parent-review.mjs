@@ -9,7 +9,7 @@ export function extendParentReview(catalog,update){
   IF auth.uid() IS NOT NULL AND NOT app_private.active_working_membership_v1(auth.uid(),p_org) THEN
     RAISE EXCEPTION 'Không có quyền trong công ty của dữ liệu gốc' USING ERRCODE='42501'; END IF;`;
  function clone(name,newName,argTypes,change){
-  let s=get(name);
+  let s=get(name).replace(/\r\n/g,'\n');
   const header=s.slice(0,s.indexOf('\n'));
   s=once(s,header,header.replace('public.'+name,'app_private.'+newName).replace(/\)$/,', p_org uuid)'));
   s=change(s);

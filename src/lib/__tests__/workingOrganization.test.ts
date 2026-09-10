@@ -20,6 +20,25 @@ beforeEach(() => {
 afterEach(() => { syncWorkingOrganizationUser(null); vi.unstubAllGlobals(); });
 
 describe('company request context', () => {
+  it.each(['SecurityError', 'QuotaExceededError'])('keeps an explicit in-memory choice when storage raises %s', (name) => {
+    const unavailable = () => { throw new DOMException('Storage unavailable', name); };
+    vi.stubGlobal('localStorage', { getItem: unavailable, setItem: unavailable, removeItem: unavailable });
+    expect(readWorkingOrganization('user-a')).toBeNull();
+    setWorkingOrganization('user-a', orgA);
+    expect(requireWorkingOrganization()).toBe(orgA);
+    syncWorkingOrganizationUser('user-b');
+    expect(getWorkingOrganization()).toBeNull();
+  });
+
+  it('surfaces unexpected persistence errors and clears previous identity context', () => {
+    setWorkingOrganization('user-a', orgA);
+    const broken = () => { throw new Error('unexpected storage failure'); };
+    vi.stubGlobal('localStorage', { getItem: broken, setItem: broken, removeItem: broken });
+    expect(() => syncWorkingOrganizationUser('user-b')).toThrow('unexpected storage failure');
+    expect(getWorkingOrganization()).toBeNull();
+    expect(() => setWorkingOrganization('user-b', orgB)).toThrow('unexpected storage failure');
+  });
+
   it('does not inherit another account or the unowned legacy preference', () => {
     localStorage.setItem('ihomecrm.selectedOrganizationId', orgB);
     syncWorkingOrganizationUser('user-a');

@@ -584,19 +584,22 @@ async function orgOfStaff(staffId: string, periodMonth: string): Promise<string>
     return monthly.organization_id;
   }
   const selectedOrganizationId = requireWorkingOrganization();
-  const { data: cfg } = await supabase
+  const { data: cfg, error: configError } = await supabase
     .from("manager_salary_config")
     .select("organization_id")
     .eq("staff_id", staffId)
     .eq("organization_id", selectedOrganizationId)
     .not("organization_id", "is", null)
-    .order("is_active", { ascending: false })
+    .eq("is_active", true)
+    .lte("effective_from", periodMonth)
+    .or(`effective_to.is.null,effective_to.gte.${periodMonth}`)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (configError) throw configError;
   if (cfg?.organization_id) return cfg.organization_id;
 
-  const { data: mem } = await supabase
+  const { data: mem, error: membershipError } = await supabase
     .from("organization_memberships")
     .select("organization_id")
     .eq("user_id", staffId)
@@ -604,6 +607,7 @@ async function orgOfStaff(staffId: string, periodMonth: string): Promise<string>
     .eq("status", "ACTIVE")
     .limit(1)
     .maybeSingle();
+  if (membershipError) throw membershipError;
   if (mem?.organization_id) return mem.organization_id;
 
   throw new Error("Không xác định được tổ chức của nhân viên — không thể ghi dòng lương");
@@ -716,6 +720,27 @@ export const useToggleJobExcluded = () => {
   });
 };
 
+export async function validateSalaryLockOrganization(
+  managers: ReadonlyArray<Pick<SalManager, "id" | "commissionItems">>, periodMonth: string,
+): Promise<{ organizationId: string; commVoucherIds: string[] }> {
+  const organizations = await Promise.all(managers.map(m => orgOfStaff(m.id, periodMonth)));
+  const organizationId = organizations[0];
+  if (!organizationId || organizations.some(id => id !== organizationId)) {
+    throw new Error("Danh sách bảng lương phải thuộc cùng một công ty.");
+  }
+  const commVoucherIds = Array.from(new Set(managers.flatMap(m =>
+    (m.commissionItems || []).map(x => x.voucherId).filter((id): id is string => !!id))));
+  if (commVoucherIds.length) {
+    const { data: vouchers, error } = await supabase.from("income_expenses")
+      .select("id, organization_id").in("id", commVoucherIds);
+    if (error) throw error;
+    if (vouchers?.length !== commVoucherIds.length || vouchers.some(v => v.organization_id !== organizationId)) {
+      throw new Error("Phiếu hoa hồng không thuộc công ty của bảng lương hoặc không còn quyền truy cập.");
+    }
+  }
+  return { organizationId, commVoucherIds };
+}
+
 // Chốt tháng: upsert salary_monthly LOCKED (đóng băng số) + snapshot bảng kê.
 export const useLockSalaryMonth = () => {
   const qc = useQueryClient();
@@ -761,16 +786,14 @@ export const useLockSalaryMonth = () => {
         throw canonical.error;
       }
 
-      // Chốt lương → DUYỆT (đã thanh toán) luôn các phiếu hoa hồng CHƯA DUYỆT đang
-      // tính vào HH Sale (commissionItems mang voucherId của phiếu nháp).
-      const commVoucherIds = Array.from(new Set(
-        managers.flatMap((m) => (m.commissionItems || []).map((x) => x.voucherId).filter(Boolean) as string[])
-      ));
+      // Validate every period and voucher before the first legacy write.
+      const { organizationId, commVoucherIds } = await validateSalaryLockOrganization(managers, periodMonth);
       if (commVoucherIds.length) {
         const { error: cErr } = await (supabase
           .from("income_expenses")
           .update({ approval_status: "APPROVED", approved_at: nowIso, approved_by: user.id }) as any)
           .in("id", commVoucherIds)
+          .eq("organization_id", organizationId)
           .neq("approval_status", "APPROVED");
         if (cErr) throw cErr;
       }
@@ -783,6 +806,7 @@ export const useLockSalaryMonth = () => {
           .from("salary_monthly")
           .upsert(
             {
+              organization_id: organizationId,
               user_id: ownerId,
               staff_id: m.id,
               period_month: periodMonth,
@@ -807,11 +831,13 @@ export const useLockSalaryMonth = () => {
           .single();
         if (error) throw error;
         const monthlyId = (row as any).id;
-        await (supabase.from("salary_work_ledger_snapshot").delete() as any).eq("salary_monthly_id", monthlyId);
+        const { error: deleteError } = await (supabase.from("salary_work_ledger_snapshot").delete() as any).eq("salary_monthly_id", monthlyId);
+        if (deleteError) throw deleteError;
         if (m.ledger.length) {
-          await supabase.from("salary_work_ledger_snapshot").insert(
+          const { error: snapshotError } = await supabase.from("salary_work_ledger_snapshot").insert(
             m.ledger.map((r) => ({
               user_id: ownerId,
+              organization_id: organizationId,
               salary_monthly_id: monthlyId,
               staff_id: m.id,
               item_type: r.item_type,
@@ -832,6 +858,7 @@ export const useLockSalaryMonth = () => {
               reason: r.reason,
             }))
           );
+          if (snapshotError) throw snapshotError;
         }
       }
     },

@@ -95,7 +95,10 @@ export default function ImageUploadZone({
           // Hậu tố index để không trùng path khi upload nhiều file trong cùng ms.
           const path = `${user.id}/${Date.now()}-${i}.${ext}`;
           try {
-            urls.push(await uploadFile(bucket, path, file, { imagePolicy, organization }));
+            const url = imagePolicy || organization
+              ? await uploadFile(bucket, path, file, { imagePolicy, organization })
+              : await uploadFile(bucket, path, file);
+            urls.push(url);
           } catch (err) {
             console.error('Upload error:', err);
             toast.error(

@@ -198,6 +198,18 @@
     "replacements": 1
   },
   {
+    "signature": "public._autofill_org_salary()",
+    "before": "6472fd09cdb2ecd1c4a1b61c1c172baa",
+    "after": "f62d7740896be46d9db1135a20547940",
+    "replacements": 1
+  },
+  {
+    "signature": "app_private.autofill_org_strict()",
+    "before": "9a2edc1dca31c6a4cd25e3fbe41de464",
+    "after": "3c811872b3ae1cb17a93daf64997dae0",
+    "replacements": 1
+  },
+  {
     "signature": "public._autofill_org()",
     "before": "db63306771f7c32846f77c641e26edce",
     "after": "2efc1e4069562b34b03e996740160c7c",

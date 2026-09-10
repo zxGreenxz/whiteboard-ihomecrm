@@ -99,7 +99,7 @@ lệch trong im lặng và thành nguồn sai còn nguy hiểm hơn không có g
 
 Test nằm cạnh module trong `__tests__` hoặc file `*.test.ts(x)`; gate chung được khai báo trong `package.json` và CI. Khi thay đổi database, kiểm cả SQL/RPC permission, generated types và caller frontend.
 
-Test **không** chạy chung một lệnh: 10 suite, mỗi suite một runner và một job CI —
+Test **không** chạy chung một lệnh: 11 suite, mỗi suite một runner và một job CI —
 `tooling/test-matrix.json` là bản đồ, `npm run gate:test-matrix` canh nó khớp thực tế.
 Muốn biết test nào đọc mã nguồn bằng `fs` thay vì import: `npm run inventory:repo`.
 

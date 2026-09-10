@@ -7,10 +7,12 @@ import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {buildReview} from './build-review.mjs';
+import {verifyBusinessOrganization} from './verify-business-organization.mjs';
 const [,,catalogFile,reportFile]=process.argv;
 if(!catalogFile||!reportFile)throw new Error('Usage: node verify-live-review.mjs LOCAL_CATALOG_JSON LOCAL_REPORT_JSON');
 const snapshot=JSON.parse(readFileSync(catalogFile,'utf8'));
 const review=buildReview(snapshot);
+assert.equal(review.sql.includes('\r'),false,'Review source must survive Git line-ending normalization without changing catalog bytes');
 const quote=s=>'"'+s.replaceAll('"','""')+'"';
 const sig=f=>`${f.schema}.${f.name}(${f.arguments.split(',').filter(Boolean).map(x=>x.trim().replace(/^\w+\s+/, '')).join(',')})`;
 const selected=snapshot.functions.filter(f=>review.changes.some(c=>c.signature===sig(f)));
@@ -39,7 +41,8 @@ try{
   const actual=(await db.query('SELECT md5(pg_get_functiondef($1::regprocedure)) digest',[sig(f)])).rows[0].digest;
   assert.equal(actual,f.digest,'Exported definition must reproduce the live catalog identity: '+f.name);
  }
- const neededTriggers=snapshot.triggers.filter(t=>t.schema==='public'&&['buildings','areas','building_utility_accounts'].includes(t.table));
+ const businessTables=JSON.parse(readFileSync(new URL('./business-organization-tables.json',import.meta.url),'utf8')).map(([table])=>table);
+ const neededTriggers=snapshot.triggers.filter(t=>t.schema==='public'&&['buildings','areas','building_utility_accounts','settings','salary_monthly','salary_adjustments',...businessTables].includes(t.table));
  const triggerFunctions=new Set(neededTriggers.map(t=>/EXECUTE FUNCTION ([\w.]+)\(/.exec(t.definition)?.[1]));
  for(const name of triggerFunctions){
   const qualified=name.includes('.')?name:'public.'+name;
@@ -142,6 +145,20 @@ try{
  assert.equal((await staffState()).memberships.filter(m=>m.status==='REVOKED').length,2,'Old removal crosses both companies');
  await db.exec('ROLLBACK');
  assert.deepEqual(await staffState(),originalStaffState);
+ const scopedStaffBody=(await db.query("SELECT pg_get_functiondef('public.delete_staff_member(uuid)'::regprocedure) body")).rows[0].body;
+ const scopedAssignmentDelete='delete from public.staff_assignments where staff_id = p_staff_id and organization_id = v_org;';
+ assert.ok(scopedStaffBody.includes(scopedAssignmentDelete));
+ let staffScopeMutationCaught=false;
+ await db.exec('BEGIN');
+ try{
+   await db.exec(scopedStaffBody.replace(scopedAssignmentDelete,'delete from public.staff_assignments where staff_id = p_staff_id;'));
+   await db.query('SELECT delete_staff_member($1)',[staffA]);
+   const foreignAssignments=(await staffState()).assignments.filter(a=>a.organization_id===orgB);
+   try{assert.equal(foreignAssignments.length,1,'Foreign assignment must survive removal');}
+   catch(error){if(error.code!=='ERR_ASSERTION')throw error;staffScopeMutationCaught=true;}
+ }finally{await db.exec('ROLLBACK');}
+ assert.ok(staffScopeMutationCaught,'Removing the company filter must be caught by the regression assertion');
+ assert.deepEqual(await staffState(),originalStaffState);
  await db.query('SELECT delete_staff_member($1)',[staffA]);
  const removed=await staffState();
  assert.equal(removed.memberships.find(m=>m.organization_id===orgA).status,'REVOKED');
@@ -158,10 +175,11 @@ try{
  assert.deepEqual(await staffState(),removed,'Last-owner rejection changes nothing');
  await db.query("SELECT set_config('request.headers','{}',false)");
  await assert.rejects(db.query('SELECT delete_staff_member($1)',[staffA]),/chọn công ty/);
- const report={checkedAt:new Date().toISOString(),catalogCapturedAt:snapshot.captured_at,reviewSha256:createHash('sha256').update(review.sql).digest('hex'),
+ const businessChecks=await verifyBusinessOrganization(db,snapshot,{orgA,orgB,actor});
+ const report={...businessChecks,checkedAt:new Date().toISOString(),catalogCapturedAt:snapshot.captured_at,reviewSha256:createHash('sha256').update(review.sql).digest('hex'),
   functionsCompiled:selected.length,idempotent:true,originalCrossCompanyUnlockReproduced:true,mixedBatchRejected:true,foreignSalaryPreserved:true,
   existingFunctionSecurityMetadataUnchanged:true,rootInsertContextVerified:true,parentTypeAndAccountIsolationVerified:true,
-  staffRemovalCrossCompanyDefectReproduced:true,staffRemovalScopedAndLastOwnerProtected:true,
+  staffRemovalCrossCompanyDefectReproduced:true,staffRemovalScopedAndLastOwnerProtected:true,staffScopeMutationCaught,
   limits:'Disposable local PostgreSQL with exported live function bodies and column types; enum columns represented as text. Authorization, date, normalization, demo-list and feature-route dependencies are fixture implementations. This is not a production mutation or a substitute for live role/tenant checks.'};
  writeFileSync(reportFile,JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 }catch(error){console.error(JSON.stringify({message:error.message,code:error.code,context:error.where?.slice(0,1500)}));failed=true;}

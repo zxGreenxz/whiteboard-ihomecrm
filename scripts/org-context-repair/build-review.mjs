@@ -5,7 +5,9 @@ import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {extendParentReview} from './extend-parent-review.mjs';
 const md5=value=>createHash('md5').update(value).digest('hex');
-const literal=value=>"'"+value.replaceAll("'","''")+"'";
+// Preserve catalog bytes inside escaped literals when Git normalizes source EOLs.
+const literal=value=>"E'"+value.replaceAll("\\","\\\\").replaceAll("'","''").replaceAll("\r","\\r").replaceAll("\n","\\n")+"'";
+const sourceText=path=>readFileSync(path,'utf8').replace(/\r\n/g,'\n');
 const signature=f=>`${f.schema}.${f.name}(${f.arguments.split(',').filter(Boolean).map(x=>x.trim().replace(/^\w+\s+/, '')).join(',')})`;
 
 export function buildReview(catalog){
@@ -46,7 +48,7 @@ export function buildReview(catalog){
   IF NOT FOUND THEN RAISE EXCEPTION 'Cấu hình lương V5 này không thuộc công ty đang chọn' USING ERRCODE='42501'; END IF;`);
  });
  update('storage_object_link_maintain',replace=>replace(/declare[\s\S]*?end;/,
-  readFileSync(new URL('./storage-upload-body.sql',import.meta.url),'utf8').trim()));
+  sourceText(new URL('./storage-upload-body.sql',import.meta.url)).trim()));
  for(const name of ['current_admin_org_v1','invite_organization_member_v1','upsert_organization_role_v1']){
   update(name,replace=>replace(actorSelection,'v_org := app_private.working_organization_v1();'));
  }
@@ -76,6 +78,11 @@ export function buildReview(catalog){
   update(name,replace=>replace(/\(SELECT m\.organization_id FROM public\.organization_memberships m\s*WHERE m\.user_id = v_actor AND m\.status='ACTIVE' LIMIT 1\)/,
    'app_private.working_organization_v1()'));
  }
+ update('_autofill_org_salary',replace=>replace(/DECLARE[\s\S]*?END;/,sourceText(new URL('./salary-organization-body.sql',import.meta.url)).trim()));
+ update('autofill_org_strict',replace=>{
+  replace('  IF v_org IS NULL THEN\n    FOR i IN 1 .. array_length(nguoi, 1) LOOP',
+    "  IF v_org IS NULL AND TG_TABLE_NAME='settings' AND auth.uid() IS NOT NULL THEN\n    v_org := app_private.working_organization_v1();\n  END IF;\n  IF v_org IS NULL THEN\n    FOR i IN 1 .. array_length(nguoi, 1) LOOP");
+ });
  update('_autofill_org',replace=>{
   replace("  PROD constant uuid := 'aaaa0000-0000-4000-8000-000000000001';",'');
   replace("  -- Membership: CHỈ khi user thuộc đúng MỘT org ACTIVE (uuid-safe, không dùng min()).",`  -- Parent record identity wins. An authenticated root insert uses the chosen company.
@@ -189,12 +196,13 @@ export function buildReview(catalog){
   else replace("IF v_row.state = 'FINALIZED' THEN",`IF v_row.state = 'FINALIZED' THEN
     IF v_row.bucket_id = 'income-expense-attachments' THEN ${call} END IF;`);
  });
- const imageDraft=readFileSync(new URL('../attachment-access/durable-fix.review.sql',import.meta.url),'utf8');
+ const imageDraft=sourceText(new URL('../attachment-access/durable-fix.review.sql',import.meta.url));
  const imageHelpers=imageDraft.slice(imageDraft.indexOf('CREATE OR REPLACE FUNCTION'),imageDraft.indexOf('-- Surgical replacements'));
  if(!imageHelpers||imageHelpers.includes('BEGIN;'))throw new Error('Unexpected image helper source');
- const helpers=readFileSync(new URL('./working-organization.sql',import.meta.url),'utf8')+'\n'+imageHelpers;
+ const helpers=sourceText(new URL('./working-organization.sql',import.meta.url))+'\n'+sourceText(new URL('./business-organization.sql',import.meta.url))+'\n'+imageHelpers;
  const helperBodies=[...helpers.matchAll(/AS \$(fn|bind|parent)\$([\s\S]*?)\$\1\$;/g)].map(x=>x[2]);
  const helperSignatures=['app_private.active_working_membership_v1(uuid,uuid)','app_private.working_organization_v1(boolean)','app_private.salary_subject_organization_v1(uuid,date,uuid,uuid)',
+  'app_private.fill_business_organization_v1()',
   'app_private.bind_finance_storage_org_v1(uuid,text,text)','app_private.bind_voucher_attachment_links_v1()'];
  if(helperBodies.length!==helperSignatures.length)throw new Error('Unexpected helper inventory');
  for(const helper of parentHelpers){helperBodies.push(helper.body);helperSignatures.push(helper.signature);}
@@ -216,11 +224,19 @@ ${edit.replacements.map(r=>`  definition := replace(definition,${literal(r.befor
   EXECUTE definition;
 END $repair$;`);
  }
- for(const table of ['buildings','areas','building_utility_accounts']){
+ const businessTables=JSON.parse(sourceText(new URL('./business-organization-tables.json',import.meta.url)));
+ const triggerPlans=[...['buildings','areas','building_utility_accounts'].map(table=>[table,[],false]),...businessTables.map(([table,parents])=>[table,parents,true])];
+ for(const [table,parents,isBusiness] of triggerPlans){
+  for(const [column,parent] of parents){
+    if(!catalog.constraints.some(c=>c.schema==='public'&&c.table===table&&c.definition.startsWith('FOREIGN KEY ('+column+') REFERENCES '+parent+'(id)')))
+      throw new Error('Missing reviewed parent relationship: '+table+'.'+column);
+  }
   const existing=catalog.triggers.filter(t=>t.schema==='public'&&t.table===table).sort((a,b)=>a.name.localeCompare(b.name));
   if(existing.some(t=>t.name==='a10_working_organization_insert'))throw new Error('Trigger already exists in baseline: '+table);
   const expected=md5(existing.map(t=>t.definition).join('\n'));
-  const create=`CREATE TRIGGER a10_working_organization_insert BEFORE INSERT ON public.${table} FOR EACH ROW EXECUTE FUNCTION public._autofill_org()`;
+  const event=isBusiness?'INSERT OR UPDATE OF '+['organization_id',...parents.map(([column])=>column)].join(', '):'INSERT';
+  const target=isBusiness?"app_private.fill_business_organization_v1("+parents.flat().map(value=>"'"+value+"'").join(', ')+")":'public._autofill_org()';
+  const create=`CREATE TRIGGER a10_working_organization_insert BEFORE ${event} ON public.${table} FOR EACH ROW EXECUTE FUNCTION ${target}`;
   sql.push(`DO $trigger_guard$ DECLARE actual text; BEGIN
   SELECT pg_get_triggerdef(oid) INTO actual FROM pg_trigger WHERE tgrelid='public.${table}'::regclass AND tgname='a10_working_organization_insert';
   IF actual IS NOT NULL THEN

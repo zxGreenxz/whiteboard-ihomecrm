@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
+import {verifyBusinessOrganization} from './verify-business-organization.mjs';
 const orgA='dddd0000-0000-4000-8000-000000000001',orgB='cccc0000-0000-4000-8000-000000000001';
 const admin='00000000-0000-4000-8000-000000000001',staff='00000000-0000-4000-8000-000000000002',outsider='00000000-0000-4000-8000-000000000003';
 async function setup(){
@@ -71,5 +72,67 @@ test('new salary periods use the chosen valid company and never an arbitrary fir
   await assert.rejects(call(db,admin,undefined,sql,args),/Không xác định/);
   assert.equal(await call(db,admin,orgB,sql,args),orgB);
   assert.equal(await call(db,admin,orgA,sql,args),orgA);
+ }finally{await db.close();}
+});
+
+
+test('business inserts follow all parents and reject conflicting company references',async()=>{
+ const db=await setup();try{
+  const plans=JSON.parse(readFileSync(new URL('./business-organization-tables.json',import.meta.url),'utf8'));
+  const tableColumns=new Map();
+  for(const [table,parents] of plans){
+   if(!tableColumns.has(table))tableColumns.set(table,new Set());
+   for(const [column,parent] of parents){
+    tableColumns.get(table).add(column);
+    if(!tableColumns.has(parent))tableColumns.set(parent,new Set());
+   }
+  }
+  for(const [table,columns] of tableColumns){
+   await db.exec('CREATE TABLE IF NOT EXISTS public.'+table+'(id uuid DEFAULT gen_random_uuid(),organization_id uuid,user_id uuid)');
+   await db.exec('ALTER TABLE public.'+table+' ADD COLUMN IF NOT EXISTS user_id uuid');
+   for(const column of columns)await db.exec('ALTER TABLE public.'+table+' ADD COLUMN IF NOT EXISTS '+column+' uuid');
+  }
+  await db.exec(readFileSync(new URL('./business-organization.sql',import.meta.url),'utf8'));
+  for(const [table,parents] of plans){
+   const args=parents.flat().map(value=>"'"+value+"'").join(', ');
+   await db.exec('CREATE TRIGGER a10_working_organization_insert BEFORE INSERT OR UPDATE OF '+['organization_id',...parents.map(([column])=>column)].join(', ')+' ON public.'+table+' FOR EACH ROW EXECUTE FUNCTION app_private.fill_business_organization_v1('+args+')');
+  }
+  const snapshot={columns:(await db.query('SELECT table_schema,table_name,column_name FROM information_schema.columns')).rows};
+  const receipt=await verifyBusinessOrganization(db,snapshot,{orgA,orgB,actor:admin,verifySettings:false});
+  assert.equal(receipt.businessTablesVerified,13);
+  const businessBody=readFileSync(new URL('./business-organization.sql',import.meta.url),'utf8');
+  const parentGuard='IF v_org IS NOT NULL AND v_org<>v_parent THEN';
+  assert.ok(businessBody.includes(parentGuard));
+  await db.exec(businessBody.replace(parentGuard,'IF false THEN'));
+  await assert.rejects(verifyBusinessOrganization(db,snapshot,{orgA,orgB,actor:admin,verifySettings:false}),/Missing expected rejection/,
+    'Removing the parent/company guard must fail the behavioral assertion');
+  await db.exec(businessBody);
+  for(const role of ['anon','authenticated','service_role'])assert.equal((await db.query("SELECT has_function_privilege($1,'app_private.fill_business_organization_v1()','EXECUTE') allowed",[role])).rows[0].allowed,false);
+ }finally{await db.close();}
+});
+
+
+test('salary trigger prioritizes the stored period and fails closed for ambiguous background staff',async()=>{
+ const db=await setup();try{
+  const body=readFileSync(new URL('./salary-organization-body.sql',import.meta.url),'utf8');
+  await db.exec('CREATE FUNCTION public._autofill_org_salary() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $body$'+body+'$body$');
+  await db.exec('CREATE TABLE salary_adjustments(id uuid DEFAULT gen_random_uuid(),salary_monthly_id uuid,organization_id uuid)');
+  await db.exec('CREATE TRIGGER salary_org BEFORE INSERT ON salary_monthly FOR EACH ROW EXECUTE FUNCTION public._autofill_org_salary()');
+  await db.exec('CREATE TRIGGER adjustment_org BEFORE INSERT ON salary_adjustments FOR EACH ROW EXECUTE FUNCTION public._autofill_org_salary()');
+  const monthly='00000000-0000-4000-8090-000000000001';
+  await db.query('INSERT INTO salary_monthly(id,staff_id,period_month,organization_id) VALUES($1,$2,$3,$4)',[monthly,staff,'2026-08-01',orgA]);
+  await db.query("SELECT set_config('request.jwt.claim.sub',$1,false),set_config('request.headers',$2,false)",[admin,JSON.stringify({'x-ihomecrm-organization-id':orgB})]);
+  const historical=(await db.query('INSERT INTO salary_adjustments(salary_monthly_id) VALUES($1) RETURNING organization_id',[monthly])).rows[0];
+  assert.equal(historical.organization_id,orgA);
+  await assert.rejects(db.query('INSERT INTO salary_adjustments(salary_monthly_id,organization_id) VALUES($1,$2)',[monthly,orgB]),/không khớp/);
+  await assert.rejects(db.query('INSERT INTO salary_monthly(staff_id,period_month,organization_id) VALUES($1,$2,$3)',[staff,'2026-08-01',orgB]),/không khớp/);
+  await db.query('INSERT INTO organization_memberships(user_id,organization_id,status) VALUES($1,$2,$3)',[staff,orgB,'ACTIVE']);
+  await db.query('INSERT INTO manager_salary_config(staff_id,organization_id,is_active,effective_from) VALUES($1,$2,true,$3),($1,$4,true,$3)',[staff,orgA,'2026-01-01',orgB]);
+  const chosen=(await db.query('INSERT INTO salary_monthly(staff_id,period_month) VALUES($1,$2) RETURNING organization_id',[staff,'2026-09-01'])).rows[0];
+  assert.equal(chosen.organization_id,orgB);
+  await db.query("SELECT set_config('request.jwt.claim.sub','',false),set_config('request.headers','{}',false)");
+  await assert.rejects(db.query('INSERT INTO salary_monthly(staff_id,period_month) VALUES($1,$2)',[staff,'2026-10-01']),/nhiều công ty/);
+  const explicit=(await db.query('INSERT INTO salary_monthly(staff_id,period_month,organization_id) VALUES($1,$2,$3) RETURNING organization_id',[staff,'2026-10-01',orgA])).rows[0];
+  assert.equal(explicit.organization_id,orgA,'Background writers can retain explicit provenance');
  }finally{await db.close();}
 });
