@@ -90,7 +90,9 @@ for (const mobile of [false, true]) test(`DEMO append-only voucher evidence (${m
     await findVoucher(page, refundCode, mobile);
     await expect(page.getByTestId('voucher-supplement-note')).toContainText(note);
     await expect(page.getByTestId('voucher-supplement-note')).toContainText('Người bổ sung:');
-    await page.getByTestId('voucher-supplement-note').scrollIntoViewIfNeeded();
+    await expect(async () => {
+      await page.getByTestId('voucher-supplement-note').scrollIntoViewIfNeeded();
+    }).toPass({ timeout: 10_000 });
     await page.screenshot({ path: info.outputPath(`supplement-${mobile ? 'mobile' : 'desktop'}.png`) });
     await page.getByRole('button', { name: 'Bổ sung chứng từ / ghi chú', exact: true }).click();
     await expect(dialog.getByRole('textbox')).toHaveValue('');

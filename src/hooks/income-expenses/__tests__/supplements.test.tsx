@@ -7,7 +7,7 @@ import { hydrateIncomeExpenseSupplements, useAppendIncomeExpenseSupplement } fro
 const state = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[], error: null as {message:string} | null, rpc: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {
-  rpc: (...args: unknown[]) => state.rpc(...args),
+  rpc: state.rpc,
   from: () => {
     let ids: string[] = [];
     const query = { select: () => query, in: (_: string, values: string[]) => { ids = values; return query; },
