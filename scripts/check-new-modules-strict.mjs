@@ -14,9 +14,9 @@
 //   Ratchet đảo strict chỉ đi một chiều, nhưng nó không ngăn NỢ MỚI: mã mới viết
 //   lỏng vẫn vào được repo, và mỗi file như vậy là một khoản nợ phải dọn sau —
 //   dọn sau bao giờ cũng đắt hơn viết đúng ngay, vì lúc đó đã có người gọi nó.
-//   236 đảo hiện tại là kết quả của việc dọn dần; luật này chặn dòng chảy vào.
+//   Danh sách đảo là kết quả của việc dọn dần; luật này chặn dòng chảy vào.
 //
-//   node scripts/check-new-modules-strict.mjs                 # so với origin/main
+//   node scripts/check-new-modules-strict.mjs                 # event GitHub hoặc main local
 //   node scripts/check-new-modules-strict.mjs --base <ref>
 //
 // Thoát 0 đạt · 1 vi phạm · 3 KHÔNG KIỂM ĐƯỢC (không có mốc để so).
@@ -56,11 +56,36 @@ export function docDao(noiDung) {
   return new Set(Array.isArray(j.files) ? j.files : (j.include ?? []));
 }
 
-const git = (args) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
+const git = (args) => execFileSync("git", args, {
+  cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+}).trim();
+
+function mocTuDoiSoHoacEvent() {
+  const i = process.argv.indexOf("--base");
+  if (i >= 0) {
+    const ref = process.argv[i + 1];
+    if (!ref || ref.startsWith("--")) throw new Error("--base cần một ref để so sánh.");
+    return ref;
+  }
+  const eventName = process.env.GITHUB_EVENT_NAME;
+  if (!["push", "pull_request"].includes(eventName)) return null;
+
+  // origin/main đã bằng HEAD khi CI chạy sau push; phải giữ mốc TRƯỚC push.
+  // Payload thiếu/hỏng không được rơi về main rồi báo 0 module mới.
+  if (!process.env.GITHUB_EVENT_PATH) throw new Error(`Thiếu GITHUB_EVENT_PATH cho ${eventName}.`);
+  const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+  const ref = eventName === "push" ? event.before : event.pull_request?.base?.sha;
+  if (typeof ref !== "string" || !/^[a-f\d]{40}$/i.test(ref) || /^0+$/.test(ref)) {
+    throw new Error(`Event ${eventName} thiếu mốc commit hợp lệ; dùng --base <ref> để kiểm tường minh.`);
+  }
+  return ref;
+}
+
+const moduleTrong = (output) => output.split("\0").filter(Boolean)
+  .map((p) => p.replace(/\\/g, "/")).filter(laModuleApp);
 
 function main() {
-  const i = process.argv.indexOf("--base");
-  const mocMuon = i >= 0 ? process.argv[i + 1] : null;
+  const mocMuon = mocTuDoiSoHoacEvent();
 
   if (!existsSync(TSCONFIG)) {
     console.error("❌ Thiếu tsconfig.strict-islands.json — không biết đảo nào đã khai.");
@@ -73,7 +98,7 @@ function main() {
 
   const co = (r) => {
     try {
-      git(["rev-parse", "--verify", r]);
+      git(["rev-parse", "--verify", "--end-of-options", `${r}^{commit}`]);
       return true;
     } catch {
       return false;
@@ -87,17 +112,23 @@ function main() {
   }
 
   const base = git(["merge-base", moc, "HEAD"]);
-  const themMoi = git(["diff", "--name-only", "--diff-filter=A", `${base}..HEAD`])
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((x) => x.replace(/\\/g, "/"))
-    .filter(laModuleApp);
+  // So với INDEX: gồm module đã commit và vừa stage, bỏ file đã stage xoá.
+  // -z giữ nguyên tên Unicode/khoảng trắng thay vì Git quote đường dẫn.
+  const trongIndex = moduleTrong(git(["diff", "--cached", "--name-only", "--diff-filter=A", "-z", base, "--", "src/"]));
+  const untracked = moduleTrong(git(["ls-files", "--others", "--exclude-standard", "-z", "--", "src/"]));
+  const ci = Boolean(process.env.CI);
+  const themMoi = [...new Set([...trongIndex, ...(ci ? untracked : [])])];
 
   const dao = docDao(readFileSync(TSCONFIG, "utf8"));
   const thieu = themMoi.filter((f) => !dao.has(f));
 
-  console.log(`Module mới so với ${moc} (merge-base ${base.slice(0, 8)}): ${themMoi.length} file .ts/.tsx trong src/`);
+  console.log(`Module mới so với ${moc} (merge-base ${base.slice(0, 8)}, gồm index): ${themMoi.length} file .ts/.tsx trong src/`);
   console.log(`Đảo strict đã khai: ${dao.size} file`);
+  if (!ci) {
+    for (const file of untracked.filter((f) => !dao.has(f))) {
+      console.warn(`⚠ WIP chưa stage: ${file} chưa có trong đảo strict; sẽ chặn khi git add.`);
+    }
+  }
 
   if (themMoi.length === 0) {
     console.log("\n✅ Không có module app mới trong phạm vi này.");
@@ -107,7 +138,7 @@ function main() {
   if (thieu.length > 0) {
     console.error(`\n❌ ${thieu.length} module MỚI không nằm trong đảo strict:`);
     for (const f of thieu) console.error(`   ${f}`);
-    console.error("\n   Thêm chúng vào `include` của tsconfig.strict-islands.json rồi chạy:");
+    console.error("\n   Thêm chúng vào `files` của tsconfig.strict-islands.json rồi chạy:");
     console.error("     npx tsc -p tsconfig.strict-islands.json --noEmit");
     console.error("\n   Mã mới viết lỏng là nợ phải dọn sau, mà dọn sau luôn đắt hơn — lúc đó đã có người gọi nó.");
     process.exit(1);
@@ -116,4 +147,9 @@ function main() {
   console.log(`\n✅ Cả ${themMoi.length} module mới đều đã là đảo strict.`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  try { main(); } catch (error) {
+    console.error(`❌ KHÔNG KIỂM ĐƯỢC: ${error.message}`);
+    process.exitCode = 3;
+  }
+}

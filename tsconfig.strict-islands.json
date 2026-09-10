@@ -14,7 +14,6 @@
     "noImplicitOverride": true,
     "noEmit": true
   },
-  "$comment2": "LÔ 94 — nở 246 → 1025 file. Cách đo (quan trọng, đừng đo lại kiểu khác): tsc báo lỗi cho MỌI file trong program, kể cả file chỉ bị IMPORT vào chứ không nằm trong include. Nên \"bỏ file lỗi khỏi include\" KHÔNG làm đảo xanh — bằng chứng: 2 file OpenClaw đã lọc khỏi include vẫn hiện lỗi vì bị import. Danh sách này = toàn bộ src/ TRỪ bao đóng-ngược của 6 file còn lỗi (chúng + mọi file import tới chúng, bắc cầu = 157 file) TRỪ toàn bộ openclaw-zalo (không đụng theo yêu cầu user).",
   "include": [],
   "files": [
     "src/components/account/AccountOrganizationCard.tsx",
@@ -619,6 +618,7 @@
     "src/hooks/income-expenses/specialized.ts",
     "src/hooks/income-expenses/statusMutations.test.ts",
     "src/hooks/income-expenses/statusMutations.ts",
+    "src/hooks/income-expenses/supplements.ts",
     "src/hooks/income-expenses/types.ts",
     "src/hooks/invoices/useExcelInvoiceData.ts",
     "src/hooks/network-center/useNetworkCenter.ts",
@@ -977,6 +977,7 @@
     "src/lib/imageCompress.ts",
     "src/lib/incomeExpensePostingValidation.ts",
     "src/lib/incomeExpenseQuickInput.ts",
+    "src/lib/incomeExpenseSupplement.ts",
     "src/lib/incomeExpenseTypeErrors.ts",
     "src/lib/incomeExpenseValidation.ts",
     "src/lib/invoiceHelpers.ts",
