@@ -1055,3 +1055,45 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/promote-to-production.mjs --sha "${{ github.sha }}"
+
+
+  organization-impact-review:
+    # Exact-head source review for the organization repair and backup prerequisite.
+    # No production credentials or graph database are uploaded.
+    if: >-
+      github.event_name == 'pull_request' &&
+      (github.head_ref == 'fix/superadmin-org-repair-stable' ||
+       github.head_ref == 'fix/org-backup-password-bytes')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.18.0'
+      - name: Build pinned source graph
+        run: node scripts/run-pinned-gitnexus.mjs analyze
+      - name: Require fresh high-risk graph
+        run: node scripts/check-graph-freshness.mjs --nhiem-vu high-risk
+      - name: Inspect company context, backup and changed symbols
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/organization-impact"
+          node scripts/run-pinned-gitnexus.mjs impact pgPassLine | tee "$RUNNER_TEMP/organization-impact/backup.txt"
+          if [ -f src/lib/workingOrganization.ts ]; then
+            node scripts/run-pinned-gitnexus.mjs impact createOrganizationFetch | tee "$RUNNER_TEMP/organization-impact/request-context.txt"
+          fi
+          node scripts/run-pinned-gitnexus.mjs detect-changes --scope compare --base-ref "$BASE_SHA" | tee "$RUNNER_TEMP/organization-impact/changes.txt"
+          cp .gitnexus/manifest.json "$RUNNER_TEMP/organization-impact/manifest.json"
+          cp "tooling/graph-verdict.local.json" "$RUNNER_TEMP/organization-impact/freshness.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: organization-impact-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/organization-impact/
+          if-no-files-found: error
+          retention-days: 7
