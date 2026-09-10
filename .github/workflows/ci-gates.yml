@@ -1101,6 +1101,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/organization-impact"
           node scripts/run-pinned-gitnexus.mjs impact pgPassLine | tee "$RUNNER_TEMP/organization-impact/backup.txt"
           if [ -f src/lib/workingOrganization.ts ]; then
