@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-10T02:30:02.155Z",
+  "generatedAt": "2026-09-10T04:32:51.389Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 550,
-    "unknown": 73,
+    "unknown": 74,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -9902,6 +9902,22 @@
       "state": "ledger-applied",
       "evidence": [
         "receipt:2026-09-10T02:29:36.055Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260910042229_income_expense_supplements_v1.sql",
+      "version": "20260910042229",
+      "name": "income_expense_supplements_v1",
+      "scheme": "timestamp14",
+      "sha256": "9ed564f4cb518fdd1cae3fab59ca732be23d5c3c563882a7518e46fb7e212e83",
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "table:public.income_expense_supplements",
+        "table:app_private.ie_supplement_requests",
+        "table:app_private.ie_supplement_objects",
+        "function:app_private.ie_supplement_can_read_v1",
+        "function:app_private.ie_supplement_immutable_v1"
       ]
     },
     {
