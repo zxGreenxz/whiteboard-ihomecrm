@@ -242,6 +242,25 @@ BEGIN
 END
 $nc_expect_42501$;
 
+CREATE OR REPLACE FUNCTION pg_temp._nc_set_actor(p_actor uuid, p_role text)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, pg_temp
+AS $nc_set_actor$
+BEGIN
+  -- Keep both Supabase claim formats aligned, including clearing the subject
+  -- for anonymous calls. The disposable bootstrap reads the per-claim GUCs.
+  PERFORM set_config('request.jwt.claim.sub', coalesce(p_actor::text, ''), true);
+  PERFORM set_config('request.jwt.claim.role', p_role, true);
+  PERFORM set_config('request.jwt.claims', jsonb_build_object(
+    'sub', p_actor, 'role', p_role
+  )::text, true);
+  IF auth.uid() IS DISTINCT FROM p_actor OR auth.role() IS DISTINCT FROM p_role THEN
+    RAISE EXCEPTION 'Network Center fixture request identity is inconsistent';
+  END IF;
+END
+$nc_set_actor$;
+
 CREATE OR REPLACE FUNCTION pg_temp._nc_add_override(
   p_membership_id uuid,
   p_permission_key text,
@@ -678,9 +697,7 @@ SELECT
 FROM _nc_fixture fixture;
 
 -- Owner: organization-scoped view and immediate execute.
-SELECT set_config('request.jwt.claims', jsonb_build_object(
-  'sub', fixture.owner_id, 'role', 'authenticated'
-)::text, true) FROM _nc_fixture fixture;
+SELECT pg_temp._nc_set_actor(fixture.owner_id, 'authenticated') FROM _nc_fixture fixture;
 SET LOCAL ROLE authenticated;
 SELECT pg_temp._nc_expect_true(
   'owner.view',
@@ -700,9 +717,7 @@ SELECT pg_temp._nc_expect_true(
 RESET ROLE;
 
 -- View-only staff: building A read succeeds, execute is rejected.
-SELECT set_config('request.jwt.claims', jsonb_build_object(
-  'sub', fixture.view_id, 'role', 'authenticated'
-)::text, true) FROM _nc_fixture fixture;
+SELECT pg_temp._nc_set_actor(fixture.view_id, 'authenticated') FROM _nc_fixture fixture;
 SET LOCAL ROLE authenticated;
 SELECT pg_temp._nc_expect_true(
   'view_only.view',
@@ -726,9 +741,7 @@ SELECT pg_temp._nc_expect_42501(
 RESET ROLE;
 
 -- Execute staff: view + immediate enqueue on building A, but no access to B or PROD.
-SELECT set_config('request.jwt.claims', jsonb_build_object(
-  'sub', fixture.execute_id, 'role', 'authenticated'
-)::text, true) FROM _nc_fixture fixture;
+SELECT pg_temp._nc_set_actor(fixture.execute_id, 'authenticated') FROM _nc_fixture fixture;
 SET LOCAL ROLE authenticated;
 SELECT pg_temp._nc_expect_true(
   'execute.view',
@@ -776,9 +789,7 @@ FROM _nc_fixture fixture
 WHERE membership.organization_id = fixture.demo_organization_id
   AND membership.id = fixture.execute_membership_id;
 
-SELECT set_config('request.jwt.claims', jsonb_build_object(
-  'sub', fixture.execute_id, 'role', 'authenticated'
-)::text, true) FROM _nc_fixture fixture;
+SELECT pg_temp._nc_set_actor(fixture.execute_id, 'authenticated') FROM _nc_fixture fixture;
 SET LOCAL ROLE authenticated;
 SELECT pg_temp._nc_expect_42501(
   'lifecycle.offboarded_view_denied',
@@ -794,7 +805,7 @@ SELECT pg_temp._nc_expect_42501(
 RESET ROLE;
 
 -- Anonymous callers have neither table nor RPC access.
-SELECT set_config('request.jwt.claims', jsonb_build_object('role', 'anon')::text, true);
+SELECT pg_temp._nc_set_actor(NULL, 'anon');
 SET LOCAL ROLE anon;
 SELECT pg_temp._nc_expect_42501(
   'anonymous.view_denied',
