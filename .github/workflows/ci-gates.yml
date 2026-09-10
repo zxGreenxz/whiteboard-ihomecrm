@@ -111,6 +111,10 @@ jobs:
         id: caidat
         run: npm ci
 
+      - name: Organization backup envelope regressions (no credentials)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        run: node --test scripts/org-context-repair/sealed-artifact.test.mjs
+
       # ─── MỘT LƯỢT PHƠI HẾT LỖI ───────────────────────────────────────────
       # Từ đây xuống, mọi bước gate mang điều kiện `!cancelled()` + caidat xanh:
       # một bước đỏ KHÔNG chặn các bước sau chạy nữa. Job vẫn ĐỎ nếu bất kỳ bước

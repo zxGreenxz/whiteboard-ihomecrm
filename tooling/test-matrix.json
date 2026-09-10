@@ -7,6 +7,19 @@
   ],
   "suites": [
     {
+      "id": "organization-backup-envelope",
+      "runner": "node --test",
+      "ciJob": "quality-gates",
+      "command": "node --test scripts/org-context-repair/sealed-artifact.test.mjs",
+      "risk": "normal",
+      "includes": ["scripts/org-context-repair/sealed-artifact.test.mjs"],
+      "ciJobs": [{"workflow": ".github/workflows/ci-gates.yml", "job": "quality-gates"}],
+      "ciCommandStep": "Organization backup envelope regressions (no credentials)",
+      "environment": "ci",
+      "timeoutMinutes": 5,
+      "note": "Local synthetic files and keys only; verifies integrity, recipient binding, reviewed commit identity, safe filenames and manual workflow boundaries."
+    },
+    {
       "id": "copilot-golden-controlled-browser",
       "runner": "node --test",
       "ciJob": "copilot-e2e / copilot-e2e",

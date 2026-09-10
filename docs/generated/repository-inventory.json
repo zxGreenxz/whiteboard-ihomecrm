@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 644,
-  "soFileDocBangFs": 199,
-  "tongLoiGoi": 414,
+  "tongSoFileTest": 645,
+  "soFileDocBangFs": 200,
+  "tongLoiGoi": 417,
   "khongPhanLoaiDuoc": 204,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 39,
+      "soFile": 40,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 28,
+      "soFile": 29,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 61,
+      "soFile": 62,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -39,6 +39,7 @@
     "scripts/__tests__/network-center-worker-release-readback.test.mjs",
     "scripts/__tests__/network-center-worker-scope-verifier.test.mjs",
     "scripts/__tests__/qr-csp-bindings.test.mjs",
+    "scripts/org-context-repair/sealed-artifact.test.mjs",
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
@@ -346,6 +347,16 @@
       "soGoi": 3,
       "loai": {
         "manifest": 3
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/org-context-repair/sealed-artifact.test.mjs",
+      "soGoi": 3,
+      "loai": {
+        "manifest": 1,
+        "ma-nguon": 1,
+        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
     },

@@ -29,6 +29,12 @@
   ],
   "workflows": [
     {
+      "path": ".github/workflows/org-context-backup.yml",
+      "node": "24.18.0",
+      "deno": null,
+      "note": "Manual read-only organization repair preflight; verified full backup encrypted for the local recipient. Uses the same postgres:17.6 client as the restore drill."
+    },
+    {
       "path": ".github/workflows/ci-gates.yml",
       "node": "24.18.0",
       "note": "Pin exact. Khớp sàn cao nhất (bridge 24.18).",
