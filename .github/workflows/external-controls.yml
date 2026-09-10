@@ -63,7 +63,7 @@ jobs:
       - name: Kiểm soát ngoài repo
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: node scripts/check-external-controls.mjs
 
       # BẰNG CHỨNG ĐI LÊN ARTIFACT, KHÔNG COMMIT NGƯỢC VÀO MAIN.
@@ -105,7 +105,7 @@ jobs:
         if: always()
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
         run: node scripts/check-external-controls.mjs --so-ban-commit
 
       # Hạn của known-gaps thuộc đúng loại control ở workflow này: KHÔNG commit nào

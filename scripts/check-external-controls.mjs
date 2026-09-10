@@ -60,6 +60,23 @@ async function ghApi(path) {
   return { ok: true, data: await res.json() };
 }
 
+export async function readBranchProtection(request = ghApi) {
+  const detail = await request(`repos/${REPO}/branches/main/protection`);
+  if (!detail.ok && detail.reason === 'http-403') {
+    // GITHUB_TOKEN has contents:read but cannot request Administration:read.
+    // The branch endpoint needs only contents:read and can prove ABSENCE.
+    // protected:true cannot prove effective checks; details remain unverified.
+    const branch = await request(`repos/${REPO}/branches/main`);
+    if (branch.ok && branch.data?.name === 'main' && branch.data.protected === false) {
+      return {
+        status: 'absent',
+        note: 'GitHub branch metadata xác nhận main protected=false. Token không đọc được chi tiết protection (HTTP 403); không cần quyền quản trị để xác minh nhánh chưa được bảo vệ.',
+      };
+    }
+  }
+  return interpretProtection(detail);
+}
+
 export function interpretProtection(result) {
   if (!result.ok && result.reason === 'no-credential') {
     return { status: UNVERIFIED, note: 'Không có GH_TOKEN/GITHUB_TOKEN và `gh` chưa đăng nhập.' };
@@ -371,7 +388,7 @@ export function lechSoVoiCommit(vuaDo, daCommit) {
 async function main(argv) {
   const args = new Set(argv.slice(2));
 
-  const protection = interpretProtection(await ghApi(`repos/${REPO}/branches/main/protection`));
+  const protection = await readBranchProtection();
   const vercel = await vercelProductionBranch();
   const chiTiet = process.env.VERCEL_TOKEN
     ? await vercelChiTiet(process.env.VERCEL_TOKEN, vercel.projects ?? [])

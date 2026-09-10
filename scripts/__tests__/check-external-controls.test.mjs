@@ -13,12 +13,70 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   interpretProtection,
+  readBranchProtection,
   danhGiaVercel,
   trangThaiNhanhPhatHanh,
   UNVERIFIED,
 } from "../check-external-controls.mjs";
 
 const ok = (data) => ({ ok: true, data });
+
+describe("branch protection with contents-read credentials", () => {
+  const detailPath = "repos/zxGreenxz/whiteboard-ihomecrm/branches/main/protection";
+  const branchPath = "repos/zxGreenxz/whiteboard-ihomecrm/branches/main";
+  function reader(branch) {
+    return async (path) => {
+      if (path === detailPath) return { ok: false, reason: "http-403" };
+      assert.equal(path, branchPath);
+      return branch;
+    };
+  }
+
+  it("403 details plus explicit unprotected main metadata proves absence without admin access", async () => {
+    const result = await readBranchProtection(reader(ok({ name: "main", protected: false })));
+    assert.equal(result.status, "absent");
+    assert.match(result.note, /protected=false/);
+  });
+
+  for (const data of [
+    { name: "main", protected: true },
+    { name: "main" },
+    { name: "main", protected: null },
+    { name: "main", protected: "false" },
+    { name: "other", protected: false },
+  ]) {
+    it(`metadata ${JSON.stringify(data)} cannot certify protection absent or effective`, async () => {
+      assert.equal((await readBranchProtection(reader(ok(data)))).status, UNVERIFIED);
+    });
+  }
+
+  it("unreadable branch metadata preserves unverified", async () => {
+    assert.equal((await readBranchProtection(reader({ ok: false, reason: "not-found" }))).status, UNVERIFIED);
+  });
+
+  it("a transport failure cannot become evidence that protection is absent", async () => {
+    await assert.rejects(readBranchProtection(async (path) => {
+      if (path === detailPath) return { ok: false, reason: "http-403" };
+      throw new Error("network unavailable");
+    }), /network unavailable/);
+  });
+
+  it("successful details retain hollow detection and do not use metadata as an override", async () => {
+    const result = await readBranchProtection(async (path) => {
+      assert.equal(path, detailPath);
+      return ok({ required_status_checks: null, required_pull_request_reviews: null });
+    });
+    assert.equal(result.status, "hollow");
+  });
+
+  it("a non-permission API failure is not replaced by a branch metadata response", async () => {
+    const result = await readBranchProtection(async (path) => {
+      assert.equal(path, detailPath);
+      return { ok: false, reason: "http-500" };
+    });
+    assert.equal(result.status, UNVERIFIED);
+  });
+});
 
 describe("interpretProtection — HTTP 200 không có nghĩa là đang bảo vệ", () => {
   it("protection RỖNG RUỘT (200 nhưng không chặn gì) ⇒ hollow", () => {

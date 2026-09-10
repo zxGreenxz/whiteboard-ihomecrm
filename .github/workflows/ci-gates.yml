@@ -1051,10 +1051,12 @@ jobs:
       # success, trang Checks vẫn màu xanh) vẫn bị chặn.
       #
       # Thiếu token ⇒ exit 3 và job đỏ: "không hỏi được CI" KHÁC "CI xanh".
+      # Chờ tối đa 7 phút nếu CI cùng SHA còn chạy; lỗi thật vẫn dừng ngay.
+      # Đây là kiểm tra SAU push, không thay thế preflight trước khi phát hành.
       - name: Kết luận gate của commit đang phát hành
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/promote-to-production.mjs --sha "${{ github.sha }}"
+        run: node scripts/promote-to-production.mjs --sha "${{ github.sha }}" --wait-seconds 420
 
 
   organization-impact-review:

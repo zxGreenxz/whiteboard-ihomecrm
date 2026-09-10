@@ -8,6 +8,7 @@
 // Nhưng lọc quá tay thì gate thành mù. Bộ ca dưới đây canh đúng ranh giới ấy.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import yaml from "js-yaml";
 
 import { lechSoVoiCommit, locPhanOnDinh } from "../check-external-controls.mjs";
 
@@ -15,6 +16,29 @@ const GOC = JSON.parse(
   readFileSync(new URL("../../docs/generated/external-controls.json", import.meta.url), "utf8"),
 );
 const ban = () => JSON.parse(JSON.stringify(GOC));
+
+describe("external-controls workflow credentials", () => {
+  const workflow = yaml.load(readFileSync(new URL("../../.github/workflows/external-controls.yml", import.meta.url), "utf8"));
+  const readers = workflow.jobs["external-controls"].steps.filter((step) => step.run?.includes("node scripts/check-external-controls.mjs"));
+  // Evaluate only the secret-reference fallback used by this configuration;
+  // no real credential, shell, or network is involved in these fixtures.
+  function resolve(expression, secrets) {
+    const terms = /^\$\{\{\s*(.*?)\s*\}\}$/.exec(expression)?.[1].split(/\s*\|\|\s*/);
+    return terms?.map((term) => {
+      const name = /^secrets\.([A-Z_]+)$/.exec(term)?.[1];
+      if (!name) throw new Error("Unsupported credential expression");
+      return secrets[name] ?? "";
+    }).find(Boolean) ?? "";
+  }
+  it.each([
+    [{ GH_TOKEN: "scoped-reader", GITHUB_TOKEN: "limited-runner" }, "scoped-reader"],
+    [{ GITHUB_TOKEN: "limited-runner" }, "limited-runner"],
+    [{}, ""],
+  ])("both measurements use the configured reader, then the runner fallback: %j", (secrets, expected) => {
+    expect(readers).toHaveLength(2);
+    expect(readers.map((step) => resolve(step.env.GH_TOKEN, secrets))).toEqual([expected, expected]);
+  });
+});
 
 describe("locPhanOnDinh", () => {
   it("bỏ checkedAt", () => {

@@ -17,6 +17,7 @@
 //
 //   node scripts/promote-to-production.mjs                 # dry-run (mặc định)
 //   node scripts/promote-to-production.mjs --sha <sha>
+//   node scripts/promote-to-production.mjs --sha <sha> --wait-seconds 420
 //   node scripts/promote-to-production.mjs --apply         # thật sự fast-forward
 //
 // Thoát 0 đủ điều kiện · 1 có gate đỏ (kể cả bị nuốt) · 3 KHÔNG KIỂM ĐƯỢC.
@@ -25,6 +26,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -80,6 +82,11 @@ export function danhGiaJobs(jobs) {
     // vào "đỏ" là sai loại: nó thuộc `dangChay`. Cả hai đều chặn promote, nhưng một
     // báo cáo gộp "đang chạy" vào "đỏ" sẽ khiến người đọc đi tìm lỗi không tồn tại.
     const jobXong = job.status === undefined || job.status === 'completed';
+    if (!jobXong && !(job.steps ?? []).some((s) => s.status !== 'completed')) {
+      // GitHub can publish queued jobs before publishing any steps, or finish
+      // the last step before updating the job. Neither is completed evidence.
+      dangChay.push(`${job.name} (job ${job.status})`);
+    }
     if (
       jobXong &&
       !jobXanh &&
@@ -96,9 +103,58 @@ export function danhGiaJobs(jobs) {
 async function goiGitHub(duong, token) {
   const res = await fetch(`https://api.github.com${duong}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`GitHub API ${res.status}`);
   return res.json();
+}
+
+/** Read one complete observation. Missing evidence remains pending; API errors throw. */
+export async function readGateEvidence(repo, sha, token, request = goiGitHub) {
+  const runs = await request(`/repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`, token);
+  if (!Array.isArray(runs.workflow_runs) || runs.total_count > runs.workflow_runs.length) {
+    throw new Error('GitHub workflow evidence incomplete');
+  }
+  const selected = locRunsDanhGia(runs.workflow_runs);
+  const jobs = [];
+  const pendingRuns = [];
+  const failedRuns = [];
+  if (!selected.length) pendingRuns.push('Chưa có workflow run ngoài nhánh production');
+  for (const run of selected) {
+    if (run.status !== 'completed') pendingRuns.push(`${run.name} (run ${run.status})`);
+    else if (!['success', 'skipped'].includes(run.conclusion)) failedRuns.push(`${run.name} (run ${run.conclusion})`);
+    const result = await request(`/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`, token);
+    if (!Array.isArray(result.jobs) || result.total_count > result.jobs.length) {
+      throw new Error(`GitHub job evidence incomplete for run ${run.id}`);
+    }
+    if (!result.jobs.length) pendingRuns.push(`${run.name} (chưa có bằng chứng job)`);
+    for (const job of result.jobs) {
+      if (job.conclusion === 'success' && !job.steps?.length) {
+        pendingRuns.push(`${run.name} / ${job.name} (chưa có bằng chứng bước)`);
+      }
+    }
+    jobs.push(...result.jobs.map((j) => ({ ...j, name: `${run.name} / ${j.name}` })));
+  }
+  const verdict = danhGiaJobs(jobs);
+  verdict.dangChay.push(...pendingRuns);
+  verdict.doGate.push(...failedRuns);
+  verdict.datDieuKien = verdict.datDieuKien && !pendingRuns.length && !failedRuns.length;
+  return { jobs, verdict };
+}
+
+/** Only pending evidence is retried. A real failure or failed API read never waits. */
+export async function waitForGateEvidence(readEvidence, {
+  waitMs = 0, pollMs = 15_000, now = Date.now, sleep = delay, onPending = () => {},
+} = {}) {
+  const deadline = now() + waitMs;
+  for (;;) {
+    const evidence = await readEvidence();
+    const { verdict } = evidence;
+    const remaining = deadline - now();
+    if (verdict.datDieuKien || verdict.doGate.length || verdict.nuot.length || remaining <= 0) return evidence;
+    onPending(evidence, remaining);
+    await sleep(Math.min(pollMs, remaining));
+  }
 }
 
 function git(args) {
@@ -110,6 +166,13 @@ async function main(argv) {
   const iS = argv.indexOf('--sha');
   const sha = iS >= 0 ? argv[iS + 1] : git(['rev-parse', 'origin/main']);
   const thatSu = argv.includes('--apply');
+  const waitIndex = argv.indexOf('--wait-seconds');
+  const waitSeconds = waitIndex < 0 ? 0 : Number(argv[waitIndex + 1]);
+  if (!Number.isInteger(waitSeconds) || waitSeconds < 0 || waitSeconds > 420) {
+    console.error('❌ --wait-seconds phải là số nguyên từ 0 đến 420.');
+    process.exitCode = 3;
+    return;
+  }
 
   console.log(`Promote → production, commit ${sha.slice(0, 12)} (${thatSu ? 'THẬT SỰ' : 'dry-run'})`);
 
@@ -132,33 +195,20 @@ async function main(argv) {
     process.exit(3);
   }
 
-  let runs;
+  let evidence;
   try {
-    runs = await goiGitHub(`/repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`, token);
+    evidence = await waitForGateEvidence(() => readGateEvidence(repo, sha, token), {
+      waitMs: waitSeconds * 1000,
+      onPending: ({ verdict }, remaining) => console.log(
+        `  Chờ ${verdict.dangChay.length} bằng chứng CI chưa xong; còn tối đa ${Math.ceil(remaining / 1000)} giây.`,
+      ),
+    });
   } catch (error) {
     console.error(`❌ KHÔNG KIỂM ĐƯỢC: ${error.message}`);
     process.exit(3);
   }
 
-  const runsDanhGia = locRunsDanhGia(runs.workflow_runs);
-  if (!runsDanhGia.length) {
-    console.error(`❌ KHÔNG KIỂM ĐƯỢC: không có workflow run nào (ngoài nhánh production) cho ${sha.slice(0, 12)}.`);
-    console.error('   Có thể CI chưa chạy xong, hoặc commit này chưa từng được push lên main.');
-    process.exit(3);
-  }
-
-  const jobs = [];
-  for (const run of runsDanhGia) {
-    try {
-      const r = await goiGitHub(`/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`, token);
-      jobs.push(...(r.jobs ?? []).map((j) => ({ ...j, name: `${run.name} / ${j.name}` })));
-    } catch (error) {
-      console.error(`❌ KHÔNG KIỂM ĐƯỢC job của run ${run.id}: ${error.message}`);
-      process.exit(3);
-    }
-  }
-
-  const kq = danhGiaJobs(jobs);
+  const { jobs, verdict: kq } = evidence;
   console.log(`  ${jobs.length} job, ${jobs.reduce((n, j) => n + (j.steps?.length ?? 0), 0)} bước`);
 
   if (kq.nuot.length > 0) {
@@ -171,13 +221,14 @@ async function main(argv) {
     for (const b of kq.doGate) console.error(`  - ${b}`);
   }
   if (kq.dangChay.length > 0) {
-    console.error(`\n❌ ${kq.dangChay.length} bước CHƯA XONG — chưa kết luận được, không phải xanh:`);
+    console.error(`\n❌ ${kq.dangChay.length} bằng chứng CI CHƯA XONG — chưa kết luận được, không phải xanh:`);
     for (const b of kq.dangChay.slice(0, 10)) console.error(`  - ${b}`);
   }
 
   if (!kq.datDieuKien) {
-    console.error('\nKHÔNG promote. Sửa cho xanh thật rồi chạy lại.');
-    process.exitCode = 1;
+    const failed = kq.doGate.length > 0 || kq.nuot.length > 0;
+    console.error(failed ? '\nKHÔNG promote. Sửa cho xanh thật rồi chạy lại.' : '\nKHÔNG promote. Chưa đủ bằng chứng CI; chạy lại sau khi CI hoàn tất.');
+    process.exitCode = failed ? 1 : 3;
     return;
   }
 
