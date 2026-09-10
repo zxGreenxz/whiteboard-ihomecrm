@@ -41,7 +41,7 @@ Files: settlement/refund dialogs, form/DTO schemas, `AttachmentUpload`, settleme
 
 - [x] Rà độc lập diff backend và frontend, sửa lỗi thực có bằng chứng.
 - [x] Kiểm trình duyệt headless DEMO/local: tên creator, tóm tắt ở chi tiết không mở lịch sử, upload/thumbnail/click ảnh ở hai phiếu, cả mobile và desktop, giữ nguyên tiền/idempotency.
-- [ ] Gate theo Contract; migration chỉ apply reviewed bytes qua lane backup; PR/diff có số đo. Chờ CI xanh, promote rồi xác minh production, dọn fixture.
+- [x] Gate theo Contract; migration chỉ apply reviewed bytes qua lane backup; PR/diff có số đo. Chờ CI xanh, promote rồi xác minh production, dọn fixture.
 
 ## Progress
 
@@ -50,3 +50,7 @@ Files: settlement/refund dialogs, form/DTO schemas, `AttachmentUpload`, settleme
 - Reviewed migration applied 2026-09-10T02:29:36.055Z after double ROLLBACK and full backup (523 tables / 27.8 MB, receipt 97b3a862c0a88191). No THẬT business-data writes.
 - Headless local app + real DEMO: 2/2 passed in 23.7s. Both screens upload an actual PNG, freeze fields while uploading, save/preview proof on both vouchers and open/close lightbox. Second accounting staff login signs and renders the same private proof. Owned uploads and fixtures cleaned.
 - Browser caught mobile portal click closing the parent detail; reproduced red, fixed direct-backdrop target check, independent scoped review clean, same two cases green. Initial login interruption and initial unscoped Vitest runner failure are not counted as passing verification.
+- PR #59 merged; released runtime `045830ee86d29c660a8162b0a88891de47567189`. Main CI Gates 34431457696 passed (469 files / 7,299 Vitest; 620 Node tests), restore 34431457578 passed on PostgreSQL 17.6, and migration validation 34431457618 passed. Promotion verified 13 jobs / 123 steps before updating production.
+- Vercel `dpl_HtRyBa2wv3t84KCgfKM9wDYKLWJy` READY on production. Public ptcrm.vercel.app headless DEMO E2E checked that exact build SHA: 2/2 passed in 36.5s. Reconcile V1/V2 and sandbox after release passed. Independent cleanup: 0 rooms, 0 vouchers, 0 storage objects and 0 storage links; ownership guard remains ENABLE ALWAYS. Production CI Gates 34431998373 and restore 34431998350 passed.
+- Restore drill now includes platform Storage metadata, native FK and closed RLS; existing applied SQL remains unchanged. Fresh full forward replay: 209 files / 173 clean / 36 expected stops / 0 drift, plus clean restored security checks; real shim regression and related unit tests 23/23, two FK/RLS mutations detected. Independent review approved the bounded harness fix.
+- Owned Vite and PostgreSQL helpers stopped; database files and evidence preserved. Subsequent checklist/runbook edits are documentation only and do not require a second application deployment.

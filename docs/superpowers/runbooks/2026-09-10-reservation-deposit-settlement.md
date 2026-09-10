@@ -1,6 +1,6 @@
 # Bằng chứng triển khai xử lý bỏ cọc giữ chỗ
 
-Trạng thái: đã hoàn tất plan và phát hành tính năng lên production tại `90d89b2829bf65391b1def4e2b19c2e5dfac04e6`. Sáu ca browser trên domain production đã đạt; dữ liệu thử đã dọn và đối soát sau phát hành khớp. Ngoại lệ migration đã áp được ghi riêng bên dưới, không coi là idempotent PASS.
+Trạng thái: tính năng ban đầu phát hành tại `90d89b2829bf65391b1def4e2b19c2e5dfac04e6`; phần bổ sung người xử lý, ghi chú trực tiếp và chứng từ hoàn tiền đã phát hành tại `045830ee86d29c660a8162b0a88891de47567189`. Browser production và đối soát sau mỗi lần phát hành đều đạt, dữ liệu thử đã dọn. Ngoại lệ migration ban đầu đã áp được ghi riêng bên dưới, không coi là idempotent PASS.
 
 ## Phạm vi và căn cứ
 
@@ -80,3 +80,16 @@ Sửa chốt đã được review độc lập tại `2033544967d68b91bd68a53ef4
 - Browser headless trên domain production, đăng nhập DEMO với `FLEET_EXPECT_BUILD_SHA` đúng SHA: **6/6 trong 1,8 phút**. Bao gồm form hợp đồng cũ, người thiếu quyền, ledger/preview/cancel, hai client Realtime, báo cáo KQKD/cashflow đúng kỳ và mất response sau commit rồi tải lại.
 - Sau browser: cleanup độc lập **0 phòng / 0 phiếu fixture**, trigger sở hữu vẫn `ENABLE ALWAYS`; reconcile V1/V2 **PASS**, sandbox **PASS**, số liệu công ty thật không xê dịch so với snapshot. CI production `34397369973` và restore drill production `34397370023` đều **SUCCESS**.
 - Bản cập nhật checklist/biên bản sau phát hành chỉ thay tài liệu trong `docs/superpowers/`, không thay mã ứng dụng hoặc schema đã được kiểm trên production.
+
+## Bổ sung người xử lý và chứng từ hoàn tiền — 10/09/2026
+
+Phiếu phát sinh điền người tạo từ người thực hiện. Phiếu cũ thiếu tên đọc bổ sung theo user_id; không backfill phiếu thật. Chi tiết phiếu thu, cả desktop/mobile/trang riêng, hiển thị “Khách đã bỏ cọc”, số giữ thành doanh thu, số đã hoàn/còn phải hoàn, ngày, người, lý do và ảnh trên các phiếu hoàn liên quan. Ảnh phiếu đã hoàn tác được phân biệt rõ.
+
+- [PR #59](https://github.com/zxGreenxz/whiteboard-ihomecrm/pull/59) đã merge. Ảnh được chọn/kéo/dán khi hoàn ngay hoặc trả khoản hoàn sau; form khóa khi tải/ghi. Lưu tham chiếu ảnh cùng transaction của phiếu chi; xác minh đối tượng Storage thật và gắn đúng tổ chức để nhân viên khác xem được. Không giả lập file hoặc chuyển ảnh đã thuộc tổ chức khác.
+- Migration `20260910015750_reservation_refund_evidence_and_creator_v1.sql`, SHA256 `91bf3d5206d8159b12855f8b2f438f85eb5d4fc42280c1736e8243cfa56daa51`, áp dụng `2026-09-10T02:29:36.055Z` qua lane sau hai lượt ROLLBACK và backup 523 bảng / 27,8 MB; receipt `97b3a862c0a88191`. Catalog đổi `f70937dcaf8f…` → `1c43f99ca352…`. File này đã áp dụng và là lịch sử bất biến.
+- SQL trong root: **50/50**; có storage objects thật, role nhân viên thứ hai, khác tổ chức, rollback, retry, tiền/phòng/hợp đồng và concurrency. Review độc lập backend/frontend đạt; đột biến chứng minh phát hiện mất ảnh/tên, bỏ binding, bỏ kiểm quyền sở hữu và chiếm link khác tổ chức.
+- Browser phát hiện checkbox trong dialog portal đóng cả chi tiết mobile. Đã tái hiện đỏ, sửa chỉ đóng khi chạm trực tiếp nền và chạy lại xanh. Local app + DEMO thật **2/2**; preview đúng SHA `82510478` **2/2** (27,6 giây), kể cả kế toán khác ký URL và hiển thị ảnh riêng tư.
+- Restore harness bổ sung metadata Storage của nền tảng, FK gốc và RLS đóng; không nới quyền hoặc sửa SQL đã áp. Test thật **1/1**, unit liên quan **22/22**, đột biến FK/RLS bị phát hiện. Dựng lại toàn bộ **209 file: 173 sạch / 36 dừng đúng kỳ vọng / 0 lệch**; kiểm bảo mật sau restore đạt. CI PostgreSQL 17.6 xác nhận sau kiểm local PostgreSQL 17.10.
+- [CI main 34431457696](https://github.com/zxGreenxz/whiteboard-ihomecrm/actions/runs/34431457696) SUCCESS: **469 file / 7.299 Vitest, 620 Node tests**. Strict, timezone, Realtime, types, security, tenant isolation và secret scan đạt; restore `34431457578` và migration validation `34431457618` đạt. Job reconcile CI bị bỏ qua do thiếu credentials; đối soát V1/V2 thực tế tại máy trước và sau release đều đạt, không tính job bỏ qua là đã chạy.
+- Cổng promote kiểm **13 job / 123 bước**, không có lỗi bị `continue-on-error` che. Vercel `dpl_HtRyBa2wv3t84KCgfKM9wDYKLWJy` READY từ production tại `045830ee86d29c660a8162b0a88891de47567189`. Public [ptcrm.vercel.app](https://ptcrm.vercel.app) E2E headless với đúng build SHA: **2/2 trong 36,5 giây**, desktop/một phần và mobile/toàn bộ, ảnh ở cả hai phiếu, creator và nhân viên khác xem ảnh.
+- Sau release: reconcile V1/V2, sandbox đều đạt; cleanup độc lập **0 phòng / 0 phiếu / 0 file Storage / 0 link Storage** fixture, ownership guard vẫn ENABLE ALWAYS. CI production `34431998373` và restore `34431998350` SUCCESS. Các tiến trình Vite/PostgreSQL do task mở đã dừng, giữ nguyên dữ liệu và bằng chứng trên đĩa.
