@@ -3,7 +3,7 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 652,
   "soFileDocBangFs": 203,
-  "tongLoiGoi": 430,
+  "tongLoiGoi": 432,
   "khongPhanLoaiDuoc": 207,
   "theoLoai": {
     "ma-nguon": {
@@ -132,6 +132,15 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/org-context-repair/working-organization.test.mjs",
+      "soGoi": 7,
+      "loai": {
+        "sql": 6,
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
       "soGoi": 7,
       "loai": {},
@@ -189,15 +198,6 @@
         "manifest": 3
       },
       "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "scripts/org-context-repair/working-organization.test.mjs",
-      "soGoi": 5,
-      "loai": {
-        "sql": 4,
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
     },
     {
       "file": ".e2e-fleet/controlled/golden-provider-stop.test.mjs",

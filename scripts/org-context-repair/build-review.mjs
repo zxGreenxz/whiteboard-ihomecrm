@@ -4,6 +4,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {extendParentReview} from './extend-parent-review.mjs';
+import {scopedMemberPermissionHelper} from './scoped-member-permission.mjs';
 const md5=value=>createHash('md5').update(value).digest('hex');
 // Preserve catalog bytes inside escaped literals when Git normalizes source EOLs.
 const literal=value=>"E'"+value.replaceAll("\\","\\\\").replaceAll("'","''").replaceAll("\r","\\r").replaceAll("\n","\\n")+"'";
@@ -31,7 +32,8 @@ export function buildReview(catalog){
   edits.push({signature:signature(f),before:f.digest,after:md5(current),replacements});
  };
  const actorSelection=/select m\.organization_id into v_org\s+from public\.organization_memberships m[\s\S]*?limit 1;/i;
- const parentHelpers=extendParentReview(catalog,update);
+ const memberPermission=scopedMemberPermissionHelper(catalog);
+ const parentHelpers=[...extendParentReview(catalog,update),memberPermission];
  for(const phase of ['preview','execute'])for(const action of ['chi_luong','khoa_thang']){
   const staff=action==='chi_luong'?'v_staff_id':'v_first_staff';
   const org=phase==='preview'?'p_organization_id':'v_org';
@@ -50,7 +52,10 @@ export function buildReview(catalog){
  update('storage_object_link_maintain',replace=>replace(/declare[\s\S]*?end;/,
   sourceText(new URL('./storage-upload-body.sql',import.meta.url)).trim()));
  for(const name of ['current_admin_org_v1','invite_organization_member_v1','upsert_organization_role_v1']){
-  update(name,replace=>replace(actorSelection,'v_org := app_private.working_organization_v1();'));
+  update(name,replace=>{
+   replace(actorSelection,'v_org := app_private.working_organization_v1();');
+   if(name==='current_admin_org_v1')replace("app_private.has_any_scope_v3('users.view')","app_private.has_any_scope_for_org_v1('users.view',v_org)");
+  });
  }
  update('lucky_admin_org_v1',replace=>replace(actorSelection,`v_org := app_private.working_organization_v1(false);
   if not exists (select 1 from public.organization_memberships m
@@ -212,6 +217,11 @@ export function buildReview(catalog){
     RAISE EXCEPTION 'Existing helper differs from reviewed body: %',${literal(sig)};
   END IF;
 END $guard$;`));
+ sql.push(`DO $source_guard$ BEGIN
+  IF md5(pg_get_functiondef(${literal(memberPermission.dependency.signature)}::regprocedure))<>${literal(memberPermission.dependency.digest)} THEN
+    RAISE EXCEPTION 'Live membership permission rule changed; refresh the review';
+  END IF;
+END $source_guard$;`);
  sql.push(helpers);
  sql.push(...parentHelpers.map(h=>h.sql));
  for(const edit of edits){

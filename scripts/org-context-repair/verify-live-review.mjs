@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import {buildReview} from './build-review.mjs';
 import {verifyBusinessOrganization} from './verify-business-organization.mjs';
+import {verifyMemberVisibility} from './verify-member-visibility.mjs';
 const [,,catalogFile,reportFile]=process.argv;
 if(!catalogFile||!reportFile)throw new Error('Usage: node verify-live-review.mjs LOCAL_CATALOG_JSON LOCAL_REPORT_JSON');
 const snapshot=JSON.parse(readFileSync(catalogFile,'utf8'));
@@ -42,6 +43,9 @@ try{
   assert.equal(actual,f.digest,'Exported definition must reproduce the live catalog identity: '+f.name);
  }
  const businessTables=JSON.parse(readFileSync(new URL('./business-organization-tables.json',import.meta.url),'utf8')).map(([table])=>table);
+ const permissionSource=snapshot.functions.find(f=>f.schema==='app_private'&&f.name==='has_any_scope_v3');
+ assert.ok(permissionSource,'Live global permission helper is present');
+ await db.exec(permissionSource.definition);
  const neededTriggers=snapshot.triggers.filter(t=>t.schema==='public'&&['buildings','areas','building_utility_accounts','settings','salary_monthly','salary_adjustments',...businessTables].includes(t.table));
  const triggerFunctions=new Set(neededTriggers.map(t=>/EXECUTE FUNCTION ([\w.]+)\(/.exec(t.definition)?.[1]));
  for(const name of triggerFunctions){
@@ -176,7 +180,8 @@ try{
  await db.query("SELECT set_config('request.headers','{}',false)");
  await assert.rejects(db.query('SELECT delete_staff_member($1)',[staffA]),/chọn công ty/);
  const businessChecks=await verifyBusinessOrganization(db,snapshot,{orgA,orgB,actor});
- const report={...businessChecks,checkedAt:new Date().toISOString(),catalogCapturedAt:snapshot.captured_at,reviewSha256:createHash('sha256').update(review.sql).digest('hex'),
+ const memberChecks=await verifyMemberVisibility(db,{orgA,orgB,actor});
+ const report={...memberChecks,...businessChecks,checkedAt:new Date().toISOString(),catalogCapturedAt:snapshot.captured_at,reviewSha256:createHash('sha256').update(review.sql).digest('hex'),
   functionsCompiled:selected.length,idempotent:true,originalCrossCompanyUnlockReproduced:true,mixedBatchRejected:true,foreignSalaryPreserved:true,
   existingFunctionSecurityMetadataUnchanged:true,rootInsertContextVerified:true,parentTypeAndAccountIsolationVerified:true,
   staffRemovalCrossCompanyDefectReproduced:true,staffRemovalScopedAndLastOwnerProtected:true,staffScopeMutationCaught,

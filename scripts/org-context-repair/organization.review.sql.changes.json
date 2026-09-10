@@ -110,8 +110,8 @@
   {
     "signature": "app_private.current_admin_org_v1()",
     "before": "46d46cca36fbe938b3692969c2cb4f3c",
-    "after": "12e2f5e83821352ecb43583d53aebd95",
-    "replacements": 1
+    "after": "5f653b5d6da32ea46f678fcbfdab0496",
+    "replacements": 2
   },
   {
     "signature": "public.invite_organization_member_v1(text,text,uuid,uuid[],integer)",

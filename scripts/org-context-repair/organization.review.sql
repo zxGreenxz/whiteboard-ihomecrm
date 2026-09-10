@@ -74,6 +74,18 @@ DO $guard$ BEGIN
   END IF;
 END $guard$;
 
+DO $guard$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE oid=to_regprocedure(E'app_private.has_any_scope_for_org_v1(text,uuid)') AND md5(prosrc)<>E'176b37a44f797e422911d48dd811fc84') THEN
+    RAISE EXCEPTION 'Existing helper differs from reviewed body: %',E'app_private.has_any_scope_for_org_v1(text,uuid)';
+  END IF;
+END $guard$;
+
+DO $source_guard$ BEGIN
+  IF md5(pg_get_functiondef(E'app_private.has_any_scope_v3(text)'::regprocedure))<>E'2a7502dbd68cc07fd277d4584bf82e54' THEN
+    RAISE EXCEPTION 'Live membership permission rule changed; refresh the review';
+  END IF;
+END $source_guard$;
+
 -- Private helpers only. They provide identity; existing RPC permission and
 -- possession checks remain authoritative. No RLS policy is replaced here.
 CREATE OR REPLACE FUNCTION app_private.active_working_membership_v1(p_user uuid, p_org uuid)
@@ -560,6 +572,97 @@ BEGIN
 END $function$;
 REVOKE ALL ON FUNCTION app_private.internal_settlement_account_in_org_v1(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
 
+CREATE OR REPLACE FUNCTION app_private.has_any_scope_for_org_v1(p_permission_key text, p_org uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'app_private', 'public'
+AS $function$
+  select exists (
+    select 1
+      from public.permission_definitions pd
+      join public.organization_memberships m
+        on m.user_id = (select auth.uid())
+       and m.organization_id = p_org
+       and m.status = 'ACTIVE'
+       and coalesce(m.valid_from, '-infinity'::timestamptz) <= now()
+       and (m.valid_to is null or m.valid_to > now())
+      join public.organizations o
+        on o.id = m.organization_id and o.status = 'ACTIVE'
+     where pd.key = p_permission_key
+       and pd.permission_domain = 'TENANT'
+       and pd.is_active
+       -- (1) không bị cấm khẩn cấp
+       and not exists (
+         select 1 from app_private.tenant_emergency_denies d
+          where d.organization_id = m.organization_id
+            and (d.permission_key is null or d.permission_key = p_permission_key)
+            and d.active_from <= now()
+            and (d.expires_at is null or d.expires_at > now()))
+       -- (2) không có CẤM ở phạm vi toàn tổ chức (cấm hẹp hơn vẫn còn chỗ khác)
+       and not exists (
+         select 1
+           from public.member_permission_overrides ov
+           join public.member_override_scopes mos on mos.override_id = ov.id
+           join public.authorization_scopes s on s.id = mos.scope_id
+          where ov.membership_id = m.id and ov.permission_key = p_permission_key
+            and ov.effect = 'DENY' and ov.revoked_at is null
+            and (ov.expires_at is null or ov.expires_at > now())
+            and s.scope_type = 'ORGANIZATION')
+       and not exists (
+         select 1
+           from public.role_bindings rb
+           join public.role_permissions rp
+             on rp.role_id = rb.role_id and rp.organization_id = rb.organization_id
+            and rp.permission_key = p_permission_key and rp.effect = 'DENY'
+           join public.role_binding_scopes rbs on rbs.role_binding_id = rb.id
+           join public.authorization_scopes s on s.id = rbs.scope_id
+          where rb.membership_id = m.id and rb.valid_to is null
+            and s.scope_type = 'ORGANIZATION')
+       -- (3) có ít nhất một cạnh CHO khớp loại phạm vi mà quyền này chấp nhận
+       and (
+         exists (
+           select 1
+             from public.member_permission_overrides ov
+             join public.member_override_scopes mos on mos.override_id = ov.id
+             join public.authorization_scopes s on s.id = mos.scope_id
+            where ov.membership_id = m.id and ov.permission_key = p_permission_key
+              and ov.effect = 'ALLOW' and ov.revoked_at is null
+              and (ov.expires_at is null or ov.expires_at > now())
+              and s.scope_type = any(pd.scope_kinds)
+              and (not pd.requires_cashbook_possession or (
+                    s.scope_type = 'CASHBOOK' and exists (
+                      select 1 from public.cashbook_possession_bindings cp
+                       where cp.membership_id = m.id and cp.cashbook_id = s.cashbook_id
+                         and cp.possession_kind = any(pd.accepted_possession_kinds)
+                         and cp.valid_from <= now()
+                         and (cp.valid_to is null or cp.valid_to > now())))))
+         or exists (
+           select 1
+             from public.role_bindings rb
+             join public.role_permissions rp
+               on rp.role_id = rb.role_id and rp.organization_id = rb.organization_id
+              and rp.permission_key = p_permission_key and rp.effect = 'ALLOW'
+             join public.organization_roles orl
+               on orl.id = rb.role_id and coalesce(orl.status,'ACTIVE') = 'ACTIVE'
+             join public.role_binding_scopes rbs on rbs.role_binding_id = rb.id
+             join public.authorization_scopes s on s.id = rbs.scope_id
+            where rb.membership_id = m.id
+              and coalesce(rb.valid_from, '-infinity'::timestamptz) <= now()
+              and (rb.valid_to is null or rb.valid_to > now())
+              and s.scope_type = any(pd.scope_kinds)
+              and (not pd.requires_cashbook_possession or (
+                    s.scope_type = 'CASHBOOK' and exists (
+                      select 1 from public.cashbook_possession_bindings cp
+                       where cp.membership_id = m.id and cp.cashbook_id = s.cashbook_id
+                         and cp.possession_kind = any(pd.accepted_possession_kinds)
+                         and cp.valid_from <= now()
+                         and (cp.valid_to is null or cp.valid_to > now())))))
+       )
+  );
+$function$;
+REVOKE ALL ON FUNCTION app_private.has_any_scope_for_org_v1(text,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
 -- public._termination_ensure_type(uuid,text,text)
 DO $repair$ DECLARE definition text; BEGIN
   definition := pg_get_functiondef(E'public._termination_ensure_type(uuid,text,text)'::regprocedure);
@@ -743,10 +846,11 @@ END $repair$;
 -- app_private.current_admin_org_v1()
 DO $repair$ DECLARE definition text; BEGIN
   definition := pg_get_functiondef(E'app_private.current_admin_org_v1()'::regprocedure);
-  IF md5(definition) = E'12e2f5e83821352ecb43583d53aebd95' THEN RETURN; END IF;
+  IF md5(definition) = E'5f653b5d6da32ea46f678fcbfdab0496' THEN RETURN; END IF;
   IF md5(definition) <> E'46d46cca36fbe938b3692969c2cb4f3c' THEN RAISE EXCEPTION 'Live function changed: %',E'app_private.current_admin_org_v1()'; END IF;
   definition := replace(definition,E'select m.organization_id into v_org\n    from public.organization_memberships m\n    join public.organizations o on o.id = m.organization_id and o.status = ''ACTIVE''\n   where m.user_id = (select auth.uid()) and m.status = ''ACTIVE''\n   order by coalesce(o.is_demo, false), m.organization_id\n   limit 1;',E'v_org := app_private.working_organization_v1();');
-  IF md5(definition) <> E'12e2f5e83821352ecb43583d53aebd95' THEN RAISE EXCEPTION 'Patch integrity failure'; END IF;
+  definition := replace(definition,E'app_private.has_any_scope_v3(''users.view'')',E'app_private.has_any_scope_for_org_v1(''users.view'',v_org)');
+  IF md5(definition) <> E'5f653b5d6da32ea46f678fcbfdab0496' THEN RAISE EXCEPTION 'Patch integrity failure'; END IF;
   EXECUTE definition;
 END $repair$;
 

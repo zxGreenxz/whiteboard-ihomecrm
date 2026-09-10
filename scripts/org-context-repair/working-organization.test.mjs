@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import {verifyBusinessOrganization} from './verify-business-organization.mjs';
+import {verifyMemberVisibility} from './verify-member-visibility.mjs';
 const orgA='dddd0000-0000-4000-8000-000000000001',orgB='cccc0000-0000-4000-8000-000000000001';
 const admin='00000000-0000-4000-8000-000000000001',staff='00000000-0000-4000-8000-000000000002',outsider='00000000-0000-4000-8000-000000000003';
 async function setup(){
@@ -134,5 +135,28 @@ test('salary trigger prioritizes the stored period and fails closed for ambiguou
   await assert.rejects(db.query('INSERT INTO salary_monthly(staff_id,period_month) VALUES($1,$2)',[staff,'2026-10-01']),/nhiều công ty/);
   const explicit=(await db.query('INSERT INTO salary_monthly(staff_id,period_month,organization_id) VALUES($1,$2,$3) RETURNING organization_id',[staff,'2026-10-01',orgA])).rows[0];
   assert.equal(explicit.organization_id,orgA,'Background writers can retain explicit provenance');
+ }finally{await db.close();}
+});
+
+
+test('company member visibility cannot borrow permission from another organization',async()=>{
+ const db=await setup();try{
+  await db.exec(readFileSync(new URL('./member-visibility-fixture.sql',import.meta.url),'utf8'));
+  const review=readFileSync(new URL('./organization.review.sql',import.meta.url),'utf8');
+  const header='CREATE OR REPLACE FUNCTION app_private.has_any_scope_for_org_v1(p_permission_key text, p_org uuid)';
+  const start=review.indexOf(header),end=review.indexOf('$function$;',start);
+  assert.ok(start>=0&&end>start,'Reviewed company permission helper must exist');
+  const scoped=review.slice(start,end+'$function$;'.length);
+  const condition='\n       and m.organization_id = p_org';
+  assert.equal(scoped.split(condition).length,2);
+  const legacy=scoped.replace('has_any_scope_for_org_v1(p_permission_key text, p_org uuid)','has_any_scope_v3(p_permission_key text)').replace(condition,'');
+  await db.exec(legacy);
+  await db.exec(scoped+"\nREVOKE ALL ON FUNCTION app_private.has_any_scope_for_org_v1(text,uuid) FROM PUBLIC,anon,authenticated,service_role;");
+  const receipt=await verifyMemberVisibility(db,{orgA,orgB,actor:admin,withAdminResolver:false});
+  assert.equal(receipt.memberVisibilityCompanyScoped,true);
+  await db.exec(scoped.replace(condition,''));
+  await assert.rejects(verifyMemberVisibility(db,{orgA,orgB,actor:admin,withAdminResolver:false}),
+    error=>error.code==='ERR_ASSERTION'&&error.message.includes('Permission in A'),
+    'Removing the company witness must fail the behavioral assertion');
  }finally{await db.close();}
 });
