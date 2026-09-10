@@ -19,7 +19,10 @@ export interface ReservationSettlementFormValues {
   reasonCode: SettlementReason;
   reasonText: string;
   refundAccountId: string | null;
+  refundAttachments?: string[];
 }
+
+export const reservationRefundAttachmentsSchema = z.array(z.string().url().max(2048)).max(10, "Tối đa 10 tệp chứng từ").default([]);
 
 export const reservationSettlementFormSchema = z.object({
   depositAmount: z.number().int().safe().positive(),
@@ -29,6 +32,7 @@ export const reservationSettlementFormSchema = z.object({
   reasonCode: z.enum(["CHANGED_MIND", "NO_SHOW", "OTHER"]),
   reasonText: z.string(),
   refundAccountId: z.string().uuid().nullable(),
+  refundAttachments: reservationRefundAttachmentsSchema,
 }).superRefine((value, ctx) => {
   if (value.refundAmount > value.depositAmount) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["refundAmount"], message: "Tiền hoàn vượt tiền cọc" });
@@ -50,5 +54,6 @@ export const reservationSettlementFormSchema = z.object({
 export const reservationRefundPaymentSchema = z.object({
   accountId: z.string().uuid("Chọn sổ quỹ đã chi"),
   paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Chọn ngày chi"),
+  refundAttachments: reservationRefundAttachmentsSchema,
 });
 export type ReservationRefundPaymentValues = z.infer<typeof reservationRefundPaymentSchema>;

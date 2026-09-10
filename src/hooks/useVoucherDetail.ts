@@ -11,6 +11,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { jsonArray } from '@/lib/jsonValue';
+import { hydrateReservationCreators } from '@/hooks/income-expenses/reservationCreators';
 import type {
   IncomeExpenseItem,
   IncomeExpenseWithRelations,
@@ -144,7 +145,8 @@ export const useVoucherWithBatch = (voucherId?: string) => {
       if (!vRow) return { voucher: null, batch: null };
 
       const mainItems = await fetchItemsByVoucher([voucherId]);
-      const voucher = mapVoucherRow(vRow, mainItems);
+      const [namedVoucher] = await hydrateReservationCreators([vRow]);
+      const voucher = mapVoucherRow(namedVoucher, mainItems);
 
       // 2. Phiếu này có thuộc đợt (phiếu tổng) nào không?
       const { data: link } = await supabase
@@ -177,7 +179,7 @@ export const useVoucherWithBatch = (voucherId?: string) => {
         .in('id', siblingIds)
         .is('deleted_at', null);
       const siblingItems = await fetchItemsByVoucher(siblingIds);
-      const childVouchers = ((siblingRows ?? []) as any[])
+      const childVouchers = ((await hydrateReservationCreators(siblingRows ?? [])) as any[])
         .map((r) => mapVoucherRow(r, siblingItems))
         // Giữ thứ tự ổn định: theo mã phiếu.
         .sort((a, b) => (a.code ?? '').localeCompare(b.code ?? '', 'vi', { numeric: true }));

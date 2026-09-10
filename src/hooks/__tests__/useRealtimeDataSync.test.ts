@@ -273,6 +273,9 @@ describe("useRealtimeDataSync report invalidation", () => {
         ["reservation-settlement-summary", "building-a"],
         ["reservation-settlement-preview", "voucher-a"],
         ["reservation-settlement-by-voucher", "voucher-a"],
+        ["reservation-refund-evidence", "settlement-a"],
+        ["reservation-settlement-audit", "settlement-a"],
+        ["voucher-with-batch", "voucher-a"],
         ["orphan-deposit-vouchers", "room-a"],
       ];
       for (const key of queryKeys) harness.queryClient.setQueryData(key, []);

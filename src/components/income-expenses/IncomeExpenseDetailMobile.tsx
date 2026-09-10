@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { ReservationSettlementDetails } from "@/components/deposits/ReservationSettlementDetails";
 import { useQuery } from "@tanstack/react-query";
 import {
   X,
@@ -438,6 +439,9 @@ export function IncomeExpenseDetailMobile({
           )}
         </div>
 
+        {settlement.data && <ReservationSettlementDetails key={settlement.data.id} settlement={settlement.data} />}
+        {needsSettlementLookup && settlement.error && <p role="alert" className="text-sm text-destructive">Không tải được thông tin xử lý cọc. <button className="underline" onClick={() => void settlement.refetch()}>Thử lại</button></p>}
+
         {isExpense && !isCancelled && v.receive_bank_account && (
           <button className="vd-pay" onClick={() => setPaySheetOpen(true)}>
             <Banknote size={16} />
@@ -541,6 +545,7 @@ export function IncomeExpenseDetailMobile({
             </div>
           </>
         )}
+        {canSettleReservation && <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>}
       </div>
 
       <PayViaBankAppSheet
@@ -549,7 +554,6 @@ export function IncomeExpenseDetailMobile({
         voucher={v}
       />
 
-      {canSettleReservation && <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>}
       {canSettleReservation && <ReservationSettlementDialog voucherId={v.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
 
       <AttachmentLightbox

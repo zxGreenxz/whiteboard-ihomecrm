@@ -40,6 +40,10 @@ Ngay sau xử lý, **toàn bộ cọc nguồn hết khả dụng cho hợp đồ
 
 Trạng thái hoàn căn cứ vào bút toán chi còn hiệu lực. Nếu phiếu hoàn bị đảo qua thao tác tài chính hiện hành, khoản phải hoàn mở lại; lần hoàn mới có phiếu riêng, giữ lịch sử lần cũ. Gửi lại yêu cầu sau lỗi kết nối không làm chi thêm lần nữa.
 
+Trong chi tiết phiếu thu cọc, khung **Khách đã bỏ cọc** hiển thị trực tiếp số cọc ban đầu, phần giữ lại thành doanh thu, đã hoàn/còn phải hoàn, ngày xử lý, người xử lý và lý do. Không cần mở lịch sử. Các phiếu phát sinh ghi tên người thực hiện tại **Người tạo**; phiếu thu gốc vẫn giữ người tạo ban đầu.
+
+Khi **Hoàn ngay** hoặc trả khoản **Hoàn sau**, có thể chọn, kéo thả hoặc dán ảnh chuyển khoản/chứng từ (tối đa 10 tệp JPG, PNG, PDF, mỗi tệp tối đa 5MB). Ảnh được lưu cùng phiếu chi và hiện trong khung bỏ cọc của phiếu thu gốc, bấm để xem lớn. Trong khi ảnh đang tải, các ô nhập và nút xác nhận tạm khóa. Ảnh của lần hoàn đã hoàn tác được ghi rõ trạng thái để phân biệt với lần hoàn còn hiệu lực.
+
 Ví dụ: cọc 3.000.000đ, giữ 2.000.000đ, hoàn sau 1.000.000đ → cọc khả dụng 0đ, doanh thu 2.000.000đ, chờ hoàn 1.000.000đ, quỹ chưa đổi. Khi hoàn: quỹ giảm 1.000.000đ, doanh thu vẫn 2.000.000đ.
 
 ## 2. Cấu trúc dữ liệu

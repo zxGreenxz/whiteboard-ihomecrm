@@ -53,11 +53,12 @@ async function findSettlementByLeg(voucherId: string) {
 }
 
 const affectedQueryKeys = [
-  ["income-expenses"], ["ie-history"], ["voucher-change-log"],
+  ["income-expenses"], ["voucher-with-batch"], ["ie-history"], ["voucher-change-log"],
   ["reservation-deposits"], ["orphan-deposit-vouchers"], ["deposit-dashboard"],
   ["reservation-settlement-preview"],
   ["reservation-settlement-by-voucher"],
   ["reservation-settlement-audit"],
+  ["reservation-refund-evidence"],
   ["reservation-settlements"], ["reservation-settlement-summary"],
   ["rooms"], ["contracts"], ["phong-trong"], ["financial-analysis"],
   ["business-performance"], ["cash-flow-by-day"], ["accounts-with-balance"],

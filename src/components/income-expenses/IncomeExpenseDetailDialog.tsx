@@ -39,6 +39,7 @@ import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
+import { ReservationSettlementDetails } from "@/components/deposits/ReservationSettlementDetails";
 import { format } from "date-fns";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -136,10 +137,11 @@ export function IncomeExpenseDetailDialog({
   });
 
   const attachments = voucher?.attachments ?? [];
-  const isLightboxOpen = lightboxIdx !== null;
+  const [settlementLightboxOpen, setSettlementLightboxOpen] = useState(false);
+  const isLightboxOpen = lightboxIdx !== null || settlementLightboxOpen;
 
   useEffect(() => {
-    if (!open) setLightboxIdx(null);
+    if (!open) { setLightboxIdx(null); setSettlementLightboxOpen(false); }
   }, [open]);
 
   const isSettlementLeg = voucher?.system_source?.startsWith("reservation.") ?? false;
@@ -474,6 +476,8 @@ export function IncomeExpenseDetailDialog({
           </div>
 
           {/* Chi tiền qua app ngân hàng — mobile, phiếu chi có STK người nhận */}
+          {settlement.data && <ReservationSettlementDetails key={settlement.data.id} settlement={settlement.data} onImageOpenChange={setSettlementLightboxOpen} />}
+          {needsSettlementLookup && settlement.error && <p role="alert" className="text-sm text-destructive">Không tải được thông tin xử lý cọc. <button className="underline" onClick={() => void settlement.refetch()}>Thử lại</button></p>}
           {isMobile && isExpense && !isCancelled && voucher.receive_bank_account && (
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"

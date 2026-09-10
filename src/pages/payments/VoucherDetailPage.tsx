@@ -10,6 +10,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Printer, FileText, Layers } from 'lucide-react';
 import { format } from 'date-fns';
 import { useVoucherWithBatch } from '@/hooks/useVoucherDetail';
+import { useReservationSettlementForVoucher } from '@/hooks/useReservationSettlement';
+import { ReservationSettlementDetails } from '@/components/deposits/ReservationSettlementDetails';
 import { StorageImage } from '@/components/ui/storage-image';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { formatPeriod } from '@/lib/monthPeriod';
@@ -131,6 +133,8 @@ function VoucherCard({
   onOpenLightbox: (urls: string[], idx: number) => void;
 }) {
   const isExpense = v.type === 'EXPENSE';
+  const needsSettlement = !!v.system_source?.startsWith('reservation.') || (v.type === 'INCOME' && !v.contract_id && v.items.some((item) => item.is_deposit));
+  const settlement = useReservationSettlementForVoucher(v.id, needsSettlement);
   return (
     <div className="rounded-lg border bg-card p-4">
       <h2 className="text-primary uppercase tracking-wide font-semibold border-b pb-3">
@@ -193,6 +197,8 @@ function VoucherCard({
         )}
       </div>
 
+      {settlement.data && <ReservationSettlementDetails key={settlement.data.id} settlement={settlement.data} />}
+      {needsSettlement && settlement.error && <p role="alert" className="mt-3 text-sm text-destructive">Không tải được thông tin xử lý cọc. <button className="underline" onClick={() => void settlement.refetch()}>Thử lại</button></p>}
       {v.items && v.items.length > 0 && (
         <>
           <SectionTitle>Hạng mục</SectionTitle>
