@@ -2,16 +2,16 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 645,
-  "soFileDocBangFs": 200,
-  "tongLoiGoi": 420,
-  "khongPhanLoaiDuoc": 206,
+  "soFileDocBangFs": 201,
+  "tongLoiGoi": 432,
+  "khongPhanLoaiDuoc": 216,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 29,
+      "soFile": 30,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -92,6 +92,14 @@
       "soGoi": 11,
       "loai": {},
       "khongPhanLoaiDuoc": 11
+    },
+    {
+      "file": "scripts/__tests__/check-external-controls.test.mjs",
+      "soGoi": 11,
+      "loai": {
+        "manifest": 1
+      },
+      "khongPhanLoaiDuoc": 10
     },
     {
       "file": "infra/network-center-worker/test/deploymentPowerShellReconciliation.test.ts",
@@ -504,6 +512,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "scripts/__tests__/external-controls-drift.test.mjs",
+      "soGoi": 2,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/network-center-ingest-domains.test.mjs",
       "soGoi": 2,
       "loai": {},
@@ -783,14 +799,6 @@
     },
     {
       "file": "scripts/__tests__/evidence-store.test.mjs",
-      "soGoi": 1,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/__tests__/external-controls-drift.test.mjs",
       "soGoi": 1,
       "loai": {
         "manifest": 1
