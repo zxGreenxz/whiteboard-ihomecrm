@@ -95,6 +95,7 @@ export default function TaskCompleteDialog({
         "job-attachments",
         `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`,
         result.file,
+        { organization: { table: "jobs", id: job.id } },
       );
     } catch {
       toast.error("Không tải được ảnh lên, vui lòng thử lại");

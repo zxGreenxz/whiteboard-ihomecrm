@@ -1,3 +1,4 @@
+import { storageUploadMetadata } from '@/lib/storageOrganization';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
@@ -310,6 +311,7 @@ export const useCreateDocumentTemplate = () => {
           cacheControl: "3600",
           upsert: false,
           contentType: payload.file.type || undefined,
+          metadata: await storageUploadMetadata("document-templates"),
         });
 
       if (uploadError) {
@@ -439,6 +441,7 @@ export const useUpdateDocumentTemplate = () => {
             cacheControl: "3600",
             upsert: false,
             contentType: payload.file.type || undefined,
+            metadata: await storageUploadMetadata("document-templates", { table: "document_templates", id: payload.id }),
           });
 
         if (uploadError) {

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import AccountOrganizationCard from '@/components/account/AccountOrganizationCard';
 import { OrganizationProvider, useOrganization } from '@/contexts/OrganizationContext';
+import { getWorkingOrganization, organizationStorageKey, syncWorkingOrganizationUser } from '@/lib/workingOrganization';
 
 const fixture = vi.hoisted(() => ({
   phone: false,
@@ -16,7 +17,7 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ data: fixture.user, isLoading: false, isError: false }),
 }));
 
-const storageKey = 'ihomecrm.selectedOrganizationId';
+const storageKey = organizationStorageKey('demo-user');
 const companyA = { id: 'dddd0000-0000-4000-8000-000000000001', name: 'Công ty DEMO A' };
 const companyB = { id: 'dddd0000-0000-4000-8000-000000000002', name: 'Công ty DEMO B' };
 const response = (organizations = [companyA, companyB]) => ({ data: { organizations }, error: null });
@@ -24,7 +25,8 @@ const clients: QueryClient[] = [];
 
 function ScopeConsumer() {
   const { selectedOrganizationId } = useOrganization();
-  return <output data-testid="selected-scope">{selectedOrganizationId ?? 'none'}</output>;
+  const { data: cachedCompany } = useQuery({ queryKey: ['company-records'], queryFn: async () => getWorkingOrganization(), staleTime: Infinity });
+  return <><output data-testid="selected-scope">{selectedOrganizationId ?? 'none'}</output><output data-testid="cached-company">{cachedCompany ?? 'none'}</output></>;
 }
 function mountAccount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -45,6 +47,7 @@ async function chooseCompany(company: typeof companyA) {
 
 beforeEach(() => {
   localStorage.clear();
+  syncWorkingOrganizationUser(null);
   fixture.phone = false;
   fixture.user = { id: 'demo-user' };
   fixture.rpc.mockReset().mockResolvedValue(response());
@@ -78,6 +81,7 @@ describe('Lưu lựa chọn công ty', () => {
     await chooseCompany(companyA);
     expect(screen.getByTestId('selected-scope').textContent).toBe(companyA.id);
     expect(localStorage.getItem(storageKey)).toBe(companyA.id);
+    await waitFor(() => expect(screen.getByTestId('cached-company').textContent).toBe(companyA.id));
   });
 });
 
@@ -124,4 +128,20 @@ it('danh bạ rỗng hiện hướng dẫn cấp quyền, không giả làm lỗ
   await screen.findByText(/Tài khoản chưa có công ty khả dụng/);
   expect(screen.queryByRole('button', { name: 'Thử lại' })).toBeNull();
   expect(screen.getByRole('combobox', { name: 'Công ty đang chọn' }).hasAttribute('disabled')).toBe(true);
+});
+
+it('đổi tài khoản không kế thừa lựa chọn công ty của tài khoản trước', async () => {
+  fixture.phone = true;
+  const first = mountAccount();
+  await chooseCompany(companyB);
+  first.unmount();
+  fixture.user = { id: 'second-user' };
+  mountAccount();
+  await screen.findByRole('combobox', { name: 'Công ty đang chọn' });
+  await waitFor(() => expect(fixture.rpc).toHaveBeenCalledTimes(2));
+  expect(screen.getByTestId('selected-scope').textContent).toBe('none');
+  expect(localStorage.getItem(storageKey)).toBe(companyB.id);
+  await chooseCompany(companyA);
+  expect(localStorage.getItem(organizationStorageKey('second-user'))).toBe(companyA.id);
+  expect(localStorage.getItem(storageKey)).toBe(companyB.id);
 });

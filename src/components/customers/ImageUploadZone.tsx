@@ -3,6 +3,7 @@ import { Upload, X, ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { imageValidation } from '@/lib/vehicleValidation';
 import { uploadFile, type UploadImagePolicy } from '@/lib/storage';
+import type { StorageOrganizationSource } from '@/lib/storageOrganization';
 import { StorageImage } from '@/components/ui/storage-image';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
@@ -17,6 +18,7 @@ interface ImageUploadZoneProps {
   maxSizeMB?: number;
   bucket?: string;
   imagePolicy?: UploadImagePolicy;
+  organization?: StorageOrganizationSource;
   /** Cho phép chọn / kéo thả / dán nhiều ảnh cùng lúc. */
   multiple?: boolean;
   /**
@@ -36,6 +38,7 @@ export default function ImageUploadZone({
   maxSizeMB = 10,
   bucket = 'customer-images',
   imagePolicy,
+  organization,
   multiple = false,
   onAddMany,
 }: ImageUploadZoneProps) {
@@ -92,9 +95,7 @@ export default function ImageUploadZone({
           // Hậu tố index để không trùng path khi upload nhiều file trong cùng ms.
           const path = `${user.id}/${Date.now()}-${i}.${ext}`;
           try {
-            urls.push(imagePolicy
-              ? await uploadFile(bucket, path, file, { imagePolicy })
-              : await uploadFile(bucket, path, file));
+            urls.push(await uploadFile(bucket, path, file, { imagePolicy, organization }));
           } catch (err) {
             console.error('Upload error:', err);
             toast.error(
@@ -116,7 +117,7 @@ export default function ImageUploadZone({
         setUploadingCount(0);
       }
     },
-    [bucket, imagePolicy, multiple, onAddMany, onChange, validateFile]
+    [bucket, imagePolicy, organization, multiple, onAddMany, onChange, validateFile]
   );
 
   const handleDrop = useCallback(

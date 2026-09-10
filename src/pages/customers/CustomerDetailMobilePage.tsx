@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -335,7 +336,8 @@ function Shell({ onBack, title, sub, children }: { onBack: () => void; title: st
               {sub ? <p>{sub}</p> : null}
             </div>
           </div>
-          <div className="mbody">{children}</div>
+          <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>{children}</div>
         </div>
       </div>
     </div>

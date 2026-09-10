@@ -358,6 +358,8 @@ export default function TaskCreateDialog({
           onChange={setAttachments}
           userId={authUser?.id ?? ""}
           bucket="job-attachments"
+          organization={parsed.buildingId ? { table: "buildings", id: parsed.buildingId } : undefined}
+          disabled={!parsed.buildingId}
         />
       </div>
     </>

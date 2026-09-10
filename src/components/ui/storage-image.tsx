@@ -6,8 +6,9 @@
 // =============================================================================
 
 import { ImageIcon } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { useSignedUrl } from '@/hooks/useSignedUrl';
+import { useSignedUrlState } from '@/hooks/useSignedUrl';
 
 type StorageImageProps = Omit<
   React.ImgHTMLAttributes<HTMLImageElement>,
@@ -27,11 +28,15 @@ export function StorageImage({
   ttl,
   className,
   alt = '',
+  onError,
   ...imgProps
 }: StorageImageProps) {
-  const src = useSignedUrl(value, ttl);
+  const { url: src, isError, isFetching, isStorage, refetch } = useSignedUrlState(value, ttl);
+  const [failedSource, setFailedSource] = useState<string>();
+  const retriedValue = useRef<string | null | undefined>(null);
+  const failed = isError || (!!src && failedSource === src);
 
-  if (!src) {
+  if (!src || failed) {
     if (fallback !== undefined) return <>{fallback}</>;
     return (
       <div
@@ -39,7 +44,10 @@ export function StorageImage({
           'flex items-center justify-center bg-muted text-muted-foreground',
           className
         )}
-        aria-busy={!!value}
+        aria-busy={isFetching}
+        role={failed ? 'img' : undefined}
+        aria-label={failed ? `Không tải được ảnh${alt ? `: ${alt}` : ''}` : undefined}
+        title={failed ? 'Không tải được ảnh. Vui lòng thử mở lại sau.' : undefined}
       >
         <ImageIcon className="h-4 w-4 opacity-50" />
       </div>
@@ -55,6 +63,19 @@ export function StorageImage({
       decoding="async"
       className={className}
       {...imgProps}
+      onError={(event) => {
+        setFailedSource(src);
+        // Refresh a possibly expired URL once; never loop on missing/denied files.
+        if (isStorage && retriedValue.current !== value) {
+          retriedValue.current = value;
+          void refetch().then((result) => {
+            // Signing within the same second can return the same URL. Remount
+            // the image once so transient download failures can still recover.
+            if (result.isSuccess) setFailedSource(undefined);
+          });
+        }
+        onError?.(event);
+      }}
     />
   );
 }

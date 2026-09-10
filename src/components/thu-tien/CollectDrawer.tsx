@@ -188,7 +188,7 @@ export function CollectDrawer({
       if (receiptFile) {
         setUploading(true);
         try {
-          url = await uploadReceiptToStorage(receiptFile);
+          url = await uploadReceiptToStorage(receiptFile, { table: "invoices", id: invoice.id });
         } catch {
           toast.warning(
             'Không tải được ảnh chứng từ — phiếu thu sẽ ghi KHÔNG kèm ảnh (bổ sung sau ở trang Hoá đơn).',

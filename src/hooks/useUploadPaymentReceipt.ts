@@ -40,7 +40,7 @@ export const useUploadPaymentReceipt = () => {
         );
       }
 
-      const url = await uploadReceiptToStorage(file);
+      const url = await uploadReceiptToStorage(file, { table: "payments", id: payment_id });
 
       // 1. Cập nhật payments.receipt_image_url (ảnh hiển thị trên popup).
       const { data: updated, error: updPErr } = await supabase

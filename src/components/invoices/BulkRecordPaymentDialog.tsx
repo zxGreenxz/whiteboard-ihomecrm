@@ -1,3 +1,4 @@
+import { storageUploadMetadata } from '@/lib/storageOrganization';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import {
@@ -512,7 +513,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
 
     const { error } = await supabase.storage
       .from('payment-receipts')
-      .upload(fileName, file, { cacheControl: '3600', upsert: false });
+      .upload(fileName, file, { cacheControl: '3600', upsert: false, metadata: await storageUploadMetadata('payment-receipts', { table: 'buildings', id: buildingId }) });
     if (error) {
       // KHÔNG fallback: bucket 'documents' không tồn tại trên production
       // (audit 02/09/2026) — nhánh fallback cũ chỉ che mờ lỗi thật.

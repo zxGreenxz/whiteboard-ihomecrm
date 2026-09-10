@@ -633,6 +633,7 @@ const IncomeExpenseBatchForm = ({
                         attachments={field.value ?? []}
                         onChange={field.onChange}
                         userId={authUser?.id ?? ''}
+                        organization={{ table: 'buildings', ids: itemRows.map(row => row.building_id).filter(Boolean) }}
                       />
                     </FormControl>
                     <FormMessage />

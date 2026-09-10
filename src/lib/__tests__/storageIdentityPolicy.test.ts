@@ -29,6 +29,7 @@ vi.mock('../signedUrlBatcher', () => ({ createSignedUrlBatched: vi.fn() }));
 vi.mock('../storage/r2Client', () => ({ uploadToR2: vi.fn(), signR2: vi.fn() }));
 
 import { uploadFile } from '../storage';
+import { setWorkingOrganization, syncWorkingOrganizationUser } from '../workingOrganization';
 
 interface PngImage {
   width: number;
@@ -121,11 +122,13 @@ function installBeneficialCompression(): void {
 
 describe('uploadFile image policy', () => {
   beforeEach(() => {
+    setWorkingOrganization('identity-fixture', 'dddd0000-0000-4000-8000-000000000001');
     storage.upload.mockReset();
     storage.upload.mockImplementation(async (path: string) => ({ data: { path }, error: null }));
   });
 
   afterEach(() => {
+    syncWorkingOrganizationUser(null);
     vi.unstubAllGlobals();
   });
 

@@ -1413,6 +1413,7 @@ const IncomeExpenseForm = ({
                     <FormLabel>Đính kèm</FormLabel>
                     <FormControl>
                       <AttachmentUpload
+                        organization={voucher ? { table: "income_expenses", id: voucher.id } : selectedBuildingId ? { table: "buildings", id: selectedBuildingId } : undefined}
                         attachments={field.value ?? []}
                         onChange={field.onChange}
                         disabled={!canEdit}

@@ -3,6 +3,7 @@ import { createSignedUrlBatched } from "./signedUrlBatcher";
 import { compressImage } from "./imageCompress";
 import { isR2Bucket, isR2PublicBucket, parseR2Ref } from "./storage/r2Config";
 import { uploadToR2, signR2 } from "./storage/r2Client";
+import { storageUploadMetadata, type StorageOrganizationSource } from './storageOrganization';
 
 export { sanitizeStorageFileName } from "./storageKey";
 
@@ -10,6 +11,7 @@ export type UploadImagePolicy = 'default' | 'identity-original';
 
 export interface UploadFileOptions {
   imagePolicy?: UploadImagePolicy;
+  organization?: StorageOrganizationSource;
 }
 
 const IDENTITY_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -38,6 +40,7 @@ export async function uploadFile(
   file: File,
   options: UploadFileOptions = {},
 ): Promise<string> {
+  const metadata = await storageUploadMetadata(bucket, options.organization);
   // Nén ảnh trước khi upload (giảm kho + băng thông egress). Nếu nén ra WebP thì
   // đổi đuôi key cho khớp content-type; non-image giữ nguyên file & key. Ảnh
   // giấy tờ được kiểm tra rồi lưu đúng bytes gốc để không làm mất chi tiết QR.
@@ -59,6 +62,7 @@ export async function uploadFile(
     .upload(key, toUpload, {
       cacheControl: "31536000", // 1 năm — file đặt tên theo timestamp, không đổi
       upsert: false,
+      metadata,
     });
 
   if (error) {
@@ -121,7 +125,8 @@ export function parseStorageRef(value: string): { bucket: string; path: string }
  */
 export async function createSignedUrlFromStored(
   value: string,
-  expiresIn: number = SIGNED_URL_TTL
+  expiresIn: number = SIGNED_URL_TTL,
+  options: { throwOnError?: boolean } = {},
 ): Promise<string> {
   // R2: công khai → dùng thẳng (custom domain có cache); riêng tư → presigned GET
   // qua Worker (Phase 2). Egress $0 ở cả hai.
@@ -129,6 +134,7 @@ export async function createSignedUrlFromStored(
   if (r2) {
     if (isR2PublicBucket(r2.bucket)) return value;
     const signed = await signR2(r2.bucket, r2.path, expiresIn);
+    if (!signed && options.throwOnError) throw new Error('Unable to sign storage file');
     return signed ?? value;
   }
   const ref = parseSupabaseRef(value);
@@ -136,6 +142,7 @@ export async function createSignedUrlFromStored(
   // Ký theo BATCH: các yêu cầu trong cùng tick gom thành 1 request / bucket
   // (trang nhiều ảnh từng bắn 20-50 POST /object/sign riêng lẻ).
   const signed = await createSignedUrlBatched(ref.bucket, ref.path, expiresIn);
+  if (!signed && options.throwOnError) throw new Error('Unable to sign storage file');
   return signed ?? value;
 }
 

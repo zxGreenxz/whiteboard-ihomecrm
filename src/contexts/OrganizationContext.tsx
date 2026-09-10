@@ -1,8 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { createContext, Fragment, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { getWorkingOrganization, hasPendingOrganizationRequests, readWorkingOrganization, setWorkingOrganization } from '@/lib/workingOrganization';
 
 /**
  * Khái niệm "tổ chức hiện tại" cho frontend — GĐ9 của kế hoạch tách dữ liệu.
@@ -73,8 +75,6 @@ export interface OrganizationState {
   canChonToChuc: boolean;
 }
 
-const KHOA_LUU = 'ihomecrm.selectedOrganizationId';
-
 /**
  * Tổ chức nào đang được chọn, từ danh bạ và lựa chọn đã lưu.
  *
@@ -132,6 +132,7 @@ export function useOrganization(): OrganizationState {
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const { data: user, isLoading: authLoading, isError: authError } = useAuth();
+  const queryClient = useQueryClient();
   const { data, isLoading: directoryLoading, isSuccess, isError: directoryError, refetch } = useQuery({
     queryKey: ['my-organizations', user?.id ?? null],
     enabled: !!user,
@@ -151,13 +152,9 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   // Chỉ lưu ID, không lưu cả bản ghi tổ chức: một bản chép trong localStorage sẽ
   // cũ đi (đổi tên, bị gỡ quyền) mà không có gì làm nó mới lại, và giao diện sẽ
   // hiện tên cũ của một công ty người dùng không còn vào được.
-  const [luuId, datLuuId] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(KHOA_LUU);
-    } catch {
-      return null; // Safari chế độ riêng tư ném ở đây; mất lựa chọn còn hơn vỡ app.
-    }
-  });
+  const [choice, setChoice] = useState<{ userId: string; id: string | null } | null>(null);
+  const userId = user?.id ?? null;
+  const luuId = choice?.userId === userId ? choice?.id ?? null : readWorkingOrganization(userId);
 
   const organizations = useMemo(() => data ?? [], [data]);
   const selectedOrganizationId = resolveSelectedOrganizationId(organizations, luuId);
@@ -166,25 +163,38 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   // nghĩa công ty đã lưu bị gỡ khỏi danh bạ. Lưu cả lựa chọn tự động khi chỉ
   // có một công ty, để sau này thêm công ty mới vẫn giữ công ty đang dùng.
   useEffect(() => {
-    if (!isSuccess || selectedOrganizationId === luuId) return;
-    try {
-      if (selectedOrganizationId) localStorage.setItem(KHOA_LUU, selectedOrganizationId);
-      else localStorage.removeItem(KHOA_LUU);
-    } catch { /* xem chú thích khởi tạo */ }
-    datLuuId(selectedOrganizationId);
-  }, [isSuccess, luuId, selectedOrganizationId]);
+    if (!isSuccess || !userId) return;
+    if (getWorkingOrganization() !== selectedOrganizationId) {
+      const predicate = (query: { queryKey: readonly unknown[] }) =>
+        query.queryKey[0] !== 'auth' && query.queryKey[0] !== 'my-organizations';
+      void queryClient.cancelQueries({ predicate });
+      queryClient.removeQueries({ predicate });
+    }
+    setWorkingOrganization(userId, selectedOrganizationId);
+    if (choice?.userId !== userId || choice.id !== selectedOrganizationId) {
+      setChoice({ userId, id: selectedOrganizationId });
+    }
+  }, [isSuccess, userId, choice, selectedOrganizationId, queryClient]);
 
   const selectOrganization = useCallback(
     (id: string) => {
       // Bỏ qua ID ngoài danh bạ: nhận bừa sẽ tạo ra một lựa chọn không tương ứng
       // với thứ gì, và `resolveSelectedOrganizationId` chỉ việc trả null sau đó.
-      if (!organizations.some((o) => o.id === id)) return;
-      try {
-        localStorage.setItem(KHOA_LUU, id);
-      } catch { /* xem chú thích khởi tạo */ }
-      datLuuId(id);
+      if (!userId || !organizations.some((o) => o.id === id) || id === selectedOrganizationId) return;
+      if (queryClient.isMutating() || hasPendingOrganizationRequests()) {
+        toast.info('Hãy đợi thao tác đang chạy hoàn tất rồi đổi công ty.');
+        return;
+      }
+      setWorkingOrganization(userId, id);
+      // Most existing business queries predate company selection. Remove their
+      // cache and remount forms together, so a new choice cannot reuse old data.
+      const predicate = (query: { queryKey: readonly unknown[] }) =>
+        query.queryKey[0] !== 'auth' && query.queryKey[0] !== 'my-organizations';
+      void queryClient.cancelQueries({ predicate });
+      queryClient.removeQueries({ predicate });
+      setChoice({ userId, id });
     },
-    [organizations],
+    [organizations, userId, selectedOrganizationId, queryClient],
   );
 
   const value = useMemo<OrganizationState>(() => {
@@ -204,7 +214,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   return (
     <OrganizationContext.Provider value={value}>
-      {children}
+      <Fragment key={`${userId ?? 'signed-out'}:${selectedOrganizationId ?? 'unselected'}`}>{children}</Fragment>
     </OrganizationContext.Provider>
   );
 }

@@ -324,7 +324,9 @@ export function usePeriodFeeState(
     if (!busyKey) return;
     setUploadingKey(busyKey);
     try {
-      const url = await uploadReceiptToStorage(file);
+      const voucherId = mode === 'edit' ? editTarget?.voucherId : mode === 'draftpay' ? draftTarget?.voucher.id : mode.startsWith('quick:') ? mode.slice('quick:'.length) : null;
+      if (!voucherId && !bId) throw new Error('Không xác định được phiếu hoặc toà nhà của ảnh.');
+      const url = await uploadReceiptToStorage(file, voucherId ? { table: 'income_expenses', id: voucherId } : { table: 'buildings', id: bId! });
       if (mode === 'edit') {
         setEditTarget((t) => (t ? { ...t, newAttachments: [...t.newAttachments, url] } : t));
         toast.success('Đã thêm ảnh phiếu');

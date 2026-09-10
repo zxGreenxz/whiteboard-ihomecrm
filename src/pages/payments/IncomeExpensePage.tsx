@@ -1098,6 +1098,7 @@ const IncomeExpenseDesktopPage = () => {
             <div className="space-y-2">
               <Label>Hình ảnh đính kèm</Label>
               <AttachmentUpload
+                organization={approveTarget ? { table: "income_expenses", id: approveTarget.id } : undefined}
                 attachments={approveAttachments}
                 onChange={setApproveAttachments}
                 userId={authUser?.id ?? approveTarget?.user_id ?? ""}

@@ -1,3 +1,4 @@
+import { requireWorkingOrganization } from '@/lib/workingOrganization';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { supabase } from "@/integrations/supabase/client";
@@ -575,11 +576,19 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
 // nên một dòng lương thiếu nhãn org sẽ hiển thị cho MỌI công ty. Đã xảy ra thật:
 // 4 khoản thưởng tay + 2 salary_monthly nhập ngày 27/08/2026 rơi ra NULL và làm đỏ
 // gate measure-org-leak. Thà ném lỗi còn hơn ghi một dòng tiền không có biên giới.
-async function orgOfStaff(staffId: string): Promise<string> {
+async function orgOfStaff(staffId: string, periodMonth: string): Promise<string> {
+  const { data: monthly, error: monthlyError } = await supabase.from("salary_monthly").select("organization_id").eq("staff_id", staffId).eq("period_month", periodMonth).maybeSingle();
+  if (monthlyError) throw monthlyError;
+  if (monthly) {
+    if (!monthly.organization_id) throw new Error("Bảng lương chưa có công ty rõ ràng");
+    return monthly.organization_id;
+  }
+  const selectedOrganizationId = requireWorkingOrganization();
   const { data: cfg } = await supabase
     .from("manager_salary_config")
     .select("organization_id")
     .eq("staff_id", staffId)
+    .eq("organization_id", selectedOrganizationId)
     .not("organization_id", "is", null)
     .order("is_active", { ascending: false })
     .order("created_at", { ascending: false })
@@ -591,6 +600,7 @@ async function orgOfStaff(staffId: string): Promise<string> {
     .from("organization_memberships")
     .select("organization_id")
     .eq("user_id", staffId)
+    .eq("organization_id", selectedOrganizationId)
     .eq("status", "ACTIVE")
     .limit(1)
     .maybeSingle();
@@ -608,7 +618,7 @@ async function ensureMonthly(ownerId: string, staffId: string, periodMonth: stri
     .limit(1)
     .maybeSingle();
   if (existing?.id) return (existing as any).id;
-  const organizationId = await orgOfStaff(staffId);
+  const organizationId = await orgOfStaff(staffId, periodMonth);
   const { data: created, error } = await supabase
     .from("salary_monthly")
     .insert({
@@ -659,7 +669,7 @@ export const useSaveSalaryAdjustment = () => {
         note: input.note ?? null,
         source: "MANUAL",
         // thiếu nhãn org = dòng thưởng tay hiện cho mọi công ty (xem orgOfStaff)
-        organization_id: await orgOfStaff(input.staffId),
+        organization_id: await orgOfStaff(input.staffId, input.periodMonth),
       });
       if (error) throw error;
     },
@@ -945,6 +955,7 @@ export const useSalaryPayout = () => {
       const { data: chung } = await (supabase
         .from("buildings").select("id, organization_id") as any)
         .eq("user_id", input.ownerId)
+        .eq("organization_id", await orgOfStaff(input.staffId, input.periodMonth))
         .eq("is_virtual", true).is("deleted_at", null)
         .order("created_at", { ascending: true }).limit(1).maybeSingle();
       const organizationId = (chung as { organization_id?: string } | null)

@@ -1,0 +1,260 @@
+[
+  {
+    "signature": "public._termination_ensure_type(uuid,text,text)",
+    "before": "1970ff23b826557e50f319ef91535fe6",
+    "after": "56ff93c15c5deecdd2b9e028eb42af85",
+    "replacements": 1
+  },
+  {
+    "signature": "public.resolve_fixed_expense_type(uuid,text)",
+    "before": "e6c68ad3c2c98bfe93c4ff0b357ea16e",
+    "after": "f7238f267290d28f52c9b9f039b701d1",
+    "replacements": 1
+  },
+  {
+    "signature": "public._chung_building(uuid)",
+    "before": "4b6ef6c84b56d79b257dc79e94afa6b5",
+    "after": "d4e8bd7f37c7779bfd67bc7115c206a5",
+    "replacements": 1
+  },
+  {
+    "signature": "public._deposit_account(uuid)",
+    "before": "4a9869ab27533ca80dec02020c0ad9ea",
+    "after": "5a6c7e022a72a3c7b7a29ae5810b0c9d",
+    "replacements": 1
+  },
+  {
+    "signature": "public._internal_settlement_account(uuid)",
+    "before": "c5e635908345ee651fd105ed69c7504c",
+    "after": "e511d0a1dacf43274264e384c03150f3",
+    "replacements": 1
+  },
+  {
+    "signature": "public.terminate_contract_forfeit_impl(uuid,date,jsonb)",
+    "before": "7e90f0f91f1d57ec51da82bd6bce7003",
+    "after": "73be158a92b0c01871d6e03387e8a71c",
+    "replacements": 1
+  },
+  {
+    "signature": "public.terminate_contract_move_out_impl(uuid,date,numeric,numeric,numeric,numeric,text,jsonb,text,uuid,jsonb)",
+    "before": "6b5d7e0ce200868ee63dacfb53c1e9a6",
+    "after": "7ff469cae791132bd43022177add0713",
+    "replacements": 1
+  },
+  {
+    "signature": "public._ensure_initial_deposit_voucher(uuid)",
+    "before": "e48a71ade7802880e3d5d5a04252befb",
+    "after": "8be94160f6af5b5052663c866ae93627",
+    "replacements": 1
+  },
+  {
+    "signature": "public.create_opening_adjustment(uuid,numeric,date)",
+    "before": "abdb8252db7b049b7e47e2823b2edb73",
+    "after": "18f5e82d1c6966eb640a79ceddbf8ac8",
+    "replacements": 1
+  },
+  {
+    "signature": "public.confirm_cash_handover(uuid,uuid)",
+    "before": "72174160f40571e8ab0056234260c06c",
+    "after": "bb53cfda938e5ec6ddd092ec937fd30c",
+    "replacements": 1
+  },
+  {
+    "signature": "public._termination_pick_account(uuid,uuid)",
+    "before": "fae19a59566c0f3fe027ee1020aa292a",
+    "after": "cfd33486a65e51d966c4c43f6cd5dc05",
+    "replacements": 1
+  },
+  {
+    "signature": "public.copilot_preview_salary_chi_luong_v1(uuid,jsonb)",
+    "before": "ef607bb38eb9ef1c11ba61b9ec1c30ca",
+    "after": "8fb7594d59590ccdc3cfdba2c038a38f",
+    "replacements": 1
+  },
+  {
+    "signature": "public.copilot_preview_salary_khoa_thang_v1(uuid,jsonb)",
+    "before": "d7b8e4de47cf46d185b523ebae55d10b",
+    "after": "edc7b8ae982cf4f8e5fa7f49acea9ff3",
+    "replacements": 1
+  },
+  {
+    "signature": "public.copilot_execute_salary_chi_luong_v1(text,jsonb)",
+    "before": "39645b5c92d9210bfdf9f103b79d0359",
+    "after": "431f62feb220a680f77f0c7f12afcf28",
+    "replacements": 1
+  },
+  {
+    "signature": "public.copilot_execute_salary_khoa_thang_v1(text,jsonb)",
+    "before": "a8cef4d654eaa033c78e0445b0cd5108",
+    "after": "88f10f5fa9ab15a7069beae31ab2d8c7",
+    "replacements": 1
+  },
+  {
+    "signature": "public.get_or_create_deposit_account()",
+    "before": "ff2a1a571527be002a4be6fc9bca26fe",
+    "after": "42bbd21de6f5a14972372fc2a77a4185",
+    "replacements": 1
+  },
+  {
+    "signature": "public.set_salary_v5_config(jsonb)",
+    "before": "1159731faff8327cea5cf7e011c3eabd",
+    "after": "bf661c1ab94d2101451477f986b1ba1d",
+    "replacements": 1
+  },
+  {
+    "signature": "app_private.storage_object_link_maintain()",
+    "before": "ea328e925a0f7c6f1f8094f171bf059c",
+    "after": "a830d2f0bd10ebc4659105f619f6b342",
+    "replacements": 1
+  },
+  {
+    "signature": "app_private.current_admin_org_v1()",
+    "before": "46d46cca36fbe938b3692969c2cb4f3c",
+    "after": "12e2f5e83821352ecb43583d53aebd95",
+    "replacements": 1
+  },
+  {
+    "signature": "public.invite_organization_member_v1(text,text,uuid,uuid[],integer)",
+    "before": "103bf9f65fa34ffa35c8d6fa7e2822e1",
+    "after": "76b41c4eddb73713860a3d82a8a111d3",
+    "replacements": 1
+  },
+  {
+    "signature": "public.upsert_organization_role_v1(uuid,text,jsonb,bigint,text)",
+    "before": "dc817be77e05bdc2b6debdab75d78552",
+    "after": "452786bad1f28b1cdadf8af1c2c6e832",
+    "replacements": 1
+  },
+  {
+    "signature": "public.lucky_admin_org_v1()",
+    "before": "40f5baff53943c42a630345fe6324586",
+    "after": "2a682223e676dc641491b1cc27484468",
+    "replacements": 1
+  },
+  {
+    "signature": "public.get_authorization_context_v1(uuid)",
+    "before": "2651fa5739beed6c732925dc4324289a",
+    "after": "722b3c46d26c38a53df563b94486604c",
+    "replacements": 1
+  },
+  {
+    "signature": "public.get_ie_auto_approve_threshold_v1()",
+    "before": "0b77ee5a205a65e07327e87d9fceb95c",
+    "after": "9ddd8df410367b83ff8374fd15d6cfed",
+    "replacements": 1
+  },
+  {
+    "signature": "public.set_ie_auto_approve_threshold_v1(numeric)",
+    "before": "c0d115f634a8c553aa8c4d86e6bc62fc",
+    "after": "d1b160e64641f360749c7cca960737b6",
+    "replacements": 1
+  },
+  {
+    "signature": "public.create_cashbook_v1(text,numeric,date,text,text,uuid,text,text,boolean,uuid,uuid)",
+    "before": "6c5a68c165c9db8d0ac329cd2415b123",
+    "after": "194d42191d8d431528853e6849e592d1",
+    "replacements": 1
+  },
+  {
+    "signature": "public.create_finance_evidence_upload_intent_v2(uuid)",
+    "before": "d0841543ebc13e0e35e4e663f6feed6c",
+    "after": "cea9fc61803215196a2a1719125c53e1",
+    "replacements": 1
+  },
+  {
+    "signature": "public.ie_compat_insert_v2(jsonb,jsonb)",
+    "before": "c71d528be728ead127207b77250f1504",
+    "after": "79298fdc2aed8cbee2de06cfa1b774e4",
+    "replacements": 1
+  },
+  {
+    "signature": "app_private.resolve_finance_actor_v2()",
+    "before": "b95ceecadba70fe6c24304ce8e5a7e4f",
+    "after": "a8250632b24dd10865a177df1140bd33",
+    "replacements": 1
+  },
+  {
+    "signature": "public.set_sale_bonus_cap_v1(numeric,uuid,text,uuid,text)",
+    "before": "68ba4c30fc4f623c2d634c6a6ace067a",
+    "after": "79645453f0e2435b93bb58fc0e485c4a",
+    "replacements": 1
+  },
+  {
+    "signature": "public.set_commission_tier_v1(integer,integer,numeric,uuid,text,uuid,text)",
+    "before": "3b7070ff2ab786c834faf8a4bc8f4caf",
+    "after": "bfc0120ea73be775e9742292e389fd2f",
+    "replacements": 1
+  },
+  {
+    "signature": "public.set_utility_ceiling_v1(text,numeric,numeric,uuid,text,uuid,text)",
+    "before": "d34815ff21be27282515c7f8c8eb3c1f",
+    "after": "ef815f38388d9e46ec3c71cf2a86c84a",
+    "replacements": 1
+  },
+  {
+    "signature": "public.set_maintenance_rule_v1(text,numeric,numeric,integer,boolean,text,uuid,text,uuid,text)",
+    "before": "06c169c7432d22cdd09bd150850a84ea",
+    "after": "88089b73a6e6ca6110f94c372459c4c8",
+    "replacements": 1
+  },
+  {
+    "signature": "public._autofill_org()",
+    "before": "db63306771f7c32846f77c641e26edce",
+    "after": "2efc1e4069562b34b03e996740160c7c",
+    "replacements": 3
+  },
+  {
+    "signature": "public.set_membership_status_v1(uuid,text,text)",
+    "before": "99098ec230f03522f30e8688f05ca4a5",
+    "after": "f83cdb6638f011a3d2db73d1e8744fbb",
+    "replacements": 2
+  },
+  {
+    "signature": "public.delete_staff_member(uuid)",
+    "before": "5c1e2b6fadd47bbca14eaa6b4fccb148",
+    "after": "8291dc1e8d2dc4ad0375f1334db91669",
+    "replacements": 8
+  },
+  {
+    "signature": "public.salary_payout_v1(uuid,date,numeric,uuid,date,text,text,uuid,numeric)",
+    "before": "75d7f087387b593f470ad5f5442f985a",
+    "after": "9e41721e7ff590f9014bc8ad6cc2d520",
+    "replacements": 3
+  },
+  {
+    "signature": "public.lock_salary_month_v1(date,jsonb,text)",
+    "before": "4dd21e9c38ddb3249ce144a543d27764",
+    "after": "b084db67a3033672fbb07795e1194619",
+    "replacements": 5
+  },
+  {
+    "signature": "public.unlock_salary_month_v1(date,uuid[],text)",
+    "before": "6496dc3c3beb8cc043e70d6f814fcc3c",
+    "after": "fdc4351a6a1ec48b20d971958d0d1cc4",
+    "replacements": 3
+  },
+  {
+    "signature": "public.pay_utility_bill(uuid,text,numeric,text,date,text,text,uuid,jsonb,uuid)",
+    "before": "b6a36737c5fc1aeadf759f89aee552ee",
+    "after": "58e2f511bdccf89260441aa122532345",
+    "replacements": 3
+  },
+  {
+    "signature": "public.pay_period_fee(uuid,text,numeric,text,text,date,text,text,uuid,jsonb,boolean)",
+    "before": "6545b554ba8732eb4362b95fbcd040e4",
+    "after": "6e092a2c9171c10b89d8ce5408bba866",
+    "replacements": 4
+  },
+  {
+    "signature": "public.adopt_voucher_attachments_as_evidence_v2(uuid)",
+    "before": "f2d71ddb1733fd863276efa9c31c0a18",
+    "after": "b1e67cd92391db80064ba31f52319d46",
+    "replacements": 2
+  },
+  {
+    "signature": "public.finalize_finance_evidence_v2(uuid)",
+    "before": "64ea72286787e0877f4c774af9cb4247",
+    "after": "109d2bea650e8902baf3a495e31bb952",
+    "replacements": 2
+  }
+]

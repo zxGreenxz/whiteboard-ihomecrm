@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { uploadFile, deleteFile } from '@/lib/storage';
+import type { StorageOrganizationSource } from '@/lib/storageOrganization';
 import { StorageImage } from '@/components/ui/storage-image';
 import { toast } from 'sonner';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
@@ -17,6 +18,7 @@ interface AttachmentUploadProps {
   disabled?: boolean;
   userId: string;
   bucket?: string;
+  organization?: StorageOrganizationSource;
   onUploadingChange?: (uploading: boolean) => void;
   maxFiles?: number;
   deleteOnRemove?: boolean;
@@ -42,6 +44,7 @@ export default function AttachmentUpload({
   disabled = false,
   userId,
   bucket = DEFAULT_BUCKET,
+  organization,
   onUploadingChange,
   maxFiles = Infinity,
   deleteOnRemove = true,
@@ -79,7 +82,7 @@ export default function AttachmentUpload({
           try {
             const safeName = file.name.replace(/[^\w.\-]+/g, '_');
             const path = `${userId}/${Date.now()}-${safeName}`;
-            const publicUrl = await uploadFile(BUCKET, path, file);
+            const publicUrl = await uploadFile(BUCKET, path, file, { organization });
             newUrls.push(publicUrl);
           } catch (err: any) {
             const msg = err?.message || err?.error || '';
@@ -105,7 +108,7 @@ export default function AttachmentUpload({
         onUploadingChange?.(false);
       }
     },
-    [attachments, disabled, onChange, userId, BUCKET, maxFiles, onUploadingChange]
+    [attachments, disabled, onChange, userId, BUCKET, maxFiles, onUploadingChange, organization]
   );
 
   const handleRemove = useCallback(

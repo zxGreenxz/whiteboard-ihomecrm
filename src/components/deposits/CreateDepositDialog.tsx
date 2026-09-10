@@ -803,9 +803,10 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                 </div>
                 <AttachmentUpload
                   attachments={depositAttachments}
+                  organization={{ table: "rooms", id: selectedRoomId }}
                   onChange={setDepositAttachments}
                   userId={myUserId ?? ""}
-                  disabled={submitting || !myUserId}
+                  disabled={submitting || !myUserId || !selectedRoomId}
                 />
               </div>
 
@@ -937,9 +938,10 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                   </div>
                   <AttachmentUpload
                     attachments={bonusAttachments}
+                    organization={{ table: "rooms", id: selectedRoomId }}
                     onChange={setBonusAttachments}
                     userId={myUserId ?? ""}
-                    disabled={submitting || !myUserId}
+                    disabled={submitting || !myUserId || !selectedRoomId}
                   />
                 </div>
 

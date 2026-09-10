@@ -1,3 +1,4 @@
+import OrganizationBadge from '@/components/layout/OrganizationBadge';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -125,13 +126,15 @@ export default function SalePhongMobilePage() {
           {/* Nội dung */}
           {openTab ? (
             <div className="mbody" style={{ padding: 0 }}>
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
               <Suspense fallback={<div className="stub"><p>Đang tải…</p></div>}>
                 {renderTab(openTab, setHeaderAction)}
               </Suspense>
             </div>
           ) : mode === 'browse' ? (
             isLoading ? (
-              <div className="mbody"><div className="stub"><p>Đang tải danh sách phòng…</p></div></div>
+              <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div><div className="stub"><p>Đang tải danh sách phòng…</p></div></div>
             ) : (
               <div className="sp-embed">
                 <PhongTrongPage buildings={buildings ?? []} embedded />
@@ -139,6 +142,7 @@ export default function SalePhongMobilePage() {
             )
           ) : (
             <div className="mbody">
+            <div className="flex justify-end py-2"><OrganizationBadge /></div>
               {adminTabs.length === 0 ? (
                 <div className="stub">
                   <p>

@@ -7,6 +7,19 @@
   ],
   "suites": [
     {
+      "id": "organization-attachment-regressions",
+      "runner": "node --test",
+      "ciJob": "quality-gates",
+      "command": "node --test scripts/org-context-repair/working-organization.test.mjs scripts/org-context-repair/storage-upload.test.mjs scripts/attachment-access/repair.test.mjs scripts/attachment-access/durable-fix.test.mjs",
+      "risk": "high",
+      "includes": ["scripts/org-context-repair/working-organization.test.mjs", "scripts/org-context-repair/storage-upload.test.mjs", "scripts/attachment-access/repair.test.mjs", "scripts/attachment-access/durable-fix.test.mjs"],
+      "ciJobs": [{"workflow": ".github/workflows/ci-gates.yml", "job": "quality-gates"}],
+      "ciCommandStep": "Organization and attachment regressions (disposable PostgreSQL)",
+      "environment": "ci",
+      "timeoutMinutes": 5,
+      "note": "Disposable PostgreSQL and synthetic organizations only. Verifies explicit company resolution, revoked/expired membership, image repair boundaries, parent attachment binding and unchanged evidence state."
+    },
+    {
       "id": "organization-backup-envelope",
       "runner": "node --test",
       "ciJob": "quality-gates",

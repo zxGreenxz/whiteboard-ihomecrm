@@ -115,6 +115,24 @@ jobs:
         if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
         run: node --test scripts/org-context-repair/sealed-artifact.test.mjs
 
+      - name: Organization and attachment regressions (disposable PostgreSQL)
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        run: node --test scripts/org-context-repair/working-organization.test.mjs scripts/org-context-repair/storage-upload.test.mjs scripts/attachment-access/repair.test.mjs scripts/attachment-access/durable-fix.test.mjs
+
+      - name: Inventory organization sources (source code only)
+        id: organization_inventory
+        if: ${{ !cancelled() && steps.caidat.conclusion == 'success' }}
+        run: node scripts/attachment-access/audit-org-source.mjs . "$RUNNER_TEMP/organization-source-inventory.json"
+
+      - name: Retain organization source inventory
+        if: ${{ !cancelled() && steps.organization_inventory.conclusion == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: organization-source-inventory
+          path: ${{ runner.temp }}/organization-source-inventory.json
+          retention-days: 7
+          if-no-files-found: error
+
       # ─── MỘT LƯỢT PHƠI HẾT LỖI ───────────────────────────────────────────
       # Từ đây xuống, mọi bước gate mang điều kiện `!cancelled()` + caidat xanh:
       # một bước đỏ KHÔNG chặn các bước sau chạy nữa. Job vẫn ĐỎ nếu bất kỳ bước
