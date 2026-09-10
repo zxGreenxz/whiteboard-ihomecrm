@@ -34,7 +34,7 @@ BEGIN
     IF actual IS DISTINCT FROM spec.columns THEN
       RAISE EXCEPTION 'Supplement schema mismatch: columns %',spec.name USING ERRCODE='55000';
     END IF;
-    SELECT jsonb_agg(pg_get_constraintdef(oid) ORDER BY pg_get_constraintdef(oid)) INTO actual
+    SELECT jsonb_agg(pg_get_constraintdef(oid) ORDER BY pg_get_constraintdef(oid) COLLATE "C") INTO actual
       FROM pg_constraint WHERE conrelid=relation_id;
     IF actual IS DISTINCT FROM spec.constraints THEN
       RAISE EXCEPTION 'Supplement schema mismatch: constraints %',spec.name USING ERRCODE='55000';
