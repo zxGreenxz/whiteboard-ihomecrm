@@ -49,6 +49,8 @@ describe("reservation settlement RPC DTOs", () => {
   });
   it.each([
     [{ message: "Không có quyền xử lý phiếu cọc này", code: "42501" }, "Bạn chưa đủ quyền thực hiện thao tác này."],
+    [{ message: "Không có quyền xem chứng từ", code: "42501" }, "Bạn chưa đủ quyền thực hiện thao tác này."],
+    [{ message: "Đường dẫn ảnh chứng từ không hợp lệ", code: "22023" }, "Chứng từ hoàn tiền chưa hợp lệ. Hãy tải lại tệp bằng tài khoản đang xử lý trong công ty này (tối đa 10 tệp)."],
     [{ message: "Phiếu cọc đã thay đổi; hãy tải lại trước khi xử lý", code: "40001" }, "Phiếu đã thay đổi. Hãy tải lại trước khi xử lý."],
     [{ message: "Phiếu cọc chưa nhận tiền, đã được dùng hoặc đang ở kỳ khóa; hãy tải lại", details: '["NOT_RECEIVED"]' }, "Phiếu chưa có bằng chứng tiền đã vào quỹ."],
     [{ message: "internal ledger failure", details: '["PERIOD_LOCKED"]' }, "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa."],
