@@ -136,6 +136,119 @@ test('immediate full refund produces no revenue pair and decreases cash only onc
   assert.equal(s.refundState,'PAID');assert.equal(await f.money(),before-3000000);
 }));
 
+const refundImages = [
+  `https://tryymsxyyckgbrmmvozx.supabase.co/storage/v1/object/public/income-expense-attachments/${actor}/1770000000000-transfer.png`,
+  `https://img.example.test/income-expense-attachments/${actor}/1770000000001-transfer.webp`,
+  `https://tryymsxyyckgbrmmvozx.supabase.co/storage/v1/object/public/income-expense-attachments/${actor}/1770000000002-bank.pdf`,
+];
+
+for (const refund of [1000000, 3000000]) test(`refund evidence persists for immediate ${refund} and replay cannot replace it`, async () => fixture(async f => {
+  const before = await f.money();
+  await f.db.query('SET LOCAL ROLE authenticated');
+  const s = await f.settle(refund, 'NOW', { refundAttachments: refundImages });
+  await f.db.query('RESET ROLE');
+  const read = async () => (await f.db.query('SELECT attachments FROM public.income_expenses WHERE id=$1', [s.refundVoucherId])).rows[0].attachments;
+  assert.deepEqual(await read(), refundImages);
+  assert.equal((await f.settle(refund, 'NOW', { refundAttachments: refundImages })).refundVoucherId, s.refundVoucherId);
+  await f.rejects(() => f.settle(refund, 'NOW', { refundAttachments: [refundImages[0]] }), /nội dung khác/);
+  assert.deepEqual(await read(), refundImages);
+  assert.equal(await f.money(), before - refund);
+  assert.equal((await f.db.query("SELECT count(*)::int n FROM public.reservation_settlement_vouchers WHERE settlement_id=$1 AND kind='REFUND'", [s.id])).rows[0].n, 1);
+}));
+
+test('refund evidence persists for deferred payment and changed evidence cannot reuse its key', async () => fixture(async f => {
+  const s = await f.settle(1000000, 'LATER');
+  const input = { settlementId: s.id, accountId: f.scope.account, paidOn: f.today, idempotencyKey: 'evidence-pay-' + f.id, refundAttachments: refundImages };
+  const before = await f.money();
+  const paid = await f.rpc('pay_reservation_refund_v1', input);
+  assert.deepEqual((await f.db.query('SELECT attachments FROM public.income_expenses WHERE id=$1', [paid.refundVoucherId])).rows[0].attachments, refundImages);
+  assert.equal((await f.rpc('pay_reservation_refund_v1', input)).refundVoucherId, paid.refundVoucherId);
+  await f.rejects(() => f.rpc('pay_reservation_refund_v1', { ...input, refundAttachments: [] }), /nội dung khác/);
+  await f.rejects(() => f.rpc('pay_reservation_refund_v1', { ...input, idempotencyKey: 'invalid-paid-' + f.id, refundAttachments: null }), /chứng từ/i);
+  assert.equal((await f.db.query('SELECT count(*)::int n FROM app_private.reservation_refund_operations WHERE settlement_id=$1', [s.id])).rows[0].n, 1);
+  assert.equal(await f.money(), before - 1000000);
+}));
+
+test('refund evidence is optional for both old clients and explicit empty arrays', async () => fixture(async f => {
+  const s = await f.settle(1000000, 'LATER', { refundAttachments: [] });
+  const paid = await f.rpc('pay_reservation_refund_v1', { settlementId: s.id, accountId: f.scope.account, paidOn: f.today, idempotencyKey: 'empty-pay-' + f.id });
+  assert.deepEqual((await f.db.query('SELECT attachments FROM public.income_expenses WHERE id=$1', [paid.refundVoucherId])).rows[0].attachments, []);
+}));
+
+test('refund evidence is rejected for NONE and LATER without consuming the original receipt', async () => fixture(async f => {
+  const before = await f.money();
+  for (const [amount, mode] of [[0, 'NONE'], [1000000, 'LATER']]) {
+    await f.rejects(() => f.settle(amount, mode, { refundAttachments: refundImages }), /ảnh|chứng từ|đính kèm/i);
+    assert.equal((await f.preview()).canSettle, true);
+  }
+  assert.equal(await f.money(), before);
+}));
+
+const invalidRefundEvidence = [null, 'https://example.test/a.png', {}, [null], [23], [{}], [''],
+  ['javascript:alert(1)'], ['data:image/png;base64,abc'], ['https://example.test/a.png'],
+  [refundImages[0].replace('/' + actor + '/', '/not-a-user/')],
+  [refundImages[0].replace(actor, 'b163f4b1-455d-4ef4-bf18-18bf2d2a5c7f')],
+  [refundImages[0].replace('transfer.png', '../transfer.png')],
+  [refundImages[0].replace('transfer.png', '%2e%2e%2ftransfer.png')],
+  [refundImages[0].replace('transfer.png', 'transfer.svg')],
+  [refundImages[0].replace('transfer.png', 'a'.repeat(2048) + '.png')],
+  Array.from({ length: 11 }, () => refundImages[0])];
+
+test('refund evidence malformed type, unsafe reference and oversized input roll back NOW completely', async () => fixture(async f => {
+  const before = await f.money();
+  for (const refundAttachments of invalidRefundEvidence) {
+    await f.rejects(() => f.settle(1000000, 'NOW', { refundAttachments }), /ảnh|chứng từ|đính kèm/i);
+    assert.equal((await f.preview()).canSettle, true);
+  }
+  assert.equal(await f.money(), before);
+  assert.equal((await f.db.query('SELECT count(*)::int n FROM public.reservation_deposit_settlements WHERE source_voucher_id=$1', [f.id])).rows[0].n, 0);
+}));
+
+test('refund evidence invalid input leaves deferred debt unpaid with no refund operation', async () => fixture(async f => {
+  const s = await f.settle(1000000, 'LATER');
+  const before = await f.money();
+  for (const refundAttachments of invalidRefundEvidence) {
+    await f.rejects(() => f.rpc('pay_reservation_refund_v1', { settlementId: s.id, accountId: f.scope.account, paidOn: f.today, idempotencyKey: 'invalid-pay-' + f.id, refundAttachments }), /ảnh|chứng từ|đính kèm/i);
+  }
+  assert.equal(await f.money(), before);
+  assert.equal((await f.db.query('SELECT count(*)::int n FROM app_private.reservation_refund_operations WHERE settlement_id=$1', [s.id])).rows[0].n, 0);
+  assert.equal((await f.list('PENDING')).rows[0].refundRemaining, 1000000);
+}));
+
+test('refund evidence cannot reuse an uploaded reference already linked to another organization', async () => fixture(async f => {
+  await f.db.query('INSERT INTO app_private.storage_object_links(bucket_id,object_name,organization_id,owner_user_id,derivation) VALUES($1,$2,$3,$4,$5)',
+    ['income-expense-attachments', actor + '/1770000000000-transfer.png', 'cccc0000-0000-4000-8000-000000000001', actor, 'FINANCE_V2_EVIDENCE']);
+  await f.rejects(() => f.settle(1000000, 'NOW', { refundAttachments: [refundImages[0]] }), /chứng từ.*tổ chức/i);
+  assert.equal((await f.preview()).canSettle, true);
+}));
+
+test('refund evidence write failure rolls back the refund posting and its whole immediate settlement', async () => fixture(async f => {
+  const before = await f.money();
+  await f.db.query("CREATE FUNCTION pg_temp.reject_refund_evidence() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Local evidence write failure'; END $$");
+  await f.db.query("CREATE TRIGGER local_refund_evidence_failure BEFORE UPDATE OF attachments ON public.income_expenses FOR EACH ROW WHEN (NEW.system_source='reservation.refund') EXECUTE FUNCTION pg_temp.reject_refund_evidence()");
+  await f.rejects(() => f.settle(1000000, 'NOW', { refundAttachments: refundImages }), /Local evidence write failure/);
+  assert.equal((await f.preview()).canSettle, true);
+  assert.equal(await f.money(), before);
+  assert.equal((await f.db.query('SELECT count(*)::int n FROM public.reservation_deposit_settlements WHERE source_voucher_id=$1', [f.id])).rows[0].n, 0);
+}));
+
+test('refund evidence accepts ten uploaded images and all new voucher creators use the current actor', async () => fixture(async f => {
+  // The source creator is deliberately different from the processor.
+  const sourceActor = 'b163f4b1-455d-4ef4-bf18-18bf2d2a5c7f';
+  await f.db.query('SET LOCAL session_replication_role=replica');
+  await f.db.query("UPDATE public.income_expenses SET user_id=$2,creator_name='Original creator' WHERE id=$1", [f.id, sourceActor]);
+  await f.db.query("UPDATE public.profiles SET full_name='Settlement processor' WHERE id=$1", [actor]);
+  await f.db.query('SET LOCAL session_replication_role=origin');
+  const attachments = Array.from({ length: 10 }, (_, i) => refundImages[0].replace('transfer.png', `transfer-${i}.png`));
+  const s = await f.settle(1000000, 'NOW', { refundAttachments: attachments });
+  const rows = (await f.db.query('SELECT id,user_id,creator_name,attachments FROM public.income_expenses WHERE id=ANY($1::uuid[])', [[f.id, s.refundVoucherId, s.revenueVoucherId, s.offsetVoucherId]])).rows;
+  assert.equal(rows.find(r => r.id === f.id).creator_name, 'Original creator');
+  assert.equal(rows.find(r => r.id === f.id).user_id, sourceActor);
+  for (const r of rows.filter(r => r.id !== f.id)) { assert.equal(r.user_id, actor); assert.equal(r.creator_name, 'Settlement processor'); }
+  assert.deepEqual(rows.find(r => r.id === s.refundVoucherId).attachments, attachments);
+  assert.ok(rows.filter(r => [s.revenueVoucherId, s.offsetVoucherId].includes(r.id)).every(r => !r.attachments?.length));
+}));
+
 test('mixed receipt uses only deposit items', async () => fixture(async f => {
   assert.equal((await f.preview()).depositAmount,3000000);
   assert.equal((await f.settle()).retainedAmount,3000000);
