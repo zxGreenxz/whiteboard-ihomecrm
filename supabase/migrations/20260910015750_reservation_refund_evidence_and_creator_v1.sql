@@ -23,9 +23,10 @@ BEGIN
     END IF;
     ref:=item #>> '{}';
     -- AttachmentUpload emits UUID user folder + sanitized flat filename. Accept
-    -- current Supabase public references and equivalent R2 bucket references.
+    -- current Supabase references. This bucket has not migrated to R2; binding
+    -- requires its real storage.objects row and never trusts a fabricated URL.
     -- No query, fragment, URL credentials, encoded traversal, script or data URL.
-    IF length(ref)>2048 OR ref !~* '^https://[A-Za-z0-9][A-Za-z0-9.-]*/(storage/v1/object/public/)?income-expense-attachments/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[A-Za-z0-9_.-]+[.](jpg|jpeg|png|webp|pdf)$'
+    IF length(ref)>2048 OR ref !~* '^https://[A-Za-z0-9][A-Za-z0-9.-]*/storage/v1/object/public/income-expense-attachments/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[A-Za-z0-9_.-]+[.](jpg|jpeg|png|webp|pdf)$'
       OR ref LIKE '%..%' THEN
       RAISE EXCEPTION 'Đường dẫn ảnh chứng từ không hợp lệ' USING ERRCODE='22023';
     END IF;
@@ -42,6 +43,51 @@ BEGIN
   RETURN result;
 END $$;
 REVOKE ALL ON FUNCTION app_private.reservation_refund_attachments_v1(jsonb,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
+-- Bind real uploaded proof to the refund organization. A multi-org uploader's
+-- storage trigger creates a quarantined NULL-org link; attachment JSON alone
+-- does not make that private object readable by the organization's other staff.
+CREATE OR REPLACE FUNCTION app_private.reservation_bind_refund_evidence_v1(p_settlement uuid,p_voucher uuid)
+RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
+DECLARE s public.reservation_deposit_settlements; evidence jsonb; object_path text; stored storage.objects;
+BEGIN
+  SELECT * INTO s FROM public.reservation_deposit_settlements WHERE id=p_settlement;
+  IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM app_private.reservation_settlement_write_tokens
+    WHERE settlement_id=s.id AND xid=pg_current_xact_id()) THEN
+    RAISE EXCEPTION 'Thiếu quyền ghi chứng từ hoàn cọc' USING ERRCODE='42501';
+  END IF;
+  SELECT v.attachments INTO evidence FROM public.income_expenses v
+    JOIN public.reservation_settlement_vouchers l ON l.voucher_id=v.id
+    WHERE v.id=p_voucher AND v.organization_id=s.organization_id
+      AND l.settlement_id=s.id AND l.kind='REFUND';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Phiếu chứng từ hoàn cọc không hợp lệ' USING ERRCODE='22023'; END IF;
+  -- Consistent object order prevents overlapping multi-image payments taking
+  -- the same storage/link locks in opposite order.
+  FOR object_path IN SELECT DISTINCT split_part(value,'/income-expense-attachments/',2)
+    FROM jsonb_array_elements_text(evidence) ORDER BY 1
+  LOOP
+    SELECT * INTO stored FROM storage.objects
+      WHERE bucket_id='income-expense-attachments' AND name=object_path FOR UPDATE;
+    IF NOT FOUND OR COALESCE(stored.owner_id,stored.owner::text) IS DISTINCT FROM auth.uid()::text
+      OR stored.archived_at IS NOT NULL OR stored.is_delete_marker THEN
+      RAISE EXCEPTION 'Chứng từ phải là tệp đã tải lên còn tồn tại của bạn' USING ERRCODE='22023';
+    END IF;
+    INSERT INTO app_private.storage_object_links AS link
+      (bucket_id,object_name,organization_id,owner_user_id,derivation)
+    VALUES('income-expense-attachments',object_path,s.organization_id,auth.uid(),'RESERVATION_REFUND')
+    ON CONFLICT(bucket_id,object_name) DO UPDATE
+      SET organization_id=EXCLUDED.organization_id,derivation=EXCLUDED.derivation
+      WHERE link.organization_id IS NULL AND link.owner_user_id=auth.uid();
+    -- Existing same-org links stay intact; a conflict can never transfer a
+    -- different org's proof, even if its link changed after initial validation.
+    IF NOT EXISTS(SELECT 1 FROM app_private.storage_object_links l
+      WHERE l.bucket_id='income-expense-attachments' AND l.object_name=object_path
+        AND l.organization_id=s.organization_id) THEN
+      RAISE EXCEPTION 'Chứng từ không thuộc tổ chức của phiếu hoàn cọc' USING ERRCODE='22023';
+    END IF;
+  END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION app_private.reservation_bind_refund_evidence_v1(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
 
 CREATE OR REPLACE FUNCTION app_private.reservation_create_leg_v1(p_settlement uuid,p_kind text,p_voucher uuid,p_account uuid,p_day date,p_amount numeric)
 RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
@@ -168,6 +214,7 @@ BEGIN
   IF mode='NOW' THEN
     refund_vid:=app_private.reservation_pay_refund_v1(sid,(p_input->>'refundAccountId')::uuid,public.org_today_v1(v.organization_id));
     UPDATE public.income_expenses SET attachments=to_jsonb(refund_attachments) WHERE id=refund_vid;
+    PERFORM app_private.reservation_bind_refund_evidence_v1(sid,refund_vid);
   END IF;
   -- A hold without an exact source link remains intact and is reported to the user.
   IF app_private.reservation_room_blockers_v1(v.room_id)='[]'::jsonb THEN
@@ -212,6 +259,7 @@ BEGIN
   INSERT INTO app_private.reservation_settlement_write_tokens(settlement_id,xid) VALUES(s.id,pg_current_xact_id());
   vid:=app_private.reservation_pay_refund_v1(s.id,aid,(p_input->>'paidOn')::date);
   UPDATE public.income_expenses SET attachments=to_jsonb(refund_attachments) WHERE id=vid;
+  PERFORM app_private.reservation_bind_refund_evidence_v1(s.id,vid);
   INSERT INTO app_private.reservation_refund_operations(settlement_id,idempotency_key,request_hash,refund_voucher_id)
     VALUES(s.id,key,request_hash,vid);
   PERFORM app_private.reservation_settlement_assert_v1(s.id);

@@ -86,11 +86,32 @@ async function fixture(run, { amount = 3000000, other = 0, posted = true, connec
       await db.query('SET LOCAL session_replication_role=origin');
       return {contract:{room_id:scope.room,start_date:today,end_date:today,rent_price:3000000,total_deposit:3000000},customers:[{customer_id:customer,is_representative:true}],existing_deposit_voucher_ids:[id]};
     };
+    const uploadEvidence = async (refs, uploader=actor) => {
+      await db.query("INSERT INTO storage.buckets(id,name,public) VALUES('income-expense-attachments','income-expense-attachments',false) ON CONFLICT(id) DO NOTHING");
+      for (const ref of refs) {
+        const objectName = ref.split('/income-expense-attachments/')[1];
+        const mime = objectName.endsWith('.pdf') ? 'application/pdf' : objectName.endsWith('.webp') ? 'image/webp' : 'image/png';
+        await db.query('INSERT INTO storage.objects(bucket_id,name,owner,owner_id,metadata) VALUES($1,$2,$3::uuid,($3::uuid)::text,$4)',
+          ['income-expense-attachments', objectName, uploader, { size: 256, mimetype: mime }]);
+      }
+    };
+    const storageReadAs = async (userId, ref) => {
+      await db.query('SAVEPOINT storage_reader');
+      await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)", [userId]);
+      await db.query('SET LOCAL ROLE authenticated');
+      try {
+        const objectName = ref.split('/income-expense-attachments/')[1];
+        const { rows: [read] } = await db.query('SELECT public.is_super_admin() AS super_admin, EXISTS(SELECT 1 FROM storage.objects WHERE bucket_id=$1 AND name=$2) AS visible', ['income-expense-attachments', objectName]);
+        return read;
+      } finally {
+        await db.query('ROLLBACK TO SAVEPOINT storage_reader');
+      }
+    };
     if(commitFixture) {
       await db.query('COMMIT');
       await db.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[actor]);
     }
-    await run({db,id,depType,postId,scope,today,rpc,preview,settle,money,rejects,summary,list,prepareContract,connectionString});
+    await run({db,id,depType,postId,scope,today,rpc,preview,settle,money,rejects,summary,list,prepareContract,uploadEvidence,storageReadAs,connectionString});
     // Exercise deferred linkage constraints; ordinary expected-error tests can leave the
     // transaction aborted and are rolled back below without claiming a successful commit.
     if(!commitFixture) {
@@ -138,12 +159,13 @@ test('immediate full refund produces no revenue pair and decreases cash only onc
 
 const refundImages = [
   `https://tryymsxyyckgbrmmvozx.supabase.co/storage/v1/object/public/income-expense-attachments/${actor}/1770000000000-transfer.png`,
-  `https://img.example.test/income-expense-attachments/${actor}/1770000000001-transfer.webp`,
+  `https://tryymsxyyckgbrmmvozx.supabase.co/storage/v1/object/public/income-expense-attachments/${actor}/1770000000001-transfer.webp`,
   `https://tryymsxyyckgbrmmvozx.supabase.co/storage/v1/object/public/income-expense-attachments/${actor}/1770000000002-bank.pdf`,
 ];
 
 for (const refund of [1000000, 3000000]) test(`refund evidence persists for immediate ${refund} and replay cannot replace it`, async () => fixture(async f => {
   const before = await f.money();
+  await f.uploadEvidence(refundImages);
   await f.db.query('SET LOCAL ROLE authenticated');
   const s = await f.settle(refund, 'NOW', { refundAttachments: refundImages });
   await f.db.query('RESET ROLE');
@@ -157,6 +179,7 @@ for (const refund of [1000000, 3000000]) test(`refund evidence persists for imme
 }));
 
 test('refund evidence persists for deferred payment and changed evidence cannot reuse its key', async () => fixture(async f => {
+  await f.uploadEvidence(refundImages);
   const s = await f.settle(1000000, 'LATER');
   const input = { settlementId: s.id, accountId: f.scope.account, paidOn: f.today, idempotencyKey: 'evidence-pay-' + f.id, refundAttachments: refundImages };
   const before = await f.money();
@@ -223,6 +246,7 @@ test('refund evidence cannot reuse an uploaded reference already linked to anoth
 }));
 
 test('refund evidence write failure rolls back the refund posting and its whole immediate settlement', async () => fixture(async f => {
+  await f.uploadEvidence(refundImages);
   const before = await f.money();
   await f.db.query("CREATE FUNCTION pg_temp.reject_refund_evidence() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Local evidence write failure'; END $$");
   await f.db.query("CREATE TRIGGER local_refund_evidence_failure BEFORE UPDATE OF attachments ON public.income_expenses FOR EACH ROW WHEN (NEW.system_source='reservation.refund') EXECUTE FUNCTION pg_temp.reject_refund_evidence()");
@@ -240,6 +264,7 @@ test('refund evidence accepts ten uploaded images and all new voucher creators u
   await f.db.query("UPDATE public.profiles SET full_name='Settlement processor' WHERE id=$1", [actor]);
   await f.db.query('SET LOCAL session_replication_role=origin');
   const attachments = Array.from({ length: 10 }, (_, i) => refundImages[0].replace('transfer.png', `transfer-${i}.png`));
+  await f.uploadEvidence(attachments);
   const s = await f.settle(1000000, 'NOW', { refundAttachments: attachments });
   const rows = (await f.db.query('SELECT id,user_id,creator_name,attachments FROM public.income_expenses WHERE id=ANY($1::uuid[])', [[f.id, s.refundVoucherId, s.revenueVoucherId, s.offsetVoucherId]])).rows;
   assert.equal(rows.find(r => r.id === f.id).creator_name, 'Original creator');
@@ -247,6 +272,76 @@ test('refund evidence accepts ten uploaded images and all new voucher creators u
   for (const r of rows.filter(r => r.id !== f.id)) { assert.equal(r.user_id, actor); assert.equal(r.creator_name, 'Settlement processor'); }
   assert.deepEqual(rows.find(r => r.id === s.refundVoucherId).attachments, attachments);
   assert.ok(rows.filter(r => [s.revenueVoucherId, s.offsetVoucherId].includes(r.id)).every(r => !r.attachments?.length));
+}));
+
+for (const mode of ['NOW', 'LATER']) test(`refund storage scope binds quarantined proof for another staff member (${mode}) and denies a different org`, async () => fixture(async f => {
+  const staff = 'b163f4b1-455d-4ef4-bf18-18bf2d2a5c7f';
+  const outsider = '9a803710-c530-4a2e-9fb8-373b07ae4f03';
+  await f.db.query('SET LOCAL session_replication_role=replica');
+  await f.db.query("INSERT INTO public.organization_memberships SELECT (jsonb_populate_record(NULL::public.organization_memberships,to_jsonb(m)||jsonb_build_object('id',gen_random_uuid(),'organization_id','cccc0000-0000-4000-8000-000000000001'))).* FROM public.organization_memberships m WHERE m.id=$1",[f.scope.membership]);
+  await f.db.query("UPDATE public.organization_memberships SET organization_id='cccc0000-0000-4000-8000-000000000001' WHERE user_id=$1",[outsider]);
+  await f.db.query('SET LOCAL session_replication_role=origin');
+  await f.uploadEvidence([refundImages[0]]);
+  const objectName = refundImages[0].split('/income-expense-attachments/')[1];
+  assert.equal((await f.db.query('SELECT organization_id FROM app_private.storage_object_links WHERE bucket_id=$1 AND object_name=$2',['income-expense-attachments',objectName])).rows[0].organization_id,null);
+  assert.deepEqual(await f.storageReadAs(staff,refundImages[0]),{super_admin:false,visible:false});
+  let s=await f.settle(1000000,mode,{refundAttachments:mode==='NOW'?[refundImages[0]]:[]});
+  if(mode==='LATER')s=await f.rpc('pay_reservation_refund_v1',{settlementId:s.id,accountId:f.scope.account,paidOn:f.today,idempotencyKey:'scope-pay-'+f.id,refundAttachments:[refundImages[0]]});
+  assert.deepEqual(await f.storageReadAs(staff,refundImages[0]),{super_admin:false,visible:true});
+  assert.deepEqual(await f.storageReadAs(outsider,refundImages[0]),{super_admin:false,visible:false});
+  assert.equal((await f.db.query('SELECT organization_id FROM app_private.storage_object_links WHERE bucket_id=$1 AND object_name=$2',['income-expense-attachments',objectName])).rows[0].organization_id,org);
+}));
+
+test('refund storage scope rejects a missing object and spoofed upload owner without settling', async () => fixture(async f => {
+  await f.rejects(()=>f.settle(1000000,'NOW',{refundAttachments:[refundImages[0]]}),/chứng từ|tệp/i);
+  assert.equal((await f.preview()).canSettle,true);
+  await f.uploadEvidence([refundImages[0]],'b163f4b1-455d-4ef4-bf18-18bf2d2a5c7f');
+  await f.rejects(()=>f.settle(1000000,'NOW',{refundAttachments:[refundImages[0]]}),/chứng từ|tệp/i);
+  assert.equal((await f.preview()).canSettle,true);
+}));
+
+test('refund storage scope changes roll back when a later proof is missing', async () => fixture(async f => {
+  await f.uploadEvidence([refundImages[0]]);
+  const objectName=refundImages[0].split('/income-expense-attachments/')[1];
+  await f.db.query('UPDATE app_private.storage_object_links SET organization_id=NULL WHERE bucket_id=$1 AND object_name=$2',['income-expense-attachments',objectName]);
+  const before=await f.money();
+  await f.rejects(()=>f.settle(1000000,'NOW',{refundAttachments:[refundImages[0],refundImages[2]]}),/chứng từ|tệp/i);
+  assert.equal((await f.db.query('SELECT organization_id FROM app_private.storage_object_links WHERE bucket_id=$1 AND object_name=$2',['income-expense-attachments',objectName])).rows[0].organization_id,null);
+  assert.equal(await f.money(),before);
+  assert.equal((await f.preview()).canSettle,true);
+}));
+
+test('refund storage scope cannot steal a link bound to another org after initial validation', async () => fixture(async f => {
+  await f.uploadEvidence([refundImages[0]]);
+  await f.db.query("CREATE FUNCTION pg_temp.change_proof_scope() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN UPDATE app_private.storage_object_links SET organization_id='cccc0000-0000-4000-8000-000000000001' WHERE bucket_id='income-expense-attachments' AND object_name=split_part(NEW.attachments->>0,'/income-expense-attachments/',2); RETURN NEW; END $$");
+  await f.db.query("CREATE TRIGGER local_change_proof_scope BEFORE UPDATE OF attachments ON public.income_expenses FOR EACH ROW WHEN (NEW.system_source='reservation.refund') EXECUTE FUNCTION pg_temp.change_proof_scope()");
+  const before=await f.money();
+  await f.rejects(()=>f.settle(1000000,'NOW',{refundAttachments:[refundImages[0]]}),/chứng từ.*tổ chức/i);
+  assert.equal(await f.money(),before);
+  assert.equal((await f.preview()).canSettle,true);
+}));
+
+for(const mode of ['NOW','LATER']) test(`refund storage scope retry from another authorized actor keeps the original proof and creator (${mode})`, async () => fixture(async f=>{
+  await f.uploadEvidence([refundImages[0]]);
+  const attachments=[refundImages[0]];
+  let s=await f.settle(1000000,mode,{refundAttachments:mode==='NOW'?attachments:[]});
+  const input={settlementId:s.id,accountId:f.scope.account,paidOn:f.today,idempotencyKey:'actor-pay-'+f.id,refundAttachments:attachments};
+  if(mode==='LATER')s=await f.rpc('pay_reservation_refund_v1',input);
+  const original=(await f.db.query('SELECT user_id,creator_name,attachments FROM public.income_expenses WHERE id=$1',[s.refundVoucherId])).rows[0];
+  const link=(await f.db.query('SELECT * FROM app_private.storage_object_links WHERE bucket_id=$1 AND object_name=$2',['income-expense-attachments',refundImages[0].split('/income-expense-attachments/')[1]])).rows[0];
+  const second='b163f4b1-455d-4ef4-bf18-18bf2d2a5c7f';
+  const secondMember=(await f.db.query('SELECT id FROM public.organization_memberships WHERE user_id=$1 AND organization_id=$2',[second,org])).rows[0].id;
+  await f.db.query('SET LOCAL session_replication_role=replica');
+  await f.db.query('UPDATE public.role_bindings SET membership_id=$1 WHERE membership_id=$2 AND organization_id=$3',[secondMember,f.scope.membership,org]);
+  await f.db.query("UPDATE public.cashbook_possession_bindings SET membership_id=$1 WHERE membership_id=$2 AND cashbook_id=$3 AND possession_kind='CUSTODIAN'",[secondMember,f.scope.membership,f.scope.account]);
+  await f.db.query('SET LOCAL session_replication_role=origin');
+  await f.db.query("SELECT set_config('request.jwt.claim.sub',$1,true)",[second]);
+  await f.db.query('SET LOCAL ROLE authenticated');
+  const retry=mode==='NOW'?await f.settle(1000000,'NOW',{refundAttachments:attachments}):await f.rpc('pay_reservation_refund_v1',input);
+  await f.db.query('RESET ROLE');
+  assert.equal(retry.refundVoucherId,s.refundVoucherId);
+  assert.deepEqual((await f.db.query('SELECT user_id,creator_name,attachments FROM public.income_expenses WHERE id=$1',[s.refundVoucherId])).rows[0],original);
+  assert.deepEqual((await f.db.query('SELECT * FROM app_private.storage_object_links WHERE bucket_id=$1 AND object_name=$2',['income-expense-attachments',refundImages[0].split('/income-expense-attachments/')[1]])).rows[0],link);
 }));
 
 test('mixed receipt uses only deposit items', async () => fixture(async f => {
