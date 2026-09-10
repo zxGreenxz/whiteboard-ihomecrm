@@ -40,7 +40,7 @@ describe("locRunsDanhGia", () => {
 });
 
 describe("GitHub evidence readiness", () => {
-  const run = (overrides = {}) => ({ id: 1, name: "CI Gates", head_branch: "main", status: "completed", conclusion: "success", ...overrides });
+  const run = (overrides = {}) => ({ id: 1, name: "CI Gates", path: ".github/workflows/ci-gates.yml", head_branch: "main", status: "completed", conclusion: "success", ...overrides });
   const greenJobs = () => [job("quality-gates", "success", [buoc("test", "success")])];
   const read = (runs, jobs = greenJobs()) => readGateEvidence("owner/repo", "abc123", "test-token", async (path) => {
     if (path === "/repos/owner/repo/actions/runs?head_sha=abc123&per_page=100") {
@@ -99,6 +99,47 @@ describe("GitHub evidence readiness", () => {
     expect(result.jobs).toHaveLength(1);
   });
 
+  it.each([
+    { path: ".github/workflows/external-controls.yml", event: "schedule" },
+    { path: ".github/workflows/org-context-backup.yml", event: "workflow_dispatch" },
+    { head_branch: "feature/pr" },
+    { path: undefined },
+  ])("unrelated successful evidence cannot replace main CI Gates: %j", async (overrides) => {
+    expect((await read([run(overrides)])).verdict.datDieuKien).toBe(false);
+  });
+
+  it("uses canonical workflow path, not its display name", async () => {
+    expect((await read([run({ name: "renamed display label" })])).verdict.datDieuKien).toBe(true);
+  });
+
+  it.each(["success", "skipped"])("a %s run with only skipped jobs proves no gate ran", async (conclusion) => {
+    expect((await read([run({ conclusion })], [job("conditional", "skipped", [])])).verdict.datDieuKien).toBe(false);
+  });
+
+  it("allows conditional skipped jobs alongside executed main CI evidence", async () => {
+    const jobs = [...greenJobs(), job("reconcile-money", "skipped", [])];
+    expect((await read([run()], jobs)).verdict.datDieuKien).toBe(true);
+  });
+
+  it("missing API job status cannot use the legacy helper's implicit completed state", async () => {
+    const jobs = greenJobs();
+    delete jobs[0].status;
+    await expect(read([run()], jobs)).rejects.toThrow(/job.*incomplete/i);
+  });
+
+  it.each([undefined, null, -1, 1.5, "1"])("invalid workflow total_count %s is incomplete evidence", async (total_count) => {
+    await expect(readGateEvidence("owner/repo", "abc123", "test-token", async (path) => {
+      if (path.includes("/jobs?")) throw new Error("Invalid run evidence must be rejected before querying jobs");
+      return { total_count, workflow_runs: [run()] };
+    })).rejects.toThrow("GitHub workflow evidence incomplete");
+  });
+
+  it("missing job total_count is incomplete evidence", async () => {
+    await expect(readGateEvidence("owner/repo", "abc123", "test-token", async (path) =>
+      path.includes("/jobs?") ? { jobs: greenJobs() } : { total_count: 1, workflow_runs: [run()] },
+    )).rejects.toThrow(/incomplete/i);
+  });
+
   const pending = { jobs: [], verdict: { datDieuKien: false, doGate: [], nuot: [], dangChay: ["CI pending"] } };
   const green = { jobs: greenJobs(), verdict: { datDieuKien: true, doGate: [], nuot: [], dangChay: [] } };
   function clock() {
@@ -152,7 +193,7 @@ describe("promotion CLI exit codes", () => {
       if (!url.startsWith('https://api.github.com/')) throw new Error('Unexpected URL');
       const body = url.includes('/jobs?')
         ? ${JSON.stringify({ total_count: jobs.length, jobs })}
-        : { total_count: 1, workflow_runs: [{ id: 1, name: 'CI Gates', head_branch: 'main', status: 'completed', conclusion: 'success' }] };
+        : { total_count: 1, workflow_runs: [{ id: 1, name: 'CI Gates', path: '.github/workflows/ci-gates.yml', head_branch: 'main', status: 'completed', conclusion: 'success' }] };
       return new Response(JSON.stringify(body), { status: ${apiStatus} });
     };`;
     const result = spawnSync(process.execPath, [

@@ -112,29 +112,40 @@ async function goiGitHub(duong, token) {
 /** Read one complete observation. Missing evidence remains pending; API errors throw. */
 export async function readGateEvidence(repo, sha, token, request = goiGitHub) {
   const runs = await request(`/repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`, token);
-  if (!Array.isArray(runs.workflow_runs) || runs.total_count > runs.workflow_runs.length) {
+  if (!Array.isArray(runs.workflow_runs) || !Number.isInteger(runs.total_count) || runs.total_count !== runs.workflow_runs.length) {
     throw new Error('GitHub workflow evidence incomplete');
   }
   const selected = locRunsDanhGia(runs.workflow_runs);
   const jobs = [];
   const pendingRuns = [];
   const failedRuns = [];
+  let hasCompletedMainCi = false;
   if (!selected.length) pendingRuns.push('Chưa có workflow run ngoài nhánh production');
   for (const run of selected) {
     if (run.status !== 'completed') pendingRuns.push(`${run.name} (run ${run.status})`);
     else if (!['success', 'skipped'].includes(run.conclusion)) failedRuns.push(`${run.name} (run ${run.conclusion})`);
     const result = await request(`/repos/${repo}/actions/runs/${run.id}/jobs?per_page=100`, token);
-    if (!Array.isArray(result.jobs) || result.total_count > result.jobs.length) {
+    if (!Array.isArray(result.jobs) || !Number.isInteger(result.total_count) || result.total_count !== result.jobs.length) {
       throw new Error(`GitHub job evidence incomplete for run ${run.id}`);
     }
     if (!result.jobs.length) pendingRuns.push(`${run.name} (chưa có bằng chứng job)`);
     for (const job of result.jobs) {
+      if (!['queued', 'in_progress', 'completed', 'waiting', 'pending', 'requested'].includes(job.status)) {
+        throw new Error(`GitHub job status evidence incomplete for run ${run.id}`);
+      }
       if (job.conclusion === 'success' && !job.steps?.length) {
         pendingRuns.push(`${run.name} / ${job.name} (chưa có bằng chứng bước)`);
       }
     }
+    if (
+      run.path === '.github/workflows/ci-gates.yml' && run.head_branch === 'main' &&
+      run.status === 'completed' && run.conclusion === 'success' &&
+      result.jobs.some((job) => job.status === 'completed' && job.conclusion === 'success' &&
+        job.steps?.some((step) => step.status === 'completed' && step.conclusion === 'success'))
+    ) hasCompletedMainCi = true;
     jobs.push(...result.jobs.map((j) => ({ ...j, name: `${run.name} / ${j.name}` })));
   }
+  if (!hasCompletedMainCi) pendingRuns.push('Chưa có CI Gates trên main hoàn tất với bằng chứng bước đã chạy');
   const verdict = danhGiaJobs(jobs);
   verdict.dangChay.push(...pendingRuns);
   verdict.doGate.push(...failedRuns);
