@@ -2,7 +2,7 @@
   "$comment": "Bản đồ: file test nào do suite nào chạy, bằng runner gì. Vấn đề nó giải: một file test viết ra nhưng KHÔNG nằm trong lệnh nào sẽ im lặng không bao giờ chạy — nhìn vào repo thì thấy 'đã có test', nhìn vào CI thì thấy xanh, mà thực tế không ai kiểm gì. Đó cũng là lý do repo đã có verify-network-center-test-completeness.mjs: test bị SKIP cũng báo pass. File này mở rộng ý đó ra toàn repo. Kiểm: npm run gate:test-matrix",
   "schemaVersion": 1,
   "notes": [
-    "supabase/functions/ có 15 file *.test.ts nhưng CHỈ 2 chạy Deno (network-center-worker và network-watchdog, đều tên index.test.ts). 13 file còn lại chạy Vitest. Vì vậy runner phải gán theo GLOB/FILE, không theo thư mục.",
+    "Runner gán theo includes/command/ciJobs của từng suite, không suy từ thư mục supabase/functions/.",
     "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json."
   ],
   "suites": [

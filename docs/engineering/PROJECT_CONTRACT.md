@@ -1,854 +1,231 @@
-# PROJECT CONTRACT — luật chung cho mọi agent làm việc trên repo này
+# Project Contract — hướng dẫn chung cho agent
 
-> **Status:** current · **Reviewed:** 2026-08-05 · **Áp dụng cho:** Claude Code, Codex, và mọi
-> agent/người khác đụng vào repo.
->
-> `CLAUDE.md` và `AGENTS.md` là **adapter mỏng** (cách gọi tool của từng agent). File này là
-> **nguồn duy nhất** cho invariant. Khi hai bên mâu thuẫn, file này thắng.
->
-> Bối cảnh và lộ trình: `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05.md`.
-> Trạng thái chương trình đang chạy tới đâu: `tooling/program-status.json`.
+Áp dụng cho mọi agent làm việc trong repo. `AGENTS.md` và `CLAUDE.md` chỉ chứa cách dùng tool riêng.
+Đọc file này một lần, rồi đọc mã và hướng dẫn đúng khu vực đang sửa.
+Manifest được liên kết dưới đây sở hữu cấu hình và số liệu; không sao chép chúng thành luật thứ hai.
 
----
+## 1. Dự án và nguồn tra cứu
 
-## 1. Hệ thống này là gì (để hiểu vì sao luật khắt khe)
+iHomeCRM quản lý cho thuê và sổ sách đang vận hành: React/Vite, Supabase, Vercel,
+Cloudflare R2, worker Zalo và Network Center.
 
-Không phải một app React/Supabase đơn giản. Đây là platform đa runtime chạy **sổ sách tiền thật
-của công ty đang vận hành**:
-
-- React/Vite frontend trên Vercel (production: <https://ptcrm.vercel.app>)
-- Supabase PostgreSQL 17.6: 836 migration, ~1000 hàm SECURITY DEFINER, RLS trên mọi bảng public
-- Edge Functions (danh sách sống ở `contracts/surfaces/edge-surface.json`), worker Node,
-  Network Center (worker + Docker + WireGuard + RouterOS), Cloudflare R2/Worker
-- OpenClaw Zalo: **ĐÃ XÓA TOÀN BỘ 30/08/2026** (code + 79 bảng/249 hàm/5 role trên DB + 5 edge
-  function) theo lệnh chủ dự án — dead code chiếm 60% dung lượng DB. 16 migration cũ giữ nguyên
-  (ledger đóng băng). Đường lùi: dump trong `%USERPROFILE%/ihomecrm-backups/`.
-- VitePress user docs + AI Copilot đọc thẳng tài liệu hệ thống
-
-Hệ quả: **một thay đổi đúng ở harness vẫn có thể sai trên production.** Rất nhiều lỗi trong lịch sử
-repo chỉ lộ ra khi đo bằng role thật, HTTP thật, hoặc schema production thật.
-
----
-
-## 2. Ba tổ chức trong cùng một database
-
-| Org | ID | Là gì | Quyền của agent |
-|---|---|---|---|
-| **THẬT** | `aaaa0000-0000-4000-8000-000000000001` | sổ sách thật | **CHỈ ĐỌC** |
-| **DEMO** | `dddd0000-0000-4000-8000-000000000001` | seed tay 2 toà, có nút reset | đọc + ghi (fixture phải tự dọn) |
-| **TEST** | `cccc0000-0000-4000-8000-000000000001` | bản sao dữ liệu công ty thật | đọc + ghi — chỗ thử tính năng mới |
-
-Hai luật không được quên khi viết migration/RPC mới:
-
-1. **Bảng mới có `organization_id` + bật RLS ⇒ PHẢI thêm policy `<bảng>_hide_sandbox_admin`**
-   (khuôn: `supabase/migrations/20260801040000_fix_sandbox_hide_null_org.sql`). Thiếu nó, dữ liệu
-   org TEST lọt vào màn hình chủ nhà và **nhân đôi mọi con số**. Nhớ bọc `COALESCE(…, false)` —
-   `NULL = ANY(...)` trả NULL sẽ giấu nhầm cả dòng `organization_id IS NULL` của công ty thật.
-2. **Hàm SECURITY DEFINER không bị RLS chặn.** Báo cáo lọc toà phải lọc qua
-   `public.can_access_building()` / `accessible_building_ids()` (đã chặn sandbox sẵn). Đừng tự viết
-   `is_super_admin() OR …` — đó chính là lỗ đã làm `fa_occupancy_monthly` trả thừa 12 toà org TEST.
-
-Cửa chặn: `node scripts/clone-org/snapshot.mjs after` phải ra "0/158 bảng rò rỉ" (mẫu số là BIẾN
-theo số bảng thật lúc đo — `0/158` là ví dụ lịch sử; điều bất biến là tử số **0**).
-Đồng bộ lại org TEST: *Cài đặt → Tổ chức → Đồng bộ dữ liệu mới nhất*, hoặc `node scripts/clone-org/clone.mjs`.
-Chi tiết + bẫy đã cắn: `scripts/clone-org/README.md`.
-
----
-
-## 3. Phát hành: `main` KHÔNG phải production
-
-```text
-push main  →  Vercel PREVIEW  →  chạy gate suite
-                 gate xanh hết  →  promote branch `production` + ghi evidence (SHA, gate, fingerprint)
-                 gate đỏ bất kỳ →  DỪNG; production giữ nguyên SHA cũ
-rollback   →  promote lại SHA trước (một lệnh, đã diễn tập)
-```
-
-Vì repo là **private trên GitHub Free**, branch protection không enforce được — ranh giới deploy của
-Vercel là kiểm soát cứng duy nhất. Vì chủ dự án chọn **tự động hoàn toàn**, điểm dừng là **máy**,
-không phải người:
-
-- Agent **được** tự commit, push `main`, và tự promote khi gate xanh. Không cần hỏi.
-- Gate `continue-on-error` **không bao giờ** được tính là xanh khi quyết định promote.
-- Không bao giờ để `push main` trực tiếp thành production deploy.
-
-> ✅ **Đã flip 2026-08-06, và XÁC MINH BẰNG API 2026-08-08.** Vercel project `ihomecrm` (domain
-> `chillhome.io.vn` + `ptcrm.vercel.app`) có Branch Tracking = **`production`**. Với project đó,
-> push `main` chỉ tạo Preview; production chỉ đổi khi có commit lên nhánh `production`.
-> Bằng chứng máy đọc: [`docs/generated/external-controls.json`](../generated/external-controls.json)
-> — trước 08/08 trường này là `unverified` vì chưa ai nạp `VERCEL_TOKEN`.
->
-> ⚠ **Nhưng repo này có HAI project Vercel, không phải một.** Cùng lần đo trên:
->
-> | Project | Deploy từ | |
-> |---|---|---|
-> | `ihomecrm` (app) | `production` | ✅ đúng hợp đồng |
-> | `ptcrm-docs` (VitePress, `docs-site/`) | **`main`** | ⚠ mỗi push `main` là một lần phát hành docs |
->
-> Nên câu "push `main` chỉ tạo Preview" **đúng với app, KHÔNG đúng với docs**. Bản trước của mục này
-> viết như thể chỉ có một project — sai vì thiếu, và không có gì làm nó sai ra tiếng cho tới khi gọi
-> API thật. `check:external-controls` (tên npm script thật — bản trước ghi `gate:external-controls`,
-> một cái tên không tồn tại) hiện **đỏ** vì đúng lý do đó, và nó nên đỏ cho tới khi có người
-> quyết: hoặc đổi `ptcrm-docs` sang `production`, hoặc khai đây là ngoại lệ có chủ đích.
->
-> Promote: `git push origin origin/main:production` **sau khi** gate xanh.
-> Rollback: promote lại deployment trước trên Vercel, hoặc đẩy `production` về SHA cũ.
->
-> **Neo governance này KHÔNG đặt được vào `vercel.json`, và đừng thử.** Plan liệt kê `vercel.json`
-> là chỗ neo deploy/cron/env; đo 08/08/2026 thì không làm được vì hai lý do độc lập: (a) JSON thuần
-> không có comment, (b) Vercel **không** nhận production branch như một khoá của `vercel.json` —
-> đó là setting trên dashboard. Nhét khoá lạ vào file đó là đánh cược cấu hình deploy để đổi lấy
-> một dòng chú thích. Neo thật nằm ở đây, và trạng thái kiểm chứng nằm ở
-> [`docs/generated/external-controls.json`](../generated/external-controls.json) →
-> `controls.vercelProductionBranch` (hiện `unverified` vì chưa nạp `VERCEL_TOKEN` — đó là kiểm soát
-> cứng DUY NHẤT của repo này, nên "unverified" là một khoảng trống có thật, không phải chi tiết nhỏ).
->
-> Vẫn giữ bốn bước dưới đây cho thay đổi **chạm runtime** (`src/`, `api/`, `vite.config.ts`,
-> dependencies) — chúng rẻ và bắt được lỗi mà preview không bắt:
->
-> 1. đủ gate theo loại thay đổi (typecheck + test liên quan + `npm run build`);
-> 2. logic có nhánh điều kiện: **kiểm bằng đột biến** — cố tình phá, xác nhận đúng test đỏ, hoàn nguyên.
->    Test xanh chỉ chứng minh test chạy, không chứng minh nó bắt được lỗi;
-> 3. **kiểm bundle sau build**, không chỉ tin test: Vitest và production build khác nhau ở khoản nạp
->    asset — một `import.meta.glob` hỏng có thể vẫn xanh trong test rồi rơi về rỗng trên production;
-> 4. ưu tiên thay đổi làm hệ thống **nghiêm ngặt hơn** (chặn bớt, gác thêm quyền) trước thay đổi nới lỏng.
-
-### Kiểm soát ngoài repo
-
-```bash
-npm run check:external-controls          # in trạng thái
-node scripts/check-external-controls.mjs --write   # ghi docs/generated/external-controls.json
-```
-
-Ảnh chụp màn hình chứng minh "lúc đó đã bật", **không** chứng minh "bây giờ vẫn bật" — mà chỉ điều thứ
-hai mới giữ production an toàn. Vì vậy bằng chứng phải chạy lại được. `unverified` **không phải pass**:
-thiếu credential nghĩa là chưa nhìn thấy, và chưa nhìn thấy thì coi như chưa an toàn.
-
-Script cố tình **không** exit 1 khi thiếu token — biến nó thành gate đỏ sẽ khiến người ta tắt đi, và khi
-ấy mất luôn khả năng nhìn.
-
-### Runtime
-
-Repo có nhiều ràng buộc Node khác nhau trên các manifest, nên `engines: ">=20"` ở root
-**không** chắc là sàn thật của mọi package con. Tra bảng ở
-`tooling/runtime-matrix.json`, đừng đoán từ root.
-
-```bash
-npm run gate:runtime-matrix   # matrix phải khớp engines + workflow, kiểm CẢ HAI chiều
-```
-
-Đáng nhớ: `infra/network-center-worker` cố ý ở `>=20 <23` (chưa test Node 24), nên CI của nó chạy
-Node 22 — **đừng "sửa" cho khớp `ci-gates`**. Deno pin `2.9.4` ở cả hai workflow.
-
-#### Quyết định: BA Node version là cố ý, không phải cẩu thả
-
-Ba workflow chạy ba con số khác nhau, và mỗi con số bị **ràng buộc từ hai phía**:
-
-| Workflow | Node | Bị ép bởi |
-|---|---|---|
-| `ci-gates.yml` | `24.18.0` | Pin exact giữ vì tính tất định. Nguồn ép lịch sử (OpenClaw, đã xóa 30/08/2026) không còn là ràng buộc SỐNG; hạ version là được PHÉP về kỹ thuật nhưng phải đi qua `gate:runtime-matrix` (sửa cả hai phía) và có lý do |
-| `network-center-validation.yml` | `22` | **Trần thấp nhất**: `infra/network-center-worker` khai `>=20 <23` |
-| `supabase-migrate.yml` | `20` | Không ràng buộc — chỉ chạy validator tĩnh |
-
-> **Bẫy đã sập thật (08/08/2026) — nay là ÁN LỆ, không còn là cưỡng chế sống.** Một agent đọc thấy
-> ba con số khác nhau, kết luận là thiếu nhất quán, và hạ tất cả về `22.20.0`. Lúc đó thay đổi này
-> làm **vỡ `ci-gates`** vì các suite OpenClaw (thời còn trong repo) từ chối chạy dưới 24.18;
-> `gate:runtime-matrix` bắt được ngay. Bài học giữ nguyên giá trị:
-> **con số ở đây là kết quả của ràng buộc, không phải sở thích** — muốn đổi thì đối chiếu
-> `tooling/runtime-matrix.json` trước, sửa cả hai phía, và chứng minh nó chạy được.
-
-`engines` ở root là `>=20` và **không** phải sàn thật của mọi thứ: `tooling/runtime-matrix.json` mới
-là bảng có thẩm quyền, mỗi entry kèm lý do. `gate:runtime-matrix` đối chiếu **cả hai chiều**, nên
-thêm package mới mà quên khai matrix là đỏ ngay (đã có án lệ 08/08/2026).
-
-**Các package con có `node_modules` RIÊNG — phải cài trước khi chạy test của chúng ở máy:**
-
-```bash
-npm ci --prefix infra/network-center-worker
-```
-
-Bỏ bước này thì triệu chứng đánh lừa rất mạnh: vitest không thấy `node_modules` của package
-con nên leo lên `node_modules` ở root và lấy **nhầm phiên bản thư viện**. Cụ thể đã cắn
-06/08/2026 — worker khai `zod@^4` còn root là `zod@3.25.76`, nên `src/apiClient.ts` ném
-`z.uuid is not a function` (v4 dùng `z.uuid()`, v3 dùng `z.string().uuid()`). Nhìn y hệt một
-bug production làm worker không import nổi, thật ra chỉ là thiếu bước cài. CI có bước này sẵn
-(`network-center-validation.yml`) nên chỉ máy dev mới gặp.
-
-### Khoảng trống đã biết
-
-`tooling/known-gaps.yaml` — mỗi mục có `expires_at` và `exit_condition`.
-
-```bash
-npm run gate:known-gaps            # cảnh báo khi quá hạn
-node scripts/check-known-gaps.mjs --strict   # exit 1 khi quá hạn (dùng khi rà định kỳ)
-```
-
-Quá hạn thì **đóng nó hoặc gia hạn kèm lý do mới** — xoá dòng cho yên là cách biến một quyết định có
-thời hạn thành một khoảng trống vĩnh viễn không ai nhớ.
-
-#### Vì sao CI chỉ cảnh báo, không fail khi quá hạn
-
-Plan gốc đòi bật `--strict` trên CI. **Cố ý không làm**, và lý do phải nằm ở đây chứ không phải chỉ
-trong comment của script:
-
-> Một gate đỏ **vì ngày tháng** sẽ bị gia hạn theo nghi thức hoặc bị tắt. Cả hai kết cục đều làm mất
-> tín hiệu — và mất theo cách tệ hơn trạng thái ban đầu, vì sau đó không ai nhìn nữa.
-
-Cơ chế chống mục nát thật không phải màu đỏ của CI, mà là **ba điều kiện dưới đây**:
-
-1. **Số đo trong `why` phải đúng lúc đọc.** Một gap ghi "cũ 488 commit / 18 tiểu hệ vắng" trong khi
-   thực tế là "25 commit / 1 tiểu hệ" thì không còn là cảnh báo — nó là nhiễu. Cập nhật số đo là một
-   phần của việc gia hạn, không phải việc phụ. (Đã xảy ra thật với `ua-graph-stale`, sửa 08/08/2026.)
-2. **Gia hạn phải viết lý do MỚI**, không phải dời ngày. Nếu lý do mới trùng lý do cũ thì đó là dấu
-   hiệu chưa ai làm gì — hãy ghi thẳng điều đó thay vì dời ngày cho đẹp.
-3. **`exit_condition` phải chạy được**, tức là một lệnh có thể gõ và xem exit code, không phải một
-   câu mô tả. Điều kiện không kiểm được thì gap không bao giờ đóng.
-
-Rà định kỳ bằng `node scripts/check-known-gaps.mjs --strict` — đó là chỗ màu đỏ có ích, vì lúc đó
-người chạy đang CHỦ ĐỘNG rà chứ không bị chặn giữa một PR không liên quan.
-
-### Tier rủi ro
-
-`tooling/risk-map.json` map đường dẫn → tier (`money`, `authorization`, `migration`, `infrastructure`,
-`agent-contract`, `product-surface`, `copilot`, `docs`), kèm gate tối thiểu và cờ `crossReview`.
-Một file thuộc nhiều tier thì lấy tier **nghiêm nhất**. File này thay cho `CODEOWNERS` — với một owner
-duy nhất, CODEOWNERS không tạo được reviewer thứ hai và cũng không enforce được trên GitHub Free.
-
-Commit: `feat(scope): …` / `fix(scope): …` / `chore(scope): …`, body bullet "what + why".
-**Stage đúng file mình sửa, liệt kê tên cụ thể — KHÔNG `git add -A`, KHÔNG `git add .`.**
-Cây làm việc repo này thường có file dở dang từ phiên khác; gom nhầm là lỗi nặng.
-Push bằng `git push origin HEAD:main` (nhánh local thường không phải `main`, `git push origin main`
-sẽ đẩy nhầm nhánh cũ); kiểm trước bằng `git merge-base --is-ancestor origin/main HEAD`.
-
-### Làm việc song song — mỗi hạng mục một worktree
-
-Máy này thường chạy nhiều phiên agent cùng lúc. Trước 28/08/2026 tất cả chen chung một checkout:
-gate quét đĩa thấy file WIP của nhau nên đỏ oan, `--fix` ghi số đếm theo cây bẩn chung, và ba commit
-`fix(ci)` liên tiếp trong một ngày (75c22b77 · 91784e62 · c9f3937f) đều là dọn hậu quả của đúng cơ
-chế đó. Năm luật:
-
-1. **Hạng mục độc lập ⇒ `git worktree` riêng, nhánh riêng.**
-   `git worktree add ../<ten-hang-muc> -b <nhanh> origin/main` — không làm hai hạng mục trên cùng
-   một worktree, không làm hạng mục dài hơi ngay trên checkout chính.
-2. **Gộp về main theo bốn bước.** `git fetch` rồi rebase lên `origin/main` → conflict ở file NGUỒN:
-   giải tay như thường → conflict ở file MÁY-SINH (`types.ts`, `contracts/surfaces/`,
-   `docs/generated/`, `migration-provenance.json`, số đếm trong docs): KHÔNG giải tay —
-   lấy bản của main rồi chạy lại generator (`npm run gate:truoc-push` tự sinh và tự stage
-   phần máy sở hữu) → gate xanh → `git push origin HEAD:main`.
-3. **Timestamp migration cấp bằng `node scripts/tao-ten-migration.mjs <slug>`** — UTC đến giây
-   thật, tự kiểm trùng với index, đĩa và MỌI worktree khác trên máy. Cấm chọn tay mốc tròn: cả hai
-   cặp miễn trừ trùng version trong `migration-policy.json` đều do hai phiên song song cùng chọn
-   `…120000`. Migration mới phải `git add` TRƯỚC khi chạy `npm run provenance:generate` —
-   generator liệt kê từ index, file chưa add không vào manifest.
-4. **`gate:truoc-push` tự tuần tự hoá** bằng lock trong git-dir của từng worktree
-   (`gate-truoc-push.lock`). Gặp "phiên khác đang chạy" thì chờ; script tự coi lock có pid chết
-   hoặc quá 20 phút là stale — đừng xoá tay khi chưa chắc.
-5. **Gate local đọc phạm vi INDEX ∪ tracked.** Vi phạm nằm trong file untracked (WIP — thường của
-   phiên khác) chỉ là cảnh báo ⚠ ở local và thành lỗi cứng ngay khi file được stage, luôn cứng trên
-   CI. Hệ quả: ⚠ trên file CỦA MÌNH không phải thứ bỏ qua được — nó là lỗi tương lai đã điểm tên.
-
----
-
-## 4. Ghi vào production database
-
-Đây là ranh giới **khác** với deploy web. Deploy web sai thì rollback được; migration sai thì không.
-
-- Mọi write production qua Management API / apply migration **phải có giấy phép**. KHÔNG dùng thẳng
-  PAT sẵn trong `CLAUDE.local.md` cho đường ghi production.
-  **Đổi 07/08/2026 theo yêu cầu chủ dự án — lane tự chạy được, không cần người gõ token mỗi lần:**
-  - *Biên nhận backup* (mặc định): `npm run migrate:forward … --apply` tự chạy backup, tự kiểm bản
-    dump đủ tư cách làm đường lùi (không phải chỉ-schema, không bỏ dữ liệu bảng nào, ≥450 bảng có
-    dữ liệu), rồi tự phát biên nhận buộc migration vào đúng bản dump đó.
-  - *`IHOMECRM_PROMOTION_TOKEN`*: **bắt buộc** khi dùng `--khong-backup`. Đường tự động và đường bỏ
-    backup KHÔNG dùng chung được.
-
-  Vì sao đổi được: token cũ gộp "có người dừng lại nhìn" với "có điểm khôi phục nếu hỏng". Với PITR
-  TẮT, chỉ thứ hai quyết định thiệt hại — và con người gõ token chưa bao giờ tạo ra bản dump đó.
-  Thứ THẬT SỰ mất: không còn ai xem lại **nội dung** migration trước khi nó chạm production; ba lớp
-  còn lại kiểm xuất xứ, không kiểm ý định.
-- Preflight bắt buộc: đúng project/org/environment, working tree sạch (xét trong **worktree đang
-  thao tác** — worktree khác bẩn không liên quan, xem §3 mục song song), reviewed SHA.
-- Ghi evidence: statement bytes, normalized digest, catalog fingerprint trước/sau, actor.
-- Fail closed khi provenance state / reviewed SHA / precondition catalog lạ.
-- **Không rollback tự động destructive** — forward fix riêng.
-
-### Backup trước mỗi thao tác schema — BẮT BUỘC
-
-**PITR đang TẮT và sẽ giữ nguyên như vậy** (quyết định 2026-08-06: add-on tính phí riêng, chủ dự án
-chọn phương án miễn phí). Chỉ có backup vật lý hằng ngày ⇒ **RPO tối đa ~24 giờ**.
-
-```bash
-node scripts/backup-before-schema.mjs --reason "apply migration 2026xxxx_abc"
-```
-
-Chạy **trước** mọi migration, backfill, hay apply rollout. Script bắt buộc có `--reason` vì sáu tháng
-nữa đó là thứ duy nhất cho biết bản dump thuộc về thao tác nào. Mặc định ghi ra
-`%USERPROFILE%/ihomecrm-backups` — **ngoài repo**, để một bản sao sổ sách tiền thật không bao giờ lọt
-vào git. Kèm manifest `.json` có sha256, thời lượng và gợi ý restore.
-
-Đã đo 2026-08-06: **21 MB, 306 giây** (database 226 MB).
-
-**Điều phải biết TRƯỚC khi khẩn cấp** — đã diễn tập restore thật:
-
-- Restore vào **Postgres trần** báo ~4200 lỗi, gần như toàn bộ là `role "authenticated" does not exist`
-  (644 lần) cùng các role riêng của Supabase. **Đây là bình thường**, đừng hoảng: bảng, hàm và
-  **dữ liệu vẫn vào đủ** (đo được 399 bảng, 1408 hàm, `invoices` 2290 dòng, `income_expenses` 5374 dòng).
-- Nhưng **RLS policy KHÔNG vào hết** (323/1231) vì policy tham chiếu role không tồn tại.
-  ⇒ Muốn khôi phục **đầy đủ kể cả RLS**, target phải là một **Supabase project** (đã có sẵn role), không
-  phải Postgres cài trần.
-
-> ⚠ Dump thủ công chỉ che được thao tác **có kế hoạch**. Sự cố đến từ code chạy hằng ngày vẫn có đường
-> lùi tối đa 24 giờ — đó là cái giá của việc không bật PITR, và nó chưa được giải quyết.
-
----
-
-## 5. Migration
-
-- Migration mới: **timestamp 14 chữ số duy nhất**, đặt trong `supabase/migrations/`, immutable sau
-  khi merge. Không sửa file lịch sử đã deploy.
-- Luật cutoff và forward-only nằm ở `supabase/migration-policy.json`; trạng thái từng file ở
-  `supabase/migration-provenance.json` (sinh bằng máy). Apply qua `npm run migrate:forward` —
-  dry-run là mặc định, `--apply` đòi giấy phép (biên nhận backup tự phát, hoặc promotion token khi
-  `--khong-backup`). Gate: `npm run gate:migration-provenance`.
-- **Legacy history KHÔNG replay được** — đừng tin `supabase db push` hay `supabase start`:
-  836 file có 38 nhóm trùng version (81 file) + bộ legacy `001_`–`033_` còn collision nội bộ
-  (`016_` ×4, `017_` ×2); ledger `supabase_migrations.schema_migrations` đã tụt lại sau production.
-- `supabase/migrations-archive/` **TUYỆT ĐỐI KHÔNG replay** (1 file superseded + `migrations-bundle/`
-  14 file `*_apply_*.sql` hand-apply Apr–May 2026, đã phản ánh trong DB live).
-- Repo apply migration qua Management API (`scripts/apply-sql.mjs`, `scripts/apply-accounting-rollout.mjs`),
-  **không** dùng `supabase db push`. CI có guard cấm auto-apply.
-
-### Listener auth — chỉ code ĐỒNG BỘ
-
-`src/app/providers/AuthCacheSync.tsx` là listener auth duy nhất giữ cache
-`['auth','user']` / `['auth','session']` tươi.
-
-**Tuyệt đối không `await supabase.*` trong callback đó** — supabase-js giữ lock nội bộ khi dispatch
-sự kiện auth, nên một `await` ở đây gây **deadlock**: app treo im lặng lúc boot, không lỗi nào để lần
-theo. Có test cố định điều này (callback phải trả `undefined`, không phải Promise).
-
-Listener đăng ký trong `useEffect` và huỷ khi unmount. Đăng ký muộn không mất `INITIAL_SESSION`:
-supabase-js gọi `_emitInitialSession` riêng cho từng subscriber mới.
-
-### Catalog inventory — số đếm sinh bằng máy
-
-```bash
-npm run catalog:capture   # chụp catalog production -> docs/generated/database-inventory.json
-npm run catalog:check     # exit 1 nếu catalog drift so với file đã commit
-```
-
-Chỉ chạy `SELECT` trên `pg_catalog` — an toàn kể cả khi PITR tắt. Ảnh chụp 2026-08-06 (PostgreSQL 17.6):
-**316 bảng logic** + 82 phân mảnh runtime, 12 view, 1527 hàm (1057 SECURITY DEFINER), 30 enum,
-30 bảng realtime; RLS/security_invoker/search_path đều không có object hở.
-
-**Không chép số này vào tài liệu.** Ba cạm bẫy mà bản cũ của `DATABASE_SCHEMA.md` dính cả ba:
-tổng bảng (398) gồm partition sinh theo ngày nên tự tăng; `pg_proc` (1527) đếm cả overload và hàm
-nội bộ nên không so được với số RPC; số file migration không chứng minh đã deploy.
-
-Fingerprint cố tình **bỏ qua** child partition — nếu tính vào thì nó đổi mỗi ngày, báo động giả sẽ bị
-tắt trong một tuần, và khi ấy thay đổi schema thật cũng không ai thấy.
-
-### Gate bắt buộc theo loại thay đổi
-
-| Thay đổi | Gate |
+| Cần biết | Nguồn |
 |---|---|
-| VIEW | `node scripts/check-view-invoker.mjs` |
-| FUNCTION/RPC | `node scripts/check-stable-fn-locks.mjs` + ACL/owner/search_path |
-| RLS/POLICY | harness role thật + cross-tenant |
-| Đụng tiền | `node scripts/reconcile-money.mjs [YYYY-MM]` + idempotency + concurrency |
-| Bảng mới có `organization_id` | policy `_hide_sandbox_admin` (mục 2) |
-| Đổi schema | `npm run gen:types` (mục 6) |
-| **Deploy Edge Function** | Preflight project ref + org PHẢI khớp đích định deploy; cây làm việc phải SẠCH (trong worktree đang thao tác) |
-| **Deploy Edge Function** | Ghi `reviewed SHA` + digest bundle vào evidence store trước khi deploy |
+| Phạm vi rủi ro, gate tối thiểu, review độc lập | [risk-map.json](../../tooling/risk-map.json) |
+| Phiên bản Node/Deno và package con | [runtime-matrix.json](../../tooling/runtime-matrix.json) |
+| Test nào chạy bằng runner nào, ở job nào | [test-matrix.json](../../tooling/test-matrix.json) |
+| Tên lệnh đang tồn tại | [package.json](../../package.json) |
+| RPC/Edge/realtime và dữ liệu kiểm kê | [surfaces](../../contracts/surfaces/), [generated](../generated/) |
+| Nghiệp vụ đang dùng | [docs/he-thong](../he-thong/README.md) |
 
-**Vì sao deploy Edge Function cần hai dòng riêng.** Migration đi qua lane forward-only nên có sổ
-sách, biên nhận và cửa backup. Edge Function thì **không**: `supabase functions deploy` đẩy thẳng
-thư mục trên đĩa lên project đang trỏ tới, không hỏi gì.
+Không đưa nhật ký sự cố đã đóng hoặc số lượng bảng/test/migration vào hướng dẫn chung.
+Lịch sử nằm trong Git; số đo nằm trong manifest hoặc bằng chứng của lần chạy.
 
-Hai hệ quả cụ thể, không phải giả định:
+## 2. Phạm vi dữ liệu
 
-1. **Đích deploy đến từ trạng thái CLI, không từ repo.** `supabase link` gắn project ref vào
-   `supabase/.temp/`, một thư mục không commit. Ai link nhầm sang project khác thì deploy trót lọt
-   và im lặng — mã của tổ chức này chạy trên database của tổ chức kia. Preflight phải đọc ref+org
-   thật và so với đích định deploy TRƯỚC khi đẩy.
-2. **Không có gì buộc thứ deploy phải là thứ đã review.** Deploy từ cây làm việc bẩn nghĩa là bản
-   đang chạy production không tương ứng commit nào — không diff được, không rollback theo SHA được.
-   Nên: cây sạch, và evidence store ghi lại SHA đã review cùng digest của bundle đã đẩy, để sau này
-   trả lời được câu "bản đang chạy là bản nào".
+Ba tổ chức dùng chung database; org TEST chứa bản sao dữ liệu thật.
 
-**GOTCHA `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true`** → view chạy dưới quyền owner,
-lộ dữ liệu tenant khác. Chạy `check-view-invoker.mjs` sau MỌI migration đụng view.
-
-**GOTCHA hàm STABLE/IMMUTABLE (đã cắn 5 lần):** PostgREST chạy hàm `STABLE`/`IMMUTABLE` trong
-transaction **READ ONLY**, nên bất kỳ `SELECT … FOR SHARE` nào trong thân hàm — hoặc trong hàm nó
-gọi (`authorize_tenant_action_v3`, `lock_org_for_decision_v1`, `_profit_assert_authorized_v2`…) —
-ném `25006`. **Gọi bằng SQL thì XANH, gọi từ trình duyệt thì HỎNG**, nên loại này sống rất lâu mà
-không ai thấy (`profit_close_state_v2` hỏng 10 ngày, kéo sập cả tab "Chốt LN tháng").
-**Hàm nào lấy khoá dòng thì phải khai `VOLATILE`** — an toàn vì `supabase.rpc()` mặc định POST.
-
-**GOTCHA cap-1000:** `reconcile-money.mjs` so SUM SQL thật với tổng 1000 dòng đầu — chạy ở mọi thay
-đổi đụng số tiền.
-
-### `reconcile-money` v1 và v2 — dùng cái nào, khi nào
-
-Hai bản **chạy song song có chủ ý**, không phải một bản cũ bị bỏ quên. Chúng đối chiếu hai mô hình
-tiền KHÁC NHAU, nên xanh ở bản này không nói gì về bản kia.
-
-| | `gate:reconcile-money` (v1) | `gate:reconcile-money-v2` |
+| Org | ID | Quyền thao tác của agent |
 |---|---|---|
-| Mô hình | `APPROVED = cash` — lọc `approval_status` | **Posting-aware**: `initial_amount + SUM(signed_amount)` trên POSTING/REVERSAL, **KHÔNG** lọc `approval_status` |
-| Chỉ tiêu | Tổng THU đã duyệt theo tháng `voucher_date` | Số dư từng sổ quỹ (luỹ kế, không theo kỳ) + guard cap-1000 trên posting lines |
-| Nguồn đối chiếu | 3 nguồn: SQL thật · RLS+JWT+RPC · FE phân trang | `accounts_with_balance` (legacy) vs `accounts_with_balance_v2`, chỉ sổ THỰC (`is_virtual = false`) |
-| Bắt được gì mà bản kia không bắt | Lệch **quyền**: A≠B ⇒ RLS/RPC scope sai | Lệch **hạch toán**: legacy≠v2 ⇒ posting lines không dựng lại đúng số dư |
+| THẬT | `aaaa0000-0000-4000-8000-000000000001` | Chỉ đọc dữ liệu nghiệp vụ |
+| DEMO | `dddd0000-0000-4000-8000-000000000001` | Đọc/ghi fixture, tự dọn |
+| TEST | `cccc0000-0000-4000-8000-000000000001` | Đọc/ghi để thử tính năng |
 
-**Chạy cái nào:** đụng tiền thì chạy **cả hai**. v1 canh đường đọc cũ mà UI vẫn dùng; v2 canh nguồn
-số dư mới của Finance V2. Bỏ v1 quá sớm là mất phép kiểm RLS duy nhất đi qua JWT thật.
+- Bảng mới có `organization_id` và RLS phải có policy `<bảng>_hide_sandbox_admin`.
+  Bọc phép so sandbox bằng `COALESCE(…, false)` để xử lý đúng dòng NULL.
+- SECURITY DEFINER cần tự kiểm quyền: lọc toà qua `can_access_building()` /
+  `accessible_building_ids()`; không tự thêm lối tắt `is_super_admin() OR …`.
+- Kiểm rò bằng `npm run gate:sandbox-leak`: số bảng rò phải bằng 0; mẫu số theo lần đo.
+  Chạy tại checkout đã cấu hình vault và Supabase link; snapshot còn đọc trực tiếp file local.
+- E2E chỉ ghi DEMO. Đồng bộ TEST theo [clone-org/README](../../scripts/clone-org/README.md).
+- Thay schema production theo §4–5; quyền thử dữ liệu không thay thế quyền đổi schema.
 
-**Cutover:** chỉ bỏ v1 khi mọi đường đọc số dư trong UI đã chuyển sang `*_v2` và v2 chạy xanh liên
-tục qua một kỳ chốt sổ đầy đủ. Chưa đạt điều kiện đó thì **giữ cả hai** — Finance V2 hiện vẫn đang
-dual-run (roadmap §4c: "thêm v2, KHÔNG sửa bản cũ").
+## 3. Git, review và phát hành
 
----
+- Hạng mục độc lập hoặc dài hơi dùng `git worktree` riêng từ `origin/main`.
+  Kiểm `git status` trước khi sửa; giữ nguyên công việc dở dang của phiên khác.
+- Commit theo `feat(scope): …`, `fix(scope): …`, `chore(scope): …`; ghi thay đổi, lý do và kiểm chứng.
+  Trailer theo adapter agent. Chỉ stage file cụ thể; cấm `git add -A` / `git add .`.
+- Trước khi tích hợp: fetch, rebase lên `origin/main`; giải conflict mã nguồn bằng tay.
+  Với file máy sinh: lấy bản của main rồi chạy lại generator, kiểm diff trước khi stage.
+- Push thường dùng `git push origin HEAD:main`; kiểm trước bằng
+  `git merge-base --is-ancestor origin/main HEAD`. Không force-push để vượt conflict.
+- Thay đổi tiền, phân quyền, lịch sử migration cần draft PR để review trước khi vào main.
+  Review độc lập theo `crossReview` của risk-map; graph refresh đi PR riêng (§12).
+  PR ghi số đo và gate đã chạy; chưa mở được PR thì báo rõ, không tuyên bố đã mở.
+- App phát hành từ nhánh `production`; `main` tạo Preview.
+  Docs có cấu hình deploy riêng: kiểm `npm run check:external-controls` khi thay đổi phát hành,
+  không suy ra cấu hình hiện tại từ ảnh chụp hoặc số đo cũ.
+- Agent được tự commit/push và promote khi đủ bằng chứng. Dùng
+  `npm run promote:production -- --sha <sha>` để kiểm CI của đúng commit;
+  thêm `--apply` để phát hành sau khi đạt. Không push trực tiếp để bỏ qua kiểm tra.
+- Gate đỏ, chưa xong, thiếu bằng chứng hoặc lỗi bị nuốt bởi `continue-on-error` không phải đạt.
+  Job kiểm nhánh production chạy sau push; nó không ngăn Vercel nhận một push sai.
+- Rollback app bằng deployment đã xác minh trước đó; không rollback schema phá huỷ tự động.
+- Hạ tầng: ghim exact image/action/runtime; không bind rộng hoặc retry ngầm thao tác không idempotent.
+  Ghi digest/actor/SHA, giữ secret ngoài log/artifact, kiểm rollback bằng artifact thật.
+
+## 4. Ghi schema production và backup
+
+- Dùng `npm run migrate:forward -- <file.sql>` (dry-run mặc định) và `--apply` khi thực thi.
+  Không dùng PAT trong vault để ghi thẳng qua Management API, bỏ qua lane.
+- Lane mặc định tạo backup và kiểm dump trước khi tự cấp biên nhận apply.
+  Đường bỏ backup `--khong-backup "<lý do>"` cần promotion token
+  `IHOMECRM_PROMOTION_TOKEN` nhập lúc chạy; không lấy token này từ vault.
+- Kiểm đúng project/org/environment, cây làm việc sạch trong worktree đang thao tác, SHA đã review,
+  provenance/digest và catalog trước/sau. Thiếu hoặc lệch bằng chứng thì dừng apply.
+- Backup cho thao tác schema/backfill ngoài lane: dùng
+  `node scripts/backup-before-schema.mjs --reason "<thao tác>"` trước khi ghi.
+  Dump và manifest ở `%USERPROFILE%/ihomecrm-backups/`, ngoài Git.
+- PITR là rủi ro đã đăng ký trong [known-gaps.yaml](../../tooling/known-gaps.yaml).
+  Dump phải đủ điều kiện restore; diễn tập với role/policy Supabase, không chỉ đếm bảng.
+
+## 5. Migration và database
+
+- Cấp tên bằng `node scripts/tao-ten-migration.mjs <slug>`; không chọn timestamp bằng tay.
+  Migration mới ở `supabase/migrations/`, immutable sau merge/deploy.
+- Stage migration trước `npm run provenance:generate` vì generator đọc index.
+  Chạy `npm run gate:migration-provenance`; cutoff và trạng thái lấy từ
+  [migration-policy.json](../../supabase/migration-policy.json) và manifest provenance.
+- Legacy history **KHÔNG replay được** (có trùng version và file đã hand-apply).
+  Không chạy `supabase db push` để phát hành; không replay `migrations-archive/`,
+  sửa/đổi tên file đã deploy, hoặc sửa ledger cho lịch sử trông sạch.
+- Dựng database mới theo [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md):
+  baseline đã ghim + forward lane, kiểm trên database dùng một lần.
+- Migration phải idempotent. Restore/replay dùng database dùng một lần; một số harness CI có PAT
+  kiểm database đích trong ROLLBACK. CI không auto-apply/commit migration production.
+
+| Thay đổi | Kiểm chứng |
+|---|---|
+| VIEW | `node scripts/check-view-invoker.mjs`; giữ `security_invoker=true` khi CREATE OR REPLACE |
+| FUNCTION/RPC | `node scripts/check-stable-fn-locks.mjs`, ACL/owner/search_path và gọi qua PostgREST |
+| RLS/POLICY | Harness role thật + JWT, ca được phép và ca cross-tenant bị từ chối |
+| Tiền | Cả `npm run gate:reconcile-money` và `npm run gate:reconcile-money-v2`; idempotency + concurrency |
+| Schema | Catalog/surface liên quan và generated types (§6) |
+| Edge deploy | Kiểm project ref/org thật, cây sạch; ghi SHA đã review + digest bundle trước deploy |
+
+Hàm lấy khoá dòng phải `VOLATILE`: STABLE/IMMUTABLE gọi qua PostgREST có thể lỗi `25006`
+dù chạy SQL trực tiếp đạt. Đối chiếu tiền phải bắt cap-1000, không lấy tổng trang đầu làm tổng thật.
+Reconcile v1 kiểm phạm vi đọc qua JWT/RLS; v2 kiểm số dư posting. Giữ cả hai khi các đường đọc còn dùng.
 
 ## 6. Generated types
 
 ```bash
-npm run gen:types     # KHÔNG redirect, KHÔNG thêm header tay
+npm run gen:types
+npm run types:normalize
+npm run types:check
 ```
 
-`scripts/gen-supabase-types.mjs` **ghi thẳng (atomic)** vào `src/integrations/supabase/types.ts` và
-**tự chèn header**; stdout chỉ có banner npm.
-
-**GOTCHA phá file:** `npm run gen:types > src/integrations/supabase/types.ts` — shell cắt trắng file
-*trước khi* generator chạy; generator lỗi thì `types.ts` chỉ còn một dòng banner. CI có test chống
-đúng lớp lỗi này.
-
-Cách thường ngày: **`npm run gate:truoc-push`** đã tự gen + normalize + stage `types.ts` (bước
-TU_CHUA của `kiem-nhanh-truoc-push.mjs`) — không còn nghi thức cp/diff tay. CI canh drift độc lập
-bằng hai job `generated-types-drift` (so DB thật) và `generated-types-local-drift` (replay migration).
-
-### Canonical vs raw: partition ngày
-
-Network Center sinh child partition **theo ngày** (`network_{device,interface}_samples_YYYYMMDD`).
-Raw typegen thấy chúng; **canonical `types.ts` thì không** — child partition không phải API mà
-frontend cần import type, và để chúng trong file thì mỗi ngày thêm ~96 dòng và job drift đỏ dù
-logical schema không đổi.
-
-```bash
-npm run gen:types        # lấy raw từ live
-npm run types:normalize  # bỏ partition ngày -> canonical
-npm run types:check      # gate: fail nếu canonical còn partition
-```
-
-Luật nằm ở `supabase/generated-types-policy.json` (pattern + parent bắt buộc còn), không hard-code
-trong script. Normalizer chỉ biến đổi văn bản, không cần credential.
-
-Đã chuẩn hoá lần đầu 2026-08-06: bỏ 80 partition (32 407 → 28 567 dòng); typecheck, test generator
-và build đều xanh; không có code nào từng tham chiếu partition type.
-
-PAT đọc từ `CLAUDE.local.md`.
-
----
+Generator tự ghi atomic vào `src/integrations/supabase/types.ts` và thêm header.
+Không redirect đầu ra, không sửa generated types bằng tay.
+Normalizer bỏ partition runtime theo [generated-types-policy.json](../../supabase/generated-types-policy.json).
+`gate:truoc-push` gọi các bước này; thiếu credential/mạng phải báo phần chưa xác minh.
 
 ## 7. TypeScript
 
-- Type check thật: `npx tsc --noEmit -p tsconfig.app.json`. **Root `tsc --noEmit` KHÔNG check gì**
-  (root `tsconfig.json` là `files: []` + `references`; non-build mode không đi theo references).
-- Ratchet: `npm run typecheck:baseline` → so **tập fingerprint** trong `ts-baseline.json`.
-  Fail khi có fingerprint MỚI; tổng số không còn ý nghĩa — và ĐỪNG chép tổng số vào tài liệu
-  (bản trước ghi "hiện 30" khi con số thật là 2; số sống tra thẳng file JSON).
-- `tsconfig.app.json` hiện `strict: false`, `noImplicitAny: false`. Bước strict đi theo **island**
-  (`strictNullChecks` trước), không flip toàn repo một lần. **Module mới phải viết strict-clean.**
+- Dùng `npm run typecheck:baseline`: không thêm fingerprint vào `ts-baseline.json`.
+- Typecheck app trực tiếp: `npx tsc --noEmit -p tsconfig.app.json`.
+  Root `tsc --noEmit` không đi theo project references nên không kiểm app.
+- Module mới phải strict-clean; tăng strict theo island, không flip toàn repo hoặc tăng baseline để né lỗi.
+- Listener `src/app/providers/AuthCacheSync.tsx` chỉ chạy đồng bộ:
+  không `await supabase.*` trong callback auth vì có thể deadlock; đăng ký/huỷ trong effect.
 
----
+## 8. Kiểm thử đúng phạm vi
 
-## 8. Test
+- Tra runner/lệnh trong test-matrix; không suy rằng mọi test dưới `supabase/functions/` đều chạy Deno.
+- Runtime lấy từ runtime-matrix; giữ `deno.lock` của từng function.
+  Package con cần `npm ci --prefix <package>` trước test để tránh lấy nhầm thư viện root.
+- Chạy test liên quan; thay runtime/UI cần typecheck, build và kiểm bundle.
+  Tài liệu hoặc script thuần không cần E2E toàn app.
+- Nếu đổi UX, chạy E2E headless cho luồng và vai trò bị ảnh hưởng, kiểm console errors.
+- E2E: vào `.e2e-fleet/`, chạy `npx playwright test specs/<file>.spec.ts`, mặc định headless.
+  Mật khẩu qua `FLEET_PASS_*`; kiểm console errors; chỉ ghi DEMO và dọn fixture.
+  Chỉ bật `FLEET_HEADED=1` khi user yêu cầu hiện trình duyệt.
+- Kiểm đột biến bắt buộc cho invariant tiền, phân quyền, cách ly org, migration và gate có thể báo xanh rỗng.
+  Dùng `scripts/dot-bien.mjs`: xác nhận hash đổi, suite đỏ đúng lý do, khôi phục trong finally và kiểm hash.
+  Ghi neo/digest/kết quả; mã thoát 0 = đạt, 1 = gate bỏ lọt, 3 = không kiểm được.
+- Gate quét mã phải bỏ chú thích bằng `scripts/lib/bo-chu-thich.mjs`;
+  test phải chứng minh chuỗi trong comment không làm gate báo đạt.
+- Giữ LF cho shebang theo `.gitattributes`. Không tính suite bị skip hoặc thiếu runner là pass.
 
-| Loại | Cách chạy |
-|---|---|
-| Unit/property (Vitest + fast-check) | `npx vitest run <path>` |
-| Edge Function Deno (`supabase/functions/*/index.test.ts` — **chỉ 2 file**) | Deno v2.9.4 portable, xem dưới |
-| Còn lại trong `supabase/functions/` (13 file `*.test.ts`) | **Vitest** qua script root, KHÔNG phải Deno |
-| E2E | `.e2e-fleet/` Playwright headless |
-| Money | `node scripts/reconcile-money.mjs` |
+## 8b. Tài liệu AI Copilot
 
-Deno portable (không cài hệ thống, không đụng PATH):
-```bash
-curl -sL -o deno.zip https://github.com/denoland/deno/releases/download/v2.9.4/deno-x86_64-pc-windows-msvc.zip
-unzip -o deno.zip
-./deno.exe test --config supabase/functions/network-center-worker/deno.json \
-  supabase/functions/network-center-worker/index.test.ts --allow-env
-```
+[manifest.json](../he-thong/manifest.json) sở hữu `copilotIngest` và `reviewed`;
+frontmatter không lặp hai khoá này. File mới phải khai manifest; file bị loại phải có `why`.
+`requiredPermission` áp dụng cả kết quả và gợi ý; khi chưa load quyền, chỉ trả tài liệu không gắn quyền.
+Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
 
-Mỗi thư mục function có `deno.json` + **`deno.lock` riêng** khoá version các npm specifier
-(`@supabase/supabase-js`, `zod`). Đừng xoá `deno.lock` để "cho gọn": không có nó thì mỗi lần chạy
-Deno tự phân giải lại version mới nhất, và một edge function đang chạy production sẽ đổi dependency
-mà không ai commit gì. CI (`network-center-validation.yml`) pin `deno-version: v2.x` qua
-`denoland/setup-deno@v2` — không khoá patch, nên `deno.lock` mới là thứ giữ cho bản chạy được lặp lại.
-CI pin `deno-version: v2.x`; bản đã xác minh 22/22 xanh trên Windows là **v2.9.4**.
+## 9. Credential
 
-**GOTCHA suite Deno này KHÔNG phủ**: `/ingest` với giá trị ngoài miền (`connectionType`/`sessionType`),
-hay ép `rpcErrorStatus` nhận `23502`/`23514`/`23503` — đã xác nhận bằng đột biến (vô hiệu hoá logic
-đó vẫn 22/22 xanh). Phần đó do test Node phủ
-(`scripts/__tests__/network-center-ingest-domains.test.mjs`).
+- Vault duy nhất là `CLAUDE.local.md` ở checkout chính, bị gitignore; agent được đọc lúc task cần.
+  Trong worktree, nạp đúng credential cần dùng vào process env từ vault chính; không tạo bản sao.
+- Không commit secret, tạo vault thứ hai, in cả file/token ra log, chat, artifact hoặc commit.
+  Biến VITE công khai không phải chỗ để lưu secret.
+- Tên credential và preflight: [local-credential-contract.json](../../tooling/local-credential-contract.json).
+  Chạy `npm run gate:local-credentials` tại checkout có vault khi cần;
+  không chạy preflight vault local trên CI.
+- Thiếu/hết hạn credential: báo đúng khả năng bị chặn, không lách bằng key khác.
+  Thêm credential cần cập nhật manifest; nghi lộ thì rotate và cập nhật vault.
+- Quyền ghi schema theo §4; có credential không tự cấp quyền ghi dữ liệu org THẬT.
 
-**GOTCHA CRLF phá shebang:** file `.mjs` mở đầu `#!/usr/bin/env node` mà dòng đó kết thúc `\r\n` sẽ
-ném "SyntaxError: Invalid or unexpected token" ngay khi một test import nó — trong khi `node --check`
-nói file hợp lệ. Lỗi không chỉ vào đâu cả: không số dòng, không stack, chỉ "0 test".
-`.gitattributes` đã ép `*.mjs text eol=lf` — đừng gỡ.
+## 10. Hoàn tất thay đổi
 
-### Kiểm bằng đột biến — sáu luật
+1. Xác định scope/risk, đọc source và phụ thuộc liên quan; sửa đúng nguyên nhân.
+2. Chạy test/gate theo §5–8 và risk-map; sửa lỗi rồi kiểm lại.
+3. Chạy `npm run gate:truoc-push`; docs/script thuần có thể dùng `-- --khong-dao-strict`.
+   Lệnh tự sinh và stage artifact theo allowlist, rồi chạy gate tĩnh.
+   Kiểm cả diff được stage; cảnh báo thiếu credential không chứng minh schema đã khớp.
+4. Báo kết quả cụ thể và phần chưa kiểm; commit/push/review/phát hành theo §3.
 
-Dùng helper chung, **đừng viết shell riêng cho mỗi gate**:
+Gate có lock theo worktree; không xoá lock của tiến trình còn sống.
+File untracked của mình có cảnh báo phải xử lý trước khi stage.
+Không mở rộng kiểm thử lặp lại khi không có thay đổi, lỗi mới hoặc nghi vấn chưa giải quyết.
 
-```bash
-node scripts/dot-bien.mjs --file <path> --tim "<neo>" --thay "<thay thế>" \
-  --suite "<lệnh chạy gate/test>" --mong-doi-chua "<chuỗi phải có trong output đỏ>"
-```
+## 11. Điều kiện dừng
 
-**1. Chứng minh file ĐÃ ĐỔI trước khi chạy suite — bằng sha256, không bằng niềm tin vào neo.**
-Đây là luật quan trọng nhất và là luật hay bị bỏ nhất. Neo không khớp ⇒ file không đổi ⇒ suite vẫn
-xanh ⇒ người chạy đọc thành *"gate không bắt được"* rồi đi sửa gate. **Gate không sai; phép thử
-sai.** Đã dính 6 lần trong một phiên (07–08/08/2026): neo sai, `$` trong chuỗi thay thế bị
-`String.replace` hiểu là escape, CRLF làm neo kết thúc bằng `\n` không khớp, file đã nằm sẵn trong
-baseline, regex khớp tiếng Việt thất bại. Lần gần nhất suýt dẫn tới kết luận "bản vá vừa rồi làm gate
-mù" — sai hoàn toàn.
-
-**2. Ba lối thoát, đừng gộp hai cái đầu.** `3` = không kiểm được (neo hỏng, không khôi phục được) ·
-`1` = **gate mù** (file đổi thật mà suite vẫn xanh) · `0` = đạt. "Không kiểm được" và "kiểm rồi thấy
-hỏng" là hai tin khác nhau; gộp lại là mất đúng thông tin cần nhất.
-
-**3. Đỏ chưa đủ — phải đỏ ĐÚNG LÝ DO.** Dùng `--mong-doi-chua` để đòi output chứa thông điệp của
-chính phép kiểm đó. Một suite đỏ vì lỗi cú pháp không chứng minh gì về invariant đang xét.
-
-**4. Khôi phục là bắt buộc, và chạy trong `finally`.** Helper xác nhận sha256 quay về đúng bản gốc.
-Một phép thử làm bẩn cây làm việc rồi thoát giữa chừng còn tệ hơn không thử.
-
-**5. Chỉ bắt buộc cho invariant HIGH-RISK**, không phải đại trà: tiền, phân quyền, ranh giới tổ chức,
-lịch sử migration, và mọi gate có thể "xanh rỗng". Bắt đột biến cho mọi thay đổi sẽ biến nó thành
-nghi thức, và nghi thức thì người ta làm cho xong.
-
-**6. Ghi bằng chứng vào commit message**: neo, digest trước/sau, exit code kỳ vọng và thực tế. Một
-câu "đã chạy đột biến" không kèm số đo thì không kiểm lại được.
-
-### Gate đọc MÃ, không đọc văn kể lại về mã
-
-Gate nào quét văn bản để tìm một mẫu thì phải **bỏ chú thích trước** — dùng
-`scripts/lib/bo-chu-thich.mjs`, đừng viết lại luật ở từng chỗ.
-
-Đây không phải cẩn thận thừa. Bốn gate đã dính, và hướng gây hại của chúng khác nhau:
-
-| Gate | Chuyện đã xảy ra | Hướng |
-|---|---|---|
-| `check-copilot-docs-manifest` | `registry.includes('manifest.json')` xanh dù xoá sạch code lọc, vì ba dòng comment có sẵn chữ đó | **báo THIẾU** — gate không kiểm gì mà vẫn xanh |
-| `check-realtime-query-keys` | bắt phải key nằm trong chú thích giải thích rằng key đó đã chết | báo thừa |
-| `check-known-gaps` | bắt phải `::warning::` trong chú thích nói rằng ở đây KHÔNG dùng `::warning::` | báo thừa |
-| `check-workflow-paths` | đếm script trong shell comment `# node …` rồi đòi khai nó vào `paths:` | báo thừa |
-
-Ba ca sau chỉ phiền. Ca đầu mới là loại phải sợ: một gate xanh trong khi không kiểm gì trông y hệt
-một gate đang làm việc. Nếu bạn viết gate mới có quét văn bản, ca đột biến bắt buộc là **"đặt đúng
-chuỗi cần tìm vào một dòng chú thích"** — gate phải KHÔNG đổi màu.
-
-### E2E — mặc định chạy ẨN (headless)
-
-```bash
-cd .e2e-fleet && FLEET_WORKERS=8 npx playwright test specs/<file>.spec.ts
-```
-
-- Tăng `FLEET_WORKERS` (8 → 30) khi cần quét rộng. Mỗi worker là một browser context riêng.
-- Mật khẩu **KHÔNG** trong repo — truyền qua `FLEET_PASS_CHUNHA` / `FLEET_PASS_KETOAN` /
-  `FLEET_PASS_QUANLY` (giá trị ở `CLAUDE.local.md`).
-- **Chỉ ghi vào org DEMO**; org THẬT chỉ đọc. Fixture phải tự dọn.
-- Luôn kiểm console errors (`trackConsoleErrors` đã lọc nhiễu mạng).
-- **CHỈ mở trình duyệt hiện hình khi user YÊU CẦU TƯỜNG MINH**:
-  `FLEET_HEADED=1 FLEET_WORKERS=2`.
-- Không có công cụ browser nào ⇒ ghi rõ khoảng trống xác minh trong báo cáo, **không** tuyên bố đã test.
-
----
-
-## 8b. AI Copilot đọc tài liệu gì
-
-Copilot **không** đọc mù `docs/he-thong/`. Allowlist nằm ở `docs/he-thong/manifest.json`:
-
-- `copilotIngest: false` phải kèm `why` (hiện loại 3 file: mục lục README, writeup hiệu năng,
-  bản đồ realtime kỹ thuật);
-- `requiredPermission` cho tài liệu nhạy cảm (lương, lợi nhuận cổ đông, SOP tiền, phê duyệt tài
-  chính) — tài liệu bị loại khỏi **cả** kết quả tra cứu **lẫn** danh sách gợi ý khi không tìm thấy;
-- `perms` chưa load ⇒ chỉ trả tài liệu không gắn quyền (fail closed).
-
-**Quyền sở hữu trường — manifest sở hữu `copilotIngest` và `reviewed`.** Frontmatter YAML của
-`docs/he-thong/*.md` **không được lặp lại hai khoá đó**; gate làm đỏ nếu có. Nó vẫn được mang
-`status`, `source_paths`, `last_verified_commit`, `risk` — bốn thứ manifest KHÔNG có, nên chúng
-không tạo nguồn thứ hai.
-
-Chốt như vậy vì đo 11/08/2026: đúng 1/29 tài liệu có frontmatter, và nó khai `reviewed: 2026-08-07`
-trong khi manifest — thứ gate thật sự đọc — không có ngày nào cho file đó. Hai nguồn, và chúng đã
-lệch ngay khi mới có hai. Chọn manifest vì nó máy đọc được trong một lần mở file; `reviewed` rải
-trong 29 file thì mọi phép đếm đều phải quét cả thư mục và không ai kiểm được nó khớp gì.
-
-```bash
-npm run gate:copilot-docs   # file .md mới BẮT BUỘC khai trong manifest, không mặc định lọt vào
-```
-
-Gate bắt cả hai chiều: file trên đĩa thiếu entry, và entry trỏ file không tồn tại. Nó cũng kiểm
-`registry.ts` còn tham chiếu manifest — chặn việc lỡ tay quay lại glob mù. Quá hạn review là
-**cảnh báo**, không fail (nếu fail thì người ta sẽ bump ngày theo nghi thức và phá luôn tín hiệu).
-
----
-
-## 9. Secret
-
-- **KHÔNG BAO GIỜ commit** `CLAUDE.local.md`, `.env`, `.env.local`, hay bất kỳ token/PAT nào.
-- `CLAUDE.local.md` là **local credential vault bắt buộc** — nguồn duy nhất cho tài khoản test,
-  Supabase PAT/project ref, `FLEET_PASS_*`, key dịch vụ. Agent **được đọc lúc runtime** khi task cần,
-  không phải hỏi lại.
-- Secret chỉ tồn tại trong process memory/env của lệnh cần dùng: không echo cả file, không log token,
-  không đưa vào command output/commit message/PR/chat.
-- Không tạo `CODEX.local.md`, `.env.agent`, hay bản sao thứ hai. Hai agent dùng **cùng một** file.
-- Thiếu/hết hạn credential ⇒ **fail closed**, báo đúng tên capability bị chặn; không bịa secret giả,
-  không lưu tạm vào file tracked.
-
-**Bản có thẩm quyền là máy đọc được, không phải đoạn văn trên.**
-[`tooling/local-credential-contract.json`](../../tooling/local-credential-contract.json) khai **7
-điều** cùng danh sách credential bắt buộc; `npm run gate:local-credentials` kiểm trước khi chạy việc
-cần secret.
-
-```bash
-npm run gate:local-credentials    # đủ credential chưa — CHỈ in TÊN field thiếu, không in giá trị
-```
-
-Đoạn văn trên là bản tóm cho người đọc và **cố ý không chép đủ 7 điều** — chép ra hai nơi là cách
-chúng lệch nhau. Hai điều dễ quên nhất, đều nằm trong file JSON:
-
-- **Ghi production luôn cần promotion token NHẬP LÚC CHẠY**, không lấy từ kho. Kho là để *đọc* dữ
-  liệu và chạy việc thường; nó cố ý **không** đủ quyền để một lần chạy nhầm ghi được vào production.
-- **Thêm credential mới thì thêm entry vào file JSON CÙNG LÚC.** Không có entry thì lần sau không ai
-  biết nó phải có, và preflight sẽ báo "đủ" trong khi thiếu — xanh rỗng.
-
----
-
-## 10. Quy trình mặc định khi làm xong một thay đổi
-
-1. Type check + test liên quan — xanh trước khi đi tiếp.
-2. Test trên web thật (headless, mục 8).
-3. Cần seed/cleanup dữ liệu thì tự làm qua Management API trong phạm vi DEMO/TEST, không hỏi user.
-4. Sửa lỗi → re-test → lặp đến khi chạy đúng. **Không tuyên bố "đã xong" khi chưa thấy nó hoạt động.**
-5. `npm run gate:truoc-push` — máy tự sinh số tài liệu (kiểm kê repo, docs views, số đếm) rồi
-   chạy hết nhóm gate tĩnh hay vấp **không dừng ở lỗi đầu tiên**; generator có sửa file thì stage
-   kèm. Đừng tự đếm số cho tài liệu — đó là việc của generator, con người đếm là con số sẽ trôi.
-6. Commit (stage file cụ thể) → push `HEAD:main` → promote nếu gate xanh (mục 3).
-
-### Definition of Done
-
-**Code thường:** scope/risk xác định; test đúng runner xanh; `typecheck:baseline` không thêm
-fingerprint; E2E headless nếu đụng UX; docs cập nhật nếu behavior đổi.
-
-**Database:** đủ gate theo mục 5; provenance/digest/evidence; canonical types không drift vì partition;
-reconciliation nếu đụng tiền.
-
-**Infrastructure:** không secret trong log/artifact; pin exact image/action/runtime; preflight đúng
-project/org; evidence có digest/actor/SHA; rollback test bằng artifact thật; không wide bind, không
-hidden retry cho thao tác không idempotent.
-
----
-
-## 11. Những gì agent KHÔNG được tự làm
-
-1. Promote production khi còn gate đỏ (kể cả gate `continue-on-error` bị nhận nhầm là xanh).
-2. Ghi database production bằng PAT sẵn trong vault, KHÔNG đi qua `npm run migrate:forward` — tức
-   không có backup làm đường lùi và không có gì ghi lại lần ghi đó dựa trên cái gì.
-3. `git add -A` / `git add .`.
-4. Sửa hay đổi tên migration đã deploy; replay `migrations-archive/`.
-5. Redirect `npm run gen:types >` vào bất kỳ file nào.
-6. Backfill/giả mạo `supabase_migrations.schema_migrations` cho lịch sử trông sạch.
-7. Ghi dữ liệu vào org THẬT.
-8. Commit/di chuyển/in toàn bộ credential từ `CLAUDE.local.md`.
-9. Flip TypeScript strict toàn repo trong một PR; move toàn bộ `src/` theo feature trong một mega PR.
-10. Tự mở trình duyệt hiện hình khi user không yêu cầu.
-11. Làm hai hạng mục song song trên CÙNG một worktree, hoặc chọn tay timestamp migration thay vì
-    `tao-ten-migration` (§3 mục song song).
-
----
+Dừng thao tác phụ thuộc khi sai đích, thiếu credential, lệch digest/provenance hoặc gate bắt buộc chưa đạt.
+Giữ nguyên bằng chứng lỗi và nêu giới hạn xác minh; tiếp tục phần độc lập trong phạm vi được giao.
+Không hạ kiểm soát, tăng baseline hoặc nuốt lỗi chỉ để CI xanh.
 
 ## 12. Công cụ tri thức
 
-Hai graph, hai vai trò khác nhau:
+GitNexus là chỉ mục TS/JS local; Understand Anything (`.ua/`) là graph onboarding được commit.
+Chỉ dùng graph cho câu hỏi nó trả lời được; sửa tài liệu/CI cần đối chiếu trực tiếp source và cấu hình.
+Graph không chứng minh SQL/RLS/trigger/RPC string hoặc trạng thái production.
 
-- **GitNexus** (`.gitnexus/`, pin trong `tooling/agent-tools.json`, gọi qua
-  `scripts/run-pinned-gitnexus.mjs`): code exploration, impact analysis cho TS/JS. Chỉ mục là
-  **local-only** — không bao giờ commit.
-- **Understand Anything** (`.ua/`, hộ chiếu ở `tooling/graph-manifests/ua.json`): onboarding,
-  domain map, tài liệu. Graph được commit.
+- Agent KHÔNG được nạp graph khi chưa có verdict còn hiệu lực. Chạy `npm run gate:graph-freshness -- --nhiem-vu <nhiệm vụ>`.
+  Verdict hết hiệu lực khi HEAD đổi. Ngưỡng và nhiệm vụ ở [graph-policy.json](../../tooling/graph-policy.json).
+- GitNexus bắt buộc còn mới khi dùng cho medium/high-risk; UA bắt buộc còn mới cho
+  onboarding, architecture, domain-review, generated-docs. Không kết luận từ graph đã bị gate từ chối.
+- Gọi qua `scripts/run-pinned-gitnexus.mjs`, pin ở [agent-tools.json](../../tooling/agent-tools.json),
+  MCP khai trong [.mcp.json](../../.mcp.json); wrapper ép `--skip-agents-md` và đúng repo.
+- Trước khi đổi logic, kiểm bán kính ảnh hưởng: `npm run graph:impact -- <symbol>` khi graph khả dụng,
+  đồng thời kiểm SQL, tên RPC, slug Edge, bảng/view, realtime, feature flag và quyền.
+  Sau sửa dùng `npm run graph:detect-changes` (`detect_changes`) và đối chiếu git diff.
+  Nếu graph thiếu, ghi rõ và dùng source/manifest/harness, không tự tạo kết luận graph.
+- Contract manifest + SQL harness LUÔN ưu tiên hơn mọi graph khi mâu thuẫn.
+- Không commit `.gitnexus/`. Refresh `.ua/` đi PR riêng, chỉ file trong `commitAllowlist`;
+  chạy `gate:graph-hygiene` và `gate:graph-secrets`. Không để generator ghi đè file luật.
 
-**Cả hai KHÔNG** dùng làm bằng chứng duy nhất cho SQL/RLS/trigger/RPC string/runtime permission —
-graph không chứng minh object nào đang deploy.
+## 13. Hướng dẫn chuyên đề và khoảng trống
 
-### Sáu luật
+Chỉ đọc chuyên đề khi nhiệm vụ cần:
+[migration](MIGRATION_STRATEGY.md), [dữ liệu/org](DATA_ENVIRONMENTS.md),
+[Network Center](../../infra/network-center-worker/README.md).
 
-1. **GitNexus freshness là cửa chặn cứng** cho task medium/high-risk.
-2. **UA freshness mặc định chỉ CẢNH BÁO**; là cửa chặn cứng CHỈ với: onboarding,
-   architecture review, domain review, generated docs.
-3. Mỗi graph phải ghi **baseCommit, analyzedAt, scope, tool version, config digest**.
-4. **Agent KHÔNG được nạp graph khi chưa có verdict còn hiệu lực** — chạy
-   `npm run gate:graph-freshness -- --nhiem-vu <nhiệm vụ>` TRƯỚC khi đọc `.ua/` hoặc `.gitnexus/`.
-   Verdict hết hiệu lực ngay khi `HEAD` đổi.
-5. **Contract manifest + SQL harness LUÔN ưu tiên hơn mọi graph.** Khi graph mâu thuẫn với
-   manifest hoặc kết quả harness, graph sai — không phải ngược lại.
-6. **Không auto-commit graph.** Refresh đi PR riêng, hoặc commit riêng trong architecture PR
-   liên quan.
+Khoảng trống đang mở ở [known-gaps.yaml](../../tooling/known-gaps.yaml).
+`npm run gate:known-gaps` báo cáo; `node scripts/check-known-gaps.mjs --strict` dùng khi rà định kỳ.
+Đóng bằng kết quả kiểm chứng; gia hạn phải có lý do mới. Không chép gap/sự cố đã đóng sang adapter.
 
-#### Cái gì đáng commit, cái gì không
+## 14. Quy ước code
 
-Không phải mọi thứ graph sinh ra đều là artifact. Đo 08/08/2026:
-
-| | Kích thước | Tracked | Loại |
-|---|---:|---:|---|
-| `.gitnexus/` | **508 MB** | **0 file** | trạng thái chạy — `graph:analyze` dựng lại toàn bộ |
-| `.ua/` | 53 MB trên đĩa | **5 file** | phần còn lại là `intermediate/`, `tmp/`, `.trash-*` — đã gitignore |
-
-**`fingerprints.json` là trường hợp ranh giới, và câu trả lời quan trọng:** nó **được commit nhưng
-KHÔNG di động giữa hệ điều hành**. Đo trên 197 file đang là CRLF: **127 file có `contentHash` khớp
-bytes thô kể cả `\r\n`**. Nghĩa là cùng một commit cho fingerprints khác nhau giữa Windows và Linux.
-
-Hệ quả phải nhớ: **đừng so fingerprints dựng trên máy khác OS với bản đã commit rồi kết luận mã đã
-đổi** — nó sẽ báo gần như mọi file đều đổi. Muốn biết mã đổi gì thì dùng `git`, không dùng file này.
-Vẫn giữ commit vì `gate:graph-hygiene` đối chiếu `baseCommit` qua cả ba nguồn và cần nó.
-
-Chi tiết và cách sửa tận gốc: `tooling/graph-manifests/ua.json → artifactVsRuntimeState`.
-
-**Trước khi commit graph mới, bắt buộc:**
-
-```bash
-npm run gate:graph-secrets    # secret + PII trên artifact (cần binary gitleaks)
-```
-
-Gate này đã nối vào job `secret-scan` của `ci-gates.yml`, nên PR refresh không merge được nếu artifact
-mang secret hay PII. Chạy tay vẫn nên, nhưng cưỡng chế nằm ở CI — *nhớ chạy* không phải một phép kiểm.
-
-### Hỏi bán kính ảnh hưởng trước khi sửa (plan §16)
-
-GitNexus đăng ký sẵn làm MCP server ở `.mcp.json` — theo **dự án**, không theo máy, nên ai clone
-repo là có. Lệnh đi qua `scripts/run-pinned-gitnexus.mjs` nên MCP cũng bị ghim version.
-
-Trước khi sửa bất cứ thứ gì ngoài một dòng, hỏi graph **bán kính ảnh hưởng** bằng `impact` /
-`context` / `route_map`, và đọc kết quả cùng bảy thứ dưới đây — đây là bảy chỗ mà một thay đổi
-lan ra ngoài file bạn đang mở:
-
-1. **migration SQL** — trigger, RLS, view phụ thuộc bảng bạn đổi
-2. **chuỗi tên RPC** trong `supabase.rpc('…')` — không trình biên dịch nào kiểm nó
-3. **slug Edge Function** trong `functions.invoke('…')` — và hàm đó có đang deploy không
-4. **bảng / view / hàm** mà đường bạn sửa đọc hoặc ghi
-5. **tên bảng realtime** — đổi tên bảng làm subscribe thành câm, không báo lỗi
-6. **feature flag** gác đường đó
-7. **quyền** (`module.action`) mà route và RPC đòi — hai chỗ này lệch nhau là người dùng thấy lối
-   vào rồi bị đá về
-
-Sau khi sửa: `detect_changes` để đối chiếu thứ thực sự đổi với thứ bạn định đổi.
-
-Graph trả lời được (1)–(7) ở mức **mã nguồn**. Nó KHÔNG trả lời được "object nào đang deploy" —
-phần đó xem `contracts/surfaces/*.json` và `docs/generated/database-inventory.json`, và luật #5
-vẫn áp dụng: khi mâu thuẫn, manifest thắng.
-
-Ngưỡng và ánh xạ nhiệm-vụ→cửa-chặn nằm ở `tooling/graph-policy.json`. Hai gate cưỡng chế:
-`check-graph-hygiene.mjs` (luật #3, #6 — chạy trong CI) và `check-graph-freshness.mjs`
-(luật #1, #2, #4 — chạy local).
-
-Khoảng trống của cả hai graph (SQL, deployed state, string boundary) được bù bằng contract
-manifest + SQL harness của repo, không bằng graph.
-
----
-
-## 13. Checklist mapping — rule cũ đi về đâu
-
-> Bảng này tồn tại để việc rút `CLAUDE.md`/`AGENTS.md`/`AI_RULES.md` thành adapter **không làm rơi
-> mất tri thức**. Không được xoá dòng nào ở file cũ khi cột "Chỗ mới" còn trống.
-
-| Rule cũ | Nguồn | Chỗ mới |
-|---|---|---|
-| Stack, deploy Vercel | CLAUDE/AGENTS | §1 |
-| Test Edge = Deno portable v2.9.4 + gotcha coverage | CLAUDE/AGENTS | §8 |
-| `tsc --noEmit -p tsconfig.app.json`, root không check gì | CLAUDE/AGENTS | §7 |
-| `ts-baseline` ratchet | CLAUDE/AGENTS | §7 (số sống tra `ts-baseline.json`, đừng chép vào văn) |
-| `npm run gen:types` ghi thẳng, không redirect | CLAUDE | §6 |
-| Drift 92 quan hệ / partition ngày | CLAUDE | §6 (sửa: ~80 partition đã commit) |
-| `check-view-invoker` sau migration đụng VIEW | CLAUDE/AGENTS | §5 |
-| `check-stable-fn-locks` + gotcha 25006 | CLAUDE | §5 |
-| `reconcile-money` cap-1000 | CLAUDE/AGENTS | §5, §8 |
-| Quy trình 6 bước khi làm xong thay đổi | CLAUDE/AGENTS | §10 |
-| E2E fleet headless, `FLEET_PASS_*`, chỉ ghi DEMO | CLAUDE/AGENTS | §8 |
-| Chỉ mở browser headed khi user yêu cầu | CLAUDE | §8, §11.10 |
-| Tự seed/cleanup qua Management API | CLAUDE/AGENTS | §10.3 |
-| Commit convention + cấm `git add -A` | CLAUDE/AGENTS | §3, §11.3 |
-| Push `HEAD:main` + gotcha nhánh local | CLAUDE | §3 (sửa: main ≠ production) |
-| Cảnh báo secrets, `CLAUDE.local.md` | CLAUDE/AGENTS | §9 |
-| Ba org THẬT/DEMO/TEST + 2 luật RLS | CLAUDE | §2 |
-| `clone-org/snapshot.mjs after` = 0/158 rò rỉ | CLAUDE | §2 |
-| Cấu trúc thư mục `src/` | CLAUDE/AGENTS/AI_RULES | §14 |
-| shadcn/ui làm nền, không tự viết UI trùng | AI_RULES | §14 |
-| React Hook Form + Zod cho mọi form | AI_RULES | §14 |
-| Data qua hook `use*`, không fetch trong component | AI_RULES | §14 |
-| Sonner cho toast, error boundary, không lộ lỗi kỹ thuật | AI_RULES | §14 |
-| Lazy load route/component nặng | AI_RULES | §14 |
-| Lucide icons, không trộn thư viện icon | AI_RULES | §14 |
-| ~~"TypeScript strict mode enabled"~~ | AI_RULES | **BỎ — sai**: `strict: false`. Thay bằng §7 |
-| ~~"STORE files in Supabase Storage"~~ | AI_RULES | **BỎ — sai**: hệ thống dùng Cloudflare R2 (`VITE_R2_PUBLIC_BASE`, `src/lib/storage/r2Config.ts`) |
-| ~~"KEEP all routes in src/App.tsx"~~ | AI_RULES | **BỎ — đi ngược Đợt 4** (tách route groups + Capability Registry) |
-| ~~"NEVER write custom CSS"~~ | AI_RULES | **NỚI**: có page CSS cô lập có chủ đích (`networkCenter.css`) |
-| ~~"khớp 100% SUMMARY.md"~~ | `Sidebar.tsx:112` | **BỎ — `SUMMARY.md` đã bị xoá**; nav truth sẽ là Capability Registry |
-
-### Script CHẠY TAY có chủ đích — không thuộc CI, không phải mồ côi
-
-Các npm script sau **cố ý** không nằm trong workflow nào, vì chúng cần credential/trạng thái chỉ có
-ở máy dev hoặc là công cụ một-lần. Thấy chúng "không ai gọi" thì đó là thiết kế, đừng nối bừa vào CI
-(rà 26/08/2026):
-
-| Script | Vì sao chạy tay |
-|---|---|
-| `backup:check` | Đọc bản dump ở `~/ihomecrm-backups` — cố ý ngoài git, CI không bao giờ thấy |
-| `catalog:capture` / `catalog:check` / `catalog:verify-proven` | Chụp catalog production, chạy quanh đợt migration |
-| `gate:local-credentials` | Kiểm credential máy dev — theo định nghĩa là local |
-| `gate:sandbox-leak` | Cần org TEST vừa clone xong làm mốc so |
-| `gate:ie-guard-gates` · `gate:salary-completion-date` · `gate:v5-calendar-parity` | Bất biến nghiệp vụ đọc production qua PAT, chạy khi đụng domain đó |
-| `gate:reconcile-money-v2` | Bản kế nhiệm reconcile-money, đang thử tay trước khi thay bản CI |
-| `docs:check` | Kiểm link docs-site, chạy khi sửa docs-site |
-
----
-
-## 14. Quy ước code (giữ từ `AI_RULES.md`, phần còn đúng)
-
-- **UI:** shadcn/ui là nền; chỉ dùng Radix primitive khi mở rộng shadcn; ưu tiên composition.
-- **Form:** React Hook Form + Zod schema (`src/lib/*Validation.ts`); không dùng input không kiểm soát.
-- **Data:** mọi thao tác dữ liệu qua hook `use*.ts` trong `src/hooks/`; không fetch thẳng trong
-  component; có loading/error state.
-- **Style:** Tailwind là mặc định. CSS riêng chỉ khi cô lập có chủ đích và có lý do ghi trong file.
-- **Icon:** Lucide, không trộn thư viện khác.
-- **Feedback:** Sonner cho toast; error boundary; **không** hiện chi tiết lỗi kỹ thuật cho người dùng.
-  Wrapper không được biến lỗi thành `[]`, `{}` hay toast chung — phải phân biệt permission,
-  validation, concurrency, conflict, internal invariant.
-- **Perf:** lazy load route và component nặng; memo hoá chỗ đắt; theo dõi bundle size.
-- **Cấu trúc:**
-  - `src/pages/` — route entry
-  - `src/components/<domain>/` — UI theo domain
-  - `src/hooks/` — React Query data hooks
-  - `src/lib/` — pure utils + zod schemas
-  - `supabase/migrations/` — SQL migration theo timestamp
-
-### RPC/Edge boundary
-
-- **Không gọi `supabase.rpc('string')` trực tiếp trong component.**
-- High-risk (tiền, authz) phải qua wrapper typed do domain sở hữu. Prior art để kế thừa:
-  - `src/lib/network-center/{contracts,dto,supabaseRepository,demoRepository}.ts` — boundary đầy đủ nhất repo
-- Nợ `any` cast **ĐÃ TRẢ XONG**: từ 176/244 call site (đo 2026-08-06) về **0** ngày 2026-08-07 —
-  `tooling/rpc-cast-baseline.json` ghi `total: 0`. (Bản trước của mục này vẫn dạy "chặn tăng từ
-  176" suốt 19 ngày sau khi nợ đã hết — đúng lớp lỗi số-chết-trong-văn mà §13 cảnh báo.)
-
-```bash
-npm run gate:rpc-cast    # ratchet: giữ ĐÚNG 0 — một cast mới xuất hiện là đỏ
-```
-
-Hai dạng `(supabase as any).rpc(...)` và `(supabase.rpc as any)(...)` tắt hoàn toàn kiểm tra kiểu ở
-đúng chỗ nguy hiểm nhất: **tên RPC gõ sai hay tham số sai tên vẫn biên dịch sạch**, chỉ lộ ra khi chạy
-thật. Đó chính là cơ chế đã làm contract media-resolve ship hỏng. Baseline đã về 0 nghĩa là luật nay
-đơn giản hơn hồi còn nợ: **KHÔNG viết cast mới, ở bất kỳ file nào** — không còn ngoại lệ "file cũ".
-Mẫu gom-một-lỗ khi cần gọi RPC ngoài generated types: tên RPC là union được compiler kiểm, kết
-quả cố ý để `unknown` để buộc validate bằng Zod — xem boundary Network Center ở trên làm khuôn.
+- UI dùng shadcn/ui, Lucide; form dùng React Hook Form + Zod.
+- Dữ liệu qua hook/domain service có loading/error state; không gọi RPC trực tiếp trong component.
+  High-risk dùng wrapper typed, validate kết quả tại boundary; không thêm RPC cast `any`.
+  Kiểm bằng `npm run gate:rpc-cast`.
+- Tailwind mặc định; CSS riêng phải cô lập và có lý do. File/media theo lớp storage R2 hiện có.
+- Sonner/error boundary cho phản hồi; phân biệt permission, validation, concurrency, conflict, internal.
+  Không biến lỗi thành dữ liệu rỗng hoặc hiển thị chi tiết kỹ thuật cho người dùng.
+- Lazy load route/component nặng, đo bundle khi đổi tải trang.
+- Đặt route ở `src/app/routes/`, capability ở `src/app/capabilities/`, page ở `src/pages/`,
+  UI domain ở `src/components/`, data hook ở `src/hooks/`, tiện ích/schema ở `src/lib/`.

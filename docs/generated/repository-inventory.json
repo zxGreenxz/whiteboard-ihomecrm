@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 645,
   "soFileDocBangFs": 200,
-  "tongLoiGoi": 417,
-  "khongPhanLoaiDuoc": 204,
+  "tongLoiGoi": 420,
+  "khongPhanLoaiDuoc": 206,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
@@ -151,6 +151,16 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 4
+    },
+    {
+      "file": "scripts/org-context-repair/sealed-artifact.test.mjs",
+      "soGoi": 6,
+      "loai": {
+        "manifest": 2,
+        "ma-nguon": 1,
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 2
     },
     {
       "file": "src/lib/__tests__/accountingRolloutSafety.test.ts",
@@ -347,16 +357,6 @@
       "soGoi": 3,
       "loai": {
         "manifest": 3
-      },
-      "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": "scripts/org-context-repair/sealed-artifact.test.mjs",
-      "soGoi": 3,
-      "loai": {
-        "manifest": 1,
-        "ma-nguon": 1,
-        "sql": 1
       },
       "khongPhanLoaiDuoc": 0
     },

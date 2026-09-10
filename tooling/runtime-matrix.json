@@ -37,21 +37,21 @@
     {
       "path": ".github/workflows/ci-gates.yml",
       "node": "24.18.0",
-      "note": "Pin exact. Khớp sàn cao nhất (bridge 24.18).",
-      "noteDeno": "Deno QUAY LẠI ci-gates.yml ngày 02/09/2026 — bước test Edge cho supabase/functions/llm-proxy (suite edge-deno-llm-proxy). Trước đó job Deno cuối cùng bị xoá 25/08/2026. Pin cùng 2.9.4 với network-center-validation.yml.",
+      "note": "Runtime ghim cho CI app và gate; thay đổi phải kiểm dependency và gate:runtime-matrix.",
+      "noteDeno": "Deno chạy suite llm-proxy; test-matrix.json sở hữu phạm vi test.",
       "deno": "2.9.4"
     },
     {
       "path": ".github/workflows/network-center-validation.yml",
       "node": "22.23.2",
       "deno": "2.9.4",
-      "note": "Major 22 la CO Y — worker khai \">=20 <23\", dung \"sua\" cho khop ci-gates (loi da mac 05/08: cac rang buoc engines la roi nhau). Pin exact patch 11/08/2026, khong doi major."
+      "note": "Node 22 theo engines của worker (>=20 <23); pin patch để CI tái lập."
     },
     {
       "path": ".github/workflows/supabase-migrate.yml",
       "node": "24.18.0",
       "deno": null,
-      "note": "Nang tu 20.20.2 len 24.18.0 ngay 11/08/2026 vi CO BANG CHUNG: 2/3 script cua job nay da chay tren 24.18.0 trong ci-gates hang ngay, script thu ba chi dung node:crypto/fs/path/url. Dong luon known-gap supabase-migrate-node-20-eol thay vi gia han. KHONG phai luat thong nhat version — network-center van o 22 vi worker khai >=20 <23."
+      "note": "Validator tĩnh dùng runtime CI app; không apply production."
     },
     {
       "path": ".github/workflows/copilot-e2e.yml",
@@ -75,7 +75,7 @@
   "otherRuntimes": {
     "postgres": "17.6",
     "deno": "2.9.4",
-    "denoNote": "Bản đã xác minh chạy 22/22 test Edge xanh trên Windows. Pin exact ở cả hai workflow — trước đây network-center dùng 'v2.x' và một bản patch mới có thể làm đỏ CI khi không ai đụng code."
+    "denoNote": "Pin runtime Deno cho các workflow khai deno; deno.lock của từng function khoá dependency."
   },
   "howToSwitch": "Máy dev nên dùng volta/fnm/nvm-windows. Chạy gate của package nào thì đổi sang Node của package đó trước — đọc bảng trên, đừng đoán từ root engines."
 }

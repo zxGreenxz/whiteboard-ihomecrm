@@ -12,8 +12,43 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { findForbidden } from "../check-agent-contract.mjs";
+import * as gate from "../check-agent-contract.mjs";
 
 const co = (text, id) => findForbidden(text, "AGENTS.md").some((p) => p.id === id);
+
+describe('hướng dẫn dùng được và giữ ngắn', () => {
+  const check = (text, file = 'AGENTS.md') => {
+    assert.equal(typeof gate.checkGuide, 'function', 'gate phải kiểm lệnh, link và độ dài');
+    return gate.checkGuide(text, file, { 'gate:agent-contract': 'node scripts/check-agent-contract.mjs' },
+      (path) => path === 'docs/engineering/PROJECT_CONTRACT.md');
+  };
+
+  it('bắt npm script không tồn tại', () => {
+    assert.ok(check('npm run gate:khong-co').some(p => p.id === 'unknown-npm-script'));
+    assert.ok(!check('npm run gate:agent-contract').some(p => p.id === 'unknown-npm-script'));
+  });
+
+  it('bắt link nội bộ hỏng, giải đường dẫn theo file tài liệu', () => {
+    assert.ok(check('[luật](docs/missing.md)').some(p => p.id === 'broken-guide-link'));
+    assert.ok(!check('[luật](docs/engineering/PROJECT_CONTRACT.md)').some(p => p.id === 'broken-guide-link'));
+    assert.ok(!check('[luật](PROJECT_CONTRACT.md)', 'docs/engineering/MIGRATION_STRATEGY.md')
+      .some(p => p.id === 'broken-guide-link'));
+  });
+
+  it('chặn phình adapter cả bằng dòng dài và nhiều dòng', () => {
+    assert.ok(check('x\n'.repeat(61)).some(p => p.id === 'guide-too-long'));
+    assert.ok(check('x'.repeat(6001)).some(p => p.id === 'guide-too-long'));
+  });
+
+  it('con trỏ trong HTML comment không thay hướng dẫn người đọc', () => {
+    assert.ok(check('<!-- PROJECT_CONTRACT.md -->').some(p => p.id === 'missing-contract-pointer'));
+  });
+
+  it('không giữ miễn trừ cho lệnh nguy hiểm trong văn kể đã bỏ', () => {
+    const old = '- Nó dạy chạy `npm run gen:types` kèm dấu redirect `>` đổ vào `types.ts` — suốt nhiều tháng. Shell';
+    assert.ok(co(old, 'gen-types-redirect'));
+  });
+});
 
 describe("check-agent-contract — chữ 'không' ở CUỐI câu không được che lệnh", () => {
   it("lệnh phá file trần (đối chứng cơ bản)", () => {
