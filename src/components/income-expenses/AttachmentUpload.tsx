@@ -17,6 +17,9 @@ interface AttachmentUploadProps {
   disabled?: boolean;
   userId: string;
   bucket?: string;
+  onUploadingChange?: (uploading: boolean) => void;
+  maxFiles?: number;
+  deleteOnRemove?: boolean;
 }
 
 /**
@@ -39,19 +42,29 @@ export default function AttachmentUpload({
   disabled = false,
   userId,
   bucket = DEFAULT_BUCKET,
+  onUploadingChange,
+  maxFiles = Infinity,
+  deleteOnRemove = true,
 }: AttachmentUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const uploadActive = useRef(false);
 
   const BUCKET = bucket;
 
   const handleUpload = useCallback(
     async (files: FileList | File[]) => {
-      if (disabled || !userId) return;
+      if (disabled || !userId || uploadActive.current) return;
 
       const fileArray = Array.from(files);
+      if (attachments.length + fileArray.length > maxFiles) {
+        toast.error(`Chỉ đính kèm tối đa ${maxFiles} tệp.`);
+        return;
+      }
+      uploadActive.current = true;
       setIsUploading(true);
+      onUploadingChange?.(true);
 
       try {
         const newUrls: string[] = [];
@@ -87,21 +100,23 @@ export default function AttachmentUpload({
           onChange([...attachments, ...newUrls]);
         }
       } finally {
+        uploadActive.current = false;
         setIsUploading(false);
+        onUploadingChange?.(false);
       }
     },
-    [attachments, disabled, onChange, userId]
+    [attachments, disabled, onChange, userId, BUCKET, maxFiles, onUploadingChange]
   );
 
   const handleRemove = useCallback(
     async (url: string) => {
-      if (disabled) return;
+      if (disabled || uploadActive.current) return;
 
       try {
         // Extract path from URL: everything after /object/public/{bucket}/
         const marker = `/object/public/${BUCKET}/`;
         const idx = url.indexOf(marker);
-        if (idx !== -1) {
+        if (deleteOnRemove && idx !== -1) {
           const path = decodeURIComponent(url.slice(idx + marker.length));
           await deleteFile(BUCKET, path);
         }
@@ -111,7 +126,7 @@ export default function AttachmentUpload({
 
       onChange(attachments.filter((a) => a !== url));
     },
-    [attachments, disabled, onChange]
+    [attachments, disabled, onChange, BUCKET, deleteOnRemove]
   );
 
   const handleDrop = useCallback(

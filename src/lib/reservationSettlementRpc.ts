@@ -142,6 +142,7 @@ export function reservationSettlementListArgs(input?: {
 }
 
 export interface SettleReservationInput {
+  refundAttachments?: string[];
   voucherId: string;
   refundAmount: number;
   refundMode: RefundMode;
@@ -154,6 +155,7 @@ export interface SettleReservationInput {
 }
 
 export interface PayReservationRefundInput {
+  refundAttachments?: string[];
   settlementId: string;
   accountId: string;
   paidOn: string;
@@ -187,6 +189,7 @@ export function reservationSettlementErrorMessage(error?: string | { message?: s
   const matched = SETTLEMENT_ERROR_MESSAGES.find(([code]) => message.includes(code));
   if (matched) return matched[1];
   const normalized = message.toLocaleLowerCase("vi");
+  if (error && typeof error !== "string" && error.code === "22023" && normalized.includes("chứng từ")) return "Chứng từ hoàn tiền chưa hợp lệ. Hãy tải lại tệp bằng tài khoản đang xử lý trong công ty này (tối đa 10 tệp).";
   if (normalized.includes("không có quyền") || normalized.includes("không phải người giữ") || error && typeof error !== "string" && error.code === "42501") return "Bạn chưa đủ quyền thực hiện thao tác này.";
   if (normalized.includes("đã thay đổi") || normalized.includes("nội dung khác") || error && typeof error !== "string" && error.code === "40001") return "Phiếu đã thay đổi. Hãy tải lại trước khi xử lý.";
   if (normalized.includes("kỳ khóa") || normalized.includes("kỳ đã khóa") || normalized.includes("kỳ ghi nhận") && normalized.includes("đã khoá") || normalized.includes("sổ quỹ đã chốt tới sau ngày")) return "Ngày đã chọn nằm trong kỳ sổ quỹ đã khóa.";

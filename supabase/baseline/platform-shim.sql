@@ -43,6 +43,7 @@ DO $$ BEGIN CREATE ROLE service_role NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate
 -- ── Schema nền tảng ──────────────────────────────────────────────────────────
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE SCHEMA IF NOT EXISTS storage;
 
 -- ── auth.users ───────────────────────────────────────────────────────────────
 -- 183 tham chiếu, hầu hết là khoá ngoại `REFERENCES auth.users(id)`. Chỉ cần cột
@@ -55,6 +56,43 @@ CREATE SCHEMA IF NOT EXISTS extensions;
 -- diễn tập thật sự chạm tới.
 CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY, email text);
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email text;
+
+-- ── Storage: chỉ phần baseline + forward lane thật sự dùng ───────────────────
+-- Baseline loại schema storage vì Supabase dựng sẵn nó. Nhưng forward lane có
+-- khai báo biến composite `stored storage.objects`, nên thiếu cả schema làm
+-- CREATE FUNCTION chết trước khi có thể kiểm migration (CI 10/09/2026).
+-- Các cột/kiểu/default/FK bên dưới đối chiếu pg_catalog production 10/09/2026.
+-- Không mô phỏng API upload/signing, versioning hay chính sách đọc của app.
+-- RLS bật và KHÔNG thêm policy permissive: diễn tập không được xanh bằng cách
+-- nới quyền. Bucket/policy của app vẫn do chính forward migrations tạo.
+CREATE TABLE IF NOT EXISTS storage.buckets (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  public boolean DEFAULT false,
+  file_size_limit bigint
+);
+CREATE TABLE IF NOT EXISTS storage.objects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  bucket_id text REFERENCES storage.buckets(id),
+  name text,
+  owner uuid,
+  owner_id text,
+  metadata jsonb,
+  archived_at timestamptz,
+  is_delete_marker boolean NOT NULL DEFAULT false
+);
+ALTER TABLE storage.buckets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- Cùng ngữ nghĩa hàm nền tảng: bỏ segment cuối (tên file), giữ nguyên đường dẫn.
+-- Zalo/avatars forward migrations dùng nó trong policy; không thay bằng NULL.
+CREATE OR REPLACE FUNCTION storage.foldername(name text) RETURNS text[]
+  LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$
+DECLARE parts text[];
+BEGIN
+  parts := string_to_array(name, '/');
+  RETURN parts[1 : array_length(parts, 1) - 1];
+END $$;
 
 -- Quyền trên schema `public`. Trên Supabase, ba role nền tảng có sẵn quyền này;
 -- Postgres trần thì không, và một migration trong forward lane chết với

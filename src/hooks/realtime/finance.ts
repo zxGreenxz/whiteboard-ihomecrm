@@ -33,6 +33,8 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "income_expenses",
     keys: [
+      ["reservation-refund-evidence"],
+      ["reservation-settlement-audit"],
       ["income-expenses"],
       ["deposit-dashboard"],
       ["reservation-deposits"],
@@ -91,6 +93,9 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: "reservation_deposit_settlements",
     keys: [
+      ["reservation-refund-evidence"],
+      ["reservation-settlement-audit"],
+      ["voucher-with-batch"],
       ["reservation-settlements"],
       ["reservation-settlement-summary"],
       ["reservation-settlement-preview"],

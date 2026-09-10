@@ -6,6 +6,7 @@ import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
 import { getAllIeTypesCached, type IeTypeLite } from "@/lib/ieTypesCache";
 import { AMOUNT_SEARCH_TOLERANCE } from "@/lib/roomCodeSearch";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
+import { hydrateReservationCreators, type CreatorVoucher } from "./reservationCreators";
 import type {
   IncomeExpenseFilters,
   IncomeExpenseItem,
@@ -462,7 +463,8 @@ export const incomeExpensesListQuery = (
       }
 
       // Map vouchers to IncomeExpenseWithRelations
-      const mapped: IncomeExpenseWithRelations[] = (vouchers as any[]).map(
+      const namedVouchers = await hydrateReservationCreators(vouchers as unknown as CreatorVoucher[]);
+      const mapped: IncomeExpenseWithRelations[] = (namedVouchers as any[]).map(
         (v: any) => {
           const row: IncomeExpenseWithRelations = {
           id: v.id,
@@ -971,7 +973,7 @@ export const useIncomeExpenseBatches = (
 
       // 5. Map vouchers → IncomeExpenseWithRelations
       const voucherMap = new Map<string, IncomeExpenseWithRelations>();
-      for (const v of vouchers) {
+      for (const v of await hydrateReservationCreators(vouchers)) {
         voucherMap.set(v.id, {
           id: v.id,
           user_id: v.user_id,

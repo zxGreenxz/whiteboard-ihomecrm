@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { ReservationSettlementDetails } from "@/components/deposits/ReservationSettlementDetails";
 import { useQuery } from "@tanstack/react-query";
 import {
   X,
@@ -174,8 +175,9 @@ export function IncomeExpenseDetailMobile({
   return (
     // stopPropagation: khi sheet này lồng trong sheet khác (vd phiếu con trong
     // chi tiết phiếu tổng), chạm nền KHÔNG được nổi bọt lên overlay cha → tránh
-    // đóng luôn cả 2 lớp.
-    <div className="sheet-ov" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+    // đóng luôn cả 2 lớp. Dialog portal vẫn nổi bọt theo cây React; chỉ chạm
+    // trực tiếp nền này mới đóng chi tiết, không đóng khi thao tác dialog con.
+    <div className="sheet-ov" onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-grab" />
         <div className="vd-hd">
@@ -438,6 +440,9 @@ export function IncomeExpenseDetailMobile({
           )}
         </div>
 
+        {settlement.data && <ReservationSettlementDetails key={settlement.data.id} settlement={settlement.data} />}
+        {needsSettlementLookup && settlement.error && <p role="alert" className="text-sm text-destructive">Không tải được thông tin xử lý cọc. <button className="underline" onClick={() => void settlement.refetch()}>Thử lại</button></p>}
+
         {isExpense && !isCancelled && v.receive_bank_account && (
           <button className="vd-pay" onClick={() => setPaySheetOpen(true)}>
             <Banknote size={16} />
@@ -541,6 +546,7 @@ export function IncomeExpenseDetailMobile({
             </div>
           </>
         )}
+        {canSettleReservation && <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>}
       </div>
 
       <PayViaBankAppSheet
@@ -549,7 +555,6 @@ export function IncomeExpenseDetailMobile({
         voucher={v}
       />
 
-      {canSettleReservation && <button className="vd-pay" onClick={() => setSettlementOpen(true)}>Xử lý bỏ cọc</button>}
       {canSettleReservation && <ReservationSettlementDialog voucherId={v.id} open={settlementOpen} onOpenChange={setSettlementOpen} />}
 
       <AttachmentLightbox
