@@ -4466,6 +4466,7 @@ export type Database = {
           description: string | null
           id: string
           organization_id: string
+          source_adjustment_id: string | null
           source_invoice_id: string | null
           source_payment_id: string | null
           user_id: string
@@ -4478,6 +4479,7 @@ export type Database = {
           description?: string | null
           id?: string
           organization_id: string
+          source_adjustment_id?: string | null
           source_invoice_id?: string | null
           source_payment_id?: string | null
           user_id: string
@@ -4490,6 +4492,7 @@ export type Database = {
           description?: string | null
           id?: string
           organization_id?: string
+          source_adjustment_id?: string | null
           source_invoice_id?: string | null
           source_payment_id?: string | null
           user_id?: string
@@ -4514,6 +4517,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "excess_amounts_source_adjustment_id_fkey"
+            columns: ["source_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_adjustments"
             referencedColumns: ["id"]
           },
           {
@@ -6831,6 +6841,78 @@ export type Database = {
             columns: ["spawned_job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_adjustments: {
+        Row: {
+          adjusted_at: string
+          adjusted_by: string
+          after_snapshot: Json
+          after_total: number
+          before_snapshot: Json
+          before_total: number
+          checked_at: string | null
+          checked_by: string | null
+          delta: number
+          id: string
+          idempotency_key: string
+          invoice_id: string
+          organization_id: string
+          reason: string
+          review_status: string
+          revision: number
+        }
+        Insert: {
+          adjusted_at?: string
+          adjusted_by: string
+          after_snapshot: Json
+          after_total: number
+          before_snapshot: Json
+          before_total: number
+          checked_at?: string | null
+          checked_by?: string | null
+          delta: number
+          id?: string
+          idempotency_key: string
+          invoice_id: string
+          organization_id: string
+          reason: string
+          review_status?: string
+          revision: number
+        }
+        Update: {
+          adjusted_at?: string
+          adjusted_by?: string
+          after_snapshot?: Json
+          after_total?: number
+          before_snapshot?: Json
+          before_total?: number
+          checked_at?: string | null
+          checked_by?: string | null
+          delta?: number
+          id?: string
+          idempotency_key?: string
+          invoice_id?: string
+          organization_id?: string
+          reason?: string
+          review_status?: string
+          revision?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_adjustments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_adjustments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -18307,6 +18389,38 @@ export type Database = {
         Args: { anchor: string; cycle: string; k: number }
         Returns: string
       }
+      adjust_invoice_v1: {
+        Args: {
+          p_after_items: Json
+          p_idempotency_key: string
+          p_invoice_id: string
+          p_reason: string
+        }
+        Returns: {
+          adjusted_at: string
+          adjusted_by: string
+          after_snapshot: Json
+          after_total: number
+          before_snapshot: Json
+          before_total: number
+          checked_at: string | null
+          checked_by: string | null
+          delta: number
+          id: string
+          idempotency_key: string
+          invoice_id: string
+          organization_id: string
+          reason: string
+          review_status: string
+          revision: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "invoice_adjustments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       adopt_voucher_attachments_as_evidence_v2: {
         Args: { p_voucher: string }
         Returns: Json
@@ -22559,6 +22673,33 @@ export type Database = {
           p_voucher: string
         }
         Returns: Json
+      }
+      review_invoice_adjustment_v1: {
+        Args: { p_adjustment_id: string }
+        Returns: {
+          adjusted_at: string
+          adjusted_by: string
+          after_snapshot: Json
+          after_total: number
+          before_snapshot: Json
+          before_total: number
+          checked_at: string | null
+          checked_by: string | null
+          delta: number
+          id: string
+          idempotency_key: string
+          invoice_id: string
+          organization_id: string
+          reason: string
+          review_status: string
+          revision: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "invoice_adjustments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       revoke_organization_invitation_v1: {
         Args: { p_invitation: string }

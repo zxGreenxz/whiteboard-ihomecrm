@@ -14,6 +14,7 @@ vi.mock('@/components/ui/select', async (importOriginal) => {
 vi.mock('@/hooks/useInvoices', () => ({
   useCreateInvoice: () => ({ isPending: false, mutate: (formData: NonNullable<typeof boundary.payload>['formData']) => { boundary.payload = { formData }; } }),
   useUpdateInvoice: () => ({ isPending: false, mutate: (payload: typeof boundary.payload) => { boundary.payload = payload; } }),
+  useAdjustInvoice: () => ({ isPending: false, mutate: (payload: unknown) => { boundary.payload = payload as typeof boundary.payload; } }),
   useExcessAmount: () => ({ data: 0 }),
 }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: () => ({ data: [] }) }));

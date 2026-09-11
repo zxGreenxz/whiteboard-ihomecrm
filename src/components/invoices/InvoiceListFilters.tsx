@@ -82,6 +82,10 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
     });
   };
 
+  const handleAdjustmentReviewChange = (value: string) => {
+    update({ adjustment_review_status: value === ALL_VALUE ? undefined : value as 'pending' | 'checked' });
+  };
+
   // Mặc định = 'active' (loại CANCELLED) khi user chưa chọn.
   const viewStatusValue = filters.view_status ?? 'active';
   const handleViewStatusChange = (value: string) => {
@@ -158,6 +162,20 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
             { value: 'active', label: 'Đã duyệt' },
             { value: 'cancelled', label: 'Đã huỷ' },
             { value: 'all', label: 'Tất cả' },
+          ]}
+        />
+      )}
+
+      {!compact && (
+        <SearchableSelect
+          value={filters.adjustment_review_status ?? ALL_VALUE}
+          onValueChange={handleAdjustmentReviewChange}
+          className="h-9 text-sm w-[180px]"
+          placeholder="Kiểm tra điều chỉnh"
+          options={[
+            { value: ALL_VALUE, label: 'Điều chỉnh: tất cả' },
+            { value: 'pending', label: 'Điều chỉnh chưa kiểm tra' },
+            { value: 'checked', label: 'Điều chỉnh đã kiểm tra' },
           ]}
         />
       )}

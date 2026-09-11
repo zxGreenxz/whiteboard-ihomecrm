@@ -29,7 +29,7 @@ import {
   XCircle,
   RotateCcw,
 } from 'lucide-react';
-import { useInvoice, useCancelInvoice, useRestoreInvoice } from '@/hooks/useInvoices';
+import { useInvoice, useCancelInvoice, useRestoreInvoice, useReviewInvoiceAdjustment } from '@/hooks/useInvoices';
 import { useMyContext } from '@/hooks/useMyContext';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
@@ -90,10 +90,12 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   const { data: invoice, isLoading } = useInvoice(id || '');
   const cancelMutation = useCancelInvoice();
   const restoreMutation = useRestoreInvoice();
+  const reviewAdjustmentMutation = useReviewInvoiceAdjustment();
   const { data: ctx } = useMyContext();
   const { data: perms } = useMyPermissions();
   const canEditPerm = canUse(perms, 'invoices', 'edit');
   const canRecordPaymentPerm = canUse(perms, 'invoices', 'record_payment');
+  const canReviewAdjustment = canUse(perms, 'invoices', 'approve');
   // Gôm nút Xoá về nút Huỷ (09/2026): nhận cả quyền invoices.delete cũ trong
   // giai đoạn chuyển tiếp để role cũ không mất nút.
   const canCancelPerm =
@@ -524,6 +526,52 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
               </Table>
             </CardContent>
           </Card>
+
+          {invoice.invoice_adjustments?.length ? (
+            <Card>
+              <CardHeader><CardTitle>Lịch sử điều chỉnh</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {invoice.invoice_adjustments.slice().sort((a, b) => b.revision - a.revision).map((a) => (
+                  <div key={a.id} className="rounded-md border p-3 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium">Điều chỉnh #{a.revision}: {a.reason}</div>
+                      <Badge variant={a.review_status === 'CHECKED' ? 'default' : 'secondary'}>
+                        {a.review_status === 'CHECKED' ? 'Đã kiểm tra' : 'Chưa kiểm tra'}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 text-gray-600">
+                      {formatCurrency(a.before_total)} → {formatCurrency(a.after_total)}
+                      {' '}({a.delta >= 0 ? '+' : ''}{formatCurrency(a.delta)})
+                    </div>
+                    {Array.isArray((a.after_snapshot as { items?: unknown }).items) && (
+                      <div className="mt-2 rounded bg-slate-50 p-2">
+                        <div className="mb-1 text-xs font-semibold text-slate-600">Cụm dòng sau điều chỉnh</div>
+                        {(a.after_snapshot as { items: Array<Record<string, unknown>> }).items.map((item, index) => (
+                          <div key={`${a.id}-item-${index}`} className="flex justify-between text-xs text-slate-700">
+                            <span>{String(item.description ?? 'Khoản thu')}</span>
+                            <span>{formatCurrency(Number(item.amount ?? (Number(item.unit_price) || 0) * (Number(item.quantity) || 1)))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-1 text-xs text-gray-500">
+                      Điều chỉnh lúc {format(new Date(a.adjusted_at), 'dd/MM/yyyy HH:mm', { locale: vi })}
+                    </div>
+                    {a.review_status === 'CHECKED' ? (
+                      <div className="text-xs text-green-700">
+                        Kiểm tra lúc {a.checked_at ? format(new Date(a.checked_at), 'dd/MM/yyyy HH:mm', { locale: vi }) : '—'}
+                      </div>
+                    ) : canReviewAdjustment ? (
+                      <Button size="sm" className="mt-2" disabled={reviewAdjustmentMutation.isPending}
+                        onClick={() => reviewAdjustmentMutation.mutate(a.id)}>
+                        <CheckCircle className="mr-1 h-4 w-4" /> Xác nhận kiểm tra
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
 
           {/* Payments Card */}
           {invoice.payments && invoice.payments.length > 0 && (

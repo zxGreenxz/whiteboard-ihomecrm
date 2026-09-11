@@ -17,6 +17,7 @@ import type {
   InvoiceFormData,
   InvoiceFormItem,
   InvoiceStatus,
+  InvoiceAdjustment,
 } from '@/types/invoice';
 import {
   canEditInvoice,
@@ -38,6 +39,60 @@ import {
 
 // Re-export types for backward compatibility
 export type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
+
+export interface AdjustInvoiceInput {
+  invoiceId: string;
+  afterItems: Array<Record<string, unknown>>;
+  reason: string;
+  idempotencyKey: string;
+}
+
+type UntypedRpc = (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
+const invokeInvoiceAdjustmentRpc = (fn: string, args: Record<string, unknown>) =>
+  (supabase.rpc as unknown as UntypedRpc)(fn, args);
+
+export const useAdjustInvoice = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  return useMutation<InvoiceAdjustment, Error, AdjustInvoiceInput>({
+    mutationFn: async (input) => {
+      const { data, error } = await invokeInvoiceAdjustmentRpc('adjust_invoice_v1', {
+        p_invoice_id: input.invoiceId,
+        p_after_items: input.afterItems as Json,
+        p_reason: input.reason,
+        p_idempotency_key: input.idempotencyKey,
+      });
+      if (error) throw error;
+      return data as unknown as InvoiceAdjustment;
+    },
+    onSuccess: (_, input) => {
+      for (const key of [['invoices'], ['invoice'], ['excess-amount'], ['invoice-statistics']]) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
+      queryClient.invalidateQueries({ queryKey: ['invoice', input.invoiceId] });
+      toast({ title: 'Đã lưu điều chỉnh', description: 'Chênh lệch đã được ghi nhận vào công nợ hoặc credit.' });
+    },
+  });
+};
+
+export const useReviewInvoiceAdjustment = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  return useMutation<InvoiceAdjustment, Error, string>({
+    mutationFn: async (adjustmentId) => {
+      const { data, error } = await invokeInvoiceAdjustmentRpc('review_invoice_adjustment_v1', {
+        p_adjustment_id: adjustmentId,
+      });
+      if (error) throw error;
+      return data as unknown as InvoiceAdjustment;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      toast({ title: 'Đã xác nhận kiểm tra' });
+    },
+  });
+};
 
 export interface UpdateInvoiceData {
   id: string;
@@ -61,6 +116,7 @@ const INVOICE_LIST_SELECT = `
   room:rooms!invoices_room_id_fkey (id, name, name_sort),
   invoice_items (id, type, accounting_class, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
   payments (id, amount, payment_date, payment_method, notes, receipt_image_url, collection_id, reversed_at)
+  ,invoice_adjustments (id, organization_id, invoice_id, revision, idempotency_key, reason, before_snapshot, after_snapshot, before_total, after_total, delta, adjusted_by, adjusted_at, review_status, checked_by, checked_at)
 `;
 
 // =============================================
@@ -205,12 +261,22 @@ export const invoicesListQuery = (
         throw error;
       }
 
-      const invoiceRows = ((data || []) as InvoiceWithRelations[]).map((invoice) => ({
+      let invoiceRows = ((data || []) as InvoiceWithRelations[]).map((invoice) => ({
         ...invoice,
         payments: (invoice.payments ?? []).filter(
           (payment) => !(payment as typeof payment & { reversed_at?: string | null }).reversed_at,
         ),
       }));
+
+      if (filters?.adjustment_review_status) {
+        invoiceRows = invoiceRows.filter((invoice) =>
+          (invoice.invoice_adjustments ?? []).some((a) =>
+            filters.adjustment_review_status === 'pending'
+              ? a.review_status === 'PENDING'
+              : a.review_status === 'CHECKED',
+          ),
+        );
+      }
 
       if (invoiceRows.length > 0) {
         const { data: methodRows, error: methodError } = await supabase.rpc(
