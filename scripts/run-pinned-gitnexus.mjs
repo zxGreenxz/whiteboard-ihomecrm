@@ -1,318 +1,193 @@
 #!/usr/bin/env node
-// Cửa DUY NHẤT để gọi GitNexus. Không gọi `npx gitnexus` trực tiếp ở đâu khác.
-//
-// VÌ SAO CẦN WRAPPER
-//   GitNexus là công cụ đọc toàn bộ mã nguồn rồi ghi ra chỉ mục mà agent tin
-//   theo. Hai rủi ro phải chặn ngay từ đầu:
-//
-//   1. VERSION TRÔI. `npx gitnexus@latest` nghĩa là mỗi lần chạy có thể là một
-//      công cụ khác, và một bản mới có thể đổi cách hiểu mã nguồn mà không ai
-//      hay. Wrapper đọc version TỪ tooling/agent-tools.json, nên chỉ có đúng
-//      một chỗ để đổi và việc đổi hiện ra trong diff.
-//   2. CÔNG CỤ GHI ĐÈ HỢP ĐỒNG. `analyze` mặc định chèn một mục vào CLAUDE.md
-//      và AGENTS.md. Hai file đó là hợp đồng agent của repo này; để công cụ tự
-//      sửa chúng là để công cụ tự viết luật cho chính nó. Vì vậy
-//      `--skip-agents-md` được ép vào mọi lần analyze, kể cả khi người gọi quên.
-//
-// FAIL-CLOSED: mọi subcommand trừ `smoke` bị từ chối khi pin chưa `verified`.
-// `smoke` tồn tại chính là để verify — nó là con đường duy nhất đi từ
-// blocked → verified, và nó ghi bằng chứng đo được vào agent-tools.json.
-//
-//   node scripts/run-pinned-gitnexus.mjs smoke     # verify pin, ghi bằng chứng
-//   node scripts/run-pinned-gitnexus.mjs analyze   # index (tự thêm cờ bắt buộc)
-//   node scripts/run-pinned-gitnexus.mjs status
-//   node scripts/run-pinned-gitnexus.mjs mcp       # MCP server (stdio)
-//
-// Không cần credential, không đọc database.
+// Optional local graph CLI. Source remains the fallback whenever this tool is unavailable.
+import {spawn} from 'node:child_process';
+import {mkdir, open, readFile, writeFile, rename, unlink, readdir, realpath, stat} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import {dirname, join, resolve, delimiter} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {captureSnapshot, inspectIndex, nativeStamp, validateInstallation, normalizedEnvironment, json, digest, fail, checkDeadline} from './lib/gitnexus-state.mjs';
 
-import { spawnSync, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PIN = join(repoRoot, "tooling", "agent-tools.json");
-
-/**
- * Subcommand truy vấn graph — chúng nhận `-r, --repo` và mặc định đoán repo từ
- * registry toàn cục, nên PHẢI được chỉ đích danh. Đã đối chiếu với `--help` của
- * gitnexus 1.6.9 ngày 08/08/2026.
- *
- * KHÔNG gồm: analyze/index/status/mcp/smoke/doctor/list — chúng làm việc theo thư
- * mục hiện hành hoặc không có khái niệm repo đích.
- */
-export const SUB_CAN_REPO = new Set([
-  "query",
-  "context",
-  "impact",
-  "trace",
-  "cypher",
-  "detect-changes",
-  "detect_changes",
-  "check",
-  "wiki",
-  "augment",
-]);
-const INDEX_DIR = join(repoRoot, ".gitnexus");
-const MANIFEST = join(INDEX_DIR, "manifest.json");
-
-/** `npx` trên Windows là npx.cmd; Node từ chối spawn .cmd khi shell:false (EINVAL). */
-const NPX = process.platform === "win32" ? "npx.cmd" : "npx";
-
-export function docPin(text) {
-  const j = JSON.parse(text);
-  const g = j.gitnexus ?? {};
-  return {
-    version: g.version ?? null,
-    status: g.status ?? "blocked-until-version-is-verified",
-    analyzeArgs: Array.isArray(g.analyzeArgs) ? g.analyzeArgs : [],
-    daVerify: g.status === "verified" && typeof g.version === "string" && g.version.length > 0,
-  };
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const ANALYZE_ARGS = ['--index-only','--skip-agents-md','--worker-timeout','60'];
+const HELP = 'GitNexus local: help | smoke | status | analyze [--timeout-ms 1000..900000] | query <text> | context <symbol> | impact <symbol> | trace <from> <to>\nQuery unavailable: use source search. Analyze is explicit; queries never install or rebuild.\n';
+const QUERY_OPTIONS = {
+  query: ['--context','--goal','--limit','--content'],
+  context: ['--uid','--file','--limit','--content'],
+  impact: ['--uid','--file','--kind','--direction','--depth','--limit','--include-tests','--summary-only'],
+  trace: ['--from-uid','--from-file','--to-uid','--to-file','--depth','--include-tests'],
+};
+const FLAGS = new Set(['--content','--include-tests','--summary-only']);
+const ALIASES = {'-l':'--limit','-f':'--file','-u':'--uid','-d':'--direction','-c':'--context','-g':'--goal'};
+function positive(value, min = 1, max = Number.MAX_SAFE_INTEGER) {
+  if (!/^\d+$/.test(value ?? '') || !Number.isSafeInteger(Number(value)) || Number(value)<min || Number(value)>max) throw fail('invalid numeric option',64);
+  return Number(value);
 }
-
-function git(args) {
-  try {
-    return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
-  } catch {
-    return null;
+export function parseArgs(argv) {
+  const [sub = 'help',...rest] = argv;
+  if (sub === 'help' || sub === '--help' || sub === '--version') {
+    if(rest.length)throw fail('unexpected arguments',64);
+    return {sub:'help',version:sub==='--version'};
   }
+  if (!['smoke','status','analyze',...Object.keys(QUERY_OPTIONS)].includes(sub)) throw fail('unsupported command',64);
+  let timeoutMs = sub === 'analyze' || sub === 'smoke' ? 120000 : 30000;
+  const nativeArgs = [sub],bounds={}, seen=new Set();let positional=0,help=false;
+  for(let i=0;i<rest.length;i++) {
+    const raw=rest[i];
+    if(raw==='--help'||raw==='-h'){help=true;continue;}
+    if(raw.startsWith('-')) {
+      const equal=raw.indexOf('=');let key=equal<0?raw:raw.slice(0,equal);key=ALIASES[key]??key;
+      if(key==='--timeout-ms' && sub==='analyze') {
+        const value=equal<0?rest[++i]:raw.slice(equal+1);timeoutMs=positive(value,1000,900000);continue;
+      }
+      if(!QUERY_OPTIONS[sub]?.includes(key) || seen.has(key)) throw fail('unsupported or duplicate option',64);
+      seen.add(key);nativeArgs.push(key);
+      if(FLAGS.has(key)){if(equal>=0)throw fail('flag takes no value',64);continue;}
+      const value=equal<0?rest[++i]:raw.slice(equal+1);
+      if(value===undefined||value.startsWith('--'))throw fail('missing option value',64);
+      if(key==='--limit'||key==='--depth')bounds[key.slice(2)]=positive(value);
+      if(key==='--direction'&&!['upstream','downstream'].includes(value))throw fail('invalid direction',64);
+      nativeArgs.push(value);
+    } else {positional++;nativeArgs.push(raw);}
+  }
+  if (help) return {sub:'help'};
+  if (sub==='trace' ? positional!==2 : QUERY_OPTIONS[sub] ? positional!==1 && !(positional===0&&seen.has('--uid')) : positional!==0) throw fail('unexpected positional arguments',64);
+  const defaults={query:{limit:5},context:{limit:20},impact:{depth:2,limit:20},trace:{depth:6}}[sub]??{};
+  for(const [key,value] of Object.entries(defaults)) if(bounds[key]===undefined){bounds[key]=value;nativeArgs.push(`--${key}`,String(value));}
+  return {sub,nativeArgs,bounds,timeoutMs};
 }
 
-/**
- * Gọi GitNexus qua npx, xử đúng hai cái bẫy của Windows.
- *
- * 1. `npx.cmd` với `shell:false` ném EINVAL — Node từ chối spawn file .cmd không
- *    qua shell (bản vá bảo mật CVE-2024-27980). Đo được: status=null,
- *    error.code=EINVAL, stdout rỗng. Nguy hiểm ở chỗ nếu chỉ nhìn stdout thì nó
- *    trông y hệt "công cụ chạy nhưng không in gì".
- * 2. Nhưng `shell:true` thì Node KHÔNG bọc nháy đối số — nó nối tất cả thành một
- *    chuỗi lệnh. Đường dẫn repo này là "C:\Users\Nguyen Tam\…" có dấu cách, nên
- *    bất kỳ đối số nào mang đường dẫn sẽ bị shell cắt làm đôi. Đây đúng lỗi đã
- *    cắn scripts/check-permission-catalog.mjs (CI Linux không bao giờ lộ vì
- *    đường dẫn ở đó không có dấu cách).
- *
- * Nên: Windows dùng shell:true và TỰ bọc nháy đối số nào có dấu cách; POSIX giữ
- * shell:false (an toàn hơn, không cần bọc).
- */
-function chayGitNexus(version, args, { keThua = true } = {}) {
-  const laWin = process.platform === "win32";
-  const doiSo = ["--yes", `gitnexus@${version}`, ...args];
-  const boc = (a) => (laWin && /[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
-  return spawnSync(NPX, laWin ? doiSo.map(boc) : doiSo, {
-    cwd: repoRoot,
-    encoding: "utf8",
-    stdio: keThua ? "inherit" : "pipe",
-    timeout: 60 * 60 * 1000,
-    shell: laWin,
+// One monotonic deadline covers every subprocess and both snapshot passes.
+export function runProcess(command,args,{cwd,env,deadline,outputLimit=16*1024*1024}) {
+  checkDeadline(deadline);
+  return new Promise((resolveResult,reject)=>{
+    const child=spawn(command,args,{cwd,env,shell:false,windowsHide:true,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe']});
+    let stdout='',stderr='',failure,killPromise;
+    const stop = reason => {
+      if(killPromise)return;failure=reason;
+      killPromise=(async()=>{
+        if(!child.pid)return;
+        if(process.platform==='win32') {
+          await new Promise((res,rej)=>{
+            const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{shell:false,windowsHide:true,stdio:'ignore'});
+            killer.on('error',rej);killer.on('close',code=>code===0?res():rej(fail('process tree termination unconfirmed')));
+          });
+        } else {try{process.kill(-child.pid,'SIGKILL')}catch(e){if(e.code!=='ESRCH')throw e;}}
+      })();
+      // Handle rejection now; close awaits it before releasing the operation lock.
+      killPromise.catch(()=>{});
+    };
+    const timer=setTimeout(()=>stop(fail('timeout')),Math.max(1,deadline-performance.now()));
+    child.stdout.on('data',data=>{stdout+=data;if(stdout.length>outputLimit)stop(fail('native output limit exceeded'));});
+    child.stderr.on('data',data=>{stderr+=data;if(stderr.length>outputLimit)stop(fail('native output limit exceeded'));});
+    child.on('error',e=>{clearTimeout(timer);reject(fail(`process unavailable: ${e.code??'error'}`));});
+    child.on('close',async code=>{
+      clearTimeout(timer);
+      try{if(killPromise)await killPromise;}catch{reject(Object.assign(fail('process tree termination unconfirmed'),{retainLock:true}));return;}
+      if(failure)reject(failure);else resolveResult({code,stdout,stderr});
+    });
   });
 }
 
-/**
- * Manifest hộ chiếu cho chỉ mục GitNexus (luật #3 của Contract §12).
- *
- * Ghi vào .gitnexus/ — thư mục đã nằm trong .gitignore THEO THIẾT KẾ (chỉ mục là
- * local-only, không commit). Vì vậy manifest này cũng local: nó mô tả chỉ mục
- * TRÊN MÁY NÀY, và check-graph-freshness.mjs đọc nó để biết chỉ mục chụp ở commit
- * nào. Không có nó thì "chỉ mục cũ" và "chỉ mục mới" trông giống hệt nhau.
- *
- * configDigest dùng git blob OID, KHÔNG sha256 nội dung file: trên Windows nội
- * dung worktree có thể là CRLF trong khi blob là LF, nên sha256 worktree sẽ lệch
- * một cách vô nghĩa. Blob OID là thứ git thật sự lưu.
- */
-function ghiManifest(version, analyzeArgs) {
-  const head = git(["rev-parse", "HEAD"]);
-  // `hash-object` chứ KHÔNG `rev-parse HEAD:<path>`: cái sau chỉ đọc được file
-  // ĐÃ commit, nên lần chạy đầu tiên (khi agent-tools.json còn trong working
-  // tree) nó fail và configDigest thành null — đúng lúc cần nó nhất. hash-object
-  // tính OID từ nội dung hiện tại, có áp filter theo .gitattributes nên ra CÙNG
-  // giá trị mà git sẽ lưu (đã đối chiếu trên .ua/config.json: khớp tuyệt đối).
-  const oid = git(["hash-object", "tooling/agent-tools.json"]);
-  mkdirSync(INDEX_DIR, { recursive: true });
-  const m = {
-    $comment:
-      "SINH BỞI scripts/run-pinned-gitnexus.mjs — không sửa tay. Hộ chiếu cho chỉ mục GitNexus local (Contract §12 luật #3). File này KHÔNG được commit: .gitnexus/ là local-only theo thiết kế.",
-    schemaVersion: 1,
-    graph: "gitnexus",
-    artifactDir: ".gitnexus",
-    baseCommit: head,
-    analyzedAt: new Date().toISOString(),
-    scope: {
-      description: `Toàn repo tại ${String(head).slice(0, 8)}, cờ analyze: ${analyzeArgs.join(" ")}`,
-      analyzeArgs,
-    },
-    toolVersion: version,
-    toolVersionSource: "measured",
-    configDigest: { "tooling/agent-tools.json": oid ? `git:${oid}` : null },
-  };
-  writeFileSync(MANIFEST, `${JSON.stringify(m, null, 2)}\n`, "utf8");
-  return m;
+async function atomic(path,value) {
+  const temp=`${path}.${randomUUID()}.tmp`;
+  await writeFile(temp,JSON.stringify(value,null,2)+'\n',{flag:'wx'});
+  try{await rename(temp,path);}finally{await unlink(temp).catch(e=>{if(e.code!=='ENOENT')throw e;});}
+}
+async function lock(repoRoot) {
+  const path=join(repoRoot,'.gitnexus/wrapper.lock');await mkdir(dirname(path),{recursive:true});
+  const token=randomUUID();let handle;
+  try{handle=await open(path,'wx');}catch(e){if(e.code==='EEXIST')throw fail('busy: local graph operation already owns lock');throw e;}
+  await handle.writeFile(JSON.stringify({token,pid:process.pid,repoRoot}));await handle.close();
+  return async()=>{if((await json(path)).token===token)await unlink(path);};
+}
+async function locateNpm() {
+  const candidates=[process.env.npm_execpath,...(process.env.PATH??'').split(delimiter).flatMap(dir=>[join(dir,'node_modules/npm/bin/npm-cli.js'),join(dir,'npm/node_modules/npm/bin/npm-cli.js')])].filter(Boolean);
+  for(const path of candidates){try{if((await stat(path)).isFile())return path;}catch{}}
+  throw fail('npm CLI unavailable; run analyze through npm with Node 24');
+}
+async function installation(repoRoot,version,mayInstall,options) {
+  const locator=join(repoRoot,'.gitnexus/tool.json');
+  try{const saved=await json(locator);if(saved.version!==version)throw fail('locator pin mismatch');return await validateInstallation(saved.packageRoot,version);}catch{if(!mayInstall)throw fail('tool unavailable; run graph:analyze explicitly');}
+  const npm=await locateNpm();
+  const cacheResult=await runProcess(process.execPath,[npm,'config','get','cache'],options);
+  if(cacheResult.code!==0)throw fail('npm cache unavailable');
+  const cache=join(cacheResult.stdout.trim(),'_npx');
+  async function scan(){
+    const candidates=[join(repoRoot,'node_modules/gitnexus')];
+    try{for(const entry of await readdir(cache))candidates.push(join(cache,entry,'node_modules/gitnexus'));}catch(e){if(e.code!=='ENOENT')throw e;}
+    for(const candidate of candidates){checkDeadline(options.deadline);try{return await validateInstallation(candidate,version);}catch{}}
+  }
+  let tool=await scan();
+  if(!tool){
+    const installed=await runProcess(process.execPath,[npm,'exec','--yes',`--package=gitnexus@${version}`,'--','gitnexus','--version'],options);
+    if(installed.code!==0)throw fail('pin installation unavailable');tool=await scan();
+  }
+  if(!tool)throw fail('installed pin not found');
+  await atomic(locator,{packageRoot:tool.packageRoot,version:tool.version});return tool;
 }
 
-function smoke(pin) {
-  console.log(`Smoke test GitNexus @${pin.version} — kiểm công cụ chạy được TRƯỚC khi tin nó.\n`);
-
-  const v = chayGitNexus(pin.version, ["--version"], { keThua: false });
-  const báo = String(v.stdout ?? "").trim();
-  if (v.error) {
-    // Phân biệt "không chạy được công cụ" với "công cụ báo sai version". Gộp hai
-    // thứ này vào một thông điệp là cách chắc chắn để mất nửa giờ chẩn đoán.
-    console.error(`❌ Không chạy được npx (${v.error.code ?? v.error.message}).`);
-    console.error("   EINVAL trên Windows = Node từ chối spawn .cmd khi shell:false.");
-    return 1;
-  }
-  if (v.status !== 0 || !báo.includes(pin.version)) {
-    console.error(`❌ Công cụ không báo đúng version. Pin ${pin.version}, nhận "${báo}".`);
-    console.error("   KHÔNG đổi status sang verified. Sai version nghĩa là mọi kết luận sau đó vô nghĩa.");
-    return 1;
-  }
-  console.log(`  ✓ version khớp pin: ${báo}`);
-
-  const d = chayGitNexus(pin.version, ["doctor"], { keThua: false });
-  if (d.status !== 0) {
-    console.error("❌ `doctor` thất bại — môi trường chưa chạy được GitNexus.");
-    console.error(String(d.stderr ?? d.stdout ?? "").slice(0, 600));
-    return 1;
-  }
-  console.log("  ✓ doctor chạy được");
-
-  const j = JSON.parse(readFileSync(PIN, "utf8"));
-  j.gitnexus.status = "verified";
-  j.gitnexus.verifiedAt = new Date().toISOString();
-  j.gitnexus.smokeEvidence = {
-    versionReported: báo,
-    doctorExitCode: d.status,
-    platform: `${process.platform} node ${process.version}`,
-  };
-  writeFileSync(PIN, `${JSON.stringify(j, null, 2)}\n`, "utf8");
-  console.log(`\n✅ Đã verify pin. tooling/agent-tools.json: status → verified.`);
-  console.log("   Bước tiếp: node scripts/run-pinned-gitnexus.mjs analyze");
-  return 0;
-}
-
-/**
- * Đếm mức lệch của chỉ mục so với HEAD. Trả null nếu không đo được.
- *
- * Cố ý KHÔNG ném: đây là lời nhắc, không phải cửa chặn. Không đo được thì im,
- * chứ không chặn người ta làm việc.
- */
-export function doLechChiMuc(base) {
-  const chay = (a) => execFileSync("git", a, { cwd: repoRoot, encoding: "utf8" }).trim();
+export async function runCli(argv,{repoRoot=ROOT,stdout=s=>process.stdout.write(s),stderr=s=>process.stderr.write(s)}={}) {
+  let release,retainLock=false,command;
   try {
-    chay(["cat-file", "-e", `${base}^{commit}`]);
-    const soCommit = Number(chay(["rev-list", "--count", `${base}..HEAD`]));
-    const fileMoi = chay(["diff", "--name-only", "--diff-filter=A", `${base}..HEAD`])
-      .split(/\r?\n/)
-      .filter((f) => /\.(ts|tsx|js|mjs|cjs|sql)$/.test(f)).length;
-    return { soCommit, fileMoi };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * In cảnh báo TRƯỚC mỗi lệnh truy vấn khi chỉ mục đã cũ.
- *
- * VÌ SAO ĐẶT Ở ĐÂY, không phải trong một báo cáo định kỳ (plan Đợt 6)
- *   `gate:graph-freshness` in "GitNexus: cũ N commit · M file mới chưa index" rồi
- *   thoát 0 — theo thiết kế, vì chặn CI vì độ mới của graph sẽ khiến người ta tắt
- *   gate. Nhưng hệ quả là con số đó nằm trong một báo cáo mà không ai đọc ĐÚNG
- *   LÚC nó quan trọng.
- *
- *   Lúc nó quan trọng là lúc chạy `impact`: M file chưa index nghĩa là caller nằm
- *   trong M file đó SẼ KHÔNG XUẤT HIỆN trong bán kính ảnh hưởng. Câu trả lời
- *   thiếu, và nó không tự nói là thiếu — người hỏi sẽ đọc "impactedCount: 0" thành
- *   "sửa thoải mái". Contract §12 bắt hỏi bán kính trước khi sửa; một câu trả lời
- *   thiếu ở đúng chỗ đó tệ hơn không hỏi.
- *
- *   Nên cảnh báo đứng ngay trước câu trả lời, và nói rõ nó có thể thiếu bao nhiêu.
- */
-export function canhBaoChiMucCu(sub) {
-  if (!existsSync(MANIFEST)) return;
-  let base;
-  try {
-    base = JSON.parse(readFileSync(MANIFEST, "utf8")).baseCommit;
-  } catch {
-    return;
-  }
-  if (!base) return;
-  const lech = doLechChiMuc(base);
-  if (!lech || (lech.soCommit === 0 && lech.fileMoi === 0)) return;
-
-  console.error(`⚠ Chỉ mục GitNexus cũ ${lech.soCommit} commit · ${lech.fileMoi} file mã mới CHƯA index.`);
-  if (sub === "impact" || sub === "trace" || sub === "detect-changes" || sub === "detect_changes") {
-    console.error(`   Nghĩa là caller/quan hệ nằm trong ${lech.fileMoi} file đó SẼ KHÔNG hiện ra ở kết quả dưới.`);
-    console.error("   Kết quả trống KHÔNG chứng minh 'không ảnh hưởng gì' — nó có thể chỉ là chưa nhìn thấy.");
-  }
-  console.error("   Reindex: npm run graph:analyze\n");
-}
-
-function main(argv) {
-  const sub = argv[2];
-  if (!sub) {
-    console.error("Dùng: node scripts/run-pinned-gitnexus.mjs <smoke|analyze|status|mcp|…> [args]");
-    return 1;
-  }
-  if (!existsSync(PIN)) {
-    console.error(`❌ Thiếu ${PIN.replace(repoRoot, ".")} — không biết phải chạy version nào.`);
-    return 1;
-  }
-  const pin = docPin(readFileSync(PIN, "utf8"));
-  if (!pin.version) {
-    console.error("❌ tooling/agent-tools.json: gitnexus.version là null.");
-    console.error("   null là trạng thái fail-closed CÓ CHỦ Ý, không phải version mặc định (plan §14).");
-    return 1;
-  }
-
-  if (sub === "smoke") return smoke(pin);
-
-  if (!pin.daVerify) {
-    console.error(`❌ Pin chưa verified (status: ${pin.status}).`);
-    console.error("   Chạy `node scripts/run-pinned-gitnexus.mjs smoke` trước — nó kiểm công cụ thật sự");
-    console.error("   chạy được rồi mới ghi verified kèm bằng chứng. Không tự sửa tay trường status:");
-    console.error("   một pin 'verified' mà chưa ai chạy thử là lời khai, không phải bằng chứng.");
-    return 1;
-  }
-
-  const them = argv.slice(3);
-  let args;
-  if (sub === "analyze") {
-    // Ép cờ bắt buộc kể cả khi người gọi quên. --skip-agents-md chặn GitNexus
-    // tự chèn mục vào CLAUDE.md/AGENTS.md — để công cụ sửa hợp đồng agent là
-    // để nó tự viết luật cho chính nó.
-    args = [sub, ...pin.analyzeArgs, ...them];
-    if (!args.includes("--skip-agents-md")) args.push("--skip-agents-md");
-  } else {
-    args = [sub, ...them];
-    // Ép --repo trỏ về CHÍNH repo này, cùng lý do với --skip-agents-md ở trên:
-    // gỡ một cái bẫy đặt sẵn cho mọi người dùng sau.
-    //
-    // GitNexus giữ một REGISTRY TOÀN CỤC theo máy, không theo repo. Máy này đang
-    // có hai mục CÙNG TÊN `whiteboard-ihomecrm` (repo này, và một worktree của
-    // clone khác ở XCRN/). Khi đó mọi lệnh truy vấn chết ngay với "Multiple
-    // repositories indexed" — đo được 08/08/2026. Tệ hơn: nếu chỉ có MỘT mục
-    // nhưng là mục của clone KIA, lệnh vẫn chạy và trả kết quả của repo khác mà
-    // không báo gì. Đó mới là hỏng thật: câu trả lời sai trông y như câu đúng.
-    //
-    // Truyền đường dẫn tuyệt đối chứ không truyền tên: hai mục trùng tên nên tên
-    // không phân biệt được.
-    if (SUB_CAN_REPO.has(sub) && !them.includes("--repo") && !them.includes("-r")) {
-      args.push("--repo", repoRoot);
+    const parsed=parseArgs(argv);command=parsed.sub;
+    if(parsed.sub==='help'){stdout(parsed.version?'project GitNexus wrapper (pin: tooling/agent-tools.json)\n':HELP);return 0;}
+    const deadline=performance.now()+parsed.timeoutMs;
+    repoRoot=await realpath(repoRoot);
+    const env=normalizedEnvironment();
+    const pin=(await json(join(repoRoot,'tooling/agent-tools.json'))).gitnexus;
+    if(!/^\d+\.\d+\.\d+$/.test(pin?.version??'')||JSON.stringify(pin.analyzeArgs)!==JSON.stringify(ANALYZE_ARGS))throw fail('unsupported pin configuration');
+    release=await lock(repoRoot);
+    const processOptions={cwd:repoRoot,env,deadline};
+    const tool=await installation(repoRoot,pin.version,['analyze','smoke'].includes(parsed.sub),processOptions);
+    if(parsed.sub==='smoke'){
+      const r=await runProcess(process.execPath,[tool.cliPath,'--version'],processOptions);
+      if(r.code!==0||r.stdout.trim()!==tool.version)throw fail('native smoke version mismatch');
+      const doctor=await runProcess(process.execPath,[tool.cliPath,'doctor'],processOptions);
+      if(doctor.code!==0)throw fail('native doctor unavailable');
+      stdout(JSON.stringify({status:'available',version:tool.version})+'\n');return 0;
     }
-    if (SUB_CAN_REPO.has(sub)) canhBaoChiMucCu(sub);
-  }
-
-  console.log(`→ gitnexus@${pin.version} ${args.join(" ")}\n`);
-  const r = chayGitNexus(pin.version, args);
-  if (r.status !== 0) return r.status ?? 1;
-
-  if (sub === "analyze") {
-    const m = ghiManifest(pin.version, args.slice(1));
-    console.log(`\n✅ Đã ghi ${MANIFEST.replace(repoRoot, ".")}`);
-    console.log(`   baseCommit ${String(m.baseCommit).slice(0, 12)}… · toolVersion ${m.toolVersion}`);
-  }
-  return 0;
+    const snapshotOptions={...tool,deadline,env};
+    const before=await captureSnapshot(repoRoot,snapshotOptions);
+    const state=await inspectIndex(repoRoot,{...before,toolVersion:tool.version});
+    if(parsed.sub==='status'){
+      stdout(JSON.stringify({status:state.status,reason:state.reason,baseCommit:state.baseCommit})+'\n');return state.status==='ready'?0:2;
+    }
+    if(parsed.sub==='analyze'){
+      const manifestPath=join(repoRoot,'.gitnexus/manifest.json');
+      let previous;try{previous=await json(manifestPath);}catch{}
+      let stamp;try{stamp=await nativeStamp(repoRoot);}catch{}
+      const compatible=previous?.schemaVersion===2&&previous.repoPath===repoRoot&&previous.toolVersion===tool.version&&previous.configDigest===before.configDigest&&stamp&&JSON.stringify(previous.nativeStamp)===JSON.stringify(stamp);
+      // Invalidate provenance BEFORE starting any native writer, even when it fails.
+      await unlink(manifestPath).catch(e=>{if(e.code!=='ENOENT')throw e;});
+      const args=[tool.cliPath,'analyze',repoRoot,...ANALYZE_ARGS,'--name',`ihome-${digest(repoRoot).slice(0,20)}`];
+      if(!compatible)args.push('--force','--drop-embeddings');
+      const r=await runProcess(process.execPath,['--max-old-space-size=8192',...args],processOptions);
+      stderr(r.stdout);stderr(r.stderr);
+      if(r.code!==0)throw fail('native analyze failed');
+      const after=await captureSnapshot(repoRoot,snapshotOptions);
+      if(JSON.stringify(before)!==JSON.stringify(after))throw fail('source/config changed during analyze');
+      const freshStamp=await nativeStamp(repoRoot);
+      // Upstream can report up-to-date based on git status; never bless changed source that it did not index.
+      if(previous?.sourceDigest!==before.sourceDigest&&stamp&&JSON.stringify(stamp)===JSON.stringify(freshStamp))throw fail('native analyzer did not update changed source');
+      const head=await runProcess('git',['rev-parse','HEAD'],processOptions);
+      if(head.code!==0)throw fail('Git base commit unavailable');
+      checkDeadline(deadline);
+      await atomic(manifestPath,{schemaVersion:2,repoPath:repoRoot,baseCommit:head.stdout.trim(),toolVersion:tool.version,...after,nativeStamp:freshStamp,toolLocator:{packageRoot:tool.packageRoot},completedAt:new Date().toISOString()});
+      stdout(JSON.stringify({status:'ready',reason:'snapshot matches local index'})+'\n');return 0;
+    }
+    if(state.status!=='ready')throw fail(`${state.status}: ${state.reason}`);
+    if(parsed.sub==='query'&&state.manifest.nativeStamp.capabilities?.fts?.status!=='available')throw fail('native FTS unavailable');
+    const r=await runProcess(process.execPath,[tool.cliPath,...parsed.nativeArgs,'--repo',repoRoot],processOptions);
+    if(r.code!==0)throw fail('native query failed');
+    let payload;try{payload=JSON.parse(r.stdout);}catch{throw fail('native query did not return JSON');}
+    if(!payload||typeof payload!=='object'||payload.error||payload.isError||payload.status==='error')throw fail('native query returned error');
+    const after=await captureSnapshot(repoRoot,snapshotOptions);
+    const finalState=await inspectIndex(repoRoot,{...after,toolVersion:tool.version});
+    if(JSON.stringify(before)!==JSON.stringify(after)||finalState.status!=='ready'||JSON.stringify(finalState.manifest.nativeStamp)!==JSON.stringify(state.manifest.nativeStamp))throw fail('source/index changed during query');
+    checkDeadline(deadline);
+    stderr(`GitNexus bounds ${JSON.stringify(parsed.bounds)}; limited results do not prove absence of other relations.\n`);
+    stdout(JSON.stringify(payload)+'\n');return 0;
+  }catch(e){retainLock=!!e.retainLock;if(command==='status')stdout(JSON.stringify({status:e.message?.startsWith('busy:')?'busy':'missing',reason:'local tool/index unavailable'})+'\n');stderr(`GitNexus unavailable: ${typeof e.code==='number'?e.message:'local tool/index read failed'}. Use source fallback.\n`);return e.code===64?64:2;}
+  finally{if(release&&!retainLock)await release();}
 }
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  process.exit(main(process.argv));
-}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))process.exitCode=await runCli(process.argv.slice(2));
