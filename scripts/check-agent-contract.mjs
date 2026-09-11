@@ -112,10 +112,20 @@ function shellCommandSegments(raw) {
       escaped = false;
       continue;
     }
+    if (char === '\\' && quote !== "'") {
+      const newlineWidth = raw[i + 1] === '\n' ? 1
+        : raw[i + 1] === '\r' && raw[i + 2] === '\n' ? 2 : 0;
+      if (newlineWidth > 0) {
+        i += newlineWidth;
+        continue;
+      }
+      current += char;
+      escaped = true;
+      continue;
+    }
     if (quote) {
       current += char;
-      if (char === '\\' && quote !== "'") escaped = true;
-      else if (char === quote) quote = null;
+      if (char === quote) quote = null;
       continue;
     }
     if (char === "'" || char === '"' || char === '`') {
@@ -158,8 +168,7 @@ function isMandatoryGraphCommand(segment) {
 }
 
 function runHasMandatoryGraphCommand(run) {
-  const normalized = run.replace(/\\\r?\n[ \t]*/g, ' ');
-  return shellCommandSegments(normalized).some(isMandatoryGraphCommand);
+  return shellCommandSegments(run).some(isMandatoryGraphCommand);
 }
 
 function hasGitNexusProjectMcp(projectMcp) {

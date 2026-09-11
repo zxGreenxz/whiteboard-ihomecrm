@@ -143,6 +143,11 @@ describe('cấu hình GitNexus tùy chọn', () => {
     }
   });
 
+  it('backslash cuối shell comment không che lệnh ở dòng kế', () => {
+    const run = ['# local graph helper \\', 'node scripts/run-pinned-gitnexus.mjs analyze'].join('\n');
+    assert.equal(coLoi(hopLe({ workflowRuns: [run] }), 'mandatory-graph-workflow'), true);
+  });
+
   it('không coi shell comment hoặc prose là lệnh graph', () => {
     const workflow = `jobs:
   test:
