@@ -535,23 +535,6 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
-    },
-    "supabase/migrations/20260911093834_invoice_adjustment_review.sql": {
-      "sha256": "213953086c450110243dab1be1483d2fed2835e049a5f037d1762ae9bcd0d02c",
-      "missingObjects": [
-        "table:public.invoice_adjustments",
-        "function:public.guard_paid_invoice_direct_adjustment",
-        "function:public.guard_invoice_adjustment_immutable",
-        "function:public.adjust_invoice_v1",
-        "function:public.review_invoice_adjustment_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File mới thuộc pull request #63, chưa được apply trên production. Các object vắng mặt là đúng trạng thái trước rollout; không đánh dấu catalog-proven và không tự ý replay ngoài migrate:forward. Sau khi migration được apply và catalog xác nhận đủ object, generator provenance sẽ chuyển file khỏi nhóm unknown.",
-      "bangChung": [{
-        "duong_dan": "supabase/migrations/20260911093834_invoice_adjustment_review.sql",
-        "trich_doan": "CREATE TABLE public.invoice_adjustments; CREATE OR REPLACE FUNCTION public.adjust_invoice_v1; CREATE OR REPLACE FUNCTION public.review_invoice_adjustment_v1"
-      }],
-      "raSoatBoi": "Codex — review trước phát hành pull request #63"
     }
   }
 }
