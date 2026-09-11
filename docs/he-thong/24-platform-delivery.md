@@ -88,14 +88,14 @@ trường** — preview và production build cùng nhận giá trị này.
 
 | Nhóm | Job | Chạy khi nào |
 |---|---|---|
-| Bắt buộc, không cần secret | `quality-gates` | mọi PR và push `main`/`release/*` — job DUY NHẤT không có `needs` lẫn `if` |
+| Bắt buộc, không cần secret | `quality-gates` | mọi PR và push `main`/`release/*` |
 | Realtime publication | `realtime-gates` | PR và push ngoài `production`; chạy phép kiểm publication thật |
 | Cần secret + chỉ `refs/heads/main` | `preflight`, `security-gates`, `generated-types-drift`, `reconcile-money`, `cross-tenant-isolation` | push/`workflow_dispatch` trên `main`, và chỉ khi secret đã cấu hình |
 
-Điều này quan trọng hơn vẻ ngoài: **mọi gate đối chiếu với database thật — ACL definer, view invoker,
-catalog quyền, realtime publication, và cả ba bề mặt RPC/Edge/realtime — KHÔNG chạy trên PR.** Chúng
-chỉ chạy sau khi code đã vào `main`. Cửa "đúng/sai so với production" nằm **sau** cửa merge, không
-phải trước.
+Realtime publication là ngoại lệ chạy trên PR qua `realtime-gates`. Các gate cần secret để đối chiếu
+database thật — ACL definer, view invoker, catalog quyền và cả ba bề mặt RPC/Edge/realtime — không
+chạy trên PR; chúng chỉ chạy sau khi code đã vào `main`. Cửa "đúng/sai so với production" nằm sau
+cửa merge.
 
 Vài chi tiết trong `quality-gates` đáng biết vì chúng trông như thừa:
 

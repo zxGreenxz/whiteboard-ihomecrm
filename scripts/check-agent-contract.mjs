@@ -94,7 +94,71 @@ export function checkGuide(raw, file, scripts, exists) {
 
 const GITNEXUS_ALIASES = ['analyze', 'status', 'query', 'context', 'impact', 'trace'];
 const GENERATED_GRAPH = /^(?:\.ua|\.gitnexus)\/|^\.(?:agents|claude)\/skills\/(?:generated|gitnexus)\//;
-const MANDATORY_GRAPH_RUN = /(?:scripts\/check-graph-(?:freshness|hygiene|secrets)\.mjs|scripts\/run-pinned-gitnexus\.mjs|npm run (?:gate:graph|graph:)|(?:^|\s)\.gitnexus\/|(?:^|\s)\.ua\/)/m;
+
+function shellCommandSegments(raw) {
+  const segments = [];
+  let current = '';
+  let quote = null;
+  let escaped = false;
+  const finish = () => {
+    if (current.trim()) segments.push(current.trim());
+    current = '';
+  };
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i];
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      current += char;
+      if (char === '\\' && quote !== "'") escaped = true;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === '#' && (!current || /\s/.test(current.at(-1)))) {
+      while (i + 1 < raw.length && raw[i + 1] !== '\n') i += 1;
+      finish();
+      continue;
+    }
+    if (char === '\n' || char === '\r' || char === ';' || char === '|'
+        || (char === '&' && raw[i + 1] === '&')) {
+      if ((char === '|' || char === '&') && raw[i + 1] === char) i += 1;
+      finish();
+      continue;
+    }
+    current += char;
+  }
+  finish();
+  return segments;
+}
+
+function isMandatoryGraphCommand(segment) {
+  let command = segment.replace(/^(?:if|then|do)\s+/, '');
+  command = command.replace(/^(?:[A-Za-z_][A-Za-z\d_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*/, '');
+  command = command.replace(/^(?:(?:sudo|command|env)\s+)*/, '');
+  const graphCommand = [
+    /^node(?:\.exe)?\s+(?:\.[\\/])?scripts[\\/]check-graph-(?:freshness|hygiene|secrets)\.mjs\b/i,
+    /^node(?:\.exe)?\s+(?:\.[\\/])?scripts[\\/]run-pinned-gitnexus\.mjs\b/i,
+    /^npm(?:\.cmd)?\s+run\s+(?:gate:graph[\w:-]*|graph:[\w-]+)\b/i,
+    /^npx(?:\.cmd)?\s+(?:(?:--yes|-y)\s+)?gitnexus(?:@[^\s]+)?(?:\s|$)/i,
+    /^(?:(?:\.[\\/])?node_modules[\\/]\.bin[\\/])?gitnexus(?:\.cmd)?(?:\s|$)/i,
+  ].some((pattern) => pattern.test(command));
+  if (graphCommand) return true;
+  if (/^(?:echo|printf|write-(?:host|output))\b/i.test(command)) return false;
+  return /(?:^|\s)\.(?:gitnexus|ua)[\\/]/i.test(command);
+}
+
+function runHasMandatoryGraphCommand(run) {
+  return shellCommandSegments(run).some(isMandatoryGraphCommand);
+}
 
 function hasGitNexusProjectMcp(projectMcp) {
   const servers = projectMcp?.mcpServers;
@@ -126,7 +190,7 @@ export function checkRepositoryContract({ scripts = {}, trackedFiles = [], exist
   if (hasGitNexusProjectMcp(projectMcp)) {
     add('project-graph-integration', 'GitNexus tùy chọn không được đăng ký MCP ở cấp project.');
   }
-  if (workflowRuns.some((run) => MANDATORY_GRAPH_RUN.test(run))) {
+  if (workflowRuns.some(runHasMandatoryGraphCommand)) {
     add('mandatory-graph-workflow', 'CI không được dựng hoặc bắt buộc graph; chỉ regression wrapper được chạy.');
   }
   return problems;
@@ -178,55 +242,7 @@ function main() {
     problems.push(...checkGuide(text, file, scripts, exists));
   }
 
-  const MUST_MENTION = [
-    ['ts-baseline.json', 'ratchet TypeScript theo fingerprint'],
-    ['tsconfig.app.json', 'typecheck THẬT — root `tsc --noEmit` không check gì'],
-    ['check-view-invoker', 'gate view security_invoker'],
-    ['security_invoker', 'CREATE OR REPLACE VIEW làm rớt cờ này'],
-    ['check-stable-fn-locks', 'gate hàm STABLE lấy khoá dòng'],
-    ['25006', 'mã lỗi khi hàm STABLE lấy khoá dòng qua PostgREST'],
-    ['VOLATILE', 'hàm lấy khoá dòng phải khai VOLATILE'],
-    ['reconcile-money', 'đối chiếu tiền'],
-    ['cap-1000', 'bug tổng chỉ 1000 dòng đầu'],
-    ['CLAUDE.local.md', 'credential vault'],
-    ['IHOMECRM_PROMOTION_TOKEN', 'token cho đường bỏ backup; lane mặc định dùng biên nhận backup'],
-    ['GitNexus là CLI tùy chọn', 'GitNexus là công cụ tùy chọn'],
-    ['scripts/run-pinned-gitnexus.mjs', 'wrapper GitNexus được ghim'],
-    ['tooling/agent-tools.json', 'nguồn pin GitNexus'],
-    ['hide_sandbox_admin', 'policy chặn org TEST lọt vào org thật'],
-    ['can_access_building', 'cách lọc toà đúng trong hàm SECURITY DEFINER'],
-    ['aaaa0000', 'org THẬT — chỉ đọc khi test'],
-    ['dddd0000', 'org DEMO — nơi ghi fixture E2E'],
-    ['cccc0000', 'org TEST — bản sao dữ liệu thật'],
-    ['clone-org', 'đồng bộ lại org TEST'],
-    ['gate:sandbox-leak', 'kiểm rò sandbox; không ghim mẫu số cũ'],
-    ['deadlock', 'await supabase.* trong callback auth gây treo im lặng'],
-    ['FLEET_PASS', 'mật khẩu E2E không nằm trong repo'],
-    ['headless', 'E2E mặc định chạy ẩn'],
-    ['runtime-matrix.json', 'nguồn phiên bản runtime'],
-    ['KHÔNG replay được', 'legacy history không dựng lại được từ đầu'],
-    ['migrations-archive', 'thư mục TUYỆT ĐỐI không replay'],
-    ['trùng version', 'lý do legacy không replay được'],
-    ['test-matrix.json', 'runner và job đúng của từng test'],
-    ['risk-map.json', 'gate và review theo phạm vi thay đổi'],
-    ['promote:production', 'đường phát hành kiểm CI trước khi push'],
-    ['bo-chu-thich', 'gate quét văn bản phải bỏ chú thích trước'],
-    ['deno.lock', 'khoá version npm specifier của edge function'],
-    ['gen:types', 'quy trình regen types (không redirect)'],
-    ['types:normalize', 'bỏ partition ngày sau khi regen'],
-    ['HEAD:main', 'push đúng nhánh, tránh đẩy nhánh main local cũ'],
-    ['git add -A', 'điều bị cấm khi stage'],
-    ['backup-before-schema', 'PITR tắt nên phải dump trước thao tác schema'],
-    ['migration-policy.json', 'cutoff và luật forward-only'],
-    ['git worktree', 'mỗi hạng mục song song một worktree riêng — cách ly WIP giữa các phiên'],
-    ['tao-ten-migration', 'cấp timestamp migration bằng script, chống hai phiên đụng cùng mốc giờ'],
-    ['lấy bản của main rồi chạy lại generator', 'cách giải conflict file máy-sinh khi rebase'],
-  ];
-  for (const [needle, what] of MUST_MENTION) {
-    if (!visibleMarkdown(contract).includes(needle)) {
-      problems.push({ file: CONTRACT, id: 'contract-lost-invariant', why: `Mất phần "${what}" (không còn nhắc \`${needle}\`).` });
-    }
-  }
+  problems.push(...checkContractInvariants(contract));
 
   let trackedFiles = [];
   try {
@@ -261,6 +277,59 @@ function main() {
   }
 
   console.log(`✅ ${AGENT_FILES.length} file rule cùng trỏ về ${CONTRACT}; không có chỉ dẫn nguy hiểm tái xuất hiện.`);
+}
+
+const CONTRACT_INVARIANTS = [
+    ['ts-baseline.json', 'ratchet TypeScript theo fingerprint'],
+    ['tsconfig.app.json', 'typecheck THẬT — root `tsc --noEmit` không check gì'],
+    ['check-view-invoker', 'gate view security_invoker'],
+    ['security_invoker', 'CREATE OR REPLACE VIEW làm rớt cờ này'],
+    ['check-stable-fn-locks', 'gate hàm STABLE lấy khoá dòng'],
+    ['25006', 'mã lỗi khi hàm STABLE lấy khoá dòng qua PostgREST'],
+    ['VOLATILE', 'hàm lấy khoá dòng phải khai VOLATILE'],
+    ['reconcile-money', 'đối chiếu tiền'],
+    ['cap-1000', 'bug tổng chỉ 1000 dòng đầu'],
+    ['CLAUDE.local.md', 'credential vault'],
+    ['IHOMECRM_PROMOTION_TOKEN', 'token cho đường bỏ backup; lane mặc định dùng biên nhận backup'],
+    ['scripts/run-pinned-gitnexus.mjs', 'wrapper GitNexus được ghim'],
+    ['tooling/agent-tools.json', 'nguồn pin GitNexus'],
+    ['hide_sandbox_admin', 'policy chặn org TEST lọt vào org thật'],
+    ['can_access_building', 'cách lọc toà đúng trong hàm SECURITY DEFINER'],
+    ['aaaa0000', 'org THẬT — chỉ đọc khi test'],
+    ['dddd0000', 'org DEMO — nơi ghi fixture E2E'],
+    ['cccc0000', 'org TEST — bản sao dữ liệu thật'],
+    ['clone-org', 'đồng bộ lại org TEST'],
+    ['gate:sandbox-leak', 'kiểm rò sandbox; không ghim mẫu số cũ'],
+    ['deadlock', 'await supabase.* trong callback auth gây treo im lặng'],
+    ['FLEET_PASS', 'mật khẩu E2E không nằm trong repo'],
+    ['headless', 'E2E mặc định chạy ẩn'],
+    ['runtime-matrix.json', 'nguồn phiên bản runtime'],
+    ['KHÔNG replay được', 'legacy history không dựng lại được từ đầu'],
+    ['migrations-archive', 'thư mục TUYỆT ĐỐI không replay'],
+    ['trùng version', 'lý do legacy không replay được'],
+    ['test-matrix.json', 'runner và job đúng của từng test'],
+    ['risk-map.json', 'gate và review theo phạm vi thay đổi'],
+    ['promote:production', 'đường phát hành kiểm CI trước khi push'],
+    ['bo-chu-thich', 'gate quét văn bản phải bỏ chú thích trước'],
+    ['deno.lock', 'khoá version npm specifier của edge function'],
+    ['gen:types', 'quy trình regen types (không redirect)'],
+    ['types:normalize', 'bỏ partition ngày sau khi regen'],
+    ['HEAD:main', 'push đúng nhánh, tránh đẩy nhánh main local cũ'],
+    ['git add -A', 'điều bị cấm khi stage'],
+    ['backup-before-schema', 'PITR tắt nên phải dump trước thao tác schema'],
+    ['migration-policy.json', 'cutoff và luật forward-only'],
+    ['git worktree', 'mỗi hạng mục song song một worktree riêng — cách ly WIP giữa các phiên'],
+    ['tao-ten-migration', 'cấp timestamp migration bằng script, chống hai phiên đụng cùng mốc giờ'],
+    ['lấy bản của main rồi chạy lại generator', 'cách giải conflict file máy-sinh khi rebase'],
+];
+
+export function checkContractInvariants(contract) {
+  const text = visibleMarkdown(contract);
+  return CONTRACT_INVARIANTS.flatMap(([needle, what]) => text.includes(needle) ? [] : [{
+    file: CONTRACT,
+    id: 'contract-lost-invariant',
+    why: `Mất phần "${what}" (không còn nhắc \`${needle}\`).`,
+  }]);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

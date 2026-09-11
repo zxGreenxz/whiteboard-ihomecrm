@@ -11,6 +11,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { findForbidden } from "../check-agent-contract.mjs";
 import * as gate from "../check-agent-contract.mjs";
 
@@ -123,6 +124,32 @@ describe('cấu hình GitNexus tùy chọn', () => {
     const dangChay = 'jobs:\n  test:\n    steps:\n      - run: npm run graph:analyze\n';
     assert.equal(coLoi(hopLe({ workflowRuns: gate.workflowRunsFromText(chiComment) }), 'mandatory-graph-workflow'), false);
     assert.equal(coLoi(hopLe({ workflowRuns: gate.workflowRunsFromText(dangChay) }), 'mandatory-graph-workflow'), true);
+  });
+
+  it('bắt lời gọi GitNexus CLI trực tiếp trong run', () => {
+    for (const run of ['npx --yes gitnexus@1.6.9 analyze', 'gitnexus analyze']) {
+      assert.equal(coLoi(hopLe({ workflowRuns: [run] }), 'mandatory-graph-workflow'), true, run);
+    }
+  });
+
+  it('không coi shell comment hoặc prose là lệnh graph', () => {
+    const workflow = `jobs:
+  test:
+    steps:
+      - run: |
+          node scripts/check-agent-contract.mjs
+          # formerly npm run graph:analyze
+      - run: echo "gitnexus analyze chỉ là ví dụ trong tài liệu"
+`;
+    assert.equal(coLoi(hopLe({ workflowRuns: gate.workflowRunsFromText(workflow) }), 'mandatory-graph-workflow'), false);
+  });
+
+  it('không ghim nguyên văn cách mô tả chính sách GitNexus', () => {
+    assert.equal(typeof gate.checkContractInvariants, 'function', 'gate phải tách invariant hành vi khỏi câu chữ');
+    const contract = readFileSync(new URL('../../docs/engineering/PROJECT_CONTRACT.md', import.meta.url), 'utf8');
+    const rewritten = contract.replace('GitNexus là CLI tùy chọn', 'Có thể dùng GitNexus như CLI hỗ trợ khi cần');
+    assert.notEqual(rewritten, contract, 'fixture phải đổi đúng câu đang dùng');
+    assert.equal(gate.checkContractInvariants(rewritten).some((p) => p.id === 'contract-lost-invariant'), false);
   });
 });
 
