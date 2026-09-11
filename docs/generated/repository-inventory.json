@@ -2,8 +2,8 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 644,
-  "soFileDocBangFs": 202,
-  "tongLoiGoi": 445,
+  "soFileDocBangFs": 203,
+  "tongLoiGoi": 446,
   "khongPhanLoaiDuoc": 223,
   "theoLoai": {
     "ma-nguon": {
@@ -15,7 +15,7 @@
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 6,
+      "soFile": 7,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -762,6 +762,14 @@
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "scripts/__tests__/check-agent-contract.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 0
     },

@@ -35,6 +35,7 @@ bản mới không sinh hướng dẫn. Dung lượng không giảm đáng kể.
 ## Truy vấn và đối chiếu source
 
 Query mới đo trên index đã phục hồi, kiểm source trước/sau; riêng status mất 1,909 giây.
+Gate freshness cũ đo riêng mất 0,417 giây; thời gian này chưa cộng vào từng query cũ trong bảng.
 Số ký tự là stdout, không phải token tính phí; JSON mới được nén một dòng.
 
 | Câu hỏi | Graph cũ: giây / ký tự | Graph mới: giây / ký tự | `rg` sau khi cache ấm: giây / ký tự |
@@ -61,3 +62,8 @@ Bỏ sinh skill giúp tránh dựng lại vô ích. Kiểm content digest làm q
 Giữ CLI tùy chọn cho quan hệ TS/JS nhiều file; source/manifest/harness là đường mặc định và dự phòng.
 Không cần graph để CI xanh hoặc phát hành. Chưa có số đo token tính phí, không công bố tỷ lệ tiết kiệm token.
 Ngân sách tự dựng 120 giây là trần chờ; lỗi/hết giờ thì chuyển source, không nới timeout hoặc dựng lặp.
+
+Sau bản sửa filesystem/process từ review, một lượt native analyze với timeout mặc định hoàn tất
+(pipeline 45,8 giây); context vẫn trả đúng hai caller đã đối chiếu. Không chạy lại toàn bộ benchmark.
+Đã sao lưu 52 file skill ngoài repo, gỡ đúng bốn cây skill và stanza MCP GitNexus của dự án.
+Phiên Codex mới xác nhận không còn MCP GitNexus hoặc skill project cũ; plugin toàn máy được giữ.
