@@ -132,6 +132,17 @@ describe('cấu hình GitNexus tùy chọn', () => {
     }
   });
 
+  it('bắt wrapper khi đường dẫn có nháy hoặc command nối dòng Bash', () => {
+    const continued = ['node \\', '  scripts/run-pinned-gitnexus.mjs analyze'].join('\n');
+    for (const run of [
+      'node "scripts/run-pinned-gitnexus.mjs" analyze',
+      "node 'scripts/run-pinned-gitnexus.mjs' analyze",
+      continued,
+    ]) {
+      assert.equal(coLoi(hopLe({ workflowRuns: [run] }), 'mandatory-graph-workflow'), true, run);
+    }
+  });
+
   it('không coi shell comment hoặc prose là lệnh graph', () => {
     const workflow = `jobs:
   test:
@@ -147,9 +158,23 @@ describe('cấu hình GitNexus tùy chọn', () => {
   it('không ghim nguyên văn cách mô tả chính sách GitNexus', () => {
     assert.equal(typeof gate.checkContractInvariants, 'function', 'gate phải tách invariant hành vi khỏi câu chữ');
     const contract = readFileSync(new URL('../../docs/engineering/PROJECT_CONTRACT.md', import.meta.url), 'utf8');
-    const rewritten = contract.replace('GitNexus là CLI tùy chọn', 'Có thể dùng GitNexus như CLI hỗ trợ khi cần');
-    assert.notEqual(rewritten, contract, 'fixture phải đổi đúng câu đang dùng');
-    assert.equal(gate.checkContractInvariants(rewritten).some((p) => p.id === 'contract-lost-invariant'), false);
+    const thayMuc12 = (body) => {
+      let daThay = false;
+      const rewritten = contract.replace(/(^## 12\.[^\n]*\n)[\s\S]*?(?=^## 13\.)/m, (_, heading) => {
+        daThay = true;
+        return `${heading}\n${body}\n\n`;
+      });
+      assert.equal(daThay, true, 'fixture phải tìm §12 theo ranh giới heading');
+      return rewritten;
+    };
+    const policies = [
+      'Tra cứu source có thể dùng GitNexus khi hữu ích. Mọi lệnh đi qua `scripts/run-pinned-gitnexus.mjs`; phiên bản nằm tại `tooling/agent-tools.json`.',
+      'Graph không phải điều kiện làm việc. Nếu chọn GitNexus, dùng wrapper `scripts/run-pinned-gitnexus.mjs` với pin trong `tooling/agent-tools.json`.',
+    ];
+    for (const policy of policies) {
+      assert.equal(gate.checkContractInvariants(thayMuc12(policy))
+        .some((p) => p.id === 'contract-lost-invariant'), false, policy);
+    }
   });
 });
 

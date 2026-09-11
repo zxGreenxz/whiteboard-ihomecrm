@@ -144,6 +144,7 @@ function isMandatoryGraphCommand(segment) {
   let command = segment.replace(/^(?:if|then|do)\s+/, '');
   command = command.replace(/^(?:[A-Za-z_][A-Za-z\d_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*/, '');
   command = command.replace(/^(?:(?:sudo|command|env)\s+)*/, '');
+  command = command.replace(/^(node(?:\.exe)?)\s+(["'])([^"']+)\2(?=\s|$)/i, '$1 $3');
   const graphCommand = [
     /^node(?:\.exe)?\s+(?:\.[\\/])?scripts[\\/]check-graph-(?:freshness|hygiene|secrets)\.mjs\b/i,
     /^node(?:\.exe)?\s+(?:\.[\\/])?scripts[\\/]run-pinned-gitnexus\.mjs\b/i,
@@ -157,7 +158,8 @@ function isMandatoryGraphCommand(segment) {
 }
 
 function runHasMandatoryGraphCommand(run) {
-  return shellCommandSegments(run).some(isMandatoryGraphCommand);
+  const normalized = run.replace(/\\\r?\n[ \t]*/g, ' ');
+  return shellCommandSegments(normalized).some(isMandatoryGraphCommand);
 }
 
 function hasGitNexusProjectMcp(projectMcp) {
