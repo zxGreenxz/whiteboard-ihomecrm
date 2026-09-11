@@ -80,11 +80,32 @@ async function measureSnapshot(repoRoot, toolInstallation) {
   const {glob} = require('glob');
   // path-scurry can suppress filesystem errors. Capture them at its I/O boundary.
   let traversalError;
-  const strictFs = {...fs, readdir(path, options, callback) {
-    return fs.readdir(path, options, (err, result) => {if(err) traversalError=err;callback(err,result)});
-  }, lstat(path, callback) {
-    return fs.lstat(path,(err,result)=>{if(err)traversalError=err;callback(err,result)});
-  }};
+  const strictPromises = Object.fromEntries(
+    ['lstat', 'readdir', 'readlink', 'realpath'].map(method => [method, async (...args) => {
+      try {
+        return await fs.promises[method](...args);
+      } catch (error) {
+        traversalError = error;
+        throw error;
+      }
+    }]),
+  );
+  const strictFs = {
+    ...fs,
+    promises: {...fs.promises, ...strictPromises},
+    readdir(path, options, callback) {
+      return fs.readdir(path, options, (error, result) => {
+        if (error) traversalError = error;
+        callback(error, result);
+      });
+    },
+    lstat(path, callback) {
+      return fs.lstat(path, (error, result) => {
+        if (error) traversalError = error;
+        callback(error, result);
+      });
+    },
+  };
   const paths = await glob('**/*',{cwd:repoRoot,nodir:true,dot:false,ignore,fs:strictFs,signal:toolInstallation.signal});
   if (traversalError) throw fail('snapshot traversal failed');
   const hash = createHash('sha256');

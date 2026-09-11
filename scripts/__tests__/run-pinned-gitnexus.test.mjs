@@ -138,3 +138,72 @@ test('timeout terminates native descendants before releasing its lock',async t=>
 test('query rejects a locator stamped for another pin even if target package exists',async t=>{
   const f=await fixture(t);assert.equal((await f.execute(['analyze'])).code,0);await writeFile(join(f.root,'.gitnexus/tool.json'),JSON.stringify({packageRoot:f.tool,version:'9.9.9'}));assert.equal((await f.execute(['query','target'])).code,2);
 });
+
+import fs from 'node:fs';
+import childProcess from 'node:child_process';
+import {syncBuiltinESMExports} from 'node:module';
+import {captureSnapshot} from '../lib/gitnexus-state.mjs';
+
+test('snapshot rejects Promise lstat failures swallowed by the native glob walker', async t => {
+  const f = await fixture(t);
+  const baseline = await captureSnapshot(f.root, {packageRoot:f.tool,version:'1.6.9'});
+  assert.ok(baseline.sourceDigest);
+  const original = fs.promises.lstat;
+  let injected = 0;
+  fs.promises.lstat = async () => {
+    injected++;
+    throw Object.assign(new Error('fixture denied'), {code:'EACCES'});
+  };
+  try {
+    await assert.rejects(
+      captureSnapshot(f.root, {packageRoot:f.tool,version:'1.6.9'}),
+      e => e.code === 2 && /traversal/.test(e.message),
+    );
+    assert.ok(injected > 0, 'exercise the dependency Promise lstat boundary');
+  } finally {
+    fs.promises.lstat = original;
+  }
+});
+
+for (const mode of ['error','nonzero','hang']) {
+  test(`failed Windows tree killer ${mode} returns promptly and retains writer lock`, {skip:process.platform !== 'win32'}, async t => {
+    const f = await fixture(t);
+    await f.control({sleep:true});
+    const originalSpawn = childProcess.spawn;
+    const children = [];
+    childProcess.spawn = (command, args, options) => {
+      let child;
+      if (command === 'taskkill.exe') {
+        child = mode === 'error'
+          ? originalSpawn(join(f.root,'missing-taskkill.exe'), [], options)
+          : originalSpawn(process.execPath, ['-e', mode === 'nonzero' ? 'process.exit(1)' : 'setInterval(()=>{},1000)'], options);
+      } else {
+        child = originalSpawn(command, args, options);
+      }
+      if (child.pid) children.push(child.pid);
+      return child;
+    };
+    syncBuiltinESMExports();
+    let result;
+    let elapsed;
+    let lockExists;
+    try {
+      const start = performance.now();
+      result = await Promise.race([
+        f.execute(['analyze','--timeout-ms','1000']),
+        new Promise(resolve => setTimeout(() => resolve({pending:true}), 2300)),
+      ]);
+      elapsed = performance.now() - start;
+      lockExists = JSON.parse(await readFile(join(f.root,'.gitnexus/wrapper.lock'),'utf8'));
+    } finally {
+      childProcess.spawn = originalSpawn;
+      syncBuiltinESMExports();
+      // Only clean up the real processes created by this test, never another run's tree.
+      for (const pid of children) spawnSync('taskkill.exe', ['/PID',String(pid),'/T','/F'], {stdio:'ignore',windowsHide:true,shell:false});
+    }
+    assert.equal(result.code, 2, 'operation must settle without waiting for the live writer to close');
+    assert.ok(elapsed < 2100, `termination failure exceeded bounded cleanup: ${elapsed}ms`);
+    assert.equal(lockExists.pid, process.pid, 'unconfirmed writer lock must remain owned');
+    assert.match(result.err, /termination unconfirmed/);
+  });
+}

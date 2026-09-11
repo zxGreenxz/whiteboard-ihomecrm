@@ -57,33 +57,94 @@ export function parseArgs(argv) {
 }
 
 // One monotonic deadline covers every subprocess and both snapshot passes.
-export function runProcess(command,args,{cwd,env,deadline,outputLimit=16*1024*1024}) {
+export function runProcess(command, args, {cwd, env, deadline, outputLimit=16*1024*1024}) {
   checkDeadline(deadline);
-  return new Promise((resolveResult,reject)=>{
-    const child=spawn(command,args,{cwd,env,shell:false,windowsHide:true,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe']});
-    let stdout='',stderr='',failure,killPromise;
-    const stop = reason => {
-      if(killPromise)return;failure=reason;
-      killPromise=(async()=>{
-        if(!child.pid)return;
-        if(process.platform==='win32') {
-          await new Promise((res,rej)=>{
-            const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{shell:false,windowsHide:true,stdio:'ignore'});
-            killer.on('error',rej);killer.on('close',code=>code===0?res():rej(fail('process tree termination unconfirmed')));
-          });
-        } else {try{process.kill(-child.pid,'SIGKILL')}catch(e){if(e.code!=='ESRCH')throw e;}}
-      })();
-      // Handle rejection now; close awaits it before releasing the operation lock.
-      killPromise.catch(()=>{});
-    };
-    const timer=setTimeout(()=>stop(fail('timeout')),Math.max(1,deadline-performance.now()));
-    child.stdout.on('data',data=>{stdout+=data;if(stdout.length>outputLimit)stop(fail('native output limit exceeded'));});
-    child.stderr.on('data',data=>{stderr+=data;if(stderr.length>outputLimit)stop(fail('native output limit exceeded'));});
-    child.on('error',e=>{clearTimeout(timer);reject(fail(`process unavailable: ${e.code??'error'}`));});
-    child.on('close',async code=>{
+  return new Promise((resolveResult, reject) => {
+    const child = spawn(command, args, {
+      cwd, env, shell:false, windowsHide:true,
+      detached:process.platform !== 'win32', stdio:['ignore','pipe','pipe'],
+    });
+    let stdout = '', stderr = '', failure, killer, cleanupTimer;
+    let settled = false, childClosed = false, terminationConfirmed = false;
+    const finish = (error, code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      try{if(killPromise)await killPromise;}catch{reject(Object.assign(fail('process tree termination unconfirmed'),{retainLock:true}));return;}
-      if(failure)reject(failure);else resolveResult({code,stdout,stderr});
+      clearTimeout(cleanupTimer);
+      if (error?.retainLock) {
+        // The writer may still live. Preserve its lock, but let this CLI return
+        // source fallback rather than retaining open pipes/event-loop handles.
+        child.stdout.destroy();
+        child.stderr.destroy();
+        child.unref();
+      }
+      if (error) reject(error);
+      else resolveResult({code, stdout, stderr});
+    };
+    const unconfirmed = () => finish(Object.assign(
+      fail('process tree termination unconfirmed'), {retainLock:true},
+    ));
+    const stop = reason => {
+      if (failure || settled) return;
+      failure = reason;
+      // A bounded OS cleanup grace includes taskkill itself AND child close.
+      // Failure to confirm either must retain ownership without hanging the CLI.
+      cleanupTimer = setTimeout(() => {
+        if (killer) {
+          try { killer.kill('SIGKILL'); } catch { /* ownership stays retained */ }
+          killer.unref();
+        }
+        unconfirmed();
+      }, 500);
+      if (!child.pid) {
+        finish(failure);
+        return;
+      }
+      if (process.platform === 'win32') {
+        try {
+          killer = spawn('taskkill.exe', ['/PID',String(child.pid),'/T','/F'], {
+            shell:false, windowsHide:true, stdio:'ignore',
+          });
+        } catch {
+          unconfirmed();
+          return;
+        }
+        killer.on('error', unconfirmed);
+        killer.on('close', code => {
+          if (code !== 0) {
+            unconfirmed();
+            return;
+          }
+          terminationConfirmed = true;
+          if (childClosed) finish(failure);
+        });
+      } else {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch (error) {
+          if (error.code !== 'ESRCH') {
+            unconfirmed();
+            return;
+          }
+        }
+        terminationConfirmed = true;
+        if (childClosed) finish(failure);
+      }
+    };
+    const timer = setTimeout(() => stop(fail('timeout')), Math.max(1,deadline-performance.now()));
+    child.stdout.on('data', data => {
+      stdout += data;
+      if (stdout.length > outputLimit) stop(fail('native output limit exceeded'));
+    });
+    child.stderr.on('data', data => {
+      stderr += data;
+      if (stderr.length > outputLimit) stop(fail('native output limit exceeded'));
+    });
+    child.on('error', error => finish(fail(`process unavailable: ${error.code ?? 'error'}`)));
+    child.on('close', code => {
+      childClosed = true;
+      if (!failure) finish(null, code);
+      else if (terminationConfirmed) finish(failure);
     });
   });
 }
