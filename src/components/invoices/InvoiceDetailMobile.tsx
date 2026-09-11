@@ -362,6 +362,21 @@ export function InvoiceDetailMobile({
               </div>
             </div>
 
+            {invoice.invoice_adjustments?.length ? (
+              <div className="cd-card">
+                <div className="cd-card-h"><span className="cd-card-t"><CheckCircle size={16} /> Lịch sử điều chỉnh</span></div>
+                <div className="invitems">
+                  {invoice.invoice_adjustments.slice().sort((a, b) => b.revision - a.revision).map((a) => (
+                    <div className="invitem" key={a.id}>
+                      <span className="invitem-desc"><b>#{a.revision} · {a.reason}</b><small>{a.review_status === "CHECKED" ? "Đã kiểm tra" : "Chưa kiểm tra"}</small></span>
+                      <span className="r mono">{fmtNum(a.before_total)} → {fmtNum(a.after_total)}</span>
+                      <span className="r mono bold">{a.delta >= 0 ? "+" : ""}{fmtNum(a.delta)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {/* Tóm tắt thanh toán */}
             <div className="cd-card">
               <div className="cd-card-h">
