@@ -108,6 +108,27 @@ export interface InvoiceItem {
   created_at: string;
 }
 
+export type InvoiceAdjustmentReviewStatus = 'PENDING' | 'CHECKED';
+
+export interface InvoiceAdjustment {
+  id: string;
+  organization_id: string;
+  invoice_id: string;
+  revision: number;
+  idempotency_key: string;
+  reason: string;
+  before_snapshot: Record<string, unknown>;
+  after_snapshot: Record<string, unknown>;
+  before_total: number;
+  after_total: number;
+  delta: number;
+  adjusted_by: string;
+  adjusted_at: string;
+  review_status: InvoiceAdjustmentReviewStatus;
+  checked_by: string | null;
+  checked_at: string | null;
+}
+
 /** Matches `payments` table */
 export interface Payment {
   id: string;
@@ -154,6 +175,7 @@ export interface InvoiceFilters {
    *  - 'partial' → status = PARTIAL_PAID (đã thu 1 phần, còn thiếu ≥ 10K)
    *  - 'unpaid'  → chưa thu đồng nào (status NOT IN PAID/PARTIAL_PAID). */
   payment_status?: 'paid' | 'unpaid' | 'partial';
+  adjustment_review_status?: 'pending' | 'checked';
   /** UI filter vòng đời HĐ:
    *  - 'active' (mặc định) → loại CANCELLED → các HĐ đang hoạt động.
    *  - 'cancelled' → chỉ HĐ đã huỷ.
@@ -225,6 +247,7 @@ export interface InvoiceFormItem {
 
 /** Invoice with joined relations for detail/list views */
 export interface InvoiceWithRelations extends Invoice {
+  invoice_adjustments?: InvoiceAdjustment[];
   contract?: {
     id: string;
     contract_number: string | null;

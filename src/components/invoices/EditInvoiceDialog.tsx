@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useUpdateInvoice, useExcessAmount } from '@/hooks/useInvoices';
+import { useUpdateInvoice, useAdjustInvoice, useExcessAmount } from '@/hooks/useInvoices';
 import type {
   InvoiceFormData,
   InvoiceWithRelations,
@@ -143,6 +143,7 @@ function decomposeItems(invoice: InvoiceWithRelations) {
 
 const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogProps) => {
   const updateMutation = useUpdateInvoice();
+  const adjustMutation = useAdjustInvoice();
   const [meterId, setMeterId] = useState<string | null>(null);
   const [debtSources, setDebtSources] = useState<PreviousDebtSource[]>(
     Array.isArray(invoice.previous_debt_sources)
@@ -419,6 +420,22 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       previous_debt_sources: data.previous_debt_overridden ? [] : debtSources,
       items,
     };
+
+    if ((invoice.paid_amount ?? 0) > 0) {
+      adjustMutation.mutate(
+        {
+          invoiceId: invoice.id,
+          afterItems: items.map((item) => ({
+            ...item,
+            amount: item.unit_price * item.quantity * item.coefficient,
+          })),
+          reason: data.notes?.trim() || 'Điều chỉnh hóa đơn',
+          idempotencyKey: `invoice-adjustment-${invoice.id}-${Date.now()}-${crypto.randomUUID()}`,
+        },
+        { onSuccess: () => onOpenChange(false) },
+      );
+      return;
+    }
 
     updateMutation.mutate(
       { id: invoice.id, formData },
