@@ -48,6 +48,82 @@ describe('hướng dẫn dùng được và giữ ngắn', () => {
     const old = '- Nó dạy chạy `npm run gen:types` kèm dấu redirect `>` đổ vào `types.ts` — suốt nhiều tháng. Shell';
     assert.ok(co(old, 'gen-types-redirect'));
   });
+
+  it('adapter công cụ trỏ đúng mục tra cứu mã nguồn trong Contract', () => {
+    const dung = '[Project Contract §12](docs/engineering/PROJECT_CONTRACT.md#12-tra-cứu-mã-nguồn-và-gitnexus)';
+    assert.ok(!check(dung, 'AGENTS.md').some(p => p.id === 'missing-source-lookup-pointer'));
+    assert.ok(check('[Project Contract](docs/engineering/PROJECT_CONTRACT.md)', 'AGENTS.md')
+      .some(p => p.id === 'missing-source-lookup-pointer'));
+  });
+});
+
+describe('cấu hình GitNexus tùy chọn', () => {
+  const scripts = {
+    'graph:analyze': 'node scripts/run-pinned-gitnexus.mjs analyze',
+    'graph:status': 'node scripts/run-pinned-gitnexus.mjs status',
+    'graph:query': 'node scripts/run-pinned-gitnexus.mjs query',
+    'graph:context': 'node scripts/run-pinned-gitnexus.mjs context',
+    'graph:impact': 'node scripts/run-pinned-gitnexus.mjs impact',
+    'graph:trace': 'node scripts/run-pinned-gitnexus.mjs trace',
+  };
+  const hopLe = (overrides = {}) => ({
+    scripts,
+    trackedFiles: ['scripts/run-pinned-gitnexus.mjs', 'tooling/agent-tools.json'],
+    existingFiles: new Set(['scripts/run-pinned-gitnexus.mjs', 'tooling/agent-tools.json']),
+    agentTools: { gitnexus: { version: '1.6.9', analyzeArgs: ['--index-only', '--skip-agents-md', '--worker-timeout', '60'] } },
+    workflowRuns: ['node scripts/check-agent-contract.mjs'],
+    ...overrides,
+  });
+  const coLoi = (input, id) => {
+    assert.equal(typeof gate.checkRepositoryContract, 'function', 'gate phải kiểm cấu hình repo thật');
+    return gate.checkRepositoryContract(input).some(p => p.id === id);
+  };
+
+  it('bắt wrapper hoặc pin bị mất', () => {
+    assert.equal(coLoi(hopLe({ existingFiles: new Set(['tooling/agent-tools.json']) }), 'missing-gitnexus-wrapper'), true);
+    assert.equal(coLoi(hopLe({ agentTools: { gitnexus: { version: 'latest', analyzeArgs: [] } } }), 'invalid-gitnexus-pin'), true);
+  });
+
+  it('bắt alias thiếu hoặc trỏ khỏi wrapper', () => {
+    const thieu = { ...scripts };
+    delete thieu['graph:status'];
+    assert.equal(coLoi(hopLe({ scripts: thieu }), 'invalid-gitnexus-alias'), true);
+    assert.equal(coLoi(hopLe({ scripts: { ...scripts, 'graph:impact': 'npx gitnexus impact' } }), 'invalid-gitnexus-alias'), true);
+  });
+
+  it('bắt graph artifact hoặc skill sinh mặc định được track', () => {
+    for (const file of [
+      '.ua/meta.json',
+      '.gitnexus/manifest.json',
+      '.agents/skills/generated/gitnexus/SKILL.md',
+      '.agents/skills/gitnexus/SKILL.md',
+      '.claude/skills/generated/gitnexus/SKILL.md',
+      '.claude/skills/gitnexus/SKILL.md',
+    ]) {
+      assert.equal(coLoi(hopLe({ trackedFiles: [...hopLe().trackedFiles, file] }), 'tracked-generated-graph'), true, file);
+    }
+  });
+
+  it('chỉ bắt GitNexus MCP dự án và graph bắt buộc trong workflow', () => {
+    const trackedMcp = [...hopLe().trackedFiles, '.mcp.json'];
+    assert.equal(coLoi(hopLe({
+      trackedFiles: trackedMcp,
+      projectMcp: { mcpServers: { gitnexus: { command: 'node', args: ['scripts/run-pinned-gitnexus.mjs', 'mcp'] } } },
+    }), 'project-graph-integration'), true);
+    assert.equal(coLoi(hopLe({
+      trackedFiles: trackedMcp,
+      projectMcp: { mcpServers: { unrelated: { command: 'example-mcp' } } },
+    }), 'project-graph-integration'), false);
+    assert.equal(coLoi(hopLe({ workflowRuns: ['node scripts/run-pinned-gitnexus.mjs analyze'] }), 'mandatory-graph-workflow'), true);
+  });
+
+  it('parser workflow bỏ comment lịch sử nhưng giữ lệnh graph đang hoạt động', () => {
+    assert.equal(typeof gate.workflowRunsFromText, 'function', 'phải parse YAML thay vì quét comment');
+    const chiComment = 'jobs:\n  test:\n    steps:\n      # đã từng chạy graph:analyze\n      - run: node scripts/check-agent-contract.mjs\n';
+    const dangChay = 'jobs:\n  test:\n    steps:\n      - run: npm run graph:analyze\n';
+    assert.equal(coLoi(hopLe({ workflowRuns: gate.workflowRunsFromText(chiComment) }), 'mandatory-graph-workflow'), false);
+    assert.equal(coLoi(hopLe({ workflowRuns: gate.workflowRunsFromText(dangChay) }), 'mandatory-graph-workflow'), true);
+  });
 });
 
 describe("check-agent-contract — chữ 'không' ở CUỐI câu không được che lệnh", () => {

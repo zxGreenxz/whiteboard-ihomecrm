@@ -234,7 +234,7 @@ jobs:
             scripts/__tests__/copilot-g3-writer-admission.test.mjs \
             scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs \
             scripts/__tests__/copilot-golden-real-cli.test.mjs \
-            scripts/__tests__/check-graph-governance.test.mjs \
+            scripts/__tests__/run-pinned-gitnexus.test.mjs \
             scripts/__tests__/check-migration-provenance.test.mjs \
             scripts/__tests__/check-no-auto-apply.test.mjs \
             scripts/__tests__/check-copilot-routes.test.mjs \
@@ -289,7 +289,7 @@ jobs:
           --exclude 'scripts/__tests__/copilot-g3-writer-admission.test.mjs'
           --exclude 'scripts/__tests__/copilot-c02-fixture-lifecycle.test.mjs'
           --exclude 'scripts/__tests__/copilot-golden-real-cli.test.mjs'
-          --exclude 'scripts/__tests__/check-graph-governance.test.mjs'
+          --exclude 'scripts/__tests__/run-pinned-gitnexus.test.mjs'
           --exclude 'scripts/__tests__/check-migration-provenance.test.mjs'
           --exclude 'scripts/__tests__/check-no-auto-apply.test.mjs'
           --exclude 'scripts/__tests__/check-copilot-routes.test.mjs'
@@ -606,12 +606,7 @@ jobs:
       - name: Quét toàn lịch sử
         run: /tmp/gitleaks git --redact --no-banner --config .gitleaks.toml .
 
-      - name: Secret + PII trên artifact graph (.ua/)
-        env:
-          GITLEAKS_BIN: /tmp/gitleaks
-        run: node scripts/check-graph-secrets.mjs
-
-  realtime-and-knowledge-gates:
+  realtime-gates:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/production'
     timeout-minutes: 10
@@ -633,11 +628,6 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-realtime-descriptors.mjs
 
-      - name: Vệ sinh graph (manifest · PR riêng · không đè Contract)
-        run: node scripts/check-graph-hygiene.mjs
-
-      - name: Độ mới graph (báo cáo — chỉ đỏ khi artifact hỏng)
-        run: node scripts/check-graph-freshness.mjs
   production-promotion:
     if: github.ref == 'refs/heads/production' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -658,42 +648,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/promote-to-production.mjs --sha "${{ github.sha }}" --wait-seconds 420
-
-  organization-impact-review:
-    if: >-
-      github.event_name == 'pull_request' &&
-      (github.head_ref == 'fix/superadmin-org-repair-stable' ||
-       github.head_ref == 'fix/org-backup-password-bytes')
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '24.18.0'
-      - name: Build pinned source graph
-        run: node scripts/run-pinned-gitnexus.mjs analyze
-      - name: Require fresh high-risk graph
-        run: node scripts/check-graph-freshness.mjs --nhiem-vu high-risk
-      - name: Inspect company context, backup and changed symbols
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/organization-impact"
-          node scripts/run-pinned-gitnexus.mjs impact pgPassLine | tee "$RUNNER_TEMP/organization-impact/backup.txt"
-          if [ -f src/lib/workingOrganization.ts ]; then
-            node scripts/run-pinned-gitnexus.mjs impact createOrganizationFetch | tee "$RUNNER_TEMP/organization-impact/request-context.txt"
-          fi
-          node scripts/run-pinned-gitnexus.mjs detect-changes --scope compare --base-ref "$BASE_SHA" | tee "$RUNNER_TEMP/organization-impact/changes.txt"
-          cp .gitnexus/manifest.json "$RUNNER_TEMP/organization-impact/manifest.json"
-          cp "tooling/graph-verdict.local.json" "$RUNNER_TEMP/organization-impact/freshness.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: organization-impact-${{ github.event.pull_request.head.sha }}
-          path: ${{ runner.temp }}/organization-impact/
-          if-no-files-found: error
-          retention-days: 7

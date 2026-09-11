@@ -291,8 +291,8 @@ function main() {
     //       Tệ gấp đôi mức "gây phiền": khi một gate luôn đỏ vì lý do không có
     //       thật, "trên Windows nó luôn đỏ" trở thành lời giải thích cho MỌI lần
     //       đỏ — kể cả lần nội dung trôi thật. Đây đúng là hạng lỗi mà
-    //       configDigestNote trong tooling/graph-manifests/ua.json đã ghi cho một
-    //       chỗ khác: so nội dung worktree trên Windows là so cả ký tự xuống dòng.
+    //       So nội dung worktree trên Windows là so cả ký tự xuống dòng, không
+    //       chỉ phần dữ liệu mà generator sở hữu.
     const bo = (s) => s.replace(/\r\n/g, "\n").replace(/^reviewed: .*$/m, "");
     if (kiem) {
       const cu = existsSync(p) ? readFileSync(p, "utf8") : "";

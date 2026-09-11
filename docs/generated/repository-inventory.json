@@ -1,17 +1,17 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 645,
-  "soFileDocBangFs": 201,
-  "tongLoiGoi": 432,
-  "khongPhanLoaiDuoc": 216,
+  "tongSoFileTest": 644,
+  "soFileDocBangFs": 202,
+  "tongLoiGoi": 445,
+  "khongPhanLoaiDuoc": 223,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
-      "soFile": 30,
+      "soFile": 31,
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
@@ -86,6 +86,14 @@
         "powershell": 2
       },
       "khongPhanLoaiDuoc": 13
+    },
+    {
+      "file": "scripts/__tests__/run-pinned-gitnexus.test.mjs",
+      "soGoi": 13,
+      "loai": {
+        "manifest": 6
+      },
+      "khongPhanLoaiDuoc": 7
     },
     {
       "file": "infra/network-center-worker/test/installHostSafety.test.ts",

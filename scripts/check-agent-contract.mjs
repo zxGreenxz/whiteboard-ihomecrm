@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CONTRACT = 'docs/engineering/PROJECT_CONTRACT.md';
@@ -73,6 +75,10 @@ export function checkGuide(raw, file, scripts, exists) {
   if (AGENT_FILES.includes(file) && !text.includes('PROJECT_CONTRACT.md')) {
     add('missing-contract-pointer', 'Adapter phải trỏ về Project Contract trong nội dung người đọc thấy.');
   }
+  if (['CLAUDE.md', 'AGENTS.md'].includes(file)
+      && !(text.includes('PROJECT_CONTRACT.md') && text.includes('§12'))) {
+    add('missing-source-lookup-pointer', 'Adapter công cụ phải trỏ tới Project Contract §12.');
+  }
   for (const match of text.matchAll(/\bnpm run ([\w:-]+)/g)) {
     if (!Object.hasOwn(scripts, match[1])) add('unknown-npm-script', 'Lệnh npm không tồn tại: ' + match[1]);
   }
@@ -84,6 +90,67 @@ export function checkGuide(raw, file, scripts, exists) {
     if (!exists(resolved)) add('broken-guide-link', 'Không tìm thấy link: ' + target);
   }
   return problems;
+}
+
+const GITNEXUS_ALIASES = ['analyze', 'status', 'query', 'context', 'impact', 'trace'];
+const GENERATED_GRAPH = /^(?:\.ua|\.gitnexus)\/|^\.(?:agents|claude)\/skills\/(?:generated|gitnexus)\//;
+const MANDATORY_GRAPH_RUN = /(?:scripts\/check-graph-(?:freshness|hygiene|secrets)\.mjs|scripts\/run-pinned-gitnexus\.mjs|npm run (?:gate:graph|graph:)|(?:^|\s)\.gitnexus\/|(?:^|\s)\.ua\/)/m;
+
+function hasGitNexusProjectMcp(projectMcp) {
+  const servers = projectMcp?.mcpServers;
+  if (!servers || typeof servers !== 'object') return false;
+  return Object.entries(servers).some(([name, config]) =>
+    /gitnexus/i.test(name) || /gitnexus/i.test(JSON.stringify(config)));
+}
+
+export function checkRepositoryContract({ scripts = {}, trackedFiles = [], existingFiles = new Set(), agentTools, projectMcp, workflowRuns = [] }) {
+  const problems = [];
+  const add = (id, why) => problems.push({ file: 'repository', id, why });
+  if (!existingFiles.has('scripts/run-pinned-gitnexus.mjs')) {
+    add('missing-gitnexus-wrapper', 'Thiếu wrapper GitNexus tùy chọn của repo.');
+  }
+  const pin = agentTools?.gitnexus;
+  if (!/^\d+\.\d+\.\d+$/.test(pin?.version ?? '')
+      || JSON.stringify(pin?.analyzeArgs) !== JSON.stringify(['--index-only', '--skip-agents-md', '--worker-timeout', '60'])) {
+    add('invalid-gitnexus-pin', 'Pin GitNexus phải là semver exact và giữ chế độ index-only không sinh hướng dẫn agent.');
+  }
+  for (const sub of GITNEXUS_ALIASES) {
+    const name = `graph:${sub}`;
+    if (scripts[name] !== `node scripts/run-pinned-gitnexus.mjs ${sub}`) {
+      add('invalid-gitnexus-alias', `Alias ${name} thiếu hoặc không đi qua wrapper.`);
+    }
+  }
+  if (trackedFiles.some((file) => GENERATED_GRAPH.test(file))) {
+    add('tracked-generated-graph', 'Không track artifact graph hoặc skill GitNexus sinh tự động.');
+  }
+  if (hasGitNexusProjectMcp(projectMcp)) {
+    add('project-graph-integration', 'GitNexus tùy chọn không được đăng ký MCP ở cấp project.');
+  }
+  if (workflowRuns.some((run) => MANDATORY_GRAPH_RUN.test(run))) {
+    add('mandatory-graph-workflow', 'CI không được dựng hoặc bắt buộc graph; chỉ regression wrapper được chạy.');
+  }
+  return problems;
+}
+
+export function workflowRunsFromText(raw) {
+  const runs = [];
+  const jobs = yaml.load(raw)?.jobs ?? {};
+  for (const job of Object.values(jobs)) {
+    for (const step of job?.steps ?? []) if (typeof step?.run === 'string') runs.push(step.run);
+  }
+  return runs;
+}
+
+function workflowRuns(read, trackedFiles, problems) {
+  const runs = [];
+  for (const file of trackedFiles.filter((path) => path.startsWith('.github/workflows/') && /\.ya?ml$/.test(path))) {
+    try {
+      runs.push(...workflowRunsFromText(read(file)));
+    } catch {
+      problems.push({ file, id: 'workflow-unreadable', why: 'Không đọc được workflow để kiểm cấu hình graph.' });
+    }
+  }
+  return runs;
 }
 
 function main() {
@@ -123,9 +190,9 @@ function main() {
     ['cap-1000', 'bug tổng chỉ 1000 dòng đầu'],
     ['CLAUDE.local.md', 'credential vault'],
     ['IHOMECRM_PROMOTION_TOKEN', 'token cho đường bỏ backup; lane mặc định dùng biên nhận backup'],
-    ['bán kính ảnh hưởng', 'phải hỏi graph trước khi sửa'],
-    ['detect_changes', 'đối chiếu thứ thực sự đổi với thứ định đổi'],
-    ['.mcp.json', 'GitNexus đăng ký MCP theo dự án, không theo máy'],
+    ['GitNexus là CLI tùy chọn', 'GitNexus là công cụ tùy chọn'],
+    ['scripts/run-pinned-gitnexus.mjs', 'wrapper GitNexus được ghim'],
+    ['tooling/agent-tools.json', 'nguồn pin GitNexus'],
     ['hide_sandbox_admin', 'policy chặn org TEST lọt vào org thật'],
     ['can_access_building', 'cách lọc toà đúng trong hàm SECURITY DEFINER'],
     ['aaaa0000', 'org THẬT — chỉ đọc khi test'],
@@ -160,6 +227,31 @@ function main() {
       problems.push({ file: CONTRACT, id: 'contract-lost-invariant', why: `Mất phần "${what}" (không còn nhắc \`${needle}\`).` });
     }
   }
+
+  let trackedFiles = [];
+  try {
+    trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, encoding: 'utf8' })
+      .split('\0').filter(Boolean).map((file) => file.replaceAll('\\', '/'))
+      .filter((file) => exists(file));
+  } catch {
+    problems.push({ file: 'repository', id: 'git-files-unreadable', why: 'Không đọc được danh sách file tracked.' });
+  }
+  let agentTools = null;
+  try { agentTools = JSON.parse(read('tooling/agent-tools.json')); } catch { /* reported by repository contract */ }
+  let projectMcp = null;
+  if (trackedFiles.includes('.mcp.json')) {
+    try { projectMcp = JSON.parse(read('.mcp.json')); } catch {
+      problems.push({ file: '.mcp.json', id: 'project-mcp-unreadable', why: 'Không đọc được cấu hình MCP dự án.' });
+    }
+  }
+  problems.push(...checkRepositoryContract({
+    scripts,
+    trackedFiles,
+    existingFiles: new Set(trackedFiles),
+    agentTools,
+    projectMcp,
+    workflowRuns: workflowRuns(read, trackedFiles, problems),
+  }));
 
   if (problems.length > 0) {
     console.error('❌ Hợp đồng agent có vấn đề:\n');

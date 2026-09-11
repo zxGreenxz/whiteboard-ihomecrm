@@ -750,12 +750,14 @@
         "evidence": " | Lo 69: bien RPC nay gio co gate ten tham so, xem dot-5-contracts V1. | Lo 106 mo rong taxonomy loi them mot nhom: 'rate_limit'. Ly do khong nhap vao 'concurrency' — concurrency la nhom DUY NHAT duoc thu lai TU DONG, ma tu dong thu lai mot loi gioi han toc do la do them dung thu da lam no kich hoat, limiter se khong bao gio ha xuong. Anh xa PT429 -> rate_limit; PostgREST quy uoc SQLSTATE dang PTxxx tra HTTP xxx nen PT429 ra dung 429 Too Many Requests (migration 20260808140000 doi tu 5xx sang 429 chinh vi Cloudflare va lop trung gian doc 5xx la 'origin dang hong'). isRetryable(rate_limit)=false, isUserActionable(rate_limit)=true (nguoi dung xu duoc: cho mot lat). DIEU NAY DONG MOT TEST DO LAU NGAY: errors.test.ts co ca 'moi ERRCODE ma migration that su nem deu da duoc phan loai' va no do vi PT429 chua co nhom — nay 20/20 xanh."
       },
       {
-        "deliverable": "P2-23: Graph/docs release automation sau khi refresh deterministic + secret/PII scan ổn định",
+        "deliverable": "P2-23: Graph/docs release automation (không còn áp dụng)",
         "planRef": "Mục 43 (dòng 2673)",
-        "status": "CHUA_LAM",
+        "status": "XONG",
         "size": "L",
         "touchesOpenClaw": false,
-        "remaining": "Trước hết làm secret/PII scan + refresh graph deterministic; automation là bước sau. P2."
+        "remaining": null,
+        "doneAt": "2026-09-11",
+        "evidence": "UA và graph gate bắt buộc đã được gỡ; GitNexus chuyển thành CLI local tùy chọn tự kiểm snapshot. Không tạo automation hoặc known-gap mới cho công cụ đã chủ động bỏ."
       },
       {
         "deliverable": "P2-24: Bundle inventory regression + dependency/license audit",

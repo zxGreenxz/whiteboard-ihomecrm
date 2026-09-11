@@ -27,7 +27,7 @@
   bắt buộc theo loại thay đổi, secret, công cụ tri thức. `CLAUDE.md` và `AGENTS.md` chỉ là **adapter**
   trỏ về đây; khi hai bên nói khác nhau thì Contract thắng.
 - `tooling/` (ngoài `docs/`) — các file **máy đọc** mà Contract cưỡng chế, không phải tài liệu:
-  `graph-policy.json`, `graph-manifests/`, `runtime-matrix.json`, `known-gaps.yaml`,
+  `agent-tools.json`, `runtime-matrix.json`, `test-matrix.json`, `known-gaps.yaml`,
   `local-credential-contract.json`, `plan-remaining.json`, `program-status.json`, và các
   `*-baseline.json` của ratchet. Sửa văn xuôi mà quên sửa file tương ứng ở đây là cách hai bản lệch
   nhau — gate sẽ bắt, nhưng chỉ khi bạn chạy nó.
@@ -116,10 +116,10 @@ Thứ tự đọc khi nhận việc trong repo này:
    còn mở.
 4. **Plan CÒN SỐNG** (nếu đang làm dở) trong `docs/superpowers/plans/` — trạng thái từng phần.
 
-Cảnh báo: knowledge graph (`.ua/`, GitNexus) có thể cũ hơn tài liệu — Contract §12 xếp ưu tiên
-**contract manifest + SQL harness > GitNexus > UA**; graph nói ngược tài liệu hiện hành thì tin tài
-liệu và ghi lại chỗ lệch. Plan/spec có banner LỊCH SỬ/LỖI THỜI chỉ dùng làm bối cảnh, không dùng làm
-đặc tả để code.
+Tra file và symbol đã biết trực tiếp trong source; [bản đồ codebase](CODEBASE_STRUCTURE.md) chỉ vị trí
+route/capability, hook/service, RPC/Edge/realtime, SQL/migration và test runner. GitNexus chỉ là CLI
+tùy chọn cho quan hệ liên file theo Contract §12. Plan/spec có banner LỊCH SỬ/LỖI THỜI chỉ dùng làm
+bối cảnh, không dùng làm đặc tả để code.
 
 ## Quy tắc duy trì
 

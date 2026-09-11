@@ -84,18 +84,12 @@ trường** — preview và production build cùng nhận giá trị này.
 
 ## 3. CI gates: cái gì thật sự chạy trên PR
 
-`.github/workflows/ci-gates.yml` có **14 job** tại commit `7965c6a6` (frontmatter). Ba nhóm:
-
-> ⚠ **Cây làm việc lúc soi (07/08/2026) ĐÃ vượt qua con số này** — có thay đổi chưa commit thêm
-> **2 job** nữa (`secret-scan` dòng 713, `production-promotion` dòng 752) ⇒ **16**, đồng thời thêm
-> `production` vào `on.push.branches`. Mọi số dòng trong mục này đo ở HEAD; trong cây làm việc chúng
-> đã **dịch +4**. Nếu bạn đọc trang này sau khi đợt đó merge, hãy đo lại — đừng tin con số ở đây.
-> Đáng chú ý nhất: `secret-scan` **không có `needs` lẫn `if`**, nên câu "`quality-gates` là job duy
-> nhất như vậy" ở bảng dưới chỉ còn đúng tại `7965c6a6`.
+`.github/workflows/ci-gates.yml` là nguồn hiện hành; không dựa vào số job hoặc số dòng chép tay.
 
 | Nhóm | Job | Chạy khi nào |
 |---|---|---|
 | Bắt buộc, không cần secret | `quality-gates` | mọi PR và push `main`/`release/*` — job DUY NHẤT không có `needs` lẫn `if` |
+| Realtime publication | `realtime-gates` | PR và push ngoài `production`; chạy phép kiểm publication thật |
 | Cần secret + chỉ `refs/heads/main` | `preflight`, `security-gates`, `generated-types-drift`, `reconcile-money`, `cross-tenant-isolation` | push/`workflow_dispatch` trên `main`, và chỉ khi secret đã cấu hình |
 
 Điều này quan trọng hơn vẻ ngoài: **mọi gate đối chiếu với database thật — ACL definer, view invoker,
@@ -105,18 +99,15 @@ phải trước.
 
 Vài chi tiết trong `quality-gates` đáng biết vì chúng trông như thừa:
 
-- `fetch-depth: 0` (dòng 80–86) là **bắt buộc**: `check-graph-hygiene.mjs` phải duyệt lịch sử commit
-  đụng `.ua/`, còn `check-graph-freshness.mjs` đo độ lệch từ `baseCommit`. Với checkout nông mặc
-  định (1 commit) cả hai thoát 3 — "không kiểm được ≠ đạt" — tức gate không bao giờ thật sự chạy.
-- Bước graph freshness **cố ý không chặn** (dòng 132–139): graph 4 MB nằm trong repo, refresh là cả
-  một PR; đỏ CI mỗi khi nó cũ sẽ khiến người ta tắt gate đi. Nó chỉ đỏ khi artifact hỏng.
+- `fetch-depth: 0` được giữ cho các gate so diff/lịch sử; checkout nông không đủ bằng chứng cho các
+  phép kiểm dựa trên commit.
 - `npm run gate:timezone` chạy lại test ngày/tiền dưới 4 múi giờ (UTC-11 → UTC+14) vì runner chạy
   UTC còn người dùng ở UTC+7. Ngay lần đầu nó bắt `useOccupancyTrend12m` đẩy chuỗi chỉ-có-ngày qua
   `new Date()` — biểu đồ lệch một tháng ở mọi múi giờ âm, trong khi toàn bộ test vẫn xanh ở UTC lẫn
   UTC+7 (dòng 187–198).
 - 22 file `scripts/__tests__/network-center-*.test.mjs` bị `--exclude` khỏi Vitest vì dùng API
   `node:test`; chúng chạy bằng `node --test` trong `network-center-validation.yml`.
-- Required check của GitHub bám **tên JOB**, không phải tên step (dòng 145–147).
+- Required check của GitHub bám **tên job**, không phải tên step.
 
 `network-center-validation.yml` là workflow riêng, lọc theo `paths`, và **live apply bị chặn cứng
 trong CI**: `scripts/apply-network-center-rollout.mjs:21` ném lỗi khi `GITHUB_ACTIONS=true` và không

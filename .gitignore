@@ -37,22 +37,15 @@ crawl-resident/
 # một lần `git add -A` nhỡ tay là nó vào lịch sử vĩnh viễn.
 .env
 
-# GitNexus local code-intelligence index (database graph, không commit)
+# Chỉ mục GitNexus local, không commit
 .gitnexus/
 
-# Skill do GitNexus ghi ra — plan kiến trúc §15: generate local, review chất
-# lượng, KHÔNG auto-commit. Lần analyze đầu (07/08/2026) tạo 20 file trong
-# generated/ (sinh từ community của repo) và 6 thư mục trong gitnexus/ (hướng
-# dẫn dùng chính công cụ). Cả hai đều là CHỈ DẪN CHO AGENT do công cụ viết ra;
-# commit chúng là để công cụ tự thêm luật mà không ai duyệt — cùng lý do
-# `--skip-agents-md` chặn nó sửa CLAUDE.md/AGENTS.md. Cả hai đều dựng lại được
-# bằng `npm run graph:analyze`. Khi nào có tập curated ổn định thì commit có
-# chủ đích, từng file một.
-.claude/skills/
-
-# Verdict của gate graph freshness — trạng thái LOCAL, gắn với HEAD trên máy
-# này. Pattern `*.local` ở trên KHÔNG khớp đuôi `.local.json`.
-tooling/graph-verdict.local.json
+# Artifact UA và skill GitNexus sinh tự động không thuộc source của repo
+.ua/
+.agents/skills/generated/
+.agents/skills/gitnexus/
+.claude/skills/generated/
+.claude/skills/gitnexus/
 
 # Claude personal config (creds, PAT) — DO NOT COMMIT
 CLAUDE.local.md
@@ -97,17 +90,10 @@ test-results/
 # Ke hoach backfill coc (chua du lieu kinh doanh, khong commit)
 scripts/.backfill-deposit-plan.json
 
-# Understand Anything local scratch/runtime (commit graph + fingerprints, not these)
-.ua/intermediate/
-.ua/tmp/
 # Thu muc tam cua cac gate Copilot: chung ghi mot file .ts roi nap qua vite-node
 # de doc gia tri THAT thay vi regex. File bi xoa trong `finally`, nhung thu muc
 # o lai — va mot lan gate chet giua chung se de lai file rac trong `git status`.
 .tmp-copilot-loaders/
-.ua/.trash-*/
-.ua/dashboard-logs/
-.ua/start-dashboard.ps1
-.ua/diff-overlay.json
 .clone-org-snapshots/
 
 # Baseline schema dump — ĐÃ COMMIT từ 13/08/2026 (đổi quyết định cũ).

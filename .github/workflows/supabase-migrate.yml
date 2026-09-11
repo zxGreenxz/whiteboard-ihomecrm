@@ -1,38 +1,13 @@
 name: Supabase Migration Validation
 
-# SAFETY (do not remove): this workflow intentionally does NOT auto-apply migrations.
-#
-# The accounting migration ledger (supabase_migrations.schema_migrations) is managed
-# OUT-OF-BAND via the Management-API rollout scripts (scripts/apply-accounting-rollout.mjs),
-# applied forward-only with an operator PAT. An automatic Supabase migration apply here
-# would REPLAY already-applied work against production and corrupt it.
-#
-# DO NOT hardcode the ledger position in this comment. It used to say the ledger sat at
-# 20260716170000; by 2026-08-08 the real value was 20260727095000 — eleven days stale, and
-# nothing made it wrong out loud. A number copied into a comment is a number nobody updates.
-# Read it from supabase/migration-provenance.json (`ledgerMaxVersion`, `ledgerRows`), which
-# scripts/generate-migration-provenance.mjs regenerates from the live ledger:
-#
-#   node -e "const p=require('./supabase/migration-provenance.json');console.log(p.ledgerMaxVersion,p.ledgerRows)"
-#   npm run migrations:list-forward
-#
-# And note what that number does NOT tell you: migration-policy.json#knownLimits says
-# production has changes newer than the ledger max, because this repo applies via the
-# Management API without always writing a ledger row. Never use max(ledger) as schema state.
-#
-# Therefore: on push we only run read-only static validation. Real apply is always manual,
-# forward-only, via the PAT rollout scripts.
-# Ref: docs/plans/PLAN-HOAN-THIEN-V5-COLLECTION-2026-07-22.md (Phase 1 / Stop gate 14).
+# Workflow này chỉ validation tĩnh, không auto-apply migration. Production dùng làn
+# forward có backup/provenance và operator token; ledger không đại diện toàn bộ schema.
+# Đọc cutoff/trạng thái từ migration-policy.json và migration-provenance.json.
 
 on:
   push:
     branches: [main, master]
-    # Bộ lọc này phải liệt kê MỌI script workflow thực sự chạy. Thiếu một cái thì
-    # sửa đúng script đó KHÔNG kích hoạt lại workflow dùng nó — một checker bị làm
-    # hỏng sẽ nằm im tới lần có ai đó tình cờ đụng migration.
-    #
-    # Đo 11/08/2026: hai script `check-no-auto-apply` và `check-migration-provenance`
-    # đang được chạy ở dưới nhưng KHÔNG có trong danh sách này. Bổ sung.
+    # Liệt kê mọi script workflow chạy để sửa checker cũng kích hoạt validation.
     paths:
       - 'supabase/migrations/**'
       - 'supabase/migration-provenance.json'
@@ -50,23 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      # Pin exact, và cùng version với ci-gates.
-      #
-      # Đường đi của quyết định này, ghi lại vì nó là ví dụ về "đo trước khi đổi":
-      #   - Ban đầu `'20'` — major trôi nổi, runtime đổi theo ngày chạy mà không
-      #     commit nào ghi lại. Pin exact thành 20.20.2 (đúng thứ `'20'` đang phân
-      #     giải ra), không đổi hành vi.
-      #   - Nhưng Node 20 (Iron) ra bản cuối 24/03/2026 rồi hết vòng đời: đứng yên
-      #     trên một runtime không ai vá là khoảng trống khác. Lúc đó chưa nâng
-      #     major vì chưa có đo, chỉ đăng ký known-gap.
-      #   - Đo 11/08/2026: HAI trong ba script ở dưới (`check-no-auto-apply`,
-      #     `check-migration-provenance`) ĐÃ chạy trên Node 24.18.0 trong ci-gates
-      #     hàng ngày. Script thứ ba chỉ dùng node:crypto/fs/path/url. Có bằng
-      #     chứng thì nâng, và khoảng trống đóng luôn thay vì gia hạn.
-      #
-      # Đây KHÔNG phải "thống nhất version cho gọn" — án lệ 05/08/2026 đã cho thấy
-      # làm vậy sẽ phá các ràng buộc engines rời nhau. network-center vẫn ở Node 22
-      # vì worker khai '>=20 <23'. Ở đây trùng 24.18.0 vì đo được là trùng ĐƯỢC.
+      # Runtime exact của workflow; package có runtime khác giữ matrix riêng.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
@@ -74,29 +33,14 @@ jobs:
       - name: Verify exact Node runtime
         run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact Node v24.18.0, got '+process.version);process.exit(1)}"
 
-      # Job này TRƯỚC NAY không cài gì. Chú thích ngay trên đã lập luận rằng cả ba
-      # script dưới đây chỉ dùng thư viện chuẩn — và đó là chỗ đo sai:
-      # `check-no-auto-apply.mjs` import `js-yaml` để phân tích workflow (nó phải
-      # dùng parser thật; bản grep trước đó bỏ lọt 7/10 cách viết, xem 1bf587bb).
-      #
-      # Nó vẫn chạy được ở ci-gates chỉ vì `npm ci` ở đó kéo js-yaml về theo diện
-      # BẮC CẦU qua eslint → @eslint/eslintrc. Ở đây không có npm ci nên bước này
-      # chết với ERR_MODULE_NOT_FOUND — tức cửa chặn auto-apply CHƯA TỪNG thật sự
-      # chạy trong workflow migration, đúng nơi nó cần chạy nhất.
-      #
-      # Đã khai js-yaml thành devDependency tường minh (trước đó KHÔNG có trong
-      # package.json ở bất kỳ mục nào), nên một lần nâng eslint không còn âm thầm
-      # gỡ mất cửa chặn. Và job này nay cài dependency thay vì tin vào may mắn.
+      # Guard parse YAML bằng js-yaml, nên cài đúng lockfile trước khi chạy.
       - name: Cài dependency (guard cần parser YAML thật)
         run: npm ci
 
       - name: Static validation — CHỈ bộ accounting rollout (14 file), KHÔNG phủ migration mới
         run: node scripts/validate-accounting-migrations.mjs
 
-      # Checker dùng chung, thay hai guard grep khác độ chặt trước đây. Bản grep
-      # cũ ở đây chỉ soi một dòng `run:` nên bỏ lọt biến thể block scalar
-      # (`run: |` rồi xuống dòng); bản ở network-center-validation.yml lại so
-      # chuỗi trần nên tự khớp vào chính nó. Xem đầu file script.
+      # Checker dùng parser YAML chung để kiểm mọi block `run`.
       - name: Guard - forbid auto-apply of migrations in any workflow
         run: node scripts/check-no-auto-apply.mjs
 

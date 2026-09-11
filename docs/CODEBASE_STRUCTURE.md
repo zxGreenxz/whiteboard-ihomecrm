@@ -31,7 +31,7 @@ CI khác. Tra runtime của từng cái ở `tooling/runtime-matrix.json`.
 |---|---|---|
 | `infra/**` | 2 package: `network-center-worker`, `cloudflare-worker` | `network-center-worker` deploy bằng PowerShell; hai suite kiểm script đó chạy ở job Windows riêng. |
 | `.e2e-fleet/**` | 68 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
-| `contracts/**` | 3 file hợp đồng | Nguồn ưu tiên CAO NHẤT khi đối chiếu (trên cả graph tri thức). |
+| `contracts/**` | 3 file hợp đồng | Bề mặt RPC, Edge và realtime để đối chiếu với source/runtime. |
 
 ## Luồng phụ thuộc chính
 
@@ -59,7 +59,13 @@ Client chỉ phản chiếu quyền để cải thiện UX. Quyết định cu�
 - Quyền theo trang: `src/lib/permissionPages.ts`; permission map nền ở `src/lib/permissions.ts`.
 - Thu chi/approval: `src/hooks/income-expenses/**`, `src/hooks/useApprovals.ts`, `src/pages/approvals/**`.
 - AI: `src/copilot/**`, `supabase/functions/llm-proxy/**`.
-- Schema hiện tại: `src/integrations/supabase/types.ts`; nguyên nhân thay đổi: migration gần nhất liên quan.
+- Hook/service: tra `src/hooks/**`, `src/lib/**` và import/caller quanh symbol; UI không gọi RPC trực tiếp.
+- RPC: caller ở hook/service, định nghĩa trong `supabase/migrations/**`, bề mặt sinh ở
+  `contracts/surfaces/rpc-surface.json`.
+- Edge/realtime: `supabase/functions/**`, `contracts/surfaces/edge-function-surface.json`,
+  `contracts/surfaces/realtime-surface.json` và descriptor tại `src/app/realtime/**`.
+- Schema hiện tại: `src/integrations/supabase/types.ts`; nguyên nhân thay đổi nằm trong migration gần
+  nhất liên quan. Chọn runner của test bằng `tooling/test-matrix.json`, không suy từ đuôi file.
 
 ## Migration: baseline và làn forward
 
@@ -92,7 +98,7 @@ lệch trong im lặng và thành nguồn sai còn nguy hiểm hơn không có g
 | `test-matrix.json` | file test nào do suite nào chạy, ở job CI nào | `gate:test-matrix` |
 | `known-gaps.yaml` | chỗ nào cố ý chưa gating, hết hạn khi nào | `gate:known-gaps` |
 | `risk-map.json` | đổi file này thuộc tier nào, phải chạy gate nào | `npm run risk:classify` |
-| `graph-policy.json`, `graph-manifests/` | graph tri thức còn dùng được không | `gate:graph-freshness` |
+| `agent-tools.json` | phiên bản và tham số GitNexus tùy chọn | `gate:agent-contract` |
 | `*-baseline.json` (9 file) | ratchet: nợ kỹ thuật chỉ được giảm | gate tương ứng |
 
 ## Kiểm thử

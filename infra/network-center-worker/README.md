@@ -99,7 +99,7 @@ nhất một** `table inet ihome_network_center` và không gì khác: không `f
 không include, và không một statement nào nằm ngoài bảng đó — VPS này còn chạy một
 production service không liên quan, `flush ruleset` sẽ xóa sạch firewall của nó.
 Checker quét theo **từng ký tự** (nft không phải cú pháp theo dòng), nên một dòng
-vừa đóng bảng managed vừa mở `table inet openclaw_zalo {`, hay bất kỳ statement nào
+vừa đóng bảng managed vừa mở `table inet unrelated_service {`, hay bất kỳ statement nào
 đi sau dấu `}` trên cùng dòng, đều bị từ chối; chuỗi trong nháy kép và comment `#`
 được hiểu đúng, và mọi thứ checker không phân loại được chắc chắn (brace lệch, nháy
 kép không đóng, bảng thứ hai) đều fail-closed. Installer tự
@@ -371,11 +371,11 @@ vòng này:
   "không thử vì đang backoff" với "không có gì để thử" — hai trạng thái ngược
   nhau nhưng trước đây hiện ra y hệt.
 
-Sự cố có thật đã dẫn tới thiết kế này: backoff (`5s · 2^n`, trần 300 s) đẩy một
-connection lỗi ra khỏi vòng poll khi delay vượt chu kỳ 60 s, còn periodic
-heartbeat thì ghi đè `ONLINE` cứng. Một fleet mà **mọi** router đều mất kết nối
-lắng xuống thành `ONLINE / connections=0 / successful=0 / failed=0` — trùng khít
-chữ ký của một fleet khỏe mạnh chưa provision gì. Server chốt thêm lần nữa:
+Backoff (`5s · 2^n`, trần 300 s) có thể đẩy một connection lỗi ra khỏi vòng poll
+khi delay vượt chu kỳ 60 s, nên periodic heartbeat không được ghi đè `ONLINE`
+cứng. Nếu không giữ invariant này, một fleet mà **mọi** router đều mất kết nối có
+thể hiện thành `ONLINE / connections=0 / successful=0 / failed=0`, trùng khít chữ
+ký của một fleet khỏe mạnh chưa provision gì. Server chốt thêm lần nữa:
 `20260729144000` hạ `ONLINE` xuống `DEGRADED` khi bằng chứng poll (của chính
 heartbeat đó, hoặc bằng chứng đang lưu của cùng release) có `failedPolls > 0` —
 chỉ hạ, không bao giờ nâng — nên một bản rollback về image cũ vẫn không nói dối

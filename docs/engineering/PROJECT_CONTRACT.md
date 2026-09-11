@@ -51,7 +51,7 @@ Ba tổ chức dùng chung database; org TEST chứa bản sao dữ liệu thậ
 - Push thường dùng `git push origin HEAD:main`; kiểm trước bằng
   `git merge-base --is-ancestor origin/main HEAD`. Không force-push để vượt conflict.
 - Thay đổi tiền, phân quyền, lịch sử migration cần draft PR để review trước khi vào main.
-  Review độc lập theo `crossReview` của risk-map; graph refresh đi PR riêng (§12).
+  Review độc lập theo `crossReview` của risk-map.
   PR ghi số đo và gate đã chạy; chưa mở được PR thì báo rõ, không tuyên bố đã mở.
 - App phát hành từ nhánh `production`; `main` tạo Preview.
   Docs có cấu hình deploy riêng: kiểm `npm run check:external-controls` khi thay đổi phát hành,
@@ -187,25 +187,22 @@ Dừng thao tác phụ thuộc khi sai đích, thiếu credential, lệch digest
 Giữ nguyên bằng chứng lỗi và nêu giới hạn xác minh; tiếp tục phần độc lập trong phạm vi được giao.
 Không hạ kiểm soát, tăng baseline hoặc nuốt lỗi chỉ để CI xanh.
 
-## 12. Công cụ tri thức
+## 12. Tra cứu mã nguồn và GitNexus
 
-GitNexus là chỉ mục TS/JS local; Understand Anything (`.ua/`) là graph onboarding được commit.
-Chỉ dùng graph cho câu hỏi nó trả lời được; sửa tài liệu/CI cần đối chiếu trực tiếp source và cấu hình.
-Graph không chứng minh SQL/RLS/trigger/RPC string hoặc trạng thái production.
+Source, Git diff và contract/harness là căn cứ khi sửa code. GitNexus là CLI tùy chọn
+để tìm callers/callees và luồng qua nhiều file; không chứng minh SQL/RLS hoặc production.
+Không dùng Understand Anything trong luồng agent/CI của repo.
 
-- Agent KHÔNG được nạp graph khi chưa có verdict còn hiệu lực. Chạy `npm run gate:graph-freshness -- --nhiem-vu <nhiệm vụ>`.
-  Verdict hết hiệu lực khi HEAD đổi. Ngưỡng và nhiệm vụ ở [graph-policy.json](../../tooling/graph-policy.json).
-- GitNexus bắt buộc còn mới khi dùng cho medium/high-risk; UA bắt buộc còn mới cho
-  onboarding, architecture, domain-review, generated-docs. Không kết luận từ graph đã bị gate từ chối.
-- Gọi qua `scripts/run-pinned-gitnexus.mjs`, pin ở [agent-tools.json](../../tooling/agent-tools.json),
-  MCP khai trong [.mcp.json](../../.mcp.json); wrapper ép `--skip-agents-md` và đúng repo.
-- Trước khi đổi logic, kiểm bán kính ảnh hưởng: `npm run graph:impact -- <symbol>` khi graph khả dụng,
-  đồng thời kiểm SQL, tên RPC, slug Edge, bảng/view, realtime, feature flag và quyền.
-  Sau sửa dùng `npm run graph:detect-changes` (`detect_changes`) và đối chiếu git diff.
-  Nếu graph thiếu, ghi rõ và dùng source/manifest/harness, không tự tạo kết luận graph.
-- Contract manifest + SQL harness LUÔN ưu tiên hơn mọi graph khi mâu thuẫn.
-- Không commit `.gitnexus/`. Refresh `.ua/` đi PR riêng, chỉ file trong `commitAllowlist`;
-  chạy `gate:graph-hygiene` và `gate:graph-secrets`. Không để generator ghi đè file luật.
+- Tra file/symbol đã biết bằng `rg`; đọc source quanh kết quả trước khi sửa.
+- Khi cần quan hệ liên file, dùng `graph:query`, `graph:context`, `graph:impact` hoặc
+  `graph:trace` trong package.json. Wrapper tự kiểm index; không cần gate freshness riêng.
+- Chỉ gọi `graph:analyze` nếu câu hỏi thực sự cần graph và index chưa dùng được.
+  Mỗi task tối đa một lần tự dựng với timeout mặc định; lỗi/hết giờ thì dùng source.
+  Không tự dựng sau mỗi lần sửa, trước commit hoặc chỉ vì task thuộc nhóm high-risk.
+- Sau khi code đổi, graph là bản chụp cũ; kiểm Git diff, imports/callers và test liên quan.
+  RPC/Edge/realtime, SQL, quyền và tiền luôn đối chiếu manifest/source/harness hiện có.
+- Dùng wrapper ghim ở `scripts/run-pinned-gitnexus.mjs`; cấu hình trong
+  `tooling/agent-tools.json`. Không commit index hoặc để tool sinh lại hướng dẫn agent.
 
 ## 13. Hướng dẫn chuyên đề và khoảng trống
 
