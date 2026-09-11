@@ -88,6 +88,7 @@ describe("CLI dùng lịch sử Git thật và phạm vi trước commit", () =>
     expect(failed.status, failed.output).toBe(1);
     expect(failed.output).toContain("src/lib/newModule.ts");
     repo.config(["src/lib/newModule.ts"]);
+    repo.git("add", "tsconfig.strict-islands.json");
     expect(repo.run(options).status).toBe(0);
   });
 
@@ -115,9 +116,41 @@ describe("CLI dùng lịch sử Git thật và phạm vi trước commit", () =>
     expect(failed.status, failed.output).toBe(1);
     expect(failed.output).toContain("src/lib/staged.ts");
     repo.config(["src/lib/staged.ts"]);
+    repo.git("add", "tsconfig.strict-islands.json");
     const passed = repo.run();
     expect(passed.status, passed.output).toBe(0);
     expect(passed.output).toContain("src/lib/wip.ts");
+  });
+
+  it("unstaged strict config cannot approve a staged module", () => {
+    const repo = repoFixture();
+    repo.write("src/lib/staged.ts", "export const value = 1;\n");
+    repo.git("add", "src/lib/staged.ts");
+    repo.config(["src/lib/staged.ts"]);
+    const failed = repo.run();
+    expect(failed.status, failed.output).toBe(1);
+    expect(failed.output).toContain("src/lib/staged.ts");
+    repo.git("add", "tsconfig.strict-islands.json");
+    const passed = repo.run();
+    expect(passed.status, passed.output).toBe(0);
+  });
+
+  it("unstaged removal cannot reject a valid index snapshot", () => {
+    const repo = repoFixture();
+    repo.write("src/lib/staged.ts", "export const value = 1;\n");
+    repo.config(["src/lib/staged.ts"]);
+    repo.git("add", "src/lib/staged.ts", "tsconfig.strict-islands.json");
+    repo.config();
+    const result = repo.run();
+    expect(result.status, result.output).toBe(0);
+  });
+
+  it("strict config missing from index is unverifiable even if present locally", () => {
+    const repo = repoFixture();
+    repo.git("rm", "--cached", "tsconfig.strict-islands.json");
+    const result = repo.run();
+    expect(result.status, result.output).toBe(3);
+    expect(result.output).toContain("KHÔNG KIỂM ĐƯỢC");
   });
 
   it("untracked module trên CI là lỗi cứng, không hạ thành WIP local", () => {

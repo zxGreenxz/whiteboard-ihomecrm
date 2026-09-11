@@ -22,12 +22,11 @@
 // Thoát 0 đạt · 1 vi phạm · 3 KHÔNG KIỂM ĐƯỢC (không có mốc để so).
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const TSCONFIG = join(repoRoot, "tsconfig.strict-islands.json");
 
 /**
  * File KHÔNG bị luật này ràng buộc, mỗi nhóm một lý do cụ thể — không phải danh
@@ -87,10 +86,6 @@ const moduleTrong = (output) => output.split("\0").filter(Boolean)
 function main() {
   const mocMuon = mocTuDoiSoHoacEvent();
 
-  if (!existsSync(TSCONFIG)) {
-    console.error("❌ Thiếu tsconfig.strict-islands.json — không biết đảo nào đã khai.");
-    process.exit(3);
-  }
   if (git(["rev-parse", "--is-shallow-repository"]) === "true") {
     console.error("❌ Repo shallow — không so được với mốc. KHÔNG KIỂM ĐƯỢC (thêm fetch-depth: 0).");
     process.exit(3);
@@ -119,11 +114,12 @@ function main() {
   const ci = Boolean(process.env.CI);
   const themMoi = [...new Set([...trongIndex, ...(ci ? untracked : [])])];
 
-  const dao = docDao(readFileSync(TSCONFIG, "utf8"));
+  // Module và cấu hình phải thuộc cùng index; file chưa stage không đi vào commit.
+  const dao = docDao(git(["show", ":tsconfig.strict-islands.json"]));
   const thieu = themMoi.filter((f) => !dao.has(f));
 
   console.log(`Module mới so với ${moc} (merge-base ${base.slice(0, 8)}, gồm index): ${themMoi.length} file .ts/.tsx trong src/`);
-  console.log(`Đảo strict đã khai: ${dao.size} file`);
+  console.log(`Đảo strict đã khai trong index: ${dao.size} file`);
   if (!ci) {
     for (const file of untracked.filter((f) => !dao.has(f))) {
       console.warn(`⚠ WIP chưa stage: ${file} chưa có trong đảo strict; sẽ chặn khi git add.`);
@@ -140,6 +136,7 @@ function main() {
     for (const f of thieu) console.error(`   ${f}`);
     console.error("\n   Thêm chúng vào `files` của tsconfig.strict-islands.json rồi chạy:");
     console.error("     npx tsc -p tsconfig.strict-islands.json --noEmit");
+    console.error("     git add tsconfig.strict-islands.json");
     console.error("\n   Mã mới viết lỏng là nợ phải dọn sau, mà dọn sau luôn đắt hơn — lúc đó đã có người gọi nó.");
     process.exit(1);
   }
