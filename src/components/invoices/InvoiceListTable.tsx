@@ -24,7 +24,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import type { InvoiceWithRelations, InvoiceItem } from '@/types/invoice';
-import { canEditInvoice, canCancelInvoice, getInvoiceTitle } from '@/lib/invoiceUtils';
+import { canEditInvoice, canCancelInvoice, canOpenInvoiceEditor, getInvoiceTitle } from '@/lib/invoiceUtils';
 import type { InvoiceColumnVisibility } from './invoiceListColumns';
 
 interface InvoiceListTableProps {
@@ -281,19 +281,22 @@ const InvoiceListTable = ({
                       </Tooltip>
 
                       {/* Cập nhật */}
-                      {canEdit && canEditInvoice(invoice) && (
+                      {canEdit && canOpenInvoiceEditor(invoice) && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200"
+                              aria-label={(invoice.paid_amount ?? 0) > 0 ? 'Điều chỉnh hóa đơn' : 'Cập nhật'}
                               onClick={() => onEdit(invoice)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Cập nhật</TooltipContent>
+                          <TooltipContent>
+                            {(invoice.paid_amount ?? 0) > 0 ? 'Điều chỉnh hóa đơn' : 'Cập nhật'}
+                          </TooltipContent>
                         </Tooltip>
                       )}
 

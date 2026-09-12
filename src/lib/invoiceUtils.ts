@@ -115,6 +115,12 @@ export function canEditInvoice(invoice: InvoiceLike): boolean {
   return (invoice.paid_amount ?? 0) === 0;
 }
 
+/** UI editor entrypoint: paid invoices open the audited adjustment flow. */
+export function canOpenInvoiceEditor(invoice: InvoiceLike): boolean {
+  return invoice.status !== 'CANCELLED' &&
+    (canEditInvoice(invoice) || (invoice.paid_amount ?? 0) > 0);
+}
+
 /**
  * Quy tắc HỦY (đường kết thúc hoá đơn duy nhất — gôm từ nút Xoá cũ, 09/2026):
  * - User thường: DRAFT/APPROVED chưa thu tiền (giống canEdit). RPC
