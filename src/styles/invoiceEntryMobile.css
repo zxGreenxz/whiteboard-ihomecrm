@@ -15,6 +15,7 @@
 .cm-app .ien-h-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .cm-app .ien-sub { font-size: 11px; font-weight: 500; color: var(--ink-3); line-height: 1.5; }
 .cm-app .ien-lbl { display: block; font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-bottom: 6px; }
+.cm-app .ien-lbl.req::after { content: " *"; color: #c0392f; }
 .cm-app .ien-mono { font-family: var(--mono); }
 .cm-app .ien-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .cm-app .ien-gap { margin-bottom: 12px; }

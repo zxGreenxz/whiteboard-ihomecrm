@@ -8,11 +8,23 @@ import { NumberInput } from '@/components/ui/number-input';
 import { DateInput } from '@/components/ui/date-input';
 import { DiscountNoteTrigger } from '../DiscountNoteTrigger';
 import {
+  customLineAmount,
   formatVnd,
   formatVndSuffix,
   fullDay,
   monthLabel,
+  type EntryItemType,
 } from '@/lib/invoiceEntry';
+
+type ExtraKind = Exclude<EntryItemType, 'RENT'>;
+const EXTRA_KIND_LABEL: Record<ExtraKind, string> = {
+  SERVICE: 'Dịch vụ',
+  OTHER: 'Khác',
+  PENALTY: 'Phạt',
+  DISCOUNT: 'Giảm giá',
+};
+const extraKinds = (kind: ExtraKind): ExtraKind[] =>
+  kind === 'SERVICE' || kind === 'OTHER' ? ['SERVICE', 'OTHER'] : ['SERVICE', 'OTHER', kind];
 import type { InvoiceEntryProps } from './types';
 import { dueBadge } from './dueBadge';
 
@@ -36,6 +48,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
   const {
     mode, ctl, header, current, selectors, selectorsNotice, duplicate, pricing, meterId, debt,
     creditBalance, defaultDepositAmount, ready, onResetAll, onCancel, footNote, submit,
+    lockedDates, busy, reason, notice,
   } = props;
   const isEdit = mode === 'edit';
   const { v, totals, diff, kwh, deposit, extras, set } = ctl;
@@ -61,6 +74,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
       </div>
 
       <div className="ien-body">
+        <fieldset disabled={busy} className="contents">
         {/* Ngữ cảnh */}
         <div className="ien-card ien-card-ctx">
           <div className="flex flex-wrap items-center gap-[9px]">
@@ -117,7 +131,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
           {diff.count > 0 && <span className="ien-pill warn">{diff.count} thay đổi</span>}
         </div>
 
-        <div className="ien-card">
+        {!lockedDates && <div className="ien-card">
           <label className="block ien-gap">
             <span className="ien-lbl">Kỳ thanh toán *</span>
             <Input type="month" aria-label="Kỳ thanh toán" className="ien-in month" value={v.billing_month} onChange={(e) => set.billingMonth(e.target.value)} />
@@ -132,7 +146,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               <DateInput className="ien-datewrap" inputClassName="ien-in date" value={v.due_date || ''} onChange={set.dueDate} />
             </div>
           </div>
-        </div>
+        </div>}
 
         {!ready && <div className="ien-empty">Chọn hợp đồng ở trên để nạp giá phòng, chỉ số điện và đơn giá dịch vụ.</div>}
 
@@ -192,7 +206,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
                 </label>
               </div>
               <div className="ien-note">
-                {pricing.hasContractServices ? 'Đơn giá HĐ' : 'Đơn giá toà'}: nước {pricing.waterApplicable ? `${formatVnd(pricing.water)}đ/người` : 'HĐ không đăng ký'} · PDV {pricing.pdvApplicable ? `${formatVnd(pricing.pdv)}đ/phòng` : 'HĐ không đăng ký'}
+                {pricing.sourceLabel ?? (pricing.hasContractServices ? 'Đơn giá HĐ' : 'Đơn giá toà')}: nước {pricing.waterApplicable ? `${formatVnd(pricing.water)}đ/người` : 'HĐ không đăng ký'} · PDV {pricing.pdvApplicable ? `${formatVnd(pricing.pdv)}đ/phòng` : 'HĐ không đăng ký'}
               </div>
             </div>
 
@@ -216,7 +230,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               {deposit && (
                 <div className="grid gap-2.5" style={{ gridTemplateColumns: '1fr 132px', marginTop: 12 }}>
                   <Input aria-label="Mô tả cọc" placeholder="Mô tả cọc" className="ien-in" value={deposit.description} onChange={(e) => set.depositNote(e.target.value)} />
-                  <CurrencyInput aria-label="Số tiền cọc" suffix={false} className="ien-in num" value={deposit.unit_price} onChange={set.depositAmount} />
+                  <CurrencyInput aria-label="Số tiền cọc" suffix={false} className="ien-in num" value={customLineAmount(deposit)} onChange={set.depositAmount} />
                 </div>
               )}
             </div>
@@ -252,13 +266,12 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
                 <button type="button" className="ien-btn add" onClick={set.addExtra}>+ Thêm</button>
               </div>
               {extras.map(({ item, index, key }) => {
-                const kind = item.type === 'SERVICE' ? 'SERVICE' : 'OTHER';
+                const kind: ExtraKind = item.type === 'RENT' ? 'OTHER' : item.type;
                 return (
                   <div key={key} className="ien-extra" data-extra-row>
                     <div className="ien-extra-r1">
-                      <select aria-label="Loại khoản thu" className="ien-in ien-select sm" value={kind} onChange={(e) => set.extraKind(index, e.target.value === 'SERVICE' ? 'SERVICE' : 'OTHER')}>
-                        <option value="SERVICE">Dịch vụ</option>
-                        <option value="OTHER">Khác</option>
+                      <select aria-label="Loại khoản thu" className="ien-in ien-select sm" value={kind} onChange={(e) => set.extraKind(index, e.target.value as ExtraKind)}>
+                        {extraKinds(kind).map((k) => <option key={k} value={k}>{EXTRA_KIND_LABEL[k]}</option>)}
                       </select>
                       <Input aria-label="Mô tả khoản thu" placeholder="Mô tả" className="ien-in sm" value={item.description} onChange={(e) => set.extraDescription(index, e.target.value)} />
                       <button type="button" className="ien-btn del" aria-label="Xóa khoản thu" onClick={() => set.removeExtra(index)}>✕</button>
@@ -266,7 +279,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
                     <div className="ien-extra-r2">
                       <NumberInput aria-label="Số lượng" allowDecimal className="ien-in sm num" value={item.quantity} onChange={(n) => set.extraQuantity(index, n)} />
                       <CurrencyInput aria-label="Đơn giá" suffix={false} className="ien-in sm num" value={item.unit_price} onChange={(n) => set.extraPrice(index, n)} />
-                      <span className="ien-extra-tot">{formatVndSuffix((item.quantity || 0) * (item.unit_price || 0))}</span>
+                      <span className="ien-extra-tot">{formatVndSuffix(customLineAmount(item))}{item.coefficient != null && item.coefficient !== 1 ? ` ×${item.coefficient}` : ''}</span>
                     </div>
                   </div>
                 );
@@ -284,10 +297,14 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               {creditBalance > 0 && <div className="ien-adj-sub">Tiền nợ khách hiện có: {formatVndSuffix(creditBalance)}</div>}
               <div className="ien-adj-row debt">
                 <b>Nợ cũ kỳ trước</b>
+                {debt.locked ? (
+                  <span className="ien-mono" style={{ marginLeft: 'auto', fontWeight: 700, color: '#c0392f' }}>{formatVndSuffix(v.previous_debt)}</span>
+                ) : (<>
                 <CurrencyInput aria-label="Nợ cũ kỳ trước" suffix={false} className="ien-in" value={v.previous_debt} onChange={set.debt} />
                 <button type="button" className="ien-btn reload" aria-label="Tải lại nợ cũ" onClick={debt.onReload} disabled={!debt.canReload || debt.loading}>
                   {debt.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                 </button>
+                </>)}
               </div>
               {v.previous_debt_overridden ? (
                 <div className="ien-adj-sub">Đã chỉnh tay — hoá đơn cũ sẽ KHÔNG tự tất toán khi thu đủ.</div>
@@ -302,6 +319,14 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
           </>
         )}
 
+        {reason && (
+          <div className="ien-card">
+            <label htmlFor="issued-reason" className="ien-lbl req">Lý do điều chỉnh</label>
+            <textarea id="issued-reason" className="ien-in" rows={2} value={reason.value} onChange={(e) => reason.onChange(e.target.value)} placeholder="Nêu lý do thay đổi (3–1000 ký tự)" />
+            {reason.error && <div role="alert" className="ien-changed" style={{ color: '#c0392f' }}>{reason.error}</div>}
+          </div>
+        )}
+
         <div className="ien-card" style={{ marginBottom: 8 }}>
           <label htmlFor="invoice-entry-notes" className="ien-lbl">Ghi chú</label>
           <textarea
@@ -314,6 +339,8 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
           />
         </div>
         <div className="ien-note" style={{ margin: '0 4px 4px' }}>{footNote}</div>
+        </fieldset>
+        {notice && <div style={{ marginTop: 10 }}>{notice}</div>}
       </div>
 
       <div className="ien-foot">
@@ -322,6 +349,9 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
             <div className="ien-foot-l">Tổng cộng</div>
             {isEdit && current && delta !== 0 && (
               <div className="ien-foot-delta">{delta > 0 ? '+' : ''}{formatVnd(delta)}đ so với hiện tại</div>
+            )}
+            {current?.paid != null && (
+              <div className="ien-foot-delta" style={{ color: '#8d8678' }}>Đã thu {formatVnd(current.paid)} · còn {formatVnd(totals.total - current.paid)}</div>
             )}
           </div>
           <div className="ien-foot-tot" data-testid="invoice-entry-total">{ready ? formatVndSuffix(totals.total) : '—'}</div>

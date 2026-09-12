@@ -6,12 +6,13 @@ import {
   findDepositIndex,
   type EntryCustomItem,
   type EntryDiff,
+  type EntryItemType,
   type EntryTotals,
   type InvoiceEntryValues,
 } from '@/lib/invoiceEntry';
 import type { InvoiceEntryPricing } from './types';
 
-export type ExtraKind = 'SERVICE' | 'OTHER';
+export type ExtraKind = Exclude<EntryItemType, 'RENT'>;
 
 export interface InvoiceEntrySetters {
   billingMonth: (v: string) => void;
@@ -170,7 +171,7 @@ export function useInvoiceEntry<T extends InvoiceEntryValues>(
       if (depositIndex >= 0) patchItem(depositIndex, { description: s });
     },
     depositAmount: (n) => {
-      if (depositIndex >= 0) patchItem(depositIndex, { unit_price: n, quantity: 1 });
+      if (depositIndex >= 0) patchItem(depositIndex, { unit_price: n, quantity: 1, coefficient: 1 });
     },
     addExtra: () =>
       append({ type: 'OTHER', accounting_class: 'REVENUE', description: '', quantity: 1, unit_price: 0 }),

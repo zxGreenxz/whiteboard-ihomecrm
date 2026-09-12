@@ -6,7 +6,7 @@
  *  - tách hoá đơn hiện có ngược về form (decompose) và giữ nguyên số tiền
  *    đã lưu khi người dùng không đụng vào ô đó.
  */
-import { format, parse, startOfMonth, endOfMonth } from 'date-fns';
+import { format, isValid, parse, startOfMonth, endOfMonth } from 'date-fns';
 import * as z from 'zod';
 import type { InvoiceFormData, InvoiceWithRelations } from '@/types/invoice';
 import { roundInvoiceTotal } from '@/lib/invoiceUtils';
@@ -14,24 +14,30 @@ import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
 
 export const PRORATE_MONTH_DAYS = 30;
 
-export type EntryItemType = 'RENT' | 'SERVICE' | 'OTHER';
+export type EntryItemType = 'RENT' | 'SERVICE' | 'PENALTY' | 'DISCOUNT' | 'OTHER';
 export type EntryAccountingClass = 'REVENUE' | 'DEPOSIT' | 'NON_PNL';
 
 export interface EntryCustomItem {
+  /** id dòng đã lưu (luồng điều chỉnh) — null/undefined là dòng mới. */
+  id?: string | null;
   type: EntryItemType;
   accounting_class?: EntryAccountingClass;
   description: string;
   quantity: number;
   unit_price: number;
+  /** Hệ số đã lưu; mặc định 1. Form không cho sửa, chỉ giữ nguyên. */
+  coefficient?: number;
   service_id?: string | null;
 }
 
 export const entryCustomItemSchema = z.object({
-  type: z.enum(['RENT', 'SERVICE', 'OTHER']),
+  id: z.string().nullable().optional(),
+  type: z.enum(['RENT', 'SERVICE', 'PENALTY', 'DISCOUNT', 'OTHER']),
   accounting_class: z.enum(['REVENUE', 'DEPOSIT', 'NON_PNL']).optional(),
   description: z.string().min(1, 'Vui lòng nhập mô tả'),
   quantity: z.number().min(0.0001, 'Số lượng phải > 0'),
   unit_price: z.number().min(0),
+  coefficient: z.number().min(0).optional(),
   service_id: z.string().nullable().optional(),
 });
 
@@ -114,6 +120,11 @@ export function makeEntryValues(patch: Partial<InvoiceEntryValues> = {}): Invoic
   };
 }
 
+/** Thành tiền một dòng khoản thu thêm: đơn giá × số lượng × hệ số (mặc định 1). */
+export function customLineAmount(it: EntryCustomItem): number {
+  return (it.quantity || 0) * (it.unit_price || 0) * (it.coefficient ?? 1);
+}
+
 /** Dòng "Tiền cọc" chuẩn của ô Tiền cọc: loại Khác + hạch toán DEPOSIT. */
 export function isDepositItem(item: EntryCustomItem): boolean {
   return item.type === 'OTHER' && item.accounting_class === 'DEPOSIT';
@@ -138,8 +149,13 @@ export interface EntryTotals {
   total: number;
 }
 
+/** Số ngày thuê thực tế của form (0 = không prorate). */
+export function calcProratedDaysOf(v: InvoiceEntryValues): number {
+  return calcProratedDays(v.period_start_date, v.period_end_date);
+}
+
 export function computeEntryTotals(v: InvoiceEntryValues): EntryTotals {
-  const days = calcProratedDays(v.period_start_date, v.period_end_date);
+  const days = calcProratedDaysOf(v);
   const isProrated = days > 0;
   const rent = isProrated ? prorateAmount(v.rent_price, days) : v.rent_price;
   const water = isProrated ? prorateAmount(v.water_amount, days) : v.water_amount;
@@ -148,7 +164,7 @@ export function computeEntryTotals(v: InvoiceEntryValues): EntryTotals {
   let extras = 0;
   let deposit = 0;
   for (const it of v.custom_items ?? []) {
-    const line = (it.quantity || 0) * (it.unit_price || 0);
+    const line = customLineAmount(it);
     if (isDepositItem(it)) deposit += line;
     else extras += line;
   }
@@ -187,23 +203,32 @@ function stripProrateLabel(desc: string): string {
   return desc.replace(PRORATE_LABEL_RE, '').trim();
 }
 
-function monthBounds(billingMonth: string): { fromDate: string; toDate: string } {
-  const periodStart = startOfMonth(parse(billingMonth + '-01', 'yyyy-MM-dd', new Date()));
+/** Đầu/cuối tháng của kỳ; kỳ không hợp lệ (vd luồng điều chỉnh không gửi kỳ) → không gắn ngày. */
+function monthBounds(billingMonth: string): { fromDate: string | undefined; toDate: string | undefined } {
+  const periodStart = startOfMonth(parse((billingMonth || '') + '-01', 'yyyy-MM-dd', new Date()));
+  if (!isValid(periodStart)) return { fromDate: undefined, toDate: undefined };
   return {
     fromDate: format(periodStart, 'yyyy-MM-dd'),
     toDate: format(endOfMonth(periodStart), 'yyyy-MM-dd'),
   };
 }
 
+export type EntryStructuredRole = 'rent' | 'electric' | 'water' | 'pdv';
+
+export interface EntryStructuredLine {
+  role: EntryStructuredRole;
+  item: InvoiceFormData['items'][number];
+}
+
 /**
- * Dựng invoice_items từ form. Với hoá đơn đang sửa, ô nào (và kỳ prorate) không
- * đổi so với baseline thì giữ đúng số tiền đã lưu để lần lưu "không đụng gì"
- * tái tạo nguyên hoá đơn.
+ * Dựng các dòng cấu trúc (phòng / điện / nước / PDV) từ form, chưa đánh sort_order.
+ * Với hoá đơn đang sửa, ô nào (và kỳ prorate) không đổi so với baseline thì giữ
+ * đúng số tiền đã lưu để lần lưu "không đụng gì" tái tạo nguyên hoá đơn.
  */
-export function buildInvoiceItems(
+export function buildStructuredLines(
   v: InvoiceEntryValues,
   ctx: BuildItemsContext,
-): InvoiceFormData['items'] {
+): EntryStructuredLine[] {
   const { fromDate, toDate } = monthBounds(v.billing_month);
   const days = calcProratedDays(v.period_start_date, v.period_end_date);
   const useProrate = days > 0;
@@ -218,11 +243,10 @@ export function buildInvoiceItems(
   const waterAmount = keep('water_amount') ? b!.waterAmount : useProrate ? prorateAmount(v.water_amount, days) : v.water_amount;
   const pdvAmount = keep('pdv_amount') ? b!.pdvAmount : useProrate ? prorateAmount(v.pdv_amount, days) : v.pdv_amount;
 
-  const items: InvoiceFormData['items'] = [];
-  let order = 0;
+  const lines: EntryStructuredLine[] = [];
   const periodFields = useProrate ? { from_date: itemFrom, to_date: itemTo } : { from_date: undefined, to_date: undefined };
 
-  items.push({
+  lines.push({ role: 'rent', item: {
     type: 'RENT',
     accounting_class: 'REVENUE',
     description: stripProrateLabel(ctx.rentDescription || 'Tiền thuê') + label,
@@ -230,33 +254,36 @@ export function buildInvoiceItems(
     quantity: 1,
     coefficient: 1,
     ...periodFields,
-    sort_order: order++,
-  });
+    sort_order: 0,
+  } });
 
   const prev = Number(v.prev_reading) || 0;
   const curr = v.current_reading == null ? null : Number(v.current_reading);
   const consumption = Math.max(0, (curr ?? prev) - prev);
   if (v.electric_amount > 0) {
-    items.push({
+    // Ghi số lượng = kWh chỉ khi tiền điện chia hết cho kWh (đơn giá nguyên đồng);
+    // không thì 1 dòng đúng số tiền — tránh đơn giá lẻ làm amount = u×q lệch xu.
+    const perKwh = consumption > 0 && v.electric_amount % consumption === 0;
+    lines.push({ role: 'electric', item: {
       service_id: ctx.elecServiceId,
       type: 'SERVICE',
       accounting_class: 'REVENUE',
       description: `Tiền điện (${prev} → ${curr ?? prev})`,
-      unit_price: consumption > 0 ? v.electric_amount / consumption : v.electric_amount,
-      quantity: consumption > 0 ? consumption : 1,
+      unit_price: perKwh ? v.electric_amount / consumption : v.electric_amount,
+      quantity: perKwh ? consumption : 1,
       coefficient: 1,
       previous_reading: prev,
       current_reading: curr ?? prev,
       from_date: fromDate,
       to_date: toDate,
-      sort_order: order++,
-    });
+      sort_order: 0,
+    } });
   }
   if (waterAmount > 0) {
     const occ = v.occupants || 1;
     // Chia theo đầu người chỉ khi chia hết — tránh đơn giá lẻ làm amount lệch xu.
     const perHead = occ > 1 && waterAmount % occ === 0;
-    items.push({
+    lines.push({ role: 'water', item: {
       service_id: ctx.waterServiceId,
       type: 'SERVICE',
       accounting_class: 'REVENUE',
@@ -265,11 +292,11 @@ export function buildInvoiceItems(
       quantity: perHead ? occ : 1,
       coefficient: 1,
       ...periodFields,
-      sort_order: order++,
-    });
+      sort_order: 0,
+    } });
   }
   if (pdvAmount > 0) {
-    items.push({
+    lines.push({ role: 'pdv', item: {
       service_id: ctx.pdvServiceId,
       type: 'SERVICE',
       accounting_class: 'REVENUE',
@@ -278,9 +305,22 @@ export function buildInvoiceItems(
       quantity: 1,
       coefficient: 1,
       ...periodFields,
-      sort_order: order++,
-    });
+      sort_order: 0,
+    } });
   }
+  return lines;
+}
+
+/** Dựng toàn bộ invoice_items (cấu trúc + khoản thu thêm) với sort_order tuần tự. */
+export function buildInvoiceItems(
+  v: InvoiceEntryValues,
+  ctx: BuildItemsContext,
+): InvoiceFormData['items'] {
+  let order = 0;
+  const items: InvoiceFormData['items'] = buildStructuredLines(v, ctx).map(({ item }) => ({
+    ...item,
+    sort_order: order++,
+  }));
   for (const ci of v.custom_items ?? []) {
     items.push({
       service_id: ci.service_id || null,
@@ -289,23 +329,30 @@ export function buildInvoiceItems(
       description: ci.description,
       unit_price: ci.unit_price,
       quantity: ci.quantity,
-      coefficient: 1,
+      coefficient: ci.coefficient ?? 1,
       sort_order: order++,
     });
   }
   return items;
 }
 
+export type InvoiceSourceItem = NonNullable<InvoiceWithRelations['invoice_items']>[number];
+
 export interface DecomposedInvoice {
   values: InvoiceEntryValues;
   baseline: EntryBaselineAmounts;
   rentDescription: string;
+  /** Dòng gốc của từng ô cấu trúc — luồng điều chỉnh dùng để giữ nguyên dòng không đụng. */
+  sources: Partial<Record<EntryStructuredRole, InvoiceSourceItem>>;
+  /** Toàn bộ dòng gốc theo sort_order (tra theo id khi điều chỉnh). */
+  allItems: InvoiceSourceItem[];
 }
 
-type LooseItem = NonNullable<InvoiceWithRelations['invoice_items']>[number];
+type LooseItem = InvoiceSourceItem;
 
 function itemAmount(it: LooseItem): number {
-  return (Number(it.unit_price) || 0) * (Number(it.quantity) || 1);
+  const coef = it.coefficient == null ? 1 : Number(it.coefficient);
+  return (Number(it.unit_price) || 0) * (Number(it.quantity) || 1) * (Number.isFinite(coef) ? coef : 1);
 }
 
 /** Suy ngược giá trọn tháng từ số tiền đã prorate: amount / days × 30. */
@@ -330,11 +377,16 @@ export function decomposeInvoice(invoice: InvoiceWithRelations): DecomposedInvoi
   let occupants = 1;
   let pdvAmount = 0;
   const custom: EntryCustomItem[] = [];
+  const sources: DecomposedInvoice['sources'] = {};
 
-  for (const it of invoice.invoice_items ?? []) {
+  const ordered = (invoice.invoice_items ?? [])
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.id).localeCompare(String(b.id)));
+  for (const it of ordered) {
     const desc = (it.description || '').toLowerCase();
     const isRevenue = !it.accounting_class || it.accounting_class === 'REVENUE';
-    if (isRevenue && it.type === 'RENT') {
+    if (isRevenue && it.type === 'RENT' && !sources.rent) {
+      sources.rent = it;
       rentAmount = itemAmount(it);
       rentDescription = it.description || rentDescription;
       if (it.from_date && it.to_date) {
@@ -344,30 +396,36 @@ export function decomposeInvoice(invoice: InvoiceWithRelations): DecomposedInvoi
       continue;
     }
     if (isRevenue && it.type === 'SERVICE') {
-      if (desc.includes('điện')) {
+      if (desc.includes('điện') && !sources.electric) {
+        sources.electric = it;
         electric = itemAmount(it);
         prev = Number(it.previous_reading) || 0;
         curr = it.current_reading == null ? null : Number(it.current_reading);
         continue;
       }
-      if (desc.includes('nước')) {
+      if (desc.includes('nước') && !sources.water) {
+        sources.water = it;
         waterAmount = itemAmount(it);
         const qty = Number(it.quantity) || 1;
         const fromDesc = /\((\d+)\s*người\)/.exec(it.description || '');
         occupants = qty > 1 ? qty : fromDesc ? Number(fromDesc[1]) || 1 : 1;
         continue;
       }
-      if (desc.includes('dịch vụ')) {
+      if (desc.includes('dịch vụ') && !sources.pdv) {
+        sources.pdv = it;
         pdvAmount = itemAmount(it);
         continue;
       }
     }
+    const coef = it.coefficient == null ? 1 : Number(it.coefficient);
     custom.push({
-      type: it.type === 'RENT' || it.type === 'SERVICE' ? it.type : 'OTHER',
+      id: it.id ?? null,
+      type: (['RENT', 'SERVICE', 'PENALTY', 'DISCOUNT'] as string[]).includes(it.type) ? it.type : 'OTHER',
       accounting_class: it.accounting_class,
       description: it.description,
       quantity: Number(it.quantity) || 1,
       unit_price: Number(it.unit_price) || 0,
+      ...(coef !== 1 ? { coefficient: coef } : {}),
       service_id: it.service_id ?? undefined,
     });
   }
@@ -414,6 +472,8 @@ export function decomposeInvoice(invoice: InvoiceWithRelations): DecomposedInvoi
       pdvAmount,
     },
     rentDescription,
+    sources,
+    allItems: ordered,
   };
 }
 
@@ -452,7 +512,8 @@ const sameItems = (a: EntryCustomItem[], b: EntryCustomItem[]) =>
       (x.accounting_class ?? 'REVENUE') === (y.accounting_class ?? 'REVENUE') &&
       x.description === y.description &&
       x.quantity === y.quantity &&
-      x.unit_price === y.unit_price
+      x.unit_price === y.unit_price &&
+      (x.coefficient ?? 1) === (y.coefficient ?? 1)
     );
   });
 

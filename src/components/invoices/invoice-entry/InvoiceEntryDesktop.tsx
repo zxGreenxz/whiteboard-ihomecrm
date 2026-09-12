@@ -15,12 +15,25 @@ import {
 } from '@/components/ui/select';
 import { DiscountNoteTrigger } from '../DiscountNoteTrigger';
 import {
+  customLineAmount,
   formatVnd,
   formatVndSuffix,
   monthLabel,
   shortDay,
+  type EntryItemType,
   type EntryStructuredField,
 } from '@/lib/invoiceEntry';
+
+type ExtraKind = Exclude<EntryItemType, 'RENT'>;
+const EXTRA_KIND_LABEL: Record<ExtraKind, string> = {
+  SERVICE: 'Dịch vụ',
+  OTHER: 'Khác',
+  PENALTY: 'Phạt',
+  DISCOUNT: 'Giảm giá',
+};
+/** Chỉ hai loại thường dùng; Phạt/Giảm giá chỉ hiện khi dòng đã mang loại đó. */
+const extraKinds = (kind: ExtraKind): ExtraKind[] =>
+  kind === 'SERVICE' || kind === 'OTHER' ? ['SERVICE', 'OTHER'] : ['SERVICE', 'OTHER', kind];
 import type { InvoiceEntryProps } from './types';
 import { dueBadge } from './dueBadge';
 
@@ -83,6 +96,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
   const {
     mode, ctl, header, current, selectors, selectorsNotice, duplicate, pricing, meterId, debt,
     creditBalance, defaultDepositAmount, ready, onResetAll, onCancel, footNote, submit,
+    lockedDates, busy, reason, notice,
   } = props;
   const isEdit = mode === 'edit';
   const { v, totals, diff, kwh, deposit, extras, set } = ctl;
@@ -105,7 +119,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
     + (v.previous_debt ? ` + Nợ cũ ${formatVnd(v.previous_debt)}` : '');
 
   return (
-    <div className="min-w-0 text-foreground">
+    <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0 text-foreground">
       {/* ===== Header ===== */}
       <div className={cn('border-b bg-gradient-to-b from-[hsl(152_20%_97%)] to-white px-[18px] pb-3 pt-[13px]', LINE_SOFT)}>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -225,7 +239,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-2.5 px-[18px] pt-2.5 sm:grid-cols-3">
+      {!lockedDates && <div className="grid grid-cols-1 gap-2.5 px-[18px] pt-2.5 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className={FIELD_LABEL}>Kỳ thanh toán *</span>
           <Input
@@ -252,7 +266,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
             inputClassName={cn('h-[34px] rounded-md text-[13px] tabular-nums', LINE, FOCUS)}
           />
         </div>
-      </div>
+      </div>}
 
       {duplicate && (
         <div className="mx-[18px] mt-2.5 flex gap-2 rounded-[7px] border border-red-200 bg-red-50 px-[11px] py-2 text-xs leading-relaxed text-red-700">
@@ -330,7 +344,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
             </div>
             <div className={cn('flex min-w-[760px] flex-wrap gap-2.5 border-t bg-slate-50 px-[9px] py-[5px] text-[11px]', LINE_SOFT, MUTED)}>
               <span>
-                {pricing.hasContractServices ? 'Đơn giá HĐ' : 'Đơn giá toà'}: điện{' '}
+                {pricing.sourceLabel ?? (pricing.hasContractServices ? 'Đơn giá HĐ' : 'Đơn giá toà')}: điện{' '}
                 <b className="text-slate-600">{formatVnd(pricing.elec)}đ/kWh</b>
               </span>
               <span>
@@ -372,7 +386,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                 <CurrencyInput
                   aria-label="Số tiền cọc"
                   suffix={false}
-                  value={deposit.unit_price}
+                  value={customLineAmount(deposit)}
                   onChange={set.depositAmount}
                   className={cn(CELL_INPUT, 'w-[130px] font-semibold')}
                 />
@@ -441,17 +455,16 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                   <div />
                 </div>
                 {extras.map(({ item, index, key }) => {
-                  const kind = item.type === 'SERVICE' ? 'SERVICE' : 'OTHER';
+                  const kind: ExtraKind = item.type === 'RENT' ? 'OTHER' : item.type;
                   return (
                     <div key={key} data-extra-row className="grid min-w-[560px] grid-cols-[120px_minmax(0,1fr)_70px_120px_120px_34px] items-center border-b border-[hsl(210_20%_94%)] last:border-b-0">
                       <div className="p-[5px]">
-                        <Select value={kind} onValueChange={(val) => set.extraKind(index, val === 'SERVICE' ? 'SERVICE' : 'OTHER')}>
+                        <Select value={kind} onValueChange={(val) => set.extraKind(index, val as ExtraKind)}>
                           <SelectTrigger aria-label="Loại khoản thu" className={cn('h-[30px] rounded-md px-1.5 text-[12.5px]', LINE)}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="SERVICE">Dịch vụ</SelectItem>
-                            <SelectItem value="OTHER">Khác</SelectItem>
+                            {extraKinds(kind).map((k) => <SelectItem key={k} value={k}>{EXTRA_KIND_LABEL[k]}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
@@ -465,7 +478,10 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                         <CurrencyInput aria-label="Đơn giá" suffix={false} value={item.unit_price} onChange={(n) => set.extraPrice(index, n)} className={cn(CELL_INPUT, 'h-[30px]')} />
                       </div>
                       <div className="px-2 py-[5px] text-right text-[13px] font-semibold tabular-nums">
-                        {formatVnd((item.quantity || 0) * (item.unit_price || 0))}
+                        {formatVnd(customLineAmount(item))}
+                        {item.coefficient != null && item.coefficient !== 1 && (
+                          <span className={cn('block text-[10px] font-normal', MUTED)}>hệ số {item.coefficient}</span>
+                        )}
                       </div>
                       <div className="p-[5px] text-center">
                         <button type="button" aria-label="Xóa khoản thu" onClick={() => set.removeExtra(index)} className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-[5px] text-red-600 hover:bg-red-50">
@@ -504,6 +520,9 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
               <div className="flex items-center gap-[9px]">
                 <span className="whitespace-nowrap text-[12.5px] font-semibold text-red-800">Nợ cũ kỳ trước</span>
                 <div className="flex-1" />
+                {debt.locked ? (
+                  <span className="text-[13px] font-semibold tabular-nums text-red-700" title="Nguồn nợ giữ cố định">{formatVndSuffix(v.previous_debt)}</span>
+                ) : (<>
                 <CurrencyInput
                   aria-label="Nợ cũ kỳ trước"
                   suffix={false}
@@ -521,6 +540,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                 >
                   {debt.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
                 </button>
+                </>)}
               </div>
               {v.previous_debt_overridden ? (
                 <p className="mt-1 text-right text-[11px] text-amber-700">Đã chỉnh tay — hoá đơn cũ sẽ KHÔNG tự tất toán khi thu đủ.</p>
@@ -552,8 +572,28 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
               </span>
             </div>
             <div className="mt-[5px] text-[11.5px] tabular-nums text-[#3b5bdb]">{breakdown}</div>
+            {current?.paid != null && (
+              <div className="mt-1 text-[11.5px] tabular-nums text-[#3b5bdb]">
+                Đã thu {formatVndSuffix(current.paid)} · Còn phải thu dự tính {formatVndSuffix(totals.total - current.paid)}
+              </div>
+            )}
           </div>
         </>
+      )}
+
+      {reason && (
+        <div className="mx-[18px] mt-[11px]">
+          <label htmlFor="issued-reason" className={cn('mb-1 block after:ml-0.5 after:text-red-600 after:content-["*"]', FIELD_LABEL)}>Lý do điều chỉnh</label>
+          <Textarea
+            id="issued-reason"
+            rows={2}
+            value={reason.value}
+            onChange={(e) => reason.onChange(e.target.value)}
+            placeholder="Nêu lý do thay đổi (3–1000 ký tự)"
+            className={cn('min-h-0 rounded-md px-[9px] py-[7px] text-[13px]', reason.error ? 'border-red-400' : LINE, FOCUS)}
+          />
+          {reason.error && <p role="alert" className="mt-1 text-xs text-red-600">{reason.error}</p>}
+        </div>
       )}
 
       {/* ===== Ghi chú ===== */}
@@ -568,6 +608,8 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
           className={cn('min-h-0 rounded-md px-[9px] py-[7px] text-[13px]', LINE, FOCUS)}
         />
       </div>
+
+      {notice && <div className="mx-[18px] mt-[11px]">{notice}</div>}
 
       {/* ===== Footer ===== */}
       <div className={cn('mt-[13px] flex flex-wrap items-center gap-2.5 border-t bg-slate-50 px-[18px] py-[11px]', LINE_SOFT)}>
@@ -584,6 +626,6 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
           {submit.pending ? submit.pendingLabel : submit.label}
         </button>
       </div>
-    </div>
+    </fieldset>
   );
 }

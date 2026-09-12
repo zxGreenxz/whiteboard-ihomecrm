@@ -110,6 +110,11 @@ describe('buildInvoiceItems', () => {
     expect(water).toMatchObject({ description: 'Tiền nước (3 người)', unit_price: 100_000, quantity: 1 });
   });
 
+  it('keeps electricity as one line when the amount does not divide by kWh', () => {
+    const [, electric] = buildInvoiceItems(values({ electric_amount: 175_001 }), SERVICE_IDS);
+    expect(electric).toMatchObject({ description: 'Tiền điện (100 → 150)', unit_price: 175_001, quantity: 1, previous_reading: 100, current_reading: 150 });
+  });
+
   it('skips zero electricity and zero water lines', () => {
     const items = buildInvoiceItems(values({ electric_amount: 0, water_amount: 0 }), SERVICE_IDS);
     expect(items.map((i) => i.description)).toEqual(['Tiền thuê', 'Phí dịch vụ']);
@@ -155,16 +160,18 @@ describe('decomposeInvoice', () => {
   } as unknown as InvoiceWithRelations;
 
   it('recovers full monthly prices, the actual period and the saved amounts', () => {
-    const { values: v, baseline, rentDescription } = decomposeInvoice(invoice);
+    const { values: v, baseline, rentDescription, sources } = decomposeInvoice(invoice);
     expect(v).toMatchObject({
       billing_month: '2026-09', rent_price: 3_000_000, occupants: 3, prev_reading: 100, current_reading: 150,
       prev_reading_overridden: true, electric_amount: 175_000, water_amount: 300_000, pdv_amount: 150_000,
       period_start_date: '2026-09-01', period_end_date: '2026-09-13', discount_amount: 10_000, previous_debt: 5_000,
     });
     expect(v.custom_items).toEqual([
-      { type: 'OTHER', accounting_class: 'DEPOSIT', description: 'Tiền cọc', quantity: 1, unit_price: 2_200_000, service_id: undefined },
-      { type: 'OTHER', accounting_class: 'REVENUE', description: 'Phí xử lý cọc', quantity: 1, unit_price: 50_000, service_id: undefined },
+      { id: 'd', type: 'OTHER', accounting_class: 'DEPOSIT', description: 'Tiền cọc', quantity: 1, unit_price: 2_200_000, service_id: undefined },
+      { id: 'x', type: 'OTHER', accounting_class: 'REVENUE', description: 'Phí xử lý cọc', quantity: 1, unit_price: 50_000, service_id: undefined },
     ]);
+    expect(Object.keys(sources).sort()).toEqual(['electric', 'pdv', 'rent', 'water']);
+    expect(sources.rent?.id).toBe('r');
     expect(baseline).toEqual({ rent_price: 3_000_000, water_amount: 300_000, pdv_amount: 150_000, days: 13, rentAmount: 1_300_000, waterAmount: 130_000, pdvAmount: 65_000 });
     expect(rentDescription).toBe('Tiền thuê căn hộ 305 (13/30 ngày)');
   });

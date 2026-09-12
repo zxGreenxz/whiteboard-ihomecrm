@@ -17,6 +17,8 @@ export interface InvoiceEntryHeaderInfo {
 
 /** Hoá đơn hiện tại (chỉ đối chiếu) — chỉ có ở luồng sửa. */
 export interface InvoiceEntryCurrent {
+  /** Đã thu (luồng điều chỉnh) — hiện "còn phải thu dự tính". */
+  paid?: number;
   rentPrice: number;
   rentAmount: number;
   deposit: number;
@@ -36,9 +38,13 @@ export interface InvoiceEntryPricing {
   waterApplicable: boolean;
   pdvApplicable: boolean;
   hasContractServices: boolean;
+  /** Nhãn nguồn đơn giá; mặc định theo hasContractServices. */
+  sourceLabel?: string;
 }
 
 export interface InvoiceEntryDebt {
+  /** Nợ cũ giữ cố định (luồng điều chỉnh) — chỉ hiển thị. */
+  locked?: boolean;
   sources: PreviousDebtSource[];
   loading: boolean;
   canReload: boolean;
@@ -84,6 +90,14 @@ export interface InvoiceEntryProps {
   defaultDepositAmount: number;
   /** Luồng tạo: chưa chọn hợp đồng thì chưa mở phần nhập liệu. */
   ready: boolean;
+  /** Kỳ / ngày phát hành / hạn giữ cố định (luồng điều chỉnh): ẩn ô nhập. */
+  lockedDates?: boolean;
+  /** Đang lưu/tải lại: khoá toàn bộ ô nhập. */
+  busy?: boolean;
+  /** Lý do điều chỉnh bắt buộc (luồng điều chỉnh). */
+  reason?: { value: string; onChange: (s: string) => void; error?: string };
+  /** Khối thông báo (lỗi lưu, nút tải lại…) đặt ngay trên chân trang. */
+  notice?: ReactNode;
   onResetAll: () => void;
   onCancel: () => void;
   footNote: string;

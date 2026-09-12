@@ -11,7 +11,13 @@ vi.mock('../PaymentsSummaryDialog', () => ({ default: ({ open }: { open: boolean
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { rpc: vi.fn() } }));
 const invoice = { id: 'dddd0000-0000-4000-8000-000000000101', status: 'APPROVED', paid_amount: 0, adjustment_revision: 2, updated_at: '2026-09-12T10:00:00Z', total_amount: 2000, discount_amount: 0, notes: 'Cũ', invoice_items: [{ id: 'dddd0000-0000-4000-8000-000000000111', service_id: null, type: 'OTHER', accounting_class: 'DEPOSIT', description: 'Cọc', unit_price: 2000, quantity: 2, coefficient: 0.5, amount: 2000, sort_order: 4, previous_reading: 0, current_reading: 0, from_date: '2026-09-01', to_date: '2026-09-12' }] } as InvoiceWithRelations;
 afterEach(cleanup);
-beforeEach(() => { vi.clearAllMocks(); mocks.save.mockResolvedValue({}); });
+beforeEach(() => {
+  vi.clearAllMocks(); mocks.save.mockResolvedValue({});
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+  HTMLElement.prototype.releasePointerCapture = vi.fn();
+});
 function fillReason() { fireEvent.change(screen.getByLabelText('Lý do điều chỉnh'), { target: { value: 'Bổ sung ghi chú' } }); }
 it('submits current items and saved fields, never loading building defaults', async () => {
   render(<IssuedInvoiceEditor invoice={invoice} onOpenChange={() => {}} />);
@@ -31,13 +37,14 @@ it('requires separate reason and prevents duplicate requests while pending', asy
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
 });
 it('saves discount and discount notes independently of the adjustment reason', async () => {
-  render(<IssuedInvoiceEditor invoice={{ ...invoice, discount_notes: 'Đã lưu' }} onOpenChange={() => {}} />);
-  expect((screen.getByLabelText('Ghi chú giảm trừ') as HTMLTextAreaElement).value).toBe('Đã lưu');
-  fireEvent.change(screen.getByLabelText('Giảm trừ'), { target: { value: '500' } });
-  fireEvent.change(screen.getByLabelText('Ghi chú giảm trừ'), { target: { value: 'Giảm bổ sung' } }); fillReason();
+  render(<IssuedInvoiceEditor invoice={{ ...invoice, discount_amount: 100, discount_notes: 'Đã lưu' }} onOpenChange={() => {}} />);
+  // Ghi chú giảm trừ sửa qua popover góc ô Giảm trừ; jsdom không mở được Popover trong Dialog nên
+  // chỉ kiểm nút có sẵn và ghi chú đã lưu được giữ nguyên khi đổi số tiền.
+  expect((screen.getByRole('button', { name: 'Ghi chú giảm trừ' }) as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText('Giảm trừ'), { target: { value: '500' } }); fillReason();
   fireEvent.click(screen.getByRole('button', { name: 'Lưu điều chỉnh' }));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
-  expect(mocks.save.mock.calls[0]?.[0]).toMatchObject({ discountAmount: 500, discountNotes: 'Giảm bổ sung', notes: 'Cũ', reason: 'Bổ sung ghi chú' });
+  expect(mocks.save.mock.calls[0]?.[0]).toMatchObject({ discountAmount: 500, discountNotes: 'Đã lưu', notes: 'Cũ', reason: 'Bổ sung ghi chú' });
 });
 it('keeps error visible and preserves retry key for unchanged request; changed notes use a new key', async () => {
   mocks.save.mockRejectedValue(new InvoiceAdjustmentError({}));

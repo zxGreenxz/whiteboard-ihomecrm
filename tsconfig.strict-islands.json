@@ -1285,7 +1285,9 @@
     "src/components/invoices/invoice-entry/dueBadge.ts",
     "src/components/invoices/invoice-entry/InvoiceEntryDesktop.tsx",
     "src/components/invoices/invoice-entry/InvoiceEntryMobile.tsx",
-    "src/components/invoices/invoice-entry/InvoiceEntryShell.tsx"
+    "src/components/invoices/invoice-entry/InvoiceEntryShell.tsx",
+    "src/lib/invoiceAdjustmentEntry.ts",
+    "src/lib/__tests__/invoiceAdjustmentEntry.test.ts"
   ],
   "$comment3": "LÔ 100 — nở 1025 → 1145 file sau khi gỡ ba chỗ chặn cuối: khối \"Ghi chú\" ở Room/BuildingDetailPage đọc cột notes không tồn tại (ánh xạ sang description), fixture useOccupancyDashboard khoá payload ở null (đổi sang undefined), và OrganizationContext tự hết khi sinh lại types.ts. CÒN LẠI ngoài đảo: chỉ 40 file thuộc bao đóng-ngược của HAI file openclaw-zalo — cấm đụng theo yêu cầu user, nên đó là trần thật của đảo lúc này."
 }
