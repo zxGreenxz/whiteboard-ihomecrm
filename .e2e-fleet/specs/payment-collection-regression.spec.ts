@@ -14,14 +14,23 @@ test('invoice partial collection -> Thu tiền keypad completes the same invoice
   const config = loadSupabaseAdminConfig({ readFile: (path: string | URL, encoding: BufferEncoding) =>
     readFileSync(String(path).includes('CLAUDE.local.md') && process.env.IHOMECRM_SECRET_FILE
       ? process.env.IHOMECRM_SECRET_FILE : path, encoding) });
-  const query = (sql: string) => runQuery(sql, config);
+  const query = <Row extends object = Record<string, unknown>>(sql: string) => runQuery<Row>(sql, config);
   const marker = fixtureMarker(`payment-ui-${newRunId()}`);
   const month = '2096-10';
   let fixtureInvoiceId: string | undefined;
   const voucherIds: string[] = [];
-  const actor = (await query(`SELECT id FROM auth.users WHERE email=${sqlLiteral(DEMO_OWNER_EMAIL)}`))[0].id;
+  const actor = (await query<{ id: string }>(`SELECT id FROM auth.users WHERE email=${sqlLiteral(DEMO_OWNER_EMAIL)}`))[0].id;
   const errors = trackConsoleErrors(page);
   page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/rest/v1/rpc/record_invoice_collection_v5', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const request = route.request();
+    if (new URL(request.url()).origin !== `https://${config.projectRef}.supabase.co` || !fixtureInvoiceId || request.postDataJSON().p_invoice_id !== fixtureInvoiceId) {
+      errors.push('Blocked collection outside exact fixture scope');
+      return route.abort('blockedbyclient');
+    }
+    await route.continue();
+  });
   const observedRefs = new Set<string>();
   page.on('request', request => {
     const match = /^https:\/\/([a-z0-9]+)\.supabase\.co\//.exec(request.url());
@@ -37,13 +46,14 @@ test('invoice partial collection -> Thu tiền keypad completes the same invoice
     const response = await pending;
     const body = await response.json();
     expect(response.ok(), `Collection HTTP ${response.status()}: ${JSON.stringify(body)}`).toBeTruthy();
+    expect(body.invoice_id).toBe(fixtureInvoiceId);
     expect(body.collection_id).toMatch(/^[0-9a-f-]{36}$/);
     voucherIds.push(...body.tenders.map((tender: { voucher_id: string }) => tender.voucher_id));
   };
   try {
     await login(page, 'chunha');
     expect([...observedRefs]).toEqual([config.projectRef]);
-    const rows = await query(`BEGIN; SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='60s';
+    const rows = await query<{ invoice_id?: string; building_id: string; room_name: string; account_name: string }>(`BEGIN; SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='60s';
       ${fixtureInvoiceSql({ marker, billingMonth: month, rent: 5239000, deposit: 0 })}
       -- DEMO has no personal "...Thu" account required by the keypad resolver.
       -- Create a dedicated zero-balance fixture account instead of changing an existing cashbook.
@@ -64,6 +74,7 @@ test('invoice partial collection -> Thu tiền keypad completes the same invoice
       COMMIT;`);
     const fixture = rows.find((row: { invoice_id?: string }) => row.invoice_id);
     expect(fixture).toBeTruthy();
+    if (!fixture?.invoice_id) throw new Error('Fixture identity was not returned');
     fixtureInvoiceId = fixture.invoice_id;
     await page.goto(`/invoices/${fixture.invoice_id}`);
     await page.getByRole('button', { name: 'Ghi nhận thanh toán', exact: true }).click();
@@ -96,7 +107,7 @@ test('invoice partial collection -> Thu tiền keypad completes the same invoice
     expect(await state(fixture.invoice_id)).toMatchObject({ paid_amount: 5239000, remaining_amount: 0, status: 'PAID', active: 2 });
     expect(errors, `Browser errors: ${errors.join(' | ')}`).toEqual([]);
   } finally {
-    const postings = voucherIds.length ? await query(`SELECT id FROM public.income_expense_postings
+    const postings = voucherIds.length ? await query<{ id: string }>(`SELECT id FROM public.income_expense_postings
       WHERE organization_id='${DEMO_ORG_ID}' AND voucher_id IN (${voucherIds.map(uuidLiteral).join(',')})`) : [];
     await query(committedFixtureTeardownSql({ marker, actorId: actor }));
     await query(`DELETE FROM public.cashbook_possession_bindings WHERE organization_id='${DEMO_ORG_ID}' AND reason=${sqlLiteral(marker)};`);

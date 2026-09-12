@@ -12,7 +12,7 @@ const migrations: Migration[] = readdirSync(MIGRATION_DIR)
 // Select the latest CREATE, then isolate its dollar-quoted body. Assertions
 // must not borrow a guard from an obsolete definition or a neighboring RPC.
 function liveDefinitionOf(name: string, corpus = migrations) {
-  const escapedName = name.replaceAll(".", "\\.");
+  const escapedName = name.replace(/\./g, "\\.");
   const create = new RegExp(`^\\s*CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${escapedName}\\s*\\(`, "gmi");
   let hit: { file: string; sql: string; migrationSql: string } | undefined;
   for (const migration of corpus) {

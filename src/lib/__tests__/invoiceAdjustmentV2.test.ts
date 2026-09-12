@@ -89,6 +89,37 @@ async function paid(amount=50000, id=collection, cls='PNL', allocate=true) {
 }
 
 describe('atomic issued invoice adjustment SQL',()=>{
+  const namedArgs = {
+    p_invoice_id: `'${invoice}'::uuid`, p_after_items: `'${JSON.stringify([item(120000)])}'::jsonb`,
+    p_discount_amount: '0', p_reason: "'Correct invoice'", p_expected_revision: '0',
+    p_expected_paid_amount: '0', p_expected_updated_at: "'2026-09-01'::timestamptz", p_idempotency_key: "'test-key-0001'",
+  };
+  const namedCall = (omit?: string) => `SELECT * FROM public.adjust_invoice_v2(${Object.entries(namedArgs)
+    .filter(([name]) => name !== omit).map(([name,value]) => `${name} => ${value}`).join(',')})`;
+  it.each([false,true])('omitted nullable notes are SQL NULL with stable replay (existing notes: %s)',existing=>scenario(async()=>{
+    if(existing) await db.exec(`UPDATE invoices SET notes='Old note',discount_notes='Old discount note' WHERE id='${invoice}'`);
+    const result=await db.query(namedCall());
+    expect((await db.query(`SELECT notes,discount_notes FROM invoices WHERE id='${invoice}'`)).rows).toEqual([{notes:null,discount_notes:null}]);
+    expect((await adjust([item(120000)],{revision:0,paid:0,updated:'2026-09-01'})).rows).toEqual(result.rows);
+  }));
+  it.each([
+    ['p_reason','22023'],['p_idempotency_key','22023'],['p_expected_revision','40001'],
+    ['p_expected_paid_amount','40001'],['p_expected_updated_at','40001'],
+  ])('rejects omitted required adjustment field %s', (field,code)=>scenario(async()=>{
+    await db.exec('SAVEPOINT missing_arg');
+    await expect(db.query(namedCall(field))).rejects.toMatchObject({code});
+    await db.exec('ROLLBACK TO SAVEPOINT missing_arg');
+    expect((await db.query('SELECT count(*)::int AS count FROM invoice_adjustments')).rows).toEqual([{count:0}]);
+    expect((await db.query(`SELECT adjustment_revision FROM invoices WHERE id='${invoice}'`)).rows).toEqual([{adjustment_revision:0}]);
+  }));
+  it('keeps explicit empty notes distinct from omitted SQL NULL',()=>scenario(async()=>{
+    await db.query(namedCall());
+    await db.exec('SAVEPOINT note_mismatch');
+    await expect(adjust([item(120000)],{notes:'',discountNotes:'',revision:0,paid:0,updated:'2026-09-01'})).rejects.toMatchObject({code:'23505'});
+    await db.exec('ROLLBACK TO SAVEPOINT note_mismatch');
+    await adjust([item(130000)],{key:'test-key-0002',notes:'',discountNotes:''});
+    expect((await db.query(`SELECT notes,discount_notes FROM invoices WHERE id='${invoice}'`)).rows).toEqual([{notes:'',discount_notes:''}]);
+  }));
   it('persists two revisions with complete current items and editable headers',()=>scenario(async()=>{
     const first=await adjust([item(120000)],{discount:10000,discountNotes:'Discount',notes:'Updated'});
     expect(first.rows[0]).toMatchObject({revision:1,after_total:'110000.00'});

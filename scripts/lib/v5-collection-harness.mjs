@@ -340,6 +340,17 @@ SET LOCAL ROLE authenticated;
  * untouched. Refuses to run on a non-fixture marker or the real org.
  */
 export function committedFixtureTeardownSql({ marker, actorId }) {
+  return committedFixtureCleanupSql({ marker, actorId });
+}
+
+/** Explicitly scoped revision-fixture cleanup; never used for ordinary fixtures. */
+export function committedAdjustmentFixtureTeardownSql({ marker, actorId, invoiceId }) {
+  // A caller must know the exact committed invoice, as well as its unique marker.
+  uuidLiteral(invoiceId);
+  return committedFixtureCleanupSql({ marker, actorId, adjustmentInvoiceId: invoiceId });
+}
+
+function committedFixtureCleanupSql({ marker, actorId, adjustmentInvoiceId }) {
   const org = uuidLiteral(DEMO_ORG_ID);
   // Marker-strict scope helpers. Reversal vouchers carry invoice_id = NULL and
   // link only via payment_collection_id, so the voucher scope is BOTH the
@@ -376,10 +387,13 @@ BEGIN
   SELECT invoice_row.id INTO v_invoice
   FROM public.invoices invoice_row
   WHERE invoice_row.organization_id = v_org
-    AND invoice_row.notes = v_marker;
+    AND invoice_row.notes = v_marker
+  FOR UPDATE;
   IF v_invoice IS NULL THEN
     RETURN; -- nothing committed / already cleaned
   END IF;
+  ${adjustmentInvoiceId ? `IF v_invoice IS DISTINCT FROM ${uuidLiteral(adjustmentInvoiceId)} THEN
+    RAISE EXCEPTION 'Từ chối dọn điều chỉnh: invoice ID không khớp marker'; END IF;` : ''}
 
   -- Promote to the DEMO actor so reverse_invoice_collection_v5 authorizes.
   PERFORM set_config('request.jwt.claims', jsonb_build_object(
@@ -415,7 +429,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.invoice_payment_collections WHERE id IN (${collSel}) AND status='ACTIVE') THEN
     RAISE EXCEPTION 'Từ chối dọn fixture: còn lần thu ACTIVE';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.invoice_adjustments WHERE invoice_id IN (${invSel}))
+  IF (${adjustmentInvoiceId ? 'false' : 'true'} AND EXISTS (SELECT 1 FROM public.invoice_adjustments WHERE invoice_id IN (${invSel})))
     OR EXISTS (SELECT 1 FROM public.customer_credit_applications
       WHERE invoice_id IN (${invSel}) OR credit_lot_id IN (
         SELECT id FROM public.customer_credit_lots WHERE source_collection_id IN (${collSel}))) THEN
@@ -498,6 +512,11 @@ DELETE FROM public.finance_invoice_components component
 
 DELETE FROM public.finance_invoice_component_manifests manifest
   WHERE manifest.invoice_id IN (${invSel});
+
+${adjustmentInvoiceId ? `-- Only the explicitly identified DEMO revision fixture; old snapshots are test evidence.
+DELETE FROM public.invoice_adjustments
+WHERE organization_id = ${org} AND invoice_id = ${uuidLiteral(adjustmentInvoiceId)}
+  AND invoice_id IN (${invSel});` : ''}
 
 DELETE FROM public.income_expense_items item
 WHERE item.income_expense_id IN (${vchSel});

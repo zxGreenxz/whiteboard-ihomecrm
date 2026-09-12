@@ -1,9 +1,9 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 648,
-  "soFileDocBangFs": 207,
-  "tongLoiGoi": 463,
+  "tongSoFileTest": 656,
+  "soFileDocBangFs": 208,
+  "tongLoiGoi": 464,
   "khongPhanLoaiDuoc": 231,
   "theoLoai": {
     "ma-nguon": {
@@ -15,7 +15,7 @@
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 8,
+      "soFile": 9,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -750,6 +750,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": ".e2e-fleet/specs/invoice-adjustment-repair.spec.ts",
+      "soGoi": 1,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": ".e2e-fleet/specs/payment-collection-regression.spec.ts",

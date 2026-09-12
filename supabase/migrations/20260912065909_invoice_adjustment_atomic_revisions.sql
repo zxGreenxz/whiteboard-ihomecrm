@@ -183,8 +183,8 @@ REVOKE ALL ON public.invoice_adjustments FROM PUBLIC,anon,authenticated,service_
 GRANT SELECT ON public.invoice_adjustments TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.adjust_invoice_v2(
-  p_invoice_id uuid,p_after_items jsonb,p_discount_amount numeric,p_discount_notes text,p_notes text,p_reason text,
-  p_expected_revision bigint,p_expected_paid_amount numeric,p_expected_updated_at timestamptz,p_idempotency_key text
+  p_invoice_id uuid,p_after_items jsonb,p_discount_amount numeric,p_discount_notes text DEFAULT NULL,p_notes text DEFAULT NULL,p_reason text DEFAULT NULL,
+  p_expected_revision bigint DEFAULT NULL,p_expected_paid_amount numeric DEFAULT NULL,p_expected_updated_at timestamptz DEFAULT NULL,p_idempotency_key text DEFAULT NULL
 ) RETURNS public.invoice_adjustments LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
 DECLARE inv public.invoices%ROWTYPE; result public.invoice_adjustments%ROWTYPE; actor uuid:=auth.uid();
   items jsonb; old_items jsonb; before_doc jsonb; after_doc jsonb; v_subtotal numeric; total numeric; discount numeric;

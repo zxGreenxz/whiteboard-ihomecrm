@@ -30,7 +30,7 @@ CI khác. Tra runtime của từng cái ở `tooling/runtime-matrix.json`.
 | Cây | Nội dung | Ghi chú |
 |---|---|---|
 | `infra/**` | 2 package: `network-center-worker`, `cloudflare-worker` | `network-center-worker` deploy bằng PowerShell; hai suite kiểm script đó chạy ở job Windows riêng. |
-| `.e2e-fleet/**` | 69 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
+| `.e2e-fleet/**` | 70 spec Playwright | Chạy LOCAL, cần `FLEET_PASS_*`, chỉ ghi vào org DEMO. Không phải CI gate — xem `tooling/test-matrix.json`. |
 | `contracts/**` | 3 file hợp đồng | Bề mặt RPC, Edge và realtime để đối chiếu với source/runtime. |
 
 ## Luồng phụ thuộc chính
