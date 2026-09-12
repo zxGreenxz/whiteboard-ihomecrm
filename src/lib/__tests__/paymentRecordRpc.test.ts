@@ -136,6 +136,7 @@ describe("record_invoice_collection_v5 args and routing", () => {
     { code: "55000", message: "Writer invoice.collection.v5 đang bị đóng băng" },
     { code: "55000", message: "[FROZEN] invoice.collection.v5" },
     { code: "40001", message: "Số đã thu vừa thay đổi" },
+    { code: "PT409", message: "Số đã thu vừa thay đổi; vui lòng tải lại" },
     { code: "23505", message: "idempotency_key đã dùng với nội dung khác" },
   ])("does not swallow business error %o", async (error) => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error }) as unknown as CollectionRpcInvoker;

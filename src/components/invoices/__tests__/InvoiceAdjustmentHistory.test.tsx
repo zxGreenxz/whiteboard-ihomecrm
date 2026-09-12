@@ -36,8 +36,8 @@ it('hides review controls when approve capability is absent', () => {
   mocks.permission = false; render(<InvoiceAdjustmentHistory invoice={invoice} />);
   expect(screen.queryByRole('button', { name: 'Xác nhận kiểm tra' })).toBeNull();
 });
-it('requires explicit reload after stale review', async () => {
-  mocks.review.mockRejectedValue(new InvoiceAdjustmentError({ code: '40001' }));
+it.each(['40001', 'PT409'])('%s requires explicit reload after stale review', async code => {
+  mocks.review.mockRejectedValue(new InvoiceAdjustmentError({ code }));
   mocks.refetch.mockResolvedValue({ data: { ...invoice, adjustment_revision: 3, invoice_adjustments: [...invoice.invoice_adjustments!, revision(3)] }, error: null });
   render(<InvoiceAdjustmentHistory invoice={invoice} />);
   fireEvent.click(screen.getByRole('button', { name: 'Xác nhận kiểm tra' }));

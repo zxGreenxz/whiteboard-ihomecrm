@@ -17,7 +17,7 @@ export class InvoiceAdjustmentError extends Error {
   readonly kind: 'conflict' | 'permission' | 'validation' | 'constraint' | 'internal';
   readonly showPaymentHistory: boolean;
   constructor(error: { code?: string; message?: string }) {
-    const kind = error.code === '40001' || error.code === '23505' ? 'conflict' : error.code === '42501' ? 'permission' : error.code === '22023' ? 'validation' : error.code === '55000' ? 'constraint' : 'internal';
+    const kind = error.code === 'PT409' || error.code === '40001' || error.code === '23505' ? 'conflict' : error.code === '42501' ? 'permission' : error.code === '22023' ? 'validation' : error.code === '55000' ? 'constraint' : 'internal';
     super(kind === 'internal' ? 'Chưa xác nhận được kết quả lưu. Giữ nguyên nội dung và thử lại; nếu vẫn lỗi, hãy tải lại hóa đơn.' : kind === 'conflict' ? 'Hóa đơn vừa thay đổi hoặc vừa thu tiền. Tải lại hóa đơn trước khi tiếp tục.' : kind === 'permission' ? 'Bạn không có quyền điều chỉnh hoặc kiểm tra hóa đơn trong tổ chức/tòa này.' : error.message ?? 'Không thể thực hiện điều chỉnh.');
     this.name = 'InvoiceAdjustmentError';
     this.kind = kind;

@@ -38,7 +38,7 @@ it.each([null, {}, { ...result, delta: '100' }, { ...result, review_status: 'UNK
   rpc.mockResolvedValue({ data, error: null });
   await expect(adjustInvoice(request)).rejects.toMatchObject({ kind: 'internal' });
 });
-it.each([['40001', 'conflict'], ['42501', 'permission'], ['22023', 'validation'], ['23505', 'conflict'], ['55000', 'constraint'], ['XX000', 'internal']])('classifies %s without reporting success', async (code, kind) => {
+it.each([['PT409', 'conflict'], ['40001', 'conflict'], ['42501', 'permission'], ['22023', 'validation'], ['23505', 'conflict'], ['55000', 'constraint'], ['XX000', 'internal']])('classifies %s without reporting success', async (code, kind) => {
   rpc.mockResolvedValue({ data: null, error: { code, message: 'Lỗi nội dung' } });
   await expect(adjustInvoice(request)).rejects.toMatchObject({ kind });
 });

@@ -32,6 +32,17 @@ describe("phân loại lỗi ở biên RPC/Edge", () => {
     expect(isRetryable("rate_limit")).toBe(false);
     expect(isUserActionable("rate_limit")).toBe(true);
   });
+  it('PT409 domain stale state requires reload, while native 40001 keeps concurrency semantics', () => {
+    const stale = { code: 'PT409', message: 'Hóa đơn vừa thay đổi; vui lòng tải lại' };
+    const category = classifyDbError(stale);
+    expect(category).toBe('conflict');
+    expect(isUserActionable(category)).toBe(true);
+    expect(isRetryable(category)).toBe(false);
+    expect(retryOnlyConcurrency(0, stale)).toBe(false);
+    expect(toResult({ data: null, error: stale })).toMatchObject({ kind: 'loi', category: 'conflict', retryable: false });
+    expect(classifyDbError({ code: '40001' })).toBe('concurrency');
+    expect(retryOnlyConcurrency(0, { code: '40001' })).toBe(true);
+  });
 
   it("mã chưa biết rơi vào unknown và KHÔNG được thử lại", () => {
     // Mặc định lạc quan ở đây nghĩa là mọi mã chưa từng gặp sẽ được xử theo cách

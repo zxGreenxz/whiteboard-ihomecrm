@@ -54,14 +54,15 @@ it('keeps error visible and preserves retry key for unchanged request; changed n
   expect(mocks.save.mock.calls[2]?.[0].idempotencyKey).not.toBe(mocks.save.mock.calls[0]?.[0].idempotencyKey);
   expect(close).not.toHaveBeenCalled();
 });
-it('refetch does not change edited snapshot; explicit conflict reload resets both document and token', async () => {
-  mocks.save.mockRejectedValueOnce(new InvoiceAdjustmentError({ code: '40001' }));
+it.each(['40001', 'PT409'])('%s: refetch does not change edited snapshot; explicit conflict reload resets both document and token', async code => {
+  mocks.save.mockRejectedValueOnce(new InvoiceAdjustmentError({ code }));
   const fresh = { ...invoice, adjustment_revision: 3, paid_amount: 1000, updated_at: '2026-09-12T11:00:00Z', notes: 'Mới từ server' };
   mocks.refetch.mockResolvedValue({ data: fresh, error: null });
   const view = render(<IssuedInvoiceEditor invoice={invoice} onOpenChange={() => {}} />);
   fillReason(); view.rerender(<IssuedInvoiceEditor invoice={fresh} onOpenChange={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'Lưu điều chỉnh' }));
   await screen.findByRole('alert');
+  expect((screen.getByRole('button', { name: 'Lưu điều chỉnh' }) as HTMLButtonElement).disabled).toBe(true);
   expect(mocks.save.mock.calls[0]?.[0]).toMatchObject({ expectedRevision: 2, expectedPaidAmount: 0, notes: 'Cũ' });
   fireEvent.click(screen.getByRole('button', { name: 'Tải lại hóa đơn' }));
   await waitFor(() => expect((screen.getByLabelText('Ghi chú') as HTMLTextAreaElement).value).toBe('Mới từ server'));

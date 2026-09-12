@@ -110,6 +110,7 @@ const MA_SQLSTATE: Readonly<Record<string, ErrorCategory>> = {
 
 /** Mã của PostgREST (không phải SQLSTATE) — nằm cùng trường `code`. */
 const MA_POSTGREST: Readonly<Record<string, ErrorCategory>> = {
+  PT409: "conflict", // stale domain snapshot: reload; never retry the unchanged request
   PGRST301: "permission", // JWT hết hạn / không hợp lệ
   PGRST202: "internal_invariant", // không tìm thấy hàm — slug RPC sai
   PGRST204: "internal_invariant", // không tìm thấy cột
