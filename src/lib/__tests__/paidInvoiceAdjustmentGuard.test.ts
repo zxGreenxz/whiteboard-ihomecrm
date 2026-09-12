@@ -13,6 +13,12 @@ function liveDefinitionOf() {
   throw new Error('Missing production guard definition');
 }
 const guard = liveDefinitionOf();
+const parentId = (id: number) => `00000000-0000-4000-8000-${String(id).padStart(12, '0')}`;
+function parentSql(sql: string) {
+  return sql.replace(/invoice_id=([12])/g, (_,id) => `invoice_id='${parentId(Number(id))}'`)
+    .replace(/(public\.invoices[^;]*WHERE id=)([12])/g, (_,prefix,id) => `${prefix}'${parentId(Number(id))}'`)
+    .replace(/VALUES \((\d),([12]),/g, (_,item,id) => `VALUES (${item},'${parentId(Number(id))}',`);
+}
 
 describe('paid invoice adjustment guard on both trigger row types', () => {
   const db = new PGlite();
@@ -20,11 +26,11 @@ describe('paid invoice adjustment guard on both trigger row types', () => {
     await db.exec(`
       CREATE ROLE authenticated;
       CREATE ROLE anon;
-      CREATE TABLE public.invoices (id int PRIMARY KEY, paid_amount numeric, total_amount numeric,
-        subtotal numeric, discount_amount numeric, previous_debt numeric, notes text);
-      CREATE TABLE public.invoice_items (id int PRIMARY KEY, invoice_id int REFERENCES public.invoices, amount numeric);
-      INSERT INTO public.invoices VALUES (1, 3239000, 5239000, 5239000, 0, 0, NULL), (2, 0, 100, 100, 0, 0, NULL);
-      INSERT INTO public.invoice_items VALUES (1, 1, 5239000), (2, 2, 100);
+      CREATE TABLE public.invoices (id uuid PRIMARY KEY, paid_amount numeric, total_amount numeric,
+        subtotal numeric, discount_amount numeric, previous_debt numeric, notes text, adjustment_revision bigint DEFAULT 0, adjustment_review_status text DEFAULT 'NONE', status text DEFAULT 'DRAFT');
+      CREATE TABLE public.invoice_items (id int PRIMARY KEY, invoice_id uuid REFERENCES public.invoices, amount numeric);
+      INSERT INTO public.invoices(id,paid_amount,total_amount,subtotal,discount_amount,previous_debt,notes,status) VALUES ('${parentId(1)}', 3239000, 5239000, 5239000, 0, 0, NULL,'PARTIAL_PAID'), ('${parentId(2)}', 0, 100, 100, 0, 0, NULL,'DRAFT');
+      INSERT INTO public.invoice_items VALUES (1, '${parentId(1)}', 5239000), (2, '${parentId(2)}', 100);
       GRANT SELECT, INSERT, UPDATE, DELETE ON public.invoices, public.invoice_items TO authenticated, anon;
       ${guard}
       ${guard}
@@ -38,16 +44,15 @@ describe('paid invoice adjustment guard on both trigger row types', () => {
 
   async function asRole(role: 'authenticated' | 'anon' | 'owner', sql: string) {
     await db.exec(`BEGIN; ${role === 'owner' ? '' : `SET LOCAL ROLE ${role};`}`);
-    try { return await db.query(sql); } finally { await db.exec('ROLLBACK;'); }
+    try { return await db.query(parentSql(sql)); } finally { await db.exec('ROLLBACK;'); }
   }
 
   it('allows the payment writer to finish collecting a partially paid invoice', async () => {
     const result = await asRole('owner', 'UPDATE public.invoices SET paid_amount=5239000 WHERE id=1 RETURNING paid_amount');
     expect(result.rows).toEqual([{ paid_amount: '5239000' }]);
   });
-  it('allows notes and unchanged money values on a paid invoice', async () => {
-    const result = await asRole('authenticated', "UPDATE public.invoices SET notes='receipt', total_amount=total_amount WHERE id=1 RETURNING notes");
-    expect(result.rows).toEqual([{ notes: 'receipt' }]);
+  it('blocks direct notes changes on an issued invoice', async () => {
+    await expect(asRole('authenticated', "UPDATE public.invoices SET notes='receipt' WHERE id=1")).rejects.toMatchObject({code:'42501'});
   });
   it.each(['total_amount', 'subtotal', 'discount_amount', 'previous_debt'])(
     'blocks direct changes to paid invoice %s', async field => {
@@ -81,5 +86,15 @@ describe('paid invoice adjustment guard on both trigger row types', () => {
   });
   it('also rejects anonymous direct edits of paid invoice items', async () => {
     await expect(asRole('anon', 'DELETE FROM public.invoice_items WHERE id=1')).rejects.toMatchObject({ code: '42501' });
+  });
+  it('blocks reopening an issued unpaid invoice as draft to bypass revisions',async()=>{
+    await db.exec(`BEGIN; UPDATE invoices SET status='APPROVED' WHERE id='${parentId(2)}'; SET LOCAL ROLE authenticated;`);
+    try { await expect(db.exec(`UPDATE invoices SET status='DRAFT' WHERE id='${parentId(2)}'`)).rejects.toMatchObject({code:'42501'}); }
+    finally {await db.exec('ROLLBACK');}
+  });
+  it('blocks item mutations after an adjustment even when paid returns to zero',async()=>{
+    await db.exec(`BEGIN; UPDATE invoices SET adjustment_revision=1 WHERE id='${parentId(2)}'; SET LOCAL ROLE authenticated;`);
+    try { await expect(db.exec('DELETE FROM invoice_items WHERE id=2')).rejects.toMatchObject({code:'42501'}); }
+    finally {await db.exec('ROLLBACK');}
   });
 });
