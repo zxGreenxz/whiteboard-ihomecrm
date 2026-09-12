@@ -14,7 +14,7 @@ vi.mock('@/hooks/useInvoices', () => ({
 }));
 vi.mock('@/hooks/useBuildingServices', () => ({ useBuildingServices: vi.fn() }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
-vi.mock('../IssuedInvoiceEditor', () => ({ default: ({ invoice }: { invoice: InvoiceWithRelations }) => {
+vi.mock('../IssuedInvoiceEditor', () => ({ default: function MockIssuedInvoiceEditor({ invoice }: { invoice: InvoiceWithRelations }) {
   const [snapshot] = useState(invoice);
   return <output aria-label="Ảnh chụp chỉnh sửa">{JSON.stringify(snapshot)}</output>;
 } }));

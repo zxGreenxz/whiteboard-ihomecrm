@@ -137,3 +137,9 @@ là giới hạn đã có; không thay cấu hình để bỏ qua lane phát hà
 
 Backend và frontend đã được review độc lập. Còn CI của đúng SHA tích hợp main,
 promote qua lệnh chuẩn và kiểm tra lại hai luồng trên production sau phát hành.
+
+CI main đầu tiên `a029b290` bắt lỗi `react-hooks/rules-of-hooks` ở component giả
+trong test open-snapshot: tên export mặc định là `default`, không phải tên React
+component. Local lint trước đó chưa đếm test còn untracked. Đã đặt tên rõ ràng
+`MockIssuedInvoiceEditor`; đây là sửa test, không đổi ứng dụng/SQL. Eslint trực
+tiếp file và 7 tests đều đạt; không tăng lint baseline. Không promote SHA lỗi này.
