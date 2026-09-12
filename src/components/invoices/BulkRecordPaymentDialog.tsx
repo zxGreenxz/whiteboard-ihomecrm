@@ -48,6 +48,8 @@ import {
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { useInvoice } from '@/hooks/useInvoices';
 import { canOpenInvoiceEditor } from '@/lib/invoiceUtils';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
 import type { InvoiceStatus } from '@/types/invoice';
 import EditInvoiceDialog from './EditInvoiceDialog';
@@ -107,6 +109,8 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
   const bulkMutation = useBulkRecordPayment();
+  const { data: permissions } = useMyPermissions();
+  const canEditInvoicePerm = canUse(permissions, 'invoices', 'edit');
 
   const [buildingId, setBuildingId] = useState('');
   const [billingMonth, setBillingMonth] = useState(format(new Date(), 'yyyy-MM'));
@@ -856,7 +860,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                     <td className="p-1 border font-medium">
                       <div className="flex items-center justify-between gap-1">
                         <span>{r.room_name}</span>
-                        {canOpenInvoiceEditor(r) ? (
+                        {canEditInvoicePerm && (canOpenInvoiceEditor(r) ? (
                           <button
                             type="button"
                             title="Sửa hoá đơn"
@@ -867,12 +871,12 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                           </button>
                         ) : (
                           <span
-                            title="Hoá đơn đã có thanh toán — không thể sửa"
+                            title="Trạng thái hóa đơn không cho phép chỉnh sửa"
                             className="text-slate-300 p-0.5 cursor-not-allowed"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </span>
-                        )}
+                        ))}
                       </div>
                     </td>
                     <td className="p-1 border text-xs">{r.customer_name}</td>
@@ -1115,7 +1119,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
           </Button>
         </DialogFooter>
       </DialogContent>
-      {editingInvoice && (
+      {canEditInvoicePerm && editingInvoice && (
         <EditInvoiceDialog
           open={editInvoiceId != null}
           onOpenChange={(v) => {

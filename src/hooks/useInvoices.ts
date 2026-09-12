@@ -48,6 +48,7 @@ const adjustmentCachePrefixes = [
   'invoice-totals-by-ids', 'first-invoice-details', 'invoice-rent-periods',
   'business-performance', 'invoice-rounding-report', 'invoice-payments-summary',
   'collection-cycle', 'financial-analysis', 'finance-v2-routes',
+  'invoice-history', 'unpaid-invoices',
 ];
 export const useAdjustInvoice = () => {
   const queryClient = useQueryClient();
@@ -69,6 +70,7 @@ export const useReviewInvoiceAdjustment = () => {
       void queryClient.invalidateQueries({ queryKey: ['invoices'] });
       void queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       void queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      void queryClient.invalidateQueries({ queryKey: ['invoice-history'] });
       toast({ title: 'Đã xác nhận kiểm tra' });
     },
   });
