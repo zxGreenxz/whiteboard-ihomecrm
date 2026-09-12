@@ -24,7 +24,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useUpdateInvoice, useExcessAmount } from '@/hooks/useInvoices';
+import { useUpdateInvoice, useExcessAmount, useInvoice } from '@/hooks/useInvoices';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
 import type {
   InvoiceFormData,
   InvoiceWithRelations,
@@ -799,10 +801,54 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
   );
 };
 
+const OpenIssuedInvoiceEditor = ({ invoice, onOpenChange }: EditInvoiceDialogProps) => {
+  const { refetch } = useInvoice(invoice.id);
+  const [loadedInvoice, setLoadedInvoice] = useState<InvoiceWithRelations | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    // A collection can finish before its cache invalidation finishes. Capture
+    // fields and concurrency tokens together only after this opening's read.
+    void refetch({ cancelRefetch: true }).then(result => {
+      if (!active) return;
+      if (result.isError || !result.data) {
+        setLoadError('Không tải được hóa đơn mới nhất. Vui lòng thử lại.');
+      } else if (getInvoiceEditMode(result.data) !== 'adjustment') {
+        setLoadError('Hóa đơn không còn cho phép điều chỉnh.');
+      } else {
+        setLoadedInvoice(result.data);
+      }
+    });
+    return () => { active = false; };
+  }, [refetch, attempt]);
+
+  if (loadedInvoice) return <IssuedInvoiceEditor invoice={loadedInvoice} onOpenChange={onOpenChange} />;
+  return <Dialog open onOpenChange={onOpenChange}>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Điều chỉnh hóa đơn</DialogTitle>
+        <DialogDescription>{loadError ?? 'Đang tải hóa đơn mới nhất...'}</DialogDescription>
+      </DialogHeader>
+      {loadError && <Button onClick={() => { setLoadError(null); setAttempt(value => value + 1); }}>Thử tải lại</Button>}
+    </DialogContent>
+  </Dialog>;
+};
+
+const AuthorizedIssuedInvoiceEditor = (props: EditInvoiceDialogProps) => {
+  const { data: permissions } = useMyPermissions();
+  if (canUse(permissions, 'invoices', 'edit')) return <OpenIssuedInvoiceEditor {...props} />;
+  return <Dialog open onOpenChange={props.onOpenChange}><DialogContent><DialogHeader>
+    <DialogTitle>Không thể sửa hóa đơn</DialogTitle>
+    <DialogDescription>Chưa xác nhận được quyền chỉnh sửa hóa đơn.</DialogDescription>
+  </DialogHeader></DialogContent></Dialog>;
+};
+
 const EditInvoiceDialog = (props: EditInvoiceDialogProps) => {
   if (!props.open) return null;
   const mode = getInvoiceEditMode(props.invoice);
-  if (mode === 'adjustment') return <IssuedInvoiceEditor key={props.invoice.id} invoice={props.invoice} onOpenChange={props.onOpenChange} />;
+  if (mode === 'adjustment') return <AuthorizedIssuedInvoiceEditor key={props.invoice.id} {...props} />;
   if (mode === 'draft') return <DraftInvoiceEditor key={props.invoice.id} {...props} />;
   return <Dialog open onOpenChange={props.onOpenChange}><DialogContent><DialogHeader><DialogTitle>Không thể sửa hóa đơn</DialogTitle><DialogDescription>Hóa đơn đã hủy hoặc không còn cho phép chỉnh sửa. Tải lại để kiểm tra trạng thái.</DialogDescription></DialogHeader></DialogContent></Dialog>;
 };

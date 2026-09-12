@@ -247,7 +247,7 @@ export const invoicesListQuery = (
         throw error;
       }
 
-      let invoiceRows = ((data || []) as InvoiceWithRelations[]).map((invoice) => ({
+      const invoiceRows = ((data || []) as InvoiceWithRelations[]).map((invoice) => ({
         ...invoice,
         payments: (invoice.payments ?? []).filter(
           (payment) => !(payment as typeof payment & { reversed_at?: string | null }).reversed_at,
