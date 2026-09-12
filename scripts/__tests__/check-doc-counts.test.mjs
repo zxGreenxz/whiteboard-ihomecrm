@@ -1,5 +1,79 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CLAIMS, demSqlTuDanhSach, demTrungVersionTuDanhSach, kiemTra } from '../check-doc-counts.mjs';
+
+function withDocRepo(test) {
+  const root = mkdtempSync(join(tmpdir(), 'doc-count-ownership-'));
+  const put = (path, body) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), body);
+  };
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const run = (script, ...args) => spawnSync(process.execPath, [join(root, 'scripts', script), ...args], { cwd: root, encoding: 'utf8' });
+  try {
+    git('init', '-q');
+    git('config', 'core.autocrlf', 'false');
+    for (const script of ['check-doc-counts.mjs', 'generate-repository-inventory.mjs', 'generate-docs-views.mjs', 'lib/git-scope.mjs']) {
+      mkdirSync(dirname(join(root, 'scripts', script)), { recursive: true });
+      copyFileSync(fileURLToPath(new URL(`../${script}`, import.meta.url)), join(root, 'scripts', script));
+    }
+    for (let i = 0; i < 200; i++) put(`tests/${i}.test.mjs`, 'export const ok = true;\n');
+    for (let i = 0; i < 100; i++) put(`supabase/migrations/${i}.sql`, '-- fixture\n');
+    put('supabase/README.md', '100 file hiện có\n');
+    put('docs/DATABASE_SCHEMA.md', 'hiện có 100 file\n');
+    put('docs/CODEBASE_STRUCTURE.md', '(100 file + 0 trong)\n`.e2e-fleet/**` | 0 spec\n`contracts/**` | 3 file\n`src/app/routes/**` (0 file theo domain)\nmột lệnh: 1 suite, mỗi suite một runner\n');
+    put('tooling/test-matrix.json', JSON.stringify({ suites: [{}] }));
+    put('supabase/migration-provenance.json', JSON.stringify({ entries: [] }));
+    put('supabase/migration-policy.json', JSON.stringify(['0/0 file unknown là file CHỈ ALTER', '0 file unknown còn lại thì NGƯỢC LẠI', '0 version bị trùng (0 file)']));
+    put('contracts/surfaces/rpc-surface.json', JSON.stringify({ rpcs: {}, generatedFrom: { catalogFunctions: 0, sourceCallSites: 0 }, missingOnServer: [] }));
+    put('contracts/surfaces/edge-function-surface.json', JSON.stringify({ counts: { source: 0, deployed: 0 } }));
+    put('contracts/surfaces/realtime-surface.json', JSON.stringify({ counts: { published: 0, listenedByHub: 0, replicaIdentityDefault: 0 } }));
+    put('src/app/capabilities/registry.ts', 'export const capabilities = [];\n');
+    git('add', '--', 'scripts', 'tests', 'supabase', 'docs', 'tooling', 'contracts', 'src');
+    expect(run('generate-repository-inventory.mjs', '--write').status).toBe(0);
+    const jsonPath = join(root, 'docs/generated/repository-inventory.json');
+    const mdPath = join(root, 'docs/generated/repository-inventory.md');
+    expect(run('generate-docs-views.mjs').status).toBe(0);
+    git('add', '--', 'docs/generated/repository-inventory.json', 'docs/generated/repository-inventory.md');
+    test({ root, put, git, run, jsonPath, mdPath });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+describe('CLI — JSON là nguồn inventory, MD chỉ do renderer ghi', () => {
+  it('--fix không vá MD generated; chỉ render từ JSON phục hồi bản MD cũ', () => withDocRepo((repo) => {
+    const original = readFileSync(repo.mdPath, 'utf8');
+    const stale = original.replace('**200** file test', '**199** file test');
+    writeFileSync(repo.mdPath, stale);
+    expect(repo.run('check-doc-counts.mjs', '--fix').status).toBe(0);
+    expect(readFileSync(repo.mdPath, 'utf8')).toBe(stale);
+    expect(repo.run('generate-docs-views.mjs', '--check').status).toBe(1);
+    expect(repo.run('generate-docs-views.mjs').status).toBe(0);
+    expect(repo.run('generate-docs-views.mjs', '--check').status).toBe(0);
+    expect(readFileSync(repo.mdPath, 'utf8')).toBe(original);
+  }));
+
+  it('JSON và MD cùng cũ vẫn đỏ; --fix không tạo vòng MD 200→201→200', () => withDocRepo((repo) => {
+    const oldMd = readFileSync(repo.mdPath, 'utf8');
+    repo.put('tests/added.test.mjs', 'export const added = true;\n');
+    repo.git('add', '--', 'tests/added.test.mjs');
+    const result = repo.run('check-doc-counts.mjs', '--fix');
+    expect(result.status).toBe(1);
+    expect(readFileSync(repo.mdPath, 'utf8')).toBe(oldMd);
+    expect(repo.run('generate-repository-inventory.mjs', '--write').status).toBe(0);
+    expect(repo.run('generate-docs-views.mjs', '--check').status).toBe(1);
+    expect(repo.run('generate-docs-views.mjs').status).toBe(0);
+    expect(repo.run('check-doc-counts.mjs').status).toBe(0);
+    expect(repo.run('check-doc-counts.mjs', '--nguon-index').status).toBe(1);
+    repo.git('add', '--', 'docs/generated/repository-inventory.json', 'docs/generated/repository-inventory.md');
+    expect(repo.run('check-doc-counts.mjs', '--nguon-index').status).toBe(0);
+  }));
+});
 
 // Gate này lấy TÀI LIỆU làm đích sửa (có --fix), nên nó sai là nó ghi số sai vào
 // tài liệu. Bản đầu tôi viết đếm thiếu thư mục con và suýt "sửa" con số 15 đúng

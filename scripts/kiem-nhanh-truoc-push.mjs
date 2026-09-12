@@ -1,40 +1,16 @@
 #!/usr/bin/env node
-// Kiểm NHANH trước khi push — chạy tại máy dev, không cần credential, không mạng.
+// Sinh artifact theo allowlist rồi chạy các gate trước push.
+// Stage đúng source/test đầu vào trước khi chạy; kiểm diff staged sau khi xong.
+// Có bước đọc Supabase để sinh types/surfaces: cần credential và mạng.
 //
-//   npm run gate:truoc-push                    # đầy đủ (~3–4 phút, đảo strict chiếm gần hết)
-//   npm run gate:truoc-push -- --khong-dao-strict   # bỏ đảo strict (~40 giây)
+//   npm run gate:truoc-push
+//   npm run gate:truoc-push -- --khong-dao-strict   # docs/script thuần
 //
-// VÌ SAO TỒN TẠI
-//   Ngày 13/08/2026 một đợt tính năng cần 5 vòng sửa-push-chờ CI kéo 19 tiếng,
-//   trong đó 3 vòng đỏ chỉ vì số đếm tài liệu — thứ máy đếm được. Lệnh này làm
-//   hai việc để vòng đó không lặp lại:
-//
-//   1. TỰ CHỮA trước: sinh lại các con số/bản render mà máy sở hữu
-//      (kiểm kê repo, docs views, số đếm trong tài liệu). Con người không bao
-//      giờ phải làm phép cộng cho gate — đó là việc của generator.
-//   2. Chạy TOÀN BỘ nhóm gate tĩnh hay vấp nhất, KHÔNG dừng ở lỗi đầu tiên —
-//      cùng triết lý "một lượt phơi hết lỗi" với quality-gates trên CI.
-//
-//   Danh sách gate dưới đây là tập con TĨNH của job quality-gates trong
-//   .github/workflows/ci-gates.yml (chừa lại các bước nặng: typecheck baseline,
-//   eslint, build, vitest, timezone — CI vẫn canh đủ). Thêm gate mới vào CI thì
-//   cân nhắc thêm vào đây nếu nó rẻ (<5 giây) và hay vấp.
-//
-// PHIÊN SONG SONG (viết lại 28/08/2026)
-//   Working tree này thường chạy nhiều phiên agent cùng lúc. Bản cũ stage theo
-//   delta `git status` toàn repo trước/sau Bước 1 ∪ mọi file bẩn dưới
-//   docs/generated/ — nó vơ cả file phiên khác ghi trong cửa sổ 30-60s lẫn file
-//   bẩn sẵn của họ vào staging của mình, vi phạm chính Contract §3/§11.3 mà nó
-//   phục vụ. Bản này:
-//     - mỗi generator KHAI SỞ HỮU (soHuu) tường minh; chỉ stage file thuộc sở
-//       hữu VÀ đang khác INDEX (nên chạy hai lần liên tiếp vẫn stage đủ);
-//     - generator kiểu `va-tay` (--fix vá số vào file người viết) chỉ stage
-//       file có dòng DA_SUA của lượt này VÀ sạch trước khi Bước 1 chạy;
-//     - chốt cuối đo bản INDEX (check-doc-counts --nguon-index) — đúng thứ CI
-//       sẽ đọc sau commit, miễn nhiễm file bẩn dở của phiên khác;
-//     - lock trong git-dir của worktree chặn hai phiên chạy đồng thời.
-//
-// Thoát 0 = sạch · 1 = có gate đỏ (chi tiết in ở phần tóm tắt).
+// Mỗi worktree có lock riêng. Generator chỉ stage file thuộc sở hữu; bước vá
+// tài liệu chỉ stage file sạch trước lượt chạy và thực sự được sửa trong lượt.
+// Chốt cuối kiểm index. Không stage file WIP ngoài phạm vi hoặc xoá lock sống.
+// Thiếu bằng chứng live không được tính là schema đã khớp.
+// Thoát 0 = gate tĩnh đạt; 1 = có lỗi, xem phần tổng hợp.
 
 import { spawnSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";

@@ -21,13 +21,16 @@
 //   node scripts/generate-repository-inventory.mjs            # in tóm tắt
 //   node scripts/generate-repository-inventory.mjs --write    # ghi docs/generated/
 //   node scripts/generate-repository-inventory.mjs --json
+//   node scripts/generate-repository-inventory.mjs --check [--nguon-index]
 //
-// Thoát 0 · 3 khi không liệt kê được file test (repo hỏng, git không chạy).
+// Stage input test của task trước khi chạy. JSON đo blob trong index; WIP chỉ cảnh báo.
+// Thoát 0 · 1 khi JSON cũ · 3 khi thiếu input/artifact hoặc Git hỏng.
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(repoRoot, 'docs', 'generated', 'repository-inventory.json');
@@ -113,35 +116,52 @@ export function quetMotFile(nguon) {
   return { soGoi: goi.length, loai, khongRo };
 }
 
-function fileTest() {
-  const out = execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8' });
-  return out
-    .trim()
-    .split('\n')
-    .filter((p) => p && TEST_FILE.test(p) && !BO_QUA.some((re) => re.test(p)));
+const git = (args, options = {}) => execFileSync('git', args, {
+  cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+  stdio: ['pipe', 'pipe', 'pipe'], ...options,
+});
+const testPaths = (out) => out.split('\0').filter((p) => p && TEST_FILE.test(p) && !BO_QUA.some((re) => re.test(p)));
+
+function docInputTest() {
+  const chuaStage = [...new Set([
+    ...testPaths(git(['ls-files', '--others', '--exclude-standard', '-z'])),
+    ...testPaths(git(['diff', '--name-only', '-z'])),
+  ])];
+  if (chuaStage.length) {
+    console.warn(`⚠ WIP test chưa stage: ${chuaStage.join(', ')}. Chỉ kiểm blob trong index, không tính các thay đổi này; stage đúng file của task bằng git add nếu cần đưa vào commit.`);
+  }
+  const files = testPaths(git(['ls-files', '--cached', '-z']));
+  if (files.length < 200) {
+    throw new Error(`Chỉ thấy ${files.length} file test — dưới sàn 200, không đủ bằng chứng kiểm kê.`);
+  }
+  // Một lượt Git cho toàn bộ blob: vừa đúng index vừa tránh hàng trăm process.
+  if (files.some((p) => /[\r\n]/.test(p))) throw new Error('Đường dẫn test chứa xuống dòng, không đọc được bằng Git batch.');
+  const blobs = git(['cat-file', '--batch'], { encoding: null, input: files.map((p) => `:0:${p}\n`).join('') });
+  let offset = 0;
+  return files.map((file) => {
+    const end = blobs.indexOf(10, offset);
+    const header = blobs.subarray(offset, end).toString('utf8');
+    const match = /^[a-f0-9]+ blob (\d+)$/.exec(header);
+    if (end < 0 || !match) throw new Error(`Không đọc được blob test trong index: ${file}`);
+    const size = Number(match[1]);
+    const start = end + 1;
+    if (!Number.isSafeInteger(size) || start + size >= blobs.length || blobs[start + size] !== 10) {
+      throw new Error(`Blob test thiếu nội dung: ${file}`);
+    }
+    offset = start + size + 1;
+    return [file, blobs.subarray(start, start + size).toString('utf8')];
+  });
 }
 
-function main(argv) {
-  let files;
-  try {
-    files = fileTest();
-  } catch (error) {
-    console.error(`❌ KHÔNG LIỆT KÊ ĐƯỢC file test: ${error.message}`);
-    console.error('   Đây là "không đo được", không phải "không có file nào".');
-    process.exit(3);
-  }
-  if (files.length < 200) {
-    console.error(`❌ Chỉ thấy ${files.length} file test — repo có hơn 400. Phép quét hỏng.`);
-    process.exit(3);
-  }
-
+function dungInventory() {
+  const inputs = docInputTest();
   const theoLoai = new Map();
   const chiTiet = [];
   let tongGoi = 0;
   let tongKhongRo = 0;
 
-  for (const p of files) {
-    const kq = quetMotFile(readFileSync(join(repoRoot, p), 'utf8'));
+  for (const [p, source] of inputs) {
+    const kq = quetMotFile(source);
     if (kq.soGoi === 0) continue;
     tongGoi += kq.soGoi;
     tongKhongRo += kq.khongRo;
@@ -159,11 +179,11 @@ function main(argv) {
   }
 
   const maNguon = [...new Set(theoLoai.get('ma-nguon') ?? [])].sort();
-  const ketQua = {
+  return {
     $comment:
       'Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến "chưa đo" thành "không có".',
     generatedFrom: 'git ls-files (không phụ thuộc thời điểm chạy)',
-    tongSoFileTest: files.length,
+    tongSoFileTest: inputs.length,
     soFileDocBangFs: chiTiet.length,
     tongLoiGoi: tongGoi,
     khongPhanLoaiDuoc: tongKhongRo,
@@ -173,6 +193,29 @@ function main(argv) {
     testDocMaNguon: maNguon,
     chiTiet: chiTiet.sort((a, b) => b.soGoi - a.soGoi),
   };
+}
+
+export function kiemTraInventory({ nguonIndex = false } = {}) {
+  const expected = dungInventory();
+  const raw = nguonIndex
+    ? git(['show', ':0:docs/generated/repository-inventory.json'])
+    : readFileSync(OUT, 'utf8');
+  return isDeepStrictEqual(JSON.parse(raw), expected);
+}
+
+function main(argv) {
+  if (argv.includes('--check')) {
+    if (argv.includes('--write') || argv.includes('--json')) throw new Error('--check không đi cùng --write/--json.');
+    if (!kiemTraInventory({ nguonIndex: argv.includes('--nguon-index') })) {
+      console.error('❌ Inventory JSON đã cũ. Stage input test rồi chạy node scripts/generate-repository-inventory.mjs --write và node scripts/generate-docs-views.mjs; stage cả JSON/MD.');
+      process.exitCode = 1;
+    } else {
+      console.log('✅ Inventory JSON khớp toàn bộ input test trong index.');
+    }
+    return;
+  }
+  if (argv.includes('--nguon-index')) throw new Error('--nguon-index chỉ dùng cùng --check.');
+  const ketQua = dungInventory();
 
   if (argv.includes('--json')) {
     console.log(JSON.stringify(ketQua, null, 2));
@@ -185,18 +228,22 @@ function main(argv) {
     console.log(`Đã ghi ${OUT.replace(repoRoot, '.')}`);
   }
 
-  console.log(`Kiểm kê ${files.length} file test — ${chiTiet.length} file đọc file bằng fs (${tongGoi} lời gọi)\n`);
-  for (const [l, ds] of [...theoLoai].sort((a, b) => new Set(b[1]).size - new Set(a[1]).size)) {
-    const mo = LOAI.find((x) => x[0] === l)[2];
-    console.log(`  ${String(new Set(ds).size).padStart(4)} file  ${l}`);
-    console.log(`             ${mo}`);
+  console.log(`Kiểm kê ${ketQua.tongSoFileTest} file test — ${ketQua.soFileDocBangFs} file đọc file bằng fs (${ketQua.tongLoiGoi} lời gọi)\n`);
+  for (const [l, detail] of Object.entries(ketQua.theoLoai).sort((a, b) => b[1].soFile - a[1].soFile)) {
+    console.log(`  ${String(detail.soFile).padStart(4)} file  ${l}`);
+    console.log(`             ${detail.moTa}`);
   }
-  console.log(`\n  ${String(tongKhongRo).padStart(4)} lời gọi KHÔNG PHÂN LOẠI ĐƯỢC (đường dẫn dựng lúc chạy).`);
+  console.log(`\n  ${String(ketQua.khongPhanLoaiDuoc).padStart(4)} lời gọi KHÔNG PHÂN LOẠI ĐƯỢC (đường dẫn dựng lúc chạy).`);
   console.log('             Đây là giới hạn của phép đo, không phải "không có gì".');
 
-  console.log(`\n▸ ${maNguon.length} file test đọc MÃ NGUỒN — đây là danh sách §0.2/C10 cần:`);
-  for (const f of maNguon.slice(0, 25)) console.log(`    ${f}`);
-  if (maNguon.length > 25) console.log(`    … còn ${maNguon.length - 25}`);
+  console.log(`\n▸ ${ketQua.testDocMaNguon.length} file test đọc MÃ NGUỒN — đây là danh sách §0.2/C10 cần:`);
+  for (const f of ketQua.testDocMaNguon.slice(0, 25)) console.log(`    ${f}`);
+  if (ketQua.testDocMaNguon.length > 25) console.log(`    … còn ${ketQua.testDocMaNguon.length - 25}`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main(process.argv);
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  try { main(process.argv); } catch (error) {
+    console.error(`❌ Không kiểm kê được: ${error.message}`);
+    process.exitCode = 3;
+  }
+}

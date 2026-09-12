@@ -172,7 +172,8 @@ Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
 
 1. Xác định scope/risk, đọc source và phụ thuộc liên quan; sửa đúng nguyên nhân.
 2. Chạy test/gate theo §5–8 và risk-map; sửa lỗi rồi kiểm lại.
-3. Chạy `npm run gate:truoc-push`; docs/script thuần có thể dùng `-- --khong-dao-strict`.
+3. Stage đúng file source/test của thay đổi trước khi chạy `npm run gate:truoc-push` để generator
+   đọc đủ đầu vào của commit; docs/script thuần có thể dùng `-- --khong-dao-strict`.
    Lệnh tự sinh và stage artifact theo allowlist, rồi chạy gate tĩnh.
    Kiểm cả diff được stage; cảnh báo thiếu credential không chứng minh schema đã khớp.
 4. Báo kết quả cụ thể và phần chưa kiểm; commit/push/review/phát hành theo §3.

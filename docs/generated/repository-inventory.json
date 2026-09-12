@@ -2,9 +2,9 @@
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 645,
-  "soFileDocBangFs": 203,
-  "tongLoiGoi": 446,
-  "khongPhanLoaiDuoc": 223,
+  "soFileDocBangFs": 204,
+  "tongLoiGoi": 457,
+  "khongPhanLoaiDuoc": 229,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
@@ -88,6 +88,17 @@
       "khongPhanLoaiDuoc": 13
     },
     {
+      "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
+      "soGoi": 14,
+      "loai": {
+        "ma-nguon": 4,
+        "manifest": 2,
+        "sql": 3,
+        "powershell": 1
+      },
+      "khongPhanLoaiDuoc": 4
+    },
+    {
       "file": "scripts/__tests__/run-pinned-gitnexus.test.mjs",
       "soGoi": 13,
       "loai": {
@@ -117,17 +128,6 @@
         "manifest": 1
       },
       "khongPhanLoaiDuoc": 3
-    },
-    {
-      "file": "scripts/__tests__/generate-repository-inventory.test.mjs",
-      "soGoi": 10,
-      "loai": {
-        "ma-nguon": 3,
-        "powershell": 1,
-        "manifest": 1,
-        "sql": 1
-      },
-      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
@@ -191,6 +191,20 @@
       "soGoi": 5,
       "loai": {},
       "khongPhanLoaiDuoc": 5
+    },
+    {
+      "file": "scripts/__tests__/check-doc-counts.test.mjs",
+      "soGoi": 5,
+      "loai": {},
+      "khongPhanLoaiDuoc": 5
+    },
+    {
+      "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
+      "soGoi": 5,
+      "loai": {
+        "manifest": 2
+      },
+      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "scripts/__tests__/network-center-admin-credential-reconciliation.test.mjs",
@@ -321,14 +335,6 @@
     },
     {
       "file": "infra/network-center-worker/test/container.test.ts",
-      "soGoi": 3,
-      "loai": {
-        "manifest": 1
-      },
-      "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "scripts/__tests__/check-test-matrix-declarations.test.mjs",
       "soGoi": 3,
       "loai": {
         "manifest": 1

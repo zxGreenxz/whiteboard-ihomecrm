@@ -26,6 +26,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { docTuIndex, lietKeTracked, lietKeUntracked } from "./lib/git-scope.mjs";
+import { kiemTraInventory } from "./generate-repository-inventory.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -158,20 +159,8 @@ export const CLAIMS = [
 
   // Contract tham chiếu manifest, không sở hữu số đếm để generator sửa.
 
-  // ── docs/generated/repository-inventory.md ────────────────────────────────
-  //
-  // Bản .md này SINH RA từ JSON nên về lý thì không lệch được. Nhưng `--check`
-  // của generate-docs-views chỉ chạy khi ai đó nhớ chạy nó, còn gate này chạy mọi
-  // lúc — và con số "file test" là thứ trôi mỗi khi thêm một file test. Canh ở
-  // đây bắt được trường hợp bản .md đã cũ so với repo, kể cả khi nó vẫn khớp JSON
-  // (tức cả JSON lẫn .md cùng cũ — kiểu lệch mà phép so .md↔JSON không thấy).
-  {
-    file: "docs/generated/repository-inventory.md",
-    // "- **479** file test, **150** file đọc file bằng fs"
-    re: /(\*\*)(\d{3,4})(\*\* file test)/,
-    dem: () => demTracked(/\.(test|spec)\.(ts|tsx|mjs|js|cjs)$/, [/node_modules/, /zalouser-bridge[\\/]upstream[\\/]/]),
-    moTa: "số file test trong bản kiểm kê repo",
-  },
+  // Inventory JSON được kiểm toàn bộ với input Git ở main(), kể cả khi JSON
+  // và MD cùng cũ. MD chỉ do generate-docs-views ghi, không vá số bằng --fix.
 
   // ── migration-policy.json ────────────────────────────────────────────────
   // Bốn con số dưới đây từng trôi CÙNG LÚC và không gì báo: policy ghi "62/66
@@ -287,6 +276,18 @@ function main(argv) {
   const mat = [];
   let daSua = 0;
   const fileDaSua = new Set();
+
+  try {
+    if (!kiemTraInventory({ nguonIndex })) {
+      console.error("❌ Inventory JSON đã cũ. Stage input test, chạy node scripts/generate-repository-inventory.mjs --write rồi node scripts/generate-docs-views.mjs; stage cả JSON/MD.");
+      process.exitCode = 1;
+      return;
+    }
+  } catch (error) {
+    console.error(`❌ Không kiểm được inventory: ${error.message}`);
+    process.exitCode = 3;
+    return;
+  }
 
   for (const claim of CLAIMS) {
     const path = join(repoRoot, claim.file);

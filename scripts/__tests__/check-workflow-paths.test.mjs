@@ -5,6 +5,7 @@
 // `push.paths` vẫn xanh vì `pull_request.paths` còn giữ. Đó là lỗ thật — push lên
 // main sẽ không chạy lại workflow, mà main mới là nhánh deploy.
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import yaml from "js-yaml";
 
@@ -64,6 +65,40 @@ describe("scriptDuocGoi", () => {
 
 describe("trạng thái thật của repo", () => {
   const wf = (p) => yaml.load(readFileSync(new URL(`../../${p}`, import.meta.url), "utf8"));
+
+  // These job conditions use the shared JS/Actions subset: context strings,
+  // equality and boolean operators. Evaluate the parsed YAML for real events.
+  const jobActive = (job, eventName, ref) => runInNewContext(
+    job.if,
+    { github: { event_name: eventName, ref } },
+    { timeout: 100 },
+  );
+
+  it.each([
+    ["push", "refs/heads/main", false],
+    ["workflow_dispatch", "refs/heads/main", false],
+    ["pull_request", "refs/pull/123/merge", false],
+    ["push", "refs/heads/release/candidate", false],
+    ["workflow_dispatch", "refs/heads/release/candidate", false],
+    ["push", "refs/heads/production", true],
+    ["workflow_dispatch", "refs/heads/production", true],
+  ])("production promotion activation: %s on %s → %s", (eventName, ref, expected) => {
+    const job = wf(".github/workflows/ci-gates.yml").jobs["production-promotion"];
+    expect(jobActive(job, eventName, ref)).toBe(expected);
+  });
+
+  it.each([
+    ["push", "refs/heads/main", true],
+    ["workflow_dispatch", "refs/heads/main", true],
+    ["pull_request", "refs/pull/123/merge", true],
+    ["push", "refs/heads/release/candidate", true],
+    ["push", "refs/heads/production", false],
+    ["workflow_dispatch", "refs/heads/production", false],
+  ])("full Vitest activation: %s on %s → %s", (eventName, ref, expected) => {
+    const job = wf(".github/workflows/ci-gates.yml").jobs["vitest-tests"];
+    expect(job, "full Vitest job must exist").toBeDefined();
+    expect(jobActive(job, eventName, ref)).toBe(expected);
+  });
 
   it("supabase-migrate: mọi script job chạy đều được CẢ push phủ", () => {
     const doc = wf(".github/workflows/supabase-migrate.yml");

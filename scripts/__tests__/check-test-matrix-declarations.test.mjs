@@ -88,6 +88,29 @@ describe("bất biến khai báo của test-matrix.json", () => {
     expect([...s.excludes].sort()).toEqual([...that].sort());
   });
 
+  it("full root Vitest has one independent owner with its own pinned installation", () => {
+    const suite = matrix.suites.find((s) => s.id === "app-unit");
+    const doc = yaml.load(readFileSync(new URL(`../../${CI}`, import.meta.url), "utf8"));
+    expect(suite.ciJobs).toEqual([{ workflow: CI, job: "vitest-tests" }]);
+    const job = doc.jobs[suite.ciJobs[0].job];
+    expect(job, "declared Vitest owner must exist").toBeDefined();
+    expect(job.needs, "Vitest must not wait for quality-gates").toBeUndefined();
+    const run = lenhCuaBuoc(doc, suite.ciJobs[0].job, suite.ciVitestStep);
+    expect(run, "declared Vitest owner must execute its test step").not.toBeNull();
+    expect(run.split(/\s+--exclude\s+/)[0].trim()).toBe(suite.command);
+    const owners = Object.values(doc.jobs).filter((candidate) =>
+      candidate.steps?.some((step) => step.name === suite.ciVitestStep));
+    expect(owners).toHaveLength(1);
+    const checkout = job.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+    expect(checkout.with["fetch-depth"]).toBe(0);
+    expect(checkout.with["persist-credentials"]).toBe(false);
+    const node = job.steps.find((step) => step.uses?.startsWith("actions/setup-node@"));
+    const runtimes = JSON.parse(readFileSync(new URL("../../tooling/runtime-matrix.json", import.meta.url), "utf8"));
+    expect(node.with["node-version"]).toBe(runtimes.workflows.find((entry) => entry.path === CI).node);
+    expect(node.with.cache).toBe("npm");
+    expect(job.steps.some((step) => step.run?.trim() === "npm ci")).toBe(true);
+  });
+
   it("suite có ciCommandStep khai đúng lệnh đang chạy trong workflow", () => {
     for (const s of matrix.suites.filter((suite) => suite.ciCommandStep)) {
       const target = s.ciJobs[0];

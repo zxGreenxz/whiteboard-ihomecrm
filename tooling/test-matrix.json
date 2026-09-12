@@ -45,7 +45,7 @@
     {
       "id": "app-unit",
       "runner": "vitest",
-      "ciJob": "quality-gates",
+      "ciJob": "vitest-tests",
       "command": "npx vitest run src scripts/__tests__ worker/__tests__",
       "runtime": "node 24.18.0 (CI)",
       "risk": "normal",
@@ -112,7 +112,7 @@
       "ciJobs": [
         {
           "workflow": ".github/workflows/ci-gates.yml",
-          "job": "quality-gates"
+          "job": "vitest-tests"
         }
       ],
       "environment": "ci",
