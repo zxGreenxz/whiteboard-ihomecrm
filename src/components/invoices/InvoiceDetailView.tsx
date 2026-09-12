@@ -33,7 +33,7 @@ import { useInvoice, useCancelInvoice, useRestoreInvoice, useReviewInvoiceAdjust
 import { useMyContext } from '@/hooks/useMyContext';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
-import { canEditInvoice, canCancelInvoice } from '@/lib/invoiceUtils';
+import { canEditInvoice, canCancelInvoice, canOpenInvoiceEditor } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { usePhoneViewport } from '@/hooks/use-mobile';
@@ -216,7 +216,10 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
     (invoice.status === 'APPROVED' ||
       invoice.status === 'PARTIAL_PAID' ||
       invoice.status === 'OVERDUE');
-  const showEditBtn = canEditPerm && canEditInvoice(invoice);
+  // HĐ chưa thu tiền dùng sửa thường; HĐ đã thu tiền dùng luồng điều chỉnh
+  // bất biến. Cả hai đều cần quyền invoices.edit và không áp dụng cho HĐ huỷ.
+  const showEditBtn =
+    canEditPerm && canOpenInvoiceEditor(invoice);
   // canCancelInvoice thêm điều kiện paid_amount=0 — RPC cancel KHÔNG guard ở DB.
   const showCancelBtn = canCancelPerm && canCancelInvoice(invoice);
   // Phục hồi mở cho ai có quyền huỷ (RPC restore chỉ đòi invoices.edit) —
@@ -314,13 +317,13 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
           </Button>
         )}
 
-        {canEditPerm && canEditInvoice(invoice) && (
+        {showEditBtn && (
           <Button
             variant="outline"
             size="icon"
             className="h-9 w-9"
             onClick={() => setEditDialogOpen(true)}
-            title="Chỉnh sửa"
+            title={(invoice.paid_amount ?? 0) > 0 ? 'Điều chỉnh hóa đơn' : 'Chỉnh sửa'}
           >
             <Pencil className="h-4 w-4" />
           </Button>
