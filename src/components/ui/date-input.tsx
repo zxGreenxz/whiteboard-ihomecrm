@@ -19,6 +19,8 @@ interface DateInputProps {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  /** Class cho chính ô input (chiều cao, viền…); `className` là cho khung bọc. */
+  inputClassName?: string;
 }
 
 function isoToDisplay(iso?: string): string {
@@ -53,6 +55,7 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
       disabled,
       placeholder = "dd/mm/yyyy",
       className,
+      inputClassName,
     },
     ref
   ) {
@@ -108,7 +111,7 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
           disabled={disabled}
           placeholder={placeholder}
           inputMode="numeric"
-          className="pr-9"
+          className={cn("pr-9", inputClassName)}
         />
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>

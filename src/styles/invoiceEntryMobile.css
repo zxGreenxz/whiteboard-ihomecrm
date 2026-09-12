@@ -1,0 +1,135 @@
+/* =============================================================
+   Bộ nhập liệu hoá đơn (Sửa / Tạo lẻ) — biến thể điện thoại.
+   Dựng theo handoff "Hóa đơn mobile - Sửa & Tạo lẻ.dc.html", dùng token của
+   mobileApp.css (.cm-stage/.cm-app). Prefix `ien-` để không đụng financeMobile.
+   ============================================================= */
+.cm-stage.ien-stage { z-index: 60; }
+.cm-app .ien-form { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.cm-app .ien-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; padding: 14px 16px 18px; }
+.cm-app .ien-body::-webkit-scrollbar { display: none; }
+
+/* --- Thẻ & tiêu đề --- */
+.cm-app .ien-card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 15px; box-shadow: var(--sh-1); margin-bottom: 12px; }
+.cm-app .ien-card-ctx { border-radius: 20px; padding: 13px 14px; }
+.cm-app .ien-h { font-size: 13.5px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); }
+.cm-app .ien-h-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.cm-app .ien-sub { font-size: 11px; font-weight: 500; color: var(--ink-3); line-height: 1.5; }
+.cm-app .ien-lbl { display: block; font-size: 11.5px; font-weight: 600; color: var(--ink-3); margin-bottom: 6px; }
+.cm-app .ien-mono { font-family: var(--mono); }
+.cm-app .ien-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cm-app .ien-gap { margin-bottom: 12px; }
+
+/* --- Dải ngữ cảnh --- */
+.cm-app .ien-chip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 13px; font-weight: 700; color: #fff; background: var(--ink); padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.cm-app .ien-chip i { opacity: .45; font-style: normal; }
+.cm-app .ien-rep { font-size: 14.5px; font-weight: 700; letter-spacing: -.2px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-app .ien-ctx-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); }
+.cm-app .ien-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: var(--brand-600); background: var(--brand-50); border: 1px solid var(--brand-100); padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.cm-app .ien-pill.warn { color: #b45309; background: #fbf1da; border-color: #f0dca8; }
+.cm-app .ien-pill.danger { color: #c0392f; background: #fcebe9; border-color: #f2c8c4; }
+.cm-app .ien-pill.ok { color: #1f9d57; background: #e6f5ec; border-color: #bfe6cd; }
+.cm-app .ien-dates { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.cm-app .ien-dates i { color: var(--ink-faint); font-style: normal; }
+
+/* --- Ô nhập --- */
+.cm-app .ien-in { width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 11px; padding: 0 13px; font-family: var(--font); font-size: 14px; font-weight: 600; color: var(--ink); background: var(--surface-2); outline: none; box-shadow: none; }
+.cm-app .ien-in:focus, .cm-app .ien-in:focus-visible { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); outline: none; }
+.cm-app .ien-in:disabled { opacity: .55; }
+.cm-app .ien-in.num { font-family: var(--mono); font-size: 15px; font-weight: 700; text-align: right; padding: 0 11px; }
+.cm-app .ien-in.num.soft { color: var(--ink-2); }
+.cm-app .ien-in.num.soft:focus { color: var(--ink); }
+.cm-app .ien-in.date { font-family: var(--mono); font-weight: 700; padding-left: 11px; }
+.cm-app .ien-in.month { font-family: var(--mono); font-size: 14.5px; font-weight: 700; }
+.cm-app .ien-in.sm { height: 40px; border-radius: 10px; font-size: 13.5px; }
+.cm-app .ien-in.sm.num { font-size: 14px; padding: 0 9px; }
+.cm-app .ien-datewrap .ien-in { padding-right: 36px; }
+.cm-app .ien-money { position: relative; }
+.cm-app .ien-money .ien-in { padding-right: 32px; }
+.cm-app .ien-money > i { position: absolute; right: 13px; top: 50%; transform: translateY(-50%); font-size: 12px; font-weight: 700; color: var(--ink-3); font-style: normal; pointer-events: none; }
+.cm-app .ien-select { appearance: none; -webkit-appearance: none; background-color: var(--surface-2); background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238d8678' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; text-overflow: ellipsis; font-weight: 700; }
+.cm-app .ien-select.sm { padding: 0 28px 0 10px; background-position: right 8px center; font-size: 13px; font-weight: 600; }
+.cm-app .ien-changed { font-size: 11px; font-weight: 600; color: #b45309; margin-top: 5px; }
+.cm-app .ien-note { font-size: 11px; font-weight: 500; color: var(--ink-3); margin-top: 8px; line-height: 1.5; }
+.cm-app .ien-note.mono { font-family: var(--mono); font-weight: 600; }
+.cm-app textarea.ien-in { height: auto; min-height: 0; padding: 11px 13px; font-weight: 500; line-height: 1.5; resize: none; }
+
+/* --- Số người: stepper --- */
+.cm-app .ien-step { display: flex; align-items: center; gap: 10px; }
+.cm-app .ien-step-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-size: 22px; font-weight: 700; cursor: pointer; display: grid; place-items: center; line-height: 1; flex-shrink: 0; font-family: var(--font); }
+.cm-app .ien-step-btn:active { background: var(--line-2); }
+.cm-app .ien-step-box { flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; height: 44px; }
+.cm-app .ien-step-box input { width: 56px; height: 100%; border: 0; background: transparent; text-align: right; font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--ink); outline: none; padding: 0; box-shadow: none; }
+.cm-app .ien-step-box span { font-size: 13px; font-weight: 600; color: var(--ink-3); align-self: center; }
+
+/* --- Hoá đơn hiện tại --- */
+.cm-app .ien-cur { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; margin-bottom: 14px; background: var(--surface-2); }
+.cm-app .ien-cur-hd { display: flex; align-items: center; gap: 8px; padding: 10px 13px; background: var(--line-2); border-bottom: 1px solid var(--line); }
+.cm-app .ien-cur-hd b { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--ink-2); }
+.cm-app .ien-cur-hd span { font-size: 11px; font-weight: 500; color: var(--ink-3); }
+.cm-app .ien-cur-grid { display: grid; grid-template-columns: 118px 1fr; }
+.cm-app .ien-cur-l { padding: 9px 12px; font-size: 12px; font-weight: 600; color: var(--ink-2); border-right: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); }
+.cm-app .ien-cur-v { padding: 9px 12px; font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink-3); border-bottom: 1px solid var(--line-2); }
+.cm-app .ien-cur-v small { display: block; font-size: 11px; font-weight: 400; color: var(--ink-faint); margin-top: 2px; }
+.cm-app .ien-cur-l.tot, .cm-app .ien-cur-v.tot { background: var(--line-2); border-bottom: 0; padding-top: 10px; padding-bottom: 10px; }
+.cm-app .ien-cur-l.tot { color: var(--ink); font-weight: 700; }
+.cm-app .ien-cur-v.tot { color: var(--ink-2); font-size: 14px; }
+
+/* --- Tiền cọc: công tắc --- */
+.cm-app .ien-card.dep-on { background: #f7fbf8; border-color: var(--brand-100); }
+.cm-app .ien-switch { margin-left: auto; width: 46px; height: 28px; border-radius: 999px; border: 0; cursor: pointer; position: relative; flex-shrink: 0; background: var(--line); transition: background .15s; padding: 0; }
+.cm-app .ien-switch.on { background: var(--brand); }
+.cm-app .ien-switch i { position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .15s; }
+.cm-app .ien-switch.on i { transform: translateX(18px); }
+
+/* --- Nút --- */
+.cm-app .ien-btn { height: 40px; border-radius: 11px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); font-family: var(--font); font-size: 13px; font-weight: 700; cursor: pointer; padding: 0 13px; }
+.cm-app .ien-btn:active { background: var(--line-2); }
+.cm-app .ien-btn:disabled { opacity: .5; }
+.cm-app .ien-btn.full { width: 100%; margin-top: 11px; }
+.cm-app .ien-btn.add { margin-left: auto; height: 32px; border-radius: 10px; border-color: var(--brand-100); background: var(--brand-50); color: var(--brand-600); font-size: 12.5px; }
+.cm-app .ien-btn.del { width: 36px; height: 36px; border-radius: 9px; border-color: #f2c8c4; background: #fcebe9; color: #d6453f; font-size: 14px; padding: 0; display: grid; place-items: center; }
+.cm-app .ien-btn.reload { width: 34px; height: 34px; border-radius: 9px; border-color: #f2c8c4; background: #fff; color: #c0392f; padding: 0; display: grid; place-items: center; flex-shrink: 0; }
+
+/* --- Khoản thu thêm --- */
+.cm-app .ien-extra { border-top: 1px solid var(--line-2); margin-top: 12px; padding-top: 12px; }
+.cm-app .ien-extra-r1 { display: grid; grid-template-columns: 104px 1fr 36px; gap: 9px; align-items: center; }
+.cm-app .ien-extra-r2 { display: grid; grid-template-columns: 78px 1fr auto; gap: 9px; align-items: center; margin-top: 9px; }
+.cm-app .ien-extra-tot { font-family: var(--mono); font-size: 13.5px; font-weight: 700; color: var(--brand-600); white-space: nowrap; }
+
+/* --- Giảm trừ / Nợ cũ --- */
+.cm-app .ien-adj { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.cm-app .ien-adj-row { border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+.cm-app .ien-adj-row.disc { background: #fbf1da; border: 1px solid #f0dca8; }
+.cm-app .ien-adj-row.debt { background: #fcebe9; border: 1px solid #f2c8c4; }
+.cm-app .ien-adj-row > b { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.cm-app .ien-adj-row.disc > b { color: #8a5a08; }
+.cm-app .ien-adj-row.debt > b { color: #c0392f; }
+.cm-app .ien-adj-in { position: relative; margin-left: auto; width: 132px; }
+.cm-app .ien-adj-in .ien-in { width: 100%; margin-left: 0; }
+.cm-app .ien-adj-row .ien-in { margin-left: auto; width: 132px; height: 40px; border-radius: 10px; background: #fff; font-family: var(--mono); font-size: 14.5px; font-weight: 700; text-align: right; padding: 0 11px; }
+.cm-app .ien-adj-row.disc .ien-in { border-color: #f0dca8; }
+.cm-app .ien-adj-row.disc .ien-in:focus { box-shadow: 0 0 0 3px #fbf1da; border-color: #f0dca8; }
+.cm-app .ien-adj-row.debt .ien-in { border-color: #f2c8c4; color: #c0392f; }
+.cm-app .ien-adj-row.debt .ien-in:focus { box-shadow: 0 0 0 3px #fcebe9; border-color: #f2c8c4; }
+.cm-app .ien-adj-sub { font-size: 11px; font-weight: 600; color: #b45309; margin: -4px 4px 0; }
+.cm-app .ien-adj-src { list-style: none; margin: -4px 4px 0; padding: 0; font-size: 11px; font-weight: 600; color: #c0392f; }
+.cm-app .ien-adj-src li { display: flex; justify-content: space-between; gap: 8px; }
+
+/* --- Prorate --- */
+.cm-app .ien-pr { display: flex; flex-direction: column; gap: 6px; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--line-2); }
+.cm-app .ien-pr div { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.cm-app .ien-pr b { font-family: var(--mono); color: var(--ink); }
+
+/* --- Cảnh báo --- */
+.cm-app .ien-alert { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; padding: 12px 13px; border-radius: 11px; background: #fcebe9; border: 1px solid #f2c8c4; color: #c0392f; font-size: 12.5px; font-weight: 600; line-height: 1.5; }
+.cm-app .ien-empty { text-align: center; padding: 26px 20px; border: 1px dashed var(--line); border-radius: 16px; color: var(--ink-3); font-size: 13px; font-weight: 500; margin-bottom: 12px; }
+
+/* --- Chân trang dính --- */
+.cm-app .ien-foot { flex-shrink: 0; background: var(--surface); border-top: 1px solid var(--line); padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 20px rgba(27,24,19,.06); }
+.cm-app .ien-foot-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.cm-app .ien-foot-l { font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+.cm-app .ien-foot-delta { font-family: var(--mono); font-size: 11px; font-weight: 700; color: #b45309; margin-top: 3px; }
+.cm-app .ien-foot-tot { font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: -.8px; color: var(--ink); white-space: nowrap; }
+.cm-app .ien-submit { width: 100%; height: 50px; border-radius: 14px; border: 0; background: var(--brand); color: #fff; font-family: var(--font); font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(31,122,82,.25); }
+.cm-app .ien-submit:active { background: var(--brand-600); }
+.cm-app .ien-submit:disabled { opacity: .55; box-shadow: none; }

@@ -26,9 +26,13 @@ export function useIsMobile() {
  */
 export function usePhoneViewport() {
   const [phone, setPhone] = React.useState(
-    () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches,
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 767px)").matches,
   );
   React.useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
     const mql = window.matchMedia("(max-width: 767px)");
     const onChange = () => setPhone(mql.matches);
     mql.addEventListener("change", onChange);
