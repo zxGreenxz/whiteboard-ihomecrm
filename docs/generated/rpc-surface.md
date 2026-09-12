@@ -17,26 +17,27 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Chỉ số | Giá trị |
 |---|---|
-| RPC được gọi từ mã nguồn | 287 |
-| Hàm trong catalog (public + api) | 1159 |
-| File mã nguồn đã quét | 1563 |
-| SECURITY DEFINER | 271 |
-| **Gọi mà server KHÔNG CÓ** | **2** |
+| RPC được gọi từ mã nguồn | 289 |
+| Hàm trong catalog (public + api) | 1161 |
+| File mã nguồn đã quét | 1564 |
+| SECURITY DEFINER | 273 |
+| **Gọi mà server KHÔNG CÓ** | **0** |
 
 ## Theo mức rủi ro
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
 | thường | 209 | còn lại |
-| tiền | 78 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| tiền | 80 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 78 RPC chạm TIỀN
+## 80 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
 
 | RPC | DEFINER | Nơi gọi |
 |---|---|---|
+| `adjust_invoice_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |
 | `annotate_income_expense_v1` | ✔ | hooks/income-expenses/annotateMutations.ts |
 | `append_income_expense_supplement_v1` | ✔ | hooks/income-expenses/supplements.ts |
 | `approve_income_expense_v1` | ✔ | hooks/income-expenses/statusMutations.ts |
@@ -94,6 +95,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `record_payment_gps` | ✔ | lib/v5PaymentGps.ts |
 | `restore_income_expense` | ✔ | hooks/income-expenses/statusMutations.ts |
 | `reverse_posted_income_expense_v2` | ✔ | hooks/income-expenses/statusMutations.ts |
+| `review_invoice_adjustment_v2` | ✔ | lib/invoiceAdjustmentRpc.ts |
 | `salary_payout_v1` | ✔ | hooks/useManagerSalary.ts |
 | `salary_staff_months` | ✔ | hooks/useManagerSalary.ts |
 | `salary_work_ledger` | ✔ | hooks/useManagerSalary.ts |

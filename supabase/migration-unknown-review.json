@@ -535,32 +535,6 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
-    },
-    "supabase/migrations/20260912065909_invoice_adjustment_atomic_revisions.sql": {
-      "sha256": "a7ae6673c7a7510260bcd4659499973750c32d9cfae19c6ae831d7c7331db2ae",
-      "missingObjects": [
-        "function:app_private.normalize_invoice_adjustment_items_v2",
-        "function:app_private.proved_legacy_invoice_pnl_v2",
-        "function:public.adjust_invoice_v2",
-        "function:public.review_invoice_adjustment_v2",
-        "function:app_private.pin_invoice_collection_manifest_v2"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "Migration mới chưa apply; các hàm v2 vắng mặt có chủ ý trong khi chuẩn bị phát hành. Backend và bổ sung DEFAULT NULL đã review độc lập; 110 tests, live DEMO rollback hai lần migration và kiểm thử đột biến đạt. Frontend đã sẵn sàng ở eebfe1d2. Chỉ apply qua forward lane có backup từ SHA sạch đã review sau draft PR. Hồ sơ này không chứng minh triển khai và sẽ gỡ sau receipt/provenance/catalog thực.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260912065909_invoice_adjustment_atomic_revisions.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION public.adjust_invoice_v2("
-        },
-        {
-          "duong_dan": "docs/superpowers/plans/2026-09-12-invoice-adjustment-repair.md",
-          "trich_doan": "Apply only reviewed migrations using the forward lane with backup."
-        },
-        {
-          "duong_dan": "docs/audits/2026-09-12-invoice-adjustment-repair.probe.sql",
-          "trich_doan": "Executed by scripts/test-invoice-adjustment-repair.mjs inside BEGIN/ROLLBACK."
-        }
-      ]
     }
   }
 }

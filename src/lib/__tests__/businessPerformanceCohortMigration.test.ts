@@ -21,11 +21,12 @@ function liveDefinitionOf(name: string, corpus = migrations) {
       const start = match.index;
       const headerAndBody = sql.slice(start);
       const delimiter = /\bAS\s+(\$(?:[a-z_][a-z0-9_]*)?\$)/i.exec(headerAndBody);
-      if (!delimiter) throw new Error(`${migration.file}: missing function body for ${name}`);
+      const quote = delimiter?.[1];
+      if (!delimiter || !quote) throw new Error(`${migration.file}: missing function body for ${name}`);
       const bodyStart = start + delimiter.index + delimiter[0].length;
-      const bodyEnd = sql.indexOf(delimiter[1], bodyStart);
+      const bodyEnd = sql.indexOf(quote, bodyStart);
       if (bodyEnd < 0) throw new Error(`${migration.file}: unterminated body for ${name}`);
-      hit = { file: migration.file, sql: sql.slice(start, bodyEnd + delimiter[1].length), migrationSql: sql };
+      hit = { file: migration.file, sql: sql.slice(start, bodyEnd + quote.length), migrationSql: sql };
     }
   }
   if (!hit) throw new Error(`Missing latest definition of ${name}`);

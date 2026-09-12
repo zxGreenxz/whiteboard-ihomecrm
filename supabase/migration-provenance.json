@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-12T08:59:54.659Z",
+  "generatedAt": "2026-09-12T09:22:00.786Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 553,
-    "unknown": 74,
-    "catalog-proven": 212,
+    "ledger-applied": 554,
+    "unknown": 73,
+    "catalog-proven": 213,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -9943,14 +9943,21 @@
       "name": "invoice_adjustment_atomic_revisions",
       "scheme": "timestamp14",
       "sha256": "a7ae6673c7a7510260bcd4659499973750c32d9cfae19c6ae831d7c7331db2ae",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "function:app_private.normalize_invoice_adjustment_items_v2",
-        "function:app_private.proved_legacy_invoice_pnl_v2",
-        "function:public.adjust_invoice_v2",
-        "function:public.review_invoice_adjustment_v2",
-        "function:app_private.pin_invoice_collection_manifest_v2"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-12T09:07:25.191Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260912091403_invoice_domain_conflicts_http409.sql",
+      "version": "20260912091403",
+      "name": "invoice_domain_conflicts_http409",
+      "scheme": "timestamp14",
+      "sha256": "5bf29e7853abf7435a7ede47be3e27d7b60b28899bada858059400c3a1b2844c",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.adjust_invoice_v2",
+        "catalog:function:public.review_invoice_adjustment_v2"
       ]
     },
     {

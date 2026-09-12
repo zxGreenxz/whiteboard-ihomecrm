@@ -22,7 +22,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
   page.on('request', request => { const match = /^https:\/\/([a-z0-9]+)\.supabase\.co\//.exec(request.url()); if (match) refs.add(match[1]); });
   const errors = trackConsoleErrors(page);
   page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/rest/v1/rpc/**', async route => {
+  await page.context().route('**/rest/v1/rpc/**', async route => {
     const request = route.request(), url = new URL(request.url());
     if (request.method() !== 'POST' || !/\/(record_invoice_collection_v\d+|adjust_invoice_v\d+|review_invoice_adjustment_v\d+)$/.test(url.pathname)) return route.continue();
     const payload = request.postDataJSON();
@@ -33,6 +33,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     await route.continue();
   });
   const state = async () => (await query<{ items: { id: string }[]; [key: string]: unknown }>(`SELECT i.*,
+    i.paid_amount::bigint AS paid_amount,i.remaining_amount::bigint AS remaining_amount,i.total_amount::bigint AS total_amount,
     (SELECT count(*) FROM public.invoice_payment_collections c WHERE c.invoice_id=i.id AND c.status='ACTIVE') AS active,
     (SELECT jsonb_agg(to_jsonb(line) ORDER BY line.sort_order,line.id) FROM public.invoice_items line WHERE line.invoice_id=i.id) AS items
     FROM public.invoices i WHERE i.id=${uuidLiteral(invoiceId!)} AND i.organization_id='${DEMO_ORG_ID}'`))[0];
@@ -123,13 +124,38 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     const secondEditor = await openEditor();
     await secondEditor.getByLabel('Ghi chú giảm trừ', { exact: true }).fill('E2E chỉ cập nhật ghi chú');
     await secondEditor.getByLabel('Lý do điều chỉnh', { exact: true }).fill('E2E sửa ghi chú không đổi tiền');
+    // Another real browser tab changes the document while this form remains open.
+    const other = await page.context().newPage();
+    const otherErrors = trackConsoleErrors(other);
+    other.on('pageerror', error => otherErrors.push(error.message));
+    try {
+      await other.goto(`/invoices/${invoiceId}`);
+      await other.locator('button[title="Điều chỉnh hóa đơn"]').click();
+      const otherEditor = other.getByRole('dialog').filter({ has: other.getByRole('heading', { name: /^Điều chỉnh hóa đơn / }) });
+      await otherEditor.getByLabel('Ghi chú giảm trừ', { exact: true }).fill('E2E tab thứ hai');
+      await otherEditor.getByLabel('Lý do điều chỉnh', { exact: true }).fill('E2E tạo phiên bản cạnh tranh');
+      const competing = waitRpc('adjust_invoice_v2', other);
+      await otherEditor.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();
+      expect(await assertRpc(competing)).toMatchObject({ revision: 2, delta: 0 });
+    } finally { errors.push(...otherErrors); await other.close(); }
+    const stale = waitRpc('adjust_invoice_v2');
+    await secondEditor.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();
+    const staleResponse = await stale;
+    expect(staleResponse.status()).toBe(409);
+    expect((await staleResponse.json()).code).toBe('PT409');
+    await expect(secondEditor.getByRole('button', { name: 'Lưu điều chỉnh', exact: true })).toBeDisabled();
+    await secondEditor.getByRole('button', { name: 'Tải lại hóa đơn', exact: true }).click();
+    await expect(secondEditor.getByLabel('Ghi chú giảm trừ', { exact: true })).toHaveValue('E2E tab thứ hai');
+    await secondEditor.getByLabel('Ghi chú giảm trừ', { exact: true }).fill('E2E chỉ cập nhật ghi chú');
+    await secondEditor.getByLabel('Lý do điều chỉnh', { exact: true }).fill('E2E tải lại rồi sửa ghi chú');
     const secondEdit = waitRpc('adjust_invoice_v2');
     await secondEditor.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();
     const revision2 = await assertRpc(secondEdit); await expect(secondEditor).toBeHidden();
-    expect(revision2).toMatchObject({ revision: 2, delta: 0 });
-    expect(await state()).toMatchObject({ paid_amount: 6239000, total_amount: 6239000, adjustment_revision: 2, adjustment_review_status: 'PENDING' });
+    expect(revision2).toMatchObject({ revision: 3, delta: 0 });
+    expect(await state()).toMatchObject({ paid_amount: 6239000, total_amount: 6239000, adjustment_revision: 3, adjustment_review_status: 'PENDING' });
     await expect(page.locator('[data-revision="1"]').getByRole('button', { name: 'Xác nhận kiểm tra', exact: true })).toBeHidden();
-    await expect(page.locator('[data-revision="2"]').getByRole('button', { name: 'Xác nhận kiểm tra', exact: true })).toBeVisible();
+    await expect(page.locator('[data-revision="2"]').getByRole('button', { name: 'Xác nhận kiểm tra', exact: true })).toBeHidden();
+    await expect(page.locator('[data-revision="3"]').getByRole('button', { name: 'Xác nhận kiểm tra', exact: true })).toBeVisible();
 
     await page.evaluate(({ building, billingMonth }) => {
       sessionStorage.setItem('flt:invoices:filters', JSON.stringify({ building_id: building, billing_month: billingMonth, adjustment_review_status: 'pending' }));
@@ -143,7 +169,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     const filterResponse = await filtered;
     expect(filterResponse.ok()).toBe(true);
     expect((await filterResponse.json()).some((row: { id: string }) => row.id === invoiceId)).toBe(true);
-    await expect(page.getByRole('button', { name: 'Bản mới nhất chưa kiểm tra', exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox').filter({ hasText: 'Bản mới nhất chưa kiểm tra' })).toBeVisible();
 
     // Canonical reversal, then the issued editor must remain available at paid_amount=0.
     await query(`BEGIN; SET LOCAL lock_timeout='10s'; SET LOCAL statement_timeout='60s';
@@ -160,8 +186,8 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     const thirdEdit = waitRpc('adjust_invoice_v2');
     await afterReverse.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();
     const revision3 = await assertRpc(thirdEdit); await expect(afterReverse).toBeHidden();
-    expect(revision3).toMatchObject({ revision: 3, after_total: 4239000 });
-    expect(await state()).toMatchObject({ paid_amount: 0, total_amount: 4239000, adjustment_revision: 3 });
+    expect(revision3).toMatchObject({ revision: 4, after_total: 4239000 });
+    expect(await state()).toMatchObject({ paid_amount: 0, total_amount: 4239000, adjustment_revision: 4 });
     expect(errors, errors.join(' | ')).toEqual([]);
   } finally {
     try {

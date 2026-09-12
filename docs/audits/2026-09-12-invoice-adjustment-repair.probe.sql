@@ -36,7 +36,7 @@ BEGIN
     RAISE EXCEPTION 'Payload mismatch passed'; EXCEPTION WHEN unique_violation THEN NULL; END;
   BEGIN
     PERFORM public.adjust_invoice_v2(v_invoice_id,items,0,NULL,NULL,'Stale request',0,50000,inv.updated_at,'adjustment-probe-stale');
-    RAISE EXCEPTION 'Stale revision passed'; EXCEPTION WHEN serialization_failure THEN NULL; END;
+    RAISE EXCEPTION 'Stale revision passed'; EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL; END;
   SELECT * INTO inv FROM public.invoices WHERE id=v_invoice_id;
   FOREACH bad IN ARRAY ARRAY['[]'::jsonb,'[null]'::jsonb,'[{"type":"RENT","description":"Invalid","unit_price":"NaN","accounting_class":"REVENUE"}]'::jsonb,
     '[{"type":"RENT","description":"Invalid","unit_price":-1,"accounting_class":"REVENUE"}]'::jsonb] LOOP
@@ -70,7 +70,7 @@ BEGIN
   SELECT * INTO inv FROM public.invoices WHERE id=v_invoice_id;
   a:=public.adjust_invoice_v2(v_invoice_id,items,1000,'Actual discount','Second revision','Discount after reversal',inv.adjustment_revision,inv.paid_amount,inv.updated_at,'adjustment-probe-revision-2');
   IF a.revision<>2 OR a.after_total<>109000 OR (SELECT discount_amount FROM public.invoices WHERE id=v_invoice_id)<>1000 THEN RAISE EXCEPTION 'Second adjustment/discount failed'; END IF;
-  BEGIN PERFORM public.review_invoice_adjustment_v2(a.id,1); RAISE EXCEPTION 'Stale review passed'; EXCEPTION WHEN serialization_failure THEN NULL; END;
+  BEGIN PERFORM public.review_invoice_adjustment_v2(a.id,1); RAISE EXCEPTION 'Stale review passed'; EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL; END;
   -- Current line identities, readings/dates and fractional factors survive notes-only saves.
   SELECT * INTO inv FROM public.invoices WHERE id=v_invoice_id;
   SELECT jsonb_agg(to_jsonb(i)||CASE WHEN i.accounting_class='REVENUE'

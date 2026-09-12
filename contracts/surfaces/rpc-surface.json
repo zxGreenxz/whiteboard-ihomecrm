@@ -1,35 +1,22 @@
 {
   "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
   "generatedFrom": {
-    "sourceCallSites": 1563,
-    "catalogFunctions": 1159,
+    "sourceCallSites": 1564,
+    "catalogFunctions": 1161,
     "schemas": [
       "public",
       "api"
     ]
   },
   "counts": {
-    "calledRpcs": 287,
+    "calledRpcs": 289,
     "byRisk": {
       "normal": 209,
-      "financial": 78
+      "financial": 80
     },
-    "securityDefiner": 271
+    "securityDefiner": 273
   },
-  "missingOnServer": [
-    {
-      "name": "adjust_invoice_v2",
-      "callers": [
-        "src/lib/invoiceAdjustmentRpc.ts"
-      ]
-    },
-    {
-      "name": "review_invoice_adjustment_v2",
-      "callers": [
-        "src/lib/invoiceAdjustmentRpc.ts"
-      ]
-    }
-  ],
+  "missingOnServer": [],
   "rpcs": {
     "accept_organization_invitation_v1": {
       "definitions": [
@@ -50,6 +37,25 @@
         "src/hooks/useAcceptInvitation.ts"
       ],
       "risk": "normal"
+    },
+    "adjust_invoice_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_id uuid, p_after_items jsonb, p_discount_amount numeric, p_discount_notes text DEFAULT NULL::text, p_notes text DEFAULT NULL::text, p_reason text DEFAULT NULL::text, p_expected_revision bigint DEFAULT NULL::bigint, p_expected_paid_amount numeric DEFAULT NULL::numeric, p_expected_updated_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "invoice_adjustments",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/invoiceAdjustmentRpc.ts"
+      ],
+      "risk": "financial"
     },
     "annotate_income_expense_v1": {
       "definitions": [
@@ -4274,6 +4280,25 @@
       ],
       "callers": [
         "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "review_invoice_adjustment_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_adjustment_id uuid, p_expected_revision bigint",
+          "returns": "invoice_adjustments",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/invoiceAdjustmentRpc.ts"
       ],
       "risk": "financial"
     },

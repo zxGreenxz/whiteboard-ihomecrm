@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { stripMigrationTransactionControl } from '../../../scripts/apply-accounting-rollout.mjs';
 
 const migrationPath = 'supabase/migrations/20260912065909_invoice_adjustment_atomic_revisions.sql';
+const conflictMigrationPath = 'supabase/migrations/20260912091403_invoice_domain_conflicts_http409.sql';
 const org = 'dddd0000-0000-4000-8000-000000000001';
 const invoice = '00000000-0000-4000-8000-000000000001';
 const actor = '00000000-0000-4000-8000-000000000002';
@@ -10,6 +12,9 @@ const building = '00000000-0000-4000-8000-000000000003';
 const collection = '00000000-0000-4000-8000-000000000004';
 const componentSource = readFileSync('supabase/migrations/20260728030000_business_performance_invoice_cohort_and_categories.sql', 'utf8');
 const adjustmentSource = readFileSync('supabase/migrations/20260911093834_invoice_adjustment_review.sql', 'utf8');
+const collectionSource = readFileSync('supabase/migrations/20260908041231_invoice_actual_change_rounding_report.sql','utf8');
+const collectionStart = collectionSource.indexOf('CREATE OR REPLACE FUNCTION public.record_invoice_collection_v5(');
+const collectionEnd = collectionSource.indexOf('$function$',collectionSource.indexOf('AS $function$',collectionStart)+14)+11;
 const db = new PGlite();
 const item = (price = 100, cls = 'REVENUE') => ({type:'RENT', accounting_class:cls, unit_price:price, quantity:1, coefficient:1, description:'Rent'});
 
@@ -17,6 +22,8 @@ beforeAll(async () => {
   await db.exec(`
     CREATE ROLE authenticated; CREATE ROLE anon; CREATE ROLE service_role;
     CREATE SCHEMA auth; CREATE SCHEMA app_private;
+    CREATE TYPE public.payment_method AS ENUM ('TM','TK','TT');
+    CREATE TABLE app_private.canonical_write_operations(id uuid,organization_id uuid,operation text,subject_scope text,actor_id uuid,idempotency_key text,payload_hash text,completed_at timestamptz,response_payload jsonb);
     CREATE TABLE auth.users(id uuid PRIMARY KEY);
     INSERT INTO auth.users VALUES ('${actor}');
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT '${actor}'::uuid $$;
@@ -61,6 +68,8 @@ beforeAll(async () => {
     ${adjustmentSource.slice(adjustmentSource.indexOf('CREATE TABLE IF NOT EXISTS'),adjustmentSource.indexOf('CREATE OR REPLACE FUNCTION public.guard_paid_invoice_direct_adjustment'))}
   `);
   if (existsSync(migrationPath)) await db.exec(readFileSync(migrationPath,'utf8'));
+  await db.exec(collectionSource.slice(collectionStart,collectionEnd)+';');
+  if (existsSync(conflictMigrationPath)) await db.exec(readFileSync(conflictMigrationPath,'utf8'));
   await db.exec('GRANT SELECT,INSERT,UPDATE,DELETE ON invoices,invoice_items TO authenticated');
 },30000);
 afterAll(async () => { await db.close(); });
@@ -103,8 +112,8 @@ describe('atomic issued invoice adjustment SQL',()=>{
     expect((await adjust([item(120000)],{revision:0,paid:0,updated:'2026-09-01'})).rows).toEqual(result.rows);
   }));
   it.each([
-    ['p_reason','22023'],['p_idempotency_key','22023'],['p_expected_revision','40001'],
-    ['p_expected_paid_amount','40001'],['p_expected_updated_at','40001'],
+    ['p_reason','22023'],['p_idempotency_key','22023'],['p_expected_revision','PT409'],
+    ['p_expected_paid_amount','PT409'],['p_expected_updated_at','PT409'],
   ])('rejects omitted required adjustment field %s', (field,code)=>scenario(async()=>{
     await db.exec('SAVEPOINT missing_arg');
     await expect(db.query(namedCall(field))).rejects.toMatchObject({code});
@@ -135,7 +144,7 @@ describe('atomic issued invoice adjustment SQL',()=>{
     await expect(adjust([item(121000)],opts)).rejects.toMatchObject({code:'23505'});
   }));
   it.each([{revision:4},{paid:1},{updated:'2026-09-02'}])('rejects stale state %j',opts=>scenario(async()=>{
-    await expect(adjust([item(120000)],opts)).rejects.toMatchObject({code:'40001'});
+    await expect(adjust([item(120000)],opts)).rejects.toMatchObject({code:'PT409'});
   }));
   it('authorizes before replay',()=>scenario(async()=>{
     await adjust(); await db.exec("SELECT set_config('test.deny','true',true)");
@@ -154,11 +163,23 @@ describe('atomic issued invoice adjustment SQL',()=>{
     await db.query('SELECT public.review_invoice_adjustment_v2($1,1)',[a.id]);
     expect((await db.query(`SELECT to_jsonb(a)-'review_status'-'checked_at'-'checked_by' AS snapshot FROM invoice_adjustments a WHERE id='${a.id}'`)).rows).toEqual(before);
     await adjust([item(130000)],{key:'test-key-0002'});
-    await expect(db.query('SELECT public.review_invoice_adjustment_v2($1,1)',[a.id])).rejects.toMatchObject({code:'40001'});
+    await expect(db.query('SELECT public.review_invoice_adjustment_v2($1,1)',[a.id])).rejects.toMatchObject({code:'PT409'});
   }));
   it('applies migration twice without altering finalized historical components',async()=>{
     expect(existsSync(migrationPath)).toBe(true);
     await db.exec(readFileSync(migrationPath,'utf8'));
+    await db.exec(readFileSync(conflictMigrationPath,'utf8'));
+    await db.exec(readFileSync(conflictMigrationPath,'utf8'));
+  });
+  it('rejects an unexpected writer definition before applying the conflict migration',()=>scenario(async()=>{
+    await db.exec(`ALTER FUNCTION public.adjust_invoice_v2(uuid,jsonb,numeric,text,text,text,bigint,numeric,timestamptz,text) SET search_path=public`);
+    const body=stripMigrationTransactionControl(readFileSync(conflictMigrationPath,'utf8'),conflictMigrationPath);
+    await expect(db.exec(body)).rejects.toMatchObject({code:'55000'});
+  }));
+  it('uses non-retryable domain conflicts in every affected deployed writer',async()=>{
+    const rows=(await db.query<{name:string;source:string}>(`SELECT proname AS name,prosrc AS source FROM pg_proc WHERE proname IN ('adjust_invoice_v2','review_invoice_adjustment_v2','pin_invoice_collection_manifest_v2','record_invoice_collection_v5') ORDER BY proname`)).rows;
+    expect(rows).toHaveLength(4);
+    for(const row of rows){expect(row.source).toMatch(/ERRCODE\s*=\s*'PT409'/);expect(row.source).not.toMatch(/ERRCODE\s*=\s*'40001'/);}
   });
   it('rejects metadata that would otherwise be silently discarded',()=>scenario(async()=>{
     await expect(adjust([{...item(120000),billing_month:'2027-01'} as ReturnType<typeof item>])).rejects.toMatchObject({code:'22023'});

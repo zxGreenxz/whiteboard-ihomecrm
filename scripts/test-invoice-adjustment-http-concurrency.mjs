@@ -19,18 +19,26 @@ const query = sql => runQuery(sql, config);
 const migration = readFileSync(new URL('../supabase/migrations/20260912065909_invoice_adjustment_atomic_revisions.sql', import.meta.url), 'utf8');
 assert.equal(createHash('sha256').update(migration).digest('hex'),
   'a7ae6673c7a7510260bcd4659499973750c32d9cfae19c6ae831d7c7331db2ae', 'Expected reviewed migration bytes');
+const conflictMigration = readFileSync(new URL('../supabase/migrations/20260912091403_invoice_domain_conflicts_http409.sql', import.meta.url), 'utf8');
+assert.equal(createHash('sha256').update(conflictMigration).digest('hex'),
+  '5bf29e7853abf7435a7ede47be3e27d7b60b28899bada858059400c3a1b2844c', 'Expected reviewed conflict migration bytes');
 for (const signature of [
   'public.adjust_invoice_v2(uuid,jsonb,numeric,text,text,text,bigint,numeric,timestamptz,text)',
   'public.review_invoice_adjustment_v2(uuid,bigint)',
   'app_private.proved_legacy_invoice_pnl_v2(uuid,uuid)',
+  'app_private.pin_invoice_collection_manifest_v2()',
+  'public.record_invoice_collection_v5(uuid,date,jsonb,text,boolean,text,text,numeric,text)',
 ]) {
   const name = signature.slice(0, signature.indexOf('('));
-  const start = migration.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
+  const definition = name.endsWith('proved_legacy_invoice_pnl_v2') ? migration : conflictMigration;
+  const start = definition.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
   assert(start >= 0, `Missing reviewed function ${name}`);
-  const bodyStart = migration.indexOf('AS $$', start) + 5;
-  const bodyEnd = migration.indexOf('$$', bodyStart);
+  const delimiter = /\bAS\s+(\$(?:[a-z_][a-z0-9_]*)?\$)/i.exec(definition.slice(start));
+  assert(delimiter, `Missing function delimiter ${name}`);
+  const bodyStart = start + delimiter.index + delimiter[0].length;
+  const bodyEnd = definition.indexOf(delimiter[1], bodyStart);
   assert(bodyStart > start && bodyEnd > bodyStart);
-  const expected = createHash('md5').update(migration.slice(bodyStart, bodyEnd)).digest('hex');
+  const expected = createHash('md5').update(definition.slice(bodyStart, bodyEnd)).digest('hex');
   const deployed = (await query(`SELECT md5(p.prosrc) AS digest FROM pg_proc p WHERE p.oid=to_regprocedure(${sqlLiteral(signature)});`))[0];
   assert.equal(deployed?.digest, expected, `Reviewed function ${name} is not deployed; no fixture created`);
 }
@@ -70,12 +78,16 @@ for (const [role, email, rolePassword] of [
   roleSessions[role] = await response.json();
 }
 async function rpc(name, payload, authenticated = true, accessToken = session.access_token) {
+  const started = Date.now();
   const response = await fetch(`${origin}/rest/v1/rpc/${name}`, {
-    method: 'POST', headers: { apikey: key, 'Content-Type': 'application/json',
+    method: 'POST', headers: { apikey: key, 'Content-Type': 'application/json', 'Content-Profile': 'public', 'Accept-Profile': 'public',
       ...(authenticated ? { Authorization: `Bearer ${accessToken}` } : {}) },
     body: JSON.stringify(payload), signal: AbortSignal.timeout(45000),
   });
-  return { ok: response.ok, status: response.status, body: await response.json() };
+  const body = await response.json();
+  const elapsedMs = Date.now() - started;
+  console.log(`${name}: HTTP ${response.status} ${body.code ?? 'OK'} (${elapsedMs}ms)`);
+  return { ok: response.ok, status: response.status, body, elapsedMs };
 }
 function success(result, label) {
   assert(result.ok, `${label}: HTTP ${result.status} ${result.body.code ?? ''} ${result.body.message ?? ''}`);
@@ -149,7 +161,7 @@ try {
   }
   const beforeDenied = await invoiceState();
   const outsideBuilding = await rpc('adjust_invoice_v2', adjustment(beforeDenied, 80000, 30000, 'cross-building'), true, roleSessions.manager.access_token);
-  assert.equal(outsideBuilding.ok, false); assert.equal(outsideBuilding.body.code, '42501');
+  assert.equal(outsideBuilding.ok, false); assert.equal(outsideBuilding.body.code, '42501', JSON.stringify(outsideBuilding.body));
   assert.deepEqual(await invoiceState(), beforeDenied, 'Denied building edit changed invoice');
   const first = success(await rpc('record_invoice_collection_v5', collection(await invoiceState(), 50000, 'initial-payment')), 'Initial collection');
   trackedCollections.push(first.collection_id);
@@ -162,6 +174,12 @@ try {
     JOIN public.finance_invoice_component_manifests m ON m.id=p.component_manifest_id
     WHERE a.collection_id=${uuidLiteral(first.collection_id)} GROUP BY c.component_kind,m.adjustment_revision;`),
   [{ component_kind: 'CURRENT_CHARGE', amount: 50000, adjustment_revision: 0 }], 'Initial allocation must be pinned to revision zero');
+  const stalePayment = await rpc('record_invoice_collection_v5', collection(beforeDenied, 10000, 'stale-partial-payment'));
+  assert.equal(stalePayment.status, 409); assert.equal(stalePayment.body.code, 'PT409');
+  assert(stalePayment.elapsedMs < 10000, 'Stale partial collection must return promptly without transaction retries');
+  assert.equal(Number((await invoiceState()).paid_amount), 50000);
+  assert.deepEqual(await history(first.collection_id), original);
+  console.log('PASS stale partial collection returns HTTP 409 promptly without changing money');
 
   const request = adjustment(await invoiceState(), 80000, 30000, 'same-key');
   const omittedNotes = { ...request };
@@ -181,7 +199,9 @@ try {
     rpc('adjust_invoice_v2', adjustment(beforeRace, 100000, 30000, 'compete-b')),
   );
   assert.equal(competing.filter(result => result.ok).length, 1, 'Exactly one stale adjustment may win');
-  assert.equal(competing.find(result => !result.ok).body.code, '40001');
+  const loser = competing.find(result => !result.ok);
+  assert.equal(loser.status, 409); assert.equal(loser.body.code, 'PT409');
+  assert(loser.elapsedMs < 10000, 'Stale adjustment must return promptly without transaction retries');
   assert.equal(Number((await invoiceState()).revisions), 2);
   console.log('PASS different-key competing adjustments: one revision, one stale conflict');
 
@@ -192,7 +212,7 @@ try {
   );
   const collected = success(pay, 'Payment vs adjustment');
   trackedCollections.push(collected.collection_id);
-  if (!edit.ok) assert.equal(edit.body.code, '40001');
+  if (!edit.ok) { assert.equal(edit.status, 409); assert.equal(edit.body.code, 'PT409'); }
   const afterRace = await invoiceState();
   assert.equal(Number(afterRace.paid_amount), 90000);
   assert.equal(Number(afterRace.revisions), edit.ok ? 3 : 2);
@@ -210,6 +230,9 @@ try {
 
   const latest = (await query(`SELECT id,revision,to_jsonb(a)-'review_status'-'checked_by'-'checked_at' AS snapshot
     FROM public.invoice_adjustments a WHERE invoice_id=${uuidLiteral(fixture.invoice_id)} ORDER BY revision DESC LIMIT 1;`))[0];
+  const staleReview = await rpc('review_invoice_adjustment_v2', { p_adjustment_id: same[0].body.id, p_expected_revision: 1 });
+  assert.equal(staleReview.status, 409); assert.equal(staleReview.body.code, 'PT409');
+  assert(staleReview.elapsedMs < 10000, 'Stale review must return promptly without transaction retries');
   const deniedReview = await rpc('review_invoice_adjustment_v2', { p_adjustment_id: latest.id, p_expected_revision: Number(latest.revision) }, true, roleSessions.accountant.access_token);
   assert.equal(deniedReview.ok, false); assert.equal(deniedReview.body.code, '42501');
   assert.equal((await invoiceState()).adjustment_review_status, 'PENDING', 'Forbidden review changed state');

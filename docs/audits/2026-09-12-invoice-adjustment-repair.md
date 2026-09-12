@@ -47,3 +47,30 @@ luồng sửa nháp. Không ghi thử dữ liệu nghiệp vụ tổ chức TH�
 Forward apply có backup/receipt, native generated types, named-argument HTTP
 concurrency và role JWT, E2E giao diện mới, đối chiếu tiền v1/v2, sandbox leak,
 catalog/ACL, full gates và review cuối. Chỉ promote sau CI của đúng SHA main đạt.
+
+## Triển khai v2 và lỗi xung đột HTTP phát hiện khi tích hợp
+
+V2 đã áp dụng lúc `2026-09-12T09:07:25.191Z` từ SHA `0466a686`, backup đầy đủ
+527 bảng; receipt `20260912065909_invoice_adjustment_atomic_revisions.json`.
+Native generated types đã sinh lại; baseline 0 lỗi, build/bundle đạt (521 chunks,
+entry 221 kB, tổng 8.12 MB). Đã gỡ hồ sơ chưa-apply sau receipt thật.
+
+HTTP ban đầu thiếu Content-Profile public (PGRST202); đã sửa harness. Sau đó,
+same-key replay/mismatch/quyền đều đạt nhưng hai lượt different-key bị timeout:
+mã nghiệp vụ 40001 kích hoạt retry liên tục của PostgREST 14. Tất cả fixture
+đã hoàn tác và dọn, audit được giữ. Nguồn:
+https://supabase.com/docs/guides/troubleshooting/high-cpu-and-infinite-transaction-retries-when-using-custom-error-codes-in-rpc-functions-77326b
+
+Forward migration mới `20260912091403_invoice_domain_conflicts_http409.sql`
+(digest `5bf29e7853abf7435a7ede47be3e27d7b60b28899bada858059400c3a1b2844c`)
+chỉ đổi 4 mã lỗi nghiệp vụ sang PT409 trong adjust/review/pin/V5 collect.
+Preconditions khóa đúng hash định nghĩa trước/sau, không thay đổi logic tiền.
+Review độc lập xác nhận tương đương cả 4 body. 112 tests liên quan và live rollback
+hai migration lặp hai lần đạt; hai mutations mã lỗi/guard catalog đều bị bắt.
+Frontend `abb1571c` nhận PT409 không retry và giữ native40001 tương thích;
+review độc lập + 83 tests đạt. Chờ apply migration bổ sung và HTTP/E2E cuối.
+
+E2E thu tiền đơn thuần trên build mới đã đạt 15.2 giây: thu tại invoice 3.239.000,
+Thu tiền mobile 2.000.000, đủ 5.239.000, không lỗi console và cleanup đầy đủ.
+E2E chỉnh sửa còn đang kiểm tra; một assertion kiểu numeric của Management API
+đã sửa bằng cast bigint cho các số tiền nguyên của fixture.

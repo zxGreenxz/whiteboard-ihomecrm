@@ -4873,6 +4873,7 @@ export type Database = {
       }
       finance_invoice_component_manifests: {
         Row: {
+          adjustment_revision: number
           anomaly_code: string | null
           captured_at: string
           component_status: string
@@ -4883,9 +4884,11 @@ export type Database = {
           invoice_id: string
           invoice_total: number
           organization_id: string
+          source_adjustment_id: string | null
           source_updated_at: string
         }
         Insert: {
+          adjustment_revision?: number
           anomaly_code?: string | null
           captured_at?: string
           component_status: string
@@ -4896,9 +4899,11 @@ export type Database = {
           invoice_id: string
           invoice_total: number
           organization_id: string
+          source_adjustment_id?: string | null
           source_updated_at: string
         }
         Update: {
+          adjustment_revision?: number
           anomaly_code?: string | null
           captured_at?: string
           component_status?: string
@@ -4909,6 +4914,7 @@ export type Database = {
           invoice_id?: string
           invoice_total?: number
           organization_id?: string
+          source_adjustment_id?: string | null
           source_updated_at?: string
         }
         Relationships: [
@@ -4925,6 +4931,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_manifest_adjustment_identity_fkey"
+            columns: ["source_adjustment_id", "invoice_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_adjustments"
+            referencedColumns: ["id", "invoice_id", "organization_id"]
           },
         ]
       }
@@ -6861,6 +6874,7 @@ export type Database = {
           invoice_id: string
           organization_id: string
           reason: string
+          request_fingerprint: string | null
           review_status: string
           revision: number
         }
@@ -6879,6 +6893,7 @@ export type Database = {
           invoice_id: string
           organization_id: string
           reason: string
+          request_fingerprint?: string | null
           review_status?: string
           revision: number
         }
@@ -6897,6 +6912,7 @@ export type Database = {
           invoice_id?: string
           organization_id?: string
           reason?: string
+          request_fingerprint?: string | null
           review_status?: string
           revision?: number
         }
@@ -7191,6 +7207,7 @@ export type Database = {
           applied_amount: number
           change_amount: number
           collection_date: string
+          component_manifest_id: string | null
           contract_id: string | null
           created_at: string
           credit_amount: number
@@ -7217,6 +7234,7 @@ export type Database = {
           applied_amount: number
           change_amount?: number
           collection_date: string
+          component_manifest_id?: string | null
           contract_id?: string | null
           created_at?: string
           credit_amount?: number
@@ -7243,6 +7261,7 @@ export type Database = {
           applied_amount?: number
           change_amount?: number
           collection_date?: string
+          component_manifest_id?: string | null
           contract_id?: string | null
           created_at?: string
           credit_amount?: number
@@ -7265,6 +7284,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "collection_component_manifest_identity_fkey"
+            columns: ["component_manifest_id", "invoice_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "finance_invoice_component_manifests"
+            referencedColumns: ["id", "invoice_id", "organization_id"]
+          },
           {
             foreignKeyName: "invoice_payment_collections_contract_id_fkey"
             columns: ["contract_id"]
@@ -7473,6 +7499,8 @@ export type Database = {
       }
       invoices: {
         Row: {
+          adjustment_review_status: string
+          adjustment_revision: number
           approved_at: string | null
           approved_by: string | null
           billing_month: string
@@ -7506,6 +7534,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          adjustment_review_status?: string
+          adjustment_revision?: number
           approved_at?: string | null
           approved_by?: string | null
           billing_month: string
@@ -7539,6 +7569,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          adjustment_review_status?: string
+          adjustment_revision?: number
           approved_at?: string | null
           approved_by?: string | null
           billing_month?: string
@@ -18411,6 +18443,46 @@ export type Database = {
           invoice_id: string
           organization_id: string
           reason: string
+          request_fingerprint: string | null
+          review_status: string
+          revision: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "invoice_adjustments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      adjust_invoice_v2: {
+        Args: {
+          p_after_items: Json
+          p_discount_amount: number
+          p_discount_notes?: string
+          p_expected_paid_amount?: number
+          p_expected_revision?: number
+          p_expected_updated_at?: string
+          p_idempotency_key?: string
+          p_invoice_id: string
+          p_notes?: string
+          p_reason?: string
+        }
+        Returns: {
+          adjusted_at: string
+          adjusted_by: string
+          after_snapshot: Json
+          after_total: number
+          before_snapshot: Json
+          before_total: number
+          checked_at: string | null
+          checked_by: string | null
+          delta: number
+          id: string
+          idempotency_key: string
+          invoice_id: string
+          organization_id: string
+          reason: string
+          request_fingerprint: string | null
           review_status: string
           revision: number
         }
@@ -18488,6 +18560,8 @@ export type Database = {
       approve_invoice_v1: {
         Args: { p_invoice_id: string }
         Returns: {
+          adjustment_review_status: string
+          adjustment_revision: number
           approved_at: string | null
           approved_by: string | null
           billing_month: string
@@ -18997,6 +19071,8 @@ export type Database = {
       cancel_invoice_v1: {
         Args: { p_invoice_id: string }
         Returns: {
+          adjustment_review_status: string
+          adjustment_revision: number
           approved_at: string | null
           approved_by: string | null
           billing_month: string
@@ -21303,6 +21379,8 @@ export type Database = {
           p_payment_method: Database["public"]["Enums"]["payment_method"]
         }
         Returns: {
+          adjustment_review_status: string
+          adjustment_revision: number
           approved_at: string | null
           approved_by: string | null
           billing_month: string
@@ -22580,6 +22658,8 @@ export type Database = {
       restore_invoice_v1: {
         Args: { p_invoice_id: string }
         Returns: {
+          adjustment_review_status: string
+          adjustment_revision: number
           approved_at: string | null
           approved_by: string | null
           billing_month: string
@@ -22691,6 +22771,35 @@ export type Database = {
           invoice_id: string
           organization_id: string
           reason: string
+          request_fingerprint: string | null
+          review_status: string
+          revision: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "invoice_adjustments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      review_invoice_adjustment_v2: {
+        Args: { p_adjustment_id: string; p_expected_revision: number }
+        Returns: {
+          adjusted_at: string
+          adjusted_by: string
+          after_snapshot: Json
+          after_total: number
+          before_snapshot: Json
+          before_total: number
+          checked_at: string | null
+          checked_by: string | null
+          delta: number
+          id: string
+          idempotency_key: string
+          invoice_id: string
+          organization_id: string
+          reason: string
+          request_fingerprint: string | null
           review_status: string
           revision: number
         }
@@ -23138,6 +23247,8 @@ export type Database = {
       unapprove_invoice_v1: {
         Args: { p_invoice_id: string }
         Returns: {
+          adjustment_review_status: string
+          adjustment_revision: number
           approved_at: string | null
           approved_by: string | null
           billing_month: string
@@ -23378,6 +23489,8 @@ export type Database = {
           p_total_amount: number
         }
         Returns: {
+          adjustment_review_status: string
+          adjustment_revision: number
           approved_at: string | null
           approved_by: string | null
           billing_month: string
