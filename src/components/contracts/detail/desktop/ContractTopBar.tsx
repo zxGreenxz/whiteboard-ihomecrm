@@ -26,6 +26,22 @@ import { canUse } from '@/lib/permissionPages';
 import { formatAmount } from '@/components/contracts/detail/formatCurrency';
 import { chipTrangThai, nhanThoiHan, tienDoHopDong } from './contractHeaderStats';
 
+/**
+ * Khung căn giữa DÙNG CHUNG cho cả hai tầng header và thân trang.
+ *
+ * VÌ SAO KHÔNG CÒN TRẦN 1720px (sửa 13/09): bản thiết kế vẽ ở khổ 1440 nên trần
+ * đó không bao giờ chạm tới. Trên màn thật rộng — hoặc chỉ cần người dùng thu
+ * phóng nhỏ lại, viewport CSS tăng lên — trần kẹp nội dung ở 1720px rồi đẩy nó
+ * vào giữa, trong khi nền đen của header vẫn tràn hết bề ngang. Đo được ở
+ * viewport 2560: vùng dùng được 2296px nhưng chỉ xài 1720px, bỏ trống 288px mỗi
+ * bên. Chủ mô tả đúng hiện tượng: "nhìn lạc lõng, không tự resize theo màn hình".
+ *
+ * Trần 2400px giữ lại chỉ để chặn màn siêu rộng (ultrawide 3440+) kéo một dòng
+ * dài quá tầm mắt; mọi màn thường dùng đều nằm dưới ngưỡng này nên thực tế là
+ * "luôn lấp đầy".
+ */
+export const KHUNG = 'mx-auto w-full max-w-[2400px] px-[var(--px)]';
+
 const CHU_KY: Record<string, string> = {
   MONTHLY: 'hàng tháng',
   QUARTERLY: 'hàng quý',
@@ -56,11 +72,11 @@ function NutHeader({
       onClick={onClick}
       className={
         doTuoi
-          ? 'inline-flex h-[30px] items-center gap-1.5 whitespace-nowrap rounded-md border border-[#dc2626] bg-[#dc2626] px-[10px] text-[12.5px] font-semibold text-white transition-colors hover:border-[#b91c1c] hover:bg-[#b91c1c]'
-          : 'inline-flex h-[30px] items-center gap-1.5 whitespace-nowrap rounded-md border border-white/[.16] bg-white/[.06] px-[9px] text-[12.5px] font-medium text-[#e6ede9] transition-colors hover:bg-white/[.14]'
+          ? 'inline-flex h-[34px] items-center gap-2 whitespace-nowrap rounded-md border border-[#dc2626] bg-[#dc2626] px-3 text-[13.5px] font-semibold text-white transition-colors hover:border-[#b91c1c] hover:bg-[#b91c1c]'
+          : 'inline-flex h-[34px] items-center gap-2 whitespace-nowrap rounded-md border border-white/[.16] bg-white/[.06] px-2.5 text-[13.5px] font-medium text-[#e6ede9] transition-colors hover:bg-white/[.14]'
       }
     >
-      <Icon className="h-3.5 w-3.5" strokeWidth={2} />
+      <Icon className="h-4 w-4" strokeWidth={2} />
       {nhan}
     </button>
   );
@@ -77,7 +93,7 @@ function OChiSo({
 }) {
   return (
     <div className={className}>
-      <div className="text-[10.5px] font-semibold uppercase tracking-[.07em] text-white/45">
+      <div className="text-[length:var(--fs-xs)] font-semibold uppercase tracking-[.07em] text-white/45">
         {nhan}
       </div>
       {children}
@@ -144,23 +160,27 @@ export function ContractTopBar({
 
   return (
     <div className="sticky top-0 z-30 bg-[#11231b]">
+      {/* Nền đen tràn hết bề ngang, nhưng NỘI DUNG bên trong nằm trong đúng
+          container căn giữa của thân trang (KHUNG) — nếu không, ở màn rộng hoặc
+          khi thu phóng, thân trang bị kẹp max-w rồi thụt vào giữa còn header thì
+          bám sát mép, nhìn như hai trang khác nhau dán chồng. */}
       {/* Tầng 1 — danh tính + hành động */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 px-[18px] py-[9px]">
+      <div className={`${KHUNG} flex flex-wrap items-center gap-x-5 gap-y-3 py-3`}>
         <div className="flex min-w-0 flex-[1_1_260px] items-center gap-2.5 overflow-hidden">
-          <div className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg bg-white/[.09]">
-            <FileText className="h-[15px] w-[15px] text-[#4fbf87]" strokeWidth={2} />
+          <div className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-lg bg-white/[.09]">
+            <FileText className="h-[17px] w-[17px] text-[#4fbf87]" strokeWidth={2} />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="truncate text-[15px] font-semibold tracking-[-0.01em] text-white">
+              <span className="truncate text-[17px] font-semibold tracking-[-0.01em] text-white">
                 {[toa, phong ? `Phòng ${phong}` : null].filter(Boolean).join(' · ') ||
                   'Hợp đồng'}
               </span>
               <span
                 className={
                   chip.xanh
-                    ? 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[5px] bg-[#22c55e]/[.16] px-[7px] py-0.5 text-[11px] font-semibold tracking-[.02em] text-[#6ee7a8]'
-                    : 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[5px] bg-white/[.12] px-[7px] py-0.5 text-[11px] font-semibold tracking-[.02em] text-[#cfd8d3]'
+                    ? 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-[#22c55e]/[.16] px-2.5 py-1 text-[12.5px] font-semibold tracking-[.02em] text-[#6ee7a8]'
+                    : 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-white/[.12] px-2.5 py-1 text-[12.5px] font-semibold tracking-[.02em] text-[#cfd8d3]'
                 }
               >
                 <span
@@ -171,19 +191,19 @@ export function ContractTopBar({
               {/* Công nợ là chip RIÊNG, không đè chip trạng thái: một HĐ đang
                   chạy vẫn có thể còn nợ, giấu một trong hai là nói thiếu. */}
               {outstandingAmount > 0 && (
-                <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[5px] bg-[#ef4444]/[.18] px-[7px] py-0.5 text-[11px] font-semibold tabular-nums tracking-[.02em] text-[#fca5a5]">
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-[#ef4444]/[.18] px-2.5 py-1 text-[12.5px] font-semibold tabular-nums tracking-[.02em] text-[#fca5a5]">
                   <span className="h-[5px] w-[5px] rounded-full bg-[#f87171]" />
                   Còn công nợ {formatAmount(outstandingAmount)}
                 </span>
               )}
             </div>
             {dongPhu && (
-              <div className="mt-0.5 truncate text-[11.5px] text-white/50">{dongPhu}</div>
+              <div className="mt-1 truncate text-[13px] text-white/50">{dongPhu}</div>
             )}
           </div>
         </div>
 
-        <div className="ml-auto flex flex-[0_1_auto] flex-wrap items-center justify-end gap-1.5">
+        <div className="ml-auto flex flex-[0_1_auto] flex-wrap items-center justify-end gap-2">
           {contract.status !== 'TERMINATED' && canUse(perms, 'contracts', 'edit') && (
             <NutHeader icon={Pencil} nhan="Cập nhật" onClick={onEdit} />
           )}
@@ -216,25 +236,26 @@ export function ContractTopBar({
             <NutHeader icon={Trash2} nhan="Xoá" onClick={onDelete} doTuoi />
           )}
 
-          <div className="mx-0.5 h-5 w-px bg-white/[.16]" />
+          <div className="mx-1 h-6 w-px bg-white/[.16]" />
           <button
             type="button"
             title="Đóng"
             onClick={onBack}
-            className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-md border border-white/[.16] text-[#cfd8d3] transition-colors hover:bg-white/[.14] hover:text-white"
+            className="inline-flex h-[34px] w-[34px] items-center justify-center rounded-md border border-white/[.16] text-[#cfd8d3] transition-colors hover:bg-white/[.14] hover:text-white"
           >
-            <X className="h-[15px] w-[15px]" strokeWidth={2} />
+            <X className="h-[17px] w-[17px]" strokeWidth={2} />
           </button>
         </div>
       </div>
 
       {/* Tầng 2 — bốn chỉ số */}
-      <div className="flex flex-wrap items-stretch border-t border-white/[.09] bg-black/[.16]">
+      <div className="border-t border-white/[.09] bg-black/[.16]">
+        <div className={`${KHUNG} flex flex-wrap items-stretch`}>
         <OChiSo
           nhan="Phòng · Toà nhà"
-          className="min-w-0 flex-[0_1_180px] border-r border-white/[.08] px-[18px] py-[9px]"
+          className="min-w-0 flex-[0_1_200px] border-r border-white/[.08] py-3 pr-5"
         >
-          <div className="mt-[3px] text-[14.5px] font-semibold text-white">
+          <div className="mt-[3px] text-[17px] font-semibold text-white">
             {phong ?? '—'} <span className="font-normal text-white/45">—</span>{' '}
             {toa ?? '—'}
           </div>
@@ -242,11 +263,11 @@ export function ContractTopBar({
 
         <OChiSo
           nhan="Giá thuê"
-          className="min-w-0 flex-[0_1_215px] border-r border-white/[.08] px-[18px] py-[9px]"
+          className="min-w-0 flex-[0_1_235px] border-r border-white/[.08] px-5 py-3"
         >
-          <div className="mt-[3px] text-[14.5px] font-semibold tabular-nums text-[#6ee7a8]">
+          <div className="mt-[3px] text-[17px] font-semibold tabular-nums text-[#6ee7a8]">
             {formatAmount(contract.rent_price ?? 0)}{' '}
-            <span className="text-[12.5px] font-normal text-white/50">
+            <span className="text-[13.5px] font-normal text-white/50">
               / {CHU_KY[contract.payment_cycle ?? ''] ?? 'kỳ'}
             </span>
           </div>
@@ -254,39 +275,40 @@ export function ContractTopBar({
 
         <OChiSo
           nhan="Hiệu lực"
-          className="min-w-0 flex-[0_1_235px] border-r border-white/[.08] px-[18px] py-[9px]"
+          className="min-w-0 flex-[0_1_265px] border-r border-white/[.08] px-5 py-3"
         >
-          <div className="mt-[3px] text-[14.5px] font-semibold tabular-nums text-white">
+          <div className="mt-[3px] text-[17px] font-semibold tabular-nums text-white">
             {ngayVn(contract.start_date)}{' '}
             <span className="font-normal text-white/45">–</span>{' '}
             {ngayVn(contract.end_date)}
           </div>
         </OChiSo>
 
-        <div className="min-w-0 flex-[1_1_300px] px-[18px] py-[9px]">
+        <div className="min-w-0 flex-[1_1_320px] py-3 pl-5">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-[10.5px] font-semibold uppercase tracking-[.07em] text-white/45">
               Thời hạn
             </span>
-            <span className="whitespace-nowrap text-[12px] tabular-nums text-white/60">
+            <span className="whitespace-nowrap text-[13px] tabular-nums text-white/60">
               {tienDo}% · hết hạn {ngayVn(contract.end_date)}
             </span>
           </div>
           <div className="mt-1 flex items-center gap-3.5">
-            <span className="whitespace-nowrap text-[14.5px] font-semibold tabular-nums text-white">
+            <span className="whitespace-nowrap text-[17px] font-semibold tabular-nums text-white">
               {thoiHan.tienTo} {thoiHan.so}{' '}
-              <span className="text-[12px] font-normal text-white/55">{thoiHan.donVi}</span>
+              <span className="text-[13px] font-normal text-white/55">{thoiHan.donVi}</span>
             </span>
-            <span className="whitespace-nowrap text-[12.5px] tabular-nums text-white/60">
+            <span className="whitespace-nowrap text-[13.5px] tabular-nums text-white/60">
               đã thuê {Math.max(daysElapsed, 0)} / {Math.max(totalDays, 0)} ngày
             </span>
           </div>
-          <div className="mt-[7px] h-[5px] overflow-hidden rounded-[3px] bg-white/[.14]">
+          <div className="mt-2.5 h-[6px] overflow-hidden rounded-full bg-white/[.14]">
             <div
               className={`h-full rounded-[3px] ${daysRemaining < 0 ? 'bg-[#f87171]' : 'bg-[#34d399]'}`}
               style={{ width: `${tienDo}%` }}
             />
           </div>
+        </div>
         </div>
       </div>
     </div>

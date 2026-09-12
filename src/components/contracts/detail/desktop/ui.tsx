@@ -42,9 +42,9 @@ export function DauThe({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 border-b border-[#eef0f3] px-[14px] py-[10px]">
-      <Icon className="h-[15px] w-[15px] shrink-0 text-[#12764a]" strokeWidth={2} />
-      <span className="text-[12.5px] font-bold uppercase tracking-[.06em] text-[#33443c]">
+    <div className="flex items-center gap-2.5 border-b border-[#eef0f3] px-[var(--px)] py-[13px]">
+      <Icon className="h-[17px] w-[17px] shrink-0 text-[#12764a]" strokeWidth={2} />
+      <span className="text-[14px] font-bold uppercase tracking-[.06em] text-[#33443c]">
         {nhan}
       </span>
       {children ? <div className="ml-auto flex items-center gap-2">{children}</div> : null}
@@ -55,7 +55,7 @@ export function DauThe({
 /** Nhãn nhóm nhỏ bên trong thẻ ("Hợp đồng", "Dịch vụ", "Lịch sử hợp đồng"). */
 export function NhanMuc({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-[14px] pb-[5px] pt-[8px] text-[11px] font-bold uppercase tracking-[.06em] text-[#67737E]">
+    <div className="px-[var(--px)] pb-[6px] pt-[11px] text-[length:var(--fs-xs)] font-bold uppercase tracking-[.06em] text-[#67737E]">
       {children}
     </div>
   );
@@ -72,7 +72,7 @@ export function DongKV({
   className?: string;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(92px,max-content)_minmax(0,1fr)] gap-[10px] border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-[13px]">
+    <div className="grid grid-cols-[minmax(104px,max-content)_minmax(0,1fr)] gap-3 border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs)]">
       <span className="text-[#67737E]">{nhan}</span>
       <span className={cn('font-medium tabular-nums', className)}>{children}</span>
     </div>
@@ -82,7 +82,7 @@ export function DongKV({
 /** Chip nhỏ viền xanh dùng ở đầu thẻ. */
 export function ChipXanh({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded-[5px] border border-[#cfe7db] bg-[#eef7f2] px-[7px] py-px text-[11px] font-bold text-[#12764a]">
+    <span className="rounded-[5px] border border-[#cfe7db] bg-[#eef7f2] px-2 py-0.5 text-[length:var(--fs-xs)] font-bold text-[#12764a]">
       {children}
     </span>
   );
@@ -93,12 +93,12 @@ export function NutTron({
   title,
   onClick,
   children,
-  size = 26,
+  size = 30,
 }: {
   title: string;
   onClick: () => void;
   children: React.ReactNode;
-  size?: 24 | 26;
+  size?: 28 | 30;
 }) {
   return (
     <button

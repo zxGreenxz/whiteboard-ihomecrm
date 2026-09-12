@@ -52,7 +52,7 @@ export function ContractTermsCard({
     <The id="s-hopdong" className="scroll-mt-[150px]">
       <DauThe icon={FileText} nhan="Hợp đồng &amp; dịch vụ" />
 
-      <div className="grid gap-px bg-[#eef0f3] [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
+      <div className="grid gap-px bg-[#eef0f3] [grid-template-columns:repeat(auto-fit,minmax(340px,1fr))]">
         {/* ── Cột con: Hợp đồng ───────────────────────────────── */}
         <div className="min-w-0 bg-white">
           <NhanMuc>Hợp đồng</NhanMuc>
@@ -85,28 +85,28 @@ export function ContractTermsCard({
         <div className="min-w-0 bg-white">
           <NhanMuc>Dịch vụ</NhanMuc>
 
-          <div className="flex items-center gap-4 border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-[13px] tabular-nums">
-            <span className="text-[12.5px] text-[#67737E]">Chỉ số đầu</span>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs)] tabular-nums">
+            <span className="text-[length:var(--fs-sm)] text-[#67737E]">Chỉ số đầu</span>
             <span className="inline-flex items-center gap-1.5">
-              <Zap className="h-[13px] w-[13px] text-[#eab308]" strokeWidth={2} />
+              <Zap className="h-[15px] w-[15px] text-[#eab308]" strokeWidth={2} />
               <span className="font-medium">
                 {contract.initial_electricity_reading ?? '—'}
               </span>
-              <span className="text-[12px] text-[#67737E]">kWh</span>
+              <span className="text-[length:var(--fs-sm)] text-[#67737E]">kWh</span>
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Droplets className="h-[13px] w-[13px] text-[#3b82f6]" strokeWidth={2} />
+              <Droplets className="h-[15px] w-[15px] text-[#3b82f6]" strokeWidth={2} />
               <span className="font-medium">{contract.initial_water_reading ?? '—'}</span>
-              <span className="text-[12px] text-[#67737E]">m³</span>
+              <span className="text-[length:var(--fs-sm)] text-[#67737E]">m³</span>
             </span>
           </div>
 
           {servicesLoading ? (
-            <div className="border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-[12.5px] text-[#67737E]">
+            <div className="border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs-sm)] text-[#67737E]">
               Đang tải dịch vụ…
             </div>
           ) : services.length === 0 ? (
-            <div className="border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-[12.5px] text-[#67737E]">
+            <div className="border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs-sm)] text-[#67737E]">
               Hợp đồng chưa đăng ký dịch vụ nào.
             </div>
           ) : (
@@ -114,23 +114,23 @@ export function ContractTermsCard({
               <tbody>
                 {services.map((cs) => (
                   <tr key={cs.id}>
-                    <td className="border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-[13px] font-medium">
+                    <td className="border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs)] font-medium">
                       <span className="inline-flex items-center gap-1.5">
                         {cs.service.type === 'METER_READING' ? (
-                          <Zap className="h-[13px] w-[13px] text-[#eab308]" strokeWidth={2} />
+                          <Zap className="h-[15px] w-[15px] text-[#eab308]" strokeWidth={2} />
                         ) : (
-                          <Settings className="h-[13px] w-[13px] text-[#9ca3af]" strokeWidth={2} />
+                          <Settings className="h-[15px] w-[15px] text-[#9ca3af]" strokeWidth={2} />
                         )}
                         {cs.service.name}
                       </span>
                     </td>
-                    <td className="border-t border-[#f2f4f6] px-1.5 py-[var(--rp)] text-[12px] text-[#67737E]">
+                    <td className="border-t border-[#f2f4f6] px-2 py-[var(--rp)] text-[length:var(--fs-sm)] text-[#67737E]">
                       {LOAI_DICH_VU[cs.service.type] ?? cs.service.type}
                     </td>
-                    <td className="border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-right text-[13px] font-medium tabular-nums">
+                    <td className="border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-right text-[length:var(--fs)] font-medium tabular-nums">
                       {formatAmount(cs.unit_price)}
                       {cs.service.unit && (
-                        <span className="text-[12px] font-normal text-[#67737E]">
+                        <span className="text-[length:var(--fs-sm)] font-normal text-[#67737E]">
                           {' '}
                           /{cs.service.unit}
                         </span>
@@ -151,7 +151,7 @@ export function ContractTermsCard({
       {contract.notes && (
         <div className="border-t border-[#eef0f3]">
           <NhanMuc>Ghi chú</NhanMuc>
-          <div className="whitespace-pre-wrap border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-[12.5px] leading-[1.5] text-[#4a5a52]">
+          <div className="whitespace-pre-wrap border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs-sm)] leading-[1.6] text-[#4a5a52]">
             {contract.notes}
           </div>
         </div>
@@ -161,22 +161,22 @@ export function ContractTermsCard({
       <div className="border-t border-[#eef0f3]">
         <NhanMuc>Lịch sử hợp đồng</NhanMuc>
         {historyLoading ? (
-          <div className="border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-[12.5px] text-[#67737E]">
+          <div className="border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs-sm)] text-[#67737E]">
             Đang tải lịch sử…
           </div>
         ) : (
           dongLichSu.map((d) => (
             <div
               key={d.id}
-              className="grid grid-cols-[88px_minmax(0,1fr)_104px] items-baseline gap-2.5 border-t border-[#f2f4f6] px-[14px] py-[var(--rp)] text-[13px]"
+              className="grid grid-cols-[100px_minmax(0,1fr)_120px] items-baseline gap-3 border-t border-[#f2f4f6] px-[var(--px)] py-[var(--rp)] text-[length:var(--fs)]"
             >
-              <span className="text-[12.5px] tabular-nums text-[#67737E]">{d.ngay}</span>
+              <span className="text-[length:var(--fs-sm)] tabular-nums text-[#67737E]">{d.ngay}</span>
               <span>
                 <span className="font-medium">{d.tieuDe}</span>
-                {d.moTa && <span className="text-[12.5px] text-[#67737E]"> — {d.moTa}</span>}
+                {d.moTa && <span className="text-[length:var(--fs-sm)] text-[#67737E]"> — {d.moTa}</span>}
               </span>
               <span
-                className={`justify-self-end whitespace-nowrap rounded border px-[7px] py-px text-[10.5px] font-bold tracking-[.03em] ${d.lopNhan}`}
+                className={`justify-self-end whitespace-nowrap rounded border px-2 py-0.5 text-[11px] font-bold tracking-[.03em] ${d.lopNhan}`}
               >
                 {d.nhan}
               </span>

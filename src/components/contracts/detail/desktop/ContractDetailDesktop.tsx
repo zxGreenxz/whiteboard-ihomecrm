@@ -5,9 +5,18 @@
 // — tóm tắt: câu hỏi thường gặp nhất ("khách này nợ gì, trả gì, HĐ đi tới đâu")
 // trước phải bấm qua 3–4 tab rồi tự ghép số trong đầu.
 //
-// `--rp` là đệm dọc của mọi dòng trong trang. Bản thiết kế có núm 3 mức
-// (Thoáng / Gọn / Rất gọn); chủ chốt mức "Gọn" và KHÔNG làm thành tuỳ chọn cho
-// người dùng, nên nó là một hằng ở đúng một chỗ này.
+// THANG KÍCH THƯỚC NẰM Ở ĐÚNG MỘT CHỖ — 5 biến CSS dưới đây.
+//
+// Mọi component con đọc biến, không gõ px cứng. Muốn thoáng hơn / chữ to hơn thì
+// sửa đúng khối `style` trong file này; không phải lùng 6 file và cũng không sợ
+// sót một chỗ rồi lệch nhịp.
+//
+// Mức hiện tại (13/09): chủ yêu cầu "giãn ra, chữ to lên" so với đợt đầu —
+//   --rp   7px  → 10px
+//   --px   14px → 18px
+//   --fs   13px → 14.5px
+// Bản thiết kế gốc có núm 3 mức (Thoáng / Gọn / Rất gọn) nhưng đây KHÔNG làm
+// thành tuỳ chọn cho người dùng, chỉ là hằng của màn hình.
 
 import type { ContractWithRelations } from '@/hooks/useContracts';
 import type { InvoiceWithRelations } from '@/hooks/useInvoices';
@@ -19,7 +28,7 @@ import type {
   ContractDepositVoucher,
 } from '@/components/contracts/detail/types';
 import { canUse } from '@/lib/permissionPages';
-import { ContractTopBar } from './ContractTopBar';
+import { ContractTopBar, KHUNG } from './ContractTopBar';
 import { ContractAlertStrip } from './ContractAlertStrip';
 import { ContractTermsCard } from './ContractTermsCard';
 import { ContractTenantsCard } from './ContractTenantsCard';
@@ -88,7 +97,15 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
   return (
     <div
       className="min-h-full bg-[#f4f6f8] text-[#121f17]"
-      style={{ ['--rp' as string]: '7px' }}
+      style={
+        {
+          '--rp': '10px', // đệm DỌC mỗi dòng
+          '--px': '18px', // đệm NGANG trong thẻ
+          '--fs': '14.5px', // chữ chính của một dòng
+          '--fs-sm': '13.5px', // chữ phụ: kỳ, ghi chú, meta khách
+          '--fs-xs': '11.5px', // nhãn UPPERCASE nhỏ
+        } as React.CSSProperties
+      }
     >
       <ContractTopBar
         contract={contract}
@@ -110,7 +127,7 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
         onDelete={props.onDelete}
       />
 
-      <div className="mx-auto max-w-[1720px] px-[18px] pb-10 pt-3.5">
+      <div className={`${KHUNG} pb-12 pt-4`}>
         <ContractAlertStrip
           contract={contract}
           isActive={isActive}
@@ -121,8 +138,16 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
           pendingRefundCount={pendingRefundCount}
         />
 
-        <div className="grid items-start gap-3.5 [grid-template-columns:minmax(0,1fr)] xl:[grid-template-columns:minmax(0,1fr)_minmax(0,1.12fr)]">
-          <div className="flex min-w-0 flex-col gap-3.5">
+        {/* HAI CỘT HAY MỘT CỘT LÀ DO KHUNG CHỨA QUYẾT ĐỊNH, KHÔNG PHẢI VIEWPORT.
+            Trước đây dùng breakpoint `xl:` (1280px viewport) nên không hề biết
+            sidebar đang chiếm 264px: ở viewport 1280 vùng dùng được chỉ còn
+            1208px, chia đôi ra cột phải 611px trong khi bảng Tài chính cần
+            700px — thẻ nào cũng phải cuộn ngang. `auto-fit` + `minmax(700px,1fr)`
+            tự đo khung thật: chưa đủ chỗ cho hai cột 700px thì xếp dọc, mỗi thẻ
+            rộng hết khung; đủ chỗ thì thành hai cột. Đúng ở cả modal (không
+            sidebar) lẫn route (có sidebar) mà không cần khai ngưỡng nào. */}
+        <div className="grid items-start gap-4 [grid-template-columns:repeat(auto-fit,minmax(700px,1fr))]">
+          <div className="flex min-w-0 flex-col gap-4">
             <ContractTermsCard
               contract={contract}
               services={services}
@@ -137,7 +162,7 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
             />
           </div>
 
-          <div className="flex min-w-0 flex-col gap-3.5">
+          <div className="flex min-w-0 flex-col gap-4">
             <ContractFinanceCard
               contract={contract}
               depositVouchers={depositVouchers}

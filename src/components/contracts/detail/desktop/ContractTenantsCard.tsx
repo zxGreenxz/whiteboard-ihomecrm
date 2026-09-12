@@ -30,7 +30,7 @@ function MucMeta({
 }) {
   return (
     <span className={`inline-flex items-center gap-1.5 ${nhat ? 'text-gray-500' : ''}`}>
-      <Icon className="h-[13px] w-[13px] shrink-0 text-[#67737E]" strokeWidth={2} />
+      <Icon className="h-[15px] w-[15px] shrink-0 text-[#67737E]" strokeWidth={2} />
       {children}
     </span>
   );
@@ -52,7 +52,7 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
       </DauThe>
 
       {customers.length === 0 ? (
-        <div className="px-[14px] py-6 text-center text-[13px] text-[#67737E]">
+        <div className="px-[var(--px)] py-8 text-center text-[length:var(--fs)] text-[#67737E]">
           Hợp đồng chưa có khách hàng nào.
         </div>
       ) : (
@@ -66,12 +66,12 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
           return (
             <div
               key={cc.id}
-              className={`grid grid-cols-[34px_minmax(0,1fr)_26px] items-center gap-2.5 px-[14px] py-[9px] ${
+              className={`grid grid-cols-[40px_minmax(0,1fr)_30px] items-center gap-3.5 px-[var(--px)] py-3 ${
                 i < customers.length - 1 ? 'border-b border-[#f2f4f6]' : ''
               }`}
             >
               <div
-                className={`flex h-[34px] w-[34px] items-center justify-center rounded-full text-[12.5px] font-bold ${
+                className={`flex h-[40px] w-[40px] items-center justify-center rounded-full text-[14px] font-bold ${
                   cc.is_representative
                     ? 'bg-[#eef7f2] text-[#12764a]'
                     : 'bg-[#f1f3f5] text-[#5a6862]'
@@ -82,15 +82,15 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
 
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[14px] font-semibold">{ten}</span>
+                  <span className="text-[15.5px] font-semibold">{ten}</span>
                   {cc.is_representative && (
-                    <span className="inline-flex rounded border border-[#cfe7db] bg-[#eef7f2] px-1.5 py-px text-[10.5px] font-bold tracking-[.03em] text-[#12764a]">
+                    <span className="inline-flex rounded border border-[#cfe7db] bg-[#eef7f2] px-2 py-0.5 text-[11px] font-bold tracking-[.03em] text-[#12764a]">
                       ĐẠI DIỆN
                     </span>
                   )}
                 </div>
 
-                <div className="mt-[3px] flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] tabular-nums text-[#4a5a52]">
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[length:var(--fs-sm)] tabular-nums text-[#4a5a52]">
                   <MucMeta icon={Phone} nhat={!cc.customer?.phone}>
                     {cc.customer?.phone || 'Chưa có'}
                   </MucMeta>
@@ -109,7 +109,7 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
                 </div>
 
                 {cc.notes && (
-                  <div className="mt-1.5 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[12px] text-amber-900">
+                  <div className="mt-2 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[length:var(--fs-sm)] text-amber-900">
                     {cc.notes}
                   </div>
                 )}
@@ -119,7 +119,7 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
                 title="Xem chi tiết khách thuê"
                 onClick={() => navigate(`/customers/${cc.customer_id}`)}
               >
-                <Eye className="h-3.5 w-3.5" strokeWidth={2} />
+                <Eye className="h-4 w-4" strokeWidth={2} />
               </NutTron>
             </div>
           );

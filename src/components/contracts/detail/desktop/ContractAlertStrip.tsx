@@ -32,9 +32,9 @@ function Dai({
 }) {
   return (
     <div
-      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[12.5px] leading-[1.45] ${MAU[mau]}`}
+      className={`flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[length:var(--fs-sm)] leading-[1.5] ${MAU[mau]}`}
     >
-      <Icon className="mt-[2px] h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+      <Icon className="mt-[3px] h-4 w-4 shrink-0" strokeWidth={2} />
       <div className="min-w-0">{children}</div>
     </div>
   );
@@ -82,7 +82,7 @@ export function ContractAlertStrip({
   };
 
   return (
-    <div className="mb-3.5 flex flex-col gap-2">
+    <div className="mb-4 flex flex-col gap-2.5">
       {sideLoadErrors.length > 0 && (
         <Dai mau="do" icon={AlertCircle}>
           Không tải được: {sideLoadErrors.join(', ')}. Số liệu các mục này có thể thiếu — tải
@@ -106,7 +106,7 @@ export function ContractAlertStrip({
         <Dai mau="hoPhach" icon={AlertCircle}>
           <p className="font-medium">Phiếu thanh lý chờ xử lý ({choXuLy} phiếu)</p>
           {pendingForfeitCount > 0 && (
-            <p className="text-[12px]">
+            <p className="text-[length:var(--fs-sm)]">
               Vào{' '}
               <a href="/income-expense" className="font-medium underline">
                 Thu chi
@@ -116,7 +116,7 @@ export function ContractAlertStrip({
             </p>
           )}
           {pendingRefundCount > 0 && (
-            <p className="text-[12px]">
+            <p className="text-[length:var(--fs-sm)]">
               Phiếu chi <b>"Trả khách thanh lý"</b> đang chờ: vào{' '}
               <a href="/income-expense" className="font-medium underline">
                 Thu chi
@@ -134,7 +134,7 @@ export function ContractAlertStrip({
             <p className="font-medium">
               Còn {formatAmount(contract.deposit_remaining ?? 0)} cọc — thu trong hoá đơn đầu
             </p>
-            <p className="text-[12px]">
+            <p className="text-[length:var(--fs-sm)]">
               Khách thanh toán đủ cọc trong hoá đơn cọc + tháng đầu (không nhắc bổ sung).
             </p>
           </Dai>
@@ -144,10 +144,10 @@ export function ContractAlertStrip({
               Còn thiếu {formatAmount(contract.deposit_remaining ?? 0)} tiền cọc
             </p>
             {noCoc.deposit_debt_reason && (
-              <p className="text-[12px]">Lý do cho nợ: {noCoc.deposit_debt_reason}</p>
+              <p className="text-[length:var(--fs-sm)]">Lý do cho nợ: {noCoc.deposit_debt_reason}</p>
             )}
             {noCoc.deposit_topup_due_date && (
-              <p className="text-[12px]">
+              <p className="text-[length:var(--fs-sm)]">
                 Hẹn bổ sung: {ngayVn(noCoc.deposit_topup_due_date)}
               </p>
             )}
