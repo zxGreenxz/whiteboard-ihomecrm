@@ -264,6 +264,72 @@ export function useContractHistory(contractId: string) {
       if (ext.error) throw ext.error;
       if (tra.error) throw tra.error;
       if (ter.error) throw ter.error;
+
+      // Nhãn phòng + tên khách cho các dòng CHUYỂN/NHƯỢNG.
+      //
+      // `contract_transfers` chỉ giữ old_room_id / new_room_id / old_tenant_id /
+      // new_tenant_id. Không tra tên thì màn chi tiết chỉ nói được "Chuyển phòng"
+      // trống trơn — người xem vẫn phải đi tìm phòng nào sang phòng nào.
+      //
+      // VÌ SAO NHÉT VÀO `details` CHỨ KHÔNG ĐỔI KIỂU TRẢ VỀ: hook này trả
+      // `ContractHistoryItem[]` và bản MOBILE cũng dùng đúng mảng đó. Đổi sang
+      // trả object là ép sửa cả mobile. `details` vốn là Record<string, any>
+      // nên thêm khoá không đổi kiểu, không đổi query key, mobile không thấy gì khác.
+      const transfers = tra.data ?? [];
+      if (transfers.length > 0) {
+        const roomIds = [
+          ...new Set(
+            transfers
+              .flatMap((t) => [t.old_room_id, t.new_room_id])
+              .filter((v): v is string => !!v),
+          ),
+        ];
+        const tenantIds = [
+          ...new Set(
+            transfers
+              .flatMap((t) => [t.old_tenant_id, t.new_tenant_id])
+              .filter((v): v is string => !!v),
+          ),
+        ];
+
+        const [rooms, tenants] = await Promise.all([
+          roomIds.length
+            ? supabase
+                .from("rooms")
+                .select("id, name, building:buildings(name)")
+                .in("id", roomIds)
+            : Promise.resolve({ data: [], error: null }),
+          tenantIds.length
+            ? supabase
+                .from("customers")
+                .select("id, full_name")
+                .in("id", tenantIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+        // Tra tên hỏng thì để dòng lịch sử tự nói "phòng khác" — KHÔNG throw:
+        // cả trang lịch sử không đáng chết chỉ vì thiếu một cái nhãn.
+        const tenPhong = new Map<string, string>();
+        for (const r of (rooms.data ?? []) as Array<{
+          id: string;
+          name: string;
+          building?: { name?: string | null } | null;
+        }>) {
+          tenPhong.set(r.id, r.building?.name ? `${r.name} — ${r.building.name}` : r.name);
+        }
+        const tenKhach = new Map<string, string>();
+        for (const c of (tenants.data ?? []) as Array<{ id: string; full_name: string | null }>) {
+          if (c.full_name) tenKhach.set(c.id, c.full_name);
+        }
+
+        for (const t of transfers) {
+          const row = t as Record<string, unknown>;
+          if (t.old_room_id) row.old_room_label = tenPhong.get(t.old_room_id) ?? null;
+          if (t.new_room_id) row.new_room_label = tenPhong.get(t.new_room_id) ?? null;
+          if (t.old_tenant_id) row.old_tenant_name = tenKhach.get(t.old_tenant_id) ?? null;
+          if (t.new_tenant_id) row.new_tenant_name = tenKhach.get(t.new_tenant_id) ?? null;
+        }
+      }
+
       const history: ContractHistoryItem[] = [
         ...(ext.data ?? []).map((e) => ({
           id: e.id, type: "extension" as const, created_at: e.created_at,
