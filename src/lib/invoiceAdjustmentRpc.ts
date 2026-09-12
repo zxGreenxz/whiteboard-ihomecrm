@@ -42,7 +42,8 @@ export async function adjustInvoice(input: AdjustInvoiceInput): Promise<InvoiceA
   try {
     const { data, error } = await supabase.rpc('adjust_invoice_v2', {
     p_invoice_id: input.invoiceId, p_after_items: input.afterItems,
-    p_discount_amount: input.discountAmount, p_discount_notes: input.discountNotes, p_notes: input.notes,
+    // Omitted optional arguments use SQL DEFAULT NULL; keep explicit empty strings.
+    p_discount_amount: input.discountAmount, p_discount_notes: input.discountNotes ?? undefined, p_notes: input.notes ?? undefined,
     p_reason: input.reason, p_expected_revision: input.expectedRevision,
     p_expected_paid_amount: input.expectedPaidAmount, p_expected_updated_at: input.expectedUpdatedAt,
     p_idempotency_key: input.idempotencyKey,

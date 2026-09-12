@@ -16,6 +16,24 @@ it('requires the expected revision when reviewing', async () => {
   await reviewInvoiceAdjustment({ adjustmentId: result.id, expectedRevision: 3 });
   expect(rpc).toHaveBeenCalledWith('review_invoice_adjustment_v2', { p_adjustment_id: result.id, p_expected_revision: 3 });
 });
+it('omits nullable notes at serialization so SQL defaults preserve NULL', async () => {
+  rpc.mockResolvedValue({ data: result, error: null });
+  const nullableRequest = { ...request, notes: null, discountNotes: null };
+  await adjustInvoice(nullableRequest);
+  const args = rpc.mock.calls[0]?.[1];
+  expect(args.p_notes).toBeUndefined();
+  expect(args.p_discount_notes).toBeUndefined();
+  const serialized: Record<string, unknown> = JSON.parse(JSON.stringify(args));
+  expect(serialized).not.toHaveProperty('p_notes');
+  expect(serialized).not.toHaveProperty('p_discount_notes');
+  expect(nullableRequest).toMatchObject({ notes: null, discountNotes: null });
+});
+it('keeps explicit empty notes in the serialized request', async () => {
+  rpc.mockResolvedValue({ data: result, error: null });
+  await adjustInvoice({ ...request, notes: '', discountNotes: '' });
+  const serialized: Record<string, unknown> = JSON.parse(JSON.stringify(rpc.mock.calls[0]?.[1]));
+  expect(serialized).toMatchObject({ p_notes: '', p_discount_notes: '' });
+});
 it.each([null, {}, { ...result, delta: '100' }, { ...result, review_status: 'UNKNOWN' }])('rejects malformed RPC success %j', async data => {
   rpc.mockResolvedValue({ data, error: null });
   await expect(adjustInvoice(request)).rejects.toMatchObject({ kind: 'internal' });
