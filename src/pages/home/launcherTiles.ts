@@ -32,6 +32,7 @@ import {
   Coins,
   Network,
   Banknote,
+  DollarSign,
 } from 'lucide-react';
 import type { ActionKey } from '@/lib/permissions';
 import { launcherFieldsFor } from '@/app/capabilities/surfaceAdapters';
@@ -81,6 +82,10 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
     label: 'Khách hàng & Hợp đồng',
     items: [
       ...launcherFieldsFor('customers').map((x) => ({ ...x, icon: User, accent: '#7c3aed' }) satisfies LauncherTile),
+      // Cùng nhóm "Khách hàng" như Sidebar.tsx và cùng glyph DollarSign — đây là
+      // đường vào DUY NHẤT của màn Sổ cọc trên điện thoại (DepositsPage rẽ sang
+      // DepositsMobilePage khi `usePhoneViewport`), nên thiếu ô là mất màn.
+      ...launcherFieldsFor('deposits').map((x) => ({ ...x, icon: DollarSign, accent: '#159a57' }) satisfies LauncherTile),
       ...launcherFieldsFor('contracts').map((x) => ({ ...x, icon: FileText, accent: '#4f46e5' }) satisfies LauncherTile),
       ...launcherFieldsFor('vehicles').map((x) => ({ ...x, icon: Car, accent: '#ea580c' }) satisfies LauncherTile),
     ],

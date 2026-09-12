@@ -308,8 +308,10 @@ export default function DepositsMobilePage() {
                 </div>
               )}
             </div>
+            {/* Không mx-4/mb-3: `.mbody` đã padding ngang 16px và khối cha đã đặt
+                `gap: 11` — lề riêng làm thẻ này hẹp hơn và lệch so với thẻ KPI trên nó. */}
 
-            {settlementSummary && <div className="mx-4 mb-3 grid grid-cols-3 gap-2 rounded-xl border bg-white p-3 text-center text-xs"><div><span className="text-muted-foreground">Giữ lại</span><b className="mt-1 block">{formatMoneyShort(settlementSummary.retainedAmount)}</b></div><div><span className="text-muted-foreground">Chờ hoàn</span><b className="mt-1 block text-amber-700">{formatMoneyShort(settlementSummary.refundPendingAmount)}</b></div><div><span className="text-muted-foreground">Đã hoàn</span><b className="mt-1 block text-emerald-700">{formatMoneyShort(settlementSummary.refundPaidAmount)}</b></div></div>}
+            {settlementSummary && <div className="grid grid-cols-3 gap-2 rounded-xl border bg-white p-3 text-center text-xs"><div><span className="text-muted-foreground">Giữ lại</span><b className="mt-1 block">{formatMoneyShort(settlementSummary.retainedAmount)}</b></div><div><span className="text-muted-foreground">Chờ hoàn</span><b className="mt-1 block text-amber-700">{formatMoneyShort(settlementSummary.refundPendingAmount)}</b></div><div><span className="text-muted-foreground">Đã hoàn</span><b className="mt-1 block text-emerald-700">{formatMoneyShort(settlementSummary.refundPaidAmount)}</b></div></div>}
 
             <div className="dp-seg">
               <button
@@ -454,6 +456,14 @@ export default function DepositsMobilePage() {
                 )}
               </>
             )}
+
+            {/* Chờ hoàn cọc — khoản phải trả khách, không phụ thuộc ngày hẹn.
+                PHẢI nằm trong `.mbody`: `.cm-stage` là flex căn giữa và `.cm-app`
+                là flex item co được (`width:100%; max-width:432px`), nên đặt khối
+                này làm anh em của `.cm-app` sẽ biến khung điện thoại thành một
+                cột của layout hai cột — khung bị bóp còn ~200px, tiêu đề bị cắt,
+                dải KPI ba ô dính vào nhau. Đã đo trên ptcrm.vercel.app/deposits. */}
+            <ReservationPendingRefundList />
           </div>
 
           {/* Bảng thao tác — chạm thẻ để mở */}
@@ -571,7 +581,6 @@ export default function DepositsMobilePage() {
       </div>
 
       <CreateDepositDialog open={createOpen} onOpenChange={setCreateOpen} />
-      <div className="px-4 pb-4"><ReservationPendingRefundList /></div>
       <ReservationSettlementDialog voucherId={settlementVoucherId} open={!!settlementVoucherId} onOpenChange={(next) => !next && setSettlementVoucherId(null)} />
       <HoldDeadlineDialog
         target={deadlineTarget}

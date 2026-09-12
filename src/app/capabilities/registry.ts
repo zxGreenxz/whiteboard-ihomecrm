@@ -373,7 +373,7 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     label: "Đặt cọc",
     release: { enabled: true, runtimeModule: null },
     permission: { module: "deposits", action: "view" },
-    surfaces: { desktopNav: true, mobileLauncher: false, permissionPage: "/deposits" },
+    surfaces: { desktopNav: true, mobileLauncher: true, permissionPage: "/deposits" },
     docs: {
       systemDoc: "docs/he-thong/04-coc-giu-cho.md",
       userDoc: "docs/huong-dan-su-dung/03-quan-ly-van-hanh/dat-coc/index.md",
