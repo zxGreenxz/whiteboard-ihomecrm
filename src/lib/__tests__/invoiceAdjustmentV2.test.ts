@@ -255,4 +255,41 @@ describe('atomic issued invoice adjustment SQL',()=>{
     await paid(); await adjust();
     await expect(db.exec(`UPDATE invoice_payment_collections SET component_manifest_id=(SELECT id FROM finance_invoice_component_manifests WHERE adjustment_revision=1) WHERE id='${collection}'`)).rejects.toMatchObject({code:'55000'});
   }));
+  it('keeps proved legacy PNL reportable after the latest document becomes mixed',()=>scenario(async()=>{
+    await paid(50000,collection,'PNL',false);
+    const cohort=()=>db.query(`SELECT cohort_available,billed_current_charge,collected_current_charge,allocation_unknown_count
+      FROM public.business_performance_invoice_cohort_v1('${org}','2026-09-01',ARRAY['${building}'::uuid])`);
+    expect((await cohort()).rows).toEqual([{cohort_available:true,billed_current_charge:'100000.00',collected_current_charge:'50000',allocation_unknown_count:0}]);
+    await adjust([item(80000),item(20000,'DEPOSIT')]);
+    expect((await cohort()).rows).toEqual([{cohort_available:true,billed_current_charge:'80000.00',collected_current_charge:'50000',allocation_unknown_count:0}]);
+    expect((await db.query(`SELECT count(*)::int n FROM finance_invoice_component_allocations WHERE collection_id='${collection}'`)).rows).toEqual([{n:0}]);
+  }));
+  it('subtracts known deposit allocations before proving residual legacy PNL on another adjustment',()=>scenario(async()=>{
+    await paid(50000,collection,'PNL',false);
+    await adjust([item(80000),item(20000,'DEPOSIT')]);
+    const next='00000000-0000-4000-8000-000000000005';
+    await paid(50000,next);
+    // The real V5 writer emits 30k PNL + 20k DEPOSIT for this collection.
+    await db.exec(`UPDATE income_expense_items SET amount=30000 WHERE income_expense_id='${next}';
+      INSERT INTO income_expense_items(income_expense_id,accounting_class,amount) VALUES ('${next}','DEPOSIT',20000)`);
+    const allocationRows=(await db.query(`SELECT to_jsonb(a) row FROM finance_invoice_component_allocations a ORDER BY a.id`)).rows;
+    const revised=await adjust([item(90000),item(30000,'DEPOSIT')],{key:'residual-second-revision'});
+    expect(revised.rows[0]).toMatchObject({revision:2,after_total:'120000.00'});
+    expect((await db.query(`SELECT cohort_available,billed_current_charge,collected_current_charge,allocation_unknown_count
+      FROM public.business_performance_invoice_cohort_v1('${org}','2026-09-01',ARRAY['${building}'::uuid])`)).rows)
+      .toEqual([{cohort_available:true,billed_current_charge:'90000.00',collected_current_charge:'80000.00',allocation_unknown_count:0}]);
+    expect((await db.query(`SELECT to_jsonb(a) row FROM finance_invoice_component_allocations a ORDER BY a.id`)).rows).toEqual(allocationRows);
+  }));
+  it('still rejects a genuinely mixed unallocated residual after newer allocated collections',()=>scenario(async()=>{
+    await paid(50000,collection,'PNL',false);
+    await adjust([item(80000),item(20000,'DEPOSIT')]);
+    const next='00000000-0000-4000-8000-000000000005';
+    await paid(50000,next);
+    await db.exec(`UPDATE income_expense_items SET amount=30000 WHERE income_expense_id='${next}';
+      INSERT INTO income_expense_items(income_expense_id,accounting_class,amount) VALUES ('${next}','DEPOSIT',20000)`);
+    await paid(5000,'00000000-0000-4000-8000-000000000006','DEPOSIT',false);
+    expect((await db.query(`SELECT cohort_available,allocation_unknown_count FROM public.business_performance_invoice_cohort_v1('${org}','2026-09-01',ARRAY['${building}'::uuid])`)).rows)
+      .toEqual([{cohort_available:false,allocation_unknown_count:1}]);
+    await expect(adjust([item(90000),item(30000,'DEPOSIT')],{key:'ambiguous-residual'})).rejects.toMatchObject({code:'55000',message:expect.stringContaining('hỗn hợp')});
+  }));
 });

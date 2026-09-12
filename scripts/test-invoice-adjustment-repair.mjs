@@ -24,6 +24,16 @@ FROM public.organization_memberships m WHERE m.organization_id='dddd0000-0000-40
 ${actAsFixtureActorSql()}
 ${probe}
 RESET ROLE; SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+${fixtureInvoiceSql({marker:'[E2E-V5-HARNESS:adjustment-legacy-residual]',billingMonth:'2093-11',rent:100000,deposit:0})}
+INSERT INTO public.cashbook_possession_bindings(organization_id,cashbook_id,membership_id,possession_kind,valid_from,reason)
+SELECT m.organization_id,current_setting('v5h.account_tm')::uuid,m.id,'KNOWER',now()-interval '1 minute','rollback-only residual fixture'
+FROM public.organization_memberships m WHERE m.organization_id='dddd0000-0000-4000-8000-000000000001'
+ AND m.user_id=current_setting('v5h.actor')::uuid AND m.status='ACTIVE'
+ AND NOT app_private.ie_has_cashbook_possession_v1(m.organization_id,current_setting('v5h.account_tm')::uuid,m.id);
+${actAsFixtureActorSql()}
+${readFileSync('docs/audits/2026-09-12-invoice-adjustment-legacy-residual.probe.sql','utf8')}
+RESET ROLE; SET CONSTRAINTS ALL IMMEDIATE;
 SELECT 'PASS: v2 revisions, V5 collection/reversal, component pins, historical money, review, stale/replay, malformed inputs and scope; rollback' AS result;
 ROLLBACK;`;
 const rows=await runQuery(sql,config);

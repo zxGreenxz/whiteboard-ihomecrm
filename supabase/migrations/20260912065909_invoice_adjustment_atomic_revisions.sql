@@ -76,6 +76,54 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app_private.normalize_invoice_adjustment_items_v2(jsonb,uuid) FROM PUBLIC,anon,authenticated,service_role;
 
+-- NULL means the missing financial allocation cannot be proved. Known newer
+-- allocations are subtracted by semantic class before examining the legacy
+-- residual; the shape of the latest obligation never supplies that evidence.
+CREATE OR REPLACE FUNCTION app_private.proved_legacy_invoice_pnl_v2(p_invoice_id uuid,p_exclude_collection_id uuid DEFAULT NULL)
+RETURNS numeric LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,app_private AS $$
+DECLARE paid numeric; allocated numeric; allocated_pnl numeric; allocated_deposit numeric; allocated_internal numeric;
+  semantic_pnl numeric; semantic_deposit numeric; semantic_internal numeric; residual numeric;
+BEGIN
+  SELECT coalesce(sum(p.amount),0) INTO paid FROM public.payments p
+    LEFT JOIN public.invoice_payment_collections c ON c.id=p.collection_id
+    WHERE p.invoice_id=p_invoice_id AND p.reversed_at IS NULL AND (p.collection_id IS NULL OR c.status='ACTIVE')
+      AND (p_exclude_collection_id IS NULL OR p.collection_id IS DISTINCT FROM p_exclude_collection_id);
+  SELECT coalesce(sum(a.amount),0),
+    coalesce(sum(a.amount) FILTER(WHERE component.component_kind IN ('CURRENT_CHARGE','CARRIED_INVOICE_DEBT','SETTLEMENT')),0),
+    coalesce(sum(a.amount) FILTER(WHERE component.component_kind IN ('CURRENT_DEPOSIT','CARRIED_DEPOSIT_DEBT')),0),
+    coalesce(sum(a.amount) FILTER(WHERE component.component_kind='INTERNAL'),0)
+    INTO allocated,allocated_pnl,allocated_deposit,allocated_internal
+  FROM public.finance_invoice_component_allocations a
+    JOIN public.invoice_payment_collections c ON c.id=a.collection_id AND c.status='ACTIVE'
+    JOIN public.finance_invoice_components component ON component.id=a.component_id
+    WHERE a.invoice_id=p_invoice_id AND a.collection_id IS DISTINCT FROM p_exclude_collection_id;
+  residual:=paid-allocated;
+  -- No missing allocation requires no legacy inference. In particular a fully
+  -- allocated SETTLEMENT can itself contain several accounting semantics.
+  IF abs(residual)<0.01 THEN RETURN 0; END IF;
+  IF residual<0 OR residual::text IN ('NaN','Infinity','-Infinity') THEN RETURN NULL; END IF;
+  SELECT coalesce(sum(coalesce(i.amount,i.unit_price*i.quantity)) FILTER(WHERE i.accounting_class='PNL'),0),
+    coalesce(sum(coalesce(i.amount,i.unit_price*i.quantity)) FILTER(WHERE i.accounting_class='DEPOSIT'),0),
+    coalesce(sum(coalesce(i.amount,i.unit_price*i.quantity)) FILTER(WHERE i.accounting_class='INTERNAL'),0)
+    INTO semantic_pnl,semantic_deposit,semantic_internal
+  FROM public.income_expenses v JOIN public.income_expense_items i ON i.income_expense_id=v.id
+    LEFT JOIN public.invoice_payment_collections c ON c.id=v.payment_collection_id
+    LEFT JOIN public.payments p ON p.id=v.payment_id
+    WHERE v.invoice_id=p_invoice_id AND v.type='INCOME' AND v.approval_status='APPROVED' AND v.deleted_at IS NULL
+      AND (v.payment_collection_id IS NULL OR c.status='ACTIVE') AND (v.payment_id IS NULL OR p.reversed_at IS NULL)
+      AND (p_exclude_collection_id IS NULL OR (v.payment_collection_id IS DISTINCT FROM p_exclude_collection_id AND p.collection_id IS DISTINCT FROM p_exclude_collection_id));
+  IF abs(semantic_pnl+semantic_deposit+semantic_internal-paid)>=0.01
+    OR abs(semantic_deposit-allocated_deposit)>=0.01 OR abs(semantic_internal-allocated_internal)>=0.01
+    OR abs((semantic_pnl-allocated_pnl)-residual)>=0.01
+    OR NOT EXISTS(SELECT 1 FROM public.finance_invoice_component_manifests m JOIN public.finance_invoice_components c ON c.manifest_id=m.id
+      WHERE m.invoice_id=p_invoice_id AND m.adjustment_revision=0 AND m.component_status='COMPLETE' AND m.finalized_at IS NOT NULL
+      GROUP BY m.id HAVING count(*)=1 AND bool_and(c.component_kind='CURRENT_CHARGE') AND sum(c.amount)>=residual) THEN
+    RETURN NULL;
+  END IF;
+  RETURN residual;
+END $$;
+REVOKE ALL ON FUNCTION app_private.proved_legacy_invoice_pnl_v2(uuid,uuid) FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE OR REPLACE FUNCTION public.guard_paid_invoice_direct_adjustment()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $$
 DECLARE parents uuid[]:='{}'; parent record;
@@ -141,7 +189,7 @@ CREATE OR REPLACE FUNCTION public.adjust_invoice_v2(
 DECLARE inv public.invoices%ROWTYPE; result public.invoice_adjustments%ROWTYPE; actor uuid:=auth.uid();
   items jsonb; old_items jsonb; before_doc jsonb; after_doc jsonb; v_subtotal numeric; total numeric; discount numeric;
   key text:=btrim(p_idempotency_key); fingerprint text; x jsonb; manifest uuid; coverage record;
-  paid_events numeric; allocated numeric; revenue numeric; deposit numeric; internal_due numeric;
+  paid_events numeric; allocated numeric; legacy_pnl numeric; allocated_current_charge numeric; revenue numeric; deposit numeric; internal_due numeric;
   revenue_covered numeric; deposit_covered numeric; internal_covered numeric;
 BEGIN
   IF actor IS NULL THEN RAISE EXCEPTION 'Chưa đăng nhập' USING ERRCODE='42501'; END IF;
@@ -248,11 +296,13 @@ BEGIN
       RAISE EXCEPTION 'Thành phần % thấp hơn tiền đã phân bổ; đảo giao dịch trong Lịch sử thanh toán trước',coverage.component_kind USING ERRCODE='55000'; END IF;
   END LOOP;
   IF abs(paid_events-allocated)>=0.01 THEN
-    IF allocated>paid_events OR deposit_covered<>0 OR internal_covered<>0
-      OR NOT EXISTS(SELECT 1 FROM public.finance_invoice_component_manifests m JOIN public.finance_invoice_components c ON c.manifest_id=m.id
-        WHERE m.invoice_id=p_invoice_id AND m.adjustment_revision=0 AND m.component_status='COMPLETE'
-        GROUP BY m.id HAVING count(*)=1 AND bool_and(c.component_kind='CURRENT_CHARGE'))
-      OR coalesce((SELECT amount FROM public.finance_invoice_components WHERE manifest_id=manifest AND component_kind='CURRENT_CHARGE'),0)<revenue_covered THEN
+    legacy_pnl:=app_private.proved_legacy_invoice_pnl_v2(p_invoice_id);
+    SELECT coalesce(sum(a.amount),0) INTO allocated_current_charge FROM public.finance_invoice_component_allocations a
+      JOIN public.invoice_payment_collections c ON c.id=a.collection_id AND c.status='ACTIVE'
+      JOIN public.finance_invoice_components component ON component.id=a.component_id
+      WHERE a.invoice_id=p_invoice_id AND component.component_kind='CURRENT_CHARGE';
+    IF legacy_pnl IS NULL
+      OR coalesce((SELECT amount FROM public.finance_invoice_components WHERE manifest_id=manifest AND component_kind='CURRENT_CHARGE'),0)<allocated_current_charge+legacy_pnl THEN
       RAISE EXCEPTION 'Phân bổ lịch sử hỗn hợp chưa chứng minh được; cần đối soát hoặc đảo giao dịch trong Lịch sử thanh toán' USING ERRCODE='55000';
     END IF;
   END IF;
@@ -314,7 +364,7 @@ CREATE TRIGGER pin_invoice_collection_manifest_v2 BEFORE INSERT OR UPDATE ON pub
 CREATE OR REPLACE FUNCTION app_private.allocate_finance_collection_components_v1(p_collection_id uuid)
 RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,app_private,public AS $$
 DECLARE collection public.invoice_payment_collections%ROWTYPE; manifest uuid; component record;
-  prior_paid numeric; prior_allocated numeric; legacy_pnl numeric:=0; covered numeric; amount numeric; remaining numeric;
+  legacy_pnl numeric:=0; covered numeric; amount numeric; remaining numeric;
 BEGIN
   SELECT * INTO collection FROM public.invoice_payment_collections WHERE id=p_collection_id FOR SHARE;
   IF NOT FOUND OR collection.status<>'ACTIVE' THEN RETURN; END IF;
@@ -326,19 +376,8 @@ BEGIN
     AND ((collection.component_manifest_id IS NOT NULL AND m.id=collection.component_manifest_id)
       OR (collection.component_manifest_id IS NULL AND m.adjustment_revision=0));
   IF manifest IS NULL THEN RETURN; END IF;
-  SELECT coalesce(sum(p.amount),0) INTO prior_paid FROM public.payments p LEFT JOIN public.invoice_payment_collections c ON c.id=p.collection_id
-    WHERE p.invoice_id=collection.invoice_id AND p.reversed_at IS NULL AND p.collection_id IS DISTINCT FROM p_collection_id
-      AND (p.collection_id IS NULL OR c.status='ACTIVE');
-  SELECT coalesce(sum(a.amount),0) INTO prior_allocated FROM public.finance_invoice_component_allocations a
-    JOIN public.invoice_payment_collections c ON c.id=a.collection_id AND c.status='ACTIVE'
-    WHERE a.invoice_id=collection.invoice_id AND a.collection_id<>p_collection_id;
-  IF abs(prior_paid-prior_allocated)>=0.01 THEN
-    IF prior_paid<prior_allocated OR NOT EXISTS(
-      SELECT 1 FROM public.finance_invoice_component_manifests m JOIN public.finance_invoice_components c ON c.manifest_id=m.id
-      WHERE m.invoice_id=collection.invoice_id AND m.adjustment_revision=0 AND m.component_status='COMPLETE'
-      GROUP BY m.id HAVING count(*)=1 AND bool_and(c.component_kind='CURRENT_CHARGE')) THEN RETURN; END IF;
-    legacy_pnl:=prior_paid-prior_allocated;
-  END IF;
+  legacy_pnl:=app_private.proved_legacy_invoice_pnl_v2(collection.invoice_id,p_collection_id);
+  IF legacy_pnl IS NULL THEN RETURN; END IF;
   remaining:=collection.applied_amount;
   IF remaining<=0 THEN RETURN; END IF;
   FOR component IN SELECT c.* FROM public.finance_invoice_components c WHERE c.manifest_id=manifest ORDER BY c.component_order,c.id LOOP
@@ -697,15 +736,22 @@ BEGIN
       ON component.id = allocation.component_id
     GROUP BY invoice_row.id
   ),
+  legacy_coverage AS MATERIALIZED (
+    SELECT invoice_row.id AS invoice_id,
+      app_private.proved_legacy_invoice_pnl_v2(invoice_row.id) AS legacy_pnl
+    FROM issued invoice_row
+  ),
   payment_facts AS MATERIALIZED (
     SELECT
       invoice_row.id AS invoice_id,
       COALESCE(payment_row.paid_event_amount, 0)::numeric AS paid_event_amount,
       COALESCE(allocation_row.allocated_amount, 0)::numeric AS allocated_amount,
-      COALESCE(allocation_row.allocated_current_charge, 0)::numeric AS allocated_current_charge
+      COALESCE(allocation_row.allocated_current_charge, 0)::numeric AS allocated_current_charge,
+      legacy_row.legacy_pnl
     FROM issued invoice_row
     LEFT JOIN payment_events payment_row ON payment_row.invoice_id = invoice_row.id
     LEFT JOIN allocation_facts allocation_row ON allocation_row.invoice_id = invoice_row.id
+    LEFT JOIN legacy_coverage legacy_row ON legacy_row.invoice_id = invoice_row.id
   ),
   per_invoice AS MATERIALIZED (
     SELECT
@@ -724,14 +770,10 @@ BEGIN
         WHEN component_row.component_status = 'COMPLETE'
          AND component_row.finalized_at IS NOT NULL
          AND abs(payment_row.paid_event_amount - invoice_row.paid_amount) < 0.01
-         AND component_row.positive_component_count = 1
-         AND component_row.current_charge > 0
-          THEN LEAST(payment_row.paid_event_amount, component_row.current_charge)
-        WHEN component_row.component_status = 'COMPLETE'
-         AND component_row.finalized_at IS NOT NULL
-         AND abs(payment_row.paid_event_amount - invoice_row.paid_amount) < 0.01
-         AND abs(payment_row.allocated_amount - payment_row.paid_event_amount) < 0.01
-          THEN LEAST(payment_row.allocated_current_charge, component_row.current_charge)
+         AND payment_row.legacy_pnl IS NOT NULL
+         AND abs(payment_row.allocated_amount + payment_row.legacy_pnl - payment_row.paid_event_amount) < 0.01
+         AND payment_row.allocated_current_charge + payment_row.legacy_pnl <= component_row.current_charge
+          THEN payment_row.allocated_current_charge + payment_row.legacy_pnl
         ELSE NULL
       END::numeric AS collected_current_charge,
       component_row.component_status = 'COMPLETE'
@@ -740,10 +782,9 @@ BEGIN
         WHEN payment_row.paid_event_amount = 0
           THEN component_row.component_status = 'COMPLETE'
             AND component_row.finalized_at IS NOT NULL
-        WHEN component_row.positive_component_count = 1
-         AND component_row.current_charge > 0
-          THEN abs(payment_row.paid_event_amount - invoice_row.paid_amount) < 0.01
-        ELSE abs(payment_row.allocated_amount - payment_row.paid_event_amount) < 0.01
+        ELSE payment_row.legacy_pnl IS NOT NULL
+          AND abs(payment_row.allocated_amount + payment_row.legacy_pnl - payment_row.paid_event_amount) < 0.01
+          AND payment_row.allocated_current_charge + payment_row.legacy_pnl <= component_row.current_charge
           AND abs(payment_row.paid_event_amount - invoice_row.paid_amount) < 0.01
       END AS allocation_complete
     FROM issued invoice_row
