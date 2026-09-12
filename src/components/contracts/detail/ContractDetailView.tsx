@@ -1,12 +1,8 @@
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Calendar, AlertCircle } from 'lucide-react';
 import { useContract } from '@/hooks/useContracts';
 import { isContractInEffect } from '@/types/contract';
 import { useInvoicesLegacy } from '@/hooks/useInvoices';
-import { format, differenceInDays } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { differenceInDays } from 'date-fns';
 import { useState } from 'react';
 // Data layer tách riêng (Phase 9B) — UI không gọi supabase trực tiếp nữa.
 import {
@@ -33,14 +29,9 @@ import { usePhoneViewport } from '@/hooks/use-mobile';
 import { ContractDetailMobile } from '@/components/contracts/detail/ContractDetailMobile';
 // Types dùng chung với nhánh mobile (trước đây khai cục bộ ở đây).
 import type { ContractServiceItem as ContractService, ContractHistoryItem } from '@/components/contracts/detail/types';
-// UI desktop tách theo tab (Phase 10D) — JSX di chuyển nguyên văn, state/handler
-// vẫn ở root này, nối xuống qua props.
-import { ContractActionBar } from './ContractActionBar';
-import { ContractGeneralTab } from './ContractGeneralTab';
-import { ContractServicesTab } from './ContractServicesTab';
-import { ContractInvoicesTabDesktop } from './ContractInvoicesTabDesktop';
-import { ContractPaymentsTabDesktop } from './ContractPaymentsTabDesktop';
-import { ContractHistoryTabDesktop } from './ContractHistoryTabDesktop';
+// UI desktop: một trang hai cột, không tab (12/09/2026). State/handler vẫn ở
+// root này, nối xuống qua props — 5 component tab cũ đã xoá.
+import { ContractDetailDesktop } from './desktop/ContractDetailDesktop';
 
 interface ContractDetailViewProps {
   /** ID hợp đồng cần hiển thị (đã đảm bảo có giá trị bởi nơi gọi). */
@@ -234,12 +225,28 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
 
   return (
     <>
-      {/* Header Actions */}
-      <ContractActionBar
+      <ContractDetailDesktop
         contract={contract}
         perms={perms}
         isActive={isActive}
-        showBackButton={showBackButton}
+        isExpiringSoon={isExpiringSoon}
+        daysRemaining={daysRemaining}
+        totalDays={totalDays}
+        daysElapsed={daysElapsed}
+        outstandingAmount={outstandingAmount}
+        sideLoadErrors={sideLoadErrors}
+        customers={contractCustomers}
+        vehiclesByCustomer={vehiclesByCustomer}
+        services={contractServices}
+        servicesLoading={servicesLoading}
+        history={contractHistory}
+        historyLoading={historyLoading}
+        invoices={invoices}
+        invoicesLoading={invoicesLoading}
+        depositVouchers={depositVouchers}
+        terminationInfo={terminationInfo}
+        pendingForfeitCount={pendingForfeitCount}
+        pendingRefundCount={pendingRefundCount}
         onBack={onBack}
         onEdit={() => setEditDialogOpen(true)}
         onPrint={() => setPrintDialogOpen(true)}
@@ -251,88 +258,6 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
         onTerminate={() => setTerminateDialogOpen(true)}
         onDelete={() => setDeleteDialogOpen(true)}
       />
-
-      {/* Alerts */}
-      {sideLoadErrors.length > 0 && (
-        <Alert className="mb-6 bg-red-50 border-red-200">
-          <AlertCircle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-800">
-            Không tải được: {sideLoadErrors.join(', ')}. Số liệu các mục này có thể
-            thiếu — tải lại trang hoặc kiểm tra kết nối.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {isExpiringSoon && isActive && (
-        <Alert className="mb-6 bg-orange-50 border-orange-200">
-          <AlertCircle className="h-4 w-4 text-orange-600" />
-          <AlertDescription className="text-orange-800">
-            Hợp đồng sẽ hết hạn trong {daysRemaining} ngày. Vui lòng liên hệ khách hàng để gia hạn.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {contract.expected_move_out_date && isActive && (
-        <Alert className="mb-6 bg-blue-50 border-blue-200">
-          <Calendar className="h-4 w-4 text-blue-600" />
-          <AlertDescription className="text-blue-800">
-            Khách đã đăng ký chuyển đi vào ngày {format(new Date(contract.expected_move_out_date), 'dd/MM/yyyy', { locale: vi })}.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="general">Thông tin chung</TabsTrigger>
-          <TabsTrigger value="services">Dịch vụ</TabsTrigger>
-          <TabsTrigger value="invoices">Hóa đơn</TabsTrigger>
-          <TabsTrigger value="payments">Thanh toán</TabsTrigger>
-          <TabsTrigger value="history">Lịch sử</TabsTrigger>
-        </TabsList>
-
-        {/* Tab 1: General Information */}
-        <TabsContent value="general" className="space-y-6">
-          <ContractGeneralTab
-            contract={contract}
-            contractCustomers={contractCustomers}
-            vehiclesByCustomer={vehiclesByCustomer}
-            isExpiringSoon={isExpiringSoon}
-            isExpired={isExpired}
-            daysRemaining={daysRemaining}
-            progressPercent={progressPercent}
-            terminationInfo={terminationInfo}
-            pendingForfeitCount={pendingForfeitCount}
-            pendingRefundCount={pendingRefundCount}
-            depositVouchers={depositVouchers}
-            invoices={invoices}
-            totalInvoiced={totalInvoiced}
-            totalPaid={totalPaid}
-            outstandingAmount={outstandingAmount}
-            totalDays={totalDays}
-            daysElapsed={daysElapsed}
-          />
-        </TabsContent>
-
-        {/* Tab 2: Services */}
-        <TabsContent value="services">
-          <ContractServicesTab services={contractServices} loading={servicesLoading} />
-        </TabsContent>
-
-        {/* Tab 3: Invoices */}
-        <TabsContent value="invoices">
-          <ContractInvoicesTabDesktop invoices={invoices} loading={invoicesLoading} />
-        </TabsContent>
-
-        {/* Tab 4: Payments */}
-        <TabsContent value="payments">
-          <ContractPaymentsTabDesktop invoices={invoices} loading={invoicesLoading} />
-        </TabsContent>
-
-        {/* Tab 5: History */}
-        <TabsContent value="history">
-          <ContractHistoryTabDesktop history={contractHistory} loading={historyLoading} />
-        </TabsContent>
-      </Tabs>
       {dialogs}
     </>
   );

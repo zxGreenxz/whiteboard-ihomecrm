@@ -37,13 +37,14 @@ const ContractDetailPage = () => {
     return <ContractDetailView id={id} onBack={onBack} />;
   }
 
+  // fullBleed: nội dung tự mang header đen dính chạm mép và tự lo cuộn. Để
+  // MainLayout vẽ thêm tiêu đề + padding 24px thì màn hình có hai thanh tiêu đề
+  // chồng nhau và header "dính" lại dính sai chỗ.
   return (
-    <MainLayout
-      title={`Hợp đồng ${contract?.contract_number || id.slice(0, 8)}`}
-      subtitle="Chi tiết hợp đồng"
-      icon={FileText}
-    >
-      <ContractDetailView id={id} onBack={onBack} />
+    <MainLayout fullBleed>
+      <div className="h-full overflow-y-auto">
+        <ContractDetailView id={id} onBack={onBack} showBackButton={false} />
+      </div>
     </MainLayout>
   );
 };

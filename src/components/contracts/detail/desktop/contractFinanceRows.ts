@@ -53,7 +53,19 @@ export interface TongTien {
   soHoaDon: number;
   soTien: number;
   daThu: number;
+  /** Hiệu số học của bảng (soTien − daThu). Dòng tfoot in số này. */
   conNo: number;
+  // ── Ba khoản dưới đây TÁCH RIÊNG vì CHIỀU TIỀN KHÁC NHAU ─────────────
+  // `conNo` là một phép trừ, không phải một câu về nghĩa. Gộp chung rồi dán
+  // nhãn "còn phải thu" là nói sai: ca HĐT-075854 cho conNo = 3.700.000
+  // nhưng 3.293.500 trong đó là tiền CHỦ NHÀ PHẢI HOÀN cho khách, chỉ
+  // 406.500 mới là tiền thu về.
+  /** Nợ hoá đơn — khách còn phải trả. */
+  noHoaDon: number;
+  /** Cọc còn thiếu — khách còn phải đóng. */
+  thieuCoc: number;
+  /** Quyết toán thanh lý chưa hoàn đủ — CHỦ NHÀ còn phải trả khách. */
+  chuaHoanKhach: number;
 }
 
 export interface PhieuCocChoBang {
@@ -312,6 +324,17 @@ export function dungBangTaiChinh(args: {
   const soTien = dongChinh.reduce((s, d) => s + n(d.soTien), 0);
   const daThu = dongChinh.reduce((s, d) => s + n(d.daThu), 0);
 
+  const nhomHd = nhom.find((g) => g.khoa === "HOA_DON");
+  const noHoaDon = (nhomHd?.dong ?? [])
+    .filter((d) => !d.laDongCon)
+    .reduce((s, d) => s + n(d.conNo), 0);
+
+  const nhomQt = nhom.find((g) => g.khoa === "QUYET_TOAN");
+  const dongNet = (nhomQt?.dong ?? []).find((d) => !d.laDongCon);
+  const boCoc = terminationInfo?.termination_type === "FORFEIT";
+  // Bỏ cọc thì không có gì phải hoàn — cọc chuyển thành doanh thu.
+  const chuaHoanKhach = nhomQt && !boCoc ? n(dongNet?.conNo) : 0;
+
   return {
     nhom,
     tong: {
@@ -319,6 +342,9 @@ export function dungBangTaiChinh(args: {
       soTien,
       daThu,
       conNo: Math.max(soTien - daThu, 0),
+      noHoaDon,
+      thieuCoc: Math.max(n(contract.deposit_remaining), 0),
+      chuaHoanKhach,
     },
   };
 }

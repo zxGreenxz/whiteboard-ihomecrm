@@ -70,6 +70,9 @@ describe("dungBangTaiChinh — tổng khớp số in trong file thiết kế", (
       soTien: 8_050_000,
       daThu: 8_050_000,
       conNo: 0,
+      noHoaDon: 0,
+      thieuCoc: 0,
+      chuaHoanKhach: 0,
     });
   });
 
@@ -85,6 +88,9 @@ describe("dungBangTaiChinh — tổng khớp số in trong file thiết kế", (
       soTien: 12_200_000,
       daThu: 8_050_000,
       conNo: 4_150_000,
+      noHoaDon: 4_150_000,
+      thieuCoc: 0,
+      chuaHoanKhach: 0,
     });
   });
 
@@ -100,7 +106,64 @@ describe("dungBangTaiChinh — tổng khớp số in trong file thiết kế", (
       soTien: 10_878_500,
       daThu: 9_500_000,
       conNo: 1_378_500,
+      noHoaDon: 0,
+      thieuCoc: 0,
+      chuaHoanKhach: 1_378_500,
     });
+  });
+});
+
+describe("dungBangTaiChinh — tách theo CHIỀU tiền", () => {
+  it("tiền phải hoàn khách KHÔNG bị gộp vào 'còn phải thu'", () => {
+    // Ca thật HĐT-075854 (158PVC/403): conNo của bảng = 3.700.000, nhưng
+    // 3.293.500 trong đó là tiền CHỦ NHÀ phải hoàn khách (phiếu chi còn chờ
+    // duyệt), chỉ 406.500 mới là tiền thu về. Dán một nhãn "còn phải thu" cho
+    // cả 3.700.000 là nói sai chiều tiền.
+    const kq = dungBangTaiChinh({
+      contract: {
+        total_deposit: 3_700_000,
+        deposit_paid: 3_293_500,
+        deposit_remaining: 406_500,
+        status: "TERMINATED",
+      },
+      depositVouchers: [],
+      invoices: [],
+      terminationInfo: { ...QUYET_TOAN, refund_amount: 3_293_500, posted_refund: 0,
+        posted_refund_count: 0, posted_refund_codes: [] },
+    });
+    expect(kq.tong.conNo).toBe(3_700_000);
+    expect(kq.tong.thieuCoc).toBe(406_500);
+    expect(kq.tong.chuaHoanKhach).toBe(3_293_500);
+    expect(kq.tong.noHoaDon).toBe(0);
+  });
+
+  it("nợ hoá đơn chỉ đếm dòng hoá đơn", () => {
+    const kq = dungBangTaiChinh({
+      contract: { ...COC, status: "ACTIVE" },
+      depositVouchers: [],
+      invoices: [HD_THANG_9, HD_THANG_10],
+      terminationInfo: null,
+    });
+    expect(kq.tong.noHoaDon).toBe(4_150_000);
+    expect(kq.tong.chuaHoanKhach).toBe(0);
+    expect(kq.tong.thieuCoc).toBe(0);
+  });
+
+  it("bỏ cọc thì không có gì phải hoàn khách", () => {
+    const kq = dungBangTaiChinh({
+      contract: { ...COC, status: "TERMINATED" },
+      depositVouchers: [],
+      invoices: [],
+      terminationInfo: {
+        ...QUYET_TOAN,
+        termination_type: "FORFEIT",
+        early_termination_fee: 3_900_000,
+        posted_refund: 0,
+        posted_refund_count: 0,
+        posted_refund_codes: [],
+      },
+    });
+    expect(kq.tong.chuaHoanKhach).toBe(0);
   });
 });
 
@@ -203,7 +266,15 @@ describe("dungBangTaiChinh — cấu trúc nhóm", () => {
       invoices: [],
       terminationInfo: null,
     });
-    expect(kq.tong).toEqual({ soHoaDon: 0, soTien: 0, daThu: 0, conNo: 0 });
+    expect(kq.tong).toEqual({
+      soHoaDon: 0,
+      soTien: 0,
+      daThu: 0,
+      conNo: 0,
+      noHoaDon: 0,
+      thieuCoc: 0,
+      chuaHoanKhach: 0,
+    });
   });
 
   it("đã thu vượt số phải thu thì còn nợ là 0, không âm", () => {
