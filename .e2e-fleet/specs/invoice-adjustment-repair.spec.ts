@@ -41,7 +41,15 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     response.request().method() === 'POST' && response.url().endsWith(`/rpc/${name}`), { timeout: 45_000 });
   const assertRpc = async (pending: ReturnType<typeof waitRpc>) => {
     const response = await pending, body = await response.json();
-    expect(response.ok(), `HTTP ${response.status()}: ${JSON.stringify(body)}`).toBe(true);
+    let stateDiagnostic = '';
+    if (!response.ok() && response.url().endsWith('/rpc/adjust_invoice_v2')) {
+      const sent = response.request().postDataJSON(), actual = await state();
+      stateDiagnostic = JSON.stringify({
+        expected: { revision: sent.p_expected_revision, paid: sent.p_expected_paid_amount, updated: sent.p_expected_updated_at },
+        actual: { revision: actual.adjustment_revision, paid: actual.paid_amount, updated: actual.updated_at },
+      });
+    }
+    expect(response.ok(), `HTTP ${response.status()}: ${JSON.stringify(body)} ${stateDiagnostic}`).toBe(true);
     expect(body.invoice_id).toBe(invoiceId);
     if (response.url().endsWith('/rpc/adjust_invoice_v2')) adjustmentIds.add(body.id);
     return body;

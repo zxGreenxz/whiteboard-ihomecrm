@@ -42,12 +42,6 @@ luồng sửa nháp. Không ghi thử dữ liệu nghiệp vụ tổ chức TH�
   Chúng chỉ cho ghi đúng fixture DEMO, hoàn tác canonical trước cleanup,
   kiểm net posting và không xóa audit/hash chain. Chưa gọi đây là E2E runtime đạt.
 
-## Phần còn cần xác minh
-
-Forward apply có backup/receipt, native generated types, named-argument HTTP
-concurrency và role JWT, E2E giao diện mới, đối chiếu tiền v1/v2, sandbox leak,
-catalog/ACL, full gates và review cuối. Chỉ promote sau CI của đúng SHA main đạt.
-
 ## Triển khai v2 và lỗi xung đột HTTP phát hiện khi tích hợp
 
 V2 đã áp dụng lúc `2026-09-12T09:07:25.191Z` từ SHA `0466a686`, backup đầy đủ
@@ -68,9 +62,78 @@ Preconditions khóa đúng hash định nghĩa trước/sau, không thay đổi 
 Review độc lập xác nhận tương đương cả 4 body. 112 tests liên quan và live rollback
 hai migration lặp hai lần đạt; hai mutations mã lỗi/guard catalog đều bị bắt.
 Frontend `abb1571c` nhận PT409 không retry và giữ native40001 tương thích;
-review độc lập + 83 tests đạt. Chờ apply migration bổ sung và HTTP/E2E cuối.
+review độc lập + 83 tests đạt.
 
 E2E thu tiền đơn thuần trên build mới đã đạt 15.2 giây: thu tại invoice 3.239.000,
 Thu tiền mobile 2.000.000, đủ 5.239.000, không lỗi console và cleanup đầy đủ.
 E2E chỉnh sửa còn đang kiểm tra; một assertion kiểu numeric của Management API
 đã sửa bằng cast bigint cho các số tiền nguyên của fixture.
+
+## Kiểm chứng sau áp dụng mã xung đột
+
+Migration PT409 đã áp dụng qua forward lane lúc `2026-09-12T09:29:40.003Z`
+từ SHA `9d082d9631bfbc90148c29ceea044f73177f0b08`. Backup đầy đủ 527 bảng,
+SHA256 `875100b81ab05bfa98b598ef7d484487c7be1d81669ae88efac3882e53c2f4af`;
+receipt `20260912091403_invoice_domain_conflicts_http409.json`.
+Catalog fingerprint không đổi vì chỉ thay mã lỗi trong thân hàm; HTTP harness
+kiểm MD5 của cả năm định nghĩa live trước khi tạo fixture. Đã sinh lại types
+bằng generator chuẩn và normalizer, không có thay đổi schema type.
+
+`node scripts/test-invoice-adjustment-http-concurrency.mjs --execute` đạt toàn bộ:
+
+- Thu một phần với trạng thái cũ trả HTTP409/PT409 trong 123ms, không đổi tiền.
+- Hai HTTP cùng key trả cùng revision; khác payload bị 23505; anonymous bị từ chối.
+- Hai key cạnh tranh: một revision thắng, yêu cầu cũ trả PT409 trong 302ms.
+- Sửa và thu đồng thời cho thứ tự tuần tự hợp lệ; phân bổ đúng thành phần,
+  manifest đúng phiên bản, hash lịch sử gốc không đổi.
+- Kiểm tra phiên bản cũ trả PT409 trong 153ms; quản lý khác tòa và kế toán thiếu
+  quyền bị từ chối; chủ công ty kiểm tra thành công mà không đổi tiền/snapshot.
+- Helper thường và invoice ID sai đều bị từ chối; hai collection được hoàn tác
+  canonical, net posting bằng 0 và fixture được dọn; audit/hash chain giữ nguyên.
+
+E2E trên build mới: payment regression đạt 16.1s. Adjustment E2E có một lần lỗi
+PT409 khi mở editor ngay sau thu một phần; chạy lại cùng build đạt 33.8s, gồm
+hai tab cạnh tranh, tải lại rõ ràng, review, lọc phiên bản và sửa sau hoàn tác.
+Đây là race giao diện đang được sửa và kiểm thử xác định, chưa tính bản phát hành
+đã hoàn tất chỉ vì lượt chạy sau đạt.
+
+Đối chiếu live sau apply: v1 có 1.105 phiếu qua hai trang, SQL = RPC/RLS =
+phân trang = 5.478.995.513đ. V2 khớp cả 20 sổ thực; 3.521 posting lines qua
+bốn trang khớp SQL 3.071.593.207đ. Số tiền live có thể thay đổi do vận hành.
+Sandbox gate tại checkout chính: 0/148 bảng đọc được rò TEST, 18 bảng còn lại
+không có SELECT; phép đo này không bao phủ mọi RPC SECURITY DEFINER.
+Snapshot before/after có 17 chỉ số thay đổi trong thời gian vận hành, không phải
+bằng chứng dữ liệu thật đứng yên. Không chỉnh sửa các dòng THẬT để ép khớp.
+12/12 view invoker, stable-function locks và definer ACL đều đạt; catalog không
+có object thiếu RLS/search_path. Backend/source harness được review cuối và approved.
+
+## Bản giao diện cuối và gate tích hợp
+
+Commit `53c8153f` xử lý race đã tái hiện: hộp thu tiền đóng trước refetch cache,
+form mở ngay chụp paid/revision/fields cũ. Editor nay chỉ mount sau khi đọc đủ
+hóa đơn mới; lỗi đọc không fallback cache, đóng/mất quyền bỏ kết quả đến muộn,
+form đã mở vẫn giữ snapshot cho đến khi người dùng tải lại rõ ràng.
+38 tests/7 files đạt, reviewer chạy độc lập cùng 38 tests và approved.
+Baseline TypeScript 0 lỗi; lint 0 lỗi mới (1.141 hiện tại so baseline 1.152).
+
+Build cuối đạt 16.36s, 521 chunks, entry 221kB, tổng 8.12MB, 97 trang lazy;
+không tăng ngưỡng bundle. Hai E2E trên build này cùng đạt, tổng 52.0s:
+adjustment 38.2s và payment 13.0s. Chạy từ thu một phần tới bốn revision,
+thu đủ trên mobile, phân quyền review, hai tab xung đột/tải lại, lọc SQL,
+hoàn tác và điều chỉnh giảm sau hoàn tác; không lỗi console/page, cleanup đạt.
+`gate:truoc-push` đạt đủ 42 gates trong 124s, gồm strict và generated artifacts.
+
+PR CI ở `9d082d96` đã phát hiện prefer-const (đã sửa trong `53c8153f`) và một
+test GitNexus đòi PID con biến mất ngay sau SIGKILL. Source GitNexus không đổi
+so với main; Linux có khả năng giữ zombie chờ reap, chưa có dữ liệu đủ để
+khẳng định nguyên nhân. Giữ bằng chứng run `34685864366`, không dùng lượt đó
+làm CI đạt. Restore drill cùng SHA đạt (`34685864355`).
+
+External controls được đọc lại: cả app/docs dùng production branch; deployment
+trước bản sửa là `91897a71`, READY. GitHub private Free thiếu branch protection
+là giới hạn đã có; không thay cấu hình để bỏ qua lane phát hành.
+
+## Trạng thái phát hành
+
+Backend và frontend đã được review độc lập. Còn CI của đúng SHA tích hợp main,
+promote qua lệnh chuẩn và kiểm tra lại hai luồng trên production sau phát hành.
