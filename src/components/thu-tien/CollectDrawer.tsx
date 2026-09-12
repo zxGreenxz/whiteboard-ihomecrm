@@ -21,6 +21,12 @@ import {
   COLLECTION_BLOCK_TEXT,
 } from '@/hooks/useDeletePayment';
 import { useUpdateInvoiceNote } from '@/hooks/useUpdateInvoiceNote';
+import { useInvoice } from '@/hooks/useInvoices';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { canUse } from '@/lib/permissionPages';
+import { getInvoiceEditMode } from '@/lib/invoiceUtils';
+import EditInvoiceDialog from '@/components/invoices/EditInvoiceDialog';
+import { Button } from '@/components/ui/button';
 import { uploadReceiptToStorage } from '@/lib/receiptUpload';
 import type { CollectMethod } from '@/lib/cashAccount';
 import { InvoiceDetailCard } from './InvoiceDetailCard';
@@ -63,6 +69,10 @@ export function CollectDrawer({
     useQuickCollect({ enabled: !!invoice });
   const deletePayment = useDeletePayment();
   const updateNote = useUpdateInvoiceNote();
+  const { data: permissions } = useMyPermissions();
+  const canEditInvoice = canUse(permissions, 'invoices', 'edit');
+  const [editNoteOpen, setEditNoteOpen] = useState(false);
+  const { data: fullInvoice, isLoading: loadingInvoice, isError: invoiceError } = useInvoice(editNoteOpen ? invoice?.id : undefined);
 
   // Đợt 5: hỏi server xem khoản thu gần nhất có hoàn tác được không, để nút
   // "Hoàn tác" nói đúng lý do thay vì bấm rồi mới biết.
@@ -95,6 +105,7 @@ export function CollectDrawer({
     setChangeAmount(null);
     setPayState(null);
     setNoteDraft(invoice?.notes ?? '');
+    setEditNoteOpen(false);
   }, [invoice?.id, mode]);
 
   // Giữ DOM khi đóng (chạy animation translateY); chỉ bỏ render khi đã unmount.
@@ -150,8 +161,9 @@ export function CollectDrawer({
   };
 
   const saveNote = () => {
+    if (!canEditInvoice || getInvoiceEditMode(invoice) !== 'draft') return;
     if ((invoice.notes ?? '') === noteDraft) return;
-    updateNote.mutate({ invoice_id: invoice.id, notes: noteDraft });
+    updateNote.mutate({ invoice_id: invoice.id, notes: noteDraft }, { onError: () => toast.error('Chưa lưu được ghi chú. Tải lại hóa đơn và thử lại.') });
   };
 
   // ĐỢT 5 — đường hoàn tác THỨ HAI (mobile Thu tiền). Trước đây bấm là chạy
@@ -283,11 +295,20 @@ export function CollectDrawer({
 
           <InvoiceDetailCard invoice={invoice} collectors={collectors} items={lazyItems} />
 
+          {getInvoiceEditMode(invoice) === 'adjustment' && <div className="is-note">
+            <div className="ib-lbl">Ghi chú hóa đơn</div>
+            <p>{invoice.notes || 'Chưa có ghi chú'}</p>
+            {canEditInvoice && <Button type="button" variant="link" disabled={loadingInvoice} onClick={() => setEditNoteOpen(true)}>Điều chỉnh ghi chú hóa đơn</Button>}
+            {loadingInvoice && <p role="status">Đang tải hóa đơn đầy đủ…</p>}
+            {invoiceError && <p role="alert">Chưa tải được hóa đơn. Đóng và mở lại để thử lại.</p>}
+          </div>}
+
           {canRecordPayment && st !== 'paid' && (
             <>
               <div className="is-note">
-                <div className="ib-lbl">Ghi chú</div>
+                <div className="ib-lbl">{getInvoiceEditMode(invoice) === 'draft' && canEditInvoice ? 'Ghi chú hóa đơn nháp' : 'Ghi chú khoản thu'}</div>
                 <NoteEditor value={noteDraft} onChange={setNoteDraft} onBlur={saveNote} />
+                {getInvoiceEditMode(invoice) !== 'draft' && <p className="text-xs text-muted-foreground">Ghi chú này được lưu cùng khoản thu khi bấm Thu.</p>}
               </div>
               {loadingItems || itemsError ? <p role="status" className="pf-hint">{itemsError ? 'Không tải được chi tiết hóa đơn. Vui lòng đóng và mở lại.' : 'Đang tải chi tiết hóa đơn…'}</p> : <CollectPayForm
                 key={invoice.id}
@@ -304,7 +325,7 @@ export function CollectDrawer({
           )}
 
           {/* Ghi chú chỉ-đọc khi đã thu đủ / không có quyền thu */}
-          {(!canRecordPayment || st === 'paid') && noteDraft && (
+          {getInvoiceEditMode(invoice) !== 'adjustment' && (!canRecordPayment || st === 'paid') && noteDraft && (
             <div className="is-note">
               <div className="ib-lbl">Ghi chú</div>
               <div className="note-display">
@@ -376,6 +397,7 @@ export function CollectDrawer({
           </button>
         </div>
       </div>
+      {editNoteOpen && fullInvoice && <EditInvoiceDialog open onOpenChange={setEditNoteOpen} invoice={fullInvoice} />}
     </>
   );
 }

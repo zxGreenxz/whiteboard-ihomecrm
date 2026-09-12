@@ -50,6 +50,8 @@ export interface PreviousDebtSource {
 
 /** Matches `invoices` table */
 export interface Invoice {
+  adjustment_revision?: number;
+  adjustment_review_status?: 'NONE' | 'PENDING' | 'CHECKED';
   id: string;
   organization_id?: string;
   user_id: string;

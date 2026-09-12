@@ -55,6 +55,15 @@ beforeEach(() => {
 });
 
 describe("invoice payment-method drill-down", () => {
+  it('filters the latest review status on the server before range and preserves exact count', async () => {
+    const builder = makeInvoiceBuilder([{ id: 'newest-pending', adjustment_review_status: 'PENDING', invoice_adjustments: [{ revision: 1, review_status: 'CHECKED' }, { revision: 2, review_status: 'PENDING' }] }], 41);
+    mocks.from.mockReturnValue(builder);
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
+    const result = await invoicesListQuery({ adjustment_review_status: 'pending' }, { page: 2, pageSize: 20 }).queryFn();
+    expect(builder.eq).toHaveBeenCalledWith('adjustment_review_status', 'PENDING');
+    expect(builder.eq.mock.invocationCallOrder[0]).toBeLessThan(builder.range.mock.invocationCallOrder[0]);
+    expect(result).toMatchObject({ count: 41, data: [{ id: 'newest-pending' }] });
+  });
   it("filters with the active-receipt SETOF RPC and enriches page methods", async () => {
     const invoiceBuilder = makeInvoiceBuilder([
       {

@@ -171,11 +171,11 @@ const InvoiceListFilters = ({ filters, onFiltersChange, compact = false }: Invoi
           value={filters.adjustment_review_status ?? ALL_VALUE}
           onValueChange={handleAdjustmentReviewChange}
           className="h-9 text-sm w-[180px]"
-          placeholder="Kiểm tra điều chỉnh"
+          placeholder="Kiểm tra bản mới nhất"
           options={[
             { value: ALL_VALUE, label: 'Điều chỉnh: tất cả' },
-            { value: 'pending', label: 'Điều chỉnh chưa kiểm tra' },
-            { value: 'checked', label: 'Điều chỉnh đã kiểm tra' },
+            { value: 'pending', label: 'Bản mới nhất chưa kiểm tra' },
+            { value: 'checked', label: 'Bản mới nhất đã kiểm tra' },
           ]}
         />
       )}

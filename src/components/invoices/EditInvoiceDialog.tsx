@@ -24,19 +24,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useUpdateInvoice, useAdjustInvoice, useExcessAmount } from '@/hooks/useInvoices';
+import { useUpdateInvoice, useExcessAmount } from '@/hooks/useInvoices';
 import type {
   InvoiceFormData,
   InvoiceWithRelations,
   PreviousDebtSource,
 } from '@/types/invoice';
-import { roundInvoiceTotal } from '@/lib/invoiceUtils';
+import { getInvoiceEditMode, roundInvoiceTotal } from '@/lib/invoiceUtils';
 import { computePreviousDebt } from '@/lib/invoiceHelpers';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { Receipt, Plus, Trash2, Pencil, RotateCcw, Loader2 } from 'lucide-react';
 import { format, parse, startOfMonth, endOfMonth } from 'date-fns';
+
+import IssuedInvoiceEditor from './IssuedInvoiceEditor';
 
 interface EditInvoiceDialogProps {
   open: boolean;
@@ -141,9 +143,8 @@ function decomposeItems(invoice: InvoiceWithRelations) {
   return { rent, electric, prev, curr, water, occupants, pdv, custom };
 }
 
-const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogProps) => {
+const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogProps) => {
   const updateMutation = useUpdateInvoice();
-  const adjustMutation = useAdjustInvoice();
   const [meterId, setMeterId] = useState<string | null>(null);
   const [debtSources, setDebtSources] = useState<PreviousDebtSource[]>(
     Array.isArray(invoice.previous_debt_sources)
@@ -420,22 +421,6 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       previous_debt_sources: data.previous_debt_overridden ? [] : debtSources,
       items,
     };
-
-    if ((invoice.paid_amount ?? 0) > 0) {
-      adjustMutation.mutate(
-        {
-          invoiceId: invoice.id,
-          afterItems: items.map((item) => ({
-            ...item,
-            amount: item.unit_price * item.quantity * item.coefficient,
-          })),
-          reason: data.notes?.trim() || 'Điều chỉnh hóa đơn',
-          idempotencyKey: `invoice-adjustment-${invoice.id}-${Date.now()}-${crypto.randomUUID()}`,
-        },
-        { onSuccess: () => onOpenChange(false) },
-      );
-      return;
-    }
 
     updateMutation.mutate(
       { id: invoice.id, formData },
@@ -814,4 +799,11 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
   );
 };
 
+const EditInvoiceDialog = (props: EditInvoiceDialogProps) => {
+  if (!props.open) return null;
+  const mode = getInvoiceEditMode(props.invoice);
+  if (mode === 'adjustment') return <IssuedInvoiceEditor key={props.invoice.id} invoice={props.invoice} onOpenChange={props.onOpenChange} />;
+  if (mode === 'draft') return <DraftInvoiceEditor key={props.invoice.id} {...props} />;
+  return <Dialog open onOpenChange={props.onOpenChange}><DialogContent><DialogHeader><DialogTitle>Không thể sửa hóa đơn</DialogTitle><DialogDescription>Hóa đơn đã hủy hoặc không còn cho phép chỉnh sửa. Tải lại để kiểm tra trạng thái.</DialogDescription></DialogHeader></DialogContent></Dialog>;
+};
 export default EditInvoiceDialog;

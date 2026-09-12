@@ -47,7 +47,7 @@ import {
 } from '@/hooks/useBulkRecordPayment';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { useInvoice } from '@/hooks/useInvoices';
-import { canEditInvoice } from '@/lib/invoiceUtils';
+import { canOpenInvoiceEditor } from '@/lib/invoiceUtils';
 import { deriveOverpayPolicy, planCollect } from '@/lib/collectPlan';
 import type { InvoiceStatus } from '@/types/invoice';
 import EditInvoiceDialog from './EditInvoiceDialog';
@@ -856,7 +856,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                     <td className="p-1 border font-medium">
                       <div className="flex items-center justify-between gap-1">
                         <span>{r.room_name}</span>
-                        {canEditInvoice(r) ? (
+                        {canOpenInvoiceEditor(r) ? (
                           <button
                             type="button"
                             title="Sửa hoá đơn"

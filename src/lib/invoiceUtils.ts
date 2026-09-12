@@ -103,6 +103,7 @@ type InvoiceLike = {
   status: InvoiceStatus;
   paid_amount?: number | null;
   deleted_at?: string | null;
+  adjustment_revision?: number;
 };
 
 /**
@@ -117,8 +118,13 @@ export function canEditInvoice(invoice: InvoiceLike): boolean {
 
 /** UI editor entrypoint: paid invoices open the audited adjustment flow. */
 export function canOpenInvoiceEditor(invoice: InvoiceLike): boolean {
-  return invoice.status !== 'CANCELLED' &&
-    (canEditInvoice(invoice) || (invoice.paid_amount ?? 0) > 0);
+  return getInvoiceEditMode(invoice) !== 'denied';
+}
+
+export function getInvoiceEditMode(invoice: InvoiceLike): 'draft' | 'adjustment' | 'denied' {
+  if (invoice.deleted_at || invoice.status === 'CANCELLED') return 'denied';
+  if (invoice.status === 'DRAFT') return (invoice.adjustment_revision ?? 0) === 0 && (invoice.paid_amount ?? 0) === 0 ? 'draft' : 'denied';
+  return ['APPROVED', 'PARTIAL_PAID', 'PAID', 'OVERDUE'].includes(invoice.status) ? 'adjustment' : 'denied';
 }
 
 /**

@@ -41,7 +41,7 @@ function fixture() {
   return {
     id: 'dddd0000-0000-4000-8000-000000000101', invoice_number: 'DEMO-NOTES-ONLY',
     building_id: 'dddd0000-0000-4000-8000-000000000102', room_id: null,
-    contract_id: 'dddd0000-0000-4000-8000-000000000103', status: 'APPROVED', paid_amount: 0,
+    contract_id: 'dddd0000-0000-4000-8000-000000000103', status: 'DRAFT', paid_amount: 0,
     billing_month: '2026-09', issue_date: '2026-09-01', due_date: '2026-09-05',
     notes: 'Ghi chú cũ', previous_debt: 0, previous_debt_sources: [], discount_amount: 0,
     invoice_items: [

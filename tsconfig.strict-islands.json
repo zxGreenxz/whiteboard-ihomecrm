@@ -16,6 +16,10 @@
   },
   "include": [],
   "files": [
+    "src/lib/invoiceAdjustmentEditor.ts",
+    "src/lib/invoiceAdjustmentRpc.ts",
+    "src/components/invoices/IssuedInvoiceEditor.tsx",
+    "src/components/invoices/InvoiceAdjustmentHistory.tsx",
     "src/components/account/AccountOrganizationCard.tsx",
     "src/copilot/activePageContext.ts",
     "src/hooks/useCopilotPageContext.ts",

@@ -37,7 +37,7 @@ beforeEach(() => {
       in: vi.fn(() => builder), not: vi.fn(() => builder), range: vi.fn(() => builder),
       neq: vi.fn(() => builder), delete: vi.fn(() => builder), update: vi.fn(() => builder),
       insert: (items: unknown) => { if (table === 'invoice_items') boundary.inserted.push(items); return builder; },
-      single: async () => ({ data: { id: 'demo-invoice', status: 'APPROVED', paid_amount: 0 }, error: null }),
+      single: async () => ({ data: { id: 'demo-invoice', status: 'DRAFT', paid_amount: 0 }, error: null }),
       then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: [], error: null, count: 0 }).then(resolve),
     };
     return builder;
