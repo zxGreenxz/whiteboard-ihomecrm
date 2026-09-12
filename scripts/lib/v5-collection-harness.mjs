@@ -369,6 +369,9 @@ BEGIN
   IF v_marker NOT LIKE '[E2E-V5-HARNESS:%' THEN
     RAISE EXCEPTION 'Từ chối teardown: marker % không thuộc harness', v_marker;
   END IF;
+  IF (SELECT count(*) FROM public.invoices WHERE organization_id=v_org AND notes=v_marker) > 1 THEN
+    RAISE EXCEPTION 'Từ chối teardown: marker không xác định duy nhất hóa đơn';
+  END IF;
 
   SELECT invoice_row.id INTO v_invoice
   FROM public.invoices invoice_row
@@ -407,6 +410,29 @@ BEGIN
 END
 $v5h_teardown$;
 
+DO $v5h_neutralized$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.invoice_payment_collections WHERE id IN (${collSel}) AND status='ACTIVE') THEN
+    RAISE EXCEPTION 'Từ chối dọn fixture: còn lần thu ACTIVE';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.invoice_adjustments WHERE invoice_id IN (${invSel}))
+    OR EXISTS (SELECT 1 FROM public.customer_credit_applications
+      WHERE invoice_id IN (${invSel}) OR credit_lot_id IN (
+        SELECT id FROM public.customer_credit_lots WHERE source_collection_id IN (${collSel}))) THEN
+    RAISE EXCEPTION 'Fixture có lịch sử điều chỉnh/cấn trừ; cần helper chuyên biệt để dọn đầy đủ';
+  END IF;
+  IF EXISTS (
+    SELECT line.account_id
+    FROM public.income_expense_posting_lines line
+    JOIN public.income_expense_postings posting ON posting.id = line.posting_id
+    WHERE posting.voucher_id IN (${vchSel})
+    GROUP BY line.account_id HAVING sum(line.signed_amount) <> 0
+  ) THEN
+    RAISE EXCEPTION 'Từ chối dọn fixture: posting chưa được hoàn tác hết';
+  END IF;
+END
+$v5h_neutralized$;
+
 -- Remove the neutralised fixture scaffolding (privileged). The money effects
 -- were already unwound by the reversal loop above via the sanctioned reverse
 -- RPC; what remains is inert, marker-scoped fixture scaffolding. Two layers of
@@ -423,6 +449,8 @@ $v5h_teardown$;
 -- The append-only canonical_write_operations ledger is intentionally left in
 -- place: it has no FK to the fixture and is keyed by the (fresh) invoice /
 -- collection id, so old rows are inert and never collide with a later run.
+-- Keep org-wide audit hash-chain events/heads and capture logs as audit evidence;
+-- they intentionally have no fixture FK and deleting them would break history.
 SET LOCAL session_replication_role = replica;
 
 DO $v5h_guard_off$
@@ -454,8 +482,22 @@ WHERE o.income_expense_id IN (${vchSel});
 DELETE FROM app_private.payment_reversals pr
 WHERE pr.original_payment_id IN (${paySel});
 
+DELETE FROM app_private.income_expense_cancellations cancellation
+WHERE cancellation.income_expense_id IN (${vchSel});
+
 DELETE FROM public.invoice_payment_allocations allocation
-WHERE allocation.collection_id IN (${collSel});
+  WHERE allocation.collection_id IN (${collSel});
+
+-- These finalized snapshot tables were added after the original harness.
+-- replica mode suppresses FK cascades too, so remove fixture children explicitly.
+DELETE FROM public.finance_invoice_component_allocations allocation
+  WHERE allocation.invoice_id IN (${invSel});
+
+DELETE FROM public.finance_invoice_components component
+  WHERE component.invoice_id IN (${invSel});
+
+DELETE FROM public.finance_invoice_component_manifests manifest
+  WHERE manifest.invoice_id IN (${invSel});
 
 DELETE FROM public.income_expense_items item
 WHERE item.income_expense_id IN (${vchSel});
@@ -472,6 +514,15 @@ WHERE x.source_invoice_id IN (${invSel})
 
 DELETE FROM public.customer_credit_lots lot
 WHERE lot.source_collection_id IN (${collSel});
+
+DELETE FROM public.income_expense_posting_evidence evidence
+WHERE evidence.posting_id IN (SELECT id FROM public.income_expense_postings WHERE voucher_id IN (${vchSel}));
+
+DELETE FROM public.income_expense_posting_lines line
+WHERE line.posting_id IN (SELECT id FROM public.income_expense_postings WHERE voucher_id IN (${vchSel}));
+
+DELETE FROM public.income_expense_postings posting
+WHERE posting.voucher_id IN (${vchSel});
 
 -- Vouchers (both the invoice-scoped collection vouchers and the reversal
 -- vouchers, which carry invoice_id = NULL and link only by collection).

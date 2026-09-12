@@ -60,22 +60,52 @@ chưa bổ sung khóa để xử lý race sửa dòng đồng thời với thu t
   3.507 posting lines, SQL=phân trang=3.072.106.007 VND.
 - Stable function lock gate: không có hàm đọc chạm khóa dòng.
 
-## Chưa được phép kết luận đã sửa production
+## Triển khai hotfix và kiểm tra hậu triển khai
 
-Credential ban đầu bị HTTP 401; người dùng đã cập nhật vault, sau đó đọc
-catalog, sinh provenance và các kiểm tra live nêu trên đã chạy được. Tại thời
-điểm chuẩn bị PR chưa apply hotfix, chưa có PostgREST concurrency/E2E hậu
-triển khai. Không coi test SQL ROLLBACK là bằng chứng production đã sửa.
+Hotfix đã apply qua forward lane lúc `2026-09-12T06:54:57.090Z`, đúng commit
+đã review `69af57a62b69023a203bc811380f3d73a28c8bc3` và SHA256 migration
+`15b0475ef08ae03e1681aee23a82acb9e4d3ab1469e1dea9f61eb094d322b1ee`.
+Biên nhận: `docs/generated/schema-change-evidence/20260912063718_paid_invoice_guard_row_types.json`.
+Backup đầy đủ đã xác minh 527 bảng trước apply; SHA256 dump
+`c582b05e5547589a602f7458cae05710eab384b8ffc0a59b7f499b62c179c366`.
+
+Sau apply, `node scripts/test-invoice-rounding-http-concurrency.mjs --execute`
+đạt cả hai nhóm request PostgREST độc lập: cùng key trả cùng collection;
+khác key chỉ một request thắng. Mỗi nhóm đúng một collection/payment,
+8.000 tiền làm tròn, một dòng báo cáo; hoàn tác trung hòa toàn bộ posting.
+Fixture DEMO và possession binding theo marker đã dọn sạch.
+
+`gate:truoc-push` đạt đủ 42 gate. Sandbox gate chạy tại checkout chính với
+vault: 0 bảng rò dữ liệu trong 148 bảng có quyền SELECT (18 bảng không cấp
+SELECT), snapshot THẬT trước/sau không đổi. GitHub CI run `34679215202` đã
+thành công sau khi đồng bộ secret SUPABASE_PAT đã được người dùng cập nhật;
+các job phụ thuộc phạm vi PR được workflow đánh dấu skipped, không tính là
+kiểm thử đã chạy. Quality, realtime, timezone, strict islands và secret scan
+đạt; restore drill cũng đã đạt ở attempt trước.
 
 Harness cũ `test-invoice-collection-v5.mjs` không chạy được bước kích hoạt
 CANARY vì database có một integrity exception đang OPEN. Không hạ guard hoặc
 đổi exception; các probe ở trên dùng flags hiện hành (collection/reverse/credit
 đang ON). Đây là khác biệt setup harness, không phải một scenario đạt.
 
-Sau khi khôi phục credential, cần sinh provenance từ index, chạy lane dry-run
-và harness liên quan trên DEMO, review đúng SHA, backup và apply qua
-`npm run migrate:forward -- <file> --apply`, rồi kiểm PostgREST/E2E cả hai màn
-hình, thu tiếp/hoàn tác, idempotency/concurrency và reconcile v1/v2.
+Spec UI cũ `invoice-collection-v5.spec.ts` dừng tại preflight vì không có
+phòng/khách/sổ DEMO phù hợp để tạo hợp đồng mới. Spec hồi quy riêng dùng
+hóa đơn mới gắn hợp đồng DEMO đang hoạt động, nên không phụ thuộc phòng trống.
+Kết quả UI được ghi riêng sau khi chạy; không dùng preflight failure làm PASS.
+
+`npx playwright test specs/payment-collection-regression.spec.ts --workers=1 --reporter=list`
+chạy headless trên production: PASS. Desktop `/invoices/:id` thu 3.239.000,
+mobile `/thu-tien` keypad thu đúng 2.000.000 còn lại; hai request V5 thành công,
+paid_amount=5.239.000, remaining=0, status=PAID, đúng hai collection ACTIVE,
+không lỗi console/page. Teardown hoàn tác cả hai khoản thu trước khi dọn fixture.
+DEMO thiếu sổ cá nhân tên kết thúc “Thu” nên test tạo sổ zero-balance tạm theo
+marker và dọn sạch, không đổi cấu hình sổ quỹ hiện hữu.
+
+E2E phát hiện helper dọn fixture cũ bỏ sót finalized finance snapshots và
+posting ledger do session_replication_role=replica cũng tắt FK cascades.
+Helper nay dọn các con theo invoice/voucher marker trước khi xóa cha. Các
+fixture của lượt kiểm này tạo trước lúc sửa helper cũng đã được xác định từ
+canonical response marker, kiểm tiền net=0 và dọn; không đụng dữ liệu THẬT.
 
 ## Rủi ro khác của chức năng adjustment chưa được hotfix xử lý
 
@@ -91,5 +121,6 @@ bộ chức năng điều chỉnh hóa đơn đã thu tiền là an toàn:
 3. Guard dòng hóa đơn chưa khóa parent để tuần tự hóa với lần thu đầu tiên;
    chưa chứng minh an toàn trong race item edit/payment.
 
-Các điểm này là kết luận từ source; chưa đọc dữ liệu live để xác định có bản
-ghi bị ảnh hưởng hay không. Không tự backfill hoặc sửa dữ liệu org THẬT.
+Catalog live tại thời điểm điều tra có 0 invoice_adjustments. Các rủi ro này
+đang được sửa trong nhánh `codex/invoice-adjustment-repair-20260912` theo yêu cầu
+mở rộng của người dùng. Không tự backfill hoặc sửa dữ liệu nghiệp vụ org THẬT.

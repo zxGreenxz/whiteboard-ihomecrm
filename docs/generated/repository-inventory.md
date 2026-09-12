@@ -15,7 +15,7 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **646** file test, **204** file đọc file bằng fs (447 lời gọi)
+- **647** file test, **205** file đọc file bằng fs (448 lời gọi)
 - **224** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
@@ -27,7 +27,7 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 | sql | 62 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
 | ma-nguon | 40 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
 | manifest | 31 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
-| tai-lieu | 7 | Đọc tài liệu/asset. |
+| tai-lieu | 8 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
 ## 40 file đọc MÃ NGUỒN
