@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { History } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useInvoice, useReviewInvoiceAdjustment } from '@/hooks/useInvoices';
@@ -61,7 +62,10 @@ export default function InvoiceAdjustmentHistory({ invoice }: { invoice: Invoice
     finally { inFlight.current = false; setBusy(false); }
   };
   return <Card>
-    <CardHeader><CardTitle>Lịch sử điều chỉnh</CardTitle></CardHeader>
+    <CardHeader className="flex flex-row items-center gap-2.5 space-y-0 border-b px-5 py-[15px]">
+      <History className="h-[17px] w-[17px] text-primary" />
+      <CardTitle className="text-[15px] font-bold tracking-[-0.01em]">Lịch sử điều chỉnh</CardTitle>
+    </CardHeader>
     <CardContent className="space-y-3">
       <h3 className="font-medium">Hóa đơn gốc</h3>
       <Snapshot label="Bản gốc bất biến" data={original.before_snapshot} total={original.before_total} />

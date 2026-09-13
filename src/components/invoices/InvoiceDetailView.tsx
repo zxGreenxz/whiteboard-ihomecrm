@@ -1,12 +1,5 @@
 import { useState, Suspense, lazy } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -15,19 +8,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   ArrowLeft,
   DollarSign,
   Printer,
   AlertCircle,
   CheckCircle,
-  Image,
-  ExternalLink,
+  Image as ImageIcon,
   Pencil,
   QrCode,
   XCircle,
   RotateCcw,
+  Receipt,
+  Wallet,
+  Ban,
 } from 'lucide-react';
 import { useInvoice, useCancelInvoice, useRestoreInvoice } from '@/hooks/useInvoices';
 import { useMyContext } from '@/hooks/useMyContext';
@@ -57,12 +51,85 @@ const InvoiceDetailMobile = lazy(() =>
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
+const formatQty = (value: number) => new Intl.NumberFormat('vi-VN').format(value || 0);
+
 // 'YYYY-MM-DD' → 'dd/MM/yyyy'; rỗng/không hợp lệ → null (để khỏi hiển thị dòng kỳ).
 const fmtItemDay = (iso?: string | null): string | null => {
   if (!iso) return null;
   const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
   return Number.isNaN(d.getTime()) ? null : format(d, 'dd/MM/yyyy');
 };
+
+/** Kỳ của dòng hoá đơn — bỏ năm ở vế đầu khi cùng năm cho gọn: 01/09 → 30/09/2026. */
+const fmtItemPeriod = (from?: string | null, to?: string | null): string | null => {
+  const a = fmtItemDay(from);
+  const b = fmtItemDay(to);
+  if (!a || !b) return null;
+  return a.slice(-4) === b.slice(-4) ? `${a.slice(0, 5)} → ${b}` : `${a} → ${b}`;
+};
+
+const ITEM_TYPE_LABEL: Record<string, string> = {
+  RENT: 'Tiền phòng',
+  SERVICE: 'Dịch vụ',
+  PENALTY: 'Phạt',
+  DISCOUNT: 'Giảm trừ',
+  OTHER: 'Khác',
+};
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  TM: 'Tiền mặt',
+  TK: 'Chuyển khoản',
+  TT: 'Thanh toán',
+  CT: 'Cấn trừ',
+};
+
+/** Pill trạng thái — APPROVED là mặc định của mọi hoá đơn nên không có pill. */
+const STATUS_PILL: Record<string, { label: string; cls: string }> = {
+  DRAFT: { label: 'Nháp', cls: 'bg-[hsl(210_16%_93%)] text-[hsl(210_10%_34%)]' },
+  PARTIAL_PAID: { label: 'Trả 1 phần', cls: 'bg-[#e7eefc] text-[#1d4ed8]' },
+  PAID: { label: 'Đã thanh toán', cls: 'bg-primary text-primary-foreground' },
+  OVERDUE: { label: 'Quá hạn', cls: 'bg-[#fcebe9] text-[#b91c1c]' },
+  CANCELLED: { label: 'Đã hủy', cls: 'bg-[#fcebe9] text-[#b91c1c]' },
+};
+
+const CARD = 'overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_2px_0_rgb(0_0_0/0.04)]';
+const CARD_HEAD = 'flex items-center gap-2.5 border-b border-[hsl(210_20%_93%)] px-5 py-[15px]';
+const CARD_TITLE = 'text-[15px] font-bold tracking-[-0.01em]';
+const STAT_LABEL = 'text-[10.5px] font-bold uppercase tracking-[0.06em] text-[hsl(210_10%_38%)]';
+const CHIP = 'inline-flex items-center rounded-md border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-[7px] py-[2px] text-[10.5px] text-[hsl(210_10%_36%)]';
+const PILL_INFO = 'inline-flex items-baseline gap-[5px] rounded-full border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-[9px] py-[2px] text-[11px] text-[hsl(210_10%_38%)]';
+const TH = 'h-auto px-3 py-[9px] text-[10.5px] font-bold uppercase tracking-[0.06em] text-[hsl(210_10%_38%)] bg-[#fafbfb]';
+const TD = 'px-3 py-3 align-top';
+const TR = 'border-[hsl(210_20%_95%)]';
+
+interface RelatedVoucher {
+  id: string;
+  code: string | null;
+  type: 'INCOME' | 'EXPENSE' | string;
+  name?: string | null;
+  voucher_date?: string | null;
+  payment_id?: string | null;
+  creator_name?: string | null;
+  account?: { id: string; name: string | null } | null;
+  items?: { unit_price?: number | null; quantity?: number | null }[];
+}
+
+/** Một dòng trong thẻ "Thanh toán & phiếu thu" — gộp payment với phiếu thu/chi của nó. */
+interface PaymentRow {
+  key: string;
+  sortAt: string;
+  dateLabel: string;
+  methodLabel: string | null;
+  amount: number;
+  isRefund: boolean;
+  code: string | null;
+  voucherId: string | null;
+  kind: string | null;
+  fund: string | null;
+  collector: string | null;
+  receiptUrl: string | null;
+  receiptIdx: number | null;
+}
 
 interface InvoiceDetailViewProps {
   /** ID hoá đơn cần hiển thị (đã đảm bảo có giá trị bởi nơi gọi). */
@@ -78,6 +145,10 @@ interface InvoiceDetailViewProps {
  * Dùng chung cho:
  *  - Route /invoices/:id (bọc MainLayout) — deep-link, thông báo, HĐ trong HĐ thuê…
  *  - Modal full-screen mở từ danh sách hoá đơn (giữ nguyên bộ lọc đang dò).
+ *
+ * Bố cục desktop theo handoff Claude Design "Hoá đơn - Thiết kế mới v2": một cột
+ * dọc, thẻ đầu gộp trạng thái + thao tác + ba ô tiền + thông tin hoá đơn; thẻ
+ * thanh toán gộp phiếu thu/chi vào từng lần thu thay cho cột tóm tắt bên phải.
  */
 const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailViewProps) => {
   const isPhone = usePhoneViewport();
@@ -101,7 +172,8 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
     canUse(perms, 'invoices', 'cancel') || canUse(perms, 'invoices', 'delete');
 
   // Lấy danh sách phiếu thu/chi APPROVED gắn với hoá đơn (declared trước early
-  // returns để giữ thứ tự hooks ổn định giữa các render).
+  // returns để giữ thứ tự hooks ổn định giữa các render). payment_id là mối nối
+  // phiếu ↔ lần thu; account/creator_name cho chip "Sổ quỹ" / "Người thu".
   const { data: relatedVouchers = [] } = useQuery({
     queryKey: ['invoice-vouchers', id],
     enabled: !!id,
@@ -109,14 +181,14 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
       const { data, error } = await supabase
         .from('income_expenses' as any)
         .select(
-          'id, code, type, name, voucher_date, approval_status, items:income_expense_items(unit_price, quantity)',
+          'id, code, type, name, voucher_date, approval_status, payment_id, creator_name, account:accounts!income_expenses_account_id_fkey ( id, name ), items:income_expense_items(unit_price, quantity)',
         )
         .eq('invoice_id', id!)
         .eq('approval_status', 'APPROVED')
         .is('deleted_at', null)
         .order('voucher_date', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as any[];
+      return (data ?? []) as unknown as RelatedVoucher[];
     },
   });
 
@@ -141,27 +213,13 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
     );
   }
 
-  const getStatusBadge = (status: string) => {
-    // Mặc định mọi hoá đơn = APPROVED → không hiển thị badge cho trạng thái này.
-    if (status === 'APPROVED') return null;
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-      DRAFT: { variant: 'outline', label: 'Nháp' },
-      PARTIAL_PAID: { variant: 'secondary', label: 'Trả 1 phần' },
-      PAID: { variant: 'default', label: 'Đã thanh toán' },
-      OVERDUE: { variant: 'destructive', label: 'Quá hạn' },
-      CANCELLED: { variant: 'destructive', label: 'Đã hủy' },
-    };
+  const total = invoice.total_amount || 0;
+  const paid = invoice.paid_amount || 0;
+  const outstandingAmount = total - paid;
 
-    const config = variants[status] || { variant: 'outline' as const, label: status };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
-  };
-
-  const outstandingAmount = (invoice.total_amount || 0) - (invoice.paid_amount || 0);
-
-  const voucherAmount = (v: any): number =>
+  const voucherAmount = (v: RelatedVoucher): number =>
     (v.items ?? []).reduce(
-      (sum: number, it: any) =>
-        sum + Number(it.unit_price || 0) * Number(it.quantity || 0),
+      (sum, it) => sum + Number(it.unit_price || 0) * Number(it.quantity || 0),
       0,
     );
   const totalReceived = relatedVouchers
@@ -207,9 +265,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
     .join(' - ');
 
   // Điều kiện hiển thị nút thao tác (dùng chung desktop + mobile).
-  const payTotal = invoice.total_amount || 0;
-  const payPaid = invoice.paid_amount || 0;
-  const payIsRefund = payTotal < 0 || payPaid > payTotal;
+  const payIsRefund = total < 0 || paid > total;
   const showPay =
     canRecordPaymentPerm &&
     (invoice.status === 'APPROVED' ||
@@ -295,425 +351,561 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
 
   // Ảnh chứng từ thanh toán — gom các phiếu có ảnh để xem bằng lightbox tại chỗ
   // (không mở tab mới làm rời trang). Index = vị trí trong danh sách ảnh.
-  const receiptPayments = (invoice.payments ?? []).filter((p) => p.receipt_image_url);
+  // useInvoice trả payments THÔ (khác useInvoices ở danh sách — hook đó đã lọc):
+  // lần thu đã hoàn tác vẫn còn trong mảng. Bỏ chúng đi, nếu không thẻ thanh toán
+  // cộng nhầm tiền đã bị đảo. Phiếu chi đối ứng (nếu có) vẫn hiện thành dòng −.
+  const payments = (invoice.payments ?? []).filter(
+    (p) => !(p as typeof p & { reversed_at?: string | null }).reversed_at,
+  );
+  const receiptPayments = payments.filter((p) => p.receipt_image_url);
   const receiptUrls = receiptPayments.map((p) => p.receipt_image_url as string);
   const receiptIdxById = new Map(receiptPayments.map((p, i) => [p.id, i]));
 
+  // Gộp lần thu (payments) với phiếu thu/chi (income_expenses) theo payment_id.
+  // Phiếu không nối được lần thu nào (vd phiếu chi tiền thối, phiếu cấn trừ) vẫn
+  // hiện thành dòng riêng để không mất dấu tiền đã đi qua sổ.
+  const voucherByPaymentId = new Map<string, RelatedVoucher>();
+  for (const v of relatedVouchers) {
+    if (v.payment_id && !voucherByPaymentId.has(v.payment_id)) {
+      voucherByPaymentId.set(v.payment_id, v);
+    }
+  }
+  const mergedVoucherIds = new Set<string>();
+  const paymentRows: PaymentRow[] = payments.map((p) => {
+    const v = voucherByPaymentId.get(p.id);
+    if (v) mergedVoucherIds.add(v.id);
+    return {
+      key: `payment:${p.id}`,
+      sortAt: p.payment_date || p.created_at || '',
+      dateLabel: p.payment_date
+        ? format(new Date(p.payment_date), 'dd/MM/yyyy HH:mm', { locale: vi })
+        : '—',
+      methodLabel: PAYMENT_METHOD_LABEL[p.payment_method] || p.payment_method || null,
+      amount: Number(p.amount) || 0,
+      isRefund: false,
+      code: v?.code ?? p.receipt_number ?? null,
+      voucherId: v?.id ?? null,
+      kind: v ? 'Phiếu thu · đã duyệt' : 'Chưa nối phiếu thu',
+      fund: v?.account?.name ?? null,
+      collector: v?.creator_name ?? null,
+      receiptUrl: p.receipt_image_url ?? null,
+      receiptIdx: receiptIdxById.get(p.id) ?? null,
+    };
+  });
+  for (const v of relatedVouchers) {
+    if (mergedVoucherIds.has(v.id)) continue;
+    const isIncome = v.type === 'INCOME';
+    paymentRows.push({
+      key: `voucher:${v.id}`,
+      sortAt: v.voucher_date || '',
+      dateLabel: v.voucher_date ? format(new Date(v.voucher_date), 'dd/MM/yyyy') : '—',
+      methodLabel: null,
+      amount: voucherAmount(v),
+      isRefund: !isIncome,
+      code: v.code ?? null,
+      voucherId: v.id,
+      kind: isIncome ? 'Phiếu thu · đã duyệt' : 'Phiếu chi tiền thối · đã duyệt',
+      fund: v.account?.name ?? null,
+      collector: v.creator_name ?? null,
+      receiptUrl: null,
+      receiptIdx: null,
+    });
+  }
+  paymentRows.sort((a, b) => a.sortAt.localeCompare(b.sortAt));
+
+  const statusPill = STATUS_PILL[invoice.status] ?? null;
+  const dueLabel = invoice.due_date
+    ? format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: vi })
+    : '';
+  const paidDayLabel = invoice.paid_date
+    ? format(new Date(invoice.paid_date), 'dd/MM/yyyy', { locale: vi })
+    : '';
+
+  // Dòng trạng thái một câu — thay cho 2 hộp Alert ở cột tóm tắt cũ.
+  const note: { text: string; cls: string; Icon: typeof CheckCircle } =
+    invoice.status === 'CANCELLED'
+      ? { text: 'Hoá đơn đã huỷ', cls: 'text-[#b91c1c]', Icon: Ban }
+      : invoice.status === 'PAID'
+        ? {
+            text: paidDayLabel ? `Đã thu đủ ngày ${paidDayLabel}` : 'Đã thu đủ',
+            cls: 'text-[hsl(152_60%_24%)]',
+            Icon: CheckCircle,
+          }
+        : outstandingAmount < 0
+          ? {
+              text: `Đã thu vượt ${formatCurrency(-outstandingAmount)} — cần hoàn trả khách`,
+              cls: 'text-[#c2410c]',
+              Icon: AlertCircle,
+            }
+          : isOverdue
+            ? {
+                text: dueLabel ? `Đã quá hạn thanh toán ${dueLabel}` : 'Đã quá hạn thanh toán',
+                cls: 'text-[#b91c1c]',
+                Icon: AlertCircle,
+              }
+            : outstandingAmount > 0
+              ? {
+                  text: dueLabel ? `Còn thiếu, hạn ${dueLabel}` : 'Còn thiếu',
+                  cls: 'text-[#1d4ed8]',
+                  Icon: AlertCircle,
+                }
+              : { text: 'Đã thu đủ', cls: 'text-[hsl(152_60%_24%)]', Icon: CheckCircle };
+  const NoteIcon = note.Icon;
+
+  // Vạch tiến độ thu — theo tỉ lệ đã thu / tổng; HĐ hoàn trả (total < 0) thì đo
+  // theo trị tuyệt đối để vạch không âm.
+  const progressPct =
+    total === 0
+      ? paid !== 0
+        ? 100
+        : 0
+      : Math.max(0, Math.min(100, Math.round((paid / total) * 100)));
+  const progressCls =
+    invoice.status === 'PAID' || outstandingAmount <= 0
+      ? 'bg-primary'
+      : isOverdue
+        ? 'bg-[#dc2626]'
+        : 'bg-[#2563eb]';
+  const outstandingCls =
+    outstandingAmount > 0
+      ? isOverdue
+        ? 'text-[#dc2626]'
+        : 'text-[#c2410c]'
+      : 'text-[hsl(210_10%_40%)]';
+
+  const infoFields: { label: string; value: string; mono?: boolean; cls?: string }[] = [
+    { label: 'Số hóa đơn', value: invoice.invoice_number || '—', mono: true },
+    { label: 'Hợp đồng', value: invoice.contract?.contract_number || '—', mono: true },
+    {
+      label: 'Khách hàng',
+      value: [representativeCustomer?.full_name, representativeCustomer?.phone]
+        .filter(Boolean)
+        .join(' · ') || '—',
+    },
+    { label: 'Căn hộ', value: apartmentLabel || '—' },
+    { label: 'Kỳ thanh toán', value: billingLabel || '—', mono: true },
+    {
+      label: 'Ngày phát hành',
+      value: invoice.issue_date
+        ? format(new Date(invoice.issue_date), 'dd/MM/yyyy', { locale: vi })
+        : '—',
+      mono: true,
+    },
+    {
+      label: 'Hạn thanh toán',
+      value: dueLabel ? (isOverdue ? `${dueLabel} (Quá hạn)` : dueLabel) : '—',
+      mono: true,
+      cls: isOverdue ? 'text-[#b91c1c]' : undefined,
+    },
+  ];
+
+  const items = invoice.invoice_items ?? [];
+
   return (
     <>
-      {/* Header Actions: 3 nút phụ icon-only (gọn, không che nút thanh toán),
-          2 nút action chính giữ nguyên label */}
-      <div className="flex items-center gap-2 mb-6 flex-wrap">
-        {showBackButton && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9"
-            onClick={onBack}
-            title="Quay lại danh sách"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        )}
-
-        {showEditBtn && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => setEditDialogOpen(true)}
-            title={(invoice.paid_amount ?? 0) > 0 ? 'Điều chỉnh hóa đơn' : 'Chỉnh sửa'}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-        )}
-
-        {showCancelBtn && (
-          <Button
-            variant="destructive"
-            size="icon"
-            className="h-9 w-9"
-            onClick={handleCancel}
-            disabled={cancelMutation.isPending}
-            title={cancelMutation.isPending ? 'Đang hủy...' : 'Hủy hóa đơn'}
-          >
-            <XCircle className="h-4 w-4" />
-          </Button>
-        )}
-
-        {showRestoreBtn && (
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 bg-amber-100 text-amber-700 hover:bg-amber-200 border-amber-300"
-            onClick={handleRestore}
-            disabled={restoreMutation.isPending}
-            title={restoreMutation.isPending ? 'Đang phục hồi...' : 'Phục hồi hoá đơn'}
-          >
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-        )}
-
-        <div className="flex-1" />
-
-        {canRecordPaymentPerm && (invoice.status === 'APPROVED' ||
-          invoice.status === 'PARTIAL_PAID' ||
-          invoice.status === 'OVERDUE') &&
-          (() => {
-            const total = invoice.total_amount || 0;
-            const paid = invoice.paid_amount || 0;
-            const isRefund = total < 0 || paid > total;
-            return (
+      <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-[18px] text-foreground">
+        {/* Thẻ 1 — trạng thái, thao tác, ba ô tiền, thông tin hoá đơn */}
+        <section className={CARD}>
+          <div className="flex flex-wrap items-center gap-2.5 border-b border-[hsl(210_20%_93%)] px-5 py-3.5">
+            {showBackButton && (
               <Button
-                variant="default"
-                className={isRefund ? 'bg-orange-600 hover:bg-orange-700' : ''}
-                onClick={() => setPaymentDialogOpen(true)}
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-lg"
+                onClick={onBack}
+                title="Quay lại danh sách"
               >
-                <DollarSign className="h-4 w-4 mr-2" />
-                {isRefund ? 'Hoàn trả khách' : 'Ghi nhận thanh toán'}
+                <ArrowLeft className="h-4 w-4" />
               </Button>
-            );
-          })()}
+            )}
 
-        <Button variant="outline" onClick={() => setPrintDialogOpen(true)}>
-          <Printer className="h-4 w-4 mr-2" />
-          In hóa đơn
-        </Button>
+            {statusPill && (
+              <span
+                className={`inline-flex items-center rounded-full px-[11px] py-1 text-xs font-bold ${statusPill.cls}`}
+              >
+                {statusPill.label}
+              </span>
+            )}
 
-        {invoice.contract_id &&
-          invoice.contract?.status !== 'TERMINATED' && (
-            <Button
-              variant="outline"
-              onClick={() => setQrDialogOpen(true)}
-              title="QR hợp đồng (khách quét để xem hoá đơn mới nhất)"
-            >
-              <QrCode className="h-4 w-4 mr-2" />
-              QR hợp đồng
-            </Button>
-          )}
-      </div>
+            <span className={`inline-flex items-center gap-[7px] text-[12.5px] font-semibold ${note.cls}`}>
+              <NoteIcon className="h-3.5 w-3.5 shrink-0" />
+              {note.text}
+            </span>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Invoice Info */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Invoice Details Card */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Thông tin hóa đơn</CardTitle>
-                {getStatusBadge(invoice.status)}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="text-gray-600">Số hóa đơn</div>
-                  <div className="font-medium">{invoice.invoice_number || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Hợp đồng</div>
-                  <div className="font-medium">{invoice.contract?.contract_number || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Khách hàng</div>
-                  <div className="font-medium">{representativeCustomer?.full_name || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Số điện thoại</div>
-                  <div className="font-medium">{representativeCustomer?.phone || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Căn hộ</div>
-                  <div className="font-medium">{apartmentLabel || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Kỳ thanh toán</div>
-                  <div className="font-medium">{billingLabel || 'N/A'}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Ngày phát hành</div>
-                  <div className="font-medium">
-                    {invoice.issue_date && format(new Date(invoice.issue_date), 'dd/MM/yyyy', { locale: vi })}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Hạn thanh toán</div>
-                  <div className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}>
-                    {invoice.due_date && format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: vi })}
-                    {isOverdue && <span className="ml-2 text-xs">(Quá hạn)</span>}
-                  </div>
-                </div>
-              </div>
+            <div className="min-w-[8px] flex-1" />
 
-              {invoice.notes && (
-                <div>
-                  <div className="text-gray-600 text-sm mb-1">Ghi chú</div>
-                  <div className="text-sm bg-gray-50 p-3 rounded">{invoice.notes}</div>
-                </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {showPay && (
+                <Button
+                  variant="default"
+                  className={`h-9 rounded-lg px-[15px] text-[13px] font-bold ${
+                    payIsRefund ? 'bg-orange-600 hover:bg-orange-700' : ''
+                  }`}
+                  onClick={() => setPaymentDialogOpen(true)}
+                >
+                  <DollarSign className="mr-2 h-4 w-4" />
+                  {payIsRefund ? 'Hoàn trả khách' : 'Ghi nhận thanh toán'}
+                </Button>
               )}
-            </CardContent>
-          </Card>
 
-          {/* Invoice Items Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Chi tiết các khoản thu</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Mô tả</TableHead>
-                    <TableHead className="text-right">Số lượng</TableHead>
-                    <TableHead className="text-right">Đơn giá</TableHead>
-                    <TableHead className="text-right">Thành tiền</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoice.invoice_items && invoice.invoice_items.length > 0 ? (
-                    invoice.invoice_items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <div className="font-medium">{item.description}</div>
-                          {fmtItemDay(item.from_date) && fmtItemDay(item.to_date) && (
-                            <div className="text-xs text-blue-600">
-                              Tính từ {fmtItemDay(item.from_date)} → {fmtItemDay(item.to_date)}
-                            </div>
-                          )}
-                          <div className="text-xs text-gray-500 capitalize">{item.type?.toLowerCase()}</div>
-                        </TableCell>
-                        <TableCell className="text-right">{item.quantity}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(item.unit_price)}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(item.amount)}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-gray-500">
-                        Không có khoản thu nào
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {invoice.discount_amount > 0 && (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-right text-gray-600">Giảm trừ</TableCell>
-                      <TableCell className="text-right font-medium text-green-600">
-                        −{formatCurrency(invoice.discount_amount)}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {invoice.previous_debt > 0 && (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-right align-top">
-                        <div className="font-medium text-orange-700">Nợ cũ kỳ trước</div>
-                        {invoice.previous_debt_sources?.length > 0 && (
-                          <div className="text-xs font-normal text-gray-500">
-                            {invoice.previous_debt_sources
-                              .map((s) => s.label)
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-orange-700">
-                        {formatCurrency(invoice.previous_debt)}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  <TableRow className="bg-gray-50 font-bold">
-                    <TableCell colSpan={3} className="text-right">Tổng cộng</TableCell>
-                    <TableCell className="text-right">{formatCurrency(invoice.total_amount || 0)}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+              <Button
+                variant="outline"
+                className="h-9 rounded-lg px-[13px] text-[13px] font-semibold"
+                onClick={() => setPrintDialogOpen(true)}
+              >
+                <Printer className="mr-[7px] h-4 w-4" />
+                In hóa đơn
+              </Button>
 
-          <InvoiceAdjustmentHistory invoice={invoice} />
+              {showQR && (
+                <Button
+                  variant="outline"
+                  className="h-9 rounded-lg px-[13px] text-[13px] font-semibold"
+                  onClick={() => setQrDialogOpen(true)}
+                  title="QR hợp đồng (khách quét để xem hoá đơn mới nhất)"
+                >
+                  <QrCode className="mr-[7px] h-4 w-4" />
+                  QR hợp đồng
+                </Button>
+              )}
 
-          {/* Payments Card */}
-          {invoice.payments && invoice.payments.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Lịch sử thanh toán</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Ngày thanh toán</TableHead>
-                      <TableHead>Số tiền</TableHead>
-                      <TableHead>Phương thức</TableHead>
-                      <TableHead>Chứng từ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {invoice.payments.map((payment) => (
-                      <TableRow key={payment.id}>
-                        <TableCell>
-                          {format(new Date(payment.payment_date), 'dd/MM/yyyy HH:mm', { locale: vi })}
-                        </TableCell>
-                        <TableCell className="font-medium text-green-600">
-                          {formatCurrency(payment.amount)}
-                        </TableCell>
-                        <TableCell className="capitalize">{payment.payment_method?.toLowerCase()}</TableCell>
-                        <TableCell>
-                          {payment.receipt_image_url ? (
-                            <button
-                              type="button"
-                              onClick={() => setLightboxIdx(receiptIdxById.get(payment.id) ?? 0)}
-                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
-                            >
-                              <Image className="h-4 w-4" />
-                              <span>Xem ảnh</span>
-                            </button>
-                          ) : (
-                            <span className="text-gray-400 text-sm">Không có</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              {showEditBtn && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 rounded-lg"
+                  onClick={() => setEditDialogOpen(true)}
+                  title={(invoice.paid_amount ?? 0) > 0 ? 'Điều chỉnh hóa đơn' : 'Chỉnh sửa'}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
 
-                {/* Receipt Images Gallery */}
-                {invoice.payments.some(p => p.receipt_image_url) && (
-                  <div className="mt-4 pt-4 border-t">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">Ảnh chứng từ thanh toán</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {receiptPayments.map((payment, idx) => (
-                          <button
-                            key={payment.id}
-                            type="button"
-                            onClick={() => setLightboxIdx(idx)}
-                            className="group relative aspect-video rounded-lg overflow-hidden border bg-gray-100 hover:ring-2 hover:ring-blue-500 transition-all"
-                          >
-                            <StorageImage
-                              value={payment.receipt_image_url!}
-                              alt={`Chứng từ thanh toán ${format(new Date(payment.payment_date), 'dd/MM/yyyy', { locale: vi })}`}
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                              <ExternalLink className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </div>
-                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
-                              <p className="text-white text-xs">
-                                {format(new Date(payment.payment_date), 'dd/MM/yyyy', { locale: vi })} - {formatCurrency(payment.amount)}
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              {showCancelBtn && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 rounded-lg border-[#fbcfcb] text-[#b91c1c] hover:bg-[#fef2f2] hover:text-[#b91c1c]"
+                  onClick={handleCancel}
+                  disabled={cancelMutation.isPending}
+                  title={cancelMutation.isPending ? 'Đang hủy...' : 'Hủy hóa đơn'}
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              )}
 
-        {/* Right Column - Summary */}
-        <div className="space-y-6">
-          {/* Payment Summary Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Tóm tắt thanh toán</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Tổng tiền hoá đơn:</span>
-                <span className="font-bold">{formatCurrency(invoice.total_amount || 0)}</span>
+              {showRestoreBtn && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 rounded-lg border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
+                  onClick={handleRestore}
+                  disabled={restoreMutation.isPending}
+                  title={restoreMutation.isPending ? 'Đang phục hồi...' : 'Phục hồi hoá đơn'}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Ba ô tiền — đường kẻ mảnh giữa các ô bằng nền grid */}
+          <div className="grid gap-px bg-[hsl(210_20%_93%)] [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+            <div className="bg-white px-5 py-4">
+              <div className={STAT_LABEL}>Tổng hoá đơn</div>
+              <div className="mt-[7px] font-numeric text-[21px] font-bold tracking-[-0.03em] tabular-nums">
+                {formatCurrency(total)}
               </div>
+            </div>
+            <div className="bg-white px-5 py-4">
+              <div className={STAT_LABEL}>Đã thu</div>
+              <div className="mt-[7px] font-numeric text-[21px] font-bold tracking-[-0.03em] tabular-nums text-[hsl(152_69%_26%)]">
+                {formatCurrency(paid)}
+              </div>
+            </div>
+            <div className="bg-[#f6f9f7] px-5 py-4">
+              <div className={STAT_LABEL}>
+                {outstandingAmount < 0 ? 'Phải hoàn khách' : 'Còn phải thu'}
+              </div>
+              <div
+                className={`mt-[5px] font-numeric text-[28px] font-bold leading-[1.05] tracking-[-0.04em] tabular-nums ${outstandingCls}`}
+              >
+                {formatCurrency(Math.abs(outstandingAmount))}
+              </div>
+              <div className="mt-[9px] h-[5px] overflow-hidden rounded-full bg-[hsl(210_16%_88%)]">
+                <div
+                  className={`h-full rounded-full ${progressCls}`}
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          </div>
 
-              {/* Breakdown từng phiếu thu / chi */}
-              {relatedVouchers.length > 0 && (
-                <div className="border-t pt-3 space-y-1.5">
-                  {relatedVouchers.map((v) => {
-                    const isIncome = v.type === 'INCOME';
-                    const amt = voucherAmount(v);
-                    return (
-                      <div
-                        key={v.id}
-                        className="flex justify-between items-start text-[13px] gap-2"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-mono text-zinc-800">{v.code}</div>
-                          <div className="text-[11px] text-zinc-500">
-                            {isIncome ? 'Phiếu thu' : 'Phiếu chi tiền thối'}
-                            {v.voucher_date
-                              ? ` · ${format(new Date(v.voucher_date), 'dd/MM/yyyy')}`
-                              : ''}
-                          </div>
+          {/* Thông tin hoá đơn */}
+          <div className="grid gap-x-7 gap-y-3.5 border-t border-[hsl(210_20%_93%)] bg-[#fcfdfc] px-5 py-[15px] [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+            {infoFields.map((f) => (
+              <div key={f.label} className="min-w-0">
+                <div className="text-[11.5px] text-[hsl(210_10%_38%)]">{f.label}</div>
+                <div
+                  className={`mt-[3px] text-[13.5px] font-semibold tracking-[-0.01em] ${
+                    f.mono ? 'font-numeric tabular-nums' : ''
+                  } ${f.cls ?? ''}`}
+                >
+                  {f.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Thẻ 2 — chi tiết các khoản thu */}
+        <section className={CARD}>
+          <div className={CARD_HEAD}>
+            <Receipt className="h-[17px] w-[17px] text-primary" />
+            <h3 className={CARD_TITLE}>Chi tiết các khoản thu</h3>
+            <span className="ml-auto rounded-full border border-[#d2e8da] bg-[#e8f3ec] px-[9px] py-[2px] font-numeric text-[11.5px] font-bold text-[hsl(152_69%_26%)]">
+              {items.length} khoản
+            </span>
+          </div>
+          <Table className="text-[13.5px]">
+            <TableHeader>
+              <TableRow className="border-[hsl(210_20%_93%)] hover:bg-transparent">
+                <TableHead className={`${TH} pl-5 text-left`}>Mô tả</TableHead>
+                <TableHead className={`${TH} w-[90px] text-right`}>SL</TableHead>
+                <TableHead className={`${TH} w-[150px] text-right`}>Đơn giá</TableHead>
+                <TableHead className={`${TH} w-[170px] pr-5 text-right`}>Thành tiền</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.length > 0 ? (
+                items.map((item) => {
+                  const period = fmtItemPeriod(item.from_date, item.to_date);
+                  return (
+                    <TableRow key={item.id} className={TR}>
+                      <TableCell className={`${TD} pl-5`}>
+                        <div className="text-sm font-semibold tracking-[-0.01em]">
+                          {item.description}
                         </div>
-                        <span
-                          className={`shrink-0 font-medium tabular-nums ${
-                            isIncome ? 'text-green-600' : 'text-red-600'
-                          }`}
-                        >
-                          {isIncome ? '+' : '−'}
-                          {formatCurrency(amt)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {item.type && (
+                            <span className={`${CHIP} font-semibold`}>
+                              {ITEM_TYPE_LABEL[item.type] ?? item.type}
+                            </span>
+                          )}
+                          {period && (
+                            <span className="inline-flex items-center rounded-md border border-[#d8e4fb] bg-[#eef3fd] px-[7px] py-[2px] font-numeric text-[10.5px] text-[#1d4ed8]">
+                              {period}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className={`${TD} text-right font-numeric tabular-nums text-[hsl(160_12%_30%)]`}>
+                        {formatQty(item.quantity)}
+                      </TableCell>
+                      <TableCell className={`${TD} text-right font-numeric tabular-nums text-[hsl(160_12%_30%)]`}>
+                        {formatCurrency(item.unit_price)}
+                      </TableCell>
+                      <TableCell className={`${TD} pr-5 text-right font-numeric font-bold tabular-nums`}>
+                        {formatCurrency(item.amount)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              ) : (
+                <TableRow className={TR}>
+                  <TableCell colSpan={4} className={`${TD} px-5 text-center text-gray-500`}>
+                    Không có khoản thu nào
+                  </TableCell>
+                </TableRow>
               )}
 
-              {/* Tổng đã thu net */}
-              <div className="border-t pt-3 space-y-1.5 text-sm">
-                {totalReceived > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Tổng thu (+):</span>
-                    <span className="font-medium text-green-600 tabular-nums">
-                      {formatCurrency(totalReceived)}
-                    </span>
-                  </div>
-                )}
-                {totalRefunded > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Tổng thối (−):</span>
-                    <span className="font-medium text-red-600 tabular-nums">
-                      {formatCurrency(totalRefunded)}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Đã thanh toán net:</span>
-                  <span className="font-medium text-green-700 tabular-nums">
-                    {formatCurrency(invoice.paid_amount || 0)}
+              {invoice.discount_amount > 0 && (
+                <TableRow className={TR}>
+                  <TableCell colSpan={3} className={`${TD} pl-5 text-right`}>
+                    <div className="text-[13px] font-semibold text-[hsl(210_10%_34%)]">Giảm trừ</div>
+                    {invoice.discount_notes && (
+                      <div className="text-[11px] text-[hsl(210_10%_38%)]">
+                        {invoice.discount_notes}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className={`${TD} pr-5 text-right font-numeric font-bold tabular-nums text-[#15803d]`}>
+                    −{formatCurrency(invoice.discount_amount)}
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {invoice.previous_debt > 0 && (
+                <TableRow className={TR}>
+                  <TableCell colSpan={3} className={`${TD} pl-5 text-right`}>
+                    <div className="text-[13px] font-bold text-[#b45309]">Nợ cũ kỳ trước</div>
+                    {invoice.previous_debt_sources?.length > 0 && (
+                      <div className="text-[11px] text-[hsl(210_10%_38%)]">
+                        {invoice.previous_debt_sources
+                          .map((s) => s.label)
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className={`${TD} pr-5 text-right font-numeric font-bold tabular-nums text-[#b45309]`}>
+                    {formatCurrency(invoice.previous_debt)}
+                  </TableCell>
+                </TableRow>
+              )}
+
+              <TableRow className="bg-[#f5f9f6] hover:bg-[#f5f9f6]">
+                <TableCell colSpan={3} className="px-5 py-3.5 text-right text-sm font-bold">
+                  Tổng cộng
+                </TableCell>
+                <TableCell className="px-5 py-3.5 text-right font-numeric text-base font-bold tracking-[-0.02em] tabular-nums text-[hsl(152_69%_24%)]">
+                  {formatCurrency(total)}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </section>
+
+        {/* Thẻ 3 — thanh toán & phiếu thu */}
+        <section className={CARD}>
+          <div className={CARD_HEAD}>
+            <Wallet className="h-[17px] w-[17px] text-primary" />
+            <h3 className={CARD_TITLE}>Thanh toán &amp; phiếu thu</h3>
+            <span className="ml-auto text-[11.5px] text-[hsl(210_10%_38%)]">
+              {paymentRows.length > 0
+                ? `${paymentRows.length} lần ghi nhận`
+                : 'Chưa có lần thanh toán nào'}
+            </span>
+          </div>
+
+          {paymentRows.map((row) => (
+            <div
+              key={row.key}
+              className="flex items-center gap-4 border-b border-[hsl(210_20%_95%)] px-5 py-3.5"
+            >
+              {row.receiptUrl ? (
+                <button
+                  type="button"
+                  onClick={() => setLightboxIdx(row.receiptIdx ?? 0)}
+                  className="h-[42px] w-[58px] shrink-0 overflow-hidden rounded-[7px] border border-border transition hover:border-primary"
+                  title="Xem ảnh chứng từ"
+                >
+                  <StorageImage
+                    value={row.receiptUrl}
+                    alt={`Chứng từ thanh toán ${row.dateLabel}`}
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ) : (
+                <span
+                  className="grid h-[42px] w-[58px] shrink-0 place-items-center rounded-[7px] border border-dashed border-border text-[hsl(210_10%_60%)]"
+                  title="Không có ảnh chứng từ"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                </span>
+              )}
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="font-numeric text-[13.5px] font-bold tracking-[-0.02em] tabular-nums">
+                    {row.dateLabel}
                   </span>
+                  {row.methodLabel && (
+                    <span className="rounded-full border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-2 py-[2px] text-[11px] font-bold text-[hsl(210_10%_34%)]">
+                      {row.methodLabel}
+                    </span>
+                  )}
+                  {row.fund && (
+                    <span className={PILL_INFO}>
+                      Sổ quỹ <b className="font-bold text-[hsl(160_25%_16%)]">{row.fund}</b>
+                    </span>
+                  )}
+                  {row.collector && (
+                    <span className={PILL_INFO}>
+                      Người thu <b className="font-bold text-[hsl(160_25%_16%)]">{row.collector}</b>
+                    </span>
+                  )}
                 </div>
-                <div className="border-t pt-2 flex justify-between">
-                  <span className="text-gray-900 font-medium">Còn lại:</span>
-                  <span
-                    className={`font-bold text-lg tabular-nums ${
-                      outstandingAmount > 0 ? 'text-orange-600' : 'text-gray-500'
-                    }`}
-                  >
-                    {formatCurrency(outstandingAmount)}
-                  </span>
+                <div className="mt-1 flex flex-wrap items-center gap-[7px] text-[11.5px] text-[hsl(210_10%_38%)]">
+                  {row.code &&
+                    (row.voucherId ? (
+                      <a
+                        href={`/income-expense/print/${row.voucherId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-numeric text-xs font-bold text-primary hover:underline"
+                        title="Mở phiếu trong sổ Thu/Chi"
+                      >
+                        {row.code}
+                      </a>
+                    ) : (
+                      <span className="font-numeric text-xs font-bold">{row.code}</span>
+                    ))}
+                  {row.kind && <span>{row.kind}</span>}
                 </div>
               </div>
 
-              {invoice.status === 'PAID' && (
-                <Alert className="bg-green-50 border-green-200">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  <AlertDescription className="text-green-800 text-sm">
-                    Hóa đơn đã được thanh toán đầy đủ
-                  </AlertDescription>
-                </Alert>
-              )}
+              <div
+                className={`shrink-0 text-right font-numeric text-[15px] font-bold tracking-[-0.02em] tabular-nums ${
+                  row.isRefund ? 'text-[#dc2626]' : 'text-[hsl(152_69%_26%)]'
+                }`}
+              >
+                {row.isRefund ? '−' : '+'}
+                {formatCurrency(row.amount)}
+              </div>
+            </div>
+          ))}
 
-              {isOverdue && outstandingAmount > 0 && (
-                <Alert className="bg-red-50 border-red-200">
-                  <AlertCircle className="h-4 w-4 text-red-600" />
-                  <AlertDescription className="text-red-800 text-sm">
-                    Hóa đơn đã quá hạn thanh toán
-                  </AlertDescription>
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+          {paymentRows.length === 0 && (
+            <div className="border-b border-[hsl(210_20%_95%)] px-5 py-6 text-center text-[13px] text-[hsl(210_10%_45%)]">
+              Chưa ghi nhận lần thanh toán nào cho hoá đơn này.
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center justify-end gap-x-[26px] gap-y-2 bg-[#f5f9f6] px-5 py-[13px]">
+            {totalReceived > 0 && (
+              <span className="inline-flex items-baseline gap-2 text-[12.5px] text-[hsl(210_10%_34%)]">
+                Tổng thu (+)
+                <b className="font-numeric text-[13.5px] tabular-nums text-[hsl(152_69%_26%)]">
+                  {formatCurrency(totalReceived)}
+                </b>
+              </span>
+            )}
+            {totalRefunded > 0 && (
+              <span className="inline-flex items-baseline gap-2 text-[12.5px] text-[hsl(210_10%_34%)]">
+                Tổng thối (−)
+                <b className="font-numeric text-[13.5px] tabular-nums text-[#dc2626]">
+                  {formatCurrency(totalRefunded)}
+                </b>
+              </span>
+            )}
+            <span className="inline-flex items-baseline gap-2 text-[12.5px] text-[hsl(210_10%_34%)]">
+              Đã thanh toán net
+              <b className="font-numeric text-[13.5px] tabular-nums">{formatCurrency(paid)}</b>
+            </span>
+            <span className="inline-flex items-baseline gap-2 text-[13px] font-bold">
+              {outstandingAmount < 0 ? 'Phải hoàn khách' : 'Còn lại'}
+              <b
+                className={`font-numeric text-[17px] tracking-[-0.02em] tabular-nums ${outstandingCls}`}
+              >
+                {formatCurrency(Math.abs(outstandingAmount))}
+              </b>
+            </span>
+          </div>
+        </section>
+
+        {/* Lịch sử điều chỉnh (bản gốc bất biến + từng phiên bản) */}
+        <InvoiceAdjustmentHistory invoice={invoice} />
+
+        {/* Ghi chú hoá đơn */}
+        {invoice.notes && (
+          <section className={`${CARD} px-5 py-[15px]`}>
+            <div className={`${STAT_LABEL} mb-[7px]`}>Ghi chú hoá đơn</div>
+            <p className="m-0 text-[13.5px] leading-[1.55] text-[hsl(160_15%_20%)]">
+              {invoice.notes}
+            </p>
+          </section>
+        )}
       </div>
 
       {/* Dialog thanh toán / in / sửa / QR (dùng chung) */}

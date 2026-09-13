@@ -63,6 +63,12 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      fontFamily: {
+        // Chữ số kiểu "hoá đơn" — Space Mono đã nạp sẵn ở index.html và dùng làm
+        // --mono cho các màn mobile. Khai riêng (KHÔNG đụng font-mono mặc định)
+        // để desktop dùng chung một mặt chữ số với app mobile.
+        numeric: ["'Space Mono'", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+      },
       keyframes: {
         "accordion-down": {
           from: {
