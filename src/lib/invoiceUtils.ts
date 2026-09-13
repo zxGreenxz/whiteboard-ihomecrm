@@ -133,6 +133,8 @@ export function getInvoiceEditMode(invoice: InvoiceLike): 'draft' | 'adjustment'
  *   cancel_invoice_with_credit_v1 KHÔNG tự chặn status/paid_amount ở DB, nên
  *   guard này là hàng rào duy nhất — thiếu nó thì hủy được cả HĐ đã thu tiền
  *   và restore sẽ trả về status sai (APPROVED thay vì PARTIAL_PAID).
+ * - User thường (13/09/2026): OVERDUE mà chưa thu đồng nào cũng hủy được — về bản
+ *   chất giống APPROVED chưa thu; có tiền đã thu vẫn chặn.
  * - Super admin (opts.isSuper): hủy được HĐ ở MỌI trạng thái trừ CANCELLED
  *   (đi force-cancel flow riêng, có kiểm tra payment ở DB).
  * - HĐ đã soft-delete (di sản đường Xoá cũ): luôn từ chối.
@@ -145,6 +147,7 @@ export function canCancelInvoice(
   if (opts?.isSuper) {
     return invoice.status !== 'CANCELLED';
   }
+  if (invoice.status === 'OVERDUE') return (invoice.paid_amount ?? 0) === 0;
   return canEditInvoice(invoice);
 }
 

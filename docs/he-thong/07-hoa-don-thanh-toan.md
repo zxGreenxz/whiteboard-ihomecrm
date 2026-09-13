@@ -16,6 +16,7 @@ Domain này quản lý:
 - tạo/sửa/duyệt/huỷ hoá đơn — **từ 01/09/2026 UI chỉ còn MỘT nút Huỷ** (nút Xoá đã gom về Huỷ,
   commit `2bc2972c`, hết đường "bốc hơi" hoá đơn; `canCancelInvoice` là hàng rào duy nhất — RPC
   không tự guard; phục hồi mở cho user thường; đường xoá mềm chỉ còn ở tầng dữ liệu/legacy);
+- luật huỷ cho user thường (13/09/2026): Nháp/Đã duyệt chưa thu **và Quá hạn chưa thu đồng nào**; đã thu tiền hoặc đã huỷ thì chỉ super admin (huỷ cưỡng bức, phải hoàn tác hết phiếu thu trước). `canCancelInvoice` là hàng rào duy nhất, RPC cancel không guard trạng thái.
 - hạng mục tiền phòng, dịch vụ, điện nước, nợ cũ và cọc;
 - ghi nhận TM/TK/TT, tiền thối, làm tròn và credit;
 - recompute số đã thu/còn lại/trạng thái;

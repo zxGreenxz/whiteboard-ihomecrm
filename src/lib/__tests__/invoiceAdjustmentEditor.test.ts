@@ -65,5 +65,10 @@ describe('issued invoice document', () => {
     expect(getInvoiceEditMode({ status: 'CANCELLED' })).toBe('denied');
     expect(canCancelInvoice({ status: 'APPROVED', paid_amount: 0 })).toBe(true);
     expect(canCancelInvoice({ status: 'PAID', paid_amount: 0 })).toBe(false);
+    // 13/09/2026: Quá hạn chưa thu đồng nào — quản lý huỷ được, có tiền đã thu vẫn chặn.
+    expect(canCancelInvoice({ status: 'OVERDUE', paid_amount: 0 })).toBe(true);
+    expect(canCancelInvoice({ status: 'OVERDUE', paid_amount: 1 })).toBe(false);
+    expect(canCancelInvoice({ status: 'PARTIAL_PAID', paid_amount: 0 })).toBe(false);
+    expect(canCancelInvoice({ status: 'OVERDUE', paid_amount: 0, deleted_at: '2026-09-01' })).toBe(false);
   });
 });
