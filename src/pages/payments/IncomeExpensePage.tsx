@@ -669,6 +669,8 @@ const IncomeExpenseDesktopPage = () => {
     internalExpense: 0,
     pendingCount: 0,
     pendingTotal: 0,
+    pendingIncome: 0,
+    pendingExpense: 0,
   };
 
 
