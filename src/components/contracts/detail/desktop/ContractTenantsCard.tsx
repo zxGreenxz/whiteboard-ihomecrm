@@ -129,9 +129,9 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
                                   anh,
                                 })
                               }
-                              className="ml-0.5 inline-flex h-[22px] w-[22px] items-center justify-center rounded border border-[#e2e5ea] bg-white text-[#67737E] transition-colors hover:border-[#cfe7db] hover:bg-[#f1f6f3] hover:text-[#12764a]"
+                              className="ml-1 inline-flex h-[24px] w-[24px] items-center justify-center rounded-md border border-[#cfe7db] bg-[#eef7f2] text-[#12764a] transition-colors hover:border-[#12764a] hover:bg-[#dcefe5]"
                             >
-                              <IdCard className="h-[14px] w-[14px]" strokeWidth={2} />
+                              <IdCard className="h-[15px] w-[15px]" strokeWidth={2.2} />
                             </button>
                           )}
                         </span>

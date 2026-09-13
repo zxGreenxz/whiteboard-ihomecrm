@@ -26,6 +26,7 @@ import { PrintContractDialog } from '@/components/contracts/PrintContractDialog'
 import { DeleteContractDialog } from '@/components/contracts/DeleteContractDialog';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { usePhoneViewport } from '@/hooks/use-mobile';
+import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { ContractDetailMobile } from '@/components/contracts/detail/ContractDetailMobile';
 // Types dùng chung với nhánh mobile (trước đây khai cục bộ ở đây).
 import type { ContractServiceItem as ContractService, ContractHistoryItem } from '@/components/contracts/detail/types';
@@ -108,6 +109,10 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
   const servicesQ = useContractServices(id);
   const contractServices: ContractService[] = servicesQ.data ?? [];
   const servicesLoading = servicesQ.isLoading;
+  // Bảng giá dịch vụ của TOÀ — nguồn giá thật khi HĐ không khai dịch vụ riêng
+  // (238/291 HĐ đang hoạt động rơi vào nhánh này; xem effectiveServices.ts).
+  const buildingServicesQ = useBuildingServices(contract?.room?.building?.id ?? '');
+
   const historyQ = useContractHistory(id);
   const contractHistory: ContractHistoryItem[] = historyQ.data ?? [];
   const historyLoading = historyQ.isLoading;
@@ -239,6 +244,8 @@ const ContractDetailView = ({ id, onBack, showBackButton = true }: ContractDetai
         vehiclesByCustomer={vehiclesByCustomer}
         services={contractServices}
         servicesLoading={servicesLoading}
+        buildingServices={buildingServicesQ.data ?? []}
+        buildingServicesLoading={buildingServicesQ.isLoading}
         history={contractHistory}
         historyLoading={historyLoading}
         invoices={invoices}

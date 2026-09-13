@@ -28,6 +28,7 @@ import type {
   ContractDepositVoucher,
 } from '@/components/contracts/detail/types';
 import { canUse } from '@/lib/permissionPages';
+import type { DichVuToaLite } from './effectiveServices';
 import { ContractTopBar, KHUNG } from './ContractTopBar';
 import { ContractAlertStrip } from './ContractAlertStrip';
 import { ContractTermsCard } from './ContractTermsCard';
@@ -48,6 +49,8 @@ export interface ContractDetailDesktopProps {
   vehiclesByCustomer: Map<string, ContractVehicle[]>;
   services: ContractServiceItem[];
   servicesLoading: boolean;
+  buildingServices: DichVuToaLite[];
+  buildingServicesLoading: boolean;
   history: ContractHistoryItem[];
   historyLoading: boolean;
   invoices: InvoiceWithRelations[] | undefined;
@@ -83,6 +86,8 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
     vehiclesByCustomer,
     services,
     servicesLoading,
+    buildingServices,
+    buildingServicesLoading,
     history,
     historyLoading,
     invoices,
@@ -152,6 +157,8 @@ export function ContractDetailDesktop(props: ContractDetailDesktopProps) {
               contract={contract}
               services={services}
               servicesLoading={servicesLoading}
+              buildingServices={buildingServices}
+              buildingServicesLoading={buildingServicesLoading}
               history={history}
               historyLoading={historyLoading}
             />

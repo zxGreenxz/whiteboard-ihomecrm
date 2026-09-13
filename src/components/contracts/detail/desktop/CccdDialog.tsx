@@ -38,7 +38,7 @@ function Mat({ nhan, value }: { nhan: string; value: string }) {
         // `w-auto mx-auto` chứ không `w-full`: ảnh chụp dọc (rất phổ biến — khách
         // gửi ảnh chụp bằng điện thoại) mà ép rộng hết ô thì hai bên là hai dải
         // xám to hơn cả tấm ảnh.
-        className="mx-auto max-h-[72vh] w-auto max-w-full rounded-lg border border-[#e2e5ea] object-contain"
+        className="mx-auto max-h-[80vh] w-auto max-w-full rounded-lg border border-[#e2e5ea] object-contain"
         fallback={
           <div className="flex h-[40vh] items-center justify-center rounded-lg border border-[#e2e5ea] bg-[#f4f6f8] text-[13px] text-[#67737E]">
             Đang tải ảnh…
@@ -54,7 +54,13 @@ export function CccdDialog({ open, onOpenChange, tenKhach, soCccd, anh }: Props)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl" aria-describedby={undefined}>
+      {/* Khung rộng gần hết màn (chủ yêu cầu 13/09: "cho hiển thị lớn ra").
+          Ảnh CCCD chụp bằng điện thoại thường mờ ở chữ nhỏ — phóng to là cách
+          duy nhất đọc được số giấy tờ và ngày cấp mà không phải tải về. */}
+      <DialogContent
+        className="max-h-[94vh] w-[96vw] max-w-[1500px] overflow-y-auto"
+        aria-describedby={undefined}
+      >
         <DialogHeader>
           <DialogTitle className="text-base">
             Ảnh giấy tờ — {tenKhach}
@@ -66,7 +72,7 @@ export function CccdDialog({ open, onOpenChange, tenKhach, soCccd, anh }: Props)
           </DialogTitle>
         </DialogHeader>
 
-        <div className={soMat > 1 ? 'flex gap-4' : ''}>
+        <div className={soMat > 1 ? 'flex gap-5' : ''}>
           {anh.truoc && <Mat nhan="Mặt trước" value={anh.truoc} />}
           {anh.sau && <Mat nhan="Mặt sau" value={anh.sau} />}
         </div>
