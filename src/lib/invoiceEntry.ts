@@ -383,7 +383,10 @@ export interface DecomposedInvoice {
 
 type LooseItem = InvoiceSourceItem;
 
+/** Thành tiền đã lưu là sự thật; chỉ suy từ u×q×c khi dòng cũ không có amount. */
 function itemAmount(it: LooseItem): number {
+  const stored = it.amount == null ? NaN : Number(it.amount);
+  if (Number.isFinite(stored)) return stored;
   const coef = it.coefficient == null ? 1 : Number(it.coefficient);
   return (Number(it.unit_price) || 0) * (Number(it.quantity) || 1) * (Number.isFinite(coef) ? coef : 1);
 }

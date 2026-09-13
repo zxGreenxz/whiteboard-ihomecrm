@@ -57,6 +57,18 @@ describe('buildAdjustmentItems', () => {
     expect(items.find((i) => i.id === U(14))).toMatchObject({ accounting_class: 'DEPOSIT', unit_price: 3_000_000, quantity: 1, coefficient: 1, from_date: '2026-09-01', sort_order: 4 });
   });
 
+  it('keeps the stored amount of a legacy line whose amount differs from price × quantity', () => {
+    // Dòng điện cũ: unit 3500, quantity 1, amount 294.000 (84 kWh). Server tính lại u×q×c → phải quy về 1 dòng 294.000.
+    const legacy = { ...invoice, invoice_items: [
+      invoice.invoice_items![0],
+      { id: U(12), service_id: U(90), type: 'SERVICE', accounting_class: 'REVENUE', description: 'Tiền điện (4.247 → 4.331)', unit_price: 3500, quantity: 1, coefficient: 1, amount: 294_000, sort_order: 1, previous_reading: 4247, current_reading: 4331, from_date: null, to_date: null },
+    ] } as unknown as InvoiceWithRelations;
+    const d = decomposeInvoice(legacy);
+    expect(d.values.electric_amount).toBe(294_000);
+    const items = buildAdjustmentItems(d.values, d);
+    expect(items.find((i) => i.id === U(12))).toMatchObject({ unit_price: 294_000, quantity: 1, coefficient: 1, previous_reading: 4247, current_reading: 4331 });
+  });
+
   it('drops a structured line the user zeroed and removed extras', () => {
     const d = decomposeInvoice(invoice);
     const items = buildAdjustmentItems({ ...d.values, water_amount: 0, custom_items: d.values.custom_items.filter((c) => c.id !== U(15)) }, d);
@@ -69,10 +81,10 @@ describe('adjustmentReconcileBlocker', () => {
     expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [] })).toMatch(/không khớp nguồn đối chiếu \(0 đ\)/);
     expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [{ type: 'invoice', id: 'x', amount: 60_000, label: 'a' }] })).toMatch(/60.000 đ/);
   });
-  it('allows reconciled debt, zero debt and settlement invoices', () => {
+  it('allows reconciled debt and zero debt; blocks settlement invoices until the server handles DISCOUNT sign', () => {
     expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [{ type: 'invoice', id: 'x', amount: 40_000, label: 'a' }, { type: 'deposit', contract_id: 'c', amount: 60_000, label: 'b' }] })).toBeNull();
     expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 0, previous_debt_sources: [] })).toBeNull();
-    expect(adjustmentReconcileBlocker({ kind: 'SETTLEMENT', previous_debt: 100_000, previous_debt_sources: [] })).toBeNull();
+    expect(adjustmentReconcileBlocker({ kind: 'SETTLEMENT', previous_debt: 0, previous_debt_sources: [] })).toMatch(/thanh lý chưa hỗ trợ điều chỉnh/);
   });
 });
 

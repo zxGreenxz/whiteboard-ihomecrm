@@ -24,7 +24,13 @@ const DEFAULT_ELEC = 3500;
  * Chỉ áp cho hoá đơn tháng; hoá đơn thanh lý không xét nợ cũ.
  */
 export function adjustmentReconcileBlocker(invoice: Pick<InvoiceWithRelations, 'kind' | 'previous_debt' | 'previous_debt_sources'>): string | null {
-  if (invoice.kind === 'SETTLEMENT') return null;
+  // Hoá đơn thanh lý: dòng "Tiền cọc hoàn trả"/"Tiền phòng thừa" (type DISCOUNT) lưu amount dương
+  // nhưng bị TRỪ vào tạm tính; adjust_invoice_v2 lại cộng dương mọi dòng → tổng sai dấu.
+  // Chặn ở client cho tới khi server xử lý dấu của dòng DISCOUNT (đo 13/09/2026: 5 hoá đơn thanh lý
+  // có subtotal ≠ Σ amount vì lý do này).
+  if (invoice.kind === 'SETTLEMENT') {
+    return 'Hoá đơn thanh lý chưa hỗ trợ điều chỉnh: dòng hoàn trả (cọc, tiền phòng thừa) mang dấu trừ mà máy chủ điều chỉnh đang cộng dương. Cần vá máy chủ trước.';
+  }
   const debt = Number(invoice.previous_debt) || 0;
   const sources = Array.isArray(invoice.previous_debt_sources) ? invoice.previous_debt_sources : null;
   if (!sources) return debt > 0 ? reconcileMessage(debt, 0) : null;
@@ -80,16 +86,26 @@ export function pricingFromInvoice(d: DecomposedInvoice): AdjustmentPricing {
   };
 }
 
+/**
+ * adjust_invoice_v2 tính lại amount = đơn giá × số lượng × hệ số và bỏ qua amount gửi lên.
+ * Dòng cũ có amount đã lưu ≠ u×q×c (vd điện ghi số lượng 1, amount = tổng) phải quy về
+ * một dòng đơn giá = amount, số lượng 1, hệ số 1 — nếu không, "giữ nguyên" lại làm mất tiền.
+ */
 function toAdjustmentItem(src: InvoiceSourceItem): AdjustmentItem {
+  const price = Number(src.unit_price) || 0;
+  const qty = Number(src.quantity) || 0;
+  const coef = src.coefficient == null ? 1 : Number(src.coefficient);
+  const stored = src.amount == null ? NaN : Number(src.amount);
+  const drift = Number.isFinite(stored) && Math.abs(stored - price * qty * coef) >= 0.01;
   return {
     id: src.id,
     service_id: src.service_id ?? null,
     type: src.type,
     accounting_class: src.accounting_class ?? 'REVENUE',
     description: src.description,
-    unit_price: Number(src.unit_price) || 0,
-    quantity: Number(src.quantity) || 0,
-    coefficient: src.coefficient == null ? 1 : Number(src.coefficient),
+    unit_price: drift ? stored : price,
+    quantity: drift ? 1 : qty,
+    coefficient: drift ? 1 : coef,
     previous_reading: src.previous_reading ?? null,
     current_reading: src.current_reading ?? null,
     from_date: src.from_date ?? null,
