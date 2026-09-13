@@ -127,6 +127,14 @@ for (const [type, description, accounting_class] of [
   });
 }
 
+it('shows previous debt read-only with a reload button instead of a text box', () => {
+  render(<EditInvoiceDialog open onOpenChange={() => {}} invoice={{ ...fixture(), previous_debt: 100_000 }} />);
+  const debt = screen.getByLabelText('Nợ cũ kỳ trước');
+  expect(debt.tagName).not.toBe('INPUT');
+  expect(debt.textContent).toBe('100.000 đ');
+  expect((screen.getByRole('button', { name: 'Tải lại nợ cũ' }) as HTMLButtonElement).disabled).toBe(false);
+});
+
 it('keeps every saved amount when a draft is saved untouched', async () => {
   render(<EditInvoiceDialog open onOpenChange={() => {}} invoice={fixture()} />);
   expect(screen.getByTestId('invoice-entry-total').textContent).toBe('7.490.000 đ');

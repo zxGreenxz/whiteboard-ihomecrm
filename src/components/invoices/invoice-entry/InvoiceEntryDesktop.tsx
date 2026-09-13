@@ -526,31 +526,28 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
               <div className="flex items-center gap-[9px]">
                 <span className="whitespace-nowrap text-[12.5px] font-semibold text-red-800">Nợ cũ kỳ trước</span>
                 <div className="flex-1" />
-                {debt.locked ? (
-                  <span className="text-[13px] font-semibold tabular-nums text-red-700" title="Nguồn nợ giữ cố định">{formatVndSuffix(v.previous_debt)}</span>
-                ) : (<>
-                <CurrencyInput
+                {/* Nợ cũ do máy tính từ hoá đơn cũ chưa tất toán — không nhập tay (13/09). */}
+                <span
                   aria-label="Nợ cũ kỳ trước"
-                  suffix={false}
-                  value={v.previous_debt}
-                  onChange={set.debt}
-                  className={cn(CELL_INPUT, 'w-[120px] border-red-300 bg-white font-semibold focus-visible:border-red-500 focus-visible:ring-red-500/30', v.previous_debt > 0 && 'text-red-700')}
-                />
-                <button
-                  type="button"
-                  title="Tải lại nợ cũ tự động"
-                  aria-label="Tải lại nợ cũ"
-                  onClick={debt.onReload}
-                  disabled={!debt.canReload || debt.loading}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-[5px] text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  className="text-[13px] font-semibold tabular-nums text-red-700"
+                  title={debt.locked ? 'Nguồn nợ giữ cố định' : 'Máy tự tính từ hoá đơn cũ chưa tất toán'}
                 >
-                  {debt.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                </button>
-                </>)}
+                  {formatVndSuffix(v.previous_debt)}
+                </span>
+                {!debt.locked && (
+                  <button
+                    type="button"
+                    title="Tải lại nợ cũ tự động"
+                    aria-label="Tải lại nợ cũ"
+                    onClick={debt.onReload}
+                    disabled={!debt.canReload || debt.loading}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-[5px] text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  >
+                    {debt.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                  </button>
+                )}
               </div>
-              {v.previous_debt_overridden ? (
-                <p className="mt-1 text-right text-[11px] text-amber-700">Đã chỉnh tay — hoá đơn cũ sẽ KHÔNG tự tất toán khi thu đủ.</p>
-              ) : debt.sources.length > 0 ? (
+              {debt.sources.length > 0 ? (
                 <ul className="mt-1 space-y-0.5 text-[11px] text-red-700">
                   {debt.sources.map((s, i) => (
                     <li key={i} className="flex justify-between gap-2">
@@ -559,6 +556,8 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
                     </li>
                   ))}
                 </ul>
+              ) : !debt.locked ? (
+                <p className={cn('mt-1 text-right text-[11px]', MUTED)}>Máy tự tính từ hoá đơn cũ chưa tất toán; thiếu tiền kỳ trước thì thêm ở Khoản thu thêm.</p>
               ) : null}
             </div>
           </div>

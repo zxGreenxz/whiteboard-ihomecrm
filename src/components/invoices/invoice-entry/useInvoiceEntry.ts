@@ -38,7 +38,6 @@ export interface InvoiceEntrySetters {
   extraPrice: (index: number, n: number) => void;
   discount: (n: number) => void;
   discountNotes: (s: string) => void;
-  debt: (n: number) => void;
   notes: (s: string) => void;
   periodStart: (v: string) => void;
   periodEnd: (v: string) => void;
@@ -186,10 +185,6 @@ export function useInvoiceEntry<T extends InvoiceEntryValues>(
     extraPrice: (index, n) => patchItem(index, { unit_price: n }),
     discount: (n) => setValue('discount_amount', n, { shouldDirty: true }),
     discountNotes: (s) => setValue('discount_notes', s, { shouldDirty: true }),
-    debt: (n) => {
-      setValue('previous_debt', n, { shouldDirty: true });
-      setValue('previous_debt_overridden', true);
-    },
     notes: (s) => setValue('notes', s, { shouldDirty: true }),
     periodStart: (val) => setValue('period_start_date', val || null, { shouldDirty: true }),
     periodEnd: (val) => setValue('period_end_date', val || null, { shouldDirty: true }),

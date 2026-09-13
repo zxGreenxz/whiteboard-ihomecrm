@@ -303,18 +303,14 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
               {creditBalance > 0 && <div className="ien-adj-sub">Tiền nợ khách hiện có: {formatVndSuffix(creditBalance)}</div>}
               <div className="ien-adj-row debt">
                 <b>Nợ cũ kỳ trước</b>
-                {debt.locked ? (
-                  <span className="ien-mono" style={{ marginLeft: 'auto', fontWeight: 700, color: '#c0392f' }}>{formatVndSuffix(v.previous_debt)}</span>
-                ) : (<>
-                <CurrencyInput aria-label="Nợ cũ kỳ trước" suffix={false} className="ien-in" value={v.previous_debt} onChange={set.debt} />
-                <button type="button" className="ien-btn reload" aria-label="Tải lại nợ cũ" onClick={debt.onReload} disabled={!debt.canReload || debt.loading}>
-                  {debt.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                </button>
-                </>)}
+                <span aria-label="Nợ cũ kỳ trước" className="ien-mono" style={{ marginLeft: 'auto', fontWeight: 700, color: '#c0392f' }}>{formatVndSuffix(v.previous_debt)}</span>
+                {!debt.locked && (
+                  <button type="button" className="ien-btn reload" aria-label="Tải lại nợ cũ" onClick={debt.onReload} disabled={!debt.canReload || debt.loading}>
+                    {debt.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                  </button>
+                )}
               </div>
-              {v.previous_debt_overridden ? (
-                <div className="ien-adj-sub">Đã chỉnh tay — hoá đơn cũ sẽ KHÔNG tự tất toán khi thu đủ.</div>
-              ) : debt.sources.length > 0 ? (
+              {debt.sources.length > 0 ? (
                 <ul className="ien-adj-src">
                   {debt.sources.map((s, i) => (
                     <li key={i}><span className="truncate">{s.type === 'deposit' ? '🏠' : '📄'} {s.label}</span><span className="ien-mono">{formatVndSuffix(s.amount)}</span></li>
