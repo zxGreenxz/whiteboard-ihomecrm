@@ -44,6 +44,19 @@ có hoá đơn nào tạm tính ≠ Σ thành tiền dòng, hoặc dòng có `am
 Migration vá: `20260913081805_invoice_writers_recompute_subtotal.sql` — thân hàm chép từ định nghĩa sống,
 chèn một khối guard mỗi hàm (sai số 1 đ), chữ ký không đổi. Test: `src/lib/__tests__/invoiceWriterSubtotalGuard.test.ts`.
 
-## Diễn tập DEMO
+## Diễn tập trước khi áp (A5, 13/09/2026)
 
-(ghi sau khi chạy A5)
+- `npm run migrate:forward -- supabase/migrations/20260913081805_invoice_writers_recompute_subtotal.sql` (dry-run,
+  bọc ROLLBACK): **xanh**, digest `6f5576e18a9c90f0…`, preflight provenance/cutoff/đích đạt.
+- Đã bổ sung `organization_invoice_settings(DEMO, auto_approve_invoice=true)` (trước đó thiếu → DEMO không tạo được hoá đơn).
+- `scripts/test-invoice-deposit-classification.mjs`: **đỏ y hệt khi không có migration mới** — fixture của script
+  tạo hoá đơn APPROVED rồi gọi `update_invoice_v1`, mà từ migration 12/09 hàm này chỉ nhận DRAFT
+  (`55000 Hóa đơn đã phát hành cần điều chỉnh qua phiên bản mới`). Script đã lỗi thời, không liên quan guard mới.
+- `scripts/test-accounting-chain.mjs`: **đỏ trên baseline** vì thiếu hàm legacy
+  `terminate_contract_move_out(…)` trên production (P0001) — lỗi thời từ trước, không liên quan guard mới.
+- Bằng chứng cho guard: `invoiceWriterSubtotalGuard.test.ts` 8/8 trên định nghĩa sống (PGlite).
+
+## Sau khi áp (điền sau)
+
+- Tạo hoá đơn thật ở DEMO qua app: …
+- Gửi yêu cầu gian lận qua REST (tạm tính 1.500.000, dòng 5.500.000): …
