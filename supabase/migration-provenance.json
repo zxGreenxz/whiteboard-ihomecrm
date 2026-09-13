@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-13T17:32:20.228Z",
+  "generatedAt": "2026-09-13T17:53:48.693Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 555,
+    "ledger-applied": 556,
     "unknown": 73,
-    "catalog-proven": 213,
+    "catalog-proven": 212,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -9965,9 +9965,9 @@
       "name": "reverse_collection_ngay_theo_org",
       "scheme": "timestamp14",
       "sha256": "727ad96d561622ee7d118017d14d9a1794670d16624588fdbe69e070d7b37d66",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:public.reverse_invoice_collection_v5"
+        "receipt:2026-09-13T17:53:14.721Z|bien-nhan-backup"
       ]
     },
     {
