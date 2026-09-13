@@ -29,7 +29,6 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { canCancelInvoice, canOpenInvoiceEditor } from '@/lib/invoiceUtils';
 import { format } from 'date-fns';
-import { vi } from 'date-fns/locale';
 import { usePhoneViewport } from '@/hooks/use-mobile';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -222,10 +221,22 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
       (sum, it) => sum + Number(it.unit_price || 0) * Number(it.quantity || 0),
       0,
     );
-  const totalReceived = relatedVouchers
+  // Lần thu đã hoàn tác (payments.reversed_at) vẫn để lại phiếu thu APPROVED trỏ
+  // payment_id cũ; phiếu chi đối ứng v5 lại mang invoice_id NULL nên không về đây.
+  // Bỏ cả phiếu lẫn lần thu đó khỏi dòng và tổng, đúng quy tắc DB dùng khi tính
+  // paid_amount — nếu không chân thẻ sẽ ghi "Tổng thu X" trong khi net = 0.
+  const reversedPaymentIds = new Set(
+    (invoice.payments ?? [])
+      .filter((p) => !!(p as typeof p & { reversed_at?: string | null }).reversed_at)
+      .map((p) => p.id),
+  );
+  const activeVouchers = relatedVouchers.filter(
+    (v) => !(v.payment_id && reversedPaymentIds.has(v.payment_id)),
+  );
+  const totalReceived = activeVouchers
     .filter((v) => v.type === 'INCOME')
     .reduce((s, v) => s + voucherAmount(v), 0);
-  const totalRefunded = relatedVouchers
+  const totalRefunded = activeVouchers
     .filter((v) => v.type === 'EXPENSE')
     .reduce((s, v) => s + voucherAmount(v), 0);
   const isOverdue = invoice.status !== 'PAID' && invoice.due_date && new Date(invoice.due_date) < new Date();
@@ -354,9 +365,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   // useInvoice trả payments THÔ (khác useInvoices ở danh sách — hook đó đã lọc):
   // lần thu đã hoàn tác vẫn còn trong mảng. Bỏ chúng đi, nếu không thẻ thanh toán
   // cộng nhầm tiền đã bị đảo. Phiếu chi đối ứng (nếu có) vẫn hiện thành dòng −.
-  const payments = (invoice.payments ?? []).filter(
-    (p) => !(p as typeof p & { reversed_at?: string | null }).reversed_at,
-  );
+  const payments = (invoice.payments ?? []).filter((p) => !reversedPaymentIds.has(p.id));
   const receiptPayments = payments.filter((p) => p.receipt_image_url);
   const receiptUrls = receiptPayments.map((p) => p.receipt_image_url as string);
   const receiptIdxById = new Map(receiptPayments.map((p, i) => [p.id, i]));
@@ -365,25 +374,36 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   // Phiếu không nối được lần thu nào (vd phiếu chi tiền thối, phiếu cấn trừ) vẫn
   // hiện thành dòng riêng để không mất dấu tiền đã đi qua sổ.
   const voucherByPaymentId = new Map<string, RelatedVoucher>();
-  for (const v of relatedVouchers) {
+  for (const v of activeVouchers) {
     if (v.payment_id && !voucherByPaymentId.has(v.payment_id)) {
       voucherByPaymentId.set(v.payment_id, v);
     }
   }
   const mergedVoucherIds = new Set<string>();
   const paymentRows: PaymentRow[] = payments.map((p) => {
-    const v = voucherByPaymentId.get(p.id);
+    const amount = Number(p.amount) || 0;
+    let v = voucherByPaymentId.get(p.id);
+    // Lần thu cũ (trước backfill payment_id 20260510000008) có phiếu thu cùng hoá
+    // đơn, cùng số tiền nhưng payment_id NULL — khớp dự phòng theo số tiền để
+    // không hiện hai dòng "+X" cho cùng một khoản.
+    if (!v) {
+      v = activeVouchers.find(
+        (cand) =>
+          !cand.payment_id &&
+          cand.type === 'INCOME' &&
+          !mergedVoucherIds.has(cand.id) &&
+          Math.abs(voucherAmount(cand) - amount) <= 1,
+      );
+    }
     if (v) mergedVoucherIds.add(v.id);
     return {
       key: `payment:${p.id}`,
-      sortAt: p.payment_date || p.created_at || '',
-      dateLabel: p.payment_date
-        ? format(new Date(p.payment_date), 'dd/MM/yyyy HH:mm', { locale: vi })
-        : '—',
+      sortAt: p.payment_date || '',
+      dateLabel: fmtItemDay(p.payment_date) ?? '—',
       methodLabel: PAYMENT_METHOD_LABEL[p.payment_method] || p.payment_method || null,
-      amount: Number(p.amount) || 0,
+      amount,
       isRefund: false,
-      code: v?.code ?? p.receipt_number ?? null,
+      code: v?.code ?? null,
       voucherId: v?.id ?? null,
       kind: v ? 'Phiếu thu · đã duyệt' : 'Chưa nối phiếu thu',
       fund: v?.account?.name ?? null,
@@ -392,13 +412,13 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
       receiptIdx: receiptIdxById.get(p.id) ?? null,
     };
   });
-  for (const v of relatedVouchers) {
+  for (const v of activeVouchers) {
     if (mergedVoucherIds.has(v.id)) continue;
     const isIncome = v.type === 'INCOME';
     paymentRows.push({
       key: `voucher:${v.id}`,
       sortAt: v.voucher_date || '',
-      dateLabel: v.voucher_date ? format(new Date(v.voucher_date), 'dd/MM/yyyy') : '—',
+      dateLabel: fmtItemDay(v.voucher_date) ?? '—',
       methodLabel: null,
       amount: voucherAmount(v),
       isRefund: !isIncome,
@@ -414,28 +434,35 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
   paymentRows.sort((a, b) => a.sortAt.localeCompare(b.sortAt));
 
   const statusPill = STATUS_PILL[invoice.status] ?? null;
-  const dueLabel = invoice.due_date
-    ? format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: vi })
-    : '';
-  const paidDayLabel = invoice.paid_date
-    ? format(new Date(invoice.paid_date), 'dd/MM/yyyy', { locale: vi })
-    : '';
+  const dueLabel = fmtItemDay(invoice.due_date) ?? '';
+  const paidDayLabel = fmtItemDay(invoice.paid_date) ?? '';
 
   // Dòng trạng thái một câu — thay cho 2 hộp Alert ở cột tóm tắt cũ.
+  // Thứ tự có chủ ý: hoá đơn tổng âm là hoá đơn HOÀN TRẢ (chưa thu gì cũng
+  // "cần trả khách"); thu vượt (paid > total) xét TRƯỚC nhánh PAID vì DB vẫn
+  // đánh dấu PAID khi khách trả dư — không được nói "đã thu đủ" khi đang nợ khách.
   const note: { text: string; cls: string; Icon: typeof CheckCircle } =
     invoice.status === 'CANCELLED'
       ? { text: 'Hoá đơn đã huỷ', cls: 'text-[#b91c1c]', Icon: Ban }
-      : invoice.status === 'PAID'
-        ? {
-            text: paidDayLabel ? `Đã thu đủ ngày ${paidDayLabel}` : 'Đã thu đủ',
-            cls: 'text-[hsl(152_60%_24%)]',
-            Icon: CheckCircle,
-          }
-        : outstandingAmount < 0
+      : total < 0
+        ? outstandingAmount < 0
           ? {
-              text: `Đã thu vượt ${formatCurrency(-outstandingAmount)} — cần hoàn trả khách`,
+              text: `Hoá đơn hoàn trả, cần trả khách ${formatCurrency(-outstandingAmount)}`,
               cls: 'text-[#c2410c]',
               Icon: AlertCircle,
+            }
+          : { text: 'Đã trả khách đủ', cls: 'text-[hsl(152_60%_24%)]', Icon: CheckCircle }
+        : outstandingAmount < 0
+          ? {
+              text: `Đã thu vượt ${formatCurrency(-outstandingAmount)}, cần hoàn trả khách`,
+              cls: 'text-[#c2410c]',
+              Icon: AlertCircle,
+            }
+        : invoice.status === 'PAID'
+          ? {
+              text: paidDayLabel ? `Đã thu đủ ngày ${paidDayLabel}` : 'Đã thu đủ',
+              cls: 'text-[hsl(152_60%_24%)]',
+              Icon: CheckCircle,
             }
           : isOverdue
             ? {
@@ -486,9 +513,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
     { label: 'Kỳ thanh toán', value: billingLabel || '—', mono: true },
     {
       label: 'Ngày phát hành',
-      value: invoice.issue_date
-        ? format(new Date(invoice.issue_date), 'dd/MM/yyyy', { locale: vi })
-        : '—',
+      value: fmtItemDay(invoice.issue_date) ?? '—',
       mono: true,
     },
     {

@@ -59,6 +59,9 @@ export const useRecordPaymentRPC = () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-rounding-report'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      // Thẻ Thanh toán & phiếu thu ở chi tiết hoá đơn đọc phiếu qua key này —
+      // không làm mới thì lần thu vừa ghi hiện "Chưa nối phiếu thu" suốt staleTime.
+      queryClient.invalidateQueries({ queryKey: ['invoice-vouchers'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
       queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
@@ -131,6 +134,7 @@ export const useRecordRefundRPC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-vouchers'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
       queryClient.invalidateQueries({ queryKey: ['income-expenses'] });
