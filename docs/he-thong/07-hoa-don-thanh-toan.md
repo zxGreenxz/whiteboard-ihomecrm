@@ -16,6 +16,7 @@ Domain này quản lý:
 - tạo/sửa/duyệt/huỷ hoá đơn — **từ 01/09/2026 UI chỉ còn MỘT nút Huỷ** (nút Xoá đã gom về Huỷ,
   commit `2bc2972c`, hết đường "bốc hơi" hoá đơn; `canCancelInvoice` là hàng rào duy nhất — RPC
   không tự guard; phục hồi mở cho user thường; đường xoá mềm chỉ còn ở tầng dữ liệu/legacy);
+- luật huỷ cho user thường (13/09/2026): Nháp/Đã duyệt chưa thu **và Quá hạn chưa thu đồng nào**; đã thu tiền hoặc đã huỷ thì chỉ super admin (huỷ cưỡng bức, phải hoàn tác hết phiếu thu trước). `canCancelInvoice` là hàng rào duy nhất, RPC cancel không guard trạng thái.
 - hạng mục tiền phòng, dịch vụ, điện nước, nợ cũ và cọc;
 - ghi nhận TM/TK/TT, tiền thối, làm tròn và credit;
 - recompute số đã thu/còn lại/trạng thái;
@@ -54,6 +55,7 @@ Giữ credit/nợ khách để trừ kỳ sau. V5 tạo credit cùng transaction
 ## 3. Tạo và thay đổi hoá đơn
 
 - `useInvoices` thử writer canonical (`create_invoice_v1`, update/status writers) trước và chỉ fallback khi nhận tín hiệu coexistence hợp lệ.
+- Từ 13/09/2026 `create_invoice_v1` và `update_invoice_v1` tự cộng lại các dòng: giá/số lượng/hệ số không âm, `amount` (nếu gửi) = đơn giá × số lượng × hệ số, và Σ dòng phải bằng `p_subtotal` (sai số < 1 đ); lệch thì lỗi `22000`/`22023`, cùng luật với `adjust_invoice_v2`.
 - Writer canonical đã bật; server kiểm organization, quyền, payload và idempotency. Không fallback khi lỗi nghiệp vụ thật.
 - Sinh hàng loạt vẫn là nhiều operation; phải báo lỗi theo từng hoá đơn và không tuyên bố cả batch atomic.
 - Hợp đồng/cọc/nợ cũ phải giữ đủ field parity. Không chuyển UI sang writer thiếu field vì sẽ mất dữ liệu im lặng.
