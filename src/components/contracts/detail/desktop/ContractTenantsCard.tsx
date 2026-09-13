@@ -16,6 +16,7 @@ import type { ContractWithRelations } from '@/hooks/useContracts';
 import type { ContractVehicle } from '@/components/contracts/detail/types';
 import { CccdDialog } from './CccdDialog';
 import { anhCccd, mucMetaKhach, type AnhCccd, type LoaiMuc } from './tenantMetaLines';
+import type { KhachChoGiayTo } from './idCardInfo';
 import { ChipXanh, DauThe, NutTron, The } from './ui';
 
 /** "Trần Hữu Khánh" → "TK". Lấy chữ đầu của hai từ cuối (tên + đệm). */
@@ -34,8 +35,7 @@ const ICON: Record<LoaiMuc, LucideIcon> = {
 };
 
 interface DangXem {
-  ten: string;
-  soCccd: string | null;
+  khach: KhachChoGiayTo;
   anh: AnhCccd;
 }
 
@@ -123,11 +123,7 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
                               type="button"
                               title="Xem ảnh giấy tờ"
                               onClick={() =>
-                                setDangXem({
-                                  ten,
-                                  soCccd: cc.customer?.id_number ?? null,
-                                  anh,
-                                })
+                                setDangXem({ khach: cc.customer ?? { full_name: ten }, anh })
                               }
                               className="ml-1 inline-flex h-[24px] w-[24px] items-center justify-center rounded-md border border-[#cfe7db] bg-[#eef7f2] text-[#12764a] transition-colors hover:border-[#12764a] hover:bg-[#dcefe5]"
                             >
@@ -161,8 +157,7 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
       <CccdDialog
         open={dangXem !== null}
         onOpenChange={(o) => !o && setDangXem(null)}
-        tenKhach={dangXem?.ten ?? ''}
-        soCccd={dangXem?.soCccd ?? null}
+        khach={dangXem?.khach ?? {}}
         anh={dangXem?.anh ?? {}}
       />
     </The>

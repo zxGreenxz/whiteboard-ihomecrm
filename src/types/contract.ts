@@ -93,6 +93,15 @@ export interface ContractCustomer {
     id_number: string | null;
     /** Ảnh giấy tờ: { front?, back?, passport? } — JSON tự do trong DB. */
     id_images?: unknown;
+    // Các trường dưới đây đã nằm sẵn trong select của `useContract`; khai ra để
+    // khối thông tin giấy tờ (CccdDialog) dùng được mà không phải ép kiểu.
+    date_of_birth?: string | null;
+    gender?: string | null;
+    id_issue_date?: string | null;
+    id_issue_place?: string | null;
+    permanent_address?: string | null;
+    detailed_address?: string | null;
+    current_residence?: string | null;
   } | null;
   created_at: string;
   updated_at: string;
