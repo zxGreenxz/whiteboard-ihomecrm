@@ -1234,6 +1234,8 @@
     "src/components/contracts/detail/desktop/ContractTermsCard.tsx",
     "src/components/contracts/detail/desktop/ContractTenantsCard.tsx",
     "src/components/contracts/detail/desktop/ContractFinanceCard.tsx",
+    "src/components/contracts/detail/desktop/tenantMetaLines.ts",
+    "src/components/contracts/detail/desktop/CccdDialog.tsx",
     "src/components/contracts/detail/desktop/ContractDetailDesktop.tsx",
     "src/vite-env.d.ts",
     "src/lib/qr/candidates.ts",

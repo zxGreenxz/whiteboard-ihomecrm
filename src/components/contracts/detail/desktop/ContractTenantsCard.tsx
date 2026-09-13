@@ -4,11 +4,18 @@
 // Email / CCCD), tốn 4 dòng cho một người và phải cuộn khi HĐ có 3 khách. Ở đây
 // mỗi khách gói trong MỘT dòng meta ngăn bằng dấu ·: icon đã nói rõ đó là số
 // gì, nhãn chữ chỉ là chỗ chiếm giấy.
+//
+// Luật mục nào hiện / mục nào ẩn và cách ghép mô tả xe nằm ở `tenantMetaLines`
+// (có test). Ở đây chỉ còn việc vẽ.
 
-import { CreditCard, Eye, Mail, Phone, User, Bike } from 'lucide-react';
+import { useState } from 'react';
+import { Bike, CreditCard, Eye, IdCard, Mail, Phone, User } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { ContractWithRelations } from '@/hooks/useContracts';
 import type { ContractVehicle } from '@/components/contracts/detail/types';
+import { CccdDialog } from './CccdDialog';
+import { anhCccd, mucMetaKhach, type AnhCccd, type LoaiMuc } from './tenantMetaLines';
 import { ChipXanh, DauThe, NutTron, The } from './ui';
 
 /** "Trần Hữu Khánh" → "TK". Lấy chữ đầu của hai từ cuối (tên + đệm). */
@@ -19,21 +26,17 @@ function vietTat(ten: string): string {
   return (tu[tu.length - 2]![0]! + tu[tu.length - 1]![0]!).toUpperCase();
 }
 
-function MucMeta({
-  icon: Icon,
-  children,
-  nhat = false,
-}: {
-  icon: typeof Phone;
-  children: React.ReactNode;
-  nhat?: boolean;
-}) {
-  return (
-    <span className={`inline-flex items-center gap-1.5 ${nhat ? 'text-gray-500' : ''}`}>
-      <Icon className="h-[15px] w-[15px] shrink-0 text-[#67737E]" strokeWidth={2} />
-      {children}
-    </span>
-  );
+const ICON: Record<LoaiMuc, LucideIcon> = {
+  phone: Phone,
+  cccd: CreditCard,
+  xe: Bike,
+  email: Mail,
+};
+
+interface DangXem {
+  ten: string;
+  soCccd: string | null;
+  anh: AnhCccd;
 }
 
 interface Props {
@@ -44,6 +47,7 @@ interface Props {
 
 export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
   const navigate = useNavigate();
+  const [dangXem, setDangXem] = useState<DangXem | null>(null);
 
   return (
     <The id="s-khachhang" className="scroll-mt-[150px]">
@@ -58,11 +62,16 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
       ) : (
         customers.map((cc, i) => {
           const ten = cc.customer?.full_name || 'Chưa có tên';
-          const xe = vehiclesByCustomer.get(cc.customer_id) ?? [];
-          const bienSo = xe
-            .map((v) => v.license_plate)
-            .filter((b): b is string => !!b)
-            .join(', ');
+          const muc = mucMetaKhach(
+            {
+              phone: cc.customer?.phone,
+              id_number: cc.customer?.id_number,
+              email: cc.customer?.email,
+            },
+            vehiclesByCustomer.get(cc.customer_id) ?? [],
+          );
+          const anh = anhCccd(cc.customer?.id_images);
+
           return (
             <div
               key={cc.id}
@@ -91,21 +100,44 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
                 </div>
 
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[length:var(--fs-sm)] tabular-nums text-[#4a5a52]">
-                  <MucMeta icon={Phone} nhat={!cc.customer?.phone}>
-                    {cc.customer?.phone || 'Chưa có'}
-                  </MucMeta>
-                  <span className="text-[#c9d0d4]">·</span>
-                  <MucMeta icon={CreditCard} nhat={!cc.customer?.id_number}>
-                    {cc.customer?.id_number || 'Chưa có'}
-                  </MucMeta>
-                  <span className="text-[#c9d0d4]">·</span>
-                  <MucMeta icon={Bike} nhat={!bienSo}>
-                    {bienSo || 'Không'}
-                  </MucMeta>
-                  <span className="text-[#c9d0d4]">·</span>
-                  <MucMeta icon={Mail} nhat={!cc.customer?.email}>
-                    {cc.customer?.email || 'Chưa có'}
-                  </MucMeta>
+                  {muc.map((m, k) => {
+                    const Icon = ICON[m.loai];
+                    return (
+                      <span
+                        key={m.khoa ?? m.loai}
+                        className="inline-flex items-center gap-x-4"
+                      >
+                        {k > 0 && <span className="text-[#c9d0d4]">·</span>}
+                        <span
+                          className={`inline-flex items-center gap-1.5 ${m.thieu ? 'text-gray-400' : ''}`}
+                        >
+                          <Icon
+                            className="h-[15px] w-[15px] shrink-0 text-[#67737E]"
+                            strokeWidth={2}
+                          />
+                          {m.chu}
+                          {/* Nút ảnh giấy tờ bám ngay sau số CCCD — chỉ hiện khi
+                              khách này thật sự có ảnh trong hồ sơ. */}
+                          {m.loai === 'cccd' && anh && (
+                            <button
+                              type="button"
+                              title="Xem ảnh giấy tờ"
+                              onClick={() =>
+                                setDangXem({
+                                  ten,
+                                  soCccd: cc.customer?.id_number ?? null,
+                                  anh,
+                                })
+                              }
+                              className="ml-0.5 inline-flex h-[22px] w-[22px] items-center justify-center rounded border border-[#e2e5ea] bg-white text-[#67737E] transition-colors hover:border-[#cfe7db] hover:bg-[#f1f6f3] hover:text-[#12764a]"
+                            >
+                              <IdCard className="h-[14px] w-[14px]" strokeWidth={2} />
+                            </button>
+                          )}
+                        </span>
+                      </span>
+                    );
+                  })}
                 </div>
 
                 {cc.notes && (
@@ -125,6 +157,14 @@ export function ContractTenantsCard({ customers, vehiclesByCustomer }: Props) {
           );
         })
       )}
+
+      <CccdDialog
+        open={dangXem !== null}
+        onOpenChange={(o) => !o && setDangXem(null)}
+        tenKhach={dangXem?.ten ?? ''}
+        soCccd={dangXem?.soCccd ?? null}
+        anh={dangXem?.anh ?? {}}
+      />
     </The>
   );
 }

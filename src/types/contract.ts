@@ -91,6 +91,8 @@ export interface ContractCustomer {
     phone: string;
     email: string | null;
     id_number: string | null;
+    /** Ảnh giấy tờ: { front?, back?, passport? } — JSON tự do trong DB. */
+    id_images?: unknown;
   } | null;
   created_at: string;
   updated_at: string;
