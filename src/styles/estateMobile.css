@@ -47,6 +47,9 @@
 .cm-app .bm-room.st-main .rdot { background:#9ca3af; } .cm-app .bm-room.st-main .rno { color:#6b7280; }
 .cm-app .bm-room .rprice { font-family:var(--mono); font-size:12.5px; font-weight:700; margin-top:8px; letter-spacing:-.3px; color:var(--ink-2); }
 .cm-app .bm-room .rprice small { font-family:var(--font); font-size:10px; font-weight:600; color:var(--ink-3); }
+/* Giá NIÊM YẾT in mờ cạnh giá đang thu — chỉ hiện khi hai số lệch nhau. */
+.cm-app .bm-room .rprice .rprice-list,
+.cm-app .lrow-amt .rprice-list { font-family:var(--mono); font-weight:600; opacity:.55; }
 .cm-app .bm-room .rlabel { font-size:11px; font-weight:700; margin-top:8px; }
 .cm-app .bm-room.st-occ  .rlabel { color:#15803d; } .cm-app .bm-room.st-free .rlabel { color:#c62f28; }
 .cm-app .bm-room.st-res  .rlabel { color:#b4690a; } .cm-app .bm-room.st-exp  .rlabel { color:#6d31d6; }

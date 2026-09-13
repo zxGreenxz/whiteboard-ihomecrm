@@ -10,6 +10,8 @@ export interface RoomWithContract {
   activeContract?: {
     id: string;
     end_date: string;
+    /** Giá thuê GHI TRONG HỢP ĐỒNG — khác `rent_price` của phòng ở 44% hợp đồng. */
+    rent_price: number | null;
     tenant?: {
       full_name: string;
     };
@@ -19,6 +21,7 @@ export interface RoomWithContract {
 interface SupabaseContractRow {
   id: string;
   end_date: string;
+  rent_price: number | null;
   status: string;
   contract_customers?: Array<{
     is_representative: boolean;
@@ -43,7 +46,7 @@ export const useRoomsWithActiveContracts = (buildingId?: string) => {
         .select(
           `id, name, rent_price, floor, status, building_id,
            contracts!inner (
-             id, end_date, status,
+             id, end_date, rent_price, status,
              contract_customers!contract_customers_contract_id_fkey (
                is_representative,
                customer:customers!contract_customers_customer_id_fkey ( id, full_name )
@@ -75,6 +78,7 @@ export const useRoomsWithActiveContracts = (buildingId?: string) => {
             ? {
                 id: c.id,
                 end_date: c.end_date,
+                rent_price: c.rent_price,
                 tenant: repTenant ? { full_name: repTenant.full_name } : undefined,
               }
             : undefined,

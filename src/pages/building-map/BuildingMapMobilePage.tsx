@@ -10,6 +10,7 @@ import { useRooms } from "@/hooks/useRooms";
 import { useFloors } from "@/hooks/useFloors";
 import { useRoomsWithActiveContracts } from "@/hooks/useRoomsWithContracts";
 import { getRoomDisplayStatus, type RoomDisplayStatus } from "@/lib/roomStatus";
+import { resolveRoomPrice } from "@/lib/roomPrice";
 import { usePersistedState } from "@/hooks/usePersistedState";
 
 const ST: Record<RoomDisplayStatus, { cls: string; label: string }> = {
@@ -45,7 +46,10 @@ type EnrichedRoom = {
   id: string;
   name: string;
   floor: number | null;
+  /** Giá đang thu: của hợp đồng nếu phòng đang thuê, không thì giá niêm yết. */
   rent_price: number | null;
+  /** Giá niêm yết, chỉ khác null khi nó lệch `rent_price`. */
+  listedPrice: number | null;
   displayStatus: RoomDisplayStatus;
   tenantName?: string;
   contractRange?: string;
@@ -98,11 +102,17 @@ export default function BuildingMapMobilePage() {
     return (buildingRooms as any[]).map((room) => {
       const c = contractByRoomId.get(room.id);
       const end = c?.activeContract?.end_date;
+      // Giá lấy từ HỢP ĐỒNG đang hiệu lực, không lấy giá niêm yết của phòng.
+      const price = resolveRoomPrice({
+        roomRentPrice: room.rent_price,
+        contractRentPrice: c?.activeContract?.rent_price,
+      });
       return {
         id: room.id,
         name: room.name,
         floor: room.floor ?? null,
-        rent_price: room.rent_price,
+        rent_price: price.primary,
+        listedPrice: price.listed,
         displayStatus: getRoomDisplayStatus(room.status, end),
         tenantName: c?.activeContract?.tenant?.full_name,
         contractRange: end ? `Đến ${fmtDate(end)}` : undefined,
@@ -253,7 +263,10 @@ export default function BuildingMapMobilePage() {
                           </div>
                           <div className="rprice">
                             {fmtTr(r.rent_price)}
-                            <small> tr/th</small>
+                            <small> tr</small>
+                            {r.listedPrice != null && (
+                              <small className="rprice-list"> {fmtTr(r.listedPrice)} tr</small>
+                            )}
                           </div>
                           <div className="rlabel">{st.label}</div>
                           {r.tenantName && <div className="rtenant">{r.tenantName}</div>}
@@ -290,7 +303,12 @@ export default function BuildingMapMobilePage() {
                 <div className="vd-table">
                   <div className="vd-row">
                     <div className="vd-row-l">Giá thuê</div>
-                    <div className="vd-row-v"><b>{fmtTr(detail.rent_price)} tr</b> / tháng</div>
+                    <div className="vd-row-v">
+                      <b>{fmtTr(detail.rent_price)} tr</b> / tháng
+                      {detail.listedPrice != null && (
+                        <span className="vd-row-note">· niêm yết {fmtTr(detail.listedPrice)} tr</span>
+                      )}
+                    </div>
                   </div>
                   {(detail.roomType || detail.area) && (
                     <div className="vd-row">

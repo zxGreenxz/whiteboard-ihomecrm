@@ -8,6 +8,7 @@ import { useRooms } from "@/hooks/useRooms";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRoomsWithActiveContracts } from "@/hooks/useRoomsWithContracts";
 import { getRoomDisplayStatus, type RoomDisplayStatus } from "@/lib/roomStatus";
+import { resolveRoomPrice } from "@/lib/roomPrice";
 import { compareBuildingThenRoom } from "@/lib/roomSort";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
@@ -65,10 +66,20 @@ export default function RoomsMobilePage() {
   const { data: roomsWithContracts = [] } = useRoomsWithActiveContracts();
 
   const contractByRoom = useMemo(() => {
-    const map = new Map<string, { end?: string; tenant?: string }>();
-    roomsWithContracts.forEach((r) => map.set(r.id, { end: r.activeContract?.end_date, tenant: r.activeContract?.tenant?.full_name }));
+    const map = new Map<string, { end?: string; tenant?: string; rent?: number | null }>();
+    roomsWithContracts.forEach((r) => map.set(r.id, { end: r.activeContract?.end_date, tenant: r.activeContract?.tenant?.full_name, rent: r.activeContract?.rent_price }));
     return map;
   }, [roomsWithContracts]);
+
+  /**
+   * Giá hiển thị lấy từ HỢP ĐỒNG đang hiệu lực, không lấy giá niêm yết của phòng
+   * — hai số lệch nhau ở 44% hợp đồng (đo production 13/09/2026).
+   */
+  const priceOf = (r: RoomWithRelations) =>
+    resolveRoomPrice({
+      roomRentPrice: r.rent_price,
+      contractRentPrice: contractByRoom.get(r.id)?.rent,
+    });
 
   const displayStatus = (r: RoomWithRelations): RoomDisplayStatus =>
     getRoomDisplayStatus(r.status, contractByRoom.get(r.id)?.end);
@@ -102,6 +113,7 @@ export default function RoomsMobilePage() {
   }, [scoped, status, contractByRoom]);
 
   const detailStatus = detail ? displayStatus(detail) : null;
+  const detailPrice = detail ? priceOf(detail) : null;
   const detailTenant = detail ? contractByRoom.get(detail.id)?.tenant : undefined;
 
   return (
@@ -182,6 +194,7 @@ export default function RoomsMobilePage() {
               <div className="rowlist">
                 {filtered.map((r) => {
                   const s = ST[displayStatus(r)];
+                  const price = priceOf(r);
                   const b = r.building;
                   const meta = [b?.code || b?.name, r.floor != null ? `Tầng ${r.floor}` : null, (r as any).room_type, (r as any).area ? `${(r as any).area}m²` : null]
                     .filter(Boolean)
@@ -198,8 +211,11 @@ export default function RoomsMobilePage() {
                       </div>
                       <div className="lrow-r">
                         <span className="lrow-amt">
-                          {fmtTr(r.rent_price)}
-                          <small> tr/th</small>
+                          {fmtTr(price.primary)}
+                          <small> tr</small>
+                          {price.listed != null && (
+                            <small className="rprice-list"> {fmtTr(price.listed)} tr</small>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -209,7 +225,7 @@ export default function RoomsMobilePage() {
             )}
           </div>
 
-          {detail && detailStatus && (
+          {detail && detailStatus && detailPrice && (
             <div className="sheet-ov" onClick={() => setDetail(null)}>
               <div className="sheet" onClick={(e) => e.stopPropagation()}>
                 <div className="sheet-grab" />
@@ -234,7 +250,7 @@ export default function RoomsMobilePage() {
 
                 <div className="vd-sec"><div className="vd-sec-t">Thông tin căn hộ</div></div>
                 <div className="vd-table">
-                  <div className="vd-row"><div className="vd-row-l">Tiền thuê</div><div className="vd-row-v"><b>{fmtTr(detail.rent_price)} tr</b> / tháng</div></div>
+                  <div className="vd-row"><div className="vd-row-l">Tiền thuê</div><div className="vd-row-v"><b>{fmtTr(detailPrice.primary)} tr</b> / tháng{detailPrice.listed != null && (<span className="vd-row-note">· niêm yết {fmtTr(detailPrice.listed)} tr</span>)}</div></div>
                   <div className="vd-row"><div className="vd-row-l">Tiền cọc</div><div className="vd-row-v">{fmtVnd((detail as any).deposit)}</div></div>
                   {((detail as any).room_type || (detail as any).area) && (
                     <div className="vd-row">

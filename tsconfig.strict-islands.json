@@ -1033,6 +1033,7 @@
     "src/lib/reservationHold.ts",
     "src/lib/reverseGeocode.ts",
     "src/lib/roomCodeSearch.ts",
+    "src/lib/roomPrice.ts",
     "src/lib/roomSort.ts",
     "src/lib/roomStatus.ts",
     "src/lib/roomValidation.ts",

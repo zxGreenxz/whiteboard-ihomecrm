@@ -95,6 +95,8 @@
 .cm-app .vd-row-l { padding: 10px 12px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; color: var(--ink-3); border-right: 1px solid var(--line-2); }
 .cm-app .vd-row-v { padding: 10px 12px; font-size: 13px; font-weight: 600; color: var(--ink); display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; word-break: break-word; }
 .cm-app .vd-row-v b { font-weight: 700; }
+/* Chú thích phụ trong ô giá trị (vd giá niêm yết bên cạnh giá đang thu). */
+.cm-app .vd-row-note { font-weight: 500; color: var(--ink-3); }
 /* Hàng TRÀN NGANG — bỏ cột nhãn 132px. Dùng cho ô Ghi chú: nội dung là văn bản
    nhiều dòng kèm khung quyết toán, ép vào 1fr còn ~64% bề ngang màn hình thì
    mỗi con số vỡ làm hai dòng (đo trên iPhone 14 Pro Max 02/09/2026).

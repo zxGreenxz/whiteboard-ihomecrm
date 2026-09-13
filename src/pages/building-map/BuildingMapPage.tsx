@@ -11,6 +11,7 @@ import { useRooms } from "@/hooks/useRooms";
 import { useFloors } from "@/hooks/useFloors";
 import { useRoomsWithActiveContracts } from "@/hooks/useRoomsWithContracts";
 import { getRoomDisplayStatus } from "@/lib/roomStatus";
+import { resolveRoomPrice } from "@/lib/roomPrice";
 import { Building2, Layers, Search, Filter } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInDays } from "date-fns";
@@ -96,9 +97,17 @@ const BuildingMapDesktop = () => {
 
     const enrichedRooms = scoped.map(room => {
       const contract = contractByRoomId.get(room.id);
+      // Giá hiển thị lấy từ HỢP ĐỒNG đang hiệu lực, không lấy giá niêm yết của
+      // phòng — hai số lệch nhau ở 44% hợp đồng.
+      const price = resolveRoomPrice({
+        roomRentPrice: room.rent_price,
+        contractRentPrice: contract?.activeContract?.rent_price,
+      });
       return {
         ...room,
         displayStatus: getRoomStatus(room),
+        displayPrice: price.primary,
+        listedPrice: price.listed,
         tenantName: contract?.activeContract?.tenant?.full_name,
         daysUntilExpiry: contract?.activeContract
           ? differenceInDays(new Date(contract.activeContract.end_date), new Date())
@@ -343,7 +352,8 @@ const BuildingMapDesktop = () => {
                         key={room.id}
                         id={room.id}
                         name={room.name}
-                        price={room.rent_price}
+                        price={room.displayPrice}
+                        listedPrice={room.listedPrice}
                         status={room.displayStatus}
                         tenantName={room.tenantName}
                         daysUntilExpiry={room.daysUntilExpiry}
@@ -371,7 +381,8 @@ const BuildingMapDesktop = () => {
                                 key={room.id}
                                 id={room.id}
                                 name={room.name}
-                                price={room.rent_price}
+                                price={room.displayPrice}
+                                listedPrice={room.listedPrice}
                                 status={room.displayStatus}
                                 tenantName={room.tenantName}
                                 daysUntilExpiry={room.daysUntilExpiry}

@@ -9,7 +9,13 @@ export type RoomStatus = "AVAILABLE" | "OCCUPIED" | "RESERVED" | "EXPIRING_SOON"
 interface RoomCardProps {
   id: string;
   name: string;
+  /** Giá hiển thị chính: giá hợp đồng nếu phòng đang thuê, không thì giá niêm yết. */
   price: number;
+  /**
+   * Giá niêm yết in mờ bên cạnh — chỉ truyền khi nó KHÁC `price`, tức phòng đang
+   * thuê với giá lệch giá niêm yết. Xem `resolveRoomPrice` ở `@/lib/roomPrice`.
+   */
+  listedPrice?: number | null;
   status: RoomStatus;
   tenantName?: string;
   daysUntilExpiry?: number;
@@ -60,6 +66,7 @@ export const RoomCard = memo(function RoomCard({
   id,
   name,
   price,
+  listedPrice,
   status,
   tenantName,
   daysUntilExpiry,
@@ -81,9 +88,12 @@ export const RoomCard = memo(function RoomCard({
             <Icon className={`w-5 h-5 ${config.iconColor}`} />
           </div>
 
-          {/* Price */}
-          <p className="text-sm font-medium text-muted-foreground">
-            {formatCurrency(price)}/tháng
+          {/* Giá thuê — số đậm là giá đang thu, số mờ là giá niêm yết khi hai số lệch */}
+          <p className="flex items-baseline gap-1.5 text-sm">
+            <span className="font-semibold text-foreground">{formatCurrency(price)}</span>
+            {listedPrice != null && (
+              <span className="text-xs text-muted-foreground/70">{formatCurrency(listedPrice)}</span>
+            )}
           </p>
 
           {/* Status badge */}
