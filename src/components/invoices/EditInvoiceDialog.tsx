@@ -23,6 +23,7 @@ import {
   buildInvoiceItems,
   decomposeInvoice,
   findDepositIndex,
+  firstEntryError,
   invoiceEntrySchema,
   resolveBuildingDefaults,
   type BuildingServiceRow,
@@ -70,7 +71,7 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
     resolver: zodResolver(invoiceEntrySchema) as Resolver<InvoiceEntryValues>,
     defaultValues: decomposed.values,
   });
-  const { handleSubmit, reset, setValue } = form;
+  const { handleSubmit, reset, setValue, formState: { errors } } = form;
 
   // Reset when invoice prop changes
   useEffect(() => {
@@ -125,7 +126,7 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
     })();
   }, [invoice.room_id]);
 
-  const ctl = useInvoiceEntry(form, { baseline: decomposed.values, pricing });
+  const ctl = useInvoiceEntry(form, { baseline: decomposed.values, baselineAmounts: decomposed.baseline, pricing });
   const { data: creditBalance = 0 } = useExcessAmount(invoice.contract_id);
 
   const current: InvoiceEntryCurrent = useMemo(() => {
@@ -208,6 +209,7 @@ const DraftInvoiceEditor = ({ open, onOpenChange, invoice }: EditInvoiceDialogPr
       creditBalance={creditBalance}
       defaultDepositAmount={0}
       ready
+      validationError={firstEntryError(errors)}
       onResetAll={() => reset(decomposed.values)}
       onCancel={() => onOpenChange(false)}
       footNote="Hoá đơn nháp — lưu sẽ thay toàn bộ dòng bằng giá trị mới."

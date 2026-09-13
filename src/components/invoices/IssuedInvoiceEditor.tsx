@@ -15,6 +15,7 @@ import { InvoiceAdjustmentError } from '@/lib/invoiceAdjustmentRpc';
 import {
   decomposeInvoice,
   findDepositIndex,
+  firstEntryError,
   invoiceEntrySchema,
   type InvoiceEntryValues,
 } from '@/lib/invoiceEntry';
@@ -70,7 +71,7 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
   });
   const { handleSubmit, reset, watch, setValue, formState: { errors } } = form;
   const pricing = useMemo(() => pricingFromInvoice(entry), [entry]);
-  const ctl = useInvoiceEntry(form, { baseline: entry.values, pricing });
+  const ctl = useInvoiceEntry(form, { baseline: entry.values, baselineAmounts: entry.baseline, pricing });
   const reasonValue = watch('reason') ?? '';
 
   const current: InvoiceEntryCurrent = useMemo(() => {
@@ -157,6 +158,7 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
         onChange: (s) => setValue('reason', s, { shouldValidate: !!errors.reason }),
         error: errors.reason?.message,
       }}
+      validationError={firstEntryError(errors)}
       notice={error && (
         <div role="alert" className="space-y-2 rounded-[9px] border border-red-300 bg-red-50 p-3 text-sm text-red-800">
           <p>{error.message}</p>

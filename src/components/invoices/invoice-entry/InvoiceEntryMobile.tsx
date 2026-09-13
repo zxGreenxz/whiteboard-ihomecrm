@@ -48,13 +48,19 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
   const {
     mode, ctl, header, current, selectors, selectorsNotice, duplicate, pricing, meterId, debt,
     creditBalance, defaultDepositAmount, ready, onResetAll, onCancel, footNote, submit,
-    lockedDates, busy, reason, notice,
+    lockedDates, busy, reason, notice, validationError,
   } = props;
   const isEdit = mode === 'edit';
   const { v, totals, diff, kwh, deposit, extras, set } = ctl;
   const due = dueBadge(v.due_date, isEdit);
   const delta = current ? totals.total - current.total : 0;
   const sel = selectors?.('mobile');
+  const belowPaid = current?.paid != null && totals.total < current.paid;
+  const blocker = totals.overDiscount
+    ? 'Giảm trừ lớn hơn tạm tính cộng nợ cũ — giảm bớt số giảm trừ.'
+    : belowPaid
+      ? 'Tổng mới thấp hơn tiền đã thu — đảo giao dịch trong Lịch sử thanh toán trước.'
+      : null;
 
   return (
     <>
@@ -340,6 +346,8 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
         </div>
         <div className="ien-note" style={{ margin: '0 4px 4px' }}>{footNote}</div>
         </fieldset>
+        {validationError && <div role="alert" className="ien-alert">{validationError}</div>}
+        {blocker && <div role="alert" className="ien-alert">{blocker}</div>}
         {notice && <div style={{ marginTop: 10 }}>{notice}</div>}
       </div>
 
@@ -356,7 +364,7 @@ export function InvoiceEntryMobile(props: InvoiceEntryProps) {
           </div>
           <div className="ien-foot-tot" data-testid="invoice-entry-total">{ready ? formatVndSuffix(totals.total) : '—'}</div>
         </div>
-        <button type="submit" className="ien-submit" disabled={submit.disabled || submit.pending}>
+        <button type="submit" className="ien-submit" disabled={submit.disabled || submit.pending || !!blocker}>
           {submit.pending ? submit.pendingLabel : submit.label}
         </button>
       </div>

@@ -4,6 +4,7 @@ import {
   computeEntryTotals,
   diffEntryValues,
   findDepositIndex,
+  type EntryBaselineAmounts,
   type EntryCustomItem,
   type EntryDiff,
   type EntryItemType,
@@ -65,6 +66,8 @@ export interface InvoiceEntryController {
 interface Options {
   /** Giá trị gốc để đánh dấu ô đã đổi. */
   baseline: InvoiceEntryValues;
+  /** Số tiền đã lưu (hoá đơn đang sửa) để tổng hiển thị khớp đúng số đã lưu. */
+  baselineAmounts?: EntryBaselineAmounts;
   pricing: InvoiceEntryPricing;
   /** false khi chưa có hợp đồng (luồng tạo): không tự tính điện/nước lên form trống. */
   active?: boolean;
@@ -76,7 +79,7 @@ interface Options {
  */
 export function useInvoiceEntry<T extends InvoiceEntryValues>(
   form: UseFormReturn<T>,
-  { baseline, pricing, active = true }: Options,
+  { baseline, baselineAmounts, pricing, active = true }: Options,
 ): InvoiceEntryController {
   const f = form as unknown as UseFormReturn<InvoiceEntryValues>;
   const { setValue, watch, control } = f;
@@ -108,7 +111,7 @@ export function useInvoiceEntry<T extends InvoiceEntryValues>(
     if (next !== waterAmount) setValue('water_amount', next);
   }, [active, occupants, pricing.water, pricing.waterApplicable, waterOverridden, waterAmount, setValue]);
 
-  const totals = useMemo(() => computeEntryTotals(v), [v]);
+  const totals = useMemo(() => computeEntryTotals(v, baselineAmounts), [v, baselineAmounts]);
   const diff = useMemo(() => diffEntryValues(v, baseline), [v, baseline]);
   const depositIndex = findDepositIndex(items);
   const deposit = depositIndex >= 0 ? items[depositIndex] : null;

@@ -98,6 +98,8 @@ export interface InvoiceEntryProps {
   reason?: { value: string; onChange: (s: string) => void; error?: string };
   /** Khối thông báo (lỗi lưu, nút tải lại…) đặt ngay trên chân trang. */
   notice?: ReactNode;
+  /** Lỗi nhập liệu (zod) cần cho người dùng thấy vì ô lỗi có thể nằm ngoài tầm mắt. */
+  validationError?: string | null;
   onResetAll: () => void;
   onCancel: () => void;
   footNote: string;

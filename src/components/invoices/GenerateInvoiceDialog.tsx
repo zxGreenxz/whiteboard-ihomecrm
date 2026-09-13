@@ -27,6 +27,7 @@ import { resolveInvoicePricing, type ContractServiceInput } from '@/lib/contract
 import { todayISO } from '@/lib/collect';
 import {
   buildInvoiceItems,
+  firstEntryError,
   invoiceEntrySchema,
   makeEntryValues,
   resolveBuildingDefaults,
@@ -596,6 +597,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       creditBalance={watchedContractId ? creditBalance : 0}
       defaultDepositAmount={Number(selectedContract?.total_deposit) || 0}
       ready={!!selectedContract}
+      validationError={firstEntryError(errors)}
       onResetAll={() => reset({ ...baseline, contract_id: watchedContractId })}
       onCancel={handleClose}
       footNote="Hoá đơn mới tạo ở trạng thái nháp, chờ duyệt."

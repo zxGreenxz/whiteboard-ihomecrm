@@ -147,6 +147,8 @@ export interface EntryTotals {
   deposit: number;
   subtotal: number;
   total: number;
+  /** Giảm trừ lớn hơn tạm tính + nợ cũ → server từ chối; chặn ngay ở form. */
+  overDiscount: boolean;
 }
 
 /** Số ngày thuê thực tế của form (0 = không prorate). */
@@ -154,12 +156,18 @@ export function calcProratedDaysOf(v: InvoiceEntryValues): number {
   return calcProratedDays(v.period_start_date, v.period_end_date);
 }
 
-export function computeEntryTotals(v: InvoiceEntryValues): EntryTotals {
+/**
+ * Tổng tiền hiển thị. `baseline` (hoá đơn đang sửa) làm số hiển thị trùng đúng
+ * số tiền đã lưu ở ô chưa đụng — cùng luật với buildStructuredLines.
+ */
+export function computeEntryTotals(v: InvoiceEntryValues, baseline?: EntryBaselineAmounts): EntryTotals {
   const days = calcProratedDaysOf(v);
   const isProrated = days > 0;
-  const rent = isProrated ? prorateAmount(v.rent_price, days) : v.rent_price;
-  const water = isProrated ? prorateAmount(v.water_amount, days) : v.water_amount;
-  const pdv = isProrated ? prorateAmount(v.pdv_amount, days) : v.pdv_amount;
+  const keep = (field: 'rent_price' | 'water_amount' | 'pdv_amount') =>
+    !!baseline && baseline.days === days && baseline[field] === v[field];
+  const rent = keep('rent_price') ? baseline!.rentAmount : isProrated ? prorateAmount(v.rent_price, days) : v.rent_price;
+  const water = keep('water_amount') ? baseline!.waterAmount : isProrated ? prorateAmount(v.water_amount, days) : v.water_amount;
+  const pdv = keep('pdv_amount') ? baseline!.pdvAmount : isProrated ? prorateAmount(v.pdv_amount, days) : v.pdv_amount;
   const electric = v.electric_amount || 0;
   let extras = 0;
   let deposit = 0;
@@ -169,12 +177,37 @@ export function computeEntryTotals(v: InvoiceEntryValues): EntryTotals {
     else extras += line;
   }
   const subtotal = rent + electric + water + pdv + extras + deposit;
+  const raw = subtotal - (v.discount_amount || 0) + (v.previous_debt || 0);
   // total = tạm tính − giảm trừ + nợ cũ — KHỚP công thức save-side; làm tròn
   // phần lẻ: <900đ → xuống, ≥900đ → lên bội số 1000.
-  const total = roundInvoiceTotal(
-    Math.max(0, subtotal - (v.discount_amount || 0) + (v.previous_debt || 0)),
-  );
-  return { days, isProrated, rent, electric, water, pdv, extras, deposit, subtotal, total };
+  const total = roundInvoiceTotal(Math.max(0, raw));
+  return { days, isProrated, rent, electric, water, pdv, extras, deposit, subtotal, total, overDiscount: raw < 0 };
+}
+
+/** Câu báo lỗi đầu tiên đọc được từ formState.errors của react-hook-form. */
+export function firstEntryError(errors: unknown): string | null {
+  const e = errors as Record<string, unknown> | undefined;
+  if (!e) return null;
+  const items = e.custom_items as Array<Record<string, { message?: string }> | undefined> | undefined;
+  if (Array.isArray(items)) {
+    for (let i = 0; i < items.length; i++) {
+      const row = items[i];
+      if (!row) continue;
+      if (row.description) return `Khoản thu thêm ${i + 1}: ${row.description.message || 'thiếu mô tả'}`;
+      if (row.quantity) return `Khoản thu thêm ${i + 1}: ${row.quantity.message || 'số lượng không hợp lệ'}`;
+      if (row.unit_price) return `Khoản thu thêm ${i + 1}: đơn giá không hợp lệ`;
+    }
+  }
+  const labels: Record<string, string> = {
+    billing_month: 'Kỳ thanh toán', issue_date: 'Ngày phát hành', due_date: 'Hạn thanh toán',
+    occupants: 'Số người', rent_price: 'Giá phòng', discount_amount: 'Giảm trừ', previous_debt: 'Nợ cũ',
+    contract_id: 'Hợp đồng',
+  };
+  for (const key of Object.keys(labels)) {
+    const err = e[key] as { message?: string } | undefined;
+    if (err) return `${labels[key]}: ${err.message || 'không hợp lệ'}`;
+  }
+  return null;
 }
 
 /** Số tiền đã lưu của hoá đơn đang sửa — để không làm lệch tiền khi không đụng ô. */

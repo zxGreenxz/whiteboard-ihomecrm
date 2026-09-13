@@ -96,7 +96,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
   const {
     mode, ctl, header, current, selectors, selectorsNotice, duplicate, pricing, meterId, debt,
     creditBalance, defaultDepositAmount, ready, onResetAll, onCancel, footNote, submit,
-    lockedDates, busy, reason, notice,
+    lockedDates, busy, reason, notice, validationError,
   } = props;
   const isEdit = mode === 'edit';
   const { v, totals, diff, kwh, deposit, extras, set } = ctl;
@@ -104,6 +104,12 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
   const due = dueBadge(v.due_date, isEdit);
   const delta = current ? totals.total - current.total : 0;
   const sel = selectors?.('desktop');
+  const belowPaid = current?.paid != null && totals.total < current.paid;
+  const blocker = totals.overDiscount
+    ? 'Giảm trừ lớn hơn tạm tính cộng nợ cũ — giảm bớt số giảm trừ.'
+    : belowPaid
+      ? 'Tổng mới thấp hơn tiền đã thu — cần đảo giao dịch trong Lịch sử thanh toán trước khi điều chỉnh.'
+      : null;
 
   const breakdown = [
     `Phòng ${formatVnd(totals.rent)}`,
@@ -572,6 +578,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
               </span>
             </div>
             <div className="mt-[5px] text-[11.5px] tabular-nums text-[#3b5bdb]">{breakdown}</div>
+            {blocker && <div role="alert" className="mt-1 text-[11.5px] font-semibold text-red-700">{blocker}</div>}
             {current?.paid != null && (
               <div className="mt-1 text-[11.5px] tabular-nums text-[#3b5bdb]">
                 Đã thu {formatVndSuffix(current.paid)} · Còn phải thu dự tính {formatVndSuffix(totals.total - current.paid)}
@@ -609,6 +616,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
         />
       </div>
 
+      {validationError && <div role="alert" className="mx-[18px] mt-[11px] rounded-[7px] border border-red-200 bg-red-50 px-[11px] py-2 text-xs text-red-700">{validationError}</div>}
       {notice && <div className="mx-[18px] mt-[11px]">{notice}</div>}
 
       {/* ===== Footer ===== */}
@@ -620,7 +628,7 @@ export function InvoiceEntryDesktop(props: InvoiceEntryProps) {
         </button>
         <button
           type="submit"
-          disabled={submit.disabled || submit.pending}
+          disabled={submit.disabled || submit.pending || !!blocker}
           className="h-9 rounded-[7px] bg-primary px-[18px] text-[13px] font-bold text-white shadow-sm hover:bg-[hsl(152_69%_26%)] disabled:opacity-50"
         >
           {submit.pending ? submit.pendingLabel : submit.label}

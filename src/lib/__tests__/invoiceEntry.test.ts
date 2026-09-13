@@ -76,8 +76,18 @@ describe('computeEntryTotals', () => {
     expect(t.electric).toBe(175_000);
   });
 
-  it('never returns a negative total', () => {
-    expect(computeEntryTotals(values({ discount_amount: 99_000_000 })).total).toBe(0);
+  it('never returns a negative total and flags an over-discount', () => {
+    const t = computeEntryTotals(values({ discount_amount: 99_000_000 }));
+    expect(t.total).toBe(0);
+    expect(t.overDiscount).toBe(true);
+    expect(computeEntryTotals(values({ discount_amount: 3_525_000 })).overDiscount).toBe(false);
+  });
+
+  it('shows the saved amounts for untouched prorated cells when a baseline is given', () => {
+    const baseline = { rent_price: 3_000_000, water_amount: 200_000, pdv_amount: 150_000, days: 13, rentAmount: 1_299_999, waterAmount: 86_667, pdvAmount: 65_000 };
+    const v = values({ period_start_date: '2026-09-01', period_end_date: '2026-09-13' });
+    expect(computeEntryTotals(v, baseline)).toMatchObject({ rent: 1_299_999, water: 86_667, pdv: 65_000 });
+    expect(computeEntryTotals({ ...v, rent_price: 3_300_000 }, baseline)).toMatchObject({ rent: 1_430_000, water: 86_667 });
   });
 });
 
