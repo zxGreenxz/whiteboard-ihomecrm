@@ -290,7 +290,8 @@ async function createContractThroughUi(
   await expect(rentInput).not.toHaveAttribute('readonly', '');
   await rentInput.fill(String(RENT_AMOUNT));
   await rentInput.press('Tab');
-  await expect(depositInput).toHaveValue('113.000');
+  // Ô cọc đang KHOÁ hiển thị kèm hậu tố đơn vị ("113.000 đ"); sau khi mở khoá mới là số trần.
+  await expect(depositInput).toHaveValue(/^113\.000( đ)?$/);
   await dialog.getByRole('button', { name: 'Sửa tiền cọc' }).click();
   await expect(depositInput).not.toHaveAttribute('readonly', '');
   await depositInput.fill(String(DEPOSIT_AMOUNT));

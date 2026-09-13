@@ -93,12 +93,12 @@ const STATUS_PILL: Record<string, { label: string; cls: string }> = {
 
 const CARD = 'overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_2px_0_rgb(0_0_0/0.04)]';
 const CARD_HEAD = 'flex items-center gap-2.5 border-b border-[hsl(210_20%_93%)] px-5 py-[15px]';
-const CARD_TITLE = 'text-[15px] font-bold tracking-[-0.01em]';
-const STAT_LABEL = 'text-[10.5px] font-bold uppercase tracking-[0.06em] text-[hsl(210_10%_38%)]';
-const CHIP = 'inline-flex items-center rounded-md border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-[7px] py-[2px] text-[10.5px] text-[hsl(210_10%_36%)]';
-const PILL_INFO = 'inline-flex items-baseline gap-[5px] rounded-full border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-[9px] py-[2px] text-[11px] text-[hsl(210_10%_38%)]';
-const TH = 'h-auto px-3 py-[9px] text-[10.5px] font-bold uppercase tracking-[0.06em] text-[hsl(210_10%_38%)] bg-[#fafbfb]';
-const TD = 'px-3 py-3 align-top';
+const CARD_TITLE = 'text-[17px] font-bold tracking-[-0.01em]';
+const STAT_LABEL = 'text-[12px] font-bold uppercase tracking-[0.06em] text-[hsl(210_10%_38%)]';
+const CHIP = 'inline-flex items-center rounded-md border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-[8px] py-[3px] text-[12px] text-[hsl(210_10%_36%)]';
+const PILL_INFO = 'inline-flex items-baseline gap-[5px] rounded-full border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-[10px] py-[3px] text-[12.5px] text-[hsl(210_10%_38%)]';
+const TH = 'h-auto px-3 py-[10px] text-[12px] font-bold uppercase tracking-[0.06em] text-[hsl(210_10%_38%)] bg-[#fafbfb]';
+const TD = 'px-3 py-3.5 align-top';
 const TR = 'border-[hsl(210_20%_95%)]';
 
 interface RelatedVoucher {
@@ -501,8 +501,6 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
       : 'text-[hsl(210_10%_40%)]';
 
   const infoFields: { label: string; value: string; mono?: boolean; cls?: string }[] = [
-    { label: 'Số hóa đơn', value: invoice.invoice_number || '—', mono: true },
-    { label: 'Hợp đồng', value: invoice.contract?.contract_number || '—', mono: true },
     {
       label: 'Khách hàng',
       value: [representativeCustomer?.full_name, representativeCustomer?.phone]
@@ -528,7 +526,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
 
   return (
     <>
-      <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-[18px] text-foreground">
+      <div className="flex w-full flex-col gap-[18px] text-foreground">
         {/* Thẻ 1 — trạng thái, thao tác, ba ô tiền, thông tin hoá đơn */}
         <section className={CARD}>
           <div className="flex flex-wrap items-center gap-2.5 border-b border-[hsl(210_20%_93%)] px-5 py-3.5">
@@ -536,7 +534,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
               <Button
                 variant="outline"
                 size="icon"
-                className="h-9 w-9 shrink-0 rounded-lg"
+                className="h-10 w-10 shrink-0 rounded-lg"
                 onClick={onBack}
                 title="Quay lại danh sách"
               >
@@ -546,14 +544,14 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
 
             {statusPill && (
               <span
-                className={`inline-flex items-center rounded-full px-[11px] py-1 text-xs font-bold ${statusPill.cls}`}
+                className={`inline-flex items-center rounded-full px-3 py-1 text-[13px] font-bold ${statusPill.cls}`}
               >
                 {statusPill.label}
               </span>
             )}
 
-            <span className={`inline-flex items-center gap-[7px] text-[12.5px] font-semibold ${note.cls}`}>
-              <NoteIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className={`inline-flex items-center gap-[7px] text-[14px] font-semibold ${note.cls}`}>
+              <NoteIcon className="h-4 w-4 shrink-0" />
               {note.text}
             </span>
 
@@ -563,7 +561,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
               {showPay && (
                 <Button
                   variant="default"
-                  className={`h-9 rounded-lg px-[15px] text-[13px] font-bold ${
+                  className={`h-10 rounded-lg px-4 text-[14px] font-bold ${
                     payIsRefund ? 'bg-orange-600 hover:bg-orange-700' : ''
                   }`}
                   onClick={() => setPaymentDialogOpen(true)}
@@ -575,7 +573,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
 
               <Button
                 variant="outline"
-                className="h-9 rounded-lg px-[13px] text-[13px] font-semibold"
+                className="h-10 rounded-lg px-[14px] text-[14px] font-semibold"
                 onClick={() => setPrintDialogOpen(true)}
               >
                 <Printer className="mr-[7px] h-4 w-4" />
@@ -585,7 +583,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
               {showQR && (
                 <Button
                   variant="outline"
-                  className="h-9 rounded-lg px-[13px] text-[13px] font-semibold"
+                  className="h-10 rounded-lg px-[14px] text-[14px] font-semibold"
                   onClick={() => setQrDialogOpen(true)}
                   title="QR hợp đồng (khách quét để xem hoá đơn mới nhất)"
                 >
@@ -598,7 +596,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 rounded-lg"
+                  className="h-10 w-10 rounded-lg"
                   onClick={() => setEditDialogOpen(true)}
                   title={(invoice.paid_amount ?? 0) > 0 ? 'Điều chỉnh hóa đơn' : 'Chỉnh sửa'}
                 >
@@ -610,7 +608,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 rounded-lg border-[#fbcfcb] text-[#b91c1c] hover:bg-[#fef2f2] hover:text-[#b91c1c]"
+                  className="h-10 w-10 rounded-lg border-[#fbcfcb] text-[#b91c1c] hover:bg-[#fef2f2] hover:text-[#b91c1c]"
                   onClick={handleCancel}
                   disabled={cancelMutation.isPending}
                   title={cancelMutation.isPending ? 'Đang hủy...' : 'Hủy hóa đơn'}
@@ -623,7 +621,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 rounded-lg border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
+                  className="h-10 w-10 rounded-lg border-amber-300 bg-amber-100 text-amber-700 hover:bg-amber-200"
                   onClick={handleRestore}
                   disabled={restoreMutation.isPending}
                   title={restoreMutation.isPending ? 'Đang phục hồi...' : 'Phục hồi hoá đơn'}
@@ -638,13 +636,13 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
           <div className="grid gap-px bg-[hsl(210_20%_93%)] [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
             <div className="bg-white px-5 py-4">
               <div className={STAT_LABEL}>Tổng hoá đơn</div>
-              <div className="mt-[7px] font-numeric text-[21px] font-bold tracking-[-0.03em] tabular-nums">
+              <div className="mt-2 font-numeric text-[26px] font-bold tracking-[-0.03em] tabular-nums">
                 {formatCurrency(total)}
               </div>
             </div>
             <div className="bg-white px-5 py-4">
               <div className={STAT_LABEL}>Đã thu</div>
-              <div className="mt-[7px] font-numeric text-[21px] font-bold tracking-[-0.03em] tabular-nums text-[hsl(152_69%_26%)]">
+              <div className="mt-2 font-numeric text-[26px] font-bold tracking-[-0.03em] tabular-nums text-[hsl(152_69%_26%)]">
                 {formatCurrency(paid)}
               </div>
             </div>
@@ -653,11 +651,11 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                 {outstandingAmount < 0 ? 'Phải hoàn khách' : 'Còn phải thu'}
               </div>
               <div
-                className={`mt-[5px] font-numeric text-[28px] font-bold leading-[1.05] tracking-[-0.04em] tabular-nums ${outstandingCls}`}
+                className={`mt-[6px] font-numeric text-[34px] font-bold leading-[1.05] tracking-[-0.04em] tabular-nums ${outstandingCls}`}
               >
                 {formatCurrency(Math.abs(outstandingAmount))}
               </div>
-              <div className="mt-[9px] h-[5px] overflow-hidden rounded-full bg-[hsl(210_16%_88%)]">
+              <div className="mt-[10px] h-[6px] overflow-hidden rounded-full bg-[hsl(210_16%_88%)]">
                 <div
                   className={`h-full rounded-full ${progressCls}`}
                   style={{ width: `${progressPct}%` }}
@@ -667,12 +665,12 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
           </div>
 
           {/* Thông tin hoá đơn */}
-          <div className="grid gap-x-7 gap-y-3.5 border-t border-[hsl(210_20%_93%)] bg-[#fcfdfc] px-5 py-[15px] [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+          <div className="grid gap-x-7 gap-y-3.5 border-t border-[hsl(210_20%_93%)] bg-[#fcfdfc] px-5 py-[15px] [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
             {infoFields.map((f) => (
               <div key={f.label} className="min-w-0">
-                <div className="text-[11.5px] text-[hsl(210_10%_38%)]">{f.label}</div>
+                <div className="text-[13px] text-[hsl(210_10%_38%)]">{f.label}</div>
                 <div
-                  className={`mt-[3px] text-[13.5px] font-semibold tracking-[-0.01em] ${
+                  className={`mt-1 text-[15.5px] font-semibold tracking-[-0.01em] ${
                     f.mono ? 'font-numeric tabular-nums' : ''
                   } ${f.cls ?? ''}`}
                 >
@@ -688,11 +686,11 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
           <div className={CARD_HEAD}>
             <Receipt className="h-[17px] w-[17px] text-primary" />
             <h3 className={CARD_TITLE}>Chi tiết các khoản thu</h3>
-            <span className="ml-auto rounded-full border border-[#d2e8da] bg-[#e8f3ec] px-[9px] py-[2px] font-numeric text-[11.5px] font-bold text-[hsl(152_69%_26%)]">
+            <span className="ml-auto rounded-full border border-[#d2e8da] bg-[#e8f3ec] px-[10px] py-[3px] font-numeric text-[13px] font-bold text-[hsl(152_69%_26%)]">
               {items.length} khoản
             </span>
           </div>
-          <Table className="text-[13.5px]">
+          <Table className="text-[15px]">
             <TableHeader>
               <TableRow className="border-[hsl(210_20%_93%)] hover:bg-transparent">
                 <TableHead className={`${TH} pl-5 text-left`}>Mô tả</TableHead>
@@ -708,7 +706,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                   return (
                     <TableRow key={item.id} className={TR}>
                       <TableCell className={`${TD} pl-5`}>
-                        <div className="text-sm font-semibold tracking-[-0.01em]">
+                        <div className="text-[15.5px] font-semibold tracking-[-0.01em]">
                           {item.description}
                         </div>
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -718,7 +716,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                             </span>
                           )}
                           {period && (
-                            <span className="inline-flex items-center rounded-md border border-[#d8e4fb] bg-[#eef3fd] px-[7px] py-[2px] font-numeric text-[10.5px] text-[#1d4ed8]">
+                            <span className="inline-flex items-center rounded-md border border-[#d8e4fb] bg-[#eef3fd] px-[8px] py-[3px] font-numeric text-[12px] text-[#1d4ed8]">
                               {period}
                             </span>
                           )}
@@ -747,9 +745,9 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
               {invoice.discount_amount > 0 && (
                 <TableRow className={TR}>
                   <TableCell colSpan={3} className={`${TD} pl-5 text-right`}>
-                    <div className="text-[13px] font-semibold text-[hsl(210_10%_34%)]">Giảm trừ</div>
+                    <div className="text-[14.5px] font-semibold text-[hsl(210_10%_34%)]">Giảm trừ</div>
                     {invoice.discount_notes && (
-                      <div className="text-[11px] text-[hsl(210_10%_38%)]">
+                      <div className="text-[12.5px] text-[hsl(210_10%_38%)]">
                         {invoice.discount_notes}
                       </div>
                     )}
@@ -763,9 +761,9 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
               {invoice.previous_debt > 0 && (
                 <TableRow className={TR}>
                   <TableCell colSpan={3} className={`${TD} pl-5 text-right`}>
-                    <div className="text-[13px] font-bold text-[#b45309]">Nợ cũ kỳ trước</div>
+                    <div className="text-[14.5px] font-bold text-[#b45309]">Nợ cũ kỳ trước</div>
                     {invoice.previous_debt_sources?.length > 0 && (
-                      <div className="text-[11px] text-[hsl(210_10%_38%)]">
+                      <div className="text-[12.5px] text-[hsl(210_10%_38%)]">
                         {invoice.previous_debt_sources
                           .map((s) => s.label)
                           .filter(Boolean)
@@ -780,10 +778,10 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
               )}
 
               <TableRow className="bg-[#f5f9f6] hover:bg-[#f5f9f6]">
-                <TableCell colSpan={3} className="px-5 py-3.5 text-right text-sm font-bold">
+                <TableCell colSpan={3} className="px-5 py-4 text-right text-[15px] font-bold">
                   Tổng cộng
                 </TableCell>
-                <TableCell className="px-5 py-3.5 text-right font-numeric text-base font-bold tracking-[-0.02em] tabular-nums text-[hsl(152_69%_24%)]">
+                <TableCell className="px-5 py-4 text-right font-numeric text-[19px] font-bold tracking-[-0.02em] tabular-nums text-[hsl(152_69%_24%)]">
                   {formatCurrency(total)}
                 </TableCell>
               </TableRow>
@@ -796,7 +794,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
           <div className={CARD_HEAD}>
             <Wallet className="h-[17px] w-[17px] text-primary" />
             <h3 className={CARD_TITLE}>Thanh toán &amp; phiếu thu</h3>
-            <span className="ml-auto text-[11.5px] text-[hsl(210_10%_38%)]">
+            <span className="ml-auto text-[13px] text-[hsl(210_10%_38%)]">
               {paymentRows.length > 0
                 ? `${paymentRows.length} lần ghi nhận`
                 : 'Chưa có lần thanh toán nào'}
@@ -812,7 +810,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                 <button
                   type="button"
                   onClick={() => setLightboxIdx(row.receiptIdx ?? 0)}
-                  className="h-[42px] w-[58px] shrink-0 overflow-hidden rounded-[7px] border border-border transition hover:border-primary"
+                  className="h-[50px] w-[70px] shrink-0 overflow-hidden rounded-[8px] border border-border transition hover:border-primary"
                   title="Xem ảnh chứng từ"
                 >
                   <StorageImage
@@ -823,7 +821,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                 </button>
               ) : (
                 <span
-                  className="grid h-[42px] w-[58px] shrink-0 place-items-center rounded-[7px] border border-dashed border-border text-[hsl(210_10%_60%)]"
+                  className="grid h-[50px] w-[70px] shrink-0 place-items-center rounded-[8px] border border-dashed border-border text-[hsl(210_10%_60%)]"
                   title="Không có ảnh chứng từ"
                 >
                   <ImageIcon className="h-4 w-4" />
@@ -832,11 +830,11 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2.5">
-                  <span className="font-numeric text-[13.5px] font-bold tracking-[-0.02em] tabular-nums">
+                  <span className="font-numeric text-[15px] font-bold tracking-[-0.02em] tabular-nums">
                     {row.dateLabel}
                   </span>
                   {row.methodLabel && (
-                    <span className="rounded-full border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-2 py-[2px] text-[11px] font-bold text-[hsl(210_10%_34%)]">
+                    <span className="rounded-full border border-[hsl(210_16%_92%)] bg-[#f3f5f6] px-2.5 py-[3px] text-[12.5px] font-bold text-[hsl(210_10%_34%)]">
                       {row.methodLabel}
                     </span>
                   )}
@@ -851,27 +849,27 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
                     </span>
                   )}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-[7px] text-[11.5px] text-[hsl(210_10%_38%)]">
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px] text-[hsl(210_10%_38%)]">
                   {row.code &&
                     (row.voucherId ? (
                       <a
                         href={`/income-expense/print/${row.voucherId}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="font-numeric text-xs font-bold text-primary hover:underline"
+                        className="font-numeric text-[13.5px] font-bold text-primary hover:underline"
                         title="Mở phiếu trong sổ Thu/Chi"
                       >
                         {row.code}
                       </a>
                     ) : (
-                      <span className="font-numeric text-xs font-bold">{row.code}</span>
+                      <span className="font-numeric text-[13.5px] font-bold">{row.code}</span>
                     ))}
                   {row.kind && <span>{row.kind}</span>}
                 </div>
               </div>
 
               <div
-                className={`shrink-0 text-right font-numeric text-[15px] font-bold tracking-[-0.02em] tabular-nums ${
+                className={`shrink-0 text-right font-numeric text-[17px] font-bold tracking-[-0.02em] tabular-nums ${
                   row.isRefund ? 'text-[#dc2626]' : 'text-[hsl(152_69%_26%)]'
                 }`}
               >
@@ -882,36 +880,36 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
           ))}
 
           {paymentRows.length === 0 && (
-            <div className="border-b border-[hsl(210_20%_95%)] px-5 py-6 text-center text-[13px] text-[hsl(210_10%_45%)]">
+            <div className="border-b border-[hsl(210_20%_95%)] px-5 py-6 text-center text-[14.5px] text-[hsl(210_10%_45%)]">
               Chưa ghi nhận lần thanh toán nào cho hoá đơn này.
             </div>
           )}
 
           <div className="flex flex-wrap items-center justify-end gap-x-[26px] gap-y-2 bg-[#f5f9f6] px-5 py-[13px]">
             {totalReceived > 0 && (
-              <span className="inline-flex items-baseline gap-2 text-[12.5px] text-[hsl(210_10%_34%)]">
+              <span className="inline-flex items-baseline gap-2 text-[14px] text-[hsl(210_10%_34%)]">
                 Tổng thu (+)
-                <b className="font-numeric text-[13.5px] tabular-nums text-[hsl(152_69%_26%)]">
+                <b className="font-numeric text-[15.5px] tabular-nums text-[hsl(152_69%_26%)]">
                   {formatCurrency(totalReceived)}
                 </b>
               </span>
             )}
             {totalRefunded > 0 && (
-              <span className="inline-flex items-baseline gap-2 text-[12.5px] text-[hsl(210_10%_34%)]">
+              <span className="inline-flex items-baseline gap-2 text-[14px] text-[hsl(210_10%_34%)]">
                 Tổng thối (−)
-                <b className="font-numeric text-[13.5px] tabular-nums text-[#dc2626]">
+                <b className="font-numeric text-[15.5px] tabular-nums text-[#dc2626]">
                   {formatCurrency(totalRefunded)}
                 </b>
               </span>
             )}
-            <span className="inline-flex items-baseline gap-2 text-[12.5px] text-[hsl(210_10%_34%)]">
+            <span className="inline-flex items-baseline gap-2 text-[14px] text-[hsl(210_10%_34%)]">
               Đã thanh toán net
-              <b className="font-numeric text-[13.5px] tabular-nums">{formatCurrency(paid)}</b>
+              <b className="font-numeric text-[15.5px] tabular-nums">{formatCurrency(paid)}</b>
             </span>
-            <span className="inline-flex items-baseline gap-2 text-[13px] font-bold">
+            <span className="inline-flex items-baseline gap-2 text-[14.5px] font-bold">
               {outstandingAmount < 0 ? 'Phải hoàn khách' : 'Còn lại'}
               <b
-                className={`font-numeric text-[17px] tracking-[-0.02em] tabular-nums ${outstandingCls}`}
+                className={`font-numeric text-[20px] tracking-[-0.02em] tabular-nums ${outstandingCls}`}
               >
                 {formatCurrency(Math.abs(outstandingAmount))}
               </b>
@@ -926,7 +924,7 @@ const InvoiceDetailView = ({ id, onBack, showBackButton = true }: InvoiceDetailV
         {invoice.notes && (
           <section className={`${CARD} px-5 py-[15px]`}>
             <div className={`${STAT_LABEL} mb-[7px]`}>Ghi chú hoá đơn</div>
-            <p className="m-0 text-[13.5px] leading-[1.55] text-[hsl(160_15%_20%)]">
+            <p className="m-0 text-[15px] leading-[1.6] text-[hsl(160_15%_20%)]">
               {invoice.notes}
             </p>
           </section>
