@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   CornerDownRight,
+  Check,
 } from "lucide-react";
 import "@/styles/mobileApp.css";
 import "@/styles/financeMobile.css";
@@ -65,6 +66,7 @@ import { canUse } from "@/lib/permissionPages";
 import IncomeExpenseFilterPanel from "@/components/income-expenses/IncomeExpenseFilterPanel";
 import IncomeExpenseFilterChips from "@/components/income-expenses/IncomeExpenseFilterChips";
 import { voucherLayer } from "@/lib/voucherSources";
+import { buildIncomeExpenseStatCards } from "@/lib/incomeExpenseStatCards";
 import IncomeExpenseDetailMobile from "@/components/income-expenses/IncomeExpenseDetailMobile";
 import IncomeExpenseForm from "@/components/income-expenses/IncomeExpenseForm";
 import IncomeExpenseQuickCreateDialog from "@/components/income-expenses/IncomeExpenseQuickCreateDialog";
@@ -390,6 +392,7 @@ export default function IncomeExpenseMobilePage() {
     totalIncome: 0, totalExpense: 0, difference: 0,
     internalCount: 0, internalIncome: 0, internalExpense: 0,
     pendingCount: 0, pendingTotal: 0,
+    pendingIncome: 0, pendingExpense: 0,
   };
   // --- Gộp ẩn phiếu đối ứng DI SẢN vào thẻ phiếu gốc (plan Đợt 5, parity desktop) ---
   // Lịch sử trước Đợt 5 có hai thẻ rời rạc cho cùng một nghiệp vụ hoàn tác.
@@ -430,6 +433,40 @@ export default function IncomeExpenseMobilePage() {
     pagination.setPage(1);
   };
   const positive = statsData.difference >= 0;
+  // Ngoặc "gồm cả phiếu chờ xử lý" — cùng toán với desktop, xem
+  // src/lib/incomeExpenseStatCards.ts. Hết phiếu chờ thì thay số bằng ✓.
+  const withPending = buildIncomeExpenseStatCards({
+    totalIncome: statsData.totalIncome,
+    totalExpense: statsData.totalExpense,
+    pendingIncome: statsData.pendingIncome,
+    pendingExpense: statsData.pendingExpense,
+  });
+  // Lời chú theo ĐÚNG Ô ĐANG ĐỨNG (parity desktop): ô Thu có thể sạch trong khi
+  // vẫn còn hàng trăm phiếu CHI chờ. ✓ nói về TIỀN của ô này, không phải số phiếu.
+  const renderPendingSub = (
+    card: { withPending: number; hasPending: boolean },
+    className: string,
+    label: string,
+  ) => {
+    if (isStatsLoading) return null;
+    if (!card.hasPending) {
+      const hint = `Duyệt hết phiếu chờ xử lý cũng không đổi số "${label}" này`;
+      return (
+        <span className={className} style={{ color: "#10b981" }} title={hint}>
+          <Check aria-hidden="true" />
+          <span className="sr-only">{hint}</span>
+        </span>
+      );
+    }
+    return (
+      <span
+        className={className}
+        title={`"${label}" nếu duyệt hết phiếu chờ xử lý (chờ duyệt hoặc chưa chọn sổ quỹ)`}
+      >
+        ({compact(card.withPending)})
+      </span>
+    );
+  };
 
   const cancelMutation = useCancelIncomeExpense();
   const flexCancelMutation = useCancelVoucherFlex();
@@ -607,6 +644,7 @@ export default function IncomeExpenseMobilePage() {
                 <span className="iestat-v" style={{ color: "#10b981" }}>
                   {isStatsLoading ? "…" : compact(statsData.totalIncome)}
                 </span>
+                {renderPendingSub(withPending.income, "iestat-sub", "Tổng thu")}
               </div>
               <div className="iestat">
                 <span className="iestat-l">
@@ -616,6 +654,7 @@ export default function IncomeExpenseMobilePage() {
                 <span className="iestat-v" style={{ color: "#ef4444" }}>
                   {isStatsLoading ? "…" : compact(statsData.totalExpense)}
                 </span>
+                {renderPendingSub(withPending.expense, "iestat-sub", "Tổng chi")}
               </div>
               <div className={"iediff" + (positive ? " pos" : " neg")}>
                 <span className="iediff-l">
@@ -629,6 +668,7 @@ export default function IncomeExpenseMobilePage() {
                   {positive ? "+" : ""}
                   {isStatsLoading ? "…" : compact(statsData.difference)}
                 </span>
+                {renderPendingSub(withPending.difference, "iediff-sub", "Thu − chi")}
               </div>
             </div>
 

@@ -1,13 +1,16 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Minus, FileText } from "lucide-react";
+import { Plus, Minus, FileText, Check } from "lucide-react";
 import { formatVND } from "@/lib/utils";
+import { buildIncomeExpenseStatCards } from "@/lib/incomeExpenseStatCards";
 
 interface IncomeExpenseStatsProps {
   stats: {
     totalIncome: number;
     totalExpense: number;
-    difference: number;
+    // `difference` KHÔNG còn là prop: thẻ Thu-chi tự tính từ totalIncome/
+    // totalExpense (qua buildIncomeExpenseStatCards) để số lớn và số trong
+    // ngoặc luôn cùng một nguồn. Nhận lại nó ở đây chỉ tạo đường trôi câm.
     // B4 (04/07): 3 thẻ = TIỀN THẬT; bút toán nội bộ & phiếu chờ xử lý tách
     // thành dòng phụ trung tính bên dưới (không cộng vào thẻ).
     internalCount?: number;
@@ -15,6 +18,9 @@ interface IncomeExpenseStatsProps {
     internalExpense?: number;
     pendingCount?: number;
     pendingTotal?: number;
+    // 13/09: chờ xử lý tách theo chiều — nuôi con số TRONG NGOẶC của từng thẻ.
+    pendingIncome?: number;
+    pendingExpense?: number;
   };
   isLoading?: boolean;
   /** Bấm dòng "Bút toán nội bộ" → chuyển tab lớp Nội bộ. */
@@ -23,6 +29,14 @@ interface IncomeExpenseStatsProps {
   onShowPending?: () => void;
 }
 
+// Lời chú phải nói về ĐÚNG THẺ ĐANG ĐỨNG, không nói thay cả trang: thẻ Thu có
+// thể sạch trong khi vẫn còn hàng trăm phiếu CHI chờ (đúng trạng thái thật của
+// sổ hôm nay). Và ✓ nói về TIỀN của thẻ này, không phải số phiếu — còn phiếu
+// chờ 0đ thì "duyệt hết cũng không đổi số này" vẫn đúng.
+const pendingHint = (label: string) =>
+  `"${label}" nếu duyệt hết phiếu chờ xử lý (chờ duyệt hoặc chưa chọn sổ quỹ)`;
+const clearHint = (label: string) =>
+  `Duyệt hết phiếu chờ xử lý cũng không đổi số "${label}" này`;
 
 export function IncomeExpenseStats({
   stats,
@@ -34,10 +48,17 @@ export function IncomeExpenseStats({
   const internalNet =
     (stats.internalIncome ?? 0) + (stats.internalExpense ?? 0);
   const pendingCount = stats.pendingCount ?? 0;
+  // Toán nằm ở lib để kiểm được bằng test (src/lib/incomeExpenseStatCards.ts).
+  const withPending = buildIncomeExpenseStatCards({
+    totalIncome: stats.totalIncome,
+    totalExpense: stats.totalExpense,
+    pendingIncome: stats.pendingIncome ?? 0,
+    pendingExpense: stats.pendingExpense ?? 0,
+  });
   const statCards = [
     {
       label: "Thu",
-      value: stats.totalIncome,
+      card: withPending.income,
       icon: Plus,
       iconBg: "bg-emerald-100",
       iconColor: "text-emerald-600",
@@ -46,7 +67,7 @@ export function IncomeExpenseStats({
     },
     {
       label: "Chi",
-      value: stats.totalExpense,
+      card: withPending.expense,
       icon: Minus,
       iconBg: "bg-red-100",
       iconColor: "text-red-600",
@@ -55,7 +76,7 @@ export function IncomeExpenseStats({
     },
     {
       label: "Thu - chi",
-      value: stats.difference,
+      card: withPending.difference,
       icon: FileText,
       iconBg: "bg-blue-100",
       iconColor: "text-blue-600",
@@ -67,28 +88,50 @@ export function IncomeExpenseStats({
   return (
     <div className="space-y-2">
     <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
-      {statCards.map((card) => {
-        const Icon = card.icon;
+      {statCards.map(({ label, card, ...style }) => {
+        const Icon = style.icon;
         return (
           <Card
-            key={card.label}
-            className={`border-l-4 ${card.borderColor} hover:shadow-md transition-shadow`}
+            key={label}
+            className={`border-l-4 ${style.borderColor} hover:shadow-md transition-shadow`}
           >
             <CardContent className="flex items-center gap-4 p-4">
               <div
-                className={`h-12 w-12 rounded-full ${card.iconBg} flex items-center justify-center shrink-0`}
+                className={`h-12 w-12 rounded-full ${style.iconBg} flex items-center justify-center shrink-0`}
               >
-                <Icon className={`h-6 w-6 ${card.iconColor}`} />
+                <Icon className={`h-6 w-6 ${style.iconColor}`} />
               </div>
               <div className="min-w-0">
                 {isLoading ? (
                   <Skeleton className="h-7 w-32" />
                 ) : (
-                  <div className={`text-xl font-bold ${card.valueColor} truncate`}>
+                  <div className={`text-xl font-bold ${style.valueColor} truncate`}>
                     {formatVND(card.value)}
                   </div>
                 )}
-                <div className="text-sm text-muted-foreground">{card.label}</div>
+                {/* Ngoặc = tổng ĐÃ GỒM phiếu chờ xử lý; hết phiếu chờ thì ✓.
+                    Cả 3 thẻ đều có để tự kiểm chứng được bằng mắt:
+                    ngoặc Thu − ngoặc Chi = ngoặc Thu-chi. */}
+                <div className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+                  <span>{label}</span>
+                  {!isLoading &&
+                    (card.hasPending ? (
+                      <span
+                        className="font-semibold tabular-nums text-amber-700"
+                        title={pendingHint(label)}
+                      >
+                        ({formatVND(card.withPending)})
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center text-emerald-600"
+                        title={clearHint(label)}
+                      >
+                        <Check className="h-4 w-4" aria-hidden="true" />
+                        <span className="sr-only">{clearHint(label)}</span>
+                      </span>
+                    ))}
+                </div>
               </div>
             </CardContent>
           </Card>

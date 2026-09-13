@@ -605,6 +605,10 @@ export const incomeExpenseStatsQuery = (
       internalExpense: number;
       pendingCount: number;
       pendingTotal: number;
+      // Chờ xử lý TÁCH THEO CHIỀU — RPC trả sẵn từ 20260704140000, trước đây
+      // client vứt đi nên 3 thẻ Thu chi không hiện được "tổng nếu duyệt hết".
+      pendingIncome: number;
+      pendingExpense: number;
       // Tổng MỌI khoản (cash+internal+pending) — trang Phân bổ LN chế độ
       // "gồm cả khoản ngoài KQKD" dùng; trang Thu chi bỏ qua.
       allIncome?: number;
@@ -614,6 +618,7 @@ export const incomeExpenseStatsQuery = (
         totalIncome: 0, totalExpense: 0, difference: 0,
         internalCount: 0, internalIncome: 0, internalExpense: 0,
         pendingCount: 0, pendingTotal: 0,
+        pendingIncome: 0, pendingExpense: 0,
       };
       // Kỳ áp dụng: RPC vẫn cần danh sách voucher_id (p_voucher_ids) — đi qua
       // POST body nên không dính giới hạn URL như `.in()` trên GET.
@@ -693,12 +698,16 @@ export const incomeExpenseStatsQuery = (
       if (!s) return EMPTY_STATS;
       const totalIncome = Number(s.cash_income) || 0;
       const totalExpense = Number(s.cash_expense) || 0;
+      // MỘT nguồn duy nhất cho 2 số chờ-xử-lý-theo-chiều: vừa nuôi allIncome/
+      // allExpense (Phân bổ LN), vừa nuôi ngoặc "gồm cả chờ duyệt" ở 3 thẻ.
+      const pendingIncome = Number(s.pending_income) || 0;
+      const pendingExpense = Number(s.pending_expense) || 0;
       const allIncome = businessResultOnly
         ? totalIncome
-        : totalIncome + (Number(s.internal_income) || 0) + (Number(s.pending_income) || 0);
+        : totalIncome + (Number(s.internal_income) || 0) + pendingIncome;
       const allExpense = businessResultOnly
         ? totalExpense
-        : totalExpense + (Number(s.internal_expense) || 0) + (Number(s.pending_expense) || 0);
+        : totalExpense + (Number(s.internal_expense) || 0) + pendingExpense;
       return {
         totalIncome,
         totalExpense,
@@ -710,6 +719,8 @@ export const incomeExpenseStatsQuery = (
         internalExpense: Number(s.internal_expense) || 0,
         pendingCount: Number(s.pending_count) || 0,
         pendingTotal: Number(s.pending_total) || 0,
+        pendingIncome,
+        pendingExpense,
       };
     },
   });

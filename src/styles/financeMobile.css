@@ -20,6 +20,11 @@
 .cm-app .iediff-l { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .3px; color: var(--ink-3); margin-bottom: 5px; }
 .cm-app .iediff-l svg { width: 13px; height: 13px; }
 .cm-app .iediff-v { font-family: var(--mono); font-weight: 700; font-size: 25px; letter-spacing: -.8px; line-height: 1; }
+/* Dòng con "(tổng gồm cả phiếu chờ xử lý)" — hết phiếu chờ thì là dấu ✓ xanh.
+   Màu hổ phách khớp chấm "Chờ xử lý" ở lớp phiếu, để mắt nối được hai chỗ. */
+.cm-app .iestat-sub, .cm-app .iediff-sub { font-family: var(--mono); font-weight: 700; font-size: 12.5px; line-height: 1; color: #b45309; display: flex; align-items: center; gap: 4px; }
+.cm-app .iediff-sub { justify-content: center; margin-top: 5px; }
+.cm-app .iestat-sub svg, .cm-app .iediff-sub svg { width: 14px; height: 14px; }
 
 /* ===== Thu chi — chuyển chế độ Phiếu lẻ / Phiếu tổng ===== */
 .cm-app .ieseg { display: flex; gap: 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; padding: 3px; margin-bottom: 14px; }
