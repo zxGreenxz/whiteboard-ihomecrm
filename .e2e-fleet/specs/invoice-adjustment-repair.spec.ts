@@ -56,7 +56,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
   };
   const openEditor = async () => {
     await page.locator('button[title="Điều chỉnh hóa đơn"],button[title="Chỉnh sửa"]').click();
-    const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /^Điều chỉnh hóa đơn / }) });
+    const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Điều chỉnh hoá đơn', exact: true }) });
     await expect(dialog).toBeVisible();
     return dialog;
   };
@@ -90,7 +90,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     expect(await state()).toMatchObject({ paid_amount: 3239000, remaining_amount: 2000000, active: 1 });
 
     const editor = await openEditor();
-    await editor.getByLabel('Đơn giá 1', { exact: true }).fill('6239000');
+    await editor.getByLabel('Giá phòng', { exact: true }).fill('6239000');
     await editor.getByLabel('Lý do điều chỉnh', { exact: true }).fill('E2E bổ sung tiền thuê');
     const edited = waitRpc('adjust_invoice_v2');
     await editor.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();
@@ -130,7 +130,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
 
     await page.setViewportSize({ width: 1440, height: 1000 }); await page.reload();
     const secondEditor = await openEditor();
-    await secondEditor.getByLabel('Ghi chú giảm trừ', { exact: true }).fill('E2E chỉ cập nhật ghi chú');
+    await secondEditor.getByLabel('Mô tả cọc', { exact: true }).fill('E2E chỉ cập nhật ghi chú');
     await secondEditor.getByLabel('Lý do điều chỉnh', { exact: true }).fill('E2E sửa ghi chú không đổi tiền');
     // Another real browser tab changes the document while this form remains open.
     const other = await page.context().newPage();
@@ -139,8 +139,8 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     try {
       await other.goto(`/invoices/${invoiceId}`);
       await other.locator('button[title="Điều chỉnh hóa đơn"]').click();
-      const otherEditor = other.getByRole('dialog').filter({ has: other.getByRole('heading', { name: /^Điều chỉnh hóa đơn / }) });
-      await otherEditor.getByLabel('Ghi chú giảm trừ', { exact: true }).fill('E2E tab thứ hai');
+      const otherEditor = other.getByRole('dialog').filter({ has: other.getByRole('heading', { name: 'Điều chỉnh hoá đơn', exact: true }) });
+      await otherEditor.getByLabel('Mô tả cọc', { exact: true }).fill('E2E tab thứ hai');
       await otherEditor.getByLabel('Lý do điều chỉnh', { exact: true }).fill('E2E tạo phiên bản cạnh tranh');
       const competing = waitRpc('adjust_invoice_v2', other);
       await otherEditor.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();
@@ -153,8 +153,8 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     expect((await staleResponse.json()).code).toBe('PT409');
     await expect(secondEditor.getByRole('button', { name: 'Lưu điều chỉnh', exact: true })).toBeDisabled();
     await secondEditor.getByRole('button', { name: 'Tải lại hóa đơn', exact: true }).click();
-    await expect(secondEditor.getByLabel('Ghi chú giảm trừ', { exact: true })).toHaveValue('E2E tab thứ hai');
-    await secondEditor.getByLabel('Ghi chú giảm trừ', { exact: true }).fill('E2E chỉ cập nhật ghi chú');
+    await expect(secondEditor.getByLabel('Mô tả cọc', { exact: true })).toHaveValue('E2E tab thứ hai');
+    await secondEditor.getByLabel('Mô tả cọc', { exact: true }).fill('E2E chỉ cập nhật ghi chú');
     await secondEditor.getByLabel('Lý do điều chỉnh', { exact: true }).fill('E2E tải lại rồi sửa ghi chú');
     const secondEdit = waitRpc('adjust_invoice_v2');
     await secondEditor.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();
@@ -189,7 +189,7 @@ test('issued adjustment, collection, review, mobile history and edit after rever
     expect(await state()).toMatchObject({ paid_amount: 0, active: 0 });
     await page.goto(`/invoices/${invoiceId}`);
     const afterReverse = await openEditor();
-    await afterReverse.getByLabel('Đơn giá 1', { exact: true }).fill('4239000');
+    await afterReverse.getByLabel('Giá phòng', { exact: true }).fill('4239000');
     await afterReverse.getByLabel('Lý do điều chỉnh', { exact: true }).fill('E2E giảm tiền sau hoàn tác');
     const thirdEdit = waitRpc('adjust_invoice_v2');
     await afterReverse.getByRole('button', { name: 'Lưu điều chỉnh', exact: true }).click();

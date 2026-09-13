@@ -227,3 +227,26 @@ gaps:
       cân nhắc nâng riêng hạn mức đó cho org DEMO (quyết định chủ dự án, không tự
       ý đổi governance cap).
 
+
+  - id: reverse-collection-so-ngay-theo-utc
+    where: >
+      public.reverse_invoice_collection_v5(uuid,date,text,text) — cận trên "ngày hoàn tác không
+      được ở tương lai" (thân hàm sinh trong
+      supabase/migrations/20260801001000_wp2_authz_remaining.sql, quanh dòng 125–129)
+    expires_at: 2026-10-31
+    why: >
+      RPC so p_reversal_date với CURRENT_DATE của phiên Postgres (TimeZone = UTC), còn app và
+      public.org_today_v1() tính "hôm nay" theo múi giờ của org (Asia/Ho_Chi_Minh). Đo
+      14/09/2026 lúc 00:05 giờ VN (13/09 17:05 UTC): khoản thu vừa ghi qua UI mang
+      collection_date 14/09; hoàn tác với ngày 14/09 bị từ chối "Ngày hoàn tác không được ở
+      tương lai (hôm nay là 13/09/2026)", còn ngày sớm hơn collection_date thì cận dưới của
+      chính RPC từ chối. Hệ quả: từ 00:00 đến 07:00 giờ VN mỗi ngày KHÔNG hoàn tác được bất kỳ
+      khoản thu nào ghi trong ngày (VN). Cùng khung giờ đó, teardown của
+      scripts/lib/v5-collection-harness.mjs và bước hoàn tác trong
+      .e2e-fleet/specs/invoice-adjustment-repair.spec.ts + accounting-chain.spec.ts đỏ theo và
+      để lại fixture DEMO chưa dọn (chỉ dọn được sau 00:00 UTC).
+    exit_condition: >
+      Migration đổi cận trên sang public.org_today_v1(<org của collection>) — đúng nguồn "hôm
+      nay" app đang dùng — kèm test DB cho ca TimeZone=UTC lúc 00:00–07:00 VN, đi qua lane
+      migrate:forward và review độc lập vì đụng tiền. Đóng khi hoàn tác một khoản thu ghi trong
+      ngày thành công lúc ~01:00 giờ VN, hoặc khi test DB mô phỏng ca đó xanh.

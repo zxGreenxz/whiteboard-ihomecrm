@@ -282,11 +282,17 @@ async function createContractThroughUi(
   await expect(billingEndInput).not.toHaveValue('');
   await fillDate(billingEndInput, dates.billingEnd);
 
+  // Tiền thuê / tiền cọc mặc định KHOÁ theo giá phòng (contract-rent-deposit-lock):
+  // phải bấm bút chì "Sửa tiền thuê" / "Sửa tiền cọc" rồi mới gõ được.
   const rentInput = dialog.locator('input[name="rent_price"]');
   const depositInput = dialog.locator('input[name="total_deposit"]');
+  await dialog.getByRole('button', { name: 'Sửa tiền thuê' }).click();
+  await expect(rentInput).not.toHaveAttribute('readonly', '');
   await rentInput.fill(String(RENT_AMOUNT));
   await rentInput.press('Tab');
   await expect(depositInput).toHaveValue('113.000');
+  await dialog.getByRole('button', { name: 'Sửa tiền cọc' }).click();
+  await expect(depositInput).not.toHaveAttribute('readonly', '');
   await depositInput.fill(String(DEPOSIT_AMOUNT));
   await depositInput.press('Tab');
   await dialog.locator('textarea[name="notes"]').fill(marker);
