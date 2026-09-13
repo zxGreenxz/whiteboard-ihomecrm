@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAdjustmentItems, pricingFromInvoice } from '@/lib/invoiceAdjustmentEntry';
+import { adjustmentReconcileBlocker, buildAdjustmentItems, pricingFromInvoice } from '@/lib/invoiceAdjustmentEntry';
 import { decomposeInvoice } from '@/lib/invoiceEntry';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
@@ -61,6 +61,18 @@ describe('buildAdjustmentItems', () => {
     const d = decomposeInvoice(invoice);
     const items = buildAdjustmentItems({ ...d.values, water_amount: 0, custom_items: d.values.custom_items.filter((c) => c.id !== U(15)) }, d);
     expect(items.map((i) => i.id)).toEqual([U(11), U(12), U(14)]);
+  });
+});
+
+describe('adjustmentReconcileBlocker', () => {
+  it('blocks when hand-entered previous debt has no matching sources', () => {
+    expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [] })).toMatch(/không khớp nguồn đối chiếu \(0 đ\)/);
+    expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [{ type: 'invoice', id: 'x', amount: 60_000, label: 'a' }] })).toMatch(/60.000 đ/);
+  });
+  it('allows reconciled debt, zero debt and settlement invoices', () => {
+    expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 100_000, previous_debt_sources: [{ type: 'invoice', id: 'x', amount: 40_000, label: 'a' }, { type: 'deposit', contract_id: 'c', amount: 60_000, label: 'b' }] })).toBeNull();
+    expect(adjustmentReconcileBlocker({ kind: 'MONTHLY', previous_debt: 0, previous_debt_sources: [] })).toBeNull();
+    expect(adjustmentReconcileBlocker({ kind: 'SETTLEMENT', previous_debt: 100_000, previous_debt_sources: [] })).toBeNull();
   });
 });
 

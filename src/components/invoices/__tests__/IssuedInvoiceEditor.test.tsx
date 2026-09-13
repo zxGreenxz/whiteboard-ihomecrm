@@ -84,3 +84,9 @@ it('opens the canonical payment history in context after an allocation constrain
   fireEvent.click(await screen.findByRole('button', { name: 'Mở lịch sử thanh toán' }));
   expect(await screen.findByText('Hoàn tác khoản thu')).toBeTruthy();
 });
+
+it('khoá Lưu và báo rõ khi hoá đơn mang nợ cũ nhập tay không nguồn', () => {
+  render(<IssuedInvoiceEditor invoice={{ ...invoice, kind: 'MONTHLY', previous_debt: 100000, previous_debt_sources: [] }} onOpenChange={() => {}} />);
+  expect(screen.getByRole('alert').textContent).toMatch(/Nợ cũ 100.000 đ không khớp nguồn đối chiếu/);
+  expect((screen.getByRole('button', { name: 'Lưu điều chỉnh' }) as HTMLButtonElement).disabled).toBe(true);
+});

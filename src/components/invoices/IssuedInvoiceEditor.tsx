@@ -10,7 +10,7 @@ import {
   createAdjustmentSnapshot,
   issuedInvoiceSchema,
 } from '@/lib/invoiceAdjustmentEditor';
-import { buildAdjustmentItems, pricingFromInvoice } from '@/lib/invoiceAdjustmentEntry';
+import { adjustmentReconcileBlocker, buildAdjustmentItems, pricingFromInvoice } from '@/lib/invoiceAdjustmentEntry';
 import { InvoiceAdjustmentError } from '@/lib/invoiceAdjustmentRpc';
 import {
   decomposeInvoice,
@@ -128,6 +128,7 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
 
   const close = () => { if (!inFlight.current) onOpenChange(false); };
   const src = opened.invoice;
+  const reconcileBlocker = adjustmentReconcileBlocker(src);
 
   return <>
     <InvoiceEntryShell
@@ -158,7 +159,7 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
         onChange: (s) => setValue('reason', s, { shouldValidate: !!errors.reason }),
         error: errors.reason?.message,
       }}
-      validationError={firstEntryError(errors)}
+      validationError={firstEntryError(errors) ?? reconcileBlocker}
       notice={error && (
         <div role="alert" className="space-y-2 rounded-[9px] border border-red-300 bg-red-50 p-3 text-sm text-red-800">
           <p>{error.message}</p>
@@ -178,7 +179,7 @@ export default function IssuedInvoiceEditor({ invoice, onOpenChange }: Props) {
         label: 'Lưu điều chỉnh',
         pendingLabel: 'Đang lưu…',
         pending: busy || mutation.isPending,
-        disabled: stale,
+        disabled: stale || !!reconcileBlocker,
       }}
     />
     {paymentsOpen && <Suspense fallback={null}><PaymentsSummaryDialog open onOpenChange={setPaymentsOpen} invoice={invoice} /></Suspense>}

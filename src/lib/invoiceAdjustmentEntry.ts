@@ -14,7 +14,34 @@ import {
   type InvoiceSourceItem,
 } from './invoiceEntry';
 
+import type { InvoiceWithRelations } from '@/types/invoice';
+
 const DEFAULT_ELEC = 3500;
+
+/**
+ * Lý do máy chủ sẽ từ chối điều chỉnh vì cơ cấu hoá đơn không đối soát được
+ * (cùng luật với app_private.sync_finance_invoice_components_v1), hoặc null.
+ * Chỉ áp cho hoá đơn tháng; hoá đơn thanh lý không xét nợ cũ.
+ */
+export function adjustmentReconcileBlocker(invoice: Pick<InvoiceWithRelations, 'kind' | 'previous_debt' | 'previous_debt_sources'>): string | null {
+  if (invoice.kind === 'SETTLEMENT') return null;
+  const debt = Number(invoice.previous_debt) || 0;
+  const sources = Array.isArray(invoice.previous_debt_sources) ? invoice.previous_debt_sources : null;
+  if (!sources) return debt > 0 ? reconcileMessage(debt, 0) : null;
+  let total = 0;
+  for (const s of sources as Array<{ type?: string; amount?: unknown }>) {
+    const amount = Number(s?.amount);
+    if ((s?.type !== 'invoice' && s?.type !== 'deposit') || !Number.isFinite(amount) || amount < 0) {
+      return `Nợ cũ ${fmt(debt)} có nguồn không hợp lệ nên máy chủ không đối soát được cơ cấu hoá đơn — cần kế toán sửa nguồn nợ trước khi điều chỉnh.`;
+    }
+    total += amount;
+  }
+  return Math.abs(total - debt) >= 0.01 ? reconcileMessage(debt, total) : null;
+}
+
+const fmt = (n: number) => `${new Intl.NumberFormat('vi-VN').format(Math.round(n))} đ`;
+const reconcileMessage = (debt: number, sourced: number) =>
+  `Nợ cũ ${fmt(debt)} không khớp nguồn đối chiếu (${fmt(sourced)}) — máy chủ sẽ từ chối điều chỉnh hoá đơn này cho tới khi kế toán đối soát nợ cũ.`;
 const DEFAULT_WATER = 100000;
 const DEFAULT_PDV = 150000;
 
