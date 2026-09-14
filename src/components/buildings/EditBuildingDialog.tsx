@@ -34,6 +34,8 @@ import { useUpdateBuilding } from "@/hooks/useBuildings";
 import type { Database } from "@/integrations/supabase/types";
 import { CommissionTiersField } from "./CommissionTiersField";
 import { DEFAULT_COMMISSION_TIERS, type CommissionTier } from "@/types/building";
+import { BuildingLegalOwnerFields } from './BuildingLegalOwnerFields';
+import { useBuildingLegalOwnerForm } from '@/hooks/useBuildingLegalOwnerForm';
 
 type Building = Database["public"]["Tables"]["buildings"]["Row"];
 
@@ -73,6 +75,7 @@ export function EditBuildingDialog({
   building,
 }: EditBuildingDialogProps) {
   const updateBuilding = useUpdateBuilding();
+  const owner = useBuildingLegalOwnerForm(building.id, open);
 
   const form = useForm<BuildingFormValues>({
     resolver: zodResolver(buildingSchema),
@@ -114,6 +117,8 @@ export function EditBuildingDialog({
   }, [building]);
 
   const onSubmit = async (data: BuildingFormValues) => {
+    if (!await owner.validate()) return;
+    const ownerSnapshot = owner.form.getValues();
     try {
       await updateBuilding.mutateAsync({
         id: building.id,
@@ -131,6 +136,7 @@ export function EditBuildingDialog({
           commission_tiers: data.commission_tiers as any,
         },
       });
+      await owner.save(building.id, ownerSnapshot);
       onOpenChange(false);
     } catch (error) {
       // Error is handled by the mutation
@@ -138,7 +144,7 @@ export function EditBuildingDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value => { if (!form.formState.isSubmitting) onOpenChange(value); }}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>Chỉnh sửa Tòa nhà</DialogTitle>
@@ -361,16 +367,18 @@ export function EditBuildingDialog({
                 />
               </div>
 
+              <BuildingLegalOwnerFields {...owner} />
               <div className="flex justify-end gap-3 pt-4">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => onOpenChange(false)}
+                  disabled={form.formState.isSubmitting}
                 >
                   Hủy
                 </Button>
-                <Button type="submit" disabled={updateBuilding.isPending}>
-                  {updateBuilding.isPending ? "Đang cập nhật..." : "Cập nhật"}
+                <Button type="submit" disabled={form.formState.isSubmitting || updateBuilding.isPending || owner.saving || owner.loading || !!owner.error}>
+                  {form.formState.isSubmitting ? "Đang cập nhật..." : "Cập nhật"}
                 </Button>
               </div>
             </form>

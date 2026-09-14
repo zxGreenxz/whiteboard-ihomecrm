@@ -16,6 +16,9 @@
   },
   "include": [],
   "files": [
+    "src/lib/buildingLegalOwner.ts",
+    "src/hooks/useBuildingLegalOwnerForm.ts",
+    "src/components/buildings/BuildingLegalOwnerFields.tsx",
     "src/components/customers/CT01DownloadButton.tsx",
     "src/lib/ct01Document.ts",
     "src/lib/ct01DownloadService.ts",

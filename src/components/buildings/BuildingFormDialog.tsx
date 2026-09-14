@@ -44,6 +44,8 @@ import BuildingAddressSection from './BuildingAddressSection';
 import BuildingGeoSection from './BuildingGeoSection';
 import BuildingServicesSection from './BuildingServicesSection';
 import { CommissionTiersField } from './CommissionTiersField';
+import { BuildingLegalOwnerFields } from './BuildingLegalOwnerFields';
+import { useBuildingLegalOwnerForm } from '@/hooks/useBuildingLegalOwnerForm';
 
 interface BuildingFormDialogProps {
   open: boolean;
@@ -57,6 +59,9 @@ export default function BuildingFormDialog({
   building,
 }: BuildingFormDialogProps) {
   const isEditMode = !!building;
+  const owner = useBuildingLegalOwnerForm(building?.id, open);
+  const [createdBuildingId, setCreatedBuildingId] = useState<string | null>(null);
+  useEffect(() => { if (!open) setCreatedBuildingId(null); }, [open]);
 
   // Hooks
   const createBuilding = useCreateBuilding();
@@ -171,6 +176,8 @@ export default function BuildingFormDialog({
   }, [allServices, existingBuildingServices]);
 
   const onSubmit = async (data: BuildingFormData) => {
+    if (!await owner.validate()) return;
+    const ownerSnapshot = owner.form.getValues();
     const servicesPayload = buildingServices.map((s) => ({
       service_id: s.service_id,
       is_active: s.is_active,
@@ -199,13 +206,14 @@ export default function BuildingFormDialog({
             commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
           },
         });
+        await owner.save(building.id, ownerSnapshot);
         await upsertServices.mutateAsync({
           buildingId: building.id,
           services: servicesPayload,
         });
         toast.success('Dữ liệu đã được CẬP NHẬT thành công');
       } else {
-        const newBuilding = await createBuilding.mutateAsync({
+        const newBuilding = createdBuildingId ? { id: createdBuildingId } : await createBuilding.mutateAsync({
           name: data.name,
           code: data.code || null,
           province: data.province,
@@ -222,6 +230,8 @@ export default function BuildingFormDialog({
           default_account_id_tk: (data.default_account_id_tk ?? null) as any,
           commission_tiers: (data.commission_tiers ?? DEFAULT_COMMISSION_TIERS) as any,
         });
+        setCreatedBuildingId(newBuilding.id);
+        await owner.save(newBuilding.id, ownerSnapshot);
         await upsertServices.mutateAsync({
           buildingId: newBuilding.id,
           services: servicesPayload,
@@ -235,13 +245,13 @@ export default function BuildingFormDialog({
   };
 
   const isPending =
-    createBuilding.isPending || updateBuilding.isPending || upsertServices.isPending;
+    createBuilding.isPending || updateBuilding.isPending || upsertServices.isPending || owner.saving || form.formState.isSubmitting;
 
   const status = form.watch('status');
   const hasElevator = form.watch('has_elevator');
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={value => { if (!isPending) onOpenChange(value); }}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0">
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="text-green-600 text-lg font-bold uppercase">
@@ -254,6 +264,7 @@ export default function BuildingFormDialog({
         <ScrollArea className="max-h-[calc(90vh-80px)] px-6 pb-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <fieldset disabled={!!createdBuildingId} className="space-y-4">
               {/* Section 1: Thông tin cơ bản */}
               <Card>
                 <CardContent className="pt-6 space-y-4">
@@ -527,6 +538,9 @@ export default function BuildingFormDialog({
                 </CardContent>
               </Card>
 
+              </fieldset>
+              {createdBuildingId && <p role="status" className="text-sm text-amber-700">Tòa nhà đã được tạo. Lần lưu tiếp theo chỉ hoàn tất chủ sở hữu và dịch vụ; thông tin cơ bản cần chỉnh sau khi hoàn tất.</p>}
+              <BuildingLegalOwnerFields {...owner} />
               {/* Footer */}
               <div className="flex justify-end gap-3 pt-2 pb-2">
                 <Button
@@ -539,7 +553,7 @@ export default function BuildingFormDialog({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isPending}
+                  disabled={isPending || owner.loading || !!owner.error}
                   className="bg-green-600 hover:bg-green-700"
                 >
                   {isPending ? 'Đang lưu...' : 'Lưu'}

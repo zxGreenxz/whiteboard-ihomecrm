@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { createServer, transformWithEsbuild, type ViteDevServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +23,7 @@ test.beforeAll(async () => {
     import Modal from '@/components/customers/CustomerDetailModal';
     createRoot(document.getElementById('root')).render(<MemoryRouter><Modal open onOpenChange={()=>{}} customerId="ct01-demo-customer"/><Toaster/></MemoryRouter>);
   `;
-  const customer = { id: 'ct01-demo-customer', full_name: 'Nguyễn Văn Kiểm Thử', date_of_birth: '2001-12-05', gender: 'MALE', id_number: '012345678901', phone: '0901234567', email: 'test@example.com' };
+  const customer = { id: 'ct01-demo-customer', full_name: 'Nguyễn Văn Kiểm Thử', date_of_birth: '2001-12-05', gender: 'MALE', id_number: '012345678901', phone: '0901234567', email: 'test@example.com', id_issue_date: '2022-02-25', id_issue_place: 'Cục Cảnh Sát', permanent_address: 'Địa chỉ thường trú kiểm thử' };
   const modules: Record<string, string> = {
     '/__ct01_fixture.tsx': fixture,
     '@/hooks/useCustomers': `export const useCustomer=()=>({data:${JSON.stringify(customer)},isLoading:false});`,
@@ -64,7 +64,23 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await server?.close(); });
 
 const building = { id: 'ct01-demo-building', name: 'Tòa kiểm thử', street_address: '123 Đường Kiểm Thử', ward: 'Phường Bình Thạnh', district: '', province: 'Thành phố Hồ Chí Minh', deleted_at: null };
-const link = (value = building) => ({ contract: { status: 'ACTIVE', deleted_at: null, room: { deleted_at: null, building: value } } });
+const owner = { full_name: 'Trần Thị Chủ Quyền', birth_year: 1970, id_number: '001234567890', id_issue_date: '2020-02-03', id_issue_place: 'Cục Cảnh Sát', permanent_address: '45 Đường Chủ Quyền' };
+const link = (value = building, roomName = 'A101') => ({ contract: { id: `contract-${value.id}-${roomName}`, status: 'ACTIVE', deleted_at: null, room: { id: `room-${value.id}-${roomName}`, name: roomName, deleted_at: null, building: value } } });
+const consoleErrors = new Map<Page, string[]>();
+test.beforeEach(async ({ page }) => {
+  const errors: string[] = [];
+  consoleErrors.set(page, errors);
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.route('**/rest/v1/building_legal_owners?*', route => {
+    expect(route.request().method()).toBe('GET');
+    return route.fulfill({ json: owner });
+  });
+});
+test.afterEach(async ({ page }) => {
+  expect(consoleErrors.get(page)).toEqual([]);
+  consoleErrors.delete(page);
+});
 
 test('bấm trong modal tải Word đúng dữ liệu, khóa bấm lặp, không chuyển trang', async ({ page }) => {
   const errors: string[] = [];
@@ -83,13 +99,17 @@ test('bấm trong modal tải Word đúng dữ liệu, khóa bấm lặp, không
     await pendingRequest;
     await route.fulfill({ json: [link(), link()] });
   });
-  await page.clock.setFixedTime(new Date('2026-09-13T18:01:00Z'));
+  await page.clock.setFixedTime(new Date('2026-09-14T16:59:59Z'));
   await page.goto(`${base}/__ct01.html`);
   const button = page.getByRole('button', { name: /Bản khai nhân khẩu/ });
   await expect(button).toBeVisible();
+  await expect(page.getByLabel('Thời hạn tạm trú')).toHaveValue('24');
   const event = page.waitForEvent('download');
   await button.evaluate(element => { (element as HTMLButtonElement).click(); (element as HTMLButtonElement).click(); });
   await expect(page.getByRole('button', { name: 'Đang tạo tờ khai CT01…' })).toBeDisabled();
+  await expect(page.getByLabel('Thời hạn tạm trú')).toBeDisabled();
+  // A slow request crossing midnight keeps the day the user requested the file.
+  await page.clock.setFixedTime(new Date('2026-09-14T17:01:00Z'));
   releaseRequest();
   const download = await event;
   expect(download.suggestedFilename()).toBe('CT01 - Nguyễn Văn Kiểm Thử.docx');
@@ -101,7 +121,11 @@ test('bấm trong modal tải Word đúng dữ liệu, khóa bấm lặp, không
   expect(xml).toContain('Công an Phường Bình Thạnh');
   expect(xml).toContain('123 Đường Kiểm Thử');
   expect(xml).not.toContain('MALE');
-  expect(xml.match(/ngày 14 tháng 09 năm 2026/g)).toHaveLength(4);
+  expect(xml.replace(/<[^>]+>/g, '').match(/ngày 14 tháng 09 năm 2026/g)).toHaveLength(4);
+  expect(xml).toContain('HỢP ĐỒNG CHO THUÊ NHÀ Ở');
+  expect(xml).toContain(owner.full_name);
+  expect(xml).toContain('Đăng ký tạm trú 24 tháng tại');
+  expect(xml.replace(/<[^>]+>/g, '')).toContain('thời gian 24 tháng');
   expect(xml).not.toMatch(/\{\w+\}/);
   await expect(page.getByRole('dialog', { name: 'Chi tiết khách hàng' })).toBeVisible();
   expect(page.url()).toBe(`${base}/__ct01.html`);
@@ -113,8 +137,9 @@ test('nhiều tòa cho chọn, loại hợp đồng cũ và tòa đã xóa', asy
   const second = { ...building, id: 'ct01-demo-second', name: 'Tòa thứ hai', ward: 'Phường Thủ Đức' };
   await page.route('**/rest/v1/contract_customers?*', route => route.fulfill({ json: [link(), link(second), { contract: { ...link().contract, status: 'TERMINATED' } }, link({ ...building, id: 'deleted', name: 'Đã xóa', deleted_at: '2026-01-01' })] }));
   await page.goto(`${base}/__ct01.html`);
+  await page.getByLabel('Thời hạn tạm trú').selectOption('12');
   await page.getByRole('button', { name: /Bản khai nhân khẩu/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Chọn tòa nhà kê khai' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Chọn phòng kê khai' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Đã xóa/ })).toHaveCount(0);
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: /Tòa thứ hai/ }).click();
@@ -122,6 +147,31 @@ test('nhiều tòa cho chọn, loại hợp đồng cũ và tòa đã xóa', asy
   const xml = new PizZip(await readFile((await download.path())!)).file('word/document.xml')!.asText();
   expect(xml).toContain('Công an Phường Thủ Đức');
   expect(xml).not.toContain('Phường Bình Thạnh');
+  expect(xml).toContain('Đăng ký tạm trú 12 tháng tại');
+  expect(xml.replace(/<[^>]+>/g, '')).toContain('thời gian 12 tháng');
+});
+
+test('nhiều phòng cùng tòa vẫn chọn đúng phòng hợp đồng thuê', async ({ page }) => {
+  await page.route('**/rest/v1/contract_customers?*', route => route.fulfill({ json: [link(), link(building, 'B202')] }));
+  await page.goto(`${base}/__ct01.html`);
+  await page.getByRole('button', { name: /Bản khai nhân khẩu/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Chọn phòng kê khai' })).toBeVisible();
+  const event = page.waitForEvent('download');
+  await page.getByRole('button', { name: /B202/ }).click();
+  const result = await event;
+  const xml = new PizZip(await readFile((await result.path())!)).file('word/document.xml')!.asText();
+  expect(xml).toContain('B202');
+  expect(xml).not.toContain('A101');
+});
+
+test('chưa nhập chủ quyền thì báo cần bổ sung và cho thử lại', async ({ page }) => {
+  await page.route('**/rest/v1/contract_customers?*', route => route.fulfill({ json: [link()] }));
+  await page.route('**/rest/v1/building_legal_owners?*', route => route.fulfill({ json: null }));
+  await page.goto(`${base}/__ct01.html`);
+  const button = page.getByRole('button', { name: /Bản khai nhân khẩu/ });
+  await button.click();
+  await expect(page.getByText(/Tòa nhà chưa.*chủ quyền/)).toBeVisible();
+  await expect(button).toBeEnabled();
 });
 
 test('không có tòa hoặc thiếu phường báo rõ và thử lại được', async ({ page }) => {

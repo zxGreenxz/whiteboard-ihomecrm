@@ -1,0 +1,56 @@
+import { readFileSync } from 'node:fs';
+import { test } from 'vitest';
+import assert from 'node:assert/strict';
+import { PGlite } from '@electric-sql/pglite';
+
+const migration = readFileSync(new URL('../../supabase/migrations/20260914013540_building_legal_owners_private.sql', import.meta.url), 'utf8');
+const building = '10000000-0000-4000-8000-000000000001';
+const org = 'dddd0000-0000-4000-8000-000000000001';
+const user = '20000000-0000-4000-8000-000000000001';
+const otherBuilding = '10000000-0000-4000-8000-000000000002';
+const otherOrg = 'cccc0000-0000-4000-8000-000000000001';
+test('owner storage enforces roles, building scope, sandbox and initial create exactly once; migration replays', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE SCHEMA auth;
+      CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
+      CREATE TABLE public.organizations(id uuid PRIMARY KEY);
+      CREATE TABLE public.buildings(id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations, user_id uuid, deleted_at timestamptz);
+      CREATE FUNCTION public.can_access_building(uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT $1::text=current_setting('test.building',true) $$;
+      CREATE FUNCTION public.can_do_on_building(text,text,uuid) RETURNS boolean LANGUAGE sql AS $$ SELECT ($1||'.'||$2)=ANY(string_to_array(current_setting('test.permissions',true),',')) AND EXISTS(SELECT 1 FROM public.buildings WHERE id=$3 AND organization_id::text=current_setting('test.org',true)) $$;
+      CREATE FUNCTION public.is_super_admin() RETURNS boolean LANGUAGE sql AS $$ SELECT current_setting('test.super',true)='true' $$;
+      CREATE FUNCTION public.sandbox_org_ids() RETURNS uuid[] LANGUAGE sql AS $$ SELECT ARRAY['${org}'::uuid] $$;
+      GRANT USAGE ON SCHEMA public,auth TO authenticated; GRANT SELECT ON buildings TO authenticated;
+      INSERT INTO organizations VALUES ('${org}'),('${otherOrg}'); INSERT INTO buildings VALUES ('${building}','${org}','${user}',null),('${otherBuilding}','${otherOrg}','${user}',null);
+      SELECT set_config('request.jwt.claim.sub','${user}',false),set_config('test.building','${building}',false),set_config('test.org','${org}',false),set_config('test.super','false',false);`);
+    await db.exec(migration); await db.exec(migration);
+    await db.exec(`INSERT INTO building_legal_owners(building_id,organization_id,full_name) VALUES('${otherBuilding}','${otherOrg}','Other org'); SET ROLE anon;`);
+    await assert.rejects(db.exec('SELECT * FROM building_legal_owners'), /permission denied/i);
+    await assert.rejects(db.query('SELECT public.save_building_legal_owner($1,$2)',[building,{}]), /permission denied/i);
+    await db.exec('RESET ROLE');
+    await db.exec(`SET ROLE authenticated; SELECT set_config('test.permissions','buildings.create',false);`);
+    await db.query(`SELECT public.save_building_legal_owner($1,$2)`, [building, {full_name:'Chủ nhà',id_number:'001234567890'}]);
+    await db.query(`SELECT public.save_building_legal_owner($1,$2)`, [building, {full_name:' Chủ nhà ',id_number:'001234567890'}]);
+    await assert.rejects(db.query(`SELECT public.save_building_legal_owner($1,$2)`, [building,{full_name:'overwrite'}]), /permission|quyền/i);
+    assert.equal((await db.query('SELECT * FROM building_legal_owners')).rows.length, 0);
+    await db.exec(`SELECT set_config('test.permissions','customers.print',false);`);
+    assert.equal((await db.query('SELECT id_number FROM building_legal_owners')).rows[0].id_number, '001234567890');
+    await assert.rejects(db.exec(`UPDATE building_legal_owners SET full_name='leak'`), /permission denied/i);
+    await assert.rejects(db.exec(`INSERT INTO building_legal_owners(building_id,organization_id) VALUES('${building}','${org}')`), /permission denied/i);
+    await assert.rejects(db.exec('DELETE FROM building_legal_owners'), /permission denied/i);
+    await assert.rejects(db.exec('TRUNCATE building_legal_owners'), /permission denied/i);
+    await assert.rejects(db.query(`SELECT public.save_building_legal_owner($1,$2)`, [building,{full_name:'leak'}]), /permission|quyền/i);
+    await db.exec(`SELECT set_config('test.permissions','buildings.edit',false);`);
+    await db.query(`SELECT public.save_building_legal_owner($1,$2)`, [building,{full_name:'Đã đổi',id_number:'0099'}]);
+    assert.equal((await db.query('SELECT full_name FROM building_legal_owners')).rows[0].full_name, 'Đã đổi');
+    await db.exec(`SELECT set_config('test.building','00000000-0000-0000-0000-000000000000',false);`);
+    assert.equal((await db.query('SELECT * FROM building_legal_owners')).rows.length, 0);
+    await assert.rejects(db.query(`SELECT public.save_building_legal_owner($1,$2)`, [building,{}]), /permission|quyền/i);
+    await db.exec(`SELECT set_config('test.building','${otherBuilding}',false);`);
+    assert.equal((await db.query('SELECT * FROM building_legal_owners')).rows.length, 0);
+    await assert.rejects(db.query(`SELECT public.save_building_legal_owner($1,$2)`, [otherBuilding,{}]), /permission|quyền/i);
+    await db.exec(`SELECT set_config('test.building','${building}',false),set_config('test.super','true',false);`);
+    assert.equal((await db.query('SELECT * FROM building_legal_owners')).rows.length, 0);
+    await assert.rejects(db.query(`SELECT public.save_building_legal_owner($1,$2)`, [building,{}]), /permission|quyền/i);
+  } finally { await db.close(); }
+});

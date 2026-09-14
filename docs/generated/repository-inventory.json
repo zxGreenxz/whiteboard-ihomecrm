@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 674,
-  "soFileDocBangFs": 211,
-  "tongLoiGoi": 474,
-  "khongPhanLoaiDuoc": 235,
+  "tongSoFileTest": 678,
+  "soFileDocBangFs": 212,
+  "tongLoiGoi": 476,
+  "khongPhanLoaiDuoc": 236,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 62,
+      "soFile": 63,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -243,6 +243,14 @@
       "khongPhanLoaiDuoc": 4
     },
     {
+      "file": ".e2e-fleet/specs/ct01-download.spec.ts",
+      "soGoi": 4,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 3
+    },
+    {
       "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",
       "soGoi": 4,
       "loai": {},
@@ -338,14 +346,6 @@
       "soGoi": 4,
       "loai": {
         "sql": 2
-      },
-      "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": ".e2e-fleet/specs/ct01-download.spec.ts",
-      "soGoi": 3,
-      "loai": {
-        "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 2
     },
@@ -794,6 +794,14 @@
       "soGoi": 1,
       "loai": {},
       "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "scripts/__tests__/building-legal-owner-rls.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
     },
     {
       "file": "scripts/__tests__/business-performance-gated-data-rollout.test.mjs",
