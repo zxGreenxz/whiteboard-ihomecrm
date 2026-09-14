@@ -81,6 +81,14 @@ describe('CT01 theo mẫu người dùng', () => {
     expect(buildCT01Data(customer, { ...building, ward: 'Xã Bình Mỹ' }, lease).registration_authority).toBe('Công an Xã Bình Mỹ');
     expect(buildCT01Data(customer, { ...building, ward: 'Bình Thạnh' }, lease).registration_authority).toBe('Công an phường Bình Thạnh');
   });
+  it('Kính gửi lấy từ phường đến hết tỉnh thành trong địa chỉ chi tiết', () => {
+    const data = buildCT01Data(customer, {
+      ...building,
+      street_address: '111/46F Phạm Văn Chiêu, Phường An Hội Tây, TP Hồ Chí Minh',
+      ward: 'Phường 14',
+    }, lease);
+    expect(data.registration_authority).toBe('Công an Phường An Hội Tây, TP Hồ Chí Minh');
+  });
   it('hiển thị giới tính tiếng Việt từ cả enum của form mới và dữ liệu cũ', () => {
     for (const [stored, label] of [['MALE', 'Nam'], ['FEMALE', 'Nữ'], ['OTHER', 'Khác'], ['Nữ', 'Nữ']]) {
       expect(buildCT01Data({ ...customer, gender: stored }, building, lease).gender).toBe(label);
@@ -123,7 +131,8 @@ describe('CT01 theo mẫu người dùng', () => {
     expect(leaseText.split(detailedAddress)).toHaveLength(2);
     expect(leaseText).toContain('Tại Phường Bình Thạnh');
     expect(leaseText).not.toContain('Phường 14');
-    expect(xml).toContain('Công an Phường 14'); // Kính gửi still uses the separate ward field.
+    expect(xml).toContain('Công an Phường Bình Thạnh, Thành phố Hồ Chí Minh');
+    expect(xml).not.toContain('Công an Phường 14');
     expect(xml).not.toContain('Quận Gò Vấp');
   });
   it.each([null, 'Địa chỉ thường trú cũ không dùng'])('xuất DOCX thực dùng detailed_address cho bên B khi permanent_address = %s', async permanentAddress => {

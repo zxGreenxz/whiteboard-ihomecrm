@@ -37,14 +37,17 @@ export function buildCT01Data(customer: CT01Customer, building: CT01Building, le
   const genderLabels: Record<string, string> = { MALE: 'Nam', FEMALE: 'Nữ', OTHER: 'Khác' };
   const address = building.street_address.trim();
   const localityPrefix = /^(phường|xã|thị trấn|đặc khu)\s+\S/i;
-  const locality = address.split(',').map(value => value.trim()).find(value => localityPrefix.test(value))
-    ?? (localityPrefix.test(ward) ? ward : `phường ${ward}`);
+  const addressParts = address.split(',').map(value => value.trim());
+  const localityIndex = addressParts.findIndex(value => localityPrefix.test(value));
+  const fallbackLocality = localityPrefix.test(ward) ? ward : `phường ${ward}`;
+  const locality = localityIndex >= 0 ? addressParts[localityIndex] : fallbackLocality;
+  const registrationLocality = localityIndex >= 0 ? addressParts.slice(localityIndex).join(', ') : fallbackLocality;
   const endYear = Number(datePart('year')) + lease.durationMonths / 12;
   // Keep the Vietnamese calendar day, clamping 29 February in a non-leap year.
   const endDay = Math.min(Number(datePart('day')), new Date(Date.UTC(endYear, Number(datePart('month')), 0)).getUTCDate());
   const leaseEndDate = `${String(endDay).padStart(2, '0')}/${datePart('month')}/${endYear}`;
   const data: Record<string, string> = {
-    registration_authority: `Công an ${/^(phường|xã|thị trấn|đặc khu)\s/i.test(ward) ? ward : `phường ${ward}`}`,
+    registration_authority: `Công an ${registrationLocality}`,
     full_name: customer.full_name.trim(),
     date_of_birth: birth ? `${birth[3]}/${birth[2]}/${birth[1]}` : '',
     gender: genderLabels[customer.gender ?? ''] ?? customer.gender ?? '', phone: customer.phone ?? '', email: customer.email ?? '',

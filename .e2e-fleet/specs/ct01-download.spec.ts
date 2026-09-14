@@ -171,7 +171,8 @@ test('Word chỉ lấy địa chỉ chi tiết tòa, không nối các ô phư�
   expect(leaseText.split(detailedAddress)).toHaveLength(2);
   expect(leaseText).toContain('Tại Phường Bình Thạnh');
   expect(leaseText).not.toContain('Phường 14');
-  expect(xml).toContain('Công an Phường 14');
+  expect(xml).toContain('Công an Phường Bình Thạnh, Thành phố Hồ Chí Minh');
+  expect(xml).not.toContain('Công an Phường 14');
   expect(xml).not.toContain('Quận Gò Vấp');
 });
 
