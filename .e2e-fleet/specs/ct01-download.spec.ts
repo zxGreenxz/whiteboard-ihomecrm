@@ -122,11 +122,13 @@ test('bấm trong modal tải Word đúng dữ liệu, khóa bấm lặp, không
   expect(xml).toContain('123 Đường Kiểm Thử');
   expect(xml).not.toContain('MALE');
   expect(xml.replace(/<[^>]+>/g, '').match(/ngày 14 tháng 09 năm 2026/g)).toHaveLength(4);
-  expect(xml).toContain('HỢP ĐỒNG CHO THUÊ NHÀ Ở');
+  expect(xml).toContain('HỢP ĐỒNG CHO THUÊ, MƯỢN, Ở NHỜ');
   expect(xml.replace(/<[^>]+>/g, '').split('BÊN THUÊ, MƯỢN, Ở NHỜ')[1]).toContain('Hiện thường trú: Ấp Kiểm Thử, Xã Bình Mỹ');
   expect(xml).toContain(owner.full_name);
   expect(xml).toContain('Đăng ký tạm trú 24 tháng tại');
-  expect(xml.replace(/<[^>]+>/g, '')).toContain('thời gian 24 tháng');
+  expect(xml.replace(/<[^>]+>/g, '')).toContain('Thời hạn mượn: 24 tháng (từ 14/09/2026 đến 14/09/2028)');
+  expect(xml.replace(/<[^>]+>/g, '').split('BÊN THUÊ, MƯỢN, Ở NHỜ')[1]).toContain('Sinh năm: 05/12/2001');
+  expect(xml).not.toContain('A101');
   expect(xml).not.toMatch(/\{\w+\}/);
   await expect(page.getByRole('dialog', { name: 'Chi tiết khách hàng' })).toBeVisible();
   expect(page.url()).toBe(`${base}/__ct01.html`);
@@ -146,14 +148,42 @@ test('Word dùng detailed_address của bên B khi permanent_address khác nhau'
   expect(leaseText).not.toContain('Địa chỉ thường trú cũ không dùng');
 });
 
+test('Word chỉ lấy địa chỉ chi tiết tòa, không nối các ô phường quận còn cũ', async ({ page }) => {
+  const detailedAddress = '123 Đường Kiểm Thử, Phường Bình Thạnh, Thành phố Hồ Chí Minh';
+  const fullAddressBuilding = {
+    ...building, street_address: `  ${detailedAddress}  `,
+    ward: 'Phường 14', district: 'Quận Gò Vấp', province: 'Hồ Chí Minh',
+  };
+  await page.route('**/rest/v1/contract_customers?*', route => route.fulfill({ json: [link(fullAddressBuilding)] }));
+  await page.goto(`${base}/__ct01.html`);
+  const event = page.waitForEvent('download');
+  await page.getByRole('button', { name: /Bản khai nhân khẩu/ }).click();
+  const download = await event;
+  const xml = new PizZip(await readFile((await download.path())!)).file('word/document.xml')!.asText();
+  const paragraphs = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g)!.map(paragraph => paragraph.replace(/<[^>]+>/g, '').trim());
+  const registration = paragraphs.find(paragraph => paragraph.includes('Đăng ký tạm trú'))!;
+  expect(registration.slice(registration.indexOf('Đăng ký tạm trú'))).toBe(`Đăng ký tạm trú 24 tháng tại ${detailedAddress}`);
+  const addressLabel = 'Đối tượng của hợp đồng này là: Một phần hoặc toàn bộ căn nhà số:';
+  const leaseAddresses = paragraphs.filter(paragraph => paragraph.includes(addressLabel))
+    .map(paragraph => paragraph.slice(paragraph.indexOf(addressLabel) + addressLabel.length).trim());
+  expect(leaseAddresses).toEqual([detailedAddress]);
+  const leaseText = xml.replace(/<[^>]+>/g, '').split('HỢP ĐỒNG CHO THUÊ, MƯỢN, Ở NHỜ')[1];
+  expect(leaseText.split(detailedAddress)).toHaveLength(2);
+  expect(leaseText).toContain('Tại Phường Bình Thạnh');
+  expect(leaseText).not.toContain('Phường 14');
+  expect(xml).toContain('Công an Phường 14');
+  expect(xml).not.toContain('Quận Gò Vấp');
+});
+
 test('nhiều tòa cho chọn, loại hợp đồng cũ và tòa đã xóa', async ({ page }) => {
-  const second = { ...building, id: 'ct01-demo-second', name: 'Tòa thứ hai', ward: 'Phường Thủ Đức' };
+  const second = { ...building, id: 'ct01-demo-second', name: 'Tòa thứ hai', street_address: '456 Đường Kiểm Thử, Phường Thủ Đức, Thành phố Hồ Chí Minh', ward: 'Phường Thủ Đức' };
   await page.route('**/rest/v1/contract_customers?*', route => route.fulfill({ json: [link(), link(second), { contract: { ...link().contract, status: 'TERMINATED' } }, link({ ...building, id: 'deleted', name: 'Đã xóa', deleted_at: '2026-01-01' })] }));
   await page.goto(`${base}/__ct01.html`);
   await page.getByLabel('Thời hạn tạm trú').selectOption('12');
   await page.getByRole('button', { name: /Bản khai nhân khẩu/ }).click();
   await expect(page.getByRole('dialog', { name: 'Chọn phòng kê khai' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Đã xóa/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Tòa thứ hai/ }).getByText(second.street_address, { exact: true })).toBeVisible();
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: /Tòa thứ hai/ }).click();
   const download = await event;
@@ -161,10 +191,10 @@ test('nhiều tòa cho chọn, loại hợp đồng cũ và tòa đã xóa', asy
   expect(xml).toContain('Công an Phường Thủ Đức');
   expect(xml).not.toContain('Phường Bình Thạnh');
   expect(xml).toContain('Đăng ký tạm trú 12 tháng tại');
-  expect(xml.replace(/<[^>]+>/g, '')).toContain('thời gian 12 tháng');
+  expect(xml.replace(/<[^>]+>/g, '')).toContain('Thời hạn mượn: 12 tháng');
 });
 
-test('nhiều phòng cùng tòa vẫn chọn đúng phòng hợp đồng thuê', async ({ page }) => {
+test('nhiều phòng cùng tòa vẫn cho chọn phòng tải nhưng hợp đồng không in số phòng', async ({ page }) => {
   await page.route('**/rest/v1/contract_customers?*', route => route.fulfill({ json: [link(), link(building, 'B202')] }));
   await page.goto(`${base}/__ct01.html`);
   await page.getByRole('button', { name: /Bản khai nhân khẩu/ }).click();
@@ -173,7 +203,7 @@ test('nhiều phòng cùng tòa vẫn chọn đúng phòng hợp đồng thuê',
   await page.getByRole('button', { name: /B202/ }).click();
   const result = await event;
   const xml = new PizZip(await readFile((await result.path())!)).file('word/document.xml')!.asText();
-  expect(xml).toContain('B202');
+  expect(xml).not.toContain('B202');
   expect(xml).not.toContain('A101');
 });
 

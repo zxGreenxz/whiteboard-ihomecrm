@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 678,
   "soFileDocBangFs": 212,
-  "tongLoiGoi": 478,
-  "khongPhanLoaiDuoc": 238,
+  "tongLoiGoi": 480,
+  "khongPhanLoaiDuoc": 240,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
@@ -162,6 +162,14 @@
       "khongPhanLoaiDuoc": 7
     },
     {
+      "file": ".e2e-fleet/specs/ct01-download.spec.ts",
+      "soGoi": 6,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 5
+    },
+    {
       "file": "scripts/__tests__/check-strict-islands.test.mjs",
       "soGoi": 6,
       "loai": {},
@@ -193,14 +201,6 @@
         "sql": 6
       },
       "khongPhanLoaiDuoc": 0
-    },
-    {
-      "file": ".e2e-fleet/specs/ct01-download.spec.ts",
-      "soGoi": 5,
-      "loai": {
-        "tai-lieu": 1
-      },
-      "khongPhanLoaiDuoc": 4
     },
     {
       "file": "infra/network-center-worker/test/deploymentAssets.test.ts",
@@ -438,6 +438,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/ct01Document.test.ts",
+      "soGoi": 3,
+      "loai": {},
+      "khongPhanLoaiDuoc": 3
+    },
+    {
       "file": "src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts",
       "soGoi": 3,
       "loai": {
@@ -654,12 +660,6 @@
     },
     {
       "file": "src/lib/__tests__/copilotStandingGrantsMigration.test.ts",
-      "soGoi": 2,
-      "loai": {},
-      "khongPhanLoaiDuoc": 2
-    },
-    {
-      "file": "src/lib/__tests__/ct01Document.test.ts",
       "soGoi": 2,
       "loai": {},
       "khongPhanLoaiDuoc": 2

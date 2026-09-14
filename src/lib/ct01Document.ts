@@ -35,14 +35,21 @@ export function buildCT01Data(customer: CT01Customer, building: CT01Building, le
   }).formatToParts(now);
   const datePart = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? '';
   const genderLabels: Record<string, string> = { MALE: 'Nam', FEMALE: 'Nữ', OTHER: 'Khác' };
-  const address = [building.street_address, ward, building.district, building.province].map(value => value?.trim()).filter(Boolean).join(', ');
+  const address = building.street_address.trim();
+  const localityPrefix = /^(phường|xã|thị trấn|đặc khu)\s+\S/i;
+  const locality = address.split(',').map(value => value.trim()).find(value => localityPrefix.test(value))
+    ?? (localityPrefix.test(ward) ? ward : `phường ${ward}`);
+  const endYear = Number(datePart('year')) + lease.durationMonths / 12;
+  // Keep the Vietnamese calendar day, clamping 29 February in a non-leap year.
+  const endDay = Math.min(Number(datePart('day')), new Date(Date.UTC(endYear, Number(datePart('month')), 0)).getUTCDate());
+  const leaseEndDate = `${String(endDay).padStart(2, '0')}/${datePart('month')}/${endYear}`;
   const data: Record<string, string> = {
     registration_authority: `Công an ${/^(phường|xã|thị trấn|đặc khu)\s/i.test(ward) ? ward : `phường ${ward}`}`,
     full_name: customer.full_name.trim(),
     date_of_birth: birth ? `${birth[3]}/${birth[2]}/${birth[1]}` : '',
     gender: genderLabels[customer.gender ?? ''] ?? customer.gender ?? '', phone: customer.phone ?? '', email: customer.email ?? '',
     household_head_name: customer.full_name.trim(),
-    building_address: address,
+    building_address: address, building_locality: locality,
     registration_request: `Đăng ký tạm trú ${lease.durationMonths} tháng tại ${address}`,
     duration_months: String(lease.durationMonths), room_number: lease.roomNumber.trim(),
     owner_name: lease.owner.full_name.trim(), owner_birth_year: lease.owner.birth_year?.toString() ?? '',
@@ -51,7 +58,7 @@ export function buildCT01Data(customer: CT01Customer, building: CT01Building, le
     customer_birth_year: birth?.[1] ?? '', customer_id_number: id,
     customer_id_issue_date: formatDate(customer.id_issue_date), customer_id_issue_place: customer.id_issue_place ?? '',
     customer_permanent_address: customer.detailed_address ?? '',
-    download_date: `${datePart('day')}/${datePart('month')}/${datePart('year')}`,
+    download_date: `${datePart('day')}/${datePart('month')}/${datePart('year')}`, lease_end_date: leaseEndDate,
     signature_day: datePart('day'), signature_month: datePart('month'), signature_year: datePart('year'),
     signature_date: `ngày ${datePart('day')} tháng ${datePart('month')} năm ${datePart('year')}`,
   };

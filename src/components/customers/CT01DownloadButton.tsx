@@ -71,7 +71,7 @@ export default function CT01DownloadButton({ customer }: { customer: CT01Custome
         </DialogHeader>
         {tenancies.map(tenancy => <Button key={tenancy.roomId} variant="outline" disabled={busy} className="h-auto whitespace-normal text-left justify-start"
           onClick={() => void download(tenancy)}>
-          <span>{tenancy.building.name} · Phòng {tenancy.roomNumber}<span className="block text-xs font-normal">{[tenancy.building.street_address, tenancy.building.ward].filter(Boolean).join(', ')}</span></span>
+          <span>{tenancy.building.name} · Phòng {tenancy.roomNumber}<span className="block text-xs font-normal">{tenancy.building.street_address?.trim()}</span></span>
         </Button>)}
       </DialogContent>
     </Dialog>

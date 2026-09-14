@@ -124,20 +124,74 @@ height.set(W + 'hRule', 'atLeast')
 
 lease_doc = xml(lease_parts['word/document.xml'])
 lease_body = lease_doc.find('w:body', NS)
-lp = lease_body.findall('w:p', NS)
-fill(lp[4], 'Ngày {signature_day} tháng {signature_month} năm {signature_year}')
-fill(lp[5], 'Tại nhà số: {building_address}')
-fill(lp[8], 'Ông (Bà): {owner_name}    Sinh Năm: {owner_birth_year}')
-fill(lp[9], 'CCCD: {owner_id_number}    Ngày cấp: {owner_id_issue_date}    Nơi Cấp: {owner_id_issue_place}')
-fill(lp[10], 'Hiện thường trú: {owner_permanent_address}')
-fill(lp[11], '{building_address}', 1)
-fill(lp[13], 'Ông (Bà): {full_name}    Sinh năm: {customer_birth_year}')
-fill(lp[14], 'CCCD: {customer_id_number}    Ngày cấp: {customer_id_issue_date}    Nơi cấp: {customer_id_issue_place}')
-fill(lp[15], 'Hiện thường trú: {customer_permanent_address}')
-fill(lp[17], '{room_number}', 3)
-fill(lp[18], '{building_address}', 1)
-fill(lp[19], '{duration_months}', 2, 3)
-fill(lp[19], '{download_date}', 4, 5)
+# The user's replacement reference changes the lease text, retaining 11pt body
+# and 14pt title from the source, along with its page settings.
+lease_section_source = deepcopy(lease_body.find('w:sectPr', NS))
+for child in list(lease_body):
+    lease_body.remove(child)
+
+
+def lease_paragraph(value, *, center=False, bold=False, size=22, before=0, after=0, indent=0):
+    paragraph = ET.SubElement(lease_body, W + 'p')
+    properties = ET.SubElement(paragraph, W + 'pPr')
+    ET.SubElement(properties, W + 'spacing', {W + 'before': str(before), W + 'after': str(after), W + 'line': '240', W + 'lineRule': 'auto'})
+    if center:
+        ET.SubElement(properties, W + 'jc', {W + 'val': 'center'})
+    if indent:
+        ET.SubElement(properties, W + 'ind', {W + 'left': str(indent)})
+    run = ET.SubElement(paragraph, W + 'r')
+    rp = ET.SubElement(run, W + 'rPr')
+    ET.SubElement(rp, W + 'rFonts', {W + 'ascii': 'Times New Roman', W + 'hAnsi': 'Times New Roman'})
+    if bold:
+        ET.SubElement(rp, W + 'b')
+    ET.SubElement(rp, W + 'sz', {W + 'val': str(size)})
+    ET.SubElement(rp, W + 'szCs', {W + 'val': str(size)})
+    ET.SubElement(run, W + 't', {'{http://www.w3.org/XML/1998/namespace}space': 'preserve'}).text = value
+    return paragraph
+
+
+lease_paragraph('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM', center=True, bold=True, after=160)
+lease_paragraph('Độc lập - Tự do - Hạnh Phúc', center=True, after=100)
+lease_paragraph('________________________', center=True, after=200)
+lease_paragraph('HỢP ĐỒNG CHO THUÊ, MƯỢN, Ở NHỜ', center=True, bold=True, size=28, after=180)
+lease_paragraph('Hôm nay, Ngày {signature_day} Tháng {signature_month} Năm {signature_year}, Tại {building_locality}', after=120)
+lease_paragraph('1. ĐẠI DIỆN BÊN CHO THUÊ, MƯỢN, Ở NHỜ (Gọi tắt là bên A):', after=100)
+lease_paragraph('Ông (Bà): {owner_name}        Sinh Năm: {owner_birth_year}', indent=280)
+lease_paragraph('-  CCCD: {owner_id_number}    Ngày cấp: {owner_id_issue_date}    Nơi Cấp: {owner_id_issue_place}')
+lease_paragraph('-  Hiện thường trú: {owner_permanent_address}')
+lease_paragraph('2. ĐẠI DIỆN BÊN THUÊ, MƯỢN, Ở NHỜ (Gọi tắt là bên B):')
+lease_paragraph('Ông (Bà): {full_name}        Sinh năm: {date_of_birth}', indent=280)
+lease_paragraph('-  CCCD: {customer_id_number}    Ngày cấp: {customer_id_issue_date}    Nơi cấp: {customer_id_issue_place}')
+lease_paragraph('-  Hiện thường trú: {customer_permanent_address}')
+lease_paragraph('Bằng hợp đồng này, bên A đồng ý cho bên B thuê, mượn, ở nhờ nhà với những thỏa thuận sau đây:', after=120)
+lease_paragraph('3. Đối tượng của hợp đồng này là: Một phần hoặc toàn bộ căn nhà số: {building_address}')
+lease_paragraph('Bên cho thuê, mượn, cho ở nhờ là người đứng tên chủ quyền sở hữu nhà ở.', indent=280)
+lease_paragraph('4. Mục đích: để ở và đăng ký tạm trú.')
+lease_paragraph('Bên A đồng ý cho bên B được thuê, mượn, ở nhờ và đăng ký tạm trú vào địa chỉ căn nhà trên.', indent=280)
+lease_paragraph('(kèm theo danh sách số người tạm trú được ghi trên tờ khai thay đổi thông tin cư trú)', indent=280)
+lease_paragraph('Thời hạn mượn: {duration_months} tháng (từ {download_date} đến {lease_end_date})', indent=280)
+lease_paragraph('5. Bên A và Bên B: cam kết chịu trách nhiệm trước pháp luật về tất cả những thỏa thuận đã ghi trong hợp đồng.')
+lease_paragraph('Hợp đồng được lập thành 2 bản, các bản đều giống nhau', indent=280, after=700)
+# Two signature columns reproduce the supplied reference without visible borders.
+signatures = ET.SubElement(lease_body, W + 'tbl')
+tp = ET.SubElement(signatures, W + 'tblPr')
+ET.SubElement(tp, W + 'tblW', {W + 'w': '9360', W + 'type': 'dxa'})
+ET.SubElement(tp, W + 'tblLayout', {W + 'type': 'fixed'})
+borders = ET.SubElement(tp, W + 'tblBorders')
+for edge in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+    ET.SubElement(borders, W + edge, {W + 'val': 'nil'})
+grid = ET.SubElement(signatures, W + 'tblGrid')
+for _ in range(2):
+    ET.SubElement(grid, W + 'gridCol', {W + 'w': '4680'})
+row = ET.SubElement(signatures, W + 'tr')
+for heading, party in [('Bên cho thuê, mượn nhà ở', '(Bên A)'), ('Bên thuê, mượn nhà ở nhờ', '(Bên B)')]:
+    cell = ET.SubElement(row, W + 'tc')
+    cp = ET.SubElement(cell, W + 'tcPr')
+    ET.SubElement(cp, W + 'tcW', {W + 'w': '4680', W + 'type': 'dxa'})
+    for value in [heading, party, '(ký và ghi rõ họ tên)']:
+        cell.append(lease_paragraph(value, center=True, after=160))
+lease_paragraph('')
+lease_body.append(lease_section_source)
 
 # Isolate source styles, including default 11pt run settings inherited by lease.
 styles = xml(parts['word/styles.xml'])
@@ -158,7 +212,7 @@ for s in lease_styles.findall('w:style', NS):
                 s.append(deepcopy(defaults.find(path, NS)))
     styles.append(s)
 
-for paragraph in lease_body.findall('w:p', NS):
+for paragraph in lease_body.iter(W + 'p'):
     ppr = paragraph.find('w:pPr', NS)
     if ppr is None:
         ppr = ET.Element(W + 'pPr')
