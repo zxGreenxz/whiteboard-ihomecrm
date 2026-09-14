@@ -1,4 +1,4 @@
-"""Build the supplied CT01 + lease template, preserving source font sizes.
+"""Build CT01 + lease; keep source sizes except four 10pt signature dates.
 
 Run with the bundled document Python (lxml). References contain only blank forms.
 The lease uses Times New Roman per the user's explicit follow-up. Its Normal
@@ -98,19 +98,19 @@ for cell in tables[3].find('w:tr', NS).findall('w:tc', NS):
     locality = re.match(r'\.+,', original)
     if locality:
         replace_span(date_p, locality.start(), locality.end(), '')
-    # Use the same two-line date in all four columns, without reducing type.
-    for node in list(date_p.iter(W + 't')):
-        if 'năm' in (node.text or ''):
-            before, after = node.text.split('năm', 1)
-            node.text = before
-            run = node.getparent()
-            at = run.index(node) + 1
-            run.insert(at, ET.Element(W + 'br'))
-            tail = ET.Element(W + 't')
-            tail.text = 'năm' + after
-            tail.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-            run.insert(at + 1, tail)
-    # Preserve type sizes in every run. Remove only surplus blank signature lines.
+    # User permits only these four dates at 10pt so each fits on one line.
+    for properties in date_p.iter(W + 'rPr'):
+        size = properties.find('w:sz', NS)
+        complex_size = properties.find('w:szCs', NS)
+        if size is None:
+            size = ET.Element(W + 'sz')
+            properties.insert(properties.index(complex_size) if complex_size is not None else len(properties), size)
+        if complex_size is None:
+            complex_size = ET.Element(W + 'szCs')
+            properties.insert(properties.index(size) + 1, complex_size)
+        size.set(W + 'val', '20')
+        complex_size.set(W + 'val', '20')
+    # Keep signature label sizes. Remove only surplus blank signature lines.
     for paragraph in cell.findall('w:p', NS)[1:]:
         if not text(paragraph).strip():
             cell.remove(paragraph)

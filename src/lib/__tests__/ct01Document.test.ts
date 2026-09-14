@@ -104,8 +104,23 @@ describe('CT01 theo mẫu người dùng', () => {
     expect(xml).not.toContain('Cambria');
     expect(xml).toMatch(/<w:rPr>[^]*?w:ascii="Times New Roman"[^]*?w:sz w:val="28"[^]*?HỢP ĐỒNG CHO THUÊ NHÀ Ở/);
     const signatures = xml.match(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)![3];
-    expect(signatures).not.toContain('<w:sz w:val="20"');
-    expect(signatures).toContain('<w:sz w:val="24"');
+    const signatureCells = signatures.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g)!;
+    const originalCT01 = new PizZip(readFileSync(new URL('../../../scripts/fixtures/ct01/ct01-source.docx', import.meta.url)))
+      .file('word/document.xml')!.asText();
+    const originalSignatures = originalCT01.match(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)![3];
+    const originalCells = originalSignatures.match(/<w:tc[ >][\s\S]*?<\/w:tc>/g)!;
+    expect(signatureCells).toHaveLength(4);
+    for (const [index, cell] of signatureCells.entries()) {
+      const [date, ...labels] = cell.match(/<w:p[ >][\s\S]*?<\/w:p>/g)!;
+      expect(date.replace(/<[^>]+>/g, '').trim()).toBe('ngày 14 tháng 09 năm 2026');
+      expect(date).not.toMatch(/<w:(?:br|cr)[\s/>]/);
+      const dateSizes = [...date.matchAll(/<w:sz(?:Cs)? w:val="(\d+)"/g)].map(match => match[1]);
+      expect(dateSizes.length).toBeGreaterThan(0);
+      expect(new Set(dateSizes)).toEqual(new Set(['20'])); // Only the four dates use 10pt.
+      const originalLabels = originalCells[index].match(/<w:p[ >][\s\S]*?<\/w:p>/g)!.slice(1)
+        .filter(paragraph => paragraph.replace(/<[^>]+>/g, '').trim());
+      expect(labels).toEqual(originalLabels); // Preserve every signature label's text and formatting.
+    }
     const signatureText = signatures.replace(/<[^>]+>/g, '');
     expect(signatureText.match(/ngày 14 tháng 09 năm 2026/g)).toHaveLength(4);
     const tables = xml.match(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)!;
