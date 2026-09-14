@@ -1876,6 +1876,64 @@ export type Database = {
           },
         ]
       }
+      building_legal_owners: {
+        Row: {
+          birth_year: number | null
+          building_id: string
+          full_name: string
+          id_issue_date: string | null
+          id_issue_place: string
+          id_number: string
+          organization_id: string
+          permanent_address: string
+          updated_at: string
+        }
+        Insert: {
+          birth_year?: number | null
+          building_id: string
+          full_name?: string
+          id_issue_date?: string | null
+          id_issue_place?: string
+          id_number?: string
+          organization_id: string
+          permanent_address?: string
+          updated_at?: string
+        }
+        Update: {
+          birth_year?: number | null
+          building_id?: string
+          full_name?: string
+          id_issue_date?: string | null
+          id_issue_place?: string
+          id_number?: string
+          organization_id?: string
+          permanent_address?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "building_legal_owners_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: true
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "building_legal_owners_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: true
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "building_legal_owners_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       building_services: {
         Row: {
           building_id: string
@@ -22861,6 +22919,10 @@ export type Database = {
       sale_bonus_status_v1: { Args: { p_contract_id: string }; Returns: Json }
       same_team: { Args: { _target: string }; Returns: boolean }
       sandbox_org_ids: { Args: never; Returns: string[] }
+      save_building_legal_owner: {
+        Args: { p_building_id: string; p_owner: Json }
+        Returns: undefined
+      }
       save_utility_account: {
         Args: {
           p_account_holder?: string
