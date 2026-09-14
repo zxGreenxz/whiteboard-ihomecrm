@@ -288,6 +288,17 @@ describe("actual CCCD component lifecycle", () => {
     expect(b.lookup).toHaveBeenCalledTimes(lookupCalls);
   });
 
+  it("keeps the complete CCCD address after QR lookup returns only a street fragment", async () => {
+    b.lookup.mockResolvedValue({ detailedAddress: "91 Trung Kính", provinceCode: "1" });
+    renderForm();
+    b.taskStarts[0](1);
+    const fullAddress = "91 Trung Kính, Trung Hòa, Cầu Giấy, Hà Nội";
+    await act(async () => { await b.callbacks[0]({ ...qr, permanentAddress: fullAddress }, 1); });
+    expect((screen.getByPlaceholderText("Nhập địa chỉ chi tiết") as HTMLInputElement).value).toBe(fullAddress);
+    expect((screen.getByPlaceholderText("Nhập địa chỉ thường trú") as HTMLInputElement).value).toBe(fullAddress);
+    expect((screen.getByLabelText("province") as HTMLInputElement).value).toBe("1");
+  });
+
   it("does not let address lookup from task A write after task B starts", async () => {
     let resolveA!: (value: Record<string, string>) => void;
     b.lookup.mockReturnValueOnce(new Promise((resolve) => { resolveA = resolve; }));

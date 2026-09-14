@@ -23,10 +23,10 @@ test.beforeAll(async () => {
     import Modal from '@/components/customers/CustomerDetailModal';
     createRoot(document.getElementById('root')).render(<MemoryRouter><Modal open onOpenChange={()=>{}} customerId="ct01-demo-customer"/><Toaster/></MemoryRouter>);
   `;
-  const customer = { id: 'ct01-demo-customer', full_name: 'Nguyễn Văn Kiểm Thử', date_of_birth: '2001-12-05', gender: 'MALE', id_number: '012345678901', phone: '0901234567', email: 'test@example.com', id_issue_date: '2022-02-25', id_issue_place: 'Cục Cảnh Sát', permanent_address: 'Địa chỉ thường trú kiểm thử' };
+  const customer = { id: 'ct01-demo-customer', full_name: 'Nguyễn Văn Kiểm Thử', date_of_birth: '2001-12-05', gender: 'MALE', id_number: '012345678901', phone: '0901234567', email: 'test@example.com', id_issue_date: '2022-02-25', id_issue_place: 'Cục Cảnh Sát', detailed_address: 'Ấp Kiểm Thử, Xã Bình Mỹ', permanent_address: null };
   const modules: Record<string, string> = {
     '/__ct01_fixture.tsx': fixture,
-    '@/hooks/useCustomers': `export const useCustomer=()=>({data:${JSON.stringify(customer)},isLoading:false});`,
+    '@/hooks/useCustomers': `export const useCustomer=()=>({data:{...${JSON.stringify(customer)},...(location.hash==='#conflicting-address'?{permanent_address:'Địa chỉ thường trú cũ không dùng'}:{})},isLoading:false});`,
     '@/hooks/useVehicles': 'export const useVehicles=()=>({data:{data:[]}});',
     '@/hooks/useMyPermissions': "export const useMyPermissions=()=>({data:{customers:{view:true,edit:true,print:location.hash!=='#denied'}}});",
     '@/components/customers/DeleteCustomerDialog': 'export default function Delete(){return null;}',
@@ -65,7 +65,7 @@ test.afterAll(async () => { await server?.close(); });
 
 const building = { id: 'ct01-demo-building', name: 'Tòa kiểm thử', street_address: '123 Đường Kiểm Thử', ward: 'Phường Bình Thạnh', district: '', province: 'Thành phố Hồ Chí Minh', deleted_at: null };
 const owner = { full_name: 'Trần Thị Chủ Quyền', birth_year: 1970, id_number: '001234567890', id_issue_date: '2020-02-03', id_issue_place: 'Cục Cảnh Sát', permanent_address: '45 Đường Chủ Quyền' };
-const link = (value = building, roomName = 'A101') => ({ contract: { id: `contract-${value.id}-${roomName}`, status: 'ACTIVE', deleted_at: null, room: { id: `room-${value.id}-${roomName}`, name: roomName, deleted_at: null, building: value } } });
+const link = (value: Omit<typeof building, 'deleted_at'> & { deleted_at: string | null } = building, roomName = 'A101') => ({ contract: { id: `contract-${value.id}-${roomName}`, status: 'ACTIVE', deleted_at: null, room: { id: `room-${value.id}-${roomName}`, name: roomName, deleted_at: null, building: value } } });
 const consoleErrors = new Map<Page, string[]>();
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
@@ -123,6 +123,7 @@ test('bấm trong modal tải Word đúng dữ liệu, khóa bấm lặp, không
   expect(xml).not.toContain('MALE');
   expect(xml.replace(/<[^>]+>/g, '').match(/ngày 14 tháng 09 năm 2026/g)).toHaveLength(4);
   expect(xml).toContain('HỢP ĐỒNG CHO THUÊ NHÀ Ở');
+  expect(xml.replace(/<[^>]+>/g, '').split('BÊN THUÊ, MƯỢN, Ở NHỜ')[1]).toContain('Hiện thường trú: Ấp Kiểm Thử, Xã Bình Mỹ');
   expect(xml).toContain(owner.full_name);
   expect(xml).toContain('Đăng ký tạm trú 24 tháng tại');
   expect(xml.replace(/<[^>]+>/g, '')).toContain('thời gian 24 tháng');
@@ -131,6 +132,18 @@ test('bấm trong modal tải Word đúng dữ liệu, khóa bấm lặp, không
   expect(page.url()).toBe(`${base}/__ct01.html`);
   expect(requests).toBe(1);
   expect(errors).toEqual([]);
+});
+
+test('Word dùng detailed_address của bên B khi permanent_address khác nhau', async ({ page }) => {
+  await page.route('**/rest/v1/contract_customers?*', route => route.fulfill({ json: [link()] }));
+  await page.goto(`${base}/__ct01.html#conflicting-address`);
+  const event = page.waitForEvent('download');
+  await page.getByRole('button', { name: /Bản khai nhân khẩu/ }).click();
+  const download = await event;
+  const xml = new PizZip(await readFile((await download.path())!)).file('word/document.xml')!.asText();
+  const leaseText = xml.replace(/<[^>]+>/g, '').split('BÊN THUÊ, MƯỢN, Ở NHỜ')[1];
+  expect(leaseText).toContain('Hiện thường trú: Ấp Kiểm Thử, Xã Bình Mỹ');
+  expect(leaseText).not.toContain('Địa chỉ thường trú cũ không dùng');
 });
 
 test('nhiều tòa cho chọn, loại hợp đồng cũ và tòa đã xóa', async ({ page }) => {

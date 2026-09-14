@@ -98,7 +98,6 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
     if (data.permanentAddress) {
       if (data.source === 'ocr') return;
       const beforeLookup = form.getValues([
-        'detailed_address',
         'province',
         'district',
         'ward',
@@ -113,9 +112,7 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
         if (res.districtCode && res.wards) {
           queryClient.setQueryData(['address', 'wards', res.districtCode], res.wards);
         }
-        if (res.detailedAddress && form.getValues('detailed_address') === beforeLookup[0]) {
-          form.setValue('detailed_address', res.detailedAddress, { shouldDirty: true });
-        }
+        // Lookup chỉ điền mã hành chính; giữ nguyên địa chỉ đầy đủ đã đọc từ CCCD.
         // Set tỉnh trước, chờ Radix Select mount SelectItem cho cấp dưới rồi mới set
         // (Radix reset value về '' nếu không khớp SelectItem nào đang mount).
         // setTimeout(0) không đủ trên iOS Safari thật — chờ 2 animation frame để chắc
@@ -125,21 +122,21 @@ export default function CustomerForm({ defaultValues, onSubmit, isSubmitting }: 
             requestAnimationFrame(() => requestAnimationFrame(() => r()))
           );
         if (res.provinceCode) {
-          if (form.getValues('province') === beforeLookup[1]) {
+          if (form.getValues('province') === beforeLookup[0]) {
             form.setValue('province', res.provinceCode, { shouldDirty: true });
           }
         }
         if (res.districtCode) {
           await waitFrame();
           if (!isCurrentTask(generation, taskId)) return;
-          if (form.getValues('district') === beforeLookup[2]) {
+          if (form.getValues('district') === beforeLookup[1]) {
             form.setValue('district', res.districtCode, { shouldDirty: true });
           }
         }
         if (res.wardCode) {
           await waitFrame();
           if (!isCurrentTask(generation, taskId)) return;
-          if (form.getValues('ward') === beforeLookup[3]) {
+          if (form.getValues('ward') === beforeLookup[2]) {
             form.setValue('ward', res.wardCode, { shouldDirty: true });
           }
         }

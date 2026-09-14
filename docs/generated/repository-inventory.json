@@ -3,8 +3,8 @@
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
   "tongSoFileTest": 678,
   "soFileDocBangFs": 212,
-  "tongLoiGoi": 476,
-  "khongPhanLoaiDuoc": 236,
+  "tongLoiGoi": 477,
+  "khongPhanLoaiDuoc": 237,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
@@ -195,6 +195,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": ".e2e-fleet/specs/ct01-download.spec.ts",
+      "soGoi": 5,
+      "loai": {
+        "tai-lieu": 1
+      },
+      "khongPhanLoaiDuoc": 4
+    },
+    {
       "file": "infra/network-center-worker/test/deploymentAssets.test.ts",
       "soGoi": 5,
       "loai": {},
@@ -241,14 +249,6 @@
       "soGoi": 4,
       "loai": {},
       "khongPhanLoaiDuoc": 4
-    },
-    {
-      "file": ".e2e-fleet/specs/ct01-download.spec.ts",
-      "soGoi": 4,
-      "loai": {
-        "tai-lieu": 1
-      },
-      "khongPhanLoaiDuoc": 3
     },
     {
       "file": "scripts/__tests__/check-copilot-forbidden-actions.test.mjs",

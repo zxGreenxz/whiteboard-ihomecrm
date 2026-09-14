@@ -3,7 +3,7 @@ import type { Building } from '@/types/building';
 import type { BuildingLegalOwner } from './buildingLegalOwner';
 
 export type CT01Customer = Pick<Customer, 'full_name' | 'date_of_birth' | 'gender' | 'id_number' | 'phone' | 'email'
-  | 'id_issue_date' | 'id_issue_place' | 'permanent_address'>;
+  | 'id_issue_date' | 'id_issue_place' | 'detailed_address'>;
 export type CT01Building = Pick<Building, 'id' | 'name' | 'street_address' | 'ward' | 'district' | 'province'>;
 export interface CT01LeaseDetails {
   durationMonths: 12 | 24;
@@ -50,7 +50,7 @@ export function buildCT01Data(customer: CT01Customer, building: CT01Building, le
     owner_id_issue_place: lease.owner.id_issue_place.trim(), owner_permanent_address: lease.owner.permanent_address.trim(),
     customer_birth_year: birth?.[1] ?? '', customer_id_number: id,
     customer_id_issue_date: formatDate(customer.id_issue_date), customer_id_issue_place: customer.id_issue_place ?? '',
-    customer_permanent_address: customer.permanent_address ?? '',
+    customer_permanent_address: customer.detailed_address ?? '',
     download_date: `${datePart('day')}/${datePart('month')}/${datePart('year')}`,
     signature_day: datePart('day'), signature_month: datePart('month'), signature_year: datePart('year'),
     signature_date: `ngày ${datePart('day')} tháng ${datePart('month')} năm ${datePart('year')}`,
