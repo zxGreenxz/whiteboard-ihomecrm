@@ -16,6 +16,9 @@
   },
   "include": [],
   "files": [
+    "src/components/customers/CT01DownloadButton.tsx",
+    "src/lib/ct01Document.ts",
+    "src/lib/ct01DownloadService.ts",
     "src/lib/invoiceAdjustmentEditor.ts",
     "src/lib/invoiceAdjustmentRpc.ts",
     "src/components/invoices/IssuedInvoiceEditor.tsx",

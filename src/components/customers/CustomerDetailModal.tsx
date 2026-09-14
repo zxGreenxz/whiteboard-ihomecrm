@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, Pencil, Trash2, FileText, Phone } from 'lucide-react';
+import { Copy, Pencil, Trash2, Phone } from 'lucide-react';
+import CT01DownloadButton from './CT01DownloadButton';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -90,11 +91,6 @@ export default function CustomerDetailModal({
   const handleEdit = () => {
     onOpenChange(false);
     navigate(`/customers/${customerId}/edit`);
-  };
-
-  const handleCT01 = () => {
-    onOpenChange(false);
-    navigate(`/customers/${customerId}/ct01`);
   };
 
   const handleDeleteSuccess = () => {
@@ -275,15 +271,7 @@ export default function CustomerDetailModal({
 
               <Separator />
 
-              {/* CT01 Link */}
-              <button
-                type="button"
-                onClick={handleCT01}
-                className="text-sm text-green-600 hover:text-green-700 hover:underline flex items-center gap-1"
-              >
-                <FileText className="h-4 w-4" />
-                Bản khai nhân khẩu / Mẫu CT01 - Tờ khai thay đổi thông tin cư trú
-              </button>
+              <CT01DownloadButton key={customer.id} customer={customer} />
             </div>
           )}
         </DialogContent>

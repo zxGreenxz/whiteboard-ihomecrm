@@ -1,10 +1,10 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 672,
-  "soFileDocBangFs": 209,
-  "tongLoiGoi": 470,
-  "khongPhanLoaiDuoc": 232,
+  "tongSoFileTest": 674,
+  "soFileDocBangFs": 211,
+  "tongLoiGoi": 474,
+  "khongPhanLoaiDuoc": 235,
   "theoLoai": {
     "ma-nguon": {
       "soFile": 40,
@@ -15,7 +15,7 @@
       "moTa": "Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh."
     },
     "tai-lieu": {
-      "soFile": 9,
+      "soFile": 10,
       "moTa": "Đọc tài liệu/asset."
     },
     "powershell": {
@@ -338,6 +338,14 @@
       "soGoi": 4,
       "loai": {
         "sql": 2
+      },
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": ".e2e-fleet/specs/ct01-download.spec.ts",
+      "soGoi": 3,
+      "loai": {
+        "tai-lieu": 1
       },
       "khongPhanLoaiDuoc": 2
     },
@@ -1258,6 +1266,12 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/ct01Document.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/customerCreditApplyGateMigration.test.ts",
