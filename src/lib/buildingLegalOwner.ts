@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 
+const defaultIssuePlace = 'Cục Cảnh sát';
+
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
@@ -11,12 +13,12 @@ export const buildingLegalOwnerSchema = z.object({
   birth_year: z.number().int().min(1800).max(2200).nullable(),
   id_number: z.string().trim().max(50),
   id_issue_date: dateOnly.nullable(),
-  id_issue_place: z.string().trim().max(500),
+  id_issue_place: z.string().trim().max(500).transform(value => value || defaultIssuePlace),
   permanent_address: z.string().trim().max(1000),
 });
 export type BuildingLegalOwner = z.infer<typeof buildingLegalOwnerSchema>;
 export const emptyBuildingLegalOwner: BuildingLegalOwner = {
-  full_name: '', birth_year: null, id_number: '', id_issue_date: null, id_issue_place: '', permanent_address: '',
+  full_name: '', birth_year: null, id_number: '', id_issue_date: null, id_issue_place: defaultIssuePlace, permanent_address: '',
 };
 
 export async function loadBuildingLegalOwner(buildingId: string): Promise<BuildingLegalOwner | null> {

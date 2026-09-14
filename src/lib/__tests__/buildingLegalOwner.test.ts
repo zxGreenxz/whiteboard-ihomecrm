@@ -4,7 +4,9 @@ import { buildingLegalOwnerSchema, emptyBuildingLegalOwner } from '../buildingLe
 
 describe('legal title owner validation', () => {
   it('permits an incomplete owner without manufacturing identity', () => {
-    expect(buildingLegalOwnerSchema.parse(emptyBuildingLegalOwner)).toEqual({ full_name: '', birth_year: null, id_number: '', id_issue_date: null, id_issue_place: '', permanent_address: '' });
+    expect(buildingLegalOwnerSchema.parse(emptyBuildingLegalOwner)).toEqual({ full_name: '', birth_year: null, id_number: '', id_issue_date: null, id_issue_place: 'Cục Cảnh sát', permanent_address: '' });
+    expect(buildingLegalOwnerSchema.parse({ ...emptyBuildingLegalOwner, id_issue_place: '  ' }).id_issue_place).toBe('Cục Cảnh sát');
+    expect(buildingLegalOwnerSchema.parse({ ...emptyBuildingLegalOwner, id_issue_place: ' Công an TP.HCM ' }).id_issue_place).toBe('Công an TP.HCM');
   });
   it('preserves initial zeros and trims names', () => {
     expect(buildingLegalOwnerSchema.parse({ ...emptyBuildingLegalOwner, full_name: ' Nguyễn An ', id_number: '001234567890' })).toMatchObject({ full_name: 'Nguyễn An', id_number: '001234567890' });

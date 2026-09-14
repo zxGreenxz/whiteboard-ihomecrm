@@ -40,6 +40,7 @@ try{
   await page.goto(`${origin}/owner.html${edit?'?edit=1':''}`,{waitUntil:'networkidle'});
   const identity=page.getByLabel('CCCD/CMND chủ sở hữu',{exact:true});
   await identity.waitFor();
+  assert.equal(await page.getByLabel('Nơi cấp CCCD/CMND',{exact:true}).inputValue(),'Cục Cảnh sát');
   if(edit)assert.equal(await identity.inputValue(),'001122');
   await identity.fill('001234567890');
   await page.getByLabel('Họ tên chủ sở hữu',{exact:true}).fill('Chủ sở hữu thử nghiệm');
@@ -50,6 +51,7 @@ try{
   await page.waitForFunction(()=>window.ownerCalls.length>=2);
   const calls=await page.evaluate(()=>window.ownerCalls);
   assert.equal(calls[1].p_owner.id_number,'001234567890');
+  assert.equal(calls[1].p_owner.id_issue_place,'Cục Cảnh sát');
   await page.getByRole('button',{name:'Lưu chủ sở hữu'}).click();
   assert.equal(await page.evaluate(()=>window.ownerCalls.length),2);
   assert.deepEqual(errors,[]); await page.close();
