@@ -54,7 +54,9 @@ export async function downloadCT01Document(customer: CT01Customer, building: CT0
   const url = URL.createObjectURL(blob);
   const link = window.document.createElement('a');
   link.href = url;
-  link.download = `CT01 - ${customer.full_name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim() || 'Khach hang'}.docx`;
+  const safeName = Array.from(customer.full_name).filter(character => character.charCodeAt(0) >= 32)
+    .join('').replace(/[<>:"/\\|?*]/g, '').trim();
+  link.download = `CT01 - ${safeName || 'Khach hang'}.docx`;
   window.document.body.appendChild(link);
   link.click();
   link.remove();
