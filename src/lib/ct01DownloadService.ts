@@ -5,6 +5,8 @@ import type { CT01Building } from './ct01Document';
 export interface CT01Tenancy {
   roomId: string;
   roomNumber: string;
+  /** Hợp đồng đang ở tương ứng — hồ sơ tạm trú gắn ảnh theo hợp đồng này. */
+  contractId: string;
   building: CT01Building;
 }
 
@@ -12,7 +14,7 @@ export interface CT01Tenancy {
 export async function loadCT01Tenancies(customerId: string): Promise<CT01Tenancy[]> {
   const { data, error } = await supabase.from('contract_customers').select(`
     contract:contracts!contract_customers_contract_id_fkey!inner(
-      status, deleted_at,
+      id, status, deleted_at,
       room:rooms!contracts_room_id_fkey!inner(
         id, name, deleted_at,
         building:buildings!rooms_building_id_fkey!inner(id, name, street_address, ward, district, province, deleted_at)
@@ -30,7 +32,7 @@ export async function loadCT01Tenancies(customerId: string): Promise<CT01Tenancy
     const room = contract?.room;
     const building = room?.building;
     if (contract && ACTIVE_CONTRACT_STATUSES.includes(contract.status) && !contract.deleted_at && room && !room.deleted_at && building && !building.deleted_at) {
-      tenancies.set(room.id, { roomId: room.id, roomNumber: room.name, building });
+      tenancies.set(room.id, { roomId: room.id, roomNumber: room.name, contractId: contract.id, building });
     }
   }
   return [...tenancies.values()].sort((left, right) =>
