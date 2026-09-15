@@ -62,8 +62,8 @@ export default function TamTruDvcButton({ customer, tenancy, customerFiles, owne
   return (
     <div className="flex flex-wrap items-center gap-3">
       <label className="flex items-center gap-2 text-sm text-muted-foreground">
-        Thời hạn tạm trú
-        <select aria-label="Thời hạn tạm trú trên DVC" value={durationMonths} disabled={busy}
+        Hạn tạm trú
+        <select aria-label="Hạn tạm trú trên DVC" value={durationMonths} disabled={busy}
           onChange={(e) => setDurationMonths(e.target.value === '12' ? 12 : 24)}
           className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground disabled:opacity-50">
           <option value="12">12 tháng</option>

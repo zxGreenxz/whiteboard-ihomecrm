@@ -61,7 +61,7 @@ describe('TamTruDvcButton', () => {
 
   it('ký URL, dựng gói và gửi cho extension', async () => {
     render(<TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={customerFiles} ownershipFiles={ownershipFiles} />);
-    fireEvent.change(screen.getByLabelText(/thời hạn tạm trú trên dvc/i), { target: { value: '12' } });
+    fireEvent.change(screen.getByLabelText(/hạn tạm trú trên dvc/i), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: /đăng ký tạm trú trên dvc/i }));
     await waitFor(() => expect(boundary.send).toHaveBeenCalledTimes(1));
     const payload = boundary.send.mock.calls[0][0];

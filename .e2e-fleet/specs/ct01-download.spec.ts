@@ -20,8 +20,10 @@ test.beforeAll(async () => {
   const fixture = `
     import React from 'react'; import {createRoot} from 'react-dom/client';
     import {MemoryRouter} from 'react-router-dom'; import {Toaster} from 'sonner';
+    import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
     import Modal from '@/components/customers/CustomerDetailModal';
-    createRoot(document.getElementById('root')).render(<MemoryRouter><Modal open onOpenChange={()=>{}} customerId="ct01-demo-customer"/><Toaster/></MemoryRouter>);
+    const qc = new QueryClient({defaultOptions:{queries:{retry:false}}});
+    createRoot(document.getElementById('root')).render(<QueryClientProvider client={qc}><MemoryRouter><Modal open onOpenChange={()=>{}} customerId="ct01-demo-customer"/><Toaster/></MemoryRouter></QueryClientProvider>);
   `;
   const customer = { id: 'ct01-demo-customer', full_name: 'Nguyễn Văn Kiểm Thử', date_of_birth: '2001-12-05', gender: 'MALE', id_number: '012345678901', phone: '0901234567', email: 'test@example.com', id_issue_date: '2022-02-25', id_issue_place: 'Cục Cảnh Sát', detailed_address: 'Ấp Kiểm Thử, Xã Bình Mỹ', permanent_address: null };
   const modules: Record<string, string> = {
@@ -76,6 +78,11 @@ test.beforeEach(async ({ page }) => {
     expect(route.request().method()).toBe('GET');
     return route.fulfill({ json: owner });
   });
+  // Khối "Hồ sơ tạm trú" trong cùng modal đọc ảnh hồ sơ; fixture không có ảnh nào.
+  await page.route('**/rest/v1/residence_dossier_files?*', route => {
+    expect(route.request().method()).toBe('GET');
+    return route.fulfill({ json: [] });
+  });
 });
 test.afterEach(async ({ page }) => {
   expect(consoleErrors.get(page)).toEqual([]);
@@ -105,6 +112,8 @@ test('bấm trong modal tải Word đúng dữ liệu, khóa bấm lặp, không
   await expect(button).toBeVisible();
   await expect(page.getByLabel('Thời hạn tạm trú')).toHaveValue('24');
   const event = page.waitForEvent('download');
+  // Khối "Hồ sơ tạm trú" đã tải hợp đồng đang ở lúc mở modal; chỉ đếm request do nút CT01 tạo ra.
+  const requestsBeforeClick = requests;
   await button.evaluate(element => { (element as HTMLButtonElement).click(); (element as HTMLButtonElement).click(); });
   await expect(page.getByRole('button', { name: 'Đang tạo tờ khai CT01…' })).toBeDisabled();
   await expect(page.getByLabel('Thời hạn tạm trú')).toBeDisabled();
@@ -132,7 +141,7 @@ test('bấm trong modal tải Word đúng dữ liệu, khóa bấm lặp, không
   expect(xml).not.toMatch(/\{\w+\}/);
   await expect(page.getByRole('dialog', { name: 'Chi tiết khách hàng' })).toBeVisible();
   expect(page.url()).toBe(`${base}/__ct01.html`);
-  expect(requests).toBe(1);
+  expect(requests - requestsBeforeClick).toBe(1);
   expect(errors).toEqual([]);
 });
 
@@ -235,4 +244,22 @@ test('quyền không cho in thì không có nút tải', async ({ page }) => {
   await page.goto(`${base}/__ct01.html#denied`);
   await expect(page.getByRole('dialog', { name: 'Chi tiết khách hàng' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Bản khai nhân khẩu/ })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Hồ sơ tạm trú' })).toHaveCount(0);
+});
+
+test('khối Hồ sơ tạm trú: hai hàng ảnh, cảnh báo thiếu chủ quyền, chưa cài extension thì hướng dẫn cài', async ({ page }) => {
+  await page.route('**/rest/v1/contract_customers?*', route => route.fulfill({ json: [link()] }));
+  await page.goto(`${base}/__ct01.html`);
+  const section = page.getByRole('region', { name: 'Hồ sơ tạm trú' });
+  await expect(section.getByText(/^Tờ khai CT01 đã ký/)).toBeVisible();
+  await expect(section.getByText(/^Hợp đồng thuê đã ký/)).toBeVisible();
+  await expect(section.getByRole('button', { name: 'Chụp ảnh' })).toHaveCount(2);
+  await expect(section.getByLabel('Chụp ảnh Tờ khai CT01 đã ký')).toHaveAttribute('capture', 'environment');
+  await expect(section.getByText(/chưa có ảnh giấy tờ chỗ ở hợp pháp/)).toBeVisible();
+  await expect(section.getByLabel('Hạn tạm trú trên DVC')).toHaveValue('24');
+  await section.getByRole('button', { name: 'Đăng ký tạm trú trên DVC' }).click();
+  await expect(page.getByRole('dialog', { name: 'Cài extension iHome Tạm trú' })).toBeVisible();
+  await expect(page.getByText('extensions/tam-tru')).toBeVisible();
+  await page.getByRole('button', { name: 'Đóng' }).click();
+  await expect(page.getByRole('dialog', { name: 'Chi tiết khách hàng' })).toBeVisible();
 });
