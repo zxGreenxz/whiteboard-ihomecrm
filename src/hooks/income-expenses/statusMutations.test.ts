@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -258,6 +261,74 @@ describe("termination forfeit status rollout fallback", () => {
 
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
     expect(mocks.toastError).toHaveBeenCalledWith(error.message);
+  });
+});
+
+describe("huỷ duyệt phiếu — CAS approval_version (H3.2)", () => {
+  // unapprove_voucher giờ khoá dòng và so approval_version. Trang gọi hook chỉ
+  // đưa được `id` (IncomeExpensePage.tsx:585), nên chính hook phải đọc phiên
+  // bản hiện tại rồi gửi kèm — đọc-rồi-CAS, chứ không phải ghi mù.
+  it("đọc approval_version rồi gửi kèm khi huỷ duyệt", async () => {
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "set_termination_forfeit_status_v1") {
+        return { data: null, error: { code: "PGRST202", message: "not found" } };
+      }
+      if (name === "unapprove_voucher") return { data: null, error: null };
+      throw new Error(`Unexpected RPC ${name}`);
+    });
+    // Cùng một builder phục vụ HAI lần đọc: phân loại phiếu thường
+    // (system_source/notes) rồi mới tới approval_version.
+    const voucherQuery = mockVoucherRead({
+      data: { system_source: null, notes: null, approval_version: 7 },
+      error: null,
+    });
+
+    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    await expect(mutation.mutationFn("voucher-9")).resolves.toBe(false);
+
+    expect(voucherQuery.select).toHaveBeenCalledWith("approval_version");
+    expect(voucherQuery.eq).toHaveBeenCalledWith("id", "voucher-9");
+    expect(mocks.rpc).toHaveBeenCalledWith("unapprove_voucher", {
+      voucher_id: "voucher-9",
+      p_expected_approval_version: 7,
+    });
+  });
+
+  it("đọc không ra phiên bản thì gửi null — server bỏ qua CAS, KHÔNG tự bịa số", () => {
+    // Bịa `?? 1` ở client tệ hơn là không CAS: nó biến một phép SO thành một
+    // lời KHẲNG ĐỊNH sai, và lần đầu tiên nó sai đúng là lúc phiếu đã bị người
+    // khác động vào (approval_version > 1) — tức đúng lúc CAS phải bắt.
+    const nguon = readFileSync(
+      join(process.cwd(), "src/hooks/income-expenses/statusMutations.ts"),
+      "utf8",
+    );
+    expect(nguon).toMatch(/p_expected_approval_version/);
+    expect(nguon).not.toMatch(/p_expected_approval_version:\s*[^,\n]*\?\?\s*1\b/);
+  });
+
+  it("lệch phiên bản thì báo bằng lời người đọc được", async () => {
+    const error = {
+      code: "55000",
+      message: "unapprove_voucher: approval_version mismatch (expected 7, found 8)",
+    };
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "set_termination_forfeit_status_v1") {
+        return { data: null, error: { code: "PGRST202", message: "not found" } };
+      }
+      if (name === "unapprove_voucher") return { data: null, error };
+      throw new Error(`Unexpected RPC ${name}`);
+    });
+    mockVoucherRead({
+      data: { system_source: null, notes: null, approval_version: 7 },
+      error: null,
+    });
+
+    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    await expect(mutation.mutationFn("voucher-9")).rejects.toEqual(error);
+
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "Phiếu vừa được người khác thay đổi — hãy tải lại trang rồi thử lại",
+    );
   });
 });
 

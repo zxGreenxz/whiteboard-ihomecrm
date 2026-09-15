@@ -44,6 +44,25 @@ const TERMINATION_FORFEIT_SYSTEM_SOURCES = new Set([
 ]);
 const TERMINATION_FORFEIT_LEGACY_MARKER = "[CẤN CỌC BỎ CỌC";
 
+/**
+ * Phiên bản duyệt hiện tại của phiếu, để gửi kèm làm CAS.
+ *
+ * Trả `null` khi KHÔNG ĐỌC ĐƯỢC (lỗi mạng, RLS giấu dòng, cột chưa có) —
+ * server hiểu null là "không CAS" và giữ nguyên hành vi cũ. Đây là chỗ CỐ Ý
+ * không dùng `?? 1`: bịa số 1 sẽ khớp với mọi phiếu chưa ai động tới, rồi sai
+ * đúng vào lúc phiếu đã bị thay đổi — tức đúng lúc CAS phải bắt.
+ */
+const readApprovalVersion = async (id: string): Promise<number | null> => {
+  const { data, error } = await supabase
+    .from("income_expenses")
+    .select("approval_version")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  const raw = (data as { approval_version?: unknown }).approval_version;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+};
+
 const isConfidentlyOrdinaryVoucher = async (id: string) => {
   const { data, error } = await supabase
     .from("income_expenses")
@@ -193,17 +212,32 @@ export const useUnapproveVoucher = () => {
         throw error;
       }
 
+      // CAS (H3.2): server khoá dòng rồi so approval_version. Trang gọi hook
+      // chỉ đưa được `id`, nên phiên bản phải đọc ở đây. Đọc-rồi-CAS vẫn đóng
+      // đúng khoảng hở cần đóng — mọi thay đổi xen vào giữa lần đọc này và
+      // lệnh ghi đều làm phép so lệch và bị từ chối.
+      //
+      // Đọc hỏng ⇒ gửi null ⇒ server bỏ qua CAS. CỐ Ý không bịa `?? 1`: một số
+      // bịa biến phép SO thành lời KHẲNG ĐỊNH sai, và nó sai đúng vào lúc phiếu
+      // đã bị người khác động vào — tức đúng lúc CAS phải bắt.
+      const expectedApprovalVersion = await readApprovalVersion(id);
+
       const { error } = await supabase.rpc("unapprove_voucher", {
         voucher_id: id,
+        p_expected_approval_version: expectedApprovalVersion,
       });
       if (error) {
         // Phiếu canonical bị đóng băng vòng đời (Phương án A): không quay về
         // Nháp được — hướng dẫn Huỷ + Tạo bản sao thay vì lỗi kỹ thuật khó hiểu.
-        const frozen = (error.message ?? "").includes("frozen");
+        const message = error.message ?? "";
+        const frozen = message.includes("frozen");
+        const stale = message.includes("approval_version mismatch");
         toast.error(
           frozen
             ? "Phiếu canonical không thể huỷ duyệt — hãy Huỷ phiếu rồi bấm Tạo bản sao"
-            : error.message || "Không thể huỷ duyệt phiếu",
+            : stale
+              ? "Phiếu vừa được người khác thay đổi — hãy tải lại trang rồi thử lại"
+              : message || "Không thể huỷ duyệt phiếu",
         );
         throw error;
       }
