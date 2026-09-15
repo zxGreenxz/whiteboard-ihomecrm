@@ -14284,6 +14284,96 @@ export type Database = {
           },
         ]
       }
+      residence_dossier_files: {
+        Row: {
+          bucket_id: string
+          building_id: string
+          content_type: string
+          contract_id: string | null
+          created_at: string
+          created_by: string
+          customer_id: string | null
+          deleted_at: string | null
+          file_name: string
+          id: string
+          kind: string
+          object_name: string
+          organization_id: string
+          size_bytes: number
+          sort_order: number
+        }
+        Insert: {
+          bucket_id?: string
+          building_id: string
+          content_type?: string
+          contract_id?: string | null
+          created_at?: string
+          created_by?: string
+          customer_id?: string | null
+          deleted_at?: string | null
+          file_name?: string
+          id?: string
+          kind: string
+          object_name: string
+          organization_id: string
+          size_bytes?: number
+          sort_order?: number
+        }
+        Update: {
+          bucket_id?: string
+          building_id?: string
+          content_type?: string
+          contract_id?: string | null
+          created_at?: string
+          created_by?: string
+          customer_id?: string | null
+          deleted_at?: string | null
+          file_name?: string
+          id?: string
+          kind?: string
+          object_name?: string
+          organization_id?: string
+          size_bytes?: number
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "residence_dossier_files_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "residence_dossier_files_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "residence_dossier_files_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "residence_dossier_files_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "residence_dossier_files_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_binding_scopes: {
         Row: {
           organization_id: string
