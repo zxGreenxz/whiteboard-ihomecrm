@@ -23,6 +23,7 @@
     "gate:reconcile-money-v2": "node scripts/reconcile-money-v2.mjs",
     "gate:approver-provenance": "node scripts/check-approver-provenance.mjs",
     "gate:definer-acl": "node scripts/check-definer-acl.mjs",
+    "gate:definer-body-authz": "node scripts/check-definer-body-authz.mjs",
     "gate:ie-guard-gates": "node scripts/check-ie-guard-gates.mjs",
     "gate:permission-catalog": "node scripts/check-permission-catalog.mjs",
     "gate:salary-completion-date": "node scripts/check-salary-completion-date.mjs",
