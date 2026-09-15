@@ -11,10 +11,15 @@
 //   Gom một chỗ thì danh sách này ĐẾM ĐƯỢC, và gate
 //   scripts/check-route-guards.mjs vẫn quét cả thư mục nên guard (hoặc việc cố ý
 //   không có guard) của từng route ở đây vẫn được kiểm như cũ.
+//
+//   /register ĐÃ BỎ HẲN 15/09/2026 (chủ quyết). `handle_new_user` dựng hàng
+//   `profiles` KHÔNG kèm organization_id, nên mọi tài khoản tự đăng ký là hồ sơ
+//   MỒ CÔI: không thuộc công ty nào, không lọt chính sách biên giới, không gỡ
+//   được bằng giao diện. Đường tạo tài khoản duy nhất là edge function
+//   `admin-create-user` (có org + vai). Đừng thêm lại route này.
 import { Route } from "react-router-dom";
 import { Suspense } from "react";
 import PublicRoute from "../../components/auth/PublicRoute";
-import Register from "../../pages/auth/Register";
 import Login from "../../pages/auth/Login";
 import ForgotPassword from "../../pages/auth/ForgotPassword";
 import ResetPassword from "../../pages/auth/ResetPassword";
@@ -30,14 +35,6 @@ export const publicRoutes = (
     {/* ========================================
         PUBLIC ROUTES - Only for unauthenticated users
         ======================================== */}
-    <Route
-      path="/register"
-      element={
-        <PublicRoute>
-          <Register />
-        </PublicRoute>
-      }
-    />
     <Route
       path="/login"
       element={

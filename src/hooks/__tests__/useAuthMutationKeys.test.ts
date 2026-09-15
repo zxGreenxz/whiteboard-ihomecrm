@@ -33,13 +33,14 @@ import {
   useForgotPassword,
   useLogin,
   useLogout,
-  useRegister,
   useResetPassword,
 } from "@/hooks/useAuth";
 
 describe("auth mutation keys", () => {
+  // useRegister bỏ 15/09/2026 cùng route /register (I3.4): supabase.auth.signUp
+  // để lại hồ sơ mồ côi không thuộc công ty nào, không gỡ được bằng giao diện.
+  // Xem src/app/routes/__tests__/publicRoutes.test.tsx.
   it.each([
-    ["register", useRegister],
     ["login", useLogin],
     ["logout", useLogout],
     ["forgot-password", useForgotPassword],
