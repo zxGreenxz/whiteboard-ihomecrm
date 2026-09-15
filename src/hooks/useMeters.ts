@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { nullIfNotFound } from "@/hooks/readErrors";
 
 type Meter = Database["public"]["Tables"]["meters"]["Row"];
 type MeterInsert = Database["public"]["Tables"]["meters"]["Insert"];
@@ -163,7 +164,7 @@ export const useMeters = (roomId?: string, meterType?: MeterType) => {
 
       if (error) {
         console.error("useMeters error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];
@@ -183,10 +184,7 @@ export const useMeter = (id: string) => {
         .is("deleted_at", null)
         .single();
 
-      if (error) {
-        console.error("useMeter error:", error);
-        return null;
-      }
+      if (error) return nullIfNotFound(error, "useMeter");
 
       return data;
     },
@@ -205,7 +203,7 @@ export const useMetersWithLatestReading = () => {
 
       if (error) {
         console.error("useMetersWithLatestReading error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];
@@ -274,7 +272,7 @@ export const useUnrecordedMeters = (params: {
 
       if (error) {
         console.error("[useUnrecordedMeters] RPC error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];

@@ -75,12 +75,18 @@ export function selectIeTypeRowsForOrgs(
 }
 
 // my_org_ids() là SECURITY DEFINER đã grant authenticated (xem useMyOrgIds ở
-// useNotificationSettings.ts). Lỗi → [] và selectIeTypeRowsForOrgs bỏ lọc.
+// useNotificationSettings.ts).
+//
+// Lỗi thì THROW, không trả []. Trước đây trả [] để "khỏi trắng dropdown", nhưng
+// [] ở đây nghĩa là "không biết org nào" và selectIeTypeRowsForOrgs bỏ lọc —
+// tức một lỗi RPC nhất thời mở đúng cánh cửa mà án lệ 07/08/2026 đóng lại: hạng
+// mục của org khác lọt vào picker rồi create_income_expense_v1 từ chối 42501.
+// Fail-closed: thà màn hình báo lỗi còn hơn đưa lựa chọn của công ty khác.
 async function fetchMyOrgIds(): Promise<string[]> {
   const { data, error } = await supabase.rpc("my_org_ids");
   if (error) {
     console.error("useIncomeExpenseTypes my_org_ids error:", error);
-    return [];
+    throw error;
   }
   return Array.isArray(data) ? (data as string[]).filter(Boolean) : [];
 }
@@ -122,7 +128,7 @@ export const useIncomeExpenseTypes = (
 
       if (error) {
         console.error("useIncomeExpenseTypes error:", error);
-        return [];
+        throw error;
       }
 
       const rows = (data ?? []) as unknown as IncomeExpenseType[];
@@ -158,7 +164,7 @@ export const useIncomeExpenseTypeCategories = (
       const { data, error } = await query;
       if (error) {
         console.error("useIncomeExpenseTypeCategories error:", error);
-        return [];
+        throw error;
       }
 
       const set = new Set<string>();
@@ -199,7 +205,7 @@ export const useHiddenInReportTypes = () => {
         .eq("hide_in_report", true);
       if (error) {
         console.error("useHiddenInReportTypes error:", error);
-        return [];
+        throw error;
       }
       return ((data ?? []) as any[]).map((r) => ({ id: r.id, name: r.name ?? "" }));
     },

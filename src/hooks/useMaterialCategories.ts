@@ -15,7 +15,7 @@ export const useMaterialCategories = () => {
         .order('name', { ascending: true });
       if (error) {
         console.error('useMaterialCategories error:', error);
-        return [];
+        throw error;
       }
       return (data ?? []) as unknown as MaterialCategory[];
     },

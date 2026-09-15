@@ -25,7 +25,7 @@ export const useMaterialUsages = () => {
         .order('created_at', { ascending: false });
       if (error) {
         console.error('useMaterialUsages error:', error);
-        return [];
+        throw error;
       }
       const rows = (data ?? []) as unknown as MaterialUsageWithJob[];
 
@@ -60,8 +60,10 @@ export const useMaterialUsageByJob = (jobId: string | null | undefined) => {
         .eq('job_id', jobId)
         .maybeSingle();
       if (error) {
+        // maybeSingle(): 0 dòng trả data=null KHÔNG kèm lỗi, nên có lỗi ở đây
+        // luôn là hỏng thật (mất quyền / nhiều dòng / mạng) → ném.
         console.error('useMaterialUsageByJob error:', error);
-        return null;
+        throw error;
       }
       return (data as unknown as MaterialUsageWithItems) ?? null;
     },

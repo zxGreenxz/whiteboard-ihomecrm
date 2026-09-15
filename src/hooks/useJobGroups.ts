@@ -14,7 +14,7 @@ export const useJobGroups = () => {
 
       if (error) {
         console.error("useJobGroups error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];

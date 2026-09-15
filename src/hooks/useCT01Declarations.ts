@@ -24,7 +24,7 @@ export const useCT01Declarations = (customerId: string) => {
 
       if (error) {
         console.error("useCT01Declarations error:", error);
-        return [];
+        throw error;
       }
 
       return (data || []) as CT01Declaration[];

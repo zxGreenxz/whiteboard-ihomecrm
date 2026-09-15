@@ -25,7 +25,7 @@ export const useAutoDebtConfigs = (buildingId?: string) => {
 
       if (error) {
         console.error("useAutoDebtConfigs error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];

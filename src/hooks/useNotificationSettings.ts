@@ -255,7 +255,7 @@ export function useMyOrgIds() {
       const { data, error } = await supabase.rpc("my_org_ids");
       if (error) {
         warnUnavailable("my_org_ids", error.message);
-        return [];
+        throw error;
       }
       // `my_org_ids()` là array_agg thô trên organization_memberships — hai membership
       // ACTIVE trong cùng một tổ chức sẽ ra id TRÙNG, làm vỡ key React của ô chọn.
@@ -283,7 +283,7 @@ export function useMyOrgOptions() {
     staleTime: 5 * 60_000,
     queryFn: async (): Promise<{ organization_id: string; organization_name: string }[]> => {
       const { data, error } = await supabase.rpc("list_ie_accounting_standard_v1");
-      if (error) return [];
+      if (error) throw error;
       return Array.isArray(data) ? (data as any[]) : [];
     },
   });

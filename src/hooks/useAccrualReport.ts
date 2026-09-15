@@ -249,13 +249,17 @@ export const useAccrualMonthReport = (
       // Fetch-all: lặp từng trang 1000 tới khi trang ngắn hơn PARENT_PAGE.
       const fetchAll = async (
         build: (f: number, t: number) => any,
-      ): Promise<any[] | null> => {
+      ): Promise<any[]> => {
         const out: any[] = [];
         for (let from = 0; ; from += PARENT_PAGE) {
           const { data, error } = await build(from, from + PARENT_PAGE - 1);
           if (error) {
+            // KHÔNG trả null: đây là báo cáo TIỀN. Một trang lỗi mà nuốt đi thì
+            // báo cáo hiện 0 đ — không phân biệt được với "tháng này không có
+            // phiếu nào", và người đối chiếu quỹ đọc ra một con số thiếu mà
+            // không có gì báo là thiếu.
             console.error("useAccrualMonthReport error:", error);
-            return null;
+            throw error;
           }
           const pageRows = (data ?? []) as any[];
           out.push(...pageRows);
@@ -269,7 +273,6 @@ export const useAccrualMonthReport = (
         fetchAll(buildInvoice),
         fetchAll(buildNonInvoiceNoItem),
       ]);
-      if (nonInv === null || inv === null || noItem === null) return EMPTY;
 
       // Transform: phân bổ từng item vào tháng YM (client-side).
       let totalIncome = 0;

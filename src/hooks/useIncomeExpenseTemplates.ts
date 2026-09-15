@@ -39,7 +39,7 @@ export const useIncomeExpenseTemplates = (filterIsIncome?: boolean) => {
 
       if (error) {
         console.error("useIncomeExpenseTemplates error:", error);
-        return [];
+        throw error;
       }
 
       return (data || []) as unknown as IncomeExpenseTemplate[];

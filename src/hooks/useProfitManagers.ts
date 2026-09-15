@@ -81,7 +81,9 @@ export const useMyProfitManager = () => {
         .eq("auth_user_id", user.id)
         .is("deleted_at", null)
         .maybeSingle();
-      if (error) return null;
+      // KHÔNG nuốt: null ở đây nghĩa "bạn không phải quản lý điều hành", nên một
+      // lỗi RLS/mạng bị nuốt sẽ ẩn nguyên khu lương của đúng người có quyền.
+      if (error) throw error;
       return (data as ProfitManager) ?? null;
     },
   });

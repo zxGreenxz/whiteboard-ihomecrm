@@ -29,8 +29,28 @@
 //   "không có quyền xem" hiển thị y hệt "không có phiếu nào" — và người đối
 //   chiếu quỹ đọc ra một con số thiếu mà không có gì báo là thiếu.
 //
+// MẪU KHỐI — vì sao thêm 15/09/2026
+//   Bốn mẫu đầu chỉ bắt `if (error) return [];` viết trên MỘT DÒNG. Dạng thật
+//   sự phổ biến trong repo lại là khối ba dòng có `console.error` ở giữa, và
+//   suốt từ 07/08/2026 gate xanh trong khi 40 chỗ như vậy sống trong
+//   `src/hooks`. Mẫu `if-error-khoi-tra-rong` bịt đúng khoảng đó.
+//
+//   Khối có `throw` KHÔNG bị tính, kể cả khi trước đó có `return null` cho
+//   nhánh không-tìm-thấy — `.single()` trả PGRST116 khi 0 dòng, và "không có
+//   dòng" là dữ liệu chứ không phải lỗi. Gate mà chặn cách sửa đúng thì nó
+//   đang đẩy người ta về chỗ cũ.
+//
+//   Phạm vi cố ý hẹp: `src/hooks/` và `src/lib/` (plan C mục 4). Đây là nơi
+//   một lỗi bị nuốt biến thành DỮ LIỆU RỖNG đi thẳng vào màn hình; ở
+//   component/page thì mẫu cũ đã đủ và mở rộng sẽ kéo theo một đợt baseline
+//   không ai rà nổi trong một lượt.
+//
 //   node scripts/check-error-swallow-ratchet.mjs
 //   node scripts/check-error-swallow-ratchet.mjs --write   # chỉ khi GIẢM
+//   node scripts/check-error-swallow-ratchet.mjs --write --nhan-mau=if-error-khoi-tra-rong
+//        ↑ CHỈ dùng khi vừa THÊM một mẫu dò: mọi chỗ mẫu mới tìm ra đều "mới"
+//          theo nghĩa kỹ thuật dù mã không đổi, nên ratchet phải được nhận một
+//          lần. Phạm vi tha bó đúng vào tên mẫu nêu ra — mẫu cũ vẫn khoá.
 //
 // Không cần credential. Thoát 0 đạt · 1 vi phạm · 3 không kiểm được.
 
@@ -78,14 +98,66 @@ export const LA_VUNG_TIEN = (f) =>
  *   thích làm khối không còn rỗng, còn một dòng code bị comment-out (`// catch {}`)
  *   cũng không bị đếm nhầm thành vi phạm.
  */
-export function domFile(noiDung, duongDan) {
+export function lamSachChuThich(noiDung) {
   const dac = (m) => "§".repeat(Math.max(m.length, 1));
-  const sach = noiDung.replace(/\/\*[\s\S]*?\*\//g, dac).replace(/(^|[^:"'`\\])\/\/.*$/gm, (m, p1) => p1 + dac(m));
+  return noiDung.replace(/\/\*[\s\S]*?\*\//g, dac).replace(/(^|[^:"'`\\])\/\/.*$/gm, (m, p1) => p1 + dac(m));
+}
+
+/** Tên mẫu khối — giữ ở hằng vì baseline và cờ `--nhan-mau` cùng tham chiếu. */
+export const MAU_KHOI = "if-error-khoi-tra-rong";
+
+/** Mẫu khối chỉ soi nơi lỗi bị nuốt biến thành dữ liệu rỗng trên màn hình. */
+export const laVungQuetKhoi = (duongDan) => /^src\/(hooks|lib)\//.test(duongDan);
+
+/**
+ * Cắt thân các khối `if (<biến có chữ error>) { … }`.
+ *
+ * Đếm ngoặc thay vì regex vì khối thật hay có `if (…) { … }` lồng bên trong, và
+ * một regex không-tham `[^{}]*` sẽ bỏ sót đúng những khối dài nhất — tức là
+ * những khối đáng soi nhất. Chú thích được làm đặc TRƯỚC khi đếm, nếu không một
+ * dấu `}` nằm trong comment sẽ cắt thân khối sớm và chỗ vi phạm biến mất.
+ *
+ * Điều kiện phải là MỘT định danh trần: `if (errorCount > 0)` không phải đang
+ * kiểm một lỗi, và tính nó vào là bắt người ta sửa thứ không hỏng.
+ */
+export function timKhoiIfError(noiDung) {
+  const sach = lamSachChuThich(noiDung);
+  const mo = /if\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*\{/g;
+  const than = [];
+  for (let m = mo.exec(sach); m; m = mo.exec(sach)) {
+    if (!/error/i.test(m[1])) continue;
+    let sau = 1;
+    let i = m.index + m[0].length;
+    for (; i < sach.length && sau > 0; i += 1) {
+      if (sach[i] === "{") sau += 1;
+      else if (sach[i] === "}") sau -= 1;
+    }
+    if (sau !== 0) continue; // ngoặc lệch → không đoán, để nguyên
+    than.push(sach.slice(m.index + m[0].length, i - 1));
+  }
+  return than;
+}
+
+/** Thân khối trả về giá trị rỗng mà KHÔNG có đường nào ném ra. */
+export function laNuotKhoi(than) {
+  if (/\bthrow\b/.test(than)) return false;
+  return /\breturn\s*(\[\s*\]|\{\s*\}|null|undefined)\s*;/.test(than);
+}
+
+export function domKhoi(noiDung, duongDan) {
+  if (!laVungQuetKhoi(duongDan)) return [];
+  const nuot = timKhoiIfError(noiDung).filter(laNuotKhoi);
+  return nuot.map((_, i) => `${duongDan}#${MAU_KHOI}#${i}`);
+}
+
+export function domFile(noiDung, duongDan) {
+  const sach = lamSachChuThich(noiDung);
   const ra = [];
   for (const [ten, re] of MAU) {
     const n = [...sach.matchAll(re)].length;
     for (let i = 0; i < n; i++) ra.push(`${duongDan}#${ten}#${i}`);
   }
+  ra.push(...domKhoi(noiDung, duongDan));
   return ra;
 }
 
@@ -94,8 +166,28 @@ export function timThemMoi(baseline, hienTai) {
   return hienTai.filter((f) => !cu.has(f)).sort();
 }
 
+/**
+ * Lọc ra những fingerprint MỚI mà KHÔNG thuộc mẫu được nêu tên.
+ *
+ * Dùng cho `--write --nhan-mau=…`: thêm một mẫu dò làm mọi chỗ mẫu ấy tìm ra
+ * trở thành "mới" dù mã không đổi một dòng. Ratchet vẫn phải khoá các mẫu cũ
+ * trong chính lần chốt đó — nếu không, một lần mở rộng gate lại thành cửa sau
+ * cho mọi thứ khác đi kèm trong cùng commit.
+ */
+export function themMoiNgoaiMau(themMoi, mauChoPhep) {
+  const tha = new Set(mauChoPhep ?? []);
+  return themMoi.filter((f) => {
+    const m = /#([^#]+)#\d+$/.exec(f);
+    return !(m && tha.has(m[1]));
+  });
+}
+
 function main() {
   const viet = process.argv.includes("--write");
+  const nhanMau = (process.argv.find((a) => a.startsWith("--nhan-mau="))?.slice("--nhan-mau=".length) ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   let files;
   try {
     files = execFileSync("git", ["ls-files", "src/**/*.ts", "src/**/*.tsx"], {
@@ -152,10 +244,17 @@ function main() {
     // "mới" theo nghĩa kỹ thuật. Bản đầu của gate này chặn luôn cả lần đó, tức
     // không bao giờ dựng được mốc. Từ lần thứ hai trở đi ratchet mới có nghĩa.
     const laLanDau = !existsSync(bPath);
-    if (!laLanDau && themMoi.length > 0) {
-      console.error(`❌ Không chốt baseline khi có ${themMoi.length} chỗ MỚI. Ratchet chỉ đi xuống.`);
-      for (const f of themMoi.slice(0, 10)) console.error(`   + ${f}`);
+    const chuaThaDuoc = themMoiNgoaiMau(themMoi, nhanMau);
+    if (!laLanDau && chuaThaDuoc.length > 0) {
+      console.error(`❌ Không chốt baseline khi có ${chuaThaDuoc.length} chỗ MỚI. Ratchet chỉ đi xuống.`);
+      for (const f of chuaThaDuoc.slice(0, 10)) console.error(`   + ${f}`);
+      if (nhanMau.length > 0) {
+        console.error(`   (đã tha mẫu: ${nhanMau.join(", ")} — các chỗ trên KHÔNG thuộc mẫu đó)`);
+      }
       process.exit(1);
+    }
+    if (!laLanDau && themMoi.length > 0) {
+      console.log(`⚠ Nhận ${themMoi.length} chỗ của mẫu MỚI (${nhanMau.join(", ")}) vào baseline — mã không đổi, chỉ bộ dò rộng ra.`);
     }
     writeFileSync(
       bPath,
@@ -163,6 +262,8 @@ function main() {
         {
           $comment:
             "Ratchet chống nuốt lỗi (plan §9). TẬP FINGERPRINT chứ không phải số đếm — với số đếm thì xoá một chỗ ở màn cài đặt rồi thêm một chỗ ở màn thu tiền là hoà, và repo đã có đúng án lệ đó ở ratchet any-cast. Fingerprint là file#mẫu#thứ-tự, cố ý KHÔNG dùng số dòng: thêm một dòng ở đầu file sẽ đổi mọi fingerprint bên dưới và biến một commit vô hại thành đỏ toàn bộ. Chốt mức mới: npm run gate:error-swallow -- --write",
+          $mauKhoi:
+            "Mẫu `if-error-khoi-tra-rong` thêm 15/09/2026 (plan C), quét src/hooks + src/lib. 48 chỗ nó tìm ra lúc lập mốc: 42 đã đổi sang throw trong cùng commit; 6 chỗ còn trong danh sách dưới đây là QUYẾT ĐỊNH CÓ CHỦ Ý, không phải nợ — financeV2Mutations ×2 (null = tri-state 'KHÔNG rõ', caller fail-open giữ list cũ), supabaseFetchAll (null = hợp đồng fail-closed của chính hàm, caller bắt buộc kiểm), salaryBonusNotify (header ghi rõ KHÔNG throw để không chặn UI hoàn thành việc), customerExcelHelpers (tải ảnh tuỳ chọn), useRooms.ts#useRoom (thuộc plan D đợt này, chưa đụng).",
           updatedAt: new Date().toISOString().slice(0, 10),
           total: hienTai.length,
           money: tienHienTai,

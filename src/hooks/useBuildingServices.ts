@@ -24,7 +24,7 @@ export const useBuildingServices = (buildingId: string) => {
 
       if (error) {
         console.error("useBuildingServices error:", error);
-        return [];
+        throw error;
       }
 
       return (data || []) as BuildingServiceWithDetails[];

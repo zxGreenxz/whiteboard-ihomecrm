@@ -23,7 +23,7 @@ export const useStaffUsers = () => {
 
       if (error) {
         console.error("useStaffUsers error", error);
-        return [];
+        throw error;
       }
 
       return ((data || []) as any[]).filter((p) => p.is_active !== false) as StaffUser[];

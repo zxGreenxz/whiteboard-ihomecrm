@@ -25,7 +25,7 @@ export const useAssetWarehouses = (buildingId?: string) => {
 
       if (error) {
         console.error("useAssetWarehouses error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];

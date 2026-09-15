@@ -21,7 +21,7 @@ export const useMaterialAdjustments = () => {
         .order('created_at', { ascending: false });
       if (error) {
         console.error('useMaterialAdjustments error:', error);
-        return [];
+        throw error;
       }
       return (data ?? []) as unknown as MaterialAdjustmentWithItems[];
     },

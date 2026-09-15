@@ -322,7 +322,7 @@ export const useInvoicesLegacy = (filters?: {
       const { data, error } = await query;
       if (error) {
         console.error('useInvoicesLegacy error:', error);
-        return [];
+        throw error;
       }
       return (data || []) as InvoiceWithRelations[];
     },
@@ -1557,7 +1557,7 @@ export const useMeterReadings = (contractId?: string) => {
       const { data, error } = await query;
       if (error) {
         console.error('useMeterReadings error:', error);
-        return [];
+        throw error;
       }
       return data || [];
     },
