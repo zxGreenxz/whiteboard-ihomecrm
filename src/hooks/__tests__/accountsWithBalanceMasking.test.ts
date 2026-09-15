@@ -45,6 +45,22 @@ describe("H3.4 — tồn quỹ không đọc được thì để TRỐNG, không
     expect(nguon).not.toMatch(/current_amount:\s*0\s*[,\n]/);
   });
 
+  it("CHỖ GÁN phải thật sự rẽ nhánh sang null, không chỉ khai kiểu cho đẹp", () => {
+    // Đo bằng scripts/dot-bien.mjs: bốn phép khẳng định ở trên đều chỉ DÒ TỪ
+    // KHOÁ, nên gỡ hẳn nhánh `: null` trong hàm map mà suite vẫn xanh — khai
+    // báo `current_amount: number | null` ở interface vẫn còn nguyên đó.
+    // Phép này neo vào MÃ SINH RA DỮ LIỆU, không neo vào lời khai kiểu.
+    expect(nguon).toMatch(/current_amount:\s*visible\s*\?[^\n]*:\s*null\s*,/);
+  });
+
+  it("cờ balance_visible lấy từ câu trả lời của server, không hằng số", () => {
+    // `balance_visible: true` cứng làm mọi màn hình tin rằng số nào cũng đọc
+    // được — đúng cái trạng thái sai mà lát này sinh ra để xoá.
+    expect(nguon).not.toMatch(/balance_visible:\s*(true|false)\s*,/);
+    expect(nguon).toMatch(/balance_visible:\s*visible\s*,/);
+    expect(nguon).toMatch(/visibleById\s*\?\s*visibleById\.get\(/);
+  });
+
   it("RPC lỗi thì GIỮ HÀNH VI CŨ, không bôi trắng toàn bộ bảng", () => {
     // Đây là nếp đã có của repo (financeV2Mutations.ts:250-252): không rõ ⇒
     // hiện như cũ. Một lỗi mạng thoáng qua không được làm trắng mọi số dư.

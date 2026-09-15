@@ -100,3 +100,52 @@ describe("H3.1 — auto_calc_item_amount nhân bằng số LẺ", () => {
     expect(sql).toMatch(/BEFORE\s+INSERT\s+OR\s+UPDATE\s+ON\s+public\.income_expense_items/i);
   });
 });
+
+/**
+ * Thân hàm, KHÔNG phải cả file.
+ *
+ * `stripComments` chỉ bỏ chú thích `--`; chuỗi trong `COMMENT ON FUNCTION … IS
+ * '…'` là string literal nên vẫn còn. Khẳng định "không còn ::integer" mà đo
+ * trên cả file sẽ khớp vào lời MÔ TẢ thay vì vào MÃ.
+ */
+function liveBodyOf(fnName: string): string {
+  const { sql } = liveDefinitionOf(fnName);
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`, "i");
+  const start = sql.search(re);
+  if (start === -1) throw new Error(`Không tách được thân public.${fnName}`);
+  const rest = sql.slice(start);
+  const end = rest.search(/^\s*\$(?:function)?\$\s*;/m);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+describe("H3.1 — writer finance-v2 thôi cắt phần lẻ của số lượng", () => {
+  // Nới kiểu cột KHÔNG với tới đây: `create_income_expense_v2` ép kiểu ngay
+  // trong thân hàm (baseline:58217), nên phần lẻ bị cắt TRƯỚC khi chạm cột.
+  it("không còn ép quantity về số nguyên trong thân create_income_expense_v2", () => {
+    const than = liveBodyOf("create_income_expense_v2");
+    expect(than).not.toMatch(/quantity'\s*\)\s*::\s*(integer|int4|int\b)/i);
+  });
+
+  it("ép sang numeric để giữ phần lẻ, vẫn mặc định 1 khi vắng", () => {
+    const than = liveBodyOf("create_income_expense_v2");
+    expect(than).toMatch(/COALESCE\(\(v_item->>'quantity'\)::numeric,\s*1\)/i);
+  });
+
+  it("giữ nguyên chữ ký (payload jsonb) — không đẻ overload cho PostgREST", () => {
+    const { sql } = liveDefinitionOf("create_income_expense_v2");
+    expect(sql).toMatch(
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.create_income_expense_v2\s*\(\s*payload\s+jsonb\s*\)/i,
+    );
+    expect(sql).not.toMatch(/DROP\s+FUNCTION[^\n]*create_income_expense_v2/i);
+  });
+
+  it("khẳng định lại ACL: anon không gọi được, authenticated gọi được", () => {
+    const { sql } = liveDefinitionOf("create_income_expense_v2");
+    expect(sql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.create_income_expense_v2[\s\S]{0,120}?anon/i,
+    );
+    expect(sql).toMatch(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.create_income_expense_v2[\s\S]{0,120}?authenticated/i,
+    );
+  });
+});

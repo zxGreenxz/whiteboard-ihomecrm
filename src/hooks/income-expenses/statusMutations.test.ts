@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -294,16 +291,36 @@ describe("huỷ duyệt phiếu — CAS approval_version (H3.2)", () => {
     });
   });
 
-  it("đọc không ra phiên bản thì gửi null — server bỏ qua CAS, KHÔNG tự bịa số", () => {
+  it("đọc không ra phiên bản thì gửi null — server bỏ qua CAS, KHÔNG tự bịa số", async () => {
     // Bịa `?? 1` ở client tệ hơn là không CAS: nó biến một phép SO thành một
     // lời KHẲNG ĐỊNH sai, và lần đầu tiên nó sai đúng là lúc phiếu đã bị người
     // khác động vào (approval_version > 1) — tức đúng lúc CAS phải bắt.
-    const nguon = readFileSync(
-      join(process.cwd(), "src/hooks/income-expenses/statusMutations.ts"),
-      "utf8",
-    );
-    expect(nguon).toMatch(/p_expected_approval_version/);
-    expect(nguon).not.toMatch(/p_expected_approval_version:\s*[^,\n]*\?\?\s*1\b/);
+    //
+    // Phép thử này chạy ĐƯỜNG THẬT thay vì đọc mã nguồn tìm chuỗi `?? 1`: bản
+    // grep cũ vẫn xanh khi đổi nhánh dự phòng thành `: 1` (đo bằng
+    // scripts/dot-bien.mjs), vì con số bịa không nhất thiết viết bằng `??`.
+    mocks.rpc.mockImplementation(async (name: string) => {
+      if (name === "set_termination_forfeit_status_v1") {
+        return { data: null, error: { code: "PGRST202", message: "not found" } };
+      }
+      if (name === "unapprove_voucher") return { data: null, error: null };
+      throw new Error(`Unexpected RPC ${name}`);
+    });
+    // Phiếu thường (system_source/notes rỗng) nhưng cột phiên bản không đọc ra
+    // số — đúng thế của một phiếu cũ chưa có approval_version, hoặc của một
+    // dòng bị RLS giấu bớt cột.
+    mockVoucherRead({
+      data: { system_source: null, notes: null, approval_version: null },
+      error: null,
+    });
+
+    const mutation = useUnapproveVoucher() as unknown as StatusMutation;
+    await expect(mutation.mutationFn("voucher-9")).resolves.toBe(false);
+
+    expect(mocks.rpc).toHaveBeenCalledWith("unapprove_voucher", {
+      voucher_id: "voucher-9",
+      p_expected_approval_version: null,
+    });
   });
 
   it("lệch phiên bản thì báo bằng lời người đọc được", async () => {

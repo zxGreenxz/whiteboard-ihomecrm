@@ -43,27 +43,46 @@ function liveDefinitionOf(fnName: string): { file: string; sql: string } {
   return hit;
 }
 
+/**
+ * Lấy riêng THÂN hàm, KHÔNG lấy cả file.
+ *
+ * Vì sao cần: `stripComments` chỉ bỏ chú thích `--`. Chuỗi trong
+ * `COMMENT ON FUNCTION ... IS '...khoá dòng (FOR UPDATE)...'` là STRING LITERAL,
+ * không phải chú thích, nên nó vẫn nằm trong file. Khẳng định `/FOR UPDATE/`
+ * trên cả file vì thế khớp vào lời MÔ TẢ chứ không phải vào MÃ — đã đo bằng
+ * `scripts/dot-bien.mjs`: gỡ `FOR UPDATE` khỏi thân hàm mà suite vẫn xanh.
+ */
+function liveBodyOf(fnName: string): string {
+  const { sql } = liveDefinitionOf(fnName);
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`, "i");
+  const start = sql.search(re);
+  if (start === -1) throw new Error(`Không tách được thân public.${fnName}`);
+  const rest = sql.slice(start);
+  const end = rest.search(/^\s*\$(?:function)?\$\s*;/m);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
 describe("H3.2 — unapprove_voucher: khoá dòng + CAS approval_version", () => {
   it("khoá dòng phiếu trước khi quyết định", () => {
-    const { sql } = liveDefinitionOf("unapprove_voucher");
+    const sql = liveBodyOf("unapprove_voucher");
     expect(sql).toMatch(/FOR\s+UPDATE/i);
   });
 
   it("nhận p_expected_approval_version và so trước khi ghi", () => {
-    const { sql } = liveDefinitionOf("unapprove_voucher");
+    const sql = liveBodyOf("unapprove_voucher");
     expect(sql).toMatch(/p_expected_approval_version\s+bigint/i);
     expect(sql).toMatch(/approval_version\s+IS\s+DISTINCT\s+FROM\s+p_expected_approval_version/i);
   });
 
   it("lệch phiên bản thì ném 55000 — cùng mã với approve_income_expense_v2", () => {
-    const { sql } = liveDefinitionOf("unapprove_voucher");
+    const sql = liveBodyOf("unapprove_voucher");
     expect(sql).toMatch(/approval_version mismatch[\s\S]{0,400}?ERRCODE\s*=\s*'55000'/i);
   });
 
   it("cộng approval_version khi lùi trạng thái", () => {
     // Không cộng thì một `p_expected_approval_version` đọc trước lần huỷ duyệt
     // vẫn khớp sau đó — CAS trở thành trang trí.
-    const { sql } = liveDefinitionOf("unapprove_voucher");
+    const sql = liveBodyOf("unapprove_voucher");
     expect(sql).toMatch(/approval_version\s*=\s*v_row\.approval_version\s*\+\s*1/i);
   });
 
@@ -78,14 +97,14 @@ describe("H3.2 — unapprove_voucher: khoá dòng + CAS approval_version", () =>
   it("giữ nguyên ba dòng trả phiếu về đầu quy trình duyệt", () => {
     // Thiếu chúng thì phiếu kẹt ở (UNAPPROVED, RESOLVED) và
     // approve_income_expense_v2 từ chối vĩnh viễn (baseline:94212-94217).
-    const { sql } = liveDefinitionOf("unapprove_voucher");
+    const sql = liveBodyOf("unapprove_voucher");
     expect(sql).toMatch(/review_state\s*=\s*'PENDING'/i);
     expect(sql).toMatch(/review_version\s*=\s*v_row\.review_version\s*\+\s*1/i);
     expect(sql).toMatch(/review_reason\s*=\s*NULL/i);
   });
 
   it("giữ nguyên chốt chặn engine và quyền — lát này KHÔNG đụng quyền duyệt", () => {
-    const { sql } = liveDefinitionOf("unapprove_voucher");
+    const sql = liveBodyOf("unapprove_voucher");
     expect(sql).toMatch(/assert_no_engine_request_v1/i);
     expect(sql).toMatch(/is_super_admin/i);
     expect(sql).toMatch(/can_do_on_building\(\s*'income_expenses'\s*,\s*'approve'/i);
