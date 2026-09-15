@@ -5,6 +5,7 @@ import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
+import { markLocalWrite } from "@/hooks/useRealtimeDataSync";
 import {
   createContractV2,
   type ContractCreateRequest,
@@ -609,16 +610,27 @@ export const useCreateContract = () => {
       );
       return response.contract;
     },
+    // 15/09 (plan con B): chín lượt invalidate ở đây là lượt ĐÁNH THỨ NHẤT.
+    // create_contract_v2 ghi 5 bảng có realtime (contracts, rooms, invoices,
+    // income_expenses, income_expense_items), nên ~0,8s sau hub đánh lượt THỨ
+    // HAI trên ~70 khoá + prefetch 3 domain — đúng lúc modal hoa hồng vừa mở.
+    //
+    // Giữ lại đúng HAI khoá, và chúng không thừa:
+    //   - ["contracts"]: màn đang đứng, phải đổi ngay chứ không đợi debounce.
+    //   - ["rooms"]: descriptor `rooms` của hub CỐ Ý chỉ mang
+    //     ["business-performance"] (xem src/hooks/realtime/operations.ts), nên
+    //     không ai invalidate hộ khoá này. Bỏ nó là kho phòng kẹt trạng thái cũ.
+    // Bảy khoá còn lại đã nằm trong descriptor `invoices` / `income_expenses`.
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
-      queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["invoices-legacy"] });
-      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-      queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] });
-      queryClient.invalidateQueries({ queryKey: ["orphan-deposit-vouchers"] });
+      markLocalWrite([
+        "contracts",
+        "rooms",
+        "invoices",
+        "income_expenses",
+        "income_expense_items",
+      ]);
       toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error: any) => {

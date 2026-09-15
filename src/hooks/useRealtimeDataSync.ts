@@ -29,6 +29,12 @@ import { useAuth } from "@/hooks/useAuth";
 // LIỆU THUẦN để scripts/check-realtime-descriptors.mjs đọc được mà không phải
 // nạp React. Khai ở hai nơi thì hai nơi sẽ trôi khỏi nhau.
 import { type SyncTable } from "@/lib/realtime/syncTables";
+import { delayConTrongTran } from "@/lib/realtime/hubDebounce";
+import { laTiengVongNoiBo, locTiengVongNoiBo } from "@/lib/realtime/localWriteEcho";
+import { nenPrefetchTuHub } from "@/lib/realtime/prefetchGate";
+
+// Re-export để mutation chỉ cần biết MỘT cửa: hub realtime.
+export { markLocalWrite } from "@/lib/realtime/localWriteEcho";
 
 // Descriptor nay TÁCH THEO MIỀN sang src/hooks/realtime/ (P1.8 của plan). Hub chỉ
 // còn ba việc: mở channel, gom debounce, điều phối. Bản đồ 13 bảng → query key
@@ -45,32 +51,6 @@ import {
   type BusinessPerformanceInvalidationRule,
   type SyncEntry,
 } from "@/hooks/realtime";
-
-const DEBOUNCE_MS = 800;
-
-// TRẦN CHỜ — thứ mà debounce 800ms ở trên KHÔNG có, và thiếu nó thì lời hứa
-// "gộp cơn bão về 1 lần invalidate" ở đầu file chỉ đúng SAU KHI bão tan.
-//
-// DEBOUNCE_MS là trailing-edge thuần: mỗi event clearTimeout rồi đặt lại. Một
-// đợt bulk bắn event dày hơn 1 lần/800ms (sinh hoá đơn hàng loạt, import thu
-// chi — đúng những việc mà chú thích đầu file lấy làm ví dụ) đẩy lùi flush VÔ
-// HẠN. Trong suốt đợt đó giao diện đứng số mà không có tín hiệu nào: không lỗi,
-// không cảnh báo, người dùng chỉ thấy màn hình không đổi.
-//
-// MAX_WAIT_MS là mốc muộn nhất tính từ event ĐẦU TIÊN của cụm. Chọn 3×: đủ xa
-// để vẫn gộp được một cụm bình thường (một thao tác người dùng hiếm khi kéo quá
-// 2,4 giây), đủ gần để một đợt bulk vẫn nhả tin về màn hình vài lần thay vì im
-// bặt tới lúc xong.
-const MAX_WAIT_MS = DEBOUNCE_MS * 3;
-
-/**
- * Thời gian còn được phép chờ: bình thường là trọn DEBOUNCE_MS, nhưng không bao
- * giờ vượt quá mốc trần tính từ event đầu cụm. Trả về 0 khi đã quá hạn — timer
- * 0ms vẫn chạy bất đồng bộ nên thứ tự vẫn đúng.
- */
-function delayConTrongTran(mocDauCum: number, bayGio: number): number {
-  return Math.max(0, Math.min(DEBOUNCE_MS, mocDauCum + MAX_WAIT_MS - bayGio));
-}
 
 function matchesBusinessPerformanceRule(
   queryKey: readonly unknown[],
@@ -107,14 +87,25 @@ function flushBusinessPerformance(
   });
 }
 
-function flushEntry(qc: QueryClient, entry: SyncEntry) {
-  for (const key of entry.keys) {
-    if (key[0] === "business-performance") continue;
-    qc.invalidateQueries({ queryKey: key as unknown[] });
+function flushEntry(qc: QueryClient, entry: SyncEntry, tiengVong: boolean) {
+  // `tiengVong` = tiếng vọng của mutation vừa chạy trên CHÍNH máy này (xem
+  // localWriteEcho.ts): gộp cả entry về một lượt chạm query active, bỏ hâm cache.
+  if (tiengVong) {
+    qc.invalidateQueries(locTiengVongNoiBo(entry.keys));
+  } else {
+    for (const key of entry.keys) {
+      if (key[0] === "business-performance") continue;
+      qc.invalidateQueries({ queryKey: key as unknown[] });
+    }
   }
-  // Hâm lại cache prefetch — chỉ khi tab đang mở (nền thì thôi, mở lại
-  // tab sẽ theo staleTime tự lo).
-  if (entry.domain && document.visibilityState === "visible") {
+  // Hâm lại cache prefetch — chỉ khi tab đang mở (nền thì thôi, mở lại tab sẽ
+  // theo staleTime tự lo) và qua được hai cửa ở prefetchGate.ts.
+  if (
+    entry.domain &&
+    !tiengVong &&
+    document.visibilityState === "visible" &&
+    nenPrefetchTuHub(entry.domain)
+  ) {
     const domain = entry.domain;
     import("@/lib/prefetchPages")
       .then((m) => m.prefetchDomain(qc, domain))
@@ -174,7 +165,11 @@ function dungHub(qc: QueryClient, userId: string): () => void {
     // hai: một thứ phải dọn ở cleanup thay vì hai thứ phải nhớ.
     const timers = new Map<
       string,
-      { timer: ReturnType<typeof setTimeout>; mocDauCum: number }
+      {
+        timer: ReturnType<typeof setTimeout>;
+        mocDauCum: number;
+        tiengVong: boolean;
+      }
     >();
     const pendingBusinessPerformanceTables = new Set<SyncTable>();
     let businessPerformanceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -211,11 +206,16 @@ function dungHub(qc: QueryClient, userId: string): () => void {
           const prev = timers.get(entry.table);
           if (prev) clearTimeout(prev.timer);
           const mocDauCum = prev ? prev.mocDauCum : bayGio;
+          // Chỉ VÀ mới đúng: event nằm ngoài cửa sổ có thể đến từ máy khác, nên
+          // cả cụm chứa nó phải đi đường đầy đủ.
+          const tiengVong =
+            (prev?.tiengVong ?? true) && laTiengVongNoiBo(entry.table, bayGio);
           timers.set(entry.table, {
             mocDauCum,
+            tiengVong,
             timer: setTimeout(() => {
               timers.delete(entry.table);
-              flushEntry(qc, entry);
+              flushEntry(qc, entry, tiengVong);
             }, delayConTrongTran(mocDauCum, bayGio)),
           });
         },
