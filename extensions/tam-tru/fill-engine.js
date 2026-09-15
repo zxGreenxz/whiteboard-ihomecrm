@@ -88,6 +88,24 @@
     }
   }
 
+  // Ô ngày PHẢI đặt SAU cùng. setObjectToFormV2 đi theo thứ tự txt → cbo, mà khi
+  // cboDATE_FORMAT đổi thì cổng gọi datePickerWithPattern() → `$('#txtDOB').val('')`,
+  // tức là xoá trắng đúng ô vừa điền. Chính mã của cổng cũng gán lại txtDOB sau
+  // khi gọi setObjectToFormV2 vì lý do này.
+  function setNgay(id, giaTri) {
+    if (!giaTri) return null;
+    const el = document.getElementById(id);
+    if (!el) return null;
+    el.value = giaTri;
+    fireChange(el);
+    if (el.value !== giaTri) { // datepicker/inputmask từ chối: thử lại sau một nhịp
+      el.value = giaTri;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      fireChange(el);
+    }
+    return el.value;
+  }
+
   const filesOf = (files, kind) => files.filter((f) => f.kind === kind).map(dataUrlToFile);
 
   const STEPS = [
@@ -123,13 +141,30 @@
       if (r2 && !r2.checked) click(r2, 'khai hộ');
       await waitFor(() => document.getElementById('txtFULLNAME'), 'khối người đề nghị');
     }],
-    ['Điền thông tin người tạm trú và địa chỉ', async (p) => {
+    ['Điền thông tin người tạm trú và địa chỉ', async (p, report) => {
       setObject(formObject(p));
       await sleep(300);
+      const dob = setNgay('txtDOB', p.person.dob);
+      const han = setNgay('txtTEMP_RESIDENT_TO', p.tempResidentTo);
       const note = document.getElementById('txtCHANGED_NOTE');
       if (note && !norm(note.value).includes(norm(p.address))) {
         setText('txtCHANGED_NOTE', 'Đăng ký tạm trú tại ' + p.address + ' - ' + p.receive.wardName + ' - ' + p.receive.provinceName);
       }
+      // Kiểm lại từng ô bắt buộc: thà báo đỏ còn hơn để người dùng nộp thiếu.
+      const thieu = [];
+      const kiem = (id, mong) => {
+        const el = document.getElementById(id);
+        const co = el ? String(el.value || '').trim() : '';
+        if (!el || (mong && co !== String(mong).trim())) thieu.push(id);
+      };
+      kiem('txtFULLNAME', p.person.fullName);
+      kiem('txtDOB', p.person.dob);
+      kiem('cboGENDER_CODE', p.person.genderCode);
+      kiem('txtIDENTIFIER_NUMBER', p.person.idNumber);
+      kiem('txtSUGGEST_ADDRESS', p.address);
+      kiem('txtHH_PERSON_IDENTIFIER_NUMBER', p.person.idNumber);
+      if (thieu.length) throw new Error('Cổng không nhận các ô: ' + thieu.join(', '));
+      report('Ngày sinh ' + dob + ' · hạn đến ' + han);
     }],
     ['Mở mục đính kèm "do thuê, mượn, ở nhờ"', async () => {
       const link = Array.from(document.querySelectorAll('a')).find((a) => {
@@ -140,16 +175,18 @@
       await waitFor(() => document.querySelector('#tblGiayToDinhKem tbody tr'), 'bảng giấy tờ');
     }],
     ['Gắn ảnh CT01 và hợp đồng', async (p, report, files) => {
-      for (const [kind, i] of [['CT01', 0], ['LEASE', 1]]) {
+      const daGan = [];
+      for (const [kind, nhan, i] of [['CT01', 'Tờ khai CT01', 0], ['LEASE', 'Hợp đồng', 1]]) {
         const picked = filesOf(files, kind);
-        if (picked.length === 0) throw new Error('Thiếu ảnh ' + kind);
+        if (picked.length === 0) throw new Error('Thiếu ảnh ' + nhan);
         const chk = document.getElementById('chkIS_COMPULSORY' + i);
         if (chk && !chk.checked) chk.click();
         const type = document.getElementById('cboFILE_TYPE' + i);
         if (type && type.value !== '1') setSelect(type.id, '1');
         attach('fileUpload' + i, picked);
-        report(kind + ': ' + picked.length + ' ảnh');
+        daGan.push(nhan + ' ' + picked.map((f) => f.name).join(', '));
       }
+      report(daGan.join(' · '));
     }],
     ['Thêm dòng giấy tờ chứng minh chỗ ở hợp pháp', async (p, report, files) => {
       const picked = filesOf(files, 'OWNERSHIP');
@@ -164,7 +201,7 @@
       const type = document.getElementById('cboFILE_TYPE' + i);
       if (type && type.value !== '1') setSelect(type.id, '1');
       attach('fileUpload' + i, picked);
-      report('Chỗ ở hợp pháp: ' + picked.length + ' ảnh');
+      report(picked.length + ' ảnh: ' + picked.map((f) => f.name).join(', '));
     }],
   ];
 

@@ -542,7 +542,7 @@ export default function BuildingFormDialog({
               </fieldset>
               {createdBuildingId && <p role="status" className="text-sm text-amber-700">Tòa nhà đã được tạo. Lần lưu tiếp theo chỉ hoàn tất chủ sở hữu và dịch vụ; thông tin cơ bản cần chỉnh sau khi hoàn tất.</p>}
               <BuildingLegalOwnerFields {...owner} />
-              {isEditMode && building && <BuildingOwnershipDocs buildingId={building.id} />}
+              {isEditMode && building && <BuildingOwnershipDocs buildingId={building.id} buildingName={building.name} />}
               {/* Footer */}
               <div className="flex justify-end gap-3 pt-2 pb-2">
                 <Button

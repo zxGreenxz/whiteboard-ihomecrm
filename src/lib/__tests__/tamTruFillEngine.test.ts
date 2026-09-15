@@ -24,10 +24,10 @@ const payload = {
 };
 const dataUrl = 'data:image/jpeg;base64,' + btoa('anh');
 const files = [
-  { kind: 'CT01', name: 'ct01.jpg', type: 'image/jpeg', dataUrl },
-  { kind: 'LEASE', name: 'hd.jpg', type: 'image/jpeg', dataUrl },
-  { kind: 'OWNERSHIP', name: 'cq1.jpg', type: 'image/jpeg', dataUrl },
-  { kind: 'OWNERSHIP', name: 'cq2.jpg', type: 'image/jpeg', dataUrl },
+  { kind: 'CT01', name: 'nguyengiabinhct011.jpg', type: 'image/jpeg', dataUrl },
+  { kind: 'LEASE', name: 'nguyengiabinhhopdong1.jpg', type: 'image/jpeg', dataUrl },
+  { kind: 'OWNERSHIP', name: 'chuquyen950nk1.jpg', type: 'image/jpeg', dataUrl },
+  { kind: 'OWNERSHIP', name: 'chuquyen950nk2.jpg', type: 'image/jpeg', dataUrl },
 ];
 
 function opt(v: string, t: string) { return `<option value="${v}">${t}</option>`; }
@@ -66,6 +66,11 @@ function mountFixture() {
   const ward = document.getElementById('cboRECEIVE_ADDR_VILLAGE_CODE') as HTMLSelectElement;
   const org = document.getElementById('txtRECEIVE_ORG_ADDRESS') as HTMLInputElement;
   const bproc = document.getElementById('cboBPROC_CASE_CODE') as HTMLSelectElement;
+  // BẪY THẬT CỦA CỔNG: đổi cboDATE_FORMAT thì datePickerWithPattern() xoá trắng txtDOB.
+  // setObjectToFormV2 đặt txt trước cbo, nên ngày sinh vừa điền bị xoá ngay sau đó.
+  document.getElementById('cboDATE_FORMAT')!.addEventListener('change', () => {
+    (document.getElementById('txtDOB') as HTMLInputElement).value = '';
+  });
   city.addEventListener('change', () => {
     ward.innerHTML = city.value === '79'
       ? opt('', 'Chọn') + opt('26866', 'Phường An Phú Đông') + opt('26890', 'Phường Hạnh Thông')
@@ -163,7 +168,7 @@ describe('fill-engine run', () => {
 
   it('điền đủ các bước trên form giả lập, không đụng nút Nộp', async () => {
     const e = loadEngine();
-    const progress: { step: string; ok: boolean; partial?: boolean }[] = [];
+    const progress: { step: string; ok: boolean; partial?: boolean; message?: string }[] = [];
     await e.run(payload, files, (p) => progress.push(p));
 
     const val = (id: string) => (document.getElementById(id) as HTMLInputElement).value;
@@ -187,6 +192,26 @@ describe('fill-engine run', () => {
     expect(val('lblFILE_TYPE_NAME2')).toBe('Giấy tờ, tài liệu chứng minh chỗ ở hợp pháp');
     expect(fx.fileCounts).toEqual({ fileUpload0: 1, fileUpload1: 1, fileUpload2: 2 });
     expect(progress.filter(p => !p.partial).map(p => p.ok)).toEqual([true, true, true, true, true, true]);
+    // Người dùng phải đọc được TÊN ảnh nào đã gắn vào đâu, không chỉ số lượng.
+    const loi = progress.map(p => p.message || '').join(' | ');
+    expect(loi).toContain('chuquyen950nk1.jpg, chuquyen950nk2.jpg');
+    expect(loi).toContain('nguyengiabinhct011.jpg');
+    expect(loi).toContain('18/10/2008');
+  });
+
+  it('giữ được ngày sinh dù cổng xoá ô khi đổi định dạng ngày', async () => {
+    const e = loadEngine();
+    await e.run(payload, files);
+    expect((document.getElementById('txtDOB') as HTMLInputElement).value).toBe('18/10/2008');
+    expect((document.getElementById('txtTEMP_RESIDENT_TO') as HTMLInputElement).value).toBe('15/09/2028');
+  });
+
+  it('báo đỏ nếu cổng không nhận một ô bắt buộc', async () => {
+    const e = loadEngine();
+    // Giả lập cổng khoá cứng ô CCCD: mọi giá trị đặt vào đều bị xoá.
+    const cccd = document.getElementById('txtIDENTIFIER_NUMBER') as HTMLInputElement;
+    cccd.addEventListener('change', () => { cccd.value = ''; });
+    await expect(e.run(payload, files)).rejects.toThrow(/txtIDENTIFIER_NUMBER/);
   });
 
   it('phường không có trong danh sách thì dừng ở bước 1 với thông báo rõ', async () => {
@@ -200,7 +225,7 @@ describe('fill-engine run', () => {
 
   it('thiếu ảnh CT01 thì báo và không thêm dòng chỗ ở hợp pháp', async () => {
     const e = loadEngine();
-    await expect(e.run(payload, files.filter(f => f.kind !== 'CT01'))).rejects.toThrow(/Thiếu ảnh CT01/);
+    await expect(e.run(payload, files.filter(f => f.kind !== 'CT01'))).rejects.toThrow(/Thiếu ảnh Tờ khai CT01/);
     expect(document.querySelectorAll('#tblGiayToDinhKem tbody tr')).toHaveLength(2);
   });
 });

@@ -21236,6 +21236,7 @@ export type Database = {
       }
       get_my_organizations: { Args: never; Returns: Json }
       get_my_permissions: { Args: never; Returns: Json }
+      get_my_permissions_v2: { Args: { p_org: string }; Returns: Json }
       get_my_share_buildings: {
         Args: never
         Returns: {

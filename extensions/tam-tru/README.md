@@ -39,6 +39,17 @@ gắn ảnh; **không tự bấm Lưu nháp hay Nộp hồ sơ**, không giữ m
   jQuery/select2 của cổng; gắn ảnh vào `input[type=file]` bằng `DataTransfer` rồi phát
   `change` để trang tự đưa vào hàng đợi upload.
 
+## Bẫy của cổng đã xử
+
+- **Đổi "Định dạng" ngày xoá trắng ô Ngày sinh.** `setObjectToFormV2` đi theo thứ tự
+  `txt` rồi `cbo`, mà handler `cboDATE_FORMAT` của cổng gọi `datePickerWithPattern()` →
+  `$('#txtDOB').val('')`. Vì vậy engine đặt lại ô ngày SAU CÙNG rồi đọc lại để xác nhận;
+  ô bắt buộc nào cổng không nhận thì báo đỏ ngay thay vì để người dùng nộp thiếu.
+- **Cổng chỉ nhận pdf, jpg, jpeg, tiff, png** (`validFileAttachAll`), từ chối WebP. CRM vì
+  thế lưu ảnh hồ sơ tạm trú nguyên byte gốc và chỉ cho chọn JPG/PNG.
+- Tên tệp cổng hiển thị chính là tên CRM đặt: `chuquyen950nk1.jpg`,
+  `nguyengiabinhct011.jpg` — nhìn cột Đính kèm là biết ảnh của toà nào, khách nào.
+
 ## Giới hạn
 
 - Chỉ thủ tục Đăng ký tạm trú, lập hộ mới, khách là chủ hộ, trường hợp "chỗ ở hợp pháp do

@@ -5,15 +5,15 @@ import { canUse } from '@/lib/permissionPages';
 import { useBuildingOwnershipFiles, useDossierFileMutations } from '@/hooks/useResidenceDossierFiles';
 import DossierImageUploader from './DossierImageUploader';
 
-export interface BuildingOwnershipDocsProps { buildingId: string }
+export interface BuildingOwnershipDocsProps { buildingId: string; buildingName?: string }
 
-export default function BuildingOwnershipDocs({ buildingId }: BuildingOwnershipDocsProps) {
+export default function BuildingOwnershipDocs({ buildingId, buildingName }: BuildingOwnershipDocsProps) {
   const { data: permissions } = useMyPermissions();
   const canEdit = canUse(permissions, 'buildings', 'edit');
   const canView = canEdit || canUse(permissions, 'customers', 'print');
   // Không có quyền thì đừng gọi: RLS vẫn chặn, nhưng request thừa và lỗi thừa.
   const files = useBuildingOwnershipFiles(canView ? buildingId : undefined);
-  const { upload, remove } = useDossierFileMutations({ buildingId });
+  const { upload, remove } = useDossierFileMutations({ buildingId, buildingName });
 
   if (!canView) return null;
 

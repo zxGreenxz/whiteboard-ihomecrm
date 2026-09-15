@@ -17,7 +17,8 @@ export interface DossierImageUploaderProps {
   hint?: string;
 }
 
-const PICK_ACCEPT = 'image/png,image/jpeg,image/jpg,image/webp';
+// Cổng DVC chỉ nhận pdf/jpg/jpeg/tiff/png, nên không mở cửa cho WebP ngay từ ô chọn tệp.
+const PICK_ACCEPT = 'image/png,image/jpeg,image/jpg';
 
 export default function DossierImageUploader({ kind, files, canEdit, contractId, onUpload, onRemove, hint }: DossierImageUploaderProps) {
   const captureRef = useRef<HTMLInputElement>(null);

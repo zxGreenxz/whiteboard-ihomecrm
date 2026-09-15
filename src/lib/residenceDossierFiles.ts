@@ -19,8 +19,40 @@ export type ResidenceDossierFile = Pick<Row, 'id' | 'organization_id' | 'buildin
 export class DossierFileError extends Error {}
 
 const COLUMNS = 'id,kind,organization_id,building_id,customer_id,contract_id,bucket_id,object_name,file_name,content_type,size_bytes,sort_order,created_at';
-const MAX_BYTES = 15 * 1024 * 1024;
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+// Cổng DVC chỉ nhận pdf, jpg, jpeg, tiff, png (validFileAttachAll của cổng) — WebP bị
+// từ chối thẳng. Vì vậy ảnh hồ sơ tạm trú lưu NGUYÊN BYTE gốc (imagePolicy
+// 'identity-original'), không đi qua bộ nén sang WebP như ảnh thường. Giới hạn 10MB
+// là ràng buộc của chính chính sách đó.
+const MAX_BYTES = 10 * 1024 * 1024;
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
+const EXT_THEO_MIME: Record<string, string> = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png' };
+
+/** Bỏ dấu, bỏ khoảng trắng, còn chữ và số — dùng dựng tên tệp dễ đọc. */
+export function slugTen(raw: string): string {
+  return raw.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Tên tệp hiển thị, đặt theo đối tượng chứ không giữ tên máy ảnh.
+ *
+ * VÌ SAO: tên này đi thẳng lên Cổng DVC ở cột "Đính kèm". Với ảnh chủ quyền của
+ * toà thì "IMG_20260915.jpg" không cho biết là của toà nào, còn hai ảnh cùng tên
+ * thì không biết ảnh nào là ảnh nào. Quy ước: chuquyen950nk1.jpg,
+ * nguyengiabinhct01.jpg, nguyengiabinhhopdong1.jpg.
+ */
+export function tenTepHoSo(input: {
+  kind: DossierKind; buildingName?: string; customerName?: string; index: number; ext: string;
+}): string {
+  const ext = input.ext.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+  const stt = Math.max(1, input.index);
+  if (input.kind === 'OWNERSHIP') {
+    return `chuquyen${slugTen(input.buildingName ?? '') || 'toanha'}${stt}.${ext}`;
+  }
+  const khach = slugTen(input.customerName ?? '') || 'khach';
+  return `${khach}${input.kind === 'CT01' ? 'ct01' : 'hopdong'}${stt}.${ext}`;
+}
 
 /** Giá trị để StorageImage / createSignedUrlFromStored ký lúc đọc. */
 export function dossierStorageValue(file: Pick<ResidenceDossierFile, 'bucket_id' | 'object_name'>): string {
@@ -42,24 +74,47 @@ export async function listBuildingOwnershipFiles(buildingId: string): Promise<Re
 }
 
 function contentTypeOf(objectName: string, original: string): string {
-  // uploadFile nén ảnh ra WebP và đổi đuôi key; content-type phải khớp bytes đã lưu.
+  // Ảnh giữ nguyên byte gốc nên content-type = của tệp gốc; giữ phép kiểm đuôi
+  // phòng khi lớp storage đổi định dạng ở tương lai.
   return /\.webp$/i.test(objectName) ? 'image/webp' : original;
 }
 
 export async function uploadDossierFile(input: {
   kind: DossierKind; buildingId: string; customerId?: string; contractId?: string; file: File;
+  /** Tên toà và tên khách để đặt tên tệp dễ đọc trên Cổng DVC. */
+  buildingName?: string; customerName?: string;
 }): Promise<ResidenceDossierFile> {
   const { kind, buildingId, customerId, contractId, file } = input;
-  if (!IMAGE_TYPES.has(file.type)) throw new DossierFileError('Chỉ nhận ảnh JPG, PNG hoặc WebP.');
-  if (file.size > MAX_BYTES) throw new DossierFileError('Ảnh tối đa 15MB.');
+  // Cổng DVC không nhận WebP nên chỉ cho JPG/PNG ngay từ đây, thay vì để cổng từ chối sau.
+  if (!IMAGE_TYPES.has(file.type)) throw new DossierFileError('Cổng DVC chỉ nhận ảnh JPG hoặc PNG.');
+  if (file.size > MAX_BYTES) throw new DossierFileError('Ảnh tối đa 10MB.');
   if (kind !== 'OWNERSHIP' && !customerId) throw new DossierFileError('Thiếu khách hàng cho ảnh này.');
   const user = await getSessionUser();
   if (!user) throw new DossierFileError('Bạn cần đăng nhập lại.');
   const { data: building, error: buildingError } = await supabase.from('buildings')
-    .select('organization_id').eq('id', buildingId).single();
+    .select('organization_id,name').eq('id', buildingId).single();
   if (buildingError || !building?.organization_id) throw new DossierFileError('Không xác định được toà nhà của hồ sơ.');
-  const path = `${user.id}/${kind.toLowerCase()}/${Date.now()}-${sanitizeStorageFileName(file.name)}`;
-  const stored = await uploadFile(RESIDENCE_DOCS_BUCKET, path, file);
+  // Số thứ tự tiếp theo trong cùng nhóm: ảnh chủ quyền đếm theo toà, ảnh của
+  // khách đếm theo khách. Đếm trước khi tải lên nên có thể trùng khi hai người
+  // cùng bấm một lúc — tên chỉ để đọc, trùng không làm hỏng gì.
+  let daCoRaw: ResidenceDossierFile[] = [];
+  try {
+    daCoRaw = kind === 'OWNERSHIP'
+      ? await listBuildingOwnershipFiles(buildingId)
+      : await listCustomerDossierFiles(customerId as string);
+  } catch {
+    // Truy vấn này CHỈ để đánh số thứ tự trong tên tệp. Đọc hụt thì đánh số 1:
+    // tên có thể trùng số, còn chặn cả lượt tải ảnh vì một truy vấn phụ mới là
+    // hỏng việc thật. Lỗi quyền/kết nối thật sự sẽ lộ ngay ở bước ghi bên dưới.
+  }
+  const daCo = Array.isArray(daCoRaw) ? daCoRaw.filter((f) => f.kind === kind) : [];
+  const displayName = tenTepHoSo({
+    kind, index: daCo.length + 1, ext: EXT_THEO_MIME[file.type] ?? 'jpg',
+    buildingName: input.buildingName ?? building.name ?? undefined,
+    customerName: input.customerName,
+  });
+  const path = `${user.id}/${kind.toLowerCase()}/${Date.now()}-${sanitizeStorageFileName(displayName)}`;
+  const stored = await uploadFile(RESIDENCE_DOCS_BUCKET, path, file, { imagePolicy: 'identity-original' });
   const objectName = parseStorageRef(stored)?.path ?? path;
   const { data, error } = await supabase.from('residence_dossier_files').insert({
     kind,
@@ -69,7 +124,7 @@ export async function uploadDossierFile(input: {
     contract_id: contractId ?? null,
     bucket_id: RESIDENCE_DOCS_BUCKET,
     object_name: objectName,
-    file_name: file.name.slice(0, 255),
+    file_name: displayName.slice(0, 255),
     content_type: contentTypeOf(objectName, file.type),
     size_bytes: file.size,
     sort_order: Date.now() % 1_000_000_000,

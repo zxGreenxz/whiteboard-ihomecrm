@@ -30,7 +30,10 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
 
   const customerFiles = useCustomerDossierFiles(allowed ? customer.id : undefined);
   const ownershipFiles = useBuildingOwnershipFiles(tenancy?.building.id);
-  const { upload, remove } = useDossierFileMutations({ customerId: customer.id, buildingId: tenancy?.building.id ?? '' });
+  const { upload, remove } = useDossierFileMutations({
+    customerId: customer.id, buildingId: tenancy?.building.id ?? '',
+    buildingName: tenancy?.building.name, customerName: customer.full_name,
+  });
 
   if (!allowed) return null;
 

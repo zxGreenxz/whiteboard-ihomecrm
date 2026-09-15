@@ -30,7 +30,9 @@ export function useBuildingOwnershipFiles(buildingId: string | undefined) {
 
 export interface DossierUploadInput { kind: DossierKind; contractId?: string; file: File }
 
-export function useDossierFileMutations(scope: { customerId?: string; buildingId: string }) {
+export function useDossierFileMutations(scope: {
+  customerId?: string; buildingId: string; buildingName?: string; customerName?: string;
+}) {
   const queryClient = useQueryClient();
   const invalidate = async () => {
     await Promise.all([
@@ -43,6 +45,7 @@ export function useDossierFileMutations(scope: { customerId?: string; buildingId
   const upload = useMutation<ResidenceDossierFile, Error, DossierUploadInput>({
     mutationFn: (input) => uploadDossierFile({
       kind: input.kind, buildingId: scope.buildingId, customerId: scope.customerId, contractId: input.contractId, file: input.file,
+      buildingName: scope.buildingName, customerName: scope.customerName,
     }),
     onSuccess: invalidate,
     onError: (error) => toast.error(error.message),

@@ -18,7 +18,10 @@ vi.mock('@/lib/storage', () => ({
 vi.mock('@/lib/authSession', () => ({ getSessionUser: boundary.getSessionUser }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: { from: boundary.from } }));
 
-import { DossierFileError, dossierStorageValue, listCustomerDossierFiles, removeDossierFile, uploadDossierFile } from '../residenceDossierFiles';
+import {
+  DossierFileError, dossierStorageValue, listCustomerDossierFiles, removeDossierFile,
+  slugTen, tenTepHoSo, uploadDossierFile,
+} from '../residenceDossierFiles';
 
 type Chain = Record<string, ReturnType<typeof vi.fn>> & { then: (res: (v: unknown) => void) => void };
 function table(result: unknown): Chain {
@@ -30,45 +33,87 @@ function table(result: unknown): Chain {
   return chain;
 }
 
+describe('tenTepHoSo', () => {
+  it('ảnh chủ quyền mang tên toà và số thứ tự', () => {
+    expect(tenTepHoSo({ kind: 'OWNERSHIP', buildingName: '950NK', index: 1, ext: 'jpg' })).toBe('chuquyen950nk1.jpg');
+    expect(tenTepHoSo({ kind: 'OWNERSHIP', buildingName: '950NK', index: 2, ext: 'png' })).toBe('chuquyen950nk2.png');
+  });
+  it('ảnh của khách mang tên khách, bỏ dấu', () => {
+    expect(tenTepHoSo({ kind: 'CT01', customerName: 'Nguyễn Gia Bình', index: 1, ext: 'jpg' })).toBe('nguyengiabinhct011.jpg');
+    expect(tenTepHoSo({ kind: 'LEASE', customerName: 'Nguyễn Gia Bình', index: 3, ext: 'jpg' })).toBe('nguyengiabinhhopdong3.jpg');
+  });
+  it('thiếu tên thì vẫn ra tên dùng được, không có ký tự lạ', () => {
+    const t = tenTepHoSo({ kind: 'OWNERSHIP', index: 0, ext: '' });
+    expect(t).toBe('chuquyentoanha1.jpg');
+    expect(t).toMatch(/^[a-z0-9]+\.[a-z0-9]+$/);
+  });
+  it('slugTen bỏ dấu và khoảng trắng', () => {
+    expect(slugTen('Toà 950 NK')).toBe('toa950nk');
+    expect(slugTen('Đặng Thuỳ Trâm')).toBe('dangthuytram');
+  });
+});
+
 describe('uploadDossierFile', () => {
   beforeEach(() => {
     boundary.from.mockReset();
     boundary.uploadFile.mockReset();
     boundary.getSessionUser.mockResolvedValue({ id: 'user-1' });
-    boundary.uploadFile.mockResolvedValue('https://x.supabase.co/storage/v1/object/public/residence-docs/user-1/ct01/1-a.webp');
+    boundary.uploadFile.mockResolvedValue('https://x.supabase.co/storage/v1/object/public/residence-docs/user-1/ct01/1-nguyengiabinhct011.jpg');
   });
 
-  it('tải lên thư mục của chính mình rồi ghi dòng bảng', async () => {
-    const buildings = table({ data: { organization_id: 'org-1' }, error: null });
-    const inserted = { id: 'f1', kind: 'CT01', object_name: 'user-1/ct01/1-a.webp', bucket_id: 'residence-docs' };
-    const files = table({ data: inserted, error: null });
-    boundary.from.mockImplementation((t: string) => (t === 'buildings' ? buildings : files));
+  it('đặt tên theo khách, giữ ảnh gốc, rồi ghi dòng bảng', async () => {
+    const buildings = table({ data: { organization_id: 'org-1', name: '950NK' }, error: null });
+    const inserted = { id: 'f1', kind: 'CT01', object_name: 'user-1/ct01/1-nguyengiabinhct011.jpg', bucket_id: 'residence-docs' };
+    const dem = table({ data: [], error: null });      // lần 1: đếm ảnh đã có
+    const files = table({ data: inserted, error: null }); // lần 2: chèn dòng mới
+    let lanGoi = 0;
+    boundary.from.mockImplementation((t: string) => {
+      if (t === 'buildings') return buildings;
+      lanGoi += 1;
+      return lanGoi === 1 ? dem : files;
+    });
 
     const out = await uploadDossierFile({
-      kind: 'CT01', buildingId: 'b1', customerId: 'c1', contractId: 'ct1',
-      file: new File(['x'], 'a.jpg', { type: 'image/jpeg' }),
+      kind: 'CT01', buildingId: 'b1', customerId: 'c1', contractId: 'ct1', customerName: 'Nguyễn Gia Bình',
+      file: new File(['x'], 'IMG_20260915_1.jpg', { type: 'image/jpeg' }),
     });
 
     expect(boundary.uploadFile.mock.calls[0][0]).toBe('residence-docs');
-    expect(boundary.uploadFile.mock.calls[0][1]).toMatch(/^user-1\/ct01\/\d+-a\.jpg$/);
+    expect(boundary.uploadFile.mock.calls[0][1]).toMatch(/^user-1\/ct01\/\d+-nguyengiabinhct011\.jpg$/);
+    // Cổng DVC từ chối WebP nên phải giữ nguyên byte gốc.
+    expect(boundary.uploadFile.mock.calls[0][3]).toEqual({ imagePolicy: 'identity-original' });
     expect(files.insert.mock.calls[0][0]).toMatchObject({
       kind: 'CT01', building_id: 'b1', organization_id: 'org-1', customer_id: 'c1', contract_id: 'ct1',
-      object_name: 'user-1/ct01/1-a.webp', content_type: 'image/webp', created_by: 'user-1', file_name: 'a.jpg',
+      content_type: 'image/jpeg', created_by: 'user-1', file_name: 'nguyengiabinhct011.jpg',
     });
     expect(out).toEqual(inserted);
   });
 
-  it('ảnh chủ quyền không gắn khách', async () => {
-    const buildings = table({ data: { organization_id: 'org-1' }, error: null });
-    const files = table({ data: { id: 'f2' }, error: null });
-    boundary.from.mockImplementation((t: string) => (t === 'buildings' ? buildings : files));
+  it('ảnh chủ quyền không gắn khách và lấy tên toà từ database', async () => {
+    const buildings = table({ data: { organization_id: 'org-1', name: '950NK' }, error: null });
+    const files = table({ data: [], error: null });
+    const filesInsert = table({ data: { id: 'f2' }, error: null });
+    let lanGoi = 0;
+    boundary.from.mockImplementation((t: string) => {
+      if (t === 'buildings') return buildings;
+      lanGoi += 1;
+      return lanGoi === 1 ? files : filesInsert; // lần 1 = đếm ảnh đã có, lần 2 = chèn
+    });
     await uploadDossierFile({ kind: 'OWNERSHIP', buildingId: 'b1', customerId: 'c1', file: new File(['x'], 'g.png', { type: 'image/png' }) });
-    expect(files.insert.mock.calls[0][0]).toMatchObject({ kind: 'OWNERSHIP', customer_id: null });
+    expect(filesInsert.insert.mock.calls[0][0]).toMatchObject({
+      kind: 'OWNERSHIP', customer_id: null, file_name: 'chuquyen950nk1.png',
+    });
   });
 
   it('từ chối tệp không phải ảnh trước khi tải', async () => {
     await expect(uploadDossierFile({ kind: 'OWNERSHIP', buildingId: 'b1', file: new File(['x'], 'a.pdf', { type: 'application/pdf' }) }))
       .rejects.toBeInstanceOf(DossierFileError);
+    expect(boundary.uploadFile).not.toHaveBeenCalled();
+  });
+
+  it('từ chối WebP vì Cổng DVC không nhận', async () => {
+    await expect(uploadDossierFile({ kind: 'OWNERSHIP', buildingId: 'b1', file: new File(['x'], 'a.webp', { type: 'image/webp' }) }))
+      .rejects.toThrow(/JPG hoặc PNG/);
     expect(boundary.uploadFile).not.toHaveBeenCalled();
   });
 

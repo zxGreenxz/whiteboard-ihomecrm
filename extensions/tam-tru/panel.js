@@ -18,7 +18,37 @@
   };
 
   let pending = null;
-  let panel, body, steps, actions, fillBtn;
+  let panel, body, steps, actions, fillBtn, anhBox;
+
+  const NHAN_LOAI = { CT01: 'Tờ khai CT01', LEASE: 'Hợp đồng thuê', OWNERSHIP: 'Chỗ ở hợp pháp' };
+
+  /** Ảnh thu nhỏ để người dùng nhìn thấy ĐÚNG ảnh nào sắp đính kèm, không chỉ tên tệp. */
+  function veAnh(files) {
+    anhBox.textContent = '';
+    if (!files || files.length === 0) return;
+    const theoLoai = {};
+    files.forEach((f) => { (theoLoai[f.kind] = theoLoai[f.kind] || []).push(f); });
+    for (const kind of ['CT01', 'LEASE', 'OWNERSHIP']) {
+      const nhom = theoLoai[kind];
+      if (!nhom) continue;
+      const khoi = el('div', 'ihome-tamtru-nhom');
+      khoi.appendChild(el('div', 'ihome-tamtru-nhom-ten', (NHAN_LOAI[kind] || kind) + ' (' + nhom.length + ')'));
+      const hang = el('div', 'ihome-tamtru-hang');
+      nhom.forEach((f) => {
+        const o = el('figure', 'ihome-tamtru-anh');
+        const img = document.createElement('img');
+        img.src = f.dataUrl;
+        img.alt = f.name;
+        img.title = f.name + ' — bấm để xem to';
+        img.addEventListener('click', () => window.open(f.dataUrl, '_blank'));
+        o.appendChild(img);
+        o.appendChild(el('figcaption', null, f.name));
+        hang.appendChild(o);
+      });
+      khoi.appendChild(hang);
+      anhBox.appendChild(khoi);
+    }
+  }
 
   function setStatus(text, kind) {
     body.textContent = '';
@@ -70,6 +100,7 @@
       fillBtn.disabled = false;
       return;
     }
+    veAnh(files);
     setStatus('Đang điền form…', 'info');
     window.postMessage({ type: 'IHOME_TAMTRU_RUN', payload, files }, location.origin);
   }
@@ -107,6 +138,9 @@
     body = el('div', 'ihome-tamtru-body');
     setStatus('Bấm "Điền ngay" để tool điền toàn bộ form. Bạn vẫn tự kiểm tra và bấm Nộp.', 'info');
     panel.appendChild(body);
+
+    anhBox = el('div', 'ihome-tamtru-anhbox');
+    panel.appendChild(anhBox);
 
     steps = el('ol', 'ihome-tamtru-steps');
     panel.appendChild(steps);

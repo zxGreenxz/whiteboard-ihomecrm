@@ -34,9 +34,17 @@ Trước đây, mỗi lần đăng ký tạm trú cho một khách bạn phải 
 
 **Bước 3 — Lưu ảnh giấy đã ký**: trong chi tiết khách, khối **Hồ sơ tạm trú (Cổng DVC Bộ Công an)** có hai hàng **Tờ khai CT01 đã ký** và **Hợp đồng thuê đã ký**. Trên điện thoại bấm **Chụp ảnh** để chụp thẳng, trên máy tính bấm **Chọn tệp**. Ảnh gắn với hợp đồng đang ở; khách ở nhiều phòng thì chọn phòng ở ô **Phòng kê khai**. Dòng trạng thái bên dưới cho biết toà đã có ảnh chỗ ở hợp pháp chưa.
 
+::: tip Tên ảnh được đặt lại cho dễ đối chiếu
+Hệ thống bỏ tên gốc của máy ảnh và đặt lại theo đối tượng: ảnh chủ quyền thành `chuquyen950nk1.jpg`, `chuquyen950nk2.jpg`; ảnh của khách thành `nguyengiabinhct011.jpg`, `nguyengiabinhhopdong1.jpg`. Tên này hiện đúng trong cột Đính kèm của cổng nên nhìn là biết ảnh của toà nào, khách nào.
+
+Chỉ nhận **JPG và PNG**: cổng từ chối WebP. Ảnh được giữ nguyên byte gốc, không nén lại, để chữ trên giấy tờ không bị mờ.
+:::
+
 **Bước 4 — Gửi sang Cổng DVC**: chọn **Thời hạn tạm trú** (12 hoặc 24 tháng, mặc định 24 để khớp tờ CT01 đã in) rồi bấm **Đăng ký tạm trú trên DVC**. Nếu thiếu dữ liệu, CRM báo đúng thứ thiếu (ví dụ "Toà nhà chưa có ảnh giấy tờ chứng minh chỗ ở hợp pháp") và không mở cổng. Nếu chưa cài extension, CRM hiện hướng dẫn cài.
 
 **Bước 5 — Trên Cổng DVC**: tab mới mở form Đăng ký tạm trú. Cổng có thể yêu cầu đăng nhập VNeID (CCCD, mật khẩu, OTP) — đăng nhập xong form tự hiện. Bảng nổi **iHome Tạm trú** ở góc phải dưới tóm tắt khách, toà, phòng, hạn tạm trú và số ảnh; bấm **Điền ngay**. Extension lần lượt: chọn tỉnh và phường (cơ quan Công an phường tự hiện), chọn thủ tục lập hộ mới và khai hộ, điền thông tin khách và địa chỉ, mở mục đính kèm "do thuê, mượn, ở nhờ", gắn ảnh CT01, hợp đồng và thêm dòng "Giấy tờ, tài liệu chứng minh chỗ ở hợp pháp" với ảnh của toà.
+
+Bảng nổi hiện **ảnh thu nhỏ của từng tệp sắp đính kèm**, xếp theo loại và kèm tên. Bấm vào ảnh để xem to. Nhìn đó là biết ngay có gắn nhầm ảnh hay không, trước khi nộp.
 
 **Bước 6 — Kiểm tra và nộp**: rà lại từng mục (đặc biệt giới tính, ngày sinh, địa chỉ, số ảnh), tick **Tôi xin chịu trách nhiệm trước pháp luật về lời khai trên**, bấm **Nộp hồ sơ** hoặc **Lưu nháp**. Extension không bao giờ tự bấm hai nút này.
 
