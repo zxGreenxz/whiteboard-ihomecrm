@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "iHome Tạm trú",
+  "version": "1.0.0",
+  "description": "Điền sẵn hồ sơ Đăng ký tạm trú trên Cổng DVC Bộ Công an từ dữ liệu iHome CRM. Không tự nộp hồ sơ.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://tryymsxyyckgbrmmvozx.supabase.co/*"],
+  "background": { "service_worker": "background.js" },
+  "icons": { "128": "icons/icon128.png" },
+  "content_scripts": [
+    {
+      "matches": ["https://ptcrm.vercel.app/*", "http://localhost/*", "http://localhost:*/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://dichvucong.dancuquocgia.gov.vn/portal/p/home/dang-ky-tam-tru.html*"],
+      "js": ["fill-engine.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://dichvucong.dancuquocgia.gov.vn/portal/p/home/dang-ky-tam-tru.html*"],
+      "js": ["panel.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

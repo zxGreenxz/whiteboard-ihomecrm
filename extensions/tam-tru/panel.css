@@ -1,0 +1,32 @@
+#ihome-tamtru-panel {
+  position: fixed; right: 16px; bottom: 16px; z-index: 2147483000; width: 360px; max-width: calc(100vw - 32px);
+  background: #fff; color: #1f2937; border: 1px solid #d1d5db; border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .18); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+#ihome-tamtru-panel .ihome-tamtru-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 10px 12px;
+  background: #b91c1c; color: #fff; border-radius: 10px 10px 0 0; font-size: 14px;
+}
+#ihome-tamtru-panel .ihome-tamtru-close {
+  background: transparent; border: 0; color: #fff; font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+#ihome-tamtru-panel .ihome-tamtru-info { padding: 10px 12px 0; color: #374151; }
+#ihome-tamtru-panel .ihome-tamtru-info div + div { margin-top: 2px; }
+#ihome-tamtru-panel .ihome-tamtru-body { padding: 8px 12px 0; }
+#ihome-tamtru-panel .ihome-tamtru-status { margin: 0; padding: 8px 10px; border-radius: 6px; background: #f3f4f6; }
+#ihome-tamtru-panel .ihome-tamtru-status.ok { background: #dcfce7; color: #166534; }
+#ihome-tamtru-panel .ihome-tamtru-status.error { background: #fee2e2; color: #991b1b; }
+#ihome-tamtru-panel .ihome-tamtru-steps { list-style: none; margin: 8px 0 0; padding: 0 12px; max-height: 180px; overflow: auto; }
+#ihome-tamtru-panel .ihome-tamtru-steps li { display: flex; gap: 6px; align-items: baseline; padding: 3px 0; border-top: 1px dashed #e5e7eb; }
+#ihome-tamtru-panel .ihome-tamtru-steps li::before { content: "•"; color: #9ca3af; }
+#ihome-tamtru-panel .ihome-tamtru-steps li.running::before { content: "…"; color: #d97706; }
+#ihome-tamtru-panel .ihome-tamtru-steps li.ok::before { content: "✓"; color: #16a34a; }
+#ihome-tamtru-panel .ihome-tamtru-steps li.fail::before { content: "✗"; color: #dc2626; }
+#ihome-tamtru-panel .ihome-tamtru-step-msg { color: #6b7280; }
+#ihome-tamtru-panel .ihome-tamtru-actions { display: flex; gap: 8px; padding: 10px 12px 12px; }
+#ihome-tamtru-panel button.ihome-tamtru-primary, #ihome-tamtru-panel button.ihome-tamtru-secondary {
+  flex: 1; padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px;
+}
+#ihome-tamtru-panel button.ihome-tamtru-primary { background: #b91c1c; color: #fff; border: 1px solid #991b1b; }
+#ihome-tamtru-panel button.ihome-tamtru-primary:disabled { opacity: .6; cursor: wait; }
+#ihome-tamtru-panel button.ihome-tamtru-secondary { background: #fff; color: #374151; border: 1px solid #d1d5db; }
