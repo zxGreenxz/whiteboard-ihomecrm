@@ -111,6 +111,16 @@ Cột chủ chốt: `customer_id` (NOT NULL), `registration_authority` (cơ quan
 
 **FK đi ra:** `customer_id → customers`.
 
+### 2.6b. `residence_dossier_files` — Ảnh hồ sơ Đăng ký tạm trú (Cổng DVC)
+
+**Mục đích:** giữ ảnh giấy tờ để extension *iHome Tạm trú* đính kèm khi điền sẵn form Đăng ký tạm trú trên `dichvucong.dancuquocgia.gov.vn` (xem [hướng dẫn](../huong-dan-su-dung/03-quan-ly-van-hanh/dang-ky-tam-tru-dvc/index.md)). Ba loại `kind`: `CT01` và `LEASE` gắn theo khách (`customer_id` NOT NULL, `contract_id` = hợp đồng đang ở lúc tải), `OWNERSHIP` gắn theo toà (`customer_id` NULL) — tải một lần, dùng cho mọi hồ sơ của toà.
+
+Cột chủ chốt: `organization_id`, `building_id` (mọi loại đều neo theo toà để kiểm quyền), `bucket_id` (cố định `residence-docs`, bucket private), `object_name` (bắt đầu bằng `auth.uid()/`), `file_name/content_type/size_bytes`, `sort_order`, `created_by`, `deleted_at` (xoá mềm; client không DELETE cứng).
+
+**Quyền (RLS):** đọc khi thấy toà và có `customers.print` hoặc `buildings.edit` (`app_private.residence_dossier_can_read_v1`); ghi CT01/LEASE cần `customers.print` và khách cùng org, OWNERSHIP cần `buildings.edit` (`app_private.residence_dossier_can_write_v1`); policy `residence_dossier_files_hide_sandbox_admin`. Object trong bucket chỉ đọc được khi có dòng bảng đọc được (`app_private.residence_doc_object_can_read_v1`); URL ký lúc đọc qua `createSignedUrlFromStored`. Gói dữ liệu gửi cho extension dựng ở `src/lib/tamTruPayload.ts` (thuần, có test); extension ở `extensions/tam-tru/`.
+
+**FK đi ra:** `organization_id → organizations`; `building_id → buildings` (CASCADE); `customer_id → customers` (CASCADE); `contract_id → contracts` (SET NULL).
+
 ### 2.7. `contract_customers` & `contract_tenants` — Junction đại diện hợp đồng
 
 **Mục đích:** một hợp đồng có thể có nhiều khách/người thuê; junction đánh dấu ai là **đại diện** (`is_representative`).

@@ -65,6 +65,7 @@ export const sidebar: DefaultTheme.Sidebar = [
           { text: 'Thanh lý — Khách bỏ cọc', link: '/03-quan-ly-van-hanh/thanh-ly-forfeit/' },
           { text: 'Cư dân', link: '/03-quan-ly-van-hanh/cu-dan/' },
           { text: 'Hồ sơ & CT01', link: '/03-quan-ly-van-hanh/ho-so-ct01/' },
+          { text: 'Đăng ký tạm trú trên DVC', link: '/03-quan-ly-van-hanh/dang-ky-tam-tru-dvc/' },
           { text: 'Phương tiện', link: '/03-quan-ly-van-hanh/phuong-tien/' },
         ],
       },
