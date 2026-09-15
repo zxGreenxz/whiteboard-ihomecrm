@@ -80,19 +80,19 @@ describe("migration 20260729120000 — writer canonical chấp nhận phiếu c�
     });
   });
 
-  it("recompute_contract_deposit_paid gọi helper thay vì nhân bản công thức", () => {
-    const start = sql.indexOf(
-      "CREATE OR REPLACE FUNCTION public.recompute_contract_deposit_paid(",
-    );
-    expect(start).toBeGreaterThan(-1);
-    const body = sql.slice(start, sql.indexOf("$function$;", start));
-    expect(body).toMatch(
-      /v_total := public\.contract_deposit_paid_derived\(p_contract_id\);/,
-    );
-    // Vẫn giữ luật "không có dòng cọc nào thì KHÔNG ghi đè cột" như bản cũ.
-    expect(body).toMatch(/IF v_count_any = 0 THEN\n\s*RETURN;/);
-    expect(body).toMatch(/deposit_paid IS DISTINCT FROM v_total/);
-  });
+  // CHUYỂN ĐI 15/09/2026 (plan H2). Khối `it()` về recompute_contract_deposit_paid
+  // từng nằm ở đây, đọc chính file 20260729120000 này. Hai lý do phải chuyển:
+  //
+  //   1. Định nghĩa SỐNG của hàm đó nay ở 20260915074638 (H2.2), nên đo file
+  //      đóng băng là đo một bản đã bị thay — đúng thứ
+  //      scripts/check-migration-test-liveness.mjs sinh ra để bắt.
+  //   2. Một trong các khẳng định cũ là "IF v_count_any = 0 THEN RETURN" — luật
+  //      đó ĐÃ BỊ BỎ: early-return theo số phiếu để lại cọc ma sau khi gỡ phiếu
+  //      cọc cuối cùng, và số ma đó thành tiền hoàn thật ở màn thanh lý.
+  //
+  // Bản mới, đo định nghĩa sống: src/lib/__tests__/cocThanhLyCapHoanCocMigration.test.ts
+  // (describe "H2.2"). File này giữ nguyên phần việc thật của nó: hai hậu kiểm
+  // 23514 của create_income_expense_v1 và helper contract_deposit_paid_derived.
 
   it("writer gom cờ 'phiếu có item hạng mục cọc' từ chính item vừa ghi", () => {
     expect(sql).toMatch(/COALESCE\(bool_or\(t\.is_deposit\), false\)/);
