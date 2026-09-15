@@ -10,8 +10,12 @@ export interface BuildingOwnershipDocsProps { buildingId: string }
 export default function BuildingOwnershipDocs({ buildingId }: BuildingOwnershipDocsProps) {
   const { data: permissions } = useMyPermissions();
   const canEdit = canUse(permissions, 'buildings', 'edit');
-  const files = useBuildingOwnershipFiles(buildingId);
+  const canView = canEdit || canUse(permissions, 'customers', 'print');
+  // Không có quyền thì đừng gọi: RLS vẫn chặn, nhưng request thừa và lỗi thừa.
+  const files = useBuildingOwnershipFiles(canView ? buildingId : undefined);
   const { upload, remove } = useDossierFileMutations({ buildingId });
+
+  if (!canView) return null;
 
   return (
     <section className="space-y-2 rounded-md border p-3" aria-label="Giấy tờ chứng minh chỗ ở hợp pháp">

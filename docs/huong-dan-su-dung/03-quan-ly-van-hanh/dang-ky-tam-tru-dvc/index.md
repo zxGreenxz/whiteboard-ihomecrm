@@ -59,7 +59,7 @@ Trước đây, mỗi lần đăng ký tạm trú cho một khách bạn phải 
 2. Bấm **Load unpacked**, chọn thư mục `extensions/tam-tru` trong mã nguồn CRM.
 3. Tải lại trang CRM. Khi cập nhật phiên bản, bấm nút tải lại ở thẻ extension.
 
-Extension không giữ mật khẩu hay khoá CRM; nó chỉ nhận gói dữ liệu từ trang CRM khi bạn bấm nút, mở cổng và điền. Trang mở lại từ hồ sơ nháp (`?id=`) không tự điền.
+Extension không giữ mật khẩu hay khoá CRM. Gói dữ liệu đi thẳng từ trang CRM sang đúng extension này, không phát ra cho phần mềm khác trên trang; extension chỉ nhận ảnh từ kho của CRM. Trang mở lại từ hồ sơ nháp (`?id=`) không tự điền.
 
 ## Lỗi thường gặp
 

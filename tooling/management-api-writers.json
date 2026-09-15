@@ -66,6 +66,12 @@
       "giayPhep": "chi-doc"
     },
     {
+      "file": "scripts/check-residence-dossier-rls.mjs",
+      "loai": "write",
+      "why": "Gate RLS cho residence_dossier_files (ảnh CCCD/chữ ký/giấy chủ quyền): phải GHI thật rồi đọc lại dưới JWT của ba vai mới chứng minh được policy chặn đúng — đọc suông không phân biệt 'không có quyền' với 'không có dữ liệu'. Không đổi schema nên không đi lane forward.",
+      "giayPhep": "giao-dich-rollback"
+    },
+    {
       "file": "scripts/check-salary-completion-date.mjs",
       "loai": "write",
       "why": "CHỈ ĐỌC catalog lương. Như trên.",

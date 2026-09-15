@@ -24,10 +24,16 @@ gắn ảnh; **không tự bấm Lưu nháp hay Nộp hồ sơ**, không giữ m
 
 ## Cách hoạt động
 
-- `bridge.js` (trang CRM): đặt `data-ihome-tamtru-ext` lên `<html>` để CRM biết extension
-  có mặt; nhận gói dữ liệu qua `window.postMessage`, chuyển cho `background.js`.
-- `background.js`: giữ gói trong `chrome.storage.session` (hết hạn sau 1 giờ), mở tab form,
-  tải ảnh từ signed URL (1 giờ) của CRM.
+- `bridge.js` (trang CRM): chỉ đặt `data-ihome-tamtru-ext` và `data-ihome-tamtru-id` lên
+  `<html>` để CRM biết extension có mặt. Không có dữ liệu nào đi qua đây.
+- **Gói dữ liệu đi thẳng**: trang CRM gọi `chrome.runtime.sendMessage(<id extension>, …)`
+  nhờ `externally_connectable` trong manifest. Không dùng `window.postMessage` vì tin trên
+  window đến mọi listener cùng cửa sổ, kể cả content script của extension khác — mà gói này
+  có CCCD, ngày sinh và signed URL tới ảnh giấy tờ. Id extension cố định
+  (`kaleeijefebjdhcmkfdbbffmielfjjgf`) nhờ khoá `key` trong `manifest.json`.
+- `background.js`: kiểm tin đến từ đúng origin CRM và mọi URL ảnh thuộc host Supabase của
+  dự án, giữ gói trong `chrome.storage.session` (hết hạn sau 1 giờ), mở tab form, tải ảnh
+  từ signed URL (1 giờ) của CRM.
 - `panel.js` + `panel.css` (trang cổng, isolated world): bảng nổi, tiến độ từng bước.
 - `fill-engine.js` (trang cổng, MAIN world): điền bằng chính `FormUtil.setObjectToFormV2`,
   jQuery/select2 của cổng; gắn ảnh vào `input[type=file]` bằng `DataTransfer` rồi phát

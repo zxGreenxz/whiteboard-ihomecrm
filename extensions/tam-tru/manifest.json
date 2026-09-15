@@ -3,8 +3,12 @@
   "name": "iHome Tạm trú",
   "version": "1.0.0",
   "description": "Điền sẵn hồ sơ Đăng ký tạm trú trên Cổng DVC Bộ Công an từ dữ liệu iHome CRM. Không tự nộp hồ sơ.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz3aWcrkOqqbusKkbG8WT54wpVbKSNuiPxDKYLQuPuirIsHkAa6RbYeMhO9bwpw4cyd6ehWyFOTX6LSjWSThf+v0QEN5HkfwLBkCQn3RiXWjRLXzh5XjCG1yFKq8BqndkLyYYTtsq/eXpg5ho515GxOKsjT+0cFihRII953FrBHeqmcg+2CJOS2t8EyLuotpTUL7k8AK4GaxB9+qjarCXybY7KVvSmldgOfK3Wtk9S5eECisTw5fmHx/siR1cfGD4RyyflnG/upHi5e0jor9Qm/vEs3/xVq9c2T3eGpITLwu4eF3WPv8J41g4s/6y5gEVaQqJcQn7pgh6do5U0s3uwwIDAQAB",
   "permissions": ["storage", "tabs"],
   "host_permissions": ["https://tryymsxyyckgbrmmvozx.supabase.co/*"],
+  "externally_connectable": {
+    "matches": ["https://ptcrm.vercel.app/*", "http://localhost/*"]
+  },
   "background": { "service_worker": "background.js" },
   "icons": { "128": "icons/icon128.png" },
   "content_scripts": [

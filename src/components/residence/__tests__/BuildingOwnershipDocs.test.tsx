@@ -3,11 +3,15 @@ import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const boundary = vi.hoisted(() => ({ perms: { buildings: { edit: true } }, files: [] as unknown[] }));
+const boundary = vi.hoisted(() => ({
+  perms: { buildings: { edit: true } } as Record<string, Record<string, boolean>>,
+  files: [] as unknown[],
+  lastBuildingId: undefined as string | undefined,
+}));
 vi.mock('@/hooks/useMyPermissions', () => ({ useMyPermissions: () => ({ data: boundary.perms }) }));
 vi.mock('@/lib/permissionPages', () => ({ canUse: (p: Record<string, Record<string, boolean>>, m: string, a: string) => !!p?.[m]?.[a] }));
 vi.mock('@/hooks/useResidenceDossierFiles', () => ({
-  useBuildingOwnershipFiles: () => ({ data: boundary.files, isError: false }),
+  useBuildingOwnershipFiles: (id?: string) => { boundary.lastBuildingId = id; return { data: boundary.files, isError: false }; },
   useDossierFileMutations: () => ({ upload: { mutateAsync: vi.fn() }, remove: { mutateAsync: vi.fn() } }),
 }));
 vi.mock('@/components/ui/storage-image', () => ({ StorageImage: ({ alt }: { alt: string }) => <img alt={alt} /> }));
@@ -27,9 +31,17 @@ describe('BuildingOwnershipDocs', () => {
     expect(screen.getByText(/tải một lần/i)).toBeTruthy();
   });
 
-  it('không có quyền sửa toà thì chỉ xem', () => {
-    boundary.perms = { buildings: { edit: false } };
+  it('có quyền in hồ sơ nhưng không sửa toà thì chỉ xem', () => {
+    boundary.perms = { buildings: { edit: false }, customers: { print: true } };
     render(<BuildingOwnershipDocs buildingId="b1" />);
+    expect(screen.getByText(/Giấy tờ chứng minh chỗ ở hợp pháp/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /chụp ảnh/i })).toBeNull();
+  });
+
+  it('không có quyền nào thì không hiện khối và không gọi dữ liệu', () => {
+    boundary.perms = { buildings: { edit: false }, customers: { print: false } };
+    const { container } = render(<BuildingOwnershipDocs buildingId="b1" />);
+    expect(container.textContent).toBe('');
+    expect(boundary.lastBuildingId).toBeUndefined();
   });
 });

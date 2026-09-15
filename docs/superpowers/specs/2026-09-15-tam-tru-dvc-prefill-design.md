@@ -28,12 +28,18 @@ Ba phần, ranh giới rõ:
 3. **Cổng DVC** giữ nguyên; người dùng đăng nhập VNeID, xem lại, nộp.
 
 Luồng: Chi tiết khách → nút "Đăng ký tạm trú trên DVC" → CRM kiểm đủ dữ liệu, dựng gói,
-`window.postMessage` cho content script cầu nối của extension trên `ptcrm.vercel.app`
-→ background lưu gói vào `chrome.storage.session`, mở tab form → content script trên form
+gọi `chrome.runtime.sendMessage(<id extension>, …)` → background kiểm origin gửi và host của
+mọi URL ảnh, lưu gói vào `chrome.storage.session`, mở tab form → content script trên form
 thấy gói, hiện bảng nổi "Điền hồ sơ cho <tên>" → bấm Điền → script chạy ở MAIN world.
 
-Nhận diện extension: content script cầu nối đặt `data-ihome-tamtru-ext="<version>"` lên
-`<html>` lúc `document_start`; CRM đọc thuộc tính này để bật nút hoặc hiện hướng dẫn cài.
+Không dùng `window.postMessage` cho gói dữ liệu: tin trên window đến mọi listener cùng cửa
+sổ, kể cả content script của extension khác, và `MessageChannel` cũng không cứu được vì cổng
+nằm trong chính sự kiện đó. Gói có CCCD, ngày sinh và signed URL tới ảnh giấy tờ nên đi
+đường riêng qua `externally_connectable`; id extension cố định nhờ khoá `key` trong manifest.
+
+Nhận diện extension: content script cầu nối đặt `data-ihome-tamtru-ext="<version>"` và
+`data-ihome-tamtru-id` lên `<html>` lúc `document_start`; CRM đọc thuộc tính này để bật nút
+hoặc hiện hướng dẫn cài.
 
 ## 3. Dữ liệu
 

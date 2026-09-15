@@ -444,6 +444,11 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-migration-ledger-frozen.mjs
 
+      - name: RLS ảnh hồ sơ tạm trú (ca thật dưới JWT, kết thúc bằng ROLLBACK)
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-residence-dossier-rls.mjs
+
       - name: Migration forward chạy lại được lần hai (idempotent)
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}

@@ -31,21 +31,49 @@ async function getPending() {
   return pending;
 }
 
+const ALLOWED_FILE_HOSTS = new Set(['tryymsxyyckgbrmmvozx.supabase.co']);
+const ALLOWED_SENDER_ORIGINS = new Set(['https://ptcrm.vercel.app']);
+
+function allowedFileUrl(raw) {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && ALLOWED_FILE_HOSTS.has(u.hostname);
+  } catch (e) {
+    return false;
+  }
+}
+
+function senderAllowed(sender) {
+  const origin = sender && sender.origin;
+  if (!origin) return false;
+  return ALLOWED_SENDER_ORIGINS.has(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin);
+}
+
+/** Gói từ trang CRM: chỉ nhận đúng hình dạng đã biết và URL ảnh thuộc host Supabase của dự án. */
+function payloadProblem(payload) {
+  if (!payload || payload.version !== 1 || !payload.person || !payload.receive) return 'Gói dữ liệu không hợp lệ.';
+  if (!Array.isArray(payload.attachments) || payload.attachments.length === 0) return 'Gói dữ liệu thiếu ảnh đính kèm.';
+  if (payload.attachments.length > 30) return 'Gói dữ liệu có quá nhiều ảnh.';
+  if (!payload.attachments.every((a) => a && allowedFileUrl(a.url))) return 'Đường dẫn ảnh không thuộc kho của CRM.';
+  return null;
+}
+
+// Trang CRM gửi thẳng qua externally_connectable; các tin nội bộ (panel) đi onMessage.
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  if (!senderAllowed(sender)) { sendResponse({ ok: false, error: 'Trang gửi không được phép.' }); return false; }
+  if (!msg || msg.type !== 'TAM_TRU_PAYLOAD') { sendResponse({ ok: false, error: 'Tin không hợp lệ.' }); return false; }
+  const problem = payloadProblem(msg.payload);
+  if (problem) { sendResponse({ ok: false, error: problem }); return false; }
+  (async () => {
+    await chrome.storage.session.set({ pending: { payload: msg.payload, receivedAt: Date.now() } });
+    const tab = await chrome.tabs.create({ url: FORM_URL, active: true });
+    sendResponse({ ok: true, tabId: tab.id });
+  })().catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+  return true;
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const type = msg && msg.type;
-  if (type === 'TAM_TRU_PAYLOAD') {
-    (async () => {
-      const payload = msg.payload;
-      if (!payload || payload.version !== 1 || !payload.person || !payload.receive) {
-        sendResponse({ ok: false, error: 'Gói dữ liệu không hợp lệ.' });
-        return;
-      }
-      await chrome.storage.session.set({ pending: { payload, receivedAt: Date.now() } });
-      const tab = await chrome.tabs.create({ url: FORM_URL, active: true });
-      sendResponse({ ok: true, tabId: tab.id });
-    })().catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
-    return true;
-  }
   if (type === 'GET_PENDING') {
     getPending().then((p) => sendResponse(p)).catch(() => sendResponse(null));
     return true;
@@ -55,6 +83,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (type === 'FETCH_FILE') {
+    if (!allowedFileUrl(msg.url)) { sendResponse({ ok: false, error: 'Đường dẫn ảnh không thuộc kho của CRM.' }); return false; }
     fetchAsDataUrl(msg.url)
       .then((r) => sendResponse({ ok: true, ...r }))
       .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
