@@ -129,10 +129,12 @@ export function getInvoiceEditMode(invoice: InvoiceLike): 'draft' | 'adjustment'
 
 /**
  * Quy tắc HỦY (đường kết thúc hoá đơn duy nhất — gôm từ nút Xoá cũ, 09/2026):
- * - User thường: DRAFT/APPROVED chưa thu tiền (giống canEdit). RPC
- *   cancel_invoice_with_credit_v1 KHÔNG tự chặn status/paid_amount ở DB, nên
- *   guard này là hàng rào duy nhất — thiếu nó thì hủy được cả HĐ đã thu tiền
- *   và restore sẽ trả về status sai (APPROVED thay vì PARTIAL_PAID).
+ * - User thường: DRAFT/APPROVED chưa thu tiền (giống canEdit). Từ 15/09/2026
+ *   cùng luật này đã nằm TRONG `cancel_invoice_v1` / `cancel_invoice_with_credit_v1`
+ *   ở DB (migration `hoa_don_guard_huy_no_keo_subtotal_ngay`), nên đây không còn
+ *   là hàng rào duy nhất — nó là lớp HIỂN THỊ: ẩn nút và báo bằng tiếng Việt
+ *   thay vì để người dùng nhận lỗi SQL. Đừng nới lỏng nó với suy nghĩ "DB chặn
+ *   rồi": hai lớp phải nói cùng một luật, lệch nhau là nút bấm được mà hỏng.
  * - Super admin (opts.isSuper): hủy được HĐ ở MỌI trạng thái trừ CANCELLED
  *   (đi force-cancel flow riêng, có kiểm tra payment ở DB).
  * - HĐ đã soft-delete (di sản đường Xoá cũ): luôn từ chối.
