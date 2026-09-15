@@ -37,8 +37,20 @@ const dialogs = [];
 page.on('dialog', (d) => { dialogs.push(d.message()); d.dismiss().catch(() => {}); });
 try {
   await page.goto(FORM_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  if (!/dang-ky-tam-tru\.html/.test(page.url())) throw new Error('Không vào được form (đang ở ' + page.url() + ') — phiên VNeID đã hết?');
-  await page.waitForFunction(() => { const s = document.getElementById('cboRECEIVE_ADDR_CITY_CODE'); return !!s && s.options.length > 1; }, null, { timeout: 60000 });
+  // Cổng có thể đẩy qua SSO rồi tự quay về (phiên còn) hoặc đòi đăng nhập lại (người dùng gõ OTP).
+  const formReady = () => { const s = document.getElementById('cboRECEIVE_ADDR_CITY_CODE'); return !!s && s.options.length > 1; };
+  const deadline = Date.now() + 3 * 60 * 1000;
+  let warned = false;
+  while (Date.now() < deadline) {
+    if (/dang-ky-tam-tru\.html/.test(page.url()) && await page.evaluate(formReady).catch(() => false)) break;
+    if (!warned && /sso\.dancuquocgia\.gov\.vn/.test(page.url()) && await page.locator('#username').count().catch(() => 0)) {
+      console.log('CẦN ĐĂNG NHẬP: cổng đòi đăng nhập VNeID ở tab mới. Đăng nhập xong script tự chạy tiếp (chờ tối đa 3 phút).');
+      warned = true;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (!/dang-ky-tam-tru\.html/.test(page.url())) throw new Error('Không vào được form (đang ở ' + page.url() + ')');
+  await page.waitForFunction(formReady, null, { timeout: 60000 });
   await page.addScriptTag({ content: ENGINE });
   const t0 = Date.now();
   const result = await page.evaluate(async ({ payload, files }) => {

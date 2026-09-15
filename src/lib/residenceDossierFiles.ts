@@ -83,6 +83,18 @@ export async function uploadDossierFile(input: {
   return data as ResidenceDossierFile;
 }
 
+/** Ảnh CT01/LEASE ưu tiên đúng hợp đồng đang chọn; không có thì lấy mọi ảnh của khách; cộng ảnh chỗ ở hợp pháp của toà. */
+export function pickDossierFilesForContract(
+  customerFiles: ResidenceDossierFile[], ownershipFiles: ResidenceDossierFile[], contractId: string,
+): ResidenceDossierFile[] {
+  const perKind = (kind: 'CT01' | 'LEASE') => {
+    const ofKind = customerFiles.filter(f => f.kind === kind);
+    const ofContract = ofKind.filter(f => f.contract_id === contractId);
+    return ofContract.length > 0 ? ofContract : ofKind;
+  };
+  return [...perKind('CT01'), ...perKind('LEASE'), ...ownershipFiles.filter(f => f.kind === 'OWNERSHIP')];
+}
+
 export async function removeDossierFile(id: string): Promise<void> {
   const { error } = await supabase.from('residence_dossier_files')
     .update({ deleted_at: new Date().toISOString() }).eq('id', id);

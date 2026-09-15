@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type { CT01Tenancy } from '@/lib/ct01DownloadService';
 import { createSignedUrlFromStored } from '@/lib/storage';
-import { dossierStorageValue, type ResidenceDossierFile } from '@/lib/residenceDossierFiles';
+import { dossierStorageValue, pickDossierFilesForContract, type ResidenceDossierFile } from '@/lib/residenceDossierFiles';
 import { buildTamTruPayload, TamTruInputError, type TamTruAttachment, type TamTruCustomerInput } from '@/lib/tamTruPayload';
 import { detectTamTruExtension, sendTamTruPayload } from '@/lib/tamTruBridge';
 import TamTruInstallDialog from './TamTruInstallDialog';
@@ -16,16 +16,6 @@ export interface TamTruDvcButtonProps {
   tenancy: CT01Tenancy | null;
   customerFiles: ResidenceDossierFile[];
   ownershipFiles: ResidenceDossierFile[];
-}
-
-/** Ảnh CT01/LEASE ưu tiên đúng hợp đồng đang chọn; không có thì lấy mọi ảnh của khách. */
-export function pickDossierFiles(customerFiles: ResidenceDossierFile[], ownershipFiles: ResidenceDossierFile[], contractId: string): ResidenceDossierFile[] {
-  const perKind = (kind: 'CT01' | 'LEASE') => {
-    const ofKind = customerFiles.filter(f => f.kind === kind);
-    const ofContract = ofKind.filter(f => f.contract_id === contractId);
-    return ofContract.length > 0 ? ofContract : ofKind;
-  };
-  return [...perKind('CT01'), ...perKind('LEASE'), ...ownershipFiles.filter(f => f.kind === 'OWNERSHIP')];
 }
 
 export default function TamTruDvcButton({ customer, tenancy, customerFiles, ownershipFiles }: TamTruDvcButtonProps) {
@@ -40,7 +30,7 @@ export default function TamTruDvcButton({ customer, tenancy, customerFiles, owne
     pending.current = true;
     setBusy(true);
     try {
-      const files = pickDossierFiles(customerFiles, ownershipFiles, tenancy.contractId);
+      const files = pickDossierFilesForContract(customerFiles, ownershipFiles, tenancy.contractId);
       const attachments: TamTruAttachment[] = await Promise.all(files.map(async (f) => ({
         kind: f.kind, fileName: f.file_name || f.object_name.split('/').pop() || 'anh', contentType: f.content_type || 'image/jpeg',
         url: await createSignedUrlFromStored(dossierStorageValue(f)),

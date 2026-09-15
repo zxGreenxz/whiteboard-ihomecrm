@@ -17,8 +17,8 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: {} }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { error: boundary.toastError, success: boundary.toastSuccess } }));
 
-import TamTruDvcButton, { pickDossierFiles } from '../TamTruDvcButton';
-import type { ResidenceDossierFile } from '@/lib/residenceDossierFiles';
+import TamTruDvcButton from '../TamTruDvcButton';
+import { pickDossierFilesForContract, type ResidenceDossierFile } from '@/lib/residenceDossierFiles';
 import type { CT01Tenancy } from '@/lib/ct01DownloadService';
 
 const file = (id: string, kind: ResidenceDossierFile['kind'], contract: string | null = 'ct1'): ResidenceDossierFile => ({
@@ -43,10 +43,10 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe('pickDossierFiles', () => {
+describe('pickDossierFilesForContract', () => {
   it('ưu tiên ảnh đúng hợp đồng, không có thì lấy mọi ảnh của khách', () => {
     const files = [file('old', 'CT01', 'ct0'), file('new', 'CT01', 'ct1'), file('l', 'LEASE', 'ct0')];
-    expect(pickDossierFiles(files, ownershipFiles, 'ct1').map(f => f.id)).toEqual(['new', 'l', 'g1', 'g2']);
+    expect(pickDossierFilesForContract(files, ownershipFiles, 'ct1').map(f => f.id)).toEqual(['new', 'l', 'g1', 'g2']);
   });
 });
 
