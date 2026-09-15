@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Pencil, Trash2, Phone } from 'lucide-react';
 import CT01DownloadButton from './CT01DownloadButton';
+import ResidenceDossierSection from '@/components/residence/ResidenceDossierSection';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -272,6 +273,10 @@ export default function CustomerDetailModal({
               <Separator />
 
               <CT01DownloadButton key={customer.id} customer={customer} />
+
+              <Separator />
+
+              <ResidenceDossierSection key={`tam-tru-${customer.id}`} customer={customer} />
             </div>
           )}
         </DialogContent>

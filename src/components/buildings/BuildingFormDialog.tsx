@@ -45,6 +45,7 @@ import BuildingGeoSection from './BuildingGeoSection';
 import BuildingServicesSection from './BuildingServicesSection';
 import { CommissionTiersField } from './CommissionTiersField';
 import { BuildingLegalOwnerFields } from './BuildingLegalOwnerFields';
+import BuildingOwnershipDocs from '@/components/residence/BuildingOwnershipDocs';
 import { useBuildingLegalOwnerForm } from '@/hooks/useBuildingLegalOwnerForm';
 
 interface BuildingFormDialogProps {
@@ -541,6 +542,7 @@ export default function BuildingFormDialog({
               </fieldset>
               {createdBuildingId && <p role="status" className="text-sm text-amber-700">Tòa nhà đã được tạo. Lần lưu tiếp theo chỉ hoàn tất chủ sở hữu và dịch vụ; thông tin cơ bản cần chỉnh sau khi hoàn tất.</p>}
               <BuildingLegalOwnerFields {...owner} />
+              {isEditMode && building && <BuildingOwnershipDocs buildingId={building.id} />}
               {/* Footer */}
               <div className="flex justify-end gap-3 pt-2 pb-2">
                 <Button
