@@ -329,21 +329,40 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       for (const r of trendRows) trendByStaffMonth.set(`${r.staff_id}|${r.period_month}`, r);
 
       // CHẾ ĐỘ v5: số liệu lương tháng CHƯA chốt lấy từ engine v5 (chuyên cần + chuỗi).
-      // Gọi v5_month_money(staff, tháng) + current_streak; tháng đã chốt KHÔNG override.
+      // Gọi v5_month_money_bulk(danh sách staff, tháng) + current_streak; tháng đã
+      // chốt KHÔNG override.
+      //
+      // MỘT lượt cho cả màn, không phải một lượt mỗi người. Bản cũ chạy
+      // `Promise.all(staffIds.map(... rpc("v5_month_money") ...))` — N lượt khứ
+      // hồi, mỗi lượt tự đọc lại cấu hình lương và lịch ngày-làm.
+      //
+      // Bản gộp BỎ QUA người mà tài khoản đang đăng nhập không được xem lương
+      // (migration 20260915074852), nên `v5ByStaff` có thể thiếu khoá. Thiếu khoá
+      // = không có số v5 cho người đó, và `mergeV5Bonus` phía dưới giữ nguyên số
+      // legacy — đúng thứ ta muốn, không phải số 0 giả.
       const v5ByStaff = new Map<string, { attend: number; streak: number; ticked: number; nchuan: number; cur: number }>();
       if (engine === "v5") {
-        const [v5Arr, sssRes] = await Promise.all([
-          Promise.all(staffIds.map(async (sid) => {
-            const { data } = await supabase.rpc("v5_month_money", { p_user: sid, p_month: periodMonth });
-            return { sid, data };
-          })),
+        const [v5Bulk, sssRes] = await Promise.all([
+          (async () => {
+            const { data: v5BulkRes, error: v5BulkErr } = await supabase.rpc(
+              "v5_month_money_bulk",
+              { p_users: staffIds, p_month: periodMonth },
+            );
+            // `supabase.rpc` không bao giờ ném: lỗi về dưới dạng `{ error }` trên
+            // một promise đã fulfil. Không đọc `error` ở đây thì một lời gọi bị
+            // từ chối biến thành số 0 trên màn lương, im lặng.
+            if (v5BulkErr) throw v5BulkErr;
+            return v5BulkRes;
+          })(),
           (supabase.from("salary_streak_state").select("user_id, current_streak") as any)
             .in("user_id", staffIds).eq("period_month", periodMonth),
         ]);
         const curByStaff = new Map<string, number>(
           ((sssRes.data || []) as any[]).map((r) => [r.user_id, num(r.current_streak)])
         );
-        for (const { sid, data: mm } of v5Arr) {
+        for (const sid of staffIds) {
+          const mm = jsonProp(v5Bulk, sid);
+          if (mm == null) continue;
           v5ByStaff.set(sid, {
             attend: num(jsonProp(mm, "attend_amount")), streak: num(jsonProp(mm, "streak_amount")),
             ticked: num(jsonProp(mm, "ticked_days")), nchuan: num(jsonProp(mm, "n_chuan")),
