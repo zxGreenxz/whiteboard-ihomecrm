@@ -64,7 +64,13 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
       ["shareholder-distributions"],
       ["manager-salary-payouts"],
       ["change-breakdown"], // sổ thối
-      ["commission-prefill"],
+      // GỠ 15/09/2026 — ở đây từng có key prefill của modal hoa hồng. Nó KHÔNG
+      // đọc income_expenses (chỉ contracts/rooms/buildings/customers), nên gắn
+      // vào đây vừa thừa vừa có hại: create_contract_v2 ghi phiếu cọc vào bảng
+      // này, hub debounce 0,8–2,4 s rồi invalidate — đúng lúc người dùng đang gõ
+      // trong modal vừa mở. Prefill trả object mới ⇒ form reset sạch, và nếu cú
+      // refetch đó lỗi thì modal kẹt luôn ở "Đang tải thông tin hợp đồng...".
+      // Prefill là ẢNH CHỤP hợp đồng vừa tạo, không phải dữ liệu cần live.
       ["business-performance"],
       // --- Đợt 2→6: màn đọc phiếu bằng key riêng, trước đây bỏ sót ---
       ["settlement-report"],

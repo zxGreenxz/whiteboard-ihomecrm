@@ -104,16 +104,35 @@ export interface CommissionPrefillData {
   room_name: string | null;
   tenant_id: string | null;
   tenant_name: string | null;
-  default_account_id: string | null;
 }
 
-/** Fetch full prefill data dựa trên contract id (gọi sau khi tạo HĐ thành công). */
+/**
+ * Ảnh chụp hợp đồng để mồi modal phiếu hoa hồng — gọi ngay sau khi tạo HĐ.
+ *
+ * BA LUẬT, đều rút ra từ bug 15/09/2026 (form tự xoá giữa chừng rồi kẹt ở dòng
+ * "Đang tải thông tin hợp đồng..."):
+ *
+ *   1. `staleTime: Infinity` — dữ liệu này là ảnh chụp của một hợp đồng VỪA tạo
+ *      xong; không có lý do gì để nó tự cũ rồi tự tải lại dưới tay người đang
+ *      gõ. (Nó KHÔNG chặn được `invalidateQueries` — cửa đó đã khoá bằng cách gỡ
+ *      key khỏi descriptor realtime của income_expenses, xem realtime/finance.ts.)
+ *   2. NÉM khi PostgREST trả `{error}`. Bản cũ `return null` nên một lỗi thoáng
+ *      qua thành "thành công với data rỗng": không retry, không thông báo, modal
+ *      treo vĩnh viễn ở dòng chờ và nút Tạo phiếu disable. Vi phạm Contract §14.
+ *   3. MỘT request. Sổ quỹ mặc định trước đây là một round-trip `accounts` chạy
+ *      TUẦN TỰ sau contracts — vừa chậm gấp đôi, vừa có thể trả về một sổ KHÔNG
+ *      nằm trong dropdown của modal (dropdown dùng useAccounts, có lọc sổ DEMO),
+ *      làm ô sổ quỹ hiện trống. Modal tự khớp theo tên toà trên chính danh sách
+ *      nó đang hiển thị.
+ */
 export const useCommissionPrefill = (contractId: string | null) => {
   return useQuery({
     queryKey: ["commission-prefill", contractId],
     enabled: !!contractId,
-    queryFn: async (): Promise<CommissionPrefillData | null> => {
-      if (!contractId) return null;
+    staleTime: Infinity,
+    gcTime: 5 * 60_000,
+    queryFn: async (): Promise<CommissionPrefillData> => {
+      const id = batBuoc(contractId, "contractId");
 
       const { data: contract, error } = await supabase
         .from("contracts")
@@ -128,12 +147,14 @@ export const useCommissionPrefill = (contractId: string | null) => {
              customer:customers ( id, full_name )
            )`
         )
-        .eq("id", contractId)
+        .eq("id", id)
         .single();
 
-      if (error || !contract) {
-        console.error("useCommissionPrefill error:", error);
-        return null;
+      if (error) throw error;
+      if (!contract) {
+        throw new Error(
+          "Không đọc được hợp đồng vừa tạo (không có dòng nào khớp hoặc không đủ quyền xem)."
+        );
       }
 
       const months = calcContractMonths(contract.start_date, contract.end_date);
@@ -163,22 +184,6 @@ export const useCommissionPrefill = (contractId: string | null) => {
         contract.contract_customers?.[0] ??
         null;
 
-      // Match account by name (cùng user_id) — fallback null nếu không có
-      let defaultAccountId: string | null = null;
-      const buildingName = contract.room?.building?.name as string | undefined;
-      if (buildingName) {
-        const { data: accounts } = await supabase
-          .from("accounts")
-          .select("id, name, is_default")
-          .ilike("name", buildingName)
-          .is("deleted_at", null)
-          .order("is_default", { ascending: false });
-        const first = accounts?.[0];
-        if (first) {
-          defaultAccountId = first.id;
-        }
-      }
-
       return {
         contract_id: contract.id,
         contract_number: contract.contract_number ?? null,
@@ -194,7 +199,6 @@ export const useCommissionPrefill = (contractId: string | null) => {
         room_name: contract.room?.name ?? null,
         tenant_id: rep?.customer?.id ?? null,
         tenant_name: rep?.customer?.full_name ?? null,
-        default_account_id: defaultAccountId,
       };
     },
   });
