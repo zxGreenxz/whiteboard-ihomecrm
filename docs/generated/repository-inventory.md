@@ -15,8 +15,8 @@ Một test đọc `src/App.tsx` rồi khẳng định trên VĂN BẢN của nó
 nó kiểm cách viết. Refactor không đổi hành vi vẫn làm nó đỏ; và refactor CÓ đổi hành
 vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 
-- **678** file test, **212** file đọc file bằng fs (480 lời gọi)
-- **240** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
+- **681** file test, **214** file đọc file bằng fs (484 lời gọi)
+- **242** lời gọi **KHÔNG phân loại được** — đường dẫn dựng lúc chạy.
   Đây là giới hạn của phép đo, không phải "không có gì". Bộ kiểm kê không dùng AST
   (để chạy được ở mọi runner không cần parser TypeScript), nên nó phải nói ra chỗ mình mù.
 
@@ -25,12 +25,12 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 | Loại | Số file | Vì sao đáng/không đáng lo |
 |---|---|---|
 | sql | 63 | Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng. |
-| ma-nguon | 40 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
+| ma-nguon | 41 | Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven. |
 | manifest | 31 | Đọc manifest/cấu hình. Hợp lệ: đây đúng là dữ liệu, và lệch manifest là thứ cần canh. |
 | tai-lieu | 10 | Đọc tài liệu/asset. |
 | powershell | 3 | Đọc script PowerShell. Hợp lệ vì lý do như SQL. |
 
-## 40 file đọc MÃ NGUỒN
+## 41 file đọc MÃ NGUỒN
 
 Đây là danh sách §0.2/C10 cần: những file nên chuyển sang data-driven.
 
@@ -49,6 +49,7 @@ vi vẫn để nó xanh nếu chuỗi được tìm còn nguyên.
 - `src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx`
 - `src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx`
 - `src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx`
+- `src/components/income-expenses/__tests__/IncomeExpenseFormDongThiKhongDoc.test.tsx`
 - `src/contexts/__tests__/OrganizationContext.test.ts`
 - `src/copilot/__tests__/confirmationStore.test.ts`
 - `src/copilot/__tests__/keHoachCard.test.tsx`

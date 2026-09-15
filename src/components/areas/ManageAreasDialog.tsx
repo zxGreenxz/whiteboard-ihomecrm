@@ -32,9 +32,10 @@ interface ManageAreasDialogProps {
  * Mọi ô lọc/scope trong app chọn theo khu qua BuildingMultiSelect.
  */
 export function ManageAreasDialog({ open, onOpenChange }: ManageAreasDialogProps) {
+  // CHƯA GATE: useAreas chưa nhận `enabled` (hook thuộc plan con C).
   const { data: areasData } = useAreas();
   const areas = Array.isArray(areasData) ? areasData : [];
-  const { data: buildingsData } = useBuildings();
+  const { data: buildingsData } = useBuildings({ enabled: open });
   const buildings = Array.isArray(buildingsData) ? (buildingsData as any[]) : [];
 
   const createArea = useCreateArea();

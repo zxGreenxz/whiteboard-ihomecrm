@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -146,27 +147,35 @@ export const useMeters = (roomId?: string, meterType?: MeterType) => {
   return useQuery({
     queryKey: ["meters", roomId, meterType],
     queryFn: async () => {
-      let query = supabase
-        .from("meters")
-        .select("*")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+      // PHÂN TRANG: không truyền roomId thì đây là truy vấn org-wide; một toà
+      // nhiều phòng × điện/nước/gas vượt 1000 dòng rất dễ, và PostgREST cắt im.
+      // `created_at` không duy nhất → phải có tiebreaker `id` thì ranh giới
+      // trang mới không sót/trùng.
+      const rows = await fetchAllRows((from, to) => {
+        let query = supabase
+          .from("meters")
+          .select("*")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
 
-      if (roomId) {
-        query = query.eq("room_id", roomId);
-      }
-      if (meterType) {
-        query = query.eq("meter_type", meterType);
-      }
+        if (roomId) {
+          query = query.eq("room_id", roomId);
+        }
+        if (meterType) {
+          query = query.eq("meter_type", meterType);
+        }
 
-      const { data, error } = await query;
+        return query.range(from, to);
+      }, { label: "meters" });
 
-      if (error) {
-        console.error("useMeters error:", error);
+      if (rows === null) {
+        // TODO(plan C): đổi thành throw — nuốt lỗi ở đây thuộc phần việc của
+        // plan con C (§4), D chỉ đụng phân trang. fetchAllRows đã console.error.
         return [];
       }
 
-      return data || [];
+      return rows;
     },
   });
 };
@@ -199,16 +208,23 @@ export const useMetersWithLatestReading = () => {
   return useQuery({
     queryKey: ["meters-with-latest-reading"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("meters_with_latest_reading" as any)
-        .select("*");
+      // View KHÔNG có filter nào: đây là toàn bộ công tơ của org. Không phân
+      // trang thì màn công tơ mất dòng từ số 1001 trở đi, im lặng.
+      const rows = await fetchAllRows((from, to) =>
+        supabase
+          .from("meters_with_latest_reading" as any)
+          .select("*")
+          .order("id", { ascending: true })
+          .range(from, to),
+        { label: "meters-with-latest-reading" },
+      );
 
-      if (error) {
-        console.error("useMetersWithLatestReading error:", error);
+      if (rows === null) {
+        // TODO(plan C): đổi thành throw — xem chú thích ở useMeters.
         return [];
       }
 
-      return data || [];
+      return rows;
     },
   });
 };
@@ -221,27 +237,32 @@ export const useMetersGroupedByRoom = (
   return useQuery({
     queryKey: ["meters", "grouped", buildingId, meterType],
     queryFn: async () => {
-      let query = supabase
-        .from("meters")
-        .select("*, building:buildings(id, name), room:rooms(id, name)")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+      // Cùng lý do với useMeters: nhóm theo phòng mà thiếu dòng thì cả phòng
+      // biến mất khỏi màn hình chứ không chỉ thiếu một công tơ.
+      const rows = await fetchAllRows((from, to) => {
+        let query = supabase
+          .from("meters")
+          .select("*, building:buildings(id, name), room:rooms(id, name)")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
 
-      if (buildingId) {
-        query = query.eq("building_id", buildingId);
-      }
-      if (meterType) {
-        query = query.eq("meter_type", meterType);
-      }
+        if (buildingId) {
+          query = query.eq("building_id", buildingId);
+        }
+        if (meterType) {
+          query = query.eq("meter_type", meterType);
+        }
 
-      const { data, error } = await query;
+        return query.range(from, to);
+      }, { label: "meters-grouped" });
 
-      if (error) {
-        console.error("useMetersGroupedByRoom error:", error);
+      if (rows === null) {
+        // TODO(plan C): đổi thành throw — xem chú thích ở useMeters.
         return {} as MetersGroupedByRoom;
       }
 
-      const meters = (data || []) as unknown as MeterWithRoom[];
+      const meters = rows as unknown as MeterWithRoom[];
       return groupMetersByRoom(meters);
     },
   });

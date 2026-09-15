@@ -966,12 +966,19 @@ const LEGACY_CONTRACT_SELECT = `
 `;
 
 /** @deprecated Use useContracts() instead */
-export const useContractsLegacy = (filters?: {
-  status?: string | string[];
-  tenant_id?: string;
-  room_id?: string;
-}) => {
+export const useContractsLegacy = (
+  filters?: {
+    status?: string | string[];
+    tenant_id?: string;
+    room_id?: string;
+  },
+  // options.enabled: gate fetch cho caller mount SẴN khi chưa cần (dialog đóng,
+  // chưa chọn phòng). Không có filter thì đây là `select *` TOÀN BỘ contracts
+  // kèm `count: exact` — đắt nhất trong các query của form thu/chi. Default true.
+  options?: { enabled?: boolean },
+) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: ["contracts-legacy", filters],
     queryFn: async (): Promise<LegacyContractWithRelations[]> => {
       const user = await getSessionUser();

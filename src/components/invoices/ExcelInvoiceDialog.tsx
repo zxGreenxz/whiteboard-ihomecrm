@@ -58,7 +58,7 @@ const fmt = (n: number) =>
 
 export default function ExcelInvoiceDialog({ open, onOpenChange }: Props) {
   const { toast } = useToast();
-  const { data: buildings } = useBuildings();
+  const { data: buildings } = useBuildings({ enabled: open });
   const submitExcel = useSubmitExcelInvoices();
 
   const [buildingId, setBuildingId] = useState('');

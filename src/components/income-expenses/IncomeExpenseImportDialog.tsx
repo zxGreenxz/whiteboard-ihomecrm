@@ -153,9 +153,9 @@ const IncomeExpenseImportDialog = ({ open, onOpenChange }: IncomeExpenseImportDi
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const importMutation = useImportIncomeExpenses();
-  const { data: buildings } = useBuildings({ includeVirtual: true });
-  const { data: incomeTypes } = useIncomeExpenseTypes('income');
-  const { data: expenseTypes } = useIncomeExpenseTypes('expense');
+  const { data: buildings } = useBuildings({ includeVirtual: true, enabled: open });
+  const { data: incomeTypes } = useIncomeExpenseTypes('income', { enabled: open });
+  const { data: expenseTypes } = useIncomeExpenseTypes('expense', { enabled: open });
 
   const resetState = useCallback(() => {
     setStep('upload');

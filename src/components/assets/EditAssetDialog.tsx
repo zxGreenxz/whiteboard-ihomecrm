@@ -45,10 +45,10 @@ export function EditAssetDialog({ open, onOpenChange, asset }: EditAssetDialogPr
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const updateAsset = useUpdateAsset();
   const deleteAsset = useDeleteAsset();
-  const { data: buildings = [] } = useBuildings();
+  const { data: buildings = [] } = useBuildings({ enabled: open });
 
   const buildingId = asset.building_id || undefined;
-  const { data: rooms = [] } = useRooms(buildingId);
+  const { data: rooms = [] } = useRooms(buildingId, { enabled: open });
 
   const { data: categories = [] } = useQuery({
     queryKey: ["asset-categories"],

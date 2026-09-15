@@ -1,5 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import {
+  notifyManager,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -105,6 +111,45 @@ export function resolveSelectedOrganizationId(
 
 const OrganizationContext = createContext<OrganizationState | null>(null);
 
+/**
+ * Key SỐNG SÓT qua một lần đổi công ty: phiên đăng nhập và danh bạ tổ chức.
+ *
+ * Hai thứ này không thuộc về công ty nào — dọn chúng nghĩa là tự đăng xuất và
+ * tự xoá đúng cái danh sách vừa dùng để chọn. Mọi key còn lại đều phải coi là
+ * dữ liệu của công ty cũ.
+ */
+export function isOrgAgnosticQueryKey(queryKey: QueryKey): boolean {
+  const dau = queryKey[0];
+  return dau === 'auth' || dau === 'my-organizations';
+}
+
+/**
+ * Dọn cache khi người dùng chuyển sang công ty khác.
+ *
+ * VÌ SAO CẦN, khi mỗi query rồi cũng tự hết hạn:
+ *   Đo 15/09/2026: 741 trên 761 queryKey KHÔNG mang `organization_id`. Sau khi
+ *   đổi công ty, cùng một key trỏ vào dữ liệu của công ty khác, nên React Query
+ *   dựng màn hình bằng bản cache CŨ và chỉ nạp lại theo `staleTime` của từng
+ *   key. Trong khoảng đó, sổ quỹ / hoá đơn / hợp đồng của công ty A hiện dưới
+ *   tên công ty B. RLS không can thiệp được: dữ liệu đã nằm trong bộ nhớ trình
+ *   duyệt từ trước.
+ *
+ * Cách dọn theo đúng khuôn `syncAuthQueryCache` (src/lib/authQueryCache.ts:121):
+ *   - còn observer → `reset()`: giữ observer để màn đang mở tự nạp lại ngay;
+ *   - không ai xem → bỏ hẳn khỏi cache, khỏi tốn bộ nhớ và khỏi sống lại sau.
+ * Gói trong `notifyManager.batch` để cả đợt chỉ gây một lần render.
+ */
+export function resetOrgScopedQueries(queryClient: QueryClient): void {
+  const cache = queryClient.getQueryCache();
+  notifyManager.batch(() => {
+    for (const query of cache.getAll()) {
+      if (isOrgAgnosticQueryKey(query.queryKey)) continue;
+      if (query.getObserversCount() > 0) query.reset();
+      else cache.remove(query);
+    }
+  });
+}
+
 /** Tách riêng và export để test được mà không phải dựng cả cây React. */
 export function parseOrganizations(payload: unknown): Organization[] {
   const raw = (payload as { organizations?: unknown } | null)?.organizations;
@@ -131,6 +176,7 @@ export function useOrganization(): OrganizationState {
 }
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const { data: user, isLoading: authLoading, isError: authError } = useAuth();
   const { data, isLoading: directoryLoading, isSuccess, isError: directoryError, refetch } = useQuery({
     queryKey: ['my-organizations', user?.id ?? null],
@@ -179,12 +225,18 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       // Bỏ qua ID ngoài danh bạ: nhận bừa sẽ tạo ra một lựa chọn không tương ứng
       // với thứ gì, và `resolveSelectedOrganizationId` chỉ việc trả null sau đó.
       if (!organizations.some((o) => o.id === id)) return;
+      // Chọn lại đúng công ty đang xem thì không dọn gì — dọn sẽ làm cả app nạp
+      // lại vì một cú bấm không đổi gì.
+      if (id === selectedOrganizationId) return;
       try {
         localStorage.setItem(KHOA_LUU, id);
       } catch { /* xem chú thích khởi tạo */ }
+      // Dọn TRƯỚC khi đổi state: sau `datLuuId` là render ngay, và render đó
+      // phải không còn đọc được dữ liệu công ty cũ. Xem resetOrgScopedQueries.
+      resetOrgScopedQueries(queryClient);
       datLuuId(id);
     },
-    [organizations],
+    [organizations, selectedOrganizationId, queryClient],
   );
 
   const value = useMemo<OrganizationState>(() => {

@@ -35,6 +35,8 @@ interface AssetMaintenanceDialogProps {
 
 export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceDialogProps) {
   const createMaintenance = useCreateAssetMaintenance();
+  // CHƯA GATE: useAssets chưa nhận `enabled` (hook thuộc plan con E). Dialog
+  // này mount sẵn nên danh sách tài sản vẫn được kéo lúc vào trang.
   const { data: assets = [] } = useAssets();
 
   // Fetch staff/profiles for assignment.

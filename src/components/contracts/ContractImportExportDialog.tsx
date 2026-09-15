@@ -82,7 +82,7 @@ export function ContractImportExportDialog({
   const [parseError, setParseError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ success: number; failed: number; errors: Array<{ row: number; message: string }> } | null>(null);
 
-  const { data: buildingsData } = useBuildings();
+  const { data: buildingsData } = useBuildings({ enabled: open });
   const buildings = useMemo(
     () => (Array.isArray(buildingsData) ? buildingsData : []) as BuildingWithRelations[],
     [buildingsData]

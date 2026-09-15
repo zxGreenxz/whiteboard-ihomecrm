@@ -69,8 +69,8 @@ export default function BuildingFormDialog({
   const upsertServices = useUpsertBuildingServices();
 
   // Services
-  const { data: allServices } = useServices();
-  const { data: existingBuildingServices } = useBuildingServices(building?.id || '');
+  const { data: allServices } = useServices(undefined, { enabled: open });
+  const { data: existingBuildingServices } = useBuildingServices(open ? building?.id || '' : '');
   const [buildingServices, setBuildingServices] = useState<BuildingServiceFormData[]>([]);
 
   // Document templates for Cấu hình section
