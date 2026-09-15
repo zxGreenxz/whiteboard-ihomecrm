@@ -34,7 +34,11 @@ export default function DossierImageUploader({ kind, files, canEdit, contractId,
     try {
       // Tuần tự để thứ tự ảnh giữ đúng thứ tự người dùng chọn/chụp.
       for (const file of picked) {
-        await onUpload({ kind, contractId, file }).catch(() => undefined);
+        try {
+          await onUpload({ kind, contractId, file });
+        } catch {
+          /* mutation đã toast lỗi của tệp này; vẫn tải tiếp các tệp còn lại */
+        }
         setPending((n) => Math.max(0, n - 1));
       }
     } finally {
