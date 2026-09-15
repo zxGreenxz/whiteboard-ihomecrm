@@ -20,16 +20,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # preflight chạy cho MỌI ref trừ production (trước 15/09/2026 chỉ chạy trên main).
+  # Đổi vì nó nay trả thêm bộ lọc đường dẫn cho các job chạy trên PR. Nó không đọc
+  # GIÁ TRỊ secret nào ra ngoài — chỉ trả true/false "có hay không", nên chạy nó ở
+  # PR không mở thêm bề mặt gì; các job cần credential vẫn tự khoá `github.ref ==
+  # 'refs/heads/main'` trong `if:` của chúng.
   preflight:
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref != 'refs/heads/production'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       has_pat: ${{ steps.check.outputs.has_pat }}
       has_cli_token: ${{ steps.check.outputs.has_cli_token }}
       has_test_creds: ${{ steps.check.outputs.has_test_creds }}
+      # MẶC ĐỊNH LÀ CHẠY. Khi bước `loc` không chạy được (workflow_dispatch không có
+      # base để so), output của nó là chuỗi rỗng — và '' != 'false' cho ra `true`,
+      # tức chạy đủ. Bộ lọc chỉ được phép BỚT việc khi nó đã thật sự nhìn thấy diff.
+      ma_nguon: ${{ steps.loc.outputs.ma_nguon != 'false' }}
     steps:
       - id: check
         env:
@@ -41,6 +48,55 @@ jobs:
           echo "has_pat=$([ -n "$PAT" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_cli_token=$([ -n "$CLI" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_test_creds=$([ -n "$PAT" ] && [ -n "$TE" ] && [ -n "$TP" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # MỘT bộ lọc duy nhất, khai theo lối CÓ (allowlist) chứ không theo lối TRỪ.
+      #
+      # Vì sao không tách `realtime`/`sql`/`test` thành các bộ lọc hẹp riêng: đúng
+      # cái bẫy check-workflow-paths.mjs sinh ra để canh — một bộ lọc hẹp hơn thực
+      # tế làm checker nằm im cho tới khi ai đó tình cờ đụng đường dẫn khác, và im
+      # lặng đó không ai nhìn thấy. Bớt bốn job cho PR chỉ-docs đã là toàn bộ phần
+      # thưởng; chia nhỏ thêm chỉ đổi lấy rủi ro bỏ sót.
+      #
+      # `docs/**`, `docs-site/**`, `infra/**`, `.e2e-fleet/**` và `*.md` ở gốc CỐ Ý
+      # nằm ngoài danh sách — đó là tập duy nhất làm bộ lọc trả false.
+      # secret-scan và quality-gates KHÔNG dùng bộ lọc này: cái thứ nhất vì tài liệu
+      # cũng lộ được secret, cái thứ hai vì nó chứa chính các gate đếm số tài liệu.
+      - id: loc
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: |
+            ma_nguon:
+              - 'src/**'
+              - 'scripts/**'
+              - 'worker/**'
+              - 'api/**'
+              - 'supabase/**'
+              - 'contracts/**'
+              - 'tooling/**'
+              - 'test/**'
+              - 'vendor/**'
+              - 'public/**'
+              - '.github/workflows/**'
+              - 'index.html'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig*.json'
+              - 'eslint.config.js'
+              - 'eslint-baseline.json'
+              - 'ts-baseline.json'
+              - 'vite.config.ts'
+              - 'tailwind.config.ts'
+              - 'postcss.config.js'
+              - 'components.json'
+              - 'vercel.json'
+              - 'deno.lock'
 
   quality-gates:
     runs-on: ubuntu-latest
@@ -267,6 +323,12 @@ jobs:
             scripts/__tests__/check-ts-suppressions.test.mjs \
             scripts/__tests__/check-ts-baseline.test.mjs
 
+  # KHÔNG gắn bộ lọc đường dẫn vào đây, dù PR chỉ-docs không cần chạy test.
+  # `tooling/test-matrix.json` khai job này là chủ sở hữu ĐỘC LẬP của suite
+  # `app-unit`, và check-test-matrix-declarations khoá `job.needs` phải trống:
+  # bộ test lớn nhất repo không được nằm sau bất kỳ job nào, kẻo một job khác
+  # hỏng là kết quả test biến mất mà trang Checks vẫn trông như đã chạy.
+  # Vài phút CI cho PR chỉ-docs rẻ hơn cái bất biến đó.
   vitest-tests:
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/production'
@@ -345,9 +407,15 @@ jobs:
           --exclude 'scripts/__tests__/check-ts-suppressions.test.mjs'
           --exclude 'scripts/__tests__/check-ts-baseline.test.mjs'
 
+  # Bỏ qua khi thay đổi chỉ chạm tài liệu (bộ lọc ở job preflight). Bộ lọc mặc
+  # định TRẢ TRUE khi không đo được diff, nên "bỏ qua" chỉ xảy ra lúc đã nhìn thấy
+  # đúng danh sách file đổi.
   strict-islands-gate:
-    if: github.ref != 'refs/heads/production'
     runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      github.ref != 'refs/heads/production' &&
+      needs.preflight.outputs.ma_nguon == 'true'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -369,9 +437,15 @@ jobs:
       - name: Đảo strict — vùng đã sạch không được bẩn lại
         run: node scripts/check-strict-islands.mjs
 
+  # Bỏ qua khi thay đổi chỉ chạm tài liệu (bộ lọc ở job preflight). Bộ lọc mặc
+  # định TRẢ TRUE khi không đo được diff, nên "bỏ qua" chỉ xảy ra lúc đã nhìn thấy
+  # đúng danh sách file đổi.
   timezone-gate:
-    if: github.ref != 'refs/heads/production'
     runs-on: ubuntu-latest
+    needs: preflight
+    if: >-
+      github.ref != 'refs/heads/production' &&
+      needs.preflight.outputs.ma_nguon == 'true'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -629,9 +703,15 @@ jobs:
       - name: Quét toàn lịch sử
         run: /tmp/gitleaks git --redact --no-banner --config .gitleaks.toml .
 
+  # Bỏ qua khi thay đổi chỉ chạm tài liệu (bộ lọc ở job preflight). Bộ lọc mặc
+  # định TRẢ TRUE khi không đo được diff, nên "bỏ qua" chỉ xảy ra lúc đã nhìn thấy
+  # đúng danh sách file đổi.
   realtime-gates:
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/production'
+    needs: preflight
+    if: >-
+      github.ref != 'refs/heads/production' &&
+      needs.preflight.outputs.ma_nguon == 'true'
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

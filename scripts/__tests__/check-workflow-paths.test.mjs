@@ -68,9 +68,15 @@ describe("trạng thái thật của repo", () => {
 
   // These job conditions use the shared JS/Actions subset: context strings,
   // equality and boolean operators. Evaluate the parsed YAML for real events.
-  const jobActive = (job, eventName, ref) => runInNewContext(
+  //
+  // `needs` joined the context on 15/09/2026, when four jobs started reading the
+  // path filter published by `preflight`. Its default here is the filter saying
+  // "source changed" — the case that must keep behaving exactly as before.
+  const LOC_CO_MA_NGUON = { preflight: { outputs: { ma_nguon: "true" } } };
+  const LOC_CHI_TAI_LIEU = { preflight: { outputs: { ma_nguon: "false" } } };
+  const jobActive = (job, eventName, ref, needs = LOC_CO_MA_NGUON) => runInNewContext(
     job.if,
-    { github: { event_name: eventName, ref } },
+    { github: { event_name: eventName, ref }, needs },
     { timeout: 100 },
   );
 
@@ -99,6 +105,35 @@ describe("trạng thái thật của repo", () => {
     expect(job, "full Vitest job must exist").toBeDefined();
     expect(jobActive(job, eventName, ref)).toBe(expected);
   });
+
+  // Bộ lọc đường dẫn (15/09/2026) chỉ được phép BỚT việc, và chỉ đúng một chiều:
+  // thay đổi chạm mã nguồn thì bốn job vẫn chạy y như trước; chỉ khi bộ lọc nói
+  // "toàn tài liệu" chúng mới được nghỉ. Ca dưới khoá cả hai chiều để không ai
+  // vô tình nới bộ lọc rộng ra thành "gần như luôn bỏ qua".
+  it.each(["strict-islands-gate", "timezone-gate", "realtime-gates"])(
+    "%s: đụng mã nguồn ⇒ chạy; chỉ tài liệu ⇒ nghỉ",
+    (ten) => {
+      const job = wf(".github/workflows/ci-gates.yml").jobs[ten];
+      expect(job, `${ten} phải tồn tại`).toBeDefined();
+      expect(job.needs).toBe("preflight");
+      expect(jobActive(job, "pull_request", "refs/pull/123/merge")).toBe(true);
+      expect(jobActive(job, "pull_request", "refs/pull/123/merge", LOC_CHI_TAI_LIEU)).toBe(false);
+    },
+  );
+
+  // Ba job này KHÔNG được gắn bộ lọc, kể cả khi ai đó thấy chúng tốn:
+  // secret-scan vì tài liệu cũng lộ được secret; quality-gates vì nó chứa chính
+  // các gate đếm số tài liệu; vitest-tests vì test-matrix.json khai nó là chủ
+  // sở hữu ĐỘC LẬP của suite app-unit và `needs` trống là bất biến có test.
+  it.each(["quality-gates", "secret-scan", "vitest-tests"])(
+    "%s: không bao giờ bị bộ lọc đường dẫn bỏ qua",
+    (ten) => {
+      const job = wf(".github/workflows/ci-gates.yml").jobs[ten];
+      expect(job.needs).toBeUndefined();
+      expect(String(job.if)).not.toContain("ma_nguon");
+      expect(jobActive(job, "pull_request", "refs/pull/123/merge", LOC_CHI_TAI_LIEU)).toBe(true);
+    },
+  );
 
   it("supabase-migrate: mọi script job chạy đều được CẢ push phủ", () => {
     const doc = wf(".github/workflows/supabase-migrate.yml");

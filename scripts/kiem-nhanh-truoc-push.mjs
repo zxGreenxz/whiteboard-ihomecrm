@@ -5,6 +5,7 @@
 //
 //   npm run gate:truoc-push
 //   npm run gate:truoc-push -- --khong-dao-strict   # docs/script thuần
+//   npm run gate:truoc-push -- --khong-do-ro-org    # bỏ Bước 3 (đo rò chéo tổ chức)
 //
 // Mỗi worktree có lock riêng. Generator chỉ stage file thuộc sở hữu; bước vá
 // tài liệu chỉ stage file sạch trước lượt chạy và thực sự được sửa trong lượt.
@@ -17,6 +18,7 @@ import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:f
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readPat } from "./capture-production-catalog.mjs";
 import { DANH_SACH_VIEW } from "./generate-docs-views.mjs";
 import { FILE_SINH as FILE_CORPUS_HUONG_DAN } from "./generate-copilot-guide-corpus.mjs";
 
@@ -57,7 +59,7 @@ const TU_CHUA = [
 ];
 
 // ── Bước 2: gate tĩnh, thứ tự khớp ci-gates.yml để dễ đối chiếu ──────────────
-const GATE_NHANH = [
+export const GATE_NHANH = [
   // contract-gates
   "check-agent-contract",
   "check-runtime-matrix",
@@ -113,9 +115,14 @@ const GATE_NHANH = [
   "check-new-modules-strict",
 ];
 
-// Đảo strict gọi tsc hai lượt (~2–3 phút) — tách riêng để `--khong-dao-strict`
-// còn đường chạy 40 giây khi chỉ sửa docs/script.
-const GATE_NANG = ["check-strict-islands"];
+// Nhóm NẶNG: mỗi cái vài phút, và cả hai chỉ đo MÃ NGUỒN — tách riêng để
+// `--khong-dao-strict` còn đường chạy 40 giây khi chỉ sửa docs/script.
+//
+// `check-eslint-baseline` vào đây 15/09/2026: nó là bước "Lint root-owned code
+// (ratchet)" của job quality-gates, tức một trong những cửa đỏ SAU KHI push mà
+// người ngồi máy không hề được cảnh báo trước. Đo trong worktree này: 3 phút 31
+// giây trên 1954 file — quá đắt cho nhóm nhanh, nhưng vẫn rẻ hơn một vòng CI.
+export const GATE_NANG = ["check-strict-islands", "check-eslint-baseline"];
 
 const chay = (args) => spawnSync("node", args.map((a, i) => (i === 0 ? join(repoRoot, a) : a)), {
   cwd: repoRoot,
@@ -172,6 +179,37 @@ export function tinhTapStage(cacMuc, dangKhacIndex, banTruoc) {
 }
 
 /**
+ * Staged diff có đụng migration không.
+ *
+ * `supabase/migrations-archive/` KHÔNG tính: nó là kho đã đóng băng, sửa ở đó
+ * không đổi schema production nên không cần đo lại rò.
+ */
+export const dungMigration = (files) =>
+  files.some((f) => f.startsWith("supabase/migrations/"));
+
+/**
+ * Bước 3 — đo rò chéo tổ chức (`scripts/measure-org-leak.mjs`) làm gì lượt này?
+ *
+ * Phép đo này chỉ chạy ở job `security-gates`, tức CHỈ sau khi đã push lên main
+ * VÀ chỉ khi repo có SUPABASE_PAT. Người ngồi máy không có đường nào biết trước,
+ * nên nó được kéo về đây. Nhưng nó cần mạng + credential, và một gate cần mạng
+ * mà im lặng khi offline là gate nói dối theo hướng an toàn — đúng thứ chính
+ * measure-org-leak.mjs cảnh báo ở đầu file nó.
+ *
+ * Nên ba lối ra, không phải hai:
+ *   - có credential        → "chay"     (đo thật, exit 3 của nó vẫn là ⚠ riêng)
+ *   - thiếu, không migration → "canh-bao" (⚠: offline không phải lỗi của code)
+ *   - thiếu, CÓ migration    → "do"     (❌: đúng lúc phép đo có giá trị nhất)
+ *
+ * @returns "bo-qua" | "chay" | "canh-bao" | "do"
+ */
+export function quyetDinhDoRoOrg({ bat = true, coCredential = false, dungMigration: coMigration = false }) {
+  if (!bat) return "bo-qua";
+  if (coCredential) return "chay";
+  return coMigration ? "do" : "canh-bao";
+}
+
+/**
  * Lock đã tồn tại là "song" (phải chờ) hay "stale" (chiếm được)?
  * Stale khi: không đọc được, pid đã chết, hoặc quá hạn (gate không chạy quá
  * 20 phút — lâu hơn là xác treo của một phiên đã bị kill).
@@ -219,6 +257,7 @@ function chiemLock() {
 
 function main() {
   const boDaoStrict = process.argv.includes("--khong-dao-strict");
+  const boDoRoOrg = process.argv.includes("--khong-do-ro-org");
   const t0 = Date.now();
 
   const lock = chiemLock();
@@ -232,7 +271,7 @@ function main() {
   process.on("SIGINT", () => { nhaLock(); process.exit(130); });
 
   try {
-    console.log("── Bước 1/2: máy tự sinh số ──");
+    console.log("── Bước 1/3: máy tự sinh số ──");
     // File đã bẩn TRƯỚC Bước 1 (so với index): --fix có vá số trên đó thì cũng
     // KHÔNG stage — có thể là sửa tay dở của phiên khác.
     const banTruoc = new Set(goiGit(["diff", "--name-only"]));
@@ -322,7 +361,7 @@ function main() {
       }
     }
 
-    console.log(`\n── Bước 2/2: gate tĩnh (${boDaoStrict ? "bỏ" : "kèm"} đảo strict) ──`);
+    console.log(`\n── Bước 2/3: gate tĩnh (${boDaoStrict ? "bỏ" : "kèm"} nhóm nặng) ──`);
     const doSo = [];
     const danhSach = boDaoStrict ? GATE_NHANH : [...GATE_NHANH, ...GATE_NANG];
     for (const muc of danhSach) {
@@ -340,9 +379,43 @@ function main() {
       }
     }
 
+    // ── Bước 3/3: rò chéo tổ chức — cần mạng + PAT, nên KHÔNG bao giờ giả xanh ──
+    const stagedFiles = goiGit(["diff", "--cached", "--name-only"]);
+    const coMigration = dungMigration(stagedFiles);
+    const quyet = quyetDinhDoRoOrg({
+      bat: !boDoRoOrg,
+      coCredential: Boolean(readPat()),
+      dungMigration: coMigration,
+    });
+    console.log("\n── Bước 3/3: không rò dữ liệu xuyên tổ chức (đo bằng vai người dùng thật) ──");
+    if (quyet === "bo-qua") {
+      console.log("  ⚠ bỏ theo cờ --khong-do-ro-org — CI (job security-gates) vẫn đo, và nó mới là bản đếm.");
+      if (coMigration) {
+        console.log("     Commit này ĐỤNG supabase/migrations/** — tự tắt phép đo ở đúng lượt cần nó nhất.");
+      }
+    } else if (quyet === "canh-bao") {
+      console.log("  ⚠ thiếu SUPABASE_PAT (env hoặc CLAUDE.local.md) — CHƯA đo, không phải đã sạch.");
+      console.log("     Worktree không có CLAUDE.local.md: chạy lại với SUPABASE_PAT=… nếu vừa đổi policy/RLS.");
+    } else if (quyet === "do") {
+      console.log("  ❌ thiếu SUPABASE_PAT mà staged diff ĐỤNG supabase/migrations/** —");
+      console.log("     migration là thứ đổi được ranh giới tổ chức; đây đúng là lượt không được bỏ đo.");
+      console.log("     Chạy lại kèm SUPABASE_PAT=… (chỉ đọc, mọi truy vấn bọc ROLLBACK).");
+      doSo.push(["measure-org-leak (thiếu credential, có migration)", { stdout: "", stderr: "" }]);
+    } else {
+      const r = chay(["scripts/measure-org-leak.mjs"]);
+      if (r.status === 0) {
+        console.log("  ✅ measure-org-leak");
+      } else {
+        console.log(`  ${r.status === 3 ? "⚠" : "❌"} measure-org-leak (exit ${r.status})`);
+        doSo.push(["measure-org-leak", r]);
+      }
+    }
+
     const giay = Math.round((Date.now() - t0) / 1000);
     if (doSo.length === 0 && loiTuChua.length === 0 && process.exitCode !== 1) {
-      console.log(`\n✅ Sạch — ${danhSach.length} gate xanh trong ${giay}s. Push được.`);
+      const soGate = danhSach.length + (quyet === "chay" ? 1 : 0);
+      const conThieu = quyet === "chay" ? "" : " (Bước 3 CHƯA đo — xem ⚠ ở trên)";
+      console.log(`\n✅ Sạch — ${soGate} gate xanh trong ${giay}s${conThieu}. Push được.`);
       return;
     }
 

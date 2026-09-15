@@ -174,7 +174,11 @@ Chạy `npm run gate:copilot-docs` khi sửa corpus hoặc registry.
 2. Chạy test/gate theo §5–8 và risk-map; sửa lỗi rồi kiểm lại.
 3. Stage đúng file source/test của thay đổi trước khi chạy `npm run gate:truoc-push` để generator
    đọc đủ đầu vào của commit; docs/script thuần có thể dùng `-- --khong-dao-strict`.
-   Lệnh tự sinh và stage artifact theo allowlist, rồi chạy gate tĩnh.
+   Ba bước: (1) tự sinh và stage artifact theo allowlist; (2) gate tĩnh, kèm nhóm nặng
+   (đảo strict + lint ratchet) khi không có `--khong-dao-strict`; (3) đo rò chéo tổ chức
+   (`measure-org-leak`) khi có `SUPABASE_PAT`. Bước 3 bỏ được bằng `-- --khong-do-ro-org`;
+   thiếu credential là ⚠, nhưng thiếu credential MÀ staged diff đụng `supabase/migrations/**`
+   là ❌ — migration đổi được ranh giới tổ chức nên đó đúng là lượt không được bỏ đo.
    Kiểm cả diff được stage; cảnh báo thiếu credential không chứng minh schema đã khớp.
 4. Báo kết quả cụ thể và phần chưa kiểm; commit/push/review/phát hành theo §3.
 

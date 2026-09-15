@@ -7,7 +7,15 @@
 // HỮU tường minh theo từng generator, so với INDEX chứ không so trước/sau.
 import { describe, expect, it } from "vitest";
 
-import { danhGiaLock, thuocSoHuu, tinhTapStage } from "../kiem-nhanh-truoc-push.mjs";
+import {
+  GATE_NANG,
+  GATE_NHANH,
+  danhGiaLock,
+  dungMigration,
+  quyetDinhDoRoOrg,
+  thuocSoHuu,
+  tinhTapStage,
+} from "../kiem-nhanh-truoc-push.mjs";
 
 describe("thuocSoHuu", () => {
   it("khớp file đích danh và tiền tố thư mục (kết thúc bằng /)", () => {
@@ -74,5 +82,52 @@ describe("danhGiaLock", () => {
   it("lock hỏng/không đọc được ⇒ stale", () => {
     expect(danhGiaLock(null, pidSong, 0)).toBe("stale");
     expect(danhGiaLock({ khong: "co-pid" }, pidSong, 0)).toBe("stale");
+  });
+});
+
+// ── Bước 3: đo rò chéo tổ chức (15/09/2026) ─────────────────────────────────
+//
+// Vì sao có: `measure-org-leak` chỉ chạy trong job `security-gates` — tức CHỈ
+// sau khi đã push lên main, và chỉ khi có PAT. Người ngồi máy không có cách nào
+// biết trước. Nhưng nó cần mạng + credential, nên nó KHÔNG được phép giả xanh
+// khi thiếu: thiếu credential là ⚠, trừ khi commit này đụng migration — lúc đó
+// chính là lúc phép đo có giá trị nhất, nên thiếu là ❌.
+describe("dungMigration", () => {
+  it("chỉ tính file dưới supabase/migrations/", () => {
+    expect(dungMigration(["supabase/migrations/20260915_x.sql"])).toBe(true);
+    expect(dungMigration(["docs/a.md", "supabase/migrations/y.sql"])).toBe(true);
+    expect(dungMigration(["supabase/functions/llm-proxy/index.ts"])).toBe(false);
+    expect(dungMigration(["supabase/migrations-archive/z.sql"])).toBe(false);
+    expect(dungMigration([])).toBe(false);
+  });
+});
+
+describe("quyetDinhDoRoOrg", () => {
+  it("tắt tường minh ⇒ bỏ qua", () => {
+    expect(quyetDinhDoRoOrg({ bat: false, coCredential: true, dungMigration: false })).toBe("bo-qua");
+  });
+
+  it("có credential ⇒ chạy thật", () => {
+    expect(quyetDinhDoRoOrg({ bat: true, coCredential: true, dungMigration: false })).toBe("chay");
+  });
+
+  it("thiếu credential, KHÔNG đụng migration ⇒ cảnh báo, không giả xanh", () => {
+    expect(quyetDinhDoRoOrg({ bat: true, coCredential: false, dungMigration: false })).toBe("canh-bao");
+  });
+
+  it("thiếu credential mà ĐỤNG migration ⇒ đỏ — đúng lúc cần đo nhất thì không được bỏ", () => {
+    expect(quyetDinhDoRoOrg({ bat: true, coCredential: false, dungMigration: true })).toBe("do");
+  });
+});
+
+describe("danh sách gate", () => {
+  it("lint ratchet nằm trong nhóm NẶNG — nó là gate CI hay đỏ sau push, nhưng chạy 3,5 phút", () => {
+    expect(GATE_NANG).toContain("check-eslint-baseline");
+    expect(GATE_NHANH).not.toContain("check-eslint-baseline");
+  });
+
+  it("không có gate nào khai hai lần", () => {
+    const ten = [...GATE_NHANH, ...GATE_NANG].map((m) => (Array.isArray(m) ? m.join(" ") : m));
+    expect(ten.length).toBe(new Set(ten).size);
   });
 });
