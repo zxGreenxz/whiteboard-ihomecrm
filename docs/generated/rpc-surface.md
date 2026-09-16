@@ -19,7 +19,7 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 |---|---|
 | RPC được gọi từ mã nguồn | 290 |
 | Hàm trong catalog (public + api) | 1164 |
-| File mã nguồn đã quét | 1638 |
+| File mã nguồn đã quét | 1665 |
 | SECURITY DEFINER | 274 |
 | **Gọi mà server KHÔNG CÓ** | **0** |
 
@@ -27,10 +27,10 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 
 | Mức | Số RPC | Nghĩa là |
 |---|---|---|
-| thường | 210 | còn lại |
-| tiền | 80 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
+| thường | 211 | còn lại |
+| tiền | 79 | có nơi gọi nằm trong màn tiền — sai là sai sổ sách |
 
-## 80 RPC chạm TIỀN
+## 79 RPC chạm TIỀN
 
 Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc
 đọc có thể làm lệch số trên sổ.
@@ -110,7 +110,6 @@ còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.
 | `v5_cron_finish` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `v5_cron_start` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `v5_lock_assert` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |
-| `v5_month_money` | ✔ | hooks/useManagerSalary.ts |
 | `v5_run_digest` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `v5_run_job` | ✔ | supabase/functions/salary-v5-jobs/index.ts |
 | `v5_shadow_report` | ✔ | hooks/salary-v5/useSalaryV5Admin.ts |

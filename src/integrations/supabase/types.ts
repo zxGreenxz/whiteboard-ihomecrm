@@ -23993,10 +23993,6 @@ export type Database = {
         Args: { p_month: string; p_user: string }
         Returns: Json
       }
-      v5_month_money_bulk: {
-        Args: { p_month: string; p_users: string[] }
-        Returns: Json
-      }
       v5_n_chuan: { Args: { p_month: string; p_user: string }; Returns: number }
       v5_recompute_streak: {
         Args: { p_month: string; p_user: string }

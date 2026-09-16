@@ -1,27 +1,9 @@
 {
-  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production.",
+  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production. | Bổ sung 16/09/2026 lúc gộp: 5 file của plan con H1/I1/I3 (org_autofill_strict, buildings_insert_v3, bien_gioi_ho_so_va_toa) — cùng diện `chua-ap-dung-cho-y` như 2 file của plan F.",
   "schemaVersion": 1,
   "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
   "files": {
-    "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
-      "sha256": "6b53c7ae47840ef998a1530b3619001e8092ef532f3832ad8f2a67e3a8d6280f",
-      "missingObjects": [
-        "function:app_private.network_center_cap_lai_slot_mikrotik_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 14/08/2026, chưa đi qua lane apply nào — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Nó là forward-fix làm 20260813020000 (DML thuần, đã ledger-applied) quan sát được với audit rollout: hàm chép nguyên văn hai INSERT + khối DO của file gốc. Hàm sẽ xuất hiện khi stage 25 của rollout manifest (hoặc migrate:forward) chạy; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.network_center_cap_lai_slot_mikrotik_v1()"
-        },
-        {
-          "duong_dan": "scripts/network-center-rollout-manifest.json",
-          "trich_doan": "function:app_private.network_center_cap_lai_slot_mikrotik_v1() — descriptor stage 25, đo bằng generator trên cụm dùng-một-lần"
-        }
-      ]
-    },
     "supabase/migrations/016_document_templates.sql": {
       "sha256": "29878ad3f80b3abdc839a61fa9dac7a470ec2d53d049bcab9fddae4cc50cc005",
       "missingObjects": [
@@ -364,6 +346,51 @@
       ],
       "anhHuongThat": "Không có ảnh hưởng — không code sản xuất nào phụ thuộc vào policy đã bị gỡ. Frontend đăng ký realtime qua danh sách cứng ở C:\\Users\\Nguyen Tam\\whiteboard-ihomecrm-main\\src\\lib\\network-center\\runtime.ts:3-9 (NETWORK_CENTER_REALTIME_TABLES) và danh sách này dùng \"network_worker_building_status\", KHÔNG có \"network_worker_heartbeats\"; test src/lib/__tests__/networkCenterReactQueryRuntime.test.ts:203 còn khẳng định expect(...).not.toContain(\"network_worker_heartbeats\"). Grep src/, api/, worker/, services/, supabase/functions/ không thấy client nào SELECT bảng network_worker_heartbeats; các hit còn lại chỉ nằm ở script verify (scripts/verify-network-center-worker-scope.mjs, scripts/__tests__/network-center-heartbeat-scope-runtime.sql) — và chúng verify theo chiều NGƯỢC LẠI, tức đòi hỏi authenticated KHÔNG đọc được bảng và bảng KHÔNG còn trong publication. Bảng network_worker_heartbeats giờ là internal-only (chỉ ghi/đọc qua RPC SECURITY DEFINER của worker), nên việc pg_policies rỗng là trạng thái đúng."
     },
+    "supabase/migrations/20260729150000_notification_config_tables_rpc.sql": {
+      "sha256": "99f9888880620d5b4cd8b760587275edb8939f02f7ab55bd1a9be635d3bbbabc",
+      "missingObjects": [
+        "policy:public.notification_preferences.np_org_boundary"
+      ],
+      "ketLuan": "da-chay-bi-thay-the",
+      "lyLe": "Policy KHÔNG biến mất — nó bị ĐỔI TÊN. Migration `20260807190100_gd1_doi_ten_np_org_boundary.sql` (dòng 34-35) chạy `ALTER POLICY np_org_boundary ON public.notification_preferences RENAME TO notification_preferences_org_boundary`.\n\nCatalog production đo ngày 12/08/2026 có đúng ba policy trên bảng đó: `notification_preferences_org_boundary`, `notification_preferences_hide_sandbox_admin`, `np_own`. Bản đổi tên CÓ MẶT, nên file 20260729150000 chắc chắn đã chạy — không chạy thì không có gì để `ALTER POLICY ... RENAME`, và chính migration đổi tên có khối preflight `RAISE NOTICE` cho đúng ca policy cũ vắng mặt.\n\nVÌ SAO MỘT CÁI TÊN LẠI ĐÁNG MỘT MIGRATION RIÊNG — chú thích trong chính file đổi tên nói rõ: gate đếm bảng \"đã có biên giới tổ chức\" bằng cách khớp tên theo quy ước `relname || '_org_boundary'`. 31/32 policy tuân thủ, riêng bảng này mang tên viết tắt nên bị đếm là THIẾU biên giới vĩnh viễn — vá bao nhiêu lần cũng không làm con số đúng lên được. Đó chính là chỗ sinh ra khoảng lệch 272 vs 273 giữa con số bản kế hoạch dùng và con số đo thật.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260729150000_notification_config_tables_rpc.sql:107-108",
+          "trich_doan": "drop policy if exists np_org_boundary on public.notification_preferences;\ncreate policy np_org_boundary on public.notification_preferences"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260807190100_gd1_doi_ten_np_org_boundary.sql:34-35",
+          "trich_doan": "ALTER POLICY np_org_boundary ON public.notification_preferences\n  RENAME TO notification_preferences_org_boundary;"
+        },
+        {
+          "duong_dan": "catalog production, đo 12/08/2026 (pg_policy JOIN pg_class)",
+          "trich_doan": "notification_preferences: notification_preferences_hide_sandbox_admin, notification_preferences_org_boundary, np_own"
+        }
+      ],
+      "anhHuongThat": "Không có. Đây là đổi tên thuần: biểu thức policy giữ nguyên, chỉ nhãn đổi để khớp quy ước mà gate đếm dựa vào. Không mã nào gọi policy theo tên — grep tên policy trong `src/`, `api/`, `scripts/`, `supabase/functions/` chỉ ra trong chính hai file SQL trên. Bảng vẫn có đủ biên giới tổ chức, và sau khi đổi tên thì gate đếm mới nhìn thấy nó."
+    },
+    "supabase/migrations/20260731100000_termination_refund_writer.sql": {
+      "sha256": "f41757aca96d5cd1b5db3c826adfbfa7891292b8e17c7349bcd25ade7ae889b7",
+      "missingObjects": [
+        "index:public.ux_tro_voucher"
+      ],
+      "ketLuan": "da-chay-bi-thay-the",
+      "lyLe": "Index ux_tro_voucher là BẢO VỆ GIẢ — UNIQUE (organization_id, id) WHERE voucher_id IS NOT NULL, mà id đã là PRIMARY KEY nên không ràng buộc gì (audit 27/08 F2, đã báo lần đầu ở audit 13/08). Migration 20260828090000_termination_refund_writer_hardening.sql DROP nó và thay bằng ux_tro_phieu_song trên (organization_id, termination_id) — khoá thật \"một phiếu hoàn sống cho mỗi hồ sơ thanh lý\". Đã xác minh trên production 28/08: ux_tro_voucher = 0 hàng pg_indexes, ux_tro_phieu_song tồn tại đúng hình; test scripts/tests/test-termination-refund-writer.sql ca 7 chứng minh khoá mới chặn được đường lách qua phiên bản nghĩa vụ mới.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260828090000_termination_refund_writer_hardening.sql",
+          "trich_doan": "DROP INDEX IF EXISTS public.ux_tro_voucher;"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260828090000_termination_refund_writer_hardening.sql",
+          "trich_doan": "CREATE UNIQUE INDEX IF NOT EXISTS ux_tro_phieu_song ON public.termination_refund_obligations (organization_id, termination_id) WHERE voucher_id IS NOT NULL;"
+        },
+        {
+          "duong_dan": "docs/audits/AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md",
+          "trich_doan": "F2 (P1, ĐÃ BÁO 13/08, CHƯA VÁ) — không có gì chặn hai phiếu hoàn cho cùng một hồ sơ"
+        }
+      ]
+    },
     "supabase/migrations/20260801060000_clone_org_sync_rpc.sql": {
       "sha256": "c2fbbe345e833e34552424c61b684f6d96305a3aeeb0a467d6eebe424a5c1378",
       "missingObjects": [
@@ -406,69 +433,6 @@
         }
       ],
       "anhHuongThat": "KHÔNG có code sản xuất nào gọi public.clone_org_sync_v1 — nút \"Cài đặt → Tổ chức → Đồng bộ dữ liệu mới nhất\" đã được chuyển sang cặp hàm mới và cả hai đều TỒN TẠI trong production.\n\nĐường đi thật của nút (đã kiểm từ UI xuống RPC):\n- src/pages/settings/OrganizationPage.tsx:50 import { useCloneOrgSync, useCloneOrgSyncStatus }; dòng 260-261 dùng hook; dòng 316 render nhãn nút 'Đồng bộ dữ liệu mới nhất'.\n- src/hooks/useCloneOrgSync.ts:52 — supabase.rpc('clone_org_request_sync_v1')  ⇒ hàm CÓ trong production (baseline/schema.sql:52301, provenance catalog-proven).\n- src/hooks/useCloneOrgSync.ts:34 — supabase.rpc('clone_org_sync_status_v1')  ⇒ hàm CÓ trong production (bản 070000 ghi đè bản 060000 bằng CREATE OR REPLACE, có trong scripts/definer-acl-baseline.json:21 và src/integrations/supabase/types.ts:24134).\n- Header hook (dòng 3-8) ghi rõ: \"Nút bấm KHÔNG chạy bộ chép trực tiếp... nút chỉ ĐẶT HÀNG (clone_org_request_sync_v1), còn job pg_cron 15 giây/lần nhặt đơn và chạy.\"\n⇒ Tính năng nút bấm KHÔNG hỏng.\n\nGrep src/, api/, supabase/functions/ không có bất kỳ lời gọi clone_org_sync_v1 nào. Toàn bộ tham chiếu còn lại nằm ngoài runtime production:\n\nMỘT VẤN ĐỀ NHỎ CẦN VÁ (không phải production runtime, nhưng là bug thật):\n- scripts/clone-org/clone.mjs:29 vẫn chạy \"SELECT public.clone_org_sync_v1() AS result;\" — hàm này đã bị DROP nên script CLI này sẽ chết với 42883 function public.clone_org_sync_v1() does not exist. Đây là công cụ dev chạy qua Management API + PAT (bước 3 trong quy trình dựng org TEST), không phải code chạy trên web. Nên sửa thành gọi clone_org.do_sync() sau khi SET session_replication_role = replica (như clone_org.run_pending_sync làm), hoặc đơn giản là insert vào clone_org.sync_request rồi chờ pg_cron.\n- Hai chỗ chỉ là COMMENT lỗi thời, vô hại: scripts/clone-org/create-users.mjs:87 và scripts/clone-org/mask.mjs:8 nhắc tên hàm cũ trong chú thích.\n- Ghi chú đầu file 060000 và scripts/clone-org/clone.mjs:7-9 mô tả kiến trúc cũ (RPC gọi thẳng), nay đã bị 070000 thay — nên cập nhật để người sau không làm lại đường cũ.\n\nKhuyến nghị provenance: đổi state của 20260801060000_clone_org_sync_rpc.sql thành 'catalog-proven' với evidence trỏ vào các object CÙNG FILE vẫn còn sống (schema clone_org, clone_org.tables_to_clone, clone_org.map_text, clone_org.user_map, clone_org.sync_log, clone_org.idmap) thay vì chấm 'unknown' chỉ vì một object duy nhất đã bị migration sau cố ý xoá."
-    },
-    "supabase/migrations/20260729150000_notification_config_tables_rpc.sql": {
-      "sha256": "99f9888880620d5b4cd8b760587275edb8939f02f7ab55bd1a9be635d3bbbabc",
-      "missingObjects": [
-        "policy:public.notification_preferences.np_org_boundary"
-      ],
-      "ketLuan": "da-chay-bi-thay-the",
-      "lyLe": "Policy KHÔNG biến mất — nó bị ĐỔI TÊN. Migration `20260807190100_gd1_doi_ten_np_org_boundary.sql` (dòng 34-35) chạy `ALTER POLICY np_org_boundary ON public.notification_preferences RENAME TO notification_preferences_org_boundary`.\n\nCatalog production đo ngày 12/08/2026 có đúng ba policy trên bảng đó: `notification_preferences_org_boundary`, `notification_preferences_hide_sandbox_admin`, `np_own`. Bản đổi tên CÓ MẶT, nên file 20260729150000 chắc chắn đã chạy — không chạy thì không có gì để `ALTER POLICY ... RENAME`, và chính migration đổi tên có khối preflight `RAISE NOTICE` cho đúng ca policy cũ vắng mặt.\n\nVÌ SAO MỘT CÁI TÊN LẠI ĐÁNG MỘT MIGRATION RIÊNG — chú thích trong chính file đổi tên nói rõ: gate đếm bảng \"đã có biên giới tổ chức\" bằng cách khớp tên theo quy ước `relname || '_org_boundary'`. 31/32 policy tuân thủ, riêng bảng này mang tên viết tắt nên bị đếm là THIẾU biên giới vĩnh viễn — vá bao nhiêu lần cũng không làm con số đúng lên được. Đó chính là chỗ sinh ra khoảng lệch 272 vs 273 giữa con số bản kế hoạch dùng và con số đo thật.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260729150000_notification_config_tables_rpc.sql:107-108",
-          "trich_doan": "drop policy if exists np_org_boundary on public.notification_preferences;\ncreate policy np_org_boundary on public.notification_preferences"
-        },
-        {
-          "duong_dan": "supabase/migrations/20260807190100_gd1_doi_ten_np_org_boundary.sql:34-35",
-          "trich_doan": "ALTER POLICY np_org_boundary ON public.notification_preferences\n  RENAME TO notification_preferences_org_boundary;"
-        },
-        {
-          "duong_dan": "catalog production, đo 12/08/2026 (pg_policy JOIN pg_class)",
-          "trich_doan": "notification_preferences: notification_preferences_hide_sandbox_admin, notification_preferences_org_boundary, np_own"
-        }
-      ],
-      "anhHuongThat": "Không có. Đây là đổi tên thuần: biểu thức policy giữ nguyên, chỉ nhãn đổi để khớp quy ước mà gate đếm dựa vào. Không mã nào gọi policy theo tên — grep tên policy trong `src/`, `api/`, `scripts/`, `supabase/functions/` chỉ ra trong chính hai file SQL trên. Bảng vẫn có đủ biên giới tổ chức, và sau khi đổi tên thì gate đếm mới nhìn thấy nó."
-    },
-    "supabase/migrations/20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql": {
-      "sha256": "9a189a63933ecde73e15e815814cd454896bb60672d51b853ed9b22a10141a94",
-      "missingObjects": [
-        "function:app_private.network_center_cap_slot_950nk_v1"
-      ],
-      "ketLuan": "chua-ap-dung-cho-y",
-      "lyLe": "File TẠO 26/08/2026, chưa đi qua lane apply nào — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Nó là forward-fix làm 20260823140000 (DML thuần cấp slot cho toà 950NK, đã ledger-applied 23/08 qua lane forward) quan sát được với audit rollout — cùng khuôn với cặp 20260813020000 → 20260814004500 ngay trên: hàm chép nguyên văn hai INSERT + khối DO của file gốc theo luật thay-thế của assertStagesObservable (đo thật: run CI 32874901646 từ chối release vì stage 26 unobservable). Hàm sẽ xuất hiện khi stage 27 của rollout manifest chạy; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql",
-          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.network_center_cap_slot_950nk_v1()"
-        },
-        {
-          "duong_dan": "scripts/network-center-rollout-manifest.json",
-          "trich_doan": "function:app_private.network_center_cap_slot_950nk_v1() — descriptor stage 27, đo bằng generator trên cụm dùng-một-lần"
-        }
-      ]
-    },
-    "supabase/migrations/20260731100000_termination_refund_writer.sql": {
-      "sha256": "f41757aca96d5cd1b5db3c826adfbfa7891292b8e17c7349bcd25ade7ae889b7",
-      "missingObjects": [
-        "index:public.ux_tro_voucher"
-      ],
-      "ketLuan": "da-chay-bi-thay-the",
-      "lyLe": "Index ux_tro_voucher là BẢO VỆ GIẢ — UNIQUE (organization_id, id) WHERE voucher_id IS NOT NULL, mà id đã là PRIMARY KEY nên không ràng buộc gì (audit 27/08 F2, đã báo lần đầu ở audit 13/08). Migration 20260828090000_termination_refund_writer_hardening.sql DROP nó và thay bằng ux_tro_phieu_song trên (organization_id, termination_id) — khoá thật \"một phiếu hoàn sống cho mỗi hồ sơ thanh lý\". Đã xác minh trên production 28/08: ux_tro_voucher = 0 hàng pg_indexes, ux_tro_phieu_song tồn tại đúng hình; test scripts/tests/test-termination-refund-writer.sql ca 7 chứng minh khoá mới chặn được đường lách qua phiên bản nghĩa vụ mới.",
-      "bangChung": [
-        {
-          "duong_dan": "supabase/migrations/20260828090000_termination_refund_writer_hardening.sql",
-          "trich_doan": "DROP INDEX IF EXISTS public.ux_tro_voucher;"
-        },
-        {
-          "duong_dan": "supabase/migrations/20260828090000_termination_refund_writer_hardening.sql",
-          "trich_doan": "CREATE UNIQUE INDEX IF NOT EXISTS ux_tro_phieu_song ON public.termination_refund_obligations (organization_id, termination_id) WHERE voucher_id IS NOT NULL;"
-        },
-        {
-          "duong_dan": "docs/audits/AUDIT-PLAN2-ROOM-LIFECYCLE-REFUND-2026-08-27.md",
-          "trich_doan": "F2 (P1, ĐÃ BÁO 13/08, CHƯA VÁ) — không có gì chặn hai phiếu hoàn cho cùng một hồ sơ"
-        }
-      ]
     },
     "supabase/migrations/20260807180000_openclaw_disconnect_recovery.sql": {
       "sha256": "b9763e7cf7614bdccd1117ccefe78945320d79aacba4225c3197ab2cdd575507",
@@ -536,6 +500,85 @@
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
     },
+    "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql": {
+      "sha256": "6b53c7ae47840ef998a1530b3619001e8092ef532f3832ad8f2a67e3a8d6280f",
+      "missingObjects": [
+        "function:app_private.network_center_cap_lai_slot_mikrotik_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 14/08/2026, chưa đi qua lane apply nào — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Nó là forward-fix làm 20260813020000 (DML thuần, đã ledger-applied) quan sát được với audit rollout: hàm chép nguyên văn hai INSERT + khối DO của file gốc. Hàm sẽ xuất hiện khi stage 25 của rollout manifest (hoặc migrate:forward) chạy; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260814004500_network_center_cap_lai_slot_mikrotik_tai_lap_duoc.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.network_center_cap_lai_slot_mikrotik_v1()"
+        },
+        {
+          "duong_dan": "scripts/network-center-rollout-manifest.json",
+          "trich_doan": "function:app_private.network_center_cap_lai_slot_mikrotik_v1() — descriptor stage 25, đo bằng generator trên cụm dùng-một-lần"
+        }
+      ]
+    },
+    "supabase/migrations/20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql": {
+      "sha256": "9a189a63933ecde73e15e815814cd454896bb60672d51b853ed9b22a10141a94",
+      "missingObjects": [
+        "function:app_private.network_center_cap_slot_950nk_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 26/08/2026, chưa đi qua lane apply nào — hàm vắng mặt trên production vì migration CHƯA CHẠY, không phải vì bị DROP. Nó là forward-fix làm 20260823140000 (DML thuần cấp slot cho toà 950NK, đã ledger-applied 23/08 qua lane forward) quan sát được với audit rollout — cùng khuôn với cặp 20260813020000 → 20260814004500 ngay trên: hàm chép nguyên văn hai INSERT + khối DO của file gốc theo luật thay-thế của assertStagesObservable (đo thật: run CI 32874901646 từ chối release vì stage 26 unobservable). Hàm sẽ xuất hiện khi stage 27 của rollout manifest chạy; khi đó provenance chuyển catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260826010000_network_center_cap_slot_950nk_tai_lap_duoc.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.network_center_cap_slot_950nk_v1()"
+        },
+        {
+          "duong_dan": "scripts/network-center-rollout-manifest.json",
+          "trich_doan": "function:app_private.network_center_cap_slot_950nk_v1() — descriptor stage 27, đo bằng generator trên cụm dùng-một-lần"
+        }
+      ]
+    },
+    "supabase/migrations/20260915074716_hoa_don_guard_huy_no_keo_subtotal_ngay.sql": {
+      "sha256": "d889c6cca404f2f14465c703712155ac129d0492bef6d7f9c6b0a94fdab38a2c",
+      "missingObjects": [
+        "function:app_private.invoice_direct_paid_v1",
+        "function:app_private.invoice_carried_debt_v1",
+        "function:app_private.assert_previous_debt_sources_v1",
+        "function:public.is_overdue"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 15/09/2026 (plan con H1), CHƯA đi qua lane apply — bốn hàm vắng mặt trên production vì migration chưa chạy, không phải vì bị DROP. Ba hàm app_private là bộ dẫn xuất mới dùng chung cho recompute_invoice_for_id và guard LIFO của reverse_invoice_collection_v5; public.is_overdue là cột suy thêm cho báo cáo sau khi PARTIAL_PAID được ưu tiên trước OVERDUE. Tám hàm bị REPLACE trong cùng file đều đã đối chiếu md5 với pg_get_functiondef của production 15/09 (md5 ghi ở header file). Khi apply, provenance chuyển sang catalog-proven và hồ sơ này thành thừa.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260915074716_hoa_don_guard_huy_no_keo_subtotal_ngay.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.invoice_direct_paid_v1(p_invoice_id uuid) … app_private.invoice_carried_debt_v1 … app_private.assert_previous_debt_sources_v1 … CREATE OR REPLACE FUNCTION public.is_overdue(public.invoices)"
+        },
+        {
+          "duong_dan": "docs/plans/ra-soat-2026-09-15/H1.md",
+          "trich_doan": "P0 previous_debt_sources không kiểm org/hợp đồng … P1 PARTIAL_PAID không bao giờ đạt được khi quá hạn … thêm cột suy is_overdue cho báo cáo"
+        }
+      ]
+    },
+    "supabase/migrations/20260915074852_luong_authz_org_scope_v1.sql": {
+      "sha256": "4d0dde101d45016cc8608bc02b786975a91f6c5062369b5581935f107d6071d7",
+      "missingObjects": [
+        "function:app_private.v5_salary_org_of_user_v1",
+        "function:app_private.v5_can_view_salary_v1",
+        "function:app_private.v5_salary_config_for_org_v1",
+        "function:app_private.vn_workdays_for_org_v1",
+        "function:app_private.v5_n_chuan_for_org_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 15/09/2026 (plan con I1), CHƯA apply — năm hàm app_private vắng mặt vì migration chưa chạy. Chúng là lớp trong của hai bản vá P0: (a) v5_can_view_salary_v1 chặn đọc lương người khác bằng UUID — v5_month_money/v5_n_chuan trên production đang là SECURITY DEFINER cấp EXECUTE cho authenticated mà không nhìn auth.uid(); (b) v5_salary_config_for_org_v1 và vn_workdays_for_org_v1 khoá bộ luật lương theo organization_id thay vì lấy của super admin đầu tiên. Thân các hàm public bị REPLACE chép nguyên văn production (md5 ở header), không đổi hằng số V5.1 nào; đã đo 6 cặp (người × tháng) cho ra số tiền y hệt trước và sau trong transaction ROLLBACK.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260915074852_luong_authz_org_scope_v1.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.v5_can_view_salary_v1(p_target uuid) … app_private.v5_salary_config_for_org_v1(p_org uuid) … app_private.vn_workdays_for_org_v1(p_month date, p_org uuid)"
+        },
+        {
+          "duong_dan": "docs/plans/ra-soat-2026-09-15/I1.md",
+          "trich_doan": "P0 v5_month_money(p_user, p_month) / v5_n_chuan: SECURITY DEFINER, grant authenticated, không có auth.uid()/scope check … P0 get_salary_v5_config(): lấy rule của super admin đầu tiên"
+        }
+      ]
+    },
     "supabase/migrations/20260915144507_so_hop_dong_chong_dua.sql": {
       "sha256": "c32fdbbf7f62519ef95fa6a43198c0093d911508f1f00ff8fa2ee363b19dbd37",
       "missingObjects": [
@@ -574,6 +617,61 @@
         {
           "duong_dan": "docs/plans/ra-soat-2026-09-15/F.md",
           "trich_doan": "P1 index: thiếu contracts(organization_id, status) composite; partial WHERE deleted_at IS NULL cho hot filter"
+        }
+      ]
+    },
+    "supabase/migrations/20260915144656_org_autofill_strict.sql": {
+      "sha256": "99466aacdd201e9b084efc7a252e7cc90b30f2cee8b069e44851edcd2cb72f35",
+      "missingObjects": [
+        "trigger:public.public.trg_autofill_org_strict"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 15/09/2026 (plan con I3), CHƯA đi qua lane apply — trigger vắng mặt trên production vì migration chưa chạy, không phải vì bị DROP. File chuyển 33 trigger org-autofill từ public._autofill_org (rơi về HẰNG SỐ org THẬT khi không suy được) sang app_private.autofill_org_strict (fail-closed). An toàn vì nhánh đoán CHƯA từng chạy: đo production 15/09 cho 0 dòng PROD_DEFAULT_FALLBACK. Khi apply, provenance chuyển sang catalog-proven và hồ sơ này thành thừa.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260915144656_org_autofill_strict.sql",
+          "trich_doan": "CREATE TRIGGER trg_autofill_org_strict BEFORE INSERT ON … EXECUTE FUNCTION app_private.autofill_org_strict()"
+        },
+        {
+          "duong_dan": "docs/plans/ra-soat-2026-09-15/I3.md",
+          "trich_doan": "P1 public._autofill_org() gán hằng org THẬT khi không suy ra được … Thay bằng app_private.autofill_org_strict() (fail-closed) trên 27 trigger"
+        }
+      ]
+    },
+    "supabase/migrations/20260915145105_buildings_insert_v3.sql": {
+      "sha256": "5fc71744b3b2be2d5f3a3807b65f7c8c6ec52fbf8bde5fec85ee3a12d95a8296",
+      "missingObjects": [
+        "function:app_private.sinh_authorization_scope_toa_v1",
+        "trigger:public.buildings.z90_sinh_authorization_scope"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 15/09/2026 (plan con I3), CHƯA apply — hàm và trigger vắng mặt vì migration chưa chạy. Nội dung: thêm vế authorized_scope_v3('buildings.create').org_wide vào buildings_insert_rbac (giữ nguyên vế staff_assignments cũ) và sinh authorization_scopes BUILDING ngay khi tạo toà — thiếu nó thì toà mới vô hình trong hộp thoại Phân quyền (án lệ tao-khong-sinh-authorization-scope).",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260915145105_buildings_insert_v3.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.sinh_authorization_scope_toa_v1() … CREATE TRIGGER z90_sinh_authorization_scope AFTER INSERT ON public.buildings"
+        },
+        {
+          "duong_dan": "docs/plans/ra-soat-2026-09-15/I3.md",
+          "trich_doan": "P1 Chủ công ty không tạo được toà … thêm OR authorized_scope_v3('buildings.create', organization_id).org_wide; sau đó tạo toà phải sinh authorization_scope"
+        }
+      ]
+    },
+    "supabase/migrations/20260915145541_bien_gioi_ho_so_va_toa.sql": {
+      "sha256": "3c2c252165ad0a36d4e9212f2d3786b5ed6caf42db722a9a2aea6a1c8926df52",
+      "missingObjects": [
+        "function:app_private.cung_to_chuc_voi_toi_v1"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 15/09/2026 (plan con I3), CHƯA apply — hàm vắng mặt vì migration chưa chạy. Nội dung: siết profiles_select_super_admin từ 'mọi người đăng nhập đọc được hồ sơ super admin' về 'cùng tổ chức', và đồng bộ can_access_building với buildings_for_v3 ở mệnh đề loại trừ toà demo. Đo production 15/09: 0 người mất quyền xem hồ sơ; super admin 61 → 57 toà, đúng 4 toà của DEMO Chủ Nhà.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260915145541_bien_gioi_ho_so_va_toa.sql",
+          "trich_doan": "CREATE OR REPLACE FUNCTION app_private.cung_to_chuc_voi_toi_v1(p_user uuid) … USING (app_private.cung_to_chuc_voi_toi_v1(id))"
+        },
+        {
+          "duong_dan": "docs/plans/ra-soat-2026-09-15/I3.md",
+          "trich_doan": "P1 profiles_select_super_admin USING (is_user_super_admin(id)) cho mọi user đọc profile super admin … can_access_building mất loại trừ demo-building so với buildings_for_v3 (D4) → đồng bộ"
         }
       ]
     }

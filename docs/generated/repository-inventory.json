@@ -1,13 +1,13 @@
 {
   "$comment": "Sinh bởi scripts/generate-repository-inventory.mjs. Con số khongPhanLoaiDuoc là MỘT PHẦN CỦA KẾT QUẢ: quét không dùng AST nên có phần không giải được biến, và làm tròn nó xuống sẽ biến \"chưa đo\" thành \"không có\".",
   "generatedFrom": "git ls-files (không phụ thuộc thời điểm chạy)",
-  "tongSoFileTest": 679,
-  "soFileDocBangFs": 212,
-  "tongLoiGoi": 480,
-  "khongPhanLoaiDuoc": 240,
+  "tongSoFileTest": 719,
+  "soFileDocBangFs": 227,
+  "tongLoiGoi": 498,
+  "khongPhanLoaiDuoc": 250,
   "theoLoai": {
     "ma-nguon": {
-      "soFile": 40,
+      "soFile": 44,
       "moTa": "Đọc mã nguồn rồi khẳng định trên văn bản — thứ cần chuyển sang data-driven."
     },
     "manifest": {
@@ -23,7 +23,7 @@
       "moTa": "Đọc script PowerShell. Hợp lệ vì lý do như SQL."
     },
     "sql": {
-      "soFile": 63,
+      "soFile": 66,
       "moTa": "Đọc migration/SQL. Thường hợp lệ: SQL không import được, và nội dung CHÍNH LÀ hợp đồng."
     }
   },
@@ -43,18 +43,22 @@
     "src/components/finance-performance/__tests__/BuildingPerformanceTab.test.tsx",
     "src/components/finance-performance/__tests__/BusinessOverviewTab.test.tsx",
     "src/components/finance-performance/__tests__/RevenueCostStructureTab.test.tsx",
+    "src/components/income-expenses/__tests__/IncomeExpenseFormDongThiKhongDoc.test.tsx",
     "src/contexts/__tests__/OrganizationContext.test.ts",
     "src/copilot/__tests__/confirmationStore.test.ts",
     "src/copilot/__tests__/keHoachCard.test.tsx",
     "src/copilot/__tests__/pageAgentCompatibility.test.ts",
     "src/copilot/__tests__/readonlyQueryContracts.test.ts",
     "src/copilot/__tests__/toolOrgScope.test.ts",
+    "src/hooks/__tests__/accountsWithBalanceMasking.test.ts",
     "src/hooks/__tests__/incomeExpenseTypeWriterOrganizationScope.test.ts",
     "src/hooks/__tests__/realtimeTenantBoundary.test.ts",
     "src/hooks/__tests__/useCustomers.deleteActiveContractGuard.test.ts",
     "src/hooks/__tests__/useManagerSalaryOrganizationScope.test.ts",
+    "src/hooks/__tests__/useManagerSalaryV5Bulk.test.ts",
     "src/hooks/__tests__/useMeterReadings.noLegacyFallback.test.ts",
     "src/hooks/__tests__/useMeters.serviceResolve.test.ts",
+    "src/hooks/__tests__/useMyPermissionsOrgScope.test.tsx",
     "src/lib/__tests__/accountingCompatibilityGuardsMigration.test.ts",
     "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
     "src/lib/__tests__/copilotReportRpcMigration.test.ts",
@@ -131,11 +135,11 @@
     },
     {
       "file": "src/lib/__tests__/invoiceAdjustmentV2.test.ts",
-      "soGoi": 9,
+      "soGoi": 10,
       "loai": {
         "sql": 9
       },
-      "khongPhanLoaiDuoc": 0
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "scripts/__tests__/copilot-room-pass-live-acceptance.test.mjs",
@@ -591,6 +595,20 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/components/__tests__/dialogGateFetchKhiDong.test.ts",
+      "soGoi": 2,
+      "loai": {},
+      "khongPhanLoaiDuoc": 2
+    },
+    {
+      "file": "src/contexts/__tests__/OrganizationContext.test.ts",
+      "soGoi": 2,
+      "loai": {
+        "ma-nguon": 2
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/copilot/__tests__/keHoachCard.test.tsx",
       "soGoi": 2,
       "loai": {
@@ -838,6 +856,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "scripts/__tests__/check-definer-body-authz.test.mjs",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "scripts/__tests__/check-risk-classifier.test.mjs",
       "soGoi": 1,
       "loai": {
@@ -970,7 +996,7 @@
       "khongPhanLoaiDuoc": 0
     },
     {
-      "file": "src/contexts/__tests__/OrganizationContext.test.ts",
+      "file": "src/components/income-expenses/__tests__/IncomeExpenseFormDongThiKhongDoc.test.tsx",
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
@@ -1012,6 +1038,14 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/hooks/__tests__/accountsWithBalanceMasking.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/hooks/__tests__/realtimeOrchestratorThin.test.ts",
       "soGoi": 1,
       "loai": {},
@@ -1034,6 +1068,14 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/hooks/__tests__/useManagerSalaryV5Bulk.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/hooks/__tests__/useMeterReadings.noLegacyFallback.test.ts",
       "soGoi": 1,
       "loai": {
@@ -1043,6 +1085,14 @@
     },
     {
       "file": "src/hooks/__tests__/useMeters.serviceResolve.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "ma-nguon": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/hooks/__tests__/useMyPermissionsOrgScope.test.tsx",
       "soGoi": 1,
       "loai": {
         "ma-nguon": 1
@@ -1144,6 +1194,12 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/cocThanhLyCapHoanCocMigration.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/commissionVoucherDisplayName.test.ts",
@@ -1416,6 +1472,22 @@
       "khongPhanLoaiDuoc": 0
     },
     {
+      "file": "src/lib/__tests__/getMyPermissionsV2Migration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/hoaDonGuardHuyNoKeoMigration.test.ts",
+      "soGoi": 1,
+      "loai": {
+        "sql": 1
+      },
+      "khongPhanLoaiDuoc": 0
+    },
+    {
       "file": "src/lib/__tests__/ieAccountingStandardToggleMigration.test.ts",
       "soGoi": 1,
       "loai": {},
@@ -1512,6 +1584,12 @@
       "khongPhanLoaiDuoc": 1
     },
     {
+      "file": "src/lib/__tests__/orgBoundaryI3.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
       "file": "src/lib/__tests__/paidInvoiceAdjustmentGuard.test.ts",
       "soGoi": 1,
       "loai": {},
@@ -1524,6 +1602,24 @@
         "ma-nguon": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/phieuHuyDuyetCasMigration.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/phieuNgayTheoOrgMigration.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/phieuSoLuongLeMigration.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/praAnalyticsGateMigration.test.ts",
@@ -1582,6 +1678,18 @@
         "sql": 1
       },
       "khongPhanLoaiDuoc": 0
+    },
+    {
+      "file": "src/lib/__tests__/tamTruFillEngine.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
+    },
+    {
+      "file": "src/lib/__tests__/tamTruSubmitWatch.test.ts",
+      "soGoi": 1,
+      "loai": {},
+      "khongPhanLoaiDuoc": 1
     },
     {
       "file": "src/lib/__tests__/terminationRefundVoucherName.test.ts",
