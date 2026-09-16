@@ -100,7 +100,19 @@ const PEER_TWO = `${"B".repeat(43)}=`;
  * filter is answered by its own branch so validation still runs. The `case` is
  * left open for each test to append its branches and close it.
  */
-const PHASE_FAITHFUL_JQ = `jq() {
+const PHASE_FAITHFUL_JQ = `jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi; 
+  # ĐỌC HẾT stdin khi được gọi trong một pipeline.
+  #
+  # jq THẬT đọc stdin tới EOF; stub này thì không, nên \`printf … | jq -c '.current'\`
+  # trong compensate_last_transition để lệnh bên trái ghi vào một ống mà đầu đọc
+  # vừa đóng. Kernel gửi SIGPIPE, và với \`set -o pipefail\` cả pipeline trả 141.
+  # Đây là ĐUA THỜI ĐIỂM — thắng hay thua tuỳ lệnh nào chạy xong trước — nên nó
+  # đỏ mỗi lần một bài khác nhau trên CI (16/09/2026: hai lần chạy, hai bài) mà
+  # máy Windows chạy 34/34 xanh. Kịch bản thật không hỏng; chỉ bản giả lập sai.
+  #
+  # \`[[ -p /dev/stdin ]]\` để chỉ tiêu thụ khi stdin LÀ ống: các lời gọi dạng
+  # \`jq -er '.operation' "\$FILE"\` không có ống, và \`cat\` ở đó sẽ treo.
+  if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi
   local index next after phase=""
   for ((index = 1; index <= $#; index++)); do
     next=$((index + 1)); after=$((index + 2))
@@ -140,7 +152,7 @@ pointer_value() {
  * disk, so the recovered value is the one that was really recorded rather than a
  * literal baked into the mock.
  */
-const RUNTIME_INTENT_JQ = `jq() {
+const RUNTIME_INTENT_JQ = `jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi; 
   local index next after release="" stop=""
   for ((index = 1; index <= $#; index++)); do
     next=$((index + 1)); after=$((index + 2))
@@ -607,7 +619,7 @@ compose_for_pointer ignored up
 source "$ACTIVATE"
 printf '{}' > "$TRANSITION_FILE"
 sync() { :; }
-jq() { case "$*" in *".phase"*) printf '%s\\n' "$PHASE";; *".before"*) printf 'BEFORE\\n';; *".after"*) printf 'AFTER\\n';; *".target"*) printf 'TARGET\\n';; esac; }
+jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi;  case "$*" in *".phase"*) printf '%s\\n' "$PHASE";; *".before"*) printf 'BEFORE\\n';; *".after"*) printf 'AFTER\\n';; *".target"*) printf 'TARGET\\n';; esac; }
 converge_pointer_set() { printf 'converge:%s\\n' "$1"; }
 apply_pointer_set() { printf 'apply:%s\\n' "$1"; }
 temporary_pointer_from_json() { printf '%s/target.pointer\\n' "$STATE_DIR"; }
@@ -624,7 +636,7 @@ recover_transition
 source "$ACTIVATE"
 printf '{}' > "$TRANSITION_FILE"
 sync() { :; }
-jq() { case "$*" in *".phase"*) printf 'commit-intent\\n';; *".before"*) printf 'BEFORE\\n';; *".after"*) printf 'AFTER\\n';; *".target"*) printf 'TARGET\\n';; esac; }
+jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi;  case "$*" in *".phase"*) printf 'commit-intent\\n';; *".before"*) printf 'BEFORE\\n';; *".after"*) printf 'AFTER\\n';; *".target"*) printf 'TARGET\\n';; esac; }
 temporary_pointer_from_json() { printf '%s/target.pointer\\n' "$STATE_DIR"; }
 calls=0
 pointer_exact_healthy() { calls=$((calls + 1)); [[ "$calls" -ge 2 ]]; }
@@ -764,7 +776,7 @@ stat() {
   else command stat "$@"; fi
 }
 docker() { return 1; }
-jq() {
+jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi; 
   [[ "$*" == *"--argjson runtime false"* ]] || return 97
   printf '{"runtimeAvailable":false,"exactMatch":false}\\n'
 }
@@ -792,7 +804,7 @@ source "$ACTIVATE"
 printf '%s' '{"schemaVersion":1,"operation":"promote","phase":"committed","before":{"current":"SECRET-POINTER-SET"},"after":{"current":"SECRET-POINTER-SET"},"target":{"releaseSha":"${"b".repeat(40)}"}}' > "$LAST_TRANSITION_FILE"
 validate_transition_journal() { :; }
 inspect_pointer_state() { printf 'null\\n'; }
-jq() {
+jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi; 
   printf '%s\\n' "$*" >> "$STATE_DIR/jq.log"
   local index next after value=""
   if [[ "$1 $2" == "-c ${projection}" ]]; then
@@ -948,7 +960,7 @@ printf 'archive' > "$NETWORK_CENTER_ROOT/release.tar.gz"
 stat() { case "$*" in *"%u:%g"*) printf '0:0\\n';; *"%a"*) printf '600\\n';; *) command stat "$@";; esac; }
 sha256sum() { printf '%s  -\\n' "$DIGEST"; }
 docker() { return 0; }
-jq() {
+jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi; 
   case "$*" in
     *".releaseSha"*) printf '%s\\n' "$SHA";;
     *".imageId"*) printf 'sha256:%064d\\n' 1;;
@@ -982,7 +994,7 @@ audit="$NETWORK_CENTER_ROOT/durability.log"
 : > "$audit"
 sync() { printf 'sync:%s\\n' "$*" >> "$audit"; }
 mv() { printf 'mv:%s\\n' "$*" >> "$audit"; command mv "$@"; }
-jq() { printf '{"schemaVersion":1}\\n'; }
+jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi;  printf '{"schemaVersion":1}\\n'; }
 validate_pointer() { :; }
 validate_transition_journal() { :; }
 printf -- '--write_transition--\\n' >> "$audit"
@@ -1020,7 +1032,7 @@ source "$ACTIVATE"
 printf '%s' "$CORRUPT" > "$TRANSITION_FILE"
 sync() { :; }
 # jq -e over a truncated document prints nothing and exits non-zero.
-jq() { return 4; }
+jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi;  return 4; }
 converge_pointer_set() { printf 'converge\\n'; }
 apply_pointer_set() { printf 'apply\\n'; }
 recover_transition
@@ -1143,7 +1155,7 @@ make_release_env "$fixture_env" '${FIXTURE_SHA}' "$INITIAL"
 stop_pointer() { :; }
 start_pointer() { return 1; }
 docker() { case "$*" in *".State.Status"*) printf '%s\\n' "$STATUS";; *) return 1;; esac; }
-jq() { printf 'receipt:%s\\n' "$*"; }
+jq() { if [[ -p /dev/stdin ]]; then cat >/dev/null 2>&1 || true; fi;  printf 'receipt:%s\\n' "$*"; }
 set_emergency_stop "$REQUESTED"
 `, scenario);
       const env = readFileSync(join(root, "releases", FIXTURE_SHA, ".env.active"), "utf8");
