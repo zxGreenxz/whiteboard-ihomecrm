@@ -1756,8 +1756,10 @@ export const useCancelInvoice = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      // RPC cancel KHÔNG guard status/paid_amount ở DB — đây là hàng rào duy
-      // nhất chặn huỷ hoá đơn đã thu tiền (restore sẽ trả status sai nếu lọt).
+      // Từ 15/09/2026 luật "DRAFT|APPROVED và chưa thu đồng nào" đã nằm trong
+      // chính RPC (migration `hoa_don_guard_huy_no_keo_subtotal_ngay`), nên lần
+      // đọc này chỉ còn để đổi lỗi SQL thành một câu tiếng Việt. Giữ lại: bỏ đi
+      // thì người dùng nhận nguyên văn thông báo của Postgres.
       const { data: current, error: fetchError } = await supabase
         .from('invoices')
         .select('status, paid_amount, deleted_at')

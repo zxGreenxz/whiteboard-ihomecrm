@@ -117,7 +117,11 @@ Trigger/RPC recompute tổng hợp các payment hợp lệ và điều chỉnh l
 - `PARTIAL_PAID`/`PAID` hoặc trạng thái hợp lệ tương ứng;
 - settlement nợ cũ/cọc khi flow yêu cầu.
 
-`OVERDUE` thường là trạng thái suy theo ngày đến hạn ở lớp đọc/hiển thị, không phải lý do để client ghi đè status.
+`OVERDUE` được `recompute_invoice_for_id` **ghi xuống cột `status`**, không phải chỉ suy ở lớp đọc — câu cũ ở đây nói ngược với mã và đã sửa ngày 15/09/2026. Dù vậy client vẫn **không** được ghi đè status.
+
+Từ 15/09/2026 (migration `hoa_don_guard_huy_no_keo_subtotal_ngay`) thứ tự nhánh là: đủ tiền → `PAID`; còn thiếu nhưng đã thu được đồng nào → `PARTIAL_PAID`; **chưa thu đồng nào** và quá hạn → `OVERDUE`. Trước đó nhánh `OVERDUE` đứng trên nên hoá đơn đã thu một phần mà quá hạn không bao giờ đạt được `PARTIAL_PAID`.
+
+Hệ quả cho báo cáo: **lọc `status = 'OVERDUE'` không còn đếm đủ hoá đơn quá hạn**. Dùng cột suy `is_overdue` (computed column của PostgREST: `?select=*,is_overdue`), nó đúng cho cả hoá đơn `PARTIAL_PAID` lẫn `APPROVED` và đo "hôm nay" theo múi giờ của tổ chức.
 
 ## 7. Hoàn tác và hoàn trả
 

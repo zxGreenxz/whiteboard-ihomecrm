@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { stripMigrationTransactionControl } from '../../../scripts/apply-accounting-rollout.mjs';
@@ -12,9 +12,47 @@ const building = '00000000-0000-4000-8000-000000000003';
 const collection = '00000000-0000-4000-8000-000000000004';
 const componentSource = readFileSync('supabase/migrations/20260728030000_business_performance_invoice_cohort_and_categories.sql', 'utf8');
 const adjustmentSource = readFileSync('supabase/migrations/20260911093834_invoice_adjustment_review.sql', 'utf8');
-const collectionSource = readFileSync('supabase/migrations/20260908041231_invoice_actual_change_rounding_report.sql','utf8');
-const collectionStart = collectionSource.indexOf('CREATE OR REPLACE FUNCTION public.record_invoice_collection_v5(');
-const collectionEnd = collectionSource.indexOf('$function$',collectionSource.indexOf('AS $function$',collectionStart)+14)+11;
+/**
+ * ĐỊNH NGHĨA SỐNG của một hàm = lần CREATE CUỐI CÙNG trên toàn thư mục migration,
+ * không phải lần xuất hiện trong một file đã đóng băng. Ghim cứng một file làm
+ * vế "actual" thành hằng số: repo chỉ sửa hành vi bằng forward-fix, nên định
+ * nghĩa dời sang file khác còn bài test vẫn soi file cũ và xanh vĩnh viễn.
+ * (Luật của scripts/check-migration-test-liveness.mjs — đã bắn thật ngày
+ * 15/09/2026 khi migration hoa_don_guard_huy_no_keo_subtotal_ngay thay
+ * record_invoice_collection_v5.)
+ */
+/** Bản record_invoice_collection_v5 mà migration xung đột 20260912091403 chốt md5. */
+function banDaCapture(): string {
+  const src = readFileSync('supabase/migrations/20260908041231_invoice_actual_change_rounding_report.sql','utf8');
+  const dau = src.indexOf('CREATE OR REPLACE FUNCTION public.record_invoice_collection_v5(');
+  return src.slice(dau, src.indexOf('$function$', src.indexOf('AS $function$',dau)+14)+11);
+}
+
+const collectionLivePath =
+  'supabase/migrations/20260915074716_hoa_don_guard_huy_no_keo_subtotal_ngay.sql';
+
+function dinhNghiaSong(ten: string, mongDoi: string): string {
+  const dir = 'supabase/migrations';
+  const mo = `CREATE OR REPLACE FUNCTION public.${ten}(`;
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort().reverse()) {
+    const src = readFileSync(`${dir}/${f}`, 'utf8');
+    const dau = src.indexOf(mo);
+    if (dau < 0) continue;
+    // THÂN hàm luôn lấy động; ĐƯỜNG DẪN thì khẳng định. Hai việc khác nhau:
+    // lấy động để bài test không bao giờ đo một bản đã bị thay; khẳng định để
+    // lần sau có ai thay nữa thì bài này ĐỎ NGAY với câu nói rõ phải làm gì,
+    // thay vì âm thầm trôi. (check-migration-test-liveness cũng đọc hằng số này.)
+    if (`${dir}/${f}` !== mongDoi) {
+      throw new Error(
+        `Định nghĩa sống của ${ten} đã dời sang ${dir}/${f}. Cập nhật collectionLivePath ` +
+          `và chạy lại npm run gate:truoc-push.`,
+      );
+    }
+    const cuoi = src.indexOf('$function$', src.indexOf('AS $function$', dau) + 14) + 11;
+    return src.slice(dau, cuoi);
+  }
+  throw new Error(`Không tìm thấy định nghĩa sống của ${ten}`);
+}
 const db = new PGlite();
 const item = (price = 100, cls = 'REVENUE') => ({type:'RENT', accounting_class:cls, unit_price:price, quantity:1, coefficient:1, description:'Rent'});
 
@@ -68,8 +106,13 @@ beforeAll(async () => {
     ${adjustmentSource.slice(adjustmentSource.indexOf('CREATE TABLE IF NOT EXISTS'),adjustmentSource.indexOf('CREATE OR REPLACE FUNCTION public.guard_paid_invoice_direct_adjustment'))}
   `);
   if (existsSync(migrationPath)) await db.exec(readFileSync(migrationPath,'utf8'));
-  await db.exec(collectionSource.slice(collectionStart,collectionEnd)+';');
+  // Thứ tự phải GIỐNG production: bản ĐÃ CAPTURE trước (migration xung đột có
+  // tiền điều kiện md5 trên nó), rồi migration xung đột, rồi định nghĩa SỐNG
+  // chồng lên. Nạp bản sống trước sẽ làm tiền điều kiện đó bắn — đúng như nó
+  // được thiết kế, nhưng sai bối cảnh.
+  await db.exec(banDaCapture()+';');
   if (existsSync(conflictMigrationPath)) await db.exec(readFileSync(conflictMigrationPath,'utf8'));
+  await db.exec(dinhNghiaSong('record_invoice_collection_v5', collectionLivePath)+';');
   await db.exec('GRANT SELECT,INSERT,UPDATE,DELETE ON invoices,invoice_items TO authenticated');
 },30000);
 afterAll(async () => { await db.close(); });
@@ -168,13 +211,22 @@ describe('atomic issued invoice adjustment SQL',()=>{
   it('applies migration twice without altering finalized historical components',async()=>{
     expect(existsSync(migrationPath)).toBe(true);
     await db.exec(readFileSync(migrationPath,'utf8'));
+    // Tiền điều kiện md5 của migration xung đột chốt bản ĐÃ CAPTURE của
+    // record_invoice_collection_v5. Muốn diễn lại việc áp nó hai lần thì phải
+    // dựng lại đúng bản đó trước, rồi chồng bản SỐNG lên — y như production đã
+    // đi qua. Áp migration cũ đè lên writer mới hơn bị từ chối, và đó là thiết kế.
+    await db.exec(banDaCapture()+';');
     await db.exec(readFileSync(conflictMigrationPath,'utf8'));
     await db.exec(readFileSync(conflictMigrationPath,'utf8'));
+    await db.exec(dinhNghiaSong('record_invoice_collection_v5', collectionLivePath)+';');
   });
   it('rejects an unexpected writer definition before applying the conflict migration',()=>scenario(async()=>{
     await db.exec(`ALTER FUNCTION public.adjust_invoice_v2(uuid,jsonb,numeric,text,text,text,bigint,numeric,timestamptz,text) SET search_path=public`);
     const body=stripMigrationTransactionControl(readFileSync(conflictMigrationPath,'utf8'),conflictMigrationPath);
-    await expect(db.exec(body)).rejects.toMatchObject({code:'55000'});
+    // Ghim ĐÚNG LÝ DO: hàm bị ALTER là adjust_invoice_v2 và nó là kiểm tra đầu
+    // tiên trong DO block. Không ghim thì bài này vẫn xanh khi một writer KHÁC
+    // lệch capture, tức là nó thôi đo cái ALTER ở dòng trên.
+    await expect(db.exec(body)).rejects.toMatchObject({code:'55000',message:expect.stringContaining('adjust_invoice_v2')});
   }));
   it('uses non-retryable domain conflicts in every affected deployed writer',async()=>{
     const rows=(await db.query<{name:string;source:string}>(`SELECT proname AS name,prosrc AS source FROM pg_proc WHERE proname IN ('adjust_invoice_v2','review_invoice_adjustment_v2','pin_invoice_collection_manifest_v2','record_invoice_collection_v5') ORDER BY proname`)).rows;
