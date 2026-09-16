@@ -10,6 +10,9 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: vi.fn(), useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+// Từ plan I3 hook lấy tổ chức đang chọn để gửi organization_id; test này đo
+// phân loại kế toán nên chỉ cần một tổ chức bất kỳ.
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'dddd0000-0000-4000-8000-000000000001' }) }));
 vi.mock('@/lib/authSession', () => ({ getSessionUser: async () => ({ id: 'demo-user', email: 'demo@example.invalid' }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: boundary }));
 vi.mock('@/lib/invoiceUtils', async (importOriginal) => ({

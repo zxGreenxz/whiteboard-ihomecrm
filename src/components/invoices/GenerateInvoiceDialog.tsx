@@ -37,6 +37,8 @@ import {
 import { InvoiceEntryShell } from './invoice-entry/InvoiceEntryShell';
 import { useInvoiceEntry } from './invoice-entry/useInvoiceEntry';
 import type { InvoiceEntrySelectors, InvoiceEntryVariant } from './invoice-entry/types';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg } from '@/lib/orgPayload';
 
 interface GenerateInvoiceDialogProps {
   open: boolean;
@@ -102,6 +104,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
 
   const createMutation = useCreateInvoice();
   const { toast } = useToast();
+  const { selectedOrganizationId } = useOrganization();
   // Chỉ kéo HĐ ACTIVE server-side — dialog lập hoá đơn không cần HĐ đã thanh
   // lý/nháp (filter client giữ lại như chốt chặn phụ).
   // enabled: open — dialog mounted sẵn (đóng) không fetch, đỡ kéo cả bảng HĐ
@@ -392,7 +395,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         } else {
           const { error: readingErr } = await supabase
             .from('meter_readings')
-            .insert({
+            .insert(withOrg({
               user_id: user.id,
               meter_id: meterId,
               reading_date: data.issue_date,
@@ -405,7 +408,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
               meter_type: 'ELECTRICITY',
               service_id: pricing.elecServiceId,
               recorded_by: user.id,
-            } as any);
+            } as any, selectedOrganizationId));
           if (readingErr) {
             console.error('Ghi chỉ số điện thất bại:', readingErr);
             readingWarn = readingErr.message;

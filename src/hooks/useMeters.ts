@@ -5,6 +5,8 @@ import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { nullIfNotFound } from "@/hooks/readErrors";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type Meter = Database["public"]["Tables"]["meters"]["Row"];
 type MeterInsert = Database["public"]["Tables"]["meters"]["Insert"];
@@ -311,6 +313,7 @@ export const useUnrecordedMeters = (params: {
 /** Mutation INSERT vào meters với user_id = auth.uid() */
 export const useCreateMeter = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (meter: Omit<MeterInsert, "user_id">) => {
@@ -323,7 +326,7 @@ export const useCreateMeter = () => {
 
       const { data, error } = await supabase
         .from("meters")
-        .insert({ ...meter, user_id: user.id, service_id: serviceId })
+        .insert(withOrg({ ...meter, user_id: user.id, service_id: serviceId }, selectedOrganizationId))
         .select()
         .single();
 

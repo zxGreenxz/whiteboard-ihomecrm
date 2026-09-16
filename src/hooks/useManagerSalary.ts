@@ -26,6 +26,7 @@ import {
 } from "@/lib/managerSalary";
 // YYYY-MM-01 cho tháng lệch n so với mốc — canonical ở lib/salaryPeriod (10E).
 import { shiftPeriodMonth as shiftMonth, vnYmOf } from "@/lib/salaryPeriod";
+import { withOrgAll } from "@/lib/orgPayload";
 
 export interface SalPeriod {
   periodMonth: string; // YYYY-MM-01
@@ -1065,7 +1066,9 @@ export const useSalaryPayout = () => {
           end_date: input.voucher_date,
         });
       }
-      const { error: itErr } = await supabase.from("income_expense_items").insert(salItems);
+      const { error: itErr } = await supabase
+        .from("income_expense_items")
+        .insert(withOrgAll(salItems, organizationId));
       if (itErr) throw itErr;
 
       // --- Phiếu THU gạch nợ tiền phòng (cấn trừ vào lương) vào CÙNG sổ quỹ ---
@@ -1101,6 +1104,7 @@ export const useSalaryPayout = () => {
           .from("payments")
           .insert({
             user_id: invOwner,
+            organization_id: rentOrganizationId,
             invoice_id: (rentInv as any).id,
             amount: rentCollect,
             payment_method: "CT",

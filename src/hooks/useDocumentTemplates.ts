@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 import type { Json } from "@/integrations/supabase/types";
 
 // Cột `variables` là jsonb. Khai `Record<string, unknown>[]` không gán được vào
@@ -280,6 +282,7 @@ export const useDocumentTemplate = (id: string) => {
 // 3. CREATE TEMPLATE
 export const useCreateDocumentTemplate = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (payload: {
@@ -334,7 +337,7 @@ export const useCreateDocumentTemplate = () => {
         const code = formatTemplateCode(startNumber + attempt);
         const res = await supabase
           .from("document_templates")
-          .insert({
+          .insert(withOrg({
             user_id: user.id,
             code,
             name: payload.name,
@@ -348,7 +351,7 @@ export const useCreateDocumentTemplate = () => {
             type: payload.type,
             variables: payload.variables,
             content: payload.content,
-          })
+          }, selectedOrganizationId))
           .select()
           .single();
 

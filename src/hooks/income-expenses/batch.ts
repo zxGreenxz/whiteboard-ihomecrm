@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import type { IncomeExpenseBatchFormValues } from "@/lib/incomeExpenseValidation";
 import type { ImportIncomeExpenseRow } from "./types";
 import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 
 // Compat gateway V2 (Stage-7b drain): RPC chưa có trong generated types cho tới
 // lần regen sau forward-apply — gọi qua cast (mẫu financeV2Mutations.ts).
@@ -155,6 +157,7 @@ export const useImportIncomeExpenses = () => {
 // Tạo phiếu tổng = INSERT 1 batch + N phiếu con + N junction + N items.
 export const useCreateIncomeExpenseBatch = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (input: IncomeExpenseBatchFormValues) => {
@@ -172,14 +175,14 @@ export const useCreateIncomeExpenseBatch = () => {
       // 1. INSERT batch metadata
       const { data: batch, error: batchError } = await supabase
         .from("income_expense_batches")
-        .insert({
+        .insert(withOrg({
           user_id: user.id,
           name: input.shared_name,
           type: input.type,
           payer_name: input.payer_name ?? null,
           attachments: input.attachments ?? [],
           notes: input.notes ?? null,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 
@@ -245,7 +248,7 @@ export const useCreateIncomeExpenseBatch = () => {
         }));
         const { error: linkError } = await supabase
           .from("income_expense_batch_items")
-          .insert(linkRows);
+          .insert(withOrgAll(linkRows, selectedOrganizationId));
         if (linkError) throw linkError;
       } catch (err: any) {
         // Best-effort rollback: xoá batch (CASCADE xoá junction);

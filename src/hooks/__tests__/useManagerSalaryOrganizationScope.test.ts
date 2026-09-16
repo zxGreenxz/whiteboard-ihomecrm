@@ -21,4 +21,17 @@ describe("useManagerSalary legacy fallback organization scope", () => {
     expect(source).toMatch(/\.eq\("organization_id", rentOrganizationId\)/);
     expect(source.match(/organization_id:\s*rentOrganizationId/g)?.length).toBeGreaterThanOrEqual(2);
   });
+
+  // Plan I3: trigger payments chuyển sang autofill_org_strict. Payment khấu trừ
+  // lương có invoice_id nên vẫn suy được, nhưng gửi tường minh org của HOÁ ĐƠN
+  // là nguồn đúng hơn org đang chọn — cùng nguồn với phiếu thu đi kèm.
+  it("payment khấu trừ lương gửi organization_id của hoá đơn, không để trigger suy", () => {
+    expect(source).toMatch(
+      /from\("payments"\)\s*\.insert\(\{\s*user_id: invOwner,\s*organization_id: rentOrganizationId,/,
+    );
+  });
+
+  it("dòng phiếu chi lương đi qua withOrgAll với org của phiếu", () => {
+    expect(source).toMatch(/from\("income_expense_items"\)\s*\.insert\(withOrgAll\(salItems, organizationId\)\)/);
+  });
 });

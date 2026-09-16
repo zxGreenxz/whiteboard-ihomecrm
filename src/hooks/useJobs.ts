@@ -5,6 +5,8 @@ import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
 import { TaskFilters, JobWithRelations, OPEN_JOB_STATUSES } from "@/types/jobs";
 import type { Database } from "@/integrations/supabase/types";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 /**
  * Patch của `useUpdateJob`. Trước 11/08/2026 chỗ này là `Record<string, any>` —
@@ -143,6 +145,7 @@ export const useJobs = (filters?: TaskFilters) => {
 
 export const useCreateJob = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (job: any) => {
@@ -152,7 +155,7 @@ export const useCreateJob = () => {
 
       const { data, error } = await supabase
         .from("jobs")
-        .insert({ ...job, user_id: user.id })
+        .insert(withOrg({ ...job, user_id: user.id }, selectedOrganizationId))
         .select()
         .single();
 

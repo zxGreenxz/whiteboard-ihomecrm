@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 
 type MeterType = Database["public"]["Enums"]["meter_type"];
 
@@ -283,6 +285,7 @@ export const useMeterReadingStats = (
  */
 export const useCreateMeterReading = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (input: CreateMeterReadingInput) => {
@@ -292,7 +295,7 @@ export const useCreateMeterReading = () => {
 
       const { data, error } = await supabase
         .from("meter_readings")
-        .insert({
+        .insert(withOrg({
           user_id: user.id,
           meter_id: input.meter_id,
           reading_date: input.reading_date,
@@ -302,7 +305,7 @@ export const useCreateMeterReading = () => {
           status: "APPROVED",
           approved_by: user.id,
           approved_at: new Date().toISOString(),
-        } as any)
+        } as any, selectedOrganizationId))
         .select()
         .single();
 
@@ -330,6 +333,7 @@ export const useCreateMeterReading = () => {
  */
 export const useBulkCreateMeterReadings = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (inputs: BulkCreateMeterReadingInput[]) => {
@@ -352,7 +356,7 @@ export const useBulkCreateMeterReadings = () => {
 
       const { data, error } = await supabase
         .from("meter_readings")
-        .insert(readingsToInsert as any)
+        .insert(withOrgAll(readingsToInsert, selectedOrganizationId) as any)
         .select();
 
       if (error) {

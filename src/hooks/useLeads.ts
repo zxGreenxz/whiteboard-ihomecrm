@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type Lead = Database["public"]["Tables"]["leads"]["Row"];
 type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
@@ -116,6 +118,7 @@ export const useLead = (id: string) => {
 // Create lead
 export const useCreateLead = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (data: LeadInsert) => {
@@ -124,10 +127,10 @@ export const useCreateLead = () => {
 
       const { data: lead, error } = await supabase
         .from("leads")
-        .insert({
+        .insert(withOrg({
           ...data,
           user_id: user.id,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 

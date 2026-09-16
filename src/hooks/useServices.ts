@@ -3,6 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 
 type Service = Database["public"]["Tables"]["services"]["Row"];
 type ServiceInsert = Database["public"]["Tables"]["services"]["Insert"];
@@ -83,6 +85,7 @@ export const useServices = (
 // Create service + building_services links
 export const useCreateService = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (
@@ -95,7 +98,7 @@ export const useCreateService = () => {
 
       const { data, error } = await supabase
         .from("services")
-        .insert({ ...serviceData, user_id: user.id })
+        .insert(withOrg({ ...serviceData, user_id: user.id }, selectedOrganizationId))
         .select()
         .single();
 
@@ -113,11 +116,14 @@ export const useCreateService = () => {
         const { error: bsError } = await supabase
           .from("building_services")
           .insert(
-            building_ids.map((bid) => ({
-              service_id: data.id,
-              building_id: bid,
-              is_active: true,
-            }))
+            withOrgAll(
+              building_ids.map((bid) => ({
+                service_id: data.id,
+                building_id: bid,
+                is_active: true,
+              })),
+              selectedOrganizationId,
+            )
           );
         if (bsError) {
           toast.error("Không thể gán dịch vụ cho tòa nhà");
@@ -139,6 +145,7 @@ export const useCreateService = () => {
 // Diff-based so we preserve unit_price_override on rows that stay.
 export const useUpdateService = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({
@@ -219,11 +226,14 @@ export const useUpdateService = () => {
           const { error: insError } = await supabase
             .from("building_services")
             .insert(
-              buildingsToInsert.map((bid) => ({
-                service_id: id,
-                building_id: bid,
-                is_active: true,
-              }))
+              withOrgAll(
+                buildingsToInsert.map((bid) => ({
+                  service_id: id,
+                  building_id: bid,
+                  is_active: true,
+                })),
+                selectedOrganizationId,
+              )
             );
           if (insError) {
             toast.error("Không thể cập nhật danh sách tòa nhà");

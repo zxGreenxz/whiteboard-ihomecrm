@@ -11,6 +11,8 @@ import type {
 } from "@/types/customer";
 import type { PaginatedData, PaginationParams } from "@/hooks/usePagination";
 import { isContractInEffect, ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 
 // Resolve building/room filter → customer IDs.
 // contracts has no customer_id (link is via contract_customers) and no
@@ -394,6 +396,7 @@ export interface CreateCustomerResult {
 
 export const useCreateCustomer = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (formData: CustomerFormData) => {
@@ -405,11 +408,11 @@ export const useCreateCustomer = () => {
 
       const { data, error } = await supabase
         .from("customers")
-        .insert({
+        .insert(withOrg({
           ...customerData,
           user_id: user.id,
           status_v2: "RENTING",
-        } as any)
+        } as any, selectedOrganizationId))
         .select()
         .single();
 
@@ -428,7 +431,7 @@ export const useCreateCustomer = () => {
 
         const { error: vehicleError } = await supabase
           .from("vehicles")
-          .insert(vehicleInserts as any);
+          .insert(withOrgAll(vehicleInserts, selectedOrganizationId) as any);
 
         // KHÔNG có transaction bao ngoài: khách đã INSERT xong ở trên. Lỗi ở
         // đây là hỏng MỘT PHẦN, và đó là lý do không `throw`:
@@ -484,6 +487,7 @@ export const useCreateCustomer = () => {
 async function syncCustomerVehicles(
   customerId: string,
   vehicles: NonNullable<CustomerFormData["vehicles"]>,
+  organizationId: string | null,
 ): Promise<void> {
   const user = await getSessionUser();
   if (!user) throw new Error("Not authenticated");
@@ -524,7 +528,10 @@ async function syncCustomerVehicles(
   const added = vehicles.filter((v) => !v.id);
   if (added.length > 0) {
     const { error } = await sb.from("vehicles").insert(
-      added.map((v) => ({ ...fields(v), user_id: user.id, customer_id: customerId })),
+      withOrgAll(
+        added.map((v) => ({ ...fields(v), user_id: user.id, customer_id: customerId })),
+        organizationId,
+      ),
     );
     if (error) throw error;
   }
@@ -537,6 +544,7 @@ async function syncCustomerVehicles(
 
 export const useUpdateCustomer = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({
@@ -560,7 +568,7 @@ export const useUpdateCustomer = () => {
 
       // `undefined` = caller không đụng tới xe (vd form khác chỉ sửa vài cột)
       // ⇒ giữ nguyên. Mảng rỗng mới nghĩa là "xoá hết xe".
-      if (vehicles) await syncCustomerVehicles(id, vehicles);
+      if (vehicles) await syncCustomerVehicles(id, vehicles, selectedOrganizationId);
 
       return data as unknown as Customer;
     },
