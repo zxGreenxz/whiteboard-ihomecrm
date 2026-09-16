@@ -7590,6 +7590,7 @@ export type Database = {
           total_amount: number
           updated_at: string
           user_id: string
+          is_overdue: boolean | null
         }
         Insert: {
           adjustment_review_status?: string
@@ -21468,7 +21469,7 @@ export type Database = {
         }[]
       }
       get_salary_progress_v5: { Args: { p_month?: string }; Returns: Json }
-      get_salary_v5_config: { Args: never; Returns: Json }
+      get_salary_v5_config: { Args: { p_org?: string }; Returns: Json }
       get_special_fee_prices_v1: {
         Args: { p_building_ids?: string[]; p_month?: string }
         Returns: {
@@ -21666,6 +21667,12 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_company_owner_self_v1: { Args: never; Returns: boolean }
       is_org_owner_self_v1: { Args: never; Returns: boolean }
+      is_overdue: {
+        Args: { "": Database["public"]["Tables"]["invoices"]["Row"] }
+        Returns: {
+          error: true
+        } & "the function public.is_overdue with parameter or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache"
+      }
       is_staff_of: { Args: { owner_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: { _owner: string }; Returns: boolean }
@@ -23991,6 +23998,10 @@ export type Database = {
       }
       v5_month_money: {
         Args: { p_month: string; p_user: string }
+        Returns: Json
+      }
+      v5_month_money_bulk: {
+        Args: { p_month: string; p_users: string[] }
         Returns: Json
       }
       v5_n_chuan: { Args: { p_month: string; p_user: string }; Returns: number }

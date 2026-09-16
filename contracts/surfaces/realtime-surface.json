@@ -1,15 +1,13 @@
 {
   "$comment": "BỀ MẶT REALTIME — biên im lặng nhất trong ba. Subscribe một bảng không được publish KHÔNG báo lỗi: subscribe() vẫn trả SUBSCRIBED, giao diện chỉ lặng lẽ ngừng tự cập nhật. Sinh từ HAI nguồn: pg_publication_tables (live) và call site trong mã nguồn (hub + hệ tự lắng nghe). Sinh bởi scripts/generate-realtime-surface.mjs; kiểm bởi scripts/check-realtime-descriptors.mjs (câu hỏi nhị phân) và scripts/check-realtime-surface.mjs (chống trôi).",
   "counts": {
-    "published": 28,
+    "published": 27,
     "listenedByHub": 17,
     "otherListenerTables": 27,
-    "replicaIdentityDefault": 28
+    "replicaIdentityDefault": 27
   },
   "hubWithoutPublication": [],
-  "publishedWithNoListener": [
-    "reservation_settlement_vouchers"
-  ],
+  "publishedWithNoListener": [],
   "tables": {
     "accounts": {
       "published": true,
@@ -175,13 +173,6 @@
       "replicaIdentity": "DEFAULT",
       "rlsEnabled": true,
       "listenedByHub": true,
-      "otherListeners": []
-    },
-    "reservation_settlement_vouchers": {
-      "published": true,
-      "replicaIdentity": "DEFAULT",
-      "rlsEnabled": true,
-      "listenedByHub": false,
       "otherListeners": []
     },
     "rooms": {
