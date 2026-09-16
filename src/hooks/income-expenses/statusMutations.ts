@@ -217,14 +217,21 @@ export const useUnapproveVoucher = () => {
       // đúng khoảng hở cần đóng — mọi thay đổi xen vào giữa lần đọc này và
       // lệnh ghi đều làm phép so lệch và bị từ chối.
       //
-      // Đọc hỏng ⇒ gửi null ⇒ server bỏ qua CAS. CỐ Ý không bịa `?? 1`: một số
-      // bịa biến phép SO thành lời KHẲNG ĐỊNH sai, và nó sai đúng vào lúc phiếu
-      // đã bị người khác động vào — tức đúng lúc CAS phải bắt.
+      // Đọc hỏng ⇒ KHÔNG gửi tham số ⇒ server dùng DEFAULT NULL ⇒ bỏ qua CAS.
+      // CỐ Ý không bịa `?? 1`: một số bịa biến phép SO thành lời KHẲNG ĐỊNH
+      // sai, và nó sai đúng vào lúc phiếu đã bị người khác động vào — tức đúng
+      // lúc CAS phải bắt.
+      //
+      // `?? undefined` chứ không phải `null`: từ 16/09/2026 types.ts sinh lại
+      // từ catalog thật khai `p_expected_approval_version?: number` (tham số
+      // CÓ DEFAULT). Bỏ hẳn khoá khỏi payload và gửi null đều dẫn tới cùng một
+      // chỗ trong thân hàm — nhánh `IS NOT NULL` không chạy — nên hành vi
+      // không đổi, chỉ khác ở việc tsc kiểm được kiểu thay vì phải ép.
       const expectedApprovalVersion = await readApprovalVersion(id);
 
       const { error } = await supabase.rpc("unapprove_voucher", {
         voucher_id: id,
-        p_expected_approval_version: expectedApprovalVersion,
+        p_expected_approval_version: expectedApprovalVersion ?? undefined,
       });
       if (error) {
         // Phiếu canonical bị đóng băng vòng đời (Phương án A): không quay về

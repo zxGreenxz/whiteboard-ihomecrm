@@ -319,7 +319,10 @@ describe("huỷ duyệt phiếu — CAS approval_version (H3.2)", () => {
 
     expect(mocks.rpc).toHaveBeenCalledWith("unapprove_voucher", {
       voucher_id: "voucher-9",
-      p_expected_approval_version: null,
+      // Đọc không ra phiên bản ⇒ BỎ tham số (server dùng DEFAULT NULL), không
+      // gửi null: tham số có DEFAULT nên types.ts khai optional. Cùng một nhánh
+      // trong thân hàm, chỉ khác ở chỗ tsc kiểm được.
+      p_expected_approval_version: undefined,
     });
   });
 

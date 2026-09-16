@@ -38,12 +38,21 @@
 --
 -- Phần thân dưới đây chép NGUYÊN từ định nghĩa đang chạy (baseline:94201-94241);
 -- chỗ đổi đúng là: đọc-khoá dòng, phép so phiên bản, và `approval_version + 1`.
--- IDEMPOTENT: DROP IF EXISTS + CREATE; chạy hai lần cho cùng kết quả.
+-- IDEMPOTENT: DROP chữ ký CŨ (1 tham số) + CREATE OR REPLACE chữ ký MỚI.
+--   Bản đầu viết `CREATE FUNCTION` trần và KHÔNG idempotent: lượt hai, DROP chỉ
+--   xoá được chữ ký (uuid) — chữ ký (uuid, bigint) vừa tạo vẫn còn — nên CREATE
+--   ngã 42723. Lane apply kiểm hai lượt trong ROLLBACK và bắt đúng chỗ này
+--   (16/09/2026). `CREATE OR REPLACE` ở đây KHÔNG đẻ overload như án lệ
+--   "thêm tham số RPC": chữ ký cũ đã bị DROP ngay trên, chỉ còn đúng một bản.
+--
+-- TƯƠNG THÍCH NGƯỢC: tham số thứ hai có DEFAULT NULL nên client CŨ đang chạy
+--   production (gửi mỗi `voucher_id`) vẫn gọi được sau khi apply — vì thế file
+--   này apply TRƯỚC khi đẩy web, còn org_autofill_strict thì ngược lại.
 -- =============================================================================
 
 DROP FUNCTION IF EXISTS public.unapprove_voucher(uuid);
 
-CREATE FUNCTION public.unapprove_voucher(
+CREATE OR REPLACE FUNCTION public.unapprove_voucher(
   voucher_id uuid,
   p_expected_approval_version bigint DEFAULT NULL
 ) RETURNS void

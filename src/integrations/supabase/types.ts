@@ -23576,7 +23576,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      unapprove_voucher: { Args: { voucher_id: string }; Returns: undefined }
+      unapprove_voucher: {
+        Args: { p_expected_approval_version?: number; voucher_id: string }
+        Returns: undefined
+      }
       undo_invoice_payment_compat_v1: {
         Args: {
           p_idempotency_key: string

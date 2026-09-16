@@ -86,12 +86,29 @@ describe("H3.2 — unapprove_voucher: khoá dòng + CAS approval_version", () =>
     expect(sql).toMatch(/approval_version\s*=\s*v_row\.approval_version\s*\+\s*1/i);
   });
 
-  it("ĐỔI CHỮ KÝ thì phải DROP rồi CREATE, không CREATE OR REPLACE", () => {
-    // CREATE OR REPLACE với danh sách tham số mới đẻ thêm một overload;
-    // PostgREST sau đó chọn nhầm bản cũ (án lệ đã ghi trong bộ nhớ dự án).
+  it("đổi chữ ký thì phải DROP chữ ký CŨ, và chỉ còn đúng MỘT chữ ký", () => {
+    // Điều phải giữ là "không đẻ overload" — PostgREST có hai bản để chọn thì
+    // nó chọn nhầm (án lệ trong bộ nhớ dự án). Bản đầu của bài này cấm thẳng
+    // chuỗi `CREATE OR REPLACE`, và cái cấm đó SAI MỤC TIÊU: lane apply kiểm
+    // idempotency bằng cách chạy migration HAI LƯỢT trong ROLLBACK, mà
+    // `CREATE FUNCTION` trần thì lượt hai ngã 42723 (DROP chỉ xoá chữ ký một
+    // tham số, chữ ký hai tham số vừa tạo vẫn còn). Đo thật 16/09/2026.
+    //
+    // DROP chữ ký cũ + CREATE OR REPLACE chữ ký mới thoả CẢ HAI: sau migration
+    // chỉ còn một bản, và chạy lại bao nhiêu lượt cũng ra cùng kết quả.
     const { sql } = liveDefinitionOf("unapprove_voucher");
     expect(sql).toMatch(/DROP\s+FUNCTION\s+IF\s+EXISTS\s+public\.unapprove_voucher\s*\(\s*uuid\s*\)/i);
-    expect(sql).not.toMatch(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.unapprove_voucher/i);
+
+    // Không có lần CREATE nào cho chữ ký MỘT tham số (đó mới là overload).
+    const taoMotThamSo =
+      /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.unapprove_voucher\s*\(\s*[a-z_]+\s+uuid\s*\)/i;
+    expect(sql).not.toMatch(taoMotThamSo);
+
+    // Và đúng một lần CREATE cho chữ ký hai tham số.
+    const soLanTao = (
+      sql.match(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.unapprove_voucher/gi) ?? []
+    ).length;
+    expect(soLanTao).toBe(1);
   });
 
   it("giữ nguyên ba dòng trả phiếu về đầu quy trình duyệt", () => {
