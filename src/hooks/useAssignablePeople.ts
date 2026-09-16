@@ -26,7 +26,7 @@ export const useAssignablePeople = () => {
 
       if (error) {
         console.error("useAssignablePeople error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];

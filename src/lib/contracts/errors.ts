@@ -133,8 +133,11 @@ export function extractCode(error: unknown): string | null {
   if (typeof e.code === "string" && e.code.length > 0) return e.code;
   // supabase-js đôi khi bọc lỗi PostgREST một lớp.
   const inner = e.error;
-  if (inner && typeof inner === "object" && typeof (inner as Record<string, unknown>).code === "string") {
-    return (inner as Record<string, string>).code;
+  if (inner && typeof inner === "object") {
+    // Đọc ra biến rồi mới thu hẹp: `(x as Record<string,string>).code` dưới
+    // noUncheckedIndexedAccess là `string | undefined`, không khớp kiểu trả về.
+    const maTrong = (inner as Record<string, unknown>).code;
+    if (typeof maTrong === "string" && maTrong.length > 0) return maTrong;
   }
   return null;
 }

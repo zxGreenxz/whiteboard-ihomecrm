@@ -38,7 +38,7 @@ async function resolveCustomerIdsByLocation(filters: {
   const { data: contracts, error } = await contractQuery;
   if (error) {
     console.error("resolveCustomerIdsByLocation contracts error:", error);
-    return [];
+    throw error;
   }
   const contractIds = ((contracts || []) as any[])
     .map((c) => c.id)
@@ -55,7 +55,7 @@ async function resolveCustomerIdsByLocation(filters: {
       .in("contract_id", contractIds.slice(i, i + CHUNK));
     if (linkError) {
       console.error("resolveCustomerIdsByLocation links error:", linkError);
-      return [];
+      throw linkError;
     }
     for (const l of (links || []) as any[]) {
       if (l.customer_id) customerIds.add(l.customer_id);

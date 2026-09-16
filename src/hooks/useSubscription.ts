@@ -23,7 +23,7 @@ export const useSubscriptionPlans = () => {
 
       if (error) {
         console.error("useSubscriptionPlans error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];
@@ -53,8 +53,9 @@ export const useUserSubscription = () => {
         .maybeSingle();
 
       if (error) {
+        // maybeSingle(): 0 dòng trả data=null KHÔNG kèm lỗi → có lỗi là hỏng thật.
         console.error("useUserSubscription error:", error);
-        return null;
+        throw error;
       }
 
       return data;

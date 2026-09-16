@@ -14,7 +14,7 @@ export const useJobTypes = () => {
 
       if (error) {
         console.error("useJobTypes error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];
@@ -124,7 +124,7 @@ export const useDepartments = () => {
 
       if (error) {
         console.error("useDepartments error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];

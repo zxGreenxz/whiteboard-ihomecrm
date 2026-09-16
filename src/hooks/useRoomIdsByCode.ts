@@ -39,7 +39,7 @@ export function useRoomIdsByCode(
       const { data, error } = await q;
       if (error) {
         console.error("useRoomIdsByCode error:", error);
-        return [];
+        throw error;
       }
       return ((data ?? []) as any[]).map((r) => r.id as string);
     },

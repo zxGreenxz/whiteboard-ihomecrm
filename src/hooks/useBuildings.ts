@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import type { BuildingStatus, BuildingWithRelations } from "@/types/building";
 import { toast } from "sonner";
+import { nullIfNotFound } from "@/hooks/readErrors";
 
 type Building = Database["public"]["Tables"]["buildings"]["Row"];
 type BuildingInsert = Database["public"]["Tables"]["buildings"]["Insert"];
@@ -69,10 +70,7 @@ export const useBuilding = (id: string) => {
         .is("deleted_at", null)
         .single();
 
-      if (error) {
-        console.error('useBuilding error:', error);
-        return null;
-      }
+      if (error) return nullIfNotFound(error, "useBuilding");
 
       return data
         ? {

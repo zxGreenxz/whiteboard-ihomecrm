@@ -5,6 +5,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import type { PaginatedData } from "@/hooks/usePagination";
 import { ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
+import { nullIfNotFound } from "@/hooks/readErrors";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 type TenantInsert = Database["public"]["Tables"]["tenants"]["Insert"];
@@ -72,7 +73,7 @@ export const useTenantsLegacy = () => {
 
       if (error) {
         console.error('useTenantsLegacy error:', error);
-        return [];
+        throw error;
       }
 
       return data || [];
@@ -92,10 +93,7 @@ export const useTenant = (id: string) => {
         .is("deleted_at", null)
         .single();
 
-      if (error) {
-        console.error('useTenant error:', error);
-        return null;
-      }
+      if (error) return nullIfNotFound(error, "useTenant");
 
       return data;
     },

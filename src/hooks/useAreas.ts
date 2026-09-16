@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { nullIfNotFound } from "@/hooks/readErrors";
 
 type AreaInsert = Database["public"]["Tables"]["areas"]["Insert"];
 type AreaUpdate = Database["public"]["Tables"]["areas"]["Update"];
@@ -23,7 +24,7 @@ export const useAreas = () => {
 
       if (error) {
         console.error('useAreas error:', error);
-        return [];
+        throw error;
       }
 
       return (data || []).map(area => ({
@@ -46,10 +47,7 @@ export const useArea = (id: string) => {
         .is("deleted_at", null)
         .single();
 
-      if (error) {
-        console.error('useArea error:', error);
-        return null;
-      }
+      if (error) return nullIfNotFound(error, "useArea");
 
       return data;
     },

@@ -647,6 +647,7 @@
     "src/hooks/realtime/index.ts",
     "src/hooks/realtime/operations.ts",
     "src/hooks/realtime/types.ts",
+    "src/hooks/readErrors.ts",
     "src/hooks/reports/__tests__/useBusinessPerformance.test.ts",
     "src/hooks/reports/__tests__/useBusinessPerformanceGatedData.test.ts",
     "src/hooks/reports/__tests__/useOccupancyDashboard.test.ts",

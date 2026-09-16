@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { nullIfNotFound } from "@/hooks/readErrors";
 
 type Floor = Database["public"]["Tables"]["floors"]["Row"];
 type FloorInsert = Database["public"]["Tables"]["floors"]["Insert"];
@@ -25,7 +26,7 @@ export const useFloors = (buildingId?: string) => {
 
       if (error) {
         console.error("useFloors error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];
@@ -43,10 +44,7 @@ export const useFloor = (id: string) => {
         .eq("id", id)
         .single();
 
-      if (error) {
-        console.error("useFloor error:", error);
-        return null;
-      }
+      if (error) return nullIfNotFound(error, "useFloor");
 
       return data;
     },

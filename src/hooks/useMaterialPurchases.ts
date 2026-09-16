@@ -33,7 +33,7 @@ export const useMaterialPurchases = (filters: { from?: string; to?: string } = {
       const { data, error } = await q;
       if (error) {
         console.error('useMaterialPurchases error:', error);
-        return [];
+        throw error;
       }
       return (data ?? []) as unknown as MaterialPurchaseWithItems[];
     },

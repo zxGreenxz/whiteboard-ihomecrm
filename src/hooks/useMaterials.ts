@@ -27,7 +27,7 @@ export const useMaterials = (filters: MaterialFilters = {}) => {
       const { data, error } = await query;
       if (error) {
         console.error('useMaterials error:', error);
-        return [];
+        throw error;
       }
       let rows = (data ?? []) as unknown as MaterialWithCategory[];
 
@@ -59,8 +59,9 @@ export const useMaterial = (id: string | null | undefined) => {
         .eq('id', id)
         .maybeSingle();
       if (error) {
+        // maybeSingle(): 0 dòng trả data=null KHÔNG kèm lỗi → có lỗi là hỏng thật.
         console.error('useMaterial error:', error);
-        return null;
+        throw error;
       }
       return (data as unknown as MaterialWithCategory) ?? null;
     },

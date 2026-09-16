@@ -67,7 +67,9 @@ export const useMyShareholder = () => {
         .eq("auth_user_id", auth.user.id)
         .is("deleted_at", null)
         .maybeSingle();
-      if (error) return null;
+      // KHÔNG nuốt: null ở đây nghĩa "bạn không phải cổ đông" — nuốt lỗi là ẩn
+      // sạch phần chia lợi nhuận của đúng người có phần.
+      if (error) throw error;
       return (data as Shareholder) ?? null;
     },
   });
@@ -87,7 +89,7 @@ export const useMyShareBuildings = () => {
     staleTime: 5 * 60 * 1000,
     queryFn: async (): Promise<ShareBuilding[]> => {
       const { data, error } = await supabase.rpc("get_my_share_buildings");
-      if (error) return [];
+      if (error) throw error;
       return (data ?? []) as ShareBuilding[];
     },
   });

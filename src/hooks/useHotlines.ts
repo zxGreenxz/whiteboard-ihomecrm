@@ -19,7 +19,7 @@ export const useHotlines = () => {
 
       if (error) {
         console.error("useHotlines error:", error);
-        return [];
+        throw error;
       }
 
       return data || [];

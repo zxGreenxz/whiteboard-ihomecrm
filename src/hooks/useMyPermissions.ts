@@ -20,18 +20,34 @@ export type PermissionsMap = Record<string, Record<string, boolean>> & {
   __superadmin?: boolean;
 };
 
+/**
+ * Đọc quyền của caller. NÉM khi RPC lỗi — đây là điểm khác quan trọng nhất.
+ *
+ * Bản cũ trả `{}` cho mọi lỗi, mà `{}` đọc y hệt "tài khoản này không có quyền
+ * gì". Hệ quả ở `RequirePermission`: một lần RPC hỏng nhất thời (5xx, đứt mạng,
+ * JWT vừa hết hạn) đá người dùng về `/` — im lặng, không nút thử lại, và query
+ * vẫn ở trạng thái success nên không có gì để retry.
+ *
+ * `data` null mà KHÔNG lỗi vẫn là `{}`: tài khoản chưa được gán vai là một câu
+ * trả lời thật, không phải hỏng hóc.
+ */
+export const fetchMyPermissions = async (): Promise<PermissionsMap> => {
+  const { data, error } = await supabase.rpc('get_my_permissions');
+  if (error) {
+    console.error('useMyPermissions error:', error);
+    throw error;
+  }
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    return data as PermissionsMap;
+  }
+  return {};
+};
+
 export const useMyPermissions = () => {
   return useQuery<PermissionsMap>({
     queryKey: ['my-permissions'],
     staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_my_permissions');
-      if (error || !data) return {};
-      if (typeof data === 'object' && !Array.isArray(data)) {
-        return data as PermissionsMap;
-      }
-      return {};
-    },
+    queryFn: fetchMyPermissions,
   });
 };
 
