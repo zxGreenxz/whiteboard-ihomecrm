@@ -46,6 +46,7 @@
     "src/components/account/AccountOrganizationCard.tsx",
     "src/copilot/activePageContext.ts",
     "src/hooks/useCopilotPageContext.ts",
+    "src/components/ui/virtual-table.tsx",
     "src/components/customers/AdministrativeAddressPreview.tsx",
     "src/components/customers/CustomerAdministrativeAddress.tsx",
     "src/lib/customerAddressConversion.ts",
