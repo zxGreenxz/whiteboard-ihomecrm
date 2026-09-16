@@ -1,0 +1,33 @@
+{
+  "note": "Sổ của gate scripts/check-definer-body-authz.mjs. HAI danh sách, hai nghĩa khác hẳn nhau — đừng gộp.",
+  "allowNote": "ĐÃ XÉT VÀ AN TOÀN. Hàm cố ý mở cho người chưa đăng nhập / đã đăng nhập, và có hàng rào KHÁC (token chia sẻ, mã hợp đồng + chặn tần suất). Thêm vào đây là một quyết định bảo mật, không phải thao tác dọn dẹp.",
+  "chuaVaNote": "LỖ THẬT, chưa tới lượt vá. Mỗi dòng là một hàm mà người đăng nhập bất kỳ gọi được và nó đọc/ghi bảng tiền hoặc PII mà không hỏi người gọi là ai. Danh sách này chỉ được PHÉP NGẮN LẠI. Chốt lần đầu 15/09/2026 khi dựng gate (plan I2.3).",
+  "generated": "2026-09-15",
+  "allow": [
+    {
+      "function": "public.get_public_available_rooms",
+      "reason": "Trang 'Phòng trống' công khai. Hàng rào là TOKEN CHIA SẺ: thân hàm tra public_room_share_tokens theo p_token và RETURN NULL khi token không tồn tại hoặc revoked = true. Không có auth.uid() là ĐÚNG — người xem chưa đăng nhập. Cấp cho anon + authenticated có chủ đích, đã nằm trong allowlist của check-definer-acl."
+    },
+    {
+      "function": "public.get_public_latest_invoice_by_code",
+      "reason": "Trang tra hoá đơn bằng MÃ HỢP ĐỒNG cho khách thuê chưa có tài khoản. Hàng rào là mã bí mật cộng chặn tần suất theo IP (app_private.public_code_probe, 60 mã sai mỗi 10 phút rồi RAISE rate_limited — migration 20260808130000/20260808140000). Cùng lý do với dòng trên: đây là đường cố ý mở."
+    }
+  ],
+  "chuaVa": [
+    {
+      "function": "public.get_salary_v5_config",
+      "owner": "plan I1.2 (rà soát 15/09/2026)",
+      "reason": "Lấy rule lương của SUPER ADMIN ĐẦU TIÊN (ORDER BY created_at LIMIT 1) rồi trả cho bất kỳ ai đăng nhập. Hai lỗi trong một: mọi công ty tính lương bằng hằng số của công ty THẬT, và ai cũng đọc được bộ hằng số đó. I1 khoá theo organization_id + thêm p_org. KHÔNG vá ở I2 vì đụng V5.1 lương."
+    },
+    {
+      "function": "public.reverse_invoice_payment_v3",
+      "owner": "chưa giao — cần chủ quyết (đường tiền)",
+      "reason": "Đảo một lần thu tiền: đọc/ghi payments, invoices, income_expenses, accounts. Thân hàm KHÔNG có một phép hỏi danh tính nào — không current_uid_v1, không resolve_finance_actor_v2, không authorize_tenant_action_v3. Grant cho authenticated ở 20260721100000:2428. Hiện KHÔNG có call site nào trong src/ hay supabase/functions/ (đo 15/09/2026), nên đường vá rẻ nhất là REVOKE authenticated; nhưng đó là đường tiền và bản _legacy còn được nhắc trong test hồi quy, nên phải có người đọc kỹ trước khi động."
+    },
+    {
+      "function": "public.get_public_latest_invoice_by_room",
+      "owner": "chưa giao — cần chủ quyết",
+      "reason": "Trả hoá đơn + họ tên khách thuê cho BẤT KỲ room_id nào, không hỏi người gọi là ai. Đây chính là hàm của án lệ 07/08/2026 (xem đầu check-definer-acl.mjs): quyền của anon đã bị thu hồi rồi cấp lại rồi thu hồi lần nữa. Vế anon nay đã đóng và có denylist canh; vế authenticated thì CHƯA — không migration nào REVOKE khỏi authenticated sau lần cấp ở 20260515000001:129. Không còn call site nào trong src/ (đo 15/09/2026)."
+    }
+  ]
+}
