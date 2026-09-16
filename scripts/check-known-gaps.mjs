@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 // Gate: khoảng trống đã biết phải có ngày hết hạn, và quá hạn thì phải bị nhìn thấy.
 //
-// Vì sao cần: `continue-on-error: true` và các suite "chỉ chạy được trên Windows"
-// đều là quyết định hợp lý tại thời điểm đó. Không có ngày hết hạn thì chúng
-// thành vĩnh viễn, và sau vài tháng không ai phân biệt được đâu là quyết định
-// còn đâu là thứ bị bỏ quên.
+// Vì sao cần: một chỗ CI cố ý KHÔNG chặn (`continue-on-error: true`, `|| true`,
+// `::warning::`, suite "chỉ chạy được trên Windows") luôn là quyết định hợp lý tại
+// thời điểm đó. Không có ngày hết hạn thì nó thành vĩnh viễn, và sau vài tháng
+// không ai phân biệt được đâu là quyết định còn đâu là thứ bị bỏ quên.
+//
+// Đo 15/09/2026: workflow của repo hiện KHÔNG còn chỗ non-gating nào — gate này
+// không mô tả một khoản nợ đang có, nó tồn tại để không ai thêm lén một cái mới.
+// Nó vẫn phải chạy: thứ nó canh là chỗ CHƯA có, và chỗ chưa có thì không ai nhớ.
 //
 //   node scripts/check-known-gaps.mjs            # cảnh báo khi quá hạn
 //   node scripts/check-known-gaps.mjs --strict   # exit 1 khi quá hạn

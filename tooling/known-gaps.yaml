@@ -16,9 +16,10 @@ gaps:
       (1) job `production-promotion` chạy trên MỌI push vào nhánh `production`;
       (2) `scripts/check-production-promotion.mjs` — commit chỉ tồn tại trên production
           (chưa từng qua CI của main) làm job đỏ;
-      (3) `scripts/promote-to-production.mjs` — đọc kết luận CI ở mức BƯỚC, nên một bước
-          fail bị `continue-on-error` nuốt (job vẫn success, trang Checks vẫn xanh) vẫn bị
-          chặn; thiếu token thì exit 3 chứ không phải xanh.
+      (3) `scripts/promote-to-production.mjs` — đọc kết luận CI ở mức BƯỚC. Đo 15/09/2026:
+          repo hiện KHÔNG còn `continue-on-error` nào, nên đây không phải mô tả hiện trạng
+          mà là lớp phòng thân — nếu sau này có ai thêm một cái, job vẫn success và trang
+          Checks vẫn xanh, nhưng promote vẫn bị chặn; thiếu token thì exit 3 chứ không phải xanh.
       Kêu sau vẫn hơn không biết: nó biến một sự kiện vô hình thành một dòng đỏ có người đọc.
 
       Script kiểm control đọc metadata nhánh để xác minh absence khi protection API bị 403.
@@ -226,3 +227,37 @@ gaps:
       71 ca đo thật. Nếu hạn mức ngày của DEMO là quá nhỏ cho một lượt eval đầy đủ,
       cân nhắc nâng riêng hạn mức đó cho org DEMO (quyết định chủ dự án, không tự
       ý đổi governance cap).
+
+  - id: v5-recompute-streak-replay-moi-tick
+    where: >
+      public.v5_recompute_streak (supabase/migrations/20260901173727_va_organization_id_null_luong_va_template.sql) ·
+      public.v5_recompute_streak_legacy (supabase/migrations/20260826150000_v5_1_thang_2tr5_ap_ca_t7_t8.sql)
+    expires_at: 2026-12-31
+    why: >
+      Rà soát 15/09/2026 (plan con H3, mục 5) ghi nhận hai điều ở hàm tính streak lương V5,
+      và chủ dự án quyết ĐỂ SAU — mục này tồn tại để "để sau" có hạn thay vì tan biến.
+
+      (1) REPLAY TOÀN KỲ MỖI TICK. Hàm chạy `WHILE v_d <= v_end` từ ngày 1 của kỳ tới hôm
+      nay, mỗi lần tick chuyên cần đều duyệt lại từ đầu: đọc `salary_attendance_day` và
+      `salary_holidays` cho từng ngày, dựng lại khiên/mốc từ số không. Chi phí tăng tuyến
+      tính theo ngày trong tháng — cuối tháng đắt gấp ~30 lần đầu tháng cho cùng một cú bấm.
+      Nó ĐÚNG về kết quả (và replay là cách rẻ nhất để tự chữa khi sổ ngày công bị sửa lùi),
+      chỉ là không materialize trạng thái tăng dần.
+
+      (2) `v_sunday` — lớp khiên thứ 3, cộng `v_sun_pt` (config `streak_v5.sunday_point`,
+      mặc định 0.5) mỗi Chủ nhật được tick — KHÔNG có trần, trong khi lớp 1 có trần
+      (`v_free_cap` = `streak_v5.shields_free`, mặc định 1). Tháng 5 Chủ nhật tick đủ là
+      2.5 khiên sinh ra từ một quầy không ai chặn được bằng config. Chưa quan sát thấy hệ
+      quả sai tiền trên sổ thật, nhưng một quầy không trần nằm giữa hệ ba lớp có trần là
+      lệch thiết kế, không phải sự vắng mặt có chủ ý đã ghi ở đâu đó.
+
+      Vì sao chưa sửa ngay: cả hai đều đụng đường TIỀN LƯƠNG đang chạy thật, và một lần
+      materialize sai làm lệch số đã chốt của kỳ trước. Nó không phải P0 (không sai số,
+      chỉ chậm), nên xếp sau các mục đụng tiền của cùng đợt rà.
+    exit_condition: >
+      ĐÓNG khi một trong hai điều xảy ra và có bằng chứng: (a) đo thật thời gian
+      `v5_recompute_streak` ở ngày 28–31 của kỳ trên org đông người nhất cho thấy nó vẫn
+      dưới ngưỡng chấp nhận được ⇒ ghi số đo vào đây rồi đóng, replay giữ nguyên; hoặc
+      (b) trạng thái streak được materialize (bảng/cột tăng dần + đường replay đầy đủ giữ
+      lại để tự chữa) VÀ `v_sunday` có trần tường minh, kèm bài so ngang khẳng định mọi kỳ
+      đã chốt cho ra đúng con số cũ. Không đóng chỉ vì "chưa thấy ai kêu chậm".

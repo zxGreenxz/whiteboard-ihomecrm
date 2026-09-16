@@ -115,3 +115,22 @@ scripts/.backfill-deposit-plan.json
 # Reproducible, hash-verified self-hosted OpenCV artifacts from pinned npm packages
 public/qr-assets/
 public/ocr-assets/
+
+# ─── Rác ở GỐC checkout do công cụ thiết kế/ảnh chụp/scratch để lại (15/09/2026) ───
+#
+# Đo 15/09/2026 trên checkout chính: 14 mục rác nằm ngay ở gốc repo, lẫn trong
+# `git status` cùng với việc thật. Hại không phải ở dung lượng mà ở chỗ chúng làm
+# `git status` mất khả năng đọc — và một cây bẩn thường trực là môi trường lý
+# tưởng cho `git add -A` nhỡ tay (án lệ đã ghi ở mục .env phía trên).
+#
+# Neo `/` ở đầu = CHỈ ở gốc: ảnh trong docs/ và public/ vẫn phải commit bình thường.
+*.tmp.json
+# Canvas của Claude Design (draft + bản export) — sinh ra để xem rồi bỏ.
+*.dc.html
+/*.png
+/*-snapshot.md
+/chitiethoadon/
+/ch-nh-s-a-giao-di-n-h-p-ng/
+
+# Cấu hình cá nhân của Codex CLI (cùng họ với CLAUDE.local.md — có thể chứa key).
+.codex/
