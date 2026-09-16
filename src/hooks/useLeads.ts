@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 
@@ -35,37 +36,43 @@ export const useLeads = (filters?: {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      let query = supabase
-        .from("leads")
-        .select(`
-          *,
-          building:buildings!leads_building_id_fkey (
-            id, name
-          ),
-          room:rooms!leads_room_id_fkey (
-            id, name, code,
-            building:buildings!rooms_building_id_fkey (
+      // PHÂN TRANG: kanban khách hẹn đọc toàn bộ bảng (bộ lọc status/source là
+      // tuỳ chọn). Quá 1000 khách hẹn thì cột kanban thiếu thẻ mà không báo gì.
+      // `created_at` không duy nhất → tiebreaker `id`.
+      const rows = await fetchAllRows<LeadWithRelations>((from, to) => {
+        let query = supabase
+          .from("leads")
+          .select(`
+            *,
+            building:buildings!leads_building_id_fkey (
               id, name
+            ),
+            room:rooms!leads_room_id_fkey (
+              id, name, code,
+              building:buildings!rooms_building_id_fkey (
+                id, name
+              )
             )
-          )
-        `)
-        .order("created_at", { ascending: false });
+          `)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
 
-      if (filters?.status) {
-        query = query.eq("status", filters.status as any);
-      }
-      if (filters?.source) {
-        query = query.eq("source", filters.source as any);
-      }
+        if (filters?.status) {
+          query = query.eq("status", filters.status as any);
+        }
+        if (filters?.source) {
+          query = query.eq("source", filters.source as any);
+        }
 
-      const { data, error } = await query;
+        return query.range(from, to);
+      }, { label: "leads" });
 
-      if (error) {
+      if (rows === null) {
         toast.error("Không thể tải danh sách khách hẹn");
-        throw error;
+        throw new Error("Không tải được danh sách khách hẹn. Hãy thử lại.");
       }
 
-      return (data as LeadWithRelations[]) || [];
+      return rows;
     },
   });
 };

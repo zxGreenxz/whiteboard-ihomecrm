@@ -129,9 +129,9 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
   const createSaleBonus = useCreateSaleBonusFromDeposit();
   const setHoldTerms = useSetReservationHoldTerms();
   const createTenant = useCreateTenant();
-  const { data: tenants = [] } = useTenantsLegacy();
-  const { data: rooms = [] } = useRooms();
-  const { data: accounts = [] } = useAccounts();
+  const { data: tenants = [] } = useTenantsLegacy({ enabled: open });
+  const { data: rooms = [] } = useRooms(undefined, { enabled: open });
+  const { data: accounts = [] } = useAccounts({ enabled: open });
 
   useEffect(() => {
     let active = true;

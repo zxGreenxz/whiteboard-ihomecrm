@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import type { RoomWithRelations } from "@/types/room";
 import { compareBuildingThenRoom } from "@/lib/roomSort";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
 
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
@@ -19,32 +20,40 @@ export const useRooms = (
     enabled: options?.enabled ?? true,
     queryKey: buildingId ? ["rooms", "building", buildingId] : ["rooms"],
     queryFn: async () => {
-      let query = supabase
-        .from("rooms")
-        .select(`
-          *,
-          building:buildings(id, name, code)
-        `)
-        .is("deleted_at", null)
-        .order("building_id", { ascending: true })
-        .order("floor", { ascending: true })
-        .order("name", { ascending: true });
+      // PHÂN TRANG: key ["rooms"] được gọi org-wide (5 dialog dùng chung). Một
+      // request trần chỉ lấy được 1000 dòng và PostgREST KHÔNG báo gì —
+      // portfolio >1000 phòng thì dropdown thiếu phòng mà không ai biết.
+      // `id` là tiebreaker duy nhất, bắt buộc để ranh giới trang không sót/trùng
+      // (giao kèo ở đầu src/lib/supabaseFetchAll.ts).
+      const rows = await fetchAllRows((from, to) => {
+        let query = supabase
+          .from("rooms")
+          .select(`
+            *,
+            building:buildings(id, name, code)
+          `)
+          .is("deleted_at", null)
+          .order("building_id", { ascending: true })
+          .order("floor", { ascending: true })
+          .order("name", { ascending: true })
+          .order("id", { ascending: true });
 
-      if (buildingId) {
-        query = query.eq("building_id", buildingId);
-      }
+        if (buildingId) {
+          query = query.eq("building_id", buildingId);
+        }
 
-      const { data, error } = await query;
+        return query.range(from, to);
+      }, { label: buildingId ? "rooms-building" : "rooms" });
 
-      if (error) {
+      if (rows === null) {
         // KHÔNG nuốt lỗi: throw để vào isError + retry (trước trả [] làm dropdown rỗng âm thầm).
-        console.error('useRooms error:', error);
-        throw error;
+        // fetchAllRows đã console.error chi tiết lỗi PostgREST.
+        throw new Error("Không tải được danh sách căn hộ. Hãy thử lại.");
       }
 
       // Sắp xếp theo toà nhà rồi tên phòng (MB* → G* → L* → 1,2,3,4...) — áp dụng
       // cho mọi nơi dùng useRooms: dropdown chọn phòng, sơ đồ toà nhà, danh sách...
-      const rooms = (data || []) as unknown as RoomWithRelations[];
+      const rooms = rows as unknown as RoomWithRelations[];
       return [...rooms].sort((a, b) =>
         compareBuildingThenRoom(
           a.building?.name ?? "",

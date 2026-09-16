@@ -52,13 +52,13 @@ export function TransferRoomDialog({
   const transferRoom = useTransferRoom();
 
   // Data for cascading dropdowns
-  const { data: buildingsData } = useBuildings();
+  const { data: buildingsData } = useBuildings({ enabled: open });
   const buildings = useMemo(
     () => (Array.isArray(buildingsData) ? buildingsData : []),
     [buildingsData]
   );
 
-  const { data: roomsData } = useRooms();
+  const { data: roomsData } = useRooms(undefined, { enabled: open });
   const allRooms = useMemo(
     () => (Array.isArray(roomsData) ? roomsData : []),
     [roomsData]

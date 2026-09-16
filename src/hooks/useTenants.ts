@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import type { PaginatedData } from "@/hooks/usePagination";
@@ -29,54 +30,87 @@ export const useTenants = (
   return useQuery({
     queryKey: ["tenants", filters, pagination],
     queryFn: async (): Promise<PaginatedData<Tenant>> => {
-      let query = supabase
-        .from("tenants")
-        .select("*", { count: 'exact' })
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+      // `created_at` không duy nhất → tiebreaker `id`, bắt buộc cho cả hai nhánh:
+      // phân trang theo trang (trang 2 không được lặp dòng của trang 1) lẫn
+      // fetch-all (ranh giới trang không sót/trùng).
+      //
+      // `count: 'exact'` CHỈ xin ở nhánh phân trang. Xin nó ở mọi trang của
+      // nhánh fetch-all nghĩa là chạy lại một COUNT(*) trên toàn bộ tập lọc cho
+      // từng trang — phần đắt nhất của câu lệnh, lặp lại mà không dùng đến.
+      const buildQuery = (from: number, to: number, kemCount: boolean) => {
+        let query = supabase
+          .from("tenants")
+          .select("*", kemCount ? { count: 'exact' } : undefined)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
 
-      if (filters?.status) {
-        query = query.eq('status', filters.status as any);
-      }
+        if (filters?.status) {
+          query = query.eq('status', filters.status as any);
+        }
 
-      // Apply pagination if provided
+        return query.range(from, to);
+      };
+
+      // Caller có phân trang → giữ nguyên một request đúng cửa sổ + count exact.
       if (pagination?.page && pagination?.pageSize) {
         const offset = (pagination.page - 1) * pagination.pageSize;
-        query = query.range(offset, offset + pagination.pageSize - 1);
+        const { data, error, count } = await buildQuery(offset, offset + pagination.pageSize - 1, true);
+
+        if (error) {
+          console.error('useTenants error:', error);
+          return { data: [], count: 0 };
+        }
+
+        return { data: data || [], count: count || 0 };
       }
 
-      const { data, error, count } = await query;
+      // Không phân trang → lấy ĐỦ. Trước đây request trần bị PostgREST cắt ở
+      // 1000 khách mà `count` vẫn trả tổng thật, nên giao diện hiện "1.2xx khách"
+      // bên trên một danh sách chỉ có 1000 dòng — lệch mà không có lỗi nào.
+      const rows = await fetchAllRows<Tenant>((from, to) => buildQuery(from, to, false), { label: "tenants" });
 
-      if (error) {
-        console.error('useTenants error:', error);
+      if (rows === null) {
+        // TODO(plan C): đổi thành throw — nuốt lỗi ở đây thuộc phần việc của
+        // plan con C (§4); D chỉ đụng phân trang. fetchAllRows đã console.error.
         return { data: [], count: 0 };
       }
 
-      return {
-        data: data || [],
-        count: count || 0
-      };
+      return { data: rows, count: rows.length };
     },
   });
 };
 
 // Legacy hook for backwards compatibility (returns array directly)
-export const useTenantsLegacy = () => {
+// options.enabled: dialog mounted-sẵn (CreateDepositDialog) gate fetch khi đóng.
+export const useTenantsLegacy = (options?: { enabled?: boolean }) => {
   return useQuery({
+    enabled: options?.enabled ?? true,
     queryKey: ["tenants-legacy"],
     queryFn: async (): Promise<Tenant[]> => {
-      const { data, error } = await supabase
-        .from("tenants")
-        .select("*")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+      const rows = await fetchAllRows<Tenant>((from, to) =>
+        supabase
+          .from("tenants")
+          .select("*")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+        { label: "tenants-legacy" },
+      );
 
+<<<<<<< HEAD
       if (error) {
         console.error('useTenantsLegacy error:', error);
         throw error;
+=======
+      if (rows === null) {
+        // TODO(plan C): đổi thành throw — xem chú thích ở useTenants.
+        return [];
+>>>>>>> rasoat/D
       }
 
-      return data || [];
+      return rows;
     },
   });
 };

@@ -34,8 +34,9 @@ interface AssetMovementDialogProps {
 
 export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogProps) {
   const createMovement = useCreateAssetMovement();
+  // CHƯA GATE: useAssets chưa nhận `enabled` (hook thuộc plan con E).
   const { data: assets = [] } = useAssets();
-  const { data: rooms = [] } = useRooms();
+  const { data: rooms = [] } = useRooms(undefined, { enabled: open });
 
   const form = useForm<MovementFormValues>({
     resolver: zodResolver(movementSchema),

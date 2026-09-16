@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import { toast } from 'sonner';
 import type { Material, MaterialWithCategory } from '@/types/material';
 import type { MaterialFormValues } from '@/lib/materialValidation';
@@ -16,20 +17,28 @@ export const useMaterials = (filters: MaterialFilters = {}) => {
   return useQuery({
     queryKey: KEY_LIST(filters),
     queryFn: async (): Promise<MaterialWithCategory[]> => {
-      let query = supabase
-        .from('materials' as any)
-        .select('*, category:material_categories(*)')
-        .is('deleted_at', null)
-        .order('name', { ascending: true });
+      // PHÂN TRANG: lọc `search`/`onlyLowStock` chạy CLIENT-SIDE bên dưới, nên
+      // dòng bị PostgREST cắt ở mốc 1000 không bao giờ lọt vào kết quả tìm kiếm —
+      // gõ đúng tên vật tư mà "không tìm thấy". `name` không duy nhất → tiebreaker `id`.
+      const all = await fetchAllRows((from, to) => {
+        let query = supabase
+          .from('materials' as any)
+          .select('*, category:material_categories(*)')
+          .is('deleted_at', null)
+          .order('name', { ascending: true })
+          .order('id', { ascending: true });
 
-      if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
+        if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
 
-      const { data, error } = await query;
-      if (error) {
-        console.error('useMaterials error:', error);
-        throw error;
+        return query.range(from, to);
+      }, { label: 'materials' });
+
+      if (all === null) {
+        // fetchAllRows trả null = lỗi query (đã console.error). Ném để vào isError,
+        // không biến lỗi thành danh sách rỗng (Contract §14, plan C).
+        throw new Error('useMaterials: không tải được dữ liệu');
       }
-      let rows = (data ?? []) as unknown as MaterialWithCategory[];
+      let rows = all as unknown as MaterialWithCategory[];
 
       if (filters.search?.trim()) {
         const q = filters.search.trim().toLowerCase();

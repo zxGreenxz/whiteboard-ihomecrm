@@ -141,7 +141,26 @@ const CONTRACT_STATUS_VI: Record<string, string> = {
   DRAFT: 'Nháp',
 };
 
-const IncomeExpenseForm = ({
+/**
+ * VỎ NGOÀI — cắt điện khi dialog đang đóng.
+ *
+ * /thu-chi (và bản mobile) mount SẴN ba form: tạo mới, sửa, tạo bản sao. Trước
+ * bản vá này thân form vẫn chạy đủ hook dù `open === false`, trong đó
+ * `useContractsLegacy(undefined)` quét TOÀN BỘ bảng contracts (`select *` +
+ * `count: exact`, không range) — ba lần, ngay khi vừa vào trang.
+ *
+ * Early-return phải nằm ở đây, TRƯỚC mọi hook, chứ không phải giữa thân
+ * `IncomeExpenseFormInner`: React đòi số hook gọi ra không đổi giữa các lần
+ * render, nên "return sớm giữa chừng" là lỗi. Tách hai component là cách giữ
+ * đúng luật đó. Hệ quả kèm theo: đóng dialog là unmount sạch state, khớp với
+ * thiết kế sẵn có (mọi effect đổ dữ liệu đều đã `if (!open) return`).
+ */
+const IncomeExpenseForm = (props: IncomeExpenseFormProps) => {
+  if (!props.open) return null;
+  return <IncomeExpenseFormInner {...props} />;
+};
+
+const IncomeExpenseFormInner = ({
   open,
   onOpenChange,
   voucher,
@@ -195,8 +214,12 @@ const IncomeExpenseForm = ({
   const { data: accounts = [] } = useAccounts();
   const { data: myAccess } = useMyCashbookAccessV2();
   // Danh sách HĐ trên phòng đã chọn — để link phiếu cọc đúng HĐ.
+  // `enabled` là bắt buộc, không phải tối ưu vặt: chưa chọn phòng thì filter
+  // rỗng, và query rỗng của hook này là `select *` TOÀN BỘ contracts kèm
+  // `count: exact`, không range.
   const { data: roomContracts = [] } = useContractsLegacy(
     selectedRoomId ? { room_id: selectedRoomId } : undefined,
+    { enabled: open && !!selectedRoomId },
   );
   // Lookup is_deposit cho từng type_id → biết phiếu có cọc hay không.
   const { data: incomeTypes = [] } = useIncomeExpenseTypes('income');

@@ -41,8 +41,8 @@ interface CreateAssetDialogProps {
 
 export function CreateAssetDialog({ open, onOpenChange }: CreateAssetDialogProps) {
   const createAsset = useCreateAsset();
-  const { data: buildings = [] } = useBuildings();
-  const { data: rooms = [] } = useRooms();
+  const { data: buildings = [] } = useBuildings({ enabled: open });
+  const { data: rooms = [] } = useRooms(undefined, { enabled: open });
 
   const { data: categories = [] } = useQuery({
     queryKey: ["asset-categories"],
