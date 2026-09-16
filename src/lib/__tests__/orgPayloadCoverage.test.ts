@@ -31,7 +31,6 @@ const BANG = [
  * nhánh đó gộp xong. Mỗi dòng phải có lý do; không phải danh sách cho qua.
  */
 const MIEN_TRU: ReadonlyArray<{ file: string; ly_do: string }> = [
-  { file: "src/hooks/useAssets.ts", ly_do: "plan rà soát khác đang sửa file này cùng đợt; bọc withOrg ở nhánh đó" },
 ];
 
 const SRC = join(process.cwd(), "src");

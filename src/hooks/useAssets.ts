@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type Asset = Database["public"]["Tables"]["assets"]["Row"];
 type AssetInsert = Database["public"]["Tables"]["assets"]["Insert"];
@@ -228,6 +230,10 @@ export const useAsset = (id: string) => {
 // Create asset
 export const useCreateAsset = () => {
   const queryClient = useQueryClient();
+  // `assets` nằm trong 33 bảng chuyển sang trigger autofill FAIL-CLOSED
+  // (migration 20260915144656): không suy được tổ chức thì INSERT nổ 23502
+  // thay vì rơi về hằng org THẬT. Client phải tự khai.
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (data: AssetInsert) => {
@@ -236,10 +242,10 @@ export const useCreateAsset = () => {
 
       const { data: asset, error } = await supabase
         .from("assets")
-        .insert({
+        .insert(withOrg({
           ...data,
           user_id: user.id,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 
