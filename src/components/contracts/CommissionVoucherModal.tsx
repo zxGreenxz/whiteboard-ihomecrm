@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -78,9 +78,12 @@ export function CommissionVoucherModal({
   contractId,
   onOpenChange,
 }: CommissionVoucherModalProps) {
-  const { data: prefill, isLoading } = useCommissionPrefill(
-    open ? contractId : null
-  );
+  const {
+    data: prefill,
+    isError: prefillFailed,
+    error: prefillError,
+    refetch: refetchPrefill,
+  } = useCommissionPrefill(open ? contractId : null);
   const { data: accounts = [] } = useAccounts();
   const { data: authUser } = useAuth();
   const createVoucher = useCreateCommissionVoucher();
@@ -125,13 +128,50 @@ export function CommissionVoucherModal({
   const [saleAccountId, setSaleAccountId] = useState<string>("");
   const [saleAttachments, setSaleAttachments] = useState<string[]>([]);
 
-  // Reset & prefill khi modal mở / dữ liệu sẵn sàng
+  /**
+   * Sổ quỹ mặc định = sổ CÙNG TÊN với toà nhà, chọn ngay trên danh sách dropdown
+   * đang hiển thị.
+   *
+   * Trước 15/09/2026 việc này là một round-trip `accounts` chạy tuần tự sau
+   * contracts bên trong prefill. Hai cái giá: prefill chậm gấp đôi (mà nó chạy
+   * đúng lúc vừa tạo HĐ xong, giữa cơn bão refetch), và sổ nó chọn có thể KHÔNG
+   * nằm trong dropdown này — dropdown lọc sổ DEMO còn truy vấn kia thì không —
+   * nên ô sổ quỹ hiện trống mà không ai hiểu vì sao.
+   */
+  const defaultAccountId = useMemo(() => {
+    const ten = prefill?.building_name?.trim().toLowerCase();
+    if (!ten) return "";
+    const khop = accounts.filter((a) => a.name?.trim().toLowerCase() === ten);
+    return (khop.find((a) => a.is_default) ?? khop[0])?.id ?? "";
+  }, [accounts, prefill?.building_name]);
+
+  /**
+   * Mồi form ĐÚNG MỘT LẦN cho mỗi hợp đồng.
+   *
+   * Bản cũ phụ thuộc identity của `prefill`, nên mỗi lần react-query trả về một
+   * object mới — kể cả cùng dữ liệu y hệt — là toàn bộ ô người dùng đang gõ bị
+   * đặt về rỗng. Đó chính là "form tự xoá" của bug 15/09/2026. Người dùng gõ tên
+   * môi giới, hub realtime đánh thức prefill 1–2,5 giây sau, và cái họ vừa gõ
+   * biến mất; số tiền còn "nhảy về" lúc rời ô vì CurrencyInput bỏ qua đồng bộ
+   * khi đang focus.
+   *
+   * Neo theo `contract_id` thay vì theo object: refetch bao nhiêu lần cũng không
+   * đụng tới thứ người dùng đã nhập. Đóng modal thì quên, để lần mở sau mồi lại.
+   */
+  const seededForContractId = useRef<string | null>(null);
+  const seededAccountForContractId = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      seededForContractId.current = null;
+      seededAccountForContractId.current = null;
+      return;
+    }
     if (!prefill) return;
+    if (seededForContractId.current === prefill.contract_id) return;
+    seededForContractId.current = prefill.contract_id;
 
     setVoucherDate(prefill.signed_date);
-    setAccountId(prefill.default_account_id ?? "");
 
     if (prefill.matched_tier) {
       const amount =
@@ -151,9 +191,22 @@ export function CommissionVoucherModal({
     setSaleAccountNumber("");
     setSaleBank("");
     setSaleRecipient("");
-    setSaleAccountId(prefill.default_account_id ?? "");
     setSaleAttachments([]);
   }, [open, prefill]);
+
+  /**
+   * Sổ quỹ mồi riêng một nhịp: danh sách sổ là truy vấn KHÁC prefill nên có thể
+   * về sau. Gộp chung effect trên thì lần seed duy nhất rơi vào lúc danh sách
+   * còn rỗng và ô sổ quỹ ở lại trống mãi. Vẫn chỉ mồi một lần cho mỗi hợp đồng,
+   * nên sổ người dùng tự chọn không bị đặt lại.
+   */
+  useEffect(() => {
+    if (!open || !prefill || !defaultAccountId) return;
+    if (seededAccountForContractId.current === prefill.contract_id) return;
+    seededAccountForContractId.current = prefill.contract_id;
+    setAccountId((cur) => (cur === "" ? defaultAccountId : cur));
+    setSaleAccountId((cur) => (cur === "" ? defaultAccountId : cur));
+  }, [open, prefill, defaultAccountId]);
 
   const tierLabel = useMemo(() => {
     if (!prefill?.matched_tier) return null;
@@ -277,7 +330,24 @@ export function CommissionVoucherModal({
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-180px)] px-6 pb-2">
-          {isLoading || !prefill ? (
+          {prefillFailed ? (
+            /* Lỗi phải NHÌN THẤY được và phải có đường ra. Bản cũ nuốt lỗi rồi
+               hiện mãi dòng "Đang tải..." — người dùng không biết chuyện gì, chờ
+               bao lâu cũng vậy, và nút Tạo phiếu disable vĩnh viễn. */
+            <div className="py-8 text-center text-sm space-y-3">
+              <p className="text-destructive">
+                Không tải được thông tin hợp đồng.
+              </p>
+              <p className="text-muted-foreground">
+                {prefillError instanceof Error
+                  ? prefillError.message
+                  : "Lỗi không xác định."}
+              </p>
+              <Button type="button" variant="outline" onClick={() => void refetchPrefill()}>
+                Tải lại
+              </Button>
+            </div>
+          ) : !prefill ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               Đang tải thông tin hợp đồng...
             </div>
@@ -374,7 +444,7 @@ export function CommissionVoucherModal({
                         ))}
                       </SelectContent>
                     </Select>
-                    {prefill.default_account_id && (
+                    {defaultAccountId && (
                       <p className="text-xs text-muted-foreground">
                         Mặc định: sổ quỹ cùng tên với tòa nhà.
                       </p>
@@ -566,11 +636,14 @@ export function CommissionVoucherModal({
         </ScrollArea>
 
         <DialogFooter className="px-6 pb-6 pt-2 gap-2">
+          {/* Đường ra LUÔN mở. Phiếu hoa hồng là bước tuỳ chọn sau khi hợp đồng
+              đã tạo xong; khoá nút này lại là nhốt người dùng trong một hộp thoại
+              vì một truy vấn phụ hỏng. Bấm giữa lúc đang tạo phiếu cũng không mất
+              gì: mutation vẫn chạy tới nơi và tự báo kết quả bằng toast. */}
           <Button
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={isPending}
           >
             Bỏ qua
           </Button>
