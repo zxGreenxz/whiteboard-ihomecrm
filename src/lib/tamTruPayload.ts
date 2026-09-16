@@ -9,6 +9,10 @@ export interface TamTruPayload {
   version: 1;
   createdAt: string;
   customerId: string;
+  /** Đủ để ghi sổ hồ sơ sau khi nộp mà không cần mở lại chi tiết khách. */
+  buildingId?: string;
+  organizationId?: string;
+  contractId?: string;
   buildingName: string;
   roomNumber: string;
   receive: { provinceName: string; wardName: string };
@@ -112,6 +116,10 @@ export function buildTamTruPayload(input: {
   customer: TamTruCustomerInput;
   building: TamTruBuildingInput;
   roomNumber: string;
+  /** Khoá để ghi sổ hồ sơ sau khi nộp; thiếu thì vẫn nộp được, chỉ là phải ghi mã tay. */
+  buildingId?: string;
+  organizationId?: string;
+  contractId?: string;
   durationMonths: 12 | 24;
   /** Ngày ký hợp đồng ở nhờ (đọc từ ảnh) — dùng làm ngày bắt đầu tạm trú. */
   tempResidentFrom?: string | null;
@@ -144,6 +152,9 @@ export function buildTamTruPayload(input: {
     version: 1,
     createdAt: now.toISOString(),
     customerId: customer.id,
+    ...(input.buildingId ? { buildingId: input.buildingId } : {}),
+    ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+    ...(input.contractId ? { contractId: input.contractId } : {}),
     buildingName: building.name,
     roomNumber: input.roomNumber,
     receive: { provinceName: normalizeProvinceName(building.province), wardName },

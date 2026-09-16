@@ -9,7 +9,7 @@ import { canUse } from '@/lib/permissionPages';
 import { loadCT01Tenancies, type CT01Tenancy } from '@/lib/ct01DownloadService';
 import { useBuildingOwnershipFiles, useCustomerDossierFiles, useDossierFileMutations } from '@/hooks/useResidenceDossierFiles';
 import { useLeaseTermOcr } from '@/hooks/useLeaseTermOcr';
-import { useCustomerRegistrations, useGhiHoSoTamTru, useNhanKetQuaNop } from '@/hooks/useResidenceRegistrations';
+import { useCustomerRegistrations, useGhiHoSoTamTru } from '@/hooks/useResidenceRegistrations';
 import { congThang, ngayHopLe, type HanHopDong } from '@/lib/residenceLeaseTerm';
 import type { ResidenceDossierFile } from '@/lib/residenceDossierFiles';
 import type { CT01Customer } from '@/lib/ct01Document';
@@ -93,13 +93,14 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
   }, [files, tenancy?.contractId]);
   const hopDong = useLeaseTermOcr(leaseFile, allowed);
 
-  // Sổ hồ sơ đã nộp: extension giữ mã sau khi cổng nhận, CRM lấy về ghi vào đây.
+  // Sổ hồ sơ đã nộp. Việc LẤY mã về do TamTruKetQuaSync ở tầng app lo (ghi ngay
+  // khi extension gõ cửa, không cần màn này đang mở); ở đây chỉ hiển thị và cho
+  // dán tay mã của những lượt nộp extension không chứng kiến.
   const dangKy = useCustomerRegistrations(allowed ? customer.id : undefined);
   const soDangKy = tenancy ? {
     customerId: customer.id, buildingId: tenancy.building.id,
     organizationId: tenancy.building.organization_id ?? '', contractId: tenancy.contractId,
   } : null;
-  useNhanKetQuaNop(soDangKy);
   const ghiMa = useGhiHoSoTamTru(customer.id);
 
   // Số tháng: lấy lại từ hạn đã lưu trên ảnh (chủ chốt lần trước), mặc định 24.

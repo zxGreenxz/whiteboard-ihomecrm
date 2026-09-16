@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 import { NotificationsRealtime } from "@/hooks/useNotifications";
+import { TamTruKetQuaSync } from "@/hooks/useTamTruKetQuaSync";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import { AuthCacheSync } from "./AuthCacheSync";
 import { QueryProvider } from "./QueryProvider";
@@ -55,6 +56,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
           {/* Hub realtime nghiệp vụ: invalidate + hâm cache prefetch khi
               invoices/income_expenses/contracts/jobs/customers đổi. */}
           <RealtimeDataSync />
+          {/* Nghe extension iHome Tạm trú báo "cổng vừa nhận hồ sơ" rồi ghi mã
+              vào sổ ngay, kể cả khi tab CRM đang ở nền. */}
+          <TamTruKetQuaSync />
           {/* Kênh realtime RIÊNG cho hộp thư: hub trên không khai được filter nên
               mỗi thông báo của một người sẽ đánh thức tất cả. Kênh này lọc
               user_id=eq.<uid> ngay ở server. */}

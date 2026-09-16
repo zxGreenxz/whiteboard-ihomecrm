@@ -44,6 +44,8 @@ export default function TamTruDvcButton({
       })));
       const payload = buildTamTruPayload({
         customer, building: tenancy.building, roomNumber: tenancy.roomNumber,
+        buildingId: tenancy.building.id, organizationId: tenancy.building.organization_id ?? undefined,
+        contractId: tenancy.contractId,
         durationMonths, tempResidentFrom, tempResidentTo, attachments,
       });
       await sendTamTruPayload(payload);

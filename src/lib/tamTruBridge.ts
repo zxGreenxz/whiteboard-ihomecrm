@@ -24,6 +24,10 @@ interface AckMessage { ok?: boolean; error?: string }
 export interface KetQuaNopTamTru {
   submCode: string;
   customerId: string;
+  /** Khoá ghi sổ, do CRM gửi kèm trong gói và extension trả lại nguyên vẹn. */
+  buildingId?: string;
+  organizationId?: string;
+  contractId?: string | null;
   receiveOrg?: string;
   /** dd/mm/yyyy như hiện trên cổng. */
   tempResidentFrom?: string;

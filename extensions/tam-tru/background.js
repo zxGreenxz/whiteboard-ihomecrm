@@ -99,6 +99,14 @@ async function themKetQua(ketQua) {
   if (ds.some((x) => x.submCode === ketQua.submCode)) return;
   ds.push(ketQua);
   await chrome.storage.local.set({ [KHOA_KET_QUA]: ds.slice(-50) });
+  await danhThucCRM();
+}
+
+/** Gõ cửa mọi tab CRM đang mở để chúng ghi mã vào sổ ngay, kể cả khi đang ở nền.
+ * Chỉ là tiếng gõ cửa — dữ liệu thật thì trang tự hỏi lại qua kênh riêng. */
+async function danhThucCRM() {
+  const tabs = await chrome.tabs.query({ url: ['https://ptcrm.vercel.app/*', 'http://localhost/*'] });
+  await Promise.all(tabs.map((t) => chrome.tabs.sendMessage(t.id, { type: 'TAM_TRU_CO_KET_QUA' }).catch(() => {})));
 }
 
 async function xoaKetQua(maDaLuu) {

@@ -12,4 +12,13 @@
   };
   mark();
   document.addEventListener('DOMContentLoaded', mark);
+
+  // Tiếng gõ cửa từ background khi cổng vừa nhận hồ sơ. KHÔNG mang dữ liệu:
+  // trang tự hỏi extension để lấy mã, nên tin giả trên window chỉ gây một lượt
+  // hỏi thừa chứ không chèn được mã rác vào sổ.
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg && msg.type === 'TAM_TRU_CO_KET_QUA') {
+      window.postMessage({ type: 'IHOME_TAMTRU_CO_KET_QUA' }, location.origin);
+    }
+  });
 })();
