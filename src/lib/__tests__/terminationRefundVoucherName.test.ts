@@ -94,8 +94,19 @@ describe("terminate_contract_move_out_impl — đổi tên phiếu hoàn khách,
 
   it("preflight md5 chặn replace mù khi bản prod đã đổi ngoài repo", () => {
     const { sql } = live();
-    expect(sql).toMatch(/md5\(v_def\) <> '197fa29bc07a24cbaa7cb52f22f867aa'/);
-    expect(sql).toContain("position('termination_refund_name_v1' IN v_def) > 0");
+    // ĐO HÌNH DẠNG CỦA GUARD, KHÔNG GHIM MỘT HASH (sửa 15/09/2026 · plan H2).
+    //
+    // Bản trước ghim cứng '197fa29b…' — md5 của định nghĩa prod tại thời điểm
+    // 20260902104355 chép khối này. Nhưng mỗi lần forward-fix chép lại 20k ký
+    // tự đó sẽ ghim md5 KHÁC: md5 của bản đang chạy lúc nó chép. Nghĩa là hash
+    // cứng biến test thành thứ phải sửa theo mỗi đợt vá — và cái phải-sửa-theo
+    // thì không còn canh được gì.
+    //
+    // Thứ BẤT BIẾN là: file giữ định nghĩa sống phải (a) ghim một md5 của bản
+    // nó chép từ đó, và (b) có lối thoát idempotent theo dấu nhận diện, để
+    // chạy lại lần hai không nổ.
+    expect(sql).toMatch(/md5\(v_def\) <> '[0-9a-f]{32}'/);
+    expect(sql).toMatch(/position\('[^']+' IN v_def\) > 0/);
   });
 });
 
