@@ -68,6 +68,16 @@ keywords = ["key", "api", "token", "secret", "client", "passwd", "password", "au
 [allowlist]
 description = "Miễn trừ toàn cục — mỗi mục kèm lý do nó KHÔNG phải secret"
 
+# Đối chiếu regex với TOÀN BỘ đoạn khớp, không chỉ nhóm bắt.
+#
+# Thiếu dòng này (tới 16/09/2026) thì mọi regex bên dưới soi `Secret` — tức chỉ
+# nhóm bắt của rule, đã bị cắt mất dấu nháy hai đầu. Hệ quả đo được: mục "định
+# danh nghiệp vụ" viết `["'`]…["'`]` KHÔNG BAO GIỜ khớp, nên `sbRpc(auth,
+# 'ie_compat_cancel_v2')` vẫn đỏ dù mục miễn trừ sinh ra đúng để phủ nó. Mục ấy
+# đã im lặng vô tác dụng kể từ lúc được thêm; CI chỉ lộ ra khi có một lời gọi
+# mới rơi vào đúng hình dạng đó.
+regexTarget = "match"
+
 paths = [
   # Bản crawl tài liệu người dùng. Đây là VĂN BẢN TIẾNG VIỆT về nghiệp vụ, không
   # có credential nào; gitleaks bắt vì trong câu có chữ "mật khẩu"/"khoá" đứng

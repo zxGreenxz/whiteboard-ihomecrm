@@ -51,11 +51,19 @@ describe("mark_overdue_invoices_v1 — cùng luật với H1.5", () => {
 
 describe("v5_can_view_salary_v1 — job đêm bằng service_role không bị chặn", () => {
   const body = liveBodyOf("app_private.v5_can_view_salary_v1");
-  it("mở cho service_role / postgres TRƯỚC khi xét auth.uid()", () => {
-    const iSvc = body.search(/auth\.role\(\)\s*=\s*'service_role'/);
+  it("mở cho service_role TRƯỚC khi xét auth.uid()", () => {
+    const iSvc = body.search(/auth\.role\(\)\)?\s*=\s*'service_role'/);
     const iNull = body.search(/auth\.uid\(\)\)\s+IS NULL/);
     expect(iSvc).toBeGreaterThan(-1);
     expect(iNull).toBeGreaterThan(iSvc);
+  });
+
+  it("KHÔNG mở theo session_user — SET ROLE không đổi session_user", () => {
+    // Bản đầu (16/09) mở cả `session_user = 'postgres'`. Mọi phiên mở bằng vai
+    // postgres rồi `SET ROLE authenticated` — Management API, psql quản trị,
+    // harness kiểm thử — vẫn giữ session_user cũ, nên guard thành hình thức.
+    // Ma trận cách ly tenant bắt đúng chỗ này: 3/10 ca salary đỏ.
+    expect(body).not.toMatch(/session_user/i);
   });
   it("vẫn từ chối người lạ: có nhánh false khi không có auth.uid()", () => {
     expect(body).toMatch(/IS NULL THEN false/);

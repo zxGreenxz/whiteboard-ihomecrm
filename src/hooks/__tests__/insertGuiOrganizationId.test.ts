@@ -18,7 +18,7 @@ const io = vi.hoisted(() => ({
   rows: {} as Record<string, unknown[]>,
   /** Dữ liệu trả về cho `.single()` theo bảng. */
   single: {} as Record<string, unknown>,
-  rpc: vi.fn(),
+  goiRpc: vi.fn(),
 }));
 
 function builder(table: string) {
@@ -45,7 +45,10 @@ function builder(table: string) {
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: (table: string) => builder(table),
-    rpc: (...args: unknown[]) => io.rpc(...args),
+    // Tham số VIẾT RÕ thay vì `...args`: check-rpc-name-literal quét src/ tìm
+    // lời gọi `rpc(` có tên đi qua biến, và `io.goiRpc(...args)` đọc ra đúng hình
+    // dạng nó canh. Đây chỉ là mock chuyển tiếp nên viết rõ không mất gì.
+    rpc: (ten: string, thamSo?: unknown) => io.goiRpc(ten, thamSo),
     storage: {
       from: () => ({
         upload: async () => ({ data: { path: "p" }, error: null }),
@@ -130,7 +133,7 @@ beforeEach(() => {
   io.inserts = [];
   io.rows = {};
   io.single = {};
-  io.rpc.mockResolvedValue({ data: { id: "rpc-id" }, error: null });
+  io.goiRpc.mockResolvedValue({ data: { id: "rpc-id" }, error: null });
 });
 
 describe("useContracts", () => {
@@ -303,7 +306,7 @@ describe("useInvoices", () => {
   };
 
   it("useCreateInvoice (đường legacy khi RPC chưa có) → invoices và invoice_items", async () => {
-    io.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
+    io.goiRpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
     io.single.invoices = { id: "inv-1", status: "DRAFT", paid_amount: 0 };
     await run(useCreateInvoice, form);
     expectOrg("invoices");
@@ -311,7 +314,7 @@ describe("useInvoices", () => {
   });
 
   it("useUpdateInvoice (đường legacy) → invoice_items thay mới", async () => {
-    io.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
+    io.goiRpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
     io.single.invoices = { id: "inv-1", status: "DRAFT", paid_amount: 0 };
     await run(useUpdateInvoice, { id: "inv-1", formData: form });
     expectOrg("invoice_items");
@@ -336,7 +339,7 @@ describe("useInvoices", () => {
 
 describe("income-expenses/batch", () => {
   it("useCreateIncomeExpenseBatch → income_expense_batches và income_expense_batch_items", async () => {
-    io.rpc.mockResolvedValue({ data: { id: "phieu-con-1" }, error: null });
+    io.goiRpc.mockResolvedValue({ data: { id: "phieu-con-1" }, error: null });
     await run(useCreateIncomeExpenseBatch, {
       type: "EXPENSE", shared_name: "Bảo trì tháng 9", account_id: "acc-1", voucher_date: "2026-09-01",
       attachments: [], business_result_accounting: null,
