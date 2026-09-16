@@ -53,21 +53,6 @@ function fmtDM(iso: string): string {
   return `${d}/${m}`;
 }
 
-/**
- * `types.ts` sinh từ catalog LIVE, mà migration 20260915074852 (tạo
- * `v5_month_money_bulk`) chưa được apply — Contract §3: migration đi lane riêng,
- * có backup, apply sau khi rà. Khai chữ ký ở đây theo đúng nếp nhà
- * (`useMyPermissions.ts`, `useDeposits.ts`, `financeV2Route.ts`) chứ KHÔNG
- * `as any`: tên hàm và tên tham số vẫn bị tsc kiểm, chỉ phần kết quả để
- * `unknown` rồi tự đọc bằng `jsonProp`.
- *
- * GỠ khối này ngay khi `npm run gen:types` chạy lại sau lúc apply.
- */
-type LuongGopRpc = (
-  name: 'v5_month_money_bulk',
-  args: { p_users: string[]; p_month: string },
-) => PromiseLike<{ data: unknown; error: { message?: string } | null }>;
-
 export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = "legacy") => {
   return useQuery<ManagerSalaryData>({
     queryKey: ["manager-salary", periodMonth, engine],
@@ -359,9 +344,10 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       if (engine === "v5") {
         const [v5Bulk, sssRes] = await Promise.all([
           (async () => {
-            const { data: v5BulkRes, error: v5BulkErr } = await (
-              supabase.rpc as unknown as LuongGopRpc
-            )("v5_month_money_bulk", { p_users: staffIds, p_month: periodMonth });
+            const { data: v5BulkRes, error: v5BulkErr } = await supabase.rpc(
+              "v5_month_money_bulk",
+              { p_users: staffIds, p_month: periodMonth },
+            );
             // `supabase.rpc` không bao giờ ném: lỗi về dưới dạng `{ error }` trên
             // một promise đã fulfil. Không đọc `error` ở đây thì một lời gọi bị
             // từ chối biến thành số 0 trên màn lương, im lặng.

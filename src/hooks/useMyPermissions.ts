@@ -58,26 +58,11 @@ const docMap = (data: unknown): PermissionsMap => {
   return {};
 };
 
-/**
- * `types.ts` sinh từ catalog LIVE, mà migration 20260915143713 chưa được apply
- * (Contract §3: session con không apply, chủ apply sau khi rà). Khai chữ ký ở
- * đây theo đúng nếp nhà — `invoiceRoundingReportRepository.ts`,
- * `financeV2Route.ts`, `useDeposits.ts` — chứ KHÔNG `as any`: tên hàm và tên
- * tham số vẫn bị tsc kiểm, chỉ phần kết quả để `unknown` rồi tự đọc.
- *
- * GỠ khối này ngay khi `npm run gen:types` chạy lại sau lúc apply.
- */
-type QuyenV2Rpc = (
-  name: 'get_my_permissions_v2',
-  args: { p_org: string },
-) => PromiseLike<{ data: unknown; error: { code?: string | null } | null }>;
-
 export const fetchMyPermissions = async (orgId?: string | null): Promise<PermissionsMap> => {
   if (orgId) {
-    const { data, error } = await (supabase.rpc as unknown as QuyenV2Rpc)(
-      'get_my_permissions_v2',
-      { p_org: orgId },
-    );
+    const { data, error } = await supabase.rpc('get_my_permissions_v2', {
+      p_org: orgId,
+    });
     if (!error) return docMap(data);
     if (!thieuHam(error)) {
       console.error('useMyPermissions error:', error);
