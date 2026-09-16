@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-16T11:07:02.034Z",
+  "generatedAt": "2026-09-16T11:30:24.073Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
@@ -10250,7 +10250,7 @@
       "version": "20260916110606",
       "name": "hoa_don_quet_qua_han_chi_approved",
       "scheme": "timestamp14",
-      "sha256": "6e01278be504537136c34ba738a67598b6be8fcc061fff285459d0883d5f51d7",
+      "sha256": "0c4baea61bc63304b6d0d4bafc0bae4d8cb3b8535a26ed6d0212e15fe93af0a6",
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.mark_overdue_invoices_v1"

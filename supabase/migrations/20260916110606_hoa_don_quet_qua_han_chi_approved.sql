@@ -52,7 +52,8 @@ GRANT EXECUTE ON FUNCTION public.mark_overdue_invoices_v1() TO authenticated, se
 DO $tu_kiem$
 DECLARE v_def text := pg_get_functiondef('public.mark_overdue_invoices_v1()'::regprocedure);
 BEGIN
-  IF v_def LIKE '%PARTIAL_PAID%' THEN
+  -- Soi LITERAL có nháy, vì chú thích trong thân hàm có nhắc tên trạng thái.
+  IF v_def LIKE '%''PARTIAL_PAID''%' THEN
     RAISE EXCEPTION 'mark_overdue_invoices_v1 vẫn đánh PARTIAL_PAID thành OVERDUE. DỪNG.';
   END IF;
   IF v_def NOT LIKE '%coalesce(i.paid_amount, 0) = 0%' THEN
