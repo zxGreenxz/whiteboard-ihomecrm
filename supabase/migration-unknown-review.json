@@ -1,5 +1,5 @@
 {
-  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh.",
+  "$comment": "Hồ sơ RÀ SOÁT THỦ CÔNG cho các file state=unknown có CREATE object nhưng object KHÔNG có trong catalog production. reviewModel trong migration-policy.json bắt \"mọi file state=unknown\" phải được review đầy đủ — đây là kết quả review đó, kèm trích dẫn. LƯU Ý VỀ SỨC MẠNH BẰNG CHỨNG: hồ sơ này KHÔNG chứng minh file đã chạy. Nó chứng minh việc object VẮNG MẶT đã được GIẢI THÍCH (một migration sau đó DROP/đổi tên object), tức vắng mặt không còn là bằng chứng NGƯỢC. Đây là mức yếu hơn cả catalog-proven. Đừng nâng các file này lên trạng thái đã-chứng-minh. | Bổ sung 15/09/2026: 2 file của plan con F (20260915144507_so_hop_dong_chong_dua.sql, 20260915144634_index_hop_dong_org_status.sql) — cả hai là file MỚI chưa qua lane apply, ketLuan `chua-ap-dung-cho-y` theo đúng tiền lệ 20260814004500; bằng chứng là dry-run ROLLBACK + kiểm idempotent hai lượt trên chính catalog production.",
   "schemaVersion": 1,
   "reviewedAt": "2026-09-02",
   "method": "10 điều tra độc lập song song, mỗi file một agent, bắt buộc trích dẫn file+SQL cho kết luận (A); kết luận \"chưa từng chạy\" sẽ bị một agent phản biện riêng cố bác bỏ. Kết quả: 10/10 giải thích được, 0 file chưa-từng-chạy. Ba trích dẫn được người kiểm lại thủ công (DROP ở 20260528000003:158, CREATE ở 20260527000009:372, và frontend gọi clone_org_request_sync_v1 chứ không phải clone_org_sync_v1). | Bổ sung 12/08/2026: 1 file (20260729150000_notification_config_tables_rpc.sql) — đối chiếu catalog production thật với migration ALTER POLICY ... RENAME, kết luận đổi tên chứ không phải chưa chạy. | Bổ sung 12/08/2026: thêm 1 file (20260729150000_notification_config_tables_rpc.sql). Phương pháp: đối chiếu catalog production THẬT với migration `ALTER POLICY ... RENAME` thay vì suy từ tên file; kết luận là ĐỔI TÊN, không phải chưa-từng-chạy. | Bổ sung 28/08/2026: 1 file (20260731100000_termination_refund_writer.sql) — index ux_tro_voucher bị 20260828090000 DROP có chủ ý vì là ràng buộc giả trên PK; đối chiếu pg_indexes production trước/sau apply.",
@@ -535,6 +535,47 @@
         }
       ],
       "raSoatBoi": "Claude Code — audit /thanh-toan 31/08 (hồ sơ ghi khi regen provenance sau đợt xoá OpenClaw)"
+    },
+    "supabase/migrations/20260915144507_so_hop_dong_chong_dua.sql": {
+      "sha256": "c32fdbbf7f62519ef95fa6a43198c0093d911508f1f00ff8fa2ee363b19dbd37",
+      "missingObjects": [
+        "table:app_private.contract_number_counters",
+        "trigger:public.contracts.trg_generate_contract_number"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 15/09/2026 trong đợt rà soát toàn hệ thống (plan con F), CHƯA đi qua lane apply nào — hai object vắng mặt trên production vì migration chưa chạy, không phải vì bị DROP. Đã dry-run qua migrate:forward (bọc ROLLBACK) và qua check-forward-migration-idempotent (dán thân file hai lượt): cả hai xanh, tức object dựng được trên đúng catalog production hiện tại. Trigger trg_generate_contract_number là generate_contract_number_trigger ĐỔI TÊN, không phải trigger mới thêm chức năng: tên cũ ('g') sắp trước trg_autofill_org ('t') nên hàm chạy lúc NEW.organization_id còn NULL. Khi apply, provenance chuyển sang catalog-proven và hồ sơ này thành thừa — gate sẽ tự nhắc gỡ.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260915144507_so_hop_dong_chong_dua.sql",
+          "trich_doan": "CREATE TABLE IF NOT EXISTS app_private.contract_number_counters ( organization_id uuid NOT NULL, year integer NOT NULL, last_no bigint NOT NULL DEFAULT 0, …)"
+        },
+        {
+          "duong_dan": "supabase/migrations/20260915144507_so_hop_dong_chong_dua.sql",
+          "trich_doan": "DROP TRIGGER IF EXISTS generate_contract_number_trigger ON public.contracts; … CREATE TRIGGER trg_generate_contract_number BEFORE INSERT ON public.contracts"
+        },
+        {
+          "duong_dan": "docs/plans/ra-soat-2026-09-15/F.md",
+          "trich_doan": "P0 generate_contract_number() race … Sửa: bảng đếm app_private.contract_number_counters(organization_id, year, last_no) lấy FOR UPDATE, hàm đổi khoá theo org"
+        }
+      ]
+    },
+    "supabase/migrations/20260915144634_index_hop_dong_org_status.sql": {
+      "sha256": "957b14021de86a69032f320ba51b0c218bc00c645404383052412d63c26426ed",
+      "missingObjects": [
+        "index:public.idx_contracts_org_status_con_song"
+      ],
+      "ketLuan": "chua-ap-dung-cho-y",
+      "lyLe": "File TẠO 15/09/2026 (plan con F), CHƯA apply — index vắng mặt vì migration chưa chạy. Đối chiếu pg_indexes production 15/09: contracts có contracts_organization_id_idx và idx_contracts_status là hai index MỘT CỘT rời, không có composite (organization_id, status) và không có index partial theo deleted_at; tức đây là index MỚI, không phải index cũ bị DROP. Dry-run + kiểm hai lượt đều xanh. Khi apply, provenance chuyển catalog-proven và hồ sơ này thành thừa.",
+      "bangChung": [
+        {
+          "duong_dan": "supabase/migrations/20260915144634_index_hop_dong_org_status.sql",
+          "trich_doan": "CREATE INDEX IF NOT EXISTS idx_contracts_org_status_con_song ON public.contracts (organization_id, status) WHERE deleted_at IS NULL;"
+        },
+        {
+          "duong_dan": "docs/plans/ra-soat-2026-09-15/F.md",
+          "trich_doan": "P1 index: thiếu contracts(organization_id, status) composite; partial WHERE deleted_at IS NULL cho hot filter"
+        }
+      ]
     }
   }
 }
