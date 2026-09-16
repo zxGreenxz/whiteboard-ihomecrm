@@ -58,14 +58,14 @@ export function validateCccdQr(raw: string): CccdQrValidation {
   if (!SUPPORTED_FIELD_COUNTS.has(parts.length)) return { status: 'invalid' };
 
   const [idNumber, , fullName, dobRaw, genderRaw, permanentAddress, issueRaw] = parts;
-  if (!/^\d{12}$/.test(idNumber)) return { status: 'invalid' };
+  if (!idNumber || !/^\d{12}$/.test(idNumber)) return { status: 'invalid' };
   if (!fullName || !fullName.trim() || !permanentAddress || !permanentAddress.trim()) {
     return { status: 'invalid' };
   }
 
-  const dateOfBirth = parseCccdDate(dobRaw);
-  const idIssueDate = parseCccdDate(issueRaw);
-  const gender = normalizeGender(genderRaw);
+  const dateOfBirth = parseCccdDate(dobRaw ?? '');
+  const idIssueDate = parseCccdDate(issueRaw ?? '');
+  const gender = normalizeGender(genderRaw ?? '');
   if (!dateOfBirth || !idIssueDate || !gender) return { status: 'invalid' };
 
   return {

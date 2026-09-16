@@ -51,7 +51,7 @@ export function splitBuildingAddress(streetAddress: string): { address: string; 
   const parts = streetAddress.split(',').map(p => p.trim()).filter(Boolean);
   const idx = parts.findIndex(p => LOCALITY.test(p));
   if (idx < 0) return { address: parts.join(', '), wardName: null };
-  return { address: parts.slice(0, idx).join(', '), wardName: parts[idx] };
+  return { address: parts.slice(0, idx).join(', '), wardName: parts[idx] ?? null };
 }
 
 /** Mã giới tính của cổng: 2 Nam, 3 Nữ, 4 Khác. CRM đang lưu lẫn "Nam" và "MALE". */

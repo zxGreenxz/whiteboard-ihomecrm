@@ -95,8 +95,8 @@ export function docHanHopDong(dong: readonly string[]): HanHopDong | null {
 
 /** Hạn đọc được chỉ dùng khi còn ở tương lai so với hôm nay (giờ Việt Nam). */
 export function hanConHieuLuc(han: HanHopDong, homNay: Date = new Date()): boolean {
-  const [ngay, thang, nam] = han.to.split('/').map(Number);
-  const to = ngayHopLe(ngay, thang, nam);
+  const [ngay, thang, nam] = han.to.split('/');
+  const to = ngay && thang && nam ? ngayHopLe(Number(ngay), Number(thang), Number(nam)) : null;
   if (!to) return false;
   const vn = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(homNay);
   return to.getTime() > new Date(`${vn}T00:00:00Z`).getTime();

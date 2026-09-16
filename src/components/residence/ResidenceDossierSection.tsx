@@ -26,7 +26,8 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
   const [roomId, setRoomId] = useState<string>('');
   useEffect(() => {
     const list = tenancies.data ?? [];
-    if (list.length > 0 && !list.some(t => t.roomId === roomId)) setRoomId(list[0].roomId);
+    const dau = list[0];
+    if (dau && !list.some(t => t.roomId === roomId)) setRoomId(dau.roomId);
   }, [tenancies.data, roomId]);
   const tenancy = useMemo(() => (tenancies.data ?? []).find(t => t.roomId === roomId) ?? null, [tenancies.data, roomId]);
 

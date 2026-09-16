@@ -113,18 +113,19 @@ export function selectOcrFields(
     labels.dob[0],
     labels.sex[0],
     labels.address[0],
-  ]
-    .filter((index): index is number => index !== undefined)
-    .map((index) => bounds(lines[index]));
+  ].flatMap((index) => {
+    const row = index === undefined ? undefined : lines[index];
+    return row ? [bounds(row)] : [];
+  });
   if (owners.length > 1) {
     const heights = owners.map((b) => b.bottom - b.top).sort((a, b) => a - b);
-    const scale = Math.max(8, heights[Math.floor(heights.length / 2)]);
+    const scale = Math.max(8, heights[Math.floor(heights.length / 2)] ?? 8);
     const lefts = owners.map((b) => b.left);
     const centers = owners.map((b) => (b.top + b.bottom) / 2);
     if (
       Math.max(...lefts) - Math.min(...lefts) > 6 * scale ||
       Math.max(...centers) - Math.min(...centers) > 18 * scale ||
-      centers.some((y, i) => i > 0 && y < centers[i - 1] - 2 * scale)
+      centers.some((y, i) => i > 0 && y < (centers[i - 1] ?? -Infinity) - 2 * scale)
     )
       return {
         status: "ambiguous",
@@ -136,7 +137,9 @@ export function selectOcrFields(
     if (index === undefined) continue;
     selected[key].push(index);
     if (key === "sex" || key === "dob") continue;
-    const b = bounds(lines[index]),
+    const anchor = lines[index];
+    if (!anchor) continue;
+    const b = bounds(anchor),
       height = Math.max(8, b.bottom - b.top);
     const center = (b.top + b.bottom) / 2;
     // DB boxes expand around glyphs and adjacent lines can overlap. Compare
@@ -172,8 +175,9 @@ export function selectOcrFields(
 export function validOcrDate(raw: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
   if (!match) return "";
-  const [, y, m, d] = match,
-    date = new Date(Date.UTC(+y, +m - 1, +d));
+  const [, y, m, d] = match;
+  if (!y || !m || !d) return "";
+  const date = new Date(Date.UTC(+y, +m - 1, +d));
   return +y >= 1900 &&
     date.getUTCFullYear() === +y &&
     date.getUTCMonth() === +m - 1 &&
@@ -202,7 +206,11 @@ export function parseOcrFields(lines: OcrLine[], size: Size): OcrReview {
     permanentAddress: "missing",
   };
   if (status === "ambiguous") return { status, data, states };
-  const get = (kind: Kind) => selected[kind].map((i) => lines[i]);
+  const get = (kind: Kind) =>
+    selected[kind].flatMap((i) => {
+      const row = lines[i];
+      return row ? [row] : [];
+    });
   const usable = (rows: OcrLine[]) =>
     rows.length > 0 &&
     rows.every(
@@ -210,11 +218,13 @@ export function parseOcrFields(lines: OcrLine[], size: Size): OcrReview {
         !r.truncated && !isOcrLineClipped(r.box, size) && r.text.length <= 500,
     );
   const ids = get("id");
-  if (usable(ids)) data.idNumber = literalId(ids[0].text);
+  const idLine = ids[0];
+  if (idLine && usable(ids)) data.idNumber = literalId(idLine.text);
   const names = get("name");
-  if (usable(names)) {
+  const nameLine = names[0];
+  if (nameLine && usable(names)) {
     const text = [
-      afterLabel(names[0].text, "name"),
+      afterLabel(nameLine.text, "name"),
       ...names.slice(1).map((r) => r.text.trim()),
     ]
       .filter(Boolean)
@@ -233,25 +243,26 @@ export function parseOcrFields(lines: OcrLine[], size: Size): OcrReview {
         .split(/NGAY SINH|DATE OF BIRTH/)
         .pop() ?? "";
     const m = /(?<!\d)(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?!\d)/.exec(tail);
-    if (m)
+    const [, ngay, thang, nam] = m ?? [];
+    if (ngay && thang && nam)
       data.dateOfBirth = validOcrDate(
-        `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`,
+        `${nam}-${thang.padStart(2, "0")}-${ngay.padStart(2, "0")}`,
       );
   }
   const sex = get("sex")[0];
   if (sex && usable([sex])) {
     const tail =
-      foldOcr(sex.text)
-        .split(/QUOC TICH|NATIONALITY/)[0]
+      (foldOcr(sex.text).split(/QUOC TICH|NATIONALITY/)[0] ?? "")
         .split(/GIOI TINH|SEX/)
         .pop() ?? "";
     const m = /^\s*[:/]*\s*(NAM|NU)\s*$/.exec(tail);
     data.gender = m?.[1] === "NAM" ? "Nam" : m?.[1] === "NU" ? "Nữ" : "";
   }
   const address = get("address");
-  if (usable(address))
+  const addressLine = address[0];
+  if (addressLine && usable(address))
     data.permanentAddress = [
-      afterLabel(address[0].text, "address"),
+      afterLabel(addressLine.text, "address"),
       ...address.slice(1).map((r) => r.text.trim()),
     ]
       .filter(Boolean)

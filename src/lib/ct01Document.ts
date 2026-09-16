@@ -40,7 +40,7 @@ export function buildCT01Data(customer: CT01Customer, building: CT01Building, le
   const addressParts = address.split(',').map(value => value.trim());
   const localityIndex = addressParts.findIndex(value => localityPrefix.test(value));
   const fallbackLocality = localityPrefix.test(ward) ? ward : `phường ${ward}`;
-  const locality = localityIndex >= 0 ? addressParts[localityIndex] : fallbackLocality;
+  const locality = (localityIndex >= 0 ? addressParts[localityIndex] : undefined) ?? fallbackLocality;
   const registrationLocality = localityIndex >= 0 ? addressParts.slice(localityIndex).join(', ') : fallbackLocality;
   const endYear = Number(datePart('year')) + lease.durationMonths / 12;
   // Keep the Vietnamese calendar day, clamping 29 February in a non-leap year.

@@ -31,7 +31,10 @@ export default function LeaseTermBadge({ trangThai, han, coAnh, canEdit, onDocLa
     setSuaMo(true);
   };
   const luu = () => {
-    const hopLe = (iso: string) => { const [y, m, d] = iso.split('-').map(Number); return !!ngayHopLe(d, m, y); };
+    const hopLe = (iso: string) => {
+      const [y, m, d] = iso.split('-');
+      return !!(y && m && d && ngayHopLe(Number(d), Number(m), Number(y)));
+    };
     if (!hopLe(from) || !hopLe(to) || vnToIso(isoToVn(to)) <= vnToIso(isoToVn(from))) return;
     onSua(isoToVn(from), isoToVn(to));
     setSuaMo(false);
