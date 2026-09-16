@@ -31,7 +31,15 @@ export interface Account {
 }
 
 export interface AccountWithBalance extends Account {
-  current_amount: number;      // tồn quỹ
+  /** Tồn quỹ. `null` = KHÔNG ĐỌC ĐƯỢC, không phải 0 đ — xem `balance_visible`. */
+  current_amount: number | null;
+  /**
+   * Server có cho người đang đăng nhập xem tồn quỹ của sổ này không
+   * (`list_cashbook_visibility_v2.balance_visible`, bám đúng predicate RLS của
+   * `income_expense_posting_lines`). `true` khi chưa hỏi được server — giữ
+   * hành vi cũ thay vì bôi trắng cả bảng vì một lỗi mạng.
+   */
+  balance_visible: boolean;
   owner_name?: string | null;  // full_name của user phụ trách (JS-merged từ profiles)
 }
 
@@ -82,6 +90,23 @@ export const useAccounts = (opts?: { enabled?: boolean }) => {
       return (data || []) as Account[];
     },
   });
+};
+
+/**
+ * Sổ nào người đang đăng nhập được xem TỒN QUỸ.
+ *
+ * Trả `null` = CHƯA BIẾT (RPC lỗi, chưa deploy) — người gọi phải giữ hành vi
+ * cũ chứ không được coi là "không sổ nào xem được": một lỗi mạng thoáng qua
+ * không được làm trắng mọi số dư trên màn hình.
+ */
+const readBalanceVisibility = async (): Promise<Map<string, boolean> | null> => {
+  const { data, error } = await supabase.rpc("list_cashbook_visibility_v2");
+  if (error) {
+    console.warn("[useAccounts] list_cashbook_visibility_v2:", error.message);
+    return null;
+  }
+  const rows = (data ?? []) as { cashbook_id: string; balance_visible: boolean }[];
+  return new Map(rows.map((r) => [r.cashbook_id, r.balance_visible === true]));
 };
 
 // --- Query: list with balance (cho trang Cashbooks) ---
@@ -144,12 +169,29 @@ export const useAccountsWithBalance = (params?: {
         }
       }
 
-      const mapped: AccountWithBalance[] = rows.map((r) => ({
-        ...r,
-        initial_amount: Number(r.initial_amount) || 0,
-        current_amount: Number(r.current_amount) || 0,
-        owner_name: ownerById.get(r.user_id)?.full_name ?? null,
-      }));
+      // H3.4 — `accounts_with_balance` là view security_invoker, nên cột
+      // current_amount của nó được tính DƯỚI QUYỀN NGƯỜI ĐỌC:
+      //   current_amount = initial_amount + COALESCE(SUM(posting_lines…), 0)
+      // RLS `finance_v2_posting_lines_select_custodian` chỉ mở posting lines
+      // cho CUSTODIAN của chính sổ đó. Ai không phải CUSTODIAN đọc ra 0 dòng
+      // ⇒ SUM = NULL ⇒ COALESCE = 0 ⇒ tồn quỹ hiện ra ĐÚNG BẰNG số dư đầu kỳ.
+      // Đó là một con số SAI trông như số thật — cộng được vào tổng, in được
+      // ra báo cáo. Hỏi server sổ nào thật sự đọc được rồi để TRỐNG phần còn
+      // lại; `null` không cộng nhầm vào đâu được, `0` thì có.
+      const visibleById = await readBalanceVisibility();
+
+      const mapped: AccountWithBalance[] = rows.map((r) => {
+        // Chưa hỏi được server (RPC lỗi/chưa deploy) ⇒ `null` ⇒ giữ hành vi cũ,
+        // theo đúng nếp của useCashbookVisibilityV2 (financeV2Mutations.ts:250).
+        const visible = visibleById ? visibleById.get(r.id) === true : true;
+        return {
+          ...r,
+          initial_amount: Number(r.initial_amount) || 0,
+          current_amount: visible ? Number(r.current_amount) || 0 : null,
+          balance_visible: visible,
+          owner_name: ownerById.get(r.user_id)?.full_name ?? null,
+        };
+      });
 
       return { data: mapped, totalCount: count ?? 0 };
     },
