@@ -92,6 +92,24 @@
   // cboDATE_FORMAT đổi thì cổng gọi datePickerWithPattern() → `$('#txtDOB').val('')`,
   // tức là xoá trắng đúng ô vừa điền. Chính mã của cổng cũng gán lại txtDOB sau
   // khi gọi setObjectToFormV2 vì lý do này.
+  // BẪY THỨ HAI (đo thật 16/09/2026): bootstrap-datepicker của cổng chỉ nghe keyup/paste,
+  // KHÔNG nghe change. Đặt value bằng mã thì ô hiện đúng nhưng "ngày nội bộ" của
+  // datepicker vẫn là giá trị cũ (rỗng ở txtDOB sau khi cổng xoá; mặc định +2 năm ở
+  // txtTEMP_RESIDENT_TO). Người dùng bấm vào ô rồi bấm ra là hide() với forceParse ghi
+  // ngày nội bộ đè lên ô: ngày sinh trắng, hạn tạm trú lùi về mặc định. Vì vậy sau khi
+  // đặt value phải gọi datepicker('update') — đúng cách chính cổng làm
+  // (`.val(x).datepicker("update")`). Trả về false nếu lịch của cổng từ chối ngày đó.
+  function dongBoDatepicker(el) {
+    const $ = jq();
+    if (!$ || !$.fn || typeof $.fn.datepicker !== 'function') return null;
+    const dp = $(el).data('datepicker');
+    if (!dp) return null;
+    $(el).datepicker('update');
+    if (dp.dates && typeof dp.dates.length === 'number') return dp.dates.length > 0;
+    return true;
+  }
+
+  const canhBaoNgay = [];
   function setNgay(id, giaTri) {
     if (!giaTri) return null;
     const el = document.getElementById(id);
@@ -103,6 +121,7 @@
       el.dispatchEvent(new Event('input', { bubbles: true }));
       fireChange(el);
     }
+    if (dongBoDatepicker(el) === false) canhBaoNgay.push(id + ' (lịch của cổng không nhận ' + giaTri + ')');
     return el.value;
   }
 
@@ -164,7 +183,8 @@
       kiem('txtSUGGEST_ADDRESS', p.address);
       kiem('txtHH_PERSON_IDENTIFIER_NUMBER', p.person.idNumber);
       if (thieu.length) throw new Error('Cổng không nhận các ô: ' + thieu.join(', '));
-      report('Ngày sinh ' + dob + ' · hạn đến ' + han);
+      report('Ngày sinh ' + dob + ' · hạn đến ' + han
+        + (canhBaoNgay.length ? ' · CẦN KIỂM LẠI: ' + canhBaoNgay.splice(0).join('; ') : ''));
     }],
     ['Mở mục đính kèm "do thuê, mượn, ở nhờ"', async () => {
       const link = Array.from(document.querySelectorAll('a')).find((a) => {

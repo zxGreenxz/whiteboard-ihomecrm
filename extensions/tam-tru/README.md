@@ -45,6 +45,11 @@ gắn ảnh; **không tự bấm Lưu nháp hay Nộp hồ sơ**, không giữ m
   `txt` rồi `cbo`, mà handler `cboDATE_FORMAT` của cổng gọi `datePickerWithPattern()` →
   `$('#txtDOB').val('')`. Vì vậy engine đặt lại ô ngày SAU CÙNG rồi đọc lại để xác nhận;
   ô bắt buộc nào cổng không nhận thì báo đỏ ngay thay vì để người dùng nộp thiếu.
+- **Lịch của cổng giữ "ngày nội bộ" riêng, không nghe sự kiện `change`.** bootstrap-datepicker
+  chỉ nghe `keyup`/`paste`, nên đặt `value` bằng mã thì ô hiện đúng mà ngày nội bộ vẫn là giá
+  trị cũ. Người dùng bấm vào ô ngày rồi bấm ra là cổng ghi ngày nội bộ đè lên ô: ngày sinh
+  trắng lại, hạn tạm trú lùi về mặc định +2 năm. Engine vì thế gọi `datepicker('update')` sau
+  khi đặt ngày, đúng cách chính cổng làm, và báo "CẦN KIỂM LẠI" nếu lịch từ chối ngày đó.
 - **Cổng chỉ nhận pdf, jpg, jpeg, tiff, png** (`validFileAttachAll`), từ chối WebP. CRM vì
   thế lưu ảnh hồ sơ tạm trú nguyên byte gốc và chỉ cho chọn JPG/PNG.
 - Tên tệp cổng hiển thị chính là tên CRM đặt: `chuquyen950nk1.jpg`,

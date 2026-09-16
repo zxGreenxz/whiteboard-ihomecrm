@@ -206,6 +206,36 @@ describe('fill-engine run', () => {
     expect((document.getElementById('txtTEMP_RESIDENT_TO') as HTMLInputElement).value).toBe('15/09/2028');
   });
 
+  it('đồng bộ ngày vào bootstrap-datepicker của cổng, bấm vào ô rồi bấm ra không mất ngày', async () => {
+    // bootstrap-datepicker rút gọn theo hành vi đo thật 16/09/2026: chỉ nghe keyup/paste
+    // (KHÔNG nghe change); hide() với forceParse ghi ngày NỘI BỘ đè lên ô. Không đồng bộ
+    // thì ngày sinh trắng và hạn tạm trú lùi về mặc định ngay khi người dùng bấm vào ô.
+    const dpOf = new WeakMap<Element, { dates: string[] }>();
+    const wrap = (el: HTMLInputElement) => ({
+      trigger: (ev: string) => { el.dispatchEvent(new Event(ev, { bubbles: true })); },
+      data: (k: string) => (k === 'datepicker' ? dpOf.get(el) : undefined),
+      datepicker: (cmd: string) => { const dp = dpOf.get(el); if (dp && cmd === 'update') dp.dates = el.value ? [el.value] : []; },
+    });
+    const fakeJq = Object.assign((el: HTMLInputElement) => wrap(el), { fn: { datepicker() { /* plugin có mặt */ } } });
+    (window as unknown as { jQuery: unknown }).jQuery = fakeJq;
+    const hide = (el: HTMLInputElement) => { if (el.value) el.value = (dpOf.get(el)?.dates ?? []).join(''); };
+    const dob = document.getElementById('txtDOB') as HTMLInputElement;
+    const han = document.getElementById('txtTEMP_RESIDENT_TO') as HTMLInputElement;
+    dpOf.set(dob, { dates: [] }); // cổng vừa xoá trắng ô ngày sinh
+    dpOf.set(han, { dates: ['15/09/2028'] }); // mặc định +2 năm của cổng
+    try {
+      const e = loadEngine();
+      await e.run({ ...payload, tempResidentTo: '16/09/2028' }, files);
+      expect(dob.value).toBe('18/10/2008');
+      expect(han.value).toBe('16/09/2028');
+      hide(dob); hide(han); // người dùng bấm vào ô rồi bấm ra ngoài
+      expect(dob.value).toBe('18/10/2008');
+      expect(han.value).toBe('16/09/2028');
+    } finally {
+      delete (window as unknown as { jQuery?: unknown }).jQuery;
+    }
+  });
+
   it('báo đỏ nếu cổng không nhận một ô bắt buộc', async () => {
     const e = loadEngine();
     // Giả lập cổng khoá cứng ô CCCD: mọi giá trị đặt vào đều bị xoá.
