@@ -3,7 +3,7 @@
 // theo đúng id/hành vi đo được trên cổng DVC ngày 15/09/2026.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vitest chạy với cwd = gốc repo; trong môi trường jsdom import.meta.url không phải file://.
 const ENGINE = readFileSync(resolve(process.cwd(), 'extensions/tam-tru/fill-engine.js'), 'utf8');
@@ -57,7 +57,8 @@ function mountFixture() {
       <select id="cboHH_PERSON_RELATIONSHIP_CODE">${opt('', '')}${opt('09', 'Anh')}${opt('CH01', 'Chủ hộ')}</select>
       <input id="txtHH_PERSON_IDENTIFIER_NUMBER" />
       <textarea id="txtCHANGED_NOTE"></textarea>
-      <input id="txtTEMP_RESIDENT_TO" value="15/09/2028" />
+      <input id="txtTEMP_RESIDENT_FROM" value="16/09/2026" />
+      <input id="txtTEMP_RESIDENT_TO" value="16/09/2028" />
       <a href="javascript:load_table_tphs_new(1);">- Đăng ký tạm trú tại chỗ ở hợp pháp thuộc quyền sở hữu của mình</a>
       <a id="lnk2" href="javascript:load_table_tphs_new(2);">- Đăng ký tạm trú tại chỗ ở hợp pháp do thuê, mượn, ở nhờ</a>
       <div id="tphs_new_2"></div>
@@ -70,6 +71,11 @@ function mountFixture() {
   // setObjectToFormV2 đặt txt trước cbo, nên ngày sinh vừa điền bị xoá ngay sau đó.
   document.getElementById('cboDATE_FORMAT')!.addEventListener('change', () => {
     (document.getElementById('txtDOB') as HTMLInputElement).value = '';
+  });
+  // BẪY THẬT: đổi ô "từ ngày" thì cổng tự đặt lại ô "đến ngày" thành +2 năm.
+  document.getElementById('txtTEMP_RESIDENT_FROM')!.addEventListener('change', (e) => {
+    const [d, m, y] = (e.target as HTMLInputElement).value.split('/');
+    if (d && m && y) (document.getElementById('txtTEMP_RESIDENT_TO') as HTMLInputElement).value = `${d}/${m}/${Number(y) + 2}`;
   });
   city.addEventListener('change', () => {
     ward.innerHTML = city.value === '79'
@@ -161,16 +167,16 @@ describe('fill-engine helpers', () => {
     expect(o.HH_PERSON_RELATIONSHIP_CODE).toBe('CH01');
   });
 
-  it('có ngày ký hợp đồng thì thêm ô "từ ngày", không có thì để cổng giữ mặc định', () => {
+  it('không đổ ô "từ ngày" theo lượt chung vì cổng ghi đè ô "đến ngày" khi nó đổi', () => {
     const e = loadEngine();
-    expect(e.formObject({ ...payload, tempResidentFrom: '14/09/2026' })).toMatchObject({ TEMP_RESIDENT_FROM: '14/09/2026' });
-    expect('TEMP_RESIDENT_FROM' in e.formObject(payload)).toBe(false);
+    expect('TEMP_RESIDENT_FROM' in e.formObject({ ...payload, tempResidentFrom: '14/09/2026' })).toBe(false);
   });
 });
 
 describe('fill-engine run', () => {
   let fx: ReturnType<typeof mountFixture>;
-  beforeEach(() => { fx = mountFixture(); });
+  beforeEach(() => { fx = mountFixture(); vi.useFakeTimers({ shouldAdvanceTime: true }); });
+  afterEach(() => { vi.useRealTimers(); });
 
   it('điền đủ các bước trên form giả lập, không đụng nút Nộp', async () => {
     const e = loadEngine();
@@ -240,6 +246,23 @@ describe('fill-engine run', () => {
     } finally {
       delete (window as unknown as { jQuery?: unknown }).jQuery;
     }
+  });
+
+  it('bỏ qua ngày bắt đầu đã qua (cổng chặn) nhưng vẫn giữ đúng hạn trên giấy', async () => {
+    const e = loadEngine();
+    vi.setSystemTime(new Date('2026-09-16T03:00:00Z'));
+    await e.run({ ...payload, tempResidentFrom: '14/09/2026', tempResidentTo: '14/09/2028' }, files);
+    // Cổng báo "Thời hạn tạm trú không được nhỏ hơn ngày hiện tại" nếu đặt ngày đã qua.
+    expect((document.getElementById('txtTEMP_RESIDENT_FROM') as HTMLInputElement).value).toBe('16/09/2026');
+    expect((document.getElementById('txtTEMP_RESIDENT_TO') as HTMLInputElement).value).toBe('14/09/2028');
+  });
+
+  it('ngày bắt đầu từ hôm nay trở đi thì đặt, và đặt TRƯỚC ô hạn để không bị ghi đè', async () => {
+    const e = loadEngine();
+    vi.setSystemTime(new Date('2026-09-16T03:00:00Z'));
+    await e.run({ ...payload, tempResidentFrom: '20/09/2026', tempResidentTo: '20/09/2028' }, files);
+    expect((document.getElementById('txtTEMP_RESIDENT_FROM') as HTMLInputElement).value).toBe('20/09/2026');
+    expect((document.getElementById('txtTEMP_RESIDENT_TO') as HTMLInputElement).value).toBe('20/09/2028');
   });
 
   it('báo đỏ nếu cổng không nhận một ô bắt buộc', async () => {

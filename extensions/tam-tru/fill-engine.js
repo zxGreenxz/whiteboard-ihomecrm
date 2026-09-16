@@ -71,9 +71,6 @@
       HH_PERSON_FULLNAME: p.person.fullName,
       HH_PERSON_RELATIONSHIP_CODE: p.household.relationshipCode,
       HH_PERSON_IDENTIFIER_NUMBER: p.person.idNumber,
-      // Ngày bắt đầu chỉ có khi CRM đọc được ngày ký trên hợp đồng; thiếu thì
-      // để cổng giữ mặc định của nó thay vì ghi đè bằng rỗng.
-      ...(p.tempResidentFrom ? { TEMP_RESIDENT_FROM: p.tempResidentFrom } : {}),
       TEMP_RESIDENT_TO: p.tempResidentTo,
     };
   }
@@ -128,6 +125,16 @@
     return el.value;
   }
 
+  /** dd/mm/yyyy còn ở hôm nay trở đi — cổng từ chối mọi ngày tạm trú đã qua. */
+  function chuaQua(ngay) {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(ngay || ''));
+    if (!m) return false;
+    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    const homNay = new Date();
+    homNay.setHours(0, 0, 0, 0);
+    return d.getTime() >= homNay.getTime();
+  }
+
   const filesOf = (files, kind) => files.filter((f) => f.kind === kind).map(dataUrlToFile);
 
   const STEPS = [
@@ -167,9 +174,15 @@
       setObject(formObject(p));
       await sleep(300);
       const dob = setNgay('txtDOB', p.person.dob);
-      // Ngày bắt đầu tạm trú = ngày ký hợp đồng ở nhờ, không phải ngày nộp: cán bộ
-      // đối chiếu hai con số này với tờ hợp đồng đính kèm.
-      const tuNgay = setNgay('txtTEMP_RESIDENT_FROM', p.tempResidentFrom);
+      // BẪY 1 — cổng CHẶN ngày bắt đầu ở quá khứ:
+      //   if (from < new Date() || to < new Date()) → 'Thời hạn tạm trú không được
+      //   nhỏ hơn ngày hiện tại'. Hợp đồng ở nhờ thường ký trước ngày nộp vài hôm,
+      //   nên chỉ đặt ô này khi ngày ký còn ở hôm nay trở đi; đã qua thì để nguyên
+      //   mặc định của cổng (hôm nay) — hạn ĐẾN mới là con số cán bộ đối chiếu.
+      // BẪY 2 — đổi ô "từ ngày" thì cổng TỰ GHI ĐÈ ô "đến ngày" thành +2 năm
+      //   (datePickerWithPattern → `$('#txtTEMP_RESIDENT_TO').val(mặc định)`).
+      //   Vì vậy phải đặt "từ ngày" TRƯỚC rồi mới đặt "đến ngày".
+      const tuNgay = chuaQua(p.tempResidentFrom) ? setNgay('txtTEMP_RESIDENT_FROM', p.tempResidentFrom) : null;
       const han = setNgay('txtTEMP_RESIDENT_TO', p.tempResidentTo);
       const note = document.getElementById('txtCHANGED_NOTE');
       if (note && !norm(note.value).includes(norm(p.address))) {
