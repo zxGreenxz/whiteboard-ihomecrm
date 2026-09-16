@@ -1,14 +1,9 @@
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { memo } from 'react';
+import { TableCell, TableHead, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Pencil, Trash2 } from 'lucide-react';
+import { VirtualTable, type MeasureRef } from '@/components/ui/virtual-table';
 import type { RoomWithRelations } from '@/types/room';
 
 interface RoomListTableProps {
@@ -25,7 +20,90 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-export default function RoomListTable({
+interface RoomRowProps {
+  room: RoomWithRelations;
+  index: number;
+  measureRef: MeasureRef | undefined;
+  onEdit: (room: RoomWithRelations) => void;
+  onDelete: (room: RoomWithRelations) => void;
+  onToggleStatus: (id: string, isActive: boolean) => void;
+}
+
+/**
+ * Một dòng phòng — memo: gõ tìm kiếm / đổi bộ lọc chỉ dựng lại dòng vào/ra
+ * cửa sổ, dòng còn nguyên (cùng object phòng, cùng callback) bỏ qua.
+ */
+const RoomRow = memo(function RoomRow({
+  room,
+  index,
+  measureRef,
+  onEdit,
+  onDelete,
+  onToggleStatus,
+}: RoomRowProps) {
+  return (
+    <TableRow ref={measureRef} data-index={index}>
+      <TableCell className="font-medium">
+        {room.name}
+        {room.code && (
+          <span className="text-sm text-muted-foreground ml-2">
+            ({room.code})
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {room.building?.name || '-'}
+      </TableCell>
+      <TableCell className="text-center text-sm">
+        {room.floor}
+      </TableCell>
+      <TableCell className="text-right text-sm">
+        {room.area ? `${room.area} m²` : '-'}
+      </TableCell>
+      <TableCell className="text-right font-medium">
+        {formatCurrency(room.rent_price)}
+      </TableCell>
+      <TableCell className="text-right">
+        {formatCurrency(room.deposit_amount)}
+      </TableCell>
+      <TableCell className="text-center text-sm">
+        {room.max_occupants ?? '-'}
+      </TableCell>
+      <TableCell className="text-center">
+        <Switch
+          checked={room.status === 'AVAILABLE'}
+          onCheckedChange={(checked) =>
+            onToggleStatus(room.id, checked)
+          }
+        />
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+            onClick={() => onEdit(room)}
+            title="Sửa"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+            onClick={() => onDelete(room)}
+            title="Xoá"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+function RoomListTable({
   rooms,
   onEdit,
   onDelete,
@@ -33,8 +111,9 @@ export default function RoomListTable({
 }: RoomListTableProps) {
   return (
     <div className="rounded-md border">
-      <Table>
-        <TableHeader>
+      <VirtualTable
+        rows={rooms}
+        header={
           <TableRow>
             <TableHead>Tên phòng</TableHead>
             <TableHead>Toà nhà</TableHead>
@@ -46,70 +125,21 @@ export default function RoomListTable({
             <TableHead className="text-center">Hoạt động</TableHead>
             <TableHead className="w-[100px]">Thao tác</TableHead>
           </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rooms.map((room) => (
-            <TableRow key={room.id}>
-              <TableCell className="font-medium">
-                {room.name}
-                {room.code && (
-                  <span className="text-sm text-muted-foreground ml-2">
-                    ({room.code})
-                  </span>
-                )}
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {room.building?.name || '-'}
-              </TableCell>
-              <TableCell className="text-center text-sm">
-                {room.floor}
-              </TableCell>
-              <TableCell className="text-right text-sm">
-                {room.area ? `${room.area} m²` : '-'}
-              </TableCell>
-              <TableCell className="text-right font-medium">
-                {formatCurrency(room.rent_price)}
-              </TableCell>
-              <TableCell className="text-right">
-                {formatCurrency(room.deposit_amount)}
-              </TableCell>
-              <TableCell className="text-center text-sm">
-                {room.max_occupants ?? '-'}
-              </TableCell>
-              <TableCell className="text-center">
-                <Switch
-                  checked={room.status === 'AVAILABLE'}
-                  onCheckedChange={(checked) =>
-                    onToggleStatus(room.id, checked)
-                  }
-                />
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                    onClick={() => onEdit(room)}
-                    title="Sửa"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => onDelete(room)}
-                    title="Xoá"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+        }
+        renderRow={(room, index, measureRef) => (
+          <RoomRow
+            key={room.id}
+            room={room}
+            index={index}
+            measureRef={measureRef}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onToggleStatus={onToggleStatus}
+          />
+        )}
+      />
     </div>
   );
 }
+
+export default memo(RoomListTable);

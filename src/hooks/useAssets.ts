@@ -82,6 +82,54 @@ export interface AssetMaintenanceWithRelations extends AssetMaintenance {
   };
 }
 
+/** Bộ lọc client-side của màn Tài sản (phần không đẩy xuống query: phòng + từ khoá). */
+export interface AssetListFilter {
+  roomId?: string;
+  search?: string;
+}
+
+type AssetLikeForFilter = Pick<AssetWithRelations, "room_id" | "name" | "code" | "category">;
+
+/**
+ * Lọc theo phòng và từ khoá (tên / mã / tên loại, không phân biệt hoa thường).
+ * Thuần để trang bọc trong `useMemo`: trước đây phép lọc chạy lại mỗi render
+ * (kể cả khi mở/đóng dialog) trên toàn bộ danh sách đã `fetchAllRows`.
+ */
+export function filterAssets<T extends AssetLikeForFilter>(assets: readonly T[], filter: AssetListFilter): T[] {
+  const search = filter.search ? filter.search.toLowerCase() : "";
+  return assets.filter((asset) => {
+    if (filter.roomId && asset.room_id !== filter.roomId) return false;
+    if (!search) return true;
+    return Boolean(
+      asset.name?.toLowerCase().includes(search) ||
+        asset.code?.toLowerCase().includes(search) ||
+        asset.category?.name?.toLowerCase().includes(search),
+    );
+  });
+}
+
+export interface AssetSummary {
+  totalAssets: number;
+  /** Σ giá mua × số lượng (giá null tính 0, số lượng null tính 1). */
+  totalValue: number;
+  /** Đếm theo tình trạng; tình trạng null xếp vào GOOD. */
+  byCondition: Record<string, number>;
+}
+
+type AssetLikeForSummary = Pick<AssetWithRelations, "purchase_price" | "quantity" | "condition">;
+
+/** Tổng số, tổng giá trị và đếm theo tình trạng — một lượt duyệt thay cho hai `.reduce`. */
+export function summarizeAssets(assets: readonly AssetLikeForSummary[]): AssetSummary {
+  let totalValue = 0;
+  const byCondition: Record<string, number> = {};
+  for (const asset of assets) {
+    totalValue += (asset.purchase_price || 0) * (asset.quantity || 1);
+    const condition = asset.condition || "GOOD";
+    byCondition[condition] = (byCondition[condition] || 0) + 1;
+  }
+  return { totalAssets: assets.length, totalValue, byCondition };
+}
+
 // Fetch all assets
 export const useAssets = (filters?: {
   category_id?: string;

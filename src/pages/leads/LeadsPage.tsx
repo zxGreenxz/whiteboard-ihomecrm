@@ -1,5 +1,5 @@
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
-import { useState, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { Plus, Search, Download, UserPlus } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,16 @@ const LEAD_STATUSES = [
   { value: "FAILED", label: "Thất bại", color: "bg-red-100 text-red-800" },
 ] as const;
 
+/**
+ * Số thẻ dựng mỗi trang trong một cột kanban. Cột "Đã chuyển đổi" / "Thất bại"
+ * tích luỹ hàng trăm khách; dựng hết là hàng nghìn node cho phần không ai
+ * cuộn tới. Nút "Xem thêm" nạp trang kế của đúng cột đó.
+ */
+const THE_MOI_TRANG = 30;
+
+/** Thẻ khách — memo: gõ tìm kiếm chỉ dựng lại thẻ vào/ra danh sách. */
+const MemoLeadCard = memo(LeadCard);
+
 const LeadsPage = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -34,6 +44,8 @@ const LeadsPage = () => {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<LeadWithRelations | null>(null);
   const [searchTerm, setSearchTerm] = usePersistedState("flt:leads:search", "");
+  // Số thẻ đang hiện theo cột; cột chưa bấm "Xem thêm" dùng THE_MOI_TRANG.
+  const [shown, setShown] = useState<Record<string, number>>({});
 
   useCopilotPageContext('leads.list', { search: searchTerm }, detailDialogOpen ? selectedLead : null);
   const { data: leads = [], isLoading } = useLeads();
@@ -56,30 +68,46 @@ const LeadsPage = () => {
     );
   }, [leads, searchTerm]);
 
-  const handleEdit = (lead: LeadWithRelations) => {
+  // Gom theo trạng thái MỘT lần thay vì `.filter` 10 lần mỗi render (5 thẻ
+  // thống kê + 5 cột). Trạng thái lạ (không có trong LEAD_STATUSES) bị bỏ như cũ.
+  const leadsByStatus = useMemo(() => {
+    const groups: Record<string, LeadWithRelations[]> = {};
+    for (const s of LEAD_STATUSES) groups[s.value] = [];
+    for (const lead of filteredLeads) {
+      const group = lead.status ? groups[lead.status] : undefined;
+      if (group) group.push(lead);
+    }
+    return groups;
+  }, [filteredLeads]);
+
+  const handleEdit = useCallback((lead: LeadWithRelations) => {
     setSelectedLead(lead);
     setEditDialogOpen(true);
-  };
+  }, []);
 
-  const handleConvert = (lead: LeadWithRelations) => {
+  const handleConvert = useCallback((lead: LeadWithRelations) => {
     setSelectedLead(lead);
     setConvertDialogOpen(true);
-  };
+  }, []);
 
-  const handleViewDetail = (lead: LeadWithRelations) => {
+  const handleViewDetail = useCallback((lead: LeadWithRelations) => {
     setSelectedLead(lead);
     setDetailDialogOpen(true);
-  };
+  }, []);
 
-  const handleDelete = (lead: LeadWithRelations) => {
-    if (confirm(`Bạn có chắc chắn muốn xóa khách hẹn "${lead.customer_name}"?`)) {
-      deleteMutation.mutate(lead.id);
-    }
-  };
+  const { mutate: deleteLead } = deleteMutation;
+  const handleDelete = useCallback(
+    (lead: LeadWithRelations) => {
+      if (confirm(`Bạn có chắc chắn muốn xóa khách hẹn "${lead.customer_name}"?`)) {
+        deleteLead(lead.id);
+      }
+    },
+    [deleteLead],
+  );
 
-  const getLeadsByStatus = (status: string) => {
-    return filteredLeads.filter((lead) => lead.status === status);
-  };
+  const showMore = useCallback((status: string) => {
+    setShown((prev) => ({ ...prev, [status]: (prev[status] ?? THE_MOI_TRANG) + THE_MOI_TRANG }));
+  }, []);
 
   if (isLoading) {
     return (
@@ -132,7 +160,7 @@ const LeadsPage = () => {
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {LEAD_STATUSES.map((status) => {
-            const count = getLeadsByStatus(status.value).length;
+            const count = (leadsByStatus[status.value] ?? []).length;
             return (
               <Card key={status.value}>
                 <CardHeader className="pb-2">
@@ -158,7 +186,10 @@ const LeadsPage = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {LEAD_STATUSES.map((status) => {
-              const statusLeads = getLeadsByStatus(status.value);
+              const statusLeads = leadsByStatus[status.value] ?? [];
+              const limit = shown[status.value] ?? THE_MOI_TRANG;
+              const visible = statusLeads.length > limit ? statusLeads.slice(0, limit) : statusLeads;
+              const remaining = statusLeads.length - visible.length;
               return (
                 <div key={status.value} className="space-y-3">
                   <div className={`p-3 rounded-lg ${status.color}`}>
@@ -167,8 +198,8 @@ const LeadsPage = () => {
                     </h3>
                   </div>
                   <div className="space-y-3 min-h-[400px]">
-                    {statusLeads.map((lead) => (
-                      <LeadCard
+                    {visible.map((lead) => (
+                      <MemoLeadCard
                         key={lead.id}
                         lead={lead}
                         onEdit={handleEdit}
@@ -177,6 +208,16 @@ const LeadsPage = () => {
                         onViewDetail={handleViewDetail}
                       />
                     ))}
+                    {remaining > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => showMore(status.value)}
+                      >
+                        Xem thêm {Math.min(THE_MOI_TRANG, remaining)} (còn {remaining})
+                      </Button>
+                    )}
                     {statusLeads.length === 0 && (
                       <Card className="border-dashed">
                         <CardContent className="p-4 text-center text-sm text-muted-foreground">

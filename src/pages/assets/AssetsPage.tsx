@@ -1,23 +1,26 @@
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
-import { useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { Plus, Search, FileText, ArrowRightLeft, Wrench, Package } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { VirtualTable, type MeasureRef } from "@/components/ui/virtual-table";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAssets, useAssetMovements, useAssetMaintenance, type AssetWithRelations } from "@/hooks/useAssets";
+import {
+  useAssets,
+  useAssetMovements,
+  useAssetMaintenance,
+  filterAssets,
+  summarizeAssets,
+  type AssetWithRelations,
+  type AssetMovementWithRelations,
+  type AssetMaintenanceWithRelations,
+} from "@/hooks/useAssets";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useBuildings } from "@/hooks/useBuildings";
@@ -45,6 +48,102 @@ const MAINTENANCE_STATUS_CONFIG: Record<string, { label: string; color: string }
   IN_PROGRESS: { label: "Đang xử lý", color: "bg-blue-100 text-blue-800" },
   COMPLETED: { label: "Hoàn thành", color: "bg-green-100 text-green-800" },
 };
+
+interface AssetRowProps {
+  asset: AssetWithRelations;
+  index: number;
+  measureRef: MeasureRef | undefined;
+  onEdit: (asset: AssetWithRelations) => void;
+}
+
+/**
+ * Một dòng tài sản — memo: gõ tìm kiếm chỉ dựng lại dòng vào/ra cửa sổ ảo
+ * hoá, dòng còn nguyên (cùng object, cùng callback) bỏ qua.
+ */
+const AssetRow = memo(function AssetRow({ asset, index, measureRef, onEdit }: AssetRowProps) {
+  const condition = CONDITION_CONFIG[asset.condition as keyof typeof CONDITION_CONFIG];
+  return (
+    <TableRow ref={measureRef} data-index={index}>
+      <TableCell className="font-mono">{asset.code || "-"}</TableCell>
+      <TableCell className="font-medium">{asset.name}</TableCell>
+      <TableCell>{asset.category?.name || "-"}</TableCell>
+      <TableCell>{asset.quantity || 1}</TableCell>
+      <TableCell className="font-semibold">
+        {formatCurrency((asset.purchase_price || 0) * (asset.quantity || 1))}
+      </TableCell>
+      <TableCell>
+        <Badge className={condition?.color || ""}>{condition?.label || asset.condition}</Badge>
+      </TableCell>
+      <TableCell>
+        {asset.building?.name || "-"}
+        {asset.room && ` - ${asset.room.name}`}
+      </TableCell>
+      <TableCell>{asset.supplier?.name || "-"}</TableCell>
+      <TableCell>{asset.purchase_date || "-"}</TableCell>
+      <TableCell>
+        <Button size="sm" variant="outline" onClick={() => onEdit(asset)}>
+          Sửa
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+interface MovementRowProps {
+  m: AssetMovementWithRelations;
+  index: number;
+  measureRef: MeasureRef | undefined;
+}
+
+const MovementRow = memo(function MovementRow({ m, index, measureRef }: MovementRowProps) {
+  return (
+    <TableRow ref={measureRef} data-index={index}>
+      <TableCell>{m.movement_date || "-"}</TableCell>
+      <TableCell className="font-medium">
+        {m.asset?.code ? `[${m.asset.code}] ` : ""}
+        {m.asset?.name || "-"}
+      </TableCell>
+      <TableCell>
+        {m.from_room
+          ? `${m.from_room.building?.name || ""} - ${m.from_room.name}`
+          : m.from_location || "Kho"}
+      </TableCell>
+      <TableCell>
+        {m.to_room
+          ? `${m.to_room.building?.name || ""} - ${m.to_room.name}`
+          : m.to_location || "-"}
+      </TableCell>
+      <TableCell>{m.quantity || 1}</TableCell>
+      <TableCell>{m.reason || "-"}</TableCell>
+    </TableRow>
+  );
+});
+
+interface MaintenanceRowProps {
+  rec: AssetMaintenanceWithRelations;
+  index: number;
+  measureRef: MeasureRef | undefined;
+}
+
+const MaintenanceRow = memo(function MaintenanceRow({ rec, index, measureRef }: MaintenanceRowProps) {
+  const status = MAINTENANCE_STATUS_CONFIG[rec.status as string];
+  return (
+    <TableRow ref={measureRef} data-index={index}>
+      <TableCell>{rec.maintenance_date || "-"}</TableCell>
+      <TableCell className="font-medium">
+        {rec.asset?.code ? `[${rec.asset.code}] ` : ""}
+        {rec.asset?.name || "-"}
+      </TableCell>
+      <TableCell className="max-w-[200px] truncate">{rec.issue_description || "-"}</TableCell>
+      <TableCell>{rec.assigned_profile?.full_name || "-"}</TableCell>
+      <TableCell>{rec.cost ? formatCurrency(rec.cost) : "-"}</TableCell>
+      <TableCell>
+        <Badge className={status?.color || ""}>{status?.label || rec.status}</Badge>
+      </TableCell>
+      <TableCell className="max-w-[150px] truncate">{rec.notes || "-"}</TableCell>
+    </TableRow>
+  );
+});
 
 const AssetsPage = () => {
   const { data: perms } = useMyPermissions();
@@ -86,30 +185,28 @@ const AssetsPage = () => {
     },
   });
 
-  const handleEdit = (asset: AssetWithRelations) => {
+  const handleEdit = useCallback((asset: AssetWithRelations) => {
     setSelectedAsset(asset);
     setEditDialogOpen(true);
-  };
+  }, []);
 
-  const filteredAssets = assets.filter((asset) => {
-    if (roomFilter !== "ALL" && asset.room_id !== roomFilter) return false;
-    if (!searchQuery) return true;
-    const search = searchQuery.toLowerCase();
-    return (
-      asset.name?.toLowerCase().includes(search) ||
-      asset.code?.toLowerCase().includes(search) ||
-      asset.category?.name?.toLowerCase().includes(search)
-    );
-  });
+  // Lọc + tổng hợp chỉ chạy lại khi dữ liệu hoặc bộ lọc đổi. Trước đây cả hai
+  // chạy mỗi render trên toàn bộ danh sách (fetchAllRows, không cap 1000) —
+  // kể cả khi chỉ mở/đóng dialog.
+  const filteredAssets = useMemo(
+    () =>
+      filterAssets(assets, {
+        roomId: roomFilter !== "ALL" ? roomFilter : undefined,
+        search: searchQuery,
+      }),
+    [assets, roomFilter, searchQuery],
+  );
 
   // Calculate summary stats
-  const totalAssets = filteredAssets.length;
-  const totalValue = filteredAssets.reduce((sum, asset) => sum + (asset.purchase_price || 0) * (asset.quantity || 1), 0);
-  const byCondition = filteredAssets.reduce((acc, asset) => {
-    const condition = asset.condition || "GOOD";
-    acc[condition] = (acc[condition] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const { totalAssets, totalValue, byCondition } = useMemo(
+    () => summarizeAssets(filteredAssets),
+    [filteredAssets],
+  );
 
   if (isLoading) {
     return (
@@ -254,10 +351,11 @@ const AssetsPage = () => {
             />
           </div>
 
-          {/* Assets Table */}
+          {/* Assets Table — ảo hoá từ 50 dòng (VirtualTable) */}
           <Card>
-            <Table>
-              <TableHeader>
+            <VirtualTable
+              rows={filteredAssets}
+              header={
                 <TableRow>
                   <TableHead>Mã TS</TableHead>
                   <TableHead>Tên tài sản</TableHead>
@@ -270,45 +368,18 @@ const AssetsPage = () => {
                   <TableHead>Ngày mua</TableHead>
                   <TableHead>Thao tác</TableHead>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAssets.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                      Không tìm thấy tài sản nào
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredAssets.map((asset) => (
-                    <TableRow key={asset.id}>
-                      <TableCell className="font-mono">{asset.code || "-"}</TableCell>
-                      <TableCell className="font-medium">{asset.name}</TableCell>
-                      <TableCell>{asset.category?.name || "-"}</TableCell>
-                      <TableCell>{asset.quantity || 1}</TableCell>
-                      <TableCell className="font-semibold">
-                        {formatCurrency((asset.purchase_price || 0) * (asset.quantity || 1))}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={CONDITION_CONFIG[asset.condition as keyof typeof CONDITION_CONFIG]?.color || ""}>
-                          {CONDITION_CONFIG[asset.condition as keyof typeof CONDITION_CONFIG]?.label || asset.condition}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {asset.building?.name || "-"}
-                        {asset.room && ` - ${asset.room.name}`}
-                      </TableCell>
-                      <TableCell>{asset.supplier?.name || "-"}</TableCell>
-                      <TableCell>{asset.purchase_date || "-"}</TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="outline" onClick={() => handleEdit(asset)}>
-                          Sửa
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+              }
+              emptyRow={
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    Không tìm thấy tài sản nào
+                  </TableCell>
+                </TableRow>
+              }
+              renderRow={(asset, index, measureRef) => (
+                <AssetRow key={asset.id} asset={asset} index={index} measureRef={measureRef} onEdit={handleEdit} />
+              )}
+            />
           </Card>
         </TabsContent>
 
@@ -319,8 +390,9 @@ const AssetsPage = () => {
               <CardTitle className="text-lg">Lịch sử di chuyển tài sản</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
+              <VirtualTable
+                rows={movements}
+                header={
                   <TableRow>
                     <TableHead>Ngày</TableHead>
                     <TableHead>Tài sản</TableHead>
@@ -329,39 +401,18 @@ const AssetsPage = () => {
                     <TableHead>Số lượng</TableHead>
                     <TableHead>Lý do</TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {movements.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        Chưa có lịch sử di chuyển tài sản
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    movements.map((m) => (
-                      <TableRow key={m.id}>
-                        <TableCell>{m.movement_date || "-"}</TableCell>
-                        <TableCell className="font-medium">
-                          {m.asset?.code ? `[${m.asset.code}] ` : ""}
-                          {m.asset?.name || "-"}
-                        </TableCell>
-                        <TableCell>
-                          {m.from_room
-                            ? `${m.from_room.building?.name || ""} - ${m.from_room.name}`
-                            : m.from_location || "Kho"}
-                        </TableCell>
-                        <TableCell>
-                          {m.to_room
-                            ? `${m.to_room.building?.name || ""} - ${m.to_room.name}`
-                            : m.to_location || "-"}
-                        </TableCell>
-                        <TableCell>{m.quantity || 1}</TableCell>
-                        <TableCell>{m.reason || "-"}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                }
+                emptyRow={
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      Chưa có lịch sử di chuyển tài sản
+                    </TableCell>
+                  </TableRow>
+                }
+                renderRow={(m, index, measureRef) => (
+                  <MovementRow key={m.id} m={m} index={index} measureRef={measureRef} />
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -373,8 +424,9 @@ const AssetsPage = () => {
               <CardTitle className="text-lg">Lịch sử sửa chữa tài sản</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
+              <VirtualTable
+                rows={maintenanceRecords}
+                header={
                   <TableRow>
                     <TableHead>Ngày</TableHead>
                     <TableHead>Tài sản</TableHead>
@@ -384,36 +436,18 @@ const AssetsPage = () => {
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Ghi chú</TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {maintenanceRecords.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                        Chưa có lịch sử sửa chữa tài sản
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    maintenanceRecords.map((rec) => (
-                      <TableRow key={rec.id}>
-                        <TableCell>{rec.maintenance_date || "-"}</TableCell>
-                        <TableCell className="font-medium">
-                          {rec.asset?.code ? `[${rec.asset.code}] ` : ""}
-                          {rec.asset?.name || "-"}
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate">{rec.issue_description || "-"}</TableCell>
-                        <TableCell>{rec.assigned_profile?.full_name || "-"}</TableCell>
-                        <TableCell>{rec.cost ? formatCurrency(rec.cost) : "-"}</TableCell>
-                        <TableCell>
-                          <Badge className={MAINTENANCE_STATUS_CONFIG[rec.status as string]?.color || ""}>
-                            {MAINTENANCE_STATUS_CONFIG[rec.status as string]?.label || rec.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-[150px] truncate">{rec.notes || "-"}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                }
+                emptyRow={
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      Chưa có lịch sử sửa chữa tài sản
+                    </TableCell>
+                  </TableRow>
+                }
+                renderRow={(rec, index, measureRef) => (
+                  <MaintenanceRow key={rec.id} rec={rec} index={index} measureRef={measureRef} />
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>

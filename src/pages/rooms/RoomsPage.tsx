@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
+import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { usePhoneViewport } from '@/hooks/use-mobile';
 import { Home, Plus, Search, RefreshCw, LayoutGrid, List } from 'lucide-react';
@@ -151,23 +151,28 @@ function RoomsDesktop() {
     return { total: filteredRooms.length, available, expiring, reserved };
   }, [filteredRooms, endDateByRoomId]);
 
-  // Handlers
-  const handleEdit = (room: RoomWithRelations) => {
+  // Handlers — useCallback để dòng memo trong RoomListTable không dựng lại
+  // chỉ vì trang re-render (gõ tìm kiếm, mở/đóng dialog).
+  const handleEdit = useCallback((room: RoomWithRelations) => {
     setSelectedRoom(room);
     setEditDialogOpen(true);
-  };
+  }, []);
 
-  const handleDelete = (room: RoomWithRelations) => {
+  const handleDelete = useCallback((room: RoomWithRelations) => {
     setSelectedRoom(room);
     setDeleteDialogOpen(true);
-  };
+  }, []);
 
-  const handleToggleStatus = (id: string, isActive: boolean) => {
-    updateStatus.mutate({
-      id,
-      status: isActive ? 'AVAILABLE' : 'UNAVAILABLE',
-    });
-  };
+  const { mutate: mutateRoomStatus } = updateStatus;
+  const handleToggleStatus = useCallback(
+    (id: string, isActive: boolean) => {
+      mutateRoomStatus({
+        id,
+        status: isActive ? 'AVAILABLE' : 'UNAVAILABLE',
+      });
+    },
+    [mutateRoomStatus],
+  );
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['rooms'] });

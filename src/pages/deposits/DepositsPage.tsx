@@ -1,5 +1,5 @@
 import { useCopilotPageContext } from '@/hooks/useCopilotPageContext';
-import { useState, useMemo, lazy, Suspense } from "react";
+import { memo, useCallback, useState, useMemo, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import {
@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { VirtualTable, type MeasureRef } from "@/components/ui/virtual-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +40,7 @@ import {
   useReservationDepositSettlementSummary,
   summarizeRefundForfeit,
   type HeldDepositRow,
+  type RefundForfeitRow,
   type BuildingDepositSummary,
 } from "@/hooks/useDepositDashboard";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
@@ -79,6 +81,211 @@ const RESV_STATUS = {
   APPROVED: { label: "Đang giữ chỗ", color: "bg-green-100 text-green-800" },
   CANCELLED: { label: "Đã huỷ", color: "bg-gray-100 text-gray-700" },
 } as const;
+
+/** Mảng rỗng ổn định cho bảng đang tải — tránh cấp `[]` mới mỗi render. */
+const RONG: never[] = [];
+
+/** Dòng tab "Đủ / Thiếu cọc" — memo cho bảng ảo hoá (xem VirtualTable). */
+const ShortfallRow = memo(function ShortfallRow({
+  r,
+  index,
+  measureRef,
+}: {
+  r: HeldDepositRow;
+  index: number;
+  measureRef: MeasureRef | undefined;
+}) {
+  return (
+    <TableRow ref={measureRef} data-index={index}>
+      <TableCell>{r.building_name}</TableCell>
+      <TableCell>{r.room_name}</TableCell>
+      <TableCell>
+        <Link
+          to={`/contracts/${r.contract_id}`}
+          className="text-blue-600 hover:underline"
+        >
+          {r.customer_name}
+        </Link>
+      </TableCell>
+      <TableCell className="text-right">{formatCurrency(r.total_deposit)}</TableCell>
+      <TableCell className="text-right text-green-700">{formatCurrency(r.deposit_paid)}</TableCell>
+      <TableCell className="text-right font-medium text-orange-600">
+        {formatCurrency(r.deposit_remaining)}
+      </TableCell>
+      <TableCell>
+        {r.state === "FIRST_INVOICE" ? (
+          <Badge className="bg-blue-100 text-blue-700">Thu ở HĐ đầu</Badge>
+        ) : (
+          <Badge className="bg-orange-100 text-orange-700">Nợ cọc</Badge>
+        )}
+      </TableCell>
+      <TableCell>
+        {r.deposit_topup_due_date
+          ? formatDate(r.deposit_topup_due_date)
+          : "—"}
+      </TableCell>
+    </TableRow>
+  );
+});
+
+/** Dòng tab "Hoàn / Bỏ cọc" — chú thích nghiệp vụ từng ô giữ nguyên từ bảng cũ. */
+const RefundRow = memo(function RefundRow({
+  r,
+  index,
+  measureRef,
+}: {
+  r: RefundForfeitRow;
+  index: number;
+  measureRef: MeasureRef | undefined;
+}) {
+  // Số tiền khách CÒN NỢ sau khi quyết toán (nợ > cọc) — nay
+  // dùng cho CẢ hai loại: trước đây chỉ nhánh FORFEIT hiện
+  // "còn nợ", nên hồ sơ trả phòng có net âm (vd −2.241.000)
+  // bị clamp thành "Đã hoàn 0đ" (Slice −1 · §−1.7).
+  const stillOwed = Math.max(0, -r.settlement_net);
+  return (
+    <TableRow ref={measureRef} data-index={index}>
+      <TableCell>{formatDate(r.termination_date)}</TableCell>
+      <TableCell>{r.building_name}</TableCell>
+      <TableCell>{r.room_name}</TableCell>
+      <TableCell>
+        <Link to={`/contracts/${r.contract_id}`} className="text-blue-600 hover:underline">
+          {r.customer_name}
+        </Link>
+      </TableCell>
+      <TableCell>
+        {r.kind === "FORFEIT" ? (
+          <Badge className="bg-red-100 text-red-700">Bỏ cọc</Badge>
+        ) : (
+          <Badge className="bg-gray-100 text-gray-700">Hoàn cọc</Badge>
+        )}
+      </TableCell>
+      <TableCell className="text-right">{formatCurrency(r.total_deposit)}</TableCell>
+      <TableCell
+        className="text-right text-muted-foreground"
+        title="Tổng nợ khách khi thanh lý (tiền phòng nợ + phí) — KHÔNG trừ vào cọc"
+      >
+        {formatCurrency(r.total_deductions)}
+      </TableCell>
+      <TableCell
+        className="text-right text-muted-foreground"
+        title="contract_terminations.refund_amount (cột GENERATED) — net quyết toán theo HỒ SƠ, KHÔNG phải số phải trả khách. Âm = khách còn nợ thêm."
+      >
+        {formatCurrency(r.settlement_net)}
+      </TableCell>
+      <TableCell>
+        {r.kind === "FORFEIT" ? (
+          stillOwed > 0 ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Khách nợ {formatCurrency(stillOwed)}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Ban className="h-3.5 w-3.5" /> Cọc thành doanh thu
+            </span>
+          )
+        ) : r.refund_done ? (
+          <div className="space-y-0.5">
+            <span
+              className="inline-flex items-center gap-1 text-xs text-green-700"
+              title={
+                r.posted_refund_codes.length
+                  ? `Phiếu đã vào sổ: ${r.posted_refund_codes.join(", ")}`
+                  : undefined
+              }
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> Đã hoàn{" "}
+              {formatCurrency(r.posted_refund)}
+            </span>
+            {r.refund_drift !== 0 && (
+              <p
+                className="text-[11px] text-amber-700"
+                title="Hồ sơ thanh lý và phiếu đã vào sổ nói hai số khác nhau — cần rà tay, KHÔNG tự sửa."
+              >
+                Lệch hồ sơ {formatCurrency(r.refund_drift)}
+              </p>
+            )}
+          </div>
+        ) : stillOwed > 0 ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Khách còn nợ {formatCurrency(stillOwed)}
+          </span>
+        ) : r.settlement_net > 0 ? (
+          <span
+            className="text-xs text-orange-600"
+            title="Hồ sơ thanh lý ghi phải hoàn, nhưng chưa có phiếu chi nào được duyệt và vào sổ."
+          >
+            Chưa có phiếu hoàn ·{" "}
+            {formatCurrency(r.settlement_net)} theo hồ sơ
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            Không phát sinh hoàn
+          </span>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+});
+
+interface ReservationRowProps {
+  r: ReservationDepositRow;
+  index: number;
+  measureRef: MeasureRef | undefined;
+  canConvert: boolean;
+  canSettle: boolean;
+  onConvert: (r: ReservationDepositRow) => void;
+  onSettle: (voucherId: string) => void;
+}
+
+/** Dòng tab "Phiếu giữ chỗ". */
+const ReservationRow = memo(function ReservationRow({
+  r,
+  index,
+  measureRef,
+  canConvert,
+  canSettle,
+  onConvert,
+  onSettle,
+}: ReservationRowProps) {
+  const st = RESV_STATUS[r.approval_status];
+  return (
+    <TableRow ref={measureRef} data-index={index}>
+      <TableCell className="font-mono text-xs text-muted-foreground">
+        {r.code || "-"}
+      </TableCell>
+      <TableCell className="max-w-[260px] truncate" title={r.name}>
+        {r.name || "-"}
+      </TableCell>
+      <TableCell>{r.building_name || "-"}</TableCell>
+      <TableCell>{r.room_name || "—"}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {r.payer_name || "-"}
+      </TableCell>
+      <TableCell className="text-right">{formatCurrency(r.total_amount)}</TableCell>
+      <TableCell>{r.voucher_date ? formatDate(r.voucher_date) : "-"}</TableCell>
+      <TableCell>
+        {r.settlement ? <div className="space-y-1"><Badge variant="secondary">{r.settlement.retainedAmount === 0 ? (r.settlement.refundState === "PAID" ? "Đã hoàn cọc" : "Chờ hoàn cọc") : r.settlement.refundAmount > 0 ? "Đã bỏ cọc một phần" : "Đã bỏ cọc"}</Badge>{r.settlement.refundRemaining > 0 && <div className="text-xs text-amber-700">Chờ hoàn {formatCurrency(r.settlement.refundRemaining)}</div>}</div> : <Badge className={st?.color || ""}>{st?.label || r.approval_status}</Badge>}
+      </TableCell>
+      <TableCell>
+        <div className="flex flex-wrap gap-2">
+        {r.settlement_status === "UNSETTLED" && canConvert &&
+          r.approval_status === "APPROVED" &&
+          r.room_id && (
+            <Button size="sm" onClick={() => onConvert(r)}>
+              Tạo HĐ
+            </Button>
+          )}
+        {r.settlement_status === "UNSETTLED" && canSettle && r.approval_status === "APPROVED" && (
+          <Button size="sm" variant="outline" onClick={() => onSettle(r.id)}>Xử lý bỏ cọc</Button>
+        )}
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+});
 
 /**
  * Một ô của dải KPI (bản 2a): chấm màu + nhãn in hoa + số to.
@@ -268,26 +475,45 @@ const DepositsDesktop = () => {
   }, [heldFiltered, onlyShort]);
 
   // Tab giữ chỗ — lọc theo trạng thái + search (toà đã lọc server-side).
-  const filteredReservations = reservations.filter((r) => {
-    if (statusFilter !== "ALL" && r.approval_status !== statusFilter)
-      return false;
-    if (!searchQuery) return true;
-    const search = searchQuery.toLowerCase();
-    return (
-      r.code?.toLowerCase().includes(search) ||
-      r.name?.toLowerCase().includes(search) ||
-      r.payer_name?.toLowerCase().includes(search) ||
-      r.room_name?.toLowerCase().includes(search)
-    );
-  });
+  // useMemo: trước đây lọc lại mỗi render trên toàn bộ phiếu, kể cả khi chỉ
+  // mở/đóng dialog.
+  const filteredReservations = useMemo(
+    () =>
+      reservations.filter((r) => {
+        if (statusFilter !== "ALL" && r.approval_status !== statusFilter)
+          return false;
+        if (!searchQuery) return true;
+        const search = searchQuery.toLowerCase();
+        return (
+          r.code?.toLowerCase().includes(search) ||
+          r.name?.toLowerCase().includes(search) ||
+          r.payer_name?.toLowerCase().includes(search) ||
+          r.room_name?.toLowerCase().includes(search)
+        );
+      }),
+    [reservations, statusFilter, searchQuery],
+  );
+
+  // Ba thẻ đếm theo trạng thái ở tab giữ chỗ — một lượt duyệt thay cho ba `.filter`.
+  const resvStatusCounts = useMemo(() => {
+    const counts: Record<keyof typeof RESV_STATUS, number> = {
+      UNAPPROVED: 0,
+      APPROVED: 0,
+      CANCELLED: 0,
+    };
+    for (const r of reservations) {
+      if (r.approval_status in counts) counts[r.approval_status] += 1;
+    }
+    return counts;
+  }, [reservations]);
 
   // "Tạo HĐ" từ phiếu giữ chỗ: mở form HĐ prefill phòng; KHÔNG truyền depositId
   // (phiếu cọc mồ côi tự gắn vào HĐ qua trigger trg_contract_link_orphan_deposits).
-  const handleConvertReservation = (r: ReservationDepositRow) => {
+  const handleConvertReservation = useCallback((r: ReservationDepositRow) => {
     if (!r.room_id) return;
     setResvPrefill({ buildingId: r.building_id, roomId: r.room_id });
     setResvContractOpen(true);
-  };
+  }, []);
 
   // ── Hàng đợi "Cần xử lý" (bản 2a) ──────────────────────────────────────
   // `today` lấy theo GIỜ VN, không theo giờ máy: xem `vnTodayISO`.
@@ -301,39 +527,47 @@ const DepositsDesktop = () => {
       }),
     [heldFiltered, reservations, holdTerms],
   );
-  const todoCount = countTasks(workQueue);
+  const todoCount = useMemo(() => countTasks(workQueue), [workQueue]);
   const ledgerCount = heldFiltered.length + reservations.length;
 
-  const handleApproveTask = (task: DepositTask) => {
-    if (!task.voucherId) return;
-    setApprovingId(task.voucherId);
-    approveVoucher.mutate(task.voucherId, {
-      onSettled: () => {
-        setApprovingId(null);
-        queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] });
-      },
-    });
-  };
+  // Callback ổn định để dòng/thẻ memo không dựng lại theo mỗi render của trang.
+  const { mutate: approveMutate } = approveVoucher;
+  const handleApproveTask = useCallback(
+    (task: DepositTask) => {
+      if (!task.voucherId) return;
+      setApprovingId(task.voucherId);
+      approveMutate(task.voucherId, {
+        onSettled: () => {
+          setApprovingId(null);
+          queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] });
+        },
+      });
+    },
+    [approveMutate, queryClient],
+  );
 
-  const handleEditDeadline = (task: DepositTask) => {
-    if (!task.voucherId) return;
-    const terms = holdTerms[task.voucherId];
-    setDeadlineTarget({
-      voucherId: task.voucherId,
-      label: `P.${task.roomName} · ${task.buildingName}${task.code ? ` · ${task.code}` : ""}`,
-      holdUntil: terms?.holdUntil ?? null,
-      topupDueDate: terms?.topupDueDate ?? null,
-      depositTarget: terms?.depositTarget ?? null,
-      // `paidAmount` chỉ có ở thẻ thiếu cọc; thẻ khác in số cọc nên dùng amount.
-      paidAmount: task.paidAmount ?? task.amount,
-    });
-  };
+  const handleEditDeadline = useCallback(
+    (task: DepositTask) => {
+      if (!task.voucherId) return;
+      const terms = holdTerms[task.voucherId];
+      setDeadlineTarget({
+        voucherId: task.voucherId,
+        label: `P.${task.roomName} · ${task.buildingName}${task.code ? ` · ${task.code}` : ""}`,
+        holdUntil: terms?.holdUntil ?? null,
+        topupDueDate: terms?.topupDueDate ?? null,
+        depositTarget: terms?.depositTarget ?? null,
+        // `paidAmount` chỉ có ở thẻ thiếu cọc; thẻ khác in số cọc nên dùng amount.
+        paidAmount: task.paidAmount ?? task.amount,
+      });
+    },
+    [holdTerms],
+  );
 
-  const handleCreateContractFromTask = (task: DepositTask) => {
+  const handleCreateContractFromTask = useCallback((task: DepositTask) => {
     if (!task.roomId) return;
     setResvPrefill({ buildingId: task.buildingId, roomId: task.roomId });
     setResvContractOpen(true);
-  };
+  }, []);
 
   return (
     <MainLayout>
@@ -590,8 +824,9 @@ const DepositsDesktop = () => {
               </span>
             </div>
             <Card>
-              <Table>
-                <TableHeader>
+              <VirtualTable
+                rows={heldLoading ? RONG : shortfallRows}
+                header={
                   <TableRow>
                     <TableHead>Toà nhà</TableHead>
                     <TableHead>Phòng</TableHead>
@@ -602,53 +837,18 @@ const DepositsDesktop = () => {
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Hẹn bổ sung</TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {heldLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
-                    </TableRow>
-                  ) : shortfallRows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                        Tất cả hợp đồng đã thu đủ cọc 🎉
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    shortfallRows.map((r: HeldDepositRow) => (
-                      <TableRow key={r.contract_id}>
-                        <TableCell>{r.building_name}</TableCell>
-                        <TableCell>{r.room_name}</TableCell>
-                        <TableCell>
-                          <Link
-                            to={`/contracts/${r.contract_id}`}
-                            className="text-blue-600 hover:underline"
-                          >
-                            {r.customer_name}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-right">{formatCurrency(r.total_deposit)}</TableCell>
-                        <TableCell className="text-right text-green-700">{formatCurrency(r.deposit_paid)}</TableCell>
-                        <TableCell className="text-right font-medium text-orange-600">
-                          {formatCurrency(r.deposit_remaining)}
-                        </TableCell>
-                        <TableCell>
-                          {r.state === "FIRST_INVOICE" ? (
-                            <Badge className="bg-blue-100 text-blue-700">Thu ở HĐ đầu</Badge>
-                          ) : (
-                            <Badge className="bg-orange-100 text-orange-700">Nợ cọc</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {r.deposit_topup_due_date
-                            ? formatDate(r.deposit_topup_due_date)
-                            : "—"}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                }
+                emptyRow={
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      {heldLoading ? "Đang tải..." : "Tất cả hợp đồng đã thu đủ cọc 🎉"}
+                    </TableCell>
+                  </TableRow>
+                }
+                renderRow={(r, index, measureRef) => (
+                  <ShortfallRow key={r.contract_id} r={r} index={index} measureRef={measureRef} />
+                )}
+              />
             </Card>
           </TabsContent>
 
@@ -665,8 +865,9 @@ const DepositsDesktop = () => {
               <strong>"Chưa có phiếu hoàn"</strong>, không phải tick xanh.
             </p>
             <Card>
-              <Table>
-                <TableHeader>
+              <VirtualTable
+                rows={refundsLoading ? RONG : refundsFiltered}
+                header={
                   <TableRow>
                     <TableHead>Ngày</TableHead>
                     <TableHead>Toà nhà</TableHead>
@@ -680,114 +881,18 @@ const DepositsDesktop = () => {
                     </TableHead>
                     <TableHead>Tiền đã ra khỏi két</TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {refundsLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
-                    </TableRow>
-                  ) : refundsFiltered.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                        Chưa có hợp đồng thanh lý nào
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    refundsFiltered.map((r) => {
-                      // Số tiền khách CÒN NỢ sau khi quyết toán (nợ > cọc) — nay
-                      // dùng cho CẢ hai loại: trước đây chỉ nhánh FORFEIT hiện
-                      // "còn nợ", nên hồ sơ trả phòng có net âm (vd −2.241.000)
-                      // bị clamp thành "Đã hoàn 0đ" (Slice −1 · §−1.7).
-                      const stillOwed = Math.max(0, -r.settlement_net);
-                      return (
-                        <TableRow key={r.id}>
-                          <TableCell>{formatDate(r.termination_date)}</TableCell>
-                          <TableCell>{r.building_name}</TableCell>
-                          <TableCell>{r.room_name}</TableCell>
-                          <TableCell>
-                            <Link to={`/contracts/${r.contract_id}`} className="text-blue-600 hover:underline">
-                              {r.customer_name}
-                            </Link>
-                          </TableCell>
-                          <TableCell>
-                            {r.kind === "FORFEIT" ? (
-                              <Badge className="bg-red-100 text-red-700">Bỏ cọc</Badge>
-                            ) : (
-                              <Badge className="bg-gray-100 text-gray-700">Hoàn cọc</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">{formatCurrency(r.total_deposit)}</TableCell>
-                          <TableCell
-                            className="text-right text-muted-foreground"
-                            title="Tổng nợ khách khi thanh lý (tiền phòng nợ + phí) — KHÔNG trừ vào cọc"
-                          >
-                            {formatCurrency(r.total_deductions)}
-                          </TableCell>
-                          <TableCell
-                            className="text-right text-muted-foreground"
-                            title="contract_terminations.refund_amount (cột GENERATED) — net quyết toán theo HỒ SƠ, KHÔNG phải số phải trả khách. Âm = khách còn nợ thêm."
-                          >
-                            {formatCurrency(r.settlement_net)}
-                          </TableCell>
-                          <TableCell>
-                            {r.kind === "FORFEIT" ? (
-                              stillOwed > 0 ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700">
-                                  <AlertTriangle className="h-3.5 w-3.5" />
-                                  Khách nợ {formatCurrency(stillOwed)}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                  <Ban className="h-3.5 w-3.5" /> Cọc thành doanh thu
-                                </span>
-                              )
-                            ) : r.refund_done ? (
-                              <div className="space-y-0.5">
-                                <span
-                                  className="inline-flex items-center gap-1 text-xs text-green-700"
-                                  title={
-                                    r.posted_refund_codes.length
-                                      ? `Phiếu đã vào sổ: ${r.posted_refund_codes.join(", ")}`
-                                      : undefined
-                                  }
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5" /> Đã hoàn{" "}
-                                  {formatCurrency(r.posted_refund)}
-                                </span>
-                                {r.refund_drift !== 0 && (
-                                  <p
-                                    className="text-[11px] text-amber-700"
-                                    title="Hồ sơ thanh lý và phiếu đã vào sổ nói hai số khác nhau — cần rà tay, KHÔNG tự sửa."
-                                  >
-                                    Lệch hồ sơ {formatCurrency(r.refund_drift)}
-                                  </p>
-                                )}
-                              </div>
-                            ) : stillOwed > 0 ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700">
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                                Khách còn nợ {formatCurrency(stillOwed)}
-                              </span>
-                            ) : r.settlement_net > 0 ? (
-                              <span
-                                className="text-xs text-orange-600"
-                                title="Hồ sơ thanh lý ghi phải hoàn, nhưng chưa có phiếu chi nào được duyệt và vào sổ."
-                              >
-                                Chưa có phiếu hoàn ·{" "}
-                                {formatCurrency(r.settlement_net)} theo hồ sơ
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                Không phát sinh hoàn
-                              </span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
+                }
+                emptyRow={
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                      {refundsLoading ? "Đang tải..." : "Chưa có hợp đồng thanh lý nào"}
+                    </TableCell>
+                  </TableRow>
+                }
+                renderRow={(r, index, measureRef) => (
+                  <RefundRow key={r.id} r={r} index={index} measureRef={measureRef} />
+                )}
+              />
             </Card>
           </TabsContent>
 
@@ -806,9 +911,7 @@ const DepositsDesktop = () => {
                   (typeof RESV_STATUS)[keyof typeof RESV_STATUS],
                 ][]
               ).map(([key, config]) => {
-                const count = reservations.filter(
-                  (r) => r.approval_status === key,
-                ).length;
+                const count = resvStatusCounts[key];
                 return (
                   <Card key={key} className="p-4">
                     <div className="space-y-2">
@@ -846,8 +949,9 @@ const DepositsDesktop = () => {
             </div>
 
             <Card>
-              <Table>
-                <TableHeader>
+              <VirtualTable
+                rows={resvLoading ? RONG : filteredReservations}
+                header={
                   <TableRow>
                     <TableHead>Mã</TableHead>
                     <TableHead>Nội dung</TableHead>
@@ -859,13 +963,13 @@ const DepositsDesktop = () => {
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Thao tác</TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {resvLoading ? (
+                }
+                emptyRow={
+                  resvLoading ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
                     </TableRow>
-                  ) : filteredReservations.length === 0 ? (
+                  ) : (
                     <TableRow>
                       <TableCell colSpan={9}>
                         {reservations.length === 0 && statusFilter === "ALL" && !searchQuery ? (
@@ -883,47 +987,21 @@ const DepositsDesktop = () => {
                         )}
                       </TableCell>
                     </TableRow>
-                  ) : (
-                    filteredReservations.map((r) => {
-                      const st = RESV_STATUS[r.approval_status];
-                      return (
-                        <TableRow key={r.id}>
-                          <TableCell className="font-mono text-xs text-muted-foreground">
-                            {r.code || "-"}
-                          </TableCell>
-                          <TableCell className="max-w-[260px] truncate" title={r.name}>
-                            {r.name || "-"}
-                          </TableCell>
-                          <TableCell>{r.building_name || "-"}</TableCell>
-                          <TableCell>{r.room_name || "—"}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {r.payer_name || "-"}
-                          </TableCell>
-                          <TableCell className="text-right">{formatCurrency(r.total_amount)}</TableCell>
-                          <TableCell>{r.voucher_date ? formatDate(r.voucher_date) : "-"}</TableCell>
-                          <TableCell>
-                            {r.settlement ? <div className="space-y-1"><Badge variant="secondary">{r.settlement.retainedAmount === 0 ? (r.settlement.refundState === "PAID" ? "Đã hoàn cọc" : "Chờ hoàn cọc") : r.settlement.refundAmount > 0 ? "Đã bỏ cọc một phần" : "Đã bỏ cọc"}</Badge>{r.settlement.refundRemaining > 0 && <div className="text-xs text-amber-700">Chờ hoàn {formatCurrency(r.settlement.refundRemaining)}</div>}</div> : <Badge className={st?.color || ""}>{st?.label || r.approval_status}</Badge>}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-2">
-                            {r.settlement_status === "UNSETTLED" && canConvertDeposit &&
-                              r.approval_status === "APPROVED" &&
-                              r.room_id && (
-                                <Button size="sm" onClick={() => handleConvertReservation(r)}>
-                                  Tạo HĐ
-                                </Button>
-                              )}
-                            {r.settlement_status === "UNSETTLED" && canSettleDeposit && r.approval_status === "APPROVED" && (
-                              <Button size="sm" variant="outline" onClick={() => setSettlementVoucherId(r.id)}>Xử lý bỏ cọc</Button>
-                            )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
+                  )
+                }
+                renderRow={(r, index, measureRef) => (
+                  <ReservationRow
+                    key={r.id}
+                    r={r}
+                    index={index}
+                    measureRef={measureRef}
+                    canConvert={canConvertDeposit}
+                    canSettle={canSettleDeposit}
+                    onConvert={handleConvertReservation}
+                    onSettle={setSettlementVoucherId}
+                  />
+                )}
+              />
             </Card>
           </TabsContent>
         </Tabs>
