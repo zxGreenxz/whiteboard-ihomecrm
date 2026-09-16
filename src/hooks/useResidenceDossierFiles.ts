@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  listBuildingOwnershipFiles, listCustomerDossierFiles, removeDossierFile, uploadDossierFile,
+  listBuildingOwnershipFiles, listCustomerDossierFiles, luuHanHopDong, removeDossierFile, uploadDossierFile,
   type DossierKind, type ResidenceDossierFile,
 } from '@/lib/residenceDossierFiles';
 
@@ -55,5 +55,10 @@ export function useDossierFileMutations(scope: {
     onSuccess: invalidate,
     onError: (error) => toast.error(error.message),
   });
-  return { upload, remove };
+  const luuHan = useMutation<void, Error, { id: string; from: string; to: string; nguon?: 'ocr' | 'manual' }>({
+    mutationFn: ({ id, from, to, nguon }) => luuHanHopDong(id, from, to, nguon),
+    onSuccess: invalidate,
+    onError: (error) => toast.error(error.message),
+  });
+  return { upload, remove, luuHan };
 }

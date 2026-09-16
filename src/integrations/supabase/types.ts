@@ -14297,6 +14297,9 @@ export type Database = {
           file_name: string
           id: string
           kind: string
+          lease_term_from: string | null
+          lease_term_source: string | null
+          lease_term_to: string | null
           object_name: string
           organization_id: string
           size_bytes: number
@@ -14314,6 +14317,9 @@ export type Database = {
           file_name?: string
           id?: string
           kind: string
+          lease_term_from?: string | null
+          lease_term_source?: string | null
+          lease_term_to?: string | null
           object_name: string
           organization_id: string
           size_bytes?: number
@@ -14331,6 +14337,9 @@ export type Database = {
           file_name?: string
           id?: string
           kind?: string
+          lease_term_from?: string | null
+          lease_term_source?: string | null
+          lease_term_to?: string | null
           object_name?: string
           organization_id?: string
           size_bytes?: number

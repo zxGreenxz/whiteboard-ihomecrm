@@ -9,6 +9,7 @@ import {
   type OcrLine,
   type OcrReview,
 } from "./parser";
+import type { OcrMode, OcrTextLines } from "./types";
 import assets from "./assets.json";
 
 type Runtime = {
@@ -147,7 +148,8 @@ export async function readOcrCard(
   image: ImageData,
   runtime: Runtime,
   deadline: number,
-): Promise<OcrReview> {
+  mode: OcrMode = "card",
+): Promise<OcrReview | OcrTextLines> {
   const { cv, ort, det, rec, encoder, decoder, latin, vocab } = runtime;
   const owned = new Set<{ delete(): void }>();
   const own = <T extends { delete(): void }>(v: T): T => {
@@ -561,8 +563,10 @@ export async function readOcrCard(
       cv.rotate(source, source, cv.ROTATE_180);
       rows = await readLines(source, await detect(source));
     } else rows.push(...(await readLines(source, boxes.slice(3))));
-    const size = { width: source.cols, height: source.rows },
-      selection = selectOcrFields(rows, size);
+    const size = { width: source.cols, height: source.rows };
+    // Giấy tờ không phải CCCD: trả dòng chữ thô, bên gọi tự rút trường.
+    if (mode === "lines") return { status: "lines", lines: rows, size };
+    const selection = selectOcrFields(rows, size);
     if (selection.status === "ambiguous") return parseOcrFields(rows, size);
     const selected = new Set([
       ...(selection.selected.name.length > 1

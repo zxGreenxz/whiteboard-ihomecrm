@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { CT01Tenancy } from '@/lib/ct01DownloadService';
 import { createSignedUrlFromStored } from '@/lib/storage';
 import { dossierStorageValue, pickDossierFilesForContract, type ResidenceDossierFile } from '@/lib/residenceDossierFiles';
-import { buildTamTruPayload, TamTruInputError, type TamTruAttachment, type TamTruCustomerInput } from '@/lib/tamTruPayload';
+import { buildTamTruPayload, ngayHanHopLe, TamTruInputError, type TamTruAttachment, type TamTruCustomerInput } from '@/lib/tamTruPayload';
 import { detectTamTruExtension, sendTamTruPayload } from '@/lib/tamTruBridge';
 import TamTruInstallDialog from './TamTruInstallDialog';
 
@@ -16,10 +16,14 @@ export interface TamTruDvcButtonProps {
   tenancy: CT01Tenancy | null;
   customerFiles: ResidenceDossierFile[];
   ownershipFiles: ResidenceDossierFile[];
+  /** Han doc duoc tren anh hop dong (dd/mm/yyyy). Co thi khai dung ngay do. */
+  tempResidentTo?: string | null;
 }
 
-export default function TamTruDvcButton({ customer, tenancy, customerFiles, ownershipFiles }: TamTruDvcButtonProps) {
+export default function TamTruDvcButton({ customer, tenancy, customerFiles, ownershipFiles, tempResidentTo }: TamTruDvcButtonProps) {
   const [durationMonths, setDurationMonths] = useState<12 | 24>(24);
+  // Han doc tu giay thang o chon so thang: giay la thu can bo doi chieu.
+  const theoHopDong = ngayHanHopLe(tempResidentTo);
   const [busy, setBusy] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const pending = useRef(false);
@@ -35,7 +39,10 @@ export default function TamTruDvcButton({ customer, tenancy, customerFiles, owne
         kind: f.kind, fileName: f.file_name || f.object_name.split('/').pop() || 'anh', contentType: f.content_type || 'image/jpeg',
         url: await createSignedUrlFromStored(dossierStorageValue(f)),
       })));
-      const payload = buildTamTruPayload({ customer, building: tenancy.building, roomNumber: tenancy.roomNumber, durationMonths, attachments });
+      const payload = buildTamTruPayload({
+        customer, building: tenancy.building, roomNumber: tenancy.roomNumber,
+        durationMonths, tempResidentTo, attachments,
+      });
       await sendTamTruPayload(payload);
       setInstallOpen(false);
       toast.success('Đã mở Cổng DVC ở tab mới. Đăng nhập VNeID nếu cần, bấm "Điền ngay", kiểm tra rồi nộp.');
@@ -51,15 +58,19 @@ export default function TamTruDvcButton({ customer, tenancy, customerFiles, owne
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <label className="flex items-center gap-2 text-sm text-muted-foreground">
-        Hạn tạm trú
-        <select aria-label="Hạn tạm trú trên DVC" value={durationMonths} disabled={busy}
-          onChange={(e) => setDurationMonths(e.target.value === '12' ? 12 : 24)}
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground disabled:opacity-50">
-          <option value="12">12 tháng</option>
-          <option value="24">24 tháng</option>
-        </select>
-      </label>
+      {theoHopDong ? (
+        <p className="text-sm text-muted-foreground">Hạn tạm trú <b className="text-foreground">{tempResidentTo}</b> theo hợp đồng</p>
+      ) : (
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          Hạn tạm trú
+          <select aria-label="Hạn tạm trú trên DVC" value={durationMonths} disabled={busy}
+            onChange={(e) => setDurationMonths(e.target.value === '12' ? 12 : 24)}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground disabled:opacity-50">
+            <option value="12">12 tháng</option>
+            <option value="24">24 tháng</option>
+          </select>
+        </label>
+      )}
       <Button type="button" onClick={() => void send()} disabled={busy || !tenancy} aria-busy={busy}>
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
         {busy ? 'Đang chuẩn bị hồ sơ…' : 'Đăng ký tạm trú trên DVC'}

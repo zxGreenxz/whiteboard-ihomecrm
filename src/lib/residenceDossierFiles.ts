@@ -15,10 +15,11 @@ export const DOSSIER_KIND_LABEL: Record<DossierKind, string> = {
 };
 type Row = Database['public']['Tables']['residence_dossier_files']['Row'];
 export type ResidenceDossierFile = Pick<Row, 'id' | 'organization_id' | 'building_id' | 'customer_id' | 'contract_id'
-  | 'bucket_id' | 'object_name' | 'file_name' | 'content_type' | 'size_bytes' | 'sort_order' | 'created_at'> & { kind: DossierKind };
+  | 'bucket_id' | 'object_name' | 'file_name' | 'content_type' | 'size_bytes' | 'sort_order' | 'created_at'
+  | 'lease_term_from' | 'lease_term_to' | 'lease_term_source'> & { kind: DossierKind };
 export class DossierFileError extends Error {}
 
-const COLUMNS = 'id,kind,organization_id,building_id,customer_id,contract_id,bucket_id,object_name,file_name,content_type,size_bytes,sort_order,created_at';
+const COLUMNS = 'id,kind,organization_id,building_id,customer_id,contract_id,bucket_id,object_name,file_name,content_type,size_bytes,sort_order,created_at,lease_term_from,lease_term_to,lease_term_source';
 // Cổng DVC chỉ nhận pdf, jpg, jpeg, tiff, png (validFileAttachAll của cổng) — WebP bị
 // từ chối thẳng. Vì vậy ảnh hồ sơ tạm trú lưu NGUYÊN BYTE gốc (imagePolicy
 // 'identity-original'), không đi qua bộ nén sang WebP như ảnh thường. Giới hạn 10MB
@@ -148,6 +149,32 @@ export function pickDossierFilesForContract(
     return ofContract.length > 0 ? ofContract : ofKind;
   };
   return [...perKind('CT01'), ...perKind('LEASE'), ...ownershipFiles.filter(f => f.kind === 'OWNERSHIP')];
+}
+
+/** dd/mm/yyyy → yyyy-mm-dd cho cột date của Postgres. */
+function ngayIso(ddmmyyyy: string): string {
+  const [d, m, y] = ddmmyyyy.split('/');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Ghi thời hạn đọc được trên ảnh hợp đồng vào chính dòng ảnh đó.
+ *
+ * Đây là BỘ NHỚ ĐỆM của việc nhận dạng chữ, không phải dữ liệu người dùng nhập:
+ * đọc ảnh tốn vài giây và tốn pin trên điện thoại, mở lại hồ sơ không nên đọc lại.
+ * `nguon = 'manual'` khi người dùng tự sửa ngày.
+ */
+export async function luuHanHopDong(
+  id: string, from: string, to: string, nguon: 'ocr' | 'manual' = 'ocr',
+): Promise<void> {
+  const { error } = await supabase.from('residence_dossier_files')
+    .update({ lease_term_from: ngayIso(from), lease_term_to: ngayIso(to), lease_term_source: nguon })
+    .eq('id', id);
+  if (error) {
+    throw new DossierFileError(error.code === '42501'
+      ? 'Bạn không có quyền sửa hạn hợp đồng của ảnh này.'
+      : 'Chưa lưu được hạn hợp đồng. Vui lòng thử lại.');
+  }
 }
 
 export async function removeDossierFile(id: string): Promise<void> {

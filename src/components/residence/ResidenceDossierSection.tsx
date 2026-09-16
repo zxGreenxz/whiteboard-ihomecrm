@@ -7,8 +7,10 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { loadCT01Tenancies, type CT01Tenancy } from '@/lib/ct01DownloadService';
 import { useBuildingOwnershipFiles, useCustomerDossierFiles, useDossierFileMutations } from '@/hooks/useResidenceDossierFiles';
+import { useLeaseTermOcr } from '@/hooks/useLeaseTermOcr';
 import type { TamTruCustomerInput } from '@/lib/tamTruPayload';
 import DossierImageUploader from './DossierImageUploader';
+import LeaseTermBadge from './LeaseTermBadge';
 import TamTruDvcButton from './TamTruDvcButton';
 
 export interface ResidenceDossierSectionProps { customer: TamTruCustomerInput }
@@ -30,14 +32,22 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
 
   const customerFiles = useCustomerDossierFiles(allowed ? customer.id : undefined);
   const ownershipFiles = useBuildingOwnershipFiles(tenancy?.building.id);
-  const { upload, remove } = useDossierFileMutations({
+  const { upload, remove, luuHan } = useDossierFileMutations({
     customerId: customer.id, buildingId: tenancy?.building.id ?? '',
     buildingName: tenancy?.building.name, customerName: customer.full_name,
   });
 
+  const files = useMemo(() => customerFiles.data ?? [], [customerFiles.data]);
+  // Anh hop dong cua dung hop dong dang chon, moi nhat truoc - chinh anh se gui di.
+  const leaseFile = useMemo(() => {
+    const lease = files.filter(f => f.kind === 'LEASE');
+    const theoHopDong = lease.filter(f => f.contract_id === tenancy?.contractId);
+    return (theoHopDong.length > 0 ? theoHopDong : lease).at(-1);
+  }, [files, tenancy?.contractId]);
+  const hopDong = useLeaseTermOcr(leaseFile, allowed);
+
   if (!allowed) return null;
 
-  const files = customerFiles.data ?? [];
   const ownership = ownershipFiles.data ?? [];
 
   return (
@@ -65,13 +75,18 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
             onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
             hint="Chụp hoặc tải ảnh tờ khai CT01 đã ký. Có thể tải ngay từ điện thoại." />
           <DossierImageUploader kind="LEASE" files={files.filter(f => f.kind === 'LEASE')} canEdit contractId={tenancy.contractId}
-            onUpload={upload.mutateAsync} onRemove={remove.mutateAsync} />
+            onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}>
+            <LeaseTermBadge trangThai={hopDong.trangThai} han={hopDong.han} coAnh={!!leaseFile} canEdit
+              onDocLai={hopDong.docLai}
+              onSua={(from, to) => { if (leaseFile) void luuHan.mutateAsync({ id: leaseFile.id, from, to, nguon: 'manual' }); }} />
+          </DossierImageUploader>
           <p className="flex items-center gap-1.5 text-xs">
             {ownership.length > 0
               ? <><CheckCircle2 className="h-4 w-4 text-green-600" /> Giấy tờ chỗ ở hợp pháp của toà {tenancy.building.name}: {ownership.length} ảnh.</>
               : <><AlertTriangle className="h-4 w-4 text-amber-600" /> Toà {tenancy.building.name} chưa có ảnh giấy tờ chỗ ở hợp pháp. Bổ sung trong Sửa toà nhà.</>}
           </p>
-          <TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={files} ownershipFiles={ownership} />
+          <TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={files} ownershipFiles={ownership}
+            tempResidentTo={hopDong.han?.to ?? null} />
         </>
       )}
     </section>

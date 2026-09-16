@@ -24,6 +24,7 @@ import { canUse } from '@/lib/permissionPages';
 import { supabase } from '@/integrations/supabase/client';
 import type { VehicleWithRelations } from '@/types/vehicle';
 import DeleteCustomerDialog from '@/components/customers/DeleteCustomerDialog';
+import ResidenceDossierSection from '@/components/residence/ResidenceDossierSection';
 import { useDragScroll } from '@/components/contracts/detail/useDragScroll';
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
@@ -270,6 +271,14 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Hồ sơ tạm trú: chụp/dán ảnh CT01 và hợp đồng đã ký ngay trên điện thoại */}
+      <div className="cd-card">
+        <ResidenceDossierSection customer={{
+          id: customer.id, full_name: customer.full_name, date_of_birth: customer.date_of_birth,
+          gender: customer.gender, id_number: customer.id_number, phone: customer.phone, email: customer.email,
+        }} />
       </div>
 
       {/* Hợp đồng */}

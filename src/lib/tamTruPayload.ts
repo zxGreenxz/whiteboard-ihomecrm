@@ -86,11 +86,24 @@ function dobOf(value: string | null | undefined): string | null {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : null;
 }
 
+/** dd/mm/yyyy có thật và còn ở tương lai so với hôm nay (giờ Việt Nam). */
+export function ngayHanHopLe(value: string | null | undefined, now: Date = new Date()): value is string {
+  const m = value?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return false;
+  const [day, month, year] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return false;
+  const t = vnParts(now);
+  return d.getTime() > Date.UTC(t.year, t.month - 1, t.day);
+}
+
 export function buildTamTruPayload(input: {
   customer: TamTruCustomerInput;
   building: TamTruBuildingInput;
   roomNumber: string;
   durationMonths: 12 | 24;
+  /** Hạn ghi trên hợp đồng ở nhờ (đọc từ ảnh). Có thì dùng thay cho hôm nay + 12/24 tháng. */
+  tempResidentTo?: string | null;
   attachments: TamTruAttachment[];
   now?: Date;
 }): TamTruPayload {
@@ -127,7 +140,9 @@ export function buildTamTruPayload(input: {
     },
     address,
     household: { relationshipCode: 'CH01' },
-    tempResidentTo: tempResidentTo(now, input.durationMonths),
+    // Hạn trên hợp đồng là nguồn đúng: tờ khai CT01 và hợp đồng đều ghi theo ngày
+    // chủ tải giấy về in, còn hôm nay là ngày bấm nút — hai mốc đã từng lệch nhau.
+    tempResidentTo: ngayHanHopLe(input.tempResidentTo, now) ? input.tempResidentTo : tempResidentTo(now, input.durationMonths),
     attachments: [...attachments].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)),
   };
 }

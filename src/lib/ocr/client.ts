@@ -1,4 +1,12 @@
-import type { OcrRequest, OcrResponse, OcrScanner, OcrResult } from "./types";
+import type {
+  OcrMode,
+  OcrReadOptions,
+  OcrRequest,
+  OcrResponse,
+  OcrScanner,
+  OcrResult,
+  OcrTextResult,
+} from "./types";
 export interface OcrWorkerLike {
   onmessage: ((e: MessageEvent<OcrResponse>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
@@ -26,27 +34,33 @@ export function createOcrScanner(
     worker?.terminate();
     worker = null;
   };
-  return {
-    read(source, { signal, onProgress } = {}) {
+  function run<T extends OcrResult | OcrTextResult>(
+    source: Blob | ImageData,
+    mode: OcrMode,
+    { signal, onProgress }: OcrReadOptions = {},
+  ): Promise<T> {
       cancel?.();
       if (disposed || signal?.aborted)
-        return Promise.resolve({ status: "cancelled", elapsedMs: 0 });
+        return Promise.resolve({ status: "cancelled", elapsedMs: 0 } as T);
       if (source instanceof Blob && source.size > 20 * 1024 * 1024)
-        return Promise.resolve({ status: "image-invalid", elapsedMs: 0 });
-      return new Promise<OcrResult>((resolve) => {
+        return Promise.resolve({ status: "image-invalid", elapsedMs: 0 } as T);
+      return new Promise<T>((resolve) => {
         const id = ++serial,
           started = performance.now();
         let settled = false,
           reading = false;
         let timer: ReturnType<typeof setTimeout>;
-        const finish = (result: OcrResult, hardStop = false) => {
+        const finish = (
+          result: OcrResult | OcrTextResult,
+          hardStop = false,
+        ) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
           signal?.removeEventListener("abort", abort);
           cancel = null;
           if (hardStop) terminate();
-          resolve({ ...result, elapsedMs: performance.now() - started });
+          resolve({ ...result, elapsedMs: performance.now() - started } as T);
         };
         const abort = () => finish({ status: "cancelled", elapsedMs: 0 }, true);
         cancel = abort;
@@ -86,6 +100,7 @@ export function createOcrScanner(
               requestId: id,
               source,
               budgetMs: options.processingTimeoutMs ?? 30_000,
+              mode,
             },
             typeof ImageData !== "undefined" && source instanceof ImageData
               ? [source.data.buffer]
@@ -95,6 +110,13 @@ export function createOcrScanner(
           finish({ status: "engine-unavailable", elapsedMs: 0 }, true);
         }
       });
+  }
+  return {
+    read(source, options) {
+      return run<OcrResult>(source, "card", options);
+    },
+    readText(source, options) {
+      return run<OcrTextResult>(source, "lines", options);
     },
     dispose() {
       disposed = true;

@@ -62,6 +62,7 @@ scope.onmessage = async ({ data }: MessageEvent<OcrRequest>) => {
       image,
       runtime,
       performance.now() + Math.min(60_000, Math.max(1, data.budgetMs)),
+      data.mode ?? "card",
     );
     send({
       type: "result",

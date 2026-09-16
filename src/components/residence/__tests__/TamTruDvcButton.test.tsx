@@ -25,6 +25,7 @@ const file = (id: string, kind: ResidenceDossierFile['kind'], contract: string |
   id, kind, organization_id: 'o', building_id: 'b1', customer_id: kind === 'OWNERSHIP' ? null : 'c1', contract_id: contract,
   bucket_id: 'residence-docs', object_name: `u/${id}.webp`, file_name: `${id}.jpg`, content_type: 'image/webp',
   size_bytes: 1, sort_order: 0, created_at: '2026-09-15T00:00:00Z',
+  lease_term_from: null, lease_term_to: null, lease_term_source: null,
 });
 const customer = { id: 'c1', full_name: 'Nguyễn Gia Bình', date_of_birth: '2008-10-18', gender: 'Nam', id_number: '034208012538', phone: '0843181008', email: '' };
 const tenancy: CT01Tenancy = {
@@ -73,6 +74,26 @@ describe('TamTruDvcButton', () => {
     ]);
     expect(payload.tempResidentTo).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
     expect(boundary.toastSuccess).toHaveBeenCalled();
+  });
+
+  it('có hạn đọc từ hợp đồng thì khai đúng ngày đó, giấu ô chọn số tháng', async () => {
+    render(<TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={customerFiles}
+      ownershipFiles={ownershipFiles} tempResidentTo="14/09/2028" />);
+    expect(screen.queryByLabelText(/hạn tạm trú trên dvc/i)).toBeNull();
+    expect(screen.getByText(/14\/09\/2028/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /đăng ký tạm trú trên dvc/i }));
+    await waitFor(() => expect(boundary.send).toHaveBeenCalledTimes(1));
+    expect(boundary.send.mock.calls[0][0].tempResidentTo).toBe('14/09/2028');
+  });
+
+  it('hạn đọc được đã quá hạn thì bỏ qua, quay về số tháng người dùng chọn', async () => {
+    render(<TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={customerFiles}
+      ownershipFiles={ownershipFiles} tempResidentTo="01/01/2020" />);
+    // Ô chọn số tháng phải hiện lại, kẻo người dùng không còn đường sửa.
+    expect(screen.getByLabelText(/hạn tạm trú trên dvc/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /đăng ký tạm trú trên dvc/i }));
+    await waitFor(() => expect(boundary.send).toHaveBeenCalledTimes(1));
+    expect(boundary.send.mock.calls[0][0].tempResidentTo).not.toBe('01/01/2020');
   });
 
   it('thiếu ảnh chủ quyền thì báo lỗi rõ và không gửi', async () => {
