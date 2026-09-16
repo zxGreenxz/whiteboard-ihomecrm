@@ -1378,8 +1378,8 @@ export const useInvoiceStatistics = (filters?: InvoiceStatisticsFilters) => {
 // =============================================
 // useCheckOverdueInvoices - Auto-update overdue invoices on page load
 // Requirements: 7.7, 11.10
-// Checks invoices with status APPROVED or PARTIAL_PAID where due_date < today
-// and updates their status to OVERDUE.
+// Checks invoices with status APPROVED (chưa thu đồng nào) where due_date < today
+// and updates their status to OVERDUE. PARTIAL_PAID KHÔNG bị đụng (H1.5, 15/09/2026).
 // =============================================
 
 export const useCheckOverdueInvoices = () => {
@@ -1397,13 +1397,16 @@ export const useCheckOverdueInvoices = () => {
 
       const today = todayISO();
 
-      // Find all invoices that should be marked as OVERDUE:
-      // status IN ('APPROVED', 'PARTIAL_PAID'), due_date < today, not deleted
+      // Fallback (khi RPC canonical chưa có): CÙNG LUẬT với mark_overdue_invoices_v1
+      // sau 15/09/2026 — chỉ hoá đơn APPROVED chưa thu đồng nào. PARTIAL_PAID
+      // giữ nguyên: recompute_invoice_for_id ưu tiên PARTIAL_PAID trước OVERDUE,
+      // đánh ở đây là hai writer nói hai luật và trạng thái lật qua lật lại.
       const { data: overdueInvoices, error: fetchError } = await supabase
         .from('invoices')
         .select('id')
         .is('deleted_at', null)
-        .in('status', ['APPROVED', 'PARTIAL_PAID'] as any)
+        .eq('status', 'APPROVED' as any)
+        .eq('paid_amount', 0)
         .lt('due_date', today);
 
       if (fetchError) throw fetchError;

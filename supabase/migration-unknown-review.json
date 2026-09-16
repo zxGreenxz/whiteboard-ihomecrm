@@ -558,7 +558,7 @@
       ]
     },
     "supabase/migrations/20260915074852_luong_authz_org_scope_v1.sql": {
-      "sha256": "4d0dde101d45016cc8608bc02b786975a91f6c5062369b5581935f107d6071d7",
+      "sha256": "484422f0c701d625dd1e62fe1b0464cb6ef3bc7e74ebaf881f3a8ef493481e5d",
       "missingObjects": [
         "function:app_private.v5_salary_org_of_user_v1",
         "function:app_private.v5_can_view_salary_v1",

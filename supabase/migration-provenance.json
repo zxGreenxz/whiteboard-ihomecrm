@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-16T09:43:04.835Z",
+  "generatedAt": "2026-09-16T11:07:02.034Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 563,
     "unknown": 81,
-    "catalog-proven": 220,
+    "catalog-proven": 221,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -10024,7 +10024,7 @@
       "version": "20260915074852",
       "name": "luong_authz_org_scope_v1",
       "scheme": "timestamp14",
-      "sha256": "4d0dde101d45016cc8608bc02b786975a91f6c5062369b5581935f107d6071d7",
+      "sha256": "484422f0c701d625dd1e62fe1b0464cb6ef3bc7e74ebaf881f3a8ef493481e5d",
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
@@ -10243,6 +10243,17 @@
       "evidence": [],
       "missingObjects": [
         "(file không CREATE object nào — chỉ ALTER/DML)"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260916110606_hoa_don_quet_qua_han_chi_approved.sql",
+      "version": "20260916110606",
+      "name": "hoa_don_quet_qua_han_chi_approved",
+      "scheme": "timestamp14",
+      "sha256": "6e01278be504537136c34ba738a67598b6be8fcc061fff285459d0883d5f51d7",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.mark_overdue_invoices_v1"
       ]
     },
     {

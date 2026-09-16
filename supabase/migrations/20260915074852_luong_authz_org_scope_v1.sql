@@ -113,7 +113,15 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, app_private
 AS $fn$
   SELECT CASE
-    WHEN (SELECT auth.uid()) IS NULL OR p_target IS NULL THEN false
+    WHEN p_target IS NULL THEN false
+    -- Job đêm (edge function salary-v5-jobs dùng service_role → v5_run_job →
+    -- v5_close_period → v5_month_money từng nhân viên) và mọi đường nội bộ
+    -- không mang JWT người dùng: KHÔNG có auth.uid() để so, nhưng đó không phải
+    -- "người lạ đọc lương" — service_role/postgres đã là chủ toàn database.
+    -- Không có mệnh đề này thì đóng kỳ lương tự động gãy 42501 ngay đêm đầu
+    -- (phát hiện 16/09/2026 lúc gộp, đo chuỗi gọi trên production).
+    WHEN auth.role() = 'service_role' OR session_user = 'postgres' THEN true
+    WHEN (SELECT auth.uid()) IS NULL THEN false
     WHEN p_target = (SELECT auth.uid()) THEN true
     ELSE EXISTS (
       SELECT 1
