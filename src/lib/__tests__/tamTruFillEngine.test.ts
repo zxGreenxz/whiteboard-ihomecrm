@@ -160,6 +160,12 @@ describe('fill-engine helpers', () => {
       'HH_PERSON_RELATIONSHIP_CODE', 'IDENTIFIER_NUMBER', 'PHONE_NUMBER', 'SUGGEST_ADDRESS', 'TEMP_RESIDENT_TO']);
     expect(o.HH_PERSON_RELATIONSHIP_CODE).toBe('CH01');
   });
+
+  it('có ngày ký hợp đồng thì thêm ô "từ ngày", không có thì để cổng giữ mặc định', () => {
+    const e = loadEngine();
+    expect(e.formObject({ ...payload, tempResidentFrom: '14/09/2026' })).toMatchObject({ TEMP_RESIDENT_FROM: '14/09/2026' });
+    expect('TEMP_RESIDENT_FROM' in e.formObject(payload)).toBe(false);
+  });
 });
 
 describe('fill-engine run', () => {

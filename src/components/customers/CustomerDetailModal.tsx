@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Pencil, Trash2, Phone } from 'lucide-react';
-import CT01DownloadButton from './CT01DownloadButton';
 import ResidenceDossierSection from '@/components/residence/ResidenceDossierSection';
 import { Button } from '@/components/ui/button';
 import {
@@ -269,10 +268,6 @@ export default function CustomerDetailModal({
                   </div>
                 )}
               </div>
-
-              <Separator />
-
-              <CT01DownloadButton key={customer.id} customer={customer} />
 
               <Separator />
 

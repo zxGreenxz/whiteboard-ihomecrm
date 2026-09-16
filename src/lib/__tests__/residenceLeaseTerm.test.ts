@@ -2,6 +2,7 @@
 // ảnh chủ nộp ngày 16/09/2026 (Nguyễn Gia Bình và Trương Lâm Xuân Nghi).
 import { describe, expect, it } from 'vitest';
 import { congThang, docHanHopDong, hanConHieuLuc, khongDau, ngayHopLe } from '@/lib/residenceLeaseTerm';
+import { hanTheoThang, ngayKyHopDong, thangTheoHan } from '@/components/residence/ResidenceDossierSection';
 
 const HOP_DONG_THAT = [
   'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM',
@@ -77,5 +78,31 @@ describe('phụ trợ', () => {
     expect(hanConHieuLuc(han, new Date('2028-09-20T00:00:00Z'))).toBe(false);
     // 14/09/2028 lúc 23:30 giờ VN vẫn là ngày 14 nên hạn chưa qua.
     expect(hanConHieuLuc(han, new Date('2028-09-13T16:30:00Z'))).toBe(true);
+  });
+});
+
+describe('mốc ngày của hàng thao tác', () => {
+  const anh = (created_at: string) => ({ created_at } as unknown as Parameters<typeof ngayKyHopDong>[1]);
+
+  it('ngày ký lấy từ giấy trước, rồi tới ngày tải ảnh, cuối cùng mới là hôm nay', () => {
+    const han = { from: '14/09/2026', to: '14/09/2028', nguon: 'cap-ngay' } as const;
+    expect(ngayKyHopDong(han, anh('2026-09-16T00:00:00Z'))).toBe('14/09/2026');
+    // Không đọc được giấy: ngày chủ tải ảnh lên chính là hôm chủ in ra ký.
+    expect(ngayKyHopDong(null, anh('2026-09-14T03:00:00Z'))).toBe('14/09/2026');
+    expect(ngayKyHopDong(null, undefined, new Date('2026-09-16T05:00:00Z'))).toBe('16/09/2026');
+  });
+
+  it('hạn tính từ ngày ký chứ không phải hôm nay', () => {
+    expect(hanTheoThang('14/09/2026', 24)).toBe('14/09/2028');
+    expect(hanTheoThang('14/09/2026', 12)).toBe('14/09/2027');
+    expect(hanTheoThang('rác', 12)).toBe('');
+  });
+
+  it('số tháng suy ngược từ hạn đã lưu để ô chọn hiện đúng thứ đã chốt', () => {
+    expect(thangTheoHan({ from: '14/09/2026', to: '14/09/2028', nguon: 'cap-ngay' })).toBe(24);
+    expect(thangTheoHan({ from: '14/09/2026', to: '14/09/2027', nguon: 'cap-ngay' })).toBe(12);
+    // Hạn lẻ trên giấy không ép về 12/24, ô chọn giữ mặc định còn hạn vẫn theo giấy.
+    expect(thangTheoHan({ from: '14/09/2026', to: '20/10/2027', nguon: 'cap-ngay' })).toBeNull();
+    expect(thangTheoHan(null)).toBeNull();
   });
 });

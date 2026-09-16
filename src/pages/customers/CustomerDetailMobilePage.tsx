@@ -278,6 +278,8 @@ export default function CustomerDetailMobilePage({ id }: { id: string }) {
         <ResidenceDossierSection customer={{
           id: customer.id, full_name: customer.full_name, date_of_birth: customer.date_of_birth,
           gender: customer.gender, id_number: customer.id_number, phone: customer.phone, email: customer.email,
+          id_issue_date: customer.id_issue_date, id_issue_place: customer.id_issue_place,
+          detailed_address: customer.detailed_address,
         }} />
       </div>
 

@@ -15,6 +15,8 @@ export interface TamTruPayload {
   person: { fullName: string; dob: string; genderCode: '2' | '3' | '4'; idNumber: string; phone: string; email: string };
   address: string;
   household: { relationshipCode: 'CH01' };
+  /** Ngày bắt đầu tạm trú = ngày ký hợp đồng ở nhờ; bỏ trống thì để cổng tự đặt hôm nay. */
+  tempResidentFrom?: string;
   tempResidentTo: string;
   attachments: TamTruAttachment[];
 }
@@ -86,6 +88,15 @@ function dobOf(value: string | null | undefined): string | null {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : null;
 }
 
+/** dd/mm/yyyy có thật (không xét quá khứ hay tương lai). */
+export function ngayHopLeDinhDang(value: string | null | undefined): value is string {
+  const m = value?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return false;
+  const [day, month, year] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
+}
+
 /** dd/mm/yyyy có thật và còn ở tương lai so với hôm nay (giờ Việt Nam). */
 export function ngayHanHopLe(value: string | null | undefined, now: Date = new Date()): value is string {
   const m = value?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
@@ -102,6 +113,8 @@ export function buildTamTruPayload(input: {
   building: TamTruBuildingInput;
   roomNumber: string;
   durationMonths: 12 | 24;
+  /** Ngày ký hợp đồng ở nhờ (đọc từ ảnh) — dùng làm ngày bắt đầu tạm trú. */
+  tempResidentFrom?: string | null;
   /** Hạn ghi trên hợp đồng ở nhờ (đọc từ ảnh). Có thì dùng thay cho hôm nay + 12/24 tháng. */
   tempResidentTo?: string | null;
   attachments: TamTruAttachment[];
@@ -142,6 +155,7 @@ export function buildTamTruPayload(input: {
     household: { relationshipCode: 'CH01' },
     // Hạn trên hợp đồng là nguồn đúng: tờ khai CT01 và hợp đồng đều ghi theo ngày
     // chủ tải giấy về in, còn hôm nay là ngày bấm nút — hai mốc đã từng lệch nhau.
+    ...(ngayHopLeDinhDang(input.tempResidentFrom) ? { tempResidentFrom: input.tempResidentFrom } : {}),
     tempResidentTo: ngayHanHopLe(input.tempResidentTo, now) ? input.tempResidentTo : tempResidentTo(now, input.durationMonths),
     attachments: [...attachments].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)),
   };

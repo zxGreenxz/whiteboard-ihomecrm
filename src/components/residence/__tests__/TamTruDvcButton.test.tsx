@@ -61,8 +61,8 @@ describe('TamTruDvcButton', () => {
   });
 
   it('ký URL, dựng gói và gửi cho extension', async () => {
-    render(<TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={customerFiles} ownershipFiles={ownershipFiles} />);
-    fireEvent.change(screen.getByLabelText(/hạn tạm trú trên dvc/i), { target: { value: '12' } });
+    render(<TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={customerFiles}
+      ownershipFiles={ownershipFiles} durationMonths={12} />);
     fireEvent.click(screen.getByRole('button', { name: /đăng ký tạm trú trên dvc/i }));
     await waitFor(() => expect(boundary.send).toHaveBeenCalledTimes(1));
     const payload = boundary.send.mock.calls[0][0];
@@ -76,21 +76,19 @@ describe('TamTruDvcButton', () => {
     expect(boundary.toastSuccess).toHaveBeenCalled();
   });
 
-  it('có hạn đọc từ hợp đồng thì khai đúng ngày đó, giấu ô chọn số tháng', async () => {
+  it('khai đúng ngày hợp đồng, cả ngày bắt đầu lẫn ngày hết hạn', async () => {
     render(<TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={customerFiles}
-      ownershipFiles={ownershipFiles} tempResidentTo="14/09/2028" />);
-    expect(screen.queryByLabelText(/hạn tạm trú trên dvc/i)).toBeNull();
-    expect(screen.getByText(/14\/09\/2028/)).toBeTruthy();
+      ownershipFiles={ownershipFiles} tempResidentFrom="14/09/2026" tempResidentTo="14/09/2028" />);
     fireEvent.click(screen.getByRole('button', { name: /đăng ký tạm trú trên dvc/i }));
     await waitFor(() => expect(boundary.send).toHaveBeenCalledTimes(1));
-    expect(boundary.send.mock.calls[0][0].tempResidentTo).toBe('14/09/2028');
+    expect(boundary.send.mock.calls[0][0]).toMatchObject({
+      tempResidentFrom: '14/09/2026', tempResidentTo: '14/09/2028',
+    });
   });
 
-  it('hạn đọc được đã quá hạn thì bỏ qua, quay về số tháng người dùng chọn', async () => {
+  it('hạn đã qua thì bỏ, quay về số tháng dự phòng', async () => {
     render(<TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={customerFiles}
-      ownershipFiles={ownershipFiles} tempResidentTo="01/01/2020" />);
-    // Ô chọn số tháng phải hiện lại, kẻo người dùng không còn đường sửa.
-    expect(screen.getByLabelText(/hạn tạm trú trên dvc/i)).toBeTruthy();
+      ownershipFiles={ownershipFiles} tempResidentTo="01/01/2020" durationMonths={12} />);
     fireEvent.click(screen.getByRole('button', { name: /đăng ký tạm trú trên dvc/i }));
     await waitFor(() => expect(boundary.send).toHaveBeenCalledTimes(1));
     expect(boundary.send.mock.calls[0][0].tempResidentTo).not.toBe('01/01/2020');

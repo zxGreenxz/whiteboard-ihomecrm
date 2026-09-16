@@ -9,12 +9,21 @@ import { CT01InputError, downloadCT01Document, type CT01Customer } from '@/lib/c
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-export default function CT01DownloadButton({ customer }: { customer: CT01Customer & { id: string } }) {
+export interface CT01DownloadButtonProps {
+  customer: CT01Customer & { id: string };
+  /** Số tháng do khối Hồ sơ tạm trú giữ; truyền vào thì nút không hiện ô chọn riêng. */
+  durationMonths?: 12 | 24;
+  /** Nhãn ngắn để đứng chung hàng với nút Đăng ký tạm trú. */
+  gonNhe?: boolean;
+}
+
+export default function CT01DownloadButton({ customer, durationMonths: durationProp, gonNhe }: CT01DownloadButtonProps) {
   const { data: permissions } = useMyPermissions();
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const [tenancies, setTenancies] = useState<CT01Tenancy[]>([]);
-  const [durationMonths, setDurationMonths] = useState<12 | 24>(24);
+  const [durationRieng, setDurationMonths] = useState<12 | 24>(24);
+  const durationMonths = durationProp ?? durationRieng;
   const allowed = canUse(permissions, 'customers', 'print');
 
   const download = async (selected?: CT01Tenancy) => {
@@ -33,6 +42,7 @@ export default function CT01DownloadButton({ customer }: { customer: CT01Custome
         return;
       }
       const tenancy = choices[0];
+      if (!tenancy) return;
       const owner = await loadBuildingLegalOwner(tenancy.building.id);
       if (!owner) throw new CT01InputError('Tòa nhà chưa có thông tin người đứng tên chủ quyền. Vui lòng bổ sung trong chỉnh sửa tòa nhà.');
       await downloadCT01Document(customer, tenancy.building, { durationMonths, roomNumber: tenancy.roomNumber, owner }, requestedAt);
@@ -49,18 +59,24 @@ export default function CT01DownloadButton({ customer }: { customer: CT01Custome
   if (!allowed) return null;
   return <>
     <div className="flex flex-wrap items-center gap-3">
-      <label className="flex items-center gap-2 text-sm text-muted-foreground">
-        Thời hạn tạm trú
-        <select aria-label="Thời hạn tạm trú" value={durationMonths} disabled={busy}
-          onChange={event => setDurationMonths(event.target.value === '12' ? 12 : 24)}
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground disabled:opacity-50">
-          <option value="12">12 tháng</option><option value="24">24 tháng</option>
-        </select>
-      </label>
+      {durationProp === undefined && (
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          Thời hạn tạm trú
+          <select aria-label="Thời hạn tạm trú" value={durationMonths} disabled={busy}
+            onChange={event => setDurationMonths(event.target.value === '12' ? 12 : 24)}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground disabled:opacity-50">
+            <option value="12">12 tháng</option><option value="24">24 tháng</option>
+          </select>
+        </label>
+      )}
     <button type="button" onClick={() => void download()} disabled={busy} aria-busy={busy}
-      className="text-sm text-green-600 hover:text-green-700 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:cursor-wait">
+      title="Tải tờ khai CT01 và hợp đồng cho thuê, mượn, ở nhờ (Word) để in ra ký"
+      className={gonNhe
+        ? 'inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium text-green-700 hover:bg-accent disabled:opacity-50 disabled:cursor-wait'
+        : 'text-sm text-green-600 hover:text-green-700 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:cursor-wait'}>
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-      {busy ? 'Đang tạo tờ khai CT01…' : 'Bản khai nhân khẩu / Mẫu CT01 - Tờ khai thay đổi thông tin cư trú'}
+      {busy ? (gonNhe ? 'Đang tạo…' : 'Đang tạo tờ khai CT01…')
+        : gonNhe ? 'Tải CT01+HĐT' : 'Bản khai nhân khẩu / Mẫu CT01 - Tờ khai thay đổi thông tin cư trú'}
     </button>
     </div>
     <Dialog open={tenancies.length > 1} onOpenChange={open => { if (!open && !busy) setTenancies([]); }}>

@@ -71,6 +71,9 @@
       HH_PERSON_FULLNAME: p.person.fullName,
       HH_PERSON_RELATIONSHIP_CODE: p.household.relationshipCode,
       HH_PERSON_IDENTIFIER_NUMBER: p.person.idNumber,
+      // Ngày bắt đầu chỉ có khi CRM đọc được ngày ký trên hợp đồng; thiếu thì
+      // để cổng giữ mặc định của nó thay vì ghi đè bằng rỗng.
+      ...(p.tempResidentFrom ? { TEMP_RESIDENT_FROM: p.tempResidentFrom } : {}),
       TEMP_RESIDENT_TO: p.tempResidentTo,
     };
   }
@@ -164,6 +167,9 @@
       setObject(formObject(p));
       await sleep(300);
       const dob = setNgay('txtDOB', p.person.dob);
+      // Ngày bắt đầu tạm trú = ngày ký hợp đồng ở nhờ, không phải ngày nộp: cán bộ
+      // đối chiếu hai con số này với tờ hợp đồng đính kèm.
+      const tuNgay = setNgay('txtTEMP_RESIDENT_FROM', p.tempResidentFrom);
       const han = setNgay('txtTEMP_RESIDENT_TO', p.tempResidentTo);
       const note = document.getElementById('txtCHANGED_NOTE');
       if (note && !norm(note.value).includes(norm(p.address))) {
@@ -183,7 +189,7 @@
       kiem('txtSUGGEST_ADDRESS', p.address);
       kiem('txtHH_PERSON_IDENTIFIER_NUMBER', p.person.idNumber);
       if (thieu.length) throw new Error('Cổng không nhận các ô: ' + thieu.join(', '));
-      report('Ngày sinh ' + dob + ' · hạn đến ' + han
+      report('Ngày sinh ' + dob + ' · tạm trú ' + (tuNgay ? tuNgay + ' → ' : 'đến ') + han
         + (canhBaoNgay.length ? ' · CẦN KIỂM LẠI: ' + canhBaoNgay.splice(0).join('; ') : ''));
     }],
     ['Mở mục đính kèm "do thuê, mượn, ở nhờ"', async () => {

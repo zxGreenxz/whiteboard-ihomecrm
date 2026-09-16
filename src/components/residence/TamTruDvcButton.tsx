@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { CT01Tenancy } from '@/lib/ct01DownloadService';
 import { createSignedUrlFromStored } from '@/lib/storage';
 import { dossierStorageValue, pickDossierFilesForContract, type ResidenceDossierFile } from '@/lib/residenceDossierFiles';
-import { buildTamTruPayload, ngayHanHopLe, TamTruInputError, type TamTruAttachment, type TamTruCustomerInput } from '@/lib/tamTruPayload';
+import { buildTamTruPayload, TamTruInputError, type TamTruAttachment, type TamTruCustomerInput } from '@/lib/tamTruPayload';
 import { detectTamTruExtension, sendTamTruPayload } from '@/lib/tamTruBridge';
 import TamTruInstallDialog from './TamTruInstallDialog';
 
@@ -16,14 +16,17 @@ export interface TamTruDvcButtonProps {
   tenancy: CT01Tenancy | null;
   customerFiles: ResidenceDossierFile[];
   ownershipFiles: ResidenceDossierFile[];
-  /** Han doc duoc tren anh hop dong (dd/mm/yyyy). Co thi khai dung ngay do. */
+  /** Ngày ký hợp đồng ở nhờ (dd/mm/yyyy) — ngày bắt đầu tạm trú khai trên cổng. */
+  tempResidentFrom?: string | null;
+  /** Hạn tạm trú (dd/mm/yyyy) do khối Hồ sơ tạm trú tính từ giấy hoặc số tháng. */
   tempResidentTo?: string | null;
+  /** Số tháng dự phòng khi không có hạn nào dùng được. */
+  durationMonths?: 12 | 24;
 }
 
-export default function TamTruDvcButton({ customer, tenancy, customerFiles, ownershipFiles, tempResidentTo }: TamTruDvcButtonProps) {
-  const [durationMonths, setDurationMonths] = useState<12 | 24>(24);
-  // Han doc tu giay thang o chon so thang: giay la thu can bo doi chieu.
-  const theoHopDong = ngayHanHopLe(tempResidentTo);
+export default function TamTruDvcButton({
+  customer, tenancy, customerFiles, ownershipFiles, tempResidentFrom, tempResidentTo, durationMonths = 24,
+}: TamTruDvcButtonProps) {
   const [busy, setBusy] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const pending = useRef(false);
@@ -41,7 +44,7 @@ export default function TamTruDvcButton({ customer, tenancy, customerFiles, owne
       })));
       const payload = buildTamTruPayload({
         customer, building: tenancy.building, roomNumber: tenancy.roomNumber,
-        durationMonths, tempResidentTo, attachments,
+        durationMonths, tempResidentFrom, tempResidentTo, attachments,
       });
       await sendTamTruPayload(payload);
       setInstallOpen(false);
@@ -58,19 +61,6 @@ export default function TamTruDvcButton({ customer, tenancy, customerFiles, owne
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {theoHopDong ? (
-        <p className="text-sm text-muted-foreground">Hạn tạm trú <b className="text-foreground">{tempResidentTo}</b> theo hợp đồng</p>
-      ) : (
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          Hạn tạm trú
-          <select aria-label="Hạn tạm trú trên DVC" value={durationMonths} disabled={busy}
-            onChange={(e) => setDurationMonths(e.target.value === '12' ? 12 : 24)}
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground disabled:opacity-50">
-            <option value="12">12 tháng</option>
-            <option value="24">24 tháng</option>
-          </select>
-        </label>
-      )}
       <Button type="button" onClick={() => void send()} disabled={busy || !tenancy} aria-busy={busy}>
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
         {busy ? 'Đang chuẩn bị hồ sơ…' : 'Đăng ký tạm trú trên DVC'}
