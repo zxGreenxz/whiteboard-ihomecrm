@@ -27,6 +27,7 @@ import {
   isFirstMonthInvoice,
 } from '@/lib/invoiceUtils';
 import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
+import { markLocalWrite } from '@/hooks/useRealtimeDataSync';
 import { todayISO } from '@/lib/collect';
 import {
   buildCreditInvoiceCreateRpcArgs,
@@ -43,20 +44,36 @@ export type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
 export type { AdjustInvoiceInput } from '@/lib/invoiceAdjustmentRpc';
 import { adjustInvoice, reviewInvoiceAdjustment, type AdjustInvoiceInput, type ReviewAdjustmentInput } from '@/lib/invoiceAdjustmentRpc';
 
-const adjustmentCachePrefixes = [
-  'invoices', 'invoices-legacy', 'invoice', 'invoice-statistics', 'excess-amount',
-  'invoice-totals-by-ids', 'first-invoice-details', 'invoice-rent-periods',
-  'business-performance', 'invoice-rounding-report', 'invoice-payments-summary',
-  'collection-cycle', 'financial-analysis', 'finance-v2-routes',
-  'invoice-history', 'unpaid-invoices',
+// 15/09 (plan con B): 16 tiền tố cũ ở đây là lượt ĐÁNH THỨ NHẤT, rồi ~0,8s sau
+// hub realtime nhận event `invoices` và đánh lượt THỨ HAI trên gần đúng tập ấy
+// (descriptor src/hooks/realtime/finance.ts phủ invoices, invoices-legacy,
+// invoice, invoice-statistics, invoice-totals-by-ids, first-invoice-details,
+// invoice-rent-periods, unpaid-invoices, business-performance) rồi prefetch lại
+// cả domain hoá đơn. Giữ lại ở đây đúng bốn TỔNG HỢP mà hub không khai — phần
+// còn lại để hub lo, và markLocalWrite bên dưới ép lượt đó gộp về một.
+//
+// Hai tiền tố bị BỎ HẲN, có lý do chứ không phải cắt bừa:
+//   - `financial-analysis`: không query nào dùng tiền tố này, nó chỉ tồn tại
+//     trong các mảng invalidate. Cùng lớp "khoá trỏ hư không" đã đính chính ở
+//     src/hooks/realtime/contracts.ts — invalidate khớp 0 query rồi im lặng.
+//   - `finance-v2-routes`: cấu hình chuẩn mực kế toán của tổ chức; điều chỉnh
+//     một hoá đơn không đụng tới nó.
+const adjustmentAggregatePrefixes = [
+  'excess-amount', 'invoice-rounding-report', 'invoice-payments-summary', 'collection-cycle',
 ];
 export const useAdjustInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   return useMutation<InvoiceAdjustment, Error, AdjustInvoiceInput>({
     mutationFn: adjustInvoice,
-    onSuccess: () => {
-      for (const prefix of adjustmentCachePrefixes) void queryClient.invalidateQueries({ queryKey: [prefix] });
+    onSuccess: (adjustment, variables) => {
+      // Theo ĐÚNG hoá đơn vừa sửa: màn đang mở phải đổi ngay, không đợi debounce
+      // 800ms của hub. RPC luôn trả invoice_id; giữ input làm đường lùi.
+      const invoiceId = adjustment?.invoice_id ?? variables.invoiceId;
+      void queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
+      void queryClient.invalidateQueries({ queryKey: ['invoice-history', invoiceId] });
+      for (const prefix of adjustmentAggregatePrefixes) void queryClient.invalidateQueries({ queryKey: [prefix] });
+      markLocalWrite(['invoices']);
       toast({ title: 'Đã lưu điều chỉnh', description: 'Đã cập nhật hóa đơn và lưu lịch sử phiên bản.' });
     },
   });

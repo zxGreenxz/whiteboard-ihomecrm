@@ -21,6 +21,7 @@ const harness = vi.hoisted(() => {
     removeChannel: vi.fn(),
     channelFactory: vi.fn(() => channel),
     useEffect: vi.fn(),
+    prefetchDomain: vi.fn(),
   };
 });
 
@@ -47,8 +48,30 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-import { useRealtimeDataSync, __hubRefsForTest } from "@/hooks/useRealtimeDataSync";
+// prefetchPages kéo theo hooks của 4 trang (supabase client, permission…) — hub
+// import ĐỘNG nó, nên mock ở đây vừa giữ test nhẹ vừa cho phép ĐẾM số lần hâm
+// cache. Cửa chặn route/throttle nằm ở prefetchGate, KHÔNG bị mock.
+vi.mock("@/lib/prefetchPages", () => ({
+  prefetchDomain: harness.prefetchDomain,
+}));
+
+import {
+  useRealtimeDataSync,
+  __hubRefsForTest,
+  markLocalWrite,
+} from "@/hooks/useRealtimeDataSync";
+// Nạp sẵn module ĐÃ MOCK ở trên. Với fake timers, lần `import()` ĐẦU TIÊN cần
+// một nhịp thật của event loop nên không resolve trong microtask — thiếu dòng
+// này thì ca prefetch đo nhầm thành "hub không gọi" dù hub có gọi.
+import "@/lib/prefetchPages";
+import { __resetLocalWriteEchoForTest } from "@/lib/realtime/localWriteEcho";
+import { __resetPrefetchGateForTest } from "@/lib/realtime/prefetchGate";
 import { QueryClient } from "@tanstack/react-query";
+
+/** Đẩy hết microtask đang chờ — dynamic import của hub resolve ở đây. */
+async function xaMicrotask() {
+  for (let i = 0; i < 50; i += 1) await Promise.resolve();
+}
 
 const NEW_REPORT_ROOTS = new Set([
   "business-performance",
@@ -189,6 +212,11 @@ describe("useRealtimeDataSync report invalidation", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal("document", { visibilityState: "hidden" });
+    // Hai sổ cấp MODULE: mốc "vừa tự ghi" và mốc prefetch gần nhất. Không dọn thì
+    // ca sau thừa hưởng mốc của ca trước và xanh/đỏ theo thứ tự chạy.
+    __resetLocalWriteEchoForTest();
+    __resetPrefetchGateForTest();
+    harness.prefetchDomain.mockReset();
     harness.handlers.clear();
     harness.queryClient = new QueryClient();
     harness.invalidateQueries.mockReset();
@@ -678,4 +706,134 @@ describe("useRealtimeDataSync report invalidation", () => {
       expect(invalidatedRoots()).toEqual(["business-performance"]);
     },
   );
+
+  // ── CỬA SỔ "VỪA TỰ GHI" (plan con B, mục 1) ──────────────────────────────
+  //
+  // Mutation local đã invalidate xong thì 0,8–2,4 giây sau chính hub invalidate
+  // LẦN HAI toàn bộ key của bảng rồi prefetch lại cả domain — dù người dùng
+  // không đứng ở trang đó. Với create_contract_v2 (5 bảng) là ~70 lượt quét
+  // cache + 6 RPC nặng cho một thao tác đã xong từ lâu.
+  //
+  // Sau bản vá: event realtime đến trong ≤3 giây sau mutation của CHÍNH máy này
+  // chỉ còn MỘT lượt invalidate gộp, chạm đúng query đang active.
+  it("bảng vừa tự ghi: cả entry gộp về MỘT lượt invalidate, chỉ chạm query active", () => {
+    useRealtimeDataSync();
+    markLocalWrite(["customers"]);
+    triggerTable("customers");
+
+    // Entry `customers` có 2 key ⇒ đường cũ là 2 lượt. Gộp còn 1.
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(1);
+    const [filters] = harness.invalidateQueries.mock.calls[0] as [
+      {
+        queryKey?: unknown;
+        refetchType?: string;
+        predicate: (q: { queryKey: readonly unknown[] }) => boolean;
+      },
+    ];
+    expect(filters.queryKey).toBeUndefined();
+    expect(filters.refetchType).toBe("active");
+    expect(filters.predicate({ queryKey: ["customers", "building-a"] })).toBe(true);
+    expect(filters.predicate({ queryKey: ["customer-stats"] })).toBe(true);
+    expect(filters.predicate({ queryKey: ["invoices"] })).toBe(false);
+  });
+
+  it("hợp đồng vừa tự ghi: 9 lượt invalidate còn 2 (entry gộp + báo cáo)", () => {
+    useRealtimeDataSync();
+    markLocalWrite(["contracts"]);
+    triggerTable("contracts");
+
+    // Đường cũ: 8 key ngoài business-performance + 1 lượt gom báo cáo = 9.
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+  });
+
+  it("chỉ bảng ĐƯỢC đánh dấu mới vào cửa sổ — bảng khác giữ nguyên đường đầy đủ", () => {
+    useRealtimeDataSync();
+    markLocalWrite(["contracts"]);
+    triggerTable("customers");
+
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(invalidatedRoots()).toEqual(["customers", "customer-stats"]);
+  });
+
+  it("quá 3 giây thì trở lại đường đầy đủ — cửa sổ không dính vĩnh viễn", () => {
+    useRealtimeDataSync();
+    markLocalWrite(["customers"]);
+    vi.advanceTimersByTime(3001);
+    triggerTable("customers");
+
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+  });
+
+  it("một event ngoài cửa sổ trong cùng cụm kéo cả cụm về đường đầy đủ", () => {
+    useRealtimeDataSync();
+    const handler = getRealtimeHandler("customers");
+    markLocalWrite(["customers"]);
+    vi.advanceTimersByTime(2900);
+    handler(); // vẫn trong cửa sổ 3s
+    vi.advanceTimersByTime(400); // < 800ms ⇒ CÙNG một cụm debounce
+    handler(); // đã ngoài cửa sổ ⇒ có thể là thay đổi của MÁY KHÁC
+    vi.advanceTimersByTime(800);
+
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(2);
+  });
+
+  // ── CỬA CHẶN PREFETCH (plan con B, mục 2) ────────────────────────────────
+  it("không prefetch domain khi đang đứng ở chính trang của domain đó", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    vi.stubGlobal("window", { location: { pathname: "/contracts" } });
+
+    useRealtimeDataSync();
+    triggerTable("contracts");
+    await xaMicrotask();
+
+    expect(harness.prefetchDomain).not.toHaveBeenCalled();
+  });
+
+  it("không prefetch domain trong cửa sổ vừa tự ghi", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    vi.stubGlobal("window", { location: { pathname: "/dashboard" } });
+
+    useRealtimeDataSync();
+    markLocalWrite(["contracts"]);
+    triggerTable("contracts");
+    await xaMicrotask();
+
+    expect(harness.prefetchDomain).not.toHaveBeenCalled();
+  });
+
+  it("prefetch khi ở trang khác, nhưng throttle 10 giây theo domain", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    vi.stubGlobal("window", { location: { pathname: "/dashboard" } });
+
+    useRealtimeDataSync();
+    triggerTable("contracts");
+    await xaMicrotask();
+    expect(harness.prefetchDomain).toHaveBeenCalledTimes(1);
+    expect(harness.prefetchDomain.mock.calls[0]?.[1]).toBe("contracts");
+
+    vi.advanceTimersByTime(5000);
+    triggerTable("contracts");
+    await xaMicrotask();
+    expect(harness.prefetchDomain).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(10_000);
+    triggerTable("contracts");
+    await xaMicrotask();
+    expect(harness.prefetchDomain).toHaveBeenCalledTimes(2);
+  });
+
+  it("throttle đếm RIÊNG từng domain — hoá đơn không bị chặn vì hợp đồng", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    vi.stubGlobal("window", { location: { pathname: "/dashboard" } });
+
+    useRealtimeDataSync();
+    triggerTable("contracts");
+    await xaMicrotask();
+    triggerTable("invoices");
+    await xaMicrotask();
+
+    expect(
+      harness.prefetchDomain.mock.calls.map((c) => c[1]),
+    ).toEqual(["contracts", "invoices"]);
+  });
 });
