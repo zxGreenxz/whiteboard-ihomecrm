@@ -149,13 +149,6 @@ const Login = () => {
             >
               {loginMutation.isPending ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </Button>
-
-            <p className="text-sm text-center text-gray-600">
-              Chưa có tài khoản?{' '}
-              <Link to="/register" className="text-primary hover:underline font-medium">
-                Đăng ký ngay
-              </Link>
-            </p>
           </CardFooter>
         </form>
       </Card>

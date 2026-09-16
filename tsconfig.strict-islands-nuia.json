@@ -569,7 +569,6 @@
     "src/pages/auth/AcceptInvitation.tsx",
     "src/pages/auth/ForgotPassword.tsx",
     "src/pages/auth/Login.tsx",
-    "src/pages/auth/Register.tsx",
     "src/pages/auth/ResetPassword.tsx",
     "src/pages/building-map/BuildingMapMobilePage.tsx",
     "src/pages/customers/CT01FormPage.tsx",

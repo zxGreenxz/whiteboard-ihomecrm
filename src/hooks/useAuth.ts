@@ -12,13 +12,6 @@ import {
 // Types
 // =============================================
 
-export interface RegisterData {
-  email: string;
-  password: string;
-  fullName: string;
-  phone: string; // Required
-}
-
 export interface LoginData {
   identifier: string; // Can be phone or email
   password: string;
@@ -121,50 +114,18 @@ export const useSession = () => {
 };
 
 // =============================================
-// Register
+// Đăng ký công khai — ĐÃ BỎ (15/09/2026, chủ quyết)
 // =============================================
-
-export const useRegister = () => {
-  const navigate = useNavigate();
-  const { toast } = useToast();
-
-  return useMutation({
-    mutationKey: ['auth', 'register'],
-    mutationFn: async (data: RegisterData) => {
-      // Convert phone to email format if user registers with phone
-      const authEmail = data.email ? data.email : phoneToEmail(data.phone);
-
-      const { data: authData, error } = await supabase.auth.signUp({
-        email: authEmail,
-        password: data.password,
-        options: {
-          data: {
-            full_name: data.fullName,
-            phone: data.phone,
-            email: data.email || null, // Store actual email if provided
-          },
-        },
-      });
-
-      if (error) throw error;
-      return authData;
-    },
-    onSuccess: () => {
-      toast({
-        title: 'Đăng ký thành công',
-        description: 'Bạn đã tạo tài khoản thành công. Đăng nhập để bắt đầu.',
-      });
-      navigate('/login');
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: 'destructive',
-        title: 'Có lỗi xảy ra khi đăng ký',
-        description: error.message,
-      });
-    },
-  });
-};
+//
+// `useRegister` gọi `supabase.auth.signUp`, mà trigger `handle_new_user` dựng
+// hàng `profiles` KHÔNG kèm organization_id → tài khoản mồ côi: không thuộc
+// công ty nào, không lọt chính sách biên giới, không gỡ được bằng giao diện.
+// Đường tạo tài khoản duy nhất còn lại là edge function `admin-create-user`
+// (nhận org + vai). Route /register cũng đã bỏ khỏi publicRoutes.tsx.
+//
+// Còn một nửa nằm ngoài kho này: công tắc "Enable signups" của Supabase Auth
+// phải tắt bằng Management API — nếu không, endpoint /auth/v1/signup vẫn nhận
+// request dù app không còn màn hình nào gọi nó.
 
 // =============================================
 // Login

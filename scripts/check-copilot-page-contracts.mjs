@@ -247,8 +247,10 @@ function main() {
     return;
   }
   // OpenClaw removal reduced the current inventory from the historical 113 to
-  // 112 non-redirect routes. Keep this baseline explicit so an accidental route
-  // loss cannot silently make the accounting gate weaker.
+  // 112 non-redirect routes. Bo /register (15/09/2026, I3.4 - dang ky cong khai
+  // de lai ho so mo coi khong thuoc cong ty nao) dua con so ve 111. Keep this
+  // baseline explicit so an accidental route loss cannot silently make the
+  // accounting gate weaker.
   // Sổ hành động: nguồn duy nhất cho phép một trang `financial` mang mode
   // `draft`. Không đọc được là hỏng gate, không phải "không có action nào" —
   // im lặng trả tập rỗng sẽ biến luật "chỉ hành động có trong sổ" thành luật
@@ -259,7 +261,7 @@ function main() {
     process.exitCode = 3;
     return;
   }
-  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 112, actionIds);
+  const problems = validateContracts(contracts, routes, exemptions, permissionKeys, 111, actionIds);
   if (problems.length) {
     console.error(`Copilot page contracts: ${problems.length} problem(s)`);
     for (const problem of problems) console.error(`  - ${problem}`);

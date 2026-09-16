@@ -137,7 +137,6 @@ export const GUARDS = new Set([
 // danh sách này chính là bề mặt tấn công của ứng dụng.
 export const PUBLIC_ROUTES = new Map([
   ["/login", "màn đăng nhập"],
-  ["/register", "đăng ký tài khoản"],
   ["/forgot-password", "quên mật khẩu"],
   ["/reset-password", "đặt lại mật khẩu qua link email"],
   ["/auth/callback", "OAuth callback"],
