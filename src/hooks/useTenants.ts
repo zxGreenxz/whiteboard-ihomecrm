@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import type { PaginatedData } from "@/hooks/usePagination";
 import { ACTIVE_CONTRACT_STATUSES } from "@/types/contract";
 import { nullIfNotFound } from "@/hooks/readErrors";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type Tenant = Database["public"]["Tables"]["tenants"]["Row"];
 type TenantInsert = Database["public"]["Tables"]["tenants"]["Insert"];
@@ -133,6 +135,7 @@ export const useTenant = (id: string) => {
 // Create new tenant
 export const useCreateTenant = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (tenant: Omit<TenantInsert, "user_id">) => {
@@ -144,10 +147,10 @@ export const useCreateTenant = () => {
 
       const { data, error } = await supabase
         .from("tenants")
-        .insert({
+        .insert(withOrg({
           ...tenant,
           user_id: user.id,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 

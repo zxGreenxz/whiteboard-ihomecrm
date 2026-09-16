@@ -10,6 +10,8 @@ import {
 } from "@/lib/paymentRecordRpc";
 import { rpcNullable } from "@/lib/rpcNullable";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type Payment = Database["public"]["Tables"]["payments"]["Row"];
 type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
@@ -134,6 +136,7 @@ export const usePayment = (id: string) => {
 // Create payment
 export const useCreatePayment = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (data: CreatePaymentInput) => {
@@ -236,7 +239,7 @@ export const useCreatePayment = () => {
       } = data;
       const { data: payment, error: paymentError } = await supabase
         .from("payments")
-        .insert({ ...paymentInsert, user_id: user.id })
+        .insert(withOrg({ ...paymentInsert, user_id: user.id }, selectedOrganizationId))
         .select()
         .single();
       if (paymentError) throw paymentError;

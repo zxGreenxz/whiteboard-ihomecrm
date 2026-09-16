@@ -6,6 +6,8 @@ import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
 import { markLocalWrite } from "@/hooks/useRealtimeDataSync";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 import {
   createContractV2,
   type ContractCreateRequest,
@@ -696,6 +698,7 @@ export const useUpdateContract = () => {
 
 export const useSyncContractCustomers = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({
@@ -726,7 +729,7 @@ export const useSyncContractCustomers = () => {
 
       const { error: insErr } = await supabase
         .from("contract_customers")
-        .insert(rows);
+        .insert(withOrgAll(rows, selectedOrganizationId));
       if (insErr) throw insErr;
     },
     onSuccess: (_data, vars) => {
@@ -746,6 +749,7 @@ export const useSyncContractCustomers = () => {
 
 export const useSyncContractServices = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({
@@ -776,7 +780,7 @@ export const useSyncContractServices = () => {
 
       const { error: insErr } = await supabase
         .from("contract_services")
-        .insert(rows as any);
+        .insert(withOrgAll(rows, selectedOrganizationId) as any);
       if (insErr) throw insErr;
     },
     onSuccess: (_data, vars) => {
@@ -1296,6 +1300,7 @@ export interface BulkContractImportRow {
 /** @deprecated */
 export const useBulkCreateContracts = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({
@@ -1356,13 +1361,13 @@ export const useBulkCreateContracts = () => {
           } else {
             const { data: newTenant, error: tenantError } = await supabase
               .from("tenants")
-              .insert([
+              .insert(withOrgAll([
                 {
                   user_id: user.id,
                   full_name: row.tenant_name,
                   phone: row.tenant_phone,
                 },
-              ])
+              ], selectedOrganizationId))
               .select()
               .single();
 
@@ -1399,7 +1404,7 @@ export const useBulkCreateContracts = () => {
 
           const { data: contract, error: contractError } = await supabase
             .from("contracts")
-            .insert([contractInsert])
+            .insert(withOrgAll([contractInsert], selectedOrganizationId))
             .select()
             .single();
 
@@ -1412,14 +1417,14 @@ export const useBulkCreateContracts = () => {
             continue;
           }
 
-          await supabase.from("contract_tenants").insert([
+          await supabase.from("contract_tenants").insert(withOrgAll([
             {
               contract_id: contract.id,
               tenant_id: tenantId,
               is_representative: true,
               move_in_date: row.start_date,
             },
-          ]);
+          ], selectedOrganizationId));
 
           results.success++;
         } catch (e: any) {

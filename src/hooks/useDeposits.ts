@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { useToast } from '@/hooks/use-toast';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg } from '@/lib/orgPayload';
 import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import type { Database } from '@/integrations/supabase/types';
 import { invokeReservationSettlementRpc, reservationSettlementListArgs, reservationSettlementListSchema, reservationSettlementSchema, type ReservationSettlementRpcInvoker } from '@/lib/reservationSettlementRpc';
@@ -287,6 +289,7 @@ export const useDeposits = (filters?: {
 export const useCreateDeposit = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     // `user_id` do CHÍNH hook này điền từ phiên đăng nhập (ngay dưới), nên đòi
@@ -298,10 +301,10 @@ export const useCreateDeposit = () => {
 
       const { data: deposit, error } = await supabase
         .from('deposits')
-        .insert({
+        .insert(withOrg({
           ...data,
           user_id: user.id,
-        })
+        }, selectedOrganizationId))
         .select()
         .single();
 

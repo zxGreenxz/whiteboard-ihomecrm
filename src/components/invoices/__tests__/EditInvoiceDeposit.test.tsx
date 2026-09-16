@@ -27,6 +27,9 @@ vi.mock('@/hooks/useBuildings', () => ({ useBuildings: () => ({ data: [] }) }));
 vi.mock('@/hooks/useRooms', () => ({ useRooms: () => ({ data: [] }) }));
 vi.mock('@/hooks/useVehicles', () => ({ useVehicles: () => ({ data: { data: [] } }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
+// GenerateInvoiceDialog đọc tổ chức đang chọn (plan I3) để gửi organization_id
+// khi chốt chỉ số; fixture này không render trong OrganizationProvider.
+vi.mock('@/contexts/OrganizationContext', () => ({ useOrganization: () => ({ selectedOrganizationId: 'dddd0000-0000-4000-8000-000000000001' }) }));
 vi.mock('@/integrations/supabase/client', () => ({ supabase: new Proxy({}, { get() { throw new Error('No backend calls permitted in this fixture'); } }) }));
 afterEach(cleanup);
 beforeEach(() => {

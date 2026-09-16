@@ -28,6 +28,8 @@ import {
 } from '@/lib/invoiceUtils';
 import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
 import { markLocalWrite } from '@/hooks/useRealtimeDataSync';
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg, withOrgAll } from '@/lib/orgPayload';
 import { todayISO } from '@/lib/collect';
 import {
   buildCreditInvoiceCreateRpcArgs,
@@ -676,6 +678,7 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
 export const useCreateInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (formData: InvoiceFormData) => {
@@ -778,7 +781,7 @@ export const useCreateInvoice = () => {
       // Insert invoice
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
-        .insert({
+        .insert(withOrg({
           user_id: user.id,
           contract_id: invoiceFields.contract_id,
           building_id: invoiceFields.building_id,
@@ -802,7 +805,7 @@ export const useCreateInvoice = () => {
           notes: invoiceFields.notes || null,
           template_id: invoiceFields.template_id || null,
           creator_name: creatorName,
-        } as any)
+        } as any, selectedOrganizationId))
         .select()
         .single();
 
@@ -829,7 +832,7 @@ export const useCreateInvoice = () => {
 
         const { error: itemsError } = await supabase
           .from('invoice_items')
-          .insert(invoiceItems as any);
+          .insert(withOrgAll(invoiceItems, selectedOrganizationId) as any);
 
         if (itemsError) throw itemsError;
       }
@@ -869,6 +872,7 @@ export const useCreateInvoice = () => {
 export const useUpdateInvoice = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async ({ id, formData }: UpdateInvoiceData) => {
@@ -996,7 +1000,7 @@ export const useUpdateInvoice = () => {
 
         const { error: insertItemsError } = await supabase
           .from('invoice_items')
-          .insert(invoiceItems as any);
+          .insert(withOrgAll(invoiceItems, selectedOrganizationId) as any);
 
         if (insertItemsError) throw insertItemsError;
       }
@@ -1502,6 +1506,7 @@ export interface MeterReadingData {
 export const useRecordMeterReading = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (data: MeterReadingData) => {
@@ -1510,7 +1515,7 @@ export const useRecordMeterReading = () => {
 
       const { data: reading, error } = await supabase
         .from('meter_readings')
-        .insert([{
+        .insert(withOrgAll([{
           user_id: user.id,
           contract_id: data.contract_id,
           service_id: data.service_id,
@@ -1519,7 +1524,7 @@ export const useRecordMeterReading = () => {
           previous_reading: data.previous_reading,
           current_reading: data.current_reading,
           notes: data.notes,
-        }])
+        }], selectedOrganizationId))
         .select()
         .single();
 
@@ -1595,6 +1600,7 @@ export interface BulkMeterReadingData {
 export const useBulkCreateMeterReadings = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (readings: BulkMeterReadingData[]) => {
@@ -1614,7 +1620,7 @@ export const useBulkCreateMeterReadings = () => {
 
       const { data, error } = await supabase
         .from('meter_readings')
-        .insert(readingsToInsert)
+        .insert(withOrgAll(readingsToInsert, selectedOrganizationId))
         .select();
 
       if (error) throw error;

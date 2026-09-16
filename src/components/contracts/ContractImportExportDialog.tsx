@@ -49,6 +49,8 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
+import { useOrganization } from '@/contexts/OrganizationContext';
+import { withOrg } from '@/lib/orgPayload';
 
 // =============================================
 // Props
@@ -82,6 +84,7 @@ export function ContractImportExportDialog({
   const [parseError, setParseError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{ success: number; failed: number; errors: Array<{ row: number; message: string }> } | null>(null);
 
+  const { selectedOrganizationId } = useOrganization();
   const { data: buildingsData } = useBuildings({ enabled: open });
   const buildings = useMemo(
     () => (Array.isArray(buildingsData) ? buildingsData : []) as BuildingWithRelations[],
@@ -177,12 +180,12 @@ export function ContractImportExportDialog({
         } else {
           const { data: newCustomer, error: customerError } = await supabase
             .from('customers')
-            .insert({
+            .insert(withOrg({
               user_id: user.id,
               full_name: row.customer_name,
               phone: row.customer_phone,
               id_number: row.customer_id_number || null,
-            })
+            }, selectedOrganizationId))
             .select()
             .single();
 
@@ -213,7 +216,7 @@ export function ContractImportExportDialog({
 
         const { data: contract, error: contractError } = await supabase
           .from('contracts')
-          .insert(contractInsert)
+          .insert(withOrg(contractInsert, selectedOrganizationId))
           .select()
           .single();
 
@@ -224,11 +227,11 @@ export function ContractImportExportDialog({
         }
 
         // Insert contract_customer
-        await supabase.from('contract_customers').insert({
+        await supabase.from('contract_customers').insert(withOrg({
           contract_id: contract.id,
           customer_id: customerId,
           is_representative: true,
-        });
+        }, selectedOrganizationId));
 
         // Update room status
         await supabase

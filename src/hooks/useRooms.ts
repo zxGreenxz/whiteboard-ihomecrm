@@ -5,6 +5,8 @@ import type { RoomWithRelations } from "@/types/room";
 import { compareBuildingThenRoom } from "@/lib/roomSort";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg, withOrgAll } from "@/lib/orgPayload";
 
 type Room = Database["public"]["Tables"]["rooms"]["Row"];
 type RoomInsert = Database["public"]["Tables"]["rooms"]["Insert"];
@@ -95,12 +97,13 @@ export const useRoom = (id: string) => {
 // Create new room
 export const useCreateRoom = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (room: RoomInsert) => {
       const { data, error } = await supabase
         .from("rooms")
-        .insert(room)
+        .insert(withOrg(room, selectedOrganizationId))
         .select()
         .single();
 
@@ -203,12 +206,13 @@ export const useDeleteRoom = () => {
 // Bulk create rooms
 export const useBulkCreateRooms = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (rooms: RoomInsert[]) => {
       const { data, error } = await supabase
         .from("rooms")
-        .insert(rooms)
+        .insert(withOrgAll(rooms, selectedOrganizationId))
         .select();
 
       if (error) {

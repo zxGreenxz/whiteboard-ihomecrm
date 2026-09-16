@@ -8,6 +8,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { useCreateInvoice } from "@/hooks/useInvoices";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 import { computePreviousDebt } from "@/lib/invoiceHelpers";
 import {
   buildCreditByContract,
@@ -166,6 +168,7 @@ export interface SubmitExcelResult {
  */
 export function useSubmitExcelInvoices() {
   const createInvoice = useCreateInvoice();
+  const { selectedOrganizationId } = useOrganization();
 
   const submit = async (rows: ExcelRowData[], ctx: SubmitContext): Promise<SubmitExcelResult> => {
     let ok = 0;
@@ -180,7 +183,7 @@ export function useSubmitExcelInvoices() {
         if (row.meter_id && row.current_reading !== "" && consumption >= 0) {
           const user = await getSessionUser();
           if (user) {
-            const { error: readingErr } = await supabase.from("meter_readings").insert({
+            const { error: readingErr } = await supabase.from("meter_readings").insert(withOrg({
               user_id: user.id,
               meter_id: row.meter_id,
               reading_date: ctx.toDate,
@@ -193,7 +196,7 @@ export function useSubmitExcelInvoices() {
               meter_type: "ELECTRICITY",
               service_id: row.elec_service_id,
               recorded_by: user.id,
-            } as never);
+            } as never, selectedOrganizationId));
             if (readingErr) {
               // KHÔNG chặn tạo hoá đơn, nhưng phải báo để không "mất" chỉ số âm thầm.
               console.error("Persist meter reading failed for", row.room_name, readingErr);

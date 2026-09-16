@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/authSession";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { nullIfNotFound } from "@/hooks/readErrors";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 type Floor = Database["public"]["Tables"]["floors"]["Row"];
 type FloorInsert = Database["public"]["Tables"]["floors"]["Insert"];
@@ -54,6 +56,7 @@ export const useFloor = (id: string) => {
 
 export const useCreateFloor = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (floor: Omit<FloorInsert, "user_id">) => {
@@ -63,7 +66,7 @@ export const useCreateFloor = () => {
 
       const { data, error } = await supabase
         .from("floors")
-        .insert({ ...floor, user_id: user.id })
+        .insert(withOrg({ ...floor, user_id: user.id }, selectedOrganizationId))
         .select()
         .single();
 

@@ -9,6 +9,8 @@ import type {
   VehicleFormData,
 } from "@/types/vehicle";
 import type { PaginatedData } from "@/hooks/usePagination";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { withOrg } from "@/lib/orgPayload";
 
 // Re-export for backward compatibility
 export type { VehicleWithRelations } from "@/types/vehicle";
@@ -215,6 +217,7 @@ export const useVehicle = (id: string) => {
 
 export const useCreateVehicle = () => {
   const queryClient = useQueryClient();
+  const { selectedOrganizationId } = useOrganization();
 
   return useMutation({
     mutationFn: async (formData: VehicleFormData) => {
@@ -223,10 +226,10 @@ export const useCreateVehicle = () => {
 
       const { data, error } = await supabase
         .from("vehicles")
-        .insert({
+        .insert(withOrg({
           ...formData,
           user_id: user.id,
-        } as any)
+        } as any, selectedOrganizationId))
         .select()
         .single();
 
