@@ -143,15 +143,16 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
       )}
       {tenancy && (
         <>
-          <DossierImageUploader kind="CT01" files={files.filter(f => f.kind === 'CT01')} canEdit contractId={tenancy.contractId}
-            onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
-            hint="Chụp hoặc tải ảnh tờ khai CT01 đã ký. Có thể tải ngay từ điện thoại." />
           <DossierImageUploader kind="LEASE" files={files.filter(f => f.kind === 'LEASE')} canEdit contractId={tenancy.contractId}
-            onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}>
+            onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
+            hint="Tải ảnh này TRƯỚC: máy đọc ngày ghi trên hợp đồng để điền hạn tạm trú, mất vài giây.">
             <LeaseTermBadge trangThai={hopDong.trangThai} han={hopDong.han} coAnh={!!leaseFile} canEdit
               onDocLai={hopDong.docLai}
               onSua={(from, to) => { if (leaseFile) void luuHan.mutateAsync({ id: leaseFile.id, from, to, nguon: 'manual' }); }} />
           </DossierImageUploader>
+          <DossierImageUploader kind="CT01" files={files.filter(f => f.kind === 'CT01')} canEdit contractId={tenancy.contractId}
+            onUpload={upload.mutateAsync} onRemove={remove.mutateAsync}
+            hint="Chụp hoặc tải ảnh tờ khai CT01 đã ký. Có thể tải ngay từ điện thoại." />
           {dangKy.data && dangKy.data.length > 0 && <RegistrationHistory registrations={dangKy.data} />}
           <p className="flex items-center gap-1.5 text-xs">
             {ownership.length > 0
