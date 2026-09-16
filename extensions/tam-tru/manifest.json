@@ -19,6 +19,12 @@
     },
     {
       "matches": ["https://dichvucong.dancuquocgia.gov.vn/portal/p/home/dang-ky-tam-tru.html*"],
+      "js": ["submit-watch.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://dichvucong.dancuquocgia.gov.vn/portal/p/home/dang-ky-tam-tru.html*"],
       "js": ["fill-engine.js"],
       "run_at": "document_idle",
       "world": "MAIN"

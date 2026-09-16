@@ -17,7 +17,7 @@ export async function loadCT01Tenancies(customerId: string): Promise<CT01Tenancy
       id, status, deleted_at,
       room:rooms!contracts_room_id_fkey!inner(
         id, name, deleted_at,
-        building:buildings!rooms_building_id_fkey!inner(id, name, street_address, ward, district, province, deleted_at)
+        building:buildings!rooms_building_id_fkey!inner(id, name, street_address, ward, district, province, organization_id, deleted_at)
       )
     )
   `).eq('customer_id', customerId)

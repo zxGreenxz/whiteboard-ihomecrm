@@ -4,7 +4,9 @@ import type { BuildingLegalOwner } from './buildingLegalOwner';
 
 export type CT01Customer = Pick<Customer, 'full_name' | 'date_of_birth' | 'gender' | 'id_number' | 'phone' | 'email'
   | 'id_issue_date' | 'id_issue_place' | 'detailed_address'>;
-export type CT01Building = Pick<Building, 'id' | 'name' | 'street_address' | 'ward' | 'district' | 'province'>;
+export type CT01Building = Pick<Building, 'id' | 'name' | 'street_address' | 'ward' | 'district' | 'province'>
+  // organization_id để ghi sổ hồ sơ tạm trú đúng công ty; tuỳ chọn vì mẫu CT01 không cần.
+  & { organization_id?: string | null };
 export interface CT01LeaseDetails {
   durationMonths: 12 | 24;
   roomNumber: string;

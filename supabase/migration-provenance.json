@@ -1,12 +1,12 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-16T01:00:18.648Z",
+  "generatedAt": "2026-09-16T02:23:24.043Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 561,
-    "unknown": 74,
+    "ledger-applied": 563,
+    "unknown": 73,
     "catalog-proven": 212,
     "superseded": 15
   },
@@ -10031,12 +10031,21 @@
       "name": "residence_dossier_files_lease_term",
       "scheme": "timestamp14",
       "sha256": "8cce3e44474554d490e00dcb967ee6343847350ae82ac6ff3bf9dfb48258733d",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "column:public.residence_dossier_files.lease_term_from"
-      ],
-      "note": "1/1 cột file này ADD KHÔNG có trong production ⇒ nhiều khả năng CHƯA CHẠY"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-16T01:03:21.965Z|bien-nhan-backup"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260916021954_residence_registrations.sql",
+      "version": "20260916021954",
+      "name": "residence_registrations",
+      "scheme": "timestamp14",
+      "sha256": "02eb5b4b5567a0ecc0edb99185f012430bed1469f38a00039adf9975ddcc8d23",
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-16T02:23:15.240Z|bien-nhan-backup"
+      ]
     },
     {
       "path": "supabase/migrations-archive/20260617000001_forfeit_full_settlement.sql",

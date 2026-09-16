@@ -55,6 +55,21 @@ gắn ảnh; **không tự bấm Lưu nháp hay Nộp hồ sơ**, không giữ m
 - Tên tệp cổng hiển thị chính là tên CRM đặt: `chuquyen950nk1.jpg`,
   `nguyengiabinhct011.jpg` — nhìn cột Đính kèm là biết ảnh của toà nào, khách nào.
 
+## Ghi mã hồ sơ về CRM
+
+Khi bạn bấm **Nộp hồ sơ**, cổng gọi service `add_subm_info_v2` và mã hồ sơ đã nằm sẵn
+trong chính gói gửi đi (khoá `SUBM_CODE`, kèm `is_send=1` để phân biệt với Lưu nháp).
+`submit-watch.js` đọc gói đó — chỉ đọc, không sửa, không chặn — rồi chuyển mã cho
+background giữ hộ. Lần sau bạn mở chi tiết khách trên CRM, CRM hỏi lấy mã về, ghi vào
+sổ `residence_registrations` rồi mới báo extension xoá. Ghi hụt thì mã vẫn còn, lần
+sau ghi tiếp.
+
+Vì sao đọc request chứ không đọc màn hình: sau khi nộp, cổng nhảy sang trang thanh toán
+Vietcombank rồi mới quay lại danh sách hồ sơ — bám vào giao diện là bám vào thứ dễ vỡ nhất.
+
+Hồ sơ nộp lúc extension chưa bật, hoặc nộp trên máy khác, thì dán mã bằng nút
+**Ghi mã hồ sơ đã nộp** trong khối Hồ sơ tạm trú.
+
 ## Giới hạn
 
 - Chỉ thủ tục Đăng ký tạm trú, lập hộ mới, khách là chủ hộ, trường hợp "chỗ ở hợp pháp do

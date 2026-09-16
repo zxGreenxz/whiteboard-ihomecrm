@@ -19,9 +19,21 @@ export const TAM_TRU_EXT_ID = 'kaleeijefebjdhcmkfdbbffmielfjjgf';
 export const TAM_TRU_EXT_FOLDER = 'extensions/tam-tru';
 
 interface AckMessage { ok?: boolean; error?: string }
+
+/** Mã hồ sơ extension đọc được lúc cổng nhận hồ sơ, chờ CRM ghi vào sổ. */
+export interface KetQuaNopTamTru {
+  submCode: string;
+  customerId: string;
+  receiveOrg?: string;
+  /** dd/mm/yyyy như hiện trên cổng. */
+  tempResidentFrom?: string;
+  tempResidentTo?: string;
+  submittedAt: string;
+}
+interface KetQuaMessage extends AckMessage { ketQua?: KetQuaNopTamTru[] }
 interface ChromeRuntimeLike {
   lastError?: { message?: string } | undefined;
-  sendMessage?: (id: string, message: unknown, callback: (response?: AckMessage) => void) => void;
+  sendMessage?: (id: string, message: unknown, callback: (response?: KetQuaMessage) => void) => void;
 }
 /** `chrome` do trình duyệt bơm vào trang khi extension khai externally_connectable. */
 type WindowWithChrome = Window & { chrome?: { runtime?: ChromeRuntimeLike } };
@@ -36,6 +48,39 @@ export function detectTamTruExtension(doc: Document = document): string | null {
 export function tamTruExtensionId(doc: Document = document): string {
   const id = doc.documentElement.getAttribute(TAM_TRU_EXT_ID_ATTR);
   return id && id.trim() ? id.trim() : TAM_TRU_EXT_ID;
+}
+
+/** Một lượt hỏi/đáp với extension; trả về phản hồi thô hoặc ném khi extension im lặng. */
+function hoiExtension(message: unknown, win: Window = window, timeoutMs = 5000): Promise<KetQuaMessage> {
+  const runtime = (win as WindowWithChrome).chrome?.runtime;
+  return new Promise<KetQuaMessage>((resolve, reject) => {
+    if (!runtime?.sendMessage) { reject(new Error('Extension iHome Tạm trú chưa sẵn sàng.')); return; }
+    let done = false;
+    const timer = win.setTimeout(() => {
+      if (done) return;
+      done = true;
+      reject(new Error('Extension iHome Tạm trú không phản hồi.'));
+    }, timeoutMs);
+    runtime.sendMessage(tamTruExtensionId(win.document), message, (response) => {
+      if (done) return;
+      done = true;
+      win.clearTimeout(timer);
+      if (runtime.lastError) { reject(new Error('Extension iHome Tạm trú chưa sẵn sàng.')); return; }
+      resolve(response ?? {});
+    });
+  });
+}
+
+/** Mã hồ sơ đã nộp mà extension đang giữ hộ, chờ CRM ghi vào sổ. */
+export async function layKetQuaNop(win: Window = window): Promise<KetQuaNopTamTru[]> {
+  const r = await hoiExtension({ type: 'TAM_TRU_LAY_KET_QUA' }, win);
+  return Array.isArray(r.ketQua) ? r.ketQua : [];
+}
+
+/** Báo extension xoá các mã CRM đã ghi xong — chỉ gọi SAU khi ghi thành công. */
+export async function xacNhanDaGhiSo(maDaLuu: string[], win: Window = window): Promise<void> {
+  if (maDaLuu.length === 0) return;
+  await hoiExtension({ type: 'TAM_TRU_DA_GHI_SO', maDaLuu }, win);
 }
 
 /** Gửi gói cho extension và chờ xác nhận; từ chối nếu extension im lặng hoặc báo lỗi. */

@@ -105,6 +105,28 @@
     window.postMessage({ type: 'IHOME_TAMTRU_RUN', payload, files }, location.origin);
   }
 
+  /** Cổng vừa nhận hồ sơ: gắn mã với khách của gói đang chờ rồi gửi về CRM. */
+  function daNop(d) {
+    const p = pending && pending.payload;
+    if (!p || !d.submCode) return;
+    send({
+      type: 'TAM_TRU_DA_NOP',
+      ketQua: {
+        submCode: d.submCode,
+        receiveOrg: d.receiveOrg || '',
+        tempResidentFrom: d.tempResidentFrom || '',
+        tempResidentTo: d.tempResidentTo || p.tempResidentTo || '',
+        submittedAt: d.submittedAt || new Date().toISOString(),
+        customerId: p.customerId,
+        buildingName: p.buildingName,
+        fullName: p.person && p.person.fullName,
+      },
+    });
+    if (panel && body) {
+      setStatus('Đã nộp. Mã hồ sơ ' + d.submCode + ' — CRM sẽ ghi vào hồ sơ khách khi bạn quay lại tab CRM.', 'ok');
+    }
+  }
+
   function finish(d) {
     if (d.ok) {
       setStatus('Đã điền xong. Kiểm tra lại từng mục, tick "Tôi xin chịu trách nhiệm" rồi bấm Nộp hồ sơ (hoặc Lưu nháp).', 'ok');
@@ -162,6 +184,7 @@
     if (ev.source !== window || !ev.data) return;
     if (ev.data.type === 'IHOME_TAMTRU_PROGRESS') addStep(ev.data);
     if (ev.data.type === 'IHOME_TAMTRU_DONE') finish(ev.data);
+    if (ev.data.type === 'IHOME_TAMTRU_DA_NOP') daNop(ev.data);
   });
 
   (async () => {

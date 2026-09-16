@@ -14383,6 +14383,90 @@ export type Database = {
           },
         ]
       }
+      residence_registrations: {
+        Row: {
+          building_id: string
+          contract_id: string | null
+          created_at: string
+          created_by: string
+          customer_id: string
+          deleted_at: string | null
+          id: string
+          organization_id: string
+          receive_org: string
+          subm_code: string
+          submitted_at: string
+          temp_resident_from: string | null
+          temp_resident_to: string | null
+        }
+        Insert: {
+          building_id: string
+          contract_id?: string | null
+          created_at?: string
+          created_by?: string
+          customer_id: string
+          deleted_at?: string | null
+          id?: string
+          organization_id: string
+          receive_org?: string
+          subm_code: string
+          submitted_at?: string
+          temp_resident_from?: string | null
+          temp_resident_to?: string | null
+        }
+        Update: {
+          building_id?: string
+          contract_id?: string | null
+          created_at?: string
+          created_by?: string
+          customer_id?: string
+          deleted_at?: string | null
+          id?: string
+          organization_id?: string
+          receive_org?: string
+          subm_code?: string
+          submitted_at?: string
+          temp_resident_from?: string | null
+          temp_resident_to?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "residence_registrations_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "residence_registrations_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "residence_registrations_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "residence_registrations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "residence_registrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_binding_scopes: {
         Row: {
           organization_id: string

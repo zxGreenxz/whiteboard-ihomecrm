@@ -9,6 +9,7 @@ import { canUse } from '@/lib/permissionPages';
 import { loadCT01Tenancies, type CT01Tenancy } from '@/lib/ct01DownloadService';
 import { useBuildingOwnershipFiles, useCustomerDossierFiles, useDossierFileMutations } from '@/hooks/useResidenceDossierFiles';
 import { useLeaseTermOcr } from '@/hooks/useLeaseTermOcr';
+import { useCustomerRegistrations, useGhiHoSoTamTru, useNhanKetQuaNop } from '@/hooks/useResidenceRegistrations';
 import { congThang, ngayHopLe, type HanHopDong } from '@/lib/residenceLeaseTerm';
 import type { ResidenceDossierFile } from '@/lib/residenceDossierFiles';
 import type { CT01Customer } from '@/lib/ct01Document';
@@ -16,6 +17,8 @@ import type { TamTruCustomerInput } from '@/lib/tamTruPayload';
 import CT01DownloadButton from '@/components/customers/CT01DownloadButton';
 import DossierImageUploader from './DossierImageUploader';
 import LeaseTermBadge from './LeaseTermBadge';
+import RegistrationHistory from './RegistrationHistory';
+import RegistrationManualEntry from './RegistrationManualEntry';
 import TamTruDvcButton from './TamTruDvcButton';
 
 // Khối cần đủ dữ liệu cho cả gói gửi Cổng DVC lẫn tờ khai CT01 tải về.
@@ -90,6 +93,15 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
   }, [files, tenancy?.contractId]);
   const hopDong = useLeaseTermOcr(leaseFile, allowed);
 
+  // Sổ hồ sơ đã nộp: extension giữ mã sau khi cổng nhận, CRM lấy về ghi vào đây.
+  const dangKy = useCustomerRegistrations(allowed ? customer.id : undefined);
+  const soDangKy = tenancy ? {
+    customerId: customer.id, buildingId: tenancy.building.id,
+    organizationId: tenancy.building.organization_id ?? '', contractId: tenancy.contractId,
+  } : null;
+  useNhanKetQuaNop(soDangKy);
+  const ghiMa = useGhiHoSoTamTru(customer.id);
+
   // Số tháng: lấy lại từ hạn đã lưu trên ảnh (chủ chốt lần trước), mặc định 24.
   const [thangChon, setThangChon] = useState<12 | 24 | null>(null);
   const thangDaLuu = thangTheoHan(hopDong.han);
@@ -139,6 +151,7 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
               onDocLai={hopDong.docLai}
               onSua={(from, to) => { if (leaseFile) void luuHan.mutateAsync({ id: leaseFile.id, from, to, nguon: 'manual' }); }} />
           </DossierImageUploader>
+          {dangKy.data && dangKy.data.length > 0 && <RegistrationHistory registrations={dangKy.data} />}
           <p className="flex items-center gap-1.5 text-xs">
             {ownership.length > 0
               ? <><CheckCircle2 className="h-4 w-4 text-green-600" /> Giấy tờ chỗ ở hợp pháp của toà {tenancy.building.name}: {ownership.length} ảnh.</>
@@ -159,7 +172,11 @@ export default function ResidenceDossierSection({ customer }: ResidenceDossierSe
             </span>
             <CT01DownloadButton customer={customer} durationMonths={durationMonths} gonNhe />
             <TamTruDvcButton customer={customer} tenancy={tenancy} customerFiles={files} ownershipFiles={ownership}
-              tempResidentFrom={ngayKy} tempResidentTo={hanDen} />
+              tempResidentFrom={ngayKy} tempResidentTo={hanDen} durationMonths={durationMonths} />
+            <RegistrationManualEntry dangGhi={ghiMa.isPending} onGhi={(submCode) => {
+              if (!soDangKy) return;
+              void ghiMa.mutateAsync({ ...soDangKy, submCode, receiveOrg: '', tempResidentFrom: ngayKy, tempResidentTo: hanDen });
+            }} />
           </div>
         </>
       )}
