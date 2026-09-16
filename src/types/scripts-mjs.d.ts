@@ -35,6 +35,8 @@ declare module "*/scripts/check-route-guards.mjs" {
   }
   export function collectRoutes(sourceText: string): RouteEntry[];
   export function collectAllRoutes(): RouteEntry[];
+  /** Route cong khai co chu dich: path -> ly do. Test I3.4 doc keys de chung minh /register da bo. */
+  export const PUBLIC_ROUTES: Map<string, string>;
 }
 
 declare module "*/scripts/check-risk-classifier.mjs" {

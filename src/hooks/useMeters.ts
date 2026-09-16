@@ -170,16 +170,10 @@ export const useMeters = (roomId?: string, meterType?: MeterType) => {
         return query.range(from, to);
       }, { label: "meters" });
 
-<<<<<<< HEAD
-      if (error) {
-        console.error("useMeters error:", error);
-        throw error;
-=======
       if (rows === null) {
-        // TODO(plan C): đổi thành throw — nuốt lỗi ở đây thuộc phần việc của
-        // plan con C (§4), D chỉ đụng phân trang. fetchAllRows đã console.error.
-        return [];
->>>>>>> rasoat/D
+        // fetchAllRows tra null = loi query (da console.error). Nem de vao isError,
+        // khong bien loi thanh danh sach rong (Contract 14, plan C).
+        throw new Error('useMeters: khong tai duoc du lieu');
       }
 
       return rows;
@@ -223,15 +217,10 @@ export const useMetersWithLatestReading = () => {
         { label: "meters-with-latest-reading" },
       );
 
-<<<<<<< HEAD
-      if (error) {
-        console.error("useMetersWithLatestReading error:", error);
-        throw error;
-=======
       if (rows === null) {
-        // TODO(plan C): đổi thành throw — xem chú thích ở useMeters.
-        return [];
->>>>>>> rasoat/D
+        // fetchAllRows tra null = loi query (da console.error). Nem de vao isError,
+        // khong bien loi thanh danh sach rong (Contract 14, plan C).
+        throw new Error('useMetersWithLatestReading: khong tai duoc du lieu');
       }
 
       return rows;
@@ -268,8 +257,9 @@ export const useMetersGroupedByRoom = (
       }, { label: "meters-grouped" });
 
       if (rows === null) {
-        // TODO(plan C): đổi thành throw — xem chú thích ở useMeters.
-        return {} as MetersGroupedByRoom;
+        // fetchAllRows tra null = loi query (da console.error). Nem de vao isError;
+        // tra object rong o day = "phong nao cung khong co cong to" (Contract 14, plan C).
+        throw new Error('useMetersGroupedByRoom: khong tai duoc du lieu');
       }
 
       const meters = rows as unknown as MeterWithRoom[];

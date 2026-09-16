@@ -71,9 +71,9 @@ export const useTenants = (
       const rows = await fetchAllRows<Tenant>((from, to) => buildQuery(from, to, false), { label: "tenants" });
 
       if (rows === null) {
-        // TODO(plan C): đổi thành throw — nuốt lỗi ở đây thuộc phần việc của
-        // plan con C (§4); D chỉ đụng phân trang. fetchAllRows đã console.error.
-        return { data: [], count: 0 };
+        // fetchAllRows tra null = loi query (da console.error). Nem de vao isError;
+        // tra { data: [], count: 0 } = "khong co khach nao" (Contract 14, plan C).
+        throw new Error('useTenants: khong tai duoc du lieu');
       }
 
       return { data: rows, count: rows.length };
@@ -99,15 +99,10 @@ export const useTenantsLegacy = (options?: { enabled?: boolean }) => {
         { label: "tenants-legacy" },
       );
 
-<<<<<<< HEAD
-      if (error) {
-        console.error('useTenantsLegacy error:', error);
-        throw error;
-=======
       if (rows === null) {
-        // TODO(plan C): đổi thành throw — xem chú thích ở useTenants.
-        return [];
->>>>>>> rasoat/D
+        // fetchAllRows tra null = loi query (da console.error). Nem de vao isError,
+        // khong bien loi thanh danh sach rong (Contract 14, plan C).
+        throw new Error('useTenantsLegacy: khong tai duoc du lieu');
       }
 
       return rows;
