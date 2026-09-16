@@ -74,7 +74,7 @@
     "src/hooks/useManagerSalary.ts::salary_staff_months",
     "src/hooks/useManagerSalary.ts::salary_work_ledger",
     "src/hooks/useManagerSalary.ts::unlock_salary_month_v1",
-    "src/hooks/useManagerSalary.ts::v5_month_money",
+    "src/hooks/useManagerSalary.ts::v5_month_money_bulk",
     "src/hooks/useOrganizationAuthorization.ts::get_member_authorization_v1",
     "src/hooks/useOrganizationAuthorization.ts::get_organization_profile_v1",
     "src/hooks/useOrganizationAuthorization.ts::invite_organization_member_v1",

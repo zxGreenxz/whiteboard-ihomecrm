@@ -844,7 +844,285 @@ FROM evaluated;
 ROLLBACK;`;
 }
 
-export function parseNetworkCenterVerdict(body, { expectedLocalProof } = {}) {
+// ---------------------------------------------------------------------------
+// Ma trận thứ hai: DỮ LIỆU NGHIỆP VỤ, không phải Network Center.
+// ---------------------------------------------------------------------------
+// Rà soát 15/09/2026 · plan con I1.
+//
+// VÌ SAO KHÔNG NHÉT VÀO `buildNetworkCenterMatrixSql`. Ma trận trên còn chạy ở
+// chế độ `--local-cluster`, nơi cụm dùng-một-lần chỉ replay platform bootstrap
+// cộng 13 migration `network_center_*`. Ở đó KHÔNG có `invoices`, `contracts`,
+// `customers`, `income_expenses` hay bảng lương nào — thêm ca vào đấy sẽ làm cả
+// ma trận chết ngay lúc dựng, vì một lý do chẳng liên quan gì tới cách ly
+// tenant. Ma trận này vì vậy chỉ chạy trên đường production (Management API),
+// nơi lược đồ đầy đủ.
+//
+// ĐO GÌ. Hai lớp khác nhau, và phải đo cả hai vì chúng hỏng độc lập:
+//   (a) lớp BẢNG — RLS + policy biên giới công ty: người của DEMO không nhìn
+//       thấy dòng nào của org thật;
+//   (b) lớp HÀM — RPC `SECURITY DEFINER` chạy dưới quyền chủ hàm nên RLS KHÔNG
+//       chắn nó. Đây đúng là lỗ đã tìm thấy ngày 15/09: `v5_month_money` /
+//       `v5_n_chuan` cấp EXECUTE cho `authenticated` mà không hề nhìn
+//       `auth.uid()`, nên một UUID là đủ để đọc lương người của công ty khác.
+//       Lớp (a) xanh suốt thời gian lỗ (b) mở — đó là lý do đo riêng.
+export const TENANT_DATA_CASE_IDS = Object.freeze([
+  "salary.cross_organization_money_denied",
+  "salary.cross_organization_nchuan_denied",
+  "salary.cross_organization_bulk_empty",
+  "salary.config_not_borrowed_from_production",
+  "salary_attendance_day.production_rows_invisible",
+  "salary_streak_state.production_rows_invisible",
+  "invoices.production_rows_invisible",
+  "income_expenses.production_rows_invisible",
+  "contracts.production_rows_invisible",
+  "customers.production_rows_invisible",
+]);
+
+function tenantDataRequiredCaseValues() {
+  return TENANT_DATA_CASE_IDS.map(
+    (caseId, index) => `(${index + 1}, ${sqlLiteral(caseId)})`,
+  ).join(",\n  ");
+}
+
+export function buildTenantDataMatrixSql() {
+  return `BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '10min';
+
+-- Mọi thứ dưới đây CHỈ ĐỌC. Không một câu ghi nào, và transaction vẫn kết thúc
+-- bằng ROLLBACK — hai lớp, vì một ma trận âm bản chạy trên sổ sách thật thì
+-- "chắc là không ghi gì" không phải một bảo đảm.
+CREATE TEMP TABLE _td_fixture ON COMMIT DROP AS
+SELECT
+  ${sqlLiteral(DEMO_ORG_ID)}::uuid AS demo_organization_id,
+  ${sqlLiteral(PROD_ORG_ID)}::uuid AS prod_organization_id,
+  (SELECT id FROM auth.users WHERE lower(email) = lower(${sqlLiteral(DEMO_OWNER_EMAIL)}) LIMIT 1) AS owner_id,
+  -- Một người THẬT có dữ liệu chấm công, thuộc org thật. Không viết cứng UUID:
+  -- ma trận phải vẫn đúng khi nhân sự đổi.
+  (SELECT attendance.user_id
+     FROM public.salary_attendance_day attendance
+     JOIN public.organization_memberships membership
+       ON membership.user_id = attendance.user_id
+      AND membership.organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid
+      AND membership.status = 'ACTIVE'
+    ORDER BY attendance.user_id LIMIT 1) AS prod_salary_user_id,
+  (SELECT max(date_trunc('month', attendance.work_date)::date)
+     FROM public.salary_attendance_day attendance) AS prod_salary_month,
+  (SELECT rules->'system_v5' FROM public.salary_bonus_rules
+    WHERE organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid
+      AND rules ? 'system_v5' LIMIT 1) AS prod_system_v5,
+  (SELECT count(*) FROM public.salary_attendance_day
+    WHERE organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid) AS prod_attendance_rows,
+  (SELECT count(*) FROM public.salary_streak_state
+    WHERE organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid) AS prod_streak_rows,
+  (SELECT count(*) FROM public.invoices
+    WHERE organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid) AS prod_invoice_rows,
+  (SELECT count(*) FROM public.income_expenses
+    WHERE organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid) AS prod_income_expense_rows,
+  (SELECT count(*) FROM public.contracts
+    WHERE organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid) AS prod_contract_rows,
+  (SELECT count(*) FROM public.customers
+    WHERE organization_id = ${sqlLiteral(PROD_ORG_ID)}::uuid) AS prod_customer_rows;
+
+-- Một ca âm bản mà mục tiêu vốn đã rỗng thì XANH mà không chứng minh gì. Phần
+-- này khẳng định org thật THỰC SỰ có dữ liệu để rò, trước khi đo xem nó có rò
+-- hay không. Thiếu bước này, xoá sạch một bảng cũng làm ma trận xanh hơn.
+DO $td_preflight$
+DECLARE fixture _td_fixture%ROWTYPE;
+BEGIN
+  SELECT * INTO fixture FROM _td_fixture;
+  IF fixture.owner_id IS NULL THEN
+    RAISE EXCEPTION 'Tenant data matrix requires the DEMO owner account';
+  END IF;
+  IF fixture.prod_salary_user_id IS NULL OR fixture.prod_salary_month IS NULL THEN
+    RAISE EXCEPTION 'Tenant data matrix requires one production staff member with v5 attendance';
+  END IF;
+  IF fixture.prod_system_v5 IS NULL THEN
+    RAISE EXCEPTION 'Tenant data matrix requires the production organization to hold v5 salary rules';
+  END IF;
+  IF fixture.prod_attendance_rows = 0 OR fixture.prod_streak_rows = 0
+     OR fixture.prod_invoice_rows = 0 OR fixture.prod_income_expense_rows = 0
+     OR fixture.prod_contract_rows = 0 OR fixture.prod_customer_rows = 0 THEN
+    RAISE EXCEPTION
+      'Tenant data matrix needs non-empty production tables; measured %/%/%/%/%/%',
+      fixture.prod_attendance_rows, fixture.prod_streak_rows, fixture.prod_invoice_rows,
+      fixture.prod_income_expense_rows, fixture.prod_contract_rows, fixture.prod_customer_rows;
+  END IF;
+END
+$td_preflight$;
+
+CREATE TEMP TABLE _td_required_cases(sequence integer PRIMARY KEY, case_id text NOT NULL) ON COMMIT DROP;
+INSERT INTO _td_required_cases(sequence, case_id) VALUES
+  ${tenantDataRequiredCaseValues()};
+
+CREATE TEMP TABLE _td_results (
+  case_id text PRIMARY KEY,
+  passed boolean NOT NULL,
+  detail jsonb
+) ON COMMIT DROP;
+
+CREATE OR REPLACE FUNCTION pg_temp._td_expect_true(p_case_id text, p_statement text)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, pg_temp
+AS $td_expect_true$
+DECLARE value boolean;
+BEGIN
+  EXECUTE p_statement INTO value;
+  INSERT INTO pg_temp._td_results(case_id, passed, detail)
+  VALUES (
+    p_case_id,
+    value IS TRUE,
+    CASE WHEN value IS TRUE THEN NULL ELSE jsonb_build_object('observed', value) END
+  );
+EXCEPTION WHEN OTHERS THEN
+  INSERT INTO pg_temp._td_results(case_id, passed, detail)
+  VALUES (p_case_id, false, jsonb_build_object('unexpected_sqlstate', SQLSTATE, 'message', SQLERRM));
+END
+$td_expect_true$;
+
+CREATE OR REPLACE FUNCTION pg_temp._td_expect_42501(p_case_id text, p_statement text)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, pg_temp
+AS $td_expect_42501$
+BEGIN
+  BEGIN
+    EXECUTE p_statement;
+    INSERT INTO pg_temp._td_results(case_id, passed, detail)
+    VALUES (p_case_id, false, jsonb_build_object('expected_sqlstate', '42501'));
+  EXCEPTION
+    WHEN SQLSTATE '42501' THEN
+      INSERT INTO pg_temp._td_results(case_id, passed, detail)
+      VALUES (p_case_id, true, jsonb_build_object('sqlstate', SQLSTATE));
+    WHEN OTHERS THEN
+      INSERT INTO pg_temp._td_results(case_id, passed, detail)
+      VALUES (p_case_id, false, jsonb_build_object('unexpected_sqlstate', SQLSTATE, 'message', SQLERRM));
+  END;
+END
+$td_expect_42501$;
+
+CREATE OR REPLACE FUNCTION pg_temp._td_set_actor(p_actor uuid, p_role text)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, pg_temp
+AS $td_set_actor$
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', coalesce(p_actor::text, ''), true);
+  PERFORM set_config('request.jwt.claim.role', p_role, true);
+  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', p_actor, 'role', p_role)::text, true);
+  IF auth.uid() IS DISTINCT FROM p_actor OR auth.role() IS DISTINCT FROM p_role THEN
+    RAISE EXCEPTION 'Tenant data fixture request identity is inconsistent';
+  END IF;
+END
+$td_set_actor$;
+
+GRANT SELECT ON TABLE pg_temp._td_fixture TO authenticated, anon;
+GRANT INSERT, SELECT ON TABLE pg_temp._td_results TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION pg_temp._td_expect_true(text, text) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION pg_temp._td_expect_42501(text, text) TO authenticated, anon;
+
+-- Chủ công ty DEMO: vai CAO NHẤT trong tổ chức của mình, và vẫn phải không thấy
+-- gì của org thật. Chọn vai cao nhất là có chủ ý — một ca âm bản chạy bằng tài
+-- khoản yếu sẽ xanh nhờ thiếu quyền nội bộ chứ không nhờ biên giới công ty.
+SELECT pg_temp._td_set_actor(fixture.owner_id, 'authenticated') FROM _td_fixture fixture;
+SET LOCAL ROLE authenticated;
+
+SELECT pg_temp._td_expect_42501(
+  'salary.cross_organization_money_denied',
+  format('SELECT public.v5_month_money(%L::uuid, %L::date)',
+         fixture.prod_salary_user_id, fixture.prod_salary_month)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_42501(
+  'salary.cross_organization_nchuan_denied',
+  format('SELECT public.v5_n_chuan(%L::date, %L::uuid)',
+         fixture.prod_salary_month, fixture.prod_salary_user_id)
+) FROM _td_fixture fixture;
+
+-- Bản gộp cố ý KHÔNG raise mà bỏ qua người không được xem (xem chú thích trong
+-- migration 20260915074852). Với người của công ty khác, "bỏ qua tất cả" nghĩa
+-- là object rỗng — không khoá nào, không số nào.
+SELECT pg_temp._td_expect_true(
+  'salary.cross_organization_bulk_empty',
+  format('SELECT public.v5_month_money_bulk(ARRAY[%L]::uuid[], %L::date) = ''{}''::jsonb',
+         fixture.prod_salary_user_id, fixture.prod_salary_month)
+) FROM _td_fixture fixture;
+
+-- Bộ luật lương của org thật không được chảy sang tổ chức khác. So theo khối
+-- 'system_v5' chứ không so cả object: 'as_of' trong kết quả đổi theo ngày nên
+-- so nguyên khối sẽ xanh giả mỗi ngày.
+SELECT pg_temp._td_expect_true(
+  'salary.config_not_borrowed_from_production',
+  format('SELECT coalesce(public.get_salary_v5_config(), ''{}''::jsonb)->''system_v5'' IS DISTINCT FROM %L::jsonb',
+         fixture.prod_system_v5)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_true(
+  'salary_attendance_day.production_rows_invisible',
+  format('SELECT (SELECT count(*) FROM public.salary_attendance_day WHERE organization_id = %L::uuid) = 0',
+         fixture.prod_organization_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_true(
+  'salary_streak_state.production_rows_invisible',
+  format('SELECT (SELECT count(*) FROM public.salary_streak_state WHERE organization_id = %L::uuid) = 0',
+         fixture.prod_organization_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_true(
+  'invoices.production_rows_invisible',
+  format('SELECT (SELECT count(*) FROM public.invoices WHERE organization_id = %L::uuid) = 0',
+         fixture.prod_organization_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_true(
+  'income_expenses.production_rows_invisible',
+  format('SELECT (SELECT count(*) FROM public.income_expenses WHERE organization_id = %L::uuid) = 0',
+         fixture.prod_organization_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_true(
+  'contracts.production_rows_invisible',
+  format('SELECT (SELECT count(*) FROM public.contracts WHERE organization_id = %L::uuid) = 0',
+         fixture.prod_organization_id)
+) FROM _td_fixture fixture;
+
+SELECT pg_temp._td_expect_true(
+  'customers.production_rows_invisible',
+  format('SELECT (SELECT count(*) FROM public.customers WHERE organization_id = %L::uuid) = 0',
+         fixture.prod_organization_id)
+) FROM _td_fixture fixture;
+
+RESET ROLE;
+
+WITH evaluated AS (
+  SELECT required.sequence, required.case_id,
+         coalesce(result.passed, false) AS passed,
+         CASE WHEN result.case_id IS NULL
+           THEN jsonb_build_object('missing_result', true)
+           ELSE result.detail END AS detail
+  FROM _td_required_cases required
+  LEFT JOIN _td_results result USING (case_id)
+)
+SELECT jsonb_build_object(
+  'passed', bool_and(evaluated.passed),
+  'assertion_count', count(*),
+  'failed_count', count(*) FILTER (WHERE NOT evaluated.passed),
+  'assertions', jsonb_agg(jsonb_build_object(
+    'case_id', evaluated.case_id,
+    'passed', evaluated.passed,
+    'detail', evaluated.detail
+  ) ORDER BY evaluated.sequence)
+) AS verdict
+FROM evaluated;
+ROLLBACK;`;
+}
+
+export function parseNetworkCenterVerdict(
+  body,
+  { expectedLocalProof, requiredCaseIds = REQUIRED_CASE_IDS } = {},
+) {
   let rows;
   try {
     rows = JSON.parse(body);
@@ -862,14 +1140,14 @@ export function parseNetworkCenterVerdict(body, { expectedLocalProof } = {}) {
     typeof verdict.passed !== "boolean" ||
     !Array.isArray(assertions) ||
     !Number.isInteger(assertionCount) ||
-    assertionCount !== REQUIRED_CASE_IDS.length ||
+    assertionCount !== requiredCaseIds.length ||
     !Number.isInteger(failedCount)
   ) {
     throw new Error("Supabase Management SQL response has no valid Network Center verdict");
   }
   for (const [index, assertion] of assertions.entries()) {
     if (
-      assertion?.case_id !== REQUIRED_CASE_IDS[index] ||
+      assertion?.case_id !== requiredCaseIds[index] ||
       typeof assertion?.passed !== "boolean"
     ) {
       throw new Error("Network Center verdict case manifest is inconsistent");
@@ -1013,11 +1291,30 @@ export async function main(
   }
 
   if (argv.includes("--dry-run")) {
-    const sql = buildNetworkCenterMatrixSql();
-    if (!/\bROLLBACK\s*;/i.test(sql)) {
-      throw new Error("Rollback terminator is missing");
+    for (const [ten, sql] of [
+      ["Network Center", buildNetworkCenterMatrixSql()],
+      ["tenant data", buildTenantDataMatrixSql()],
+    ]) {
+      if (!/\bROLLBACK\s*;/i.test(sql)) {
+        throw new Error(`Rollback terminator is missing from the ${ten} payload`);
+      }
+    }
+    // Ma trận dữ liệu chạy trên sổ sách THẬT của công ty. Nó chỉ được phép ĐỌC;
+    // một câu ghi lọt vào đây là sự cố, không phải một ca test. ROLLBACK ở cuối
+    // là lớp thứ hai, không phải lớp duy nhất.
+    const dataSql = buildTenantDataMatrixSql();
+    const ghiNgoaiTempCuaMinh =
+      /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|TRUNCATE)\s+(?!(?:pg_temp\.)?_td_)/i;
+    for (const cau of dataSql.split(/\r?\n/u)) {
+      const khongChuThich = cau.replace(/--.*$/u, "");
+      if (ghiNgoaiTempCuaMinh.test(khongChuThich)) {
+        throw new Error(
+          `Tenant data payload writes outside its own temp tables: ${cau.trim()}`,
+        );
+      }
     }
     log("Network Center dry run passed: applied-schema rollback payload built.");
+    log("Tenant data dry run passed: read-only rollback payload built.");
     log("No Management API request was executed.");
     return;
   }
@@ -1069,6 +1366,26 @@ export async function main(
   }
   log(
     `Network Center tenant matrix passed (${verdict.assertion_count} assertions, transaction rolled back).`,
+  );
+
+  // Ma trận thứ hai chỉ chạy ở đây, trên lược đồ đầy đủ. Một lần chạy RIÊNG, và
+  // cố ý: gộp hai ma trận vào cùng một transaction thì một lỗi dựng fixture bên
+  // này sẽ nuốt mất toàn bộ kết quả bên kia.
+  const dataBody = await executeQuery(buildTenantDataMatrixSql(), config, fetchImpl);
+  const dataVerdict = parseNetworkCenterVerdict(dataBody, {
+    requiredCaseIds: TENANT_DATA_CASE_IDS,
+  });
+  if (!dataVerdict.passed) {
+    const failures = dataVerdict.assertions
+      .filter((assertion) => !assertion.passed)
+      .map((assertion) => `${assertion.case_id}=${JSON.stringify(assertion.detail)}`)
+      .join(", ");
+    throw new Error(
+      `Tenant data matrix failed ${dataVerdict.failed_count}/${dataVerdict.assertion_count}: ${failures}`,
+    );
+  }
+  log(
+    `Tenant data matrix passed (${dataVerdict.assertion_count} assertions, transaction rolled back).`,
   );
 }
 
