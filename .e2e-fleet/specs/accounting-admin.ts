@@ -647,7 +647,13 @@ CREATE TEMP TABLE _e2e_contracts ON COMMIT DROP AS
 SELECT contract.id, contract.room_id
 FROM public.contracts contract
 WHERE contract.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
-  AND contract.notes = ${sqlLiteral(marker)}
+  -- SO THEO TIỀN TỐ, không so bằng. Ứng dụng NỐI THÊM dòng vào ghi chú hợp
+  -- đồng sau khi tạo: applyDepositAdjustmentNote chèn "[Điều chỉnh cọc] …"
+  -- khi cọc lệch tiền thuê, nên phép so BẰNG không còn khớp và bước dọn
+  -- ngã ở "could not find the exact committed contract", để fixture lại trên
+  -- DEMO. Dấu hiệu luôn đứng ĐẦU ghi chú nên tiền tố là phép so đúng.
+  -- (Đo 17/09/2026; án lệ đã ghi từ 13–14/09.)
+  AND contract.notes LIKE ${sqlLiteral(marker)} || '%'
   AND (
     (SELECT contract_id FROM _e2e_cleanup_input) IS NULL
     OR contract.id = (SELECT contract_id FROM _e2e_cleanup_input)
@@ -669,7 +675,7 @@ BEGIN
       SELECT count(*)
       FROM public.contracts contract
       WHERE contract.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
-        AND contract.notes = ${sqlLiteral(marker)}
+        AND contract.notes LIKE ${sqlLiteral(marker)} || '%'
     ) <> 1 THEN
       RAISE EXCEPTION 'Accounting E2E cleanup marker is not unique inside the DEMO org';
     END IF;
@@ -965,7 +971,7 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM public.contracts contract
     WHERE contract.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
-      AND contract.notes = ${sqlLiteral(marker)}
+      AND contract.notes LIKE ${sqlLiteral(marker)} || '%'
   ) THEN
     RAISE EXCEPTION 'Accounting E2E cleanup left the fixture marker behind';
   END IF;
