@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-09-16T16:59:57.950Z",
+  "generatedAt": "2026-09-17T01:18:51.599Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
-    "ledger-applied": 579,
-    "unknown": 74,
-    "catalog-proven": 213,
+    "ledger-applied": 581,
+    "unknown": 73,
+    "catalog-proven": 212,
     "superseded": 15
   },
   "duplicateVersions": {
@@ -10108,10 +10108,9 @@
       "name": "org_autofill_strict",
       "scheme": "timestamp14",
       "sha256": "99466aacdd201e9b084efc7a252e7cc90b30f2cee8b069e44851edcd2cb72f35",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "trigger:public.public.trg_autofill_org_strict"
+      "state": "ledger-applied",
+      "evidence": [
+        "receipt:2026-09-16T17:34:52.659Z|bien-nhan-backup"
       ]
     },
     {
@@ -10241,9 +10240,9 @@
       "name": "luong_guard_bo_session_user",
       "scheme": "timestamp14",
       "sha256": "c8374bb5c948a526e24b772564224292c9572b2517440203b6c8176367abf503",
-      "state": "catalog-proven",
+      "state": "ledger-applied",
       "evidence": [
-        "catalog:function:app_private.v5_can_view_salary_v1"
+        "receipt:2026-09-16T17:02:42.592Z|bien-nhan-backup"
       ]
     },
     {
