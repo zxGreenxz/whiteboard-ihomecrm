@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useRef, useState } from "react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ContractSettlementModalLayout } from "../ContractSettlementModalLayout";
 
@@ -12,6 +13,31 @@ const props = {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("Settlement modal shell", () => {
+  it("uses the stable list fallback when the original row disappears", async () => {
+    function Host() {
+      const [open, setOpen] = useState(false);
+      const [showRow, setShowRow] = useState(true);
+      const fallback = useRef<HTMLButtonElement>(null);
+      return <><button ref={fallback}>Khoản chi</button>{showRow && <button onClick={() => setOpen(true)}>Mở phiếu</button>}<ContractSettlementModalLayout {...props} open={open} fallbackFocusRef={fallback} onClose={() => { setShowRow(false); setOpen(false); }} /></>;
+    }
+    render(<Host />);
+    const opener = screen.getByRole("button", { name: "Mở phiếu" });
+    opener.focus(); fireEvent.click(opener);
+    fireEvent.click(screen.getByRole("button", { name: "Đóng hồ sơ" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Khoản chi" })));
+  });
+  it("returns keyboard focus to the row that opened the dialog after actual close", async () => {
+    function Host() {
+      const [open, setOpen] = useState(false);
+      return <><button onClick={() => setOpen(true)}>Mở phiếu PC-nguồn</button><ContractSettlementModalLayout {...props} open={open} onClose={() => setOpen(false)} /></>;
+    }
+    render(<Host />);
+    const opener = screen.getByRole("button", { name: "Mở phiếu PC-nguồn" });
+    opener.focus(); fireEvent.click(opener);
+    fireEvent.click(screen.getByRole("button", { name: "Đóng hồ sơ" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
   it("keeps current voucher subject distinct from reference timeline and permits dismissal when idle", () => {
     render(<ContractSettlementModalLayout {...props} />);
     expect(screen.getByRole("dialog", { name: "Hoàn khách / 417LVT · 101" })).toBeTruthy();

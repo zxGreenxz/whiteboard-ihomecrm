@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { LoaderCircle, X } from "lucide-react";
 import { Dialog, DialogDescription, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
@@ -9,6 +9,8 @@ export interface ContractSettlementModalLayoutProps {
   onClose: () => void;
   /** Includes write, refresh, and any unresolved result; controlled by the common action host. */
   dismissalBlocked?: boolean;
+  /** A stable focusable list heading/tab when processing removes the originating row. */
+  fallbackFocusRef?: RefObject<HTMLElement>;
   kindLabel: string;
   roomLabel: string;
   codeLine: string;
@@ -21,11 +23,18 @@ export interface ContractSettlementModalLayoutProps {
 }
 
 /** Shared visual shell for voucher/source/event detail. No action or identity resolution happens here. */
-export function ContractSettlementModalLayout({ open, onClose, dismissalBlocked = false, kindLabel, roomLabel, codeLine, subjectLabel, metadata, amountSummary, timeline, children, aside }: ContractSettlementModalLayoutProps) {
+export function ContractSettlementModalLayout({ open, onClose, dismissalBlocked = false, fallbackFocusRef, kindLabel, roomLabel, codeLine, subjectLabel, metadata, amountSummary, timeline, children, aside }: ContractSettlementModalLayoutProps) {
+  const openerRef = useRef<HTMLElement | null>(null);
   return <Dialog open={open} onOpenChange={next => { if (!next && !dismissalBlocked) onClose(); }}>
     <DialogPortal>
       <DialogOverlay className="bg-[#1b1813]/55" />
       <DialogPrimitive.Content className="contract-settlement cs-modal"
+        onOpenAutoFocus={() => { openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+        onCloseAutoFocus={event => {
+          event.preventDefault();
+          const target = openerRef.current?.isConnected ? openerRef.current : fallbackFocusRef?.current;
+          target?.focus({ preventScroll: true });
+        }}
         onPointerDownOutside={event => event.preventDefault()}
         onInteractOutside={event => event.preventDefault()}
         onEscapeKeyDown={event => { if (dismissalBlocked) event.preventDefault(); }}>
