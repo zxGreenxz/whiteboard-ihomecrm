@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Search } from "lucide-react";
+import { LoaderCircle, Search } from "lucide-react";
 import { normalizeVietnamese } from "@/lib/utils";
 import {
   calculateSettlementTotals, detectSettlementIssues, getSettlementDisplayState,
@@ -126,7 +126,10 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
       {navigation ?? <span className="cs-secondary">{withinPeriod ? `Kỳ ${period} · ${dateBasis === "posting" ? "theo ngày ghi chi" : "theo ngày nghiệp vụ"}` : "Mọi kỳ · gồm tồn cũ"}</span>}
       <label className="cs-merge"><input type="checkbox" checked={merged} onChange={() => { setMerged(!merged); if (["pending", "payment", "pending_payment"].includes(status)) selectStatus("open"); }} />Gộp Chờ duyệt và Chi</label>
     </div>
-    {loading && rows.length === 0 ? <div className="cs-empty" role="status">Đang tải khoản chi…</div> : <>
+    {loading && rows.length === 0 ? <div role="status" aria-live="polite">
+      <div className="cs-stats" data-columns={merged ? "3" : "4"} aria-hidden="true">{Array.from({ length: merged ? 3 : 4 }, (_, index) => <div className="cs-stat cs-skeleton" key={index}><div /><div /><div /></div>)}</div>
+      <div className="cs-surface cs-loading"><LoaderCircle size={22} className="animate-spin" aria-hidden="true" /><span>Đang tải khoản chi…</span></div>
+    </div> : <>
       <div className="cs-stats" data-columns={merged ? "3" : "4"} aria-label="Thống kê theo bộ lọc, trước khi lọc trạng thái">
         {cards.map(card => <button key={card.key} type="button" data-testid="settlement-stat" className="cs-stat" aria-pressed={status === card.key} onClick={() => selectStatus(status === card.key ? "open" : card.key)}>
           <span className="cs-stat-label"><span className="cs-dot" style={{ background: card.color }} />{card.label}</span>
@@ -172,7 +175,7 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
                 <div role="cell"><button className="cs-row-open" aria-label={row.rowType === "source" ? `Xem nguồn ${f.contractNumber ?? row.rowKey}` : `Xem ${row.voucherCode}`} onClick={() => selectRow(row)}><div className="cs-room">{roomLabel}</div><div className="cs-customer">{f.customerName ?? "Chưa có tên khách"}</div><div className="cs-code">{codeLine}</div></button></div>
                 <div role="cell"><strong>{kinds[row.settlementKind]}</strong><div className="cs-secondary">{f.source === null ? "Chưa xác minh nguồn" : f.source.kind === "reservation_refund" || f.source.kind === "sale_deposit" ? "Từ giữ chỗ" : "Từ hợp đồng"} · {day(f.sourceDate)}</div>{f.sourceDateFallback && <div className="cs-secondary">Theo ngày phiếu</div>}{issueCodes.includes("OLD_PERIOD") && <span className="cs-badge" data-tone="amber">Tồn kỳ cũ</span>}</div>
                 <div role="cell">{f.recipient ?? "Chưa có người nhận"}<div className="cs-secondary">{f.bank ? "Đã có thông tin nhận" : "Chưa có tài khoản"}</div></div>
-                <div role="cell" className="cs-money-cell"><div className="cs-amount">{money(f.amount)}</div><div className="cs-secondary">{row.rowType === "source" ? "Căn cứ dự kiến" : state.code === "PAID" ? `Chi ${day(f.postedDate)}` : "Số trên phiếu"}</div></div>
+                <div role="cell" className="cs-money-cell"><div className="cs-amount">{money(f.amount)}</div><div className="cs-secondary">{row.rowType === "source" ? "Căn cứ dự kiến" : "Số trên phiếu"}</div>{state.code === "PAID" && row.rowType === "voucher" && row.snapshot.state === "ready" && <div className="cs-secondary">Thực chi: {money(row.snapshot.value.effectiveNetPaid)} · {day(f.postedDate)}</div>}</div>
                 <div role="cell"><span className="cs-badge" data-tone={state.code === "PAID" ? "green" : ["NEEDS_REVIEW", "NEEDS_RECONCILIATION", "UNAVAILABLE"].includes(state.code) ? "red" : "amber"}>{state.label}</span>{issueCodes.includes("AMOUNT_MISMATCH") && <div className="cs-issue">Lệch căn cứ</div>}{row.rowType === "voucher" && row.snapshot.state === "unavailable" && <div className="cs-secondary">Mở hồ sơ để tải lại</div>}</div>
                 <div role="cell" className="cs-row-action"><button className="cs-button" aria-label={row.rowType === "voucher" ? `Xử lý ${row.voucherCode}` : `Xử lý nguồn ${f.contractNumber ?? row.rowKey}`} onClick={() => selectRow(row)}>{state.code === "PAID" || state.code === "CANCELLED" ? "Xem chi tiết" : "Xử lý"}</button></div>
               </div>;

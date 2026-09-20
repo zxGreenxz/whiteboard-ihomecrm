@@ -38,6 +38,19 @@ const props = { rows, period: "2026-09", buildings: [{ id: "building", name: "41
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("Khoản chi settlement workbench", () => {
+  it("labels voucher amount separately from verified cash paid when they differ", () => {
+    const paid = voucher("different-paid", {
+      approvalStatus: "APPROVED", postingStatus: "POSTED", activePostingId: "posting",
+      effectiveNetPaid: 1_800_000, postedOn: "2026-09-05",
+      postingEvidence: { state: "ready", value: { activePostingId: "posting", effectiveNetPaid: 1_800_000, postedOn: "2026-09-05" } },
+    });
+    render(<ContractSettlementPayments {...props} rows={[paid]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Đã chi" }));
+    const paidRow = screen.getByRole("button", { name: "Xem PC-different-paid" }).closest('[role="row"]') as HTMLElement;
+    expect(within(paidRow).getByText("2.000.000đ")).toBeTruthy();
+    expect(within(paidRow).getByText("Số trên phiếu")).toBeTruthy();
+    expect(within(paidRow).getByText("Thực chi: 1.800.000đ · 05/09/2026")).toBeTruthy();
+  });
   it("keeps old uncreated and review vouchers, opens stable identities without invoking a writer", () => {
     render(<ContractSettlementPayments {...props} />);
     expect(screen.getByText("HD-101 · Chưa lập phiếu")).toBeTruthy();
