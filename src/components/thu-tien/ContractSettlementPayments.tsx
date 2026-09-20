@@ -6,6 +6,7 @@ import {
   type SettlementDisplayCode, type SettlementKind, type SettlementRow, type SettlementSelection,
 } from "@/lib/contractSettlement";
 import "./contract-settlement.css";
+import { classifySettlementPostingDate } from "@/lib/contractSettlementReader";
 
 export interface ContractSettlementPaymentsProps {
   /** All scoped rows, not just a display page. Incomplete reads must set complete=false. */
@@ -83,9 +84,10 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
     if (person !== "all" && f.recipient !== person) return false;
     const isReservation = f.source?.kind === "reservation_refund" || f.source?.kind === "sale_deposit";
     if (origin !== "all" && (f.source === null || (origin === "reservation") !== isReservation)) return false;
-    const date = dateBasis === "posting" ? f.postedDate : f.sourceDate;
+    const postingDate = dateBasis === "posting" ? classifySettlementPostingDate(row) : null;
+    if (postingDate?.state === "known_none") return false;
+    const date = postingDate?.state === "known_paid" ? postingDate.postedOn : dateBasis === "posting" ? null : f.sourceDate;
     if (withinPeriod && date !== null && date.slice(0, 7) !== period) return false;
-    if (dateBasis === "posting" && f.postedDate === null && !(row.rowType === "voucher" && row.snapshot.state === "unavailable")) return false;
     if (issue === "yes" && detectSettlementIssues(row, period).length === 0) return false;
     if (search.trim()) {
       const haystack = [f.code, f.contractNumber, f.roomName, f.customerName, f.recipient, f.buildingId ? buildingNames.get(f.buildingId) : null].join(" ");
@@ -94,6 +96,8 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
     return true;
   }), [rows, building, person, origin, dateBasis, withinPeriod, period, issue, search, buildingNames]);
   const metricRows = base.filter(row => kind === "all" || row.settlementKind === kind);
+  const unknownPostingCount = dateBasis === "posting" ? metricRows.filter(row => classifySettlementPostingDate(row).state === "unverified").length : 0;
+  const amountsVerified = complete && unknownPostingCount === 0 && !metricRows.some(row => row.rowType === "voucher" && row.snapshot.state !== "ready");
   const shown = metricRows.filter(row => matchesStatus(row, status));
   const totals = calculateSettlementTotals(shown);
   const reviewRows = metricRows.filter(row => matchesStatus(row, "review"));
@@ -114,6 +118,9 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
         { key: "payment" as const, label: "Chờ chi", value: compactMoney(sum(paymentRows)), meta: `${paymentRows.length} phiếu · ${money(sum(paymentRows))}`, color: "#1f7a52" }]),
     { key: "paid" as const, label: "Đã chi", value: compactMoney(paidTotal), meta: `${paidRows.length} phiếu · ${money(paidTotal)}`, color: "#1f9d57" },
   ];
+  const displayCards = cards.map(card => amountsVerified || card.key === "review" ? card : {
+    ...card, value: "Chưa xác định", meta: "Chưa xác minh được tổng tiền",
+  });
   function clearFilters() {
     setSearch(""); setBuilding("all"); setWithinPeriod(false); setDateBasis("business"); setKind("all");
     setStatus("open"); setOrigin("all"); setPerson("all"); setIssue("all"); setPage(0);
@@ -131,7 +138,7 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
       <div className="cs-surface cs-loading"><LoaderCircle size={22} className="animate-spin" aria-hidden="true" /><span>Đang tải khoản chi…</span></div>
     </div> : <>
       <div className="cs-stats" data-columns={merged ? "3" : "4"} aria-label="Thống kê theo bộ lọc, trước khi lọc trạng thái">
-        {cards.map(card => <button key={card.key} type="button" data-testid="settlement-stat" className="cs-stat" aria-pressed={status === card.key} onClick={() => selectStatus(status === card.key ? "open" : card.key)}>
+        {displayCards.map(card => <button key={card.key} type="button" data-testid="settlement-stat" className="cs-stat" aria-pressed={status === card.key} onClick={() => selectStatus(status === card.key ? "open" : card.key)}>
           <span className="cs-stat-label"><span className="cs-dot" style={{ background: card.color }} />{card.label}</span>
           <div className="cs-stat-value">{card.value}</div><div className="cs-stat-meta">{complete ? "" : "Tạm tính · "}{card.meta}</div>
           <span className="cs-stat-cta">{status === card.key ? "Đang lọc" : "Lọc"}</span>
@@ -162,6 +169,7 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
           <span className="cs-spacer" /><button className="cs-chip" aria-pressed={status === "open"} onClick={() => selectStatus("open")}>Cần xử lý</button><button className="cs-chip" aria-pressed={status === "paid"} onClick={() => selectStatus("paid")}>Đã chi</button>
         </div>
         {oldRows.length > 0 && <div className="cs-notice"><b className="cs-mono">TỒN</b><span>Có <b>{oldRows.length} khoản tồn kỳ trước</b>. Vẫn được giữ trong danh sách cần xử lý.</span></div>}
+        {unknownPostingCount > 0 && <div className="cs-notice">{unknownPostingCount} phiếu chưa xác minh được ngày ghi chi. Giữ lại để đối chiếu; tổng tiền chưa xác định.</div>}
         <div className="cs-results"><span>{shown.length} khoản{fetching ? " · Đang cập nhật, đang hiển thị dữ liệu lần trước" : ""}{!complete ? " · Chưa tải đủ dữ liệu" : ""}</span><span className="cs-mono">{totals.sourceCount > 0 ? `${totals.sourceCount} hồ sơ chưa lập phiếu` : "Danh sách chi tiết"}</span></div>
         <div className="cs-table-scroll">
           <div role="table" aria-label="Danh sách khoản chi" className="cs-payment-table">
@@ -183,7 +191,7 @@ export function ContractSettlementPayments({ rows, period, buildings, complete, 
           </div>
         </div>
         {shown.length === 0 && <div className="cs-empty"><strong>{complete ? "Không có khoản chi phù hợp" : "Chưa có dữ liệu để hiển thị"}</strong><p>{complete ? "Thử thay đổi kỳ hoặc bỏ bớt bộ lọc." : "Hãy tải lại để xác định đầy đủ các khoản chi."}</p><button className="cs-button" onClick={complete ? clearFilters : onRefresh}>{complete ? "Bỏ bộ lọc" : "Tải lại"}</button></div>}
-        <div className="cs-footer"><span>{complete ? `${shown.length} khoản trong phạm vi đang xem` : `Tạm tính trên ${shown.length} dòng đã tải`}{unknownCount > 0 ? ` · ${unknownCount} phiếu chưa đọc được số tiền` : ""}</span><span className="cs-mono">Tổng trên phiếu: {money(totals.displayedVoucherAmount)}</span></div>
+        <div className="cs-footer"><span>{complete ? `${shown.length} khoản trong phạm vi đang xem` : `Tạm tính trên ${shown.length} dòng đã tải`}{unknownCount > 0 ? ` · ${unknownCount} phiếu chưa đọc được số tiền` : ""}</span><span className="cs-mono">Tổng trên phiếu: {money(amountsVerified ? totals.displayedVoucherAmount : null)}</span></div>
         {pageCount > 1 && <div className="cs-footer"><button className="cs-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Trước</button><span>Trang {currentPage + 1}/{pageCount} · Tổng tính trên toàn bộ {shown.length} khoản</span><button className="cs-button" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}>Sau</button></div>}
       </section>
     </>}
