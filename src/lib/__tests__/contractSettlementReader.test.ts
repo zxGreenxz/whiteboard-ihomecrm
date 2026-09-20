@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { readContractSettlement, settlementQueryKey, settlementSourceIdentity } from '../contractSettlementReader';
+import { classifySettlementPostingDate, readContractSettlement, settlementQueryKey, settlementSourceIdentity } from '../contractSettlementReader';
 import type { SettlementRow, SettlementSourceRow, SettlementVoucherRow, VoucherSnapshot } from '../contractSettlement';
+import { parseSettlementRow } from '../contractSettlement';
 const scope = { organizationId: 'org', actorId: 'actor', scopeRevision: '1', buildingIds: ['b'], period: '2026-09', mode: 'all' as const, dateBasis: 'business' as const, filters: { period: '2026-09' } };
 const row = (id: number): SettlementSourceRow => ({ rowType: 'source', rowKey: `s:${String(id).padStart(5,'0')}`, settlementKind: 'commission', sourceRef: {kind:'broker', organizationId:'org', contractId:`c${id}`}, organizationId:'org', buildingId:'b', roomId:null, roomName:null, contractId:`c${id}`, contractNumber:null, customerName:null, eventDate:'2026-08-31', recipient:{name:null,bankName:null,bankAccount:null}, basis:{kind:'COMMISSION',status:'AVAILABLE',amount:10,measuredAt:null,source:'tier',fingerprint:null,version:null,warning:null},createEligibility:{state:'unavailable',reasonCodes:['WRITER_PENDING']} });
 const page = (rows: SettlementRow[], nextCursor: string | null = null, revision = 'r') => ({rows,nextCursor,revision,asOf:'2026-09-21T00:00:00Z'});
@@ -22,8 +23,26 @@ describe('complete settlement reader', () => {
   }
  });
  it('posting filter excludes sources and known unposted/noncash vouchers',async()=>{
-  for(const item of [{...row(1),eventDate:'2026-09-01'},voucher({sourceEventDate:'2026-09-01',postingStatus:'UNPOSTED',activePostingId:null,postedOn:null}),voucher({sourceEventDate:'2026-09-01',postingMode:'NON_CASH',postingStatus:'NOT_APPLICABLE',activePostingId:null,postedOn:null})]){
+  const noCash={activePostingId:null,postedOn:null,effectiveNetPaid:0,postingEvidence:{state:'ready' as const,value:{activePostingId:null,postedOn:null,effectiveNetPaid:0}}};
+  for(const item of [{...row(1),eventDate:'2026-09-01'},voucher({sourceEventDate:'2026-09-01',postingStatus:'UNPOSTED',...noCash}),voucher({sourceEventDate:'2026-09-01',postingMode:'NON_CASH',postingStatus:'NOT_APPLICABLE',...noCash})]){
    const result=await readContractSettlement({...scope,mode:'period',dateBasis:'posting'},async()=>page([item]));expect(result.rows).toHaveLength(0);expect(result.totals?.effectiveNetPaid).toBe(0);
+  }
+ });
+ it('classifies only consistent posting evidence as known absence',()=>{
+  expect(classifySettlementPostingDate(row(1))).toEqual({state:'known_none'});
+  expect(classifySettlementPostingDate(voucher())).toEqual({state:'known_paid',postedOn:'2026-09-01'});
+  const noCash={activePostingId:null,postedOn:null,effectiveNetPaid:0,postingEvidence:{state:'ready' as const,value:{activePostingId:null,postedOn:null,effectiveNetPaid:0}}};
+  for(const patch of [{postingStatus:'UNPOSTED' as const},{postingStatus:'REVERSED' as const},{approvalStatus:'CANCELLED' as const,postingStatus:'UNPOSTED' as const},{postingMode:'NON_CASH' as const,postingStatus:'NOT_APPLICABLE' as const}])expect(classifySettlementPostingDate(voucher({...noCash,...patch}))).toEqual({state:'known_none'});
+ });
+ it('keeps NULL status and contradictory nonpaid headers visible without totals',async()=>{
+  const patches:Partial<VoucherSnapshot>[]=[{postingStatus:'UNPOSTED'},{approvalStatus:'CANCELLED'},{approvalStatus:'CANCELLED',postingStatus:'UNPOSTED'},{postingMode:'NON_CASH',postingStatus:'NOT_APPLICABLE'},{postingStatus:'REVERSED'},
+   {postingStatus:'UNPOSTED',activePostingId:null,postedOn:null,effectiveNetPaid:0,postingEvidence:{state:'loading'}},
+   {postingStatus:'UNPOSTED',activePostingId:null,postedOn:null,effectiveNetPaid:0,postingEvidence:{state:'ready',value:{activePostingId:null,postedOn:null,effectiveNetPaid:1}}}];
+  const original=voucher();if(original.snapshot.state!=='ready')throw Error('Invalid test fixture');
+  const nullStatus=parseSettlementRow({...original,snapshot:{state:'ready',value:{...original.snapshot.value,postingStatus:null}}});
+  for(const item of [nullStatus,...patches.map(voucher)]){
+   expect(classifySettlementPostingDate(item).state).toBe('unverified');
+   const result=await readContractSettlement({...scope,mode:'period',dateBasis:'posting'},async()=>page([item]));expect(result.rows).toHaveLength(1);expect(result.partial).toBe(true);expect(result.totals).toBeNull();
   }
  });
  it('posting filter keeps unavailable or unverified posting detail visible without totals',async()=>{

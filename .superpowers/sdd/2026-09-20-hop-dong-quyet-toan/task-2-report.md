@@ -90,3 +90,17 @@ Mutation `scripts/dot-bien.mjs`: đổi postedOn về sourceEventDate/voucherDat
 Files round1: src/lib/contractSettlementReader.ts, src/lib/__tests__/contractSettlementReader.test.ts, report này. Các gate tích hợp/release đã nêu ở trên giữ nguyên.
 
 Round1 typecheck: npx tsc --noEmit -p tsconfig.app.json exit1 vì lỗi T8A ngoài scope tại ContractSettlementPayments.test.tsx:48 (TS2769: exact không thuộc ByRoleOptions). Không có diagnostic ở reader/test đã sửa. Đã báo controller, không sửa file root-owned. git diff --check đạt.
+
+## T2 — fix round2 (base8e1e6eb8)
+
+Đóng regression task-2-rereview1.md bằng helper thuần export `classifySettlementPostingDate(row): SettlementPostingDate` tại contractSettlementReader.ts. Contract: `{state:'known_paid',postedOn}` / `{state:'known_none'}` / `{state:'unverified'}`; T8 có thể dùng cùng classifier thay null shortcut.
+
+- known_paid dùng display PAID đã đối chiếu active posting/net/date, trả ngày postedOn.
+- known_none chỉ cho source chưa có phiếu, hoặc voucher có tổ hợp mode/status/display hợp lệ và cả header lẫn evidence READY đều activePostingIdNULL, effectiveNetPaid0, postedOnNULL. Nhãn CANCELLED/NON_CASH không tự chứng minh không có chi.
+- Các trường hợp còn lại unverified: reader giữ dòng trong posting cohort, partial=true và totals=null. NULL postingStatus đi qua parseSettlementRow thành snapshot unavailable (type VoucherSnapshot không cho NULL); không ép kiểu để coi là snapshot hợp lệ. UNPOSTED+active, cancelled+active, noncash+ledger, reversed+ledger, missing evidence và net evidence mâu thuẫn đều được giữ lại.
+
+TDD: viết hai test classifier/unknown trước; focused suite RED2/15 do helper chưa tồn tại. Sửa fixture known-none cũ để thật sự có header/evidence zero/null khớp (fixture trước để net10 và active evidence dù header unposted). GREEN cuối `npx vitest run src/lib/__tests__/contractSettlementReader.test.ts`:15/15, no skips. Bao gồm classifier positive paid/source/verified unposted/reversed/cancelled/noncash và các ca unknown/mâu thuẫn qua reader, tất cả kiểm visibility/partial/no totals.
+
+Mutation `node scripts/dot-bien.mjs --file src/lib/contractSettlementReader.ts --tim 'consistentNonpaidState && verifiedNoCash ?' --thay 'consistentNonpaidState ?' --suite 'npx vitest run src/lib/__tests__/contractSettlementReader.test.ts' --mong-doi-chua 'keeps NULL status and contradictory'`: a98cedaaf57e→ea3868c5e7c7, suite đỏ đúng ca unknown/contradictory, helper exit0 và khôi phục hash a98cedaaf57e.
+
+`npx tsc --noEmit -p tsconfig.app.json`: exit1 chỉ có root WIP ContractSettlementEvents.test.tsx:4 TS2307 thiếu module ../ContractSettlementEvents; không diagnostic tại reader/test đã sửa. Đã báo controller. `git diff --check` đạt. Không sửa SQL/T3/hook/UI, không chạy lại local DB/broad suites vì thay đổi chỉ pure classifier/predicate. Remaining release gates giữ nguyên. Files round2: reader, focused reader test, report.

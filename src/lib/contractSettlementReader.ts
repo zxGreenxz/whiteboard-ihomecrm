@@ -4,6 +4,22 @@ export type SettlementPage = { rows: SettlementRow[]; nextCursor: string | null;
 export type SettlementReadResult = { rows: SettlementRow[]; totals: SettlementTotals | null; partial: boolean; error: string | null; revision: string | null; asOf: string | null; pagination: { complete: boolean; pages: number; nextCursor: string | null }; capabilities: { automaticSaleCandidates: false } };
 export type SettlementPageReader = (scope: SettlementReadScope, cursor: string | null, revision: string | null) => Promise<unknown>;
 export const settlementQueryKey = (scope: SettlementReadScope) => ['contract-settlement', scope.organizationId, scope.actorId, scope.scopeRevision, [...new Set(scope.buildingIds)].sort(), scope.period, scope.mode, scope.dateBasis, scope.filters] as const;
+export type SettlementPostingDate = { state: 'known_paid'; postedOn: string } | { state: 'known_none' } | { state: 'unverified' };
+/** Shared reader/UI predicate: an inactive header alone never proves absence of cash. */
+export function classifySettlementPostingDate(row: SettlementRow): SettlementPostingDate {
+ if (row.rowType === 'source') return { state: 'known_none' };
+ if (row.snapshot.state !== 'ready') return { state: 'unverified' };
+ const snapshot = row.snapshot.value;
+ const display = getSettlementDisplayState(row).code;
+ if (display === 'PAID' && snapshot.postedOn !== null) return { state: 'known_paid', postedOn: snapshot.postedOn };
+ const evidence = snapshot.postingEvidence;
+ const consistentNonpaidState = ['PENDING_APPROVAL', 'NEEDS_REVIEW', 'WAITING_PAYMENT', 'NON_CASH', 'REVERSED', 'CANCELLED'].includes(display)
+  && ((snapshot.postingMode === 'CASHBOOK' && (snapshot.postingStatus === 'UNPOSTED' || snapshot.postingStatus === 'REVERSED'))
+   || (snapshot.postingMode === 'NON_CASH' && snapshot.postingStatus === 'NOT_APPLICABLE'));
+ const verifiedNoCash = snapshot.activePostingId === null && snapshot.effectiveNetPaid === 0 && snapshot.postedOn === null
+  && evidence.state === 'ready' && evidence.value.activePostingId === null && evidence.value.effectiveNetPaid === 0 && evidence.value.postedOn === null;
+ return consistentNonpaidState && verifiedNoCash ? { state: 'known_none' } : { state: 'unverified' };
+}
 export function settlementSourceIdentity(source: SettlementSourceRef): string {
  const id = source.kind === 'broker' || source.kind === 'sale_contract' ? source.contractId : source.kind === 'termination_refund' ? source.terminationId : source.kind === 'reservation_refund' ? source.sourceVoucherId : source.depositVoucherId;
  return `${source.kind}:${source.organizationId}:${id}`;
@@ -47,13 +63,10 @@ export async function readContractSettlement(scope: SettlementReadScope, readPag
  const inPeriod = collected.filter(row => {
   let date: string | null;
   if (scope.dateBasis === 'posting') {
-   if (row.rowType === 'source') return false;
-   if (row.snapshot.state === 'unavailable') { unknownPostingDates.add(row.rowKey); return true; }
-   const snapshot = row.snapshot.value;
-   if (snapshot.postingMode !== 'CASHBOOK' || snapshot.postingStatus !== 'POSTED') return false;
-   // A header date alone is not evidence of cash payment in that period.
-   if (getSettlementDisplayState(row).code !== 'PAID') { unknownPostingDates.add(row.rowKey); return true; }
-   date = snapshot.postedOn;
+   const postingDate = classifySettlementPostingDate(row);
+   if (postingDate.state === 'known_none') return false;
+   if (postingDate.state === 'unverified') { unknownPostingDates.add(row.rowKey); return true; }
+   date = postingDate.postedOn;
   } else {
    date = row.rowType === 'source' ? row.eventDate : row.snapshot.state === 'ready' ? row.snapshot.value.sourceEventDate ?? row.snapshot.value.voucherDate : null;
   }
