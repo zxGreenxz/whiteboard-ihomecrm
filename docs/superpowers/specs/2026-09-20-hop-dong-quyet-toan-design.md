@@ -746,6 +746,14 @@ Như vậy khu mới dùng một máy xử lý phiếu với Thu chi; nghiệp v
 
 ---
 
+### 7.7. Xác nhận mới ngày 21/09/2026 — gửi lại phiếu cần rà soát
+
+Người dùng chốt: **“chuyển từ cần rà soát đưa về lại stat chờ duyệt”**. Vì vậy nút **Chuyển chờ duyệt** thao tác trên phiếu đã tồn tại: giữ nguyên ID, mã phiếu, số tiền, nguồn và liên kết hợp đồng; chuyển review `CHANGES_REQUESTED` → `PENDING`, không tạo mới, không duyệt, không ghi chi. Nhóm Cần rà soát hiển thị review state thật, tách khỏi nguồn chưa lập phiếu và các cảnh báo thiếu thông tin.
+
+**Xung đột cần sửa:** bản HTML trước đây đặt mã mới và tự đưa số hoa hồng về giá phòng × bậc khi gửi lại. Bản plan cũng từng hoãn `request_changes/resubmit` và dùng supplement thay yêu cầu bổ sung. Cả hai mô tả này đã bị xác nhận mới thay thế. Prototype đã sửa và kiểm bằng hành vi: PC-M103 vẫn là PC-M103, 2.640.000đ vẫn giữ nguyên khi chuyển lại Chờ duyệt. Prototype chỉ mô phỏng; chưa chứng minh RPC production.
+
+**Hướng xử lý:** đưa yêu cầu rà soát và gửi lại vào policy/controller Thu chi dùng chung cho cả hai trang. Đo lại quyền người gửi, maker NULL của phiếu cũ, review version, idempotency và trigger freeze trước khi nối action. Không giả người lập phiếu, không dùng tham số patch của resubmit để sửa số tiền. Nếu capability hiện tại thiếu, bổ sung command chung có quyền theo org/toà và audit bằng migration được review theo Project Contract. Supplement vẫn là bổ sung ghi chú/chứng từ độc lập; nguồn chưa có phiếu dùng Lập phiếu chờ duyệt riêng, giữ ràng buộc nguồn và khóa chống trùng.
+
 ## 8. Danh sách khẳng định cần audit
 
 Người audit xác nhận **đúng / sai / chưa kiểm được** cho từng dòng.
