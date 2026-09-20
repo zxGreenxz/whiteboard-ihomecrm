@@ -13,13 +13,13 @@ import type { SyncEntry } from "./types";
 export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   {
     table: 'income_expense_supplements',
-    keys: [['income-expense-supplements'], ['income-expenses'], ['income-expense-batches'],
+    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'], ['income-expense-supplements'], ['income-expenses'], ['income-expense-batches'],
       ['voucher-with-batch'], ['income-expense'], ['reservation-refund-evidence'], ['ie-history'], ['voucher-change-log']],
     domain: 'income-expenses',
   },
   {
     table: "invoices",
-    keys: [
+    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'],
       ["invoices"],
       ["invoice"], // chi tiết 1 hoá đơn (số ít ≠ "invoices")
       ["invoices-legacy"],
@@ -38,7 +38,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   },
   {
     table: "income_expenses",
-    keys: [
+    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'],
       ["reservation-refund-evidence"],
       ["reservation-settlement-audit"],
       ["income-expenses"],
@@ -104,7 +104,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
 
   {
     table: "reservation_deposit_settlements",
-    keys: [
+    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'],
       ["reservation-refund-evidence"],
       ["reservation-settlement-audit"],
       ["voucher-with-batch"],
@@ -129,7 +129,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   // recompute_invoice_for_id tính paid_amount TỪ bảng này chứ không từ phiếu.
   {
     table: "payments",
-    keys: [
+    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'],
       ["invoice-payments-summary"],
       ["invoices"],
       ["payments"],
@@ -143,7 +143,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   // tức đổi luôn tồn quỹ — mà trước đây không phát tín hiệu nào.
   {
     table: "income_expense_items",
-    keys: [
+    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'],
       ["income-expenses"],
       ["voucher-with-batch"],
       ["accounts-with-balance"],
@@ -154,7 +154,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   // accounts: chốt sổ đặt lock_date, đổi số dư đầu, đổi người phụ trách.
   {
     table: "accounts",
-    keys: [
+    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'], ['income-expense-posting-cashbooks'],
       ["accounts"],
       ["accounts-with-balance"],
       ["cashbook-closings"],
@@ -166,7 +166,7 @@ export const FINANCE_SYNC_ENTRIES: readonly SyncEntry[] = [
   // cash_handovers: phiên bàn giao đổi trạng thái là hai bên phải thấy ngay.
   {
     table: "cash_handovers",
-    keys: [
+    keys: [['income-expense-action-snapshots'], ['income-expense-action-cancellation'], ['contract-settlement'], ['contract-settlement-events'], ['room-cash-lifecycle'], ['income-expense-posting-cashbooks'],
       ["cash-handovers"],
       ["handover-vouchers"],
       ["settlement-report"],

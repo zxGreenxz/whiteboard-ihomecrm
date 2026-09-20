@@ -199,10 +199,11 @@ const INVALIDATE_KEYS = [
   ["contracts"],
 ] as const;
 
-export const useCancelIncomeVoucher = () => {
+export const useCancelIncomeVoucher = (options: {managed?: boolean} = {}) => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    retry: false,
     mutationFn: async (input: CancelIncomeVoucherInput) => {
       const { data, error } = await supabase.rpc(
         "cancel_income_voucher_v1",
@@ -210,12 +211,13 @@ export const useCancelIncomeVoucher = () => {
       );
       if (error) {
         const msg = error.message ?? "";
-        toast.error(periodBlockMessage(msg) ?? msg ?? "Không huỷ được phiếu thu");
+        if (!options.managed) toast.error(periodBlockMessage(msg) ?? msg ?? "Không huỷ được phiếu thu");
         throw error;
       }
       return data as unknown as CancelIncomeVoucherResult;
     },
     onSuccess: (data) => {
+      if (options.managed) return;
       for (const key of INVALIDATE_KEYS) {
         queryClient.invalidateQueries({ queryKey: key as unknown as string[] });
       }

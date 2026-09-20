@@ -61,4 +61,29 @@ describe("Finance V2 action characterization", () => {
       p_voucher: "voucher-1", p_cashbook: "cashbook-1", p_posted_on: "2026-09-21", p_reason: "Sai chứng từ",
     }));
   });
+
+  it('managed approval retains caller key through owned dispatch and retries', async () => {
+    const mutation = useApproveIncomeExpenseV2({ managed: true }) as unknown as Mutation<{ voucherId: string; expectedApprovalVersion: number; idempotencyKey: string }>;
+    for (let i = 0; i < 2; i++) {
+      mocks.rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'owned by system flow' } })
+        .mockResolvedValueOnce({ data: { voucherId: 'owned', approvalStatus: 'APPROVED' }, error: null });
+      await mutation.mutationFn({ voucherId: 'owned', expectedApprovalVersion: 8, idempotencyKey: 'stable-approval-key' });
+    }
+    expect(mocks.rpc.mock.calls.every(call => call[1].p_idempotency_key === 'stable-approval-key')).toBe(true);
+  });
+
+  it('managed approval rejects missing actual CAS before writing and preserves server error code', async () => {
+    const mutation = useApproveIncomeExpenseV2({ managed: true }) as unknown as Mutation<{ voucherId: string; expectedApprovalVersion?: number; idempotencyKey: string }>;
+    await expect(mutation.mutationFn({ voucherId: 'v', idempotencyKey: 'stable-key' })).rejects.toThrow();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    mocks.rpc.mockResolvedValue({ data: null, error: { code: '40001', message: 'stale' } });
+    await expect(mutation.mutationFn({ voucherId: 'v', expectedApprovalVersion: 8, idempotencyKey: 'stable-key' })).rejects.toMatchObject({ code: '40001' });
+  });
+
+  it('managed reversal keeps its caller key and posted date', async () => {
+    mocks.rpc.mockResolvedValue({ data: { voucherId: 'v', postingStatus: 'REVERSED' }, error: null });
+    const mutation = useReversePostingV2({ managed: true }) as unknown as Mutation<{ voucherId: string; cashbookId: string; idempotencyKey: string; postedOn: string }>;
+    await mutation.mutationFn({ voucherId: 'v', cashbookId: 'b', idempotencyKey: 'reverse-key', postedOn: '2026-09-20' });
+    expect(mocks.rpc).toHaveBeenCalledWith('reverse_posted_income_expense_v2', expect.objectContaining({ p_idempotency_key: 'reverse-key', p_posted_on: '2026-09-20' }));
+  });
 });

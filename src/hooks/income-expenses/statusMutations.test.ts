@@ -378,3 +378,27 @@ describe("termination forfeit status invalidations", () => {
     );
   });
 });
+
+
+describe('shared managed status commands', () => {
+  it('pins the reviewed unapprove CAS and leaves feedback/refresh to the controller', async () => {
+    mocks.rpc.mockResolvedValueOnce({error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({error:null});
+    const m = useUnapproveVoucher({managed:true}) as unknown as {mutationFn(input:{id:string;expectedApprovalVersion:number}):Promise<boolean>;onSuccess(value:boolean):void};
+    await expect(m.mutationFn({id:'voucher-cas',expectedApprovalVersion:7})).resolves.toBe(false);
+    expect(mocks.from).not.toHaveBeenCalled();
+    expect(mocks.rpc).toHaveBeenLastCalledWith('unapprove_voucher',{voucher_id:'voucher-cas',p_expected_approval_version:7});
+    m.onSuccess(false);
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();expect(mocks.invalidateQueries).not.toHaveBeenCalled();
+  });
+  it('rejects missing unapprove CAS before any adapter write', async () => {
+    const m = useUnapproveVoucher({managed:true}) as unknown as {mutationFn(input:unknown):Promise<boolean>};
+    await expect(m.mutationFn({id:'voucher-cas',expectedApprovalVersion:null})).rejects.toThrow('CAS_REQUIRED');
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it('sends actual two versions to cancellation flex attempt', async () => {
+    mocks.rpc.mockResolvedValueOnce({error:{code:'55000',message:'not a termination forfeit pair'}}).mockResolvedValueOnce({data:{changed:true},error:null});
+    const m = useCancelIncomeExpense({managed:true}) as unknown as {mutationFn(input:unknown):Promise<boolean>};
+    await m.mutationFn({id:'voucher-cas',reason:'Lý do đủ dài',expectedApprovalVersion:7,expectedPostingVersion:9,idempotencyKey:'fixed-key',postedOn:'2026-09-21'});
+    expect(mocks.rpc).toHaveBeenLastCalledWith('cancel_income_expense_flex_v1',{p_voucher:'voucher-cas',p_reason:'Lý do đủ dài',p_expected_approval_version:7,p_expected_posting_version:9});
+  });
+});

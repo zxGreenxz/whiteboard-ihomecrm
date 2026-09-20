@@ -42,9 +42,10 @@ export interface AppendIncomeExpenseSupplementInput {
   voucherId: string; note: string; attachments: string[]; idempotencyKey: string;
 }
 
-export function useAppendIncomeExpenseSupplement() {
+export function useAppendIncomeExpenseSupplement(options: {managed?: boolean} = {}) {
   const client = useQueryClient();
   return useMutation({
+    retry: false,
     mutationFn: async (input: AppendIncomeExpenseSupplementInput) => {
       const fields = appendSupplementInputSchema.parse(input);
       const { data, error } = await supabase.rpc('append_income_expense_supplement_v1', {
@@ -55,11 +56,12 @@ export function useAppendIncomeExpenseSupplement() {
       return appendSupplementResultSchema.parse(data);
     },
     onSuccess: async () => {
+      if (options.managed) return;
       await Promise.all(['income-expense-supplements', 'income-expenses', 'income-expense-batches',
         'voucher-with-batch', 'income-expense', 'reservation-refund-evidence', 'ie-history', 'voucher-change-log']
         .map(key => client.invalidateQueries({ queryKey: [key] })));
       toast.success('Đã lưu bổ sung chứng từ / ghi chú.');
     },
-    onError: error => { toast.error(supplementErrorMessage(error)); },
+    onError: error => { if (!options.managed) toast.error(supplementErrorMessage(error)); },
   });
 }

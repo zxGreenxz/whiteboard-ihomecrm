@@ -36,6 +36,7 @@ describe('IncomeExpenseList shared action decisions', () => {
     c.actor = { state: 'ready', value: { id: 'actor', organizationId: 'org', isAdmin: false } };
     c.permissions = { state: 'ready', value: { approve: false, edit: true, cancel: true, reverse: false } };
     c.routes = { state: 'ready', value: { workflow: 'CANONICAL', posting: 'CANONICAL', readSemantics: 'CANONICAL', access: 'CANONICAL', accountingStandardStrict: true } };
+    c.source = {state:'ready',value:{moneyActionsAllowed:true,refundReverseAllowed:false}};
     c.ownership = { state: 'ready', value: { flowKind: null, sourceReviewSupported: true, moneyEditAllowed: false } };
     c.cancellation = { state: 'ready', value: { canCancel: false, reason: 'Nguồn đã khóa', useIncomeDoor: false, useFlexWriter: false, mode: null } };
     const { onResubmitReview } = fixture({ v: c });

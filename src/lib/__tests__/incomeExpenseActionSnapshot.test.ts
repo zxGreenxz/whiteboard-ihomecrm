@@ -7,7 +7,7 @@ const row = (id = 'v') => ({ id, organizationId: 'org', buildingId: null, roomId
   payerName: null, receiveBankName: null, receiveBankAccount: null, notes: null, attachments: [], voucherDate: '2026-09-21',
   accountId: null, activePostingId: null, approvalStatus: 'UNAPPROVED', postingStatus: 'UNPOSTED', postingMode: 'CASHBOOK',
   reviewState: 'PENDING', reviewReason: null, approvalVersion: 3, postingVersion: 4, reviewVersion: 5,
-  systemSource: 'contract.commission', flowKind: 'CANONICAL_INCOME_EXPENSE', birthState: 'COMMITTED',
+  systemSource: 'contract.commission', flowKind: 'CANONICAL_INCOME_EXPENSE', birthState: 'COMMITTED', capabilities: { forfeitPair:false,forfeitAllowed:false,engineBlocked:false,manual:true,legacyCancelAllowed:true,compatCancelOwner:true,birthPrior:true,requiresRealAccount:false,reservationMoneyBlocked:false,reservationRefundReverseAllowed:false },
   permissions: { approve: true, edit: false, cancel: false, reverse: false } });
 const batch = (rows: unknown[] = [row()]) => ({ ...scope, isAdmin: false, authorizationVersion: 8,
   routes: { readSemantics: 'CANONICAL', workflow: 'CANONICAL', posting: 'CANONICAL', access: 'CANONICAL', accountingStandardStrict: false }, rows });

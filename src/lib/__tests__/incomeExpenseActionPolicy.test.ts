@@ -10,6 +10,8 @@ const context = (): IncomeExpenseActionContext => ({
   permissions: ready({ approve: true, edit: true, cancel: true, reverse: true }),
   routes: ready({ readSemantics: 'CANONICAL', workflow: 'CANONICAL', posting: 'CANONICAL', access: 'CANONICAL', accountingStandardStrict: false }),
   ownership: ready({ flowKind: null, sourceReviewSupported: true, moneyEditAllowed: true }),
+  source: ready({moneyActionsAllowed:true,refundReverseAllowed:false}),
+  lifecycle: ready({ approveBirthReady: true, forfeitPair: false, forfeitAllowed: false, unapproveSupported: true }),
   custody: ready({ hasUsableCashbook: true, holdsVoucherCashbook: true }),
   cancellation: ready({ canCancel: true, reason: null, useIncomeDoor: false, useFlexWriter: true, mode: null }),
   handlers: { approveOnly: true, legacyApprove: true, approveAndPost: true, post: true, reverse: true, unapprove: true,
@@ -162,4 +164,47 @@ describe('shared income expense action policy', () => {
     expect(decideIncomeExpenseActions(c).approveAndPost.enabled).toBe(false);
     voucher(c).approvalStatus = 'APPROVED'; expect(decideIncomeExpenseActions(c).post.enabled).toBe(false);
   });
+});
+
+
+describe('dispatcher-specific action authority', () => {
+ it('accepts authoritative income/flex cancel even without canonical cancel permission', () => {
+  const c=context();c.permissions=ready({approve:false,edit:false,cancel:false,reverse:false});
+  c.cancellation=ready({canCancel:true,reason:null,useIncomeDoor:true,useFlexWriter:false,mode:'MANUAL'});
+  expect(decideIncomeExpenseActions(c).cancel.enabled).toBe(true);
+ });
+ it('requires committed canonical birth without blocking post-only or review', () => {
+  const c=context();c.lifecycle=ready({approveBirthReady:false,forfeitPair:false,forfeitAllowed:false,unapproveSupported:true});
+  expect(decideIncomeExpenseActions(c).approveOnly.reasonCode).toBe('BIRTH_REQUIRED');
+  expect(decideIncomeExpenseActions(c).requestChanges.enabled).toBe(true);
+  voucher(c).approvalStatus='APPROVED';expect(decideIncomeExpenseActions(c).post.enabled).toBe(true);
+ });
+ it('permits the verified forfeit adapter and rejects invented kind-only authority', () => {
+  const c=context();c.ownership=ready({flowKind:'TERMINATION_FORFEIT_PAIR',sourceReviewSupported:false,moneyEditAllowed:false});
+  c.lifecycle=ready({approveBirthReady:false,forfeitPair:true,forfeitAllowed:true,unapproveSupported:true});
+  expect(decideIncomeExpenseActions(c).approveOnly.enabled).toBe(true);
+  expect(decideIncomeExpenseActions(c).approveAndPost.enabled).toBe(false);
+  c.lifecycle=ready({approveBirthReady:false,forfeitPair:false,forfeitAllowed:false,unapproveSupported:false});
+  expect(decideIncomeExpenseActions(c).approveOnly.enabled).toBe(false);
+ });
+ it('denies known frozen/engine unapprove despite admin and CAS',()=>{
+  const c=context();voucher(c).approvalStatus='APPROVED';c.actor=ready({id:'maker',organizationId:'org',isAdmin:true});
+  c.lifecycle=ready({approveBirthReady:true,forfeitPair:false,forfeitAllowed:false,unapproveSupported:false});
+  expect(decideIncomeExpenseActions(c).unapprove.enabled).toBe(false);
+ });
+});
+
+
+describe('reservation source guards shared by every host',()=>{
+ it('blocks generic money and review commands on a settled source while keeping supplements',()=>{
+  const c=context();c.source=ready({moneyActionsAllowed:false,refundReverseAllowed:false});
+  const a=decideIncomeExpenseActions(c);expect(a.approveOnly.enabled).toBe(false);expect(a.cancel.enabled).toBe(false);expect(a.requestChanges.enabled).toBe(false);expect(a.supplement.enabled).toBe(true);
+ });
+ it('retains only the verified reservation refund reverse exception',()=>{
+  const c=context();Object.assign(voucher(c),{approvalStatus:'APPROVED',postingStatus:'POSTED',activePostingId:'p',accountId:'book'});
+  c.source=ready({moneyActionsAllowed:false,refundReverseAllowed:true});expect(decideIncomeExpenseActions(c).reverse.enabled).toBe(true);expect(decideIncomeExpenseActions(c).cancel.enabled).toBe(false);
+ });
+ it('fails closed while source guard readiness is unknown',()=>{
+  const c=context();c.source={state:'loading'};expect(decideIncomeExpenseActions(c).approveOnly.enabled).toBe(false);
+ });
 });

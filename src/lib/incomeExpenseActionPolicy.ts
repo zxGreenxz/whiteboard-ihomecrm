@@ -20,6 +20,8 @@ export interface IncomeExpenseActionContext {
   permissions: ActionReadiness<{ approve: boolean; edit: boolean; cancel: boolean; reverse: boolean }>;
   routes: ActionReadiness<FinanceV2OrgRoutes>;
   ownership: ActionReadiness<{ flowKind: string | null; sourceReviewSupported: boolean; moneyEditAllowed: boolean }>;
+  source: ActionReadiness<{moneyActionsAllowed:boolean;refundReverseAllowed:boolean}>;
+  lifecycle: ActionReadiness<{ approveBirthReady: boolean; forfeitPair: boolean; forfeitAllowed: boolean; unapproveSupported: boolean }>;
   custody: ActionReadiness<{ hasUsableCashbook: boolean; holdsVoucherCashbook: boolean }>;
   cancellation: ActionReadiness<{ canCancel: boolean; reason: string | null; useIncomeDoor: boolean; useFlexWriter: boolean; mode: string | null }>;
   handlers: Partial<Record<IncomeExpenseAction, boolean>>;
@@ -37,7 +39,7 @@ export function pendingIncomeExpenseActionContext(
   handlers: IncomeExpenseActionContext['handlers'], display?: IncomeExpenseActionContext['display'],
 ): IncomeExpenseActionContext {
   return { handlers, display, voucher: { state: 'loading' }, actor: { state: 'loading' }, permissions: { state: 'loading' },
-    routes: { state: 'loading' }, ownership: { state: 'loading' }, custody: { state: 'loading' }, cancellation: { state: 'loading' } };
+    routes: { state: 'loading' }, ownership: { state: 'loading' }, custody: { state: 'loading' }, lifecycle: { state: 'loading' }, source: { state: 'loading' }, cancellation: { state: 'loading' } };
 }
 
 /** Shared availability only. Commands must re-read/CAS and the server still authorizes each write. */
@@ -79,6 +81,8 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
       if (!requireReady(a, c.permissions)) continue;
       a.enabled = c.permissions.value.edit || deny(a, 'PERMISSION', 'Cần quyền bổ sung chứng từ hoặc sửa thu chi'); continue;
     }
+    if (!requireReady(a, c.source)) continue;
+    if (!c.source.value.moneyActionsAllowed && !(name === 'reverse' && c.source.value.refundReverseAllowed)) { deny(a, 'SOURCE_GUARD', 'Phiếu thuộc quyết toán giữ chỗ; xử lý tại luồng nguồn'); continue; }
     if (!requireReady(a, c.routes)) continue;
     const routes = c.routes.value;
     const route = name === 'post' || name === 'reverse' ? routes.posting : routes.workflow;
@@ -95,17 +99,25 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
     if (name !== 'post') {
       if (!requireReady(a, c.permissions)) continue;
       const p = c.permissions.value;
-      if ((approvalAction || name === 'requestChanges') && !p.approve) { deny(a, 'PERMISSION', 'Cần quyền duyệt thu chi tại tòa nhà'); continue; }
+      if ((approvalAction || name === 'requestChanges') && !p.approve && !((name === 'approveOnly' || name === 'legacyApprove') && c.lifecycle.state === 'ready' && c.lifecycle.value.forfeitPair && c.lifecycle.value.forfeitAllowed)) { deny(a, 'PERMISSION', 'Cần quyền duyệt thu chi tại tòa nhà'); continue; }
       if (name === 'reverse' && !p.reverse) { deny(a, 'PERMISSION', 'Cần quyền hoàn tác thu chi tại tòa nhà'); continue; }
-      if ((name === 'edit' && !p.edit) || (name === 'cancel' && !p.cancel) || (name === 'unapprove' && !actor.isAdmin)) { deny(a, 'PERMISSION', 'Không có quyền thực hiện thao tác'); continue; }
+      if ((name === 'edit' && !p.edit) || (name === 'unapprove' && !actor.isAdmin)) { deny(a, 'PERMISSION', 'Không có quyền thực hiện thao tác'); continue; }
       if (name === 'resubmitReview' && (v.makerUserId ? v.makerUserId !== actor.id : !p.edit)) { deny(a, 'MAKER', 'Cần người lập gốc; phiếu cũ chưa có người lập cần quyền sửa tại tòa nhà'); continue; }
+    }
+    if (approvalAction || name === 'unapprove') {
+      if (!requireReady(a, c.lifecycle)) continue;
+      const life = c.lifecycle.value;
+      if ((name === 'approveOnly' || name === 'legacyApprove') && life.forfeitPair && !life.forfeitAllowed) { deny(a, 'SOURCE_WRITER_UNSUPPORTED', 'Cặp cấn cọc chưa đủ quyền hoặc điều kiện duyệt'); continue; }
+      if (name === 'unapprove' && !life.unapproveSupported) { deny(a, 'LIFECYCLE_GUARD', 'Phiếu đã khóa vòng đời hoặc thuộc luồng duyệt riêng'); continue; }
+      if ((name === 'approveOnly' || name === 'approveAndPost') && !life.approveBirthReady
+        && !(name === 'approveOnly' && life.forfeitPair && life.forfeitAllowed)) { deny(a, 'BIRTH_REQUIRED', 'Chưa có nguồn lập phiếu hợp lệ để duyệt'); continue; }
     }
     if (name === 'cancel') {
       if (!requireReady(a, c.cancellation)) continue;
       const cancel = c.cancellation.value;
       a.writer = cancel.useIncomeDoor ? 'income' : cancel.useFlexWriter ? 'flex' : 'legacy';
       if (!cancel.canCancel) { deny(a, 'CANCEL_DENIED', cancel.reason || 'Phiếu chưa đủ điều kiện hủy'); continue; }
-      if (cancel.useFlexWriter && (!validVersion(v.approvalVersion) || !validVersion(v.postingVersion))) { deny(a, 'CAS_REQUIRED', 'Chưa tải phiên bản phiếu để hủy'); continue; }
+      if (!cancel.useIncomeDoor && (!validVersion(v.approvalVersion) || !validVersion(v.postingVersion))) { deny(a, 'CAS_REQUIRED', 'Chưa tải phiên bản phiếu để hủy'); continue; }
     }
     if (name === 'edit' || isReview || approvalAction || name === 'post' || name === 'reverse' || name === 'unapprove') {
       if (!requireReady(a, c.ownership)) continue;
@@ -116,7 +128,8 @@ export function decideIncomeExpenseActions(c: IncomeExpenseActionContext): Incom
       if (isReview && (!owner.sourceReviewSupported || (owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE'))) { deny(a, 'SOURCE_REVIEW_UNSUPPORTED', 'Nguồn phiếu chưa có cửa yêu cầu sửa/chuyển chờ duyệt an toàn'); continue; }
       if (name === 'edit' && !owner.moneyEditAllowed) { deny(a, 'PAYLOAD_FROZEN', 'Phiếu khóa nội dung tài chính; có thể bổ sung chứng từ'); continue; }
       if (approvalAction && owner.flowKind !== null && owner.flowKind !== 'CANONICAL_INCOME_EXPENSE') {
-        if (name === 'approveOnly' && ['INVOICE_REFUND', 'TERMINATION_REFUND'].includes(owner.flowKind)) a.writer = 'owned';
+        if ((name === 'approveOnly' && ['INVOICE_REFUND', 'TERMINATION_REFUND'].includes(owner.flowKind))
+          || ((name === 'approveOnly' || name === 'legacyApprove') && c.lifecycle.state === 'ready' && c.lifecycle.value.forfeitPair && c.lifecycle.value.forfeitAllowed)) a.writer = 'owned';
         else { deny(a, 'SOURCE_WRITER_UNSUPPORTED', 'Nguồn phiếu cần cửa duyệt riêng'); continue; }
       }
     }

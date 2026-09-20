@@ -6,6 +6,9 @@ import { periodBlockMessage } from "@/lib/cashbookClosing";
 import { todayISO } from '@/lib/collect';
 import { rpcNullable } from "@/lib/rpcNullable";
 
+export interface ManagedStatusOptions { managed?: boolean }
+export interface ManagedCancelInput { id: string; reason?: string | null; expectedApprovalVersion?: number; expectedPostingVersion?: number; idempotencyKey?: string; postedOn?: string }
+const requireCAS = (value: unknown) => { if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('CAS_REQUIRED'); };
 type RpcError = { code?: string | null; message?: string | null };
 type RpcResult = { error: RpcError | null };
 
@@ -153,15 +156,17 @@ const trySetTerminationForfeitStatus = async (
 // phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
 // Canonical approve_income_expense_v1 (phiếu flow-owned) trước; phiếu legacy
 // nhận tín hiệu 'chưa thuộc luồng canonical' → dùng approve_voucher như cũ.
-export const useApproveVoucher = () => {
+export const useApproveVoucher = (options: ManagedStatusOptions = {}) => {
   const queryClient = useQueryClient();
+  const feedback = options.managed ? { error: (_message: string) => undefined } : toast;
 
   return useMutation({
+    retry: false,
     mutationFn: async (id: string) => {
       try {
         if (await trySetTerminationForfeitStatus(id, "APPROVED")) return true;
       } catch (error: unknown) {
-        toast.error(errorMessage(error, "Không thể duyệt phiếu"));
+        feedback.error(errorMessage(error, "Không thể duyệt phiếu"));
         throw error;
       }
 
@@ -170,7 +175,7 @@ export const useApproveVoucher = () => {
       });
       if (!canonical.error) return false;
       if (!isIeLifecycleFallbackSignal(canonical.error)) {
-        toast.error(canonical.error.message || "Không thể duyệt phiếu");
+        feedback.error(canonical.error.message || "Không thể duyệt phiếu");
         throw canonical.error;
       }
 
@@ -178,12 +183,13 @@ export const useApproveVoucher = () => {
         voucher_id: id,
       });
       if (error) {
-        toast.error(error.message || "Không thể duyệt phiếu");
+        feedback.error(error.message || "Không thể duyệt phiếu");
         throw error;
       }
       return false;
     },
     onSuccess: (isTerminationForfeit) => {
+      if (options.managed) return;
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       if (isTerminationForfeit) {
@@ -200,34 +206,25 @@ export const useApproveVoucher = () => {
 // Huỷ duyệt phiếu thu/chi (APPROVED → UNAPPROVED, về lại Nháp). Chỉ super admin
 // (hoặc người tạo) — RPC unapprove_voucher tự kiểm quyền (user_id = auth.uid()
 // OR is_super_admin()). Dùng khi cần sửa lại phiếu đã ghi nhận.
-export const useUnapproveVoucher = () => {
+export const useUnapproveVoucher = (options: ManagedStatusOptions = {}) => {
   const queryClient = useQueryClient();
+  const feedback = options.managed ? { error: (_message: string) => undefined } : toast;
 
   return useMutation({
-    mutationFn: async (id: string) => {
+    retry: false,
+    mutationFn: async (input: string | { id: string; expectedApprovalVersion: number }) => {
+      const id = typeof input === 'string' ? input : input.id;
+      if (typeof input !== 'string') requireCAS(input.expectedApprovalVersion);
+      if (options.managed && typeof input === 'string') throw new Error('CAS_REQUIRED');
       try {
         if (await trySetTerminationForfeitStatus(id, "UNAPPROVED")) return true;
       } catch (error: unknown) {
-        toast.error(errorMessage(error, "Không thể huỷ duyệt phiếu"));
+        feedback.error(errorMessage(error, "Không thể huỷ duyệt phiếu"));
         throw error;
       }
 
-      // CAS (H3.2): server khoá dòng rồi so approval_version. Trang gọi hook
-      // chỉ đưa được `id`, nên phiên bản phải đọc ở đây. Đọc-rồi-CAS vẫn đóng
-      // đúng khoảng hở cần đóng — mọi thay đổi xen vào giữa lần đọc này và
-      // lệnh ghi đều làm phép so lệch và bị từ chối.
-      //
-      // Đọc hỏng ⇒ KHÔNG gửi tham số ⇒ server dùng DEFAULT NULL ⇒ bỏ qua CAS.
-      // CỐ Ý không bịa `?? 1`: một số bịa biến phép SO thành lời KHẲNG ĐỊNH
-      // sai, và nó sai đúng vào lúc phiếu đã bị người khác động vào — tức đúng
-      // lúc CAS phải bắt.
-      //
-      // `?? undefined` chứ không phải `null`: từ 16/09/2026 types.ts sinh lại
-      // từ catalog thật khai `p_expected_approval_version?: number` (tham số
-      // CÓ DEFAULT). Bỏ hẳn khoá khỏi payload và gửi null đều dẫn tới cùng một
-      // chỗ trong thân hàm — nhánh `IS NOT NULL` không chạy — nên hành vi
-      // không đổi, chỉ khác ở việc tsc kiểm được kiểu thay vì phải ép.
-      const expectedApprovalVersion = await readApprovalVersion(id);
+      // Shared callers pin the reviewed version. Legacy string callers retain their compatibility behavior.
+      const expectedApprovalVersion = typeof input === 'string' ? await readApprovalVersion(id) : input.expectedApprovalVersion;
 
       const { error } = await supabase.rpc("unapprove_voucher", {
         voucher_id: id,
@@ -239,7 +236,7 @@ export const useUnapproveVoucher = () => {
         const message = error.message ?? "";
         const frozen = message.includes("frozen");
         const stale = message.includes("approval_version mismatch");
-        toast.error(
+        feedback.error(
           frozen
             ? "Phiếu canonical không thể huỷ duyệt — hãy Huỷ phiếu rồi bấm Tạo bản sao"
             : stale
@@ -251,6 +248,7 @@ export const useUnapproveVoucher = () => {
       return false;
     },
     onSuccess: (isTerminationForfeit) => {
+      if (options.managed) return;
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       if (isTerminationForfeit) {
@@ -267,19 +265,25 @@ export const useUnapproveVoucher = () => {
 // Huỷ phiếu thu/chi: đổi trạng thái sang CANCELLED. Nếu là phiếu INCOME mirror
 // từ thanh toán hoá đơn (có payment_id), cũng xoá payment row tương ứng để
 // trigger recompute invoice paid_amount/status (qua trigger DB).
-export const useCancelIncomeExpense = () => {
+export const useCancelIncomeExpense = (options: ManagedStatusOptions = {}) => {
   const queryClient = useQueryClient();
+  const feedback = options.managed ? { error: (_message: string) => undefined } : toast;
 
   return useMutation({
+    retry: false,
     // Nhận id thuần (mọi caller cũ) hoặc {id, reason} — reason ghi vào bút toán
     // hoàn tác khi huỷ phiếu ĐÃ GHI SỔ (plan: huỷ sau-chi phải có bằng chứng).
-    mutationFn: async (input: string | { id: string; reason?: string | null }) => {
+    mutationFn: async (input: string | ManagedCancelInput) => {
       const id = typeof input === "string" ? input : input.id;
       const reason = typeof input === "string" ? null : (input.reason ?? null);
+      if (options.managed) {
+        if (typeof input === 'string' || !input.idempotencyKey) throw new Error('COMMAND_IDENTITY_REQUIRED');
+        requireCAS(input.expectedApprovalVersion); requireCAS(input.expectedPostingVersion);
+      }
       try {
         if (await trySetTerminationForfeitStatus(id, "CANCELLED")) return true;
       } catch (error: unknown) {
-        toast.error(errorMessage(error, "Không thể huỷ phiếu thu/chi"));
+        feedback.error(errorMessage(error, "Không thể huỷ phiếu thu/chi"));
         throw error;
       }
 
@@ -296,15 +300,15 @@ export const useCancelIncomeExpense = () => {
         const flex = await supabase.rpc("cancel_income_expense_flex_v1", {
           p_voucher: id,
           p_reason: reason.trim(),
-          p_expected_approval_version: undefined,
-          p_expected_posting_version: undefined,
+          p_expected_approval_version: typeof input === "string" ? undefined : input.expectedApprovalVersion,
+          p_expected_posting_version: typeof input === "string" ? undefined : input.expectedPostingVersion,
         });
         if (!flex.error) return false;
         const flexMsg = flex.error.message ?? "";
         const canFallBack =
           flexMsg.includes("[STRICT_MODE]") || flexMsg.includes("[NOT_MANUAL]");
         if (!canFallBack) {
-          toast.error(periodBlockMessage(flexMsg) ?? flexMsg ?? "Không thể huỷ phiếu thu/chi");
+          feedback.error(periodBlockMessage(flexMsg) ?? flexMsg ?? "Không thể huỷ phiếu thu/chi");
           throw flex.error;
         }
       }
@@ -315,7 +319,7 @@ export const useCancelIncomeExpense = () => {
         .eq("id", id)
         .maybeSingle();
       if (fetchErr) {
-        toast.error(fetchErr.message || "Không thể đọc phiếu");
+        feedback.error(fetchErr.message || "Không thể đọc phiếu");
         throw fetchErr;
       }
 
@@ -330,13 +334,13 @@ export const useCancelIncomeExpense = () => {
           {
             p_voucher: id,
             p_cashbook: voucher?.account_id ?? null,
-            p_posted_on: todayISO(),
+            p_posted_on: typeof input === "string" ? todayISO() : input.postedOn ?? todayISO(),
             p_reason: reason || "Hoàn tác để huỷ phiếu",
-            p_idempotency_key: `cancel-rev-${id}-${Date.now()}`,
+            p_idempotency_key: typeof input !== "string" && input.idempotencyKey ? `${input.idempotencyKey}:reverse` : `cancel-rev-${id}-${Date.now()}`,
           },
         );
         if (rev.error) {
-          toast.error(
+          feedback.error(
             rev.error.message ||
               "Không thể hoàn tác tiền của phiếu đã ghi sổ — chưa huỷ được",
           );
@@ -366,11 +370,11 @@ export const useCancelIncomeExpense = () => {
             // `p_reason text` KHÔNG có DEFAULT ⇒ bắt buộc truyền, nhưng NULL là
             // giá trị hợp lệ (huỷ không kèm lý do). Bộ sinh không diễn đạt được.
             p_reason: rpcNullable(reason),
-            p_idempotency_key: `owned-cancel-${id}-${Date.now()}`,
+            p_idempotency_key: typeof input !== "string" && input.idempotencyKey ? `${input.idempotencyKey}:owned-cancel` : `owned-cancel-${id}-${Date.now()}`,
           },
         );
         if (owned.error) {
-          toast.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
+          feedback.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
           throw owned.error;
         }
         return false;
@@ -382,7 +386,7 @@ export const useCancelIncomeExpense = () => {
         postingStatus === "POSTED" ||
         postingStatus === "REVERSED";
       if (!isIeLifecycleFallbackSignal(canonical.error) && !approvedShape) {
-        toast.error(canonical.error.message || "Không thể huỷ phiếu thu/chi");
+        feedback.error(canonical.error.message || "Không thể huỷ phiếu thu/chi");
         throw canonical.error;
       }
 
@@ -404,16 +408,16 @@ export const useCancelIncomeExpense = () => {
               p_decision: "cancel",
               // Như trên: bắt buộc-nhưng-nhận-NULL.
               p_reason: rpcNullable(reason),
-              p_idempotency_key: `owned-cancel-${id}-${Date.now()}`,
+              p_idempotency_key: typeof input !== "string" && input.idempotencyKey ? `${input.idempotencyKey}:owned-cancel` : `owned-cancel-${id}-${Date.now()}`,
             },
           );
           if (owned.error) {
-            toast.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
+            feedback.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
             throw owned.error;
           }
           return false;
         }
-        toast.error(error.message || "Không thể huỷ phiếu thu/chi");
+        feedback.error(error.message || "Không thể huỷ phiếu thu/chi");
         throw error;
       }
 
@@ -423,7 +427,7 @@ export const useCancelIncomeExpense = () => {
           .delete()
           .eq("id", voucher.payment_id);
         if (payErr) {
-          toast.error(payErr.message || "Không thể rollback thanh toán hoá đơn");
+          feedback.error(payErr.message || "Không thể rollback thanh toán hoá đơn");
           throw payErr;
         }
       }
@@ -440,6 +444,7 @@ export const useCancelIncomeExpense = () => {
       return false;
     },
     onSuccess: (isTerminationForfeit) => {
+      if (options.managed) return;
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });

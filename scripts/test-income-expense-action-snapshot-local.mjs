@@ -7,6 +7,7 @@ import pg from 'pg';
 const db = new pg.Client({ connectionString: 'postgresql://postgres@127.0.0.1:55488/postgres' });
 const org = randomUUID(), otherOrg = randomUUID(), building = randomUUID(), otherBuilding = randomUUID();
 const profitId = randomUUID(), shareholderId = randomUUID();
+const capabilityRoom = randomUUID(), capabilityContract = randomUUID();
 const actors = Object.fromEntries(['owner', 'approver', 'custodian', 'salary', 'profit', 'shareholder', 'outsider'].map(key => [key, randomUUID()]));
 const members = {}, vouchers = [], accounts = [], scopes = [], overrides = [], bindings = [], seededPermissions = [];
 const fixture = async fn => { await db.query('BEGIN'); try { await db.query('SET LOCAL session_replication_role=replica'); await fn(); await db.query('COMMIT'); } catch (error) { await db.query('ROLLBACK'); throw error; } };
@@ -73,6 +74,14 @@ try {
   const result = ok(await read([visible, hidden, randomUUID()])); assert.deepEqual(result.rows.map(row => row.id), [visible], 'snapshot must preserve authenticated RLS visibility');
   assert.equal(result.actorId, actors.approver); assert.equal(result.organizationId, org); assert.equal(result.rows[0].flowKind, 'CANONICAL_INCOME_EXPENSE');
   assert.equal(result.rows[0].approvalVersion, 3); assert.equal(result.rows[0].postingVersion, 4); assert.equal(result.rows[0].reviewVersion, 5);
+  if (process.argv.includes('--capabilities')) {
+    assert.equal(result.rows[0].capabilities.forfeitPair, false);
+    assert.equal(result.rows[0].capabilities.birthPrior, false);
+    assert.equal(result.rows[0].capabilities.manual, true);
+    assert.equal(result.rows[0].capabilities.legacyCancelAllowed, false);
+    assert.equal(result.rows[0].capabilities.compatCancelOwner, false);
+    await assert.rejects(authSql(`SELECT app_private.income_expense_action_capabilities_v1('${visible}','${org}')`), error => error.code === '42501');
+  }
   assert.equal(result.rows[0].permissions.approve, true); assert.equal(result.rows[0].birthState, 'MISSING');
   assert.deepEqual((await db.query('SELECT to_jsonb(v) value FROM public.income_expenses v WHERE id=$1', [visible])).rows[0].value, before, 'snapshot cannot stamp birth or mutate voucher');
   const custodyVoucher = await voucher({ accountId: validBook, buildingId: otherBuilding });
@@ -99,6 +108,32 @@ try {
       VALUES($1,'income_expense.create.v2',$2::uuid::text,$3,$4,md5('T4A birth'),$2::uuid,now(),pg_current_xact_id(),'{}')`, [org, committed, actors.owner, randomUUID()]);
   });
   assert.equal(ok(await read([committed])).rows[0].birthState, 'COMMITTED');
+  if (process.argv.includes('--capabilities')) {
+    assert.equal(ok(await read([committed])).rows[0].capabilities.birthPrior, true);
+    const own = await voucher({ actor: actors.approver });
+    assert.equal(ok(await read([own])).rows[0].capabilities.compatCancelOwner, true, 'actual legacy creator authority');
+    const reservation = await voucher();
+    await fixture(() => db.query("UPDATE public.income_expenses SET system_source='reservation.refund' WHERE id=$1", [reservation]));
+    const reservationCaps = ok(await read([reservation])).rows[0].capabilities;
+    assert.equal(reservationCaps.reservationMoneyBlocked, true); assert.equal(reservationCaps.reservationRefundReverseAllowed, false, 'source label alone cannot authorize refund reverse');
+    const offset = await voucher({ flow: 'TERMINATION_FORFEIT' });
+    await fixture(async () => {
+      await db.query("INSERT INTO public.rooms(id,organization_id,building_id,name,rent_price,deposit_amount) VALUES($1,$2,$3,'T4B capability',1,1)", [capabilityRoom, org, building]);
+      await db.query("INSERT INTO public.contracts(id,user_id,organization_id,room_id,signed_date,start_date,end_date,rent_price,public_code) VALUES($1,$2,$3,$4,current_date,current_date,current_date+30,1,$5)", [capabilityContract, actors.owner, org, capabilityRoom, 'T4B-' + capabilityContract]);
+      await db.query("INSERT INTO app_private.termination_forfeit_authorizations(revenue_voucher_id,offset_voucher_id,organization_id,contract_id,invoice_id,account_id,amount,voucher_date,authorization_source) VALUES($1,$2,$3,$4,$5,$6,1,current_date,'TERMINATION_WRITER')", [visible, offset, org, capabilityContract, randomUUID(), validBook]);
+    });
+    let pairCaps = ok(await read([visible])).rows[0].capabilities;
+    assert.equal(pairCaps.forfeitPair, true); assert.equal(pairCaps.forfeitAllowed, true); assert.equal(pairCaps.engineBlocked, false);
+    await fixture(() => db.query("UPDATE public.rooms SET building_id=$1 WHERE id=$2", [otherBuilding, capabilityRoom]));
+    assert.equal(ok(await read([visible])).rows[0].capabilities.forfeitAllowed, false, 'pair writer uses contract room, not voucher building');
+    await fixture(async () => {
+      await db.query("UPDATE public.rooms SET building_id=$1 WHERE id=$2", [building, capabilityRoom]);
+      await db.query("INSERT INTO public.approval_requests(organization_id,subject_type,subject_id,state,maker_membership_id,maker_user_id,rule_set_id,rule_set_version,matched_rule_id,rule_effect,payload_snapshot,payload_hash,amount) VALUES($1,'FINANCIAL_VOUCHER',$2,'PENDING_APPROVAL',$3,$4,$5,1,$6,'REQUIRE_APPROVAL','{}',md5('T4B'),1)", [org, offset, members.owner, actors.owner, randomUUID(), randomUUID()]);
+    });
+    pairCaps = ok(await read([visible])).rows[0].capabilities;
+    assert.equal(pairCaps.engineBlocked, true, 'engine lock on either leg blocks shared pair actions');
+    console.log('PASS T4B JWT capabilities: creator authority, actual forfeit contract scope, opposite-leg engine lock, birth preservation and reservation source guard');
+  }
   await fixture(() => db.query("UPDATE app_private.canonical_write_operations SET payload_hash=md5('wrong') WHERE subject_id=$1", [committed]));
   assert.equal(ok(await read([committed])).rows[0].birthState, 'INVALID');
   await fixture(() => db.query("UPDATE public.organizations SET status='SUSPENDED' WHERE id=$1", [org]));
@@ -127,6 +162,10 @@ try {
   console.error(error); process.exitCode = 1;
 } finally {
   await fixture(async () => {
+    await db.query('DELETE FROM public.approval_requests WHERE organization_id=$1', [org]);
+    await db.query('DELETE FROM app_private.termination_forfeit_authorizations WHERE organization_id=$1', [org]);
+    await db.query('DELETE FROM public.contracts WHERE id=$1', [capabilityContract]);
+    await db.query('DELETE FROM public.rooms WHERE id=$1', [capabilityRoom]);
     await db.query('DELETE FROM app_private.income_expense_flow_ownership WHERE organization_id=$1', [org]);
     await db.query('DELETE FROM app_private.canonical_write_operations WHERE organization_id=$1', [org]);
     await db.query('DELETE FROM public.income_expenses WHERE id=ANY($1::uuid[])', [vouchers]);
