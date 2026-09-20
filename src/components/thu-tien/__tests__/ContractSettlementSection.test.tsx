@@ -57,4 +57,3 @@ it('reports a rejected refresh without swallowing failure for action callers', a
   await waitFor(() => expect(screen.getByText(/Chưa tải lại đầy đủ/)).toBeTruthy());
   expect(screen.queryByText('backend detail')).toBeNull();
 });
-
