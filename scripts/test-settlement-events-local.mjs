@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { createHmac, randomUUID } from 'node:crypto';
 import pg from 'pg';
 const db = new pg.Client({ connectionString: 'postgresql://postgres@127.0.0.1:55488/settlement_t7' });
-const names = ['org','owner','viewer','member','ownerMember','building','hiddenBuilding','room','scope','override','contract','renewed','extension1','extension2','termination','receipt','link','settlement','refund','revenue','offset','commission','hiddenCommission','receiptItem','secondItem','depositType'];
+const names = ['org','owner','viewer','member','ownerMember','building','hiddenBuilding','room','scope','override','contract','renewed','extension1','extension2','termination','receipt','link','settlement','refund','revenue','offset','commission','hiddenCommission','bonus','bonusClaim','receiptItem','secondItem','depositType'];
 const id = Object.fromEntries(names.map(name => [name,randomUUID()]));
 const extras = [];
 let seededPermission = false;
@@ -51,6 +51,8 @@ try {
   await insertVoucher(id.offset,'EXPENSE','T7B-OFFSET',null,false,'reservation.offset');
   await db.query("UPDATE public.income_expenses SET posting_mode='NON_CASH',posting_status='NOT_APPLICABLE' WHERE id=ANY($1)",[[id.revenue,id.offset]]);
   await insertVoucher(id.commission,'EXPENSE','T7B-COMMISSION',id.contract,false,null,'broker');
+  await insertVoucher(id.bonus,'EXPENSE','T7B-DEPOSIT-BONUS',null,false,null,'sale');
+  await db.query('INSERT INTO app_private.sale_bonus_claims(id,organization_id,deposit_voucher_id,bonus_voucher_id,amount,created_by) VALUES($1,$2,$3,$4,4000000,$5)',[id.bonusClaim,id.org,id.receipt,id.bonus,id.owner]);
   await db.query("INSERT INTO public.income_expense_types(id,user_id,organization_id,name,type) VALUES($1,$2,$3,'T7B deposit','income')",[id.depositType,id.owner,id.org]);
   for(const item of [id.receiptItem,id.secondItem])await db.query("INSERT INTO public.income_expense_items(id,organization_id,income_expense_id,income_expense_type_id,description,quantity,unit_price,amount,accounting_class) VALUES($1,$2,$3,$4,'T7B item',1,2000000,2000000,'DEPOSIT')",[item,id.org,id.receipt,id.depositType]);
   await db.query("INSERT INTO public.contract_deposit_links(id,organization_id,contract_id,income_expense_id,link_source,linked_by) VALUES($1,$2,$3,$4,'EXPLICIT_V2',$5)",[id.link,id.org,id.contract,id.receipt,id.owner]);
@@ -65,8 +67,14 @@ try {
  assert.equal(events.filter(e=>e.type==='renew').length,2,'separate extension IDs survive');
  assert.equal(events.find(e=>e.sourceKind==='termination').businessDate,'2026-09-01','not actual moveout date');
  const reservation=events.find(e=>e.sourceKind==='reservation');assert.equal(reservation.sourceId,id.receipt);assert.equal(reservation.contractId,id.contract,'linked old receipt keeps reservation history');
+ for(const event of events.filter(e=>e.origin==='contract'||e.sourceKind==='reservation'))assert.equal(event.links.vouchers.filter(v=>v.id===id.bonus).length,1,'deposit bonus remains related to both reservation and contract events');
  const end=events.find(e=>e.sourceKind==='reservation_settlement');assert.equal(end.type,'forfeit');assert.equal(end.links.vouchers.filter(v=>v.id===id.refund).length,1,'refund link not a second event');
  assert.equal(events.find(e=>e.sourceKind==='contract').links.complete,true);
+ await fixture(()=>db.query('UPDATE public.income_expenses SET has_restricted_item=true WHERE id=$1',[id.bonus]));
+ const hiddenBonus=await read();assert.equal(hiddenBonus.status,200,JSON.stringify(hiddenBonus.body));
+ assert.ok(!JSON.stringify(hiddenBonus.body).includes(id.bonus),'converted reservation bonus identity must remain private');
+ for(const event of hiddenBonus.body.rows.filter(e=>e.origin==='contract'||e.sourceKind==='reservation'))assert.equal(event.links.complete,false,'hidden converted reservation bonus makes contract links incomplete');
+ await fixture(()=>db.query('UPDATE public.income_expenses SET has_restricted_item=false WHERE id=$1',[id.bonus]));
  await fixture(()=>insertVoucher(id.hiddenCommission,'EXPENSE','T7B-SECRET',id.contract,true,null,'sale'));
  const hidden=await read();assert.equal(hidden.status,200,JSON.stringify(hidden.body));
  assert.ok(!JSON.stringify(hidden.body).includes('T7B-SECRET'),'hidden voucher leaked');assert.ok(!JSON.stringify(hidden.body).includes(id.hiddenCommission),'hidden voucher identity leaked');
@@ -90,6 +98,7 @@ try {
  console.log('T7B actual JWT: historical reservation, separate renewal, source dates, no duplicate legs, RLS/coverage, revision/revocation PASS');
 }finally{
  await fixture(async()=>{
+  await db.query('DELETE FROM app_private.sale_bonus_claims WHERE organization_id=$1',[id.org]);
   for(const table of ['reservation_settlement_vouchers','reservation_deposit_settlements','contract_deposit_links','income_expense_items','income_expenses','income_expense_types','contract_extensions','contract_terminations','contracts','rooms','member_override_scopes','member_permission_overrides','authorization_scopes','buildings','organization_memberships'])await db.query(`DELETE FROM public.${table} WHERE organization_id=$1`,[id.org]);
   await db.query('DELETE FROM public.organizations WHERE id=$1',[id.org]);await db.query('DELETE FROM auth.users WHERE id=ANY($1)',[[id.owner,id.viewer]]);
   if(seededPermission)await db.query("DELETE FROM public.permission_definitions WHERE key='buildings.view'");

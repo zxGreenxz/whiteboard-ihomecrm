@@ -11,7 +11,7 @@ BEGIN
  IF to_regprocedure('public.read_contract_settlement_events_v1(uuid,uuid[],text,text,integer)') IS NOT NULL
  AND md5(pg_get_functiondef(to_regprocedure('public.read_contract_settlement_events_v1(uuid,uuid[],text,text,integer)')))<>'111961b0e0700535acfe0af478ed2ea4' THEN RAISE EXCEPTION 'Event reader definition drift'; END IF;
  IF to_regprocedure('app_private.settlement_event_expense_ids_v1(uuid,uuid,uuid[],uuid)') IS NOT NULL
- AND md5(pg_get_functiondef(to_regprocedure('app_private.settlement_event_expense_ids_v1(uuid,uuid,uuid[],uuid)')))<>'f9bd5633ff3791052b39a5166166878c' THEN RAISE EXCEPTION 'Event private helper definition drift'; END IF;
+ AND md5(pg_get_functiondef(to_regprocedure('app_private.settlement_event_expense_ids_v1(uuid,uuid,uuid[],uuid)')))<>'bb9f487c42e0b7e1ce6a4084c216f133' THEN RAISE EXCEPTION 'Event private helper definition drift'; END IF;
  IF EXISTS (SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
  WHERE p.oid=to_regprocedure('public.read_contract_settlement_events_v1(uuid,uuid[],text,text,integer)')
  AND (p.proowner<>'ie_action_snapshot_reader'::regrole OR a.is_grantable OR a.grantee NOT IN ('ie_action_snapshot_reader'::regrole,'authenticated'::regrole))) THEN RAISE EXCEPTION 'Event reader ACL/owner drift'; END IF;
@@ -42,8 +42,9 @@ BEGIN
   (v.contract_id=ANY(p_contract_ids) AND (v.commission_kind IN ('broker','sale') OR v.system_source='termination.refund'
    OR (v.commission_kind IS NULL AND EXISTS (SELECT 1 FROM public.income_expense_items i JOIN public.income_expense_types t ON t.id=i.income_expense_type_id
     WHERE i.income_expense_id=v.id AND public.nrm_vn(t.name) LIKE '%hoa hong%'))))
-  OR (p_source_voucher_id IS NOT NULL AND EXISTS (SELECT 1 FROM app_private.sale_bonus_claims s WHERE s.organization_id=p_organization_id
-   AND s.deposit_voucher_id=p_source_voucher_id AND s.bonus_voucher_id=v.id))
+  OR EXISTS (SELECT 1 FROM app_private.sale_bonus_claims s WHERE s.organization_id=p_organization_id AND s.bonus_voucher_id=v.id
+   AND (s.deposit_voucher_id=p_source_voucher_id OR EXISTS (SELECT 1 FROM public.contract_deposit_links l
+    WHERE l.organization_id=p_organization_id AND l.contract_id=ANY(p_contract_ids) AND l.income_expense_id=s.deposit_voucher_id)))
   OR (p_source_voucher_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.reservation_deposit_settlements s WHERE s.organization_id=p_organization_id
    AND s.source_voucher_id=p_source_voucher_id AND (s.refund_voucher_id=v.id OR EXISTS (SELECT 1 FROM public.reservation_settlement_vouchers l
     WHERE l.organization_id=s.organization_id AND l.settlement_id=s.id AND l.voucher_id=v.id AND l.kind='REFUND'))))

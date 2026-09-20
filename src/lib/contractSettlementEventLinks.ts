@@ -20,7 +20,7 @@ export function buildSettlementEventLinks(event: SettlementBusinessEvent, paymen
       && row.snapshot.value.organizationId === event.organizationId && row.snapshot.value.buildingId === event.buildingId);
     const statusLabel = matching ? getSettlementDisplayState(matching).label
       : voucher.approvalStatus === 'CANCELLED' ? 'Đã hủy' : voucher.approvalStatus === 'APPROVED' ? 'Đã duyệt · đối chiếu chi'
-        : voucher.reviewState === 'CHANGES_REQUESTED' ? 'Cần rà soát' : 'Chờ duyệt';
+        : voucher.reviewState === 'CHANGES_REQUESTED' ? 'Cần rà soát' : voucher.reviewState === 'PENDING' ? 'Chờ duyệt' : 'Cần đối chiếu';
     return { id: `voucher:${voucher.id}`, label: voucher.code, amountLabel: formatVND(voucher.amount), statusLabel,
       selection: { kind: 'voucher', voucherId: voucher.id } };
   });

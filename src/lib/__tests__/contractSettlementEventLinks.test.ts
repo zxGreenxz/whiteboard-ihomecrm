@@ -31,6 +31,12 @@ describe('event payment identities',()=>{
   const links=buildSettlementEventLinks(row,[],true);
   expect(links.values.map(link=>link.selection)).toEqual([{kind:'voucher',voucherId:'v1'},{kind:'voucher',voucherId:'v2'}]);
   expect(links.values[0].statusLabel).toBe('Đã duyệt · đối chiếu chi');
-  expect(links.values[1].statusLabel).toBe('Cần rà soát');
+ expect(links.values[1].statusLabel).toBe('Cần rà soát');
+ });
+ it('does not show disputed or resolved unapproved vouchers as pending approval when detailed snapshot is unavailable',()=>{
+  for(const reviewState of ['DISPUTED','RESOLVED'] as const){
+   const row={...event,links:{complete:true,vouchers:[{id:'v1',code:'PC-1',amount:200,approvalStatus:'UNAPPROVED' as const,reviewState}]}};
+   expect(buildSettlementEventLinks(row,[],true).values[0].statusLabel).toBe('Cần đối chiếu');
+  }
  });
 });
