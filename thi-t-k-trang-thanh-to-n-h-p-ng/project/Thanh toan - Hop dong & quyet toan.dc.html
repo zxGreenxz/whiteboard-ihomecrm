@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#e9e5dc}
+body{font-family:"Be Vietnam Pro",system-ui,sans-serif;color:#1b1813;-webkit-font-smoothing:antialiased}
+a{color:#1f7a52}a:hover{color:#1a6645}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #1f7a52;outline-offset:2px}
+@keyframes ihspin{to{transform:rotate(360deg)}}
+@keyframes ihpulse{0%,100%{opacity:.55}50%{opacity:1}}
+</style>
+</helmet>
+<div style="min-height:100vh;padding:24px 20px 40px;box-sizing:border-box;background:radial-gradient(120% 60% at 50% -10%,#ece8df 0%,transparent 60%),#e9e5dc;font-size:13px;line-height:1.5">
+<div style="max-width:1180px;margin:0 auto;background:#f5f3ee;border:1px solid #e7e3da;border-radius:20px;overflow:clip;box-shadow:0 12px 38px rgba(27,24,19,.10),0 4px 12px rgba(27,24,19,.06)">
+
+  <!-- header: ô chọn loại phí -->
+  <div style="position:relative;display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff;border-bottom:1px solid #e7e3da">
+    <button aria-label="Về Thu tiền" style="width:30px;height:30px;border:1px solid #e7e3da;background:#fff;border-radius:8px;color:#514c42;font-size:14px;line-height:1;flex-shrink:0">←</button>
+    <button onClick="{{ toggleArea }}" style="display:flex;align-items:center;gap:10px;background:{{ areaBtnBg }};border:0;border-radius:10px;padding:5px 11px 5px 6px;text-align:left;min-width:0">
+      <span style="display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:{{ areaIconBg }};color:{{ areaIconFg }};font-size:15px;flex-shrink:0">{{ areaIcon }}</span>
+      <span style="min-width:0">
+        <span style="display:flex;align-items:center;gap:7px;font-size:18px;font-weight:700;letter-spacing:-.4px">{{ areaTitle }}<span style="font-size:13px;line-height:1;color:#8d8678">⌄</span></span>
+        <span style="display:block;font-size:11px;color:#8d8678;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Kỳ Th9/2026 · {{ areaSub }}</span>
+      </span>
+    </button>
+    <span style="flex:1"></span>
+    <span style="display:flex;align-items:center;gap:8px;background:#faf8f4;border:1px solid #e7e3da;border-radius:8px;padding:6px 10px;font-family:'Space Mono',monospace;font-size:12px;color:#1b1813">September 2026 <span style="font-size:11px;color:#8d8678">▤</span></span>
+    <button onClick="{{ reset }}" style="background:#fff;border:1px solid #e7e3da;border-radius:8px;padding:6px 11px;font-size:11.5px;font-weight:600;color:#514c42">Làm lại demo</button>
+    <button aria-label="Đóng" style="width:30px;height:30px;border:1px solid #e7e3da;background:#fff;border-radius:8px;color:#514c42;font-size:14px;line-height:1;flex-shrink:0">×</button>
+    <sc-if value="{{ areaOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;z-index:30;top:54px;left:52px;width:336px;max-height:430px;overflow:auto;background:#fff;border:1px solid #e7e3da;border-radius:12px;box-shadow:0 18px 44px rgba(27,24,19,.20);padding:6px">
+        <button onClick="{{ goOverview }}" style="display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:{{ ovItemBg }};border:0;border-radius:9px;padding:9px 10px">
+          <span style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:#f0ede6;color:#514c42;font-size:12px;flex-shrink:0">▦</span>
+          <span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:700">Tổng quan kỳ</span><span style="display:block;font-size:11px;color:#8d8678;margin-top:1px;line-height:1.45">Còn thiếu phiếu · khớp Báo cáo Lợi Nhuận</span></span>
+          <span style="display:flex;align-items:center;gap:6px;flex-shrink:0"><span style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;background:#fcebe9;color:#d6453f;border-radius:6px;padding:2px 7px">92</span><sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}"><span style="color:#1f7a52;font-size:12px">✓</span></sc-if></span>
+        </button>
+        <sc-for list="{{ menuGroups }}" as="g" hint-placeholder-count="2">
+          <div>
+            <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8d8678;padding:10px 10px 4px">{{ g.label }}</div>
+            <sc-for list="{{ g.items }}" as="i" hint-placeholder-count="3">
+              <button onClick="{{ i.onClick }}" style="display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:{{ i.bg }};border:0;border-radius:9px;padding:8px 10px">
+                <span style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:{{ i.iconBg }};color:{{ i.iconFg }};font-size:12px;flex-shrink:0">{{ i.icon }}</span>
+                <span style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600">{{ i.label }}<sc-if value="{{ i.restricted }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;color:#7c5cc4;background:#f1ecfa;border-radius:5px;padding:1px 5px">hạn chế</span></sc-if></span>
+                <span style="display:flex;align-items:center;gap:6px;flex-shrink:0"><span style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;background:{{ i.badgeBg }};color:{{ i.badgeFg }};border-radius:6px;padding:2px 7px">{{ i.badge }}</span><sc-if value="{{ i.active }}" hint-placeholder-val="{{ false }}"><span style="color:#1f7a52;font-size:12px">✓</span></sc-if></span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+  <sc-if value="{{ areaOpen }}" hint-placeholder-val="{{ false }}"><div onClick="{{ toggleArea }}" style="position:fixed;inset:0;z-index:15"></div></sc-if>
+
+  <!-- tổng quan kỳ -->
+  <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:16px 16px 20px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+        <div style="background:#fff;border:1px solid #e7e3da;border-left:4px solid #d6453f;border-radius:12px;padding:14px 16px"><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8d8678">Còn thiếu phiếu kỳ này</div><div style="font-family:'Space Mono',monospace;font-size:26px;font-weight:700;color:#d6453f;margin:6px 0 2px">92 khoản</div><div style="font-size:11.5px;color:#8d8678">trên 195 khoản · 18 tòa · 39 chờ duyệt chờ TT</div></div>
+        <div style="background:#fff;border:1px solid #e7e3da;border-left:4px solid #c97a10;border-radius:12px;padding:14px 16px"><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8d8678">Dự kiến còn phải chi</div><div style="font-family:'Space Mono',monospace;font-size:26px;font-weight:700;color:#c97a10;margin:6px 0 2px">889.433.569đ</div><div style="font-size:11.5px;color:#8d8678">theo dự kiến từng hạng mục + phiếu chờ duyệt</div></div>
+        <div style="background:#fff;border:1px solid #e7e3da;border-left:4px solid #1f9d57;border-radius:12px;padding:14px 16px"><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8d8678">Đã chi trong kỳ</div><div style="font-family:'Space Mono',monospace;font-size:26px;font-weight:700;color:#1f9d57;margin:6px 0 2px">248.911.000đ</div><div style="font-size:11.5px;color:#8d8678">103 khoản đã có phiếu duyệt</div></div>
+      </div>
+      <div style="background:#fff;border:1px solid #e7e3da;border-radius:12px;overflow:clip">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid #e7e3da"><span style="font-size:13.5px;font-weight:700">Còn thiếu theo hạng mục</span><span style="font-size:11.5px;color:#8d8678">khớp cột “Khoản chi (chưa có phiếu)” của Báo cáo Lợi Nhuận</span></div>
+        <div style="display:grid;grid-template-columns:minmax(200px,1.05fr) 122px minmax(210px,1.6fr) 140px 92px;gap:0 12px;padding:8px 14px;background:#faf8f4;border-bottom:1px solid #e7e3da;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8d8678"><span>Hạng mục</span><span style="text-align:center">Tiến độ</span><span>Tòa chưa có phiếu</span><span style="text-align:right">Dự kiến còn lại</span><span style="text-align:center">Thao tác</span></div>
+        <sc-for list="{{ ovRows }}" as="r" hint-placeholder-count="8">
+          <div style="display:grid;grid-template-columns:minmax(200px,1.05fr) 122px minmax(210px,1.6fr) 140px 92px;gap:0 12px;align-items:center;padding:9px 14px;border-bottom:1px solid #efece4;background:{{ r.rowBg }}">
+            <span style="display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap">
+              <span style="display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:{{ r.iconBg }};color:{{ r.iconFg }};font-size:12px;flex-shrink:0">{{ r.icon }}</span>
+              <span style="font-size:12.5px;font-weight:600">{{ r.label }}</span>
+              <sc-if value="{{ r.restricted }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;color:#7c5cc4;background:#f1ecfa;border-radius:5px;padding:1px 5px">hạn chế</span></sc-if>
+              <sc-if value="{{ r.hasDraft }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;font-weight:700;color:#8a6111;background:#fbf1da;border-radius:5px;padding:1px 5px;white-space:nowrap">{{ r.draft }}</span></sc-if>
+            </span>
+            <span style="display:flex;align-items:center;gap:7px"><span style="flex:1;height:5px;border-radius:3px;background:#efece4;overflow:hidden"><span style="display:block;height:100%;width:{{ r.pct }}%;background:#1f9d57"></span></span><span style="font-family:'Space Mono',monospace;font-size:10.5px;color:#8d8678;white-space:nowrap">{{ r.progress }}</span></span>
+            <span style="display:flex;flex-wrap:wrap;gap:4px;min-width:0">
+              <sc-if value="{{ r.allPaid }}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:#1f9d57;font-weight:600">Đã đủ phiếu</span></sc-if>
+              <sc-for list="{{ r.chips }}" as="c" hint-placeholder-count="4"><span style="font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;color:#d6453f;background:#fcebe9;border:1px solid #f6d7d4;border-radius:5px;padding:1px 5px">{{ c }}</span></sc-for>
+            </span>
+            <span style="text-align:right;font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700;color:{{ r.sumFg }}">{{ r.dueSum }}</span>
+            <span style="text-align:center">
+              <sc-if value="{{ r.canGo }}" hint-placeholder-val="{{ true }}"><button onClick="{{ r.onClick }}" style="background:#1b1813;color:#fff;border:0;border-radius:7px;padding:6px 11px;font-size:11.5px;font-weight:700">Đóng →</button></sc-if>
+              <sc-if value="{{ r.allPaid }}" hint-placeholder-val="{{ false }}"><span style="color:#1f9d57;font-size:13px">✓</span></sc-if>
+            </span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+
+  <!-- hạng mục chi phí vận hành -->
+  <sc-if value="{{ isOps }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:18px 16px 22px">
+      <div style="background:#fff;border:1px dashed #e7e3da;border-radius:12px;padding:28px;text-align:center">
+        <span style="display:inline-grid;place-items:center;width:38px;height:38px;border-radius:10px;background:{{ areaIconBg }};color:{{ areaIconFg }};font-size:17px">{{ areaIcon }}</span>
+        <div style="font-weight:700;font-size:14px;margin-top:8px">{{ areaTitle }}</div>
+        <p style="margin:5px auto 0;max-width:540px;font-size:12.5px;color:#8d8678">Hạng mục {{ areaSub }}. Giữ nguyên thiết kế hiện tại của trang Đóng tiền tập trung, ngoài phạm vi bàn giao lần này.</p>
+        <button onClick="{{ goContracts }}" style="margin-top:14px;background:#fff;border:1px solid #1f7a52;color:#1f7a52;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600">Sang Hợp đồng &amp; quyết toán</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isContracts }}" hint-placeholder-val="{{ true }}">
+  <div style="padding:20px 24px 24px;display:flex;flex-direction:column;gap:16px">
+
+    <!-- view bar -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;gap:3px;padding:4px;background:#fff;border:1px solid #e7e3da;border-radius:10px">
+        <button onClick="{{ goPayments }}" style="border:0;padding:7px 15px;border-radius:7px;font-size:13px;font-weight:600;background:{{ payPillBg }};color:{{ payPillFg }}">Khoản chi</button>
+        <button onClick="{{ goMovements }}" style="border:0;padding:7px 15px;border-radius:7px;font-size:13px;font-weight:600;background:{{ movPillBg }};color:{{ movPillFg }}">Biến động</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:12px;color:#8d8678"><label style="display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #e7e3da;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;color:#514c42"><input type="checkbox" checked="{{ merged }}" onChange="{{ toggleMerge }}" style="accent-color:#1f7a52;margin:0">Gộp Chờ duyệt và Chi</label></div>
+    </div>
+
+    <!-- demo state overlays -->
+    <sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+        <sc-for list="{{ three }}" as="s" hint-placeholder-count="3"><div style="height:96px;border-radius:13px;background:#efece4;animation:ihpulse 1.4s ease-in-out infinite"></div></sc-for>
+      </div>
+      <div style="background:#fff;border:1px solid #e7e3da;border-radius:13px;padding:40px;display:flex;align-items:center;justify-content:center;gap:10px;color:#8d8678;font-size:12.5px"><span style="width:16px;height:16px;border:2px solid #d2e8da;border-top-color:#1f7a52;border-radius:50%;animation:ihspin .8s linear infinite"></span>Đang tải khoản chi…</div>
+    </sc-if>
+    <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#fff;border:1px solid #f2c8c4;border-radius:13px;padding:32px;text-align:center"><div style="font-weight:700;color:#d6453f">Không tải được danh sách khoản chi</div><p style="margin:6px 0 14px;font-size:12.5px;color:#514c42">Bộ lọc vẫn được giữ. Dữ liệu đã tải trước đó không bị mất.</p><button onClick="{{ retry }}" style="background:#1f7a52;color:#fff;border:0;border-radius:8px;padding:9px 16px;font-weight:600;font-size:12.5px">Thử lại</button></div>
+    </sc-if>
+    <sc-if value="{{ isNoPerm }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#fff;border:1px solid #e7e3da;border-radius:13px;padding:32px;text-align:center"><div style="font-weight:700">Bạn không có quyền xem khoản chi hợp đồng</div><p style="margin:6px 0 0;font-size:12.5px;color:#8d8678">Cần quyền <span style="font-family:'Space Mono',monospace">thu_tien.collect</span>. Liên hệ chủ doanh nghiệp để được cấp.</p></div>
+    </sc-if>
+
+    <sc-if value="{{ isNormal }}" hint-placeholder-val="{{ true }}">
+
+    <!-- stats -->
+    <sc-if value="{{ isPayments }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:{{ statsCols }};gap:12px">
+        <sc-for list="{{ stats }}" as="s" hint-placeholder-count="3">
+          <button onClick="{{ s.onClick }}" style="text-align:left;background:#fff;border:1px solid {{ s.border }};box-shadow:{{ s.shadow }};border-radius:13px;padding:14px 16px;min-width:0;position:relative">
+            <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:#514c42"><span style="width:7px;height:7px;border-radius:50%;background:{{ s.dot }}"></span>{{ s.label }}</div>
+            <div style="font-family:'Space Mono',monospace;font-size:24px;font-weight:700;letter-spacing:-.5px;margin:6px 0 2px;line-height:1.2">{{ s.number }}</div>
+            <div style="font-size:12px;color:#8d8678">{{ s.meta }}</div>
+            <span style="position:absolute;right:14px;top:12px;font-size:11px;font-weight:600;color:#1f7a52">{{ s.cta }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ isMovements }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px">
+        <sc-for list="{{ movStats }}" as="s" hint-placeholder-count="5">
+          <button onClick="{{ s.onClick }}" style="text-align:left;background:#fff;border:1px solid {{ s.border }};box-shadow:{{ s.shadow }};border-radius:13px;padding:12px 14px;min-width:0">
+            <div style="font-size:12px;color:#514c42">{{ s.label }}</div>
+            <div style="font-family:'Space Mono',monospace;font-size:22px;font-weight:700;margin:4px 0 0;line-height:1.2">{{ s.number }}</div>
+            <div style="font-size:11px;color:#8d8678">lượt biến động</div>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:{{ contentCols }};gap:16px;align-items:start">
+    <!-- surface -->
+    <section style="background:#fff;border:1px solid #e7e3da;border-radius:13px;overflow:clip;min-width:0">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid #e7e3da">
+        <label style="display:flex;align-items:center;gap:8px;flex:1;min-width:200px;background:#faf8f4;border:1px solid #e7e3da;border-radius:9px;padding:0 11px;color:#8d8678"><span style="font-size:12px">⌕</span><input value="{{ q }}" onChange="{{ setQ }}" placeholder="Tìm phòng, khách, hợp đồng, phiếu…" style="border:0;background:none;width:100%;padding:9px 0;font-size:12.5px;color:#1b1813;outline:none"></label>
+        <select value="{{ building }}" onChange="{{ setBuilding }}" style="background:#fff;border:1px solid #e7e3da;border-radius:9px;padding:8px 10px;font-size:12.5px;color:#1b1813"><option value="all">Tất cả tòa</option><option value="417LVT">417LVT</option><option value="80DS3">80DS3</option><option value="158PVC">158PVC</option><option value="331PH">331PH</option></select>
+        <select value="{{ month }}" onChange="{{ setMonth }}" style="background:#fff;border:1px solid #e7e3da;border-radius:9px;padding:8px 10px;font-size:12.5px;color:#1b1813"><option value="all">{{ monthAllLabel }}</option><option value="2026-09">{{ monthSepLabel }}</option><option value="2026-08">{{ monthAugLabel }}</option></select>
+        <button onClick="{{ toggleAdvanced }}" style="background:{{ advBg }};border:1px solid #e7e3da;border-radius:9px;padding:8px 12px;font-size:12px;font-weight:600;color:#514c42">Bộ lọc</button>
+      </div>
+      <sc-if value="{{ advanced }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;background:#faf8f4;padding:12px 14px;border-bottom:1px solid #e7e3da">
+          <label style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#8d8678">Nguồn<select value="{{ origin }}" onChange="{{ setOrigin }}" style="background:#fff;border:1px solid #e7e3da;border-radius:8px;padding:7px 9px;font-size:12.5px;color:#1b1813"><option value="all">Tất cả nguồn</option><option value="contract">Hợp đồng</option><option value="reservation">Giữ chỗ</option></select></label>
+          <label style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#8d8678">{{ personLabel }}<select value="{{ person }}" onChange="{{ setPerson }}" style="background:#fff;border:1px solid #e7e3da;border-radius:8px;padding:7px 9px;font-size:12.5px;color:#1b1813"><option value="all">Tất cả</option><sc-for list="{{ personOptions }}" as="p" hint-placeholder-count="2"><option value="{{ p }}">{{ p }}</option></sc-for></select></label>
+          <sc-if value="{{ isPayments }}" hint-placeholder-val="{{ true }}">
+            <label style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#8d8678">Trạng thái<select value="{{ status }}" onChange="{{ setStatus }}" style="background:#fff;border:1px solid #e7e3da;border-radius:8px;padding:7px 9px;font-size:12.5px;color:#1b1813"><option value="open">Cần xử lý</option><option value="all">Tất cả trạng thái</option><option value="review">Cần rà soát</option><option value="pending">Chờ duyệt</option><option value="approved">Đã duyệt · chờ chi</option><option value="paid">Đã chi</option><option value="cancelled">Từ chối / hủy</option></select></label>
+            <label style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#8d8678">Vướng mắc<select value="{{ issue }}" onChange="{{ setIssue }}" style="background:#fff;border:1px solid #e7e3da;border-radius:8px;padding:7px 9px;font-size:12.5px;color:#1b1813"><option value="all">Tất cả</option><option value="yes">Có vấn đề cần rà soát</option></select></label>
+          </sc-if>
+          <button onClick="{{ clearFilters }}" style="background:none;border:0;font-size:12px;font-weight:600;color:#8d8678;padding:8px 4px">Bỏ bộ lọc</button>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;gap:4px;padding:10px 14px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #efece4">
+        <sc-for list="{{ kindChips }}" as="c" hint-placeholder-count="4">
+          <button onClick="{{ c.onClick }}" style="border:0;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:{{ c.weight }};background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}<span style="font-family:'Space Mono',monospace;font-size:10.5px;margin-left:6px;opacity:.7">{{ c.count }}</span></button>
+        </sc-for>
+        <span style="flex:1"></span>
+        <sc-for list="{{ statusChips }}" as="c" hint-placeholder-count="2">
+          <button onClick="{{ c.onClick }}" style="border:0;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:{{ c.weight }};background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}</button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ showOldNotice }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#fbf1da;color:#8a6111;font-size:12px;border-bottom:1px solid #f0dca8"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:11px">TỒN</span><span>Có <b style="font-weight:700">{{ oldCount }} khoản tồn kỳ trước</b> · <span style="font-family:'Space Mono',monospace">{{ oldAmount }}</span>. Vẫn được giữ trong danh sách cần xử lý.</span></div>
+      </sc-if>
+      <sc-if value="{{ isMovements }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#faf8f4;color:#514c42;font-size:12px;border-bottom:1px solid #efece4">Đếm theo lượt biến động, theo ngày phát sinh nghiệp vụ. Khoản chi liên kết dùng chung, không cộng lặp giữa giữ chỗ và ký hợp đồng.</div>
+      </sc-if>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px 6px;font-size:12px;color:#8d8678"><span>{{ resultLine }}</span><span style="font-family:'Space Mono',monospace;font-size:11px">{{ resultRight }}</span></div>
+
+      <!-- payments table -->
+      <sc-if value="{{ showPayTable }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:{{ payCols }};gap:0 12px;padding:8px 14px;background:#faf8f4;border-top:1px solid #e7e3da;border-bottom:1px solid #e7e3da;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8d8678">
+          <span>Phòng · Khách</span>
+          <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span>Khoản chi</span><span>Người nhận</span></sc-if>
+          <span style="text-align:right">Số tiền</span>
+          <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span>Trạng thái</span></sc-if>
+          <span></span>
+        </div>
+        <sc-for list="{{ payRows }}" as="r" hint-placeholder-count="6">
+          <div style="display:grid;grid-template-columns:{{ payCols }};gap:0 12px;align-items:center;padding:{{ rowPad }} 14px;border-bottom:1px solid #efece4;background:{{ r.rowBg }}" style-hover="background:#faf8f4">
+            <button onClick="{{ r.onOpen }}" style="background:none;border:0;padding:0;text-align:left;min-width:0">
+              <div style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:-.2px">{{ r.roomLabel }}</div>
+              <div style="font-size:12px;color:#514c42;margin-top:2px">{{ r.customer }}</div>
+              <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:#8d8678;margin-top:2px">{{ r.codeLine }}</div>
+              <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px"><span style="display:inline-block;padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:600;background:{{ r.statusBg }};color:{{ r.statusFg }}">{{ r.statusLabel }}</span><span style="font-size:11px;color:#8d8678">{{ r.kindLabel }} · {{ r.recipient }}</span></div>
+              </sc-if>
+            </button>
+            <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+              <div style="min-width:0"><div style="font-weight:600;font-size:12.5px">{{ r.kindLabel }}</div><div style="font-size:11.5px;color:#8d8678">{{ r.eventLabel }}</div>
+                <sc-if value="{{ r.isOld }}" hint-placeholder-val="{{ false }}"><span style="display:inline-block;margin-top:4px;font-size:10.5px;font-weight:700;background:#fbf1da;color:#8a6111;border-radius:5px;padding:2px 6px">Tồn tháng 8</span></sc-if>
+              </div>
+              <div style="min-width:0"><div style="font-size:12.5px">{{ r.recipient }}</div><div style="font-size:11.5px;color:{{ r.bankColor }}">{{ r.bankLine }}</div></div>
+            </sc-if>
+            <div style="text-align:right;min-width:0"><div style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;white-space:nowrap">{{ r.amountLabel }}</div><div style="font-size:11px;color:#8d8678">{{ r.amountSub }}</div></div>
+            <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+              <div><span style="display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;background:{{ r.statusBg }};color:{{ r.statusFg }}">{{ r.statusLabel }}</span>
+                <sc-if value="{{ r.hasIssue }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:#d6453f;margin-top:4px">Cần kiểm tra căn cứ</div></sc-if>
+              </div>
+            </sc-if>
+            <button onClick="{{ r.onOpen }}" style="background:#fff;border:1px solid {{ r.actionBorder }};border-radius:8px;padding:7px 8px;font-size:12px;font-weight:600;color:{{ r.actionFg }};white-space:nowrap;justify-self:end">{{ r.actionLabel }}</button>
+          </div>
+        </sc-for>
+      </sc-if>
+
+      <!-- movement table -->
+      <sc-if value="{{ showMovTable }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:{{ movCols }};gap:0 12px;padding:8px 14px;background:#faf8f4;border-top:1px solid #e7e3da;border-bottom:1px solid #e7e3da;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#8d8678">
+          <span>Phòng · Khách</span>
+          <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span>Biến động</span></sc-if>
+          <span>Ngày phát sinh</span>
+          <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span>Khoản chi liên quan</span></sc-if>
+          <span></span>
+        </div>
+        <sc-for list="{{ movRows }}" as="e" hint-placeholder-count="6">
+          <div style="display:grid;grid-template-columns:{{ movCols }};gap:0 12px;align-items:center;padding:{{ rowPad }} 14px;border-bottom:1px solid #efece4;background:{{ e.rowBg }}" style-hover="background:#faf8f4">
+            <button onClick="{{ e.onOpen }}" style="background:none;border:0;padding:0;text-align:left;min-width:0">
+              <div style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px">{{ e.roomLabel }}</div>
+              <div style="font-size:12px;color:#514c42;margin-top:2px">{{ e.customer }}</div>
+              <div style="font-family:'Space Mono',monospace;font-size:10.5px;color:#8d8678;margin-top:2px">{{ e.source }}</div>
+              <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px"><span style="display:inline-block;padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:600;background:#f0ede6;color:#514c42">{{ e.typeLabel }}</span><span style="font-size:11px;color:#8d8678">{{ e.linkSummary }}</span></div>
+              </sc-if>
+            </button>
+            <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+              <div><span style="display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;background:#f0ede6;color:#514c42">{{ e.typeLabel }}</span><div style="font-size:11.5px;color:#8d8678;margin-top:4px">{{ e.originLabel }}</div></div>
+            </sc-if>
+            <div style="font-family:'Space Mono',monospace;font-size:12px">{{ e.dateLabel }}</div>
+            <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+              <div style="font-size:12px">
+                <sc-for list="{{ e.linked }}" as="l" hint-placeholder-count="1"><div>{{ l.kindLabel }} <span style="color:#8d8678">· <span style="font-family:'Space Mono',monospace">{{ l.amountLabel }}</span> · {{ l.statusLabel }}</span></div></sc-for>
+                <sc-if value="{{ e.noLinks }}" hint-placeholder-val="{{ false }}"><span style="color:#8d8678">Không phát sinh chi</span></sc-if>
+              </div>
+            </sc-if>
+            <button onClick="{{ e.onOpen }}" style="background:#fff;border:1px solid #e7e3da;border-radius:8px;padding:7px 8px;font-size:12px;font-weight:600;color:#1f7a52;white-space:nowrap;justify-self:end">Xem hồ sơ</button>
+          </div>
+        </sc-for>
+      </sc-if>
+
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="text-align:center;padding:40px 16px;color:#8d8678"><div style="font-weight:700;color:#1b1813;margin-bottom:4px">{{ emptyTitle }}</div><p style="margin:0 0 12px;font-size:12.5px">{{ emptyBody }}</p><button onClick="{{ clearFilters }}" style="background:none;border:1px solid #e7e3da;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;color:#514c42">Bỏ bộ lọc</button></div>
+      </sc-if>
+
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:11px 14px;background:#faf8f4;border-top:1px solid #e7e3da;font-size:11.5px;color:#8d8678"><span>{{ footLeft }}</span><span style="font-family:'Space Mono',monospace">{{ footRight }}</span></div>
+    </section>
+
+    <!-- side panel (bonus / event) -->
+    <sc-if value="{{ hasPanel }}" hint-placeholder-val="{{ false }}">
+      <aside style="background:#fff;border:1px solid #e7e3da;border-radius:13px;overflow:clip;min-width:0;position:sticky;top:16px">
+        <div style="padding:14px 16px;border-bottom:1px solid #e7e3da">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="font-family:'Space Mono',monospace;font-size:11px;color:#8d8678">{{ panel.code }}</div>
+            <button onClick="{{ closePanel }}" aria-label="Đóng" style="background:none;border:0;color:#8d8678;font-size:16px;line-height:1;padding:2px 4px">×</button>
+          </div>
+          <div style="font-size:17px;font-weight:700;letter-spacing:-.3px;margin-top:6px">{{ panel.title }}</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><span style="padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;background:{{ panel.statusBg }};color:{{ panel.statusFg }}">{{ panel.statusLabel }}</span><span style="font-size:12px;color:#514c42">{{ panel.subtitle }}</span></div>
+        </div>
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px">
+          <sc-if value="{{ panel.note }}" hint-placeholder-val="{{ false }}"><div style="padding:10px 12px;background:#fbf1da;color:#8a6111;border-radius:8px;font-size:12px;line-height:1.6">{{ panel.note }}</div></sc-if>
+          <div>
+            <sc-for list="{{ panel.kv }}" as="k" hint-placeholder-count="4">
+              <div style="display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:5px 0;border-bottom:1px solid #efece4"><span style="color:#8d8678">{{ k.k }}</span><span style="text-align:right;font-weight:{{ k.w }};font-family:{{ k.font }}">{{ k.v }}</span></div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ panel.hasLinks }}" hint-placeholder-val="{{ false }}">
+            <div><div style="font-size:12px;font-weight:700;margin-bottom:6px">Khoản chi liên quan</div>
+              <sc-for list="{{ panel.links }}" as="l" hint-placeholder-count="1">
+                <button onClick="{{ l.onOpen }}" style="display:flex;justify-content:space-between;gap:8px;width:100%;padding:10px 0;background:none;border:0;border-bottom:1px solid #efece4;text-align:left;font-size:12px"><span><b style="font-weight:600">{{ l.kindLabel }}</b><span style="display:block;color:#8d8678;font-size:11.5px">{{ l.recipient }} · {{ l.statusLabel }}</span></span><span style="font-family:'Space Mono',monospace;font-weight:700;white-space:nowrap">{{ l.amountLabel }}</span></button>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ panel.isBonus }}" hint-placeholder-val="{{ false }}">
+            <div style="border-top:1px solid #e7e3da;padding-top:12px;display:grid;gap:8px">
+              <sc-if value="{{ panel.canReview }}" hint-placeholder-val="{{ false }}"><button onClick="{{ panelSubmit }}" style="background:#1f7a52;color:#fff;border:0;border-radius:9px;padding:10px;font-weight:600;font-size:12.5px">Xác nhận đối chiếu · lập phiếu</button></sc-if>
+              <sc-if value="{{ panel.canApprove }}" hint-placeholder-val="{{ false }}"><button onClick="{{ panelApprove }}" style="background:#1f7a52;color:#fff;border:0;border-radius:9px;padding:10px;font-weight:600;font-size:12.5px">Duyệt {{ panel.amountLabel }}</button><button onClick="{{ panelReject }}" style="background:#fff;border:1px solid #e7e3da;border-radius:9px;padding:9px;font-weight:600;font-size:12.5px;color:#d6453f">Từ chối</button></sc-if>
+              <sc-if value="{{ panel.canPay }}" hint-placeholder-val="{{ false }}"><button onClick="{{ panelPay }}" style="background:#1f7a52;color:#fff;border:0;border-radius:9px;padding:10px;font-weight:600;font-size:12.5px">Xác nhận đã chi đủ {{ panel.amountLabel }}</button><div style="font-size:11.5px;color:#8d8678">Ghi vào Sổ ngân hàng mẫu · ngày 20/09/2026 · chi một lần đủ phiếu.</div></sc-if>
+              <sc-if value="{{ panel.isPaid }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:#1f9d57;font-weight:600">Đã chi {{ panel.paidDate }} · {{ panel.book }} · {{ panel.proof }}</div></sc-if>
+              <sc-if value="{{ panel.feedback }}" hint-placeholder-val="{{ false }}"><div style="padding:9px 11px;background:#e8f3ec;color:#1a6645;border-radius:8px;font-size:12px">{{ panel.feedback }}</div></sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </aside>
+    </sc-if>
+    </div>
+    </sc-if>
+  </div>
+  </sc-if>
+
+  <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:12px 24px;border-top:1px solid #e7e3da;font-size:11.5px;color:#8d8678"><span>iHomeCRM · Bản thiết kế 03 · Hợp đồng &amp; quyết toán</span><span>Mọi tên, số tiền, tài khoản và chứng từ là dữ liệu mẫu.</span></div>
+</div>
+</div>
+
+<!-- lifecycle modal -->
+<sc-if value="{{ modalOpen }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ closeModal }}" style="position:fixed;inset:0;background:rgba(27,24,19,.55);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto">
+  <div role="dialog" aria-modal="true" onClick="{{ stop }}" style="width:100%;max-width:1040px;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(27,24,19,.35);overflow:clip;font-size:13px">
+    <!-- header -->
+    <div style="padding:18px 22px 14px;border-bottom:1px solid #e7e3da;display:flex;justify-content:space-between;gap:16px;align-items:flex-start">
+      <div style="min-width:0">
+        <div style="font-family:'Space Mono',monospace;font-size:11px;color:#8d8678">{{ m.codeLine }}</div>
+        <h2 style="margin:4px 0 0;font-size:21px;font-weight:700;letter-spacing:-.4px">{{ m.kindLabel }} <span style="color:#b6b0a3;font-weight:500">/</span> <span style="font-family:'Space Mono',monospace">{{ m.roomLabel }}</span></h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px"><span style="padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;background:{{ m.statusBg }};color:{{ m.statusFg }}">{{ m.statusLabel }}</span><span style="font-size:12.5px;color:#514c42">Khách: <b style="font-weight:600;color:#1b1813">{{ m.customer }}</b></span><span style="font-size:12.5px;color:#514c42">{{ m.personLabel }}: <b style="font-weight:600;color:#1b1813">{{ m.recipient }}</b></span></div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:flex-start;flex-shrink:0">
+        <div style="text-align:right"><div style="font-size:11.5px;color:#8d8678">{{ m.amountCaption }}</div><div style="font-family:'Space Mono',monospace;font-size:24px;font-weight:700;color:#1f7a52;letter-spacing:-.5px;line-height:1.2">{{ m.amountLabel }}</div></div>
+        <button onClick="{{ closeModal }}" aria-label="Đóng" style="width:32px;height:32px;border:1px solid #e7e3da;border-radius:8px;background:#fff;color:#514c42;font-size:16px;line-height:1">×</button>
+      </div>
+    </div>
+
+    <!-- lifecycle -->
+    <div style="padding:16px 22px 12px;background:#f5f3ee;border-bottom:1px solid #e7e3da">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:12px;flex-wrap:wrap"><div style="font-weight:700;font-size:13.5px">Vòng đời hợp đồng của phòng</div><div style="font-size:12px;color:#8d8678">{{ m.lifecycleHint }}</div></div>
+      <sc-for list="{{ m.lanes }}" as="c" hint-placeholder-count="2">
+        <div style="background:#fff;border:1px solid {{ c.border }};border-radius:11px;padding:11px 14px 12px;margin-bottom:8px;box-shadow:{{ c.shadow }}">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;font-size:12px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:{{ c.roleBg }};color:{{ c.roleFg }}">{{ c.role }}</span>
+            <b style="font-family:'Space Mono',monospace;font-weight:700">{{ c.code }}</b><span style="color:#514c42">{{ c.customer }}</span>
+            <span style="flex:1"></span>
+            <span style="padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:{{ c.tagBg }};color:{{ c.tagFg }}">{{ c.tag }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 12px">
+            <sc-for list="{{ c.steps }}" as="s" hint-placeholder-count="4">
+              <div style="position:relative;padding:13px 0 0;border-top:1px solid #e7e3da;min-width:0">
+                <span style="position:absolute;top:-4px;left:0;width:7px;height:7px;border-radius:50%;background:{{ c.dot }};box-shadow:0 0 0 3px #fff"></span>
+                <div style="font-size:11px;color:#8d8678">{{ s.h }}</div>
+                <div style="font-size:13px;font-weight:700;font-family:'Space Mono',monospace;margin-top:2px;overflow-wrap:anywhere">{{ s.v }}</div>
+                <div style="font-size:11px;color:#8d8678;margin-top:3px;line-height:1.55">{{ s.m }}</div>
+                <sc-if value="{{ s.m2 }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;margin-top:2px;color:{{ s.m2c }};font-weight:600">{{ s.m2 }}</div></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11.5px;color:#8d8678;padding:4px 2px 0"><span>Phòng hiện tại: <b style="color:#1b1813;font-weight:600">{{ m.nowLine }}</b></span><span>{{ m.sourceLabel }}: <b style="color:#1b1813;font-weight:600;font-family:'Space Mono',monospace">{{ m.source }}</b></span></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;align-items:start">
+      <!-- notes -->
+      <div style="padding:18px 22px;min-width:0">
+        <h3 style="margin:0 0 8px;font-size:15px;font-weight:700">{{ m.notesTitle }}</h3>
+        <div style="font-size:12px;line-height:1.75;color:#514c42;margin-bottom:12px">
+          <sc-for list="{{ m.headLines }}" as="l" hint-placeholder-count="4"><div><span style="color:#8d8678">{{ l.k }}</span> <b style="font-weight:600;color:#1b1813">{{ l.v }}</b></div></sc-for>
+        </div>
+        <div style="background:#faf8f4;border:1px solid #efece4;border-radius:10px;padding:12px 14px">
+          <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8d8678;margin-bottom:6px">{{ m.sheetTitle }}</div>
+          <sc-for list="{{ m.sheet }}" as="k" hint-placeholder-count="6">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:{{ k.pad }};font-size:{{ k.fs }};border-top:{{ k.bt }}"><span style="color:{{ k.kc }};font-weight:{{ k.kw }}">{{ k.k }}</span><span style="font-family:'Space Mono',monospace;white-space:nowrap;font-weight:{{ k.vw }};color:{{ k.vc }}">{{ k.v }}</span></div>
+          </sc-for>
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:10px;padding:11px 12px;border:1px solid {{ m.totalBorder }};border-radius:8px;background:{{ m.totalBg }};color:{{ m.totalFg }}"><span><b style="font-weight:700;display:block">{{ m.totalLabel }}</b><span style="font-size:11.5px">{{ m.totalSub }}</span></span><b style="font-family:'Space Mono',monospace;font-size:19px;white-space:nowrap">{{ m.totalValue }}</b></div>
+        </div>
+        <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:12px;padding:12px 2px 0">
+          <sc-for list="{{ m.payout }}" as="p" hint-placeholder-count="3"><div><div style="color:#8d8678">{{ p.k }}</div><b style="font-weight:700;font-family:'Space Mono',monospace;color:{{ p.c }}">{{ p.v }}</b></div></sc-for>
+        </div>
+        <div style="font-size:12px;line-height:1.7;padding-top:12px;margin-top:12px;border-top:1px solid #e7e3da"><b style="font-weight:700">{{ m.noteTitle }}</b><p style="margin:4px 0 0;color:#514c42;white-space:pre-line">{{ m.rawNote }}</p></div>
+      </div>
+
+      <!-- right column -->
+      <div style="border-left:1px solid #e7e3da;padding:18px 18px;display:flex;flex-direction:column;gap:16px;min-width:0">
+        <sc-if value="{{ m.isEvent }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="font-size:13px;font-weight:700;margin-bottom:6px">Khoản chi phát sinh</div>
+            <sc-for list="{{ m.links }}" as="l" hint-placeholder-count="1">
+              <button onClick="{{ l.onOpen }}" style="display:flex;justify-content:space-between;gap:8px;width:100%;padding:10px 0;background:none;border:0;border-bottom:1px solid #efece4;text-align:left;font-size:12px"><span><b style="font-weight:600">{{ l.kindLabel }}</b><span style="display:block;color:#8d8678;font-size:11.5px">{{ l.recipient }} · {{ l.statusLabel }}</span></span><span style="font-family:'Space Mono',monospace;font-weight:700;white-space:nowrap">{{ l.amountLabel }}</span></button>
+            </sc-for>
+            <sc-if value="{{ m.noLinks }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:#8d8678;line-height:1.6">Biến động này không kéo theo phiếu chi nào.</div></sc-if>
+            <div style="font-size:11.5px;color:#8d8678;margin-top:8px">Bấm một khoản để mở hồ sơ phiếu chi tương ứng.</div>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:700;margin-bottom:6px">Người phụ trách</div>
+            <div style="font-size:12px">{{ m.recipient }}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ m.isVoucher }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">Người nhận tiền</div>
+          <sc-for list="{{ m.recipientKv }}" as="k" hint-placeholder-count="3"><div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:5px 0"><span style="color:#8d8678">{{ k.k }}</span><span style="text-align:right;color:{{ k.c }};font-weight:{{ k.w }};font-family:{{ k.font }}">{{ k.v }}</span></div></sc-for>
+          <sc-if value="{{ m.needsBank }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;gap:8px;margin-top:8px;padding:10px;background:#fcebe9;border:1px solid #f2c8c4;border-radius:8px">
+              <div style="font-size:11.5px;color:#d6453f;font-weight:600">Thiếu tài khoản nhận tiền. Bổ sung trước khi lập phiếu.</div>
+              <input value="{{ bankDraft }}" onChange="{{ setBankDraft }}" placeholder="Ngân hàng" style="border:1px solid #e7e3da;border-radius:7px;padding:8px 9px;font-size:12.5px;background:#fff">
+              <input value="{{ accountDraft }}" onChange="{{ setAccountDraft }}" placeholder="Số tài khoản" style="border:1px solid #e7e3da;border-radius:7px;padding:8px 9px;font-size:12.5px;background:#fff;font-family:'Space Mono',monospace">
+            </div>
+          </sc-if>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:6px">Chứng từ</div>
+          <sc-if value="{{ m.hasProof }}" hint-placeholder-val="{{ false }}"><div style="padding:12px;background:#faf8f4;border:1px dashed #e7e3da;border-radius:8px;text-align:center;font-size:12px"><div style="color:#8d8678">{{ m.proof }} · {{ m.book }}</div><div style="font-family:'Space Mono',monospace;font-weight:700;font-size:17px;margin:4px 0">{{ m.paidAmount }}</div><div style="color:#8d8678">Chi ngày {{ m.paidDate }}</div></div></sc-if>
+          <sc-if value="{{ m.noProof }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;color:#8d8678;line-height:1.6">Chưa có chứng từ chi. Bổ sung khi ghi nhận đã trả tiền.</div></sc-if>
+        </div>
+        </sc-if>
+        <details style="font-size:12px"><summary style="font-weight:700;cursor:pointer;font-size:12.5px">Lịch sử xử lý</summary>
+          <div style="padding:8px 0 0 4px">
+            <sc-for list="{{ m.logs }}" as="l" hint-placeholder-count="2"><div style="position:relative;padding:0 0 10px 14px"><span style="position:absolute;left:0;top:6px;width:6px;height:6px;border-radius:50%;background:#1f7a52"></span>{{ l.text }}<span style="display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:#8d8678">{{ l.when }}</span></div></sc-for>
+          </div>
+        </details>
+
+        <div style="border-top:1px solid #e7e3da;padding-top:14px;display:grid;gap:8px">
+          <sc-if value="{{ m.isEvent }}" hint-placeholder-val="{{ false }}"><div style="font-size:11.5px;color:#8d8678;line-height:1.6">Hồ sơ biến động chỉ để đối chiếu. Mọi thao tác duyệt và chi thực hiện trong hồ sơ khoản chi.</div></sc-if>
+          <sc-if value="{{ m.stepReview }}" hint-placeholder-val="{{ false }}">
+            <sc-if value="{{ m.hasIssue }}" hint-placeholder-val="{{ false }}"><div style="padding:9px 11px;background:#fbf1da;color:#8a6111;border-radius:8px;font-size:12px;line-height:1.6">{{ m.issue }}</div></sc-if>
+            <label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#514c42"><input type="checkbox" checked="{{ confirmChecked }}" onChange="{{ toggleConfirm }}" style="margin-top:3px;accent-color:#1f7a52">{{ m.confirmText }}</label>
+            <button onClick="{{ submitReview }}" disabled="{{ m.reviewDisabled }}" style="background:#1f7a52;color:#fff;border:0;border-radius:9px;padding:11px;font-weight:600;font-size:13px;opacity:{{ m.reviewOpacity }}">Chuyển chờ duyệt</button>
+            <div style="font-size:11.5px;color:#8d8678">Chưa ghi tiền. Phiếu sẽ chờ chủ doanh nghiệp duyệt.</div>
+          </sc-if>
+          <sc-if value="{{ m.stepPending }}" hint-placeholder-val="{{ false }}">
+            <sc-if value="{{ m.noReason }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ approve }}" style="background:#1f7a52;color:#fff;border:0;border-radius:9px;padding:11px;font-weight:600;font-size:13px">Duyệt &amp; Chi {{ m.amountLabel }}</button>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button onClick="{{ askMore }}" style="background:#fff;border:1px solid #e7e3da;border-radius:9px;padding:9px;font-weight:600;font-size:12.5px;color:#514c42">Cần bổ sung</button><button onClick="{{ approveOnly }}" style="background:#fff;border:1px solid #1f7a52;border-radius:9px;padding:9px;font-weight:600;font-size:12.5px;color:#1f7a52">Duyệt Chờ Chi</button></div>
+              <div style="font-size:11.5px;color:#8d8678">Duyệt &amp; Chi: duyệt rồi ghi nhận chi ngay. Duyệt Chờ Chi: chuyển Chờ chi, chưa thay đổi số dư.</div>
+            </sc-if>
+            <sc-if value="{{ m.hasReason }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:12.5px;font-weight:700">{{ m.reasonTitle }}</div>
+              <textarea value="{{ reason }}" onChange="{{ setReason }}" rows="3" placeholder="Lý do bắt buộc…" style="border:1px solid #e7e3da;border-radius:8px;padding:9px;font-size:12.5px;resize:vertical"></textarea>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button onClick="{{ cancelReason }}" style="background:#fff;border:1px solid #e7e3da;border-radius:9px;padding:9px;font-weight:600;font-size:12.5px;color:#514c42">Quay lại</button><button onClick="{{ confirmReason }}" disabled="{{ m.reasonDisabled }}" style="background:#d6453f;color:#fff;border:0;border-radius:9px;padding:9px;font-weight:600;font-size:12.5px;opacity:{{ m.reasonOpacity }}">Gửi</button></div>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{ m.stepApproved }}" hint-placeholder-val="{{ false }}">
+            <sc-if value="{{ m.notPaying }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ startPay }}" style="background:#1f7a52;color:#fff;border:0;border-radius:9px;padding:11px;font-weight:600;font-size:13px">Ghi nhận chi {{ m.amountLabel }}</button>
+              <div style="font-size:11.5px;color:#8d8678">Đã duyệt. Chi một lần đủ số tiền phiếu, sau đó đính kèm chứng từ.</div>
+            </sc-if>
+            <sc-if value="{{ m.paying }}" hint-placeholder-val="{{ false }}">
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#8d8678">Sổ chi<select value="{{ payBook }}" onChange="{{ setPayBook }}" style="border:1px solid #e7e3da;border-radius:8px;padding:8px 9px;font-size:12.5px;color:#1b1813;background:#fff"><option>Sổ ngân hàng mẫu</option><option>Sổ tiền mặt mẫu</option></select></label>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:#8d8678">Ngày chi<input type="date" value="{{ payDate }}" onChange="{{ setPayDate }}" style="border:1px solid #e7e3da;border-radius:8px;padding:7px 9px;font-size:12.5px;color:#1b1813;font-family:'Space Mono',monospace"></label>
+              <div style="padding:10px;background:#faf8f4;border-radius:8px;text-align:center;font-size:11.5px;color:#8d8678"><div style="width:84px;height:84px;margin:0 auto 6px;background:repeating-linear-gradient(45deg,#e7e3da 0 4px,#fff 4px 8px);border:1px solid #e7e3da;border-radius:6px"></div>QR chuyển khoản mô phỏng · {{ m.recipient }}</div>
+              <div>
+                <div style="font-size:11.5px;color:#8d8678;margin-bottom:6px">Ảnh chuyển khoản</div>
+                <sc-if value="{{ m.noProofFile }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:grid;gap:6px;padding:12px;border:1px dashed #d2e8da;border-radius:9px;background:#f7fbf8;text-align:center">
+                    <div style="font-size:11.5px;color:#8d8678">Tải ảnh hoặc dán ảnh chuyển khoản</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                      <label style="background:#1f7a52;color:#fff;border-radius:8px;padding:8px;font-weight:600;font-size:12px;cursor:pointer">Tải ảnh lên<input type="file" accept="image/*" onChange="{{ pickProof }}" style="display:none"></label>
+                      <button onClick="{{ pasteProof }}" style="background:#fff;border:1px solid #e7e3da;border-radius:8px;padding:8px;font-weight:600;font-size:12px;color:#514c42">Dán ảnh</button>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ m.hasProofFile }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:9px;padding:9px 10px;border:1px solid #bfe6cd;border-radius:9px;background:#e6f5ec">
+                    <span style="width:34px;height:34px;border-radius:6px;background:repeating-linear-gradient(45deg,#cfe7d8 0 4px,#fff 4px 8px);flex-shrink:0"></span>
+                    <span style="min-width:0;flex:1"><span style="display:block;font-size:12px;font-weight:600;color:#1a6645;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.proofName }}</span><span style="font-size:11px;color:#1f7a52">Đã đính kèm chứng từ chuyển khoản</span></span>
+                    <button onClick="{{ clearProof }}" aria-label="Bỏ ảnh" style="background:none;border:0;color:#1a6645;font-size:15px;line-height:1;padding:2px 4px">×</button>
+                  </div>
+                </sc-if>
+              </div>
+              <button onClick="{{ confirmPay }}" disabled="{{ m.payDisabled }}" style="background:#1f7a52;color:#fff;border:0;border-radius:9px;padding:11px;font-weight:600;font-size:13px;opacity:{{ m.payOpacity }}">Xác nhận đã chi đủ {{ m.amountLabel }}</button>
+              <button onClick="{{ cancelPay }}" style="background:none;border:0;font-size:12px;font-weight:600;color:#8d8678;padding:4px">Chưa chi, quay lại</button>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{ m.stepPaid }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:10px 12px;background:#e6f5ec;border:1px solid #bfe6cd;border-radius:8px;font-size:12px;color:#1a8a4c;font-weight:600">Đã chi đủ ngày {{ m.paidDate }}. Không có nút chi lại.</div>
+          </sc-if>
+          <sc-if value="{{ m.stepCancelled }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:10px 12px;background:#f0ede6;border-radius:8px;font-size:12px;color:#514c42"><b style="font-weight:700">Đã từ chối.</b> {{ m.cancelReason }}</div>
+          </sc-if>
+          <sc-if value="{{ m.feedback }}" hint-placeholder-val="{{ false }}"><div role="status" style="padding:9px 11px;background:#e8f3ec;color:#1a6645;border-radius:8px;font-size:12px">{{ m.feedback }}</div></sc-if>
+        </div>
+      </div>
+    </div>
+    <div style="padding:10px 22px;border-top:1px solid #e7e3da;font-size:11.5px;color:#8d8678">Dữ liệu mẫu · Chỉ duyệt/chi phiếu đang mở. Hợp đồng khác trong timeline dùng để đối chiếu.</div>
+  </div>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;demoState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;normal&quot;,&quot;loading&quot;,&quot;empty&quot;,&quot;error&quot;,&quot;noperm&quot;],&quot;default&quot;:&quot;normal&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Trạng thái dữ liệu&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;comfortable&quot;,&quot;compact&quot;],&quot;default&quot;:&quot;comfortable&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Bảng&quot;}}">
+const money=n=>new Intl.NumberFormat('vi-VN').format(n)+' đ';
+const compact=n=>n>=1e6?new Intl.NumberFormat('vi-VN',{maximumFractionDigits:2}).format(n/1e6)+' tr':money(n);
+const date=s=>s?s.split('-').reverse().join('/'):'—';
+const S={review:{l:'Cần rà soát',bg:'#fcebe9',fg:'#d6453f'},pending:{l:'Chờ duyệt',bg:'#fbf1da',fg:'#c97a10'},approved:{l:'Đã duyệt · chờ chi',bg:'#e8f3ec',fg:'#1f7a52'},paid:{l:'Đã chi',bg:'#e6f5ec',fg:'#1f9d57'},cancelled:{l:'Đã từ chối',bg:'#f0ede6',fg:'#8d8678'}};
+const K={refund:'Hoàn khách',commission:'Hoa hồng',bonus:'Thưởng sale',electric:'Điện',water:'Nước',rent:'Tiền nhà',internet:'Internet'};
+const EV={sign:'Ký mới',renew:'Gia hạn',terminate:'Thanh lý',forfeit:'Bỏ cọc',reserve:'Giữ chỗ'};
+const ACT={review:'Rà soát',pending:'Duyệt và Chi',approved:'Chi tiền',paid:'Xem phiếu',cancelled:'Xem lý do'};
+const seed=[
+['p01','refund','417LVT','204','Nguyễn Minh An','Nguyễn Minh An',3037500,'pending','2026-09-13','HD-M0364','Thanh lý','contract',''],
+['p02','refund','158PVC','403','Trần Thu Hà','Trần Thu Hà',3293500,'approved','2026-09-12','HD-M0360','Thanh lý','contract',''],
+['p03','commission','331PH','303','Lê Hoàng Nam','Môi giới Minh Anh',2640000,'review','2026-09-17','HD-M0375','Ký mới','contract','Phiếu đề nghị 2.640.000 đ nhưng căn cứ hiện có là 2.400.000 đ (chênh 240.000 đ). Đối chiếu bậc hoa hồng trước khi lập phiếu.'],
+['p04','bonus','80DS3','104','Đặng Gia Hân','Sale Thanh Hương',500000,'pending','2026-09-16','GC-M0128','Giữ chỗ → ký mới','reservation',''],
+['p05','refund','417LVT','104','Phạm Ngọc Mai','Phạm Ngọc Mai',2111000,'approved','2026-08-28','HD-M0311','Thanh lý','contract',''],
+['p06','commission','417LVT','204','Nguyễn Minh An','Môi giới Minh Anh',1950000,'pending','2026-09-16','HD-M0373','Ký mới','contract',''],
+['p07','refund','80DS3','301','Trần Minh Khoa','Trần Minh Khoa',1500000,'review','2026-09-15','GC-M0121','Kết thúc giữ chỗ','reservation','Chưa có tài khoản ngân hàng của khách.'],
+['p08','bonus','158PVC','201','Lý An Nhiên','Sale Hoàng Long',300000,'approved','2026-09-11','HD-M0358','Ký mới','contract',''],
+['p09','commission','80DS3','301','Võ Tuấn Kiệt','Môi giới Quang Huy',2280000,'approved','2026-08-24','HD-M0307','Ký mới','contract',''],
+['p10','refund','331PH','102','Bùi Thảo Vy','Bùi Thảo Vy',2850000,'paid','2026-09-09','HD-M0338','Thanh lý','contract',''],
+['p11','bonus','417LVT','302','Nguyễn Quỳnh Chi','Sale Thanh Hương',500000,'paid','2026-09-08','HD-M0341','Ký mới','contract',''],
+['p12','commission','158PVC','205','Trần Bảo Ngọc','Môi giới Quang Huy',2220000,'paid','2026-08-30','HD-M0322','Ký mới','contract',''],
+['o01','electric','417LVT','Toàn tòa','Điện kỳ 09/2026','Điện lực · mẫu',12450000,'approved','2026-09-15','VH-M0901','Điện tháng 9','ops',''],
+['o02','water','80DS3','Toàn tòa','Nước kỳ 09/2026','Cấp nước · mẫu',3250000,'pending','2026-09-16','VH-M0902','Nước tháng 9','ops',''],
+['o03','rent','158PVC','Toàn tòa','Thuê nhà kỳ 09/2026','Chủ nhà · mẫu',48000000,'approved','2026-09-01','VH-M0903','Tiền nhà tháng 9','ops',''],
+['o04','internet','331PH','Toàn tòa','Internet kỳ 09/2026','Nhà mạng · mẫu',650000,'paid','2026-09-05','VH-M0904','Internet tháng 9','ops','']];
+const mkRows=()=>seed.map((a,i)=>({id:a[0],kind:a[1],building:a[2],room:a[3],customer:a[4],recipient:a[5],amount:a[6],status:a[7],eventDate:a[8],source:a[9],event:a[10],origin:a[11],issue:a[12],code:a[7]==='review'?null:'PC-M'+(i+101),bank:a[0]==='p07'?'':'Ngân hàng mẫu',account:a[0]==='p07'?'':'DEMO-••••-0248',staff:['Thanh Hương','Hoàng Long'][i%2],paidDate:a[7]==='paid'?'2026-09-18':null,proof:a[7]==='paid'?'Chứng từ mẫu':null,book:a[7]==='paid'?'Sổ ngân hàng mẫu':null,cancelReason:'',logs:[{text:'Hồ sơ phát sinh · '+a[10],when:date(a[8])},...(a[7]==='approved'||a[7]==='paid'?[{text:'Chủ doanh nghiệp mẫu đã duyệt',when:'18/09/2026'}]:[]),...(a[7]==='paid'?[{text:'Kế toán mẫu đã ghi nhận chi',when:'18/09/2026'}]:[])]}));
+const events=[
+{id:'e01',type:'sign',date:'2026-09-17',building:'331PH',room:'303',customer:'Lê Hoàng Nam',source:'HD-M0375',origin:'contract',staff:'Hoàng Long',description:'Ký hợp đồng 12 tháng · tiền thuê 4.000.000 đ/tháng',links:['p03']},
+{id:'e02',type:'sign',date:'2026-09-16',building:'417LVT',room:'204',customer:'Nguyễn Minh An',source:'HD-M0373',origin:'contract',staff:'Thanh Hương',description:'Ký hợp đồng 6 tháng · tiền thuê 3.900.000 đ/tháng',links:['p06']},
+{id:'e03',type:'sign',date:'2026-09-16',building:'80DS3',room:'104',customer:'Đặng Gia Hân',source:'HD-M0374',origin:'contract',staff:'Thanh Hương',description:'Chuyển từ GC-M0128 · thưởng đã có từ giữ chỗ, không lập lại',links:['p04']},
+{id:'e04',type:'forfeit',date:'2026-09-15',building:'80DS3',room:'301',customer:'Trần Minh Khoa',source:'GC-M0121',origin:'reservation',staff:'Hoàng Long',description:'Cọc giữ chỗ 2.000.000 đ · giữ lại 500.000 đ · hoàn 1.500.000 đ',links:['p07']},
+{id:'e05',type:'renew',date:'2026-09-14',building:'158PVC',room:'302',customer:'Ngô Thanh Bình',source:'HD-M0195',origin:'contract',staff:'Thanh Hương',description:'Gia hạn thêm 6 tháng · giá thuê giữ nguyên 3.600.000 đ/tháng',links:[]},
+{id:'e06',type:'terminate',date:'2026-09-13',building:'417LVT',room:'204',customer:'Nguyễn Minh An',source:'HD-M0364',origin:'contract',staff:'Thanh Hương',description:'Thanh lý hợp đồng cũ · cọc thực thu 4.200.000 đ, khấu trừ 1.162.500 đ',links:['p01']},
+{id:'e07',type:'terminate',date:'2026-09-12',building:'158PVC',room:'403',customer:'Trần Thu Hà',source:'HD-M0360',origin:'contract',staff:'Hoàng Long',description:'Trả phòng đúng hạn · hoàn khách 3.293.500 đ',links:['p02']},
+{id:'e08',type:'reserve',date:'2026-09-12',building:'80DS3',room:'104',customer:'Đặng Gia Hân',source:'GC-M0128',origin:'reservation',staff:'Thanh Hương',description:'Đã nhận cọc giữ chỗ · phát sinh thưởng sale 500.000 đ',links:['p04']},
+{id:'e09',type:'sign',date:'2026-09-11',building:'158PVC',room:'201',customer:'Lý An Nhiên',source:'HD-M0358',origin:'contract',staff:'Hoàng Long',description:'Ký hợp đồng 12 tháng · thưởng sale 300.000 đ',links:['p08']},
+{id:'e10',type:'forfeit',date:'2026-09-10',building:'331PH',room:'405',customer:'Đỗ Hải Đăng',source:'HD-M0235',origin:'contract',staff:'Hoàng Long',description:'Kết thúc hợp đồng sớm · giữ cọc 3.500.000 đ · không phát sinh hoàn',links:[]},
+{id:'e11',type:'terminate',date:'2026-09-09',building:'331PH',room:'102',customer:'Bùi Thảo Vy',source:'HD-M0338',origin:'contract',staff:'Thanh Hương',description:'Đã thanh lý và hoàn đủ 2.850.000 đ',links:['p10']},
+{id:'e12',type:'renew',date:'2026-09-02',building:'158PVC',room:'302',customer:'Ngô Thanh Bình',source:'HD-M0195',origin:'contract',staff:'Thanh Hương',description:'Xác nhận điều chỉnh kỳ gia hạn · lưu thành sự kiện riêng',links:[]},
+{id:'e13',type:'terminate',date:'2026-08-28',building:'417LVT',room:'104',customer:'Phạm Ngọc Mai',source:'HD-M0311',origin:'contract',staff:'Thanh Hương',description:'Thanh lý tháng 8 · vẫn còn khoản chờ chi',links:['p05']},
+{id:'e14',type:'sign',date:'2026-08-24',building:'80DS3',room:'301',customer:'Võ Tuấn Kiệt',source:'HD-M0307',origin:'contract',staff:'Hoàng Long',description:'Ký mới tháng 8 · hoa hồng đang chờ chi',links:['p09']}];
+const C={
+'HD-M0364':{customer:'Nguyễn Minh An',signed:'2025-10-01',start:'2025-10-01',end:'2026-09-30',collected:'2025-10-01',deposit:4200000,rent:4200000,otherPaid:46200000,debt:0,terminated:'2026-09-13',refund:3037500,receipt:'PT-M0734'},
+'HD-M0373':{customer:'Nguyễn Minh An',signed:'2026-09-16',start:'2026-09-16',end:'2027-03-15',collected:'2026-09-16',deposit:3900000,rent:3900000,otherPaid:3900000,debt:0,receipt:'PT-M0908'},
+'HD-M0360':{customer:'Trần Thu Hà',signed:'2025-09-15',start:'2025-09-15',end:'2026-09-14',collected:'2025-09-15',deposit:3700000,rent:3700000,otherPaid:44400000,debt:0,terminated:'2026-09-12',refund:3293500,receipt:'PT-M0150'},
+'HD-M0381':{customer:'Đinh Bảo Ngọc',signed:'2026-09-16',start:'2026-09-18',end:'2027-09-17',collected:'2026-09-16',deposit:3800000,rent:3800000,otherPaid:3800000,debt:0,receipt:'PT-M0931'},
+'HD-M0311':{customer:'Phạm Ngọc Mai',signed:'2025-08-29',start:'2025-09-01',end:'2026-08-31',collected:'2025-09-01',deposit:3300000,rent:3300000,otherPaid:39600000,debt:0,terminated:'2026-08-28',refund:2111000,receipt:'PT-M0094'},
+'HD-M0338':{customer:'Bùi Thảo Vy',signed:'2025-09-08',start:'2025-09-10',end:'2026-09-09',collected:'2025-09-10',deposit:3400000,rent:3400000,otherPaid:40800000,debt:0,terminated:'2026-09-09',refund:2850000,receipt:'PT-M0130'},
+'HD-M0384':{customer:'Đào Ngọc Linh',signed:'2026-09-19',start:'2026-09-19',end:'2027-09-18',collected:'2026-09-19',deposit:3500000,rent:3500000,otherPaid:3500000,debt:0,receipt:'PT-M0942'},
+'HD-M0296':{customer:'Trần Đức Huy',signed:'2025-08-01',start:'2025-08-01',end:'2026-09-15',collected:'2025-08-01',deposit:3800000,rent:3800000,otherPaid:49400000,debt:0,terminated:'2026-09-10',refund:3200000,refundPaid:3200000,refundPaidDate:'2026-09-11',receipt:'PT-M0068'},
+'HD-M0375':{customer:'Lê Hoàng Nam',signed:'2026-09-17',start:'2026-09-17',end:'2027-09-16',collected:'2026-09-17',deposit:4000000,rent:4000000,otherPaid:4000000,debt:0,receipt:'PT-M0912'},
+'HD-M0278':{customer:'Nguyễn Phương Thảo',signed:'2025-08-20',start:'2025-08-20',end:'2026-08-19',collected:'2025-08-20',deposit:3600000,rent:3600000,otherPaid:43200000,debt:0,terminated:'2026-08-19',refund:3000000,refundPaid:3000000,refundPaidDate:'2026-08-20',receipt:'PT-M0081'},
+'HD-M0307':{customer:'Võ Tuấn Kiệt',signed:'2026-08-24',start:'2026-08-24',end:'2027-02-23',collected:'2026-08-24',deposit:3800000,rent:3800000,otherPaid:7200000,debt:400000,receipt:'PT-M0838'},
+'HD-M0290':{customer:'Lưu Thị Hồng',signed:'2025-08-27',start:'2025-09-01',end:'2026-08-31',collected:'2025-09-01',deposit:3500000,rent:3500000,otherPaid:42000000,debt:0,terminated:'2026-08-26',refund:3100000,refundPaid:3100000,refundPaidDate:'2026-08-28',receipt:'PT-M0090'},
+'HD-M0322':{customer:'Trần Bảo Ngọc',signed:'2026-08-30',start:'2026-09-01',end:'2027-08-31',collected:'2026-08-30',deposit:3700000,rent:3700000,otherPaid:3700000,debt:0,terminated:'2026-09-18',refund:3000000,refundPaid:3000000,refundPaidDate:'2026-09-19',receipt:'PT-M0857'},
+'HD-M0390':{customer:'Vũ Thanh Tâm',signed:'2026-09-19',start:'2026-09-19',end:'2027-09-18',collected:'2026-09-19',deposit:3900000,rent:3900000,otherPaid:3900000,debt:0,receipt:'PT-M0950'},
+'HD-M0358':{customer:'Lý An Nhiên',signed:'2026-09-11',start:'2026-09-11',end:'2027-09-10',collected:'2026-09-11',deposit:3600000,rent:3600000,otherPaid:3600000,debt:0,receipt:'PT-M0889'},
+'HD-M0341':{customer:'Nguyễn Quỳnh Chi',signed:'2026-09-08',start:'2026-09-08',end:'2027-09-07',collected:'2026-09-08',deposit:3500000,rent:3500000,otherPaid:3500000,debt:0,receipt:'PT-M0871'},
+'HD-M0374':{customer:'Đặng Gia Hân',signed:'2026-09-16',start:'2026-09-16',end:'2027-09-15',collected:'2026-09-12',deposit:2000000,rent:3400000,otherPaid:3400000,debt:0,receipt:'PT-M0899'},
+'HD-M0195':{customer:'Ngô Thanh Bình',signed:'2025-09-14',start:'2025-09-15',end:'2027-03-14',collected:'2025-09-15',deposit:3600000,rent:3600000,otherPaid:43200000,debt:0,receipt:'PT-M0142'},
+'HD-M0235':{customer:'Đỗ Hải Đăng',signed:'2025-07-01',start:'2025-07-01',end:'2026-06-30',collected:'2025-07-01',deposit:3500000,rent:3500000,otherPaid:42000000,debt:0,terminated:'2026-09-10',refund:0,receipt:'PT-M0051'}};
+const EVC={e01:['HD-M0296','HD-M0375'],e02:['HD-M0364','HD-M0373'],e03:['HD-M0374'],e05:['HD-M0195'],e06:['HD-M0364','HD-M0373'],e07:['HD-M0360','HD-M0381'],e09:['HD-M0358'],e10:['HD-M0235'],e11:['HD-M0338','HD-M0384'],e12:['HD-M0195'],e13:['HD-M0311'],e14:['HD-M0278','HD-M0307']};
+const cycles={p01:['HD-M0364','HD-M0373'],p02:['HD-M0360','HD-M0381'],p03:['HD-M0296','HD-M0375'],p05:['HD-M0311'],p06:['HD-M0364','HD-M0373'],p09:['HD-M0278','HD-M0307'],p10:['HD-M0338','HD-M0384'],p12:['HD-M0290','HD-M0322','HD-M0390']};
+const refundDetail={p01:{deductions:[['Tiền điện cuối kỳ',962500],['Vệ sinh',200000]]},p02:{deductions:[['Tiền điện cuối kỳ',406500]]},p05:{deductions:[['Tiền điện cuối kỳ',889000],['Sửa khóa cửa',300000]]},p10:{deductions:[['Tiền điện cuối kỳ',550000]]}};
+const tier={p03:.6,p06:.5,p09:.6,p12:.6};
+const FEE={overview:{label:'Tổng quan kỳ',sub:'Còn thiếu phiếu · khớp Báo cáo Lợi Nhuận',icon:'▦',accent:'#514c42'},
+hop_dong:{label:'Hợp đồng & quyết toán',sub:'hoa hồng môi giới · thanh lý hoàn khách · thưởng sale',icon:'◧',accent:'#1f7a52'},
+dien_nuoc:{label:'Điện & Nước',sub:'chi cho EVN / cấp nước theo từng tòa',icon:'⚡',accent:'#d98c1f'},
+tien_nha:{label:'Tiền nhà',sub:'chi trả chủ tòa theo kỳ',icon:'⌂',accent:'#1f7a52'},
+internet:{label:'Internet',sub:'thường trả trước theo quý / năm',icon:'⌁',accent:'#2f74d0'},
+quan_ly:{label:'Quản Lý',sub:'hạng mục hạn chế',icon:'▤',accent:'#7c5cc4',restricted:true},
+ve_sinh:{label:'Vệ sinh định kỳ',sub:'vệ sinh tòa nhà định kỳ',icon:'✿',accent:'#1f9d57'},
+cong_an:{label:'Công An',sub:'thường trả trước nhiều kỳ',icon:'⚑',accent:'#c0392b'},
+rac:{label:'Rác',sub:'thu gom rác định kỳ',icon:'⌫',accent:'#8a6111'},
+thang_may:{label:'Thang máy',sub:'chỉ tòa có thang máy',icon:'⇅',accent:'#2b5aa0'},
+bao_tri:{label:'Bảo trì máy lạnh / máy giặt',sub:'phiếu tổng theo nhà cung cấp',icon:'✂',accent:'#1a6645'},
+coc_da_thu:{label:'Cọc đã thu',sub:'phiếu thu cọc trong kỳ · két thật vs sổ ảo',icon:'◎',accent:'#00695c'}};
+const MENU=[{label:'Hợp đồng & quyết toán',keys:['hop_dong']},{label:'Phí theo tòa',keys:['dien_nuoc','tien_nha','internet','quan_ly','ve_sinh','cong_an','rac','thang_may']},{label:'Bảo trì',keys:['bao_tri']},{label:'Cọc',keys:['coc_da_thu']}];
+const OV=[{key:'hop_dong',paid:17,total:48,draft:'31 chờ duyệt',chips:['331PHI','417LVT','80DS3','102LVT','403PVB','111PVC','162NVK','950NK','405PVB','65NTG','44TL','512TT','32PVC'],sum:'77.980.000đ'},
+{key:'dien_nuoc',paid:20,total:33,chips:['102LVT','111PVC','32PVC','331PHI','44TL','481NVK','65NTG','80DS3','950NK'],sum:'31.760.019đ'},
+{key:'tien_nha',paid:0,total:18,draft:'6 chờ duyệt',chips:['102LVT','111PVC','1392QT','158PVC','15KV','162NVK','32PVC','331PHI','403PVB','405PVB','417LVT','44TL','45/3 Trần Thái Tông','481NVK','512TT','65NTG','80DS3','950NK'],sum:'768.102.000đ'},
+{key:'internet',paid:13,total:18,chips:['102LVT','44TL','45/3 Trần Thái Tông','481NVK','950NK'],sum:'350.000đ'},
+{key:'quan_ly',paid:14,total:18,chips:['44TL','45/3 Trần Thái Tông','481NVK','950NK'],sum:'0đ'},
+{key:'ve_sinh',paid:17,total:18,chips:['481NVK'],sum:'0đ'},
+{key:'cong_an',paid:7,total:18,chips:['111PVC','1392QT','15KV','331PHI','403PVB','405PVB','44TL','45/3 Trần Thái Tông','481NVK','512TT','950NK'],sum:'3.007.000đ'},
+{key:'rac',paid:16,total:18,chips:['45/3 Trần Thái Tông','481NVK'],sum:'60.000đ'},
+{key:'thang_may',paid:5,total:7,chips:['102LVT','950NK'],sum:'600.000đ'},
+{key:'bao_tri',paid:0,total:2,draft:'2 chờ duyệt',chips:['102LVT','481NVK'],sum:'7.574.550đ'},
+{key:'coc_da_thu',paid:12,total:12,chips:[],sum:'—'}];
+const DUE=Object.fromEntries(OV.map(o=>[o.key,{n:o.chips.length}]));
+const strip=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const defF=()=>({building:'all',q:'',kind:'all',status:'open',month:'all',origin:'all',person:'all',issue:'all',advanced:false});
+class Component extends DCLogic {
+  state={merged:true,areaOpen:false,modalEvId:null,rows:mkRows(),area:'overview',view:'payments',pay:defF(),mov:{...defF(),month:'2026-09'},modalId:null,panelId:null,panelType:null,paying:false,reasonMode:null,reason:'',payBook:'Sổ ngân hàng mẫu',payDate:'2026-09-20',proofName:'',proofChecked:false,confirmChecked:false,bankDraft:'',accountDraft:'',feedback:'',panelFeedback:'',errored:false};
+  componentDidMount(){this._k=e=>{if(e.key==='Escape')this.setState({modalId:null,modalEvId:null,paying:false,reasonMode:null})};window.addEventListener('keydown',this._k)}
+  componentWillUnmount(){window.removeEventListener('keydown',this._k)}
+  f(){return this.state.view==='movements'?this.state.mov:this.state.pay}
+  setF(patch){const k=this.state.view==='movements'?'mov':'pay';this.setState(s=>({[k]:{...s[k],...patch}}))}
+  base(){const f=this.f(),mv=this.state.view==='movements';const all=mv?events:this.state.rows.filter(r=>r.origin!=='ops');const q=strip(f.q);return all.filter(r=>{const d=mv?r.date:(f.status==='paid'?r.paidDate:r.eventDate);return (f.building==='all'||r.building===f.building)&&(!q||strip([r.customer,r.recipient,r.room,r.building,r.source,r.code].join(' ')).includes(q))&&(f.month==='all'||(d||'').startsWith(f.month))&&(f.origin==='all'||r.origin===f.origin)&&(f.person==='all'||(mv?r.staff:r.recipient)===f.person)&&(f.issue==='all'||!!r.issue)})}
+  matchStatus(r,st){return st==='all'?true:st==='open'?['review','pending','approved'].includes(r.status):st==='pendpay'?['pending','approved'].includes(r.status):r.status===st}
+  visible(){const f=this.f(),mv=this.state.view==='movements';return this.base().filter(r=>(f.kind==='all'||(mv?r.type:r.kind)===f.kind)&&(mv||this.matchStatus(r,f.status)))}
+  open(id){this.setState({modalEvId:null,modalId:id,paying:false,reasonMode:null,reason:'',proofName:'',proofChecked:false,confirmChecked:false,feedback:'',bankDraft:'',accountDraft:''})}
+  patch(id,p,log){this.setState(s=>({rows:s.rows.map(r=>r.id===id?{...r,...p,logs:[...r.logs,{text:log,when:'20/09/2026'}]}:r)}))}
+  lanes(r){
+    const isRefund=r.kind==='refund';
+    if(r.origin==='reservation'){
+      const signed=r.kind==='bonus';
+      return [{role:signed?'Giữ chỗ phát sinh thưởng':(isRefund?'Giữ chỗ của phiếu hoàn':'Giữ chỗ'),code:r.source,customer:r.customer,tag:signed?'Đã chuyển hợp đồng':'Chưa ký hợp đồng',tagBg:signed?'#e8f3ec':'#f0ede6',tagFg:signed?'#1f7a52':'#514c42',target:true,
+        steps:signed
+          ?[{h:'Nhận cọc giữ chỗ',v:'12/09/2026',m:'Cọc giữ chỗ 2.000.000 đ · PT-M0899'},{h:'Chuyển ký hợp đồng',v:date(r.eventDate),m:'HD-M0374 · cọc chuyển sang hợp đồng'},{h:'Thưởng sale phát sinh',v:money(r.amount),m:'Ghi nhận tại bước giữ chỗ',m2:'Không lập lại khi ký hợp đồng',m2c:'#1f7a52'},{h:'Phòng hiện tại',v:'Đang thuê',m:'HD-M0374 · '+r.customer}]
+          :[{h:'Nhận cọc giữ chỗ',v:'12/09/2026',m:'Cọc giữ chỗ 2.000.000 đ · PT-M0899'},{h:'Kết thúc giữ chỗ',v:date(r.eventDate),m:'Khách không ký · giữ lại 500.000 đ'},{h:'Quyết toán hoàn',v:money(1500000),m:'Đã hoàn: 0 đ · Còn hoàn: 1.500.000 đ'},{h:'Phòng hiện tại',v:'Trống',m:'Chưa có hợp đồng mới',m2:'Chưa ký hợp đồng',m2c:'#514c42'}]}]}
+    const ids=cycles[r.id]||[r.source];const ti=ids.indexOf(r.source);
+    return ids.map((id,i)=>{const c=C[id];const isT=id===r.source;const last=i===ids.length-1;const cur=last&&!c.terminated;
+      let role=isT?(isRefund?'Hợp đồng của phiếu hoàn':r.kind==='bonus'?'Hợp đồng phát sinh thưởng':'Hợp đồng tính hoa hồng'):i<ti?'Hợp đồng liền trước':'Hợp đồng kế tiếp';
+      let tag=c.terminated?'Đã thanh lý':cur?'HĐ hiện tại':'Đang thuê';
+      const s4=c.terminated?{h:'Thanh lý · '+date(c.terminated),v:'Quyết toán hoàn '+money(c.refund),m:'Nợ sau quyết toán: '+money(c.debt),m2:isT?('Đã hoàn: '+money(r.status==='paid'?r.amount:0)+' · Còn hoàn: '+money(r.status==='paid'?0:r.amount)):('Đã hoàn: '+money(c.refundPaid??0)+(c.refundPaid?' · '+date(c.refundPaidDate):'')),m2c:isT&&r.status!=='paid'?'#c97a10':'#1f9d57'}:{h:'Đến hôm nay · 20/09/2026',v:'Đang thuê',m:'Chưa thanh lý',m2:c.debt?'Nợ còn lại: '+money(c.debt):'Nợ còn lại: 0 đ',m2c:c.debt?'#d6453f':'#1f9d57'};
+      return {role,code:id,customer:c.customer,tag,tagBg:cur?'#e8f3ec':'#f0ede6',tagFg:cur?'#1f7a52':'#514c42',target:isT,border:isT?'#1f7a52':'#e7e3da',shadow:isT?'inset 0 0 0 1px #1f7a52':'none',roleBg:isT?'#e8f3ec':'#f0ede6',roleFg:isT?'#1f7a52':'#8d8678',dot:isT?'#1f7a52':'#b6b0a3',
+        steps:[{h:'Ký hợp đồng',v:date(c.signed),m:'Thời hạn: '+date(c.start)+' – '+date(c.end)},{h:'Cọc đã đóng · thực thu',v:money(c.deposit),m:date(c.collected)+' · '+c.receipt},{h:'Tiền thuê / phí đã đóng',v:money(c.otherPaid),m:'Không gồm cọc · đến '+date(c.terminated||'2026-09-20')},s4]}})
+  }
+  evLanes(e){
+    if(e.origin==='reservation'){const conv=e.links.some(id=>(this.state.rows.find(x=>x.id===id)||{}).kind==='bonus')&&e.type!=='forfeit';
+      return [{role:'Giữ chỗ',code:e.source,customer:e.customer,tag:conv?'Đã chuyển hợp đồng':'Kết thúc giữ chỗ',tagBg:conv?'#e8f3ec':'#f0ede6',tagFg:conv?'#1f7a52':'#514c42',target:true,border:'#1f7a52',shadow:'inset 0 0 0 1px #1f7a52',roleBg:'#e8f3ec',roleFg:'#1f7a52',dot:'#1f7a52',
+        steps:[{h:'Nhận cọc giữ chỗ',v:'12/09/2026',m:'Cọc giữ chỗ 2.000.000 đ · PT-M0899'},{h:EV[e.type],v:date(e.date),m:e.description},{h:'Phát sinh chi',v:e.links.length?'Có':'Không',m:e.links.length?e.links.map(id=>K[(this.state.rows.find(x=>x.id===id)||{}).kind]).join(' · '):'Không phát sinh chi'},{h:'Phòng hiện tại',v:conv?'Đang thuê':'Trống',m:conv?'HD-M0374 · '+e.customer:'Chưa có hợp đồng mới'}]}]}
+    const ids=EVC[e.id]||[e.source],ti=ids.indexOf(e.source);
+    return ids.filter(id=>C[id]).map((id,i)=>{const c=C[id],isT=id===e.source,last=i===ids.length-1,cur=last&&!c.terminated;
+      return {role:isT?'Hợp đồng của biến động':i<ti?'Hợp đồng liền trước':'Hợp đồng kế tiếp',code:id,customer:c.customer,tag:c.terminated?'Đã thanh lý':cur?'HĐ hiện tại':'Đang thuê',tagBg:cur?'#e8f3ec':'#f0ede6',tagFg:cur?'#1f7a52':'#514c42',target:isT,border:isT?'#1f7a52':'#e7e3da',shadow:isT?'inset 0 0 0 1px #1f7a52':'none',roleBg:isT?'#e8f3ec':'#f0ede6',roleFg:isT?'#1f7a52':'#8d8678',dot:isT?'#1f7a52':'#b6b0a3',
+        steps:[{h:'Ký hợp đồng',v:date(c.signed),m:'Thời hạn: '+date(c.start)+' – '+date(c.end)},{h:'Cọc đã đóng · thực thu',v:money(c.deposit),m:date(c.collected)+' · '+c.receipt},{h:'Tiền thuê / phí đã đóng',v:money(c.otherPaid),m:'Không gồm cọc · đến '+date(c.terminated||'2026-09-20')},
+          c.terminated?{h:'Thanh lý · '+date(c.terminated),v:c.refund?'Quyết toán hoàn '+money(c.refund):'Không phát sinh hoàn',m:'Nợ sau quyết toán: '+money(c.debt),m2:c.refund?'Đã hoàn: '+money(c.refundPaid??0)+(c.refundPaid?' · '+date(c.refundPaidDate):' · còn hoàn '+money(c.refund-(c.refundPaid??0))):'Giữ cọc theo thỏa thuận',m2c:c.refund&&!c.refundPaid?'#c97a10':'#1f9d57'}
+            :{h:'Đến hôm nay · 20/09/2026',v:'Đang thuê',m:'Chưa thanh lý',m2:'Nợ còn lại: '+money(c.debt),m2c:c.debt?'#d6453f':'#1f9d57'}]}})
+  }
+  eventModal(){
+    const s=this.state,e=events.find(x=>x.id===s.modalEvId);if(!e)return null;const mono="'Space Mono',monospace";
+    const links=e.links.map(id=>s.rows.find(r=>r.id===id)).filter(Boolean);
+    const total=links.reduce((a,r)=>a+r.amount,0),paid=links.filter(r=>r.status==='paid').reduce((a,r)=>a+r.amount,0);
+    const lanes=this.evLanes(e),ids=EVC[e.id]||[e.source],lastC=C[ids[ids.length-1]];
+    const kv=(k,v,o={})=>({k,v,pad:'5px 0',fs:'12.5px',bt:o.top?'1px solid #e7e3da':'0',kc:'#514c42',kw:o.strong?700:400,vw:o.strong?700:500,vc:'#1b1813'});
+    const c=C[e.source];
+    return {isEvent:true,isVoucher:false,codeLine:e.id.toUpperCase()+' · '+e.source,kindLabel:EV[e.type],roomLabel:e.building+' · '+e.room,
+      statusBg:'#f0ede6',statusFg:'#514c42',statusLabel:e.origin==='reservation'?'Giữ chỗ':'Hợp đồng',customer:e.customer,recipient:e.staff,personLabel:'Người phụ trách',sourceLabel:e.origin==='reservation'?'Phiếu giữ chỗ':'Hợp đồng',noteTitle:'Ghi chú biến động',
+      amountCaption:links.length?'Chi phát sinh từ biến động':'Không phát sinh chi',amountLabel:links.length?money(total):'0 đ',
+      lifecycleHint:'Toàn bộ vòng đời hợp đồng liên quan tới biến động này',lanes,
+      nowLine:e.origin==='reservation'?(links.some(r=>r.kind==='bonus')?'đang thuê · HD-M0374 · '+e.customer:'trống · chưa ký hợp đồng'):lastC&&lastC.terminated?'trống từ '+date(lastC.terminated):'đang thuê · '+ids[ids.length-1]+' · '+(lastC?lastC.customer:e.customer),
+      source:e.source,notesTitle:'Ghi chú biến động '+EV[e.type].toLowerCase(),
+      headLines:[{k:'Biến động',v:EV[e.type]+' · '+date(e.date)},{k:'Nguồn',v:e.source+' · '+(e.origin==='reservation'?'Giữ chỗ':'Hợp đồng')},{k:'Phòng · khách',v:e.building+'/'+e.room+' · '+e.customer},{k:'Người phụ trách',v:e.staff},{k:'Mô tả',v:e.description}],
+      sheetTitle:'Số liệu hợp đồng tại thời điểm biến động',
+      sheet:c?[kv('Cọc thực thu · '+c.receipt,money(c.deposit)),kv('Giá phòng',money(c.rent)+'/tháng'),kv('Tiền thuê / phí đã thu',money(c.otherPaid)),kv('Nợ còn lại',money(c.debt)),kv('Tình trạng',c.terminated?'Đã thanh lý '+date(c.terminated):'Đang hiệu lực',{top:true,strong:true})]
+        :[kv('Cọc giữ chỗ',money(2000000)),kv('Phiếu thu','PT-M0899'),kv('Tình trạng',EV[e.type],{top:true,strong:true})],
+      totalLabel:links.length?'Khoản chi phát sinh':'Không phát sinh khoản chi',totalSub:links.length?links.length+' phiếu · đã chi '+money(paid):'Biến động này không kéo theo phiếu chi nào',totalValue:links.length?money(total):'0 đ',
+      totalBg:links.length?'#e8f3ec':'#faf8f4',totalBorder:links.length?'#1f7a52':'#e7e3da',totalFg:links.length?'#1a6645':'#514c42',
+      payout:[{k:'Đã chi',v:money(paid),c:'#1b1813'},{k:'Còn phải chi',v:money(total-paid),c:total-paid?'#c97a10':'#1f9d57'},{k:'Số phiếu',v:String(links.length),c:'#1b1813'}],
+      rawNote:e.description+'.',hasLinks:links.length>0,noLinks:!links.length,
+      links:links.map(r=>({kindLabel:K[r.kind],recipient:r.recipient,statusLabel:S[r.status].l,amountLabel:money(r.amount),onOpen:()=>this.setState({modalEvId:null,modalId:r.id,paying:false,reasonMode:null,feedback:''})})),
+      recipientKv:[],logs:[{text:'Ghi nhận biến động · '+EV[e.type],when:date(e.date)},{text:'Người phụ trách: '+e.staff,when:date(e.date)}],
+      hasProof:false,noProof:false,stepReview:false,stepPending:false,stepApproved:false,stepPaid:false,stepCancelled:false,feedback:''};
+  }
+  modal(){
+    const s=this.state;if(s.modalEvId)return this.eventModal();
+    const r=s.rows.find(x=>x.id===s.modalId);if(!r)return null;
+    const st=S[r.status],isRefund=r.kind==='refund',c=C[r.source];
+    const lanes=this.lanes(r).map(l=>({...l,border:l.border||(l.target?'#1f7a52':'#e7e3da'),shadow:l.shadow||(l.target?'inset 0 0 0 1px #1f7a52':'none'),roleBg:l.roleBg||'#e8f3ec',roleFg:l.roleFg||'#1f7a52',dot:l.dot||'#1f7a52'}));
+    const ids=cycles[r.id]||[r.source];const lastC=C[ids[ids.length-1]];
+    const nowLine=r.origin==='reservation'?(r.kind==='bonus'?'đang thuê · HD-M0374 · '+r.customer:'trống · chưa ký hợp đồng'):lastC.terminated?'trống từ '+date(lastC.terminated):'đang thuê · '+ids[ids.length-1]+' · '+lastC.customer;
+    const paid=r.status==='paid';
+    let headLines,sheet,totalLabel,totalSub,totalValue,totalBg,totalBorder,totalFg,sheetTitle,notesTitle,rawNote;
+    const kv=(k,v,o={})=>({k,v,pad:o.sub?'2px 0 2px 12px':'5px 0',fs:o.sub?'11.5px':'12.5px',bt:o.top?'1px solid #e7e3da':'0',kc:o.sub?'#8d8678':o.strong?'#1b1813':'#514c42',kw:o.strong?700:400,vw:o.strong?700:500,vc:o.red?'#d6453f':'#1b1813'});
+    if(isRefund){
+      notesTitle=r.origin==='reservation'?'Ghi chú phiếu hoàn cọc giữ chỗ':'Ghi chú phiếu hoàn khách thanh lý';
+      const dep=r.origin==='reservation'?2000000:c.deposit;const ded=r.origin==='reservation'?[['Giữ lại theo thỏa thuận giữ chỗ',500000]]:(refundDetail[r.id]||{deductions:[['Khấu trừ khi trả phòng',dep-r.amount]]}).deductions;const tot=ded.reduce((a,b)=>a+b[1],0);
+      headLines=[{k:'Phiếu',v:(r.code||'Chưa lập phiếu')+' · '+(r.origin==='reservation'?'HOÀN CỌC GIỮ CHỖ':'HOÀN KHÁCH THANH LÝ')},{k:'Quyết toán ngày',v:date(r.eventDate)+' · '+r.source},{k:'Phòng · khách',v:r.building+'/'+r.room+' · '+r.customer},{k:r.origin==='reservation'?'Giữ chỗ':'Thuê',v:r.origin==='reservation'?'Nhận cọc 12/09/2026 · không ký hợp đồng':'từ '+date(c.start)+' · kết thúc thực tế '+date(c.terminated)},{k:'Cọc đã thu',v:money(dep)+' · '+(r.origin==='reservation'?'PT-M0899':c.receipt)}];
+      sheetTitle='Tổng hợp quyết toán';
+      sheet=[kv('Tiền cọc hoàn trả',money(dep)),kv('Công nợ trước cấn cọc','0 đ'),kv('Tiền phòng thừa','0 đ'),kv('Hoàn tiền thừa khác','0 đ'),kv('Thu thêm khi trả phòng',money(tot),{red:true}),...ded.map(d=>kv(d[0],money(d[1]),{sub:true})),kv('Cọc cấn vào khấu trừ',money(tot)),kv('Tổng khấu trừ','– '+money(tot),{top:true,strong:true,red:true})];
+      totalLabel='Chủ nhà trả lại khách';totalSub='Số tiền quyết toán';totalValue=money(r.amount);totalBg='#e8f3ec';totalBorder='#1f7a52';totalFg='#1a6645';
+      rawNote=r.origin==='reservation'?'Khách không ký hợp đồng sau giữ chỗ. Giữ lại 500.000 đ theo thỏa thuận, hoàn 1.500.000 đ. Chưa có tài khoản nhận tiền nên chưa lập phiếu.':'Đã chốt công nợ và bàn giao phòng ngày '+date(c.terminated)+'. Thu thêm '+money(tot)+' được cấn từ cọc, không thu thêm một lần nữa. Hoàn '+money(r.amount)+' cho khách của '+r.source+'. Hợp đồng kế tiếp chỉ dùng để đối chiếu lịch sử phòng.';
+    } else if(r.kind==='bonus'){
+      notesTitle='Ghi chú và căn cứ thưởng sale';
+      const resv=r.origin==='reservation';
+      headLines=[{k:'Phiếu',v:(r.code||'Chưa lập phiếu')+' · THƯỞNG SALE'},{k:'Căn cứ',v:r.source+' · '+r.event},{k:'Phòng · khách',v:r.building+'/'+r.room+' · '+r.customer},{k:'Người nhận',v:r.recipient},{k:'Ngày phát sinh',v:date(r.eventDate)}];
+      sheetTitle='Căn cứ tính thưởng';
+      sheet=resv
+        ?[kv('Cọc giữ chỗ đã thu',money(2000000)),kv('Mức thưởng giữ chỗ chuyển ký',money(r.amount)),kv('Đã ghi nhận tại','Bước giữ chỗ '+r.source,{sub:true}),kv('Thưởng lặp khi ký hợp đồng','0 đ',{top:true,strong:true})]
+        :[kv('Cọc thực thu · '+c.receipt,money(c.deposit)),kv('Giá phòng',money(c.rent)+'/tháng'),kv('Mức thưởng cố định theo hợp đồng ký mới',money(r.amount),{top:true,strong:true}),kv('Điều kiện thời gian','Đủ 7 ngày từ '+date(c.start))];
+      totalLabel='Số tiền thưởng';totalSub=resv?'Liên kết một khoản duy nhất giữa giữ chỗ và hợp đồng':'Mức cố định, không phụ thuộc bậc hoa hồng';totalValue=money(r.amount);totalBg='#e8f3ec';totalBorder='#1f7a52';totalFg='#1a6645';
+      rawNote=resv?'Thưởng phát sinh từ giữ chỗ '+r.source+'. Khi khách ký HD-M0374, hệ thống liên kết lại cùng khoản này, không tạo thưởng lần hai.':'Thưởng sale cho hợp đồng ký mới '+r.source+'. Người nhận là nhân viên sale, khác khách thuê.';
+    } else {
+      notesTitle='Ghi chú và đối chiếu hoa hồng';const t=tier[r.id]||.5,base=c.rent*t,diff=r.amount-base;
+      headLines=[{k:'Phiếu',v:(r.code||'Chưa lập phiếu')+' · HOA HỒNG KÝ MỚI'},{k:'Hợp đồng tính hoa hồng',v:r.source+' · ký '+date(c.signed)},{k:'Phòng · khách',v:r.building+'/'+r.room+' · '+r.customer},{k:'Giá phòng · kỳ thuê',v:money(c.rent)+'/tháng · '+date(c.start)+' – '+date(c.end)},{k:'Tình trạng hợp đồng',v:c.terminated?'Đã thanh lý '+date(c.terminated):'Đang hiệu lực'}];
+      sheetTitle='Bảng đối chiếu căn cứ';
+      sheet=[kv('Cọc thực thu · '+c.receipt,money(c.deposit)),kv('Tiền thuê / phí đã thu',money(c.otherPaid)),kv('Nợ còn lại',money(c.debt),{red:c.debt>0}),kv('Giá phòng × bậc '+Math.round(t*100)+'%',money(c.rent)+' × '+Math.round(t*100)+'%',{top:true}),kv('Số tiền theo căn cứ',money(base),{strong:true}),kv('Số tiền đề nghị',money(r.amount)),kv('Chênh lệch',diff?(diff>0?'+ ':'– ')+money(Math.abs(diff)):'0 đ',{strong:true,red:!!diff}),kv('Điều kiện thời gian','Đủ 7 ngày từ '+date(c.start),{top:true})];
+      const ok=!diff&&!c.debt;totalLabel=ok?'Căn cứ khớp đề nghị':diff?'Chênh lệch cần rà soát':'Hợp đồng còn nợ';totalSub=ok?'Có thể duyệt':diff?'Đề nghị vượt căn cứ '+money(diff):'Nợ '+money(c.debt)+' · cân nhắc trước khi chi';totalValue=money(r.amount);totalBg=ok?'#e8f3ec':'#fbf1da';totalBorder=ok?'#1f7a52':'#f0dca8';totalFg=ok?'#1a6645':'#8a6111';
+      rawNote=diff?'Phiếu đề nghị '+money(r.amount)+' nhưng bậc hiện áp dụng '+Math.round(t*100)+'% trên giá phòng cho '+money(base)+'. Xác nhận bậc hoa hồng với sale trước khi lập phiếu. Hợp đồng liền trước chỉ để đối chiếu vòng quay phòng, không đưa vào căn cứ.':c.debt?'Hợp đồng còn nợ '+money(c.debt)+'. Hoa hồng đã duyệt; cân nhắc thu nợ trước khi ghi nhận chi.':'Hoa hồng tính trên giá phòng của '+r.source+'. Người nhận là môi giới, khác khách thuê.';
+    }
+    const payout=[{k:'Đã chi thực tế',v:money(paid?r.amount:0),c:'#1b1813'},{k:paid?'Còn phải chi':'Còn đề nghị chi',v:money(paid?0:r.amount),c:paid?'#1f9d57':'#1b1813'},{k:'Trạng thái',v:st.l,c:st.fg}];
+    const mono="'Space Mono',monospace",sans='inherit';
+    return {isEvent:false,isVoucher:true,hasLinks:false,links:[],personLabel:'Người nhận',sourceLabel:'Phiếu đang xem',noteTitle:'Ghi chú kèm phiếu',codeLine:(r.code||'Chưa lập phiếu')+' · '+r.source,kindLabel:K[r.kind],roomLabel:r.building+' · '+r.room,statusBg:st.bg,statusFg:st.fg,statusLabel:st.l,customer:r.customer,recipient:r.recipient,amountCaption:r.status==='review'?'Số tiền đề nghị · chưa xác minh':r.status==='pending'?'Số tiền đề nghị':paid?'Đã chi':'Số tiền đã duyệt',amountLabel:money(r.amount),
+      lifecycleHint:isRefund?'Hợp đồng thanh lý → tình trạng phòng hiện tại':r.kind==='bonus'?(r.origin==='reservation'?'Giữ chỗ → ký hợp đồng → hiện tại':'Hợp đồng ký mới → tình trạng phòng hiện tại'):'Hợp đồng liền trước → hợp đồng tính hoa hồng → hiện tại',lanes,nowLine,source:r.source,
+      notesTitle,headLines,sheetTitle,sheet,totalLabel,totalSub,totalValue,totalBg,totalBorder,totalFg,payout,rawNote,
+      recipientKv:[{k:'Người nhận',v:r.recipient,c:'#1b1813',w:600,font:sans},{k:'Ngân hàng',v:r.bank||'Chưa có',c:r.bank?'#1b1813':'#d6453f',w:500,font:sans},{k:'Tài khoản',v:r.account||'Chưa có',c:r.account?'#1b1813':'#d6453f',w:500,font:r.account?mono:sans}],
+      needsBank:r.status==='review'&&!r.bank,hasProof:paid,noProof:!paid,proof:r.proof,book:r.book,paidAmount:money(r.amount),paidDate:date(r.paidDate),logs:r.logs,
+      stepReview:r.status==='review',hasIssue:!!r.issue,issue:r.issue,confirmText:isRefund?'Đã đối chiếu cọc thực thu, khấu trừ và số quyết toán với hợp đồng '+r.source:'Đã xác nhận bậc hoa hồng và số tiền với sale; đề nghị sẽ được sửa theo căn cứ nếu lệch',
+      reviewDisabled:!s.confirmChecked||(!r.bank&&(!s.bankDraft||!s.accountDraft)),reviewOpacity:(!s.confirmChecked||(!r.bank&&(!s.bankDraft||!s.accountDraft)))?.5:1,
+      stepPending:r.status==='pending',noReason:!s.reasonMode,hasReason:!!s.reasonMode,reasonTitle:s.reasonMode==='more'?'Yêu cầu bổ sung — nêu rõ cần gì':'Từ chối phiếu — lý do bắt buộc',reasonDisabled:!s.reason.trim(),reasonOpacity:s.reason.trim()?1:.5,
+      stepApproved:r.status==='approved',notPaying:!s.paying,paying:s.paying,payDisabled:!s.proofName,payOpacity:s.proofName?1:.5,hasProofFile:!!s.proofName,noProofFile:!s.proofName,proofName:s.proofName,
+      stepPaid:paid,stepCancelled:r.status==='cancelled',cancelReason:r.cancelReason,feedback:s.feedback};
+  }
+  panel(){
+    const s=this.state;if(!s.panelId)return null;const mono="'Space Mono',monospace";
+    if(s.panelType==='event'){const e=events.find(x=>x.id===s.panelId);if(!e)return null;const links=e.links.map(id=>s.rows.find(r=>r.id===id)).map(r=>({kindLabel:K[r.kind],recipient:r.recipient,statusLabel:S[r.status].l,amountLabel:money(r.amount),onOpen:()=>this.open(r.id)}));
+      return {code:e.id.toUpperCase()+' · '+e.source,title:EV[e.type]+' · '+e.building+' · '+e.room,statusBg:'#f0ede6',statusFg:'#514c42',statusLabel:e.origin==='reservation'?'Giữ chỗ':'Hợp đồng',subtitle:e.customer,note:'',kv:[{k:'Ngày nghiệp vụ',v:date(e.date),w:600,font:mono},{k:'Người phụ trách',v:e.staff,w:500,font:'inherit'},{k:'Mô tả',v:e.description,w:500,font:'inherit'}],hasLinks:links.length>0,links,isBonus:false}}
+    const r=s.rows.find(x=>x.id===s.panelId);if(!r)return null;const st=S[r.status];
+    return {code:(r.code||'Chưa lập phiếu')+' · '+r.source,title:K[r.kind]+' · '+r.building+' · '+r.room,statusBg:st.bg,statusFg:st.fg,statusLabel:st.l,subtitle:r.recipient,note:r.origin==='reservation'?'Thưởng phát sinh từ giữ chỗ '+r.source+'. Khi ký HD-M0374 hệ thống liên kết lại cùng khoản này, không tạo thưởng lần hai.':'',
+      kv:[{k:'Khách thuê',v:r.customer,w:500,font:'inherit'},{k:'Nguồn',v:r.source+' · '+r.event,w:500,font:mono},{k:'Ngày phát sinh',v:date(r.eventDate),w:500,font:mono},{k:'Người nhận',v:r.recipient,w:600,font:'inherit'},{k:'Tài khoản',v:r.account,w:500,font:mono},{k:'Số tiền',v:money(r.amount),w:700,font:mono}],
+      hasLinks:false,links:[],isBonus:true,canReview:r.status==='review',canApprove:r.status==='pending',canPay:r.status==='approved',isPaid:r.status==='paid',amountLabel:money(r.amount),paidDate:date(r.paidDate),book:r.book,proof:r.proof,feedback:s.panelFeedback};
+  }
+  renderVals(){
+    const s=this.state,f=this.f(),mv=s.view==='movements',isC=s.area==='hop_dong',demo=this.props.demoState??'normal',cur=FEE[s.area]||FEE.overview;
+    const base=this.base(),shown=this.visible();
+    const pillOn={bg:'#e8f3ec',fg:'#1f7a52'},pillOff={bg:'transparent',fg:'#8d8678'};
+    const chip=(active,label,count,onClick)=>({label,count,onClick,weight:active?700:500,bg:active?'#e8f3ec':'transparent',fg:active?'#1f7a52':'#8d8678'});
+    const kindList=mv?Object.entries(EV):['refund','commission','bonus'].map(k=>[k,K[k]]);
+    const cnt=k=>base.filter(r=>(k==='all'||(mv?r.type:r.kind)===k)&&(mv||this.matchStatus(r,f.status))).length;
+    const kindChips=[chip(f.kind==='all','Tất cả',cnt('all'),()=>this.setF({kind:'all'})),...kindList.map(([k,l])=>chip(f.kind===k,l,cnt(k),()=>this.setF({kind:k})))];
+    const statusChips=mv?[]:[chip(f.status==='open','Cần xử lý','',()=>this.setF({status:'open'})),chip(f.status==='paid','Đã chi','',()=>this.setF({status:'paid'}))];
+    const metric=base.filter(r=>f.kind==='all'||r.kind===f.kind);
+    const merged=s.merged;
+    const card=(key,label,keys,dot,meta)=>{const rs=metric.filter(r=>keys.includes(r.status)),n=rs.reduce((a,r)=>a+r.amount,0),sel=f.status===key;return {label,dot,number:compact(n),meta:meta?meta(rs,n):rs.length+' phiếu · '+money(n),border:sel?'#1f7a52':'#e7e3da',shadow:sel?'inset 0 0 0 1px #1f7a52':'none',cta:sel?'Đang lọc':'Lọc',onClick:()=>this.setF({status:sel?'open':key})}};
+    const reviewRs=metric.filter(r=>r.status==='review'),reviewSel=f.status==='review';
+    const stats=mv?[]:[
+      {label:'Cần rà soát',dot:S.review.fg,number:String(reviewRs.length),meta:'hồ sơ cần kiểm tra',border:reviewSel?'#1f7a52':'#e7e3da',shadow:reviewSel?'inset 0 0 0 1px #1f7a52':'none',cta:reviewSel?'Đang lọc':'Lọc',onClick:()=>this.setF({status:reviewSel?'open':'review'})},
+      ...(merged?[card('pendpay','Chờ Duyệt và Chi',['pending','approved'],S.pending.fg,(rs,n)=>rs.filter(r=>r.status==='pending').length+' chờ duyệt · '+rs.filter(r=>r.status==='approved').length+' chờ chi · '+money(n))]
+        :[card('pending','Chờ duyệt',['pending'],S.pending.fg),card('approved','Chờ chi',['approved'],S.approved.fg)]),
+      card('paid','Đã chi',['paid'],S.paid.fg)];
+    const movStats=mv?Object.entries(EV).map(([k,l])=>{const sel=f.kind===k;return {label:l,number:String(base.filter(r=>r.type===k).length),border:sel?'#1f7a52':'#e7e3da',shadow:sel?'inset 0 0 0 1px #1f7a52':'none',onClick:()=>this.setF({kind:sel?'all':k})}}):[];
+    const old=mv?[]:shown.filter(r=>r.eventDate<'2026-09-01'&&r.status!=='paid');
+    const payRows=mv?[]:shown.map(r=>{const st=S[r.status];return {roomLabel:r.building+' · '+r.room,customer:r.customer,codeLine:(r.code||'Chưa lập phiếu')+' · '+r.source,kindLabel:K[r.kind],eventLabel:r.origin==='reservation'?'Từ giữ chỗ':r.event,isOld:r.eventDate<'2026-09-01'&&r.status!=='paid',recipient:r.recipient,bankLine:r.bank?'Đã có thông tin nhận':'Thiếu tài khoản',bankColor:r.bank?'#8d8678':'#d6453f',amountLabel:money(r.amount),amountSub:r.status==='review'?'Đề nghị · chưa xác minh':r.status==='paid'?'Chi '+date(r.paidDate):r.status==='approved'?'Đã duyệt':'Đề nghị',statusBg:st.bg,statusFg:st.fg,statusLabel:st.l,hasIssue:!!r.issue,actionLabel:ACT[r.status],actionBorder:r.status==='approved'?'#1f7a52':'#e7e3da',actionFg:'#1f7a52',rowBg:(s.modalId===r.id||s.panelId===r.id)?'#faf8f4':'#fff',onOpen:()=>this.open(r.id)}});
+    const movRows=mv?shown.map(e=>({roomLabel:e.building+' · '+e.room,customer:e.customer,source:e.source,typeLabel:EV[e.type],originLabel:e.origin==='reservation'?'Giữ chỗ':'Hợp đồng',dateLabel:date(e.date),linked:e.links.map(id=>{const r=s.rows.find(x=>x.id===id);return {kindLabel:K[r.kind],amountLabel:money(r.amount),statusLabel:S[r.status].l}}),noLinks:!e.links.length,linkSummary:e.links.length?e.links.map(id=>{const r=s.rows.find(x=>x.id===id);return K[r.kind]+' '+money(r.amount)}).join(' · '):'Không phát sinh chi',rowBg:(s.panelId===e.id||s.modalEvId===e.id)?'#faf8f4':'#fff',onOpen:()=>this.setState({modalEvId:e.id,panelId:null,feedback:''})})):[];
+    const total=mv?0:shown.reduce((a,r)=>a+r.amount,0);
+    const statusName={open:'Cần xử lý',all:'Tất cả trạng thái',review:'Cần rà soát',pending:'Chờ duyệt',approved:'Chờ chi',pendpay:'Chờ duyệt và chi',paid:'Đã chi',cancelled:'Từ chối / hủy'}[f.status];
+    const persons=[...new Set((mv?events:s.rows.filter(r=>r.origin!=='ops')).map(r=>mv?r.staff:r.recipient))];
+    const m=this.modal(),panel=this.panel();
+    const ev=k=>e=>this.setF({[k]:e.target.value});
+    const modalRow=()=>s.rows.find(x=>x.id===s.modalId);
+    return {
+      isOverview:s.area==='overview',isOps:s.area!=='overview'&&!isC&&!!FEE[s.area],isContracts:isC,
+      areaOpen:s.areaOpen,toggleArea:()=>this.setState({areaOpen:!s.areaOpen}),areaBtnBg:s.areaOpen?'#faf8f4':'#fff',
+      areaIcon:cur.icon,areaIconBg:cur.accent+'1f',areaIconFg:cur.accent,areaTitle:cur.label,areaSub:cur.sub,
+      ovItemBg:s.area==='overview'?'#f2f6f3':'transparent',
+      goOverview:()=>this.setState({area:'overview',areaOpen:false}),
+      menuGroups:MENU.map(g=>({label:g.label,items:g.keys.map(k=>{const c=FEE[k],act=k===s.area,due=DUE[k];
+        return {label:c.label,icon:c.icon,restricted:!!c.restricted,active:act,bg:act?'#f2f6f3':'transparent',iconBg:act?'#1b1813':c.accent+'1f',iconFg:act?'#fff':c.accent,
+          badge:due.n?String(due.n):'đủ',badgeBg:due.n?'#fcebe9':'#e6f5ec',badgeFg:due.n?'#d6453f':'#1f9d57',onClick:()=>this.setState({area:k,areaOpen:false})}})})),
+      ovRows:OV.map(o=>{const c=FEE[o.key];
+        return {label:c.label,icon:c.icon,iconBg:c.accent+'1f',iconFg:c.accent,restricted:!!c.restricted,hasDraft:!!o.draft,draft:o.draft,
+          progress:o.paid+'/'+o.total,pct:Math.round(o.paid/o.total*100),chips:o.chips,allPaid:o.chips.length===0,dueSum:o.sum,sumFg:o.chips.length?'#1b1813':'#b6b0a3',canGo:o.chips.length>0,
+          rowBg:o.key==='hop_dong'?'#faf9f5':'#fff',onClick:()=>this.setState({area:o.key,areaOpen:false})}}),
+      goContracts:()=>this.setState({area:'hop_dong',areaOpen:false}),reset:()=>this.setState({areaOpen:false,rows:mkRows(),pay:defF(),mov:{...defF(),month:'2026-09'},modalId:null,panelId:null,view:'payments',area:'hop_dong',errored:false}),
+      opsRows:s.rows.filter(r=>r.origin==='ops').map(r=>({kindLabel:K[r.kind],building:r.building,amountLabel:money(r.amount)})),
+      isPayments:!mv,isMovements:mv,goPayments:()=>this.setState({view:'payments',panelId:null}),goMovements:()=>this.setState({view:'movements',panelId:null}),
+      payPillBg:mv?pillOff.bg:pillOn.bg,payPillFg:mv?pillOff.fg:pillOn.fg,movPillBg:mv?pillOn.bg:pillOff.bg,movPillFg:mv?pillOn.fg:pillOff.fg,
+      viewHint:mv?'Báo cáo theo ngày phát sinh nghiệp vụ':'Rà soát → Duyệt → Chi từng phiếu',
+      isLoading:demo==='loading',isError:demo==='error'||s.errored,isNoPerm:demo==='noperm',isNormal:demo==='normal'&&!s.errored,three:[1,2,3],retry:()=>this.setState({errored:false}),
+      stats,statsCols:merged?'repeat(3,minmax(0,1fr))':'repeat(4,minmax(0,1fr))',merged,toggleMerge:()=>this.setState(p=>({merged:!p.merged,pay:{...p.pay,status:['pending','approved','pendpay'].includes(p.pay.status)?'open':p.pay.status}})),
+      movStats,contentCols:panel?'minmax(0,1fr) 340px':'minmax(0,1fr)',
+      wide:!panel,narrow:!!panel,
+      payCols:panel?'minmax(0,1fr) minmax(88px,auto) auto':'minmax(150px,1.3fr) minmax(110px,.9fr) minmax(120px,1fr) minmax(120px,.9fr) minmax(110px,.8fr) 108px',
+      movCols:panel?'minmax(0,1fr) minmax(74px,auto) auto':'minmax(150px,1.3fr) minmax(110px,.9fr) 120px minmax(160px,1.2fr) 108px',
+      q:f.q,setQ:ev('q'),building:f.building,setBuilding:ev('building'),month:f.month,setMonth:ev('month'),monthAllLabel:mv?'Mọi kỳ':'Mọi kỳ · gồm tồn cũ',monthSepLabel:f.status==='paid'?'Chi tháng 09/2026':'Tháng 09/2026',monthAugLabel:f.status==='paid'?'Chi tháng 08/2026':'Tháng 08/2026',
+      toggleAdvanced:()=>this.setF({advanced:!f.advanced}),advBg:f.advanced?'#e8f3ec':'#fff',advanced:f.advanced,origin:f.origin,setOrigin:ev('origin'),personLabel:mv?'Người phụ trách':'Người nhận',person:f.person,setPerson:ev('person'),personOptions:persons,status:f.status,setStatus:ev('status'),issue:f.issue,setIssue:ev('issue'),
+      clearFilters:()=>this.setF({...defF(),month:mv?'2026-09':'all',advanced:f.advanced}),
+      kindChips,statusChips,showOldNotice:old.length>0&&demo==='normal',oldCount:old.length,oldAmount:money(old.reduce((a,r)=>a+r.amount,0)),
+      resultLine:shown.length+(mv?' lượt biến động':' khoản · '+statusName),resultRight:mv?'Mỗi dòng = một sự kiện':'Danh sách chi tiết',
+      showPayTable:!mv&&shown.length>0,showMovTable:mv&&shown.length>0,payRows,movRows,rowPad:(this.props.density??'comfortable')==='compact'?'9px':'14px',
+      isEmpty:shown.length===0,emptyTitle:f.q||f.building!=='all'||f.kind!=='all'?'Không có hồ sơ phù hợp':'Không còn khoản cần xử lý',emptyBody:f.q||f.building!=='all'||f.kind!=='all'?'Đổi kỳ hoặc bỏ bớt bộ lọc để xem các hồ sơ khác.':'Mọi phiếu trong phạm vi đã được chi hoặc từ chối. Xem "Đã chi" để đối chiếu lịch sử.',
+      footLeft:mv?'Ngày ký / xác nhận gia hạn / thanh lý / xử lý cọc':f.status==='paid'?'Lọc theo ngày chi thực tế':'Lọc theo kỳ phát sinh · đã chi được xem riêng trong lịch sử',footRight:mv?'':'Tổng đang xem: '+money(total)+(shown.some(r=>r.status==='review')?' · gồm đề nghị chưa xác minh':''),
+      hasPanel:!!panel,panel:panel||{},closePanel:()=>this.setState({panelId:null}),
+      panelSubmit:()=>{this.patch(s.panelId,{status:'pending',code:'PC-M'+(200+s.rows.length)},'Đã đối chiếu, lập phiếu');this.setState({panelFeedback:'Đã lập phiếu, chuyển Chờ duyệt.'})},
+      panelApprove:()=>{this.patch(s.panelId,{status:'approved'},'Chủ doanh nghiệp mẫu đã duyệt');this.setState({panelFeedback:'Đã duyệt. Phiếu chuyển sang Chờ chi, chưa ghi tiền.'})},
+      panelReject:()=>{this.patch(s.panelId,{status:'cancelled',cancelReason:'Từ chối trong demo'},'Đã từ chối');this.setState({panelFeedback:'Đã từ chối phiếu.'})},
+      panelPay:()=>{this.patch(s.panelId,{status:'paid',paidDate:'2026-09-20',book:'Sổ ngân hàng mẫu',proof:'Chứng từ mẫu'},'Kế toán mẫu đã ghi nhận chi');this.setState({panelFeedback:'Đã ghi nhận chi đủ. Phiếu chuyển Đã chi.'})},
+      modalOpen:!!m,m:m||{},closeModal:()=>this.setState({modalId:null,modalEvId:null,paying:false,reasonMode:null}),stop:e=>e.stopPropagation(),
+      bankDraft:s.bankDraft,setBankDraft:e=>this.setState({bankDraft:e.target.value}),accountDraft:s.accountDraft,setAccountDraft:e=>this.setState({accountDraft:e.target.value}),
+      confirmChecked:s.confirmChecked,toggleConfirm:()=>this.setState({confirmChecked:!s.confirmChecked}),
+      submitReview:()=>{const r=modalRow();const isC=r.kind==='commission';const base=isC?C[r.source].rent*(tier[r.id]||.5):r.amount;this.patch(r.id,{status:'pending',code:'PC-M'+(200+s.rows.length),issue:'',amount:base,bank:r.bank||s.bankDraft,account:r.account||s.accountDraft},'Đã đối chiếu căn cứ, lập phiếu'+(isC&&base!==r.amount?' · sửa đề nghị về '+money(base):''));this.setState({feedback:'Đã lập phiếu và chuyển Chờ duyệt. Chưa ghi tiền.'})},
+      approve:()=>{this.patch(s.modalId,{status:'approved'},'Chủ doanh nghiệp mẫu đã duyệt');this.setState({paying:true,proofName:'',feedback:'Đã duyệt. Ghi nhận chi ngay bên dưới.'})},
+      approveOnly:()=>{this.patch(s.modalId,{status:'approved'},'Chủ doanh nghiệp mẫu đã duyệt · chờ chi sau');this.setState({paying:false,feedback:'Đã duyệt. Phiếu chuyển sang Chờ chi, số dư chưa thay đổi.'})},
+      askMore:()=>this.setState({reasonMode:'more',reason:''}),askReject:()=>this.setState({reasonMode:'reject',reason:''}),reason:s.reason,setReason:e=>this.setState({reason:e.target.value}),cancelReason:()=>this.setState({reasonMode:null}),
+      confirmReason:()=>{if(s.reasonMode==='reject'){this.patch(s.modalId,{status:'cancelled',cancelReason:s.reason},'Từ chối: '+s.reason);this.setState({reasonMode:null,feedback:'Đã từ chối phiếu. Không nằm trong danh sách cần xử lý.'})}else{this.patch(s.modalId,{status:'review',issue:'Yêu cầu bổ sung: '+s.reason},'Yêu cầu bổ sung: '+s.reason);this.setState({reasonMode:null,feedback:'Đã gửi yêu cầu bổ sung. Phiếu quay về Cần rà soát.'})}},
+      startPay:()=>this.setState({paying:true,proofName:''}),cancelPay:()=>this.setState({paying:false}),payBook:s.payBook,setPayBook:e=>this.setState({payBook:e.target.value}),payDate:s.payDate,setPayDate:e=>this.setState({payDate:e.target.value}),
+      pickProof:e=>{const f=e.target.files&&e.target.files[0];if(f)this.setState({proofName:f.name})},
+      pasteProof:async()=>{try{const items=await navigator.clipboard.read();for(const it of items){const t=it.types.find(x=>x.startsWith('image/'));if(t){this.setState({proofName:'anh-dan-clipboard.'+t.split('/')[1]});return}}this.setState({proofName:'anh-chuyen-khoan-mau.png'})}catch(_){this.setState({proofName:'anh-chuyen-khoan-mau.png'})}},
+      clearProof:()=>this.setState({proofName:''}),
+      confirmPay:()=>{this.patch(s.modalId,{status:'paid',paidDate:s.payDate,book:s.payBook,proof:'Chứng từ mẫu'},'Kế toán mẫu đã ghi nhận chi · '+s.payBook);const r=modalRow();this.setState({paying:false,feedback:'Đã ghi nhận chi đủ '+money(r.amount)+'. '+(r.kind==='refund'?'Đã hoàn cập nhật vào hợp đồng '+r.source+'.':'Ghi nhận chi vào '+r.source+'.')})}
+    };
+  }
+}
+</script>
+</body>
+</html>
