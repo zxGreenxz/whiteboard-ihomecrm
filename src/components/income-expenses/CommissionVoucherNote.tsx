@@ -54,7 +54,7 @@ export function CommissionVoucherNote({ voucher, fallbackNotes, enabled = true }
         </div>
       ) : null}
       {notes ? (
-        <div className="whitespace-pre-line text-muted-foreground">{notes}</div>
+        <div className="text-muted-foreground"><div className="text-xs font-medium">Ghi chú gốc của phiếu</div><div className="whitespace-pre-line">{notes}</div></div>
       ) : null}
     </div>
   );

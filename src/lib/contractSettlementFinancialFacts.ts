@@ -23,8 +23,12 @@ export function classifySettlementCash(receipt: SettlementCashReceipt): CashSpli
   const { ledger } = receipt;
   if (!receipt.sourceVerified || !nonnegative(receipt.amount) || !Number.isSafeInteger(ledger.netEffect)) return unknown('SOURCE_OR_AMOUNT_UNVERIFIED');
   const noActive = receipt.activePostingId === null && ledger.active === null && ledger.netEffect === 0;
-  if (noActive && ((receipt.postingMode === 'NON_CASH' && receipt.postingStatus === 'NOT_APPLICABLE')
-    || (receipt.postingMode === 'CASHBOOK' && ['UNPOSTED', 'REVERSED'].includes(receipt.postingStatus)))) return zero;
+  if (noActive && receipt.postingMode === 'NON_CASH' && receipt.postingStatus === 'NOT_APPLICABLE') return zero;
+  if (noActive && receipt.postingMode === 'CASHBOOK' && receipt.postingStatus === 'UNPOSTED' && receipt.approvalStatus === 'UNAPPROVED') return zero;
+  // Legacy backfill exceptions can leave approved receipts without a posting.
+  // Net zero alone also cannot prove a complete, valid reversal chain. This DTO
+  // does not carry either absence provenance or that chain, so keep both unknown.
+  if (noActive && receipt.postingMode === 'CASHBOOK' && ['UNPOSTED', 'REVERSED'].includes(receipt.postingStatus)) return unknown('CASH_ABSENCE_UNVERIFIED');
   const active = ledger.active;
   if (receipt.postingMode !== 'CASHBOOK' || receipt.postingStatus !== 'POSTED' || receipt.approvalStatus !== 'APPROVED'
     || active === null || active.id !== receipt.activePostingId || active.voucherId !== receipt.id

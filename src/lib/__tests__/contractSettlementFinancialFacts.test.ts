@@ -14,10 +14,18 @@ describe('settlement cash evidence',()=>{
   expect(result.depositReceived).toMatchObject({state:'verified',amount:4000000});
   expect(result.otherReceived).toMatchObject({state:'verified',amount:2000000});
  });
- it('approved-unposted, reversed and noncash are not cash received',()=>{
-  for(const r of [receipt({postingStatus:'UNPOSTED',activePostingId:null,ledger:{netEffect:0,allPostingsVirtual:false,active:null}}),
-   receipt({postingStatus:'REVERSED',activePostingId:null,ledger:{netEffect:0,allPostingsVirtual:false,active:null}}),
+ it('unapproved pending and explicit noncash are not cash received',()=>{
+  for(const r of [receipt({approvalStatus:'UNAPPROVED',postingStatus:'UNPOSTED',activePostingId:null,ledger:{netEffect:0,allPostingsVirtual:false,active:null}}),
    receipt({postingStatus:'NOT_APPLICABLE',postingMode:'NON_CASH',activePostingId:null,ledger:{netEffect:0,allPostingsVirtual:false,active:null}})])expect(classifySettlementCash(r)).toMatchObject({state:'verified',amount:0});
+ });
+ it('keeps legacy unposted and unproved reversal cash unknown instead of confirming zero',()=>{
+  for(const postingStatus of ['UNPOSTED','REVERSED'] as const){
+   const ambiguous=receipt({postingStatus,activePostingId:null,ledger:{netEffect:0,allPostingsVirtual:false,active:null}});
+   expect(classifySettlementCash(ambiguous).state).toBe('unavailable');
+   expect(aggregateSettlementCash([ambiguous],true).depositReceived.state).toBe('unavailable');
+   const refund={...ambiguous,type:'EXPENSE' as const,isTargetRefund:true};
+   expect(aggregateSettlementCash([refund],true).refunded.state).toBe('unavailable');
+  }
  });
  it('does not allocate partial or inconsistent postings, hidden items or ambiguous source links',()=>{
   for(const r of [receipt({ledger:{...receipt().ledger,netEffect:5000000}}),receipt({activePostingId:null}),
