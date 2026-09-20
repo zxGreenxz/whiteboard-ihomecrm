@@ -13,6 +13,8 @@ const contractSchema = z.object({ id: uuid, number: z.string().nullable(), statu
 const segmentSchema = z.object({ contractId: uuid, contractNumber: z.string().nullable(), segIndex: z.number().int().nonnegative(),
   fromDate: day.nullable(), toDate: day.nullable(), sourcePath: z.string().nullable(), trusted: z.boolean(), diagnostic: z.string().nullable() });
 const payloadSchema = z.object({
+  organizationId: uuid.nullable().optional().transform(value => value ?? null),
+  today: day.nullable().optional().transform(value => value ?? null),
   room: z.object({ id: uuid, name: z.string(), buildingId: uuid, buildingName: z.string() }),
   range: z.object({ from: day.nullable(), to: day.nullable() }),
   contracts: z.array(contractSchema), segments: z.array(segmentSchema),
@@ -22,12 +24,13 @@ const payloadSchema = z.object({
   generatedAt: z.string().datetime({ offset: true }),
 });
 export interface SettlementLifecycleContract extends LifecycleContract { signedDate: string | null }
-export interface SettlementRoomLifecycle extends LifecyclePayload { contracts: SettlementLifecycleContract[] }
+export interface SettlementRoomLifecycle extends LifecyclePayload { contracts: SettlementLifecycleContract[]; organizationId: string | null; today: string | null }
 
 /** Validate the room RPC at its boundary. Legacy events remain reference data, not a cash ledger. */
-export function parseSettlementRoomLifecycle(input: unknown, expectedRoomId: string): SettlementRoomLifecycle {
+export function parseSettlementRoomLifecycle(input: unknown, expectedRoomId: string, expectedOrganizationId?: string): SettlementRoomLifecycle {
   const value = payloadSchema.parse(input);
   if (value.room.id !== expectedRoomId || (value.range.from && value.range.to && value.range.from > value.range.to)) throw Error('LIFECYCLE_SCOPE');
+  if (expectedOrganizationId !== undefined && (value.organizationId !== expectedOrganizationId || value.today === null)) throw Error('LIFECYCLE_SCOPE');
   const ids = new Set(value.contracts.map(contract => contract.id));
   if (ids.size !== value.contracts.length) throw Error('LIFECYCLE_DUPLICATE_CONTRACT');
   const segments = new Set<string>();

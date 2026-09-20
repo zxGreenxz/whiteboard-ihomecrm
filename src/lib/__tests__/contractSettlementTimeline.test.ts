@@ -43,6 +43,11 @@ describe('settlement room chronology', () => {
     expect(selectSettlementChronology(parsed, null, '2026-09-20')).toMatchObject({ targetContractId: null, lanes: [], warning: 'RESERVATION_SOURCE' });
     expect(selectSettlementChronology(parsed, roomId, '2026-09-20')).toMatchObject({ targetContractId: roomId, lanes: [], warning: 'TARGET_UNAVAILABLE' });
   });
+  it('requires the expected organization and server day for a scoped screen', () => {
+    expect(() => parseSettlementRoomLifecycle(fixture(), roomId, roomId)).toThrow();
+    expect(() => parseSettlementRoomLifecycle({ ...fixture(), organizationId: ids[0], today: '2026-09-20' }, roomId, roomId)).toThrow();
+    expect(parseSettlementRoomLifecycle({ ...fixture(), organizationId: roomId, today: '2026-09-20' }, roomId, roomId)).toMatchObject({ organizationId: roomId, today: '2026-09-20' });
+  });
   it('rejects malformed, duplicated and cross-room payloads rather than silently producing empty or zero facts', () => {
     for (const data of [{ ...fixture(), room: { ...fixture().room, id: ids[0] } },
       { ...fixture(), contracts: [...fixture().contracts, fixture().contracts[0]] },
