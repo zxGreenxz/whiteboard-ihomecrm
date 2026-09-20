@@ -38,6 +38,7 @@
     "gate:local-credentials": "node scripts/check-local-agent-credentials.mjs",
     "gate:known-gaps": "node scripts/check-known-gaps.mjs",
     "gate:test-matrix": "node scripts/check-test-matrix.mjs",
+    "gate:accounting-fixture-access": "node scripts/verify-accounting-fixture-access.mjs",
     "gate:workflow-paths": "node scripts/check-workflow-paths.mjs",
     "gate:raw-rpc-callers": "node scripts/check-raw-rpc-callers.mjs",
     "gate:realtime-query-keys": "node scripts/check-realtime-query-keys.mjs",
